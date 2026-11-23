@@ -3,15 +3,20 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { yn_function } from './cmd.js';
-import { flags, gl, iflags, program_state, svh, svp, ynchars } from './decl.js';
+import { gl, iflags, program_state, svh, svp, ynchars } from './decl.js';
 import { done1, nh_terminate } from './end.js';
 import { delete_levelfile, fqname, lock_file, set_levelfile_name, unlock_file } from './files.js';
+import { wizard } from './flag.macros.js';
+import { FALSE, MAXDUNGEON, MAXLEVEL, TRUE } from './global.h.js';
+import { LEVELPREFIX, LOCKPREFIX } from './hack.h.js';
 import { lowc } from './hacklib.js';
 import { Norep, pline, raw_printf } from './pline.js';
 import { sysopt } from './sys.js';
+import { FCMASK } from './unixconf.h.js';
 import { check_user_string } from './unixmain.js';
 import { error } from './unixtty.js';
 import { windowprocs } from './windows.js';
+import { exit_nhwindows, raw_print, resume_nhwindows, suspend_nhwindows, wait_synch } from './winprocs.macros.js';
 
 const getlock$destroy_old_game_prompt = new Int8Array(72);   // static in getlock()
 const ask_about_panic_save$Instead_prompt = new Int8Array(26);   // static in ask_about_panic_save()
@@ -33,12 +38,12 @@ function veryold(fd) {   // unixunix.c:38
 function eraseoldlocks() {   // unixunix.c:80
     let i = 0;
     program_state.preserve_locks = 0;
-    for (i = 1; i <= 513; i = i + 1 | 0) {
+    for (i = 1; i <= MAXDUNGEON * MAXLEVEL + 1; i = i + 1 | 0) {
         set_levelfile_name(new $c.Ptr(gl.lock, 0), i);
-        $c.unlink(fqname(new $c.Ptr(gl.lock, 0), 1, 0));
+        $c.unlink(fqname(new $c.Ptr(gl.lock, 0), LEVELPREFIX, 0));
     }
     set_levelfile_name(new $c.Ptr(gl.lock, 0), 0);
-    if ($c.unlink(fqname(new $c.Ptr(gl.lock, 0), 1, 0))) {
+    if ($c.unlink(fqname(new $c.Ptr(gl.lock, 0), LEVELPREFIX, 0))) {
         return 0;
     }
     return 1;
@@ -51,8 +56,8 @@ export async function getlock() {   // unixunix.c:103
             await error($c.lit("You must play from a terminal."));
         }
     }
-    if (!await lock_file($c.lit("perm"), 6, 10)) {
-        await windowprocs.win_wait_synch();
+    if (!await lock_file($c.lit("perm"), LOCKPREFIX, 10)) {
+        await wait_synch()();
         await error($c.lit("%s"), $c.lit(""));
     }
     if (!gl.locknum) {
@@ -67,7 +72,7 @@ export async function getlock() {   // unixunix.c:103
             }
             do {
                 $t2 = $c.i8(97 + ($t1 = i, i = $t1 + 1 | 0, $t1) | 0), gl.lock[0] = $t2;
-                fq_lock = fqname(new $c.Ptr(gl.lock, 0), 1, 0);
+                fq_lock = fqname(new $c.Ptr(gl.lock, 0), LEVELPREFIX, 0);
                 if ((fd = $c.open(fq_lock, 0)) === -1) {
                     if ($c.__error().get(0) === 2) {
                         break gotlock$;
@@ -85,7 +90,7 @@ export async function getlock() {   // unixunix.c:103
             await unlock_file($c.lit("perm"));
             await error($c.lit("Too many hacks running now."));
         } else {
-            fq_lock = fqname(new $c.Ptr(gl.lock, 0), 1, 0);
+            fq_lock = fqname(new $c.Ptr(gl.lock, 0), LEVELPREFIX, 0);
             if ((fd = $c.open(fq_lock, 0)) === -1) {
                 if ($c.__error().get(0) === 2) {
                     break gotlock$;
@@ -101,7 +106,7 @@ export async function getlock() {   // unixunix.c:103
             }
             await unlock_file($c.lit("perm"));
             if (iflags.window_inited) {
-                c = await yn_function(new $c.Ptr(getlock$destroy_old_game_prompt, 0), new $c.Ptr(ynchars, 0), 110, 1);
+                c = await yn_function(new $c.Ptr(getlock$destroy_old_game_prompt, 0), new $c.Ptr(ynchars, 0), 110, TRUE);
             } else {
                 await raw_printf($c.lit("\n%s [yn] "), new $c.Ptr(getlock$destroy_old_game_prompt, 0));
                 $c.fflush($c.__stdoutp);
@@ -125,7 +130,7 @@ export async function getlock() {   // unixunix.c:103
             }
         }
     }
-    fd = $c.creat(fq_lock, 432);
+    fd = $c.creat(fq_lock, FCMASK);
     await unlock_file($c.lit("perm"));
     if (fd === -1) {
         await error($c.lit("cannot creat lock file (%s)."), fq_lock);
@@ -144,7 +149,7 @@ export async function ask_about_panic_save() {   // unixunix.c:263
     await pline($c.lit("There is no regular save file but there is a panic one."));
     await pline($c.lit("It might be recoverable with demi-divine intervention."));
     if (iflags.window_inited) {
-        c = await yn_function(new $c.Ptr(ask_about_panic_save$Instead_prompt, 0), $c.lit("yn\x1bq"), 110, 0);
+        c = await yn_function(new $c.Ptr(ask_about_panic_save$Instead_prompt, 0), $c.lit("yn\x1bq"), 110, FALSE);
     } else {
         await raw_printf($c.lit("%s [yn] (n) "), new $c.Ptr(ask_about_panic_save$Instead_prompt, 0));
         $c.fflush($c.__stdoutp);
@@ -160,7 +165,7 @@ export async function ask_about_panic_save() {   // unixunix.c:263
         delete_levelfile(0);
         await unlock_file($c.lit("perm"));
         if (iflags.window_inited) {
-            await windowprocs.win_exit_nhwindows(null);
+            await exit_nhwindows()(null);
         }
         await nh_terminate(0);
     }
@@ -184,14 +189,14 @@ export async function dosh() {   // unixunix.c:344
         } else {
             $c.execl($c.lit("/bin/sh"), $c.lit("sh"), null);
         }
-        await windowprocs.win_raw_print($c.lit("sh: cannot execute."));
+        await raw_print()($c.lit("sh: cannot execute."));
         $c.exit(1);
     }
     return 0;
 }
 export async function child(wt) {   // unixunix.c:370
     let f = 0;
-    await windowprocs.win_suspend_nhwindows(null);
+    await suspend_nhwindows()(null);
     if ((f = $c.fork()) === 0) {
         $c.setgid($c.getgid());
         $c.setuid($c.getuid());
@@ -206,22 +211,22 @@ export async function child(wt) {   // unixunix.c:370
     $c.signal(3, $c.ptrConst(1));
     $c.wait(null);
     $c.signal(2, done1);
-    if (flags.debug) {
+    if (wizard()) {
         $c.signal(3, null);
     }
     if (wt) {
-        await windowprocs.win_raw_print($c.lit(""));
-        await windowprocs.win_wait_synch();
+        await raw_print()($c.lit(""));
+        await wait_synch()();
     }
-    await windowprocs.win_resume_nhwindows();
+    await resume_nhwindows()();
     return 0;
 }
 export function file_exists(path) {   // unixunix.c:466
     let sb = new $T.stat();
     if ($c.stat(path, sb)) {
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 
 export function $init() {

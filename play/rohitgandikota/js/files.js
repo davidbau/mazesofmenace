@@ -12,8 +12,8 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
 import { putmsghistory } from './tty/topl.js';
 import { NHW_MENU } from './const.js';
 
-/* src/files.c:3424 */
-const MAXPASSAGES = 20; /* SIZE(svc.context.novel.pasg) */
+/* src/files.c:3424, include/context.h struct novel_tracking.pasg. */
+const MAXPASSAGES = 30;
 
 const SECTIONSCOPE = 1, TITLESCOPE = 2, PASSAGESCOPE = 3;
 

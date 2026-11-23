@@ -16,6 +16,7 @@
 // tins of a monster, lit light sources, novels, ...) raise not_ported().
 
 import { game } from './gstate.js';
+import { ART_ORB_OF_DETECTION as ART_ORB_OF_DETECTION_ON } from './artilist.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
     lowc, highc, strncmpi, strcmpi, mungspaces, strstri, fuzzymatch, dist2, s_suffix,
@@ -2855,7 +2856,7 @@ export function gloves_simple_name(gloves) {
         const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
 
         if (strstri(objects[otyp].oc_name_known ? actualn : descrpn,
-                    gauntlets))
+                    gauntlets) >= 0)
             return gauntlets;
     }
     return "gloves";
@@ -2871,8 +2872,8 @@ export function boots_simple_name(boots) {
         const ocl = objects[otyp];
         const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
 
-        if (strstri(descrpn, shoes)
-            || (objects[otyp].oc_name_known && strstri(actualn, shoes)))
+        if (strstri(descrpn, shoes) >= 0
+            || (objects[otyp].oc_name_known && strstri(actualn, shoes) >= 0))
             return shoes;
     }
     return "boots";
@@ -3004,13 +3005,19 @@ export function Tobjnam(otmp, verb) {
 export function yname(obj) {
     if (obj.otyp === O.CORPSE)
         throw new Error('yname(): corpse_xname() not ported yet');
-    if (obj.oartifact)
-        throw new Error('yname(): artifacts not ported yet');
-    const s = xname(obj); /* cxname(obj) */
-    /* shk_your(): !shk_owns() && !mon_owns() */
-    if (obj.unpaid || obj.no_charge || obj.where === 'OBJ_MINVENT')
-        throw new Error('yname(): shk_owns()/mon_owns() not ported yet');
-    return `${(obj.where === 'OBJ_INVENT') ? "your" : "the"} ${s}`;
+    const s = cxname(obj);
+
+    /* leave off "your" for most of your artifacts, but prepend
+     * "your" for unique objects and "foo of bar" quest artifacts */
+    if (obj.where !== 'OBJ_INVENT' || !obj_is_pname(obj)
+        || obj.oartifact >= ART_ORB_OF_DETECTION_ON) {
+        /* shk_your(): !shk_owns() && !mon_owns() */
+        if (obj.unpaid || obj.no_charge || obj.where === 'OBJ_MINVENT')
+            throw new Error('yname(): shk_owns()/mon_owns() not ported yet');
+        return `${(obj.where === 'OBJ_INVENT') ? "your" : "the"} ${s}`;
+    }
+
+    return s;
 }
 
 // C ref: objnam.c Yname2()
@@ -3526,6 +3533,15 @@ export function doname_with_price(obj) {
     return doname_base(obj, 1 /* DONAME_WITH_PRICE */);
 }
 
+// C ref: objnam.c doname_vague_quan()
+export function doname_vague_quan(obj) {
+    /* Used by farlook.
+     * If it hasn't been seen up close and quantity is more than one,
+     * use "some" instead of the quantity: "some gold pieces" rather
+     * than "25 gold pieces". */
+    return doname_base(obj, 2 /* DONAME_VAGUE_QUAN */);
+}
+
 // C ref: objnam.c doname_base()
 function doname_base(obj, doname_flags) {
     let ispoisoned = false;
@@ -3613,8 +3629,15 @@ function doname_base(obj, doname_flags) {
     if (obj.greased)
         prefix += "greased ";
 
-    if (cknown && Has_contents(obj))
-        xn_not_ported('count_contents()');
+    if (cknown && Has_contents(obj) && obj.cobj.length /* cobj != NULL */) {
+        /* we count the number of separate stacks, which corresponds
+           to the number of inventory slots needed to be able to take
+           everything out if no merges occur;
+           count_contents(obj, FALSE, FALSE, TRUE, FALSE) */
+        const itemcount = obj.cobj.length;
+
+        bp += ` containing ${itemcount} item${(itemcount === 1) ? "" : "s"}`;
+    }
 
     switch (is_weptool(obj) ? O.WEAPON_CLASS : obj.oclass) {
     case O.AMULET_CLASS:

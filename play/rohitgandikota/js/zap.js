@@ -2169,7 +2169,7 @@ export function obj_unpolyable(obj) {
         || obj.otyp === ONAMES.POT_POLYMORPH
         || obj.otyp === ONAMES.AMULET_OF_UNCHANGING;
     return (unpoly
-            || obj === game.uball || obj === game.uskin
+            || obj === game.u.uball || obj === game.u.uskin
             || obj_resists(obj, 5, 95));
 }
 

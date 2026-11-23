@@ -6,12 +6,17 @@ import { alloc } from './alloc.js';
 import { snuff_lit } from './apply.js';
 import { touch_artifact } from './artifact.js';
 import { exercise } from './attrib.js';
+import { A } from './attrib.h.js';
 import { fix_ghostly_obj } from './bones.js';
 import { bot } from './botl.js';
 import { cmdq_add_ec, get_adjacent_loc, isok, paranoid_ynq, yn_function } from './cmd.js';
+import { NO_COLOR } from './color.h.js';
 import { db_under_typ, is_lava, is_pool } from './dbridge.js';
-import { c_common_strings, cg, disp, flags, ga, gb, gc, gd, gi, gl, gm, gn, go, gp, gs, gt, gu, gv, gy, iflags, svc, svl, svm, u, ynNaqchars, ynaqchars, ynqchars } from './decl.js';
-import { canseemon, flush_screen, map_glyphinfo, newsym, newsym_force, nul_glyphinfo, sensemon } from './display.js';
+import { c_common_strings, cg, disp, flags, ga, gb, gc, gd, gi, gl, gm, gn, go, gp, gs, gt, gu, gv, gy, iflags, svc, svl, svm, u, ynqchars } from './decl.js';
+import { COIN_CLASS, POTION_CLASS, VENOM_CLASS } from './defsym.h.js';
+import { flush_screen, map_glyphinfo, newsym, newsym_force, nul_glyphinfo } from './display.js';
+import { GLYPH } from './display.h.js';
+import { canspotmon } from './display.macros.js';
 import { doaltarobj, dropx, dropy, revive_corpse, trycall } from './do.js';
 import { Monnam, christen_monst, hliquid, mon_nam, oname, rndmonnam, x_monnam } from './do_name.js';
 import { hitfloor } from './dothrow.js';
@@ -22,36 +27,69 @@ import { can_reach_floor, cant_reach_floor, freehand, read_engr_at } from './eng
 import { more_experienced, newexplevel } from './exper.js';
 import { scatter } from './explode.js';
 import { debugcore } from './files.js';
+import { AUTOUNLOCK, PLNMSG } from './flag.h.js';
+import { ParanoidAutoAll, ParanoidConfirm } from './flag.macros.js';
+import { FALSE, LL, TRUE } from './global.h.js';
 import { calc_capacity, check_capacity, in_rooms, inv_cnt, losehp, max_capacity, money_cnt, near_capacity, nomul, obj_to_any } from './hack.js';
+import { ALL_TYPES, ALL_TYPES_SELECTED, ARTICLE, AUTOSELECT_SINGLE, BILLED_TYPES, BUC, BUCX_TYPES, BY_NEXTHERE, CHOOSE_ALL, CORPSTAT, CQ_CANNED, CXN, ECMD, EXT_ENCUMBER, FEEL_COCKATRICE, FOOT, GETOBJ, GETOBJ_PROMPT, HAND, HVY_ENCUMBER, INCLUDE_HERO, INCLUDE_VENOM, INVORDER_SORT, JUSTPICKED, KILLED, LOOKHERE, MAY, MAY_HIT, MM, MOD_ENCUMBER, NO, ONAME_NO_FLAGS, SELL, SIGNAL, SLT_ENCUMBER, SORTLOOT, SUPPRESS, UNPAID_TYPES, USE_INVLET, WORN_TYPES, invlet_basic, st_all, st_corpse, st_gloves, st_petrifies, st_resists } from './hack.h.js';
+import { Maybe_Half_Phys, min, pline1, plur, ynNaq, ynaq, ynq } from './hack.macros.js';
 import { dist2, strkitten, upstart } from './hacklib.js';
 import { addinv, askchain, carrying, consume_obj_charge, count_buc, count_unpaid, currency, dfeature_at, display_inventory, feel_cockatrice, freeinv, g_at, getobj, hold_another_object, is_worn, let_to_name, look_here, merge_choice, nxtobj, obj_here, prinv, sobj_at, sortloot, tally_BUCX, unsortloot, update_inventory, useup, useupf, will_feel_cockatrice } from './invent.js';
 import { obj_is_burning } from './light.js';
+import { nhUse } from './lint.macros.js';
 import { autokey, boxlock, doforce, pick_lock, u_have_forceable_weapon } from './lock.js';
 import { bagotricks, makemon, set_malign } from './makemon.js';
 import { add_to_container, add_to_minv, get_mtraits, hornoplenty, obj_extract_self, set_bknown, set_corpsenm, splitobj, start_corpse_timeout, start_glob_timeout, unbless, unsplitobj, weight } from './mkobj.js';
 import { courtmon } from './mkroom.js';
+import { SHOPBASE } from './mkroom.h.js';
 import { hideunder } from './mon.js';
+import { AD, AT } from './monattk.h.js';
 import { dmgtype_fromattack, poly_when_stoned, stagger } from './mondata.js';
+import { bigmonst, hides_under, is_rider, nohands, nolimbs, notake, throws_rocks, touch_petrifies } from './mondata.macros.js';
 import { mons } from './monst.js';
+import { PM } from './monsters.h.js';
 import { discover_object, observe_object } from './o_init.js';
+import { LOST, OBJ } from './obj.h.js';
+import { Has_contents, Is_box, Is_candle, Is_container, Is_mbag, SchroedingersBox, age_is_relative, carried, has_omonst, is_pick } from './obj.macros.js';
+import { NUM_OBJECTS } from './objclass.h.js';
 import { objects } from './objects.js';
+import { AMULET_OF_YENDOR, BAG_OF_HOLDING, BAG_OF_TRICKS, BELL_OF_OPENING, BOULDER, CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CHEST, CORPSE, CRAM_RATION, FIRST_OBJECT, FIRST_REAL_GEM, FIRST_SPELL, FOOD_RATION, GOLD_PIECE, HORN_OF_PLENTY, ICE_BOX, LAST_GLASS_GEM, LAST_SPELL, LEASH, LEMBAS_WAFER, LOADSTONE, MAGIC_LAMP, OIL_LAMP, POT_OIL, SCR_SCARE_MONSTER, SPE_BOOK_OF_THE_DEAD, SPE_WIZARD_LOCK, STATUE, WAN_CANCELLATION } from './objects.h.js';
 import { Doname2, The, Tobjnam, Yname2, Ysimple_name2, an, ansimpleoname, corpse_xname, doname, doname_with_price, killer_xname, makesingular, otense, safe_qbuf, the, thesimpleoname, vtense, xname, yname, ysimple_name } from './objnam.js';
 import { self_lookat, waterbody_name } from './pager.js';
+import { NUMMONS } from './permonst.h.js';
 import { Norep, There, You, You_cant, Your, impossible, livelog_printf, pline, pline_The, urgent_pline, verbalize } from './pline.js';
 import { body_part, polymon } from './polyself.js';
 import { regex_match } from './posixregex.js';
-import { d, rn2, rn2_on_display_rng, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { CONFUSION, FUMBLING, HALLUC, HALLUC_RES, STUNNED, TIMEOUT, W, W_ACCESSORY, W_ARMOR, W_WEAPONS } from './prop.h.js';
+import { ALTAR, DRAWBRIDGE_UP, GRAVE, ICE, STONE, THRONE, T_LOOTED } from './rm.h.js';
+import { IS_FURNITURE, IS_LAVA, IS_POOL, MON_AT, OBJ_AT } from './rm.macros.js';
+import { d, rn2, rn2_on_display_rng, rnd } from './rnd.js';
 import { genders } from './role.js';
 import { Shk_Your, addtobill, check_unpaid_usage, costly_spot, obfree, pick_pick, remote_burglary, sellobj, sellobj_state, shop_keeper, stolen_value, subfrombill } from './shk.js';
+import { P } from './skills.h.js';
 import { tiphat } from './sounds.js';
 import { remove_worn_item } from './steal.js';
 import { rider_cant_reach } from './steed.js';
 import { stop_timer } from './timeout.js';
+import { REVIVE_MON, ROT_CORPSE, SHRINK_GLOB } from './timeout.h.js';
 import { back_on_ground, chest_trap, instapetrify, t_at, uescaped_shaft, unconscious, uteetering_at_seen_pit } from './trap.js';
+import { is_pit } from './trap.macros.js';
 import { setuqwep, setuswapwep, setuwep, welded, weldmsg } from './wield.js';
-import { add_menu, add_menu_heading, add_menu_str, getlin, select_menu, windowprocs } from './windows.js';
+import { add_menu, add_menu_heading, add_menu_str, getlin, select_menu } from './windows.js';
+import { clear_nhwindow, create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, putstr, start_menu } from './winprocs.macros.js';
+import { ATR, MENU, NHW, PICK, WIN_ERR } from './wintype.h.js';
 import { extract_from_minvent, which_armor } from './worn.js';
+import { Blind, Hallucination, Stone_resistance, Underwater } from './youprop.macros.js';
 import { get_obj_location } from './zap.js';
+
+const CONTAINED_SYM = 62;
+const TIPCHECK = $c.cenum([
+    ['OK', 0],
+    'LOCKED',
+    'TRAPPED',
+    'CANNOT',
+    'EMPTY'
+]);
 
 let add_valid_menu_class$vmc_count = 0;   // static in add_valid_menu_class()
 let autopick_testobj$costly = 0;   // static in autopick_testobj()
@@ -70,14 +108,14 @@ async function simple_look(otmp, here) {   // pickup.c:76
     } else if (!(here ? otmp.v.v_nexthere : otmp.nobj)) {
         await pline($c.lit("%s"), await doname(otmp));
     } else {
-        tmpwin = await windowprocs.win_create_nhwindow(4);
-        await windowprocs.win_putstr(tmpwin, 0, $c.lit(""));
+        tmpwin = await create_nhwindow()(NHW.MENU);
+        await putstr()(tmpwin, 0, $c.lit(""));
         do {
-            await windowprocs.win_putstr(tmpwin, 0, await doname(otmp));
+            await putstr()(tmpwin, 0, await doname(otmp));
             otmp = here ? otmp.v.v_nexthere : otmp.nobj;
         } while (otmp);
-        await windowprocs.win_display_nhwindow(tmpwin, 1);
-        await windowprocs.win_destroy_nhwindow(tmpwin);
+        await display_nhwindow()(tmpwin, TRUE);
+        await destroy_nhwindow()(tmpwin);
     }
 }
 export async function collect_obj_classes(ilets, otmp, here, filter, itemcount) {   // pickup.c:101
@@ -100,13 +138,13 @@ async function query_classes(oclasses, one_at_a_time, everything, action, objs, 
     inbuf.fill(0);
     inbuf[0] = 0;
     oclasses.set(oclassct = 0, 0);
-    $t2 = ($t1 = m_seen = 0, everything.set(0, $t1)), one_at_a_time.set(0, $t2);
+    $t2 = ($t1 = m_seen = FALSE, everything.set(0, $t1)), one_at_a_time.set(0, $t2);
     if (menu_on_demand) {
         menu_on_demand.set(0, 0);
     }
     iletct = await collect_obj_classes(new $c.Ptr(ilets, 0), objs, here, null, new $c.Ptr(itemcount, 0));
     if (iletct === 0) {
-        return 0;
+        return FALSE;
     }
     if (iletct === 1) {
         $t3 = $c.i8(def_char_to_objclass(ilets[0])), oclasses.set(0, $t3);
@@ -144,34 +182,34 @@ async function query_classes(oclasses, one_at_a_time, everything, action, objs, 
         where = null;
         ask_again$: for (;;) {
             oclasses.set(oclassct = 0, 0);
-            $t15 = everything.set(0, 0), one_at_a_time.set(0, $t15);
-            not_everything = filtered = 0;
+            $t15 = everything.set(0, FALSE), one_at_a_time.set(0, $t15);
+            not_everything = filtered = FALSE;
             $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 128, $c.lit("What kinds of thing do you want to %s? [%s]"), action, new $c.Ptr(ilets, 0));
             await getlin(new $c.Ptr(qbuf, 0), new $c.Ptr(inbuf, 0));
             if (new $c.Ptr(inbuf, 0).get(0) === 27) {
-                return 0;
+                return FALSE;
             }
             for (p = new $c.Ptr(inbuf, 0); (sym = ($t16 = p, p = $t16.add(1), $t16).get(0)) !== 0; ) {
                 if (sym === 32) {
                     continue;
                 } else if (sym === 65) {
-                    one_at_a_time.set(0, 1);
+                    one_at_a_time.set(0, TRUE);
                 } else if (sym === 97) {
-                    everything.set(0, 1);
+                    everything.set(0, TRUE);
                 } else if (sym === 58) {
                     await simple_look(objs, here);
-                    if (objs.where === 2) {
+                    if (objs.where === OBJ.CONTAINED) {
                         objs.v.v_ocontainer.cknown = (1) & 1;
                     }
                     continue ask_again$;
                 } else if (sym === 105) {
-                    await display_inventory(null, 1);
+                    await display_inventory(null, TRUE);
                     continue ask_again$;
                 } else if (sym === 109) {
-                    m_seen = 1;
+                    m_seen = TRUE;
                 } else if ($c.strchr($c.lit("uBUCXP"), sym)) {
                     add_valid_menu_class(sym);
-                    filtered = 1;
+                    filtered = TRUE;
                 } else {
                     oc_of_sym = $c.i8(def_char_to_objclass(sym));
                     if ($c.strchr(new $c.Ptr(ilets, 0), sym)) {
@@ -187,7 +225,7 @@ async function query_classes(oclasses, one_at_a_time, everything, action, objs, 
                         } else {
                             await You($c.lit("have no %c's."), sym);
                         }
-                        not_everything = 1;
+                        not_everything = TRUE;
                     }
                 }
             }
@@ -195,82 +233,82 @@ async function query_classes(oclasses, one_at_a_time, everything, action, objs, 
         }
         if (m_seen && menu_on_demand) {
             menu_on_demand.set(0, (everything.get(0) || !oclassct) && !filtered ? -2 : -3);
-            return 0;
+            return FALSE;
         }
         if (!oclassct && (!everything.get(0) || not_everything)) {
-            one_at_a_time.set(0, 1);
-            everything.set(0, 0);
+            one_at_a_time.set(0, TRUE);
+            everything.set(0, FALSE);
         }
     }
-    return 1;
+    return TRUE;
 }
 export function u_safe_from_fatal_corpse(obj, tests) {   // pickup.c:273
-    if (tests & 1 /* st_gloves */ && $G.uarmg || tests & 2 /* st_corpse */ && obj.otyp !== 265 /* CORPSE */ || tests & 4 /* st_petrifies */ && !($c.peq($c.relem(mons, obj.corpsenm), $c.relem(mons, 10 /* PM_COCKATRICE */)) || $c.peq($c.relem(mons, obj.corpsenm), $c.relem(mons, 9 /* PM_CHICKATRICE */))) || tests & 8 /* st_resists */ && (u.uprops[8 /* STONE_RES */].intrinsic || u.uprops[8 /* STONE_RES */].extrinsic)) {
-        return 1;
+    if (tests & st_gloves && $G.uarmg || tests & st_corpse && obj.otyp !== CORPSE || tests & st_petrifies && !touch_petrifies($c.relem(mons, obj.corpsenm)) || tests & st_resists && Stone_resistance()) {
+        return TRUE;
     }
-    return 0;
+    return FALSE;
 }
 async function fatal_corpse_mistake(obj, remotely) {   // pickup.c:285
-    if (u_safe_from_fatal_corpse(obj, 15 /* st_all */) || remotely) {
-        return 0;
+    if (u_safe_from_fatal_corpse(obj, st_all) || remotely) {
+        return FALSE;
     }
-    if (poly_when_stoned(gy.youmonst.data) && await polymon(257 /* PM_STONE_GOLEM */)) {
-        await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 0);
-        return 0;
+    if (poly_when_stoned(gy.youmonst.data) && await polymon(PM.STONE_GOLEM)) {
+        await display_nhwindow()($G.WIN_MESSAGE, FALSE);
+        return FALSE;
     }
-    await pline($c.lit("Touching %s is a fatal mistake."), await corpse_xname(obj, null, 9));
+    await pline($c.lit("Touching %s is a fatal mistake."), await corpse_xname(obj, null, CXN.SINGULAR | CXN.ARTICLE));
     await instapetrify(await killer_xname(obj));
-    return 1;
+    return TRUE;
 }
 export async function rider_corpse_revival(obj, remotely) {   // pickup.c:303
-    if (!obj || obj.otyp !== 265 /* CORPSE */ || !($c.peq($c.relem(mons, obj.corpsenm), $c.relem(mons, 311 /* PM_DEATH */)) || $c.peq($c.relem(mons, obj.corpsenm), $c.relem(mons, 313 /* PM_FAMINE */)) || $c.peq($c.relem(mons, obj.corpsenm), $c.relem(mons, 312 /* PM_PESTILENCE */)))) {
-        return 0;
+    if (!obj || obj.otyp !== CORPSE || !is_rider($c.relem(mons, obj.corpsenm))) {
+        return FALSE;
     }
     await pline($c.lit("At your %s, the corpse suddenly moves..."), remotely ? $c.lit("attempted acquisition") : $c.lit("touch"));
     await revive_corpse(obj);
-    await exercise(2 /* A_WIS */, 0);
-    return 1;
+    await exercise(A.WIS, FALSE);
+    return TRUE;
 }
 export async function force_decor(via_probing) {   // pickup.c:317
     let $t1;
-    gd.decor_fumble_override = 1;
+    gd.decor_fumble_override = TRUE;
     gd.decor_levitate_override = via_probing;
-    iflags.prev_decor = 0;
+    iflags.prev_decor = STONE;
     await describe_decor();
-    $t1 = gd.decor_levitate_override = 0, gd.decor_fumble_override = $t1;
+    $t1 = gd.decor_levitate_override = FALSE, gd.decor_fumble_override = $t1;
     svl.lastseentyp[u.ux][u.uy] = svl.level.locations[u.ux][u.uy].typ;
 }
 export async function deferred_decor(setup) {   // pickup.c:337
     if (!flags.mention_decor) {
-        iflags.defer_decor = 0;
+        iflags.defer_decor = FALSE;
     } else if (setup) {
-        iflags.defer_decor = 1;
+        iflags.defer_decor = TRUE;
     } else {
         await describe_decor();
-        iflags.defer_decor = 0;
+        iflags.defer_decor = FALSE;
     }
 }
 async function describe_decor() {   // pickup.c:353
     let outbuf = new Int8Array(256), fbuf = new Int8Array(128), doorhere = 0, waterhere = 0, res = 0, dfeature = null, ltyp = 0;
-    res = 1;
-    if ($c.and64(u.uprops[25 /* FUMBLING */].intrinsic, 16777215) === 1 && !iflags.defer_decor && !gd.decor_fumble_override) {
-        await deferred_decor(1);
-        return 0;
+    res = TRUE;
+    if ($c.and64(u.uprops[FUMBLING].intrinsic, TIMEOUT) === 1 && !iflags.defer_decor && !gd.decor_fumble_override) {
+        await deferred_decor(TRUE);
+        return FALSE;
     }
-    ltyp = svl.level.locations[u.ux][u.uy].typ === 19 /* DRAWBRIDGE_UP */ ? db_under_typ(svl.level.locations[u.ux][u.uy].flags | 0) : svl.level.locations[u.ux][u.uy].typ;
+    ltyp = svl.level.locations[u.ux][u.uy].typ === DRAWBRIDGE_UP ? db_under_typ(svl.level.locations[u.ux][u.uy].flags | 0) : svl.level.locations[u.ux][u.uy].typ;
     dfeature = await dfeature_at(u.ux, u.uy, new $c.Ptr(fbuf, 0));
     doorhere = $c.i8(dfeature && (!$c.strcmp(dfeature, $c.lit("open door")) || !$c.strcmp(dfeature, $c.lit("doorway"))) ? 1 : 0);
     waterhere = $c.i8(dfeature && !$c.strcmp(dfeature, $c.lit("pool of water")) ? 1 : 0);
-    if (doorhere || u.uinwater | 0 || ltyp === 33 /* ICE */ && (iflags.prev_decor >= 16 /* POOL */ && iflags.prev_decor <= 19 /* DRAWBRIDGE_UP */)) {
+    if (doorhere || (u.uinwater | 0) || ltyp === ICE && IS_POOL(iflags.prev_decor)) {
         dfeature = null;
     }
-    if (ltyp === iflags.prev_decor && !(ltyp >= 26 /* STAIRS */ && ltyp <= 32 /* ALTAR */)) {
-        res = 0;
+    if (ltyp === iflags.prev_decor && !IS_FURNITURE(ltyp)) {
+        res = FALSE;
     } else if (dfeature) {
         if (waterhere) {
             dfeature = $c.__builtin___strcpy_chk(new $c.Ptr(fbuf, 0), waterbody_name(u.ux, u.uy), 128);
         }
-        if ($c.strcmp(dfeature, $c.lit("swamp")) && ltyp !== 33 /* ICE */) {
+        if ($c.strcmp(dfeature, $c.lit("swamp")) && ltyp !== ICE) {
             dfeature = await an(dfeature);
         }
         if (flags.verbose) {
@@ -281,28 +319,28 @@ async function describe_decor() {   // pickup.c:353
             }
             $c.__builtin___sprintf_chk(new $c.Ptr(outbuf, 0), 0, 256, $c.lit("%s."), upstart(new $c.Ptr(fbuf, 0)));
         }
-        if (ltyp === 33 /* ICE */ && flags.mention_decor) {
+        if (ltyp === ICE && flags.mention_decor) {
             await Norep($c.lit("%s"), new $c.Ptr(outbuf, 0));
         } else {
             await pline($c.lit("%s"), new $c.Ptr(outbuf, 0));
         }
-    } else if (!u.uinwater) {
-        if (iflags.prev_decor >= 16 /* POOL */ && iflags.prev_decor <= 19 /* DRAWBRIDGE_UP */ || (iflags.prev_decor === 20 /* LAVAPOOL */ || iflags.prev_decor === 21 /* LAVAWALL */) || iflags.prev_decor === 33 /* ICE */) {
-            if (iflags.last_msg !== 8 /* PLNMSG_BACK_ON_GROUND */) {
-                await back_on_ground(0);
+    } else if (!Underwater()) {
+        if (IS_POOL(iflags.prev_decor) || IS_LAVA(iflags.prev_decor) || iflags.prev_decor === ICE) {
+            if (iflags.last_msg !== PLNMSG.BACK_ON_GROUND) {
+                await back_on_ground(FALSE);
             }
         }
     }
-    iflags.prev_decor = $c.i8(flags.mention_decor ? ltyp : 0 /* STONE */);
+    iflags.prev_decor = $c.i8(flags.mention_decor ? ltyp : STONE);
     return res;
 }
 async function check_here(picked_some) {   // pickup.c:430
     let obj = null, ct = 0, lhflags = 0;
     ct = 0;
-    lhflags = picked_some ? 1 : 0;
+    lhflags = picked_some ? LOOKHERE.PICKED_SOME : LOOKHERE.NOFLAGS;
     if (flags.mention_decor) {
         if (await describe_decor()) {
-            lhflags = (lhflags | 2) >>> 0;
+            lhflags = (lhflags | LOOKHERE.SKIP_DFEATURE) >>> 0;
         }
     }
     for (obj = svl.level.objects[u.ux][u.uy]; obj; obj = obj.v.v_nexthere) {
@@ -322,19 +360,19 @@ async function check_here(picked_some) {   // pickup.c:430
 }
 function n_or_more(obj) {   // pickup.c:460
     if ($c.peq(obj, $G.uchain)) {
-        return 0;
+        return FALSE;
     }
     return $c.i8(obj.quan >= gv.val_for_n_or_more ? 1 : 0);
 }
 export function menu_class_present(c) {   // pickup.c:469
-    return $c.i8(c && $c.strchr(new $c.Ptr(gv.valid_menu_classes, 0), c) ? 1 : 0);
+    return $c.i8(c && $c.strchr(new $c.Ptr(gv.valid_menu_classes, 0), c) ? TRUE : FALSE);
 }
 export function add_valid_menu_class(c) {   // pickup.c:475
     let $t1, $t2, $t3;
     if (c === 0) {
         add_valid_menu_class$vmc_count = 0;
-        $t2 = ($t1 = gs.shop_filter = 0, gb.bucx_filter = $t1), gc.class_filter = $t2;
-        gp.picked_filter = 0;
+        $t2 = ($t1 = gs.shop_filter = FALSE, gb.bucx_filter = $t1), gc.class_filter = $t2;
+        gp.picked_filter = FALSE;
     } else if (!menu_class_present(c)) {
         gv.valid_menu_classes[($t3 = add_valid_menu_class$vmc_count, add_valid_menu_class$vmc_count = $t3 + 1 | 0, $t3)] = $c.i8(c);
         switch (c) {
@@ -342,16 +380,16 @@ export function add_valid_menu_class(c) {   // pickup.c:475
             case 85:
             case 67:
             case 88:
-                gb.bucx_filter = 1;
+                gb.bucx_filter = TRUE;
                 break;
             case 80:
-                gp.picked_filter = 1;
+                gp.picked_filter = TRUE;
                 break;
             case 117:
-                gs.shop_filter = 1;
+                gs.shop_filter = TRUE;
                 break;
             default:
-                gc.class_filter = 1;
+                gc.class_filter = TRUE;
                 break;
         }
     }
@@ -361,42 +399,42 @@ function all_but_uchain(obj) {   // pickup.c:509
     return $c.i8(!$c.peq(obj, $G.uchain) ? 1 : 0);
 }
 export function allow_all(obj) {   // pickup.c:517
-    return 1;
+    return TRUE;
 }
 export async function allow_category(obj) {   // pickup.c:523
     let bucx = 0;
-    if (!gc.class_filter && !gs.shop_filter && !gb.bucx_filter && !gp.picked_filter && !((flags.paranoia_bits & 4096) >>> 0 !== 0)) {
-        return 0;
+    if (!gc.class_filter && !gs.shop_filter && !gb.bucx_filter && !gp.picked_filter && !ParanoidAutoAll()) {
+        return FALSE;
     }
-    if (obj.oclass === 12 /* COIN_CLASS */ && gc.class_filter) {
-        return $c.i8($c.strchr(new $c.Ptr(gv.valid_menu_classes, 0), 12 /* COIN_CLASS */) ? 1 : 0);
+    if (obj.oclass === COIN_CLASS && gc.class_filter) {
+        return $c.i8($c.strchr(new $c.Ptr(gv.valid_menu_classes, 0), COIN_CLASS) ? TRUE : FALSE);
     }
-    if (gu.urole.mnum === 337 && !obj.bknown) {
+    if (gu.urole.mnum === PM.CLERIC && !obj.bknown) {
         await set_bknown(obj, 1);
     }
     if (gc.class_filter && !$c.strchr(new $c.Ptr(gv.valid_menu_classes, 0), obj.oclass)) {
-        return 0;
+        return FALSE;
     }
-    if (gs.shop_filter && !obj.unpaid && !(obj.cobj !== null && count_unpaid(obj.cobj) > 0)) {
-        return 0;
+    if (gs.shop_filter && !obj.unpaid && !(Has_contents(obj) && count_unpaid(obj.cobj) > 0)) {
+        return FALSE;
     }
     if (gb.bucx_filter) {
-        if (obj.oclass === 12 /* COIN_CLASS */) {
+        if (obj.oclass === COIN_CLASS) {
             bucx = $c.i8(flags.goldX ? 88 : 85);
         } else {
             bucx = $c.i8(!obj.bknown ? 88 : obj.blessed | 0 ? 66 : obj.cursed | 0 ? 67 : 85);
         }
         if (!$c.strchr(new $c.Ptr(gv.valid_menu_classes, 0), bucx)) {
-            return 0;
+            return FALSE;
         }
     }
     if (gp.picked_filter && !obj.pickup_prev) {
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 export async function is_worn_by_type(otmp) {   // pickup.c:609
-    return $c.i8(is_worn(otmp) && await allow_category(otmp) ? 1 : 0);
+    return $c.i8(is_worn(otmp) && await allow_category(otmp) ? TRUE : FALSE);
 }
 export function reset_justpicked(olist) {   // pickup.c:616
     let otmp = null;
@@ -433,7 +471,7 @@ export async function pickup(what) {   // pickup.c:672
             pick_list[0] = null;
             autopickup = $c.i8(what > 0 ? 1 : 0);
             if (autopickup && gm.multi < 0 && unconscious()) {
-                iflags.prev_decor = 0;
+                iflags.prev_decor = STONE;
                 return 0;
             }
             gp.pickup_encumbrance = 0;
@@ -443,7 +481,7 @@ export async function pickup(what) {   // pickup.c:672
                 count = 0;
             }
             if (!u.uswallow) {
-                if (autopickup && (svc.context.nopick || !(svl.level.objects[u.ux][u.uy] !== null) || is_pool(u.ux, u.uy) && !u.uinwater || is_lava(u.ux, u.uy))) {
+                if (autopickup && (svc.context.nopick || !OBJ_AT(u.ux, u.uy) || is_pool(u.ux, u.uy) && !Underwater() || is_lava(u.ux, u.uy))) {
                     if (flags.mention_decor) {
                         await describe_decor();
                     }
@@ -451,28 +489,28 @@ export async function pickup(what) {   // pickup.c:672
                     return 0;
                 }
                 t = t_at(u.ux, u.uy);
-                if (!can_reach_floor($c.i8(t && ((t.ttyp | 0) === 11 /* PIT */ || (t.ttyp | 0) === 12 /* SPIKED_PIT */) ? 1 : 0))) {
+                if (!can_reach_floor($c.i8(t && is_pit(t.ttyp) ? 1 : 0))) {
                     await describe_decor();
                     if (gm.multi && !svc.context.run || autopickup && !flags.pickup || t && (uteetering_at_seen_pit(t) || uescaped_shaft(t))) {
                         await read_engr_at(u.ux, u.uy);
                     }
                     return 0;
                 }
-                if (gm.multi && !svc.context.run || autopickup && !flags.pickup || $c.andu64(gy.youmonst.data.mflags1, 2048) !== 0) {
-                    await check_here(0);
-                    if ($c.andu64(gy.youmonst.data.mflags1, 2048) !== 0 && svl.level.objects[u.ux][u.uy] !== null && (autopickup || flags.pickup)) {
+                if (gm.multi && !svc.context.run || autopickup && !flags.pickup || notake(gy.youmonst.data)) {
+                    await check_here(FALSE);
+                    if (notake(gy.youmonst.data) && OBJ_AT(u.ux, u.uy) && (autopickup || flags.pickup)) {
                         await You($c.lit("are physically incapable of picking anything up."));
                     }
                     return 0;
                 }
-                if (svl.level.objects[u.ux][u.uy] !== null && svc.context.run && svc.context.run !== 8 && !svc.context.nopick) {
+                if (OBJ_AT(u.ux, u.uy) && svc.context.run && svc.context.run !== 8 && !svc.context.nopick) {
                     nomul(0);
                 }
             }
             add_valid_menu_class(0);
             if (!u.uswallow) {
                 objchain_p = new $c.Ptr(svl.level.objects[u.ux], u.uy);
-                traverse_how = 1;
+                traverse_how = BY_NEXTHERE;
             } else {
                 objchain_p = new $c.FieldRef(u.ustuck, "minvent", "ptr");
                 traverse_how = 0;
@@ -482,20 +520,20 @@ export async function pickup(what) {   // pickup.c:672
                 $goto = "menu_pickup"; continue D1;
             }
         case "menu_pickup":
-            if ($goto === "menu_pickup" || (flags.menu_style !== 0 || iflags.menu_requested)) {
+            if ($goto === "menu_pickup" || (flags.menu_style !== MENU.TRADITIONAL || iflags.menu_requested)) {
                 D2: for (;;) {
                     switch ($goto) {
                     case null:
-                        traverse_how = traverse_how | (4 | (flags.sortpack ? 16 : 0));
+                        traverse_how = traverse_how | (AUTOSELECT_SINGLE | (flags.sortpack ? INVORDER_SORT : 0));
                         if (count) {
                             $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 128, $c.lit("Pick %d of what?"), count);
                             gv.val_for_n_or_more = count;
-                            n = await query_objlist(new $c.Ptr(qbuf, 0), objchain_p, traverse_how, new $c.Ptr(pick_list, 0), 1, n_or_more);
+                            n = await query_objlist(new $c.Ptr(qbuf, 0), objchain_p, traverse_how, new $c.Ptr(pick_list, 0), PICK.ONE, n_or_more);
                             for (i = 0; i < n; i = i + 1 | 0) {
                                 $c.radd(pick_list[0], i).count = count;
                             }
                         } else {
-                            n = await query_objlist($c.lit("Pick up what?"), objchain_p, traverse_how | 128, new $c.Ptr(pick_list, 0), 2, all_but_uchain);
+                            n = await query_objlist($c.lit("Pick up what?"), objchain_p, traverse_how | FEEL_COCKATRICE, new $c.Ptr(pick_list, 0), PICK.ANY, all_but_uchain);
                         }
                     case "menu_pickup":
                         $goto = null;   // menu_pickup:
@@ -504,7 +542,7 @@ export async function pickup(what) {   // pickup.c:672
                         }
                         n_tried = n;
                         for (n_picked = i = 0; i < n; i = i + 1 | 0) {
-                            res = await pickup_object($c.radd(pick_list[0], i).item.a_obj, $c.radd(pick_list[0], i).count, 0);
+                            res = await pickup_object($c.radd(pick_list[0], i).item.a_obj, $c.radd(pick_list[0], i).count, FALSE);
                             if (res < 0) {
                                 break;
                             }
@@ -519,53 +557,53 @@ export async function pickup(what) {   // pickup.c:672
             } else {
                 ct = 0;
                 oclasses[0] = 0;
-                all_of_a_type[0] = 1;
-                selective[0] = 0;
-                for (obj = objchain_p.get(0); obj; obj = traverse_how & 1 ? obj.v.v_nexthere : obj.nobj) {
+                all_of_a_type[0] = TRUE;
+                selective[0] = FALSE;
+                for (obj = objchain_p.get(0); obj; obj = FOLLOW(obj, traverse_how)) {
                     ct = ct + 1 | 0;
                 }
                 end_query$: {
                     if (ct === 1 && count) {
                         obj = objchain_p.get(0);
-                        lcount = obj.quan < count ? obj.quan : count;
+                        lcount = min(obj.quan, count);
                         n_tried = n_tried + 1 | 0;
                         reset_justpicked(gi.invent);
-                        if (await pickup_object(obj, lcount, 0) > 0) {
+                        if (await pickup_object(obj, lcount, FALSE) > 0) {
                             n_picked = n_picked + 1 | 0;
                         }
                         break end_query$;
                     } else if (ct >= 2) {
                         via_menu[0] = 0;
                         await There($c.lit("are %s objects here."), ct <= 10 ? $c.lit("several") : $c.lit("many"));
-                        if (!await query_classes(new $c.Ptr(oclasses, 0), new $c.Ptr(selective, 0), new $c.Ptr(all_of_a_type, 0), $c.lit("pick up"), objchain_p.get(0), $c.i8(traverse_how & 1 ? 1 : 0), new $c.Ptr(via_menu, 0))) {
+                        if (!await query_classes(new $c.Ptr(oclasses, 0), new $c.Ptr(selective, 0), new $c.Ptr(all_of_a_type, 0), $c.lit("pick up"), objchain_p.get(0), $c.i8(traverse_how & BY_NEXTHERE ? TRUE : FALSE), new $c.Ptr(via_menu, 0))) {
                             if (!via_menu[0]) {
                                 $goto = "pickupdone"; continue D1;
                             }
                             if (selective[0]) {
-                                traverse_how = traverse_how | 16;
+                                traverse_how = traverse_how | INVORDER_SORT;
                             }
-                            n = await query_objlist($c.lit("Pick up what?"), objchain_p, traverse_how, new $c.Ptr(pick_list, 0), 2, via_menu[0] === -2 ? allow_all : allow_category);
+                            n = await query_objlist($c.lit("Pick up what?"), objchain_p, traverse_how, new $c.Ptr(pick_list, 0), PICK.ANY, via_menu[0] === -2 ? allow_all : allow_category);
                             $goto = "menu_pickup"; continue D1;
                         }
                     }
                     bycat = $c.i8(menu_class_present(66) || menu_class_present(85) || menu_class_present(67) || menu_class_present(88) ? 1 : 0);
                     L3: for (obj = objchain_p.get(0); obj; obj = obj2) {
-                        obj2 = traverse_how & 1 ? obj.v.v_nexthere : obj.nobj;
+                        obj2 = FOLLOW(obj, traverse_how);
                         if (bycat ? !await allow_category(obj) : !selective[0] && oclasses[0] && !$c.strchr(new $c.Ptr(oclasses, 0), obj.oclass)) {
                             continue;
                         }
                         lcount = -1;
                         if (!all_of_a_type[0]) {
                             await safe_qbuf(new $c.Ptr(qbuf$2, 0), $c.lit("Pick up "), $c.lit("?"), obj, doname, ansimpleoname, c_common_strings.c_something);
-                            switch (obj.quan < 2 ? await yn_function(new $c.Ptr(qbuf$2, 0), new $c.Ptr(ynaqchars, 0), 121, 1) : await yn_function(new $c.Ptr(qbuf$2, 0), new $c.Ptr(ynNaqchars, 0), 121, 1)) {
+                            switch (obj.quan < 2 ? await ynaq(new $c.Ptr(qbuf$2, 0)) : await ynNaq(new $c.Ptr(qbuf$2, 0))) {
                                 case 113:
                                     break end_query$;
                                 case 110:
                                     continue L3;
                                 case 97:
-                                    all_of_a_type[0] = 1;
+                                    all_of_a_type[0] = TRUE;
                                     if (selective[0]) {
-                                        selective[0] = 0;
+                                        selective[0] = FALSE;
                                         oclasses[0] = obj.oclass;
                                         oclasses[1] = 0;
                                     }
@@ -589,7 +627,7 @@ export async function pickup(what) {   // pickup.c:672
                             reset_justpicked(gi.invent);
                         }
                         n_tried = n_tried + 1 | 0;
-                        if ((res = await pickup_object(obj, lcount, 0)) < 0) {
+                        if ((res = await pickup_object(obj, lcount, FALSE)) < 0) {
                             break;
                         }
                         n_picked = n_picked + res | 0;
@@ -597,7 +635,7 @@ export async function pickup(what) {   // pickup.c:672
                 }
             }
             if (!u.uswallow) {
-                if ($c.andu64(gy.youmonst.data.mflags1, 128) !== 0) {
+                if (hides_under(gy.youmonst.data)) {
                     await hideunder(gy.youmonst);
                 }
                 if (n_picked) {
@@ -631,19 +669,19 @@ export async function autopick_testobj(otmp, calc_costly) {   // pickup.c:930
     let ape = null, otypes = null, pickit = 0;
     otypes = new $c.Ptr(flags.pickup_types, 0);
     if (calc_costly) {
-        autopick_testobj$costly = $c.i8(otmp.where === 1 && await costly_spot(otmp.ox, otmp.oy) ? 1 : 0);
+        autopick_testobj$costly = $c.i8(otmp.where === OBJ.FLOOR && await costly_spot(otmp.ox, otmp.oy) ? 1 : 0);
     }
     if (autopick_testobj$costly && !otmp.no_charge) {
-        return 0;
+        return FALSE;
     }
-    if (flags.pickup_thrown && (otmp.how_lost | 0) === 1 || flags.pickup_stolen && (otmp.how_lost | 0) === 3) {
-        return 1;
+    if (flags.pickup_thrown && (otmp.how_lost | 0) === LOST.THROWN || flags.pickup_stolen && (otmp.how_lost | 0) === LOST.STOLEN) {
+        return TRUE;
     }
-    if (flags.nopick_dropped && (otmp.how_lost | 0) === 2) {
-        return 0;
+    if (flags.nopick_dropped && (otmp.how_lost | 0) === LOST.DROPPED) {
+        return FALSE;
     }
-    if ((otmp.how_lost | 0) === 4) {
-        return 0;
+    if ((otmp.how_lost | 0) === LOST.EXPLODING) {
+        return FALSE;
     }
     pickit = $c.i8(!otypes.get(0) || $c.strchr(otypes, otmp.oclass) ? 1 : 0);
     ape = await check_autopickup_exceptions(otmp);
@@ -654,17 +692,17 @@ export async function autopick_testobj(otmp, calc_costly) {   // pickup.c:930
 }
 async function autopick(olist, follow, pick_list) {   // pickup.c:975
     let pi = null, curr = null, n = 0, check_costly = 0, $t1;
-    check_costly = 1;
-    for (n = 0, curr = olist; curr; curr = follow & 1 ? curr.v.v_nexthere : curr.nobj) {
+    check_costly = TRUE;
+    for (n = 0, curr = olist; curr; curr = FOLLOW(curr, follow)) {
         if (await autopick_testobj(curr, check_costly)) {
             n = n + 1 | 0;
         }
-        check_costly = 0;
+        check_costly = FALSE;
     }
     if (n) {
         $t1 = pi = $c.asRec(await alloc($c.u32($c.mulu64(24, $c.u64(n)))), $T.mi, 24), pick_list.set(0, $t1);
-        for (n = 0, curr = olist; curr; curr = follow & 1 ? curr.v.v_nexthere : curr.nobj) {
-            if (await autopick_testobj(curr, 0)) {
+        for (n = 0, curr = olist; curr; curr = FOLLOW(curr, follow)) {
+            if (await autopick_testobj(curr, FALSE)) {
                 $c.radd(pi, n).item.a_obj = curr;
                 $c.radd(pi, n).count = curr.quan;
                 n = n + 1 | 0;
@@ -676,74 +714,74 @@ async function autopick(olist, follow, pick_list) {   // pickup.c:975
 export async function query_objlist(qstr, olist_p, qflags, pick_list, how, allow) {   // pickup.c:1025
     let i = 0, n = 0, tmpglyph = 0, win = 0, curr = null, last = null, fake_hero_object = new $T.obj(), olist = [null], pack = null, packbuf = new Int8Array(19), any = new $T.any(), printed_type_name = 0, first = 0, sorted = 0, engulfer = 0, engulfer_minvent = 0, sortflags = 0, tmpglyphinfo = new $T.glyphinfo(), sortedolist = [null], srtoli = null, clr = 0, with_oc_sym = 0, buf = new Int8Array(256), mi = null, k = 0, $t1, $t2;
     olist[0] = olist_p.get(0);
-    sorted = $c.i8((qflags & 16) !== 0 ? 1 : 0);
-    engulfer = $c.i8((qflags & 256) !== 0 ? 1 : 0);
+    sorted = $c.i8((qflags & INVORDER_SORT) !== 0 ? 1 : 0);
+    engulfer = $c.i8((qflags & INCLUDE_HERO) !== 0 ? 1 : 0);
     tmpglyphinfo.$copyFrom(nul_glyphinfo);
-    clr = 8;
+    clr = NO_COLOR;
     pick_list.set(0, null);
     if (!olist[0] && !engulfer) {
         return 0;
     }
-    for (n = 0, last = null, curr = olist[0]; curr; curr = qflags & 1 ? curr.v.v_nexthere : curr.nobj) {
+    for (n = 0, last = null, curr = olist[0]; curr; curr = FOLLOW(curr, qflags)) {
         if (await allow(curr)) {
             last = curr;
             n = n + 1 | 0;
         }
     }
-    engulfer_minvent = $c.i8(olist[0] && olist[0].where === 4 && (u.uswallow | 0 && $c.peq(u.ustuck, olist[0].v.v_ocarry)) ? 1 : 0);
+    engulfer_minvent = $c.i8(olist[0] && olist[0].where === OBJ.MINVENT && (u.uswallow | 0 && $c.peq(u.ustuck, olist[0].v.v_ocarry)) ? 1 : 0);
     if (engulfer_minvent && n === 1 && olist[0].owornmask !== 0) {
-        qflags = qflags & -5;
+        qflags = qflags & ~AUTOSELECT_SINGLE;
     }
     if (engulfer) {
         n = n + 1 | 0;
-        qflags = qflags & -5;
+        qflags = qflags & ~AUTOSELECT_SINGLE;
     }
     if (n === 0) {
-        return qflags & 32 ? -1 : 0;
+        return qflags & SIGNAL.NOMENU ? -1 : 0;
     }
-    if (n === 1 && qflags & 4) {
+    if (n === 1 && qflags & AUTOSELECT_SINGLE) {
         $t1 = $c.asRec(await alloc(24), $T.mi, 24), pick_list.set(0, $t1);
         pick_list.get(0).item.a_obj = last;
         pick_list.get(0).count = last.quan;
         return 1;
     }
-    sortflags = ((flags.sortloot === 102 || flags.sortloot === 108 && !(qflags & 8) ? 4 : qflags & 8 ? 2 : 0) | (flags.sortpack ? 1 : 0) | (qflags & 128 ? 32 : 0)) >>> 0;
-    sortedolist[0] = await sortloot(new $c.Ptr(olist, 0), sortflags, $c.i8(qflags & 1 ? 1 : 0), allow);
-    win = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(win, 0);
+    sortflags = ((flags.sortloot === 102 || flags.sortloot === 108 && !(qflags & USE_INVLET) ? SORTLOOT.LOOT : qflags & USE_INVLET ? SORTLOOT.INVLET : 0) | (flags.sortpack ? SORTLOOT.PACK : 0) | (qflags & FEEL_COCKATRICE ? SORTLOOT.PETRIFY : 0)) >>> 0;
+    sortedolist[0] = await sortloot(new $c.Ptr(olist, 0), sortflags, $c.i8(qflags & BY_NEXTHERE ? TRUE : FALSE), allow);
+    win = await create_nhwindow()(NHW.MENU);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);
     if (gt.this_title) {
         await add_menu_str(win, gt.this_title);
     }
     pack = $c.__builtin___strcpy_chk(new $c.Ptr(packbuf, 0), new $c.Ptr(flags.inv_order, 0), 19);
-    if (qflags & 2) {
-        strkitten(pack, 17);
+    if (qflags & INCLUDE_VENOM) {
+        strkitten(pack, VENOM_CLASS);
     }
-    first = 1;
+    first = TRUE;
     do {
-        printed_type_name = 0;
+        printed_type_name = FALSE;
         for (srtoli = sortedolist[0]; (curr = srtoli.obj) !== null; srtoli = $c.radd(srtoli, 1)) {
             if (sorted && curr.oclass !== pack.get(0)) {
                 continue;
             }
-            if (qflags & 128 && curr.otyp === 265 /* CORPSE */ && will_feel_cockatrice(curr, 0)) {
-                await windowprocs.win_destroy_nhwindow(win);
-                await look_here(0, 0);
+            if (qflags & FEEL_COCKATRICE && curr.otyp === CORPSE && will_feel_cockatrice(curr, FALSE)) {
+                await destroy_nhwindow()(win);
+                await look_here(0, LOOKHERE.NOFLAGS);
                 unsortloot(new $c.Ptr(sortedolist, 0));
                 return 0;
             }
             if (await allow(curr)) {
                 if (sorted && !printed_type_name) {
-                    with_oc_sym = $c.i8(how !== 0 && iflags.menu_head_objsym ? 1 : 0);
+                    with_oc_sym = $c.i8(how !== PICK.NONE && iflags.menu_head_objsym ? 1 : 0);
                     any.$copyFrom(cg.zeroany);
-                    await add_menu_heading(win, await let_to_name(pack.get(0), 0, with_oc_sym));
-                    printed_type_name = 1;
+                    await add_menu_heading(win, await let_to_name(pack.get(0), FALSE, with_oc_sym));
+                    printed_type_name = TRUE;
                 }
                 any.a_obj = curr;
-                tmpglyph = curr.otyp === 476 /* STATUE */ ? u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) + (!rn2_on_display_rng(2) ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0 : curr.corpsenm + ((curr.spe & 3) === 1 ? curr.where === 1 && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ : 7609 /* GLYPH_STATUE_FEM_OFF */ : curr.where === 1 && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ : 7226 /* GLYPH_STATUE_MALE_OFF */) | 0 : u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? ($t2 = await rn2_on_display_rng(463) + 18 /* FIRST_OBJECT */ | 0, go.otg_temp = $t2) === 265 /* CORPSE */ ? await rn2_on_display_rng(383 /* NUMMONS */) + 2299 /* GLYPH_BODY_OFF */ | 0 : go.otg_temp + 3448 /* GLYPH_OBJ_OFF */ | 0 : curr.otyp === 265 /* CORPSE */ ? curr.corpsenm + (curr.where === 1 && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 8473 /* GLYPH_BODY_PILETOP_OFF */ : 2299 /* GLYPH_BODY_OFF */) | 0 : !curr.dknown && (curr.oclass === 8 /* POTION_CLASS */ || curr.otyp >= 439 /* FIRST_REAL_GEM */ && curr.otyp <= 469 /* LAST_GLASS_GEM */ || curr.otyp >= 366 /* FIRST_SPELL */ && curr.otyp <= 407 /* LAST_SPELL */) ? curr.oclass + (curr.where === 1 && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 7992 /* GLYPH_OBJ_PILETOP_OFF */ : 3448 /* GLYPH_OBJ_OFF */) | 0 : curr.otyp + (curr.where === 1 && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 7992 /* GLYPH_OBJ_PILETOP_OFF */ : 3448 /* GLYPH_OBJ_OFF */) | 0;
+                tmpglyph = curr.otyp === STATUE ? u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) + (!rn2_on_display_rng(2) ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : curr.corpsenm + ((curr.spe & CORPSTAT.GENDER) === CORPSTAT.FEMALE ? curr.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_FEM_PILETOP_OFF : GLYPH.STATUE_FEM_OFF : curr.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_MALE_PILETOP_OFF : GLYPH.STATUE_MALE_OFF) | 0 : u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? ($t2 = await rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT | 0, go.otg_temp = $t2) === CORPSE ? await rn2_on_display_rng(NUMMONS) + GLYPH.BODY_OFF | 0 : go.otg_temp + GLYPH.OBJ_OFF | 0 : curr.otyp === CORPSE ? curr.corpsenm + (curr.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.BODY_PILETOP_OFF : GLYPH.BODY_OFF) | 0 : !curr.dknown && (curr.oclass === POTION_CLASS || curr.otyp >= FIRST_REAL_GEM && curr.otyp <= LAST_GLASS_GEM || curr.otyp >= FIRST_SPELL && curr.otyp <= LAST_SPELL) ? curr.oclass + (curr.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0 : curr.otyp + (curr.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[curr.ox][curr.oy].v.v_nexthere) !== null && (curr.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0;
                 map_glyphinfo(0, 0, tmpglyph, 0, tmpglyphinfo);
-                await add_menu(win, tmpglyphinfo, any, $c.i8(qflags & 8 ? curr.invlet : first && curr.oclass === 12 /* COIN_CLASS */ ? 36 : 0), def_oc_syms[objects[curr.otyp].oc_class].sym, 0, clr, await doname_with_price(curr), 0);
-                first = 0;
+                await add_menu(win, tmpglyphinfo, any, $c.i8(qflags & USE_INVLET ? curr.invlet : first && curr.oclass === COIN_CLASS ? 36 : 0), def_oc_syms[objects[curr.otyp].oc_class].sym, ATR.NONE, clr, await doname_with_price(curr), MENU.ITEMFLAGS_NONE);
+                first = FALSE;
             }
         }
         pack = pack.add(1);
@@ -752,19 +790,19 @@ export async function query_objlist(qstr, olist_p, qflags, pick_list, how, allow
     if (engulfer) {
         any.$copyFrom(cg.zeroany);
         if (sorted && n > 1) {
-            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s Creatures"), dmgtype_fromattack(u.ustuck.data, 26, 11) !== null ? $c.lit("Swallowed") : $c.lit("Engulfed"));
+            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s Creatures"), dmgtype_fromattack(u.ustuck.data, AD.DGST, AT.ENGL) !== null ? $c.lit("Swallowed") : $c.lit("Engulfed"));
             await add_menu_heading(win, new $c.Ptr(buf, 0));
         }
         fake_hero_object.$copyFrom(cg.zeroobj);
         fake_hero_object.quan = 1;
         any.a_obj = fake_hero_object;
-        tmpglyph = (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : gy.youmonst.data.pmidx) + ((gy.youmonst.female | 0) === 0 ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0;
+        tmpglyph = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : gy.youmonst.data.pmidx) + ((gy.youmonst.female | 0) === 0 ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0;
         map_glyphinfo(0, 0, tmpglyph, 0, tmpglyphinfo);
-        await add_menu(win, tmpglyphinfo, any, 62, 0, 0, clr, await an(await self_lookat(new $c.Ptr(buf, 0))), 0);
+        await add_menu(win, tmpglyphinfo, any, CONTAINED_SYM, 0, ATR.NONE, clr, await an(await self_lookat(new $c.Ptr(buf, 0))), MENU.ITEMFLAGS_NONE);
     }
-    await windowprocs.win_end_menu(win, qstr);
+    await end_menu()(win, qstr);
     n = await select_menu(win, how, pick_list);
-    await windowprocs.win_destroy_nhwindow(win);
+    await destroy_nhwindow()(win);
     if (n > 0) {
         for (i = k = 0, mi = pick_list.get(0); i < n; i = i + 1 | 0, mi = $c.radd(mi, 1)) {
             curr = mi.item.a_obj;
@@ -796,60 +834,60 @@ export async function query_objlist(qstr, olist_p, qflags, pick_list, how, allow
             }
         }
     } else if (n < 0) {
-        n = qflags & 64 ? -2 : 0;
+        n = qflags & SIGNAL.ESCAPE ? -2 : 0;
     }
     return n;
 }
 export async function query_category(qstr, olist, qflags, pick_list, how) {   // pickup.c:1226
     let n = 0, win = 0, curr = null, pack = null, packbuf = new Int8Array(19), any = new $T.any(), collected_type_name = 0, invlet = 0, ccount = 0, ofilter = null, show_a = 0, do_unpaid = 0, do_usedup = 0, do_blessed = 0, do_cursed = 0, do_uncursed = 0, do_buc_unknown = 0, do_worn = 0, verify_All = 0, num_buc_types = 0, num_justpicked = 0, clr = 0, save_plnmsg = 0, oclass = 0, tmpbuf = new Int8Array(256), i = 0, j = 0, $t1, $t2, $t3, $t4;
     ofilter = null;
-    do_unpaid = 0;
-    do_usedup = 0;
-    do_blessed = 0;
-    do_cursed = 0;
-    do_uncursed = 0;
-    do_buc_unknown = 0;
-    do_worn = 0;
-    verify_All = 0;
+    do_unpaid = FALSE;
+    do_usedup = FALSE;
+    do_blessed = FALSE;
+    do_cursed = FALSE;
+    do_uncursed = FALSE;
+    do_buc_unknown = FALSE;
+    do_worn = FALSE;
+    verify_All = FALSE;
     num_buc_types = 0;
     num_justpicked = 0;
-    clr = 8;
+    clr = NO_COLOR;
     pick_list.set(0, null);
     if (!olist) {
         return 0;
     }
-    if ((qflags & 4) !== 0 && count_unpaid(olist)) {
-        do_unpaid = 1;
+    if ((qflags & UNPAID_TYPES) !== 0 && count_unpaid(olist)) {
+        do_unpaid = TRUE;
     }
-    if ((qflags & 64) !== 0) {
-        do_usedup = 1;
+    if ((qflags & BILLED_TYPES) !== 0) {
+        do_usedup = TRUE;
     }
-    if ((qflags & 16) !== 0) {
-        do_worn = 1;
+    if ((qflags & WORN_TYPES) !== 0) {
+        do_worn = TRUE;
         ofilter = is_worn;
     }
-    if ((qflags & 256) !== 0 && await count_buc(olist, 256, ofilter)) {
-        do_blessed = 1;
+    if ((qflags & BUC.BLESSED) !== 0 && await count_buc(olist, BUC.BLESSED, ofilter)) {
+        do_blessed = TRUE;
         num_buc_types = num_buc_types + 1 | 0;
     }
-    if ((qflags & 512) !== 0 && await count_buc(olist, 512, ofilter)) {
-        do_cursed = 1;
+    if ((qflags & BUC.CURSED) !== 0 && await count_buc(olist, BUC.CURSED, ofilter)) {
+        do_cursed = TRUE;
         num_buc_types = num_buc_types + 1 | 0;
     }
-    if ((qflags & 1024) !== 0 && await count_buc(olist, 1024, ofilter)) {
-        do_uncursed = 1;
+    if ((qflags & BUC.UNCURSED) !== 0 && await count_buc(olist, BUC.UNCURSED, ofilter)) {
+        do_uncursed = TRUE;
         num_buc_types = num_buc_types + 1 | 0;
     }
-    if ((qflags & 2048) !== 0 && await count_buc(olist, 2048, ofilter)) {
-        do_buc_unknown = 1;
+    if ((qflags & BUC.UNKNOWN) !== 0 && await count_buc(olist, BUC.UNKNOWN, ofilter)) {
+        do_buc_unknown = TRUE;
         num_buc_types = num_buc_types + 1 | 0;
     }
-    if ((qflags & 4096) !== 0) {
+    if ((qflags & JUSTPICKED) !== 0) {
         num_justpicked = count_justpicked(olist);
     }
     ccount = count_categories(olist, qflags);
     if (ccount === 1 && !do_unpaid && !do_usedup && num_buc_types <= 1) {
-        for (curr = olist; curr; curr = qflags & 1 ? curr.v.v_nexthere : curr.nobj) {
+        for (curr = olist; curr; curr = FOLLOW(curr, qflags)) {
             if (ofilter && !await ofilter(curr)) {
                 continue;
             }
@@ -861,7 +899,7 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
             n = 1;
         } else {
             do {
-                if (debugcore($c.lit("pickup.c"), 1)) {
+                if (debugcore($c.lit("pickup.c"), TRUE)) {
                     save_plnmsg = iflags.last_msg;
                     await pline($c.lit("query_category: no single object match"));
                     iflags.last_msg = save_plnmsg;
@@ -871,19 +909,19 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
         }
         return n;
     }
-    win = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(win, 0);
+    win = await create_nhwindow()(NHW.MENU);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     pack = $c.__builtin___strcpy_chk(new $c.Ptr(packbuf, 0), new $c.Ptr(flags.inv_order, 0), 19);
-    if ((qflags & 2) !== 0) {
-        strkitten(pack, 17);
+    if ((qflags & INCLUDE_VENOM) !== 0) {
+        strkitten(pack, VENOM_CLASS);
     }
-    show_a = $c.i8((qflags & 32) !== 0 && ccount > 1 ? 1 : 0);
-    if ((qflags & 128) !== 0) {
+    show_a = $c.i8((qflags & ALL_TYPES) !== 0 && ccount > 1 ? 1 : 0);
+    if ((qflags & CHOOSE_ALL) !== 0) {
         invlet = 65;
         any.$copyFrom(cg.zeroany);
         any.a_int = 65;
-        await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, do_worn ? $c.lit("Auto-select every item being worn or wielded") : $c.lit("Auto-select every relevant item"), 2);
-        verify_All = $c.i8(how === 2 && (flags.paranoia_bits & 4096) >>> 0 !== 0 ? 1 : 0);
+        await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, do_worn ? $c.lit("Auto-select every item being worn or wielded") : $c.lit("Auto-select every relevant item"), MENU.ITEMFLAGS_SKIPINVERT);
+        verify_All = $c.i8(how === PICK.ANY && ParanoidAutoAll() ? 1 : 0);
         if (!verify_All) {
             if (!($t2 = ga.A_first_hint, ga.A_first_hint = $t2 + 1 | 0, $t2) || iflags.cmdassist) {
                 await add_menu_str(win, $c.lit("    (ignored unless some other choices are also picked)"));
@@ -898,14 +936,14 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
     invlet = 97;
     if (show_a) {
         any.$copyFrom(cg.zeroany);
-        any.a_int = -2;
-        await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, do_worn ? $c.lit("All worn and wielded types") : $c.lit("All types"), 2);
+        any.a_int = ALL_TYPES_SELECTED;
+        await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, do_worn ? $c.lit("All worn and wielded types") : $c.lit("All types"), MENU.ITEMFLAGS_SKIPINVERT);
         invlet = $c.i8(invlet + 1);
     }
     query_done$: {
         do {
-            collected_type_name = 0;
-            for (curr = olist; curr; curr = qflags & 1 ? curr.v.v_nexthere : curr.nobj) {
+            collected_type_name = FALSE;
+            for (curr = olist; curr; curr = FOLLOW(curr, qflags)) {
                 if (curr.oclass === pack.get(0)) {
                     if (ofilter && !await ofilter(curr)) {
                         continue;
@@ -914,8 +952,8 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
                         oclass = curr.oclass;
                         any.$copyFrom(cg.zeroany);
                         any.a_int = oclass;
-                        await add_menu(win, nul_glyphinfo, any, ($t4 = invlet, invlet = $c.i8($t4 + 1), $t4), $c.i8(def_oc_syms[oclass].sym), 0, clr, await let_to_name(pack.get(0), 0, $c.i8(how !== 0 && iflags.menu_head_objsym ? 1 : 0)), 0);
-                        collected_type_name = 1;
+                        await add_menu(win, nul_glyphinfo, any, ($t4 = invlet, invlet = $c.i8($t4 + 1), $t4), $c.i8(def_oc_syms[oclass].sym), ATR.NONE, clr, await let_to_name(pack.get(0), FALSE, $c.i8(how !== PICK.NONE && iflags.menu_head_objsym ? 1 : 0)), MENU.ITEMFLAGS_NONE);
+                        collected_type_name = TRUE;
                     }
                 }
             }
@@ -933,37 +971,37 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
             invlet = 117;
             any.$copyFrom(cg.zeroany);
             any.a_int = 117;
-            await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, $c.lit("Unpaid items"), 2);
+            await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, $c.lit("Unpaid items"), MENU.ITEMFLAGS_SKIPINVERT);
         }
         if (do_usedup) {
             invlet = 120;
             any.$copyFrom(cg.zeroany);
             any.a_int = 120;
-            await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, $c.lit("Unpaid items already used up"), 2);
+            await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, $c.lit("Unpaid items already used up"), MENU.ITEMFLAGS_SKIPINVERT);
         }
         if (do_blessed) {
             invlet = 66;
             any.$copyFrom(cg.zeroany);
             any.a_int = 66;
-            await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, $c.lit("Items known to be Blessed"), 2);
+            await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, $c.lit("Items known to be Blessed"), MENU.ITEMFLAGS_SKIPINVERT);
         }
         if (do_cursed) {
             invlet = 67;
             any.$copyFrom(cg.zeroany);
             any.a_int = 67;
-            await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, $c.lit("Items known to be Cursed"), 2);
+            await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, $c.lit("Items known to be Cursed"), MENU.ITEMFLAGS_SKIPINVERT);
         }
         if (do_uncursed) {
             invlet = 85;
             any.$copyFrom(cg.zeroany);
             any.a_int = 85;
-            await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, $c.lit("Items known to be Uncursed"), 2);
+            await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, $c.lit("Items known to be Uncursed"), MENU.ITEMFLAGS_SKIPINVERT);
         }
         if (do_buc_unknown) {
             invlet = 88;
             any.$copyFrom(cg.zeroany);
             any.a_int = 88;
-            await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, $c.lit("Items of unknown Bless/Curse status"), 2);
+            await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, $c.lit("Items of unknown Bless/Curse status"), MENU.ITEMFLAGS_SKIPINVERT);
         }
         if (num_justpicked) {
             if (num_justpicked === 1) {
@@ -974,9 +1012,9 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
             invlet = 80;
             any.$copyFrom(cg.zeroany);
             any.a_int = 80;
-            await add_menu(win, nul_glyphinfo, any, invlet, 0, 0, clr, new $c.Ptr(tmpbuf, 0), 2);
+            await add_menu(win, nul_glyphinfo, any, invlet, 0, ATR.NONE, clr, new $c.Ptr(tmpbuf, 0), MENU.ITEMFLAGS_SKIPINVERT);
         }
-        await windowprocs.win_end_menu(win, qstr);
+        await end_menu()(win, qstr);
         n = await select_menu(win, how, pick_list);
         if (n > 0) {
             (!!$c.peq(pick_list.get(0), $c.asRec(null, $T.mi, 24)) ? 1 : 0) ? $c.__assert_rtn($c.lit("query_category"), $c.lit("pickup.c"), 1451, $c.lit("*pick_list != NULL")) : 0;
@@ -984,7 +1022,7 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
         if (n > 0 && verify_All) {
             for (i = 0; i < n; i = i + 1 | 0) {
                 if ($c.radd(pick_list.get(0), i).item.a_int === 65) {
-                    switch (await paranoid_ynq($c.i8((flags.paranoia_bits & 1) >>> 0 !== 0 ? 1 : 0), $c.lit("Really autoselect All?"), 1)) {
+                    switch (await paranoid_ynq($c.i8(ParanoidConfirm()), $c.lit("Really autoselect All?"), TRUE)) {
                         case 121:
                             break;
                         case 110:
@@ -994,8 +1032,8 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
                                 }
                                 n = n - 1 | 0;
                                 break;
-                            } else if ((qflags & 32) !== 0) {
-                                $c.radd(pick_list.get(0), 0).item.a_int = -2;
+                            } else if ((qflags & ALL_TYPES) !== 0) {
+                                $c.radd(pick_list.get(0), 0).item.a_int = ALL_TYPES_SELECTED;
                                 break;
                             }
                         case 113:
@@ -1013,7 +1051,7 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
             await pline($c.lit("No relevant items selected."));
         }
     }
-    await windowprocs.win_destroy_nhwindow(win);
+    await destroy_nhwindow()(win);
     if (n < 0) {
         n = 0;
     }
@@ -1022,18 +1060,18 @@ export async function query_category(qstr, olist, qflags, pick_list, how) {   //
 function count_categories(olist, qflags) {   // pickup.c:1511
     let pack = null, counted_category = 0, ccount = 0, curr = null, do_worn = 0;
     ccount = 0;
-    do_worn = $c.i8((qflags & 16) !== 0 ? 1 : 0);
+    do_worn = $c.i8((qflags & WORN_TYPES) !== 0 ? 1 : 0);
     pack = new $c.Ptr(flags.inv_order, 0);
     do {
-        counted_category = 0;
-        for (curr = olist; curr; curr = qflags & 1 ? curr.v.v_nexthere : curr.nobj) {
+        counted_category = FALSE;
+        for (curr = olist; curr; curr = FOLLOW(curr, qflags)) {
             if (curr.oclass === pack.get(0)) {
-                if (do_worn && !$c.and64(curr.owornmask, 984959)) {
+                if (do_worn && !$c.and64(curr.owornmask, W_ARMOR | W_ACCESSORY | W_WEAPONS)) {
                     continue;
                 }
                 if (!counted_category) {
                     ccount = ccount + 1 | 0;
-                    counted_category = 1;
+                    counted_category = TRUE;
                 }
             }
         }
@@ -1043,7 +1081,7 @@ function count_categories(olist, qflags) {   // pickup.c:1511
 }
 async function delta_cwt(container, obj) {   // pickup.c:1544
     let prev = null, owt = 0, nwt = 0;
-    if (container.otyp !== 219 /* BAG_OF_HOLDING */) {
+    if (container.otyp !== BAG_OF_HOLDING) {
         return obj.owt | 0;
     }
     owt = nwt = container.owt | 0;
@@ -1063,8 +1101,8 @@ async function delta_cwt(container, obj) {   // pickup.c:1544
 }
 async function carry_count(obj, container, count, telekinesis, wt_before, wt_after) {   // pickup.c:1570
     let adjust_wt = 0, is_gold = 0, wt = 0, iw = 0, ow = 0, oow = 0, qq = 0, savequan = 0, umoney = 0, saveowt = 0, verb = null, prefx1 = null, prefx2 = null, suffx = null, obj_nambuf = new Int8Array(256), where = new Int8Array(256), $t1, $t2, $t3;
-    adjust_wt = $c.i8(container && container.where === 3 ? 1 : 0);
-    is_gold = $c.i8(obj.oclass === 12 /* COIN_CLASS */ ? 1 : 0);
+    adjust_wt = $c.i8(container && carried(container) ? 1 : 0);
+    is_gold = $c.i8(obj.oclass === COIN_CLASS ? 1 : 0);
     savequan = obj.quan;
     saveowt = obj.owt;
     umoney = money_cnt(gi.invent);
@@ -1078,7 +1116,7 @@ async function carry_count(obj, container, count, telekinesis, wt_before, wt_aft
         wt = wt - await delta_cwt(container, obj) | 0;
     }
     if (is_gold) {
-        wt = $c.i32($c.sub64(wt, $c.sub64($c.add64($c.div64($c.add64(umoney, 50), 100), $c.div64($c.add64(count, 50), 100)), $c.div64($c.add64($c.add64(umoney, count), 50), 100))));
+        wt = $c.i32($c.sub64(wt, $c.sub64($c.add64(GOLD_WT(umoney), GOLD_WT(count)), GOLD_WT($c.add64(umoney, count)))));
     }
     if (count !== savequan) {
         obj.quan = savequan;
@@ -1090,9 +1128,9 @@ async function carry_count(obj, container, count, telekinesis, wt_before, wt_aft
         return count;
     }
     if (is_gold) {
-        iw = iw - $c.i32($c.div64($c.add64(umoney, 50), 100)) | 0;
+        iw = iw - $c.i32(GOLD_WT(umoney)) | 0;
         if (!adjust_wt) {
-            qq = $c.sub64($c.sub64($c.mul64(iw, -100), $c.add64(umoney, 50)), 1);
+            qq = GOLD_CAPACITY(iw, umoney);
         } else {
             oow = 0;
             qq = $c.sub64($c.sub64(50, $c.rem64(umoney, 100)), 1);
@@ -1101,8 +1139,8 @@ async function carry_count(obj, container, count, telekinesis, wt_before, wt_aft
             }
             for (; qq <= count; qq = $c.add64(qq, 100)) {
                 obj.quan = qq;
-                obj.owt = $c.u32($c.div64($c.add64(qq, 50), 100));
-                ow = $c.i32($c.div64($c.add64($c.add64(umoney, qq), 50), 100));
+                obj.owt = $c.u32(GOLD_WT(qq));
+                ow = $c.i32(GOLD_WT($c.add64(umoney, qq)));
                 ow = ow - await delta_cwt(container, obj) | 0;
                 if ((iw + ow | 0) >= 0) {
                     break;
@@ -1117,7 +1155,7 @@ async function carry_count(obj, container, count, telekinesis, wt_before, wt_aft
         } else if (qq > count) {
             qq = count;
         }
-        wt = iw + $c.i32($c.div64($c.add64($c.add64(umoney, qq), 50), 100)) | 0;
+        wt = iw + $c.i32(GOLD_WT($c.add64(umoney, qq))) | 0;
     } else if (count > 1 || count < obj.quan) {
         for (qq = 1; qq <= count; qq = $c.add64(qq, 1)) {
             obj.quan = qq;
@@ -1173,12 +1211,12 @@ async function carry_count(obj, container, count, telekinesis, wt_before, wt_aft
 }
 async function lift_object(obj, container, cnt_p, telekinesis) {   // pickup.c:1705
     let result = 0, old_wt = Int32Array.of(0), new_wt = Int32Array.of(0), prev_encumbr = 0, next_encumbr = 0, qbuf = new Int8Array(256), savequan = 0, $t1;
-    if (obj.otyp === 475 /* BOULDER */ && svl.level.flags.sokoban_rules | 0) {
-        await You($c.lit("cannot get your %s around this %s."), await body_part(6 /* HAND */), await xname(obj));
+    if (obj.otyp === BOULDER && (svl.level.flags.sokoban_rules | 0)) {
+        await You($c.lit("cannot get your %s around this %s."), await body_part(HAND), await xname(obj));
         return -1;
     }
-    if (obj.otyp === 471 /* LOADSTONE */ || obj.otyp === 475 /* BOULDER */ && $c.andu64(gy.youmonst.data.mflags2, 134217728) !== 0) {
-        if (inv_cnt(0) < 52 /* invlet_basic */ || !carrying(obj.otyp) || await merge_choice(gi.invent, obj)) {
+    if (obj.otyp === LOADSTONE || obj.otyp === BOULDER && throws_rocks(gy.youmonst.data)) {
+        if (inv_cnt(FALSE) < invlet_basic || !carrying(obj.otyp) || await merge_choice(gi.invent, obj)) {
             return 1;
         }
         await You($c.lit("are carrying too much stuff to pick up %s %s."), obj.quan === 1 ? $c.lit("another") : $c.lit("more"), await xname(obj));
@@ -1187,8 +1225,8 @@ async function lift_object(obj, container, cnt_p, telekinesis) {   // pickup.c:1
     $t1 = await carry_count(obj, container, cnt_p.get(0), telekinesis, new $c.Ptr(old_wt, 0), new $c.Ptr(new_wt, 0)), cnt_p.set(0, $t1);
     if (cnt_p.get(0) < 1) {
         result = -1;
-    } else if (obj.oclass !== 12 /* COIN_CLASS */ && inv_cnt(0) >= 52 /* invlet_basic */ && !await merge_choice(gi.invent, obj)) {
-        await Your($c.lit("knapsack cannot accommodate any more items%s."), nxtobj(obj, 438 /* GOLD_PIECE */, $c.i8(obj.where === 1 ? 1 : 0)) ? $c.lit(" (except gold)") : $c.lit(""));
+    } else if (obj.oclass !== COIN_CLASS && inv_cnt(FALSE) >= invlet_basic && !await merge_choice(gi.invent, obj)) {
+        await Your($c.lit("knapsack cannot accommodate any more items%s."), nxtobj(obj, GOLD_PIECE, $c.i8(obj.where === OBJ.FLOOR ? 1 : 0)) ? $c.lit(" (except gold)") : $c.lit(""));
         result = -1;
     } else {
         result = 1;
@@ -1203,10 +1241,10 @@ async function lift_object(obj, container, cnt_p, telekinesis) {   // pickup.c:1
             } else {
                 savequan = obj.quan;
                 obj.quan = cnt_p.get(0);
-                $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 256, $c.lit("%s %s "), next_encumbr >= 4 /* EXT_ENCUMBER */ ? new $c.Ptr(overloadpfx, 0) : next_encumbr >= 3 /* HVY_ENCUMBER */ ? new $c.Ptr(nearloadpfx, 0) : next_encumbr >= 2 /* MOD_ENCUMBER */ ? new $c.Ptr(moderateloadpfx, 0) : new $c.Ptr(slightloadpfx, 0), !container ? $c.lit("lifting") : $c.lit("removing"));
+                $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 256, $c.lit("%s %s "), next_encumbr >= EXT_ENCUMBER ? new $c.Ptr(overloadpfx, 0) : next_encumbr >= HVY_ENCUMBER ? new $c.Ptr(nearloadpfx, 0) : next_encumbr >= MOD_ENCUMBER ? new $c.Ptr(moderateloadpfx, 0) : new $c.Ptr(slightloadpfx, 0), !container ? $c.lit("lifting") : $c.lit("removing"));
                 await safe_qbuf(new $c.Ptr(qbuf, 0), new $c.Ptr(qbuf, 0), $c.lit(".  Continue?"), obj, doname, ansimpleoname, c_common_strings.c_something);
                 obj.quan = savequan;
-                switch (await yn_function(new $c.Ptr(qbuf, 0), new $c.Ptr(ynqchars, 0), 113, 1)) {
+                switch (await ynq(new $c.Ptr(qbuf, 0))) {
                     case 113:
                         result = -1;
                         break;
@@ -1216,11 +1254,11 @@ async function lift_object(obj, container, cnt_p, telekinesis) {   // pickup.c:1
                     default:
                         break;
                 }
-                await windowprocs.win_clear_nhwindow($G.WIN_MESSAGE);
+                await clear_nhwindow()($G.WIN_MESSAGE);
             }
         }
     }
-    if (obj.otyp === 326 /* SCR_SCARE_MONSTER */ && result <= 0 && !container) {
+    if (obj.otyp === SCR_SCARE_MONSTER && result <= 0 && !container) {
         obj.spe = 0;
     }
     return result;
@@ -1232,22 +1270,22 @@ export async function pickup_object(obj, count$in, telekinesis) {   // pickup.c:
         await impossible($c.lit("pickup_object: count %ld > quan %ld?"), count[0], obj.quan);
         return 0;
     }
-    if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+    if (!Blind()) {
         await observe_object(obj);
     }
     if ($c.peq(obj, $G.uchain)) {
         return 0;
-    } else if (obj.where === 4 && obj.owornmask !== 0 && (u.uswallow | 0 && $c.peq(u.ustuck, obj.v.v_ocarry))) {
+    } else if (obj.where === OBJ.MINVENT && obj.owornmask !== 0 && (u.uswallow | 0 && $c.peq(u.ustuck, obj.v.v_ocarry))) {
         await You_cant($c.lit("pick %s up."), await ysimple_name(obj));
         return 0;
     } else if (obj.oartifact && !await touch_artifact(obj, gy.youmonst)) {
         return 0;
-    } else if (obj.otyp === 265 /* CORPSE */) {
+    } else if (obj.otyp === CORPSE) {
         if (await fatal_corpse_mistake(obj, telekinesis) || await rider_corpse_revival(obj, telekinesis)) {
             return -1;
         }
-    } else if (obj.otyp === 326 /* SCR_SCARE_MONSTER */) {
-        if ((count[0] = await carry_count(obj, null, count[0] ? count[0] : obj.quan, 0, new $c.Ptr(old_wt, 0), new $c.Ptr(new_wt, 0))) < 1) {
+    } else if (obj.otyp === SCR_SCARE_MONSTER) {
+        if ((count[0] = await carry_count(obj, null, count[0] ? count[0] : obj.quan, FALSE, new $c.Ptr(old_wt, 0), new $c.Ptr(new_wt, 0))) < 1) {
             return -1;
         }
         if (count[0] > 0 && count[0] < obj.quan) {
@@ -1258,7 +1296,7 @@ export async function pickup_object(obj, count$in, telekinesis) {   // pickup.c:
         } else if (!obj.spe && !obj.cursed) {
             obj.spe = 1;
         } else {
-            await pline_The($c.lit("scroll%s %s to dust as you %s %s up."), obj.quan === 1 ? $c.lit("") : $c.lit("s"), await otense(obj, $c.lit("turn")), telekinesis ? $c.lit("raise") : $c.lit("pick"), obj.quan === 1 ? $c.lit("it") : $c.lit("them"));
+            await pline_The($c.lit("scroll%s %s to dust as you %s %s up."), plur(obj.quan), await otense(obj, $c.lit("turn")), telekinesis ? $c.lit("raise") : $c.lit("pick"), obj.quan === 1 ? $c.lit("it") : $c.lit("them"));
             await trycall(obj);
             await useupf(obj, obj.quan);
             return 1;
@@ -1268,26 +1306,26 @@ export async function pickup_object(obj, count$in, telekinesis) {   // pickup.c:
     if (res <= 0) {
         return res;
     }
-    if (obj.oclass === 12 /* COIN_CLASS */) {
-        disp.botl = 1;
+    if (obj.oclass === COIN_CLASS) {
+        disp.botl = TRUE;
     }
-    if (obj.quan !== count[0] && obj.otyp !== 471 /* LOADSTONE */) {
+    if (obj.quan !== count[0] && obj.otyp !== LOADSTONE) {
         obj = await splitobj(obj, count[0]);
     }
     obj = await pick_obj(obj);
     if ($G.uwep && $c.peq($G.uwep, obj)) {
-        gm.mrg_to_wielded = 1;
+        gm.mrg_to_wielded = TRUE;
     }
     await pickup_prinv(obj, count[0], $c.lit("lifting"));
     if (obj.ghostly) {
         await fix_ghostly_obj(obj);
     }
-    gm.mrg_to_wielded = 0;
+    gm.mrg_to_wielded = FALSE;
     return 1;
 }
 export async function pick_obj(otmp) {   // pickup.c:1897
     let result = null, ox = Int16Array.of(0), oy = Int16Array.of(0), robshop = 0, fromfloor = 0, saveushops = new Int8Array(5), fakeshop = new Int8Array(2), $t1;
-    fromfloor = $c.i8(otmp.where === 1 ? 1 : 0);
+    fromfloor = $c.i8(otmp.where === OBJ.FLOOR ? 1 : 0);
     get_obj_location(otmp, new $c.Ptr(ox, 0), new $c.Ptr(oy, 0), 0);
     robshop = $c.i8(!u.uswallow && !$c.peq(otmp, $G.uball) && await costly_spot(ox[0], oy[0]) ? 1 : 0);
     await obj_extract_self(otmp);
@@ -1296,10 +1334,10 @@ export async function pick_obj(otmp) {   // pickup.c:1897
     }
     if (robshop) {
         $c.__builtin___strcpy_chk(new $c.Ptr(saveushops, 0), new $c.Ptr(u.ushops, 0), 5);
-        $t1 = in_rooms(ox[0], oy[0], 14 /* SHOPBASE */).get(0), fakeshop[0] = $t1;
+        $t1 = in_rooms(ox[0], oy[0], SHOPBASE).get(0), fakeshop[0] = $t1;
         fakeshop[1] = 0;
         $c.__builtin___strcpy_chk(new $c.Ptr(u.ushops, 0), new $c.Ptr(fakeshop, 0), 5);
-        await addtobill(otmp, 1, 0, 0);
+        await addtobill(otmp, TRUE, FALSE, FALSE);
         $c.__builtin___strcpy_chk(new $c.Ptr(u.ushops, 0), new $c.Ptr(saveushops, 0), 5);
         robshop = $c.i8(otmp.unpaid | 0 && !$c.strchr(new $c.Ptr(u.ushops, 0), new $c.Ptr(fakeshop, 0).get(0)) ? 1 : 0);
     }
@@ -1316,7 +1354,7 @@ async function pickup_prinv(obj, count, verb) {   // pickup.c:1948
     if (nearload === gp.pickup_encumbrance) {
         prefix = null;
     } else {
-        prefix = nearload >= 4 /* EXT_ENCUMBER */ ? new $c.Ptr(overloadpfx, 0) : nearload >= 3 /* HVY_ENCUMBER */ ? new $c.Ptr(nearloadpfx, 0) : nearload >= 2 /* MOD_ENCUMBER */ ? new $c.Ptr(moderateloadpfx, 0) : nearload >= 1 /* SLT_ENCUMBER */ ? new $c.Ptr(slightloadpfx, 0) : null;
+        prefix = nearload >= EXT_ENCUMBER ? new $c.Ptr(overloadpfx, 0) : nearload >= HVY_ENCUMBER ? new $c.Ptr(nearloadpfx, 0) : nearload >= MOD_ENCUMBER ? new $c.Ptr(moderateloadpfx, 0) : nearload >= SLT_ENCUMBER ? new $c.Ptr(slightloadpfx, 0) : null;
         gp.pickup_encumbrance = nearload;
     }
     if (prefix) {
@@ -1342,7 +1380,7 @@ export async function encumber_msg() {   // pickup.c:1978
                 await You($c.lit("%s move a handspan with this load!"), newcap === 4 ? $c.lit("can barely") : $c.lit("can't even"));
                 break;
         }
-        disp.botl = 1;
+        disp.botl = TRUE;
     } else if (go.oldcap > newcap) {
         switch (newcap) {
             case 0:
@@ -1358,7 +1396,7 @@ export async function encumber_msg() {   // pickup.c:1978
                 await You($c.lit("%s under your load.  Movement is still very hard."), stagger(gy.youmonst.data, $c.lit("stagger")));
                 break;
         }
-        disp.botl = 1;
+        disp.botl = TRUE;
     }
     go.oldcap = newcap;
 }
@@ -1367,7 +1405,7 @@ export function container_at(x, y, countem) {   // pickup.c:2024
     container_count = 0;
     for (cobj = svl.level.objects[x][y]; cobj; cobj = nobj) {
         nobj = cobj.v.v_nexthere;
-        if (cobj.otyp >= 214 /* LARGE_BOX */ && cobj.otyp <= 220 /* BAG_OF_TRICKS */) {
+        if (Is_container(cobj)) {
             container_count = container_count + 1 | 0;
             if (!countem) {
                 break;
@@ -1380,24 +1418,24 @@ async function able_to_loot(x, y, looting) {   // pickup.c:2041
     let verb = null, t = null;
     verb = looting ? $c.lit("loot") : $c.lit("tip");
     t = t_at(x, y);
-    if (!can_reach_floor($c.i8(t && ((t.ttyp | 0) === 11 /* PIT */ || (t.ttyp | 0) === 12 /* SPIKED_PIT */) ? 1 : 0))) {
-        if (u.usteed && u.weapon_skills[37 /* P_RIDING */].skill < 2 /* P_BASIC */) {
+    if (!can_reach_floor($c.i8(t && is_pit(t.ttyp) ? 1 : 0))) {
+        if (u.usteed && u.weapon_skills[P.RIDING].skill < P.BASIC) {
             await rider_cant_reach();
         } else {
-            await cant_reach_floor(x, y, 0, 1, 0);
+            await cant_reach_floor(x, y, FALSE, TRUE, FALSE);
         }
-        return 0;
-    } else if (is_pool(x, y) && (looting || !u.uinwater) || is_lava(x, y)) {
+        return FALSE;
+    } else if (is_pool(x, y) && (looting || !Underwater()) || is_lava(x, y)) {
         await You($c.lit("cannot %s things that are deep in the %s."), verb, hliquid(is_lava(x, y) ? $c.lit("lava") : $c.lit("water")));
-        return 0;
-    } else if ($c.andu64(gy.youmonst.data.mflags1, 24576) === 24576) {
+        return FALSE;
+    } else if (nolimbs(gy.youmonst.data)) {
         await pline($c.lit("Without limbs, you cannot %s anything."), verb);
-        return 0;
+        return FALSE;
     } else if (looting && !await freehand()) {
-        await pline($c.lit("Without a free %s, you cannot loot anything."), await body_part(6 /* HAND */));
-        return 0;
+        await pline($c.lit("Without a free %s, you cannot loot anything."), await body_part(HAND));
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 function mon_beside(x, y) {   // pickup.c:2072
     let i = 0, j = 0, nx = 0, ny = 0;
@@ -1405,21 +1443,21 @@ function mon_beside(x, y) {   // pickup.c:2072
         for (j = -1; j <= 1; j = j + 1 | 0) {
             nx = $c.i16(x + i | 0);
             ny = $c.i16(y + j | 0);
-            if (isok(nx, ny) && svl.level.monsters[nx][ny] !== null) {
-                return 1;
+            if (isok(nx, ny) && MON_AT(nx, ny)) {
+                return TRUE;
             }
         }
     }
-    return 0;
+    return FALSE;
 }
 async function do_loot_cont(cobjp, cindex, ccount) {   // pickup.c:2088
     let cobj = null, res = 0, otmp = null, unlocktool = null, ox = 0, oy = 0, tmp = 0;
     cobj = cobjp.get(0);
     if (!cobj) {
-        return 0;
+        return ECMD.OK;
     }
     if (cobj.olocked) {
-        res = 0;
+        res = ECMD.OK;
         if (cobj.lknown) {
             await pline($c.lit("%s is locked."), await The(await xname(cobj)));
         } else {
@@ -1431,9 +1469,9 @@ async function do_loot_cont(cobjp, cindex, ccount) {   // pickup.c:2088
             ox = cobj.ox;
             oy = cobj.oy;
             u.dz = 0;
-            if ((flags.autounlock & 2) >>> 0 !== 0 && (unlocktool = autokey(1)) !== null || (flags.autounlock & 1) >>> 0 !== 0) {
+            if ((flags.autounlock & AUTOUNLOCK.APPLY_KEY) >>> 0 !== 0 && (unlocktool = autokey(TRUE)) !== null || (flags.autounlock & AUTOUNLOCK.UNTRAP) >>> 0 !== 0) {
                 if (await pick_lock(unlocktool, ox, oy, cobj)) {
-                    res = 1;
+                    res = ECMD.TIME;
                 }
                 for (otmp = svl.level.objects[ox][oy]; otmp; otmp = otmp.v.v_nexthere) {
                     if ($c.peq(otmp, cobj)) {
@@ -1445,30 +1483,30 @@ async function do_loot_cont(cobjp, cindex, ccount) {   // pickup.c:2088
                 }
                 return res;
             }
-            if ((flags.autounlock & 8) >>> 0 !== 0 && res !== 1 && ccount === 1 && u_have_forceable_weapon()) {
-                await cmdq_add_ec(0 /* CQ_CANNED */, doforce);
-                ga.abort_looting = 1;
+            if ((flags.autounlock & AUTOUNLOCK.FORCE) >>> 0 !== 0 && res !== ECMD.TIME && ccount === 1 && u_have_forceable_weapon()) {
+                await cmdq_add_ec(CQ_CANNED, doforce);
+                ga.abort_looting = TRUE;
             }
         }
         return res;
     }
     cobj.lknown = (1) & 1;
-    if (cobj.otyp === 220 /* BAG_OF_TRICKS */) {
+    if (cobj.otyp === BAG_OF_TRICKS) {
         await You($c.lit("carefully open %s..."), await the(await xname(cobj)));
         await pline($c.lit("It develops a huge set of teeth and bites you!"));
-        tmp = rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2155, $c.lit("do_loot_cont")), rnd(10)) : rnd(10);
-        await losehp(u.uprops[56 /* HALF_PHDAM */].intrinsic || u.uprops[56 /* HALF_PHDAM */].extrinsic ? $c.div32(tmp + 1 | 0, 2) : tmp, $c.lit("carnivorous bag"), 0);
-        await discover_object(220, 1, 1, 1);
-        ga.abort_looting = 1;
-        return 1;
+        tmp = rnd(10);
+        await losehp(Maybe_Half_Phys(tmp), $c.lit("carnivorous bag"), KILLED.BY_AN);
+        await discover_object(BAG_OF_TRICKS, TRUE, TRUE, TRUE);
+        ga.abort_looting = TRUE;
+        return ECMD.TIME;
     }
-    return await use_container(cobjp, 0, $c.i8(cindex < ccount ? 1 : 0));
+    return await use_container(cobjp, FALSE, $c.i8(cindex < ccount ? 1 : 0));
 }
 export async function doloot() {   // pickup.c:2166
     let res = 0;
-    gl.loot_reset_justpicked = 1;
+    gl.loot_reset_justpicked = TRUE;
     res = await doloot_core();
-    gl.loot_reset_justpicked = 0;
+    gl.loot_reset_justpicked = FALSE;
     return res;
 }
 async function doloot_core() {   // pickup.c:2178
@@ -1478,27 +1516,27 @@ async function doloot_core() {   // pickup.c:2178
         case null:
             c = -1;
             timepassed = 0;
-            underfoot = 1;
+            underfoot = TRUE;
             dont_find_anything = $c.lit("don't find anything");
             prev_inquiry[0] = 0;
-            prev_loot[0] = 0;
+            prev_loot[0] = FALSE;
             num_conts = 0;
-            clr = 8;
-            ga.abort_looting = 0;
+            clr = NO_COLOR;
+            ga.abort_looting = FALSE;
             if (await check_capacity(null)) {
-                return 0;
+                return ECMD.OK;
             }
-            if ($c.andu64(gy.youmonst.data.mflags1, 8192) !== 0) {
+            if (nohands(gy.youmonst.data)) {
                 await You($c.lit("have no hands!"));
-                return 0;
+                return ECMD.OK;
             }
-            if (u.uprops[14 /* CONFUSION */].intrinsic) {
-                if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2203, $c.lit("doloot_core")), rn2(6)) : rn2(6)) && await reverse_loot()) {
-                    return 1;
+            if (u.uprops[CONFUSION].intrinsic) {
+                if (rn2(6) && await reverse_loot()) {
+                    return ECMD.TIME;
                 }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2205, $c.lit("doloot_core")), rn2(2)) : rn2(2)) {
+                if (rn2(2)) {
                     await pline($c.lit("Being confused, you find nothing to loot."));
-                    return 1;
+                    return ECMD.TIME;
                 }
             }
             cc.x = u.ux;
@@ -1508,40 +1546,40 @@ async function doloot_core() {   // pickup.c:2178
             }
         case "lootcont":
             $goto = null;   // lootcont:
-            if ((num_conts = container_at(cc.x, cc.y, 1)) > 0) {
-                anyfound = 0;
-                if (!await able_to_loot(cc.x, cc.y, 1)) {
-                    return 0;
+            if ((num_conts = container_at(cc.x, cc.y, TRUE)) > 0) {
+                anyfound = FALSE;
+                if (!await able_to_loot(cc.x, cc.y, TRUE)) {
+                    return ECMD.OK;
                 }
-                if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && !$G.uarmg) {
-                    for (nobj = sobj_at(265 /* CORPSE */, cc.x, cc.y); nobj; nobj = nxtobj(nobj, 265 /* CORPSE */, 1)) {
-                        if (will_feel_cockatrice(nobj, 0)) {
-                            await feel_cockatrice(nobj, 0);
-                            return 1;
+                if (Blind() && !$G.uarmg) {
+                    for (nobj = sobj_at(CORPSE, cc.x, cc.y); nobj; nobj = nxtobj(nobj, CORPSE, TRUE)) {
+                        if (will_feel_cockatrice(nobj, FALSE)) {
+                            await feel_cockatrice(nobj, FALSE);
+                            return ECMD.TIME;
                         }
                     }
                 }
                 if (num_conts > 1) {
                     pick_list[0] = null;
                     any.a_void = null;
-                    win = await windowprocs.win_create_nhwindow(4);
-                    await windowprocs.win_start_menu(win, 0);
+                    win = await create_nhwindow()(NHW.MENU);
+                    await start_menu()(win, MENU.BEHAVE_STANDARD);
                     for (cobj[0] = svl.level.objects[cc.x][cc.y]; cobj[0]; cobj[0] = cobj[0].v.v_nexthere) {
-                        if (cobj[0].otyp >= 214 /* LARGE_BOX */ && cobj[0].otyp <= 220 /* BAG_OF_TRICKS */) {
+                        if (Is_container(cobj[0])) {
                             any.a_obj = cobj[0];
-                            await add_menu(win, nul_glyphinfo, any, 0, 0, 0, clr, await doname(cobj[0]), 0);
+                            await add_menu(win, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, await doname(cobj[0]), MENU.ITEMFLAGS_NONE);
                         }
                     }
-                    await windowprocs.win_end_menu(win, $c.lit("Loot which containers?"));
-                    n = await select_menu(win, 2, new $c.Ptr(pick_list, 0));
-                    await windowprocs.win_destroy_nhwindow(win);
+                    await end_menu()(win, $c.lit("Loot which containers?"));
+                    n = await select_menu(win, PICK.ANY, new $c.Ptr(pick_list, 0));
+                    await destroy_nhwindow()(win);
                     if (n > 0) {
                         for (i = 1; i <= n; i = i + 1 | 0) {
                             cobj[0] = $c.radd(pick_list[0], i - 1 | 0).item.a_obj;
                             timepassed = timepassed | await do_loot_cont(new $c.Ptr(cobj, 0), i, n);
                             if (ga.abort_looting) {
                                 $c.free(pick_list[0]);
-                                return timepassed ? 1 : 0;
+                                return timepassed ? ECMD.TIME : ECMD.OK;
                             }
                         }
                         $c.free(pick_list[0]);
@@ -1552,11 +1590,11 @@ async function doloot_core() {   // pickup.c:2178
                 } else {
                     for (cobj[0] = svl.level.objects[cc.x][cc.y]; cobj[0]; cobj[0] = nobj) {
                         nobj = cobj[0].v.v_nexthere;
-                        if (cobj[0].otyp >= 214 /* LARGE_BOX */ && cobj[0].otyp <= 220 /* BAG_OF_TRICKS */) {
-                            anyfound = 1;
+                        if (Is_container(cobj[0])) {
+                            anyfound = TRUE;
                             timepassed = timepassed | await do_loot_cont(new $c.Ptr(cobj, 0), 1, 1);
                             if (ga.abort_looting) {
-                                return timepassed ? 1 : 0;
+                                return timepassed ? ECMD.TIME : ECMD.OK;
                             }
                         }
                     }
@@ -1564,51 +1602,51 @@ async function doloot_core() {   // pickup.c:2178
                         c = 121;
                     }
                 }
-            } else if (svl.level.locations[cc.x][cc.y].typ === 31 /* GRAVE */) {
+            } else if (svl.level.locations[cc.x][cc.y].typ === GRAVE) {
                 await You($c.lit("need to dig up the grave to effectively loot it..."));
             }
         case "lootmon":
             $goto = null;   // lootmon:
             if (c !== 121 && (mon_beside(u.ux, u.uy) || iflags.menu_requested)) {
-                looted_mon = 0;
+                looted_mon = FALSE;
                 if (!await get_adjacent_loc($c.lit("Loot in what direction?"), $c.lit("Invalid loot location"), u.ux, u.uy, cc)) {
-                    return 0;
+                    return ECMD.OK;
                 }
                 underfoot = $c.i8(cc.x === u.ux && cc.y === u.uy ? 1 : 0);
-                if (underfoot && container_at(cc.x, cc.y, 0)) {
+                if (underfoot && container_at(cc.x, cc.y, FALSE)) {
                     $goto = "lootcont"; continue D1;
                 }
                 if (u.dz < 0) {
                     await You($c.lit("%s to loot on the %s."), dont_find_anything, ceiling(cc.x, cc.y));
-                    return 1;
+                    return ECMD.TIME;
                 }
                 mtmp = svl.level.monsters[cc.x][cc.y];
                 if (mtmp) {
                     timepassed = await loot_mon(mtmp, new $c.Ptr(prev_inquiry, 0), new $c.Ptr(prev_loot, 0));
                     if (timepassed) {
-                        looted_mon = 1;
+                        looted_mon = TRUE;
                     }
                 }
-                if (u.uprops[14 /* CONFUSION */].intrinsic || u.uprops[13 /* STUNNED */].intrinsic) {
+                if (u.uprops[CONFUSION].intrinsic || u.uprops[STUNNED].intrinsic) {
                     timepassed = 1;
                 }
                 if (!looted_mon) {
-                    if (!underfoot && container_at(cc.x, cc.y, 0)) {
+                    if (!underfoot && container_at(cc.x, cc.y, FALSE)) {
                         if (mtmp) {
                             await You_cant($c.lit("loot anything %sthere with %s in the way."), prev_inquiry[0] ? $c.lit("else ") : $c.lit(""), await mon_nam(mtmp));
-                            return timepassed ? 1 : 0;
+                            return timepassed ? ECMD.TIME : ECMD.OK;
                         } else {
                             await You($c.lit("have to be at a container to loot it."));
                         }
                     } else {
                         await You($c.lit("%s %s%shere to loot."), dont_find_anything, prev_inquiry[0] || prev_loot[0] ? $c.lit("else ") : $c.lit(""), !underfoot ? $c.lit("t") : $c.lit(""));
-                        return timepassed ? 1 : 0;
+                        return timepassed ? ECMD.TIME : ECMD.OK;
                     }
                 }
             } else if (c !== 121 && c !== 110) {
                 await You($c.lit("%s %s to loot."), dont_find_anything, underfoot ? $c.lit("here") : $c.lit("there"));
             }
-            return timepassed ? 1 : 0;
+            return timepassed ? ECMD.TIME : ECMD.OK;
         }
         break;
     }
@@ -1618,18 +1656,18 @@ async function reverse_loot() {   // pickup.c:2350
     goldob = null;
     x = u.ux;
     y = u.uy;
-    if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2357, $c.lit("reverse_loot")), rn2(3)) : rn2(3))) {
-        for (n = inv_cnt(1), otmp = gi.invent; otmp; n = n - 1 | 0, otmp = otmp.nobj) {
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2361, $c.lit("reverse_loot")), rn2(n + 1 | 0)) : rn2(n + 1 | 0))) {
+    if (!rn2(3)) {
+        for (n = inv_cnt(TRUE), otmp = gi.invent; otmp; n = n - 1 | 0, otmp = otmp.nobj) {
+            if (!rn2(n + 1 | 0)) {
                 await prinv($c.lit("You find old loot:"), otmp, 0);
-                return 1;
+                return TRUE;
             }
         }
-        return 0;
+        return FALSE;
     }
     for (goldob = gi.invent; goldob; goldob = goldob.nobj) {
-        if (goldob.oclass === 12 /* COIN_CLASS */) {
-            contribution = $c.div64($c.add64($c.mul64(rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2371, $c.lit("reverse_loot")), rnd(5)) : rnd(5), goldob.quan), 4), 5);
+        if (goldob.oclass === COIN_CLASS) {
+            contribution = $c.div64($c.add64($c.mul64(rnd(5), goldob.quan), 4), 5);
             if (contribution < goldob.quan) {
                 goldob = await splitobj(goldob, contribution);
             }
@@ -1637,10 +1675,10 @@ async function reverse_loot() {   // pickup.c:2350
         }
     }
     if (!goldob) {
-        return 0;
+        return FALSE;
     }
-    await remove_worn_item(goldob, 0);
-    if (!(svl.level.locations[x][y].typ === 29 /* THRONE */)) {
+    await remove_worn_item(goldob, FALSE);
+    if (!(svl.level.locations[x][y].typ === THRONE)) {
         await dropx(goldob);
         if (g_at($c.i16(x), $c.i16(y))) {
             await pline($c.lit("Ok, now there is loot here."));
@@ -1648,7 +1686,7 @@ async function reverse_loot() {   // pickup.c:2350
     } else {
         otmp = null;
         for (coffers = svl.level.objlist; coffers; coffers = coffers.nobj) {
-            if (coffers.otyp === 215 /* CHEST */) {
+            if (coffers.otyp === CHEST) {
                 if (coffers.spe === 2) {
                     break;
                 }
@@ -1667,50 +1705,50 @@ async function reverse_loot() {   // pickup.c:2350
             $t1 = await weight(coffers) >>> 0, coffers.owt = $t1;
             coffers.cknown = (0) & 1;
             if (!coffers.olocked) {
-                boxdummy.$copyFrom(cg.zeroobj), boxdummy.otyp = 381;
+                boxdummy.$copyFrom(cg.zeroobj), boxdummy.otyp = SPE_WIZARD_LOCK;
                 await boxlock(coffers, boxdummy);
             }
-        } else if ((svl.level.locations[x][y].flags | 0) !== 1 && (mon = await makemon(await courtmon(), $c.i16(x), $c.i16(y), 0)) !== null) {
+        } else if ((svl.level.locations[x][y].flags | 0) !== T_LOOTED && (mon = await makemon(await courtmon(), $c.i16(x), $c.i16(y), NO.MM_FLAGS)) !== null) {
             await freeinv(goldob);
             await add_to_minv(mon, goldob);
             await pline($c.lit("The exchequer accepts your contribution."));
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2418, $c.lit("reverse_loot")), rn2(10)) : rn2(10))) {
-                svl.level.locations[x][y].flags = (1) & 31;
+            if (!rn2(10)) {
+                svl.level.locations[x][y].flags = (T_LOOTED) & 31;
             }
         } else {
             await You($c.lit("drop %s."), await doname(goldob));
             await dropx(goldob);
         }
     }
-    return 1;
+    return TRUE;
 }
 export async function loot_mon(mtmp, passed_info, prev_loot) {   // pickup.c:2431
     let c = 0, timepassed = 0, otmp = null, qbuf = new Int8Array(128), count = 0;
     c = -1;
     timepassed = 0;
-    if (mtmp && !$c.peq(mtmp, u.usteed) && (otmp = await which_armor(mtmp, 1048576))) {
+    if (mtmp && !$c.peq(mtmp, u.usteed) && (otmp = await which_armor(mtmp, W.SADDLE))) {
         if (passed_info) {
             passed_info.set(0, 1);
         }
-        $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 128, $c.lit("Do you want to remove the saddle from %s?"), await x_monnam(mtmp, 1, null, 8, 0));
-        if ((c = await yn_function(new $c.Ptr(qbuf, 0), new $c.Ptr(ynqchars, 0), 110, 1)) === 121) {
-            if ($c.andu64(gy.youmonst.data.mflags1, 24576) === 24576) {
+        $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 128, $c.lit("Do you want to remove the saddle from %s?"), await x_monnam(mtmp, ARTICLE.THE, null, SUPPRESS.SADDLE, FALSE));
+        if ((c = await yn_function(new $c.Ptr(qbuf, 0), new $c.Ptr(ynqchars, 0), 110, TRUE)) === 121) {
+            if (nolimbs(gy.youmonst.data)) {
                 await You_cant($c.lit("do that without limbs."));
                 return 0;
             }
             if (otmp.cursed) {
-                await You($c.lit("can't.  The saddle seems to be stuck to %s."), await x_monnam(mtmp, 1, null, 8, 0));
+                await You($c.lit("can't.  The saddle seems to be stuck to %s."), await x_monnam(mtmp, ARTICLE.THE, null, SUPPRESS.SADDLE, FALSE));
                 return 1;
             }
-            await extract_from_minvent(mtmp, otmp, 1, 0);
+            await extract_from_minvent(mtmp, otmp, TRUE, FALSE);
             if (flags.verbose) {
                 await You($c.lit("take %s off of %s."), await thesimpleoname(otmp), await mon_nam(mtmp));
             }
             otmp = await hold_another_object(otmp, $c.lit("You drop %s!"), await doname(otmp), null);
-            otmp;
-            timepassed = rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2467, $c.lit("loot_mon")), rnd(3)) : rnd(3);
+            nhUse(otmp);
+            timepassed = rnd(3);
             if (prev_loot) {
-                prev_loot.set(0, 1);
+                prev_loot.set(0, TRUE);
             }
         } else if (c === 113) {
             return 0;
@@ -1724,22 +1762,22 @@ export async function loot_mon(mtmp, passed_info, prev_loot) {   // pickup.c:243
 }
 function mbag_explodes(obj, depthin) {   // pickup.c:2488
     let otmp = null;
-    if ((obj.otyp === 423 /* WAN_CANCELLATION */ || obj.otyp === 220 /* BAG_OF_TRICKS */) && obj.spe <= 0) {
-        return 0;
+    if ((obj.otyp === WAN_CANCELLATION || obj.otyp === BAG_OF_TRICKS) && obj.spe <= 0) {
+        return FALSE;
     }
-    if ((obj.otyp === 219 /* BAG_OF_HOLDING */ || obj.otyp === 220 /* BAG_OF_TRICKS */ || obj.otyp === 423 /* WAN_CANCELLATION */) && (rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2497, $c.lit("mbag_explodes")), rn2(1 << Number(depthin > 7 ? 7 : depthin))) : rn2(1 << Number(depthin > 7 ? 7 : depthin))) <= depthin) {
-        return 1;
-    } else if (obj.cobj !== null) {
+    if ((Is_mbag(obj) || obj.otyp === WAN_CANCELLATION) && rn2(1 << Number(depthin > 7 ? 7 : depthin)) <= depthin) {
+        return TRUE;
+    } else if (Has_contents(obj)) {
         for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
             if (mbag_explodes(otmp, depthin + 1 | 0)) {
-                return 1;
+                return TRUE;
             }
         }
     }
-    return 0;
+    return FALSE;
 }
 function is_boh_item_gone() {   // pickup.c:2510
-    return $c.i8(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2512, $c.lit("is_boh_item_gone")), rn2(13)) : rn2(13)) ? 1 : 0);
+    return $c.i8(!rn2(13) ? 1 : 0);
 }
 async function do_boh_explosion(boh, on_floor) {   // pickup.c:2518
     let otmp = null, nobj = null;
@@ -1748,22 +1786,22 @@ async function do_boh_explosion(boh, on_floor) {   // pickup.c:2518
         nobj = otmp.nobj;
         if (is_boh_item_gone()) {
             await obj_extract_self(otmp);
-            await mbag_item_gone($c.i8(!on_floor ? 1 : 0), otmp, 1);
+            await mbag_item_gone($c.i8(!on_floor ? 1 : 0), otmp, TRUE);
         } else {
             otmp.ox = u.ux, otmp.oy = u.uy;
-            await scatter(u.ux, u.uy, 4, 14, otmp);
+            await scatter(u.ux, u.uy, 4, MAY_HIT | MAY.DESTROY, otmp);
         }
     }
 }
 async function boh_loss(container, held) {   // pickup.c:2537
     let loss = 0, curr = null, otmp = null;
-    if ((container.otyp === 219 /* BAG_OF_HOLDING */ || container.otyp === 220 /* BAG_OF_TRICKS */) && container.cursed | 0 && container.cobj !== null) {
+    if (Is_mbag(container) && container.cursed | 0 && Has_contents(container)) {
         loss = 0;
         for (curr = container.cobj; curr; curr = otmp) {
             otmp = curr.nobj;
             if (is_boh_item_gone()) {
                 await obj_extract_self(curr);
-                loss = $c.add64(loss, await mbag_item_gone(held, curr, 0));
+                loss = $c.add64(loss, await mbag_item_gone(held, curr, FALSE));
             }
         }
         return loss;
@@ -1772,8 +1810,8 @@ async function boh_loss(container, held) {   // pickup.c:2537
 }
 async function in_container(obj) {   // pickup.c:2558
     let floor_container = 0, was_unpaid = 0, buf = new Int8Array(256), save_no_charge = new $T.obj(), $t1;
-    floor_container = $c.i8(!(gc.current_container.where === 3) ? 1 : 0);
-    was_unpaid = 0;
+    floor_container = $c.i8(!carried(gc.current_container) ? 1 : 0);
+    was_unpaid = FALSE;
     if (!gc.current_container) {
         await impossible($c.lit("<in> no gc.current_container?"));
         return 0;
@@ -1783,17 +1821,17 @@ async function in_container(obj) {   // pickup.c:2558
     } else if ($c.peq(obj, gc.current_container)) {
         await pline($c.lit("That would be an interesting topological exercise."));
         return 0;
-    } else if ($c.and64(obj.owornmask, 983167)) {
-        await Norep($c.lit("You cannot %s %s you are wearing."), gc.current_container.otyp === 216 /* ICE_BOX */ ? $c.lit("refrigerate") : $c.lit("stash"), c_common_strings.c_something);
+    } else if ($c.and64(obj.owornmask, W_ARMOR | W_ACCESSORY)) {
+        await Norep($c.lit("You cannot %s %s you are wearing."), Icebox() ? $c.lit("refrigerate") : $c.lit("stash"), c_common_strings.c_something);
         return 0;
-    } else if (obj.otyp === 471 /* LOADSTONE */ && obj.cursed | 0) {
+    } else if (obj.otyp === LOADSTONE && obj.cursed | 0) {
         await set_bknown(obj, 1);
-        await pline_The($c.lit("stone%s won't leave your person."), obj.quan === 1 ? $c.lit("") : $c.lit("s"));
+        await pline_The($c.lit("stone%s won't leave your person."), plur(obj.quan));
         return 0;
-    } else if (obj.otyp === 213 /* AMULET_OF_YENDOR */ || obj.otyp === 262 /* CANDELABRUM_OF_INVOCATION */ || obj.otyp === 263 /* BELL_OF_OPENING */ || obj.otyp === 409 /* SPE_BOOK_OF_THE_DEAD */) {
+    } else if (obj.otyp === AMULET_OF_YENDOR || obj.otyp === CANDELABRUM_OF_INVOCATION || obj.otyp === BELL_OF_OPENING || obj.otyp === SPE_BOOK_OF_THE_DEAD) {
         await pline($c.lit("%s cannot be confined in such trappings."), await The(await xname(obj)));
         return 0;
-    } else if (obj.otyp === 236 /* LEASH */ && obj.corpsenm !== 0) {
+    } else if (obj.otyp === LEASH && obj.corpsenm !== 0) {
         await pline($c.lit("%s attached to your pet."), await Tobjnam(obj, $c.lit("are")));
         return 0;
     } else if ($c.peq(obj, $G.uwep)) {
@@ -1810,10 +1848,10 @@ async function in_container(obj) {   // pickup.c:2558
     } else if ($c.peq(obj, $G.uquiver)) {
         await setuqwep(null);
     }
-    if (await fatal_corpse_mistake(obj, 0)) {
+    if (await fatal_corpse_mistake(obj, FALSE)) {
         return -1;
     }
-    if (obj.otyp === 216 /* ICE_BOX */ || (obj.otyp === 214 /* LARGE_BOX */ || obj.otyp === 215 /* CHEST */) || obj.otyp === 475 /* BOULDER */ || obj.otyp === 476 /* STATUE */ && $c.relem(mons, obj.corpsenm).msize >= 3) {
+    if (obj.otyp === ICE_BOX || Is_box(obj) || obj.otyp === BOULDER || obj.otyp === STATUE && bigmonst($c.relem(mons, obj.corpsenm))) {
         $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), await the(await xname(obj)), 256);
         await You($c.lit("cannot fit %s into %s."), new $c.Ptr(buf, 0), await the(await xname(gc.current_container)));
         return 0;
@@ -1823,41 +1861,41 @@ async function in_container(obj) {   // pickup.c:2558
         await snuff_lit(obj);
     }
     if (floor_container && await costly_spot(u.ux, u.uy)) {
-        if (obj.oclass !== 12 /* COIN_CLASS */) {
-            was_unpaid = $c.i8(obj.unpaid | 0 ? 1 : 0);
+        if (obj.oclass !== COIN_CLASS) {
+            was_unpaid = $c.i8(obj.unpaid | 0 ? TRUE : FALSE);
             if (gs.sellobj_first) {
-                sellobj_state(gc.current_container.no_charge | 0 ? 2 : 1);
-                gs.sellobj_first = 0;
+                sellobj_state(gc.current_container.no_charge | 0 ? SELL.DONTSELL : SELL.DELIBERATE);
+                gs.sellobj_first = FALSE;
             }
             await sellobj(obj, u.ux, u.uy);
         }
     }
-    if (gc.current_container.otyp === 216 /* ICE_BOX */ && !(obj.otyp === 226 /* BRASS_LANTERN */ || obj.otyp === 227 /* OIL_LAMP */ || obj.otyp === 262 /* CANDELABRUM_OF_INVOCATION */ || obj.otyp === 224 /* TALLOW_CANDLE */ || obj.otyp === 225 /* WAX_CANDLE */ || obj.otyp === 321 /* POT_OIL */)) {
+    if (Icebox() && !age_is_relative(obj)) {
         obj.age = $c.sub64(svm.moves, obj.age);
-        if (obj.otyp === 265 /* CORPSE */) {
+        if (obj.otyp === CORPSE) {
             if (obj.timed) {
-                await stop_timer(1, obj_to_any(obj));
-                await stop_timer(2, obj_to_any(obj));
+                await stop_timer(ROT_CORPSE, obj_to_any(obj));
+                await stop_timer(REVIVE_MON, obj_to_any(obj));
             }
-            if (obj.corpsenm === 221 /* PM_ICE_TROLL */ && (obj.oextra && obj.oextra.omonst)) {
+            if (obj.corpsenm === PM.ICE_TROLL && has_omonst(obj)) {
                 obj.oextra.omonst.mcan = (0) & 1;
             }
         } else if (obj.globby | 0 && obj.timed) {
-            await stop_timer(7, obj_to_any(obj));
+            await stop_timer(SHRINK_GLOB, obj_to_any(obj));
         }
-    } else if ((gc.current_container.otyp === 219 /* BAG_OF_HOLDING */ || gc.current_container.otyp === 220 /* BAG_OF_TRICKS */) && mbag_explodes(obj, 0)) {
-        await livelog_printf(2, $c.lit("just blew up %s bag of holding"), genders[flags.female ? 1 : 0].his);
+    } else if (Is_mbag(gc.current_container) && mbag_explodes(obj, 0)) {
+        await livelog_printf(LL.ACHIEVE, $c.lit("just blew up %s bag of holding"), genders[flags.female ? 1 : 0].his);
         await urgent_pline($c.lit("As you put %s inside, you are blasted by a magical explosion!"), await doname(obj));
         if (was_unpaid) {
-            await addtobill(obj, 0, 0, 1);
+            await addtobill(obj, FALSE, FALSE, TRUE);
         }
-        if (obj.otyp === 219 /* BAG_OF_HOLDING */) {
-            await do_boh_explosion(obj, $c.i8(obj.where === 1 ? 1 : 0));
+        if (obj.otyp === BAG_OF_HOLDING) {
+            await do_boh_explosion(obj, $c.i8(obj.where === OBJ.FLOOR ? 1 : 0));
         }
         await obfree(obj, null);
         if (floor_container && await costly_spot(gc.current_container.ox, gc.current_container.oy)) {
             save_no_charge.no_charge = (gc.current_container.no_charge) & 1;
-            await addtobill(gc.current_container, 0, 0, 0);
+            await addtobill(gc.current_container, FALSE, FALSE, FALSE);
             gc.current_container.no_charge = (save_no_charge.no_charge) & 1;
         }
         await do_boh_explosion(gc.current_container, floor_container);
@@ -1868,13 +1906,13 @@ async function in_container(obj) {   // pickup.c:2558
         } else {
             await panic($c.lit("in_container:  bag not found."));
         }
-        await losehp(rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2692, $c.lit("in_container")), d(6, 6)) : d(6, 6), $c.lit("magical explosion"), 0);
+        await losehp(d(6, 6), $c.lit("magical explosion"), KILLED.BY_AN);
         gc.current_container = null;
     }
     if (gc.current_container) {
         $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), await the(await xname(gc.current_container)), 256);
         await You($c.lit("put %s into %s."), await doname(obj), new $c.Ptr(buf, 0));
-        if (floor_container && obj.oclass === 12 /* COIN_CLASS */) {
+        if (floor_container && obj.oclass === COIN_CLASS) {
             await sellobj(obj, gc.current_container.ox, gc.current_container.oy);
         }
         await add_to_container(gc.current_container, obj);
@@ -1888,7 +1926,7 @@ export function ck_bag(obj) {   // pickup.c:2720
 }
 async function out_container(obj) {   // pickup.c:2727
     let otmp = null, res = 0, count = [0], is_gold = 0, $t1, $t2;
-    is_gold = $c.i8(obj.oclass === 12 /* COIN_CLASS */ ? 1 : 0);
+    is_gold = $c.i8(obj.oclass === COIN_CLASS ? 1 : 0);
     if (!gc.current_container) {
         await impossible($c.lit("<out> no gc.current_container?"));
         return -1;
@@ -1898,27 +1936,27 @@ async function out_container(obj) {   // pickup.c:2727
     if (obj.oartifact && !await touch_artifact(obj, gy.youmonst)) {
         return 0;
     }
-    if (await fatal_corpse_mistake(obj, 0)) {
+    if (await fatal_corpse_mistake(obj, FALSE)) {
         return -1;
     }
     count[0] = obj.quan;
-    if ((res = await lift_object(obj, gc.current_container, new $c.Ptr(count, 0), 0)) <= 0) {
+    if ((res = await lift_object(obj, gc.current_container, new $c.Ptr(count, 0), FALSE)) <= 0) {
         return res;
     }
-    if (obj.quan !== count[0] && obj.otyp !== 471 /* LOADSTONE */) {
+    if (obj.quan !== count[0] && obj.otyp !== LOADSTONE) {
         obj = await splitobj(obj, count[0]);
     }
     await obj_extract_self(obj);
     $t2 = await weight(gc.current_container) >>> 0, gc.current_container.owt = $t2;
-    if (gc.current_container.otyp === 216 /* ICE_BOX */) {
+    if (Icebox()) {
         await removed_from_icebox(obj);
     }
-    if (!obj.unpaid && !(gc.current_container.where === 3) && await costly_spot(gc.current_container.ox, gc.current_container.oy)) {
+    if (!obj.unpaid && !carried(gc.current_container) && await costly_spot(gc.current_container.ox, gc.current_container.oy)) {
         obj.ox = gc.current_container.ox;
         obj.oy = gc.current_container.oy;
-        await addtobill(obj, 0, 0, 0);
+        await addtobill(obj, FALSE, FALSE, FALSE);
     }
-    if ((obj.oclass === 2 /* WEAPON_CLASS */ || obj.oclass === 6 /* TOOL_CLASS */) && objects[obj.otyp].oc_subtyp === 4 /* P_PICK_AXE */) {
+    if (is_pick(obj)) {
         await pick_pick(obj);
     }
     otmp = await addinv(obj);
@@ -1930,11 +1968,11 @@ async function out_container(obj) {   // pickup.c:2727
 }
 export async function removed_from_icebox(obj) {   // pickup.c:2781
     let m = null, iceT = 0;
-    if (!(obj.otyp === 226 /* BRASS_LANTERN */ || obj.otyp === 227 /* OIL_LAMP */ || obj.otyp === 262 /* CANDELABRUM_OF_INVOCATION */ || obj.otyp === 224 /* TALLOW_CANDLE */ || obj.otyp === 225 /* WAX_CANDLE */ || obj.otyp === 321 /* POT_OIL */)) {
+    if (!age_is_relative(obj)) {
         obj.age = $c.sub64(svm.moves, obj.age);
-        if (obj.otyp === 265 /* CORPSE */) {
-            m = await get_mtraits(obj, 0);
-            iceT = $c.i8(m ? $c.peq(m.data, $c.relem(mons, 221 /* PM_ICE_TROLL */)) ? 1 : 0 : obj.corpsenm === 221 /* PM_ICE_TROLL */ ? 1 : 0);
+        if (obj.otyp === CORPSE) {
+            m = await get_mtraits(obj, FALSE);
+            iceT = $c.i8(m ? $c.peq(m.data, $c.relem(mons, PM.ICE_TROLL)) ? 1 : 0 : obj.corpsenm === PM.ICE_TROLL ? 1 : 0);
             obj.oeroded2 = ((iceT ? 0 : 1) >>> 0) & 3;
             await start_corpse_timeout(obj);
         } else if (obj.globby) {
@@ -1949,12 +1987,12 @@ async function mbag_item_gone(held, item, silent) {   // pickup.c:2803
         if (item.dknown) {
             await pline($c.lit("%s %s vanished!"), await Doname2(item), await otense(item, $c.lit("have")));
         } else {
-            await You($c.lit("%s %s disappear!"), (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("notice") : $c.lit("see"), await doname(item));
+            await You($c.lit("%s %s disappear!"), Blind() ? $c.lit("notice") : $c.lit("see"), await doname(item));
         }
     }
     if (new $c.Ptr(u.ushops, 0).get(0) && (shkp = await shop_keeper(new $c.Ptr(u.ushops, 0).get(0))) !== null) {
         if (held ? $c.i8(item.unpaid) : await costly_spot(u.ux, u.uy)) {
-            loss = await stolen_value(item, u.ux, u.uy, $c.i8(shkp.mpeaceful), 1);
+            loss = await stolen_value(item, u.ux, u.uy, $c.i8(shkp.mpeaceful), TRUE);
         }
     }
     await obfree(item, null);
@@ -1963,21 +2001,21 @@ async function mbag_item_gone(held, item, silent) {   // pickup.c:2803
 export async function observe_quantum_cat(box, makecat, givemsg) {   // pickup.c:2826
     let deadcat = null, livecat = null, ox = Int16Array.of(0), oy = Int16Array.of(0), itsalive = 0, $t1;
     livecat = null;
-    itsalive = $c.i8(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 2832, $c.lit("observe_quantum_cat")), rn2(2)) : rn2(2)) ? 1 : 0);
+    itsalive = $c.i8(!rn2(2) ? 1 : 0);
     if (get_obj_location(box, new $c.Ptr(ox, 0), new $c.Ptr(oy, 0), 0)) {
         box.ox = ox[0], box.oy = oy[0];
     }
     deadcat = box.cobj;
     if (itsalive) {
         if (makecat) {
-            livecat = await makemon($c.relem(mons, 33 /* PM_HOUSECAT */), box.ox, box.oy, 131089);
+            livecat = await makemon($c.relem(mons, PM.HOUSECAT), box.ox, box.oy, NO.MINVENT | MM.ADJACENTOK | MM.NOMSG);
         }
         if (livecat) {
             livecat.mpeaceful = (1) & 1;
             set_malign(livecat);
             if (givemsg) {
-                if (!(canseemon(livecat) || sensemon(livecat))) {
-                    await You($c.lit("think %s brushed your %s."), c_common_strings.c_something, await body_part(5 /* FOOT */));
+                if (!canspotmon(livecat)) {
+                    await You($c.lit("think %s brushed your %s."), c_common_strings.c_something, await body_part(FOOT));
                 } else {
                     await pline($c.lit("%s inside the box is still alive!"), await Monnam(livecat));
                 }
@@ -1997,19 +2035,19 @@ export async function observe_quantum_cat(box, makecat, givemsg) {   // pickup.c
     } else {
         box.spe = 0;
         if (givemsg) {
-            await pline_The($c.lit("%s inside the box is dead!"), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rndmonnam(null) : $c.lit("housecat"));
+            await pline_The($c.lit("%s inside the box is dead!"), Hallucination() ? await rndmonnam(null) : $c.lit("housecat"));
         }
         if (deadcat) {
             deadcat.age = svm.moves;
-            await set_corpsenm(deadcat, 33 /* PM_HOUSECAT */);
-            deadcat = await oname(deadcat, new $c.Ptr(observe_quantum_cat$sc, 0), 0);
+            await set_corpsenm(deadcat, PM.HOUSECAT);
+            deadcat = await oname(deadcat, new $c.Ptr(observe_quantum_cat$sc, 0), ONAME_NO_FLAGS);
             if (!svc.context.mon_moving) {
                 await more_experienced(20, 10);
                 await newexplevel();
             }
         }
     }
-    deadcat;
+    nhUse(deadcat);
     return;
 }
 export function container_gone(fn) {   // pickup.c:2903
@@ -2017,45 +2055,45 @@ export function container_gone(fn) {   // pickup.c:2903
 }
 async function explain_container_prompt(more_containers) {   // pickup.c:2911
     let txtpp = null, win = 0;
-    if ((win = await windowprocs.win_create_nhwindow(5)) !== -1) {
+    if ((win = await create_nhwindow()(NHW.TEXT)) !== WIN_ERR) {
         for (txtpp = new $c.Ptr(explain_container_prompt$explaintext, 0); txtpp.get(0); txtpp = txtpp.add(1)) {
             if (!more_containers && !$c.strncmp(txtpp.get(0), $c.lit(" n "), 3)) {
                 continue;
             }
-            await windowprocs.win_putstr(win, 0, txtpp.get(0));
+            await putstr()(win, 0, txtpp.get(0));
         }
-        await windowprocs.win_display_nhwindow(win, 0);
-        await windowprocs.win_destroy_nhwindow(win);
+        await display_nhwindow()(win, FALSE);
+        await destroy_nhwindow()(win);
     }
 }
 export async function u_handsy() {   // pickup.c:2943
-    if ($c.andu64(gy.youmonst.data.mflags1, 8192) !== 0) {
+    if (nohands(gy.youmonst.data)) {
         await You($c.lit("have no hands!"));
-        return 0;
+        return FALSE;
     } else if (!await freehand()) {
-        await You($c.lit("have no free %s."), await body_part(6 /* HAND */));
-        return 0;
+        await You($c.lit("have no free %s."), await body_part(HAND));
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 function stash_ok(obj) {   // pickup.c:2957
     if (!obj) {
-        return -3 /* GETOBJ_EXCLUDE */;
+        return GETOBJ.EXCLUDE;
     }
     if (!ck_bag(obj)) {
-        return 0 /* GETOBJ_EXCLUDE_SELECTABLE */;
+        return GETOBJ.EXCLUDE_SELECTABLE;
     }
-    return 2 /* GETOBJ_SUGGEST */;
+    return GETOBJ.SUGGEST;
 }
 export async function use_container(objp, held, more_containers) {   // pickup.c:2972
     let otmp = null, obj = null, quantum_cat = 0, cursed_mbag = 0, loot_out = 0, loot_in = 0, loot_in_first = 0, stash_one = 0, inokay = 0, outokay = 0, outmaybe = 0, c = 0, emptymsg = new Int8Array(256), qbuf = new Int8Array(128), pbuf = new Int8Array(128), xbuf = new Int8Array(128), used = 0, loss = 0, $t1;
     obj = objp.get(0);
-    used = 0;
-    ga.abort_looting = 0;
-    gs.sellobj_first = 1;
+    used = ECMD.OK;
+    ga.abort_looting = FALSE;
+    gs.sellobj_first = TRUE;
     emptymsg[0] = 0;
     if (!await u_handsy()) {
-        return 0;
+        return ECMD.OK;
     }
     if (!obj.lknown) {
         obj.lknown = (1) & 1;
@@ -2068,34 +2106,34 @@ export async function use_container(objp, held, more_containers) {   // pickup.c
         if (held) {
             await You($c.lit("must put it down to unlock."));
         }
-        return 0;
+        return ECMD.OK;
     } else if (obj.otrapped) {
         if (held) {
             await You($c.lit("open %s..."), await the(await xname(obj)));
         }
-        await chest_trap(obj, 6 /* HAND */, 0);
+        await chest_trap(obj, HAND, FALSE);
         if (gm.multi >= 0) {
             nomul(-1);
             gm.multi_reason = $c.lit("opening a container");
             gn.nomovemsg = $c.lit("");
         }
-        ga.abort_looting = 1;
-        return 1;
+        ga.abort_looting = TRUE;
+        return ECMD.TIME;
     }
     gc.current_container = obj;
-    quantum_cat = $c.i8(gc.current_container.otyp === 214 /* LARGE_BOX */ && gc.current_container.spe === 1 ? 1 : 0);
+    quantum_cat = $c.i8(SchroedingersBox(gc.current_container));
     if (quantum_cat) {
-        await observe_quantum_cat(gc.current_container, 1, 1);
-        used = 1;
+        await observe_quantum_cat(gc.current_container, TRUE, TRUE);
+        used = ECMD.TIME;
     }
-    cursed_mbag = $c.i8((gc.current_container.otyp === 219 /* BAG_OF_HOLDING */ || gc.current_container.otyp === 220 /* BAG_OF_TRICKS */) && gc.current_container.cursed | 0 && gc.current_container.cobj !== null ? 1 : 0);
+    cursed_mbag = $c.i8(Is_mbag(gc.current_container) && gc.current_container.cursed | 0 && Has_contents(gc.current_container) ? 1 : 0);
     if (cursed_mbag && (loss = await boh_loss(gc.current_container, held)) !== 0) {
-        used = 1;
+        used = ECMD.TIME;
         await You($c.lit("owe %ld %s for lost merchandise."), loss, await currency(loss));
         $t1 = await weight(gc.current_container) >>> 0, gc.current_container.owt = $t1;
     }
     inokay = $c.i8(gi.invent !== null && (!$c.peq(gi.invent, gc.current_container) || gi.invent.nobj) ? 1 : 0);
-    outokay = $c.i8(gc.current_container.cobj !== null ? 1 : 0);
+    outokay = $c.i8(Has_contents(gc.current_container));
     if (!outokay) {
         $c.__builtin___sprintf_chk(new $c.Ptr(emptymsg, 0), 0, 256, $c.lit("%s is %sempty."), await Ysimple_name2(gc.current_container), quantum_cat || cursed_mbag ? $c.lit("now ") : $c.lit(""));
     }
@@ -2106,11 +2144,11 @@ export async function use_container(objp, held, more_containers) {   // pickup.c
         } else {
             await safe_qbuf(new $c.Ptr(qbuf, 0), $c.lit("Do what with "), $c.lit("?"), gc.current_container, yname, ysimple_name, $c.lit("it"));
         }
-        if (flags.menu_style === 3 || flags.menu_style === 2) {
+        if (flags.menu_style === MENU.PARTIAL || flags.menu_style === MENU.FULL) {
             if (!inokay && !outmaybe) {
                 c = 98;
             } else {
-                c = await in_or_out_menu(new $c.Ptr(qbuf, 0), gc.current_container, outmaybe, inokay, $c.i8(used !== 0 ? 1 : 0), more_containers);
+                c = await in_or_out_menu(new $c.Ptr(qbuf, 0), gc.current_container, outmaybe, inokay, $c.i8(used !== ECMD.OK ? 1 : 0), more_containers);
             }
         } else {
             xbuf[0] = 0;
@@ -2130,21 +2168,21 @@ export async function use_container(objp, held, more_containers) {   // pickup.c
             if (new $c.Ptr(xbuf, 0).get(0)) {
                 $c.__builtin___strcat_chk($c.__builtin___strcat_chk(new $c.Ptr(pbuf, 0), $c.lit("\x1b"), 128), new $c.Ptr(xbuf, 0), -1);
             }
-            c = await yn_function(new $c.Ptr(qbuf, 0), new $c.Ptr(pbuf, 0), $c.i8(more_containers ? 110 : 113), 1);
+            c = await yn_function(new $c.Ptr(qbuf, 0), new $c.Ptr(pbuf, 0), $c.i8(more_containers ? 110 : 113), TRUE);
         }
         if (c === 63) {
             await explain_container_prompt(more_containers);
         } else if (c === 58) {
             if (!gc.current_container.cknown) {
-                used = 1;
+                used = ECMD.TIME;
             }
-            await container_contents(gc.current_container, 0, 0, 1);
+            await container_contents(gc.current_container, FALSE, FALSE, TRUE);
         } else {
             break;
         }
     }
     if (c === 113) {
-        ga.abort_looting = 1;
+        ga.abort_looting = TRUE;
     }
     containerdone$: {
         if (c === 110 || c === 113) {
@@ -2155,18 +2193,18 @@ export async function use_container(objp, held, more_containers) {   // pickup.c
         loot_in_first = $c.i8(c === 114 ? 1 : 0);
         stash_one = $c.i8(c === 115 ? 1 : 0);
         if (loot_out && !loot_in_first) {
-            if (!(gc.current_container.cobj !== null)) {
-                await pline($c.lit("%s"), new $c.Ptr(emptymsg, 0));
+            if (!Has_contents(gc.current_container)) {
+                await pline1(new $c.Ptr(emptymsg, 0));
                 if (!gc.current_container.cknown) {
-                    used = 1;
+                    used = ECMD.TIME;
                 }
                 gc.current_container.cknown = (1) & 1;
             } else {
                 add_valid_menu_class(0);
-                if (flags.menu_style === 0) {
-                    used = used | await traditional_loot(0);
+                if (flags.menu_style === MENU.TRADITIONAL) {
+                    used = used | await traditional_loot(FALSE);
                 } else {
-                    used = used | (await menu_loot(0, 0) > 0 ? 1 : 0);
+                    used = used | (await menu_loot(0, FALSE) > 0 ? 1 : 0);
                 }
                 add_valid_menu_class(0);
             }
@@ -2174,18 +2212,18 @@ export async function use_container(objp, held, more_containers) {   // pickup.c
         }
         if ((loot_in || stash_one) && !inokay) {
             await You($c.lit("don't have anything%s to %s."), gi.invent ? $c.lit(" else") : $c.lit(""), stash_one ? $c.lit("stash") : $c.lit("put in"));
-            loot_in = stash_one = 0;
+            loot_in = stash_one = FALSE;
         }
         if (loot_in) {
             add_valid_menu_class(0);
-            if (flags.menu_style === 0) {
-                used = used | await traditional_loot(1);
+            if (flags.menu_style === MENU.TRADITIONAL) {
+                used = used | await traditional_loot(TRUE);
             } else {
-                used = used | (await menu_loot(0, 1) > 0 ? 1 : 0);
+                used = used | (await menu_loot(0, TRUE) > 0 ? 1 : 0);
             }
             add_valid_menu_class(0);
         } else if (stash_one) {
-            if ((otmp = await getobj($c.lit("stash"), stash_ok, 3)) !== null) {
+            if ((otmp = await getobj($c.lit("stash"), stash_ok, GETOBJ_PROMPT | GETOBJ.ALLOWCNT)) !== null) {
                 if (await in_container(otmp)) {
                     used = 1;
                 } else {
@@ -2194,21 +2232,21 @@ export async function use_container(objp, held, more_containers) {   // pickup.c
             }
         }
         if (!gc.current_container) {
-            loot_out = 0;
+            loot_out = FALSE;
         }
         if (loot_out && loot_in_first) {
-            if (!(gc.current_container.cobj !== null)) {
-                await pline($c.lit("%s"), new $c.Ptr(emptymsg, 0));
+            if (!Has_contents(gc.current_container)) {
+                await pline1(new $c.Ptr(emptymsg, 0));
                 if (!gc.current_container.cknown) {
                     used = 1;
                 }
                 gc.current_container.cknown = (1) & 1;
             } else {
                 add_valid_menu_class(0);
-                if (flags.menu_style === 0) {
-                    used = used | await traditional_loot(0);
+                if (flags.menu_style === MENU.TRADITIONAL) {
+                    used = used | await traditional_loot(FALSE);
                 } else {
-                    used = used | (await menu_loot(0, 0) > 0 ? 1 : 0);
+                    used = used | (await menu_loot(0, FALSE) > 0 ? 1 : 0);
                 }
                 add_valid_menu_class(0);
             }
@@ -2220,18 +2258,18 @@ export async function use_container(objp, held, more_containers) {   // pickup.c
         }
         await update_inventory();
     }
-    sellobj_state(0);
+    sellobj_state(SELL.NORMAL);
     objp.set(0, gc.current_container);
     if (gc.current_container) {
         gc.current_container = null;
     } else {
-        ga.abort_looting = 1;
+        ga.abort_looting = TRUE;
     }
     return used;
 }
 async function traditional_loot(put_in) {   // pickup.c:3230
     let actionfunc = null, checkfunc = null, objlist = null, selection = new Int8Array(28), action = null, one_by_one = Int8Array.of(0), allflag = Int8Array.of(0), used = 0, menu_on_request = Int32Array.of(0);
-    used = 0;
+    used = ECMD.OK;
     menu_on_request[0] = 0;
     if (put_in) {
         action = $c.lit("put in");
@@ -2245,9 +2283,9 @@ async function traditional_loot(put_in) {   // pickup.c:3230
         checkfunc = null;
         gp.pickup_encumbrance = 0;
     }
-    if (await query_classes(new $c.Ptr(selection, 0), new $c.Ptr(one_by_one, 0), new $c.Ptr(allflag, 0), action, objlist.get(0), 0, new $c.Ptr(menu_on_request, 0))) {
+    if (await query_classes(new $c.Ptr(selection, 0), new $c.Ptr(one_by_one, 0), new $c.Ptr(allflag, 0), action, objlist.get(0), FALSE, new $c.Ptr(menu_on_request, 0))) {
         if (await askchain(objlist, one_by_one[0] ? null : new $c.Ptr(selection, 0), allflag[0], actionfunc, checkfunc, 0, action)) {
-            used = 1;
+            used = ECMD.TIME;
         }
     } else if (menu_on_request[0] < 0) {
         used = await menu_loot(menu_on_request[0], put_in) > 0 ? 1 : 0;
@@ -2257,36 +2295,36 @@ async function traditional_loot(put_in) {   // pickup.c:3230
 async function menu_loot(retry, put_in) {   // pickup.c:3265
     let n = 0, i = 0, n_looted = 0, all_categories = 0, loot_everything = 0, autopick = 0, buf = new Int8Array(256), loot_justpicked = 0, action = null, otmp = null, otmp2 = null, pick_list = [null], mflags = 0, res = 0, count = 0, inout_func = null, firstobj = null;
     n_looted = 0;
-    all_categories = 1;
-    loot_everything = 0;
-    autopick = 0;
-    loot_justpicked = 0;
+    all_categories = TRUE;
+    loot_everything = FALSE;
+    autopick = FALSE;
+    loot_justpicked = FALSE;
     action = put_in ? $c.lit("Put in") : $c.lit("Take out");
     count = 0;
     gp.pickup_encumbrance = 0;
     if (retry) {
         all_categories = $c.i8(retry === -2 ? 1 : 0);
-    } else if (flags.menu_style === 2) {
-        all_categories = 0;
+    } else if (flags.menu_style === MENU.FULL) {
+        all_categories = FALSE;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s what type of objects?"), action);
-        mflags = 8100;
-        n = await query_category(new $c.Ptr(buf, 0), put_in ? gi.invent : gc.current_container.cobj, mflags, new $c.Ptr(pick_list, 0), 2);
+        mflags = ALL_TYPES | UNPAID_TYPES | BUCX_TYPES | CHOOSE_ALL | JUSTPICKED;
+        n = await query_category(new $c.Ptr(buf, 0), put_in ? gi.invent : gc.current_container.cobj, mflags, new $c.Ptr(pick_list, 0), PICK.ANY);
         if (!n) {
-            return 0;
+            return ECMD.OK;
         }
         for (i = 0; i < n; i = i + 1 | 0) {
             if ($c.radd(pick_list[0], i).item.a_int === 65) {
-                loot_everything = autopick = 1;
+                loot_everything = autopick = TRUE;
             } else if (put_in && $c.radd(pick_list[0], i).item.a_int === 80) {
-                loot_justpicked = 1;
+                loot_justpicked = TRUE;
                 count = 0 > $c.radd(pick_list[0], i).count ? 0 : $c.radd(pick_list[0], i).count;
                 add_valid_menu_class($c.radd(pick_list[0], i).item.a_int);
-                loot_everything = 0;
-            } else if ($c.radd(pick_list[0], i).item.a_int === -2) {
-                all_categories = 1;
+                loot_everything = FALSE;
+            } else if ($c.radd(pick_list[0], i).item.a_int === ALL_TYPES_SELECTED) {
+                all_categories = TRUE;
             } else {
                 add_valid_menu_class($c.radd(pick_list[0], i).item.a_int);
-                loot_everything = 0;
+                loot_everything = FALSE;
             }
         }
         $c.free(pick_list[0]);
@@ -2320,18 +2358,18 @@ async function menu_loot(retry, put_in) {   // pickup.c:3265
             await in_container(otmp);
         }
     } else {
-        mflags = 18;
+        mflags = INVORDER_SORT | INCLUDE_VENOM;
         if (put_in && flags.invlet_constant) {
-            mflags = mflags | 8;
+            mflags = mflags | USE_INVLET;
         }
         if (put_in && loot_justpicked) {
-            mflags = mflags | 4096;
+            mflags = mflags | JUSTPICKED;
         }
         if (!put_in) {
             gc.current_container.cknown = (1) & 1;
         }
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s what?"), action);
-        n = await query_objlist(new $c.Ptr(buf, 0), put_in ? new $c.FieldRef(gi, "invent", "ptr") : new $c.FieldRef(gc.current_container, "cobj", "ptr"), mflags, new $c.Ptr(pick_list, 0), 2, all_categories ? allow_all : allow_category);
+        n = await query_objlist(new $c.Ptr(buf, 0), put_in ? new $c.FieldRef(gi, "invent", "ptr") : new $c.FieldRef(gc.current_container, "cobj", "ptr"), mflags, new $c.Ptr(pick_list, 0), PICK.ANY, all_categories ? allow_all : allow_category);
         if (n) {
             n_looted = n;
             for (i = 0; i < n; i = i + 1 | 0) {
@@ -2356,52 +2394,52 @@ async function menu_loot(retry, put_in) {   // pickup.c:3265
             $c.free(pick_list[0]);
         }
     }
-    return n_looted ? 1 : 0;
+    return n_looted ? ECMD.TIME : ECMD.OK;
 }
 async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, more_containers) {   // pickup.c:3397
     let win = 0, any = new $T.any(), pick_list = [null], buf = new Int8Array(256), n = 0, menuselector = null, clr = 0, k = 0;
     menuselector = flags.lootabc ? new $c.Ptr(in_or_out_menu$abc_chars, 0) : new $c.Ptr(in_or_out_menu$lootchars, 0);
-    clr = 8;
+    clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
-    win = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(win, 0);
+    win = await create_nhwindow()(NHW.MENU);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     any.a_int = 1;
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Look inside %s"), await thesimpleoname(obj));
-    await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, 0, clr, new $c.Ptr(buf, 0), 0);
+    await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
     if (outokay) {
         any.a_int = 2;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("take %s out"), c_common_strings.c_something);
-        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
     }
     if (inokay) {
         any.a_int = 3;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("put %s in"), c_common_strings.c_something);
-        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
     }
     if (outokay) {
         any.a_int = 4;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%stake out, then put in"), inokay ? $c.lit("both; ") : $c.lit(""));
-        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
     }
     if (inokay) {
         any.a_int = 5;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%sput in, then take out"), outokay ? $c.lit("both reversed; ") : $c.lit(""));
-        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         any.a_int = 6;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("stash one item into %s"), await thesimpleoname(obj));
-        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
     }
     await add_menu_str(win, $c.lit(""));
     if (more_containers) {
         any.a_int = 7;
-        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, 0, clr, $c.lit("loot next container"), 1);
+        await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, ATR.NONE, clr, $c.lit("loot next container"), MENU.ITEMFLAGS_SELECTED);
     }
     any.a_int = 8;
     $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), alreadyused ? $c.lit("done") : $c.lit("do nothing"), 256);
-    await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, 0, clr, new $c.Ptr(buf, 0), more_containers ? 0 : 1);
-    await windowprocs.win_end_menu(win, prompt);
-    n = await select_menu(win, 1, new $c.Ptr(pick_list, 0));
-    await windowprocs.win_destroy_nhwindow(win);
+    await add_menu(win, nul_glyphinfo, any, menuselector.get(any.a_int), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), more_containers ? MENU.ITEMFLAGS_NONE : MENU.ITEMFLAGS_SELECTED);
+    await end_menu()(win, prompt);
+    n = await select_menu(win, PICK.ONE, new $c.Ptr(pick_list, 0));
+    await destroy_nhwindow()(win);
     if (n > 0) {
         k = $c.radd(pick_list[0], 0).item.a_int;
         if (n > 1 && k === (more_containers ? 7 : 8)) {
@@ -2413,40 +2451,40 @@ async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, more_co
     return $c.i8(n === 0 && more_containers ? 110 : 113);
 }
 function tip_ok(obj) {   // pickup.c:3481
-    if (!obj || obj.oclass === 12 /* COIN_CLASS */) {
-        return -3 /* GETOBJ_EXCLUDE */;
+    if (!obj || obj.oclass === COIN_CLASS) {
+        return GETOBJ.EXCLUDE;
     }
-    if (obj.otyp >= 214 /* LARGE_BOX */ && obj.otyp <= 220 /* BAG_OF_TRICKS */) {
-        return 2 /* GETOBJ_SUGGEST */;
+    if (Is_container(obj)) {
+        return GETOBJ.SUGGEST;
     }
-    if (obj.otyp === 252 /* HORN_OF_PLENTY */ && obj.dknown | 0 && objects[obj.otyp].oc_name_known | 0) {
-        return 2 /* GETOBJ_SUGGEST */;
+    if (obj.otyp === HORN_OF_PLENTY && obj.dknown | 0 && objects[obj.otyp].oc_name_known | 0) {
+        return GETOBJ.SUGGEST;
     }
-    return 1 /* GETOBJ_DOWNPLAY */;
+    return GETOBJ.DOWNPLAY;
 }
 async function choose_tip_container_menu() {   // pickup.c:3505
     let n = 0, i = 0, win = 0, any = new $T.any(), pick_list = [null], dummyobj = new $T.obj(), otmp = null, clr = 0;
     pick_list[0] = null;
-    clr = 8;
+    clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
-    win = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(win, 0);
+    win = await create_nhwindow()(NHW.MENU);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     for (otmp = svl.level.objects[u.ux][u.uy], i = 0; otmp; otmp = otmp.v.v_nexthere) {
-        if (otmp.otyp >= 214 /* LARGE_BOX */ && otmp.otyp <= 220 /* BAG_OF_TRICKS */) {
+        if (Is_container(otmp)) {
             i = i + 1 | 0;
             any.a_obj = otmp;
-            await add_menu(win, nul_glyphinfo, any, 0, 0, 0, clr, await doname(otmp), 0);
+            await add_menu(win, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, await doname(otmp), MENU.ITEMFLAGS_NONE);
         }
     }
     if (gi.invent) {
         await add_menu_str(win, $c.lit(""));
         any.a_obj = dummyobj;
         i = i <= 8 && !flags.lootabc ? 105 : 0;
-        await add_menu(win, nul_glyphinfo, any, $c.i8(i), 0, 0, clr, $c.lit("tip something being carried"), 1);
+        await add_menu(win, nul_glyphinfo, any, $c.i8(i), 0, ATR.NONE, clr, $c.lit("tip something being carried"), MENU.ITEMFLAGS_SELECTED);
     }
-    await windowprocs.win_end_menu(win, $c.lit("Tip which container?"));
-    n = await select_menu(win, 1, new $c.Ptr(pick_list, 0));
-    await windowprocs.win_destroy_nhwindow(win);
+    await end_menu()(win, $c.lit("Tip which container?"));
+    n = await select_menu(win, PICK.ONE, new $c.Ptr(pick_list, 0));
+    await destroy_nhwindow()(win);
     otmp = n <= 0 ? null : $c.radd(pick_list[0], 0).item.a_obj;
     if (n > 1 && $c.peq(otmp, dummyobj)) {
         otmp = $c.radd(pick_list[0], 1).item.a_obj;
@@ -2456,61 +2494,61 @@ async function choose_tip_container_menu() {   // pickup.c:3505
     }
     if (otmp && !$c.peq(otmp, dummyobj)) {
         await tipcontainer(otmp);
-        return 1;
+        return ECMD.TIME;
     }
     if (n === -1) {
-        return 2;
+        return ECMD.CANCEL;
     }
-    return 0;
+    return ECMD.OK;
 }
 export async function dotip() {   // pickup.c:3562
     let cobj = null, nobj = null, cc = new $T.nhcoord(), boxes = 0, c = 0, buf = new Int8Array(256), qbuf = new Int8Array(256), spillage = null, res = 0;
     spillage = null;
     cc.x = u.ux, cc.y = u.uy;
-    boxes = container_at(cc.x, cc.y, 1);
-    if (boxes > 0 && (!iflags.menu_requested || flags.menu_style === 0 && boxes > 1)) {
+    boxes = container_at(cc.x, cc.y, TRUE);
+    if (boxes > 0 && (!iflags.menu_requested || flags.menu_style === MENU.TRADITIONAL && boxes > 1)) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("You can't tip %s while carrying so much."), !flags.verbose ? $c.lit("a container") : boxes > 1 ? $c.lit("one") : $c.lit("it"));
-        if (!await check_capacity(new $c.Ptr(buf, 0)) && await able_to_loot(cc.x, cc.y, 0)) {
+        if (!await check_capacity(new $c.Ptr(buf, 0)) && await able_to_loot(cc.x, cc.y, FALSE)) {
             if (boxes > 1) {
-                if ((res = await choose_tip_container_menu()) !== 0) {
+                if ((res = await choose_tip_container_menu()) !== ECMD.OK) {
                     return res;
                 }
             } else {
                 for (cobj = svl.level.objects[cc.x][cc.y]; cobj; cobj = nobj) {
                     nobj = cobj.v.v_nexthere;
-                    if (!(cobj.otyp >= 214 /* LARGE_BOX */ && cobj.otyp <= 220 /* BAG_OF_TRICKS */)) {
+                    if (!Is_container(cobj)) {
                         continue;
                     }
-                    c = await yn_function(await safe_qbuf(new $c.Ptr(qbuf, 0), $c.lit("There is "), $c.lit(" here, tip it?"), cobj, doname, ansimpleoname, $c.lit("container")), new $c.Ptr(ynqchars, 0), 113, 1);
+                    c = await yn_function(await safe_qbuf(new $c.Ptr(qbuf, 0), $c.lit("There is "), $c.lit(" here, tip it?"), cobj, doname, ansimpleoname, $c.lit("container")), new $c.Ptr(ynqchars, 0), 113, TRUE);
                     if (c === 113) {
-                        return 0;
+                        return ECMD.OK;
                     }
                     if (c === 110) {
                         continue;
                     }
                     await tipcontainer(cobj);
-                    return 1;
+                    return ECMD.TIME;
                 }
             }
         }
     }
-    cobj = await getobj($c.lit("tip"), tip_ok, 2);
+    cobj = await getobj($c.lit("tip"), tip_ok, GETOBJ_PROMPT);
     if (!cobj) {
-        return 2;
+        return ECMD.CANCEL;
     }
-    if (cobj.otyp >= 214 /* LARGE_BOX */ && cobj.otyp <= 220 /* BAG_OF_TRICKS */ || cobj.otyp === 252 /* HORN_OF_PLENTY */) {
+    if (Is_container(cobj) || cobj.otyp === HORN_OF_PLENTY) {
         await tipcontainer(cobj);
-        return 1;
+        return ECMD.TIME;
     }
-    if ((cobj.otyp === 224 /* TALLOW_CANDLE */ || cobj.otyp === 225 /* WAX_CANDLE */) && cobj.lamplit | 0) {
+    if (Is_candle(cobj) && cobj.lamplit | 0) {
         spillage = $c.lit("wax");
-    } else if (cobj.otyp === 321 /* POT_OIL */ && cobj.lamplit | 0 || cobj.otyp === 227 /* OIL_LAMP */ && cobj.age !== 0 || cobj.otyp === 228 /* MAGIC_LAMP */ && cobj.spe !== 0) {
+    } else if (cobj.otyp === POT_OIL && cobj.lamplit | 0 || cobj.otyp === OIL_LAMP && cobj.age !== 0 || cobj.otyp === MAGIC_LAMP && cobj.spe !== 0) {
         spillage = $c.lit("oil");
-    } else if (cobj.otyp === 240 /* CAN_OF_GREASE */ && cobj.spe > 0) {
+    } else if (cobj.otyp === CAN_OF_GREASE && cobj.spe > 0) {
         spillage = $c.lit("grease");
-    } else if (cobj.otyp === 293 /* FOOD_RATION */ || cobj.otyp === 292 /* CRAM_RATION */ || cobj.otyp === 291 /* LEMBAS_WAFER */) {
+    } else if (cobj.otyp === FOOD_RATION || cobj.otyp === CRAM_RATION || cobj.otyp === LEMBAS_WAFER) {
         spillage = $c.lit("crumbs");
-    } else if (cobj.oclass === 17 /* VENOM_CLASS */) {
+    } else if (cobj.oclass === VENOM_CLASS) {
         spillage = $c.lit("venom");
     }
     if (spillage) {
@@ -2521,30 +2559,30 @@ export async function dotip() {   // pickup.c:3562
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit(" and immediately %s away"), await vtense(spillage, $c.lit("burn")));
         }
         await pline($c.lit("Some %s %s onto the %s%s."), spillage, await vtense(spillage, $c.lit("spill")), surface(u.ux, u.uy), new $c.Ptr(buf, 0));
-        if (cobj.otyp === 240 /* CAN_OF_GREASE */ && cobj.spe > 0) {
-            await consume_obj_charge(cobj, 1);
+        if (cobj.otyp === CAN_OF_GREASE && cobj.spe > 0) {
+            await consume_obj_charge(cobj, TRUE);
         }
-        return 1;
+        return ECMD.TIME;
     }
-    if (cobj.oclass === 8 /* POTION_CLASS */) {
+    if (cobj.oclass === POTION_CLASS) {
         await pline_The($c.lit("%s %s securely sealed."), await xname(cobj), await otense(cobj, $c.lit("are")));
     } else if ($G.uarmh && $c.peq(cobj, $G.uarmh)) {
-        return await tiphat() ? 1 : 0;
-    } else if (cobj.otyp === 476 /* STATUE */) {
+        return await tiphat() ? ECMD.TIME : ECMD.OK;
+    } else if (cobj.otyp === STATUE) {
         await pline($c.lit("Nothing interesting happens."));
     } else {
         await pline($c.lit("%s"), c_common_strings.c_nothing_happens);
     }
-    return 0;
+    return ECMD.OK;
 }
 async function tipcontainer(box) {   // pickup.c:3688
     let ox = Int16Array.of(0), oy = Int16Array.of(0), srcheld = 0, dstheld = 0, maybeshopgoods = 0, targetbox = null, cancelled = Int8Array.of(0), otmp = null, nobj = null, terse = 0, highdrop = 0, altarizing = 0, cursed_mbag = 0, loss = 0, $t1, $t2;
     ox[0] = u.ux;
     oy[0] = u.uy;
-    srcheld = 0;
-    dstheld = 0;
+    srcheld = FALSE;
+    dstheld = FALSE;
     targetbox = null;
-    cancelled[0] = 0;
+    cancelled[0] = FALSE;
     if (get_obj_location(box, new $c.Ptr(ox, 0), new $c.Ptr(oy, 0), 0)) {
         box.ox = ox[0], box.oy = oy[0];
     }
@@ -2552,22 +2590,22 @@ async function tipcontainer(box) {   // pickup.c:3688
     if (cancelled[0]) {
         return;
     }
-    maybeshopgoods = $c.i8(!(box.where === 3) && await costly_spot(box.ox, box.oy) ? 1 : 0);
-    if (await tipcontainer_checks(box, targetbox, 0) !== 0 /* TIPCHECK_OK */) {
+    maybeshopgoods = $c.i8(!carried(box) && await costly_spot(box.ox, box.oy) ? 1 : 0);
+    if (await tipcontainer_checks(box, targetbox, FALSE) !== TIPCHECK.OK) {
         return;
     }
-    if (targetbox && await tipcontainer_checks(targetbox, null, 1) !== 0 /* TIPCHECK_OK */) {
+    if (targetbox && await tipcontainer_checks(targetbox, null, TRUE) !== TIPCHECK.OK) {
         return;
     }
     {
-        highdrop = $c.i8(!can_reach_floor(1) ? 1 : 0);
-        altarizing = $c.i8(svl.level.locations[ox[0]][oy[0]].typ === 32 /* ALTAR */ ? 1 : 0);
-        cursed_mbag = $c.i8((box.otyp === 219 /* BAG_OF_HOLDING */ || box.otyp === 220 /* BAG_OF_TRICKS */) && box.cursed | 0 ? 1 : 0);
+        highdrop = $c.i8(!can_reach_floor(TRUE) ? 1 : 0);
+        altarizing = $c.i8(svl.level.locations[ox[0]][oy[0]].typ === ALTAR ? 1 : 0);
+        cursed_mbag = $c.i8(Is_mbag(box) && box.cursed | 0 ? 1 : 0);
         loss = 0;
-        srcheld = $c.i8(box.where === 3 ? 1 : 0);
-        dstheld = $c.i8(targetbox && targetbox.where === 3 ? 1 : 0);
+        srcheld = $c.i8(carried(box));
+        dstheld = $c.i8(targetbox && carried(targetbox) ? 1 : 0);
         if (u.uswallow) {
-            highdrop = altarizing = 0;
+            highdrop = altarizing = FALSE;
         }
         terse = $c.i8(!(highdrop || altarizing || await costly_spot(box.ox, box.oy)) ? 1 : 0);
         box.cknown = (1) & 1;
@@ -2580,22 +2618,22 @@ async function tipcontainer(box) {   // pickup.c:3688
             nobj = otmp.nobj;
             await obj_extract_self(otmp);
             otmp.ox = box.ox, otmp.oy = box.oy;
-            if (box.otyp === 216 /* ICE_BOX */) {
+            if (box.otyp === ICE_BOX) {
                 await removed_from_icebox(otmp);
             } else if (cursed_mbag && is_boh_item_gone()) {
-                loss = $c.add64(loss, await mbag_item_gone(srcheld, otmp, 0));
-                terse = 0;
+                loss = $c.add64(loss, await mbag_item_gone(srcheld, otmp, FALSE));
+                terse = FALSE;
                 continue;
             }
             if (maybeshopgoods) {
-                await addtobill(otmp, 0, 0, 1);
+                await addtobill(otmp, FALSE, FALSE, TRUE);
                 iflags.suppress_price = iflags.suppress_price + 1 | 0;
             }
             if (targetbox) {
-                if ((targetbox.otyp === 219 /* BAG_OF_HOLDING */ || targetbox.otyp === 220 /* BAG_OF_TRICKS */) && mbag_explodes(otmp, 0)) {
-                    await livelog_printf(2, $c.lit("just blew up %s bag of holding via tipping"), genders[flags.female ? 1 : 0].his);
+                if (Is_mbag(targetbox) && mbag_explodes(otmp, 0)) {
+                    await livelog_printf(LL.ACHIEVE, $c.lit("just blew up %s bag of holding via tipping"), genders[flags.female ? 1 : 0].his);
                     await urgent_pline($c.lit("As %s %s inside, you are blasted by a magical explosion!"), await doname(otmp), await otense(otmp, $c.lit("tumble")));
-                    if (otmp.otyp === 219 /* BAG_OF_HOLDING */) {
+                    if (otmp.otyp === BAG_OF_HOLDING) {
                         await do_boh_explosion(otmp, $c.i8(!srcheld ? 1 : 0));
                     }
                     await obfree(otmp, null);
@@ -2607,13 +2645,13 @@ async function tipcontainer(box) {   // pickup.c:3688
                     }
                     targetbox = null;
                     nobj = null;
-                    await losehp(rng_log_enabled() ? (rng_log_set_caller($c.lit("pickup.c"), 3803, $c.lit("tipcontainer")), d(6, 6)) : d(6, 6), $c.lit("magical explosion"), 0);
+                    await losehp(d(6, 6), $c.lit("magical explosion"), KILLED.BY_AN);
                 } else {
                     await add_to_container(targetbox, otmp);
                 }
             } else if (highdrop) {
-                otmp.how_lost = (2) & 7;
-                await hitfloor(otmp, 1);
+                otmp.how_lost = (LOST.DROPPED) & 7;
+                await hitfloor(otmp, TRUE);
             } else {
                 if (altarizing) {
                     await doaltarobj(otmp);
@@ -2621,12 +2659,12 @@ async function tipcontainer(box) {   // pickup.c:3688
                     await pline($c.lit("%s %s to the %s."), await Doname2(otmp), await otense(otmp, $c.lit("drop")), surface(ox[0], oy[0]));
                 } else {
                     await pline($c.lit("%s%c"), await doname(otmp), nobj ? 44 : 46);
-                    iflags.last_msg = 6 /* PLNMSG_OBJNAM_ONLY */;
+                    iflags.last_msg = PLNMSG.OBJNAM_ONLY;
                 }
-                otmp.how_lost = (2) & 7;
+                otmp.how_lost = (LOST.DROPPED) & 7;
                 await dropy(otmp);
-                if (iflags.last_msg !== 6 /* PLNMSG_OBJNAM_ONLY */) {
-                    terse = 0;
+                if (iflags.last_msg !== PLNMSG.OBJNAM_ONLY) {
+                    terse = FALSE;
                 }
             }
             if (maybeshopgoods) {
@@ -2651,21 +2689,21 @@ async function tipcontainer(box) {   // pickup.c:3688
 async function tipcontainer_gettarget(box, cancelled) {   // pickup.c:3871
     let n = 0, n_conts = 0, win = 0, any = new $T.any(), buf = new Int8Array(256), pick_list = [null], dummyobj = new $T.obj(), otmp = null, hands_available = 0, exclude_it = 0, clr = 0, $t1;
     pick_list[0] = null;
-    hands_available = 1;
-    clr = 8;
-    win = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(win, 0);
+    hands_available = TRUE;
+    clr = NO_COLOR;
+    win = await create_nhwindow()(NHW.MENU);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     dummyobj.$copyFrom(cg.zeroobj);
     any.$copyFrom(cg.zeroany);
     any.a_obj = dummyobj;
-    await add_menu(win, nul_glyphinfo, any, 45, 0, 0, clr, $c.lit("on the floor"), 1);
+    await add_menu(win, nul_glyphinfo, any, 45, 0, ATR.NONE, clr, $c.lit("on the floor"), MENU.ITEMFLAGS_SELECTED);
     await add_menu_str(win, $c.lit(""));
     n_conts = 0;
     for (otmp = gi.invent; otmp; otmp = otmp.nobj) {
         if ($c.peq(otmp, box)) {
             continue;
         }
-        if (!(otmp.otyp >= 214 /* LARGE_BOX */ && otmp.otyp <= 220 /* BAG_OF_TRICKS */) || otmp.otyp === 220 /* BAG_OF_TRICKS */ && otmp.dknown | 0 && objects[otmp.otyp].oc_name_known | 0) {
+        if (!Is_container(otmp) || otmp.otyp === BAG_OF_TRICKS && otmp.dknown | 0 && objects[otmp.otyp].oc_name_known | 0) {
             continue;
         }
         if (!($t1 = n_conts, n_conts = $t1 + 1 | 0, $t1)) {
@@ -2675,12 +2713,12 @@ async function tipcontainer_gettarget(box, cancelled) {   // pickup.c:3871
         any.$copyFrom(cg.zeroany);
         any.a_obj = !exclude_it ? otmp : null;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s%s"), !exclude_it ? $c.lit("") : $c.lit("    "), await doname(otmp));
-        await add_menu(win, nul_glyphinfo, any, $c.i8(!exclude_it ? otmp.invlet : 0), 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(win, nul_glyphinfo, any, $c.i8(!exclude_it ? otmp.invlet : 0), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Where to tip the contents of %s"), await doname(box));
-    await windowprocs.win_end_menu(win, new $c.Ptr(buf, 0));
-    n = await select_menu(win, 1, new $c.Ptr(pick_list, 0));
-    await windowprocs.win_destroy_nhwindow(win);
+    await end_menu()(win, new $c.Ptr(buf, 0));
+    n = await select_menu(win, PICK.ONE, new $c.Ptr(pick_list, 0));
+    await destroy_nhwindow()(win);
     otmp = null;
     if (pick_list[0]) {
         otmp = $c.radd(pick_list[0], 0).item.a_obj;
@@ -2697,47 +2735,47 @@ async function tipcontainer_gettarget(box, cancelled) {   // pickup.c:3871
 }
 async function tipcontainer_checks(box, targetbox, allowempty) {   // pickup.c:3954
     let seencount = Int32Array.of(0), res = 0, bag = 0, old_spe = 0, seen = Int32Array.of(0), totseen = 0, maybeshopgoods = 0, ox = Int16Array.of(0), oy = Int16Array.of(0), yourbuf = new Int8Array(256), empty_it = 0;
-    if (targetbox && targetbox.otyp === 220 /* BAG_OF_TRICKS */) {
+    if (targetbox && targetbox.otyp === BAG_OF_TRICKS) {
         seencount[0] = 0;
-        await bagotricks(targetbox, 0, new $c.Ptr(seencount, 0));
-        return 3 /* TIPCHECK_CANNOT */;
+        await bagotricks(targetbox, FALSE, new $c.Ptr(seencount, 0));
+        return TIPCHECK.CANNOT;
     }
     if (!box.lknown) {
         box.lknown = (1) & 1;
-        if (box.where === 3) {
+        if (carried(box)) {
             await update_inventory();
         }
     }
     if (box.olocked) {
         await pline($c.lit("%s is locked."), upstart(await thesimpleoname(box)));
-        return 1 /* TIPCHECK_LOCKED */;
+        return TIPCHECK.LOCKED;
     } else if (box.otrapped) {
-        await chest_trap(box, 6 /* HAND */, 0);
+        await chest_trap(box, HAND, FALSE);
         if (gm.multi >= 0) {
             nomul(-1);
             gm.multi_reason = $c.lit("tipping a container");
             gn.nomovemsg = $c.lit("");
         }
-        return 2 /* TIPCHECK_TRAPPED */;
-    } else if (box.otyp === 220 /* BAG_OF_TRICKS */ || box.otyp === 252 /* HORN_OF_PLENTY */) {
-        res = 0 /* TIPCHECK_OK */;
-        bag = $c.i8(box.otyp === 220 /* BAG_OF_TRICKS */ ? 1 : 0);
+        return TIPCHECK.TRAPPED;
+    } else if (box.otyp === BAG_OF_TRICKS || box.otyp === HORN_OF_PLENTY) {
+        res = TIPCHECK.OK;
+        bag = $c.i8(box.otyp === BAG_OF_TRICKS ? 1 : 0);
         old_spe = box.spe;
-        maybeshopgoods = $c.i8(!(box.where === 3) && await costly_spot(box.ox, box.oy) ? 1 : 0);
+        maybeshopgoods = $c.i8(!carried(box) && await costly_spot(box.ox, box.oy) ? 1 : 0);
         ox[0] = u.ux;
         oy[0] = u.uy;
-        if (targetbox && (res = await tipcontainer_checks(targetbox, null, 1)) !== 0 /* TIPCHECK_OK */) {
+        if (targetbox && (res = await tipcontainer_checks(targetbox, null, TRUE)) !== TIPCHECK.OK) {
             return res;
         }
         if (get_obj_location(box, new $c.Ptr(ox, 0), new $c.Ptr(oy, 0), 0)) {
             box.ox = ox[0], box.oy = oy[0];
         }
         if (maybeshopgoods && !box.no_charge) {
-            await addtobill(box, 0, 0, 1);
+            await addtobill(box, FALSE, FALSE, TRUE);
         }
         seen[0] = totseen = 0;
         do {
-            if (!(bag ? await bagotricks(box, 1, new $c.Ptr(seen, 0)) : await hornoplenty(box, 1, targetbox))) {
+            if (!(bag ? await bagotricks(box, TRUE, new $c.Ptr(seen, 0)) : await hornoplenty(box, TRUE, targetbox))) {
                 break;
             }
             totseen = totseen + seen[0] | 0;
@@ -2747,30 +2785,42 @@ async function tipcontainer_checks(box, targetbox, allowempty) {   // pickup.c:3
                 await pline($c.lit("%s"), c_common_strings.c_nothing_seems_to_happen);
             }
             box.spe = $c.i8(old_spe);
-            await check_unpaid_usage(box, 1);
+            await check_unpaid_usage(box, TRUE);
             box.spe = 0;
             box.cknown = (1) & 1;
         }
         if (maybeshopgoods && !box.no_charge) {
-            await subfrombill(box, await shop_keeper(in_rooms(ox[0], oy[0], 14 /* SHOPBASE */).get(0)));
+            await subfrombill(box, await shop_keeper(in_rooms(ox[0], oy[0], SHOPBASE).get(0)));
         }
-        return 3 /* TIPCHECK_CANNOT */;
-    } else if (box.otyp === 214 /* LARGE_BOX */ && box.spe === 1) {
-        empty_it = 0;
-        await observe_quantum_cat(box, 1, 1);
-        if (!(box.cobj !== null)) {
+        return TIPCHECK.CANNOT;
+    } else if (SchroedingersBox(box)) {
+        empty_it = FALSE;
+        await observe_quantum_cat(box, TRUE, TRUE);
+        if (!Has_contents(box)) {
             await pline($c.lit("%sbox is now empty."), await Shk_Your(new $c.Ptr(yourbuf, 0), box));
         } else {
-            empty_it = 1;
+            empty_it = TRUE;
         }
         box.cknown = (1) & 1;
-        return empty_it || allowempty ? 0 /* TIPCHECK_OK */ : 4 /* TIPCHECK_EMPTY */;
-    } else if (!allowempty && !(box.cobj !== null)) {
+        return empty_it || allowempty ? TIPCHECK.OK : TIPCHECK.EMPTY;
+    } else if (!allowempty && !Has_contents(box)) {
         box.cknown = (1) & 1;
         await pline($c.lit("%s is empty."), upstart(await thesimpleoname(box)));
-        return 4 /* TIPCHECK_EMPTY */;
+        return TIPCHECK.EMPTY;
     }
-    return 0 /* TIPCHECK_OK */;
+    return TIPCHECK.OK;
+}
+function FOLLOW(curr, flags) {
+    return flags & BY_NEXTHERE ? curr.v.v_nexthere : curr.nobj;
+}
+function GOLD_WT(n) {
+    return $c.div64($c.add64(n, 50), 100);
+}
+function GOLD_CAPACITY(w, n) {
+    return $c.sub64($c.sub64($c.mul64(w, -100), $c.add64(n, 50)), 1);
+}
+function Icebox() {
+    return gc.current_container.otyp === ICE_BOX ? 1 : 0;
 }
 
 export function $init() {
@@ -2783,24 +2833,26 @@ export function $init() {
     overloadpfx.fill(0);
     overloadpfx.set([89, 111, 117, 32, 104, 97, 118, 101, 32, 101, 120, 116, 114, 101, 109, 101, 32, 100, 105, 102, 102, 105, 99, 117, 108, 116, 121]);   // "You have extreme difficulty"
     add_valid_menu_class$vmc_count = 0;
-    autopick_testobj$costly = 0;
+    autopick_testobj$costly = FALSE;
     observe_quantum_cat$sc.fill(0);
     observe_quantum_cat$sc.set([83, 99, 104, 114, 111, 101, 100, 105, 110, 103, 101, 114, 39, 115, 32, 67, 97, 116]);   // "Schroedinger's Cat"
     explain_container_prompt$explaintext.fill(null);
-    explain_container_prompt$explaintext[0] = $c.lit("Container actions:");
-    explain_container_prompt$explaintext[1] = $c.lit("");
-    explain_container_prompt$explaintext[2] = $c.lit(" : -- Look: examine contents");
-    explain_container_prompt$explaintext[3] = $c.lit(" o -- Out: take things out");
-    explain_container_prompt$explaintext[4] = $c.lit(" i -- In: put things in");
-    explain_container_prompt$explaintext[5] = $c.lit(" b -- Both: first take things out, then put things in");
-    explain_container_prompt$explaintext[6] = $c.lit(" r -- Reversed: put things in, then take things out");
-    explain_container_prompt$explaintext[7] = $c.lit(" s -- Stash: put one item in");
-    explain_container_prompt$explaintext[8] = $c.lit("");
-    explain_container_prompt$explaintext[9] = $c.lit(" n -- Next: loot next selected container");
-    explain_container_prompt$explaintext[10] = $c.lit(" q -- Quit: finished");
-    explain_container_prompt$explaintext[11] = $c.lit(" ? -- Help: display this text.");
-    explain_container_prompt$explaintext[12] = $c.lit("");
-    explain_container_prompt$explaintext[13] = null;
+    $c.init(explain_container_prompt$explaintext, [
+        $c.lit("Container actions:"),
+        $c.lit(""),
+        $c.lit(" : -- Look: examine contents"),
+        $c.lit(" o -- Out: take things out"),
+        $c.lit(" i -- In: put things in"),
+        $c.lit(" b -- Both: first take things out, then put things in"),
+        $c.lit(" r -- Reversed: put things in, then take things out"),
+        $c.lit(" s -- Stash: put one item in"),
+        $c.lit(""),
+        $c.lit(" n -- Next: loot next selected container"),
+        $c.lit(" q -- Quit: finished"),
+        $c.lit(" ? -- Help: display this text."),
+        $c.lit(""),
+        null
+    ]);
     in_or_out_menu$lootchars.fill(0);
     in_or_out_menu$lootchars.set([95, 58, 111, 105, 98, 114, 115, 110, 113]);   // "_:oibrsnq"
     in_or_out_menu$abc_chars.fill(0);

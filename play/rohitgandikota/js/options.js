@@ -8,7 +8,7 @@ import { new_status_window } from './tty/wintty.js';
 import { notice_all_mons_flush } from './hack.js';
 import { display_file } from './pager.js';
 import { optmenu } from './dat_files.js';
-import { reset_commands } from './cmd.js';
+import { reset_commands, bind_key, count_bind_keys, update_rest_on_space } from './cmd.js';
 import { set_vanq_order } from './insight.js';
 import { pline, docrt, bot, reglyph_darkroom, flush_screen } from './display.js';
 import {
@@ -17,7 +17,7 @@ import {
     tty_add_menu_str, tty_end_menu, tty_display_nhwindow, tty_select_menu, tty_wait_synch } from './tty/wintty.js';
 import {
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT,
-    MENU_ITEMFLAGS_SKIPMENUCOLORS, MENU_BEHAVE_STANDARD, BUFSZ,
+    MENU_ITEMFLAGS_SKIPMENUCOLORS, MENU_BEHAVE_STANDARD, BUFSZ, QBUFSZ,
     PICK_NONE, PICK_ONE, PICK_ANY, ECMD_OK,
     AUTOUNLOCK_APPLY_KEY, MENU_TRADITIONAL, MENU_COMBINATION,
     GPCOORDS_NONE, GPCOORDS_COMPASS, GPCOORDS_COMFULL, GPCOORDS_MAP,
@@ -34,7 +34,7 @@ import {
 import { def_char_to_objclass } from './sp_lev.js';
 import { OCLASSES } from './objects_data.js';
 import {
-    color_attr_to_str, attr2attrname, clr2colorname, count_menucolors,
+    color_attr_to_str, color_attr_parse_str, attr2attrname, clr2colorname, count_menucolors,
     add_menu_coloring, add_menu_coloring_parsed, free_one_menu_coloring,
     query_color, query_attr,
 } from './coloratt.js';
@@ -43,7 +43,7 @@ import { vision_recalc } from './vision.js';
 import { reassign, update_inventory, inv_order } from './invent.js';
 import { def_oc_syms } from './drawing_data.js';
 import { choose_disco_sort, get_sortdisco } from './o_init.js';
-import { mungspaces, strNsubst } from './hacklib.js';
+import { mungspaces, strNsubst, trimspaces } from './hacklib.js';
 import {
     regex_init, regex_compile, regex_error_desc, regex_free,
 } from './posixregex.js';
@@ -236,6 +236,13 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         config_error_add(`Value not allowed for '${opt.name}'`);
         return false;
     }
+    // optfn_fruit(): an omitted value is rejected before fruit_from_name().
+    // During play string_for_opt() accepts the omission without a message.
+    if (opt.name === 'fruit' && !value && !negated) {
+        if (tinitial)
+            config_error_add(`Missing parameter for '${opts}'`);
+        return false;
+    }
     if (value === null && opt.type !== 'BoolOpt' && opt.valok === 'Yes'
         && opt.name !== 'packorder' && opt.name !== 'pickup_types'
         && opt.name !== 'menu_objsyms' && opt.name !== 'autounlock'
@@ -243,14 +250,24 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         && !(opt.name === 'whatis_coord' && negated)
         && !(opt.name === 'paranoid_confirmation' && negated)
         && !(opt.name === 'number_pad' && (opts.length <= 10 || negated || tinitial))
-        && opt.name !== 'hilite_status') {
+        && opt.name !== 'hilite_status' && opt.name !== 'menu_headings') {
         config_error_add(`Missing value for '${opt.name}'`);
         return false;
     }
 
     if (opt.type === 'BoolOpt') {
+        // src/options.c optfn_boolean(): ignore unavailable storage, then
+        // enforce whether this option may be set at startup or during play.
+        if (opt.noaddr)
+            return retval;
+        if ((!tinitial && opt.setwhere === 'set_in_config')
+            || (tinitial && opt.setwhere === 'set_wiznofuz'))
+            return false;
         result.opts[opt.name] = !negated;
         (result.optSetInConfig ||= {})[opt.name] = true;
+        // Later number_pad lines call update_rest_on_space during startup.
+        if (opt.name === 'rest_on_space')
+            (game.flags ||= {}).rest_on_space = !negated;
     } else if ((opt.name === 'symset' || opt.name === 'roguesymset')
                && value !== null && value !== '') {
         /* src/options.c:4198 optfn_symset() / :3567 optfn_roguesymset()
@@ -262,6 +279,18 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         game.opt_need_glyph_reset = true;
         game.opt_symset_changed = true;
         result.opts[opt.name] = value;
+    } else if (opt.name === 'menu_headings') {
+        // src/options.c:2183 optfn_menu_headings(), do_set.
+        const ca = { color: NO_COLOR, attr: negated ? ATR_NONE : ATR_INVERSE };
+        if (value) {
+            if (negated) {
+                config_error_add(`The ${opt.name} option may not both have a value and be negated.`);
+                return false;
+            }
+            if (!color_attr_parse_str(ca, value))
+                return false;
+        }
+        (game.iflags ||= {}).menu_headings = ca;
     } else if (opt.name === 'statushilites') {
         /* src/options.c:4018 optfn_statushilites() do_set: control over
            whether highlights should be displayed (non-zero), and also for
@@ -530,9 +559,12 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
                     result.opts.num_pad_mode |= 2;
             }
         }
-        /* reset_commands(FALSE) runs once the live iflags hold these (see
-           jsmain and parseoptions_interactive()); number_pad() only emits
-           the terminal's keypad-mode strings, which have no screen cells */
+        const iflags = (game.iflags ||= {});
+        if ('num_pad' in result.opts) {
+            iflags.num_pad = result.opts.num_pad;
+            iflags.num_pad_mode = result.opts.num_pad_mode;
+        }
+        reset_commands(false);
         result.opts[opt.name] = negated ? null : value;
     } else if (opt.name === 'disclose') {
         /* src/options.c:1447 optfn_disclose(), the do_set arm: the value is a
@@ -746,8 +778,7 @@ export function config_error_add(msg) {
 //
 // C ref: src/cfgfiles.c parse_config_line() dispatches on the leading keyword
 // (OPTIONS=, SYMBOLS=, BIND=, ...) via the config_line_stmt table at
-// cfgfiles.c:1312. Only OPTIONS is wired up so far; the others are recognised
-// and recorded so they are visibly pending rather than silently ignored.
+// cfgfiles.c:1312. BIND lines update the configured command bindings.
 export function parseNethackrc(rc) {
     const result = {
         opts: {},        // option name -> boolean | string | null
@@ -798,6 +829,7 @@ export function parseNethackrc(rc) {
         case 'BINDING':
         case 'BINDINGS':
             result.bindings.push(rest);
+            parsebindings(rest);
             break;
         default:
             result.unhandled.push(line);
@@ -806,6 +838,89 @@ export function parseNethackrc(rc) {
     }
     config_error_data = null; /* config_error_done() */
     return result;
+}
+
+// src/options.c:6971 txt2key(), decode a one-byte key from binding text.
+export function txt2key(txt) {
+    /* Config text reaches C as UTF-8 bytes, even for a non-ASCII key. */
+    txt = String.fromCharCode(...new TextEncoder().encode(txt));
+    txt = trimspaces(txt);
+    let makemeta = false;
+    if (!txt)
+        return 0;
+    if (txt.length === 1)
+        return txt.charCodeAt(0) & 0xff;
+    if (txt === '<enter>') return 10;
+    if (txt === '<space>') return 32;
+    if (txt === '<esc>') return 27;
+    if (txt[0] === '\\')
+        return escapes(txt.slice(0, QBUFSZ - 1)).charCodeAt(0) & 0xff;
+
+    /* The pinned build's M macro subtracts 128; uchar conversion wraps. */
+    if (highc(txt[0]) === 'M') {
+        txt = txt.slice(1);
+        if (txt[0] === '-' && txt.length > 1)
+            txt = txt.slice(1);
+        if (txt.length === 1)
+            return (txt.charCodeAt(0) - 128) & 0xff;
+        makemeta = true;
+    }
+    if (txt[0] === '^' || highc(txt[0]) === 'C') {
+        let uc = txt.charCodeAt(0);
+        if (txt.length === 1)
+            return (makemeta ? uc - 128 : uc) & 0xff;
+        txt = txt.slice(1);
+        if (txt[0] === '-' && txt.length > 1)
+            txt = txt.slice(1);
+        if (txt[0] === '?')
+            return makemeta ? 255 : 127;
+        uc = txt.charCodeAt(0) & 0x1f;
+        return (makemeta ? uc - 128 : uc) & 0xff;
+    }
+    if (makemeta && txt)
+        return (txt.charCodeAt(0) - 128) & 0xff;
+    if (txt[0] >= '0' && txt[0] <= '9') {
+        let key = 0;
+        for (let i = 0; i < 3; i++) {
+            if (!(txt[i] >= '0' && txt[i] <= '9'))
+                return 0;
+            key = (10 * key + txt.charCodeAt(i) - 48) & 0xff;
+        }
+        return key;
+    }
+    return 0;
+}
+
+// src/options.c:7596 parsebindings(), command-key bindings.
+// Special, mouse and menu bindings still need their separate consumers.
+export function parsebindings(bindings) {
+    let ret = true;
+    let comma = bindings.indexOf(',');
+    if (comma === 0)
+        comma = bindings.indexOf(',', comma + 1);
+    else if (comma > 0 && (bindings[comma - 1] === '\\'
+             || (bindings[comma - 1] === "'" && bindings[comma + 1] === "'")))
+        comma = bindings.indexOf(',', comma + 2);
+    if (comma >= 0) {
+        ret = parsebindings(bindings.slice(comma + 1));
+        bindings = bindings.slice(0, comma);
+    }
+
+    const colon = bindings.indexOf(':');
+    if (colon < 0)
+        return false;
+    const keytxt = bindings.slice(0, colon);
+    const command = trimspaces(bindings.slice(colon + 1));
+    const key = txt2key(keytxt);
+    if (!key) {
+        config_error_add(`Unknown key binding key '${keytxt}'`);
+        return false;
+    }
+    if (!bind_key(key, command)) {
+        config_error_add(`Unknown key binding command '${command}'`);
+        return false;
+    }
+    return ret;
 }
 
 // Convenience accessors over the parsed table, so callers do not each
@@ -1582,7 +1697,7 @@ function get_option_value(o) {
     case 'autocompletions':         /* src/options.c optfn_o_autocomplete */
         return n_currently_set((game.rc?.autocompletions || []).length);
     case 'bind keys':               /* src/options.c optfn_o_bind_keys */
-        return n_currently_set((game.rc?.bindings || []).length);
+        return n_currently_set(count_bind_keys());
     case 'message types':           /* src/options.c optfn_o_message_types */
         return n_currently_set(msgtype_count());
     case 'fruit':                   /* src/options.c:1769 optfn_fruit */
@@ -2031,7 +2146,7 @@ async function handler_rebind_keys() {
                      'bind key to a command', MENU_ITEMFLAGS_NONE);
         tty_add_menu(win, null, 2, 0, 0, ATR_NONE, NO_COLOR,
                      'bind command to a key', MENU_ITEMFLAGS_NONE);
-        if ((game.rc?.bindings || []).length)
+        if (count_bind_keys())
             tty_add_menu(win, null, 3, 0, 0, ATR_NONE, NO_COLOR,
                          'view changed key binds', MENU_ITEMFLAGS_NONE);
         tty_end_menu(win, 'Do what?');
@@ -2205,6 +2320,9 @@ export function add_menu_heading(tmpwin, buf) {
    machinery that has no JS counterpart. */
 function boolopt_side_effects(name) {
     switch (name) {
+    case 'rest_on_space':
+        update_rest_on_space();
+        break;
     case 'terrainstatus': case 'weaponstatus': case 'armorstatus':
     case 'showscore': case 'showvers': case 'showexp': case 'time':
         /* src/options.c:5349 — the field set is reassessed (VIA_WINDOWPORT) */
@@ -3628,8 +3746,6 @@ async function parseoptions_interactive(buf) {
             game.flags[name] = value;
         }
     }
-    if ('num_pad' in result.opts)
-        reset_commands(false);      /* optfn_number_pad() do_set tail */
     for (const error of result.errors) {
         await pline(error + (/[.!?]$/.test(error) ? '' : '.'));
         await tty_wait_synch();

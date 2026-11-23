@@ -16,6 +16,7 @@ const DISCLOSE_SPECIAL_WITHOUT_PROMPT = '#';
 export const END_DISCLOSE_DEFAULT = 'nnnnnn';
 
 /* C ref: drawing.c:90 def_char_to_objclass, used by the pickup_types parse below. */
+import { c_atoi, c_atol } from './c_atoi.js';
 import { def_char_to_objclass } from './drawing.js';
 import { regcomp, regex_error_desc } from './posixregex.js';
 import { DOSET_BOOLS } from './doset_data.js';
@@ -580,7 +581,7 @@ function* rc_logical_lines(rc) {
 
 /* C options.c:4025-4032 optfn_statushilites(do_set). */
 export function optfn_statushilites_set(iflags, op, negated = false) {
-    const n = op ? (parseInt(op, 10) || 0) : 3;
+    const n = op ? c_atol(op) : 3;
     iflags.hilite_delta = negated ? 0 : n < 0 ? 1 : n;
     // C options.c:4034-4035; startup parses into a separate iflags object.
     if (iflags === game.iflags && !game.go.opt_from_file) reset_status_hilites();
@@ -890,7 +891,12 @@ export function parseNethackrc(rc) {
     }]));
     const alignmentState = facetStates.align;
     const compoundSeen = new Set();
+    let lineIsDup = false;
+    let lineDupDone = false; /* parseoptions() calls complain_about_duplicate() once per line */
     const compoundDuplicate = (name, alias = '') => {
+        if (lineDupDone) return;
+        lineDupDone = true;
+        lineIsDup = compoundSeen.has(name);
         if (compoundSeen.has(name))
             config_error_add('compound option specified multiple times: %s%s', name, alias ? ` (via alias: ${alias})` : '');
         compoundSeen.add(name);
@@ -1013,7 +1019,10 @@ export function parseNethackrc(rc) {
             continue;
         }
 
-        const optMatch = line.match(/^OPTIONS=(.+)/i);
+        /* cfgfiles.c parse_config_line -> parseoptions(bufp): an empty value
+         * still reaches parseoptions, whose options.c:536 reports "Empty
+         * statement" (mac-e-bad-opt-empty-056: "OPTIONS=" alone). */
+        const optMatch = line.match(/^OPTIONS=(.*)/i);
         if (!optMatch) {
             /* C cfgfiles.c:1413,1437 parse_config_line() */
             const cfgerr = config_line_error(line);
@@ -1045,11 +1054,34 @@ export function parseNethackrc(rc) {
             const menusep = menuopts.search(/[:=]/);
             const menuname = (menusep < 0 ? menuopts : menuopts.slice(0, menusep)).trim().toLowerCase();
             const menuval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+            /* C options.c:620-628: duplicate_opt_detection() + complain_about_duplicate()
+             * for every compound option that lacks dupeok, before its optfn runs. */
+            lineDupDone = false;
+            {
+                const dupRow = option_state().allopt.find(r => r.type === 'C' && !r.pfx
+                    && ((menuname.length >= r.minmatch && r.name.toLowerCase().startsWith(menuname))
+                        || (r.alias && menuname === r.alias.toLowerCase())));
+                if (dupRow && !dupRow.dupeok) compoundDuplicate(dupRow.name,
+                    (menuname.length >= dupRow.minmatch && dupRow.name.toLowerCase().startsWith(menuname)) ? '' : dupRow.alias);
+                /* C options.c:630-634: bad_negation() before the option's own function */
+                if (dupRow && menunegated && !dupRow.negateok) {
+                    config_error_add('The %s option may not %sbe negated.', dupRow.name, 'both have a value and ');
+                    continue;
+                }
+                if (dupRow && dupRow.name === 'msghistory') {
+                    const mop = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+                    if (!menunegated && !mop) config_error_add("Missing parameter for '%s'", menuopts);
+                    else if (menunegated && mop) {
+                        config_error_add('The %s option may not %sbe negated.', 'msghistory', 'both have a value and ');
+                        continue;
+                    }
+                }
+            }
             // C options.c:3471-3503 optfn_playmode; parseoptions:620-628.
             const playmode = option_state().allopt.find(r => r.name === 'playmode');
             if (menuname.length >= playmode.minmatch && playmode.name.startsWith(menuname)) {
-                const duplicate = compoundSeen.has('playmode');
                 compoundDuplicate('playmode');
+                const duplicate = lineIsDup;
                 if (menunegated) {
                     config_error_add('The playmode option may not both have a value and be negated.');
                     continue;
@@ -1070,7 +1102,7 @@ export function parseNethackrc(rc) {
                 continue;
             }
             // C options.c:620-623,6782-6806; optlist.h: these compounds disallow duplicates.
-            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'petattr', 'versinfo', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'sortvanquished', 'msg_window', 'menu_headings', 'perminv_mode'].includes(r.name)
+            const compound = option_state().allopt.find(r => ['symset', 'pettype', 'petattr', 'versinfo', 'runmode', 'pickup_types', 'menustyle', 'sortloot', 'sortvanquished', 'msg_window', 'menu_headings', 'perminv_mode', 'statuslines'].includes(r.name)
                 && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
             if (compound) compoundDuplicate(compound.name, menuname === compound.alias ? compound.alias : '');
             const windowtype = option_state().allopt.find(r => r.name === 'windowtype');
@@ -1082,6 +1114,41 @@ export function parseNethackrc(rc) {
                     config_error_add("Missing parameter for '%s'", menuopts);
                 else
                     choose_windows(menuval.slice(0, 15)); // options.c:4972 nmcpy; WINTYPELEN
+                continue;
+            }
+            const wincapNum = option_state().allopt.find(r =>
+                (r.name === 'scroll_amount' || r.name === 'scroll_margin')
+                && menuname.length >= r.minmatch && r.name.startsWith(menuname));
+            if (wincapNum) {
+                if (!menunegated && !menuval)
+                    config_error_add("Missing parameter for '%s'", menuopts);
+                else if (menunegated && menuval)
+                    config_error_add('The %s option may not %sbe negated.', wincapNum.name, 'both have a value and ');
+                else
+                    (result.iflags ||= {})[wincapNum.name === 'scroll_amount' ? 'wc_scroll_amount' : 'wc_scroll_margin']
+                        = menunegated ? (wincapNum.name === 'scroll_amount' ? 1 : 5) : c_atoi(menuval);
+                continue;
+            }
+            /* C options.c optfn_term_cols / optfn_term_rows (do_set): atol()
+             * (LP64 long, saturating) and `ltmp <= 0L || ltmp >= (long)
+             * LARGEST_INT` (32767) -> "Invalid %s: %ld"
+             * (mac-e-num-term_rows-030: "term_rows:4294967297"). */
+            const termDim = !menunegated && option_state().allopt.find(r =>
+                (r.name === 'term_cols' || r.name === 'term_rows')
+                && ((menuname.length >= r.minmatch && r.name.startsWith(menuname)) || menuname === r.alias));
+            if (termDim) {
+                if (!menuval) {
+                    config_error_add("Missing parameter for '%s'", menuopts);
+                } else {
+                    const m = /^[ \t\n\v\f\r]*([+-]?[0-9]+)/.exec(menuval);
+                    let ltmp = m ? BigInt(m[1]) : 0n;
+                    if (ltmp > 9223372036854775807n) ltmp = 9223372036854775807n;
+                    if (ltmp < -9223372036854775808n) ltmp = -9223372036854775808n;
+                    if (ltmp <= 0n || ltmp >= 32767n)
+                        config_error_add('Invalid %s: %s', termDim.name, String(ltmp));
+                    else
+                        (result.iflags ||= {})[termDim.name === 'term_cols' ? 'wc2_term_cols' : 'wc2_term_rows'] = Number(ltmp);
+                }
                 continue;
             }
             const symbolOption = option_state().allopt.find(r =>
@@ -1124,7 +1191,7 @@ export function parseNethackrc(rc) {
                         config_error_add("Negated boolean '%s' should not have a parameter", 'female');
                         continue;
                     }
-                    const numeric = /^\d/.test(op) ? parseInt(op, 10) : NaN;
+                    const numeric = /^\d/.test(op) ? c_atoi(op) : NaN;
                     if ('true'.startsWith(op) || 'yes'.startsWith(op) || op === 'on' || numeric === 1)
                         isFemale = 'female'.startsWith(menuname);
                     else if ('false'.startsWith(op) || 'no'.startsWith(op) || op === 'off' || numeric === 0)
@@ -1221,7 +1288,11 @@ export function parseNethackrc(rc) {
              * character or clashes with a monster class / warning symbol. */
             if (menuname.length >= 3 && 'boulder'.startsWith(menuname)) {
                 compoundDuplicate('boulder');
-                set_boulder_symbol(result, menuopts, menuval, menunegated, config_error_add);
+                /* The rc value is the FILE's bytes in C (escapes() at options.c:1193
+                 * walks bytes); a 4-byte UTF-8 symbol's low UTF-16 unit is not its
+                 * lead byte (mac-b-boulder-emoji4-119 step 0 row 2). */
+                set_boulder_symbol(result, menuopts, rc_bytes(menuval),
+                    menunegated, config_error_add);
                 continue;
             }
             /* C options.c:688-689 parseoptions(): a name matching no allopt[]
@@ -1327,7 +1398,7 @@ export function parseNethackrc(rc) {
             }
             if (menuname.length >= 4 && 'versinfo'.startsWith(menuname)) {
                 // options.c:4504-4510: reject invalid bitmasks without storing them.
-                const val = parseInt(menuopts.slice(menusep + 1), 10) || 0;
+                const val = c_atoi(menuopts.slice(menusep + 1)) || 0;
                 if (menunegated)
                     config_error_add('The versinfo option may not both have a value and be negated.');
                 else if (!val || (val & ~7) !== 0)
@@ -1344,7 +1415,7 @@ export function parseNethackrc(rc) {
             if (menuname.length >= 3 && 'pile_limit'.startsWith(menuname)) {
                 const op = menusep < 0 ? '' : menuopts.slice(menusep + 1);
                 if ((menunegated && !op) || (!menunegated && op)) {
-                    result.flags.pile_limit = menunegated ? 0 : (parseInt(op, 10) || 0);
+                    result.flags.pile_limit = menunegated ? 0 : (c_atoi(op) || 0);
                 } else if (menunegated) {
                     config_error_add('The pile_limit option may not both have a value and be negated.');
                     continue; /* bad_negation -> optn_err, nothing stored */
@@ -1452,7 +1523,7 @@ export function parseNethackrc(rc) {
                     config_error_add('The %s option may not both have a value and be negated.', dupName);
                 else if (dupName === 'windowborders') {
                     if (!dval && !menunegated) config_error_add("Missing parameter for '%s'", menuopts);
-                    else if (!menunegated && (parseInt(dval, 10) || 0) > 4 || (parseInt(dval, 10) || 0) < 0)
+                    else if (!menunegated && (c_atoi(dval) || 0) > 4 || (c_atoi(dval) || 0) < 0)
                         config_error_add('Invalid %s (should be within 0 to 4): %s', dupName, menuopts);
                 } else if (!menunegated && dupName !== 'scores' && dval
                            && !/^(left|top|right|bottom)/i.test(dval))
@@ -1464,7 +1535,7 @@ export function parseNethackrc(rc) {
                     for (let op = dval; op;) {
                         const sneg = op[0] === '!' || /^no/i.test(op);
                         if (sneg) op = op.slice(op[0] === '!' ? 1 : (op[2] !== '-' ? 2 : 3));
-                        const sm = /^\d+/.exec(op), inum = sm ? parseInt(sm[0], 10) : 1;
+                        const sm = /^\d+/.exec(op), inum = sm ? c_atoi(sm[0]) : 1;
                         op = op.replace(/^\d+/, '').replace(/^ +/, '');
                         const sk = (op[0] || '').toLowerCase();
                         if (sk === 't') fl.end_top = sneg ? 0 : inum;
@@ -1502,12 +1573,37 @@ export function parseNethackrc(rc) {
             if (menuname.length >= 5 && 'mouse_support'.startsWith(menuname)
                 && !menunegated && menusep >= 0 && menuopts.slice(menusep + 1).trim()) {
                 const msop = menuopts.slice(menusep + 1).trim();
-                const msmode = parseInt(msop, 10) || 0;
+                const msmode = c_atoi(msop) || 0;
                 if (msmode < 0 || msmode > 2 || (msmode === 0 && msop[0] !== '0')) {
                     config_error_add("Illegal %s parameter '%s'", 'mouse_support', msop);
                     continue;
                 }
                 game.iflags.wc_mouse_support = msmode;
+            }
+            if (menuname.length >= 7 && 'statuslines'.startsWith(menuname)) {
+                const sop = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+                let sitmp = 0;
+                if (menunegated) {
+                    config_error_add('The %s option may not %sbe negated.', 'statuslines', 'both have a value and ');
+                    sitmp = 2;
+                } else if (!sop) {
+                    config_error_add("Missing parameter for '%s'", menuopts);
+                } else sitmp = c_atoi(sop);
+                if (sitmp < 2 || sitmp > 3)
+                    config_error_add("'%s:%s' is invalid; must be 2 or 3", 'statuslines', sop);
+            }
+            /* C options.c:1315-1330 optfn_crash_urlmax(do_set): string_for_opt(opts, FALSE)
+             * ("Missing parameter"), then atoi(op) must be >= 75. */
+            if (menuname.length >= 8 && 'crash_urlmax'.startsWith(menuname)) {
+                const cop = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+                if (!cop) config_error_add("Missing parameter for '%s'", menuopts);
+                else {
+                    const ctemp = c_atoi(cop);
+                    if (ctemp < 75)
+                        config_error_add('Invalid value %d for crash_urlmax.  Minimum value is 75.', ctemp);
+                    else if (game.gc) game.gc.crash_urlmax = ctemp;
+                }
+                continue;
             }
             /* C options.c:620-623 parseoptions(): duplicate_opt_detection()
              * (options.c:6782, during the rc file only) bumps allopt[].dupdetected;
@@ -1532,8 +1628,6 @@ export function parseNethackrc(rc) {
                 }
             }
             if (menuname.length >= 3 && 'number_pad'.startsWith(menuname)) {
-                if (number_pad_seen)
-                    config_error_add('compound option specified multiple times: number_pad');
                 number_pad_seen = true;
                 // optlist.h disallows negation before optfn_number_pad runs.
                 if (menunegated) {
@@ -1568,7 +1662,7 @@ export function parseNethackrc(rc) {
             // C options.c:2299-2308: atoi, accept only menuinvertmode 0..2.
             if (menuname.length >= 5 && 'menuinvertmode'.startsWith(menuname)) {
                 const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
-                const mode = parseInt(op, 10) || 0;
+                const mode = c_atoi(op) || 0;
                 if (op && (mode < 0 || mode > 2))
                     config_error_add(`Illegal menuinvertmode parameter '${op}'`);
                 else if (op) result.iflags.menuinvertmode = mode;
@@ -1584,7 +1678,7 @@ export function parseNethackrc(rc) {
                 if (menunegated) osyms = 0;
                 else if (!op) osyms = 1;
                 else if (/^\d/.test(op)) {
-                    osyms = parseInt(op, 10);
+                    osyms = c_atoi(op);
                     if (osyms >= OBJSYM_NAMES.length) {
                         config_error_add(`Illegal menu_objsyms parameter '${op}'`);
                         continue;
@@ -1614,7 +1708,6 @@ export function parseNethackrc(rc) {
                 continue;
             }
             if (menuname.length >= 3 && 'packorder'.startsWith(menuname)) {
-                if (packorder_seen) config_error_add('compound option specified multiple times: packorder');
                 packorder_seen = true;
                 if (menunegated) {
                     config_error_add('The packorder option may not both have a value and be negated.');
@@ -1660,7 +1753,7 @@ export function parseNethackrc(rc) {
                         config_error_add("Negated boolean '%s' should not have a parameter", boolRow[0]);
                         continue;
                     }
-                    const numeric = /^\d/.test(op) ? parseInt(op, 10) : NaN;
+                    const numeric = /^\d/.test(op) ? c_atoi(op) : NaN;
                     if ('true'.startsWith(op) || 'yes'.startsWith(op)
                         || op === 'on' || numeric === 1)
                         negated = false;
@@ -1808,7 +1901,7 @@ export function parseNethackrc(rc) {
                 }
                 else if (key === 'msghistory') {
                     if (negated ? !val : !!val)
-                        result.iflags.msg_history = negated ? 0 : (parseInt(val, 10) || 0);
+                        result.iflags.msg_history = negated ? 0 : (c_atoi(val) || 0);
                 }
                 /* C options.c:3627-3656 optfn_runmode().  str_start_is()
                  * accepts abbreviations; an unknown value (:3646-3649) or a
@@ -1882,8 +1975,8 @@ export function parseNethackrc(rc) {
                     }
                 }
                 else if (key === 'statuslines') {
-                    const itmp = negated ? 2 : (val ? (parseInt(val, 10) || 0) : 0);
-                    if (!negated && itmp >= 2 && itmp <= 3)
+                    const itmp = negated ? 2 : (val ? (c_atoi(val) || 0) : 0);
+                    if (itmp >= 2 && itmp <= 3)
                         result.iflags.wc2_statuslines = itmp;
                 }
                 else if (key === 'windowcolors') {
@@ -1900,7 +1993,7 @@ export function parseNethackrc(rc) {
                     if (!val)
                         result.iflags.wc_mouse_support = negated ? 0 : 1;
                     else {
-                        const mode = parseInt(val, 10) || 0;
+                        const mode = c_atoi(val) || 0;
                         if (mode < 0 || mode > 2 || (mode === 0 && val[0] !== '0'))
                             config_error_add("Illegal %s parameter '%s'", 'mouse_support', val);
                         else
@@ -4044,7 +4137,7 @@ function optfn_statuslines_set(text) {
     /* options.c:4080 string_for_opt(opts, FALSE): options.c:6675-6676 */
     const errs = text ? [] : ["Missing parameter for 'statuslines:'."];
     const match = text.match(/^[\t\n\r\f\v ]*([+-]?\d+)/);
-    const n = match ? Number(match[1]) : 0;
+    const n = match ? c_atoi(match[1]) : 0;
     if (n < 2 || n > 3)
         return [...errs, `'statuslines:${text}' is invalid; must be 2 or 3.`];
     game.iflags ||= {};
@@ -4726,7 +4819,7 @@ export async function doset() {
                          * atoi(op); below 75 is optn_err, else gc.crash_urlmax. */
                         const op = await string_for_opt(`crash_urlmax:${mungspaces(abuf)}`, false);
                         if (op) {
-                            const temp = parseInt(op, 10) || 0;
+                            const temp = c_atoi(op) || 0;
                             if (temp >= 75) game.gc.crash_urlmax = temp;
                             else await pline('Invalid value %d for crash_urlmax.  Minimum value is 75.', temp);
                         }
@@ -4735,7 +4828,7 @@ export async function doset() {
                          * atoi(op); outside 0..2 is optn_err. */
                         const op = mungspaces(abuf);
                         if (op) {
-                            const mode = parseInt(op, 10) || 0;
+                            const mode = c_atoi(op) || 0;
                             if (mode >= 0 && mode <= 2) g.iflags.menuinvertmode = mode;
                             else await pline("Illegal menuinvertmode parameter '%s'.", op);
                         }
@@ -4750,7 +4843,7 @@ export async function doset() {
                             const neg = op[0] === '!' || /^no/i.test(op);
                             if (neg) op = op.slice(op[0] === '!' ? 1 : (op[2] !== '-' ? 2 : 3));
                             const m = /^\d+/.exec(op);
-                            if (m) { inum = parseInt(m[0], 10); op = op.slice(m[0].length); }
+                            if (m) { inum = c_atoi(m[0]); op = op.slice(m[0].length); }
                             op = op.replace(/^ +/, '');
                             switch ((op[0] || '').toLowerCase()) {
                             case 't': fl.end_top = neg ? 0 : inum; break;
@@ -4778,7 +4871,7 @@ export async function doset() {
                          * before falling back to PILE_LIMIT_DFLT (5).
                          * A negative atoi(op) result falls back to it as well. */
                         const op = await string_for_opt(`pile_limit:${mungspaces(abuf)}`, false);
-                        let lim = op ? (parseInt(op, 10) || 0) : 5;
+                        let lim = op ? (c_atoi(op) || 0) : 5;
                         if (lim < 0) lim = 5;
                         g.flags.pile_limit = lim;
                     } else if (abuf !== '\x1b' && ent.row.name === 'packorder') {
@@ -5060,7 +5153,7 @@ export async function optfn_boolean(optidx, req, negated, opts, op) {
                 return optn_silenterr;
             }
             ln = op.length;
-            const digit = /^[0-9]/.test(op), number = Number.parseInt(op, 10);
+            const digit = /^[0-9]/.test(op), number = c_atoi(op);
             if (prefix(op, 'true', ln) || prefix(op, 'yes', ln) || op.toLowerCase() === 'on' || (digit && number === 1))
                 negated = false;
             else if (prefix(op, 'false', ln) || prefix(op, 'no', ln) || op.toLowerCase() === 'off' || (digit && number === 0))

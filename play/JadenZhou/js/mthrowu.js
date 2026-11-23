@@ -74,6 +74,7 @@ import { extract_from_minvent } from './steal.js';
 import { body_part } from './insight.js';
 import { mbodypart } from './shk.js';
 import { m_seenres } from './muse.js';
+import { spec_abon } from './artifact.js';
 
 /* C ref: youprop.h -- (H* || E*) && !B* */
 function uhave(prop) {
@@ -556,7 +557,7 @@ export async function ohitmon(
         if (marcher.m_lev > 5)
             tmp += marcher.m_lev - 5;
         if (mon_launcher && mon_launcher.oartifact)
-            throw new Error('ohitmon(): spec_abon() not ported yet');
+            tmp += spec_abon(mon_launcher, mtmp);
     }
     if (tmp < rnd(20)) {
         if (!ismimic) {

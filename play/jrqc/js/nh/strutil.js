@@ -4,6 +4,7 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc } from './alloc.js';
 import { panic } from './end.js';
+import { FALSE, LARGEST_INT, TRUE } from './global.h.js';
 import { lowc } from './hacklib.js';
 
 export function strbuf_init(strbuf) {   // strutil.c:9
@@ -63,12 +64,12 @@ export async function strbuf_nl_to_crlf(strbuf) {   // strutil.c:58
 }
 export async function Strlen_(str, file, line) {   // strutil.c:82
     let p = null, len = 0, $t1;
-    for (p = str, len = 0; len < 32767; len = $c.addu64(len, 1)) {
+    for (p = str, len = 0; len < LARGEST_INT; len = $c.addu64(len, 1)) {
         if (($t1 = p, p = $t1.add(1), $t1).get(0) === 0) {
             break;
         }
     }
-    if (len === 32767) {
+    if (len === LARGEST_INT) {
         await panic($c.lit("%s:%d string too long"), file, line);
     }
     return $c.u32(len);
@@ -90,9 +91,9 @@ function pmatch_internal(patrn, strng, ci, sk) {   // strutil.c:105
         if (!p) {
             return $c.i8(s === 0 ? 1 : 0);
         } else if (p === 42) {
-            return $c.i8(!patrn.get(0) || pmatch_internal(patrn, strng.add(-1), ci, sk) ? 1 : s ? pmatch_internal(patrn.add(-1), strng, ci, sk) : 0);
+            return $c.i8(!patrn.get(0) || pmatch_internal(patrn, strng.add(-1), ci, sk) ? TRUE : s ? pmatch_internal(patrn.add(-1), strng, ci, sk) : FALSE);
         } else if ((ci ? lowc(p) !== lowc(s) : p !== s) && (p !== 63 || !s)) {
-            return 0;
+            return FALSE;
         } else {
             continue pmatch_top$;
         }
@@ -100,10 +101,10 @@ function pmatch_internal(patrn, strng, ci, sk) {   // strutil.c:105
     }
 }
 export function pmatch(patrn, strng) {   // strutil.c:145
-    return pmatch_internal(patrn, strng, 0, null);
+    return pmatch_internal(patrn, strng, FALSE, null);
 }
 export function pmatchi(patrn, strng) {   // strutil.c:152
-    return pmatch_internal(patrn, strng, 1, null);
+    return pmatch_internal(patrn, strng, TRUE, null);
 }
 
 export function $init() {

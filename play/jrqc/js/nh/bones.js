@@ -7,29 +7,47 @@ import { unleash_all } from './apply.js';
 import { artifact_exists, artifact_light, exist_artifact } from './artifact.js';
 import { yyyymmddhhmmss } from './calendar.js';
 import { isok, yn_function } from './cmd.js';
-import { flags, gb, gf, gi, gs, gu, iflags, program_state, svc, svd, svl, svn, svp, svr, u, ynchars } from './decl.js';
+import { flags, gb, gf, gi, gs, gu, iflags, program_state, svd, svl, svn, svp, svr, u, ynchars } from './decl.js';
+import { FOOD_CLASS, S } from './defsym.h.js';
 import { newsym } from './display.js';
+import { GLYPH_UNEXPLORED } from './display.h.js';
 import { obj_no_longer_held } from './do.js';
 import { christen_monst, free_oname, safe_oname } from './do_name.js';
 import { update_mlstmv } from './dog.js';
 import { In_hell, Is_botlevel, Is_branchlev, Is_special, assign_level, depth, dunlevs_in_dungeon, ledger_no, maxledgerno, on_level } from './dungeon.js';
 import { forget_engravings, sanitize_engravings } from './engrave.js';
 import { close_nhfile, commit_bonesfile, compress_bonesfile, create_bonesfile, debugcore, delete_bonesfile, open_bonesfile, paniclog } from './files.js';
+import { discover, wizard } from './flag.macros.js';
+import { COLNO, FALSE, ROWNO, TRUE } from './global.h.js';
 import { in_rooms } from './hack.js';
+import { DEFUNCT_MONSTER, DISMOUNT, MM, NO, NUM, ONAME_BONES, SF, WRITING } from './hack.h.js';
+import { pline1 } from './hack.macros.js';
 import { obj_is_burning } from './light.js';
 import { makemon, mongets, newmextra } from './makemon.js';
+import { EBONES, has_ebones, has_mgivenname } from './mextra.macros.js';
 import { add_to_container, add_to_minv, curse, dealloc_obj, free_omonst, mk_named_object, obj_attach_mid, obj_extract_self, place_object, set_corpsenm, weight } from './mkobj.js';
+import { DELPHI, ROOMOFFSET, SHOPBASE } from './mkroom.h.js';
 import { can_carry, dmonsfree, iter_mons, mongone } from './mon.js';
+import { AT } from './monattk.h.js';
 import { attacktype, give_u_to_m_resistances } from './mondata.js';
+import { is_undead, likes_gems, likes_gold, likes_magic, unique_corpstat } from './mondata.macros.js';
+import { M2, MS, NEUTRAL } from './monflag.h.js';
 import { mons } from './monst.js';
+import { M_SEEN } from './monst.h.js';
+import { is_Vlad, ismnum } from './monst.macros.js';
+import { PM } from './monsters.h.js';
 import { m_carrying } from './mthrowu.js';
+import { LOST, OBJ } from './obj.h.js';
+import { has_omonst, has_oname, is_mines_prize, is_soko_prize } from './obj.macros.js';
 import { objects } from './objects.js';
+import { AMULET_OF_YENDOR, BELL, BELL_OF_OPENING, BOOMERANG, BOW, CANDELABRUM_OF_INVOCATION, CORPSE, EGG, ELVEN_BOW, FAKE_AMULET_OF_YENDOR, MUMMY_WRAPPING, ORCISH_BOW, SCR_MAIL, SLIME_MOLD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, STATUE, TIN, WAX_CANDLE, YUMI } from './objects.h.js';
 import { fruit_from_indx, the, xname } from './objnam.js';
+import { LEAVESTATUE, NON_PM, SPECIAL_PM } from './permonst.h.js';
 import { You, pline } from './pline.js';
 import { is_quest_artifact } from './questpgr.js';
 import { cant_revive, unpunish } from './read.js';
 import { getlev, trickery } from './restore.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { rn2 } from './rnd.js';
 import { aligns, genders, races, roles } from './role.js';
 import { savefruitchn, savelev } from './save.js';
 import { sfi_char, sfo_char } from './sfbase.js';
@@ -38,9 +56,14 @@ import { dismount_steed } from './steed.js';
 import { enexto, rloc_to } from './teleport.js';
 import { end_burn } from './timeout.js';
 import { formatkiller } from './topten.js';
+import { MAGIC_PORTAL } from './trap.h.js';
+import { unhideable_trap } from './trap.macros.js';
 import { store_version, validate } from './version.js';
 import { windowprocs } from './windows.js';
+import { wp_tty } from './winprocs.h.js';
 import { clear_bypasses, m_dowear } from './worn.js';
+import { URIGHTY, u_at } from './you.macros.js';
+import { Punished } from './youprop.macros.js';
 import { get_obj_location } from './zap.js';
 
 function no_bones_level(lev) {   // bones.c:18
@@ -73,20 +96,20 @@ async function resetobjs(ochain, restore) {   // bones.c:51
             if (otmp.oartifact) {
                 if (exist_artifact(otmp.otyp, safe_oname(otmp)) || is_quest_artifact(otmp)) {
                     otmp.oartifact = 0;
-                    if (otmp.oextra && otmp.oextra.oname) {
+                    if (has_oname(otmp)) {
                         free_oname(otmp);
                     }
                 } else {
-                    await artifact_exists(otmp, safe_oname(otmp), 1, 64);
+                    await artifact_exists(otmp, safe_oname(otmp), TRUE, ONAME_BONES);
                 }
-            } else if (otmp.oextra && otmp.oextra.oname) {
+            } else if (has_oname(otmp)) {
                 sanitize_name(otmp.oextra.oname);
             }
-            if (otmp.oclass === 7 /* FOOD_CLASS */ && otmp.oeaten) {
-                for (top = otmp; top.where === 2; top = top.v.v_ocontainer) {
+            if (otmp.oclass === FOOD_CLASS && otmp.oeaten) {
+                for (top = otmp; top.where === OBJ.CONTAINED; top = top.v.v_ocontainer) {
                     continue;
                 }
-                $t1 = (top.where === 1 && get_obj_location(top, new $c.Ptr(ox, 0), new $c.Ptr(oy, 0), 0) && inside_shop(ox[0], oy[0]) && (p = in_rooms(ox[0], oy[0], 14 /* SHOPBASE */)).get(0) && tended_shop($c.relem(svr.rooms, p.get(0) - 3 | 0)) ? 1 : 0) >>> 0, otmp.no_charge = ($t1) & 1;
+                $t1 = (top.where === OBJ.FLOOR && get_obj_location(top, new $c.Ptr(ox, 0), new $c.Ptr(oy, 0), 0) && inside_shop(ox[0], oy[0]) && (p = in_rooms(ox[0], oy[0], SHOPBASE)).get(0) && tended_shop($c.relem(svr.rooms, p.get(0) - ROOMOFFSET | 0)) ? 1 : 0) >>> 0, otmp.no_charge = ($t1) & 1;
             }
         } else {
             if (objects[otmp.otyp].oc_uses_known) {
@@ -99,40 +122,40 @@ async function resetobjs(ochain, restore) {   // bones.c:51
             otmp.tknown = (0) & 1;
             otmp.invlet = 0;
             otmp.no_charge = (0) & 1;
-            otmp.how_lost = (0) & 7;
-            if (otmp.oextra && otmp.oextra.oname && !(otmp.oartifact || otmp.otyp === 476 /* STATUE */ || otmp.otyp === 408 /* SPE_NOVEL */ || otmp.otyp === 265 /* CORPSE */ && otmp.corpsenm >= 330 /* SPECIAL_PM */)) {
+            otmp.how_lost = (LOST.NONE) & 7;
+            if (has_oname(otmp) && !(otmp.oartifact || otmp.otyp === STATUE || otmp.otyp === SPE_NOVEL || otmp.otyp === CORPSE && otmp.corpsenm >= SPECIAL_PM)) {
                 free_oname(otmp);
             }
-            if (otmp.otyp === 285 /* SLIME_MOLD */) {
+            if (otmp.otyp === SLIME_MOLD) {
                 goodfruit(otmp.spe);
-            } else if (otmp.otyp === 364 /* SCR_MAIL */) {
+            } else if (otmp.otyp === SCR_MAIL) {
                 if (otmp.spe === 0) {
                     otmp.spe = 1;
                 }
-            } else if (otmp.otyp === 266 /* EGG */) {
+            } else if (otmp.otyp === EGG) {
                 otmp.spe = 0;
-            } else if (otmp.otyp === 296 /* TIN */) {
-                if (otmp.corpsenm >= 0 /* LOW_PM */ && otmp.corpsenm < 383 /* NUMMONS */ && ($c.relem(mons, otmp.corpsenm).geno & 4096) !== 0) {
-                    otmp.corpsenm = -1 /* NON_PM */;
+            } else if (otmp.otyp === TIN) {
+                if (ismnum(otmp.corpsenm) && unique_corpstat($c.relem(mons, otmp.corpsenm))) {
+                    otmp.corpsenm = NON_PM;
                 }
-            } else if (otmp.otyp === 265 /* CORPSE */ || otmp.otyp === 476 /* STATUE */) {
+            } else if (otmp.otyp === CORPSE || otmp.otyp === STATUE) {
                 mnum[0] = otmp.corpsenm;
-                if (otmp.oextra && otmp.oextra.omonst && cant_revive(new $c.Ptr(mnum, 0), 0, null)) {
+                if (has_omonst(otmp) && cant_revive(new $c.Ptr(mnum, 0), FALSE, null)) {
                     free_omonst(otmp);
-                    if (mnum[0] === 270 /* PM_DOPPELGANGER */ && otmp.otyp === 265 /* CORPSE */) {
+                    if (mnum[0] === PM.DOPPELGANGER && otmp.otyp === CORPSE) {
                         await set_corpsenm(otmp, mnum[0]);
                     }
                 }
-            } else if (otmp.o_id === svc.context.achieveo.mines_prize_oid || otmp.o_id === svc.context.achieveo.soko_prize_oid) {
+            } else if (is_mines_prize(otmp) || is_soko_prize(otmp)) {
                 otmp.nomerge = (0) & 1;
-            } else if (otmp.otyp === 213 /* AMULET_OF_YENDOR */) {
-                otmp.otyp = 212;
+            } else if (otmp.otyp === AMULET_OF_YENDOR) {
+                otmp.otyp = FAKE_AMULET_OF_YENDOR;
                 await curse(otmp);
-            } else if (otmp.otyp === 262 /* CANDELABRUM_OF_INVOCATION */) {
+            } else if (otmp.otyp === CANDELABRUM_OF_INVOCATION) {
                 if (otmp.lamplit) {
-                    await end_burn(otmp, 1);
+                    await end_burn(otmp, TRUE);
                 }
-                otmp.otyp = 225;
+                otmp.otyp = WAX_CANDLE;
                 otmp.age = 50;
                 if (otmp.spe > 0) {
                     otmp.quan = otmp.spe;
@@ -140,11 +163,11 @@ async function resetobjs(ochain, restore) {   // bones.c:51
                 otmp.spe = 0;
                 $t3 = await weight(otmp) >>> 0, otmp.owt = $t3;
                 await curse(otmp);
-            } else if (otmp.otyp === 263 /* BELL_OF_OPENING */) {
-                otmp.otyp = 255;
+            } else if (otmp.otyp === BELL_OF_OPENING) {
+                otmp.otyp = BELL;
                 await curse(otmp);
-            } else if (otmp.otyp === 409 /* SPE_BOOK_OF_THE_DEAD */) {
-                otmp.otyp = 407;
+            } else if (otmp.otyp === SPE_BOOK_OF_THE_DEAD) {
+                otmp.otyp = SPE_BLANK_PAPER;
                 await curse(otmp);
             }
         }
@@ -152,7 +175,7 @@ async function resetobjs(ochain, restore) {   // bones.c:51
 }
 export function sanitize_name(namebuf) {   // bones.c:198
     let c = 0, strip_8th_bit = 0;
-    strip_8th_bit = $c.i8(windowprocs.wp_id === 1 && !iflags.wc_eight_bit_input ? 1 : 0);
+    strip_8th_bit = $c.i8(windowprocs.wp_id === wp_tty && !iflags.wc_eight_bit_input ? 1 : 0);
     while (namebuf.get(0)) {
         c = namebuf.get(0) & 127;
         if (c < 32 || c === 127) {
@@ -174,17 +197,17 @@ async function give_to_nearby_mon(otmp, x, y) {   // bones.c:226
             if (!isok($c.i16(xx), $c.i16(yy))) {
                 continue;
             }
-            if (xx === u.ux && yy === u.uy) {
+            if (u_at(xx, yy)) {
                 continue;
             }
             if (!(mtmp = svl.level.monsters[xx][yy])) {
                 continue;
             }
-            if (!($c.andu64(mtmp.data.mflags2, 268435456) !== 0 || $c.andu64(mtmp.data.mflags2, 536870912) !== 0 || ($c.andu64(mtmp.data.mflags2, 1073741824) !== 0 || attacktype(mtmp.data, 254)) || $c.andu64(mtmp.data.mflags2, 2147483648) !== 0)) {
+            if (!(likes_gold(mtmp.data) || likes_gems(mtmp.data) || ($c.andu64(mtmp.data.mflags2, M2.COLLECT) !== 0 || attacktype(mtmp.data, AT.WEAP)) || likes_magic(mtmp.data))) {
                 continue;
             }
             nmon = nmon + 1 | 0;
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("bones.c"), 247, $c.lit("give_to_nearby_mon")), rn2(nmon)) : rn2(nmon))) {
+            if (!rn2(nmon)) {
                 selected = mtmp;
             }
         }
@@ -197,27 +220,27 @@ async function give_to_nearby_mon(otmp, x, y) {   // bones.c:226
 }
 export async function drop_upon_death(mtmp, cont, x, y) {   // bones.c:259
     let otmp = null, $t1;
-    u.twoweap = 0;
+    u.twoweap = FALSE;
     while ((otmp = gi.invent) !== null) {
         await obj_extract_self(otmp);
-        if (!mtmp || $c.andu64(mtmp.data.mflags2, 2) !== 0) {
+        if (!mtmp || is_undead(mtmp.data)) {
             await obj_no_longer_held(otmp);
         }
         if ((cont || artifact_light(otmp)) && obj_is_burning(otmp)) {
-            await end_burn(otmp, 1);
+            await end_burn(otmp, TRUE);
         }
         otmp.owornmask = 0;
-        if (otmp.otyp === 285 /* SLIME_MOLD */) {
+        if (otmp.otyp === SLIME_MOLD) {
             goodfruit(otmp.spe);
         }
-        if (rng_log_enabled() ? (rng_log_set_caller($c.lit("bones.c"), 290, $c.lit("drop_upon_death")), rn2(5)) : rn2(5)) {
+        if (rn2(5)) {
             await curse(otmp);
         }
         if (mtmp) {
             await add_to_minv(mtmp, otmp);
         } else if (cont) {
             await add_to_container(cont, otmp);
-        } else if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("bones.c"), 296, $c.lit("drop_upon_death")), rn2(8)) : rn2(8))) {
+        } else if (!rn2(8)) {
             await give_to_nearby_mon(otmp, x, y);
         } else {
             await place_object(otmp, x, y);
@@ -230,15 +253,15 @@ export async function drop_upon_death(mtmp, cont, x, y) {   // bones.c:259
 async function fixuporacle(oracle) {   // bones.c:308
     let cc = new $T.nhcoord(), ridx = 0, o_ridx = 0;
     if (!((svd.dungeon_topology.d_oracle_level.dlevel || svd.dungeon_topology.d_oracle_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_oracle_level))) {
-        return 0;
+        return FALSE;
     }
     oracle.mpeaceful = (1) & 1;
-    o_ridx = (svl.level.locations[oracle.mx][oracle.my].roomno | 0) - 3 | 0;
-    if (o_ridx >= 0 && svr.rooms[o_ridx].rtype === 9 /* DELPHI */) {
-        return 1;
+    o_ridx = (svl.level.locations[oracle.mx][oracle.my].roomno | 0) - ROOMOFFSET | 0;
+    if (o_ridx >= 0 && svr.rooms[o_ridx].rtype === DELPHI) {
+        return TRUE;
     }
     for (ridx = 0; ridx < 82; ridx = ridx + 1 | 0) {
-        if (svr.rooms[ridx].orig_rtype === 9 /* DELPHI */) {
+        if (svr.rooms[ridx].orig_rtype === DELPHI) {
             break;
         }
     }
@@ -247,47 +270,47 @@ async function fixuporacle(oracle) {   // bones.c:308
         cc.y = $c.i16($c.div32(svr.rooms[ridx].ly + svr.rooms[ridx].hy | 0, 2));
         if (await enexto(cc, cc.x, cc.y, oracle.data)) {
             await rloc_to(oracle, cc.x, cc.y);
-            o_ridx = (svl.level.locations[oracle.mx][oracle.my].roomno | 0) - 3 | 0;
+            o_ridx = (svl.level.locations[oracle.mx][oracle.my].roomno | 0) - ROOMOFFSET | 0;
         }
     }
     if (ridx === o_ridx) {
-        svr.rooms[ridx].rtype = 9;
+        svr.rooms[ridx].rtype = DELPHI;
     }
-    return 1;
+    return TRUE;
 }
 export function can_make_bones() {   // bones.c:356
     let ttmp = null;
     if (!flags.bones) {
-        return 0;
+        return FALSE;
     }
     if (ledger_no(u.uz) <= 0 || ledger_no(u.uz) > maxledgerno()) {
-        return 0;
+        return FALSE;
     }
     if (no_bones_level(u.uz)) {
-        return 0;
+        return FALSE;
     }
     if (u.uswallow) {
-        return 0;
+        return FALSE;
     }
     if (!Is_branchlev(u.uz)) {
         for (ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap) {
-            if ((ttmp.ttyp | 0) === 17 /* MAGIC_PORTAL */) {
-                return 0;
+            if ((ttmp.ttyp | 0) === MAGIC_PORTAL) {
+                return FALSE;
             }
         }
     }
-    if (depth(u.uz) <= 0 || !(rng_log_enabled() ? (rng_log_set_caller($c.lit("bones.c"), 377, $c.lit("can_make_bones")), rn2(1 + (depth(u.uz) >> 2) | 0)) : rn2(1 + (depth(u.uz) >> 2) | 0)) && !flags.debug) {
-        return 0;
+    if (depth(u.uz) <= 0 || !rn2(1 + (depth(u.uz) >> 2) | 0) && !wizard()) {
+        return FALSE;
     }
-    if (flags.explore) {
-        return 0;
+    if (discover()) {
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 async function remove_mon_from_bones(mtmp) {   // bones.c:390
     let mptr = null;
     mptr = mtmp.data;
-    if (mtmp.iswiz | 0 || $c.peq(mptr, $c.relem(mons, 284 /* PM_MEDUSA */)) || mptr.msound === 37 /* MS_NEMESIS */ || mptr.msound === 36 /* MS_LEADER */ || ($c.peq(mtmp.data, $c.relem(mons, 228 /* PM_VLAD_THE_IMPALER */)) || mtmp.cham === 228 /* PM_VLAD_THE_IMPALER */) || $c.peq(mptr, $c.relem(mons, 274 /* PM_ORACLE */)) && !await fixuporacle(mtmp)) {
+    if (mtmp.iswiz | 0 || $c.peq(mptr, $c.relem(mons, PM.MEDUSA)) || mptr.msound === MS.NEMESIS || mptr.msound === MS.LEADER || is_Vlad(mtmp) || $c.peq(mptr, $c.relem(mons, PM.ORACLE)) && !await fixuporacle(mtmp)) {
         await mongone(mtmp);
     }
 }
@@ -298,8 +321,8 @@ export async function savebones(how, when, corpse) {   // bones.c:403
     make_bones$: {
         if (nhfp) {
             await close_nhfile(nhfp);
-            if (flags.debug) {
-                if (await yn_function($c.lit("Bones file already exists.  Replace it?"), new $c.Ptr(ynchars, 0), 110, 1) === 121) {
+            if (wizard()) {
+                if (await yn_function($c.lit("Bones file already exists.  Replace it?"), new $c.Ptr(ynchars, 0), 110, TRUE) === 121) {
                     if (await delete_bonesfile(u.uz)) {
                         break make_bones$;
                     } else {
@@ -312,11 +335,11 @@ export async function savebones(how, when, corpse) {   // bones.c:403
         }
     }
     unleash_all();
-    if ($G.uball !== null) {
+    if (Punished()) {
         await unpunish();
     }
     if (u.usteed) {
-        await dismount_steed(6 /* DISMOUNT_BONES */);
+        await dismount_steed(DISMOUNT.BONES);
     }
     await iter_mons(remove_mon_from_bones);
     await dmonsfree();
@@ -325,25 +348,25 @@ export async function savebones(how, when, corpse) {   // bones.c:403
         f.fid = -f.fid | 0;
     }
     set_ghostly_objlist(gi.invent);
-    if (u.ugrave_arise >= 0 /* LOW_PM */ && u.ugrave_arise < 383 /* NUMMONS */) {
-        gi.in_mklev = 1;
-        mtmp = await makemon($c.relem(mons, u.ugrave_arise), u.ux, u.uy, 1);
-        gi.in_mklev = 0;
+    if (ismnum(u.ugrave_arise)) {
+        gi.in_mklev = TRUE;
+        mtmp = await makemon($c.relem(mons, u.ugrave_arise), u.ux, u.uy, NO.MINVENT);
+        gi.in_mklev = FALSE;
         if (!mtmp) {
             await drop_upon_death(null, null, u.ux, u.uy);
-            u.ugrave_arise = -1 /* NON_PM */;
+            u.ugrave_arise = NON_PM;
             return;
         }
         give_u_to_m_resistances(mtmp);
         mtmp = await christen_monst(mtmp, new $c.Ptr(svp.plname, 0));
         await newsym(u.ux, u.uy);
         await drop_upon_death(mtmp, null, u.ux, u.uy);
-        if (mtmp.data.mlet === 39 /* S_MUMMY */ && !m_carrying(mtmp, 138 /* MUMMY_WRAPPING */)) {
-            await mongets(mtmp, 138 /* MUMMY_WRAPPING */);
+        if (mtmp.data.mlet === S.MUMMY && !m_carrying(mtmp, MUMMY_WRAPPING)) {
+            await mongets(mtmp, MUMMY_WRAPPING);
         }
-        await m_dowear(mtmp, 1);
-    } else if (u.ugrave_arise === -2 /* LEAVESTATUE */) {
-        otmp = await mk_named_object(476 /* STATUE */, $c.relem(mons, u.umonnum), u.ux, u.uy, new $c.Ptr(svp.plname, 0));
+        await m_dowear(mtmp, TRUE);
+    } else if (u.ugrave_arise === LEAVESTATUE) {
+        otmp = await mk_named_object(STATUE, $c.relem(mons, u.umonnum), u.ux, u.uy, new $c.Ptr(svp.plname, 0));
         await drop_upon_death(null, otmp, u.ux, u.uy);
         if (!otmp) {
             return;
@@ -351,9 +374,9 @@ export async function savebones(how, when, corpse) {   // bones.c:403
         mtmp = null;
     } else {
         await drop_upon_death(null, null, u.ux, u.uy);
-        gi.in_mklev = 1;
-        mtmp = await makemon($c.relem(mons, 287 /* PM_GHOST */), u.ux, u.uy, 64);
-        gi.in_mklev = 0;
+        gi.in_mklev = TRUE;
+        mtmp = await makemon($c.relem(mons, PM.GHOST), u.ux, u.uy, MM.NONAME);
+        gi.in_mklev = FALSE;
         if (!mtmp) {
             return;
         }
@@ -367,17 +390,17 @@ export async function savebones(how, when, corpse) {   // bones.c:403
         $t1 = mtmp.mhpmax = u.uhpmax, mtmp.mhp = $t1;
         mtmp.female = (flags.female >>> 0) & 1;
         mtmp.msleeping = (1) & 1;
-        if (!(mtmp.mextra && mtmp.mextra.ebones)) {
+        if (!has_ebones(mtmp)) {
             await newebones(mtmp);
         }
-        if (mtmp.mextra && mtmp.mextra.ebones) {
-            for (i = 0; i <= 13; i = i + 1 | 0) {
+        if (has_ebones(mtmp)) {
+            for (i = 0; i <= NUM.ROLES; i = i + 1 | 0) {
                 if (!$c.strcmp(gu.urole.name.m, roles[i].name.m)) {
                     mtmp.mextra.ebones.role = $c.u8(i);
                     break;
                 }
             }
-            for (i = 0; i <= 5; i = i + 1 | 0) {
+            for (i = 0; i <= NUM.RACES; i = i + 1 | 0) {
                 if (!$c.strcmp(gu.urace.noun, races[i].noun)) {
                     mtmp.mextra.ebones.race = $c.u8(i);
                     break;
@@ -394,53 +417,53 @@ export async function savebones(how, when, corpse) {   // bones.c:403
     }
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
         set_ghostly_objlist(mtmp.minvent);
-        await resetobjs(mtmp.minvent, 0);
+        await resetobjs(mtmp.minvent, FALSE);
         mtmp.mlstmv = 0;
         if (mtmp.mtame) {
             $t2 = $c.i8(mtmp.mpeaceful = (0) & 1), mtmp.mtame = $t2;
         }
-        mtmp.seen_resistance = 0;
+        mtmp.seen_resistance = M_SEEN.NOTHING;
     }
     for (ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap) {
         ttmp.madeby_u = (0) & 1;
-        ttmp.tseen = (((ttmp.ttyp | 0) === 13 /* HOLE */ ? 1 : 0) >>> 0) & 1;
+        ttmp.tseen = (unhideable_trap(ttmp.ttyp) >>> 0) & 1;
     }
     set_ghostly_objlist(svl.level.objlist);
-    await resetobjs(svl.level.objlist, 0);
+    await resetobjs(svl.level.objlist, FALSE);
     set_ghostly_objlist(svl.level.buriedobjlist);
-    await resetobjs(svl.level.buriedobjlist, 0);
+    await resetobjs(svl.level.buriedobjlist, FALSE);
     u.ux0 = u.ux, u.uy0 = u.uy;
     $t3 = u.uy = 0, u.ux = $t3;
-    for (x = 1; x < 80; x = $c.i16(x + 1)) {
-        for (y = 0; y < 21; y = $c.i16(y + 1)) {
+    for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
+        for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
             svl.level.locations[x][y].seenv = 0;
             svl.level.locations[x][y].waslit = (0) & 1;
-            svl.level.locations[x][y].glyph = 9622 /* GLYPH_UNEXPLORED_OFF */;
+            svl.level.locations[x][y].glyph = GLYPH_UNEXPLORED;
             svl.lastseentyp[x][y] = 0;
         }
     }
     newbones = $c.asRec(await alloc(184), $T.cemetery, 184);
     $c.__builtin___memset_chk(newbones, 32, 184, -1);
     $c.__builtin___sprintf_chk(new $c.Ptr(newbones.who, 0), 0, 49, $c.lit("%s-%.3s-%.3s-%.3s-%.3s"), new $c.Ptr(svp.plname, 0), gu.urole.filecode, gu.urace.filecode, genders[flags.female].filecode, aligns[1 - u.ualign.type | 0].filecode);
-    await formatkiller(new $c.Ptr(newbones.how, 0), 101, how, 1);
+    await formatkiller(new $c.Ptr(newbones.how, 0), 101, how, TRUE);
     $c.__builtin___strcpy_chk(new $c.Ptr(newbones.when, 0), yyyymmddhhmmss(when), 15);
     newbones.frpx = u.ux0, newbones.frpy = u.uy0;
-    newbones.bonesknown = 0;
+    newbones.bonesknown = FALSE;
     newbones.next = svl.level.bonesinfo;
     svl.level.bonesinfo = newbones;
-    if (flags.debug) {
+    if (wizard()) {
         svl.level.flags.wizard_bones = (1) & 1;
     }
     nhfp = await create_bonesfile(u.uz, new $c.Ptr(bonesid, 0), new $c.Ptr(whynot, 0));
     if (!nhfp) {
-        if (flags.debug) {
-            await pline($c.lit("%s"), new $c.Ptr(whynot, 0));
+        if (wizard()) {
+            await pline1(new $c.Ptr(whynot, 0));
         }
         paniclog($c.lit("savebones"), new $c.Ptr(whynot, 0));
         return;
     }
     c[0] = $c.i8($c.addu64($c.strlen(bonesid[0]), 1));
-    nhfp.mode = 2;
+    nhfp.mode = WRITING;
     await store_version(nhfp);
     await sfo_char(nhfp, new $c.Ptr(svn.nhuuid, 0), $c.lit("ancestor-nhuuid"), 37);
     await sfo_char(nhfp, new $c.Ptr(c, 0), $c.lit("bones_count"), 1);
@@ -458,13 +481,13 @@ export async function getbones() {   // bones.c:630
     c[0] = 0;
     oldbonesid.fill(0);
     oldbonesid[0] = 0;
-    if (flags.explore) {
+    if (discover()) {
         return 0;
     }
     if (!flags.bones) {
         return 0;
     }
-    if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("bones.c"), 645, $c.lit("getbones")), rn2(3)) : rn2(3)) && !flags.debug) {
+    if (rn2(3) && !wizard()) {
         return 0;
     }
     if (no_bones_level(u.uz)) {
@@ -483,16 +506,16 @@ export async function getbones() {   // bones.c:630
         }
     }
     program_state.reading_bonesfile = 1;
-    if (await validate(nhfp, new $c.Ptr(gb.bones, 0), 0) !== 0) {
-        if (!flags.debug) {
+    if (await validate(nhfp, new $c.Ptr(gb.bones, 0), FALSE) !== SF.UPTODATE) {
+        if (!wizard()) {
             await pline($c.lit("Discarding unusable bones; no need to panic..."));
         }
-        ok = 0;
+        ok = FALSE;
         program_state.reading_bonesfile = 0;
     } else {
-        ok = 1;
-        if (flags.debug) {
-            if (await yn_function($c.lit("Get bones?"), new $c.Ptr(ynchars, 0), 110, 1) === 110) {
+        ok = TRUE;
+        if (wizard()) {
+            if (await yn_function($c.lit("Get bones?"), new $c.Ptr(ynchars, 0), 110, TRUE) === 110) {
                 await close_nhfile(nhfp);
                 await compress_bonesfile();
                 program_state.reading_bonesfile = 0;
@@ -504,9 +527,9 @@ export async function getbones() {   // bones.c:630
         if (c[0] >>> 0 <= 40) {
             await sfi_char(nhfp, new $c.Ptr(oldbonesid, 0), $c.lit("bonesid"), c[0]);
         } else {
-            if (flags.debug) {
+            if (wizard()) {
                 do {
-                    if (debugcore($c.lit("bones.c"), 1)) {
+                    if (debugcore($c.lit("bones.c"), TRUE)) {
                         save_plnmsg = iflags.last_msg;
                         await pline($c.lit("Abandoning bones , %u > %u."), c[0] >>> 0, 40);
                         iflags.last_msg = save_plnmsg;
@@ -520,35 +543,35 @@ export async function getbones() {   // bones.c:630
         }
         if ($c.strcmp(bonesid[0], new $c.Ptr(oldbonesid, 0)) !== 0) {
             $c.__builtin___sprintf_chk(new $c.Ptr(errbuf, 0), 0, 256, $c.lit("This is bones level '%s', not '%s'!"), new $c.Ptr(oldbonesid, 0), bonesid[0]);
-            if (flags.debug) {
-                await pline($c.lit("%s"), new $c.Ptr(errbuf, 0));
-                ok = 0;
+            if (wizard()) {
+                await pline1(new $c.Ptr(errbuf, 0));
+                ok = FALSE;
             }
             program_state.reading_bonesfile = 0;
             await trickery(new $c.Ptr(errbuf, 0));
         } else {
             await getlev(nhfp, 0, 0);
             for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
-                if (mtmp.mextra && mtmp.mextra.mgivenname) {
+                if (has_mgivenname(mtmp)) {
                     sanitize_name(mtmp.mextra.mgivenname);
                 }
-                if (mtmp.mhpmax === -100) {
-                    if (flags.debug) {
+                if (mtmp.mhpmax === DEFUNCT_MONSTER) {
+                    if (wizard()) {
                         do {
-                            if (debugcore($c.lit("bones.c"), 1)) {
+                            if (debugcore($c.lit("bones.c"), TRUE)) {
                                 save_plnmsg$2 = iflags.last_msg;
-                                await pline($c.lit("Removing defunct monster %s from bones."), mtmp.data.pmnames[2 /* NEUTRAL */]);
+                                await pline($c.lit("Removing defunct monster %s from bones."), mtmp.data.pmnames[NEUTRAL]);
                                 iflags.last_msg = save_plnmsg$2;
                             }
                         } while (0);
                     }
                     await mongone(mtmp);
                 } else {
-                    await resetobjs(mtmp.minvent, 1);
+                    await resetobjs(mtmp.minvent, TRUE);
                 }
             }
-            await resetobjs(svl.level.objlist, 1);
-            await resetobjs(svl.level.buriedobjlist, 1);
+            await resetobjs(svl.level.objlist, TRUE);
+            await resetobjs(svl.level.buriedobjlist, TRUE);
             await fix_shop_damage();
         }
     }
@@ -556,8 +579,8 @@ export async function getbones() {   // bones.c:630
     program_state.reading_bonesfile = 0;
     sanitize_engravings();
     u.uroleplay.numbones = $c.add64(u.uroleplay.numbones, 1);
-    if (flags.debug) {
-        if (await yn_function($c.lit("Unlink bones?"), new $c.Ptr(ynchars, 0), 110, 1) === 110) {
+    if (wizard()) {
+        if (await yn_function($c.lit("Unlink bones?"), new $c.Ptr(ynchars, 0), 110, TRUE) === 110) {
             await compress_bonesfile();
             return ok;
         }
@@ -574,10 +597,10 @@ export function bones_include_name(name) {   // bones.c:762
     len = $c.strlen(new $c.Ptr(buf, 0));
     for (bp = svl.level.bonesinfo; bp; bp = bp.next) {
         if (!$c.strncmp(new $c.Ptr(bp.who, 0), new $c.Ptr(buf, 0), len)) {
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 function set_ghostly_objlist(objchain) {   // bones.c:784
     while (objchain) {
@@ -590,12 +613,12 @@ export async function fix_ghostly_obj(obj) {   // bones.c:796
         return;
     }
     switch (obj.otyp) {
-        case 83 /* BOW */:
-        case 84 /* ELVEN_BOW */:
-        case 85 /* ORCISH_BOW */:
-        case 86 /* YUMI */:
-        case 26 /* BOOMERANG */:
-            await You($c.lit("make adjustments to %s to suit your %s hand."), await the(await xname(obj)), (u.uhandedness | 0) === 0 ? $c.lit("right") : $c.lit("left"));
+        case BOW:
+        case ELVEN_BOW:
+        case ORCISH_BOW:
+        case YUMI:
+        case BOOMERANG:
+            await You($c.lit("make adjustments to %s to suit your %s hand."), await the(await xname(obj)), URIGHTY() ? $c.lit("right") : $c.lit("left"));
             break;
         default:
             break;
@@ -607,14 +630,14 @@ export async function newebones(mtmp) {   // bones.c:818
     if (!mtmp.mextra) {
         $t1 = await newmextra(), mtmp.mextra = $t1;
     }
-    if (!mtmp.mextra.ebones) {
+    if (!EBONES(mtmp)) {
         $t2 = $c.asRec(await alloc(28), $T.ebones, 28), mtmp.mextra.ebones = $t2;
         $c.__builtin___memset_chk(mtmp.mextra.ebones, 0, 28, -1);
         mtmp.mextra.ebones.parentmid = mtmp.m_id;
     }
 }
 export function free_ebones(mtmp) {   // bones.c:833
-    if (mtmp.mextra && mtmp.mextra.ebones) {
+    if (mtmp.mextra && EBONES(mtmp)) {
         $c.free(mtmp.mextra.ebones);
         mtmp.mextra.ebones = null;
     }

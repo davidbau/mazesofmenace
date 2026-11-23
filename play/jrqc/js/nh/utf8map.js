@@ -5,7 +5,10 @@ import { $G } from './globals.js';
 import { alloc, dupstr } from './alloc.js';
 import { gc, gg, gs, hexdd } from './decl.js';
 import { glyphmap, map_glyphinfo, nul_glyphinfo } from './display.js';
+import { MAX_GLYPH } from './display.h.js';
+import { COLNO, ROWNO } from './global.h.js';
 import { apply_customizations, find_matching_customization } from './glyphs.js';
+import { custom_ureps, do_custom_symbols } from './sym.h.js';
 import { decode_glyph } from './windows.js';
 
 export function unicode_val(cp) {   // utf8map.c:18
@@ -42,7 +45,7 @@ export async function set_map_u(gmap, utf32ch, utf8str) {   // utf8map.c:37
 }
 export function free_all_glyphmap_u() {   // utf8map.c:59
     let glyph = 0, x = 0, y = 0;
-    for (glyph = 0; glyph < 9624 /* MAX_GLYPH */; glyph = glyph + 1 | 0) {
+    for (glyph = 0; glyph < MAX_GLYPH; glyph = glyph + 1 | 0) {
         if (glyphmap[glyph].u) {
             if (glyphmap[glyph].u.utf8str) {
                 $c.free(glyphmap[glyph].u.utf8str);
@@ -52,8 +55,8 @@ export function free_all_glyphmap_u() {   // utf8map.c:59
             glyphmap[glyph].u = null;
         }
     }
-    for (y = 0; y < 21; y = y + 1 | 0) {
-        for (x = 0; x < 80; x = x + 1 | 0) {
+    for (y = 0; y < ROWNO; y = y + 1 | 0) {
+        for (x = 0; x < COLNO; x = x + 1 | 0) {
             gg.gbuf[y][x].glyphinfo.gm.u = null;
         }
     }
@@ -109,15 +112,15 @@ export function mixed_to_utf8(buf, bufsz, str, retflags) {   // utf8map.c:86
 }
 export async function add_custom_urep_entry(customization_name, glyphidx, utf32ch, utf8str, which_set) {   // utf8map.c:148
     let gdc = null, details = null, newdetails = null, $t1, $t2, $t3;
-    gdc = $c.relem(gs.sym_customizations[which_set], 2 /* custom_ureps */);
+    gdc = $c.relem(gs.sym_customizations[which_set], custom_ureps);
     newdetails = null;
     if (!gdc.details) {
         $t1 = await dupstr(customization_name), gdc.customization_name = $t1;
-        gdc.custtype = 2;
+        gdc.custtype = custom_ureps;
         gdc.details = null;
         gdc.details_end = null;
     }
-    details = find_matching_customization(customization_name, 2, which_set);
+    details = find_matching_customization(customization_name, custom_ureps, which_set);
     if (details) {
         while (details) {
             if (details.content.urep.glyphidx === glyphidx) {
@@ -156,7 +159,7 @@ export async function add_custom_urep_entry(customization_name, glyphidx, utf32c
 }
 export async function reset_customsymbols() {   // utf8map.c:211
     free_all_glyphmap_u();
-    await apply_customizations(gc.currentgraphics >>> 0, 2);
+    await apply_customizations(gc.currentgraphics >>> 0, do_custom_symbols);
 }
 
 export function $init() {

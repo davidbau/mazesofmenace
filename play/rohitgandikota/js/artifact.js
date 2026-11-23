@@ -17,7 +17,7 @@ import { NECK } from './const.js';
 import { Upolyd } from './const.js';
 import { engulfing_u } from './const.js';
 import { losehp, nomul, notice_all_mons_flush } from './hack.js';
-import { nxtobj } from './invent.js';
+import { nxtobj, obj_extract_self, obfree } from './invent.js';
 import { ART_MASTER_KEY_OF_THIEVERY } from './artilist_data.js';
 import { exercise, Role_if } from './attrib.js';
 import { pline } from './display.js';
@@ -50,7 +50,7 @@ import { wake_nearto } from './mon.js';
 import { burn_away_slime } from './timeout.js';
 import { ignite_items } from './trap.js';
 import { destroy_items } from './zap.js';
-import { upstart } from './do_name.js';
+import { upstart, oname } from './do_name.js';
 import { hcolor } from './do_name.js';
 import { Monnam } from './do_name.js';
 import { mon_nam } from './do_name.js';
@@ -77,7 +77,7 @@ import { game } from './gstate.js';
 import { fuzzymatch } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
 import { artifact_names, artifact_otyps, artifact_records,
-         ART_GRIMTOOTH, ART_EXCALIBUR,
+         ART_GRIMTOOTH, ART_EXCALIBUR, ART_STING, ART_ORCRIST,
          ART_SUNSWORD } from './artilist_data.js';
 import { align_str } from './role.js';
 import { simple_typename } from './objnam.js';
@@ -149,8 +149,9 @@ import { Never_mind } from './const.js';
 import { nothing_seems_to_happen } from './const.js';
 import { spell_skilltype } from './spell.js';
 import { spelleffects } from './spell.js';
-import { P_SKILL } from './weapon.js';
-import { P_EXPERT } from './const.js';
+import { P_SKILL, P_MAX_SKILL } from './weapon.js';
+import { P_EXPERT, P_BASIC, P_SKILLED, A_NONE, ONAME_NO_FLAGS } from './const.js';
+import { race_hostile } from './makemon.js';
 import { lightdamage } from './zap.js';
 import { flashburn } from './zap.js';
 import { impossible } from './pline.js';
@@ -329,44 +330,88 @@ export function nartifact_exist() {
     return a;
 }
 
-// src/artifact.c mk_artifact(), existing-object arm. Random weapon and armor
-// generation passes A_NONE, so candidates are artifacts with the same base
-// object type which do not already exist and are not marked SPFX_NOGEN.
+// src/artifact.c mk_artifact(): convert an existing object when alignment is
+// A_NONE, or create a divine gift using role, race and skill preferences.
 export function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
-    const A_NONE = -128;
-    const SPFX_NOGEN = 0x00000001;
-
-    if (!otmp || alignment !== A_NONE)
-        return otmp;
-
+    const by_align = alignment !== A_NONE;
+    const o_typ = by_align || !otmp ? 0 : otmp.otyp;
+    const unique = !by_align && otmp && game.objects[o_typ].oc_unique;
     const eligible = [];
-    const unique = !!game.objects[otmp.otyp]?.oc_unique;
+    let n = 0, altn = 0;
+
     for (let m = 1; m <= NROFARTIFACTS; ++m) {
         const a = artifact_records[m];
         if (artiexist()[m].exists || (a.spfx & SPFX_NOGEN) || unique)
             continue;
-        if (a.gift_value > max_giftvalue)
+        const role = artifact_role(a, m);
+        if (a.gift_value > max_giftvalue && !Role_if(role))
             continue;
-        if (arti_otyp[m] === otmp.otyp)
-            eligible.push(m);
+
+        if (!by_align) {
+            if (arti_otyp[m] === o_typ)
+                eligible[n++] = m;
+            continue;
+        }
+
+        const arti_align = artifact_alignment(a, m);
+        if ((arti_align === alignment || arti_align === A_NONE)
+            && (a.race === 'NON_PM' || !race_hostile(game.mons[PMNAMES[a.race]]))) {
+            if (Role_if(role)) {
+                eligible[0] = m;
+                n = 1;
+                break;
+            }
+
+            let skill_compatibility = P_SKILLED;
+            const object = game.objects[arti_otyp[m]];
+            if (object.oc_class === OCLASSES.WEAPON_CLASS)
+                skill_compatibility = P_MAX_SKILL(Math.abs(object.oc_skill));
+
+            if ((arti_align !== A_NONE || game.u.ugifts > 0 || !rn2(3))
+                && (!rn2(4) || skill_compatibility >= P_SKILLED
+                    || (skill_compatibility >= P_BASIC && rn2(2)))) {
+                eligible[n++] = m;
+            } else if (!n) {
+                // Keep rejected candidates only until a regular one is found.
+                eligible[altn++] = m;
+            }
+        }
     }
 
-    if (!eligible.length)
-        return otmp;
+    if (!n)
+        n = altn;
+    if (n) {
+        const m = eligible[rn2(n)];
+        const a = artifact_records[m];
+        if (by_align) {
+            const artiobj = mksobj(arti_otyp[m], true, false);
+            if (otmp)
+                dispose_of_orig_obj(otmp);
+            otmp = artiobj;
+        }
 
-    const m = eligible[rn2(eligible.length)];
-    const a = artifact_records[m];
-    otmp.oeroded = otmp.oeroded2 = 0;
-    otmp.oname = artifact_names[m];
-    otmp.age = 0;
-    otmp.oartifact = m;
-    artifact_origin(otmp, ONAME_RANDOM);
-    if (adjust_spe) {
-        const new_spe = otmp.spe + a.gen_spe;
-        if (new_spe >= -10 && new_spe < 10)
-            otmp.spe = new_spe;
+        otmp.oeroded = otmp.oeroded2 = 0;
+        otmp = oname(otmp, artifact_names[m], ONAME_NO_FLAGS);
+        otmp.oartifact = m;
+        artifact_origin(otmp, ONAME_RANDOM);
+        if (adjust_spe) {
+            const new_spe = otmp.spe + a.gen_spe;
+            if (new_spe >= -10 && new_spe < 10)
+                otmp.spe = new_spe;
+        }
+    } else if (by_align && otmp) {
+        dispose_of_orig_obj(otmp);
+        otmp = null;
     }
+    if (otmp && permapoisoned(otmp))
+        otmp.opoisoned = 1;
     return otmp;
+}
+
+// src/artifact.c dispose_of_orig_obj().
+function dispose_of_orig_obj(obj) {
+    obj_extract_self(obj);
+    obfree(obj, null);
 }
 
 // src/artifact.c artifact_origin() — set artifact tracking flags;

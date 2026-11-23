@@ -66,7 +66,7 @@ import { Blind, Deaf } from './youprop.js';
 import { Is_rogue_level as IRL_const, D_TRAPPED } from './const.js';
 import { sobj_at, money_cnt } from './invent.js';
 import { is_pool, m_carrying, meatmetal, meatobj, resists_ston } from './mon.js';
-import { acidic, slimeproof } from './dog.js';
+import { acidic, slimeproof, cursed_object_at } from './dog.js';
 import { Is_mbag } from './mkobj.js';
 import { Is_container, Is_candle, is_cloak, is_gloves,
          is_shirt } from './obj.js';

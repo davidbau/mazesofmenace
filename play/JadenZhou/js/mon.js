@@ -5,6 +5,14 @@
 // monnear(), mon_allowflags().
 
 import { game } from './gstate.js';
+import { LL_KILLEDPET, LL_UMONST, LL_ACHIEVE, ACH_MEDU,
+         has_mgivenname, MGIVENNAME } from './const.js';
+import { EXACT_NAME, Mgender } from './do_name.js';
+import { record_achievement } from './insight.js';
+import { shtypes } from './shknam.js';
+import { PM_MEDUSA, PM_HIGH_CLERIC } from './monsters.js';
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT } from './const.js';
 import { remove_worm, wormgone, worm_known, worm_cross, count_wsegs, get_wormno,
          initworm, place_worm_tail_randomly } from './worm.js';
 import { healup_nocure } from './potion.js';
@@ -81,13 +89,14 @@ import { PICK_AXE, DWARVISH_MATTOCK, AXE, BATTLE_AXE, WEAPON_CLASS,
          TOOL_CLASS } from './objects.js';
 import { NO_WEAPON_WANTED, W_ARMS, SHOPBASE, P_AXE, P_PICK_AXE, WT_TOOMUCH_DIAGONAL } from './const.js';
 import { curr_mon_load } from './dogmove.js';
-import { can_hide_under_obj, set_mimic_sym } from './makemon.js';
+import { can_hide_under_obj, set_mimic_sym, hideunder_async } from './makemon.js';
 import { vobj_at } from './display.js';
 import { ceiling_hider } from './engrave.js';
 import { has_ceiling } from './insight.js';
 import { M_AP_FURNITURE, M_AP_OBJECT, ROOM } from './const.js';
 import { dead_species } from './mkobj.js';
-import { kill_egg } from './timeout.js';
+import { kill_egg, peek_timer, stop_timer, start_timer, obj_to_any } from './timeout.js';
+import { ZOMBIFY_MON, TIMER_OBJECT } from './const.js';
 import { relobj, thiefdead, mdrop_special_objs, discard_minvent } from './steal.js';
 import { dochugw, onscary, mon_regen, m_everyturn_effect,
          mon_track_clear, monflee } from './monmove.js';
@@ -130,6 +139,8 @@ import { vtense } from './objnam.js';
 import { sengr_at } from './makemon.js';
 import { del_engr_at } from './engrave.js';
 import { m_canseeu } from './monmove.js';
+import { fightm, resist_conflict } from './mhitm.js';
+import { BOLT_LIM as BOLT_LIM_mn } from './const.js';
 import { in_rooms } from './hack.js';
 import { in_your_sanctuary } from './priest.js';
 import { nemdead, leaddead, nemesis_stinks } from './quest.js';
@@ -484,7 +495,8 @@ export async function mondead(mtmp) {
     if (mtmp.data.mlet === S_KOP)
         throw new Error('mondead(): dead Kops returning not ported yet');
 
-    /* logdeadmon(mtmp, mndx): achievements/livelog have no game effect here */
+    /* achievement and/or livelog */
+    logdeadmon(mtmp, mndx);
 
     if (glyph_is_invisible(game.level.at(mtmp.mx, mtmp.my).remembered_glyph))
         unmap_object(mtmp.mx, mtmp.my);
@@ -816,9 +828,8 @@ export async function xkilled(
 
     mtmp.mhp = 0; /* caller will usually have already done this */
     if (!noconduct) { /* KMH, conduct */
-        /* livelog_printf(LL_CONDUCT, "killed for the first time") has no
-           game effect */
-        u.uconduct.killer = (u.uconduct.killer || 0) + 1;
+        if (!u.uconduct.killer++)
+            livelog_printf(LL_CONDUCT, "killed for the first time");
     }
     if (!nomsg) {
         const namedpet = !!mtmp.mgivenname && !Hallucination();
@@ -1002,7 +1013,13 @@ export async function xkilled(
         } else {
             await You_hear('the studio audience applaud!');
         }
-        /* livelog_printf(LL_KILLEDPET, ...) has no game effect */
+        if (!((mdat.geno & G_UNIQ) !== 0)) { /* !unique_corpstat(mdat) */
+            const mname = has_mgivenname(mtmp);
+
+            livelog_printf(LL_KILLEDPET, `murdered ${mname ? MGIVENNAME(mtmp) : ""}${
+                               mname ? ", " : ""}${game.flags.female ? "her" : "his" /* uhis() */
+                               } faithful ${pmname(mdat, Mgender(mtmp))}`);
+        }
     } else if (mtmp.mpeaceful)
         adjalign(-5);
 
@@ -1452,8 +1469,14 @@ async function movemon_singlemon(mtmp) {
     }
 
     /* one dead monster needs to perform a move after death: vault guard */
-    if (mtmp.isgd && !mtmp.mx && !((mtmp.mstate || 0) & MON_MIGRATING))
-        throw new Error('movemon_singlemon(): gd_move() not ported yet');
+    if (mtmp.isgd && !mtmp.mx && !((mtmp.mstate || 0) & MON_MIGRATING)) {
+        /* parked at <0,0>; eventually isgd should get set to false */
+        if (game.moves > (mtmp.mlstmv || 0)) {
+            await gd_move(mtmp);
+            mtmp.mlstmv = game.moves;
+        }
+        return false;
+    }
     if (DEADMONSTER(mtmp))
         return false;
 
@@ -1506,13 +1529,32 @@ async function movemon_singlemon(mtmp) {
             return false;
         if (mtmp.mundetected)
             return false;
-    } else if (mtmp.data.mlet === S_EEL && !mtmp.mundetected) {
-        throw new Error('movemon_singlemon(): eel hideunder() not ported yet');
+    } else if (mtmp.data.mlet === S_EEL && !mtmp.mundetected
+               && (mtmp.mflee || !m_next2u(mtmp))
+               && !canseemon(mtmp) && !rn2(4)) {
+        /* some eels end up stuck in isolated pools, where they
+           can't--or at least won't--move, so they never reach
+           their post-move chance to re-hide */
+        if (await hideunder_async(mtmp))
+            return false;
     }
 
     /* continue if the monster died fighting */
-    if (Conflict() && !mtmp.iswiz)
-        throw new Error('movemon_singlemon(): fightm() not ported yet');
+    if (Conflict() && !mtmp.iswiz && m_canseeu(mtmp)) {
+        /* Note:
+         *  Conflict does not take effect in the first round.
+         *  Therefore, A monster when stepping into the area will
+         *  get to swing at you.
+         *
+         *  The call to fightm() must be _last_.  The monster might
+         *  have died if it returns 1.
+         */
+        if (cansee(mtmp.mx, mtmp.my)
+            && (dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy)
+                <= BOLT_LIM_mn * BOLT_LIM_mn) /* mdistu() */
+            && (await fightm(mtmp)))
+            return false; /* mon might have died */
+    }
     await dochugw(mtmp, true); /* otherwise just move the monster */
     return false;
 }
@@ -2219,12 +2261,19 @@ export async function wake_nearby(petcall) {
 }
 
 // C ref: hack.c disturb_buried_zombies()
-function disturb_buried_zombies(x, y) {
-    for (const otmp of game.level.buriedobjlist || []) {
+/* reduce zombification timeout of buried zombies around px, py */
+export function disturb_buried_zombies(x, y) {
+    let t;
+
+    for (const otmp of [...(game.level.buriedobjlist || [])]) {
         if (otmp.otyp === CORPSE && otmp.timed
             && otmp.ox >= x - 1 && otmp.ox <= x + 1
-            && otmp.oy >= y - 1 && otmp.oy <= y + 1)
-            throw new Error('disturb_buried_zombies(): ZOMBIFY_MON timers not ported yet');
+            && otmp.oy >= y - 1 && otmp.oy <= y + 1
+            && (t = peek_timer(ZOMBIFY_MON, obj_to_any(otmp))) > 0) {
+            t = stop_timer(ZOMBIFY_MON, obj_to_any(otmp));
+            start_timer(Math.max(1, Math.trunc(t * 2 / 3)), TIMER_OBJECT,
+                        ZOMBIFY_MON, obj_to_any(otmp));
+        }
     }
 }
 
@@ -2312,8 +2361,8 @@ export function mon_allowflags(mtmp) {
         allowflags |= ALLOW_SANCT | ALLOW_SSM;
     else
         allowflags |= ALLOW_U;
-    if (Conflict())
-        throw new Error('mon_allowflags(): resist_conflict() not ported yet');
+    if (Conflict() && !resist_conflict(mtmp))
+        allowflags |= ALLOW_U;
     if (mtmp.isshk)
         allowflags |= ALLOW_SSM;
     if (mtmp.ispriest)
@@ -3134,6 +3183,92 @@ function restrap(mtmp) {
     return false;
 }
 
+/* C ref: mon.c livelog_mon_nam() -- specific combination of x_monnam
+   flags for livelogging; show what was actually killed even when unseen
+   or hallucinated to be something else */
+function livelog_mon_nam(mtmp) {
+    return x_monnam(mtmp, ARTICLE_THE, null, EXACT_NAME, false);
+}
+
+// C ref: mon.c logdeadmon()
+/* when a mon has died, maybe record an achievement or issue livelog message;
+   moved into separate routine to unclutter mondead() */
+function logdeadmon(mtmp, mndx) {
+    let howmany = game.mvitals[mndx].died;
+
+    if (mndx === PM_MEDUSA && howmany === 1) {
+        record_achievement(ACH_MEDU); /* also generates a livelog event */
+    } else if ((((mtmp.data.geno & G_UNIQ) !== 0) /* unique_corpstat() */
+                && (mndx !== PM_HIGH_CLERIC || !mtmp.mrevived))
+               || (mtmp.isshk && !mtmp.mrevived)) {
+        let shkdetail;
+        let mkilled;
+        const herodidit = !game.context.mon_moving;
+
+        /*
+         * livelog event; unique_corpstat() includes the Wizard and
+         * any High Priest even though they aren't actually unique.
+         *
+         * Shopkeeper kills are logged, but only the first time per
+         * shopkeeper, since their shared kill counter wouldn't work
+         * for this purpose (and it wouldn't account for polymorphed
+         * shopkeepers either).
+         */
+        shkdetail = '';
+        if (mtmp.isshk) {
+            howmany = 1;
+            /* ", the <shoptype> proprietor" needs a trailing comma for
+               the alternate phrasing "<shk>, shkdetails, has been killed"
+               when hero isn't directly responsible */
+            shkdetail = `, the ${shtypes[mtmp.mextra.eshk.shoptype - SHOPBASE].name} ${
+                         /* in case shk name doesn't include Mr or Ms honorific */
+                         mtmp.female ? "proprietrix" : "proprietor"}${herodidit ? "" : ","}`;
+        } else if (mndx === PM_HIGH_CLERIC) {
+            /* the high priest[ess] monster is not unique; we know that
+               this is the first death for this particular high priest
+               (because of the !mtmp->mrevived test above) */
+            howmany = 1;
+        }
+
+        /* killing a unique more than once doesn't get logged every time;
+           the Wizard and the Riders can be killed more than once
+           "naturally", others require deliberate player action such as
+           use of undead turning to revive a corpse or petrification plus
+           stone-to-flesh to create and revive a statue */
+        if (howmany <= 3 || howmany === 5 || howmany === 10 || howmany === 25
+            || (howmany % 50) === 0) { /* 50, 100, 150, 200, 250 */
+            let xtra; /* space for " (Nth time)" when N > 1 */
+            let llevent_type = LL_UMONST;
+
+            /* the first kill of any unique monster is a major event;
+               all kills of the Wizard and the Riders are major when
+               they're logged but they still don't get logged every time */
+            if (howmany === 1 || mtmp.iswiz || is_rider(mtmp.data))
+                llevent_type |= LL_ACHIEVE;
+            xtra = '';
+            if (howmany > 1) /* "(2nd time)" or "(50th time)" */
+                xtra = ` (${howmany}${ordin_ld(howmany)} time)`;
+
+            mkilled = nonliving(mtmp.data) ? "destroyed" : "killed";
+            /* hero is responsible: "killed <monst>" */
+            if (herodidit)
+                livelog_printf(llevent_type,
+                               `${mkilled} ${livelog_mon_nam(mtmp)}${shkdetail}${xtra}`);
+            else /* trap, pet, conflict:  "<monst> has been killed" */
+                livelog_printf(llevent_type,
+                               `${livelog_mon_nam(mtmp)}${shkdetail} has been ${mkilled}${xtra}`);
+        }
+    }
+}
+
+/* C ref: hacklib.c ordin() */
+function ordin_ld(n) { /* note: should be non-negative */
+    const dd = n % 10;
+
+    return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? "th"
+           : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
+}
+
 /* C ref: hack.h m_next2u() */
 function m_next2u(mtmp) {
     return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) < 3;
@@ -3226,3 +3361,5 @@ import { killer as killer_mn } from './topten.js';
 import { losehp as losehp_mn, Maybe_Half_Phys as Maybe_Half_Phys_mn } from './trap.js';
 import { mon_explodes } from './explode.js';
 import { shkgone } from './shk.js';
+
+import { gd_move } from './vault.js';

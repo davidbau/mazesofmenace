@@ -243,3 +243,27 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
     /* match occurs only when the end of both strings has been reached */
     return (!c1 && !c2);
 }
+
+// C ref: hacklib.c tabexpand() -- expand tabs into proper number of spaces
+// (8 column tab stops); the result is cut to BUFSZ - 1 characters
+export function tabexpand(sbuf) {
+    let buf = '', idx = 0;
+
+    if (!sbuf)
+        return sbuf;
+    for (const c of sbuf) {
+        if (c === '\t') {
+            do
+                buf += ' ';
+            while (++idx % 8);
+        } else {
+            buf += c;
+            ++idx;
+        }
+        if (idx >= 256 /* BUFSZ */) {
+            buf = buf.slice(0, 256 - 1);
+            break;
+        }
+    }
+    return buf;
+}

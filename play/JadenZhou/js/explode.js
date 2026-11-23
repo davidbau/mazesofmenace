@@ -337,8 +337,8 @@ export async function explode(
            so retain a copy of the current value for this explosion */
         str = killer().name;
         do_hallu = (Hallucination()
-                    && (strstri(str, "'s explosion")
-                        || strstri(str, "s' explosion")));
+                    && (strstri(str, "'s explosion") >= 0
+                        || strstri(str, "s' explosion") >= 0));
     }
     if (type === PHYS_EXPL_TYPE) {
         /* currently only gas spores */
@@ -693,6 +693,41 @@ export async function explode(
 
 import { sticks as sticks_ex } from './engrave.js';
 import { dist2 as dist2_ex } from './hacklib.js';
+import { OBJ_AT as OBJ_AT_ex } from './const.js';
+import { newsym as newsym_ex } from './display.js';
+import { M1_CONCEAL as M1_CONCEAL_ex } from './monsters.js';
+import { maybe_unhide_at as maybe_unhide_at_ex } from './mon.js';
+
+// C ref: explode.c scatter()
+/*
+ * Scatter objects at a location in random directions.  Returns the
+ * number of objects that moved.  Only the case where there is nothing
+ * at <sx,sy> to scatter is ported; moving objects throws a stop.
+ * (shop_origin/credit_report() only matter for objects that get
+ * scattered out of a shop.)
+ */
+export async function scatter(sx, sy, /* location of objects to scatter */
+                              blastforce, /* force behind the scattering */
+                              scflags,
+                              obj) { /* only scatter this obj */
+    const u = game.u;
+    const individual_object = obj ? true : false;
+    const total = 0;
+    let mtmp;
+    void blastforce; void scflags;
+
+    if (individual_object ? obj : OBJ_AT_ex(sx, sy))
+        throw new Error('scatter(): scattering objects not ported yet');
+
+    newsym_ex(sx, sy);
+    if (u_at(sx, sy) && u.uundetected
+        && (game.youmonst.data.mflags1 & M1_CONCEAL_ex) !== 0) /* hides_under() */
+        throw new Error('scatter(): hideunder() not ported yet');
+    if ((mtmp = m_at(sx, sy)) != null && mtmp.mtrapped)
+        mtmp.mtrapped = 0;
+    maybe_unhide_at_ex(sx, sy);
+    return total;
+}
 
 // C ref: explode.c adtyp_to_expltype()
 /* Convert an adtyp into an explosion type. */

@@ -26,7 +26,7 @@ import { can_reach_floor } from './engrave.js';
 import { cant_reach_floor } from './engrave.js';
 const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
 import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, AUTOUNLOCK_KICK } from './const.js';
-import { canspotmon, map_invisible } from './display.js';
+import { canspotmon, map_invisible, display_glyph_number } from './display.js';
 import { update_mapseen_for } from './dungeon.js';
 import { s_suffix } from './hacklib.js';
 import { Some_Monnam } from './do_name.js';
@@ -225,20 +225,11 @@ export async function doopen_indir(x, y) {
     if (!loc) return ECMD_OK;
     const portcullis = _is_drawbridge_wall_stub(cx, cy) >= 0;
 
-    /* C lock.c:830-839 — "using a key skips [the Blind test] so we do too":
-     *     int oldglyph = door->glyph;
-     *     schar oldlastseentyp = update_mapseen_for(cc.x, cc.y);
-     *     newsym(cc.x, cc.y);
-     *     if (door->glyph != oldglyph || svl.lastseentyp[cc.x][cc.y] != oldlastseentyp)
-     *         res = ECMD_TIME; // learned something
-     * Without this, `o` at a wall whose remembered glyph newsym rewrites
-     * (wall_angle seen-vector change) spent no turn where C does. */
     {
-        const _sig = (l) => { const r = l.remembered_glyph;
-            return r ? `${r.ch}|${r.color}|${r.cls}|${r.decgfx}` : ''; };
-        const _og = _sig(loc), _ot = update_mapseen_for(cx, cy);
+        const _og = display_glyph_number(loc.remembered_glyph, loc), _ot = update_mapseen_for(cx, cy);
         await newsym(cx, cy);
-        if (_sig(loc) !== _og || (loc.lastseentyp | 0) !== _ot)
+        if (display_glyph_number(loc.remembered_glyph, loc) !== _og
+            || (loc.lastseentyp | 0) !== _ot)
             res = ECMD_TIME;
     }
 
@@ -1319,11 +1310,10 @@ export async function pick_lock(pick, rx, ry, container) {
     if (!door || !_IS_DOOR(door.typ)) {
         let res = PICKLOCK_DID_NOTHING;
         if (door) {
-            const _sig = (r) => r ? `${r.ch}|${r.color}|${r.cls}|${r.decgfx ? 1 : 0}` : '';
-            const oldglyph = _sig(door.remembered_glyph);
+            const oldglyph = display_glyph_number(door.remembered_glyph, door);
             const oldlastseentyp = update_mapseen_for(cx, cy);
             feel_location(cx, cy);
-            if (_sig(door.remembered_glyph) !== oldglyph
+            if (display_glyph_number(door.remembered_glyph, door) !== oldglyph
                 || (door.lastseentyp | 0) !== oldlastseentyp)
                 res = PICKLOCK_LEARNED_SOMETHING;
         }

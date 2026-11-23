@@ -132,7 +132,12 @@ export function rn2_fnptr(x) {
 // which doesn't affect gameplay; the recorder logs it only when
 // NETHACK_RNGLOG_DISP is set (it isn't), so it isn't logged here.
 export function rn2_on_display_rng(x) {
-    return Number(isaac64_next_uint64(game.dispCtx) % BigInt(x));
+    const result = Number(isaac64_next_uint64(game.dispCtx) % BigInt(x));
+    // Debug only (off unless a dev tool sets the flag): mirrors the recorder's
+    // NETHACK_RNGLOG_DISP "~drn2(x) = r" lines so display-RNG order can be diffed.
+    if (_rngLogEnabled && globalThis.__TELEPORT_DISP_LOG)
+        _rngLog.push(`~drn2(${x})=${result}`);
+    return result;
 }
 
 // C ref: rnd.c rnd_on_display_rng()

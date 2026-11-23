@@ -2,13 +2,19 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { DUMPLOG_MSG_COUNT } from './config.h.js';
 import { gc, gs } from './decl.js';
 import { NH_abort } from './end.js';
+import { FALSE, TRUE } from './global.h.js';
+import { ECMD } from './hack.h.js';
 import { copynchars, nh_snprintf, strsubst } from './hacklib.js';
+import { nhUse } from './lint.macros.js';
 import { pline, raw_printf } from './pline.js';
 import { sysopt } from './sys.js';
 import { getversionstring, version_string } from './version.js';
-import { windowprocs } from './windows.js';
+import { raw_print } from './winprocs.macros.js';
+
+const MAX_URL = 8192;
 
 let crashreport_init$once = 0;   // static in crashreport_init()
 const crashreport_init$hexdigits = new Int8Array(17);   // static in crashreport_init()
@@ -26,7 +32,7 @@ export function crashreport_init(argc, argv) {   // report.c:113
     binfile = argv.get(0);
     ctxp = ctxp_;
     skip$: {
-        if (!$c.CC_MD4_Init(ctxp)) {
+        if (HASH_INIT(ctxp)) {
             break skip$;
         }
         if (!binfile || !binfile.get(0)) {
@@ -37,7 +43,7 @@ export function crashreport_init(argc, argv) {   // report.c:113
             break skip$;
         }
         while (0 < (segsize = $c.i32($c.read(fd, new $c.Ptr(segment, 0), 4096)))) {
-            if (!$c.CC_MD4_Update(ctxp, new $c.Ptr(segment, 0), segsize >>> 0)) {
+            if (HASH_UPDATE(ctxp, new $c.Ptr(segment, 0), segsize >>> 0)) {
                 break skip$;
             }
         }
@@ -64,12 +70,12 @@ export function crashreport_init(argc, argv) {   // report.c:113
         return;
     }
     $c.__builtin___strcpy_chk(new $c.Ptr(bid, 0), $c.lit("unknown"), 40);
-    argc;
-    argv;
+    nhUse(argc);
+    nhUse(argv);
 }
 export async function crashreport_bidshow() {   // report.c:189
     {
-        await windowprocs.win_raw_print(new $c.Ptr(bid, 0));
+        await raw_print()(new $c.Ptr(bid, 0));
     }
 }
 export function swr_add_uricoded(in_, out, remaining, markp) {   // report.c:237
@@ -89,7 +95,7 @@ export function swr_add_uricoded(in_, out, remaining, markp) {   // report.c:237
                     out.set(0, markp), remaining.set(0, 0);
                 }
                 out.get(0).set(0, 0);
-                return 1;
+                return TRUE;
             } else {
                 $c.__builtin___sprintf_chk(new $c.Ptr(chr, 0), 0, 40, $c.lit("%%%02X"), in_.get(0));
                 x = $c.i32($c.strlen(new $c.Ptr(chr, 0)));
@@ -106,18 +112,18 @@ export function swr_add_uricoded(in_, out, remaining, markp) {   // report.c:237
                 out.set(0, markp), remaining.set(0, 0);
             }
             out.get(0).set(0, 0);
-            return 1;
+            return TRUE;
         }
         out.get(0).set(0, 0);
     }
-    return 0;
+    return FALSE;
 }
 export async function submit_web_report(cos, msg, why) {   // report.c:290
     let temp = new Int8Array(200), temp2 = new Int8Array(200), countpp = 0, count = 0, bt = $c.nulls(20), x = 0, info = null, k = 0, line = null, xargv = $c.nulls(3), pid = 0, err = new Int8Array(400), status = Int32Array.of(0);
-    urem[0] = gc.crash_urlmax < 0 || gc.crash_urlmax > 8192 ? 8192 : 8192 < gc.crash_urlmax ? 8192 : gc.crash_urlmax;
+    urem[0] = gc.crash_urlmax < 0 || gc.crash_urlmax > MAX_URL ? MAX_URL : MAX_URL < gc.crash_urlmax ? MAX_URL : gc.crash_urlmax;
     countpp = 0;
     if (!sysopt.crashreporturl) {
-        return 0;
+        return FALSE;
     }
     utmp = $c.i32($c.strlen(sysopt.crashreporturl));
     mark = uend[0];
@@ -282,26 +288,26 @@ export async function submit_web_report(cos, msg, why) {   // report.c:290
     if (pid === 0) {
         $c.execve($c.lit("/usr/bin/open"), new $c.Ptr(xargv, 0), $c.$libc.environ);
         $c.__builtin___sprintf_chk(new $c.Ptr(err, 0), 0, 400, $c.lit("Can't start /usr/bin/open: %.*s"), 372, $c.strerror($c.__error().get(0)));
-        await windowprocs.win_raw_print(new $c.Ptr(err, 0));
+        await raw_print()(new $c.Ptr(err, 0));
         $c.exit(1);
     } else {
         $c.__error().set(0, 0);
         $c.waitpid(pid, new $c.Ptr(status, 0), 0);
         if (status[0]) {
-            return 0;
+            return FALSE;
         }
     }
-    return 1;
+    return TRUE;
 }
 export async function dobugreport() {   // report.c:461
     if (!await submit_web_report(2, null, $c.lit("#bugreport command"))) {
         await pline($c.lit("Unable to send bug report.  Please visit %s instead."), sysopt.crashreporturl && sysopt.crashreporturl.get(0) ? sysopt.crashreporturl : $c.lit("https://www.nethack.org/"));
     }
-    return 0;
+    return ECMD.OK;
 }
 export async function NH_panictrace_libc() {   // report.c:485
     let bt = $c.nulls(20), count = 0, x = 0, info = null, buf = new Int8Array(256);
-    await windowprocs.win_raw_print($c.lit("  Generating more information you may report:\n"));
+    await raw_print()($c.lit("  Generating more information you may report:\n"));
     count = $c.backtrace(new $c.Ptr(bt, 0), 20);
     info = $c.backtrace_symbols(new $c.Ptr(bt, 0), count);
     for (x = 0; x < count; x = x + 1 | 0) {
@@ -310,42 +316,42 @@ export async function NH_panictrace_libc() {   // report.c:485
         strsubst(new $c.Ptr(buf, 0), $c.lit("        "), $c.lit(""));
         await raw_printf($c.lit("[%02lu] %s"), $c.u64(x), new $c.Ptr(buf, 0));
     }
-    return 1;
+    return TRUE;
 }
 export async function NH_panictrace_gdb() {   // report.c:529
     let gdbpath = null, greppath = null, buf = new Int8Array(256), gdb = null;
     gdbpath = sysopt.gdbpath;
     greppath = sysopt.greppath;
     if ($c.peq(gdbpath, $c.asArr(null, Int8Array)) || gdbpath.get(0) === 0) {
-        return 0;
+        return FALSE;
     }
     if ($c.peq(greppath, $c.asArr(null, Int8Array)) || greppath.get(0) === 0) {
-        return 0;
+        return FALSE;
     }
     nh_snprintf($c.lit("NH_panictrace_gdb"), 545, new $c.Ptr(buf, 0), 256, $c.lit("%s -n -q %s %d 2>&1 | %s '^#'"), gdbpath, $G.ARGV0, $c.getpid(), greppath);
     gdb = $c.popen(new $c.Ptr(buf, 0), $c.lit("w"));
     if (gdb) {
-        await windowprocs.win_raw_print($c.lit("  Generating more information you may report:\n"));
+        await raw_print()($c.lit("  Generating more information you may report:\n"));
         $c.fprintf(gdb, $c.lit("bt\nquit\ny"));
         $c.fflush(gdb);
         $c.sleep(4);
         $c.pclose(gdb);
-        return 1;
+        return TRUE;
     } else {
-        return 0;
+        return FALSE;
     }
 }
 export function get_saved_pline(lineno) {   // report.c:571
     let p = 0, limit = 0, $t1, $t2;
-    limit = 50;
-    if (lineno >= 50) {
+    limit = DUMPLOG_MSG_COUNT;
+    if (lineno >= DUMPLOG_MSG_COUNT) {
         return null;
     }
-    p = $c.remu32(gs.saved_pline_index - 1 >>> 0, 50) | 0;
+    p = $c.remu32(gs.saved_pline_index - 1 >>> 0, DUMPLOG_MSG_COUNT) | 0;
     while ($t1 = limit, limit = $t1 - 1 | 0, $t1) {
         if (gs.saved_plines[p]) {
             if ($t2 = lineno, lineno = $t2 - 1 | 0, $t2) {
-                p = $c.rem32((p - 1 | 0) + 50 | 0, 50);
+                p = $c.rem32((p - 1 | 0) + DUMPLOG_MSG_COUNT | 0, DUMPLOG_MSG_COUNT);
             } else {
                 return gs.saved_plines[p];
             }
@@ -356,7 +362,7 @@ export function get_saved_pline(lineno) {   // report.c:571
 export async function panictrace_handler(sig_unused) {   // report.c:600
     let f2 = 0;
     f2 = $c.i32($c.write(2, $c.lit("\nSignal received.\n"), 18));
-    f2;
+    nhUse(f2);
     await NH_abort(null);
 }
 export async function panictrace_setsignals(set) {   // report.c:625
@@ -369,11 +375,17 @@ export async function panictrace_setsignals(set) {   // report.c:625
     $c.signal(12, set ? panictrace_handler : null);
     $c.signal(7, set ? panictrace_handler : null);
 }
+function HASH_INIT(ctxp) {
+    return !$c.CC_MD4_Init(ctxp) ? 1 : 0;
+}
+function HASH_UPDATE(ctx, ptr, len) {
+    return !$c.CC_MD4_Update(ctx, ptr, len) ? 1 : 0;
+}
 
 export function $init() {
     bid.fill(0);
     url.fill(0);
-    urem[0] = 8192;
+    urem[0] = MAX_URL;
     uend[0] = new $c.Ptr(url, 0);
     utmp = 0;
     mark = null;

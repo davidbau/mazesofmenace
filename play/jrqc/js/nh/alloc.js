@@ -4,6 +4,8 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { panic } from './end.js';
 
+const PTRBUFCNT = 4;
+
 const ptrbuf = $c.matrix(Int8Array, [4, 32]);
 let ptrbufidx = 0;
 export async function alloc(lth) {   // alloc.c:68
@@ -35,7 +37,7 @@ export async function re_alloc(oldptr, newlth) {   // alloc.c:85
 export function fmt_ptr(ptr) {   // alloc.c:125
     let buf = null;
     buf = new $c.Ptr(ptrbuf[ptrbufidx], 0);
-    if ((ptrbufidx = ptrbufidx + 1 | 0) >= 4) {
+    if ((ptrbufidx = ptrbufidx + 1 | 0) >= PTRBUFCNT) {
         ptrbufidx = 0;
     }
     $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%p"), ptr);

@@ -2,8 +2,12 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { SFCTOOL_BIT } from './global.h.js';
+import { CONVERTING, UNCONVERTING, WRITING, exportascii, historical, invalid } from './hack.h.js';
 import { nh_snprintf } from './hacklib.js';
 import { historical_sfi_procs, historical_sfo_procs } from './sfstruct.js';
+
+const TURN_OFF_LOGGING = 32;
 
 const sfvalue_char$buf = new Int8Array(120);   // static in sfvalue_char()
 const sfvalue_boolean$buf = new Int8Array(20);   // static in sfvalue_boolean()
@@ -59,13 +63,13 @@ export async function sfi_arti_info(nhfp, d_arti_info, myname) {   // sfmacros.h
         await sfiprocs[nhfp.fnidx].fn.sf_arti_info(nhfp, d_arti_info, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_arti_info(nhfp, d_arti_info, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_arti_info(nhfp.nhfpconvert, d_arti_info, myname);
         }
         if (nhfp.fplog) {
@@ -93,13 +97,13 @@ export async function sfi_nhrect(nhfp, d_nhrect, myname) {   // sfmacros.h:10
         await sfiprocs[nhfp.fnidx].fn.sf_nhrect(nhfp, d_nhrect, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_nhrect(nhfp, d_nhrect, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_nhrect(nhfp.nhfpconvert, d_nhrect, myname);
         }
         if (nhfp.fplog) {
@@ -127,13 +131,13 @@ export async function sfi_branch(nhfp, d_branch, myname) {   // sfmacros.h:11
         await sfiprocs[nhfp.fnidx].fn.sf_branch(nhfp, d_branch, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_branch(nhfp, d_branch, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_branch(nhfp.nhfpconvert, d_branch, myname);
         }
         if (nhfp.fplog) {
@@ -161,13 +165,13 @@ export async function sfi_bubble(nhfp, d_bubble, myname) {   // sfmacros.h:12
         await sfiprocs[nhfp.fnidx].fn.sf_bubble(nhfp, d_bubble, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_bubble(nhfp, d_bubble, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_bubble(nhfp.nhfpconvert, d_bubble, myname);
         }
         if (nhfp.fplog) {
@@ -195,13 +199,13 @@ export async function sfi_cemetery(nhfp, d_cemetery, myname) {   // sfmacros.h:1
         await sfiprocs[nhfp.fnidx].fn.sf_cemetery(nhfp, d_cemetery, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_cemetery(nhfp, d_cemetery, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_cemetery(nhfp.nhfpconvert, d_cemetery, myname);
         }
         if (nhfp.fplog) {
@@ -229,13 +233,13 @@ export async function sfi_context_info(nhfp, d_context_info, myname) {   // sfma
         await sfiprocs[nhfp.fnidx].fn.sf_context_info(nhfp, d_context_info, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_context_info(nhfp, d_context_info, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_context_info(nhfp.nhfpconvert, d_context_info, myname);
         }
         if (nhfp.fplog) {
@@ -263,13 +267,13 @@ export async function sfi_nhcoord(nhfp, d_nhcoord, myname) {   // sfmacros.h:15
         await sfiprocs[nhfp.fnidx].fn.sf_nhcoord(nhfp, d_nhcoord, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_nhcoord(nhfp, d_nhcoord, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_nhcoord(nhfp.nhfpconvert, d_nhcoord, myname);
         }
         if (nhfp.fplog) {
@@ -297,13 +301,13 @@ export async function sfi_damage(nhfp, d_damage, myname) {   // sfmacros.h:16
         await sfiprocs[nhfp.fnidx].fn.sf_damage(nhfp, d_damage, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_damage(nhfp, d_damage, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_damage(nhfp.nhfpconvert, d_damage, myname);
         }
         if (nhfp.fplog) {
@@ -331,13 +335,13 @@ export async function sfi_dest_area(nhfp, d_dest_area, myname) {   // sfmacros.h
         await sfiprocs[nhfp.fnidx].fn.sf_dest_area(nhfp, d_dest_area, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_dest_area(nhfp, d_dest_area, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_dest_area(nhfp.nhfpconvert, d_dest_area, myname);
         }
         if (nhfp.fplog) {
@@ -365,13 +369,13 @@ export async function sfi_dgn_topology(nhfp, d_dgn_topology, myname) {   // sfma
         await sfiprocs[nhfp.fnidx].fn.sf_dgn_topology(nhfp, d_dgn_topology, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_dgn_topology(nhfp, d_dgn_topology, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_dgn_topology(nhfp.nhfpconvert, d_dgn_topology, myname);
         }
         if (nhfp.fplog) {
@@ -399,13 +403,13 @@ export async function sfi_dungeon(nhfp, d_dungeon, myname) {   // sfmacros.h:19
         await sfiprocs[nhfp.fnidx].fn.sf_dungeon(nhfp, d_dungeon, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_dungeon(nhfp, d_dungeon, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_dungeon(nhfp.nhfpconvert, d_dungeon, myname);
         }
         if (nhfp.fplog) {
@@ -433,13 +437,13 @@ export async function sfi_d_level(nhfp, d_d_level, myname) {   // sfmacros.h:20
         await sfiprocs[nhfp.fnidx].fn.sf_d_level(nhfp, d_d_level, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_d_level(nhfp, d_d_level, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_d_level(nhfp.nhfpconvert, d_d_level, myname);
         }
         if (nhfp.fplog) {
@@ -467,13 +471,13 @@ export async function sfi_ebones(nhfp, d_ebones, myname) {   // sfmacros.h:21
         await sfiprocs[nhfp.fnidx].fn.sf_ebones(nhfp, d_ebones, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_ebones(nhfp, d_ebones, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_ebones(nhfp.nhfpconvert, d_ebones, myname);
         }
         if (nhfp.fplog) {
@@ -501,13 +505,13 @@ export async function sfi_edog(nhfp, d_edog, myname) {   // sfmacros.h:22
         await sfiprocs[nhfp.fnidx].fn.sf_edog(nhfp, d_edog, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_edog(nhfp, d_edog, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_edog(nhfp.nhfpconvert, d_edog, myname);
         }
         if (nhfp.fplog) {
@@ -535,13 +539,13 @@ export async function sfi_egd(nhfp, d_egd, myname) {   // sfmacros.h:23
         await sfiprocs[nhfp.fnidx].fn.sf_egd(nhfp, d_egd, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_egd(nhfp, d_egd, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_egd(nhfp.nhfpconvert, d_egd, myname);
         }
         if (nhfp.fplog) {
@@ -569,13 +573,13 @@ export async function sfi_emin(nhfp, d_emin, myname) {   // sfmacros.h:24
         await sfiprocs[nhfp.fnidx].fn.sf_emin(nhfp, d_emin, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_emin(nhfp, d_emin, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_emin(nhfp.nhfpconvert, d_emin, myname);
         }
         if (nhfp.fplog) {
@@ -603,13 +607,13 @@ export async function sfi_engr(nhfp, d_engr, myname) {   // sfmacros.h:25
         await sfiprocs[nhfp.fnidx].fn.sf_engr(nhfp, d_engr, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_engr(nhfp, d_engr, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_engr(nhfp.nhfpconvert, d_engr, myname);
         }
         if (nhfp.fplog) {
@@ -637,13 +641,13 @@ export async function sfi_epri(nhfp, d_epri, myname) {   // sfmacros.h:26
         await sfiprocs[nhfp.fnidx].fn.sf_epri(nhfp, d_epri, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_epri(nhfp, d_epri, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_epri(nhfp.nhfpconvert, d_epri, myname);
         }
         if (nhfp.fplog) {
@@ -671,13 +675,13 @@ export async function sfi_eshk(nhfp, d_eshk, myname) {   // sfmacros.h:27
         await sfiprocs[nhfp.fnidx].fn.sf_eshk(nhfp, d_eshk, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_eshk(nhfp, d_eshk, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_eshk(nhfp.nhfpconvert, d_eshk, myname);
         }
         if (nhfp.fplog) {
@@ -705,13 +709,13 @@ export async function sfi_fe(nhfp, d_fe, myname) {   // sfmacros.h:28
         await sfiprocs[nhfp.fnidx].fn.sf_fe(nhfp, d_fe, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_fe(nhfp, d_fe, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_fe(nhfp.nhfpconvert, d_fe, myname);
         }
         if (nhfp.fplog) {
@@ -739,13 +743,13 @@ export async function sfi_flag(nhfp, d_flag, myname) {   // sfmacros.h:29
         await sfiprocs[nhfp.fnidx].fn.sf_flag(nhfp, d_flag, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_flag(nhfp, d_flag, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_flag(nhfp.nhfpconvert, d_flag, myname);
         }
         if (nhfp.fplog) {
@@ -773,13 +777,13 @@ export async function sfi_fruit(nhfp, d_fruit, myname) {   // sfmacros.h:30
         await sfiprocs[nhfp.fnidx].fn.sf_fruit(nhfp, d_fruit, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_fruit(nhfp, d_fruit, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_fruit(nhfp.nhfpconvert, d_fruit, myname);
         }
         if (nhfp.fplog) {
@@ -807,13 +811,13 @@ export async function sfi_gamelog_line(nhfp, d_gamelog_line, myname) {   // sfma
         await sfiprocs[nhfp.fnidx].fn.sf_gamelog_line(nhfp, d_gamelog_line, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_gamelog_line(nhfp, d_gamelog_line, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_gamelog_line(nhfp.nhfpconvert, d_gamelog_line, myname);
         }
         if (nhfp.fplog) {
@@ -841,13 +845,13 @@ export async function sfi_kinfo(nhfp, d_kinfo, myname) {   // sfmacros.h:32
         await sfiprocs[nhfp.fnidx].fn.sf_kinfo(nhfp, d_kinfo, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_kinfo(nhfp, d_kinfo, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_kinfo(nhfp.nhfpconvert, d_kinfo, myname);
         }
         if (nhfp.fplog) {
@@ -875,13 +879,13 @@ export async function sfi_levelflags(nhfp, d_levelflags, myname) {   // sfmacros
         await sfiprocs[nhfp.fnidx].fn.sf_levelflags(nhfp, d_levelflags, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_levelflags(nhfp, d_levelflags, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_levelflags(nhfp.nhfpconvert, d_levelflags, myname);
         }
         if (nhfp.fplog) {
@@ -909,13 +913,13 @@ export async function sfi_ls_t(nhfp, d_ls_t, myname) {   // sfmacros.h:34
         await sfiprocs[nhfp.fnidx].fn.sf_ls_t(nhfp, d_ls_t, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_ls_t(nhfp, d_ls_t, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_ls_t(nhfp.nhfpconvert, d_ls_t, myname);
         }
         if (nhfp.fplog) {
@@ -943,13 +947,13 @@ export async function sfi_linfo(nhfp, d_linfo, myname) {   // sfmacros.h:35
         await sfiprocs[nhfp.fnidx].fn.sf_linfo(nhfp, d_linfo, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_linfo(nhfp, d_linfo, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_linfo(nhfp.nhfpconvert, d_linfo, myname);
         }
         if (nhfp.fplog) {
@@ -977,13 +981,13 @@ export async function sfi_mapseen_feat(nhfp, d_mapseen_feat, myname) {   // sfma
         await sfiprocs[nhfp.fnidx].fn.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_mapseen_feat(nhfp.nhfpconvert, d_mapseen_feat, myname);
         }
         if (nhfp.fplog) {
@@ -1011,13 +1015,13 @@ export async function sfi_mapseen_flags(nhfp, d_mapseen_flags, myname) {   // sf
         await sfiprocs[nhfp.fnidx].fn.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_mapseen_flags(nhfp.nhfpconvert, d_mapseen_flags, myname);
         }
         if (nhfp.fplog) {
@@ -1045,13 +1049,13 @@ export async function sfi_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {   // sf
         await sfiprocs[nhfp.fnidx].fn.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_mapseen_rooms(nhfp.nhfpconvert, d_mapseen_rooms, myname);
         }
         if (nhfp.fplog) {
@@ -1079,13 +1083,13 @@ export async function sfi_mkroom(nhfp, d_mkroom, myname) {   // sfmacros.h:39
         await sfiprocs[nhfp.fnidx].fn.sf_mkroom(nhfp, d_mkroom, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mkroom(nhfp, d_mkroom, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_mkroom(nhfp.nhfpconvert, d_mkroom, myname);
         }
         if (nhfp.fplog) {
@@ -1113,13 +1117,13 @@ export async function sfi_monst(nhfp, d_monst, myname) {   // sfmacros.h:40
         await sfiprocs[nhfp.fnidx].fn.sf_monst(nhfp, d_monst, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_monst(nhfp, d_monst, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_monst(nhfp.nhfpconvert, d_monst, myname);
         }
         if (nhfp.fplog) {
@@ -1147,13 +1151,13 @@ export async function sfi_mvitals(nhfp, d_mvitals, myname) {   // sfmacros.h:41
         await sfiprocs[nhfp.fnidx].fn.sf_mvitals(nhfp, d_mvitals, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mvitals(nhfp, d_mvitals, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_mvitals(nhfp.nhfpconvert, d_mvitals, myname);
         }
         if (nhfp.fplog) {
@@ -1181,13 +1185,13 @@ export async function sfi_obj(nhfp, d_obj, myname) {   // sfmacros.h:42
         await sfiprocs[nhfp.fnidx].fn.sf_obj(nhfp, d_obj, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_obj(nhfp, d_obj, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_obj(nhfp.nhfpconvert, d_obj, myname);
         }
         if (nhfp.fplog) {
@@ -1215,13 +1219,13 @@ export async function sfi_objclass(nhfp, d_objclass, myname) {   // sfmacros.h:4
         await sfiprocs[nhfp.fnidx].fn.sf_objclass(nhfp, d_objclass, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_objclass(nhfp, d_objclass, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_objclass(nhfp.nhfpconvert, d_objclass, myname);
         }
         if (nhfp.fplog) {
@@ -1249,13 +1253,13 @@ export async function sfi_q_score(nhfp, d_q_score, myname) {   // sfmacros.h:44
         await sfiprocs[nhfp.fnidx].fn.sf_q_score(nhfp, d_q_score, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_q_score(nhfp, d_q_score, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_q_score(nhfp.nhfpconvert, d_q_score, myname);
         }
         if (nhfp.fplog) {
@@ -1283,13 +1287,13 @@ export async function sfi_rm(nhfp, d_rm, myname) {   // sfmacros.h:45
         await sfiprocs[nhfp.fnidx].fn.sf_rm(nhfp, d_rm, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_rm(nhfp, d_rm, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_rm(nhfp.nhfpconvert, d_rm, myname);
         }
         if (nhfp.fplog) {
@@ -1317,13 +1321,13 @@ export async function sfi_spell(nhfp, d_spell, myname) {   // sfmacros.h:46
         await sfiprocs[nhfp.fnidx].fn.sf_spell(nhfp, d_spell, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_spell(nhfp, d_spell, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_spell(nhfp.nhfpconvert, d_spell, myname);
         }
         if (nhfp.fplog) {
@@ -1351,13 +1355,13 @@ export async function sfi_stairway(nhfp, d_stairway, myname) {   // sfmacros.h:4
         await sfiprocs[nhfp.fnidx].fn.sf_stairway(nhfp, d_stairway, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_stairway(nhfp, d_stairway, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_stairway(nhfp.nhfpconvert, d_stairway, myname);
         }
         if (nhfp.fplog) {
@@ -1385,13 +1389,13 @@ export async function sfi_s_level(nhfp, d_s_level, myname) {   // sfmacros.h:48
         await sfiprocs[nhfp.fnidx].fn.sf_s_level(nhfp, d_s_level, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_s_level(nhfp, d_s_level, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_s_level(nhfp.nhfpconvert, d_s_level, myname);
         }
         if (nhfp.fplog) {
@@ -1419,13 +1423,13 @@ export async function sfi_trap(nhfp, d_trap, myname) {   // sfmacros.h:49
         await sfiprocs[nhfp.fnidx].fn.sf_trap(nhfp, d_trap, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_trap(nhfp, d_trap, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_trap(nhfp.nhfpconvert, d_trap, myname);
         }
         if (nhfp.fplog) {
@@ -1453,13 +1457,13 @@ export async function sfi_you(nhfp, d_you, myname) {   // sfmacros.h:50
         await sfiprocs[nhfp.fnidx].fn.sf_you(nhfp, d_you, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_you(nhfp, d_you, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_you(nhfp.nhfpconvert, d_you, myname);
         }
         if (nhfp.fplog) {
@@ -1487,13 +1491,13 @@ export async function sfi_any(nhfp, d_any, myname) {   // sfmacros.h:51
         await sfiprocs[nhfp.fnidx].fn.sf_any(nhfp, d_any, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_any(nhfp, d_any, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_any(nhfp.nhfpconvert, d_any, myname);
         }
         if (nhfp.fplog) {
@@ -1521,13 +1525,13 @@ export async function sfi_aligntyp(nhfp, d_aligntyp, myname) {   // sfmacros.h:5
         await sfiprocs[nhfp.fnidx].fn.sf_aligntyp(nhfp, d_aligntyp, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_aligntyp(nhfp, d_aligntyp, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_aligntyp(nhfp.nhfpconvert, d_aligntyp, myname);
         }
         if (nhfp.fplog) {
@@ -1555,13 +1559,13 @@ export async function sfi_boolean(nhfp, d_boolean, myname) {   // sfmacros.h:54
         await sfiprocs[nhfp.fnidx].fn.sf_boolean(nhfp, d_boolean, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_boolean(nhfp, d_boolean, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_boolean(nhfp.nhfpconvert, d_boolean, myname);
         }
         if (nhfp.fplog) {
@@ -1589,13 +1593,13 @@ export async function sfi_coordxy(nhfp, d_coordxy, myname) {   // sfmacros.h:55
         await sfiprocs[nhfp.fnidx].fn.sf_coordxy(nhfp, d_coordxy, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_coordxy(nhfp, d_coordxy, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_coordxy(nhfp.nhfpconvert, d_coordxy, myname);
         }
         if (nhfp.fplog) {
@@ -1623,13 +1627,13 @@ export async function sfi_int(nhfp, d_int, myname) {   // sfmacros.h:57
         await sfiprocs[nhfp.fnidx].fn.sf_int(nhfp, d_int, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_int(nhfp, d_int, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_int(nhfp.nhfpconvert, d_int, myname);
         }
         if (nhfp.fplog) {
@@ -1657,13 +1661,13 @@ export async function sfi_int16(nhfp, d_int16, myname) {   // sfmacros.h:58
         await sfiprocs[nhfp.fnidx].fn.sf_int16(nhfp, d_int16, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_int16(nhfp, d_int16, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_int16(nhfp.nhfpconvert, d_int16, myname);
         }
         if (nhfp.fplog) {
@@ -1691,13 +1695,13 @@ export async function sfi_int32(nhfp, d_int32, myname) {   // sfmacros.h:59
         await sfiprocs[nhfp.fnidx].fn.sf_int32(nhfp, d_int32, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_int32(nhfp, d_int32, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_int32(nhfp.nhfpconvert, d_int32, myname);
         }
         if (nhfp.fplog) {
@@ -1725,13 +1729,13 @@ export async function sfi_int64(nhfp, d_int64, myname) {   // sfmacros.h:60
         await sfiprocs[nhfp.fnidx].fn.sf_int64(nhfp, d_int64, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_int64(nhfp, d_int64, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_int64(nhfp.nhfpconvert, d_int64, myname);
         }
         if (nhfp.fplog) {
@@ -1759,13 +1763,13 @@ export async function sfi_long(nhfp, d_long, myname) {   // sfmacros.h:61
         await sfiprocs[nhfp.fnidx].fn.sf_long(nhfp, d_long, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_long(nhfp, d_long, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_long(nhfp.nhfpconvert, d_long, myname);
         }
         if (nhfp.fplog) {
@@ -1793,13 +1797,13 @@ export async function sfi_schar(nhfp, d_schar, myname) {   // sfmacros.h:62
         await sfiprocs[nhfp.fnidx].fn.sf_schar(nhfp, d_schar, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_schar(nhfp, d_schar, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_schar(nhfp.nhfpconvert, d_schar, myname);
         }
         if (nhfp.fplog) {
@@ -1827,13 +1831,13 @@ export async function sfi_short(nhfp, d_short, myname) {   // sfmacros.h:63
         await sfiprocs[nhfp.fnidx].fn.sf_short(nhfp, d_short, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_short(nhfp, d_short, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_short(nhfp.nhfpconvert, d_short, myname);
         }
         if (nhfp.fplog) {
@@ -1861,13 +1865,13 @@ export async function sfi_size_t(nhfp, d_size_t, myname) {   // sfmacros.h:64
         await sfiprocs[nhfp.fnidx].fn.sf_size_t(nhfp, d_size_t, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_size_t(nhfp, d_size_t, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_size_t(nhfp.nhfpconvert, d_size_t, myname);
         }
         if (nhfp.fplog) {
@@ -1895,13 +1899,13 @@ export async function sfi_time_t(nhfp, d_time_t, myname) {   // sfmacros.h:65
         await sfiprocs[nhfp.fnidx].fn.sf_time_t(nhfp, d_time_t, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_time_t(nhfp, d_time_t, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_time_t(nhfp.nhfpconvert, d_time_t, myname);
         }
         if (nhfp.fplog) {
@@ -1929,13 +1933,13 @@ export async function sfi_uchar(nhfp, d_uchar, myname) {   // sfmacros.h:66
         await sfiprocs[nhfp.fnidx].fn.sf_uchar(nhfp, d_uchar, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_uchar(nhfp, d_uchar, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_uchar(nhfp.nhfpconvert, d_uchar, myname);
         }
         if (nhfp.fplog) {
@@ -1963,13 +1967,13 @@ export async function sfi_uint16(nhfp, d_uint16, myname) {   // sfmacros.h:67
         await sfiprocs[nhfp.fnidx].fn.sf_uint16(nhfp, d_uint16, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_uint16(nhfp, d_uint16, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_uint16(nhfp.nhfpconvert, d_uint16, myname);
         }
         if (nhfp.fplog) {
@@ -1997,13 +2001,13 @@ export async function sfi_uint32(nhfp, d_uint32, myname) {   // sfmacros.h:68
         await sfiprocs[nhfp.fnidx].fn.sf_uint32(nhfp, d_uint32, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_uint32(nhfp, d_uint32, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_uint32(nhfp.nhfpconvert, d_uint32, myname);
         }
         if (nhfp.fplog) {
@@ -2031,13 +2035,13 @@ export async function sfi_uint64(nhfp, d_uint64, myname) {   // sfmacros.h:69
         await sfiprocs[nhfp.fnidx].fn.sf_uint64(nhfp, d_uint64, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_uint64(nhfp, d_uint64, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_uint64(nhfp.nhfpconvert, d_uint64, myname);
         }
         if (nhfp.fplog) {
@@ -2065,13 +2069,13 @@ export async function sfi_ulong(nhfp, d_ulong, myname) {   // sfmacros.h:70
         await sfiprocs[nhfp.fnidx].fn.sf_ulong(nhfp, d_ulong, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_ulong(nhfp, d_ulong, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_ulong(nhfp.nhfpconvert, d_ulong, myname);
         }
         if (nhfp.fplog) {
@@ -2099,13 +2103,13 @@ export async function sfi_unsigned(nhfp, d_unsigned, myname) {   // sfmacros.h:7
         await sfiprocs[nhfp.fnidx].fn.sf_unsigned(nhfp, d_unsigned, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_unsigned(nhfp, d_unsigned, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_unsigned(nhfp.nhfpconvert, d_unsigned, myname);
         }
         if (nhfp.fplog) {
@@ -2133,13 +2137,13 @@ export async function sfi_ushort(nhfp, d_ushort, myname) {   // sfmacros.h:72
         await sfiprocs[nhfp.fnidx].fn.sf_ushort(nhfp, d_ushort, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_ushort(nhfp, d_ushort, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_ushort(nhfp.nhfpconvert, d_ushort, myname);
         }
         if (nhfp.fplog) {
@@ -2167,13 +2171,13 @@ export async function sfi_xint16(nhfp, d_xint16, myname) {   // sfmacros.h:73
         await sfiprocs[nhfp.fnidx].fn.sf_xint16(nhfp, d_xint16, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_xint16(nhfp, d_xint16, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_xint16(nhfp.nhfpconvert, d_xint16, myname);
         }
         if (nhfp.fplog) {
@@ -2201,13 +2205,13 @@ export async function sfi_xint8(nhfp, d_xint8, myname) {   // sfmacros.h:74
         await sfiprocs[nhfp.fnidx].fn.sf_xint8(nhfp, d_xint8, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_xint8(nhfp, d_xint8, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_xint8(nhfp.nhfpconvert, d_xint8, myname);
         }
         if (nhfp.fplog) {
@@ -2238,13 +2242,13 @@ export async function sfi_bitfield(nhfp, d_bitfield, myname, bfsz) {   // sfbase
         await sfiprocs[nhfp.fnidx].fn.sf_bitfield(nhfp, d_bitfield, myname, bfsz);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_bitfield(nhfp, d_bitfield, myname, bfsz);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_bitfield(nhfp.nhfpconvert, d_bitfield, myname, bfsz);
         }
         if (nhfp.fplog) {
@@ -2255,7 +2259,7 @@ export async function sfi_bitfield(nhfp, d_bitfield, myname, bfsz) {   // sfbase
 export async function sfo_char(nhfp, d_char, myname, cnt) {   // sfbase.c:249
     let save_fplog = null;
     if (nhfp.fplog) {
-        sf_log(nhfp, myname, 1, cnt, sfvalue_char(d_char, cnt));
+        sf_log(nhfp, myname, 1, cnt, Sfvalue_char(d_char, cnt));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_char(nhfp, d_char, myname, cnt);
@@ -2272,24 +2276,24 @@ export async function sfi_char(nhfp, d_char, myname, cnt) {   // sfbase.c:265
         await sfiprocs[nhfp.fnidx].fn.sf_char(nhfp, d_char, myname, cnt);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_char(nhfp, d_char, myname, cnt);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_char(nhfp.nhfpconvert, d_char, myname, cnt);
         }
         if (nhfp.fplog) {
-            sf_log(nhfp, myname, 1, cnt, sfvalue_char(d_char, cnt));
+            sf_log(nhfp, myname, 1, cnt, Sfvalue_char(d_char, cnt));
         }
     }
 }
 export async function sfo_genericptr(nhfp, d_genericptr, myname) {   // sfbase.c:290
     let save_fplog = null;
     if (nhfp.fplog) {
-        sf_log(nhfp, myname, 8, 1, sfvalue_genericptr(d_genericptr));
+        sf_log(nhfp, myname, 8, 1, Sfvalue_genericptr(d_genericptr));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_genericptr(nhfp, d_genericptr, myname);
@@ -2306,17 +2310,17 @@ export async function sfi_genericptr(nhfp, d_genericptr, myname) {   // sfbase.c
         await sfiprocs[nhfp.fnidx].fn.sf_genericptr(nhfp, d_genericptr, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_genericptr(nhfp, d_genericptr, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
             await sfo_genericptr(nhfp.nhfpconvert, d_genericptr, myname);
         }
         if (nhfp.fplog) {
-            sf_log(nhfp, myname, 8, 1, sfvalue_genericptr(d_genericptr));
+            sf_log(nhfp, myname, 8, 1, Sfvalue_genericptr(d_genericptr));
         }
     }
 }
@@ -2340,14 +2344,14 @@ export async function sfi_version_info(nhfp, d_version_info, myname) {   // sfba
         await sfiprocs[nhfp.fnidx].fn.sf_version_info(nhfp, d_version_info, myname);
     } else {
         save_mode = nhfp.mode;
-        nhfp.mode = nhfp.mode & -25;
-        nhfp.mode = nhfp.mode | 32;
+        nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
+        nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_version_info(nhfp, d_version_info, myname);
         nhfp.mode = save_mode;
     }
     if (!nhfp.eof) {
-        if (((nhfp.mode & 8) !== 0 || (nhfp.mode & 16) !== 0) && nhfp.nhfpconvert) {
-            d_version_info.feature_set = $c.oru64(d_version_info.feature_set, 1073741824);
+        if (((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) && nhfp.nhfpconvert) {
+            d_version_info.feature_set = $c.oru64(d_version_info.feature_set, SFCTOOL_BIT);
             await sfo_version_info(nhfp.nhfpconvert, d_version_info, myname);
         }
         if (nhfp.fplog) {
@@ -2358,9 +2362,9 @@ export async function sfi_version_info(nhfp, d_version_info, myname) {   // sfba
 export function sf_log(nhfp, t1, sz, cnt, txtvalue) {   // sfbase.c:377
     let fp = null, iocount = null, dolog = 0;
     fp = nhfp.fplog;
-    dolog = $c.i8((nhfp.mode & 32) === 0 ? 1 : 0);
+    dolog = $c.i8((nhfp.mode & TURN_OFF_LOGGING) === 0 ? 1 : 0);
     if (fp && dolog) {
-        iocount = (nhfp.mode & 2) === 0 ? new $c.FieldRef(nhfp, "rcount", "i64") : new $c.FieldRef(nhfp, "wcount", "i64");
+        iocount = (nhfp.mode & WRITING) === 0 ? new $c.FieldRef(nhfp, "rcount", "i64") : new $c.FieldRef(nhfp, "wcount", "i64");
         $c.fprintf(fp, $c.lit("%08ld %s sz=%zu cnt=%d |%s|\n"), iocount.get(0), t1, sz, cnt, txtvalue);
         $c.fflush(fp);
     }
@@ -2488,12 +2492,12 @@ export function complex_dump(a) {   // sfbase.c:625
     return new $c.Ptr(complex_dump$buf, 0);
 }
 export function sf_init() {   // sfbase.c:647
-    sfoprocs[0 /* invalid */].$copyFrom(zerosfoprocs);
-    sfiprocs[0 /* invalid */].$copyFrom(zerosfiprocs);
-    sfoprocs[1 /* historical */].$copyFrom(historical_sfo_procs);
-    sfiprocs[1 /* historical */].$copyFrom(historical_sfi_procs);
-    sfoflprocs[2 /* exportascii */].$copyFrom(zerosfoflprocs);
-    sfiflprocs[2 /* exportascii */].$copyFrom(zerosfiflprocs);
+    sfoprocs[invalid].$copyFrom(zerosfoprocs);
+    sfiprocs[invalid].$copyFrom(zerosfiprocs);
+    sfoprocs[historical].$copyFrom(historical_sfo_procs);
+    sfiprocs[historical].$copyFrom(historical_sfi_procs);
+    sfoflprocs[exportascii].$copyFrom(zerosfoflprocs);
+    sfiflprocs[exportascii].$copyFrom(zerosfiflprocs);
 }
 export function sf_setprocs(idx, sfi, sfo) {   // sfbase.c:658
     sfoprocs[idx].$copyFrom(sfo);
@@ -2648,6 +2652,12 @@ export function norm_ptrs_vlaunchinfo(d_vlaunchinfo) {   // sfbase.c:1097
 export function norm_ptrs_vptrs(d_vptrs) {   // sfbase.c:1102
 }
 export function norm_ptrs_you(d_you) {   // sfbase.c:1107
+}
+function Sfvalue_genericptr(a) {
+    return sfvalue_genericptr(a);
+}
+function Sfvalue_char(a, d) {
+    return sfvalue_char(a, d);
 }
 
 export function $init() {

@@ -6,6 +6,9 @@
 // quest_chat, quest_talk, quest_stat_check.
 
 import { game } from './gstate.js';
+import { livelog_printf } from './display.js';
+import { LL_ACHIEVE } from './const.js';
+import { noit_mon_nam } from './do_name.js';
 import { rn2 } from './rng.js';
 import { A_ORIGINAL, A_CURRENT, A_WIS, OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED,
          UTOTYPE_NONE, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL,
@@ -351,9 +354,9 @@ async function chat_with_leader(mtmp) {
                 expulsion(false);
 
                 /* being expelled is hardly an achievement but none of the
-                   other livelog classifications fit:
-                   livelog_printf(LL_ACHIEVE, ...) -- the livelog isn't
-                   shown on the tty */
+                   other livelog classifications fit */
+                livelog_printf(LL_ACHIEVE,
+                               `${noit_mon_nam(mtmp)} has expelled you from the quest`);
             }
         } else if (purity === 0) {
             await qt_pager("badalign");
@@ -368,8 +371,9 @@ async function chat_with_leader(mtmp) {
             /* phrasing is a bit clumsy but allows #chronicle to provide a
                clue to players who are reaching the quest for first time;
                matters most for Home 1 that has stairs down which aren't
-               easily found:
-               livelog_printf(LL_ACHIEVE, ...) -- not shown on the tty */
+               easily found */
+            livelog_printf(LL_ACHIEVE,
+                           `${noit_mon_nam(mtmp)} has granted access to proceed deeper into the quest`);
         }
     }
 }

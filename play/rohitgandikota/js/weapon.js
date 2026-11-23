@@ -517,6 +517,7 @@ function P_NAME(type) {
 /* include/skills.h P_SKILL/P_MAX_SKILL/P_ADVANCE/P_RESTRICTED — readers over
    u.weapon_skills, which skill_init() builds. */
 export const P_SKILL = (x) => game.u.weapon_skills?.[x]?.skill;
+export const P_MAX_SKILL = (x) => game.u.weapon_skills?.[x]?.max;
 
 // src/weapon.c:90 weapon_descr() — weapon's skill category name for use as a
 // generalized description of the weapon.

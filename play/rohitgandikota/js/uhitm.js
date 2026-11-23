@@ -4648,7 +4648,7 @@ function can_blnd_m(magr, mattk, mdef) {
     return true;
 }
 
-// src/uhitm.c:2958 mhitm_ad_blnd(), monster against hero arm.
+// src/uhitm.c:2958 mhitm_ad_blnd(), mhm is optional for monster vs monster.
 export async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
         if (can_blnd_m(magr, mattk, mdef)) {
@@ -4684,7 +4684,8 @@ export async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
             mdef.mcansee = 0;
             mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
         }
-        mhm.damage = 0;
+        if (mhm)
+            mhm.damage = 0;
     }
 }
 

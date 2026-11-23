@@ -165,11 +165,35 @@ export async function tricked_fileremoved(nhfp, whynot) {
 }
 
 
+function apfs_fold(path) {
+    const bytes = Uint8Array.from(path, c => c.charCodeAt(0) & 0xff);
+    let s;
+    try { s = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+    catch { return path; }
+    let out = '';
+    for (const ch of s.normalize('NFD')) {
+        /* full case folding (CaseFolding.txt C+F) as an equivalence: iterate
+         * upper->lower to a fixpoint so ẞ -> ß -> ss and ς -> σ. */
+        /* U+0131 DOTLESS I has no CaseFolding.txt entry (only a Turkic 'T'
+         * one, which full folding excludes), but toUpperCase() maps it to 'I'. */
+        let f = ch, prev;
+        if (ch !== '\u0131')
+            for (let i = 0; i < 4 && f !== prev; i++) { prev = f; f = f.toUpperCase().toLowerCase(); }
+        out += f;
+    }
+    return out.normalize('NFD');
+}
+
+/* unixunix.c:297-303 regularize(): '.', '/' and ' ' become '_'. */
+function regularize(s) {
+    return s.replace(/[./ ]/g, '_');
+}
+
 export function savefile_name(plname) {
-    const want = `save/${plname || ''}`;
-    const lc = want.toLowerCase();
+    const want = `save/${regularize(plname || '')}`;
+    const key = apfs_fold(want);
     for (const path of vfsListFiles('save/'))
-        if (path.toLowerCase() === lc) return path;
+        if (apfs_fold(path) === key) return path;
     return want;
 }
 

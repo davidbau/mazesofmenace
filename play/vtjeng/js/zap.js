@@ -251,7 +251,6 @@ import { ignite_items } from './apply_catch_lit.js';
 import {
     hits_bars, m_useup, m_useupall, rnd_hallublast, thitu,
 } from './mthrowu.js';
-import { note_unported } from './unported.js';
 import {
     impossible,
     impossible_printer,
@@ -1014,7 +1013,7 @@ async function boxlock_invent(obj, state = game) {
 export async function release_hold(state = game) {
     const holder = state.u?.ustuck;
     if (!holder) {
-        note_unported('pline.c impossible'); // release_hold
+        await impossible('release_hold when not held?', state); // release_hold
         return;
     }
     const swallowed = Boolean(state.u?.uswallow);
@@ -1500,7 +1499,7 @@ export async function zapyourself(obj, ordinary, state = game) {
     }
 
     default:
-        note_unported('pline.c impossible');
+        await impossible(`zapyourself: object ${obj.otyp} used?`, state);
         break;
     }
     // Several arms above can end the game (a death ray, system shock from
@@ -1878,7 +1877,9 @@ async function wishcmdassist(triesleft, state = game) {
 const MAX_WISH_HISTORY = 20;
 
 // C ref: zap.c wish_history_add() (6224-6253). A line is skipped when it
-// begins, ignoring ASCII case, with a line already in the history.
+// begins, ignoring ASCII case, with a line already in the history. C tests
+// each slot as a pointer, so null alone marks a free slot and an empty line
+// is an entry like any other.
 export function wish_history_add(buf, state = game) {
     if (!state.wizard) return;
     state.wish_history ??= new Array(MAX_WISH_HISTORY).fill(null);
@@ -1889,7 +1890,9 @@ export function wish_history_add(buf, state = game) {
     for (i = 0; i < MAX_WISH_HISTORY; i++) {
         const idx = (state.wish_history_idx + i) % MAX_WISH_HISTORY;
 
-        if (!history[idx]) continue;
+        // 6240: a stored "" is a zero-length prefix of every later line, so
+        // nothing is added after it.
+        if (history[idx] === null) continue;
         if (!strncmpi(history[idx], buf, history[idx].length)) break;
     }
 
@@ -1912,7 +1915,7 @@ async function wish_history_menu(state = game) {
 
     for (let i = MAX_WISH_HISTORY - 1; i >= 0; i--) {
         const idx = (state.wish_history_idx + i) % MAX_WISH_HISTORY;
-        if (history[idx]) {
+        if (history[idx] !== null) {
             items.push({ value: i + 1, label: history[idx] });
         }
     }
@@ -1927,7 +1930,7 @@ async function wish_history_menu(state = game) {
     if (picked > 0) {
         const idx = (state.wish_history_idx + picked - 1) % MAX_WISH_HISTORY;
 
-        if (history[idx]) return history[idx];
+        if (history[idx] !== null) return history[idx];
     }
     return '';
 }
@@ -1972,7 +1975,7 @@ export async function makewish(state = game) {
         // 6334: the `m` prefix opens the history menu on the first try once
         // a wish has been recorded; wish_history[0] is the first slot filled.
         const answer = state.iflags?.menu_requested
-            && state.wish_history?.[0] && tries === 0
+            && (state.wish_history?.[0] ?? null) !== null && tries === 0
             ? await wish_history_menu(state)
             : await getlin(promptbuf, state);
 
@@ -3096,7 +3099,8 @@ export async function bhito(obj, wand, state = game,
         obj.bypass = false;
     }
     if (obj?.where !== OBJ_FLOOR && wand.otyp !== SPE_STONE_TO_FLESH)
-        note_unported('pline.c impossible'); // object location
+        await impossible(
+            'bhito: obj is not floor or Stone To Flesh spell', state, rawEnv); // object location
 
     if (obj === state.uball) {
         res = 0;
@@ -3310,7 +3314,8 @@ export async function bhito(obj, wand, state = game,
             res = await stone_to_flesh_obj(obj, state, random, rawEnv);
             break;
         default:
-            note_unported('pline.c impossible'); // bhito effect
+            await impossible(
+                `What an interesting effect (${wand.otyp})`, state, rawEnv); // bhito effect
             break;
         }
     }
@@ -3822,7 +3827,8 @@ export async function bhitm(monster, wand, state = game,
         }
     } else {
         // C's default is impossible() for an invalid effect/type pairing.
-        note_unported('pline.c impossible'); // bhitm effect
+        await impossible(
+            `What an interesting effect (${wand.otyp})`, state, rawEnv); // bhitm effect
     }
     if (wake && monster.mhp >= 1) {
         await wakeup(monster, !helpful_gesture, {
@@ -5011,7 +5017,7 @@ export async function melt_ice(x, y, msg = null, state = game, rawEnv = {}) {
             // C's impossible() here only diagnoses an impossible return from
             // boulder_hits_pool(); the value is still not otherwise used.
             if (!await boulder_hits_pool(boulder, x, y, false, env)) {
-                note_unported('pline.c impossible');
+                await impossible('melt_ice: no pool?', state, rawEnv);
             }
         } while (is_pool(x, y, state)
             && (boulder = sobj_at(BOULDER, x, y, state)));
@@ -5540,7 +5546,9 @@ export async function mon_spell_hits_spot(
             x, y, zapDamageType, shopDamage, true, 0, state, random, env,
         );
     } else {
-        note_unported('pline.c impossible');
+        await impossible(
+            `Unsupported damage type (${adtyp}) for mon_spell_hits_spot.`,
+            state, rawEnv);
     }
 }
 

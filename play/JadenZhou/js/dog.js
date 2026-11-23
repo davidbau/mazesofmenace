@@ -5,6 +5,28 @@
 // (dogmove.c), keepdogs/losedogs, tamedog and the rest of dog.c.
 
 import { set_residency } from './shk.js';
+import { SCROLL_CLASS, SPBOOK_CLASS, CORPSE } from './objects.js';
+import { FULL_MOON, DOGFOOD, ACCFOOD, MANFOOD, NEED_HTH_WEAPON, ismnum } from './const.js';
+import { PM_MEDUSA, M3_WANTSARTI, M3_COVETOUS, S_DOG, AT_WEAP } from './monsters.js';
+import { canspotmon, Hallucination } from './display.js';
+import { cansee } from './vision.js';
+import { night } from './calendar.js';
+import { dogfood, dog_eat } from './dogmove.js';
+import { the } from './iactions.js';
+import { xname, Tobjnam } from './objnam.js';
+import { place_object } from './mkobj.js';
+import { make_happy_shk } from './shk.js';
+import { is_human, is_demon } from './mondata.js';
+import { mon_wield_item } from './weapon.js';
+import { wake_nearto } from './mon.js';
+import { rnd } from './rng.js';
+
+/* C ref: mondata.h attacktype() */
+function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT } from './const.js';
+import { an } from './objnam.js';
+import { mon_pmname } from './do_name.js';
 import { game } from './gstate.js';
 import { redraw_worm, count_wsegs, wormgone, get_wormno, initworm,
          MAX_NUM_WORMS } from './worm.js';
@@ -98,8 +120,17 @@ export function initedog(mtmp, everything) {
        already be higher when taming magic affects already tame monst */
     if (edogp.hungrytime < minhungry)
         edogp.hungrytime = minhungry;
-    /* livelog of the first pet (only once in_moveloop): not ported yet */
-    game.u.uconduct.pets = (game.u.uconduct.pets || 0) + 1;
+    /* livelog first pet, but only if you didn't start with one (the starting
+     * pet will be initialized before in_moveloop is true) */
+    if (!game.u.uconduct.pets && game.program_state?.in_moveloop) {
+        /* "obtained" a pet rather than "tamed" it because it might have come
+         * from a figurine or some other method in which it was created tame
+         * using an() is safe unless it somehow becomes possible to tame a
+         * unique monster */
+        livelog_printf(LL_CONDUCT, `obtained ${game.flags.female ? "her" : "his" /* uhis() */
+                                   } first pet (${an(mon_pmname(mtmp))})`);
+    }
+    game.u.uconduct.pets++;
 }
 
 // C ref: dog.c pet_type()
@@ -846,7 +877,7 @@ export function mon_catchup_elapsed_time(
 }
 
 // C ref: dogmove.c finish_meating()
-function finish_meating(mtmp) {
+export function finish_meating(mtmp) {
     mtmp.meating = 0;
     if ((mtmp.m_ap_type || 0) !== M_AP_NOTHING && mtmp.data.mlet !== S_MIMIC) {
         /* was eating a mimic and now appearance needs resetting */
@@ -854,4 +885,147 @@ function finish_meating(mtmp) {
         mtmp.mappearance = 0;
         newsym(mtmp.mx, mtmp.my);
     }
+}
+
+// C ref: dog.c tamedog()
+/*
+ * Make monster mtmp next to you (if it is a dog or cat or whatever)
+ * a pet; this is applied to food or scrolls/spells of taming.
+ * Returns True if the taming succeeded (the original mtmp is kept;
+ * newedog()/initedog() set up the pet extension on it).
+ */
+export async function tamedog(
+    mtmp,
+    obj, /* food or scroll/spell */
+    givemsg) {
+    let blessed_scroll = false;
+
+    if (obj && (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS)) {
+        blessed_scroll = obj.blessed ? true : false;
+        /* the rest of this routine assumes 'obj' represents food */
+        obj = null;
+    }
+    /* reduce timed sleep or paralysis, leaving mtmp->mcanmove as-is
+       (note: if mtmp is donning armor, this will reduce its busy time) */
+    if (mtmp.mfrozen)
+        mtmp.mfrozen = Math.trunc((mtmp.mfrozen + 1) / 2);
+    /* end indefinite sleep; using distance==1 limits the waking to mtmp */
+    if (mtmp.msleeping)
+        await wake_nearto(mtmp.mx, mtmp.my, 1); /* [different from wakeup()] */
+
+    /* The Wiz, Medusa and the quest nemeses aren't even made peaceful. */
+    if (mtmp.iswiz || mtmp.data === mons[PM_MEDUSA]
+        || (mtmp.data.mflags3 & M3_WANTSARTI))
+        return false;
+
+    /* worst case, at least it'll be peaceful. */
+    if (givemsg && !mtmp.mpeaceful && canspotmon(mtmp)) {
+        await pline(`${Monnam(mtmp)} seems ${Hallucination() ? "really chill"
+                                                            : "more amiable"}.`);
+        givemsg = false; /* don't give another message below */
+    }
+    mtmp.mpeaceful = 1;
+    set_malign(mtmp);
+    if (game.flags.moonphase === FULL_MOON && night() && rn2(6) && obj
+        && mtmp.data.mlet === S_DOG)
+        return false;
+
+    /* If we cannot tame it, at least it's no longer afraid. */
+    mtmp.mflee = 0;
+    mtmp.mfleetim = 0;
+
+    /* make grabber let go now, whether it becomes tame or not */
+    if (mtmp === game.u.ustuck)
+        throw new Error('tamedog(): releasing u.ustuck (expels()/unstuck()) not ported yet');
+
+    /* feeding it treats makes it tamer */
+    if (mtmp.mtame && obj) {
+        let tasty;
+
+        if (mtmp.mcanmove && !mtmp.mconf && !mtmp.meating
+            && ((tasty = dogfood(mtmp, obj)) === DOGFOOD
+                || (tasty <= ACCFOOD
+                    && mtmp.edog.hungrytime <= game.moves))) {
+            /* pet will "catch" and eat this thrown food */
+            if (canseemon(mtmp)) {
+                const big_corpse =
+                    (obj.otyp === CORPSE && ismnum(obj.corpsenm)
+                     && mons[obj.corpsenm].msize > mtmp.data.msize);
+                await pline(`${Monnam(mtmp)} catches ${the(xname(obj))}${
+                            !big_corpse ? "." : ", or vice versa!"}`);
+            } else if (cansee(mtmp.mx, mtmp.my))
+                await pline(`${Tobjnam(obj, "stop")}.`);
+            /* dog_eat expects a floor object */
+            place_object(obj, mtmp.mx, mtmp.my);
+            await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, false);
+            /* eating might have killed it, but that doesn't matter here;
+               a non-null result suppresses "miss" message for thrown
+               food and also implies that the object has been deleted */
+            return true;
+        } else
+            return false;
+    }
+
+    /* maximum tameness is 20, only reachable via eating; if already tame but
+       less than 10, taming magic might make it become tamer; blessed scroll
+       or skilled spell raises low tameness by 2 or 3, uncursed by 0 or 1 */
+    if (mtmp.mtame && mtmp.mtame < 10) {
+        if (mtmp.mtame < rnd(10))
+            mtmp.mtame++;
+        if (blessed_scroll) {
+            mtmp.mtame += 2;
+            if (mtmp.mtame > 10)
+                mtmp.mtame = 10;
+        }
+        return false; /* didn't just get tamed */
+    }
+    /* pacify angry shopkeeper but don't tame him/her/it/them */
+    if (mtmp.isshk) {
+        await make_happy_shk(mtmp, false);
+        return false;
+    }
+
+    if (!mtmp.mcanmove
+        /* monsters with conflicting structures cannot be tamed
+           [note: the various mextra structures don't actually conflict
+           with each other anymore] */
+        || mtmp.isshk || mtmp.isgd || mtmp.ispriest || mtmp.isminion
+        || (mtmp.data.mflags3 & M3_COVETOUS) !== 0 /* is_covetous() */
+        || is_human(mtmp.data)
+        || (is_demon(mtmp.data) && !is_demon(game.youmonst.data))
+        || (obj && dogfood(mtmp, obj) >= MANFOOD))
+        return false;
+
+    if (mtmp.m_id === game.quest_status?.leader_m_id)
+        return false;
+
+    /* add the pet extension */
+    if (!mtmp.edog) { /* !has_edog(mtmp) */
+        newedog(mtmp);
+        initedog(mtmp, true);
+    } else {
+        initedog(mtmp, false);
+    }
+
+    if (obj) { /* thrown food */
+        /* defer eating until the edog extension has been set up */
+        place_object(obj, mtmp.mx, mtmp.my); /* put on floor */
+        /* devour the food (might grow into larger, genocided monster) */
+        if (await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, true) === 2)
+            return true; /* oops, it died... */
+        /* `obj' is now obsolete */
+    }
+
+    if (givemsg && canspotmon(mtmp))
+        await pline(`${Monnam(mtmp)} seems quite ${Hallucination() ? "approachable"
+                                                                   : "friendly"}.`);
+
+    newsym(mtmp.mx, mtmp.my);
+    if (mtmp.wormno)
+        redraw_worm(mtmp);
+    if (attacktype(mtmp.data, AT_WEAP)) {
+        mtmp.weapon_check = NEED_HTH_WEAPON;
+        await mon_wield_item(mtmp);
+    }
+    return true;
 }

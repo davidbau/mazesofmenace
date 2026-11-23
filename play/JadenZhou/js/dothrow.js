@@ -7,6 +7,7 @@
 // are not ported yet.
 
 import { game } from './gstate.js';
+import { tamedog } from './dog.js';
 import { drag_ball, move_bc, drop_ball } from './ball.js';
 import { You, You_cant } from './display.js';
 import { check_capacity } from './hack.js';
@@ -29,7 +30,7 @@ import { x_monnam, ARTICLE_A, SUPPRESS_SADDLE, AUGMENT_IT } from './do_name.js';
 import { BOULDER } from './objects.js';
 import { isok, IS_DOOR, IS_OBSTRUCTED, D_ISOPEN, IRONBARS, PASSES_WALLS,
          LEVITATION, FLYING, MAGIC_PORTAL, FIRE_TRAP, STRAT_WAITMASK } from './const.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rn2_on_display_rng } from './rng.js';
 import { CONFUSION, STUNNED, FUMBLING, BLINDED, HALLUC, HALLUC_RES, STONE_RES, DEAF,
          A_STR, A_DEX, A_CON, STR19, P_SLING, P_SPEAR, P_SHURIKEN,
          P_DAGGER, P_KNIFE, P_DART, P_CROSSBOW, P_SABER, P_SHORT_SWORD,
@@ -79,7 +80,8 @@ import { IS_ALTAR, PIT, SPIKED_PIT, HOLE, TRAPDOOR, is_pit, is_hole } from './co
 import { BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME } from './const.js';
 import { cansee } from './vision.js';
 import { obj_resists } from './dogmove.js';
-import { map_invisible, unmap_object, glyph_is_invisible } from './display.js';
+import { map_invisible, unmap_object, glyph_is_invisible, tmp_at, obj_to_glyph,
+         DISP_FLASH, DISP_END } from './display.js';
 import { in_out_region } from './region.js';
 
 /* C ref: weight.h WT_SPLASH_THRESHOLD -- weight needed to make splash in
@@ -523,14 +525,316 @@ function throwit_return(clear_thrownobj) {
    returns TRUE if shopkeeper caught the object.
    may delete object, clearing gt.thrownobj */
 async function throwit_mon_hit(obj, mon) {
+    const g = game;
+    const u = g.u;
     if (mon) {
         if (mon.isshk && obj.where === 'OBJ_MINVENT' && obj.ocarry === mon)
             return true;
-        /* snuff_candle(obj), thitmonst(mon, obj): hitting a monster with
-           a thrown object */
-        throw new Error('throwit_mon_hit(): thitmonst() not ported yet');
+        snuff_candle_dt(obj);
+        g.notonhead = (g.bhitpos.x !== mon.mx || g.bhitpos.y !== mon.my);
+        const obj_gone = await thitmonst(mon, obj);
+        /* Monster may have been tamed; this frees old mon [obsolete] */
+        mon = m_at(g.bhitpos.x, g.bhitpos.y);
+
+        /* [perhaps this should be moved into thitmonst or hmon] */
+        if (mon && mon.isshk
+            && (!inside_shop_sk(u.ux, u.uy)
+                || !in_rooms_dt(mon.mx, mon.my, SHOPBASE_DT)
+                       .includes((u.ushops || '')[0])))
+            hot_pursuit_dt(mon);
+
+        if (obj_gone)
+            g.thrownobj = null;
     }
     return false;
+}
+
+// C ref: apply.c snuff_candle() -- lit candles aren't thrown by the JS
+// port yet
+function snuff_candle_dt(otmp) {
+    const candle = Is_candle_dt(otmp);
+
+    if ((candle || otmp.otyp === CANDELABRUM_OF_INVOCATION_DT)
+        && otmp.lamplit)
+        throw new Error('snuff_candle(): end_burn() not ported yet');
+    return false;
+}
+
+// C ref: dothrow.c tmiss()
+/* thrown object misses target monster */
+async function tmiss(obj, mon, maybe_wakeup) {
+    const missile = mshot_xname_dt(obj);
+
+    /* If the target can't be seen or doesn't look like a valid target,
+       avoid "the arrow misses it," or worse, "the arrows misses the mimic."
+       An attentive player will still notice that this is different from
+       an arrow just landing short of any target (no message in that case),
+       so will realize that there is a valid target here anyway. */
+    const ap = (mon.m_ap_type || 0) & M_AP_TYPMASK_DT;
+    if (!canseemon(mon) || (ap && ap !== M_AP_MONSTER_DT))
+        await pline(`${The(missile)} ${otense(obj, "miss")}.`);
+    else
+        await miss_dt(missile, mon);
+    if (maybe_wakeup && !rn2(3))
+        await wakeup(mon, true);
+    return;
+}
+
+/* C ref: dothrow.c special_obj_hits_leader() */
+function special_obj_hits_leader(obj, mon) {
+    return ((is_quest_artifact_dt(obj) || objects[obj.otyp].oc_unique
+             || (obj.otyp === FAKE_AMULET_OF_YENDOR_DT && !obj.known))
+            && game.quest_status?.leader_m_id
+            && mon.m_id === game.quest_status.leader_m_id);
+}
+
+/* C ref: mondata.h is_unicorn(), befriend_with_obj() */
+function is_unicorn_dt(ptr) {
+    return ptr.mlet === S_UNICORN_DT && (ptr.mflags2 & M2_JEWELS_DT) !== 0;
+}
+function befriend_with_obj_dt(ptr, obj) {
+    return (ptr === mons[PM_MONKEY_DT] || ptr === mons[PM_APE_DT])
+        ? obj.otyp === BANANA_DT
+        : (is_domestic_dt(ptr) && obj.oclass === FOOD_CLASS_DT
+           && (ptr.mlet !== S_UNICORN_DT
+               || objects[obj.otyp].oc_material === VEGGY_DT
+               || (obj.otyp === CORPSE_DT && obj.corpsenm === PM_LICHEN_DT)));
+}
+
+// C ref: dothrow.c thitmonst()
+/*
+ * Object thrown by player arrives at monster's location.
+ * Return 1 if obj has disappeared or otherwise been taken care of,
+ * 0 if caller must take care of it.
+ * Also used for kicked objects and for polearms/grapnel applied at range.
+ */
+export async function thitmonst(mon,
+                                obj) { /* gt.thrownobj or gk.kickedobj or uwep */
+    const g = game;
+    const u = g.u;
+    let tmp;     /* Base chance to hit */
+    let disttmp; /* distance modifier */
+    const otyp = obj.otyp;
+    const guaranteed_hit = !!engulfing_u_dt(mon);
+
+    const hmode = (obj === g.uwep) ? HMON_APPLIED_DT
+                  : (obj === g.kickedobj) ? HMON_KICKED_DT
+                    : HMON_THROWN_DT;
+
+    /* Differences from melee weapons:
+     *
+     * Dex still gives a bonus, but strength does not.
+     * Polymorphed players lacking attacks may still throw.
+     * There's a base -1 to hit.
+     * No bonuses for fleeing or stunned targets (they don't dodge
+     *    melee blows as readily, but dodging arrows is hard anyway).
+     * Not affected by traps, etc.
+     * Certain items which don't in themselves do damage ignore 'tmp'.
+     * Distance and monster size affect chance to hit.
+     */
+    tmp = -1 + ((u.uluck || 0) + (u.moreluck || 0)) + find_mac_dt(mon)
+          + (u.uhitinc || 0)
+          + (Upolyd() ? g.youmonst.data.mlevel : u.ulevel);
+    if (ACURR(A_DEX_DT) < 4)
+        tmp -= 3;
+    else if (ACURR(A_DEX_DT) < 6)
+        tmp -= 2;
+    else if (ACURR(A_DEX_DT) < 8)
+        tmp -= 1;
+    else if (ACURR(A_DEX_DT) >= 14)
+        tmp += (ACURR(A_DEX_DT) - 14);
+
+    /* Modify to-hit depending on distance; but keep it sane.
+     * Polearms get a distance penalty even when wielded; it's
+     * hard to hit at a distance.
+     */
+    disttmp = 3 - distmin_dt(u.ux, u.uy, mon.mx, mon.my);
+    if (disttmp < -4)
+        disttmp = -4;
+    tmp += disttmp;
+
+    /* gloves are a hindrance to proper use of bows */
+    if (g.uarmg && g.uwep && objects[g.uwep.otyp].oc_skill === P_BOW_DT) {
+        switch (g.uarmg.otyp) {
+        case GAUNTLETS_OF_POWER_DT: /* metal */
+            tmp -= 2;
+            break;
+        case GAUNTLETS_OF_FUMBLING_DT:
+            tmp -= 3;
+            break;
+        case LEATHER_GLOVES_DT:
+        case GAUNTLETS_OF_DEXTERITY_DT:
+            break;
+        default:
+            break; /* impossible("Unknown type of gloves") */
+        }
+    }
+
+    tmp += omon_adj(mon, obj, true);
+    if (is_orc_dt(mon.data)
+        && (Upolyd() ? is_elf_dt(g.youmonst.data) : Race_if_elf()))
+        tmp++;
+    if (guaranteed_hit) {
+        tmp += 1000; /* Guaranteed hit */
+    }
+
+    /* throwing real gems to co-aligned unicorns boosts Luck,
+       to cross-aligned unicorns changes Luck by random amount;
+       throwing worthless glass doesn't affect Luck but doesn't anger them;
+       5.0: treat rocks and gray stones as attacks rather than like glass
+       and also treat gems or glass shot via sling as attacks */
+    if (obj.oclass === GEM_CLASS && is_unicorn_dt(mon.data)
+        && objects[obj.otyp].oc_material !== MINERAL_DT && !uslinging()) {
+        if (mon.msleeping || !mon.mcanmove) { /* helpless(mon) */
+            await tmiss(obj, mon, false);
+            return 0;
+        } else if (mon.mtame) {
+            await pline(`${Monnam_dt(mon)} catches and drops ${the(xname(obj))}.`);
+            return 0;
+        } else {
+            await pline(`${Monnam_dt(mon)} catches ${the(xname(obj))}.`);
+            throw new Error('thitmonst(): gem_accept() not ported yet');
+        }
+    }
+
+    /* don't make game unwinnable if naive player throws artifact
+       at leader... (kicked artifact is ok too; HMON_APPLIED could
+       occur if quest artifact polearm or grapnel ever gets added) */
+    if (hmode !== HMON_APPLIED_DT && special_obj_hits_leader(obj, mon))
+        throw new Error('thitmonst(): special object hits leader not ported yet');
+
+    const dieroll = rnd(20);
+
+    if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
+        || obj.oclass === GEM_CLASS) {
+        if (hmode === HMON_KICKED_DT) {
+            /* throwing adjustments and weapon skill bonus don't apply */
+            tmp -= (is_ammo(obj) ? 5 : 3);
+        } else if (is_ammo(obj)) {
+            if (!ammo_and_launcher(obj, g.uwep)) {
+                tmp -= 4;
+            } else {
+                const uwep = g.uwep;
+                tmp += (uwep.spe || 0) - greatest_erosion_dt(uwep);
+                tmp += weapon_hit_bonus_dt(uwep);
+                if (uwep.oartifact)
+                    tmp += spec_abon_dt(uwep, mon);
+                /*
+                 * Elves and Samurais are highly trained w/bows,
+                 * especially their own special types of bow.
+                 * Polymorphing won't make you a bow expert.
+                 */
+                if ((Race_if_elf() || Role_if(PM_SAMURAI))
+                    && (!Upolyd() || your_race_dt(g.youmonst.data))
+                    && objects[uwep.otyp].oc_skill === P_BOW_DT) {
+                    ++tmp;
+                    if ((Race_if_elf() && uwep.otyp === ELVEN_BOW_DT)
+                        || (Role_if(PM_SAMURAI) && uwep.otyp === YUMI_DT))
+                        ++tmp;
+                }
+            }
+        } else { /* thrown non-ammo or applied polearm/grapnel */
+            if (otyp === BOOMERANG) /* arbitrary */
+                tmp += 4;
+            else if (throwing_weapon(obj)) /* meant to be thrown */
+                tmp += 2;
+            else if (obj === g.thrownobj) /* not meant to be thrown */
+                tmp -= 2;
+            /* we know we're dealing with a weapon or weptool handled
+               by WEAPON_SKILLS once ammo objects have been excluded */
+            tmp += weapon_hit_bonus_dt(obj);
+        }
+
+        if (tmp >= dieroll) {
+            const wasthrown = !!g.thrownobj,
+                /* remember weapon attribute; hmon() might destroy obj */
+                chopper = is_axe_dt(obj);
+
+            /* attack hits mon */
+            if (hmode === HMON_APPLIED_DT) { /* ranged hit with wielded polearm */
+                /* hmon()'s caller is expected to do this; however, hmon()
+                   delivers the "hit with wielded weapon for first time"
+                   gamelog message when applicable */
+                u.uconduct.weaphit++;
+            }
+            if (await hmon_dt(mon, obj, hmode, dieroll)) { /* mon still alive */
+                if (mon.wormno)
+                    await cutworm_dt(mon, g.bhitpos.x, g.bhitpos.y, chopper);
+            }
+            exercise(A_DEX_DT, true);
+            /* if hero was swallowed and projectile killed the engulfer,
+               'obj' got added to engulfer's inventory and then dropped,
+               so we can't safely use that pointer anymore; it escapes
+               the chance to be used up here... */
+            if (wasthrown && !g.thrownobj)
+                return 1;
+
+            /* projectiles other than magic stones sometimes disappear
+               when thrown; projectiles aren't among the types of weapon
+               that hmon() might have destroyed so obj is intact */
+            if (should_mulch_missile_dt(obj)) {
+                if ((u.ushops && u.ushops.length) || obj.unpaid)
+                    throw new Error('thitmonst(): check_shop_obj() not ported yet');
+                obfree_dt(obj, null);
+                return 1;
+            }
+            await passive_obj_dt(mon, obj, null);
+        } else {
+            await tmiss(obj, mon, true);
+            if (hmode === HMON_APPLIED_DT)
+                await wakeup(mon, true);
+        }
+
+    } else if (otyp === HEAVY_IRON_BALL_DT) {
+        exercise(A_STR_DT, true);
+        if (tmp >= dieroll) {
+            const was_swallowed = guaranteed_hit;
+
+            exercise(A_DEX_DT, true);
+            if (!await hmon_dt(mon, obj, hmode, dieroll)) { /* mon killed */
+                if (was_swallowed && !u.uswallow && obj === g.uball)
+                    return 1; /* already did placebc() */
+            }
+        } else {
+            await tmiss(obj, mon, true);
+        }
+
+    } else if (otyp === BOULDER) {
+        exercise(A_STR_DT, true);
+        if (tmp >= dieroll) {
+            exercise(A_DEX_DT, true);
+            await hmon_dt(mon, obj, hmode, dieroll);
+        } else {
+            await tmiss(obj, mon, true);
+        }
+
+    } else if ((otyp === EGG_DT || otyp === CREAM_PIE_DT
+                || otyp === BLINDING_VENOM || otyp === ACID_VENOM_DT)
+               && (guaranteed_hit || ACURR(A_DEX_DT) > rnd(25))) {
+        await hmon_dt(mon, obj, hmode, dieroll);
+        return 1; /* hmon used it up */
+
+    } else if (obj.oclass === POTION_CLASS_DT
+               && (guaranteed_hit || ACURR(A_DEX_DT) > rnd(25))) {
+        await potionhit_dt(mon, obj, POTHIT_HERO_THROW_DT);
+        return 1;
+
+    } else if (befriend_with_obj_dt(mon.data, obj)
+               || (mon.mtame && dogfood_dt(mon, obj) <= ACCFOOD_DT)) {
+        if (await tamedog(mon, obj, true)) {
+            return 1; /* obj is gone */
+        } else {
+            await tmiss(obj, mon, false);
+            mon.msleeping = 0;
+            mon.mstrategy &= ~STRAT_WAITMASK;
+        }
+    } else if (guaranteed_hit) {
+        throw new Error('thitmonst(): object vanishing into an engulfer not ported yet');
+    } else {
+        await tmiss(obj, mon, true);
+    }
+
+    return 0;
 }
 
 // C ref: dothrow.c throwit()
@@ -672,7 +976,7 @@ async function throwit(obj,
 
         /* have to do this after bhit() so u.ux & u.uy are correct */
         if (Is_airlevel(u.uz) || Levitation())
-            throw new Error('throwit(): hurtle() not ported yet');
+            await hurtle(-u.dx, -u.dy, urange, true);
 
         if (!obj) {
             /* bhit display cleanup was left with this caller
@@ -928,6 +1232,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
     let point_blank = true;
     let in_skip = false, allow_skip = false;
     let tethered_weapon = false;
+    let bhit_done = false; /* left the loop by 'goto bhit_done' */
     const skip = { start: 0, end: 0 };
     let skipcount = 0;
     const was_returning = (g.iflags.returning_missile === obj) ? obj : null;
@@ -948,8 +1253,9 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         tethered_weapon = true;
         weapon = THROWN_WEAPON; /* simplify 'if's that follow below */
         /* tmp_at(DISP_TETHER, obj_to_glyph(obj, rn2_on_display_rng)):
-           transient display only */
-    } /* else tmp_at(DISP_FLASH, ...): transient display only */
+           tmp_at()'s tether style isn't ported yet */
+    } else if (weapon !== ZAPPED_WAND) /* && weapon != INVIS_BEAM */
+        tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
 
     while (range-- > 0) {
         g.bhitpos.x += ddx;
@@ -1022,15 +1328,18 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
             g.notonhead = (x !== mtmp.mx || y !== mtmp.my);
             if (weapon !== ZAPPED_WAND) {
                 /* THROWN_WEAPON, KICKED_WEAPON */
-                /* if (!tethered_weapon) tmp_at(DISP_END, 0): display only */
+                if (!tethered_weapon)
+                    tmp_at(DISP_END, 0);
                 if (cansee(x, y) && !canspotmon(mtmp))
                     map_invisible(x, y);
                 result = mtmp;
+                bhit_done = true;
                 break; /* goto bhit_done */
             } else {
                 /* ZAPPED_WAND */
                 if (await fhitm(mtmp, obj)) {
                     result = mtmp;
+                    bhit_done = true;
                     break; /* goto bhit_done */
                 }
                 range -= 3;
@@ -1067,7 +1376,9 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
                 unmap_object(x, y);
                 newsym(x, y);
             }
-            /* tmp_at(x, y); nh_delay_output(): transient display only */
+            if (!tethered_weapon) /* tmp_at()'s tether style isn't ported yet */
+                tmp_at(x, y);
+            /* nh_delay_output() */
             if (IS_SINK(typ))
                 break; /* physical objects fall onto sink */
         }
@@ -1080,10 +1391,12 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         point_blank = false; /* affects passing through iron bars */
     }
 
-    /* if ((weapon != ZAPPED_WAND && weapon != INVIS_BEAM && !tethered_weapon)
-           || (was_returning && was_returning != iflags.returning_missile))
-           tmp_at(DISP_END, 0): transient display only */
-    void tethered_weapon; void was_returning;
+    /* (was_returning && was_returning != iflags.returning_missile) would
+       end the tether display, whose tmp_at() style isn't ported yet */
+    if (!bhit_done && weapon !== ZAPPED_WAND /* && weapon != INVIS_BEAM */
+        && !tethered_weapon)
+        tmp_at(DISP_END, 0);
+    void was_returning;
 
     /* bhit_done: */
     /* transient_light_cleanup(): lit objects are refused above */
@@ -1496,3 +1809,275 @@ export async function hurtle_step(arg, x, y) {
     /* if (*range != 0) nh_delay_output(): display timing only */
     return true;
 }
+
+// C ref: dothrow.c will_hurtle()
+/* used by mhurtle_step() and mhitm_knockback() */
+export function will_hurtle(mon, x, y) {
+    if (!isok(x, y))
+        return false;
+    /* redundant when called by mhurtle() but needed for mhitm_knockback() */
+    if (mon.data.msize >= MZ_HUGE_HU || mon === game.u.ustuck || mon.mtrapped)
+        return false;
+    /*
+     * TODO: Treat walls, doors, iron bars, etc. specially
+     * rather than just stopping before.
+     */
+    return goodpos_hu(x, y, mon, MM_IGNOREWATER_HU | MM_IGNORELAVA_HU);
+}
+
+/* C ref: dbridge.c is_waterwall() */
+function is_waterwall_hu(x, y) {
+    return isok(x, y) && IS_WATERWALL_HU(game.level.at(x, y).typ);
+}
+
+// C ref: dothrow.c mhurtle_step()
+async function mhurtle_step(mon, x, y) {
+    const u = game.u;
+    let mtmp;
+
+    if (!isok(x, y))
+        return false;
+
+    if (will_hurtle(mon, x, y) && await m_in_out_region_hu(mon, x, y)) {
+        let res;
+
+        if (mon !== u.usteed) {
+            /* remove_monster(mon->mx, mon->my) */
+            newsym_hu(mon.mx, mon.my);
+            place_monster_hu(mon, x, y);
+            newsym_hu(mon.mx, mon.my);
+        } else {
+            throw new Error('mhurtle_step(): hurtling steed not ported yet');
+        }
+        /* flush_screen(1); nh_delay_output(): display timing only */
+        set_apparxy_hu(mon);
+        if (is_waterwall_hu(x, y))
+            return false;
+        res = await mintrap_hu(mon, HURTLING_HU);
+        if (res === Trap_Killed_Mon_HU
+            || res === Trap_Caught_Mon_HU
+            || res === Trap_Moved_Mon_HU)
+            return false;
+        return true;
+    }
+    if ((mtmp = m_at_hu(x, y)) != null && mtmp !== mon) {
+        if (canseemon_hu(mon) || canseemon_hu(mtmp))
+            await pline(`${Monnam_dt(mon)} bumps into ${a_monnam_hu(mtmp)}.`);
+        await wakeup_hu(mtmp, !game.context.mon_moving);
+        /* check whether 'mon' is turned to stone by touching 'mtmp' */
+        if (touch_petrifies_hu(mtmp.data)
+            && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
+            throw new Error('mhurtle_step(): minstapetrify() not ported yet');
+        /* and whether 'mtmp' is turned to stone by being touched by 'mon' */
+        if (touch_petrifies_hu(mon.data)
+            && !which_armor_hu(mtmp, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
+            throw new Error('mhurtle_step(): minstapetrify() not ported yet');
+    } else if (u.ux === x && u.uy === y) {
+        /* a monster has caused 'mon' to hurtle against hero */
+        await pline(`${Some_Monnam_hu(mon)} bumps into you.`);
+        await stop_occupation_hu();
+        /* check whether 'mon' is turned to stone by touching poly'd hero */
+        if (u.umonnum !== u.umonster && touch_petrifies_hu(game.youmonst.data)
+            && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
+            throw new Error('mhurtle_step(): minstapetrify() not ported yet');
+        /* and whether hero is turned to stone by being touched by 'mon' */
+        if (touch_petrifies_hu(mon.data)
+            && !(game.uarmu || game.uarm || game.uarmc))
+            throw new Error('mhurtle_step(): instapetrify() not ported yet');
+    }
+
+    return false;
+}
+
+/* C ref: mondata.h touch_petrifies() */
+function touch_petrifies_hu(ptr) {
+    return ptr === mons_hu[PM_COCKATRICE_HU] || ptr === mons_hu[PM_CHICKATRICE_HU];
+}
+
+// C ref: dothrow.c hurtle()
+/*
+ * The player moves through the air for a few squares as a result of
+ * throwing or kicking something.
+ *
+ * dx and dy should be the direction of the hurtle, not of the original
+ * kick or throw.
+ */
+export async function hurtle(dx, dy, range, verbose) {
+    const g = game;
+    const u = g.u;
+    const uc = { x: 0, y: 0 }, cc = { x: 0, y: 0 };
+
+    /* The chain is stretched vertically, so you shouldn't be able to move
+     * very far diagonally.  [...] give the player a message and return.
+     */
+    if (g.uball && g.uball.where !== 'OBJ_INVENT') { /* Punished && !carried(uball) */
+        await pline("You feel a tug from the iron ball."); /* You_feel() */
+        nomul_hu(0);
+        return;
+    } else if (u.utrap) {
+        if (u.utraptype === TT_INFLOOR_HU)
+            throw new Error('hurtle(): surface() for an in-floor trap not ported yet');
+        await You(`are anchored by the ${
+            (u.utraptype === TT_WEB_HU) ? "web"
+            : (u.utraptype === TT_LAVA_HU) ? hliquid_hu("lava")
+              : (u.utraptype === TT_BURIEDBALL_HU) ? "buried ball"
+                : "trap"}.`);
+        nomul_hu(0);
+        return;
+    }
+
+    /* make sure dx and dy are [-1,0,1] */
+    dx = Math.sign(dx);
+    dy = Math.sign(dy);
+
+    if (!range || (!dx && !dy) || u.ustuck)
+        return; /* paranoia */
+
+    nomul_hu(-range);
+    g.multi_reason = "moving through the air";
+    g.nomovemsg = ""; /* it just happens */
+    if (verbose)
+        await You(`${(range > 1) ? "hurtle" : "float"} in the opposite direction.`);
+    /* if we're in the midst of shooting multiple projectiles, stop */
+    endmultishot_hu(true);
+    uc.x = u.ux;
+    uc.y = u.uy;
+    /* this setting of cc is only correct if dx and dy are [-1,0,1] only */
+    cc.x = u.ux + (dx * range);
+    cc.y = u.uy + (dy * range);
+    await walk_path(uc, cc, hurtle_step, { range });
+}
+
+// C ref: dothrow.c mhurtle()
+/* Move a monster through the air for a few squares. */
+export async function mhurtle(mon, dx, dy, range) {
+    const u = game.u;
+    const mc = { x: 0, y: 0 }, cc = { x: 0, y: 0 };
+
+    await wakeup_hu(mon, !game.context.mon_moving);
+    /* At the very least, debilitate the monster */
+    mon.movement = 0;
+    mon.mstun = 1;
+
+    /* Is the monster stuck or too heavy to push?
+     * (very large monsters have too much inertia, even floaters and flyers)
+     */
+    if (mon.data.msize >= MZ_HUGE_HU || mon === u.ustuck || mon.mtrapped) {
+        if (canseemon_hu(mon))
+            await pline(`${Monnam_dt(mon)} doesn't budge!`);
+        return;
+    }
+
+    /* Make sure dx and dy are [-1,0,1] */
+    dx = Math.sign(dx);
+    dy = Math.sign(dy);
+    if (!range || (!dx && !dy))
+        return; /* paranoia */
+    /* don't let grid bugs be hurtled diagonally */
+    if (dx && dy && mon.data === mons_hu[PM_GRID_BUG_HU]) /* NODIAG() */
+        return;
+
+    /* undetected monster can be moved by your strike */
+    if (mon.mundetected) {
+        mon.mundetected = 0;
+        newsym_hu(mon.mx, mon.my);
+    }
+    if ((mon.m_ap_type || 0) & M_AP_TYPMASK_DT) /* M_AP_TYPE(mon) */
+        seemimic_hu(mon);
+
+    /* Send the monster along the path */
+    mc.x = mon.mx;
+    mc.y = mon.my;
+    cc.x = mon.mx + (dx * range);
+    cc.y = mon.my + (dy * range);
+    await walk_path(mc, cc, mhurtle_step, mon);
+    if (mon.mhp >= 1) { /* !DEADMONSTER(mon) */
+        if (t_at_hu(mon.mx, mon.my))
+            await mintrap_hu(mon, FORCEBUNGLE_HU);
+        else
+            await minliquid_hu(mon);
+    }
+    return;
+}
+
+import { goodpos as goodpos_hu, m_at as m_at_hu,
+         place_monster as place_monster_hu } from './makemon.js';
+import { MM_IGNOREWATER as MM_IGNOREWATER_HU, MM_IGNORELAVA as MM_IGNORELAVA_HU,
+         IS_WATERWALL as IS_WATERWALL_HU, HURTLING as HURTLING_HU,
+         FORCEBUNGLE as FORCEBUNGLE_HU, W_ARMU as W_ARMU_HU, W_ARM as W_ARM_HU,
+         W_ARMC as W_ARMC_HU, TT_WEB as TT_WEB_HU, TT_LAVA as TT_LAVA_HU,
+         TT_INFLOOR as TT_INFLOOR_HU, TT_BURIEDBALL as TT_BURIEDBALL_HU
+       } from './const.js';
+import { mons as mons_hu, MZ_HUGE as MZ_HUGE_HU, PM_GRID_BUG as PM_GRID_BUG_HU,
+         PM_COCKATRICE as PM_COCKATRICE_HU,
+         PM_CHICKATRICE as PM_CHICKATRICE_HU } from './monsters.js';
+import { m_in_out_region as m_in_out_region_hu } from './region.js';
+import { newsym as newsym_hu, canseemon as canseemon_hu } from './display.js';
+import { set_apparxy as set_apparxy_hu } from './monmove.js';
+import { mintrap as mintrap_hu, t_at as t_at_hu,
+         Trap_Killed_Mon as Trap_Killed_Mon_HU,
+         Trap_Caught_Mon as Trap_Caught_Mon_HU,
+         Trap_Moved_Mon as Trap_Moved_Mon_HU } from './trap.js';
+import { a_monnam as a_monnam_hu, Some_Monnam as Some_Monnam_hu } from './do_name.js';
+import { wakeup as wakeup_hu, seemimic as seemimic_hu,
+         minliquid as minliquid_hu } from './mon.js';
+import { which_armor as which_armor_hu } from './worn.js';
+import { stop_occupation as stop_occupation_hu } from './allmain.js';
+import { hliquid as hliquid_hu } from './potion.js';
+import { endmultishot as endmultishot_hu } from './end.js';
+import { nomul as nomul_hu } from './hack.js';
+
+import { hmon as hmon_dt, passive_obj as passive_obj_dt } from './uhitm.js';
+import { spec_abon as spec_abon_dt } from './artifact.js';
+import { find_mac as find_mac_dt } from './worn.js';
+import { weapon_hit_bonus as weapon_hit_bonus_dt } from './weapon.js';
+import { cutworm as cutworm_dt } from './worm.js';
+import { miss as miss_dt } from './zap.js';
+import { mshot_xname as mshot_xname_dt,
+         should_mulch_missile as should_mulch_missile_dt } from './mthrowu.js';
+import { potionhit as potionhit_dt } from './potion.js';
+import { dogfood as dogfood_dt } from './dogmove.js';
+import { obfree as obfree_dt } from './invent.js';
+import { hot_pursuit as hot_pursuit_dt, inside_shop as inside_shop_sk } from './shk.js';
+import { in_rooms as in_rooms_dt } from './hack.js';
+import { distmin as distmin_dt } from './hacklib.js';
+import { your_race as your_race_dt, is_orc as is_orc_dt,
+         is_elf as is_elf_dt } from './mondata.js';
+import { is_quest_artifact as is_quest_artifact_dt } from './questpgr.js';
+import { Is_candle as Is_candle_dt } from './mkobj.js';
+import { is_domestic as is_domestic_dt } from './makemon.js';
+import { Monnam as Monnam_dt } from './do_name.js';
+import { engulfing_u as engulfing_u_dt, SHOPBASE as SHOPBASE_DT,
+         HMON_THROWN as HMON_THROWN_DT, HMON_KICKED as HMON_KICKED_DT,
+         HMON_APPLIED as HMON_APPLIED_DT, A_DEX as A_DEX_DT, A_STR as A_STR_DT,
+         ACCFOOD as ACCFOOD_DT, POTHIT_HERO_THROW as POTHIT_HERO_THROW_DT,
+         M_AP_TYPMASK as M_AP_TYPMASK_DT, M_AP_MONSTER as M_AP_MONSTER_DT,
+         P_BOW as P_BOW_DT, P_AXE as P_AXE_DT } from './const.js';
+import { CANDELABRUM_OF_INVOCATION as CANDELABRUM_OF_INVOCATION_DT,
+         FAKE_AMULET_OF_YENDOR as FAKE_AMULET_OF_YENDOR_DT,
+         GAUNTLETS_OF_POWER as GAUNTLETS_OF_POWER_DT,
+         GAUNTLETS_OF_FUMBLING as GAUNTLETS_OF_FUMBLING_DT,
+         LEATHER_GLOVES as LEATHER_GLOVES_DT,
+         GAUNTLETS_OF_DEXTERITY as GAUNTLETS_OF_DEXTERITY_DT,
+         MINERAL as MINERAL_DT, ELVEN_BOW as ELVEN_BOW_DT, YUMI as YUMI_DT,
+         HEAVY_IRON_BALL as HEAVY_IRON_BALL_DT, EGG as EGG_DT,
+         CREAM_PIE as CREAM_PIE_DT, ACID_VENOM as ACID_VENOM_DT,
+         POTION_CLASS as POTION_CLASS_DT, FOOD_CLASS as FOOD_CLASS_DT,
+         TOOL_CLASS as TOOL_CLASS_DT,
+         BANANA as BANANA_DT, VEGGY as VEGGY_DT, CORPSE as CORPSE_DT } from './objects.js';
+import { S_UNICORN as S_UNICORN_DT, M2_JEWELS as M2_JEWELS_DT,
+         PM_MONKEY as PM_MONKEY_DT, PM_APE as PM_APE_DT,
+         PM_LICHEN as PM_LICHEN_DT, PM_ELF as PM_ELF_DT } from './monsters.js';
+
+/* C ref: obj.h greatest_erosion() */
+function greatest_erosion_dt(otmp) {
+    const e1 = otmp.oeroded || 0, e2 = otmp.oeroded2 || 0;
+    return e1 > e2 ? e1 : e2;
+}
+/* C ref: objclass.h is_axe() */
+function is_axe_dt(otmp) {
+    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS_DT)
+            && objects[otmp.otyp].oc_skill === P_AXE_DT);
+}
+/* C ref: you.h Race_if(PM_ELF) */
+function Race_if_elf() { return game.urace.mnum === PM_ELF_DT; }

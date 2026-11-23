@@ -770,12 +770,12 @@ export async function u_entered_shop(enterstring) {
     if (muteshk(shkp) || eshk.following)
         return;
     if (Invis()) {
-        await pline(`${shopkeeper_name(shkp)} senses your presence.`);
+        await pline(`${Shknam(shkp)} senses your presence.`);
         if (!Deaf() && !muteshk(shkp)) {
             await pline('"Invisible customers are not welcome!"');
         } else {
             const pronoun = shkp.female ? 'she' : 'he';
-            await pline(`${shopkeeper_name(shkp)} stands firm as if ${
+            await pline(`${Shknam(shkp)} stands firm as if ${
                 pronoun} knows you are there.`);
         }
         return;
@@ -790,9 +790,9 @@ export async function u_entered_shop(enterstring) {
     if (!shkp.mpeaceful) { /* ANGRY(shkp) */
         if (!Deaf() && !muteshk(shkp)) {
             await verbalize(`So, ${game.plname}, you dare return to ${
-                s_suffix(shopkeeper_name(shkp))} ${shopname}?!`);
+                s_suffix(shkname(shkp))} ${shopname}?!`);
         } else {
-            await pline(`${shopkeeper_name(shkp)} seems ${
+            await pline(`${Shknam(shkp)} seems ${
                 angrytexts[rn2(angrytexts.length)]} over your return to ${
                 noit_mhis(shkp)} ${shopname}!`);
         }
@@ -801,15 +801,15 @@ export async function u_entered_shop(enterstring) {
             await verbalize(`Back again, ${game.plname}?  I've got my ${
                 mbodypart(shkp, EYE)} on you.`);
         } else {
-            await pline_The(`atmosphere at ${s_suffix(shopkeeper_name(shkp))} ${
+            await pline_The(`atmosphere at ${s_suffix(shkname(shkp))} ${
                 shopname} seems unwelcoming.`);
         }
     } else if (eshk.robbed) {
         if (!Deaf()) {
             /* Soundeffect(se_mutter_imprecations, 50); */
-            await pline(`${shopkeeper_name(shkp)} mutters imprecations against shoplifters.`);
+            await pline(`${Shknam(shkp)} mutters imprecations against shoplifters.`);
         } else {
-            await pline(`${shopkeeper_name(shkp)} is combing through ${
+            await pline(`${Shknam(shkp)} is combing through ${
                 noit_mhis(shkp)} inventory list.`);
         }
     } else {
@@ -817,9 +817,9 @@ export async function u_entered_shop(enterstring) {
         eshk.visitct = (eshk.visitct | 0) + 1;
         if (!Deaf() && !muteshk(shkp)) {
             await verbalize(`${Hello(shkp)}, ${game.plname}!  Welcome${again} to ${
-                s_suffix(shopkeeper_name(shkp))} ${shopname}!`);
+                s_suffix(shkname(shkp))} ${shopname}!`);
         } else {
-            await You(`enter ${s_suffix(shopkeeper_name(shkp))} ${shopname}${again}!`);
+            await You(`enter ${s_suffix(shkname(shkp))} ${shopname}${again}!`);
         }
     }
     /* can't do anything about blocking if teleported in */
@@ -852,7 +852,7 @@ export async function u_entered_shop(enterstring) {
                                 ? `Will you please leave your ${tool}${plur(cnt)} outside?`
                                 : `Leave the ${tool}${plur(cnt)} outside.`);
             } else {
-                await pline(`${shopkeeper_name(shkp)} ${
+                await pline(`${Shknam(shkp)} ${
                     not_upset ? 'is hesitant' : 'refuses'} to let you in with your ${
                     tool}${plur(cnt)}.`);
             }
@@ -862,7 +862,7 @@ export async function u_entered_shop(enterstring) {
                 await verbalize(not_upset ? `Will you please leave ${y_monnam(game.u.usteed)} outside?`
                                           : `Leave ${y_monnam(game.u.usteed)} outside.`);
             } else {
-                await pline(`${shopkeeper_name(shkp)} ${
+                await pline(`${Shknam(shkp)} ${
                     not_upset ? "doesn't want" : 'refuses'} to let you in while you're riding ${
                     y_monnam(game.u.usteed)}.`);
             }
@@ -1032,7 +1032,7 @@ export async function make_angry_shk(shkp, ox, oy) {
         eshk.robbed = Math.max(0, eshk.robbed);
         setpaid(shkp);
     }
-    await pline(`${shopkeeper_name(shkp)} ${shkp.mpeaceful
+    await pline(`${Shknam(shkp)} ${shkp.mpeaceful
         ? 'gets angry' : 'is furious'}!`);
     hot_pursuit(shkp);
 }
@@ -1737,12 +1737,6 @@ export async function addtobill(obj, ininv, dummy, silent) {
     }
 }
 
-function shopkeeper_name(shkp) {
-    const raw = shkp.shknam || shkp.eshk?.shknam
-        || shkp.mextra?.eshk?.shknam || 'the shopkeeper';
-    return /^[-+_|=]/.test(raw) ? raw.slice(1) : raw;
-}
-
 /* src/objnam.c paydoname() suppresses the carried-item price because the pay
    menu puts its own aligned amount first. Container contents are hidden and
    ownership is described relative to the outer container. */
@@ -2245,7 +2239,7 @@ export async function sellobj(obj, x, y) {
             obj.no_charge = 1;
         subfrombill(obj, shkp);
         if (game.sell_how !== SELL_DONTSELL)
-            await pline(`${shopkeeper_name(shkp)} seems uninterested.`);
+            await pline(`${Shknam(shkp)} seems uninterested.`);
         return;
     }
 
@@ -2269,7 +2263,7 @@ export async function sellobj(obj, x, y) {
         if (game.sell_how === SELL_NORMAL || game.auto_credit) {
             answer = game.sell_response = 'y';
         } else if (answer !== 'n') {
-            await pline(`${shopkeeper_name(shkp)} cannot pay you at present.`);
+            await pline(`${Shknam(shkp)} cannot pay you at present.`);
             answer = await tty_yn_function(
                 `Will you accept ${creditOffer} ${currency(creditOffer)} in credit for ${doname(obj)}?`,
                 'ynaq', 'y');
@@ -2329,7 +2323,7 @@ export async function sellobj(obj, x, y) {
                 : (obj.quan || 1) === 1 && !contents.cost;
         }
         answer = await tty_yn_function(
-            `${shopkeeper_name(shkp)} offers${shortFunds ? ' only' : ''} ${offer} gold piece${offer === 1 ? '' : 's'} for ${contentsPrefix}${owner}${xname(obj)}${contentsSuffix}.  Sell ${one ? 'it' : 'them'}?`,
+            `${Shknam(shkp)} offers${shortFunds ? ' only' : ''} ${offer} gold piece${offer === 1 ? '' : 's'} for ${contentsPrefix}${owner}${xname(obj)}${contentsSuffix}.  Sell ${one ? 'it' : 'them'}?`,
             'ynaq', 'n');
     }
     if (answer === 'q') {
@@ -2500,7 +2494,7 @@ export async function make_happy_shk(shkp, silentkops) {
         adjalign(Math.sign(game.u.ualign?.type || 0));
 
     if (!inhishop(shkp)) {
-        const name = shopkeeper_name(shkp);
+        const name = shkname(shkp);
         const pronouns = shk_pronouns(shkp);
         let vanished = canseemon(shkp);
         const local = eshk.shoplevel
@@ -2509,7 +2503,7 @@ export async function make_happy_shk(shkp, silentkops) {
         if (local) {
             await home_shk(shkp);
             if (canspotmon(shkp)) {
-                await pline(`${shopkeeper_name(shkp)} returns to ${pronouns.his} shop.`);
+                await pline(`${Shknam(shkp)} returns to ${pronouns.his} shop.`);
                 vanished = false;
             }
         } else {
@@ -2527,7 +2521,7 @@ export async function make_happy_shk(shkp, silentkops) {
         if (vanished)
             await pline(`Satisfied, ${name} suddenly disappears!`);
     } else if (wasmad) {
-        await pline(`${shopkeeper_name(shkp)} calms down.`);
+        await pline(`${Shknam(shkp)} calms down.`);
     }
     await make_happy_shoppers(silentkops);
 }
@@ -3489,7 +3483,7 @@ export async function block_door(x, y) {
         && eshk.shd.x === x && eshk.shd.y === y
         && !helpless(shkp)
         && (eshk.debit || eshk.billct || eshk.robbed)) {
-        await pline(`${shopkeeper_name(shkp)}${Invis()
+        await pline(`${Shknam(shkp)}${Invis()
             ? ' senses your motion and' : ''} blocks your way!`);
         return true;
     }
@@ -3524,7 +3518,7 @@ export async function block_entry(x, y) {
         && (x === sx - 1 || x === sx + 1 || y === sy - 1 || y === sy + 1)
         && (Invis() || carrying(ONAMES.PICK_AXE) || carrying(ONAMES.DWARVISH_MATTOCK)
             || game.u.usteed)) {
-        await pline(`${shopkeeper_name(shkp)}${
+        await pline(`${Shknam(shkp)}${
             Invis() ? ' senses your motion and' : ''} blocks your way!`);
         return true;
     }
@@ -3596,16 +3590,16 @@ async function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
         if (!Deaf()) {
             await verbalize(`How dare you ${dmgstr} my ${dugwall ? 'shop' : 'door'}?`);
         } else {
-            await pline(`${shopkeeper_name(shkp)} is ${
+            await pline(`${Shknam(shkp)} is ${
                 angrytexts[rn2(angrytexts.length)]} that you decided to ${
                 dmgstr} ${noit_mhis(shkp)} ${dugwall ? 'shop' : 'door'}!`);
         }
     } else {
         if (!Deaf()) {
-            await pline(`${shopkeeper_name(shkp)} shouts:`);
+            await pline(`${Shknam(shkp)} shouts:`);
             await verbalize(`Who dared ${dmgstr} my ${dugwall ? 'shop' : 'door'}?`);
         } else {
-            await pline(`${shopkeeper_name(shkp)} is ${
+            await pline(`${Shknam(shkp)} is ${
                 angrytexts[rn2(angrytexts.length)]} that someone decided to ${
                 dmgstr} ${noit_mhis(shkp)} ${dugwall ? 'shop' : 'door'}!`);
         }
@@ -3688,7 +3682,7 @@ export async function pay_for_damage(dmgstr, cant_mollify = false) {
     if (uinshp) {
         const distance = distmin(game.u.ux, game.u.uy, shkp.mx, shkp.my);
         if (distance > 1 && distance <= 3) {
-            await pline(`${shopkeeper_name(shkp)} leaps towards you!`);
+            await pline(`${Shknam(shkp)} leaps towards you!`);
             const { mnexto } = await import('./mon.js');
             await mnexto(shkp, RLOC_NOMSG);
         }
@@ -3729,7 +3723,7 @@ export async function pay_for_damage(dmgstr, cant_mollify = false) {
     }
 
     if (Invis())
-        await pline(`Your invisibility does not fool ${shopkeeper_name(shkp)}!`);
+        await pline(`Your invisibility does not fool ${shkname(shkp)}!`);
     const answer = await tty_yn_function(
         `${animal ? '' : cad(true)}You did ${cost} ${currency(cost)} worth of damage!${
             animal ? '' : '"'}  Pay?`,
@@ -3753,16 +3747,16 @@ export async function pay_for_damage(dmgstr, cant_mollify = false) {
         if (balance > 0)
             await money2mon(shkp, balance);
         (game.disp ||= {}).botl = true;
-        await pline(`Mollified, ${shopkeeper_name(shkp)} accepts your restitution.`);
+        await pline(`Mollified, ${shkname(shkp)} accepts your restitution.`);
         await home_shk(shkp);
         shkp.mpeaceful = 1;
         if (shkp.mx !== sx || shkp.my !== sy) {
             const isSeen = canseemon(shkp);
             if (wasOutside && canspotmon(shkp)) {
-                await pline(`${shopkeeper_name(shkp)} returns to ${
+                await pline(`${Shknam(shkp)} returns to ${
                     shk_pronouns(shkp).his} shop.`);
             } else if (isSeen || wasSeen) {
-                await pline(`${shopkeeper_name(shkp)} ${!wasSeen
+                await pline(`${Shknam(shkp)} ${!wasSeen
                     ? 'appears' : isSeen ? 'shifts location' : 'disappears'}.`);
             }
         }
@@ -3959,7 +3953,7 @@ async function repair_damage(shkp, tmp_dam, catchup = false) {
             otmp.owt = weight(otmp);
             if (!catchup) {
                 if (canseemon(shkp) && dist2(x, y, shkp.mx, shkp.my) <= 2)
-                    await pline(`${shopkeeper_name(shkp)} untraps ${ansimpleoname(otmp)}.`);
+                    await pline(`${Shknam(shkp)} untraps ${ansimpleoname(otmp)}.`);
                 else if (ttmp.tseen && cansee(ttmp.tx, ttmp.ty))
                     await pline(`The ${trapname(ttmp.ttyp, true)} vanishes.`);
             }
@@ -4113,7 +4107,7 @@ async function shk_fixes_damage(shkp) {
 
     const closeby = mdistu(shkp) <= (BOLT_LIM / 2) ** 2;
     if (canseemon(shkp)) {
-        await pline(`${shopkeeper_name(shkp)} whispers ${
+        await pline(`${Shknam(shkp)} whispers ${
             closeby ? 'an incantation' : 'something'}.`);
     } else if (!Deaf() && closeby) {
         await You_hear('someone muttering an incantation.');
@@ -4163,12 +4157,12 @@ export async function shk_move(shkp) {
                 } else {
                     const his = genders[pronoun_gender(
                         shkp, PRONOUN_NO_IT | PRONOUN_HALLU)].his;
-                    await pline(`${shopkeeper_name(shkp)} holds out ${his} upturned ${
+                    await pline(`${Shknam(shkp)} holds out ${his} upturned ${
                         mbodypart(shkp, HAND)}.`);
                 }
                 game.followmsg = game.moves || 0;
                 if (!rn2(9)) {
-                    await pline(`${shopkeeper_name(shkp)} doesn't like customers who don't pay.`);
+                    await pline(`${Shknam(shkp)} doesn't like customers who don't pay.`);
                     rile_shk(shkp);
                 }
             }

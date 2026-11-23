@@ -4,12 +4,16 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { extcmd_initiator, extcmd_via_menu, extcmds_getentry, extcmds_match, pgetchar } from './cmd.js';
 import { gi, gt, iflags, program_state } from './decl.js';
+import { ECM } from './func_tab.h.js';
+import { BUFSZ, COLNO } from './global.h.js';
+import { OVERRIDE_MSGTYPE, SUPPRESS_HISTORY } from './hack.h.js';
 import { eos, mungspaces, visctrl } from './hacklib.js';
 import { custompline, dumplogmsg, pline } from './pline.js';
 import { term_curs_set, tty_nhbell } from './termcap.js';
 import { addtopl, more, putsyms, tty_doprev_message } from './topl.js';
-import { windowprocs } from './windows.js';
+import { clear_nhwindow } from './winprocs.macros.js';
 import { tty_clear_nhwindow, tty_nhgetch, wins } from './wintty.js';
+import { TOPLINE, WIN_STOP } from './wintty.h.js';
 
 let suppress_history = 0;
 export async function tty_getlin(query, bufp) {   // getline.c:36
@@ -21,13 +25,13 @@ async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
     obufp = bufp;
     cw = wins[$G.WIN_MESSAGE];
     doprev = 0;
-    if ($G.ttyDisplay.toplin === 1 && !(cw.flags & 1)) {
+    if ($G.ttyDisplay.toplin === TOPLINE.NEED_MORE && !(cw.flags & WIN_STOP)) {
         await more();
     }
-    cw.flags = cw.flags & -2;
-    $G.ttyDisplay.toplin = 3;
+    cw.flags = cw.flags & ~WIN_STOP;
+    $G.ttyDisplay.toplin = TOPLINE.SPECIAL_PROMPT;
     $G.ttyDisplay.inread = $G.ttyDisplay.inread + 1 | 0;
-    await custompline(6, $c.lit("%s "), query);
+    await custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, $c.lit("%s "), query);
     bufp.set(0, 0);
     for (; ; ) {
         $c.fflush($c.__stdoutp);
@@ -104,7 +108,7 @@ async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
             }
         } else if (c === 10 || c === 13) {
             break;
-        } else if (32 <= $c.u8(c) && c !== 127 && ($c.pdiff(bufp, obufp) < 255 && $c.pdiff(bufp, obufp) < 80)) {
+        } else if (32 <= $c.u8(c) && c !== 127 && ($c.pdiff(bufp, obufp) < BUFSZ - 1 && $c.pdiff(bufp, obufp) < COLNO)) {
             i$2 = eos(bufp);
             bufp.set(0, $c.i8(c));
             bufp.set(1, 0);
@@ -136,9 +140,9 @@ async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
             tty_nhbell();
         }
     }
-    $G.ttyDisplay.toplin = 2;
+    $G.ttyDisplay.toplin = TOPLINE.NON_EMPTY;
     $G.ttyDisplay.inread = $G.ttyDisplay.inread - 1 | 0;
-    await windowprocs.win_clear_nhwindow($G.WIN_MESSAGE);
+    await clear_nhwindow()($G.WIN_MESSAGE);
     if (suppress_history) {
         new $c.Ptr(gt.toplines, 0).set(0, 0);
     } else {
@@ -171,7 +175,7 @@ export async function xwaitforspace(s) {   // getline.c:230
 }
 async function ext_cmd_getlin_hook(base) {   // getline.c:272
     let ecmatches = [null], nmatches = 0, ec = null;
-    nmatches = await extcmds_match(base, 0, new $c.Ptr(ecmatches, 0));
+    nmatches = await extcmds_match(base, ECM.NOFLAGS, new $c.Ptr(ecmatches, 0));
     if (nmatches === 1) {
         ec = extcmds_getentry(ecmatches[0].get(0));
         $c.__builtin___strcpy_chk(base, ec.ef_txt, -1);
@@ -191,7 +195,7 @@ export async function tty_get_ext_cmd() {   // getline.c:292
     buf[0] = 0;
     await hooked_tty_getlin(new $c.Ptr(extcmd_char, 0), new $c.Ptr(buf, 0), !gi.in_doagain ? ext_cmd_getlin_hook : no_hook);
     mungspaces(new $c.Ptr(buf, 0));
-    nmatches = buf[0] === 0 || buf[0] === 27 ? -1 : await extcmds_match(new $c.Ptr(buf, 0), 3, new $c.Ptr(ecmatches, 0));
+    nmatches = buf[0] === 0 || buf[0] === 27 ? -1 : await extcmds_match(new $c.Ptr(buf, 0), ECM.IGNOREAC | ECM.EXACTMATCH, new $c.Ptr(ecmatches, 0));
     if (nmatches !== 1) {
         if (nmatches !== -1) {
             await pline($c.lit("%s%.60s: unknown extended command."), visctrl(extcmd_char[0]), new $c.Ptr(buf, 0));

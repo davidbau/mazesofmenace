@@ -234,7 +234,6 @@ import {
     xnameFresh,
 } from './objnam.js';
 import { coreRandom } from './rng.js';
-import { note_unported } from './unported.js';
 import { cansee, clear_path, couldsee } from './vision.js';
 import {
     autoreturn_weapon,
@@ -966,8 +965,9 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
                 && !touch_petrifies(state.mons?.[singleobj.corpsenm])) {
                 // C prints this through impossible(), which this build shows
                 // in every mode; it neither uses up the missile nor stops
-                // the flight. The port records the gap.
-                note_unported('pline.c impossible');
+                // the flight.
+                await impossible(
+                    `monster throwing egg type ${singleobj.corpsenm}`, state, rawEnv);
                 hitv = 0;
                 damage = 0;
             } else if (singleobj.otyp === EGG
@@ -1703,10 +1703,12 @@ export async function thrwmu(monster, rawEnv = {}) {
             const name = xnameFresh(selected, state);
             // mhitu.js imports this file, so load mswings_verb() at the call.
             const { mswings_verb } = await import('./mhitu.js');
+            // C mthrowu.c:1222-1225 calls Monnam() before mswings_verb().
+            const subject = Monnam(monster, state);
             const verb = mswings_verb(selected, rang <= 2, env);
             await pline_mon(
                 monster,
-                `${Monnam(monster, state)} ${verb} `
+                `${subject} ${verb} `
                 + `${obj_is_pname(selected, state) ? the(name, state) : an(name)}.`,
                 state,
                 env,

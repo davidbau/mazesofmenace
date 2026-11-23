@@ -3,21 +3,44 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { dupstr } from './alloc.js';
+import { ART } from './artilist.h.js';
 import { config_error_add, config_error_done, config_error_init } from './cfgfiles.js';
 import { gc, gd, gh, iflags, program_state } from './decl.js';
+import { AMULET_CLASS, AMULET_SYM, ARMOR_CLASS, ARMOR_SYM, BALL_CLASS, BALL_SYM, CHAIN_CLASS, CHAIN_SYM, COIN_CLASS, DEF, FOOD_CLASS, FOOD_SYM, GEM_CLASS, GEM_SYM, GOLD_SYM, ILLOBJ_CLASS, ILLOBJ_SYM, POTION_CLASS, POTION_SYM, RING_CLASS, RING_SYM, ROCK_CLASS, ROCK_SYM, S, SCROLL_CLASS, SCROLL_SYM, SPBOOK_CLASS, SPBOOK_SYM, TOOL_CLASS, TOOL_SYM, VENOM_CLASS, VENOM_SYM, WAND_CLASS, WAND_SYM, WEAPON_CLASS, WEAPON_SYM } from './defsym.h.js';
+import { MAX_GLYPH } from './display.h.js';
 import { nh_terminate } from './end.js';
+import { FALSE, TRUE } from './global.h.js';
 import { dump_all_glyphids } from './glyphs.js';
 import { dump_weights } from './hack.js';
+import { AFTER_LAST_ARTIFACT, ARG } from './hack.h.js';
 import { eos, nh_snprintf, strncmpi } from './hacklib.js';
+import { nhStr } from './lint.macros.js';
 import { dump_mongen } from './makemon.js';
+import { MCAST_DUMPENUM } from './mcastu.h.js';
+import { PM } from './monsters.h.js';
+import { MAXOCLASSES, MAXSPELL, NUM_GLASS_GEMS, NUM_OBJECTS, NUM_REAL_GEMS } from './objclass.h.js';
+import { ACID_VENOM, AGATE, AKLYS, ALCHEMY_SMOCK, AMBER, AMETHYST, AMULET_OF_CHANGE, AMULET_OF_ESP, AMULET_OF_FLYING, AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_MAGICAL_BREATHING, AMULET_OF_REFLECTION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, AMULET_OF_YENDOR, AMULET_VERSUS_POISON, APPLE, AQUAMARINE, ARROW, ATHAME, AXE, BAG_OF_HOLDING, BAG_OF_TRICKS, BANANA, BANDED_MAIL, BARDICHE, BATTLE_AXE, BEARTRAP, BEC_DE_CORBIN, BELL, BELL_OF_OPENING, BILL_GUISARME, BLACK_DRAGON_SCALES, BLACK_DRAGON_SCALE_MAIL, BLACK_OPAL, BLINDFOLD, BLINDING_VENOM, BLUE_DRAGON_SCALES, BLUE_DRAGON_SCALE_MAIL, BOOMERANG, BOULDER, BOW, BRASS_LANTERN, BROADSWORD, BRONZE_PLATE_MAIL, BUGLE, BULLWHIP, CANDELABRUM_OF_INVOCATION, CANDY_BAR, CAN_OF_GREASE, CARROT, CHAIN_MAIL, CHEST, CHRYSOBERYL, CITRINE, CLOAK_OF_DISPLACEMENT, CLOAK_OF_INVISIBILITY, CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_PROTECTION, CLOVE_OF_GARLIC, CLUB, CORNUTHAUM, CORPSE, CRAM_RATION, CREAM_PIE, CREDIT_CARD, CROSSBOW, CROSSBOW_BOLT, CRYSKNIFE, CRYSTAL_BALL, CRYSTAL_PLATE_MAIL, C_RATION, DAGGER, DART, DENTED_POT, DIAMOND, DILITHIUM_CRYSTAL, DRUM_OF_EARTHQUAKE, DUNCE_CAP, DWARVISH_CLOAK, DWARVISH_IRON_HELM, DWARVISH_MATTOCK, DWARVISH_MITHRIL_COAT, DWARVISH_ROUNDSHIELD, DWARVISH_SHORT_SWORD, DWARVISH_SPEAR, EGG, ELVEN_ARROW, ELVEN_BOOTS, ELVEN_BOW, ELVEN_BROADSWORD, ELVEN_CLOAK, ELVEN_DAGGER, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_SHIELD, ELVEN_SHORT_SWORD, ELVEN_SPEAR, EMERALD, ENORMOUS_MEATBALL, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FAKE_AMULET_OF_YENDOR, FAUCHARD, FEDORA, FIGURINE, FIRE_HORN, FIRST_AMULET, FIRST_GLASS_GEM, FIRST_OBJECT, FIRST_REAL_GEM, FIRST_SPELL, FLAIL, FLINT, FLUORITE, FOOD_RATION, FORTUNE_COOKIE, FROST_HORN, FUMBLE_BOOTS, GARNET, GAUNTLETS_OF_DEXTERITY, GAUNTLETS_OF_FUMBLING, GAUNTLETS_OF_POWER, GENERIC_AMULET, GENERIC_ARMOR, GENERIC_BALL, GENERIC_CHAIN, GENERIC_COIN, GENERIC_FOOD, GENERIC_GEM, GENERIC_ILLOBJ, GENERIC_POTION, GENERIC_RING, GENERIC_ROCK, GENERIC_SCROLL, GENERIC_SPBOOK, GENERIC_TOOL, GENERIC_VENOM, GENERIC_WAND, GENERIC_WEAPON, GLAIVE, GLOB_OF_BLACK_PUDDING, GLOB_OF_BROWN_PUDDING, GLOB_OF_GRAY_OOZE, GLOB_OF_GREEN_SLIME, GOLD_DRAGON_SCALES, GOLD_DRAGON_SCALE_MAIL, GOLD_PIECE, GRAPPLING_HOOK, GRAY_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL, GREEN_DRAGON_SCALES, GREEN_DRAGON_SCALE_MAIL, GUISARME, HALBERD, HAWAIIAN_SHIRT, HEAVY_IRON_BALL, HELMET, HELM_OF_BRILLIANCE, HELM_OF_CAUTION, HELM_OF_OPPOSITE_ALIGNMENT, HELM_OF_TELEPATHY, HIGH_BOOTS, HORN_OF_PLENTY, ICE_BOX, IRON_CHAIN, IRON_SHOES, JACINTH, JADE, JASPER, JAVELIN, JET, JUMPING_BOOTS, KATANA, KELP_FROND, KICKING_BOOTS, KNIFE, K_RATION, LANCE, LAND_MINE, LARGE_BOX, LARGE_SHIELD, LAST_AMULET, LAST_GENERIC, LAST_GLASS_GEM, LAST_REAL_GEM, LAST_SPELL, LEASH, LEATHER_ARMOR, LEATHER_CLOAK, LEATHER_DRUM, LEATHER_GLOVES, LEATHER_JACKET, LEMBAS_WAFER, LENSES, LEVITATION_BOOTS, LOADSTONE, LOCK_PICK, LONG_SWORD, LOW_BOOTS, LUCERN_HAMMER, LUCKSTONE, LUMP_OF_ROYAL_JELLY, MACE, MAGIC_FLUTE, MAGIC_HARP, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MEATBALL, MEAT_RING, MEAT_STICK, MELON, MIRROR, MORNING_STAR, MUMMY_WRAPPING, OBJCLASS_HACK, OBSIDIAN, OILSKIN_CLOAK, OILSKIN_SACK, OIL_LAMP, OPAL, ORANGE, ORANGE_DRAGON_SCALES, ORANGE_DRAGON_SCALE_MAIL, ORCISH_ARROW, ORCISH_BOW, ORCISH_CHAIN_MAIL, ORCISH_CLOAK, ORCISH_DAGGER, ORCISH_HELM, ORCISH_RING_MAIL, ORCISH_SHIELD, ORCISH_SHORT_SWORD, ORCISH_SPEAR, PANCAKE, PARTISAN, PEAR, PICK_AXE, PLATE_MAIL, POT_ACID, POT_BLINDNESS, POT_BOOZE, POT_CONFUSION, POT_ENLIGHTENMENT, POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_FULL_HEALING, POT_GAIN_ABILITY, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_HALLUCINATION, POT_HEALING, POT_INVISIBILITY, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_RESTORE_ABILITY, POT_SEE_INVISIBLE, POT_SICKNESS, POT_SLEEPING, POT_SPEED, POT_WATER, QUARTERSTAFF, RANSEUR, RED_DRAGON_SCALES, RED_DRAGON_SCALE_MAIL, RING_MAIL, RIN_ADORNMENT, RIN_AGGRAVATE_MONSTER, RIN_COLD_RESISTANCE, RIN_CONFLICT, RIN_FIRE_RESISTANCE, RIN_FREE_ACTION, RIN_GAIN_CONSTITUTION, RIN_GAIN_STRENGTH, RIN_HUNGER, RIN_INCREASE_ACCURACY, RIN_INCREASE_DAMAGE, RIN_INVISIBILITY, RIN_LEVITATION, RIN_POISON_RESISTANCE, RIN_POLYMORPH, RIN_POLYMORPH_CONTROL, RIN_PROTECTION, RIN_PROTECTION_FROM_SHAPE_CHAN, RIN_REGENERATION, RIN_SEARCHING, RIN_SEE_INVISIBLE, RIN_SHOCK_RESISTANCE, RIN_SLOW_DIGESTION, RIN_STEALTH, RIN_SUSTAIN_ABILITY, RIN_TELEPORTATION, RIN_TELEPORT_CONTROL, RIN_WARNING, ROBE, ROCK, RUBBER_HOSE, RUBY, RUNESWORD, SACK, SADDLE, SAPPHIRE, SC01, SC02, SC03, SC04, SC05, SC06, SC07, SC08, SC09, SC10, SC11, SC12, SC13, SC14, SC15, SC16, SC17, SC18, SC19, SC20, SCALE_MAIL, SCALPEL, SCIMITAR, SCR_AMNESIA, SCR_BLANK_PAPER, SCR_CHARGING, SCR_CONFUSE_MONSTER, SCR_CREATE_MONSTER, SCR_DESTROY_ARMOR, SCR_EARTH, SCR_ENCHANT_ARMOR, SCR_ENCHANT_WEAPON, SCR_FIRE, SCR_FOOD_DETECTION, SCR_GENOCIDE, SCR_GOLD_DETECTION, SCR_IDENTIFY, SCR_LIGHT, SCR_MAGIC_MAPPING, SCR_MAIL, SCR_PUNISHMENT, SCR_REMOVE_CURSE, SCR_SCARE_MONSTER, SCR_STINKING_CLOUD, SCR_TAMING, SCR_TELEPORTATION, SHIELD_OF_DRAIN_RESISTANCE, SHIELD_OF_REFLECTION, SHIELD_OF_SHOCK_RESISTANCE, SHORT_SWORD, SHURIKEN, SILVER_ARROW, SILVER_DAGGER, SILVER_DRAGON_SCALES, SILVER_DRAGON_SCALE_MAIL, SILVER_MACE, SILVER_SABER, SILVER_SPEAR, SKELETON_KEY, SLIME_MOLD, SLING, SMALL_SHIELD, SPEAR, SPEED_BOOTS, SPETUM, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_CANCELLATION, SPE_CAUSE_FEAR, SPE_CHAIN_LIGHTNING, SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CONFUSE_MONSTER, SPE_CREATE_FAMILIAR, SPE_CREATE_MONSTER, SPE_CURE_BLINDNESS, SPE_CURE_SICKNESS, SPE_DETECT_FOOD, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_DETECT_UNSEEN, SPE_DIG, SPE_DRAIN_LIFE, SPE_EXTRA_HEALING, SPE_FINGER_OF_DEATH, SPE_FIREBALL, SPE_FORCE_BOLT, SPE_HASTE_SELF, SPE_HEALING, SPE_IDENTIFY, SPE_INVISIBILITY, SPE_JUMPING, SPE_KNOCK, SPE_LEVITATION, SPE_LIGHT, SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE, SPE_NOVEL, SPE_POLYMORPH, SPE_PROTECTION, SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_SLEEP, SPE_SLOW_MONSTER, SPE_STONE_TO_FLESH, SPE_TELEPORT_AWAY, SPE_TURN_UNDEAD, SPE_WIZARD_LOCK, SPLINT_MAIL, SPRIG_OF_WOLFSBANE, STATUE, STETHOSCOPE, STILETTO, STRANGE_OBJECT, STUDDED_LEATHER_ARMOR, TALLOW_CANDLE, TIN, TINNING_KIT, TIN_OPENER, TIN_WHISTLE, TOOLED_HORN, TOPAZ, TOUCHSTONE, TOWEL, TRIDENT, TRIPE_RATION, TSURUGI, TURQUOISE, TWO_HANDED_SWORD, T_SHIRT, UNICORN_HORN, URUK_HAI_SHIELD, VOULGE, WAN1, WAN2, WAN3, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_MAKE_INVISIBLE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_SLEEP, WAN_SLOW_MONSTER, WAN_SPEED_MONSTER, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING, WAR_HAMMER, WATER_WALKING_BOOTS, WAX_CANDLE, WHITE_DRAGON_SCALES, WHITE_DRAGON_SCALE_MAIL, WOODEN_FLUTE, WOODEN_HARP, WORM_TOOTH, WORTHLESS_BLACK_GLASS, WORTHLESS_BLUE_GLASS, WORTHLESS_GREEN_GLASS, WORTHLESS_ORANGE_GLASS, WORTHLESS_RED_GLASS, WORTHLESS_VIOLET_GLASS, WORTHLESS_WHITE_GLASS, WORTHLESS_YELLOWBROWN_GLASS, WORTHLESS_YELLOW_GLASS, YA, YELLOW_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL, YUMI } from './objects.h.js';
 import { initoptions, match_optname } from './options.js';
+import { HIGH_PM, LOW_PM, NON_PM, NUMMONS, SPECIAL_PM } from './permonst.h.js';
 import { raw_printf } from './pline.js';
 import { crashreport_bidshow, panictrace_setsignals } from './report.js';
+import { MAXMCLASSES, MAXPCHARS } from './sym.h.js';
 import { prscore } from './topten.js';
 import { chdirx, whoami } from './unixmain.js';
 import { error } from './unixtty.js';
 import { dump_version_info, early_version_info } from './version.js';
-import { genl_display_file, windowprocs } from './windows.js';
+import { genl_display_file } from './windows.js';
+import { raw_print } from './winprocs.macros.js';
+
+const ArgValRequired = 0;
+const ArgValOptional = 1;
+const ArgValDisallowed = 2;
+const ArgVal_mask = 3;
+const ArgNamOneLetter = 4;
+const ArgNam_mask = 4;
+const ArgErrSilent = 0;
+const ArgErrComplain = 8;
+const ArgErr_mask = 8;
 
 const dump_enums$omdump = $c.recArray($T.enum_dump, 15);   // static in dump_enums()
 const dump_enums$ed = $c.nulls(11);   // static in dump_enums()
@@ -42,9 +65,9 @@ async function lopt(arg, lflags, optname, origarg, argc_p, argv_p) {   // earlya
             argc = argc_p.get(0);
             argv = argv_p.get(0);
             nextarg = argc > 1 && argv.get(1).get(0) !== 45 ? argv.get(1) : null;
-            opttype = lflags & 3 /* ArgVal_mask */;
-            oneletterok = $c.i8((lflags & 4 /* ArgNam_mask */) === 4 /* ArgNamOneLetter */ ? 1 : 0);
-            complain = $c.i8((lflags & 8 /* ArgErr_mask */) === 8 /* ArgErrComplain */ ? 1 : 0);
+            opttype = lflags & ArgVal_mask;
+            oneletterok = $c.i8((lflags & ArgNam_mask) === ArgNamOneLetter ? 1 : 0);
+            complain = $c.i8((lflags & ArgErr_mask) === ArgErrComplain ? 1 : 0);
         case "loptnotallowed": case "loptbail": case "loptrequired":
             if ($goto === "loptnotallowed" || $goto === "loptbail" || $goto === "loptrequired" || arg.get(1) !== optname.get(1)) {
                 D2: for (;;) {
@@ -74,14 +97,14 @@ async function lopt(arg, lflags, optname, origarg, argc_p, argv_p) {   // earlya
             if ((p = $c.strchr(arg, 61)) === null) {
                 p = $c.strchr(arg, 58);
             }
-            if (p && opttype === 2 /* ArgValDisallowed */) {
+            if (p && opttype === ArgValDisallowed) {
                 $goto = "loptnotallowed"; continue D1;
             }
             l = $c.i32(p ? $c.pdiff(p, arg) : $c.i64($c.strlen(arg)));
             if ((l > 2 || oneletterok) && !$c.strncmp(arg, optname, $c.u64(l))) {
                 if (p) {
                     p = p.add(1);
-                } else if (opttype === 0 /* ArgValRequired */) {
+                } else if (opttype === ArgValRequired) {
                     p = eos(arg);
                 } else {
                     return new $c.Ptr(ArgVal_novalue, 0);
@@ -96,9 +119,9 @@ async function lopt(arg, lflags, optname, origarg, argc_p, argv_p) {   // earlya
                 $goto = "loptbail"; continue D1;
             }
             if (!p || !p.get(0)) {
-                if (nextarg && (opttype === 0 /* ArgValRequired */ || opttype === 1 /* ArgValOptional */)) {
+                if (nextarg && (opttype === ArgValRequired || opttype === ArgValOptional)) {
                     p = nextarg, argc_p.set(0, argc_p.get(0) - 1 | 0), argv_p.set(0, argv_p.get(0).add(1));
-                } else if (opttype === 0 /* ArgValRequired */) {
+                } else if (opttype === ArgValRequired) {
                     $goto = "loptrequired"; continue D1;
                 } else {
                     p = new $c.Ptr(ArgVal_novalue, 0);
@@ -132,10 +155,10 @@ export async function early_options(argc_p, argv_p, hackdir_p) {   // earlyarg.c
     let argv = [null], arg = null, origarg = null, argc = Int32Array.of(0), oldargc = 0, ndx = 0, consumed = 0, $t1, $t2;
     ndx = 0;
     consumed = 0;
-    if (await argcheck(argc_p.get(0), argv_p.get(0), 4) === 2) {
+    if (await argcheck(argc_p.get(0), argv_p.get(0), ARG.DUMPGLYPHIDS) === 2) {
         await opt_terminate();
     }
-    await config_error_init(0, $c.lit("command line"), 0);
+    await config_error_init(FALSE, $c.lit("command line"), FALSE);
     if (argc_p.get(0) > 1 && !$c.strcmp(argv_p.get(0).get(1), $c.lit("?"))) {
         await opt_usage(hackdir_p.get(0));
     }
@@ -152,22 +175,22 @@ export async function early_options(argc_p, argv_p, hackdir_p) {   // earlyarg.c
         }
         switch (arg.get(1)) {
             case 98:
-                if (await argcheck(argc[0], argv[0], 7) === 2) {
+                if (await argcheck(argc[0], argv[0], ARG.BIDSHOW) === 2) {
                     await opt_terminate();
                 }
                 break;
             case 100:
-                if (await argcheck(argc[0], argv[0], 0) === 1) {
+                if (await argcheck(argc[0], argv[0], ARG.DEBUG) === 1) {
                     consume_arg(ndx, argc_p, argv_p), consumed = 1;
-                } else if (await argcheck(argc[0], argv[0], 3) === 2) {
+                } else if (await argcheck(argc[0], argv[0], ARG.DUMPENUMS) === 2) {
                     await opt_terminate();
-                } else if (await argcheck(argc[0], argv[0], 5) === 2) {
+                } else if (await argcheck(argc[0], argv[0], ARG.DUMPMONGEN) === 2) {
                     await opt_terminate();
-                } else if (await argcheck(argc[0], argv[0], 6) === 2) {
+                } else if (await argcheck(argc[0], argv[0], ARG.DUMPWEIGHTS) === 2) {
                     await opt_terminate();
                 } else {
                     oldargc = argc[0];
-                    arg = await lopt(arg, 4, $c.lit("-directory"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0));
+                    arg = await lopt(arg, ArgValRequired | ArgNamOneLetter | ArgErrSilent, $c.lit("-directory"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0));
                     if (!arg) {
                         await error($c.lit("Flag -d must be followed by a directory name."));
                     }
@@ -183,16 +206,16 @@ export async function early_options(argc_p, argv_p, hackdir_p) {   // earlyarg.c
                 break;
             case 104:
             case 63:
-                if (await lopt(arg, 2 /* ArgValDisallowed */, $c.lit("-help"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0)) || await lopt(arg, 6, $c.lit("-?"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0))) {
+                if (await lopt(arg, ArgValDisallowed, $c.lit("-help"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0)) || await lopt(arg, ArgValDisallowed | ArgNamOneLetter, $c.lit("-?"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0))) {
                     await opt_usage(hackdir_p.get(0));
                 }
                 break;
             case 110:
                 oldargc = argc[0];
                 if (!$c.strcmp(arg, $c.lit("-no-nethackrc"))) {
-                    arg = $c.lit("/dev/null");
+                    arg = nhStr($c.lit("/dev/null"));
                 } else {
-                    arg = await lopt(arg, 8, $c.lit("-nethackrc"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0));
+                    arg = await lopt(arg, ArgValRequired | ArgErrComplain, $c.lit("-nethackrc"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0));
                 }
                 if (arg) {
                     $t1 = await dupstr(arg), gc.cmdline_rcfile = $t1;
@@ -204,28 +227,28 @@ export async function early_options(argc_p, argv_p, hackdir_p) {   // earlyarg.c
                 }
                 break;
             case 115:
-                if (await argcheck(argc[0], argv[0], 2) === 2) {
-                    gd.deferred_showpaths = 1;
+                if (await argcheck(argc[0], argv[0], ARG.SHOWPATHS) === 2) {
+                    gd.deferred_showpaths = TRUE;
                     gd.deferred_showpaths_dir = hackdir_p.get(0);
                     await config_error_done();
                     return;
                 }
-                if (await lopt(arg, 10 | (origarg.get(1) !== 45 ? 4 /* ArgNamOneLetter */ : 0), $c.lit("-scores"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0))) {
+                if (await lopt(arg, ArgValDisallowed | ArgErrComplain | (origarg.get(1) !== 45 ? ArgNamOneLetter : 0), $c.lit("-scores"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0))) {
                     await scores_only(argc[0] + 1 | 0, argv[0].add(-1), hackdir_p.get(0));
                 }
                 break;
             case 117:
-                if (await lopt(arg, 2 /* ArgValDisallowed */, $c.lit("-usage"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0))) {
+                if (await lopt(arg, ArgValDisallowed, $c.lit("-usage"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0))) {
                     await opt_usage(hackdir_p.get(0));
                 }
                 break;
             case 118:
-                if (await argcheck(argc[0], argv[0], 1) === 2) {
+                if (await argcheck(argc[0], argv[0], ARG.VERSION) === 2) {
                     await opt_terminate();
                 }
                 break;
             case 119:
-                arg = await lopt(arg, 12, $c.lit("-windowtype"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0));
+                arg = await lopt(arg, ArgValRequired | ArgNamOneLetter | ArgErrComplain, $c.lit("-windowtype"), origarg, new $c.Ptr(argc, 0), new $c.Ptr(argv, 0));
                 if (gc.cmdline_windowsys) {
                     $c.free(gc.cmdline_windowsys);
                 }
@@ -244,29 +267,29 @@ async function opt_terminate() {   // earlyarg.c:366
     await nh_terminate(0);
 }
 async function opt_usage(hackdir) {   // earlyarg.c:376
-    await chdirx(hackdir, 1);
-    genl_display_file($c.lit("usagehlp"), 1);
+    await chdirx(hackdir, TRUE);
+    genl_display_file($c.lit("usagehlp"), TRUE);
     await opt_terminate();
 }
 export async function after_opt_showpaths(dir) {   // earlyarg.c:391
-    await chdirx(dir, 0);
+    await chdirx(dir, FALSE);
     await opt_terminate();
 }
 async function scores_only(argc, argv, dir) {   // earlyarg.c:406
     await config_error_done();
-    await chdirx(dir, 0);
-    iflags.initoptions_noterminate = 1;
+    await chdirx(dir, FALSE);
+    iflags.initoptions_noterminate = TRUE;
     await initoptions();
-    iflags.initoptions_noterminate = 0;
+    iflags.initoptions_noterminate = FALSE;
     $G.ARGV0 = gh.hname;
-    await panictrace_setsignals(1);
+    await panictrace_setsignals(TRUE);
     whoami();
     await prscore(argc, argv);
     await nh_terminate(0);
 }
 export async function argcheck(argc, argv, e_arg) {   // earlyarg.c:450
     let i = 0, idx = 0, match = 0, userea = null, dashdash = null, extended_opt = null, cpy_extended_opt = null, insert_into_pastebuf = 0;
-    match = 0;
+    match = FALSE;
     userea = null;
     dashdash = $c.lit("");
     for (idx = 0; idx < 8; idx = idx + 1 | 0) {
@@ -298,26 +321,26 @@ export async function argcheck(argc, argv, e_arg) {   // earlyarg.c:450
             extended_opt = $c.strchr(userea, 61);
         }
         switch (e_arg) {
-            case 0:
+            case ARG.DEBUG:
                 if (extended_opt) {
                     cpy_extended_opt = await dupstr(extended_opt);
                     debug_fields(cpy_extended_opt.add(1));
                     $c.free(cpy_extended_opt);
                 }
                 return 1;
-            case 1:
+            case ARG.VERSION:
                 {
-                    insert_into_pastebuf = 0;
+                    insert_into_pastebuf = FALSE;
                     if (extended_opt) {
                         extended_opt = extended_opt.add(1);
-                        if (match_optname(extended_opt, $c.lit("paste"), 5, 0)) {
-                            insert_into_pastebuf = 1;
-                        } else if (match_optname(extended_opt, $c.lit("copy"), 4, 0)) {
-                            insert_into_pastebuf = 1;
-                        } else if (match_optname(extended_opt, $c.lit("dump"), 4, 0)) {
+                        if (match_optname(extended_opt, $c.lit("paste"), 5, FALSE)) {
+                            insert_into_pastebuf = TRUE;
+                        } else if (match_optname(extended_opt, $c.lit("copy"), 4, FALSE)) {
+                            insert_into_pastebuf = TRUE;
+                        } else if (match_optname(extended_opt, $c.lit("dump"), 4, FALSE)) {
                             await dump_version_info();
                             return 2;
-                        } else if (!match_optname(extended_opt, $c.lit("show"), 4, 0)) {
+                        } else if (!match_optname(extended_opt, $c.lit("show"), 4, FALSE)) {
                             await raw_printf($c.lit("-%sversion can only be extended with -%sversion:copy or :dump or :show.\n"), dashdash, dashdash);
                             return 2;
                         }
@@ -325,21 +348,21 @@ export async function argcheck(argc, argv, e_arg) {   // earlyarg.c:450
                     await early_version_info(insert_into_pastebuf);
                     return 2;
                 }
-            case 2:
+            case ARG.SHOWPATHS:
                 return 2;
-            case 3:
+            case ARG.DUMPENUMS:
                 await dump_enums();
                 return 2;
-            case 4:
+            case ARG.DUMPGLYPHIDS:
                 await dump_glyphids();
                 return 2;
-            case 5:
+            case ARG.DUMPMONGEN:
                 await dump_mongen();
                 return 2;
-            case 6:
+            case ARG.DUMPWEIGHTS:
                 await dump_weights();
                 return 2;
-            case 7:
+            case ARG.BIDSHOW:
                 await crashreport_bidshow();
                 return 2;
             default:
@@ -350,7 +373,7 @@ export async function argcheck(argc, argv, e_arg) {   // earlyarg.c:450
 }
 function debug_fields(opts) {   // earlyarg.c:576
     let op = null, negated = 0, $t1;
-    negated = 0;
+    negated = FALSE;
     while ((op = $c.strchr(opts, 44)) !== null) {
         ($t1 = op, op = $t1.add(1), $t1).set(0, 0);
         debug_fields(op);
@@ -376,14 +399,14 @@ function debug_fields(opts) {   // earlyarg.c:576
         }
         negated = $c.i8(!negated ? 1 : 0);
     }
-    if (match_optname(opts, $c.lit("test"), 4, 0)) {
-        iflags.debug.test = $c.i8(negated ? 0 : 1);
+    if (match_optname(opts, $c.lit("test"), 4, FALSE)) {
+        iflags.debug.test = $c.i8(negated ? FALSE : TRUE);
     }
-    if (match_optname(opts, $c.lit("ttystatus"), 9, 0)) {
-        iflags.debug.ttystatus = $c.i8(negated ? 0 : 1);
+    if (match_optname(opts, $c.lit("ttystatus"), 9, FALSE)) {
+        iflags.debug.ttystatus = $c.i8(negated ? FALSE : TRUE);
     }
-    if (match_optname(opts, $c.lit("fuzzer"), 4, 0)) {
-        iflags.fuzzerpending = 1;
+    if (match_optname(opts, $c.lit("fuzzer"), 4, FALSE)) {
+        iflags.fuzzerpending = TRUE;
     }
     return;
 }
@@ -401,10 +424,10 @@ async function dump_enums() {   // earlyarg.c:706
             }
             await raw_printf($c.lit("    %s%*s = %3d,%s"), nmprefix, -nmwidth | 0, $c.radd(dump_enums$ed[i], j).nm, $c.radd(dump_enums$ed[i], j).val, new $c.Ptr(comment, 0));
         }
-        await windowprocs.win_raw_print($c.lit("};"));
-        await windowprocs.win_raw_print($c.lit(""));
+        await raw_print()($c.lit("};"));
+        await raw_print()($c.lit(""));
     }
-    await windowprocs.win_raw_print($c.lit(""));
+    await raw_print()($c.lit(""));
 }
 export async function dump_glyphids() {   // earlyarg.c:806
     await dump_all_glyphids($c.__stdoutp);
@@ -414,2579 +437,1318 @@ export function $init() {
     for (let $i0 = 0; $i0 < 8; $i0++) {
         earlyopts[$i0].$copyFrom(new $T.early_opt());
     }
-    earlyopts[0].e = 0;
-    earlyopts[0].name = $c.lit("debug");
-    earlyopts[0].minlength = 5;
-    earlyopts[0].valallowed = 1;
-    earlyopts[1].e = 1;
-    earlyopts[1].name = $c.lit("version");
-    earlyopts[1].minlength = 4;
-    earlyopts[1].valallowed = 1;
-    earlyopts[2].e = 2;
-    earlyopts[2].name = $c.lit("showpaths");
-    earlyopts[2].minlength = 8;
-    earlyopts[2].valallowed = 0;
-    earlyopts[3].e = 3;
-    earlyopts[3].name = $c.lit("dumpenums");
-    earlyopts[3].minlength = 9;
-    earlyopts[3].valallowed = 0;
-    earlyopts[4].e = 4;
-    earlyopts[4].name = $c.lit("dumpglyphids");
-    earlyopts[4].minlength = 12;
-    earlyopts[4].valallowed = 0;
-    earlyopts[5].e = 5;
-    earlyopts[5].name = $c.lit("dumpmongen");
-    earlyopts[5].minlength = 10;
-    earlyopts[5].valallowed = 0;
-    earlyopts[6].e = 6;
-    earlyopts[6].name = $c.lit("dumpweights");
-    earlyopts[6].minlength = 11;
-    earlyopts[6].valallowed = 0;
-    earlyopts[7].e = 7;
-    earlyopts[7].name = $c.lit("bidshow");
-    earlyopts[7].minlength = 7;
-    earlyopts[7].valallowed = 0;
+    $c.init(earlyopts, [
+        { e: ARG.DEBUG, name: $c.lit("debug"), minlength: 5, valallowed: 1 },
+        { e: ARG.VERSION, name: $c.lit("version"), minlength: 4, valallowed: 1 },
+        { e: ARG.SHOWPATHS, name: $c.lit("showpaths"), minlength: 8, valallowed: 0 },
+        { e: ARG.DUMPENUMS, name: $c.lit("dumpenums"), minlength: 9, valallowed: 0 },
+        { e: ARG.DUMPGLYPHIDS, name: $c.lit("dumpglyphids"), minlength: 12, valallowed: 0 },
+        { e: ARG.DUMPMONGEN, name: $c.lit("dumpmongen"), minlength: 10, valallowed: 0 },
+        { e: ARG.DUMPWEIGHTS, name: $c.lit("dumpweights"), minlength: 11, valallowed: 0 },
+        { e: ARG.BIDSHOW, name: $c.lit("bidshow"), minlength: 7, valallowed: 0 }
+    ]);
     ArgVal_novalue.fill(0);
     ArgVal_novalue.set([91, 110, 111, 116, 104, 105, 110, 103, 93]);   // "[nothing]"
     for (let $i0 = 0; $i0 < 388; $i0++) {
         monsdump[$i0].$copyFrom(new $T.enum_dump());
     }
-    monsdump[0].val = 0 /* PM_GIANT_ANT */;
-    monsdump[0].nm = $c.lit("GIANT_ANT");
-    monsdump[1].val = 1 /* PM_KILLER_BEE */;
-    monsdump[1].nm = $c.lit("KILLER_BEE");
-    monsdump[2].val = 2 /* PM_SOLDIER_ANT */;
-    monsdump[2].nm = $c.lit("SOLDIER_ANT");
-    monsdump[3].val = 3 /* PM_FIRE_ANT */;
-    monsdump[3].nm = $c.lit("FIRE_ANT");
-    monsdump[4].val = 4 /* PM_GIANT_BEETLE */;
-    monsdump[4].nm = $c.lit("GIANT_BEETLE");
-    monsdump[5].val = 5 /* PM_QUEEN_BEE */;
-    monsdump[5].nm = $c.lit("QUEEN_BEE");
-    monsdump[6].val = 6 /* PM_ACID_BLOB */;
-    monsdump[6].nm = $c.lit("ACID_BLOB");
-    monsdump[7].val = 7 /* PM_QUIVERING_BLOB */;
-    monsdump[7].nm = $c.lit("QUIVERING_BLOB");
-    monsdump[8].val = 8 /* PM_GELATINOUS_CUBE */;
-    monsdump[8].nm = $c.lit("GELATINOUS_CUBE");
-    monsdump[9].val = 9 /* PM_CHICKATRICE */;
-    monsdump[9].nm = $c.lit("CHICKATRICE");
-    monsdump[10].val = 10 /* PM_COCKATRICE */;
-    monsdump[10].nm = $c.lit("COCKATRICE");
-    monsdump[11].val = 11 /* PM_PYROLISK */;
-    monsdump[11].nm = $c.lit("PYROLISK");
-    monsdump[12].val = 12 /* PM_JACKAL */;
-    monsdump[12].nm = $c.lit("JACKAL");
-    monsdump[13].val = 13 /* PM_FOX */;
-    monsdump[13].nm = $c.lit("FOX");
-    monsdump[14].val = 14 /* PM_COYOTE */;
-    monsdump[14].nm = $c.lit("COYOTE");
-    monsdump[15].val = 15 /* PM_WEREJACKAL */;
-    monsdump[15].nm = $c.lit("WEREJACKAL");
-    monsdump[16].val = 16 /* PM_LITTLE_DOG */;
-    monsdump[16].nm = $c.lit("LITTLE_DOG");
-    monsdump[17].val = 17 /* PM_DINGO */;
-    monsdump[17].nm = $c.lit("DINGO");
-    monsdump[18].val = 18 /* PM_DOG */;
-    monsdump[18].nm = $c.lit("DOG");
-    monsdump[19].val = 19 /* PM_LARGE_DOG */;
-    monsdump[19].nm = $c.lit("LARGE_DOG");
-    monsdump[20].val = 20 /* PM_WOLF */;
-    monsdump[20].nm = $c.lit("WOLF");
-    monsdump[21].val = 21 /* PM_WEREWOLF */;
-    monsdump[21].nm = $c.lit("WEREWOLF");
-    monsdump[22].val = 22 /* PM_WINTER_WOLF_CUB */;
-    monsdump[22].nm = $c.lit("WINTER_WOLF_CUB");
-    monsdump[23].val = 23 /* PM_WARG */;
-    monsdump[23].nm = $c.lit("WARG");
-    monsdump[24].val = 24 /* PM_WINTER_WOLF */;
-    monsdump[24].nm = $c.lit("WINTER_WOLF");
-    monsdump[25].val = 25 /* PM_HELL_HOUND_PUP */;
-    monsdump[25].nm = $c.lit("HELL_HOUND_PUP");
-    monsdump[26].val = 26 /* PM_HELL_HOUND */;
-    monsdump[26].nm = $c.lit("HELL_HOUND");
-    monsdump[27].val = 27 /* PM_GAS_SPORE */;
-    monsdump[27].nm = $c.lit("GAS_SPORE");
-    monsdump[28].val = 28 /* PM_FLOATING_EYE */;
-    monsdump[28].nm = $c.lit("FLOATING_EYE");
-    monsdump[29].val = 29 /* PM_FREEZING_SPHERE */;
-    monsdump[29].nm = $c.lit("FREEZING_SPHERE");
-    monsdump[30].val = 30 /* PM_FLAMING_SPHERE */;
-    monsdump[30].nm = $c.lit("FLAMING_SPHERE");
-    monsdump[31].val = 31 /* PM_SHOCKING_SPHERE */;
-    monsdump[31].nm = $c.lit("SHOCKING_SPHERE");
-    monsdump[32].val = 32 /* PM_KITTEN */;
-    monsdump[32].nm = $c.lit("KITTEN");
-    monsdump[33].val = 33 /* PM_HOUSECAT */;
-    monsdump[33].nm = $c.lit("HOUSECAT");
-    monsdump[34].val = 34 /* PM_JAGUAR */;
-    monsdump[34].nm = $c.lit("JAGUAR");
-    monsdump[35].val = 35 /* PM_LYNX */;
-    monsdump[35].nm = $c.lit("LYNX");
-    monsdump[36].val = 36 /* PM_PANTHER */;
-    monsdump[36].nm = $c.lit("PANTHER");
-    monsdump[37].val = 37 /* PM_LARGE_CAT */;
-    monsdump[37].nm = $c.lit("LARGE_CAT");
-    monsdump[38].val = 38 /* PM_TIGER */;
-    monsdump[38].nm = $c.lit("TIGER");
-    monsdump[39].val = 39 /* PM_DISPLACER_BEAST */;
-    monsdump[39].nm = $c.lit("DISPLACER_BEAST");
-    monsdump[40].val = 40 /* PM_GREMLIN */;
-    monsdump[40].nm = $c.lit("GREMLIN");
-    monsdump[41].val = 41 /* PM_GARGOYLE */;
-    monsdump[41].nm = $c.lit("GARGOYLE");
-    monsdump[42].val = 42 /* PM_WINGED_GARGOYLE */;
-    monsdump[42].nm = $c.lit("WINGED_GARGOYLE");
-    monsdump[43].val = 43 /* PM_HOBBIT */;
-    monsdump[43].nm = $c.lit("HOBBIT");
-    monsdump[44].val = 44 /* PM_DWARF */;
-    monsdump[44].nm = $c.lit("DWARF");
-    monsdump[45].val = 45 /* PM_BUGBEAR */;
-    monsdump[45].nm = $c.lit("BUGBEAR");
-    monsdump[46].val = 46 /* PM_DWARF_LEADER */;
-    monsdump[46].nm = $c.lit("DWARF_LEADER");
-    monsdump[47].val = 47 /* PM_DWARF_RULER */;
-    monsdump[47].nm = $c.lit("DWARF_RULER");
-    monsdump[48].val = 48 /* PM_MIND_FLAYER */;
-    monsdump[48].nm = $c.lit("MIND_FLAYER");
-    monsdump[49].val = 49 /* PM_MASTER_MIND_FLAYER */;
-    monsdump[49].nm = $c.lit("MASTER_MIND_FLAYER");
-    monsdump[50].val = 50 /* PM_MANES */;
-    monsdump[50].nm = $c.lit("MANES");
-    monsdump[51].val = 51 /* PM_HOMUNCULUS */;
-    monsdump[51].nm = $c.lit("HOMUNCULUS");
-    monsdump[52].val = 52 /* PM_IMP */;
-    monsdump[52].nm = $c.lit("IMP");
-    monsdump[53].val = 53 /* PM_LEMURE */;
-    monsdump[53].nm = $c.lit("LEMURE");
-    monsdump[54].val = 54 /* PM_QUASIT */;
-    monsdump[54].nm = $c.lit("QUASIT");
-    monsdump[55].val = 55 /* PM_TENGU */;
-    monsdump[55].nm = $c.lit("TENGU");
-    monsdump[56].val = 56 /* PM_BLUE_JELLY */;
-    monsdump[56].nm = $c.lit("BLUE_JELLY");
-    monsdump[57].val = 57 /* PM_SPOTTED_JELLY */;
-    monsdump[57].nm = $c.lit("SPOTTED_JELLY");
-    monsdump[58].val = 58 /* PM_OCHRE_JELLY */;
-    monsdump[58].nm = $c.lit("OCHRE_JELLY");
-    monsdump[59].val = 59 /* PM_KOBOLD */;
-    monsdump[59].nm = $c.lit("KOBOLD");
-    monsdump[60].val = 60 /* PM_LARGE_KOBOLD */;
-    monsdump[60].nm = $c.lit("LARGE_KOBOLD");
-    monsdump[61].val = 61 /* PM_KOBOLD_LEADER */;
-    monsdump[61].nm = $c.lit("KOBOLD_LEADER");
-    monsdump[62].val = 62 /* PM_KOBOLD_SHAMAN */;
-    monsdump[62].nm = $c.lit("KOBOLD_SHAMAN");
-    monsdump[63].val = 63 /* PM_LEPRECHAUN */;
-    monsdump[63].nm = $c.lit("LEPRECHAUN");
-    monsdump[64].val = 64 /* PM_SMALL_MIMIC */;
-    monsdump[64].nm = $c.lit("SMALL_MIMIC");
-    monsdump[65].val = 65 /* PM_LARGE_MIMIC */;
-    monsdump[65].nm = $c.lit("LARGE_MIMIC");
-    monsdump[66].val = 66 /* PM_GIANT_MIMIC */;
-    monsdump[66].nm = $c.lit("GIANT_MIMIC");
-    monsdump[67].val = 67 /* PM_WOOD_NYMPH */;
-    monsdump[67].nm = $c.lit("WOOD_NYMPH");
-    monsdump[68].val = 68 /* PM_WATER_NYMPH */;
-    monsdump[68].nm = $c.lit("WATER_NYMPH");
-    monsdump[69].val = 69 /* PM_MOUNTAIN_NYMPH */;
-    monsdump[69].nm = $c.lit("MOUNTAIN_NYMPH");
-    monsdump[70].val = 70 /* PM_GOBLIN */;
-    monsdump[70].nm = $c.lit("GOBLIN");
-    monsdump[71].val = 71 /* PM_HOBGOBLIN */;
-    monsdump[71].nm = $c.lit("HOBGOBLIN");
-    monsdump[72].val = 72 /* PM_ORC */;
-    monsdump[72].nm = $c.lit("ORC");
-    monsdump[73].val = 73 /* PM_HILL_ORC */;
-    monsdump[73].nm = $c.lit("HILL_ORC");
-    monsdump[74].val = 74 /* PM_MORDOR_ORC */;
-    monsdump[74].nm = $c.lit("MORDOR_ORC");
-    monsdump[75].val = 75 /* PM_URUK_HAI */;
-    monsdump[75].nm = $c.lit("URUK_HAI");
-    monsdump[76].val = 76 /* PM_ORC_SHAMAN */;
-    monsdump[76].nm = $c.lit("ORC_SHAMAN");
-    monsdump[77].val = 77 /* PM_ORC_CAPTAIN */;
-    monsdump[77].nm = $c.lit("ORC_CAPTAIN");
-    monsdump[78].val = 78 /* PM_ROCK_PIERCER */;
-    monsdump[78].nm = $c.lit("ROCK_PIERCER");
-    monsdump[79].val = 79 /* PM_IRON_PIERCER */;
-    monsdump[79].nm = $c.lit("IRON_PIERCER");
-    monsdump[80].val = 80 /* PM_GLASS_PIERCER */;
-    monsdump[80].nm = $c.lit("GLASS_PIERCER");
-    monsdump[81].val = 81 /* PM_ROTHE */;
-    monsdump[81].nm = $c.lit("ROTHE");
-    monsdump[82].val = 82 /* PM_MUMAK */;
-    monsdump[82].nm = $c.lit("MUMAK");
-    monsdump[83].val = 83 /* PM_LEOCROTTA */;
-    monsdump[83].nm = $c.lit("LEOCROTTA");
-    monsdump[84].val = 84 /* PM_WUMPUS */;
-    monsdump[84].nm = $c.lit("WUMPUS");
-    monsdump[85].val = 85 /* PM_TITANOTHERE */;
-    monsdump[85].nm = $c.lit("TITANOTHERE");
-    monsdump[86].val = 86 /* PM_BALUCHITHERIUM */;
-    monsdump[86].nm = $c.lit("BALUCHITHERIUM");
-    monsdump[87].val = 87 /* PM_MASTODON */;
-    monsdump[87].nm = $c.lit("MASTODON");
-    monsdump[88].val = 88 /* PM_SEWER_RAT */;
-    monsdump[88].nm = $c.lit("SEWER_RAT");
-    monsdump[89].val = 89 /* PM_GIANT_RAT */;
-    monsdump[89].nm = $c.lit("GIANT_RAT");
-    monsdump[90].val = 90 /* PM_RABID_RAT */;
-    monsdump[90].nm = $c.lit("RABID_RAT");
-    monsdump[91].val = 91 /* PM_WERERAT */;
-    monsdump[91].nm = $c.lit("WERERAT");
-    monsdump[92].val = 92 /* PM_ROCK_MOLE */;
-    monsdump[92].nm = $c.lit("ROCK_MOLE");
-    monsdump[93].val = 93 /* PM_WOODCHUCK */;
-    monsdump[93].nm = $c.lit("WOODCHUCK");
-    monsdump[94].val = 94 /* PM_CAVE_SPIDER */;
-    monsdump[94].nm = $c.lit("CAVE_SPIDER");
-    monsdump[95].val = 95 /* PM_CENTIPEDE */;
-    monsdump[95].nm = $c.lit("CENTIPEDE");
-    monsdump[96].val = 96 /* PM_GIANT_SPIDER */;
-    monsdump[96].nm = $c.lit("GIANT_SPIDER");
-    monsdump[97].val = 97 /* PM_SCORPION */;
-    monsdump[97].nm = $c.lit("SCORPION");
-    monsdump[98].val = 98 /* PM_LURKER_ABOVE */;
-    monsdump[98].nm = $c.lit("LURKER_ABOVE");
-    monsdump[99].val = 99 /* PM_TRAPPER */;
-    monsdump[99].nm = $c.lit("TRAPPER");
-    monsdump[100].val = 100 /* PM_PONY */;
-    monsdump[100].nm = $c.lit("PONY");
-    monsdump[101].val = 101 /* PM_WHITE_UNICORN */;
-    monsdump[101].nm = $c.lit("WHITE_UNICORN");
-    monsdump[102].val = 102 /* PM_GRAY_UNICORN */;
-    monsdump[102].nm = $c.lit("GRAY_UNICORN");
-    monsdump[103].val = 103 /* PM_BLACK_UNICORN */;
-    monsdump[103].nm = $c.lit("BLACK_UNICORN");
-    monsdump[104].val = 104 /* PM_HORSE */;
-    monsdump[104].nm = $c.lit("HORSE");
-    monsdump[105].val = 105 /* PM_WARHORSE */;
-    monsdump[105].nm = $c.lit("WARHORSE");
-    monsdump[106].val = 106 /* PM_FOG_CLOUD */;
-    monsdump[106].nm = $c.lit("FOG_CLOUD");
-    monsdump[107].val = 107 /* PM_DUST_VORTEX */;
-    monsdump[107].nm = $c.lit("DUST_VORTEX");
-    monsdump[108].val = 108 /* PM_ICE_VORTEX */;
-    monsdump[108].nm = $c.lit("ICE_VORTEX");
-    monsdump[109].val = 109 /* PM_ENERGY_VORTEX */;
-    monsdump[109].nm = $c.lit("ENERGY_VORTEX");
-    monsdump[110].val = 110 /* PM_STEAM_VORTEX */;
-    monsdump[110].nm = $c.lit("STEAM_VORTEX");
-    monsdump[111].val = 111 /* PM_FIRE_VORTEX */;
-    monsdump[111].nm = $c.lit("FIRE_VORTEX");
-    monsdump[112].val = 112 /* PM_BABY_LONG_WORM */;
-    monsdump[112].nm = $c.lit("BABY_LONG_WORM");
-    monsdump[113].val = 113 /* PM_BABY_PURPLE_WORM */;
-    monsdump[113].nm = $c.lit("BABY_PURPLE_WORM");
-    monsdump[114].val = 114 /* PM_LONG_WORM */;
-    monsdump[114].nm = $c.lit("LONG_WORM");
-    monsdump[115].val = 115 /* PM_PURPLE_WORM */;
-    monsdump[115].nm = $c.lit("PURPLE_WORM");
-    monsdump[116].val = 116 /* PM_GRID_BUG */;
-    monsdump[116].nm = $c.lit("GRID_BUG");
-    monsdump[117].val = 117 /* PM_XAN */;
-    monsdump[117].nm = $c.lit("XAN");
-    monsdump[118].val = 118 /* PM_YELLOW_LIGHT */;
-    monsdump[118].nm = $c.lit("YELLOW_LIGHT");
-    monsdump[119].val = 119 /* PM_BLACK_LIGHT */;
-    monsdump[119].nm = $c.lit("BLACK_LIGHT");
-    monsdump[120].val = 120 /* PM_ZRUTY */;
-    monsdump[120].nm = $c.lit("ZRUTY");
-    monsdump[121].val = 121 /* PM_COUATL */;
-    monsdump[121].nm = $c.lit("COUATL");
-    monsdump[122].val = 122 /* PM_ALEAX */;
-    monsdump[122].nm = $c.lit("ALEAX");
-    monsdump[123].val = 123 /* PM_ANGEL */;
-    monsdump[123].nm = $c.lit("ANGEL");
-    monsdump[124].val = 124 /* PM_KI_RIN */;
-    monsdump[124].nm = $c.lit("KI_RIN");
-    monsdump[125].val = 125 /* PM_ARCHON */;
-    monsdump[125].nm = $c.lit("ARCHON");
-    monsdump[126].val = 126 /* PM_BAT */;
-    monsdump[126].nm = $c.lit("BAT");
-    monsdump[127].val = 127 /* PM_GIANT_BAT */;
-    monsdump[127].nm = $c.lit("GIANT_BAT");
-    monsdump[128].val = 128 /* PM_RAVEN */;
-    monsdump[128].nm = $c.lit("RAVEN");
-    monsdump[129].val = 129 /* PM_VAMPIRE_BAT */;
-    monsdump[129].nm = $c.lit("VAMPIRE_BAT");
-    monsdump[130].val = 130 /* PM_PLAINS_CENTAUR */;
-    monsdump[130].nm = $c.lit("PLAINS_CENTAUR");
-    monsdump[131].val = 131 /* PM_FOREST_CENTAUR */;
-    monsdump[131].nm = $c.lit("FOREST_CENTAUR");
-    monsdump[132].val = 132 /* PM_MOUNTAIN_CENTAUR */;
-    monsdump[132].nm = $c.lit("MOUNTAIN_CENTAUR");
-    monsdump[133].val = 133 /* PM_BABY_GRAY_DRAGON */;
-    monsdump[133].nm = $c.lit("BABY_GRAY_DRAGON");
-    monsdump[134].val = 134 /* PM_BABY_GOLD_DRAGON */;
-    monsdump[134].nm = $c.lit("BABY_GOLD_DRAGON");
-    monsdump[135].val = 135 /* PM_BABY_SILVER_DRAGON */;
-    monsdump[135].nm = $c.lit("BABY_SILVER_DRAGON");
-    monsdump[136].val = 136 /* PM_BABY_RED_DRAGON */;
-    monsdump[136].nm = $c.lit("BABY_RED_DRAGON");
-    monsdump[137].val = 137 /* PM_BABY_WHITE_DRAGON */;
-    monsdump[137].nm = $c.lit("BABY_WHITE_DRAGON");
-    monsdump[138].val = 138 /* PM_BABY_ORANGE_DRAGON */;
-    monsdump[138].nm = $c.lit("BABY_ORANGE_DRAGON");
-    monsdump[139].val = 139 /* PM_BABY_BLACK_DRAGON */;
-    monsdump[139].nm = $c.lit("BABY_BLACK_DRAGON");
-    monsdump[140].val = 140 /* PM_BABY_BLUE_DRAGON */;
-    monsdump[140].nm = $c.lit("BABY_BLUE_DRAGON");
-    monsdump[141].val = 141 /* PM_BABY_GREEN_DRAGON */;
-    monsdump[141].nm = $c.lit("BABY_GREEN_DRAGON");
-    monsdump[142].val = 142 /* PM_BABY_YELLOW_DRAGON */;
-    monsdump[142].nm = $c.lit("BABY_YELLOW_DRAGON");
-    monsdump[143].val = 143 /* PM_GRAY_DRAGON */;
-    monsdump[143].nm = $c.lit("GRAY_DRAGON");
-    monsdump[144].val = 144 /* PM_GOLD_DRAGON */;
-    monsdump[144].nm = $c.lit("GOLD_DRAGON");
-    monsdump[145].val = 145 /* PM_SILVER_DRAGON */;
-    monsdump[145].nm = $c.lit("SILVER_DRAGON");
-    monsdump[146].val = 146 /* PM_RED_DRAGON */;
-    monsdump[146].nm = $c.lit("RED_DRAGON");
-    monsdump[147].val = 147 /* PM_WHITE_DRAGON */;
-    monsdump[147].nm = $c.lit("WHITE_DRAGON");
-    monsdump[148].val = 148 /* PM_ORANGE_DRAGON */;
-    monsdump[148].nm = $c.lit("ORANGE_DRAGON");
-    monsdump[149].val = 149 /* PM_BLACK_DRAGON */;
-    monsdump[149].nm = $c.lit("BLACK_DRAGON");
-    monsdump[150].val = 150 /* PM_BLUE_DRAGON */;
-    monsdump[150].nm = $c.lit("BLUE_DRAGON");
-    monsdump[151].val = 151 /* PM_GREEN_DRAGON */;
-    monsdump[151].nm = $c.lit("GREEN_DRAGON");
-    monsdump[152].val = 152 /* PM_YELLOW_DRAGON */;
-    monsdump[152].nm = $c.lit("YELLOW_DRAGON");
-    monsdump[153].val = 153 /* PM_STALKER */;
-    monsdump[153].nm = $c.lit("STALKER");
-    monsdump[154].val = 154 /* PM_AIR_ELEMENTAL */;
-    monsdump[154].nm = $c.lit("AIR_ELEMENTAL");
-    monsdump[155].val = 155 /* PM_FIRE_ELEMENTAL */;
-    monsdump[155].nm = $c.lit("FIRE_ELEMENTAL");
-    monsdump[156].val = 156 /* PM_EARTH_ELEMENTAL */;
-    monsdump[156].nm = $c.lit("EARTH_ELEMENTAL");
-    monsdump[157].val = 157 /* PM_WATER_ELEMENTAL */;
-    monsdump[157].nm = $c.lit("WATER_ELEMENTAL");
-    monsdump[158].val = 158 /* PM_LICHEN */;
-    monsdump[158].nm = $c.lit("LICHEN");
-    monsdump[159].val = 159 /* PM_BROWN_MOLD */;
-    monsdump[159].nm = $c.lit("BROWN_MOLD");
-    monsdump[160].val = 160 /* PM_YELLOW_MOLD */;
-    monsdump[160].nm = $c.lit("YELLOW_MOLD");
-    monsdump[161].val = 161 /* PM_GREEN_MOLD */;
-    monsdump[161].nm = $c.lit("GREEN_MOLD");
-    monsdump[162].val = 162 /* PM_RED_MOLD */;
-    monsdump[162].nm = $c.lit("RED_MOLD");
-    monsdump[163].val = 163 /* PM_SHRIEKER */;
-    monsdump[163].nm = $c.lit("SHRIEKER");
-    monsdump[164].val = 164 /* PM_VIOLET_FUNGUS */;
-    monsdump[164].nm = $c.lit("VIOLET_FUNGUS");
-    monsdump[165].val = 165 /* PM_GNOME */;
-    monsdump[165].nm = $c.lit("GNOME");
-    monsdump[166].val = 166 /* PM_GNOME_LEADER */;
-    monsdump[166].nm = $c.lit("GNOME_LEADER");
-    monsdump[167].val = 167 /* PM_GNOMISH_WIZARD */;
-    monsdump[167].nm = $c.lit("GNOMISH_WIZARD");
-    monsdump[168].val = 168 /* PM_GNOME_RULER */;
-    monsdump[168].nm = $c.lit("GNOME_RULER");
-    monsdump[169].val = 169 /* PM_GIANT */;
-    monsdump[169].nm = $c.lit("GIANT");
-    monsdump[170].val = 170 /* PM_STONE_GIANT */;
-    monsdump[170].nm = $c.lit("STONE_GIANT");
-    monsdump[171].val = 171 /* PM_HILL_GIANT */;
-    monsdump[171].nm = $c.lit("HILL_GIANT");
-    monsdump[172].val = 172 /* PM_FIRE_GIANT */;
-    monsdump[172].nm = $c.lit("FIRE_GIANT");
-    monsdump[173].val = 173 /* PM_FROST_GIANT */;
-    monsdump[173].nm = $c.lit("FROST_GIANT");
-    monsdump[174].val = 174 /* PM_ETTIN */;
-    monsdump[174].nm = $c.lit("ETTIN");
-    monsdump[175].val = 175 /* PM_STORM_GIANT */;
-    monsdump[175].nm = $c.lit("STORM_GIANT");
-    monsdump[176].val = 176 /* PM_TITAN */;
-    monsdump[176].nm = $c.lit("TITAN");
-    monsdump[177].val = 177 /* PM_MINOTAUR */;
-    monsdump[177].nm = $c.lit("MINOTAUR");
-    monsdump[178].val = 178 /* PM_JABBERWOCK */;
-    monsdump[178].nm = $c.lit("JABBERWOCK");
-    monsdump[179].val = 179 /* PM_KEYSTONE_KOP */;
-    monsdump[179].nm = $c.lit("KEYSTONE_KOP");
-    monsdump[180].val = 180 /* PM_KOP_SERGEANT */;
-    monsdump[180].nm = $c.lit("KOP_SERGEANT");
-    monsdump[181].val = 181 /* PM_KOP_LIEUTENANT */;
-    monsdump[181].nm = $c.lit("KOP_LIEUTENANT");
-    monsdump[182].val = 182 /* PM_KOP_KAPTAIN */;
-    monsdump[182].nm = $c.lit("KOP_KAPTAIN");
-    monsdump[183].val = 183 /* PM_LICH */;
-    monsdump[183].nm = $c.lit("LICH");
-    monsdump[184].val = 184 /* PM_DEMILICH */;
-    monsdump[184].nm = $c.lit("DEMILICH");
-    monsdump[185].val = 185 /* PM_MASTER_LICH */;
-    monsdump[185].nm = $c.lit("MASTER_LICH");
-    monsdump[186].val = 186 /* PM_ARCH_LICH */;
-    monsdump[186].nm = $c.lit("ARCH_LICH");
-    monsdump[187].val = 187 /* PM_KOBOLD_MUMMY */;
-    monsdump[187].nm = $c.lit("KOBOLD_MUMMY");
-    monsdump[188].val = 188 /* PM_GNOME_MUMMY */;
-    monsdump[188].nm = $c.lit("GNOME_MUMMY");
-    monsdump[189].val = 189 /* PM_ORC_MUMMY */;
-    monsdump[189].nm = $c.lit("ORC_MUMMY");
-    monsdump[190].val = 190 /* PM_DWARF_MUMMY */;
-    monsdump[190].nm = $c.lit("DWARF_MUMMY");
-    monsdump[191].val = 191 /* PM_ELF_MUMMY */;
-    monsdump[191].nm = $c.lit("ELF_MUMMY");
-    monsdump[192].val = 192 /* PM_HUMAN_MUMMY */;
-    monsdump[192].nm = $c.lit("HUMAN_MUMMY");
-    monsdump[193].val = 193 /* PM_ETTIN_MUMMY */;
-    monsdump[193].nm = $c.lit("ETTIN_MUMMY");
-    monsdump[194].val = 194 /* PM_GIANT_MUMMY */;
-    monsdump[194].nm = $c.lit("GIANT_MUMMY");
-    monsdump[195].val = 195 /* PM_RED_NAGA_HATCHLING */;
-    monsdump[195].nm = $c.lit("RED_NAGA_HATCHLING");
-    monsdump[196].val = 196 /* PM_BLACK_NAGA_HATCHLING */;
-    monsdump[196].nm = $c.lit("BLACK_NAGA_HATCHLING");
-    monsdump[197].val = 197 /* PM_GOLDEN_NAGA_HATCHLING */;
-    monsdump[197].nm = $c.lit("GOLDEN_NAGA_HATCHLING");
-    monsdump[198].val = 198 /* PM_GUARDIAN_NAGA_HATCHLING */;
-    monsdump[198].nm = $c.lit("GUARDIAN_NAGA_HATCHLING");
-    monsdump[199].val = 199 /* PM_RED_NAGA */;
-    monsdump[199].nm = $c.lit("RED_NAGA");
-    monsdump[200].val = 200 /* PM_BLACK_NAGA */;
-    monsdump[200].nm = $c.lit("BLACK_NAGA");
-    monsdump[201].val = 201 /* PM_GOLDEN_NAGA */;
-    monsdump[201].nm = $c.lit("GOLDEN_NAGA");
-    monsdump[202].val = 202 /* PM_GUARDIAN_NAGA */;
-    monsdump[202].nm = $c.lit("GUARDIAN_NAGA");
-    monsdump[203].val = 203 /* PM_OGRE */;
-    monsdump[203].nm = $c.lit("OGRE");
-    monsdump[204].val = 204 /* PM_OGRE_LEADER */;
-    monsdump[204].nm = $c.lit("OGRE_LEADER");
-    monsdump[205].val = 205 /* PM_OGRE_TYRANT */;
-    monsdump[205].nm = $c.lit("OGRE_TYRANT");
-    monsdump[206].val = 206 /* PM_GRAY_OOZE */;
-    monsdump[206].nm = $c.lit("GRAY_OOZE");
-    monsdump[207].val = 207 /* PM_BROWN_PUDDING */;
-    monsdump[207].nm = $c.lit("BROWN_PUDDING");
-    monsdump[208].val = 208 /* PM_GREEN_SLIME */;
-    monsdump[208].nm = $c.lit("GREEN_SLIME");
-    monsdump[209].val = 209 /* PM_BLACK_PUDDING */;
-    monsdump[209].nm = $c.lit("BLACK_PUDDING");
-    monsdump[210].val = 210 /* PM_QUANTUM_MECHANIC */;
-    monsdump[210].nm = $c.lit("QUANTUM_MECHANIC");
-    monsdump[211].val = 211 /* PM_GENETIC_ENGINEER */;
-    monsdump[211].nm = $c.lit("GENETIC_ENGINEER");
-    monsdump[212].val = 212 /* PM_RUST_MONSTER */;
-    monsdump[212].nm = $c.lit("RUST_MONSTER");
-    monsdump[213].val = 213 /* PM_DISENCHANTER */;
-    monsdump[213].nm = $c.lit("DISENCHANTER");
-    monsdump[214].val = 214 /* PM_GARTER_SNAKE */;
-    monsdump[214].nm = $c.lit("GARTER_SNAKE");
-    monsdump[215].val = 215 /* PM_SNAKE */;
-    monsdump[215].nm = $c.lit("SNAKE");
-    monsdump[216].val = 216 /* PM_WATER_MOCCASIN */;
-    monsdump[216].nm = $c.lit("WATER_MOCCASIN");
-    monsdump[217].val = 217 /* PM_PYTHON */;
-    monsdump[217].nm = $c.lit("PYTHON");
-    monsdump[218].val = 218 /* PM_PIT_VIPER */;
-    monsdump[218].nm = $c.lit("PIT_VIPER");
-    monsdump[219].val = 219 /* PM_COBRA */;
-    monsdump[219].nm = $c.lit("COBRA");
-    monsdump[220].val = 220 /* PM_TROLL */;
-    monsdump[220].nm = $c.lit("TROLL");
-    monsdump[221].val = 221 /* PM_ICE_TROLL */;
-    monsdump[221].nm = $c.lit("ICE_TROLL");
-    monsdump[222].val = 222 /* PM_ROCK_TROLL */;
-    monsdump[222].nm = $c.lit("ROCK_TROLL");
-    monsdump[223].val = 223 /* PM_WATER_TROLL */;
-    monsdump[223].nm = $c.lit("WATER_TROLL");
-    monsdump[224].val = 224 /* PM_OLOG_HAI */;
-    monsdump[224].nm = $c.lit("OLOG_HAI");
-    monsdump[225].val = 225 /* PM_UMBER_HULK */;
-    monsdump[225].nm = $c.lit("UMBER_HULK");
-    monsdump[226].val = 226 /* PM_VAMPIRE */;
-    monsdump[226].nm = $c.lit("VAMPIRE");
-    monsdump[227].val = 227 /* PM_VAMPIRE_LEADER */;
-    monsdump[227].nm = $c.lit("VAMPIRE_LEADER");
-    monsdump[228].val = 228 /* PM_VLAD_THE_IMPALER */;
-    monsdump[228].nm = $c.lit("VLAD_THE_IMPALER");
-    monsdump[229].val = 229 /* PM_BARROW_WIGHT */;
-    monsdump[229].nm = $c.lit("BARROW_WIGHT");
-    monsdump[230].val = 230 /* PM_WRAITH */;
-    monsdump[230].nm = $c.lit("WRAITH");
-    monsdump[231].val = 231 /* PM_NAZGUL */;
-    monsdump[231].nm = $c.lit("NAZGUL");
-    monsdump[232].val = 232 /* PM_XORN */;
-    monsdump[232].nm = $c.lit("XORN");
-    monsdump[233].val = 233 /* PM_MONKEY */;
-    monsdump[233].nm = $c.lit("MONKEY");
-    monsdump[234].val = 234 /* PM_APE */;
-    monsdump[234].nm = $c.lit("APE");
-    monsdump[235].val = 235 /* PM_OWLBEAR */;
-    monsdump[235].nm = $c.lit("OWLBEAR");
-    monsdump[236].val = 236 /* PM_YETI */;
-    monsdump[236].nm = $c.lit("YETI");
-    monsdump[237].val = 237 /* PM_CARNIVOROUS_APE */;
-    monsdump[237].nm = $c.lit("CARNIVOROUS_APE");
-    monsdump[238].val = 238 /* PM_SASQUATCH */;
-    monsdump[238].nm = $c.lit("SASQUATCH");
-    monsdump[239].val = 239 /* PM_KOBOLD_ZOMBIE */;
-    monsdump[239].nm = $c.lit("KOBOLD_ZOMBIE");
-    monsdump[240].val = 240 /* PM_GNOME_ZOMBIE */;
-    monsdump[240].nm = $c.lit("GNOME_ZOMBIE");
-    monsdump[241].val = 241 /* PM_ORC_ZOMBIE */;
-    monsdump[241].nm = $c.lit("ORC_ZOMBIE");
-    monsdump[242].val = 242 /* PM_DWARF_ZOMBIE */;
-    monsdump[242].nm = $c.lit("DWARF_ZOMBIE");
-    monsdump[243].val = 243 /* PM_ELF_ZOMBIE */;
-    monsdump[243].nm = $c.lit("ELF_ZOMBIE");
-    monsdump[244].val = 244 /* PM_HUMAN_ZOMBIE */;
-    monsdump[244].nm = $c.lit("HUMAN_ZOMBIE");
-    monsdump[245].val = 245 /* PM_ETTIN_ZOMBIE */;
-    monsdump[245].nm = $c.lit("ETTIN_ZOMBIE");
-    monsdump[246].val = 246 /* PM_GHOUL */;
-    monsdump[246].nm = $c.lit("GHOUL");
-    monsdump[247].val = 247 /* PM_GIANT_ZOMBIE */;
-    monsdump[247].nm = $c.lit("GIANT_ZOMBIE");
-    monsdump[248].val = 248 /* PM_SKELETON */;
-    monsdump[248].nm = $c.lit("SKELETON");
-    monsdump[249].val = 249 /* PM_STRAW_GOLEM */;
-    monsdump[249].nm = $c.lit("STRAW_GOLEM");
-    monsdump[250].val = 250 /* PM_PAPER_GOLEM */;
-    monsdump[250].nm = $c.lit("PAPER_GOLEM");
-    monsdump[251].val = 251 /* PM_ROPE_GOLEM */;
-    monsdump[251].nm = $c.lit("ROPE_GOLEM");
-    monsdump[252].val = 252 /* PM_GOLD_GOLEM */;
-    monsdump[252].nm = $c.lit("GOLD_GOLEM");
-    monsdump[253].val = 253 /* PM_LEATHER_GOLEM */;
-    monsdump[253].nm = $c.lit("LEATHER_GOLEM");
-    monsdump[254].val = 254 /* PM_WOOD_GOLEM */;
-    monsdump[254].nm = $c.lit("WOOD_GOLEM");
-    monsdump[255].val = 255 /* PM_FLESH_GOLEM */;
-    monsdump[255].nm = $c.lit("FLESH_GOLEM");
-    monsdump[256].val = 256 /* PM_CLAY_GOLEM */;
-    monsdump[256].nm = $c.lit("CLAY_GOLEM");
-    monsdump[257].val = 257 /* PM_STONE_GOLEM */;
-    monsdump[257].nm = $c.lit("STONE_GOLEM");
-    monsdump[258].val = 258 /* PM_GLASS_GOLEM */;
-    monsdump[258].nm = $c.lit("GLASS_GOLEM");
-    monsdump[259].val = 259 /* PM_IRON_GOLEM */;
-    monsdump[259].nm = $c.lit("IRON_GOLEM");
-    monsdump[260].val = 260 /* PM_HUMAN */;
-    monsdump[260].nm = $c.lit("HUMAN");
-    monsdump[261].val = 261 /* PM_HUMAN_WERERAT */;
-    monsdump[261].nm = $c.lit("HUMAN_WERERAT");
-    monsdump[262].val = 262 /* PM_HUMAN_WEREJACKAL */;
-    monsdump[262].nm = $c.lit("HUMAN_WEREJACKAL");
-    monsdump[263].val = 263 /* PM_HUMAN_WEREWOLF */;
-    monsdump[263].nm = $c.lit("HUMAN_WEREWOLF");
-    monsdump[264].val = 264 /* PM_ELF */;
-    monsdump[264].nm = $c.lit("ELF");
-    monsdump[265].val = 265 /* PM_WOODLAND_ELF */;
-    monsdump[265].nm = $c.lit("WOODLAND_ELF");
-    monsdump[266].val = 266 /* PM_GREEN_ELF */;
-    monsdump[266].nm = $c.lit("GREEN_ELF");
-    monsdump[267].val = 267 /* PM_GREY_ELF */;
-    monsdump[267].nm = $c.lit("GREY_ELF");
-    monsdump[268].val = 268 /* PM_ELF_NOBLE */;
-    monsdump[268].nm = $c.lit("ELF_NOBLE");
-    monsdump[269].val = 269 /* PM_ELVEN_MONARCH */;
-    monsdump[269].nm = $c.lit("ELVEN_MONARCH");
-    monsdump[270].val = 270 /* PM_DOPPELGANGER */;
-    monsdump[270].nm = $c.lit("DOPPELGANGER");
-    monsdump[271].val = 271 /* PM_SHOPKEEPER */;
-    monsdump[271].nm = $c.lit("SHOPKEEPER");
-    monsdump[272].val = 272 /* PM_GUARD */;
-    monsdump[272].nm = $c.lit("GUARD");
-    monsdump[273].val = 273 /* PM_PRISONER */;
-    monsdump[273].nm = $c.lit("PRISONER");
-    monsdump[274].val = 274 /* PM_ORACLE */;
-    monsdump[274].nm = $c.lit("ORACLE");
-    monsdump[275].val = 275 /* PM_ALIGNED_CLERIC */;
-    monsdump[275].nm = $c.lit("ALIGNED_CLERIC");
-    monsdump[276].val = 276 /* PM_HIGH_CLERIC */;
-    monsdump[276].nm = $c.lit("HIGH_CLERIC");
-    monsdump[277].val = 277 /* PM_SOLDIER */;
-    monsdump[277].nm = $c.lit("SOLDIER");
-    monsdump[278].val = 278 /* PM_SERGEANT */;
-    monsdump[278].nm = $c.lit("SERGEANT");
-    monsdump[279].val = 279 /* PM_NURSE */;
-    monsdump[279].nm = $c.lit("NURSE");
-    monsdump[280].val = 280 /* PM_LIEUTENANT */;
-    monsdump[280].nm = $c.lit("LIEUTENANT");
-    monsdump[281].val = 281 /* PM_CAPTAIN */;
-    monsdump[281].nm = $c.lit("CAPTAIN");
-    monsdump[282].val = 282 /* PM_WATCHMAN */;
-    monsdump[282].nm = $c.lit("WATCHMAN");
-    monsdump[283].val = 283 /* PM_WATCH_CAPTAIN */;
-    monsdump[283].nm = $c.lit("WATCH_CAPTAIN");
-    monsdump[284].val = 284 /* PM_MEDUSA */;
-    monsdump[284].nm = $c.lit("MEDUSA");
-    monsdump[285].val = 285 /* PM_WIZARD_OF_YENDOR */;
-    monsdump[285].nm = $c.lit("WIZARD_OF_YENDOR");
-    monsdump[286].val = 286 /* PM_CROESUS */;
-    monsdump[286].nm = $c.lit("CROESUS");
-    monsdump[287].val = 287 /* PM_GHOST */;
-    monsdump[287].nm = $c.lit("GHOST");
-    monsdump[288].val = 288 /* PM_SHADE */;
-    monsdump[288].nm = $c.lit("SHADE");
-    monsdump[289].val = 289 /* PM_WATER_DEMON */;
-    monsdump[289].nm = $c.lit("WATER_DEMON");
-    monsdump[290].val = 290 /* PM_AMOROUS_DEMON */;
-    monsdump[290].nm = $c.lit("AMOROUS_DEMON");
-    monsdump[291].val = 291 /* PM_HORNED_DEVIL */;
-    monsdump[291].nm = $c.lit("HORNED_DEVIL");
-    monsdump[292].val = 292 /* PM_ERINYS */;
-    monsdump[292].nm = $c.lit("ERINYS");
-    monsdump[293].val = 293 /* PM_BARBED_DEVIL */;
-    monsdump[293].nm = $c.lit("BARBED_DEVIL");
-    monsdump[294].val = 294 /* PM_MARILITH */;
-    monsdump[294].nm = $c.lit("MARILITH");
-    monsdump[295].val = 295 /* PM_VROCK */;
-    monsdump[295].nm = $c.lit("VROCK");
-    monsdump[296].val = 296 /* PM_HEZROU */;
-    monsdump[296].nm = $c.lit("HEZROU");
-    monsdump[297].val = 297 /* PM_BONE_DEVIL */;
-    monsdump[297].nm = $c.lit("BONE_DEVIL");
-    monsdump[298].val = 298 /* PM_ICE_DEVIL */;
-    monsdump[298].nm = $c.lit("ICE_DEVIL");
-    monsdump[299].val = 299 /* PM_NALFESHNEE */;
-    monsdump[299].nm = $c.lit("NALFESHNEE");
-    monsdump[300].val = 300 /* PM_PIT_FIEND */;
-    monsdump[300].nm = $c.lit("PIT_FIEND");
-    monsdump[301].val = 301 /* PM_SANDESTIN */;
-    monsdump[301].nm = $c.lit("SANDESTIN");
-    monsdump[302].val = 302 /* PM_BALROG */;
-    monsdump[302].nm = $c.lit("BALROG");
-    monsdump[303].val = 303 /* PM_JUIBLEX */;
-    monsdump[303].nm = $c.lit("JUIBLEX");
-    monsdump[304].val = 304 /* PM_YEENOGHU */;
-    monsdump[304].nm = $c.lit("YEENOGHU");
-    monsdump[305].val = 305 /* PM_ORCUS */;
-    monsdump[305].nm = $c.lit("ORCUS");
-    monsdump[306].val = 306 /* PM_GERYON */;
-    monsdump[306].nm = $c.lit("GERYON");
-    monsdump[307].val = 307 /* PM_DISPATER */;
-    monsdump[307].nm = $c.lit("DISPATER");
-    monsdump[308].val = 308 /* PM_BAALZEBUB */;
-    monsdump[308].nm = $c.lit("BAALZEBUB");
-    monsdump[309].val = 309 /* PM_ASMODEUS */;
-    monsdump[309].nm = $c.lit("ASMODEUS");
-    monsdump[310].val = 310 /* PM_DEMOGORGON */;
-    monsdump[310].nm = $c.lit("DEMOGORGON");
-    monsdump[311].val = 311 /* PM_DEATH */;
-    monsdump[311].nm = $c.lit("DEATH");
-    monsdump[312].val = 312 /* PM_PESTILENCE */;
-    monsdump[312].nm = $c.lit("PESTILENCE");
-    monsdump[313].val = 313 /* PM_FAMINE */;
-    monsdump[313].nm = $c.lit("FAMINE");
-    monsdump[314].val = 314 /* PM_MAIL_DAEMON */;
-    monsdump[314].nm = $c.lit("MAIL_DAEMON");
-    monsdump[315].val = 315 /* PM_DJINNI */;
-    monsdump[315].nm = $c.lit("DJINNI");
-    monsdump[316].val = 316 /* PM_JELLYFISH */;
-    monsdump[316].nm = $c.lit("JELLYFISH");
-    monsdump[317].val = 317 /* PM_PIRANHA */;
-    monsdump[317].nm = $c.lit("PIRANHA");
-    monsdump[318].val = 318 /* PM_SHARK */;
-    monsdump[318].nm = $c.lit("SHARK");
-    monsdump[319].val = 319 /* PM_GIANT_EEL */;
-    monsdump[319].nm = $c.lit("GIANT_EEL");
-    monsdump[320].val = 320 /* PM_ELECTRIC_EEL */;
-    monsdump[320].nm = $c.lit("ELECTRIC_EEL");
-    monsdump[321].val = 321 /* PM_KRAKEN */;
-    monsdump[321].nm = $c.lit("KRAKEN");
-    monsdump[322].val = 322 /* PM_NEWT */;
-    monsdump[322].nm = $c.lit("NEWT");
-    monsdump[323].val = 323 /* PM_GECKO */;
-    monsdump[323].nm = $c.lit("GECKO");
-    monsdump[324].val = 324 /* PM_IGUANA */;
-    monsdump[324].nm = $c.lit("IGUANA");
-    monsdump[325].val = 325 /* PM_BABY_CROCODILE */;
-    monsdump[325].nm = $c.lit("BABY_CROCODILE");
-    monsdump[326].val = 326 /* PM_LIZARD */;
-    monsdump[326].nm = $c.lit("LIZARD");
-    monsdump[327].val = 327 /* PM_CHAMELEON */;
-    monsdump[327].nm = $c.lit("CHAMELEON");
-    monsdump[328].val = 328 /* PM_CROCODILE */;
-    monsdump[328].nm = $c.lit("CROCODILE");
-    monsdump[329].val = 329 /* PM_SALAMANDER */;
-    monsdump[329].nm = $c.lit("SALAMANDER");
-    monsdump[330].val = 330 /* PM_LONG_WORM_TAIL */;
-    monsdump[330].nm = $c.lit("LONG_WORM_TAIL");
-    monsdump[331].val = 331 /* PM_ARCHEOLOGIST */;
-    monsdump[331].nm = $c.lit("ARCHEOLOGIST");
-    monsdump[332].val = 332 /* PM_BARBARIAN */;
-    monsdump[332].nm = $c.lit("BARBARIAN");
-    monsdump[333].val = 333 /* PM_CAVE_DWELLER */;
-    monsdump[333].nm = $c.lit("CAVE_DWELLER");
-    monsdump[334].val = 334 /* PM_HEALER */;
-    monsdump[334].nm = $c.lit("HEALER");
-    monsdump[335].val = 335 /* PM_KNIGHT */;
-    monsdump[335].nm = $c.lit("KNIGHT");
-    monsdump[336].val = 336 /* PM_MONK */;
-    monsdump[336].nm = $c.lit("MONK");
-    monsdump[337].val = 337 /* PM_CLERIC */;
-    monsdump[337].nm = $c.lit("CLERIC");
-    monsdump[338].val = 338 /* PM_RANGER */;
-    monsdump[338].nm = $c.lit("RANGER");
-    monsdump[339].val = 339 /* PM_ROGUE */;
-    monsdump[339].nm = $c.lit("ROGUE");
-    monsdump[340].val = 340 /* PM_SAMURAI */;
-    monsdump[340].nm = $c.lit("SAMURAI");
-    monsdump[341].val = 341 /* PM_TOURIST */;
-    monsdump[341].nm = $c.lit("TOURIST");
-    monsdump[342].val = 342 /* PM_VALKYRIE */;
-    monsdump[342].nm = $c.lit("VALKYRIE");
-    monsdump[343].val = 343 /* PM_WIZARD */;
-    monsdump[343].nm = $c.lit("WIZARD");
-    monsdump[344].val = 344 /* PM_LORD_CARNARVON */;
-    monsdump[344].nm = $c.lit("LORD_CARNARVON");
-    monsdump[345].val = 345 /* PM_PELIAS */;
-    monsdump[345].nm = $c.lit("PELIAS");
-    monsdump[346].val = 346 /* PM_SHAMAN_KARNOV */;
-    monsdump[346].nm = $c.lit("SHAMAN_KARNOV");
-    monsdump[347].val = 347 /* PM_HIPPOCRATES */;
-    monsdump[347].nm = $c.lit("HIPPOCRATES");
-    monsdump[348].val = 348 /* PM_KING_ARTHUR */;
-    monsdump[348].nm = $c.lit("KING_ARTHUR");
-    monsdump[349].val = 349 /* PM_GRAND_MASTER */;
-    monsdump[349].nm = $c.lit("GRAND_MASTER");
-    monsdump[350].val = 350 /* PM_ARCH_PRIEST */;
-    monsdump[350].nm = $c.lit("ARCH_PRIEST");
-    monsdump[351].val = 351 /* PM_ORION */;
-    monsdump[351].nm = $c.lit("ORION");
-    monsdump[352].val = 352 /* PM_MASTER_OF_THIEVES */;
-    monsdump[352].nm = $c.lit("MASTER_OF_THIEVES");
-    monsdump[353].val = 353 /* PM_LORD_SATO */;
-    monsdump[353].nm = $c.lit("LORD_SATO");
-    monsdump[354].val = 354 /* PM_TWOFLOWER */;
-    monsdump[354].nm = $c.lit("TWOFLOWER");
-    monsdump[355].val = 355 /* PM_NORN */;
-    monsdump[355].nm = $c.lit("NORN");
-    monsdump[356].val = 356 /* PM_NEFERET_THE_GREEN */;
-    monsdump[356].nm = $c.lit("NEFERET_THE_GREEN");
-    monsdump[357].val = 357 /* PM_MINION_OF_HUHETOTL */;
-    monsdump[357].nm = $c.lit("MINION_OF_HUHETOTL");
-    monsdump[358].val = 358 /* PM_THOTH_AMON */;
-    monsdump[358].nm = $c.lit("THOTH_AMON");
-    monsdump[359].val = 359 /* PM_CHROMATIC_DRAGON */;
-    monsdump[359].nm = $c.lit("CHROMATIC_DRAGON");
-    monsdump[360].val = 360 /* PM_CYCLOPS */;
-    monsdump[360].nm = $c.lit("CYCLOPS");
-    monsdump[361].val = 361 /* PM_IXOTH */;
-    monsdump[361].nm = $c.lit("IXOTH");
-    monsdump[362].val = 362 /* PM_MASTER_KAEN */;
-    monsdump[362].nm = $c.lit("MASTER_KAEN");
-    monsdump[363].val = 363 /* PM_NALZOK */;
-    monsdump[363].nm = $c.lit("NALZOK");
-    monsdump[364].val = 364 /* PM_SCORPIUS */;
-    monsdump[364].nm = $c.lit("SCORPIUS");
-    monsdump[365].val = 365 /* PM_MASTER_ASSASSIN */;
-    monsdump[365].nm = $c.lit("MASTER_ASSASSIN");
-    monsdump[366].val = 366 /* PM_ASHIKAGA_TAKAUJI */;
-    monsdump[366].nm = $c.lit("ASHIKAGA_TAKAUJI");
-    monsdump[367].val = 367 /* PM_LORD_SURTUR */;
-    monsdump[367].nm = $c.lit("LORD_SURTUR");
-    monsdump[368].val = 368 /* PM_DARK_ONE */;
-    monsdump[368].nm = $c.lit("DARK_ONE");
-    monsdump[369].val = 369 /* PM_STUDENT */;
-    monsdump[369].nm = $c.lit("STUDENT");
-    monsdump[370].val = 370 /* PM_CHIEFTAIN */;
-    monsdump[370].nm = $c.lit("CHIEFTAIN");
-    monsdump[371].val = 371 /* PM_NEANDERTHAL */;
-    monsdump[371].nm = $c.lit("NEANDERTHAL");
-    monsdump[372].val = 372 /* PM_ATTENDANT */;
-    monsdump[372].nm = $c.lit("ATTENDANT");
-    monsdump[373].val = 373 /* PM_PAGE */;
-    monsdump[373].nm = $c.lit("PAGE");
-    monsdump[374].val = 374 /* PM_ABBOT */;
-    monsdump[374].nm = $c.lit("ABBOT");
-    monsdump[375].val = 375 /* PM_ACOLYTE */;
-    monsdump[375].nm = $c.lit("ACOLYTE");
-    monsdump[376].val = 376 /* PM_HUNTER */;
-    monsdump[376].nm = $c.lit("HUNTER");
-    monsdump[377].val = 377 /* PM_THUG */;
-    monsdump[377].nm = $c.lit("THUG");
-    monsdump[378].val = 378 /* PM_NINJA */;
-    monsdump[378].nm = $c.lit("NINJA");
-    monsdump[379].val = 379 /* PM_ROSHI */;
-    monsdump[379].nm = $c.lit("ROSHI");
-    monsdump[380].val = 380 /* PM_GUIDE */;
-    monsdump[380].nm = $c.lit("GUIDE");
-    monsdump[381].val = 381 /* PM_WARRIOR */;
-    monsdump[381].nm = $c.lit("WARRIOR");
-    monsdump[382].val = 382 /* PM_APPRENTICE */;
-    monsdump[382].nm = $c.lit("APPRENTICE");
-    monsdump[383].val = 383 /* NUMMONS */;
-    monsdump[383].nm = $c.lit("NUMMONS");
-    monsdump[384].val = -1 /* NON_PM */;
-    monsdump[384].nm = $c.lit("NON_PM");
-    monsdump[385].val = 0 /* LOW_PM */;
-    monsdump[385].nm = $c.lit("LOW_PM");
-    monsdump[386].val = 382 /* HIGH_PM */;
-    monsdump[386].nm = $c.lit("HIGH_PM");
-    monsdump[387].val = 330 /* SPECIAL_PM */;
-    monsdump[387].nm = $c.lit("SPECIAL_PM");
+    $c.init(monsdump, [
+        { val: PM.GIANT_ANT, nm: $c.lit("GIANT_ANT") },
+        { val: PM.KILLER_BEE, nm: $c.lit("KILLER_BEE") },
+        { val: PM.SOLDIER_ANT, nm: $c.lit("SOLDIER_ANT") },
+        { val: PM.FIRE_ANT, nm: $c.lit("FIRE_ANT") },
+        { val: PM.GIANT_BEETLE, nm: $c.lit("GIANT_BEETLE") },
+        { val: PM.QUEEN_BEE, nm: $c.lit("QUEEN_BEE") },
+        { val: PM.ACID_BLOB, nm: $c.lit("ACID_BLOB") },
+        { val: PM.QUIVERING_BLOB, nm: $c.lit("QUIVERING_BLOB") },
+        { val: PM.GELATINOUS_CUBE, nm: $c.lit("GELATINOUS_CUBE") },
+        { val: PM.CHICKATRICE, nm: $c.lit("CHICKATRICE") },
+        { val: PM.COCKATRICE, nm: $c.lit("COCKATRICE") },
+        { val: PM.PYROLISK, nm: $c.lit("PYROLISK") },
+        { val: PM.JACKAL, nm: $c.lit("JACKAL") },
+        { val: PM.FOX, nm: $c.lit("FOX") },
+        { val: PM.COYOTE, nm: $c.lit("COYOTE") },
+        { val: PM.WEREJACKAL, nm: $c.lit("WEREJACKAL") },
+        { val: PM.LITTLE_DOG, nm: $c.lit("LITTLE_DOG") },
+        { val: PM.DINGO, nm: $c.lit("DINGO") },
+        { val: PM.DOG, nm: $c.lit("DOG") },
+        { val: PM.LARGE_DOG, nm: $c.lit("LARGE_DOG") },
+        { val: PM.WOLF, nm: $c.lit("WOLF") },
+        { val: PM.WEREWOLF, nm: $c.lit("WEREWOLF") },
+        { val: PM.WINTER_WOLF_CUB, nm: $c.lit("WINTER_WOLF_CUB") },
+        { val: PM.WARG, nm: $c.lit("WARG") },
+        { val: PM.WINTER_WOLF, nm: $c.lit("WINTER_WOLF") },
+        { val: PM.HELL_HOUND_PUP, nm: $c.lit("HELL_HOUND_PUP") },
+        { val: PM.HELL_HOUND, nm: $c.lit("HELL_HOUND") },
+        { val: PM.GAS_SPORE, nm: $c.lit("GAS_SPORE") },
+        { val: PM.FLOATING_EYE, nm: $c.lit("FLOATING_EYE") },
+        { val: PM.FREEZING_SPHERE, nm: $c.lit("FREEZING_SPHERE") },
+        { val: PM.FLAMING_SPHERE, nm: $c.lit("FLAMING_SPHERE") },
+        { val: PM.SHOCKING_SPHERE, nm: $c.lit("SHOCKING_SPHERE") },
+        { val: PM.KITTEN, nm: $c.lit("KITTEN") },
+        { val: PM.HOUSECAT, nm: $c.lit("HOUSECAT") },
+        { val: PM.JAGUAR, nm: $c.lit("JAGUAR") },
+        { val: PM.LYNX, nm: $c.lit("LYNX") },
+        { val: PM.PANTHER, nm: $c.lit("PANTHER") },
+        { val: PM.LARGE_CAT, nm: $c.lit("LARGE_CAT") },
+        { val: PM.TIGER, nm: $c.lit("TIGER") },
+        { val: PM.DISPLACER_BEAST, nm: $c.lit("DISPLACER_BEAST") },
+        { val: PM.GREMLIN, nm: $c.lit("GREMLIN") },
+        { val: PM.GARGOYLE, nm: $c.lit("GARGOYLE") },
+        { val: PM.WINGED_GARGOYLE, nm: $c.lit("WINGED_GARGOYLE") },
+        { val: PM.HOBBIT, nm: $c.lit("HOBBIT") },
+        { val: PM.DWARF, nm: $c.lit("DWARF") },
+        { val: PM.BUGBEAR, nm: $c.lit("BUGBEAR") },
+        { val: PM.DWARF_LEADER, nm: $c.lit("DWARF_LEADER") },
+        { val: PM.DWARF_RULER, nm: $c.lit("DWARF_RULER") },
+        { val: PM.MIND_FLAYER, nm: $c.lit("MIND_FLAYER") },
+        { val: PM.MASTER_MIND_FLAYER, nm: $c.lit("MASTER_MIND_FLAYER") },
+        { val: PM.MANES, nm: $c.lit("MANES") },
+        { val: PM.HOMUNCULUS, nm: $c.lit("HOMUNCULUS") },
+        { val: PM.IMP, nm: $c.lit("IMP") },
+        { val: PM.LEMURE, nm: $c.lit("LEMURE") },
+        { val: PM.QUASIT, nm: $c.lit("QUASIT") },
+        { val: PM.TENGU, nm: $c.lit("TENGU") },
+        { val: PM.BLUE_JELLY, nm: $c.lit("BLUE_JELLY") },
+        { val: PM.SPOTTED_JELLY, nm: $c.lit("SPOTTED_JELLY") },
+        { val: PM.OCHRE_JELLY, nm: $c.lit("OCHRE_JELLY") },
+        { val: PM.KOBOLD, nm: $c.lit("KOBOLD") },
+        { val: PM.LARGE_KOBOLD, nm: $c.lit("LARGE_KOBOLD") },
+        { val: PM.KOBOLD_LEADER, nm: $c.lit("KOBOLD_LEADER") },
+        { val: PM.KOBOLD_SHAMAN, nm: $c.lit("KOBOLD_SHAMAN") },
+        { val: PM.LEPRECHAUN, nm: $c.lit("LEPRECHAUN") },
+        { val: PM.SMALL_MIMIC, nm: $c.lit("SMALL_MIMIC") },
+        { val: PM.LARGE_MIMIC, nm: $c.lit("LARGE_MIMIC") },
+        { val: PM.GIANT_MIMIC, nm: $c.lit("GIANT_MIMIC") },
+        { val: PM.WOOD_NYMPH, nm: $c.lit("WOOD_NYMPH") },
+        { val: PM.WATER_NYMPH, nm: $c.lit("WATER_NYMPH") },
+        { val: PM.MOUNTAIN_NYMPH, nm: $c.lit("MOUNTAIN_NYMPH") },
+        { val: PM.GOBLIN, nm: $c.lit("GOBLIN") },
+        { val: PM.HOBGOBLIN, nm: $c.lit("HOBGOBLIN") },
+        { val: PM.ORC, nm: $c.lit("ORC") },
+        { val: PM.HILL_ORC, nm: $c.lit("HILL_ORC") },
+        { val: PM.MORDOR_ORC, nm: $c.lit("MORDOR_ORC") },
+        { val: PM.URUK_HAI, nm: $c.lit("URUK_HAI") },
+        { val: PM.ORC_SHAMAN, nm: $c.lit("ORC_SHAMAN") },
+        { val: PM.ORC_CAPTAIN, nm: $c.lit("ORC_CAPTAIN") },
+        { val: PM.ROCK_PIERCER, nm: $c.lit("ROCK_PIERCER") },
+        { val: PM.IRON_PIERCER, nm: $c.lit("IRON_PIERCER") },
+        { val: PM.GLASS_PIERCER, nm: $c.lit("GLASS_PIERCER") },
+        { val: PM.ROTHE, nm: $c.lit("ROTHE") },
+        { val: PM.MUMAK, nm: $c.lit("MUMAK") },
+        { val: PM.LEOCROTTA, nm: $c.lit("LEOCROTTA") },
+        { val: PM.WUMPUS, nm: $c.lit("WUMPUS") },
+        { val: PM.TITANOTHERE, nm: $c.lit("TITANOTHERE") },
+        { val: PM.BALUCHITHERIUM, nm: $c.lit("BALUCHITHERIUM") },
+        { val: PM.MASTODON, nm: $c.lit("MASTODON") },
+        { val: PM.SEWER_RAT, nm: $c.lit("SEWER_RAT") },
+        { val: PM.GIANT_RAT, nm: $c.lit("GIANT_RAT") },
+        { val: PM.RABID_RAT, nm: $c.lit("RABID_RAT") },
+        { val: PM.WERERAT, nm: $c.lit("WERERAT") },
+        { val: PM.ROCK_MOLE, nm: $c.lit("ROCK_MOLE") },
+        { val: PM.WOODCHUCK, nm: $c.lit("WOODCHUCK") },
+        { val: PM.CAVE_SPIDER, nm: $c.lit("CAVE_SPIDER") },
+        { val: PM.CENTIPEDE, nm: $c.lit("CENTIPEDE") },
+        { val: PM.GIANT_SPIDER, nm: $c.lit("GIANT_SPIDER") },
+        { val: PM.SCORPION, nm: $c.lit("SCORPION") },
+        { val: PM.LURKER_ABOVE, nm: $c.lit("LURKER_ABOVE") },
+        { val: PM.TRAPPER, nm: $c.lit("TRAPPER") },
+        { val: PM.PONY, nm: $c.lit("PONY") },
+        { val: PM.WHITE_UNICORN, nm: $c.lit("WHITE_UNICORN") },
+        { val: PM.GRAY_UNICORN, nm: $c.lit("GRAY_UNICORN") },
+        { val: PM.BLACK_UNICORN, nm: $c.lit("BLACK_UNICORN") },
+        { val: PM.HORSE, nm: $c.lit("HORSE") },
+        { val: PM.WARHORSE, nm: $c.lit("WARHORSE") },
+        { val: PM.FOG_CLOUD, nm: $c.lit("FOG_CLOUD") },
+        { val: PM.DUST_VORTEX, nm: $c.lit("DUST_VORTEX") },
+        { val: PM.ICE_VORTEX, nm: $c.lit("ICE_VORTEX") },
+        { val: PM.ENERGY_VORTEX, nm: $c.lit("ENERGY_VORTEX") },
+        { val: PM.STEAM_VORTEX, nm: $c.lit("STEAM_VORTEX") },
+        { val: PM.FIRE_VORTEX, nm: $c.lit("FIRE_VORTEX") },
+        { val: PM.BABY_LONG_WORM, nm: $c.lit("BABY_LONG_WORM") },
+        { val: PM.BABY_PURPLE_WORM, nm: $c.lit("BABY_PURPLE_WORM") },
+        { val: PM.LONG_WORM, nm: $c.lit("LONG_WORM") },
+        { val: PM.PURPLE_WORM, nm: $c.lit("PURPLE_WORM") },
+        { val: PM.GRID_BUG, nm: $c.lit("GRID_BUG") },
+        { val: PM.XAN, nm: $c.lit("XAN") },
+        { val: PM.YELLOW_LIGHT, nm: $c.lit("YELLOW_LIGHT") },
+        { val: PM.BLACK_LIGHT, nm: $c.lit("BLACK_LIGHT") },
+        { val: PM.ZRUTY, nm: $c.lit("ZRUTY") },
+        { val: PM.COUATL, nm: $c.lit("COUATL") },
+        { val: PM.ALEAX, nm: $c.lit("ALEAX") },
+        { val: PM.ANGEL, nm: $c.lit("ANGEL") },
+        { val: PM.KI_RIN, nm: $c.lit("KI_RIN") },
+        { val: PM.ARCHON, nm: $c.lit("ARCHON") },
+        { val: PM.BAT, nm: $c.lit("BAT") },
+        { val: PM.GIANT_BAT, nm: $c.lit("GIANT_BAT") },
+        { val: PM.RAVEN, nm: $c.lit("RAVEN") },
+        { val: PM.VAMPIRE_BAT, nm: $c.lit("VAMPIRE_BAT") },
+        { val: PM.PLAINS_CENTAUR, nm: $c.lit("PLAINS_CENTAUR") },
+        { val: PM.FOREST_CENTAUR, nm: $c.lit("FOREST_CENTAUR") },
+        { val: PM.MOUNTAIN_CENTAUR, nm: $c.lit("MOUNTAIN_CENTAUR") },
+        { val: PM.BABY_GRAY_DRAGON, nm: $c.lit("BABY_GRAY_DRAGON") },
+        { val: PM.BABY_GOLD_DRAGON, nm: $c.lit("BABY_GOLD_DRAGON") },
+        { val: PM.BABY_SILVER_DRAGON, nm: $c.lit("BABY_SILVER_DRAGON") },
+        { val: PM.BABY_RED_DRAGON, nm: $c.lit("BABY_RED_DRAGON") },
+        { val: PM.BABY_WHITE_DRAGON, nm: $c.lit("BABY_WHITE_DRAGON") },
+        { val: PM.BABY_ORANGE_DRAGON, nm: $c.lit("BABY_ORANGE_DRAGON") },
+        { val: PM.BABY_BLACK_DRAGON, nm: $c.lit("BABY_BLACK_DRAGON") },
+        { val: PM.BABY_BLUE_DRAGON, nm: $c.lit("BABY_BLUE_DRAGON") },
+        { val: PM.BABY_GREEN_DRAGON, nm: $c.lit("BABY_GREEN_DRAGON") },
+        { val: PM.BABY_YELLOW_DRAGON, nm: $c.lit("BABY_YELLOW_DRAGON") },
+        { val: PM.GRAY_DRAGON, nm: $c.lit("GRAY_DRAGON") },
+        { val: PM.GOLD_DRAGON, nm: $c.lit("GOLD_DRAGON") },
+        { val: PM.SILVER_DRAGON, nm: $c.lit("SILVER_DRAGON") },
+        { val: PM.RED_DRAGON, nm: $c.lit("RED_DRAGON") },
+        { val: PM.WHITE_DRAGON, nm: $c.lit("WHITE_DRAGON") },
+        { val: PM.ORANGE_DRAGON, nm: $c.lit("ORANGE_DRAGON") },
+        { val: PM.BLACK_DRAGON, nm: $c.lit("BLACK_DRAGON") },
+        { val: PM.BLUE_DRAGON, nm: $c.lit("BLUE_DRAGON") },
+        { val: PM.GREEN_DRAGON, nm: $c.lit("GREEN_DRAGON") },
+        { val: PM.YELLOW_DRAGON, nm: $c.lit("YELLOW_DRAGON") },
+        { val: PM.STALKER, nm: $c.lit("STALKER") },
+        { val: PM.AIR_ELEMENTAL, nm: $c.lit("AIR_ELEMENTAL") },
+        { val: PM.FIRE_ELEMENTAL, nm: $c.lit("FIRE_ELEMENTAL") },
+        { val: PM.EARTH_ELEMENTAL, nm: $c.lit("EARTH_ELEMENTAL") },
+        { val: PM.WATER_ELEMENTAL, nm: $c.lit("WATER_ELEMENTAL") },
+        { val: PM.LICHEN, nm: $c.lit("LICHEN") },
+        { val: PM.BROWN_MOLD, nm: $c.lit("BROWN_MOLD") },
+        { val: PM.YELLOW_MOLD, nm: $c.lit("YELLOW_MOLD") },
+        { val: PM.GREEN_MOLD, nm: $c.lit("GREEN_MOLD") },
+        { val: PM.RED_MOLD, nm: $c.lit("RED_MOLD") },
+        { val: PM.SHRIEKER, nm: $c.lit("SHRIEKER") },
+        { val: PM.VIOLET_FUNGUS, nm: $c.lit("VIOLET_FUNGUS") },
+        { val: PM.GNOME, nm: $c.lit("GNOME") },
+        { val: PM.GNOME_LEADER, nm: $c.lit("GNOME_LEADER") },
+        { val: PM.GNOMISH_WIZARD, nm: $c.lit("GNOMISH_WIZARD") },
+        { val: PM.GNOME_RULER, nm: $c.lit("GNOME_RULER") },
+        { val: PM.GIANT, nm: $c.lit("GIANT") },
+        { val: PM.STONE_GIANT, nm: $c.lit("STONE_GIANT") },
+        { val: PM.HILL_GIANT, nm: $c.lit("HILL_GIANT") },
+        { val: PM.FIRE_GIANT, nm: $c.lit("FIRE_GIANT") },
+        { val: PM.FROST_GIANT, nm: $c.lit("FROST_GIANT") },
+        { val: PM.ETTIN, nm: $c.lit("ETTIN") },
+        { val: PM.STORM_GIANT, nm: $c.lit("STORM_GIANT") },
+        { val: PM.TITAN, nm: $c.lit("TITAN") },
+        { val: PM.MINOTAUR, nm: $c.lit("MINOTAUR") },
+        { val: PM.JABBERWOCK, nm: $c.lit("JABBERWOCK") },
+        { val: PM.KEYSTONE_KOP, nm: $c.lit("KEYSTONE_KOP") },
+        { val: PM.KOP_SERGEANT, nm: $c.lit("KOP_SERGEANT") },
+        { val: PM.KOP_LIEUTENANT, nm: $c.lit("KOP_LIEUTENANT") },
+        { val: PM.KOP_KAPTAIN, nm: $c.lit("KOP_KAPTAIN") },
+        { val: PM.LICH, nm: $c.lit("LICH") },
+        { val: PM.DEMILICH, nm: $c.lit("DEMILICH") },
+        { val: PM.MASTER_LICH, nm: $c.lit("MASTER_LICH") },
+        { val: PM.ARCH_LICH, nm: $c.lit("ARCH_LICH") },
+        { val: PM.KOBOLD_MUMMY, nm: $c.lit("KOBOLD_MUMMY") },
+        { val: PM.GNOME_MUMMY, nm: $c.lit("GNOME_MUMMY") },
+        { val: PM.ORC_MUMMY, nm: $c.lit("ORC_MUMMY") },
+        { val: PM.DWARF_MUMMY, nm: $c.lit("DWARF_MUMMY") },
+        { val: PM.ELF_MUMMY, nm: $c.lit("ELF_MUMMY") },
+        { val: PM.HUMAN_MUMMY, nm: $c.lit("HUMAN_MUMMY") },
+        { val: PM.ETTIN_MUMMY, nm: $c.lit("ETTIN_MUMMY") },
+        { val: PM.GIANT_MUMMY, nm: $c.lit("GIANT_MUMMY") },
+        { val: PM.RED_NAGA_HATCHLING, nm: $c.lit("RED_NAGA_HATCHLING") },
+        { val: PM.BLACK_NAGA_HATCHLING, nm: $c.lit("BLACK_NAGA_HATCHLING") },
+        { val: PM.GOLDEN_NAGA_HATCHLING, nm: $c.lit("GOLDEN_NAGA_HATCHLING") },
+        { val: PM.GUARDIAN_NAGA_HATCHLING, nm: $c.lit("GUARDIAN_NAGA_HATCHLING") },
+        { val: PM.RED_NAGA, nm: $c.lit("RED_NAGA") },
+        { val: PM.BLACK_NAGA, nm: $c.lit("BLACK_NAGA") },
+        { val: PM.GOLDEN_NAGA, nm: $c.lit("GOLDEN_NAGA") },
+        { val: PM.GUARDIAN_NAGA, nm: $c.lit("GUARDIAN_NAGA") },
+        { val: PM.OGRE, nm: $c.lit("OGRE") },
+        { val: PM.OGRE_LEADER, nm: $c.lit("OGRE_LEADER") },
+        { val: PM.OGRE_TYRANT, nm: $c.lit("OGRE_TYRANT") },
+        { val: PM.GRAY_OOZE, nm: $c.lit("GRAY_OOZE") },
+        { val: PM.BROWN_PUDDING, nm: $c.lit("BROWN_PUDDING") },
+        { val: PM.GREEN_SLIME, nm: $c.lit("GREEN_SLIME") },
+        { val: PM.BLACK_PUDDING, nm: $c.lit("BLACK_PUDDING") },
+        { val: PM.QUANTUM_MECHANIC, nm: $c.lit("QUANTUM_MECHANIC") },
+        { val: PM.GENETIC_ENGINEER, nm: $c.lit("GENETIC_ENGINEER") },
+        { val: PM.RUST_MONSTER, nm: $c.lit("RUST_MONSTER") },
+        { val: PM.DISENCHANTER, nm: $c.lit("DISENCHANTER") },
+        { val: PM.GARTER_SNAKE, nm: $c.lit("GARTER_SNAKE") },
+        { val: PM.SNAKE, nm: $c.lit("SNAKE") },
+        { val: PM.WATER_MOCCASIN, nm: $c.lit("WATER_MOCCASIN") },
+        { val: PM.PYTHON, nm: $c.lit("PYTHON") },
+        { val: PM.PIT_VIPER, nm: $c.lit("PIT_VIPER") },
+        { val: PM.COBRA, nm: $c.lit("COBRA") },
+        { val: PM.TROLL, nm: $c.lit("TROLL") },
+        { val: PM.ICE_TROLL, nm: $c.lit("ICE_TROLL") },
+        { val: PM.ROCK_TROLL, nm: $c.lit("ROCK_TROLL") },
+        { val: PM.WATER_TROLL, nm: $c.lit("WATER_TROLL") },
+        { val: PM.OLOG_HAI, nm: $c.lit("OLOG_HAI") },
+        { val: PM.UMBER_HULK, nm: $c.lit("UMBER_HULK") },
+        { val: PM.VAMPIRE, nm: $c.lit("VAMPIRE") },
+        { val: PM.VAMPIRE_LEADER, nm: $c.lit("VAMPIRE_LEADER") },
+        { val: PM.VLAD_THE_IMPALER, nm: $c.lit("VLAD_THE_IMPALER") },
+        { val: PM.BARROW_WIGHT, nm: $c.lit("BARROW_WIGHT") },
+        { val: PM.WRAITH, nm: $c.lit("WRAITH") },
+        { val: PM.NAZGUL, nm: $c.lit("NAZGUL") },
+        { val: PM.XORN, nm: $c.lit("XORN") },
+        { val: PM.MONKEY, nm: $c.lit("MONKEY") },
+        { val: PM.APE, nm: $c.lit("APE") },
+        { val: PM.OWLBEAR, nm: $c.lit("OWLBEAR") },
+        { val: PM.YETI, nm: $c.lit("YETI") },
+        { val: PM.CARNIVOROUS_APE, nm: $c.lit("CARNIVOROUS_APE") },
+        { val: PM.SASQUATCH, nm: $c.lit("SASQUATCH") },
+        { val: PM.KOBOLD_ZOMBIE, nm: $c.lit("KOBOLD_ZOMBIE") },
+        { val: PM.GNOME_ZOMBIE, nm: $c.lit("GNOME_ZOMBIE") },
+        { val: PM.ORC_ZOMBIE, nm: $c.lit("ORC_ZOMBIE") },
+        { val: PM.DWARF_ZOMBIE, nm: $c.lit("DWARF_ZOMBIE") },
+        { val: PM.ELF_ZOMBIE, nm: $c.lit("ELF_ZOMBIE") },
+        { val: PM.HUMAN_ZOMBIE, nm: $c.lit("HUMAN_ZOMBIE") },
+        { val: PM.ETTIN_ZOMBIE, nm: $c.lit("ETTIN_ZOMBIE") },
+        { val: PM.GHOUL, nm: $c.lit("GHOUL") },
+        { val: PM.GIANT_ZOMBIE, nm: $c.lit("GIANT_ZOMBIE") },
+        { val: PM.SKELETON, nm: $c.lit("SKELETON") },
+        { val: PM.STRAW_GOLEM, nm: $c.lit("STRAW_GOLEM") },
+        { val: PM.PAPER_GOLEM, nm: $c.lit("PAPER_GOLEM") },
+        { val: PM.ROPE_GOLEM, nm: $c.lit("ROPE_GOLEM") },
+        { val: PM.GOLD_GOLEM, nm: $c.lit("GOLD_GOLEM") },
+        { val: PM.LEATHER_GOLEM, nm: $c.lit("LEATHER_GOLEM") },
+        { val: PM.WOOD_GOLEM, nm: $c.lit("WOOD_GOLEM") },
+        { val: PM.FLESH_GOLEM, nm: $c.lit("FLESH_GOLEM") },
+        { val: PM.CLAY_GOLEM, nm: $c.lit("CLAY_GOLEM") },
+        { val: PM.STONE_GOLEM, nm: $c.lit("STONE_GOLEM") },
+        { val: PM.GLASS_GOLEM, nm: $c.lit("GLASS_GOLEM") },
+        { val: PM.IRON_GOLEM, nm: $c.lit("IRON_GOLEM") },
+        { val: PM.HUMAN, nm: $c.lit("HUMAN") },
+        { val: PM.HUMAN_WERERAT, nm: $c.lit("HUMAN_WERERAT") },
+        { val: PM.HUMAN_WEREJACKAL, nm: $c.lit("HUMAN_WEREJACKAL") },
+        { val: PM.HUMAN_WEREWOLF, nm: $c.lit("HUMAN_WEREWOLF") },
+        { val: PM.ELF, nm: $c.lit("ELF") },
+        { val: PM.WOODLAND_ELF, nm: $c.lit("WOODLAND_ELF") },
+        { val: PM.GREEN_ELF, nm: $c.lit("GREEN_ELF") },
+        { val: PM.GREY_ELF, nm: $c.lit("GREY_ELF") },
+        { val: PM.ELF_NOBLE, nm: $c.lit("ELF_NOBLE") },
+        { val: PM.ELVEN_MONARCH, nm: $c.lit("ELVEN_MONARCH") },
+        { val: PM.DOPPELGANGER, nm: $c.lit("DOPPELGANGER") },
+        { val: PM.SHOPKEEPER, nm: $c.lit("SHOPKEEPER") },
+        { val: PM.GUARD, nm: $c.lit("GUARD") },
+        { val: PM.PRISONER, nm: $c.lit("PRISONER") },
+        { val: PM.ORACLE, nm: $c.lit("ORACLE") },
+        { val: PM.ALIGNED_CLERIC, nm: $c.lit("ALIGNED_CLERIC") },
+        { val: PM.HIGH_CLERIC, nm: $c.lit("HIGH_CLERIC") },
+        { val: PM.SOLDIER, nm: $c.lit("SOLDIER") },
+        { val: PM.SERGEANT, nm: $c.lit("SERGEANT") },
+        { val: PM.NURSE, nm: $c.lit("NURSE") },
+        { val: PM.LIEUTENANT, nm: $c.lit("LIEUTENANT") },
+        { val: PM.CAPTAIN, nm: $c.lit("CAPTAIN") },
+        { val: PM.WATCHMAN, nm: $c.lit("WATCHMAN") },
+        { val: PM.WATCH_CAPTAIN, nm: $c.lit("WATCH_CAPTAIN") },
+        { val: PM.MEDUSA, nm: $c.lit("MEDUSA") },
+        { val: PM.WIZARD_OF_YENDOR, nm: $c.lit("WIZARD_OF_YENDOR") },
+        { val: PM.CROESUS, nm: $c.lit("CROESUS") },
+        { val: PM.GHOST, nm: $c.lit("GHOST") },
+        { val: PM.SHADE, nm: $c.lit("SHADE") },
+        { val: PM.WATER_DEMON, nm: $c.lit("WATER_DEMON") },
+        { val: PM.AMOROUS_DEMON, nm: $c.lit("AMOROUS_DEMON") },
+        { val: PM.HORNED_DEVIL, nm: $c.lit("HORNED_DEVIL") },
+        { val: PM.ERINYS, nm: $c.lit("ERINYS") },
+        { val: PM.BARBED_DEVIL, nm: $c.lit("BARBED_DEVIL") },
+        { val: PM.MARILITH, nm: $c.lit("MARILITH") },
+        { val: PM.VROCK, nm: $c.lit("VROCK") },
+        { val: PM.HEZROU, nm: $c.lit("HEZROU") },
+        { val: PM.BONE_DEVIL, nm: $c.lit("BONE_DEVIL") },
+        { val: PM.ICE_DEVIL, nm: $c.lit("ICE_DEVIL") },
+        { val: PM.NALFESHNEE, nm: $c.lit("NALFESHNEE") },
+        { val: PM.PIT_FIEND, nm: $c.lit("PIT_FIEND") },
+        { val: PM.SANDESTIN, nm: $c.lit("SANDESTIN") },
+        { val: PM.BALROG, nm: $c.lit("BALROG") },
+        { val: PM.JUIBLEX, nm: $c.lit("JUIBLEX") },
+        { val: PM.YEENOGHU, nm: $c.lit("YEENOGHU") },
+        { val: PM.ORCUS, nm: $c.lit("ORCUS") },
+        { val: PM.GERYON, nm: $c.lit("GERYON") },
+        { val: PM.DISPATER, nm: $c.lit("DISPATER") },
+        { val: PM.BAALZEBUB, nm: $c.lit("BAALZEBUB") },
+        { val: PM.ASMODEUS, nm: $c.lit("ASMODEUS") },
+        { val: PM.DEMOGORGON, nm: $c.lit("DEMOGORGON") },
+        { val: PM.DEATH, nm: $c.lit("DEATH") },
+        { val: PM.PESTILENCE, nm: $c.lit("PESTILENCE") },
+        { val: PM.FAMINE, nm: $c.lit("FAMINE") },
+        { val: PM.MAIL_DAEMON, nm: $c.lit("MAIL_DAEMON") },
+        { val: PM.DJINNI, nm: $c.lit("DJINNI") },
+        { val: PM.JELLYFISH, nm: $c.lit("JELLYFISH") },
+        { val: PM.PIRANHA, nm: $c.lit("PIRANHA") },
+        { val: PM.SHARK, nm: $c.lit("SHARK") },
+        { val: PM.GIANT_EEL, nm: $c.lit("GIANT_EEL") },
+        { val: PM.ELECTRIC_EEL, nm: $c.lit("ELECTRIC_EEL") },
+        { val: PM.KRAKEN, nm: $c.lit("KRAKEN") },
+        { val: PM.NEWT, nm: $c.lit("NEWT") },
+        { val: PM.GECKO, nm: $c.lit("GECKO") },
+        { val: PM.IGUANA, nm: $c.lit("IGUANA") },
+        { val: PM.BABY_CROCODILE, nm: $c.lit("BABY_CROCODILE") },
+        { val: PM.LIZARD, nm: $c.lit("LIZARD") },
+        { val: PM.CHAMELEON, nm: $c.lit("CHAMELEON") },
+        { val: PM.CROCODILE, nm: $c.lit("CROCODILE") },
+        { val: PM.SALAMANDER, nm: $c.lit("SALAMANDER") },
+        { val: PM.LONG_WORM_TAIL, nm: $c.lit("LONG_WORM_TAIL") },
+        { val: PM.ARCHEOLOGIST, nm: $c.lit("ARCHEOLOGIST") },
+        { val: PM.BARBARIAN, nm: $c.lit("BARBARIAN") },
+        { val: PM.CAVE_DWELLER, nm: $c.lit("CAVE_DWELLER") },
+        { val: PM.HEALER, nm: $c.lit("HEALER") },
+        { val: PM.KNIGHT, nm: $c.lit("KNIGHT") },
+        { val: PM.MONK, nm: $c.lit("MONK") },
+        { val: PM.CLERIC, nm: $c.lit("CLERIC") },
+        { val: PM.RANGER, nm: $c.lit("RANGER") },
+        { val: PM.ROGUE, nm: $c.lit("ROGUE") },
+        { val: PM.SAMURAI, nm: $c.lit("SAMURAI") },
+        { val: PM.TOURIST, nm: $c.lit("TOURIST") },
+        { val: PM.VALKYRIE, nm: $c.lit("VALKYRIE") },
+        { nm: $c.lit("WIZARD"), val: PM.WIZARD },
+        { val: PM.LORD_CARNARVON, nm: $c.lit("LORD_CARNARVON") },
+        { val: PM.PELIAS, nm: $c.lit("PELIAS") },
+        { val: PM.SHAMAN_KARNOV, nm: $c.lit("SHAMAN_KARNOV") },
+        { val: PM.HIPPOCRATES, nm: $c.lit("HIPPOCRATES") },
+        { val: PM.KING_ARTHUR, nm: $c.lit("KING_ARTHUR") },
+        { val: PM.GRAND_MASTER, nm: $c.lit("GRAND_MASTER") },
+        { val: PM.ARCH_PRIEST, nm: $c.lit("ARCH_PRIEST") },
+        { val: PM.ORION, nm: $c.lit("ORION") },
+        { val: PM.MASTER_OF_THIEVES, nm: $c.lit("MASTER_OF_THIEVES") },
+        { val: PM.LORD_SATO, nm: $c.lit("LORD_SATO") },
+        { val: PM.TWOFLOWER, nm: $c.lit("TWOFLOWER") },
+        { val: PM.NORN, nm: $c.lit("NORN") },
+        { val: PM.NEFERET_THE_GREEN, nm: $c.lit("NEFERET_THE_GREEN") },
+        { val: PM.MINION_OF_HUHETOTL, nm: $c.lit("MINION_OF_HUHETOTL") },
+        { val: PM.THOTH_AMON, nm: $c.lit("THOTH_AMON") },
+        { val: PM.CHROMATIC_DRAGON, nm: $c.lit("CHROMATIC_DRAGON") },
+        { val: PM.CYCLOPS, nm: $c.lit("CYCLOPS") },
+        { val: PM.IXOTH, nm: $c.lit("IXOTH") },
+        { val: PM.MASTER_KAEN, nm: $c.lit("MASTER_KAEN") },
+        { val: PM.NALZOK, nm: $c.lit("NALZOK") },
+        { val: PM.SCORPIUS, nm: $c.lit("SCORPIUS") },
+        { val: PM.MASTER_ASSASSIN, nm: $c.lit("MASTER_ASSASSIN") },
+        { val: PM.ASHIKAGA_TAKAUJI, nm: $c.lit("ASHIKAGA_TAKAUJI") },
+        { val: PM.LORD_SURTUR, nm: $c.lit("LORD_SURTUR") },
+        { val: PM.DARK_ONE, nm: $c.lit("DARK_ONE") },
+        { val: PM.STUDENT, nm: $c.lit("STUDENT") },
+        { val: PM.CHIEFTAIN, nm: $c.lit("CHIEFTAIN") },
+        { val: PM.NEANDERTHAL, nm: $c.lit("NEANDERTHAL") },
+        { val: PM.ATTENDANT, nm: $c.lit("ATTENDANT") },
+        { val: PM.PAGE, nm: $c.lit("PAGE") },
+        { val: PM.ABBOT, nm: $c.lit("ABBOT") },
+        { val: PM.ACOLYTE, nm: $c.lit("ACOLYTE") },
+        { val: PM.HUNTER, nm: $c.lit("HUNTER") },
+        { val: PM.THUG, nm: $c.lit("THUG") },
+        { val: PM.NINJA, nm: $c.lit("NINJA") },
+        { val: PM.ROSHI, nm: $c.lit("ROSHI") },
+        { val: PM.GUIDE, nm: $c.lit("GUIDE") },
+        { val: PM.WARRIOR, nm: $c.lit("WARRIOR") }, { nm: $c.lit("APPRENTICE"), val: PM.APPRENTICE },
+        { val: NUMMONS, nm: $c.lit("NUMMONS") },
+        { val: NON_PM, nm: $c.lit("NON_PM") },
+        { val: LOW_PM, nm: $c.lit("LOW_PM") },
+        { val: HIGH_PM, nm: $c.lit("HIGH_PM") },
+        { val: SPECIAL_PM, nm: $c.lit("SPECIAL_PM") }
+    ]);
     for (let $i0 = 0; $i0 < 482; $i0++) {
         objdump[$i0].$copyFrom(new $T.enum_dump());
     }
-    objdump[0].val = 0 /* STRANGE_OBJECT */;
-    objdump[0].nm = $c.lit("STRANGE_OBJECT");
-    objdump[1].val = 1 /* GENERIC_ILLOBJ */;
-    objdump[1].nm = $c.lit("GENERIC_ILLOBJ");
-    objdump[2].val = 2 /* GENERIC_WEAPON */;
-    objdump[2].nm = $c.lit("GENERIC_WEAPON");
-    objdump[3].val = 3 /* GENERIC_ARMOR */;
-    objdump[3].nm = $c.lit("GENERIC_ARMOR");
-    objdump[4].val = 4 /* GENERIC_RING */;
-    objdump[4].nm = $c.lit("GENERIC_RING");
-    objdump[5].val = 5 /* GENERIC_AMULET */;
-    objdump[5].nm = $c.lit("GENERIC_AMULET");
-    objdump[6].val = 6 /* GENERIC_TOOL */;
-    objdump[6].nm = $c.lit("GENERIC_TOOL");
-    objdump[7].val = 7 /* GENERIC_FOOD */;
-    objdump[7].nm = $c.lit("GENERIC_FOOD");
-    objdump[8].val = 8 /* GENERIC_POTION */;
-    objdump[8].nm = $c.lit("GENERIC_POTION");
-    objdump[9].val = 9 /* GENERIC_SCROLL */;
-    objdump[9].nm = $c.lit("GENERIC_SCROLL");
-    objdump[10].val = 10 /* GENERIC_SPBOOK */;
-    objdump[10].nm = $c.lit("GENERIC_SPBOOK");
-    objdump[11].val = 11 /* GENERIC_WAND */;
-    objdump[11].nm = $c.lit("GENERIC_WAND");
-    objdump[12].val = 12 /* GENERIC_COIN */;
-    objdump[12].nm = $c.lit("GENERIC_COIN");
-    objdump[13].val = 13 /* GENERIC_GEM */;
-    objdump[13].nm = $c.lit("GENERIC_GEM");
-    objdump[14].val = 14 /* GENERIC_ROCK */;
-    objdump[14].nm = $c.lit("GENERIC_ROCK");
-    objdump[15].val = 15 /* GENERIC_BALL */;
-    objdump[15].nm = $c.lit("GENERIC_BALL");
-    objdump[16].val = 16 /* GENERIC_CHAIN */;
-    objdump[16].nm = $c.lit("GENERIC_CHAIN");
-    objdump[17].val = 17 /* GENERIC_VENOM */;
-    objdump[17].nm = $c.lit("GENERIC_VENOM");
-    objdump[18].val = 18 /* ARROW */;
-    objdump[18].nm = $c.lit("ARROW");
-    objdump[19].val = 19 /* ELVEN_ARROW */;
-    objdump[19].nm = $c.lit("ELVEN_ARROW");
-    objdump[20].val = 20 /* ORCISH_ARROW */;
-    objdump[20].nm = $c.lit("ORCISH_ARROW");
-    objdump[21].val = 21 /* SILVER_ARROW */;
-    objdump[21].nm = $c.lit("SILVER_ARROW");
-    objdump[22].val = 22 /* YA */;
-    objdump[22].nm = $c.lit("YA");
-    objdump[23].val = 23 /* CROSSBOW_BOLT */;
-    objdump[23].nm = $c.lit("CROSSBOW_BOLT");
-    objdump[24].val = 24 /* DART */;
-    objdump[24].nm = $c.lit("DART");
-    objdump[25].val = 25 /* SHURIKEN */;
-    objdump[25].nm = $c.lit("SHURIKEN");
-    objdump[26].val = 26 /* BOOMERANG */;
-    objdump[26].nm = $c.lit("BOOMERANG");
-    objdump[27].val = 27 /* SPEAR */;
-    objdump[27].nm = $c.lit("SPEAR");
-    objdump[28].val = 28 /* ELVEN_SPEAR */;
-    objdump[28].nm = $c.lit("ELVEN_SPEAR");
-    objdump[29].val = 29 /* ORCISH_SPEAR */;
-    objdump[29].nm = $c.lit("ORCISH_SPEAR");
-    objdump[30].val = 30 /* DWARVISH_SPEAR */;
-    objdump[30].nm = $c.lit("DWARVISH_SPEAR");
-    objdump[31].val = 31 /* SILVER_SPEAR */;
-    objdump[31].nm = $c.lit("SILVER_SPEAR");
-    objdump[32].val = 32 /* JAVELIN */;
-    objdump[32].nm = $c.lit("JAVELIN");
-    objdump[33].val = 33 /* TRIDENT */;
-    objdump[33].nm = $c.lit("TRIDENT");
-    objdump[34].val = 34 /* DAGGER */;
-    objdump[34].nm = $c.lit("DAGGER");
-    objdump[35].val = 35 /* ELVEN_DAGGER */;
-    objdump[35].nm = $c.lit("ELVEN_DAGGER");
-    objdump[36].val = 36 /* ORCISH_DAGGER */;
-    objdump[36].nm = $c.lit("ORCISH_DAGGER");
-    objdump[37].val = 37 /* SILVER_DAGGER */;
-    objdump[37].nm = $c.lit("SILVER_DAGGER");
-    objdump[38].val = 38 /* ATHAME */;
-    objdump[38].nm = $c.lit("ATHAME");
-    objdump[39].val = 39 /* SCALPEL */;
-    objdump[39].nm = $c.lit("SCALPEL");
-    objdump[40].val = 40 /* KNIFE */;
-    objdump[40].nm = $c.lit("KNIFE");
-    objdump[41].val = 41 /* STILETTO */;
-    objdump[41].nm = $c.lit("STILETTO");
-    objdump[42].val = 42 /* WORM_TOOTH */;
-    objdump[42].nm = $c.lit("WORM_TOOTH");
-    objdump[43].val = 43 /* CRYSKNIFE */;
-    objdump[43].nm = $c.lit("CRYSKNIFE");
-    objdump[44].val = 44 /* AXE */;
-    objdump[44].nm = $c.lit("AXE");
-    objdump[45].val = 45 /* BATTLE_AXE */;
-    objdump[45].nm = $c.lit("BATTLE_AXE");
-    objdump[46].val = 46 /* SHORT_SWORD */;
-    objdump[46].nm = $c.lit("SHORT_SWORD");
-    objdump[47].val = 47 /* ELVEN_SHORT_SWORD */;
-    objdump[47].nm = $c.lit("ELVEN_SHORT_SWORD");
-    objdump[48].val = 48 /* ORCISH_SHORT_SWORD */;
-    objdump[48].nm = $c.lit("ORCISH_SHORT_SWORD");
-    objdump[49].val = 49 /* DWARVISH_SHORT_SWORD */;
-    objdump[49].nm = $c.lit("DWARVISH_SHORT_SWORD");
-    objdump[50].val = 50 /* SCIMITAR */;
-    objdump[50].nm = $c.lit("SCIMITAR");
-    objdump[51].val = 51 /* SILVER_SABER */;
-    objdump[51].nm = $c.lit("SILVER_SABER");
-    objdump[52].val = 52 /* BROADSWORD */;
-    objdump[52].nm = $c.lit("BROADSWORD");
-    objdump[53].val = 53 /* ELVEN_BROADSWORD */;
-    objdump[53].nm = $c.lit("ELVEN_BROADSWORD");
-    objdump[54].val = 54 /* LONG_SWORD */;
-    objdump[54].nm = $c.lit("LONG_SWORD");
-    objdump[55].val = 55 /* TWO_HANDED_SWORD */;
-    objdump[55].nm = $c.lit("TWO_HANDED_SWORD");
-    objdump[56].val = 56 /* KATANA */;
-    objdump[56].nm = $c.lit("KATANA");
-    objdump[57].val = 57 /* TSURUGI */;
-    objdump[57].nm = $c.lit("TSURUGI");
-    objdump[58].val = 58 /* RUNESWORD */;
-    objdump[58].nm = $c.lit("RUNESWORD");
-    objdump[59].val = 59 /* PARTISAN */;
-    objdump[59].nm = $c.lit("PARTISAN");
-    objdump[60].val = 60 /* RANSEUR */;
-    objdump[60].nm = $c.lit("RANSEUR");
-    objdump[61].val = 61 /* SPETUM */;
-    objdump[61].nm = $c.lit("SPETUM");
-    objdump[62].val = 62 /* GLAIVE */;
-    objdump[62].nm = $c.lit("GLAIVE");
-    objdump[63].val = 63 /* HALBERD */;
-    objdump[63].nm = $c.lit("HALBERD");
-    objdump[64].val = 64 /* BARDICHE */;
-    objdump[64].nm = $c.lit("BARDICHE");
-    objdump[65].val = 65 /* VOULGE */;
-    objdump[65].nm = $c.lit("VOULGE");
-    objdump[66].val = 66 /* FAUCHARD */;
-    objdump[66].nm = $c.lit("FAUCHARD");
-    objdump[67].val = 67 /* GUISARME */;
-    objdump[67].nm = $c.lit("GUISARME");
-    objdump[68].val = 68 /* BILL_GUISARME */;
-    objdump[68].nm = $c.lit("BILL_GUISARME");
-    objdump[69].val = 69 /* LUCERN_HAMMER */;
-    objdump[69].nm = $c.lit("LUCERN_HAMMER");
-    objdump[70].val = 70 /* BEC_DE_CORBIN */;
-    objdump[70].nm = $c.lit("BEC_DE_CORBIN");
-    objdump[71].val = 71 /* DWARVISH_MATTOCK */;
-    objdump[71].nm = $c.lit("DWARVISH_MATTOCK");
-    objdump[72].val = 72 /* LANCE */;
-    objdump[72].nm = $c.lit("LANCE");
-    objdump[73].val = 73 /* MACE */;
-    objdump[73].nm = $c.lit("MACE");
-    objdump[74].val = 74 /* SILVER_MACE */;
-    objdump[74].nm = $c.lit("SILVER_MACE");
-    objdump[75].val = 75 /* MORNING_STAR */;
-    objdump[75].nm = $c.lit("MORNING_STAR");
-    objdump[76].val = 76 /* WAR_HAMMER */;
-    objdump[76].nm = $c.lit("WAR_HAMMER");
-    objdump[77].val = 77 /* CLUB */;
-    objdump[77].nm = $c.lit("CLUB");
-    objdump[78].val = 78 /* RUBBER_HOSE */;
-    objdump[78].nm = $c.lit("RUBBER_HOSE");
-    objdump[79].val = 79 /* QUARTERSTAFF */;
-    objdump[79].nm = $c.lit("QUARTERSTAFF");
-    objdump[80].val = 80 /* AKLYS */;
-    objdump[80].nm = $c.lit("AKLYS");
-    objdump[81].val = 81 /* FLAIL */;
-    objdump[81].nm = $c.lit("FLAIL");
-    objdump[82].val = 82 /* BULLWHIP */;
-    objdump[82].nm = $c.lit("BULLWHIP");
-    objdump[83].val = 83 /* BOW */;
-    objdump[83].nm = $c.lit("BOW");
-    objdump[84].val = 84 /* ELVEN_BOW */;
-    objdump[84].nm = $c.lit("ELVEN_BOW");
-    objdump[85].val = 85 /* ORCISH_BOW */;
-    objdump[85].nm = $c.lit("ORCISH_BOW");
-    objdump[86].val = 86 /* YUMI */;
-    objdump[86].nm = $c.lit("YUMI");
-    objdump[87].val = 87 /* SLING */;
-    objdump[87].nm = $c.lit("SLING");
-    objdump[88].val = 88 /* CROSSBOW */;
-    objdump[88].nm = $c.lit("CROSSBOW");
-    objdump[89].val = 89 /* ELVEN_LEATHER_HELM */;
-    objdump[89].nm = $c.lit("ELVEN_LEATHER_HELM");
-    objdump[90].val = 90 /* ORCISH_HELM */;
-    objdump[90].nm = $c.lit("ORCISH_HELM");
-    objdump[91].val = 91 /* DWARVISH_IRON_HELM */;
-    objdump[91].nm = $c.lit("DWARVISH_IRON_HELM");
-    objdump[92].val = 92 /* FEDORA */;
-    objdump[92].nm = $c.lit("FEDORA");
-    objdump[93].val = 93 /* CORNUTHAUM */;
-    objdump[93].nm = $c.lit("CORNUTHAUM");
-    objdump[94].val = 94 /* DUNCE_CAP */;
-    objdump[94].nm = $c.lit("DUNCE_CAP");
-    objdump[95].val = 95 /* DENTED_POT */;
-    objdump[95].nm = $c.lit("DENTED_POT");
-    objdump[96].val = 96 /* HELM_OF_BRILLIANCE */;
-    objdump[96].nm = $c.lit("HELM_OF_BRILLIANCE");
-    objdump[97].val = 97 /* HELMET */;
-    objdump[97].nm = $c.lit("HELMET");
-    objdump[98].val = 98 /* HELM_OF_CAUTION */;
-    objdump[98].nm = $c.lit("HELM_OF_CAUTION");
-    objdump[99].val = 99 /* HELM_OF_OPPOSITE_ALIGNMENT */;
-    objdump[99].nm = $c.lit("HELM_OF_OPPOSITE_ALIGNMENT");
-    objdump[100].val = 100 /* HELM_OF_TELEPATHY */;
-    objdump[100].nm = $c.lit("HELM_OF_TELEPATHY");
-    objdump[101].val = 101 /* GRAY_DRAGON_SCALE_MAIL */;
-    objdump[101].nm = $c.lit("GRAY_DRAGON_SCALE_MAIL");
-    objdump[102].val = 102 /* GOLD_DRAGON_SCALE_MAIL */;
-    objdump[102].nm = $c.lit("GOLD_DRAGON_SCALE_MAIL");
-    objdump[103].val = 103 /* SILVER_DRAGON_SCALE_MAIL */;
-    objdump[103].nm = $c.lit("SILVER_DRAGON_SCALE_MAIL");
-    objdump[104].val = 104 /* RED_DRAGON_SCALE_MAIL */;
-    objdump[104].nm = $c.lit("RED_DRAGON_SCALE_MAIL");
-    objdump[105].val = 105 /* WHITE_DRAGON_SCALE_MAIL */;
-    objdump[105].nm = $c.lit("WHITE_DRAGON_SCALE_MAIL");
-    objdump[106].val = 106 /* ORANGE_DRAGON_SCALE_MAIL */;
-    objdump[106].nm = $c.lit("ORANGE_DRAGON_SCALE_MAIL");
-    objdump[107].val = 107 /* BLACK_DRAGON_SCALE_MAIL */;
-    objdump[107].nm = $c.lit("BLACK_DRAGON_SCALE_MAIL");
-    objdump[108].val = 108 /* BLUE_DRAGON_SCALE_MAIL */;
-    objdump[108].nm = $c.lit("BLUE_DRAGON_SCALE_MAIL");
-    objdump[109].val = 109 /* GREEN_DRAGON_SCALE_MAIL */;
-    objdump[109].nm = $c.lit("GREEN_DRAGON_SCALE_MAIL");
-    objdump[110].val = 110 /* YELLOW_DRAGON_SCALE_MAIL */;
-    objdump[110].nm = $c.lit("YELLOW_DRAGON_SCALE_MAIL");
-    objdump[111].val = 111 /* GRAY_DRAGON_SCALES */;
-    objdump[111].nm = $c.lit("GRAY_DRAGON_SCALES");
-    objdump[112].val = 112 /* GOLD_DRAGON_SCALES */;
-    objdump[112].nm = $c.lit("GOLD_DRAGON_SCALES");
-    objdump[113].val = 113 /* SILVER_DRAGON_SCALES */;
-    objdump[113].nm = $c.lit("SILVER_DRAGON_SCALES");
-    objdump[114].val = 114 /* RED_DRAGON_SCALES */;
-    objdump[114].nm = $c.lit("RED_DRAGON_SCALES");
-    objdump[115].val = 115 /* WHITE_DRAGON_SCALES */;
-    objdump[115].nm = $c.lit("WHITE_DRAGON_SCALES");
-    objdump[116].val = 116 /* ORANGE_DRAGON_SCALES */;
-    objdump[116].nm = $c.lit("ORANGE_DRAGON_SCALES");
-    objdump[117].val = 117 /* BLACK_DRAGON_SCALES */;
-    objdump[117].nm = $c.lit("BLACK_DRAGON_SCALES");
-    objdump[118].val = 118 /* BLUE_DRAGON_SCALES */;
-    objdump[118].nm = $c.lit("BLUE_DRAGON_SCALES");
-    objdump[119].val = 119 /* GREEN_DRAGON_SCALES */;
-    objdump[119].nm = $c.lit("GREEN_DRAGON_SCALES");
-    objdump[120].val = 120 /* YELLOW_DRAGON_SCALES */;
-    objdump[120].nm = $c.lit("YELLOW_DRAGON_SCALES");
-    objdump[121].val = 121 /* PLATE_MAIL */;
-    objdump[121].nm = $c.lit("PLATE_MAIL");
-    objdump[122].val = 122 /* CRYSTAL_PLATE_MAIL */;
-    objdump[122].nm = $c.lit("CRYSTAL_PLATE_MAIL");
-    objdump[123].val = 123 /* BRONZE_PLATE_MAIL */;
-    objdump[123].nm = $c.lit("BRONZE_PLATE_MAIL");
-    objdump[124].val = 124 /* SPLINT_MAIL */;
-    objdump[124].nm = $c.lit("SPLINT_MAIL");
-    objdump[125].val = 125 /* BANDED_MAIL */;
-    objdump[125].nm = $c.lit("BANDED_MAIL");
-    objdump[126].val = 126 /* DWARVISH_MITHRIL_COAT */;
-    objdump[126].nm = $c.lit("DWARVISH_MITHRIL_COAT");
-    objdump[127].val = 127 /* ELVEN_MITHRIL_COAT */;
-    objdump[127].nm = $c.lit("ELVEN_MITHRIL_COAT");
-    objdump[128].val = 128 /* CHAIN_MAIL */;
-    objdump[128].nm = $c.lit("CHAIN_MAIL");
-    objdump[129].val = 129 /* ORCISH_CHAIN_MAIL */;
-    objdump[129].nm = $c.lit("ORCISH_CHAIN_MAIL");
-    objdump[130].val = 130 /* SCALE_MAIL */;
-    objdump[130].nm = $c.lit("SCALE_MAIL");
-    objdump[131].val = 131 /* STUDDED_LEATHER_ARMOR */;
-    objdump[131].nm = $c.lit("STUDDED_LEATHER_ARMOR");
-    objdump[132].val = 132 /* RING_MAIL */;
-    objdump[132].nm = $c.lit("RING_MAIL");
-    objdump[133].val = 133 /* ORCISH_RING_MAIL */;
-    objdump[133].nm = $c.lit("ORCISH_RING_MAIL");
-    objdump[134].val = 134 /* LEATHER_ARMOR */;
-    objdump[134].nm = $c.lit("LEATHER_ARMOR");
-    objdump[135].val = 135 /* LEATHER_JACKET */;
-    objdump[135].nm = $c.lit("LEATHER_JACKET");
-    objdump[136].val = 136 /* HAWAIIAN_SHIRT */;
-    objdump[136].nm = $c.lit("HAWAIIAN_SHIRT");
-    objdump[137].val = 137 /* T_SHIRT */;
-    objdump[137].nm = $c.lit("T_SHIRT");
-    objdump[138].val = 138 /* MUMMY_WRAPPING */;
-    objdump[138].nm = $c.lit("MUMMY_WRAPPING");
-    objdump[139].val = 139 /* ELVEN_CLOAK */;
-    objdump[139].nm = $c.lit("ELVEN_CLOAK");
-    objdump[140].val = 140 /* ORCISH_CLOAK */;
-    objdump[140].nm = $c.lit("ORCISH_CLOAK");
-    objdump[141].val = 141 /* DWARVISH_CLOAK */;
-    objdump[141].nm = $c.lit("DWARVISH_CLOAK");
-    objdump[142].val = 142 /* OILSKIN_CLOAK */;
-    objdump[142].nm = $c.lit("OILSKIN_CLOAK");
-    objdump[143].val = 143 /* ROBE */;
-    objdump[143].nm = $c.lit("ROBE");
-    objdump[144].val = 144 /* ALCHEMY_SMOCK */;
-    objdump[144].nm = $c.lit("ALCHEMY_SMOCK");
-    objdump[145].val = 145 /* LEATHER_CLOAK */;
-    objdump[145].nm = $c.lit("LEATHER_CLOAK");
-    objdump[146].val = 146 /* CLOAK_OF_PROTECTION */;
-    objdump[146].nm = $c.lit("CLOAK_OF_PROTECTION");
-    objdump[147].val = 147 /* CLOAK_OF_INVISIBILITY */;
-    objdump[147].nm = $c.lit("CLOAK_OF_INVISIBILITY");
-    objdump[148].val = 148 /* CLOAK_OF_MAGIC_RESISTANCE */;
-    objdump[148].nm = $c.lit("CLOAK_OF_MAGIC_RESISTANCE");
-    objdump[149].val = 149 /* CLOAK_OF_DISPLACEMENT */;
-    objdump[149].nm = $c.lit("CLOAK_OF_DISPLACEMENT");
-    objdump[150].val = 150 /* SMALL_SHIELD */;
-    objdump[150].nm = $c.lit("SMALL_SHIELD");
-    objdump[151].val = 151 /* SHIELD_OF_DRAIN_RESISTANCE */;
-    objdump[151].nm = $c.lit("SHIELD_OF_DRAIN_RESISTANCE");
-    objdump[152].val = 152 /* SHIELD_OF_SHOCK_RESISTANCE */;
-    objdump[152].nm = $c.lit("SHIELD_OF_SHOCK_RESISTANCE");
-    objdump[153].val = 153 /* ELVEN_SHIELD */;
-    objdump[153].nm = $c.lit("ELVEN_SHIELD");
-    objdump[154].val = 154 /* URUK_HAI_SHIELD */;
-    objdump[154].nm = $c.lit("URUK_HAI_SHIELD");
-    objdump[155].val = 155 /* ORCISH_SHIELD */;
-    objdump[155].nm = $c.lit("ORCISH_SHIELD");
-    objdump[156].val = 156 /* LARGE_SHIELD */;
-    objdump[156].nm = $c.lit("LARGE_SHIELD");
-    objdump[157].val = 157 /* DWARVISH_ROUNDSHIELD */;
-    objdump[157].nm = $c.lit("DWARVISH_ROUNDSHIELD");
-    objdump[158].val = 158 /* SHIELD_OF_REFLECTION */;
-    objdump[158].nm = $c.lit("SHIELD_OF_REFLECTION");
-    objdump[159].val = 159 /* LEATHER_GLOVES */;
-    objdump[159].nm = $c.lit("LEATHER_GLOVES");
-    objdump[160].val = 160 /* GAUNTLETS_OF_FUMBLING */;
-    objdump[160].nm = $c.lit("GAUNTLETS_OF_FUMBLING");
-    objdump[161].val = 161 /* GAUNTLETS_OF_POWER */;
-    objdump[161].nm = $c.lit("GAUNTLETS_OF_POWER");
-    objdump[162].val = 162 /* GAUNTLETS_OF_DEXTERITY */;
-    objdump[162].nm = $c.lit("GAUNTLETS_OF_DEXTERITY");
-    objdump[163].val = 163 /* LOW_BOOTS */;
-    objdump[163].nm = $c.lit("LOW_BOOTS");
-    objdump[164].val = 164 /* IRON_SHOES */;
-    objdump[164].nm = $c.lit("IRON_SHOES");
-    objdump[165].val = 165 /* HIGH_BOOTS */;
-    objdump[165].nm = $c.lit("HIGH_BOOTS");
-    objdump[166].val = 166 /* SPEED_BOOTS */;
-    objdump[166].nm = $c.lit("SPEED_BOOTS");
-    objdump[167].val = 167 /* WATER_WALKING_BOOTS */;
-    objdump[167].nm = $c.lit("WATER_WALKING_BOOTS");
-    objdump[168].val = 168 /* JUMPING_BOOTS */;
-    objdump[168].nm = $c.lit("JUMPING_BOOTS");
-    objdump[169].val = 169 /* ELVEN_BOOTS */;
-    objdump[169].nm = $c.lit("ELVEN_BOOTS");
-    objdump[170].val = 170 /* KICKING_BOOTS */;
-    objdump[170].nm = $c.lit("KICKING_BOOTS");
-    objdump[171].val = 171 /* FUMBLE_BOOTS */;
-    objdump[171].nm = $c.lit("FUMBLE_BOOTS");
-    objdump[172].val = 172 /* LEVITATION_BOOTS */;
-    objdump[172].nm = $c.lit("LEVITATION_BOOTS");
-    objdump[173].val = 173 /* RIN_ADORNMENT */;
-    objdump[173].nm = $c.lit("RIN_ADORNMENT");
-    objdump[174].val = 174 /* RIN_GAIN_STRENGTH */;
-    objdump[174].nm = $c.lit("RIN_GAIN_STRENGTH");
-    objdump[175].val = 175 /* RIN_GAIN_CONSTITUTION */;
-    objdump[175].nm = $c.lit("RIN_GAIN_CONSTITUTION");
-    objdump[176].val = 176 /* RIN_INCREASE_ACCURACY */;
-    objdump[176].nm = $c.lit("RIN_INCREASE_ACCURACY");
-    objdump[177].val = 177 /* RIN_INCREASE_DAMAGE */;
-    objdump[177].nm = $c.lit("RIN_INCREASE_DAMAGE");
-    objdump[178].val = 178 /* RIN_PROTECTION */;
-    objdump[178].nm = $c.lit("RIN_PROTECTION");
-    objdump[179].val = 179 /* RIN_REGENERATION */;
-    objdump[179].nm = $c.lit("RIN_REGENERATION");
-    objdump[180].val = 180 /* RIN_SEARCHING */;
-    objdump[180].nm = $c.lit("RIN_SEARCHING");
-    objdump[181].val = 181 /* RIN_STEALTH */;
-    objdump[181].nm = $c.lit("RIN_STEALTH");
-    objdump[182].val = 182 /* RIN_SUSTAIN_ABILITY */;
-    objdump[182].nm = $c.lit("RIN_SUSTAIN_ABILITY");
-    objdump[183].val = 183 /* RIN_LEVITATION */;
-    objdump[183].nm = $c.lit("RIN_LEVITATION");
-    objdump[184].val = 184 /* RIN_HUNGER */;
-    objdump[184].nm = $c.lit("RIN_HUNGER");
-    objdump[185].val = 185 /* RIN_AGGRAVATE_MONSTER */;
-    objdump[185].nm = $c.lit("RIN_AGGRAVATE_MONSTER");
-    objdump[186].val = 186 /* RIN_CONFLICT */;
-    objdump[186].nm = $c.lit("RIN_CONFLICT");
-    objdump[187].val = 187 /* RIN_WARNING */;
-    objdump[187].nm = $c.lit("RIN_WARNING");
-    objdump[188].val = 188 /* RIN_POISON_RESISTANCE */;
-    objdump[188].nm = $c.lit("RIN_POISON_RESISTANCE");
-    objdump[189].val = 189 /* RIN_FIRE_RESISTANCE */;
-    objdump[189].nm = $c.lit("RIN_FIRE_RESISTANCE");
-    objdump[190].val = 190 /* RIN_COLD_RESISTANCE */;
-    objdump[190].nm = $c.lit("RIN_COLD_RESISTANCE");
-    objdump[191].val = 191 /* RIN_SHOCK_RESISTANCE */;
-    objdump[191].nm = $c.lit("RIN_SHOCK_RESISTANCE");
-    objdump[192].val = 192 /* RIN_FREE_ACTION */;
-    objdump[192].nm = $c.lit("RIN_FREE_ACTION");
-    objdump[193].val = 193 /* RIN_SLOW_DIGESTION */;
-    objdump[193].nm = $c.lit("RIN_SLOW_DIGESTION");
-    objdump[194].val = 194 /* RIN_TELEPORTATION */;
-    objdump[194].nm = $c.lit("RIN_TELEPORTATION");
-    objdump[195].val = 195 /* RIN_TELEPORT_CONTROL */;
-    objdump[195].nm = $c.lit("RIN_TELEPORT_CONTROL");
-    objdump[196].val = 196 /* RIN_POLYMORPH */;
-    objdump[196].nm = $c.lit("RIN_POLYMORPH");
-    objdump[197].val = 197 /* RIN_POLYMORPH_CONTROL */;
-    objdump[197].nm = $c.lit("RIN_POLYMORPH_CONTROL");
-    objdump[198].val = 198 /* RIN_INVISIBILITY */;
-    objdump[198].nm = $c.lit("RIN_INVISIBILITY");
-    objdump[199].val = 199 /* RIN_SEE_INVISIBLE */;
-    objdump[199].nm = $c.lit("RIN_SEE_INVISIBLE");
-    objdump[200].val = 200 /* RIN_PROTECTION_FROM_SHAPE_CHAN */;
-    objdump[200].nm = $c.lit("RIN_PROTECTION_FROM_SHAPE_CHAN");
-    objdump[201].val = 201 /* AMULET_OF_ESP */;
-    objdump[201].nm = $c.lit("AMULET_OF_ESP");
-    objdump[202].val = 202 /* AMULET_OF_LIFE_SAVING */;
-    objdump[202].nm = $c.lit("AMULET_OF_LIFE_SAVING");
-    objdump[203].val = 203 /* AMULET_OF_STRANGULATION */;
-    objdump[203].nm = $c.lit("AMULET_OF_STRANGULATION");
-    objdump[204].val = 204 /* AMULET_OF_RESTFUL_SLEEP */;
-    objdump[204].nm = $c.lit("AMULET_OF_RESTFUL_SLEEP");
-    objdump[205].val = 205 /* AMULET_VERSUS_POISON */;
-    objdump[205].nm = $c.lit("AMULET_VERSUS_POISON");
-    objdump[206].val = 206 /* AMULET_OF_CHANGE */;
-    objdump[206].nm = $c.lit("AMULET_OF_CHANGE");
-    objdump[207].val = 207 /* AMULET_OF_UNCHANGING */;
-    objdump[207].nm = $c.lit("AMULET_OF_UNCHANGING");
-    objdump[208].val = 208 /* AMULET_OF_REFLECTION */;
-    objdump[208].nm = $c.lit("AMULET_OF_REFLECTION");
-    objdump[209].val = 209 /* AMULET_OF_MAGICAL_BREATHING */;
-    objdump[209].nm = $c.lit("AMULET_OF_MAGICAL_BREATHING");
-    objdump[210].val = 210 /* AMULET_OF_GUARDING */;
-    objdump[210].nm = $c.lit("AMULET_OF_GUARDING");
-    objdump[211].val = 211 /* AMULET_OF_FLYING */;
-    objdump[211].nm = $c.lit("AMULET_OF_FLYING");
-    objdump[212].val = 212 /* FAKE_AMULET_OF_YENDOR */;
-    objdump[212].nm = $c.lit("FAKE_AMULET_OF_YENDOR");
-    objdump[213].val = 213 /* AMULET_OF_YENDOR */;
-    objdump[213].nm = $c.lit("AMULET_OF_YENDOR");
-    objdump[214].val = 214 /* LARGE_BOX */;
-    objdump[214].nm = $c.lit("LARGE_BOX");
-    objdump[215].val = 215 /* CHEST */;
-    objdump[215].nm = $c.lit("CHEST");
-    objdump[216].val = 216 /* ICE_BOX */;
-    objdump[216].nm = $c.lit("ICE_BOX");
-    objdump[217].val = 217 /* SACK */;
-    objdump[217].nm = $c.lit("SACK");
-    objdump[218].val = 218 /* OILSKIN_SACK */;
-    objdump[218].nm = $c.lit("OILSKIN_SACK");
-    objdump[219].val = 219 /* BAG_OF_HOLDING */;
-    objdump[219].nm = $c.lit("BAG_OF_HOLDING");
-    objdump[220].val = 220 /* BAG_OF_TRICKS */;
-    objdump[220].nm = $c.lit("BAG_OF_TRICKS");
-    objdump[221].val = 221 /* SKELETON_KEY */;
-    objdump[221].nm = $c.lit("SKELETON_KEY");
-    objdump[222].val = 222 /* LOCK_PICK */;
-    objdump[222].nm = $c.lit("LOCK_PICK");
-    objdump[223].val = 223 /* CREDIT_CARD */;
-    objdump[223].nm = $c.lit("CREDIT_CARD");
-    objdump[224].val = 224 /* TALLOW_CANDLE */;
-    objdump[224].nm = $c.lit("TALLOW_CANDLE");
-    objdump[225].val = 225 /* WAX_CANDLE */;
-    objdump[225].nm = $c.lit("WAX_CANDLE");
-    objdump[226].val = 226 /* BRASS_LANTERN */;
-    objdump[226].nm = $c.lit("BRASS_LANTERN");
-    objdump[227].val = 227 /* OIL_LAMP */;
-    objdump[227].nm = $c.lit("OIL_LAMP");
-    objdump[228].val = 228 /* MAGIC_LAMP */;
-    objdump[228].nm = $c.lit("MAGIC_LAMP");
-    objdump[229].val = 229 /* EXPENSIVE_CAMERA */;
-    objdump[229].nm = $c.lit("EXPENSIVE_CAMERA");
-    objdump[230].val = 230 /* MIRROR */;
-    objdump[230].nm = $c.lit("MIRROR");
-    objdump[231].val = 231 /* CRYSTAL_BALL */;
-    objdump[231].nm = $c.lit("CRYSTAL_BALL");
-    objdump[232].val = 232 /* LENSES */;
-    objdump[232].nm = $c.lit("LENSES");
-    objdump[233].val = 233 /* BLINDFOLD */;
-    objdump[233].nm = $c.lit("BLINDFOLD");
-    objdump[234].val = 234 /* TOWEL */;
-    objdump[234].nm = $c.lit("TOWEL");
-    objdump[235].val = 235 /* SADDLE */;
-    objdump[235].nm = $c.lit("SADDLE");
-    objdump[236].val = 236 /* LEASH */;
-    objdump[236].nm = $c.lit("LEASH");
-    objdump[237].val = 237 /* STETHOSCOPE */;
-    objdump[237].nm = $c.lit("STETHOSCOPE");
-    objdump[238].val = 238 /* TINNING_KIT */;
-    objdump[238].nm = $c.lit("TINNING_KIT");
-    objdump[239].val = 239 /* TIN_OPENER */;
-    objdump[239].nm = $c.lit("TIN_OPENER");
-    objdump[240].val = 240 /* CAN_OF_GREASE */;
-    objdump[240].nm = $c.lit("CAN_OF_GREASE");
-    objdump[241].val = 241 /* FIGURINE */;
-    objdump[241].nm = $c.lit("FIGURINE");
-    objdump[242].val = 242 /* MAGIC_MARKER */;
-    objdump[242].nm = $c.lit("MAGIC_MARKER");
-    objdump[243].val = 243 /* LAND_MINE */;
-    objdump[243].nm = $c.lit("LAND_MINE");
-    objdump[244].val = 244 /* BEARTRAP */;
-    objdump[244].nm = $c.lit("BEARTRAP");
-    objdump[245].val = 245 /* TIN_WHISTLE */;
-    objdump[245].nm = $c.lit("TIN_WHISTLE");
-    objdump[246].val = 246 /* MAGIC_WHISTLE */;
-    objdump[246].nm = $c.lit("MAGIC_WHISTLE");
-    objdump[247].val = 247 /* WOODEN_FLUTE */;
-    objdump[247].nm = $c.lit("WOODEN_FLUTE");
-    objdump[248].val = 248 /* MAGIC_FLUTE */;
-    objdump[248].nm = $c.lit("MAGIC_FLUTE");
-    objdump[249].val = 249 /* TOOLED_HORN */;
-    objdump[249].nm = $c.lit("TOOLED_HORN");
-    objdump[250].val = 250 /* FROST_HORN */;
-    objdump[250].nm = $c.lit("FROST_HORN");
-    objdump[251].val = 251 /* FIRE_HORN */;
-    objdump[251].nm = $c.lit("FIRE_HORN");
-    objdump[252].val = 252 /* HORN_OF_PLENTY */;
-    objdump[252].nm = $c.lit("HORN_OF_PLENTY");
-    objdump[253].val = 253 /* WOODEN_HARP */;
-    objdump[253].nm = $c.lit("WOODEN_HARP");
-    objdump[254].val = 254 /* MAGIC_HARP */;
-    objdump[254].nm = $c.lit("MAGIC_HARP");
-    objdump[255].val = 255 /* BELL */;
-    objdump[255].nm = $c.lit("BELL");
-    objdump[256].val = 256 /* BUGLE */;
-    objdump[256].nm = $c.lit("BUGLE");
-    objdump[257].val = 257 /* LEATHER_DRUM */;
-    objdump[257].nm = $c.lit("LEATHER_DRUM");
-    objdump[258].val = 258 /* DRUM_OF_EARTHQUAKE */;
-    objdump[258].nm = $c.lit("DRUM_OF_EARTHQUAKE");
-    objdump[259].val = 259 /* PICK_AXE */;
-    objdump[259].nm = $c.lit("PICK_AXE");
-    objdump[260].val = 260 /* GRAPPLING_HOOK */;
-    objdump[260].nm = $c.lit("GRAPPLING_HOOK");
-    objdump[261].val = 261 /* UNICORN_HORN */;
-    objdump[261].nm = $c.lit("UNICORN_HORN");
-    objdump[262].val = 262 /* CANDELABRUM_OF_INVOCATION */;
-    objdump[262].nm = $c.lit("CANDELABRUM_OF_INVOCATION");
-    objdump[263].val = 263 /* BELL_OF_OPENING */;
-    objdump[263].nm = $c.lit("BELL_OF_OPENING");
-    objdump[264].val = 264 /* TRIPE_RATION */;
-    objdump[264].nm = $c.lit("TRIPE_RATION");
-    objdump[265].val = 265 /* CORPSE */;
-    objdump[265].nm = $c.lit("CORPSE");
-    objdump[266].val = 266 /* EGG */;
-    objdump[266].nm = $c.lit("EGG");
-    objdump[267].val = 267 /* MEATBALL */;
-    objdump[267].nm = $c.lit("MEATBALL");
-    objdump[268].val = 268 /* MEAT_STICK */;
-    objdump[268].nm = $c.lit("MEAT_STICK");
-    objdump[269].val = 269 /* ENORMOUS_MEATBALL */;
-    objdump[269].nm = $c.lit("ENORMOUS_MEATBALL");
-    objdump[270].val = 270 /* MEAT_RING */;
-    objdump[270].nm = $c.lit("MEAT_RING");
-    objdump[271].val = 271 /* GLOB_OF_GRAY_OOZE */;
-    objdump[271].nm = $c.lit("GLOB_OF_GRAY_OOZE");
-    objdump[272].val = 272 /* GLOB_OF_BROWN_PUDDING */;
-    objdump[272].nm = $c.lit("GLOB_OF_BROWN_PUDDING");
-    objdump[273].val = 273 /* GLOB_OF_GREEN_SLIME */;
-    objdump[273].nm = $c.lit("GLOB_OF_GREEN_SLIME");
-    objdump[274].val = 274 /* GLOB_OF_BLACK_PUDDING */;
-    objdump[274].nm = $c.lit("GLOB_OF_BLACK_PUDDING");
-    objdump[275].val = 275 /* KELP_FROND */;
-    objdump[275].nm = $c.lit("KELP_FROND");
-    objdump[276].val = 276 /* EUCALYPTUS_LEAF */;
-    objdump[276].nm = $c.lit("EUCALYPTUS_LEAF");
-    objdump[277].val = 277 /* APPLE */;
-    objdump[277].nm = $c.lit("APPLE");
-    objdump[278].val = 278 /* ORANGE */;
-    objdump[278].nm = $c.lit("ORANGE");
-    objdump[279].val = 279 /* PEAR */;
-    objdump[279].nm = $c.lit("PEAR");
-    objdump[280].val = 280 /* MELON */;
-    objdump[280].nm = $c.lit("MELON");
-    objdump[281].val = 281 /* BANANA */;
-    objdump[281].nm = $c.lit("BANANA");
-    objdump[282].val = 282 /* CARROT */;
-    objdump[282].nm = $c.lit("CARROT");
-    objdump[283].val = 283 /* SPRIG_OF_WOLFSBANE */;
-    objdump[283].nm = $c.lit("SPRIG_OF_WOLFSBANE");
-    objdump[284].val = 284 /* CLOVE_OF_GARLIC */;
-    objdump[284].nm = $c.lit("CLOVE_OF_GARLIC");
-    objdump[285].val = 285 /* SLIME_MOLD */;
-    objdump[285].nm = $c.lit("SLIME_MOLD");
-    objdump[286].val = 286 /* LUMP_OF_ROYAL_JELLY */;
-    objdump[286].nm = $c.lit("LUMP_OF_ROYAL_JELLY");
-    objdump[287].val = 287 /* CREAM_PIE */;
-    objdump[287].nm = $c.lit("CREAM_PIE");
-    objdump[288].val = 288 /* CANDY_BAR */;
-    objdump[288].nm = $c.lit("CANDY_BAR");
-    objdump[289].val = 289 /* FORTUNE_COOKIE */;
-    objdump[289].nm = $c.lit("FORTUNE_COOKIE");
-    objdump[290].val = 290 /* PANCAKE */;
-    objdump[290].nm = $c.lit("PANCAKE");
-    objdump[291].val = 291 /* LEMBAS_WAFER */;
-    objdump[291].nm = $c.lit("LEMBAS_WAFER");
-    objdump[292].val = 292 /* CRAM_RATION */;
-    objdump[292].nm = $c.lit("CRAM_RATION");
-    objdump[293].val = 293 /* FOOD_RATION */;
-    objdump[293].nm = $c.lit("FOOD_RATION");
-    objdump[294].val = 294 /* K_RATION */;
-    objdump[294].nm = $c.lit("K_RATION");
-    objdump[295].val = 295 /* C_RATION */;
-    objdump[295].nm = $c.lit("C_RATION");
-    objdump[296].val = 296 /* TIN */;
-    objdump[296].nm = $c.lit("TIN");
-    objdump[297].val = 297 /* POT_GAIN_ABILITY */;
-    objdump[297].nm = $c.lit("POT_GAIN_ABILITY");
-    objdump[298].val = 298 /* POT_RESTORE_ABILITY */;
-    objdump[298].nm = $c.lit("POT_RESTORE_ABILITY");
-    objdump[299].val = 299 /* POT_CONFUSION */;
-    objdump[299].nm = $c.lit("POT_CONFUSION");
-    objdump[300].val = 300 /* POT_BLINDNESS */;
-    objdump[300].nm = $c.lit("POT_BLINDNESS");
-    objdump[301].val = 301 /* POT_PARALYSIS */;
-    objdump[301].nm = $c.lit("POT_PARALYSIS");
-    objdump[302].val = 302 /* POT_SPEED */;
-    objdump[302].nm = $c.lit("POT_SPEED");
-    objdump[303].val = 303 /* POT_LEVITATION */;
-    objdump[303].nm = $c.lit("POT_LEVITATION");
-    objdump[304].val = 304 /* POT_HALLUCINATION */;
-    objdump[304].nm = $c.lit("POT_HALLUCINATION");
-    objdump[305].val = 305 /* POT_INVISIBILITY */;
-    objdump[305].nm = $c.lit("POT_INVISIBILITY");
-    objdump[306].val = 306 /* POT_SEE_INVISIBLE */;
-    objdump[306].nm = $c.lit("POT_SEE_INVISIBLE");
-    objdump[307].val = 307 /* POT_HEALING */;
-    objdump[307].nm = $c.lit("POT_HEALING");
-    objdump[308].val = 308 /* POT_EXTRA_HEALING */;
-    objdump[308].nm = $c.lit("POT_EXTRA_HEALING");
-    objdump[309].val = 309 /* POT_GAIN_LEVEL */;
-    objdump[309].nm = $c.lit("POT_GAIN_LEVEL");
-    objdump[310].val = 310 /* POT_ENLIGHTENMENT */;
-    objdump[310].nm = $c.lit("POT_ENLIGHTENMENT");
-    objdump[311].val = 311 /* POT_MONSTER_DETECTION */;
-    objdump[311].nm = $c.lit("POT_MONSTER_DETECTION");
-    objdump[312].val = 312 /* POT_OBJECT_DETECTION */;
-    objdump[312].nm = $c.lit("POT_OBJECT_DETECTION");
-    objdump[313].val = 313 /* POT_GAIN_ENERGY */;
-    objdump[313].nm = $c.lit("POT_GAIN_ENERGY");
-    objdump[314].val = 314 /* POT_SLEEPING */;
-    objdump[314].nm = $c.lit("POT_SLEEPING");
-    objdump[315].val = 315 /* POT_FULL_HEALING */;
-    objdump[315].nm = $c.lit("POT_FULL_HEALING");
-    objdump[316].val = 316 /* POT_POLYMORPH */;
-    objdump[316].nm = $c.lit("POT_POLYMORPH");
-    objdump[317].val = 317 /* POT_BOOZE */;
-    objdump[317].nm = $c.lit("POT_BOOZE");
-    objdump[318].val = 318 /* POT_SICKNESS */;
-    objdump[318].nm = $c.lit("POT_SICKNESS");
-    objdump[319].val = 319 /* POT_FRUIT_JUICE */;
-    objdump[319].nm = $c.lit("POT_FRUIT_JUICE");
-    objdump[320].val = 320 /* POT_ACID */;
-    objdump[320].nm = $c.lit("POT_ACID");
-    objdump[321].val = 321 /* POT_OIL */;
-    objdump[321].nm = $c.lit("POT_OIL");
-    objdump[322].val = 322 /* POT_WATER */;
-    objdump[322].nm = $c.lit("POT_WATER");
-    objdump[323].val = 323 /* SCR_ENCHANT_ARMOR */;
-    objdump[323].nm = $c.lit("SCR_ENCHANT_ARMOR");
-    objdump[324].val = 324 /* SCR_DESTROY_ARMOR */;
-    objdump[324].nm = $c.lit("SCR_DESTROY_ARMOR");
-    objdump[325].val = 325 /* SCR_CONFUSE_MONSTER */;
-    objdump[325].nm = $c.lit("SCR_CONFUSE_MONSTER");
-    objdump[326].val = 326 /* SCR_SCARE_MONSTER */;
-    objdump[326].nm = $c.lit("SCR_SCARE_MONSTER");
-    objdump[327].val = 327 /* SCR_REMOVE_CURSE */;
-    objdump[327].nm = $c.lit("SCR_REMOVE_CURSE");
-    objdump[328].val = 328 /* SCR_ENCHANT_WEAPON */;
-    objdump[328].nm = $c.lit("SCR_ENCHANT_WEAPON");
-    objdump[329].val = 329 /* SCR_CREATE_MONSTER */;
-    objdump[329].nm = $c.lit("SCR_CREATE_MONSTER");
-    objdump[330].val = 330 /* SCR_TAMING */;
-    objdump[330].nm = $c.lit("SCR_TAMING");
-    objdump[331].val = 331 /* SCR_GENOCIDE */;
-    objdump[331].nm = $c.lit("SCR_GENOCIDE");
-    objdump[332].val = 332 /* SCR_LIGHT */;
-    objdump[332].nm = $c.lit("SCR_LIGHT");
-    objdump[333].val = 333 /* SCR_TELEPORTATION */;
-    objdump[333].nm = $c.lit("SCR_TELEPORTATION");
-    objdump[334].val = 334 /* SCR_GOLD_DETECTION */;
-    objdump[334].nm = $c.lit("SCR_GOLD_DETECTION");
-    objdump[335].val = 335 /* SCR_FOOD_DETECTION */;
-    objdump[335].nm = $c.lit("SCR_FOOD_DETECTION");
-    objdump[336].val = 336 /* SCR_IDENTIFY */;
-    objdump[336].nm = $c.lit("SCR_IDENTIFY");
-    objdump[337].val = 337 /* SCR_MAGIC_MAPPING */;
-    objdump[337].nm = $c.lit("SCR_MAGIC_MAPPING");
-    objdump[338].val = 338 /* SCR_AMNESIA */;
-    objdump[338].nm = $c.lit("SCR_AMNESIA");
-    objdump[339].val = 339 /* SCR_FIRE */;
-    objdump[339].nm = $c.lit("SCR_FIRE");
-    objdump[340].val = 340 /* SCR_EARTH */;
-    objdump[340].nm = $c.lit("SCR_EARTH");
-    objdump[341].val = 341 /* SCR_PUNISHMENT */;
-    objdump[341].nm = $c.lit("SCR_PUNISHMENT");
-    objdump[342].val = 342 /* SCR_CHARGING */;
-    objdump[342].nm = $c.lit("SCR_CHARGING");
-    objdump[343].val = 343 /* SCR_STINKING_CLOUD */;
-    objdump[343].nm = $c.lit("SCR_STINKING_CLOUD");
-    objdump[344].val = 344 /* SC01 */;
-    objdump[344].nm = $c.lit("SC01");
-    objdump[345].val = 345 /* SC02 */;
-    objdump[345].nm = $c.lit("SC02");
-    objdump[346].val = 346 /* SC03 */;
-    objdump[346].nm = $c.lit("SC03");
-    objdump[347].val = 347 /* SC04 */;
-    objdump[347].nm = $c.lit("SC04");
-    objdump[348].val = 348 /* SC05 */;
-    objdump[348].nm = $c.lit("SC05");
-    objdump[349].val = 349 /* SC06 */;
-    objdump[349].nm = $c.lit("SC06");
-    objdump[350].val = 350 /* SC07 */;
-    objdump[350].nm = $c.lit("SC07");
-    objdump[351].val = 351 /* SC08 */;
-    objdump[351].nm = $c.lit("SC08");
-    objdump[352].val = 352 /* SC09 */;
-    objdump[352].nm = $c.lit("SC09");
-    objdump[353].val = 353 /* SC10 */;
-    objdump[353].nm = $c.lit("SC10");
-    objdump[354].val = 354 /* SC11 */;
-    objdump[354].nm = $c.lit("SC11");
-    objdump[355].val = 355 /* SC12 */;
-    objdump[355].nm = $c.lit("SC12");
-    objdump[356].val = 356 /* SC13 */;
-    objdump[356].nm = $c.lit("SC13");
-    objdump[357].val = 357 /* SC14 */;
-    objdump[357].nm = $c.lit("SC14");
-    objdump[358].val = 358 /* SC15 */;
-    objdump[358].nm = $c.lit("SC15");
-    objdump[359].val = 359 /* SC16 */;
-    objdump[359].nm = $c.lit("SC16");
-    objdump[360].val = 360 /* SC17 */;
-    objdump[360].nm = $c.lit("SC17");
-    objdump[361].val = 361 /* SC18 */;
-    objdump[361].nm = $c.lit("SC18");
-    objdump[362].val = 362 /* SC19 */;
-    objdump[362].nm = $c.lit("SC19");
-    objdump[363].val = 363 /* SC20 */;
-    objdump[363].nm = $c.lit("SC20");
-    objdump[364].val = 364 /* SCR_MAIL */;
-    objdump[364].nm = $c.lit("SCR_MAIL");
-    objdump[365].val = 365 /* SCR_BLANK_PAPER */;
-    objdump[365].nm = $c.lit("SCR_BLANK_PAPER");
-    objdump[366].val = 366 /* SPE_DIG */;
-    objdump[366].nm = $c.lit("SPE_DIG");
-    objdump[367].val = 367 /* SPE_MAGIC_MISSILE */;
-    objdump[367].nm = $c.lit("SPE_MAGIC_MISSILE");
-    objdump[368].val = 368 /* SPE_FIREBALL */;
-    objdump[368].nm = $c.lit("SPE_FIREBALL");
-    objdump[369].val = 369 /* SPE_CONE_OF_COLD */;
-    objdump[369].nm = $c.lit("SPE_CONE_OF_COLD");
-    objdump[370].val = 370 /* SPE_SLEEP */;
-    objdump[370].nm = $c.lit("SPE_SLEEP");
-    objdump[371].val = 371 /* SPE_FINGER_OF_DEATH */;
-    objdump[371].nm = $c.lit("SPE_FINGER_OF_DEATH");
-    objdump[372].val = 372 /* SPE_LIGHT */;
-    objdump[372].nm = $c.lit("SPE_LIGHT");
-    objdump[373].val = 373 /* SPE_DETECT_MONSTERS */;
-    objdump[373].nm = $c.lit("SPE_DETECT_MONSTERS");
-    objdump[374].val = 374 /* SPE_HEALING */;
-    objdump[374].nm = $c.lit("SPE_HEALING");
-    objdump[375].val = 375 /* SPE_KNOCK */;
-    objdump[375].nm = $c.lit("SPE_KNOCK");
-    objdump[376].val = 376 /* SPE_FORCE_BOLT */;
-    objdump[376].nm = $c.lit("SPE_FORCE_BOLT");
-    objdump[377].val = 377 /* SPE_CONFUSE_MONSTER */;
-    objdump[377].nm = $c.lit("SPE_CONFUSE_MONSTER");
-    objdump[378].val = 378 /* SPE_CURE_BLINDNESS */;
-    objdump[378].nm = $c.lit("SPE_CURE_BLINDNESS");
-    objdump[379].val = 379 /* SPE_DRAIN_LIFE */;
-    objdump[379].nm = $c.lit("SPE_DRAIN_LIFE");
-    objdump[380].val = 380 /* SPE_SLOW_MONSTER */;
-    objdump[380].nm = $c.lit("SPE_SLOW_MONSTER");
-    objdump[381].val = 381 /* SPE_WIZARD_LOCK */;
-    objdump[381].nm = $c.lit("SPE_WIZARD_LOCK");
-    objdump[382].val = 382 /* SPE_CREATE_MONSTER */;
-    objdump[382].nm = $c.lit("SPE_CREATE_MONSTER");
-    objdump[383].val = 383 /* SPE_DETECT_FOOD */;
-    objdump[383].nm = $c.lit("SPE_DETECT_FOOD");
-    objdump[384].val = 384 /* SPE_CAUSE_FEAR */;
-    objdump[384].nm = $c.lit("SPE_CAUSE_FEAR");
-    objdump[385].val = 385 /* SPE_CLAIRVOYANCE */;
-    objdump[385].nm = $c.lit("SPE_CLAIRVOYANCE");
-    objdump[386].val = 386 /* SPE_CURE_SICKNESS */;
-    objdump[386].nm = $c.lit("SPE_CURE_SICKNESS");
-    objdump[387].val = 387 /* SPE_CHARM_MONSTER */;
-    objdump[387].nm = $c.lit("SPE_CHARM_MONSTER");
-    objdump[388].val = 388 /* SPE_HASTE_SELF */;
-    objdump[388].nm = $c.lit("SPE_HASTE_SELF");
-    objdump[389].val = 389 /* SPE_DETECT_UNSEEN */;
-    objdump[389].nm = $c.lit("SPE_DETECT_UNSEEN");
-    objdump[390].val = 390 /* SPE_LEVITATION */;
-    objdump[390].nm = $c.lit("SPE_LEVITATION");
-    objdump[391].val = 391 /* SPE_EXTRA_HEALING */;
-    objdump[391].nm = $c.lit("SPE_EXTRA_HEALING");
-    objdump[392].val = 392 /* SPE_RESTORE_ABILITY */;
-    objdump[392].nm = $c.lit("SPE_RESTORE_ABILITY");
-    objdump[393].val = 393 /* SPE_INVISIBILITY */;
-    objdump[393].nm = $c.lit("SPE_INVISIBILITY");
-    objdump[394].val = 394 /* SPE_DETECT_TREASURE */;
-    objdump[394].nm = $c.lit("SPE_DETECT_TREASURE");
-    objdump[395].val = 395 /* SPE_REMOVE_CURSE */;
-    objdump[395].nm = $c.lit("SPE_REMOVE_CURSE");
-    objdump[396].val = 396 /* SPE_MAGIC_MAPPING */;
-    objdump[396].nm = $c.lit("SPE_MAGIC_MAPPING");
-    objdump[397].val = 397 /* SPE_IDENTIFY */;
-    objdump[397].nm = $c.lit("SPE_IDENTIFY");
-    objdump[398].val = 398 /* SPE_TURN_UNDEAD */;
-    objdump[398].nm = $c.lit("SPE_TURN_UNDEAD");
-    objdump[399].val = 399 /* SPE_POLYMORPH */;
-    objdump[399].nm = $c.lit("SPE_POLYMORPH");
-    objdump[400].val = 400 /* SPE_TELEPORT_AWAY */;
-    objdump[400].nm = $c.lit("SPE_TELEPORT_AWAY");
-    objdump[401].val = 401 /* SPE_CREATE_FAMILIAR */;
-    objdump[401].nm = $c.lit("SPE_CREATE_FAMILIAR");
-    objdump[402].val = 402 /* SPE_CANCELLATION */;
-    objdump[402].nm = $c.lit("SPE_CANCELLATION");
-    objdump[403].val = 403 /* SPE_PROTECTION */;
-    objdump[403].nm = $c.lit("SPE_PROTECTION");
-    objdump[404].val = 404 /* SPE_JUMPING */;
-    objdump[404].nm = $c.lit("SPE_JUMPING");
-    objdump[405].val = 405 /* SPE_STONE_TO_FLESH */;
-    objdump[405].nm = $c.lit("SPE_STONE_TO_FLESH");
-    objdump[406].val = 406 /* SPE_CHAIN_LIGHTNING */;
-    objdump[406].nm = $c.lit("SPE_CHAIN_LIGHTNING");
-    objdump[407].val = 407 /* SPE_BLANK_PAPER */;
-    objdump[407].nm = $c.lit("SPE_BLANK_PAPER");
-    objdump[408].val = 408 /* SPE_NOVEL */;
-    objdump[408].nm = $c.lit("SPE_NOVEL");
-    objdump[409].val = 409 /* SPE_BOOK_OF_THE_DEAD */;
-    objdump[409].nm = $c.lit("SPE_BOOK_OF_THE_DEAD");
-    objdump[410].val = 410 /* WAN_LIGHT */;
-    objdump[410].nm = $c.lit("WAN_LIGHT");
-    objdump[411].val = 411 /* WAN_SECRET_DOOR_DETECTION */;
-    objdump[411].nm = $c.lit("WAN_SECRET_DOOR_DETECTION");
-    objdump[412].val = 412 /* WAN_ENLIGHTENMENT */;
-    objdump[412].nm = $c.lit("WAN_ENLIGHTENMENT");
-    objdump[413].val = 413 /* WAN_CREATE_MONSTER */;
-    objdump[413].nm = $c.lit("WAN_CREATE_MONSTER");
-    objdump[414].val = 414 /* WAN_WISHING */;
-    objdump[414].nm = $c.lit("WAN_WISHING");
-    objdump[415].val = 415 /* WAN_STASIS */;
-    objdump[415].nm = $c.lit("WAN_STASIS");
-    objdump[416].val = 416 /* WAN_NOTHING */;
-    objdump[416].nm = $c.lit("WAN_NOTHING");
-    objdump[417].val = 417 /* WAN_STRIKING */;
-    objdump[417].nm = $c.lit("WAN_STRIKING");
-    objdump[418].val = 418 /* WAN_MAKE_INVISIBLE */;
-    objdump[418].nm = $c.lit("WAN_MAKE_INVISIBLE");
-    objdump[419].val = 419 /* WAN_SLOW_MONSTER */;
-    objdump[419].nm = $c.lit("WAN_SLOW_MONSTER");
-    objdump[420].val = 420 /* WAN_SPEED_MONSTER */;
-    objdump[420].nm = $c.lit("WAN_SPEED_MONSTER");
-    objdump[421].val = 421 /* WAN_UNDEAD_TURNING */;
-    objdump[421].nm = $c.lit("WAN_UNDEAD_TURNING");
-    objdump[422].val = 422 /* WAN_POLYMORPH */;
-    objdump[422].nm = $c.lit("WAN_POLYMORPH");
-    objdump[423].val = 423 /* WAN_CANCELLATION */;
-    objdump[423].nm = $c.lit("WAN_CANCELLATION");
-    objdump[424].val = 424 /* WAN_TELEPORTATION */;
-    objdump[424].nm = $c.lit("WAN_TELEPORTATION");
-    objdump[425].val = 425 /* WAN_OPENING */;
-    objdump[425].nm = $c.lit("WAN_OPENING");
-    objdump[426].val = 426 /* WAN_LOCKING */;
-    objdump[426].nm = $c.lit("WAN_LOCKING");
-    objdump[427].val = 427 /* WAN_PROBING */;
-    objdump[427].nm = $c.lit("WAN_PROBING");
-    objdump[428].val = 428 /* WAN_DIGGING */;
-    objdump[428].nm = $c.lit("WAN_DIGGING");
-    objdump[429].val = 429 /* WAN_MAGIC_MISSILE */;
-    objdump[429].nm = $c.lit("WAN_MAGIC_MISSILE");
-    objdump[430].val = 430 /* WAN_FIRE */;
-    objdump[430].nm = $c.lit("WAN_FIRE");
-    objdump[431].val = 431 /* WAN_COLD */;
-    objdump[431].nm = $c.lit("WAN_COLD");
-    objdump[432].val = 432 /* WAN_SLEEP */;
-    objdump[432].nm = $c.lit("WAN_SLEEP");
-    objdump[433].val = 433 /* WAN_DEATH */;
-    objdump[433].nm = $c.lit("WAN_DEATH");
-    objdump[434].val = 434 /* WAN_LIGHTNING */;
-    objdump[434].nm = $c.lit("WAN_LIGHTNING");
-    objdump[435].val = 435 /* WAN1 */;
-    objdump[435].nm = $c.lit("WAN1");
-    objdump[436].val = 436 /* WAN2 */;
-    objdump[436].nm = $c.lit("WAN2");
-    objdump[437].val = 437 /* WAN3 */;
-    objdump[437].nm = $c.lit("WAN3");
-    objdump[438].val = 438 /* GOLD_PIECE */;
-    objdump[438].nm = $c.lit("GOLD_PIECE");
-    objdump[439].val = 439 /* DILITHIUM_CRYSTAL */;
-    objdump[439].nm = $c.lit("DILITHIUM_CRYSTAL");
-    objdump[440].val = 440 /* DIAMOND */;
-    objdump[440].nm = $c.lit("DIAMOND");
-    objdump[441].val = 441 /* RUBY */;
-    objdump[441].nm = $c.lit("RUBY");
-    objdump[442].val = 442 /* JACINTH */;
-    objdump[442].nm = $c.lit("JACINTH");
-    objdump[443].val = 443 /* SAPPHIRE */;
-    objdump[443].nm = $c.lit("SAPPHIRE");
-    objdump[444].val = 444 /* BLACK_OPAL */;
-    objdump[444].nm = $c.lit("BLACK_OPAL");
-    objdump[445].val = 445 /* EMERALD */;
-    objdump[445].nm = $c.lit("EMERALD");
-    objdump[446].val = 446 /* TURQUOISE */;
-    objdump[446].nm = $c.lit("TURQUOISE");
-    objdump[447].val = 447 /* CITRINE */;
-    objdump[447].nm = $c.lit("CITRINE");
-    objdump[448].val = 448 /* AQUAMARINE */;
-    objdump[448].nm = $c.lit("AQUAMARINE");
-    objdump[449].val = 449 /* AMBER */;
-    objdump[449].nm = $c.lit("AMBER");
-    objdump[450].val = 450 /* TOPAZ */;
-    objdump[450].nm = $c.lit("TOPAZ");
-    objdump[451].val = 451 /* JET */;
-    objdump[451].nm = $c.lit("JET");
-    objdump[452].val = 452 /* OPAL */;
-    objdump[452].nm = $c.lit("OPAL");
-    objdump[453].val = 453 /* CHRYSOBERYL */;
-    objdump[453].nm = $c.lit("CHRYSOBERYL");
-    objdump[454].val = 454 /* GARNET */;
-    objdump[454].nm = $c.lit("GARNET");
-    objdump[455].val = 455 /* AMETHYST */;
-    objdump[455].nm = $c.lit("AMETHYST");
-    objdump[456].val = 456 /* JASPER */;
-    objdump[456].nm = $c.lit("JASPER");
-    objdump[457].val = 457 /* FLUORITE */;
-    objdump[457].nm = $c.lit("FLUORITE");
-    objdump[458].val = 458 /* OBSIDIAN */;
-    objdump[458].nm = $c.lit("OBSIDIAN");
-    objdump[459].val = 459 /* AGATE */;
-    objdump[459].nm = $c.lit("AGATE");
-    objdump[460].val = 460 /* JADE */;
-    objdump[460].nm = $c.lit("JADE");
-    objdump[461].val = 461 /* WORTHLESS_WHITE_GLASS */;
-    objdump[461].nm = $c.lit("WORTHLESS_WHITE_GLASS");
-    objdump[462].val = 462 /* WORTHLESS_BLUE_GLASS */;
-    objdump[462].nm = $c.lit("WORTHLESS_BLUE_GLASS");
-    objdump[463].val = 463 /* WORTHLESS_RED_GLASS */;
-    objdump[463].nm = $c.lit("WORTHLESS_RED_GLASS");
-    objdump[464].val = 464 /* WORTHLESS_YELLOWBROWN_GLASS */;
-    objdump[464].nm = $c.lit("WORTHLESS_YELLOWBROWN_GLASS");
-    objdump[465].val = 465 /* WORTHLESS_ORANGE_GLASS */;
-    objdump[465].nm = $c.lit("WORTHLESS_ORANGE_GLASS");
-    objdump[466].val = 466 /* WORTHLESS_YELLOW_GLASS */;
-    objdump[466].nm = $c.lit("WORTHLESS_YELLOW_GLASS");
-    objdump[467].val = 467 /* WORTHLESS_BLACK_GLASS */;
-    objdump[467].nm = $c.lit("WORTHLESS_BLACK_GLASS");
-    objdump[468].val = 468 /* WORTHLESS_GREEN_GLASS */;
-    objdump[468].nm = $c.lit("WORTHLESS_GREEN_GLASS");
-    objdump[469].val = 469 /* WORTHLESS_VIOLET_GLASS */;
-    objdump[469].nm = $c.lit("WORTHLESS_VIOLET_GLASS");
-    objdump[470].val = 470 /* LUCKSTONE */;
-    objdump[470].nm = $c.lit("LUCKSTONE");
-    objdump[471].val = 471 /* LOADSTONE */;
-    objdump[471].nm = $c.lit("LOADSTONE");
-    objdump[472].val = 472 /* TOUCHSTONE */;
-    objdump[472].nm = $c.lit("TOUCHSTONE");
-    objdump[473].val = 473 /* FLINT */;
-    objdump[473].nm = $c.lit("FLINT");
-    objdump[474].val = 474 /* ROCK */;
-    objdump[474].nm = $c.lit("ROCK");
-    objdump[475].val = 475 /* BOULDER */;
-    objdump[475].nm = $c.lit("BOULDER");
-    objdump[476].val = 476 /* STATUE */;
-    objdump[476].nm = $c.lit("STATUE");
-    objdump[477].val = 477 /* HEAVY_IRON_BALL */;
-    objdump[477].nm = $c.lit("HEAVY_IRON_BALL");
-    objdump[478].val = 478 /* IRON_CHAIN */;
-    objdump[478].nm = $c.lit("IRON_CHAIN");
-    objdump[479].val = 479 /* BLINDING_VENOM */;
-    objdump[479].nm = $c.lit("BLINDING_VENOM");
-    objdump[480].val = 480 /* ACID_VENOM */;
-    objdump[480].nm = $c.lit("ACID_VENOM");
-    objdump[481].val = 481 /* NUM_OBJECTS */;
-    objdump[481].nm = $c.lit("NUM_OBJECTS");
+    $c.init(objdump, [
+        { val: STRANGE_OBJECT, nm: $c.lit("STRANGE_OBJECT") },
+        { val: GENERIC_ILLOBJ, nm: $c.lit("GENERIC_ILLOBJ") },
+        { val: GENERIC_WEAPON, nm: $c.lit("GENERIC_WEAPON") },
+        { val: GENERIC_ARMOR, nm: $c.lit("GENERIC_ARMOR") },
+        { val: GENERIC_RING, nm: $c.lit("GENERIC_RING") },
+        { val: GENERIC_AMULET, nm: $c.lit("GENERIC_AMULET") },
+        { val: GENERIC_TOOL, nm: $c.lit("GENERIC_TOOL") },
+        { val: GENERIC_FOOD, nm: $c.lit("GENERIC_FOOD") },
+        { val: GENERIC_POTION, nm: $c.lit("GENERIC_POTION") },
+        { val: GENERIC_SCROLL, nm: $c.lit("GENERIC_SCROLL") },
+        { val: GENERIC_SPBOOK, nm: $c.lit("GENERIC_SPBOOK") },
+        { val: GENERIC_WAND, nm: $c.lit("GENERIC_WAND") },
+        { val: GENERIC_COIN, nm: $c.lit("GENERIC_COIN") },
+        { val: GENERIC_GEM, nm: $c.lit("GENERIC_GEM") },
+        { val: GENERIC_ROCK, nm: $c.lit("GENERIC_ROCK") },
+        { val: GENERIC_BALL, nm: $c.lit("GENERIC_BALL") },
+        { val: GENERIC_CHAIN, nm: $c.lit("GENERIC_CHAIN") },
+        { val: GENERIC_VENOM, nm: $c.lit("GENERIC_VENOM") },
+        { val: ARROW, nm: $c.lit("ARROW") },
+        { val: ELVEN_ARROW, nm: $c.lit("ELVEN_ARROW") },
+        { val: ORCISH_ARROW, nm: $c.lit("ORCISH_ARROW") },
+        { val: SILVER_ARROW, nm: $c.lit("SILVER_ARROW") },
+        { val: YA, nm: $c.lit("YA") },
+        { val: CROSSBOW_BOLT, nm: $c.lit("CROSSBOW_BOLT") },
+        { val: DART, nm: $c.lit("DART") },
+        { val: SHURIKEN, nm: $c.lit("SHURIKEN") },
+        { val: BOOMERANG, nm: $c.lit("BOOMERANG") },
+        { val: SPEAR, nm: $c.lit("SPEAR") },
+        { val: ELVEN_SPEAR, nm: $c.lit("ELVEN_SPEAR") },
+        { val: ORCISH_SPEAR, nm: $c.lit("ORCISH_SPEAR") },
+        { val: DWARVISH_SPEAR, nm: $c.lit("DWARVISH_SPEAR") },
+        { val: SILVER_SPEAR, nm: $c.lit("SILVER_SPEAR") },
+        { val: JAVELIN, nm: $c.lit("JAVELIN") },
+        { val: TRIDENT, nm: $c.lit("TRIDENT") },
+        { val: DAGGER, nm: $c.lit("DAGGER") },
+        { val: ELVEN_DAGGER, nm: $c.lit("ELVEN_DAGGER") },
+        { val: ORCISH_DAGGER, nm: $c.lit("ORCISH_DAGGER") },
+        { val: SILVER_DAGGER, nm: $c.lit("SILVER_DAGGER") },
+        { val: ATHAME, nm: $c.lit("ATHAME") },
+        { val: SCALPEL, nm: $c.lit("SCALPEL") },
+        { val: KNIFE, nm: $c.lit("KNIFE") },
+        { val: STILETTO, nm: $c.lit("STILETTO") },
+        { val: WORM_TOOTH, nm: $c.lit("WORM_TOOTH") },
+        { val: CRYSKNIFE, nm: $c.lit("CRYSKNIFE") },
+        { val: AXE, nm: $c.lit("AXE") },
+        { val: BATTLE_AXE, nm: $c.lit("BATTLE_AXE") },
+        { val: SHORT_SWORD, nm: $c.lit("SHORT_SWORD") },
+        { val: ELVEN_SHORT_SWORD, nm: $c.lit("ELVEN_SHORT_SWORD") },
+        { val: ORCISH_SHORT_SWORD, nm: $c.lit("ORCISH_SHORT_SWORD") },
+        { val: DWARVISH_SHORT_SWORD, nm: $c.lit("DWARVISH_SHORT_SWORD") },
+        { val: SCIMITAR, nm: $c.lit("SCIMITAR") },
+        { val: SILVER_SABER, nm: $c.lit("SILVER_SABER") },
+        { val: BROADSWORD, nm: $c.lit("BROADSWORD") },
+        { val: ELVEN_BROADSWORD, nm: $c.lit("ELVEN_BROADSWORD") },
+        { val: LONG_SWORD, nm: $c.lit("LONG_SWORD") },
+        { val: TWO_HANDED_SWORD, nm: $c.lit("TWO_HANDED_SWORD") },
+        { val: KATANA, nm: $c.lit("KATANA") },
+        { val: TSURUGI, nm: $c.lit("TSURUGI") },
+        { val: RUNESWORD, nm: $c.lit("RUNESWORD") },
+        { val: PARTISAN, nm: $c.lit("PARTISAN") },
+        { val: RANSEUR, nm: $c.lit("RANSEUR") },
+        { val: SPETUM, nm: $c.lit("SPETUM") },
+        { val: GLAIVE, nm: $c.lit("GLAIVE") },
+        { val: HALBERD, nm: $c.lit("HALBERD") },
+        { val: BARDICHE, nm: $c.lit("BARDICHE") },
+        { val: VOULGE, nm: $c.lit("VOULGE") },
+        { val: FAUCHARD, nm: $c.lit("FAUCHARD") },
+        { val: GUISARME, nm: $c.lit("GUISARME") },
+        { val: BILL_GUISARME, nm: $c.lit("BILL_GUISARME") },
+        { val: LUCERN_HAMMER, nm: $c.lit("LUCERN_HAMMER") },
+        { val: BEC_DE_CORBIN, nm: $c.lit("BEC_DE_CORBIN") },
+        { val: DWARVISH_MATTOCK, nm: $c.lit("DWARVISH_MATTOCK") },
+        { val: LANCE, nm: $c.lit("LANCE") },
+        { val: MACE, nm: $c.lit("MACE") },
+        { val: SILVER_MACE, nm: $c.lit("SILVER_MACE") },
+        { val: MORNING_STAR, nm: $c.lit("MORNING_STAR") },
+        { val: WAR_HAMMER, nm: $c.lit("WAR_HAMMER") },
+        { val: CLUB, nm: $c.lit("CLUB") },
+        { val: RUBBER_HOSE, nm: $c.lit("RUBBER_HOSE") },
+        { val: QUARTERSTAFF, nm: $c.lit("QUARTERSTAFF") },
+        { val: AKLYS, nm: $c.lit("AKLYS") },
+        { val: FLAIL, nm: $c.lit("FLAIL") },
+        { val: BULLWHIP, nm: $c.lit("BULLWHIP") },
+        { val: BOW, nm: $c.lit("BOW") },
+        { val: ELVEN_BOW, nm: $c.lit("ELVEN_BOW") },
+        { val: ORCISH_BOW, nm: $c.lit("ORCISH_BOW") },
+        { val: YUMI, nm: $c.lit("YUMI") },
+        { val: SLING, nm: $c.lit("SLING") },
+        { val: CROSSBOW, nm: $c.lit("CROSSBOW") },
+        { val: ELVEN_LEATHER_HELM, nm: $c.lit("ELVEN_LEATHER_HELM") },
+        { val: ORCISH_HELM, nm: $c.lit("ORCISH_HELM") },
+        { val: DWARVISH_IRON_HELM, nm: $c.lit("DWARVISH_IRON_HELM") },
+        { val: FEDORA, nm: $c.lit("FEDORA") },
+        { val: CORNUTHAUM, nm: $c.lit("CORNUTHAUM") },
+        { val: DUNCE_CAP, nm: $c.lit("DUNCE_CAP") },
+        { val: DENTED_POT, nm: $c.lit("DENTED_POT") },
+        { val: HELM_OF_BRILLIANCE, nm: $c.lit("HELM_OF_BRILLIANCE") },
+        { val: HELMET, nm: $c.lit("HELMET") },
+        { val: HELM_OF_CAUTION, nm: $c.lit("HELM_OF_CAUTION") },
+        { val: HELM_OF_OPPOSITE_ALIGNMENT, nm: $c.lit("HELM_OF_OPPOSITE_ALIGNMENT") },
+        { val: HELM_OF_TELEPATHY, nm: $c.lit("HELM_OF_TELEPATHY") },
+        { val: GRAY_DRAGON_SCALE_MAIL, nm: $c.lit("GRAY_DRAGON_SCALE_MAIL") },
+        { val: GOLD_DRAGON_SCALE_MAIL, nm: $c.lit("GOLD_DRAGON_SCALE_MAIL") },
+        { val: SILVER_DRAGON_SCALE_MAIL, nm: $c.lit("SILVER_DRAGON_SCALE_MAIL") },
+        { val: RED_DRAGON_SCALE_MAIL, nm: $c.lit("RED_DRAGON_SCALE_MAIL") },
+        { val: WHITE_DRAGON_SCALE_MAIL, nm: $c.lit("WHITE_DRAGON_SCALE_MAIL") },
+        { val: ORANGE_DRAGON_SCALE_MAIL, nm: $c.lit("ORANGE_DRAGON_SCALE_MAIL") },
+        { val: BLACK_DRAGON_SCALE_MAIL, nm: $c.lit("BLACK_DRAGON_SCALE_MAIL") },
+        { val: BLUE_DRAGON_SCALE_MAIL, nm: $c.lit("BLUE_DRAGON_SCALE_MAIL") },
+        { val: GREEN_DRAGON_SCALE_MAIL, nm: $c.lit("GREEN_DRAGON_SCALE_MAIL") },
+        { val: YELLOW_DRAGON_SCALE_MAIL, nm: $c.lit("YELLOW_DRAGON_SCALE_MAIL") },
+        { val: GRAY_DRAGON_SCALES, nm: $c.lit("GRAY_DRAGON_SCALES") },
+        { val: GOLD_DRAGON_SCALES, nm: $c.lit("GOLD_DRAGON_SCALES") },
+        { val: SILVER_DRAGON_SCALES, nm: $c.lit("SILVER_DRAGON_SCALES") },
+        { val: RED_DRAGON_SCALES, nm: $c.lit("RED_DRAGON_SCALES") },
+        { val: WHITE_DRAGON_SCALES, nm: $c.lit("WHITE_DRAGON_SCALES") },
+        { val: ORANGE_DRAGON_SCALES, nm: $c.lit("ORANGE_DRAGON_SCALES") },
+        { val: BLACK_DRAGON_SCALES, nm: $c.lit("BLACK_DRAGON_SCALES") },
+        { val: BLUE_DRAGON_SCALES, nm: $c.lit("BLUE_DRAGON_SCALES") },
+        { val: GREEN_DRAGON_SCALES, nm: $c.lit("GREEN_DRAGON_SCALES") },
+        { val: YELLOW_DRAGON_SCALES, nm: $c.lit("YELLOW_DRAGON_SCALES") },
+        { val: PLATE_MAIL, nm: $c.lit("PLATE_MAIL") },
+        { val: CRYSTAL_PLATE_MAIL, nm: $c.lit("CRYSTAL_PLATE_MAIL") },
+        { val: BRONZE_PLATE_MAIL, nm: $c.lit("BRONZE_PLATE_MAIL") },
+        { val: SPLINT_MAIL, nm: $c.lit("SPLINT_MAIL") },
+        { val: BANDED_MAIL, nm: $c.lit("BANDED_MAIL") },
+        { val: DWARVISH_MITHRIL_COAT, nm: $c.lit("DWARVISH_MITHRIL_COAT") },
+        { val: ELVEN_MITHRIL_COAT, nm: $c.lit("ELVEN_MITHRIL_COAT") },
+        { val: CHAIN_MAIL, nm: $c.lit("CHAIN_MAIL") },
+        { val: ORCISH_CHAIN_MAIL, nm: $c.lit("ORCISH_CHAIN_MAIL") },
+        { val: SCALE_MAIL, nm: $c.lit("SCALE_MAIL") },
+        { val: STUDDED_LEATHER_ARMOR, nm: $c.lit("STUDDED_LEATHER_ARMOR") },
+        { val: RING_MAIL, nm: $c.lit("RING_MAIL") },
+        { val: ORCISH_RING_MAIL, nm: $c.lit("ORCISH_RING_MAIL") },
+        { val: LEATHER_ARMOR, nm: $c.lit("LEATHER_ARMOR") },
+        { val: LEATHER_JACKET, nm: $c.lit("LEATHER_JACKET") },
+        { val: HAWAIIAN_SHIRT, nm: $c.lit("HAWAIIAN_SHIRT") },
+        { val: T_SHIRT, nm: $c.lit("T_SHIRT") },
+        { val: MUMMY_WRAPPING, nm: $c.lit("MUMMY_WRAPPING") },
+        { val: ELVEN_CLOAK, nm: $c.lit("ELVEN_CLOAK") },
+        { val: ORCISH_CLOAK, nm: $c.lit("ORCISH_CLOAK") },
+        { val: DWARVISH_CLOAK, nm: $c.lit("DWARVISH_CLOAK") },
+        { val: OILSKIN_CLOAK, nm: $c.lit("OILSKIN_CLOAK") },
+        { val: ROBE, nm: $c.lit("ROBE") },
+        { val: ALCHEMY_SMOCK, nm: $c.lit("ALCHEMY_SMOCK") },
+        { val: LEATHER_CLOAK, nm: $c.lit("LEATHER_CLOAK") },
+        { val: CLOAK_OF_PROTECTION, nm: $c.lit("CLOAK_OF_PROTECTION") },
+        { val: CLOAK_OF_INVISIBILITY, nm: $c.lit("CLOAK_OF_INVISIBILITY") },
+        { val: CLOAK_OF_MAGIC_RESISTANCE, nm: $c.lit("CLOAK_OF_MAGIC_RESISTANCE") },
+        { val: CLOAK_OF_DISPLACEMENT, nm: $c.lit("CLOAK_OF_DISPLACEMENT") },
+        { val: SMALL_SHIELD, nm: $c.lit("SMALL_SHIELD") },
+        { val: SHIELD_OF_DRAIN_RESISTANCE, nm: $c.lit("SHIELD_OF_DRAIN_RESISTANCE") },
+        { val: SHIELD_OF_SHOCK_RESISTANCE, nm: $c.lit("SHIELD_OF_SHOCK_RESISTANCE") },
+        { val: ELVEN_SHIELD, nm: $c.lit("ELVEN_SHIELD") },
+        { val: URUK_HAI_SHIELD, nm: $c.lit("URUK_HAI_SHIELD") },
+        { val: ORCISH_SHIELD, nm: $c.lit("ORCISH_SHIELD") },
+        { val: LARGE_SHIELD, nm: $c.lit("LARGE_SHIELD") },
+        { val: DWARVISH_ROUNDSHIELD, nm: $c.lit("DWARVISH_ROUNDSHIELD") },
+        { val: SHIELD_OF_REFLECTION, nm: $c.lit("SHIELD_OF_REFLECTION") },
+        { val: LEATHER_GLOVES, nm: $c.lit("LEATHER_GLOVES") },
+        { val: GAUNTLETS_OF_FUMBLING, nm: $c.lit("GAUNTLETS_OF_FUMBLING") },
+        { val: GAUNTLETS_OF_POWER, nm: $c.lit("GAUNTLETS_OF_POWER") },
+        { val: GAUNTLETS_OF_DEXTERITY, nm: $c.lit("GAUNTLETS_OF_DEXTERITY") },
+        { val: LOW_BOOTS, nm: $c.lit("LOW_BOOTS") },
+        { val: IRON_SHOES, nm: $c.lit("IRON_SHOES") },
+        { val: HIGH_BOOTS, nm: $c.lit("HIGH_BOOTS") },
+        { val: SPEED_BOOTS, nm: $c.lit("SPEED_BOOTS") },
+        { val: WATER_WALKING_BOOTS, nm: $c.lit("WATER_WALKING_BOOTS") },
+        { val: JUMPING_BOOTS, nm: $c.lit("JUMPING_BOOTS") },
+        { val: ELVEN_BOOTS, nm: $c.lit("ELVEN_BOOTS") },
+        { val: KICKING_BOOTS, nm: $c.lit("KICKING_BOOTS") },
+        { val: FUMBLE_BOOTS, nm: $c.lit("FUMBLE_BOOTS") },
+        { val: LEVITATION_BOOTS, nm: $c.lit("LEVITATION_BOOTS") },
+        { val: RIN_ADORNMENT, nm: $c.lit("RIN_ADORNMENT") },
+        { val: RIN_GAIN_STRENGTH, nm: $c.lit("RIN_GAIN_STRENGTH") },
+        { val: RIN_GAIN_CONSTITUTION, nm: $c.lit("RIN_GAIN_CONSTITUTION") },
+        { val: RIN_INCREASE_ACCURACY, nm: $c.lit("RIN_INCREASE_ACCURACY") },
+        { val: RIN_INCREASE_DAMAGE, nm: $c.lit("RIN_INCREASE_DAMAGE") },
+        { val: RIN_PROTECTION, nm: $c.lit("RIN_PROTECTION") },
+        { val: RIN_REGENERATION, nm: $c.lit("RIN_REGENERATION") },
+        { val: RIN_SEARCHING, nm: $c.lit("RIN_SEARCHING") },
+        { val: RIN_STEALTH, nm: $c.lit("RIN_STEALTH") },
+        { val: RIN_SUSTAIN_ABILITY, nm: $c.lit("RIN_SUSTAIN_ABILITY") },
+        { val: RIN_LEVITATION, nm: $c.lit("RIN_LEVITATION") },
+        { val: RIN_HUNGER, nm: $c.lit("RIN_HUNGER") },
+        { val: RIN_AGGRAVATE_MONSTER, nm: $c.lit("RIN_AGGRAVATE_MONSTER") },
+        { val: RIN_CONFLICT, nm: $c.lit("RIN_CONFLICT") },
+        { val: RIN_WARNING, nm: $c.lit("RIN_WARNING") },
+        { val: RIN_POISON_RESISTANCE, nm: $c.lit("RIN_POISON_RESISTANCE") },
+        { val: RIN_FIRE_RESISTANCE, nm: $c.lit("RIN_FIRE_RESISTANCE") },
+        { val: RIN_COLD_RESISTANCE, nm: $c.lit("RIN_COLD_RESISTANCE") },
+        { val: RIN_SHOCK_RESISTANCE, nm: $c.lit("RIN_SHOCK_RESISTANCE") },
+        { val: RIN_FREE_ACTION, nm: $c.lit("RIN_FREE_ACTION") },
+        { val: RIN_SLOW_DIGESTION, nm: $c.lit("RIN_SLOW_DIGESTION") },
+        { val: RIN_TELEPORTATION, nm: $c.lit("RIN_TELEPORTATION") },
+        { val: RIN_TELEPORT_CONTROL, nm: $c.lit("RIN_TELEPORT_CONTROL") },
+        { val: RIN_POLYMORPH, nm: $c.lit("RIN_POLYMORPH") },
+        { val: RIN_POLYMORPH_CONTROL, nm: $c.lit("RIN_POLYMORPH_CONTROL") },
+        { val: RIN_INVISIBILITY, nm: $c.lit("RIN_INVISIBILITY") },
+        { val: RIN_SEE_INVISIBLE, nm: $c.lit("RIN_SEE_INVISIBLE") },
+        { val: RIN_PROTECTION_FROM_SHAPE_CHAN, nm: $c.lit("RIN_PROTECTION_FROM_SHAPE_CHAN") },
+        { val: AMULET_OF_ESP, nm: $c.lit("AMULET_OF_ESP") },
+        { val: AMULET_OF_LIFE_SAVING, nm: $c.lit("AMULET_OF_LIFE_SAVING") },
+        { val: AMULET_OF_STRANGULATION, nm: $c.lit("AMULET_OF_STRANGULATION") },
+        { val: AMULET_OF_RESTFUL_SLEEP, nm: $c.lit("AMULET_OF_RESTFUL_SLEEP") },
+        { val: AMULET_VERSUS_POISON, nm: $c.lit("AMULET_VERSUS_POISON") },
+        { val: AMULET_OF_CHANGE, nm: $c.lit("AMULET_OF_CHANGE") },
+        { val: AMULET_OF_UNCHANGING, nm: $c.lit("AMULET_OF_UNCHANGING") },
+        { val: AMULET_OF_REFLECTION, nm: $c.lit("AMULET_OF_REFLECTION") },
+        { val: AMULET_OF_MAGICAL_BREATHING, nm: $c.lit("AMULET_OF_MAGICAL_BREATHING") },
+        { val: AMULET_OF_GUARDING, nm: $c.lit("AMULET_OF_GUARDING") },
+        { val: AMULET_OF_FLYING, nm: $c.lit("AMULET_OF_FLYING") },
+        { val: FAKE_AMULET_OF_YENDOR, nm: $c.lit("FAKE_AMULET_OF_YENDOR") },
+        { val: AMULET_OF_YENDOR, nm: $c.lit("AMULET_OF_YENDOR") },
+        { val: LARGE_BOX, nm: $c.lit("LARGE_BOX") },
+        { val: CHEST, nm: $c.lit("CHEST") },
+        { val: ICE_BOX, nm: $c.lit("ICE_BOX") },
+        { val: SACK, nm: $c.lit("SACK") },
+        { val: OILSKIN_SACK, nm: $c.lit("OILSKIN_SACK") },
+        { val: BAG_OF_HOLDING, nm: $c.lit("BAG_OF_HOLDING") },
+        { val: BAG_OF_TRICKS, nm: $c.lit("BAG_OF_TRICKS") },
+        { val: SKELETON_KEY, nm: $c.lit("SKELETON_KEY") },
+        { val: LOCK_PICK, nm: $c.lit("LOCK_PICK") },
+        { val: CREDIT_CARD, nm: $c.lit("CREDIT_CARD") },
+        { val: TALLOW_CANDLE, nm: $c.lit("TALLOW_CANDLE") },
+        { val: WAX_CANDLE, nm: $c.lit("WAX_CANDLE") },
+        { val: BRASS_LANTERN, nm: $c.lit("BRASS_LANTERN") },
+        { val: OIL_LAMP, nm: $c.lit("OIL_LAMP") },
+        { val: MAGIC_LAMP, nm: $c.lit("MAGIC_LAMP") },
+        { val: EXPENSIVE_CAMERA, nm: $c.lit("EXPENSIVE_CAMERA") },
+        { val: MIRROR, nm: $c.lit("MIRROR") },
+        { val: CRYSTAL_BALL, nm: $c.lit("CRYSTAL_BALL") },
+        { val: LENSES, nm: $c.lit("LENSES") },
+        { val: BLINDFOLD, nm: $c.lit("BLINDFOLD") },
+        { val: TOWEL, nm: $c.lit("TOWEL") },
+        { val: SADDLE, nm: $c.lit("SADDLE") },
+        { val: LEASH, nm: $c.lit("LEASH") },
+        { val: STETHOSCOPE, nm: $c.lit("STETHOSCOPE") },
+        { val: TINNING_KIT, nm: $c.lit("TINNING_KIT") },
+        { val: TIN_OPENER, nm: $c.lit("TIN_OPENER") },
+        { val: CAN_OF_GREASE, nm: $c.lit("CAN_OF_GREASE") },
+        { val: FIGURINE, nm: $c.lit("FIGURINE") },
+        { val: MAGIC_MARKER, nm: $c.lit("MAGIC_MARKER") },
+        { val: LAND_MINE, nm: $c.lit("LAND_MINE") },
+        { val: BEARTRAP, nm: $c.lit("BEARTRAP") },
+        { val: TIN_WHISTLE, nm: $c.lit("TIN_WHISTLE") },
+        { val: MAGIC_WHISTLE, nm: $c.lit("MAGIC_WHISTLE") },
+        { val: WOODEN_FLUTE, nm: $c.lit("WOODEN_FLUTE") },
+        { val: MAGIC_FLUTE, nm: $c.lit("MAGIC_FLUTE") },
+        { val: TOOLED_HORN, nm: $c.lit("TOOLED_HORN") },
+        { val: FROST_HORN, nm: $c.lit("FROST_HORN") },
+        { val: FIRE_HORN, nm: $c.lit("FIRE_HORN") },
+        { val: HORN_OF_PLENTY, nm: $c.lit("HORN_OF_PLENTY") },
+        { val: WOODEN_HARP, nm: $c.lit("WOODEN_HARP") },
+        { val: MAGIC_HARP, nm: $c.lit("MAGIC_HARP") },
+        { val: BELL, nm: $c.lit("BELL") },
+        { val: BUGLE, nm: $c.lit("BUGLE") },
+        { val: LEATHER_DRUM, nm: $c.lit("LEATHER_DRUM") },
+        { val: DRUM_OF_EARTHQUAKE, nm: $c.lit("DRUM_OF_EARTHQUAKE") },
+        { val: PICK_AXE, nm: $c.lit("PICK_AXE") },
+        { val: GRAPPLING_HOOK, nm: $c.lit("GRAPPLING_HOOK") },
+        { val: UNICORN_HORN, nm: $c.lit("UNICORN_HORN") },
+        { val: CANDELABRUM_OF_INVOCATION, nm: $c.lit("CANDELABRUM_OF_INVOCATION") },
+        { val: BELL_OF_OPENING, nm: $c.lit("BELL_OF_OPENING") },
+        { val: TRIPE_RATION, nm: $c.lit("TRIPE_RATION") },
+        { val: CORPSE, nm: $c.lit("CORPSE") },
+        { val: EGG, nm: $c.lit("EGG") },
+        { val: MEATBALL, nm: $c.lit("MEATBALL") },
+        { val: MEAT_STICK, nm: $c.lit("MEAT_STICK") },
+        { val: ENORMOUS_MEATBALL, nm: $c.lit("ENORMOUS_MEATBALL") },
+        { val: MEAT_RING, nm: $c.lit("MEAT_RING") },
+        { val: GLOB_OF_GRAY_OOZE, nm: $c.lit("GLOB_OF_GRAY_OOZE") },
+        { val: GLOB_OF_BROWN_PUDDING, nm: $c.lit("GLOB_OF_BROWN_PUDDING") },
+        { val: GLOB_OF_GREEN_SLIME, nm: $c.lit("GLOB_OF_GREEN_SLIME") },
+        { val: GLOB_OF_BLACK_PUDDING, nm: $c.lit("GLOB_OF_BLACK_PUDDING") },
+        { val: KELP_FROND, nm: $c.lit("KELP_FROND") },
+        { val: EUCALYPTUS_LEAF, nm: $c.lit("EUCALYPTUS_LEAF") },
+        { val: APPLE, nm: $c.lit("APPLE") },
+        { val: ORANGE, nm: $c.lit("ORANGE") },
+        { val: PEAR, nm: $c.lit("PEAR") },
+        { val: MELON, nm: $c.lit("MELON") },
+        { val: BANANA, nm: $c.lit("BANANA") },
+        { val: CARROT, nm: $c.lit("CARROT") },
+        { val: SPRIG_OF_WOLFSBANE, nm: $c.lit("SPRIG_OF_WOLFSBANE") },
+        { val: CLOVE_OF_GARLIC, nm: $c.lit("CLOVE_OF_GARLIC") },
+        { val: SLIME_MOLD, nm: $c.lit("SLIME_MOLD") },
+        { val: LUMP_OF_ROYAL_JELLY, nm: $c.lit("LUMP_OF_ROYAL_JELLY") },
+        { val: CREAM_PIE, nm: $c.lit("CREAM_PIE") },
+        { val: CANDY_BAR, nm: $c.lit("CANDY_BAR") },
+        { val: FORTUNE_COOKIE, nm: $c.lit("FORTUNE_COOKIE") },
+        { val: PANCAKE, nm: $c.lit("PANCAKE") },
+        { val: LEMBAS_WAFER, nm: $c.lit("LEMBAS_WAFER") },
+        { val: CRAM_RATION, nm: $c.lit("CRAM_RATION") },
+        { val: FOOD_RATION, nm: $c.lit("FOOD_RATION") },
+        { val: K_RATION, nm: $c.lit("K_RATION") },
+        { val: C_RATION, nm: $c.lit("C_RATION") },
+        { val: TIN, nm: $c.lit("TIN") },
+        { val: POT_GAIN_ABILITY, nm: $c.lit("POT_GAIN_ABILITY") },
+        { val: POT_RESTORE_ABILITY, nm: $c.lit("POT_RESTORE_ABILITY") },
+        { val: POT_CONFUSION, nm: $c.lit("POT_CONFUSION") },
+        { val: POT_BLINDNESS, nm: $c.lit("POT_BLINDNESS") },
+        { val: POT_PARALYSIS, nm: $c.lit("POT_PARALYSIS") },
+        { val: POT_SPEED, nm: $c.lit("POT_SPEED") },
+        { val: POT_LEVITATION, nm: $c.lit("POT_LEVITATION") },
+        { val: POT_HALLUCINATION, nm: $c.lit("POT_HALLUCINATION") },
+        { val: POT_INVISIBILITY, nm: $c.lit("POT_INVISIBILITY") },
+        { val: POT_SEE_INVISIBLE, nm: $c.lit("POT_SEE_INVISIBLE") },
+        { val: POT_HEALING, nm: $c.lit("POT_HEALING") },
+        { val: POT_EXTRA_HEALING, nm: $c.lit("POT_EXTRA_HEALING") },
+        { val: POT_GAIN_LEVEL, nm: $c.lit("POT_GAIN_LEVEL") },
+        { val: POT_ENLIGHTENMENT, nm: $c.lit("POT_ENLIGHTENMENT") },
+        { val: POT_MONSTER_DETECTION, nm: $c.lit("POT_MONSTER_DETECTION") },
+        { val: POT_OBJECT_DETECTION, nm: $c.lit("POT_OBJECT_DETECTION") },
+        { val: POT_GAIN_ENERGY, nm: $c.lit("POT_GAIN_ENERGY") },
+        { val: POT_SLEEPING, nm: $c.lit("POT_SLEEPING") },
+        { val: POT_FULL_HEALING, nm: $c.lit("POT_FULL_HEALING") },
+        { val: POT_POLYMORPH, nm: $c.lit("POT_POLYMORPH") },
+        { val: POT_BOOZE, nm: $c.lit("POT_BOOZE") },
+        { val: POT_SICKNESS, nm: $c.lit("POT_SICKNESS") },
+        { val: POT_FRUIT_JUICE, nm: $c.lit("POT_FRUIT_JUICE") },
+        { val: POT_ACID, nm: $c.lit("POT_ACID") },
+        { val: POT_OIL, nm: $c.lit("POT_OIL") },
+        { val: POT_WATER, nm: $c.lit("POT_WATER") },
+        { val: SCR_ENCHANT_ARMOR, nm: $c.lit("SCR_ENCHANT_ARMOR") },
+        { val: SCR_DESTROY_ARMOR, nm: $c.lit("SCR_DESTROY_ARMOR") },
+        { val: SCR_CONFUSE_MONSTER, nm: $c.lit("SCR_CONFUSE_MONSTER") },
+        { val: SCR_SCARE_MONSTER, nm: $c.lit("SCR_SCARE_MONSTER") },
+        { val: SCR_REMOVE_CURSE, nm: $c.lit("SCR_REMOVE_CURSE") },
+        { val: SCR_ENCHANT_WEAPON, nm: $c.lit("SCR_ENCHANT_WEAPON") },
+        { val: SCR_CREATE_MONSTER, nm: $c.lit("SCR_CREATE_MONSTER") },
+        { val: SCR_TAMING, nm: $c.lit("SCR_TAMING") },
+        { val: SCR_GENOCIDE, nm: $c.lit("SCR_GENOCIDE") },
+        { val: SCR_LIGHT, nm: $c.lit("SCR_LIGHT") },
+        { val: SCR_TELEPORTATION, nm: $c.lit("SCR_TELEPORTATION") },
+        { val: SCR_GOLD_DETECTION, nm: $c.lit("SCR_GOLD_DETECTION") },
+        { val: SCR_FOOD_DETECTION, nm: $c.lit("SCR_FOOD_DETECTION") },
+        { val: SCR_IDENTIFY, nm: $c.lit("SCR_IDENTIFY") },
+        { val: SCR_MAGIC_MAPPING, nm: $c.lit("SCR_MAGIC_MAPPING") },
+        { val: SCR_AMNESIA, nm: $c.lit("SCR_AMNESIA") },
+        { val: SCR_FIRE, nm: $c.lit("SCR_FIRE") },
+        { val: SCR_EARTH, nm: $c.lit("SCR_EARTH") },
+        { val: SCR_PUNISHMENT, nm: $c.lit("SCR_PUNISHMENT") },
+        { val: SCR_CHARGING, nm: $c.lit("SCR_CHARGING") },
+        { val: SCR_STINKING_CLOUD, nm: $c.lit("SCR_STINKING_CLOUD") },
+        { val: SC01, nm: $c.lit("SC01") },
+        { val: SC02, nm: $c.lit("SC02") },
+        { val: SC03, nm: $c.lit("SC03") },
+        { val: SC04, nm: $c.lit("SC04") },
+        { val: SC05, nm: $c.lit("SC05") },
+        { val: SC06, nm: $c.lit("SC06") },
+        { val: SC07, nm: $c.lit("SC07") },
+        { val: SC08, nm: $c.lit("SC08") },
+        { val: SC09, nm: $c.lit("SC09") },
+        { val: SC10, nm: $c.lit("SC10") },
+        { val: SC11, nm: $c.lit("SC11") },
+        { val: SC12, nm: $c.lit("SC12") },
+        { val: SC13, nm: $c.lit("SC13") },
+        { val: SC14, nm: $c.lit("SC14") },
+        { val: SC15, nm: $c.lit("SC15") },
+        { val: SC16, nm: $c.lit("SC16") },
+        { val: SC17, nm: $c.lit("SC17") },
+        { val: SC18, nm: $c.lit("SC18") },
+        { val: SC19, nm: $c.lit("SC19") },
+        { val: SC20, nm: $c.lit("SC20") },
+        { val: SCR_MAIL, nm: $c.lit("SCR_MAIL") },
+        { val: SCR_BLANK_PAPER, nm: $c.lit("SCR_BLANK_PAPER") },
+        { val: SPE_DIG, nm: $c.lit("SPE_DIG") },
+        { val: SPE_MAGIC_MISSILE, nm: $c.lit("SPE_MAGIC_MISSILE") },
+        { val: SPE_FIREBALL, nm: $c.lit("SPE_FIREBALL") },
+        { val: SPE_CONE_OF_COLD, nm: $c.lit("SPE_CONE_OF_COLD") },
+        { val: SPE_SLEEP, nm: $c.lit("SPE_SLEEP") },
+        { val: SPE_FINGER_OF_DEATH, nm: $c.lit("SPE_FINGER_OF_DEATH") },
+        { val: SPE_LIGHT, nm: $c.lit("SPE_LIGHT") },
+        { val: SPE_DETECT_MONSTERS, nm: $c.lit("SPE_DETECT_MONSTERS") },
+        { val: SPE_HEALING, nm: $c.lit("SPE_HEALING") },
+        { val: SPE_KNOCK, nm: $c.lit("SPE_KNOCK") },
+        { val: SPE_FORCE_BOLT, nm: $c.lit("SPE_FORCE_BOLT") },
+        { val: SPE_CONFUSE_MONSTER, nm: $c.lit("SPE_CONFUSE_MONSTER") },
+        { val: SPE_CURE_BLINDNESS, nm: $c.lit("SPE_CURE_BLINDNESS") },
+        { val: SPE_DRAIN_LIFE, nm: $c.lit("SPE_DRAIN_LIFE") },
+        { val: SPE_SLOW_MONSTER, nm: $c.lit("SPE_SLOW_MONSTER") },
+        { val: SPE_WIZARD_LOCK, nm: $c.lit("SPE_WIZARD_LOCK") },
+        { val: SPE_CREATE_MONSTER, nm: $c.lit("SPE_CREATE_MONSTER") },
+        { val: SPE_DETECT_FOOD, nm: $c.lit("SPE_DETECT_FOOD") },
+        { val: SPE_CAUSE_FEAR, nm: $c.lit("SPE_CAUSE_FEAR") },
+        { val: SPE_CLAIRVOYANCE, nm: $c.lit("SPE_CLAIRVOYANCE") },
+        { val: SPE_CURE_SICKNESS, nm: $c.lit("SPE_CURE_SICKNESS") },
+        { val: SPE_CHARM_MONSTER, nm: $c.lit("SPE_CHARM_MONSTER") },
+        { val: SPE_HASTE_SELF, nm: $c.lit("SPE_HASTE_SELF") },
+        { val: SPE_DETECT_UNSEEN, nm: $c.lit("SPE_DETECT_UNSEEN") },
+        { val: SPE_LEVITATION, nm: $c.lit("SPE_LEVITATION") },
+        { val: SPE_EXTRA_HEALING, nm: $c.lit("SPE_EXTRA_HEALING") },
+        { val: SPE_RESTORE_ABILITY, nm: $c.lit("SPE_RESTORE_ABILITY") },
+        { val: SPE_INVISIBILITY, nm: $c.lit("SPE_INVISIBILITY") },
+        { val: SPE_DETECT_TREASURE, nm: $c.lit("SPE_DETECT_TREASURE") },
+        { val: SPE_REMOVE_CURSE, nm: $c.lit("SPE_REMOVE_CURSE") },
+        { val: SPE_MAGIC_MAPPING, nm: $c.lit("SPE_MAGIC_MAPPING") },
+        { val: SPE_IDENTIFY, nm: $c.lit("SPE_IDENTIFY") },
+        { val: SPE_TURN_UNDEAD, nm: $c.lit("SPE_TURN_UNDEAD") },
+        { val: SPE_POLYMORPH, nm: $c.lit("SPE_POLYMORPH") },
+        { val: SPE_TELEPORT_AWAY, nm: $c.lit("SPE_TELEPORT_AWAY") },
+        { val: SPE_CREATE_FAMILIAR, nm: $c.lit("SPE_CREATE_FAMILIAR") },
+        { val: SPE_CANCELLATION, nm: $c.lit("SPE_CANCELLATION") },
+        { val: SPE_PROTECTION, nm: $c.lit("SPE_PROTECTION") },
+        { val: SPE_JUMPING, nm: $c.lit("SPE_JUMPING") },
+        { val: SPE_STONE_TO_FLESH, nm: $c.lit("SPE_STONE_TO_FLESH") },
+        { val: SPE_CHAIN_LIGHTNING, nm: $c.lit("SPE_CHAIN_LIGHTNING") },
+        { val: SPE_BLANK_PAPER, nm: $c.lit("SPE_BLANK_PAPER") },
+        { val: SPE_NOVEL, nm: $c.lit("SPE_NOVEL") },
+        { val: SPE_BOOK_OF_THE_DEAD, nm: $c.lit("SPE_BOOK_OF_THE_DEAD") },
+        { val: WAN_LIGHT, nm: $c.lit("WAN_LIGHT") },
+        { val: WAN_SECRET_DOOR_DETECTION, nm: $c.lit("WAN_SECRET_DOOR_DETECTION") },
+        { val: WAN_ENLIGHTENMENT, nm: $c.lit("WAN_ENLIGHTENMENT") },
+        { val: WAN_CREATE_MONSTER, nm: $c.lit("WAN_CREATE_MONSTER") },
+        { val: WAN_WISHING, nm: $c.lit("WAN_WISHING") },
+        { val: WAN_STASIS, nm: $c.lit("WAN_STASIS") },
+        { val: WAN_NOTHING, nm: $c.lit("WAN_NOTHING") },
+        { val: WAN_STRIKING, nm: $c.lit("WAN_STRIKING") },
+        { val: WAN_MAKE_INVISIBLE, nm: $c.lit("WAN_MAKE_INVISIBLE") },
+        { val: WAN_SLOW_MONSTER, nm: $c.lit("WAN_SLOW_MONSTER") },
+        { val: WAN_SPEED_MONSTER, nm: $c.lit("WAN_SPEED_MONSTER") },
+        { val: WAN_UNDEAD_TURNING, nm: $c.lit("WAN_UNDEAD_TURNING") },
+        { val: WAN_POLYMORPH, nm: $c.lit("WAN_POLYMORPH") },
+        { val: WAN_CANCELLATION, nm: $c.lit("WAN_CANCELLATION") },
+        { val: WAN_TELEPORTATION, nm: $c.lit("WAN_TELEPORTATION") },
+        { val: WAN_OPENING, nm: $c.lit("WAN_OPENING") },
+        { val: WAN_LOCKING, nm: $c.lit("WAN_LOCKING") },
+        { val: WAN_PROBING, nm: $c.lit("WAN_PROBING") },
+        { val: WAN_DIGGING, nm: $c.lit("WAN_DIGGING") },
+        { val: WAN_MAGIC_MISSILE, nm: $c.lit("WAN_MAGIC_MISSILE") },
+        { val: WAN_FIRE, nm: $c.lit("WAN_FIRE") },
+        { val: WAN_COLD, nm: $c.lit("WAN_COLD") },
+        { val: WAN_SLEEP, nm: $c.lit("WAN_SLEEP") },
+        { val: WAN_DEATH, nm: $c.lit("WAN_DEATH") },
+        { val: WAN_LIGHTNING, nm: $c.lit("WAN_LIGHTNING") },
+        { val: WAN1, nm: $c.lit("WAN1") },
+        { val: WAN2, nm: $c.lit("WAN2") },
+        { val: WAN3, nm: $c.lit("WAN3") },
+        { val: GOLD_PIECE, nm: $c.lit("GOLD_PIECE") },
+        { val: DILITHIUM_CRYSTAL, nm: $c.lit("DILITHIUM_CRYSTAL") },
+        { val: DIAMOND, nm: $c.lit("DIAMOND") },
+        { val: RUBY, nm: $c.lit("RUBY") },
+        { val: JACINTH, nm: $c.lit("JACINTH") },
+        { val: SAPPHIRE, nm: $c.lit("SAPPHIRE") },
+        { val: BLACK_OPAL, nm: $c.lit("BLACK_OPAL") },
+        { val: EMERALD, nm: $c.lit("EMERALD") },
+        { val: TURQUOISE, nm: $c.lit("TURQUOISE") },
+        { val: CITRINE, nm: $c.lit("CITRINE") },
+        { val: AQUAMARINE, nm: $c.lit("AQUAMARINE") },
+        { val: AMBER, nm: $c.lit("AMBER") },
+        { val: TOPAZ, nm: $c.lit("TOPAZ") },
+        { val: JET, nm: $c.lit("JET") },
+        { val: OPAL, nm: $c.lit("OPAL") },
+        { val: CHRYSOBERYL, nm: $c.lit("CHRYSOBERYL") },
+        { val: GARNET, nm: $c.lit("GARNET") },
+        { val: AMETHYST, nm: $c.lit("AMETHYST") },
+        { val: JASPER, nm: $c.lit("JASPER") },
+        { val: FLUORITE, nm: $c.lit("FLUORITE") },
+        { val: OBSIDIAN, nm: $c.lit("OBSIDIAN") },
+        { val: AGATE, nm: $c.lit("AGATE") },
+        { val: JADE, nm: $c.lit("JADE") },
+        { val: WORTHLESS_WHITE_GLASS, nm: $c.lit("WORTHLESS_WHITE_GLASS") },
+        { val: WORTHLESS_BLUE_GLASS, nm: $c.lit("WORTHLESS_BLUE_GLASS") },
+        { val: WORTHLESS_RED_GLASS, nm: $c.lit("WORTHLESS_RED_GLASS") },
+        { val: WORTHLESS_YELLOWBROWN_GLASS, nm: $c.lit("WORTHLESS_YELLOWBROWN_GLASS") },
+        { val: WORTHLESS_ORANGE_GLASS, nm: $c.lit("WORTHLESS_ORANGE_GLASS") },
+        { val: WORTHLESS_YELLOW_GLASS, nm: $c.lit("WORTHLESS_YELLOW_GLASS") },
+        { val: WORTHLESS_BLACK_GLASS, nm: $c.lit("WORTHLESS_BLACK_GLASS") },
+        { val: WORTHLESS_GREEN_GLASS, nm: $c.lit("WORTHLESS_GREEN_GLASS") },
+        { val: WORTHLESS_VIOLET_GLASS, nm: $c.lit("WORTHLESS_VIOLET_GLASS") },
+        { val: LUCKSTONE, nm: $c.lit("LUCKSTONE") },
+        { val: LOADSTONE, nm: $c.lit("LOADSTONE") },
+        { val: TOUCHSTONE, nm: $c.lit("TOUCHSTONE") },
+        { val: FLINT, nm: $c.lit("FLINT") },
+        { val: ROCK, nm: $c.lit("ROCK") },
+        { val: BOULDER, nm: $c.lit("BOULDER") },
+        { val: STATUE, nm: $c.lit("STATUE") },
+        { val: HEAVY_IRON_BALL, nm: $c.lit("HEAVY_IRON_BALL") },
+        { val: IRON_CHAIN, nm: $c.lit("IRON_CHAIN") },
+        { val: BLINDING_VENOM, nm: $c.lit("BLINDING_VENOM") },
+        { val: ACID_VENOM, nm: $c.lit("ACID_VENOM") },
+        { val: NUM_OBJECTS, nm: $c.lit("NUM_OBJECTS") }
+    ]);
     for (let $i0 = 0; $i0 < 106; $i0++) {
         defsym_cmap_dump[$i0].$copyFrom(new $T.enum_dump());
     }
-    defsym_cmap_dump[0].val = 0 /* S_stone */;
-    defsym_cmap_dump[0].nm = $c.lit("S_stone");
-    defsym_cmap_dump[1].val = 1 /* S_vwall */;
-    defsym_cmap_dump[1].nm = $c.lit("S_vwall");
-    defsym_cmap_dump[2].val = 2 /* S_hwall */;
-    defsym_cmap_dump[2].nm = $c.lit("S_hwall");
-    defsym_cmap_dump[3].val = 3 /* S_tlcorn */;
-    defsym_cmap_dump[3].nm = $c.lit("S_tlcorn");
-    defsym_cmap_dump[4].val = 4 /* S_trcorn */;
-    defsym_cmap_dump[4].nm = $c.lit("S_trcorn");
-    defsym_cmap_dump[5].val = 5 /* S_blcorn */;
-    defsym_cmap_dump[5].nm = $c.lit("S_blcorn");
-    defsym_cmap_dump[6].val = 6 /* S_brcorn */;
-    defsym_cmap_dump[6].nm = $c.lit("S_brcorn");
-    defsym_cmap_dump[7].val = 7 /* S_crwall */;
-    defsym_cmap_dump[7].nm = $c.lit("S_crwall");
-    defsym_cmap_dump[8].val = 8 /* S_tuwall */;
-    defsym_cmap_dump[8].nm = $c.lit("S_tuwall");
-    defsym_cmap_dump[9].val = 9 /* S_tdwall */;
-    defsym_cmap_dump[9].nm = $c.lit("S_tdwall");
-    defsym_cmap_dump[10].val = 10 /* S_tlwall */;
-    defsym_cmap_dump[10].nm = $c.lit("S_tlwall");
-    defsym_cmap_dump[11].val = 11 /* S_trwall */;
-    defsym_cmap_dump[11].nm = $c.lit("S_trwall");
-    defsym_cmap_dump[12].val = 12 /* S_ndoor */;
-    defsym_cmap_dump[12].nm = $c.lit("S_ndoor");
-    defsym_cmap_dump[13].val = 13 /* S_vodoor */;
-    defsym_cmap_dump[13].nm = $c.lit("S_vodoor");
-    defsym_cmap_dump[14].val = 14 /* S_hodoor */;
-    defsym_cmap_dump[14].nm = $c.lit("S_hodoor");
-    defsym_cmap_dump[15].val = 15 /* S_vcdoor */;
-    defsym_cmap_dump[15].nm = $c.lit("S_vcdoor");
-    defsym_cmap_dump[16].val = 16 /* S_hcdoor */;
-    defsym_cmap_dump[16].nm = $c.lit("S_hcdoor");
-    defsym_cmap_dump[17].val = 17 /* S_bars */;
-    defsym_cmap_dump[17].nm = $c.lit("S_bars");
-    defsym_cmap_dump[18].val = 18 /* S_tree */;
-    defsym_cmap_dump[18].nm = $c.lit("S_tree");
-    defsym_cmap_dump[19].val = 19 /* S_room */;
-    defsym_cmap_dump[19].nm = $c.lit("S_room");
-    defsym_cmap_dump[20].val = 20 /* S_darkroom */;
-    defsym_cmap_dump[20].nm = $c.lit("S_darkroom");
-    defsym_cmap_dump[21].val = 21 /* S_engroom */;
-    defsym_cmap_dump[21].nm = $c.lit("S_engroom");
-    defsym_cmap_dump[22].val = 22 /* S_corr */;
-    defsym_cmap_dump[22].nm = $c.lit("S_corr");
-    defsym_cmap_dump[23].val = 23 /* S_litcorr */;
-    defsym_cmap_dump[23].nm = $c.lit("S_litcorr");
-    defsym_cmap_dump[24].val = 24 /* S_engrcorr */;
-    defsym_cmap_dump[24].nm = $c.lit("S_engrcorr");
-    defsym_cmap_dump[25].val = 25 /* S_upstair */;
-    defsym_cmap_dump[25].nm = $c.lit("S_upstair");
-    defsym_cmap_dump[26].val = 26 /* S_dnstair */;
-    defsym_cmap_dump[26].nm = $c.lit("S_dnstair");
-    defsym_cmap_dump[27].val = 27 /* S_upladder */;
-    defsym_cmap_dump[27].nm = $c.lit("S_upladder");
-    defsym_cmap_dump[28].val = 28 /* S_dnladder */;
-    defsym_cmap_dump[28].nm = $c.lit("S_dnladder");
-    defsym_cmap_dump[29].val = 29 /* S_brupstair */;
-    defsym_cmap_dump[29].nm = $c.lit("S_brupstair");
-    defsym_cmap_dump[30].val = 30 /* S_brdnstair */;
-    defsym_cmap_dump[30].nm = $c.lit("S_brdnstair");
-    defsym_cmap_dump[31].val = 31 /* S_brupladder */;
-    defsym_cmap_dump[31].nm = $c.lit("S_brupladder");
-    defsym_cmap_dump[32].val = 32 /* S_brdnladder */;
-    defsym_cmap_dump[32].nm = $c.lit("S_brdnladder");
-    defsym_cmap_dump[33].val = 33 /* S_altar */;
-    defsym_cmap_dump[33].nm = $c.lit("S_altar");
-    defsym_cmap_dump[34].val = 34 /* S_grave */;
-    defsym_cmap_dump[34].nm = $c.lit("S_grave");
-    defsym_cmap_dump[35].val = 35 /* S_throne */;
-    defsym_cmap_dump[35].nm = $c.lit("S_throne");
-    defsym_cmap_dump[36].val = 36 /* S_sink */;
-    defsym_cmap_dump[36].nm = $c.lit("S_sink");
-    defsym_cmap_dump[37].val = 37 /* S_fountain */;
-    defsym_cmap_dump[37].nm = $c.lit("S_fountain");
-    defsym_cmap_dump[38].val = 38 /* S_pool */;
-    defsym_cmap_dump[38].nm = $c.lit("S_pool");
-    defsym_cmap_dump[39].val = 39 /* S_ice */;
-    defsym_cmap_dump[39].nm = $c.lit("S_ice");
-    defsym_cmap_dump[40].val = 40 /* S_lava */;
-    defsym_cmap_dump[40].nm = $c.lit("S_lava");
-    defsym_cmap_dump[41].val = 41 /* S_lavawall */;
-    defsym_cmap_dump[41].nm = $c.lit("S_lavawall");
-    defsym_cmap_dump[42].val = 42 /* S_vodbridge */;
-    defsym_cmap_dump[42].nm = $c.lit("S_vodbridge");
-    defsym_cmap_dump[43].val = 43 /* S_hodbridge */;
-    defsym_cmap_dump[43].nm = $c.lit("S_hodbridge");
-    defsym_cmap_dump[44].val = 44 /* S_vcdbridge */;
-    defsym_cmap_dump[44].nm = $c.lit("S_vcdbridge");
-    defsym_cmap_dump[45].val = 45 /* S_hcdbridge */;
-    defsym_cmap_dump[45].nm = $c.lit("S_hcdbridge");
-    defsym_cmap_dump[46].val = 46 /* S_air */;
-    defsym_cmap_dump[46].nm = $c.lit("S_air");
-    defsym_cmap_dump[47].val = 47 /* S_cloud */;
-    defsym_cmap_dump[47].nm = $c.lit("S_cloud");
-    defsym_cmap_dump[48].val = 48 /* S_water */;
-    defsym_cmap_dump[48].nm = $c.lit("S_water");
-    defsym_cmap_dump[49].val = 49 /* S_arrow_trap */;
-    defsym_cmap_dump[49].nm = $c.lit("S_arrow_trap");
-    defsym_cmap_dump[50].val = 50 /* S_dart_trap */;
-    defsym_cmap_dump[50].nm = $c.lit("S_dart_trap");
-    defsym_cmap_dump[51].val = 51 /* S_falling_rock_trap */;
-    defsym_cmap_dump[51].nm = $c.lit("S_falling_rock_trap");
-    defsym_cmap_dump[52].val = 52 /* S_squeaky_board */;
-    defsym_cmap_dump[52].nm = $c.lit("S_squeaky_board");
-    defsym_cmap_dump[53].val = 53 /* S_bear_trap */;
-    defsym_cmap_dump[53].nm = $c.lit("S_bear_trap");
-    defsym_cmap_dump[54].val = 54 /* S_land_mine */;
-    defsym_cmap_dump[54].nm = $c.lit("S_land_mine");
-    defsym_cmap_dump[55].val = 55 /* S_rolling_boulder_trap */;
-    defsym_cmap_dump[55].nm = $c.lit("S_rolling_boulder_trap");
-    defsym_cmap_dump[56].val = 56 /* S_sleeping_gas_trap */;
-    defsym_cmap_dump[56].nm = $c.lit("S_sleeping_gas_trap");
-    defsym_cmap_dump[57].val = 57 /* S_rust_trap */;
-    defsym_cmap_dump[57].nm = $c.lit("S_rust_trap");
-    defsym_cmap_dump[58].val = 58 /* S_fire_trap */;
-    defsym_cmap_dump[58].nm = $c.lit("S_fire_trap");
-    defsym_cmap_dump[59].val = 59 /* S_pit */;
-    defsym_cmap_dump[59].nm = $c.lit("S_pit");
-    defsym_cmap_dump[60].val = 60 /* S_spiked_pit */;
-    defsym_cmap_dump[60].nm = $c.lit("S_spiked_pit");
-    defsym_cmap_dump[61].val = 61 /* S_hole */;
-    defsym_cmap_dump[61].nm = $c.lit("S_hole");
-    defsym_cmap_dump[62].val = 62 /* S_trap_door */;
-    defsym_cmap_dump[62].nm = $c.lit("S_trap_door");
-    defsym_cmap_dump[63].val = 63 /* S_teleportation_trap */;
-    defsym_cmap_dump[63].nm = $c.lit("S_teleportation_trap");
-    defsym_cmap_dump[64].val = 64 /* S_level_teleporter */;
-    defsym_cmap_dump[64].nm = $c.lit("S_level_teleporter");
-    defsym_cmap_dump[65].val = 65 /* S_magic_portal */;
-    defsym_cmap_dump[65].nm = $c.lit("S_magic_portal");
-    defsym_cmap_dump[66].val = 66 /* S_web */;
-    defsym_cmap_dump[66].nm = $c.lit("S_web");
-    defsym_cmap_dump[67].val = 67 /* S_statue_trap */;
-    defsym_cmap_dump[67].nm = $c.lit("S_statue_trap");
-    defsym_cmap_dump[68].val = 68 /* S_magic_trap */;
-    defsym_cmap_dump[68].nm = $c.lit("S_magic_trap");
-    defsym_cmap_dump[69].val = 69 /* S_anti_magic_trap */;
-    defsym_cmap_dump[69].nm = $c.lit("S_anti_magic_trap");
-    defsym_cmap_dump[70].val = 70 /* S_polymorph_trap */;
-    defsym_cmap_dump[70].nm = $c.lit("S_polymorph_trap");
-    defsym_cmap_dump[71].val = 71 /* S_vibrating_square */;
-    defsym_cmap_dump[71].nm = $c.lit("S_vibrating_square");
-    defsym_cmap_dump[72].val = 72 /* S_trapped_door */;
-    defsym_cmap_dump[72].nm = $c.lit("S_trapped_door");
-    defsym_cmap_dump[73].val = 73 /* S_trapped_chest */;
-    defsym_cmap_dump[73].nm = $c.lit("S_trapped_chest");
-    defsym_cmap_dump[74].val = 74 /* S_vbeam */;
-    defsym_cmap_dump[74].nm = $c.lit("S_vbeam");
-    defsym_cmap_dump[75].val = 75 /* S_hbeam */;
-    defsym_cmap_dump[75].nm = $c.lit("S_hbeam");
-    defsym_cmap_dump[76].val = 76 /* S_lslant */;
-    defsym_cmap_dump[76].nm = $c.lit("S_lslant");
-    defsym_cmap_dump[77].val = 77 /* S_rslant */;
-    defsym_cmap_dump[77].nm = $c.lit("S_rslant");
-    defsym_cmap_dump[78].val = 78 /* S_digbeam */;
-    defsym_cmap_dump[78].nm = $c.lit("S_digbeam");
-    defsym_cmap_dump[79].val = 79 /* S_flashbeam */;
-    defsym_cmap_dump[79].nm = $c.lit("S_flashbeam");
-    defsym_cmap_dump[80].val = 80 /* S_boomleft */;
-    defsym_cmap_dump[80].nm = $c.lit("S_boomleft");
-    defsym_cmap_dump[81].val = 81 /* S_boomright */;
-    defsym_cmap_dump[81].nm = $c.lit("S_boomright");
-    defsym_cmap_dump[82].val = 82 /* S_ss1 */;
-    defsym_cmap_dump[82].nm = $c.lit("S_ss1");
-    defsym_cmap_dump[83].val = 83 /* S_ss2 */;
-    defsym_cmap_dump[83].nm = $c.lit("S_ss2");
-    defsym_cmap_dump[84].val = 84 /* S_ss3 */;
-    defsym_cmap_dump[84].nm = $c.lit("S_ss3");
-    defsym_cmap_dump[85].val = 85 /* S_ss4 */;
-    defsym_cmap_dump[85].nm = $c.lit("S_ss4");
-    defsym_cmap_dump[86].val = 86 /* S_poisoncloud */;
-    defsym_cmap_dump[86].nm = $c.lit("S_poisoncloud");
-    defsym_cmap_dump[87].val = 87 /* S_goodpos */;
-    defsym_cmap_dump[87].nm = $c.lit("S_goodpos");
-    defsym_cmap_dump[88].val = 88 /* S_sw_tl */;
-    defsym_cmap_dump[88].nm = $c.lit("S_sw_tl");
-    defsym_cmap_dump[89].val = 89 /* S_sw_tc */;
-    defsym_cmap_dump[89].nm = $c.lit("S_sw_tc");
-    defsym_cmap_dump[90].val = 90 /* S_sw_tr */;
-    defsym_cmap_dump[90].nm = $c.lit("S_sw_tr");
-    defsym_cmap_dump[91].val = 91 /* S_sw_ml */;
-    defsym_cmap_dump[91].nm = $c.lit("S_sw_ml");
-    defsym_cmap_dump[92].val = 92 /* S_sw_mr */;
-    defsym_cmap_dump[92].nm = $c.lit("S_sw_mr");
-    defsym_cmap_dump[93].val = 93 /* S_sw_bl */;
-    defsym_cmap_dump[93].nm = $c.lit("S_sw_bl");
-    defsym_cmap_dump[94].val = 94 /* S_sw_bc */;
-    defsym_cmap_dump[94].nm = $c.lit("S_sw_bc");
-    defsym_cmap_dump[95].val = 95 /* S_sw_br */;
-    defsym_cmap_dump[95].nm = $c.lit("S_sw_br");
-    defsym_cmap_dump[96].val = 96 /* S_expl_tl */;
-    defsym_cmap_dump[96].nm = $c.lit("S_expl_tl");
-    defsym_cmap_dump[97].val = 97 /* S_expl_tc */;
-    defsym_cmap_dump[97].nm = $c.lit("S_expl_tc");
-    defsym_cmap_dump[98].val = 98 /* S_expl_tr */;
-    defsym_cmap_dump[98].nm = $c.lit("S_expl_tr");
-    defsym_cmap_dump[99].val = 99 /* S_expl_ml */;
-    defsym_cmap_dump[99].nm = $c.lit("S_expl_ml");
-    defsym_cmap_dump[100].val = 100 /* S_expl_mc */;
-    defsym_cmap_dump[100].nm = $c.lit("S_expl_mc");
-    defsym_cmap_dump[101].val = 101 /* S_expl_mr */;
-    defsym_cmap_dump[101].nm = $c.lit("S_expl_mr");
-    defsym_cmap_dump[102].val = 102 /* S_expl_bl */;
-    defsym_cmap_dump[102].nm = $c.lit("S_expl_bl");
-    defsym_cmap_dump[103].val = 103 /* S_expl_bc */;
-    defsym_cmap_dump[103].nm = $c.lit("S_expl_bc");
-    defsym_cmap_dump[104].val = 104 /* S_expl_br */;
-    defsym_cmap_dump[104].nm = $c.lit("S_expl_br");
-    defsym_cmap_dump[105].val = 105 /* MAXPCHARS */;
-    defsym_cmap_dump[105].nm = $c.lit("MAXPCHARS");
+    $c.init(defsym_cmap_dump, [
+        { val: S.stone, nm: $c.lit("S_stone") },
+        { val: S.vwall, nm: $c.lit("S_vwall") },
+        { val: S.hwall, nm: $c.lit("S_hwall") },
+        { val: S.tlcorn, nm: $c.lit("S_tlcorn") },
+        { val: S.trcorn, nm: $c.lit("S_trcorn") },
+        { val: S.blcorn, nm: $c.lit("S_blcorn") },
+        { val: S.brcorn, nm: $c.lit("S_brcorn") },
+        { val: S.crwall, nm: $c.lit("S_crwall") },
+        { val: S.tuwall, nm: $c.lit("S_tuwall") },
+        { val: S.tdwall, nm: $c.lit("S_tdwall") },
+        { val: S.tlwall, nm: $c.lit("S_tlwall") },
+        { val: S.trwall, nm: $c.lit("S_trwall") },
+        { val: S.ndoor, nm: $c.lit("S_ndoor") },
+        { val: S.vodoor, nm: $c.lit("S_vodoor") },
+        { val: S.hodoor, nm: $c.lit("S_hodoor") },
+        { val: S.vcdoor, nm: $c.lit("S_vcdoor") },
+        { val: S.hcdoor, nm: $c.lit("S_hcdoor") },
+        { val: S.bars, nm: $c.lit("S_bars") },
+        { val: S.tree, nm: $c.lit("S_tree") },
+        { val: S.room, nm: $c.lit("S_room") },
+        { val: S.darkroom, nm: $c.lit("S_darkroom") },
+        { val: S.engroom, nm: $c.lit("S_engroom") },
+        { val: S.corr, nm: $c.lit("S_corr") },
+        { val: S.litcorr, nm: $c.lit("S_litcorr") },
+        { val: S.engrcorr, nm: $c.lit("S_engrcorr") },
+        { val: S.upstair, nm: $c.lit("S_upstair") },
+        { val: S.dnstair, nm: $c.lit("S_dnstair") },
+        { val: S.upladder, nm: $c.lit("S_upladder") },
+        { val: S.dnladder, nm: $c.lit("S_dnladder") },
+        { val: S.brupstair, nm: $c.lit("S_brupstair") },
+        { val: S.brdnstair, nm: $c.lit("S_brdnstair") },
+        { val: S.brupladder, nm: $c.lit("S_brupladder") },
+        { val: S.brdnladder, nm: $c.lit("S_brdnladder") },
+        { val: S.altar, nm: $c.lit("S_altar") },
+        { val: S.grave, nm: $c.lit("S_grave") },
+        { val: S.throne, nm: $c.lit("S_throne") },
+        { val: S.sink, nm: $c.lit("S_sink") },
+        { val: S.fountain, nm: $c.lit("S_fountain") },
+        { val: S.pool, nm: $c.lit("S_pool") },
+        { val: S.ice, nm: $c.lit("S_ice") },
+        { val: S.lava, nm: $c.lit("S_lava") },
+        { val: S.lavawall, nm: $c.lit("S_lavawall") },
+        { val: S.vodbridge, nm: $c.lit("S_vodbridge") },
+        { val: S.hodbridge, nm: $c.lit("S_hodbridge") },
+        { val: S.vcdbridge, nm: $c.lit("S_vcdbridge") },
+        { val: S.hcdbridge, nm: $c.lit("S_hcdbridge") },
+        { val: S.air, nm: $c.lit("S_air") },
+        { val: S.cloud, nm: $c.lit("S_cloud") },
+        { val: S.water, nm: $c.lit("S_water") },
+        { val: S.arrow_trap, nm: $c.lit("S_arrow_trap") },
+        { val: S.dart_trap, nm: $c.lit("S_dart_trap") },
+        { val: S.falling_rock_trap, nm: $c.lit("S_falling_rock_trap") },
+        { val: S.squeaky_board, nm: $c.lit("S_squeaky_board") },
+        { val: S.bear_trap, nm: $c.lit("S_bear_trap") },
+        { val: S.land_mine, nm: $c.lit("S_land_mine") },
+        { val: S.rolling_boulder_trap, nm: $c.lit("S_rolling_boulder_trap") },
+        { val: S.sleeping_gas_trap, nm: $c.lit("S_sleeping_gas_trap") },
+        { val: S.rust_trap, nm: $c.lit("S_rust_trap") },
+        { val: S.fire_trap, nm: $c.lit("S_fire_trap") },
+        { val: S.pit, nm: $c.lit("S_pit") },
+        { val: S.spiked_pit, nm: $c.lit("S_spiked_pit") },
+        { val: S.hole, nm: $c.lit("S_hole") },
+        { val: S.trap_door, nm: $c.lit("S_trap_door") },
+        { val: S.teleportation_trap, nm: $c.lit("S_teleportation_trap") },
+        { val: S.level_teleporter, nm: $c.lit("S_level_teleporter") },
+        { val: S.magic_portal, nm: $c.lit("S_magic_portal") },
+        { val: S.web, nm: $c.lit("S_web") },
+        { val: S.statue_trap, nm: $c.lit("S_statue_trap") },
+        { val: S.magic_trap, nm: $c.lit("S_magic_trap") },
+        { val: S.anti_magic_trap, nm: $c.lit("S_anti_magic_trap") },
+        { val: S.polymorph_trap, nm: $c.lit("S_polymorph_trap") },
+        { val: S.vibrating_square, nm: $c.lit("S_vibrating_square") },
+        { val: S.trapped_door, nm: $c.lit("S_trapped_door") },
+        { val: S.trapped_chest, nm: $c.lit("S_trapped_chest") },
+        { val: S.vbeam, nm: $c.lit("S_vbeam") },
+        { val: S.hbeam, nm: $c.lit("S_hbeam") },
+        { val: S.lslant, nm: $c.lit("S_lslant") },
+        { val: S.rslant, nm: $c.lit("S_rslant") },
+        { val: S.digbeam, nm: $c.lit("S_digbeam") },
+        { val: S.flashbeam, nm: $c.lit("S_flashbeam") },
+        { val: S.boomleft, nm: $c.lit("S_boomleft") },
+        { val: S.boomright, nm: $c.lit("S_boomright") },
+        { val: S.ss1, nm: $c.lit("S_ss1") },
+        { val: S.ss2, nm: $c.lit("S_ss2") },
+        { val: S.ss3, nm: $c.lit("S_ss3") },
+        { val: S.ss4, nm: $c.lit("S_ss4") },
+        { val: S.poisoncloud, nm: $c.lit("S_poisoncloud") },
+        { val: S.goodpos, nm: $c.lit("S_goodpos") },
+        { val: S.sw_tl, nm: $c.lit("S_sw_tl") },
+        { val: S.sw_tc, nm: $c.lit("S_sw_tc") },
+        { val: S.sw_tr, nm: $c.lit("S_sw_tr") },
+        { val: S.sw_ml, nm: $c.lit("S_sw_ml") },
+        { val: S.sw_mr, nm: $c.lit("S_sw_mr") },
+        { val: S.sw_bl, nm: $c.lit("S_sw_bl") },
+        { val: S.sw_bc, nm: $c.lit("S_sw_bc") },
+        { val: S.sw_br, nm: $c.lit("S_sw_br") },
+        { val: S.expl_tl, nm: $c.lit("S_expl_tl") },
+        { val: S.expl_tc, nm: $c.lit("S_expl_tc") },
+        { val: S.expl_tr, nm: $c.lit("S_expl_tr") },
+        { val: S.expl_ml, nm: $c.lit("S_expl_ml") },
+        { val: S.expl_mc, nm: $c.lit("S_expl_mc") },
+        { val: S.expl_mr, nm: $c.lit("S_expl_mr") },
+        { val: S.expl_bl, nm: $c.lit("S_expl_bl") },
+        { val: S.expl_bc, nm: $c.lit("S_expl_bc") },
+        { val: S.expl_br, nm: $c.lit("S_expl_br") },
+        { val: MAXPCHARS, nm: $c.lit("MAXPCHARS") }
+    ]);
     for (let $i0 = 0; $i0 < 61; $i0++) {
         defsym_mon_syms_dump[$i0].$copyFrom(new $T.enum_dump());
     }
-    defsym_mon_syms_dump[0].val = 1 /* S_ANT */;
-    defsym_mon_syms_dump[0].nm = $c.lit("S_ANT");
-    defsym_mon_syms_dump[1].val = 2 /* S_BLOB */;
-    defsym_mon_syms_dump[1].nm = $c.lit("S_BLOB");
-    defsym_mon_syms_dump[2].val = 3 /* S_COCKATRICE */;
-    defsym_mon_syms_dump[2].nm = $c.lit("S_COCKATRICE");
-    defsym_mon_syms_dump[3].val = 4 /* S_DOG */;
-    defsym_mon_syms_dump[3].nm = $c.lit("S_DOG");
-    defsym_mon_syms_dump[4].val = 5 /* S_EYE */;
-    defsym_mon_syms_dump[4].nm = $c.lit("S_EYE");
-    defsym_mon_syms_dump[5].val = 6 /* S_FELINE */;
-    defsym_mon_syms_dump[5].nm = $c.lit("S_FELINE");
-    defsym_mon_syms_dump[6].val = 7 /* S_GREMLIN */;
-    defsym_mon_syms_dump[6].nm = $c.lit("S_GREMLIN");
-    defsym_mon_syms_dump[7].val = 8 /* S_HUMANOID */;
-    defsym_mon_syms_dump[7].nm = $c.lit("S_HUMANOID");
-    defsym_mon_syms_dump[8].val = 9 /* S_IMP */;
-    defsym_mon_syms_dump[8].nm = $c.lit("S_IMP");
-    defsym_mon_syms_dump[9].val = 10 /* S_JELLY */;
-    defsym_mon_syms_dump[9].nm = $c.lit("S_JELLY");
-    defsym_mon_syms_dump[10].val = 11 /* S_KOBOLD */;
-    defsym_mon_syms_dump[10].nm = $c.lit("S_KOBOLD");
-    defsym_mon_syms_dump[11].val = 12 /* S_LEPRECHAUN */;
-    defsym_mon_syms_dump[11].nm = $c.lit("S_LEPRECHAUN");
-    defsym_mon_syms_dump[12].val = 13 /* S_MIMIC */;
-    defsym_mon_syms_dump[12].nm = $c.lit("S_MIMIC");
-    defsym_mon_syms_dump[13].val = 14 /* S_NYMPH */;
-    defsym_mon_syms_dump[13].nm = $c.lit("S_NYMPH");
-    defsym_mon_syms_dump[14].val = 15 /* S_ORC */;
-    defsym_mon_syms_dump[14].nm = $c.lit("S_ORC");
-    defsym_mon_syms_dump[15].val = 16 /* S_PIERCER */;
-    defsym_mon_syms_dump[15].nm = $c.lit("S_PIERCER");
-    defsym_mon_syms_dump[16].val = 17 /* S_QUADRUPED */;
-    defsym_mon_syms_dump[16].nm = $c.lit("S_QUADRUPED");
-    defsym_mon_syms_dump[17].val = 18 /* S_RODENT */;
-    defsym_mon_syms_dump[17].nm = $c.lit("S_RODENT");
-    defsym_mon_syms_dump[18].val = 19 /* S_SPIDER */;
-    defsym_mon_syms_dump[18].nm = $c.lit("S_SPIDER");
-    defsym_mon_syms_dump[19].val = 20 /* S_TRAPPER */;
-    defsym_mon_syms_dump[19].nm = $c.lit("S_TRAPPER");
-    defsym_mon_syms_dump[20].val = 21 /* S_UNICORN */;
-    defsym_mon_syms_dump[20].nm = $c.lit("S_UNICORN");
-    defsym_mon_syms_dump[21].val = 22 /* S_VORTEX */;
-    defsym_mon_syms_dump[21].nm = $c.lit("S_VORTEX");
-    defsym_mon_syms_dump[22].val = 23 /* S_WORM */;
-    defsym_mon_syms_dump[22].nm = $c.lit("S_WORM");
-    defsym_mon_syms_dump[23].val = 24 /* S_XAN */;
-    defsym_mon_syms_dump[23].nm = $c.lit("S_XAN");
-    defsym_mon_syms_dump[24].val = 25 /* S_LIGHT */;
-    defsym_mon_syms_dump[24].nm = $c.lit("S_LIGHT");
-    defsym_mon_syms_dump[25].val = 26 /* S_ZRUTY */;
-    defsym_mon_syms_dump[25].nm = $c.lit("S_ZRUTY");
-    defsym_mon_syms_dump[26].val = 27 /* S_ANGEL */;
-    defsym_mon_syms_dump[26].nm = $c.lit("S_ANGEL");
-    defsym_mon_syms_dump[27].val = 28 /* S_BAT */;
-    defsym_mon_syms_dump[27].nm = $c.lit("S_BAT");
-    defsym_mon_syms_dump[28].val = 29 /* S_CENTAUR */;
-    defsym_mon_syms_dump[28].nm = $c.lit("S_CENTAUR");
-    defsym_mon_syms_dump[29].val = 30 /* S_DRAGON */;
-    defsym_mon_syms_dump[29].nm = $c.lit("S_DRAGON");
-    defsym_mon_syms_dump[30].val = 31 /* S_ELEMENTAL */;
-    defsym_mon_syms_dump[30].nm = $c.lit("S_ELEMENTAL");
-    defsym_mon_syms_dump[31].val = 32 /* S_FUNGUS */;
-    defsym_mon_syms_dump[31].nm = $c.lit("S_FUNGUS");
-    defsym_mon_syms_dump[32].val = 33 /* S_GNOME */;
-    defsym_mon_syms_dump[32].nm = $c.lit("S_GNOME");
-    defsym_mon_syms_dump[33].val = 34 /* S_GIANT */;
-    defsym_mon_syms_dump[33].nm = $c.lit("S_GIANT");
-    defsym_mon_syms_dump[34].val = 35 /* S_invisible */;
-    defsym_mon_syms_dump[34].nm = $c.lit("S_invisible");
-    defsym_mon_syms_dump[35].val = 36 /* S_JABBERWOCK */;
-    defsym_mon_syms_dump[35].nm = $c.lit("S_JABBERWOCK");
-    defsym_mon_syms_dump[36].val = 37 /* S_KOP */;
-    defsym_mon_syms_dump[36].nm = $c.lit("S_KOP");
-    defsym_mon_syms_dump[37].val = 38 /* S_LICH */;
-    defsym_mon_syms_dump[37].nm = $c.lit("S_LICH");
-    defsym_mon_syms_dump[38].val = 39 /* S_MUMMY */;
-    defsym_mon_syms_dump[38].nm = $c.lit("S_MUMMY");
-    defsym_mon_syms_dump[39].val = 40 /* S_NAGA */;
-    defsym_mon_syms_dump[39].nm = $c.lit("S_NAGA");
-    defsym_mon_syms_dump[40].val = 41 /* S_OGRE */;
-    defsym_mon_syms_dump[40].nm = $c.lit("S_OGRE");
-    defsym_mon_syms_dump[41].val = 42 /* S_PUDDING */;
-    defsym_mon_syms_dump[41].nm = $c.lit("S_PUDDING");
-    defsym_mon_syms_dump[42].val = 43 /* S_QUANTMECH */;
-    defsym_mon_syms_dump[42].nm = $c.lit("S_QUANTMECH");
-    defsym_mon_syms_dump[43].val = 44 /* S_RUSTMONST */;
-    defsym_mon_syms_dump[43].nm = $c.lit("S_RUSTMONST");
-    defsym_mon_syms_dump[44].val = 45 /* S_SNAKE */;
-    defsym_mon_syms_dump[44].nm = $c.lit("S_SNAKE");
-    defsym_mon_syms_dump[45].val = 46 /* S_TROLL */;
-    defsym_mon_syms_dump[45].nm = $c.lit("S_TROLL");
-    defsym_mon_syms_dump[46].val = 47 /* S_UMBER */;
-    defsym_mon_syms_dump[46].nm = $c.lit("S_UMBER");
-    defsym_mon_syms_dump[47].val = 48 /* S_VAMPIRE */;
-    defsym_mon_syms_dump[47].nm = $c.lit("S_VAMPIRE");
-    defsym_mon_syms_dump[48].val = 49 /* S_WRAITH */;
-    defsym_mon_syms_dump[48].nm = $c.lit("S_WRAITH");
-    defsym_mon_syms_dump[49].val = 50 /* S_XORN */;
-    defsym_mon_syms_dump[49].nm = $c.lit("S_XORN");
-    defsym_mon_syms_dump[50].val = 51 /* S_YETI */;
-    defsym_mon_syms_dump[50].nm = $c.lit("S_YETI");
-    defsym_mon_syms_dump[51].val = 52 /* S_ZOMBIE */;
-    defsym_mon_syms_dump[51].nm = $c.lit("S_ZOMBIE");
-    defsym_mon_syms_dump[52].val = 53 /* S_HUMAN */;
-    defsym_mon_syms_dump[52].nm = $c.lit("S_HUMAN");
-    defsym_mon_syms_dump[53].val = 54 /* S_GHOST */;
-    defsym_mon_syms_dump[53].nm = $c.lit("S_GHOST");
-    defsym_mon_syms_dump[54].val = 55 /* S_GOLEM */;
-    defsym_mon_syms_dump[54].nm = $c.lit("S_GOLEM");
-    defsym_mon_syms_dump[55].val = 56 /* S_DEMON */;
-    defsym_mon_syms_dump[55].nm = $c.lit("S_DEMON");
-    defsym_mon_syms_dump[56].val = 57 /* S_EEL */;
-    defsym_mon_syms_dump[56].nm = $c.lit("S_EEL");
-    defsym_mon_syms_dump[57].val = 58 /* S_LIZARD */;
-    defsym_mon_syms_dump[57].nm = $c.lit("S_LIZARD");
-    defsym_mon_syms_dump[58].val = 59 /* S_WORM_TAIL */;
-    defsym_mon_syms_dump[58].nm = $c.lit("S_WORM_TAIL");
-    defsym_mon_syms_dump[59].val = 60 /* S_MIMIC_DEF */;
-    defsym_mon_syms_dump[59].nm = $c.lit("S_MIMIC_DEF");
-    defsym_mon_syms_dump[60].val = 61 /* MAXMCLASSES */;
-    defsym_mon_syms_dump[60].nm = $c.lit("MAXMCLASSES");
+    $c.init(defsym_mon_syms_dump, [
+        { val: S.ANT, nm: $c.lit("S_ANT") },
+        { val: S.BLOB, nm: $c.lit("S_BLOB") },
+        { val: S.COCKATRICE, nm: $c.lit("S_COCKATRICE") },
+        { val: S.DOG, nm: $c.lit("S_DOG") },
+        { val: S.EYE, nm: $c.lit("S_EYE") },
+        { val: S.FELINE, nm: $c.lit("S_FELINE") },
+        { val: S.GREMLIN, nm: $c.lit("S_GREMLIN") },
+        { val: S.HUMANOID, nm: $c.lit("S_HUMANOID") },
+        { val: S.IMP, nm: $c.lit("S_IMP") },
+        { val: S.JELLY, nm: $c.lit("S_JELLY") },
+        { val: S.KOBOLD, nm: $c.lit("S_KOBOLD") },
+        { val: S.LEPRECHAUN, nm: $c.lit("S_LEPRECHAUN") },
+        { val: S.MIMIC, nm: $c.lit("S_MIMIC") },
+        { val: S.NYMPH, nm: $c.lit("S_NYMPH") },
+        { val: S.ORC, nm: $c.lit("S_ORC") },
+        { val: S.PIERCER, nm: $c.lit("S_PIERCER") },
+        { val: S.QUADRUPED, nm: $c.lit("S_QUADRUPED") },
+        { val: S.RODENT, nm: $c.lit("S_RODENT") },
+        { val: S.SPIDER, nm: $c.lit("S_SPIDER") },
+        { val: S.TRAPPER, nm: $c.lit("S_TRAPPER") },
+        { val: S.UNICORN, nm: $c.lit("S_UNICORN") },
+        { val: S.VORTEX, nm: $c.lit("S_VORTEX") },
+        { val: S.WORM, nm: $c.lit("S_WORM") },
+        { val: S.XAN, nm: $c.lit("S_XAN") },
+        { val: S.LIGHT, nm: $c.lit("S_LIGHT") },
+        { val: S.ZRUTY, nm: $c.lit("S_ZRUTY") },
+        { val: S.ANGEL, nm: $c.lit("S_ANGEL") },
+        { val: S.BAT, nm: $c.lit("S_BAT") },
+        { val: S.CENTAUR, nm: $c.lit("S_CENTAUR") },
+        { val: S.DRAGON, nm: $c.lit("S_DRAGON") },
+        { val: S.ELEMENTAL, nm: $c.lit("S_ELEMENTAL") },
+        { val: S.FUNGUS, nm: $c.lit("S_FUNGUS") },
+        { val: S.GNOME, nm: $c.lit("S_GNOME") },
+        { val: S.GIANT, nm: $c.lit("S_GIANT") },
+        { val: S.invisible, nm: $c.lit("S_invisible") },
+        { val: S.JABBERWOCK, nm: $c.lit("S_JABBERWOCK") },
+        { val: S.KOP, nm: $c.lit("S_KOP") },
+        { val: S.LICH, nm: $c.lit("S_LICH") },
+        { val: S.MUMMY, nm: $c.lit("S_MUMMY") },
+        { val: S.NAGA, nm: $c.lit("S_NAGA") },
+        { val: S.OGRE, nm: $c.lit("S_OGRE") },
+        { val: S.PUDDING, nm: $c.lit("S_PUDDING") },
+        { val: S.QUANTMECH, nm: $c.lit("S_QUANTMECH") },
+        { val: S.RUSTMONST, nm: $c.lit("S_RUSTMONST") },
+        { val: S.SNAKE, nm: $c.lit("S_SNAKE") },
+        { val: S.TROLL, nm: $c.lit("S_TROLL") },
+        { val: S.UMBER, nm: $c.lit("S_UMBER") },
+        { val: S.VAMPIRE, nm: $c.lit("S_VAMPIRE") },
+        { val: S.WRAITH, nm: $c.lit("S_WRAITH") },
+        { val: S.XORN, nm: $c.lit("S_XORN") },
+        { val: S.YETI, nm: $c.lit("S_YETI") },
+        { val: S.ZOMBIE, nm: $c.lit("S_ZOMBIE") },
+        { val: S.HUMAN, nm: $c.lit("S_HUMAN") },
+        { val: S.GHOST, nm: $c.lit("S_GHOST") },
+        { val: S.GOLEM, nm: $c.lit("S_GOLEM") },
+        { val: S.DEMON, nm: $c.lit("S_DEMON") },
+        { val: S.EEL, nm: $c.lit("S_EEL") },
+        { val: S.LIZARD, nm: $c.lit("S_LIZARD") },
+        { val: S.WORM_TAIL, nm: $c.lit("S_WORM_TAIL") },
+        { val: S.MIMIC_DEF, nm: $c.lit("S_MIMIC_DEF") },
+        { val: MAXMCLASSES, nm: $c.lit("MAXMCLASSES") }
+    ]);
     for (let $i0 = 0; $i0 < 60; $i0++) {
         defsym_mon_defchars_dump[$i0].$copyFrom(new $T.enum_dump());
     }
-    defsym_mon_defchars_dump[0].val = 97 /* DEF_ANT */;
-    defsym_mon_defchars_dump[0].nm = $c.lit("DEF_ANT");
-    defsym_mon_defchars_dump[1].val = 98 /* DEF_BLOB */;
-    defsym_mon_defchars_dump[1].nm = $c.lit("DEF_BLOB");
-    defsym_mon_defchars_dump[2].val = 99 /* DEF_COCKATRICE */;
-    defsym_mon_defchars_dump[2].nm = $c.lit("DEF_COCKATRICE");
-    defsym_mon_defchars_dump[3].val = 100 /* DEF_DOG */;
-    defsym_mon_defchars_dump[3].nm = $c.lit("DEF_DOG");
-    defsym_mon_defchars_dump[4].val = 101 /* DEF_EYE */;
-    defsym_mon_defchars_dump[4].nm = $c.lit("DEF_EYE");
-    defsym_mon_defchars_dump[5].val = 102 /* DEF_FELINE */;
-    defsym_mon_defchars_dump[5].nm = $c.lit("DEF_FELINE");
-    defsym_mon_defchars_dump[6].val = 103 /* DEF_GREMLIN */;
-    defsym_mon_defchars_dump[6].nm = $c.lit("DEF_GREMLIN");
-    defsym_mon_defchars_dump[7].val = 104 /* DEF_HUMANOID */;
-    defsym_mon_defchars_dump[7].nm = $c.lit("DEF_HUMANOID");
-    defsym_mon_defchars_dump[8].val = 105 /* DEF_IMP */;
-    defsym_mon_defchars_dump[8].nm = $c.lit("DEF_IMP");
-    defsym_mon_defchars_dump[9].val = 106 /* DEF_JELLY */;
-    defsym_mon_defchars_dump[9].nm = $c.lit("DEF_JELLY");
-    defsym_mon_defchars_dump[10].val = 107 /* DEF_KOBOLD */;
-    defsym_mon_defchars_dump[10].nm = $c.lit("DEF_KOBOLD");
-    defsym_mon_defchars_dump[11].val = 108 /* DEF_LEPRECHAUN */;
-    defsym_mon_defchars_dump[11].nm = $c.lit("DEF_LEPRECHAUN");
-    defsym_mon_defchars_dump[12].val = 109 /* DEF_MIMIC */;
-    defsym_mon_defchars_dump[12].nm = $c.lit("DEF_MIMIC");
-    defsym_mon_defchars_dump[13].val = 110 /* DEF_NYMPH */;
-    defsym_mon_defchars_dump[13].nm = $c.lit("DEF_NYMPH");
-    defsym_mon_defchars_dump[14].val = 111 /* DEF_ORC */;
-    defsym_mon_defchars_dump[14].nm = $c.lit("DEF_ORC");
-    defsym_mon_defchars_dump[15].val = 112 /* DEF_PIERCER */;
-    defsym_mon_defchars_dump[15].nm = $c.lit("DEF_PIERCER");
-    defsym_mon_defchars_dump[16].val = 113 /* DEF_QUADRUPED */;
-    defsym_mon_defchars_dump[16].nm = $c.lit("DEF_QUADRUPED");
-    defsym_mon_defchars_dump[17].val = 114 /* DEF_RODENT */;
-    defsym_mon_defchars_dump[17].nm = $c.lit("DEF_RODENT");
-    defsym_mon_defchars_dump[18].val = 115 /* DEF_SPIDER */;
-    defsym_mon_defchars_dump[18].nm = $c.lit("DEF_SPIDER");
-    defsym_mon_defchars_dump[19].val = 116 /* DEF_TRAPPER */;
-    defsym_mon_defchars_dump[19].nm = $c.lit("DEF_TRAPPER");
-    defsym_mon_defchars_dump[20].val = 117 /* DEF_UNICORN */;
-    defsym_mon_defchars_dump[20].nm = $c.lit("DEF_UNICORN");
-    defsym_mon_defchars_dump[21].val = 118 /* DEF_VORTEX */;
-    defsym_mon_defchars_dump[21].nm = $c.lit("DEF_VORTEX");
-    defsym_mon_defchars_dump[22].val = 119 /* DEF_WORM */;
-    defsym_mon_defchars_dump[22].nm = $c.lit("DEF_WORM");
-    defsym_mon_defchars_dump[23].val = 120 /* DEF_XAN */;
-    defsym_mon_defchars_dump[23].nm = $c.lit("DEF_XAN");
-    defsym_mon_defchars_dump[24].val = 121 /* DEF_LIGHT */;
-    defsym_mon_defchars_dump[24].nm = $c.lit("DEF_LIGHT");
-    defsym_mon_defchars_dump[25].val = 122 /* DEF_ZRUTY */;
-    defsym_mon_defchars_dump[25].nm = $c.lit("DEF_ZRUTY");
-    defsym_mon_defchars_dump[26].val = 65 /* DEF_ANGEL */;
-    defsym_mon_defchars_dump[26].nm = $c.lit("DEF_ANGEL");
-    defsym_mon_defchars_dump[27].val = 66 /* DEF_BAT */;
-    defsym_mon_defchars_dump[27].nm = $c.lit("DEF_BAT");
-    defsym_mon_defchars_dump[28].val = 67 /* DEF_CENTAUR */;
-    defsym_mon_defchars_dump[28].nm = $c.lit("DEF_CENTAUR");
-    defsym_mon_defchars_dump[29].val = 68 /* DEF_DRAGON */;
-    defsym_mon_defchars_dump[29].nm = $c.lit("DEF_DRAGON");
-    defsym_mon_defchars_dump[30].val = 69 /* DEF_ELEMENTAL */;
-    defsym_mon_defchars_dump[30].nm = $c.lit("DEF_ELEMENTAL");
-    defsym_mon_defchars_dump[31].val = 70 /* DEF_FUNGUS */;
-    defsym_mon_defchars_dump[31].nm = $c.lit("DEF_FUNGUS");
-    defsym_mon_defchars_dump[32].val = 71 /* DEF_GNOME */;
-    defsym_mon_defchars_dump[32].nm = $c.lit("DEF_GNOME");
-    defsym_mon_defchars_dump[33].val = 72 /* DEF_GIANT */;
-    defsym_mon_defchars_dump[33].nm = $c.lit("DEF_GIANT");
-    defsym_mon_defchars_dump[34].val = 73 /* DEF_INVISIBLE */;
-    defsym_mon_defchars_dump[34].nm = $c.lit("DEF_INVISIBLE");
-    defsym_mon_defchars_dump[35].val = 74 /* DEF_JABBERWOCK */;
-    defsym_mon_defchars_dump[35].nm = $c.lit("DEF_JABBERWOCK");
-    defsym_mon_defchars_dump[36].val = 75 /* DEF_KOP */;
-    defsym_mon_defchars_dump[36].nm = $c.lit("DEF_KOP");
-    defsym_mon_defchars_dump[37].val = 76 /* DEF_LICH */;
-    defsym_mon_defchars_dump[37].nm = $c.lit("DEF_LICH");
-    defsym_mon_defchars_dump[38].val = 77 /* DEF_MUMMY */;
-    defsym_mon_defchars_dump[38].nm = $c.lit("DEF_MUMMY");
-    defsym_mon_defchars_dump[39].val = 78 /* DEF_NAGA */;
-    defsym_mon_defchars_dump[39].nm = $c.lit("DEF_NAGA");
-    defsym_mon_defchars_dump[40].val = 79 /* DEF_OGRE */;
-    defsym_mon_defchars_dump[40].nm = $c.lit("DEF_OGRE");
-    defsym_mon_defchars_dump[41].val = 80 /* DEF_PUDDING */;
-    defsym_mon_defchars_dump[41].nm = $c.lit("DEF_PUDDING");
-    defsym_mon_defchars_dump[42].val = 81 /* DEF_QUANTMECH */;
-    defsym_mon_defchars_dump[42].nm = $c.lit("DEF_QUANTMECH");
-    defsym_mon_defchars_dump[43].val = 82 /* DEF_RUSTMONST */;
-    defsym_mon_defchars_dump[43].nm = $c.lit("DEF_RUSTMONST");
-    defsym_mon_defchars_dump[44].val = 83 /* DEF_SNAKE */;
-    defsym_mon_defchars_dump[44].nm = $c.lit("DEF_SNAKE");
-    defsym_mon_defchars_dump[45].val = 84 /* DEF_TROLL */;
-    defsym_mon_defchars_dump[45].nm = $c.lit("DEF_TROLL");
-    defsym_mon_defchars_dump[46].val = 85 /* DEF_UMBER */;
-    defsym_mon_defchars_dump[46].nm = $c.lit("DEF_UMBER");
-    defsym_mon_defchars_dump[47].val = 86 /* DEF_VAMPIRE */;
-    defsym_mon_defchars_dump[47].nm = $c.lit("DEF_VAMPIRE");
-    defsym_mon_defchars_dump[48].val = 87 /* DEF_WRAITH */;
-    defsym_mon_defchars_dump[48].nm = $c.lit("DEF_WRAITH");
-    defsym_mon_defchars_dump[49].val = 88 /* DEF_XORN */;
-    defsym_mon_defchars_dump[49].nm = $c.lit("DEF_XORN");
-    defsym_mon_defchars_dump[50].val = 89 /* DEF_YETI */;
-    defsym_mon_defchars_dump[50].nm = $c.lit("DEF_YETI");
-    defsym_mon_defchars_dump[51].val = 90 /* DEF_ZOMBIE */;
-    defsym_mon_defchars_dump[51].nm = $c.lit("DEF_ZOMBIE");
-    defsym_mon_defchars_dump[52].val = 64 /* DEF_HUMAN */;
-    defsym_mon_defchars_dump[52].nm = $c.lit("DEF_HUMAN");
-    defsym_mon_defchars_dump[53].val = 32 /* DEF_GHOST */;
-    defsym_mon_defchars_dump[53].nm = $c.lit("DEF_GHOST");
-    defsym_mon_defchars_dump[54].val = 39 /* DEF_GOLEM */;
-    defsym_mon_defchars_dump[54].nm = $c.lit("DEF_GOLEM");
-    defsym_mon_defchars_dump[55].val = 38 /* DEF_DEMON */;
-    defsym_mon_defchars_dump[55].nm = $c.lit("DEF_DEMON");
-    defsym_mon_defchars_dump[56].val = 59 /* DEF_EEL */;
-    defsym_mon_defchars_dump[56].nm = $c.lit("DEF_EEL");
-    defsym_mon_defchars_dump[57].val = 58 /* DEF_LIZARD */;
-    defsym_mon_defchars_dump[57].nm = $c.lit("DEF_LIZARD");
-    defsym_mon_defchars_dump[58].val = 126 /* DEF_WORM_TAIL */;
-    defsym_mon_defchars_dump[58].nm = $c.lit("DEF_WORM_TAIL");
-    defsym_mon_defchars_dump[59].val = 93 /* DEF_MIMIC_DEF */;
-    defsym_mon_defchars_dump[59].nm = $c.lit("DEF_MIMIC_DEF");
+    $c.init(defsym_mon_defchars_dump, [
+        { val: DEF.ANT, nm: $c.lit("DEF_ANT") },
+        { val: DEF.BLOB, nm: $c.lit("DEF_BLOB") },
+        { val: DEF.COCKATRICE, nm: $c.lit("DEF_COCKATRICE") },
+        { val: DEF.DOG, nm: $c.lit("DEF_DOG") },
+        { val: DEF.EYE, nm: $c.lit("DEF_EYE") },
+        { val: DEF.FELINE, nm: $c.lit("DEF_FELINE") },
+        { val: DEF.GREMLIN, nm: $c.lit("DEF_GREMLIN") },
+        { val: DEF.HUMANOID, nm: $c.lit("DEF_HUMANOID") },
+        { val: DEF.IMP, nm: $c.lit("DEF_IMP") },
+        { val: DEF.JELLY, nm: $c.lit("DEF_JELLY") },
+        { val: DEF.KOBOLD, nm: $c.lit("DEF_KOBOLD") },
+        { val: DEF.LEPRECHAUN, nm: $c.lit("DEF_LEPRECHAUN") },
+        { val: DEF.MIMIC, nm: $c.lit("DEF_MIMIC") },
+        { val: DEF.NYMPH, nm: $c.lit("DEF_NYMPH") },
+        { val: DEF.ORC, nm: $c.lit("DEF_ORC") },
+        { val: DEF.PIERCER, nm: $c.lit("DEF_PIERCER") },
+        { val: DEF.QUADRUPED, nm: $c.lit("DEF_QUADRUPED") },
+        { val: DEF.RODENT, nm: $c.lit("DEF_RODENT") },
+        { val: DEF.SPIDER, nm: $c.lit("DEF_SPIDER") },
+        { val: DEF.TRAPPER, nm: $c.lit("DEF_TRAPPER") },
+        { val: DEF.UNICORN, nm: $c.lit("DEF_UNICORN") },
+        { val: DEF.VORTEX, nm: $c.lit("DEF_VORTEX") },
+        { val: DEF.WORM, nm: $c.lit("DEF_WORM") },
+        { val: DEF.XAN, nm: $c.lit("DEF_XAN") },
+        { val: DEF.LIGHT, nm: $c.lit("DEF_LIGHT") },
+        { val: DEF.ZRUTY, nm: $c.lit("DEF_ZRUTY") },
+        { val: DEF.ANGEL, nm: $c.lit("DEF_ANGEL") },
+        { val: DEF.BAT, nm: $c.lit("DEF_BAT") },
+        { val: DEF.CENTAUR, nm: $c.lit("DEF_CENTAUR") },
+        { val: DEF.DRAGON, nm: $c.lit("DEF_DRAGON") },
+        { val: DEF.ELEMENTAL, nm: $c.lit("DEF_ELEMENTAL") },
+        { val: DEF.FUNGUS, nm: $c.lit("DEF_FUNGUS") },
+        { val: DEF.GNOME, nm: $c.lit("DEF_GNOME") },
+        { val: DEF.GIANT, nm: $c.lit("DEF_GIANT") },
+        { val: DEF.INVISIBLE, nm: $c.lit("DEF_INVISIBLE") },
+        { val: DEF.JABBERWOCK, nm: $c.lit("DEF_JABBERWOCK") },
+        { val: DEF.KOP, nm: $c.lit("DEF_KOP") },
+        { val: DEF.LICH, nm: $c.lit("DEF_LICH") },
+        { val: DEF.MUMMY, nm: $c.lit("DEF_MUMMY") },
+        { val: DEF.NAGA, nm: $c.lit("DEF_NAGA") },
+        { val: DEF.OGRE, nm: $c.lit("DEF_OGRE") },
+        { val: DEF.PUDDING, nm: $c.lit("DEF_PUDDING") },
+        { val: DEF.QUANTMECH, nm: $c.lit("DEF_QUANTMECH") },
+        { val: DEF.RUSTMONST, nm: $c.lit("DEF_RUSTMONST") },
+        { val: DEF.SNAKE, nm: $c.lit("DEF_SNAKE") },
+        { val: DEF.TROLL, nm: $c.lit("DEF_TROLL") },
+        { val: DEF.UMBER, nm: $c.lit("DEF_UMBER") },
+        { val: DEF.VAMPIRE, nm: $c.lit("DEF_VAMPIRE") },
+        { val: DEF.WRAITH, nm: $c.lit("DEF_WRAITH") },
+        { val: DEF.XORN, nm: $c.lit("DEF_XORN") },
+        { val: DEF.YETI, nm: $c.lit("DEF_YETI") },
+        { val: DEF.ZOMBIE, nm: $c.lit("DEF_ZOMBIE") },
+        { val: DEF.HUMAN, nm: $c.lit("DEF_HUMAN") },
+        { val: DEF.GHOST, nm: $c.lit("DEF_GHOST") },
+        { val: DEF.GOLEM, nm: $c.lit("DEF_GOLEM") },
+        { val: DEF.DEMON, nm: $c.lit("DEF_DEMON") },
+        { val: DEF.EEL, nm: $c.lit("DEF_EEL") },
+        { val: DEF.LIZARD, nm: $c.lit("DEF_LIZARD") },
+        { val: DEF.WORM_TAIL, nm: $c.lit("DEF_WORM_TAIL") }, { val: DEF.MIMIC_DEF, nm: $c.lit("DEF_MIMIC_DEF") }
+    ]);
     for (let $i0 = 0; $i0 < 17; $i0++) {
         objclass_defchars_dump[$i0].$copyFrom(new $T.enum_dump());
     }
-    objclass_defchars_dump[0].val = 93 /* ILLOBJ_SYM */;
-    objclass_defchars_dump[0].nm = $c.lit("ILLOBJ_SYM");
-    objclass_defchars_dump[1].val = 41 /* WEAPON_SYM */;
-    objclass_defchars_dump[1].nm = $c.lit("WEAPON_SYM");
-    objclass_defchars_dump[2].val = 91 /* ARMOR_SYM */;
-    objclass_defchars_dump[2].nm = $c.lit("ARMOR_SYM");
-    objclass_defchars_dump[3].val = 61 /* RING_SYM */;
-    objclass_defchars_dump[3].nm = $c.lit("RING_SYM");
-    objclass_defchars_dump[4].val = 34 /* AMULET_SYM */;
-    objclass_defchars_dump[4].nm = $c.lit("AMULET_SYM");
-    objclass_defchars_dump[5].val = 40 /* TOOL_SYM */;
-    objclass_defchars_dump[5].nm = $c.lit("TOOL_SYM");
-    objclass_defchars_dump[6].val = 37 /* FOOD_SYM */;
-    objclass_defchars_dump[6].nm = $c.lit("FOOD_SYM");
-    objclass_defchars_dump[7].val = 33 /* POTION_SYM */;
-    objclass_defchars_dump[7].nm = $c.lit("POTION_SYM");
-    objclass_defchars_dump[8].val = 63 /* SCROLL_SYM */;
-    objclass_defchars_dump[8].nm = $c.lit("SCROLL_SYM");
-    objclass_defchars_dump[9].val = 43 /* SPBOOK_SYM */;
-    objclass_defchars_dump[9].nm = $c.lit("SPBOOK_SYM");
-    objclass_defchars_dump[10].val = 47 /* WAND_SYM */;
-    objclass_defchars_dump[10].nm = $c.lit("WAND_SYM");
-    objclass_defchars_dump[11].val = 36 /* GOLD_SYM */;
-    objclass_defchars_dump[11].nm = $c.lit("GOLD_SYM");
-    objclass_defchars_dump[12].val = 42 /* GEM_SYM */;
-    objclass_defchars_dump[12].nm = $c.lit("GEM_SYM");
-    objclass_defchars_dump[13].val = 96 /* ROCK_SYM */;
-    objclass_defchars_dump[13].nm = $c.lit("ROCK_SYM");
-    objclass_defchars_dump[14].val = 48 /* BALL_SYM */;
-    objclass_defchars_dump[14].nm = $c.lit("BALL_SYM");
-    objclass_defchars_dump[15].val = 95 /* CHAIN_SYM */;
-    objclass_defchars_dump[15].nm = $c.lit("CHAIN_SYM");
-    objclass_defchars_dump[16].val = 46 /* VENOM_SYM */;
-    objclass_defchars_dump[16].nm = $c.lit("VENOM_SYM");
+    $c.init(objclass_defchars_dump, [
+        { val: ILLOBJ_SYM, nm: $c.lit("ILLOBJ_SYM") },
+        { val: WEAPON_SYM, nm: $c.lit("WEAPON_SYM") },
+        { val: ARMOR_SYM, nm: $c.lit("ARMOR_SYM") },
+        { val: RING_SYM, nm: $c.lit("RING_SYM") },
+        { val: AMULET_SYM, nm: $c.lit("AMULET_SYM") },
+        { val: TOOL_SYM, nm: $c.lit("TOOL_SYM") },
+        { val: FOOD_SYM, nm: $c.lit("FOOD_SYM") },
+        { val: POTION_SYM, nm: $c.lit("POTION_SYM") },
+        { val: SCROLL_SYM, nm: $c.lit("SCROLL_SYM") },
+        { val: SPBOOK_SYM, nm: $c.lit("SPBOOK_SYM") },
+        { val: WAND_SYM, nm: $c.lit("WAND_SYM") },
+        { val: GOLD_SYM, nm: $c.lit("GOLD_SYM") },
+        { val: GEM_SYM, nm: $c.lit("GEM_SYM") },
+        { val: ROCK_SYM, nm: $c.lit("ROCK_SYM") },
+        { val: BALL_SYM, nm: $c.lit("BALL_SYM") },
+        { val: CHAIN_SYM, nm: $c.lit("CHAIN_SYM") },
+        { nm: $c.lit("VENOM_SYM"), val: VENOM_SYM }
+    ]);
     for (let $i0 = 0; $i0 < 18; $i0++) {
         objclass_classes_dump[$i0].$copyFrom(new $T.enum_dump());
     }
-    objclass_classes_dump[0].val = 1 /* ILLOBJ_CLASS */;
-    objclass_classes_dump[0].nm = $c.lit("ILLOBJ_CLASS");
-    objclass_classes_dump[1].val = 2 /* WEAPON_CLASS */;
-    objclass_classes_dump[1].nm = $c.lit("WEAPON_CLASS");
-    objclass_classes_dump[2].val = 3 /* ARMOR_CLASS */;
-    objclass_classes_dump[2].nm = $c.lit("ARMOR_CLASS");
-    objclass_classes_dump[3].val = 4 /* RING_CLASS */;
-    objclass_classes_dump[3].nm = $c.lit("RING_CLASS");
-    objclass_classes_dump[4].val = 5 /* AMULET_CLASS */;
-    objclass_classes_dump[4].nm = $c.lit("AMULET_CLASS");
-    objclass_classes_dump[5].val = 6 /* TOOL_CLASS */;
-    objclass_classes_dump[5].nm = $c.lit("TOOL_CLASS");
-    objclass_classes_dump[6].val = 7 /* FOOD_CLASS */;
-    objclass_classes_dump[6].nm = $c.lit("FOOD_CLASS");
-    objclass_classes_dump[7].val = 8 /* POTION_CLASS */;
-    objclass_classes_dump[7].nm = $c.lit("POTION_CLASS");
-    objclass_classes_dump[8].val = 9 /* SCROLL_CLASS */;
-    objclass_classes_dump[8].nm = $c.lit("SCROLL_CLASS");
-    objclass_classes_dump[9].val = 10 /* SPBOOK_CLASS */;
-    objclass_classes_dump[9].nm = $c.lit("SPBOOK_CLASS");
-    objclass_classes_dump[10].val = 11 /* WAND_CLASS */;
-    objclass_classes_dump[10].nm = $c.lit("WAND_CLASS");
-    objclass_classes_dump[11].val = 12 /* COIN_CLASS */;
-    objclass_classes_dump[11].nm = $c.lit("COIN_CLASS");
-    objclass_classes_dump[12].val = 13 /* GEM_CLASS */;
-    objclass_classes_dump[12].nm = $c.lit("GEM_CLASS");
-    objclass_classes_dump[13].val = 14 /* ROCK_CLASS */;
-    objclass_classes_dump[13].nm = $c.lit("ROCK_CLASS");
-    objclass_classes_dump[14].val = 15 /* BALL_CLASS */;
-    objclass_classes_dump[14].nm = $c.lit("BALL_CLASS");
-    objclass_classes_dump[15].val = 16 /* CHAIN_CLASS */;
-    objclass_classes_dump[15].nm = $c.lit("CHAIN_CLASS");
-    objclass_classes_dump[16].val = 17 /* VENOM_CLASS */;
-    objclass_classes_dump[16].nm = $c.lit("VENOM_CLASS");
-    objclass_classes_dump[17].val = 18 /* MAXOCLASSES */;
-    objclass_classes_dump[17].nm = $c.lit("MAXOCLASSES");
+    $c.init(objclass_classes_dump, [
+        { val: ILLOBJ_CLASS, nm: $c.lit("ILLOBJ_CLASS") },
+        { val: WEAPON_CLASS, nm: $c.lit("WEAPON_CLASS") },
+        { val: ARMOR_CLASS, nm: $c.lit("ARMOR_CLASS") },
+        { val: RING_CLASS, nm: $c.lit("RING_CLASS") },
+        { val: AMULET_CLASS, nm: $c.lit("AMULET_CLASS") },
+        { val: TOOL_CLASS, nm: $c.lit("TOOL_CLASS") },
+        { val: FOOD_CLASS, nm: $c.lit("FOOD_CLASS") },
+        { val: POTION_CLASS, nm: $c.lit("POTION_CLASS") },
+        { val: SCROLL_CLASS, nm: $c.lit("SCROLL_CLASS") },
+        { val: SPBOOK_CLASS, nm: $c.lit("SPBOOK_CLASS") },
+        { val: WAND_CLASS, nm: $c.lit("WAND_CLASS") },
+        { val: COIN_CLASS, nm: $c.lit("COIN_CLASS") },
+        { val: GEM_CLASS, nm: $c.lit("GEM_CLASS") },
+        { val: ROCK_CLASS, nm: $c.lit("ROCK_CLASS") },
+        { val: BALL_CLASS, nm: $c.lit("BALL_CLASS") },
+        { val: CHAIN_CLASS, nm: $c.lit("CHAIN_CLASS") },
+        { nm: $c.lit("VENOM_CLASS"), val: VENOM_CLASS },
+        { val: MAXOCLASSES, nm: $c.lit("MAXOCLASSES") }
+    ]);
     for (let $i0 = 0; $i0 < 17; $i0++) {
         objclass_syms_dump[$i0].$copyFrom(new $T.enum_dump());
     }
-    objclass_syms_dump[0].val = 1 /* S_strange_obj */;
-    objclass_syms_dump[0].nm = $c.lit("S_strange_obj");
-    objclass_syms_dump[1].val = 2 /* S_weapon */;
-    objclass_syms_dump[1].nm = $c.lit("S_weapon");
-    objclass_syms_dump[2].val = 3 /* S_armor */;
-    objclass_syms_dump[2].nm = $c.lit("S_armor");
-    objclass_syms_dump[3].val = 4 /* S_ring */;
-    objclass_syms_dump[3].nm = $c.lit("S_ring");
-    objclass_syms_dump[4].val = 5 /* S_amulet */;
-    objclass_syms_dump[4].nm = $c.lit("S_amulet");
-    objclass_syms_dump[5].val = 6 /* S_tool */;
-    objclass_syms_dump[5].nm = $c.lit("S_tool");
-    objclass_syms_dump[6].val = 7 /* S_food */;
-    objclass_syms_dump[6].nm = $c.lit("S_food");
-    objclass_syms_dump[7].val = 8 /* S_potion */;
-    objclass_syms_dump[7].nm = $c.lit("S_potion");
-    objclass_syms_dump[8].val = 9 /* S_scroll */;
-    objclass_syms_dump[8].nm = $c.lit("S_scroll");
-    objclass_syms_dump[9].val = 10 /* S_book */;
-    objclass_syms_dump[9].nm = $c.lit("S_book");
-    objclass_syms_dump[10].val = 11 /* S_wand */;
-    objclass_syms_dump[10].nm = $c.lit("S_wand");
-    objclass_syms_dump[11].val = 12 /* S_coin */;
-    objclass_syms_dump[11].nm = $c.lit("S_coin");
-    objclass_syms_dump[12].val = 13 /* S_gem */;
-    objclass_syms_dump[12].nm = $c.lit("S_gem");
-    objclass_syms_dump[13].val = 14 /* S_rock */;
-    objclass_syms_dump[13].nm = $c.lit("S_rock");
-    objclass_syms_dump[14].val = 15 /* S_ball */;
-    objclass_syms_dump[14].nm = $c.lit("S_ball");
-    objclass_syms_dump[15].val = 16 /* S_chain */;
-    objclass_syms_dump[15].nm = $c.lit("S_chain");
-    objclass_syms_dump[16].val = 17 /* S_venom */;
-    objclass_syms_dump[16].nm = $c.lit("S_venom");
+    $c.init(objclass_syms_dump, [
+        { val: S.strange_obj, nm: $c.lit("S_strange_obj") },
+        { val: S.weapon, nm: $c.lit("S_weapon") },
+        { val: S.armor, nm: $c.lit("S_armor") },
+        { val: S.ring, nm: $c.lit("S_ring") },
+        { val: S.amulet, nm: $c.lit("S_amulet") },
+        { val: S.tool, nm: $c.lit("S_tool") },
+        { val: S.food, nm: $c.lit("S_food") },
+        { val: S.potion, nm: $c.lit("S_potion") },
+        { val: S.scroll, nm: $c.lit("S_scroll") },
+        { val: S.book, nm: $c.lit("S_book") },
+        { val: S.wand, nm: $c.lit("S_wand") },
+        { val: S.coin, nm: $c.lit("S_coin") },
+        { val: S.gem, nm: $c.lit("S_gem") },
+        { val: S.rock, nm: $c.lit("S_rock") },
+        { val: S.ball, nm: $c.lit("S_ball") },
+        { val: S.chain, nm: $c.lit("S_chain") },
+        { val: S.venom, nm: $c.lit("S_venom") }
+    ]);
     for (let $i0 = 0; $i0 < 35; $i0++) {
         arti_enum_dump[$i0].$copyFrom(new $T.enum_dump());
     }
-    arti_enum_dump[0].val = 0 /* ART_NONARTIFACT */;
-    arti_enum_dump[0].nm = $c.lit("ART_NONARTIFACT");
-    arti_enum_dump[1].val = 1 /* ART_EXCALIBUR */;
-    arti_enum_dump[1].nm = $c.lit("ART_EXCALIBUR");
-    arti_enum_dump[2].val = 2 /* ART_STORMBRINGER */;
-    arti_enum_dump[2].nm = $c.lit("ART_STORMBRINGER");
-    arti_enum_dump[3].val = 3 /* ART_MJOLLNIR */;
-    arti_enum_dump[3].nm = $c.lit("ART_MJOLLNIR");
-    arti_enum_dump[4].val = 4 /* ART_CLEAVER */;
-    arti_enum_dump[4].nm = $c.lit("ART_CLEAVER");
-    arti_enum_dump[5].val = 5 /* ART_GRIMTOOTH */;
-    arti_enum_dump[5].nm = $c.lit("ART_GRIMTOOTH");
-    arti_enum_dump[6].val = 6 /* ART_ORCRIST */;
-    arti_enum_dump[6].nm = $c.lit("ART_ORCRIST");
-    arti_enum_dump[7].val = 7 /* ART_STING */;
-    arti_enum_dump[7].nm = $c.lit("ART_STING");
-    arti_enum_dump[8].val = 8 /* ART_MAGICBANE */;
-    arti_enum_dump[8].nm = $c.lit("ART_MAGICBANE");
-    arti_enum_dump[9].val = 9 /* ART_FROST_BRAND */;
-    arti_enum_dump[9].nm = $c.lit("ART_FROST_BRAND");
-    arti_enum_dump[10].val = 10 /* ART_FIRE_BRAND */;
-    arti_enum_dump[10].nm = $c.lit("ART_FIRE_BRAND");
-    arti_enum_dump[11].val = 11 /* ART_DRAGONBANE */;
-    arti_enum_dump[11].nm = $c.lit("ART_DRAGONBANE");
-    arti_enum_dump[12].val = 12 /* ART_DEMONBANE */;
-    arti_enum_dump[12].nm = $c.lit("ART_DEMONBANE");
-    arti_enum_dump[13].val = 13 /* ART_WEREBANE */;
-    arti_enum_dump[13].nm = $c.lit("ART_WEREBANE");
-    arti_enum_dump[14].val = 14 /* ART_GRAYSWANDIR */;
-    arti_enum_dump[14].nm = $c.lit("ART_GRAYSWANDIR");
-    arti_enum_dump[15].val = 15 /* ART_GIANTSLAYER */;
-    arti_enum_dump[15].nm = $c.lit("ART_GIANTSLAYER");
-    arti_enum_dump[16].val = 16 /* ART_OGRESMASHER */;
-    arti_enum_dump[16].nm = $c.lit("ART_OGRESMASHER");
-    arti_enum_dump[17].val = 17 /* ART_TROLLSBANE */;
-    arti_enum_dump[17].nm = $c.lit("ART_TROLLSBANE");
-    arti_enum_dump[18].val = 18 /* ART_VORPAL_BLADE */;
-    arti_enum_dump[18].nm = $c.lit("ART_VORPAL_BLADE");
-    arti_enum_dump[19].val = 19 /* ART_SNICKERSNEE */;
-    arti_enum_dump[19].nm = $c.lit("ART_SNICKERSNEE");
-    arti_enum_dump[20].val = 20 /* ART_SUNSWORD */;
-    arti_enum_dump[20].nm = $c.lit("ART_SUNSWORD");
-    arti_enum_dump[21].val = 21 /* ART_ORB_OF_DETECTION */;
-    arti_enum_dump[21].nm = $c.lit("ART_ORB_OF_DETECTION");
-    arti_enum_dump[22].val = 22 /* ART_HEART_OF_AHRIMAN */;
-    arti_enum_dump[22].nm = $c.lit("ART_HEART_OF_AHRIMAN");
-    arti_enum_dump[23].val = 23 /* ART_SCEPTRE_OF_MIGHT */;
-    arti_enum_dump[23].nm = $c.lit("ART_SCEPTRE_OF_MIGHT");
-    arti_enum_dump[24].val = 24 /* ART_STAFF_OF_AESCULAPIUS */;
-    arti_enum_dump[24].nm = $c.lit("ART_STAFF_OF_AESCULAPIUS");
-    arti_enum_dump[25].val = 25 /* ART_MAGIC_MIRROR_OF_MERLIN */;
-    arti_enum_dump[25].nm = $c.lit("ART_MAGIC_MIRROR_OF_MERLIN");
-    arti_enum_dump[26].val = 26 /* ART_EYES_OF_THE_OVERWORLD */;
-    arti_enum_dump[26].nm = $c.lit("ART_EYES_OF_THE_OVERWORLD");
-    arti_enum_dump[27].val = 27 /* ART_MITRE_OF_HOLINESS */;
-    arti_enum_dump[27].nm = $c.lit("ART_MITRE_OF_HOLINESS");
-    arti_enum_dump[28].val = 28 /* ART_LONGBOW_OF_DIANA */;
-    arti_enum_dump[28].nm = $c.lit("ART_LONGBOW_OF_DIANA");
-    arti_enum_dump[29].val = 29 /* ART_MASTER_KEY_OF_THIEVERY */;
-    arti_enum_dump[29].nm = $c.lit("ART_MASTER_KEY_OF_THIEVERY");
-    arti_enum_dump[30].val = 30 /* ART_TSURUGI_OF_MURAMASA */;
-    arti_enum_dump[30].nm = $c.lit("ART_TSURUGI_OF_MURAMASA");
-    arti_enum_dump[31].val = 31 /* ART_YENDORIAN_EXPRESS_CARD */;
-    arti_enum_dump[31].nm = $c.lit("ART_YENDORIAN_EXPRESS_CARD");
-    arti_enum_dump[32].val = 32 /* ART_ORB_OF_FATE */;
-    arti_enum_dump[32].nm = $c.lit("ART_ORB_OF_FATE");
-    arti_enum_dump[33].val = 33 /* ART_EYE_OF_THE_AETHIOPICA */;
-    arti_enum_dump[33].nm = $c.lit("ART_EYE_OF_THE_AETHIOPICA");
-    arti_enum_dump[34].val = 34 /* AFTER_LAST_ARTIFACT */;
-    arti_enum_dump[34].nm = $c.lit("AFTER_LAST_ARTIFACT");
+    $c.init(arti_enum_dump, [
+        { val: ART.NONARTIFACT, nm: $c.lit("ART_NONARTIFACT") },
+        { val: ART.EXCALIBUR, nm: $c.lit("ART_EXCALIBUR") },
+        { val: ART.STORMBRINGER, nm: $c.lit("ART_STORMBRINGER") },
+        { val: ART.MJOLLNIR, nm: $c.lit("ART_MJOLLNIR") },
+        { val: ART.CLEAVER, nm: $c.lit("ART_CLEAVER") },
+        { val: ART.GRIMTOOTH, nm: $c.lit("ART_GRIMTOOTH") },
+        { val: ART.ORCRIST, nm: $c.lit("ART_ORCRIST") },
+        { val: ART.STING, nm: $c.lit("ART_STING") },
+        { val: ART.MAGICBANE, nm: $c.lit("ART_MAGICBANE") },
+        { val: ART.FROST_BRAND, nm: $c.lit("ART_FROST_BRAND") },
+        { val: ART.FIRE_BRAND, nm: $c.lit("ART_FIRE_BRAND") },
+        { val: ART.DRAGONBANE, nm: $c.lit("ART_DRAGONBANE") },
+        { val: ART.DEMONBANE, nm: $c.lit("ART_DEMONBANE") },
+        { val: ART.WEREBANE, nm: $c.lit("ART_WEREBANE") },
+        { val: ART.GRAYSWANDIR, nm: $c.lit("ART_GRAYSWANDIR") },
+        { val: ART.GIANTSLAYER, nm: $c.lit("ART_GIANTSLAYER") },
+        { val: ART.OGRESMASHER, nm: $c.lit("ART_OGRESMASHER") },
+        { val: ART.TROLLSBANE, nm: $c.lit("ART_TROLLSBANE") },
+        { val: ART.VORPAL_BLADE, nm: $c.lit("ART_VORPAL_BLADE") },
+        { val: ART.SNICKERSNEE, nm: $c.lit("ART_SNICKERSNEE") },
+        { val: ART.SUNSWORD, nm: $c.lit("ART_SUNSWORD") },
+        { val: ART.ORB_OF_DETECTION, nm: $c.lit("ART_ORB_OF_DETECTION") },
+        { val: ART.HEART_OF_AHRIMAN, nm: $c.lit("ART_HEART_OF_AHRIMAN") },
+        { val: ART.SCEPTRE_OF_MIGHT, nm: $c.lit("ART_SCEPTRE_OF_MIGHT") },
+        { val: ART.STAFF_OF_AESCULAPIUS, nm: $c.lit("ART_STAFF_OF_AESCULAPIUS") },
+        { val: ART.MAGIC_MIRROR_OF_MERLIN, nm: $c.lit("ART_MAGIC_MIRROR_OF_MERLIN") },
+        { val: ART.EYES_OF_THE_OVERWORLD, nm: $c.lit("ART_EYES_OF_THE_OVERWORLD") },
+        { val: ART.MITRE_OF_HOLINESS, nm: $c.lit("ART_MITRE_OF_HOLINESS") },
+        { val: ART.LONGBOW_OF_DIANA, nm: $c.lit("ART_LONGBOW_OF_DIANA") },
+        { val: ART.MASTER_KEY_OF_THIEVERY, nm: $c.lit("ART_MASTER_KEY_OF_THIEVERY") },
+        { val: ART.TSURUGI_OF_MURAMASA, nm: $c.lit("ART_TSURUGI_OF_MURAMASA") },
+        { val: ART.YENDORIAN_EXPRESS_CARD, nm: $c.lit("ART_YENDORIAN_EXPRESS_CARD") },
+        { val: ART.ORB_OF_FATE, nm: $c.lit("ART_ORB_OF_FATE") },
+        { val: ART.EYE_OF_THE_AETHIOPICA, nm: $c.lit("ART_EYE_OF_THE_AETHIOPICA") },
+        { val: AFTER_LAST_ARTIFACT, nm: $c.lit("AFTER_LAST_ARTIFACT") }
+    ]);
     for (let $i0 = 0; $i0 < 20; $i0++) {
         mcastu_enum_dump[$i0].$copyFrom(new $T.enum_dump());
     }
-    mcastu_enum_dump[0].val = 0 /* MCAST_DUMPENUM_PSI_BOLT */;
-    mcastu_enum_dump[0].nm = $c.lit("PSI_BOLT");
-    mcastu_enum_dump[1].val = 1 /* MCAST_DUMPENUM_OPEN_WOUNDS */;
-    mcastu_enum_dump[1].nm = $c.lit("OPEN_WOUNDS");
-    mcastu_enum_dump[2].val = 2 /* MCAST_DUMPENUM_CURE_SELF */;
-    mcastu_enum_dump[2].nm = $c.lit("CURE_SELF");
-    mcastu_enum_dump[3].val = 3 /* MCAST_DUMPENUM_HASTE_SELF */;
-    mcastu_enum_dump[3].nm = $c.lit("HASTE_SELF");
-    mcastu_enum_dump[4].val = 4 /* MCAST_DUMPENUM_CONFUSE_YOU */;
-    mcastu_enum_dump[4].nm = $c.lit("CONFUSE_YOU");
-    mcastu_enum_dump[5].val = 5 /* MCAST_DUMPENUM_STUN_YOU */;
-    mcastu_enum_dump[5].nm = $c.lit("STUN_YOU");
-    mcastu_enum_dump[6].val = 6 /* MCAST_DUMPENUM_DISAPPEAR */;
-    mcastu_enum_dump[6].nm = $c.lit("DISAPPEAR");
-    mcastu_enum_dump[7].val = 7 /* MCAST_DUMPENUM_PARALYZE */;
-    mcastu_enum_dump[7].nm = $c.lit("PARALYZE");
-    mcastu_enum_dump[8].val = 8 /* MCAST_DUMPENUM_BLIND_YOU */;
-    mcastu_enum_dump[8].nm = $c.lit("BLIND_YOU");
-    mcastu_enum_dump[9].val = 9 /* MCAST_DUMPENUM_WEAKEN_YOU */;
-    mcastu_enum_dump[9].nm = $c.lit("WEAKEN_YOU");
-    mcastu_enum_dump[10].val = 10 /* MCAST_DUMPENUM_DESTRY_ARMR */;
-    mcastu_enum_dump[10].nm = $c.lit("DESTRY_ARMR");
-    mcastu_enum_dump[11].val = 11 /* MCAST_DUMPENUM_INSECTS */;
-    mcastu_enum_dump[11].nm = $c.lit("INSECTS");
-    mcastu_enum_dump[12].val = 12 /* MCAST_DUMPENUM_CURSE_ITEMS */;
-    mcastu_enum_dump[12].nm = $c.lit("CURSE_ITEMS");
-    mcastu_enum_dump[13].val = 13 /* MCAST_DUMPENUM_LIGHTNING */;
-    mcastu_enum_dump[13].nm = $c.lit("LIGHTNING");
-    mcastu_enum_dump[14].val = 14 /* MCAST_DUMPENUM_FIRE_PILLAR */;
-    mcastu_enum_dump[14].nm = $c.lit("FIRE_PILLAR");
-    mcastu_enum_dump[15].val = 15 /* MCAST_DUMPENUM_GEYSER */;
-    mcastu_enum_dump[15].nm = $c.lit("GEYSER");
-    mcastu_enum_dump[16].val = 16 /* MCAST_DUMPENUM_AGGRAVATION */;
-    mcastu_enum_dump[16].nm = $c.lit("AGGRAVATION");
-    mcastu_enum_dump[17].val = 17 /* MCAST_DUMPENUM_SUMMON_MONS */;
-    mcastu_enum_dump[17].nm = $c.lit("SUMMON_MONS");
-    mcastu_enum_dump[18].val = 18 /* MCAST_DUMPENUM_CLONE_WIZ */;
-    mcastu_enum_dump[18].nm = $c.lit("CLONE_WIZ");
-    mcastu_enum_dump[19].val = 19 /* MCAST_DUMPENUM_DEATH_TOUCH */;
-    mcastu_enum_dump[19].nm = $c.lit("DEATH_TOUCH");
+    $c.init(mcastu_enum_dump, [
+        { val: MCAST_DUMPENUM.PSI_BOLT, nm: $c.lit("PSI_BOLT") },
+        { val: MCAST_DUMPENUM.OPEN_WOUNDS, nm: $c.lit("OPEN_WOUNDS") },
+        { val: MCAST_DUMPENUM.CURE_SELF, nm: $c.lit("CURE_SELF") },
+        { val: MCAST_DUMPENUM.HASTE_SELF, nm: $c.lit("HASTE_SELF") },
+        { val: MCAST_DUMPENUM.CONFUSE_YOU, nm: $c.lit("CONFUSE_YOU") },
+        { val: MCAST_DUMPENUM.STUN_YOU, nm: $c.lit("STUN_YOU") },
+        { val: MCAST_DUMPENUM.DISAPPEAR, nm: $c.lit("DISAPPEAR") },
+        { val: MCAST_DUMPENUM.PARALYZE, nm: $c.lit("PARALYZE") },
+        { val: MCAST_DUMPENUM.BLIND_YOU, nm: $c.lit("BLIND_YOU") },
+        { val: MCAST_DUMPENUM.WEAKEN_YOU, nm: $c.lit("WEAKEN_YOU") },
+        { val: MCAST_DUMPENUM.DESTRY_ARMR, nm: $c.lit("DESTRY_ARMR") },
+        { val: MCAST_DUMPENUM.INSECTS, nm: $c.lit("INSECTS") },
+        { val: MCAST_DUMPENUM.CURSE_ITEMS, nm: $c.lit("CURSE_ITEMS") },
+        { val: MCAST_DUMPENUM.LIGHTNING, nm: $c.lit("LIGHTNING") },
+        { val: MCAST_DUMPENUM.FIRE_PILLAR, nm: $c.lit("FIRE_PILLAR") },
+        { val: MCAST_DUMPENUM.GEYSER, nm: $c.lit("GEYSER") },
+        { val: MCAST_DUMPENUM.AGGRAVATION, nm: $c.lit("AGGRAVATION") },
+        { val: MCAST_DUMPENUM.SUMMON_MONS, nm: $c.lit("SUMMON_MONS") },
+        { val: MCAST_DUMPENUM.CLONE_WIZ, nm: $c.lit("CLONE_WIZ") },
+        { nm: $c.lit("DEATH_TOUCH"), val: MCAST_DUMPENUM.DEATH_TOUCH }
+    ]);
     for (let $i0 = 0; $i0 < 15; $i0++) {
         dump_enums$omdump[$i0].$copyFrom(new $T.enum_dump());
     }
-    dump_enums$omdump[0].val = 17 /* LAST_GENERIC */;
-    dump_enums$omdump[0].nm = $c.lit("LAST_GENERIC");
-    dump_enums$omdump[1].val = 17 /* OBJCLASS_HACK */;
-    dump_enums$omdump[1].nm = $c.lit("OBJCLASS_HACK");
-    dump_enums$omdump[2].val = 18 /* FIRST_OBJECT */;
-    dump_enums$omdump[2].nm = $c.lit("FIRST_OBJECT");
-    dump_enums$omdump[3].val = 201 /* FIRST_AMULET */;
-    dump_enums$omdump[3].nm = $c.lit("FIRST_AMULET");
-    dump_enums$omdump[4].val = 213 /* LAST_AMULET */;
-    dump_enums$omdump[4].nm = $c.lit("LAST_AMULET");
-    dump_enums$omdump[5].val = 366 /* FIRST_SPELL */;
-    dump_enums$omdump[5].nm = $c.lit("FIRST_SPELL");
-    dump_enums$omdump[6].val = 407 /* LAST_SPELL */;
-    dump_enums$omdump[6].nm = $c.lit("LAST_SPELL");
-    dump_enums$omdump[7].val = 42 /* MAXSPELL */;
-    dump_enums$omdump[7].nm = $c.lit("MAXSPELL");
-    dump_enums$omdump[8].val = 439 /* FIRST_REAL_GEM */;
-    dump_enums$omdump[8].nm = $c.lit("FIRST_REAL_GEM");
-    dump_enums$omdump[9].val = 460 /* LAST_REAL_GEM */;
-    dump_enums$omdump[9].nm = $c.lit("LAST_REAL_GEM");
-    dump_enums$omdump[10].val = 461 /* FIRST_GLASS_GEM */;
-    dump_enums$omdump[10].nm = $c.lit("FIRST_GLASS_GEM");
-    dump_enums$omdump[11].val = 469 /* LAST_GLASS_GEM */;
-    dump_enums$omdump[11].nm = $c.lit("LAST_GLASS_GEM");
-    dump_enums$omdump[12].val = 22 /* NUM_REAL_GEMS */;
-    dump_enums$omdump[12].nm = $c.lit("NUM_REAL_GEMS");
-    dump_enums$omdump[13].val = 9 /* NUM_GLASS_GEMS */;
-    dump_enums$omdump[13].nm = $c.lit("NUM_GLASS_GEMS");
-    dump_enums$omdump[14].val = 9624 /* MAX_GLYPH */;
-    dump_enums$omdump[14].nm = $c.lit("MAX_GLYPH");
+    $c.init(dump_enums$omdump, [
+        { val: LAST_GENERIC, nm: $c.lit("LAST_GENERIC") },
+        { val: OBJCLASS_HACK, nm: $c.lit("OBJCLASS_HACK") },
+        { val: FIRST_OBJECT, nm: $c.lit("FIRST_OBJECT") },
+        { val: FIRST_AMULET, nm: $c.lit("FIRST_AMULET") },
+        { val: LAST_AMULET, nm: $c.lit("LAST_AMULET") },
+        { val: FIRST_SPELL, nm: $c.lit("FIRST_SPELL") },
+        { val: LAST_SPELL, nm: $c.lit("LAST_SPELL") },
+        { val: MAXSPELL, nm: $c.lit("MAXSPELL") },
+        { val: FIRST_REAL_GEM, nm: $c.lit("FIRST_REAL_GEM") },
+        { val: LAST_REAL_GEM, nm: $c.lit("LAST_REAL_GEM") },
+        { val: FIRST_GLASS_GEM, nm: $c.lit("FIRST_GLASS_GEM") },
+        { val: LAST_GLASS_GEM, nm: $c.lit("LAST_GLASS_GEM") },
+        { val: NUM_REAL_GEMS, nm: $c.lit("NUM_REAL_GEMS") },
+        { val: NUM_GLASS_GEMS, nm: $c.lit("NUM_GLASS_GEMS") },
+        { val: MAX_GLYPH, nm: $c.lit("MAX_GLYPH") }
+    ]);
     dump_enums$ed.fill(null);
-    dump_enums$ed[0] = $c.relem(monsdump, 0);
-    dump_enums$ed[1] = $c.relem(objdump, 0);
-    dump_enums$ed[2] = $c.relem(dump_enums$omdump, 0);
-    dump_enums$ed[3] = $c.relem(defsym_cmap_dump, 0);
-    dump_enums$ed[4] = $c.relem(defsym_mon_syms_dump, 0);
-    dump_enums$ed[5] = $c.relem(defsym_mon_defchars_dump, 0);
-    dump_enums$ed[6] = $c.relem(objclass_defchars_dump, 0);
-    dump_enums$ed[7] = $c.relem(objclass_classes_dump, 0);
-    dump_enums$ed[8] = $c.relem(objclass_syms_dump, 0);
-    dump_enums$ed[9] = $c.relem(arti_enum_dump, 0);
-    dump_enums$ed[10] = $c.relem(mcastu_enum_dump, 0);
+    $c.init(dump_enums$ed, [
+        $c.relem(monsdump, 0),
+        $c.relem(objdump, 0),
+        $c.relem(dump_enums$omdump, 0),
+        $c.relem(defsym_cmap_dump, 0),
+        $c.relem(defsym_mon_syms_dump, 0),
+        $c.relem(defsym_mon_defchars_dump, 0),
+        $c.relem(objclass_defchars_dump, 0),
+        $c.relem(objclass_classes_dump, 0),
+        $c.relem(objclass_syms_dump, 0),
+        $c.relem(arti_enum_dump, 0),
+        $c.relem(mcastu_enum_dump, 0)
+    ]);
     for (let $i0 = 0; $i0 < 11; $i0++) {
         dump_enums$edmp[$i0].$copyFrom(new $T.de_params());
     }
-    dump_enums$edmp[0].title = $c.lit("monnums");
-    dump_enums$edmp[0].pfx = $c.lit("PM_");
-    dump_enums$edmp[0].unprefixed_count = 5;
-    dump_enums$edmp[0].dumpflgs = 0;
-    dump_enums$edmp[0].szd = 388;
-    dump_enums$edmp[1].title = $c.lit("objects_nums");
-    dump_enums$edmp[1].pfx = $c.lit("");
-    dump_enums$edmp[1].unprefixed_count = 1;
-    dump_enums$edmp[1].dumpflgs = 0;
-    dump_enums$edmp[1].szd = 482;
-    dump_enums$edmp[2].title = $c.lit("misc_object_nums");
-    dump_enums$edmp[2].pfx = $c.lit("");
-    dump_enums$edmp[2].unprefixed_count = 1;
-    dump_enums$edmp[2].dumpflgs = 0;
-    dump_enums$edmp[2].szd = 15;
-    dump_enums$edmp[3].title = $c.lit("cmap_symbols");
-    dump_enums$edmp[3].pfx = $c.lit("");
-    dump_enums$edmp[3].unprefixed_count = 1;
-    dump_enums$edmp[3].dumpflgs = 0;
-    dump_enums$edmp[3].szd = 106;
-    dump_enums$edmp[4].title = $c.lit("mon_syms");
-    dump_enums$edmp[4].pfx = $c.lit("");
-    dump_enums$edmp[4].unprefixed_count = 1;
-    dump_enums$edmp[4].dumpflgs = 0;
-    dump_enums$edmp[4].szd = 61;
-    dump_enums$edmp[5].title = $c.lit("mon_defchars");
-    dump_enums$edmp[5].pfx = $c.lit("");
-    dump_enums$edmp[5].unprefixed_count = 1;
-    dump_enums$edmp[5].dumpflgs = 1;
-    dump_enums$edmp[5].szd = 60;
-    dump_enums$edmp[6].title = $c.lit("objclass_defchars");
-    dump_enums$edmp[6].pfx = $c.lit("");
-    dump_enums$edmp[6].unprefixed_count = 1;
-    dump_enums$edmp[6].dumpflgs = 1;
-    dump_enums$edmp[6].szd = 17;
-    dump_enums$edmp[7].title = $c.lit("objclass_classes");
-    dump_enums$edmp[7].pfx = $c.lit("");
-    dump_enums$edmp[7].unprefixed_count = 1;
-    dump_enums$edmp[7].dumpflgs = 0;
-    dump_enums$edmp[7].szd = 18;
-    dump_enums$edmp[8].title = $c.lit("objclass_syms");
-    dump_enums$edmp[8].pfx = $c.lit("");
-    dump_enums$edmp[8].unprefixed_count = 1;
-    dump_enums$edmp[8].dumpflgs = 0;
-    dump_enums$edmp[8].szd = 17;
-    dump_enums$edmp[9].title = $c.lit("artifacts_nums");
-    dump_enums$edmp[9].pfx = $c.lit("");
-    dump_enums$edmp[9].unprefixed_count = 1;
-    dump_enums$edmp[9].dumpflgs = 0;
-    dump_enums$edmp[9].szd = 35;
-    dump_enums$edmp[10].title = $c.lit("mcast_spells");
-    dump_enums$edmp[10].pfx = $c.lit("MCAST_");
-    dump_enums$edmp[10].unprefixed_count = 0;
-    dump_enums$edmp[10].dumpflgs = 0;
-    dump_enums$edmp[10].szd = 20;
+    $c.init(dump_enums$edmp, [
+        { title: $c.lit("monnums"), pfx: $c.lit("PM_"), unprefixed_count: 5, dumpflgs: 0, szd: 388 },
+        { title: $c.lit("objects_nums"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 0, szd: 482 },
+        { title: $c.lit("misc_object_nums"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 0, szd: 15 },
+        { title: $c.lit("cmap_symbols"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 0, szd: 106 },
+        { title: $c.lit("mon_syms"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 0, szd: 61 },
+        { title: $c.lit("mon_defchars"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 1, szd: 60 },
+        { title: $c.lit("objclass_defchars"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 1, szd: 17 },
+        { title: $c.lit("objclass_classes"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 0, szd: 18 },
+        { title: $c.lit("objclass_syms"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 0, szd: 17 },
+        { title: $c.lit("artifacts_nums"), pfx: $c.lit(""), unprefixed_count: 1, dumpflgs: 0, szd: 35 },
+        { title: $c.lit("mcast_spells"), pfx: $c.lit("MCAST_"), unprefixed_count: 0, dumpflgs: 0, szd: 20 }
+    ]);
 }

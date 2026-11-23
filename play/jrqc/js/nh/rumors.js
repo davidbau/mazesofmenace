@@ -4,23 +4,32 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc, dupstr } from './alloc.js';
 import { exercise } from './attrib.js';
-import { yn_function } from './cmd.js';
-import { disp, flags, gf, gi, gm, go, gt, iflags, program_state, svo, u, ynchars, ynqchars } from './decl.js';
+import { A } from './attrib.h.js';
+import { disp, gf, gi, gm, go, gt, iflags, program_state, svo, u } from './decl.js';
 import { Monnam, bogon_codes, bogon_is_pname } from './do_name.js';
 import { is_fainted } from './eat.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { debugcore } from './files.js';
+import { wizard } from './flag.macros.js';
+import { COLNO, FALSE, MD_PAD, TRUE } from './global.h.js';
 import { money_cnt } from './hack.js';
+import { BY, ECMD } from './hack.h.js';
+import { pline1, release_data, update_file, verbalize1, y_n, ynq } from './hack.macros.js';
 import { eos, lowc, xcrypt } from './hacklib.js';
 import { record_achievement } from './insight.js';
 import { currency } from './invent.js';
+import { G_UNIQ, MALE, NUM_MGENDERS } from './monflag.h.js';
 import { mons } from './monst.js';
 import { the_unique_pm } from './objnam.js';
-import { There, You, impossible, nhassert_failed, pline, verbalize } from './pline.js';
-import { rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { LOW_PM, NUMMONS } from './permonst.h.js';
+import { There, You, impossible, nhassert_failed, pline } from './pline.js';
+import { rn2, rnd } from './rnd.js';
 import { sfi_ulong, sfi_unsigned, sfo_ulong, sfo_unsigned } from './sfbase.js';
 import { money2mon } from './shk.js';
-import { windowprocs } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, display_nhwindow, putstr } from './winprocs.macros.js';
+import { NHW, WIN_ERR } from './wintype.h.js';
+import { ACH } from './you.h.js';
+import { Blind } from './youprop.macros.js';
 
 const init_rumors$rumors_header = new Int8Array(31);   // static in init_rumors()
 let getrumor$cookie_marker = null;   // static in getrumor()
@@ -72,7 +81,7 @@ export async function getrumor(truth, rumor_buf, exclude_cookie) {   // rumors.c
                     return rumor_buf;
                 }
             }
-            switch (adjtruth = truth + (rng_log_enabled() ? (rng_log_set_caller($c.lit("rumors.c"), 151, $c.lit("getrumor")), rn2(2)) : rn2(2)) | 0) {
+            switch (adjtruth = truth + rn2(2) | 0) {
                 case 2:
                 case 1:
                     beginning = $c.i64(gt.true_rumor_start);
@@ -87,13 +96,13 @@ export async function getrumor(truth, rumor_buf, exclude_cookie) {   // rumors.c
                     await impossible($c.lit("strange truth value for rumor"));
                     return $c.__builtin___strcpy_chk(rumor_buf, $c.lit("Oops..."), -1);
             }
-            $c.__builtin___strcpy_chk(rumor_buf, await get_rnd_line(rumors, new $c.Ptr(line, 0), 256, rn2, beginning, ending, 60), -1);
+            $c.__builtin___strcpy_chk(rumor_buf, await get_rnd_line(rumors, new $c.Ptr(line, 0), 256, rn2, beginning, ending, MD_PAD.RUMORS), -1);
         } while (($t1 = count, count = $t1 + 1 | 0, $t1) < 50 && exclude_cookie && !$c.strncmp(rumor_buf, getrumor$cookie_marker, $c.u64(marklen)));
         $c.fclose(rumors);
         if (count >= 50) {
             await impossible($c.lit("Can't find non-cookie rumor?"));
         } else if (!gi.in_mklev) {
-            await exercise(2 /* A_WIS */, $c.i8(adjtruth > 0 ? 1 : 0));
+            await exercise(A.WIS, $c.i8(adjtruth > 0 ? 1 : 0));
         }
     } else {
         await couldnt_open_file($c.lit("rumors"));
@@ -114,7 +123,7 @@ export async function rumor_check() {   // rumors.c:196
     D1: for (;;) {
         switch ($goto) {
         case null:
-            tmpwin[0] = -1;
+            tmpwin[0] = WIN_ERR;
             rumors = gt.true_rumor_size >= 0 ? $c.fopen($c.lit("rumors"), $c.lit("r")) : null;
         case "no_rumors":
             if ($goto !== "no_rumors" && rumors) {
@@ -127,11 +136,11 @@ export async function rumor_check() {   // rumors.c:196
                         $goto = "no_rumors"; continue D1;
                     }
                 }
-                tmpwin[0] = await windowprocs.win_create_nhwindow(5);
+                tmpwin[0] = await create_nhwindow()(NHW.TEXT);
                 $c.__builtin___sprintf_chk(new $c.Ptr(rumor_buf, 0), 0, 256, $c.lit("T start=%06ld (%06lx), end=%06ld (%06lx), size=%06ld (%06lx)"), $c.i64(gt.true_rumor_start), gt.true_rumor_start, gt.true_rumor_end, $c.u64(gt.true_rumor_end), gt.true_rumor_size, $c.u64(gt.true_rumor_size));
-                await windowprocs.win_putstr(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
+                await putstr()(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
                 $c.__builtin___sprintf_chk(new $c.Ptr(rumor_buf, 0), 0, 256, $c.lit("F start=%06ld (%06lx), end=%06ld (%06lx), size=%06ld (%06lx)"), $c.i64(gf.false_rumor_start), gf.false_rumor_start, gf.false_rumor_end, $c.u64(gf.false_rumor_end), gf.false_rumor_size, $c.u64(gf.false_rumor_size));
-                await windowprocs.win_putstr(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
+                await putstr()(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
                 rumor_buf[0] = 0;
                 $c.fseek(rumors, $c.i64(gt.true_rumor_start), 0);
                 ftell_rumor_start = $c.ftell(rumors);
@@ -140,7 +149,7 @@ export async function rumor_check() {   // rumors.c:196
                     endp.set(0, 0);
                 }
                 $c.__builtin___sprintf_chk(new $c.Ptr(rumor_buf, 0), 0, 256, $c.lit("T %06ld %s"), ftell_rumor_start, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
-                await windowprocs.win_putstr(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
+                await putstr()(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
                 while ($c.fgets(new $c.Ptr(line, 0), 256, rumors) && $c.ftell(rumors) < gt.true_rumor_end) {
                     continue;
                 }
@@ -148,7 +157,7 @@ export async function rumor_check() {   // rumors.c:196
                     endp.set(0, 0);
                 }
                 $c.__builtin___sprintf_chk(new $c.Ptr(rumor_buf, 0), 0, 256, $c.lit("  %6s %s"), $c.lit(""), xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
-                await windowprocs.win_putstr(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
+                await putstr()(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
                 rumor_buf[0] = 0;
                 $c.fseek(rumors, $c.i64(gf.false_rumor_start), 0);
                 ftell_rumor_start = $c.ftell(rumors);
@@ -157,7 +166,7 @@ export async function rumor_check() {   // rumors.c:196
                     endp.set(0, 0);
                 }
                 $c.__builtin___sprintf_chk(new $c.Ptr(rumor_buf, 0), 0, 256, $c.lit("F %06ld %s"), ftell_rumor_start, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
-                await windowprocs.win_putstr(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
+                await putstr()(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
                 while ($c.fgets(new $c.Ptr(line, 0), 256, rumors) && $c.ftell(rumors) < gf.false_rumor_end) {
                     continue;
                 }
@@ -165,12 +174,12 @@ export async function rumor_check() {   // rumors.c:196
                     endp.set(0, 0);
                 }
                 $c.__builtin___sprintf_chk(new $c.Ptr(rumor_buf, 0), 0, 256, $c.lit("  %6s %s"), $c.lit(""), xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
-                await windowprocs.win_putstr(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
+                await putstr()(tmpwin[0], 0, new $c.Ptr(rumor_buf, 0));
                 $c.fclose(rumors);
             } else if ($goto === "no_rumors" || gt.true_rumor_size < 0) {
                 $goto = null;   // no_rumors:
                 await pline($c.lit("rumors not accessible."));
-                await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 1);
+                await display_nhwindow()($G.WIN_MESSAGE, TRUE);
             } else {
                 await couldnt_open_file($c.lit("rumors"));
                 gt.true_rumor_size = -1;
@@ -178,9 +187,9 @@ export async function rumor_check() {   // rumors.c:196
             await others_check($c.lit("Engravings:"), $c.lit("engrave"), new $c.Ptr(tmpwin, 0));
             await others_check($c.lit("Epitaphs:"), $c.lit("epitaph"), new $c.Ptr(tmpwin, 0));
             await others_check($c.lit("Bogus monsters:"), $c.lit("bogusmon"), new $c.Ptr(tmpwin, 0));
-            if (tmpwin[0] !== -1) {
-                await windowprocs.win_display_nhwindow(tmpwin[0], 1);
-                await windowprocs.win_destroy_nhwindow(tmpwin[0]);
+            if (tmpwin[0] !== WIN_ERR) {
+                await display_nhwindow()(tmpwin[0], TRUE);
+                await destroy_nhwindow()(tmpwin[0]);
             }
         }
         break;
@@ -193,52 +202,52 @@ async function others_check(ftype, fname, winptr) {   // rumors.c:308
     fh = $c.fopen(fname, $c.lit("r"));
     if (fh) {
         closeit$: {
-            if (tmpwin === -1) {
-                $t1 = tmpwin = await windowprocs.win_create_nhwindow(5), winptr.set(0, $t1);
-                if (tmpwin === -1) {
+            if (tmpwin === WIN_ERR) {
+                $t1 = tmpwin = await create_nhwindow()(NHW.TEXT), winptr.set(0, $t1);
+                if (tmpwin === WIN_ERR) {
                     await impossible(new $c.Ptr(others_check$errfmt, 0), fname, $c.lit("can't create temporary window"));
                     break closeit$;
                 }
             }
-            await windowprocs.win_putstr(tmpwin, 0, $c.lit(""));
-            await windowprocs.win_putstr(tmpwin, 0, ftype);
+            await putstr()(tmpwin, 0, $c.lit(""));
+            await putstr()(tmpwin, 0, ftype);
             new $c.Ptr(line, 0).set(0, 0);
             if (!$c.fgets(new $c.Ptr(line, 0), 256, fh)) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(xbuf, 0), 0, 256, new $c.Ptr(others_check$errfmt, 0), fname, $c.lit("error; can't read comment line"));
-                await windowprocs.win_putstr(tmpwin, 0, new $c.Ptr(xbuf, 0));
+                await putstr()(tmpwin, 0, new $c.Ptr(xbuf, 0));
                 break closeit$;
             }
             if (new $c.Ptr(line, 0).get(0) !== 35) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(xbuf, 0), 0, 256, new $c.Ptr(others_check$errfmt, 0), fname, $c.lit("malformed; first line is not a comment line:"));
-                await windowprocs.win_putstr(tmpwin, 0, new $c.Ptr(xbuf, 0));
+                await putstr()(tmpwin, 0, new $c.Ptr(xbuf, 0));
                 if ((endp = $c.strchr(new $c.Ptr(line, 0), 10)) !== null) {
                     endp.set(0, 0);
                 }
-                await windowprocs.win_putstr(tmpwin, 0, $c.lit("- first line, as is"));
-                await windowprocs.win_putstr(tmpwin, 0, new $c.Ptr(line, 0));
-                await windowprocs.win_putstr(tmpwin, 0, $c.lit("- xcrypt of first line"));
-                await windowprocs.win_putstr(tmpwin, 0, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
+                await putstr()(tmpwin, 0, $c.lit("- first line, as is"));
+                await putstr()(tmpwin, 0, new $c.Ptr(line, 0));
+                await putstr()(tmpwin, 0, $c.lit("- xcrypt of first line"));
+                await putstr()(tmpwin, 0, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
                 break closeit$;
             }
             new $c.Ptr(line, 0).set(0, 0);
             if (!$c.fgets(new $c.Ptr(line, 0), 256, fh) || new $c.Ptr(line, 0).get(0) === 10) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(xbuf, 0), 0, 256, new $c.Ptr(others_check$errfmt, 0), fname, !new $c.Ptr(line, 0).get(0) ? $c.lit("can't read first non-comment line") : $c.lit("first non-comment line is empty"));
-                await windowprocs.win_putstr(tmpwin, 0, new $c.Ptr(xbuf, 0));
+                await putstr()(tmpwin, 0, new $c.Ptr(xbuf, 0));
                 break closeit$;
             }
             entrycount = entrycount + 1 | 0;
             if ((endp = $c.strchr(new $c.Ptr(line, 0), 10)) !== null) {
                 endp.set(0, 0);
             }
-            await windowprocs.win_putstr(tmpwin, 0, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
+            await putstr()(tmpwin, 0, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
             if (!$c.fgets(new $c.Ptr(line, 0), 256, fh)) {
-                await windowprocs.win_putstr(tmpwin, 0, $c.lit("(no second entry)"));
+                await putstr()(tmpwin, 0, $c.lit("(no second entry)"));
             } else {
                 entrycount = entrycount + 1 | 0;
                 if ((endp = $c.strchr(new $c.Ptr(line, 0), 10)) !== null) {
                     endp.set(0, 0);
                 }
-                await windowprocs.win_putstr(tmpwin, 0, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
+                await putstr()(tmpwin, 0, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
                 while ($c.fgets(new $c.Ptr(line, 0), 256, fh)) {
                     entrycount = entrycount + 1 | 0;
                     if ((endp = $c.strchr(new $c.Ptr(line, 0), 10)) !== null) {
@@ -247,12 +256,12 @@ async function others_check(ftype, fname, winptr) {   // rumors.c:308
                     xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0));
                 }
                 if (entrycount === 2) {
-                    await windowprocs.win_putstr(tmpwin, 0, $c.lit("(only two entries)"));
+                    await putstr()(tmpwin, 0, $c.lit("(only two entries)"));
                 } else {
                     if (entrycount > 3) {
-                        await windowprocs.win_putstr(tmpwin, 0, $c.lit(" ..."));
+                        await putstr()(tmpwin, 0, $c.lit(" ..."));
                     }
-                    await windowprocs.win_putstr(tmpwin, 0, new $c.Ptr(xbuf, 0));
+                    await putstr()(tmpwin, 0, new $c.Ptr(xbuf, 0));
                 }
             }
         }
@@ -316,34 +325,34 @@ export async function get_rnd_text(fname, buf, rng, padlength) {   // rumors.c:4
 }
 export async function outrumor(truth, mechanism) {   // rumors.c:529
     let line = null, buf = new Int8Array(256), reading = 0;
-    reading = $c.i8(mechanism === 1 || mechanism === 2 ? 1 : 0);
+    reading = $c.i8(mechanism === BY.COOKIE || mechanism === BY.PAPER ? 1 : 0);
     if (reading) {
-        if (is_fainted() && mechanism === 1) {
+        if (is_fainted() && mechanism === BY.COOKIE) {
             return;
-        } else if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
-            if (mechanism === 1) {
+        } else if (Blind()) {
+            if (mechanism === BY.COOKIE) {
                 await pline(new $c.Ptr(outrumor$fortune_msg, 0));
             }
             await pline($c.lit("What a pity that you cannot read it!"));
             return;
         }
     }
-    line = await getrumor(truth, new $c.Ptr(buf, 0), $c.i8(reading ? 0 : 1));
+    line = await getrumor(truth, new $c.Ptr(buf, 0), $c.i8(reading ? FALSE : TRUE));
     if (!line.get(0)) {
         line = $c.lit("NetHack rumors file closed for renovation.");
     }
     switch (mechanism) {
-        case 0:
-            await pline($c.lit("True to her word, the Oracle %ssays: "), !(rng_log_enabled() ? (rng_log_set_caller($c.lit("rumors.c"), 558, $c.lit("outrumor")), rn2(4)) : rn2(4)) ? $c.lit("offhandedly ") : !(rng_log_enabled() ? (rng_log_set_caller($c.lit("rumors.c"), 559, $c.lit("outrumor")), rn2(3)) : rn2(3)) ? $c.lit("casually ") : (rng_log_enabled() ? (rng_log_set_caller($c.lit("rumors.c"), 560, $c.lit("outrumor")), rn2(2)) : rn2(2)) ? $c.lit("nonchalantly ") : $c.lit(""));
-            await verbalize($c.lit("%s"), line);
+        case BY.ORACLE:
+            await pline($c.lit("True to her word, the Oracle %ssays: "), !rn2(4) ? $c.lit("offhandedly ") : !rn2(3) ? $c.lit("casually ") : rn2(2) ? $c.lit("nonchalantly ") : $c.lit(""));
+            await verbalize1(line);
             return;
-        case 1:
+        case BY.COOKIE:
             await pline(new $c.Ptr(outrumor$fortune_msg, 0));
-        case 2:
+        case BY.PAPER:
             await pline($c.lit("It reads:"));
             break;
     }
-    await pline($c.lit("%s"), line);
+    await pline1(line);
 }
 async function init_oracles(fp) {   // rumors.c:577
     let i = 0, line = new Int8Array(256), cnt = Int32Array.of(0), $t1;
@@ -362,7 +371,7 @@ async function init_oracles(fp) {   // rumors.c:577
 }
 export async function save_oracles(nhfp) {   // rumors.c:598
     let i = 0;
-    if (nhfp.mode & 3) {
+    if (update_file(nhfp)) {
         await sfo_unsigned(nhfp, new $c.FieldRef(svo, "oracle_cnt", "u32"), $c.lit("oracle-oracle_cnt"));
         if (svo.oracle_cnt) {
             for (i = 0; i >>> 0 < svo.oracle_cnt; i = i + 1 | 0) {
@@ -370,7 +379,7 @@ export async function save_oracles(nhfp) {   // rumors.c:598
             }
         }
     }
-    if (nhfp.mode & 4) {
+    if (release_data(nhfp)) {
         if (svo.oracle_cnt) {
             svo.oracle_cnt = 0, go.oracle_flg = 0;
         }
@@ -409,26 +418,26 @@ export async function outoracle(special, delphi) {   // rumors.c:640
             if (svo.oracle_cnt <= 1 && !special) {
                 break close_oracles$;
             }
-            oracle_idx = special ? 0 : rng_log_enabled() ? (rng_log_set_caller($c.lit("rumors.c"), 665, $c.lit("outoracle")), rnd((svo.oracle_cnt | 0) - 1 | 0)) : rnd((svo.oracle_cnt | 0) - 1 | 0);
+            oracle_idx = special ? 0 : rnd((svo.oracle_cnt | 0) - 1 | 0);
             $c.fseek(oracles, $c.i64(svo.oracle_loc.get(oracle_idx)), 0);
             if (!special) {
                 $t1 = svo.oracle_loc.get(svo.oracle_cnt = svo.oracle_cnt - 1 >>> 0), svo.oracle_loc.set(oracle_idx, $t1);
             }
-            tmpwin = await windowprocs.win_create_nhwindow(5);
+            tmpwin = await create_nhwindow()(NHW.TEXT);
             if (delphi) {
-                await windowprocs.win_putstr(tmpwin, 0, special ? $c.lit("The Oracle scornfully takes all your gold and says:") : $c.lit("The Oracle meditates for a moment and then intones:"));
+                await putstr()(tmpwin, 0, special ? $c.lit("The Oracle scornfully takes all your gold and says:") : $c.lit("The Oracle meditates for a moment and then intones:"));
             } else {
-                await windowprocs.win_putstr(tmpwin, 0, $c.lit("The message reads:"));
+                await putstr()(tmpwin, 0, $c.lit("The message reads:"));
             }
-            await windowprocs.win_putstr(tmpwin, 0, $c.lit(""));
-            while ($c.fgets(new $c.Ptr(line, 0), 80, oracles) && $c.strcmp(new $c.Ptr(line, 0), $c.lit("---\n"))) {
+            await putstr()(tmpwin, 0, $c.lit(""));
+            while ($c.fgets(new $c.Ptr(line, 0), COLNO, oracles) && $c.strcmp(new $c.Ptr(line, 0), $c.lit("---\n"))) {
                 if ((endp = $c.strchr(new $c.Ptr(line, 0), 10)) !== null) {
                     endp.set(0, 0);
                 }
-                await windowprocs.win_putstr(tmpwin, 0, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
+                await putstr()(tmpwin, 0, xcrypt(new $c.Ptr(line, 0), new $c.Ptr(xbuf, 0)));
             }
-            await windowprocs.win_display_nhwindow(tmpwin, 1);
-            await windowprocs.win_destroy_nhwindow(tmpwin);
+            await display_nhwindow()(tmpwin, TRUE);
+            await destroy_nhwindow()(tmpwin);
         }
         $c.fclose(oracles);
     } else {
@@ -444,63 +453,63 @@ export async function doconsult(oracl) {   // rumors.c:696
     umoney = money_cnt(gi.invent);
     if (!oracl) {
         await There($c.lit("is no one here to consult."));
-        return 0;
+        return ECMD.OK;
     } else if (!oracl.mpeaceful) {
         await pline($c.lit("%s is in no mood for consultations."), await Monnam(oracl));
-        return 0;
+        return ECMD.OK;
     } else if (!umoney) {
         await You($c.lit("have no gold."));
-        return 0;
+        return ECMD.OK;
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 128, $c.lit("\"Wilt thou settle for a minor consultation?\" (%d %s)"), minor_cost, await currency(minor_cost));
-    switch (await yn_function(new $c.Ptr(qbuf, 0), new $c.Ptr(ynqchars, 0), 113, 1)) {
+    switch (await ynq(new $c.Ptr(qbuf, 0))) {
         default:
         case 113:
-            return 0;
+            return ECMD.OK;
         case 121:
             if (umoney < minor_cost) {
                 await You($c.lit("don't even have enough gold for that!"));
-                return 0;
+                return ECMD.OK;
             }
             u_pay = minor_cost;
             break;
         case 110:
             if (umoney <= minor_cost || (svo.oracle_cnt === 1 || go.oracle_flg < 0)) {
-                return 0;
+                return ECMD.OK;
             }
             $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 128, $c.lit("\"Then dost thou desire a major one?\" (%d %s)"), major_cost, await currency(major_cost));
-            if (await yn_function(new $c.Ptr(qbuf, 0), new $c.Ptr(ynchars, 0), 110, 1) !== 121) {
-                return 0;
+            if (await y_n(new $c.Ptr(qbuf, 0)) !== 121) {
+                return ECMD.OK;
             }
             u_pay = umoney < major_cost ? $c.i32(umoney) : major_cost;
             break;
     }
     await money2mon(oracl, u_pay);
-    disp.botl = 1;
+    disp.botl = TRUE;
     if (!u.uevent.major_oracle && !u.uevent.minor_oracle) {
-        await record_achievement(19);
+        await record_achievement(ACH.ORCL);
     }
     add_xpts = 0;
     if (u_pay === minor_cost) {
-        await outrumor(1, 0);
+        await outrumor(1, BY.ORACLE);
         if (!u.uevent.minor_oracle) {
             add_xpts = $c.div32(u_pay, u.uevent.major_oracle | 0 ? 25 : 10);
         }
-        u.uevent.minor_oracle = (1) & 1;
+        u.uevent.minor_oracle = (TRUE) & 1;
     } else {
         cheapskate = $c.i8(u_pay < major_cost ? 1 : 0);
-        await outoracle(cheapskate, 1);
+        await outoracle(cheapskate, TRUE);
         if (!cheapskate && !u.uevent.major_oracle) {
             add_xpts = $c.div32(u_pay, u.uevent.minor_oracle | 0 ? 25 : 10);
         }
-        u.uevent.major_oracle = (1) & 1;
-        await exercise(2 /* A_WIS */, $c.i8(!cheapskate ? 1 : 0));
+        u.uevent.major_oracle = (TRUE) & 1;
+        await exercise(A.WIS, $c.i8(!cheapskate ? 1 : 0));
     }
     if (add_xpts) {
         await more_experienced(add_xpts, $c.div32(u_pay, 50));
         await newexplevel();
     }
-    return 1;
+    return ECMD.TIME;
 }
 async function couldnt_open_file(filename) {   // rumors.c:770
     let save_something = 0;
@@ -514,7 +523,7 @@ async function couldnt_open_file(filename) {   // rumors.c:770
 export async function CapitalMon(word) {   // rumors.c:791
     let nam = null, i = 0, wln = 0, nln = 0;
     if (!word || !word.get(0) || word.get(0) === lowc(word.get(0))) {
-        return 0;
+        return FALSE;
     }
     if (!CapMons) {
         await init_CapMons();
@@ -528,10 +537,10 @@ export async function CapitalMon(word) {   // rumors.c:791
             continue;
         }
         if (!$c.strncmp(nam, word, nln) && (!word.get(nln) || word.get(nln) === 32 || word.get(nln) === 39)) {
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 async function init_CapMons() {   // rumors.c:829
     let pass = 0, bogonfile = null, mptr = null, nam = null, mndx = 0, mgend = 0, hline = new Int8Array(256), xbuf = new Int8Array(256), endp = null, startp = null, code = 0, buf = new Int8Array(256), i = 0, tmpwin = 0, $t1;
@@ -541,12 +550,12 @@ async function init_CapMons() {   // rumors.c:829
     }
     for (pass = 1; pass <= 2; pass = pass + 1 >>> 0) {
         CapMonstCnt = CapBogonCnt = 0;
-        for (mndx = 0; mndx < 383; mndx = mndx + 1 >>> 0) {
+        for (mndx = LOW_PM; mndx < NUMMONS; mndx = mndx + 1 >>> 0) {
             mptr = $c.relem(mons, mndx);
-            if ((mptr.geno & 4096) !== 0 && !the_unique_pm(mptr)) {
+            if ((mptr.geno & G_UNIQ) !== 0 && !the_unique_pm(mptr)) {
                 continue;
             }
-            for (mgend = 0; mgend < 3; mgend = mgend + 1 >>> 0) {
+            for (mgend = MALE; mgend < NUM_MGENDERS; mgend = mgend + 1 >>> 0) {
                 nam = mptr.pmnames[mgend];
                 if (nam && nam.get(0) !== lowc(nam.get(0))) {
                     if (pass === 2) {
@@ -588,15 +597,15 @@ async function init_CapMons() {   // rumors.c:829
             }
         }
     }
-    if (flags.debug && debugcore($c.lit("CapMons"), 0)) {
-        tmpwin = await windowprocs.win_create_nhwindow(5);
-        await windowprocs.win_putstr(tmpwin, 0, $c.lit("Capitalized monster type names normally preceded by \"the\":"));
+    if (wizard() && debugcore($c.lit("CapMons"), FALSE)) {
+        tmpwin = await create_nhwindow()(NHW.TEXT);
+        await putstr()(tmpwin, 0, $c.lit("Capitalized monster type names normally preceded by \"the\":"));
         for (i = 0; i < CapMonSiz - 1 >>> 0; i = i + 1 >>> 0) {
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("  %.77s"), CapMons.get(i));
-            await windowprocs.win_putstr(tmpwin, 0, new $c.Ptr(buf, 0));
+            await putstr()(tmpwin, 0, new $c.Ptr(buf, 0));
         }
-        await windowprocs.win_display_nhwindow(tmpwin, 1);
-        await windowprocs.win_destroy_nhwindow(tmpwin);
+        await display_nhwindow()(tmpwin, TRUE);
+        await destroy_nhwindow()(tmpwin);
     }
     return;
 }

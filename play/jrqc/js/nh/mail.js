@@ -9,21 +9,33 @@ import { flush_screen, newsym } from './display.js';
 import { oname } from './do_name.js';
 import { nh_terminate } from './end.js';
 import { debugcore } from './files.js';
+import { FALSE, ROWNO, TRUE } from './global.h.js';
+import { NO, ONAME_NO_FLAGS } from './hack.h.js';
 import { dist2 } from './hacklib.js';
 import { hold_another_object } from './invent.js';
+import { nhUse } from './lint.macros.js';
+import { MSG } from './mail.h.js';
 import { makemon } from './makemon.js';
 import { mksobj, new_omailcmd } from './mkobj.js';
 import { mongone } from './mon.js';
 import { accessible } from './monmove.js';
 import { mons } from './monst.js';
+import { PM } from './monsters.h.js';
+import { SCR_MAIL } from './objects.h.js';
 import { nh_getenv } from './options.js';
 import { pline, verbalize } from './pline.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { DBWALL } from './rm.h.js';
+import { MON_AT, remove_monster } from './rm.macros.js';
+import { rn2 } from './rnd.js';
 import { Hello } from './role.js';
 import { place_monster } from './steed.js';
 import { enexto } from './teleport.js';
+import { MAILCKFREQ } from './unixconf.h.js';
 import { child } from './unixunix.js';
-import { windowprocs } from './windows.js';
+import { cansee, couldsee } from './vision.macros.js';
+import { display_nhwindow, nh_delay_output } from './winprocs.macros.js';
+import { u_at } from './you.macros.js';
+import { Blind, Blind_telepat, Deaf } from './youprop.macros.js';
 
 const ckmailstatus$deliver = new $T.mail_info();   // static in ckmailstatus()
 const omstat = new $T.stat();
@@ -48,7 +60,7 @@ export async function getmailstatus() {   // mail.c:97
         $c.__builtin___strcat_chk(mailbox, pw_name, -1);
     }
     do {
-        if (debugcore($c.lit("mail.c"), 1)) {
+        if (debugcore($c.lit("mail.c"), TRUE)) {
             save_plnmsg = iflags.last_msg;
             await pline($c.lit("mailbox=%c%s%c"), mailbox ? 34 : 60, mailbox ? mailbox : $c.lit("null"), mailbox ? 34 : 62);
             iflags.last_msg = save_plnmsg;
@@ -61,24 +73,24 @@ export async function getmailstatus() {   // mail.c:97
 async function md_start(startp) {   // mail.c:149
     let testcc = new $T.nhcoord(), row = 0, lax = 0, dd = 0, max_distance = 0, stway = null;
     stway = gs.stairs;
-    if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && !(u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic)) {
+    if (Blind() && !Blind_telepat()) {
         if (!await enexto(startp, u.ux, u.uy, null)) {
-            return 0;
+            return FALSE;
         }
-        return 1;
+        return TRUE;
     }
     while (stway) {
-        if (stway.tolev.dnum === u.uz.dnum && (gv.viz_array.get(stway.sy).get(stway.sx) & 1) !== 0) {
+        if (stway.tolev.dnum === u.uz.dnum && couldsee(stway.sx, stway.sy)) {
             startp.x = stway.sx;
             startp.y = stway.sy;
-            return 1;
+            return TRUE;
         }
         stway = stway.next;
     }
     lax = 0;
     max_distance = -1;
     retry$: for (;;) {
-        for (row = 0; row < 21; row = row + 1 | 0) {
+        for (row = 0; row < ROWNO; row = row + 1 | 0) {
             if (gv.viz_rmin.get(row) < gv.viz_rmax.get(row)) {
                 dd = dist2(gv.viz_rmin.get(row), $c.i16(row), u.ux, u.uy);
                 if (dd > max_distance) {
@@ -86,7 +98,7 @@ async function md_start(startp) {   // mail.c:149
                         max_distance = dd;
                         startp.y = $c.i16(row);
                         startp.x = gv.viz_rmin.get(row);
-                    } else if (await enexto(testcc, gv.viz_rmin.get(row), $c.i16(row), null) && !((gv.viz_array.get(testcc.y).get(testcc.x) & 2) !== 0) && (gv.viz_array.get(testcc.y).get(testcc.x) & 1) !== 0) {
+                    } else if (await enexto(testcc, gv.viz_rmin.get(row), $c.i16(row), null) && !cansee(testcc.x, testcc.y) && couldsee(testcc.x, testcc.y)) {
                         max_distance = dd;
                         startp.$copyFrom(testcc);
                     }
@@ -97,7 +109,7 @@ async function md_start(startp) {   // mail.c:149
                         max_distance = dd;
                         startp.y = $c.i16(row);
                         startp.x = gv.viz_rmax.get(row);
-                    } else if (await enexto(testcc, gv.viz_rmax.get(row), $c.i16(row), null) && !((gv.viz_array.get(testcc.y).get(testcc.x) & 2) !== 0) && (gv.viz_array.get(testcc.y).get(testcc.x) & 1) !== 0) {
+                    } else if (await enexto(testcc, gv.viz_rmax.get(row), $c.i16(row), null) && !cansee(testcc.x, testcc.y) && couldsee(testcc.x, testcc.y)) {
                         max_distance = dd;
                         startp.$copyFrom(testcc);
                     }
@@ -109,23 +121,23 @@ async function md_start(startp) {   // mail.c:149
                 lax = 1;
                 continue retry$;
             }
-            return 0;
+            return FALSE;
         }
         break;
     }
-    return 1;
+    return TRUE;
 }
 async function md_stop(stopp, startp) {   // mail.c:248
     let x = 0, y = 0, distance = 0, min_distance = 0;
     min_distance = -1;
     for (x = $c.i16(u.ux - 1 | 0); x <= (u.ux + 1 | 0); x = $c.i16(x + 1)) {
         for (y = $c.i16(u.uy - 1 | 0); y <= (u.uy + 1 | 0); y = $c.i16(y + 1)) {
-            if (!isok(x, y) || x === u.ux && y === u.uy) {
+            if (!isok(x, y) || u_at(x, y)) {
                 continue;
             }
-            if (accessible(x, y) && !(svl.level.monsters[x][y] !== null)) {
+            if (accessible(x, y) && !MON_AT(x, y)) {
                 distance = $c.i16(dist2(x, y, startp.x, startp.y));
-                if (min_distance < 0 || distance < min_distance || distance === min_distance && (rng_log_enabled() ? (rng_log_set_caller($c.lit("mail.c"), 261, $c.lit("md_stop")), rn2(2)) : rn2(2))) {
+                if (min_distance < 0 || distance < min_distance || distance === min_distance && rn2(2)) {
                     stopp.x = x;
                     stopp.y = y;
                     min_distance = distance;
@@ -133,10 +145,10 @@ async function md_stop(stopp, startp) {   // mail.c:248
             }
         }
     }
-    if (min_distance < 0 && !await enexto(stopp, u.ux, u.uy, $c.relem(mons, 314 /* PM_MAIL_DAEMON */))) {
-        return 0;
+    if (min_distance < 0 && !await enexto(stopp, u.ux, u.uy, $c.relem(mons, PM.MAIL_DAEMON))) {
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 async function md_rush(md, tx, ty) {   // mail.c:288
     let mon = null, dx = 0, dy = 0, fx = 0, fy = 0, nfx = 0, nfy = 0, d1 = 0, d2 = 0;
@@ -145,14 +157,14 @@ async function md_rush(md, tx, ty) {   // mail.c:288
     nfx = fx;
     nfy = fy;
     if ($c.peq(svl.level.monsters[fx][fy], md)) {
-        svl.level.monsters[fx][fy] = null;
+        remove_monster(fx, fy);
         await newsym($c.i16(fx), $c.i16(fy));
     }
     while (1) {
         d1 = dist2($c.i16(fx), $c.i16(fy), $c.i16(tx), $c.i16(ty));
         for (dx = -1; dx <= 1; dx = dx + 1 | 0) {
             for (dy = -1; dy <= 1; dy = dy + 1 | 0) {
-                if ((dx || dy) && isok($c.i16(fx + dx | 0), $c.i16(fy + dy | 0)) && !(svl.level.locations[fx + dx | 0][fy + dy | 0].typ <= 12 /* DBWALL */)) {
+                if ((dx || dy) && isok($c.i16(fx + dx | 0), $c.i16(fy + dy | 0)) && !(svl.level.locations[fx + dx | 0][fy + dy | 0].typ <= DBWALL)) {
                     d2 = dist2($c.i16(fx + dx | 0), $c.i16(fy + dy | 0), $c.i16(tx), $c.i16(ty));
                     if (d2 < d1) {
                         d1 = d2;
@@ -171,21 +183,21 @@ async function md_rush(md, tx, ty) {   // mail.c:288
             break;
         }
         mon = svl.level.monsters[fx][fy];
-        if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+        if (!Deaf()) {
             if (mon) {
-                await verbalize($c.lit("%s"), mail_text[rng_log_enabled() ? (rng_log_set_caller($c.lit("mail.c"), 340, $c.lit("md_rush")), rn2(3)) : rn2(3)]);
-            } else if (fx === u.ux && fy === u.uy) {
+                await verbalize($c.lit("%s"), mail_text[rn2(3)]);
+            } else if (u_at(fx, fy)) {
                 await verbalize($c.lit("Excuse me."));
             }
         }
         if (mon) {
-            svl.level.monsters[fx][fy] = null;
+            remove_monster(fx, fy);
         }
         await place_monster(md, $c.i16(fx), $c.i16(fy));
         await newsym($c.i16(fx), $c.i16(fy));
         await flush_screen(0);
-        await windowprocs.win_delay_output();
-        svl.level.monsters[fx][fy] = null;
+        await nh_delay_output()();
+        remove_monster(fx, fy);
         if (mon) {
             if (mon.mx !== fx || mon.my !== fy) {
                 svl.level.monsters[fx][fy] = mon;
@@ -196,66 +208,66 @@ async function md_rush(md, tx, ty) {   // mail.c:288
         await newsym($c.i16(fx), $c.i16(fy));
     }
     if ((mon = svl.level.monsters[fx][fy]) !== null) {
-        svl.level.monsters[fx][fy] = null;
+        remove_monster(fx, fy);
         await place_monster(md, $c.i16(fx), $c.i16(fy));
         await newsym($c.i16(fx), $c.i16(fy));
-        if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+        if (!Deaf()) {
             await verbalize($c.lit("This place's too crowded.  I'm outta here."));
         } else {
             await pline($c.lit("%s."), c_common_strings.c_Never_mind);
         }
-        svl.level.monsters[fx][fy] = null;
+        remove_monster(fx, fy);
         if (mon.mx !== fx || mon.my !== fy) {
             svl.level.monsters[fx][fy] = mon;
         } else {
             await place_monster(mon, $c.i16(fx), $c.i16(fy));
         }
         await newsym($c.i16(fx), $c.i16(fy));
-        return 0;
+        return FALSE;
     }
     await place_monster(md, $c.i16(fx), $c.i16(fy));
     await newsym($c.i16(fx), $c.i16(fy));
     await flush_screen(0);
-    await windowprocs.win_delay_output();
-    return 1;
+    await nh_delay_output()();
+    return TRUE;
 }
 async function newmail(info) {   // mail.c:399
     let md = null, start = new $T.nhcoord(), stop = new $T.nhcoord(), message_seen = 0, obj = null, $t1;
-    message_seen = 0;
+    message_seen = FALSE;
     give_up$: {
         if (!await md_start(start) || !await md_stop(stop, start)) {
             break give_up$;
         }
-        if (!(md = await makemon($c.relem(mons, 314 /* PM_MAIL_DAEMON */), start.x, start.y, 0))) {
+        if (!(md = await makemon($c.relem(mons, PM.MAIL_DAEMON), start.x, start.y, NO.MM_FLAGS))) {
             break give_up$;
         }
         go_back$: {
             if (!await md_rush(md, stop.x, stop.y)) {
                 break go_back$;
             }
-            message_seen = 1;
-            if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+            message_seen = TRUE;
+            if (!Deaf()) {
                 await verbalize($c.lit("%s, %s!  %s."), Hello(md), new $c.Ptr(svp.plname, 0), info.display_txt);
             } else {
                 await pline($c.lit("Message:  %s."), info.display_txt);
             }
             if (info.message_typ) {
-                obj = await mksobj(364 /* SCR_MAIL */, 0, 0);
+                obj = await mksobj(SCR_MAIL, FALSE, FALSE);
                 if (info.object_nam) {
-                    obj = await oname(obj, info.object_nam, 0);
+                    obj = await oname(obj, info.object_nam, ONAME_NO_FLAGS);
                 }
                 if (info.response_cmd) {
                     await new_omailcmd(obj, info.response_cmd);
                 }
                 if (!(dist2(md.mx, md.my, u.ux, u.uy) <= 2)) {
-                    if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+                    if (!Deaf()) {
                         await verbalize($c.lit("Catch!"));
                     } else {
                     }
                 }
-                await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 0);
+                await display_nhwindow()($G.WIN_MESSAGE, FALSE);
                 obj = await hold_another_object(obj, $c.lit("Oops!"), null, null);
-                obj;
+                nhUse(obj);
             }
         }
         if (!await md_rush(md, start.x, start.y)) {
@@ -263,13 +275,13 @@ async function newmail(info) {   // mail.c:399
         }
         await mongone(md);
     }
-    if (!message_seen && info.message_typ === 0) {
+    if (!message_seen && info.message_typ === MSG.OTHER) {
         await pline($c.lit("Hark!  \"%s.\""), info.display_txt);
     }
 }
 export async function ckmailstatus() {   // mail.c:550
     ck_server_admin_msg();
-    if (!mailbox || u.uswallow | 0 || !flags.biff || svm.moves < $c.add64(laststattime, 50)) {
+    if (!mailbox || u.uswallow | 0 || !flags.biff || svm.moves < $c.add64(laststattime, MAILCKFREQ)) {
         return;
     }
     laststattime = svm.moves;
@@ -290,7 +302,7 @@ export async function readmail(otmp) {   // mail.c:704
     if (iflags.debug_fuzzer) {
         return;
     }
-    await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 0);
+    await display_nhwindow()($G.WIN_MESSAGE, FALSE);
     if (!(mr = nh_getenv($c.lit("MAILREADER")))) {
         mr = $c.lit("/usr/bin/mailx");
     }
@@ -307,11 +319,13 @@ export function $init() {
     mailbox = null;
     laststattime = 0;
     mail_text.fill(null);
-    mail_text[0] = $c.lit("Gangway!");
-    mail_text[1] = $c.lit("Look out!");
-    mail_text[2] = $c.lit("Pardon me!");
+    $c.init(mail_text, [
+        $c.lit("Gangway!"),
+        $c.lit("Look out!"),
+        $c.lit("Pardon me!")
+    ]);
     ckmailstatus$deliver.$copyFrom(new $T.mail_info());
-    ckmailstatus$deliver.message_typ = 1;
+    ckmailstatus$deliver.message_typ = MSG.MAIL;
     ckmailstatus$deliver.display_txt = $c.lit("I have some mail for you");
     ckmailstatus$deliver.object_nam = null;
     ckmailstatus$deliver.response_cmd = null;

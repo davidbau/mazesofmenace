@@ -21,6 +21,12 @@ import { movecmd_mode, MV_WALK, MV_RUSH, MV_RUN, cmd_from_func,
          readchar_poskey as cmd_readchar_poskey } from './cmd.js';
 import { do_screen_description } from './pager.js';
 import { COLNO, ROWNO, TIP_GETPOS, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY } from './const.js';
+import { tty_create_nhwindow, tty_display_nhwindow, tty_destroy_nhwindow } from './wintty.js';
+import { NHW_MENU, TER_MON, TER_OBJ, TER_MAP, TER_DETECT, isok, u_at } from './const.js';
+import { docrt_flags, docrtRefresh } from './display.js';
+import { cansee } from './vision.js';
+import { PM_LONG_WORM_TAIL } from './monsters.js';
+import { BOULDER, ROCK } from './objects.js';
 
 /* C ref: getpos.c getpos_hilitefunc, getpos_getvalid (static) */
 /* C ref: getpos.c enum getposHiliteState */
@@ -56,6 +62,308 @@ function glyph_cmapidx(glyph) {
     return glyph.cmapidx;
 }
 function glyph_kind_gp(glyph) { return glyph.kind ?? glyph_kind(glyph); }
+
+/* C ref: flag.h GLOC_*, GFILTER_* */
+const GLOC_MONS = 0, GLOC_OBJS = 1, GLOC_DOOR = 2, GLOC_EXPLORE = 3,
+    GLOC_INTERESTING = 4, GLOC_VALID = 5, NUM_GLOCS = 6;
+const GFILTER_NONE = 0, GFILTER_VIEW = 1, GFILTER_AREA = 2;
+
+/* C ref: sym.h is_cmap_*() */
+const S_stone_gp = 0, S_tree = 18, S_bars = 17, S_ice = 39, S_air = 46,
+    S_cloud = 47, S_pool = 38, S_water = 48, S_lava = 40, S_lavawall = 41,
+    S_vodbridge = 42, S_hcdbridge = 45;
+function is_cmap_door(i) { return i >= S_vodoor && i <= S_hcdoor; }
+function is_cmap_wall(i) { return i >= S_stone_gp && i <= S_trwall; }
+function is_cmap_room(i) { return i >= S_room && i <= S_darkroom; }
+function is_cmap_corr(i) { return i >= S_corr && i <= S_litcorr; }
+function is_cmap_water(i) { return i === S_pool || i === S_water; }
+function is_cmap_lava(i) { return i === S_lava || i === S_lavawall; }
+function is_cmap_drawbridge(i) { return i >= S_vodbridge && i <= S_hcdbridge; }
+
+/* C ref: getpos.c gloc_descr[][], gloc_filtertxt[] */
+const gloc_descr = [
+    ["any monsters", "monster", "next/previous monster", "monsters"],
+    ["any items", "item", "next/previous object", "objects"],
+    ["any doors", "door", "next/previous door or doorway",
+     "doors or doorways"],
+    ["any unexplored areas", "unexplored area", "unexplored location",
+     "locations next to unexplored locations"],
+    ["anything interesting", "interesting thing", "anything interesting",
+     "anything interesting"],
+    ["any valid locations", "valid location", "valid location",
+     "valid locations"],
+];
+const gloc_filtertxt = ["", " in view", " in this area"];
+
+/* C ref: cmd.c spkeys_binds[] -- the getpos keys' default bindings */
+const GETPOS_KEYS = {
+    SELF: '@', PICK: '.', PICK_Q: ',', PICK_O: ';', PICK_V: ':',
+    SHOWVALID: '$', AUTODESC: '#', MON_NEXT: 'm', MON_PREV: 'M',
+    OBJ_NEXT: 'o', OBJ_PREV: 'O', DOOR_NEXT: 'd', DOOR_PREV: 'D',
+    UNEX_NEXT: 'x', UNEX_PREV: 'X', VALID_NEXT: 'z', VALID_PREV: 'Z',
+    INTERESTING_NEXT: 'a', INTERESTING_PREV: 'A', HELP: '?',
+    LIMITVIEW: '"', MOVESKIP: '*', MENU: '!',
+};
+const vk = ch => visctrl(ch.charCodeAt(0));
+
+// C ref: getpos.c getpos_help_keyxhelp()
+async function getpos_help_keyxhelp(tmpwin, k1, k2, gloc) {
+    const iflags = game.iflags;
+    let move_cursor_to = "move the cursor to ";
+    let filtertxt = gloc_filtertxt[iflags.getloc_filter || GFILTER_NONE];
+    const usemenu = iflags.getloc_usemenu ? 1 : 0;
+
+    if (gloc === GLOC_EXPLORE) {
+        /* default of "move to unexplored location" is inaccurate
+           because the position will be one spot short of that */
+        move_cursor_to = "move the cursor next to an ";
+        if (usemenu)
+            /* default is too wide for basic 80-column tty so shorten it
+               to avoid wrapping */
+            filtertxt = filtertxt.replace("this area", "area");
+    }
+    const sbuf = `Use '${k1}'/'${k2}' to ${usemenu ? "get a menu of " : move_cursor_to}`
+        + `${gloc_descr[gloc][2 + usemenu]}${filtertxt}.`;
+    await tty_putstr(tmpwin, 0, sbuf);
+}
+
+// C ref: getpos.c getpos_help() -- the response for '?' help request in
+// getpos()
+async function getpos_help(force, goal) {
+    const fastmovemode = ["8 units at a time", "skipping same glyphs"];
+    const iflags = game.iflags;
+    const terrainmode = iflags.terrainmode || 0;
+    const moveskip = iflags.getloc_moveskip ? 1 : 0;
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    const k = fn => visctrl(cmd_from_func(fn));
+
+    /* hjkl */
+    await tty_putstr(tmpwin, 0, `Use '${k("do_move_west")}', '${k("do_move_south")}', `
+                     + `'${k("do_move_north")}', '${k("do_move_east")}' to move the cursor to ${goal}.`);
+    await tty_putstr(tmpwin, 0, `Use '${k("do_run_west")}', '${k("do_run_south")}', `
+                     + `'${k("do_run_north")}', '${k("do_run_east")}' to fast-move the cursor, `
+                     + `${fastmovemode[moveskip]}.`);
+    await tty_putstr(tmpwin, 0, `(or prefix normal move with '${k("do_run")}' or `
+                     + `'${k("do_rush")}' to fast-move)`);
+    await tty_putstr(tmpwin, 0, "Or enter a background symbol (ex. '<').");
+    await tty_putstr(tmpwin, 0, `Use '${vk(GETPOS_KEYS.SELF)}' to move the cursor on yourself.`);
+    if (!terrainmode || (terrainmode & TER_MON) !== 0)
+        await getpos_help_keyxhelp(tmpwin, vk(GETPOS_KEYS.MON_NEXT),
+                                   vk(GETPOS_KEYS.MON_PREV), GLOC_MONS);
+    let skip_non_mons = (goal === "a monster");
+    if (!skip_non_mons) {
+        if (!terrainmode || (terrainmode & TER_OBJ) !== 0)
+            await getpos_help_keyxhelp(tmpwin, vk(GETPOS_KEYS.OBJ_NEXT),
+                                       vk(GETPOS_KEYS.OBJ_PREV), GLOC_OBJS);
+        if (!terrainmode || (terrainmode & TER_MAP) !== 0) {
+            /* these are primarily useful when choosing a travel
+               destination for the '_' command */
+            await getpos_help_keyxhelp(tmpwin, vk(GETPOS_KEYS.DOOR_NEXT),
+                                       vk(GETPOS_KEYS.DOOR_PREV), GLOC_DOOR);
+            await getpos_help_keyxhelp(tmpwin, vk(GETPOS_KEYS.UNEX_NEXT),
+                                       vk(GETPOS_KEYS.UNEX_PREV), GLOC_EXPLORE);
+            await getpos_help_keyxhelp(tmpwin, vk(GETPOS_KEYS.INTERESTING_NEXT),
+                                       vk(GETPOS_KEYS.INTERESTING_PREV),
+                                       GLOC_INTERESTING);
+        }
+        await tty_putstr(tmpwin, 0, `Use '${vk(GETPOS_KEYS.MOVESKIP)}' to change fast-move `
+                         + `mode to ${fastmovemode[moveskip ? 0 : 1]}.`);
+        if (!terrainmode || (terrainmode & TER_DETECT) === 0) {
+            await tty_putstr(tmpwin, 0, `Use '${vk(GETPOS_KEYS.MENU)}' to toggle menu `
+                             + "listing for possible targets.");
+            await tty_putstr(tmpwin, 0, `Use '${vk(GETPOS_KEYS.LIMITVIEW)}' to change the `
+                             + "mode of limiting possible targets.");
+        }
+    }
+    if (!terrainmode) {
+        if (!skip_non_mons) {
+            if (gp().getvalid)
+                await tty_putstr(tmpwin, 0, `Use '${vk(GETPOS_KEYS.VALID_NEXT)}' or `
+                                 + `'${vk(GETPOS_KEYS.VALID_PREV)}' to move to valid locations.`);
+            if (gp().hilitefunc)
+                await tty_putstr(tmpwin, 0, `Use '${vk(GETPOS_KEYS.SHOWVALID)}' to toggle `
+                                 + "marking of valid locations.");
+            await tty_putstr(tmpwin, 0, `Use '${vk(GETPOS_KEYS.AUTODESC)}' to toggle `
+                             + "automatic description.");
+            /* iflags.cmdassist: the whatis_coord sentence is formatted
+               into sbuf but not put into the window */
+        }
+        /* skip_non_mons: */
+        /* disgusting hack; the alternate selection characters work for any
+           getpos call, but only matter for dowhatis (and doquickwhatis,
+           also for dotherecmdmenu's simulated mouse) */
+        const doing_what_is = (goal === "a monster, object or location"); /* what_is_a_location */
+        let kbuf;
+        if (doing_what_is)
+            kbuf = `'${vk(GETPOS_KEYS.PICK)}' or '${vk(GETPOS_KEYS.PICK_Q)}' or `
+                   + `'${vk(GETPOS_KEYS.PICK_O)}' or '${vk(GETPOS_KEYS.PICK_V)}'`;
+        else
+            kbuf = `'${vk(GETPOS_KEYS.PICK)}'`;
+        await tty_putstr(tmpwin, 0, `Type a ${kbuf} when you are at the right place.`);
+        if (doing_what_is) {
+            await tty_putstr(tmpwin, 0, `  '${vk(GETPOS_KEYS.PICK_V)}' describe current spot, `
+                             + "show 'more info', move to another spot.");
+            await tty_putstr(tmpwin, 0, `  '${vk(GETPOS_KEYS.PICK)}' describe current spot,`
+                             + `${(game.flags.help !== false && !force) ? " prompt if 'more info'," : ""}`
+                             + " move to another spot;");
+            await tty_putstr(tmpwin, 0, `  '${vk(GETPOS_KEYS.PICK_Q)}' describe current spot, `
+                             + "move to another spot;");
+            await tty_putstr(tmpwin, 0, `  '${vk(GETPOS_KEYS.PICK_O)}' describe current spot, `
+                             + "stop looking at things;");
+        }
+    }
+    if (!force)
+        await tty_putstr(tmpwin, 0, "Type Space or Escape when you're done.");
+    await tty_putstr(tmpwin, 0, "");
+    await tty_display_nhwindow(tmpwin, true);
+    await tty_destroy_nhwindow(tmpwin);
+}
+
+// C ref: getpos.c cmp_coord_distu()
+function cmp_coord_distu(c1, c2) {
+    const u = game.u;
+    let dx, dy;
+
+    dx = u.ux - c1.x;
+    dy = u.uy - c1.y;
+    const dist_1 = Math.max(Math.abs(dx), Math.abs(dy));
+    dx = u.ux - c2.x;
+    dy = u.uy - c2.y;
+    const dist_2 = Math.max(Math.abs(dx), Math.abs(dy));
+
+    if (dist_1 === dist_2)
+        return (c1.y !== c2.y) ? (c1.y - c2.y) : (c1.x - c2.x);
+
+    return dist_1 - dist_2;
+}
+
+/* C ref: display.h glyph_is_cmap() + glyph_to_cmap() for gathering: the
+   cmap index of a background or engraving glyph, -1 for another cmap glyph
+   whose index the JS display doesn't keep, null if not a cmap glyph */
+function gloc_cmap_sym(glyph) {
+    if (!glyph)
+        return null;
+    const kind = glyph_kind_gp(glyph);
+    if (kind === 'engr')
+        return (glyph.ch === '#') ? S_engrcorr : S_engroom;
+    if (kind !== 'cmap' || glyph_is_unexplored_gp(glyph))
+        return null;
+    return (glyph.cmapidx !== undefined) ? glyph.cmapidx : -1;
+}
+/* C ref: display.h glyph_is_unexplored() -- the JS display shows the
+   unexplored (and nothing) glyph as a blank background with no cmap index */
+function glyph_is_unexplored_gp(glyph) {
+    return !glyph || (glyph_kind_gp(glyph) === 'cmap' && glyph.cmapidx === undefined
+                      && (glyph.ch ?? ' ') === ' ');
+}
+
+/* C ref: getpos.c IS_UNEXPLORED_LOC() */
+function IS_UNEXPLORED_LOC(x, y) {
+    return isok(x, y)
+           && glyph_is_unexplored_gp(game.level.at(x, y).remembered_glyph)
+           && !game.level.at(x, y).seenv;
+}
+
+// C ref: getpos.c gather_locs_interesting()
+async function gather_locs_interesting(x, y, gloc) {
+    const filter = game.iflags.getloc_filter || GFILTER_NONE;
+
+    if (filter === GFILTER_VIEW && !cansee(x, y))
+        return false;
+    if (filter === GFILTER_AREA)
+        throw new Error('gather_locs_interesting(): GFILTER_AREA not ported yet');
+
+    const glyph = glyph_at(x, y);
+    const sym = gloc_cmap_sym(glyph);
+    const is_cmap = (sym !== null);
+    switch (gloc) {
+    default:
+    case GLOC_MONS:
+        /* unlike '/M', this skips monsters revealed by
+           warning glyphs and remembered unseen ones */
+        return (glyph_kind_gp(glyph) === 'mon'
+                && glyph.mndx !== PM_LONG_WORM_TAIL);
+    case GLOC_OBJS:
+        return (glyph_kind_gp(glyph) === 'obj'
+                && glyph.otyp !== BOULDER
+                && glyph.otyp !== ROCK);
+    case GLOC_DOOR:
+        return (is_cmap
+                && (is_cmap_door(sym)
+                    || is_cmap_drawbridge(sym)
+                    || sym === S_ndoor));
+    case GLOC_EXPLORE:
+        return (is_cmap
+                && (is_cmap_door(sym)
+                    || is_cmap_drawbridge(sym)
+                    || sym === S_ndoor
+                    || is_cmap_room(sym)
+                    || is_cmap_corr(sym))
+                && (IS_UNEXPLORED_LOC(x + 1, y)
+                    || IS_UNEXPLORED_LOC(x - 1, y)
+                    || IS_UNEXPLORED_LOC(x, y + 1)
+                    || IS_UNEXPLORED_LOC(x, y - 1)));
+    case GLOC_VALID:
+        if (gp().getvalid)
+            return await gp().getvalid(x, y);
+        /* FALLTHRU */
+    case GLOC_INTERESTING:
+        return (await gather_locs_interesting(x, y, GLOC_DOOR)
+                || !((is_cmap
+                      && (is_cmap_wall(sym)
+                          || sym === S_tree
+                          || sym === S_bars
+                          || sym === S_ice
+                          || sym === S_air
+                          || sym === S_cloud
+                          || is_cmap_lava(sym)
+                          || is_cmap_water(sym)
+                          || sym === S_ndoor
+                          || is_cmap_room(sym)
+                          || is_cmap_corr(sym)))
+                     || glyph_is_unexplored_gp(glyph))
+                || known_vibrating_square_at(x, y));
+    }
+}
+
+// C ref: getpos.c gather_locs() -- gather locations for monsters or
+// objects shown on the map; returns the sorted array
+async function gather_locs(gloc) {
+    /*
+     * We always include the hero's location even if there is no monster
+     * (invisible hero without see invisible) or object (usual case)
+     * displayed there.  That way, the count will always be at least 1,
+     * and player has a visual indicator (cursor returns to hero's spot)
+     * highlighting when successive 'm's or 'o's have cycled all the way
+     * through all monsters or objects.
+     *
+     * Hero's spot will always sort to array[0] because it will always
+     * be the shortest distance (namely, 0 units) away from <u.ux,u.uy>.
+     */
+    const arr = [];
+
+    /* gloc_filter_init(): only GFILTER_AREA needs setting up */
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            if (u_at(x, y) || await gather_locs_interesting(x, y, gloc))
+                arr.push({ x, y });
+    arr.sort(cmp_coord_distu); /* qsort() */
+    /* gloc_filter_done() */
+    return arr;
+}
+
+// C ref: getpos.c getpos_refresh()
+async function getpos_refresh() {
+    const st = gp();
+    if (st.hilitefunc && st.hilite_state === HiliteGoodposSymbol)
+        throw new Error('getpos_refresh(): ending the goodpos highlight not ported yet');
+
+    await docrt_flags(docrtRefresh);
+
+    if (st.hilitefunc && st.hilite_state === HiliteBackground)
+        /* resetting to current values will draw valid-spots highlighting */
+        await getpos_sethilite(st.hilitefunc, st.getvalid);
+}
 
 // C ref: getpos.c known_vibrating_square_at()
 function known_vibrating_square_at(x, y) {
@@ -152,7 +460,7 @@ function coord_desc(x, y, cmode) {
 export async function auto_describe(cx, cy) {
     const st = gp();
     const cc = { x: cx, y: cy };
-    const { found, firstmatch } = do_screen_description(cc);
+    const { found, firstmatch } = do_screen_description(cc, true, 0);
 
     if (found) {
         const tmpbuf = coord_desc(cx, cy, game.iflags?.getpos_coords);
@@ -218,6 +526,12 @@ export async function getpos(ccp, force, goal) {
     let dx, dy;
     let rushrun = false;
     const autodescribe = () => game.iflags?.autodescribe !== false;
+    /* 'm' 'M' 'o' 'O' 'd' 'D' 'x' 'X' 'a' 'A' 'z' 'Z' (mMoOdDxX_def[]) */
+    const mMoOdDxX = "mMoOdDxXaAzZ";
+    const garr = new Array(NUM_GLOCS).fill(null);
+    const gcount = new Array(NUM_GLOCS).fill(0);
+    const gidx = new Array(NUM_GLOCS).fill(0);
+    let gcp;
 
     /* if we have a queued direction, return the adjacent spot in that
        direction: the command queue isn't ported */
@@ -292,7 +606,10 @@ export async function getpos(ccp, force, goal) {
             }
             /* force: goto nxtc */
         } else if (c === 0x40) { /* gc.Cmd.spkeys[NHKF_GETPOS_SELF] '@' */
-            /* reset 'm&M', 'o&O', &c: the gathering isn't ported */
+            /* reset 'm&M', 'o&O', &c; otherwise, there's no way for player
+               to achieve that except by manually cycling through all spots */
+            for (let i = 0; i < NUM_GLOCS; i++)
+                gidx[i] = 0;
             cx = u.ux;
             cy = u.uy;
         } else if (c === 0x23) { /* gc.Cmd.spkeys[NHKF_GETPOS_AUTODESC] '#' */
@@ -305,12 +622,69 @@ export async function getpos(ccp, force, goal) {
                 show_goal_msg = true;
             msg_given = true;
             /* goto nxtc */
+        } else if (c === 0x3f) { /* gc.Cmd.spkeys[NHKF_GETPOS_HELP] '?' */
+            /* '?' will redraw twice, first when removing popup text window
+               after showing the help text, then to reset highlighting */
+            await getpos_help(force, goal);
+            /* ^R: docrt(), hilite_state = default */
+            await getpos_refresh();
+            curs_map(cx, cy);
+            /* update message window to reflect that we're still targeting */
+            show_goal_msg = true;
+        } else if (c === 0x22) { /* gc.Cmd.spkeys[NHKF_GETPOS_LIMITVIEW] '"' */
+            const view_filters = [
+                "Not limiting targets",
+                "Limiting targets to those in sight",
+                "Limiting targets to those in same area"
+            ];
+
+            game.iflags.getloc_filter = ((game.iflags.getloc_filter || 0) + 1) % 3; /* NUM_GFILTER */
+            for (let i = 0; i < NUM_GLOCS; i++) {
+                garr[i] = null;
+                gidx[i] = gcount[i] = 0;
+            }
+            await pline(`${view_filters[game.iflags.getloc_filter]}.`);
+            msg_given = true;
+            /* goto nxtc */
+        } else if (c === 0x21) { /* gc.Cmd.spkeys[NHKF_GETPOS_MENU] '!' */
+            game.iflags.getloc_usemenu = !game.iflags.getloc_usemenu;
+            await pline(`${game.iflags.getloc_usemenu ? "Using" : "Not using"} a menu to show possible targets${
+                game.iflags.getloc_usemenu ? " for 'm|M', 'o|O', 'd|D', and 'x|X'" : ""}.`);
+            msg_given = true;
+            /* goto nxtc */
+        } else if (c === 0x2a) { /* gc.Cmd.spkeys[NHKF_GETPOS_MOVESKIP] '*' */
+            game.iflags.getloc_moveskip = !game.iflags.getloc_moveskip;
+            await pline(`${game.iflags.getloc_moveskip ? "S" : "Not s"}kipping over similar terrain when fastmoving the cursor.`);
+            msg_given = true;
+            /* goto nxtc */
+        } else if ((gcp = mMoOdDxX.indexOf(ch)) >= 0 && c !== 0) { /* 'm|M', 'o|O', &c */
+            /* nearest or farthest monster or object or door or unexplored */
+            const gtmp = gcp, /* 0..7 */
+                gloc = gtmp >> 1; /* 0..3 */
+
+            if (game.iflags.getloc_usemenu)
+                throw new Error('getpos(): getpos_menu() not ported yet');
+
+            if (!garr[gloc]) {
+                garr[gloc] = await gather_locs(gloc);
+                gcount[gloc] = garr[gloc].length;
+                gidx[gloc] = 0; /* garr[][0] is hero's spot */
+            }
+            if (!(gtmp & 1)) { /* c=='m' || c=='o' || c=='d' || c=='x') */
+                gidx[gloc] = (gidx[gloc] + 1) % gcount[gloc];
+            } else { /* c=='M' || c=='O' || c=='D' || c=='X') */
+                if (--gidx[gloc] < 0)
+                    gidx[gloc] = gcount[gloc] - 1;
+            }
+            cx = garr[gloc][gidx[gloc]].x;
+            cy = garr[gloc][gidx[gloc]].y;
+            /* goto nxtc */
         } else if (c === 0x24) { /* gc.Cmd.spkeys[NHKF_GETPOS_SHOWVALID] '$' */
             if (gp().hilitefunc)
                 throw new Error('getpos(): getpos_toggle_hilite_state() not ported yet');
             show_goal_msg = true; /* we're still targeting */
             /* goto nxtc */
-        } else if ("?\x12\"!*mMoOdDxXaAzZ".includes(ch)) {
+        } else if (c === 0x12) { /* ^R: redraw_cmd() */
             throw new Error(`getpos(): key '${ch}' not ported yet`);
         } else {
             /* !strchr(quitchars, c): the quitchars were handled above */

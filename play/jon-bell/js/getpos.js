@@ -3,7 +3,7 @@ import { docrt_flags, docrtRefresh } from './display.js';
 import { GPCOORDS_COMFULL, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_SCREEN, TIP_GETPOS, _GETPOS_VIEW_FILTERS, _GLOC_DESCR, _GLOC_DOOR, _GLOC_EXPLORE, _GLOC_FILTERTXT, _GLOC_INTERESTING, _GLOC_MONS, _GLOC_OBJS, _NUM_GLOCS, _QUITCHARS, _WHAT_IS_A_LOCATION, _autodescribe_firstmatch, _gather_locs, _getpos_menu, _getpos_symbol_search, _glyph_ident, _levlAt, cmd_from_func, cmdq_add_key, cmdq_clear, cmdq_pop, create_nhwindow, destroy_nhwindow, display_nhwindow, do_run, do_rush, movecmd, putstr, readchar_poskey, redraw_cmd, spkey_of, xytodir } from './cmd.js';
 import { findtravelpath, handle_tip } from './hack.js'; // relocate-fns
 import { visctrl as _binds_visctrl } from './cmd_binds.js'; // relocate-fns
-import { CMDQ_DIR, CMDQ_KEY, COLNO, CQ_CANNED, CQ_REPEAT, DIR_ERR, MV_RUN, MV_RUSH, MV_WALK, NHKF_GETPOS_AUTODESC, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MENU, NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_V, NHKF_GETPOS_SELF, NHKF_GETPOS_SHOWVALID, NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV, NUM_GFILTER, ROWNO, TRAVP_VALID, isok } from './const.js'; // relocate-fns
+import { CMDQ_DIR, CMDQ_KEY, COLNO, CQ_CANNED, CQ_REPEAT, DIR_ERR, MV_RUN, MV_RUSH, MV_WALK, NHKF_GETPOS_AUTODESC, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MENU, NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_V, NHKF_GETPOS_SELF, NHKF_GETPOS_SHOWVALID, NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV, NUM_GFILTER, OVERRIDE_MSGTYPE, ROWNO, TRAVP_VALID, isok } from './const.js'; // relocate-fns
 import { GLYPHCLS_CMAP, _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more_lone_frame, last_flush_forced_cursor, last_flush_status_end } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
 import { visctrl } from './hacklib.js'; // relocate-fns
@@ -212,7 +212,12 @@ export async function auto_describe(cx, cy) {
         game._pending_message = '';
     }
     game._topl_show_only = describe;
-    await pline(describe);
+    /* OVERRIDE_MSGTYPE: a MSGTYPE=hide rule never blanks the autodescribe
+     * (mac-d-msgtype-esc-d-023 step 7: "\\d" hides every 'd' message, yet C
+     * shows "tame little dog called Caf__"). */
+    const _desc = new String(describe);
+    _desc._plineFlags = OVERRIDE_MSGTYPE;
+    await pline(_desc);
     game._topl_suppress_once = true;
     /* Remembered for exitgetpos: C's topline is PHYSICAL terminal content and
      * survives readchar_poskey (tty_nhgetch, wintty.c:4045, clears no window),

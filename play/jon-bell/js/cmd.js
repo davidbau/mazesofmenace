@@ -1001,7 +1001,6 @@ async function tty_menu_pick_one_ext(entries, title, statusClipCol) {
         return false;
     };
     const _dismiss = async () => {
-        g._prevmsg = null;
         if (overlayLines) {
             /* wintty.c:982 erase_menu_or_text: an offx > 0 window is dismissed
              * by docorner(), not docrt(), so map cells outside the covered
@@ -19678,8 +19677,12 @@ async function handler_rebind_keys_add(keyfirst) {
     if (keyfirst) {
         await pline('Bind which key? ');
         await flush_screen(0);
-        /* tty_putstr leaves the cursor just past the topline text (cw->curx = 16) */
-        set_cursor('Bind which key? '.length, 0);
+        /* tty_putstr leaves the cursor just past the topline text: update_topl
+         * JOINS a standing gt.toplines (topl.c:296-302, cw->curx += 2 before
+         * addtopl's putsyms at topl.c:218-226) or rehomes to column 0
+         * (redotoplin, topl.c:122-133) — either way it parks at the END of
+         * the whole toplines string, not at this prompt's own length. */
+        set_cursor(_topl_visualLen(game._pending_message || 'Bind which key? '), 0);
         key = (await pgetchar()) & 0xff;
         if (!key || key === 27) return true;
     }
@@ -19722,7 +19725,14 @@ async function handler_rebind_keys_add(keyfirst) {
             await pline('Bind which key? ');
             await flush_screen(1);
             flushed = true; /* painted AFTER the full-screen command menu */
-            set_cursor('Bind which key? '.length, 0); /* cursor left past the topline text */
+            /* Cursor past the topl text: update_topl JOINS a standing
+             * gt.toplines ("You see Sirius.  Bind which key? " — notice_mon's
+             * spot_monsters pline, hack.c:1710-1723) from column cw->curx+2
+             * (topl.c:296-302 + addtopl topl.c:218-226) or rehomes to column
+             * 0 (redotoplin) — the cursor parks at the end of the WHOLE
+             * toplines string either way, so a joined prompt must not be laid
+             * out from its own column 0. */
+            set_cursor(_topl_visualLen(game._pending_message || 'Bind which key? '), 0); /* cursor left past the topline text */
             key = (await pgetchar()) & 0xff;
             if (!key || key === 27) return true;
         }

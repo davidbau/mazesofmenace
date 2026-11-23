@@ -6,6 +6,8 @@
 // once-per-hero-took-time blocks are real.
 
 import { game } from './gstate.js';
+import { livelog_printf } from './display.js';
+import { LL_ACHIEVE } from './const.js';
 import { clear_bypasses } from './worn.js';
 import { rn2, rnd } from './rng.js';
 import { mklev, u_on_upstairs } from './mklev.js';
@@ -43,6 +45,7 @@ import { align_str } from './insight.js';
 import { A_CURRENT, A_ORIGINAL, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, RLOC_NOMSG, NORMAL_SPEED, NO_MM_FLAGS,
          FAST, INTRINSIC, UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER,
          EXT_ENCUMBER, GLIB, TELEPORT, POLYMORPH, UNCHANGING, SEARCHING, WARNING,
+         TELEPAT, WARN_OF_MON,
          CLAIRVOYANT, ENERGY_REGENERATION, MAGICAL_BREATHING, REGENERATION,
          SLEEPY, MAXULEV, A_WIS, A_INT, A_CON, A_DEX, NON_PM, ROOMOFFSET, VAULT,
          TT_LAVA, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP,
@@ -59,7 +62,7 @@ import { u_wipe_engr } from './engrave.js';
 import { dosearch0, warnreveal } from './detect.js';
 import { set_uasmon } from './polyself.js';
 import { init_artifacts } from './artifact.js';
-import { run_regions } from './region.js';
+import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
 
 const MON_AT = (x, y) => !!m_at(x, y); /* C ref: display.h MON_AT() */
@@ -182,8 +185,8 @@ export async function welcome(new_game) /* false => restoring an old game */ {
                          : `${Hello(null)} ${g.plname}, the${buf}, welcome back to NetHack!`);
 
     if (new_game) {
-        /* guarantee that 'major' event category is never empty:
-           livelog_printf() -- the live log isn't kept */
+        /* guarantee that 'major' event category is never empty */
+        livelog_printf(LL_ACHIEVE, `${g.plname} the${buf} entered the dungeon`);
     } else {
         /* if restoring in Gehennom, give same hot/smoky message as when
            first entering it */
@@ -464,7 +467,7 @@ export async function moveloop_core() {
         u.umovement -= NORMAL_SPEED;
 
         do { /* hero can't move this turn loop */
-            /* encumber_msg(): not ported yet */
+            await encumber_msg();
 
             g.context.mon_moving = 1;
             do {
@@ -503,8 +506,8 @@ export async function moveloop_core() {
                    a value that is distinct every time the hero moves */
                 g.hero_seq = g.moves << 3;
 
-                /* if (flags.time && !context.run) disp.time_botl = TRUE:
-                   the status line redraws its turn counter itself */
+                if (g.flags.time && !g.context.run)
+                    g.disp_time_botl = true; /* 'moves' just changed */
 
                 /********************************/
                 /* once-per-turn things go here */
@@ -591,12 +594,7 @@ export async function moveloop_core() {
                 await gethungry();
                 age_spells();
                 await exerchk();
-                /* invault(): vault_occupied(u.urooms) -- u.urooms is never
-                   set by the JS port yet (hero can't be in a vault) */
-                if (vault_occupied_urooms())
-                    throw new Error('moveloop_core(): invault() not ported yet');
-                else
-                    u.uinvault = 0;
+                await invault();
                 if (u.uhave.amulet)
                     throw new Error('moveloop_core(): amulet() not ported yet');
                 if (!rn2(40 + (ACURR(A_DEX) * 3)))
@@ -627,8 +625,12 @@ export async function moveloop_core() {
 
         g.hero_seq++; /* moves*8 + n for n == 1..7 */
 
-        /* encumber_msg(): messages about encumbrance changes are not
-           ported yet (no rolls) */
+        /* although we checked for encumbrance above, we need to
+           check again for message purposes, as the weight of
+           inventory may have changed in, e.g., nh_timeout(); we do
+           need two checks here so that the player gets feedback
+           immediately if their own action encumbered them */
+        await encumber_msg();
 
         if (g.moves >= g.context.seer_turn) {
             const HC = P[CLAIRVOYANT];
@@ -670,9 +672,18 @@ export async function moveloop_core() {
             see_traps();
             if (u.uswallow)
                 await swallowed(0);
+        } else if (u.uprops[TELEPAT]?.extrinsic /* Unblind_telepat */
+                   || u.uprops[WARNING]?.intrinsic
+                   || u.uprops[WARNING]?.extrinsic /* Warning */
+                   || u.uprops[WARN_OF_MON]?.intrinsic
+                   || u.uprops[WARN_OF_MON]?.extrinsic /* Warn_of_mon */
+                   /* this is needed for the case where you saw a monster
+                      due to being next to it while it's in a gas cloud
+                      and then you moved away; it should no longer be seen
+                      when that happens, even if it hasn't moved */
+                   || any_visible_region()) { /* TODO: optimize this */
+            see_monsters();
         }
-        /* else if (Unblind_telepat || Warning || Warn_of_mon
-                    || any_visible_region()) see_monsters(): not ported */
     }
     // Vision + display
     if (g.vision_full_recalc) {
@@ -815,3 +826,5 @@ export async function moveloop(resuming) {
         if (game.program_state?.gameover) break;
     }
 }
+
+import { invault } from './vault.js';

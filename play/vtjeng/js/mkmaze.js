@@ -155,6 +155,7 @@ import {
 } from './youprop.js';
 import { dungeon_at } from './dungeon_table.js';
 import { note_unported } from './unported.js';
+import { sync_impossible } from './source_steps.js';
 
 // C ref: mkmaze.c iswall(). Wall-spine joins accept doors, lava walls,
 // water, secret doors, and iron bars in addition to ordinary wall types.
@@ -429,7 +430,7 @@ export function mk_bubble(x, y, n, state = game, random = rn2) {
     if (x >= bounds.xmax || y >= bounds.ymax) return null;
     if (n >= AIR_BUBBLE_MASKS.length) {
         // C: impossible("n too large (mk_bubble)");
-        note_unported('pline.c impossible');
+        sync_impossible('n too large (mk_bubble)', state);
         n = AIR_BUBBLE_MASKS.length - 1;
     }
     const mask = AIR_BUBBLE_MASKS[n];
@@ -467,7 +468,9 @@ export function setup_waterlevel(state = game, random = rn2) {
     // first call's bubbles.
     state.air_bubbles ??= [];
     state.waterlevel_bounds = { xmin: 4, ymin: 2, xmax: 77, ymax: 19 };
-    state.waterlevel_portal = null;
+    // C leaves gw.wportal alone here and in unsetup_waterlevel(): once
+    // movebubbles() has set it, set_wportal() never runs again in that
+    // process, even on a remade level that has no portal.
     // hero_bubble keeps whatever the last movebubbles() left; see
     // unsetup_waterlevel().
     for (let x = 1; x <= COLNO - 1; ++x) {
@@ -685,7 +688,7 @@ export function set_wportal(state = game) {
         .find((trap) => trap.ttyp === MAGIC_PORTAL) ?? null;
     if (!state.waterlevel_portal) {
         // C: impossible("set_wportal(): no portal!");
-        note_unported('pline.c impossible');
+        sync_impossible('set_wportal(): no portal!', state);
     }
     return state.waterlevel_portal;
 }
@@ -701,7 +704,6 @@ export function set_wportal(state = game) {
 // allocator-dependent effect is not modelled.)
 export function unsetup_waterlevel(state = game) {
     state.air_bubbles = [];
-    state.waterlevel_portal = null;
 }
 
 // C ref: mkmaze.c maybe_adjust_hero_bubble() (1927-1940).
@@ -1546,7 +1548,7 @@ export function mkportal(x, y, destinationDungeon, destinationLevel,
     const portal = maketrap(x, y, MAGIC_PORTAL, { state });
     if (!portal) {
         // C: impossible("portal on top of portal?");
-        note_unported('pline.c impossible');
+        sync_impossible('portal on top of portal?', state);
         return null;
     }
     portal.dst = { dnum: destinationDungeon, dlevel: destinationLevel };

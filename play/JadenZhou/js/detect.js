@@ -23,7 +23,15 @@ import { STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
 import { BOULDER } from './objects.js';
 import { m_at } from './makemon.js';
 import { canspotmon, sensemon, warning_of, Blind, map_invisible,
-         glyph_is_invisible } from './display.js';
+         glyph_is_invisible, feel_location } from './display.js';
+
+// C ref: display.c feel_newsym()
+function feel_newsym(x, y) {
+    if (Blind())
+        feel_location(x, y);
+    else
+        newsym(x, y);
+}
 import { tty_display_nhwindow } from './wintty.js';
 import { seemimic } from './mon.js';
 import { y_monnam, a_monnam } from './do_name.js';
@@ -135,9 +143,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
         /* uwep->oartifact && spec_ability(uwep, SPFX_SEARCH): artifacts
            aren't ported yet */
         let fund = 0;
-        const Blind = u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic;
-
-        if (g.ublindf && g.ublindf.otyp === LENSES && !Blind)
+        if (g.ublindf && g.ublindf.otyp === LENSES && !Blind())
             fund += 2; /* JDS: lenses help searching */
         if (fund > 5)
             fund = 5;
@@ -148,8 +154,8 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                 if (x === u.ux && y === u.uy)
                     continue;
 
-                if (!aflag && (Blind /* || visible_region_at(x, y) */))
-                    throw new Error('dosearch0(): feel_location() not ported yet');
+                if (!aflag && (Blind() || visible_region_at(x, y)))
+                    feel_location(x, y);
                 const lev = g.level.at(x, y);
                 if (lev.typ === SDOOR) {
                     if (rnl(7 - fund))
@@ -158,7 +164,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                     recalc_block_point(x, y);
                     exercise(A_WIS, true);
                     nomul0();
-                    newsym(x, y); /* feel_location(): make sure it shows up */
+                    feel_location(x, y); /* make sure it shows up */
                     await pline("You find a hidden door.");
                 } else if (lev.typ === SCORR) {
                     if (rnl(7 - fund))
@@ -167,7 +173,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                     recalc_block_point(x, y); /* unblock_point(): vision */
                     exercise(A_WIS, true);
                     nomul0();
-                    newsym(x, y); /* feel_newsym(): make sure it shows up */
+                    feel_newsym(x, y); /* make sure it shows up */
                     await pline("You find a hidden passage.");
                 } else {
                     /* Be careful not to find anything in an SCORR or SDOOR */
@@ -182,8 +188,9 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
 
                     /* see if an invisible monster has moved--if Blind,
                      * feel_location() already did it
-                     * (!aflag && !mtmp && !Blind): unmap_invisible() --
-                     * the JS map has no remembered 'I' glyphs yet */
+                     */
+                    if (!aflag && !mtmp && !Blind())
+                        unmap_invisible(x, y);
 
                     if ((trap = t_at(x, y)) && !trap.tseen && !rnl(8)) {
                         nomul0();
@@ -205,10 +212,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
 async function find_trap(trap) {
     trap.tseen = 1;
     exercise(A_WIS, true);
-    /* feel_newsym(trap->tx, trap->ty) */
-    if (Blind())
-        throw new Error('find_trap(): feel_location() not ported yet');
-    newsym(trap.tx, trap.ty);
+    feel_newsym(trap.tx, trap.ty);
 
     /* The "Hallucination ||" is to preserve 3.6.1 behavior, but this
        behavior might need a rework in the hallucination case

@@ -5,8 +5,15 @@ import { $G } from './globals.js';
 import { alloc, dupstr } from './alloc.js';
 import { yyyymmdd } from './calendar.js';
 import { gd, gr, svp } from './decl.js';
+import { FALSE } from './global.h.js';
 import { formatkiller } from './topten.js';
-import { windowprocs } from './windows.js';
+import { putstr } from './winprocs.macros.js';
+
+const STONE_LINE_LEN = 16;
+const NAME_LINE = 6;
+const GOLD_LINE = 7;
+const DEATH_LINE = 8;
+const YEAR_LINE = 12;
 
 const rip_txt = $c.nulls(16);
 function center(line, text) {   // rip.c:76
@@ -24,25 +31,25 @@ export async function genl_outrip(tmpwin, how, when) {   // rip.c:86
         $t2 = await dupstr(rip_txt[x]), dp.set(x, $t2);
     }
     dp.set(x, null);
-    $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%.*s"), 16, new $c.Ptr(svp.plname, 0));
-    center(6, new $c.Ptr(buf, 0));
+    $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%.*s"), STONE_LINE_LEN, new $c.Ptr(svp.plname, 0));
+    center(NAME_LINE, new $c.Ptr(buf, 0));
     cash = gd.done_money > 0 ? gd.done_money : 0;
     if (cash > 999999999) {
         cash = 999999999;
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%ld Au"), cash);
-    center(7, new $c.Ptr(buf, 0));
-    await formatkiller(new $c.Ptr(buf, 0), 256, how, 0);
-    for (line = 8, dpx = new $c.Ptr(buf, 0); line < 12; line = line + 1 | 0) {
+    center(GOLD_LINE, new $c.Ptr(buf, 0));
+    await formatkiller(new $c.Ptr(buf, 0), 256, how, FALSE);
+    for (line = DEATH_LINE, dpx = new $c.Ptr(buf, 0); line < YEAR_LINE; line = line + 1 | 0) {
         i0 = $c.i32($c.strlen(dpx));
-        if (i0 > 16) {
-            for (i = 16; i > 0 && i0 > 16; i = i - 1 | 0) {
+        if (i0 > STONE_LINE_LEN) {
+            for (i = STONE_LINE_LEN; i > 0 && i0 > STONE_LINE_LEN; i = i - 1 | 0) {
                 if (dpx.get(i) === 32) {
                     i0 = i;
                 }
             }
             if (!i) {
-                i0 = 16;
+                i0 = STONE_LINE_LEN;
             }
         }
         tmpchar = dpx.get(i0);
@@ -57,13 +64,13 @@ export async function genl_outrip(tmpwin, how, when) {   // rip.c:86
     }
     year = $c.i32($c.rem64($c.div64(yyyymmdd(when), 10000), 10000));
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%4d"), year);
-    center(12, new $c.Ptr(buf, 0));
-    await windowprocs.win_putstr(tmpwin, 0, $c.lit(""));
+    center(YEAR_LINE, new $c.Ptr(buf, 0));
+    await putstr()(tmpwin, 0, $c.lit(""));
     for (; dp.get(0); dp = dp.add(1)) {
-        await windowprocs.win_putstr(tmpwin, 0, dp.get(0));
+        await putstr()(tmpwin, 0, dp.get(0));
     }
-    await windowprocs.win_putstr(tmpwin, 0, $c.lit(""));
-    await windowprocs.win_putstr(tmpwin, 0, $c.lit(""));
+    await putstr()(tmpwin, 0, $c.lit(""));
+    await putstr()(tmpwin, 0, $c.lit(""));
     for (x = 0; rip_txt[x]; x = x + 1 | 0) {
         $c.free(gr.rip.get(x));
     }
@@ -73,20 +80,22 @@ export async function genl_outrip(tmpwin, how, when) {   // rip.c:86
 
 export function $init() {
     rip_txt.fill(null);
-    rip_txt[0] = $c.lit("                       ----------");
-    rip_txt[1] = $c.lit("                      /          \\");
-    rip_txt[2] = $c.lit("                     /    REST    \\");
-    rip_txt[3] = $c.lit("                    /      IN      \\");
-    rip_txt[4] = $c.lit("                   /     PEACE      \\");
-    rip_txt[5] = $c.lit("                  /                  \\");
-    rip_txt[6] = $c.lit("                  |                  |");
-    rip_txt[7] = $c.lit("                  |                  |");
-    rip_txt[8] = $c.lit("                  |                  |");
-    rip_txt[9] = $c.lit("                  |                  |");
-    rip_txt[10] = $c.lit("                  |                  |");
-    rip_txt[11] = $c.lit("                  |                  |");
-    rip_txt[12] = $c.lit("                  |       1001       |");
-    rip_txt[13] = $c.lit("                 *|     *  *  *      | *");
-    rip_txt[14] = $c.lit("        _________)/\\\\_//(\\/(/\\)/\\//\\/|_)_______");
-    rip_txt[15] = null;
+    $c.init(rip_txt, [
+        $c.lit("                       ----------"),
+        $c.lit("                      /          \\"),
+        $c.lit("                     /    REST    \\"),
+        $c.lit("                    /      IN      \\"),
+        $c.lit("                   /     PEACE      \\"),
+        $c.lit("                  /                  \\"),
+        $c.lit("                  |                  |"),
+        $c.lit("                  |                  |"),
+        $c.lit("                  |                  |"),
+        $c.lit("                  |                  |"),
+        $c.lit("                  |                  |"),
+        $c.lit("                  |                  |"),
+        $c.lit("                  |       1001       |"),
+        $c.lit("                 *|     *  *  *      | *"),
+        $c.lit("        _________)/\\\\_//(\\/(/\\)/\\//\\/|_)_______"),
+        null
+    ]);
 }

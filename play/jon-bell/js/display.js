@@ -1,7 +1,7 @@
 import { hcolor } from './do_name.js';
 import { decode_mixed } from './windows.js';
 import { mixed_to_utf8 } from './utf8map.js';
-import { PLINE_NOREPEAT } from './const.js';
+import { PLINE_NOREPEAT, OVERRIDE_MSGTYPE } from './const.js';
 // @ts-nocheck
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
@@ -1105,8 +1105,13 @@ function _monster_glyph_id(mndx, female, kind) {
 export function display_glyph_number(glyph, loc = null) {
     if (!glyph && !loc) return -1;
     const cls = glyph?.cls ?? loc?.disp_cls;
-    if (glyph?.isWarning || loc?.disp_is_warning) {
-        const wl = glyph?.warningLevel ?? loc?.disp_warning_level;
+    /* A supplied glyph is authoritative: loc.disp_* describes what is
+     * currently PAINTED at the square (a warning number drawn over it by
+     * newsym), not the remembered glyph the caller is comparing (C's
+     * lev->glyph, e.g. lock.c:830-839 door->glyph != oldglyph).  Only fall
+     * back to loc.disp_* when no glyph was passed. */
+    if (glyph ? glyph.isWarning : loc?.disp_is_warning) {
+        const wl = glyph ? glyph.warningLevel : loc?.disp_warning_level;
         return Number.isInteger(wl) && wl >= 0 ? GLYPH_WARNING_OFF + wl : -1;
     }
     if (cls === GLYPHCLS_MON) {
@@ -7572,6 +7577,21 @@ function _status_temp_hilites(row, cells) {
                 for (let c = st; c < st + len; c++) cells.set(c, attrHistory.rule);
             }
             continue;
+        }
+        /* C pickup.c:1990 / do.c drop(): freeinv() lowers the carried weight before
+         * the "You drop" pline, but encumber_msg's SET_BOTL (and so bot()'s
+         * evaluation of BL_CAP) comes later; a --More-- page raised in between
+         * still shows the PRE-drop encumbrance word.  The port has already
+         * evaluated the post-drop level into the history, so comparing this
+         * stale word with it (word != live near_capacity()) invents a reverse
+         * 'changed' rule on a page whose own paint delivered no change. */
+        if (fname === 'carrying-capacity' && hist[fname] && !hist[fname].barSlot
+            && (val | 0) !== (hist[fname].val | 0)) {
+            const _savedBotl = game.disp ? game.disp.botl : 0;
+            const _liveCap = near_capacity() | 0;
+            if (game.disp) game.disp.botl = _savedBotl;
+            if ((val | 0) !== _liveCap && (hist[fname].val | 0) === _liveCap)
+                continue;
         }
         /* a hitpointbar-owned title slot tracks the bar text, not the title
          * (status_hpbar_attr_eval); start a fresh baseline rather than read a
@@ -14127,6 +14147,9 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
     // pline.c:244-255: no-repeat is a property of this vpline invocation,
     // tested against the finished (location-prefixed and truncated) message.
     const noRepeat = !!(msg?._plineFlags & PLINE_NOREPEAT);
+    /* pline.c:246-264: custompline(OVERRIDE_MSGTYPE) skips msgtype_type()
+     * entirely -- no hide, no norep, no stop. */
+    const overrideMsgtype = !!(msg?._plineFlags & OVERRIDE_MSGTYPE);
     /* you_buf_message(): the static-buffer alias of an unformatted You()-family line. */
     let youBufAlias = null;
     if (msg instanceof String) {
@@ -14171,7 +14194,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         return;
     }
     // C pline.c:247-264: urgent messages bypass hide and no-repeat suppression.
-    const msgtyp = msgtype_type(msg, noRepeat);
+    const msgtyp = overrideMsgtype ? 'show' : msgtype_type(msg, noRepeat);
     if (!game._topl_urgent_next && (msgtyp === 'hide'
         || (msgtyp === 'norep' && game._prevmsg === String(msg))))
         return;
@@ -14420,11 +14443,12 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
          * remember_topl() files the NON-EMPTY standing line and DOES reset
          * the walk.  (The adopted arm's prev is already the merged line, so
          * its fit test is that line alone.) */
-        game._topl_pline_filed_reset = adoptedResult
-            ? (prev.length >= TOPL_LIMIT || prev.includes('\n')
-               || String(msg).startsWith('You die'))
-            : (prev.length + 2 + String(msg).length >= TOPL_LIMIT
-               || String(msg).startsWith('You die') || prev.includes('\n'));
+        game._topl_pline_filed_reset = game._topl_pline_filed_reset === true
+            || (adoptedResult
+                ? (prev.length >= TOPL_LIMIT || prev.includes('\n')
+                   || String(msg).startsWith('You die'))
+                : (prev.length + 2 + String(msg).length >= TOPL_LIMIT
+                   || String(msg).startsWith('You die') || prev.includes('\n')));
         /* The result-channel merge above has already appended this message. */
         if (adoptedResult) {
             // keep the join record created by _topl_merge_result()
@@ -14564,7 +14588,13 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
                                      runFlush: game._runFlushSeq | 0,
                                      statusSeq: game._statusPaintSeq | 0 };
         game._pending_message = msg;
-        game._topl_pline_filed_reset = !game._toplEmptyAfterSuppress;
+        /* STICKY TRUE here too: remember_topl's EMPTY-standing early return
+         * (topl.c:176) leaves cw->maxcol wherever it was, so when an earlier
+         * pline of this window already pushed (topl.c:189 set maxcol = maxrow)
+         * a fresh-into-empty pline must keep the flag TRUE — the walk stays
+         * reset in C. */
+        game._topl_pline_filed_reset = game._topl_pline_filed_reset === true
+            || !game._toplEmptyAfterSuppress;
     }
     if (!(game._topl_suppress_history || game._topl_suppress_once))
     if (!game._topl_suppress_history)

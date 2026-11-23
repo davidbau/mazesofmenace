@@ -31,14 +31,15 @@ import {
     PM_ORC_ZOMBIE, PM_ORC_MUMMY, PM_ORC, PM_ELF_ZOMBIE, PM_ELF_MUMMY, PM_ELF,
     PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_HUMAN_ZOMBIE, PM_HUMAN_MUMMY, PM_HUMAN,
     PM_GIANT_ZOMBIE, PM_GIANT_MUMMY, PM_GIANT, PM_ETTIN_ZOMBIE,
-    PM_ETTIN_MUMMY, PM_ETTIN, PM_LIZARD, PM_LICHEN, PM_DEATH, PM_FAMINE,
+    PM_ETTIN_MUMMY, PM_ETTIN, PM_LIZARD, PM_LICHEN, PM_DEATH, PM_FAMINE, PM_GRAY_OOZE,
     PM_PESTILENCE,
 } from './monsters.js';
 import { merged, freeinv } from './invent.js';
 import { obj_no_longer_held } from './do.js';
 import { block_point, recalc_block_point } from './vision.js';
 import { vobj_at } from './display.js';
-import { attach_egg_hatch_timeout } from './timeout.js';
+import { attach_egg_hatch_timeout, attach_fig_transform_timeout, start_timer, stop_timer, obj_stop_timers, obj_split_timers, obj_to_any } from './timeout.js';
+import { ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, HATCH_EGG, SHRINK_GLOB, FIG_TRANSFORM, TIMER_OBJECT, LS_OBJECT } from './const.js';
 import { tt_oname } from './topten.js';
 import { zombie_form } from './mon.js';
 import { forget_temple_entry } from './priest.js';
@@ -50,6 +51,8 @@ import { reset_remarm } from './do_wear.js';
 import { book_cursed_sync } from './spell.js';
 import { eaten_stat, tin_variety, tintxt_fodder, vegetarian } from './eat.js';
 import { costly_spot } from './insight.js';
+import { is_ice } from './dig.js';
+import { obj_sheds_light, obj_split_light_source, del_light_source } from './light.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -151,7 +154,6 @@ export function undead_to_corpse(mndx) {
 /*
  * Start a corpse decay or revive timer.
  * This takes the age of the corpse into consideration as of 3.4.0.
- * Timers themselves are not ported yet; the rolls are.
  */
 export function start_corpse_timeout(body) {
     let when;       /* rot away when this old */
@@ -161,7 +163,7 @@ export function start_corpse_timeout(body) {
     if (body.corpsenm === PM_LIZARD || body.corpsenm === PM_LICHEN)
         return;
 
-    let action = 'ROT_CORPSE';             /* default action: rot away */
+    let action = ROT_CORPSE;               /* default action: rot away */
     const rot_adjust = game.in_mklev ? 25 : 10; /* give some variation */
     age = Math.max(game.moves || 0, 1) - body.age;
     if (age > ROT_AGE)
@@ -171,7 +173,7 @@ export function start_corpse_timeout(body) {
     when += (rnz(rot_adjust) - rot_adjust);
 
     if (is_rider(mons[body.corpsenm])) {
-        action = 'REVIVE_MON';
+        action = REVIVE_MON;
         /* rider_revival_time() */
         const minturn = (body.corpsenm === PM_DEATH) ? 6 : 12;
         for (when = minturn; when < 67; when++)
@@ -180,19 +182,38 @@ export function start_corpse_timeout(body) {
     } else if (mons[body.corpsenm].mlet === S_TROLL) {
         for (age = 2; age <= TAINT_AGE; age++)
             if (!rn2(TROLL_REVIVE_CHANCE)) { /* troll revives */
-                action = 'REVIVE_MON';
+                action = REVIVE_MON;
                 when = age;
                 break;
             }
     } else if (game.zombify && zombie_form(mons[body.corpsenm]) !== NON_PM
                && !body.norevive) {
-        action = 'ZOMBIFY_MON';
+        action = ZOMBIFY_MON;
         when = rn1(15, 5); /* 5..19 */
     }
 
-    /* (void) start_timer(when, TIMER_OBJECT, action, obj_to_any(body)):
-       timers are not ported yet */
-    body.timer = { when, action };
+    start_timer(when, TIMER_OBJECT, action, obj_to_any(body));
+}
+
+// C ref: mkobj.c start_glob_timeout()
+/* schedule a timer that will shrink the target glob by 1 unit of weight */
+export function start_glob_timeout(
+    obj,  /* glob */
+    when) /* when to shrink; if 0L, use random value close to 25 */
+{
+    if (!obj.globby) {
+        /* impossible("start_glob_timeout for non-glob [%d: %s]?") */
+        throw new Error('impossible: start_glob_timeout for non-glob');
+    }
+    /* sanity precaution */
+    if (obj.timed)
+        stop_timer(SHRINK_GLOB, obj_to_any(obj));
+
+    if (when < 1) /* caller usually passes 0L; should never be negative */
+        when = 25 + rn2(5) - 2; /* 25+[0..4]-2 => 23..27, avg 25 */
+    /* 1 new glob weighs 20 units and loses 1 unit every 25 turns,
+       so lasts for 500 turns, twice as long as the average corpse */
+    start_timer(when, TIMER_OBJECT, SHRINK_GLOB, obj_to_any(obj));
 }
 
 // C ref: mkobj.c set_corpsenm()
@@ -200,14 +221,12 @@ export function set_corpsenm(obj, id) {
     const old_id = obj.corpsenm;
     let when = 0;
 
-    if (obj.timer) { /* obj->timed */
+    if (obj.timed) {
         if (obj.otyp === O.EGG) {
-            /* when = stop_timer(HATCH_EGG, obj_to_any(obj)): the time left
-               needs the timer queue */
-            throw new Error('set_corpsenm(): stop_timer() of an egg hatch timer not ported yet');
+            when = stop_timer(HATCH_EGG, obj_to_any(obj));
         } else {
             when = 0;
-            obj.timer = null; /* obj_stop_timers(obj): corpse or figurine */
+            obj_stop_timers(obj); /* corpse or figurine */
         }
     }
     /* oeaten is used to determine how much nutrition is left in
@@ -232,7 +251,7 @@ export function set_corpsenm(obj, id) {
     case O.FIGURINE:
         if (obj.corpsenm !== NON_PM && !dead_species(obj.corpsenm, true)
             && (obj.where === 'OBJ_INVENT' || obj.where === 'OBJ_MINVENT')) /* carried() || mcarried() */
-            throw new Error('set_corpsenm(): attach_fig_transform_timeout() not ported yet');
+            attach_fig_transform_timeout(obj);
         obj.owt = weight(obj);
         break;
     case O.EGG:
@@ -344,7 +363,7 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
         if (otmp.otyp === O.CORPSE
             && (game.zombify || special_corpse(old_corpsenm)
                 || special_corpse(otmp.corpsenm))) {
-            /* obj_stop_timers(otmp) */
+            obj_stop_timers(otmp);
             start_corpse_timeout(otmp);
         }
     }
@@ -732,9 +751,9 @@ export function splitobj(obj, num) {
     if (otmp.omid)
         delete otmp.omid; /* free_omid(): only one association with m_id */
     if (obj.timed)
-        throw new Error('splitobj(): obj_split_timers() not ported yet');
-    if (obj.lamplit)
-        throw new Error('splitobj(): obj_split_light_source() not ported yet');
+        obj_split_timers(obj, otmp);
+    if (obj_sheds_light(obj))
+        obj_split_light_source(obj, otmp);
     return otmp;
 }
 
@@ -757,6 +776,8 @@ export function obj_extract_self(obj) {
         obj.where = 'OBJ_FREE';
         if (obj.otyp === O.BOULDER)
             recalc_block_point(obj.ox, obj.oy); /* vision */
+        if (obj.timed)
+            obj_timer_checks(obj, obj.ox, obj.oy, 0);
         break;
     }
     case 'OBJ_MINVENT': {
@@ -894,6 +915,96 @@ export function place_object(otmp, x, y) {
     /* otmp->nobj = fobj; fobj = otmp; */
     if (!game.level.objects) game.level.objects = [];
     game.level.objects.unshift(otmp);
+    if (otmp.timed)
+        obj_timer_checks(otmp, x, y, 0);
+}
+
+const ROT_ICE_ADJUSTMENT = 2; /* rotting on ice takes 2 times as long */
+
+// C ref: mkobj.c obj_ice_effects()
+/* If ice was affecting any objects correct that now
+ * Also used for starting ice effects too. [zap.c]
+ */
+export function obj_ice_effects(x, y, do_buried) {
+    for (const otmp of vobj_pile(x, y)) {
+        if (otmp.timed)
+            obj_timer_checks(otmp, x, y, 0);
+    }
+    if (do_buried) {
+        for (const otmp of [...(game.level.buriedobjlist || [])]) {
+            if (otmp.ox === x && otmp.oy === y) {
+                if (otmp.timed)
+                    obj_timer_checks(otmp, x, y, 0);
+            }
+        }
+    }
+}
+
+/* the floor pile at <x,y>, top first (svl.level.objects[x][y] chain) */
+function vobj_pile(x, y) {
+    return (game.level.objects || []).filter(o => o.ox === x && o.oy === y);
+}
+
+// C ref: mkobj.c obj_timer_checks()
+function obj_timer_checks(
+    otmp,
+    x, y,
+    force) /* 0 = no force so do checks, <0 = force off, >0 force on */
+{
+    let tleft = 0;
+    let action = ROT_CORPSE;
+    let restart_timer = false;
+    const on_floor = (otmp.where === 'OBJ_FLOOR');
+    const buried = (otmp.where === 'OBJ_BURIED');
+
+    /* Check for corpses just placed on or in ice */
+    if (otmp.otyp === O.CORPSE && (on_floor || buried) && is_ice(x, y)) {
+        tleft = stop_timer(action, obj_to_any(otmp));
+        if (tleft === 0) {
+            action = REVIVE_MON;
+            tleft = stop_timer(action, obj_to_any(otmp));
+        }
+        if (tleft !== 0) {
+            let age;
+
+            /* mark the corpse as being on ice */
+            otmp.on_ice = 1;
+            /* Adjust the time remaining */
+            tleft *= ROT_ICE_ADJUSTMENT;
+            restart_timer = true;
+            /* Adjust the age; time spent off ice needs to be multiplied
+               by the ice adjustment and subtracted from the age so that
+               later calculations behave as if it had been on ice during
+               that time (longwinded way of saying this is the inverse
+               of removing it from the ice and of peeking at its age). */
+            age = game.moves - otmp.age;
+            otmp.age = game.moves - (age * ROT_ICE_ADJUSTMENT);
+        }
+
+    /* Check for corpses coming off ice */
+    } else if (force < 0 || (otmp.otyp === O.CORPSE && otmp.on_ice
+                             && !((on_floor || buried) && is_ice(x, y)))) {
+        tleft = stop_timer(action, obj_to_any(otmp));
+        if (tleft === 0) {
+            action = REVIVE_MON;
+            tleft = stop_timer(action, obj_to_any(otmp));
+        }
+        if (tleft !== 0) {
+            let age;
+
+            otmp.on_ice = 0;
+            /* Adjust the remaining time */
+            tleft = Math.trunc(tleft / ROT_ICE_ADJUSTMENT);
+            restart_timer = true;
+            /* Adjust the age */
+            age = game.moves - otmp.age;
+            otmp.age += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
+        }
+    }
+
+    /* now re-start the timer with the appropriate modifications */
+    if (restart_timer)
+        start_timer(tleft, TIMER_OBJECT, action, obj_to_any(otmp));
 }
 
 // C ref: o_init.c rnd_class()
@@ -981,7 +1092,7 @@ export function curse(otmp) {
     } else if (otmp.otyp === O.FIGURINE) {
         if (otmp.corpsenm !== NON_PM && !dead_species(otmp.corpsenm, true)
             && (otmp.where === 'OBJ_INVENT' || otmp.where === 'OBJ_MINVENT'))
-            throw new Error('curse(): attach_fig_transform_timeout() not ported yet');
+            attach_fig_transform_timeout(otmp);
     } else if (otmp.oclass === SPBOOK_CLASS) {
         /* if book hero is reading becomes cursed, interrupt */
         if (!already_cursed)
@@ -1001,7 +1112,7 @@ export function uncurse(otmp) {
     else if (otmp.otyp === O.BAG_OF_HOLDING)
         otmp.owt = weight(otmp);
     else if (otmp.otyp === O.FIGURINE && otmp.timed)
-        throw new Error('uncurse(): stop_timer(FIG_TRANSFORM) not ported yet');
+        stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
     return;
 }
 
@@ -1216,8 +1327,11 @@ function mkbox_cnts(box) {
              * from usual meaning for objects stored in ice boxes. -KAA
              */
             otmp.age = 0;
-            /* stop_timer(ROT_CORPSE/REVIVE_MON/SHRINK_GLOB): timers are
-               not ported yet */
+            if (otmp.timed) {
+                stop_timer(ROT_CORPSE, obj_to_any(otmp));
+                stop_timer(REVIVE_MON, obj_to_any(otmp));
+                stop_timer(SHRINK_GLOB, obj_to_any(otmp));
+            }
         } else {
             let tprob;
             let ip = 0;
@@ -1415,7 +1529,8 @@ function mksobj_init(otmp, artif) {
             otmp.quan = 1;
             otmp.owt = objects[otmp.otyp].oc_weight;
             otmp.known = otmp.dknown = 1;
-            /* start_glob_timeout(): no timers yet */
+            otmp.corpsenm = PM_GRAY_OOZE + (otmp.otyp - O.GLOB_OF_GRAY_OOZE);
+            start_glob_timeout(otmp, 0);
         } else {
             if (otmp.otyp !== O.CORPSE && otmp.otyp !== O.MEAT_RING
                 && otmp.otyp !== O.KELP_FROND && !rn2(6)) {
@@ -1769,4 +1884,56 @@ export function mkgold(amount, x, y) {
     }
     gold.owt = objects[O.GOLD_PIECE].oc_weight; /* weight(gold) */
     return gold;
+}
+
+// C ref: mkobj.c dealloc_obj()
+/*
+ * Mark object to be deallocated.  _All_ objects should be run through here
+ * for them to be deallocated.  (The memory itself is garbage collected.)
+ */
+export function dealloc_obj(obj) {
+    if (obj.otyp === O.BOULDER)
+        obj.next_boulder = 0;
+    if (obj.where === 'OBJ_DELETED') {
+        /* impossible("dealloc_obj: obj already deleted (type=%d)") */
+        console.error(`impossible: dealloc_obj: obj already deleted (type=${obj.otyp})`);
+        return;
+    }
+
+    /* free up any timers attached to the object */
+    if (obj.timed)
+        obj_stop_timers(obj);
+
+    /*
+     * Free up any light sources attached to the object.
+     */
+    if (obj_sheds_light(obj)) {
+        del_light_source(LS_OBJECT, obj_to_any(obj));
+        obj.lamplit = 0;
+    }
+
+    if (obj === game.thrownobj)
+        game.thrownobj = null;
+    if (obj === game.kickedobj)
+        game.kickedobj = null;
+    const ctx = game.context;
+    if (ctx?.tin && obj === ctx.tin.tin) {
+        ctx.tin.tin = null;
+        ctx.tin.o_id = 0;
+    }
+
+    /* if obj came from the most recent splitobj(), it's no longer eligible
+       for unsplitobj(); perform inline clear_splitobjs() */
+    if (ctx?.objsplit && (obj.o_id === ctx.objsplit.parent_oid
+                          || obj.o_id === ctx.objsplit.child_oid))
+        ctx.objsplit.parent_oid = ctx.objsplit.child_oid = 0;
+
+    /* mark object as deleted (objs_deleted: no deferred freeing in JS) */
+    obj.where = 'OBJ_DELETED';
+}
+
+// C ref: mkobj.c shrink_glob()
+/* timer callback routine: a glob loses 1 unit of weight */
+export async function shrink_glob(arg, expire_time) {
+    throw new Error('shrink_glob() not ported yet');
 }

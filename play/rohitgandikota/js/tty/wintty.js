@@ -43,6 +43,7 @@ import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
          MENU_SEARCH, PICK_ONE, PICK_ANY, GOLD_SYM, ROWNO, COLNO } from './../const.js';
 import { pmatch } from './../hacklib.js';
 import { get_menu_coloring } from './../windows.js';
+import { term_start_color as tty_color } from './termcap.js';
 import { notice_all_mons_flush } from './../hack.js';
 import { gc_currentgraphics, gs_symset, H_UTF8 } from './../symbols.js';
 
@@ -602,8 +603,9 @@ function process_menu_window(cw, page, display) {
                 plainrun[k] = true;
 
         for (let i = 0; i < s.length && col < COLS; i++, col++) {
-            const on = (i >= attr_n && !plainrun[i]) ? attr : 0;
-            let ch = s[i], color = NO_COLOR;
+            const highlighted = i >= attr_n && !plainrun[i];
+            const on = highlighted ? attr : 0;
+            let ch = s[i], color = highlighted ? tty_color(item.color) : NO_COLOR;
             if (i === 2 && item.identifier) {
                 if (item.selected)
                     ch = item.count === -1 ? '*' : '#';

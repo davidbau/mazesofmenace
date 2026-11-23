@@ -2,8 +2,8 @@
 // C ref: wizard.c — nasties[], pick_nasty(), has_aggravatables(),
 // clonewiz(), nasty().
 //
-// Not ported yet: the rest of wizard.c (the Wizard's AI, amulet(),
-// cuss(), resurrect(), intervene()).
+// Also cuss(). Not ported yet: the rest of wizard.c (the Wizard's AI, amulet(),
+// resurrect(), intervene()).
 
 import { game } from './gstate.js';
 import { ROLL_FROM, rn2, rnd } from './rng.js';
@@ -21,6 +21,12 @@ import { newsym } from './display.js';
 import { monster_census } from './minion.js';
 import { big_to_little } from './mondata.js';
 import { def_monsyms } from './drawing.js';
+import { pline } from './display.js';
+import { Monnam } from './do_name.js';
+import { com_pager } from './questpgr.js';
+import { wake_nearto } from './mon.js';
+import { mon_aligntyp } from './priest.js';
+import { DEAF, A_LAWFUL } from './const.js';
 
 // C ref: wizard.c nasties[]
 const nasties = [
@@ -267,4 +273,83 @@ export function nasty(summoner) {
     if (count)
         count = monster_census(false) - census;
     return count;
+}
+
+// C ref: wizard.c random_insult[]
+const random_insult = [
+    "antic",      "blackguard",   "caitiff",    "chucklehead",
+    "coistrel",   "craven",       "cretin",     "cur",
+    "dastard",    "demon fodder", "dimwit",     "dolt",
+    "fool",       "footpad",      "imbecile",   "knave",
+    "maledict",   "miscreant",    "niddering",  "poltroon",
+    "rattlepate", "reprobate",    "scapegrace", "varlet",
+    "villein", /* (sic.) */
+    "wittol",     "worm",         "wretch",
+];
+
+// C ref: wizard.c random_malediction[]
+const random_malediction = [
+    "Hell shall soon claim thy remains,", "I chortle at thee, thou pathetic",
+    "Prepare to die, thou", "Resistance is useless,",
+    "Surrender or die, thou", "There shall be no mercy, thou",
+    "Thou shalt repent of thy cunning,", "Thou art as a flea to me,",
+    "Thou art doomed,", "Thy fate is sealed,",
+    "Verily, thou shalt be one dead"
+];
+
+/* C ref: youprop.h Deaf */
+function Deaf() {
+    const p = game.u.uprops?.[DEAF];
+    return !!(p?.intrinsic || p?.extrinsic) || !!game.u.uroleplay?.deaf;
+}
+/* C ref: mondata.h is_minion(), is_lminion() */
+function is_minion(ptr) { return (ptr.mflags2 & MM.M2_MINION) !== 0; }
+function is_lminion(mon) {
+    return is_minion(mon.data) && mon_aligntyp(mon) === A_LAWFUL;
+}
+/* C ref: pline.c verbalize() -- SetVoice() only matters for speech */
+async function verbalize(line) {
+    if (Deaf())
+        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
+    await pline(`"${line}"`);
+}
+
+// C ref: wizard.c cuss()
+/* Insult or intimidate the player */
+export async function cuss(mtmp) {
+    const u = game.u;
+
+    if (Deaf())
+        return;
+    if (mtmp.iswiz) {
+        if (!rn2(5)) { /* typical bad guy action */
+            await pline(`${Monnam(mtmp)} laughs fiendishly.`);
+        } else if (u.uhave?.amulet && !rn2(random_insult.length)) {
+            /* SetVoice(mtmp, 0, 80, 0) */
+            await verbalize(`Relinquish the amulet, ${ROLL_FROM(random_insult)}!`);
+        } else if (u.uhp < 5 && !rn2(2)) { /* Panic */
+            /* SetVoice(mtmp, 0, 80, 0) */
+            const fmt = rn2(2) ? "Even now thy life force ebbs, %s!"
+                               : "Savor thy breath, %s, it be thy last!";
+            await verbalize(fmt.replace('%s', ROLL_FROM(random_insult)));
+        } else if (mtmp.mhp < 5 && !rn2(2)) { /* Parthian shot */
+            /* SetVoice(mtmp, 0, 80, 0) */
+            await verbalize(rn2(2) ? "I shall return." : "I'll be back.");
+        } else {
+            /* SetVoice(mtmp, 0, 80, 0) */
+            const malediction = ROLL_FROM(random_malediction);
+            await verbalize(`${malediction} ${ROLL_FROM(random_insult)}!`);
+        }
+    } else if (is_lminion(mtmp)
+               && !(mtmp.isminion && mtmp.emin?.renegade)) {
+        await com_pager("angel_cuss"); /* TODO: the Hallucination msg */
+        /*com_pager(rn2(QTN_ANGELIC - 1 + (Hallucination ? 1 : 0))
+          + QT_ANGELIC);*/
+    } else {
+        if (!rn2(is_minion(mtmp.data) ? 100 : 5))
+            await pline(`${Monnam(mtmp)} casts aspersions on your ancestry.`);
+        else
+            await com_pager("demon_cuss");
+    }
+    await wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
 }

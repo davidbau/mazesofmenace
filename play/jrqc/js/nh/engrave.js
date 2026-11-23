@@ -4,49 +4,70 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc } from './alloc.js';
 import { is_art } from './artifact.js';
+import { ART } from './artilist.h.js';
 import { exercise } from './attrib.js';
+import { A } from './attrib.h.js';
 import { sanitize_name } from './bones.js';
 import { isok, set_occupation, yn_function } from './cmd.js';
 import { db_under_typ, is_ice, is_lava, is_pool, is_pool_or_lava } from './dbridge.js';
 import { c_common_strings, flags, gi, gm, gn, gy, hands_obj, iflags, svc, svd, svl, svm, u, ynqchars } from './decl.js';
+import { AMULET_CLASS, ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS, ILLOBJ_CLASS, POTION_CLASS, RING_CLASS, ROCK_CLASS, SCROLL_CLASS, SPBOOK_CLASS, TOOL_CLASS, VENOM_CLASS, WAND_CLASS, WEAPON_CLASS } from './defsym.h.js';
 import { map_engraving, newsym } from './display.js';
 import { mon_nam } from './do_name.js';
 import { ceiling, on_level, surface } from './dungeon.js';
+import { BURN, DUST, ENGRAVE, ENGR_BLOOD, HEADSTONE, MARK, N_ENGRAVE, actual_text, pristine_text, remembered_text, text_states } from './engrave.h.js';
+import { dealloc_engr } from './engrave.macros.js';
 import { more_experienced } from './exper.js';
 import { debugcore } from './files.js';
+import { BUFSZ, COLNO, FALSE, LL, MD_PAD, ROWNO, TRUE } from './global.h.js';
 import { check_capacity, nomul } from './hack.js';
+import { ECMD, FINGERTIP, GETOBJ, GETOBJ_PROMPT, HAND, NO, WAND } from './hack.h.js';
+import { min, release_data, update_file } from './hack.macros.js';
 import { mungspaces, strncmpi, strstri, xcrypt } from './hacklib.js';
 import { getobj, hold_another_object, prinv, update_inventory, useup } from './invent.js';
+import { nhUse } from './lint.macros.js';
 import { makemon } from './makemon.js';
 import { set_levltyp } from './mkmaze.js';
 import { obj_extract_self, splitobj } from './mkobj.js';
+import { AT } from './monattk.h.js';
 import { attacktype, resists_blnd, sticks } from './mondata.js';
+import { cantwield, ceiling_hider, is_animal, is_demon, is_vampire, is_whirly } from './mondata.macros.js';
+import { M1, MZ } from './monflag.h.js';
 import { mons } from './monst.js';
+import { PM } from './monsters.h.js';
+import { bimanual, is_blade, is_boots, is_wet_towel } from './obj.macros.js';
+import { RANDOM_CLASS } from './objclass.h.js';
 import { objects } from './objects.js';
+import { ATHAME, MAGIC_MARKER, TOWEL, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_MAKE_INVISIBLE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_SLEEP, WAN_SLOW_MONSTER, WAN_SPEED_MONSTER, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING } from './objects.h.js';
 import { The, Tobjnam, Yname2, Yobjnam2, doname, otense, xname, yname } from './objnam.js';
 import { There, You, You_cant, You_see, Your, impossible, livelog_printf, pline, pline_The } from './pline.js';
 import { body_part } from './polyself.js';
 import { make_blinded } from './potion.js';
 import { altar_wrath } from './pray.js';
+import { BLINDED, CONFUSION, DEAF, FLYING, STUNNED } from './prop.h.js';
 import { wand_explode } from './read.js';
-import { rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { ALTAR, CLOUD, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, GRAVE, ROOM } from './rm.h.js';
+import { ACCESSIBLE, IS_AIR, IS_FOUNTAIN, IS_GRAVE, SURFACE_AT } from './rm.macros.js';
+import { rn2, rnd } from './rnd.js';
 import { get_rnd_text, getrumor } from './rumors.js';
 import { sfi_char, sfi_engr, sfi_unsigned, sfo_char, sfo_engr, sfo_unsigned } from './sfbase.js';
 import { check_unpaid } from './shk.js';
+import { P } from './skills.h.js';
 import { Strlen_ } from './strutil.js';
 import { goodpos } from './teleport.js';
 import { t_at, uescaped_shaft, uteetering_at_seen_pit } from './trap.js';
 import { dry_a_towel } from './weapon.js';
 import { welded } from './wield.js';
 import { getlin } from './windows.js';
+import { Blind, Hallucination, Levitation } from './youprop.macros.js';
 import { learnwand, zapnodir, zappable } from './zap.js';
 
 const rubouts = $c.recArray($T.anon_engrave_66, 48);
 const blind_writing = $c.matrix(Int8Array, [9, 21]);
 export async function random_engraving(outbuf, pristine_copy) {   // engrave.c:51
     let rumor = null;
-    if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 57, $c.lit("random_engraving")), rn2(4)) : rn2(4)) || !(rumor = await getrumor(0, pristine_copy, 1)) || !rumor.get(0)) {
-        await get_rnd_text($c.lit("engrave"), pristine_copy, rn2, 60);
+    if (!rn2(4) || !(rumor = await getrumor(0, pristine_copy, TRUE)) || !rumor.get(0)) {
+        await get_rnd_text($c.lit("engrave"), pristine_copy, rn2, MD_PAD.RUMORS);
     }
     $c.__builtin___strcpy_chk(outbuf, pristine_copy, -1);
     wipeout_text(outbuf, $c.i32($c.divu64($c.strlen(outbuf), 4)), 0);
@@ -58,11 +79,11 @@ export function wipeout_text(engr, cnt, seed) {   // engrave.c:120
     if (lth && cnt > 0) {
         while ($t1 = cnt, cnt = $t1 - 1 | 0, $t1) {
             if (!seed) {
-                nxt = rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 134, $c.lit("wipeout_text")), rn2(lth | 0)) : rn2(lth | 0);
-                use_rubout = rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 135, $c.lit("wipeout_text")), rn2(4)) : rn2(4);
+                nxt = rn2(lth | 0);
+                use_rubout = rn2(4);
             } else {
                 nxt = $c.remu32(seed, lth) | 0;
-                seed = Math.imul(seed, 31) >>> 0, seed = $c.remu32(seed, 255);
+                seed = Math.imul(seed, 31) >>> 0, seed = $c.remu32(seed, BUFSZ - 1);
                 use_rubout = (seed & 3) >>> 0 | 0;
             }
             s = engr.add(nxt);
@@ -80,9 +101,9 @@ export function wipeout_text(engr, cnt, seed) {   // engrave.c:120
                     if (s.get(0) === rubouts[i].wipefrom) {
                         ln = $c.u32($c.strlen(rubouts[i].wipeto));
                         if (!seed) {
-                            j = rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 164, $c.lit("wipeout_text")), rn2(ln | 0)) : rn2(ln | 0);
+                            j = rn2(ln | 0);
                         } else {
-                            seed = Math.imul(seed, 31) >>> 0, seed = $c.remu32(seed, 255);
+                            seed = Math.imul(seed, 31) >>> 0, seed = $c.remu32(seed, BUFSZ - 1);
                             j = $c.remu32(seed, ln) | 0;
                         }
                         s.set(0, rubouts[i].wipeto.get(j));
@@ -101,25 +122,25 @@ export function wipeout_text(engr, cnt, seed) {   // engrave.c:120
 }
 export function can_reach_floor(check_pit) {   // engrave.c:187
     let t = null;
-    if (u.uswallow | 0 || u.ustuck && !sticks(gy.youmonst.data) && attacktype(u.ustuck.data, 7) || (u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked && !((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
-        return 0;
+    if (u.uswallow | 0 || u.ustuck && !sticks(gy.youmonst.data) && attacktype(u.ustuck.data, AT.HUGS) || Levitation() && !((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+        return FALSE;
     }
-    if (u.usteed && u.weapon_skills[37 /* P_RIDING */].skill < 2 /* P_BASIC */) {
-        return 0;
+    if (u.usteed && u.weapon_skills[P.RIDING].skill < P.BASIC) {
+        return FALSE;
     }
-    if (u.uundetected | 0 && ($c.andu64(gy.youmonst.data.mflags1, 256) !== 0 && ($c.andu64(gy.youmonst.data.mflags1, 16) !== 0 && gy.youmonst.data.mlet !== 13 /* S_MIMIC */ || $c.andu64(gy.youmonst.data.mflags1, 1) !== 0))) {
-        return 0;
+    if (u.uundetected | 0 && ceiling_hider(gy.youmonst.data)) {
+        return FALSE;
     }
-    if ((u.uprops[49 /* FLYING */].intrinsic || u.uprops[49 /* FLYING */].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, 1) !== 0) && !u.uprops[49 /* FLYING */].blocked || gy.youmonst.data.msize >= 4) {
-        return 1;
+    if ((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked || gy.youmonst.data.msize >= MZ.HUGE) {
+        return TRUE;
     }
     if (check_pit && (t = t_at(u.ux, u.uy)) !== null && (uteetering_at_seen_pit(t) || uescaped_shaft(t))) {
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 export async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {   // engrave.c:218
-    await pline($c.lit("%s can't reach the %s."), wand_engraving ? $c.lit("The wand does nothing more, and the tip of the wand") : $c.lit("You"), up ? ceiling(x, y) : check_pit && can_reach_floor(0) ? $c.lit("bottom of the pit") : surface(x, y));
+    await pline($c.lit("%s can't reach the %s."), wand_engraving ? $c.lit("The wand does nothing more, and the tip of the wand") : $c.lit("You"), up ? ceiling(x, y) : check_pit && can_reach_floor(FALSE) ? $c.lit("bottom of the pit") : surface(x, y));
 }
 export function engr_at(x, y) {   // engrave.c:231
     let ep = null;
@@ -135,45 +156,45 @@ export function engr_at(x, y) {   // engrave.c:231
 export function sengr_at(s, x, y, strict) {   // engrave.c:251
     let ep = null;
     ep = engr_at(x, y);
-    if (ep && ep.engr_type !== 6 && ep.engr_time <= svm.moves) {
-        if (strict ? !strncmpi(ep.engr_txt[0 /* actual_text */], s, -1) : strstri(ep.engr_txt[0 /* actual_text */], s) !== null) {
+    if (ep && ep.engr_type !== HEADSTONE && ep.engr_time <= svm.moves) {
+        if (strict ? !strncmpi(ep.engr_txt[actual_text], s, -1) : strstri(ep.engr_txt[actual_text], s) !== null) {
             return ep;
         }
     }
     return $c.asRec(null, $T.engr, 64);
 }
 export async function u_wipe_engr(cnt) {   // engrave.c:264
-    if (can_reach_floor(1)) {
-        await wipe_engr_at(u.ux, u.uy, $c.i16(cnt), 0);
+    if (can_reach_floor(TRUE)) {
+        await wipe_engr_at(u.ux, u.uy, $c.i16(cnt), FALSE);
     }
 }
 export async function wipe_engr_at(x, y, cnt, magical) {   // engrave.c:271
     let ep = null, save_plnmsg = 0, save_plnmsg$2 = 0;
     ep = engr_at(x, y);
-    if (ep && ep.engr_type !== 6 && !ep.nowipeout) {
+    if (ep && ep.engr_type !== HEADSTONE && !ep.nowipeout) {
         do {
-            if (debugcore($c.lit("engrave.c"), 1)) {
+            if (debugcore($c.lit("engrave.c"), TRUE)) {
                 save_plnmsg = iflags.last_msg;
                 await pline($c.lit("asked to erode %d characters"), cnt);
                 iflags.last_msg = save_plnmsg;
             }
         } while (0);
-        if (ep.engr_type !== 3 || is_ice(x, y) || magical && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 278, $c.lit("wipe_engr_at")), rn2(2)) : rn2(2))) {
-            if (ep.engr_type !== 1 && ep.engr_type !== 5) {
-                cnt = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 280, $c.lit("wipe_engr_at")), rn2(1 + $c.div32(50, cnt + 1 | 0) | 0)) : rn2(1 + $c.div32(50, cnt + 1 | 0) | 0)) ? 0 : 1);
+        if (ep.engr_type !== BURN || is_ice(x, y) || magical && !rn2(2)) {
+            if (ep.engr_type !== DUST && ep.engr_type !== ENGR_BLOOD) {
+                cnt = $c.i16(rn2(1 + $c.div32(50, cnt + 1 | 0) | 0) ? 0 : 1);
                 do {
-                    if (debugcore($c.lit("engrave.c"), 1)) {
+                    if (debugcore($c.lit("engrave.c"), TRUE)) {
                         save_plnmsg$2 = iflags.last_msg;
                         await pline($c.lit("actually eroding %d characters"), cnt);
                         iflags.last_msg = save_plnmsg$2;
                     }
                 } while (0);
             }
-            wipeout_text(ep.engr_txt[0 /* actual_text */], cnt, 0);
-            while (ep.engr_txt[0 /* actual_text */].get(0) === 32) {
-                ep.engr_txt[0 /* actual_text */] = ep.engr_txt[0 /* actual_text */].add(1);
+            wipeout_text(ep.engr_txt[actual_text], cnt, 0);
+            while (ep.engr_txt[actual_text].get(0) === 32) {
+                ep.engr_txt[actual_text] = ep.engr_txt[actual_text].add(1);
             }
-            if (!ep.engr_txt[0 /* actual_text */].get(0)) {
+            if (!ep.engr_txt[actual_text].get(0)) {
                 await del_engr(ep);
             }
         }
@@ -181,18 +202,18 @@ export async function wipe_engr_at(x, y, cnt, magical) {   // engrave.c:271
 }
 export function engr_can_be_felt(ep) {   // engrave.c:297
     let canfeel = 0;
-    canfeel = 0;
+    canfeel = FALSE;
     switch (ep.engr_type) {
-        case 2:
-        case 6:
-        case 3:
-            canfeel = 1;
+        case ENGRAVE:
+        case HEADSTONE:
+        case BURN:
+            canfeel = TRUE;
             break;
-        case 1:
-        case 4:
-        case 5:
+        case DUST:
+        case MARK:
+        case ENGR_BLOOD:
         default:
-            canfeel = 0;
+            canfeel = FALSE;
             break;
     }
     return canfeel;
@@ -202,35 +223,35 @@ export async function read_engr_at(x, y) {   // engrave.c:318
     ep = engr_at(x, y);
     eloc = surface(x, y);
     sensed = 0;
-    if (ep && ep.engr_txt[0 /* actual_text */].get(0)) {
+    if (ep && ep.engr_txt[actual_text].get(0)) {
         switch (ep.engr_type) {
-            case 1:
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            case DUST:
+                if (!Blind()) {
                     sensed = 1;
                     await pline($c.lit("%s is written here in the %s."), c_common_strings.c_Something, is_ice(x, y) ? $c.lit("frost") : $c.lit("dust"));
                 }
                 break;
-            case 2:
-            case 6:
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) || can_reach_floor(1)) {
+            case ENGRAVE:
+            case HEADSTONE:
+                if (!Blind() || can_reach_floor(TRUE)) {
                     sensed = 1;
                     await pline($c.lit("%s is engraved here on the %s."), c_common_strings.c_Something, eloc);
                 }
                 break;
-            case 3:
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) || can_reach_floor(1)) {
+            case BURN:
+                if (!Blind() || can_reach_floor(TRUE)) {
                     sensed = 1;
                     await pline($c.lit("Some text has been %s into the %s here."), is_ice(x, y) ? $c.lit("melted") : $c.lit("burned"), eloc);
                 }
                 break;
-            case 4:
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            case MARK:
+                if (!Blind()) {
                     sensed = 1;
                     await pline($c.lit("There's some graffiti on the %s here."), eloc);
                 }
                 break;
-            case 5:
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            case ENGR_BLOOD:
+                if (!Blind()) {
                     sensed = 1;
                     await You_see($c.lit("a message scrawled in blood here."));
                 }
@@ -241,22 +262,22 @@ export async function read_engr_at(x, y) {   // engrave.c:318
         }
         if (sensed) {
             maxelen = 232;
-            elen = $c.i32($c.strlen(ep.engr_txt[0 /* actual_text */]));
-            off = $c.i32($c.pdiff(ep.engr_txt[0 /* actual_text */], $c.recTail(ep)));
+            elen = $c.i32($c.strlen(ep.engr_txt[actual_text]));
+            off = $c.i32($c.pdiff(ep.engr_txt[actual_text], $c.recTail(ep)));
             if (elen > maxelen) {
-                $c.__builtin___strncpy_chk(new $c.Ptr(buf, 0), ep.engr_txt[0 /* actual_text */], $c.u64(maxelen), 256);
+                $c.__builtin___strncpy_chk(new $c.Ptr(buf, 0), ep.engr_txt[actual_text], $c.u64(maxelen), 256);
                 buf[maxelen] = 0;
                 et = new $c.Ptr(buf, 0);
                 elen = maxelen;
             } else {
-                et = ep.engr_txt[0 /* actual_text */];
+                et = ep.engr_txt[actual_text];
             }
             endpunct = $c.lit("");
-            if (elen < 2 || !(ep.engr_txt[2 /* pristine_text */].get((off + elen | 0) - 1 | 0) === et.get(elen - 1 | 0) && $c.strchr($c.lit(".!?"), et.get(elen - 1 | 0)))) {
+            if (elen < 2 || !(ep.engr_txt[pristine_text].get((off + elen | 0) - 1 | 0) === et.get(elen - 1 | 0) && $c.strchr($c.lit(".!?"), et.get(elen - 1 | 0)))) {
                 endpunct = $c.lit(".");
             }
-            await You($c.lit("%s: \"%s\"%s"), (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("feel the words") : $c.lit("read"), et, endpunct);
-            $c.__builtin___strcpy_chk(ep.engr_txt[1 /* remembered_text */], ep.engr_txt[0 /* actual_text */], -1);
+            await You($c.lit("%s: \"%s\"%s"), (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked ? $c.lit("feel the words") : $c.lit("read"), et, endpunct);
+            $c.__builtin___strcpy_chk(ep.engr_txt[remembered_text], ep.engr_txt[actual_text], -1);
             ep.eread = (1) & 1;
             ep.erevealed = (1) & 1;
             if (svc.context.run > 0) {
@@ -268,13 +289,13 @@ export async function read_engr_at(x, y) {   // engrave.c:318
 export async function make_engr_at(x, y, s, pristine_s, e_time, e_type) {   // engrave.c:408
     let i = 0, ep = null, smem = 0, havepristine = 0, prmem = 0, $t1;
     smem = await Strlen_(s, $c.lit("make_engr_at"), 417) + 1 >>> 0;
-    havepristine = 0;
+    havepristine = FALSE;
     if (!$c.peq(pristine_s, $c.asArr(null, Int8Array))) {
         prmem = await Strlen_(pristine_s, $c.lit("make_engr_at"), 421) + 1 >>> 0;
         if (prmem > smem) {
             smem = prmem;
         }
-        havepristine = 1;
+        havepristine = TRUE;
     }
     if ((ep = engr_at(x, y)) !== null) {
         await del_engr(ep);
@@ -285,24 +306,24 @@ export async function make_engr_at(x, y, s, pristine_s, e_time, e_type) {   // e
     $G.head_engr = ep;
     ep.engr_x = x;
     ep.engr_y = y;
-    ep.engr_txt[0 /* actual_text */] = $c.recTail(ep);
-    ep.engr_txt[1 /* remembered_text */] = ep.engr_txt[0 /* actual_text */].add(smem);
-    ep.engr_txt[2 /* pristine_text */] = ep.engr_txt[1 /* remembered_text */].add(smem);
-    for (i = 0; i < 3 /* text_states */; i = i + 1 | 0) {
+    ep.engr_txt[actual_text] = $c.recTail(ep);
+    ep.engr_txt[remembered_text] = ep.engr_txt[actual_text].add(smem);
+    ep.engr_txt[pristine_text] = ep.engr_txt[remembered_text].add(smem);
+    for (i = 0; i < text_states; i = i + 1 | 0) {
         $c.__builtin___strcpy_chk(ep.engr_txt[i], s, -1);
     }
     if (havepristine) {
-        $c.__builtin___strcpy_chk(ep.engr_txt[2 /* pristine_text */], pristine_s, -1);
+        $c.__builtin___strcpy_chk(ep.engr_txt[pristine_text], pristine_s, -1);
     }
     if (!$c.strcmp(s, $c.lit("Elbereth"))) {
         if (gi.in_mklev) {
             ep.guardobjects = (1) & 1;
         } else {
-            await exercise(2 /* A_WIS */, 1);
+            await exercise(A.WIS, TRUE);
         }
     }
     ep.engr_time = e_time;
-    $t1 = $c.i8(e_type > 0 ? e_type : rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 452, $c.lit("make_engr_at")), rnd(5)) : rnd(5)), ep.engr_type = $t1;
+    $t1 = $c.i8(e_type > 0 ? e_type : rnd(N_ENGRAVE - 1)), ep.engr_type = $t1;
     ep.engr_szeach = smem;
     ep.engr_alloc = Math.imul(smem, 3) >>> 0;
 }
@@ -314,66 +335,66 @@ export async function del_engr_at(x, y) {   // engrave.c:461
     }
 }
 export async function freehand() {   // engrave.c:473
-    return !$G.uwep || !await welded($G.uwep) || !(($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */) && objects[$G.uwep.otyp].oc_big | 0) && (!$G.uarms || !$G.uarms.cursed) ? 1 : 0;
+    return !$G.uwep || !await welded($G.uwep) || !bimanual($G.uwep) && (!$G.uarms || !$G.uarms.cursed) ? 1 : 0;
 }
 function stylus_ok(obj) {   // engrave.c:481
     if (!obj) {
-        return 2 /* GETOBJ_SUGGEST */;
+        return GETOBJ.SUGGEST;
     }
-    if (obj.oclass === 2 /* WEAPON_CLASS */ || obj.oclass === 11 /* WAND_CLASS */ || obj.oclass === 13 /* GEM_CLASS */ || obj.oclass === 4 /* RING_CLASS */) {
-        return 2 /* GETOBJ_SUGGEST */;
+    if (obj.oclass === WEAPON_CLASS || obj.oclass === WAND_CLASS || obj.oclass === GEM_CLASS || obj.oclass === RING_CLASS) {
+        return GETOBJ.SUGGEST;
     }
-    if (obj.oclass === 6 /* TOOL_CLASS */ && (obj.otyp === 234 /* TOWEL */ || obj.otyp === 242 /* MAGIC_MARKER */)) {
-        return 2 /* GETOBJ_SUGGEST */;
+    if (obj.oclass === TOOL_CLASS && (obj.otyp === TOWEL || obj.otyp === MAGIC_MARKER)) {
+        return GETOBJ.SUGGEST;
     }
-    return 1 /* GETOBJ_DOWNPLAY */;
+    return GETOBJ.DOWNPLAY;
 }
 async function u_can_engrave() {   // engrave.c:503
     let levtyp = 0;
-    levtyp = svl.level.locations[u.ux][u.uy].typ === 19 /* DRAWBRIDGE_UP */ ? db_under_typ(svl.level.locations[u.ux][u.uy].flags | 0) : svl.level.locations[u.ux][u.uy].typ;
+    levtyp = svl.level.locations[u.ux][u.uy].typ === DRAWBRIDGE_UP ? db_under_typ(svl.level.locations[u.ux][u.uy].flags | 0) : svl.level.locations[u.ux][u.uy].typ;
     if (u.uswallow) {
-        if ($c.andu64(u.ustuck.data.mflags1, 262144) !== 0) {
+        if (is_animal(u.ustuck.data)) {
             await pline($c.lit("What would you write?  \"Jonah was here\"?"));
-            return 0;
-        } else if (u.ustuck.data.mlet === 22 /* S_VORTEX */ || $c.peq(u.ustuck.data, $c.relem(mons, 154 /* PM_AIR_ELEMENTAL */))) {
-            await cant_reach_floor(u.ux, u.uy, 0, 0, 0);
-            return 0;
+            return FALSE;
+        } else if (is_whirly(u.ustuck.data)) {
+            await cant_reach_floor(u.ux, u.uy, FALSE, FALSE, FALSE);
+            return FALSE;
         }
     } else if (is_lava(u.ux, u.uy)) {
         await You_cant($c.lit("write on the %s!"), surface(u.ux, u.uy));
-        return 0;
-    } else if (is_pool(u.ux, u.uy) || levtyp === 28 /* FOUNTAIN */) {
+        return FALSE;
+    } else if (is_pool(u.ux, u.uy) || IS_FOUNTAIN(levtyp)) {
         await You_cant($c.lit("write on the %s!"), surface(u.ux, u.uy));
-        return 0;
-    } else if (levtyp === 35 /* AIR */ || levtyp === 36 /* CLOUD */) {
-        await You_cant($c.lit("write in %s!"), levtyp === 36 /* CLOUD */ ? $c.lit("cloud vapor") : $c.lit("thin air"));
-        return 0;
-    } else if (!(levtyp >= 23 /* DOOR */)) {
+        return FALSE;
+    } else if (IS_AIR(levtyp)) {
+        await You_cant($c.lit("write in %s!"), levtyp === CLOUD ? $c.lit("cloud vapor") : $c.lit("thin air"));
+        return FALSE;
+    } else if (!ACCESSIBLE(levtyp)) {
         await You_cant($c.lit("write here."));
-        return 0;
+        return FALSE;
     }
-    if ($c.andu64(gy.youmonst.data.mflags1, 8192) !== 0 || gy.youmonst.data.msize < 1) {
+    if (cantwield(gy.youmonst.data)) {
         await You_cant($c.lit("even hold anything!"));
-        return 0;
+        return FALSE;
     }
     if (await check_capacity(null)) {
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 function doengrave_ctx_init(de) {   // engrave.c:545
     let $t1, $t2;
-    de.dengr = 0;
-    de.doblind = 0;
-    de.doknown = 0;
-    de.eow = 0;
-    de.ptext = 1;
-    de.teleengr = 0;
-    de.zapwand = 0;
-    de.disprefresh = 0;
-    de.adding = 0;
-    de.ret = 0;
-    de.type = 1;
+    de.dengr = FALSE;
+    de.doblind = FALSE;
+    de.doknown = FALSE;
+    de.eow = FALSE;
+    de.ptext = TRUE;
+    de.teleengr = FALSE;
+    de.zapwand = FALSE;
+    de.disprefresh = FALSE;
+    de.adding = FALSE;
+    de.ret = ECMD.OK;
+    de.type = DUST;
     de.oetype = 0;
     de.otmp = null;
     $t1 = engr_at(u.ux, u.uy), de.oep = $t1;
@@ -386,40 +407,40 @@ function doengrave_ctx_init(de) {   // engrave.c:545
     if (de.oep) {
         de.oetype = de.oep.engr_type;
     }
-    if ($c.andu64(gy.youmonst.data.mflags2, 256) !== 0 || gy.youmonst.data.mlet === 48 /* S_VAMPIRE */) {
-        de.type = 5;
+    if (is_demon(gy.youmonst.data) || is_vampire(gy.youmonst.data)) {
+        de.type = ENGR_BLOOD;
     }
-    de.jello = $c.i8(u.uswallow | 0 && !($c.andu64(u.ustuck.data.mflags1, 262144) !== 0 || (u.ustuck.data.mlet === 22 /* S_VORTEX */ || $c.peq(u.ustuck.data, $c.relem(mons, 154 /* PM_AIR_ELEMENTAL */)))) ? 1 : 0);
+    de.jello = $c.i8(u.uswallow | 0 && !(is_animal(u.ustuck.data) || is_whirly(u.ustuck.data)) ? 1 : 0);
     $t2 = is_ice(u.ux, u.uy), de.frosted = $t2;
 }
 async function doengrave_sfx_item_WAN(de) {   // engrave.c:583
     switch (de.otmp.otyp) {
         default:
             break;
-        case 410 /* WAN_LIGHT */:
-        case 411 /* WAN_SECRET_DOOR_DETECTION */:
-        case 415 /* WAN_STASIS */:
-        case 413 /* WAN_CREATE_MONSTER */:
-        case 414 /* WAN_WISHING */:
-        case 412 /* WAN_ENLIGHTENMENT */:
+        case WAN_LIGHT:
+        case WAN_SECRET_DOOR_DETECTION:
+        case WAN_STASIS:
+        case WAN_CREATE_MONSTER:
+        case WAN_WISHING:
+        case WAN_ENLIGHTENMENT:
             await zapnodir(de.otmp);
             break;
-        case 417 /* WAN_STRIKING */:
+        case WAN_STRIKING:
             $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), $c.lit("The wand unsuccessfully fights your attempt to write!"), 256);
             break;
-        case 419 /* WAN_SLOW_MONSTER */:
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+        case WAN_SLOW_MONSTER:
+            if (!Blind()) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(de.post_engr_text, 0), 0, 256, $c.lit("The bugs on the %s slow down!"), surface(u.ux, u.uy));
             }
             break;
-        case 420 /* WAN_SPEED_MONSTER */:
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+        case WAN_SPEED_MONSTER:
+            if (!Blind()) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(de.post_engr_text, 0), 0, 256, $c.lit("The bugs on the %s speed up!"), surface(u.ux, u.uy));
             }
             break;
-        case 422 /* WAN_POLYMORPH */:
+        case WAN_POLYMORPH:
             if (de.oep) {
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                if (!Blind()) {
                     de.type = 0;
                     await random_engraving(new $c.Ptr(de.buf, 0), new $c.Ptr(de.ebuf, 0));
                 } else {
@@ -428,87 +449,87 @@ async function doengrave_sfx_item_WAN(de) {   // engrave.c:583
                     }
                     xcrypt(blengr(), new $c.Ptr(de.buf, 0));
                 }
-                de.dengr = 1;
+                de.dengr = TRUE;
             }
             break;
-        case 416 /* WAN_NOTHING */:
-        case 421 /* WAN_UNDEAD_TURNING */:
-        case 425 /* WAN_OPENING */:
-        case 426 /* WAN_LOCKING */:
-        case 427 /* WAN_PROBING */:
+        case WAN_NOTHING:
+        case WAN_UNDEAD_TURNING:
+        case WAN_OPENING:
+        case WAN_LOCKING:
+        case WAN_PROBING:
             break;
-        case 429 /* WAN_MAGIC_MISSILE */:
-            de.ptext = 1;
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+        case WAN_MAGIC_MISSILE:
+            de.ptext = TRUE;
+            if (!Blind()) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(de.post_engr_text, 0), 0, 256, $c.lit("The %s is riddled by bullet holes!"), surface(u.ux, u.uy));
             }
             break;
-        case 432 /* WAN_SLEEP */:
-        case 433 /* WAN_DEATH */:
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+        case WAN_SLEEP:
+        case WAN_DEATH:
+            if (!Blind()) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(de.post_engr_text, 0), 0, 256, $c.lit("The bugs on the %s stop moving!"), surface(u.ux, u.uy));
             }
             break;
-        case 431 /* WAN_COLD */:
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+        case WAN_COLD:
+            if (!Blind()) {
                 $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), $c.lit("A few ice cubes drop from the wand."), 256);
             }
-            if (!de.oep || de.oep.engr_type !== 3) {
+            if (!de.oep || de.oep.engr_type !== BURN) {
                 break;
             }
-        case 423 /* WAN_CANCELLATION */:
-        case 418 /* WAN_MAKE_INVISIBLE */:
-            if (de.oep && de.oep.engr_type !== 6) {
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+        case WAN_CANCELLATION:
+        case WAN_MAKE_INVISIBLE:
+            if (de.oep && de.oep.engr_type !== HEADSTONE) {
+                if (!Blind()) {
                     await pline_The($c.lit("engraving on the %s vanishes!"), surface(u.ux, u.uy));
                 }
-                de.dengr = 1;
+                de.dengr = TRUE;
             }
             break;
-        case 424 /* WAN_TELEPORTATION */:
-            if (de.oep && de.oep.engr_type !== 6) {
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+        case WAN_TELEPORTATION:
+            if (de.oep && de.oep.engr_type !== HEADSTONE) {
+                if (!Blind()) {
                     await pline_The($c.lit("engraving on the %s vanishes!"), surface(u.ux, u.uy));
                 }
-                de.teleengr = 1;
+                de.teleengr = TRUE;
             }
             break;
-        case 428 /* WAN_DIGGING */:
-            de.ptext = 1;
-            de.type = 2;
+        case WAN_DIGGING:
+            de.ptext = TRUE;
+            de.type = ENGRAVE;
             if (!objects[de.otmp.otyp].oc_name_known) {
                 if (flags.verbose) {
                     await pline($c.lit("This %s is a wand of digging!"), await xname(de.otmp));
                 }
-                de.doknown = 1;
+                de.doknown = TRUE;
             }
-            $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && !(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) ? $c.lit("You hear drilling!") : (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("You feel tremors.") : svl.level.locations[u.ux][u.uy].typ === 31 /* GRAVE */ ? $c.lit("Chips fly out from the headstone.") : de.frosted ? $c.lit("Ice chips fly up from the ice surface!") : svl.level.locations[u.ux][u.uy].typ === 34 /* DRAWBRIDGE_DOWN */ ? $c.lit("Splinters fly up from the bridge.") : $c.lit("Gravel flies up from the floor."), 256);
+            $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && !(u.uprops[DEAF].intrinsic || u.uprops[DEAF].extrinsic || u.uroleplay.deaf) ? $c.lit("You hear drilling!") : (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked ? $c.lit("You feel tremors.") : svl.level.locations[u.ux][u.uy].typ === GRAVE ? $c.lit("Chips fly out from the headstone.") : de.frosted ? $c.lit("Ice chips fly up from the ice surface!") : svl.level.locations[u.ux][u.uy].typ === DRAWBRIDGE_DOWN ? $c.lit("Splinters fly up from the bridge.") : $c.lit("Gravel flies up from the floor."), 256);
             break;
-        case 430 /* WAN_FIRE */:
-            de.ptext = 1;
-            de.type = 3;
+        case WAN_FIRE:
+            de.ptext = TRUE;
+            de.type = BURN;
             if (!objects[de.otmp.otyp].oc_name_known) {
                 if (flags.verbose) {
                     await pline($c.lit("This %s is a wand of fire!"), await xname(de.otmp));
                 }
-                de.doknown = 1;
+                de.doknown = TRUE;
             }
-            $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("You feel the wand heat up.") : $c.lit("Flames fly from the wand."), 256);
+            $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked ? $c.lit("You feel the wand heat up.") : $c.lit("Flames fly from the wand."), 256);
             break;
-        case 434 /* WAN_LIGHTNING */:
-            de.ptext = 1;
-            de.type = 3;
+        case WAN_LIGHTNING:
+            de.ptext = TRUE;
+            de.type = BURN;
             if (!objects[de.otmp.otyp].oc_name_known) {
                 if (flags.verbose) {
                     await pline($c.lit("This %s is a wand of lightning!"), await xname(de.otmp));
                 }
-                de.doknown = 1;
+                de.doknown = TRUE;
             }
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            if (!Blind()) {
                 $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), $c.lit("Lightning arcs from the wand."), 256);
-                de.doblind = 1;
+                de.doblind = TRUE;
             } else {
-                $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), !(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) ? $c.lit("You hear crackling!") : $c.lit("Your hair stands up!"), 256);
+                $c.__builtin___strcpy_chk(new $c.Ptr(de.post_engr_text, 0), !(u.uprops[DEAF].intrinsic || u.uprops[DEAF].extrinsic || u.uroleplay.deaf) ? $c.lit("You hear crackling!") : $c.lit("Your hair stands up!"), 256);
             }
             break;
     }
@@ -516,100 +537,100 @@ async function doengrave_sfx_item_WAN(de) {   // engrave.c:583
 async function doengrave_sfx_item(de) {   // engrave.c:742
     switch (de.otmp.oclass) {
         default:
-        case 5 /* AMULET_CLASS */:
-        case 16 /* CHAIN_CLASS */:
-        case 8 /* POTION_CLASS */:
-        case 12 /* COIN_CLASS */:
+        case AMULET_CLASS:
+        case CHAIN_CLASS:
+        case POTION_CLASS:
+        case COIN_CLASS:
             break;
-        case 4 /* RING_CLASS */:
-        case 13 /* GEM_CLASS */:
+        case RING_CLASS:
+        case GEM_CLASS:
             if (objects[de.otmp.otyp].oc_tough) {
-                de.type = 2;
+                de.type = ENGRAVE;
                 break;
             }
             break;
-        case 3 /* ARMOR_CLASS */:
-            if (de.otmp.oclass === 3 /* ARMOR_CLASS */ && objects[de.otmp.otyp].oc_subtyp === 4 /* ARM_BOOTS */) {
-                de.type = 1;
+        case ARMOR_CLASS:
+            if (is_boots(de.otmp)) {
+                de.type = DUST;
                 break;
             }
-        case 15 /* BALL_CLASS */:
-        case 14 /* ROCK_CLASS */:
+        case BALL_CLASS:
+        case ROCK_CLASS:
             await You_cant($c.lit("engrave with such a large object!"));
-            de.ptext = 0;
+            de.ptext = FALSE;
             break;
-        case 7 /* FOOD_CLASS */:
-        case 9 /* SCROLL_CLASS */:
-        case 10 /* SPBOOK_CLASS */:
+        case FOOD_CLASS:
+        case SCROLL_CLASS:
+        case SPBOOK_CLASS:
             await pline($c.lit("%s would get %s."), await Yname2(de.otmp), de.frosted ? $c.lit("all frosty") : $c.lit("too dirty"));
-            de.ptext = 0;
+            de.ptext = FALSE;
             break;
-        case 0 /* RANDOM_CLASS */:
+        case RANDOM_CLASS:
             break;
-        case 11 /* WAND_CLASS */:
+        case WAND_CLASS:
             if (await zappable(de.otmp)) {
                 await check_unpaid(de.otmp);
-                if (de.otmp.cursed | 0 && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 794, $c.lit("doengrave_sfx_item")), rn2(100)) : rn2(100))) {
+                if (de.otmp.cursed | 0 && !rn2(WAND.BACKFIRE_CHANCE)) {
                     await wand_explode(de.otmp, 0);
-                    de.ret = 1;
-                    return 0;
+                    de.ret = ECMD.TIME;
+                    return FALSE;
                 }
-                de.zapwand = 1;
-                if (!can_reach_floor(1)) {
-                    de.ptext = 0;
+                de.zapwand = TRUE;
+                if (!can_reach_floor(TRUE)) {
+                    de.ptext = FALSE;
                 }
                 await doengrave_sfx_item_WAN(de);
             } else {
-                de.ptext = 0;
-                if (can_reach_floor(1)) {
+                de.ptext = FALSE;
+                if (can_reach_floor(TRUE)) {
                     if (de.otmp.spe < 0) {
-                        de.zapwand = 1;
+                        de.zapwand = TRUE;
                     } else {
                         await pline_The($c.lit("wand is too worn out to engrave."));
                     }
                 }
             }
             break;
-        case 2 /* WEAPON_CLASS */:
-            if (is_art(de.otmp, 10 /* ART_FIRE_BRAND */)) {
-                de.type = 3;
-            } else if (de.otmp.oclass === 2 /* WEAPON_CLASS */ && objects[de.otmp.otyp].oc_subtyp >= 1 /* P_DAGGER */ && objects[de.otmp.otyp].oc_subtyp <= 9 /* P_SABER */) {
+        case WEAPON_CLASS:
+            if (is_art(de.otmp, ART.FIRE_BRAND)) {
+                de.type = BURN;
+            } else if (is_blade(de.otmp)) {
                 if (await welded(de.otmp)) {
                     await pline($c.lit("%s can only scratch the %s."), await Yname2(de.otmp), surface(u.ux, u.uy));
                 } else if (de.otmp.spe <= -3) {
                     await pline($c.lit("%s too dull for engraving."), await Yobjnam2(de.otmp, $c.lit("are")));
                 } else {
-                    de.type = 2;
+                    de.type = ENGRAVE;
                 }
             }
             break;
-        case 6 /* TOOL_CLASS */:
+        case TOOL_CLASS:
             if ($c.peq(de.otmp, $G.ublindf)) {
                 await pline($c.lit("That is a bit difficult to engrave with, don't you think?"));
-                de.ret = 4;
-                return 0;
+                de.ret = ECMD.FAIL;
+                return FALSE;
             }
             switch (de.otmp.otyp) {
-                case 242 /* MAGIC_MARKER */:
+                case MAGIC_MARKER:
                     if (de.otmp.spe <= 0) {
                         await Your($c.lit("marker has dried out."));
                     } else {
-                        de.type = 4;
+                        de.type = MARK;
                     }
                     break;
-                case 234 /* TOWEL */:
-                    de.ptext = 0;
+                case TOWEL:
+                    de.ptext = FALSE;
                     if (de.oep) {
-                        if (de.oep.engr_type === 1 || de.oep.engr_type === 5 || de.oep.engr_type === 4) {
-                            if (de.otmp.otyp === 234 /* TOWEL */ && de.otmp.spe > 0) {
-                                await dry_a_towel(de.otmp, -1, 1);
+                        if (de.oep.engr_type === DUST || de.oep.engr_type === ENGR_BLOOD || de.oep.engr_type === MARK) {
+                            if (is_wet_towel(de.otmp)) {
+                                await dry_a_towel(de.otmp, -1, TRUE);
                             }
-                            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                            if (!Blind()) {
                                 await You($c.lit("wipe out the message here."));
                             } else {
                                 await pline($c.lit("%s %s."), await Yobjnam2(de.otmp, $c.lit("get")), de.frosted ? $c.lit("frosty") : $c.lit("dusty"));
                             }
-                            de.dengr = 1;
+                            de.dengr = TRUE;
                         } else {
                             await pline($c.lit("%s can't wipe out this engraving."), await Yname2(de.otmp));
                         }
@@ -621,65 +642,65 @@ async function doengrave_sfx_item(de) {   // engrave.c:742
                     break;
             }
             break;
-        case 17 /* VENOM_CLASS */:
+        case VENOM_CLASS:
             await pline($c.lit("Writing a poison pen letter?"));
             break;
-        case 1 /* ILLOBJ_CLASS */:
+        case ILLOBJ_CLASS:
             await impossible($c.lit("You're engraving with an illegal object!"));
             break;
     }
-    return 1;
+    return TRUE;
 }
 function doengrave_ctx_verb(de) {   // engrave.c:896
     switch (de.type) {
         default:
             de.everb = de.adding ? $c.lit("add to the weird writing on") : $c.lit("write strangely on");
             break;
-        case 1:
+        case DUST:
             de.everb = de.adding ? $c.lit("add to the writing in") : $c.lit("write in");
             de.eloc = de.frosted ? $c.lit("frost") : $c.lit("dust");
             break;
-        case 6:
+        case HEADSTONE:
             de.everb = de.adding ? $c.lit("add to the epitaph on") : $c.lit("engrave on");
             break;
-        case 2:
+        case ENGRAVE:
             de.everb = de.adding ? $c.lit("add to the engraving in") : $c.lit("engrave in");
             break;
-        case 3:
+        case BURN:
             de.everb = de.adding ? de.frosted ? $c.lit("add to the text melted into") : $c.lit("add to the text burned into") : de.frosted ? $c.lit("melt into") : $c.lit("burn into");
             break;
-        case 4:
+        case MARK:
             de.everb = de.adding ? $c.lit("add to the graffiti on") : $c.lit("scribble on");
             break;
-        case 5:
+        case ENGR_BLOOD:
             de.everb = de.adding ? $c.lit("add to the scrawl on") : $c.lit("scrawl on");
             break;
     }
 }
 export async function doengrave() {   // engrave.c:956
     let sp = null, de = null, retval = 0, initial_msg_given = 0, tmp_ep = null, c = 0, $t1, $t2, $t3, $t4, $t5, $t6;
-    initial_msg_given = 0;
+    initial_msg_given = FALSE;
     if (!await u_can_engrave()) {
-        return 4;
+        return ECMD.FAIL;
     }
     de = $c.asRec(await alloc(1224), $T._doengrave_ctx, 1224);
     doengrave_ctx_init(de);
     gm.multi = 0;
     gn.nomovemsg = null;
-    $t1 = await getobj($c.lit("write with"), stylus_ok, 2), de.otmp = $t1;
+    $t1 = await getobj($c.lit("write with"), stylus_ok, GETOBJ_PROMPT), de.otmp = $t1;
     doengr_exit$: {
         if (!de.otmp) {
-            de.ret = 2;
+            de.ret = ECMD.CANCEL;
             break doengr_exit$;
         }
         if ($c.peq(de.otmp, hands_obj)) {
-            $c.__builtin___strcat_chk($c.__builtin___strcpy_chk(new $c.Ptr(de.fbuf, 0), $c.lit("your "), 256), await body_part(4 /* FINGERTIP */), -1);
+            $c.__builtin___strcat_chk($c.__builtin___strcpy_chk(new $c.Ptr(de.fbuf, 0), $c.lit("your "), 256), await body_part(FINGERTIP), -1);
             de.writer = new $c.Ptr(de.fbuf, 0);
         } else {
             $t2 = await yname(de.otmp), de.writer = $t2;
         }
         if (!await freehand() && !$c.peq(de.otmp, $G.uwep) && !de.otmp.owornmask) {
-            await You($c.lit("have no free %s to write with!"), await body_part(6 /* HAND */));
+            await You($c.lit("have no free %s to write with!"), await body_part(HAND));
             break doengr_exit$;
         }
         if (de.jello) {
@@ -687,23 +708,23 @@ export async function doengrave() {   // engrave.c:956
             await Your($c.lit("message dissolves..."));
             break doengr_exit$;
         }
-        if (!can_reach_floor(1)) {
-            if (de.otmp.oclass !== 11 /* WAND_CLASS */) {
-                await cant_reach_floor(u.ux, u.uy, 0, 1, 0);
+        if (!can_reach_floor(TRUE)) {
+            if (de.otmp.oclass !== WAND_CLASS) {
+                await cant_reach_floor(u.ux, u.uy, FALSE, TRUE, FALSE);
                 break doengr_exit$;
             } else {
                 await You($c.lit("gesture, with your wand, towards the %s below you."), surface(u.ux, u.uy));
-                initial_msg_given = 1;
+                initial_msg_given = TRUE;
             }
         }
-        if (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */) {
+        if (svl.level.locations[u.ux][u.uy].typ === ALTAR) {
             if (!initial_msg_given) {
                 await You($c.lit("make a motion towards the altar with %s."), de.writer);
             }
             await altar_wrath(u.ux, u.uy);
             break doengr_exit$;
         }
-        if (svl.level.locations[u.ux][u.uy].typ === 31 /* GRAVE */) {
+        if (svl.level.locations[u.ux][u.uy].typ === GRAVE) {
             if ($c.peq(de.otmp, hands_obj)) {
                 await You($c.lit("would only make a small smudge on the %s."), surface(u.ux, u.uy));
                 break doengr_exit$;
@@ -715,13 +736,13 @@ export async function doengrave() {   // engrave.c:956
         if (!await doengrave_sfx_item(de)) {
             break doengr_exit$;
         }
-        if (svl.level.locations[u.ux][u.uy].typ === 31 /* GRAVE */) {
-            if (de.type === 2 || de.type === 0) {
-                de.type = 6;
+        if (svl.level.locations[u.ux][u.uy].typ === GRAVE) {
+            if (de.type === ENGRAVE || de.type === 0) {
+                de.type = HEADSTONE;
             } else {
-                de.type = 1;
-                de.dengr = 0;
-                de.teleengr = 0;
+                de.type = DUST;
+                de.dengr = FALSE;
+                de.teleengr = FALSE;
                 de.buf[0] = 0;
             }
         }
@@ -735,77 +756,77 @@ export async function doengrave() {   // engrave.c:956
             await rloc_engr(de.oep);
             de.oep.eread = (0) & 1;
             de.oep.erevealed = (0) & 1;
-            de.disprefresh = 1;
+            de.disprefresh = TRUE;
             de.oep = null;
         }
         if (de.dengr) {
             await del_engr(de.oep);
             de.oep = null;
-            de.disprefresh = 1;
+            de.disprefresh = TRUE;
         }
         if (new $c.Ptr(de.buf, 0).get(0)) {
             await make_engr_at(u.ux, u.uy, new $c.Ptr(de.buf, 0), new $c.Ptr(de.ebuf, 0), svm.moves, de.type);
             tmp_ep = engr_at(u.ux, u.uy);
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            if (!Blind()) {
                 if (tmp_ep !== null) {
                     await pline_The($c.lit("engraving now reads: \"%s\"."), new $c.Ptr(de.buf, 0));
                     tmp_ep.eread = (1) & 1;
                     tmp_ep.erevealed = (1) & 1;
-                    de.disprefresh = 1;
+                    de.disprefresh = TRUE;
                 }
             }
-            de.ptext = 0;
+            de.ptext = FALSE;
         }
         if (de.zapwand && de.otmp.spe < 0) {
-            await pline($c.lit("%s %sturns to dust."), await The(await xname(de.otmp)), (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("") : $c.lit("glows violently, then "));
-            if (!(svl.level.locations[u.ux][u.uy].typ === 31 /* GRAVE */)) {
+            await pline($c.lit("%s %sturns to dust."), await The(await xname(de.otmp)), Blind() ? $c.lit("") : $c.lit("glows violently, then "));
+            if (!(svl.level.locations[u.ux][u.uy].typ === GRAVE)) {
                 await You($c.lit("are not going to get anywhere trying to write in the %s with your dust."), de.frosted ? $c.lit("frost") : $c.lit("dust"));
             }
             await useup(de.otmp);
             de.otmp = null;
-            de.ptext = 0;
+            de.ptext = FALSE;
         }
         if (!de.ptext) {
-            if (de.otmp && de.otmp.oclass === 11 /* WAND_CLASS */ && !can_reach_floor(1)) {
-                await cant_reach_floor(u.ux, u.uy, 0, 1, 1);
+            if (de.otmp && de.otmp.oclass === WAND_CLASS && !can_reach_floor(TRUE)) {
+                await cant_reach_floor(u.ux, u.uy, FALSE, TRUE, TRUE);
             }
-            de.ret = 1;
+            de.ret = ECMD.TIME;
             break doengr_exit$;
         }
         if (de.oep) {
             c = 110;
-            if (de.type === 6) {
+            if (de.type === HEADSTONE) {
                 c = 121;
-            } else if (de.type === de.oep.engr_type && (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) || de.oep.engr_type === 3 || de.oep.engr_type === 2)) {
-                c = await yn_function($c.lit("Do you want to add to the current engraving?"), new $c.Ptr(ynqchars, 0), 121, 1);
+            } else if (de.type === de.oep.engr_type && (!Blind() || de.oep.engr_type === BURN || de.oep.engr_type === ENGRAVE)) {
+                c = await yn_function($c.lit("Do you want to add to the current engraving?"), new $c.Ptr(ynqchars, 0), 121, TRUE);
                 if (c === 113) {
                     await pline($c.lit("%s"), c_common_strings.c_Never_mind);
                     break doengr_exit$;
                 }
             }
-            if (c === 110 || (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
-                if (de.oep.engr_type === 1 || de.oep.engr_type === 5 || de.oep.engr_type === 4) {
-                    if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
-                        await You($c.lit("wipe out the message that was %s here."), de.oep.engr_type === 1 ? de.frosted ? $c.lit("written in the frost") : $c.lit("written in the dust") : de.oep.engr_type === 5 ? $c.lit("scrawled in blood") : $c.lit("written"));
+            if (c === 110 || Blind()) {
+                if (de.oep.engr_type === DUST || de.oep.engr_type === ENGR_BLOOD || de.oep.engr_type === MARK) {
+                    if (!Blind()) {
+                        await You($c.lit("wipe out the message that was %s here."), de.oep.engr_type === DUST ? de.frosted ? $c.lit("written in the frost") : $c.lit("written in the dust") : de.oep.engr_type === ENGR_BLOOD ? $c.lit("scrawled in blood") : $c.lit("written"));
                         await del_engr(de.oep);
                         de.oep = null;
-                        de.disprefresh = 1;
+                        de.disprefresh = TRUE;
                     } else {
-                        de.eow = 1;
+                        de.eow = TRUE;
                     }
-                } else if (de.type === 1 || de.type === 4 || de.type === 5) {
-                    await You($c.lit("cannot wipe out the message that is %s the %s here."), de.oep.engr_type === 3 ? de.frosted ? $c.lit("melted into") : $c.lit("burned into") : $c.lit("engraved in"), surface(u.ux, u.uy));
-                    de.ret = 1;
+                } else if (de.type === DUST || de.type === MARK || de.type === ENGR_BLOOD) {
+                    await You($c.lit("cannot wipe out the message that is %s the %s here."), de.oep.engr_type === BURN ? de.frosted ? $c.lit("melted into") : $c.lit("burned into") : $c.lit("engraved in"), surface(u.ux, u.uy));
+                    de.ret = ECMD.TIME;
                     break doengr_exit$;
                 } else if (de.type !== de.oep.engr_type || c === 110) {
-                    if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) || can_reach_floor(1)) {
+                    if (!Blind() || can_reach_floor(TRUE)) {
                         await You($c.lit("will overwrite the current message."));
                     }
-                    de.eow = 1;
+                    de.eow = TRUE;
                 }
-            } else if (de.oep && await Strlen_(de.oep.engr_txt[0 /* actual_text */], $c.lit("doengrave"), 1163) >= 255) {
+            } else if (de.oep && await Strlen_(de.oep.engr_txt[actual_text], $c.lit("doengrave"), 1163) >= BUFSZ - 1) {
                 await There($c.lit("is no room to add anything else here."));
-                de.ret = 1;
+                de.ret = ECMD.TIME;
                 break doengr_exit$;
             }
         }
@@ -813,9 +834,9 @@ export async function doengrave() {   // engrave.c:956
         de.adding = $c.i8(de.oep && !de.eow ? 1 : 0);
         doengrave_ctx_verb(de);
         if (!$c.peq(de.otmp, hands_obj)) {
-            await You($c.lit("%s the %s with %s%s."), de.everb, de.eloc, de.type === 2 && de.otmp.quan > 1 ? $c.lit("1 of ") : $c.lit(""), await doname(de.otmp));
+            await You($c.lit("%s the %s with %s%s."), de.everb, de.eloc, de.type === ENGRAVE && de.otmp.quan > 1 ? $c.lit("1 of ") : $c.lit(""), await doname(de.otmp));
         } else {
-            await You($c.lit("%s the %s with your %s."), de.everb, de.eloc, await body_part(4 /* FINGERTIP */));
+            await You($c.lit("%s the %s with your %s."), de.everb, de.eloc, await body_part(FINGERTIP));
         }
         $c.__builtin___sprintf_chk(new $c.Ptr(de.qbuf, 0), 0, 128, $c.lit("What do you want to %s the %s here?"), de.everb, de.eloc);
         await getlin(new $c.Ptr(de.qbuf, 0), new $c.Ptr(de.ebuf, 0));
@@ -828,10 +849,10 @@ export async function doengrave() {   // engrave.c:956
         }
         if (de.len === 0 || $c.strchr(new $c.Ptr(de.ebuf, 0), 27)) {
             if (de.zapwand) {
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                if (!Blind()) {
                     await pline($c.lit("%s, then %s."), await Tobjnam(de.otmp, $c.lit("glow")), await otense(de.otmp, $c.lit("fade")));
                 }
-                de.ret = 1;
+                de.ret = ECMD.TIME;
                 break doengr_exit$;
             } else {
                 await pline($c.lit("%s"), c_common_strings.c_Never_mind);
@@ -840,21 +861,21 @@ export async function doengrave() {   // engrave.c:956
         }
         if (de.len !== 1 || !$c.strchr(new $c.Ptr(de.ebuf, 0), 120) && !$c.strchr(new $c.Ptr(de.ebuf, 0), 88)) {
             if (!($t5 = u.uconduct.literate, u.uconduct.literate = $c.add64($t5, 1), $t5)) {
-                await livelog_printf(32, $c.lit("became literate by engraving \"%s\""), new $c.Ptr(de.ebuf, 0));
+                await livelog_printf(LL.CONDUCT, $c.lit("became literate by engraving \"%s\""), new $c.Ptr(de.ebuf, 0));
             }
         }
         for (sp = new $c.Ptr(de.ebuf, 0); sp.get(0); sp = sp.add(1)) {
             if (sp.get(0) === 32) {
                 continue;
             }
-            if ((de.type === 1 || de.type === 5) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1223, $c.lit("doengrave")), rn2(25)) : rn2(25)) || (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1224, $c.lit("doengrave")), rn2(11)) : rn2(11)) || u.uprops[14 /* CONFUSION */].intrinsic && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1224, $c.lit("doengrave")), rn2(7)) : rn2(7)) || u.uprops[13 /* STUNNED */].intrinsic && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1225, $c.lit("doengrave")), rn2(4)) : rn2(4)) || u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1225, $c.lit("doengrave")), rn2(2)) : rn2(2))) {
-                $t6 = $c.i8(32 + (rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1226, $c.lit("doengrave")), rnd(94)) : rnd(94)) | 0), sp.set(0, $t6);
+            if ((de.type === DUST || de.type === ENGR_BLOOD) && !rn2(25) || Blind() && !rn2(11) || u.uprops[CONFUSION].intrinsic && !rn2(7) || u.uprops[STUNNED].intrinsic && !rn2(4) || Hallucination() && !rn2(2)) {
+                $t6 = $c.i8(32 + rnd(94) | 0), sp.set(0, $t6);
             }
         }
         if (de.eow) {
             await del_engr(de.oep);
             de.oep = null;
-            de.disprefresh = 1;
+            de.disprefresh = TRUE;
         }
         $c.__builtin___strcpy_chk(new $c.Ptr(svc.context.engraving.text, 0), new $c.Ptr(de.ebuf, 0), 256);
         svc.context.engraving.nextc = new $c.Ptr(svc.context.engraving.text, 0);
@@ -869,8 +890,8 @@ export async function doengrave() {   // engrave.c:956
         }
         if (de.doblind && !await resists_blnd(gy.youmonst)) {
             await You($c.lit("are blinded by the flash!"));
-            await make_blinded(rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1250, $c.lit("doengrave")), rnd(50)) : rnd(50), 0);
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            await make_blinded(rnd(50), FALSE);
+            if (!Blind()) {
                 await Your($c.lit("%s"), c_common_strings.c_vision_clears);
             }
         }
@@ -886,9 +907,9 @@ async function engrave() {   // engrave.c:1267
     let oep = null, buf = new Int8Array(256), finishverb = null, stylus = null, firsttime = 0, rate = 0, truncate = 0, neweng = 0, carving = 0, dulling_wep = 0, marker = 0, endc = null, i = 0, space_left = 0, splitstack = 0, dulled = 0, ink_cost = 0, $t1;
     firsttime = $c.i8(svc.context.engraving.actionct === 0 ? 1 : 0);
     rate = 10;
-    truncate = 0;
+    truncate = FALSE;
     neweng = $c.i8(svc.context.engraving.actionct === 0 ? 1 : 0);
-    carving = $c.i8(svc.context.engraving.type === 2 || svc.context.engraving.type === 6 ? 1 : 0);
+    carving = $c.i8(svc.context.engraving.type === ENGRAVE || svc.context.engraving.type === HEADSTONE ? 1 : 0);
     if (svc.context.engraving.pos.x !== u.ux || svc.context.engraving.pos.y !== u.uy) {
         await You($c.lit("are unable to continue engraving."));
         return 0;
@@ -906,18 +927,18 @@ async function engrave() {   // engrave.c:1267
             return 0;
         }
     }
-    dulling_wep = $c.i8(carving && stylus && stylus.oclass === 2 /* WEAPON_CLASS */ && (stylus.otyp !== 38 /* ATHAME */ || stylus.cursed | 0) ? 1 : 0);
-    marker = $c.i8(stylus && stylus.otyp === 242 /* MAGIC_MARKER */ && svc.context.engraving.type === 4 ? 1 : 0);
+    dulling_wep = $c.i8(carving && stylus && stylus.oclass === WEAPON_CLASS && (stylus.otyp !== ATHAME || stylus.cursed | 0) ? 1 : 0);
+    marker = $c.i8(stylus && stylus.otyp === MAGIC_MARKER && svc.context.engraving.type === MARK ? 1 : 0);
     svc.context.engraving.actionct = svc.context.engraving.actionct + 1 | 0;
-    if (dulling_wep && !(stylus.oclass === 2 /* WEAPON_CLASS */ && objects[stylus.otyp].oc_subtyp >= 1 /* P_DAGGER */ && objects[stylus.otyp].oc_subtyp <= 9 /* P_SABER */)) {
+    if (dulling_wep && !is_blade(stylus)) {
         await impossible($c.lit("carving with non-bladed weapon"));
-    } else if (svc.context.engraving.type === 4 && !marker) {
+    } else if (svc.context.engraving.type === MARK && !marker) {
         await impossible($c.lit("making graffiti with non-marker stylus"));
     }
-    if (carving && stylus && (dulling_wep || stylus.oclass === 4 /* RING_CLASS */ || stylus.oclass === 13 /* GEM_CLASS */)) {
+    if (carving && stylus && (dulling_wep || stylus.oclass === RING_CLASS || stylus.oclass === GEM_CLASS)) {
         rate = 1;
     } else if (marker) {
-        rate = rate < Math.imul(stylus.spe, 2) ? rate : Math.imul(stylus.spe, 2);
+        rate = min(rate, Math.imul(stylus.spe, 2));
     }
     i = rate;
     for (endc = svc.context.engraving.nextc; endc.get(0) && i > 0; endc = endc.add(1)) {
@@ -926,15 +947,15 @@ async function engrave() {   // engrave.c:1267
         }
     }
     if (dulling_wep) {
-        splitstack = 0;
-        dulled = 0;
+        splitstack = FALSE;
+        dulled = FALSE;
         if (stylus.quan > 1) {
             if (firsttime) {
                 await pline($c.lit("One of %s gets dull."), await yname(stylus));
             }
             stylus = ($t1 = await splitobj(stylus, 1), svc.context.engraving.stylus = $t1);
             stylus.owornmask = 0;
-            splitstack = 1;
+            splitstack = TRUE;
         } else {
             if (firsttime) {
                 await pline($c.lit("%s gets dull."), await Yname2(stylus));
@@ -945,16 +966,16 @@ async function engrave() {   // engrave.c:1267
                 if (firsttime) {
                     await impossible($c.lit("<= -3 weapon valid for engraving"));
                 }
-                truncate = 1;
+                truncate = TRUE;
             } else if (endc.get(0) || svc.context.engraving.actionct === 1) {
                 stylus.spe = $c.i8(stylus.spe - 1 | 0);
-                dulled = 1;
+                dulled = TRUE;
             }
         }
         if (splitstack) {
             await obj_extract_self(stylus);
             stylus = await hold_another_object(stylus, $c.lit("You drop one %s!"), await doname(stylus), $c.asArr(null, Int8Array));
-            stylus;
+            nhUse(stylus);
         } else if (dulled && stylus.known | 0) {
             await prinv($c.asArr(null, Int8Array), stylus, 1);
             await update_inventory();
@@ -964,51 +985,51 @@ async function engrave() {   // engrave.c:1267
         if (stylus.spe < ink_cost) {
             await impossible($c.lit("overly dry marker valid for graffiti?"));
             ink_cost = stylus.spe;
-            truncate = 1;
+            truncate = TRUE;
         }
         stylus.spe = $c.i8(stylus.spe - ink_cost | 0);
         await update_inventory();
         if (stylus.spe === 0) {
             await Your($c.lit("marker dries out."));
-            truncate = 1;
+            truncate = TRUE;
         }
     }
     switch (svc.context.engraving.type) {
         default:
             finishverb = $c.lit("your weird engraving");
             break;
-        case 1:
+        case DUST:
             finishverb = is_ice(u.ux, u.uy) ? $c.lit("writing in the frost") : $c.lit("writing in the dust");
             break;
-        case 6:
-        case 2:
+        case HEADSTONE:
+        case ENGRAVE:
             finishverb = $c.lit("engraving");
             break;
-        case 3:
+        case BURN:
             finishverb = is_ice(u.ux, u.uy) ? $c.lit("melting your message into the ice") : $c.lit("burning your message into the floor");
             break;
-        case 4:
+        case MARK:
             finishverb = $c.lit("defacing the dungeon");
             break;
-        case 5:
+        case ENGR_BLOOD:
             finishverb = $c.lit("scrawling");
     }
     buf[0] = 0;
     oep = engr_at(u.ux, u.uy);
     if (oep) {
-        $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), oep.engr_txt[0 /* actual_text */], 256);
+        $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), oep.engr_txt[actual_text], 256);
     }
     space_left = $c.i32($c.subu64($c.subu64(256, $c.strlen(new $c.Ptr(buf, 0))), 1));
     if ($c.pdiff(endc, svc.context.engraving.nextc) > space_left) {
         await You($c.lit("run out of room to write."));
         endc = svc.context.engraving.nextc.add(space_left);
-        truncate = 1;
+        truncate = TRUE;
     }
     if (truncate && endc.get(0) !== 0) {
         endc.set(0, 0);
         await You($c.lit("are only able to write \"%s\"."), new $c.Ptr(svc.context.engraving.text, 0));
     } else {
-        truncate = 0;
+        truncate = FALSE;
     }
     $c.__builtin___strncat_chk(new $c.Ptr(buf, 0), svc.context.engraving.nextc, $c.u64(space_left < $c.pdiff(endc, svc.context.engraving.nextc) ? space_left : $c.pdiff(endc, svc.context.engraving.nextc)), 256);
     await make_engr_at(u.ux, u.uy, new $c.Ptr(buf, 0), null, $c.sub64(svm.moves, gm.multi), svc.context.engraving.type);
@@ -1041,7 +1062,7 @@ async function engrave() {   // engrave.c:1267
 export function sanitize_engravings() {   // engrave.c:1498
     let ep = null;
     for (ep = $G.head_engr; ep; ep = ep.nxt_engr) {
-        sanitize_name(ep.engr_txt[0 /* actual_text */]);
+        sanitize_name(ep.engr_txt[actual_text]);
     }
 }
 export function forget_engravings() {   // engrave.c:1509
@@ -1063,8 +1084,8 @@ export async function engraving_sanity_check() {   // engrave.c:1524
             await impossible($c.lit("engraving sanity: !isok <%i,%i>"), x, y);
             continue;
         }
-        levtyp = svl.level.locations[x][y].typ === 19 /* DRAWBRIDGE_UP */ ? db_under_typ(svl.level.locations[x][y].flags | 0) : svl.level.locations[x][y].typ;
-        if (is_pool_or_lava(x, y) || (levtyp === 35 /* AIR */ || levtyp === 36 /* CLOUD */) || !(levtyp >= 23 /* DOOR */)) {
+        levtyp = SURFACE_AT(x, y);
+        if (is_pool_or_lava(x, y) || IS_AIR(levtyp) || !ACCESSIBLE(levtyp)) {
             await impossible($c.lit("engraving sanity: illegal surface (%d: \"%s\")"), levtyp, surface(x, y));
             continue;
         }
@@ -1075,26 +1096,26 @@ export async function save_engravings(nhfp) {   // engrave.c:1551
     no_more_engr[0] = 0;
     for (ep = $G.head_engr; ep; ep = ep2) {
         ep2 = ep.nxt_engr;
-        if (ep.engr_alloc && ep.engr_txt[0 /* actual_text */].get(0) && nhfp.mode & 3) {
+        if (ep.engr_alloc && ep.engr_txt[actual_text].get(0) && update_file(nhfp)) {
             engr_alloc[0] = ep.engr_alloc;
             szeach = ep.engr_szeach;
             await sfo_unsigned(nhfp, new $c.Ptr(engr_alloc, 0), $c.lit("engraving-engr_alloc"));
             await sfo_engr(nhfp, ep, $c.lit("engraving"));
-            ep.engr_txt[0 /* actual_text */] = $c.recTail(ep);
-            ep.engr_txt[1 /* remembered_text */] = ep.engr_txt[0 /* actual_text */].add(szeach);
-            ep.engr_txt[2 /* pristine_text */] = ep.engr_txt[1 /* remembered_text */].add(szeach);
-            await sfo_char(nhfp, ep.engr_txt[0 /* actual_text */], $c.lit("engraving-actual_text"), szeach | 0);
-            await sfo_char(nhfp, ep.engr_txt[1 /* remembered_text */], $c.lit("engraving-remembered_text"), szeach | 0);
-            await sfo_char(nhfp, ep.engr_txt[2 /* pristine_text */], $c.lit("engraving-pristine_text"), szeach | 0);
+            ep.engr_txt[actual_text] = $c.recTail(ep);
+            ep.engr_txt[remembered_text] = ep.engr_txt[actual_text].add(szeach);
+            ep.engr_txt[pristine_text] = ep.engr_txt[remembered_text].add(szeach);
+            await sfo_char(nhfp, ep.engr_txt[actual_text], $c.lit("engraving-actual_text"), szeach | 0);
+            await sfo_char(nhfp, ep.engr_txt[remembered_text], $c.lit("engraving-remembered_text"), szeach | 0);
+            await sfo_char(nhfp, ep.engr_txt[pristine_text], $c.lit("engraving-pristine_text"), szeach | 0);
         }
-        if (nhfp.mode & 4) {
-            $c.free(ep);
+        if (release_data(nhfp)) {
+            dealloc_engr(ep);
         }
     }
-    if (nhfp.mode & 3) {
+    if (update_file(nhfp)) {
         await sfo_unsigned(nhfp, new $c.Ptr(no_more_engr, 0), $c.lit("engraving-engr_alloc"));
     }
-    if (nhfp.mode & 4) {
+    if (release_data(nhfp)) {
         $G.head_engr = null;
     }
 }
@@ -1112,17 +1133,17 @@ export async function rest_engravings(nhfp) {   // engrave.c:1584
         szeach = ep.engr_szeach;
         ep.nxt_engr = $G.head_engr;
         $G.head_engr = ep;
-        ep.engr_txt[0 /* actual_text */] = $c.recTail(ep);
-        ep.engr_txt[1 /* remembered_text */] = ep.engr_txt[0 /* actual_text */].add(szeach);
-        ep.engr_txt[2 /* pristine_text */] = ep.engr_txt[1 /* remembered_text */].add(szeach);
-        await sfi_char(nhfp, ep.engr_txt[0 /* actual_text */], $c.lit("engraving-actual_text"), szeach | 0);
-        await sfi_char(nhfp, ep.engr_txt[1 /* remembered_text */], $c.lit("engraving-remembered_text"), szeach | 0);
-        await sfi_char(nhfp, ep.engr_txt[2 /* pristine_text */], $c.lit("engraving-pristine_text"), szeach | 0);
-        while (ep.engr_txt[0 /* actual_text */].get(0) === 32) {
-            ep.engr_txt[0 /* actual_text */] = ep.engr_txt[0 /* actual_text */].add(1);
+        ep.engr_txt[actual_text] = $c.recTail(ep);
+        ep.engr_txt[remembered_text] = ep.engr_txt[actual_text].add(szeach);
+        ep.engr_txt[pristine_text] = ep.engr_txt[remembered_text].add(szeach);
+        await sfi_char(nhfp, ep.engr_txt[actual_text], $c.lit("engraving-actual_text"), szeach | 0);
+        await sfi_char(nhfp, ep.engr_txt[remembered_text], $c.lit("engraving-remembered_text"), szeach | 0);
+        await sfi_char(nhfp, ep.engr_txt[pristine_text], $c.lit("engraving-pristine_text"), szeach | 0);
+        while (ep.engr_txt[actual_text].get(0) === 32) {
+            ep.engr_txt[actual_text] = ep.engr_txt[actual_text].add(1);
         }
-        while (ep.engr_txt[1 /* remembered_text */].get(0) === 32) {
-            ep.engr_txt[1 /* remembered_text */] = ep.engr_txt[1 /* remembered_text */].add(1);
+        while (ep.engr_txt[remembered_text].get(0) === 32) {
+            ep.engr_txt[remembered_text] = ep.engr_txt[remembered_text].add(1);
         }
         ep.engr_time = svm.moves;
     }
@@ -1152,7 +1173,7 @@ export async function del_engr(ep) {   // engrave.c:1645
             return;
         }
     }
-    $c.free(ep);
+    dealloc_engr(ep);
 }
 export async function rloc_engr(ep) {   // engrave.c:1667
     let tx = 0, ty = 0, tryct = 0;
@@ -1161,8 +1182,8 @@ export async function rloc_engr(ep) {   // engrave.c:1667
         if ((tryct = tryct - 1 | 0) < 0) {
             return;
         }
-        tx = (rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1674, $c.lit("rloc_engr")), rn2(77)) : rn2(77)) + 2 | 0;
-        ty = rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1675, $c.lit("rloc_engr")), rn2(21)) : rn2(21);
+        tx = rn2(COLNO - 3) + 2 | 0;
+        ty = rn2(ROWNO);
     } while (engr_at($c.i16(tx), $c.i16(ty)) || !goodpos($c.i16(tx), $c.i16(ty), null, 0));
     ep.engr_x = $c.i16(tx);
     ep.engr_y = $c.i16(ty);
@@ -1170,31 +1191,31 @@ export async function rloc_engr(ep) {   // engrave.c:1667
 }
 export async function make_grave(x, y, str) {   // engrave.c:1687
     let buf = new Int8Array(256);
-    if (svl.level.locations[x][y].typ !== 25 /* ROOM */ && svl.level.locations[x][y].typ !== 31 /* GRAVE */ || t_at(x, y)) {
+    if (svl.level.locations[x][y].typ !== ROOM && svl.level.locations[x][y].typ !== GRAVE || t_at(x, y)) {
         return;
     }
-    if (!await set_levltyp(x, y, 31)) {
+    if (!await set_levltyp(x, y, GRAVE)) {
         return;
     }
     await del_engr_at(x, y);
     if (!str) {
-        str = await get_rnd_text($c.lit("epitaph"), new $c.Ptr(buf, 0), rn2, 60);
+        str = await get_rnd_text($c.lit("epitaph"), new $c.Ptr(buf, 0), rn2, MD_PAD.RUMORS);
     }
-    await make_engr_at(x, y, str, null, 0, 6);
+    await make_engr_at(x, y, str, null, 0, HEADSTONE);
     return;
 }
 export async function disturb_grave(x, y) {   // engrave.c:1707
     let lev = null;
     lev = $c.relem(svl.level.locations[x], y);
-    if (!(lev.typ === 31 /* GRAVE */)) {
+    if (!IS_GRAVE(lev.typ)) {
         await impossible($c.lit("Disturbing grave that isn't a grave? (%d)"), lev.typ);
     } else if (lev.horizontal) {
         await impossible($c.lit("Disturbing already disturbed grave?"));
     } else {
         await You($c.lit("disturb the undead!"));
         lev.horizontal = (1) & 1;
-        await makemon($c.relem(mons, 246 /* PM_GHOUL */), x, y, 0);
-        await exercise(2 /* A_WIS */, 0);
+        await makemon($c.relem(mons, PM.GHOUL), x, y, NO.MM_FLAGS);
+        await exercise(A.WIS, FALSE);
     }
 }
 export async function see_engraving(ep) {   // engrave.c:1724
@@ -1209,299 +1230,84 @@ export async function feel_engraving(ep) {   // engrave.c:1732
     }
 }
 function blengr() {   // engrave.c:1765
-    return new $c.Ptr(blind_writing[rng_log_enabled() ? (rng_log_set_caller($c.lit("engrave.c"), 1767, $c.lit("blengr")), rn2(9)) : rn2(9)], 0);
+    return new $c.Ptr(blind_writing[rn2(9)], 0);
 }
 
 export function $init() {
     for (let $i0 = 0; $i0 < 48; $i0++) {
         rubouts[$i0].$copyFrom(new $T.anon_engrave_66());
     }
-    rubouts[0].wipefrom = 65;
-    rubouts[0].wipeto = $c.lit("^");
-    rubouts[1].wipefrom = 66;
-    rubouts[1].wipeto = $c.lit("Pb[");
-    rubouts[2].wipefrom = 67;
-    rubouts[2].wipeto = $c.lit("(");
-    rubouts[3].wipefrom = 68;
-    rubouts[3].wipeto = $c.lit("|)[");
-    rubouts[4].wipefrom = 69;
-    rubouts[4].wipeto = $c.lit("|FL[_");
-    rubouts[5].wipefrom = 70;
-    rubouts[5].wipeto = $c.lit("|-");
-    rubouts[6].wipefrom = 71;
-    rubouts[6].wipeto = $c.lit("C(");
-    rubouts[7].wipefrom = 72;
-    rubouts[7].wipeto = $c.lit("|-");
-    rubouts[8].wipefrom = 73;
-    rubouts[8].wipeto = $c.lit("|");
-    rubouts[9].wipefrom = 75;
-    rubouts[9].wipeto = $c.lit("|<");
-    rubouts[10].wipefrom = 76;
-    rubouts[10].wipeto = $c.lit("|_");
-    rubouts[11].wipefrom = 77;
-    rubouts[11].wipeto = $c.lit("|");
-    rubouts[12].wipefrom = 78;
-    rubouts[12].wipeto = $c.lit("|\\");
-    rubouts[13].wipefrom = 79;
-    rubouts[13].wipeto = $c.lit("C(");
-    rubouts[14].wipefrom = 80;
-    rubouts[14].wipeto = $c.lit("F");
-    rubouts[15].wipefrom = 81;
-    rubouts[15].wipeto = $c.lit("C(");
-    rubouts[16].wipefrom = 82;
-    rubouts[16].wipeto = $c.lit("PF");
-    rubouts[17].wipefrom = 84;
-    rubouts[17].wipeto = $c.lit("|");
-    rubouts[18].wipefrom = 85;
-    rubouts[18].wipeto = $c.lit("J");
-    rubouts[19].wipefrom = 86;
-    rubouts[19].wipeto = $c.lit("/\\");
-    rubouts[20].wipefrom = 87;
-    rubouts[20].wipeto = $c.lit("V/\\");
-    rubouts[21].wipefrom = 90;
-    rubouts[21].wipeto = $c.lit("/");
-    rubouts[22].wipefrom = 98;
-    rubouts[22].wipeto = $c.lit("|");
-    rubouts[23].wipefrom = 100;
-    rubouts[23].wipeto = $c.lit("c|");
-    rubouts[24].wipefrom = 101;
-    rubouts[24].wipeto = $c.lit("c");
-    rubouts[25].wipefrom = 103;
-    rubouts[25].wipeto = $c.lit("c");
-    rubouts[26].wipefrom = 104;
-    rubouts[26].wipeto = $c.lit("n");
-    rubouts[27].wipefrom = 106;
-    rubouts[27].wipeto = $c.lit("i");
-    rubouts[28].wipefrom = 107;
-    rubouts[28].wipeto = $c.lit("|");
-    rubouts[29].wipefrom = 108;
-    rubouts[29].wipeto = $c.lit("|");
-    rubouts[30].wipefrom = 109;
-    rubouts[30].wipeto = $c.lit("nr");
-    rubouts[31].wipefrom = 110;
-    rubouts[31].wipeto = $c.lit("r");
-    rubouts[32].wipefrom = 111;
-    rubouts[32].wipeto = $c.lit("c");
-    rubouts[33].wipefrom = 113;
-    rubouts[33].wipeto = $c.lit("c");
-    rubouts[34].wipefrom = 119;
-    rubouts[34].wipeto = $c.lit("v");
-    rubouts[35].wipefrom = 121;
-    rubouts[35].wipeto = $c.lit("v");
-    rubouts[36].wipefrom = 58;
-    rubouts[36].wipeto = $c.lit(".");
-    rubouts[37].wipefrom = 59;
-    rubouts[37].wipeto = $c.lit(",:");
-    rubouts[38].wipefrom = 44;
-    rubouts[38].wipeto = $c.lit(".");
-    rubouts[39].wipefrom = 61;
-    rubouts[39].wipeto = $c.lit("-");
-    rubouts[40].wipefrom = 43;
-    rubouts[40].wipeto = $c.lit("-|");
-    rubouts[41].wipefrom = 42;
-    rubouts[41].wipeto = $c.lit("+");
-    rubouts[42].wipefrom = 64;
-    rubouts[42].wipeto = $c.lit("0");
-    rubouts[43].wipefrom = 48;
-    rubouts[43].wipeto = $c.lit("C(");
-    rubouts[44].wipefrom = 49;
-    rubouts[44].wipeto = $c.lit("|");
-    rubouts[45].wipefrom = 54;
-    rubouts[45].wipeto = $c.lit("o");
-    rubouts[46].wipefrom = 55;
-    rubouts[46].wipeto = $c.lit("/");
-    rubouts[47].wipefrom = 56;
-    rubouts[47].wipeto = $c.lit("3o");
+    $c.init(rubouts, [
+        { wipefrom: 65, wipeto: $c.lit("^") },
+        { wipefrom: 66, wipeto: $c.lit("Pb[") },
+        { wipefrom: 67, wipeto: $c.lit("(") },
+        { wipefrom: 68, wipeto: $c.lit("|)[") },
+        { wipefrom: 69, wipeto: $c.lit("|FL[_") },
+        { wipefrom: 70, wipeto: $c.lit("|-") },
+        { wipefrom: 71, wipeto: $c.lit("C(") },
+        { wipefrom: 72, wipeto: $c.lit("|-") },
+        { wipefrom: 73, wipeto: $c.lit("|") },
+        { wipefrom: 75, wipeto: $c.lit("|<") },
+        { wipefrom: 76, wipeto: $c.lit("|_") },
+        { wipefrom: 77, wipeto: $c.lit("|") },
+        { wipefrom: 78, wipeto: $c.lit("|\\") },
+        { wipefrom: 79, wipeto: $c.lit("C(") },
+        { wipefrom: 80, wipeto: $c.lit("F") },
+        { wipefrom: 81, wipeto: $c.lit("C(") },
+        { wipefrom: 82, wipeto: $c.lit("PF") },
+        { wipefrom: 84, wipeto: $c.lit("|") },
+        { wipefrom: 85, wipeto: $c.lit("J") },
+        { wipefrom: 86, wipeto: $c.lit("/\\") },
+        { wipefrom: 87, wipeto: $c.lit("V/\\") },
+        { wipefrom: 90, wipeto: $c.lit("/") },
+        { wipefrom: 98, wipeto: $c.lit("|") },
+        { wipefrom: 100, wipeto: $c.lit("c|") },
+        { wipefrom: 101, wipeto: $c.lit("c") },
+        { wipefrom: 103, wipeto: $c.lit("c") },
+        { wipefrom: 104, wipeto: $c.lit("n") },
+        { wipefrom: 106, wipeto: $c.lit("i") },
+        { wipefrom: 107, wipeto: $c.lit("|") },
+        { wipefrom: 108, wipeto: $c.lit("|") },
+        { wipefrom: 109, wipeto: $c.lit("nr") },
+        { wipefrom: 110, wipeto: $c.lit("r") },
+        { wipefrom: 111, wipeto: $c.lit("c") },
+        { wipefrom: 113, wipeto: $c.lit("c") },
+        { wipefrom: 119, wipeto: $c.lit("v") },
+        { wipefrom: 121, wipeto: $c.lit("v") },
+        { wipefrom: 58, wipeto: $c.lit(".") },
+        { wipefrom: 59, wipeto: $c.lit(",:") },
+        { wipefrom: 44, wipeto: $c.lit(".") },
+        { wipefrom: 61, wipeto: $c.lit("-") },
+        { wipefrom: 43, wipeto: $c.lit("-|") },
+        { wipefrom: 42, wipeto: $c.lit("+") },
+        { wipefrom: 64, wipeto: $c.lit("0") },
+        { wipefrom: 48, wipeto: $c.lit("C(") },
+        { wipefrom: 49, wipeto: $c.lit("|") },
+        { wipefrom: 54, wipeto: $c.lit("o") },
+        { wipefrom: 55, wipeto: $c.lit("/") },
+        { wipefrom: 56, wipeto: $c.lit("3o") }
+    ]);
     for (let $i0 = 0; $i0 < 9; $i0++) {
         blind_writing[$i0].fill(0);
     }
-    blind_writing[0][0] = 68;
-    blind_writing[0][1] = 102;
-    blind_writing[0][2] = 109;
-    blind_writing[0][3] = 105;
-    blind_writing[0][4] = 98;
-    blind_writing[0][5] = 101;
-    blind_writing[0][6] = 34;
-    blind_writing[0][7] = 69;
-    blind_writing[0][8] = 123;
-    blind_writing[0][9] = 113;
-    blind_writing[0][10] = 101;
-    blind_writing[0][11] = 109;
-    blind_writing[0][12] = 114;
-    blind_writing[0][13] = 0;
-    blind_writing[0][14] = 0;
-    blind_writing[0][15] = 0;
-    blind_writing[0][16] = 0;
-    blind_writing[0][17] = 0;
-    blind_writing[0][18] = 0;
-    blind_writing[0][19] = 0;
-    blind_writing[0][20] = 0;
-    blind_writing[1][0] = 81;
-    blind_writing[1][1] = 103;
-    blind_writing[1][2] = 96;
-    blind_writing[1][3] = 122;
-    blind_writing[1][4] = 127;
-    blind_writing[1][5] = 33;
-    blind_writing[1][6] = 64;
-    blind_writing[1][7] = 113;
-    blind_writing[1][8] = 107;
-    blind_writing[1][9] = 113;
-    blind_writing[1][10] = 111;
-    blind_writing[1][11] = 103;
-    blind_writing[1][12] = 99;
-    blind_writing[1][13] = 0;
-    blind_writing[1][14] = 0;
-    blind_writing[1][15] = 0;
-    blind_writing[1][16] = 0;
-    blind_writing[1][17] = 0;
-    blind_writing[1][18] = 0;
-    blind_writing[1][19] = 0;
-    blind_writing[1][20] = 0;
-    blind_writing[2][0] = 73;
-    blind_writing[2][1] = 109;
-    blind_writing[2][2] = 115;
-    blind_writing[2][3] = 105;
-    blind_writing[2][4] = 98;
-    blind_writing[2][5] = 101;
-    blind_writing[2][6] = 34;
-    blind_writing[2][7] = 76;
-    blind_writing[2][8] = 97;
-    blind_writing[2][9] = 124;
-    blind_writing[2][10] = 109;
-    blind_writing[2][11] = 103;
-    blind_writing[2][12] = 36;
-    blind_writing[2][13] = 66;
-    blind_writing[2][14] = 127;
-    blind_writing[2][15] = 105;
-    blind_writing[2][16] = 108;
-    blind_writing[2][17] = 119;
-    blind_writing[2][18] = 103;
-    blind_writing[2][19] = 126;
-    blind_writing[2][20] = 0;
-    blind_writing[3][0] = 75;
-    blind_writing[3][1] = 109;
-    blind_writing[3][2] = 108;
-    blind_writing[3][3] = 102;
-    blind_writing[3][4] = 48;
-    blind_writing[3][5] = 76;
-    blind_writing[3][6] = 107;
-    blind_writing[3][7] = 104;
-    blind_writing[3][8] = 124;
-    blind_writing[3][9] = 127;
-    blind_writing[3][10] = 111;
-    blind_writing[3][11] = 0;
-    blind_writing[3][12] = 0;
-    blind_writing[3][13] = 0;
-    blind_writing[3][14] = 0;
-    blind_writing[3][15] = 0;
-    blind_writing[3][16] = 0;
-    blind_writing[3][17] = 0;
-    blind_writing[3][18] = 0;
-    blind_writing[3][19] = 0;
-    blind_writing[3][20] = 0;
-    blind_writing[4][0] = 81;
-    blind_writing[4][1] = 103;
-    blind_writing[4][2] = 112;
-    blind_writing[4][3] = 122;
-    blind_writing[4][4] = 127;
-    blind_writing[4][5] = 111;
-    blind_writing[4][6] = 103;
-    blind_writing[4][7] = 104;
-    blind_writing[4][8] = 100;
-    blind_writing[4][9] = 113;
-    blind_writing[4][10] = 33;
-    blind_writing[4][11] = 79;
-    blind_writing[4][12] = 107;
-    blind_writing[4][13] = 109;
-    blind_writing[4][14] = 126;
-    blind_writing[4][15] = 114;
-    blind_writing[4][16] = 0;
-    blind_writing[4][17] = 0;
-    blind_writing[4][18] = 0;
-    blind_writing[4][19] = 0;
-    blind_writing[4][20] = 0;
-    blind_writing[5][0] = 76;
-    blind_writing[5][1] = 99;
-    blind_writing[5][2] = 118;
-    blind_writing[5][3] = 97;
-    blind_writing[5][4] = 113;
-    blind_writing[5][5] = 33;
-    blind_writing[5][6] = 72;
-    blind_writing[5][7] = 107;
-    blind_writing[5][8] = 123;
-    blind_writing[5][9] = 117;
-    blind_writing[5][10] = 103;
-    blind_writing[5][11] = 99;
-    blind_writing[5][12] = 36;
-    blind_writing[5][13] = 69;
-    blind_writing[5][14] = 101;
-    blind_writing[5][15] = 107;
-    blind_writing[5][16] = 107;
-    blind_writing[5][17] = 101;
-    blind_writing[5][18] = 0;
-    blind_writing[5][19] = 0;
-    blind_writing[5][20] = 0;
-    blind_writing[6][0] = 76;
-    blind_writing[6][1] = 103;
-    blind_writing[6][2] = 104;
-    blind_writing[6][3] = 107;
-    blind_writing[6][4] = 120;
-    blind_writing[6][5] = 104;
-    blind_writing[6][6] = 109;
-    blind_writing[6][7] = 118;
-    blind_writing[6][8] = 122;
-    blind_writing[6][9] = 117;
-    blind_writing[6][10] = 33;
-    blind_writing[6][11] = 79;
-    blind_writing[6][12] = 113;
-    blind_writing[6][13] = 122;
-    blind_writing[6][14] = 117;
-    blind_writing[6][15] = 111;
-    blind_writing[6][16] = 119;
-    blind_writing[6][17] = 0;
-    blind_writing[6][18] = 0;
-    blind_writing[6][19] = 0;
-    blind_writing[6][20] = 0;
-    blind_writing[7][0] = 68;
-    blind_writing[7][1] = 102;
-    blind_writing[7][2] = 109;
-    blind_writing[7][3] = 124;
-    blind_writing[7][4] = 120;
-    blind_writing[7][5] = 33;
-    blind_writing[7][6] = 80;
-    blind_writing[7][7] = 101;
-    blind_writing[7][8] = 102;
-    blind_writing[7][9] = 101;
-    blind_writing[7][10] = 108;
-    blind_writing[7][11] = 0;
-    blind_writing[7][12] = 0;
-    blind_writing[7][13] = 0;
-    blind_writing[7][14] = 0;
-    blind_writing[7][15] = 0;
-    blind_writing[7][16] = 0;
-    blind_writing[7][17] = 0;
-    blind_writing[7][18] = 0;
-    blind_writing[7][19] = 0;
-    blind_writing[7][20] = 0;
-    blind_writing[8][0] = 68;
-    blind_writing[8][1] = 102;
-    blind_writing[8][2] = 115;
-    blind_writing[8][3] = 105;
-    blind_writing[8][4] = 98;
-    blind_writing[8][5] = 101;
-    blind_writing[8][6] = 34;
-    blind_writing[8][7] = 86;
-    blind_writing[8][8] = 125;
-    blind_writing[8][9] = 99;
-    blind_writing[8][10] = 105;
-    blind_writing[8][11] = 118;
-    blind_writing[8][12] = 107;
-    blind_writing[8][13] = 102;
-    blind_writing[8][14] = 0;
-    blind_writing[8][15] = 0;
-    blind_writing[8][16] = 0;
-    blind_writing[8][17] = 0;
-    blind_writing[8][18] = 0;
-    blind_writing[8][19] = 0;
-    blind_writing[8][20] = 0;
+    $c.init(blind_writing, [
+        [68, 102, 109, 105, 98, 101, 34, 69, 123, 113,
+          101, 109, 114, 0, 0, 0, 0, 0, 0, 0, 0],
+        [81, 103, 96, 122, 127, 33, 64, 113, 107, 113,
+          111, 103, 99, 0, 0, 0, 0, 0, 0, 0, 0],
+        [73, 109, 115, 105, 98, 101, 34, 76, 97, 124,
+          109, 103, 36, 66, 127, 105, 108, 119, 103, 126, 0],
+        [75, 109, 108, 102, 48, 76, 107, 104, 124, 127,
+          111, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [81, 103, 112, 122, 127, 111, 103, 104, 100, 113,
+          33, 79, 107, 109, 126, 114, 0, 0, 0, 0, 0],
+        [76, 99, 118, 97, 113, 33, 72, 107, 123, 117,
+          103, 99, 36, 69, 101, 107, 107, 101, 0, 0, 0],
+        [76, 103, 104, 107, 120, 104, 109, 118, 122, 117,
+          33, 79, 113, 122, 117, 111, 119, 0, 0, 0, 0],
+        [68, 102, 109, 124, 120, 33, 80, 101, 102, 101,
+          108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [68, 102, 115, 105, 98, 101, 34, 86, 125, 99,
+          105, 118, 107, 102, 0, 0, 0, 0, 0, 0, 0]
+    ]);
 }

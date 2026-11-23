@@ -1,9 +1,7 @@
-// pray.js — prayer.
+// pray.js, prayer and divine intervention.
 // C ref: src/pray.c
 //
-// The #pray command covers eligibility, delay, ordinary favors, crowning, and
-// the tested sacrifice paths. Some punishment, conversion, and artifact-gift
-// paths remain partial.
+// Prayer eligibility, divine favors and anger, altar sacrifice, and crowning.
 
 import { ureflects } from './muse.js';
 import { has_omonst, OMONST, ANIMATE_SPELL, HVY_ENCUMBER, TELEDS_NO_FLAGS, DISSOLVED, EYE, PLNMSG_OBJ_GLOWS, SICK_ALL, In_sokoban, IS_OBSTRUCTED, SDOOR, SCORR, STONE } from './const.js';
@@ -31,6 +29,8 @@ import { rn1, rn2, rnd, rnz, rnl, rn2_on_display_rng, d } from './rng.js';
 import { newsym, pline, more, see_monsters } from './display.js';
 import { You, You_feel, You_hear, Your, pline_The } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
+import { paranoid_query } from './cmd.js';
+import { paranoia_bits, PARANOID_PRAY, PARANOID_CONFIRM } from './options.js';
 import { nomul, losehp } from './hack.js';
 import { adjalign, adjattrib, change_luck, near_capacity,
          exercise, encumber_msg, ABASE, AMAX, setABASE } from './attrib.js';
@@ -43,14 +43,14 @@ import { IS_ALTAR, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          LUCKMAX, NON_PM, nothing_happens, NH_BLACK, NH_ORANGE, BOLT_LIM,
          MAXULEV, FROMOUTSIDE, INTRINSIC, NH_AMBER, NH_LIGHT_BLUE,
          NH_GOLDEN, ONAME_GIFT, ONAME_KNOW_ARTI, P_ISRESTRICTED,
-         P_LONG_SWORD, P_BROAD_SWORD, FOOT, STOMACH } from './const.js';
+         P_LONG_SWORD, P_BROAD_SWORD, FOOT, STOMACH, LARGEST_INT } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { An, an, ansimpleoname, makeplural, OBJ_NAME, otense, vtense,
          xname, yname, Yobjnam2, gloves_simple_name } from './objnam.js';
 import { a_monnam, hcolor, mon_nam, oname, upstart } from './do_name.js';
 import { attrcurse, rndcurse } from './sit.js';
 import { Blind, Deaf, Flying, Hallucination, Levitation, Reflecting,
-         Shock_resistance } from './youprop.js';
+         Shock_resistance, Antimagic, Luck } from './youprop.js';
 import { obj_resists, resist } from './zap.js';
 import { carrying, update_inventory, useup, useupf, confers_luck, sobj_at } from './invent.js';
 import { carried, bimanual } from './obj.js';
@@ -325,9 +325,9 @@ function worst_cursed_item() {
     let otmp = null;
     /* if strained or worse, check for loadstone first */
     if (near_capacity() >= HVY_ENCUMBER) {
-        for (otmp = game.invent; otmp; otmp = otmp.nobj)
-            if (Cursed_obj(otmp, ONAMES.LOADSTONE))
-                return otmp;
+        for (const obj of game.invent || [])
+            if (Cursed_obj(obj, ONAMES.LOADSTONE))
+                return obj;
     }
     /* weapon takes precedence if it is interfering
        with taking off a ring or putting on a shield */
@@ -369,11 +369,11 @@ function worst_cursed_item() {
         otmp = u.uswapwep;
     /* all worn items ought to be handled by now */
     } else {
-        for (otmp = game.invent; otmp; otmp = otmp.nobj) {
-            if (!otmp.cursed)
+        for (const obj of game.invent || []) {
+            if (!obj.cursed)
                 continue;
-            if (otmp.otyp === ONAMES.LOADSTONE || confers_luck(otmp))
-                break;
+            if (obj.otyp === ONAMES.LOADSTONE || confers_luck(obj))
+                return obj;
         }
     }
     return otmp;
@@ -396,7 +396,7 @@ async function fix_curse_trouble(otmp, what) {
         (game.iflags ||= {}).last_msg = PLNMSG_OBJ_GLOWS;
         otmp.bknown = !Hallucination() ? 1 : 0; /* ok to skip set_bknown() */
     }
-    uncurse(otmp);
+    await uncurse(otmp);
     update_inventory();
 }
 
@@ -792,7 +792,10 @@ export function can_pray(praying) {
         : game.u.ualign.type;
     p_trouble = in_trouble();
 
-    if (is_demon(game.youmonst.data) && (p_aligntyp !== A_CHAOTIC)) {
+    /* Preserve the pinned C condition, which permits neutral demons
+       despite its comment about chaotic and unaligned gods. */
+    if (is_demon(game.youmonst.data)
+        && (p_aligntyp === A_LAWFUL || p_aligntyp !== A_NEUTRAL)) {
         if (praying)
             return (async () => {
                 await pline_The(`very idea of praying to a ${
@@ -829,7 +832,7 @@ function finish_can_pray(praying) {
              : (p_trouble < 0) ? (u.ublesscnt > 100)
                : (u.ublesscnt > 0))
         p_type = 0;                          /* too soon... */
-    else if ((u.uluck ?? 0) < 0 || u.ugangr || alignment < 0)
+    else if (Luck() < 0 || u.ugangr || alignment < 0)
         p_type = 1;                          /* too naughty... */
     else {
         if (on_altar() && u.ualign.type !== p_aligntyp)
@@ -858,9 +861,7 @@ function gods_upset(g_align) {
     return angrygods(g_align);
 }
 
-// src/pray.c:703 angrygods() — the god's response. The message arms are
-// live; the arms whose machinery is missing (loss of experience, Punishment,
-// random curses, minion summons, the divine lightning) record themselves.
+// src/pray.c:703 angrygods(), the god's response.
 async function angrygods(resp_god) {
     const u = game.u;
     let maxanger;
@@ -869,14 +870,14 @@ async function angrygods(resp_god) {
         resp_god = A_NONE;
     u.ublessed = 0; /* lose divine protection */
 
-    const Luck = u.uluck ?? 0;
+    const luck = Luck();
     if (resp_god !== u.ualign.type)
         maxanger = Math.trunc(u.ualign.record / 2)
-                   + (Luck > 0 ? -Math.trunc(Luck / 3) : -Luck);
+                   + (luck > 0 ? -Math.trunc(luck / 3) : -luck);
     else
         maxanger = 3 * (u.ugangr || 0)
-                   + ((Luck > 0 || u.ualign.record >= 8 /* STRIDENT */)
-                      ? -Math.trunc(Luck / 3) : -Luck);
+                   + ((luck > 0 || u.ualign.record >= STRIDENT)
+                      ? -Math.trunc(luck / 3) : -luck);
     if (maxanger < 1)
         maxanger = 1;
     else if (maxanger > 15)
@@ -885,7 +886,7 @@ async function angrygods(resp_god) {
     switch (rn2(maxanger)) {
     case 0:
     case 1:
-        await You_feel(`that ${align_gname(resp_god)} is ${game.u.uprops?.HALLUC ? 'bummed' : 'displeased'}.`);
+        await You_feel(`that ${align_gname(resp_god)} is ${Hallucination() ? 'bummed' : 'displeased'}.`);
         break;
     case 2:
     case 3: {
@@ -911,8 +912,7 @@ async function angrygods(resp_god) {
     case 4:
     case 5: {
         await gods_angry(resp_god);
-        const antimagic = !!(u.uprops?.ANTIMAGIC || u.uprops?.MAGIC_RES);
-        if (!u.ublind && !antimagic)
+        if (!Blind() && !Antimagic())
             await pline(`${An(hcolor(NH_BLACK))} glow surrounds you.`);
         if (rn2(2) || !(await attrcurse()))
             await rndcurse();
@@ -1859,7 +1859,7 @@ async function pleased(g_align) {
     const u = game.u;
     let trouble = in_trouble();
     let pat_on_head = false;
-    const hallucinating = !!u.uprops?.HALLUC;
+    const hallucinating = Hallucination();
 
     const mood = u.ualign.record >= DEVOUT
         ? (hallucinating ? 'pleased as punch' : 'well-pleased')
@@ -1881,6 +1881,7 @@ async function pleased(g_align) {
     } else {
         const luck = Math.max((u.uluck || 0) + (u.moreluck || 0), -1);
         let action = rn1(luck + (on_altar() ? 3 + Number(on_shrine()) : 2), 1);
+        let tryct = 0;
         if (!on_altar())
             action = Math.min(action, 3);
         if (u.ualign.record < STRIDENT)
@@ -1891,29 +1892,17 @@ async function pleased(g_align) {
             pat_on_head = true;
             // Fall through to fixing every trouble.
         case 4:
-            while (trouble) {
-                if (!(await fix_worst_trouble(trouble)))
-                    break;
-                trouble = in_trouble();
-            }
+            do
+                await fix_worst_trouble(trouble);
+            while ((trouble = in_trouble()) !== 0);
             break;
-        case 3: {
+        case 3:
             await fix_worst_trouble(trouble);
-            let tryct = 0;
-            while ((trouble = in_trouble()) > 0 && ++tryct < 10) {
-                if (!(await fix_worst_trouble(trouble)))
-                    break;
-            }
+            /* FALLTHRU */
+        case 2:
+            while ((trouble = in_trouble()) > 0 && ++tryct < 10)
+                await fix_worst_trouble(trouble);
             break;
-        }
-        case 2: {
-            let tryct = 0;
-            while ((trouble = in_trouble()) > 0 && ++tryct < 10) {
-                if (!(await fix_worst_trouble(trouble)))
-                    break;
-            }
-            break;
-        }
         case 1:
             if (trouble > 0)
                 await fix_worst_trouble(trouble);
@@ -2096,6 +2085,15 @@ async function pleased(g_align) {
         kickOnButt++;
     if (kickOnButt)
         u.ublesscnt += kickOnButt * rnz(1000);
+
+    /* C limits repeated hunger prayers in very long games. */
+    if (game.moves > 100000) {
+        let incr = Math.trunc((game.moves - 100000) / 100);
+        const largest_ublesscnt_incr = LARGEST_INT - u.ublesscnt;
+        if (incr > largest_ublesscnt_incr)
+            incr = largest_ublesscnt_incr;
+        u.ublesscnt += incr;
+    }
 }
 
 // src/pray.c:2276 prayer_done()
@@ -2167,12 +2165,12 @@ async function prayer_done() {
     return 1;
 }
 
-// src/pray.c:2199 dopray() — the #pray command.
+// src/pray.c:2199 dopray(), the #pray command.
 export async function dopray() {
-    /* ParanoidPray is a default-on confirmation */
-    const ans = await tty_yn_function('Are you sure you want to pray?',
-                                      'yn', 'n');
-    if (ans !== 'y')
+    const paranoidPray = !!(paranoia_bits() & PARANOID_PRAY);
+    if (paranoidPray
+        && !await paranoid_query(paranoia_bits() & PARANOID_CONFIRM,
+                                 'Are you sure you want to pray?'))
         return ECMD_OK;
 
     game.u.uconduct ||= {};
@@ -2189,8 +2187,22 @@ export async function dopray() {
 
     /* wizard-mode "Force the gods to be pleased?" — playmode:debug only */
     if (game.wizard && p_type >= 0) {
-        const ok = await tty_yn_function('Force the gods to be pleased?',
-                                         'yn', 'n');
+        let ok;
+        if (paranoidPray) {
+            /* A repeated prayer must ask again; neither confirmation
+               answer belongs in the saved command queue. */
+            const save_doagain = game.in_doagain;
+            game.in_doagain = false;
+            try {
+                ok = await tty_yn_function('Force the gods to be pleased?',
+                                           'yn', 'n', false);
+            } finally {
+                game.in_doagain = save_doagain;
+            }
+        } else {
+            ok = await tty_yn_function('Force the gods to be pleased?',
+                                       'yn', 'n', true);
+        }
         if (ok === 'y') {
             game.u.ublesscnt = 0;
             if ((game.u.uluck ?? 0) < 0)
@@ -2209,7 +2221,7 @@ export async function dopray() {
 
     if (p_type === 3 && !Inhell()) {
         /* if you've been true to your god you can't die while you pray */
-        if (!game.u.ublind)
+        if (!Blind())
             await You('are surrounded by a shimmering light.');
         game.u.uinvulnerable = true;
     }

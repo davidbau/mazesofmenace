@@ -24,7 +24,7 @@ import * as O from './objects.js';
 import * as M from './monsters.js';
 import { spell_skilltype, skill_based_spellbook_id } from './spell.js';
 import { ART_SUNSWORD, ART_SNICKERSNEE } from './artilist.js';
-import { touch_artifact_mon } from './artifact.js';
+import { touch_artifact_mon, spec_abon, spec_dbon } from './artifact.js';
 import { is_weptool } from './mkobj.js';
 import { is_pool } from './makemon.js';
 import { is_swimmer, passes_walls, is_undead, is_demon, is_were,
@@ -329,7 +329,7 @@ export function hitval(otmp, mon) {
 
     /* Check specially named weapon "to hit" bonuses */
     if (otmp.oartifact)
-        throw new Error('hitval(): spec_abon() not ported yet');
+        tmp += spec_abon(otmp, mon);
 
     return tmp;
 }
@@ -461,8 +461,8 @@ export function dmgval(otmp, mon) {
 
         /* if the weapon is going to get a double damage bonus, adjust
            this bonus so that effectively it's added after the doubling */
-        if (bonus > 1 && otmp.oartifact)
-            throw new Error('dmgval(): spec_dbon() not ported yet');
+        if (bonus > 1 && otmp.oartifact && spec_dbon(otmp, mon, 25) >= 25)
+            bonus = Math.trunc((bonus + 1) / 2);
 
         tmp += bonus;
     }

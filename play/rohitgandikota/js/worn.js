@@ -30,7 +30,7 @@ import { OCLASSES, ONAMES } from './objects_data.js';
 import { MFLAGS, MONSYMS, PMNAMES } from './monst_data.js';
 import { verysmall, nohands, is_animal, mindless, slithy, cantweararm,
          has_horns, breakarm, sliparm, is_whirly, mhim,
-         pronoun_gender } from './mondata.js';
+         pronoun_gender, monstunseesu_prop } from './mondata.js';
 import { is_shirt, is_cloak, is_helmet, is_shield, is_gloves, is_boots,
          is_suit, is_flimsy, bimanual, WrappingAllowed, Has_contents } from './obj.js';
 import { MCORPSENM, NON_PM } from './const.js';
@@ -124,9 +124,7 @@ export function recalc_telepat_range() {
 }
 
 // src/worn.c:73 setworn() — place obj in every slot in mask, with the
-// extrinsic-property bookkeeping. monstunseesu_prop() is omitted: it clears
-// mon->seenres bits and nothing in this port ever sets them, so the call
-// cannot change any state yet.
+// extrinsic-property bookkeeping.
 export function setworn(obj, mask) {
     const u = game.u;
     let p;
@@ -145,7 +143,7 @@ export function setworn(obj, mask) {
                     oobj.owornmask &= ~wp.w_mask;
                     if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
                         p = game.objects[oobj.otyp].oc_oprop;
-                        if (p && PROP_KEYS[p]) {
+                        if (PROP_KEYS[p]) {
                             const left = ((u.uprops?.[PROP_KEYS[p]] || 0)
                                           & ~wp.w_mask);
                             if (left)
@@ -153,6 +151,8 @@ export function setworn(obj, mask) {
                             else if (u.uprops)
                                 delete u.uprops[PROP_KEYS[p]];
                         }
+                        /* Nearby monsters can try this attack type again. */
+                        monstunseesu_prop(p);
                         if ((p = w_blocks(oobj, mask)) !== 0)
                             update_blocked(u, p, wp.w_mask, false);
                         if (oobj.oartifact)
@@ -173,7 +173,7 @@ export function setworn(obj, mask) {
                             || is_weptool(obj, game.objects)
                             || mask !== W_WEP) {
                             p = game.objects[obj.otyp].oc_oprop;
-                            if (p && PROP_KEYS[p])
+                            if (PROP_KEYS[p])
                                 (u.uprops ||= {})[PROP_KEYS[p]] =
                                     (u.uprops[PROP_KEYS[p]] || 0) | wp.w_mask;
                             if ((p = w_blocks(obj, mask)) !== 0)
@@ -217,14 +217,14 @@ export function setnotworn(obj) {
             u[wp.w_obj] = null;
             unworn |= wp.w_mask;
             p = game.objects[obj.otyp].oc_oprop;
-            if (p && PROP_KEYS[p]) {
+            if (PROP_KEYS[p]) {
                 const left = (u.uprops?.[PROP_KEYS[p]] || 0) & ~wp.w_mask;
                 if (left)
                     u.uprops[PROP_KEYS[p]] = left;
                 else if (u.uprops)
                     delete u.uprops[PROP_KEYS[p]];
             }
-            /* monstunseesu_prop(p): omitted, see setworn */
+            monstunseesu_prop(p);
             obj.owornmask &= ~wp.w_mask;
             if (obj.oartifact)
                 set_artifact_intrinsic(obj, false, wp.w_mask);

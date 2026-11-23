@@ -404,6 +404,37 @@ export function color_attr_to_str(ca) {
     return `${clr2colorname(ca.color)}&${attr2attrname(ca.attr)}`;
 }
 
+// src/coloratt.c:261 color_attr_parse_str(). Update the style only on success.
+export function color_attr_parse_str(ca, str) {
+    const buf = str.slice(0, BUFSZ - 1);
+    const amp = buf.indexOf('&');
+    let c = NO_COLOR, a = ATR_NONE;
+    if (amp >= 0) {
+        const color = buf.slice(0, amp), attr = buf.slice(amp + 1);
+        c = match_str2clr(color, false);
+        a = match_str2attr(attr, true);
+        if (c >= CLR_MAX && a === -1) {
+            // C retries reversed components after emitting both diagnostics.
+            c = match_str2clr(attr, false);
+            a = match_str2attr(color, true);
+        }
+        if (c >= CLR_MAX || a === -1)
+            return false;
+    } else {
+        const tmp = match_str2attr(buf, false);
+        if (tmp === -1) {
+            c = match_str2clr(buf, false);
+            if (c >= CLR_MAX)
+                return false;
+        } else {
+            a = tmp;
+        }
+    }
+    ca.attr = a;
+    ca.color = c;
+    return true;
+}
+
 // src/coloratt.c:237 colortable_to_int32()
 export function colortable_to_int32(cte) {
     let clr = NO_COLOR | NH_BASIC_COLOR;

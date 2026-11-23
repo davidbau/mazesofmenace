@@ -1945,7 +1945,7 @@ export async function playChargen(ctx) {
             if (key === K_ESC) game._ttyDismissMore = 1; /* getline.c:245-247 */
             if (key === K_ESC && count) { count = 0; continue; }
             // C wintty.c:1652,1681: unselect works for PICK_ONE too.
-            if (key === 45 || key === 92) { randomMark = '-'; count = 0; continue; }
+            if (key === 45 || key === 92) { randomMark = '\x01-'; count = 0; continue; }
             let parsed = isMenuDefaultKey(key) ? { action: 'random' }
                 : parseMenuKey(kind, String.fromCharCode(key), st);
             if (!parsed && key === 0x3a) {                         // wintty.c:1700 MENU_SEARCH
@@ -2030,7 +2030,7 @@ export async function playChargen(ctx) {
                 it.count = count; it.selected = true;
             } else if (!counting) it.selected = true;
             else return;
-            if (inView) it.mark = it.selected ? (it.count === -1 ? '+' : '#') : '-';
+            if (inView) it.mark = '\x01' + (it.selected ? (it.count === -1 ? '+' : '#') : '-');
         };
         for (;;) {
             if (resetCount) { counting = false; count = 0; } else resetCount = true;
@@ -2106,7 +2106,7 @@ export async function playChargen(ctx) {
                 for (const it of pageItems)
                     if (it.selectable && it.selected !== want) {
                         it.selected = want;
-                        it.mark = want ? '+' : '-';
+                        it.mark = '\x01' + (want ? '+' : '-');
                     }
             };
             if (ch === ',') { setPage(true); continue; }               // SELECT_PAGE
@@ -2115,7 +2115,7 @@ export async function playChargen(ctx) {
                 for (const it of pageItems)
                     if (it.selectable) {
                         it.selected = !it.selected;
-                        it.mark = it.selected ? '+' : '-';
+                        it.mark = '\x01' + (it.selected ? '+' : '-');
                     }
                 continue;
             }
@@ -2133,7 +2133,7 @@ export async function playChargen(ctx) {
                 for (const it of all)
                     if (it.selectable) {
                         it.selected = !it.selected;
-                        if (pageItems.includes(it)) it.mark = it.selected ? '+' : '-';
+                        if (pageItems.includes(it)) it.mark = '\x01' + (it.selected ? '+' : '-');
                     }
                 continue;
             }

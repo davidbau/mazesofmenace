@@ -7,9 +7,12 @@ import { alloc, fmt_ptr } from './alloc.js';
 import { fig_transform } from './apply.js';
 import { artifact_light } from './artifact.js';
 import { acurr, adjattrib, exercise, stone_luck } from './attrib.js';
+import { A } from './attrib.h.js';
+import { ACURR } from './attrib.macros.js';
 import { confdir, isok } from './cmd.js';
 import { is_ice, is_pool, is_pool_or_lava } from './dbridge.js';
-import { c_color_names, c_common_strings, cg, disp, flags, gb, gm, gn, gt, gu, gv, gy, iflags, svc, svd, svk, svl, svm, svq, svt, u } from './decl.js';
+import { c_color_names, c_common_strings, cg, disp, flags, gb, gm, gn, gt, gu, gy, iflags, svc, svd, svk, svl, svm, svq, svt, u } from './decl.js';
+import { S } from './defsym.h.js';
 import { rot_corpse, rot_organic } from './dig.js';
 import { canseemon, newsym, see_monsters, set_mimic_blocking } from './display.js';
 import { heal_legs, revive_mon, zombify_mon } from './do.js';
@@ -18,36 +21,59 @@ import { find_ac, toggle_displacement, wielding_corpse } from './do_wear.js';
 import { tamedog } from './dog.js';
 import { hurtle } from './dothrow.js';
 import { on_level, surface } from './dungeon.js';
-import { Popeye, eating_dangerous_corpse, is_fainted, morehungry, vomit } from './eat.js';
+import { Popeye, eating_dangerous_corpse, morehungry, vomit } from './eat.js';
 import { dealloc_killer, done, find_delayed_killer, panic } from './end.js';
+import { FULL_MOON, PLNMSG } from './flag.h.js';
+import { COLNO, FALSE, ROWNO, TRUE } from './global.h.js';
 import { inv_weight, monst_to_any, nomul, obj_to_any, spoteffects } from './hack.js';
+import { ARTICLE, DIED, DISMOUNT, ECMD, FAINTING, FOOT, GENOCIDED, KILLED, MM, NECK, NHF, NO, NO_KILLER_PREFIX, POISONING, STONING, SUPPRESS, TURNED_SLIME } from './hack.h.js';
+import { NODIAG, You1, pline1, release_data, update_file } from './hack.macros.js';
 import { eos, highc, ing_suffix, s_suffix, strstri, strsubst, upstart } from './hacklib.js';
 import { carrying, sobj_at, update_inventory, useup, useupall } from './invent.js';
 import { arti_light_radius, candle_light_range, del_light_source, new_light_source } from './light.js';
 import { makemon } from './makemon.js';
 import { container_weight, obj_extract_self, shrink_glob, weight } from './mkobj.js';
 import { hideunder, maybe_unhide_at, restartcham, wake_nearby } from './mon.js';
+import { AD } from './monattk.h.js';
 import { big_to_little, cantvomit, little_to_big, locomotion, name_to_mon, pronoun_gender } from './mondata.js';
+import { emits_light, is_silent, is_were, nolimbs, touch_petrifies, type_is_pname } from './mondata.macros.js';
+import { G_EXTINCT, G_GENOD, G_UNIQ, M1, MV_KNOWS_EGG, NEUTRAL } from './monflag.h.js';
 import { mons } from './monst.js';
+import { M_AP } from './monst.h.js';
+import { PM } from './monsters.h.js';
+import { BURIED_TOO, CONTAINED_TOO, MAX, OBJ } from './obj.h.js';
+import { Is_candle, carried } from './obj.macros.js';
+import { AMULET_OF_STRANGULATION, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CORPSE, FEDORA, LUCKSTONE, MAGIC_LAMP, OIL_LAMP, POT_OIL, ROCK, TALLOW_CANDLE, WAX_CANDLE } from './objects.h.js';
 import { Yname2, an, doname, makeplural, the, vtense, xname } from './objnam.js';
+import { LOW_PM, NON_PM } from './permonst.h.js';
 import { deferred_decor } from './pickup.js';
 import { Norep, You, You_feel, You_hear, You_see, Your, impossible, pline, urgent_pline, verbalize } from './pline.js';
 import { body_part, polymon, rehumanize } from './polyself.js';
 import { incr_itimeout, make_blinded, make_confused, make_deaf, make_glib, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout } from './potion.js';
 import { stuck_in_wall } from './pray.js';
+import { ACID_RES, ADORNED, AGGRAVATE_MONSTER, ANTIMAGIC, BLINDED, BLND_RES, CLAIRVOYANT, COLD_RES, CONFLICT, CONFUSION, DEAF, DETECT_MONSTERS, DISINT_RES, DISPLACED, DRAIN_RES, ENERGY_REGENERATION, FAST, FIRE_RES, FIXED_ABIL, FLYING, FREE_ACTION, FROMOUTSIDE, FUMBLING, GLIB, HALF_PHDAM, HALF_SPDAM, HALLUC, HALLUC_RES, HUNGER, INFRAVISION, INVIS, INVULNERABLE, I_SPECIAL, JUMPING, LEVITATION, LIFESAVED, MAGICAL_BREATHING, PASSES_WALLS, POISON_RES, POLYMORPH, POLYMORPH_CONTROL, PROTECTION, PROT_FROM_SHAPE_CHANGERS, REFLECTING, REGENERATION, SEARCHING, SEE_INVIS, SHOCK_RES, SICK, SICK_RES, SLEEPY, SLEEP_RES, SLIMED, SLOW_DIGESTION, STEALTH, STONED, STONE_RES, STRANGLED, STUNNED, SWIMMING, TELEPAT, TELEPORT, TELEPORT_CONTROL, TIMEOUT, UNCHANGING, VOMITING, W, WARNING, WARN_OF_MON, WARN_UNDEAD, WOUNDED_LEGS, WWALKING } from './prop.h.js';
 import { any_visible_region, region_danger, visible_region_summary } from './region.js';
 import { lookup_id_mapping } from './restore.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { CLOUD, DB, DOOR, DRAWBRIDGE_DOWN } from './rm.h.js';
+import { d, rn2, rnd } from './rnd.js';
 import { genders } from './role.js';
 import { sfi_fe, sfi_int, sfi_ulong, sfo_fe, sfo_int, sfo_ulong } from './sfbase.js';
 import { Shk_Your, find_oid, obfree } from './shk.js';
 import { cry_sound } from './sounds.js';
 import { dismount_steed } from './steed.js';
 import { enexto } from './teleport.js';
+import { BURN_OBJECT, FIG_TRANSFORM, HATCH_EGG, MELT_ICE_AWAY, NUM_TIMER_KINDS, NUM_TIME_FUNCS, RANGE, TIMER } from './timeout.h.js';
 import { float_down, instapetrify, unconscious } from './trap.js';
+import { LS_MONSTER, LS_OBJECT } from './vision.h.js';
+import { cansee } from './vision.macros.js';
+import { WT } from './weight.h.js';
 import { you_unwere } from './were.js';
-import { windowprocs } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, display_nhwindow, putstr } from './winprocs.macros.js';
+import { NHW, WIN_ERR } from './wintype.h.js';
 import { which_armor } from './worn.js';
+import { PRONOUN, SICK_ALL, SICK_NONVOMITABLE } from './you.h.js';
+import { Upolyd } from './you.macros.js';
+import { Acid_resistance, BInvis, Blind, Deaf, Displaced, EFumbling, ELevitation, EPasses_walls, Fast, Fire_resistance, Fumbling, Hallucination, Invis, Levitation, Passes_walls, Poison_resistance, Protection_from_shape_changers, See_invisible, Sick, Sleep_resistance, Sleepy, Slimed, Stone_resistance, Stoned, Strangled, Unaware, Unchanging, Very_fast, Vomiting, Warn_of_mon, Wounded_legs } from './youprop.macros.js';
 import { buzz, get_obj_location, melt_ice_away } from './zap.js';
 
 const propertynames = $c.recArray($T.propname, 69);
@@ -72,23 +98,23 @@ export function property_by_index(idx, propertynum) {   // timeout.c:117
 }
 async function stoned_dialogue() {   // timeout.c:137
     let i = 0, buf = new Int8Array(256);
-    i = $c.and64(u.uprops[18 /* STONED */].intrinsic, 16777215);
+    i = $c.and64(u.uprops[STONED].intrinsic, TIMEOUT);
     if (i > 0 && i <= 5) {
         $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), stoned_texts[$c.idx($c.sub64(5, i))], 256);
-        if ($c.andu64(gy.youmonst.data.mflags1, 24576) === 24576 && strstri(new $c.Ptr(buf, 0), $c.lit("limbs"))) {
+        if (nolimbs(gy.youmonst.data) && strstri(new $c.Ptr(buf, 0), $c.lit("limbs"))) {
             strsubst(new $c.Ptr(buf, 0), $c.lit("limbs"), $c.lit("extremities"));
         }
         await urgent_pline($c.lit("%s"), new $c.Ptr(buf, 0));
     }
     switch ($c.i32(i)) {
         case 5:
-            u.uprops[64 /* FAST */].intrinsic = 0;
+            u.uprops[FAST].intrinsic = 0;
             if (gm.multi > 0) {
                 nomul(0);
             }
             break;
         case 4:
-            if (!Popeye(18 /* STONED */)) {
+            if (!Popeye(STONED)) {
                 await stop_occupation();
             }
             if (gm.multi > 0) {
@@ -100,54 +126,54 @@ async function stoned_dialogue() {   // timeout.c:137
             nomul(-3);
             gm.multi_reason = $c.lit("getting stoned");
             gn.nomovemsg = c_common_strings.c_You_can_move_again;
-            if ((u.uprops[26 /* WOUNDED_LEGS */].intrinsic || u.uprops[26 /* WOUNDED_LEGS */].extrinsic) && !u.usteed) {
+            if (Wounded_legs() && !u.usteed) {
                 await heal_legs(2);
             }
             break;
         case 2:
-            if ($c.and64(u.uprops[16 /* DEAF */].intrinsic, 16777215) > 0 && $c.and64(u.uprops[16 /* DEAF */].intrinsic, 16777215) < 5) {
-                set_itimeout(new $c.FieldRef(u.uprops[16 /* DEAF */], "intrinsic", "i64"), 5);
+            if ($c.and64(u.uprops[DEAF].intrinsic, TIMEOUT) > 0 && $c.and64(u.uprops[DEAF].intrinsic, TIMEOUT) < 5) {
+                set_itimeout(new $c.FieldRef(u.uprops[DEAF], "intrinsic", "i64"), 5);
             }
-            if (u.uprops[20 /* VOMITING */].intrinsic) {
-                await make_vomiting(0, 0);
+            if (Vomiting()) {
+                await make_vomiting(0, FALSE);
             }
-            if (u.uprops[22 /* SLIMED */].intrinsic) {
+            if (Slimed()) {
                 await make_slimed(0, null);
             }
             break;
         default:
             break;
     }
-    await exercise(3 /* A_DEX */, 0);
+    await exercise(A.DEX, FALSE);
 }
 async function vomiting_dialogue() {   // timeout.c:197
     let txt = null, buf = new Int8Array(256), v = 0;
     txt = null;
-    v = $c.and64(u.uprops[20 /* VOMITING */].intrinsic, 16777215);
+    v = $c.and64(u.uprops[VOMITING].intrinsic, TIMEOUT);
     switch ($c.i32($c.sub64(v, 1))) {
         case 14:
             txt = vomiting_texts[0];
             break;
         case 11:
             txt = vomiting_texts[1];
-            if (strstri(txt, $c.lit(" confused")) && u.uprops[14 /* CONFUSION */].intrinsic) {
+            if (strstri(txt, $c.lit(" confused")) && u.uprops[CONFUSION].intrinsic) {
                 txt = strsubst($c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), txt, 256), $c.lit(" confused"), $c.lit(" more confused"));
             }
             break;
         case 6:
-            await make_stunned($c.add64($c.and64(u.uprops[13 /* STUNNED */].intrinsic, 16777215), rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 215, $c.lit("vomiting_dialogue")), d(2, 4)) : d(2, 4)), 0);
-            if (!Popeye(20 /* VOMITING */)) {
+            await make_stunned($c.add64($c.and64(u.uprops[STUNNED].intrinsic, TIMEOUT), d(2, 4)), FALSE);
+            if (!Popeye(VOMITING)) {
                 await stop_occupation();
             }
         case 9:
-            await make_confused($c.add64($c.and64(u.uprops[14 /* CONFUSION */].intrinsic, 16777215), rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 221, $c.lit("vomiting_dialogue")), d(2, 4)) : d(2, 4)), 0);
+            await make_confused($c.add64($c.and64(u.uprops[CONFUSION].intrinsic, TIMEOUT), d(2, 4)), FALSE);
             if (gm.multi > 0) {
                 nomul(0);
             }
             break;
         case 8:
             txt = vomiting_texts[2];
-            if (strstri(txt, $c.lit(" think")) && u.uprops[13 /* STUNNED */].intrinsic) {
+            if (strstri(txt, $c.lit(" think")) && u.uprops[STUNNED].intrinsic) {
                 txt = strsubst($c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), txt, 256), $c.lit("can't seem to "), $c.lit("can't "));
             }
             break;
@@ -158,7 +184,7 @@ async function vomiting_dialogue() {   // timeout.c:197
             txt = vomiting_texts[4];
             if (cantvomit(gy.youmonst.data)) {
                 txt = $c.lit("gag uncontrollably.");
-            } else if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+            } else if (Hallucination()) {
                 txt = $c.lit("are about to hurl!");
             }
             break;
@@ -166,8 +192,8 @@ async function vomiting_dialogue() {   // timeout.c:197
             await stop_occupation();
             if (!cantvomit(gy.youmonst.data)) {
                 await morehungry(20);
-                if (u.uhs < 4) {
-                    await You($c.lit("%s!"), !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) ? $c.lit("vomit") : $c.lit("hurl chunks"));
+                if (u.uhs < FAINTING) {
+                    await You($c.lit("%s!"), !Hallucination() ? $c.lit("vomit") : $c.lit("hurl chunks"));
                 }
             }
             await vomit();
@@ -176,23 +202,23 @@ async function vomiting_dialogue() {   // timeout.c:197
             break;
     }
     if (txt) {
-        await You($c.lit("%s"), txt);
+        await You1(txt);
     }
-    await exercise(4 /* A_CON */, 0);
+    await exercise(A.CON, FALSE);
 }
 async function sleep_dialogue() {   // timeout.c:268
     let i = 0;
-    i = $c.and64(u.uprops[27 /* SLEEPY */].intrinsic, 16777215);
+    i = $c.and64(u.uprops[SLEEPY].intrinsic, TIMEOUT);
     if (i === 4) {
         await You($c.lit("yawn."));
     }
 }
 async function choke_dialogue() {   // timeout.c:295
     let i = 0, str = null;
-    i = $c.and64(u.uprops[19 /* STRANGLED */].intrinsic, 16777215);
+    i = $c.and64(u.uprops[STRANGLED].intrinsic, TIMEOUT);
     if (i > 0 && i <= 5) {
-        if (u.uprops[52 /* MAGICAL_BREATHING */].intrinsic || u.uprops[52 /* MAGICAL_BREATHING */].extrinsic || $c.andu64(gy.youmonst.data.mflags1, 1024) !== 0 || !(rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 300, $c.lit("choke_dialogue")), rn2(50)) : rn2(50))) {
-            await urgent_pline(choke_texts2[$c.idx($c.sub64(5, i))], await body_part(11 /* NECK */));
+        if (u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0 || !rn2(50)) {
+            await urgent_pline(choke_texts2[$c.idx($c.sub64(5, i))], await body_part(NECK));
         } else {
             str = choke_texts[$c.idx($c.sub64(5, i))];
             if ($c.strchr(str, 37)) {
@@ -203,66 +229,66 @@ async function choke_dialogue() {   // timeout.c:295
             await stop_occupation();
         }
     }
-    await exercise(0 /* A_STR */, 0);
+    await exercise(A.STR, FALSE);
 }
 async function sickness_dialogue() {   // timeout.c:323
     let j = 0, i = 0, buf = new Int8Array(256), pronounbuf = new Int8Array(40);
-    j = $c.and64(u.uprops[17 /* SICK */].intrinsic, 16777215);
+    j = $c.and64(u.uprops[SICK].intrinsic, TIMEOUT);
     i = $c.div64(j, 2);
     if (i > 0 && i <= 3 && $c.rem64(j, 2) !== 0) {
         $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), sickness_texts[$c.idx($c.sub64(3, i))], 256);
-        if (((u.usick_type | 0) & 2) === 0) {
+        if (((u.usick_type | 0) & SICK_NONVOMITABLE) === 0) {
             strsubst(new $c.Ptr(buf, 0), $c.lit("illness"), $c.lit("sickness"));
         }
-        if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) && strstri(new $c.Ptr(buf, 0), $c.lit("Death's door"))) {
-            $c.__builtin___strcpy_chk(new $c.Ptr(pronounbuf, 0), genders[pronoun_gender(gy.youmonst, 2)].he, 40);
+        if (Hallucination() && strstri(new $c.Ptr(buf, 0), $c.lit("Death's door"))) {
+            $c.__builtin___strcpy_chk(new $c.Ptr(pronounbuf, 0), genders[pronoun_gender(gy.youmonst, PRONOUN.HALLU)].he, 40);
             $c.__builtin___sprintf_chk(eos(new $c.Ptr(buf, 0)), 0, -1, $c.lit("  %s %s inviting you in."), upstart(new $c.Ptr(pronounbuf, 0)), await vtense(new $c.Ptr(pronounbuf, 0), $c.lit("are")));
         }
         await urgent_pline($c.lit("%s"), new $c.Ptr(buf, 0));
     }
-    await exercise(4 /* A_CON */, 0);
+    await exercise(A.CON, FALSE);
 }
 async function levitation_dialogue() {   // timeout.c:353
     let i = 0, s = null, danger = 0;
-    i = $c.div64($c.sub64($c.and64(u.uprops[48 /* LEVITATION */].intrinsic, 16777215), 1), 2);
-    if (u.uprops[48 /* LEVITATION */].extrinsic) {
+    i = $c.div64($c.sub64($c.and64(u.uprops[LEVITATION].intrinsic, TIMEOUT), 1), 2);
+    if (ELevitation()) {
         return;
     }
-    if (!(svl.level.locations[u.ux][u.uy].typ >= 23 /* DOOR */) && !is_pool_or_lava(u.ux, u.uy)) {
+    if (!(svl.level.locations[u.ux][u.uy].typ >= DOOR) && !is_pool_or_lava(u.ux, u.uy)) {
         return;
     }
-    if ($c.rem64($c.and64(u.uprops[48 /* LEVITATION */].intrinsic, 16777215), 2) && i > 0 && i <= 2) {
+    if ($c.rem64($c.and64(u.uprops[LEVITATION].intrinsic, TIMEOUT), 2) && i > 0 && i <= 2) {
         s = levi_texts[$c.idx($c.sub64(2, i))];
         if ($c.strchr(s, 37)) {
             danger = $c.i8(is_pool_or_lava(u.ux, u.uy) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? 1 : 0);
             await urgent_pline(s, danger ? $c.lit("over") : $c.lit("in"), danger ? surface(u.ux, u.uy) : $c.lit("air"));
         } else {
-            await pline($c.lit("%s"), s);
+            await pline1(s);
         }
         await stop_occupation();
     }
 }
 async function slime_dialogue() {   // timeout.c:389
     let t = 0, i = 0, buf = new Int8Array(256);
-    t = $c.and64(u.uprops[22 /* SLIMED */].intrinsic, 16777215);
+    t = $c.and64(u.uprops[SLIMED].intrinsic, TIMEOUT);
     i = $c.div64(t, 2);
     if (t === 1) {
-        gy.youmonst.m_ap_type = 3;
-        gy.youmonst.mappearance = 208;
+        gy.youmonst.m_ap_type = M_AP.MONSTER;
+        gy.youmonst.mappearance = PM.GREEN_SLIME;
         await newsym(u.ux, u.uy);
     }
     if ($c.rem64(t, 2) !== 0 && i >= 0 && i < 5) {
         $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), slime_texts[$c.idx($c.sub64($c.sub64(5, i), 1))], 256);
-        if ($c.andu64(gy.youmonst.data.mflags1, 24576) === 24576 && strstri(new $c.Ptr(buf, 0), $c.lit("limbs"))) {
+        if (nolimbs(gy.youmonst.data) && strstri(new $c.Ptr(buf, 0), $c.lit("limbs"))) {
             strsubst(new $c.Ptr(buf, 0), $c.lit("limbs"), $c.lit("extremities"));
         }
         if ($c.strchr(new $c.Ptr(buf, 0), 37)) {
             if (i === 4) {
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                if (!Blind()) {
                     await urgent_pline(new $c.Ptr(buf, 0), hcolor(c_color_names.c_green));
                 }
             } else {
-                await urgent_pline(new $c.Ptr(buf, 0), await an(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rndmonnam(null) : $c.lit("green slime")));
+                await urgent_pline(new $c.Ptr(buf, 0), await an(Hallucination() ? await rndmonnam(null) : $c.lit("green slime")));
             }
         } else {
             await urgent_pline($c.lit("%s"), new $c.Ptr(buf, 0));
@@ -270,8 +296,8 @@ async function slime_dialogue() {   // timeout.c:389
     }
     switch (i) {
         case 3:
-            u.uprops[64 /* FAST */].intrinsic = 0;
-            if (!Popeye(22 /* SLIMED */)) {
+            u.uprops[FAST].intrinsic = 0;
+            if (!Popeye(SLIMED)) {
                 await stop_occupation();
             }
             if (gm.multi > 0) {
@@ -279,26 +305,26 @@ async function slime_dialogue() {   // timeout.c:389
             }
             break;
         case 2:
-            if ($c.and64(u.uprops[16 /* DEAF */].intrinsic, 16777215) > 0 && $c.and64(u.uprops[16 /* DEAF */].intrinsic, 16777215) < 5) {
-                set_itimeout(new $c.FieldRef(u.uprops[16 /* DEAF */], "intrinsic", "i64"), 5);
+            if ($c.and64(u.uprops[DEAF].intrinsic, TIMEOUT) > 0 && $c.and64(u.uprops[DEAF].intrinsic, TIMEOUT) < 5) {
+                set_itimeout(new $c.FieldRef(u.uprops[DEAF], "intrinsic", "i64"), 5);
             }
             break;
         case 1:
-            if (u.uprops[18 /* STONED */].intrinsic) {
-                await make_stoned(0, null, 0, null);
+            if (Stoned()) {
+                await make_stoned(0, null, KILLED.BY_AN, null);
             }
             break;
     }
-    await exercise(3 /* A_DEX */, 0);
+    await exercise(A.DEX, FALSE);
 }
 export async function burn_away_slime() {   // timeout.c:448
-    if (u.uprops[22 /* SLIMED */].intrinsic) {
+    if (Slimed()) {
         await make_slimed(0, $c.lit("The slime that covers you is burned away!"));
     }
 }
 async function slimed_to_death(kptr) {   // timeout.c:457
     let save_mvflags = 0, slimebuf = new Int8Array(256);
-    if (u.umonnum !== u.umonster && $c.peq(gy.youmonst.data, $c.relem(mons, 208 /* PM_GREEN_SLIME */))) {
+    if (Upolyd() && $c.peq(gy.youmonst.data, $c.relem(mons, PM.GREEN_SLIME))) {
         await dealloc_killer(kptr);
         return;
     }
@@ -306,49 +332,49 @@ async function slimed_to_death(kptr) {   // timeout.c:457
         svk.killer.format = kptr.format;
         $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), new $c.Ptr(kptr.name, 0), 256);
     } else {
-        svk.killer.format = 2;
+        svk.killer.format = NO_KILLER_PREFIX;
         $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), $c.lit("turned into green slime"), 256);
     }
     await dealloc_killer(kptr);
-    if (gy.youmonst.data.mlet === 25 /* S_LIGHT */ || $c.peq(gy.youmonst.data, $c.relem(mons, 30 /* PM_FLAMING_SPHERE */)) || $c.peq(gy.youmonst.data, $c.relem(mons, 31 /* PM_SHOCKING_SPHERE */)) || $c.peq(gy.youmonst.data, $c.relem(mons, 134 /* PM_BABY_GOLD_DRAGON */)) || $c.peq(gy.youmonst.data, $c.relem(mons, 111 /* PM_FIRE_VORTEX */)) ? 1 : $c.peq(gy.youmonst.data, $c.relem(mons, 155 /* PM_FIRE_ELEMENTAL */)) || $c.peq(gy.youmonst.data, $c.relem(mons, 144 /* PM_GOLD_DRAGON */)) ? 1 : 0) {
-        await del_light_source(2 /* LS_MONSTER */, monst_to_any(gy.youmonst));
+    if (emits_light(gy.youmonst.data)) {
+        await del_light_source(LS_MONSTER, monst_to_any(gy.youmonst));
     }
-    save_mvflags = svm.mvitals[208 /* PM_GREEN_SLIME */].mvflags;
-    svm.mvitals[208 /* PM_GREEN_SLIME */].mvflags = $c.u8(save_mvflags & -3);
-    await polymon(208 /* PM_GREEN_SLIME */);
-    svm.mvitals[208 /* PM_GREEN_SLIME */].mvflags = save_mvflags;
-    await done_timeout(9 /* TURNED_SLIME */, 22 /* SLIMED */);
-    if ((svm.mvitals[208 /* PM_GREEN_SLIME */].mvflags & 2) !== 0) {
-        svk.killer.format = 1;
+    save_mvflags = svm.mvitals[PM.GREEN_SLIME].mvflags;
+    svm.mvitals[PM.GREEN_SLIME].mvflags = $c.u8(save_mvflags & ~G_GENOD);
+    await polymon(PM.GREEN_SLIME);
+    svm.mvitals[PM.GREEN_SLIME].mvflags = save_mvflags;
+    await done_timeout(TURNED_SLIME, SLIMED);
+    if ((svm.mvitals[PM.GREEN_SLIME].mvflags & G_GENOD) !== 0) {
+        svk.killer.format = KILLED.BY;
         $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), $c.lit("slimicide"), 256);
         $c.__builtin___strcpy_chk(new $c.Ptr(slimebuf, 0), $c.lit("green slime has been genocided..."), 256);
-        if (iflags.last_msg === 7 /* PLNMSG_OK_DONT_DIE */) {
+        if (iflags.last_msg === PLNMSG.OK_DONT_DIE) {
             await urgent_pline($c.lit("Yes, you do.  %s"), upstart(new $c.Ptr(slimebuf, 0)));
         } else {
             await urgent_pline($c.lit("Unfortunately, %s"), new $c.Ptr(slimebuf, 0));
         }
-        await done(10 /* GENOCIDED */);
+        await done(GENOCIDED);
     }
     return;
 }
 async function phaze_dialogue() {   // timeout.c:534
     let i = 0;
-    i = $c.div64($c.and64(u.uprops[53 /* PASSES_WALLS */].intrinsic, 16777215), 2);
-    if (u.uprops[53 /* PASSES_WALLS */].extrinsic || $c.and64(u.uprops[53 /* PASSES_WALLS */].intrinsic, -16777216)) {
+    i = $c.div64($c.and64(u.uprops[PASSES_WALLS].intrinsic, TIMEOUT), 2);
+    if (EPasses_walls() || $c.and64(u.uprops[PASSES_WALLS].intrinsic, ~TIMEOUT)) {
         return;
     }
-    if ($c.rem64($c.and64(u.uprops[53 /* PASSES_WALLS */].intrinsic, 16777215), 2) && i > 0 && i <= 2) {
+    if ($c.rem64($c.and64(u.uprops[PASSES_WALLS].intrinsic, TIMEOUT), 2) && i > 0 && i <= 2) {
         await pline($c.lit("%s"), phaze_texts[$c.idx($c.sub64(2, i))]);
     }
 }
 async function region_dialogue() {   // timeout.c:554
     let no_need_to_breathe = 0, in_poison_gas_cloud = 0, r = 0, i = 0;
-    r = $c.and64(u.uprops[52 /* MAGICAL_BREATHING */].intrinsic, 16777215);
+    r = $c.and64(u.uprops[MAGICAL_BREATHING].intrinsic, TIMEOUT);
     i = $c.div64(r, 2);
-    u.uprops[52 /* MAGICAL_BREATHING */].intrinsic = $c.and64(u.uprops[52 /* MAGICAL_BREATHING */].intrinsic, -16777216);
-    no_need_to_breathe = $c.i8(u.uprops[52 /* MAGICAL_BREATHING */].intrinsic || u.uprops[52 /* MAGICAL_BREATHING */].extrinsic || $c.andu64(gy.youmonst.data.mflags1, 1024) !== 0 ? 1 : 0);
+    u.uprops[MAGICAL_BREATHING].intrinsic = $c.and64(u.uprops[MAGICAL_BREATHING].intrinsic, ~TIMEOUT);
+    no_need_to_breathe = $c.i8(u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0 ? 1 : 0);
     in_poison_gas_cloud = region_danger();
-    u.uprops[52 /* MAGICAL_BREATHING */].intrinsic = $c.or64(u.uprops[52 /* MAGICAL_BREATHING */].intrinsic, r);
+    u.uprops[MAGICAL_BREATHING].intrinsic = $c.or64(u.uprops[MAGICAL_BREATHING].intrinsic, r);
     if (no_need_to_breathe || !in_poison_gas_cloud) {
         return;
     }
@@ -359,26 +385,26 @@ async function region_dialogue() {   // timeout.c:554
 async function done_timeout(how, which) {   // timeout.c:575
     let intrinsic_p = null;
     intrinsic_p = new $c.FieldRef(u.uprops[which], "intrinsic", "i64");
-    intrinsic_p.set(0, $c.or64(intrinsic_p.get(0), 536870912));
+    intrinsic_p.set(0, $c.or64(intrinsic_p.get(0), I_SPECIAL));
     await done(how);
-    intrinsic_p.set(0, $c.and64(intrinsic_p.get(0), -536870913));
-    disp.botl = 1;
+    intrinsic_p.set(0, $c.and64(intrinsic_p.get(0), ~I_SPECIAL));
+    disp.botl = TRUE;
 }
 export async function nh_timeout() {   // timeout.c:588
     let upp = null, kptr = null, was_flying = 0, sleeptime = 0, m_idx = 0, baseluck = 0, time_luck = 0, nostone = 0, was_blind = 0, wptr = null, $t1;
-    baseluck = flags.moonphase === 4 ? 1 : 0;
+    baseluck = flags.moonphase === FULL_MOON ? 1 : 0;
     if (flags.friday13) {
         baseluck = baseluck - 1 | 0;
     }
     if (svq.quest_status.killed_leader) {
         baseluck = baseluck - 4 | 0;
     }
-    if (gu.urole.mnum === 331 && $G.uarmh && $G.uarmh.otyp === 92 /* FEDORA */) {
+    if (gu.urole.mnum === PM.ARCHEOLOGIST && $G.uarmh && $G.uarmh.otyp === FEDORA) {
         baseluck = baseluck + 1 | 0;
     }
     if (u.uluck !== baseluck && $c.rem64(svm.moves, u.uhave.amulet | 0 || u.ugangr ? 300 : 600) === 0) {
-        time_luck = stone_luck(0);
-        nostone = $c.i8(!carrying(470 /* LUCKSTONE */) && !stone_luck(1) ? 1 : 0);
+        time_luck = stone_luck(FALSE);
+        nostone = $c.i8(!carrying(LUCKSTONE) && !stone_luck(TRUE) ? 1 : 0);
         if (u.uluck > baseluck && (nostone || time_luck < 0)) {
             u.uluck = $c.i8(u.uluck - 1);
         } else if (u.uluck < baseluck && (nostone || time_luck > 0)) {
@@ -388,38 +414,38 @@ export async function nh_timeout() {   // timeout.c:588
     if (u.uinvulnerable) {
         return;
     }
-    if (u.uprops[18 /* STONED */].intrinsic) {
+    if (Stoned()) {
         await stoned_dialogue();
     }
-    if (u.uprops[22 /* SLIMED */].intrinsic) {
+    if (Slimed()) {
         await slime_dialogue();
     }
-    if (u.uprops[20 /* VOMITING */].intrinsic) {
+    if (Vomiting()) {
         await vomiting_dialogue();
     }
-    if (u.uprops[19 /* STRANGLED */].intrinsic) {
+    if (Strangled()) {
         await choke_dialogue();
     }
-    if (u.uprops[17 /* SICK */].intrinsic) {
+    if (Sick()) {
         await sickness_dialogue();
     }
-    if ($c.and64(u.uprops[48 /* LEVITATION */].intrinsic, 16777215)) {
+    if ($c.and64(u.uprops[LEVITATION].intrinsic, TIMEOUT)) {
         await levitation_dialogue();
     }
-    if ($c.and64(u.uprops[53 /* PASSES_WALLS */].intrinsic, 16777215)) {
+    if ($c.and64(u.uprops[PASSES_WALLS].intrinsic, TIMEOUT)) {
         await phaze_dialogue();
     }
-    if ($c.and64(u.uprops[52 /* MAGICAL_BREATHING */].intrinsic, 16777215)) {
+    if ($c.and64(u.uprops[MAGICAL_BREATHING].intrinsic, TIMEOUT)) {
         await region_dialogue();
     }
-    if ($c.and64(u.uprops[27 /* SLEEPY */].intrinsic, 16777215)) {
+    if ($c.and64(u.uprops[SLEEPY].intrinsic, TIMEOUT)) {
         await sleep_dialogue();
     }
     if (u.mtimedone && !(u.mtimedone = u.mtimedone - 1 | 0)) {
-        if (u.uprops[63 /* UNCHANGING */].intrinsic || u.uprops[63 /* UNCHANGING */].extrinsic) {
-            $t1 = rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 643, $c.lit("nh_timeout")), rnd(Math.imul(100, gy.youmonst.data.mlevel) + 1 | 0)) : rnd(Math.imul(100, gy.youmonst.data.mlevel) + 1 | 0), u.mtimedone = $t1;
-        } else if ($c.andu64(gy.youmonst.data.mflags2, 4) !== 0) {
-            await you_unwere(0);
+        if (Unchanging()) {
+            $t1 = rnd(Math.imul(100, gy.youmonst.data.mlevel) + 1 | 0), u.mtimedone = $t1;
+        } else if (is_were(gy.youmonst.data)) {
+            await you_unwere(FALSE);
         } else {
             await rehumanize();
         }
@@ -432,7 +458,7 @@ export async function nh_timeout() {   // timeout.c:588
             u.usptime = u.uspmtime;
             u.uspellprot = $c.u8(u.uspellprot - 1);
             find_ac();
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            if (!Blind()) {
                 await Norep($c.lit("The %s haze around you %s."), hcolor(c_color_names.c_golden), u.uspellprot ? $c.lit("becomes less dense") : $c.lit("disappears"));
             }
         }
@@ -442,34 +468,34 @@ export async function nh_timeout() {   // timeout.c:588
             await pline($c.lit("%s stops galloping."), await Monnam(u.usteed));
         }
     }
-    was_flying = $c.i8((u.uprops[49 /* FLYING */].intrinsic || u.uprops[49 /* FLYING */].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, 1) !== 0) && !u.uprops[49 /* FLYING */].blocked ? 1 : 0);
+    was_flying = $c.i8((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked ? 1 : 0);
     for (upp = $c.relem(u.uprops, 0); $c.pcmp(upp, $c.radd($c.relem(u.uprops, 0), 69)) < 0; upp = $c.radd(upp, 1)) {
-        if ($c.and64(upp.intrinsic, 16777215) && !$c.and64(upp.intrinsic = $c.sub64(upp.intrinsic, 1), 16777215)) {
+        if ($c.and64(upp.intrinsic, TIMEOUT) && !$c.and64(upp.intrinsic = $c.sub64(upp.intrinsic, 1), TIMEOUT)) {
             kptr = find_delayed_killer($c.i32($c.rdiff(upp, $c.relem(u.uprops, 0))));
             switch ($c.rdiff(upp, $c.relem(u.uprops, 0))) {
-                case 18:
+                case STONED:
                     if (kptr && kptr.name[0]) {
                         svk.killer.format = kptr.format;
                         $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), new $c.Ptr(kptr.name, 0), 256);
                     } else {
-                        svk.killer.format = 2;
+                        svk.killer.format = NO_KILLER_PREFIX;
                         $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), $c.lit("killed by petrification"), 256);
                     }
                     await dealloc_killer(kptr);
-                    await done_timeout(8 /* STONING */, 18 /* STONED */);
+                    await done_timeout(STONING, STONED);
                     break;
-                case 22:
+                case SLIMED:
                     await slimed_to_death(kptr);
                     break;
-                case 20:
-                    await make_vomiting(0, 1);
+                case VOMITING:
+                    await make_vomiting(0, TRUE);
                     break;
-                case 17:
-                    if (((u.usick_type | 0) & 2) === 0 && (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 696, $c.lit("nh_timeout")), rn2(100)) : rn2(100)) < acurr(4 /* A_CON */)) {
+                case SICK:
+                    if (((u.usick_type | 0) & SICK_NONVOMITABLE) === 0 && rn2(100) < ACURR(A.CON)) {
                         await You($c.lit("have recovered from your illness."));
-                        await make_sick(0, null, 0, 3);
-                        await exercise(4 /* A_CON */, 0);
-                        await adjattrib(4 /* A_CON */, -1, 1);
+                        await make_sick(0, null, FALSE, SICK_ALL);
+                        await exercise(A.CON, FALSE);
+                        await adjattrib(A.CON, -1, 1);
                         break;
                     }
                     await urgent_pline($c.lit("You die from your illness."));
@@ -477,208 +503,208 @@ export async function nh_timeout() {   // timeout.c:588
                         svk.killer.format = kptr.format;
                         $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), new $c.Ptr(kptr.name, 0), 256);
                     } else {
-                        svk.killer.format = 0;
+                        svk.killer.format = KILLED.BY_AN;
                         svk.killer.name[0] = 0;
                     }
                     await dealloc_killer(kptr);
-                    if ((m_idx = await name_to_mon(new $c.Ptr(svk.killer.name, 0), null)) >= 0 /* LOW_PM */) {
-                        if ($c.andu64($c.relem(mons, m_idx).mflags2, 524288) !== 0) {
-                            svk.killer.format = 1;
-                        } else if (mons[m_idx].geno & 4096) {
+                    if ((m_idx = await name_to_mon(new $c.Ptr(svk.killer.name, 0), null)) >= LOW_PM) {
+                        if (type_is_pname($c.relem(mons, m_idx))) {
+                            svk.killer.format = KILLED.BY;
+                        } else if (mons[m_idx].geno & G_UNIQ) {
                             $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), await the(new $c.Ptr(svk.killer.name, 0)), 256);
-                            svk.killer.format = 1;
+                            svk.killer.format = KILLED.BY;
                         }
                     }
-                    await done_timeout(2 /* POISONING */, 17 /* SICK */);
+                    await done_timeout(POISONING, SICK);
                     u.usick_type = (0) & 3;
                     break;
-                case 64:
-                    if (!($c.and64(u.uprops[64 /* FAST */].intrinsic, -117440513) || u.uprops[64 /* FAST */].extrinsic)) {
-                        await You_feel($c.lit("yourself slow down%s."), u.uprops[64 /* FAST */].intrinsic || u.uprops[64 /* FAST */].extrinsic ? $c.lit(" a bit") : $c.lit(""));
+                case FAST:
+                    if (!Very_fast()) {
+                        await You_feel($c.lit("yourself slow down%s."), Fast() ? $c.lit(" a bit") : $c.lit(""));
                     }
                     break;
-                case 14:
-                    set_itimeout(new $c.FieldRef(u.uprops[14 /* CONFUSION */], "intrinsic", "i64"), 1);
-                    await make_confused(0, 1);
-                    if (!u.uprops[14 /* CONFUSION */].intrinsic) {
+                case CONFUSION:
+                    set_itimeout(new $c.FieldRef(u.uprops[CONFUSION], "intrinsic", "i64"), 1);
+                    await make_confused(0, TRUE);
+                    if (!u.uprops[CONFUSION].intrinsic) {
                         await stop_occupation();
                     }
                     break;
-                case 13:
-                    set_itimeout(new $c.FieldRef(u.uprops[13 /* STUNNED */], "intrinsic", "i64"), 1);
-                    await make_stunned(0, 1);
-                    if (!u.uprops[13 /* STUNNED */].intrinsic) {
+                case STUNNED:
+                    set_itimeout(new $c.FieldRef(u.uprops[STUNNED], "intrinsic", "i64"), 1);
+                    await make_stunned(0, TRUE);
+                    if (!u.uprops[STUNNED].intrinsic) {
                         await stop_occupation();
                     }
                     break;
-                case 15:
+                case BLINDED:
                     {
-                        was_blind = $c.i8(!!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) ? 1 : 0);
-                        set_itimeout(new $c.FieldRef(u.uprops[15 /* BLINDED */], "intrinsic", "i64"), 1);
-                        await make_blinded(0, 1);
-                        if (was_blind && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                        was_blind = $c.i8(!!Blind() ? 1 : 0);
+                        set_itimeout(new $c.FieldRef(u.uprops[BLINDED], "intrinsic", "i64"), 1);
+                        await make_blinded(0, TRUE);
+                        if (was_blind && !Blind()) {
                             await stop_occupation();
                         }
                         break;
                     }
-                case 16:
-                    set_itimeout(new $c.FieldRef(u.uprops[16 /* DEAF */], "intrinsic", "i64"), 1);
-                    await make_deaf(0, 1);
-                    disp.botl = 1;
-                    if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+                case DEAF:
+                    set_itimeout(new $c.FieldRef(u.uprops[DEAF], "intrinsic", "i64"), 1);
+                    await make_deaf(0, TRUE);
+                    disp.botl = TRUE;
+                    if (!Deaf()) {
                         await stop_occupation();
                     }
                     break;
-                case 40:
+                case INVIS:
                     await newsym(u.ux, u.uy);
-                    if (!((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked) && !u.uprops[40 /* INVIS */].blocked && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
-                        await You(!(u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic) ? $c.lit("are no longer invisible.") : $c.lit("can no longer see through yourself."));
+                    if (!Invis() && !BInvis() && !Blind()) {
+                        await You(!See_invisible() ? $c.lit("are no longer invisible.") : $c.lit("can no longer see through yourself."));
                         await stop_occupation();
                     }
                     break;
-                case 29:
+                case SEE_INVIS:
                     await set_mimic_blocking();
                     await see_monsters();
                     await newsym(u.ux, u.uy);
                     await stop_occupation();
                     break;
-                case 26:
+                case WOUNDED_LEGS:
                     await heal_legs(0);
                     await stop_occupation();
                     break;
-                case 23:
-                    set_itimeout(new $c.FieldRef(u.uprops[23 /* HALLUC */], "intrinsic", "i64"), 1);
-                    await make_hallucinated(0, 1, 0);
-                    if (!(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic))) {
+                case HALLUC:
+                    set_itimeout(new $c.FieldRef(u.uprops[HALLUC], "intrinsic", "i64"), 1);
+                    await make_hallucinated(0, TRUE, 0);
+                    if (!Hallucination()) {
                         await stop_occupation();
                     }
                     break;
-                case 27:
-                    if (unconscious() || (u.uprops[3 /* SLEEP_RES */].intrinsic || u.uprops[3 /* SLEEP_RES */].extrinsic)) {
-                        incr_itimeout(new $c.FieldRef(u.uprops[27 /* SLEEPY */], "intrinsic", "i64"), rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 786, $c.lit("nh_timeout")), rnd(100)) : rnd(100));
-                    } else if (u.uprops[27 /* SLEEPY */].intrinsic || u.uprops[27 /* SLEEPY */].extrinsic) {
+                case SLEEPY:
+                    if (unconscious() || Sleep_resistance()) {
+                        incr_itimeout(new $c.FieldRef(u.uprops[SLEEPY], "intrinsic", "i64"), rnd(100));
+                    } else if (Sleepy()) {
                         await You($c.lit("fall asleep."));
-                        sleeptime = rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 789, $c.lit("nh_timeout")), rnd(20)) : rnd(20);
-                        await fall_asleep(-sleeptime | 0, 1);
-                        incr_itimeout(new $c.FieldRef(u.uprops[27 /* SLEEPY */], "intrinsic", "i64"), sleeptime + (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 791, $c.lit("nh_timeout")), rnd(100)) : rnd(100)) | 0);
+                        sleeptime = rnd(20);
+                        await fall_asleep(-sleeptime | 0, TRUE);
+                        incr_itimeout(new $c.FieldRef(u.uprops[SLEEPY], "intrinsic", "i64"), sleeptime + rnd(100) | 0);
                     }
                     break;
-                case 48:
-                    if ($c.and64(u.uprops[49 /* FLYING */].intrinsic, 16777215) === 1) {
-                        set_itimeout(new $c.FieldRef(u.uprops[49 /* FLYING */], "intrinsic", "i64"), 0);
+                case LEVITATION:
+                    if ($c.and64(u.uprops[FLYING].intrinsic, TIMEOUT) === 1) {
+                        set_itimeout(new $c.FieldRef(u.uprops[FLYING], "intrinsic", "i64"), 0);
                     }
-                    await float_down(553648127, 0);
+                    await float_down(I_SPECIAL | TIMEOUT, 0);
                     break;
-                case 49:
-                    if (was_flying && !((u.uprops[49 /* FLYING */].intrinsic || u.uprops[49 /* FLYING */].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, 1) !== 0) && !u.uprops[49 /* FLYING */].blocked)) {
-                        disp.botl = 1;
+                case FLYING:
+                    if (was_flying && !((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked)) {
+                        disp.botl = TRUE;
                         await You($c.lit("land."));
-                        await spoteffects(1);
+                        await spoteffects(TRUE);
                     }
                     break;
-                case 7:
-                    if (!(u.uprops[7 /* ACID_RES */].intrinsic || u.uprops[7 /* ACID_RES */].extrinsic)) {
-                        if (eating_dangerous_corpse(7 /* ACID_RES */)) {
-                            set_itimeout(new $c.FieldRef(u.uprops[7 /* ACID_RES */], "intrinsic", "i64"), 1);
+                case ACID_RES:
+                    if (!Acid_resistance()) {
+                        if (eating_dangerous_corpse(ACID_RES)) {
+                            set_itimeout(new $c.FieldRef(u.uprops[ACID_RES], "intrinsic", "i64"), 1);
                             break;
                         }
-                        if (!(gm.multi < 0 && (unconscious() || is_fainted()))) {
+                        if (!Unaware()) {
                             await You($c.lit("no longer feel safe from acid."));
                         }
                     }
                     break;
-                case 8:
-                    if (!(u.uprops[8 /* STONE_RES */].intrinsic || u.uprops[8 /* STONE_RES */].extrinsic)) {
-                        if (eating_dangerous_corpse(8 /* STONE_RES */)) {
-                            set_itimeout(new $c.FieldRef(u.uprops[8 /* STONE_RES */], "intrinsic", "i64"), 1);
+                case STONE_RES:
+                    if (!Stone_resistance()) {
+                        if (eating_dangerous_corpse(STONE_RES)) {
+                            set_itimeout(new $c.FieldRef(u.uprops[STONE_RES], "intrinsic", "i64"), 1);
                             break;
                         }
-                        if (!(gm.multi < 0 && (unconscious() || is_fainted()))) {
+                        if (!Unaware()) {
                             await You($c.lit("no longer feel secure from petrification."));
                         }
-                        await wielding_corpse($G.uwep, null, 0);
-                        await wielding_corpse($G.uswapwep, null, 0);
+                        await wielding_corpse($G.uwep, null, FALSE);
+                        await wielding_corpse($G.uswapwep, null, FALSE);
                     }
                     break;
-                case 1:
-                    if (!(u.uprops[1 /* FIRE_RES */].intrinsic || u.uprops[1 /* FIRE_RES */].extrinsic)) {
+                case FIRE_RES:
+                    if (!Fire_resistance()) {
                         await Your($c.lit("temporary ability to survive burning has ended."));
                     }
                     break;
-                case 50:
-                    if (!((u.uprops[50 /* WWALKING */].intrinsic || u.uprops[50 /* WWALKING */].extrinsic) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)))) {
+                case WWALKING:
+                    if (!((u.uprops[WWALKING].intrinsic || u.uprops[WWALKING].extrinsic) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)))) {
                         await Your($c.lit("temporary ability to walk on liquid has ended."));
                     }
                     break;
-                case 41:
-                    if (!(u.uprops[41 /* DISPLACED */].intrinsic || u.uprops[41 /* DISPLACED */].extrinsic)) {
-                        await toggle_displacement(null, 0, 0);
+                case DISPLACED:
+                    if (!Displaced()) {
+                        await toggle_displacement(null, 0, FALSE);
                     }
                     break;
-                case 32:
-                    if (!(u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic)) {
+                case WARN_OF_MON:
+                    if (!Warn_of_mon()) {
                         wptr = svc.context.warntype.species;
                         svc.context.warntype.species = null;
-                        svc.context.warntype.speciesidx = -1;
+                        svc.context.warntype.speciesidx = NON_PM;
                         if (wptr) {
-                            await You($c.lit("are no longer warned about %s."), await makeplural(wptr.pmnames[2 /* NEUTRAL */]));
+                            await You($c.lit("are no longer warned about %s."), await makeplural(wptr.pmnames[NEUTRAL]));
                         }
                     }
                     break;
-                case 53:
-                    if (!(u.uprops[53 /* PASSES_WALLS */].intrinsic || u.uprops[53 /* PASSES_WALLS */].extrinsic)) {
+                case PASSES_WALLS:
+                    if (!Passes_walls()) {
                         if (stuck_in_wall()) {
                             await You_feel($c.lit("hemmed in again."));
                         } else {
-                            await pline($c.lit("You're back to your %s self again."), !(u.umonnum !== u.umonster) ? $c.lit("normal") : $c.lit("unusual"));
+                            await pline($c.lit("You're back to your %s self again."), !Upolyd() ? $c.lit("normal") : $c.lit("unusual"));
                         }
                     }
                     break;
-                case 52:
-                    if (!(u.uprops[52 /* MAGICAL_BREATHING */].intrinsic || u.uprops[52 /* MAGICAL_BREATHING */].extrinsic || $c.andu64(gy.youmonst.data.mflags1, 1024) !== 0)) {
+                case MAGICAL_BREATHING:
+                    if (!(u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0)) {
                         if (region_danger()) {
-                            await You($c.lit("cough%s"), u.uprops[6 /* POISON_RES */].intrinsic || u.uprops[6 /* POISON_RES */].extrinsic ? $c.lit(".") : $c.lit(" and spit blood!"));
+                            await You($c.lit("cough%s"), Poison_resistance() ? $c.lit(".") : $c.lit(" and spit blood!"));
                         }
                     }
                     break;
-                case 19:
-                    svk.killer.format = 1;
+                case STRANGLED:
+                    svk.killer.format = KILLED.BY;
                     $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), u.uburied | 0 ? $c.lit("suffocation") : $c.lit("strangulation"), 256);
-                    await done_timeout(0 /* DIED */, 19 /* STRANGLED */);
-                    if ($G.uamul && $G.uamul.otyp === 203 /* AMULET_OF_STRANGULATION */) {
+                    await done_timeout(DIED, STRANGLED);
+                    if ($G.uamul && $G.uamul.otyp === AMULET_OF_STRANGULATION) {
                         await Your($c.lit("amulet vanishes!"));
                         await useup($G.uamul);
                     }
                     break;
-                case 25:
-                    if (u.umoved && !((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked || (u.uprops[49 /* FLYING */].intrinsic || u.uprops[49 /* FLYING */].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, 1) !== 0) && !u.uprops[49 /* FLYING */].blocked)) {
+                case FUMBLING:
+                    if (u.umoved && !(Levitation() || (u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked)) {
                         await slip_or_trip();
                         nomul(-2);
                         gm.multi_reason = $c.lit("fumbling");
                         gn.nomovemsg = $c.lit("");
-                        if (inv_weight() > -500) {
-                            if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+                        if (inv_weight() > WT.NOISY_INV * -1) {
+                            if (!Deaf()) {
                                 await You($c.lit("make a lot of noise!"));
                             }
-                            await wake_nearby(0);
+                            await wake_nearby(FALSE);
                         }
                     }
-                    u.uprops[25 /* FUMBLING */].intrinsic = $c.and64(u.uprops[25 /* FUMBLING */].intrinsic, -67108865);
-                    if (u.uprops[25 /* FUMBLING */].intrinsic || u.uprops[25 /* FUMBLING */].extrinsic) {
-                        incr_itimeout(new $c.FieldRef(u.uprops[25 /* FUMBLING */], "intrinsic", "i64"), rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 924, $c.lit("nh_timeout")), rnd(20)) : rnd(20));
+                    u.uprops[FUMBLING].intrinsic = $c.and64(u.uprops[FUMBLING].intrinsic, ~FROMOUTSIDE);
+                    if (Fumbling()) {
+                        incr_itimeout(new $c.FieldRef(u.uprops[FUMBLING], "intrinsic", "i64"), rnd(20));
                     }
                     if (iflags.defer_decor) {
-                        await deferred_decor(0);
+                        await deferred_decor(FALSE);
                     }
                     break;
-                case 37:
+                case DETECT_MONSTERS:
                     await see_monsters();
                     break;
-                case 21:
+                case GLIB:
                     await make_glib(0);
                     break;
-                case 60:
-                    if (!(u.uprops[60 /* PROT_FROM_SHAPE_CHANGERS */].intrinsic || u.uprops[60 /* PROT_FROM_SHAPE_CHANGERS */].extrinsic)) {
+                case PROT_FROM_SHAPE_CHANGERS:
+                    if (!Protection_from_shape_changers()) {
                         await restartcham();
                     }
                     break;
@@ -696,51 +722,51 @@ export async function fall_asleep(how_long, wakeup_msg) {   // timeout.c:951
 }
 export async function attach_egg_hatch_timeout(egg, when) {   // timeout.c:981
     let i = 0;
-    await stop_timer(5, obj_to_any(egg));
+    await stop_timer(HATCH_EGG, obj_to_any(egg));
     if (!when) {
-        for (i = 151; i <= 200; i = i + 1 | 0) {
-            if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 996, $c.lit("attach_egg_hatch_timeout")), rnd(i)) : rnd(i)) > 150) {
+        for (i = MAX.EGG_HATCH_TIME - 50 + 1; i <= MAX.EGG_HATCH_TIME; i = i + 1 | 0) {
+            if (rnd(i) > 150) {
                 when = i;
                 break;
             }
         }
     }
     if (when) {
-        await start_timer(when, 3, 5, obj_to_any(egg));
+        await start_timer(when, TIMER.OBJECT, HATCH_EGG, obj_to_any(egg));
     }
 }
 export async function kill_egg(egg) {   // timeout.c:1009
-    await stop_timer(5, obj_to_any(egg));
+    await stop_timer(HATCH_EGG, obj_to_any(egg));
 }
 export async function hatch_egg(arg, timeout) {   // timeout.c:1017
     let egg = null, mon = null, mon2 = null, cc = new $T.nhcoord(), x = Int16Array.of(0), y = Int16Array.of(0), yours = 0, silent = 0, knows_egg = 0, cansee_hatchspot = 0, i = 0, mnum = 0, hatchcount = 0, monnambuf = new Int8Array(256), carriedby = new Int8Array(256), siblings = 0, redraw = 0;
-    knows_egg = 0;
-    cansee_hatchspot = 0;
+    knows_egg = FALSE;
+    cansee_hatchspot = FALSE;
     hatchcount = 0;
     egg = arg.a_obj;
-    if (egg.corpsenm === -1 /* NON_PM */) {
+    if (egg.corpsenm === NON_PM) {
         return;
     }
     mon = mon2 = null;
     mnum = big_to_little(egg.corpsenm);
-    yours = $c.i8(egg.spe || !flags.female && egg.where === 3 && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1035, $c.lit("hatch_egg")), rn2(2)) : rn2(2)) ? 1 : 0);
+    yours = $c.i8(egg.spe || !flags.female && carried(egg) && !rn2(2) ? 1 : 0);
     silent = $c.i8(timeout !== svm.moves ? 1 : 0);
     if (get_obj_location(egg, new $c.Ptr(x, 0), new $c.Ptr(y, 0), 0)) {
-        hatchcount = rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1042, $c.lit("hatch_egg")), rnd($c.i32(egg.quan))) : rnd($c.i32(egg.quan));
-        cansee_hatchspot = $c.i8((gv.viz_array.get(y[0]).get(x[0]) & 2) !== 0 && !silent ? 1 : 0);
-        if (!(mons[mnum].geno & 4096) && !(svm.mvitals[mnum].mvflags & 3)) {
+        hatchcount = rnd($c.i32(egg.quan));
+        cansee_hatchspot = $c.i8(cansee(x[0], y[0]) && !silent ? 1 : 0);
+        if (!(mons[mnum].geno & G_UNIQ) && !(svm.mvitals[mnum].mvflags & (G_GENOD | G_EXTINCT))) {
             for (i = hatchcount; i > 0; i = i - 1 | 0) {
-                if (!await enexto(cc, x[0], y[0], $c.relem(mons, mnum)) || !(mon = await makemon($c.relem(mons, mnum), cc.x, cc.y, 131073))) {
+                if (!await enexto(cc, x[0], y[0], $c.relem(mons, mnum)) || !(mon = await makemon($c.relem(mons, mnum), cc.x, cc.y, NO.MINVENT | MM.NOMSG))) {
                     break;
                 }
-                if (yours && !silent || egg.where === 3 && mon.data.mlet === 30 /* S_DRAGON */) {
-                    if (await tamedog(mon, null, 0)) {
-                        if (egg.where === 3 && mon.data.mlet !== 30 /* S_DRAGON */) {
+                if (yours && !silent || carried(egg) && mon.data.mlet === S.DRAGON) {
+                    if (await tamedog(mon, null, FALSE)) {
+                        if (carried(egg) && mon.data.mlet !== S.DRAGON) {
                             mon.mtame = 20;
                         }
                     }
                 }
-                if (svm.mvitals[mnum].mvflags & 1) {
+                if (svm.mvitals[mnum].mvflags & G_EXTINCT) {
                     break;
                 }
                 mon2 = mon;
@@ -754,37 +780,37 @@ export async function hatch_egg(arg, timeout) {   // timeout.c:1017
     }
     if (mon) {
         siblings = $c.i8(hatchcount > 1 ? 1 : 0);
-        redraw = 0;
+        redraw = FALSE;
         if (cansee_hatchspot) {
             $c.__builtin___sprintf_chk(new $c.Ptr(monnambuf, 0), 0, 256, $c.lit("%s%s"), siblings ? $c.lit("some ") : $c.lit(""), siblings ? await makeplural(await m_monnam(mon)) : await an(await m_monnam(mon)));
         }
         switch (egg.where) {
-            case 3:
-                knows_egg = 1;
+            case OBJ.INVENT:
+                knows_egg = TRUE;
                 if (!cansee_hatchspot) {
                     await You_feel($c.lit("%s %s from your pack!"), c_common_strings.c_something, locomotion(mon.data, $c.lit("drop")));
                 } else {
                     await You_see($c.lit("%s %s out of your pack!"), new $c.Ptr(monnambuf, 0), locomotion(mon.data, $c.lit("drop")));
                 }
                 if (yours) {
-                    await pline($c.lit("%s %s %s like \"%s%s\""), siblings ? $c.lit("Their") : $c.lit("Its"), ing_suffix(cry_sound(mon)), mon.data.msound === 0 /* MS_SILENT */ || (u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) ? $c.lit("seems") : $c.lit("sounds"), flags.female ? $c.lit("mommy") : $c.lit("daddy"), egg.spe ? $c.lit(".") : $c.lit("?"));
-                } else if (mon.data.mlet === 30 /* S_DRAGON */ && !(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+                    await pline($c.lit("%s %s %s like \"%s%s\""), siblings ? $c.lit("Their") : $c.lit("Its"), ing_suffix(cry_sound(mon)), is_silent(mon.data) || Deaf() ? $c.lit("seems") : $c.lit("sounds"), flags.female ? $c.lit("mommy") : $c.lit("daddy"), egg.spe ? $c.lit(".") : $c.lit("?"));
+                } else if (mon.data.mlet === S.DRAGON && !Deaf()) {
                     await verbalize($c.lit("Gleep!"));
                 }
                 break;
-            case 1:
+            case OBJ.FLOOR:
                 if (cansee_hatchspot) {
-                    knows_egg = 1;
+                    knows_egg = TRUE;
                     await You_see($c.lit("%s hatch."), new $c.Ptr(monnambuf, 0));
-                    redraw = 1;
+                    redraw = TRUE;
                 }
                 break;
-            case 4:
+            case OBJ.MINVENT:
                 if (cansee_hatchspot) {
                     mon2 = egg.v.v_ocarry;
-                    if (canseemon(mon2) && (!mon2.wormno || (gv.viz_array.get(mon2.my).get(mon2.mx) & 2) !== 0)) {
+                    if (canseemon(mon2) && (!mon2.wormno || cansee(mon2.mx, mon2.my))) {
                         $c.__builtin___sprintf_chk(new $c.Ptr(carriedby, 0), 0, 256, $c.lit("%s pack"), s_suffix(await a_monnam(mon2)));
-                        knows_egg = 1;
+                        knows_egg = TRUE;
                     } else if (is_pool(mon.mx, mon.my)) {
                         $c.__builtin___strcpy_chk(new $c.Ptr(carriedby, 0), $c.lit("empty water"), 256);
                     } else {
@@ -801,15 +827,15 @@ export async function hatch_egg(arg, timeout) {   // timeout.c:1017
             await learn_egg_type(mnum);
         }
         if (egg.quan > 0) {
-            await attach_egg_hatch_timeout(egg, rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1172, $c.lit("hatch_egg")), rnd(12)) : rnd(12));
+            await attach_egg_hatch_timeout(egg, rnd(12));
             await container_weight(egg);
-        } else if (egg.where === 3) {
+        } else if (carried(egg)) {
             await useup(egg);
         } else {
             await obj_extract_self(egg);
             await obfree(egg, null);
-            if ((mon = svl.level.monsters[x[0]][y[0]]) && !await hideunder(mon) && (gv.viz_array.get(y[0]).get(x[0]) & 2) !== 0) {
-                redraw = 1;
+            if ((mon = svl.level.monsters[x[0]][y[0]]) && !await hideunder(mon) && cansee(x[0], y[0])) {
+                redraw = TRUE;
             }
         }
         if (redraw) {
@@ -819,14 +845,14 @@ export async function hatch_egg(arg, timeout) {   // timeout.c:1017
 }
 export async function learn_egg_type(mnum) {   // timeout.c:1193
     mnum = little_to_big(mnum);
-    svm.mvitals[mnum].mvflags = $c.u8(svm.mvitals[mnum].mvflags | 8);
+    svm.mvitals[mnum].mvflags = $c.u8(svm.mvitals[mnum].mvflags | MV_KNOWS_EGG);
     await update_inventory();
 }
 export async function attach_fig_transform_timeout(figurine) {   // timeout.c:1204
     let i = 0;
-    await stop_timer(6, obj_to_any(figurine));
-    i = (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1214, $c.lit("attach_fig_transform_timeout")), rnd(9000)) : rnd(9000)) + 200 | 0;
-    await start_timer(i, 3, 6, obj_to_any(figurine));
+    await stop_timer(FIG_TRANSFORM, obj_to_any(figurine));
+    i = rnd(9000) + 200 | 0;
+    await start_timer(i, TIMER.OBJECT, FIG_TRANSFORM, obj_to_any(figurine));
 }
 async function slip_or_trip() {   // timeout.c:1222
     let otmp = null, otmp2 = null, saddle = null, what = null, buf = new Int8Array(256), on_foot = 0, ice_only = 0, $t1;
@@ -836,40 +862,40 @@ async function slip_or_trip() {   // timeout.c:1222
         otmp = null;
     }
     if (otmp && on_foot) {
-        what = iflags.last_msg === 1 /* PLNMSG_ONE_ITEM_HERE */ ? otmp.quan === 1 ? $c.lit("it") : u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("they") : $c.lit("them") : otmp.dknown | 0 || !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) ? await doname(otmp) : (otmp2 = sobj_at(474 /* ROCK */, u.ux, u.uy)) === null ? c_common_strings.c_something : otmp2.quan === 1 ? $c.lit("a rock") : $c.lit("some rocks");
-        if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+        what = iflags.last_msg === PLNMSG.ONE_ITEM_HERE ? otmp.quan === 1 ? $c.lit("it") : Hallucination() ? $c.lit("they") : $c.lit("them") : otmp.dknown | 0 || !Blind() ? await doname(otmp) : (otmp2 = sobj_at(ROCK, u.ux, u.uy)) === null ? c_common_strings.c_something : otmp2.quan === 1 ? $c.lit("a rock") : $c.lit("some rocks");
+        if (Hallucination()) {
             what = $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), what, 256);
             $t1 = highc(buf[0]), buf[0] = $t1;
-            await pline($c.lit("Egads!  %s bite%s your %s!"), what, !otmp || otmp.quan === 1 ? $c.lit("s") : $c.lit(""), await body_part(5 /* FOOT */));
+            await pline($c.lit("Egads!  %s bite%s your %s!"), what, !otmp || otmp.quan === 1 ? $c.lit("s") : $c.lit(""), await body_part(FOOT));
         } else {
             await You($c.lit("trip over %s."), what);
         }
-        if (!$G.uarmf && otmp.otyp === 265 /* CORPSE */ && ($c.peq($c.relem(mons, otmp.corpsenm), $c.relem(mons, 10 /* PM_COCKATRICE */)) || $c.peq($c.relem(mons, otmp.corpsenm), $c.relem(mons, 9 /* PM_CHICKATRICE */))) && !(u.uprops[8 /* STONE_RES */].intrinsic || u.uprops[8 /* STONE_RES */].extrinsic)) {
-            $c.__builtin___sprintf_chk(new $c.Ptr(svk.killer.name, 0), 0, 256, $c.lit("tripping over %s corpse"), await an(mons[otmp.corpsenm].pmnames[2 /* NEUTRAL */]));
+        if (!$G.uarmf && otmp.otyp === CORPSE && touch_petrifies($c.relem(mons, otmp.corpsenm)) && !Stone_resistance()) {
+            $c.__builtin___sprintf_chk(new $c.Ptr(svk.killer.name, 0), 0, 256, $c.lit("tripping over %s corpse"), await an(mons[otmp.corpsenm].pmnames[NEUTRAL]));
             await instapetrify(new $c.Ptr(svk.killer.name, 0));
         }
-    } else if ($c.and64(u.uprops[25 /* FUMBLING */].intrinsic, 67108864) || is_ice(u.ux, u.uy) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1262, $c.lit("slip_or_trip")), rn2(3)) : rn2(3))) {
-        ice_only = $c.i8(!(u.uprops[25 /* FUMBLING */].extrinsic || $c.and64(u.uprops[25 /* FUMBLING */].intrinsic, -67108865)) ? 1 : 0);
-        await pline($c.lit("%s %s %s the ice."), u.usteed ? upstart(await x_monnam(u.usteed, 1, null, 8, 0)) : $c.lit("You"), await vtense(u.usteed ? $c.lit("steed") : $c.lit("you"), (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1273, $c.lit("slip_or_trip")), rn2(2)) : rn2(2)) ? $c.lit("slip") : $c.lit("slide")), is_ice(u.ux, u.uy) ? $c.lit("on") : $c.lit("off"));
-        if (!on_foot && ((saddle = await which_armor(u.usteed, 1048576)) === null || !saddle.cursed) && (!ice_only || !(rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1284, $c.lit("slip_or_trip")), rn2(3)) : rn2(3)))) {
+    } else if ($c.and64(u.uprops[FUMBLING].intrinsic, FROMOUTSIDE) || is_ice(u.ux, u.uy) && !rn2(3)) {
+        ice_only = $c.i8(!(EFumbling() || $c.and64(u.uprops[FUMBLING].intrinsic, ~FROMOUTSIDE)) ? 1 : 0);
+        await pline($c.lit("%s %s %s the ice."), u.usteed ? upstart(await x_monnam(u.usteed, ARTICLE.THE, null, SUPPRESS.SADDLE, FALSE)) : $c.lit("You"), await vtense(u.usteed ? $c.lit("steed") : $c.lit("you"), rn2(2) ? $c.lit("slip") : $c.lit("slide")), is_ice(u.ux, u.uy) ? $c.lit("on") : $c.lit("off"));
+        if (!on_foot && ((saddle = await which_armor(u.usteed, W.SADDLE)) === null || !saddle.cursed) && (!ice_only || !rn2(3))) {
             await You($c.lit("lose your balance."));
-            await dismount_steed(1 /* DISMOUNT_FELL */);
-        } else if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1287, $c.lit("slip_or_trip")), rn2(10 + acurr(3 /* A_DEX */) | 0)) : rn2(10 + acurr(3 /* A_DEX */) | 0))) {
-            if (!(u.umonnum === 116 /* PM_GRID_BUG */)) {
-                confdir(1);
+            await dismount_steed(DISMOUNT.FELL);
+        } else if (!rn2(10 + acurr(A.DEX) | 0)) {
+            if (!NODIAG(u.umonnum)) {
+                confdir(TRUE);
             }
             if ((u.ux + u.dx | 0) !== u.ux0 || (u.uy + u.dy | 0) !== u.uy0) {
-                await hurtle(u.dx, u.dy, 1, 0);
+                await hurtle(u.dx, u.dy, 1, FALSE);
             }
         }
     } else {
         if (on_foot) {
-            switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1302, $c.lit("slip_or_trip")), rn2(4)) : rn2(4)) {
+            switch (rn2(4)) {
                 case 1:
-                    await You($c.lit("trip over your own %s."), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("elbow") : await makeplural(await body_part(5 /* FOOT */)));
+                    await You($c.lit("trip over your own %s."), Hallucination() ? $c.lit("elbow") : await makeplural(await body_part(FOOT)));
                     break;
                 case 2:
-                    await You($c.lit("slip %s."), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("on a banana peel") : $c.lit("and nearly fall"));
+                    await You($c.lit("slip %s."), Hallucination() ? $c.lit("on a banana peel") : $c.lit("and nearly fall"));
                     break;
                 case 3:
                     await You($c.lit("flounder."));
@@ -878,10 +904,10 @@ async function slip_or_trip() {   // timeout.c:1222
                     await You($c.lit("stumble."));
                     break;
             }
-        } else if ((saddle = await which_armor(u.usteed, 1048576)) === null || !saddle.cursed) {
-            switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1323, $c.lit("slip_or_trip")), rn2(4)) : rn2(4)) {
+        } else if ((saddle = await which_armor(u.usteed, W.SADDLE)) === null || !saddle.cursed) {
+            switch (rn2(4)) {
                 case 1:
-                    await Your($c.lit("%s slip out of the stirrups."), await makeplural(await body_part(5 /* FOOT */)));
+                    await Your($c.lit("%s slip out of the stirrups."), await makeplural(await body_part(FOOT)));
                     break;
                 case 2:
                     await You($c.lit("let go of the reins."));
@@ -893,33 +919,33 @@ async function slip_or_trip() {   // timeout.c:1222
                     await You($c.lit("slide to one side of the saddle."));
                     break;
             }
-            await dismount_steed(1 /* DISMOUNT_FELL */);
+            await dismount_steed(DISMOUNT.FELL);
         }
     }
 }
 async function see_lamp_flicker(obj, tailer) {   // timeout.c:1345
     switch (obj.where) {
-        case 3:
-        case 4:
+        case OBJ.INVENT:
+        case OBJ.MINVENT:
             await pline($c.lit("%s flickers%s."), await Yname2(obj), tailer);
             break;
-        case 1:
+        case OBJ.FLOOR:
             await You_see($c.lit("%s flicker%s."), await an(await xname(obj)), tailer);
             break;
     }
 }
 async function lantern_message(obj) {   // timeout.c:1360
     switch (obj.where) {
-        case 3:
+        case OBJ.INVENT:
             await Your($c.lit("lantern is getting dim."));
-            if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+            if (Hallucination()) {
                 await pline($c.lit("Batteries have not been invented yet."));
             }
             break;
-        case 1:
+        case OBJ.FLOOR:
             await You_see($c.lit("a lantern getting dim."));
             break;
-        case 4:
+        case OBJ.MINVENT:
             await pline($c.lit("%s lantern is getting dim."), s_suffix(await Monnam(obj.v.v_ocarry)));
             break;
     }
@@ -927,19 +953,19 @@ async function lantern_message(obj) {   // timeout.c:1360
 export async function burn_object(arg, timeout) {   // timeout.c:1383
     let obj = null, canseeit = 0, many = 0, menorah = 0, need_newsym = 0, need_invupdate = 0, bytouch = 0, x = Int16Array.of(0), y = Int16Array.of(0), whose = new Int8Array(256), how_long = 0, mtmp = null, onfloor = 0, $t1, $t2;
     obj = arg.a_obj;
-    menorah = $c.i8(obj.otyp === 262 /* CANDELABRUM_OF_INVOCATION */ ? 1 : 0);
+    menorah = $c.i8(obj.otyp === CANDELABRUM_OF_INVOCATION ? 1 : 0);
     many = $c.i8(menorah ? obj.spe > 1 ? 1 : 0 : obj.quan > 1 ? 1 : 0);
     if (timeout !== svm.moves) {
         how_long = $c.sub64(svm.moves, timeout);
         if (how_long >= obj.age) {
             obj.age = 0;
-            await end_burn(obj, 0);
+            await end_burn(obj, FALSE);
             if (menorah) {
                 obj.spe = 0;
                 $t1 = await weight(obj) >>> 0, obj.owt = $t1;
-            } else if (obj.otyp === 224 /* TALLOW_CANDLE */ || obj.otyp === 225 /* WAX_CANDLE */ || obj.otyp === 321 /* POT_OIL */) {
+            } else if (Is_candle(obj) || obj.otyp === POT_OIL) {
                 mtmp = null;
-                if (obj.where === 1) {
+                if (obj.where === OBJ.FLOOR) {
                     mtmp = svl.level.monsters[obj.ox][obj.oy];
                 }
                 await obj_extract_self(obj);
@@ -951,38 +977,38 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
             }
         } else {
             obj.age = $c.sub64(obj.age, how_long);
-            await begin_burn(obj, 1);
+            await begin_burn(obj, TRUE);
         }
         return;
     }
     if (get_obj_location(obj, new $c.Ptr(x, 0), new $c.Ptr(y, 0), 0)) {
-        canseeit = $c.i8(!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (gv.viz_array.get(y[0]).get(x[0]) & 2) !== 0 ? 1 : 0);
+        canseeit = $c.i8(!Blind() && cansee(x[0], y[0]) ? 1 : 0);
         await Shk_Your(new $c.Ptr(whose, 0), obj);
     } else {
-        canseeit = 0;
+        canseeit = FALSE;
     }
-    bytouch = $c.i8(obj.where === 3 && obj.otyp !== 226 /* BRASS_LANTERN */ ? 1 : 0);
-    need_newsym = need_invupdate = 0;
+    bytouch = $c.i8(obj.where === OBJ.INVENT && obj.otyp !== BRASS_LANTERN ? 1 : 0);
+    need_newsym = need_invupdate = FALSE;
     switch (obj.otyp) {
-        case 321 /* POT_OIL */:
+        case POT_OIL:
             if (canseeit) {
                 switch (obj.where) {
-                    case 3:
-                        need_invupdate = 1;
-                    case 4:
+                    case OBJ.INVENT:
+                        need_invupdate = TRUE;
+                    case OBJ.MINVENT:
                         await pline($c.lit("%spotion of oil has burnt away."), new $c.Ptr(whose, 0));
                         break;
-                    case 1:
+                    case OBJ.FLOOR:
                         await You_see($c.lit("a burning potion of oil go out."));
-                        need_newsym = 1;
+                        need_newsym = TRUE;
                         break;
                 }
             }
-            await end_burn(obj, 0);
-            if (obj.where === 3) {
+            await end_burn(obj, FALSE);
+            if (carried(obj)) {
                 await useupall(obj);
             } else {
-                if (obj.where === 5) {
+                if (obj.where === OBJ.MIGRATING) {
                     obj.owornmask = 0;
                 }
                 await obj_extract_self(obj);
@@ -990,14 +1016,14 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
             }
             obj = null;
             break;
-        case 226 /* BRASS_LANTERN */:
-        case 227 /* OIL_LAMP */:
+        case BRASS_LANTERN:
+        case OIL_LAMP:
             switch ($c.i32(obj.age)) {
                 case 150:
                 case 100:
                 case 50:
                     if (canseeit) {
-                        if (obj.otyp === 226 /* BRASS_LANTERN */) {
+                        if (obj.otyp === BRASS_LANTERN) {
                             await lantern_message(obj);
                         } else {
                             await see_lamp_flicker(obj, obj.age === 50 ? $c.lit(" considerably") : $c.lit(""));
@@ -1006,15 +1032,15 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
                     break;
                 case 25:
                     if (canseeit) {
-                        if (obj.otyp === 226 /* BRASS_LANTERN */) {
+                        if (obj.otyp === BRASS_LANTERN) {
                             await lantern_message(obj);
                         } else {
                             switch (obj.where) {
-                                case 3:
-                                case 4:
+                                case OBJ.INVENT:
+                                case OBJ.MINVENT:
                                     await pline($c.lit("%s seems about to go out."), await Yname2(obj));
                                     break;
-                                case 1:
+                                case OBJ.FLOOR:
                                     await You_see($c.lit("%s about to go out."), await an(await xname(obj)));
                                     break;
                             }
@@ -1024,17 +1050,17 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
                 case 0:
                     if (canseeit || bytouch) {
                         switch (obj.where) {
-                            case 3:
-                                need_invupdate = 1;
-                            case 4:
-                                if (obj.otyp === 226 /* BRASS_LANTERN */) {
+                            case OBJ.INVENT:
+                                need_invupdate = TRUE;
+                            case OBJ.MINVENT:
+                                if (obj.otyp === BRASS_LANTERN) {
                                     await pline($c.lit("%slantern has run out of power."), new $c.Ptr(whose, 0));
                                 } else {
                                     await pline($c.lit("%s has gone out."), await Yname2(obj));
                                 }
                                 break;
-                            case 1:
-                                if (obj.otyp === 226 /* BRASS_LANTERN */) {
+                            case OBJ.FLOOR:
+                                if (obj.otyp === BRASS_LANTERN) {
                                     await You_see($c.lit("a lantern run out of power."));
                                 } else {
                                     await You_see($c.lit("%s go out."), await an(await xname(obj)));
@@ -1042,27 +1068,27 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
                                 break;
                         }
                     }
-                    await end_burn(obj, 0);
+                    await end_burn(obj, FALSE);
                     break;
                 default:
                     break;
             }
             if (obj.age) {
-                await begin_burn(obj, 1);
+                await begin_burn(obj, TRUE);
             }
             break;
-        case 262 /* CANDELABRUM_OF_INVOCATION */:
-        case 224 /* TALLOW_CANDLE */:
-        case 225 /* WAX_CANDLE */:
+        case CANDELABRUM_OF_INVOCATION:
+        case TALLOW_CANDLE:
+        case WAX_CANDLE:
             switch (obj.age) {
                 case 75:
                     if (canseeit) {
                         switch (obj.where) {
-                            case 3:
-                            case 4:
+                            case OBJ.INVENT:
+                            case OBJ.MINVENT:
                                 await pline($c.lit("%s%scandle%s getting short."), new $c.Ptr(whose, 0), menorah ? $c.lit("candelabrum's ") : $c.lit(""), many ? $c.lit("s are") : $c.lit(" is"));
                                 break;
-                            case 1:
+                            case OBJ.FLOOR:
                                 await You_see($c.lit("%scandle%s getting short."), menorah ? $c.lit("a candelabrum's ") : many ? $c.lit("some ") : $c.lit("a "), many ? $c.lit("s") : $c.lit(""));
                                 break;
                         }
@@ -1071,11 +1097,11 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
                 case 15:
                     if (canseeit) {
                         switch (obj.where) {
-                            case 3:
-                            case 4:
+                            case OBJ.INVENT:
+                            case OBJ.MINVENT:
                                 await pline($c.lit("%s%scandle%s flame%s flicker%s low!"), new $c.Ptr(whose, 0), menorah ? $c.lit("candelabrum's ") : $c.lit(""), many ? $c.lit("s'") : $c.lit("'s"), many ? $c.lit("s") : $c.lit(""), many ? $c.lit("") : $c.lit("s"));
                                 break;
-                            case 1:
+                            case OBJ.FLOOR:
                                 await You_see($c.lit("%scandle%s flame%s flicker low!"), menorah ? $c.lit("a candelabrum's ") : many ? $c.lit("some ") : $c.lit("a "), many ? $c.lit("s'") : $c.lit("'s"), many ? $c.lit("s") : $c.lit(""));
                                 break;
                         }
@@ -1085,42 +1111,42 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
                     if (canseeit || bytouch) {
                         if (menorah) {
                             switch (obj.where) {
-                                case 3:
-                                    need_invupdate = 1;
-                                case 4:
+                                case OBJ.INVENT:
+                                    need_invupdate = TRUE;
+                                case OBJ.MINVENT:
                                     await pline($c.lit("%scandelabrum's flame%s."), new $c.Ptr(whose, 0), many ? $c.lit("s die") : $c.lit(" dies"));
                                     break;
-                                case 1:
+                                case OBJ.FLOOR:
                                     await You_see($c.lit("a candelabrum's flame%s die."), many ? $c.lit("s") : $c.lit(""));
                                     break;
                             }
                         } else {
                             switch (obj.where) {
-                                case 3:
-                                case 4:
+                                case OBJ.INVENT:
+                                case OBJ.MINVENT:
                                     await pline($c.lit("%s %s consumed!"), await Yname2(obj), many ? $c.lit("are") : $c.lit("is"));
                                     break;
-                                case 1:
+                                case OBJ.FLOOR:
                                     await You_see($c.lit("%s%s consumed!"), many ? $c.lit("some ") : $c.lit(""), many ? await xname(obj) : await an(await xname(obj)));
-                                    need_newsym = 1;
+                                    need_newsym = TRUE;
                                     break;
                             }
-                            await pline(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? many ? $c.lit("They shriek!") : $c.lit("It shrieks!") : (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("") : many ? $c.lit("Their flames die.") : $c.lit("Its flame dies."));
+                            await pline(Hallucination() ? many ? $c.lit("They shriek!") : $c.lit("It shrieks!") : Blind() ? $c.lit("") : many ? $c.lit("Their flames die.") : $c.lit("Its flame dies."));
                         }
                     }
-                    await end_burn(obj, 0);
+                    await end_burn(obj, FALSE);
                     if (menorah) {
                         obj.spe = 0;
                         $t2 = await weight(obj) >>> 0, obj.owt = $t2;
-                        if (obj.where === 3) {
-                            need_invupdate = 1;
+                        if (carried(obj)) {
+                            need_invupdate = TRUE;
                         }
                     } else {
-                        if (obj.where === 3) {
+                        if (carried(obj)) {
                             await useupall(obj);
                         } else {
-                            onfloor = $c.i8(obj.where === 1 ? 1 : 0);
-                            if (obj.where === 5) {
+                            onfloor = $c.i8(obj.where === OBJ.FLOOR ? 1 : 0);
+                            if (obj.where === OBJ.MIGRATING) {
                                 obj.owornmask = 0;
                             }
                             await obj_extract_self(obj);
@@ -1136,7 +1162,7 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
                     break;
             }
             if (obj && obj.age) {
-                await begin_burn(obj, 1);
+                await begin_burn(obj, TRUE);
             }
             break;
         default:
@@ -1154,24 +1180,24 @@ export async function begin_burn(obj, already_lit) {   // timeout.c:1712
     let radius = 0, turns = 0, do_timer = 0, x = Int16Array.of(0), y = Int16Array.of(0);
     radius = 3;
     turns = 0;
-    do_timer = 1;
-    if (obj.age === 0 && obj.otyp !== 228 /* MAGIC_LAMP */ && !artifact_light(obj)) {
+    do_timer = TRUE;
+    if (obj.age === 0 && obj.otyp !== MAGIC_LAMP && !artifact_light(obj)) {
         return;
     }
     switch (obj.otyp) {
-        case 228 /* MAGIC_LAMP */:
+        case MAGIC_LAMP:
             obj.lamplit = (1) & 1;
-            do_timer = 0;
+            do_timer = FALSE;
             break;
-        case 321 /* POT_OIL */:
+        case POT_OIL:
             turns = obj.age;
             if (obj.oeroded) {
                 turns = $c.div64($c.add64($c.mul64(3, turns), 2), 4);
             }
             radius = 1;
             break;
-        case 226 /* BRASS_LANTERN */:
-        case 227 /* OIL_LAMP */:
+        case BRASS_LANTERN:
+        case OIL_LAMP:
             if (obj.age > 150) {
                 turns = $c.sub64(obj.age, 150);
             } else if (obj.age > 100) {
@@ -1184,9 +1210,9 @@ export async function begin_burn(obj, already_lit) {   // timeout.c:1712
                 turns = obj.age;
             }
             break;
-        case 262 /* CANDELABRUM_OF_INVOCATION */:
-        case 224 /* TALLOW_CANDLE */:
-        case 225 /* WAX_CANDLE */:
+        case CANDELABRUM_OF_INVOCATION:
+        case TALLOW_CANDLE:
+        case WAX_CANDLE:
             if (obj.age > 75) {
                 turns = $c.sub64(obj.age, 75);
             } else if (obj.age > 15) {
@@ -1199,7 +1225,7 @@ export async function begin_burn(obj, already_lit) {   // timeout.c:1712
         default:
             if (artifact_light(obj)) {
                 obj.lamplit = (1) & 1;
-                do_timer = 0;
+                do_timer = FALSE;
                 radius = arti_light_radius(obj);
             } else {
                 await impossible($c.lit("begin burn: unexpected %s"), await xname(obj));
@@ -1208,23 +1234,23 @@ export async function begin_burn(obj, already_lit) {   // timeout.c:1712
             break;
     }
     if (do_timer) {
-        if (await start_timer(turns, 3, 4, obj_to_any(obj))) {
+        if (await start_timer(turns, TIMER.OBJECT, BURN_OBJECT, obj_to_any(obj))) {
             obj.lamplit = (1) & 1;
             obj.age = $c.sub64(obj.age, turns);
-            if (obj.where === 3 && !already_lit) {
+            if (carried(obj) && !already_lit) {
                 await update_inventory();
             }
         } else {
             obj.lamplit = (0) & 1;
         }
     } else {
-        if (obj.where === 3 && !already_lit) {
+        if (carried(obj) && !already_lit) {
             await update_inventory();
         }
     }
     if (obj.lamplit | 0 && !already_lit) {
-        if (get_obj_location(obj, new $c.Ptr(x, 0), new $c.Ptr(y, 0), 3)) {
-            await new_light_source(x[0], y[0], radius, 1 /* LS_OBJECT */, obj_to_any(obj));
+        if (get_obj_location(obj, new $c.Ptr(x, 0), new $c.Ptr(y, 0), CONTAINED_TOO | BURIED_TOO)) {
+            await new_light_source(x[0], y[0], radius, LS_OBJECT, obj_to_any(obj));
         } else {
             await impossible($c.lit("begin_burn: can't get obj position"));
         }
@@ -1235,16 +1261,16 @@ export async function end_burn(obj, timer_attached) {   // timeout.c:1804
         await impossible($c.lit("end_burn: obj %s not lit"), await xname(obj));
         return;
     }
-    if (obj.otyp === 228 /* MAGIC_LAMP */ || artifact_light(obj)) {
-        timer_attached = 0;
+    if (obj.otyp === MAGIC_LAMP || artifact_light(obj)) {
+        timer_attached = FALSE;
     }
     if (!timer_attached) {
-        await del_light_source(1 /* LS_OBJECT */, obj_to_any(obj));
+        await del_light_source(LS_OBJECT, obj_to_any(obj));
         obj.lamplit = (0) & 1;
-        if (obj.where === 3) {
+        if (obj.where === OBJ.INVENT) {
             await update_inventory();
         }
-    } else if (!await stop_timer(4, obj_to_any(obj))) {
+    } else if (!await stop_timer(BURN_OBJECT, obj_to_any(obj))) {
         await impossible($c.lit("end_burn: obj %s not timed!"), await xname(obj));
     }
 }
@@ -1255,37 +1281,37 @@ async function cleanup_burn(arg, expire_time) {   // timeout.c:1828
         await impossible($c.lit("cleanup_burn: obj %s not lit"), await xname(obj));
         return;
     }
-    await del_light_source(1 /* LS_OBJECT */, obj_to_any(obj));
+    await del_light_source(LS_OBJECT, obj_to_any(obj));
     obj.age = $c.add64(obj.age, $c.sub64(expire_time, svm.moves));
     obj.lamplit = (0) & 1;
-    if (obj.where === 3) {
+    if (obj.where === OBJ.INVENT) {
         await update_inventory();
     }
 }
 export async function do_storms() {   // timeout.c:1847
     let nstrike = 0, x = 0, y = 0, dirx = 0, diry = 0, count = 0;
-    if (!svl.level.flags.stormy || (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1855, $c.lit("do_storms")), rn2(8)) : rn2(8))) {
+    if (!svl.level.flags.stormy || rn2(8)) {
         return;
     }
-    for (nstrike = rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1859, $c.lit("do_storms")), rnd(64)) : rnd(64); nstrike <= 64; nstrike = Math.imul(nstrike, 2)) {
+    for (nstrike = rnd(64); nstrike <= 64; nstrike = Math.imul(nstrike, 2)) {
         count = 0;
         do {
-            x = rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1862, $c.lit("do_storms")), rnd(79)) : rnd(79);
-            y = rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1863, $c.lit("do_storms")), rn2(21)) : rn2(21);
-        } while ((count = count + 1 | 0) < 100 && svl.level.locations[x][y].typ !== 36 /* CLOUD */);
+            x = rnd(COLNO - 1);
+            y = rn2(ROWNO);
+        } while ((count = count + 1 | 0) < 100 && svl.level.locations[x][y].typ !== CLOUD);
         if (count < 100) {
-            dirx = (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1867, $c.lit("do_storms")), rn2(3)) : rn2(3)) - 1 | 0;
-            diry = (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1868, $c.lit("do_storms")), rn2(3)) : rn2(3)) - 1 | 0;
+            dirx = rn2(3) - 1 | 0;
+            diry = rn2(3) - 1 | 0;
             if (dirx !== 0 || diry !== 0) {
                 gb.buzzer = null;
-                await buzz(-10 - $c.rem32($c.abs(5), 10) | 0, 8, $c.i16(x), $c.i16(y), dirx, diry);
+                await buzz(-10 - $c.rem32($c.abs(AD.ELEC - AD.MAGM), 10) | 0, 8, $c.i16(x), $c.i16(y), dirx, diry);
             }
         }
     }
-    if (svl.level.locations[u.ux][u.uy].typ === 36 /* CLOUD */) {
+    if (svl.level.locations[u.ux][u.uy].typ === CLOUD) {
         await pline($c.lit("Kaboom!!!  Boom!!  Boom!!"));
-        incr_itimeout(new $c.FieldRef(u.uprops[16 /* DEAF */], "intrinsic", "i64"), (rng_log_enabled() ? (rng_log_set_caller($c.lit("timeout.c"), 1882, $c.lit("do_storms")), rn2(20)) : rn2(20)) + 30 | 0);
-        disp.botl = 1;
+        incr_itimeout(new $c.FieldRef(u.uprops[DEAF], "intrinsic", "i64"), rn2(20) + 30 | 0);
+        disp.botl = TRUE;
         if (!u.uinvulnerable) {
             await stop_occupation();
             nomul(-3);
@@ -1298,16 +1324,16 @@ export async function do_storms() {   // timeout.c:1847
 }
 async function kind_name(kind) {   // timeout.c:1995
     switch (kind) {
-        case 0 /* TIMER_NONE */:
+        case TIMER.NONE:
             await impossible($c.lit("no timer type"));
             return $c.lit("none");
-        case 1 /* TIMER_LEVEL */:
+        case TIMER.LEVEL:
             return $c.lit("level");
-        case 2 /* TIMER_GLOBAL */:
+        case TIMER.GLOBAL:
             return $c.lit("global");
-        case 3 /* TIMER_OBJECT */:
+        case TIMER.OBJECT:
             return $c.lit("object");
-        case 4 /* TIMER_MONSTER */:
+        case TIMER.MONSTER:
             return $c.lit("monster");
     }
     return $c.lit("unknown");
@@ -1315,89 +1341,89 @@ async function kind_name(kind) {   // timeout.c:1995
 async function print_queue(win, base) {   // timeout.c:2014
     let curr = null, buf = new Int8Array(256);
     if (!base) {
-        await windowprocs.win_putstr(win, 0, $c.lit(" <empty>"));
+        await putstr()(win, 0, $c.lit(" <empty>"));
     } else {
-        await windowprocs.win_putstr(win, 0, $c.lit("timeout  id   kind   call"));
+        await putstr()(win, 0, $c.lit("timeout  id   kind   call"));
         for (curr = base; curr; curr = curr.next) {
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit(" %4ld   %4ld  %-6s %s(%s)"), curr.timeout, $c.i64(curr.tid), await kind_name(curr.kind), timeout_funcs[curr.func_index].name, fmt_ptr(curr.arg.a_void));
-            await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+            await putstr()(win, 0, new $c.Ptr(buf, 0));
         }
     }
 }
 export async function wiz_timeout_queue() {   // timeout.c:2041
     let win = 0, buf = new Int8Array(256), propname = null, intrinsic = 0, i = 0, p = 0, count = 0, longestlen = 0, ln = 0, specindx = 0;
     specindx = 0;
-    win = await windowprocs.win_create_nhwindow(4);
-    if (win === -1) {
-        return 0;
+    win = await create_nhwindow()(NHW.MENU);
+    if (win === WIN_ERR) {
+        return ECMD.OK;
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Current time = %ld."), svm.moves);
-    await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
-    await windowprocs.win_putstr(win, 0, $c.lit(""));
-    await windowprocs.win_putstr(win, 0, $c.lit("Active timeout queue:"));
-    await windowprocs.win_putstr(win, 0, $c.lit(""));
+    await putstr()(win, 0, new $c.Ptr(buf, 0));
+    await putstr()(win, 0, $c.lit(""));
+    await putstr()(win, 0, $c.lit("Active timeout queue:"));
+    await putstr()(win, 0, $c.lit(""));
     await print_queue(win, gt.timer_base);
     count = longestlen = 0;
     for (i = 0; (propname = propertynames[i].prop_name) !== null; i = i + 1 | 0) {
         p = propertynames[i].prop_num;
         intrinsic = u.uprops[p].intrinsic;
-        if ($c.and64(intrinsic, 16777215)) {
+        if ($c.and64(intrinsic, TIMEOUT)) {
             count = count + 1 | 0;
             if ((ln = $c.i32($c.strlen(propname))) > longestlen) {
                 longestlen = ln;
             }
         }
-        if (specindx === 0 && p === 2 /* COLD_RES */) {
+        if (specindx === 0 && p === COLD_RES) {
             specindx = i;
         }
     }
-    await windowprocs.win_putstr(win, 0, $c.lit(""));
+    await putstr()(win, 0, $c.lit(""));
     if (!count) {
-        await windowprocs.win_putstr(win, 0, $c.lit("No timed properties."));
+        await putstr()(win, 0, $c.lit("No timed properties."));
     } else {
-        await windowprocs.win_putstr(win, 0, $c.lit("Timed properties:"));
-        await windowprocs.win_putstr(win, 0, $c.lit(""));
+        await putstr()(win, 0, $c.lit("Timed properties:"));
+        await putstr()(win, 0, $c.lit(""));
         for (i = 0; (propname = propertynames[i].prop_name) !== null; i = i + 1 | 0) {
             p = propertynames[i].prop_num;
             intrinsic = u.uprops[p].intrinsic;
-            if ($c.and64(intrinsic, 16777215)) {
+            if ($c.and64(intrinsic, TIMEOUT)) {
                 if (specindx > 0 && i >= specindx) {
-                    await windowprocs.win_putstr(win, 0, $c.lit(" -- settable via #wizintrinsic only --"));
+                    await putstr()(win, 0, $c.lit(" -- settable via #wizintrinsic only --"));
                     specindx = 0;
                 }
-                $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit(" %*s %4ld"), -longestlen | 0, propname, $c.and64(intrinsic, 16777215));
-                await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+                $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit(" %*s %4ld"), -longestlen | 0, propname, $c.and64(intrinsic, TIMEOUT));
+                await putstr()(win, 0, new $c.Ptr(buf, 0));
             }
         }
     }
     if (u.uswldtim) {
-        await windowprocs.win_putstr(win, 0, $c.lit(""));
+        await putstr()(win, 0, $c.lit(""));
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Swallow countdown is %u."), u.uswldtim);
-        await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+        await putstr()(win, 0, new $c.Ptr(buf, 0));
     }
     if (u.uinvault) {
-        await windowprocs.win_putstr(win, 0, $c.lit(""));
+        await putstr()(win, 0, $c.lit(""));
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Vault counter is %d."), u.uinvault);
-        await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+        await putstr()(win, 0, new $c.Ptr(buf, 0));
     }
     if (any_visible_region()) {
         await visible_region_summary(win);
     }
     if (svl.level.flags.stasis_until >= svm.moves) {
-        await windowprocs.win_putstr(win, 0, $c.lit(""));
+        await putstr()(win, 0, $c.lit(""));
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Level is no-teleport for %ld %s."), $c.add64($c.sub64(svl.level.flags.stasis_until, svm.moves), 1), $c.sub64(svl.level.flags.stasis_until, svm.moves) > 0 ? $c.lit("turns") : $c.lit("more turn"));
-        await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+        await putstr()(win, 0, new $c.Ptr(buf, 0));
     }
-    await windowprocs.win_display_nhwindow(win, 0);
-    await windowprocs.win_destroy_nhwindow(win);
-    return 0;
+    await display_nhwindow()(win, FALSE);
+    await destroy_nhwindow()(win);
+    return ECMD.OK;
 }
 export async function timer_sanity_check() {   // timeout.c:2130
     let curr = null, t_id = 0, x = Int16Array.of(0), y = Int16Array.of(0), obj = null, top = null, obj_adr = null, owhere = 0, lwhere = 0;
     for (curr = gt.timer_base; curr; curr = curr.next) {
         t_id = curr.tid;
         switch (curr.kind) {
-            case 3 /* TIMER_OBJECT */:
+            case TIMER.OBJECT:
                 {
                     obj = curr.arg.a_obj;
                     obj_adr = fmt_ptr(obj);
@@ -1407,30 +1433,30 @@ export async function timer_sanity_check() {   // timeout.c:2130
                     }
                     x[0] = y[0] = 0;
                     for (top = obj; top; top = top.v.v_ocontainer) {
-                        if ((owhere = top.where) !== 2) {
+                        if ((owhere = top.where) !== OBJ.CONTAINED) {
                             break;
                         }
                     }
                     (!!$c.peq(top, $c.asRec(null, $T.obj, 112)) ? 1 : 0) ? $c.__assert_rtn($c.lit("timer_sanity_check"), $c.lit("timeout.c"), 2156, $c.lit("top != NULL")) : 0;
-                    if (owhere === 5 || owhere === 4 && !mon_is_local(top.v.v_ocarry)) {
-                    } else if (!get_obj_location(obj, new $c.Ptr(x, 0), new $c.Ptr(y, 0), 3)) {
+                    if (owhere === OBJ.MIGRATING || owhere === OBJ.MINVENT && !mon_is_local(top.v.v_ocarry)) {
+                    } else if (!get_obj_location(obj, new $c.Ptr(x, 0), new $c.Ptr(y, 0), CONTAINED_TOO | BURIED_TOO)) {
                         await impossible($c.lit("timer sanity: can't locate obj %s [where=%d], timer %lu"), obj_adr, obj.where, t_id);
                     } else if (!isok(x[0], y[0])) {
                         await impossible($c.lit("timer sanity: obj %s [where=%d] located at <%d,%d>, timer %lu"), obj_adr, obj.where, x[0], y[0], t_id);
                     }
                     break;
                 }
-            case 4 /* TIMER_MONSTER */:
+            case TIMER.MONSTER:
                 await impossible($c.lit("timer sanity: unexpected monster timer %lu"), t_id);
                 break;
-            case 1 /* TIMER_LEVEL */:
+            case TIMER.LEVEL:
                 {
                     lwhere = curr.arg.a_long;
                     x[0] = $c.i16($c.and64($c.shr64(lwhere, 16), 65535));
                     y[0] = $c.i16($c.and64(lwhere, 65535));
                     if (isok(x[0], y[0])) {
-                        (!(x[0] > 0 && x[0] < 80 && y[0] >= 0 && y[0] < 21) ? 1 : 0) ? $c.__assert_rtn($c.lit("timer_sanity_check"), $c.lit("timeout.c"), 2188, $c.lit("x > 0 && x < COLNO && y >= 0 && y < ROWNO")) : 0;
-                        if (curr.func_index === 8 /* MELT_ICE_AWAY */ && !is_ice(x[0], y[0]) && !(svl.level.locations[x[0]][y[0]].typ === 34 /* DRAWBRIDGE_DOWN */ && ((svl.level.locations[x[0]][y[0]].flags | 0) & 28) === 8)) {
+                        (!(x[0] > 0 && x[0] < COLNO && y[0] >= 0 && y[0] < ROWNO) ? 1 : 0) ? $c.__assert_rtn($c.lit("timer_sanity_check"), $c.lit("timeout.c"), 2188, $c.lit("x > 0 && x < COLNO && y >= 0 && y < ROWNO")) : 0;
+                        if (curr.func_index === MELT_ICE_AWAY && !is_ice(x[0], y[0]) && !(svl.level.locations[x[0]][y[0]].typ === DRAWBRIDGE_DOWN && ((svl.level.locations[x[0]][y[0]].flags | 0) & DB.UNDER) === DB.ICE)) {
                             await impossible($c.lit("timer sanity: melt timer %lu on non-ice %d <%d,%d>"), t_id, svl.level.locations[x[0]][y[0]].typ, x[0], y[0]);
                         }
                     } else {
@@ -1438,7 +1464,7 @@ export async function timer_sanity_check() {   // timeout.c:2130
                     }
                     break;
                 }
-            case 2 /* TIMER_GLOBAL */:
+            case TIMER.GLOBAL:
                 await impossible($c.lit("timer sanity: unexpected global timer %lu"), t_id);
                 break;
             default:
@@ -1452,7 +1478,7 @@ export async function run_timers() {   // timeout.c:2222
     while (gt.timer_base && gt.timer_base.timeout <= svm.moves) {
         curr = gt.timer_base;
         gt.timer_base = curr.next;
-        if (curr.kind === 3 /* TIMER_OBJECT */) {
+        if (curr.kind === TIMER.OBJECT) {
             curr.arg.a_obj.timed = $c.i16(curr.arg.a_obj.timed - 1);
         }
         await timeout_funcs[curr.func_index].f(curr.arg, curr.timeout);
@@ -1462,7 +1488,7 @@ export async function run_timers() {   // timeout.c:2222
 }
 export async function start_timer(when, kind, func_index, arg) {   // timeout.c:2247
     let gnu = null, dup = null, idbuf = new Int8Array(128), $t1, $t2;
-    if (kind <= 0 /* TIMER_NONE */ || kind >= 5 /* NUM_TIMER_KINDS */ || func_index < 0 || func_index >= 9 /* NUM_TIME_FUNCS */) {
+    if (kind <= TIMER.NONE || kind >= NUM_TIMER_KINDS || func_index < 0 || func_index >= NUM_TIME_FUNCS) {
         await panic($c.lit("start_timer (%s: %d)"), await kind_name(kind), func_index);
     }
     for (dup = gt.timer_base; dup; dup = dup.next) {
@@ -1473,7 +1499,7 @@ export async function start_timer(when, kind, func_index, arg) {   // timeout.c:
     if (dup) {
         $c.__builtin___sprintf_chk(new $c.Ptr(idbuf, 0), 0, 128, $c.lit("%s timer"), timeout_funcs[func_index].name);
         await impossible($c.lit("Attempted to start duplicate %s, aborted."), new $c.Ptr(idbuf, 0));
-        return 0;
+        return FALSE;
     }
     gnu = $c.asRec(await alloc(48), $T.fe, 48);
     $c.__builtin___memset_chk(gnu, 0, 48, -1);
@@ -1485,17 +1511,17 @@ export async function start_timer(when, kind, func_index, arg) {   // timeout.c:
     gnu.func_index = func_index;
     gnu.arg.$copyFrom(arg);
     insert_timer(gnu);
-    if (kind === 3 /* TIMER_OBJECT */) {
+    if (kind === TIMER.OBJECT) {
         arg.a_obj.timed = $c.i16(arg.a_obj.timed + 1);
     }
-    return 1;
+    return TRUE;
 }
 export async function stop_timer(func_index, arg) {   // timeout.c:2299
     let cleanup_func = null, doomed = null, timeout = 0;
     doomed = remove_timer(new $c.FieldRef(gt, "timer_base", "ptr"), func_index, arg);
     if (doomed) {
         timeout = doomed.timeout;
-        if (doomed.kind === 3 /* TIMER_OBJECT */) {
+        if (doomed.kind === TIMER.OBJECT) {
             arg.a_obj.timed = $c.i16(arg.a_obj.timed - 1);
         }
         if ((cleanup_func = timeout_funcs[doomed.func_index].cleanup) !== null) {
@@ -1519,7 +1545,7 @@ export function peek_timer(type, arg) {   // timeout.c:2324
 export async function obj_move_timers(src, dest) {   // timeout.c:2339
     let count = 0, curr = null;
     for (count = 0, curr = gt.timer_base; curr; curr = curr.next) {
-        if (curr.kind === 3 /* TIMER_OBJECT */ && $c.peq(curr.arg.a_obj, src)) {
+        if (curr.kind === TIMER.OBJECT && $c.peq(curr.arg.a_obj, src)) {
             curr.arg.a_obj = dest;
             dest.timed = $c.i16(dest.timed + 1);
             count = count + 1 | 0;
@@ -1535,8 +1561,8 @@ export async function obj_split_timers(src, dest) {   // timeout.c:2359
     next_timer = null;
     for (curr = gt.timer_base; curr; curr = next_timer) {
         next_timer = curr.next;
-        if (curr.kind === 3 /* TIMER_OBJECT */ && $c.peq(curr.arg.a_obj, src)) {
-            await start_timer($c.sub64(curr.timeout, svm.moves), 3, curr.func_index, obj_to_any(dest));
+        if (curr.kind === TIMER.OBJECT && $c.peq(curr.arg.a_obj, src)) {
+            await start_timer($c.sub64(curr.timeout, svm.moves), TIMER.OBJECT, curr.func_index, obj_to_any(dest));
         }
     }
 }
@@ -1545,7 +1571,7 @@ export async function obj_stop_timers(obj) {   // timeout.c:2377
     next_timer = null;
     for (prev = null, curr = gt.timer_base; curr; curr = next_timer) {
         next_timer = curr.next;
-        if (curr.kind === 3 /* TIMER_OBJECT */ && $c.peq(curr.arg.a_obj, obj)) {
+        if (curr.kind === TIMER.OBJECT && $c.peq(curr.arg.a_obj, obj)) {
             if (prev) {
                 prev.next = curr.next;
             } else {
@@ -1573,7 +1599,7 @@ export async function spot_stop_timers(x, y, func_index) {   // timeout.c:2416
     where = $c.or64($c.shl64(x, 16), y);
     for (prev = null, curr = gt.timer_base; curr; curr = next_timer) {
         next_timer = curr.next;
-        if (curr.kind === 1 /* TIMER_LEVEL */ && curr.func_index === func_index && curr.arg.a_long === where) {
+        if (curr.kind === TIMER.LEVEL && curr.func_index === func_index && curr.arg.a_long === where) {
             if (prev) {
                 prev.next = curr.next;
             } else {
@@ -1593,7 +1619,7 @@ export function spot_time_expires(x, y, func_index) {   // timeout.c:2445
     let curr = null, where = 0;
     where = $c.or64($c.shl64(x, 16), y);
     for (curr = gt.timer_base; curr; curr = curr.next) {
-        if (curr.kind === 1 /* TIMER_LEVEL */ && curr.func_index === func_index && curr.arg.a_long === where) {
+        if (curr.kind === TIMER.LEVEL && curr.func_index === func_index && curr.arg.a_long === where) {
             return curr.timeout;
         }
     }
@@ -1638,11 +1664,11 @@ async function write_timer(nhfp, timer) {   // timeout.c:2505
     let arg_save = new $T.any();
     arg_save.$copyFrom(cg.zeroany);
     switch (timer.kind) {
-        case 2 /* TIMER_GLOBAL */:
-        case 1 /* TIMER_LEVEL */:
+        case TIMER.GLOBAL:
+        case TIMER.LEVEL:
             await sfo_fe(nhfp, timer, $c.lit("timer"));
             break;
-        case 3 /* TIMER_OBJECT */:
+        case TIMER.OBJECT:
             if (timer.needs_fixup) {
                 await sfo_fe(nhfp, timer, $c.lit("timer"));
             } else {
@@ -1655,7 +1681,7 @@ async function write_timer(nhfp, timer) {   // timeout.c:2505
                 timer.needs_fixup = (0) & 1;
             }
             break;
-        case 4 /* TIMER_MONSTER */:
+        case TIMER.MONSTER:
             if (timer.needs_fixup) {
                 await sfo_fe(nhfp, timer, $c.lit("timer"));
             } else {
@@ -1675,53 +1701,53 @@ async function write_timer(nhfp, timer) {   // timeout.c:2505
 }
 export async function obj_is_local(obj) {   // timeout.c:2560
     switch (obj.where) {
-        case 3:
-        case 5:
-            return 0;
-        case 1:
-        case 6:
-            return 1;
-        case 2:
+        case OBJ.INVENT:
+        case OBJ.MIGRATING:
+            return FALSE;
+        case OBJ.FLOOR:
+        case OBJ.BURIED:
+            return TRUE;
+        case OBJ.CONTAINED:
             return await obj_is_local(obj.v.v_ocontainer);
-        case 4:
+        case OBJ.MINVENT:
             return mon_is_local(obj.v.v_ocarry);
     }
     await panic($c.lit("obj_is_local"));
-    return 0;
+    return FALSE;
 }
 function mon_is_local(mon) {   // timeout.c:2584
     let curr = null;
     for (curr = gm.migrating_mons; curr; curr = curr.nmon) {
         if ($c.peq(curr, mon)) {
-            return 0;
+            return FALSE;
         }
     }
     for (curr = gm.mydogs; curr; curr = curr.nmon) {
         if ($c.peq(curr, mon)) {
-            return 0;
+            return FALSE;
         }
     }
-    return 1;
+    return TRUE;
 }
 async function timer_is_local(timer) {   // timeout.c:2603
     switch (timer.kind) {
-        case 1 /* TIMER_LEVEL */:
-            return 1;
-        case 2 /* TIMER_GLOBAL */:
-            return 0;
-        case 3 /* TIMER_OBJECT */:
+        case TIMER.LEVEL:
+            return TRUE;
+        case TIMER.GLOBAL:
+            return FALSE;
+        case TIMER.OBJECT:
             return await obj_is_local(timer.arg.a_obj);
-        case 4 /* TIMER_MONSTER */:
+        case TIMER.MONSTER:
             return mon_is_local(timer.arg.a_monst);
     }
     await panic($c.lit("timer_is_local"));
-    return 0;
+    return FALSE;
 }
 async function maybe_write_timer(nhfp, range, write_it) {   // timeout.c:2627
     let count = 0, curr = null;
     count = 0;
     for (curr = gt.timer_base; curr; curr = curr.next) {
-        if (range === 1) {
+        if (range === RANGE.GLOBAL) {
             if (!await timer_is_local(curr)) {
                 count = count + 1 | 0;
                 if (write_it) {
@@ -1742,18 +1768,18 @@ async function maybe_write_timer(nhfp, range, write_it) {   // timeout.c:2627
 export async function save_timers(nhfp, range) {   // timeout.c:2668
     let curr = null, prev = null, next_timer = null, count = Int32Array.of(0);
     next_timer = null;
-    if (nhfp.mode & 3) {
-        if (range === 1) {
+    if (update_file(nhfp)) {
+        if (range === RANGE.GLOBAL) {
             await sfo_ulong(nhfp, new $c.FieldRef(svt, "timer_id", "u64"), $c.lit("timer-timer_id"));
         }
-        count[0] = await maybe_write_timer(nhfp, range, 0);
+        count[0] = await maybe_write_timer(nhfp, range, FALSE);
         await sfo_int(nhfp, new $c.Ptr(count, 0), $c.lit("timer-timer_count"));
-        await maybe_write_timer(nhfp, range, 1);
+        await maybe_write_timer(nhfp, range, TRUE);
     }
-    if (nhfp.mode & 4) {
+    if (release_data(nhfp)) {
         for (prev = null, curr = gt.timer_base; curr; curr = next_timer) {
             next_timer = curr.next;
-            if (!((!!(range === 0) ? 1 : 0) ^ (!!await timer_is_local(curr) ? 1 : 0))) {
+            if (!((!!(range === RANGE.LEVEL) ? 1 : 0) ^ (!!await timer_is_local(curr) ? 1 : 0))) {
                 if (prev) {
                     prev.next = curr.next;
                 } else {
@@ -1770,8 +1796,8 @@ export async function save_timers(nhfp, range) {   // timeout.c:2668
 export async function restore_timers(nhfp, range, adjust) {   // timeout.c:2707
     let count = Int32Array.of(0), curr = null, ghostly = 0, $t1;
     count[0] = 0;
-    ghostly = $c.i8(nhfp.ftype === 3 ? 1 : 0);
-    if (range === 1) {
+    ghostly = $c.i8(nhfp.ftype === NHF.BONESFILE ? 1 : 0);
+    if (range === RANGE.GLOBAL) {
         await sfi_ulong(nhfp, new $c.FieldRef(svt, "timer_id", "u64"), $c.lit("timer-timer_id"));
     }
     await sfi_int(nhfp, new $c.Ptr(count, 0), $c.lit("timer-timer_count"));
@@ -1797,7 +1823,7 @@ export async function relink_timers(ghostly) {   // timeout.c:2751
     let curr = null, nid = Uint32Array.of(0), $t1;
     for (curr = gt.timer_base; curr; curr = curr.next) {
         if (curr.needs_fixup) {
-            if (curr.kind === 3 /* TIMER_OBJECT */) {
+            if (curr.kind === TIMER.OBJECT) {
                 if (ghostly) {
                     if (!lookup_id_mapping(curr.arg.a_uint, new $c.Ptr(nid, 0))) {
                         await panic($c.lit("relink_timers 1"));
@@ -1810,7 +1836,7 @@ export async function relink_timers(ghostly) {   // timeout.c:2751
                     await panic($c.lit("can't find o_id %d"), nid[0]);
                 }
                 curr.needs_fixup = (0) & 1;
-            } else if (curr.kind === 4 /* TIMER_MONSTER */) {
+            } else if (curr.kind === TIMER.MONSTER) {
                 await panic($c.lit("relink_timers: no monster timer implemented"));
             } else {
                 await panic($c.lit("relink_timers 2"));
@@ -1823,215 +1849,150 @@ export function $init() {
     for (let $i0 = 0; $i0 < 69; $i0++) {
         propertynames[$i0].$copyFrom(new $T.propname());
     }
-    propertynames[0].prop_num = 11 /* INVULNERABLE */;
-    propertynames[0].prop_name = $c.lit("invulnerable");
-    propertynames[1].prop_num = 18 /* STONED */;
-    propertynames[1].prop_name = $c.lit("petrifying");
-    propertynames[2].prop_num = 22 /* SLIMED */;
-    propertynames[2].prop_name = $c.lit("becoming slime");
-    propertynames[3].prop_num = 19 /* STRANGLED */;
-    propertynames[3].prop_name = $c.lit("strangling");
-    propertynames[4].prop_num = 17 /* SICK */;
-    propertynames[4].prop_name = $c.lit("fatally sick");
-    propertynames[5].prop_num = 13 /* STUNNED */;
-    propertynames[5].prop_name = $c.lit("stunned");
-    propertynames[6].prop_num = 14 /* CONFUSION */;
-    propertynames[6].prop_name = $c.lit("confused");
-    propertynames[7].prop_num = 23 /* HALLUC */;
-    propertynames[7].prop_name = $c.lit("hallucinating");
-    propertynames[8].prop_num = 15 /* BLINDED */;
-    propertynames[8].prop_name = $c.lit("blinded");
-    propertynames[9].prop_num = 16 /* DEAF */;
-    propertynames[9].prop_name = $c.lit("deafness");
-    propertynames[10].prop_num = 20 /* VOMITING */;
-    propertynames[10].prop_name = $c.lit("vomiting");
-    propertynames[11].prop_num = 21 /* GLIB */;
-    propertynames[11].prop_name = $c.lit("slippery fingers");
-    propertynames[12].prop_num = 26 /* WOUNDED_LEGS */;
-    propertynames[12].prop_name = $c.lit("wounded legs");
-    propertynames[13].prop_num = 27 /* SLEEPY */;
-    propertynames[13].prop_name = $c.lit("sleepy");
-    propertynames[14].prop_num = 46 /* TELEPORT */;
-    propertynames[14].prop_name = $c.lit("teleporting");
-    propertynames[15].prop_num = 61 /* POLYMORPH */;
-    propertynames[15].prop_name = $c.lit("polymorphing");
-    propertynames[16].prop_num = 48 /* LEVITATION */;
-    propertynames[16].prop_name = $c.lit("levitating");
-    propertynames[17].prop_num = 64 /* FAST */;
-    propertynames[17].prop_name = $c.lit("very fast");
-    propertynames[18].prop_num = 35 /* CLAIRVOYANT */;
-    propertynames[18].prop_name = $c.lit("clairvoyant");
-    propertynames[19].prop_num = 37 /* DETECT_MONSTERS */;
-    propertynames[19].prop_name = $c.lit("monster detection");
-    propertynames[20].prop_num = 29 /* SEE_INVIS */;
-    propertynames[20].prop_name = $c.lit("see invisible");
-    propertynames[21].prop_num = 40 /* INVIS */;
-    propertynames[21].prop_name = $c.lit("invisible");
-    propertynames[22].prop_num = 7 /* ACID_RES */;
-    propertynames[22].prop_name = $c.lit("acid resistance");
-    propertynames[23].prop_num = 8 /* STONE_RES */;
-    propertynames[23].prop_name = $c.lit("stoning resistance");
-    propertynames[24].prop_num = 41 /* DISPLACED */;
-    propertynames[24].prop_name = $c.lit("displaced");
-    propertynames[25].prop_num = 53 /* PASSES_WALLS */;
-    propertynames[25].prop_name = $c.lit("pass thru walls");
-    propertynames[26].prop_num = 52 /* MAGICAL_BREATHING */;
-    propertynames[26].prop_name = $c.lit("magical breathing");
-    propertynames[27].prop_num = 50 /* WWALKING */;
-    propertynames[27].prop_name = $c.lit("water walking");
-    propertynames[28].prop_num = 1 /* FIRE_RES */;
-    propertynames[28].prop_name = $c.lit("fire resistance");
-    propertynames[29].prop_num = 2 /* COLD_RES */;
-    propertynames[29].prop_name = $c.lit("cold resistance");
-    propertynames[30].prop_num = 3 /* SLEEP_RES */;
-    propertynames[30].prop_name = $c.lit("sleep resistance");
-    propertynames[31].prop_num = 4 /* DISINT_RES */;
-    propertynames[31].prop_name = $c.lit("disintegration resistance");
-    propertynames[32].prop_num = 5 /* SHOCK_RES */;
-    propertynames[32].prop_name = $c.lit("shock resistance");
-    propertynames[33].prop_num = 6 /* POISON_RES */;
-    propertynames[33].prop_name = $c.lit("poison resistance");
-    propertynames[34].prop_num = 9 /* DRAIN_RES */;
-    propertynames[34].prop_name = $c.lit("drain resistance");
-    propertynames[35].prop_num = 10 /* SICK_RES */;
-    propertynames[35].prop_name = $c.lit("sickness resistance");
-    propertynames[36].prop_num = 12 /* ANTIMAGIC */;
-    propertynames[36].prop_name = $c.lit("magic resistance");
-    propertynames[37].prop_num = 24 /* HALLUC_RES */;
-    propertynames[37].prop_name = $c.lit("hallucination resistance");
-    propertynames[38].prop_num = 38 /* BLND_RES */;
-    propertynames[38].prop_name = $c.lit("light-induced blindness resistance");
-    propertynames[39].prop_num = 25 /* FUMBLING */;
-    propertynames[39].prop_name = $c.lit("fumbling");
-    propertynames[40].prop_num = 28 /* HUNGER */;
-    propertynames[40].prop_name = $c.lit("voracious hunger");
-    propertynames[41].prop_num = 30 /* TELEPAT */;
-    propertynames[41].prop_name = $c.lit("telepathic");
-    propertynames[42].prop_num = 31 /* WARNING */;
-    propertynames[42].prop_name = $c.lit("warning");
-    propertynames[43].prop_num = 32 /* WARN_OF_MON */;
-    propertynames[43].prop_name = $c.lit("warn: monster type or class");
-    propertynames[44].prop_num = 33 /* WARN_UNDEAD */;
-    propertynames[44].prop_name = $c.lit("warn: undead");
-    propertynames[45].prop_num = 34 /* SEARCHING */;
-    propertynames[45].prop_name = $c.lit("searching");
-    propertynames[46].prop_num = 36 /* INFRAVISION */;
-    propertynames[46].prop_name = $c.lit("infravision");
-    propertynames[47].prop_num = 39 /* ADORNED */;
-    propertynames[47].prop_name = $c.lit("adorned (+/- Cha)");
-    propertynames[48].prop_num = 42 /* STEALTH */;
-    propertynames[48].prop_name = $c.lit("stealthy");
-    propertynames[49].prop_num = 43 /* AGGRAVATE_MONSTER */;
-    propertynames[49].prop_name = $c.lit("monster aggravation");
-    propertynames[50].prop_num = 44 /* CONFLICT */;
-    propertynames[50].prop_name = $c.lit("conflict");
-    propertynames[51].prop_num = 45 /* JUMPING */;
-    propertynames[51].prop_name = $c.lit("jumping");
-    propertynames[52].prop_num = 47 /* TELEPORT_CONTROL */;
-    propertynames[52].prop_name = $c.lit("teleport control");
-    propertynames[53].prop_num = 49 /* FLYING */;
-    propertynames[53].prop_name = $c.lit("flying");
-    propertynames[54].prop_num = 51 /* SWIMMING */;
-    propertynames[54].prop_name = $c.lit("swimming");
-    propertynames[55].prop_num = 54 /* SLOW_DIGESTION */;
-    propertynames[55].prop_name = $c.lit("slow digestion");
-    propertynames[56].prop_num = 55 /* HALF_SPDAM */;
-    propertynames[56].prop_name = $c.lit("half spell damage");
-    propertynames[57].prop_num = 56 /* HALF_PHDAM */;
-    propertynames[57].prop_name = $c.lit("half physical damage");
-    propertynames[58].prop_num = 57 /* REGENERATION */;
-    propertynames[58].prop_name = $c.lit("HP regeneration");
-    propertynames[59].prop_num = 58 /* ENERGY_REGENERATION */;
-    propertynames[59].prop_name = $c.lit("energy regeneration");
-    propertynames[60].prop_num = 59 /* PROTECTION */;
-    propertynames[60].prop_name = $c.lit("extra protection");
-    propertynames[61].prop_num = 60 /* PROT_FROM_SHAPE_CHANGERS */;
-    propertynames[61].prop_name = $c.lit("protection from shape changers");
-    propertynames[62].prop_num = 62 /* POLYMORPH_CONTROL */;
-    propertynames[62].prop_name = $c.lit("polymorph control");
-    propertynames[63].prop_num = 63 /* UNCHANGING */;
-    propertynames[63].prop_name = $c.lit("unchanging");
-    propertynames[64].prop_num = 65 /* REFLECTING */;
-    propertynames[64].prop_name = $c.lit("reflecting");
-    propertynames[65].prop_num = 66 /* FREE_ACTION */;
-    propertynames[65].prop_name = $c.lit("free action");
-    propertynames[66].prop_num = 67 /* FIXED_ABIL */;
-    propertynames[66].prop_name = $c.lit("fixed abilities");
-    propertynames[67].prop_num = 68 /* LIFESAVED */;
-    propertynames[67].prop_name = $c.lit("life will be saved");
-    propertynames[68].prop_num = 0;
-    propertynames[68].prop_name = null;
+    $c.init(propertynames, [
+        { prop_num: INVULNERABLE, prop_name: $c.lit("invulnerable") },
+        { prop_num: STONED, prop_name: $c.lit("petrifying") },
+        { prop_num: SLIMED, prop_name: $c.lit("becoming slime") },
+        { prop_num: STRANGLED, prop_name: $c.lit("strangling") },
+        { prop_num: SICK, prop_name: $c.lit("fatally sick") },
+        { prop_num: STUNNED, prop_name: $c.lit("stunned") },
+        { prop_num: CONFUSION, prop_name: $c.lit("confused") },
+        { prop_num: HALLUC, prop_name: $c.lit("hallucinating") },
+        { prop_num: BLINDED, prop_name: $c.lit("blinded") },
+        { prop_num: DEAF, prop_name: $c.lit("deafness") },
+        { prop_num: VOMITING, prop_name: $c.lit("vomiting") },
+        { prop_num: GLIB, prop_name: $c.lit("slippery fingers") },
+        { prop_num: WOUNDED_LEGS, prop_name: $c.lit("wounded legs") },
+        { prop_num: SLEEPY, prop_name: $c.lit("sleepy") },
+        { prop_num: TELEPORT, prop_name: $c.lit("teleporting") },
+        { prop_num: POLYMORPH, prop_name: $c.lit("polymorphing") },
+        { prop_num: LEVITATION, prop_name: $c.lit("levitating") },
+        { prop_num: FAST, prop_name: $c.lit("very fast") },
+        { prop_num: CLAIRVOYANT, prop_name: $c.lit("clairvoyant") },
+        { prop_num: DETECT_MONSTERS, prop_name: $c.lit("monster detection") },
+        { prop_num: SEE_INVIS, prop_name: $c.lit("see invisible") },
+        { prop_num: INVIS, prop_name: $c.lit("invisible") },
+        { prop_num: ACID_RES, prop_name: $c.lit("acid resistance") },
+        { prop_num: STONE_RES, prop_name: $c.lit("stoning resistance") },
+        { prop_num: DISPLACED, prop_name: $c.lit("displaced") },
+        { prop_num: PASSES_WALLS, prop_name: $c.lit("pass thru walls") },
+        { prop_num: MAGICAL_BREATHING, prop_name: $c.lit("magical breathing") },
+        { prop_num: WWALKING, prop_name: $c.lit("water walking") },
+        { prop_num: FIRE_RES, prop_name: $c.lit("fire resistance") },
+        { prop_num: COLD_RES, prop_name: $c.lit("cold resistance") },
+        { prop_num: SLEEP_RES, prop_name: $c.lit("sleep resistance") },
+        { prop_num: DISINT_RES, prop_name: $c.lit("disintegration resistance") },
+        { prop_num: SHOCK_RES, prop_name: $c.lit("shock resistance") },
+        { prop_num: POISON_RES, prop_name: $c.lit("poison resistance") },
+        { prop_num: DRAIN_RES, prop_name: $c.lit("drain resistance") },
+        { prop_num: SICK_RES, prop_name: $c.lit("sickness resistance") },
+        { prop_num: ANTIMAGIC, prop_name: $c.lit("magic resistance") },
+        { prop_num: HALLUC_RES, prop_name: $c.lit("hallucination resistance") },
+        { prop_num: BLND_RES, prop_name: $c.lit("light-induced blindness resistance") },
+        { prop_num: FUMBLING, prop_name: $c.lit("fumbling") },
+        { prop_num: HUNGER, prop_name: $c.lit("voracious hunger") },
+        { prop_num: TELEPAT, prop_name: $c.lit("telepathic") },
+        { prop_num: WARNING, prop_name: $c.lit("warning") },
+        { prop_num: WARN_OF_MON, prop_name: $c.lit("warn: monster type or class") },
+        { prop_num: WARN_UNDEAD, prop_name: $c.lit("warn: undead") },
+        { prop_num: SEARCHING, prop_name: $c.lit("searching") },
+        { prop_num: INFRAVISION, prop_name: $c.lit("infravision") },
+        { prop_num: ADORNED, prop_name: $c.lit("adorned (+/- Cha)") },
+        { prop_num: STEALTH, prop_name: $c.lit("stealthy") },
+        { prop_num: AGGRAVATE_MONSTER, prop_name: $c.lit("monster aggravation") },
+        { prop_num: CONFLICT, prop_name: $c.lit("conflict") },
+        { prop_num: JUMPING, prop_name: $c.lit("jumping") },
+        { prop_num: TELEPORT_CONTROL, prop_name: $c.lit("teleport control") },
+        { prop_num: FLYING, prop_name: $c.lit("flying") },
+        { prop_num: SWIMMING, prop_name: $c.lit("swimming") },
+        { prop_num: SLOW_DIGESTION, prop_name: $c.lit("slow digestion") },
+        { prop_num: HALF_SPDAM, prop_name: $c.lit("half spell damage") },
+        { prop_num: HALF_PHDAM, prop_name: $c.lit("half physical damage") },
+        { prop_num: REGENERATION, prop_name: $c.lit("HP regeneration") },
+        { prop_num: ENERGY_REGENERATION, prop_name: $c.lit("energy regeneration") },
+        { prop_num: PROTECTION, prop_name: $c.lit("extra protection") },
+        { prop_num: PROT_FROM_SHAPE_CHANGERS, prop_name: $c.lit("protection from shape changers") },
+        { prop_num: POLYMORPH_CONTROL, prop_name: $c.lit("polymorph control") },
+        { prop_num: UNCHANGING, prop_name: $c.lit("unchanging") },
+        { prop_num: REFLECTING, prop_name: $c.lit("reflecting") },
+        { prop_num: FREE_ACTION, prop_name: $c.lit("free action") },
+        { prop_num: FIXED_ABIL, prop_name: $c.lit("fixed abilities") },
+        { prop_num: LIFESAVED, prop_name: $c.lit("life will be saved") },
+        {}
+    ]);
     stoned_texts.fill(null);
-    stoned_texts[0] = $c.lit("You are slowing down.");
-    stoned_texts[1] = $c.lit("Your limbs are stiffening.");
-    stoned_texts[2] = $c.lit("Your limbs have turned to stone.");
-    stoned_texts[3] = $c.lit("You have turned to stone.");
-    stoned_texts[4] = $c.lit("You are a statue.");
+    $c.init(stoned_texts, [
+        $c.lit("You are slowing down."),
+        $c.lit("Your limbs are stiffening."),
+        $c.lit("Your limbs have turned to stone."),
+        $c.lit("You have turned to stone."),
+        $c.lit("You are a statue.")
+    ]);
     vomiting_texts.fill(null);
-    vomiting_texts[0] = $c.lit("are feeling mildly nauseated.");
-    vomiting_texts[1] = $c.lit("feel slightly confused.");
-    vomiting_texts[2] = $c.lit("can't seem to think straight.");
-    vomiting_texts[3] = $c.lit("feel incredibly sick.");
-    vomiting_texts[4] = $c.lit("are about to vomit.");
+    $c.init(vomiting_texts, [
+        $c.lit("are feeling mildly nauseated."),
+        $c.lit("feel slightly confused."),
+        $c.lit("can't seem to think straight."),
+        $c.lit("feel incredibly sick."),
+        $c.lit("are about to vomit.")
+    ]);
     choke_texts.fill(null);
-    choke_texts[0] = $c.lit("You find it hard to breathe.");
-    choke_texts[1] = $c.lit("You're gasping for air.");
-    choke_texts[2] = $c.lit("You can no longer breathe.");
-    choke_texts[3] = $c.lit("You're turning %s.");
-    choke_texts[4] = $c.lit("You suffocate.");
+    $c.init(choke_texts, [
+        $c.lit("You find it hard to breathe."),
+        $c.lit("You're gasping for air."),
+        $c.lit("You can no longer breathe."),
+        $c.lit("You're turning %s."),
+        $c.lit("You suffocate.")
+    ]);
     choke_texts2.fill(null);
-    choke_texts2[0] = $c.lit("Your %s is becoming constricted.");
-    choke_texts2[1] = $c.lit("Your blood is having trouble reaching your brain.");
-    choke_texts2[2] = $c.lit("The pressure on your %s increases.");
-    choke_texts2[3] = $c.lit("Your consciousness is fading.");
-    choke_texts2[4] = $c.lit("You suffocate.");
+    $c.init(choke_texts2, [
+        $c.lit("Your %s is becoming constricted."),
+        $c.lit("Your blood is having trouble reaching your brain."),
+        $c.lit("The pressure on your %s increases."),
+        $c.lit("Your consciousness is fading."),
+        $c.lit("You suffocate.")
+    ]);
     sickness_texts.fill(null);
-    sickness_texts[0] = $c.lit("Your illness feels worse.");
-    sickness_texts[1] = $c.lit("Your illness is severe.");
-    sickness_texts[2] = $c.lit("You are at Death's door.");
+    $c.init(sickness_texts, [
+        $c.lit("Your illness feels worse."),
+        $c.lit("Your illness is severe."),
+        $c.lit("You are at Death's door.")
+    ]);
     levi_texts.fill(null);
-    levi_texts[0] = $c.lit("You float slightly lower.");
-    levi_texts[1] = $c.lit("You wobble unsteadily %s the %s.");
+    $c.init(levi_texts, [
+        $c.lit("You float slightly lower."),
+        $c.lit("You wobble unsteadily %s the %s.")
+    ]);
     slime_texts.fill(null);
-    slime_texts[0] = $c.lit("You are turning a little %s.");
-    slime_texts[1] = $c.lit("Your limbs are getting oozy.");
-    slime_texts[2] = $c.lit("Your skin begins to peel away.");
-    slime_texts[3] = $c.lit("You are turning into %s.");
-    slime_texts[4] = $c.lit("You have become %s.");
+    $c.init(slime_texts, [
+        $c.lit("You are turning a little %s."),
+        $c.lit("Your limbs are getting oozy."),
+        $c.lit("Your skin begins to peel away."),
+        $c.lit("You are turning into %s."),
+        $c.lit("You have become %s.")
+    ]);
     phaze_texts.fill(null);
-    phaze_texts[0] = $c.lit("You start to feel bloated.");
-    phaze_texts[1] = $c.lit("You are feeling rather flabby.");
+    $c.init(phaze_texts, [
+        $c.lit("You start to feel bloated."),
+        $c.lit("You are feeling rather flabby.")
+    ]);
     region_texts.fill(null);
-    region_texts[0] = $c.lit("You seem to have some trouble breathing.");
-    region_texts[1] = $c.lit("The air here seems foul.");
+    $c.init(region_texts, [
+        $c.lit("You seem to have some trouble breathing."),
+        $c.lit("The air here seems foul.")
+    ]);
     for (let $i0 = 0; $i0 < 9; $i0++) {
         timeout_funcs[$i0].$copyFrom(new $T.ttable());
     }
-    timeout_funcs[0].f = rot_organic;
-    timeout_funcs[0].cleanup = null;
-    timeout_funcs[0].name = $c.lit("rot_organic");
-    timeout_funcs[1].f = rot_corpse;
-    timeout_funcs[1].cleanup = null;
-    timeout_funcs[1].name = $c.lit("rot_corpse");
-    timeout_funcs[2].f = revive_mon;
-    timeout_funcs[2].cleanup = null;
-    timeout_funcs[2].name = $c.lit("revive_mon");
-    timeout_funcs[3].f = zombify_mon;
-    timeout_funcs[3].cleanup = null;
-    timeout_funcs[3].name = $c.lit("zombify_mon");
-    timeout_funcs[4].f = burn_object;
-    timeout_funcs[4].cleanup = cleanup_burn;
-    timeout_funcs[4].name = $c.lit("burn_object");
-    timeout_funcs[5].f = hatch_egg;
-    timeout_funcs[5].cleanup = null;
-    timeout_funcs[5].name = $c.lit("hatch_egg");
-    timeout_funcs[6].f = fig_transform;
-    timeout_funcs[6].cleanup = null;
-    timeout_funcs[6].name = $c.lit("fig_transform");
-    timeout_funcs[7].f = shrink_glob;
-    timeout_funcs[7].cleanup = null;
-    timeout_funcs[7].name = $c.lit("shrink_glob");
-    timeout_funcs[8].f = melt_ice_away;
-    timeout_funcs[8].cleanup = null;
-    timeout_funcs[8].name = $c.lit("melt_ice_away");
+    $c.init(timeout_funcs, [
+        { f: rot_organic, cleanup: null, name: $c.lit("rot_organic") },
+        { f: rot_corpse, cleanup: null, name: $c.lit("rot_corpse") },
+        { f: revive_mon, cleanup: null, name: $c.lit("revive_mon") },
+        { f: zombify_mon, cleanup: null, name: $c.lit("zombify_mon") },
+        { f: burn_object, cleanup: cleanup_burn, name: $c.lit("burn_object") },
+        { f: hatch_egg, cleanup: null, name: $c.lit("hatch_egg") },
+        { f: fig_transform, cleanup: null, name: $c.lit("fig_transform") },
+        { f: shrink_glob, cleanup: null, name: $c.lit("shrink_glob") },
+        { f: melt_ice_away, cleanup: null, name: $c.lit("melt_ice_away") }
+    ]);
 }

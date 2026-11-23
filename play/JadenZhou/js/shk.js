@@ -5,6 +5,7 @@
 // Paths no session reaches yet throw a 'not ported yet' error.
 
 import { game } from './gstate.js';
+import { obj_stop_timers } from './timeout.js';
 import { rn2 } from './rng.js';
 import {
     SHOPBASE, NO_ROOM, ROOMOFFSET, IS_ROOM, PL_NSIZ, EYE, HAND, BOLT_LIM,
@@ -2859,7 +2860,7 @@ function add_to_billobjs(obj) {
     if (obj.where !== 'OBJ_FREE' && obj.where)
         throw new Error('add_to_billobjs: obj not free');
     if (obj.timed)
-        throw new Error('add_to_billobjs(): obj_stop_timers() not ported yet');
+        obj_stop_timers(obj);
 
     obj.nobj = game.billobjs || null;
     game.billobjs = obj;

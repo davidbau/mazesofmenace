@@ -172,7 +172,7 @@ import { getobj, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { throws_rocks, is_orc, is_elf, is_unicorn, is_domestic, notake,
          nohands, breathless, eyecount, haseyes } from './mondata.js';
-import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
+import { PMNAMES, MFLAGS, MONSYMS, ATTKS } from './monst_data.js';
 import { is_weptool } from './mkobj.js';
 import { hitval, weapon_hit_bonus } from './weapon.js';
 import { getdir } from './cmd.js';

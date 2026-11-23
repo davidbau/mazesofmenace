@@ -360,7 +360,7 @@ async function learn() {
         sb.o_id = 0;
         nomul(sb.delay); /* remaining delay is uninterrupted */
         g.multi_reason = "reading a book";
-        g.nomovemsg = 0;
+        g.nomovemsg = null; /* C: (char *) 0 -- "You can move again." */
         sb.delay = 0;
         return 0;
     }
@@ -570,7 +570,7 @@ export async function study_book(spellbook) {
 
             nomul(sb.delay); /* study time */
             g.multi_reason = "reading a book";
-            g.nomovemsg = 0;
+            g.nomovemsg = null; /* C: (char *) 0 -- "You can move again." */
             sb.delay = 0;
             if (gone || !rn2(3)) {
                 if (!gone)
@@ -586,7 +586,7 @@ export async function study_book(spellbook) {
             }
             nomul(sb.delay);
             g.multi_reason = "reading a book";
-            g.nomovemsg = 0;
+            g.nomovemsg = null; /* C: (char *) 0 -- "You can move again." */
             sb.delay = 0;
             return 1;
         }

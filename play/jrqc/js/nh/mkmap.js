@@ -6,20 +6,30 @@ import { alloc } from './alloc.js';
 import { isok } from './cmd.js';
 import { gm, gn, gs, svl, svn, svr, u } from './decl.js';
 import { depth } from './dungeon.js';
+import { COLNO, FALSE, MAXNROFROOMS, ROWNO, TRUE } from './global.h.js';
 import { add_room } from './mklev.js';
 import { somexy } from './mkroom.js';
+import { NO_ROOM, OROOM, ROOMOFFSET, SHARED } from './mkroom.h.js';
 import { impossible } from './pline.js';
-import { rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { DBWALL, DOOR, ICE, ICED, LAVAPOOL, ROOM, SDOOR, TREE } from './rm.h.js';
+import { IS_OBSTRUCTED } from './rm.macros.js';
+import { rn2, rnd } from './rnd.js';
 import { dig_corridor, wallify_map } from './sp_lev.js';
+
+const HEIGHT = 20;
+const WIDTH = 78;
+const N_P1_ITER = 1;
+const N_P2_ITER = 1;
+const N_P3_ITER = 2;
 
 const dirs = new Int32Array(16);
 function init_map(bg_typ) {   // mkmap.c:24
     let x = 0, y = 0;
-    for (x = 1; x < 80; x = $c.i16(x + 1)) {
-        for (y = 0; y < 21; y = $c.i16(y + 1)) {
-            svl.level.locations[x][y].roomno = (0) & 63;
+    for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
+        for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
+            svl.level.locations[x][y].roomno = (NO_ROOM) & 63;
             svl.level.locations[x][y].typ = bg_typ;
-            svl.level.locations[x][y].lit = (0) & 1;
+            svl.level.locations[x][y].lit = (FALSE) & 1;
         }
     }
 }
@@ -28,8 +38,8 @@ function init_fill(bg_typ, fg_typ) {   // mkmap.c:37
     limit = 624;
     count = 0;
     while (count < limit) {
-        x = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("mkmap.c"), 45, $c.lit("init_fill")), rn2(77)) : rn2(77)) + 2 | 0);
-        y = $c.i16(rng_log_enabled() ? (rng_log_set_caller($c.lit("mkmap.c"), 46, $c.lit("init_fill")), rnd(19)) : rnd(19));
+        x = $c.i16(rn2(WIDTH - 1) + 2 | 0);
+        y = $c.i16(rnd(HEIGHT - 1));
         if (svl.level.locations[x][y].typ === bg_typ) {
             svl.level.locations[x][y].typ = fg_typ;
             count = $c.add64(count, 1);
@@ -37,15 +47,15 @@ function init_fill(bg_typ, fg_typ) {   // mkmap.c:37
     }
 }
 function get_map(col, row, bg_typ) {   // mkmap.c:55
-    if (col <= 0 || row < 0 || col > 78 || row >= 20) {
+    if (col <= 0 || row < 0 || col > WIDTH || row >= HEIGHT) {
         return bg_typ;
     }
     return svl.level.locations[col][row].typ;
 }
 function pass_one(bg_typ, fg_typ) {   // mkmap.c:68
     let x = 0, y = 0, count = 0, dr = 0;
-    for (x = 2; x <= 78; x = $c.i16(x + 1)) {
-        for (y = 1; y < 20; y = $c.i16(y + 1)) {
+    for (x = 2; x <= WIDTH; x = $c.i16(x + 1)) {
+        for (y = 1; y < HEIGHT; y = $c.i16(y + 1)) {
             for (count = 0, dr = 0; dr < 8; dr = $c.i16(dr + 1)) {
                 if (get_map($c.i16(x + dirs[Math.imul(dr, 2)] | 0), $c.i16(y + dirs[Math.imul(dr, 2) + 1 | 0] | 0), bg_typ) === fg_typ) {
                     count = $c.i16(count + 1);
@@ -71,52 +81,52 @@ function pass_one(bg_typ, fg_typ) {   // mkmap.c:68
 }
 function pass_two(bg_typ, fg_typ) {   // mkmap.c:101
     let x = 0, y = 0, count = 0, dr = 0, $t1;
-    for (x = 2; x <= 78; x = $c.i16(x + 1)) {
-        for (y = 1; y < 20; y = $c.i16(y + 1)) {
+    for (x = 2; x <= WIDTH; x = $c.i16(x + 1)) {
+        for (y = 1; y < HEIGHT; y = $c.i16(y + 1)) {
             for (count = 0, dr = 0; dr < 8; dr = $c.i16(dr + 1)) {
                 if (get_map($c.i16(x + dirs[Math.imul(dr, 2)] | 0), $c.i16(y + dirs[Math.imul(dr, 2) + 1 | 0] | 0), bg_typ) === fg_typ) {
                     count = $c.i16(count + 1);
                 }
             }
             if (count === 5) {
-                gn.new_locations.add(Math.imul(y, 79)).add(x).set(0, bg_typ);
+                gn.new_locations.add(Math.imul(y, WIDTH + 1)).add(x).set(0, bg_typ);
             } else {
-                $t1 = get_map(x, y, bg_typ), gn.new_locations.add(Math.imul(y, 79)).add(x).set(0, $t1);
+                $t1 = get_map(x, y, bg_typ), gn.new_locations.add(Math.imul(y, WIDTH + 1)).add(x).set(0, $t1);
             }
         }
     }
-    for (x = 2; x <= 78; x = $c.i16(x + 1)) {
-        for (y = 1; y < 20; y = $c.i16(y + 1)) {
-            svl.level.locations[x][y].typ = gn.new_locations.add(Math.imul(y, 79)).add(x).get(0);
+    for (x = 2; x <= WIDTH; x = $c.i16(x + 1)) {
+        for (y = 1; y < HEIGHT; y = $c.i16(y + 1)) {
+            svl.level.locations[x][y].typ = gn.new_locations.add(Math.imul(y, WIDTH + 1)).add(x).get(0);
         }
     }
 }
 function pass_three(bg_typ, fg_typ) {   // mkmap.c:124
     let x = 0, y = 0, count = 0, dr = 0, $t1;
-    for (x = 2; x <= 78; x = $c.i16(x + 1)) {
-        for (y = 1; y < 20; y = $c.i16(y + 1)) {
+    for (x = 2; x <= WIDTH; x = $c.i16(x + 1)) {
+        for (y = 1; y < HEIGHT; y = $c.i16(y + 1)) {
             for (count = 0, dr = 0; dr < 8; dr = $c.i16(dr + 1)) {
                 if (get_map($c.i16(x + dirs[Math.imul(dr, 2)] | 0), $c.i16(y + dirs[Math.imul(dr, 2) + 1 | 0] | 0), bg_typ) === fg_typ) {
                     count = $c.i16(count + 1);
                 }
             }
             if (count < 3) {
-                gn.new_locations.add(Math.imul(y, 79)).add(x).set(0, bg_typ);
+                gn.new_locations.add(Math.imul(y, WIDTH + 1)).add(x).set(0, bg_typ);
             } else {
-                $t1 = get_map(x, y, bg_typ), gn.new_locations.add(Math.imul(y, 79)).add(x).set(0, $t1);
+                $t1 = get_map(x, y, bg_typ), gn.new_locations.add(Math.imul(y, WIDTH + 1)).add(x).set(0, $t1);
             }
         }
     }
-    for (x = 2; x <= 78; x = $c.i16(x + 1)) {
-        for (y = 1; y < 20; y = $c.i16(y + 1)) {
-            svl.level.locations[x][y].typ = gn.new_locations.add(Math.imul(y, 79)).add(x).get(0);
+    for (x = 2; x <= WIDTH; x = $c.i16(x + 1)) {
+        for (y = 1; y < HEIGHT; y = $c.i16(y + 1)) {
+            svl.level.locations[x][y].typ = gn.new_locations.add(Math.imul(y, WIDTH + 1)).add(x).get(0);
         }
     }
 }
 export function flood_fill_rm(sx, sy, rmno, lit, anyroom) {   // mkmap.c:153
     let i = 0, nx = 0, fg_typ = 0, ii = 0, jj = 0;
     fg_typ = svl.level.locations[sx][sy].typ;
-    while (sx > 0 && (anyroom ? svl.level.locations[sx][sy].typ >= 25 /* ROOM */ : svl.level.locations[sx][sy].typ === fg_typ) && (svl.level.locations[sx][sy].roomno | 0) !== rmno) {
+    while (sx > 0 && (anyroom ? svl.level.locations[sx][sy].typ >= ROOM : svl.level.locations[sx][sy].typ === fg_typ) && (svl.level.locations[sx][sy].roomno | 0) !== rmno) {
         sx = $c.i16(sx - 1);
     }
     sx = $c.i16(sx + 1);
@@ -126,21 +136,21 @@ export function flood_fill_rm(sx, sy, rmno, lit, anyroom) {   // mkmap.c:153
     if (sy < gm.min_ry) {
         gm.min_ry = sy;
     }
-    for (i = sx; i <= 78 && svl.level.locations[i][sy].typ === fg_typ; i = $c.i16(i + 1)) {
+    for (i = sx; i <= WIDTH && svl.level.locations[i][sy].typ === fg_typ; i = $c.i16(i + 1)) {
         svl.level.locations[i][sy].roomno = (rmno >>> 0) & 63;
         svl.level.locations[i][sy].lit = (lit >>> 0) & 1;
         if (anyroom) {
             for (ii = $c.i16(i === sx ? i - 1 | 0 : i); ii <= (i + 1 | 0); ii = $c.i16(ii + 1)) {
                 for (jj = $c.i16(sy - 1 | 0); jj <= (sy + 1 | 0); jj = $c.i16(jj + 1)) {
-                    if (isok(ii, jj) && (svl.level.locations[ii][jj].typ && svl.level.locations[ii][jj].typ <= 12 /* DBWALL */ || svl.level.locations[ii][jj].typ === 23 /* DOOR */ || svl.level.locations[ii][jj].typ === 14 /* SDOOR */)) {
+                    if (isok(ii, jj) && (svl.level.locations[ii][jj].typ && svl.level.locations[ii][jj].typ <= DBWALL || svl.level.locations[ii][jj].typ === DOOR || svl.level.locations[ii][jj].typ === SDOOR)) {
                         svl.level.locations[ii][jj].edge = (1) & 1;
                         if (lit) {
                             svl.level.locations[ii][jj].lit = (lit >>> 0) & 1;
                         }
-                        if ((svl.level.locations[ii][jj].roomno | 0) === 0) {
+                        if ((svl.level.locations[ii][jj].roomno | 0) === NO_ROOM) {
                             svl.level.locations[ii][jj].roomno = (rmno >>> 0) & 63;
                         } else if ((svl.level.locations[ii][jj].roomno | 0) !== rmno) {
-                            svl.level.locations[ii][jj].roomno = (1) & 63;
+                            svl.level.locations[ii][jj].roomno = (SHARED) & 63;
                         }
                     }
                 }
@@ -198,9 +208,9 @@ export function flood_fill_rm(sx, sy, rmno, lit, anyroom) {   // mkmap.c:153
 }
 function join_map_cleanup() {   // mkmap.c:246
     let x = 0, y = 0, $t1, $t2;
-    for (x = 1; x < 80; x = $c.i16(x + 1)) {
-        for (y = 0; y < 21; y = $c.i16(y + 1)) {
-            svl.level.locations[x][y].roomno = (0) & 63;
+    for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
+        for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
+            svl.level.locations[x][y].roomno = (NO_ROOM) & 63;
         }
     }
     $t1 = gn.nsubroom = 0, svn.nroom = $t1;
@@ -209,25 +219,25 @@ function join_map_cleanup() {   // mkmap.c:246
 async function join_map(bg_typ, fg_typ) {   // mkmap.c:258
     let croom = null, croom2 = null, x = 0, y = 0, sx = 0, sy = 0, sm = new $T.nhcoord(), em = new $T.nhcoord(), $t1, $t2;
     joinm$: {
-        for (x = 2; x <= 78; x = $c.i16(x + 1)) {
-            for (y = 1; y < 20; y = $c.i16(y + 1)) {
-                if (svl.level.locations[x][y].typ === fg_typ && (svl.level.locations[x][y].roomno | 0) === 0) {
+        for (x = 2; x <= WIDTH; x = $c.i16(x + 1)) {
+            for (y = 1; y < HEIGHT; y = $c.i16(y + 1)) {
+                if (svl.level.locations[x][y].typ === fg_typ && (svl.level.locations[x][y].roomno | 0) === NO_ROOM) {
                     $t1 = gm.max_rx = x, gm.min_rx = $t1;
                     $t2 = gm.max_ry = y, gm.min_ry = $t2;
                     gn.n_loc_filled = 0;
-                    flood_fill_rm(x, y, svn.nroom + 3 | 0, 0, 0);
+                    flood_fill_rm(x, y, svn.nroom + ROOMOFFSET | 0, FALSE, FALSE);
                     if (gn.n_loc_filled > 3) {
-                        await add_room(gm.min_rx, gm.min_ry, gm.max_rx, gm.max_ry, 0, 0, 1);
-                        svr.rooms[svn.nroom - 1 | 0].irregular = 1;
-                        if (svn.nroom >= 80) {
+                        await add_room(gm.min_rx, gm.min_ry, gm.max_rx, gm.max_ry, FALSE, OROOM, TRUE);
+                        svr.rooms[svn.nroom - 1 | 0].irregular = TRUE;
+                        if (svn.nroom >= MAXNROFROOMS * 2) {
                             break joinm$;
                         }
                     } else {
                         for (sx = gm.min_rx; sx <= gm.max_rx; sx = $c.i16(sx + 1)) {
                             for (sy = gm.min_ry; sy <= gm.max_ry; sy = $c.i16(sy + 1)) {
-                                if ((svl.level.locations[sx][sy].roomno | 0) === (svn.nroom + 3 | 0)) {
+                                if ((svl.level.locations[sx][sy].roomno | 0) === (svn.nroom + ROOMOFFSET | 0)) {
                                     svl.level.locations[sx][sy].typ = bg_typ;
-                                    svl.level.locations[sx][sy].roomno = (0) & 63;
+                                    svl.level.locations[sx][sy].roomno = (NO_ROOM) & 63;
                                 }
                             }
                         }
@@ -244,8 +254,8 @@ async function join_map(bg_typ, fg_typ) {   // mkmap.c:258
             em.x = $c.i16(croom2.lx + $c.div32(croom2.hx - croom2.lx | 0, 2) | 0);
             em.y = $c.i16(croom2.ly + $c.div32(croom2.hy - croom2.ly | 0, 2) | 0);
         }
-        await dig_corridor(sm, em, null, 0, fg_typ, bg_typ);
-        if (croom2.lx > croom.hx || (croom2.ly > croom.hy || croom2.hy < croom.ly) && (rng_log_enabled() ? (rng_log_set_caller($c.lit("mkmap.c"), 322, $c.lit("join_map")), rn2(3)) : rn2(3))) {
+        await dig_corridor(sm, em, null, FALSE, fg_typ, bg_typ);
+        if (croom2.lx > croom.hx || (croom2.ly > croom.hy || croom2.hy < croom.ly) && rn2(3)) {
             croom = croom2;
         }
         croom2 = $c.radd(croom2, 1);
@@ -255,13 +265,13 @@ async function join_map(bg_typ, fg_typ) {   // mkmap.c:258
 function finish_map(fg_typ, bg_typ, lit, walled, icedpools) {   // mkmap.c:331
     let x = 0, y = 0;
     if (walled) {
-        wallify_map(1, 0, 79, 20);
+        wallify_map(1, 0, COLNO - 1, ROWNO - 1);
     }
     if (lit) {
-        for (x = 1; x < 80; x = $c.i16(x + 1)) {
-            for (y = 0; y < 21; y = $c.i16(y + 1)) {
-                if (!(fg_typ < 16 /* POOL */) && svl.level.locations[x][y].typ === fg_typ || !(bg_typ < 16 /* POOL */) && svl.level.locations[x][y].typ === bg_typ || bg_typ === 13 /* TREE */ && svl.level.locations[x][y].typ === bg_typ || walled && (svl.level.locations[x][y].typ && svl.level.locations[x][y].typ <= 12 /* DBWALL */)) {
-                    svl.level.locations[x][y].lit = (1) & 1;
+        for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
+            for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
+                if (!IS_OBSTRUCTED(fg_typ) && svl.level.locations[x][y].typ === fg_typ || !IS_OBSTRUCTED(bg_typ) && svl.level.locations[x][y].typ === bg_typ || bg_typ === TREE && svl.level.locations[x][y].typ === bg_typ || walled && (svl.level.locations[x][y].typ && svl.level.locations[x][y].typ <= DBWALL)) {
+                    svl.level.locations[x][y].lit = (TRUE) & 1;
                 }
             }
         }
@@ -269,12 +279,12 @@ function finish_map(fg_typ, bg_typ, lit, walled, icedpools) {   // mkmap.c:331
             svr.rooms[x].rlit = 1;
         }
     }
-    for (x = 1; x < 80; x = $c.i16(x + 1)) {
-        for (y = 0; y < 21; y = $c.i16(y + 1)) {
-            if (svl.level.locations[x][y].typ === 20 /* LAVAPOOL */) {
-                svl.level.locations[x][y].lit = (1) & 1;
-            } else if (svl.level.locations[x][y].typ === 33 /* ICE */) {
-                svl.level.locations[x][y].flags = ((icedpools ? 8 : 16) >>> 0) & 31;
+    for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
+        for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
+            if (svl.level.locations[x][y].typ === LAVAPOOL) {
+                svl.level.locations[x][y].lit = (TRUE) & 1;
+            } else if (svl.level.locations[x][y].typ === ICE) {
+                svl.level.locations[x][y].flags = ((icedpools ? ICED.POOL : ICED.MOAT) >>> 0) & 31;
             }
         }
     }
@@ -301,8 +311,8 @@ function remove_room(roomno) {   // mkmap.c:412
     maxroom = $c.relem(svr.rooms, svn.nroom = svn.nroom - 1 | 0);
     if (!$c.peq(croom, maxroom)) {
         croom.$copyFrom(maxroom);
-        oroomno = (svn.nroom + 3 | 0) >>> 0;
-        roomno = roomno + 3 >>> 0;
+        oroomno = (svn.nroom + ROOMOFFSET | 0) >>> 0;
+        roomno = roomno + ROOMOFFSET >>> 0;
         for (x = croom.lx; x <= croom.hx; x = $c.i16(x + 1)) {
             for (y = croom.ly; y <= croom.hy; y = $c.i16(y + 1)) {
                 if (svl.level.locations[x][y].roomno === oroomno) {
@@ -315,7 +325,7 @@ function remove_room(roomno) {   // mkmap.c:412
 }
 export function litstate_rnd(litstate) {   // mkmap.c:443
     if (litstate < 0) {
-        return $c.i8((rng_log_enabled() ? (rng_log_set_caller($c.lit("mkmap.c"), 446, $c.lit("litstate_rnd")), rnd(1 + $c.abs(depth(u.uz)) | 0)) : rnd(1 + $c.abs(depth(u.uz)) | 0)) < 11 && (rng_log_enabled() ? (rng_log_set_caller($c.lit("mkmap.c"), 446, $c.lit("litstate_rnd")), rn2(77)) : rn2(77)) ? 1 : 0);
+        return $c.i8(rnd(1 + $c.abs(depth(u.uz)) | 0) < 11 && rn2(77) ? TRUE : FALSE);
     }
     return $c.i8(litstate);
 }
@@ -328,17 +338,17 @@ export async function mkmap(init_lev) {   // mkmap.c:451
     lit = init_lev.lit;
     walled = init_lev.walled;
     lit = $c.i16(litstate_rnd(lit));
-    $t1 = $c.asArr(await alloc(1580), Int8Array), gn.new_locations = $t1;
+    $t1 = $c.asArr(await alloc((WIDTH + 1) * HEIGHT), Int8Array), gn.new_locations = $t1;
     init_map(bg_typ);
     init_fill(bg_typ, fg_typ);
-    for (i = 0; i < 1; i = i + 1 | 0) {
+    for (i = 0; i < N_P1_ITER; i = i + 1 | 0) {
         pass_one(bg_typ, fg_typ);
     }
-    for (i = 0; i < 1; i = i + 1 | 0) {
+    for (i = 0; i < N_P2_ITER; i = i + 1 | 0) {
         pass_two(bg_typ, fg_typ);
     }
     if (smooth) {
-        for (i = 0; i < 2; i = i + 1 | 0) {
+        for (i = 0; i < N_P3_ITER; i = i + 1 | 0) {
             pass_three(bg_typ, fg_typ);
         }
     }
@@ -347,28 +357,30 @@ export async function mkmap(init_lev) {   // mkmap.c:451
     }
     finish_map(fg_typ, bg_typ, $c.i8(lit), $c.i8(walled), init_lev.icedpools);
     if (walled && join) {
-        svl.level.flags.is_maze_lev = (0) & 1;
-        svl.level.flags.is_cavernous_lev = (1) & 1;
+        svl.level.flags.is_maze_lev = (FALSE) & 1;
+        svl.level.flags.is_cavernous_lev = (TRUE) & 1;
     }
     $c.free(gn.new_locations);
 }
 
 export function $init() {
     dirs.fill(0);
-    dirs[0] = -1;
-    dirs[1] = -1;
-    dirs[2] = -1;
-    dirs[3] = 0;
-    dirs[4] = -1;
-    dirs[5] = 1;
-    dirs[6] = 0;
-    dirs[7] = -1;
-    dirs[8] = 0;
-    dirs[9] = 1;
-    dirs[10] = 1;
-    dirs[11] = -1;
-    dirs[12] = 1;
-    dirs[13] = 0;
-    dirs[14] = 1;
-    dirs[15] = 1;
+    $c.init(dirs, [
+        -1,
+        -1,
+        -1,
+        0,
+        -1,
+        1,
+        0,
+        -1,
+        0,
+        1,
+        1,
+        -1,
+        1,
+        0,
+        1,
+        1
+    ]);
 }

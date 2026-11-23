@@ -2,20 +2,37 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { AM } from './align.h.js';
+import { ART } from './artilist.h.js';
+import { A } from './attrib.h.js';
 import { yn_function } from './cmd.js';
+import { NO_COLOR } from './color.h.js';
 import { cg, flags, gp, gr, gu, iflags, program_state, svp, svq } from './decl.js';
+import { S } from './defsym.h.js';
 import { nul_glyphinfo } from './display.js';
 import { nh_terminate, panic } from './end.js';
+import { FALSE, PL, QBUFSZ, TRUE } from './global.h.js';
+import { BP, NUM_BP } from './hack.h.js';
 import { eos, findword, highc, lowc, s_suffix, strNsubst, strkitten, strncmpi, strstri, strsubst, trimspaces } from './hacklib.js';
+import { is_female, is_male, is_neuter } from './mondata.macros.js';
+import { M2, M3, MS } from './monflag.h.js';
 import { mons } from './monst.js';
+import { PM } from './monsters.h.js';
 import { objects } from './objects.js';
+import { SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CURE_SICKNESS, SPE_DETECT_TREASURE, SPE_DIG, SPE_HASTE_SELF, SPE_INVISIBILITY, SPE_LIGHT, SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE, SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_TURN_UNDEAD, STRANGE_OBJECT } from './objects.h.js';
 import { an } from './objnam.js';
+import { NON_PM } from './permonst.h.js';
 import { impossible, pline } from './pline.js';
 import { align_gtitle } from './pray.js';
-import { rn2, rn2_on_display_rng, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { rn2, rn2_on_display_rng } from './rnd.js';
+import { P } from './skills.h.js';
 import { Strlen_ } from './strutil.js';
 import { sysopt } from './sys.js';
-import { add_menu, add_menu_str, select_menu, windowprocs } from './windows.js';
+import { add_menu, add_menu_str, select_menu } from './windows.js';
+import { RS } from './winprocs.h.js';
+import { RS_menu_arg, askname, create_nhwindow, destroy_nhwindow, end_menu, putstr, start_menu } from './winprocs.macros.js';
+import { ATR, MENU, NHW, PICK, WIN_ERR } from './wintype.h.js';
+import { ROLE_ALIGNS, ROLE_FEMALE, ROLE_GENDERS, ROLE_GENDMASK, ROLE_MALE, ROLE_NEUTER, ROLE_NONE, ROLE_RACEMASK, ROLE_RANDOM } from './you.h.js';
 
 const root_plselection_prompt$err_ret = new Int8Array(13);   // static in root_plselection_prompt()
 const role_selection_prolog$choosing = new Int8Array(14);   // static in role_selection_prolog()
@@ -36,7 +53,7 @@ export function randrole(for_display) {   // role.c:719
     if (for_display) {
         res = rn2_on_display_rng(res);
     } else {
-        res = rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 726, $c.lit("randrole")), rn2(res)) : rn2(res);
+        res = rn2(res);
     }
     return res;
 }
@@ -44,16 +61,16 @@ function randrole_filtered() {   // role.c:731
     let i = 0, n = 0, set = new Int32Array(14), $t1;
     n = 0;
     for (i = 0; i < 13; i = i + 1 | 0) {
-        if (ok_role(i, -1, -1, -1) && ok_race(i, -2, -1, -1) && ok_gend(i, -1, -2, -1) && ok_align(i, -1, -1, -2)) {
+        if (ok_role(i, ROLE_NONE, ROLE_NONE, ROLE_NONE) && ok_race(i, ROLE_RANDOM, ROLE_NONE, ROLE_NONE) && ok_gend(i, ROLE_NONE, ROLE_RANDOM, ROLE_NONE) && ok_align(i, ROLE_NONE, ROLE_NONE, ROLE_RANDOM)) {
             set[($t1 = n, n = $t1 + 1 | 0, $t1)] = i;
         }
     }
-    return n ? set[rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 743, $c.lit("randrole_filtered")), rn2(n)) : rn2(n)] : randrole(0);
+    return n ? set[rn2(n)] : randrole(FALSE);
 }
 export async function str2role(str) {   // role.c:747
     let i = 0, len = 0;
     if (!str || !str.get(0)) {
-        return -1;
+        return ROLE_NONE;
     }
     len = await Strlen_(str, $c.lit("str2role"), 756) | 0;
     for (i = 0; roles[i].name.m; i = i + 1 | 0) {
@@ -68,26 +85,26 @@ export async function str2role(str) {   // role.c:747
         }
     }
     if (len === 1 && (str.get(0) === 42 || str.get(0) === 64) || !strncmpi(str, new $c.Ptr(randomstr, 0), len)) {
-        return -2;
+        return ROLE_RANDOM;
     }
-    return -1;
+    return ROLE_NONE;
 }
 export function validrace(rolenum, racenum) {   // role.c:778
-    return $c.i8(racenum >= 0 && racenum < 5 && roles[rolenum].allow & races[racenum].allow & 4088 ? 1 : 0);
+    return $c.i8(racenum >= 0 && racenum < 5 && roles[rolenum].allow & races[racenum].allow & ROLE_RACEMASK ? 1 : 0);
 }
 export function randrace(rolenum) {   // role.c:787
     let i = 0, n = 0;
     n = 0;
     for (i = 0; races[i].noun; i = i + 1 | 0) {
-        if (roles[rolenum].allow & races[i].allow & 4088) {
+        if (roles[rolenum].allow & races[i].allow & ROLE_RACEMASK) {
             n = n + 1 | 0;
         }
     }
     if (n) {
-        n = $c.div32(rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 799, $c.lit("randrace")), rn2(Math.imul(n, 100))) : rn2(Math.imul(n, 100)), 100);
+        n = $c.div32(rn2(Math.imul(n, 100)), 100);
     }
     for (i = 0; races[i].noun; i = i + 1 | 0) {
-        if (roles[rolenum].allow & races[i].allow & 4088) {
+        if (roles[rolenum].allow & races[i].allow & ROLE_RACEMASK) {
             if (n) {
                 n = n - 1 | 0;
             } else {
@@ -95,12 +112,12 @@ export function randrace(rolenum) {   // role.c:787
             }
         }
     }
-    return rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 809, $c.lit("randrace")), rn2(5)) : rn2(5);
+    return rn2(5);
 }
 export async function str2race(str) {   // role.c:813
     let i = 0, len = 0;
     if (!str || !str.get(0)) {
-        return -1;
+        return ROLE_NONE;
     }
     len = await Strlen_(str, $c.lit("str2race"), 822) | 0;
     for (i = 0; races[i].noun; i = i + 1 | 0) {
@@ -115,26 +132,26 @@ export async function str2race(str) {   // role.c:813
         }
     }
     if (len === 1 && (str.get(0) === 42 || str.get(0) === 64) || !strncmpi(str, new $c.Ptr(randomstr, 0), len)) {
-        return -2;
+        return ROLE_RANDOM;
     }
-    return -1;
+    return ROLE_NONE;
 }
 export function validgend(rolenum, racenum, gendnum) {   // role.c:844
-    return $c.i8(gendnum >= 0 && gendnum < 2 && roles[rolenum].allow & races[racenum].allow & genders[gendnum].allow & 61440 ? 1 : 0);
+    return $c.i8(gendnum >= 0 && gendnum < ROLE_GENDERS && roles[rolenum].allow & races[racenum].allow & genders[gendnum].allow & ROLE_GENDMASK ? 1 : 0);
 }
 export function randgend(rolenum, racenum) {   // role.c:853
     let i = 0, n = 0;
     n = 0;
-    for (i = 0; i < 2; i = i + 1 | 0) {
-        if (roles[rolenum].allow & races[racenum].allow & genders[i].allow & 61440) {
+    for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
+        if (roles[rolenum].allow & races[racenum].allow & genders[i].allow & ROLE_GENDMASK) {
             n = n + 1 | 0;
         }
     }
     if (n) {
-        n = rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 865, $c.lit("randgend")), rn2(n)) : rn2(n);
+        n = rn2(n);
     }
-    for (i = 0; i < 2; i = i + 1 | 0) {
-        if (roles[rolenum].allow & races[racenum].allow & genders[i].allow & 61440) {
+    for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
+        if (roles[rolenum].allow & races[racenum].allow & genders[i].allow & ROLE_GENDMASK) {
             if (n) {
                 n = n - 1 | 0;
             } else {
@@ -142,15 +159,15 @@ export function randgend(rolenum, racenum) {   // role.c:853
             }
         }
     }
-    return rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 876, $c.lit("randgend")), rn2(2)) : rn2(2);
+    return rn2(ROLE_GENDERS);
 }
 export async function str2gend(str) {   // role.c:880
     let i = 0, len = 0;
     if (!str || !str.get(0)) {
-        return -1;
+        return ROLE_NONE;
     }
     len = await Strlen_(str, $c.lit("str2gend"), 889) | 0;
-    for (i = 0; i < 2; i = i + 1 | 0) {
+    for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
         if (!strncmpi(str, genders[i].adj, len)) {
             return i;
         }
@@ -159,26 +176,26 @@ export async function str2gend(str) {   // role.c:880
         }
     }
     if (len === 1 && (str.get(0) === 42 || str.get(0) === 64) || !strncmpi(str, new $c.Ptr(randomstr, 0), len)) {
-        return -2;
+        return ROLE_RANDOM;
     }
-    return -1;
+    return ROLE_NONE;
 }
 export function validalign(rolenum, racenum, alignnum) {   // role.c:907
-    return $c.i8(alignnum >= 0 && alignnum < 3 && roles[rolenum].allow & races[racenum].allow & aligns[alignnum].allow & 7 ? 1 : 0);
+    return $c.i8(alignnum >= 0 && alignnum < ROLE_ALIGNS && roles[rolenum].allow & races[racenum].allow & aligns[alignnum].allow & AM.MASK ? 1 : 0);
 }
 export function randalign(rolenum, racenum) {   // role.c:916
     let i = 0, n = 0;
     n = 0;
-    for (i = 0; i < 3; i = i + 1 | 0) {
-        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow & 7) {
+    for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
+        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow & AM.MASK) {
             n = n + 1 | 0;
         }
     }
     if (n) {
-        n = rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 928, $c.lit("randalign")), rn2(n)) : rn2(n);
+        n = rn2(n);
     }
-    for (i = 0; i < 3; i = i + 1 | 0) {
-        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow & 7) {
+    for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
+        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow & AM.MASK) {
             if (n) {
                 n = n - 1 | 0;
             } else {
@@ -186,15 +203,15 @@ export function randalign(rolenum, racenum) {   // role.c:916
             }
         }
     }
-    return rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 939, $c.lit("randalign")), rn2(3)) : rn2(3);
+    return rn2(ROLE_ALIGNS);
 }
 export async function str2align(str) {   // role.c:943
     let i = 0, len = 0;
     if (!str || !str.get(0)) {
-        return -1;
+        return ROLE_NONE;
     }
     len = await Strlen_(str, $c.lit("str2align"), 952) | 0;
-    for (i = 0; i < 3; i = i + 1 | 0) {
+    for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
         if (!strncmpi(str, aligns[i].adj, len)) {
             return i;
         }
@@ -203,95 +220,95 @@ export async function str2align(str) {   // role.c:943
         }
     }
     if (len === 1 && (str.get(0) === 42 || str.get(0) === 64) || !strncmpi(str, new $c.Ptr(randomstr, 0), len)) {
-        return -2;
+        return ROLE_RANDOM;
     }
-    return -1;
+    return ROLE_NONE;
 }
 export function ok_role(rolenum, racenum, gendnum, alignnum) {   // role.c:971
     let i = 0, allow = 0;
     if (rolenum >= 0 && rolenum < 13) {
         if (gr.rfilter.roles[rolenum]) {
-            return 0;
+            return FALSE;
         }
         allow = roles[rolenum].allow;
-        if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & 4088)) {
-            return 0;
+        if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & ROLE_RACEMASK)) {
+            return FALSE;
         }
-        if (gendnum >= 0 && gendnum < 2 && !(allow & genders[gendnum].allow & 61440)) {
-            return 0;
+        if (gendnum >= 0 && gendnum < ROLE_GENDERS && !(allow & genders[gendnum].allow & ROLE_GENDMASK)) {
+            return FALSE;
         }
-        if (alignnum >= 0 && alignnum < 3 && !(allow & aligns[alignnum].allow & 7)) {
-            return 0;
+        if (alignnum >= 0 && alignnum < ROLE_ALIGNS && !(allow & aligns[alignnum].allow & AM.MASK)) {
+            return FALSE;
         }
-        return 1;
+        return TRUE;
     } else {
         for (i = 0; i < 13; i = i + 1 | 0) {
             if (gr.rfilter.roles[i]) {
                 continue;
             }
             allow = roles[i].allow;
-            if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & 4088)) {
+            if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & ROLE_RACEMASK)) {
                 continue;
             }
-            if (gendnum >= 0 && gendnum < 2 && !(allow & genders[gendnum].allow & 61440)) {
+            if (gendnum >= 0 && gendnum < ROLE_GENDERS && !(allow & genders[gendnum].allow & ROLE_GENDMASK)) {
                 continue;
             }
-            if (alignnum >= 0 && alignnum < 3 && !(allow & aligns[alignnum].allow & 7)) {
+            if (alignnum >= 0 && alignnum < ROLE_ALIGNS && !(allow & aligns[alignnum].allow & AM.MASK)) {
                 continue;
             }
-            return 1;
+            return TRUE;
         }
-        return 0;
+        return FALSE;
     }
 }
 export function pick_role(racenum, gendnum, alignnum, pickhow) {   // role.c:1015
     let i = 0, roles_ok = 0, set = new Int32Array(14), $t1;
     roles_ok = 0;
     for (i = 0; i < 13; i = i + 1 | 0) {
-        if (ok_role(i, racenum, gendnum, alignnum) && ok_race(i, racenum >= 0 ? racenum : -2, gendnum, alignnum) && ok_gend(i, racenum, gendnum >= 0 ? gendnum : -2, alignnum) && ok_align(i, racenum, gendnum, alignnum >= 0 ? alignnum : -2)) {
+        if (ok_role(i, racenum, gendnum, alignnum) && ok_race(i, racenum >= 0 ? racenum : ROLE_RANDOM, gendnum, alignnum) && ok_gend(i, racenum, gendnum >= 0 ? gendnum : ROLE_RANDOM, alignnum) && ok_align(i, racenum, gendnum, alignnum >= 0 ? alignnum : ROLE_RANDOM)) {
             set[($t1 = roles_ok, roles_ok = $t1 + 1 | 0, $t1)] = i;
         }
     }
-    if (roles_ok === 0 || roles_ok > 1 && pickhow === 1) {
-        return -1;
+    if (roles_ok === 0 || roles_ok > 1 && pickhow === PICK.RIGID) {
+        return ROLE_NONE;
     }
-    return set[rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 1032, $c.lit("pick_role")), rn2(roles_ok)) : rn2(roles_ok)];
+    return set[rn2(roles_ok)];
 }
 export function ok_race(rolenum, racenum, gendnum, alignnum) {   // role.c:1037
     let i = 0, allow = 0;
     if (racenum >= 0 && racenum < 5) {
         if (gr.rfilter.mask & races[racenum].selfmask) {
-            return 0;
+            return FALSE;
         }
         allow = races[racenum].allow;
-        if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & 4088)) {
-            return 0;
+        if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & ROLE_RACEMASK)) {
+            return FALSE;
         }
-        if (gendnum >= 0 && gendnum < 2 && !(allow & genders[gendnum].allow & 61440)) {
-            return 0;
+        if (gendnum >= 0 && gendnum < ROLE_GENDERS && !(allow & genders[gendnum].allow & ROLE_GENDMASK)) {
+            return FALSE;
         }
-        if (alignnum >= 0 && alignnum < 3 && !(allow & aligns[alignnum].allow & 7)) {
-            return 0;
+        if (alignnum >= 0 && alignnum < ROLE_ALIGNS && !(allow & aligns[alignnum].allow & AM.MASK)) {
+            return FALSE;
         }
-        return 1;
+        return TRUE;
     } else {
         for (i = 0; i < 5; i = i + 1 | 0) {
             if (gr.rfilter.mask & races[i].selfmask) {
                 continue;
             }
             allow = races[i].allow;
-            if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & 4088)) {
+            if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & ROLE_RACEMASK)) {
                 continue;
             }
-            if (gendnum >= 0 && gendnum < 2 && !(allow & genders[gendnum].allow & 61440)) {
+            if (gendnum >= 0 && gendnum < ROLE_GENDERS && !(allow & genders[gendnum].allow & ROLE_GENDMASK)) {
                 continue;
             }
-            if (alignnum >= 0 && alignnum < 3 && !(allow & aligns[alignnum].allow & 7)) {
+            if (alignnum >= 0 && alignnum < ROLE_ALIGNS && !(allow & aligns[alignnum].allow & AM.MASK)) {
                 continue;
             }
-            return 1;
+            return TRUE;
         }
-        return 0;
+        return FALSE;
     }
 }
 export function pick_race(rolenum, gendnum, alignnum, pickhow) {   // role.c:1081
@@ -302,10 +319,10 @@ export function pick_race(rolenum, gendnum, alignnum, pickhow) {   // role.c:108
             races_ok = races_ok + 1 | 0;
         }
     }
-    if (races_ok === 0 || races_ok > 1 && pickhow === 1) {
-        return -1;
+    if (races_ok === 0 || races_ok > 1 && pickhow === PICK.RIGID) {
+        return ROLE_NONE;
     }
-    races_ok = rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 1092, $c.lit("pick_race")), rn2(races_ok)) : rn2(races_ok);
+    races_ok = rn2(races_ok);
     for (i = 0; i < 5; i = i + 1 | 0) {
         if (ok_race(rolenum, i, gendnum, alignnum)) {
             if (races_ok === 0) {
@@ -315,52 +332,52 @@ export function pick_race(rolenum, gendnum, alignnum, pickhow) {   // role.c:108
             }
         }
     }
-    return -1;
+    return ROLE_NONE;
 }
 export function ok_gend(rolenum, racenum, gendnum, alignnum) {   // role.c:1107
     let i = 0, allow = 0;
-    if (gendnum >= 0 && gendnum < 2) {
+    if (gendnum >= 0 && gendnum < ROLE_GENDERS) {
         if (gr.rfilter.mask & genders[gendnum].allow) {
-            return 0;
+            return FALSE;
         }
         allow = genders[gendnum].allow;
-        if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & 61440)) {
-            return 0;
+        if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & ROLE_GENDMASK)) {
+            return FALSE;
         }
-        if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & 61440)) {
-            return 0;
+        if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & ROLE_GENDMASK)) {
+            return FALSE;
         }
-        return 1;
+        return TRUE;
     } else {
-        for (i = 0; i < 2; i = i + 1 | 0) {
+        for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
             if (gr.rfilter.mask & genders[i].allow) {
                 continue;
             }
             allow = genders[i].allow;
-            if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & 61440)) {
+            if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & ROLE_GENDMASK)) {
                 continue;
             }
-            if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & 61440)) {
+            if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & ROLE_GENDMASK)) {
                 continue;
             }
-            return 1;
+            return TRUE;
         }
-        return 0;
+        return FALSE;
     }
 }
 export function pick_gend(rolenum, racenum, alignnum, pickhow) {   // role.c:1146
     let i = 0, gends_ok = 0;
     gends_ok = 0;
-    for (i = 0; i < 2; i = i + 1 | 0) {
+    for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
         if (ok_gend(rolenum, racenum, i, alignnum)) {
             gends_ok = gends_ok + 1 | 0;
         }
     }
-    if (gends_ok === 0 || gends_ok > 1 && pickhow === 1) {
-        return -1;
+    if (gends_ok === 0 || gends_ok > 1 && pickhow === PICK.RIGID) {
+        return ROLE_NONE;
     }
-    gends_ok = rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 1157, $c.lit("pick_gend")), rn2(gends_ok)) : rn2(gends_ok);
-    for (i = 0; i < 2; i = i + 1 | 0) {
+    gends_ok = rn2(gends_ok);
+    for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
         if (ok_gend(rolenum, racenum, i, alignnum)) {
             if (gends_ok === 0) {
                 return i;
@@ -369,52 +386,52 @@ export function pick_gend(rolenum, racenum, alignnum, pickhow) {   // role.c:114
             }
         }
     }
-    return -1;
+    return ROLE_NONE;
 }
 export function ok_align(rolenum, racenum, gendnum, alignnum) {   // role.c:1172
     let i = 0, allow = 0;
-    if (alignnum >= 0 && alignnum < 3) {
+    if (alignnum >= 0 && alignnum < ROLE_ALIGNS) {
         if (gr.rfilter.mask & aligns[alignnum].allow) {
-            return 0;
+            return FALSE;
         }
         allow = aligns[alignnum].allow;
-        if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & 7)) {
-            return 0;
+        if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & AM.MASK)) {
+            return FALSE;
         }
-        if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & 7)) {
-            return 0;
+        if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & AM.MASK)) {
+            return FALSE;
         }
-        return 1;
+        return TRUE;
     } else {
-        for (i = 0; i < 3; i = i + 1 | 0) {
+        for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
             if (gr.rfilter.mask & aligns[i].allow) {
                 continue;
             }
             allow = aligns[i].allow;
-            if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & 7)) {
+            if (rolenum >= 0 && rolenum < 13 && !(allow & roles[rolenum].allow & AM.MASK)) {
                 continue;
             }
-            if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & 7)) {
+            if (racenum >= 0 && racenum < 5 && !(allow & races[racenum].allow & AM.MASK)) {
                 continue;
             }
-            return 1;
+            return TRUE;
         }
-        return 0;
+        return FALSE;
     }
 }
 export function pick_align(rolenum, racenum, gendnum, pickhow) {   // role.c:1211
     let i = 0, aligns_ok = 0;
     aligns_ok = 0;
-    for (i = 0; i < 3; i = i + 1 | 0) {
+    for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
         if (ok_align(rolenum, racenum, gendnum, i)) {
             aligns_ok = aligns_ok + 1 | 0;
         }
     }
-    if (aligns_ok === 0 || aligns_ok > 1 && pickhow === 1) {
-        return -1;
+    if (aligns_ok === 0 || aligns_ok > 1 && pickhow === PICK.RIGID) {
+        return ROLE_NONE;
     }
-    aligns_ok = rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 1222, $c.lit("pick_align")), rn2(aligns_ok)) : rn2(aligns_ok);
-    for (i = 0; i < 3; i = i + 1 | 0) {
+    aligns_ok = rn2(aligns_ok);
+    for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
         if (ok_align(rolenum, racenum, gendnum, i)) {
             if (aligns_ok === 0) {
                 return i;
@@ -423,91 +440,91 @@ export function pick_align(rolenum, racenum, gendnum, pickhow) {   // role.c:121
             }
         }
     }
-    return -1;
+    return ROLE_NONE;
 }
 export function rigid_role_checks() {   // role.c:1235
     let tmp = 0, $t1, $t2, $t3, $t4, $t5;
-    if (flags.initrole === -2) {
-        $t1 = pick_role(flags.initrace, flags.initgend, flags.initalign, 0), flags.initrole = $t1;
+    if (flags.initrole === ROLE_RANDOM) {
+        $t1 = pick_role(flags.initrace, flags.initgend, flags.initalign, PICK.RANDOM), flags.initrole = $t1;
         if (flags.initrole < 0) {
             $t2 = randrole_filtered(), flags.initrole = $t2;
         }
     }
-    if (flags.initrace === -2 && (tmp = pick_race(flags.initrole, flags.initgend, flags.initalign, 0)) !== -1) {
+    if (flags.initrace === ROLE_RANDOM && (tmp = pick_race(flags.initrole, flags.initgend, flags.initalign, PICK.RANDOM)) !== ROLE_NONE) {
         flags.initrace = tmp;
     }
-    if (flags.initalign === -2 && (tmp = pick_align(flags.initrole, flags.initrace, flags.initgend, 0)) !== -1) {
+    if (flags.initalign === ROLE_RANDOM && (tmp = pick_align(flags.initrole, flags.initrace, flags.initgend, PICK.RANDOM)) !== ROLE_NONE) {
         flags.initalign = tmp;
     }
-    if (flags.initgend === -2 && (tmp = pick_gend(flags.initrole, flags.initrace, flags.initalign, 0)) !== -1) {
+    if (flags.initgend === ROLE_RANDOM && (tmp = pick_gend(flags.initrole, flags.initrace, flags.initalign, PICK.RANDOM)) !== ROLE_NONE) {
         flags.initgend = tmp;
     }
-    if (flags.initrole !== -1) {
-        if (flags.initrace === -1) {
-            $t3 = pick_race(flags.initrole, flags.initgend, flags.initalign, 1), flags.initrace = $t3;
+    if (flags.initrole !== ROLE_NONE) {
+        if (flags.initrace === ROLE_NONE) {
+            $t3 = pick_race(flags.initrole, flags.initgend, flags.initalign, PICK.RIGID), flags.initrace = $t3;
         }
-        if (flags.initalign === -1) {
-            $t4 = pick_align(flags.initrole, flags.initrace, flags.initgend, 1), flags.initalign = $t4;
+        if (flags.initalign === ROLE_NONE) {
+            $t4 = pick_align(flags.initrole, flags.initrace, flags.initgend, PICK.RIGID), flags.initalign = $t4;
         }
-        if (flags.initgend === -1) {
-            $t5 = pick_gend(flags.initrole, flags.initrace, flags.initalign, 1), flags.initgend = $t5;
+        if (flags.initgend === ROLE_NONE) {
+            $t5 = pick_gend(flags.initrole, flags.initrace, flags.initalign, PICK.RIGID), flags.initgend = $t5;
         }
     }
 }
 export async function setrolefilter(bufp) {   // role.c:1284
     let i = 0, reslt = 0;
-    reslt = 1;
-    if ((i = await str2role(bufp)) !== -1 && i !== -2) {
-        gr.rfilter.roles[i] = 1;
-    } else if ((i = await str2race(bufp)) !== -1 && i !== -2) {
+    reslt = TRUE;
+    if ((i = await str2role(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM) {
+        gr.rfilter.roles[i] = TRUE;
+    } else if ((i = await str2race(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM) {
         gr.rfilter.mask = $c.i16(gr.rfilter.mask | races[i].selfmask);
-    } else if ((i = await str2gend(bufp)) !== -1 && i !== -2) {
+    } else if ((i = await str2gend(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM) {
         gr.rfilter.mask = $c.i16(gr.rfilter.mask | genders[i].allow);
-    } else if ((i = await str2align(bufp)) !== -1 && i !== -2) {
+    } else if ((i = await str2align(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM) {
         gr.rfilter.mask = $c.i16(gr.rfilter.mask | aligns[i].allow);
     } else {
-        reslt = 0;
+        reslt = FALSE;
     }
     return reslt;
 }
 export function gotrolefilter() {   // role.c:1303
     let i = 0;
     if (gr.rfilter.mask) {
-        return 1;
+        return TRUE;
     }
     for (i = 0; i < 13; i = i + 1 | 0) {
         if (gr.rfilter.roles[i]) {
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 export async function rolefilterstring(outbuf, which) {   // role.c:1318
     let i = 0, $t1;
     $t1 = outbuf.set(1, 0), outbuf.set(0, $t1);
     switch (which) {
-        case 1:
+        case RS.ROLE:
             for (i = 0; i < 13; i = i + 1 | 0) {
                 if (gr.rfilter.roles[i]) {
                     $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(" !%.3s"), roles[i].name.m);
                 }
             }
             break;
-        case 2:
+        case RS.RACE:
             for (i = 0; i < 5; i = i + 1 | 0) {
                 if ((gr.rfilter.mask & races[i].selfmask) !== 0) {
                     $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(" !%s"), races[i].noun);
                 }
             }
             break;
-        case 3:
+        case RS.GENDER:
             for (i = 0; i < 3; i = i + 1 | 0) {
                 if ((gr.rfilter.mask & genders[i].allow) !== 0) {
                     $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(" !%s"), genders[i].adj);
                 }
             }
             break;
-        case 4:
+        case RS.ALGNMNT:
             for (i = 0; i < 3; i = i + 1 | 0) {
                 if ((gr.rfilter.mask & aligns[i].allow) !== 0) {
                     $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(" !%s"), aligns[i].adj);
@@ -524,21 +541,21 @@ export async function rolefilterstring(outbuf, which) {   // role.c:1318
 export function clearrolefilter(which) {   // role.c:1358
     let i = 0;
     switch (which) {
-        case 5:
+        case RS.filter:
             gr.rfilter.mask = 0;
-        case 1:
+        case RS.ROLE:
             for (i = 0; i < 13; i = i + 1 | 0) {
-                gr.rfilter.roles[i] = 0;
+                gr.rfilter.roles[i] = FALSE;
             }
             break;
-        case 2:
-            gr.rfilter.mask = $c.i16(gr.rfilter.mask & -4089);
+        case RS.RACE:
+            gr.rfilter.mask = $c.i16(gr.rfilter.mask & ~ROLE_RACEMASK);
             break;
-        case 3:
-            gr.rfilter.mask = $c.i16(gr.rfilter.mask & -61441);
+        case RS.GENDER:
+            gr.rfilter.mask = $c.i16(gr.rfilter.mask & ~ROLE_GENDMASK);
             break;
-        case 4:
-            gr.rfilter.mask = $c.i16(gr.rfilter.mask & -8);
+        case RS.ALGNMNT:
+            gr.rfilter.mask = $c.i16(gr.rfilter.mask & ~AM.MASK);
             break;
     }
 }
@@ -559,13 +576,13 @@ function role_gendercount(rolenum) {   // role.c:1399
     let gendcount = 0;
     gendcount = 0;
     if (validrole(rolenum)) {
-        if (roles[rolenum].allow & 4096) {
+        if (roles[rolenum].allow & ROLE_MALE) {
             gendcount = gendcount + 1 | 0;
         }
-        if (roles[rolenum].allow & 8192) {
+        if (roles[rolenum].allow & ROLE_FEMALE) {
             gendcount = gendcount + 1 | 0;
         }
-        if (roles[rolenum].allow & 16384) {
+        if (roles[rolenum].allow & ROLE_NEUTER) {
             gendcount = gendcount + 1 | 0;
         }
     }
@@ -574,14 +591,14 @@ function role_gendercount(rolenum) {   // role.c:1399
 function race_alignmentcount(racenum) {   // role.c:1415
     let aligncount = 0;
     aligncount = 0;
-    if (racenum !== -1 && racenum !== -2) {
-        if (races[racenum].allow & 1) {
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM) {
+        if (races[racenum].allow & AM.CHAOTIC) {
             aligncount = aligncount + 1 | 0;
         }
-        if (races[racenum].allow & 4) {
+        if (races[racenum].allow & AM.LAWFUL) {
             aligncount = aligncount + 1 | 0;
         }
-        if (races[racenum].allow & 2) {
+        if (races[racenum].allow & AM.NEUTRAL) {
             aligncount = aligncount + 1 | 0;
         }
     }
@@ -591,78 +608,78 @@ export function root_plselection_prompt(suppliedbuf, buflen, rolenum, racenum, g
     let k = 0, gendercount = 0, aligncount = 0, buf = new Int8Array(256), donefirst = 0;
     gendercount = 0;
     aligncount = 0;
-    donefirst = 0;
+    donefirst = FALSE;
     if (!suppliedbuf || buflen < 1) {
         return new $c.Ptr(root_plselection_prompt$err_ret, 0);
     }
     gr.role_post_attribs = 0;
-    for (k = 0; k < 4; k = k + 1 | 0) {
+    for (k = 0; k < NUM_BP; k = k + 1 | 0) {
         gr.role_pa[k] = 0;
     }
     buf[0] = 0;
     suppliedbuf.set(0, 0);
-    if (racenum !== -1 && racenum !== -2) {
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM) {
         aligncount = race_alignmentcount(racenum);
     }
-    if (alignnum !== -1 && alignnum !== -2 && ok_align(rolenum, racenum, gendnum, alignnum)) {
+    if (alignnum !== ROLE_NONE && alignnum !== ROLE_RANDOM && ok_align(rolenum, racenum, gendnum, alignnum)) {
         if (donefirst) {
             $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), $c.lit(" "), 256);
         }
         $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), aligns[alignnum].adj, 256);
-        donefirst = 1;
+        donefirst = TRUE;
     } else {
-        if (alignnum !== -2) {
-            alignnum = -1;
+        if (alignnum !== ROLE_RANDOM) {
+            alignnum = ROLE_NONE;
         }
-        if (racenum !== -1 && racenum !== -2 && ok_race(rolenum, racenum, gendnum, alignnum) && aligncount > 1 || (racenum === -1 || racenum === -2)) {
-            gr.role_pa[0] = 1;
+        if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM && ok_race(rolenum, racenum, gendnum, alignnum) && aligncount > 1 || (racenum === ROLE_NONE || racenum === ROLE_RANDOM)) {
+            gr.role_pa[BP.ALIGN] = 1;
             gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1);
         }
     }
     if (validrole(rolenum)) {
         gendercount = role_gendercount(rolenum);
     }
-    if (gendnum !== -1 && gendnum !== -2) {
+    if (gendnum !== ROLE_NONE && gendnum !== ROLE_RANDOM) {
         if (validrole(rolenum)) {
-            if (rolenum !== -1 && gendercount > 1 && !roles[rolenum].name.f) {
+            if (rolenum !== ROLE_NONE && gendercount > 1 && !roles[rolenum].name.f) {
                 if (donefirst) {
                     $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), $c.lit(" "), 256);
                 }
                 $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), genders[gendnum].adj, 256);
-                donefirst = 1;
+                donefirst = TRUE;
             }
         } else {
             if (donefirst) {
                 $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), $c.lit(" "), 256);
             }
             $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), genders[gendnum].adj, 256);
-            donefirst = 1;
+            donefirst = TRUE;
         }
     } else {
         if (validrole(rolenum) && gendercount > 1 || !validrole(rolenum)) {
-            gr.role_pa[1] = 1;
+            gr.role_pa[BP.GEND] = 1;
             gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1);
         }
     }
-    if (racenum !== -1 && racenum !== -2) {
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM) {
         if (validrole(rolenum) && ok_race(rolenum, racenum, gendnum, alignnum)) {
             if (donefirst) {
                 $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), $c.lit(" "), 256);
             }
-            $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), rolenum === -1 ? races[racenum].noun : races[racenum].adj, 256);
-            donefirst = 1;
+            $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), rolenum === ROLE_NONE ? races[racenum].noun : races[racenum].adj, 256);
+            donefirst = TRUE;
         } else if (!validrole(rolenum)) {
             if (donefirst) {
                 $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), $c.lit(" "), 256);
             }
             $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), races[racenum].noun, 256);
-            donefirst = 1;
+            donefirst = TRUE;
         } else {
-            gr.role_pa[2] = 1;
+            gr.role_pa[BP.RACE] = 1;
             gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1);
         }
     } else {
-        gr.role_pa[2] = 1;
+        gr.role_pa[BP.RACE] = 1;
         gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1);
     }
     if (validrole(rolenum)) {
@@ -670,7 +687,7 @@ export function root_plselection_prompt(suppliedbuf, buflen, rolenum, racenum, g
         if (donefirst) {
             $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), $c.lit(" "), 256);
         }
-        if (gendnum !== -1) {
+        if (gendnum !== ROLE_NONE) {
             if (gendnum === 1 && roles[rolenum].name.f) {
                 $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), roles[rolenum].name.f, 256);
             } else {
@@ -685,12 +702,12 @@ export function root_plselection_prompt(suppliedbuf, buflen, rolenum, racenum, g
                 $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), roles[rolenum].name.m, 256);
             }
         }
-        donefirst = 1;
-    } else if (rolenum === -1) {
-        gr.role_pa[3] = 1;
+        donefirst = TRUE;
+    } else if (rolenum === ROLE_NONE) {
+        gr.role_pa[BP.ROLE] = 1;
         gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1);
     }
-    if ((racenum === -1 || racenum === -2) && !validrole(rolenum)) {
+    if ((racenum === ROLE_NONE || racenum === ROLE_RANDOM) && !validrole(rolenum)) {
         if (donefirst) {
             $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), $c.lit(" "), 256);
         }
@@ -707,11 +724,11 @@ export async function build_plselection_prompt(buf, buflen, rolenum, racenum, ge
     let defprompt = null, num_post_attribs = 0, tmpbuf = new Int8Array(256), p = null, $t1, $t2, $t3, $t4;
     defprompt = $c.lit("Shall I pick a character for you? [ynaq] ");
     num_post_attribs = 0;
-    if (buflen < 128) {
+    if (buflen < QBUFSZ) {
         return defprompt;
     }
     $c.__builtin___strcpy_chk(new $c.Ptr(tmpbuf, 0), $c.lit("Shall I pick "), 256);
-    if (racenum !== -1 || validrole(rolenum)) {
+    if (racenum !== ROLE_NONE || validrole(rolenum)) {
         $c.__builtin___strcat_chk(new $c.Ptr(tmpbuf, 0), $c.lit("your "), 256);
     } else {
         $c.__builtin___strcat_chk(new $c.Ptr(tmpbuf, 0), $c.lit("a "), 256);
@@ -724,34 +741,34 @@ export async function build_plselection_prompt(buf, buflen, rolenum, racenum, ge
     }
     num_post_attribs = gr.role_post_attribs;
     if (!num_post_attribs) {
-        if (flags.initrole === -1 && !gr.role_pa[3]) {
-            $t1 = gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1), gr.role_pa[3] = $t1;
+        if (flags.initrole === ROLE_NONE && !gr.role_pa[BP.ROLE]) {
+            $t1 = gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1), gr.role_pa[BP.ROLE] = $t1;
         }
-        if (flags.initrace === -1 && !gr.role_pa[2]) {
-            $t2 = gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1), gr.role_pa[2] = $t2;
+        if (flags.initrace === ROLE_NONE && !gr.role_pa[BP.RACE]) {
+            $t2 = gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1), gr.role_pa[BP.RACE] = $t2;
         }
-        if (flags.initalign === -1 && !gr.role_pa[0]) {
-            $t3 = gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1), gr.role_pa[0] = $t3;
+        if (flags.initalign === ROLE_NONE && !gr.role_pa[BP.ALIGN]) {
+            $t3 = gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1), gr.role_pa[BP.ALIGN] = $t3;
         }
-        if (flags.initgend === -1 && !gr.role_pa[1]) {
-            $t4 = gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1), gr.role_pa[1] = $t4;
+        if (flags.initgend === ROLE_NONE && !gr.role_pa[BP.GEND]) {
+            $t4 = gr.role_post_attribs = $c.i8(gr.role_post_attribs + 1), gr.role_pa[BP.GEND] = $t4;
         }
         num_post_attribs = gr.role_post_attribs;
     }
     if (num_post_attribs) {
-        if (gr.role_pa[2]) {
+        if (gr.role_pa[BP.RACE]) {
             promptsep(eos(buf), num_post_attribs);
             $c.__builtin___strcat_chk(buf, $c.lit("race"), -1);
         }
-        if (gr.role_pa[3]) {
+        if (gr.role_pa[BP.ROLE]) {
             promptsep(eos(buf), num_post_attribs);
             $c.__builtin___strcat_chk(buf, $c.lit("role"), -1);
         }
-        if (gr.role_pa[1]) {
+        if (gr.role_pa[BP.GEND]) {
             promptsep(eos(buf), num_post_attribs);
             $c.__builtin___strcat_chk(buf, $c.lit("gender"), -1);
         }
-        if (gr.role_pa[0]) {
+        if (gr.role_pa[BP.ALIGN]) {
             promptsep(eos(buf), num_post_attribs);
             $c.__builtin___strcat_chk(buf, $c.lit("alignment"), -1);
         }
@@ -766,7 +783,7 @@ export async function plnamesuffix() {   // role.c:1665
             svp.plname[0] = 0;
         } else {
             i = (eptr = $c.strchr(new $c.Ptr(svp.plname, 0).add(gp.plnamelen), 45)) !== null ? $c.i32($c.pdiff(eptr, new $c.Ptr(svp.plname, 0))) : await Strlen_(new $c.Ptr(svp.plname, 0), $c.lit("plnamesuffix"), 1680) | 0;
-            if (findword(sysopt.genericusers, new $c.Ptr(svp.plname, 0), i, 0)) {
+            if (findword(sysopt.genericusers, new $c.Ptr(svp.plname, 0), i, FALSE)) {
                 svp.plname[0] = 0;
             }
         }
@@ -776,7 +793,7 @@ export async function plnamesuffix() {   // role.c:1665
     }
     do {
         if (!svp.plname[0]) {
-            await windowprocs.win_askname();
+            await askname()();
             gp.plnamelen = 0;
         }
         sptr = new $c.Ptr(svp.plname, 0).add(gp.plnamelen);
@@ -788,13 +805,13 @@ export async function plnamesuffix() {   // role.c:1665
             if ((eptr = $c.strchr(sptr, 45)) !== null) {
                 ($t2 = eptr, eptr = $t2.add(1), $t2).set(0, 0);
             }
-            if ((i = await str2role(sptr)) !== -1) {
+            if ((i = await str2role(sptr)) !== ROLE_NONE) {
                 flags.initrole = i;
-            } else if ((i = await str2race(sptr)) !== -1) {
+            } else if ((i = await str2race(sptr)) !== ROLE_NONE) {
                 flags.initrace = i;
-            } else if ((i = await str2gend(sptr)) !== -1) {
+            } else if ((i = await str2gend(sptr)) !== ROLE_NONE) {
                 flags.initgend = i;
-            } else if ((i = await str2align(sptr)) !== -1) {
+            } else if ((i = await str2align(sptr)) !== ROLE_NONE) {
                 flags.initalign = i;
             }
         }
@@ -810,41 +827,41 @@ export async function role_selection_prolog(which, where) {   // role.c:1726
     if (r >= 0) {
         (!(r >= 0 && r < 13) ? 1 : 0) ? $c.__assert_rtn($c.lit("role_selection_prolog"), $c.lit("role.c"), 1739, $c.lit("IndexOkT(r, roles)")) : 0;
         allowmask = roles[r].allow;
-        if ((allowmask & 4088) === 8) {
+        if ((allowmask & ROLE_RACEMASK) === M2.HUMAN) {
             c = 0;
-        } else if (c >= 0 && c < 5 && !(allowmask & 4088 & races[c].allow)) {
-            c = -2;
+        } else if (c >= 0 && c < 5 && !(allowmask & ROLE_RACEMASK & races[c].allow)) {
+            c = ROLE_RANDOM;
         }
-        if ((allowmask & 61440) === 4096) {
+        if ((allowmask & ROLE_GENDMASK) === ROLE_MALE) {
             gend = 0;
-        } else if ((allowmask & 61440) === 8192) {
+        } else if ((allowmask & ROLE_GENDMASK) === ROLE_FEMALE) {
             gend = 1;
         }
-        if ((allowmask & 7) === 4) {
+        if ((allowmask & AM.MASK) === AM.LAWFUL) {
             a = 0;
-        } else if ((allowmask & 7) === 2) {
+        } else if ((allowmask & AM.MASK) === AM.NEUTRAL) {
             a = 1;
-        } else if ((allowmask & 7) === 1) {
+        } else if ((allowmask & AM.MASK) === AM.CHAOTIC) {
             a = 2;
         }
     }
     if (c >= 0) {
         (!(c >= 0 && c < 5) ? 1 : 0) ? $c.__assert_rtn($c.lit("role_selection_prolog"), $c.lit("role.c"), 1758, $c.lit("IndexOkT(c, races)")) : 0;
         allowmask = races[c].allow;
-        if ((allowmask & 7) === 4) {
+        if ((allowmask & AM.MASK) === AM.LAWFUL) {
             a = 0;
-        } else if ((allowmask & 7) === 2) {
+        } else if ((allowmask & AM.MASK) === AM.NEUTRAL) {
             a = 1;
-        } else if ((allowmask & 7) === 1) {
+        } else if ((allowmask & AM.MASK) === AM.CHAOTIC) {
             a = 2;
         }
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%12s "), $c.lit("name:"));
-    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === 0 ? new $c.Ptr(role_selection_prolog$choosing, 0) : !new $c.Ptr(svp.plname, 0).get(0) ? new $c.Ptr(role_selection_prolog$not_yet, 0) : new $c.Ptr(svp.plname, 0), 256);
-    await windowprocs.win_putstr(where, 0, new $c.Ptr(buf, 0));
+    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === RS.NAME ? new $c.Ptr(role_selection_prolog$choosing, 0) : !new $c.Ptr(svp.plname, 0).get(0) ? new $c.Ptr(role_selection_prolog$not_yet, 0) : new $c.Ptr(svp.plname, 0), 256);
+    await putstr()(where, 0, new $c.Ptr(buf, 0));
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%12s "), $c.lit("role:"));
-    (!(which === 1 || r === -1 || r === -2 || r >= 0 && r < 13) ? 1 : 0) ? $c.__assert_rtn($c.lit("role_selection_prolog"), $c.lit("role.c"), 1777, $c.lit("which == RS_ROLE || r == ROLE_NONE || r == ROLE_RANDOM || IndexOkT(r, roles)")) : 0;
-    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === 1 ? new $c.Ptr(role_selection_prolog$choosing, 0) : r === -1 ? new $c.Ptr(role_selection_prolog$not_yet, 0) : r === -2 ? new $c.Ptr(role_selection_prolog$rand_choice, 0) : roles[r].name.m, 256);
+    (!(which === RS.ROLE || r === ROLE_NONE || r === ROLE_RANDOM || r >= 0 && r < 13) ? 1 : 0) ? $c.__assert_rtn($c.lit("role_selection_prolog"), $c.lit("role.c"), 1777, $c.lit("which == RS_ROLE || r == ROLE_NONE || r == ROLE_RANDOM || IndexOkT(r, roles)")) : 0;
+    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === RS.ROLE ? new $c.Ptr(role_selection_prolog$choosing, 0) : r === ROLE_NONE ? new $c.Ptr(role_selection_prolog$not_yet, 0) : r === ROLE_RANDOM ? new $c.Ptr(role_selection_prolog$rand_choice, 0) : roles[r].name.m, 256);
     if (r >= 0 && roles[r].name.f) {
         if (gend === 1) {
             $c.__builtin___sprintf_chk($c.strchr(new $c.Ptr(buf, 0), 58), 0, -1, $c.lit(": %s"), roles[r].name.f);
@@ -852,17 +869,17 @@ export async function role_selection_prolog(which, where) {   // role.c:1726
             $c.__builtin___sprintf_chk(eos(new $c.Ptr(buf, 0)), 0, -1, $c.lit("/%s"), roles[r].name.f);
         }
     }
-    await windowprocs.win_putstr(where, 0, new $c.Ptr(buf, 0));
+    await putstr()(where, 0, new $c.Ptr(buf, 0));
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%12s "), $c.lit("race:"));
-    (!(which === 2 || c === -1 || c === -2 || c >= 0 && c < 5) ? 1 : 0) ? $c.__assert_rtn($c.lit("role_selection_prolog"), $c.lit("role.c"), 1794, $c.lit("which == RS_RACE || c == ROLE_NONE || c == ROLE_RANDOM || IndexOkT(c, races)")) : 0;
-    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === 2 ? new $c.Ptr(role_selection_prolog$choosing, 0) : c === -1 ? new $c.Ptr(role_selection_prolog$not_yet, 0) : c === -2 ? new $c.Ptr(role_selection_prolog$rand_choice, 0) : races[c].noun, 256);
-    await windowprocs.win_putstr(where, 0, new $c.Ptr(buf, 0));
+    (!(which === RS.RACE || c === ROLE_NONE || c === ROLE_RANDOM || c >= 0 && c < 5) ? 1 : 0) ? $c.__assert_rtn($c.lit("role_selection_prolog"), $c.lit("role.c"), 1794, $c.lit("which == RS_RACE || c == ROLE_NONE || c == ROLE_RANDOM || IndexOkT(c, races)")) : 0;
+    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === RS.RACE ? new $c.Ptr(role_selection_prolog$choosing, 0) : c === ROLE_NONE ? new $c.Ptr(role_selection_prolog$not_yet, 0) : c === ROLE_RANDOM ? new $c.Ptr(role_selection_prolog$rand_choice, 0) : races[c].noun, 256);
+    await putstr()(where, 0, new $c.Ptr(buf, 0));
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%12s "), $c.lit("gender:"));
-    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === 3 ? new $c.Ptr(role_selection_prolog$choosing, 0) : gend === -1 ? new $c.Ptr(role_selection_prolog$not_yet, 0) : gend === -2 ? new $c.Ptr(role_selection_prolog$rand_choice, 0) : genders[gend].adj, 256);
-    await windowprocs.win_putstr(where, 0, new $c.Ptr(buf, 0));
+    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === RS.GENDER ? new $c.Ptr(role_selection_prolog$choosing, 0) : gend === ROLE_NONE ? new $c.Ptr(role_selection_prolog$not_yet, 0) : gend === ROLE_RANDOM ? new $c.Ptr(role_selection_prolog$rand_choice, 0) : genders[gend].adj, 256);
+    await putstr()(where, 0, new $c.Ptr(buf, 0));
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%12s "), $c.lit("alignment:"));
-    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === 4 ? new $c.Ptr(role_selection_prolog$choosing, 0) : a === -1 ? new $c.Ptr(role_selection_prolog$not_yet, 0) : a === -2 ? new $c.Ptr(role_selection_prolog$rand_choice, 0) : aligns[a].adj, 256);
-    await windowprocs.win_putstr(where, 0, new $c.Ptr(buf, 0));
+    $c.__builtin___strcat_chk(new $c.Ptr(buf, 0), which === RS.ALGNMNT ? new $c.Ptr(role_selection_prolog$choosing, 0) : a === ROLE_NONE ? new $c.Ptr(role_selection_prolog$not_yet, 0) : a === ROLE_RANDOM ? new $c.Ptr(role_selection_prolog$rand_choice, 0) : aligns[a].adj, 256);
+    await putstr()(where, 0, new $c.Ptr(buf, 0));
 }
 export async function role_menu_extra(which, where, preselect) {   // role.c:1816
     let any = new $T.any(), buf = new Int8Array(256), what = null, constrainer = null, forcedvalue = null, f = 0, r = 0, c = 0, gend = 0, a = 0, i = 0, allowmask = 0, clr = 0, setfiltering = new Int8Array(40);
@@ -870,14 +887,14 @@ export async function role_menu_extra(which, where, preselect) {   // role.c:181
     constrainer = null;
     forcedvalue = null;
     f = 0;
-    clr = 8;
+    clr = NO_COLOR;
     r = flags.initrole;
     c = flags.initrace;
     switch (which) {
-        case 0:
+        case RS.NAME:
             what = $c.lit("name");
             break;
-        case 1:
+        case RS.ROLE:
             what = $c.lit("role");
             f = r;
             for (i = 0; i < 13; i = i + 1 | 0) {
@@ -890,13 +907,13 @@ export async function role_menu_extra(which, where, preselect) {   // role.c:181
                 forcedvalue = $c.lit("role");
             }
             break;
-        case 2:
+        case RS.RACE:
             what = $c.lit("race");
             f = flags.initrace;
-            c = -1;
+            c = ROLE_NONE;
             if (r >= 0) {
-                allowmask = roles[r].allow & 4088;
-                if (allowmask === 8) {
+                allowmask = roles[r].allow & ROLE_RACEMASK;
+                if (allowmask === M2.HUMAN) {
                     c = 0;
                 }
                 if (c >= 0) {
@@ -908,15 +925,15 @@ export async function role_menu_extra(which, where, preselect) {   // role.c:181
                 }
             }
             break;
-        case 3:
+        case RS.GENDER:
             what = $c.lit("gender");
             f = flags.initgend;
-            gend = -1;
+            gend = ROLE_NONE;
             if (r >= 0) {
-                allowmask = roles[r].allow & 61440;
-                if (allowmask === 4096) {
+                allowmask = roles[r].allow & ROLE_GENDMASK;
+                if (allowmask === ROLE_MALE) {
                     gend = 0;
-                } else if (allowmask === 8192) {
+                } else if (allowmask === ROLE_FEMALE) {
                     gend = 1;
                 }
                 if (gend >= 0) {
@@ -928,17 +945,17 @@ export async function role_menu_extra(which, where, preselect) {   // role.c:181
                 }
             }
             break;
-        case 4:
+        case RS.ALGNMNT:
             what = $c.lit("alignment");
             f = flags.initalign;
-            a = -1;
+            a = ROLE_NONE;
             if (r >= 0) {
-                allowmask = roles[r].allow & 7;
-                if (allowmask === 4) {
+                allowmask = roles[r].allow & AM.MASK;
+                if (allowmask === AM.LAWFUL) {
                     a = 0;
-                } else if (allowmask === 2) {
+                } else if (allowmask === AM.NEUTRAL) {
                     a = 1;
-                } else if (allowmask === 1) {
+                } else if (allowmask === AM.CHAOTIC) {
                     a = 2;
                 }
                 if (a >= 0) {
@@ -946,19 +963,19 @@ export async function role_menu_extra(which, where, preselect) {   // role.c:181
                 }
             }
             if (c >= 0 && !constrainer) {
-                allowmask = races[c].allow & 7;
-                if (allowmask === 4) {
+                allowmask = races[c].allow & AM.MASK;
+                if (allowmask === AM.LAWFUL) {
                     a = 0;
-                } else if (allowmask === 2) {
+                } else if (allowmask === AM.NEUTRAL) {
                     a = 1;
-                } else if (allowmask === 1) {
+                } else if (allowmask === AM.CHAOTIC) {
                     a = 2;
                 }
                 if (a >= 0) {
                     constrainer = $c.lit("race");
                 }
             }
-            if (f >= 0 && !constrainer && (7 & ~gr.rfilter.mask) === aligns[f].allow) {
+            if (f >= 0 && !constrainer && (AM.MASK & ~gr.rfilter.mask) === aligns[f].allow) {
                 constrainer = $c.lit("filter");
                 forcedvalue = $c.lit("alignment");
             }
@@ -973,19 +990,19 @@ export async function role_menu_extra(which, where, preselect) {   // role.c:181
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%4s%s forces %s"), $c.lit(""), constrainer, forcedvalue);
         await add_menu_str(where, new $c.Ptr(buf, 0));
     } else if (what) {
-        any.a_int = -2 - (which + 1 | 0) | 0;
+        any.a_int = RS_menu_arg(which);
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Pick%s %s first"), f >= 0 ? $c.lit(" another") : $c.lit(""), what);
-        await add_menu(where, nul_glyphinfo, any, role_menu_extra$RS_menu_let[which], 0, 0, clr, new $c.Ptr(buf, 0), 0);
-    } else if (which === 5) {
-        any.a_int = -8;
+        await add_menu(where, nul_glyphinfo, any, role_menu_extra$RS_menu_let[which], 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
+    } else if (which === RS.filter) {
+        any.a_int = ROLE_RANDOM - (RS.filter + 1);
         $c.__builtin___sprintf_chk(new $c.Ptr(setfiltering, 0), 0, 40, $c.lit("%s role/race/&c filtering"), gotrolefilter() ? $c.lit("Reset") : $c.lit("Set"));
-        await add_menu(where, nul_glyphinfo, any, 126, 0, 0, clr, new $c.Ptr(setfiltering, 0), 0);
-    } else if (which === -2) {
-        any.a_int = -2;
-        await add_menu(where, nul_glyphinfo, any, 42, 0, 0, clr, $c.lit("Random"), preselect ? 1 : 0);
-    } else if (which === -1) {
-        any.a_int = -1;
-        await add_menu(where, nul_glyphinfo, any, 113, 0, 0, clr, $c.lit("Quit"), preselect ? 1 : 0);
+        await add_menu(where, nul_glyphinfo, any, 126, 0, ATR.NONE, clr, new $c.Ptr(setfiltering, 0), MENU.ITEMFLAGS_NONE);
+    } else if (which === ROLE_RANDOM) {
+        any.a_int = ROLE_RANDOM;
+        await add_menu(where, nul_glyphinfo, any, 42, 0, ATR.NONE, clr, $c.lit("Random"), preselect ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
+    } else if (which === ROLE_NONE) {
+        any.a_int = ROLE_NONE;
+        await add_menu(where, nul_glyphinfo, any, 113, 0, ATR.NONE, clr, $c.lit("Quit"), preselect ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     } else {
         await impossible($c.lit("role_menu_extra: bad arg (%d)"), which);
     }
@@ -999,7 +1016,7 @@ export async function role_init() {   // role.c:1980
         }
     }
     $c.__builtin___strcpy_chk(new $c.Ptr(svp.pl_character, 0), roles[flags.initrole].name.m, 32);
-    svp.pl_character[31] = 0;
+    svp.pl_character[PL.CSIZ - 1] = 0;
     if (!validrace(flags.initrole, flags.initrace)) {
         $t3 = randrace(flags.initrole), flags.initrace = $t3;
     }
@@ -1017,33 +1034,33 @@ export async function role_init() {   // role.c:1980
     alignmnt = aligns[flags.initalign].value;
     gu.urole.$copyFrom(roles[flags.initrole]);
     gu.urace.$copyFrom(races[flags.initrace]);
-    if (gu.urole.ldrnum !== -1 /* NON_PM */) {
+    if (gu.urole.ldrnum !== NON_PM) {
         pm = $c.relem(mons, gu.urole.ldrnum);
-        pm.msound = 36;
-        pm.mflags2 = $c.oru64(pm.mflags2, 2097152);
-        pm.mflags3 = $c.u16(pm.mflags3 | 128);
+        pm.msound = MS.LEADER;
+        pm.mflags2 = $c.oru64(pm.mflags2, M2.PEACEFUL);
+        pm.mflags3 = $c.u16(pm.mflags3 | M3.CLOSE);
         pm.maligntyp = $c.i8(Math.imul(alignmnt, 3));
-        $t5 = ($c.andu64(pm.mflags2, 262144) !== 0 ? 2 : $c.andu64(pm.mflags2, 131072) !== 0 ? 1 : $c.andu64(pm.mflags2, 65536) !== 0 ? 0 : (rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 2039, $c.lit("role_init")), rn2(100)) : rn2(100)) < 50 ? 1 : 0) >>> 0, svq.quest_status.ldrgend = ($t5) & 3;
+        $t5 = (is_neuter(pm) ? 2 : is_female(pm) ? 1 : is_male(pm) ? 0 : rn2(100) < 50 ? 1 : 0) >>> 0, svq.quest_status.ldrgend = ($t5) & 3;
     }
-    if (gu.urole.guardnum !== -1 /* NON_PM */) {
+    if (gu.urole.guardnum !== NON_PM) {
         pm = $c.relem(mons, gu.urole.guardnum);
-        pm.mflags2 = $c.oru64(pm.mflags2, 2097152);
+        pm.mflags2 = $c.oru64(pm.mflags2, M2.PEACEFUL);
         pm.maligntyp = $c.i8(Math.imul(alignmnt, 3));
     }
-    if (gu.urole.neminum !== -1 /* NON_PM */) {
+    if (gu.urole.neminum !== NON_PM) {
         pm = $c.relem(mons, gu.urole.neminum);
-        pm.msound = 37;
+        pm.msound = MS.NEMESIS;
         pm.mflags2 = $c.andu64(pm.mflags2, 18446744073707454463n);
-        pm.mflags2 = $c.oru64(pm.mflags2, 51380224);
-        pm.mflags3 = $c.u16(pm.mflags3 & -129);
-        pm.mflags3 = $c.u16(pm.mflags3 | 80);
-        $t6 = ($c.andu64(pm.mflags2, 262144) !== 0 ? 2 : $c.andu64(pm.mflags2, 131072) !== 0 ? 1 : $c.andu64(pm.mflags2, 65536) !== 0 ? 0 : (rng_log_enabled() ? (rng_log_set_caller($c.lit("role.c"), 2060, $c.lit("role_init")), rn2(100)) : rn2(100)) < 50 ? 1 : 0) >>> 0, svq.quest_status.nemgend = ($t6) & 3;
+        pm.mflags2 = $c.oru64(pm.mflags2, M2.NASTY | M2.STALK | M2.HOSTILE);
+        pm.mflags3 = $c.u16(pm.mflags3 & ~M3.CLOSE);
+        pm.mflags3 = $c.u16(pm.mflags3 | (M3.WANTSARTI | M3.WAITFORU));
+        $t6 = (is_neuter(pm) ? 2 : is_female(pm) ? 1 : is_male(pm) ? 0 : rn2(100) < 50 ? 1 : 0) >>> 0, svq.quest_status.nemgend = ($t6) & 3;
     }
     if (flags.pantheon === -1) {
         trycnt = 0;
         flags.pantheon = flags.initrole;
         while (!roles[flags.pantheon].lgod && (trycnt = trycnt + 1 | 0) < 100) {
-            $t7 = randrole(0), flags.pantheon = $t7;
+            $t7 = randrole(FALSE), flags.pantheon = $t7;
         }
         if (!roles[flags.pantheon].lgod) {
             for (i = 0; i < 13; i = i + 1 | 0) {
@@ -1060,34 +1077,34 @@ export async function role_init() {   // role.c:1980
         gu.urole.cgod = roles[flags.pantheon].cgod;
     }
     $t8 = (!strncmpi(align_gtitle($c.i8(alignmnt)), $c.lit("goddess"), -1) ? 1 : 0) >>> 0, svq.quest_status.godgend = ($t8) & 3;
-    if (gu.urole.mnum === 337) {
-        objects[372 /* SPE_LIGHT */].oc_subtyp = 32;
+    if (gu.urole.mnum === PM.CLERIC) {
+        objects[SPE_LIGHT].oc_subtyp = P.CLERIC_SPELL;
     }
     return;
 }
 export function Hello(mtmp) {   // role.c:2120
     switch (gu.urole.mnum) {
-        case 335 /* PM_KNIGHT */:
+        case PM.KNIGHT:
             return $c.lit("Salutations");
-        case 340 /* PM_SAMURAI */:
-            return mtmp && $c.peq(mtmp.data, $c.relem(mons, 271 /* PM_SHOPKEEPER */)) ? $c.lit("Irasshaimase") : $c.lit("Konnichi wa");
-        case 341 /* PM_TOURIST */:
+        case PM.SAMURAI:
+            return mtmp && $c.peq(mtmp.data, $c.relem(mons, PM.SHOPKEEPER)) ? $c.lit("Irasshaimase") : $c.lit("Konnichi wa");
+        case PM.TOURIST:
             return $c.lit("Aloha");
-        case 342 /* PM_VALKYRIE */:
-            return mtmp && $c.peq(mtmp.data, $c.relem(mons, 314 /* PM_MAIL_DAEMON */)) ? $c.lit("Hallo") : $c.lit("Velkommen");
+        case PM.VALKYRIE:
+            return mtmp && $c.peq(mtmp.data, $c.relem(mons, PM.MAIL_DAEMON)) ? $c.lit("Hallo") : $c.lit("Velkommen");
         default:
             return $c.lit("Hello");
     }
 }
 export function Goodbye() {   // role.c:2143
     switch (gu.urole.mnum) {
-        case 335 /* PM_KNIGHT */:
+        case PM.KNIGHT:
             return $c.lit("Fare thee well");
-        case 340 /* PM_SAMURAI */:
+        case PM.SAMURAI:
             return $c.lit("Sayonara");
-        case 341 /* PM_TOURIST */:
+        case PM.TOURIST:
             return $c.lit("Aloha");
-        case 342 /* PM_VALKYRIE */:
+        case PM.VALKYRIE:
             return $c.lit("Farvel");
         default:
             return $c.lit("Goodbye");
@@ -1110,34 +1127,34 @@ export async function genl_player_selection() {   // role.c:2177
 }
 export async function genl_player_setup(screenheight) {   // role.c:2206
     let pbuf = new Int8Array(128), any = new $T.any(), i = 0, k = 0, n = 0, choice = 0, nextpick = 0, getconfirmation = 0, picksomething = 0, win = 0, selected = [null], clr = 0, pick4u = 0, result = 0, prompt = null, excess = 0, saveROLE = 0, saveRACE = 0, saveGEND = 0, saveALGN = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19;
-    win = -1;
+    win = WIN_ERR;
     selected[0] = null;
-    clr = 8;
+    clr = NO_COLOR;
     pick4u = 110;
     result = 0;
     program_state.in_role_selection = program_state.in_role_selection + 1 | 0;
-    picksomething = $c.i8(flags.initrole === -1 || flags.initrace === -1 || flags.initgend === -1 || flags.initalign === -1 ? 1 : 0);
+    picksomething = $c.i8(flags.initrole === ROLE_NONE || flags.initrace === ROLE_NONE || flags.initgend === ROLE_NONE || flags.initalign === ROLE_NONE ? 1 : 0);
     if (flags.randomall && picksomething) {
-        if (flags.initrole === -1) {
-            flags.initrole = -2;
+        if (flags.initrole === ROLE_NONE) {
+            flags.initrole = ROLE_RANDOM;
         }
-        if (flags.initrace === -1) {
-            flags.initrace = -2;
+        if (flags.initrace === ROLE_NONE) {
+            flags.initrace = ROLE_RANDOM;
         }
-        if (flags.initgend === -1) {
-            flags.initgend = -2;
+        if (flags.initgend === ROLE_NONE) {
+            flags.initgend = ROLE_RANDOM;
         }
-        if (flags.initalign === -1) {
-            flags.initalign = -2;
+        if (flags.initalign === ROLE_NONE) {
+            flags.initalign = ROLE_RANDOM;
         }
     }
     rigid_role_checks();
     setup_done$: {
-        if (flags.initrole === -1 || flags.initrace === -1 || flags.initgend === -1 || flags.initalign === -1) {
-            prompt = await build_plselection_prompt(new $c.Ptr(pbuf, 0), 128, flags.initrole, flags.initrace, flags.initgend, flags.initalign);
+        if (flags.initrole === ROLE_NONE || flags.initrace === ROLE_NONE || flags.initgend === ROLE_NONE || flags.initalign === ROLE_NONE) {
+            prompt = await build_plselection_prompt(new $c.Ptr(pbuf, 0), QBUFSZ, flags.initrole, flags.initrace, flags.initgend, flags.initalign);
             trimspaces(prompt);
             do {
-                pick4u = await yn_function(prompt, null, 0, 0);
+                pick4u = await yn_function(prompt, null, 0, FALSE);
                 pick4u = lowc(pick4u);
                 if (pick4u === 27 || pick4u === 113) {
                     break setup_done$;
@@ -1150,65 +1167,65 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
             } while (pick4u !== 121 && pick4u !== 110 && pick4u !== 97);
         }
         makepicks$: for (;;) {
-            nextpick = 1;
+            nextpick = RS.ROLE;
             do {
-                if (nextpick === 1) {
-                    nextpick = 2;
+                if (nextpick === RS.ROLE) {
+                    nextpick = RS.RACE;
                     if (flags.initrole < 0) {
-                        if (pick4u === 121 || pick4u === 97 || flags.initrole === -2) {
-                            k = pick_role(flags.initrace, flags.initgend, flags.initalign, 0);
+                        if (pick4u === 121 || pick4u === 97 || flags.initrole === ROLE_RANDOM) {
+                            k = pick_role(flags.initrace, flags.initgend, flags.initalign, PICK.RANDOM);
                             if (k < 0) {
                                 await pline($c.lit("Incompatible role!"));
-                                k = randrole(0);
+                                k = randrole(FALSE);
                             }
                         } else {
-                            excess = maybe_skip_seps(screenheight, 1);
-                            win = await plsel_startmenu(screenheight, 1);
-                            await setup_rolemenu(win, 1, flags.initrace, flags.initgend, flags.initalign);
-                            await role_menu_extra(-2, win, 1);
+                            excess = maybe_skip_seps(screenheight, RS.ROLE);
+                            win = await plsel_startmenu(screenheight, RS.ROLE);
+                            await setup_rolemenu(win, TRUE, flags.initrace, flags.initgend, flags.initalign);
+                            await role_menu_extra(ROLE_RANDOM, win, TRUE);
                             any.$copyFrom(cg.zeroany);
                             if (excess < 1 || excess > 2) {
                                 await add_menu_str(win, $c.lit(""));
                             }
-                            await role_menu_extra(2, win, 0);
-                            await role_menu_extra(3, win, 0);
-                            await role_menu_extra(4, win, 0);
-                            await role_menu_extra(5, win, 0);
-                            await role_menu_extra(-1, win, 0);
+                            await role_menu_extra(RS.RACE, win, FALSE);
+                            await role_menu_extra(RS.GENDER, win, FALSE);
+                            await role_menu_extra(RS.ALGNMNT, win, FALSE);
+                            await role_menu_extra(RS.filter, win, FALSE);
+                            await role_menu_extra(ROLE_NONE, win, FALSE);
                             $c.__builtin___strcpy_chk(new $c.Ptr(pbuf, 0), $c.lit("Pick a role or profession"), 128);
-                            await windowprocs.win_end_menu(win, new $c.Ptr(pbuf, 0));
-                            n = await select_menu(win, 1, new $c.Ptr(selected, 0));
+                            await end_menu()(win, new $c.Ptr(pbuf, 0));
+                            n = await select_menu(win, PICK.ONE, new $c.Ptr(selected, 0));
                             if (n > 0) {
                                 choice = $c.radd(selected[0], 0).item.a_int;
-                                if (n > 1 && choice === -2) {
+                                if (n > 1 && choice === ROLE_RANDOM) {
                                     choice = $c.radd(selected[0], 1).item.a_int;
                                 }
                             } else {
-                                choice = n === 0 ? -2 : -1;
+                                choice = n === 0 ? ROLE_RANDOM : ROLE_NONE;
                             }
                             if (selected[0]) {
                                 $c.free(selected[0]), selected[0] = null;
                             }
-                            await windowprocs.win_destroy_nhwindow(win), win = -1;
-                            if (choice === -1) {
+                            await destroy_nhwindow()(win), win = WIN_ERR;
+                            if (choice === ROLE_NONE) {
                                 break setup_done$;
-                            } else if (choice === -7) {
-                                $t1 = k = -1, flags.initalign = $t1;
-                                nextpick = 4;
-                            } else if (choice === -6) {
-                                $t2 = k = -1, flags.initgend = $t2;
-                                nextpick = 3;
-                            } else if (choice === -5) {
-                                $t3 = k = -1, flags.initrace = $t3;
-                                nextpick = 2;
-                            } else if (choice === -8) {
-                                $t4 = k = -1, flags.initrole = $t4;
+                            } else if (choice === ROLE_RANDOM - (RS.ALGNMNT + 1)) {
+                                $t1 = k = ROLE_NONE, flags.initalign = $t1;
+                                nextpick = RS.ALGNMNT;
+                            } else if (choice === ROLE_RANDOM - (RS.GENDER + 1)) {
+                                $t2 = k = ROLE_NONE, flags.initgend = $t2;
+                                nextpick = RS.GENDER;
+                            } else if (choice === ROLE_RANDOM - (RS.RACE + 1)) {
+                                $t3 = k = ROLE_NONE, flags.initrace = $t3;
+                                nextpick = RS.RACE;
+                            } else if (choice === ROLE_RANDOM - (RS.filter + 1)) {
+                                $t4 = k = ROLE_NONE, flags.initrole = $t4;
                                 await reset_role_filtering();
-                                nextpick = 1;
-                            } else if (choice === -2) {
-                                k = pick_role(flags.initrace, flags.initgend, flags.initalign, 0);
+                                nextpick = RS.ROLE;
+                            } else if (choice === ROLE_RANDOM) {
+                                k = pick_role(flags.initrace, flags.initgend, flags.initalign, PICK.RANDOM);
                                 if (k < 0) {
-                                    k = randrole(0);
+                                    k = randrole(FALSE);
                                 }
                             } else {
                                 k = choice - 1 | 0;
@@ -1217,11 +1234,11 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                         flags.initrole = k;
                     }
                 }
-                if (nextpick === 2) {
-                    nextpick = flags.initrole < 0 ? 1 : 3;
+                if (nextpick === RS.RACE) {
+                    nextpick = flags.initrole < 0 ? RS.ROLE : RS.GENDER;
                     if (flags.initrace < 0 || !validrace(flags.initrole, flags.initrace)) {
-                        if (pick4u === 121 || pick4u === 97 || flags.initrace === -2) {
-                            k = pick_race(flags.initrole, flags.initgend, flags.initalign, 0);
+                        if (pick4u === 121 || pick4u === 97 || flags.initrace === ROLE_RANDOM) {
+                            k = pick_race(flags.initrole, flags.initgend, flags.initalign, PICK.RANDOM);
                             if (k < 0) {
                                 await pline($c.lit("Incompatible race!"));
                                 k = randrace(flags.initrole);
@@ -1244,52 +1261,52 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                                 }
                             }
                             if (n > 1) {
-                                win = await plsel_startmenu(screenheight, 2);
+                                win = await plsel_startmenu(screenheight, RS.RACE);
                                 any.$copyFrom(cg.zeroany);
-                                await setup_racemenu(win, 1, flags.initrole, flags.initgend, flags.initalign);
-                                await role_menu_extra(-2, win, 1);
+                                await setup_racemenu(win, TRUE, flags.initrole, flags.initgend, flags.initalign);
+                                await role_menu_extra(ROLE_RANDOM, win, TRUE);
                                 any.a_int = 0;
                                 await add_menu_str(win, $c.lit(""));
-                                await role_menu_extra(1, win, 0);
-                                await role_menu_extra(3, win, 0);
-                                await role_menu_extra(4, win, 0);
-                                await role_menu_extra(5, win, 0);
-                                await role_menu_extra(-1, win, 0);
+                                await role_menu_extra(RS.ROLE, win, FALSE);
+                                await role_menu_extra(RS.GENDER, win, FALSE);
+                                await role_menu_extra(RS.ALGNMNT, win, FALSE);
+                                await role_menu_extra(RS.filter, win, FALSE);
+                                await role_menu_extra(ROLE_NONE, win, FALSE);
                                 $c.__builtin___strcpy_chk(new $c.Ptr(pbuf, 0), $c.lit("Pick a race or species"), 128);
-                                await windowprocs.win_end_menu(win, new $c.Ptr(pbuf, 0));
-                                n = await select_menu(win, 1, new $c.Ptr(selected, 0));
+                                await end_menu()(win, new $c.Ptr(pbuf, 0));
+                                n = await select_menu(win, PICK.ONE, new $c.Ptr(selected, 0));
                                 if (n > 0) {
                                     choice = $c.radd(selected[0], 0).item.a_int;
-                                    if (n > 1 && choice === -2) {
+                                    if (n > 1 && choice === ROLE_RANDOM) {
                                         choice = $c.radd(selected[0], 1).item.a_int;
                                     }
                                 } else {
-                                    choice = n === 0 ? -2 : -1;
+                                    choice = n === 0 ? ROLE_RANDOM : ROLE_NONE;
                                 }
                                 if (selected[0]) {
                                     $c.free(selected[0]), selected[0] = null;
                                 }
-                                await windowprocs.win_destroy_nhwindow(win), win = -1;
-                                if (choice === -1) {
+                                await destroy_nhwindow()(win), win = WIN_ERR;
+                                if (choice === ROLE_NONE) {
                                     break setup_done$;
-                                } else if (choice === -7) {
-                                    $t5 = k = -1, flags.initalign = $t5;
-                                    nextpick = 4;
-                                } else if (choice === -6) {
-                                    $t6 = k = -1, flags.initgend = $t6;
-                                    nextpick = 3;
-                                } else if (choice === -4) {
-                                    $t7 = k = -1, flags.initrole = $t7;
-                                    nextpick = 1;
-                                } else if (choice === -8) {
-                                    $t8 = k = -1, flags.initrace = $t8;
+                                } else if (choice === ROLE_RANDOM - (RS.ALGNMNT + 1)) {
+                                    $t5 = k = ROLE_NONE, flags.initalign = $t5;
+                                    nextpick = RS.ALGNMNT;
+                                } else if (choice === ROLE_RANDOM - (RS.GENDER + 1)) {
+                                    $t6 = k = ROLE_NONE, flags.initgend = $t6;
+                                    nextpick = RS.GENDER;
+                                } else if (choice === ROLE_RANDOM - (RS.ROLE + 1)) {
+                                    $t7 = k = ROLE_NONE, flags.initrole = $t7;
+                                    nextpick = RS.ROLE;
+                                } else if (choice === ROLE_RANDOM - (RS.filter + 1)) {
+                                    $t8 = k = ROLE_NONE, flags.initrace = $t8;
                                     if (await reset_role_filtering()) {
-                                        nextpick = 1;
+                                        nextpick = RS.ROLE;
                                     } else {
-                                        nextpick = 2;
+                                        nextpick = RS.RACE;
                                     }
-                                } else if (choice === -2) {
-                                    k = pick_race(flags.initrole, flags.initgend, flags.initalign, 0);
+                                } else if (choice === ROLE_RANDOM) {
+                                    k = pick_race(flags.initrole, flags.initgend, flags.initalign, PICK.RANDOM);
                                     if (k < 0) {
                                         k = randrace(flags.initrole);
                                     }
@@ -1301,11 +1318,11 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                         flags.initrace = k;
                     }
                 }
-                if (nextpick === 3) {
-                    nextpick = flags.initrole < 0 ? 1 : flags.initrace < 0 ? 2 : 4;
+                if (nextpick === RS.GENDER) {
+                    nextpick = flags.initrole < 0 ? RS.ROLE : flags.initrace < 0 ? RS.RACE : RS.ALGNMNT;
                     if (flags.initgend < 0 || !validgend(flags.initrole, flags.initrace, flags.initgend)) {
-                        if (pick4u === 121 || pick4u === 97 || flags.initgend === -2) {
-                            k = pick_gend(flags.initrole, flags.initrace, flags.initalign, 0);
+                        if (pick4u === 121 || pick4u === 97 || flags.initgend === ROLE_RANDOM) {
+                            k = pick_gend(flags.initrole, flags.initrace, flags.initalign, PICK.RANDOM);
                             if (k < 0) {
                                 await pline($c.lit("Incompatible gender!"));
                                 k = randgend(flags.initrole, flags.initrace);
@@ -1313,14 +1330,14 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                         } else {
                             n = 0;
                             k = 0;
-                            for (i = 0; i < 2; i = i + 1 | 0) {
+                            for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
                                 if (ok_gend(flags.initrole, flags.initrace, i, flags.initalign)) {
                                     n = n + 1 | 0;
                                     k = i;
                                 }
                             }
                             if (n === 0) {
-                                for (i = 0; i < 2; i = i + 1 | 0) {
+                                for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
                                     if (validgend(flags.initrole, flags.initrace, i)) {
                                         n = n + 1 | 0;
                                         k = i;
@@ -1328,52 +1345,52 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                                 }
                             }
                             if (n > 1) {
-                                win = await plsel_startmenu(screenheight, 3);
+                                win = await plsel_startmenu(screenheight, RS.GENDER);
                                 any.$copyFrom(cg.zeroany);
-                                await setup_gendmenu(win, 1, flags.initrole, flags.initrace, flags.initalign);
-                                await role_menu_extra(-2, win, 1);
+                                await setup_gendmenu(win, TRUE, flags.initrole, flags.initrace, flags.initalign);
+                                await role_menu_extra(ROLE_RANDOM, win, TRUE);
                                 any.a_int = 0;
                                 await add_menu_str(win, $c.lit(""));
-                                await role_menu_extra(1, win, 0);
-                                await role_menu_extra(2, win, 0);
-                                await role_menu_extra(4, win, 0);
-                                await role_menu_extra(5, win, 0);
-                                await role_menu_extra(-1, win, 0);
+                                await role_menu_extra(RS.ROLE, win, FALSE);
+                                await role_menu_extra(RS.RACE, win, FALSE);
+                                await role_menu_extra(RS.ALGNMNT, win, FALSE);
+                                await role_menu_extra(RS.filter, win, FALSE);
+                                await role_menu_extra(ROLE_NONE, win, FALSE);
                                 $c.__builtin___strcpy_chk(new $c.Ptr(pbuf, 0), $c.lit("Pick a gender or sex"), 128);
-                                await windowprocs.win_end_menu(win, new $c.Ptr(pbuf, 0));
-                                n = await select_menu(win, 1, new $c.Ptr(selected, 0));
+                                await end_menu()(win, new $c.Ptr(pbuf, 0));
+                                n = await select_menu(win, PICK.ONE, new $c.Ptr(selected, 0));
                                 if (n > 0) {
                                     choice = $c.radd(selected[0], 0).item.a_int;
-                                    if (n > 1 && choice === -2) {
+                                    if (n > 1 && choice === ROLE_RANDOM) {
                                         choice = $c.radd(selected[0], 1).item.a_int;
                                     }
                                 } else {
-                                    choice = n === 0 ? -2 : -1;
+                                    choice = n === 0 ? ROLE_RANDOM : ROLE_NONE;
                                 }
                                 if (selected[0]) {
                                     $c.free(selected[0]), selected[0] = null;
                                 }
-                                await windowprocs.win_destroy_nhwindow(win), win = -1;
-                                if (choice === -1) {
+                                await destroy_nhwindow()(win), win = WIN_ERR;
+                                if (choice === ROLE_NONE) {
                                     break setup_done$;
-                                } else if (choice === -7) {
-                                    $t9 = k = -1, flags.initalign = $t9;
-                                    nextpick = 4;
-                                } else if (choice === -5) {
-                                    $t10 = k = -1, flags.initrace = $t10;
-                                    nextpick = 2;
-                                } else if (choice === -4) {
-                                    $t11 = k = -1, flags.initrole = $t11;
-                                    nextpick = 1;
-                                } else if (choice === -8) {
-                                    $t12 = k = -1, flags.initgend = $t12;
+                                } else if (choice === ROLE_RANDOM - (RS.ALGNMNT + 1)) {
+                                    $t9 = k = ROLE_NONE, flags.initalign = $t9;
+                                    nextpick = RS.ALGNMNT;
+                                } else if (choice === ROLE_RANDOM - (RS.RACE + 1)) {
+                                    $t10 = k = ROLE_NONE, flags.initrace = $t10;
+                                    nextpick = RS.RACE;
+                                } else if (choice === ROLE_RANDOM - (RS.ROLE + 1)) {
+                                    $t11 = k = ROLE_NONE, flags.initrole = $t11;
+                                    nextpick = RS.ROLE;
+                                } else if (choice === ROLE_RANDOM - (RS.filter + 1)) {
+                                    $t12 = k = ROLE_NONE, flags.initgend = $t12;
                                     if (await reset_role_filtering()) {
-                                        nextpick = 1;
+                                        nextpick = RS.ROLE;
                                     } else {
-                                        nextpick = 3;
+                                        nextpick = RS.GENDER;
                                     }
-                                } else if (choice === -2) {
-                                    k = pick_gend(flags.initrole, flags.initrace, flags.initalign, 0);
+                                } else if (choice === ROLE_RANDOM) {
+                                    k = pick_gend(flags.initrole, flags.initrace, flags.initalign, PICK.RANDOM);
                                     if (k < 0) {
                                         k = randgend(flags.initrole, flags.initrace);
                                     }
@@ -1385,11 +1402,11 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                         flags.initgend = k;
                     }
                 }
-                if (nextpick === 4) {
-                    nextpick = flags.initrole < 0 ? 1 : flags.initrace < 0 ? 2 : 3;
+                if (nextpick === RS.ALGNMNT) {
+                    nextpick = flags.initrole < 0 ? RS.ROLE : flags.initrace < 0 ? RS.RACE : RS.GENDER;
                     if (flags.initalign < 0 || !validalign(flags.initrole, flags.initrace, flags.initalign)) {
-                        if (pick4u === 121 || pick4u === 97 || flags.initalign === -2) {
-                            k = pick_align(flags.initrole, flags.initrace, flags.initgend, 0);
+                        if (pick4u === 121 || pick4u === 97 || flags.initalign === ROLE_RANDOM) {
+                            k = pick_align(flags.initrole, flags.initrace, flags.initgend, PICK.RANDOM);
                             if (k < 0) {
                                 await pline($c.lit("Incompatible alignment!"));
                                 k = randalign(flags.initrole, flags.initrace);
@@ -1397,14 +1414,14 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                         } else {
                             n = 0;
                             k = 0;
-                            for (i = 0; i < 3; i = i + 1 | 0) {
+                            for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
                                 if (ok_align(flags.initrole, flags.initrace, flags.initgend, i)) {
                                     n = n + 1 | 0;
                                     k = i;
                                 }
                             }
                             if (n === 0) {
-                                for (i = 0; i < 3; i = i + 1 | 0) {
+                                for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
                                     if (validalign(flags.initrole, flags.initrace, i)) {
                                         n = n + 1 | 0;
                                         k = i;
@@ -1412,52 +1429,52 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                                 }
                             }
                             if (n > 1) {
-                                win = await plsel_startmenu(screenheight, 4);
+                                win = await plsel_startmenu(screenheight, RS.ALGNMNT);
                                 any.$copyFrom(cg.zeroany);
-                                await setup_algnmenu(win, 1, flags.initrole, flags.initrace, flags.initgend);
-                                await role_menu_extra(-2, win, 1);
+                                await setup_algnmenu(win, TRUE, flags.initrole, flags.initrace, flags.initgend);
+                                await role_menu_extra(ROLE_RANDOM, win, TRUE);
                                 any.a_int = 0;
                                 await add_menu_str(win, $c.lit(""));
-                                await role_menu_extra(1, win, 0);
-                                await role_menu_extra(2, win, 0);
-                                await role_menu_extra(3, win, 0);
-                                await role_menu_extra(5, win, 0);
-                                await role_menu_extra(-1, win, 0);
+                                await role_menu_extra(RS.ROLE, win, FALSE);
+                                await role_menu_extra(RS.RACE, win, FALSE);
+                                await role_menu_extra(RS.GENDER, win, FALSE);
+                                await role_menu_extra(RS.filter, win, FALSE);
+                                await role_menu_extra(ROLE_NONE, win, FALSE);
                                 $c.__builtin___strcpy_chk(new $c.Ptr(pbuf, 0), $c.lit("Pick an alignment or creed"), 128);
-                                await windowprocs.win_end_menu(win, new $c.Ptr(pbuf, 0));
-                                n = await select_menu(win, 1, new $c.Ptr(selected, 0));
+                                await end_menu()(win, new $c.Ptr(pbuf, 0));
+                                n = await select_menu(win, PICK.ONE, new $c.Ptr(selected, 0));
                                 if (n > 0) {
                                     choice = $c.radd(selected[0], 0).item.a_int;
-                                    if (n > 1 && choice === -2) {
+                                    if (n > 1 && choice === ROLE_RANDOM) {
                                         choice = $c.radd(selected[0], 1).item.a_int;
                                     }
                                 } else {
-                                    choice = n === 0 ? -2 : -1;
+                                    choice = n === 0 ? ROLE_RANDOM : ROLE_NONE;
                                 }
                                 if (selected[0]) {
                                     $c.free(selected[0]), selected[0] = null;
                                 }
-                                await windowprocs.win_destroy_nhwindow(win), win = -1;
-                                if (choice === -1) {
+                                await destroy_nhwindow()(win), win = WIN_ERR;
+                                if (choice === ROLE_NONE) {
                                     break setup_done$;
-                                } else if (choice === -6) {
-                                    $t13 = k = -1, flags.initgend = $t13;
-                                    nextpick = 3;
-                                } else if (choice === -5) {
-                                    $t14 = k = -1, flags.initrace = $t14;
-                                    nextpick = 2;
-                                } else if (choice === -4) {
-                                    $t15 = k = -1, flags.initrole = $t15;
-                                    nextpick = 1;
-                                } else if (choice === -8) {
-                                    $t16 = k = -1, flags.initalign = $t16;
+                                } else if (choice === ROLE_RANDOM - (RS.GENDER + 1)) {
+                                    $t13 = k = ROLE_NONE, flags.initgend = $t13;
+                                    nextpick = RS.GENDER;
+                                } else if (choice === ROLE_RANDOM - (RS.RACE + 1)) {
+                                    $t14 = k = ROLE_NONE, flags.initrace = $t14;
+                                    nextpick = RS.RACE;
+                                } else if (choice === ROLE_RANDOM - (RS.ROLE + 1)) {
+                                    $t15 = k = ROLE_NONE, flags.initrole = $t15;
+                                    nextpick = RS.ROLE;
+                                } else if (choice === ROLE_RANDOM - (RS.filter + 1)) {
+                                    $t16 = k = ROLE_NONE, flags.initalign = $t16;
                                     if (await reset_role_filtering()) {
-                                        nextpick = 1;
+                                        nextpick = RS.ROLE;
                                     } else {
-                                        nextpick = 4;
+                                        nextpick = RS.ALGNMNT;
                                     }
-                                } else if (choice === -2) {
-                                    k = pick_align(flags.initrole, flags.initrace, flags.initgend, 0);
+                                } else if (choice === ROLE_RANDOM) {
+                                    k = pick_align(flags.initrole, flags.initrace, flags.initgend, PICK.RANDOM);
                                     if (k < 0) {
                                         k = randalign(flags.initrole, flags.initrace);
                                     }
@@ -1472,33 +1489,33 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
             } while (flags.initrole < 0 || flags.initrace < 0 || flags.initgend < 0 || flags.initalign < 0);
             getconfirmation = $c.i8(picksomething && pick4u !== 97 && !flags.randomall ? 1 : 0);
             while (getconfirmation) {
-                win = await plsel_startmenu(screenheight, 5);
+                win = await plsel_startmenu(screenheight, RS.filter);
                 any.$copyFrom(cg.zeroany);
                 any.a_int = 1;
-                await add_menu(win, nul_glyphinfo, any, 121, 0, 0, clr, $c.lit("Yes; start game"), 1);
+                await add_menu(win, nul_glyphinfo, any, 121, 0, ATR.NONE, clr, $c.lit("Yes; start game"), MENU.ITEMFLAGS_SELECTED);
                 any.a_int = 2;
-                await add_menu(win, nul_glyphinfo, any, 110, 0, 0, clr, $c.lit("No; choose role again"), 0);
+                await add_menu(win, nul_glyphinfo, any, 110, 0, ATR.NONE, clr, $c.lit("No; choose role again"), MENU.ITEMFLAGS_NONE);
                 if (iflags.renameallowed) {
                     any.a_int = 3;
-                    await add_menu(win, nul_glyphinfo, any, 97, 0, 0, clr, $c.lit("Not yet; choose another name"), 0);
+                    await add_menu(win, nul_glyphinfo, any, 97, 0, ATR.NONE, clr, $c.lit("Not yet; choose another name"), MENU.ITEMFLAGS_NONE);
                 }
                 any.a_int = -1;
-                await add_menu(win, nul_glyphinfo, any, 113, 0, 0, clr, $c.lit("Quit"), 0);
+                await add_menu(win, nul_glyphinfo, any, 113, 0, ATR.NONE, clr, $c.lit("Quit"), MENU.ITEMFLAGS_NONE);
                 $c.__builtin___sprintf_chk(new $c.Ptr(pbuf, 0), 0, 128, $c.lit("Is this ok? [yn%sq]"), iflags.renameallowed ? $c.lit("a") : $c.lit(""));
-                await windowprocs.win_end_menu(win, new $c.Ptr(pbuf, 0));
-                n = await select_menu(win, 1, new $c.Ptr(selected, 0));
+                await end_menu()(win, new $c.Ptr(pbuf, 0));
+                n = await select_menu(win, PICK.ONE, new $c.Ptr(selected, 0));
                 choice = n > 0 ? $c.radd(selected[0], n - 1 | 0).item.a_int : n === 0 ? 1 : -1;
                 if (selected[0]) {
                     $c.free(selected[0]), selected[0] = null;
                 }
-                await windowprocs.win_destroy_nhwindow(win);
+                await destroy_nhwindow()(win);
                 switch (choice) {
                     default:
                         break setup_done$;
                         break;
                     case 3:
                         {
-                            iflags.renameinprogress = 1;
+                            iflags.renameinprogress = TRUE;
                             saveROLE = flags.initrole, saveRACE = flags.initrace, saveGEND = flags.initgend, saveALGN = flags.initalign;
                             svp.plname[0] = 0;
                             await plnamesuffix();
@@ -1507,11 +1524,11 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
                         }
                     case 2:
                         pick4u = 110;
-                        $t19 = ($t18 = ($t17 = flags.initalign = -1, flags.initgend = $t17), flags.initrace = $t18), flags.initrole = $t19;
+                        $t19 = ($t18 = ($t17 = flags.initalign = ROLE_NONE, flags.initgend = $t17), flags.initrace = $t18), flags.initrole = $t19;
                         continue makepicks$;
                         break;
                     case 1:
-                        getconfirmation = 0;
+                        getconfirmation = FALSE;
                         break;
                 }
             }
@@ -1525,39 +1542,39 @@ export async function genl_player_setup(screenheight) {   // role.c:2206
 async function reset_role_filtering() {   // role.c:2728
     let win = 0, i = 0, n = 0, filterprompt = new Int8Array(128), selected = [null], $t1, $t2, $t3;
     selected[0] = null;
-    win = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(win, 0);
+    win = await create_nhwindow()(NHW.MENU);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     await add_menu_str(win, $c.lit("Unacceptable roles"));
-    await setup_rolemenu(win, 0, -1, -1, -1);
+    await setup_rolemenu(win, FALSE, ROLE_NONE, ROLE_NONE, ROLE_NONE);
     await add_menu_str(win, $c.lit(""));
     await add_menu_str(win, $c.lit("Unacceptable races"));
-    await setup_racemenu(win, 0, -1, -1, -1);
+    await setup_racemenu(win, FALSE, ROLE_NONE, ROLE_NONE, ROLE_NONE);
     await add_menu_str(win, $c.lit(""));
     await add_menu_str(win, $c.lit("Unacceptable genders"));
-    await setup_gendmenu(win, 0, -1, -1, -1);
+    await setup_gendmenu(win, FALSE, ROLE_NONE, ROLE_NONE, ROLE_NONE);
     await add_menu_str(win, $c.lit(""));
     await add_menu_str(win, $c.lit("Unacceptable alignments"));
-    await setup_algnmenu(win, 0, -1, -1, -1);
+    await setup_algnmenu(win, FALSE, ROLE_NONE, ROLE_NONE, ROLE_NONE);
     $c.__builtin___sprintf_chk(new $c.Ptr(filterprompt, 0), 0, 128, $c.lit("Pick all that apply%s"), gotrolefilter() ? $c.lit(" and/or unpick any that no longer apply") : $c.lit(""));
-    await windowprocs.win_end_menu(win, new $c.Ptr(filterprompt, 0));
-    n = await select_menu(win, 2, new $c.Ptr(selected, 0));
+    await end_menu()(win, new $c.Ptr(filterprompt, 0));
+    n = await select_menu(win, PICK.ANY, new $c.Ptr(selected, 0));
     if (n >= 0) {
-        clearrolefilter(5);
+        clearrolefilter(RS.filter);
         for (i = 0; i < n; i = i + 1 | 0) {
             await setrolefilter($c.radd(selected[0], i).item.a_string);
         }
-        $t3 = ($t2 = ($t1 = flags.initalign = -1, flags.initgend = $t1), flags.initrace = $t2), flags.initrole = $t3;
+        $t3 = ($t2 = ($t1 = flags.initalign = ROLE_NONE, flags.initgend = $t1), flags.initrace = $t2), flags.initrole = $t3;
     }
     if (selected[0]) {
         $c.free(selected[0]), selected[0] = null;
     }
-    await windowprocs.win_destroy_nhwindow(win);
-    return $c.i8(n > 0 ? 1 : 0);
+    await destroy_nhwindow()(win);
+    return $c.i8(n > 0 ? TRUE : FALSE);
 }
 function maybe_skip_seps(rows, aspect) {   // role.c:2777
     let i = 0, n = 0;
     n = 0;
-    if (aspect !== 1) {
+    if (aspect !== RS.ROLE) {
         return 0;
     }
     n = n + 4 | 0;
@@ -1583,11 +1600,11 @@ async function plsel_startmenu(ttyrows, aspect) {   // role.c:2806
     } else {
         $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 128, $c.lit("%.20s the %.20s %.20s %.20s %.20s"), new $c.Ptr(svp.plname, 0), aligns[flags.initalign].adj, genders[flags.initgend].adj, races[flags.initrace].adj, rolename);
     }
-    win = await windowprocs.win_create_nhwindow(4);
-    if (win === -1) {
+    win = await create_nhwindow()(NHW.MENU);
+    if (win === WIN_ERR) {
         await panic($c.lit("could not create role selection window"));
     }
-    await windowprocs.win_start_menu(win, 0);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     await add_menu_str(win, new $c.Ptr(qbuf, 0));
     if (maybe_skip_seps(ttyrows, aspect) !== 2) {
         await add_menu_str(win, $c.lit(""));
@@ -1597,7 +1614,7 @@ async function plsel_startmenu(ttyrows, aspect) {   // role.c:2806
 async function setup_rolemenu(win, filtering, race, gend, algn) {   // role.c:2854
     let any = new $T.any(), i = 0, role_ok = 0, thisch = 0, lastch = 0, rolenamebuf = new Int8Array(50), clr = 0;
     lastch = 0;
-    clr = 8;
+    clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
     for (i = 0; roles[i].name.m; i = i + 1 | 0) {
         role_ok = $c.i8(ok_role(i, race, gend, algn) && ok_race(i, race, gend, algn) && ok_gend(i, race, gend, algn) && ok_align(i, race, gend, algn) ? 1 : 0);
@@ -1622,13 +1639,13 @@ async function setup_rolemenu(win, filtering, race, gend, algn) {   // role.c:28
                 $c.__builtin___strcat_chk(new $c.Ptr(rolenamebuf, 0), roles[i].name.f, 50);
             }
         }
-        await add_menu(win, nul_glyphinfo, any, thisch, 0, 0, clr, await an(new $c.Ptr(rolenamebuf, 0)), !filtering && !role_ok ? 1 : 0);
+        await add_menu(win, nul_glyphinfo, any, thisch, 0, ATR.NONE, clr, await an(new $c.Ptr(rolenamebuf, 0)), !filtering && !role_ok ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
         lastch = thisch;
     }
 }
 async function setup_racemenu(win, filtering, role, gend, algn) {   // role.c:2905
     let any = new $T.any(), race_ok = 0, i = 0, this_ch = 0, clr = 0;
-    clr = 8;
+    clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
     for (i = 0; races[i].noun; i = i + 1 | 0) {
         race_ok = $c.i8(ok_race(role, i, gend, algn) && ok_role(role, i, gend, algn) && ok_align(role, i, gend, algn) ? 1 : 0);
@@ -1641,14 +1658,14 @@ async function setup_racemenu(win, filtering, role, gend, algn) {   // role.c:29
             any.a_string = races[i].noun;
         }
         this_ch = races[i].noun.get(0);
-        await add_menu(win, nul_glyphinfo, any, $c.i8(filtering ? this_ch : highc(this_ch)), $c.i8(filtering ? highc(this_ch) : 0), 0, clr, races[i].noun, !filtering && !race_ok ? 1 : 0);
+        await add_menu(win, nul_glyphinfo, any, $c.i8(filtering ? this_ch : highc(this_ch)), $c.i8(filtering ? highc(this_ch) : 0), ATR.NONE, clr, races[i].noun, !filtering && !race_ok ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
 }
 async function setup_gendmenu(win, filtering, role, race, algn) {   // role.c:2943
     let any = new $T.any(), gend_ok = 0, i = 0, this_ch = 0, clr = 0;
-    clr = 8;
+    clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
-    for (i = 0; i < 2; i = i + 1 | 0) {
+    for (i = 0; i < ROLE_GENDERS; i = i + 1 | 0) {
         gend_ok = $c.i8(ok_gend(role, race, i, algn) && ok_role(role, race, i, algn) && ok_race(role, race, i, algn) ? 1 : 0);
         if (filtering && !gend_ok) {
             continue;
@@ -1659,14 +1676,14 @@ async function setup_gendmenu(win, filtering, role, race, algn) {   // role.c:29
             any.a_string = genders[i].adj;
         }
         this_ch = genders[i].adj.get(0);
-        await add_menu(win, nul_glyphinfo, any, $c.i8(filtering ? this_ch : highc(this_ch)), $c.i8(filtering ? highc(this_ch) : 0), 0, clr, genders[i].adj, !filtering && !gend_ok ? 1 : 0);
+        await add_menu(win, nul_glyphinfo, any, $c.i8(filtering ? this_ch : highc(this_ch)), $c.i8(filtering ? highc(this_ch) : 0), ATR.NONE, clr, genders[i].adj, !filtering && !gend_ok ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
 }
 async function setup_algnmenu(win, filtering, role, race, gend) {   // role.c:2979
     let any = new $T.any(), algn_ok = 0, i = 0, this_ch = 0, clr = 0;
-    clr = 8;
+    clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
-    for (i = 0; i < 3; i = i + 1 | 0) {
+    for (i = 0; i < ROLE_ALIGNS; i = i + 1 | 0) {
         algn_ok = $c.i8(ok_align(role, race, gend, i) && ok_role(role, race, gend, i) && ok_race(role, race, gend, i) ? 1 : 0);
         if (filtering && !algn_ok) {
             continue;
@@ -1677,7 +1694,7 @@ async function setup_algnmenu(win, filtering, role, race, gend) {   // role.c:29
             any.a_string = aligns[i].adj;
         }
         this_ch = aligns[i].adj.get(0);
-        await add_menu(win, nul_glyphinfo, any, $c.i8(filtering ? this_ch : highc(this_ch)), $c.i8(filtering ? highc(this_ch) : 0), 0, clr, aligns[i].adj, !filtering && !algn_ok ? 1 : 0);
+        await add_menu(win, nul_glyphinfo, any, $c.i8(filtering ? this_ch : highc(this_ch)), $c.i8(filtering ? highc(this_ch) : 0), ATR.NONE, clr, aligns[i].adj, !filtering && !algn_ok ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
 }
 
@@ -1685,1205 +1702,582 @@ export function $init() {
     for (let $i0 = 0; $i0 < 14; $i0++) {
         roles[$i0].$copyFrom(new $T.Role());
     }
-    roles[0].name.m = $c.lit("Archeologist");
-    roles[0].name.f = null;
-    roles[0].rank[0].m = $c.lit("Digger");
-    roles[0].rank[0].f = null;
-    roles[0].rank[1].m = $c.lit("Field Worker");
-    roles[0].rank[1].f = null;
-    roles[0].rank[2].m = $c.lit("Investigator");
-    roles[0].rank[2].f = null;
-    roles[0].rank[3].m = $c.lit("Exhumer");
-    roles[0].rank[3].f = null;
-    roles[0].rank[4].m = $c.lit("Excavator");
-    roles[0].rank[4].f = null;
-    roles[0].rank[5].m = $c.lit("Spelunker");
-    roles[0].rank[5].f = null;
-    roles[0].rank[6].m = $c.lit("Speleologist");
-    roles[0].rank[6].f = null;
-    roles[0].rank[7].m = $c.lit("Collector");
-    roles[0].rank[7].f = null;
-    roles[0].rank[8].m = $c.lit("Curator");
-    roles[0].rank[8].f = null;
-    roles[0].lgod = $c.lit("Quetzalcoatl");
-    roles[0].ngod = $c.lit("Camaxtli");
-    roles[0].cgod = $c.lit("Huhetotl");
-    roles[0].filecode = $c.lit("Arc");
-    roles[0].homebase = $c.lit("the College of Archeology");
-    roles[0].intermed = $c.lit("the Tomb of the Toltec Kings");
-    roles[0].mnum = 331;
-    roles[0].petnum = -1;
-    roles[0].ldrnum = 344;
-    roles[0].guardnum = 369;
-    roles[0].neminum = 357;
-    roles[0].enemy1num = -1;
-    roles[0].enemy2num = 192;
-    roles[0].enemy1sym = 45;
-    roles[0].enemy2sym = 39;
-    roles[0].questarti = 21;
-    roles[0].allow = 12398;
-    roles[0].attrbase[0] = 7;
-    roles[0].attrbase[1] = 10;
-    roles[0].attrbase[2] = 10;
-    roles[0].attrbase[3] = 7;
-    roles[0].attrbase[4] = 7;
-    roles[0].attrbase[5] = 7;
-    roles[0].attrdist[0] = 20;
-    roles[0].attrdist[1] = 20;
-    roles[0].attrdist[2] = 20;
-    roles[0].attrdist[3] = 10;
-    roles[0].attrdist[4] = 20;
-    roles[0].attrdist[5] = 10;
-    roles[0].hpadv.infix = 11;
-    roles[0].hpadv.inrnd = 0;
-    roles[0].hpadv.lofix = 0;
-    roles[0].hpadv.lornd = 8;
-    roles[0].hpadv.hifix = 1;
-    roles[0].hpadv.hirnd = 0;
-    roles[0].enadv.infix = 1;
-    roles[0].enadv.inrnd = 0;
-    roles[0].enadv.lofix = 0;
-    roles[0].enadv.lornd = 1;
-    roles[0].enadv.hifix = 0;
-    roles[0].enadv.hirnd = 1;
-    roles[0].xlev = 14;
-    roles[0].initrecord = 10;
-    roles[0].spelbase = 5;
-    roles[0].spelheal = 0;
-    roles[0].spelshld = 2;
-    roles[0].spelarmr = 10;
-    roles[0].spelstat = 1 /* A_INT */;
-    roles[0].spelspec = 396 /* SPE_MAGIC_MAPPING */;
-    roles[0].spelsbon = -4;
-    roles[1].name.m = $c.lit("Barbarian");
-    roles[1].name.f = null;
-    roles[1].rank[0].m = $c.lit("Plunderer");
-    roles[1].rank[0].f = $c.lit("Plunderess");
-    roles[1].rank[1].m = $c.lit("Pillager");
-    roles[1].rank[1].f = null;
-    roles[1].rank[2].m = $c.lit("Bandit");
-    roles[1].rank[2].f = null;
-    roles[1].rank[3].m = $c.lit("Brigand");
-    roles[1].rank[3].f = null;
-    roles[1].rank[4].m = $c.lit("Raider");
-    roles[1].rank[4].f = null;
-    roles[1].rank[5].m = $c.lit("Reaver");
-    roles[1].rank[5].f = null;
-    roles[1].rank[6].m = $c.lit("Slayer");
-    roles[1].rank[6].f = null;
-    roles[1].rank[7].m = $c.lit("Chieftain");
-    roles[1].rank[7].f = $c.lit("Chieftainess");
-    roles[1].rank[8].m = $c.lit("Conqueror");
-    roles[1].rank[8].f = $c.lit("Conqueress");
-    roles[1].lgod = $c.lit("Mitra");
-    roles[1].ngod = $c.lit("Crom");
-    roles[1].cgod = $c.lit("Set");
-    roles[1].filecode = $c.lit("Bar");
-    roles[1].homebase = $c.lit("the Camp of the Duali Tribe");
-    roles[1].intermed = $c.lit("the Duali Oasis");
-    roles[1].mnum = 332;
-    roles[1].petnum = -1;
-    roles[1].ldrnum = 345;
-    roles[1].guardnum = 370;
-    roles[1].neminum = 358;
-    roles[1].enemy1num = 203;
-    roles[1].enemy2num = 220;
-    roles[1].enemy1sym = 41;
-    roles[1].enemy2sym = 46;
-    roles[1].questarti = 22;
-    roles[1].allow = 12427;
-    roles[1].attrbase[0] = 16;
-    roles[1].attrbase[1] = 7;
-    roles[1].attrbase[2] = 7;
-    roles[1].attrbase[3] = 15;
-    roles[1].attrbase[4] = 16;
-    roles[1].attrbase[5] = 6;
-    roles[1].attrdist[0] = 30;
-    roles[1].attrdist[1] = 6;
-    roles[1].attrdist[2] = 7;
-    roles[1].attrdist[3] = 20;
-    roles[1].attrdist[4] = 30;
-    roles[1].attrdist[5] = 7;
-    roles[1].hpadv.infix = 14;
-    roles[1].hpadv.inrnd = 0;
-    roles[1].hpadv.lofix = 0;
-    roles[1].hpadv.lornd = 10;
-    roles[1].hpadv.hifix = 2;
-    roles[1].hpadv.hirnd = 0;
-    roles[1].enadv.infix = 1;
-    roles[1].enadv.inrnd = 0;
-    roles[1].enadv.lofix = 0;
-    roles[1].enadv.lornd = 1;
-    roles[1].enadv.hifix = 0;
-    roles[1].enadv.hirnd = 1;
-    roles[1].xlev = 10;
-    roles[1].initrecord = 10;
-    roles[1].spelbase = 14;
-    roles[1].spelheal = 0;
-    roles[1].spelshld = 0;
-    roles[1].spelarmr = 8;
-    roles[1].spelstat = 1 /* A_INT */;
-    roles[1].spelspec = 388 /* SPE_HASTE_SELF */;
-    roles[1].spelsbon = -4;
-    roles[2].name.m = $c.lit("Caveman");
-    roles[2].name.f = $c.lit("Cavewoman");
-    roles[2].rank[0].m = $c.lit("Troglodyte");
-    roles[2].rank[0].f = null;
-    roles[2].rank[1].m = $c.lit("Aborigine");
-    roles[2].rank[1].f = null;
-    roles[2].rank[2].m = $c.lit("Wanderer");
-    roles[2].rank[2].f = null;
-    roles[2].rank[3].m = $c.lit("Vagrant");
-    roles[2].rank[3].f = null;
-    roles[2].rank[4].m = $c.lit("Wayfarer");
-    roles[2].rank[4].f = null;
-    roles[2].rank[5].m = $c.lit("Roamer");
-    roles[2].rank[5].f = null;
-    roles[2].rank[6].m = $c.lit("Nomad");
-    roles[2].rank[6].f = null;
-    roles[2].rank[7].m = $c.lit("Rover");
-    roles[2].rank[7].f = null;
-    roles[2].rank[8].m = $c.lit("Pioneer");
-    roles[2].rank[8].f = null;
-    roles[2].lgod = $c.lit("Anu");
-    roles[2].ngod = $c.lit("_Ishtar");
-    roles[2].cgod = $c.lit("Anshar");
-    roles[2].filecode = $c.lit("Cav");
-    roles[2].homebase = $c.lit("the Caves of the Ancestors");
-    roles[2].intermed = $c.lit("the Dragon's Lair");
-    roles[2].mnum = 333;
-    roles[2].petnum = 16;
-    roles[2].ldrnum = 346;
-    roles[2].guardnum = 371;
-    roles[2].neminum = 359;
-    roles[2].enemy1num = 45;
-    roles[2].enemy2num = 171;
-    roles[2].enemy1sym = 8;
-    roles[2].enemy2sym = 34;
-    roles[2].questarti = 23;
-    roles[2].allow = 12398;
-    roles[2].attrbase[0] = 10;
-    roles[2].attrbase[1] = 7;
-    roles[2].attrbase[2] = 7;
-    roles[2].attrbase[3] = 7;
-    roles[2].attrbase[4] = 8;
-    roles[2].attrbase[5] = 6;
-    roles[2].attrdist[0] = 30;
-    roles[2].attrdist[1] = 6;
-    roles[2].attrdist[2] = 7;
-    roles[2].attrdist[3] = 20;
-    roles[2].attrdist[4] = 30;
-    roles[2].attrdist[5] = 7;
-    roles[2].hpadv.infix = 14;
-    roles[2].hpadv.inrnd = 0;
-    roles[2].hpadv.lofix = 0;
-    roles[2].hpadv.lornd = 8;
-    roles[2].hpadv.hifix = 2;
-    roles[2].hpadv.hirnd = 0;
-    roles[2].enadv.infix = 1;
-    roles[2].enadv.inrnd = 0;
-    roles[2].enadv.lofix = 0;
-    roles[2].enadv.lornd = 1;
-    roles[2].enadv.hifix = 0;
-    roles[2].enadv.hirnd = 1;
-    roles[2].xlev = 10;
-    roles[2].initrecord = 0;
-    roles[2].spelbase = 12;
-    roles[2].spelheal = 0;
-    roles[2].spelshld = 1;
-    roles[2].spelarmr = 8;
-    roles[2].spelstat = 1 /* A_INT */;
-    roles[2].spelspec = 366 /* SPE_DIG */;
-    roles[2].spelsbon = -4;
-    roles[3].name.m = $c.lit("Healer");
-    roles[3].name.f = null;
-    roles[3].rank[0].m = $c.lit("Rhizotomist");
-    roles[3].rank[0].f = null;
-    roles[3].rank[1].m = $c.lit("Empiric");
-    roles[3].rank[1].f = null;
-    roles[3].rank[2].m = $c.lit("Embalmer");
-    roles[3].rank[2].f = null;
-    roles[3].rank[3].m = $c.lit("Dresser");
-    roles[3].rank[3].f = null;
-    roles[3].rank[4].m = $c.lit("Medicus ossium");
-    roles[3].rank[4].f = $c.lit("Medica ossium");
-    roles[3].rank[5].m = $c.lit("Herbalist");
-    roles[3].rank[5].f = null;
-    roles[3].rank[6].m = $c.lit("Magister");
-    roles[3].rank[6].f = $c.lit("Magistra");
-    roles[3].rank[7].m = $c.lit("Physician");
-    roles[3].rank[7].f = null;
-    roles[3].rank[8].m = $c.lit("Chirurgeon");
-    roles[3].rank[8].f = null;
-    roles[3].lgod = $c.lit("_Athena");
-    roles[3].ngod = $c.lit("Hermes");
-    roles[3].cgod = $c.lit("Poseidon");
-    roles[3].filecode = $c.lit("Hea");
-    roles[3].homebase = $c.lit("the Temple of Epidaurus");
-    roles[3].intermed = $c.lit("the Temple of Coeus");
-    roles[3].mnum = 334;
-    roles[3].petnum = -1;
-    roles[3].ldrnum = 347;
-    roles[3].guardnum = 372;
-    roles[3].neminum = 360;
-    roles[3].enemy1num = 89;
-    roles[3].enemy2num = 215;
-    roles[3].enemy1sym = 18;
-    roles[3].enemy2sym = 51;
-    roles[3].questarti = 24;
-    roles[3].allow = 12362;
-    roles[3].attrbase[0] = 7;
-    roles[3].attrbase[1] = 7;
-    roles[3].attrbase[2] = 13;
-    roles[3].attrbase[3] = 7;
-    roles[3].attrbase[4] = 11;
-    roles[3].attrbase[5] = 16;
-    roles[3].attrdist[0] = 15;
-    roles[3].attrdist[1] = 20;
-    roles[3].attrdist[2] = 20;
-    roles[3].attrdist[3] = 15;
-    roles[3].attrdist[4] = 25;
-    roles[3].attrdist[5] = 5;
-    roles[3].hpadv.infix = 11;
-    roles[3].hpadv.inrnd = 0;
-    roles[3].hpadv.lofix = 0;
-    roles[3].hpadv.lornd = 8;
-    roles[3].hpadv.hifix = 1;
-    roles[3].hpadv.hirnd = 0;
-    roles[3].enadv.infix = 1;
-    roles[3].enadv.inrnd = 4;
-    roles[3].enadv.lofix = 0;
-    roles[3].enadv.lornd = 1;
-    roles[3].enadv.hifix = 0;
-    roles[3].enadv.hirnd = 2;
-    roles[3].xlev = 20;
-    roles[3].initrecord = 10;
-    roles[3].spelbase = 3;
-    roles[3].spelheal = -3;
-    roles[3].spelshld = 2;
-    roles[3].spelarmr = 10;
-    roles[3].spelstat = 2 /* A_WIS */;
-    roles[3].spelspec = 386 /* SPE_CURE_SICKNESS */;
-    roles[3].spelsbon = -4;
-    roles[4].name.m = $c.lit("Knight");
-    roles[4].name.f = null;
-    roles[4].rank[0].m = $c.lit("Gallant");
-    roles[4].rank[0].f = null;
-    roles[4].rank[1].m = $c.lit("Esquire");
-    roles[4].rank[1].f = null;
-    roles[4].rank[2].m = $c.lit("Bachelor");
-    roles[4].rank[2].f = null;
-    roles[4].rank[3].m = $c.lit("Sergeant");
-    roles[4].rank[3].f = null;
-    roles[4].rank[4].m = $c.lit("Knight");
-    roles[4].rank[4].f = null;
-    roles[4].rank[5].m = $c.lit("Banneret");
-    roles[4].rank[5].f = null;
-    roles[4].rank[6].m = $c.lit("Chevalier");
-    roles[4].rank[6].f = $c.lit("Chevaliere");
-    roles[4].rank[7].m = $c.lit("Seignieur");
-    roles[4].rank[7].f = $c.lit("Dame");
-    roles[4].rank[8].m = $c.lit("Paladin");
-    roles[4].rank[8].f = null;
-    roles[4].lgod = $c.lit("Lugh");
-    roles[4].ngod = $c.lit("_Brigit");
-    roles[4].cgod = $c.lit("Manannan Mac Lir");
-    roles[4].filecode = $c.lit("Kni");
-    roles[4].homebase = $c.lit("Camelot Castle");
-    roles[4].intermed = $c.lit("the Isle of Glass");
-    roles[4].mnum = 335;
-    roles[4].petnum = 100;
-    roles[4].ldrnum = 348;
-    roles[4].guardnum = 373;
-    roles[4].neminum = 361;
-    roles[4].enemy1num = 54;
-    roles[4].enemy2num = 58;
-    roles[4].enemy1sym = 9;
-    roles[4].enemy2sym = 10;
-    roles[4].questarti = 25;
-    roles[4].allow = 12300;
-    roles[4].attrbase[0] = 13;
-    roles[4].attrbase[1] = 7;
-    roles[4].attrbase[2] = 14;
-    roles[4].attrbase[3] = 8;
-    roles[4].attrbase[4] = 10;
-    roles[4].attrbase[5] = 17;
-    roles[4].attrdist[0] = 30;
-    roles[4].attrdist[1] = 15;
-    roles[4].attrdist[2] = 15;
-    roles[4].attrdist[3] = 10;
-    roles[4].attrdist[4] = 20;
-    roles[4].attrdist[5] = 10;
-    roles[4].hpadv.infix = 14;
-    roles[4].hpadv.inrnd = 0;
-    roles[4].hpadv.lofix = 0;
-    roles[4].hpadv.lornd = 8;
-    roles[4].hpadv.hifix = 2;
-    roles[4].hpadv.hirnd = 0;
-    roles[4].enadv.infix = 1;
-    roles[4].enadv.inrnd = 4;
-    roles[4].enadv.lofix = 0;
-    roles[4].enadv.lornd = 1;
-    roles[4].enadv.hifix = 0;
-    roles[4].enadv.hirnd = 2;
-    roles[4].xlev = 10;
-    roles[4].initrecord = 10;
-    roles[4].spelbase = 8;
-    roles[4].spelheal = -2;
-    roles[4].spelshld = 0;
-    roles[4].spelarmr = 9;
-    roles[4].spelstat = 2 /* A_WIS */;
-    roles[4].spelspec = 398 /* SPE_TURN_UNDEAD */;
-    roles[4].spelsbon = -4;
-    roles[5].name.m = $c.lit("Monk");
-    roles[5].name.f = null;
-    roles[5].rank[0].m = $c.lit("Candidate");
-    roles[5].rank[0].f = null;
-    roles[5].rank[1].m = $c.lit("Novice");
-    roles[5].rank[1].f = null;
-    roles[5].rank[2].m = $c.lit("Initiate");
-    roles[5].rank[2].f = null;
-    roles[5].rank[3].m = $c.lit("Student of Stones");
-    roles[5].rank[3].f = null;
-    roles[5].rank[4].m = $c.lit("Student of Waters");
-    roles[5].rank[4].f = null;
-    roles[5].rank[5].m = $c.lit("Student of Metals");
-    roles[5].rank[5].f = null;
-    roles[5].rank[6].m = $c.lit("Student of Winds");
-    roles[5].rank[6].f = null;
-    roles[5].rank[7].m = $c.lit("Student of Fire");
-    roles[5].rank[7].f = null;
-    roles[5].rank[8].m = $c.lit("Master");
-    roles[5].rank[8].f = null;
-    roles[5].lgod = $c.lit("Shan Lai Ching");
-    roles[5].ngod = $c.lit("Chih Sung-tzu");
-    roles[5].cgod = $c.lit("Huan Ti");
-    roles[5].filecode = $c.lit("Mon");
-    roles[5].homebase = $c.lit("the Monastery of Chan-Sune");
-    roles[5].intermed = $c.lit("the Monastery of the Earth-Lord");
-    roles[5].mnum = 336;
-    roles[5].petnum = -1;
-    roles[5].ldrnum = 349;
-    roles[5].guardnum = 374;
-    roles[5].neminum = 362;
-    roles[5].enemy1num = 156;
-    roles[5].enemy2num = 232;
-    roles[5].enemy1sym = 31;
-    roles[5].enemy2sym = 50;
-    roles[5].questarti = 26;
-    roles[5].allow = 12303;
-    roles[5].attrbase[0] = 10;
-    roles[5].attrbase[1] = 7;
-    roles[5].attrbase[2] = 8;
-    roles[5].attrbase[3] = 8;
-    roles[5].attrbase[4] = 7;
-    roles[5].attrbase[5] = 7;
-    roles[5].attrdist[0] = 25;
-    roles[5].attrdist[1] = 10;
-    roles[5].attrdist[2] = 20;
-    roles[5].attrdist[3] = 20;
-    roles[5].attrdist[4] = 15;
-    roles[5].attrdist[5] = 10;
-    roles[5].hpadv.infix = 12;
-    roles[5].hpadv.inrnd = 0;
-    roles[5].hpadv.lofix = 0;
-    roles[5].hpadv.lornd = 8;
-    roles[5].hpadv.hifix = 1;
-    roles[5].hpadv.hirnd = 0;
-    roles[5].enadv.infix = 2;
-    roles[5].enadv.inrnd = 2;
-    roles[5].enadv.lofix = 0;
-    roles[5].enadv.lornd = 2;
-    roles[5].enadv.hifix = 0;
-    roles[5].enadv.hirnd = 2;
-    roles[5].xlev = 10;
-    roles[5].initrecord = 10;
-    roles[5].spelbase = 8;
-    roles[5].spelheal = -2;
-    roles[5].spelshld = 2;
-    roles[5].spelarmr = 20;
-    roles[5].spelstat = 2 /* A_WIS */;
-    roles[5].spelspec = 392 /* SPE_RESTORE_ABILITY */;
-    roles[5].spelsbon = -4;
-    roles[6].name.m = $c.lit("Priest");
-    roles[6].name.f = $c.lit("Priestess");
-    roles[6].rank[0].m = $c.lit("Aspirant");
-    roles[6].rank[0].f = null;
-    roles[6].rank[1].m = $c.lit("Acolyte");
-    roles[6].rank[1].f = null;
-    roles[6].rank[2].m = $c.lit("Adept");
-    roles[6].rank[2].f = null;
-    roles[6].rank[3].m = $c.lit("Priest");
-    roles[6].rank[3].f = $c.lit("Priestess");
-    roles[6].rank[4].m = $c.lit("Curate");
-    roles[6].rank[4].f = null;
-    roles[6].rank[5].m = $c.lit("Canon");
-    roles[6].rank[5].f = $c.lit("Canoness");
-    roles[6].rank[6].m = $c.lit("Lama");
-    roles[6].rank[6].f = null;
-    roles[6].rank[7].m = $c.lit("Patriarch");
-    roles[6].rank[7].f = $c.lit("Matriarch");
-    roles[6].rank[8].m = $c.lit("High Priest");
-    roles[6].rank[8].f = $c.lit("High Priestess");
-    roles[6].lgod = null;
-    roles[6].ngod = null;
-    roles[6].cgod = null;
-    roles[6].filecode = $c.lit("Pri");
-    roles[6].homebase = $c.lit("the Great Temple");
-    roles[6].intermed = $c.lit("the Temple of Nalzok");
-    roles[6].mnum = 337;
-    roles[6].petnum = -1;
-    roles[6].ldrnum = 350;
-    roles[6].guardnum = 375;
-    roles[6].neminum = 363;
-    roles[6].enemy1num = 244;
-    roles[6].enemy2num = 230;
-    roles[6].enemy1sym = 52;
-    roles[6].enemy2sym = 49;
-    roles[6].questarti = 27;
-    roles[6].allow = 12319;
-    roles[6].attrbase[0] = 7;
-    roles[6].attrbase[1] = 7;
-    roles[6].attrbase[2] = 10;
-    roles[6].attrbase[3] = 7;
-    roles[6].attrbase[4] = 7;
-    roles[6].attrbase[5] = 7;
-    roles[6].attrdist[0] = 15;
-    roles[6].attrdist[1] = 10;
-    roles[6].attrdist[2] = 30;
-    roles[6].attrdist[3] = 15;
-    roles[6].attrdist[4] = 20;
-    roles[6].attrdist[5] = 10;
-    roles[6].hpadv.infix = 12;
-    roles[6].hpadv.inrnd = 0;
-    roles[6].hpadv.lofix = 0;
-    roles[6].hpadv.lornd = 8;
-    roles[6].hpadv.hifix = 1;
-    roles[6].hpadv.hirnd = 0;
-    roles[6].enadv.infix = 4;
-    roles[6].enadv.inrnd = 3;
-    roles[6].enadv.lofix = 0;
-    roles[6].enadv.lornd = 2;
-    roles[6].enadv.hifix = 0;
-    roles[6].enadv.hirnd = 2;
-    roles[6].xlev = 10;
-    roles[6].initrecord = 0;
-    roles[6].spelbase = 3;
-    roles[6].spelheal = -2;
-    roles[6].spelshld = 2;
-    roles[6].spelarmr = 10;
-    roles[6].spelstat = 2 /* A_WIS */;
-    roles[6].spelspec = 395 /* SPE_REMOVE_CURSE */;
-    roles[6].spelsbon = -4;
-    roles[7].name.m = $c.lit("Rogue");
-    roles[7].name.f = null;
-    roles[7].rank[0].m = $c.lit("Footpad");
-    roles[7].rank[0].f = null;
-    roles[7].rank[1].m = $c.lit("Cutpurse");
-    roles[7].rank[1].f = null;
-    roles[7].rank[2].m = $c.lit("Rogue");
-    roles[7].rank[2].f = null;
-    roles[7].rank[3].m = $c.lit("Pilferer");
-    roles[7].rank[3].f = null;
-    roles[7].rank[4].m = $c.lit("Robber");
-    roles[7].rank[4].f = null;
-    roles[7].rank[5].m = $c.lit("Burglar");
-    roles[7].rank[5].f = null;
-    roles[7].rank[6].m = $c.lit("Filcher");
-    roles[7].rank[6].f = null;
-    roles[7].rank[7].m = $c.lit("Magsman");
-    roles[7].rank[7].f = $c.lit("Magswoman");
-    roles[7].rank[8].m = $c.lit("Thief");
-    roles[7].rank[8].f = null;
-    roles[7].lgod = $c.lit("Issek");
-    roles[7].ngod = $c.lit("Mog");
-    roles[7].cgod = $c.lit("Kos");
-    roles[7].filecode = $c.lit("Rog");
-    roles[7].homebase = $c.lit("the Thieves' Guild Hall");
-    roles[7].intermed = $c.lit("the Assassins' Guild Hall");
-    roles[7].mnum = 339;
-    roles[7].petnum = -1;
-    roles[7].ldrnum = 352;
-    roles[7].guardnum = 377;
-    roles[7].neminum = 365;
-    roles[7].enemy1num = 63;
-    roles[7].enemy2num = 202;
-    roles[7].enemy1sym = 14;
-    roles[7].enemy2sym = 40;
-    roles[7].questarti = 29;
-    roles[7].allow = 12425;
-    roles[7].attrbase[0] = 7;
-    roles[7].attrbase[1] = 7;
-    roles[7].attrbase[2] = 7;
-    roles[7].attrbase[3] = 10;
-    roles[7].attrbase[4] = 7;
-    roles[7].attrbase[5] = 6;
-    roles[7].attrdist[0] = 20;
-    roles[7].attrdist[1] = 10;
-    roles[7].attrdist[2] = 10;
-    roles[7].attrdist[3] = 30;
-    roles[7].attrdist[4] = 20;
-    roles[7].attrdist[5] = 10;
-    roles[7].hpadv.infix = 10;
-    roles[7].hpadv.inrnd = 0;
-    roles[7].hpadv.lofix = 0;
-    roles[7].hpadv.lornd = 8;
-    roles[7].hpadv.hifix = 1;
-    roles[7].hpadv.hirnd = 0;
-    roles[7].enadv.infix = 1;
-    roles[7].enadv.inrnd = 0;
-    roles[7].enadv.lofix = 0;
-    roles[7].enadv.lornd = 1;
-    roles[7].enadv.hifix = 0;
-    roles[7].enadv.hirnd = 1;
-    roles[7].xlev = 11;
-    roles[7].initrecord = 10;
-    roles[7].spelbase = 8;
-    roles[7].spelheal = 0;
-    roles[7].spelshld = 1;
-    roles[7].spelarmr = 9;
-    roles[7].spelstat = 1 /* A_INT */;
-    roles[7].spelspec = 394 /* SPE_DETECT_TREASURE */;
-    roles[7].spelsbon = -4;
-    roles[8].name.m = $c.lit("Ranger");
-    roles[8].name.f = null;
-    roles[8].rank[0].m = $c.lit("Tenderfoot");
-    roles[8].rank[0].f = null;
-    roles[8].rank[1].m = $c.lit("Lookout");
-    roles[8].rank[1].f = null;
-    roles[8].rank[2].m = $c.lit("Trailblazer");
-    roles[8].rank[2].f = null;
-    roles[8].rank[3].m = $c.lit("Reconnoiterer");
-    roles[8].rank[3].f = $c.lit("Reconnoiteress");
-    roles[8].rank[4].m = $c.lit("Scout");
-    roles[8].rank[4].f = null;
-    roles[8].rank[5].m = $c.lit("Arbalester");
-    roles[8].rank[5].f = null;
-    roles[8].rank[6].m = $c.lit("Archer");
-    roles[8].rank[6].f = null;
-    roles[8].rank[7].m = $c.lit("Sharpshooter");
-    roles[8].rank[7].f = null;
-    roles[8].rank[8].m = $c.lit("Marksman");
-    roles[8].rank[8].f = $c.lit("Markswoman");
-    roles[8].lgod = $c.lit("Mercury");
-    roles[8].ngod = $c.lit("_Venus");
-    roles[8].cgod = $c.lit("Mars");
-    roles[8].filecode = $c.lit("Ran");
-    roles[8].homebase = $c.lit("Orion's camp");
-    roles[8].intermed = $c.lit("the cave of the wumpus");
-    roles[8].mnum = 338;
-    roles[8].petnum = 16;
-    roles[8].ldrnum = 351;
-    roles[8].guardnum = 376;
-    roles[8].neminum = 364;
-    roles[8].enemy1num = 131;
-    roles[8].enemy2num = 97;
-    roles[8].enemy1sym = 29;
-    roles[8].enemy2sym = 19;
-    roles[8].questarti = 28;
-    roles[8].allow = 12507;
-    roles[8].attrbase[0] = 13;
-    roles[8].attrbase[1] = 13;
-    roles[8].attrbase[2] = 13;
-    roles[8].attrbase[3] = 9;
-    roles[8].attrbase[4] = 13;
-    roles[8].attrbase[5] = 7;
-    roles[8].attrdist[0] = 30;
-    roles[8].attrdist[1] = 10;
-    roles[8].attrdist[2] = 10;
-    roles[8].attrdist[3] = 20;
-    roles[8].attrdist[4] = 20;
-    roles[8].attrdist[5] = 10;
-    roles[8].hpadv.infix = 13;
-    roles[8].hpadv.inrnd = 0;
-    roles[8].hpadv.lofix = 0;
-    roles[8].hpadv.lornd = 6;
-    roles[8].hpadv.hifix = 1;
-    roles[8].hpadv.hirnd = 0;
-    roles[8].enadv.infix = 1;
-    roles[8].enadv.inrnd = 0;
-    roles[8].enadv.lofix = 0;
-    roles[8].enadv.lornd = 1;
-    roles[8].enadv.hifix = 0;
-    roles[8].enadv.hirnd = 1;
-    roles[8].xlev = 12;
-    roles[8].initrecord = 10;
-    roles[8].spelbase = 9;
-    roles[8].spelheal = 2;
-    roles[8].spelshld = 1;
-    roles[8].spelarmr = 10;
-    roles[8].spelstat = 1 /* A_INT */;
-    roles[8].spelspec = 393 /* SPE_INVISIBILITY */;
-    roles[8].spelsbon = -4;
-    roles[9].name.m = $c.lit("Samurai");
-    roles[9].name.f = null;
-    roles[9].rank[0].m = $c.lit("Hatamoto");
-    roles[9].rank[0].f = null;
-    roles[9].rank[1].m = $c.lit("Ronin");
-    roles[9].rank[1].f = null;
-    roles[9].rank[2].m = $c.lit("Ninja");
-    roles[9].rank[2].f = $c.lit("Kunoichi");
-    roles[9].rank[3].m = $c.lit("Joshu");
-    roles[9].rank[3].f = null;
-    roles[9].rank[4].m = $c.lit("Ryoshu");
-    roles[9].rank[4].f = null;
-    roles[9].rank[5].m = $c.lit("Kokushu");
-    roles[9].rank[5].f = null;
-    roles[9].rank[6].m = $c.lit("Daimyo");
-    roles[9].rank[6].f = null;
-    roles[9].rank[7].m = $c.lit("Kuge");
-    roles[9].rank[7].f = null;
-    roles[9].rank[8].m = $c.lit("Shogun");
-    roles[9].rank[8].f = null;
-    roles[9].lgod = $c.lit("_Amaterasu Omikami");
-    roles[9].ngod = $c.lit("Raijin");
-    roles[9].cgod = $c.lit("Susanowo");
-    roles[9].filecode = $c.lit("Sam");
-    roles[9].homebase = $c.lit("the Castle of the Taro Clan");
-    roles[9].intermed = $c.lit("the Shogun's Castle");
-    roles[9].mnum = 340;
-    roles[9].petnum = 16;
-    roles[9].ldrnum = 353;
-    roles[9].guardnum = 379;
-    roles[9].neminum = 366;
-    roles[9].enemy1num = 20;
-    roles[9].enemy2num = 153;
-    roles[9].enemy1sym = 4;
-    roles[9].enemy2sym = 31;
-    roles[9].questarti = 30;
-    roles[9].allow = 12300;
-    roles[9].attrbase[0] = 10;
-    roles[9].attrbase[1] = 8;
-    roles[9].attrbase[2] = 7;
-    roles[9].attrbase[3] = 10;
-    roles[9].attrbase[4] = 17;
-    roles[9].attrbase[5] = 6;
-    roles[9].attrdist[0] = 30;
-    roles[9].attrdist[1] = 10;
-    roles[9].attrdist[2] = 8;
-    roles[9].attrdist[3] = 30;
-    roles[9].attrdist[4] = 14;
-    roles[9].attrdist[5] = 8;
-    roles[9].hpadv.infix = 13;
-    roles[9].hpadv.inrnd = 0;
-    roles[9].hpadv.lofix = 0;
-    roles[9].hpadv.lornd = 8;
-    roles[9].hpadv.hifix = 1;
-    roles[9].hpadv.hirnd = 0;
-    roles[9].enadv.infix = 1;
-    roles[9].enadv.inrnd = 0;
-    roles[9].enadv.lofix = 0;
-    roles[9].enadv.lornd = 1;
-    roles[9].enadv.hifix = 0;
-    roles[9].enadv.hirnd = 1;
-    roles[9].xlev = 11;
-    roles[9].initrecord = 10;
-    roles[9].spelbase = 10;
-    roles[9].spelheal = 0;
-    roles[9].spelshld = 0;
-    roles[9].spelarmr = 8;
-    roles[9].spelstat = 1 /* A_INT */;
-    roles[9].spelspec = 385 /* SPE_CLAIRVOYANCE */;
-    roles[9].spelsbon = -4;
-    roles[10].name.m = $c.lit("Tourist");
-    roles[10].name.f = null;
-    roles[10].rank[0].m = $c.lit("Rambler");
-    roles[10].rank[0].f = null;
-    roles[10].rank[1].m = $c.lit("Sightseer");
-    roles[10].rank[1].f = null;
-    roles[10].rank[2].m = $c.lit("Excursionist");
-    roles[10].rank[2].f = null;
-    roles[10].rank[3].m = $c.lit("Peregrinator");
-    roles[10].rank[3].f = $c.lit("Peregrinatrix");
-    roles[10].rank[4].m = $c.lit("Traveler");
-    roles[10].rank[4].f = null;
-    roles[10].rank[5].m = $c.lit("Journeyer");
-    roles[10].rank[5].f = null;
-    roles[10].rank[6].m = $c.lit("Voyager");
-    roles[10].rank[6].f = null;
-    roles[10].rank[7].m = $c.lit("Explorer");
-    roles[10].rank[7].f = null;
-    roles[10].rank[8].m = $c.lit("Adventurer");
-    roles[10].rank[8].f = null;
-    roles[10].lgod = $c.lit("Blind Io");
-    roles[10].ngod = $c.lit("_The Lady");
-    roles[10].cgod = $c.lit("Offler");
-    roles[10].filecode = $c.lit("Tou");
-    roles[10].homebase = $c.lit("Ankh-Morpork");
-    roles[10].intermed = $c.lit("the Thieves' Guild Hall");
-    roles[10].mnum = 341;
-    roles[10].petnum = -1;
-    roles[10].ldrnum = 354;
-    roles[10].guardnum = 380;
-    roles[10].neminum = 352;
-    roles[10].enemy1num = 96;
-    roles[10].enemy2num = 131;
-    roles[10].enemy1sym = 19;
-    roles[10].enemy2sym = 29;
-    roles[10].questarti = 31;
-    roles[10].allow = 12298;
-    roles[10].attrbase[0] = 7;
-    roles[10].attrbase[1] = 10;
-    roles[10].attrbase[2] = 6;
-    roles[10].attrbase[3] = 7;
-    roles[10].attrbase[4] = 7;
-    roles[10].attrbase[5] = 10;
-    roles[10].attrdist[0] = 15;
-    roles[10].attrdist[1] = 10;
-    roles[10].attrdist[2] = 10;
-    roles[10].attrdist[3] = 15;
-    roles[10].attrdist[4] = 30;
-    roles[10].attrdist[5] = 20;
-    roles[10].hpadv.infix = 8;
-    roles[10].hpadv.inrnd = 0;
-    roles[10].hpadv.lofix = 0;
-    roles[10].hpadv.lornd = 8;
-    roles[10].hpadv.hifix = 0;
-    roles[10].hpadv.hirnd = 0;
-    roles[10].enadv.infix = 1;
-    roles[10].enadv.inrnd = 0;
-    roles[10].enadv.lofix = 0;
-    roles[10].enadv.lornd = 1;
-    roles[10].enadv.hifix = 0;
-    roles[10].enadv.hirnd = 1;
-    roles[10].xlev = 14;
-    roles[10].initrecord = 0;
-    roles[10].spelbase = 5;
-    roles[10].spelheal = 1;
-    roles[10].spelshld = 2;
-    roles[10].spelarmr = 10;
-    roles[10].spelstat = 1 /* A_INT */;
-    roles[10].spelspec = 387 /* SPE_CHARM_MONSTER */;
-    roles[10].spelsbon = -4;
-    roles[11].name.m = $c.lit("Valkyrie");
-    roles[11].name.f = null;
-    roles[11].rank[0].m = $c.lit("Stripling");
-    roles[11].rank[0].f = null;
-    roles[11].rank[1].m = $c.lit("Skirmisher");
-    roles[11].rank[1].f = null;
-    roles[11].rank[2].m = $c.lit("Fighter");
-    roles[11].rank[2].f = null;
-    roles[11].rank[3].m = $c.lit("Man-at-arms");
-    roles[11].rank[3].f = $c.lit("Woman-at-arms");
-    roles[11].rank[4].m = $c.lit("Warrior");
-    roles[11].rank[4].f = null;
-    roles[11].rank[5].m = $c.lit("Swashbuckler");
-    roles[11].rank[5].f = null;
-    roles[11].rank[6].m = $c.lit("Hero");
-    roles[11].rank[6].f = $c.lit("Heroine");
-    roles[11].rank[7].m = $c.lit("Champion");
-    roles[11].rank[7].f = null;
-    roles[11].rank[8].m = $c.lit("Lord");
-    roles[11].rank[8].f = $c.lit("Lady");
-    roles[11].lgod = $c.lit("Tyr");
-    roles[11].ngod = $c.lit("Odin");
-    roles[11].cgod = $c.lit("Loki");
-    roles[11].filecode = $c.lit("Val");
-    roles[11].homebase = $c.lit("the Shrine of Destiny");
-    roles[11].intermed = $c.lit("the cave of Surtur");
-    roles[11].mnum = 342;
-    roles[11].petnum = -1;
-    roles[11].ldrnum = 355;
-    roles[11].guardnum = 381;
-    roles[11].neminum = 367;
-    roles[11].enemy1num = 3;
-    roles[11].enemy2num = 172;
-    roles[11].enemy1sym = 1;
-    roles[11].enemy2sym = 34;
-    roles[11].questarti = 32;
-    roles[11].allow = 8238;
-    roles[11].attrbase[0] = 10;
-    roles[11].attrbase[1] = 7;
-    roles[11].attrbase[2] = 7;
-    roles[11].attrbase[3] = 7;
-    roles[11].attrbase[4] = 10;
-    roles[11].attrbase[5] = 7;
-    roles[11].attrdist[0] = 30;
-    roles[11].attrdist[1] = 6;
-    roles[11].attrdist[2] = 7;
-    roles[11].attrdist[3] = 20;
-    roles[11].attrdist[4] = 30;
-    roles[11].attrdist[5] = 7;
-    roles[11].hpadv.infix = 14;
-    roles[11].hpadv.inrnd = 0;
-    roles[11].hpadv.lofix = 0;
-    roles[11].hpadv.lornd = 8;
-    roles[11].hpadv.hifix = 2;
-    roles[11].hpadv.hirnd = 0;
-    roles[11].enadv.infix = 1;
-    roles[11].enadv.inrnd = 0;
-    roles[11].enadv.lofix = 0;
-    roles[11].enadv.lornd = 1;
-    roles[11].enadv.hifix = 0;
-    roles[11].enadv.hirnd = 1;
-    roles[11].xlev = 10;
-    roles[11].initrecord = 0;
-    roles[11].spelbase = 10;
-    roles[11].spelheal = -2;
-    roles[11].spelshld = 0;
-    roles[11].spelarmr = 9;
-    roles[11].spelstat = 2 /* A_WIS */;
-    roles[11].spelspec = 369 /* SPE_CONE_OF_COLD */;
-    roles[11].spelsbon = -4;
-    roles[12].name.m = $c.lit("Wizard");
-    roles[12].name.f = null;
-    roles[12].rank[0].m = $c.lit("Evoker");
-    roles[12].rank[0].f = null;
-    roles[12].rank[1].m = $c.lit("Conjurer");
-    roles[12].rank[1].f = null;
-    roles[12].rank[2].m = $c.lit("Thaumaturge");
-    roles[12].rank[2].f = null;
-    roles[12].rank[3].m = $c.lit("Magician");
-    roles[12].rank[3].f = null;
-    roles[12].rank[4].m = $c.lit("Enchanter");
-    roles[12].rank[4].f = $c.lit("Enchantress");
-    roles[12].rank[5].m = $c.lit("Sorcerer");
-    roles[12].rank[5].f = $c.lit("Sorceress");
-    roles[12].rank[6].m = $c.lit("Necromancer");
-    roles[12].rank[6].f = null;
-    roles[12].rank[7].m = $c.lit("Wizard");
-    roles[12].rank[7].f = null;
-    roles[12].rank[8].m = $c.lit("Mage");
-    roles[12].rank[8].f = null;
-    roles[12].lgod = $c.lit("Ptah");
-    roles[12].ngod = $c.lit("Thoth");
-    roles[12].cgod = $c.lit("Anhur");
-    roles[12].filecode = $c.lit("Wiz");
-    roles[12].homebase = $c.lit("the Lonely Tower");
-    roles[12].intermed = $c.lit("the Tower of Darkness");
-    roles[12].mnum = 343;
-    roles[12].petnum = 32;
-    roles[12].ldrnum = 356;
-    roles[12].guardnum = 382;
-    roles[12].neminum = 368;
-    roles[12].enemy1num = 129;
-    roles[12].enemy2num = 232;
-    roles[12].enemy1sym = 28;
-    roles[12].enemy2sym = 49;
-    roles[12].questarti = 33;
-    roles[12].allow = 12507;
-    roles[12].attrbase[0] = 7;
-    roles[12].attrbase[1] = 10;
-    roles[12].attrbase[2] = 7;
-    roles[12].attrbase[3] = 7;
-    roles[12].attrbase[4] = 7;
-    roles[12].attrbase[5] = 7;
-    roles[12].attrdist[0] = 10;
-    roles[12].attrdist[1] = 30;
-    roles[12].attrdist[2] = 10;
-    roles[12].attrdist[3] = 20;
-    roles[12].attrdist[4] = 20;
-    roles[12].attrdist[5] = 10;
-    roles[12].hpadv.infix = 10;
-    roles[12].hpadv.inrnd = 0;
-    roles[12].hpadv.lofix = 0;
-    roles[12].hpadv.lornd = 8;
-    roles[12].hpadv.hifix = 1;
-    roles[12].hpadv.hirnd = 0;
-    roles[12].enadv.infix = 4;
-    roles[12].enadv.inrnd = 3;
-    roles[12].enadv.lofix = 0;
-    roles[12].enadv.lornd = 2;
-    roles[12].enadv.hifix = 0;
-    roles[12].enadv.hirnd = 3;
-    roles[12].xlev = 12;
-    roles[12].initrecord = 0;
-    roles[12].spelbase = 1;
-    roles[12].spelheal = 0;
-    roles[12].spelshld = 3;
-    roles[12].spelarmr = 10;
-    roles[12].spelstat = 1 /* A_INT */;
-    roles[12].spelspec = 367 /* SPE_MAGIC_MISSILE */;
-    roles[12].spelsbon = -4;
-    roles[13].name.m = null;
-    roles[13].name.f = null;
-    roles[13].rank[0].m = null;
-    roles[13].rank[0].f = null;
-    roles[13].lgod = null;
-    roles[13].ngod = null;
-    roles[13].cgod = null;
-    roles[13].filecode = null;
-    roles[13].homebase = null;
-    roles[13].intermed = null;
-    roles[13].mnum = -1;
-    roles[13].petnum = -1;
-    roles[13].ldrnum = -1;
-    roles[13].guardnum = -1;
-    roles[13].neminum = -1;
-    roles[13].enemy1num = -1;
-    roles[13].enemy2num = -1;
-    roles[13].enemy1sym = 0;
-    roles[13].enemy2sym = 0;
-    roles[13].questarti = 0;
-    roles[13].allow = 0;
-    roles[13].attrbase[0] = 0;
-    roles[13].attrdist[0] = 0;
-    roles[13].hpadv.infix = 0;
-    roles[13].enadv.infix = 0;
-    roles[13].xlev = 0;
-    roles[13].initrecord = 0;
-    roles[13].spelbase = 0;
-    roles[13].spelheal = 0;
-    roles[13].spelshld = 0;
-    roles[13].spelarmr = 0;
-    roles[13].spelstat = 0;
-    roles[13].spelspec = 0;
-    roles[13].spelsbon = 0;
+    $c.init(roles, [
+        { name: { m: $c.lit("Archeologist"), f: null },
+          rank: [{ m: $c.lit("Digger"), f: null },
+          { m: $c.lit("Field Worker"), f: null },
+          { m: $c.lit("Investigator"), f: null },
+          { m: $c.lit("Exhumer"), f: null },
+          { m: $c.lit("Excavator"), f: null },
+          { m: $c.lit("Spelunker"), f: null },
+          { m: $c.lit("Speleologist"), f: null },
+          { m: $c.lit("Collector"), f: null },
+          { m: $c.lit("Curator"), f: null }],
+          lgod: $c.lit("Quetzalcoatl"), ngod: $c.lit("Camaxtli"), cgod: $c.lit("Huhetotl"),
+          filecode: $c.lit("Arc"),
+          homebase: $c.lit("the College of Archeology"),
+          intermed: $c.lit("the Tomb of the Toltec Kings"),
+          mnum: PM.ARCHEOLOGIST,
+          petnum: NON_PM,
+          ldrnum: PM.LORD_CARNARVON,
+          guardnum: PM.STUDENT,
+          neminum: PM.MINION_OF_HUHETOTL,
+          enemy1num: NON_PM,
+          enemy2num: PM.HUMAN_MUMMY,
+          enemy1sym: S.SNAKE,
+          enemy2sym: S.MUMMY,
+          questarti: ART.ORB_OF_DETECTION, allow: M2.HUMAN | M2.DWARF | M2.GNOME | ROLE_MALE | ROLE_FEMALE | AM.LAWFUL | AM.NEUTRAL,
+          attrbase: [7, 10, 10, 7, 7, 7],
+          attrdist: [20, 20, 20, 10, 20, 10],
+          hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+          xlev: 14,
+          initrecord: 10,
+          spelbase: 5,
+          spelheal: 0,
+          spelshld: 2,
+          spelarmr: 10,
+          spelstat: A.INT,
+          spelspec: SPE_MAGIC_MAPPING,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Barbarian"), f: null },
+          rank: [{ m: $c.lit("Plunderer"), f: $c.lit("Plunderess") },
+          { m: $c.lit("Pillager"), f: null },
+          { m: $c.lit("Bandit"), f: null },
+          { m: $c.lit("Brigand"), f: null },
+          { m: $c.lit("Raider"), f: null },
+          { m: $c.lit("Reaver"), f: null },
+          { m: $c.lit("Slayer"), f: null },
+          { m: $c.lit("Chieftain"), f: $c.lit("Chieftainess") },
+          { m: $c.lit("Conqueror"), f: $c.lit("Conqueress") }],
+          lgod: $c.lit("Mitra"), ngod: $c.lit("Crom"), cgod: $c.lit("Set"),
+          filecode: $c.lit("Bar"),
+          homebase: $c.lit("the Camp of the Duali Tribe"),
+          intermed: $c.lit("the Duali Oasis"),
+          mnum: PM.BARBARIAN,
+          petnum: NON_PM,
+          ldrnum: PM.PELIAS,
+          guardnum: PM.CHIEFTAIN,
+          neminum: PM.THOTH_AMON,
+          enemy1num: PM.OGRE,
+          enemy2num: PM.TROLL,
+          enemy1sym: S.OGRE,
+          enemy2sym: S.TROLL,
+          questarti: ART.HEART_OF_AHRIMAN, allow: M2.HUMAN | M2.ORC | ROLE_MALE | ROLE_FEMALE | AM.NEUTRAL | AM.CHAOTIC,
+          attrbase: [16, 7, 7, 15, 16, 6],
+          attrdist: [30, 6, 7, 20, 30, 7],
+          hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 10, hifix: 2, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+          xlev: 10,
+          initrecord: 10,
+          spelbase: 14,
+          spelheal: 0,
+          spelshld: 0,
+          spelarmr: 8,
+          spelstat: A.INT,
+          spelspec: SPE_HASTE_SELF,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Caveman"), f: $c.lit("Cavewoman") },
+          rank: [{ m: $c.lit("Troglodyte"), f: null },
+          { m: $c.lit("Aborigine"), f: null },
+          { m: $c.lit("Wanderer"), f: null },
+          { m: $c.lit("Vagrant"), f: null },
+          { m: $c.lit("Wayfarer"), f: null },
+          { m: $c.lit("Roamer"), f: null },
+          { m: $c.lit("Nomad"), f: null },
+          { m: $c.lit("Rover"), f: null },
+          { m: $c.lit("Pioneer"), f: null }],
+          lgod: $c.lit("Anu"), ngod: $c.lit("_Ishtar"), cgod: $c.lit("Anshar"),
+          filecode: $c.lit("Cav"),
+          homebase: $c.lit("the Caves of the Ancestors"),
+          intermed: $c.lit("the Dragon's Lair"),
+          mnum: PM.CAVE_DWELLER,
+          petnum: PM.LITTLE_DOG,
+          ldrnum: PM.SHAMAN_KARNOV,
+          guardnum: PM.NEANDERTHAL,
+          neminum: PM.CHROMATIC_DRAGON,
+          enemy1num: PM.BUGBEAR,
+          enemy2num: PM.HILL_GIANT,
+          enemy1sym: S.HUMANOID,
+          enemy2sym: S.GIANT,
+          questarti: ART.SCEPTRE_OF_MIGHT, allow: M2.HUMAN | M2.DWARF | M2.GNOME | ROLE_MALE | ROLE_FEMALE | AM.LAWFUL | AM.NEUTRAL,
+          attrbase: [10, 7, 7, 7, 8, 6],
+          attrdist: [30, 6, 7, 20, 30, 7],
+          hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+          xlev: 10,
+          initrecord: 0,
+          spelbase: 12,
+          spelheal: 0,
+          spelshld: 1,
+          spelarmr: 8,
+          spelstat: A.INT,
+          spelspec: SPE_DIG,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Healer"), f: null },
+          rank: [{ m: $c.lit("Rhizotomist"), f: null },
+          { m: $c.lit("Empiric"), f: null },
+          { m: $c.lit("Embalmer"), f: null },
+          { m: $c.lit("Dresser"), f: null },
+          { m: $c.lit("Medicus ossium"), f: $c.lit("Medica ossium") },
+          { m: $c.lit("Herbalist"), f: null },
+          { m: $c.lit("Magister"), f: $c.lit("Magistra") },
+          { m: $c.lit("Physician"), f: null },
+          { m: $c.lit("Chirurgeon"), f: null }],
+          lgod: $c.lit("_Athena"), ngod: $c.lit("Hermes"), cgod: $c.lit("Poseidon"),
+          filecode: $c.lit("Hea"),
+          homebase: $c.lit("the Temple of Epidaurus"),
+          intermed: $c.lit("the Temple of Coeus"),
+          mnum: PM.HEALER,
+          petnum: NON_PM,
+          ldrnum: PM.HIPPOCRATES,
+          guardnum: PM.ATTENDANT,
+          neminum: PM.CYCLOPS,
+          enemy1num: PM.GIANT_RAT,
+          enemy2num: PM.SNAKE,
+          enemy1sym: S.RODENT,
+          enemy2sym: S.YETI,
+          questarti: ART.STAFF_OF_AESCULAPIUS, allow: M2.HUMAN | M2.GNOME | ROLE_MALE | ROLE_FEMALE | AM.NEUTRAL,
+          attrbase: [7, 7, 13, 7, 11, 16],
+          attrdist: [15, 20, 20, 15, 25, 5],
+          hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 },
+          xlev: 20,
+          initrecord: 10,
+          spelbase: 3,
+          spelheal: -3,
+          spelshld: 2,
+          spelarmr: 10,
+          spelstat: A.WIS,
+          spelspec: SPE_CURE_SICKNESS,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Knight"), f: null },
+          rank: [{ m: $c.lit("Gallant"), f: null },
+          { m: $c.lit("Esquire"), f: null },
+          { m: $c.lit("Bachelor"), f: null },
+          { m: $c.lit("Sergeant"), f: null },
+          { m: $c.lit("Knight"), f: null },
+          { m: $c.lit("Banneret"), f: null },
+          { m: $c.lit("Chevalier"), f: $c.lit("Chevaliere") },
+          { m: $c.lit("Seignieur"), f: $c.lit("Dame") },
+          { m: $c.lit("Paladin"), f: null }],
+          lgod: $c.lit("Lugh"), ngod: $c.lit("_Brigit"), cgod: $c.lit("Manannan Mac Lir"),
+          filecode: $c.lit("Kni"),
+          homebase: $c.lit("Camelot Castle"),
+          intermed: $c.lit("the Isle of Glass"),
+          mnum: PM.KNIGHT,
+          petnum: PM.PONY,
+          ldrnum: PM.KING_ARTHUR,
+          guardnum: PM.PAGE,
+          neminum: PM.IXOTH,
+          enemy1num: PM.QUASIT,
+          enemy2num: PM.OCHRE_JELLY,
+          enemy1sym: S.IMP,
+          enemy2sym: S.JELLY,
+          questarti: ART.MAGIC_MIRROR_OF_MERLIN, allow: M2.HUMAN | ROLE_MALE | ROLE_FEMALE | AM.LAWFUL,
+          attrbase: [13, 7, 14, 8, 10, 17],
+          attrdist: [30, 15, 15, 10, 20, 10],
+          hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 },
+          xlev: 10,
+          initrecord: 10,
+          spelbase: 8,
+          spelheal: -2,
+          spelshld: 0,
+          spelarmr: 9,
+          spelstat: A.WIS,
+          spelspec: SPE_TURN_UNDEAD,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Monk"), f: null },
+          rank: [{ m: $c.lit("Candidate"), f: null },
+          { m: $c.lit("Novice"), f: null },
+          { m: $c.lit("Initiate"), f: null },
+          { m: $c.lit("Student of Stones"), f: null },
+          { m: $c.lit("Student of Waters"), f: null },
+          { m: $c.lit("Student of Metals"), f: null },
+          { m: $c.lit("Student of Winds"), f: null },
+          { m: $c.lit("Student of Fire"), f: null },
+          { m: $c.lit("Master"), f: null }],
+          lgod: $c.lit("Shan Lai Ching"), ngod: $c.lit("Chih Sung-tzu"), cgod: $c.lit("Huan Ti"),
+          filecode: $c.lit("Mon"),
+          homebase: $c.lit("the Monastery of Chan-Sune"),
+          intermed: $c.lit("the Monastery of the Earth-Lord"),
+          mnum: PM.MONK,
+          petnum: NON_PM,
+          ldrnum: PM.GRAND_MASTER,
+          guardnum: PM.ABBOT,
+          neminum: PM.MASTER_KAEN,
+          enemy1num: PM.EARTH_ELEMENTAL,
+          enemy2num: PM.XORN,
+          enemy1sym: S.ELEMENTAL,
+          enemy2sym: S.XORN,
+          questarti: ART.EYES_OF_THE_OVERWORLD, allow: M2.HUMAN | ROLE_MALE | ROLE_FEMALE | AM.LAWFUL | AM.NEUTRAL | AM.CHAOTIC,
+          attrbase: [10, 7, 8, 8, 7, 7],
+          attrdist: [25, 10, 20, 20, 15, 10],
+          hpadv: { infix: 12, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+          enadv: { infix: 2, inrnd: 2, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 },
+          xlev: 10,
+          initrecord: 10,
+          spelbase: 8,
+          spelheal: -2,
+          spelshld: 2,
+          spelarmr: 20,
+          spelstat: A.WIS,
+          spelspec: SPE_RESTORE_ABILITY,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Priest"), f: $c.lit("Priestess") },
+          rank: [{ m: $c.lit("Aspirant"), f: null },
+          { m: $c.lit("Acolyte"), f: null },
+          { m: $c.lit("Adept"), f: null },
+          { m: $c.lit("Priest"), f: $c.lit("Priestess") },
+          { m: $c.lit("Curate"), f: null },
+          { m: $c.lit("Canon"), f: $c.lit("Canoness") },
+          { m: $c.lit("Lama"), f: null },
+          { m: $c.lit("Patriarch"), f: $c.lit("Matriarch") },
+          { m: $c.lit("High Priest"), f: $c.lit("High Priestess") }],
+          lgod: null, ngod: null, cgod: null,
+          filecode: $c.lit("Pri"),
+          homebase: $c.lit("the Great Temple"),
+          intermed: $c.lit("the Temple of Nalzok"),
+          mnum: PM.CLERIC,
+          petnum: NON_PM,
+          ldrnum: PM.ARCH_PRIEST,
+          guardnum: PM.ACOLYTE,
+          neminum: PM.NALZOK,
+          enemy1num: PM.HUMAN_ZOMBIE,
+          enemy2num: PM.WRAITH,
+          enemy1sym: S.ZOMBIE,
+          enemy2sym: S.WRAITH,
+          questarti: ART.MITRE_OF_HOLINESS, allow: M2.HUMAN | M2.ELF | ROLE_MALE | ROLE_FEMALE | AM.LAWFUL | AM.NEUTRAL | AM.CHAOTIC,
+          attrbase: [7, 7, 10, 7, 7, 7],
+          attrdist: [15, 10, 30, 15, 20, 10],
+          hpadv: { infix: 12, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+          enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 },
+          xlev: 10,
+          initrecord: 0,
+          spelbase: 3,
+          spelheal: -2,
+          spelshld: 2,
+          spelarmr: 10,
+          spelstat: A.WIS,
+          spelspec: SPE_REMOVE_CURSE,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Rogue"), f: null },
+          rank: [{ m: $c.lit("Footpad"), f: null },
+          { m: $c.lit("Cutpurse"), f: null },
+          { m: $c.lit("Rogue"), f: null },
+          { m: $c.lit("Pilferer"), f: null },
+          { m: $c.lit("Robber"), f: null },
+          { m: $c.lit("Burglar"), f: null },
+          { m: $c.lit("Filcher"), f: null },
+          { m: $c.lit("Magsman"), f: $c.lit("Magswoman") },
+          { m: $c.lit("Thief"), f: null }],
+          lgod: $c.lit("Issek"), ngod: $c.lit("Mog"), cgod: $c.lit("Kos"),
+          filecode: $c.lit("Rog"),
+          homebase: $c.lit("the Thieves' Guild Hall"),
+          intermed: $c.lit("the Assassins' Guild Hall"),
+          mnum: PM.ROGUE,
+          petnum: NON_PM,
+          ldrnum: PM.MASTER_OF_THIEVES,
+          guardnum: PM.THUG,
+          neminum: PM.MASTER_ASSASSIN,
+          enemy1num: PM.LEPRECHAUN,
+          enemy2num: PM.GUARDIAN_NAGA,
+          enemy1sym: S.NYMPH,
+          enemy2sym: S.NAGA,
+          questarti: ART.MASTER_KEY_OF_THIEVERY, allow: M2.HUMAN | M2.ORC | ROLE_MALE | ROLE_FEMALE | AM.CHAOTIC,
+          attrbase: [7, 7, 7, 10, 7, 6],
+          attrdist: [20, 10, 10, 30, 20, 10],
+          hpadv: { infix: 10, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+          xlev: 11,
+          initrecord: 10,
+          spelbase: 8,
+          spelheal: 0,
+          spelshld: 1,
+          spelarmr: 9,
+          spelstat: A.INT,
+          spelspec: SPE_DETECT_TREASURE,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Ranger"), f: null },
+          rank: [{ m: $c.lit("Tenderfoot"), f: null },
+          { m: $c.lit("Lookout"), f: null },
+          { m: $c.lit("Trailblazer"), f: null },
+          { m: $c.lit("Reconnoiterer"), f: $c.lit("Reconnoiteress") },
+          { m: $c.lit("Scout"), f: null },
+          { m: $c.lit("Arbalester"), f: null },
+          { m: $c.lit("Archer"), f: null },
+          { m: $c.lit("Sharpshooter"), f: null },
+          { m: $c.lit("Marksman"), f: $c.lit("Markswoman") }],
+          lgod: $c.lit("Mercury"), ngod: $c.lit("_Venus"), cgod: $c.lit("Mars"),
+          filecode: $c.lit("Ran"),
+          homebase: $c.lit("Orion's camp"),
+          intermed: $c.lit("the cave of the wumpus"),
+          mnum: PM.RANGER,
+          petnum: PM.LITTLE_DOG,
+          ldrnum: PM.ORION,
+          guardnum: PM.HUNTER,
+          neminum: PM.SCORPIUS,
+          enemy1num: PM.FOREST_CENTAUR,
+          enemy2num: PM.SCORPION,
+          enemy1sym: S.CENTAUR,
+          enemy2sym: S.SPIDER,
+          questarti: ART.LONGBOW_OF_DIANA, allow: M2.HUMAN | M2.ELF | M2.GNOME | M2.ORC | ROLE_MALE | ROLE_FEMALE | AM.NEUTRAL | AM.CHAOTIC,
+          attrbase: [13, 13, 13, 9, 13, 7],
+          attrdist: [30, 10, 10, 20, 20, 10],
+          hpadv: { infix: 13, inrnd: 0, lofix: 0, lornd: 6, hifix: 1, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+          xlev: 12,
+          initrecord: 10,
+          spelbase: 9,
+          spelheal: 2,
+          spelshld: 1,
+          spelarmr: 10,
+          spelstat: A.INT,
+          spelspec: SPE_INVISIBILITY,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Samurai"), f: null },
+          rank: [{ m: $c.lit("Hatamoto"), f: null },
+          { m: $c.lit("Ronin"), f: null },
+          { m: $c.lit("Ninja"), f: $c.lit("Kunoichi") },
+          { m: $c.lit("Joshu"), f: null },
+          { m: $c.lit("Ryoshu"), f: null },
+          { m: $c.lit("Kokushu"), f: null },
+          { m: $c.lit("Daimyo"), f: null },
+          { m: $c.lit("Kuge"), f: null },
+          { m: $c.lit("Shogun"), f: null }],
+          lgod: $c.lit("_Amaterasu Omikami"), ngod: $c.lit("Raijin"), cgod: $c.lit("Susanowo"),
+          filecode: $c.lit("Sam"),
+          homebase: $c.lit("the Castle of the Taro Clan"),
+          intermed: $c.lit("the Shogun's Castle"),
+          mnum: PM.SAMURAI,
+          petnum: PM.LITTLE_DOG,
+          ldrnum: PM.LORD_SATO,
+          guardnum: PM.ROSHI,
+          neminum: PM.ASHIKAGA_TAKAUJI,
+          enemy1num: PM.WOLF,
+          enemy2num: PM.STALKER,
+          enemy1sym: S.DOG,
+          enemy2sym: S.ELEMENTAL,
+          questarti: ART.TSURUGI_OF_MURAMASA, allow: M2.HUMAN | ROLE_MALE | ROLE_FEMALE | AM.LAWFUL,
+          attrbase: [10, 8, 7, 10, 17, 6],
+          attrdist: [30, 10, 8, 30, 14, 8],
+          hpadv: { infix: 13, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+          xlev: 11,
+          initrecord: 10,
+          spelbase: 10,
+          spelheal: 0,
+          spelshld: 0,
+          spelarmr: 8,
+          spelstat: A.INT,
+          spelspec: SPE_CLAIRVOYANCE,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Tourist"), f: null },
+          rank: [{ m: $c.lit("Rambler"), f: null },
+          { m: $c.lit("Sightseer"), f: null },
+          { m: $c.lit("Excursionist"), f: null },
+          { m: $c.lit("Peregrinator"), f: $c.lit("Peregrinatrix") },
+          { m: $c.lit("Traveler"), f: null },
+          { m: $c.lit("Journeyer"), f: null },
+          { m: $c.lit("Voyager"), f: null },
+          { m: $c.lit("Explorer"), f: null },
+          { m: $c.lit("Adventurer"), f: null }],
+          lgod: $c.lit("Blind Io"), ngod: $c.lit("_The Lady"), cgod: $c.lit("Offler"),
+          filecode: $c.lit("Tou"),
+          homebase: $c.lit("Ankh-Morpork"),
+          intermed: $c.lit("the Thieves' Guild Hall"),
+          mnum: PM.TOURIST,
+          petnum: NON_PM,
+          ldrnum: PM.TWOFLOWER,
+          guardnum: PM.GUIDE,
+          neminum: PM.MASTER_OF_THIEVES,
+          enemy1num: PM.GIANT_SPIDER,
+          enemy2num: PM.FOREST_CENTAUR,
+          enemy1sym: S.SPIDER,
+          enemy2sym: S.CENTAUR,
+          questarti: ART.YENDORIAN_EXPRESS_CARD, allow: M2.HUMAN | ROLE_MALE | ROLE_FEMALE | AM.NEUTRAL,
+          attrbase: [7, 10, 6, 7, 7, 10],
+          attrdist: [15, 10, 10, 15, 30, 20],
+          hpadv: { infix: 8, inrnd: 0, lofix: 0, lornd: 8, hifix: 0, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+          xlev: 14,
+          initrecord: 0,
+          spelbase: 5,
+          spelheal: 1,
+          spelshld: 2,
+          spelarmr: 10,
+          spelstat: A.INT,
+          spelspec: SPE_CHARM_MONSTER,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Valkyrie"), f: null },
+          rank: [{ m: $c.lit("Stripling"), f: null },
+          { m: $c.lit("Skirmisher"), f: null },
+          { m: $c.lit("Fighter"), f: null },
+          { m: $c.lit("Man-at-arms"), f: $c.lit("Woman-at-arms") },
+          { m: $c.lit("Warrior"), f: null },
+          { m: $c.lit("Swashbuckler"), f: null },
+          { m: $c.lit("Hero"), f: $c.lit("Heroine") },
+          { m: $c.lit("Champion"), f: null },
+          { m: $c.lit("Lord"), f: $c.lit("Lady") }],
+          lgod: $c.lit("Tyr"), ngod: $c.lit("Odin"), cgod: $c.lit("Loki"),
+          filecode: $c.lit("Val"),
+          homebase: $c.lit("the Shrine of Destiny"),
+          intermed: $c.lit("the cave of Surtur"),
+          mnum: PM.VALKYRIE,
+          petnum: NON_PM,
+          ldrnum: PM.NORN,
+          guardnum: PM.WARRIOR,
+          neminum: PM.LORD_SURTUR,
+          enemy1num: PM.FIRE_ANT,
+          enemy2num: PM.FIRE_GIANT,
+          enemy1sym: S.ANT,
+          enemy2sym: S.GIANT,
+          questarti: ART.ORB_OF_FATE, allow: M2.HUMAN | M2.DWARF | ROLE_FEMALE | AM.LAWFUL | AM.NEUTRAL,
+          attrbase: [10, 7, 7, 7, 10, 7],
+          attrdist: [30, 6, 7, 20, 30, 7],
+          hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+          xlev: 10,
+          initrecord: 0,
+          spelbase: 10,
+          spelheal: -2,
+          spelshld: 0,
+          spelarmr: 9,
+          spelstat: A.WIS,
+          spelspec: SPE_CONE_OF_COLD,
+          spelsbon: -4 },
+        { name: { m: $c.lit("Wizard"), f: null },
+          rank: [{ m: $c.lit("Evoker"), f: null },
+          { m: $c.lit("Conjurer"), f: null },
+          { m: $c.lit("Thaumaturge"), f: null },
+          { m: $c.lit("Magician"), f: null },
+          { m: $c.lit("Enchanter"), f: $c.lit("Enchantress") },
+          { m: $c.lit("Sorcerer"), f: $c.lit("Sorceress") },
+          { m: $c.lit("Necromancer"), f: null },
+          { m: $c.lit("Wizard"), f: null },
+          { m: $c.lit("Mage"), f: null }],
+          lgod: $c.lit("Ptah"), ngod: $c.lit("Thoth"), cgod: $c.lit("Anhur"),
+          filecode: $c.lit("Wiz"),
+          homebase: $c.lit("the Lonely Tower"),
+          intermed: $c.lit("the Tower of Darkness"),
+          mnum: PM.WIZARD,
+          petnum: PM.KITTEN,
+          ldrnum: PM.NEFERET_THE_GREEN,
+          guardnum: PM.APPRENTICE,
+          neminum: PM.DARK_ONE,
+          enemy1num: PM.VAMPIRE_BAT,
+          enemy2num: PM.XORN,
+          enemy1sym: S.BAT,
+          enemy2sym: S.WRAITH,
+          questarti: ART.EYE_OF_THE_AETHIOPICA, allow: M2.HUMAN | M2.ELF | M2.GNOME | M2.ORC | ROLE_MALE | ROLE_FEMALE | AM.NEUTRAL | AM.CHAOTIC,
+          attrbase: [7, 10, 7, 7, 7, 7],
+          attrdist: [10, 30, 10, 20, 20, 10],
+          hpadv: { infix: 10, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+          enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 3 },
+          xlev: 12,
+          initrecord: 0,
+          spelbase: 1,
+          spelheal: 0,
+          spelshld: 3,
+          spelarmr: 10,
+          spelstat: A.INT,
+          spelspec: SPE_MAGIC_MISSILE,
+          spelsbon: -4 },
+        { name: {}, rank: [], lgod: null, ngod: null, cgod: null, filecode: null, homebase: null, intermed: null, mnum: NON_PM, petnum: NON_PM, ldrnum: NON_PM,
+          guardnum: NON_PM, neminum: NON_PM, enemy1num: NON_PM, enemy2num: NON_PM, enemy1sym: 0, enemy2sym: 0, questarti: STRANGE_OBJECT, allow: 0, attrbase:
+          [], attrdist: [], hpadv: {}, enadv: {}, xlev: 0, initrecord: 0, spelbase: 0, spelheal: 0, spelshld: 0, spelarmr: 0, spelstat: 0, spelspec: 0,
+          spelsbon: 0 }
+    ]);
     for (let $i0 = 0; $i0 < 6; $i0++) {
         races[$i0].$copyFrom(new $T.Race());
     }
-    races[0].noun = $c.lit("human");
-    races[0].adj = $c.lit("human");
-    races[0].coll = $c.lit("humanity");
-    races[0].filecode = $c.lit("Hum");
-    races[0].individual.m = $c.lit("man");
-    races[0].individual.f = $c.lit("woman");
-    races[0].mnum = 260;
-    races[0].mummynum = 192;
-    races[0].zombienum = 244;
-    races[0].allow = 12303;
-    races[0].selfmask = 8;
-    races[0].lovemask = 0;
-    races[0].hatemask = 192;
-    races[0].attrmin[0] = 3;
-    races[0].attrmin[1] = 3;
-    races[0].attrmin[2] = 3;
-    races[0].attrmin[3] = 3;
-    races[0].attrmin[4] = 3;
-    races[0].attrmin[5] = 3;
-    races[0].attrmax[0] = 118;
-    races[0].attrmax[1] = 18;
-    races[0].attrmax[2] = 18;
-    races[0].attrmax[3] = 18;
-    races[0].attrmax[4] = 18;
-    races[0].attrmax[5] = 18;
-    races[0].hpadv.infix = 2;
-    races[0].hpadv.inrnd = 0;
-    races[0].hpadv.lofix = 0;
-    races[0].hpadv.lornd = 2;
-    races[0].hpadv.hifix = 1;
-    races[0].hpadv.hirnd = 0;
-    races[0].enadv.infix = 1;
-    races[0].enadv.inrnd = 0;
-    races[0].enadv.lofix = 2;
-    races[0].enadv.lornd = 0;
-    races[0].enadv.hifix = 2;
-    races[0].enadv.hirnd = 0;
-    races[1].noun = $c.lit("elf");
-    races[1].adj = $c.lit("elven");
-    races[1].coll = $c.lit("elvenkind");
-    races[1].filecode = $c.lit("Elf");
-    races[1].individual.m = null;
-    races[1].individual.f = null;
-    races[1].mnum = 264;
-    races[1].mummynum = 191;
-    races[1].zombienum = 243;
-    races[1].allow = 12305;
-    races[1].selfmask = 16;
-    races[1].lovemask = 16;
-    races[1].hatemask = 128;
-    races[1].attrmin[0] = 3;
-    races[1].attrmin[1] = 3;
-    races[1].attrmin[2] = 3;
-    races[1].attrmin[3] = 3;
-    races[1].attrmin[4] = 3;
-    races[1].attrmin[5] = 3;
-    races[1].attrmax[0] = 18;
-    races[1].attrmax[1] = 20;
-    races[1].attrmax[2] = 20;
-    races[1].attrmax[3] = 18;
-    races[1].attrmax[4] = 16;
-    races[1].attrmax[5] = 18;
-    races[1].hpadv.infix = 1;
-    races[1].hpadv.inrnd = 0;
-    races[1].hpadv.lofix = 0;
-    races[1].hpadv.lornd = 1;
-    races[1].hpadv.hifix = 1;
-    races[1].hpadv.hirnd = 0;
-    races[1].enadv.infix = 2;
-    races[1].enadv.inrnd = 0;
-    races[1].enadv.lofix = 3;
-    races[1].enadv.lornd = 0;
-    races[1].enadv.hifix = 3;
-    races[1].enadv.hirnd = 0;
-    races[2].noun = $c.lit("dwarf");
-    races[2].adj = $c.lit("dwarven");
-    races[2].coll = $c.lit("dwarvenkind");
-    races[2].filecode = $c.lit("Dwa");
-    races[2].individual.m = null;
-    races[2].individual.f = null;
-    races[2].mnum = 44;
-    races[2].mummynum = 190;
-    races[2].zombienum = 242;
-    races[2].allow = 12324;
-    races[2].selfmask = 32;
-    races[2].lovemask = 96;
-    races[2].hatemask = 128;
-    races[2].attrmin[0] = 3;
-    races[2].attrmin[1] = 3;
-    races[2].attrmin[2] = 3;
-    races[2].attrmin[3] = 3;
-    races[2].attrmin[4] = 3;
-    races[2].attrmin[5] = 3;
-    races[2].attrmax[0] = 118;
-    races[2].attrmax[1] = 16;
-    races[2].attrmax[2] = 16;
-    races[2].attrmax[3] = 20;
-    races[2].attrmax[4] = 20;
-    races[2].attrmax[5] = 16;
-    races[2].hpadv.infix = 4;
-    races[2].hpadv.inrnd = 0;
-    races[2].hpadv.lofix = 0;
-    races[2].hpadv.lornd = 3;
-    races[2].hpadv.hifix = 2;
-    races[2].hpadv.hirnd = 0;
-    races[2].enadv.infix = 0;
-    races[2].enadv.inrnd = 0;
-    races[2].enadv.lofix = 0;
-    races[2].enadv.lornd = 0;
-    races[2].enadv.hifix = 0;
-    races[2].enadv.hirnd = 0;
-    races[3].noun = $c.lit("gnome");
-    races[3].adj = $c.lit("gnomish");
-    races[3].coll = $c.lit("gnomehood");
-    races[3].filecode = $c.lit("Gno");
-    races[3].individual.m = null;
-    races[3].individual.f = null;
-    races[3].mnum = 165;
-    races[3].mummynum = 188;
-    races[3].zombienum = 240;
-    races[3].allow = 12354;
-    races[3].selfmask = 64;
-    races[3].lovemask = 96;
-    races[3].hatemask = 8;
-    races[3].attrmin[0] = 3;
-    races[3].attrmin[1] = 3;
-    races[3].attrmin[2] = 3;
-    races[3].attrmin[3] = 3;
-    races[3].attrmin[4] = 3;
-    races[3].attrmin[5] = 3;
-    races[3].attrmax[0] = 68;
-    races[3].attrmax[1] = 19;
-    races[3].attrmax[2] = 18;
-    races[3].attrmax[3] = 18;
-    races[3].attrmax[4] = 18;
-    races[3].attrmax[5] = 18;
-    races[3].hpadv.infix = 1;
-    races[3].hpadv.inrnd = 0;
-    races[3].hpadv.lofix = 0;
-    races[3].hpadv.lornd = 1;
-    races[3].hpadv.hifix = 0;
-    races[3].hpadv.hirnd = 0;
-    races[3].enadv.infix = 2;
-    races[3].enadv.inrnd = 0;
-    races[3].enadv.lofix = 2;
-    races[3].enadv.lornd = 0;
-    races[3].enadv.hifix = 2;
-    races[3].enadv.hirnd = 0;
-    races[4].noun = $c.lit("orc");
-    races[4].adj = $c.lit("orcish");
-    races[4].coll = $c.lit("orcdom");
-    races[4].filecode = $c.lit("Orc");
-    races[4].individual.m = null;
-    races[4].individual.f = null;
-    races[4].mnum = 72;
-    races[4].mummynum = 189;
-    races[4].zombienum = 241;
-    races[4].allow = 12417;
-    races[4].selfmask = 128;
-    races[4].lovemask = 0;
-    races[4].hatemask = 56;
-    races[4].attrmin[0] = 3;
-    races[4].attrmin[1] = 3;
-    races[4].attrmin[2] = 3;
-    races[4].attrmin[3] = 3;
-    races[4].attrmin[4] = 3;
-    races[4].attrmin[5] = 3;
-    races[4].attrmax[0] = 68;
-    races[4].attrmax[1] = 16;
-    races[4].attrmax[2] = 16;
-    races[4].attrmax[3] = 18;
-    races[4].attrmax[4] = 18;
-    races[4].attrmax[5] = 16;
-    races[4].hpadv.infix = 1;
-    races[4].hpadv.inrnd = 0;
-    races[4].hpadv.lofix = 0;
-    races[4].hpadv.lornd = 1;
-    races[4].hpadv.hifix = 0;
-    races[4].hpadv.hirnd = 0;
-    races[4].enadv.infix = 1;
-    races[4].enadv.inrnd = 0;
-    races[4].enadv.lofix = 1;
-    races[4].enadv.lornd = 0;
-    races[4].enadv.hifix = 1;
-    races[4].enadv.hirnd = 0;
-    races[5].noun = null;
-    races[5].adj = null;
-    races[5].coll = null;
-    races[5].filecode = null;
-    races[5].individual.m = null;
-    races[5].individual.f = null;
-    races[5].mnum = -1;
-    races[5].mummynum = -1;
-    races[5].zombienum = -1;
-    races[5].allow = 0;
-    races[5].selfmask = 0;
-    races[5].lovemask = 0;
-    races[5].hatemask = 0;
-    races[5].attrmin[0] = 0;
-    races[5].attrmax[0] = 0;
-    races[5].hpadv.infix = 0;
-    races[5].enadv.infix = 0;
+    $c.init(races, [
+        { noun: $c.lit("human"),
+          adj: $c.lit("human"),
+          coll: $c.lit("humanity"),
+          filecode: $c.lit("Hum"),
+          individual: { m: $c.lit("man"), f: $c.lit("woman") },
+          mnum: PM.HUMAN,
+          mummynum: PM.HUMAN_MUMMY,
+          zombienum: PM.HUMAN_ZOMBIE, allow: M2.HUMAN | ROLE_MALE | ROLE_FEMALE | AM.LAWFUL | AM.NEUTRAL | AM.CHAOTIC, selfmask: M2.HUMAN,
+          lovemask: 0, hatemask: M2.GNOME | M2.ORC,
+          attrmin: [3, 3, 3, 3, 3, 3],
+          attrmax: [118, 18, 18, 18, 18, 18],
+          hpadv: { infix: 2, inrnd: 0, lofix: 0, lornd: 2, hifix: 1, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 } },
+        { noun: $c.lit("elf"),
+          adj: $c.lit("elven"),
+          coll: $c.lit("elvenkind"),
+          filecode: $c.lit("Elf"),
+          individual: {},
+          mnum: PM.ELF,
+          mummynum: PM.ELF_MUMMY,
+          zombienum: PM.ELF_ZOMBIE, allow: M2.ELF | ROLE_MALE | ROLE_FEMALE | AM.CHAOTIC, selfmask: M2.ELF, lovemask: M2.ELF, hatemask: M2.ORC,
+          attrmin: [3, 3, 3, 3, 3, 3],
+          attrmax: [18, 20, 20, 18, 16, 18],
+          hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 1, hirnd: 0 },
+          enadv: { infix: 2, inrnd: 0, lofix: 3, lornd: 0, hifix: 3, hirnd: 0 } },
+        { noun: $c.lit("dwarf"),
+          adj: $c.lit("dwarven"),
+          coll: $c.lit("dwarvenkind"),
+          filecode: $c.lit("Dwa"),
+          individual: {},
+          mnum: PM.DWARF,
+          mummynum: PM.DWARF_MUMMY,
+          zombienum: PM.DWARF_ZOMBIE, allow: M2.DWARF | ROLE_MALE | ROLE_FEMALE | AM.LAWFUL, selfmask: M2.DWARF, lovemask: M2.DWARF | M2.GNOME,
+          hatemask: M2.ORC,
+          attrmin: [3, 3, 3, 3, 3, 3],
+          attrmax: [118, 16, 16, 20, 20, 16],
+          hpadv: { infix: 4, inrnd: 0, lofix: 0, lornd: 3, hifix: 2, hirnd: 0 },
+          enadv: {} },
+        { noun: $c.lit("gnome"),
+          adj: $c.lit("gnomish"),
+          coll: $c.lit("gnomehood"),
+          filecode: $c.lit("Gno"),
+          individual: {},
+          mnum: PM.GNOME,
+          mummynum: PM.GNOME_MUMMY,
+          zombienum: PM.GNOME_ZOMBIE, allow: M2.GNOME | ROLE_MALE | ROLE_FEMALE | AM.NEUTRAL, selfmask: M2.GNOME, lovemask: M2.DWARF | M2.GNOME,
+          hatemask: M2.HUMAN,
+          attrmin: [3, 3, 3, 3, 3, 3],
+          attrmax: [68, 19, 18, 18, 18, 18],
+          hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
+          enadv: { infix: 2, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 } },
+        { noun: $c.lit("orc"),
+          adj: $c.lit("orcish"),
+          coll: $c.lit("orcdom"),
+          filecode: $c.lit("Orc"),
+          individual: {},
+          mnum: PM.ORC,
+          mummynum: PM.ORC_MUMMY,
+          zombienum: PM.ORC_ZOMBIE, allow: M2.ORC | ROLE_MALE | ROLE_FEMALE | AM.CHAOTIC, selfmask: M2.ORC,
+          lovemask: 0, hatemask: M2.HUMAN | M2.ELF | M2.DWARF,
+          attrmin: [3, 3, 3, 3, 3, 3],
+          attrmax: [68, 16, 16, 18, 18, 16],
+          hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
+          enadv: { infix: 1, inrnd: 0, lofix: 1, lornd: 0, hifix: 1, hirnd: 0 } },
+        { noun: null, adj: null, coll: null, filecode: null, individual: {}, mnum: NON_PM, mummynum: NON_PM, zombienum: NON_PM, allow: 0, selfmask: 0,
+          lovemask: 0, hatemask: 0, attrmin: [], attrmax: [], hpadv: {}, enadv: {} }
+    ]);
     for (let $i0 = 0; $i0 < 4; $i0++) {
         genders[$i0].$copyFrom(new $T.Gender());
     }
-    genders[0].adj = $c.lit("male");
-    genders[0].he = $c.lit("he");
-    genders[0].him = $c.lit("him");
-    genders[0].his = $c.lit("his");
-    genders[0].filecode = $c.lit("Mal");
-    genders[0].allow = 4096;
-    genders[1].adj = $c.lit("female");
-    genders[1].he = $c.lit("she");
-    genders[1].him = $c.lit("her");
-    genders[1].his = $c.lit("her");
-    genders[1].filecode = $c.lit("Fem");
-    genders[1].allow = 8192;
-    genders[2].adj = $c.lit("neuter");
-    genders[2].he = $c.lit("it");
-    genders[2].him = $c.lit("it");
-    genders[2].his = $c.lit("its");
-    genders[2].filecode = $c.lit("Ntr");
-    genders[2].allow = 16384;
-    genders[3].adj = $c.lit("group");
-    genders[3].he = $c.lit("they");
-    genders[3].him = $c.lit("them");
-    genders[3].his = $c.lit("their");
-    genders[3].filecode = $c.lit("Grp");
-    genders[3].allow = 0;
+    $c.init(genders, [
+        { adj: $c.lit("male"), he: $c.lit("he"), him: $c.lit("him"), his: $c.lit("his"), filecode: $c.lit("Mal"), allow: ROLE_MALE },
+        { adj: $c.lit("female"), he: $c.lit("she"), him: $c.lit("her"), his: $c.lit("her"), filecode: $c.lit("Fem"), allow: ROLE_FEMALE },
+        { adj: $c.lit("neuter"), he: $c.lit("it"), him: $c.lit("it"), his: $c.lit("its"), filecode: $c.lit("Ntr"), allow: ROLE_NEUTER },
+        { adj: $c.lit("group"), he: $c.lit("they"), him: $c.lit("them"), his: $c.lit("their"), filecode: $c.lit("Grp"), allow: 0 }
+    ]);
     for (let $i0 = 0; $i0 < 4; $i0++) {
         aligns[$i0].$copyFrom(new $T.Align());
     }
-    aligns[0].noun = $c.lit("law");
-    aligns[0].adj = $c.lit("lawful");
-    aligns[0].filecode = $c.lit("Law");
-    aligns[0].allow = 4;
-    aligns[0].value = 1;
-    aligns[1].noun = $c.lit("balance");
-    aligns[1].adj = $c.lit("neutral");
-    aligns[1].filecode = $c.lit("Neu");
-    aligns[1].allow = 2;
-    aligns[1].value = 0;
-    aligns[2].noun = $c.lit("chaos");
-    aligns[2].adj = $c.lit("chaotic");
-    aligns[2].filecode = $c.lit("Cha");
-    aligns[2].allow = 1;
-    aligns[2].value = -1;
-    aligns[3].noun = $c.lit("evil");
-    aligns[3].adj = $c.lit("unaligned");
-    aligns[3].filecode = $c.lit("Una");
-    aligns[3].allow = 0;
-    aligns[3].value = -128;
+    $c.init(aligns, [
+        { noun: $c.lit("law"), adj: $c.lit("lawful"), filecode: $c.lit("Law"), allow: AM.LAWFUL, value: A.LAWFUL },
+        { noun: $c.lit("balance"), adj: $c.lit("neutral"), filecode: $c.lit("Neu"), allow: AM.NEUTRAL, value: A.NEUTRAL },
+        { noun: $c.lit("chaos"), adj: $c.lit("chaotic"), filecode: $c.lit("Cha"), allow: AM.CHAOTIC, value: A.CHAOTIC },
+        { noun: $c.lit("evil"), adj: $c.lit("unaligned"), filecode: $c.lit("Una"), allow: 0, value: A.NONE }
+    ]);
     randomstr.fill(0);
     randomstr.set([114, 97, 110, 100, 111, 109]);   // "random"
     root_plselection_prompt$err_ret.fill(0);
@@ -2895,9 +2289,11 @@ export function $init() {
     role_selection_prolog$rand_choice.fill(0);
     role_selection_prolog$rand_choice.set([32, 114, 97, 110, 100, 111, 109]);   // " random"
     role_menu_extra$RS_menu_let.fill(0);
-    role_menu_extra$RS_menu_let[0] = 61;
-    role_menu_extra$RS_menu_let[1] = 63;
-    role_menu_extra$RS_menu_let[2] = 47;
-    role_menu_extra$RS_menu_let[3] = 34;
-    role_menu_extra$RS_menu_let[4] = 91;
+    $c.init(role_menu_extra$RS_menu_let, [
+        61,
+        63,
+        47,
+        34,
+        91
+    ]);
 }

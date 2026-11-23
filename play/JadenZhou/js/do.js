@@ -8,6 +8,9 @@
 // ported yet.
 
 import { game } from './gstate.js';
+import { livelog_printf } from './display.js';
+import { LL_ACHIEVE, LL_DEBUG } from './const.js';
+import { describe_level } from './botl.js';
 import { container_impact_dmg } from './dokick.js';
 import { pline, pline_The, docrt, flush_screen, Hallucination,
          Blind } from './display.js';
@@ -35,7 +38,8 @@ import { more_experienced, newexplevel } from './exper.js';
 import { check_special_room } from './hack.js';
 import { pickup } from './pickup.js';
 import { keepdogs, losedogs } from './dog.js';
-import { kill_genocided_monsters } from './mon.js';
+import { kill_genocided_monsters, disturb_buried_zombies } from './mon.js';
+import { run_timers } from './timeout.js';
 import { savelev } from './save.js';
 import { create_levelfile, level_info, open_levelfile } from './files.js';
 import { getlev } from './restore.js';
@@ -45,7 +49,7 @@ import { close_nhfile } from './sfbase.js';
 import { LFILE_EXISTS, VISITED, WRITING, FREEING } from './const.js';
 import { m_at } from './makemon.js';
 import { mklev, place_lregion } from './mklev.js';
-import { vision_reset } from './vision.js';
+import { vision_reset, vision_recalc } from './vision.js';
 import { LR_UPTELE, LR_DOWNTELE } from './const.js';
 import { getobj, any_obj_ok, freeinv, stackobj } from './invent.js';
 import { query_category, query_objlist, add_valid_menu_class, allow_all,
@@ -530,8 +534,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (!g.iflags?.nofollowers)
         await keepdogs(false);
     recalc_mapseen(); /* recalculate map overview before we leave the level */
-    /* vision_recalc(2): we no longer see anything on the level; the
-       vision state is rebuilt by vision_reset() on arrival */
+    /*
+     *  We no longer see anything on the level.  Make sure that this
+     *  follows u.uswallow set to null since uswallow overrides all
+     *  normal vision.
+     */
+    vision_recalc(2);
 
     /*
      * Save the level we're leaving.  If we're entering the endgame,
@@ -723,7 +731,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
      * after migrating monsters and objects are delivered
      * (losedogs and obj_delivery).
      */
-    /* run_timers(): the timer queue isn't ported yet (see timeout.js) */
+    await run_timers();
 
     /* hero might be arriving at a spot containing a monster;
        if so, move one or the other to another location */
@@ -826,7 +834,24 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* this was originally done earlier; moved here to be logged after
        any achievement related to entering a dungeon branch */
     if (new_) {
-        /* describe_level(dloc, 2); livelog_printf(...): no livelog */
+        /* Astral is excluded as a major event here because entry to it
+           is already one such due to that being an achievement;
+           for the quest, listing the start, locate, and goal levels would
+           seem reasonable but all quest levels are included for simplicity--
+           level 2 (or 3 if hero level teleports after obtaining permission
+           to enter) is useful to show since it indicates that hero has
+           actually entered the quest rather than just received permission
+           to do so, and listing the goal level could be used to figure out
+           whether level 5 is the end or there's another level (ESP reveals
+           the same thing, but is part of normal game play as opposed to
+           #chronicle leaking information that hero hasn't discovered yet) */
+        const major = ((In_endgame(g.u.uz)
+                        && !on_level(g.u.uz, g.dungeon_topology.d_astral_level))
+                       || g.u.uz.dnum === g.dungeon_topology.d_quest_dnum);
+        const [, dloc] = describe_level(2);
+
+        livelog_printf(major ? LL_ACHIEVE : LL_DEBUG, `entered ${dloc}`);
+
         if (g.urole.mnum === PM_TOURIST) {
             more_experienced(level_difficulty(), 0);
             await newexplevel();
@@ -1236,10 +1261,12 @@ export async function dropz(obj, with_impact) {
 // C ref: hack.c impact_disturbs_zombies()
 export function impact_disturbs_zombies(obj, violent) {
     /* if object won't make a noticeable impact, let buried zombies rest */
-    if ((obj.owt || 0) < (violent ? 10 : 100) /* || is_flimsy(obj) */)
+    if ((obj.owt || 0) < (violent ? 10 : 100)
+        || O.objects[obj.otyp].oc_material <= O.LEATHER /* is_flimsy(obj) */
+        || obj.otyp === O.RUBBER_HOSE)
         return;
-    if (game.level.buriedobjlist?.some(o => o.otyp === O.CORPSE && o.timed))
-        throw new Error('impact_disturbs_zombies(): disturb_buried_zombies() not ported yet');
+
+    disturb_buried_zombies(obj.ox, obj.oy);
 }
 
 // C ref: dokick.c down_gate()

@@ -3,100 +3,135 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { snuff_candle } from './apply.js';
-import { is_art, undiscovered_artifact } from './artifact.js';
-import { acurr, acurrstr, adjalign, change_luck, exercise } from './attrib.js';
+import { is_art } from './artifact.js';
+import { ART } from './artilist.h.js';
+import { acurr, adjalign, change_luck, exercise } from './attrib.js';
+import { A } from './attrib.h.js';
+import { ACURR, ACURRSTR } from './attrib.macros.js';
 import { getdir, isok, yn_function } from './cmd.js';
 import { find_drawbridge, is_drawbridge_wall, is_ice, is_pool } from './dbridge.js';
-import { c_color_names, c_common_strings, flags, gb, gg, gi, gk, gm, gn, gu, gv, gy, svc, svd, svk, svl, svm, svp, u, ynchars } from './decl.js';
+import { c_color_names, c_common_strings, flags, gb, gg, gi, gk, gm, gn, gu, gy, svc, svd, svk, svl, svm, svp, u, ynchars } from './decl.js';
+import { COIN_CLASS, GEM_CLASS, S } from './defsym.h.js';
 import { cvt_sdoor_to_door, find_trap } from './detect.js';
-import { canseemon, feel_location, feel_newsym, glyph_at, map_invisible, newsym, sensemon, show_glyph, unmap_invisible } from './display.js';
+import { canseemon, feel_location, feel_newsym, glyph_at, map_invisible, newsym, show_glyph, unmap_invisible } from './display.js';
+import { canspotmon, glyph_is_invisible } from './display.macros.js';
 import { flooreffects, legs_in_no_shape, set_wounded_legs } from './do.js';
 import { Monnam, a_monnam, christen_orc, free_oname, hcolor, hliquid, mon_nam } from './do_name.js';
 import { abuse_dog } from './dog.js';
 import { finish_meating } from './dogmove.js';
 import { breaks, breaktest, hero_breaks, hurtle, thitmonst } from './dothrow.js';
 import { In_mines, Is_botlevel, dunlev, dunlevs_in_dungeon, on_level, surface } from './dungeon.js';
+import { MIGR } from './dungeon.h.js';
+import { In_endgame } from './dungeon.macros.js';
 import { del_engr_at, disturb_grave, u_wipe_engr } from './engrave.js';
 import { scatter } from './explode.js';
 import { sink_backs_up } from './fountain.js';
+import { FALSE, PL, TRUE } from './global.h.js';
 import { impact_disturbs_zombies, in_rooms, in_town, inv_weight, losehp, money_cnt, near_capacity, overexertion, weight_cap } from './hack.js';
+import { CXN, DF, ECMD, FOOT, KICKED_WEAPON, KILLED, LEG, MAY_HIT, MM, NO_TRAP_FLAGS, SHOP, SLT_ENCUMBER, VIS_EFFECTS } from './hack.h.js';
+import { Maybe_Half_Phys } from './hack.macros.js';
 import { eos, sgn, upstart } from './hacklib.js';
 import { currency, delobj, sobj_at, stackobj, useup } from './invent.js';
 import { breakchestlock } from './lock.js';
 import { makemon } from './makemon.js';
+import { has_mgivenname } from './mextra.macros.js';
 import { add_to_migration, add_to_minv, dealloc_obj, mkgold, mksobj, mksobj_at, obj_extract_self, place_object, rnd_treefruit_at, splitobj, weight } from './mkobj.js';
+import { SHOPBASE } from './mkroom.h.js';
 import { angry_guards, get_iter_mons, get_iter_mons_xy, killed, maybe_mnexto, maybe_unhide_at, seemimic, setmangry, wake_nearby, wake_nearto, wakeup } from './mon.js';
+import { AD, AT, M_ATTK } from './monattk.h.js';
 import { attacktype, dmgtype_fromattack, poly_when_stoned, pronoun_gender } from './mondata.js';
+import { bigmonst, can_teleport, haseyes, is_floater, is_flyer, is_giant, is_mercenary, is_watch, likes_gold, nohands, nolimbs, slithy, thick_skinned, touch_petrifies, verysmall } from './mondata.macros.js';
+import { G_GONE, M2 } from './monflag.h.js';
 import { closed_door, mon_yells, monflee, set_apparxy } from './monmove.js';
 import { mons } from './monst.js';
+import { M_AP } from './monst.h.js';
+import { DEADMONSTER, M_AP_TYPE, engulfing_u, ismnum } from './monst.macros.js';
+import { PM } from './monsters.h.js';
+import { ER, OBJ } from './obj.h.js';
+import { Has_contents, Is_box, Is_container, Is_mbag, has_oname, is_plural } from './obj.macros.js';
+import { GLASS } from './objclass.h.js';
 import { objects } from './objects.js';
+import { BOULDER, CORPSE, DILITHIUM_CRYSTAL, EGG, EXPENSIVE_CAMERA, KICKING_BOOTS, LUCKSTONE, MIRROR, ROCK } from './objects.h.js';
 import { An, Doname2, The, Tobjnam, corpse_xname, distant_name, doname, killer_xname, makeplural, otense, rnd_class, singular, xname } from './objnam.js';
+import { NATTK, NON_PM } from './permonst.h.js';
 import { Norep, There, You, You_cant, You_hear, Your, pline, pline_The, verbalize } from './pline.js';
 import { body_part, poly_gender, polymon } from './polyself.js';
 import { altar_wrath } from './pray.js';
+import { W } from './prop.h.js';
 import { ok_to_quest } from './quest.js';
 import { m_in_out_region } from './region.js';
-import { rn2, rnd, rng_log_enabled, rng_log_set_caller, rnl } from './rnd.js';
+import { AIR, CLOUD, CORR, D, DOOR, DRAWBRIDGE_UP, D_WARNED, IRONBARS, LA, LADDER, LAVAWALL, POOL, ROOM, SCORR, SDOOR, STAIRS, TREE_LOOTED, TREE_SWARM, T_LOOTED } from './rm.h.js';
+import { IS_ALTAR, IS_DOOR, IS_DRAWBRIDGE, IS_FOUNTAIN, IS_GRAVE, IS_OBSTRUCTED, IS_SINK, IS_STWALL, IS_THRONE, IS_TREE, OBJ_AT } from './rm.macros.js';
+import { rn2, rnd, rnl } from './rnd.js';
 import { genders } from './role.js';
 import { add_damage, addtobill, contained_gold, costly_adjacent, costly_gold, costly_spot, donate_gold, find_objowner, hot_pursuit, inside_shop, is_unpaid, make_angry_shk, make_happy_shk, obfree, pay_for_damage, picked_container, shop_keeper, stolen_value, subfrombill } from './shk.js';
 import { Shknam, shkname } from './shknam.js';
+import { P, P_MARTIAL_ARTS } from './skills.h.js';
 import { stairway_at, stairway_find_from } from './stairs.js';
 import { mpickobj, remove_worn_item } from './steal.js';
 import { kick_steed, place_monster } from './steed.js';
 import { enexto, goodpos, noteleport_level, rloco } from './teleport.js';
 import { activate_statue_trap, b_trapped, chest_trap, fall_through, instapetrify, mintrap, t_at, water_damage } from './trap.js';
+import { STATUE_TRAP, TRAPDOOR, Trap, WEB } from './trap.h.js';
+import { is_hole, is_pit } from './trap.macros.js';
 import { attack_checks, check_caitiff, damageum, find_roll_to_hit, missum, mon_maybe_unparalyze, passive } from './uhitm.js';
 import { hidden_gold } from './vault.js';
 import { recalc_block_point, unblock_point } from './vision.js';
+import { cansee, couldsee } from './vision.macros.js';
 import { special_dmgval, use_skill } from './weapon.js';
-import { windowprocs } from './windows.js';
+import { display_nhwindow } from './winprocs.macros.js';
+import { PRONOUN, TT } from './you.h.js';
+import { Luck, Upolyd } from './you.macros.js';
+import { Blind, Deaf, Fumbling, Hallucination, Levitation, Passes_walls, Stone_resistance, Wounded_legs } from './youprop.macros.js';
 import { bhit, miss, obj_resists } from './zap.js';
+
+const DELIVER_PM = 8702;
 
 const really_kick_object$flyingcoinmsg = $c.nulls(3);   // static in really_kick_object()
 const kick_passes_thru = new Int8Array(31);
 async function kickdmg(mon, clumsy) {   // dokick.c:34
     let mdx = 0, mdy = 0, dmg = 0, specialdmg = 0, kick_skill = 0, trapkilled = 0;
-    dmg = $c.div32((acurrstr() + acurr(3 /* A_DEX */) | 0) + acurr(4 /* A_CON */) | 0, 15);
-    kick_skill = 0 /* P_NONE */;
-    trapkilled = 0;
-    if ($G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) {
+    dmg = $c.div32((ACURRSTR() + ACURR(A.DEX) | 0) + ACURR(A.CON) | 0, 15);
+    kick_skill = P.NONE;
+    trapkilled = FALSE;
+    if ($G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
         dmg = dmg + 5 | 0;
     }
     if (clumsy) {
         dmg = $c.div32(dmg, 2);
     }
-    if ($c.andu64(mon.data.mflags1, 2097152) !== 0) {
+    if (thick_skinned(mon.data)) {
         dmg = 0;
     }
-    if ($c.peq(mon.data, $c.relem(mons, 288 /* PM_SHADE */))) {
+    if ($c.peq(mon.data, $c.relem(mons, PM.SHADE))) {
         dmg = 0;
     }
-    specialdmg = await special_dmgval(gy.youmonst, mon, 32, null);
-    if ($c.peq(mon.data, $c.relem(mons, 288 /* PM_SHADE */)) && !specialdmg) {
+    specialdmg = await special_dmgval(gy.youmonst, mon, W.ARMF, null);
+    if ($c.peq(mon.data, $c.relem(mons, PM.SHADE)) && !specialdmg) {
         await pline_The($c.lit("%s."), new $c.Ptr(kick_passes_thru, 0));
         return;
     }
-    if (mon.m_ap_type & 7) {
+    if (M_AP_TYPE(mon)) {
         await seemimic(mon);
     }
     await check_caitiff(mon);
     if (mon.mtame) {
         await abuse_dog(mon);
         if (mon.mtame) {
-            await monflee(mon, dmg ? rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 74, $c.lit("kickdmg")), rnd(dmg)) : rnd(dmg) : 1, 0, 0);
+            await monflee(mon, dmg ? rnd(dmg) : 1, FALSE, FALSE);
         } else {
             mon.mflee = (0) & 1;
         }
     }
     if (dmg > 0) {
-        dmg = rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 81, $c.lit("kickdmg")), rnd(dmg)) : rnd(dmg);
-        if (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) {
+        dmg = rnd(dmg);
+        if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
             if (dmg > 1) {
-                kick_skill = 35 /* P_BARE_HANDED_COMBAT */;
+                kick_skill = P_MARTIAL_ARTS;
             }
-            dmg = dmg + (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 85, $c.lit("kickdmg")), rn2($c.div32(acurr(3 /* A_DEX */), 2) + 1 | 0)) : rn2($c.div32(acurr(3 /* A_DEX */), 2) + 1 | 0)) | 0;
+            dmg = dmg + rn2($c.div32(acurr(A.DEX), 2) + 1 | 0) | 0;
         }
-        await exercise(3 /* A_DEX */, 1);
+        await exercise(A.DEX, TRUE);
     }
     dmg = dmg + specialdmg | 0;
     if ($G.uarmf) {
@@ -106,7 +141,7 @@ async function kickdmg(mon, clumsy) {   // dokick.c:34
     if (dmg > 0) {
         mon.mhp = mon.mhp - dmg | 0;
     }
-    if (!(mon.mhp < 1) && (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) && !(mon.data.msize >= 3) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 96, $c.lit("kickdmg")), rn2(3)) : rn2(3)) && mon.mcanmove | 0 && !$c.peq(mon, u.ustuck) && !mon.mtrapped) {
+    if (!DEADMONSTER(mon) && (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !bigmonst(mon.data) && !rn2(3) && mon.mcanmove | 0 && !$c.peq(mon, u.ustuck) && !mon.mtrapped) {
         mdx = mon.mx + u.dx | 0;
         mdy = mon.my + u.dy | 0;
         if (goodpos($c.i16(mdx), $c.i16(mdy), mon, 0)) {
@@ -117,17 +152,17 @@ async function kickdmg(mon, clumsy) {   // dokick.c:34
                 await place_monster(mon, $c.i16(mdx), $c.i16(mdy));
                 await newsym(mon.mx, mon.my);
                 set_apparxy(mon);
-                if (await mintrap(mon, 0) === 2 /* Trap_Killed_Mon */) {
-                    trapkilled = 1;
+                if (await mintrap(mon, NO_TRAP_FLAGS) === Trap.Killed_Mon) {
+                    trapkilled = TRUE;
                 }
             }
         }
     }
-    await passive(mon, $G.uarmf, 1, $c.i8(!(mon.mhp < 1) ? 1 : 0), 3, 0);
-    if (mon.mhp < 1 && !trapkilled) {
+    await passive(mon, $G.uarmf, TRUE, $c.i8(!DEADMONSTER(mon) ? 1 : 0), AT.KICK, FALSE);
+    if (DEADMONSTER(mon) && !trapkilled) {
         await killed(mon);
     }
-    if (kick_skill !== 0 /* P_NONE */) {
+    if (kick_skill !== P.NONE) {
         await use_skill(kick_skill, 1);
     }
 }
@@ -137,8 +172,8 @@ async function maybe_kick_monster(mon, x, y) {   // dokick.c:126
         save_forcefight = svc.context.forcefight;
         gb.bhitpos.x = x;
         gb.bhitpos.y = y;
-        if (!mon.mpeaceful || !(canseemon(mon) || sensemon(mon))) {
-            svc.context.forcefight = 1;
+        if (!mon.mpeaceful || !canspotmon(mon)) {
+            svc.context.forcefight = TRUE;
         }
         if (await attack_checks(mon, null) || await overexertion()) {
             mon = null;
@@ -149,53 +184,53 @@ async function maybe_kick_monster(mon, x, y) {   // dokick.c:126
 }
 async function kick_monster(mon, x, y) {   // dokick.c:146
     let clumsy = 0, i = 0, j = 0, uattk = null, sum = 0, kickdieroll = 0, armorpenalty = Int32Array.of(0), specialdmg = 0, attknum = Int32Array.of(0), tmp = 0;
-    clumsy = 0;
-    await setmangry(mon, 1);
-    if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 154, $c.lit("kick_monster")), rn2(3)) : rn2(3)) && mon.data.msize < 1 && !($c.andu64(mon.data.mflags1, 1) !== 0)) {
+    clumsy = FALSE;
+    await setmangry(mon, TRUE);
+    if (Levitation() && !rn2(3) && verysmall(mon.data) && !is_flyer(mon.data)) {
         await pline($c.lit("Floating in the air, you miss wildly!"));
-        await exercise(3 /* A_DEX */, 0);
-        await passive(mon, $G.uarmf, 0, 1, 3, 0);
+        await exercise(A.DEX, FALSE);
+        await passive(mon, $G.uarmf, FALSE, 1, AT.KICK, FALSE);
         return;
     }
-    if (mon.mundetected | 0 || mon.m_ap_type & 7 && (mon.m_ap_type & 7) !== 3 /* M_AP_MONSTER */) {
-        if (mon.m_ap_type & 7) {
+    if (mon.mundetected | 0 || M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP.MONSTER) {
+        if (M_AP_TYPE(mon)) {
             await seemimic(mon);
         }
         mon.mundetected = (0) & 1;
-        if (!(canseemon(mon) || sensemon(mon))) {
+        if (!canspotmon(mon)) {
             await map_invisible(x, y);
         } else {
             await newsym(x, y);
         }
-        await There($c.lit("is %s here."), canseemon(mon) || sensemon(mon) ? await a_monnam(mon) : $c.lit("something hidden"));
+        await There($c.lit("is %s here."), canspotmon(mon) ? await a_monnam(mon) : $c.lit("something hidden"));
     }
-    if (u.umonnum !== u.umonster && attacktype(gy.youmonst.data, 3)) {
+    if (Upolyd() && attacktype(gy.youmonst.data, AT.KICK)) {
         attknum[0] = 0;
-        tmp = await find_roll_to_hit(mon, 3, null, new $c.Ptr(attknum, 0), new $c.Ptr(armorpenalty, 0));
+        tmp = await find_roll_to_hit(mon, AT.KICK, null, new $c.Ptr(attknum, 0), new $c.Ptr(armorpenalty, 0));
         mon_maybe_unparalyze(mon);
-        for (i = 0; i < 6; i = i + 1 | 0) {
+        for (i = 0; i < NATTK; i = i + 1 | 0) {
             if (gm.multi < 0) {
                 break;
             }
             uattk = $c.relem(gy.youmonst.data.mattk, i);
-            if (uattk.aatyp !== 3) {
+            if (uattk.aatyp !== AT.KICK) {
                 continue;
             }
-            kickdieroll = rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 202, $c.lit("kick_monster")), rnd(20)) : rnd(20);
-            specialdmg = await special_dmgval(gy.youmonst, mon, 32, null);
-            if ($c.peq(mon.data, $c.relem(mons, 288 /* PM_SHADE */)) && !specialdmg) {
+            kickdieroll = rnd(20);
+            specialdmg = await special_dmgval(gy.youmonst, mon, W.ARMF, null);
+            if ($c.peq(mon.data, $c.relem(mons, PM.SHADE)) && !specialdmg) {
                 await Your($c.lit("%s %s."), new $c.Ptr(kick_passes_thru, 0), await mon_nam(mon));
                 break;
             } else if (tmp > kickdieroll) {
                 await You($c.lit("kick %s."), await mon_nam(mon));
                 sum = await damageum(mon, uattk, specialdmg);
-                await passive(mon, $G.uarmf, $c.i8(sum !== 0 ? 1 : 0), $c.i8(!(sum & 2) ? 1 : 0), 3, 0);
-                if (sum & 2) {
+                await passive(mon, $G.uarmf, $c.i8(sum !== M_ATTK.MISS ? 1 : 0), $c.i8(!(sum & M_ATTK.DEF_DIED) ? 1 : 0), AT.KICK, FALSE);
+                if (sum & M_ATTK.DEF_DIED) {
                     break;
                 }
             } else {
                 await missum(mon, uattk, $c.i8((tmp + armorpenalty[0] | 0) > kickdieroll ? 1 : 0));
-                await passive(mon, $G.uarmf, 0, 1, 3, 0);
+                await passive(mon, $G.uarmf, FALSE, 1, AT.KICK, FALSE);
             }
         }
         return;
@@ -204,38 +239,38 @@ async function kick_monster(mon, x, y) {   // dokick.c:146
     j = weight_cap();
     doit$: {
         if (i < $c.div32(Math.imul(j, 3), 10)) {
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 237, $c.lit("kick_monster")), rn2(i < $c.div32(j, 10) ? 2 : i < $c.div32(j, 5) ? 3 : 4)) : rn2(i < $c.div32(j, 10) ? 2 : i < $c.div32(j, 5) ? 3 : 4))) {
-                if (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) {
+            if (!rn2(i < $c.div32(j, 10) ? 2 : i < $c.div32(j, 5) ? 3 : 4)) {
+                if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
                     break doit$;
                 }
                 await Your($c.lit("clumsy kick does no damage."));
-                await passive(mon, $G.uarmf, 0, 1, 3, 0);
+                await passive(mon, $G.uarmf, FALSE, 1, AT.KICK, FALSE);
                 return;
             }
             if (i < $c.div32(j, 10)) {
-                clumsy = 1;
-            } else if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 246, $c.lit("kick_monster")), rn2(i < $c.div32(j, 5) ? 2 : 3)) : rn2(i < $c.div32(j, 5) ? 2 : 3))) {
-                clumsy = 1;
+                clumsy = TRUE;
+            } else if (!rn2(i < $c.div32(j, 5) ? 2 : 3)) {
+                clumsy = TRUE;
             }
         }
-        if (u.uprops[25 /* FUMBLING */].intrinsic || u.uprops[25 /* FUMBLING */].extrinsic) {
-            clumsy = 1;
-        } else if ($G.uarm && objects[$G.uarm.otyp].oc_big | 0 && acurr(3 /* A_DEX */) < (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 253, $c.lit("kick_monster")), rnd(25)) : rnd(25))) {
-            clumsy = 1;
+        if (Fumbling()) {
+            clumsy = TRUE;
+        } else if ($G.uarm && objects[$G.uarm.otyp].oc_big | 0 && ACURR(A.DEX) < rnd(25)) {
+            clumsy = TRUE;
         }
     }
     await You($c.lit("kick %s."), await mon_nam(mon));
-    if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 257, $c.lit("kick_monster")), rn2(clumsy ? 3 : 4)) : rn2(clumsy ? 3 : 4)) && (clumsy || !(mon.data.msize >= 3)) && mon.mcansee | 0 && !mon.mtrapped && !($c.andu64(mon.data.mflags1, 2097152) !== 0) && mon.data.mlet !== 57 /* S_EEL */ && $c.andu64(mon.data.mflags1, 4096) === 0 && mon.mcanmove | 0 && !mon.mstun && !mon.mconf && !mon.msleeping && mon.data.mmove >= 12) {
-        if (!($c.andu64(mon.data.mflags1, 8192) !== 0) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 262, $c.lit("kick_monster")), rn2(gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */ ? 5 : 3)) : rn2(gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */ ? 5 : 3))) {
+    if (!rn2(clumsy ? 3 : 4) && (clumsy || !bigmonst(mon.data)) && mon.mcansee | 0 && !mon.mtrapped && !thick_skinned(mon.data) && mon.data.mlet !== S.EEL && haseyes(mon.data) && mon.mcanmove | 0 && !mon.mstun && !mon.mconf && !mon.msleeping && mon.data.mmove >= 12) {
+        if (!nohands(mon.data) && !rn2(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS ? 5 : 3)) {
             await pline($c.lit("%s blocks your %skick."), await Monnam(mon), clumsy ? $c.lit("clumsy ") : $c.lit(""));
-            await passive(mon, $G.uarmf, 0, 1, 3, 0);
+            await passive(mon, $G.uarmf, FALSE, 1, AT.KICK, FALSE);
             return;
         } else {
             await maybe_mnexto(mon);
             if (mon.mx !== x || mon.my !== y) {
                 await unmap_invisible(x, y);
-                await pline($c.lit("%s %s, %s evading your %skick."), await Monnam(mon), $c.andu64(mon.data.mflags1, 33554432) !== 0 && !await noteleport_level(mon) ? $c.lit("teleports") : mon.data.mlet === 5 /* S_EYE */ || mon.data.mlet === 25 /* S_LIGHT */ ? $c.lit("floats") : $c.andu64(mon.data.mflags1, 1) !== 0 ? $c.lit("swoops") : $c.andu64(mon.data.mflags1, 24576) === 24576 || $c.andu64(mon.data.mflags1, 524288) !== 0 ? $c.lit("slides") : $c.lit("jumps"), clumsy ? $c.lit("easily") : $c.lit("nimbly"), clumsy ? $c.lit("clumsy ") : $c.lit(""));
-                await passive(mon, $G.uarmf, 0, 1, 3, 0);
+                await pline($c.lit("%s %s, %s evading your %skick."), await Monnam(mon), can_teleport(mon.data) && !await noteleport_level(mon) ? $c.lit("teleports") : is_floater(mon.data) ? $c.lit("floats") : is_flyer(mon.data) ? $c.lit("swoops") : nolimbs(mon.data) || slithy(mon.data) ? $c.lit("slides") : $c.lit("jumps"), clumsy ? $c.lit("easily") : $c.lit("nimbly"), clumsy ? $c.lit("clumsy ") : $c.lit(""));
+                await passive(mon, $G.uarmf, FALSE, 1, AT.KICK, FALSE);
                 return;
             }
         }
@@ -244,23 +279,23 @@ async function kick_monster(mon, x, y) {   // dokick.c:146
 }
 export async function ghitm(mtmp, gold) {   // dokick.c:295
     let msg_given = 0, was_sleeping = 0, umoney = 0, value = 0, robbed = 0, was_angry = 0, goldreqd = 0;
-    msg_given = 0;
-    if (!($c.andu64(mtmp.data.mflags2, 268435456) !== 0) && !mtmp.isshk && !mtmp.ispriest && !mtmp.isgd && !($c.andu64(mtmp.data.mflags2, 512) !== 0)) {
-        await wakeup(mtmp, 1);
+    msg_given = FALSE;
+    if (!likes_gold(mtmp.data) && !mtmp.isshk && !mtmp.ispriest && !mtmp.isgd && !is_mercenary(mtmp.data)) {
+        await wakeup(mtmp, TRUE);
     } else if (!mtmp.mcanmove) {
         if (canseemon(mtmp)) {
             await pline_The($c.lit("%s harmlessly %s %s."), await xname(gold), await otense(gold, $c.lit("hit")), await mon_nam(mtmp));
-            msg_given = 1;
+            msg_given = TRUE;
         }
     } else {
         was_sleeping = mtmp.msleeping;
         value = $c.mul64(gold.quan, objects[gold.otyp].oc_cost);
         mtmp.msleeping = (0) & 1;
         await finish_meating(mtmp);
-        if (!mtmp.isgd && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 317, $c.lit("ghitm")), rn2(4)) : rn2(4))) {
-            await setmangry(mtmp, 1);
+        if (!mtmp.isgd && !rn2(4)) {
+            await setmangry(mtmp, TRUE);
         }
-        if ((gv.viz_array.get(mtmp.my).get(mtmp.mx) & 2) !== 0) {
+        if (cansee(mtmp.mx, mtmp.my)) {
             await pline($c.lit("%s %scatches the gold."), await Monnam(mtmp), was_sleeping ? $c.lit("awakens and ") : $c.lit(""));
         }
         await mpickobj(mtmp, gold);
@@ -272,10 +307,10 @@ export async function ghitm(mtmp, gold) {   // dokick.c:295
                 if (robbed < 0) {
                     robbed = 0;
                 }
-                await pline_The($c.lit("amount %scovers %s recent losses."), !robbed ? $c.lit("") : $c.lit("partially "), genders[pronoun_gender(mtmp, 2)].his);
+                await pline_The($c.lit("amount %scovers %s recent losses."), !robbed ? $c.lit("") : $c.lit("partially "), genders[pronoun_gender(mtmp, PRONOUN.HALLU)].his);
                 mtmp.mextra.eshk.robbed = robbed;
                 if (!robbed) {
-                    await make_happy_shk(mtmp, 0);
+                    await make_happy_shk(mtmp, FALSE);
                 }
             } else {
                 if (mtmp.mpeaceful) {
@@ -293,24 +328,24 @@ export async function ghitm(mtmp, gold) {   // dokick.c:295
             }
         } else if (mtmp.isgd) {
             umoney = money_cnt(gi.invent);
-            await verbalize(umoney ? $c.lit("Drop the rest and follow me.") : hidden_gold(1) ? $c.lit("You still have hidden gold.  Drop it now.") : mtmp.mpeaceful | 0 ? $c.lit("I'll take care of that; please move along.") : $c.lit("I'll take that; now get moving."));
-        } else if ($c.andu64(mtmp.data.mflags2, 512) !== 0) {
+            await verbalize(umoney ? $c.lit("Drop the rest and follow me.") : hidden_gold(TRUE) ? $c.lit("You still have hidden gold.  Drop it now.") : mtmp.mpeaceful | 0 ? $c.lit("I'll take care of that; please move along.") : $c.lit("I'll take that; now get moving."));
+        } else if (is_mercenary(mtmp.data)) {
             was_angry = $c.i8(!mtmp.mpeaceful ? 1 : 0);
             goldreqd = 0;
-            if ($c.peq(mtmp.data, $c.relem(mons, 277 /* PM_SOLDIER */))) {
+            if ($c.peq(mtmp.data, $c.relem(mons, PM.SOLDIER))) {
                 goldreqd = 100;
-            } else if ($c.peq(mtmp.data, $c.relem(mons, 278 /* PM_SERGEANT */))) {
+            } else if ($c.peq(mtmp.data, $c.relem(mons, PM.SERGEANT))) {
                 goldreqd = 250;
-            } else if ($c.peq(mtmp.data, $c.relem(mons, 280 /* PM_LIEUTENANT */))) {
+            } else if ($c.peq(mtmp.data, $c.relem(mons, PM.LIEUTENANT))) {
                 goldreqd = 500;
-            } else if ($c.peq(mtmp.data, $c.relem(mons, 281 /* PM_CAPTAIN */))) {
+            } else if ($c.peq(mtmp.data, $c.relem(mons, PM.CAPTAIN))) {
                 goldreqd = 750;
             }
-            if (goldreqd && (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 379, $c.lit("ghitm")), rn2(3)) : rn2(3))) {
+            if (goldreqd && rn2(3)) {
                 umoney = money_cnt(gi.invent);
-                goldreqd = $c.add64(goldreqd, $c.div64($c.add64(umoney, Math.imul(u.ulevel, rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 381, $c.lit("ghitm")), rn2(5)) : rn2(5))), acurr(5 /* A_CHA */)));
+                goldreqd = $c.add64(goldreqd, $c.div64($c.add64(umoney, Math.imul(u.ulevel, rn2(5))), ACURR(A.CHA)));
                 if (value > goldreqd) {
-                    mtmp.mpeaceful = (1) & 1;
+                    mtmp.mpeaceful = (TRUE) & 1;
                 }
             }
             if (!mtmp.mpeaceful) {
@@ -325,39 +360,39 @@ export async function ghitm(mtmp, gold) {   // dokick.c:295
                 await verbalize($c.lit("Thanks for the tip, %s."), flags.female ? $c.lit("lady") : $c.lit("buddy"));
             }
         }
-        return 1;
+        return TRUE;
     }
     if (!msg_given) {
         await miss(await xname(gold), mtmp);
     }
-    return 0;
+    return FALSE;
 }
 export async function container_impact_dmg(obj, x, y) {   // dokick.c:412
     let shkp = null, otmp = null, otmp2 = null, loss = 0, costly = 0, insider = 0, frominv = 0, wchange = 0, result = null, $t1;
     loss = 0;
-    wchange = 0;
-    if (!(obj.otyp >= 214 /* LARGE_BOX */ && obj.otyp <= 220 /* BAG_OF_TRICKS */) || !(obj.cobj !== null) || (obj.otyp === 219 /* BAG_OF_HOLDING */ || obj.otyp === 220 /* BAG_OF_TRICKS */)) {
+    wchange = FALSE;
+    if (!Is_container(obj) || !Has_contents(obj) || Is_mbag(obj)) {
         return;
     }
-    costly = $c.i8((shkp = await shop_keeper(in_rooms(x, y, 14 /* SHOPBASE */).get(0))) && await costly_spot(x, y) ? 1 : 0);
-    insider = $c.i8(new $c.Ptr(u.ushops, 0).get(0) && inside_shop(u.ux, u.uy) && in_rooms(x, y, 14 /* SHOPBASE */).get(0) === new $c.Ptr(u.ushops, 0).get(0) ? 1 : 0);
+    costly = $c.i8((shkp = await shop_keeper(in_rooms(x, y, SHOPBASE).get(0))) && await costly_spot(x, y) ? 1 : 0);
+    insider = $c.i8(new $c.Ptr(u.ushops, 0).get(0) && inside_shop(u.ux, u.uy) && in_rooms(x, y, SHOPBASE).get(0) === new $c.Ptr(u.ushops, 0).get(0) ? 1 : 0);
     frominv = $c.i8(!$c.peq(obj, gk.kickedobj) ? 1 : 0);
     for (otmp = obj.cobj; otmp; otmp = otmp2) {
         result = null;
         otmp2 = otmp.nobj;
-        if ((objects[otmp.otyp].oc_material | 0) === 19 /* GLASS */ && otmp.oclass !== 13 /* GEM_CLASS */ && !obj_resists(otmp, 33, 100)) {
+        if ((objects[otmp.otyp].oc_material | 0) === GLASS && otmp.oclass !== GEM_CLASS && !obj_resists(otmp, 33, 100)) {
             result = $c.lit("shatter");
-        } else if (otmp.otyp === 266 /* EGG */ && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 440, $c.lit("container_impact_dmg")), rn2(3)) : rn2(3))) {
+        } else if (otmp.otyp === EGG && !rn2(3)) {
             result = $c.lit("cracking");
         }
         if (result) {
-            if (otmp.otyp === 230 /* MIRROR */) {
+            if (otmp.otyp === MIRROR) {
                 change_luck(-2);
             }
-            if (otmp.otyp === 266 /* EGG */ && otmp.spe && (otmp.corpsenm >= 0 /* LOW_PM */ && otmp.corpsenm < 383 /* NUMMONS */)) {
+            if (otmp.otyp === EGG && otmp.spe && ismnum(otmp.corpsenm)) {
                 change_luck(-1);
             }
-            if (otmp.otyp === 266 /* EGG */) {
+            if (otmp.otyp === EGG) {
             } else {
             }
             await You_hear($c.lit("a muffled %s."), result);
@@ -365,7 +400,7 @@ export async function container_impact_dmg(obj, x, y) {   // dokick.c:412
                 if (frominv && !otmp.unpaid) {
                     otmp.no_charge = (1) & 1;
                 }
-                loss = $c.add64(loss, await stolen_value(otmp, x, y, $c.i8(shkp.mpeaceful), 1));
+                loss = $c.add64(loss, await stolen_value(otmp, x, y, $c.i8(shkp.mpeaceful), TRUE));
             }
             if (otmp.quan > 1) {
                 await useup(otmp);
@@ -374,7 +409,7 @@ export async function container_impact_dmg(obj, x, y) {   // dokick.c:412
                 await obfree(otmp, null);
             }
             obj.cknown = (0) & 1;
-            wchange = 1;
+            wchange = TRUE;
         }
     }
     if (wchange) {
@@ -404,36 +439,36 @@ async function kick_object(x, y, kickobjnam) {   // dokick.c:489
 async function really_kick_object(x, y) {   // dokick.c:508
     let range = 0, mon = null, shkp = null, trap = null, bhitroom = 0, costly = 0, isgold = 0, slide = 0, k_owt = 0, save_quan = 0, otrp = 0, gtg = 0, $t1;
     shkp = null;
-    slide = 0;
-    if (!gk.kickedobj || gk.kickedobj.otyp === 475 /* BOULDER */ || $c.peq(gk.kickedobj, $G.uball) || $c.peq(gk.kickedobj, $G.uchain)) {
+    slide = FALSE;
+    if (!gk.kickedobj || gk.kickedobj.otyp === BOULDER || $c.peq(gk.kickedobj, $G.uball) || $c.peq(gk.kickedobj, $G.uchain)) {
         return 0;
     }
     if ((trap = t_at(x, y)) !== null) {
-        if (((trap.ttyp | 0) === 11 /* PIT */ || (trap.ttyp | 0) === 12 /* SPIKED_PIT */) && !(u.uprops[53 /* PASSES_WALLS */].intrinsic || u.uprops[53 /* PASSES_WALLS */].extrinsic) || (trap.ttyp | 0) === 18 /* WEB */) {
+        if (is_pit(trap.ttyp) && !Passes_walls() || (trap.ttyp | 0) === WEB) {
             if (!trap.tseen) {
                 await find_trap(trap);
             }
-            await You_cant($c.lit("kick %s that's in a %s!"), c_common_strings.c_something, u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("tizzy") : (trap.ttyp | 0) === 18 /* WEB */ ? $c.lit("web") : $c.lit("pit"));
+            await You_cant($c.lit("kick %s that's in a %s!"), c_common_strings.c_something, Hallucination() ? $c.lit("tizzy") : (trap.ttyp | 0) === WEB ? $c.lit("web") : $c.lit("pit"));
             return 1;
         }
-        if ((trap.ttyp | 0) === 19 /* STATUE_TRAP */) {
-            await activate_statue_trap(trap, x, y, 0);
+        if ((trap.ttyp | 0) === STATUE_TRAP) {
+            await activate_statue_trap(trap, x, y, FALSE);
             return 1;
         }
     }
-    if ((u.uprops[25 /* FUMBLING */].intrinsic || u.uprops[25 /* FUMBLING */].extrinsic) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 537, $c.lit("really_kick_object")), rn2(3)) : rn2(3))) {
+    if (Fumbling() && !rn2(3)) {
         await Your($c.lit("clumsy kick missed."));
         return 1;
     }
-    if (!$G.uarmf && gk.kickedobj.otyp === 265 /* CORPSE */ && ($c.peq($c.relem(mons, gk.kickedobj.corpsenm), $c.relem(mons, 10 /* PM_COCKATRICE */)) || $c.peq($c.relem(mons, gk.kickedobj.corpsenm), $c.relem(mons, 9 /* PM_CHICKATRICE */))) && !(u.uprops[8 /* STONE_RES */].intrinsic || u.uprops[8 /* STONE_RES */].extrinsic)) {
-        await You($c.lit("kick %s with your bare %s."), await corpse_xname(gk.kickedobj, null, 4), await makeplural(await body_part(5 /* FOOT */)));
-        if (poly_when_stoned(gy.youmonst.data) && await polymon(257 /* PM_STONE_GOLEM */)) {
+    if (!$G.uarmf && gk.kickedobj.otyp === CORPSE && touch_petrifies($c.relem(mons, gk.kickedobj.corpsenm)) && !Stone_resistance()) {
+        await You($c.lit("kick %s with your bare %s."), await corpse_xname(gk.kickedobj, null, CXN.PFX_THE), await makeplural(await body_part(FOOT)));
+        if (poly_when_stoned(gy.youmonst.data) && await polymon(PM.STONE_GOLEM)) {
         } else {
             $c.__builtin___sprintf_chk(new $c.Ptr(svk.killer.name, 0), 0, 256, $c.lit("kicking %s barefoot"), await killer_xname(gk.kickedobj));
             await instapetrify(new $c.Ptr(svk.killer.name, 0));
         }
     }
-    isgold = $c.i8(gk.kickedobj.oclass === 12 /* COIN_CLASS */ ? 1 : 0);
+    isgold = $c.i8(gk.kickedobj.oclass === COIN_CLASS ? 1 : 0);
     {
         k_owt = gk.kickedobj.owt | 0;
         if (gk.kickedobj.quan > 1 && !isgold) {
@@ -442,84 +477,84 @@ async function really_kick_object(x, y) {   // dokick.c:508
             k_owt = await weight(gk.kickedobj);
             gk.kickedobj.quan = save_quan;
         }
-        range = $c.div32(acurrstr(), 2) - $c.div32(k_owt, 40) | 0;
+        range = $c.div32(ACURRSTR(), 2) - $c.div32(k_owt, 40) | 0;
     }
-    if (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) {
-        range = range + (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 579, $c.lit("really_kick_object")), rnd(3)) : rnd(3)) | 0;
+    if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
+        range = range + rnd(3) | 0;
     }
     if (is_pool(x, y)) {
         range = $c.div32(range, 3) + 1 | 0;
     } else if ((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) {
-        range = range + (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 586, $c.lit("really_kick_object")), rnd(3)) : rnd(3)) | 0;
+        range = range + rnd(3) | 0;
     } else {
         if (is_ice(x, y)) {
-            range = range + (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 589, $c.lit("really_kick_object")), rnd(3)) : rnd(3)) | 0, slide = 1;
+            range = range + rnd(3) | 0, slide = TRUE;
         }
         if (gk.kickedobj.greased) {
-            range = range + (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 591, $c.lit("really_kick_object")), rnd(3)) : rnd(3)) | 0, slide = 1;
+            range = range + rnd(3) | 0, slide = TRUE;
         }
     }
-    if (is_art(gk.kickedobj, 3 /* ART_MJOLLNIR */)) {
+    if (is_art(gk.kickedobj, ART.MJOLLNIR)) {
         range = 1;
     }
-    if (!isok($c.i16(x + u.dx | 0), $c.i16(y + u.dy | 0)) || !(svl.level.locations[x + u.dx | 0][y + u.dy | 0].typ >= 16 /* POOL */) || closed_door($c.i16(x + u.dx | 0), $c.i16(y + u.dy | 0))) {
+    if (!isok($c.i16(x + u.dx | 0), $c.i16(y + u.dy | 0)) || !(svl.level.locations[x + u.dx | 0][y + u.dy | 0].typ >= POOL) || closed_door($c.i16(x + u.dx | 0), $c.i16(y + u.dy | 0))) {
         range = 1;
     }
     shkp = await find_objowner(gk.kickedobj, x, y);
     costly = $c.i8(shkp && (await costly_spot(x, y) || costly_adjacent(shkp, x, y) && gk.kickedobj.unpaid | 0) ? 1 : 0);
     await Norep($c.lit("You kick %s."), !isgold ? await singular(gk.kickedobj, doname) : await doname(gk.kickedobj));
-    if (svl.level.locations[x][y].typ < 16 /* POOL */ || closed_door(x, y)) {
-        if (!(gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) && (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 616, $c.lit("really_kick_object")), rn2(20)) : rn2(20)) > acurr(3 /* A_DEX */) || svl.level.locations[u.ux][u.uy].typ < 16 /* POOL */ || closed_door(u.ux, u.uy)) {
-            if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+    if (svl.level.locations[x][y].typ < POOL || closed_door(x, y)) {
+        if (!(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && rn2(20) > ACURR(A.DEX) || svl.level.locations[u.ux][u.uy].typ < POOL || closed_door(u.ux, u.uy)) {
+            if (Blind()) {
                 await pline($c.lit("It doesn't come loose."));
             } else {
                 await pline($c.lit("%s %sn't come loose."), await The(await distant_name(gk.kickedobj, xname)), await otense(gk.kickedobj, $c.lit("do")));
             }
-            return !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 624, $c.lit("really_kick_object")), rn2(3)) : rn2(3)) || (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) ? 1 : 0;
+            return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
         }
-        if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+        if (Blind()) {
             await pline($c.lit("It comes loose."));
         } else {
             await pline($c.lit("%s %s loose."), await The(await distant_name(gk.kickedobj, xname)), await otense(gk.kickedobj, $c.lit("come")));
         }
         await obj_extract_self(gk.kickedobj);
         await newsym(x, y);
-        if (costly && (!await costly_spot(u.ux, u.uy) || !$c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(x, y, 14 /* SHOPBASE */).get(0)))) {
+        if (costly && (!await costly_spot(u.ux, u.uy) || !$c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(x, y, SHOPBASE).get(0)))) {
             if (!gk.kickedobj.no_charge) {
-                await addtobill(gk.kickedobj, 0, 0, 0);
+                await addtobill(gk.kickedobj, FALSE, FALSE, FALSE);
             } else {
                 gk.kickedobj.no_charge = (0) & 1;
             }
         }
         if (!await flooreffects(gk.kickedobj, u.ux, u.uy, $c.lit("fall"))) {
             await place_object(gk.kickedobj, u.ux, u.uy);
-            await impact_disturbs_zombies(gk.kickedobj, 1);
+            await impact_disturbs_zombies(gk.kickedobj, TRUE);
             await stackobj(gk.kickedobj);
             await newsym(u.ux, u.uy);
         }
         return 1;
     }
-    if (gk.kickedobj.otyp === 214 /* LARGE_BOX */ || gk.kickedobj.otyp === 215 /* CHEST */) {
+    if (Is_box(gk.kickedobj)) {
         otrp = $c.i8(gk.kickedobj.otrapped);
         if (range < 2) {
             await pline($c.lit("THUD!"));
         }
         await container_impact_dmg(gk.kickedobj, x, y);
         if (gk.kickedobj.olocked) {
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 657, $c.lit("really_kick_object")), rn2(5)) : rn2(5)) || (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 657, $c.lit("really_kick_object")), rn2(2)) : rn2(2))) {
+            if (!rn2(5) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !rn2(2)) {
                 await You($c.lit("break open the lock!"));
-                await breakchestlock(gk.kickedobj, 0);
+                await breakchestlock(gk.kickedobj, FALSE);
                 if (otrp) {
-                    await chest_trap(gk.kickedobj, 9 /* LEG */, 0);
+                    await chest_trap(gk.kickedobj, LEG, FALSE);
                 }
                 return 1;
             }
         } else {
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 665, $c.lit("really_kick_object")), rn2(3)) : rn2(3)) || (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 665, $c.lit("really_kick_object")), rn2(2)) : rn2(2))) {
+            if (!rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !rn2(2)) {
                 await pline_The($c.lit("lid slams open, then falls shut."));
                 gk.kickedobj.lknown = (1) & 1;
                 if (otrp) {
-                    await chest_trap(gk.kickedobj, 9 /* LEG */, 0);
+                    await chest_trap(gk.kickedobj, LEG, FALSE);
                 }
                 return 1;
             }
@@ -532,42 +567,42 @@ async function really_kick_object(x, y) {   // dokick.c:508
         return 1;
     }
     if (range < 2) {
-        if (!(gk.kickedobj.otyp === 214 /* LARGE_BOX */ || gk.kickedobj.otyp === 215 /* CHEST */)) {
+        if (!Is_box(gk.kickedobj)) {
             await pline($c.lit("Thump!"));
         }
-        return !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 689, $c.lit("really_kick_object")), rn2(3)) : rn2(3)) || (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) ? 1 : 0;
+        return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
     }
     if (gk.kickedobj.quan > 1) {
         if (!isgold) {
             $t1 = await splitobj(gk.kickedobj, 1), gk.kickedobj = $t1;
         } else {
-            if (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 696, $c.lit("really_kick_object")), rn2(20)) : rn2(20)) {
-                if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+            if (rn2(20)) {
+                if (!Deaf()) {
                     await pline($c.lit("%s"), $c.lit("Thwwpingg!"));
                 }
-                await You($c.lit("%s!"), really_kick_object$flyingcoinmsg[rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 704, $c.lit("really_kick_object")), rn2(3)) : rn2(3)]);
-                await scatter(x, y, rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 705, $c.lit("really_kick_object")), rnd(3)) : rnd(3), 7, gk.kickedobj);
+                await You($c.lit("%s!"), really_kick_object$flyingcoinmsg[rn2(3)]);
+                await scatter(x, y, rnd(3), VIS_EFFECTS | MAY_HIT, gk.kickedobj);
                 await newsym(x, y);
                 return 1;
             }
             if (gk.kickedobj.quan > 300) {
                 await pline($c.lit("Thump!"));
-                return !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 712, $c.lit("really_kick_object")), rn2(3)) : rn2(3)) || (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) ? 1 : 0;
+                return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
             }
         }
     }
-    if (slide && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+    if (slide && !Blind()) {
         await pline($c.lit("Whee!  %s %s across the %s."), await Doname2(gk.kickedobj), await otense(gk.kickedobj, $c.lit("slide")), surface(x, y));
     }
     await obj_extract_self(gk.kickedobj);
     await snuff_candle(gk.kickedobj);
     await newsym(x, y);
-    mon = await bhit(u.dx, u.dy, range, 3, null, null, new $c.FieldRef(gk, "kickedobj", "ptr"));
+    mon = await bhit(u.dx, u.dy, range, KICKED_WEAPON, null, null, new $c.FieldRef(gk, "kickedobj", "ptr"));
     if (!gk.kickedobj) {
         return 1;
     }
     if (mon) {
-        if (mon.isshk | 0 && gk.kickedobj.where === 4 && $c.peq(gk.kickedobj.v.v_ocarry, mon)) {
+        if (mon.isshk | 0 && gk.kickedobj.where === OBJ.MINVENT && $c.peq(gk.kickedobj.v.v_ocarry, mon)) {
             return 1;
         }
         gn.notonhead = $c.i8(mon.mx !== gb.bhitpos.x || mon.my !== gb.bhitpos.y ? 1 : 0);
@@ -575,17 +610,17 @@ async function really_kick_object(x, y) {   // dokick.c:508
             return 1;
         }
     }
-    if (gk.kickedobj.where === 5) {
+    if (gk.kickedobj.where === OBJ.MIGRATING) {
         return 1;
     }
-    bhitroom = in_rooms(gb.bhitpos.x, gb.bhitpos.y, 14 /* SHOPBASE */).get(0);
-    if (costly && (!await costly_spot(gb.bhitpos.x, gb.bhitpos.y) || in_rooms(x, y, 14 /* SHOPBASE */).get(0) !== bhitroom)) {
+    bhitroom = in_rooms(gb.bhitpos.x, gb.bhitpos.y, SHOPBASE).get(0);
+    if (costly && (!await costly_spot(gb.bhitpos.x, gb.bhitpos.y) || in_rooms(x, y, SHOPBASE).get(0) !== bhitroom)) {
         if (isgold) {
-            await costly_gold(x, y, gk.kickedobj.quan, 0);
+            await costly_gold(x, y, gk.kickedobj.quan, FALSE);
         } else {
-            await stolen_value(gk.kickedobj, x, y, $c.i8(shkp.mpeaceful), 0);
+            await stolen_value(gk.kickedobj, x, y, $c.i8(shkp.mpeaceful), FALSE);
         }
-        costly = 0;
+        costly = FALSE;
     }
     if (await flooreffects(gk.kickedobj, gb.bhitpos.x, gb.bhitpos.y, $c.lit("fall"))) {
         return 1;
@@ -595,12 +630,12 @@ async function really_kick_object(x, y) {   // dokick.c:508
         if (gk.kickedobj.unpaid) {
             await subfrombill(gk.kickedobj, shkp);
         }
-        if (gk.kickedobj.cobj !== null && (gtg = contained_gold(gk.kickedobj, 1)) > 0) {
-            await donate_gold(gtg, shkp, 0);
+        if (Has_contents(gk.kickedobj) && (gtg = contained_gold(gk.kickedobj, TRUE)) > 0) {
+            await donate_gold(gtg, shkp, FALSE);
         }
     }
     await place_object(gk.kickedobj, gb.bhitpos.x, gb.bhitpos.y);
-    await impact_disturbs_zombies(gk.kickedobj, 1);
+    await impact_disturbs_zombies(gk.kickedobj, TRUE);
     await stackobj(gk.kickedobj);
     await newsym(gk.kickedobj.ox, gk.kickedobj.oy);
     return 1;
@@ -611,31 +646,31 @@ function kickstr(buf, kickobjnam) {   // dokick.c:794
         what = kickobjnam;
     } else if ($c.peq(gm.maploc, gn.nowhere)) {
         what = $c.lit("nothing");
-    } else if (gm.maploc.typ === 23 /* DOOR */) {
+    } else if (IS_DOOR(gm.maploc.typ)) {
         what = $c.lit("a door");
-    } else if (gm.maploc.typ === 13 /* TREE */ || svl.level.flags.arboreal | 0 && gm.maploc.typ === 0 /* STONE */) {
+    } else if (IS_TREE(gm.maploc.typ)) {
         what = $c.lit("a tree");
-    } else if (gm.maploc.typ <= 12 /* DBWALL */) {
+    } else if (IS_STWALL(gm.maploc.typ)) {
         what = $c.lit("a wall");
-    } else if (gm.maploc.typ < 16 /* POOL */) {
+    } else if (IS_OBSTRUCTED(gm.maploc.typ)) {
         what = $c.lit("a rock");
-    } else if (gm.maploc.typ === 29 /* THRONE */) {
+    } else if (IS_THRONE(gm.maploc.typ)) {
         what = $c.lit("a throne");
-    } else if (gm.maploc.typ === 28 /* FOUNTAIN */) {
+    } else if (IS_FOUNTAIN(gm.maploc.typ)) {
         what = $c.lit("a fountain");
-    } else if (gm.maploc.typ === 31 /* GRAVE */) {
+    } else if (IS_GRAVE(gm.maploc.typ)) {
         what = $c.lit("a headstone");
-    } else if (gm.maploc.typ === 30 /* SINK */) {
+    } else if (IS_SINK(gm.maploc.typ)) {
         what = $c.lit("a sink");
-    } else if (gm.maploc.typ === 32 /* ALTAR */) {
+    } else if (IS_ALTAR(gm.maploc.typ)) {
         what = $c.lit("an altar");
-    } else if (gm.maploc.typ === 19 /* DRAWBRIDGE_UP */ || gm.maploc.typ === 34 /* DRAWBRIDGE_DOWN */) {
+    } else if (IS_DRAWBRIDGE(gm.maploc.typ)) {
         what = $c.lit("a drawbridge");
-    } else if (gm.maploc.typ === 26 /* STAIRS */) {
+    } else if (gm.maploc.typ === STAIRS) {
         what = $c.lit("the stairs");
-    } else if (gm.maploc.typ === 27 /* LADDER */) {
+    } else if (gm.maploc.typ === LADDER) {
         what = $c.lit("a ladder");
-    } else if (gm.maploc.typ === 22 /* IRONBARS */) {
+    } else if (gm.maploc.typ === IRONBARS) {
         what = $c.lit("an iron bar");
     } else {
         what = $c.lit("something weird");
@@ -643,40 +678,40 @@ function kickstr(buf, kickobjnam) {   // dokick.c:794
     return $c.__builtin___strcat_chk($c.__builtin___strcpy_chk(buf, $c.lit("kicking "), -1), what, -1);
 }
 async function watchman_thief_arrest(mtmp) {   // dokick.c:834
-    if (($c.peq(mtmp.data, $c.relem(mons, 282 /* PM_WATCHMAN */)) || $c.peq(mtmp.data, $c.relem(mons, 283 /* PM_WATCH_CAPTAIN */))) && (gv.viz_array.get(mtmp.my).get(mtmp.mx) & 1) !== 0 && mtmp.mpeaceful | 0) {
+    if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful | 0) {
         await mon_yells(mtmp, $c.lit("Halt, thief!  You're under arrest!"));
-        await angry_guards(0);
-        return 1;
+        await angry_guards(FALSE);
+        return TRUE;
     }
-    return 0;
+    return FALSE;
 }
 async function watchman_door_damage(mtmp, x, y) {   // dokick.c:846
-    if (($c.peq(mtmp.data, $c.relem(mons, 282 /* PM_WATCHMAN */)) || $c.peq(mtmp.data, $c.relem(mons, 283 /* PM_WATCH_CAPTAIN */))) && mtmp.mpeaceful | 0 && (gv.viz_array.get(mtmp.my).get(mtmp.mx) & 1) !== 0) {
-        if ((svl.level.locations[x][y].flags | 0) & 16) {
+    if (is_watch(mtmp.data) && mtmp.mpeaceful | 0 && couldsee(mtmp.mx, mtmp.my)) {
+        if ((svl.level.locations[x][y].flags | 0) & D_WARNED) {
             await mon_yells(mtmp, $c.lit("Halt, vandal!  You're under arrest!"));
-            await angry_guards(0);
+            await angry_guards(FALSE);
         } else {
             await mon_yells(mtmp, $c.lit("Hey, stop damaging that door!"));
-            svl.level.locations[x][y].flags = ((svl.level.locations[x][y].flags | 0 | 16) >>> 0) & 31;
+            svl.level.locations[x][y].flags = ((svl.level.locations[x][y].flags | 0 | D_WARNED) >>> 0) & 31;
         }
-        return 1;
+        return TRUE;
     }
-    return 0;
+    return FALSE;
 }
 async function kick_dumb(x, y) {   // dokick.c:864
-    await exercise(3 /* A_DEX */, 0);
-    if (gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */ || acurr(3 /* A_DEX */) >= 16 || (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 867, $c.lit("kick_dumb")), rn2(3)) : rn2(3))) {
+    await exercise(A.DEX, FALSE);
+    if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS || ACURR(A.DEX) >= 16 || rn2(3)) {
         await You($c.lit("kick at empty space."));
-        if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+        if (Blind()) {
             await feel_location(x, y);
         }
     } else {
         await pline($c.lit("Dumb move!  You strain a muscle."));
-        await exercise(0 /* A_STR */, 0);
-        await set_wounded_legs(262144, 5 + (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 874, $c.lit("kick_dumb")), rnd(5)) : rnd(5)) | 0);
+        await exercise(A.STR, FALSE);
+        await set_wounded_legs(W.RINGR, 5 + rnd(5) | 0);
     }
-    if (((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) && (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 876, $c.lit("kick_dumb")), rn2(2)) : rn2(2))) {
-        await hurtle(-u.dx | 0, -u.dy | 0, 1, 1);
+    if (((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || Levitation()) && rn2(2)) {
+        await hurtle(-u.dx | 0, -u.dy | 0, 1, TRUE);
     }
 }
 async function kick_ouch(x$in, y$in, kickobjnam) {   // dokick.c:881
@@ -684,10 +719,10 @@ async function kick_ouch(x$in, y$in, kickobjnam) {   // dokick.c:881
     const y = Int16Array.of(y$in);
     let dmg = 0, buf = new Int8Array(256);
     await pline($c.lit("Ouch!  That hurts!"));
-    await exercise(3 /* A_DEX */, 0);
-    await exercise(0 /* A_STR */, 0);
+    await exercise(A.DEX, FALSE);
+    await exercise(A.STR, FALSE);
     if (isok(x[0], y[0])) {
-        if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+        if (Blind()) {
             await feel_location(x[0], y[0]);
         }
         if (is_drawbridge_wall(x[0], y[0]) >= 0) {
@@ -697,60 +732,60 @@ async function kick_ouch(x$in, y$in, kickobjnam) {   // dokick.c:881
         }
         await wake_nearto(x[0], y[0], 25);
     }
-    if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 900, $c.lit("kick_ouch")), rn2(3)) : rn2(3))) {
-        await set_wounded_legs(262144, 5 + (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 901, $c.lit("kick_ouch")), rnd(5)) : rnd(5)) | 0);
+    if (!rn2(3)) {
+        await set_wounded_legs(W.RINGR, 5 + rnd(5) | 0);
     }
-    dmg = rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 902, $c.lit("kick_ouch")), rnd(acurr(4 /* A_CON */) > 15 ? 3 : 5)) : rnd(acurr(4 /* A_CON */) > 15 ? 3 : 5);
-    await losehp(u.uprops[56 /* HALF_PHDAM */].intrinsic || u.uprops[56 /* HALF_PHDAM */].extrinsic ? $c.div32(dmg + 1 | 0, 2) : dmg, kickstr(new $c.Ptr(buf, 0), kickobjnam), 1);
-    if ((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
-        await hurtle(-u.dx | 0, -u.dy | 0, (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 905, $c.lit("kick_ouch")), rn2(2)) : rn2(2)) + 4 | 0, 1);
+    dmg = rnd(acurr(A.CON) > 15 ? 3 : 5);
+    await losehp(Maybe_Half_Phys(dmg), kickstr(new $c.Ptr(buf, 0), kickobjnam), KILLED.BY);
+    if ((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || Levitation()) {
+        await hurtle(-u.dx | 0, -u.dy | 0, rn2(2) + 4 | 0, TRUE);
     }
 }
 async function kick_door(x, y, avrg_attrib) {   // dokick.c:910
     let doorbuster = 0, shopdoor = 0;
-    if ((gm.maploc.flags | 0) === 2 || (gm.maploc.flags | 0) === 1 || (gm.maploc.flags | 0) === 0) {
+    if ((gm.maploc.flags | 0) === D.ISOPEN || (gm.maploc.flags | 0) === D.BROKEN || (gm.maploc.flags | 0) === D.NODOOR) {
         await kick_dumb(x, y);
         return;
     }
-    if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
+    if (Levitation()) {
         await kick_ouch(x, y, $c.lit(""));
         return;
     }
-    await exercise(3 /* A_DEX */, 1);
-    doorbuster = $c.i8(u.umonnum !== u.umonster && $c.andu64(gy.youmonst.data.mflags2, 8192) !== 0 ? 1 : 0);
-    if (doorbuster || (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 930, $c.lit("kick_door")), rnl(35)) : rnl(35)) < (avrg_attrib + (!(gu.urole.mnum === 340 || gu.urole.mnum === 336 || $c.peq(gy.youmonst.data, $c.relem(mons, 238 /* PM_SASQUATCH */)) || $G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) ? 0 : acurr(3 /* A_DEX */)) | 0)) {
-        shopdoor = $c.i8(in_rooms(x, y, 14 /* SHOPBASE */).get(0) ? 1 : 0);
-        if ((gm.maploc.flags | 0) & 16) {
+    await exercise(A.DEX, TRUE);
+    doorbuster = $c.i8(Upolyd() && is_giant(gy.youmonst.data) ? 1 : 0);
+    if (doorbuster || rnl(35) < (avrg_attrib + (!(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 0 : ACURR(A.DEX)) | 0)) {
+        shopdoor = $c.i8(in_rooms(x, y, SHOPBASE).get(0) ? TRUE : FALSE);
+        if ((gm.maploc.flags | 0) & D.TRAPPED) {
             if (flags.verbose) {
                 await You($c.lit("kick the door."));
             }
-            await exercise(0 /* A_STR */, 0);
-            gm.maploc.flags = (0) & 31;
-            await b_trapped($c.lit("door"), 5 /* FOOT */);
-        } else if (acurr(0 /* A_STR */) > 18 && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 940, $c.lit("kick_door")), rn2(5)) : rn2(5)) && !shopdoor) {
+            await exercise(A.STR, FALSE);
+            gm.maploc.flags = (D.NODOOR) & 31;
+            await b_trapped($c.lit("door"), FOOT);
+        } else if (ACURR(A.STR) > 18 && !rn2(5) && !shopdoor) {
             await pline($c.lit("As you kick the door, it shatters to pieces!"));
-            await exercise(0 /* A_STR */, 1);
-            gm.maploc.flags = (0) & 31;
+            await exercise(A.STR, TRUE);
+            gm.maploc.flags = (D.NODOOR) & 31;
         } else {
             await pline($c.lit("As you kick the door, it crashes open!"));
-            await exercise(0 /* A_STR */, 1);
-            gm.maploc.flags = (1) & 31;
+            await exercise(A.STR, TRUE);
+            gm.maploc.flags = (D.BROKEN) & 31;
         }
         await feel_newsym(x, y);
         recalc_block_point(x, y);
         if (shopdoor) {
-            await add_damage(x, y, 400);
-            await pay_for_damage($c.lit("break"), 0);
+            await add_damage(x, y, SHOP.DOOR_COST);
+            await pay_for_damage($c.lit("break"), FALSE);
         }
         if (in_town(x, y)) {
             await get_iter_mons(watchman_thief_arrest);
         }
     } else {
-        if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+        if (Blind()) {
             await feel_location(x, y);
         }
-        await exercise(0 /* A_STR */, 1);
-        await pline($c.lit("%s!!"), u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf || !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 966, $c.lit("kick_door")), rn2(3)) : rn2(3)) ? $c.lit("Thwack") : $c.lit("Whammm"));
+        await exercise(A.STR, TRUE);
+        await pline($c.lit("%s!!"), Deaf() || !rn2(3) ? $c.lit("Thwack") : $c.lit("Whammm"));
         if (in_town(x, y)) {
             await get_iter_mons_xy(watchman_door_damage, x, y);
         }
@@ -758,185 +793,185 @@ async function kick_door(x, y, avrg_attrib) {   // dokick.c:910
 }
 async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
     let i = 0, treefruit = null, nfruit = 0, nfall = 0, frtype = 0, cnt = 0, made = 0, mm = new $T.nhcoord(), gend = 0, $t1, $t2, $t3;
-    if (gm.maploc.typ === 14 /* SDOOR */) {
-        if (!((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) && (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 977, $c.lit("kick_nondoor")), rn2(30)) : rn2(30)) < avrg_attrib) {
+    if (gm.maploc.typ === SDOOR) {
+        if (!Levitation() && rn2(30) < avrg_attrib) {
             cvt_sdoor_to_door(gm.maploc);
-            await pline($c.lit("Crash!  %s a secret door!"), ((gm.maploc.flags | 0) & 24) === 8 ? $c.lit("Your kick uncovers") : $c.lit("You kick open"));
-            await exercise(3 /* A_DEX */, 1);
-            if ((gm.maploc.flags | 0) & 16) {
-                gm.maploc.flags = (0) & 31;
-                await b_trapped($c.lit("door"), 5 /* FOOT */);
-            } else if ((gm.maploc.flags | 0) !== 0 && !((gm.maploc.flags | 0) & 8)) {
-                gm.maploc.flags = (2) & 31;
+            await pline($c.lit("Crash!  %s a secret door!"), ((gm.maploc.flags | 0) & (D.LOCKED | D.TRAPPED)) === D.LOCKED ? $c.lit("Your kick uncovers") : $c.lit("You kick open"));
+            await exercise(A.DEX, TRUE);
+            if ((gm.maploc.flags | 0) & D.TRAPPED) {
+                gm.maploc.flags = (D.NODOOR) & 31;
+                await b_trapped($c.lit("door"), FOOT);
+            } else if ((gm.maploc.flags | 0) !== D.NODOOR && !((gm.maploc.flags | 0) & D.LOCKED)) {
+                gm.maploc.flags = (D.ISOPEN) & 31;
             }
             await feel_newsym(x, y);
-            if ((gm.maploc.flags | 0) === 2 || (gm.maploc.flags | 0) === 0) {
+            if ((gm.maploc.flags | 0) === D.ISOPEN || (gm.maploc.flags | 0) === D.NODOOR) {
                 unblock_point(x, y);
             }
-            return 1;
+            return ECMD.TIME;
         } else {
             await kick_ouch(x, y, $c.lit(""));
-            return 1;
+            return ECMD.TIME;
         }
     }
-    if (gm.maploc.typ === 15 /* SCORR */) {
-        if (!((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) && (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1003, $c.lit("kick_nondoor")), rn2(30)) : rn2(30)) < avrg_attrib) {
+    if (gm.maploc.typ === SCORR) {
+        if (!Levitation() && rn2(30) < avrg_attrib) {
             await pline($c.lit("Crash!  You kick open a secret passage!"));
-            await exercise(3 /* A_DEX */, 1);
-            gm.maploc.typ = 24;
+            await exercise(A.DEX, TRUE);
+            gm.maploc.typ = CORR;
             await feel_newsym(x, y);
             unblock_point(x, y);
-            return 1;
+            return ECMD.TIME;
         } else {
             await kick_ouch(x, y, $c.lit(""));
-            return 1;
+            return ECMD.TIME;
         }
     }
-    if (gm.maploc.typ === 29 /* THRONE */) {
-        if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
+    if (IS_THRONE(gm.maploc.typ)) {
+        if (Levitation()) {
             await kick_dumb(x, y);
-            return 1;
+            return ECMD.TIME;
         }
-        if (((u.uluck + u.moreluck | 0) < 0 || gm.maploc.flags | 0) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1022, $c.lit("kick_nondoor")), rn2(3)) : rn2(3))) {
+        if ((Luck() < 0 || gm.maploc.flags | 0) && !rn2(3)) {
             gm.maploc.flags = (0) & 31;
-            gm.maploc.typ = 25;
-            await mkgold(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1025, $c.lit("kick_nondoor")), rnd(200)) : rnd(200), x, y);
-            if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+            gm.maploc.typ = ROOM;
+            await mkgold(rnd(200), x, y);
+            if (Blind()) {
                 await pline($c.lit("CRASH!  You destroy it."));
             } else {
                 await pline($c.lit("CRASH!  You destroy the throne."));
                 await newsym(x, y);
             }
-            await exercise(3 /* A_DEX */, 1);
-            return 1;
-        } else if ((u.uluck + u.moreluck | 0) > 0 && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1035, $c.lit("kick_nondoor")), rn2(3)) : rn2(3)) && !gm.maploc.flags) {
-            await mkgold((rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1036, $c.lit("kick_nondoor")), rn2(201)) : rn2(201)) + 300 | 0, x, y);
-            i = (u.uluck + u.moreluck | 0) + 1 | 0;
+            await exercise(A.DEX, TRUE);
+            return ECMD.TIME;
+        } else if (Luck() > 0 && !rn2(3) && !gm.maploc.flags) {
+            await mkgold(rn2(201) + 300 | 0, x, y);
+            i = Luck() + 1 | 0;
             if (i > 6) {
                 i = 6;
             }
             while ($t1 = i, i = $t1 - 1 | 0, $t1) {
-                await mksobj_at(rnd_class(439 /* DILITHIUM_CRYSTAL */, 469), x, y, 0, 1);
+                await mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), x, y, FALSE, TRUE);
             }
-            if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+            if (Blind()) {
                 await You($c.lit("kick %s loose!"), c_common_strings.c_something);
             } else {
                 await You($c.lit("kick loose some ornamental coins and gems!"));
                 await newsym(x, y);
             }
-            gm.maploc.flags = (1) & 31;
-            return 1;
-        } else if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1053, $c.lit("kick_nondoor")), rn2(4)) : rn2(4))) {
+            gm.maploc.flags = (T_LOOTED) & 31;
+            return ECMD.TIME;
+        } else if (!rn2(4)) {
             if (dunlev(u.uz) < dunlevs_in_dungeon(u.uz)) {
-                await fall_through(0, 0);
-                return 1;
+                await fall_through(FALSE, 0);
+                return ECMD.TIME;
             } else {
                 await kick_ouch(x, y, $c.lit(""));
-                return 1;
+                return ECMD.TIME;
             }
         }
         await kick_ouch(x, y, $c.lit(""));
-        return 1;
+        return ECMD.TIME;
     }
-    if (gm.maploc.typ === 32 /* ALTAR */) {
-        if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
+    if (IS_ALTAR(gm.maploc.typ)) {
+        if (Levitation()) {
             await kick_dumb(x, y);
-            return 1;
+            return ECMD.TIME;
         }
-        await You($c.lit("kick %s."), (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? c_common_strings.c_something : $c.lit("the altar"));
+        await You($c.lit("kick %s."), Blind() ? c_common_strings.c_something : $c.lit("the altar"));
         await altar_wrath(x, y);
-        if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1072, $c.lit("kick_nondoor")), rn2(3)) : rn2(3))) {
+        if (!rn2(3)) {
             await kick_ouch(x, y, $c.lit(""));
-            return 1;
+            return ECMD.TIME;
         }
-        await exercise(3 /* A_DEX */, 1);
-        return 1;
+        await exercise(A.DEX, TRUE);
+        return ECMD.TIME;
     }
-    if (gm.maploc.typ === 28 /* FOUNTAIN */) {
-        if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
+    if (IS_FOUNTAIN(gm.maploc.typ)) {
+        if (Levitation()) {
             await kick_dumb(x, y);
-            return 1;
+            return ECMD.TIME;
         }
-        await You($c.lit("kick %s."), (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? c_common_strings.c_something : $c.lit("the fountain"));
-        if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1085, $c.lit("kick_nondoor")), rn2(3)) : rn2(3))) {
+        await You($c.lit("kick %s."), Blind() ? c_common_strings.c_something : $c.lit("the fountain"));
+        if (!rn2(3)) {
             await kick_ouch(x, y, $c.lit(""));
-            return 1;
+            return ECMD.TIME;
         }
-        if ($G.uarmf && (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1090, $c.lit("kick_nondoor")), rn2(3)) : rn2(3))) {
-            if (await water_damage($G.uarmf, $c.lit("metal boots"), 1) === 0) {
+        if ($G.uarmf && rn2(3)) {
+            if (await water_damage($G.uarmf, $c.lit("metal boots"), TRUE) === ER.NOTHING) {
                 await Your($c.lit("boots get wet."));
             }
         }
-        await exercise(3 /* A_DEX */, 1);
-        return 1;
+        await exercise(A.DEX, TRUE);
+        return ECMD.TIME;
     }
-    if (gm.maploc.typ === 31 /* GRAVE */) {
-        if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
+    if (IS_GRAVE(gm.maploc.typ)) {
+        if (Levitation()) {
             await kick_dumb(x, y);
-        } else if (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1101, $c.lit("kick_nondoor")), rn2(4)) : rn2(4)) {
+        } else if (rn2(4)) {
             await kick_ouch(x, y, $c.lit(""));
-        } else if (!gm.maploc.horizontal && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1104, $c.lit("kick_nondoor")), rn2(2)) : rn2(2))) {
+        } else if (!gm.maploc.horizontal && !rn2(2)) {
             await disturb_grave(x, y);
         } else {
-            await exercise(2 /* A_WIS */, 0);
-            if (gu.urole.mnum === 331 || gu.urole.mnum === 340 || u.ualign.type === 1 && u.ualign.record > -10) {
+            await exercise(A.WIS, FALSE);
+            if (gu.urole.mnum === PM.ARCHEOLOGIST || gu.urole.mnum === PM.SAMURAI || u.ualign.type === A.LAWFUL && u.ualign.record > -10) {
                 adjalign(-sgn(u.ualign.type) | 0);
             }
-            gm.maploc.typ = 25;
+            gm.maploc.typ = ROOM;
             gm.maploc.flags = (0) & 31;
             gm.maploc.horizontal = (0) & 1;
-            await mksobj_at(474 /* ROCK */, x, y, 1, 0);
+            await mksobj_at(ROCK, x, y, TRUE, FALSE);
             await del_engr_at(x, y);
-            if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+            if (Blind()) {
                 await pline($c.lit("Crack!  %s broke!"), c_common_strings.c_Something);
             } else {
                 await pline_The($c.lit("headstone topples over and breaks!"));
                 await newsym(x, y);
             }
         }
-        return 1;
+        return ECMD.TIME;
     }
-    if (gm.maploc.typ === 22 /* IRONBARS */) {
+    if (gm.maploc.typ === IRONBARS) {
         await kick_ouch(x, y, $c.lit(""));
-        return 1;
+        return ECMD.TIME;
     }
-    if (gm.maploc.typ === 13 /* TREE */ || svl.level.flags.arboreal | 0 && gm.maploc.typ === 0 /* STONE */) {
-        if (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1139, $c.lit("kick_nondoor")), rn2(3)) : rn2(3)) {
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1140, $c.lit("kick_nondoor")), rn2(6)) : rn2(6)) && !(svm.mvitals[1 /* PM_KILLER_BEE */].mvflags & 3)) {
+    if (IS_TREE(gm.maploc.typ)) {
+        if (rn2(3)) {
+            if (!rn2(6) && !(svm.mvitals[PM.KILLER_BEE].mvflags & G_GONE)) {
                 await You_hear($c.lit("a low buzzing."));
             }
             await kick_ouch(x, y, $c.lit(""));
-            return 1;
+            return ECMD.TIME;
         }
-        if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1145, $c.lit("kick_nondoor")), rn2(15)) : rn2(15)) && !((gm.maploc.flags | 0) & 1) && (treefruit = await rnd_treefruit_at(x, y))) {
-            nfruit = $c.sub64(8, rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1147, $c.lit("kick_nondoor")), rnl(7)) : rnl(7));
+        if (rn2(15) && !((gm.maploc.flags | 0) & TREE_LOOTED) && (treefruit = await rnd_treefruit_at(x, y))) {
+            nfruit = $c.sub64(8, rnl(7));
             frtype = treefruit.otyp;
             treefruit.quan = nfruit;
             $t2 = await weight(treefruit) >>> 0, treefruit.owt = $t2;
-            if (treefruit.quan !== 1 || treefruit.oartifact === 26 /* ART_EYES_OF_THE_OVERWORLD */ && !undiscovered_artifact(26)) {
+            if (is_plural(treefruit)) {
                 await pline($c.lit("Some %s fall from the tree!"), await xname(treefruit));
             } else {
                 await pline($c.lit("%s falls from the tree!"), await An(await xname(treefruit)));
             }
-            nfall = await scatter(x, y, 2, 6, treefruit);
+            nfall = await scatter(x, y, 2, MAY_HIT, treefruit);
             if (nfall !== nfruit) {
-                treefruit = await mksobj(frtype, 1, 0);
+                treefruit = await mksobj(frtype, TRUE, FALSE);
                 treefruit.quan = $c.sub64(nfruit, nfall);
                 await pline($c.lit("%ld %s got caught in the branches."), $c.sub64(nfruit, nfall), await xname(treefruit));
                 await dealloc_obj(treefruit);
             }
-            await exercise(3 /* A_DEX */, 1);
-            await exercise(2 /* A_WIS */, 1);
+            await exercise(A.DEX, TRUE);
+            await exercise(A.WIS, TRUE);
             await newsym(x, y);
-            gm.maploc.flags = ((gm.maploc.flags | 0 | 1) >>> 0) & 31;
-            return 1;
-        } else if (!((gm.maploc.flags | 0) & 2)) {
-            cnt = (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1172, $c.lit("kick_nondoor")), rnl(4)) : rnl(4)) + 2 | 0;
+            gm.maploc.flags = ((gm.maploc.flags | 0 | TREE_LOOTED) >>> 0) & 31;
+            return ECMD.TIME;
+        } else if (!((gm.maploc.flags | 0) & TREE_SWARM)) {
+            cnt = rnl(4) + 2 | 0;
             made = 0;
             mm.x = x;
             mm.y = y;
             while ($t3 = cnt, cnt = $t3 - 1 | 0, $t3) {
-                if (await enexto(mm, mm.x, mm.y, $c.relem(mons, 1 /* PM_KILLER_BEE */)) && await makemon($c.relem(mons, 1 /* PM_KILLER_BEE */), mm.x, mm.y, 131104)) {
+                if (await enexto(mm, mm.x, mm.y, $c.relem(mons, PM.KILLER_BEE)) && await makemon($c.relem(mons, PM.KILLER_BEE), mm.x, mm.y, MM.ANGRY | MM.NOMSG)) {
                     made = made + 1 | 0;
                 }
             }
@@ -945,141 +980,141 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
             } else {
                 await You($c.lit("smell stale honey."));
             }
-            gm.maploc.flags = ((gm.maploc.flags | 0 | 2) >>> 0) & 31;
-            return 1;
+            gm.maploc.flags = ((gm.maploc.flags | 0 | TREE_SWARM) >>> 0) & 31;
+            return ECMD.TIME;
         }
         await kick_ouch(x, y, $c.lit(""));
-        return 1;
+        return ECMD.TIME;
     }
-    if (gm.maploc.typ === 30 /* SINK */) {
+    if (IS_SINK(gm.maploc.typ)) {
         gend = poly_gender();
-        if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
+        if (Levitation()) {
             await kick_dumb(x, y);
-            return 1;
+            return ECMD.TIME;
         }
-        if (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1201, $c.lit("kick_nondoor")), rn2(5)) : rn2(5)) {
-            if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+        if (rn2(5)) {
+            if (!Deaf()) {
                 await pline($c.lit("Klunk!  The pipes vibrate noisily."));
             } else {
                 await pline($c.lit("Klunk!"));
             }
-            await exercise(3 /* A_DEX */, 1);
-            return 1;
-        } else if (!((gm.maploc.flags | 0) & 1) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1209, $c.lit("kick_nondoor")), rn2(3)) : rn2(3)) && !(svm.mvitals[209 /* PM_BLACK_PUDDING */].mvflags & 3)) {
-            if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
-                if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+            await exercise(A.DEX, TRUE);
+            return ECMD.TIME;
+        } else if (!((gm.maploc.flags | 0) & S.LPUDDING) && !rn2(3) && !(svm.mvitals[PM.BLACK_PUDDING].mvflags & G_GONE)) {
+            if (Blind()) {
+                if (!Deaf()) {
                     await You_hear($c.lit("a gushing sound."));
                 }
             } else {
                 await pline($c.lit("A %s ooze gushes up from the drain!"), hcolor(c_color_names.c_black));
             }
-            await makemon($c.relem(mons, 209 /* PM_BLACK_PUDDING */), x, y, 131072);
-            await exercise(3 /* A_DEX */, 1);
+            await makemon($c.relem(mons, PM.BLACK_PUDDING), x, y, MM.NOMSG);
+            await exercise(A.DEX, TRUE);
             await newsym(x, y);
-            gm.maploc.flags = ((gm.maploc.flags | 0 | 1) >>> 0) & 31;
-            return 1;
-        } else if (!((gm.maploc.flags | 0) & 2) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1224, $c.lit("kick_nondoor")), rn2(3)) : rn2(3)) && !(svm.mvitals[290 /* PM_AMOROUS_DEMON */].mvflags & 3)) {
-            await pline($c.lit("%s returns!"), (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? c_common_strings.c_Something : $c.lit("The dish washer"));
-            if (await makemon($c.relem(mons, 290 /* PM_AMOROUS_DEMON */), x, y, $c.u32($c.or64(131072, gend === 1 || gend === 2 && (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1229, $c.lit("kick_nondoor")), rn2(2)) : rn2(2)) ? 32768 : 65536)))) {
+            gm.maploc.flags = ((gm.maploc.flags | 0 | S.LPUDDING) >>> 0) & 31;
+            return ECMD.TIME;
+        } else if (!((gm.maploc.flags | 0) & S.LDWASHER) && !rn2(3) && !(svm.mvitals[PM.AMOROUS_DEMON].mvflags & G_GONE)) {
+            await pline($c.lit("%s returns!"), Blind() ? c_common_strings.c_Something : $c.lit("The dish washer"));
+            if (await makemon($c.relem(mons, PM.AMOROUS_DEMON), x, y, $c.u32($c.or64(MM.NOMSG, gend === 1 || gend === 2 && rn2(2) ? MM.MALE : MM.FEMALE)))) {
                 await newsym(x, y);
             }
-            gm.maploc.flags = ((gm.maploc.flags | 0 | 2) >>> 0) & 31;
-            await exercise(3 /* A_DEX */, 1);
-            return 1;
-        } else if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1235, $c.lit("kick_nondoor")), rn2(3)) : rn2(3))) {
+            gm.maploc.flags = ((gm.maploc.flags | 0 | S.LDWASHER) >>> 0) & 31;
+            await exercise(A.DEX, TRUE);
+            return ECMD.TIME;
+        } else if (!rn2(3)) {
             await sink_backs_up(x, y);
-            return 1;
+            return ECMD.TIME;
         }
         await kick_ouch(x, y, $c.lit(""));
-        return 1;
+        return ECMD.TIME;
     }
-    if (gm.maploc.typ === 26 /* STAIRS */ || gm.maploc.typ === 27 /* LADDER */ || gm.maploc.typ <= 12 /* DBWALL */) {
-        if (!(gm.maploc.typ <= 12 /* DBWALL */) && (gm.maploc.flags | 0) === 2) {
+    if (gm.maploc.typ === STAIRS || gm.maploc.typ === LADDER || IS_STWALL(gm.maploc.typ)) {
+        if (!IS_STWALL(gm.maploc.typ) && (gm.maploc.flags | 0) === LA.DOWN) {
             await kick_dumb(x, y);
-            return 1;
+            return ECMD.TIME;
         }
         await kick_ouch(x, y, $c.lit(""));
-        return 1;
+        return ECMD.TIME;
     }
     await kick_dumb(x, y);
-    return 1;
+    return ECMD.TIME;
 }
 export async function dokick() {   // dokick.c:1257
     let x = 0, y = 0, avrg_attrib = 0, glyph = 0, oldglyph = 0, mtmp = null, no_kick = 0, xx = 0, yy = 0, mdat = null, range = 0, kickobjnam = new Int8Array(256);
     oldglyph = -1;
-    no_kick = 0;
-    if ($c.andu64(gy.youmonst.data.mflags1, 24576) === 24576 || $c.andu64(gy.youmonst.data.mflags1, 524288) !== 0) {
+    no_kick = FALSE;
+    if (nolimbs(gy.youmonst.data) || slithy(gy.youmonst.data)) {
         await You($c.lit("have no legs to kick with."));
-        no_kick = 1;
-    } else if (gy.youmonst.data.msize < 1) {
+        no_kick = TRUE;
+    } else if (verysmall(gy.youmonst.data)) {
         await You($c.lit("are too small to do any kicking."));
-        no_kick = 1;
+        no_kick = TRUE;
     } else if (u.usteed) {
-        if (await yn_function($c.lit("Kick your steed?"), new $c.Ptr(ynchars, 0), 121, 1) === 121) {
+        if (await yn_function($c.lit("Kick your steed?"), new $c.Ptr(ynchars, 0), 121, TRUE) === 121) {
             await You($c.lit("kick %s."), await mon_nam(u.usteed));
             await kick_steed();
-            return 1;
+            return ECMD.TIME;
         } else {
-            return 0;
+            return ECMD.OK;
         }
-    } else if (u.uprops[26 /* WOUNDED_LEGS */].intrinsic || u.uprops[26 /* WOUNDED_LEGS */].extrinsic) {
-        await legs_in_no_shape($c.lit("kicking"), 0);
-        no_kick = 1;
-    } else if (near_capacity() > 1 /* SLT_ENCUMBER */) {
+    } else if (Wounded_legs()) {
+        await legs_in_no_shape($c.lit("kicking"), FALSE);
+        no_kick = TRUE;
+    } else if (near_capacity() > SLT_ENCUMBER) {
         await Your($c.lit("load is too heavy to balance yourself for a kick."));
-        no_kick = 1;
-    } else if (gy.youmonst.data.mlet === 58 /* S_LIZARD */) {
+        no_kick = TRUE;
+    } else if (gy.youmonst.data.mlet === S.LIZARD) {
         await Your($c.lit("legs cannot kick effectively."));
-        no_kick = 1;
-    } else if (u.uinwater | 0 && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1288, $c.lit("dokick")), rn2(2)) : rn2(2))) {
+        no_kick = TRUE;
+    } else if (u.uinwater | 0 && !rn2(2)) {
         await Your($c.lit("slow motion kick doesn't hit anything."));
-        no_kick = 1;
+        no_kick = TRUE;
     } else if (u.utrap) {
-        no_kick = 1;
+        no_kick = TRUE;
         switch (u.utraptype) {
-            case 2:
-                if (!(u.uprops[53 /* PASSES_WALLS */].intrinsic || u.uprops[53 /* PASSES_WALLS */].extrinsic)) {
+            case TT.PIT:
+                if (!Passes_walls()) {
                     await pline($c.lit("There's not enough room to kick down here."));
                 } else {
-                    no_kick = 0;
+                    no_kick = FALSE;
                 }
                 break;
-            case 3:
-            case 1:
-                await You_cant($c.lit("move your %s!"), await body_part(9 /* LEG */));
+            case TT.WEB:
+            case TT.BEARTRAP:
+                await You_cant($c.lit("move your %s!"), await body_part(LEG));
                 break;
             default:
                 break;
         }
-    } else if (sobj_at(475 /* BOULDER */, u.ux, u.uy) && !(u.uprops[53 /* PASSES_WALLS */].intrinsic || u.uprops[53 /* PASSES_WALLS */].extrinsic)) {
+    } else if (sobj_at(BOULDER, u.ux, u.uy) && !Passes_walls()) {
         await pline($c.lit("There's not enough room to kick in here."));
-        no_kick = 1;
+        no_kick = TRUE;
     }
     if (no_kick) {
-        await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 1);
-        return 4;
+        await display_nhwindow()($G.WIN_MESSAGE, TRUE);
+        return ECMD.FAIL;
     }
     if (!await getdir(null)) {
-        return 2;
+        return ECMD.CANCEL;
     }
     if (!u.dx && !u.dy) {
-        return 2;
+        return ECMD.CANCEL;
     }
     x = $c.i16(u.ux + u.dx | 0);
     y = $c.i16(u.uy + u.dy | 0);
     gk.kickedloc.x = x, gk.kickedloc.y = y;
-    if ($G.uarmf && $G.uarmf.otyp === 170 /* KICKING_BOOTS */) {
+    if ($G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
         avrg_attrib = 99;
     } else {
-        avrg_attrib = $c.div32((acurrstr() + acurr(3 /* A_DEX */) | 0) + acurr(4 /* A_CON */) | 0, 3);
+        avrg_attrib = $c.div32((ACURRSTR() + ACURR(A.DEX) | 0) + ACURR(A.CON) | 0, 3);
     }
     if (u.uswallow) {
-        switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1334, $c.lit("dokick")), rn2(3)) : rn2(3)) {
+        switch (rn2(3)) {
             case 0:
-                await You_cant($c.lit("move your %s!"), await body_part(9 /* LEG */));
+                await You_cant($c.lit("move your %s!"), await body_part(LEG));
                 break;
             case 1:
-                if (dmgtype_fromattack(u.ustuck.data, 26, 11) !== null) {
+                if (dmgtype_fromattack(u.ustuck.data, AD.DGST, AT.ENGL) !== null) {
                     await pline($c.lit("%s burps loudly."), await Monnam(u.ustuck));
                     break;
                 }
@@ -1087,46 +1122,46 @@ export async function dokick() {   // dokick.c:1257
                 await Your($c.lit("feeble kick has no effect."));
                 break;
         }
-        return 1;
-    } else if (u.utrap && u.utraptype === 2) {
+        return ECMD.TIME;
+    } else if (u.utrap && u.utraptype === TT.PIT) {
         await You($c.lit("kick at the side of the pit."));
-        return 1;
+        return ECMD.TIME;
     }
-    if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
+    if (Levitation()) {
         xx = $c.i16(u.ux - u.dx | 0);
         yy = $c.i16(u.uy - u.dy | 0);
-        if (isok(xx, yy) && !(svl.level.locations[xx][yy].typ < 16 /* POOL */) && !(svl.level.locations[xx][yy].typ === 23 /* DOOR */) && (!((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) || !(svl.level.objects[xx][yy] !== null))) {
+        if (isok(xx, yy) && !(svl.level.locations[xx][yy].typ < POOL) && !(svl.level.locations[xx][yy].typ === DOOR) && (!((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) || !OBJ_AT(xx, yy))) {
             await You($c.lit("have nothing to brace yourself against."));
-            return 0;
+            return ECMD.OK;
         }
     }
     mtmp = isok(x, y) ? svl.level.monsters[x][y] : null;
     if (mtmp) {
         oldglyph = glyph_at(x, y);
         if (!await maybe_kick_monster(mtmp, x, y)) {
-            return svc.context.move ? 1 : 0;
+            return svc.context.move ? ECMD.TIME : ECMD.OK;
         }
     }
-    await wake_nearby(0);
+    await wake_nearby(FALSE);
     await u_wipe_engr(2);
     if (!isok(x, y)) {
         gm.maploc = gn.nowhere;
         await kick_ouch(x, y, $c.lit(""));
-        return 1;
+        return ECMD.TIME;
     }
     gm.maploc = $c.relem(svl.level.locations[x], y);
     if (mtmp) {
         mdat = mtmp.data;
         await kick_monster(mtmp, x, y);
         glyph = glyph_at(x, y);
-        if (mtmp.mhp < 1) {
-            if (glyph !== oldglyph && glyph === 1532 /* GLYPH_INVIS_OFF */) {
+        if (DEADMONSTER(mtmp)) {
+            if (glyph !== oldglyph && glyph_is_invisible(glyph)) {
                 await show_glyph(x, y, oldglyph);
             }
-        } else if (!(canseemon(mtmp) || sensemon(mtmp)) && mtmp.mx === x && mtmp.my === y && !(glyph === 1532 /* GLYPH_INVIS_OFF */) && !(u.uswallow | 0 && $c.peq(u.ustuck, mtmp))) {
+        } else if (!canspotmon(mtmp) && mtmp.mx === x && mtmp.my === y && !glyph_is_invisible(glyph) && !engulfing_u(mtmp)) {
             await map_invisible(x, y);
         }
-        if (((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) && svc.context.move) {
+        if (((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || Levitation()) && svc.context.move) {
             range = (gy.youmonst.data.cwt | 0) + (weight_cap() + inv_weight() | 0) | 0;
             if (range < 1) {
                 range = 1;
@@ -1135,48 +1170,48 @@ export async function dokick() {   // dokick.c:1257
             if (range < 1) {
                 range = 1;
             }
-            await hurtle(-u.dx | 0, -u.dy | 0, range, 1);
+            await hurtle(-u.dx | 0, -u.dy | 0, range, TRUE);
         }
-        return 1;
+        return ECMD.TIME;
     }
     await unmap_invisible(x, y);
-    if ((is_pool(x, y) || gm.maploc.typ === 21 /* LAVAWALL */ ? 1 : 0) ^ (!!u.uinwater ? 1 : 0)) {
+    if ((is_pool(x, y) || gm.maploc.typ === LAVAWALL ? 1 : 0) ^ (!!u.uinwater ? 1 : 0)) {
         await You($c.lit("splash some %s around."), hliquid(is_pool(x, y) ? $c.lit("water") : $c.lit("lava")));
-        return 1;
+        return ECMD.TIME;
     }
-    if (svl.level.objects[x][y] !== null && (!((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) || (svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) || sobj_at(475 /* BOULDER */, x, y))) {
+    if (OBJ_AT(x, y) && (!Levitation() || (svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) || sobj_at(BOULDER, x, y))) {
         if (await kick_object(x, y, new $c.Ptr(kickobjnam, 0))) {
             if ((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) {
-                await hurtle(-u.dx | 0, -u.dy | 0, 1, 1);
+                await hurtle(-u.dx | 0, -u.dy | 0, 1, TRUE);
             }
-            return 1;
+            return ECMD.TIME;
         }
         await kick_ouch(x, y, new $c.Ptr(kickobjnam, 0));
-        return 1;
+        return ECMD.TIME;
     }
-    if (gm.maploc.typ === 23 /* DOOR */) {
+    if (IS_DOOR(gm.maploc.typ)) {
         await kick_door(x, y, avrg_attrib);
     } else {
         return await kick_nondoor(x, y, avrg_attrib);
     }
-    return 1;
+    return ECMD.TIME;
 }
 function drop_to(cc, loc, x, y) {   // dokick.c:1473
     let stway = null, $t1, $t2;
     stway = stairway_at(x, y);
     switch (loc) {
-        case 0:
+        case MIGR.RANDOM:
             if ((svd.dungeon_topology.d_stronghold_level.dlevel || svd.dungeon_topology.d_stronghold_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_stronghold_level)) {
                 cc.x = svd.dungeon_topology.d_valley_level.dnum;
                 cc.y = svd.dungeon_topology.d_valley_level.dlevel;
                 break;
-            } else if (u.uz.dnum === svd.dungeon_topology.d_astral_level.dnum || Is_botlevel(u.uz)) {
+            } else if (In_endgame(u.uz) || Is_botlevel(u.uz)) {
                 $t1 = cc.x = 0, cc.y = $t1;
                 break;
             }
-        case 3:
-        case 5:
-        case 7:
+        case MIGR.STAIRS_UP:
+        case MIGR.LADDER_UP:
+        case MIGR.SSTAIRS:
             if (stway) {
                 cc.x = stway.tolev.dnum;
                 cc.y = stway.tolev.dlevel;
@@ -1186,14 +1221,14 @@ function drop_to(cc, loc, x, y) {   // dokick.c:1473
             }
             break;
         default:
-        case -1:
+        case MIGR.NOWHERE:
             $t2 = cc.x = 0, cc.y = $t2;
             break;
     }
 }
 export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
     let toloc = 0, obj = null, obj2 = null, shkp = null, oct = 0, dct = 0, price = 0, debit = 0, robbed = 0, angry = 0, costly = 0, isrock = 0, cc = new $T.nhcoord(), what = null, amt = 0;
-    if (!(svl.level.objects[x][y] !== null)) {
+    if (!OBJ_AT(x, y)) {
         return;
     }
     toloc = await down_gate(x, y);
@@ -1202,21 +1237,21 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
         return;
     }
     if (dlev) {
-        toloc = 9;
+        toloc = MIGR.WITH_HERO;
         cc.y = dlev;
     }
     costly = await costly_spot(x, y);
     price = debit = robbed = 0;
-    angry = 0;
+    angry = FALSE;
     shkp = null;
     if (costly) {
-        if ((shkp = await shop_keeper(in_rooms(x, y, 14 /* SHOPBASE */).get(0))) !== null) {
+        if ((shkp = await shop_keeper(in_rooms(x, y, SHOPBASE).get(0))) !== null) {
             debit = shkp.mextra.eshk.debit;
             robbed = shkp.mextra.eshk.robbed;
             angry = $c.i8(!shkp.mpeaceful ? 1 : 0);
         }
     }
-    isrock = $c.i8(missile && missile.otyp === 474 /* ROCK */ ? 1 : 0);
+    isrock = $c.i8(missile && missile.otyp === ROCK ? 1 : 0);
     oct = dct = 0;
     for (obj = svl.level.objects[x][y]; obj; obj = obj2) {
         obj2 = obj.v.v_nexthere;
@@ -1227,16 +1262,16 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
         if ($c.peq(obj, $G.uball) || $c.peq(obj, $G.uchain)) {
             continue;
         }
-        if (isrock && obj.otyp === 475 /* BOULDER */ || (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1569, $c.lit("impact_drop")), rn2(obj.otyp === 475 /* BOULDER */ ? 30 : 3)) : rn2(obj.otyp === 475 /* BOULDER */ ? 30 : 3))) {
+        if (isrock && obj.otyp === BOULDER || rn2(obj.otyp === BOULDER ? 30 : 3)) {
             continue;
         }
         await obj_extract_self(obj);
         if (costly) {
-            price = $c.add64(price, await stolen_value(obj, x, y, $c.i8(await costly_spot(u.ux, u.uy) && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(x, y, 14 /* SHOPBASE */).get(0)) ? 1 : 0), 1));
-            if (obj.cobj !== null) {
+            price = $c.add64(price, await stolen_value(obj, x, y, $c.i8(await costly_spot(u.ux, u.uy) && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(x, y, SHOPBASE).get(0)) ? 1 : 0), TRUE));
+            if (Has_contents(obj)) {
                 picked_container(obj);
             }
-            if (obj.oclass !== 12 /* COIN_CLASS */) {
+            if (obj.oclass !== COIN_CLASS) {
                 obj.no_charge = (0) & 1;
             }
         }
@@ -1246,7 +1281,7 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
         obj.owornmask = toloc;
         dct = $c.add64(dct, obj.quan);
     }
-    if (dct && (gv.viz_array.get(y).get(x) & 2) !== 0) {
+    if (dct && cansee(x, y)) {
         what = dct === 1 ? $c.lit("object falls") : $c.lit("objects fall");
         if (missile) {
             await pline($c.lit("From the impact, %sother %s."), dct === oct ? $c.lit("the ") : dct === 1 ? $c.lit("an") : $c.lit(""), what);
@@ -1259,9 +1294,9 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
     if (costly && shkp && price) {
         if (shkp.mextra.eshk.robbed > robbed) {
             await You($c.lit("removed %ld %s worth of goods!"), price, await currency(price));
-            if ((gv.viz_array.get(shkp.my).get(shkp.mx) & 2) !== 0) {
+            if (cansee(shkp.mx, shkp.my)) {
                 if (shkp.mextra.eshk.customer[0] === 0) {
-                    $c.__builtin___strncpy_chk(new $c.Ptr(shkp.mextra.eshk.customer, 0), new $c.Ptr(svp.plname, 0), 32, 32);
+                    $c.__builtin___strncpy_chk(new $c.Ptr(shkp.mextra.eshk.customer, 0), new $c.Ptr(svp.plname, 0), PL.NSIZ, 32);
                 }
                 if (angry) {
                     await pline($c.lit("%s is infuriated!"), await Shknam(shkp));
@@ -1272,7 +1307,7 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
                 await You_hear($c.lit("a scream, \"Thief!\""));
             }
             hot_pursuit(shkp);
-            await angry_guards(0);
+            await angry_guards(FALSE);
             return;
         }
         if (shkp.mextra.eshk.debit > debit) {
@@ -1283,41 +1318,41 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
 }
 export async function ship_object(otmp, x, y, shop_floor_obj) {   // dokick.c:1639
     let toloc = 0, ox = 0, oy = 0, cc = new $T.nhcoord(), obj = null, t = null, nodrop = 0, unpaid = 0, container = 0, impact = 0, chainthere = 0, n = 0, result = null;
-    impact = 0;
-    chainthere = 0;
+    impact = FALSE;
+    chainthere = FALSE;
     n = 0;
     if (!otmp) {
-        return 0;
+        return FALSE;
     }
-    if ((toloc = await down_gate(x, y)) === -1) {
-        return 0;
+    if ((toloc = await down_gate(x, y)) === MIGR.NOWHERE) {
+        return FALSE;
     }
     drop_to(cc, toloc, x, y);
     if (!cc.y) {
-        return 0;
+        return FALSE;
     }
-    nodrop = $c.i8($c.peq(otmp, $G.uball) || $c.peq(otmp, $G.uchain) || toloc !== 5 && (rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1660, $c.lit("ship_object")), rn2(3)) : rn2(3)) ? 1 : 0);
-    container = $c.i8(otmp.cobj !== null ? 1 : 0);
+    nodrop = $c.i8($c.peq(otmp, $G.uball) || $c.peq(otmp, $G.uchain) || toloc !== MIGR.LADDER_UP && rn2(3) ? 1 : 0);
+    container = $c.i8(Has_contents(otmp));
     unpaid = is_unpaid(otmp);
-    if (svl.level.objects[x][y] !== null) {
+    if (OBJ_AT(x, y)) {
         for (obj = svl.level.objects[x][y]; obj; obj = obj.v.v_nexthere) {
             if ($c.peq(obj, $G.uchain)) {
-                chainthere = 1;
+                chainthere = TRUE;
             } else if (!$c.peq(obj, otmp)) {
                 n = $c.add64(n, obj.quan);
             }
         }
         if (n) {
-            impact = 1;
+            impact = TRUE;
         }
     }
-    if (otmp.otyp === 475 /* BOULDER */ && (t = t_at(x, y)) !== null && ((t.ttyp | 0) === 13 /* HOLE */ || (t.ttyp | 0) === 14 /* TRAPDOOR */)) {
+    if (otmp.otyp === BOULDER && (t = t_at(x, y)) !== null && is_hole(t.ttyp)) {
         if (impact) {
             await impact_drop(otmp, x, y, 0);
         }
-        return 0;
+        return FALSE;
     }
-    if ((gv.viz_array.get(y).get(x) & 2) !== 0) {
+    if (cansee(x, y)) {
         await otransit_msg(otmp, nodrop, chainthere, n);
     }
     if (nodrop) {
@@ -1325,58 +1360,58 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {   // dokick.c:16
             await impact_drop(otmp, x, y, 0);
             await maybe_unhide_at(x, y);
         }
-        return 0;
+        return FALSE;
     }
     if (unpaid || shop_floor_obj) {
         if (unpaid) {
-            await stolen_value(otmp, u.ux, u.uy, 1, 0);
+            await stolen_value(otmp, u.ux, u.uy, TRUE, FALSE);
         } else {
             ox = otmp.ox;
             oy = otmp.oy;
-            await stolen_value(otmp, ox, oy, $c.i8(await costly_spot(u.ux, u.uy) && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(ox, oy, 14 /* SHOPBASE */).get(0)) ? 1 : 0), 0);
+            await stolen_value(otmp, ox, oy, $c.i8(await costly_spot(u.ux, u.uy) && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(ox, oy, SHOPBASE).get(0)) ? 1 : 0), FALSE);
         }
         if (container) {
             picked_container(otmp);
         }
-        if (otmp.oclass !== 12 /* COIN_CLASS */) {
+        if (otmp.oclass !== COIN_CLASS) {
             otmp.no_charge = (0) & 1;
         }
     }
     if (otmp.owornmask) {
-        await remove_worn_item(otmp, 1);
+        await remove_worn_item(otmp, TRUE);
     }
     if (breaktest(otmp)) {
-        if ((objects[otmp.otyp].oc_material | 0) === 19 /* GLASS */ || otmp.otyp === 229 /* EXPENSIVE_CAMERA */) {
-            if (otmp.otyp === 230 /* MIRROR */) {
+        if ((objects[otmp.otyp].oc_material | 0) === GLASS || otmp.otyp === EXPENSIVE_CAMERA) {
+            if (otmp.otyp === MIRROR) {
                 change_luck(-2);
             }
             result = $c.lit("crash");
         } else {
-            if (otmp.otyp === 266 /* EGG */ && otmp.spe && (otmp.corpsenm >= 0 /* LOW_PM */ && otmp.corpsenm < 383 /* NUMMONS */)) {
+            if (otmp.otyp === EGG && otmp.spe && ismnum(otmp.corpsenm)) {
                 change_luck($c.i8($c.neg64(otmp.quan < 5 ? otmp.quan : 5)));
             }
             result = $c.lit("splat");
         }
-        if (otmp.otyp === 266 /* EGG */) {
+        if (otmp.otyp === EGG) {
         } else {
         }
         await You_hear($c.lit("a muffled %s."), result);
         await obj_extract_self(otmp);
         await obfree(otmp, null);
-        return 1;
+        return TRUE;
     }
     await add_to_migration(otmp);
     otmp.ox = cc.x;
     otmp.oy = cc.y;
     otmp.owornmask = toloc;
-    if (otmp.otyp === 475 /* BOULDER */) {
+    if (otmp.otyp === BOULDER) {
         otmp.otrapped = (0) & 1;
     }
     if (impact) {
         await impact_drop(otmp, x, y, 0);
         await newsym(x, y);
     }
-    return 1;
+    return TRUE;
 }
 export async function obj_delivery(near_hero) {   // dokick.c:1769
     let otmp = null, otmp2 = null, nx = 0, ny = 0, where = 0, nobreak = 0, noscatter = 0, stway = null, fromdlev = new $T.d_level(), isladder = 0, $t1;
@@ -1388,35 +1423,35 @@ export async function obj_delivery(near_hero) {   // dokick.c:1769
             continue;
         }
         where = $c.i32($c.and64(otmp.owornmask, 32767));
-        if ((where & 4096) !== 0) {
+        if ((where & MIGR.TO_SPECIES) !== 0) {
             continue;
         }
-        nobreak = $c.i8((where & 1024) !== 0 ? 1 : 0);
-        noscatter = $c.i8((where & 9) !== 0 ? 1 : 0);
-        where = where & -3073;
-        if ((!near_hero ? 1 : 0) ^ (where === 9 ? 1 : 0)) {
+        nobreak = $c.i8((where & MIGR.NOBREAK) !== 0 ? 1 : 0);
+        noscatter = $c.i8((where & MIGR.WITH_HERO) !== 0 ? 1 : 0);
+        where = where & ~(MIGR.NOBREAK | MIGR.NOSCATTER);
+        if ((!near_hero ? 1 : 0) ^ (where === MIGR.WITH_HERO ? 1 : 0)) {
             continue;
         }
         await obj_extract_self(otmp);
         otmp.owornmask = 0;
         fromdlev.dnum = otmp.omigr_from_dnum;
         fromdlev.dlevel = otmp.omigr_from_dlevel;
-        isladder = 0;
+        isladder = FALSE;
         switch (where) {
-            case 5:
-                isladder = 1;
-            case 3:
-            case 7:
+            case MIGR.LADDER_UP:
+                isladder = TRUE;
+            case MIGR.STAIRS_UP:
+            case MIGR.SSTAIRS:
                 if ((stway = stairway_find_from(fromdlev, isladder)) !== null) {
                     nx = stway.sx;
                     ny = stway.sy;
                 }
                 break;
-            case 9:
+            case MIGR.WITH_HERO:
                 nx = u.ux, ny = u.uy;
                 break;
             default:
-            case 0:
+            case MIGR.RANDOM:
                 nx = ny = 0;
                 break;
         }
@@ -1424,8 +1459,8 @@ export async function obj_delivery(near_hero) {   // dokick.c:1769
         otmp.omigr_from_dlevel = 0;
         if (nx > 0) {
             await place_object(otmp, $c.i16(nx), $c.i16(ny));
-            if (!nobreak && !(svl.level.locations[nx][ny].typ === 35 /* AIR */ || svl.level.locations[nx][ny].typ === 36 /* CLOUD */ || svl.level.locations[nx][ny].typ >= 16 /* POOL */ && svl.level.locations[nx][ny].typ <= 19 /* DRAWBRIDGE_UP */)) {
-                if (where === 9) {
+            if (!nobreak && !(svl.level.locations[nx][ny].typ === AIR || svl.level.locations[nx][ny].typ === CLOUD || svl.level.locations[nx][ny].typ >= POOL && svl.level.locations[nx][ny].typ <= DRAWBRIDGE_UP)) {
+                if (where === MIGR.WITH_HERO) {
                     if (await breaks(otmp, $c.i16(nx), $c.i16(ny))) {
                         continue;
                     }
@@ -1436,7 +1471,7 @@ export async function obj_delivery(near_hero) {   // dokick.c:1769
             }
             await stackobj(otmp);
             if (!noscatter) {
-                await scatter($c.i16(nx), $c.i16(ny), rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1838, $c.lit("obj_delivery")), rnd(2)) : rnd(2), 0, otmp);
+                await scatter($c.i16(nx), $c.i16(ny), rnd(2), 0, otmp);
             } else {
                 await newsym($c.i16(nx), $c.i16(ny));
             }
@@ -1452,9 +1487,9 @@ export async function deliver_obj_to_mon(mtmp, cnt, deliverflags) {   // dokick.
     let otmp = null, otmp2 = null, where = 0, maxobj = 0, at_crime_scene = 0, $t1;
     maxobj = 1;
     at_crime_scene = In_mines(u.uz);
-    if ($c.andu64(deliverflags, 1) && cnt > 1) {
-        maxobj = rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1861, $c.lit("deliver_obj_to_mon")), rnd(cnt)) : rnd(cnt);
-    } else if ($c.andu64(deliverflags, 4)) {
+    if ($c.andu64(deliverflags, DF.RANDOM) && cnt > 1) {
+        maxobj = rnd(cnt);
+    } else if ($c.andu64(deliverflags, DF.ALL)) {
         maxobj = 0;
     } else {
         maxobj = 1;
@@ -1463,22 +1498,22 @@ export async function deliver_obj_to_mon(mtmp, cnt, deliverflags) {   // dokick.
     for (otmp = gm.migrating_objs; otmp; otmp = otmp2) {
         otmp2 = otmp.nobj;
         where = $c.i32($c.and64(otmp.owornmask, 32767));
-        if ((where & 4096) === 0) {
+        if ((where & MIGR.TO_SPECIES) === 0) {
             continue;
         }
-        if (otmp.corpsenm !== -1 /* NON_PM */ && $c.andu64(mtmp.data.mflags2, 8702) === otmp.corpsenm >>> 0) {
+        if (otmp.corpsenm !== NON_PM && $c.andu64(mtmp.data.mflags2, DELIVER_PM) === otmp.corpsenm >>> 0) {
             await obj_extract_self(otmp);
             otmp.owornmask = 0;
             $t1 = otmp.oy = 0, otmp.ox = $t1;
-            if ($c.and64(otmp.corpsenm, 128) !== 0 && (otmp.oextra && otmp.oextra.oname)) {
-                if (!(mtmp.mextra && mtmp.mextra.mgivenname)) {
-                    if (at_crime_scene || !(rng_log_enabled() ? (rng_log_set_caller($c.lit("dokick.c"), 1887, $c.lit("deliver_obj_to_mon")), rn2(2)) : rn2(2))) {
+            if ($c.and64(otmp.corpsenm, M2.ORC) !== 0 && has_oname(otmp)) {
+                if (!has_mgivenname(mtmp)) {
+                    if (at_crime_scene || !rn2(2)) {
                         mtmp = await christen_orc(mtmp, at_crime_scene ? otmp.oextra.oname : null, $c.lit(" the Fence"));
                     }
                 }
                 free_oname(otmp);
             }
-            otmp.corpsenm = -1 /* NON_PM */;
+            otmp.corpsenm = NON_PM;
             otmp.omigr_from_dnum = 0;
             otmp.omigr_from_dlevel = 0;
             await add_to_minv(mtmp, otmp);
@@ -1492,8 +1527,8 @@ export async function deliver_obj_to_mon(mtmp, cnt, deliverflags) {   // dokick.
 async function otransit_msg(otmp, nodrop, chainthere, num) {   // dokick.c:1909
     let optr = null, obuf = new Int8Array(256), xbuf = new Int8Array(256);
     optr = null;
-    if (otmp.otyp === 265 /* CORPSE */) {
-        optr = upstart(await corpse_xname(otmp, null, 4));
+    if (otmp.otyp === CORPSE) {
+        optr = upstart(await corpse_xname(otmp, null, CXN.PFX_THE));
     } else {
         optr = await Tobjnam(otmp, null);
     }
@@ -1519,28 +1554,30 @@ export async function down_gate(x, y) {   // dokick.c:1943
     stway = stairway_at(x, y);
     gg.gate_str = null;
     if (on_level(u.uz, svd.dungeon_topology.d_qstart_level) && !await ok_to_quest()) {
-        return -1;
+        return MIGR.NOWHERE;
     }
     if (stway && !stway.up && !stway.isladder) {
         gg.gate_str = $c.lit("down the stairs");
-        return $c.i8(stway.tolev.dnum === u.uz.dnum ? 3 : 7);
+        return $c.i8(stway.tolev.dnum === u.uz.dnum ? MIGR.STAIRS_UP : MIGR.SSTAIRS);
     }
     if (stway && !stway.up && stway.isladder) {
         gg.gate_str = $c.lit("down the ladder");
-        return 5;
+        return MIGR.LADDER_UP;
     }
-    if ((ttmp = t_at(x, y)) !== null && ttmp.tseen | 0 && ((ttmp.ttyp | 0) === 13 /* HOLE */ || (ttmp.ttyp | 0) === 14 /* TRAPDOOR */)) {
-        gg.gate_str = (ttmp.ttyp | 0) === 14 /* TRAPDOOR */ ? $c.lit("through the trap door") : $c.lit("through the hole");
-        return 0;
+    if ((ttmp = t_at(x, y)) !== null && ttmp.tseen | 0 && is_hole(ttmp.ttyp)) {
+        gg.gate_str = (ttmp.ttyp | 0) === TRAPDOOR ? $c.lit("through the trap door") : $c.lit("through the hole");
+        return MIGR.RANDOM;
     }
-    return -1;
+    return MIGR.NOWHERE;
 }
 
 export function $init() {
     kick_passes_thru.fill(0);
     kick_passes_thru.set([107, 105, 99, 107, 32, 112, 97, 115, 115, 101, 115, 32, 104, 97, 114, 109, 108, 101, 115, 115, 108, 121, 32, 116, 104, 114, 111, 117, 103, 104]);   // "kick passes harmlessly through"
     really_kick_object$flyingcoinmsg.fill(null);
-    really_kick_object$flyingcoinmsg[0] = $c.lit("scatter the coins");
-    really_kick_object$flyingcoinmsg[1] = $c.lit("knock coins all over the place");
-    really_kick_object$flyingcoinmsg[2] = $c.lit("send coins flying in all directions");
+    $c.init(really_kick_object$flyingcoinmsg, [
+        $c.lit("scatter the coins"),
+        $c.lit("knock coins all over the place"),
+        $c.lit("send coins flying in all directions")
+    ]);
 }

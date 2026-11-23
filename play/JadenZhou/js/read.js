@@ -16,6 +16,8 @@
 // wand_explode() are not ported yet.
 
 import { rn2, rnd, rn1, d } from './rng.js';
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT } from './const.js';
 import { CANDY_BAR } from './objects.js';
 import { game } from './gstate.js';
 import {
@@ -75,7 +77,7 @@ import { resist } from './zap.js';
 import { monflee } from './monmove.js';
 import { setmangry, killed, mondied, wakeup, wake_nearto } from './mon.js';
 import { m_at, closed_door } from './makemon.js';
-import { initedog } from './dog.js';
+import { initedog, tamedog } from './dog.js';
 import { body_part, has_ceiling } from './insight.js';
 import { which_armor, setworn } from './worn.js';
 import { create_gas_cloud } from './region.js';
@@ -283,10 +285,11 @@ const red_mons = [
     PM_BARBED_DEVIL, PM_MARILITH, PM_PIRANHA,
 ];
 
-/* C ref: read.c doread() -- if (!u.uconduct.literate++) livelog_printf() */
-function literate_conduct() {
-    const c = game.u.uconduct;
-    c.literate = (c.literate || 0) + 1; /* livelog: no output */
+/* C ref: read.c doread() --
+   if (!u.uconduct.literate++) livelog_printf(LL_CONDUCT, ...) */
+function literate_conduct(llmsg) {
+    if (!game.u.uconduct.literate++)
+        livelog_printf(LL_CONDUCT, llmsg);
 }
 
 // C ref: read.c doread() -- the #read command; read a scroll or spell
@@ -330,7 +333,7 @@ export async function doread() {
             await You("break up the cookie and throw away the pieces.");
         await outrumor(bcsign(scroll), BY_COOKIE);
         if (!Blind())
-            literate_conduct();
+            literate_conduct("became literate by reading a fortune cookie");
         useup(scroll);
         return ECMD_TIME;
     } else if (otyp === O.T_SHIRT || otyp === O.ALCHEMY_SMOCK
@@ -351,7 +354,8 @@ export async function doread() {
                 hawaiian_design(scroll)}.`);
             return ECMD_TIME;
         }
-        literate_conduct();
+        literate_conduct(`became literate by reading ${
+            (scroll.otyp === O.T_SHIRT) ? "a T-shirt" : "an apron"}`);
 
         /* populate 'buf[]' */
         const mesg = (otyp === O.T_SHIRT) ? tshirt_text(scroll)
@@ -383,7 +387,8 @@ export async function doread() {
         }
         await pline(`${!Blind() ? "There is writing" : "You feel lettering"} on the ${
             simpleonames(scroll)}.  It reads:  ${cap_text}.`);
-        literate_conduct();
+        literate_conduct(`became literate by reading ${
+            (otyp === O.DUNCE_CAP) ? "a dunce cap" : "a cornuthaum"}`);
 
         /* yet another note: despite the fact that player will recognize
            the object type, don't make it become a discovery for hero */
@@ -404,7 +409,7 @@ export async function doread() {
         await pline(`"${(id % 89) + 10}0${id % 4} ${((id * 499) % 899999) + 100000}${
             id % 10}1 0${!(id % 3) ? 1 : 0}${(id * 7) % 10}0"${
             (g.flags.verbose || Blind()) ? "." : ""}`);
-        literate_conduct();
+        literate_conduct("became literate by reading a credit card");
 
         return ECMD_TIME;
     } else if (otyp === O.CAN_OF_GREASE) {
@@ -421,7 +426,7 @@ export async function doread() {
             await pline("It reads:");
         const buf = pmname(pm, NEUTRAL);
         await pline(`"Magic Marker(TM) ${upwords(buf)} Red Ink Marker Pen.  Water Soluble."`);
-        literate_conduct();
+        literate_conduct("became literate by reading a magic marker");
 
         return ECMD_TIME;
     } else if (scroll.oclass === COIN_CLASS) {
@@ -430,7 +435,7 @@ export async function doread() {
         else if (g.flags.verbose)
             await You("read:");
         await pline("\"1 Zorkmid.  857 GUE.  In Frobs We Trust.\"");
-        literate_conduct();
+        literate_conduct("became literate by reading a coin's engravings");
 
         return ECMD_TIME;
     } else if (is_art(scroll, ART_ORB_OF_FATE)) {
@@ -439,7 +444,7 @@ export async function doread() {
         else
             await pline("It is signed:");
         await pline("\"Odin.\"");
-        literate_conduct();
+        literate_conduct("became literate by reading the divine signature of Odin");
 
         return ECMD_TIME;
     } else if (otyp === CANDY_BAR) {
@@ -454,7 +459,7 @@ export async function doread() {
             return ECMD_OK;
         }
         await pline(`The wrapper reads: "${wrapper}".`);
-        literate_conduct();
+        literate_conduct("became literate by reading a candy bar wrapper");
 
         return ECMD_TIME;
     } else if (scroll.oclass !== SCROLL_CLASS
@@ -499,7 +504,10 @@ export async function doread() {
     /* Novel conduct is handled in read_tribute so exclude it too */
     if (otyp !== O.SPE_BOOK_OF_THE_DEAD && otyp !== O.SPE_NOVEL
         && otyp !== O.SPE_BLANK_PAPER && otyp !== O.SCR_BLANK_PAPER)
-        literate_conduct();
+        literate_conduct(`became literate by reading ${
+            (scroll.oclass === SPBOOK_CLASS) ? "a book"
+            : (scroll.oclass === SCROLL_CLASS) ? "a scroll"
+              : "something"}`);
 
     if (scroll.oclass === SPBOOK_CLASS) {
         return (await study_book(scroll)) ? ECMD_TIME : ECMD_OK;
@@ -698,7 +706,7 @@ async function maybe_tame(mtmp, sobj) {
         /* for a shopkeeper, tamedog() will call make_happy_shk() but
            not tame the target, so call it even if taming gets resisted */
         if (!resist(mtmp, sobj.oclass, 0, NOTELL) || mtmp.isshk)
-            throw new Error('maybe_tame(): tamedog() not ported yet');
+            await tamedog(mtmp, sobj, false);
 
         if ((!was_peaceful && mtmp.mpeaceful) || was_tame !== mtmp.mtame)
             return 1;
@@ -2653,7 +2661,7 @@ async function create_particular_creation(d) {
             continue;
         }
         if (d.maketame) {
-            throw new Error('create_particular_creation(): tamedog() not ported yet');
+            await tamedog(mtmp, null, false);
         } else if (d.makepeaceful || d.makehostile) {
             throw new Error('create_particular_creation(): set_malign() for peaceful/hostile not ported yet');
         }

@@ -2,39 +2,67 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { AM } from './align.h.js';
 import { alloc } from './alloc.js';
 import { adjalign, exercise } from './attrib.js';
+import { A } from './attrib.h.js';
 import { flags, gb, gc, gi, gm, gn, gt, gv, program_state, svd, svl, svm, svr, u, xdir, ydir } from './decl.js';
-import { canseemon, newsym, sensemon } from './display.js';
+import { canseemon, newsym } from './display.js';
+import { canspotmon } from './display.macros.js';
 import { Monnam, bogon_is_pname, mon_nam, mon_pmname, rndmonnam } from './do_name.js';
 import { assign_level, mapseen_temple, on_level } from './dungeon.js';
+import { In_endgame } from './dungeon.macros.js';
+import { FALSE, LL, TRUE } from './global.h.js';
 import { check_special_room, in_rooms, money_cnt, nomul } from './hack.js';
-import { dist2, online2, s_suffix, sgn, strncmpi } from './hacklib.js';
+import { ARTICLE, MM, N_DIRS, RLOC, SPINE } from './hack.h.js';
+import { DIR_CLAMP, onlineu, verbalize1 } from './hack.macros.js';
+import { dist2, s_suffix, sgn, strncmpi } from './hacklib.js';
 import { record_achievement } from './insight.js';
 import { currency } from './invent.js';
 import { makemon, mongets, newmextra, set_malign } from './makemon.js';
+import { EMIN, EPRI } from './mextra.macros.js';
+import { ALLOW, NOTONL } from './mfndpos.h.js';
 import { mattacku } from './mhitu.js';
 import { bribe, newemin } from './minion.js';
 import { curse, mkobj, uncurse } from './mkobj.js';
+import { ROOMOFFSET, TEMPLE } from './mkroom.h.js';
 import { mfndpos, mon_allowflags, mongone, monnear, setmangry, wakeup } from './mon.js';
+import { AD } from './monattk.h.js';
 import { mon_learns_traps, pronoun_gender, resist_conflict } from './mondata.js';
+import { is_minion, is_rider } from './mondata.macros.js';
+import { M1 } from './monflag.h.js';
 import { m_break_boulder, m_move_aggress } from './monmove.js';
 import { mons } from './monst.js';
+import { DEADMONSTER, helpless } from './monst.macros.js';
+import { PM } from './monsters.h.js';
 import { linedup } from './mthrowu.js';
+import { SPBOOK_no_NOVEL } from './objclass.h.js';
+import { AMULET_OF_YENDOR } from './objects.h.js';
 import { just_an } from './objnam.js';
 import { You, You_feel, Your, impossible, livelog_printf, pline, verbalize } from './pline.js';
 import { body_part } from './polyself.js';
 import { incr_itimeout } from './potion.js';
 import { a_gname_at, halu_gname } from './pray.js';
-import { d, rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { CLAIRVOYANT, FROMOUTSIDE, HALLUC, HALLUC_RES, INTRINSIC, INVIS, PROTECTION, W } from './prop.h.js';
+import { DOOR, ROOM } from './rm.h.js';
+import { IS_ALTAR, MON_AT, remove_monster } from './rm.macros.js';
+import { d, rn2 } from './rnd.js';
 import { genders } from './role.js';
 import { inhishop, money2u } from './shk.js';
 import { pm_good_location } from './sp_lev.js';
 import { mpickobj } from './steal.js';
 import { place_monster } from './steed.js';
 import { rloc } from './teleport.js';
+import { ALL_TRAPS } from './trap.h.js';
+import { COULD_SEE } from './vision.h.js';
 import { which_armor } from './worn.js';
+import { ACH, PRONOUN } from './you.h.js';
+import { u_at } from './you.macros.js';
+import { Conflict, Deaf, Displaced, Hallucination, Invis } from './youprop.macros.js';
 import { buzz } from './zap.js';
+
+const ALGN_SINNED = (-4);
+const ALGN_DEVOUT = 14;
 
 const priest_talk$cranky_msg = $c.nulls(3);   // static in priest_talk()
 export async function newepri(mtmp) {   // priest.c:16
@@ -42,14 +70,14 @@ export async function newepri(mtmp) {   // priest.c:16
     if (!mtmp.mextra) {
         $t1 = await newmextra(), mtmp.mextra = $t1;
     }
-    if (!mtmp.mextra.epri) {
+    if (!EPRI(mtmp)) {
         $t2 = $c.asRec(await alloc(56), $T.epri, 56), mtmp.mextra.epri = $t2;
         $c.__builtin___memset_chk(mtmp.mextra.epri, 0, 56, -1);
         mtmp.mextra.epri.parentmid = mtmp.m_id;
     }
 }
 export function free_epri(mtmp) {   // priest.c:28
-    if (mtmp.mextra && mtmp.mextra.epri) {
+    if (mtmp.mextra && EPRI(mtmp)) {
         $c.free(mtmp.mextra.epri);
         mtmp.mextra.epri = null;
     }
@@ -65,7 +93,7 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx,
                 return 0;
             }
             if (mtmp.mconf) {
-                avoid = 0;
+                avoid = FALSE;
                 appr = 0;
             }
             nix = omx;
@@ -74,11 +102,11 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx,
             cnt = $c.i8(await mfndpos(mtmp, mfp, allowflags));
             if (mtmp.isshk | 0 && avoid && uondoor) {
                 for (i = 0; i < cnt; i = $c.i8(i + 1)) {
-                    if (!$c.and64(mfp.info[i], 2097152)) {
+                    if (!$c.and64(mfp.info[i], NOTONL)) {
                         $goto = "pick_move"; continue D1;
                     }
                 }
-                avoid = 0;
+                avoid = FALSE;
             }
         case "pick_move":
             $goto = null;   // pick_move:
@@ -86,26 +114,26 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx,
             for (i = 0; i < cnt; i = $c.i8(i + 1)) {
                 nx = mfp.poss[i].x;
                 ny = mfp.poss[i].y;
-                if (svl.level.locations[nx][ny].typ >= 25 /* ROOM */ || mtmp.isshk | 0 && (!in_his_shop || mtmp.mextra.eshk.following)) {
-                    if (avoid && $c.and64(mfp.info[i], 2097152) && !$c.and64(mfp.info[i], 524288)) {
+                if (svl.level.locations[nx][ny].typ >= ROOM || mtmp.isshk | 0 && (!in_his_shop || mtmp.mextra.eshk.following)) {
+                    if (avoid && $c.and64(mfp.info[i], NOTONL) && !$c.and64(mfp.info[i], ALLOW.M)) {
                         continue;
                     }
-                    if (!appr && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 85, $c.lit("move_special")), rn2(chcnt = $c.i8(chcnt + 1))) : rn2(chcnt = $c.i8(chcnt + 1))) || appr && dist2(nx, ny, ggx, ggy) < dist2(nix, niy, ggx, ggy) || $c.and64(mfp.info[i], 524288)) {
+                    if (!appr && !rn2(chcnt = $c.i8(chcnt + 1)) || appr && dist2(nx, ny, ggx, ggy) < dist2(nix, niy, ggx, ggy) || $c.and64(mfp.info[i], ALLOW.M)) {
                         nix = nx;
                         niy = ny;
                         ninfo = mfp.info[i];
                     }
                 }
             }
-            if (mtmp.ispriest | 0 && avoid && nix === omx && niy === omy && online2(omx, omy, u.ux, u.uy)) {
-                avoid = 0;
+            if (mtmp.ispriest | 0 && avoid && nix === omx && niy === omy && onlineu(omx, omy)) {
+                avoid = FALSE;
                 $goto = "pick_move"; continue D1;
             }
             if (nix !== omx || niy !== omy) {
-                if ($c.and64(ninfo, 33554432)) {
+                if ($c.and64(ninfo, ALLOW.ROCK)) {
                     await m_break_boulder(mtmp, nix, niy);
                     return 1;
-                } else if ($c.and64(ninfo, 524288)) {
+                } else if ($c.and64(ninfo, ALLOW.M)) {
                     switch (await m_move_aggress(mtmp, nix, niy)) {
                         case 2:
                             return -2;
@@ -113,14 +141,14 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx,
                             return 1;
                     }
                 }
-                if (svl.level.monsters[nix][niy] !== null || nix === u.ux && niy === u.uy) {
+                if (MON_AT(nix, niy) || u_at(nix, niy)) {
                     return 0;
                 }
-                svl.level.monsters[omx][omy] = null;
+                remove_monster(omx, omy);
                 await place_monster(mtmp, nix, niy);
                 await newsym(nix, niy);
                 if (mtmp.isshk | 0 && !in_his_shop && inhishop(mtmp)) {
-                    await check_special_room(0);
+                    await check_special_room(FALSE);
                 }
                 return 1;
             }
@@ -132,27 +160,27 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx,
 export function temple_occupied(array) {   // priest.c:142
     let ptr = null;
     for (ptr = array; ptr.get(0); ptr = ptr.add(1)) {
-        if (svr.rooms[ptr.get(0) - 3 | 0].rtype === 10 /* TEMPLE */) {
+        if (svr.rooms[ptr.get(0) - ROOMOFFSET | 0].rtype === TEMPLE) {
             return ptr.get(0);
         }
     }
     return 0;
 }
 function histemple_at(priest, x, y) {   // priest.c:153
-    return $c.i8(priest && priest.ispriest | 0 && priest.mextra.epri.shroom === in_rooms(x, y, 10 /* TEMPLE */).get(0) && on_level(priest.mextra.epri.shrlevel, u.uz) ? 1 : 0);
+    return $c.i8(priest && priest.ispriest | 0 && priest.mextra.epri.shroom === in_rooms(x, y, TEMPLE).get(0) && on_level(priest.mextra.epri.shrlevel, u.uz) ? 1 : 0);
 }
 export function inhistemple(priest) {   // priest.c:161
     if (!priest || !priest.ispriest) {
-        return 0;
+        return FALSE;
     }
     if (!histemple_at(priest, priest.mx, priest.my)) {
-        return 0;
+        return FALSE;
     }
     return has_shrine(priest);
 }
 export async function pri_move(priest) {   // priest.c:177
     let ggx = 0, ggy = 0, omx = 0, omy = 0, temple = 0, avoid = 0;
-    avoid = 1;
+    avoid = TRUE;
     omx = priest.mx;
     omy = priest.my;
     if (!histemple_at(priest, omx, omy)) {
@@ -161,66 +189,66 @@ export async function pri_move(priest) {   // priest.c:177
     temple = priest.mextra.epri.shroom;
     ggx = priest.mextra.epri.shrpos.x;
     ggy = priest.mextra.epri.shrpos.y;
-    ggx = $c.i16(ggx + ((rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 194, $c.lit("pri_move")), rn2(3)) : rn2(3)) + -1 | 0) | 0);
-    ggy = $c.i16(ggy + ((rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 195, $c.lit("pri_move")), rn2(3)) : rn2(3)) + -1 | 0) | 0);
-    if (!priest.mpeaceful || (u.uprops[44 /* CONFLICT */].intrinsic || u.uprops[44 /* CONFLICT */].extrinsic) && !resist_conflict(priest)) {
+    ggx = $c.i16(ggx + (rn2(3) + -1 | 0) | 0);
+    ggy = $c.i16(ggy + (rn2(3) + -1 | 0) | 0);
+    if (!priest.mpeaceful || Conflict() && !resist_conflict(priest)) {
         if (monnear(priest, u.ux, u.uy)) {
-            if (u.uprops[41 /* DISPLACED */].intrinsic || u.uprops[41 /* DISPLACED */].extrinsic) {
+            if (Displaced()) {
                 await Your($c.lit("displaced image doesn't fool %s!"), await mon_nam(priest));
             }
             await mattacku(priest);
             return 0;
         } else if ($c.strchr(new $c.Ptr(u.urooms, 0), temple)) {
-            if (priest.mcansee | 0 && ((!((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked) || $c.andu64(priest.data.mflags1, 16777216) !== 0) && !u.uinwater && (gv.viz_array.get(priest.my).get(priest.mx) & 1) !== 0)) {
+            if (priest.mcansee | 0 && ((!((u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked) || $c.andu64(priest.data.mflags1, M1.SEE_INVIS) !== 0) && !u.uinwater && (gv.viz_array.get(priest.my).get(priest.mx) & COULD_SEE) !== 0)) {
                 ggx = u.ux;
                 ggy = u.uy;
             }
-            avoid = 0;
+            avoid = FALSE;
         }
-    } else if ((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked) {
-        avoid = 0;
+    } else if (Invis()) {
+        avoid = FALSE;
     }
-    return await move_special(priest, 0, 1, 0, avoid, omx, omy, ggx, ggy);
+    return await move_special(priest, FALSE, TRUE, FALSE, avoid, omx, omy, ggx, ggy);
 }
 export async function priestini(lvl, sroom, sx, sy, sanctum) {   // priest.c:220
     let priest = null, otmp = null, cnt = 0, px = 0, py = 0, i = 0, si = 0, prim = null;
     px = 0;
     py = 0;
-    si = rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 229, $c.lit("priestini")), rn2(8)) : rn2(8);
-    prim = $c.relem(mons, sanctum ? 276 /* PM_HIGH_CLERIC */ : 275 /* PM_ALIGNED_CLERIC */);
-    for (i = 0; i < 8; i = i + 1 | 0) {
-        px = sx + xdir[$c.rem32((i + si | 0) + 8 | 0, 8)] | 0;
-        py = sy + ydir[$c.rem32((i + si | 0) + 8 | 0, 8)] | 0;
+    si = rn2(N_DIRS);
+    prim = $c.relem(mons, sanctum ? PM.HIGH_CLERIC : PM.ALIGNED_CLERIC);
+    for (i = 0; i < N_DIRS; i = i + 1 | 0) {
+        px = sx + xdir[DIR_CLAMP(i + si | 0)] | 0;
+        py = sy + ydir[DIR_CLAMP(i + si | 0)] | 0;
         if (await pm_good_location($c.i16(px), $c.i16(py), prim)) {
             break;
         }
     }
-    if (i === 8) {
+    if (i === N_DIRS) {
         px = sx, py = sy;
     }
-    if (svl.level.monsters[px][py] !== null) {
-        await rloc(svl.level.monsters[px][py], 4);
+    if (MON_AT(px, py)) {
+        await rloc(svl.level.monsters[px][py], RLOC.NOMSG);
     }
-    priest = await makemon(prim, $c.i16(px), $c.i16(py), 256);
+    priest = await makemon(prim, $c.i16(px), $c.i16(py), MM.EPRI);
     if (priest) {
-        priest.mextra.epri.shroom = $c.i8($c.add64($c.rdiff(sroom, $c.relem(svr.rooms, 0)), 3));
-        priest.mextra.epri.shralign = $c.i8(((svl.level.locations[sx][sy].flags | 0) & 7) === 0 ? -128 : ((svl.level.locations[sx][sy].flags | 0) & 7) === 4 ? 1 : ((svl.level.locations[sx][sy].flags | 0) & 7) - 2 | 0);
+        priest.mextra.epri.shroom = $c.i8($c.add64($c.rdiff(sroom, $c.relem(svr.rooms, 0)), ROOMOFFSET));
+        priest.mextra.epri.shralign = $c.i8(((svl.level.locations[sx][sy].flags | 0) & AM.MASK) === 0 ? A.NONE : ((svl.level.locations[sx][sy].flags | 0) & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((svl.level.locations[sx][sy].flags | 0) & AM.MASK) - 2 | 0);
         priest.mextra.epri.shrpos.x = $c.i16(sx);
         priest.mextra.epri.shrpos.y = $c.i16(sy);
         assign_level(priest.mextra.epri.shrlevel, lvl);
-        mon_learns_traps(priest, -1 /* ALL_TRAPS */);
+        mon_learns_traps(priest, ALL_TRAPS);
         priest.mpeaceful = (1) & 1;
         priest.ispriest = (1) & 1;
         priest.isminion = (0) & 1;
         priest.msleeping = (0) & 1;
         set_malign(priest);
-        if (sanctum && priest.mextra.epri.shralign === -128 && on_level(svd.dungeon_topology.d_sanctum_level, u.uz)) {
-            await mongets(priest, 213 /* AMULET_OF_YENDOR */);
+        if (sanctum && priest.mextra.epri.shralign === A.NONE && on_level(svd.dungeon_topology.d_sanctum_level, u.uz)) {
+            await mongets(priest, AMULET_OF_YENDOR);
         }
-        for (cnt = (rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 265, $c.lit("priestini")), rn2(3)) : rn2(3)) + 2 | 0; cnt > 0; cnt = cnt - 1 | 0) {
-            await mpickobj(priest, await mkobj(-10, 0));
+        for (cnt = rn2(3) + 2 | 0; cnt > 0; cnt = cnt - 1 | 0) {
+            await mpickobj(priest, await mkobj(SPBOOK_no_NOVEL, FALSE));
         }
-        if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 269, $c.lit("priestini")), rn2(2)) : rn2(2)) && (otmp = await which_armor(priest, 2)) !== null) {
+        if (rn2(2) && (otmp = await which_armor(priest, W.ARMC)) !== null) {
             if (p_coaligned(priest)) {
                 await uncurse(otmp);
             } else {
@@ -232,16 +260,16 @@ export async function priestini(lvl, sroom, sx, sy, sanctum) {   // priest.c:220
 export function mon_aligntyp(mon) {   // priest.c:280
     let algn = 0;
     algn = $c.i8(mon.ispriest | 0 ? mon.mextra.epri.shralign : mon.isminion | 0 ? mon.mextra.emin.min_align : mon.data.maligntyp);
-    if (algn === -128) {
-        return -128;
+    if (algn === A.NONE) {
+        return A.NONE;
     }
-    return $c.i8(algn > 0 ? 1 : algn < 0 ? -1 : 0);
+    return $c.i8(algn > 0 ? A.LAWFUL : algn < 0 ? A.CHAOTIC : A.NEUTRAL);
 }
 export async function priestname(mon, article, reveal_high_priest, pname) {   // priest.c:302
     let do_hallu = 0, aligned_priest = 0, high_priest = 0, whatcode = Int8Array.of(0), what = null;
-    do_hallu = $c.i8(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? 1 : 0);
-    aligned_priest = $c.i8($c.peq(mon.data, $c.relem(mons, 275 /* PM_ALIGNED_CLERIC */)) ? 1 : 0);
-    high_priest = $c.i8($c.peq(mon.data, $c.relem(mons, 276 /* PM_HIGH_CLERIC */)) ? 1 : 0);
+    do_hallu = $c.i8(Hallucination());
+    aligned_priest = $c.i8($c.peq(mon.data, $c.relem(mons, PM.ALIGNED_CLERIC)) ? 1 : 0);
+    high_priest = $c.i8($c.peq(mon.data, $c.relem(mons, PM.HIGH_CLERIC)) ? 1 : 0);
     whatcode[0] = 0;
     what = do_hallu ? await rndmonnam(new $c.Ptr(whatcode, 0)) : mon_pmname(mon);
     if (!mon.ispriest && !mon.isminion) {
@@ -251,11 +279,11 @@ export async function priestname(mon, article, reveal_high_priest, pname) {   //
         what = do_hallu ? $c.lit("poohbah") : mon.female | 0 ? $c.lit("priestess") : $c.lit("priest");
     }
     pname.set(0, 0);
-    if (article !== 0 && (!do_hallu || !bogon_is_pname(whatcode[0]))) {
-        if (article === 3 || article === 2 && high_priest) {
-            article = 1;
+    if (article !== ARTICLE.NONE && (!do_hallu || !bogon_is_pname(whatcode[0]))) {
+        if (article === ARTICLE.YOUR || article === ARTICLE.A && high_priest) {
+            article = ARTICLE.THE;
         }
-        if (article === 1) {
+        if (article === ARTICLE.THE) {
             $c.__builtin___strcpy_chk(pname, $c.lit("the "), -1);
         } else if (!$c.strcmp(what, $c.lit("Angel"))) {
             $c.__builtin___strcpy_chk(pname, $c.lit("an "), -1);
@@ -297,19 +325,19 @@ export function p_coaligned(priest) {   // priest.c:370
 function has_shrine(pri) {   // priest.c:376
     let lev = null, epri_p = null;
     if (!pri || !pri.ispriest) {
-        return 0;
+        return FALSE;
     }
     epri_p = pri.mextra.epri;
     lev = $c.relem(svl.level.locations[epri_p.shrpos.x], epri_p.shrpos.y);
-    if (!(lev.typ === 32 /* ALTAR */) || !((lev.flags | 0) & 8)) {
-        return 0;
+    if (!IS_ALTAR(lev.typ) || !((lev.flags | 0) & AM.SHRINE)) {
+        return FALSE;
     }
-    return $c.i8(epri_p.shralign === $c.i8(((lev.flags | 0) & -9 & 7) === 0 ? -128 : ((lev.flags | 0) & -9 & 7) === 4 ? 1 : ((lev.flags | 0) & -9 & 7) - 2 | 0) ? 1 : 0);
+    return $c.i8(epri_p.shralign === $c.i8(((lev.flags | 0) & ~AM.SHRINE & AM.MASK) === 0 ? A.NONE : ((lev.flags | 0) & ~AM.SHRINE & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((lev.flags | 0) & ~AM.SHRINE & AM.MASK) - 2 | 0) ? 1 : 0);
 }
 export function findpriest(roomno) {   // priest.c:392
     let mtmp = null;
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
-        if (mtmp.mhp < 1) {
+        if (DEADMONSTER(mtmp)) {
             continue;
         }
         if (mtmp.ispriest | 0 && mtmp.mextra.epri.shroom === roomno && histemple_at(mtmp, mtmp.mx, mtmp.my)) {
@@ -324,19 +352,19 @@ export async function intemple(roomno) {   // priest.c:410
         return;
     }
     if ((priest = findpriest($c.i8(roomno))) !== null) {
-        await record_achievement(18);
+        await record_achievement(ACH.TMPL);
         epri_p = priest.mextra.epri;
         shrined = has_shrine(priest);
-        sanctum = $c.i8($c.peq(priest.data, $c.relem(mons, 276 /* PM_HIGH_CLERIC */)) && ((svd.dungeon_topology.d_sanctum_level.dlevel || svd.dungeon_topology.d_sanctum_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_sanctum_level) || u.uz.dnum === svd.dungeon_topology.d_astral_level.dnum) ? 1 : 0);
-        can_speak = $c.i8(!(priest.msleeping | 0 || !priest.mcanmove) ? 1 : 0);
-        if (can_speak && !(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) && svm.moves >= epri_p.intone_time) {
+        sanctum = $c.i8($c.peq(priest.data, $c.relem(mons, PM.HIGH_CLERIC)) && ((svd.dungeon_topology.d_sanctum_level.dlevel || svd.dungeon_topology.d_sanctum_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_sanctum_level) || In_endgame(u.uz)) ? 1 : 0);
+        can_speak = $c.i8(!helpless(priest) ? 1 : 0);
+        if (can_speak && !Deaf() && svm.moves >= epri_p.intone_time) {
             save_priest = priest.ispriest;
-            if (sanctum && !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic))) {
+            if (sanctum && !Hallucination()) {
                 priest.ispriest = (0) & 1;
             }
             await pline($c.lit("%s intones:"), canseemon(priest) ? await Monnam(priest) : $c.lit("A nearby voice"));
             priest.ispriest = (save_priest) & 1;
-            $t1 = $c.add64(svm.moves, rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 443, $c.lit("intemple")), d(10, 500)) : d(10, 500)), epri_p.intone_time = $t1;
+            $t1 = $c.add64(svm.moves, d(10, 500)), epri_p.intone_time = $t1;
             epri_p.enter_time = 0;
         }
         msg1 = msg2 = null;
@@ -353,28 +381,28 @@ export async function intemple(roomno) {   // priest.c:410
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Pilgrim, you enter a %s place!"), !shrined ? $c.lit("desecrated") : $c.lit("sacred"));
             msg1 = new $c.Ptr(buf, 0);
         }
-        if (msg1 && can_speak && !(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
-            await verbalize($c.lit("%s"), msg1);
+        if (msg1 && can_speak && !Deaf()) {
+            await verbalize1(msg1);
             if (msg2) {
-                await verbalize($c.lit("%s"), msg2);
+                await verbalize1(msg2);
             }
-            $t2 = $c.add64(svm.moves, rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 471, $c.lit("intemple")), d(10, 100)) : d(10, 100)), epri_p.enter_time = $t2;
+            $t2 = $c.add64(svm.moves, d(10, 100)), epri_p.enter_time = $t2;
         }
         if (!sanctum) {
-            if (!shrined || !p_coaligned(priest) || u.ualign.record <= -4) {
+            if (!shrined || !p_coaligned(priest) || u.ualign.record <= ALGN_SINNED) {
                 msg1 = $c.lit("have a%s forbidding feeling...");
                 msg2 = !shrined || !p_coaligned(priest) ? $c.lit("") : $c.lit(" strange");
                 this_time = new $c.FieldRef(epri_p, "hostile_time", "i64");
                 other_time = new $c.FieldRef(epri_p, "peaceful_time", "i64");
             } else {
                 msg1 = $c.lit("experience %s sense of peace.");
-                msg2 = u.ualign.record >= 14 ? $c.lit("a") : $c.lit("an unusual");
+                msg2 = u.ualign.record >= ALGN_DEVOUT ? $c.lit("a") : $c.lit("an unusual");
                 this_time = new $c.FieldRef(epri_p, "peaceful_time", "i64");
                 other_time = new $c.FieldRef(epri_p, "hostile_time", "i64");
             }
             if (svm.moves >= this_time.get(0) || other_time.get(0) >= this_time.get(0)) {
                 await You(msg1, msg2);
-                $t3 = $c.add64(svm.moves, rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 491, $c.lit("intemple")), d(10, 20)) : d(10, 20)), this_time.set(0, $t3);
+                $t3 = $c.add64(svm.moves, d(10, 20)), this_time.set(0, $t3);
                 if (this_time.get(0) <= other_time.get(0)) {
                     other_time.set(0, $c.sub64(this_time.get(0), 1));
                 }
@@ -382,7 +410,7 @@ export async function intemple(roomno) {   // priest.c:410
         }
         mapseen_temple(priest);
     } else {
-        switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 504, $c.lit("intemple")), rn2(4)) : rn2(4)) {
+        switch (rn2(4)) {
             case 0:
                 await You($c.lit("have an eerie feeling..."));
                 break;
@@ -390,14 +418,14 @@ export async function intemple(roomno) {   // priest.c:410
                 await You_feel($c.lit("like you are being watched."));
                 break;
             case 2:
-                await pline($c.lit("A shiver runs down your %s."), await body_part(12 /* SPINE */));
+                await pline($c.lit("A shiver runs down your %s."), await body_part(SPINE));
                 break;
             default:
                 break;
         }
-        if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 519, $c.lit("intemple")), rn2(5)) : rn2(5)) && (mtmp = await makemon($c.relem(mons, 287 /* PM_GHOST */), u.ux, u.uy, 131072)) !== null) {
-            ngen = svm.mvitals[287 /* PM_GHOST */].born;
-            if (canseemon(mtmp) || sensemon(mtmp)) {
+        if (!rn2(5) && (mtmp = await makemon($c.relem(mons, PM.GHOST), u.ux, u.uy, MM.NOMSG)) !== null) {
+            ngen = svm.mvitals[PM.GHOST].born;
+            if (canspotmon(mtmp)) {
                 await pline($c.lit("A%s ghost appears next to you%c"), ngen < 5 ? $c.lit("n enormous") : $c.lit(""), ngen < 10 ? 33 : 46);
             } else {
                 await You($c.lit("sense a presence close by!"));
@@ -427,28 +455,28 @@ export async function priest_talk(priest) {   // priest.c:558
     coaligned = p_coaligned(priest);
     strayed = $c.i8(u.ualign.record < 0 ? 1 : 0);
     cheapskate = null;
-    if (priest.mextra.epri) {
+    if (EPRI(priest)) {
         cheapskate = new $c.FieldRef(priest.mextra.epri, "cheapskate_count", "u32");
     }
     if (!($t1 = u.uconduct.gnostic, u.uconduct.gnostic = $c.add64($t1, 1), $t1)) {
-        await livelog_printf(32, $c.lit("rejected atheism by consulting with %s"), await mon_nam(priest));
+        await livelog_printf(LL.CONDUCT, $c.lit("rejected atheism by consulting with %s"), await mon_nam(priest));
     }
     if (priest.mflee | 0 || !priest.ispriest && coaligned && strayed) {
         await pline($c.lit("%s doesn't want anything to do with you!"), await Monnam(priest));
         priest.mpeaceful = (0) & 1;
         return;
     }
-    if (!inhistemple(priest) || !priest.mpeaceful || (priest.msleeping | 0 || !priest.mcanmove)) {
-        if (priest.msleeping | 0 || !priest.mcanmove) {
-            await pline($c.lit("%s breaks out of %s reverie!"), await Monnam(priest), genders[pronoun_gender(priest, 2)].his);
+    if (!inhistemple(priest) || !priest.mpeaceful || helpless(priest)) {
+        if (helpless(priest)) {
+            await pline($c.lit("%s breaks out of %s reverie!"), await Monnam(priest), genders[pronoun_gender(priest, PRONOUN.HALLU)].his);
             $t2 = priest.msleeping = (0) & 1, priest.mfrozen = ($t2) & 127;
             priest.mcanmove = (1) & 1;
         }
         priest.mpeaceful = (0) & 1;
-        await verbalize($c.lit("%s"), priest_talk$cranky_msg[rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 599, $c.lit("priest_talk")), rn2(3)) : rn2(3)]);
+        await verbalize($c.lit("%s"), priest_talk$cranky_msg[rn2(3)]);
         return;
     }
-    if (priest.mpeaceful | 0 && in_rooms(priest.mx, priest.my, 10 /* TEMPLE */).get(0) && !has_shrine(priest)) {
+    if (priest.mpeaceful | 0 && in_rooms(priest.mx, priest.my, TEMPLE).get(0) && !has_shrine(priest)) {
         await verbalize($c.lit("Begone!  Thou desecratest this holy place with thy presence."));
         priest.mpeaceful = (0) & 1;
         return;
@@ -457,19 +485,19 @@ export async function priest_talk(priest) {   // priest.c:558
         if (coaligned && !strayed) {
             pmoney = money_cnt(priest.minvent);
             if (pmoney > 0) {
-                bits = u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await currency(pmoney) : pmoney === 1 ? $c.lit("bit") : $c.lit("bits");
+                bits = u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await currency(pmoney) : pmoney === 1 ? $c.lit("bit") : $c.lit("bits");
                 await pline($c.lit("%s gives you %s%s for an ale."), await Monnam(priest), pmoney === 1 ? $c.lit("one ") : $c.lit("two "), bits);
                 await money2u(priest, pmoney > 1 ? 2 : 1);
             } else {
                 await pline($c.lit("%s preaches the virtues of poverty."), await Monnam(priest));
             }
-            await exercise(2 /* A_WIS */, 1);
+            await exercise(A.WIS, TRUE);
         } else {
             await pline($c.lit("%s is not interested."), await Monnam(priest));
         }
         return;
     } else {
-        suggested = Math.imul((u.ulevelpeak ? u.ulevelpeak : 1) >>> 0, ((rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 638, $c.lit("priest_talk")), rn2(101)) : rn2(101)) >>> 0) + (150 + (Math.imul(cheapskate ? cheapskate.get(0) : 0, 40) >>> 0) >>> 0) >>> 0) >>> 0;
+        suggested = Math.imul((u.ulevelpeak ? u.ulevelpeak : 1) >>> 0, (rn2(101) >>> 0) + (150 + (Math.imul(cheapskate ? cheapskate.get(0) : 0, 40) >>> 0) >>> 0) >>> 0) >>> 0;
         quan = $c.div64(money_cnt(gi.invent), $c.mul64(suggested, 3));
         if (quan < 1) {
             quan = 1;
@@ -496,27 +524,27 @@ export async function priest_talk(priest) {   // priest.c:558
                 }
             } else {
                 await verbalize($c.lit("I thank thee for thy contribution."));
-                await exercise(2 /* A_WIS */, 1);
+                await exercise(A.WIS, TRUE);
             }
         } else if (offer < $c.mul64($c.mul64(suggested, quan), 2)) {
             await verbalize($c.lit("Thou art indeed a pious individual."));
             if (money_cnt(gi.invent) < $c.mul64(offer, 2)) {
-                if (coaligned && u.ualign.record <= -4) {
+                if (coaligned && u.ualign.record <= ALGN_SINNED) {
                     adjalign(1);
                 }
             }
             await verbalize($c.lit("I bestow upon thee a blessing."));
-            incr_itimeout(new $c.FieldRef(u.uprops[35 /* CLAIRVOYANT */], "intrinsic", "i64"), $c.i32($c.add64(rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 680, $c.lit("priest_talk")), rn2($c.i32($c.div64($c.mul64(500, offer), suggested)))) : rn2($c.i32($c.div64($c.mul64(500, offer), suggested))), $c.div64($c.mul64(500, offer), suggested))));
+            incr_itimeout(new $c.FieldRef(u.uprops[CLAIRVOYANT], "intrinsic", "i64"), $c.i32($c.add64(rn2($c.i32($c.div64($c.mul64(500, offer), suggested))), $c.div64($c.mul64(500, offer), suggested))));
         } else if (offer < $c.mul64($c.mul64(suggested, quan), 3)) {
             orig_ublessed = u.ublessed;
-            if (!$c.and64(u.uprops[59 /* PROTECTION */].intrinsic, 117440512)) {
-                u.uprops[59 /* PROTECTION */].intrinsic = $c.or64(u.uprops[59 /* PROTECTION */].intrinsic, 67108864);
+            if (!$c.and64(u.uprops[PROTECTION].intrinsic, INTRINSIC)) {
+                u.uprops[PROTECTION].intrinsic = $c.or64(u.uprops[PROTECTION].intrinsic, FROMOUTSIDE);
                 orig_ublessed = -1;
             }
             for (; offer >= $c.mul64(2, suggested); offer = $c.sub64(offer, $c.mul64(2, suggested))) {
                 if (!u.ublessed) {
-                    $t3 = (rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 695, $c.lit("priest_talk")), rn2(3)) : rn2(3)) + 2 | 0, u.ublessed = $t3;
-                } else if (u.ublessed < 20 && (u.ublessed < 9 || !(rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 697, $c.lit("priest_talk")), rn2(u.ublessed)) : rn2(u.ublessed)))) {
+                    $t3 = rn2(3) + 2 | 0, u.ublessed = $t3;
+                } else if (u.ublessed < 20 && (u.ublessed < 9 || !rn2(u.ublessed))) {
                     u.ublessed = u.ublessed + 1 | 0;
                 }
             }
@@ -541,17 +569,17 @@ export async function priest_talk(priest) {   // priest.c:558
 export async function mk_roamer(ptr, alignment, x, y, peaceful) {   // priest.c:724
     let roamer = null, coaligned = 0;
     coaligned = $c.i8(u.ualign.type === alignment ? 1 : 0);
-    if (svl.level.monsters[x][y] !== null) {
-        await rloc(svl.level.monsters[x][y], 4);
+    if (MON_AT(x, y)) {
+        await rloc(svl.level.monsters[x][y], RLOC.NOMSG);
     }
-    if (!(roamer = await makemon(ptr, x, y, 132112))) {
+    if (!(roamer = await makemon(ptr, x, y, MM.ADJACENTOK | MM.EMIN | MM.NOMSG))) {
         return null;
     }
     roamer.mextra.emin.min_align = alignment;
     roamer.mextra.emin.renegade = $c.i8(coaligned && !peaceful ? 1 : 0);
     roamer.ispriest = (0) & 1;
     roamer.isminion = (1) & 1;
-    mon_learns_traps(roamer, -1 /* ALL_TRAPS */);
+    mon_learns_traps(roamer, ALL_TRAPS);
     roamer.mpeaceful = (peaceful >>> 0) & 1;
     roamer.msleeping = (0) & 1;
     set_malign(roamer);
@@ -562,7 +590,7 @@ export async function reset_hostility(roamer) {   // priest.c:755
     if (!roamer.isminion) {
         return;
     }
-    if (!$c.peq(roamer.data, $c.relem(mons, 275 /* PM_ALIGNED_CLERIC */)) && !$c.peq(roamer.data, $c.relem(mons, 123 /* PM_ANGEL */))) {
+    if (!$c.peq(roamer.data, $c.relem(mons, PM.ALIGNED_CLERIC)) && !$c.peq(roamer.data, $c.relem(mons, PM.ANGEL))) {
         return;
     }
     if (roamer.mextra.emin.min_align !== u.ualign.type) {
@@ -574,19 +602,19 @@ export async function reset_hostility(roamer) {   // priest.c:755
 export function in_your_sanctuary(mon, x, y) {   // priest.c:771
     let roomno = 0, priest = null;
     if (mon) {
-        if ($c.andu64(mon.data.mflags2, 4096) !== 0 || ($c.peq(mon.data, $c.relem(mons, 311 /* PM_DEATH */)) || $c.peq(mon.data, $c.relem(mons, 313 /* PM_FAMINE */)) || $c.peq(mon.data, $c.relem(mons, 312 /* PM_PESTILENCE */)))) {
-            return 0;
+        if (is_minion(mon.data) || is_rider(mon.data)) {
+            return FALSE;
         }
         x = mon.mx, y = mon.my;
     }
-    if (u.ualign.record <= -4) {
-        return 0;
+    if (u.ualign.record <= ALGN_SINNED) {
+        return FALSE;
     }
-    if ((roomno = temple_occupied(new $c.Ptr(u.urooms, 0))) === 0 || roomno !== in_rooms(x, y, 10 /* TEMPLE */).get(0)) {
-        return 0;
+    if ((roomno = temple_occupied(new $c.Ptr(u.urooms, 0))) === 0 || roomno !== in_rooms(x, y, TEMPLE).get(0)) {
+        return FALSE;
     }
     if ((priest = findpriest(roomno)) === null) {
-        return 0;
+        return FALSE;
     }
     return $c.i8(has_shrine(priest) && p_coaligned(priest) && priest.mpeaceful | 0 ? 1 : 0);
 }
@@ -598,9 +626,9 @@ export async function ghod_hitsu(priest) {   // priest.c:796
     }
     ax = x = priest.mextra.epri.shrpos.x;
     ay = y = priest.mextra.epri.shrpos.y;
-    troom = $c.relem(svr.rooms, roomno - 3 | 0);
-    if (x === u.ux && y === u.uy || !linedup(u.ux, u.uy, x, y, 1)) {
-        if (svl.level.locations[u.ux][u.uy].typ === 23 /* DOOR */) {
+    troom = $c.relem(svr.rooms, roomno - ROOMOFFSET | 0);
+    if (u_at(x, y) || !linedup(u.ux, u.uy, x, y, 1)) {
+        if (svl.level.locations[u.ux][u.uy].typ === DOOR) {
             if (u.ux === (troom.lx - 1 | 0)) {
                 x = troom.hx;
                 y = u.uy;
@@ -615,7 +643,7 @@ export async function ghod_hitsu(priest) {   // priest.c:796
                 y = troom.ly;
             }
         } else {
-            switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 827, $c.lit("ghod_hitsu")), rn2(4)) : rn2(4)) {
+            switch (rn2(4)) {
                 case 0:
                     x = u.ux;
                     y = troom.ly;
@@ -638,7 +666,7 @@ export async function ghod_hitsu(priest) {   // priest.c:796
             return;
         }
     }
-    switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("priest.c"), 850, $c.lit("ghod_hitsu")), rn2(3)) : rn2(3)) {
+    switch (rn2(3)) {
         case 0:
             await pline($c.lit("%s roars in anger:  \"Thou shalt suffer!\""), await a_gname_at(ax, ay));
             break;
@@ -653,27 +681,27 @@ export async function ghod_hitsu(priest) {   // priest.c:796
     gc.current_wand = null;
     oldbuzzer = gb.buzzer;
     gb.buzzer = null;
-    await buzz(-10 - $c.rem32($c.abs(5), 10) | 0, 6, x, y, sgn(gt.tbx), sgn(gt.tby));
+    await buzz(-10 - $c.rem32($c.abs(AD.ELEC - AD.MAGM), 10) | 0, 6, x, y, sgn(gt.tbx), sgn(gt.tby));
     gb.buzzer = oldbuzzer;
     gc.current_wand = oldcurrwand;
-    await exercise(2 /* A_WIS */, 0);
+    await exercise(A.WIS, FALSE);
 }
 export async function angry_priest() {   // priest.c:877
     let priest = null, lev = null, eprip = null;
     if ((priest = findpriest(temple_occupied(new $c.Ptr(u.urooms, 0)))) !== null) {
         eprip = priest.mextra.epri;
-        await wakeup(priest, 0);
-        await setmangry(priest, 0);
+        await wakeup(priest, FALSE);
+        await setmangry(priest, FALSE);
         lev = $c.relem(svl.level.locations[eprip.shrpos.x], eprip.shrpos.y);
-        if (!(lev.typ === 32 /* ALTAR */) || $c.i8(((lev.flags | 0) & 7 & 7) === 0 ? -128 : ((lev.flags | 0) & 7 & 7) === 4 ? 1 : ((lev.flags | 0) & 7 & 7) - 2 | 0) !== eprip.shralign) {
-            if (!priest.mextra.emin) {
+        if (!IS_ALTAR(lev.typ) || $c.i8(((lev.flags | 0) & AM.MASK & AM.MASK) === 0 ? A.NONE : ((lev.flags | 0) & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((lev.flags | 0) & AM.MASK & AM.MASK) - 2 | 0) !== eprip.shralign) {
+            if (!EMIN(priest)) {
                 await newemin(priest);
             }
             priest.ispriest = (0) & 1;
             priest.isminion = (1) & 1;
             (!(priest.mextra && priest.mextra.emin) ? 1 : 0) ? $c.__assert_rtn($c.lit("angry_priest"), $c.lit("priest.c"), 902, $c.lit("has_emin(priest)")) : 0;
             priest.mextra.emin.min_align = eprip.shralign;
-            priest.mextra.emin.renegade = 0;
+            priest.mextra.emin.renegade = FALSE;
             free_epri(priest);
         }
     }
@@ -681,7 +709,7 @@ export async function angry_priest() {   // priest.c:877
 export async function clearpriests() {   // priest.c:919
     let mtmp = null;
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
-        if (mtmp.mhp < 1) {
+        if (DEADMONSTER(mtmp)) {
             continue;
         }
         if (mtmp.ispriest | 0 && !on_level(mtmp.mextra.epri.shrlevel, u.uz)) {
@@ -699,7 +727,9 @@ export function restpriest(mtmp, ghostly) {   // priest.c:933
 
 export function $init() {
     priest_talk$cranky_msg.fill(null);
-    priest_talk$cranky_msg[0] = $c.lit("Thou wouldst have words, eh?  I'll give thee a word or two!");
-    priest_talk$cranky_msg[1] = $c.lit("Talk?  Here is what I have to say!");
-    priest_talk$cranky_msg[2] = $c.lit("Pilgrim, I would speak no longer with thee.");
+    $c.init(priest_talk$cranky_msg, [
+        $c.lit("Thou wouldst have words, eh?  I'll give thee a word or two!"),
+        $c.lit("Talk?  Here is what I have to say!"),
+        $c.lit("Pilgrim, I would speak no longer with thee.")
+    ]);
 }

@@ -28,7 +28,7 @@ import { strcmpi, strncmpi, highc, visctrl, strstri } from './hacklib.js';
 import { dosearch } from './detect.js';
 import { level_tele, dotelecmd } from './teleport.js';
 import { wiz_level_change, wiz_wish, wiz_identify, wiz_intrinsic, wiz_map,
-         wiz_detect, wiz_polyself } from './wizcmds.js';
+         wiz_detect, wiz_polyself, wiz_where } from './wizcmds.js';
 import { ddoinv, dolook, doprgold, doprwep, doprarm, doprring, dopramulet,
          doprtool, add_menu_heading, doorganize, adjust_split } from './invent.js';
 import { cmd_safety_prevention, nomul, domove, DOMOVE_WALK,
@@ -42,12 +42,13 @@ import { doinvoke } from './artifact.js';
 import { donamelevel, dooverview, recalc_mapseen } from './dungeon.js';
 import { authorize_explore_mode } from './sys.js';
 import { dodiscovered } from './o_init.js';
-import { doattributes, dogenocided } from './insight.js';
+import { doattributes, dogenocided, doconduct, dovanquished,
+         do_gamelog } from './insight.js';
 import { wiz_genesis } from './wizcmds.js';
 import { dodrop, doddrop, dodown, doup, dowipe } from './do.js';
 import { dozap } from './zap.js';
 import { docallcmd } from './do_name.js';
-import { doloot } from './pickup.js';
+import { doloot, dotip } from './pickup.js';
 import { dopickup } from './hack.js';
 import { Never_mind, isok, PARANOID_QUIT } from './const.js';
 import { dofire, dothrow } from './dothrow.js';
@@ -64,7 +65,9 @@ import { dotogglepickup, doset_simple, doset } from './options.js';
 import { doread } from './read.js';
 import { doengrave } from './engrave.js';
 import { set_occupation } from './allmain.js';
-import { dohelp, dowhatis, dowhatdoes, dowhatdoes_core } from './pager.js';
+import { dohelp, dowhatis, doquickwhatis, dowhatdoes, dowhatdoes_core,
+         dohistory } from './pager.js';
+import { doextversion } from './mdlib.js';
 import { doopen, doforce, doclose } from './lock.js';
 import { dosave } from './save.js';
 import { done2 } from './end.js';
@@ -123,6 +126,9 @@ const cmd_funcs = {
     dovspell: () => dovspell(),
     dodiscovered: () => dodiscovered(),
     doattributes: () => doattributes(),
+    doconduct: () => doconduct(),
+    dovanquished: () => dovanquished(),
+    do_gamelog: () => do_gamelog(),
     docast: () => docast(),
     wiz_genesis: () => wiz_genesis(),
     dodrop: () => dodrop(),
@@ -134,6 +140,7 @@ const cmd_funcs = {
     dozap: () => dozap(),
     docallcmd: () => docallcmd(),
     doloot: () => doloot(),
+    dotip: () => dotip(),
     dofire: () => dofire(),
     dothrow: () => dothrow(),
     dokick: () => dokick(),
@@ -177,6 +184,9 @@ const cmd_funcs = {
     doprtool: () => doprtool(),
     doterrain: () => doterrain(),
     dowhatis: () => dowhatis(),
+    doquickwhatis: () => doquickwhatis(),
+    doextversion: () => doextversion(),
+    dohistory: () => dohistory(),
     dowhatdoes: () => dowhatdoes(),
     dosit: () => dosit(),
     dodip: () => dodip(),
@@ -193,6 +203,7 @@ const cmd_funcs = {
     wiz_intrinsic: () => wiz_intrinsic(),
     wiz_map: () => wiz_map(),
     wiz_detect: () => wiz_detect(),
+    wiz_where: () => wiz_where(),
     wiz_polyself: () => wiz_polyself(),
 };
 /* C ref: cmd.c do_move_<dir>(), do_run_<dir>(), do_rush_<dir>() */

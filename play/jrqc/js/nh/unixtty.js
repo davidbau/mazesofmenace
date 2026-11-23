@@ -3,9 +3,12 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { iflags } from './decl.js';
+import { OFF, ON } from './hack.h.js';
 import { getioctls, setioctls } from './ioctl.js';
 import { term_end_screen, term_start_screen } from './termcap.js';
 import { windowprocs } from './windows.js';
+import { wp_tty } from './winprocs.h.js';
+import { exit_nhwindows, raw_print } from './winprocs.macros.js';
 
 let settty_needed = 0;
 export const inittyb = new $T.termios();
@@ -79,19 +82,19 @@ export function gettty() {   // unixtty.c:214
     settty_needed = 1;
 }
 export async function settty(s) {   // unixtty.c:247
-    if (windowprocs.wp_id === 1) {
+    if (windowprocs.wp_id === wp_tty) {
         await term_end_screen();
     }
     if (s) {
-        await windowprocs.win_raw_print(s);
+        await raw_print()(s);
     }
     if ($c.tcsetattr(0, 1, inittyb) < 0 || 0) {
         if (!$c.getenv($c.lit("NOMUX_MARKERS"))) {
             $c.perror($c.lit("NetHack (settty)"));
         }
     }
-    iflags.echo = $c.i8($c.andu64(inittyb.c_lflag, 8) ? 1 : 0);
-    iflags.cbreak = $c.i8(!$c.andu64(inittyb.c_lflag, 256) ? 1 : 0);
+    iflags.echo = $c.i8($c.andu64(inittyb.c_lflag, 8) ? ON : OFF);
+    iflags.cbreak = $c.i8(!$c.andu64(inittyb.c_lflag, 256) ? ON : OFF);
     curttyb.c_iflag = $c.oru64(curttyb.c_iflag, 32);
     setioctls();
     settty_needed = 0;
@@ -101,8 +104,8 @@ export function setftty() {   // unixtty.c:267
     change = 0;
     ef = 0;
     cf = 0;
-    iflags.cbreak = 1;
-    iflags.echo = 0;
+    iflags.cbreak = ON;
+    iflags.echo = OFF;
     if ($c.u32($c.andu64(curttyb.c_lflag, 8)) !== ef) {
         curttyb.c_lflag = $c.andu64(curttyb.c_lflag, 18446744073709551607n);
         change = change + 1 | 0;
@@ -112,38 +115,38 @@ export function setftty() {   // unixtty.c:267
         curttyb.c_lflag = $c.oru64(curttyb.c_lflag, cf);
         curttyb.c_cc[16] = 1;
         curttyb.c_cc[17] = 0;
-        $t1 = $c.u8($c.fpathconf(0, 9)), curttyb.c_cc[10] = $t1;
-        $t2 = $c.u8($c.fpathconf(0, 9)), curttyb.c_cc[11] = $t2;
-        $t3 = $c.u8($c.fpathconf(0, 9)), curttyb.c_cc[6] = $t3;
-        $t4 = $c.u8($c.fpathconf(0, 9)), curttyb.c_cc[15] = $t4;
-        $t5 = $c.u8($c.fpathconf(0, 9)), curttyb.c_cc[4] = $t5;
-        $t6 = $c.u8($c.fpathconf(0, 9)), curttyb.c_cc[14] = $t6;
+        $t1 = $c.u8(nonesuch()), curttyb.c_cc[10] = $t1;
+        $t2 = $c.u8(nonesuch()), curttyb.c_cc[11] = $t2;
+        $t3 = $c.u8(nonesuch()), curttyb.c_cc[6] = $t3;
+        $t4 = $c.u8(nonesuch()), curttyb.c_cc[15] = $t4;
+        $t5 = $c.u8(nonesuch()), curttyb.c_cc[4] = $t5;
+        $t6 = $c.u8(nonesuch()), curttyb.c_cc[14] = $t6;
         change = change + 1 | 0;
     }
     if (!$c.andu64(inittyb.c_cflag, 512)) {
         curttyb.c_iflag = $c.andu64(curttyb.c_iflag, 18446744073709551583n);
     }
-    if ($G.intr_char !== $c.fpathconf(0, 9) && curttyb.c_cc[8] !== 3) {
+    if ($G.intr_char !== nonesuch() && curttyb.c_cc[8] !== 3) {
         curttyb.c_cc[8] = 3;
         change = change + 1 | 0;
     }
     if (change) {
         setctty();
     }
-    if (windowprocs.wp_id === 1) {
+    if (windowprocs.wp_id === wp_tty) {
         term_start_screen();
     }
 }
 export function intron() {   // unixtty.c:338
-    if (windowprocs.wp_id === 1 && $G.intr_char !== $c.fpathconf(0, 9) && curttyb.c_cc[8] !== 3) {
+    if (windowprocs.wp_id === wp_tty && $G.intr_char !== nonesuch() && curttyb.c_cc[8] !== 3) {
         curttyb.c_cc[8] = 3;
         setctty();
     }
 }
 export function introff() {   // unixtty.c:350
     let $t1;
-    if (windowprocs.wp_id === 1 && curttyb.c_cc[8] !== $c.fpathconf(0, 9)) {
-        $t1 = $c.u8($c.fpathconf(0, 9)), curttyb.c_cc[8] = $t1;
+    if (windowprocs.wp_id === wp_tty && curttyb.c_cc[8] !== nonesuch()) {
+        $t1 = $c.u8(nonesuch()), curttyb.c_cc[8] = $t1;
         setctty();
     }
 }
@@ -151,7 +154,7 @@ export async function error(s, ...$va) {   // unixtty.c:489
     let the_args = null;
     the_args = new $c.VaList($va);
     if (iflags.window_inited) {
-        await windowprocs.win_exit_nhwindows(null);
+        await exit_nhwindows()(null);
     }
     if (settty_needed) {
         await settty(null);
@@ -162,6 +165,9 @@ export async function error(s, ...$va) {   // unixtty.c:489
     $c.exit(1);
 }
 export function tty_utf8graphics_fixup() {   // unixtty.c:514
+}
+function nonesuch() {
+    return $c.fpathconf(0, 9);
 }
 
 export function $init() {

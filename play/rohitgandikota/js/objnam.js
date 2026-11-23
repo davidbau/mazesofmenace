@@ -1,15 +1,7 @@
 // objnam.js — object naming.
 // C ref: src/objnam.c
 //
-// Only obj_typename() so far, which is what the discoveries window needs. It
-// composes the class word, the actual name (once discovered) and the shuffled
-// appearance in parentheses:
-//
-//   "scroll" + " of magic mapping" + " (ANDOVA BEGARIN)"
-//
-// The appearance comes from obj_descr[oc_descr_idx], and oc_descr_idx is what
-// js/o_init.js shuffles at game start — so a correct label here is also a
-// direct check that the o_init port is right.
+// Object descriptions, quantity and grammar, and parsing wished-for objects.
 
 import { M_AP_OBJECT } from './const.js';
 import { M_AP_TYPE } from './const.js';
@@ -269,41 +261,73 @@ const as_is = [
     'piranha', 'samurai', 'shuriken', 'haggis', 'Bordeaux',
 ];
 
-export function makeplural(s) {
-    const compound = singplur_compound(s);
-    if (compound > 0)
-        return makeplural(s.slice(0, compound)) + s.slice(compound);
-
-    /* src/objnam.c:2911 singplur_lookup + :2916 — "ya" (alone or as the
-       last word) stays "ya"; the as_is[] words are already plural-shaped */
-    const low = s.toLowerCase();
-    for (const w of as_is)
-        if (low.endsWith(w.toLowerCase()))
-            return s;
-    if (low === 'ya' || low.endsWith(' ya'))
-        return s;
-    for (const [singular, plural] of one_off) {
-        if (low.endsWith(singular.toLowerCase())) {
-            const start = s.length - singular.length;
-            const replacement = /^[A-Z]/.test(s.slice(start))
-                ? plural.charAt(0).toUpperCase() + plural.slice(1) : plural;
-            return s.slice(0, start) + replacement;
-        }
+// src/objnam.c:2836 makeplural(). The branch order is significant: lookup
+// exceptions precede suffix rules, and compound tails keep their spelling.
+export function makeplural(oldstr) {
+    let str = String(oldstr ?? '').replace(/^ +/, '');
+    if (!str) {
+        void impossible('plural of null?');
+        return 's';
     }
+    const pronoun = { he: 'they', him: 'them', his: 'their', she: 'they',
+        her: 'them', it: 'they', its: 'their' }[str.toLowerCase()];
+    if (pronoun)
+        return str[0] === highc(str[0])
+            ? highc(pronoun[0]) + pronoun.slice(1) : pronoun;
+    if (/^pair of /i.test(str))
+        return str;
 
-    const sp = s.lastIndexOf(' ');
-    const head = sp >= 0 ? s.slice(0, sp + 1) : '';
-    let w = sp >= 0 ? s.slice(sp + 1) : s;
+    const compound = singplur_compound(str);
+    const excess = compound >= 0 ? str.slice(compound) : '';
+    if (compound >= 0)
+        str = str.slice(0, compound);
+    str = str.replace(/ +$/, '');
+    const len = str.length;
+    const low = str.toLowerCase();
+    const last = low[len - 1];
+    if (len === 1 || !/[@A-Za-z]/.test(str[len - 1]))
+        return str + "'s" + excess;
 
-    /* src/objnam.c:2920 man/men ("Wiped out all cavemen."), excluding
-       shamans and humans etc via badman(); Strcasecpy keeps the case */
-    if (w.length >= 3 && /man$/i.test(w) && !badman(w, true))
-        w = w.slice(0, -2) + (w.slice(-2) === 'AN' ? 'EN' : 'en');
-    else if (/(s|x|z|ch|sh)$/i.test(w)) w += 'es';
-    else if (/[^aeiou]y$/i.test(w)) w = w.slice(0, -1) + 'ies';
-    else if (/(f)$/i.test(w)) w = w.slice(0, -1) + 'ves';
-    else w += 's';
-    return head + w;
+    const looked = singplur_lookup(str, true, ['ae', 'eaux', 'matzot']);
+    if (looked !== null)
+        return looked + excess;
+    if (low === 'ya' || low.endsWith(' ya'))
+        return str + excess;
+
+    if (low.endsWith('man') && !badman(str, true))
+        str = Strcasecpy(str, len - 2, 'en');
+    else if (last === 'f' && !low.endsWith('erf')
+             && 'aeioulr'.includes(low[len - 2]))
+        str = Strcasecpy(str, len - 1, 'ves');
+    else if (low.endsWith('ium'))
+        str = Strcasecpy(str, len - 3, 'ia');
+    else if (['alga', 'hypha', 'larva', 'amoeba', 'vertebra']
+             .some(suffix => low.endsWith(suffix)))
+        str = Strcasecpy(str, len, 'e');
+    else if (len > 3 && low.endsWith('us')
+             && !low.endsWith('lotus') && !low.endsWith('wumpus'))
+        str = Strcasecpy(str, len - 2, 'i');
+    else if (low.endsWith('sis'))
+        str = Strcasecpy(str, len - 2, 'es');
+    else if (low.endsWith('eau') && !low.endsWith('bureau'))
+        str = Strcasecpy(str, len, 'x');
+    else if (low.endsWith('matzoh') || low.endsWith('matzah'))
+        str = Strcasecpy(str, len - 2, 'ot');
+    else if (low.endsWith('matzo') || low.endsWith('matza'))
+        str = Strcasecpy(str, len - 1, 'ot');
+    else if (len >= 5 && ['dex', 'dix', 'tex'].some(suffix => low.endsWith(suffix))
+             && !low.endsWith('index'))
+        str = Strcasecpy(str, len - 2, 'ices');
+    else if ('zxs'.includes(last)
+             || (last === 'h' && 'cs'.includes(low[len - 2])
+                 && !(len >= 4 && low[len - 2] === 'c' && ch_ksound(str)))
+             || (len >= 4 && low.endsWith('ato')) || low.endsWith('dingo'))
+        str = Strcasecpy(str, len, 'es');
+    else if (last === 'y' && !'aeiou'.includes(low[len - 2]))
+        str = Strcasecpy(str, len - 1, 'ies');
+    else
+        str = Strcasecpy(str, len, 's');
+    return str + excess;
 }
 
 /* src/objnam.c:105 Japanese_items[] — a Samurai sees these names. */
@@ -1073,15 +1097,20 @@ export function vtense(subj, verb) {
     return Strcasecpy(buf, len, 's');
 }
 
-/* src/hacklib.c Strcasecpy() — overwrite buf from `at` with `repl`, matching
-   the case of the character being replaced. C works on a char* in place; the
-   JS equivalent rebuilds the string, and the case is taken from the character
-   at `at` (or the one before it when appending past the end, which is what
-   C's *bspot+1 writes look at). */
+/* src/hacklib.c strcasecpy(): match each replaced character's case, then
+   carry the last output character's case when the original suffix ends. */
 function Strcasecpy(buf, at, repl) {
-    const model = buf.charAt(at < buf.length ? at : buf.length - 1);
-    const upper = model >= 'A' && model <= 'Z';
-    return buf.slice(0, at) + (upper ? repl.toUpperCase() : repl);
+    let result = buf.slice(0, at);
+    for (let i = 0; i < repl.length; i++) {
+        const old = at + i < buf.length ? buf[at + i] : result.at(-1);
+        let ch = repl[i];
+        if (old >= 'a' && old <= 'z' && ch >= 'A' && ch <= 'Z')
+            ch = ch.toLowerCase();
+        else if (old >= 'A' && old <= 'Z' && ch >= 'a' && ch <= 'z')
+            ch = ch.toUpperCase();
+        result += ch;
+    }
+    return result;
 }
 
 export function singular(otmp, func) {
@@ -3702,8 +3731,14 @@ const special_subjs = [
     'amnesia', 'detect monsters', 'paralysis', 'shape changers', 'nemesis',
 ];
 
-/* src/objnam.c:3194 badman() — *man/*men words that are not man/men pairs;
-   only the makesingular direction's table is needed */
+/* src/objnam.c:3194 badman(), *man/*men words without a man/men pair. */
+const no_men = [
+    'albu', 'antihu', 'anti', 'ata', 'auto', 'bildungsro', 'cai', 'cay',
+    'ceru', 'corner', 'decu', 'des', 'dura', 'fir', 'hanu', 'het',
+    'infrahu', 'inhu', 'nonhu', 'otto', 'out', 'prehu', 'protohu',
+    'subhu', 'superhu', 'talis', 'unhu', 'sha',
+    'hu', 'un', 'le', 're', 'so', 'to', 'at', 'a',
+];
 const no_man = [
     'abdo', 'acu', 'agno', 'ceru', 'cogno', 'cycla', 'fleh', 'grava',
     'hegu', 'preno', 'sonar', 'speci', 'dai', 'exa', 'fla', 'sta', 'teg',
@@ -3713,7 +3748,7 @@ const no_man = [
 function badman(basestr, to_plural) {
     if (!basestr || basestr.length < 4) return false;
     const low = basestr.toLowerCase();
-    for (const pre of no_man) {
+    for (const pre of to_plural ? no_men : no_man) {
         const spot = low.length - (pre.length + 3);
         if (spot < 0) continue;
         if (low.slice(spot, spot + pre.length) === pre
@@ -3721,6 +3756,18 @@ function badman(basestr, to_plural) {
             return true;
     }
     return false;
+}
+
+// src/objnam.c:3168 ch_ksound(), suffixes whose ch takes a plain s.
+function ch_ksound(basestr) {
+    const ch_k = [
+        'monarch', 'poch', 'tech', 'mech', 'stomach', 'psych',
+        'amphibrach', 'anarch', 'atriarch', 'azedarach', 'broch',
+        'gastrotrich', 'isopach', 'loch', 'oligarch', 'peritrich',
+        'sandarach', 'sumach', 'symposiarch',
+    ];
+    return basestr.length >= 4
+        && ch_k.some(suffix => basestr.toLowerCase().endsWith(suffix));
 }
 
 /* src/objnam.c:2783 singplur_compound() — find " of ", " named " &c so the
@@ -3749,22 +3796,29 @@ function tail_is(base, endlen, str) {
     return base.slice(at, endlen).toLowerCase() === str.toLowerCase();
 }
 
-/* src/objnam.c:2632 singplur_lookup() — makesingular's half only. Returns
+/* src/objnam.c:2708 singplur_lookup(), shared by both inflection directions. Returns
    the transformed base or null when no as-is/one_off rule applied. */
-function singplur_lookup_sing(base, alt_as_is) {
+function singplur_lookup(base, to_plural, alt_as_is) {
     for (const w of as_is)
         if (tail_is(base, base.length, w)) return base;
     if (alt_as_is)
         for (const w of alt_as_is)
             if (tail_is(base, base.length, w)) return base;
     if (base.length > 5 && tail_is(base, base.length, 'craft')) return base;
-    if (/^slice$/i.test(base) || /^mongoose$/i.test(base)) return base;
-    if (base.length > 2 && tail_is(base, base.length, 'men')
-        && badman(base, false)) return base;
+    if (/^slice$/i.test(base) || /^mongoose$/i.test(base))
+        return to_plural ? Strcasecpy(base, base.length, 's') : base;
+    if (to_plural && base.length > 2 && tail_is(base, base.length, 'ox')
+        && !tail_is(base, base.length, 'muskox'))
+        return Strcasecpy(base, base.length, 'es');
+    if (base.length > 2 && tail_is(base, base.length, to_plural ? 'man' : 'men')
+        && badman(base, to_plural))
+        return to_plural ? Strcasecpy(base, base.length, 's') : base;
     for (const [sing, plur] of one_off) {
-        if (tail_is(base, base.length, sing)) return base;
-        if (tail_is(base, base.length, plur))
-            return base.slice(0, base.length - plur.length) + sing;
+        const same = to_plural ? plur : sing;
+        const other = to_plural ? sing : plur;
+        if (tail_is(base, base.length, same)) return base;
+        if (tail_is(base, base.length, other))
+            return Strcasecpy(base, base.length - other.length, same);
     }
     return null;
 }
@@ -3772,7 +3826,10 @@ function singplur_lookup_sing(base, alt_as_is) {
 // src/objnam.c:3037 makesingular()
 export function makesingular(oldstr) {
     let str = String(oldstr ?? '').replace(/^ +/, '');
-    if (!str) return '';
+    if (!str) {
+        void impossible('singular of null?');
+        return '';
+    }
 
     /* pronouns: "they"/"them" -> "it", "their" -> "its" */
     const pron = { they: 'it', them: 'it', their: 'its' }[str.toLowerCase()];
@@ -3785,7 +3842,7 @@ export function makesingular(oldstr) {
     let bp = cut >= 0 ? str.slice(0, cut) : str;
     const excess = cut >= 0 ? str.slice(cut) : '';
 
-    const looked = singplur_lookup_sing(bp, special_subjs);
+    const looked = singplur_lookup(bp, false, special_subjs);
     if (looked !== null)
         return looked + excess;
 
@@ -3802,7 +3859,7 @@ export function makesingular(oldstr) {
                     || tail_is(bp, L, 'mbies')
                     || tail_is(bp, L, 'yries'))
                     return bp.slice(0, L - 1) + excess;  /* just drop s */
-                return bp.slice(0, L - 3) + 'y' + excess; /* ies -> y */
+                return Strcasecpy(bp, L - 3, 'y') + excess; /* ies -> y */
             }
             /* wolves &c: [lr or vowel] + "ves" -> f */
             if (L >= 4 && ('lr'.includes(low[L - 4])
@@ -3810,7 +3867,7 @@ export function makesingular(oldstr) {
                 && tail_is(bp, L, 'ves')) {
                 if (tail_is(bp, L, 'cloves') || tail_is(bp, L, 'nerves'))
                     return bp.slice(0, L - 1) + excess;
-                return bp.slice(0, L - 3) + 'f' + excess; /* ves -> f */
+                return Strcasecpy(bp, L - 3, 'f') + excess; /* ves -> f */
             }
             if (tail_is(bp, L, 'eses') || tail_is(bp, L, 'oxes')
                 || tail_is(bp, L, 'nxes') || tail_is(bp, L, 'ches')
@@ -3832,13 +3889,13 @@ export function makesingular(oldstr) {
 
     /* input doesn't end in 's' */
     if (tail_is(bp, L, 'men') && !badman(bp, false))
-        return bp.slice(0, L - 2) + 'an' + excess;
+        return Strcasecpy(bp, L - 2, 'an') + excess;
     if (tail_is(bp, L, 'matzot') || tail_is(bp, L, 'ae')
         || tail_is(bp, L, 'eaux'))
         return bp.slice(0, L - 1) + excess;               /* drop t/e/x */
     if (L >= 4 && tail_is(bp, L, 'ia') && 'lr'.includes(low[L - 3])
         && low[L - 4] === 'e')
-        return bp.slice(0, L - 1) + 'um' + excess;        /* a -> um */
+        return Strcasecpy(bp, L - 1, 'um') + excess;     /* a -> um */
 
     return bp + excess;
 }

@@ -4,11 +4,12 @@
 // Contestants should port the full vision.c for complete parity.
 
 import { game } from './gstate.js';
-import { BLINDED, SEE_INVIS } from './const.js';
+import { BLINDED, SEE_INVIS, TEMP_LIT } from './const.js';
+import { do_light_sources } from './light.js';
 import {
     COLNO, ROWNO, DOOR, SDOOR,
     D_CLOSED, D_LOCKED, D_TRAPPED,
-    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, IS_OBSTRUCTED, IS_WATERWALL, TREE, CLOUD, LAVAWALL, MOAT,
     DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, M_AP_TYPMASK, M_AP_OBJECT,
     M_AP_FURNITURE, Is_juiblex_level, isok,
@@ -18,18 +19,18 @@ import { newsym } from './display.js';
 import { m_at } from './makemon.js';
 import { visible_region_at } from './region.js';
 
-const COULD_SEE = 0x1;
+export const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
     [SV2, SV1, SV0],
-    [SV3, 0,   SV7],
+    [SV3, SVALL, SV7],
     [SV4, SV5, SV6],
 ];
 
 // Circle data for range limits (C vision.c:27-70)
-const circle_data = [
+export const circle_data = [
     /*  0*/ 0,
     /*  1*/ 1, 1,
     /*  3*/ 2, 2, 1,
@@ -48,7 +49,7 @@ const circle_data = [
     /*120*/ 15, 15, 15, 15, 14, 14, 14, 13, 13, 12, 11, 10, 9, 8, 6, 3,
     /*136*/ 16,
 ];
-const circle_start = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120];
+export const circle_start = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120];
 
 // Vision state arrays
 const viz_clear = Array.from({ length: ROWNO }, () => new Int8Array(COLNO));
@@ -817,6 +818,9 @@ export function vision_recalc(control = 0) {
         return;
     }
 
+    /* Set the correct bits for all light sources. */
+    do_light_sources(next);
+
     // Compute IN_SIGHT from COULD_SEE + lighting
     const level = game.level;
     const ux = u.ux, uy = u.uy;
@@ -835,13 +839,13 @@ export function vision_recalc(control = 0) {
             }
 
             // Lit cells
-            if (loc.lit) {
+            if (loc.lit || (next[row][col] & TEMP_LIT)) {
                 if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
                     && !viz_clear[row]?.[col]) {
                     // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
                     const dx = Math.sign(ux - col);
                     const flev = level?.at(col + dx, row + dy);
-                    if (flev?.lit) {
+                    if (flev?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                         next[row][col] |= IN_SIGHT;
                     }
                 } else {
@@ -858,7 +862,10 @@ export function vision_recalc(control = 0) {
 
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;
-    if (old_array && control !== 2 && game.level) {
+    /* C runs this loop for control == 2 and when swallowed too: the new
+       array is empty, so every spot that was in sight (or could be seen)
+       gets newsym()'d out of sight */
+    if (old_array && game.level) {
         for (let row = 0; row < ROWNO; row++) {
             const old_row = old_array[row];
             const next_row = next[row];
@@ -883,12 +890,12 @@ export function vision_recalc(control = 0) {
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
-                } else if ((nv & COULD_SEE) && loc.lit) {
+                } else if ((nv & COULD_SEE) && (loc.lit || (nv & TEMP_LIT))) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
                         && !viz_clear[row][col]) {
                         const dx = Math.sign(ux - col);
                         const adjLoc = game.level.at(col + dx, row + dy);
-                        if (adjLoc?.lit) {
+                        if (adjLoc?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
@@ -910,7 +917,9 @@ export function vision_recalc(control = 0) {
                 } else {
                     if ((ov & IN_SIGHT)
                         || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
-                        newsym(col, row);
+                        /* C: "TEMPORARY?" -- avoid newsym() for <0,y> */
+                        if (col !== 0)
+                            newsym(col, row);
                     }
                 }
             }

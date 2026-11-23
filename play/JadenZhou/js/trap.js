@@ -113,6 +113,37 @@ function impossible(msg) { console.error(`impossible: ${msg}`); }
 import { float_vs_flight } from './polyself.js';
 import { s_suffix } from './hacklib.js';
 import { m_at } from './makemon.js';
+import { ROLL as ROLL_L, LAUNCH_KNOWN as LAUNCH_KNOWN_L,
+         LAUNCH_UNSEEN as LAUNCH_UNSEEN_L, DISP_FLASH as DISP_FLASH_L,
+         DISP_END as DISP_END_L, IRONBARS as IRONBARS_L,
+         D_BROKEN as D_BROKEN_L, IS_OBSTRUCTED as IS_OBSTRUCTED_L,
+         IS_STWALL as IS_STWALL_L, IS_TREE as IS_TREE_L } from './const.js';
+import { M2_ROCKTHROW as M2_ROCKTHROW_L } from './monsters.js';
+import { canspotmon as canspotmon_l, You_see as You_see_l,
+         tmp_at as tmp_at_l, obj_to_glyph as obj_to_glyph_l } from './display.js';
+import { obj_extract_self as obj_extract_self_l,
+         splitobj as splitobj_l } from './mkobj.js';
+import { distmin as distmin_l } from './hacklib.js';
+import { an as an_l } from './objnam.js';
+import { rn2_on_display_rng as rn2_on_display_rng_l } from './rng.js';
+import { mpickobj as mpickobj_l } from './steal.js';
+import { ohitmon as ohitmon_l, hits_bars as hits_bars_l } from './mthrowu.js';
+import { stop_occupation as stop_occupation_l } from './allmain.js';
+import { down_gate as down_gate_l, ship_object as ship_object_l,
+         flooreffects as flooreffects_l } from './do.js';
+import { recalc_block_point as recalc_block_point_l } from './vision.js';
+import { scatter as scatter_l } from './explode.js';
+import { MAY_DESTROY as MAY_DESTROY_L, MAY_HIT as MAY_HIT_L,
+         MAY_FRACTURE as MAY_FRACTURE_L, VIS_EFFECTS as VIS_EFFECTS_L,
+         IS_DOOR as IS_DOOR_L, DRAWBRIDGE_DOWN as DRAWBRIDGE_DOWN_L,
+         DRAWBRIDGE_UP as DRAWBRIDGE_UP_L, ICE as ICE_L,
+         Is_waterlevel as Is_waterlevel_l, Is_airlevel as Is_airlevel_l
+       } from './const.js';
+import { del_engr_at as del_engr_at_l } from './engrave.js';
+import { is_drawbridge_wall as is_drawbridge_wall_l } from './dbridge.js';
+import { find_drawbridge as find_drawbridge_l } from './zap.js';
+import { fillholetyp as fillholetyp_l } from './dig.js';
+import { unconscious as unconscious_l } from './eat.js';
 import { M1_SLITHY, M1_NOLIMBS } from './monsters.js';
 import { CAN_OF_GREASE, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS,
          GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES,
@@ -480,6 +511,128 @@ export async function reset_utrap(msg) {
         if (!was_Fly && Flying())
             await You("can fly.");
     }
+}
+
+// C ref: trap.c float_down()
+/* stop levitating */
+export async function float_down(
+    hmask,
+    emask) /* might cancel timeout */
+{
+    const u = game.u;
+    const lev = uprop(LEVITATION);
+    let trap = null;
+    let current_dungeon_level;
+    let no_msg = false;
+
+    lev.intrinsic &= ~hmask;
+    lev.extrinsic &= ~emask;
+    if (Levitation())
+        return 0; /* maybe another ring/potion/boots */
+    if (lev.blocked) { /* BLevitation */
+        /* if blocked by terrain, we haven't actually been levitating so
+           we don't give any end-of-levitation feedback or side-effects,
+           but if blocking is solely due to being trapped in/on floor,
+           do give some feedback but skip other float_down() effects */
+        const trapped = (lev.blocked === I_SPECIAL);
+
+        float_vs_flight();
+        if (trapped && u.utrap) /* u.utrap => paranoia */
+            throw new Error('float_down(): no longer trying to float up not ported yet');
+        await encumber_msg(); /* carrying capacity might have changed */
+        return 0;
+    }
+    game.disp_botl = true;
+    nomul(0); /* stop running or resting */
+    if (uprop(FLYING).blocked) { /* BFlying */
+        /* controlled flight no longer overridden by levitation */
+        float_vs_flight(); /* clears BFlying & I_SPECIAL
+                            * unless hero is stuck in floor */
+        if (Flying()) {
+            await You("have stopped levitating and are now flying.");
+            await encumber_msg(); /* carrying capacity might have changed */
+            return 1;
+        }
+    }
+    if (u.uswallow)
+        throw new Error('float_down(): engulfed hero not ported yet');
+
+    if (game.uball && game.uball.where !== 'OBJ_INVENT' /* !carried(uball) */)
+        throw new Error('float_down(): Punished ball in a pool or pit not ported yet');
+    /* check for falling into pool - added by GAN 10/20/86 */
+    if (!Flying()) {
+        if (!u.uswallow && u.ustuck)
+            throw new Error('float_down(): losing hold of u.ustuck not ported yet');
+        /* kludge alert:
+         * drown() and lava_effects() print various messages almost
+         * every time they're called which conflict with the "fall
+         * into" message below.  Thus, we want to avoid printing
+         * confusing, duplicate or out-of-order messages.
+         * Use knowledge of the two routines as a hack -- this
+         * should really be handled differently -dlc
+         */
+        const wwalk = uprop(WWALKING), swim = uprop(SWIMMING);
+        if (is_pool(u.ux, u.uy) && !(wwalk.intrinsic || wwalk.extrinsic)
+            && !(swim.intrinsic || swim.extrinsic) && !u.uinwater)
+            throw new Error('float_down(): drown() not ported yet');
+
+        if (is_lava(u.ux, u.uy) && !game.iflags.in_lava_effects)
+            throw new Error('float_down(): lava_effects() not ported yet');
+    }
+    if (!trap) {
+        trap = t_at(u.ux, u.uy);
+        if (Is_airlevel_l(u.uz)) {
+            await You("begin to tumble in place.");
+        } else if (Is_waterlevel_l(u.uz) && !no_msg) {
+            await pline("You feel heavier."); /* You_feel() */
+        /* u.uinwater msgs already in spoteffects()/drown() */
+        } else if (!u.uinwater && !no_msg) {
+            if (!(emask & W_SADDLE)) {
+                if (game.level.flags.sokoban_rules && trap) { /* Sokoban */
+                    throw new Error('float_down(): Sokoban air currents not ported yet');
+                } else if (u.usteed && (is_floater(u.usteed.data)
+                                        || is_flyer(u.usteed.data))) {
+                    await You("settle more firmly in the saddle.");
+                } else if (Hallucination()) {
+                    await pline(`Bummer!  You've ${is_pool(u.ux, u.uy)
+                                                  ? "splashed down"
+                                                  : "hit the ground"}.`);
+                } else {
+                    await You(`float gently to the ${surface_tr(u.ux, u.uy)}.`);
+                }
+            }
+        }
+    }
+
+    /* levitation gives maximum carrying capacity, so having it end
+       potentially triggers greater encumbrance; do this after
+       'come down' messages, before trap activation or autopickup */
+    await encumber_msg();
+
+    /* can't rely on u.uz0 for detecting trap door-induced level change;
+       it gets changed to reflect the new level before we can check it */
+    current_dungeon_level = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
+    if (trap) {
+        switch (trap.ttyp) {
+        case STATUE_TRAP:
+            break;
+        case HOLE:
+        case TRAPDOOR:
+            if (!Can_fall_thru(u.uz) || u.ustuck)
+                break;
+            /*FALLTHRU*/
+        default:
+            if (!u.utrap) /* not already in the trap */
+                await dotrap(trap, NO_TRAP_FLAGS);
+        }
+    }
+    if (!Is_airlevel_l(u.uz) && !Is_waterlevel_l(u.uz) && !u.uswallow
+        /* falling through trap door calls goto_level,
+           and goto_level does its own pickup() call */
+        && u.uz.dnum === current_dungeon_level.dnum
+        && u.uz.dlevel === current_dungeon_level.dlevel) /* on_level() */
+        await pickup_tr(1);
+    return 1;
 }
 
 // C ref: trap.c climb_pit()
@@ -2807,6 +2960,8 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         throw new Error('trapeffect_landmine(): hero branch not ported yet');
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const tx = trap.tx, ty = trap.ty;
+        let trapkilled = false;
 
         /* heavier monsters are more likely to set off a land mine; on the
            other hand, any mon lighter than the trigger weight is immune */
@@ -2834,8 +2989,78 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         }
         if (!in_sight && !Deaf())
             await pline("Kaablamm!  You hear an explosion in the distance!");
-        throw new Error('trapeffect_landmine(): blow_up_landmine() not ported yet');
+        await blow_up_landmine(trap);
+        /* explosion might have destroyed a drawbridge; don't
+           dish out more damage if monster is already dead */
+        if (mtmp.mhp < 1 /* DEADMONSTER(mtmp) */
+            || await thitm(0, mtmp, null, damage, false)) {
+            trapkilled = true;
+        } else {
+            /* monsters recursively fall into new pit */
+            if (await mintrap(mtmp, trflags | FORCETRAP) === Trap_Killed_Mon)
+                trapkilled = true;
+        }
+        /* a boulder may fill the new pit, crushing monster */
+        await fill_pit(tx, ty); /* thitm may have already destroyed the trap */
+        if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
+            trapkilled = true;
+        if (unconscious_l()) {
+            game.multi = -1;
+            game.nomovemsg = "The explosion awakens you!";
+        }
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
+}
+
+// C ref: trap.c blow_up_landmine()
+export async function blow_up_landmine(trap) {
+    const g = game;
+    const x = trap.tx, y = trap.ty;
+    const lev = g.level.at(x, y);
+    let typ;
+
+    const old_typ = lev.typ;
+    await scatter_l(x, y, 4,
+                    MAY_DESTROY_L | MAY_HIT_L | MAY_FRACTURE_L | VIS_EFFECTS_L,
+                    null);
+    del_engr_at_l(x, y);
+    await wake_nearto(x, y, 400);
+    if (IS_DOOR_L(lev.typ))
+        lev.doormask = D_BROKEN_L;
+    /* destroy drawbridge if present */
+    if (lev.typ === DRAWBRIDGE_DOWN_L || is_drawbridge_wall_l(x, y) >= 0) {
+        /* if under the portcullis, the bridge is adjacent */
+        if (find_drawbridge_l(x, y))
+            throw new Error('blow_up_landmine(): destroy_drawbridge() not ported yet');
+    }
+    trap = t_at(x, y); /* expected to be null after destruction */
+    /* or could be null if scatter blew up oil which melted ice */
+    /* convert landmine into pit */
+    if (trap) {
+        if (Is_waterlevel_l(g.u.uz) || Is_airlevel_l(g.u.uz)) {
+            /* no pits here */
+            deltrap(trap);
+        } else {
+            /* fill pit with water, if applicable */
+            typ = fillholetyp_l(x, y, false);
+            if (typ !== ROOM) {
+                throw new Error('blow_up_landmine(): liquid_flow() not ported yet');
+            } else {
+                trap.ttyp = PIT;       /* explosion creates a pit */
+                trap.madeby_u = 0;     /* resulting pit isn't yours */
+                seetrap(trap);         /* and it isn't concealed */
+            }
+        }
+    }
+    await fill_pit(x, y);
+    /* maybe_dunk_boulders(x, y) */
+    if ((is_pool(x, y) || is_lava(x, y)) && sobj_at(BOULDER, x, y))
+        throw new Error('blow_up_landmine(): maybe_dunk_boulders() not ported yet');
+    recalc_block_point_l(x, y);
+    /* spot_checks(x, y, old_typ) */
+    if (old_typ === DRAWBRIDGE_UP_L || old_typ === ICE_L)
+        throw new Error('blow_up_landmine(): spot_checks() for ice not ported yet');
 }
 
 // C ref: trap.c clamp_hole_destination()
@@ -2844,6 +3069,336 @@ export function clamp_hole_destination(dlev) {
 
     dlev.dlevel = Math.min(dlev.dlevel, bottom);
     return dlev;
+}
+
+// C ref: trap.c trapeffect_rolling_boulder_trap()
+async function trapeffect_rolling_boulder_trap(mtmp, trap, trflags) {
+    void trflags;
+    if (mtmp === game.youmonst) {
+        let style = ROLL_L | (trap.tseen ? LAUNCH_KNOWN_L : 0);
+
+        feeltrap(trap);
+        await pline(`${!Deaf() ? "Click!  " : ""}You trigger a rolling boulder trap!`);
+        if (!await launch_obj(BOULDER, trap.launch.x, trap.launch.y,
+                              trap.launch2.x, trap.launch2.y, style)) {
+            /* if this is a known trap, the player may have known there wasn't
+               a lined up boulder, so use a shorter message to avoid --More--
+               spam */
+            if (style & LAUNCH_KNOWN_L)
+                await pline("No boulder was released.");
+            else
+                await pline("Fortunately for you, no boulder was released.");
+        }
+    } else {
+        if (!m_in_air(mtmp)) {
+            const in_sight = (mtmp === game.u.usteed
+                              || (cansee(mtmp.mx, mtmp.my)
+                                  && canspotmon_l(mtmp)));
+            const style = ROLL_L | (in_sight ? 0 : LAUNCH_UNSEEN_L);
+            let trapkilled = false;
+
+            newsym(mtmp.mx, mtmp.my);
+            if (in_sight)
+                await pline(`${!Deaf() ? "Click!  " : ""}${Monnam(mtmp)} triggers ${
+                    trap.tseen ? "a rolling boulder trap" : "something"}.`); /* pline_mon() */
+            if (await launch_obj(BOULDER, trap.launch.x, trap.launch.y,
+                                 trap.launch2.x, trap.launch2.y, style)) {
+                if (in_sight)
+                    trap.tseen = 1;
+                if (mtmp.mhp < 1) /* DEADMONSTER() */
+                    trapkilled = true;
+            }
+            return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+                ? Trap_Caught_Mon : Trap_Effect_Finished;
+        }
+    }
+    return Trap_Effect_Finished;
+}
+
+// C ref: trap.c launch_drop_spot()
+function launch_drop_spot(obj, x, y) {
+    if (!game.launchplace)
+        game.launchplace = { x: 0, y: 0 };
+    if (!obj) {
+        game.launchplace.obj = null;
+        game.launchplace.x = 0;
+        game.launchplace.y = 0;
+    } else {
+        game.launchplace.obj = obj;
+        game.launchplace.x = x;
+        game.launchplace.y = y;
+    }
+}
+
+/* C ref: mondata.h throws_rocks() */
+function throws_rocks_l(ptr) { return (ptr.mflags2 & M2_ROCKTHROW_L) !== 0; }
+
+// C ref: trap.c launch_obj()
+/*
+ * Move obj from (x1,y1) to (x2,y2)
+ *
+ * Return 0 if no object was launched.
+ *        1 if an object was launched and placed somewhere.
+ *        2 if an object was launched, but used up.
+ */
+export async function launch_obj(otyp, x1, y1, x2, y2, style) {
+    const g = game;
+    const u = g.u;
+    let mtmp;
+    let otmp, otmp2;
+    let dx, dy;
+    let x, y;
+    let singleobj;
+    let used_up = false, otherside = false;
+    let dist, tmp, delaycnt = 0;
+
+    otmp = sobj_at(otyp, x1, y1);
+    /* Try the other side too, for rolling boulder traps */
+    if (!otmp && otyp === BOULDER) {
+        otherside = true;
+        otmp = sobj_at(otyp, x2, y2);
+    }
+    if (!otmp)
+        return 0;
+    if (otherside) { /* swap 'em */
+        const tx = x1, ty = y1;
+
+        x1 = x2;
+        y1 = y2;
+        x2 = tx;
+        y2 = ty;
+    }
+
+    if (otmp.quan === 1) {
+        obj_extract_self_l(otmp);
+        maybe_unhide_at(otmp.ox, otmp.oy);
+        singleobj = otmp;
+        otmp = null;
+    } else {
+        singleobj = splitobj_l(otmp, 1);
+        obj_extract_self_l(singleobj);
+    }
+    newsym(x1, y1);
+    /* in case you're using a pick-axe to chop the boulder that's being
+       launched (perhaps a monster triggered it), destroy context so that
+       the next dig attempt never thinks that you're resuming
+       the previous effort */
+    const digging = g.context.digging;
+    if ((otyp === BOULDER || otyp === STATUE) && digging && digging.pos
+        && singleobj.ox === digging.pos.x
+        && singleobj.oy === digging.pos.y)
+        g.context.digging = { pos: { x: 0, y: 0 }, level: { dnum: 0, dlevel: 0 },
+                              lastdigtime: 0, down: false, chew: false,
+                              warned: false, quiet: false, effort: 0 };
+
+    dist = distmin_l(x1, y1, x2, y2);
+    x = g.bhitpos.x = x1;
+    y = g.bhitpos.y = y1;
+    dx = Math.sign(x2 - x1);
+    dy = Math.sign(y2 - y1);
+    let roll = false;
+    switch (style) {
+    case ROLL_L | LAUNCH_UNSEEN_L:
+        if (otyp === BOULDER) {
+            if (cansee(x1, y1)) {
+                await You_see_l(`${an_l(xname(singleobj))} start to roll.`);
+            } else if (Hallucination()) {
+                await You_hear("someone bowling.");
+            } else {
+                await You_hear(`rumbling ${(dist2(x1, y1, u.ux, u.uy) <= 4 * 4)
+                                           ? "nearby" : "in the distance"}.`);
+            }
+        }
+        style &= ~LAUNCH_UNSEEN_L;
+        roll = true;
+        break;
+    case ROLL_L | LAUNCH_KNOWN_L:
+        /* use otrapped as a flag to ohitmon */
+        singleobj.otrapped = 1;
+        style &= ~LAUNCH_KNOWN_L;
+        roll = true;
+        break;
+    case ROLL_L:
+        roll = true;
+        break;
+    default:
+        break;
+    }
+    /* roll: */
+    if (roll)
+        delaycnt = 2;
+    /* default: */
+    if (!delaycnt)
+        delaycnt = 1;
+    /* if (!cansee(x, y)) curs_on_u(); -- display only */
+    tmp_at_l(DISP_FLASH_L, obj_to_glyph_l(singleobj, rn2_on_display_rng_l));
+    tmp_at_l(x, y);
+    /* Mark a spot to place object in bones files to prevent
+     * loss of object. Use the starting spot to ensure that
+     * a rolling boulder will still launch, which it wouldn't
+     * do if left midstream. Unfortunately we can't use the
+     * target resting spot, because there are some things/situations
+     * that would prevent it from ever getting there (bars), and we
+     * can't tell that yet.
+     */
+    launch_drop_spot(singleobj, x, y);
+
+    /* Set the object in motion */
+    while (dist-- > 0 && !used_up) {
+        let t;
+
+        tmp_at_l(x, y);
+        tmp = delaycnt;
+        void tmp; /* nh_delay_output() only if hero sees it: display timing */
+
+        /*
+         * TEMPORARY?  github issue #1490 by BartekCupial reports a
+         * segfault when boulder rolls out of bounds.
+         */
+        if (!isok(g.bhitpos.x + dx, g.bhitpos.y + dy)) {
+            x2 = x, y2 = y; /* use current spot for final boulder placement */
+            break;
+        }
+
+        x = (g.bhitpos.x += dx);
+        y = (g.bhitpos.y += dy);
+
+        if ((mtmp = m_at(x, y)) != null) {
+            if (otyp === BOULDER && throws_rocks_l(mtmp.data)) {
+                if (rn2(3)) {
+                    if (cansee(x, y))
+                        await pline(`${Monnam(mtmp)} snatches the boulder.`);
+                    singleobj.otrapped = 0;
+                    await mpickobj_l(mtmp, singleobj);
+                    used_up = true;
+                    launch_drop_spot(null, 0, 0);
+                    break;
+                }
+            }
+            if (await ohitmon_l(mtmp, singleobj, (style === ROLL_L) ? -1 : dist,
+                                false)) {
+                used_up = true;
+                launch_drop_spot(null, 0, 0);
+                break;
+            }
+        } else if (u.ux === x && u.uy === y) {
+            const dam = dmgval(singleobj, g.youmonst);
+            const objp = { obj: singleobj };
+
+            if (g.multi)
+                nomul(0);
+            if (await thitu(9 + singleobj.spe, Maybe_Half_Phys(dam),
+                            objp, null))
+                await stop_occupation_l();
+            singleobj = objp.obj;
+        }
+        if (style === ROLL_L) {
+            if (down_gate_l(x, y) !== -1) {
+                if (await ship_object_l(singleobj, x, y, false)) {
+                    used_up = true;
+                    launch_drop_spot(null, 0, 0);
+                    break;
+                }
+            }
+            if ((t = t_at(x, y)) != null
+                && otyp === BOULDER) {
+                switch (t.ttyp) {
+                case LANDMINE:
+                    if (rn2(10) > 2)
+                        throw new Error('launch_obj(): rolling boulder triggering a land mine (fracture_rock()/scatter()) not ported yet');
+                    break;
+                case LEVEL_TELEP:
+                case TELEP_TRAP:
+                    throw new Error('launch_obj(): rolling boulder into a teleport trap not ported yet');
+                case PIT:
+                case SPIKED_PIT:
+                case HOLE:
+                case TRAPDOOR:
+                    /* the boulder won't be used up if there is a
+                       monster in the trap; stop rolling anyway */
+                    x2 = x, y2 = y; /* stops here */
+                    if (await flooreffects_l(singleobj, x2, y2, "fall")) {
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
+                    dist = -1; /* stop rolling immediately */
+                    break;
+                default:
+                    break;
+                }
+
+                if (used_up || dist === -1)
+                    break; /* from 'while' loop */
+            }
+            if (await flooreffects_l(singleobj, x, y, "fall")) {
+                used_up = true;
+                launch_drop_spot(null, 0, 0);
+                break;
+            }
+            if (otyp === BOULDER && (otmp2 = sobj_at(BOULDER, x, y)) != null) {
+                let bmsg = " as one boulder sets another in motion";
+                const fx = x + dx, fy = y + dy;
+
+                if (!isok(fx, fy) || !dist
+                    || IS_OBSTRUCTED_L(g.level.at(fx, fy).typ))
+                    bmsg = " as one boulder hits another";
+
+                await You_hear(`a loud crash${cansee(x, y) ? bmsg : ""}!`);
+                obj_extract_self_l(otmp2);
+                /* pass off the otrapped flag to the next boulder */
+                otmp2.otrapped = singleobj.otrapped;
+                singleobj.otrapped = 0;
+                place_object(singleobj, x, y);
+                singleobj = otmp2;
+                otmp2 = null;
+                await wake_nearto(x, y, 10 * 10);
+            }
+        }
+        if (otyp === BOULDER && closed_door(x, y)) {
+            if (cansee(x, y)) {
+                /* set_msg_xy(x, y) */
+                await pline_The("boulder crashes through a door.");
+            }
+            g.level.at(x, y).doormask = D_BROKEN_L;
+            if (dist)
+                recalc_block_point_l(x, y);
+        }
+
+        /* if about to hit something, do so now */
+        if (dist > 0 && isok(x + dx, y + dy)) {
+            const fx = x + dx, fy = y + dy;
+            const typ = g.level.at(fx, fy).typ;
+
+            if (typ === IRONBARS_L) {
+                x2 = x, y2 = y; /* object stops here */
+                const objp = { obj: singleobj };
+                const hb = await hits_bars_l(objp, x2, y2, fx, fy, !rn2(20), 0);
+                singleobj = objp.obj;
+                if (hb) {
+                    if (!singleobj) {
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
+                    break;
+                }
+            } else if (IS_STWALL_L(typ) || IS_TREE_L(typ)) {
+                x2 = x, y2 = y; /* object stops here */
+                if (!Deaf())
+                    await pline("Thump!");
+                await wake_nearto(x2, y2, 16);
+                break;
+            }
+        }
+    } /* while dist > 0 */
+    tmp_at_l(DISP_END_L, 0);
+    launch_drop_spot(null, 0, 0);
+    if (!used_up) {
+        singleobj.otrapped = 0;
+        place_object(singleobj, x2, y2);
+        newsym(x2, y2);
+        return 1;
+    }
+    return 2;
 }
 
 // C ref: trap.c trapeffect_selector()
@@ -2887,8 +3442,9 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_landmine(mtmp, trap, trflags);
     case MAGIC_PORTAL:
         return trapeffect_magic_portal(mtmp, trap, trflags);
-    case POLY_TRAP:
     case ROLLING_BOULDER_TRAP:
+        return trapeffect_rolling_boulder_trap(mtmp, trap, trflags);
+    case POLY_TRAP:
     case VIBRATING_SQUARE:
         throw new Error(`trapeffect_selector(): trap type ${trap.ttyp} not ported yet`);
     default:
@@ -3551,6 +4107,8 @@ import { makeplural as makeplural_tr } from './objnam.js';
 import { body_part as body_part_tr } from './insight.js';
 import { mon_nam as mon_nam_tr } from './do_name.js';
 import { surface as surface_tr } from './iactions.js';
+import { I_SPECIAL, WWALKING, SWIMMING, W_SADDLE, NO_TRAP_FLAGS } from './const.js';
+import { pickup as pickup_tr } from './pickup.js';
 import { M1_NOHANDS as M1_NOHANDS_TR, mons as mons_tr, PM_CAVE_SPIDER as PM_CAVE_SPIDER_TR,
          PM_GIANT_SPIDER as PM_GIANT_SPIDER_TR } from './monsters.js';
 /* C ref: mondata.h nohands(), webmaker() */

@@ -3,17 +3,28 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc } from './alloc.js';
+import { BL, BL_MASK, MAXBLSTATS } from './botl.h.js';
 import { config_error_add } from './cfgfiles.js';
 import { cmdq_pop } from './cmd.js';
+import { NO_COLOR } from './color.h.js';
 import { cg, flags, gb, gl, gm, go, gs, hexdd, iflags, program_state, svc } from './decl.js';
 import { map_glyphinfo, nul_glyphinfo } from './display.js';
+import { NO_GLYPH } from './display.h.js';
 import { def_char_to_monclass, def_char_to_objclass, def_monsyms, def_oc_syms } from './drawing.js';
 import { nh_terminate, panic } from './end.js';
 import { debugcore } from './files.js';
+import { BUFSZ, COLNO } from './global.h.js';
+import { CMDQ } from './hack.h.js';
 import { eos, mungspaces, strncmpi } from './hacklib.js';
+import { nhUse } from './lint.macros.js';
 import { pline, raw_printf } from './pline.js';
 import { regex_match } from './posixregex.js';
+import { WC, WC2_FLUSH_STATUS, WININIT, WININIT_UNDO, wp_hup } from './winprocs.h.js';
+import { create_nhwindow, ctrl_nhwindow, curs, destroy_nhwindow, display_nhwindow, end_menu, putmixed, putstr, start_menu } from './winprocs.macros.js';
 import { tty_procs, win_tty_init } from './wintty.js';
+import { ATR, MENU, NHW, PICK, WIN_ERR, set_menu_promptstyle } from './wintype.h.js';
+
+const WINDOW_TYPE_MAXLEN = 50;
 
 const genl_status_update$fieldorder = $c.matrix(Int32Array, [5, 15]);   // static in genl_status_update()
 const encglyph$encbuf = new Int8Array(20);   // static in encglyph()
@@ -81,10 +92,10 @@ export async function choose_windows(s) {   // windows.c:267
         if (!strncmpi(s, winchoices[i].procs.name, -1)) {
             windowprocs.$copyFrom(winchoices[i].procs);
             if (gl.last_winchoice && gl.last_winchoice.ini_routine) {
-                await gl.last_winchoice.ini_routine(1);
+                await gl.last_winchoice.ini_routine(WININIT_UNDO);
             }
             if (winchoices[i].ini_routine) {
-                await winchoices[i].ini_routine(0);
+                await winchoices[i].ini_routine(WININIT);
             }
             gl.last_winchoice = $c.relem(winchoices, i);
             return;
@@ -100,10 +111,10 @@ export async function choose_windows(s) {   // windows.c:267
         await raw_printf($c.lit("No window types supported?"));
         await nh_terminate(1);
     }
-    if ($c.strlen(s) >= 50) {
-        tmps = $c.asArr(await alloc(50), Int8Array);
-        $c.__builtin___strncpy_chk(tmps, s, 49, -1);
-        tmps.set(49, 0);
+    if ($c.strlen(s) >= WINDOW_TYPE_MAXLEN) {
+        tmps = $c.asArr(await alloc(WINDOW_TYPE_MAXLEN), Int8Array);
+        $c.__builtin___strncpy_chk(tmps, s, WINDOW_TYPE_MAXLEN - 1, -1);
+        tmps.set(WINDOW_TYPE_MAXLEN - 1, 0);
         s = tmps;
     }
     if (!winchoices[1].procs) {
@@ -188,7 +199,7 @@ function hup_init_nhwindows(argc_p, argv) {   // windows.c:690
     iflags.window_inited = 1;
 }
 function hup_create_nhwindow(type) {   // windows.c:697
-    return -1;
+    return WIN_ERR;
 }
 function hup_select_menu(window, how, menu_list) {   // windows.c:704
     return -1;
@@ -246,18 +257,18 @@ export function hup_ctrl_nhwindow(window, request, wri) {   // windows.c:872
 }
 export async function genl_status_init() {   // windows.c:893
     let i = 0, $t1;
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         $t1 = $c.asArr(await alloc(200), Int8Array), status_vals[i] = $t1;
         status_vals[i].set(0, 0);
         status_activefields[i] = 0;
         status_fieldfmt[i] = null;
     }
-    $G.WIN_STATUS = await windowprocs.win_create_nhwindow(2);
-    await windowprocs.win_display_nhwindow($G.WIN_STATUS, 0);
+    $G.WIN_STATUS = await create_nhwindow()(NHW.STATUS);
+    await display_nhwindow()($G.WIN_STATUS, 0);
 }
 export function genl_status_finish() {   // windows.c:909
     let i = 0;
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         if (status_vals[i]) {
             $c.free(status_vals[i]), status_vals[i] = null;
         }
@@ -272,53 +283,53 @@ export async function genl_status_update(idx, ptr, chg, percent, color, colormas
     let newbot1 = new Int8Array(200), newbot2 = new Int8Array(200), cond = 0, condptr = null, i = 0, pass = 0, lndelta = 0, idx1 = 0, idx2 = 0, fieldlist = null, nb = null, text = null, val = null;
     condptr = ptr;
     text = $c.asArr(ptr, Int8Array);
-    windowprocs.wincap2 = $c.oru64(windowprocs.wincap2, 128);
+    windowprocs.wincap2 = $c.oru64(windowprocs.wincap2, WC2_FLUSH_STATUS);
     if (idx >= 0) {
         if (!status_activefields[idx]) {
             return;
         }
         switch (idx) {
-            case 22 /* BL_CONDITION */:
+            case BL.CONDITION:
                 cond = condptr ? condptr.get(0) : 0;
                 nb = status_vals[idx];
                 nb.set(0, 0);
-                if ($c.and64(cond, 1048576)) {
+                if ($c.and64(cond, BL_MASK.STONE)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Stone"), -1);
                 }
-                if ($c.and64(cond, 262144)) {
+                if ($c.and64(cond, BL_MASK.SLIME)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Slime"), -1);
                 }
-                if ($c.and64(cond, 2097152)) {
+                if ($c.and64(cond, BL_MASK.STRNGL)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Strngl"), -1);
                 }
-                if ($c.and64(cond, 128)) {
+                if ($c.and64(cond, BL_MASK.FOODPOIS)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" FoodPois"), -1);
                 }
-                if ($c.and64(cond, 16777216)) {
+                if ($c.and64(cond, BL_MASK.TERMILL)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" TermIll"), -1);
                 }
-                if ($c.and64(cond, 2)) {
+                if ($c.and64(cond, BL_MASK.BLIND)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Blind"), -1);
                 }
-                if ($c.and64(cond, 16)) {
+                if ($c.and64(cond, BL_MASK.DEAF)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Deaf"), -1);
                 }
-                if ($c.and64(cond, 4194304)) {
+                if ($c.and64(cond, BL_MASK.STUN)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Stun"), -1);
                 }
-                if ($c.and64(cond, 8)) {
+                if ($c.and64(cond, BL_MASK.CONF)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Conf"), -1);
                 }
-                if ($c.and64(cond, 1024)) {
+                if ($c.and64(cond, BL_MASK.HALLU)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Hallu"), -1);
                 }
-                if ($c.and64(cond, 16384)) {
+                if ($c.and64(cond, BL_MASK.LEV)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Lev"), -1);
                 }
-                if ($c.and64(cond, 64)) {
+                if ($c.and64(cond, BL_MASK.FLY)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Fly"), -1);
                 }
-                if ($c.and64(cond, 65536)) {
+                if ($c.and64(cond, BL_MASK.RIDE)) {
                     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Ride"), -1);
                 }
                 break;
@@ -328,42 +339,42 @@ export async function genl_status_update(idx, ptr, chg, percent, color, colormas
         }
         return;
     }
-    if (!(idx === -1 /* BL_FLUSH */ || idx === -2 /* BL_RESET */)) {
+    if (!(idx === BL.FLUSH || idx === BL.RESET)) {
         return;
     }
     nb = new $c.Ptr(newbot1, 0);
     nb.set(0, 0);
-    for (i = 0; (idx1 = genl_status_update$fieldorder[0][i]) !== -1 /* BL_FLUSH */; i = i + 1 | 0) {
+    for (i = 0; (idx1 = genl_status_update$fieldorder[0][i]) !== BL.FLUSH; i = i + 1 | 0) {
         if (status_activefields[idx1]) {
             $c.__builtin___strcpy_chk(nb = eos(nb), status_vals[idx1], -1);
         }
     }
-    lndelta = (status_activefields[10 /* BL_GOLD */] && $c.strstr(status_vals[10 /* BL_GOLD */], $c.lit("\\G")) ? 9 : 0) >>> 0;
+    lndelta = (status_activefields[BL.GOLD] && $c.strstr(status_vals[BL.GOLD], $c.lit("\\G")) ? 9 : 0) >>> 0;
     for (pass = 1; pass <= 4; pass = pass + 1 >>> 0) {
         fieldlist = new $c.Ptr(genl_status_update$fieldorder[pass], 0);
         nb = new $c.Ptr(newbot2, 0);
         nb.set(0, 0);
-        for (i = 0; (idx2 = fieldlist.get(i)) !== -1 /* BL_FLUSH */; i = i + 1 | 0) {
+        for (i = 0; (idx2 = fieldlist.get(i)) !== BL.FLUSH; i = i + 1 | 0) {
             if (status_activefields[idx2]) {
                 val = status_vals[idx2];
                 switch (idx2) {
-                    case 18 /* BL_HP */:
-                    case 13 /* BL_XP */:
-                    case 15 /* BL_HD */:
-                    case 16 /* BL_TIME */:
+                    case BL.HP:
+                    case BL.XP:
+                    case BL.HD:
+                    case BL.TIME:
                         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" "), -1);
                         break;
-                    case 20 /* BL_LEVELDESC */:
+                    case BL.LEVELDESC:
                         if (i !== 0) {
                             $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" "), -1);
                         }
                         break;
-                    case 17 /* BL_HUNGER */:
+                    case BL.HUNGER:
                         if ($c.strcmp(val, $c.lit(" "))) {
                             $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" "), -1);
                         }
                         break;
-                    case 9 /* BL_CAP */:
+                    case BL.CAP:
                         if (!$c.strcmp(val, $c.lit(" "))) {
                             val = val.add(1);
                         }
@@ -373,24 +384,24 @@ export async function genl_status_update(idx, ptr, chg, percent, color, colormas
                 }
                 $c.__builtin___strcpy_chk(nb = eos(nb), val, -1);
             }
-            if (idx2 === 22 /* BL_CONDITION */ && pass < 4 && $c.subu64($c.strlen(new $c.Ptr(newbot2, 0)), lndelta) > 80) {
+            if (idx2 === BL.CONDITION && pass < 4 && $c.subu64($c.strlen(new $c.Ptr(newbot2, 0)), lndelta) > COLNO) {
                 break;
             }
         }
-        if (idx2 === -1 /* BL_FLUSH */) {
+        if (idx2 === BL.FLUSH) {
             if (pass > 1) {
                 mungspaces(new $c.Ptr(newbot2, 0));
             }
             break;
         }
     }
-    await windowprocs.win_curs($G.WIN_STATUS, 1, 0);
-    await windowprocs.win_putstr($G.WIN_STATUS, 0, new $c.Ptr(newbot1, 0));
-    await windowprocs.win_curs($G.WIN_STATUS, 1, 1);
-    await windowprocs.win_putmixed($G.WIN_STATUS, 0, new $c.Ptr(newbot2, 0));
+    await curs()($G.WIN_STATUS, 1, 0);
+    await putstr()($G.WIN_STATUS, 0, new $c.Ptr(newbot1, 0));
+    await curs()($G.WIN_STATUS, 1, 1);
+    await putmixed()($G.WIN_STATUS, 0, new $c.Ptr(newbot2, 0));
 }
 export function dump_open_log(now) {   // windows.c:1244
-    now;
+    nhUse(now);
 }
 export function dump_close_log() {   // windows.c:1267
     if (dumplog_file) {
@@ -403,7 +414,7 @@ export async function dump_forward_putstr(win, attr, str, no_forward) {   // win
         $c.fprintf(dumplog_file, $c.lit("%s\n"), str);
     }
     if (!no_forward) {
-        await windowprocs.win_putstr(win, attr, str);
+        await putstr()(win, attr, str);
     }
 }
 function dump_putstr(win, attr, str) {   // windows.c:1286
@@ -412,7 +423,7 @@ function dump_putstr(win, attr, str) {   // windows.c:1286
     }
 }
 function dump_create_nhwindow(type) {   // windows.c:1293
-    return -1;
+    return WIN_ERR;
 }
 function dump_clear_nhwindow(win) {   // windows.c:1300
     return;
@@ -428,7 +439,7 @@ function dump_start_menu(win, mbehavior) {   // windows.c:1321
 }
 function dump_add_menu(win, glyphinfo, identifier, ch, gch, attr, clr, str, itemflags) {   // windows.c:1328
     if (dumplog_file) {
-        if (glyphinfo.glyph === 9624 /* MAX_GLYPH */) {
+        if (glyphinfo.glyph === NO_GLYPH) {
             $c.fprintf(dumplog_file, $c.lit(" %s\n"), str);
         } else {
             $c.fprintf(dumplog_file, $c.lit("  %c - %s\n"), ch, str);
@@ -469,7 +480,7 @@ export function dump_redirect(onoff_flag) {   // windows.c:1366
     }
 }
 export function has_color(color) {   // windows.c:1397
-    return iflags.wc_color && windowprocs.name && $c.andu64(windowprocs.wincap, 1) && windowprocs.has_color[color] ? 1 : 0;
+    return iflags.wc_color && windowprocs.name && $c.andu64(windowprocs.wincap, WC.COLOR) && windowprocs.has_color[color] ? 1 : 0;
 }
 export function glyph2ttychar(glyph) {   // windows.c:1410
     let glyphinfo = new $T.glyphinfo();
@@ -548,7 +559,7 @@ export function decode_mixed(buf, str) {   // windows.c:1466
 }
 export async function genl_putmixed(window, attr, str) {   // windows.c:1528
     let buf = new Int8Array(256);
-    await windowprocs.win_putstr(window, attr, decode_mixed(new $c.Ptr(buf, 0), str));
+    await putstr()(window, attr, decode_mixed(new $c.Ptr(buf, 0), str));
 }
 export function genl_display_file(fname, complain) {   // windows.c:1539
     let buf = new Int8Array(256), f = null;
@@ -558,7 +569,7 @@ export function genl_display_file(fname, complain) {   // windows.c:1539
             $c.fprintf($c.__stdoutp, $c.lit("\nCannot open \"%s\".\n"), fname);
         }
     } else {
-        while ($c.fgets(new $c.Ptr(buf, 0), 256, f)) {
+        while ($c.fgets(new $c.Ptr(buf, 0), BUFSZ, f)) {
             if ($c.fputs(new $c.Ptr(buf, 0), $c.__stdoutp) < 0) {
                 break;
             }
@@ -568,7 +579,7 @@ export function genl_display_file(fname, complain) {   // windows.c:1539
 }
 export function menuitem_invert_test(mode, itemflags, is_selected) {   // windows.c:1562
     let skipinvert = 0;
-    skipinvert = $c.i8((itemflags & 2) >>> 0 !== 0 ? 1 : 0);
+    skipinvert = $c.i8((itemflags & MENU.ITEMFLAGS_SKIPINVERT) >>> 0 !== 0 ? 1 : 0);
     if (!skipinvert) {
         return 1;
     }
@@ -598,14 +609,14 @@ export async function choose_classes_menu(prompt, category, way, class_list, cla
     pick_list[0] = null;
     text = null;
     accelerator = 0;
-    clr = 8;
+    clr = NO_COLOR;
     if (!class_list || !class_select) {
         return 0;
     }
     next_accelerator = 97;
     any.$copyFrom(cg.zeroany);
-    win = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(win, 0);
+    win = await create_nhwindow()(NHW.MENU);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     while (class_list.get(0)) {
         selected = 0;
         switch (category) {
@@ -636,7 +647,7 @@ export async function choose_classes_menu(prompt, category, way, class_list, cla
             }
         }
         any.a_int = class_list.get(0);
-        await add_menu(win, nul_glyphinfo, any, $c.i8(accelerator), $c.i8(category ? class_list.get(0) : 0), 0, clr, new $c.Ptr(buf, 0), selected ? 1 : 0);
+        await add_menu(win, nul_glyphinfo, any, $c.i8(accelerator), $c.i8(category ? class_list.get(0) : 0), ATR.NONE, clr, new $c.Ptr(buf, 0), selected ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
         if (category > 0) {
             if (next_accelerator === 90) {
                 break;
@@ -653,15 +664,15 @@ export async function choose_classes_menu(prompt, category, way, class_list, cla
         any.$copyFrom(cg.zeroany);
         any.a_int = 32;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%c  %s"), $c.i8(any.a_int), $c.lit("All classes of objects"));
-        await add_menu(win, nul_glyphinfo, any, 65, 0, 0, clr, new $c.Ptr(buf, 0), 2);
+        await add_menu(win, nul_glyphinfo, any, 65, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_SKIPINVERT);
         if (!$c.strcmp(prompt, $c.lit("Autopickup what?"))) {
             await add_menu_str(win, $c.lit("Note: when no choices are selected, \"all\" is implied."));
             await add_menu_str(win, flags.pickup ? $c.lit("Toggle off 'autopickup' to not pick up anything.") : $c.lit("Toggle on 'autopickup' to automatically pick these things up."));
         }
     }
-    await windowprocs.win_end_menu(win, prompt);
-    n = await select_menu(win, way ? 2 : 1, new $c.Ptr(pick_list, 0));
-    await windowprocs.win_destroy_nhwindow(win);
+    await end_menu()(win, prompt);
+    n = await select_menu(win, way ? PICK.ANY : PICK.ONE, new $c.Ptr(pick_list, 0));
+    await destroy_nhwindow()(win);
     if (n > 0) {
         if (category === 1) {
             for (i = 0; i < n; i = i + 1 | 0) {
@@ -690,7 +701,7 @@ export function adjust_menu_promptstyle(window, style) {   // windows.c:1769
     wri.$copyFrom(zerowri);
     wri.fromcore.menu_promptstyle.color = style.color;
     wri.fromcore.menu_promptstyle.attr = style.attr;
-    windowprocs.win_ctrl_nhwindow(window, 3 /* set_menu_promptstyle */, wri);
+    ctrl_nhwindow()(window, set_menu_promptstyle, wri);
     go.opt_need_promptstyle = 0;
 }
 export async function add_menu(window, glyphinfo, identifier, ch, gch, attr$in, color$in, str, itemflags) {   // windows.c:1785
@@ -708,7 +719,7 @@ export async function add_menu(window, glyphinfo, identifier, ch, gch, attr$in, 
         return;
     }
     if (iflags.use_menu_color) {
-        if ((itemflags & 4) >>> 0 === 0) {
+        if ((itemflags & MENU.ITEMFLAGS_SKIPMENUCOLORS) >>> 0 === 0) {
             get_menu_coloring(str, new $c.Ptr(color, 0), new $c.Ptr(attr, 0));
         }
     }
@@ -721,14 +732,14 @@ export async function add_menu_heading(tmpwin, buf) {   // windows.c:1816
     attr = iflags.menu_headings.attr;
     color = iflags.menu_headings.color;
     if (program_state.gameover) {
-        attr = 0, color = 8;
+        attr = ATR.NONE, color = NO_COLOR;
     }
-    await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, attr, color, buf, 4);
+    await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, attr, color, buf, MENU.ITEMFLAGS_SKIPMENUCOLORS);
 }
 export async function add_menu_str(tmpwin, buf) {   // windows.c:1832
     let any = new $T.any();
     any.$copyFrom(cg.zeroany);
-    await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, 8, buf, 0);
+    await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, NO_COLOR, buf, MENU.ITEMFLAGS_NONE);
 }
 function get_menu_coloring(str, color, attr) {   // windows.c:1841
     let tmpmc = null;
@@ -758,7 +769,7 @@ export async function getlin(query, bufp) {   // windows.c:1868
     got_cmdq = 0;
     cmdq = null;
     while ((cmdq = cmdq_pop()) !== null) {
-        if (cmdq.typ === 0 /* CMDQ_KEY */) {
+        if (cmdq.typ === CMDQ.KEY) {
             got_cmdq = 1;
             bufp.set(0, $c.i8(cmdq.key !== 10 ? cmdq.key : 0));
             bufp = bufp.add(1);
@@ -791,13 +802,13 @@ export function $init() {
     for (let $i0 = 0; $i0 < 2; $i0++) {
         winchoices[$i0].$copyFrom(new $T.win_choices());
     }
-    winchoices[0].procs = tty_procs;
-    winchoices[0].ini_routine = win_tty_init;
-    winchoices[1].procs = null;
-    winchoices[1].ini_routine = null;
+    $c.init(winchoices, [
+        { procs: tty_procs, ini_routine: win_tty_init },
+        {}
+    ]);
     hup_procs.$copyFrom(new $T.window_procs());
     hup_procs.name = $c.lit("hup");
-    hup_procs.wp_id = 9;
+    hup_procs.wp_id = wp_hup;
     hup_procs.wincap = 0;
     hup_procs.wincap2 = 0;
     hup_procs.has_color[0] = 0;
@@ -880,85 +891,33 @@ export function $init() {
     zerowri.tocore.havecols = 0;
     zerowri.fromcore.core_request = 0;
     zerowri.fromcore.invmode = 0;
-    zerowri.fromcore.menu_promptstyle.color = 8;
-    zerowri.fromcore.menu_promptstyle.attr = 0;
+    zerowri.fromcore.menu_promptstyle.color = NO_COLOR;
+    zerowri.fromcore.menu_promptstyle.attr = ATR.NONE;
     for (let $i0 = 0; $i0 < 5; $i0++) {
         genl_status_update$fieldorder[$i0].fill(0);
     }
-    genl_status_update$fieldorder[0][0] = 0;
-    genl_status_update$fieldorder[0][1] = 1;
-    genl_status_update$fieldorder[0][2] = 2;
-    genl_status_update$fieldorder[0][3] = 3;
-    genl_status_update$fieldorder[0][4] = 4;
-    genl_status_update$fieldorder[0][5] = 5;
-    genl_status_update$fieldorder[0][6] = 6;
-    genl_status_update$fieldorder[0][7] = 7;
-    genl_status_update$fieldorder[0][8] = 8;
-    genl_status_update$fieldorder[0][9] = -1;
-    genl_status_update$fieldorder[0][10] = -1;
-    genl_status_update$fieldorder[0][11] = -1;
-    genl_status_update$fieldorder[0][12] = -1;
-    genl_status_update$fieldorder[0][13] = -1;
-    genl_status_update$fieldorder[0][14] = -1;
-    genl_status_update$fieldorder[1][0] = 20;
-    genl_status_update$fieldorder[1][1] = 10;
-    genl_status_update$fieldorder[1][2] = 18;
-    genl_status_update$fieldorder[1][3] = 19;
-    genl_status_update$fieldorder[1][4] = 11;
-    genl_status_update$fieldorder[1][5] = 12;
-    genl_status_update$fieldorder[1][6] = 14;
-    genl_status_update$fieldorder[1][7] = 13;
-    genl_status_update$fieldorder[1][8] = 21;
-    genl_status_update$fieldorder[1][9] = 15;
-    genl_status_update$fieldorder[1][10] = 16;
-    genl_status_update$fieldorder[1][11] = 17;
-    genl_status_update$fieldorder[1][12] = 9;
-    genl_status_update$fieldorder[1][13] = 22;
-    genl_status_update$fieldorder[1][14] = -1;
-    genl_status_update$fieldorder[2][0] = 20;
-    genl_status_update$fieldorder[2][1] = 10;
-    genl_status_update$fieldorder[2][2] = 18;
-    genl_status_update$fieldorder[2][3] = 19;
-    genl_status_update$fieldorder[2][4] = 11;
-    genl_status_update$fieldorder[2][5] = 12;
-    genl_status_update$fieldorder[2][6] = 14;
-    genl_status_update$fieldorder[2][7] = 13;
-    genl_status_update$fieldorder[2][8] = 21;
-    genl_status_update$fieldorder[2][9] = 15;
-    genl_status_update$fieldorder[2][10] = 17;
-    genl_status_update$fieldorder[2][11] = 9;
-    genl_status_update$fieldorder[2][12] = 22;
-    genl_status_update$fieldorder[2][13] = 16;
-    genl_status_update$fieldorder[2][14] = -1;
-    genl_status_update$fieldorder[3][0] = 20;
-    genl_status_update$fieldorder[3][1] = 10;
-    genl_status_update$fieldorder[3][2] = 18;
-    genl_status_update$fieldorder[3][3] = 19;
-    genl_status_update$fieldorder[3][4] = 11;
-    genl_status_update$fieldorder[3][5] = 12;
-    genl_status_update$fieldorder[3][6] = 14;
-    genl_status_update$fieldorder[3][7] = 17;
-    genl_status_update$fieldorder[3][8] = 9;
-    genl_status_update$fieldorder[3][9] = 22;
-    genl_status_update$fieldorder[3][10] = 13;
-    genl_status_update$fieldorder[3][11] = 21;
-    genl_status_update$fieldorder[3][12] = 15;
-    genl_status_update$fieldorder[3][13] = 16;
-    genl_status_update$fieldorder[3][14] = -1;
-    genl_status_update$fieldorder[4][0] = 18;
-    genl_status_update$fieldorder[4][1] = 19;
-    genl_status_update$fieldorder[4][2] = 11;
-    genl_status_update$fieldorder[4][3] = 12;
-    genl_status_update$fieldorder[4][4] = 14;
-    genl_status_update$fieldorder[4][5] = 17;
-    genl_status_update$fieldorder[4][6] = 9;
-    genl_status_update$fieldorder[4][7] = 22;
-    genl_status_update$fieldorder[4][8] = 20;
-    genl_status_update$fieldorder[4][9] = 10;
-    genl_status_update$fieldorder[4][10] = 13;
-    genl_status_update$fieldorder[4][11] = 21;
-    genl_status_update$fieldorder[4][12] = 15;
-    genl_status_update$fieldorder[4][13] = 16;
-    genl_status_update$fieldorder[4][14] = -1;
+    $c.init(genl_status_update$fieldorder, [
+        [BL.TITLE, BL.STR, BL.DX, BL.CO, BL.IN, BL.WI, BL.CH, BL.ALIGN,
+          BL.SCORE, BL.FLUSH, BL.FLUSH, BL.FLUSH, BL.FLUSH, BL.FLUSH,
+          BL.FLUSH],
+        [BL.LEVELDESC, BL.GOLD,
+          BL.HP, BL.HPMAX, BL.ENE, BL.ENEMAX, BL.AC,
+          BL.XP, BL.EXP, BL.HD,
+          BL.TIME,
+          BL.HUNGER, BL.CAP, BL.CONDITION,
+          BL.FLUSH],
+        [BL.LEVELDESC, BL.GOLD,
+          BL.HP, BL.HPMAX, BL.ENE, BL.ENEMAX, BL.AC,
+          BL.XP, BL.EXP, BL.HD,
+          BL.HUNGER, BL.CAP, BL.CONDITION,
+          BL.TIME, BL.FLUSH],
+        [BL.LEVELDESC, BL.GOLD,
+          BL.HP, BL.HPMAX, BL.ENE, BL.ENEMAX, BL.AC,
+          BL.HUNGER, BL.CAP, BL.CONDITION,
+          BL.XP, BL.EXP, BL.HD, BL.TIME, BL.FLUSH],
+        [BL.HP, BL.HPMAX, BL.ENE, BL.ENEMAX, BL.AC,
+          BL.HUNGER, BL.CAP, BL.CONDITION,
+          BL.LEVELDESC, BL.GOLD, BL.XP, BL.EXP, BL.HD, BL.TIME, BL.FLUSH]
+    ]);
     encglyph$encbuf.fill(0);
 }

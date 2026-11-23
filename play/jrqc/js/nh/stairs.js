@@ -5,6 +5,7 @@ import { $G } from './globals.js';
 import { alloc } from './alloc.js';
 import { gs, svd, u } from './decl.js';
 import { assign_level, depth, dunlev, on_level, single_level_branch, u_on_newpos, u_on_rndspot } from './dungeon.js';
+import { FALSE, TRUE } from './global.h.js';
 import { eos, strsubst } from './hacklib.js';
 
 export async function stairway_add(x, y, up, isladder, dest) {   // stairs.c:8
@@ -15,7 +16,7 @@ export async function stairway_add(x, y, up, isladder, dest) {   // stairs.c:8
     tmp.sy = y;
     tmp.up = up;
     tmp.isladder = isladder;
-    tmp.u_traversed = 0;
+    tmp.u_traversed = FALSE;
     assign_level(tmp.tolev, dest);
     tmp.next = gs.stairs;
     gs.stairs = tmp;
@@ -98,7 +99,7 @@ export async function u_on_sstairs(upflag) {   // stairs.c:113
 }
 export async function u_on_upstairs() {   // stairs.c:125
     let stway = null;
-    stway = stairway_find_dir(1);
+    stway = stairway_find_dir(TRUE);
     if (stway) {
         await u_on_newpos(stway.sx, stway.sy);
     } else {
@@ -107,7 +108,7 @@ export async function u_on_upstairs() {   // stairs.c:125
 }
 export async function u_on_dnstairs() {   // stairs.c:137
     let stway = null;
-    stway = stairway_find_dir(0);
+    stway = stairway_find_dir(FALSE);
     if (stway) {
         await u_on_newpos(stway.sx, stway.sy);
     } else {

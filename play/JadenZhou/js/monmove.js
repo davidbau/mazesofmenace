@@ -45,7 +45,7 @@ import { M_ATTK_HIT, G_GENOD } from './const.js';
 import { Is_rogue_level, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, NORMAL_SPEED } from './const.js';
 import { mattackm } from './mhitm.js';
 import { obj_resists } from './dogmove.js';
-import { touch_artifact } from './artifact.js';
+import { touch_artifact, has_magic_key } from './artifact.js';
 import { is_metallic, is_rustprone, AMULET_OF_STRANGULATION,
          RIN_SLOW_DIGESTION } from './objects.js';
 import { resists_poison } from './mondata.js';
@@ -56,7 +56,13 @@ import { grow_up } from './makemon.js';
 import { is_organic } from './objects.js';
 import { eaten_stat } from './eat.js';
 import { extract_from_minvent } from './steal.js';
-import { m_consume_obj } from './mon.js';
+import { m_consume_obj, mondied, wake_nearto, disturb_buried_zombies } from './mon.js';
+import { mon_learns_traps } from './mondata.js';
+import { Unaware } from './eat.js';
+import { TRAPPED_DOOR } from './const.js';
+import { has_ceiling } from './insight.js';
+import { resist_conflict } from './mhitm.js';
+import { cuss } from './wizard.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon,
          m_has_launcher_and_ammo } from './weapon.js';
 import { visible_region_at, create_gas_cloud, m_in_out_region } from './region.js';
@@ -241,6 +247,30 @@ export function m_canseeu(m) {
 }
 /* C ref: hack.h mdistu() */
 function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
+
+// C ref: monmove.c mb_trapped()
+/* monster has triggered trapped door lock or was present when it got
+   triggered remotely (at door spot, door hit by zap);
+   returns True if mtmp dies */
+export async function mb_trapped(mtmp, canseeit) {
+    if (game.flags.verbose) {
+        if (canseeit && !Unaware())
+            await pline("KABOOM!!  You see a door explode."); /* pline_mon() */
+        else if (!Deaf())
+            await You_hear(`a ${(mdistu(mtmp) > 7 * 7) ? "distant" : "nearby"} explosion.`);
+    }
+    await wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
+    mtmp.mstun = 1;
+    mtmp.mhp -= rnd(15);
+    if (mtmp.mhp < 1) { /* DEADMONSTER(mtmp) */
+        await mondied(mtmp);
+        if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
+            return true;
+        /* will get here if lifesaved */
+    }
+    mon_learns_traps(mtmp, TRAPPED_DOOR);
+    return false;
+}
 /* C ref: mon.c m_in_air() */
 export function m_in_air(mtmp) {
     return is_flyer(mtmp.data) || is_floater(mtmp.data)
@@ -965,8 +995,8 @@ export async function dochug(mtmp) {
         case MMOVE_NOTHING: /* no movement, but it can still attack you */
         case MMOVE_DONE: /* absolutely no movement */
             /* vault guard might have vanished */
-            if (mtmp.isgd)
-                throw new Error('dochug(): vault guards not ported yet');
+            if (mtmp.isgd && (DEADMONSTER_mm(mtmp) || mtmp.mx === 0))
+                return 1; /* behave as if it died */
             /* During hallucination, monster appearance should
              * still change - even if it doesn't move.
              */
@@ -977,8 +1007,9 @@ export async function dochug(mtmp) {
             /* if confused grabber has wandered off, let go */
             if (mtmp === u.ustuck)
                 throw new Error('dochug(): unstuck() not ported yet');
-            /* if (grounded(mdat)) disturb_buried_zombies(): no buried
-               zombies are ported yet */
+            if (!is_flyer(mdat) && !is_floater(mdat) /* grounded(mdat) */
+                && ((mdat.mflags1 & M.M1_CLING) === 0 || !has_ceiling(game.u.uz)))
+                disturb_buried_zombies(mtmp.mx, mtmp.my);
             /* Maybe it stepped on a trap and fell asleep... */
             if (helpless(mtmp))
                 return 0;
@@ -1006,7 +1037,7 @@ export async function dochug(mtmp) {
 
     /* Now, attack the player if possible - one attack set per monst */
     if (status !== MMOVE_DONE && (!mtmp.mpeaceful
-                                  || (Conflict() && resist_conflict_nyi()))) {
+                                  || (Conflict() && !resist_conflict(mtmp)))) {
         if (((d.inrange && !d.scared) || panicattk) && !noattacks(mdat)
             /* [is this hp check really needed?] */
             && (Upolyd() ? u.mh : u.uhp) > 0) {
@@ -1024,7 +1055,7 @@ export async function dochug(mtmp) {
     /* extra emotional attack for vile monsters */
     if (d.inrange && mtmp.data.msound === M.MS_CUSS && !mtmp.mpeaceful
         && couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis && !rn2(5))
-        throw new Error('cuss() not ported yet');
+        await cuss(mtmp);
 
     /* note: can't get here when monster is dead, so this always returns 0 */
     return (status === MMOVE_DIED) ? 1 : 0;
@@ -1034,9 +1065,6 @@ export async function dochug(mtmp) {
     && (findgold(mtmp->minvent) || rn2(2))) */
 function leprechaun_check(mtmp) {
     throw new Error('dochug(): leprechaun findgold() not ported yet');
-}
-function resist_conflict_nyi() {
-    throw new Error('resist_conflict() not ported yet');
 }
 
 // ── C ref: monmove.c mon_track_add() ──
@@ -1784,10 +1812,9 @@ export async function m_move(mtmp, after) {
 
     /* likewise for shopkeeper, guard, or priest */
     if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
-        if (mtmp.isgd)
-            throw new Error('m_move(): gd_move() not ported yet');
         const xm = mtmp.isshk ? await shk_move(mtmp)
-                   : await pri_move(mtmp);
+                   : mtmp.isgd ? await gd_move(mtmp)
+                     : await pri_move(mtmp);
 
         switch (xm) {
         case -2:
@@ -2106,7 +2133,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
             && !passes_walls(ptr) /* doesn't need to open doors */
             && !can_tunnel) {     /* taken care of below */
             const here = lev.at(mtmp.mx, mtmp.my);
-            const btrapped = (here.doormask & D_TRAPPED) !== 0;
+            let btrapped = (here.doormask & D_TRAPPED) !== 0;
 
             /* used after monster 'who' has been moved to closed door spot
                'where' which will now be changed to door state 'what' with
@@ -2121,8 +2148,15 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
             };
 
             /* if mon has MKoT, disarm door trap; no message given */
-            if (btrapped /* && has_magic_key(mtmp) */)
-                throw new Error('postmov(): has_magic_key()/mb_trapped() not ported yet');
+            if (btrapped && has_magic_key(mtmp)) {
+                /* BUG: this lets a vampire or blob or a doorbuster
+                   holding the Key disarm the trap even though it isn't
+                   using that Key when squeezing under or smashing the
+                   door.  Not significant enough to worry about; perhaps
+                   the Key's magic is more powerful for monsters? */
+                here.doormask &= ~D_TRAPPED;
+                btrapped = false;
+            }
             if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0
                 && amorphous(ptr)) {
                 if (game.flags.verbose && canseemon(mtmp))
@@ -2133,28 +2167,36 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                    first then door handling plus feedback comes after */
 
                 UnblockDoor(here, mtmp, !btrapped ? D_ISOPEN : D_NODOOR);
-                /* btrapped: mb_trapped() -- not reached, see above */
-                /* Soundeffect(se_door_unlock_and_open, 50) */
-                if (game.flags.verbose) {
-                    if (canseeit && canspotmon(mtmp)) {
-                        await pline(`${Monnam(mtmp)} unlocks and opens a door.`);
-                    } else if (canseeit) {
-                        await You_see("a door unlock and open.");
-                    } else if (!Deaf()) {
-                        await You_hear("a door unlock and open.");
+                if (btrapped) {
+                    if (await mb_trapped(mtmp, canseeit))
+                        return MMOVE_DIED;
+                } else {
+                    /* Soundeffect(se_door_unlock_and_open, 50) */
+                    if (game.flags.verbose) {
+                        if (canseeit && canspotmon(mtmp)) {
+                            await pline(`${Monnam(mtmp)} unlocks and opens a door.`);
+                        } else if (canseeit) {
+                            await You_see("a door unlock and open.");
+                        } else if (!Deaf()) {
+                            await You_hear("a door unlock and open.");
+                        }
                     }
                 }
             } else if (here.doormask === D_CLOSED && can_open) {
                 UnblockDoor(here, mtmp, !btrapped ? D_ISOPEN : D_NODOOR);
-                /* btrapped: mb_trapped() -- not reached, see above */
-                /* Soundeffect(se_door_open, 100) */
-                if (game.flags.verbose) {
-                    if (canseeit && canspotmon(mtmp)) {
-                        await pline(`${Monnam(mtmp)} opens a door.`);
-                    } else if (canseeit) {
-                        await You_see("a door open.");
-                    } else if (!Deaf()) {
-                        await You_hear("a door open.");
+                if (btrapped) {
+                    if (await mb_trapped(mtmp, canseeit))
+                        return MMOVE_DIED;
+                } else {
+                    /* Soundeffect(se_door_open, 100) */
+                    if (game.flags.verbose) {
+                        if (canseeit && canspotmon(mtmp)) {
+                            await pline(`${Monnam(mtmp)} opens a door.`);
+                        } else if (canseeit) {
+                            await You_see("a door open.");
+                        } else if (!Deaf()) {
+                            await You_hear("a door open.");
+                        }
                     }
                 }
             } else if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0) {
@@ -2164,15 +2206,19 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                               ? D_NODOOR
                               : D_BROKEN);
                 UnblockDoor(here, mtmp, mask);
-                /* btrapped: mb_trapped() -- not reached, see above */
-                /* Soundeffect(se_door_crash_open, 50) */
-                if (game.flags.verbose) {
-                    if (canseeit && canspotmon(mtmp)) {
-                        await pline(`${Monnam(mtmp)} smashes down a door.`);
-                    } else if (canseeit) {
-                        await You_see("a door crash open.");
-                    } else if (!Deaf()) {
-                        await You_hear("a door crash open.");
+                if (btrapped) {
+                    if (await mb_trapped(mtmp, canseeit))
+                        return MMOVE_DIED;
+                } else {
+                    /* Soundeffect(se_door_crash_open, 50) */
+                    if (game.flags.verbose) {
+                        if (canseeit && canspotmon(mtmp)) {
+                            await pline(`${Monnam(mtmp)} smashes down a door.`);
+                        } else if (canseeit) {
+                            await You_see("a door crash open.");
+                        } else if (!Deaf()) {
+                            await You_hear("a door crash open.");
+                        }
                     }
                 }
                 /* if it's a shop door, schedule repair */
@@ -2340,3 +2386,7 @@ import { t_at as t_at_mm } from './trap.js';
 import { findgold as findgold_mm, mdrop_obj as mdrop_obj_mm } from './steal.js';
 import { bury_an_obj as bury_an_obj_mm } from './dig.js';
 import { COIN_CLASS as COIN_CLASS_MM } from './objects.js';
+
+import { gd_move } from './vault.js';
+/* C ref: monst.h DEADMONSTER() */
+function DEADMONSTER_mm(mon) { return mon.mhp < 1; }

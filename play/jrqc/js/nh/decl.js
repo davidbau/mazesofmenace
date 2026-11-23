@@ -2,7 +2,16 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { A } from './attrib.h.js';
+import { NO_COLOR } from './color.h.js';
+import { S } from './defsym.h.js';
+import { COLNO, FALSE, MAXNROFROOMS, ROWNO, TRUE, phase_not_set } from './global.h.js';
+import { DIR, UNDEFINED_VALUE } from './hack.h.js';
+import { STRANGE_OBJECT } from './objects.h.js';
+import { NON_PM } from './permonst.h.js';
 import { raw_printf } from './pline.js';
+import { soundlib_nosound } from './sndprocs.h.js';
+import { ANY, WIN_ERR, wdmode_traditional } from './wintype.h.js';
 
 export const nhcb_name = $c.nulls(4);
 export const nhcb_counts = new Int32Array(4);
@@ -187,162 +196,162 @@ export async function decl_globals_init() {   // decl.c:1080
     gv.valuables[2].list = null;
     gv.valuables[2].size = 0;
     do {
-        if (g_init_a.havestate !== 1) {
+        if (g_init_a.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_a"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_b.havestate !== 1) {
+        if (g_init_b.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_b"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_c.havestate !== 1) {
+        if (g_init_c.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_c"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_d.havestate !== 1) {
+        if (g_init_d.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_d"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_e.havestate !== 1) {
+        if (g_init_e.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_e"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_f.havestate !== 1) {
+        if (g_init_f.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_f"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_g.havestate !== 1) {
+        if (g_init_g.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_g"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_h.havestate !== 1) {
+        if (g_init_h.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_h"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_i.havestate !== 1) {
+        if (g_init_i.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_i"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_j.havestate !== 1) {
+        if (g_init_j.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_j"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_k.havestate !== 1) {
+        if (g_init_k.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_k"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_l.havestate !== 1) {
+        if (g_init_l.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_l"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_m.havestate !== 1) {
+        if (g_init_m.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_m"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_n.havestate !== 1) {
+        if (g_init_n.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_n"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_o.havestate !== 1) {
+        if (g_init_o.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_o"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_p.havestate !== 1) {
+        if (g_init_p.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_p"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_q.havestate !== 1) {
+        if (g_init_q.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_q"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_r.havestate !== 1) {
+        if (g_init_r.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_r"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_s.havestate !== 1) {
+        if (g_init_s.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_s"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_t.havestate !== 1) {
+        if (g_init_t.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_t"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_u.havestate !== 1) {
+        if (g_init_u.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_u"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_v.havestate !== 1) {
+        if (g_init_v.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_v"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_w.havestate !== 1) {
+        if (g_init_w.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_w"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_x.havestate !== 1) {
+        if (g_init_x.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_x"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_y.havestate !== 1) {
+        if (g_init_y.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_y"));
             $c.exit(1);
         }
     } while (0);
     do {
-        if (g_init_z.havestate !== 1) {
+        if (g_init_z.havestate !== TRUE) {
             await raw_printf($c.lit("decl_globals_init: %s.havestate not True."), $c.lit("g_init_z"));
             $c.exit(1);
         }
     } while (0);
-    gs.subrooms = $c.relem(svr.rooms, 41);
+    gs.subrooms = $c.relem(svr.rooms, MAXNROFROOMS + 1);
     $c.__builtin___memset_chk(flags, 0, 208, 208);
     $c.__builtin___memset_chk(iflags, 0, 424, 424);
     $c.__builtin___memset_chk(a11y, 0, 16, 16);
@@ -353,7 +362,7 @@ export async function decl_globals_init() {   // decl.c:1080
     $G.uwep = $G.uarm = $G.uswapwep = $G.uquiver = $G.uarmu = $G.uskin = $G.uarmc = null;
     $G.uarmh = $G.uarms = $G.uarmg = $G.uarmf = $G.uamul = $G.uright = $G.uleft = null;
     $G.ublindf = $G.uchain = $G.uball = null;
-    $G.WIN_MESSAGE = $G.WIN_STATUS = $G.WIN_MAP = $G.WIN_INVEN = -1;
+    $G.WIN_MESSAGE = $G.WIN_STATUS = $G.WIN_MAP = $G.WIN_INVEN = WIN_ERR;
     gu.urole.$copyFrom(urole_init_data);
     gu.urace.$copyFrom(urace_init_data);
 }
@@ -363,12 +372,16 @@ export function sa_victual(context_victual) {   // decl.c:1199
 
 export function $init() {
     nhcb_name.fill(null);
-    nhcb_name[0] = $c.lit("cmd_before");
-    nhcb_name[1] = $c.lit("level_enter");
-    nhcb_name[2] = $c.lit("level_leave");
-    nhcb_name[3] = $c.lit("end_turn");
+    $c.init(nhcb_name, [
+        $c.lit("cmd_before"),
+        $c.lit("level_enter"),
+        $c.lit("level_leave"),
+        $c.lit("end_turn")
+    ]);
     nhcb_counts.fill(0);
-    nhcb_counts[0] = 0;
+    $c.init(nhcb_counts, [
+        0
+    ]);
     c_color_names.$copyFrom(new $T.c_color_names());
     c_color_names.c_black = $c.lit("black");
     c_color_names.c_amber = $c.lit("amber");
@@ -382,22 +395,24 @@ export function $init() {
     c_color_names.c_white = $c.lit("white");
     c_color_names.c_orange = $c.lit("orange");
     c_obj_colors.fill(null);
-    c_obj_colors[0] = $c.lit("black");
-    c_obj_colors[1] = $c.lit("red");
-    c_obj_colors[2] = $c.lit("green");
-    c_obj_colors[3] = $c.lit("brown");
-    c_obj_colors[4] = $c.lit("blue");
-    c_obj_colors[5] = $c.lit("magenta");
-    c_obj_colors[6] = $c.lit("cyan");
-    c_obj_colors[7] = $c.lit("gray");
-    c_obj_colors[8] = $c.lit("transparent");
-    c_obj_colors[9] = $c.lit("orange");
-    c_obj_colors[10] = $c.lit("bright green");
-    c_obj_colors[11] = $c.lit("yellow");
-    c_obj_colors[12] = $c.lit("bright blue");
-    c_obj_colors[13] = $c.lit("bright magenta");
-    c_obj_colors[14] = $c.lit("bright cyan");
-    c_obj_colors[15] = $c.lit("white");
+    $c.init(c_obj_colors, [
+        $c.lit("black"),
+        $c.lit("red"),
+        $c.lit("green"),
+        $c.lit("brown"),
+        $c.lit("blue"),
+        $c.lit("magenta"),
+        $c.lit("cyan"),
+        $c.lit("gray"),
+        $c.lit("transparent"),
+        $c.lit("orange"),
+        $c.lit("bright green"),
+        $c.lit("yellow"),
+        $c.lit("bright blue"),
+        $c.lit("bright magenta"),
+        $c.lit("bright cyan"),
+        $c.lit("white")
+    ]);
     c_common_strings.$copyFrom(new $T.c_common_strings());
     c_common_strings.c_nothing_happens = $c.lit("Nothing happens.");
     c_common_strings.c_nothing_seems_to_happen = $c.lit("Nothing seems to happen.");
@@ -416,102 +431,116 @@ export function $init() {
     disclosure_options.fill(0);
     disclosure_options.set([105, 97, 118, 103, 99, 111]);   // "iavgco"
     emptystr.fill(0);
-    emptystr[0] = 0;
+    $c.init(emptystr, [
+        0
+    ]);
     flags.$copyFrom(new $T.flag());
     hexdd.fill(0);
     hexdd.set([48, 48, 49, 49, 50, 50, 51, 51, 52, 52, 53, 53, 54, 54, 55, 55, 56, 56, 57, 57, 97, 65, 98, 66, 99, 67, 100, 68, 101, 69, 102, 70]);   // "00112233445566778899aAbBcCdDeEfF"
     xdir.fill(0);
-    xdir[0] = -1;
-    xdir[1] = -1;
-    xdir[2] = 0;
-    xdir[3] = 1;
-    xdir[4] = 1;
-    xdir[5] = 1;
-    xdir[6] = 0;
-    xdir[7] = -1;
-    xdir[8] = 0;
-    xdir[9] = 0;
+    $c.init(xdir, [
+        -1,
+        -1,
+        0,
+        1,
+        1,
+        1,
+        0,
+        -1,
+        0,
+        0
+    ]);
     ydir.fill(0);
-    ydir[0] = 0;
-    ydir[1] = -1;
-    ydir[2] = -1;
-    ydir[3] = -1;
-    ydir[4] = 0;
-    ydir[5] = 1;
-    ydir[6] = 1;
-    ydir[7] = 1;
-    ydir[8] = 0;
-    ydir[9] = 0;
+    $c.init(ydir, [
+        0,
+        -1,
+        -1,
+        -1,
+        0,
+        1,
+        1,
+        1,
+        0,
+        0
+    ]);
     zdir.fill(0);
-    zdir[0] = 0;
-    zdir[1] = 0;
-    zdir[2] = 0;
-    zdir[3] = 0;
-    zdir[4] = 0;
-    zdir[5] = 0;
-    zdir[6] = 0;
-    zdir[7] = 0;
-    zdir[8] = 1;
-    zdir[9] = -1;
+    $c.init(zdir, [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        -1
+    ]);
     dirs_ord.fill(0);
-    dirs_ord[0] = 0;
-    dirs_ord[1] = 2;
-    dirs_ord[2] = 4;
-    dirs_ord[3] = 6;
-    dirs_ord[4] = 1;
-    dirs_ord[5] = 3;
-    dirs_ord[6] = 5;
-    dirs_ord[7] = 7;
-    $G.has_strong_rngseed = 0;
+    $c.init(dirs_ord, [
+        DIR.W,
+        DIR.N,
+        DIR.E,
+        DIR.S,
+        DIR.NW,
+        DIR.NE,
+        DIR.SE,
+        DIR.SW
+    ]);
+    $G.has_strong_rngseed = FALSE;
     iflags.$copyFrom(new $T.instance_flags());
     a11y.$copyFrom(new $T.accessibility_data());
     materialnm.fill(null);
-    materialnm[0] = $c.lit("mysterious");
-    materialnm[1] = $c.lit("liquid");
-    materialnm[2] = $c.lit("wax");
-    materialnm[3] = $c.lit("organic");
-    materialnm[4] = $c.lit("flesh");
-    materialnm[5] = $c.lit("paper");
-    materialnm[6] = $c.lit("cloth");
-    materialnm[7] = $c.lit("leather");
-    materialnm[8] = $c.lit("wooden");
-    materialnm[9] = $c.lit("bone");
-    materialnm[10] = $c.lit("dragonhide");
-    materialnm[11] = $c.lit("iron");
-    materialnm[12] = $c.lit("metal");
-    materialnm[13] = $c.lit("copper");
-    materialnm[14] = $c.lit("silver");
-    materialnm[15] = $c.lit("gold");
-    materialnm[16] = $c.lit("platinum");
-    materialnm[17] = $c.lit("mithril");
-    materialnm[18] = $c.lit("plastic");
-    materialnm[19] = $c.lit("glass");
-    materialnm[20] = $c.lit("gemstone");
-    materialnm[21] = $c.lit("stone");
+    $c.init(materialnm, [
+        $c.lit("mysterious"),
+        $c.lit("liquid"),
+        $c.lit("wax"),
+        $c.lit("organic"),
+        $c.lit("flesh"),
+        $c.lit("paper"),
+        $c.lit("cloth"),
+        $c.lit("leather"),
+        $c.lit("wooden"),
+        $c.lit("bone"),
+        $c.lit("dragonhide"),
+        $c.lit("iron"),
+        $c.lit("metal"),
+        $c.lit("copper"),
+        $c.lit("silver"),
+        $c.lit("gold"),
+        $c.lit("platinum"),
+        $c.lit("mithril"),
+        $c.lit("plastic"),
+        $c.lit("glass"),
+        $c.lit("gemstone"),
+        $c.lit("stone")
+    ]);
     quitchars.fill(0);
     quitchars.set([32, 13, 10, 27]);   // " \r\n\x1b"
     shield_static.fill(0);
-    shield_static[0] = 82 /* S_ss1 */;
-    shield_static[1] = 83 /* S_ss2 */;
-    shield_static[2] = 84 /* S_ss3 */;
-    shield_static[3] = 83 /* S_ss2 */;
-    shield_static[4] = 82 /* S_ss1 */;
-    shield_static[5] = 83 /* S_ss2 */;
-    shield_static[6] = 85 /* S_ss4 */;
-    shield_static[7] = 82 /* S_ss1 */;
-    shield_static[8] = 83 /* S_ss2 */;
-    shield_static[9] = 84 /* S_ss3 */;
-    shield_static[10] = 83 /* S_ss2 */;
-    shield_static[11] = 82 /* S_ss1 */;
-    shield_static[12] = 83 /* S_ss2 */;
-    shield_static[13] = 85 /* S_ss4 */;
-    shield_static[14] = 82 /* S_ss1 */;
-    shield_static[15] = 83 /* S_ss2 */;
-    shield_static[16] = 84 /* S_ss3 */;
-    shield_static[17] = 83 /* S_ss2 */;
-    shield_static[18] = 82 /* S_ss1 */;
-    shield_static[19] = 83 /* S_ss2 */;
-    shield_static[20] = 85 /* S_ss4 */;
+    $c.init(shield_static, [
+        S.ss1,
+        S.ss2,
+        S.ss3,
+        S.ss2,
+        S.ss1,
+        S.ss2,
+        S.ss4,
+        S.ss1,
+        S.ss2,
+        S.ss3,
+        S.ss2,
+        S.ss1,
+        S.ss2,
+        S.ss4,
+        S.ss1,
+        S.ss2,
+        S.ss3,
+        S.ss2,
+        S.ss1,
+        S.ss2,
+        S.ss4
+    ]);
     u.$copyFrom(new $T.you());
     urealtime.$copyFrom(new $T.u_realtime());
     vowels.fill(0);
@@ -556,13 +585,13 @@ export function $init() {
     urole_init_data.filecode = $c.lit("Xxx");
     urole_init_data.homebase = $c.lit("home");
     urole_init_data.intermed = $c.lit("locate");
-    urole_init_data.mnum = -1;
-    urole_init_data.petnum = -1;
-    urole_init_data.ldrnum = -1;
-    urole_init_data.guardnum = -1;
-    urole_init_data.neminum = -1;
-    urole_init_data.enemy1num = -1;
-    urole_init_data.enemy2num = -1;
+    urole_init_data.mnum = NON_PM;
+    urole_init_data.petnum = NON_PM;
+    urole_init_data.ldrnum = NON_PM;
+    urole_init_data.guardnum = NON_PM;
+    urole_init_data.neminum = NON_PM;
+    urole_init_data.enemy1num = NON_PM;
+    urole_init_data.enemy2num = NON_PM;
     urole_init_data.enemy1sym = 0;
     urole_init_data.enemy2sym = 0;
     urole_init_data.questarti = 0;
@@ -597,7 +626,7 @@ export function $init() {
     urole_init_data.spelheal = 0;
     urole_init_data.spelshld = 0;
     urole_init_data.spelarmr = 4;
-    urole_init_data.spelstat = 1 /* A_INT */;
+    urole_init_data.spelstat = A.INT;
     urole_init_data.spelspec = 0;
     urole_init_data.spelsbon = -3;
     urace_init_data.$copyFrom(new $T.Race());
@@ -607,9 +636,9 @@ export function $init() {
     urace_init_data.filecode = $c.lit("Xxx");
     urace_init_data.individual.m = null;
     urace_init_data.individual.f = null;
-    urace_init_data.mnum = -1;
-    urace_init_data.mummynum = -1;
-    urace_init_data.zombienum = -1;
+    urace_init_data.mnum = NON_PM;
+    urace_init_data.mummynum = NON_PM;
+    urace_init_data.zombienum = NON_PM;
     urace_init_data.allow = 0;
     urace_init_data.selfmask = 0;
     urace_init_data.lovemask = 0;
@@ -647,12 +676,12 @@ export function $init() {
     g_init_a.apelist = null;
     g_init_a.amulets[0].count = 0;
     g_init_a.animal_list = null;
-    g_init_a.animal_list_count = 0;
+    g_init_a.animal_list_count = UNDEFINED_VALUE;
     g_init_a.A_first_hint = 0;
     g_init_a.A_second_hint = 0;
-    g_init_a.abort_looting = 0;
+    g_init_a.abort_looting = UNDEFINED_VALUE;
     g_init_a.auto_credit = 0;
-    g_init_a.active_soundlib = 0;
+    g_init_a.active_soundlib = soundlib_nosound;
     g_init_a.acid_ctx.dkn_boom = 0;
     g_init_a.acid_ctx.unk_boom = 0;
     g_init_a.acid_ctx.ctx_valid = 0;
@@ -664,7 +693,7 @@ export function $init() {
     g_init_b.blstats[0][0].chg = 0;
     g_init_b.blstats[0][0].percent_matters = 0;
     g_init_b.blstats[0][0].percent_value = 0;
-    g_init_b.blstats[0][0].anytype = 18;
+    g_init_b.blstats[0][0].anytype = ANY.INVALID;
     g_init_b.blstats[0][0].a.a_void = null;
     g_init_b.blstats[0][0].rawval.a_void = null;
     g_init_b.blstats[0][0].val = null;
@@ -681,12 +710,12 @@ export function $init() {
     g_init_b.bones.set([98, 111, 110, 101, 115, 110, 110, 46, 120, 120, 120, 46, 108, 101]);   // "bonesnn.xxx.le"
     g_init_b.bldrpush_oid = 0;
     g_init_b.bldrpushtime = 0;
-    g_init_b.bughack.inarea.x1 = 80;
-    g_init_b.bughack.inarea.y1 = 21;
+    g_init_b.bughack.inarea.x1 = COLNO;
+    g_init_b.bughack.inarea.y1 = ROWNO;
     g_init_b.bughack.inarea.x2 = 0;
     g_init_b.bughack.inarea.y2 = 0;
-    g_init_b.bughack.delarea.x1 = 80;
-    g_init_b.bughack.delarea.y1 = 21;
+    g_init_b.bughack.delarea.x1 = COLNO;
+    g_init_b.bughack.delarea.y1 = ROWNO;
     g_init_b.bughack.delarea.x2 = 0;
     g_init_b.bughack.delarea.y2 = 0;
     g_init_b.bughack.in_islev = 0;
@@ -747,9 +776,9 @@ export function $init() {
     g_init_c.current_container = null;
     g_init_c.class_filter = 0;
     g_init_c.cvt_buf[0] = 0;
-    g_init_c.chosen_soundlib = 0;
+    g_init_c.chosen_soundlib = soundlib_nosound;
     g_init_c.coder = null;
-    g_init_c.corpsenm_digested = -1;
+    g_init_c.corpsenm_digested = NON_PM;
     g_init_c.converted_savefile_loaded = 0;
     g_init_c.havestate = 1;
     g_init_d.$copyFrom(new $T.instance_globals_d());
@@ -758,7 +787,7 @@ export function $init() {
     g_init_d.domove_attempting = 0;
     g_init_d.domove_succeeded = 0;
     g_init_d.defer_see_monsters = 0;
-    g_init_d.did_dig_msg = 0;
+    g_init_d.did_dig_msg = UNDEFINED_VALUE;
     g_init_d.dfr_pre_msg = null;
     g_init_d.dfr_post_msg = null;
     g_init_d.did_nothing_flag = 0;
@@ -797,8 +826,8 @@ export function $init() {
     g_init_g.getposx = 0;
     g_init_g.getposy = 0;
     g_init_g.gloc_filter_map = null;
-    g_init_g.gloc_filter_floodfill_match_glyph = 0;
-    g_init_g.gtyp = 0;
+    g_init_g.gloc_filter_floodfill_match_glyph = UNDEFINED_VALUE;
+    g_init_g.gtyp = UNDEFINED_VALUE;
     g_init_g.gx = 0;
     g_init_g.gy = 0;
     g_init_g.gate_str = null;
@@ -844,12 +873,12 @@ export function $init() {
     g_init_k.kickedloc.x = 0;
     g_init_k.kickedloc.y = 0;
     g_init_k.kickedobj = null;
-    g_init_k.known = 0;
+    g_init_k.known = UNDEFINED_VALUE;
     g_init_k.havestate = 1;
     g_init_l.$copyFrom(new $T.instance_globals_l());
-    g_init_l.last_command_count = 0;
+    g_init_l.last_command_count = UNDEFINED_VALUE;
     g_init_l.locknum = 0;
-    g_init_l.lockptr = 0;
+    g_init_l.lockptr = UNDEFINED_VALUE;
     g_init_l.lock.set([49, 108, 111, 99, 107]);   // "1lock"
     g_init_l.lastinvnr = 51;
     g_init_l.light_base = null;
@@ -879,7 +908,7 @@ export function $init() {
     g_init_m.multireasonbuf[0] = 0;
     g_init_m.m_shot.n = 0;
     g_init_m.m_shot.i = 0;
-    g_init_m.m_shot.o = 0;
+    g_init_m.m_shot.o = STRANGE_OBJECT;
     g_init_m.m_shot.s = 0;
     g_init_m.mrg_to_wielded = 0;
     g_init_m.menu_colorings = null;
@@ -888,14 +917,14 @@ export function $init() {
     g_init_m.migrating_mons = null;
     g_init_m.maploc = null;
     g_init_m.mswallower = null;
-    g_init_m.mhitu_dieroll = 0;
+    g_init_m.mhitu_dieroll = UNDEFINED_VALUE;
     g_init_m.made_branch = 0;
-    g_init_m.min_rx = 0;
-    g_init_m.max_rx = 0;
-    g_init_m.min_ry = 0;
-    g_init_m.max_ry = 0;
+    g_init_m.min_rx = UNDEFINED_VALUE;
+    g_init_m.max_rx = UNDEFINED_VALUE;
+    g_init_m.min_ry = UNDEFINED_VALUE;
+    g_init_m.max_ry = UNDEFINED_VALUE;
     g_init_m.mkcorpstat_norevive = 0;
-    g_init_m.mesg_given = 0;
+    g_init_m.mesg_given = UNDEFINED_VALUE;
     g_init_m.mtarget = null;
     g_init_m.marcher = null;
     g_init_m.m_using = 0;
@@ -914,30 +943,30 @@ export function $init() {
     g_init_n.no_sound_notified = 0;
     g_init_n.noisetime = 0;
     g_init_n.new_locations = null;
-    g_init_n.n_loc_filled = 0;
+    g_init_n.n_loc_filled = UNDEFINED_VALUE;
     g_init_n.n_menu_mapped = 0;
     g_init_n.notonhead = 0;
     g_init_n.nambuf[0] = 0;
     g_init_n.n_ids_mapped = 0;
     g_init_n.num_lregions = 0;
-    g_init_n.nocreate = 0;
-    g_init_n.nocreate2 = 0;
-    g_init_n.nocreate3 = 0;
-    g_init_n.nocreate4 = 0;
+    g_init_n.nocreate = STRANGE_OBJECT;
+    g_init_n.nocreate2 = STRANGE_OBJECT;
+    g_init_n.nocreate3 = STRANGE_OBJECT;
+    g_init_n.nocreate4 = STRANGE_OBJECT;
     g_init_n.havestate = 1;
     g_init_o.$copyFrom(new $T.instance_globals_o());
     g_init_o.objs_deleted = null;
     g_init_o.occupants[0].emon = null;
     g_init_o.occupation = null;
     g_init_o.occtime = 0;
-    g_init_o.otg_temp = 0;
+    g_init_o.otg_temp = UNDEFINED_VALUE;
     g_init_o.otg_otmp = null;
     g_init_o.occtxt = null;
     g_init_o.ov_primary_syms[0] = 0;
     g_init_o.ov_rogue_syms[0] = 0;
     g_init_o.only.x = 0;
     g_init_o.oclass_prob_totals[0] = 0;
-    g_init_o.opt_phase = 0;
+    g_init_o.opt_phase = phase_not_set;
     g_init_o.opt_initial = 0;
     g_init_o.opt_from_file = 0;
     g_init_o.opt_need_redraw = 0;
@@ -960,20 +989,20 @@ export function $init() {
     g_init_p.pl_race = 0;
     g_init_p.plinemsg_types = null;
     g_init_p.petname_used = 0;
-    g_init_p.preferred_pet = 0;
+    g_init_p.preferred_pet = UNDEFINED_VALUE;
     g_init_p.primary_syms[0] = 0;
     g_init_p.perm_invent_toggling_direction = 0;
     g_init_p.picked_filter = 0;
     g_init_p.pickup_encumbrance = 0;
     g_init_p.pline_flags = 0;
     g_init_p.prevmsg[0] = 0;
-    g_init_p.potion_nothing = 0;
-    g_init_p.potion_unkn = 0;
-    g_init_p.p_aligntyp = 0;
-    g_init_p.p_trouble = 0;
-    g_init_p.p_type = 0;
+    g_init_p.potion_nothing = UNDEFINED_VALUE;
+    g_init_p.potion_unkn = UNDEFINED_VALUE;
+    g_init_p.p_aligntyp = UNDEFINED_VALUE;
+    g_init_p.p_trouble = UNDEFINED_VALUE;
+    g_init_p.p_type = UNDEFINED_VALUE;
     g_init_p.propellor = null;
-    g_init_p.poly_zapped = 0;
+    g_init_p.poly_zapped = UNDEFINED_VALUE;
     g_init_p.havestate = 1;
     g_init_q.$copyFrom(new $T.instance_globals_q());
     g_init_q.havestate = 1;
@@ -984,7 +1013,7 @@ export function $init() {
     g_init_r.regions = null;
     g_init_r.rip = null;
     g_init_r.role_pa[0] = 0;
-    g_init_r.role_post_attribs = 0;
+    g_init_r.role_post_attribs = UNDEFINED_VALUE;
     g_init_r.rfilter.roles[0] = 0;
     g_init_r.rfilter.mask = 0;
     g_init_r.repo.shopkeeper = null;
@@ -1035,8 +1064,8 @@ export function $init() {
     g_init_t.travelmap = null;
     g_init_t.this_type = 0;
     g_init_t.this_title = null;
-    g_init_t.trapx = 0;
-    g_init_t.trapy = 0;
+    g_init_t.trapx = UNDEFINED_VALUE;
+    g_init_t.trapy = UNDEFINED_VALUE;
     g_init_t.true_rumor_size = 0;
     g_init_t.true_rumor_start = 0;
     g_init_t.true_rumor_end = 0;
@@ -1058,16 +1087,16 @@ export function $init() {
     g_init_u.urole.filecode = null;
     g_init_u.urole.homebase = null;
     g_init_u.urole.intermed = null;
-    g_init_u.urole.mnum = -1;
-    g_init_u.urole.petnum = -1;
-    g_init_u.urole.ldrnum = -1;
-    g_init_u.urole.guardnum = -1;
-    g_init_u.urole.neminum = -1;
-    g_init_u.urole.enemy1num = -1;
-    g_init_u.urole.enemy2num = -1;
+    g_init_u.urole.mnum = NON_PM;
+    g_init_u.urole.petnum = NON_PM;
+    g_init_u.urole.ldrnum = NON_PM;
+    g_init_u.urole.guardnum = NON_PM;
+    g_init_u.urole.neminum = NON_PM;
+    g_init_u.urole.enemy1num = NON_PM;
+    g_init_u.urole.enemy2num = NON_PM;
     g_init_u.urole.enemy1sym = 0;
     g_init_u.urole.enemy2sym = 0;
-    g_init_u.urole.questarti = 0;
+    g_init_u.urole.questarti = STRANGE_OBJECT;
     g_init_u.urole.allow = 0;
     g_init_u.urole.attrbase[0] = 0;
     g_init_u.urole.attrdist[0] = 0;
@@ -1088,9 +1117,9 @@ export function $init() {
     g_init_u.urace.filecode = null;
     g_init_u.urace.individual.m = null;
     g_init_u.urace.individual.f = null;
-    g_init_u.urace.mnum = -1;
-    g_init_u.urace.mummynum = -1;
-    g_init_u.urace.zombienum = -1;
+    g_init_u.urace.mnum = NON_PM;
+    g_init_u.urace.mummynum = NON_PM;
+    g_init_u.urace.zombienum = NON_PM;
     g_init_u.urace.allow = 0;
     g_init_u.urace.selfmask = 0;
     g_init_u.urace.lovemask = 0;
@@ -1127,8 +1156,8 @@ export function $init() {
     g_init_v.valset[21] = 0;
     g_init_v.valuables[0].list = null;
     g_init_v.vis = 0;
-    g_init_v.vault_x = 0;
-    g_init_v.vault_y = 0;
+    g_init_v.vault_x = UNDEFINED_VALUE;
+    g_init_v.vault_y = UNDEFINED_VALUE;
     g_init_v.vamp_rise_msg = 0;
     g_init_v.val_for_n_or_more = 0;
     g_init_v.valid_menu_classes[0] = 0;
@@ -1144,26 +1173,26 @@ export function $init() {
     g_init_w.wasinwater = 0;
     g_init_w.warnsyms[0] = 0;
     g_init_w.wizkit[0] = 0;
-    g_init_w.wc = 0;
+    g_init_w.wc = UNDEFINED_VALUE;
     g_init_w.wportal = null;
-    g_init_w.wsettings.wdmode = 0;
-    g_init_w.wsettings.map_frame_color = 8;
+    g_init_w.wsettings.wdmode = wdmode_traditional;
+    g_init_w.wsettings.map_frame_color = NO_COLOR;
     g_init_w.were_changes = 0;
     g_init_w.havestate = 1;
     g_init_x.$copyFrom(new $T.instance_globals_x());
-    g_init_x.x_maze_max = 78;
+    g_init_x.x_maze_max = COLNO - 1 & ~1;
     g_init_x.xlock.door = null;
     g_init_x.xnamep = null;
-    g_init_x.xstart = 0;
-    g_init_x.xsize = 0;
+    g_init_x.xstart = UNDEFINED_VALUE;
+    g_init_x.xsize = UNDEFINED_VALUE;
     g_init_x.havestate = 1;
     g_init_y.$copyFrom(new $T.instance_globals_y());
-    g_init_y.y_maze_max = 20;
+    g_init_y.y_maze_max = ROWNO - 1 & ~1;
     g_init_y.youmonst.nmon = null;
     g_init_y.you_buf = null;
     g_init_y.you_buf_siz = 0;
-    g_init_y.ystart = 0;
-    g_init_y.ysize = 0;
+    g_init_y.ystart = UNDEFINED_VALUE;
+    g_init_y.ysize = UNDEFINED_VALUE;
     g_init_y.havestate = 1;
     g_init_z.$copyFrom(new $T.instance_globals_z());
     g_init_z.zombify = 0;
@@ -1323,14 +1352,14 @@ export function $init() {
     init_svu.updest.nhx = 0;
     init_svu.updest.nhy = 0;
     init_svx.$copyFrom(new $T.instance_globals_saved_x());
-    init_svx.xmin = 0;
-    init_svx.xmax = 0;
+    init_svx.xmin = UNDEFINED_VALUE;
+    init_svx.xmax = UNDEFINED_VALUE;
     init_svw.$copyFrom(new $T.instance_globals_saved_w());
     init_svw.wreserve = 0;
     init_svw.wtreserved = 100;
     init_svy.$copyFrom(new $T.instance_globals_saved_y());
-    init_svy.ymin = 0;
-    init_svy.ymax = 0;
+    init_svy.ymin = UNDEFINED_VALUE;
+    init_svy.ymax = UNDEFINED_VALUE;
     init_program_state.$copyFrom(new $T.sinfo());
     init_program_state.gameover = 0;
     ga.$copyFrom(new $T.instance_globals_a());

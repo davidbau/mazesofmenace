@@ -5,26 +5,42 @@ import { $G } from './globals.js';
 import { alloc, fmt_ptr } from './alloc.js';
 import { artifact_light } from './artifact.js';
 import { cg, gb, gl, gm, gv, gy, svl, u } from './decl.js';
-import { canseemon, flush_screen, map_invisible, sensemon } from './display.js';
+import { canseemon, flush_screen, map_invisible } from './display.js';
+import { canspotmon } from './display.macros.js';
 import { panic } from './end.js';
+import { COLNO, FALSE, ROWNO, TRUE } from './global.h.js';
+import { ECMD, FM, FM_EVERYWHERE } from './hack.h.js';
+import { release_data, update_file } from './hack.macros.js';
 import { dist2 } from './hacklib.js';
 import { place_object, remove_object } from './mkobj.js';
+import { DEADMONSTER } from './monst.macros.js';
+import { OBJ } from './obj.h.js';
+import { Is_candle, ignitable } from './obj.macros.js';
+import { CANDELABRUM_OF_INVOCATION, GOLD_DRAGON_SCALE_MAIL, MAGIC_LAMP } from './objects.h.js';
 import { otense, simpleonames, xname } from './objnam.js';
 import { impossible } from './pline.js';
 import { lookup_id_mapping } from './restore.js';
 import { sfi_int, sfi_ls_t, sfo_int, sfo_ls_t } from './sfbase.js';
 import { find_oid } from './shk.js';
 import { end_burn, obj_is_local } from './timeout.js';
-import { circle_data, circle_start, clear_path, vision_recalc } from './vision.js';
-import { windowprocs } from './windows.js';
+import { RANGE } from './timeout.h.js';
+import { clear_path, vision_recalc } from './vision.js';
+import { COULD_SEE, LS_MONSTER, LS_NONE, LS_OBJECT, MAX_RADIUS, TEMP_LIT } from './vision.h.js';
+import { circle_ptr } from './vision.macros.js';
+import { create_nhwindow, destroy_nhwindow, display_nhwindow, nh_delay_output, putstr } from './winprocs.macros.js';
+import { NHW, WIN_ERR } from './wintype.h.js';
 import { get_mon_location, get_obj_location } from './zap.js';
+
+const LSF_SHOW = 0x1;
+const LSF_NEEDS_FIXUP = 0x2;
+const LSF_IS_PROBLEMATIC = 0x4;
 
 export async function new_light_source(x, y, range, type, id) {   // light.c:62
     await new_light_core(x, y, range, type, id);
 }
 async function new_light_core(x, y, range, type, id) {   // light.c:69
     let ls = null;
-    if (range > 15 || range < 0 || range === 0 && (type !== 1 /* LS_OBJECT */ || id.a_obj !== null)) {
+    if (range > MAX_RADIUS || range < 0 || range === 0 && (type !== LS_OBJECT || id.a_obj !== null)) {
         await impossible($c.lit("new_light_source:  illegal range %d"), range);
         return null;
     }
@@ -45,14 +61,14 @@ export async function del_light_source(type, id) {   // light.c:99
     let curr = null, tmp_id = new $T.any();
     tmp_id.$copyFrom(cg.zeroany);
     switch (type) {
-        case 0 /* LS_NONE */:
+        case LS_NONE:
             await impossible($c.lit("del_light_source:type=none"));
             tmp_id.a_uint = 0;
             break;
-        case 1 /* LS_OBJECT */:
+        case LS_OBJECT:
             tmp_id.a_uint = id.a_obj ? id.a_obj.o_id : 0;
             break;
-        case 2 /* LS_MONSTER */:
+        case LS_MONSTER:
             tmp_id.a_uint = id.a_monst.m_id;
             break;
         default:
@@ -63,7 +79,7 @@ export async function del_light_source(type, id) {   // light.c:99
         if (curr.type !== type) {
             continue;
         }
-        if ($c.peq(curr.id.a_obj, curr.flags & 2 ? tmp_id.a_obj : id.a_obj)) {
+        if ($c.peq(curr.id.a_obj, curr.flags & LSF_NEEDS_FIXUP ? tmp_id.a_obj : id.a_obj)) {
             break;
         }
     }
@@ -99,27 +115,27 @@ export function do_light_sources(cs_rows) {   // light.c:169
     let x = 0, y = 0, min_x = 0, max_x = 0, max_y = 0, offset = 0, limits = null, at_hero_range = 0, ls = null, row = null;
     at_hero_range = 0;
     for (ls = gl.light_base; ls; ls = ls.next) {
-        ls.flags = $c.i16(ls.flags & -2);
-        if (ls.type === 1 /* LS_OBJECT */) {
+        ls.flags = $c.i16(ls.flags & ~LSF_SHOW);
+        if (ls.type === LS_OBJECT) {
             if (ls.range === 0 || get_obj_location(ls.id.a_obj, new $c.FieldRef(ls, "x", "i16"), new $c.FieldRef(ls, "y", "i16"), 0)) {
-                ls.flags = $c.i16(ls.flags | 1);
+                ls.flags = $c.i16(ls.flags | LSF_SHOW);
             }
-        } else if (ls.type === 2 /* LS_MONSTER */) {
+        } else if (ls.type === LS_MONSTER) {
             if (get_mon_location(ls.id.a_monst, new $c.FieldRef(ls, "x", "i16"), new $c.FieldRef(ls, "y", "i16"), 0)) {
-                ls.flags = $c.i16(ls.flags | 1);
+                ls.flags = $c.i16(ls.flags | LSF_SHOW);
             }
         }
         if (ls.x === u.ux && ls.y === u.uy) {
             if (at_hero_range >= ls.range) {
-                ls.flags = $c.i16(ls.flags & -2);
+                ls.flags = $c.i16(ls.flags & ~LSF_SHOW);
             } else {
                 at_hero_range = ls.range;
             }
         }
-        if (ls.flags & 1) {
-            limits = new $c.Ptr(circle_data, circle_start[ls.range]);
-            if ((max_y = $c.i16(ls.y + ls.range | 0)) >= 21) {
-                max_y = 20;
+        if (ls.flags & LSF_SHOW) {
+            limits = circle_ptr(ls.range);
+            if ((max_y = $c.i16(ls.y + ls.range | 0)) >= ROWNO) {
+                max_y = ROWNO - 1;
             }
             if ((y = $c.i16(ls.y - ls.range | 0)) < 0) {
                 y = 0;
@@ -130,19 +146,19 @@ export function do_light_sources(cs_rows) {   // light.c:169
                 if ((min_x = $c.i16(ls.x - offset | 0)) < 1) {
                     min_x = 1;
                 }
-                if ((max_x = $c.i16(ls.x + offset | 0)) >= 80) {
-                    max_x = 79;
+                if ((max_x = $c.i16(ls.x + offset | 0)) >= COLNO) {
+                    max_x = COLNO - 1;
                 }
                 if (ls.x === u.ux && ls.y === u.uy) {
                     for (x = min_x; x <= max_x; x = $c.i16(x + 1)) {
-                        if (row.get(x) & 1) {
-                            row.set(x, $c.u8(row.get(x) | 4));
+                        if (row.get(x) & COULD_SEE) {
+                            row.set(x, $c.u8(row.get(x) | TEMP_LIT));
                         }
                     }
                 } else {
                     for (x = min_x; x <= max_x; x = $c.i16(x + 1)) {
                         if (ls.x === x && ls.y === y || clear_path(ls.x, ls.y, x, y)) {
-                            row.set(x, $c.u8(row.get(x) | 4));
+                            row.set(x, $c.u8(row.get(x) | TEMP_LIT));
                         }
                     }
                 }
@@ -158,11 +174,11 @@ export async function show_transient_light(obj, x, y) {   // light.c:257
             return;
         }
         cameraflash.$copyFrom(cg.zeroany);
-        ls = await new_light_core(x, y, 0, 1 /* LS_OBJECT */, cameraflash);
+        ls = await new_light_core(x, y, 0, LS_OBJECT, cameraflash);
         (!!$c.peq(ls, $c.asRec(null, $T.ls_t, 32)) ? 1 : 0) ? $c.__assert_rtn($c.lit("show_transient_light"), $c.lit("light.c"), 275, $c.lit("ls != NULL")) : 0;
     } else {
         for (ls = gl.light_base; ls; ls = ls.next) {
-            if (ls.type !== 1 /* LS_OBJECT */) {
+            if (ls.type !== LS_OBJECT) {
                 continue;
             }
             if ($c.peq(ls.id.a_obj, obj)) {
@@ -170,7 +186,7 @@ export async function show_transient_light(obj, x, y) {   // light.c:257
             }
         }
         (!!$c.peq(obj, $c.asRec(null, $T.obj, 112)) ? 1 : 0) ? $c.__assert_rtn($c.lit("show_transient_light"), $c.lit("light.c"), 285, $c.lit("obj != NULL")) : 0;
-        if (!ls || obj.where !== 0) {
+        if (!ls || obj.where !== OBJ.FREE) {
             await impossible($c.lit("transient light %s %s %s not %s?"), obj.lamplit | 0 ? $c.lit("lit") : $c.lit("unlit"), await simpleonames(obj), await otense(obj, $c.lit("are")), !ls ? $c.lit("a light source") : $c.lit("free"));
             return;
         }
@@ -184,7 +200,7 @@ export async function show_transient_light(obj, x, y) {   // light.c:257
     await flush_screen(0);
     radius_squared = Math.imul(ls.range, ls.range);
     for (mon = svl.level.monlist; mon; mon = mon.nmon) {
-        if (mon.mhp < 1 || mon.isgd | 0 && !mon.mx) {
+        if (DEADMONSTER(mon) || mon.isgd | 0 && !mon.mx) {
             continue;
         }
         if (dist2(mon.mx, mon.my, x, y) <= radius_squared) {
@@ -194,7 +210,7 @@ export async function show_transient_light(obj, x, y) {   // light.c:257
         }
     }
     if (obj) {
-        await windowprocs.win_delay_output();
+        await nh_delay_output()();
         await remove_object(obj);
     }
 }
@@ -206,13 +222,13 @@ export async function transient_light_cleanup() {   // light.c:330
     }
     mtempcount = 0;
     for (mon = svl.level.monlist; mon; mon = mon.nmon) {
-        if (mon.mhp < 1) {
+        if (DEADMONSTER(mon)) {
             continue;
         }
         if (mon.mtemplit) {
             mon.mtemplit = (0) & 1;
             mtempcount = mtempcount + 1 | 0;
-            if (!(canseemon(mon) || sensemon(mon))) {
+            if (!canspotmon(mon)) {
                 await map_invisible(mon.mx, mon.my);
             }
         }
@@ -225,31 +241,31 @@ async function discard_flashes() {   // light.c:361
     let ls = null, nxt_ls = null;
     for (ls = gl.light_base; ls; ls = nxt_ls) {
         nxt_ls = ls.next;
-        if (ls.type === 1 /* LS_OBJECT */ && !ls.id.a_obj) {
+        if (ls.type === LS_OBJECT && !ls.id.a_obj) {
             await delete_ls(ls);
         }
     }
 }
 export function find_mid(nid, fmflags) {   // light.c:376
     let mtmp = null;
-    if ((fmflags & 8) >>> 0 && nid === 1) {
+    if ((fmflags & FM.YOU) >>> 0 && nid === 1) {
         return gy.youmonst;
     }
-    if ((fmflags & 1) >>> 0) {
+    if ((fmflags & FM.FMON) >>> 0) {
         for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
-            if (!(mtmp.mhp < 1) && mtmp.m_id === nid) {
+            if (!DEADMONSTER(mtmp) && mtmp.m_id === nid) {
                 return mtmp;
             }
         }
     }
-    if ((fmflags & 2) >>> 0) {
+    if ((fmflags & FM.MIGRATE) >>> 0) {
         for (mtmp = gm.migrating_mons; mtmp; mtmp = mtmp.nmon) {
             if (mtmp.m_id === nid) {
                 return mtmp;
             }
         }
     }
-    if ((fmflags & 4) >>> 0) {
+    if ((fmflags & FM.MYDOGS) >>> 0) {
         for (mtmp = gm.mydogs; mtmp; mtmp = mtmp.nmon) {
             if (mtmp.m_id === nid) {
                 return mtmp;
@@ -260,27 +276,27 @@ export function find_mid(nid, fmflags) {   // light.c:376
 }
 function whereis_mon(mon, fmflags) {   // light.c:398
     let mtmp = null;
-    if ((fmflags & 8) >>> 0 && $c.peq(mon, gy.youmonst)) {
-        return 8;
+    if ((fmflags & FM.YOU) >>> 0 && $c.peq(mon, gy.youmonst)) {
+        return FM.YOU;
     }
-    if ((fmflags & 1) >>> 0) {
+    if ((fmflags & FM.FMON) >>> 0) {
         for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
             if ($c.peq(mtmp, mon)) {
-                return 1;
+                return FM.FMON;
             }
         }
     }
-    if ((fmflags & 2) >>> 0) {
+    if ((fmflags & FM.MIGRATE) >>> 0) {
         for (mtmp = gm.migrating_mons; mtmp; mtmp = mtmp.nmon) {
             if ($c.peq(mtmp, mon)) {
-                return 2;
+                return FM.MIGRATE;
             }
         }
     }
-    if ((fmflags & 4) >>> 0) {
+    if ((fmflags & FM.MYDOGS) >>> 0) {
         for (mtmp = gm.mydogs; mtmp; mtmp = mtmp.nmon) {
             if ($c.peq(mtmp, mon)) {
-                return 4;
+                return FM.MYDOGS;
             }
         }
     }
@@ -290,26 +306,26 @@ export async function save_light_sources(nhfp, range) {   // light.c:421
     let count = Int32Array.of(0), actual = 0, is_global = 0, prev = null, curr = null;
     await discard_flashes();
     gv.vision_full_recalc = 0;
-    if (nhfp.mode & 3) {
-        count[0] = await maybe_write_ls(nhfp, range, 0);
+    if (update_file(nhfp)) {
+        count[0] = await maybe_write_ls(nhfp, range, FALSE);
         await sfo_int(nhfp, new $c.Ptr(count, 0), $c.lit("lightsource-count"));
-        actual = await maybe_write_ls(nhfp, range, 1);
+        actual = await maybe_write_ls(nhfp, range, TRUE);
         if (actual !== count[0]) {
             await panic($c.lit("counted %d light sources, wrote %d! [range=%d]"), count[0], actual, range);
         }
     }
-    if (nhfp.mode & 4) {
+    if (release_data(nhfp)) {
         for (prev = new $c.FieldRef(gl, "light_base", "ptr"); (curr = prev.get(0)) !== null; ) {
             if (!curr.id.a_monst) {
                 await impossible($c.lit("save_light_sources: no id! [range=%d]"), range);
                 is_global = 0;
             } else {
                 switch (curr.type) {
-                    case 1 /* LS_OBJECT */:
+                    case LS_OBJECT:
                         is_global = !await obj_is_local(curr.id.a_obj) ? 1 : 0;
                         break;
-                    case 2 /* LS_MONSTER */:
-                        is_global = !(curr.id.a_monst.mx > 0) ? 1 : 0;
+                    case LS_MONSTER:
+                        is_global = !mon_is_local(curr.id.a_monst) ? 1 : 0;
                         break;
                     default:
                         is_global = 0;
@@ -317,7 +333,7 @@ export async function save_light_sources(nhfp, range) {   // light.c:421
                         break;
                 }
             }
-            if (is_global ^ (range === 0 ? 1 : 0)) {
+            if (is_global ^ (range === RANGE.LEVEL ? 1 : 0)) {
                 prev.set(0, curr.next);
                 $c.__builtin___memset_chk(curr, 0, 32, -1);
                 $c.free(curr);
@@ -350,19 +366,19 @@ export function light_stats(hdrfmt, hdrbuf, count, size) {   // light.c:501
 export async function relink_light_sources(ghostly) {   // light.c:517
     let which = 0, nid = Uint32Array.of(0), ls = null, $t1, $t2;
     for (ls = gl.light_base; ls; ls = ls.next) {
-        if (ls.flags & 2) {
-            if (ls.type === 1 /* LS_OBJECT */ || ls.type === 2 /* LS_MONSTER */) {
+        if (ls.flags & LSF_NEEDS_FIXUP) {
+            if (ls.type === LS_OBJECT || ls.type === LS_MONSTER) {
                 nid[0] = ls.id.a_uint;
                 if (ghostly && !lookup_id_mapping(nid[0], new $c.Ptr(nid, 0))) {
                     await panic($c.lit("relink_light_sources: no id mapping"));
                 }
                 which = 0;
-                if (ls.type === 1 /* LS_OBJECT */) {
+                if (ls.type === LS_OBJECT) {
                     if (($t1 = find_oid(nid[0]), ls.id.a_obj = $t1) === null) {
                         which = 111;
                     }
                 } else {
-                    if (($t2 = find_mid(nid[0], 15), ls.id.a_monst = $t2) === null) {
+                    if (($t2 = find_mid(nid[0], FM_EVERYWHERE), ls.id.a_monst = $t2) === null) {
                         which = 109;
                     }
                 }
@@ -372,7 +388,7 @@ export async function relink_light_sources(ghostly) {   // light.c:517
             } else {
                 await panic($c.lit("relink_light_sources: bad type (%d)"), ls.type);
             }
-            ls.flags = $c.i16(ls.flags & -3);
+            ls.flags = $c.i16(ls.flags & ~LSF_NEEDS_FIXUP);
         }
     }
 }
@@ -385,18 +401,18 @@ async function maybe_write_ls(nhfp, range, write_it) {   // light.c:571
             continue;
         }
         switch (ls.type) {
-            case 1 /* LS_OBJECT */:
+            case LS_OBJECT:
                 is_global = !await obj_is_local(ls.id.a_obj) ? 1 : 0;
                 break;
-            case 2 /* LS_MONSTER */:
-                is_global = !(ls.id.a_monst.mx > 0) ? 1 : 0;
+            case LS_MONSTER:
+                is_global = !mon_is_local(ls.id.a_monst) ? 1 : 0;
                 break;
             default:
                 is_global = 0;
                 await impossible($c.lit("maybe_write_ls: bad type (%d) [range=%d]"), ls.type, range);
                 break;
         }
-        if (is_global ^ (range === 0 ? 1 : 0)) {
+        if (is_global ^ (range === RANGE.LEVEL ? 1 : 0)) {
             count = count + 1 | 0;
             if (write_it) {
                 await write_ls(nhfp, ls);
@@ -411,16 +427,16 @@ export async function light_sources_sanity_check() {   // light.c:606
         if (!ls.id.a_monst) {
             await panic($c.lit("insane light source: no id!"));
         }
-        if (ls.type === 1 /* LS_OBJECT */) {
+        if (ls.type === LS_OBJECT) {
             otmp = ls.id.a_obj;
             auint = otmp.o_id;
             if (!$c.peq(find_oid(auint), otmp)) {
                 await panic($c.lit("insane light source: can't find obj #%u!"), auint);
             }
-        } else if (ls.type === 2 /* LS_MONSTER */) {
+        } else if (ls.type === LS_MONSTER) {
             mtmp = ls.id.a_monst;
             auint = mtmp.m_id;
-            if (!$c.peq(find_mid(auint, 15), mtmp)) {
+            if (!$c.peq(find_mid(auint, FM_EVERYWHERE), mtmp)) {
                 await panic($c.lit("insane light source: can't find mon #%u!"), auint);
             }
         } else {
@@ -430,41 +446,41 @@ export async function light_sources_sanity_check() {   // light.c:606
 }
 async function write_ls(nhfp, ls) {   // light.c:634
     let arg_save = new $T.any(), otmp = null, mtmp = null, monloc = 0;
-    if (ls.type === 1 /* LS_OBJECT */ || ls.type === 2 /* LS_MONSTER */) {
-        if (ls.flags & 2) {
+    if (ls.type === LS_OBJECT || ls.type === LS_MONSTER) {
+        if (ls.flags & LSF_NEEDS_FIXUP) {
             await sfo_ls_t(nhfp, ls, $c.lit("lightsource"));
         } else {
             arg_save.$copyFrom(ls.id);
-            if (ls.type === 1 /* LS_OBJECT */) {
+            if (ls.type === LS_OBJECT) {
                 otmp = ls.id.a_obj;
                 ls.id.$copyFrom(cg.zeroany);
                 ls.id.a_uint = otmp.o_id;
                 if (!$c.peq(find_oid(ls.id.a_uint), otmp)) {
                     await impossible($c.lit("write_ls: can't find obj #%u!"), ls.id.a_uint);
-                    ls.flags = $c.i16(ls.flags | 4);
+                    ls.flags = $c.i16(ls.flags | LSF_IS_PROBLEMATIC);
                 }
             } else {
                 monloc = 0;
                 mtmp = ls.id.a_monst;
-                if ((monloc = whereis_mon(mtmp, 15)) !== 0) {
+                if ((monloc = whereis_mon(mtmp, FM_EVERYWHERE)) !== 0) {
                     ls.id.$copyFrom(cg.zeroany);
                     ls.id.a_uint = mtmp.m_id;
                     if (!$c.peq(find_mid(ls.id.a_uint, monloc), mtmp)) {
-                        await impossible($c.lit("write_ls: can't find mon%s #%u!"), mtmp.mhp < 1 ? $c.lit(" because it's dead") : $c.lit(""), ls.id.a_uint);
-                        ls.flags = $c.i16(ls.flags | 4);
+                        await impossible($c.lit("write_ls: can't find mon%s #%u!"), DEADMONSTER(mtmp) ? $c.lit(" because it's dead") : $c.lit(""), ls.id.a_uint);
+                        ls.flags = $c.i16(ls.flags | LSF_IS_PROBLEMATIC);
                     }
                 } else {
                     await impossible($c.lit("write_ls: stashed monst ptr not in any chain"));
-                    ls.flags = $c.i16(ls.flags | 4);
+                    ls.flags = $c.i16(ls.flags | LSF_IS_PROBLEMATIC);
                 }
             }
-            if (ls.flags & 4) {
+            if (ls.flags & LSF_IS_PROBLEMATIC) {
             }
-            ls.flags = $c.i16(ls.flags | 2);
+            ls.flags = $c.i16(ls.flags | LSF_NEEDS_FIXUP);
             await sfo_ls_t(nhfp, ls, $c.lit("lightsource"));
             ls.id.$copyFrom(arg_save);
-            ls.flags = $c.i16(ls.flags & -3);
-            ls.flags = $c.i16(ls.flags & -5);
+            ls.flags = $c.i16(ls.flags & ~LSF_NEEDS_FIXUP);
+            ls.flags = $c.i16(ls.flags & ~LSF_IS_PROBLEMATIC);
         }
     } else {
         await impossible($c.lit("write_ls: bad type (%d)"), ls.type);
@@ -473,7 +489,7 @@ async function write_ls(nhfp, ls) {   // light.c:634
 export function obj_move_light_source(src, dest) {   // light.c:706
     let ls = null;
     for (ls = gl.light_base; ls; ls = ls.next) {
-        if (ls.type === 1 /* LS_OBJECT */ && $c.peq(ls.id.a_obj, src)) {
+        if (ls.type === LS_OBJECT && $c.peq(ls.id.a_obj, src)) {
             ls.id.a_obj = dest;
         }
     }
@@ -486,13 +502,13 @@ export function any_light_source() {   // light.c:719
 export async function snuff_light_source(x, y) {   // light.c:729
     let ls = null, obj = null;
     for (ls = gl.light_base; ls; ls = ls.next) {
-        if (ls.type === 1 /* LS_OBJECT */ && ls.x === x && ls.y === y) {
+        if (ls.type === LS_OBJECT && ls.x === x && ls.y === y) {
             obj = ls.id.a_obj;
             if (obj_is_burning(obj)) {
                 if (artifact_light(obj)) {
                     continue;
                 }
-                await end_burn(obj, $c.i8(obj.otyp !== 228 /* MAGIC_LAMP */ ? 1 : 0));
+                await end_burn(obj, $c.i8(obj.otyp !== MAGIC_LAMP ? 1 : 0));
                 return;
             }
         }
@@ -502,15 +518,15 @@ export function obj_sheds_light(obj) {   // light.c:763
     return obj_is_burning(obj);
 }
 export function obj_is_burning(obj) {   // light.c:771
-    return $c.i8(obj.lamplit | 0 && (obj.otyp === 226 /* BRASS_LANTERN */ || obj.otyp === 227 /* OIL_LAMP */ || obj.otyp === 228 /* MAGIC_LAMP */ && obj.spe > 0 || obj.otyp === 262 /* CANDELABRUM_OF_INVOCATION */ || obj.otyp === 224 /* TALLOW_CANDLE */ || obj.otyp === 225 /* WAX_CANDLE */ || obj.otyp === 321 /* POT_OIL */ || artifact_light(obj)) ? 1 : 0);
+    return $c.i8(obj.lamplit | 0 && (ignitable(obj) || artifact_light(obj)) ? 1 : 0);
 }
 export async function obj_split_light_source(src, dest) {   // light.c:779
     let ls = null, new_ls = null, $t1, $t2;
     for (ls = gl.light_base; ls; ls = ls.next) {
-        if (ls.type === 1 /* LS_OBJECT */ && $c.peq(ls.id.a_obj, src)) {
+        if (ls.type === LS_OBJECT && $c.peq(ls.id.a_obj, src)) {
             new_ls = $c.asRec(await alloc(32), $T.ls_t, 32);
             new_ls.$copyFrom(ls);
-            if (src.otyp === 224 /* TALLOW_CANDLE */ || src.otyp === 225 /* WAX_CANDLE */) {
+            if (Is_candle(src)) {
                 $t1 = $c.i16(candle_light_range(src)), ls.range = $t1;
                 $t2 = $c.i16(candle_light_range(dest)), new_ls.range = $t2;
                 gv.vision_full_recalc = 1;
@@ -525,10 +541,10 @@ export async function obj_split_light_source(src, dest) {   // light.c:779
 export async function obj_merge_light_sources(src, dest) {   // light.c:808
     let ls = null, $t1;
     if (!$c.peq(src, dest)) {
-        await end_burn(src, 1);
+        await end_burn(src, TRUE);
     }
     for (ls = gl.light_base; ls; ls = ls.next) {
-        if (ls.type === 1 /* LS_OBJECT */ && $c.peq(ls.id.a_obj, dest)) {
+        if (ls.type === LS_OBJECT && $c.peq(ls.id.a_obj, dest)) {
             $t1 = $c.i16(candle_light_range(dest)), ls.range = $t1;
             gv.vision_full_recalc = 1;
             break;
@@ -538,7 +554,7 @@ export async function obj_merge_light_sources(src, dest) {   // light.c:808
 export async function obj_adjust_light_radius(obj, new_radius) {   // light.c:826
     let ls = null;
     for (ls = gl.light_base; ls; ls = ls.next) {
-        if (ls.type === 1 /* LS_OBJECT */ && $c.peq(ls.id.a_obj, obj)) {
+        if (ls.type === LS_OBJECT && $c.peq(ls.id.a_obj, obj)) {
             if (new_radius !== ls.range) {
                 gv.vision_full_recalc = 1;
             }
@@ -550,12 +566,12 @@ export async function obj_adjust_light_radius(obj, new_radius) {   // light.c:82
 }
 export function candle_light_range(obj) {   // light.c:843
     let radius = 0, n = 0;
-    if (obj.otyp === 262 /* CANDELABRUM_OF_INVOCATION */) {
+    if (obj.otyp === CANDELABRUM_OF_INVOCATION) {
         radius = obj.spe < 4 ? 2 : obj.spe < 7 ? 3 : 4;
-    } else if (obj.otyp === 224 /* TALLOW_CANDLE */ || obj.otyp === 225 /* WAX_CANDLE */) {
+    } else if (Is_candle(obj)) {
         n = obj.quan;
         radius = 1;
-        while (Math.imul(radius, radius) <= n && radius < 15) {
+        while (Math.imul(radius, radius) <= n && radius < MAX_RADIUS) {
             radius = radius + 1 | 0;
         }
     } else {
@@ -571,7 +587,7 @@ export function arti_light_radius(obj) {   // light.c:881
     res = obj.blessed | 0 ? 3 : !obj.cursed ? 2 : 1;
     if ($c.peq(obj, $G.uskin)) {
         res = 1;
-    } else if (obj.otyp === 102 /* GOLD_DRAGON_SCALE_MAIL */) {
+    } else if (obj.otyp === GOLD_DRAGON_SCALE_MAIL) {
         res = res + 1 | 0;
     }
     return res;
@@ -593,26 +609,29 @@ export function arti_light_description(obj) {   // light.c:916
 }
 export async function wiz_light_sources() {   // light.c:935
     let win = 0, buf = new Int8Array(256), ls = null;
-    win = await windowprocs.win_create_nhwindow(4);
-    if (win === -1) {
-        return 0;
+    win = await create_nhwindow()(NHW.MENU);
+    if (win === WIN_ERR) {
+        return ECMD.OK;
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Mobile light sources: hero @ (%2d,%2d)"), u.ux, u.uy);
-    await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
-    await windowprocs.win_putstr(win, 0, $c.lit(""));
+    await putstr()(win, 0, new $c.Ptr(buf, 0));
+    await putstr()(win, 0, $c.lit(""));
     if (gl.light_base) {
-        await windowprocs.win_putstr(win, 0, $c.lit("location range flags  type    id"));
-        await windowprocs.win_putstr(win, 0, $c.lit("-------- ----- ------ ----  -------"));
+        await putstr()(win, 0, $c.lit("location range flags  type    id"));
+        await putstr()(win, 0, $c.lit("-------- ----- ------ ----  -------"));
         for (ls = gl.light_base; ls; ls = ls.next) {
-            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("  %2d,%2d   %2d   0x%04x  %s  %s"), ls.x, ls.y, ls.range, ls.flags, ls.type === 1 /* LS_OBJECT */ ? $c.lit("obj") : ls.type === 2 /* LS_MONSTER */ ? ls.id.a_monst.mx > 0 ? $c.lit("mon") : $c.peq(ls.id.a_monst, gy.youmonst) ? $c.lit("you") : $c.lit("<m>") : $c.lit("???"), fmt_ptr(ls.id.a_void));
-            await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("  %2d,%2d   %2d   0x%04x  %s  %s"), ls.x, ls.y, ls.range, ls.flags, ls.type === LS_OBJECT ? $c.lit("obj") : ls.type === LS_MONSTER ? ls.id.a_monst.mx > 0 ? $c.lit("mon") : $c.peq(ls.id.a_monst, gy.youmonst) ? $c.lit("you") : $c.lit("<m>") : $c.lit("???"), fmt_ptr(ls.id.a_void));
+            await putstr()(win, 0, new $c.Ptr(buf, 0));
         }
     } else {
-        await windowprocs.win_putstr(win, 0, $c.lit("<none>"));
+        await putstr()(win, 0, $c.lit("<none>"));
     }
-    await windowprocs.win_display_nhwindow(win, 0);
-    await windowprocs.win_destroy_nhwindow(win);
-    return 0;
+    await display_nhwindow()(win, FALSE);
+    await destroy_nhwindow()(win);
+    return ECMD.OK;
+}
+function mon_is_local(mon) {
+    return mon.mx > 0 ? 1 : 0;
 }
 
 export function $init() {

@@ -8,6 +8,9 @@
 // baalz_fixup, stolen_booty (orc-town loot), fumaroles. (mklev.js has place_lregion and put_lregion_here.)
 
 import { game } from './gstate.js';
+import { spot_stop_timers } from './timeout.js';
+import { MELT_ICE_AWAY } from './const.js';
+import { obj_ice_effects } from './mkobj.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
     STONE, MAX_TYPE, SDOOR, AIR, LADDER, STAIRS, ICE, isok, IS_LAVA,
@@ -710,8 +713,9 @@ export function set_levltyp(x, y, newtyp) {
             if (IS_LAVA(newtyp)) /* [what about IS_LAVA(oldtyp)=>.lit = 0?] */
                 loc.lit = true;
             if (was_ice && newtyp !== ICE) {
-                /* obj_ice_effects() and spot_stop_timers(): not ported
-                   (no objects or timers exist during level creation yet) */
+                /* frozen corpses resume rotting, no more ice to melt away */
+                obj_ice_effects(x, y, true);
+                spot_stop_timers(x, y, MELT_ICE_AWAY);
             }
             if ((IS_FOUNTAIN(oldtyp) !== IS_FOUNTAIN(newtyp))
                 || (IS_SINK(oldtyp) !== IS_SINK(newtyp)))

@@ -21,6 +21,8 @@ import { mksobj, mkobj, add_to_container, weight, Is_container, is_poisonable } 
 import { Has_contents, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM, NEUTRAL } from './const.js';
 import { STATUE, CORPSE, TIN, EGG, FIGURINE, POTION_CLASS } from './objects.js';
 import { mons } from './monsters.js';
+import { obj_has_timer, peek_timer, stop_timer, start_timer, obj_stop_timers, obj_to_any } from './timeout.js';
+import { ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, BURN_OBJECT, HATCH_EGG, FIG_TRANSFORM, SHRINK_GLOB, TIMER_OBJECT } from './const.js';
 import { get_table_objtype, get_table_objclass } from './sp_lev.js';
 
 const FIRST_OBJECT = 1; /* objects.h */
@@ -316,46 +318,46 @@ function l_obj_to_table(v) {
 }
 
 // C ref: nhlua.c nhl_get_timertype()
-/* these are in the same order as enum timeout_types in timeout.h; the JS
-   timer stand-in (obj.timer.action) uses the enum names */
+/* these are in the same order as enum timeout_types in timeout.h */
 const timerstr = [
     "rot-organic", "rot-corpse", "revive-mon",    "zombify-mon",
     "burn-obj",    "hatch-egg",  "fig-transform", "shrink-glob",
     "melt-ice",
 ];
-const timer_enum = [
-    'ROT_ORGANIC', 'ROT_CORPSE', 'REVIVE_MON', 'ZOMBIFY_MON',
-    'BURN_OBJECT', 'HATCH_EGG', 'FIG_TRANSFORM', 'SHRINK_GLOB',
-    'MELT_ICE_AWAY',
-];
 export function nhl_get_timertype(v) {
     const ret = timerstr.indexOf(luaL_checkstring(v));
     if (ret < 0)
         nhl_error(null, "Unknown timer type");
-    return timer_enum[ret];
+    return ret;
 }
 
-// C ref: timeout.c timer_is_obj()
-function timer_is_obj(timertype) {
-    return timertype === 'ROT_ORGANIC' || timertype === 'ROT_CORPSE'
-        || timertype === 'REVIVE_MON' || timertype === 'ZOMBIFY_MON'
-        || timertype === 'BURN_OBJECT' || timertype === 'HATCH_EGG'
-        || timertype === 'FIG_TRANSFORM' || timertype === 'SHRINK_GLOB';
+// C ref: timeout.h timer_is_obj()
+function timer_is_obj(ttype) {
+    return ttype === ROT_ORGANIC
+        || ttype === ROT_CORPSE
+        || ttype === REVIVE_MON
+        || ttype === ZOMBIFY_MON
+        || ttype === BURN_OBJECT
+        || ttype === HATCH_EGG
+        || ttype === FIG_TRANSFORM
+        || ttype === SHRINK_GLOB;
 }
 
-// C ref: timeout.c obj_has_timer() -- timers are not ported yet; the
-// object's pending timer is kept in obj.timer = { when, action }
-function obj_has_timer(obj, timertype) {
-    return !!(obj.timer && obj.timer.action === timertype);
-}
+// C ref: nhlobj.c l_obj_timer_peek()
+/* peek at an object timer. return the turn when timer triggers.
+   returns 0 if no such timer attached to the object. */
+/* local timeout = o:peek_timer("hatch-egg"); */
+function l_obj_timer_peek(...args) {
+    if (args.length === 2) {
+        const lo = l_obj_check(args[0]);
+        const timertype = nhl_get_timertype(args[1]);
 
-// C ref: timeout.c stop_timer() -- see obj_has_timer()
-function stop_timer(timertype, obj) {
-    if (!obj_has_timer(obj, timertype))
+        if (timer_is_obj(timertype) && lo && lo.obj)
+            return peek_timer(timertype, obj_to_any(lo.obj));
         return 0;
-    const when = obj.timer.when;
-    obj.timer = null;
-    return when;
+    }
+    nhl_error(null, "l_obj_timer_peek: Wrong args");
+    return 0;
 }
 
 // C ref: nhlobj.c l_obj_timer_has()
@@ -379,14 +381,14 @@ function l_obj_timer_stop(...args) {
         const lo = l_obj_check(args[0]);
 
         if (lo && lo.obj)
-            lo.obj.timer = null; /* obj_stop_timers() */
+            obj_stop_timers(lo.obj);
         return undefined;
     } else if (args.length === 2) {
         const lo = l_obj_check(args[0]);
         const timertype = nhl_get_timertype(args[1]);
 
         if (timer_is_obj(timertype) && lo && lo.obj)
-            return stop_timer(timertype, lo.obj);
+            return stop_timer(timertype, obj_to_any(lo.obj));
         return 0;
     }
     nhl_error(null, "l_obj_timer_stop: Wrong args");
@@ -403,9 +405,8 @@ function l_obj_timer_start(...args) {
 
         if (timer_is_obj(timertype) && lo && lo.obj && when > 0) {
             if (obj_has_timer(lo.obj, timertype))
-                stop_timer(timertype, lo.obj);
-            /* start_timer(when, TIMER_OBJECT, timertype, obj_to_any(obj)) */
-            lo.obj.timer = { when, action: timertype };
+                stop_timer(timertype, obj_to_any(lo.obj));
+            start_timer(when, TIMER_OBJECT, timertype, obj_to_any(lo.obj));
         }
     } else
         nhl_error(null, "l_obj_timer_start: Wrong args");
@@ -429,7 +430,7 @@ export function l_obj_register(L) {
         contents: l_obj_not_ported('contents'),
         addcontent: l_obj_add_to_container,
         has_timer: l_obj_timer_has,
-        peek_timer: l_obj_not_ported('peek_timer'),
+        peek_timer: l_obj_timer_peek,
         stop_timer: l_obj_timer_stop,
         start_timer: l_obj_timer_start,
         bury: l_obj_not_ported('bury'),

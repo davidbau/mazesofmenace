@@ -20,7 +20,7 @@ import { checkfile_entries, checkfile_lookup, dbase_entry_lines } from './data_b
 import { is_lava, is_pool } from './dbridge.js'; // relocate-fns
 import { DEFSYM_EXPLANATION } from './defsym_data.js'; // relocate-fns
 import { HELP, HISTORY, KEYHELP, LICENSE, OPTIONFILE, OPTMENUHELP, SHELP, USAGEHELP, dlb_file_lines } from './dispfile.js'; // relocate-fns
-import { GLYPHCLS_CMAP, _threeStatusLines, _topline_more_pending, await_menu_key, await_topl_more_dismiss, canspotself, collectScreenDescriptionClasses, dec_mode, docorner_blank_utf8_captures, docrt, flush_screen, force_more, glyph_is_warning_at, pager_boulder_symbol, pager_glyph_prefix, pager_mixed_text, pager_showsyms, pager_text_glyph, use_last_flush_snapshot } from './display.js'; // relocate-fns
+import { GLYPHCLS_CMAP, _threeStatusLines, _topline_more_pending, await_menu_key, await_topl_more_dismiss, canspotself, collectScreenDescriptionClasses, dec_mode, docorner_blank_utf8_captures, docrt, flush_screen, force_more, glyph_is_warning_at, msgtype_suppressed, pager_boulder_symbol, pager_glyph_prefix, pager_mixed_text, pager_showsyms, pager_text_glyph, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { sticks } from './dog.js'; // relocate-fns
 import { getpos_refresh } from './getpos.js'; // relocate-fns
 import { wizard } from './gstate.js'; // relocate-fns
@@ -1693,7 +1693,12 @@ async function _do_look_from_screen(quick) {
          * clear (no ESC at the last page) does the tip's WIN_MESSAGE display
          * reach topl.c:230 more() and page the standing preMsg. */
         const winStopLive = !!(g._topl_win_stop || g._topl_win_stop_armed);
-        if ((tipWillShow || verbose) && !g.iflags?.debug_fuzzer && !winStopLive) {
+        /* pager.c:1905-1908 is a plain pline(): a MSGTYPE=hide (or norep)
+         * rule drops it in vpline (pline.c:246-264) before anything paints,
+         * so there is no --More-- before the tip (mac-d-msgtype-dot-055
+         * step 4: "." hides it and the tip window is the next frame). */
+        if ((tipWillShow || verbose) && !g.iflags?.debug_fuzzer && !winStopLive
+            && !msgtype_suppressed(preMsg)) {
             // pager.c:1905-1908 uses pline; vpline (pline.c:282) records
             // the prompt even when its display is paged separately below.
             g._prevmsg = preMsg;

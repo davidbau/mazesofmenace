@@ -2,9 +2,9 @@
 // C ref: timeout.c
 //
 // Ported so far: nh_timeout() (luck timeout, the uprops countdown and the
-// timeout cases that can occur with what the JS port sets so far).  The
-// *_dialogue() routines and run_timers() are not ported yet; nothing the
-// JS port does yet starts them (see the comments below).
+// timeout cases that can occur with what the JS port sets so far), the
+// generic timer queue (start_timer() ... relink_timers()) and the egg and
+// figurine timer attachment.
 
 import { is_flyer } from './mondata.js';
 import { vobj_at } from './display.js';
@@ -20,6 +20,33 @@ import { game } from './gstate.js';
 import * as P from './const.js';
 import { rnd } from './rng.js';
 import { MAX_EGG_HATCH_TIME } from './const.js';
+import { TIMER_NONE, TIMER_LEVEL, TIMER_GLOBAL, TIMER_OBJECT, TIMER_MONSTER,
+         NUM_TIMER_KINDS, ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
+         BURN_OBJECT, HATCH_EGG, FIG_TRANSFORM, SHRINK_GLOB, MELT_ICE_AWAY,
+         NUM_TIME_FUNCS, RANGE_LEVEL, RANGE_GLOBAL, COUNTING, WRITING, FREEING,
+         NHF_BONESFILE } from './const.js';
+import { Sfo, Sfi } from './sfbase.js';
+import { new_light_source, del_light_source, candle_light_range } from './light.js';
+import { artifact_light } from './worn.js';
+import { get_obj_location } from './shk.js';
+import { Yname2 as Yname2_to, xname as xname_to, an as an_to } from './objnam.js';
+import { You_see as You_see_to, Your as Your_to } from './display.js';
+import { s_suffix as s_suffix_to } from './hacklib.js';
+import { Monnam as Monnam_to } from './do_name.js';
+import { cansee as cansee_to } from './vision.js';
+import { Shk_Your as Shk_Your_to } from './wield.js';
+import { weight as weight_to, obj_extract_self as obj_extract_self_to } from './mkobj.js';
+import { m_at as m_at_to } from './makemon.js';
+import { obfree as obfree_to, useupall as useupall_to } from './invent.js';
+import { maybe_unhide_at as maybe_unhide_at_to } from './mon.js';
+import { LS_OBJECT, CONTAINED_TOO, BURIED_TOO } from './const.js';
+import { MAGIC_LAMP as O_MAGIC_LAMP, POT_OIL as O_POT_OIL, BRASS_LANTERN as O_BRASS_LANTERN,
+         OIL_LAMP as O_OIL_LAMP, CANDELABRUM_OF_INVOCATION as O_CANDELABRUM_OF_INVOCATION,
+         TALLOW_CANDLE as O_TALLOW_CANDLE, WAX_CANDLE as O_WAX_CANDLE } from './objects.js';
+import { rot_organic, rot_corpse } from './dig.js';
+import { revive_mon, zombify_mon, melt_ice_away } from './zap.js';
+import { shrink_glob } from './mkobj.js';
+import { fig_transform } from './apply.js';
 import { pline } from './display.js';
 import {
     FULL_MOON, TIMEOUT, LAST_PROP, STONED, SLIMED, VOMITING, STRANGLED, SICK,
@@ -796,9 +823,7 @@ export async function nh_timeout() {
         }
     }
 
-    /* run_timers(): the timer queue isn't ported yet; no timer set by
-       level creation (corpse rot, revival, melting ice) comes due within
-       the turns the sessions reach so far */
+    await run_timers();
 }
 
 /* C ref: youprop.h property test: intrinsic or extrinsic */
@@ -889,15 +914,15 @@ export async function fall_asleep(how_long, wakeup_msg) {
 }
 
 // C ref: timeout.c attach_egg_hatch_timeout()
-// The timer queue isn't ported yet: as with start_corpse_timeout(), the
-// pending timer is kept in obj.timer = { when, action }.
+/* Attach an egg hatch timeout to the given egg.
+ *      when = Time to hatch, usually only passed if re-creating an
+ *             existing hatch timer. Pass 0L for random hatch time.
+ */
 export function attach_egg_hatch_timeout(egg, when) {
     let i;
 
     /* stop previous timer, if any */
-    /* (void) stop_timer(HATCH_EGG, obj_to_any(egg)) */
-    if (egg.timer && egg.timer.action === 'HATCH_EGG')
-        egg.timer = null;
+    stop_timer(HATCH_EGG, obj_to_any(egg));
 
     /*
      * Decide if and when to hatch the egg.  The old hatch_it() code tried
@@ -914,8 +939,7 @@ export function attach_egg_hatch_timeout(egg, when) {
             }
     }
     if (when) {
-        /* (void) start_timer(when, TIMER_OBJECT, HATCH_EGG, obj_to_any(egg)) */
-        egg.timer = { when, action: 'HATCH_EGG' };
+        start_timer(when, TIMER_OBJECT, HATCH_EGG, obj_to_any(egg));
     }
 }
 
@@ -923,6 +947,982 @@ export function attach_egg_hatch_timeout(egg, when) {
 /* prevent an egg from ever hatching */
 export function kill_egg(egg) {
     /* stop previous timer, if any */
-    /* (void) stop_timer(HATCH_EGG, obj_to_any(egg)): the timer queue isn't
-       ported yet and no hatch timer is ever started, so there is none */
+    stop_timer(HATCH_EGG, obj_to_any(egg));
+}
+
+// C ref: timeout.c attach_fig_transform_timeout()
+/* Attach a fig_transform timeout to the given figurine. */
+export function attach_fig_transform_timeout(figurine) {
+    let i;
+
+    /* stop previous timer, if any */
+    stop_timer(FIG_TRANSFORM, obj_to_any(figurine));
+
+    /*
+     * Decide when to transform the figurine.
+     */
+    i = rnd(9000) + 200;
+    /* figurine will transform */
+    start_timer(i, TIMER_OBJECT, FIG_TRANSFORM, obj_to_any(figurine));
+}
+
+/* -------------------------------------------------------------------------
+ *
+ * Generic Timeout Functions.
+ *
+ * C ref: timeout.c start_timer() ... relink_timers().  The queue is C's:
+ * one global list (game.timer_base) of timer_element
+ * { next, timeout, tid, kind, func_index, arg, needs_fixup }, ordered
+ * "sooner" to "later".  'arg' is C's anything union: { a_obj } for an
+ * object timer, { a_long } for a level (spot) timer.
+ */
+
+// C ref: obj.h obj_to_any(), long_to_any()
+export function obj_to_any(obj) { return { a_obj: obj }; }
+export function long_to_any(lng) { return { a_long: lng }; }
+/* C compares the union's a_void member */
+function a_void(arg) { return (arg.a_obj !== undefined) ? arg.a_obj : arg.a_long; }
+
+/* C ref: timeout.c timeout_funcs[] -- the timeout functions live in their
+   C files; run_timers() calls them through this */
+async function timeout_func(func_index, arg, timeout) {
+    switch (func_index) {
+    case ROT_ORGANIC: return rot_organic(arg, timeout);
+    case ROT_CORPSE: return rot_corpse(arg, timeout);
+    case REVIVE_MON: return revive_mon(arg, timeout);
+    case ZOMBIFY_MON: return zombify_mon(arg, timeout);
+    case BURN_OBJECT: return burn_object(arg, timeout);
+    case HATCH_EGG: return hatch_egg(arg, timeout);
+    case FIG_TRANSFORM: return fig_transform(arg, timeout);
+    case SHRINK_GLOB: return shrink_glob(arg, timeout);
+    case MELT_ICE_AWAY: return melt_ice_away(arg, timeout);
+    default: throw new Error(`run_timers: timeout function ${func_index}`);
+    }
+}
+
+/* C ref: timeout.c timeout_funcs[].cleanup -- only burn_object has one */
+function timeout_cleanup(func_index) {
+    return (func_index === BURN_OBJECT) ? cleanup_burn : null;
+}
+
+const timeout_func_names = [
+    "rot_organic", "rot_corpse", "revive_mon", "zombify_mon", "burn_object",
+    "hatch_egg", "fig_transform", "shrink_glob", "melt_ice_away",
+];
+
+// C ref: timeout.c run_timers()
+/*
+ * Pick off timeout elements from the global queue and call their functions.
+ * Do this until their time is less than or equal to the move count.
+ */
+export async function run_timers() {
+    const g = game;
+    let curr;
+
+    /*
+     * Always use the first element.  Elements may be added or deleted at
+     * any time.  The list is ordered; we are done when the first element
+     * is in the future.
+     */
+    while (g.timer_base && g.timer_base.timeout <= g.moves) {
+        curr = g.timer_base;
+        g.timer_base = curr.next;
+
+        if (curr.kind === TIMER_OBJECT)
+            (curr.arg.a_obj).timed--;
+        await timeout_func(curr.func_index, curr.arg, curr.timeout);
+        curr.next = null; /* memset(curr, 0) + free(curr) */
+    }
+}
+
+// C ref: timeout.c start_timer()
+/*
+ * Start a timer.  Return TRUE if successful.
+ */
+export function start_timer(when, kind, func_index, arg) {
+    const g = game;
+    let dup;
+
+    if (kind <= TIMER_NONE || kind >= NUM_TIMER_KINDS
+        || func_index < 0 || func_index >= NUM_TIME_FUNCS)
+        throw new Error(`start_timer (${kind}: ${func_index})`); /* panic */
+
+    /* fail if <arg> already has a <func_index> timer running */
+    for (dup = g.timer_base; dup; dup = dup.next)
+        if (dup.kind === kind
+            && dup.func_index === func_index
+            && a_void(dup.arg) === a_void(arg))
+            break;
+    if (dup) {
+        /* impossible("Attempted to start duplicate %s, aborted.", idbuf) */
+        throw new Error(`impossible: Attempted to start duplicate ${
+            timeout_func_names[func_index]} timer, aborted.`);
+    }
+
+    if (g.timer_id === undefined || g.timer_id === null)
+        g.timer_id = 1; /* decl.c: svt.timer_id starts at 1 */
+    const gnu = {
+        next: null,
+        timeout: g.moves + when,
+        tid: g.timer_id++,
+        kind,
+        func_index,
+        arg: { ...arg },
+        needs_fixup: 0,
+    };
+    insert_timer(gnu);
+
+    if (kind === TIMER_OBJECT) /* increment object's timed count */
+        arg.a_obj.timed = (arg.a_obj.timed || 0) + 1;
+
+    return true;
+}
+
+// C ref: timeout.c stop_timer()
+/*
+ * Remove the timer from the current list and free it up.  Return the time
+ * remaining until it would have gone off, 0 if not found.
+ */
+export function stop_timer(func_index, arg) {
+    let cleanup_func;
+    let timeout;
+
+    const doomed = remove_timer(func_index, arg);
+
+    if (doomed) {
+        timeout = doomed.timeout;
+        if (doomed.kind === TIMER_OBJECT)
+            arg.a_obj.timed--;
+        if ((cleanup_func = timeout_cleanup(doomed.func_index)) !== null)
+            cleanup_func(arg, timeout);
+        doomed.next = null;
+        return (timeout - game.moves);
+    }
+    return 0;
+}
+
+// C ref: timeout.c peek_timer()
+/*
+ * Find the timeout of specified timer; return 0 if none.
+ */
+export function peek_timer(type, arg) {
+    for (let curr = game.timer_base; curr; curr = curr.next) {
+        if (curr.func_index === type && a_void(curr.arg) === a_void(arg))
+            return curr.timeout;
+    }
+    return 0;
+}
+
+// C ref: timeout.c obj_move_timers()
+/*
+ * Move all object timers from src to dest, leaving src untimed.
+ */
+export function obj_move_timers(src, dest) {
+    let count = 0;
+
+    for (let curr = game.timer_base; curr; curr = curr.next)
+        if (curr.kind === TIMER_OBJECT && curr.arg.a_obj === src) {
+            curr.arg.a_obj = dest;
+            dest.timed = (dest.timed || 0) + 1;
+            count++;
+        }
+    if (count !== (src.timed || 0))
+        throw new Error('obj_move_timers'); /* panic */
+    src.timed = 0;
+}
+
+// C ref: timeout.c obj_split_timers()
+/*
+ * Find all object timers and duplicate them for the new object "dest".
+ */
+export function obj_split_timers(src, dest) {
+    let curr, next_timer = null;
+
+    for (curr = game.timer_base; curr; curr = next_timer) {
+        next_timer = curr.next; /* things may be inserted */
+        if (curr.kind === TIMER_OBJECT && curr.arg.a_obj === src) {
+            start_timer(curr.timeout - game.moves, TIMER_OBJECT,
+                        curr.func_index, obj_to_any(dest));
+        }
+    }
+}
+
+// C ref: timeout.c obj_stop_timers()
+/*
+ * Stop all timers attached to this object.  We can get away with this because
+ * all object pointers are unique.
+ */
+export function obj_stop_timers(obj) {
+    const g = game;
+    let cleanup_func;
+    let curr, prev, next_timer = null;
+
+    for (prev = null, curr = g.timer_base; curr; curr = next_timer) {
+        next_timer = curr.next;
+        if (curr.kind === TIMER_OBJECT && curr.arg.a_obj === obj) {
+            if (prev)
+                prev.next = curr.next;
+            else
+                g.timer_base = curr.next;
+            if ((cleanup_func = timeout_cleanup(curr.func_index)) !== null)
+                cleanup_func(curr.arg, curr.timeout);
+            curr.next = null;
+        } else {
+            prev = curr;
+        }
+    }
+    obj.timed = 0;
+}
+
+// C ref: timeout.c obj_has_timer()
+/*
+ * Check whether object has a timer of type timer_type.
+ */
+export function obj_has_timer(object, timer_type) {
+    const timeout = peek_timer(timer_type, obj_to_any(object));
+
+    return (timeout !== 0);
+}
+
+// C ref: timeout.c spot_stop_timers()
+/*
+ * Stop all timers of index func_index at this spot.
+ *
+ */
+export function spot_stop_timers(x, y, func_index) {
+    const g = game;
+    let cleanup_func;
+    let curr, prev, next_timer = null;
+    const where = ((x << 16) | y);
+
+    for (prev = null, curr = g.timer_base; curr; curr = next_timer) {
+        next_timer = curr.next;
+        if (curr.kind === TIMER_LEVEL && curr.func_index === func_index
+            && curr.arg.a_long === where) {
+            if (prev)
+                prev.next = curr.next;
+            else
+                g.timer_base = curr.next;
+            if ((cleanup_func = timeout_cleanup(curr.func_index)) !== null)
+                cleanup_func(curr.arg, curr.timeout);
+            curr.next = null;
+        } else {
+            prev = curr;
+        }
+    }
+}
+
+// C ref: timeout.c spot_time_expires()
+/*
+ * When is the spot timer of type func_index going to expire?
+ * Returns 0L if no such timer.
+ */
+export function spot_time_expires(x, y, func_index) {
+    const where = ((x << 16) | y);
+
+    for (let curr = game.timer_base; curr; curr = curr.next) {
+        if (curr.kind === TIMER_LEVEL && curr.func_index === func_index
+            && curr.arg.a_long === where)
+            return curr.timeout;
+    }
+    return 0;
+}
+
+// C ref: timeout.c spot_time_left()
+export function spot_time_left(x, y, func_index) {
+    const expires = spot_time_expires(x, y, func_index);
+    return (expires > 0) ? expires - game.moves : 0;
+}
+
+// C ref: timeout.c insert_timer()
+/* Insert timer into the global queue */
+function insert_timer(gnu) {
+    const g = game;
+    let curr, prev;
+
+    for (prev = null, curr = g.timer_base; curr; prev = curr, curr = curr.next)
+        if (curr.timeout >= gnu.timeout)
+            break;
+
+    gnu.next = curr;
+    if (prev)
+        prev.next = gnu;
+    else
+        g.timer_base = gnu;
+}
+
+// C ref: timeout.c remove_timer()
+function remove_timer(func_index, arg) {
+    const g = game;
+    let prev, curr;
+
+    for (prev = null, curr = g.timer_base; curr; prev = curr, curr = curr.next)
+        if (curr.func_index === func_index && a_void(curr.arg) === a_void(arg))
+            break;
+
+    if (curr) {
+        if (prev)
+            prev.next = curr.next;
+        else
+            g.timer_base = curr.next;
+    }
+    return curr;
+}
+
+// C ref: timeout.c write_timer()
+/* the record holds the element without its 'next' link; an object in
+   'arg' is written as its o_id and re-linked after restoring (Sfo()'s id
+   links stand for C's needs_fixup + relink_timers()) */
+function write_timer(nhfp, timer) {
+    switch (timer.kind) {
+    case TIMER_GLOBAL:
+    case TIMER_LEVEL:
+    case TIMER_OBJECT:
+        Sfo(nhfp, { timeout: timer.timeout, tid: timer.tid, kind: timer.kind,
+                    func_index: timer.func_index, arg: { ...timer.arg },
+                    needs_fixup: (timer.kind === TIMER_OBJECT) ? 1 : 0 },
+            "timer");
+        break;
+    case TIMER_MONSTER:
+        throw new Error('write_timer(): monster timers not ported yet');
+    default:
+        throw new Error('write_timer'); /* panic */
+    }
+}
+
+// C ref: timeout.c obj_is_local()
+/*
+ * Return TRUE if the object will stay on the level when the level is
+ * saved.
+ */
+export function obj_is_local(obj) {
+    switch (obj.where) {
+    case 'OBJ_INVENT':
+    case 'OBJ_MIGRATING':
+        return false;
+    case 'OBJ_FLOOR':
+    case 'OBJ_BURIED':
+        return true;
+    case 'OBJ_CONTAINED':
+        return obj_is_local(obj.ocontainer);
+    case 'OBJ_MINVENT':
+        return mon_is_local(obj.ocarry);
+    }
+    throw new Error(`obj_is_local (${obj.where})`); /* panic */
+}
+
+// C ref: timeout.c mon_is_local()
+/*
+ * Return TRUE if the given monster will stay on the level when the
+ * level is saved.
+ */
+function mon_is_local(mon) {
+    let curr;
+
+    for (curr = game.migrating_mons; curr; curr = curr.nmon)
+        if (curr === mon)
+            return false;
+    /* `gm.mydogs' is used during level changes, never saved and restored */
+    for (curr = game.mydogs; curr; curr = curr.nmon)
+        if (curr === mon)
+            return false;
+    return true;
+}
+
+// C ref: timeout.c timer_is_local()
+/*
+ * Return TRUE if the timer is attached to something that will stay on the
+ * level when the level is saved.
+ */
+function timer_is_local(timer) {
+    switch (timer.kind) {
+    case TIMER_LEVEL:
+        return true;
+    case TIMER_GLOBAL:
+        return false;
+    case TIMER_OBJECT:
+        return obj_is_local(timer.arg.a_obj);
+    case TIMER_MONSTER:
+        return mon_is_local(timer.arg.a_monst);
+    }
+    throw new Error('timer_is_local'); /* panic */
+}
+
+// C ref: timeout.c maybe_write_timer()
+/*
+ * Part of the save routine.  Count up the number of timers that would
+ * be written.  If write_it is true, actually write the timer.
+ */
+function maybe_write_timer(nhfp, range, write_it) {
+    let count = 0;
+
+    for (let curr = game.timer_base; curr; curr = curr.next) {
+        if (range === RANGE_GLOBAL) {
+            /* global timers */
+
+            if (!timer_is_local(curr)) {
+                count++;
+                if (write_it) write_timer(nhfp, curr);
+            }
+        } else {
+            /* local timers */
+
+            if (timer_is_local(curr)) {
+                count++;
+                if (write_it) write_timer(nhfp, curr);
+            }
+        }
+    }
+
+    return count;
+}
+
+// C ref: timeout.c save_timers()
+/*
+ * Save part of the timer list.  The parameter 'range' specifies either
+ * global or level timers to save.  The timer ID is saved with the global
+ * timers.
+ *
+ * Global range:
+ *      + timeouts that follow the hero (global)
+ *      + timeouts that follow obj & monst that are migrating
+ *
+ * Level range:
+ *      + timeouts that are level-specific (e.g. storms)
+ *      + timeouts that stay with the level (obj & monst)
+ */
+export function save_timers(nhfp, range) {
+    const g = game;
+    let curr, prev, next_timer = null;
+    let count;
+
+    if (nhfp.mode & (COUNTING | WRITING)) { /* update_file(nhfp) */
+        if (range === RANGE_GLOBAL) {
+            Sfo(nhfp, g.timer_id ?? 1, "timer-timer_id");
+        }
+        count = maybe_write_timer(nhfp, range, false);
+        Sfo(nhfp, count, "timer-timer_count");
+        maybe_write_timer(nhfp, range, true);
+    }
+
+    if (nhfp.mode & FREEING) { /* release_data(nhfp) */
+        for (prev = null, curr = g.timer_base; curr; curr = next_timer) {
+            next_timer = curr.next; /* in case curr is removed */
+
+            if (!(!!(range === RANGE_LEVEL) !== !!timer_is_local(curr))) {
+                if (prev)
+                    prev.next = curr.next;
+                else
+                    g.timer_base = curr.next;
+                curr.next = null;
+                /* prev stays the same */
+            } else {
+                prev = curr;
+            }
+        }
+    }
+}
+
+// C ref: timeout.c restore_timers()
+/*
+ * Pull in the structures from disk, but don't recalculate the object and
+ * monster pointers.
+ */
+export function restore_timers(nhfp, range, adjust) {
+    let count = 0;
+    let curr;
+    const ghostly = (nhfp.ftype === NHF_BONESFILE); /* from a ghost level */
+
+    if (range === RANGE_GLOBAL) {
+        game.timer_id = Sfi(nhfp, "timer-timer_id");
+    }
+
+    /* restore elements */
+    count = Sfi(nhfp, "timer-timer_count");
+    while (count-- > 0) {
+        curr = Sfi(nhfp, "timer");
+        curr.next = null;
+        if (ghostly)
+            curr.timeout += adjust;
+        insert_timer(curr);
+    }
+}
+
+// C ref: timeout.c relink_timers()
+/* reset all timers that are marked for resetting; the object links
+   themselves are resolved by restore.js resolve_saved_ids(), which
+   dorecover() runs for the game state's links only after getlev(), so a
+   link still unresolved here is fixed up by dorecover()'s own call */
+export function relink_timers(ghostly) {
+    for (let curr = game.timer_base; curr; curr = curr.next) {
+        if (curr.needs_fixup) {
+            if (curr.kind === TIMER_OBJECT) {
+                if (!curr.arg.a_obj)
+                    continue; /* not resolved yet */
+                curr.needs_fixup = 0;
+            } else if (curr.kind === TIMER_MONSTER) {
+                throw new Error('relink_timers: no monster timer implemented');
+            } else
+                throw new Error('relink_timers 2');
+        }
+    }
+}
+
+// C ref: timeout.c hatch_egg()
+/* timer callback routine: hatch the given egg */
+async function hatch_egg(arg, timeout) {
+    throw new Error('hatch_egg() not ported yet');
+}
+
+// C ref: timeout.c see_lamp_flicker()
+/* Print a lamp flicker message with tailer.  Only called if seen. */
+async function see_lamp_flicker(obj, tailer) {
+    switch (obj.where) {
+    case 'OBJ_INVENT':
+    case 'OBJ_MINVENT':
+        await pline(`${Yname2_to(obj)} flickers${tailer}.`);
+        break;
+    case 'OBJ_FLOOR':
+        await You_see_to(`${an_to(xname_to(obj))} flicker${tailer}.`);
+        break;
+    }
+}
+
+// C ref: timeout.c lantern_message()
+/* Print a dimming message for brass lanterns.  Only called if seen. */
+async function lantern_message(obj) {
+    /* from adventure */
+    switch (obj.where) {
+    case 'OBJ_INVENT':
+        await Your_to("lantern is getting dim.");
+        if (Hallucination_to())
+            await pline("Batteries have not been invented yet.");
+        break;
+    case 'OBJ_FLOOR':
+        await You_see_to("a lantern getting dim.");
+        break;
+    case 'OBJ_MINVENT':
+        await pline(`${s_suffix_to(Monnam_to(obj.ocarry))} lantern is getting dim.`);
+        break;
+    }
+}
+
+// C ref: timeout.c burn_object()
+/*
+ * Timeout callback for objects that are burning. E.g. lamps, candles.
+ * See begin_burn() for meanings of obj->age and obj->spe.
+ */
+async function burn_object(arg, timeout) {
+    let obj = arg.a_obj;
+    let canseeit, need_newsym, need_invupdate, bytouch;
+    let x = 0, y = 0;
+    let whose = "";
+
+    const menorah = obj.otyp === O_CANDELABRUM_OF_INVOCATION;
+    const many = menorah ? obj.spe > 1 : obj.quan > 1;
+
+    /* timeout while away */
+    if (timeout !== game.moves) {
+        const how_long = game.moves - timeout;
+
+        if (how_long >= obj.age) {
+            obj.age = 0;
+            end_burn(obj, false);
+
+            if (menorah) {
+                obj.spe = 0; /* no more candles */
+                obj.owt = weight_to(obj);
+            } else if (obj.otyp === O_TALLOW_CANDLE || obj.otyp === O_WAX_CANDLE
+                       || obj.otyp === O_POT_OIL) {
+                let mtmp = null;
+
+                if (obj.where === 'OBJ_FLOOR')
+                    mtmp = m_at_to(obj.ox, obj.oy);
+                /* get rid of candles and burning oil potions;
+                   we know this object isn't carried by hero,
+                   nor is it migrating */
+                obj_extract_self_to(obj);
+                obfree_to(obj, null);
+                obj = null;
+                if (mtmp)
+                    maybe_unhide_at_to(mtmp.mx, mtmp.my);
+            }
+
+        } else {
+            obj.age -= how_long;
+            begin_burn(obj, true);
+        }
+        return;
+    }
+
+    /* only interested in INVENT, FLOOR, and MINVENT */
+    const loc = get_obj_location(obj, 0);
+    if (loc) {
+        x = loc[0], y = loc[1];
+        canseeit = !Blind() && cansee_to(x, y);
+        /* set `whose[]' to be "Your " or "Fred's " or "The goblin's " */
+        whose = Shk_Your_to(obj);
+    } else {
+        canseeit = false;
+    }
+    /* when carrying the light source, you can feel the heat from lit lamp
+       or candle so you'll be notified when it burns out even if blind at
+       the time; brass lantern doesn't radiate sufficient heat for that
+       (however, inventory formatting drops "(lit)" so player can tell) */
+    bytouch = (obj.where === 'OBJ_INVENT' && obj.otyp !== O_BRASS_LANTERN);
+    need_newsym = need_invupdate = false;
+
+    /* obj->age is the age remaining at this point.  */
+    switch (obj.otyp) {
+    case O_POT_OIL:
+        throw new Error('burn_object(): burning potion of oil not ported yet');
+
+    case O_BRASS_LANTERN:
+    case O_OIL_LAMP:
+        switch (obj.age) {
+        case 150:
+        case 100:
+        case 50:
+            if (canseeit) {
+                if (obj.otyp === O_BRASS_LANTERN)
+                    await lantern_message(obj);
+                else
+                    await see_lamp_flicker(obj,
+                                           obj.age === 50 ? " considerably" : "");
+            }
+            break;
+
+        case 25:
+            if (canseeit) {
+                if (obj.otyp === O_BRASS_LANTERN) {
+                    await lantern_message(obj);
+                } else {
+                    switch (obj.where) {
+                    case 'OBJ_INVENT':
+                    case 'OBJ_MINVENT':
+                        await pline(`${Yname2_to(obj)} seems about to go out.`);
+                        break;
+                    case 'OBJ_FLOOR':
+                        await You_see_to(`${an_to(xname_to(obj))} about to go out.`);
+                        break;
+                    }
+                }
+            }
+            break;
+
+        case 0:
+            /* even if blind you'll know if holding it */
+            if (canseeit || bytouch) {
+                switch (obj.where) {
+                case 'OBJ_INVENT':
+                case 'OBJ_MINVENT':
+                    if (obj.otyp === O_BRASS_LANTERN)
+                        await pline(`${whose}lantern has run out of power.`);
+                    else
+                        await pline(`${Yname2_to(obj)} has gone out.`);
+                    break;
+                case 'OBJ_FLOOR':
+                    if (obj.otyp === O_BRASS_LANTERN)
+                        await You_see_to("a lantern run out of power.");
+                    else
+                        await You_see_to(`${an_to(xname_to(obj))} go out.`);
+                    break;
+                }
+            }
+            end_burn(obj, false);
+            break;
+
+        default:
+            /*
+             * Someone added fuel to the lamp while it was
+             * lit. Just fall through and let begin_burn()
+             * handle the new age.
+             */
+            break;
+        }
+
+        if (obj.age)
+            begin_burn(obj, true);
+
+        break;
+
+    case O_CANDELABRUM_OF_INVOCATION:
+    case O_TALLOW_CANDLE:
+    case O_WAX_CANDLE:
+        switch (obj.age) {
+        case 75:
+            if (canseeit)
+                switch (obj.where) {
+                case 'OBJ_INVENT':
+                case 'OBJ_MINVENT':
+                    await pline(`${whose}${menorah ? "candelabrum's " : ""}candle${
+                        many ? "s are" : " is"} getting short.`);
+                    break;
+                case 'OBJ_FLOOR':
+                    await You_see_to(`${menorah ? "a candelabrum's " : many ? "some "
+                                                                     : "a "}candle${
+                        many ? "s" : ""} getting short.`);
+                    break;
+                }
+            break;
+
+        case 15:
+            if (canseeit)
+                switch (obj.where) {
+                case 'OBJ_INVENT':
+                case 'OBJ_MINVENT':
+                    await pline(`${whose}${menorah ? "candelabrum's " : ""}candle${
+                        many ? "s'" : "'s"} flame${many ? "s" : ""} flicker${
+                        many ? "" : "s"} low!`);
+                    break;
+                case 'OBJ_FLOOR':
+                    await You_see_to(`${menorah ? "a candelabrum's " : many ? "some "
+                                                                     : "a "}candle${
+                        many ? "s'" : "'s"} flame${many ? "s" : ""} flicker low!`);
+                    break;
+                }
+            break;
+
+        case 0:
+            /* we know even if blind and in our inventory */
+            if (canseeit || bytouch) {
+                if (menorah) {
+                    switch (obj.where) {
+                    case 'OBJ_INVENT':
+                    case 'OBJ_MINVENT':
+                        await pline(`${whose}candelabrum's flame${
+                            many ? "s die" : " dies"}.`);
+                        break;
+                    case 'OBJ_FLOOR':
+                        await You_see_to(`a candelabrum's flame${many ? "s" : ""} die.`);
+                        break;
+                    }
+                } else {
+                    switch (obj.where) {
+                    case 'OBJ_INVENT':
+                    case 'OBJ_MINVENT':
+                        await pline(`${Yname2_to(obj)} ${many ? "are" : "is"} consumed!`);
+                        break;
+                    case 'OBJ_FLOOR':
+                        /*
+                          You see some wax candles consumed!
+                          You see a wax candle consumed!
+                         */
+                        await You_see_to(`${many ? "some " : ""}${
+                            many ? xname_to(obj) : an_to(xname_to(obj))} consumed!`);
+                        need_newsym = true;
+                        break;
+                    }
+
+                    /* post message */
+                    await pline(Hallucination_to()
+                                    ? (many ? "They shriek!" : "It shrieks!")
+                                    : Blind() ? "" : (many ? "Their flames die."
+                                                           : "Its flame dies."));
+                }
+            }
+            end_burn(obj, false);
+
+            if (menorah) {
+                obj.spe = 0; /* no candles */
+                obj.owt = weight_to(obj);
+            } else {
+                if (obj.where === 'OBJ_INVENT') { /* carried(obj) */
+                    await useupall_to(obj);
+                } else {
+                    const onfloor = (obj.where === 'OBJ_FLOOR');
+
+                    /* clear migrating obj's destination code
+                       so obfree won't think this item is worn */
+                    if (obj.where === 'OBJ_MIGRATING')
+                        obj.owornmask = 0;
+                    obj_extract_self_to(obj);
+                    if (onfloor)
+                        maybe_unhide_at_to(x, y);
+                    obfree_to(obj, null);
+                }
+                obj = null;
+            }
+            break; /* case [age ==] 0 */
+
+        default:
+            /*
+             * Someone added fuel (candles) to the menorah while
+             * it was lit. Just fall through and let begin_burn()
+             * handle the new age.
+             */
+            break;
+        }
+
+        if (obj && obj.age)
+            begin_burn(obj, true);
+        break; /* case [otyp ==] candelabrum|tallow_candle|wax_candle */
+
+    default:
+        console.error('impossible: burn_object: unexpected obj');
+        break;
+    }
+    if (need_newsym)
+        newsym(x, y);
+    /* if (need_invupdate) update_inventory(): no perm_invent window */
+}
+
+// C ref: timeout.c begin_burn()
+/*
+ * Start a burn timeout on the given object. If not "already lit" then
+ * create a light source for the vision system.  There had better not
+ * be a burn already running on the object.
+ *
+ * Magic lamps stay lit as long as there's a genie inside, so don't start
+ * a timer.
+ *
+ * Burn rules:
+ *      potions of oil, lamps & candles:
+ *              age = # of turns of fuel left
+ *              spe = <unused>
+ *      magic lamps:
+ *              age = <unused>
+ *              spe = 0 not lightable, 1 lightable forever
+ *      candelabrum:
+ *              age = # of turns of fuel left
+ *              spe = # of candles
+ *
+ * Once the burn begins, the age will be set to the amount of fuel
+ * remaining _once_the_burn_finishes_.  If the burn is terminated
+ * early then fuel is added back.
+ *
+ * This use of age differs from the use of age for corpses and eggs.
+ * For the latter items, age is when the object was created, so we
+ * know when it becomes "bad".
+ *
+ * This is a "silent" routine - it should not print anything out.
+ */
+export function begin_burn(obj, already_lit) {
+    let radius = 3;
+    let turns = 0;
+    let do_timer = true;
+
+    if (obj.age === 0 && obj.otyp !== O_MAGIC_LAMP && !artifact_light(obj))
+        return;
+
+    switch (obj.otyp) {
+    case O_MAGIC_LAMP:
+        obj.lamplit = 1;
+        do_timer = false;
+        break;
+
+    case O_POT_OIL:
+        turns = obj.age;
+        if (obj.odiluted)
+            turns = Math.trunc((3 * turns + 2) / 4);
+        radius = 1; /* very dim light */
+        break;
+
+    case O_BRASS_LANTERN:
+    case O_OIL_LAMP:
+        /* magic times are 150, 100, 50, 25, and 0 */
+        if (obj.age > 150)
+            turns = obj.age - 150;
+        else if (obj.age > 100)
+            turns = obj.age - 100;
+        else if (obj.age > 50)
+            turns = obj.age - 50;
+        else if (obj.age > 25)
+            turns = obj.age - 25;
+        else
+            turns = obj.age;
+        break;
+
+    case O_CANDELABRUM_OF_INVOCATION:
+    case O_TALLOW_CANDLE:
+    case O_WAX_CANDLE:
+        /* magic times are 75, 15, and 0 */
+        if (obj.age > 75)
+            turns = obj.age - 75;
+        else if (obj.age > 15)
+            turns = obj.age - 15;
+        else
+            turns = obj.age;
+        radius = candle_light_range(obj);
+        break;
+
+    default:
+        /* [ALI] Support artifact light sources */
+        if (artifact_light(obj)) {
+            obj.lamplit = 1;
+            do_timer = false;
+            throw new Error('begin_burn(): arti_light_radius() not ported yet');
+        } else {
+            /* impossible("begin burn: unexpected %s", xname(obj)) */
+            console.error(`impossible: begin burn: unexpected ${obj.otyp}`);
+            turns = obj.age;
+        }
+        break;
+    }
+
+    if (do_timer) {
+        if (start_timer(turns, TIMER_OBJECT, BURN_OBJECT, obj_to_any(obj))) {
+            obj.lamplit = 1;
+            obj.age -= turns;
+            /* if (carried(obj) && !already_lit) update_inventory(): no
+               perm_invent window */
+        } else {
+            obj.lamplit = 0;
+        }
+    } else {
+        /* if (carried(obj) && !already_lit) update_inventory() */
+    }
+
+    if (obj.lamplit && !already_lit) {
+        const loc = get_obj_location(obj, CONTAINED_TOO | BURIED_TOO);
+
+        if (loc)
+            new_light_source(loc[0], loc[1], radius, LS_OBJECT, obj_to_any(obj));
+        else
+            console.error('impossible: begin_burn: can\'t get obj position');
+    }
+}
+
+// C ref: timeout.c end_burn()
+/*
+ * Stop a burn timeout on the given object if timer attached.  Darken
+ * light source.
+ */
+export function end_burn(obj, timer_attached) {
+    if (!obj.lamplit) {
+        /* impossible("end_burn: obj %s not lit", xname(obj)) */
+        console.error(`impossible: end_burn: obj ${obj.otyp} not lit`);
+        return;
+    }
+
+    if (obj.otyp === O_MAGIC_LAMP || artifact_light(obj))
+        timer_attached = false;
+
+    if (!timer_attached) {
+        /* [DS] Cleanup explicitly, since timer cleanup won't happen */
+        del_light_source(LS_OBJECT, obj_to_any(obj));
+        obj.lamplit = 0;
+        /* if (obj->where == OBJ_INVENT) update_inventory() */
+    } else if (!stop_timer(BURN_OBJECT, obj_to_any(obj)))
+        console.error(`impossible: end_burn: obj ${obj.otyp} not timed!`);
+}
+
+// C ref: timeout.c cleanup_burn()
+/*
+ * Cleanup a burning object if timer stopped.
+ */
+function cleanup_burn(arg, expire_time) {
+    const obj = arg.a_obj;
+
+    if (!obj.lamplit) {
+        console.error('impossible: cleanup_burn: obj not lit');
+        return;
+    }
+
+    del_light_source(LS_OBJECT, obj_to_any(obj));
+    /* restore unused time */
+    obj.age += expire_time - game.moves;
+    obj.lamplit = 0;
+
+    /* if (obj->where == OBJ_INVENT) update_inventory() */
 }

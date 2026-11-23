@@ -485,7 +485,8 @@ export function blessorcurse(otmp, chance) {
     if (otmp.blessed || otmp.cursed)
         return;
     if (!rn2(chance)) {
-        if (!rn2(2)) curse(otmp); else bless(otmp);
+        // Equipped items may need to finish dropping or changing light.
+        return !rn2(2) ? curse(otmp) : bless(otmp);
     }
 }
 
@@ -910,17 +911,14 @@ export function mkobj_erosions(otmp) {
     }
 }
 
-// src/mkobj.c mksobj() — create a specific object type.
-//
-// Only the identity and o_id allocation are ported so far. mksobj_init(), which
-// carries the per-class enchantment, blessing, corpse-type and artifact draws,
-// needs artifacts and monster-hatching and lands with those subsystems. Nothing
-// here invents a draw it cannot justify.
+// src/mkobj.c mksobj(): create an unlinked object, initialize its class when
+// requested, then set species, timers and weight even when init is false.
 export function mksobj(otyp, init, artif) {
     const objects = game.objects;
     const otmp = {
         otyp,
         oclass: objects[otyp].oc_class,
+        where: OBJ_FREE,
         quan: 1,
         spe: 0,
         blessed: 0,

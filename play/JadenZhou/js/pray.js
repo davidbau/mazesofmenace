@@ -6,6 +6,8 @@
 // to its trouble fixing and boons.
 
 import { game } from './gstate.js';
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT } from './const.js';
 import { rn2, rn1, rnl, rnz, ROLL_FROM, rn2_on_display_rng } from './rng.js';
 import { roles, randrole } from './role.js';
 import { HALLUC_RES, LEVITATION, FLYING } from './const.js';
@@ -1008,9 +1010,8 @@ export async function dopray() {
             return ECMD_OK;
     }
 
-    if (!u.uconduct.gnostic++) {
-        /* livelog_printf(LL_CONDUCT, "rejected atheism with a prayer") */
-    }
+    if (!u.uconduct.gnostic++)
+        livelog_printf(LL_CONDUCT, "rejected atheism with a prayer");
 
     /* set up p_type and p_alignment */
     if (!(await can_pray(true)))
@@ -1212,9 +1213,8 @@ export async function doturn() {
         await pline("You don't know how to turn undead!"); /* You() */
         return ECMD_OK;
     }
-    if (!u.uconduct.gnostic++) {
-        /* livelog_printf(LL_CONDUCT, "rejected atheism by turning undead") */
-    }
+    if (!u.uconduct.gnostic++)
+        livelog_printf(LL_CONDUCT, "rejected atheism by turning undead");
 
     Gname = halu_gname(u.ualign.type);
 

@@ -4,8 +4,11 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { doapply, dorub } from './apply.js';
 import { doinvoke, undiscovered_artifact } from './artifact.js';
+import { ART } from './artilist.h.js';
 import { cmdq_add_ec, cmdq_add_key, do_reqmenu } from './cmd.js';
+import { NO_COLOR } from './color.h.js';
 import { cg, gy, svl, u } from './decl.js';
+import { AMULET_CLASS, ARMOR_CLASS, COIN_CLASS, GEM_CLASS, POTION_CLASS, RING_CLASS, SCROLL_CLASS, SPBOOK_CLASS, TOOL_CLASS, WAND_CLASS, WEAPON_CLASS } from './defsym.h.js';
 import { nul_glyphinfo } from './display.js';
 import { dodrop, donull } from './do.js';
 import { call_ok, docallcmd, name_ok } from './do_name.js';
@@ -14,10 +17,16 @@ import { dofire, dothrow } from './dothrow.js';
 import { surface } from './dungeon.js';
 import { doeat, is_edible } from './eat.js';
 import { doengrave } from './engrave.js';
+import { FALSE, TRUE } from './global.h.js';
 import { in_rooms } from './hack.js';
+import { CQ_CANNED, ECMD, FINGER, GETOBJ, HAND, HANDS_SYM } from './hack.h.js';
 import { eos } from './hacklib.js';
 import { adjust_split, carrying, check_invent_gold, doorganize } from './invent.js';
+import { SHOPBASE } from './mkroom.h.js';
+import { cantwield, could_twoweap } from './mondata.macros.js';
+import { Has_contents, Is_container, ammo_and_launcher, is_graystone, is_plural, is_weptool, is_wet_towel } from './obj.macros.js';
 import { objects } from './objects.js';
+import { ALCHEMY_SMOCK, AMULET_OF_YENDOR, BAG_OF_TRICKS, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD, BRASS_LANTERN, BULLWHIP, CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CORPSE, CREAM_PIE, CREDIT_CARD, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, DWARVISH_MATTOCK, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA, FAKE_AMULET_OF_YENDOR, FIGURINE, FORTUNE_COOKIE, GOLD_PIECE, GRAPPLING_HOOK, HAWAIIAN_SHIRT, HEAVY_IRON_BALL, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, LOCK_PICK, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MEAT_RING, MIRROR, OIL_LAMP, PICK_AXE, POT_OIL, SADDLE, SCR_BLANK_PAPER, SCR_MAIL, SKELETON_KEY, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, STETHOSCOPE, TALLOW_CANDLE, TIN, TINNING_KIT, TIN_OPENER, TIN_WHISTLE, TOWEL, T_SHIRT, UNICORN_HORN, WAX_CANDLE, WOODEN_FLUTE } from './objects.h.js';
 import { an, armor_simple_name, cxname, makeplural, simpleonames, the, the_unique_obj } from './objnam.js';
 import { dowhatis, ia_checkfile } from './pager.js';
 import { dotip } from './pickup.js';
@@ -25,12 +34,48 @@ import { impossible } from './pline.js';
 import { body_part } from './polyself.js';
 import { dip_into, dodrink } from './potion.js';
 import { dosacrifice } from './pray.js';
+import { W, W_ACCESSORY, W_ARMOR, W_RING } from './prop.h.js';
 import { doread } from './read.js';
+import { ALTAR } from './rm.h.js';
 import { dopay, inhishop, shop_keeper } from './shk.js';
+import { P } from './skills.h.js';
 import { doswapweapon, dotwoweapon, dowield, dowieldquiver } from './wield.js';
-import { add_menu, select_menu, windowprocs } from './windows.js';
+import { add_menu, select_menu } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, end_menu, start_menu } from './winprocs.macros.js';
+import { ATR, MENU, NHW, PICK } from './wintype.h.js';
 import { armcat_to_wornmask, wearmask_to_obj } from './worn.js';
 import { dozap } from './zap.js';
+
+const IA = $c.cenum([
+    ['NONE', 0],
+    'UNWIELD',
+    'APPLY_OBJ',
+    'DIP_OBJ',
+    'NAME_OBJ',
+    'NAME_OTYP',
+    'DROP_OBJ',
+    'EAT_OBJ',
+    'ENGRAVE_OBJ',
+    'FIRE_OBJ',
+    'ADJUST_OBJ',
+    'ADJUST_STACK',
+    'SACRIFICE',
+    'BUY_OBJ',
+    'QUAFF_OBJ',
+    'QUIVER_OBJ',
+    'READ_OBJ',
+    'RUB_OBJ',
+    'THROW_OBJ',
+    'TAKEOFF_OBJ',
+    'TIP_CONTAINER',
+    'INVOKE_OBJ',
+    'WIELD_OBJ',
+    'WEAR_OBJ',
+    'SWAPWEAPON',
+    'TWOWEAPON',
+    'ZAP_OBJ',
+    'WHATIS_OBJ'
+]);
 
 const item_naming_classification$Name = new Int8Array(5);   // static in item_naming_classification()
 const item_naming_classification$Rename = new Int8Array(18);   // static in item_naming_classification()
@@ -39,384 +84,384 @@ const item_naming_classification$Recall = new Int8Array(19);   // static in item
 async function item_naming_classification(obj, onamebuf, ocallbuf) {   // iactions.c:46
     let callname = null, $t1;
     $t1 = ocallbuf.set(0, 0), onamebuf.set(0, $t1);
-    if (name_ok(obj) === 2 /* GETOBJ_SUGGEST */) {
-        $c.__builtin___sprintf_chk(onamebuf, 0, -1, $c.lit("%s %s %s"), !(obj.oextra && obj.oextra.oname) || !obj.oextra.oname.get(0) ? new $c.Ptr(item_naming_classification$Name, 0) : new $c.Ptr(item_naming_classification$Rename, 0), the_unique_obj(obj) ? $c.lit("the") : !(obj.quan !== 1 || obj.oartifact === 26 /* ART_EYES_OF_THE_OVERWORLD */ && !undiscovered_artifact(26)) ? $c.lit("this specific") : $c.lit("this stack of"), await simpleonames(obj));
+    if (name_ok(obj) === GETOBJ.SUGGEST) {
+        $c.__builtin___sprintf_chk(onamebuf, 0, -1, $c.lit("%s %s %s"), !(obj.oextra && obj.oextra.oname) || !obj.oextra.oname.get(0) ? new $c.Ptr(item_naming_classification$Name, 0) : new $c.Ptr(item_naming_classification$Rename, 0), the_unique_obj(obj) ? $c.lit("the") : !(obj.quan !== 1 || obj.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD)) ? $c.lit("this specific") : $c.lit("this stack of"), await simpleonames(obj));
     }
-    if (call_ok(obj) === 2 /* GETOBJ_SUGGEST */) {
+    if (call_ok(obj) === GETOBJ.SUGGEST) {
         callname = await simpleonames(obj);
         if (the_unique_obj(obj)) {
             callname = await the(callname);
-        } else if (!(obj.quan !== 1 || obj.oartifact === 26 /* ART_EYES_OF_THE_OVERWORLD */ && !undiscovered_artifact(26))) {
+        } else if (!is_plural(obj)) {
             callname = await makeplural(callname);
         }
         $c.__builtin___sprintf_chk(ocallbuf, 0, -1, $c.lit("%s the type for %s"), !objects[obj.otyp].oc_uname || !objects[obj.otyp].oc_uname.get(0) ? new $c.Ptr(item_naming_classification$Call, 0) : new $c.Ptr(item_naming_classification$Recall, 0), callname);
     }
-    return $c.i8(onamebuf.get(0) || ocallbuf.get(0) ? 1 : 0);
+    return $c.i8(onamebuf.get(0) || ocallbuf.get(0) ? TRUE : FALSE);
 }
 async function item_reading_classification(obj, outbuf) {   // iactions.c:86
     let otyp = 0, res = 0, magic = null, novel = 0, blank = 0, tome = 0;
     otyp = obj.otyp;
-    res = 16 /* IA_READ_OBJ */;
+    res = IA.READ_OBJ;
     outbuf.set(0, 0);
-    if (otyp === 289 /* FORTUNE_COOKIE */) {
+    if (otyp === FORTUNE_COOKIE) {
         $c.__builtin___strcpy_chk(outbuf, $c.lit("Read the message inside this cookie"), -1);
-    } else if (otyp === 137 /* T_SHIRT */) {
+    } else if (otyp === T_SHIRT) {
         $c.__builtin___strcpy_chk(outbuf, $c.lit("Read the slogan on the shirt"), -1);
-    } else if (otyp === 144 /* ALCHEMY_SMOCK */) {
+    } else if (otyp === ALCHEMY_SMOCK) {
         $c.__builtin___strcpy_chk(outbuf, $c.lit("Read the slogan on the apron"), -1);
-    } else if (otyp === 136 /* HAWAIIAN_SHIRT */) {
+    } else if (otyp === HAWAIIAN_SHIRT) {
         $c.__builtin___strcpy_chk(outbuf, $c.lit("Look at the pattern on the shirt"), -1);
-    } else if (obj.oclass === 9 /* SCROLL_CLASS */) {
-        magic = obj.dknown | 0 && otyp !== 364 /* SCR_MAIL */ && (otyp !== 365 /* SCR_BLANK_PAPER */ || !objects[otyp].oc_name_known) ? $c.lit(" to activate its magic") : $c.lit("");
+    } else if (obj.oclass === SCROLL_CLASS) {
+        magic = obj.dknown | 0 && otyp !== SCR_MAIL && (otyp !== SCR_BLANK_PAPER || !objects[otyp].oc_name_known) ? $c.lit(" to activate its magic") : $c.lit("");
         $c.__builtin___sprintf_chk(outbuf, 0, -1, $c.lit("Read this scroll%s"), magic);
-    } else if (obj.oclass === 10 /* SPBOOK_CLASS */) {
-        novel = $c.i8(otyp === 408 /* SPE_NOVEL */ ? 1 : 0);
-        blank = $c.i8(otyp === 407 /* SPE_BLANK_PAPER */ && objects[otyp].oc_name_known | 0 ? 1 : 0);
-        tome = $c.i8(otyp === 409 /* SPE_BOOK_OF_THE_DEAD */ && objects[otyp].oc_name_known | 0 ? 1 : 0);
+    } else if (obj.oclass === SPBOOK_CLASS) {
+        novel = $c.i8(otyp === SPE_NOVEL ? 1 : 0);
+        blank = $c.i8(otyp === SPE_BLANK_PAPER && objects[otyp].oc_name_known | 0 ? 1 : 0);
+        tome = $c.i8(otyp === SPE_BOOK_OF_THE_DEAD && objects[otyp].oc_name_known | 0 ? 1 : 0);
         $c.__builtin___sprintf_chk(outbuf, 0, -1, $c.lit("%s this %s"), novel || blank ? $c.lit("Read") : tome ? $c.lit("Examine") : $c.lit("Study"), novel ? await simpleonames(obj) : tome ? $c.lit("tome") : $c.lit("spellbook"));
     } else {
-        res = 0 /* IA_NONE */;
+        res = IA.NONE;
     }
     return res;
 }
 async function ia_addmenu(win, act, let_, txt) {   // iactions.c:127
     let any = new $T.any(), clr = 0;
-    clr = 8;
+    clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
     any.a_int = act;
-    await add_menu(win, nul_glyphinfo, any, let_, 0, 0, clr, txt, 0);
+    await add_menu(win, nul_glyphinfo, any, let_, 0, ATR.NONE, clr, txt, MENU.ITEMFLAGS_NONE);
 }
 async function itemactions_pushkeys(otmp, act) {   // iactions.c:140
     switch (act) {
         default:
             await impossible($c.lit("Unknown item action %d"), act);
             break;
-        case 0 /* IA_NONE */:
+        case IA.NONE:
             break;
-        case 1 /* IA_UNWIELD */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, $c.peq(otmp, $G.uwep) ? dowield : $c.peq(otmp, $G.uswapwep) ? remarm_swapwep : $c.peq(otmp, $G.uquiver) ? dowieldquiver : donull);
-            await cmdq_add_key(0 /* CQ_CANNED */, 45);
+        case IA.UNWIELD:
+            await cmdq_add_ec(CQ_CANNED, $c.peq(otmp, $G.uwep) ? dowield : $c.peq(otmp, $G.uswapwep) ? remarm_swapwep : $c.peq(otmp, $G.uquiver) ? dowieldquiver : donull);
+            await cmdq_add_key(CQ_CANNED, HANDS_SYM);
             break;
-        case 2 /* IA_APPLY_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, doapply);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.APPLY_OBJ:
+            await cmdq_add_ec(CQ_CANNED, doapply);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 3 /* IA_DIP_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dip_into);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.DIP_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dip_into);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 4 /* IA_NAME_OBJ */:
-        case 5 /* IA_NAME_OTYP */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, docallcmd);
-            await cmdq_add_key(0 /* CQ_CANNED */, $c.i8(act === 4 /* IA_NAME_OBJ */ ? 105 : 111));
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.NAME_OBJ:
+        case IA.NAME_OTYP:
+            await cmdq_add_ec(CQ_CANNED, docallcmd);
+            await cmdq_add_key(CQ_CANNED, $c.i8(act === IA.NAME_OBJ ? 105 : 111));
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 6 /* IA_DROP_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dodrop);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.DROP_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dodrop);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 7 /* IA_EAT_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, do_reqmenu);
-            await cmdq_add_ec(0 /* CQ_CANNED */, doeat);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.EAT_OBJ:
+            await cmdq_add_ec(CQ_CANNED, do_reqmenu);
+            await cmdq_add_ec(CQ_CANNED, doeat);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 8 /* IA_ENGRAVE_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, doengrave);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.ENGRAVE_OBJ:
+            await cmdq_add_ec(CQ_CANNED, doengrave);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 9 /* IA_FIRE_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dofire);
+        case IA.FIRE_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dofire);
             break;
-        case 10 /* IA_ADJUST_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, doorganize);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.ADJUST_OBJ:
+            await cmdq_add_ec(CQ_CANNED, doorganize);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 11 /* IA_ADJUST_STACK */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, adjust_split);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.ADJUST_STACK:
+            await cmdq_add_ec(CQ_CANNED, adjust_split);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 12 /* IA_SACRIFICE */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dosacrifice);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.SACRIFICE:
+            await cmdq_add_ec(CQ_CANNED, dosacrifice);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 13 /* IA_BUY_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dopay);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.BUY_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dopay);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 14 /* IA_QUAFF_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, do_reqmenu);
-            await cmdq_add_ec(0 /* CQ_CANNED */, dodrink);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.QUAFF_OBJ:
+            await cmdq_add_ec(CQ_CANNED, do_reqmenu);
+            await cmdq_add_ec(CQ_CANNED, dodrink);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 15 /* IA_QUIVER_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dowieldquiver);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.QUIVER_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dowieldquiver);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 16 /* IA_READ_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, doread);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.READ_OBJ:
+            await cmdq_add_ec(CQ_CANNED, doread);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 17 /* IA_RUB_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dorub);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.RUB_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dorub);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 18 /* IA_THROW_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dothrow);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.THROW_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dothrow);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 19 /* IA_TAKEOFF_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, ia_dotakeoff);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.TAKEOFF_OBJ:
+            await cmdq_add_ec(CQ_CANNED, ia_dotakeoff);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 20 /* IA_TIP_CONTAINER */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, do_reqmenu);
-            await cmdq_add_ec(0 /* CQ_CANNED */, dotip);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.TIP_CONTAINER:
+            await cmdq_add_ec(CQ_CANNED, do_reqmenu);
+            await cmdq_add_ec(CQ_CANNED, dotip);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 21 /* IA_INVOKE_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, doinvoke);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.INVOKE_OBJ:
+            await cmdq_add_ec(CQ_CANNED, doinvoke);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 22 /* IA_WIELD_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dowield);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.WIELD_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dowield);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 23 /* IA_WEAR_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dowear);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.WEAR_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dowear);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 24 /* IA_SWAPWEAPON */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, doswapweapon);
+        case IA.SWAPWEAPON:
+            await cmdq_add_ec(CQ_CANNED, doswapweapon);
             break;
-        case 25 /* IA_TWOWEAPON */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dotwoweapon);
+        case IA.TWOWEAPON:
+            await cmdq_add_ec(CQ_CANNED, dotwoweapon);
             break;
-        case 26 /* IA_ZAP_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dozap);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.ZAP_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dozap);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
-        case 27 /* IA_WHATIS_OBJ */:
-            await cmdq_add_ec(0 /* CQ_CANNED */, dowhatis);
-            await cmdq_add_key(0 /* CQ_CANNED */, 105);
-            await cmdq_add_key(0 /* CQ_CANNED */, otmp.invlet);
+        case IA.WHATIS_OBJ:
+            await cmdq_add_ec(CQ_CANNED, dowhatis);
+            await cmdq_add_key(CQ_CANNED, 105);
+            await cmdq_add_key(CQ_CANNED, otmp.invlet);
             break;
     }
 }
 export async function itemactions(otmp) {   // iactions.c:278
     let n = 0, act = 0, win = 0, buf = new Int8Array(256), buf2 = new Int8Array(256), selected = [null], mtmp = null, light = null, already_worn = 0, verb = null, action = null, which = null, what = null, multiple = 0, s = null, o = null, shoot = 0, shoot$2 = 0, Wmask = 0, o$2 = null;
-    act = 0 /* IA_NONE */;
+    act = IA.NONE;
     light = otmp.lamplit | 0 ? $c.lit("Extinguish") : $c.lit("Light");
-    already_worn = $c.i8($c.and64(otmp.owornmask, 983167) !== 0 ? 1 : 0);
-    win = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(win, 0);
+    already_worn = $c.i8($c.and64(otmp.owornmask, W_ARMOR | W_ACCESSORY) !== 0 ? 1 : 0);
+    win = await create_nhwindow()(NHW.MENU);
+    await start_menu()(win, MENU.BEHAVE_STANDARD);
     if ($c.peq(otmp, $G.uwep) || $c.peq(otmp, $G.uswapwep) || $c.peq(otmp, $G.uquiver)) {
         verb = $c.peq(otmp, $G.uquiver) ? $c.lit("Quiver") : $c.lit("Wield");
         action = $c.peq(otmp, $G.uquiver) ? $c.lit("un-ready") : $c.lit("un-wield");
-        which = otmp.quan !== 1 || otmp.oartifact === 26 /* ART_EYES_OF_THE_OVERWORLD */ && !undiscovered_artifact(26) ? $c.lit("these") : $c.lit("this");
-        what = otmp.oclass === 2 /* WEAPON_CLASS */ || otmp.oclass === 6 /* TOOL_CLASS */ && objects[otmp.otyp].oc_subtyp !== 0 /* P_NONE */ ? $c.lit("weapon") : $c.lit("item");
-        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s '%c' to %s %s %s"), verb, 45, action, which, otmp.quan !== 1 || otmp.oartifact === 26 /* ART_EYES_OF_THE_OVERWORLD */ && !undiscovered_artifact(26) ? await makeplural(what) : what);
-        await ia_addmenu(win, 1 /* IA_UNWIELD */, 45, new $c.Ptr(buf, 0));
+        which = is_plural(otmp) ? $c.lit("these") : $c.lit("this");
+        what = otmp.oclass === WEAPON_CLASS || is_weptool(otmp) ? $c.lit("weapon") : $c.lit("item");
+        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s '%c' to %s %s %s"), verb, 45, action, which, otmp.quan !== 1 || otmp.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) ? await makeplural(what) : what);
+        await ia_addmenu(win, IA.UNWIELD, 45, new $c.Ptr(buf, 0));
     }
-    if (otmp.oclass === 12 /* COIN_CLASS */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Flip a coin"));
-    } else if (otmp.otyp === 287 /* CREAM_PIE */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Hit yourself with this cream pie"));
-    } else if (otmp.otyp === 82 /* BULLWHIP */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Lash out with this whip"));
-    } else if (otmp.otyp === 260 /* GRAPPLING_HOOK */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Grapple something with this hook"));
-    } else if (otmp.otyp === 220 /* BAG_OF_TRICKS */ && objects[otmp.otyp].oc_name_known | 0) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Reach into this bag"));
-    } else if (otmp.otyp >= 214 /* LARGE_BOX */ && otmp.otyp <= 220 /* BAG_OF_TRICKS */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Open this container"));
-    } else if (otmp.otyp === 240 /* CAN_OF_GREASE */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Use the can to grease an item"));
-    } else if (otmp.otyp === 222 /* LOCK_PICK */ || otmp.otyp === 223 /* CREDIT_CARD */ || otmp.otyp === 221 /* SKELETON_KEY */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Use this tool to pick a lock"));
-    } else if (otmp.otyp === 238 /* TINNING_KIT */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Use this kit to tin a corpse"));
-    } else if (otmp.otyp === 236 /* LEASH */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Tie a pet to this leash"));
-    } else if (otmp.otyp === 235 /* SADDLE */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Place this saddle on a pet"));
-    } else if (otmp.otyp === 246 /* MAGIC_WHISTLE */ || otmp.otyp === 245 /* TIN_WHISTLE */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Blow this whistle"));
-    } else if (otmp.otyp === 276 /* EUCALYPTUS_LEAF */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Use this leaf as a whistle"));
-    } else if (otmp.otyp === 237 /* STETHOSCOPE */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Listen through the stethoscope"));
-    } else if (otmp.otyp === 230 /* MIRROR */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Show something its reflection"));
-    } else if (otmp.otyp === 255 /* BELL */ || otmp.otyp === 263 /* BELL_OF_OPENING */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Ring the bell"));
-    } else if (otmp.otyp === 262 /* CANDELABRUM_OF_INVOCATION */) {
+    if (otmp.oclass === COIN_CLASS) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Flip a coin"));
+    } else if (otmp.otyp === CREAM_PIE) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Hit yourself with this cream pie"));
+    } else if (otmp.otyp === BULLWHIP) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Lash out with this whip"));
+    } else if (otmp.otyp === GRAPPLING_HOOK) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Grapple something with this hook"));
+    } else if (otmp.otyp === BAG_OF_TRICKS && objects[otmp.otyp].oc_name_known | 0) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Reach into this bag"));
+    } else if (Is_container(otmp)) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Open this container"));
+    } else if (otmp.otyp === CAN_OF_GREASE) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Use the can to grease an item"));
+    } else if (otmp.otyp === LOCK_PICK || otmp.otyp === CREDIT_CARD || otmp.otyp === SKELETON_KEY) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Use this tool to pick a lock"));
+    } else if (otmp.otyp === TINNING_KIT) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Use this kit to tin a corpse"));
+    } else if (otmp.otyp === LEASH) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Tie a pet to this leash"));
+    } else if (otmp.otyp === SADDLE) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Place this saddle on a pet"));
+    } else if (otmp.otyp === MAGIC_WHISTLE || otmp.otyp === TIN_WHISTLE) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Blow this whistle"));
+    } else if (otmp.otyp === EUCALYPTUS_LEAF) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Use this leaf as a whistle"));
+    } else if (otmp.otyp === STETHOSCOPE) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Listen through the stethoscope"));
+    } else if (otmp.otyp === MIRROR) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Show something its reflection"));
+    } else if (otmp.otyp === BELL || otmp.otyp === BELL_OF_OPENING) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Ring the bell"));
+    } else if (otmp.otyp === CANDELABRUM_OF_INVOCATION) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s the candelabrum"), light);
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, new $c.Ptr(buf, 0));
-    } else if (otmp.otyp === 225 /* WAX_CANDLE */ || otmp.otyp === 224 /* TALLOW_CANDLE */) {
-        multiple = $c.i8(otmp.quan === 1 ? 0 : 1);
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, new $c.Ptr(buf, 0));
+    } else if (otmp.otyp === WAX_CANDLE || otmp.otyp === TALLOW_CANDLE) {
+        multiple = $c.i8(otmp.quan === 1 ? FALSE : TRUE);
         s = multiple ? $c.lit("these") : $c.lit("this");
-        o = carrying(262 /* CANDELABRUM_OF_INVOCATION */);
+        o = carrying(CANDELABRUM_OF_INVOCATION);
         if (o && o.spe < 7) {
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Attach %s to your candelabrum, or %s %s"), s, !otmp.lamplit ? $c.lit("light") : $c.lit("extinguish"), multiple ? $c.lit("them") : $c.lit("it"));
         } else {
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s %s %s"), light, s, await simpleonames(otmp));
         }
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, new $c.Ptr(buf, 0));
-    } else if (otmp.otyp === 227 /* OIL_LAMP */ || otmp.otyp === 228 /* MAGIC_LAMP */ || otmp.otyp === 226 /* BRASS_LANTERN */) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, new $c.Ptr(buf, 0));
+    } else if (otmp.otyp === OIL_LAMP || otmp.otyp === MAGIC_LAMP || otmp.otyp === BRASS_LANTERN) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s this light source"), light);
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, new $c.Ptr(buf, 0));
-    } else if (otmp.otyp === 321 /* POT_OIL */ && objects[otmp.otyp].oc_name_known | 0) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, new $c.Ptr(buf, 0));
+    } else if (otmp.otyp === POT_OIL && objects[otmp.otyp].oc_name_known | 0) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s this oil"), light);
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, new $c.Ptr(buf, 0));
-    } else if (otmp.oclass === 8 /* POTION_CLASS */) {
-        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Dip something into %s potion%s"), otmp.quan !== 1 || otmp.oartifact === 26 /* ART_EYES_OF_THE_OVERWORLD */ && !undiscovered_artifact(26) ? $c.lit("one of these") : $c.lit("this"), otmp.quan === 1 ? $c.lit("") : $c.lit("s"));
-        await ia_addmenu(win, 3 /* IA_DIP_OBJ */, 97, new $c.Ptr(buf, 0));
-    } else if (otmp.otyp === 229 /* EXPENSIVE_CAMERA */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Take a photograph"));
-    } else if (otmp.otyp === 234 /* TOWEL */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Clean yourself off with this towel"));
-    } else if (otmp.otyp === 231 /* CRYSTAL_BALL */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Peer into this crystal ball"));
-    } else if (otmp.otyp === 242 /* MAGIC_MARKER */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Write on something with this marker"));
-    } else if (otmp.otyp === 241 /* FIGURINE */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Make this figurine transform"));
-    } else if (otmp.otyp === 261 /* UNICORN_HORN */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Use this unicorn horn"));
-    } else if (otmp.otyp === 252 /* HORN_OF_PLENTY */ && objects[otmp.otyp].oc_name_known | 0) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Blow into the horn of plenty"));
-    } else if (otmp.otyp >= 247 /* WOODEN_FLUTE */ && otmp.otyp <= 258 /* DRUM_OF_EARTHQUAKE */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Play this musical instrument"));
-    } else if (otmp.otyp === 243 /* LAND_MINE */ || otmp.otyp === 244 /* BEARTRAP */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Arm this trap"));
-    } else if (otmp.otyp === 259 /* PICK_AXE */ || otmp.otyp === 71 /* DWARVISH_MATTOCK */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Dig with this digging tool"));
-    } else if (otmp.oclass === 11 /* WAND_CLASS */) {
-        await ia_addmenu(win, 2 /* IA_APPLY_OBJ */, 97, $c.lit("Break this wand"));
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, new $c.Ptr(buf, 0));
+    } else if (otmp.oclass === POTION_CLASS) {
+        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Dip something into %s potion%s"), otmp.quan !== 1 || otmp.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) ? $c.lit("one of these") : $c.lit("this"), otmp.quan === 1 ? $c.lit("") : $c.lit("s"));
+        await ia_addmenu(win, IA.DIP_OBJ, 97, new $c.Ptr(buf, 0));
+    } else if (otmp.otyp === EXPENSIVE_CAMERA) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Take a photograph"));
+    } else if (otmp.otyp === TOWEL) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Clean yourself off with this towel"));
+    } else if (otmp.otyp === CRYSTAL_BALL) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Peer into this crystal ball"));
+    } else if (otmp.otyp === MAGIC_MARKER) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Write on something with this marker"));
+    } else if (otmp.otyp === FIGURINE) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Make this figurine transform"));
+    } else if (otmp.otyp === UNICORN_HORN) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Use this unicorn horn"));
+    } else if (otmp.otyp === HORN_OF_PLENTY && objects[otmp.otyp].oc_name_known | 0) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Blow into the horn of plenty"));
+    } else if (otmp.otyp >= WOODEN_FLUTE && otmp.otyp <= DRUM_OF_EARTHQUAKE) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Play this musical instrument"));
+    } else if (otmp.otyp === LAND_MINE || otmp.otyp === BEARTRAP) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Arm this trap"));
+    } else if (otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Dig with this digging tool"));
+    } else if (otmp.oclass === WAND_CLASS) {
+        await ia_addmenu(win, IA.APPLY_OBJ, 97, $c.lit("Break this wand"));
     }
     if (await item_naming_classification(otmp, new $c.Ptr(buf, 0), new $c.Ptr(buf2, 0))) {
         if (new $c.Ptr(buf, 0).get(0)) {
-            await ia_addmenu(win, 4 /* IA_NAME_OBJ */, 99, new $c.Ptr(buf, 0));
+            await ia_addmenu(win, IA.NAME_OBJ, 99, new $c.Ptr(buf, 0));
         }
         if (new $c.Ptr(buf2, 0).get(0)) {
-            await ia_addmenu(win, 5 /* IA_NAME_OTYP */, 67, new $c.Ptr(buf2, 0));
+            await ia_addmenu(win, IA.NAME_OTYP, 67, new $c.Ptr(buf2, 0));
         }
     }
     if (!already_worn) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Drop this %s"), otmp.quan > 1 ? $c.lit("stack") : $c.lit("item"));
-        await ia_addmenu(win, 6 /* IA_DROP_OBJ */, 100, new $c.Ptr(buf, 0));
+        await ia_addmenu(win, IA.DROP_OBJ, 100, new $c.Ptr(buf, 0));
     }
-    if (otmp.otyp === 296 /* TIN */) {
-        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Open %s%s and eat the contents"), otmp.quan > 1 ? $c.lit("one of these tins") : $c.lit("this tin"), otmp.otyp === 296 /* TIN */ && $G.uwep && $G.uwep.otyp === 239 /* TIN_OPENER */ ? $c.lit(" with your tin opener") : $c.lit(""));
-        await ia_addmenu(win, 7 /* IA_EAT_OBJ */, 101, new $c.Ptr(buf, 0));
+    if (otmp.otyp === TIN) {
+        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Open %s%s and eat the contents"), otmp.quan > 1 ? $c.lit("one of these tins") : $c.lit("this tin"), otmp.otyp === TIN && $G.uwep && $G.uwep.otyp === TIN_OPENER ? $c.lit(" with your tin opener") : $c.lit(""));
+        await ia_addmenu(win, IA.EAT_OBJ, 101, new $c.Ptr(buf, 0));
     } else if (is_edible(otmp)) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Eat %s"), otmp.quan > 1 ? $c.lit("one of these") : $c.lit("this"));
-        await ia_addmenu(win, 7 /* IA_EAT_OBJ */, 101, new $c.Ptr(buf, 0));
+        await ia_addmenu(win, IA.EAT_OBJ, 101, new $c.Ptr(buf, 0));
     }
-    if (otmp.otyp === 234 /* TOWEL */) {
-        await ia_addmenu(win, 8 /* IA_ENGRAVE_OBJ */, 69, $c.lit("Wipe the floor with this towel"));
-    } else if (otmp.otyp === 242 /* MAGIC_MARKER */) {
-        await ia_addmenu(win, 8 /* IA_ENGRAVE_OBJ */, 69, $c.lit("Scribble graffiti on the floor"));
-    } else if (otmp.oclass === 2 /* WEAPON_CLASS */ || otmp.oclass === 11 /* WAND_CLASS */ || otmp.oclass === 13 /* GEM_CLASS */ || otmp.oclass === 4 /* RING_CLASS */) {
-        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s on the %s with %s"), otmp.oclass === 2 /* WEAPON_CLASS */ && objects[otmp.otyp].oc_subtyp >= 1 /* P_DAGGER */ && objects[otmp.otyp].oc_subtyp <= 9 /* P_SABER */ || otmp.oclass === 11 /* WAND_CLASS */ || (otmp.oclass === 13 /* GEM_CLASS */ || otmp.oclass === 4 /* RING_CLASS */) && objects[otmp.otyp].oc_tough | 0 ? $c.lit("Engrave") : $c.lit("Write"), surface(u.ux, u.uy), otmp.quan > 1 ? $c.lit("one of these items") : $c.lit("this item"));
-        await ia_addmenu(win, 8 /* IA_ENGRAVE_OBJ */, 69, new $c.Ptr(buf, 0));
+    if (otmp.otyp === TOWEL) {
+        await ia_addmenu(win, IA.ENGRAVE_OBJ, 69, $c.lit("Wipe the floor with this towel"));
+    } else if (otmp.otyp === MAGIC_MARKER) {
+        await ia_addmenu(win, IA.ENGRAVE_OBJ, 69, $c.lit("Scribble graffiti on the floor"));
+    } else if (otmp.oclass === WEAPON_CLASS || otmp.oclass === WAND_CLASS || otmp.oclass === GEM_CLASS || otmp.oclass === RING_CLASS) {
+        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s on the %s with %s"), otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_subtyp >= P.DAGGER && objects[otmp.otyp].oc_subtyp <= P.SABER || otmp.oclass === WAND_CLASS || (otmp.oclass === GEM_CLASS || otmp.oclass === RING_CLASS) && objects[otmp.otyp].oc_tough | 0 ? $c.lit("Engrave") : $c.lit("Write"), surface(u.ux, u.uy), otmp.quan > 1 ? $c.lit("one of these items") : $c.lit("this item"));
+        await ia_addmenu(win, IA.ENGRAVE_OBJ, 69, new $c.Ptr(buf, 0));
     }
     if ($c.peq(otmp, $G.uquiver)) {
-        shoot = $c.i8((otmp.oclass === 2 /* WEAPON_CLASS */ || otmp.oclass === 13 /* GEM_CLASS */) && objects[otmp.otyp].oc_subtyp >= -22 && objects[otmp.otyp].oc_subtyp <= -20 && ($G.uwep && objects[otmp.otyp].oc_subtyp === (-objects[$G.uwep.otyp].oc_subtyp | 0)) ? 1 : 0);
+        shoot = $c.i8(ammo_and_launcher(otmp, $G.uwep));
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s %s"), shoot ? $c.lit("Shoot") : $c.lit("Throw"), otmp.quan > 1 ? $c.lit("one of these") : $c.lit("this"));
         if (shoot) {
             (!!$c.peq($G.uwep, $c.asRec(null, $T.obj, 112)) ? 1 : 0) ? $c.__assert_rtn($c.lit("itemactions"), $c.lit("iactions.c"), 456, $c.lit("uwep != NULL")) : 0;
             $c.__builtin___sprintf_chk(eos(new $c.Ptr(buf, 0)), 0, -1, $c.lit(" with your wielded %s"), await simpleonames($G.uwep));
         }
-        await ia_addmenu(win, 9 /* IA_FIRE_OBJ */, 102, new $c.Ptr(buf, 0));
+        await ia_addmenu(win, IA.FIRE_OBJ, 102, new $c.Ptr(buf, 0));
     }
-    if (otmp.oclass !== 12 /* COIN_CLASS */ || await check_invent_gold($c.lit("item-action"))) {
-        await ia_addmenu(win, 10 /* IA_ADJUST_OBJ */, 105, $c.lit("Adjust inventory by assigning new letter"));
+    if (otmp.oclass !== COIN_CLASS || await check_invent_gold($c.lit("item-action"))) {
+        await ia_addmenu(win, IA.ADJUST_OBJ, 105, $c.lit("Adjust inventory by assigning new letter"));
     }
-    if (otmp.quan > 1 && otmp.oclass !== 12 /* COIN_CLASS */) {
-        await ia_addmenu(win, 11 /* IA_ADJUST_STACK */, 73, $c.lit("Adjust inventory by splitting this stack"));
+    if (otmp.quan > 1 && otmp.oclass !== COIN_CLASS) {
+        await ia_addmenu(win, IA.ADJUST_STACK, 73, $c.lit("Adjust inventory by splitting this stack"));
     }
-    if (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ && !u.uswallow) {
-        if (otmp.otyp === 265 /* CORPSE */) {
-            await ia_addmenu(win, 12 /* IA_SACRIFICE */, 79, $c.lit("Offer this corpse as a sacrifice at this altar"));
-        } else if (otmp.otyp === 213 /* AMULET_OF_YENDOR */ || otmp.otyp === 212 /* FAKE_AMULET_OF_YENDOR */) {
-            await ia_addmenu(win, 12 /* IA_SACRIFICE */, 79, $c.lit("Offer this amulet as a sacrifice at this altar"));
+    if (svl.level.locations[u.ux][u.uy].typ === ALTAR && !u.uswallow) {
+        if (otmp.otyp === CORPSE) {
+            await ia_addmenu(win, IA.SACRIFICE, 79, $c.lit("Offer this corpse as a sacrifice at this altar"));
+        } else if (otmp.otyp === AMULET_OF_YENDOR || otmp.otyp === FAKE_AMULET_OF_YENDOR) {
+            await ia_addmenu(win, IA.SACRIFICE, 79, $c.lit("Offer this amulet as a sacrifice at this altar"));
         }
     }
-    if (otmp.unpaid | 0 && (mtmp = await shop_keeper(in_rooms(u.ux, u.uy, 14 /* SHOPBASE */).get(0))) !== null && inhishop(mtmp)) {
+    if (otmp.unpaid | 0 && (mtmp = await shop_keeper(in_rooms(u.ux, u.uy, SHOPBASE).get(0))) !== null && inhishop(mtmp)) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Buy this unpaid %s"), otmp.quan > 1 ? $c.lit("stack") : $c.lit("item"));
-        await ia_addmenu(win, 13 /* IA_BUY_OBJ */, 112, new $c.Ptr(buf, 0));
+        await ia_addmenu(win, IA.BUY_OBJ, 112, new $c.Ptr(buf, 0));
     }
     if (!already_worn) {
         new $c.Ptr(buf, 0).set(0, 0);
-        if (otmp.oclass === 5 /* AMULET_CLASS */) {
+        if (otmp.oclass === AMULET_CLASS) {
             $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), !$G.uamul ? $c.lit("Put this amulet on") : $c.lit("[already wearing an amulet]"), 256);
-        } else if (otmp.oclass === 4 /* RING_CLASS */ || otmp.otyp === 270 /* MEAT_RING */) {
+        } else if (otmp.oclass === RING_CLASS || otmp.otyp === MEAT_RING) {
             if (!$G.uleft || !$G.uright) {
                 $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), $c.lit("Put this ring on"), 256);
             } else {
-                $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("[both ring %s in use]"), await makeplural(await body_part(3 /* FINGER */)));
+                $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("[both ring %s in use]"), await makeplural(await body_part(FINGER)));
             }
-        } else if (otmp.otyp === 233 /* BLINDFOLD */ || otmp.otyp === 234 /* TOWEL */ || otmp.otyp === 232 /* LENSES */) {
+        } else if (otmp.otyp === BLINDFOLD || otmp.otyp === TOWEL || otmp.otyp === LENSES) {
             if ($G.ublindf) {
                 $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), $c.lit("[already wearing eyewear]"), 256);
-            } else if (otmp.otyp === 232 /* LENSES */) {
+            } else if (otmp.otyp === LENSES) {
                 $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), $c.lit("Put these lenses on"), 256);
             } else {
-                $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Put this on%s"), otmp.otyp === 234 /* TOWEL */ ? $c.lit(" to blindfold yourself") : $c.lit(""));
+                $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Put this on%s"), otmp.otyp === TOWEL ? $c.lit(" to blindfold yourself") : $c.lit(""));
             }
         }
         if (new $c.Ptr(buf, 0).get(0)) {
-            await ia_addmenu(win, 23 /* IA_WEAR_OBJ */, 80, new $c.Ptr(buf, 0));
+            await ia_addmenu(win, IA.WEAR_OBJ, 80, new $c.Ptr(buf, 0));
         }
     }
-    if (otmp.oclass === 8 /* POTION_CLASS */) {
+    if (otmp.oclass === POTION_CLASS) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Quaff (drink) %s"), otmp.quan > 1 ? $c.lit("one of these potions") : $c.lit("this potion"));
-        await ia_addmenu(win, 14 /* IA_QUAFF_OBJ */, 113, new $c.Ptr(buf, 0));
+        await ia_addmenu(win, IA.QUAFF_OBJ, 113, new $c.Ptr(buf, 0));
     }
-    if ((otmp.oclass === 13 /* GEM_CLASS */ || otmp.oclass === 2 /* WEAPON_CLASS */) && !$c.peq(otmp, $G.uquiver)) {
-        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Quiver this %s for easy %s with 'f'ire"), otmp.quan > 1 ? $c.lit("stack") : $c.lit("item"), (otmp.oclass === 2 /* WEAPON_CLASS */ || otmp.oclass === 13 /* GEM_CLASS */) && objects[otmp.otyp].oc_subtyp >= -22 && objects[otmp.otyp].oc_subtyp <= -20 && ($G.uwep && objects[otmp.otyp].oc_subtyp === (-objects[$G.uwep.otyp].oc_subtyp | 0)) ? $c.lit("shooting") : $c.lit("throwing"));
-        await ia_addmenu(win, 15 /* IA_QUIVER_OBJ */, 81, new $c.Ptr(buf, 0));
+    if ((otmp.oclass === GEM_CLASS || otmp.oclass === WEAPON_CLASS) && !$c.peq(otmp, $G.uquiver)) {
+        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Quiver this %s for easy %s with 'f'ire"), otmp.quan > 1 ? $c.lit("stack") : $c.lit("item"), (otmp.oclass === WEAPON_CLASS || otmp.oclass === GEM_CLASS) && objects[otmp.otyp].oc_subtyp >= -P.CROSSBOW && objects[otmp.otyp].oc_subtyp <= -P.BOW && ($G.uwep && objects[otmp.otyp].oc_subtyp === (-objects[$G.uwep.otyp].oc_subtyp | 0)) ? $c.lit("shooting") : $c.lit("throwing"));
+        await ia_addmenu(win, IA.QUIVER_OBJ, 81, new $c.Ptr(buf, 0));
     }
-    if (await item_reading_classification(otmp, new $c.Ptr(buf, 0)) === 16 /* IA_READ_OBJ */) {
-        await ia_addmenu(win, 16 /* IA_READ_OBJ */, 114, new $c.Ptr(buf, 0));
+    if (await item_reading_classification(otmp, new $c.Ptr(buf, 0)) === IA.READ_OBJ) {
+        await ia_addmenu(win, IA.READ_OBJ, 114, new $c.Ptr(buf, 0));
     }
-    if ($c.and64(otmp.owornmask, 983040)) {
-        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Remove this %s"), $c.and64(otmp.owornmask, 65536) ? $c.lit("amulet") : $c.and64(otmp.owornmask, 393216) ? $c.lit("ring") : $c.and64(otmp.owornmask, 524288) ? $c.lit("eyewear") : $c.lit("accessory"));
-        await ia_addmenu(win, 19 /* IA_TAKEOFF_OBJ */, 82, new $c.Ptr(buf, 0));
+    if ($c.and64(otmp.owornmask, W_ACCESSORY)) {
+        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Remove this %s"), $c.and64(otmp.owornmask, W.AMUL) ? $c.lit("amulet") : $c.and64(otmp.owornmask, W_RING) ? $c.lit("ring") : $c.and64(otmp.owornmask, W.TOOL) ? $c.lit("eyewear") : $c.lit("accessory"));
+        await ia_addmenu(win, IA.TAKEOFF_OBJ, 82, new $c.Ptr(buf, 0));
     }
-    if (otmp.otyp === 227 /* OIL_LAMP */ || otmp.otyp === 228 /* MAGIC_LAMP */ || otmp.otyp === 226 /* BRASS_LANTERN */) {
+    if (otmp.otyp === OIL_LAMP || otmp.otyp === MAGIC_LAMP || otmp.otyp === BRASS_LANTERN) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Rub this %s"), await simpleonames(otmp));
-        await ia_addmenu(win, 17 /* IA_RUB_OBJ */, 82, new $c.Ptr(buf, 0));
-    } else if (otmp.oclass === 13 /* GEM_CLASS */ && (otmp.otyp === 470 /* LUCKSTONE */ || otmp.otyp === 471 /* LOADSTONE */ || otmp.otyp === 473 /* FLINT */ || otmp.otyp === 472 /* TOUCHSTONE */)) {
-        await ia_addmenu(win, 17 /* IA_RUB_OBJ */, 82, $c.lit("Rub something on this stone"));
+        await ia_addmenu(win, IA.RUB_OBJ, 82, new $c.Ptr(buf, 0));
+    } else if (otmp.oclass === GEM_CLASS && is_graystone(otmp)) {
+        await ia_addmenu(win, IA.RUB_OBJ, 82, $c.lit("Rub something on this stone"));
     }
     if (!already_worn) {
-        shoot$2 = $c.i8((otmp.oclass === 2 /* WEAPON_CLASS */ || otmp.oclass === 13 /* GEM_CLASS */) && objects[otmp.otyp].oc_subtyp >= -22 && objects[otmp.otyp].oc_subtyp <= -20 && ($G.uwep && objects[otmp.otyp].oc_subtyp === (-objects[$G.uwep.otyp].oc_subtyp | 0)) ? 1 : 0);
-        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s %s%s"), shoot$2 ? $c.lit("Shoot") : $c.lit("Throw"), otmp.quan === 1 ? $c.lit("this item") : otmp.otyp === 438 /* GOLD_PIECE */ ? $c.lit("them") : $c.lit("one of these"), $c.peq(otmp, $G.uquiver) && (otmp.otyp !== 438 /* GOLD_PIECE */ || otmp.quan === 1) ? $c.lit(" (same as 'f')") : $c.lit(""));
-        await ia_addmenu(win, 18 /* IA_THROW_OBJ */, 116, new $c.Ptr(buf, 0));
+        shoot$2 = $c.i8(ammo_and_launcher(otmp, $G.uwep));
+        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s %s%s"), shoot$2 ? $c.lit("Shoot") : $c.lit("Throw"), otmp.quan === 1 ? $c.lit("this item") : otmp.otyp === GOLD_PIECE ? $c.lit("them") : $c.lit("one of these"), $c.peq(otmp, $G.uquiver) && (otmp.otyp !== GOLD_PIECE || otmp.quan === 1) ? $c.lit(" (same as 'f')") : $c.lit(""));
+        await ia_addmenu(win, IA.THROW_OBJ, 116, new $c.Ptr(buf, 0));
     }
-    if ($c.and64(otmp.owornmask, 127)) {
-        await ia_addmenu(win, 19 /* IA_TAKEOFF_OBJ */, 84, $c.lit("Take off this armor"));
+    if ($c.and64(otmp.owornmask, W_ARMOR)) {
+        await ia_addmenu(win, IA.TAKEOFF_OBJ, 84, $c.lit("Take off this armor"));
     }
-    if (otmp.otyp >= 214 /* LARGE_BOX */ && otmp.otyp <= 220 /* BAG_OF_TRICKS */ && (otmp.cobj !== null || !otmp.cknown) || otmp.otyp === 252 /* HORN_OF_PLENTY */ && (otmp.spe > 0 || !otmp.known)) {
-        await ia_addmenu(win, 20 /* IA_TIP_CONTAINER */, 84, $c.lit("Tip all the contents out of this container"));
+    if (Is_container(otmp) && (Has_contents(otmp) || !otmp.cknown) || otmp.otyp === HORN_OF_PLENTY && (otmp.spe > 0 || !otmp.known)) {
+        await ia_addmenu(win, IA.TIP_CONTAINER, 84, $c.lit("Tip all the contents out of this container"));
     }
-    if (otmp.otyp === 212 /* FAKE_AMULET_OF_YENDOR */ && !otmp.known || otmp.oartifact || objects[otmp.otyp].oc_unique | 0 || otmp.otyp === 231 /* CRYSTAL_BALL */) {
-        await ia_addmenu(win, 21 /* IA_INVOKE_OBJ */, 86, $c.lit("Try to invoke a unique power of this object"));
+    if (otmp.otyp === FAKE_AMULET_OF_YENDOR && !otmp.known || otmp.oartifact || objects[otmp.otyp].oc_unique | 0 || otmp.otyp === CRYSTAL_BALL) {
+        await ia_addmenu(win, IA.INVOKE_OBJ, 86, $c.lit("Try to invoke a unique power of this object"));
     }
-    if ($c.peq(otmp, $G.uwep) || ($c.andu64(gy.youmonst.data.mflags1, 8192) !== 0 || gy.youmonst.data.msize < 1)) {
-    } else if (otmp.oclass === 2 /* WEAPON_CLASS */ || otmp.oclass === 6 /* TOOL_CLASS */ && objects[otmp.otyp].oc_subtyp !== 0 /* P_NONE */ || otmp.otyp === 234 /* TOWEL */ && otmp.spe > 0 || otmp.otyp === 477 /* HEAVY_IRON_BALL */) {
+    if ($c.peq(otmp, $G.uwep) || cantwield(gy.youmonst.data)) {
+    } else if (otmp.oclass === WEAPON_CLASS || is_weptool(otmp) || is_wet_towel(otmp) || otmp.otyp === HEAVY_IRON_BALL) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Wield this %s as your weapon"), otmp.quan > 1 ? $c.lit("stack") : $c.lit("item"));
-        await ia_addmenu(win, 22 /* IA_WIELD_OBJ */, 119, new $c.Ptr(buf, 0));
-    } else if (otmp.otyp === 239 /* TIN_OPENER */) {
-        await ia_addmenu(win, 22 /* IA_WIELD_OBJ */, 119, $c.lit("Wield the tin opener to easily open tins"));
+        await ia_addmenu(win, IA.WIELD_OBJ, 119, new $c.Ptr(buf, 0));
+    } else if (otmp.otyp === TIN_OPENER) {
+        await ia_addmenu(win, IA.WIELD_OBJ, 119, $c.lit("Wield the tin opener to easily open tins"));
     } else if (!already_worn) {
-        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Wield this %s in your %s"), otmp.quan > 1 ? $c.lit("stack") : $c.lit("item"), await makeplural(await body_part(6 /* HAND */)));
-        await ia_addmenu(win, 22 /* IA_WIELD_OBJ */, 119, new $c.Ptr(buf, 0));
+        $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Wield this %s in your %s"), otmp.quan > 1 ? $c.lit("stack") : $c.lit("item"), await makeplural(await body_part(HAND)));
+        await ia_addmenu(win, IA.WIELD_OBJ, 119, new $c.Ptr(buf, 0));
     }
     if (!already_worn) {
-        if (otmp.oclass === 3 /* ARMOR_CLASS */) {
+        if (otmp.oclass === ARMOR_CLASS) {
             Wmask = armcat_to_wornmask(objects[otmp.otyp].oc_subtyp);
             o$2 = wearmask_to_obj(Wmask);
             if (!o$2) {
@@ -424,37 +469,40 @@ export async function itemactions(otmp) {   // iactions.c:278
             } else {
                 $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("[already wearing %s]"), await an(await armor_simple_name(o$2)));
             }
-            await ia_addmenu(win, 23 /* IA_WEAR_OBJ */, 87, new $c.Ptr(buf, 0));
+            await ia_addmenu(win, IA.WEAR_OBJ, 87, new $c.Ptr(buf, 0));
         }
     }
     if ($c.peq(otmp, $G.uwep) && $G.uswapwep) {
-        await ia_addmenu(win, 24 /* IA_SWAPWEAPON */, 120, $c.lit("Swap this with your alternate weapon"));
+        await ia_addmenu(win, IA.SWAPWEAPON, 120, $c.lit("Swap this with your alternate weapon"));
     } else if ($c.peq(otmp, $G.uwep)) {
-        await ia_addmenu(win, 24 /* IA_SWAPWEAPON */, 120, $c.lit("Ready this as an alternate weapon"));
+        await ia_addmenu(win, IA.SWAPWEAPON, 120, $c.lit("Ready this as an alternate weapon"));
     } else if ($c.peq(otmp, $G.uswapwep)) {
-        await ia_addmenu(win, 24 /* IA_SWAPWEAPON */, 120, $c.lit("Swap this with your main weapon"));
+        await ia_addmenu(win, IA.SWAPWEAPON, 120, $c.lit("Swap this with your main weapon"));
     }
-    if (($c.peq(otmp, $G.uwep) || $c.peq(otmp, $G.uswapwep)) && (u.twoweap || (((gy.youmonst.data.mattk[0].aatyp === 254 ? 1 : 0) + (gy.youmonst.data.mattk[1].aatyp === 254 ? 1 : 0) | 0) + (gy.youmonst.data.mattk[2].aatyp === 254 ? 1 : 0) | 0) > 1 && !$G.uarms && $G.uwep && (($G.uwep.oclass === 2 /* WEAPON_CLASS */ ? !($G.uwep.oclass === 2 /* WEAPON_CLASS */ && objects[$G.uwep.otyp].oc_subtyp >= 20 /* P_BOW */ && objects[$G.uwep.otyp].oc_subtyp <= 22 /* P_CROSSBOW */ || ($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 13 /* GEM_CLASS */) && objects[$G.uwep.otyp].oc_subtyp >= -22 && objects[$G.uwep.otyp].oc_subtyp <= -20 || ($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */) && objects[$G.uwep.otyp].oc_subtyp >= -25 && objects[$G.uwep.otyp].oc_subtyp <= -23) : $G.uwep.oclass === 6 /* TOOL_CLASS */ && objects[$G.uwep.otyp].oc_subtyp !== 0 /* P_NONE */) && !(($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */) && objects[$G.uwep.otyp].oc_big | 0)) && $G.uswapwep && (($G.uswapwep.oclass === 2 /* WEAPON_CLASS */ ? !($G.uswapwep.oclass === 2 /* WEAPON_CLASS */ && objects[$G.uswapwep.otyp].oc_subtyp >= 20 /* P_BOW */ && objects[$G.uswapwep.otyp].oc_subtyp <= 22 /* P_CROSSBOW */ || ($G.uswapwep.oclass === 2 /* WEAPON_CLASS */ || $G.uswapwep.oclass === 13 /* GEM_CLASS */) && objects[$G.uswapwep.otyp].oc_subtyp >= -22 && objects[$G.uswapwep.otyp].oc_subtyp <= -20 || ($G.uswapwep.oclass === 2 /* WEAPON_CLASS */ || $G.uswapwep.oclass === 6 /* TOOL_CLASS */) && objects[$G.uswapwep.otyp].oc_subtyp >= -25 && objects[$G.uswapwep.otyp].oc_subtyp <= -23) : $G.uswapwep.oclass === 6 /* TOOL_CLASS */ && objects[$G.uswapwep.otyp].oc_subtyp !== 0 /* P_NONE */) && !(($G.uswapwep.oclass === 2 /* WEAPON_CLASS */ || $G.uswapwep.oclass === 6 /* TOOL_CLASS */) && objects[$G.uswapwep.otyp].oc_big | 0)))) {
+    if (($c.peq(otmp, $G.uwep) || $c.peq(otmp, $G.uswapwep)) && (u.twoweap || could_twoweap(gy.youmonst.data) && !$G.uarms && $G.uwep && MAYBETWOWEAPON($G.uwep) && $G.uswapwep && MAYBETWOWEAPON($G.uswapwep))) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Toggle two-weapon combat %s"), u.twoweap ? $c.lit("off") : $c.lit("on"));
-        await ia_addmenu(win, 25 /* IA_TWOWEAPON */, 88, new $c.Ptr(buf, 0));
+        await ia_addmenu(win, IA.TWOWEAPON, 88, new $c.Ptr(buf, 0));
     }
-    if (otmp.oclass === 11 /* WAND_CLASS */) {
-        await ia_addmenu(win, 26 /* IA_ZAP_OBJ */, 122, $c.lit("Zap this wand to release its magic"));
+    if (otmp.oclass === WAND_CLASS) {
+        await ia_addmenu(win, IA.ZAP_OBJ, 122, $c.lit("Zap this wand to release its magic"));
     }
     if (await ia_checkfile(otmp)) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Look up information about %s"), otmp.quan > 1 ? $c.lit("these") : $c.lit("this"));
-        await ia_addmenu(win, 27 /* IA_WHATIS_OBJ */, 47, new $c.Ptr(buf, 0));
+        await ia_addmenu(win, IA.WHATIS_OBJ, 47, new $c.Ptr(buf, 0));
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Do what with %s?"), await the(await cxname(otmp)));
-    await windowprocs.win_end_menu(win, new $c.Ptr(buf, 0));
-    n = await select_menu(win, 1, new $c.Ptr(selected, 0));
+    await end_menu()(win, new $c.Ptr(buf, 0));
+    n = await select_menu(win, PICK.ONE, new $c.Ptr(selected, 0));
     if (n > 0) {
         act = $c.radd(selected[0], 0).item.a_int;
         $c.free(selected[0]);
         await itemactions_pushkeys(otmp, act);
     }
-    await windowprocs.win_destroy_nhwindow(win);
-    return 0;
+    await destroy_nhwindow()(win);
+    return ECMD.OK;
+}
+function MAYBETWOWEAPON(obj) {
+    return (obj.oclass === WEAPON_CLASS ? !(obj.oclass === WEAPON_CLASS && objects[obj.otyp].oc_subtyp >= P.BOW && objects[obj.otyp].oc_subtyp <= P.CROSSBOW || (obj.oclass === WEAPON_CLASS || obj.oclass === GEM_CLASS) && objects[obj.otyp].oc_subtyp >= -P.CROSSBOW && objects[obj.otyp].oc_subtyp <= -P.BOW || (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) && objects[obj.otyp].oc_subtyp >= -P.BOOMERANG && objects[obj.otyp].oc_subtyp <= -P.DART) : obj.oclass === TOOL_CLASS && objects[obj.otyp].oc_subtyp !== P.NONE) && !((obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) && objects[obj.otyp].oc_big | 0) ? 1 : 0;
 }
 
 export function $init() {

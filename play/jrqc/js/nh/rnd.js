@@ -4,8 +4,13 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { u } from './decl.js';
 import { panic } from './end.js';
+import { FALSE, TRUE } from './global.h.js';
 import { sgn } from './hacklib.js';
 import { sys_random_seed } from './unixmain.js';
+import { Luck } from './you.macros.js';
+
+const CORE = 0;
+const DISP = 1;
 
 let rng_logfile = null;
 let rng_log_disp = 0;
@@ -24,10 +29,10 @@ export function rng_log_init() {   // rnd.c:38
             $c.setvbuf(rng_logfile, null, 1, 0);
         }
     }
-    rng_log_disp = $c.i8(disp && disp.get(0) && disp.get(0) !== 48 ? 1 : 0);
+    rng_log_disp = $c.i8(disp && disp.get(0) && disp.get(0) !== 48 ? TRUE : FALSE);
 }
 export function rng_log_enabled() {   // rnd.c:52
-    return $c.i8(rng_logfile ? 1 : 0);
+    return $c.i8(rng_logfile ? TRUE : FALSE);
 }
 export function rng_log_set_caller(file, line, func) {   // rnd.c:58
     rng_caller_file = file;
@@ -74,11 +79,11 @@ export async function init_isaac64(seed, fn) {   // rnd.c:131
     $c.isaac64_init(rnglist[rngindx].rng_state, new $c.Ptr(new_rng_state, 0), 8);
 }
 function RND(x) {   // rnd.c:149
-    return $c.i32($c.remu64($c.isaac64_next_uint64(rnglist[0 /* CORE */].rng_state), $c.u64(x)));
+    return $c.i32($c.remu64($c.isaac64_next_uint64(rnglist[CORE].rng_state), $c.u64(x)));
 }
 export function rn2_on_display_rng(x) {   // rnd.c:158
     let result = 0;
-    result = $c.i32($c.remu64($c.isaac64_next_uint64(rnglist[1 /* DISP */].rng_state), $c.u64(x)));
+    result = $c.i32($c.remu64($c.isaac64_next_uint64(rnglist[DISP].rng_state), $c.u64(x)));
     if (rng_logfile && rng_log_disp) {
         rng_call_count = rng_call_count + 1 | 0;
         $c.fprintf(rng_logfile, $c.lit("%d ~drn2(%d) = %d"), rng_call_count, x, result);
@@ -104,7 +109,7 @@ export function rn2(x) {   // rnd.c:199
 }
 export function rnl(x) {   // rnd.c:220
     let i = 0, adjustment = 0, buf = new Int8Array(32);
-    adjustment = u.uluck + u.moreluck | 0;
+    adjustment = Luck();
     if (x <= 15) {
         adjustment = Math.imul($c.div32($c.abs(adjustment) + 1 | 0, 3), sgn(adjustment));
     }
@@ -205,7 +210,7 @@ export function shuffle_int_array(indices, count) {   // rnd.c:440
 
 export function $init() {
     rng_logfile = null;
-    rng_log_disp = 0;
+    rng_log_disp = FALSE;
     rng_call_count = 0;
     rng_caller_file = null;
     rng_caller_line = 0;
@@ -213,10 +218,8 @@ export function $init() {
     for (let $i0 = 0; $i0 < 2; $i0++) {
         rnglist[$i0].$copyFrom(new $T.rnglist_t());
     }
-    rnglist[0].fn = rn2;
-    rnglist[0].init = 0;
-    rnglist[0].rng_state.n = 0;
-    rnglist[1].fn = rn2_on_display_rng;
-    rnglist[1].init = 0;
-    rnglist[1].rng_state.n = 0;
+    $c.init(rnglist, [
+        { fn: rn2, init: 0, rng_state: {} },
+        { fn: rn2_on_display_rng, init: 0, rng_state: {} }
+    ]);
 }

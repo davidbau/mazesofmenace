@@ -1,8 +1,7 @@
 // read.js — the 'r' command.
 // C ref: src/read.c
 //
-// The spellbook route is live (doread -> study_book); scroll effects need
-// seffects and stay recorded after their prompt keys are consumed.
+// Scrolls and spells share seffects(); spellbook reading uses study_book().
 
 import { unique_corpstat } from './mondata.js';
 import { has_omonst, SDOOR, something } from './const.js';
@@ -19,7 +18,7 @@ import { polyself, rehumanize, udeadinside } from './polyself.js';
 import { uhis } from './mhitu.js';
 import { mongone, kill_genocided_monsters, flash_mon } from './mon.js';
 import { list_genocided, num_genocides } from './insight.js';
-import { livelog_printf, verbalize, You_cant } from './pline.js';
+import { livelog_printf, verbalize, You_cant, impossible } from './pline.js';
 import { mungspaces, upwords } from './hacklib.js';
 import { LOW_PM, NEUTRAL, G_GENOD, G_EXTINCT, LL_GENOCIDE, LL_CONDUCT, KILLED_BY, GENOCIDED, POLYMORPH, POLY_REVERT, Upolyd, plur, thats_enough_tries, MALE, FEMALE } from './const.js';
 import { NUMMONS, MSOUND } from './monst_data.js';
@@ -85,7 +84,7 @@ import { Is_dragon_scales } from './mondata.js';
 import { is_shield } from './obj.js';
 import { Yobjnam2, Yname2, otense } from './objnam.js';
 import { strange_feeling } from './potion.js';
-import { NH_BLACK, NH_GOLDEN, NH_SILVER, COST_DEGRD, COST_DECHNT } from './const.js';
+import { NH_BLACK, NH_GOLDEN, NH_SILVER, COST_DEGRD, COST_DECHNT, COST_UNCURS } from './const.js';
 import { losespells } from './spell.js';
 import { drain_weapon_skill, dmgval } from './weapon.js';
 import { ALL_SPELLS, W_ARMH, STOMACH, KILLED_BY_AN, IS_OBSTRUCTED, IS_AIR, engulfing_u, In_endgame, Is_earthlevel } from './const.js';
@@ -120,7 +119,7 @@ import { LIMITS, MFLAGS, MONSYMS, PMNAMES, mons_name } from './monst_data.js';
 import { delobj, is_pool, is_lava, m_at, setmangry } from './mon.js';
 import { roles } from './role_data.js';
 import { body_part } from './polyself.js';
-import { Blind, Hallucination, Invisible, Confusion } from './youprop.js';
+import { Blind, Hallucination, Invisible, Confusion, Punished } from './youprop.js';
 import { make_confused } from './potion.js';
 
 import { ART_ORB_OF_FATE } from './artilist_data.js';
@@ -1847,35 +1846,14 @@ export async function do_genocide(how) {
     }
 }
 
-// src/read.c:1976 seffect_punishment() and :3019 punish().
+// src/read.c:1976 seffect_punishment().
 async function seffect_punishment(sobj) {
     game.known = true;
-    const confused = !!(game.u.intrinsic?.HConfusion
-                         || game.u.uprops?.CONFUSION);
-    if (confused || sobj.blessed) {
-        await You('feel guilty.');
+    if (Confusion() || sobj.blessed) {
+        await You_feel('guilty.');
         return;
     }
-
-    await You('are being punished for your misbehavior!');
-    if (game.u.uball) {
-        await Your('iron ball gets heavier.');
-        game.u.uball.owt = (game.u.uball.owt || 0)
-            + 160 * (1 + (sobj.cursed ? 1 : 0));
-        return;
-    }
-
-    const chain = mkobj(OCLASSES.CHAIN_CLASS, true);
-    setworn(chain, W_CHAIN);
-    const ball = mkobj(OCLASSES.BALL_CLASS, true);
-    setworn(ball, W_BALL);
-
-    game.uchain = game.u.uchain;
-    game.uball = game.u.uball;
-    (game.u.uprops ||= {}).PUNISHED = true;
-    place_object(ball, game.u.ux, game.u.uy);
-    place_object(chain, game.u.ux, game.u.uy);
-    newsym(game.u.ux, game.u.uy);
+    await punish(sobj);
 }
 
 // src/read.c:3066 unpunish() -- destroy the attached chain while leaving the
@@ -1886,24 +1864,17 @@ export function unpunish() {
     setworn(null, W_CHAIN);
     delobj(chain);
     setworn(null, W_BALL);
-
-    game.uchain = game.u.uchain;
-    game.uball = game.u.uball;
-    if (game.u.uprops)
-        delete game.u.uprops.PUNISHED;
 }
 
-// src/read.c:1490 seffect_remove_curse(). A cursed scroll only reports and
-// disintegrates. An uncursed one processes eligible carried objects in list
-// order, which also preserves blessorcurse() draw order when confused.
+// src/read.c:1490 seffect_remove_curse(). Process eligible inventory in list
+// order. Removing punishment is independent of the scroll's curse state.
 async function seffect_remove_curse(sobj) {
+    let obj;
     const otyp = sobj.otyp;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!(game.u.intrinsic?.HConfusion
-                         || game.u.uprops?.CONFUSION);
-    const hallucinating = !!game.u.uprops?.HALLUC
-                          && !game.u.uprops?.HALLUC_RES;
+    const confused = Confusion();
+    const hallucinating = Hallucination();
 
     await You(`feel ${!hallucinating
         ? (!confused ? 'like someone is helping you.'
@@ -1914,7 +1885,7 @@ async function seffect_remove_curse(sobj) {
     if (scursed) {
         await pline('The scroll disintegrates.');
     } else {
-        for (const obj of [...(game.invent || [])]) {
+        for (obj of [...(game.invent || [])]) {
             if (obj.oclass === OCLASSES.COIN_CLASS)
                 continue;
             if (obj === sobj && obj.quan === 1)
@@ -1939,13 +1910,18 @@ async function seffect_remove_curse(sobj) {
 
             if (sblessed || wornmask || obj.otyp === ONAMES.LOADSTONE
                 || (obj.otyp === ONAMES.LEASH && obj.leashmon)) {
+                const shop_h2o = obj.unpaid && obj.otyp === ONAMES.POT_WATER;
                 if (confused) {
-                    blessorcurse(obj, 2);
+                    await blessorcurse(obj, 2);
                     obj.bknown = 0;
+                    // Blessing or cursing plain shop water raises its price.
+                    if (shop_h2o && (obj.cursed || obj.blessed))
+                        alter_cost(obj, 0);
                 } else if (obj.cursed) {
-                    const knew_curse = !!obj.bknown;
+                    if (shop_h2o)
+                        await costly_alteration(obj, COST_UNCURS);
                     await uncurse(obj);
-                    if (knew_curse && otyp === ONAMES.SCR_REMOVE_CURSE)
+                    if (obj.bknown && otyp === ONAMES.SCR_REMOVE_CURSE)
                         learnscrolltyp(ONAMES.SCR_REMOVE_CURSE);
                 }
             }
@@ -1953,7 +1929,7 @@ async function seffect_remove_curse(sobj) {
         /* if riding, treat steed's saddle as if part of hero's invent */
         if (game.u.usteed && (obj = which_armor(game.u.usteed, W_SADDLE))) {
             if (confused) {
-                blessorcurse(obj, 2);
+                await blessorcurse(obj, 2);
                 obj.bknown = 0; /* skip set_bknown() */
             } else if (obj.cursed) {
                 await uncurse(obj);
@@ -1968,7 +1944,7 @@ async function seffect_remove_curse(sobj) {
             }
         }
     }
-    if (game.uball && !confused)
+    if (Punished() && !confused)
         unpunish();
     if (game.u.utrap && game.u.utraptype === TT_BURIEDBALL) {
         await buried_ball_to_freedom();

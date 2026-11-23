@@ -2,35 +2,91 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { AM } from './align.h.js';
 import { alloc } from './alloc.js';
 import { Sting_effects } from './artifact.js';
 import { bot, timebot } from './botl.js';
 import { isok } from './cmd.js';
+import { CLR, NO_COLOR } from './color.h.js';
 import { is_ice, is_pool, is_pool_or_lava } from './dbridge.js';
 import { a11y, cg, disp, flags, gc, gd, gf, gg, gi, go, gs, gu, gv, gw, gy, iflags, program_state, shield_static, svc, svd, svl, svm, u } from './decl.js';
+import { COIN_CLASS, FOOD_CLASS, POTION_CLASS, S } from './defsym.h.js';
+import { BACKTRACK, DISP_ALL, DISP_ALWAYS, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, DISP_FREEMEM, DISP_TETHER, GLYPH, GLYPH_INVISIBLE, GLYPH_NOTHING, GLYPH_UNEXPLORED, MAX_GLYPH, MG, MG_BW_LAVA, MG_BW_SINK, NO_GLYPH, NUM_ZAP, SHIELD_COUNT, altar_chaotic, altar_color_chaotic, altar_color_lawful, altar_color_neutral, altar_color_other, altar_color_unaligned, altar_lawful, altar_neutral, altar_other, altar_unaligned, docrtMapOnly, docrtNocls, docrtRecalc, docrtRefresh, expl_dark, expl_fiery, expl_frosty, expl_magical, expl_muddy, expl_noxious, expl_wet, explode_color_dark, explode_color_fiery, explode_color_frosty, explode_color_magical, explode_color_muddy, explode_color_noxious, explode_color_wet, gehennom_walls, gm_levelchange, knox_walls, main_walls, mines_walls, sokoban_walls, zap_color_acid, zap_color_death, zap_color_fire, zap_color_frost, zap_color_lightning, zap_color_missile, zap_color_poison_gas, zap_color_sleep } from './display.h.js';
+import { _mon_visible, canspotself, glyph_is_cmap, glyph_is_generic_object, glyph_is_invisible, glyph_is_monster, glyph_is_normal_generic_obj, glyph_is_nothing, glyph_is_pet, glyph_is_piletop_generic_obj, glyph_is_trap, glyph_is_unexplored, glyph_to_mon, monnum_to_glyph, warning_to_glyph } from './display.macros.js';
 import { def_warnsyms, defsyms } from './drawing.js';
 import { In_hell, In_mines, on_level, update_lastseentyp } from './dungeon.js';
 import { panic } from './end.js';
 import { can_reach_floor, engr_at, engr_can_be_felt } from './engrave.js';
+import { spot_shows_engravings } from './engrave.macros.js';
 import { mapxy_valid } from './getpos.js';
+import { COLNO, FALSE, ROWNO, TRUE } from './global.h.js';
 import { glyph_to_cmap } from './glyphs.js';
+import { CORPSTAT, ECMD, SYM_OFF_M, SYM_OFF_O, SYM_OFF_P, SYM_OFF_W, SYM_OFF_X } from './hack.h.js';
+import { MATCH_WARN_OF_MON, distu } from './hack.macros.js';
 import { dist2, sgn } from './hacklib.js';
 import { sobj_at, update_inventory } from './invent.js';
+import { nhUse } from './lint.macros.js';
+import { has_mcorpsenm } from './mextra.macros.js';
 import { cmap_to_type } from './mkroom.js';
 import { iter_mons } from './mon.js';
+import { FEMALE, M1, M3, MALE } from './monflag.h.js';
 import { mons } from './monst.js';
+import { MON, M_AP } from './monst.h.js';
+import { DEADMONSTER, M_AP_TYPE } from './monst.macros.js';
+import { PM } from './monsters.h.js';
 import { observe_object } from './o_init.js';
+import { OBJ } from './obj.h.js';
+import { NUM_OBJECTS } from './objclass.h.js';
 import { objects } from './objects.js';
+import { BOULDER, CORPSE, FIRST_OBJECT, FIRST_REAL_GEM, FIRST_SPELL, LAST_GLASS_GEM, LAST_SPELL, STATUE } from './objects.h.js';
 import { do_screen_description } from './pager.js';
+import { NUMMONS } from './permonst.h.js';
 import { impossible, pline_xy } from './pline.js';
+import { BLINDED, CONFUSION, DETECT_MONSTERS, HALLUC, HALLUC_RES, INFRAVISION, INTRINSIC, SEE_INVIS, STUNNED, TELEPAT, WARNING, WARN_OF_MON } from './prop.h.js';
 import { show_region, visible_region_at } from './region.js';
+import { AIR, ALTAR, BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, D, DB, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, FOUNTAIN, GRAVE, HWALL, ICE, IRONBARS, LA, LADDER, LAVAPOOL, LAVAWALL, MOAT, POOL, ROOM, SCORR, SDOOR, SINK, STAIRS, STONE, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, TDWALL, THRONE, TLCORNER, TLWALL, TRCORNER, TREE, TRWALL, TUWALL, VWALL, WATER, WM, WM_MASK } from './rm.h.js';
+import { ACCESSIBLE, IS_DOOR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SDOOR, IS_STWALL, m_at } from './rm.macros.js';
 import { rn2_on_display_rng } from './rnd.js';
 import { known_branch_stairs, stairway_at } from './stairs.js';
+import { H_IBM, MAXTCHARS, ROGUESET, SYM, WARNCOUNT } from './sym.h.js';
+import { is_cmap_furniture, is_cmap_room, is_cmap_wall } from './sym.macros.js';
 import { sysopt } from './sys.js';
 import { t_at } from './trap.js';
+import { BEAR_TRAP, NO_TRAP, PIT, SPIKED_PIT, WEB } from './trap.h.js';
 import { block_point, unblock_point, vision_recalc } from './vision.js';
-import { has_color, windowprocs } from './windows.js';
+import { COULD_SEE, IN_SIGHT } from './vision.h.js';
+import { cansee } from './vision.macros.js';
+import { has_color } from './windows.js';
+import { clear_nhwindow, curs, display_nhwindow, nh_delay_output, print_glyph } from './winprocs.macros.js';
 import { see_wsegs, worm_known } from './worm.js';
+import { BC } from './you.h.js';
+import { Upolyd, u_at } from './you.macros.js';
+import { Blind, Detect_monsters, Hallucination, Protection_from_shape_changers, Punished, See_invisible, Warn_of_mon } from './youprop.macros.js';
+
+const DETECTED = 2;
+const PHYSICALLY_SEEN = 1;
+const TMP_AT_MAX_GLYPHS = 160;
+const GMAP_SET = 0x0001;
+const GMAP_ROGUELEVEL = 0x0002;
+const T_d = 0;
+const T_l = 1;
+const T_u = 2;
+const T_r = 3;
+const T_stone = 0;
+const T_tlcorn = 1;
+const T_trcorn = 2;
+const T_hwall = 3;
+const T_tdwall = 4;
+const C_bl = 0;
+const C_tl = 1;
+const C_tr = 2;
+const C_br = 3;
+const C_trcorn = 0;
+const C_brcorn = 1;
+const C_blcorn = 2;
+const C_tlwall = 3;
+const C_tuwall = 4;
+const C_crwall = 5;
 
 let tmp_at$tglyph = null;   // static in tmp_at()
 let swallowed$lastx = 0;   // static in swallowed()
@@ -56,41 +112,41 @@ export const seenv_matrix = $c.matrix(Uint8Array, [3, 3]);
 const wall_matrix = $c.matrix(Int32Array, [4, 5]);
 const cross_matrix = $c.matrix(Int32Array, [4, 6]);
 export function tp_sensemon(mon) {   // display.c:166
-    return !($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) ? 1 : 0;
+    return !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) ? 1 : 0;
 }
 export function sensemon(mon) {   // display.c:173
-    return (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic || !($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))) ? 1 : 0;
+    return (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))) ? 1 : 0;
 }
 export function mon_warning(mon) {   // display.c:180
-    return (u.uprops[31 /* WARNING */].intrinsic || u.uprops[31 /* WARNING */].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel ? 1 : 0;
+    return (u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel ? 1 : 0;
 }
 export function mon_visible(mon) {   // display.c:187
-    return (!mon.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !mon.mundetected ? 1 : 0;
+    return _mon_visible(mon);
 }
 export function see_with_infrared(mon) {   // display.c:194
-    return !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (u.uprops[36 /* INFRAVISION */].intrinsic || u.uprops[36 /* INFRAVISION */].extrinsic) && mon.data.mflags3 & 512 && (gv.viz_array.get(mon.my).get(mon.mx) & 1) !== 0 ? 1 : 0;
+    return !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (u.uprops[INFRAVISION].intrinsic || u.uprops[INFRAVISION].extrinsic) && mon.data.mflags3 & M3.INFRAVISIBLE && (gv.viz_array.get(mon.my).get(mon.mx) & COULD_SEE) !== 0 ? 1 : 0;
 }
 export function canseemon(mon) {   // display.c:201
-    return (mon.wormno | 0 ? worm_known(mon) : (gv.viz_array.get(mon.my).get(mon.mx) & 2) !== 0 || !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (u.uprops[36 /* INFRAVISION */].intrinsic || u.uprops[36 /* INFRAVISION */].extrinsic) && mon.data.mflags3 & 512 && (gv.viz_array.get(mon.my).get(mon.mx) & 1) !== 0) && ((!mon.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !mon.mundetected) ? 1 : 0;
+    return (mon.wormno | 0 ? worm_known(mon) : (gv.viz_array.get(mon.my).get(mon.mx) & IN_SIGHT) !== 0 || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (u.uprops[INFRAVISION].intrinsic || u.uprops[INFRAVISION].extrinsic) && mon.data.mflags3 & M3.INFRAVISIBLE && (gv.viz_array.get(mon.my).get(mon.mx) & COULD_SEE) !== 0) && ((!mon.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !mon.mundetected) ? 1 : 0;
 }
 export function knowninvisible(mon) {   // display.c:208
-    return mon.minvis | 0 && ((gv.viz_array.get(mon.my).get(mon.mx) & 2) !== 0 && (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic || (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic)) || !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && $c.and64(u.uprops[30 /* TELEPAT */].intrinsic, -117440513) && dist2(mon.mx, mon.my, u.ux, u.uy) <= 64) ? 1 : 0;
+    return mon.minvis | 0 && ((gv.viz_array.get(mon.my).get(mon.mx) & IN_SIGHT) !== 0 && (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic)) || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && $c.and64(u.uprops[TELEPAT].intrinsic, ~INTRINSIC) && dist2(mon.mx, mon.my, u.ux, u.uy) <= 64) ? 1 : 0;
 }
 export function is_safemon(mon) {   // display.c:215
-    return flags.safe_dog && mon.mpeaceful | 0 && ((mon.wormno | 0 ? worm_known(mon) : (gv.viz_array.get(mon.my).get(mon.mx) & 2) !== 0 || !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (u.uprops[36 /* INFRAVISION */].intrinsic || u.uprops[36 /* INFRAVISION */].extrinsic) && mon.data.mflags3 & 512 && (gv.viz_array.get(mon.my).get(mon.mx) & 1) !== 0) && ((!mon.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !mon.mundetected) || (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic || !($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)))) && !u.uprops[14 /* CONFUSION */].intrinsic && !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) && !u.uprops[13 /* STUNNED */].intrinsic ? 1 : 0;
+    return flags.safe_dog && mon.mpeaceful | 0 && ((mon.wormno | 0 ? worm_known(mon) : (gv.viz_array.get(mon.my).get(mon.mx) & IN_SIGHT) !== 0 || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (u.uprops[INFRAVISION].intrinsic || u.uprops[INFRAVISION].extrinsic) && mon.data.mflags3 & M3.INFRAVISIBLE && (gv.viz_array.get(mon.my).get(mon.mx) & COULD_SEE) !== 0) && ((!mon.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !mon.mundetected) || (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)))) && !u.uprops[CONFUSION].intrinsic && !(u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic)) && !u.uprops[STUNNED].intrinsic ? 1 : 0;
 }
 export async function magic_map_background(x, y, show) {   // display.c:233
     let glyph = 0, lev = null;
     glyph = await back_to_glyph(x, y);
     lev = $c.relem(svl.level.locations[x], y);
-    if (!((gv.viz_array.get(y).get(x) & 2) !== 0) && !lev.waslit) {
-        if (lev.typ === 25 /* ROOM */ && glyph === 3992) {
-            glyph = flags.dark_room && iflags.wc_color ? ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) <= 11 /* S_trwall */ ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) < 33 /* S_altar */ ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) === 33 /* S_altar */ ? 4008 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) < 74 ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) <= 87 /* S_goodpos */ ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */ : 9623 /* GLYPH_NOTHING_OFF */;
-        } else if (lev.typ === 24 /* CORR */ && glyph === 3996) {
+    if (!cansee(x, y) && !lev.waslit) {
+        if (lev.typ === ROOM && glyph === 3992) {
+            glyph = flags.dark_room && iflags.wc_color ? ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) === S.stone ? GLYPH.CMAP_STONE_OFF : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) <= S.trwall ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) < S.altar ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) === S.altar ? 4008 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) < S.arrow_trap + MAXTCHARS ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) <= S.goodpos ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH : GLYPH_NOTHING;
+        } else if (lev.typ === CORR && glyph === 3996) {
             glyph = 3995;
         }
     }
-    if (svl.level.flags.hero_memory | 0 && (lev.glyph === 9622 /* GLYPH_UNEXPLORED_OFF */ || lev.glyph >= 3929 /* GLYPH_CMAP_STONE_OFF */ && lev.glyph < 4093)) {
+    if (svl.level.flags.hero_memory | 0 && (glyph_is_unexplored(lev.glyph) || glyph_is_cmap(lev.glyph))) {
         lev.glyph = glyph;
     }
     if (show) {
@@ -112,7 +168,7 @@ export async function map_trap(trap, show) {   // display.c:296
     let x = 0, y = 0, glyph = 0;
     x = trap.tx;
     y = trap.ty;
-    glyph = ((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : ((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) <= 11 /* S_trwall */ ? (((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : ((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) < 33 /* S_altar */ ? (((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : ((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) === 33 /* S_altar */ ? 4008 : ((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) < 74 ? (((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : ((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) <= 87 /* S_goodpos */ ? (((49 /* S_arrow_trap */ + (trap.ttyp | 0) | 0) - 1 | 0) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+    glyph = ((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : ((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) <= S.trwall ? (((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : ((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) < S.altar ? (((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : ((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) === S.altar ? 4008 : ((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) < S.arrow_trap + MAXTCHARS ? (((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : ((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) <= S.goodpos ? (((S.arrow_trap + (trap.ttyp | 0) | 0) - 1 | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
     if (svl.level.flags.hero_memory) {
         svl.level.locations[x][y].glyph = glyph;
     }
@@ -124,7 +180,7 @@ export async function map_engraving(ep, show) {   // display.c:313
     let x = 0, y = 0, glyph = 0;
     x = ep.engr_x;
     y = ep.engr_y;
-    glyph = (svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : (svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) <= 11 /* S_trwall */ ? ((svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : (svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) < 33 /* S_altar */ ? ((svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : (svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) === 33 /* S_altar */ ? 4008 : (svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) < 74 ? ((svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : (svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) <= 87 /* S_goodpos */ ? ((svl.level.locations[ep.engr_x][ep.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+    glyph = (svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) === S.stone ? GLYPH.CMAP_STONE_OFF : (svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) <= S.trwall ? ((svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) < S.altar ? ((svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) === S.altar ? 4008 : (svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) < S.arrow_trap + MAXTCHARS ? ((svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) <= S.goodpos ? ((svl.level.locations[ep.engr_x][ep.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
     if (svl.level.flags.hero_memory) {
         svl.level.locations[x][y].glyph = glyph;
     }
@@ -136,18 +192,18 @@ export async function map_object(obj, show) {   // display.c:333
     let x = 0, y = 0, glyph = 0, r = 0, neardist = 0, $t1, $t2, $t3, $t4;
     x = obj.ox;
     y = obj.oy;
-    glyph = obj.otyp === 476 /* STATUE */ ? u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) + (!rn2_on_display_rng(2) ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0 : obj.corpsenm + ((obj.spe & 3) === 1 ? obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ : 7609 /* GLYPH_STATUE_FEM_OFF */ : obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ : 7226 /* GLYPH_STATUE_MALE_OFF */) | 0 : u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? ($t1 = await rn2_on_display_rng(463) + 18 /* FIRST_OBJECT */ | 0, go.otg_temp = $t1) === 265 /* CORPSE */ ? await rn2_on_display_rng(383 /* NUMMONS */) + 2299 /* GLYPH_BODY_OFF */ | 0 : go.otg_temp + 3448 /* GLYPH_OBJ_OFF */ | 0 : obj.otyp === 265 /* CORPSE */ ? obj.corpsenm + (obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 8473 /* GLYPH_BODY_PILETOP_OFF */ : 2299 /* GLYPH_BODY_OFF */) | 0 : !obj.dknown && (obj.oclass === 8 /* POTION_CLASS */ || obj.otyp >= 439 /* FIRST_REAL_GEM */ && obj.otyp <= 469 /* LAST_GLASS_GEM */ || obj.otyp >= 366 /* FIRST_SPELL */ && obj.otyp <= 407 /* LAST_SPELL */) ? obj.oclass + (obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 7992 /* GLYPH_OBJ_PILETOP_OFF */ : 3448 /* GLYPH_OBJ_OFF */) | 0 : obj.otyp + (obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 7992 /* GLYPH_OBJ_PILETOP_OFF */ : 3448 /* GLYPH_OBJ_OFF */) | 0;
-    if ((glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 || glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009) && (gv.viz_array.get(y).get(x) & 2) !== 0 && !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic))) {
+    glyph = obj.otyp === STATUE ? u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) + (!rn2_on_display_rng(2) ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : obj.corpsenm + ((obj.spe & CORPSTAT.GENDER) === CORPSTAT.FEMALE ? obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_FEM_PILETOP_OFF : GLYPH.STATUE_FEM_OFF : obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_MALE_PILETOP_OFF : GLYPH.STATUE_MALE_OFF) | 0 : u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? ($t1 = await rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT | 0, go.otg_temp = $t1) === CORPSE ? await rn2_on_display_rng(NUMMONS) + GLYPH.BODY_OFF | 0 : go.otg_temp + GLYPH.OBJ_OFF | 0 : obj.otyp === CORPSE ? obj.corpsenm + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.BODY_PILETOP_OFF : GLYPH.BODY_OFF) | 0 : !obj.dknown && (obj.oclass === POTION_CLASS || obj.otyp >= FIRST_REAL_GEM && obj.otyp <= LAST_GLASS_GEM || obj.otyp >= FIRST_SPELL && obj.otyp <= LAST_SPELL) ? obj.oclass + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0 : obj.otyp + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0;
+    if (glyph_is_generic_object(glyph) && cansee(x, y) && !Hallucination()) {
         r = u.xray_range > 2 ? u.xray_range : 2;
         neardist = Math.imul(Math.imul(r, r), 2) - r | 0;
-        if (dist2(x, y, u.ux, u.uy) <= neardist) {
+        if (distu(x, y) <= neardist) {
             await observe_object(obj);
-            glyph = obj.otyp === 476 /* STATUE */ ? u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) + (!rn2_on_display_rng(2) ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0 : obj.corpsenm + ((obj.spe & 3) === 1 ? obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ : 7609 /* GLYPH_STATUE_FEM_OFF */ : obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ : 7226 /* GLYPH_STATUE_MALE_OFF */) | 0 : u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? ($t2 = await rn2_on_display_rng(463) + 18 /* FIRST_OBJECT */ | 0, go.otg_temp = $t2) === 265 /* CORPSE */ ? await rn2_on_display_rng(383 /* NUMMONS */) + 2299 /* GLYPH_BODY_OFF */ | 0 : go.otg_temp + 3448 /* GLYPH_OBJ_OFF */ | 0 : obj.otyp === 265 /* CORPSE */ ? obj.corpsenm + (obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 8473 /* GLYPH_BODY_PILETOP_OFF */ : 2299 /* GLYPH_BODY_OFF */) | 0 : !obj.dknown && (obj.oclass === 8 /* POTION_CLASS */ || obj.otyp >= 439 /* FIRST_REAL_GEM */ && obj.otyp <= 469 /* LAST_GLASS_GEM */ || obj.otyp >= 366 /* FIRST_SPELL */ && obj.otyp <= 407 /* LAST_SPELL */) ? obj.oclass + (obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 7992 /* GLYPH_OBJ_PILETOP_OFF */ : 3448 /* GLYPH_OBJ_OFF */) | 0 : obj.otyp + (obj.where === 1 && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== 475 /* BOULDER */ || go.otg_otmp.otyp === 475 /* BOULDER */) ? 7992 /* GLYPH_OBJ_PILETOP_OFF */ : 3448 /* GLYPH_OBJ_OFF */) | 0;
+            glyph = obj.otyp === STATUE ? u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) + (!rn2_on_display_rng(2) ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : obj.corpsenm + ((obj.spe & CORPSTAT.GENDER) === CORPSTAT.FEMALE ? obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_FEM_PILETOP_OFF : GLYPH.STATUE_FEM_OFF : obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_MALE_PILETOP_OFF : GLYPH.STATUE_MALE_OFF) | 0 : u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? ($t2 = await rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT | 0, go.otg_temp = $t2) === CORPSE ? await rn2_on_display_rng(NUMMONS) + GLYPH.BODY_OFF | 0 : go.otg_temp + GLYPH.OBJ_OFF | 0 : obj.otyp === CORPSE ? obj.corpsenm + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.BODY_PILETOP_OFF : GLYPH.BODY_OFF) | 0 : !obj.dknown && (obj.oclass === POTION_CLASS || obj.otyp >= FIRST_REAL_GEM && obj.otyp <= LAST_GLASS_GEM || obj.otyp >= FIRST_SPELL && obj.otyp <= LAST_SPELL) ? obj.oclass + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0 : obj.otyp + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0;
         }
     }
     if (svl.level.flags.hero_memory) {
-        if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) && obj.otyp === 476 /* STATUE */) {
-            $t4 = ($t3 = await rn2_on_display_rng(463) + 18 /* FIRST_OBJECT */ | 0, go.otg_temp = $t3) === 265 /* CORPSE */ ? await rn2_on_display_rng(383 /* NUMMONS */) + 2299 /* GLYPH_BODY_OFF */ | 0 : go.otg_temp + 3448 /* GLYPH_OBJ_OFF */ | 0, svl.level.locations[x][y].glyph = $t4;
+        if (Hallucination() && obj.otyp === STATUE) {
+            $t4 = ($t3 = await rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT | 0, go.otg_temp = $t3) === CORPSE ? await rn2_on_display_rng(NUMMONS) + GLYPH.BODY_OFF | 0 : go.otg_temp + GLYPH.OBJ_OFF | 0, svl.level.locations[x][y].glyph = $t4;
         } else {
             svl.level.locations[x][y].glyph = glyph;
         }
@@ -159,37 +215,37 @@ export async function map_object(obj, show) {   // display.c:333
 export async function map_invisible(x, y) {   // display.c:378
     if (x !== u.ux || y !== u.uy) {
         if (svl.level.flags.hero_memory) {
-            svl.level.locations[x][y].glyph = 1532 /* GLYPH_INVIS_OFF */;
+            svl.level.locations[x][y].glyph = GLYPH_INVISIBLE;
         }
-        await show_glyph(x, y, 1532 /* GLYPH_INVIS_OFF */);
+        await show_glyph(x, y, GLYPH_INVISIBLE);
     }
 }
 export async function unmap_invisible(x, y) {   // display.c:388
-    if (isok(x, y) && svl.level.locations[x][y].glyph === 1532 /* GLYPH_INVIS_OFF */) {
+    if (isok(x, y) && svl.level.locations[x][y].glyph === GLYPH_INVISIBLE) {
         await unmap_object(x, y);
         await newsym(x, y);
-        return 1;
+        return TRUE;
     }
-    return 0;
+    return FALSE;
 }
 export async function unmap_object(x, y) {   // display.c:409
     let trap = null, ep = null, lev = null, $t1, $t2;
     if (!svl.level.flags.hero_memory) {
         return;
     }
-    if ((trap = t_at(x, y)) !== null && trap.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+    if ((trap = t_at(x, y)) !== null && trap.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
         await map_trap(trap, 0);
     } else if (svl.level.locations[x][y].seenv) {
         lev = $c.relem(svl.level.locations[x], y);
-        if ((svl.level.locations[x][y].typ === 24 /* CORR */ || svl.level.locations[x][y].typ === 33 /* ICE */ || svl.level.locations[x][y].typ === 25 /* ROOM */) && (ep = engr_at(x, y)) !== null && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
-            if ((gv.viz_array.get(y).get(x) & 2) !== 0) {
+        if (spot_shows_engravings(x, y) && (ep = engr_at(x, y)) !== null && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
+            if (cansee(x, y)) {
                 ep.erevealed = (1) & 1;
             }
             await map_engraving(ep, 0);
         } else {
             await map_background(x, y, 0);
         }
-        if (!lev.waslit && lev.glyph === 3992 && lev.typ === 25 /* ROOM */) {
+        if (!lev.waslit && lev.glyph === 3992 && lev.typ === ROOM) {
             $t1 = 3929, lev.glyph = $t1;
         }
     } else {
@@ -199,47 +255,47 @@ export async function unmap_object(x, y) {   // display.c:409
 export async function map_location(x, y, show) {   // display.c:475
     let obj = null, trap = null, ml_ep = null, _ml_reg = null;
     do {
-        if ((obj = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+        if ((obj = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
             await map_object(obj, show);
-        } else if ((trap = t_at(x, y)) && trap.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+        } else if ((trap = t_at(x, y)) && trap.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
             await map_trap(trap, show);
-        } else if ((svl.level.locations[x][y].typ === 24 /* CORR */ || svl.level.locations[x][y].typ === 33 /* ICE */ || svl.level.locations[x][y].typ === 25 /* ROOM */) && (ml_ep = engr_at(x, y)) !== null && ml_ep.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+        } else if ((svl.level.locations[x][y].typ === CORR || svl.level.locations[x][y].typ === ICE || svl.level.locations[x][y].typ === ROOM) && (ml_ep = engr_at(x, y)) !== null && ml_ep.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
             await map_engraving(ml_ep, show);
         } else {
             await map_background(x, y, show);
         }
         update_lastseentyp(x, y);
-        if (show && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (_ml_reg = visible_region_at(x, y)) !== null) {
+        if (show && !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (_ml_reg = visible_region_at(x, y)) !== null) {
             await show_region(_ml_reg, x, y);
         }
     } while (0);
 }
 async function show_mon_or_warn(x, y, monglyph) {   // display.c:482
     let o = null;
-    if (svl.level.locations[x][y].glyph === 1532 /* GLYPH_INVIS_OFF */) {
+    if (svl.level.locations[x][y].glyph === GLYPH_INVISIBLE) {
         await unmap_object(x, y);
-        if ((gv.viz_array.get(y).get(x) & 2) !== 0 && (o = svl.level.objects[x][y]) !== null) {
-            await map_object(o, 0);
+        if (cansee(x, y) && (o = svl.level.objects[x][y]) !== null) {
+            await map_object(o, FALSE);
         }
     }
     await show_glyph(x, y, monglyph);
 }
 async function display_monster(x, y, mon, sightflags, worm_tail) {   // display.c:514
     let mon_mimic = 0, sensed = 0, mgendercode = 0, sym = 0, glyph = 0, obj = new $T.obj(), mndx = 0, num = 0, $t1;
-    mon_mimic = $c.i8((mon.m_ap_type & 7) !== 0 /* M_AP_NOTHING */ ? 1 : 0);
-    sensed = mon_mimic && (u.uprops[60 /* PROT_FROM_SHAPE_CHANGERS */].intrinsic || u.uprops[60 /* PROT_FROM_SHAPE_CHANGERS */].extrinsic || (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic || !($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)))) ? 1 : 0;
-    mgendercode = mon.female | 0 ? 1 /* FEMALE */ : 0 /* MALE */;
-    if (mon_mimic && sightflags === 1) {
-        switch (mon.m_ap_type & 7) {
+    mon_mimic = $c.i8(M_AP_TYPE(mon) !== M_AP.NOTHING ? 1 : 0);
+    sensed = mon_mimic && (Protection_from_shape_changers() || (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)))) ? 1 : 0;
+    mgendercode = mon.female | 0 ? FEMALE : MALE;
+    if (mon_mimic && sightflags === PHYSICALLY_SEEN) {
+        switch (M_AP_TYPE(mon)) {
             default:
                 await impossible($c.lit("display_monster:  bad m_ap_type value [ = %d ]"), mon.m_ap_type);
-            case 0 /* M_AP_NOTHING */:
-                await show_glyph(x, y, (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : mon.data.pmidx) + ((mon.female | 0) === 0 ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0);
+            case M_AP.NOTHING:
+                await show_glyph(x, y, (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mon.data.pmidx) + ((mon.female | 0) === 0 ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0);
                 break;
-            case 1 /* M_AP_FURNITURE */:
+            case M_AP.FURNITURE:
                 {
                     sym = mon.mappearance | 0;
-                    glyph = sym === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : sym <= 11 /* S_trwall */ ? (sym - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : sym < 33 /* S_altar */ ? (sym - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : sym === 33 /* S_altar */ ? 4008 : sym < 74 ? (sym - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : sym <= 87 /* S_goodpos */ ? (sym - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+                    glyph = sym === S.stone ? GLYPH.CMAP_STONE_OFF : sym <= S.trwall ? (sym - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : sym < S.altar ? (sym - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : sym === S.altar ? 4008 : sym < S.arrow_trap + MAXTCHARS ? (sym - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : sym <= S.goodpos ? (sym - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
                     svl.level.locations[x][y].glyph = glyph;
                     if (!sensed) {
                         await show_glyph(x, y, glyph);
@@ -247,42 +303,42 @@ async function display_monster(x, y, mon, sightflags, worm_tail) {   // display.
                     }
                     break;
                 }
-            case 2 /* M_AP_OBJECT */:
+            case M_AP.OBJECT:
                 {
                     obj.$copyFrom(cg.zeroobj);
                     obj.ox = x;
                     obj.oy = y;
                     obj.otyp = $c.i16(mon.mappearance);
-                    obj.corpsenm = mon.mextra && mon.mextra.mcorpsenm !== -1 /* NON_PM */ ? mon.mextra.mcorpsenm : 55 /* PM_TENGU */;
+                    obj.corpsenm = has_mcorpsenm(mon) ? mon.mextra.mcorpsenm : PM.TENGU;
                     await map_object(obj, !sensed ? 1 : 0);
                     break;
                 }
-            case 3 /* M_AP_MONSTER */:
+            case M_AP.MONSTER:
                 {
-                    mndx = u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : mon.mappearance | 0;
-                    await show_glyph(x, y, mndx + (mgendercode === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0);
+                    mndx = u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mon.mappearance | 0;
+                    await show_glyph(x, y, monnum_to_glyph(mndx, mgendercode));
                     break;
                 }
         }
     }
     if (!mon_mimic || sensed) {
-        if (mon.mtame && !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic))) {
+        if (mon.mtame && !Hallucination()) {
             if (worm_tail) {
-                num = 330 + (mgendercode === 0 /* MALE */ ? 766 /* GLYPH_PET_MALE_OFF */ : 1149 /* GLYPH_PET_FEM_OFF */) | 0;
+                num = PM.LONG_WORM_TAIL + (mgendercode === MALE ? GLYPH.PET_MALE_OFF : GLYPH.PET_FEM_OFF) | 0;
             } else {
-                num = (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : mon.data.pmidx) + ((mon.female | 0) === 0 ? 766 /* GLYPH_PET_MALE_OFF */ : 1149 /* GLYPH_PET_FEM_OFF */) | 0;
+                num = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mon.data.pmidx) + ((mon.female | 0) === 0 ? GLYPH.PET_MALE_OFF : GLYPH.PET_FEM_OFF) | 0;
             }
-        } else if (sightflags === 2) {
+        } else if (sightflags === DETECTED) {
             if (worm_tail) {
-                num = (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : 330 /* PM_LONG_WORM_TAIL */) + (mgendercode === 0 /* MALE */ ? 1533 /* GLYPH_DETECT_MALE_OFF */ : 1916 /* GLYPH_DETECT_FEM_OFF */) | 0;
+                num = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : PM.LONG_WORM_TAIL) + (mgendercode === MALE ? GLYPH.DETECT_MALE_OFF : GLYPH.DETECT_FEM_OFF) | 0;
             } else {
-                num = (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : mon.data.pmidx) + ((mon.female | 0) === 0 ? 1533 /* GLYPH_DETECT_MALE_OFF */ : 1916 /* GLYPH_DETECT_FEM_OFF */) | 0;
+                num = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mon.data.pmidx) + ((mon.female | 0) === 0 ? GLYPH.DETECT_MALE_OFF : GLYPH.DETECT_FEM_OFF) | 0;
             }
         } else {
             if (worm_tail) {
-                num = (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : 330 /* PM_LONG_WORM_TAIL */) + (mgendercode === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0;
+                num = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : PM.LONG_WORM_TAIL) + (mgendercode === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0;
             } else {
-                num = (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : mon.data.pmidx) + ((mon.female | 0) === 0 ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0;
+                num = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mon.data.pmidx) + ((mon.female | 0) === 0 ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0;
             }
         }
         await show_mon_or_warn(x, y, num);
@@ -293,11 +349,11 @@ async function display_warning(mon) {   // display.c:634
     let x = 0, y = 0, glyph = 0, wl = 0;
     x = mon.mx;
     y = mon.my;
-    if ((u.uprops[31 /* WARNING */].intrinsic || u.uprops[31 /* WARNING */].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) {
-        wl = u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? rn2_on_display_rng(5) + 1 | 0 : warning_of(mon);
-        glyph = wl + 7220 /* GLYPH_WARNING_OFF */ | 0;
-    } else if ((u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))) {
-        glyph = (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : mon.data.pmidx) + ((mon.female | 0) === 0 ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0;
+    if ((u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) {
+        wl = Hallucination() ? rn2_on_display_rng(WARNCOUNT - 1) + 1 | 0 : warning_of(mon);
+        glyph = warning_to_glyph(wl);
+    } else if (MATCH_WARN_OF_MON(mon)) {
+        glyph = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mon.data.pmidx) + ((mon.female | 0) === 0 ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0;
     } else {
         await impossible($c.lit("display_warning did not match warning type?"));
         return;
@@ -308,33 +364,33 @@ export function warning_of(mon) {   // display.c:654
     let wl = 0, tmp = 0;
     wl = 0;
     tmp = 0;
-    if ((u.uprops[31 /* WARNING */].intrinsic || u.uprops[31 /* WARNING */].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) {
+    if ((u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) {
         tmp = $c.div32(mon.m_lev, 4);
-        wl = tmp > 5 ? 5 : tmp;
+        wl = tmp > WARNCOUNT - 1 ? WARNCOUNT - 1 : tmp;
     }
     return wl;
 }
 function mon_overrides_region(mon, mx, my) {   // display.c:668
     let r = 0;
     if (u.uswallow | 0 && (!mon || !$c.peq(mon, u.ustuck))) {
-        return 0;
+        return FALSE;
     }
     if (mon) {
-        if (mx === mon.mx && my === mon.my && ((!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic || !($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))) || (u.uprops[31 /* WARNING */].intrinsic || u.uprops[31 /* WARNING */].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel)) {
-            return 1;
+        if (mx === mon.mx && my === mon.my && ((!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))) || (u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel)) {
+            return TRUE;
         }
         r = u.xray_range > 1 ? u.xray_range : 1;
-        if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && ((!mon.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !mon.mundetected) && (mon.m_ap_type & 7) !== 1 /* M_AP_FURNITURE */ && (mon.m_ap_type & 7) !== 2 /* M_AP_OBJECT */ && dist2(mx, my, u.ux, u.uy) <= Math.imul(r, r + 1 | 0)) {
-            return 1;
+        if (!Blind() && _mon_visible(mon) && M_AP_TYPE(mon) !== M_AP.FURNITURE && M_AP_TYPE(mon) !== M_AP.OBJECT && distu(mx, my) <= Math.imul(r, r + 1 | 0)) {
+            return TRUE;
         }
     }
-    return $c.i8(svl.level.locations[mx][my].glyph === 1532 /* GLYPH_INVIS_OFF */ ? 1 : 0);
+    return $c.i8(svl.level.locations[mx][my].glyph === GLYPH_INVISIBLE ? TRUE : FALSE);
 }
 export function suppress_map_output() {   // display.c:715
-    return $c.i8(gi.in_mklev || program_state.saving || program_state.restoring || program_state.done_hup ? 1 : 0);
+    return $c.i8(_suppress_map_output());
 }
 export async function feel_newsym(x, y) {   // display.c:726
-    if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+    if (Blind()) {
         await feel_location(x, y);
     } else {
         await newsym(x, y);
@@ -342,37 +398,37 @@ export async function feel_newsym(x, y) {   // display.c:726
 }
 export async function feel_location(x, y) {   // display.c:746
     let lev = null, boulder = null, mon = null, ep = null, do_room_glyph = 0, obj = null, trap = null, ml_ep = null, _ml_reg = null, $t1, $t2, $t3, $t4, $t5;
-    if (gi.in_mklev || program_state.saving || program_state.restoring || program_state.done_hup) {
+    if (_suppress_map_output()) {
         return;
     }
     if (!isok(x, y)) {
         return;
     }
     lev = $c.relem(svl.level.locations[x], y);
-    if (lev.glyph === 1532 /* GLYPH_INVIS_OFF */ && svl.level.monsters[x][y]) {
+    if (glyph_is_invisible(lev.glyph) && m_at(x, y)) {
         return;
     }
-    if (u.uinwater | 0 && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && !is_pool_or_lava(x, y) && !is_ice(x, y)) {
+    if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && !is_pool_or_lava(x, y) && !is_ice(x, y)) {
         return;
     }
     set_seenv(lev, u.ux, u.uy, x, y);
-    if (!can_reach_floor(0)) {
-        if (lev.typ < 16 /* POOL */ || lev.typ === 23 /* DOOR */ && (lev.flags | 0) & 12) {
+    if (!can_reach_floor(FALSE)) {
+        if (IS_OBSTRUCTED(lev.typ) || IS_DOOR(lev.typ) && (lev.flags | 0) & (D.LOCKED | D.CLOSED)) {
             await map_background(x, y, 1);
-        } else if ((boulder = sobj_at(475 /* BOULDER */, x, y)) !== null) {
+        } else if ((boulder = sobj_at(BOULDER, x, y)) !== null) {
             await map_object(boulder, 1);
-        } else if (lev.typ === 23 /* DOOR */) {
+        } else if (IS_DOOR(lev.typ)) {
             await map_background(x, y, 1);
-        } else if (lev.typ >= 25 /* ROOM */ || lev.typ >= 16 /* POOL */ && lev.typ <= 19 /* DRAWBRIDGE_UP */) {
-            do_room_glyph = 0;
-            if (lev.glyph === 3923 || lev.glyph === 1532 /* GLYPH_INVIS_OFF */) {
-                if (lev.typ !== 25 /* ROOM */ && lev.seenv) {
+        } else if (IS_ROOM(lev.typ) || IS_POOL(lev.typ)) {
+            do_room_glyph = FALSE;
+            if (lev.glyph === BOULDER + GLYPH.OBJ_OFF || glyph_is_invisible(lev.glyph)) {
+                if (lev.typ !== ROOM && lev.seenv) {
                     await map_background(x, y, 1);
                 } else {
-                    do_room_glyph = 1;
+                    do_room_glyph = TRUE;
                 }
             } else if (lev.glyph >= 3929 && lev.glyph < 3993) {
-                do_room_glyph = 1;
+                do_room_glyph = TRUE;
             }
             if (do_room_glyph) {
                 $t1 = flags.dark_room && iflags.wc_color && !((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level)) ? 3993 : lev.waslit | 0 ? 3992 : 3929, lev.glyph = $t1;
@@ -380,9 +436,9 @@ export async function feel_location(x, y) {   // display.c:746
             }
         } else {
             await map_background(x, y, 1);
-            if (lev.typ === 24 /* CORR */ && lev.glyph === 3996 && !lev.waslit) {
+            if (lev.typ === CORR && lev.glyph === 3996 && !lev.waslit) {
                 await show_glyph(x, y, ($t2 = 3995, lev.glyph = $t2));
-            } else if (lev.typ === 25 /* ROOM */ && flags.dark_room && iflags.wc_color && lev.glyph === 3992) {
+            } else if (lev.typ === ROOM && flags.dark_room && iflags.wc_color && lev.glyph === 3992) {
                 await show_glyph(x, y, ($t3 = 3993, lev.glyph = $t3));
             }
         }
@@ -391,65 +447,65 @@ export async function feel_location(x, y) {   // display.c:746
             ep.erevealed = (1) & 1;
         }
         do {
-            if ((obj = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+            if ((obj = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                 await map_object(obj, 1);
-            } else if ((trap = t_at(x, y)) && trap.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+            } else if ((trap = t_at(x, y)) && trap.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                 await map_trap(trap, 1);
-            } else if ((svl.level.locations[x][y].typ === 24 /* CORR */ || svl.level.locations[x][y].typ === 33 /* ICE */ || svl.level.locations[x][y].typ === 25 /* ROOM */) && (ml_ep = engr_at(x, y)) !== null && ml_ep.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+            } else if ((svl.level.locations[x][y].typ === CORR || svl.level.locations[x][y].typ === ICE || svl.level.locations[x][y].typ === ROOM) && (ml_ep = engr_at(x, y)) !== null && ml_ep.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                 await map_engraving(ml_ep, 1);
             } else {
                 await map_background(x, y, 1);
             }
             update_lastseentyp(x, y);
-            if (1 && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (_ml_reg = visible_region_at(x, y)) !== null) {
+            if (1 && !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (_ml_reg = visible_region_at(x, y)) !== null) {
                 await show_region(_ml_reg, x, y);
             }
         } while (0);
-        if ($G.uball !== null) {
-            if ($G.uchain && $G.uchain.where === 1 && $G.uchain.ox === x && $G.uchain.oy === y && $c.peq(svl.level.objects[x][y], $G.uchain)) {
-                u.bc_felt = u.bc_felt | 2;
+        if (Punished()) {
+            if ($G.uchain && $G.uchain.where === OBJ.FLOOR && $G.uchain.ox === x && $G.uchain.oy === y && $c.peq(svl.level.objects[x][y], $G.uchain)) {
+                u.bc_felt = u.bc_felt | BC.CHAIN;
             } else {
-                u.bc_felt = u.bc_felt & -3;
+                u.bc_felt = u.bc_felt & ~BC.CHAIN;
             }
-            if ($G.uball && $G.uball.where === 1 && $G.uball.ox === x && $G.uball.oy === y && $c.peq(svl.level.objects[x][y], $G.uball)) {
-                u.bc_felt = u.bc_felt | 1;
+            if ($G.uball && $G.uball.where === OBJ.FLOOR && $G.uball.ox === x && $G.uball.oy === y && $c.peq(svl.level.objects[x][y], $G.uball)) {
+                u.bc_felt = u.bc_felt | BC.BALL;
             } else {
-                u.bc_felt = u.bc_felt & -2;
+                u.bc_felt = u.bc_felt & ~BC.BALL;
             }
         }
-        if (lev.typ === 25 /* ROOM */ && lev.glyph === 3992 && (!lev.waslit || flags.dark_room && iflags.wc_color)) {
-            await show_glyph(x, y, ($t4 = (flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : (flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) <= 11 /* S_trwall */ ? ((flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : (flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) < 33 /* S_altar */ ? ((flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : (flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) === 33 /* S_altar */ ? 4008 : (flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) < 74 ? ((flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : (flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) <= 87 /* S_goodpos */ ? ((flags.dark_room ? 20 /* S_darkroom */ : 0 /* S_stone */) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */, lev.glyph = $t4));
-        } else if (lev.typ === 24 /* CORR */ && lev.glyph === 3996 && !lev.waslit) {
+        if (lev.typ === ROOM && lev.glyph === 3992 && (!lev.waslit || flags.dark_room && iflags.wc_color)) {
+            await show_glyph(x, y, ($t4 = (flags.dark_room ? S.darkroom : S.stone) === S.stone ? GLYPH.CMAP_STONE_OFF : (flags.dark_room ? S.darkroom : S.stone) <= S.trwall ? ((flags.dark_room ? S.darkroom : S.stone) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (flags.dark_room ? S.darkroom : S.stone) < S.altar ? ((flags.dark_room ? S.darkroom : S.stone) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (flags.dark_room ? S.darkroom : S.stone) === S.altar ? 4008 : (flags.dark_room ? S.darkroom : S.stone) < S.arrow_trap + MAXTCHARS ? ((flags.dark_room ? S.darkroom : S.stone) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (flags.dark_room ? S.darkroom : S.stone) <= S.goodpos ? ((flags.dark_room ? S.darkroom : S.stone) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH, lev.glyph = $t4));
+        } else if (lev.typ === CORR && lev.glyph === 3996 && !lev.waslit) {
             await show_glyph(x, y, ($t5 = 3995, lev.glyph = $t5));
         }
     }
-    if (!(x === u.ux && y === u.uy) && (mon = svl.level.monsters[x][y]) !== null && ((!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic || !($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))))) {
-        await display_monster(x, y, mon, !($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)) ? 1 : 2, $c.i8(mon && (x !== mon.mx || y !== mon.my) ? 1 : 0));
+    if (!u_at(x, y) && (mon = svl.level.monsters[x][y]) !== null && ((!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))))) {
+        await display_monster(x, y, mon, !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || MATCH_WARN_OF_MON(mon) ? PHYSICALLY_SEEN : DETECTED, $c.i8(mon && (x !== mon.mx || y !== mon.my) ? 1 : 0));
     }
 }
 export async function newsym(x, y) {   // display.c:917
     let lev = null, ep = null, mon = null, see_it = 0, worm_tail = 0, errfunc = null, reg = null, see_self = 0, obj = null, trap = null, ml_ep = null, _ml_reg = null, show = 0, trap$2 = null, tt = 0, obj$2 = null, trap$3 = null, ml_ep$2 = null, _ml_reg$2 = null, obj$3 = null, trap$4 = null, ml_ep$3 = null, _ml_reg$3 = null, $goto = null, $t1, $t2, $t3, $t4;
-    if (gi.in_mklev || program_state.saving || program_state.restoring || program_state.done_hup) {
+    if (_suppress_map_output()) {
         return;
     }
     if (!isok(x, y)) {
-        errfunc = x < 0 || y < 0 || x > 79 || y > 20 ? panic : impossible;
+        errfunc = x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1 ? panic : impossible;
         await errfunc($c.lit("newsym: attempting screen update for <%d,%d>"), x, y);
         return;
     }
     if (u.uswallow) {
-        if (x === u.ux && y === u.uy) {
-            await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? 2682 /* GLYPH_RIDDEN_MALE_OFF */ : 3065 /* GLYPH_RIDDEN_FEM_OFF */) | 0 : (gy.youmonst.m_ap_type & 7) === 0 /* M_AP_NOTHING */ ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0 : (gy.youmonst.m_ap_type & 7) === 1 /* M_AP_FURNITURE */ ? (gy.youmonst.mappearance | 0) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : (gy.youmonst.mappearance | 0) <= 11 /* S_trwall */ ? ((gy.youmonst.mappearance | 0) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : (gy.youmonst.mappearance | 0) < 33 /* S_altar */ ? ((gy.youmonst.mappearance | 0) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : (gy.youmonst.mappearance | 0) === 33 /* S_altar */ ? 4008 : (gy.youmonst.mappearance | 0) < 74 ? ((gy.youmonst.mappearance | 0) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : (gy.youmonst.mappearance | 0) <= 87 /* S_goodpos */ ? ((gy.youmonst.mappearance | 0) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */ : (gy.youmonst.m_ap_type & 7) === 2 /* M_AP_OBJECT */ ? (gy.youmonst.mappearance | 0) + 3448 /* GLYPH_OBJ_OFF */ | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0);
+        if (u_at(x, y)) {
+            await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? GLYPH.RIDDEN_MALE_OFF : GLYPH.RIDDEN_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.NOTHING ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE ? (gy.youmonst.mappearance | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : (gy.youmonst.mappearance | 0) <= S.trwall ? ((gy.youmonst.mappearance | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (gy.youmonst.mappearance | 0) < S.altar ? ((gy.youmonst.mappearance | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (gy.youmonst.mappearance | 0) === S.altar ? 4008 : (gy.youmonst.mappearance | 0) < S.arrow_trap + MAXTCHARS ? ((gy.youmonst.mappearance | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (gy.youmonst.mappearance | 0) <= S.goodpos ? ((gy.youmonst.mappearance | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT ? (gy.youmonst.mappearance | 0) + GLYPH.OBJ_OFF | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0);
         }
         return;
     }
-    if (u.uinwater | 0 && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+    if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
         if (!(is_pool_or_lava(x, y) || is_ice(x, y)) || !(dist2(x, y, u.ux, u.uy) <= 2)) {
             return;
         }
     }
     lev = $c.relem(svl.level.locations[x], y);
-    if ((gv.viz_array.get(y).get(x) & 2) !== 0) {
+    if (cansee(x, y)) {
         reg = visible_region_at(x, y);
         lev.waslit = (((lev.lit | 0) !== 0 ? 1 : 0) >>> 0) & 1;
         mon = svl.level.monsters[x][y];
@@ -457,76 +513,76 @@ export async function newsym(x, y) {   // display.c:917
         if ((ep = engr_at(x, y)) !== null) {
             ep.erevealed = (1) & 1;
         }
-        if (reg && (lev.typ >= 23 /* DOOR */ || reg.visible && is_pool_or_lava(x, y))) {
+        if (reg && (ACCESSIBLE(lev.typ) || reg.visible && is_pool_or_lava(x, y))) {
             if (!mon_overrides_region(mon, x, y)) {
                 await show_region(reg, x, y);
                 return;
             }
         }
-        if (x === u.ux && y === u.uy) {
-            see_self = (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked || u.uswallow | 0 || !((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked && !(u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.uundetected || (u.uprops[30 /* TELEPAT */].extrinsic || (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic)) ? 1 : 0;
+        if (u_at(x, y)) {
+            see_self = canspotself();
             do {
-                if ((obj = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                if ((obj = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                     await map_object(obj, !see_self ? 1 : 0);
-                } else if ((trap = t_at(x, y)) && trap.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                } else if ((trap = t_at(x, y)) && trap.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                     await map_trap(trap, !see_self ? 1 : 0);
-                } else if ((svl.level.locations[x][y].typ === 24 /* CORR */ || svl.level.locations[x][y].typ === 33 /* ICE */ || svl.level.locations[x][y].typ === 25 /* ROOM */) && (ml_ep = engr_at(x, y)) !== null && ml_ep.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                } else if ((svl.level.locations[x][y].typ === CORR || svl.level.locations[x][y].typ === ICE || svl.level.locations[x][y].typ === ROOM) && (ml_ep = engr_at(x, y)) !== null && ml_ep.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                     await map_engraving(ml_ep, !see_self ? 1 : 0);
                 } else {
                     await map_background(x, y, !see_self ? 1 : 0);
                 }
                 update_lastseentyp(x, y);
-                if (!see_self && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (_ml_reg = visible_region_at(x, y)) !== null) {
+                if (!see_self && !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (_ml_reg = visible_region_at(x, y)) !== null) {
                     await show_region(_ml_reg, x, y);
                 }
             } while (0);
             if (see_self) {
-                await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? 2682 /* GLYPH_RIDDEN_MALE_OFF */ : 3065 /* GLYPH_RIDDEN_FEM_OFF */) | 0 : (gy.youmonst.m_ap_type & 7) === 0 /* M_AP_NOTHING */ ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0 : (gy.youmonst.m_ap_type & 7) === 1 /* M_AP_FURNITURE */ ? (gy.youmonst.mappearance | 0) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : (gy.youmonst.mappearance | 0) <= 11 /* S_trwall */ ? ((gy.youmonst.mappearance | 0) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : (gy.youmonst.mappearance | 0) < 33 /* S_altar */ ? ((gy.youmonst.mappearance | 0) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : (gy.youmonst.mappearance | 0) === 33 /* S_altar */ ? 4008 : (gy.youmonst.mappearance | 0) < 74 ? ((gy.youmonst.mappearance | 0) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : (gy.youmonst.mappearance | 0) <= 87 /* S_goodpos */ ? ((gy.youmonst.mappearance | 0) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */ : (gy.youmonst.m_ap_type & 7) === 2 /* M_AP_OBJECT */ ? (gy.youmonst.mappearance | 0) + 3448 /* GLYPH_OBJ_OFF */ | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0);
+                await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? GLYPH.RIDDEN_MALE_OFF : GLYPH.RIDDEN_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.NOTHING ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE ? (gy.youmonst.mappearance | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : (gy.youmonst.mappearance | 0) <= S.trwall ? ((gy.youmonst.mappearance | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (gy.youmonst.mappearance | 0) < S.altar ? ((gy.youmonst.mappearance | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (gy.youmonst.mappearance | 0) === S.altar ? 4008 : (gy.youmonst.mappearance | 0) < S.arrow_trap + MAXTCHARS ? ((gy.youmonst.mappearance | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (gy.youmonst.mappearance | 0) <= S.goodpos ? ((gy.youmonst.mappearance | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT ? (gy.youmonst.mappearance | 0) + GLYPH.OBJ_OFF | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0);
             }
         } else {
-            show = 0;
-            see_it = mon && ((!mon.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !mon.mundetected || !worm_tail && (!($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)))) ? 1 : 0;
-            if (mon && (see_it || !worm_tail && (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic))) {
+            show = FALSE;
+            see_it = mon && ((!mon.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !mon.mundetected || !worm_tail && (!($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || MATCH_WARN_OF_MON(mon))) ? 1 : 0;
+            if (mon && (see_it || !worm_tail && Detect_monsters())) {
                 if (mon.mtrapped) {
                     trap$2 = t_at(x, y);
-                    tt = trap$2 ? trap$2.ttyp | 0 : 0 /* NO_TRAP */;
-                    if (tt === 5 /* BEAR_TRAP */ || (tt === 11 /* PIT */ || tt === 12 /* SPIKED_PIT */) || tt === 18 /* WEB */) {
+                    tt = trap$2 ? trap$2.ttyp | 0 : NO_TRAP;
+                    if (tt === BEAR_TRAP || (tt === PIT || tt === SPIKED_PIT) || tt === WEB) {
                         trap$2.tseen = (1) & 1;
                     }
                 }
                 do {
-                    if ((obj$2 = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                    if ((obj$2 = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                         await map_object(obj$2, show);
-                    } else if ((trap$3 = t_at(x, y)) && trap$3.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                    } else if ((trap$3 = t_at(x, y)) && trap$3.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                         await map_trap(trap$3, show);
-                    } else if ((svl.level.locations[x][y].typ === 24 /* CORR */ || svl.level.locations[x][y].typ === 33 /* ICE */ || svl.level.locations[x][y].typ === 25 /* ROOM */) && (ml_ep$2 = engr_at(x, y)) !== null && ml_ep$2.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                    } else if ((svl.level.locations[x][y].typ === CORR || svl.level.locations[x][y].typ === ICE || svl.level.locations[x][y].typ === ROOM) && (ml_ep$2 = engr_at(x, y)) !== null && ml_ep$2.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                         await map_engraving(ml_ep$2, show);
                     } else {
                         await map_background(x, y, show);
                     }
                     update_lastseentyp(x, y);
-                    if (show && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (_ml_reg$2 = visible_region_at(x, y)) !== null) {
+                    if (show && !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (_ml_reg$2 = visible_region_at(x, y)) !== null) {
                         await show_region(_ml_reg$2, x, y);
                     }
                 } while (0);
-                await display_monster(x, y, mon, see_it ? 1 : 2, worm_tail);
-            } else if (mon && ((u.uprops[31 /* WARNING */].intrinsic || u.uprops[31 /* WARNING */].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) && !worm_tail) {
+                await display_monster(x, y, mon, see_it ? PHYSICALLY_SEEN : DETECTED, worm_tail);
+            } else if (mon && ((u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) && !worm_tail) {
                 await display_warning(mon);
-            } else if (lev.glyph === 1532 /* GLYPH_INVIS_OFF */) {
+            } else if (glyph_is_invisible(lev.glyph)) {
                 await map_invisible(x, y);
             } else {
                 do {
-                    if ((obj$3 = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                    if ((obj$3 = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                         await map_object(obj$3, 1);
-                    } else if ((trap$4 = t_at(x, y)) && trap$4.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                    } else if ((trap$4 = t_at(x, y)) && trap$4.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                         await map_trap(trap$4, 1);
-                    } else if ((svl.level.locations[x][y].typ === 24 /* CORR */ || svl.level.locations[x][y].typ === 33 /* ICE */ || svl.level.locations[x][y].typ === 25 /* ROOM */) && (ml_ep$3 = engr_at(x, y)) !== null && ml_ep$3.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === 20 /* LAVAPOOL */ || svl.level.locations[x][y].typ === 21 /* LAVAWALL */)) {
+                    } else if ((svl.level.locations[x][y].typ === CORR || svl.level.locations[x][y].typ === ICE || svl.level.locations[x][y].typ === ROOM) && (ml_ep$3 = engr_at(x, y)) !== null && ml_ep$3.erevealed | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                         await map_engraving(ml_ep$3, 1);
                     } else {
                         await map_background(x, y, 1);
                     }
                     update_lastseentyp(x, y);
-                    if (1 && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (_ml_reg$3 = visible_region_at(x, y)) !== null) {
+                    if (1 && !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (_ml_reg$3 = visible_region_at(x, y)) !== null) {
                         await show_region(_ml_reg$3, x, y);
                     }
                 } while (0);
@@ -536,28 +592,28 @@ export async function newsym(x, y) {   // display.c:917
         D1: for (;;) {
             switch ($goto) {
             case null: case "show_mem":
-                if ($goto !== "show_mem" && (x === u.ux && y === u.uy)) {
+                if ($goto !== "show_mem" && u_at(x, y)) {
                     await feel_location(u.ux, u.uy);
-                    if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked || u.uswallow | 0 || !((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked && !(u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.uundetected || (u.uprops[30 /* TELEPAT */].extrinsic || (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic))) {
-                        await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? 2682 /* GLYPH_RIDDEN_MALE_OFF */ : 3065 /* GLYPH_RIDDEN_FEM_OFF */) | 0 : (gy.youmonst.m_ap_type & 7) === 0 /* M_AP_NOTHING */ ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0 : (gy.youmonst.m_ap_type & 7) === 1 /* M_AP_FURNITURE */ ? (gy.youmonst.mappearance | 0) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : (gy.youmonst.mappearance | 0) <= 11 /* S_trwall */ ? ((gy.youmonst.mappearance | 0) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : (gy.youmonst.mappearance | 0) < 33 /* S_altar */ ? ((gy.youmonst.mappearance | 0) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : (gy.youmonst.mappearance | 0) === 33 /* S_altar */ ? 4008 : (gy.youmonst.mappearance | 0) < 74 ? ((gy.youmonst.mappearance | 0) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : (gy.youmonst.mappearance | 0) <= 87 /* S_goodpos */ ? ((gy.youmonst.mappearance | 0) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */ : (gy.youmonst.m_ap_type & 7) === 2 /* M_AP_OBJECT */ ? (gy.youmonst.mappearance | 0) + 3448 /* GLYPH_OBJ_OFF */ | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0);
+                    if (canspotself()) {
+                        await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? GLYPH.RIDDEN_MALE_OFF : GLYPH.RIDDEN_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.NOTHING ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE ? (gy.youmonst.mappearance | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : (gy.youmonst.mappearance | 0) <= S.trwall ? ((gy.youmonst.mappearance | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (gy.youmonst.mappearance | 0) < S.altar ? ((gy.youmonst.mappearance | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (gy.youmonst.mappearance | 0) === S.altar ? 4008 : (gy.youmonst.mappearance | 0) < S.arrow_trap + MAXTCHARS ? ((gy.youmonst.mappearance | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (gy.youmonst.mappearance | 0) <= S.goodpos ? ((gy.youmonst.mappearance | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT ? (gy.youmonst.mappearance | 0) + GLYPH.OBJ_OFF | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0);
                     }
-                } else if ($goto !== "show_mem" && ((mon = svl.level.monsters[x][y]) !== null && ((see_it = !($c.andu64(mon.data.mflags1, 65536) !== 0) && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (u.uprops[30 /* TELEPAT */].intrinsic || u.uprops[30 /* TELEPAT */].extrinsic) || u.uprops[30 /* TELEPAT */].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)) || !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && (u.uprops[36 /* INFRAVISION */].intrinsic || u.uprops[36 /* INFRAVISION */].extrinsic) && mon.data.mflags3 & 512 && (gv.viz_array.get(mon.my).get(mon.mx) & 1) !== 0 && ((!mon.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !mon.mundetected) ? 1 : 0) !== 0 || (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic) && !(mon && (x !== mon.mx || y !== mon.my))))) {
-                    await display_monster(x, y, mon, see_it ? 0 : 2, $c.i8(mon && (x !== mon.mx || y !== mon.my) ? 1 : 0));
-                } else if ($goto !== "show_mem" && (mon && ((u.uprops[31 /* WARNING */].intrinsic || u.uprops[31 /* WARNING */].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) && !(mon && (x !== mon.mx || y !== mon.my)))) {
+                } else if ($goto !== "show_mem" && ((mon = svl.level.monsters[x][y]) !== null && ((see_it = !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || MATCH_WARN_OF_MON(mon) || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (u.uprops[INFRAVISION].intrinsic || u.uprops[INFRAVISION].extrinsic) && mon.data.mflags3 & M3.INFRAVISIBLE && (gv.viz_array.get(mon.my).get(mon.mx) & COULD_SEE) !== 0 && ((!mon.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !mon.mundetected) ? 1 : 0) !== 0 || Detect_monsters() && !(mon && (x !== mon.mx || y !== mon.my))))) {
+                    await display_monster(x, y, mon, see_it ? 0 : DETECTED, $c.i8(mon && (x !== mon.mx || y !== mon.my) ? TRUE : FALSE));
+                } else if ($goto !== "show_mem" && (mon && ((u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) && !(mon && (x !== mon.mx || y !== mon.my)))) {
                     await display_warning(mon);
                 } else if ($goto !== "show_mem" && ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level))) {
-                    if (lev.glyph === 3996 && lev.typ === 24 /* CORR */) {
+                    if (lev.glyph === 3996 && lev.typ === CORR) {
                         await show_glyph(x, y, ($t1 = 3995, lev.glyph = $t1));
-                    } else if (lev.glyph === 3992 && lev.typ === 25 /* ROOM */ && !lev.waslit) {
+                    } else if (lev.glyph === 3992 && lev.typ === ROOM && !lev.waslit) {
                         await show_glyph(x, y, ($t2 = 3929, lev.glyph = $t2));
                     } else {
                         $goto = "show_mem"; continue D1;
                     }
                 } else if ($goto !== "show_mem" && (!lev.waslit || flags.dark_room && iflags.wc_color)) {
-                    if (lev.glyph === 3996 && lev.typ === 24 /* CORR */) {
+                    if (lev.glyph === 3996 && lev.typ === CORR) {
                         await show_glyph(x, y, ($t3 = 3995, lev.glyph = $t3));
-                    } else if (lev.glyph === 3992 && lev.typ === 25 /* ROOM */) {
-                        await show_glyph(x, y, ($t4 = ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) <= 11 /* S_trwall */ ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) < 33 /* S_altar */ ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) === 33 /* S_altar */ ? 4008 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) < 74 ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) <= 87 /* S_goodpos */ ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */, lev.glyph = $t4));
+                    } else if (lev.glyph === 3992 && lev.typ === ROOM) {
+                        await show_glyph(x, y, ($t4 = ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) === S.stone ? GLYPH.CMAP_STONE_OFF : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) <= S.trwall ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) < S.altar ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) === S.altar ? 4008 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) < S.arrow_trap + MAXTCHARS ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) <= S.goodpos ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH, lev.glyph = $t4));
                     } else {
                         $goto = "show_mem"; continue D1;
                     }
@@ -575,11 +631,11 @@ export async function shieldeff(x, y) {   // display.c:1110
     if (!flags.sparkle) {
         return;
     }
-    if ((gv.viz_array.get(y).get(x) & 2) !== 0) {
-        for (i = 0; i < 21; i = i + 1 | 0) {
-            await show_glyph(x, y, shield_static[i] === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : shield_static[i] <= 11 /* S_trwall */ ? (shield_static[i] - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : shield_static[i] < 33 /* S_altar */ ? (shield_static[i] - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : shield_static[i] === 33 /* S_altar */ ? 4008 : shield_static[i] < 74 ? (shield_static[i] - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : shield_static[i] <= 87 /* S_goodpos */ ? (shield_static[i] - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */);
+    if (cansee(x, y)) {
+        for (i = 0; i < SHIELD_COUNT; i = i + 1 | 0) {
+            await show_glyph(x, y, shield_static[i] === S.stone ? GLYPH.CMAP_STONE_OFF : shield_static[i] <= S.trwall ? (shield_static[i] - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : shield_static[i] < S.altar ? (shield_static[i] - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : shield_static[i] === S.altar ? 4008 : shield_static[i] < S.arrow_trap + MAXTCHARS ? (shield_static[i] - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : shield_static[i] <= S.goodpos ? (shield_static[i] - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH);
             await flush_screen(1);
-            await windowprocs.win_delay_output();
+            await nh_delay_output()();
         }
         await newsym(x, y);
     }
@@ -593,11 +649,11 @@ async function tether_glyph(x, y) {   // display.c:1127
 export async function tmp_at(x, y) {   // display.c:1174
     let tmp = null, i = 0, i$2 = 0, px = 0, py = 0;
     switch (x) {
-        case -1:
-        case -2:
-        case -3:
-        case -4:
-        case -5:
+        case DISP_BEAM:
+        case DISP_ALL:
+        case DISP_TETHER:
+        case DISP_FLASH:
+        case DISP_ALWAYS:
             if (!tmp_at$tglyph) {
                 tmp = tgfirst;
             } else {
@@ -610,7 +666,7 @@ export async function tmp_at(x, y) {   // display.c:1174
             tmp_at$tglyph.glyph = y;
             await flush_screen(0);
             return;
-        case -8:
+        case DISP_FREEMEM:
             while (tmp_at$tglyph) {
                 tmp = tmp_at$tglyph.prev;
                 if (!$c.peq(tmp_at$tglyph, tgfirst)) {
@@ -626,21 +682,21 @@ export async function tmp_at(x, y) {   // display.c:1174
         await panic($c.lit("tmp_at: tglyph not initialized"));
     } else {
         switch (x) {
-            case -6:
+            case DISP_CHANGE:
                 tmp_at$tglyph.glyph = y;
                 break;
-            case -7:
-                if (tmp_at$tglyph.style === -1 || tmp_at$tglyph.style === -2) {
+            case DISP_END:
+                if (tmp_at$tglyph.style === DISP_BEAM || tmp_at$tglyph.style === DISP_ALL) {
                     for (i = 0; i < tmp_at$tglyph.sidx; i = i + 1 | 0) {
                         await newsym(tmp_at$tglyph.saved[i].x, tmp_at$tglyph.saved[i].y);
                     }
-                } else if (tmp_at$tglyph.style === -3) {
-                    if (y === -1 && tmp_at$tglyph.sidx > 1) {
+                } else if (tmp_at$tglyph.style === DISP_TETHER) {
+                    if (y === BACKTRACK && tmp_at$tglyph.sidx > 1) {
                         for (i$2 = tmp_at$tglyph.sidx - 1 | 0; i$2 > 0; i$2 = i$2 - 1 | 0) {
                             await newsym(tmp_at$tglyph.saved[i$2].x, tmp_at$tglyph.saved[i$2].y);
                             await show_glyph(tmp_at$tglyph.saved[i$2 - 1 | 0].x, tmp_at$tglyph.saved[i$2 - 1 | 0].y, tmp_at$tglyph.glyph);
                             await flush_screen(0);
-                            await windowprocs.win_delay_output();
+                            await nh_delay_output()();
                         }
                         tmp_at$tglyph.sidx = 1;
                     }
@@ -662,18 +718,18 @@ export async function tmp_at(x, y) {   // display.c:1174
                 if (!isok(x, y)) {
                     break;
                 }
-                if (tmp_at$tglyph.style === -1 || tmp_at$tglyph.style === -2) {
-                    if (tmp_at$tglyph.style !== -2 && !((gv.viz_array.get(y).get(x) & 2) !== 0)) {
+                if (tmp_at$tglyph.style === DISP_BEAM || tmp_at$tglyph.style === DISP_ALL) {
+                    if (tmp_at$tglyph.style !== DISP_ALL && !cansee(x, y)) {
                         break;
                     }
-                    if (tmp_at$tglyph.sidx >= 160) {
+                    if (tmp_at$tglyph.sidx >= TMP_AT_MAX_GLYPHS) {
                         break;
                     }
                     tmp_at$tglyph.saved[tmp_at$tglyph.sidx].x = x;
                     tmp_at$tglyph.saved[tmp_at$tglyph.sidx].y = y;
                     tmp_at$tglyph.sidx = tmp_at$tglyph.sidx + 1 | 0;
-                } else if (tmp_at$tglyph.style === -3) {
-                    if (tmp_at$tglyph.sidx >= 160) {
+                } else if (tmp_at$tglyph.style === DISP_TETHER) {
+                    if (tmp_at$tglyph.sidx >= TMP_AT_MAX_GLYPHS) {
                         break;
                     }
                     if (tmp_at$tglyph.sidx) {
@@ -689,7 +745,7 @@ export async function tmp_at(x, y) {   // display.c:1174
                         await newsym(tmp_at$tglyph.saved[0].x, tmp_at$tglyph.saved[0].y);
                         tmp_at$tglyph.sidx = 0;
                     }
-                    if (!((gv.viz_array.get(y).get(x) & 2) !== 0) && tmp_at$tglyph.style !== -5) {
+                    if (!cansee(x, y) && tmp_at$tglyph.style !== DISP_ALWAYS) {
                         break;
                     }
                     tmp_at$tglyph.saved[0].x = x;
@@ -710,7 +766,7 @@ export async function flash_glyph_at(x, y, tg, rpt) {   // display.c:1305
     for (i = 0; i < rpt; i = i + 1 | 0) {
         await show_glyph(x, y, glyph[$c.rem32(i, 2)]);
         await flush_screen(1);
-        await windowprocs.win_delay_output();
+        await nh_delay_output()();
     }
 }
 export async function swallowed(first) {   // display.c:1332
@@ -722,7 +778,7 @@ export async function swallowed(first) {   // display.c:1332
         for (y = $c.i16(swallowed$lasty - 1 | 0); y <= (swallowed$lasty + 1 | 0); y = $c.i16(y + 1)) {
             for (x = $c.i16(swallowed$lastx - 1 | 0); x <= (swallowed$lastx + 1 | 0); x = $c.i16(x + 1)) {
                 if (isok(x, y)) {
-                    await show_glyph(x, y, 9622 /* GLYPH_UNEXPLORED_OFF */);
+                    await show_glyph(x, y, GLYPH_UNEXPLORED);
                 }
             }
         }
@@ -732,27 +788,27 @@ export async function swallowed(first) {   // display.c:1332
     rght_ok = isok($c.i16(u.ux + 1 | 0), u.uy);
     if (isok(u.ux, $c.i16(u.uy - 1 | 0))) {
         if (left_ok) {
-            await show_glyph($c.i16(u.ux - 1 | 0), $c.i16(u.uy - 1 | 0), await swallow_to_glyph(swallower, 88 /* S_sw_tl */));
+            await show_glyph($c.i16(u.ux - 1 | 0), $c.i16(u.uy - 1 | 0), await swallow_to_glyph(swallower, S.sw_tl));
         }
-        await show_glyph(u.ux, $c.i16(u.uy - 1 | 0), await swallow_to_glyph(swallower, 89 /* S_sw_tc */));
+        await show_glyph(u.ux, $c.i16(u.uy - 1 | 0), await swallow_to_glyph(swallower, S.sw_tc));
         if (rght_ok) {
-            await show_glyph($c.i16(u.ux + 1 | 0), $c.i16(u.uy - 1 | 0), await swallow_to_glyph(swallower, 90 /* S_sw_tr */));
+            await show_glyph($c.i16(u.ux + 1 | 0), $c.i16(u.uy - 1 | 0), await swallow_to_glyph(swallower, S.sw_tr));
         }
     }
     if (left_ok) {
-        await show_glyph($c.i16(u.ux - 1 | 0), u.uy, await swallow_to_glyph(swallower, 91 /* S_sw_ml */));
+        await show_glyph($c.i16(u.ux - 1 | 0), u.uy, await swallow_to_glyph(swallower, S.sw_ml));
     }
-    await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? 2682 /* GLYPH_RIDDEN_MALE_OFF */ : 3065 /* GLYPH_RIDDEN_FEM_OFF */) | 0 : (gy.youmonst.m_ap_type & 7) === 0 /* M_AP_NOTHING */ ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0 : (gy.youmonst.m_ap_type & 7) === 1 /* M_AP_FURNITURE */ ? (gy.youmonst.mappearance | 0) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : (gy.youmonst.mappearance | 0) <= 11 /* S_trwall */ ? ((gy.youmonst.mappearance | 0) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : (gy.youmonst.mappearance | 0) < 33 /* S_altar */ ? ((gy.youmonst.mappearance | 0) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : (gy.youmonst.mappearance | 0) === 33 /* S_altar */ ? 4008 : (gy.youmonst.mappearance | 0) < 74 ? ((gy.youmonst.mappearance | 0) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : (gy.youmonst.mappearance | 0) <= 87 /* S_goodpos */ ? ((gy.youmonst.mappearance | 0) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */ : (gy.youmonst.m_ap_type & 7) === 2 /* M_AP_OBJECT */ ? (gy.youmonst.mappearance | 0) + 3448 /* GLYPH_OBJ_OFF */ | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0);
+    await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? GLYPH.RIDDEN_MALE_OFF : GLYPH.RIDDEN_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.NOTHING ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE ? (gy.youmonst.mappearance | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : (gy.youmonst.mappearance | 0) <= S.trwall ? ((gy.youmonst.mappearance | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (gy.youmonst.mappearance | 0) < S.altar ? ((gy.youmonst.mappearance | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (gy.youmonst.mappearance | 0) === S.altar ? 4008 : (gy.youmonst.mappearance | 0) < S.arrow_trap + MAXTCHARS ? ((gy.youmonst.mappearance | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (gy.youmonst.mappearance | 0) <= S.goodpos ? ((gy.youmonst.mappearance | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT ? (gy.youmonst.mappearance | 0) + GLYPH.OBJ_OFF | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0);
     if (rght_ok) {
-        await show_glyph($c.i16(u.ux + 1 | 0), u.uy, await swallow_to_glyph(swallower, 92 /* S_sw_mr */));
+        await show_glyph($c.i16(u.ux + 1 | 0), u.uy, await swallow_to_glyph(swallower, S.sw_mr));
     }
     if (isok(u.ux, $c.i16(u.uy + 1 | 0))) {
         if (left_ok) {
-            await show_glyph($c.i16(u.ux - 1 | 0), $c.i16(u.uy + 1 | 0), await swallow_to_glyph(swallower, 93 /* S_sw_bl */));
+            await show_glyph($c.i16(u.ux - 1 | 0), $c.i16(u.uy + 1 | 0), await swallow_to_glyph(swallower, S.sw_bl));
         }
-        await show_glyph(u.ux, $c.i16(u.uy + 1 | 0), await swallow_to_glyph(swallower, 94 /* S_sw_bc */));
+        await show_glyph(u.ux, $c.i16(u.uy + 1 | 0), await swallow_to_glyph(swallower, S.sw_bc));
         if (rght_ok) {
-            await show_glyph($c.i16(u.ux + 1 | 0), $c.i16(u.uy + 1 | 0), await swallow_to_glyph(swallower, 95 /* S_sw_br */));
+            await show_glyph($c.i16(u.ux + 1 | 0), $c.i16(u.uy + 1 | 0), await swallow_to_glyph(swallower, S.sw_br));
         }
     }
     swallowed$lastx = u.ux;
@@ -765,15 +821,15 @@ export async function under_water(mode) {   // display.c:1395
     }
     if (mode === 1 || under_water$dela) {
         await cls();
-        under_water$dela = 0;
+        under_water$dela = FALSE;
     } else if (mode === 2) {
-        under_water$dela = 1;
+        under_water$dela = TRUE;
         return;
     } else {
         for (y = $c.i16(under_water$lasty - 1 | 0); y <= (under_water$lasty + 1 | 0); y = $c.i16(y + 1)) {
             for (x = $c.i16(under_water$lastx - 1 | 0); x <= (under_water$lastx + 1 | 0); x = $c.i16(x + 1)) {
                 if (isok(x, y)) {
-                    await show_glyph(x, y, 9622 /* GLYPH_UNEXPLORED_OFF */);
+                    await show_glyph(x, y, GLYPH_UNEXPLORED);
                 }
             }
         }
@@ -781,8 +837,8 @@ export async function under_water(mode) {   // display.c:1395
     for (x = $c.i16(u.ux - 1 | 0); x <= (u.ux + 1 | 0); x = $c.i16(x + 1)) {
         for (y = $c.i16(u.uy - 1 | 0); y <= (u.uy + 1 | 0); y = $c.i16(y + 1)) {
             if (isok(x, y) && (is_pool_or_lava(x, y) || is_ice(x, y))) {
-                if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && !(x === u.ux && y === u.uy)) {
-                    await show_glyph(x, y, 9622 /* GLYPH_UNEXPLORED_OFF */);
+                if (Blind() && !u_at(x, y)) {
+                    await show_glyph(x, y, GLYPH_UNEXPLORED);
                 } else {
                     await newsym(x, y);
                 }
@@ -798,9 +854,9 @@ export async function under_ground(mode) {   // display.c:1445
     }
     if (mode === 1 || under_ground$dela) {
         await cls();
-        under_ground$dela = 0;
+        under_ground$dela = FALSE;
     } else if (mode === 2) {
-        under_ground$dela = 1;
+        under_ground$dela = TRUE;
         return;
     } else {
         await newsym(u.ux, u.uy);
@@ -819,17 +875,17 @@ export async function see_monsters() {   // display.c:1487
         u.ustuck.meverseen = (1) & 1;
     }
     for (mon = svl.level.monlist; mon; mon = mon.nmon) {
-        if (mon.mhp < 1) {
+        if (DEADMONSTER(mon)) {
             continue;
         }
-        if ($c.and64(mon.mstate, 256) !== 0) {
+        if ($c.and64(mon.mstate, MON.STILL_ARRIVING) !== 0) {
             continue;
         }
         await newsym(mon.mx, mon.my);
         if (mon.wormno) {
             await see_wsegs(mon);
         }
-        if ((u.uprops[32 /* WARN_OF_MON */].intrinsic || u.uprops[32 /* WARN_OF_MON */].extrinsic) && $c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0) {
+        if (Warn_of_mon() && $c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0) {
             new_warn_obj_cnt = new_warn_obj_cnt + 1 | 0;
         }
     }
@@ -842,8 +898,8 @@ export async function see_monsters() {   // display.c:1487
     }
 }
 function mimic_light_blocking(mtmp) {   // display.c:1532
-    if (mtmp.minvis | 0 && ((mtmp.m_ap_type & 7) === 2 /* M_AP_OBJECT */ && mtmp.mappearance === 475 || (mtmp.m_ap_type & 7) === 1 /* M_AP_FURNITURE */ && (mtmp.mappearance === 16 || mtmp.mappearance === 15 || mtmp.mappearance < 12 || mtmp.mappearance === 18))) {
-        if (u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic) {
+    if (mtmp.minvis | 0 && ((mtmp.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT && mtmp.mappearance === BOULDER || (mtmp.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE && (mtmp.mappearance === S.hcdoor || mtmp.mappearance === S.vcdoor || mtmp.mappearance < S.ndoor || mtmp.mappearance === S.tree))) {
+        if (See_invisible()) {
             block_point(mtmp.mx, mtmp.my);
         } else {
             unblock_point(mtmp.mx, mtmp.my);
@@ -876,12 +932,12 @@ export async function see_nearby_objects() {   // display.c:1576
             if ((obj = svl.level.objects[ix][iy]) === null || obj.dknown | 0) {
                 continue;
             }
-            if (!((gv.viz_array.get(iy).get(ix) & 2) !== 0) || dist2(ix, iy, u.ux, u.uy) > neardist) {
+            if (!cansee(ix, iy) || distu(ix, iy) > neardist) {
                 continue;
             }
             await observe_object(obj);
             glyph = svl.level.locations[ix][iy].glyph;
-            if (glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 || glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009) {
+            if (glyph_is_generic_object(glyph)) {
                 await newsym_force(ix, iy);
             }
         }
@@ -891,7 +947,7 @@ export async function see_traps() {   // display.c:1611
     let trap = null, glyph = 0;
     for (trap = gf.ftrap; trap; trap = trap.ntrap) {
         glyph = gg.gbuf[trap.ty][trap.tx].glyphinfo.glyph;
-        if (glyph >= 4026 && glyph < 4051) {
+        if (glyph_is_trap(glyph)) {
             await newsym(trap.tx, trap.ty);
         }
     }
@@ -901,30 +957,30 @@ export async function curs_on_u() {   // display.c:1687
 }
 export async function doredraw() {   // display.c:1694
     await docrt();
-    return 0;
+    return ECMD.OK;
 }
 export async function docrt() {   // display.c:1702
-    await docrt_flags(0 /* docrtRecalc */);
+    await docrt_flags(docrtRecalc);
 }
 export async function docrt_flags(refresh_flags) {   // display.c:1709
     let x = 0, y = 0, lev = null, maponly = 0, redrawonly = 0, nocls = 0;
-    maponly = $c.i8((refresh_flags & 2 /* docrtMapOnly */) !== 0 ? 1 : 0);
-    redrawonly = $c.i8((refresh_flags & 1 /* docrtRefresh */) !== 0 ? 1 : 0);
-    nocls = $c.i8((refresh_flags & 4 /* docrtNocls */) !== 0 ? 1 : 0);
+    maponly = $c.i8((refresh_flags & docrtMapOnly) !== 0 ? 1 : 0);
+    redrawonly = $c.i8((refresh_flags & docrtRefresh) !== 0 ? 1 : 0);
+    nocls = $c.i8((refresh_flags & docrtNocls) !== 0 ? 1 : 0);
     if (!u.ux || program_state.in_docrt) {
         return;
     }
-    program_state.in_docrt = 1;
+    program_state.in_docrt = TRUE;
     post_map$: {
         if (redrawonly) {
-            await redraw_map(0);
+            await redraw_map(FALSE);
             break post_map$;
         }
         if (u.uswallow) {
             await swallowed(1);
             break post_map$;
         }
-        if (u.uinwater | 0 && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+        if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
             await under_water(1);
             break post_map$;
         }
@@ -936,9 +992,9 @@ export async function docrt_flags(refresh_flags) {   // display.c:1709
         if (!nocls) {
             await cls();
         }
-        for (x = 1; x < 80; x = $c.i16(x + 1)) {
+        for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
             lev = $c.relem(svl.level.locations[x], 0);
-            for (y = 0; y < 21; y = $c.i16(y + 1), lev = $c.radd(lev, 1)) {
+            for (y = 0; y < ROWNO; y = $c.i16(y + 1), lev = $c.radd(lev, 1)) {
                 await show_glyph(x, y, lev.glyph);
             }
         }
@@ -947,9 +1003,9 @@ export async function docrt_flags(refresh_flags) {   // display.c:1709
     }
     if (!maponly) {
         await update_inventory();
-        disp.botlx = 1;
+        disp.botlx = TRUE;
     }
-    program_state.in_docrt = 0;
+    program_state.in_docrt = FALSE;
 }
 export async function redraw_map(cursor_on_u) {   // display.c:1778
     let x = 0, y = 0, glyph = 0, bkglyphinfo = new $T.glyphinfo();
@@ -957,47 +1013,47 @@ export async function redraw_map(cursor_on_u) {   // display.c:1778
     if (!u.ux || suppress_map_output() || !on_level(u.uz0, u.uz)) {
         return;
     }
-    for (y = 0; y < 21; y = $c.i16(y + 1)) {
-        for (x = 1; x < 80; x = $c.i16(x + 1)) {
+    for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
+        for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
             glyph = gg.gbuf[y][x].glyphinfo.glyph;
             await get_bkglyph_and_framecolor(x, y, new $c.FieldRef(bkglyphinfo, "glyph", "i32"), new $c.FieldRef(bkglyphinfo, "framecolor", "u32"));
-            await windowprocs.win_print_glyph($G.WIN_MAP, x, y, x < 0 || y < 0 || x >= 80 || y >= 21 ? no_ginfo : gg.gbuf[y][x].glyphinfo, bkglyphinfo);
+            await print_glyph()($G.WIN_MAP, x, y, x < 0 || y < 0 || x >= COLNO || y >= ROWNO ? no_ginfo : gg.gbuf[y][x].glyphinfo, bkglyphinfo);
         }
     }
     await flush_screen(cursor_on_u);
-    glyph;
+    nhUse(glyph);
 }
 export function reglyph_darkroom() {   // display.c:1818
     let x = 0, y = 0, lev = null, $t1, $t2, $t3, $t4, $t5;
-    for (x = 1; x < 80; x = $c.i16(x + 1)) {
-        for (y = 0; y < 21; y = $c.i16(y + 1)) {
+    for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
+        for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
             lev = $c.relem(svl.level.locations[x], y);
             if (!flags.dark_room) {
                 if (lev.glyph === 3995 && lev.waslit | 0) {
                     $t1 = 3996, lev.glyph = $t1;
                 }
             } else {
-                if (lev.glyph === 3996 && !((gv.viz_array.get(y).get(x) & 2) !== 0)) {
+                if (lev.glyph === 3996 && !cansee(x, y)) {
                     $t2 = 3995, lev.glyph = $t2;
                 }
             }
             if (!flags.dark_room || !iflags.wc_color || (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level)) {
                 if (lev.glyph === 3993) {
-                    $t3 = lev.waslit | 0 ? 3992 : 9623 /* GLYPH_NOTHING_OFF */, lev.glyph = $t3;
+                    $t3 = lev.waslit | 0 ? 3992 : GLYPH_NOTHING, lev.glyph = $t3;
                 }
             } else {
-                if (lev.glyph === 3992 && lev.seenv && lev.waslit | 0 && !((gv.viz_array.get(y).get(x) & 2) !== 0)) {
+                if (lev.glyph === 3992 && lev.seenv && lev.waslit | 0 && !cansee(x, y)) {
                     $t4 = 3993, lev.glyph = $t4;
-                } else if (lev.glyph === 9623 /* GLYPH_NOTHING_OFF */ && lev.typ === 25 /* ROOM */ && lev.seenv && !((gv.viz_array.get(y).get(x) & 2) !== 0)) {
+                } else if (lev.glyph === GLYPH_NOTHING && lev.typ === ROOM && lev.seenv && !cansee(x, y)) {
                     $t5 = 3993, lev.glyph = $t5;
                 }
             }
         }
     }
     if (flags.dark_room && iflags.wc_color) {
-        gs.showsyms[20 /* S_darkroom */] = gs.showsyms[19 /* S_room */];
+        gs.showsyms[S.darkroom] = gs.showsyms[S.room];
     } else {
-        gs.showsyms[20 /* S_darkroom */] = gs.showsyms[190];
+        gs.showsyms[S.darkroom] = gs.showsyms[SYM.NOTHING + SYM_OFF_X];
     }
 }
 export async function newsym_force(x, y) {   // display.c:1863
@@ -1012,8 +1068,8 @@ export async function newsym_force(x, y) {   // display.c:1863
 }
 export async function show_glyph(x, y, glyph) {   // display.c:1877
     let glyphinfo = new $T.glyphinfo(), show_glyph_change = 0, oldglyph = 0, text = null, offset = 0, c = 0, buf = new Int8Array(256), cc = new $T.nhcoord(), sym = 0, firstmatch = [null], tmp_accessiblemsg = 0;
-    show_glyph_change = 0;
-    if (gi.in_mklev || program_state.saving || program_state.restoring || program_state.done_hup) {
+    show_glyph_change = FALSE;
+    if (_suppress_map_output()) {
         return;
     }
     if (!isok(x, y)) {
@@ -1022,101 +1078,101 @@ export async function show_glyph(x, y, glyph) {   // display.c:1877
         if (x === 0) {
             return;
         }
-        if (glyph < 0 || glyph >= 9624 /* MAX_GLYPH */) {
+        if (glyph < 0 || glyph >= MAX_GLYPH) {
             text = $c.lit("invalid");
-        } else if ((offset = glyph - 9623 /* GLYPH_NOTHING_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.NOTHING_OFF | 0) >= 0) {
             text = $c.lit("nothing");
-        } else if ((offset = glyph - 9622 /* GLYPH_UNEXPLORED_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.UNEXPLORED_OFF | 0) >= 0) {
             text = $c.lit("unexplored");
-        } else if ((offset = glyph - 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.STATUE_FEM_PILETOP_OFF | 0) >= 0) {
             text = $c.lit("statue of a female monster at top of a pile");
-        } else if ((offset = glyph - 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.STATUE_MALE_PILETOP_OFF | 0) >= 0) {
             text = $c.lit("statue of a male monster at top of a pile");
-        } else if ((offset = glyph - 8473 /* GLYPH_BODY_PILETOP_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.BODY_PILETOP_OFF | 0) >= 0) {
             text = $c.lit("body at top of a pile");
-        } else if ((offset = glyph - 7992 /* GLYPH_OBJ_PILETOP_OFF */ | 0) >= 0) {
-            text = glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009 ? $c.lit("generic object at top of a pile") : $c.lit("object at top of a pile");
-        } else if ((offset = glyph - 7609 /* GLYPH_STATUE_FEM_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.OBJ_PILETOP_OFF | 0) >= 0) {
+            text = glyph_is_piletop_generic_obj(glyph) ? $c.lit("generic object at top of a pile") : $c.lit("object at top of a pile");
+        } else if ((offset = glyph - GLYPH.STATUE_FEM_OFF | 0) >= 0) {
             text = $c.lit("statue of female monster");
-        } else if ((offset = glyph - 7226 /* GLYPH_STATUE_MALE_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.STATUE_MALE_OFF | 0) >= 0) {
             text = $c.lit("statue of male monster");
-        } else if ((offset = glyph - 7220 /* GLYPH_WARNING_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.WARNING_OFF | 0) >= 0) {
             text = $c.lit("warning explosion");
-        } else if ((offset = glyph - 7211 /* GLYPH_EXPLODE_FROSTY_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.EXPLODE_FROSTY_OFF | 0) >= 0) {
             text = $c.lit("frosty explosion");
-        } else if ((offset = glyph - 7202 /* GLYPH_EXPLODE_FIERY_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.EXPLODE_FIERY_OFF | 0) >= 0) {
             text = $c.lit("fiery explosion");
-        } else if ((offset = glyph - 7193 /* GLYPH_EXPLODE_MAGICAL_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.EXPLODE_MAGICAL_OFF | 0) >= 0) {
             text = $c.lit("magical explosion");
-        } else if ((offset = glyph - 7184 /* GLYPH_EXPLODE_WET_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.EXPLODE_WET_OFF | 0) >= 0) {
             text = $c.lit("wet explosion");
-        } else if ((offset = glyph - 7175 /* GLYPH_EXPLODE_MUDDY_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.EXPLODE_MUDDY_OFF | 0) >= 0) {
             text = $c.lit("muddy explosion");
-        } else if ((offset = glyph - 7166 /* GLYPH_EXPLODE_NOXIOUS_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.EXPLODE_NOXIOUS_OFF | 0) >= 0) {
             text = $c.lit("noxious explosion");
-        } else if ((offset = glyph - 7157 /* GLYPH_EXPLODE_DARK_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.EXPLODE_DARK_OFF | 0) >= 0) {
             text = $c.lit("dark explosion");
-        } else if ((offset = glyph - 4093 /* GLYPH_SWALLOW_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.SWALLOW_OFF | 0) >= 0) {
             text = $c.lit("swallow");
-        } else if ((offset = glyph - 4083 /* GLYPH_CMAP_C_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_C_OFF | 0) >= 0) {
             text = $c.lit("cmap C");
-        } else if ((offset = glyph - 4051 /* GLYPH_ZAP_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.ZAP_OFF | 0) >= 0) {
             text = $c.lit("zap");
-        } else if ((offset = glyph - 4011 /* GLYPH_CMAP_B_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_B_OFF | 0) >= 0) {
             text = $c.lit("cmap B");
-        } else if ((offset = glyph - 4006 /* GLYPH_ALTAR_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.ALTAR_OFF | 0) >= 0) {
             text = $c.lit("altar");
-        } else if ((offset = glyph - 3985 /* GLYPH_CMAP_A_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_A_OFF | 0) >= 0) {
             text = $c.lit("cmap A");
-        } else if ((offset = glyph - 3974 /* GLYPH_CMAP_SOKO_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_SOKO_OFF | 0) >= 0) {
             text = $c.lit("sokoban dungeon walls");
-        } else if ((offset = glyph - 3963 /* GLYPH_CMAP_KNOX_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_KNOX_OFF | 0) >= 0) {
             text = $c.lit("knox dungeon walls");
-        } else if ((offset = glyph - 3952 /* GLYPH_CMAP_GEH_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_GEH_OFF | 0) >= 0) {
             text = $c.lit("gehennom dungeon walls");
-        } else if ((offset = glyph - 3941 /* GLYPH_CMAP_MINES_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_MINES_OFF | 0) >= 0) {
             text = $c.lit("gnomish mines dungeon walls");
-        } else if ((offset = glyph - 3930 /* GLYPH_CMAP_MAIN_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_MAIN_OFF | 0) >= 0) {
             text = $c.lit("main dungeon walls");
-        } else if ((offset = glyph - 3929 /* GLYPH_CMAP_STONE_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.CMAP_STONE_OFF | 0) >= 0) {
             text = $c.lit("stone");
-        } else if ((offset = glyph - 3448 /* GLYPH_OBJ_OFF */ | 0) >= 0) {
-            text = glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 ? $c.lit("generic object") : $c.lit("object");
-        } else if ((offset = glyph - 3065 /* GLYPH_RIDDEN_FEM_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.OBJ_OFF | 0) >= 0) {
+            text = glyph_is_normal_generic_obj(glyph) ? $c.lit("generic object") : $c.lit("object");
+        } else if ((offset = glyph - GLYPH.RIDDEN_FEM_OFF | 0) >= 0) {
             text = $c.lit("ridden female monster");
-        } else if ((offset = glyph - 2682 /* GLYPH_RIDDEN_MALE_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.RIDDEN_MALE_OFF | 0) >= 0) {
             text = $c.lit("ridden male monster");
-        } else if ((offset = glyph - 2299 /* GLYPH_BODY_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.BODY_OFF | 0) >= 0) {
             text = $c.lit("body");
-        } else if ((offset = glyph - 1916 /* GLYPH_DETECT_FEM_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.DETECT_FEM_OFF | 0) >= 0) {
             text = $c.lit("detected female monster");
-        } else if ((offset = glyph - 1533 /* GLYPH_DETECT_MALE_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.DETECT_MALE_OFF | 0) >= 0) {
             text = $c.lit("detected male monster");
-        } else if ((offset = glyph - 1532 /* GLYPH_INVIS_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.INVIS_OFF | 0) >= 0) {
             text = $c.lit("invisible monster");
-        } else if ((offset = glyph - 1149 /* GLYPH_PET_FEM_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.PET_FEM_OFF | 0) >= 0) {
             text = $c.lit("female pet");
-        } else if ((offset = glyph - 766 /* GLYPH_PET_MALE_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.PET_MALE_OFF | 0) >= 0) {
             text = $c.lit("male pet");
-        } else if ((offset = glyph - 383 /* GLYPH_MON_FEM_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.MON_FEM_OFF | 0) >= 0) {
             text = $c.lit("female monster");
-        } else if ((offset = glyph - 0 /* GLYPH_MON_MALE_OFF */ | 0) >= 0) {
+        } else if ((offset = glyph - GLYPH.MON_MALE_OFF | 0) >= 0) {
             text = $c.lit("male monster");
         }
         await impossible($c.lit("show_glyph:  bad pos <%d,%d> with glyph %d [%s %d]."), x, y, glyph, text, offset);
         return;
-    } else if (glyph < 0 || glyph >= 9624 /* MAX_GLYPH */) {
-        await impossible($c.lit("show_glyph:  bad glyph %d [max %d] at <%d,%d>."), glyph, 9624 /* MAX_GLYPH */, x, y);
+    } else if (glyph < 0 || glyph >= MAX_GLYPH) {
+        await impossible($c.lit("show_glyph:  bad glyph %d [max %d] at <%d,%d>."), glyph, MAX_GLYPH, x, y);
         return;
     }
     map_glyphinfo(x, y, glyph, 0, glyphinfo);
     oldglyph = gg.gbuf[y][x].glyphinfo.glyph;
-    if (a11y.glyph_updates && !a11y.mon_notices_blocked && !program_state.in_docrt && !program_state.gameover && !program_state.in_getlev && !program_state.stopprint && !(gi.in_mklev || program_state.saving || program_state.restoring || program_state.done_hup) && (oldglyph !== glyph || gg.gbuf[y][x].gnew)) {
+    if (a11y.glyph_updates && !a11y.mon_notices_blocked && !program_state.in_docrt && !program_state.gameover && !program_state.in_getlev && !program_state.stopprint && !_suppress_map_output() && (oldglyph !== glyph || gg.gbuf[y][x].gnew)) {
         c = glyph_to_cmap(glyph);
-        if ((oldglyph === 9623 /* GLYPH_NOTHING_OFF */ || oldglyph === 9622 /* GLYPH_UNEXPLORED_OFF */ || c >= 25 /* S_upstair */ && c <= 37 /* S_fountain */) && !(c >= 0 /* S_stone */ && c <= 11 /* S_trwall */) && !(c >= 19 /* S_room */ && c <= 20 /* S_darkroom */)) {
-            if (a11y.mon_notices && (glyph >= 0 /* GLYPH_MON_MALE_OFF */ && glyph < 383 || glyph >= 383 /* GLYPH_MON_FEM_OFF */ && glyph < 766 || (glyph >= 766 /* GLYPH_PET_MALE_OFF */ && glyph < 1149 || glyph >= 1149 /* GLYPH_PET_FEM_OFF */ && glyph < 1532) || (glyph >= 2682 /* GLYPH_RIDDEN_MALE_OFF */ && glyph < 3065 || glyph >= 3065 /* GLYPH_RIDDEN_FEM_OFF */ && glyph < 3448) || (glyph >= 1533 /* GLYPH_DETECT_MALE_OFF */ && glyph < 1916 || glyph >= 1916 /* GLYPH_DETECT_FEM_OFF */ && glyph < 2299)) || (oldglyph >= 0 /* GLYPH_MON_MALE_OFF */ && oldglyph < 383 || oldglyph >= 383 /* GLYPH_MON_FEM_OFF */ && oldglyph < 766 || (oldglyph >= 766 /* GLYPH_PET_MALE_OFF */ && oldglyph < 1149 || oldglyph >= 1149 /* GLYPH_PET_FEM_OFF */ && oldglyph < 1532) || (oldglyph >= 2682 /* GLYPH_RIDDEN_MALE_OFF */ && oldglyph < 3065 || oldglyph >= 3065 /* GLYPH_RIDDEN_FEM_OFF */ && oldglyph < 3448) || (oldglyph >= 1533 /* GLYPH_DETECT_MALE_OFF */ && oldglyph < 1916 || oldglyph >= 1916 /* GLYPH_DETECT_FEM_OFF */ && oldglyph < 2299)) || x === u.ux && y === u.uy) {
+        if ((glyph_is_nothing(oldglyph) || glyph_is_unexplored(oldglyph) || is_cmap_furniture(c)) && !is_cmap_wall(c) && !is_cmap_room(c)) {
+            if (a11y.mon_notices && glyph_is_monster(glyph) || (oldglyph >= GLYPH.MON_MALE_OFF && oldglyph < GLYPH.MON_MALE_OFF + NUMMONS || oldglyph >= GLYPH.MON_FEM_OFF && oldglyph < GLYPH.MON_FEM_OFF + NUMMONS || (oldglyph >= GLYPH.PET_MALE_OFF && oldglyph < GLYPH.PET_MALE_OFF + NUMMONS || oldglyph >= GLYPH.PET_FEM_OFF && oldglyph < GLYPH.PET_FEM_OFF + NUMMONS) || (oldglyph >= GLYPH.RIDDEN_MALE_OFF && oldglyph < GLYPH.RIDDEN_MALE_OFF + NUMMONS || oldglyph >= GLYPH.RIDDEN_FEM_OFF && oldglyph < GLYPH.RIDDEN_FEM_OFF + NUMMONS) || (oldglyph >= GLYPH.DETECT_MALE_OFF && oldglyph < GLYPH.DETECT_MALE_OFF + NUMMONS || oldglyph >= GLYPH.DETECT_FEM_OFF && oldglyph < GLYPH.DETECT_FEM_OFF + NUMMONS)) || u_at(x, y)) {
             } else {
-                show_glyph_change = 1;
+                show_glyph_change = TRUE;
             }
         }
     }
@@ -1137,9 +1193,9 @@ export async function show_glyph(x, y, glyph) {   // display.c:1877
         sym = 0;
         firstmatch[0] = null;
         tmp_accessiblemsg = a11y.accessiblemsg;
-        a11y.accessiblemsg = 1;
+        a11y.accessiblemsg = TRUE;
         cc.x = x, cc.y = y;
-        await do_screen_description(cc.$clone(), 1, sym, new $c.Ptr(buf, 0), new $c.Ptr(firstmatch, 0), null);
+        await do_screen_description(cc.$clone(), TRUE, sym, new $c.Ptr(buf, 0), new $c.Ptr(firstmatch, 0), null);
         await pline_xy(x, y, $c.lit("%s."), firstmatch[0]);
         a11y.accessiblemsg = tmp_accessiblemsg;
     }
@@ -1149,13 +1205,13 @@ export function clear_glyph_buffer() {   // display.c:2107
     gptr = $c.relem(gg.gbuf[0], 0);
     giptr = gptr.glyphinfo;
     nul_gbuf.gnew = $c.i8(giptr.ttychar !== nul_gbuf.glyphinfo.ttychar || giptr.gm.sym.color !== nul_gbuf.glyphinfo.gm.sym.color || giptr.gm.glyphflags !== nul_gbuf.glyphinfo.gm.glyphflags || giptr.gm.customcolor !== nul_gbuf.glyphinfo.gm.customcolor || giptr.gm.tileidx !== nul_gbuf.glyphinfo.gm.tileidx ? 1 : 0);
-    for (y = 0; y < 21; y = $c.i16(y + 1)) {
+    for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
         gptr = $c.relem(gg.gbuf[y], 0);
-        for (x = 80; x; x = $c.i16(x - 1)) {
+        for (x = COLNO; x; x = $c.i16(x - 1)) {
             ($t1 = gptr, gptr = $c.radd($t1, 1), $t1).$copyFrom(nul_gbuf);
         }
         gg.gbuf_start[y] = 1;
-        gg.gbuf_stop[y] = 79;
+        gg.gbuf_stop[y] = COLNO - 1;
     }
 }
 export async function row_refresh(start, stop, y) {   // display.c:2147
@@ -1168,8 +1224,8 @@ export async function row_refresh(start, stop, y) {   // display.c:2147
         gptr = $c.relem(gg.gbuf[y], x);
         glyph = gptr.glyphinfo.glyph;
         await get_bkglyph_and_framecolor(x, y, new $c.FieldRef(bkglyphinfo, "glyph", "i32"), new $c.FieldRef(bkglyphinfo, "framecolor", "u32"));
-        if (force || glyph !== 9622 /* GLYPH_UNEXPLORED_OFF */ || bkglyphinfo.framecolor !== 8) {
-            await windowprocs.win_print_glyph($G.WIN_MAP, x, y, x < 0 || y < 0 || x >= 80 || y >= 21 ? no_ginfo : gg.gbuf[y][x].glyphinfo, bkglyphinfo);
+        if (force || glyph !== GLYPH_UNEXPLORED || bkglyphinfo.framecolor !== NO_COLOR) {
+            await print_glyph()($G.WIN_MAP, x, y, x < 0 || y < 0 || x >= COLNO || y >= ROWNO ? no_ginfo : gg.gbuf[y][x].glyphinfo, bkglyphinfo);
         }
     }
 }
@@ -1177,17 +1233,17 @@ export async function cls() {   // display.c:2189
     if (cls$in_cls) {
         return;
     }
-    cls$in_cls = 1;
-    await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 0);
-    disp.botlx = 1;
-    await windowprocs.win_clear_nhwindow($G.WIN_MAP);
+    cls$in_cls = TRUE;
+    await display_nhwindow()($G.WIN_MESSAGE, FALSE);
+    disp.botlx = TRUE;
+    await clear_nhwindow()($G.WIN_MAP);
     clear_glyph_buffer();
-    cls$in_cls = 0;
+    cls$in_cls = FALSE;
 }
 export async function flush_screen(cursor_on_u) {   // display.c:2208
     let x = 0, y = 0, bkglyphinfo = new $T.glyphinfo(), bkglyph = Int32Array.of(0), gptr = null, i = 0;
     bkglyphinfo.$copyFrom(nul_glyphinfo);
-    if (gi.in_mklev || program_state.saving || program_state.restoring || program_state.done_hup) {
+    if (_suppress_map_output()) {
         return;
     }
     if (cursor_on_u === -1) {
@@ -1208,453 +1264,453 @@ export async function flush_screen(cursor_on_u) {   // display.c:2208
     } else if (disp.time_botl) {
         await timebot();
     }
-    for (y = 0; y < 21; y = $c.i16(y + 1)) {
+    for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
         gptr = $c.relem(gg.gbuf[y], x = gg.gbuf_start[y]);
         for (; x <= gg.gbuf_stop[y]; gptr = $c.radd(gptr, 1), x = $c.i16(x + 1)) {
             await get_bkglyph_and_framecolor(x, y, new $c.Ptr(bkglyph, 0), new $c.FieldRef(bkglyphinfo, "framecolor", "u32"));
-            if (gptr.gnew || gw.wsettings.map_frame_color !== 8 && bkglyphinfo.framecolor !== 8) {
+            if (gptr.gnew || gw.wsettings.map_frame_color !== NO_COLOR && bkglyphinfo.framecolor !== NO_COLOR) {
                 map_glyphinfo(x, y, bkglyph[0], 0, bkglyphinfo);
-                await windowprocs.win_print_glyph($G.WIN_MAP, x, y, x < 0 || y < 0 || x >= 80 || y >= 21 ? no_ginfo : gg.gbuf[y][x].glyphinfo, bkglyphinfo);
+                await print_glyph()($G.WIN_MAP, x, y, x < 0 || y < 0 || x >= COLNO || y >= ROWNO ? no_ginfo : gg.gbuf[y][x].glyphinfo, bkglyphinfo);
                 gptr.gnew = 0;
             }
         }
     }
     {
-        for (i = 0; i < 21; i = i + 1 | 0) {
-            gg.gbuf_start[i] = 79;
+        for (i = 0; i < ROWNO; i = i + 1 | 0) {
+            gg.gbuf_start[i] = COLNO - 1;
             gg.gbuf_stop[i] = 0;
         }
     }
     if (cursor_on_u) {
-        await windowprocs.win_curs($G.WIN_MAP, u.ux, u.uy);
+        await curs()($G.WIN_MAP, u.ux, u.uy);
     }
-    await windowprocs.win_display_nhwindow($G.WIN_MAP, 0);
+    await display_nhwindow()($G.WIN_MAP, FALSE);
     flush_screen$flushing = 0;
 }
 export async function back_to_glyph(x, y) {   // display.c:2287
     let idx = 0, bypass_glyph = 0, ptr = null, sway = null;
-    bypass_glyph = 9624 /* MAX_GLYPH */;
+    bypass_glyph = NO_GLYPH;
     ptr = $c.relem(svl.level.locations[x], y);
     switch (ptr.typ) {
-        case 15 /* SCORR */:
-        case 0 /* STONE */:
-            idx = svl.level.flags.arboreal | 0 ? 18 /* S_tree */ : 0 /* S_stone */;
+        case SCORR:
+        case STONE:
+            idx = svl.level.flags.arboreal | 0 ? S.tree : S.stone;
             break;
-        case 25 /* ROOM */:
-            idx = 19 /* S_room */;
+        case ROOM:
+            idx = S.room;
             break;
-        case 24 /* CORR */:
-            idx = ptr.waslit | 0 || flags.lit_corridor ? 23 /* S_litcorr */ : 22 /* S_corr */;
+        case CORR:
+            idx = ptr.waslit | 0 || flags.lit_corridor ? S.litcorr : S.corr;
             break;
-        case 14 /* SDOOR */:
+        case SDOOR:
             if (ptr.candig) {
-                idx = 18 /* S_tree */;
+                idx = S.tree;
                 break;
             }
-        case 2 /* HWALL */:
-        case 1 /* VWALL */:
-        case 3 /* TLCORNER */:
-        case 4 /* TRCORNER */:
-        case 5 /* BLCORNER */:
-        case 6 /* BRCORNER */:
-        case 7 /* CROSSWALL */:
-        case 8 /* TUWALL */:
-        case 9 /* TDWALL */:
-        case 10 /* TLWALL */:
-        case 11 /* TRWALL */:
-            idx = ptr.seenv ? await wall_angle(ptr) : 0 /* S_stone */;
+        case HWALL:
+        case VWALL:
+        case TLCORNER:
+        case TRCORNER:
+        case BLCORNER:
+        case BRCORNER:
+        case CROSSWALL:
+        case TUWALL:
+        case TDWALL:
+        case TLWALL:
+        case TRWALL:
+            idx = ptr.seenv ? await wall_angle(ptr) : S.stone;
             break;
-        case 23 /* DOOR */:
+        case DOOR:
             if (ptr.flags) {
-                if ((ptr.flags | 0) & 1) {
-                    idx = 12 /* S_ndoor */;
-                } else if ((ptr.flags | 0) & 2) {
-                    idx = ptr.horizontal | 0 ? 14 /* S_hodoor */ : 13 /* S_vodoor */;
+                if ((ptr.flags | 0) & D.BROKEN) {
+                    idx = S.ndoor;
+                } else if ((ptr.flags | 0) & D.ISOPEN) {
+                    idx = ptr.horizontal | 0 ? S.hodoor : S.vodoor;
                 } else {
-                    idx = ptr.horizontal | 0 ? 16 /* S_hcdoor */ : 15 /* S_vcdoor */;
+                    idx = ptr.horizontal | 0 ? S.hcdoor : S.vcdoor;
                 }
             } else {
-                idx = 12 /* S_ndoor */;
+                idx = S.ndoor;
             }
             break;
-        case 22 /* IRONBARS */:
-            idx = 17 /* S_bars */;
+        case IRONBARS:
+            idx = S.bars;
             break;
-        case 13 /* TREE */:
-            idx = 18 /* S_tree */;
+        case TREE:
+            idx = S.tree;
             break;
-        case 16 /* POOL */:
-        case 17 /* MOAT */:
-            idx = 38 /* S_pool */;
+        case POOL:
+        case MOAT:
+            idx = S.pool;
             break;
-        case 26 /* STAIRS */:
+        case STAIRS:
             sway = stairway_at(x, y);
             if (known_branch_stairs(sway)) {
-                idx = (ptr.flags | 0) & 2 ? 30 /* S_brdnstair */ : 29 /* S_brupstair */;
+                idx = (ptr.flags | 0) & LA.DOWN ? S.brdnstair : S.brupstair;
             } else {
-                idx = (ptr.flags | 0) & 2 ? 26 /* S_dnstair */ : 25 /* S_upstair */;
+                idx = (ptr.flags | 0) & LA.DOWN ? S.dnstair : S.upstair;
             }
             break;
-        case 27 /* LADDER */:
+        case LADDER:
             sway = stairway_at(x, y);
             if (known_branch_stairs(sway)) {
-                idx = (ptr.flags | 0) & 2 ? 32 /* S_brdnladder */ : 31 /* S_brupladder */;
+                idx = (ptr.flags | 0) & LA.DOWN ? S.brdnladder : S.brupladder;
             } else {
-                idx = (ptr.flags | 0) & 2 ? 28 /* S_dnladder */ : 27 /* S_upladder */;
+                idx = (ptr.flags | 0) & LA.DOWN ? S.dnladder : S.upladder;
             }
             break;
-        case 28 /* FOUNTAIN */:
-            idx = 37 /* S_fountain */;
+        case FOUNTAIN:
+            idx = S.fountain;
             break;
-        case 30 /* SINK */:
-            idx = 36 /* S_sink */;
+        case SINK:
+            idx = S.sink;
             break;
-        case 32 /* ALTAR */:
-            idx = 33 /* S_altar */;
-            bypass_glyph = ((ptr.flags | 0) & 16) === 16 ? 4010 : ((ptr.flags | 0) & 7) === 4 ? 4009 : ((ptr.flags | 0) & 7) === 2 ? 4008 : ((ptr.flags | 0) & 7) === 1 ? 4007 : 4006;
+        case ALTAR:
+            idx = S.altar;
+            bypass_glyph = ((ptr.flags | 0) & AM.SANCTUM) === AM.SANCTUM ? GLYPH.ALTAR_OFF + altar_other : ((ptr.flags | 0) & AM.MASK) === AM.LAWFUL ? GLYPH.ALTAR_OFF + altar_lawful : ((ptr.flags | 0) & AM.MASK) === AM.NEUTRAL ? GLYPH.ALTAR_OFF + altar_neutral : ((ptr.flags | 0) & AM.MASK) === AM.CHAOTIC ? GLYPH.ALTAR_OFF + altar_chaotic : GLYPH.ALTAR_OFF + altar_unaligned;
             break;
-        case 31 /* GRAVE */:
-            idx = 34 /* S_grave */;
+        case GRAVE:
+            idx = S.grave;
             break;
-        case 29 /* THRONE */:
-            idx = 35 /* S_throne */;
+        case THRONE:
+            idx = S.throne;
             break;
-        case 20 /* LAVAPOOL */:
-            idx = 40 /* S_lava */;
+        case LAVAPOOL:
+            idx = S.lava;
             break;
-        case 21 /* LAVAWALL */:
-            idx = 41 /* S_lavawall */;
+        case LAVAWALL:
+            idx = S.lavawall;
             break;
-        case 33 /* ICE */:
-            idx = 39 /* S_ice */;
+        case ICE:
+            idx = S.ice;
             break;
-        case 35 /* AIR */:
-            idx = 46 /* S_air */;
+        case AIR:
+            idx = S.air;
             break;
-        case 36 /* CLOUD */:
-            idx = 47 /* S_cloud */;
+        case CLOUD:
+            idx = S.cloud;
             break;
-        case 18 /* WATER */:
-            idx = 48 /* S_water */;
+        case WATER:
+            idx = S.water;
             break;
-        case 12 /* DBWALL */:
-            idx = ptr.horizontal | 0 ? 45 /* S_hcdbridge */ : 44 /* S_vcdbridge */;
+        case DBWALL:
+            idx = ptr.horizontal | 0 ? S.hcdbridge : S.vcdbridge;
             break;
-        case 19 /* DRAWBRIDGE_UP */:
-            switch ((ptr.flags | 0) & 28) {
-                case 0:
-                    idx = 38 /* S_pool */;
+        case DRAWBRIDGE_UP:
+            switch ((ptr.flags | 0) & DB.UNDER) {
+                case DB.MOAT:
+                    idx = S.pool;
                     break;
-                case 4:
-                    idx = 40 /* S_lava */;
+                case DB.LAVA:
+                    idx = S.lava;
                     break;
-                case 8:
-                    idx = 39 /* S_ice */;
+                case DB.ICE:
+                    idx = S.ice;
                     break;
-                case 16:
-                    idx = 19 /* S_room */;
+                case DB.FLOOR:
+                    idx = S.room;
                     break;
                 default:
-                    await impossible($c.lit("Strange db-under: %d"), (ptr.flags | 0) & 28);
-                    idx = 19 /* S_room */;
+                    await impossible($c.lit("Strange db-under: %d"), (ptr.flags | 0) & DB.UNDER);
+                    idx = S.room;
                     break;
             }
             break;
-        case 34 /* DRAWBRIDGE_DOWN */:
-            idx = ptr.horizontal | 0 ? 43 /* S_hodbridge */ : 42 /* S_vodbridge */;
+        case DRAWBRIDGE_DOWN:
+            idx = ptr.horizontal | 0 ? S.hodbridge : S.vodbridge;
             break;
         default:
             await impossible($c.lit("back_to_glyph:  unknown level type [ = %d ]"), ptr.typ);
-            idx = 19 /* S_room */;
+            idx = S.room;
             break;
     }
-    return bypass_glyph !== 9624 /* MAX_GLYPH */ ? bypass_glyph : idx === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : idx <= 11 /* S_trwall */ ? (idx - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : idx < 33 /* S_altar */ ? (idx - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : idx === 33 /* S_altar */ ? 4008 : idx < 74 ? (idx - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : idx <= 87 /* S_goodpos */ ? (idx - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+    return bypass_glyph !== NO_GLYPH ? bypass_glyph : idx === S.stone ? GLYPH.CMAP_STONE_OFF : idx <= S.trwall ? (idx - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : idx < S.altar ? (idx - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : idx === S.altar ? 4008 : idx < S.arrow_trap + MAXTCHARS ? (idx - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : idx <= S.goodpos ? (idx - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
 }
 async function swallow_to_glyph(mnum, loc) {   // display.c:2437
     let m_3 = 0;
-    m_3 = (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : mnum) << 3;
-    if (loc < 88 /* S_sw_tl */ || 95 /* S_sw_br */ < loc) {
+    m_3 = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mnum) << 3;
+    if (loc < S.sw_tl || S.sw_br < loc) {
         await impossible($c.lit("swallow_to_glyph: bad swallow location"));
-        loc = 95 /* S_sw_br */;
+        loc = S.sw_br;
     }
-    return (m_3 | (loc - 88 /* S_sw_tl */ | 0)) + 4093 /* GLYPH_SWALLOW_OFF */ | 0;
+    return (m_3 | (loc - S.sw_tl | 0)) + GLYPH.SWALLOW_OFF | 0;
 }
 export async function zapdir_to_glyph(dx, dy, beam_type) {   // display.c:2461
-    if (beam_type >= 8) {
+    if (beam_type >= NUM_ZAP) {
         await impossible($c.lit("zapdir_to_glyph:  illegal beam type"));
         beam_type = 0;
     }
     dx = dx === dy ? 2 : dx && dy ? 3 : dx ? 1 : 0;
-    return (beam_type << 2 | dx) + 4051 /* GLYPH_ZAP_OFF */ | 0;
+    return (beam_type << 2 | dx) + GLYPH.ZAP_OFF | 0;
 }
 export function glyph_at(x, y) {   // display.c:2478
-    if (x < 0 || y < 0 || x >= 80 || y >= 21) {
+    if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO) {
         return 3992;
     }
     return gg.gbuf[y][x].glyphinfo.glyph;
 }
 async function get_bkglyph_and_framecolor(x, y, bkglyph, framecolor) {   // display.c:2507
     let idx = 0, tmp_bkglyph = 0, lev = null;
-    tmp_bkglyph = 9622 /* GLYPH_UNEXPLORED_OFF */;
+    tmp_bkglyph = GLYPH_UNEXPLORED;
     lev = $c.relem(svl.level.locations[x], y);
-    if (iflags.use_background_glyph && lev.seenv !== 0 && gg.gbuf[y][x].glyphinfo.glyph !== 9622 /* GLYPH_UNEXPLORED_OFF */) {
+    if (iflags.use_background_glyph && lev.seenv !== 0 && gg.gbuf[y][x].glyphinfo.glyph !== GLYPH_UNEXPLORED) {
         switch (lev.typ) {
-            case 15 /* SCORR */:
-            case 0 /* STONE */:
-                idx = svl.level.flags.arboreal | 0 ? 18 /* S_tree */ : 0 /* S_stone */;
+            case SCORR:
+            case STONE:
+                idx = svl.level.flags.arboreal | 0 ? S.tree : S.stone;
                 break;
-            case 25 /* ROOM */:
-                idx = 19 /* S_room */;
+            case ROOM:
+                idx = S.room;
                 break;
-            case 24 /* CORR */:
-                idx = lev.waslit | 0 || flags.lit_corridor ? 23 /* S_litcorr */ : 22 /* S_corr */;
+            case CORR:
+                idx = lev.waslit | 0 || flags.lit_corridor ? S.litcorr : S.corr;
                 break;
-            case 33 /* ICE */:
-                idx = 39 /* S_ice */;
+            case ICE:
+                idx = S.ice;
                 break;
-            case 35 /* AIR */:
-                idx = 46 /* S_air */;
+            case AIR:
+                idx = S.air;
                 break;
-            case 36 /* CLOUD */:
-                idx = 47 /* S_cloud */;
+            case CLOUD:
+                idx = S.cloud;
                 break;
-            case 16 /* POOL */:
-            case 17 /* MOAT */:
-                idx = 38 /* S_pool */;
+            case POOL:
+            case MOAT:
+                idx = S.pool;
                 break;
-            case 18 /* WATER */:
-                idx = 48 /* S_water */;
+            case WATER:
+                idx = S.water;
                 break;
-            case 20 /* LAVAPOOL */:
-                idx = 40 /* S_lava */;
+            case LAVAPOOL:
+                idx = S.lava;
                 break;
-            case 21 /* LAVAWALL */:
-                idx = 41 /* S_lavawall */;
+            case LAVAWALL:
+                idx = S.lavawall;
                 break;
             default:
-                idx = 19 /* S_room */;
+                idx = S.room;
                 break;
         }
-        if (!((gv.viz_array.get(y).get(x) & 2) !== 0) && (!lev.waslit || flags.dark_room)) {
-            if (lev.typ === 24 /* CORR */ && idx === 23 /* S_litcorr */) {
-                idx = 22 /* S_corr */;
-            } else if (idx === 19 /* S_room */) {
-                idx = flags.dark_room && iflags.wc_color ? (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 0 /* S_stone */ : 20 /* S_darkroom */ : 0 /* S_stone */;
+        if (!cansee(x, y) && (!lev.waslit || flags.dark_room)) {
+            if (lev.typ === CORR && idx === S.litcorr) {
+                idx = S.corr;
+            } else if (idx === S.room) {
+                idx = flags.dark_room && iflags.wc_color ? (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom : S.stone;
             }
         }
-        if (idx !== 19 /* S_room */) {
-            tmp_bkglyph = idx === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : idx <= 11 /* S_trwall */ ? (idx - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : idx < 33 /* S_altar */ ? (idx - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : idx === 33 /* S_altar */ ? 4008 : idx < 74 ? (idx - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : idx <= 87 /* S_goodpos */ ? (idx - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+        if (idx !== S.room) {
+            tmp_bkglyph = idx === S.stone ? GLYPH.CMAP_STONE_OFF : idx <= S.trwall ? (idx - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : idx < S.altar ? (idx - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : idx === S.altar ? 4008 : idx < S.arrow_trap + MAXTCHARS ? (idx - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : idx <= S.goodpos ? (idx - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
         }
     }
     bkglyph.set(0, tmp_bkglyph);
-    if (iflags.bgcolors && gw.wsettings.map_frame_color !== 8 && await mapxy_valid(x, y)) {
+    if (iflags.bgcolors && gw.wsettings.map_frame_color !== NO_COLOR && await mapxy_valid(x, y)) {
         framecolor.set(0, gw.wsettings.map_frame_color);
     } else {
-        framecolor.set(0, 8);
+        framecolor.set(0, NO_COLOR);
     }
 }
 export function map_glyphinfo(x, y, glyph, mgflags, glyphinfo) {   // display.c:2594
     let offset = 0, is_you = 0, gmap = null;
-    is_you = $c.i8(x === u.ux && y === u.uy && (glyph >= 0 /* GLYPH_MON_MALE_OFF */ && glyph < 383 || glyph >= 383 /* GLYPH_MON_FEM_OFF */ && glyph < 766 || (glyph >= 766 /* GLYPH_PET_MALE_OFF */ && glyph < 1149 || glyph >= 1149 /* GLYPH_PET_FEM_OFF */ && glyph < 1532) || (glyph >= 2682 /* GLYPH_RIDDEN_MALE_OFF */ && glyph < 3065 || glyph >= 3065 /* GLYPH_RIDDEN_FEM_OFF */ && glyph < 3448) || (glyph >= 1533 /* GLYPH_DETECT_MALE_OFF */ && glyph < 1916 || glyph >= 1916 /* GLYPH_DETECT_FEM_OFF */ && glyph < 2299)) ? 1 : 0);
+    is_you = $c.i8(u_at(x, y) && glyph_is_monster(glyph) ? 1 : 0);
     gmap = $c.relem(glyphmap, glyph);
     glyphinfo.gm.$copyFrom(gmap);
     if (is_you) {
-        if (!iflags.wc_color || u.umonnum !== u.umonster || glyph !== ((u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0)) {
-        } else if (gc.currentgraphics === 1 /* ROGUESET */ && gs.symset[gc.currentgraphics].handling === 1 && (gs.symset[gc.currentgraphics].nocolor | 0) === 0) {
-            glyphinfo.gm.sym.color = 11;
+        if (!iflags.wc_color || Upolyd() || glyph !== ((u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0)) {
+        } else if (gc.currentgraphics === ROGUESET && gs.symset[gc.currentgraphics].handling === H_IBM && (gs.symset[gc.currentgraphics].nocolor | 0) === 0) {
+            glyphinfo.gm.sym.color = CLR.YELLOW;
         } else if (flags.showrace) {
-            glyphinfo.gm.sym.color = 15;
+            glyphinfo.gm.sym.color = CLR.WHITE;
         }
-        if (sysopt.accessibility === 1 && !((mgflags & 1) >>> 0)) {
-            offset = 195;
-            if ($c.and64(gg.glyphmap_perlevel_flags, 2) ? go.ov_rogue_syms[offset] : go.ov_primary_syms[offset]) {
+        if (sysopt.accessibility === 1 && !((mgflags & MG.FLAG_NOOVERRIDE) >>> 0)) {
+            offset = SYM.HERO_OVERRIDE + SYM_OFF_X;
+            if ($c.and64(gg.glyphmap_perlevel_flags, GMAP_ROGUELEVEL) ? go.ov_rogue_syms[offset] : go.ov_primary_syms[offset]) {
                 glyphinfo.gm.sym.symidx = offset;
             }
         }
-        glyphinfo.gm.glyphflags = (glyphinfo.gm.glyphflags | 1) >>> 0;
+        glyphinfo.gm.glyphflags = (glyphinfo.gm.glyphflags | MG.HERO) >>> 0;
     }
-    if (sysopt.accessibility === 1 && (mgflags & 1) >>> 0 && (glyph >= 766 /* GLYPH_PET_MALE_OFF */ && glyph < 1149 || glyph >= 1149 /* GLYPH_PET_FEM_OFF */ && glyph < 1532)) {
-        glyphinfo.gm.sym.symidx = mons[glyph >= 383 /* GLYPH_MON_FEM_OFF */ && glyph < 766 ? glyph - 383 /* GLYPH_MON_FEM_OFF */ | 0 : glyph >= 0 /* GLYPH_MON_MALE_OFF */ && glyph < 383 ? glyph - 0 /* GLYPH_MON_MALE_OFF */ | 0 : glyph >= 1149 /* GLYPH_PET_FEM_OFF */ && glyph < 1532 ? glyph - 1149 /* GLYPH_PET_FEM_OFF */ | 0 : glyph >= 766 /* GLYPH_PET_MALE_OFF */ && glyph < 1149 ? glyph - 766 /* GLYPH_PET_MALE_OFF */ | 0 : glyph >= 1916 /* GLYPH_DETECT_FEM_OFF */ && glyph < 2299 ? glyph - 1916 /* GLYPH_DETECT_FEM_OFF */ | 0 : glyph >= 1533 /* GLYPH_DETECT_MALE_OFF */ && glyph < 1916 ? glyph - 1533 /* GLYPH_DETECT_MALE_OFF */ | 0 : glyph >= 3065 /* GLYPH_RIDDEN_FEM_OFF */ && glyph < 3448 ? glyph - 3065 /* GLYPH_RIDDEN_FEM_OFF */ | 0 : glyph >= 2682 /* GLYPH_RIDDEN_MALE_OFF */ && glyph < 3065 ? glyph - 2682 /* GLYPH_RIDDEN_MALE_OFF */ | 0 : 383 /* NUMMONS */].mlet + 123 | 0;
+    if (sysopt.accessibility === 1 && (mgflags & MG.FLAG_NOOVERRIDE) >>> 0 && glyph_is_pet(glyph)) {
+        glyphinfo.gm.sym.symidx = mons[glyph_to_mon(glyph)].mlet + SYM_OFF_M | 0;
     }
     glyphinfo.ttychar = gs.showsyms[glyphinfo.gm.sym.symidx];
     glyphinfo.glyph = glyph;
 }
 function cmap_to_roguecolor(cmap) {   // display.c:2699
     let color = 0;
-    color = 8;
+    color = NO_COLOR;
     if (gs.symset[gc.currentgraphics].nocolor) {
-        return 8;
+        return NO_COLOR;
     }
-    if (cmap >= 1 /* S_vwall */ && cmap <= 16 /* S_hcdoor */) {
-        color = 3;
-    } else if (cmap >= 49 /* S_arrow_trap */ && cmap <= 70 /* S_polymorph_trap */) {
-        color = 5;
-    } else if (cmap === 22 /* S_corr */ || cmap === 23 /* S_litcorr */) {
-        color = 7;
-    } else if (cmap >= 19 /* S_room */ && cmap <= 48 /* S_water */ && cmap !== 20 /* S_darkroom */) {
-        color = 2;
+    if (cmap >= S.vwall && cmap <= S.hcdoor) {
+        color = CLR.BROWN;
+    } else if (cmap >= S.arrow_trap && cmap <= S.polymorph_trap) {
+        color = CLR.MAGENTA;
+    } else if (cmap === S.corr || cmap === S.litcorr) {
+        color = CLR.GRAY;
+    } else if (cmap >= S.room && cmap <= S.water && cmap !== S.darkroom) {
+        color = CLR.GREEN;
     } else {
-        color = 8;
+        color = NO_COLOR;
     }
     return color;
 }
 export function reset_glyphmap(trigger) {   // display.c:2739
     let glyph = 0, offset = 0, color = 0, has_rogue_ibm_graphics = 0, has_rogue_color = 0, gmap = null, cmap = 0, sym = 0, spec_cmap = 0, sym$2 = 0, cmap$2 = 0, pet_override = 0;
-    color = 8;
-    has_rogue_ibm_graphics = $c.i8(gc.currentgraphics === 1 /* ROGUESET */ && gs.symset[gc.currentgraphics].handling === 1 ? 1 : 0);
+    color = NO_COLOR;
+    has_rogue_ibm_graphics = $c.i8(gc.currentgraphics === ROGUESET && gs.symset[gc.currentgraphics].handling === H_IBM ? 1 : 0);
     has_rogue_color = $c.i8(has_rogue_ibm_graphics && (gs.symset[gc.currentgraphics].nocolor | 0) === 0 ? 1 : 0);
-    if (trigger === 2) {
+    if (trigger === gm_levelchange) {
         gg.glyphmap_perlevel_flags = 0;
     }
     if (!gg.glyphmap_perlevel_flags) {
-        gg.glyphmap_perlevel_flags = $c.or64(gg.glyphmap_perlevel_flags, 1);
+        gg.glyphmap_perlevel_flags = $c.or64(gg.glyphmap_perlevel_flags, GMAP_SET);
         if ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level)) {
-            gg.glyphmap_perlevel_flags = $c.or64(gg.glyphmap_perlevel_flags, 2);
+            gg.glyphmap_perlevel_flags = $c.or64(gg.glyphmap_perlevel_flags, GMAP_ROGUELEVEL);
         }
     }
-    for (glyph = 0; glyph < 9624 /* MAX_GLYPH */; glyph = glyph + 1 | 0) {
+    for (glyph = 0; glyph < MAX_GLYPH; glyph = glyph + 1 | 0) {
         gmap = $c.relem(glyphmap, glyph);
         gmap.glyphflags = 0;
-        if ((offset = glyph - 9623 /* GLYPH_NOTHING_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = 190;
-            color = 8;
-            gmap.glyphflags = (gmap.glyphflags | 1024) >>> 0;
-        } else if ((offset = glyph - 9622 /* GLYPH_UNEXPLORED_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = 191;
-            color = 8;
-            gmap.glyphflags = (gmap.glyphflags | 2048) >>> 0;
-        } else if ((offset = glyph - 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+        if ((offset = glyph - GLYPH.NOTHING_OFF | 0) >= 0) {
+            gmap.sym.symidx = SYM.NOTHING + SYM_OFF_X;
+            color = NO_COLOR;
+            gmap.glyphflags = (gmap.glyphflags | MG.NOTHING) >>> 0;
+        } else if ((offset = glyph - GLYPH.UNEXPLORED_OFF | 0) >= 0) {
+            gmap.sym.symidx = SYM.UNEXPLORED + SYM_OFF_X;
+            color = NO_COLOR;
+            gmap.glyphflags = (gmap.glyphflags | MG.UNEXPL) >>> 0;
+        } else if ((offset = glyph - GLYPH.STATUE_FEM_PILETOP_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 1;
+                color = CLR.RED;
             } else {
-                color = iflags.wc_color ? objects[476 /* STATUE */].oc_color : 8;
+                color = iflags.wc_color ? objects[STATUE].oc_color : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 8384) >>> 0;
-        } else if ((offset = glyph - 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.STATUE | MG.FEMALE | MG.OBJPILE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.STATUE_MALE_PILETOP_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 1;
+                color = CLR.RED;
             } else {
-                color = iflags.wc_color ? objects[476 /* STATUE */].oc_color : 8;
+                color = iflags.wc_color ? objects[STATUE].oc_color : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 4288) >>> 0;
-        } else if ((offset = glyph - 8473 /* GLYPH_BODY_PILETOP_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = objects[265 /* CORPSE */].oc_class + 105 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.STATUE | MG.MALE | MG.OBJPILE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.BODY_PILETOP_OFF | 0) >= 0) {
+            gmap.sym.symidx = objects[CORPSE].oc_class + SYM_OFF_O | 0;
             if (has_rogue_color) {
-                color = 1;
+                color = CLR.RED;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 130) >>> 0;
-        } else if ((offset = glyph - 7992 /* GLYPH_OBJ_PILETOP_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = objects[offset].oc_class + 105 | 0;
-            if (offset === 475 /* BOULDER */) {
-                gmap.sym.symidx = 192;
+            gmap.glyphflags = (gmap.glyphflags | (MG.CORPSE | MG.OBJPILE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.OBJ_PILETOP_OFF | 0) >= 0) {
+            gmap.sym.symidx = objects[offset].oc_class + SYM_OFF_O | 0;
+            if (offset === BOULDER) {
+                gmap.sym.symidx = SYM.BOULDER + SYM_OFF_X;
             }
             if (has_rogue_color) {
                 switch (objects[offset].oc_class) {
-                    case 12 /* COIN_CLASS */:
-                        color = 11;
+                    case COIN_CLASS:
+                        color = CLR.YELLOW;
                         break;
-                    case 7 /* FOOD_CLASS */:
-                        color = 1;
+                    case FOOD_CLASS:
+                        color = CLR.RED;
                         break;
                     default:
-                        color = 12;
+                        color = CLR.BRIGHT_BLUE;
                         break;
                 }
             } else {
-                color = iflags.wc_color ? objects[offset].oc_color : 8;
+                color = iflags.wc_color ? objects[offset].oc_color : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 128) >>> 0;
-        } else if ((offset = glyph - 7609 /* GLYPH_STATUE_FEM_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | MG.OBJPILE) >>> 0;
+        } else if ((offset = glyph - GLYPH.STATUE_FEM_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 1;
+                color = CLR.RED;
             } else {
-                color = iflags.wc_color ? objects[476 /* STATUE */].oc_color : 8;
+                color = iflags.wc_color ? objects[STATUE].oc_color : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 8256) >>> 0;
-        } else if ((offset = glyph - 7226 /* GLYPH_STATUE_MALE_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.STATUE | MG.FEMALE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.STATUE_MALE_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 1;
+                color = CLR.RED;
             } else {
-                color = iflags.wc_color ? objects[476 /* STATUE */].oc_color : 8;
+                color = iflags.wc_color ? objects[STATUE].oc_color : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 4160) >>> 0;
-        } else if ((offset = glyph - 7220 /* GLYPH_WARNING_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = offset + 184 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.STATUE | MG.MALE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.WARNING_OFF | 0) >= 0) {
+            gmap.sym.symidx = offset + SYM_OFF_W | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? def_warnsyms[offset].color : 8;
+                color = iflags.wc_color ? def_warnsyms[offset].color : NO_COLOR;
             }
-        } else if ((offset = glyph - 7211 /* GLYPH_EXPLODE_FROSTY_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (96 /* S_expl_tl */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? explodecolors[6 /* expl_frosty */] : 8;
-        } else if ((offset = glyph - 7202 /* GLYPH_EXPLODE_FIERY_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (96 /* S_expl_tl */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? explodecolors[5 /* expl_fiery */] : 8;
-        } else if ((offset = glyph - 7193 /* GLYPH_EXPLODE_MAGICAL_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (96 /* S_expl_tl */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? explodecolors[4 /* expl_magical */] : 8;
-        } else if ((offset = glyph - 7184 /* GLYPH_EXPLODE_WET_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (96 /* S_expl_tl */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? explodecolors[3 /* expl_wet */] : 8;
-        } else if ((offset = glyph - 7175 /* GLYPH_EXPLODE_MUDDY_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (96 /* S_expl_tl */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? explodecolors[2 /* expl_muddy */] : 8;
-        } else if ((offset = glyph - 7166 /* GLYPH_EXPLODE_NOXIOUS_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (96 /* S_expl_tl */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? explodecolors[1 /* expl_noxious */] : 8;
-        } else if ((offset = glyph - 7157 /* GLYPH_EXPLODE_DARK_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (96 /* S_expl_tl */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? explodecolors[0 /* expl_dark */] : 8;
-        } else if ((offset = glyph - 4093 /* GLYPH_SWALLOW_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (88 /* S_sw_tl */ + (offset & 7) | 0) + 0 | 0;
+        } else if ((offset = glyph - GLYPH.EXPLODE_FROSTY_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.expl_tl + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? explodecolors[expl_frosty] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.EXPLODE_FIERY_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.expl_tl + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? explodecolors[expl_fiery] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.EXPLODE_MAGICAL_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.expl_tl + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? explodecolors[expl_magical] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.EXPLODE_WET_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.expl_tl + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? explodecolors[expl_wet] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.EXPLODE_MUDDY_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.expl_tl + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? explodecolors[expl_muddy] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.EXPLODE_NOXIOUS_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.expl_tl + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? explodecolors[expl_noxious] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.EXPLODE_DARK_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.expl_tl + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? explodecolors[expl_dark] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.SWALLOW_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.sw_tl + (offset & 7) | 0) + SYM_OFF_P | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? mons[offset >> 3].mcolor : 8;
+                color = iflags.wc_color ? mons[offset >> 3].mcolor : NO_COLOR;
             }
-        } else if ((offset = glyph - 4083 /* GLYPH_CMAP_C_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (78 /* S_digbeam */ + offset | 0) + 0 | 0;
+        } else if ((offset = glyph - GLYPH.CMAP_C_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.digbeam + offset | 0) + SYM_OFF_P | 0;
             if (has_rogue_color) {
-                color = cmap_to_roguecolor(78 /* S_digbeam */ + offset | 0);
+                color = cmap_to_roguecolor(S.digbeam + offset | 0);
             } else {
-                color = iflags.wc_color ? defsyms[78 /* S_digbeam */ + offset | 0].color : 8;
+                color = iflags.wc_color ? defsyms[S.digbeam + offset | 0].color : NO_COLOR;
             }
-        } else if ((offset = glyph - 4051 /* GLYPH_ZAP_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (74 /* S_vbeam */ + (offset & 3) | 0) + 0 | 0;
+        } else if ((offset = glyph - GLYPH.ZAP_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.vbeam + (offset & 3) | 0) + SYM_OFF_P | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? zapcolors[offset >> 2] : 8;
+                color = iflags.wc_color ? zapcolors[offset >> 2] : NO_COLOR;
             }
-        } else if ((offset = glyph - 4011 /* GLYPH_CMAP_B_OFF */ | 0) >= 0) {
-            cmap = 34 /* S_grave */ + offset | 0;
-            sym = gs.showsyms[cmap + 0 | 0];
-            gmap.sym.symidx = cmap + 0 | 0;
-            color = iflags.wc_color ? defsyms[cmap].color : 8;
+        } else if ((offset = glyph - GLYPH.CMAP_B_OFF | 0) >= 0) {
+            cmap = S.grave + offset | 0;
+            sym = gs.showsyms[cmap + SYM_OFF_P | 0];
+            gmap.sym.symidx = cmap + SYM_OFF_P | 0;
+            color = iflags.wc_color ? defsyms[cmap].color : NO_COLOR;
             if (!iflags.wc_color) {
                 spec_cmap = 0;
                 switch (cmap) {
-                    case 40 /* S_lava */:
-                    case 41 /* S_lavawall */:
-                        if (sym === gs.showsyms[38] || sym === gs.showsyms[48]) {
-                            spec_cmap = 256;
+                    case S.lava:
+                    case S.lavawall:
+                        if (sym === gs.showsyms[S.pool + SYM_OFF_P] || sym === gs.showsyms[S.water + SYM_OFF_P]) {
+                            spec_cmap = MG_BW_LAVA;
                         }
                         break;
-                    case 39 /* S_ice */:
-                        if (sym === gs.showsyms[19] || sym === gs.showsyms[20]) {
-                            spec_cmap = 512;
+                    case S.ice:
+                        if (sym === gs.showsyms[S.room + SYM_OFF_P] || sym === gs.showsyms[S.darkroom + SYM_OFF_P]) {
+                            spec_cmap = MG.BW_ICE;
                         }
                         break;
-                    case 36 /* S_sink */:
-                        if (sym === gs.showsyms[37]) {
-                            spec_cmap = 512;
+                    case S.sink:
+                        if (sym === gs.showsyms[S.fountain + SYM_OFF_P]) {
+                            spec_cmap = MG_BW_SINK;
                         }
                         break;
                 }
@@ -1662,156 +1718,156 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             } else if (has_rogue_color) {
                 color = cmap_to_roguecolor(cmap);
             }
-        } else if ((offset = glyph - 4006 /* GLYPH_ALTAR_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = 33;
+        } else if ((offset = glyph - GLYPH.ALTAR_OFF | 0) >= 0) {
+            gmap.sym.symidx = S.altar + SYM_OFF_P;
             if (has_rogue_color) {
-                color = cmap_to_roguecolor(33 /* S_altar */);
+                color = cmap_to_roguecolor(S.altar);
             } else {
-                color = iflags.wc_color ? altarcolors[offset] : 8;
+                color = iflags.wc_color ? altarcolors[offset] : NO_COLOR;
             }
-        } else if ((offset = glyph - 3985 /* GLYPH_CMAP_A_OFF */ | 0) >= 0) {
-            cmap$2 = 12 /* S_ndoor */ + offset | 0;
-            gmap.sym.symidx = cmap$2 + 0 | 0;
-            color = iflags.wc_color ? defsyms[cmap$2].color : 8;
+        } else if ((offset = glyph - GLYPH.CMAP_A_OFF | 0) >= 0) {
+            cmap$2 = S.ndoor + offset | 0;
+            gmap.sym.symidx = cmap$2 + SYM_OFF_P | 0;
+            color = iflags.wc_color ? defsyms[cmap$2].color : NO_COLOR;
             sym$2 = gs.showsyms[gmap.sym.symidx];
             if (has_rogue_color) {
                 color = cmap_to_roguecolor(cmap$2);
-            } else if (cmap$2 === 23 /* S_litcorr */ && sym$2 === gs.showsyms[22]) {
-                color = 15;
-            } else if (cmap$2 === 24 /* S_engrcorr */ && (sym$2 === gs.showsyms[22] || sym$2 === gs.showsyms[23])) {
-                gmap.glyphflags = (gmap.glyphflags | 512) >>> 0;
+            } else if (cmap$2 === S.litcorr && sym$2 === gs.showsyms[S.corr + SYM_OFF_P]) {
+                color = CLR.WHITE;
+            } else if (cmap$2 === S.engrcorr && (sym$2 === gs.showsyms[S.corr + SYM_OFF_P] || sym$2 === gs.showsyms[S.litcorr + SYM_OFF_P])) {
+                gmap.glyphflags = (gmap.glyphflags | MG.BW_ENGR) >>> 0;
             }
-        } else if ((offset = glyph - 3974 /* GLYPH_CMAP_SOKO_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (1 /* S_vwall */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? wallcolors[4 /* sokoban_walls */] : 8;
-        } else if ((offset = glyph - 3963 /* GLYPH_CMAP_KNOX_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (1 /* S_vwall */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? wallcolors[3 /* knox_walls */] : 8;
-        } else if ((offset = glyph - 3952 /* GLYPH_CMAP_GEH_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (1 /* S_vwall */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? wallcolors[2 /* gehennom_walls */] : 8;
-        } else if ((offset = glyph - 3941 /* GLYPH_CMAP_MINES_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (1 /* S_vwall */ + offset | 0) + 0 | 0;
-            color = iflags.wc_color ? wallcolors[1 /* mines_walls */] : 8;
-        } else if ((offset = glyph - 3930 /* GLYPH_CMAP_MAIN_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = (1 /* S_vwall */ + offset | 0) + 0 | 0;
+        } else if ((offset = glyph - GLYPH.CMAP_SOKO_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.vwall + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? wallcolors[sokoban_walls] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.CMAP_KNOX_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.vwall + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? wallcolors[knox_walls] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.CMAP_GEH_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.vwall + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? wallcolors[gehennom_walls] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.CMAP_MINES_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.vwall + offset | 0) + SYM_OFF_P | 0;
+            color = iflags.wc_color ? wallcolors[mines_walls] : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.CMAP_MAIN_OFF | 0) >= 0) {
+            gmap.sym.symidx = (S.vwall + offset | 0) + SYM_OFF_P | 0;
             if (has_rogue_color) {
-                color = cmap_to_roguecolor(1 /* S_vwall */ + offset | 0);
+                color = cmap_to_roguecolor(S.vwall + offset | 0);
             } else {
-                color = iflags.wc_color ? wallcolors[0 /* main_walls */] : 8;
+                color = iflags.wc_color ? wallcolors[main_walls] : NO_COLOR;
             }
-        } else if ((offset = glyph - 3929 /* GLYPH_CMAP_STONE_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = 0;
-            color = iflags.wc_color ? defsyms[0 /* S_stone */].color : 8;
-        } else if ((offset = glyph - 3448 /* GLYPH_OBJ_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = objects[offset].oc_class + 105 | 0;
-            if (offset === 475 /* BOULDER */) {
-                gmap.sym.symidx = 192;
+        } else if ((offset = glyph - GLYPH.CMAP_STONE_OFF | 0) >= 0) {
+            gmap.sym.symidx = SYM_OFF_P;
+            color = iflags.wc_color ? defsyms[S.stone].color : NO_COLOR;
+        } else if ((offset = glyph - GLYPH.OBJ_OFF | 0) >= 0) {
+            gmap.sym.symidx = objects[offset].oc_class + SYM_OFF_O | 0;
+            if (offset === BOULDER) {
+                gmap.sym.symidx = SYM.BOULDER + SYM_OFF_X;
             }
             if (has_rogue_color) {
                 switch (objects[offset].oc_class) {
-                    case 12 /* COIN_CLASS */:
-                        color = 11;
+                    case COIN_CLASS:
+                        color = CLR.YELLOW;
                         break;
-                    case 7 /* FOOD_CLASS */:
-                        color = 1;
+                    case FOOD_CLASS:
+                        color = CLR.RED;
                         break;
                     default:
-                        color = 12;
+                        color = CLR.BRIGHT_BLUE;
                         break;
                 }
             } else {
-                color = iflags.wc_color ? objects[offset].oc_color : 8;
+                color = iflags.wc_color ? objects[offset].oc_color : NO_COLOR;
             }
-        } else if ((offset = glyph - 3065 /* GLYPH_RIDDEN_FEM_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+        } else if ((offset = glyph - GLYPH.RIDDEN_FEM_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 8224) >>> 0;
-        } else if ((offset = glyph - 2682 /* GLYPH_RIDDEN_MALE_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.RIDDEN | MG.FEMALE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.RIDDEN_MALE_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 4128) >>> 0;
-        } else if ((offset = glyph - 2299 /* GLYPH_BODY_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = objects[265 /* CORPSE */].oc_class + 105 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.RIDDEN | MG.MALE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.BODY_OFF | 0) >= 0) {
+            gmap.sym.symidx = objects[CORPSE].oc_class + SYM_OFF_O | 0;
             if (has_rogue_color) {
-                color = 1;
+                color = CLR.RED;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 2) >>> 0;
-        } else if ((offset = glyph - 1916 /* GLYPH_DETECT_FEM_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | MG.CORPSE) >>> 0;
+        } else if ((offset = glyph - GLYPH.DETECT_FEM_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 8200) >>> 0;
-        } else if ((offset = glyph - 1533 /* GLYPH_DETECT_MALE_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.DETECT | MG.FEMALE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.DETECT_MALE_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 4104) >>> 0;
-        } else if ((offset = glyph - 1532 /* GLYPH_INVIS_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = 193;
+            gmap.glyphflags = (gmap.glyphflags | (MG.DETECT | MG.MALE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.INVIS_OFF | 0) >= 0) {
+            gmap.sym.symidx = SYM.INVISIBLE + SYM_OFF_X;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = 8;
+                color = NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 4) >>> 0;
-        } else if ((offset = glyph - 1149 /* GLYPH_PET_FEM_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | MG.INVIS) >>> 0;
+        } else if ((offset = glyph - GLYPH.PET_FEM_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 8208) >>> 0;
-        } else if ((offset = glyph - 766 /* GLYPH_PET_MALE_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.PET | MG.FEMALE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.PET_MALE_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 4112) >>> 0;
-        } else if ((offset = glyph - 383 /* GLYPH_MON_FEM_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | (MG.PET | MG.MALE)) >>> 0;
+        } else if ((offset = glyph - GLYPH.MON_FEM_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 8;
+                color = NO_COLOR;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 8192) >>> 0;
-        } else if ((offset = glyph - 0 /* GLYPH_MON_MALE_OFF */ | 0) >= 0) {
-            gmap.sym.symidx = mons[offset].mlet + 123 | 0;
+            gmap.glyphflags = (gmap.glyphflags | MG.FEMALE) >>> 0;
+        } else if ((offset = glyph - GLYPH.MON_MALE_OFF | 0) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
             if (has_rogue_color) {
-                color = 11;
+                color = CLR.YELLOW;
             } else {
-                color = iflags.wc_color ? mons[offset].mcolor : 8;
+                color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
-            gmap.glyphflags = (gmap.glyphflags | 4096) >>> 0;
+            gmap.glyphflags = (gmap.glyphflags | MG.MALE) >>> 0;
         }
-        if (sysopt.accessibility === 1 && (gmap.glyphflags & 16) >>> 0 !== 0) {
-            pet_override = $c.and64(gg.glyphmap_perlevel_flags, 2) ? go.ov_rogue_syms[194] : go.ov_primary_syms[194];
+        if (sysopt.accessibility === 1 && (gmap.glyphflags & MG.PET) >>> 0 !== 0) {
+            pet_override = $c.and64(gg.glyphmap_perlevel_flags, GMAP_ROGUELEVEL) ? go.ov_rogue_syms[SYM.PET_OVERRIDE + SYM_OFF_X] : go.ov_primary_syms[SYM.PET_OVERRIDE + SYM_OFF_X];
             if (gs.showsyms[pet_override] !== 32) {
-                gmap.sym.symidx = 194;
+                gmap.sym.symidx = SYM.PET_OVERRIDE + SYM_OFF_X;
             }
         }
-        if (!has_color(color) || $c.and64(gg.glyphmap_perlevel_flags, 2) && !has_rogue_color || !iflags.wc_color) {
-            color = 8;
+        if (!has_color(color) || $c.and64(gg.glyphmap_perlevel_flags, GMAP_ROGUELEVEL) && !has_rogue_color || !iflags.wc_color) {
+            color = NO_COLOR;
         }
         gmap.sym.color = color;
     }
@@ -1823,16 +1879,16 @@ function check_pos(x, y, which) {   // display.c:3130
         return which;
     }
     type = svl.level.locations[x][y].typ;
-    if (type <= 12 /* DBWALL */ || type === 24 /* CORR */ || type === 15 /* SCORR */ || type === 14 /* SDOOR */) {
+    if (IS_STWALL(type) || type === CORR || type === SCORR || IS_SDOOR(type)) {
         return which;
     }
     return 0;
 }
 function set_twall(x0, y0, x1, y1, x2, y2, x3, y3) {   // display.c:3162
     let wmode = 0, is_1 = 0, is_2 = 0, is_3 = 0;
-    is_1 = check_pos(x1, y1, 1);
-    is_2 = check_pos(x2, y2, 2);
-    is_3 = check_pos(x3, y3, 3);
+    is_1 = check_pos(x1, y1, WM.T_LONG);
+    is_2 = check_pos(x2, y2, WM.T_BL);
+    is_3 = check_pos(x3, y3, WM.T_BR);
     if (is_1 && is_2 | is_3 || is_2 && is_1 | is_3 || is_3 && is_1 | is_2) {
         wmode = 0;
     } else {
@@ -1843,11 +1899,11 @@ function set_twall(x0, y0, x1, y1, x2, y2, x3, y3) {   // display.c:3162
 function set_wall(x, y, horiz) {   // display.c:3187
     let wmode = 0, is_1 = 0, is_2 = 0;
     if (horiz) {
-        is_1 = check_pos(x, $c.i16(y - 1 | 0), 1);
-        is_2 = check_pos(x, $c.i16(y + 1 | 0), 2);
+        is_1 = check_pos(x, $c.i16(y - 1 | 0), WM.W_LEFT);
+        is_2 = check_pos(x, $c.i16(y + 1 | 0), WM.W_RIGHT);
     } else {
-        is_1 = check_pos($c.i16(x - 1 | 0), y, 1);
-        is_2 = check_pos($c.i16(x + 1 | 0), y, 2);
+        is_1 = check_pos($c.i16(x - 1 | 0), y, WM.W_LEFT);
+        is_2 = check_pos($c.i16(x + 1 | 0), y, WM.W_RIGHT);
     }
     if (is_1 && is_2 | 0 || is_2 && is_1 | 0 || 0) {
         wmode = 0;
@@ -1863,9 +1919,9 @@ function set_corn(x1, y1, x2, y2, x3, y3, x4, y4) {   // display.c:3208
     is_3 = $c.i16(check_pos(x3, y3, 1));
     is_4 = $c.i16(check_pos(x4, y4, 1));
     if (is_4) {
-        wmode = 2;
+        wmode = WM.C_INNER;
     } else if (is_1 && is_2 && is_3) {
-        wmode = 1;
+        wmode = WM.C_OUTER;
     } else {
         wmode = 0;
     }
@@ -1880,20 +1936,20 @@ function set_crosswall(x, y) {   // display.c:3240
     wmode = $c.i16(((is_1 + is_2 | 0) + is_3 | 0) + is_4 | 0);
     if (wmode > 1) {
         if (is_1 && is_3 && (is_2 + is_4 | 0) === 0) {
-            wmode = 5;
+            wmode = WM.X_TLBR;
         } else if (is_2 && is_4 && (is_1 + is_3 | 0) === 0) {
-            wmode = 6;
+            wmode = WM.X_BLTR;
         } else {
             wmode = 0;
         }
     } else if (is_1) {
-        wmode = 1;
+        wmode = WM.X_TL;
     } else if (is_2) {
-        wmode = 2;
+        wmode = WM.X_TR;
     } else if (is_3) {
-        wmode = 4;
+        wmode = WM.X_BR;
     } else if (is_4) {
-        wmode = 3;
+        wmode = WM.X_BL;
     }
     return wmode;
 }
@@ -1901,40 +1957,40 @@ export function xy_set_wall_state(x, y) {   // display.c:3276
     let wmode = 0, lev = null;
     lev = $c.relem(svl.level.locations[x], y);
     switch (lev.typ) {
-        case 14 /* SDOOR */:
+        case SDOOR:
             wmode = $c.i16(set_wall(x, y, $c.i16(lev.horizontal)));
             break;
-        case 1 /* VWALL */:
+        case VWALL:
             wmode = $c.i16(set_wall(x, y, 0));
             break;
-        case 2 /* HWALL */:
+        case HWALL:
             wmode = $c.i16(set_wall(x, y, 1));
             break;
-        case 9 /* TDWALL */:
+        case TDWALL:
             wmode = $c.i16(set_twall(x, y, x, $c.i16(y - 1 | 0), $c.i16(x - 1 | 0), $c.i16(y + 1 | 0), $c.i16(x + 1 | 0), $c.i16(y + 1 | 0)));
             break;
-        case 8 /* TUWALL */:
+        case TUWALL:
             wmode = $c.i16(set_twall(x, y, x, $c.i16(y + 1 | 0), $c.i16(x + 1 | 0), $c.i16(y - 1 | 0), $c.i16(x - 1 | 0), $c.i16(y - 1 | 0)));
             break;
-        case 10 /* TLWALL */:
+        case TLWALL:
             wmode = $c.i16(set_twall(x, y, $c.i16(x + 1 | 0), y, $c.i16(x - 1 | 0), $c.i16(y - 1 | 0), $c.i16(x - 1 | 0), $c.i16(y + 1 | 0)));
             break;
-        case 11 /* TRWALL */:
+        case TRWALL:
             wmode = $c.i16(set_twall(x, y, $c.i16(x - 1 | 0), y, $c.i16(x + 1 | 0), $c.i16(y + 1 | 0), $c.i16(x + 1 | 0), $c.i16(y - 1 | 0)));
             break;
-        case 3 /* TLCORNER */:
+        case TLCORNER:
             wmode = $c.i16(set_corn($c.i16(x - 1 | 0), $c.i16(y - 1 | 0), x, $c.i16(y - 1 | 0), $c.i16(x - 1 | 0), y, $c.i16(x + 1 | 0), $c.i16(y + 1 | 0)));
             break;
-        case 4 /* TRCORNER */:
+        case TRCORNER:
             wmode = $c.i16(set_corn(x, $c.i16(y - 1 | 0), $c.i16(x + 1 | 0), $c.i16(y - 1 | 0), $c.i16(x + 1 | 0), y, $c.i16(x - 1 | 0), $c.i16(y + 1 | 0)));
             break;
-        case 5 /* BLCORNER */:
+        case BLCORNER:
             wmode = $c.i16(set_corn(x, $c.i16(y + 1 | 0), $c.i16(x - 1 | 0), $c.i16(y + 1 | 0), $c.i16(x - 1 | 0), y, $c.i16(x + 1 | 0), $c.i16(y - 1 | 0)));
             break;
-        case 6 /* BRCORNER */:
+        case BRCORNER:
             wmode = $c.i16(set_corn($c.i16(x + 1 | 0), y, $c.i16(x + 1 | 0), $c.i16(y + 1 | 0), x, $c.i16(y + 1 | 0), $c.i16(x - 1 | 0), $c.i16(y - 1 | 0)));
             break;
-        case 7 /* CROSSWALL */:
+        case CROSSWALL:
             wmode = $c.i16(set_crosswall(x, y));
             break;
         default:
@@ -1942,13 +1998,13 @@ export function xy_set_wall_state(x, y) {   // display.c:3276
             break;
     }
     if (wmode >= 0) {
-        lev.flags = (((lev.flags | 0) & -8 | wmode) >>> 0) & 31;
+        lev.flags = (((lev.flags | 0) & ~WM_MASK | wmode) >>> 0) & 31;
     }
 }
 export function set_wall_state() {   // display.c:3330
     let x = 0, y = 0;
-    for (x = 0; x < 80; x = $c.i16(x + 1)) {
-        for (y = 0; y < 21; y = $c.i16(y + 1)) {
+    for (x = 0; x < COLNO; x = $c.i16(x + 1)) {
+        for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
             xy_set_wall_state(x, y);
         }
     }
@@ -1968,331 +2024,331 @@ export function unset_seenv(lev, x0, y0, x1, y1) {   // display.c:3384
 async function t_warn(lev) {   // display.c:3453
     let wname = null;
     switch (lev.typ) {
-        case 8 /* TUWALL */:
+        case TUWALL:
             wname = $c.lit("tuwall");
             break;
-        case 10 /* TLWALL */:
+        case TLWALL:
             wname = $c.lit("tlwall");
             break;
-        case 11 /* TRWALL */:
+        case TRWALL:
             wname = $c.lit("trwall");
             break;
-        case 9 /* TDWALL */:
+        case TDWALL:
             wname = $c.lit("tdwall");
             break;
-        case 1 /* VWALL */:
+        case VWALL:
             wname = $c.lit("vwall");
             break;
-        case 2 /* HWALL */:
+        case HWALL:
             wname = $c.lit("hwall");
             break;
-        case 3 /* TLCORNER */:
+        case TLCORNER:
             wname = $c.lit("tlcorner");
             break;
-        case 4 /* TRCORNER */:
+        case TRCORNER:
             wname = $c.lit("trcorner");
             break;
-        case 5 /* BLCORNER */:
+        case BLCORNER:
             wname = $c.lit("blcorner");
             break;
-        case 6 /* BRCORNER */:
+        case BRCORNER:
             wname = $c.lit("brcorner");
             break;
         default:
             wname = $c.lit("unknown");
             break;
     }
-    await impossible(new $c.Ptr(t_warn$warn_str, 0), wname, (lev.flags | 0) & 7, lev.seenv);
+    await impossible(new $c.Ptr(t_warn$warn_str, 0), wname, (lev.flags | 0) & WM_MASK, lev.seenv);
 }
 async function wall_angle(lev) {   // display.c:3513
     let seenv = 0, row = null, col = 0, idx = 0, $goto = null;
     seenv = (lev.seenv & 255) >>> 0;
     S1: for (;;) {
         switch ($goto !== null ? $goto : lev.typ) {
-            case 8 /* TUWALL */:
-                row = new $c.Ptr(wall_matrix[2], 0);
+            case TUWALL:
+                row = new $c.Ptr(wall_matrix[T_u], 0);
                 seenv = ((seenv >>> 4 | seenv << 4 >>> 0) >>> 0 & 255) >>> 0;
                 $goto = "do_twall"; continue S1;
-            case 10 /* TLWALL */:
-                row = new $c.Ptr(wall_matrix[1], 0);
+            case TLWALL:
+                row = new $c.Ptr(wall_matrix[T_l], 0);
                 seenv = ((seenv >>> 2 | seenv << 6 >>> 0) >>> 0 & 255) >>> 0;
                 $goto = "do_twall"; continue S1;
-            case 11 /* TRWALL */:
-                row = new $c.Ptr(wall_matrix[3], 0);
+            case TRWALL:
+                row = new $c.Ptr(wall_matrix[T_r], 0);
                 seenv = ((seenv >>> 6 | seenv << 2 >>> 0) >>> 0 & 255) >>> 0;
                 $goto = "do_twall"; continue S1;
-            case 9 /* TDWALL */:
-                row = new $c.Ptr(wall_matrix[0], 0);
+            case TDWALL:
+                row = new $c.Ptr(wall_matrix[T_d], 0);
             case "do_twall":
                 $goto = null;   // do_twall:
-                switch ((lev.flags | 0) & 7) {
+                switch ((lev.flags | 0) & WM_MASK) {
                     case 0:
-                        if (seenv === 16) {
-                            col = 1;
-                        } else if (seenv === 64) {
-                            col = 2;
-                        } else if ((seenv & 168) >>> 0 || (seenv & 16) >>> 0 && (seenv & 64) >>> 0) {
-                            col = 4;
-                        } else if ((seenv & 7) >>> 0) {
-                            col = (seenv & 80) >>> 0 ? 4 : 3;
+                        if (seenv === SV4) {
+                            col = T_tlcorn;
+                        } else if (seenv === SV6) {
+                            col = T_trcorn;
+                        } else if ((seenv & (SV3 | SV5 | SV7)) >>> 0 || (seenv & SV4) >>> 0 && (seenv & SV6) >>> 0) {
+                            col = T_tdwall;
+                        } else if ((seenv & (SV0 | SV1 | SV2)) >>> 0) {
+                            col = (seenv & (SV4 | SV6)) >>> 0 ? T_tdwall : T_hwall;
                         } else {
                             await t_warn(lev);
-                            col = 0;
+                            col = T_stone;
                         }
                         break;
-                    case 1:
-                        if ((seenv & 24) >>> 0 && !((seenv & 224) >>> 0)) {
-                            col = 1;
-                        } else if ((seenv & 192) >>> 0 && !((seenv & 56) >>> 0)) {
-                            col = 2;
-                        } else if ((seenv & 32) >>> 0 || (seenv & 24) >>> 0 && (seenv & 192) >>> 0) {
-                            col = 4;
+                    case WM.T_LONG:
+                        if ((seenv & (SV3 | SV4)) >>> 0 && !((seenv & (SV5 | SV6 | SV7)) >>> 0)) {
+                            col = T_tlcorn;
+                        } else if ((seenv & (SV6 | SV7)) >>> 0 && !((seenv & (SV3 | SV4 | SV5)) >>> 0)) {
+                            col = T_trcorn;
+                        } else if ((seenv & SV5) >>> 0 || (seenv & (SV3 | SV4)) >>> 0 && (seenv & (SV6 | SV7)) >>> 0) {
+                            col = T_tdwall;
                         } else {
-                            if (!((seenv & 7) >>> 0 && !((seenv & 4294967288) >>> 0))) {
+                            if (!((seenv & (SV0 | SV1 | SV2)) >>> 0 && !((seenv & 4294967288) >>> 0))) {
                                 await t_warn(lev);
                             }
-                            col = 0;
+                            col = T_stone;
                         }
                         break;
-                    case 2:
-                        if ((seenv & 48) >>> 0 && !((seenv & 4294967247) >>> 0)) {
-                            col = 1;
-                        } else if ((seenv & 135) >>> 0 && !((seenv & 56) >>> 0)) {
-                            col = 3;
-                        } else if ((seenv & 64) >>> 0 && !((seenv & 4294967231) >>> 0)) {
-                            col = 0;
+                    case WM.T_BL:
+                        if ((seenv & (SV4 | SV5)) >>> 0 && !((seenv & 4294967247) >>> 0)) {
+                            col = T_tlcorn;
+                        } else if ((seenv & (SV0 | SV1 | SV2 | SV7)) >>> 0 && !((seenv & (SV3 | SV4 | SV5)) >>> 0)) {
+                            col = T_hwall;
+                        } else if ((seenv & SV6) >>> 0 && !((seenv & 4294967231) >>> 0)) {
+                            col = T_stone;
                         } else {
-                            col = 4;
+                            col = T_tdwall;
                         }
                         break;
-                    case 3:
-                        if ((seenv & 96) >>> 0 && !((seenv & 4294967199) >>> 0)) {
-                            col = 2;
-                        } else if ((seenv & 15) >>> 0 && !((seenv & 224) >>> 0)) {
-                            col = 3;
-                        } else if ((seenv & 16) >>> 0 && !((seenv & 4294967279) >>> 0)) {
-                            col = 0;
+                    case WM.T_BR:
+                        if ((seenv & (SV5 | SV6)) >>> 0 && !((seenv & 4294967199) >>> 0)) {
+                            col = T_trcorn;
+                        } else if ((seenv & (SV0 | SV1 | SV2 | SV3)) >>> 0 && !((seenv & (SV5 | SV6 | SV7)) >>> 0)) {
+                            col = T_hwall;
+                        } else if ((seenv & SV4) >>> 0 && !((seenv & 4294967279) >>> 0)) {
+                            col = T_stone;
                         } else {
-                            col = 4;
+                            col = T_tdwall;
                         }
                         break;
                     default:
-                        await impossible($c.lit("wall_angle: unknown T wall mode %d"), (lev.flags | 0) & 7);
-                        col = 0;
+                        await impossible($c.lit("wall_angle: unknown T wall mode %d"), (lev.flags | 0) & WM_MASK);
+                        col = T_stone;
                         break;
                 }
                 idx = row.get(col);
                 break;
-            case 14 /* SDOOR */:
+            case SDOOR:
                 if (lev.candig) {
-                    idx = 18 /* S_tree */;
+                    idx = S.tree;
                     break;
                 }
                 if (lev.horizontal) {
                     $goto = "horiz"; continue S1;
                 }
-            case 1 /* VWALL */:
-                switch ((lev.flags | 0) & 7) {
+            case VWALL:
+                switch ((lev.flags | 0) & WM_MASK) {
                     case 0:
-                        idx = seenv ? 1 /* S_vwall */ : 0 /* S_stone */;
+                        idx = seenv ? S.vwall : S.stone;
                         break;
                     case 1:
-                        idx = (seenv & 62) >>> 0 ? 1 /* S_vwall */ : 0 /* S_stone */;
+                        idx = (seenv & (SV1 | SV2 | SV3 | SV4 | SV5)) >>> 0 ? S.vwall : S.stone;
                         break;
                     case 2:
-                        idx = (seenv & 227) >>> 0 ? 1 /* S_vwall */ : 0 /* S_stone */;
+                        idx = (seenv & (SV0 | SV1 | SV5 | SV6 | SV7)) >>> 0 ? S.vwall : S.stone;
                         break;
                     default:
-                        await impossible($c.lit("wall_angle: unknown vwall mode %d"), (lev.flags | 0) & 7);
-                        idx = 0 /* S_stone */;
+                        await impossible($c.lit("wall_angle: unknown vwall mode %d"), (lev.flags | 0) & WM_MASK);
+                        idx = S.stone;
                         break;
                 }
                 break;
-            case 2 /* HWALL */:
+            case HWALL:
             case "horiz":
                 $goto = null;   // horiz:
-                switch ((lev.flags | 0) & 7) {
+                switch ((lev.flags | 0) & WM_MASK) {
                     case 0:
-                        idx = seenv ? 2 /* S_hwall */ : 0 /* S_stone */;
+                        idx = seenv ? S.hwall : S.stone;
                         break;
                     case 1:
-                        idx = (seenv & 248) >>> 0 ? 2 /* S_hwall */ : 0 /* S_stone */;
+                        idx = (seenv & (SV3 | SV4 | SV5 | SV6 | SV7)) >>> 0 ? S.hwall : S.stone;
                         break;
                     case 2:
-                        idx = (seenv & 143) >>> 0 ? 2 /* S_hwall */ : 0 /* S_stone */;
+                        idx = (seenv & (SV0 | SV1 | SV2 | SV3 | SV7)) >>> 0 ? S.hwall : S.stone;
                         break;
                     default:
-                        await impossible($c.lit("wall_angle: unknown hwall mode %d"), (lev.flags | 0) & 7);
-                        idx = 0 /* S_stone */;
+                        await impossible($c.lit("wall_angle: unknown hwall mode %d"), (lev.flags | 0) & WM_MASK);
+                        idx = S.stone;
                         break;
                 }
                 break;
-            case 3 /* TLCORNER */:
-                switch ((lev.flags | 0) & 7) {
+            case TLCORNER:
+                switch ((lev.flags | 0) & WM_MASK) {
                     case 0:
-                        idx = 3 /* S_tlcorn */;
+                        idx = S.tlcorn;
                         break;
-                    case 1:
-                        idx = (seenv & 56) >>> 0 ? 3 /* S_tlcorn */ : 0 /* S_stone */;
+                    case WM.C_OUTER:
+                        idx = (seenv & (SV3 | SV4 | SV5)) >>> 0 ? S.tlcorn : S.stone;
                         break;
-                    case 2:
-                        idx = (seenv & 4294967279) >>> 0 ? 3 /* S_tlcorn */ : 0 /* S_stone */;
+                    case WM.C_INNER:
+                        idx = (seenv & 4294967279) >>> 0 ? S.tlcorn : S.stone;
                         break;
                     default:
-                        await impossible($c.lit("wall_angle: unknown %s mode %d"), $c.lit("tlcorn"), (lev.flags | 0) & 7);
-                        idx = 0 /* S_stone */;
+                        await impossible($c.lit("wall_angle: unknown %s mode %d"), $c.lit("tlcorn"), (lev.flags | 0) & WM_MASK);
+                        idx = S.stone;
                         break;
                 }
                 break;
-            case 4 /* TRCORNER */:
-                switch ((lev.flags | 0) & 7) {
+            case TRCORNER:
+                switch ((lev.flags | 0) & WM_MASK) {
                     case 0:
-                        idx = 4 /* S_trcorn */;
+                        idx = S.trcorn;
                         break;
-                    case 1:
-                        idx = (seenv & 224) >>> 0 ? 4 /* S_trcorn */ : 0 /* S_stone */;
+                    case WM.C_OUTER:
+                        idx = (seenv & (SV5 | SV6 | SV7)) >>> 0 ? S.trcorn : S.stone;
                         break;
-                    case 2:
-                        idx = (seenv & 4294967231) >>> 0 ? 4 /* S_trcorn */ : 0 /* S_stone */;
+                    case WM.C_INNER:
+                        idx = (seenv & 4294967231) >>> 0 ? S.trcorn : S.stone;
                         break;
                     default:
-                        await impossible($c.lit("wall_angle: unknown %s mode %d"), $c.lit("trcorn"), (lev.flags | 0) & 7);
-                        idx = 0 /* S_stone */;
+                        await impossible($c.lit("wall_angle: unknown %s mode %d"), $c.lit("trcorn"), (lev.flags | 0) & WM_MASK);
+                        idx = S.stone;
                         break;
                 }
                 break;
-            case 5 /* BLCORNER */:
-                switch ((lev.flags | 0) & 7) {
+            case BLCORNER:
+                switch ((lev.flags | 0) & WM_MASK) {
                     case 0:
-                        idx = 5 /* S_blcorn */;
+                        idx = S.blcorn;
                         break;
-                    case 1:
-                        idx = (seenv & 14) >>> 0 ? 5 /* S_blcorn */ : 0 /* S_stone */;
+                    case WM.C_OUTER:
+                        idx = (seenv & (SV1 | SV2 | SV3)) >>> 0 ? S.blcorn : S.stone;
                         break;
-                    case 2:
-                        idx = (seenv & 4294967291) >>> 0 ? 5 /* S_blcorn */ : 0 /* S_stone */;
+                    case WM.C_INNER:
+                        idx = (seenv & 4294967291) >>> 0 ? S.blcorn : S.stone;
                         break;
                     default:
-                        await impossible($c.lit("wall_angle: unknown %s mode %d"), $c.lit("blcorn"), (lev.flags | 0) & 7);
-                        idx = 0 /* S_stone */;
+                        await impossible($c.lit("wall_angle: unknown %s mode %d"), $c.lit("blcorn"), (lev.flags | 0) & WM_MASK);
+                        idx = S.stone;
                         break;
                 }
                 break;
-            case 6 /* BRCORNER */:
-                switch ((lev.flags | 0) & 7) {
+            case BRCORNER:
+                switch ((lev.flags | 0) & WM_MASK) {
                     case 0:
-                        idx = 6 /* S_brcorn */;
+                        idx = S.brcorn;
                         break;
-                    case 1:
-                        idx = (seenv & 131) >>> 0 ? 6 /* S_brcorn */ : 0 /* S_stone */;
+                    case WM.C_OUTER:
+                        idx = (seenv & (SV7 | SV0 | SV1)) >>> 0 ? S.brcorn : S.stone;
                         break;
-                    case 2:
-                        idx = (seenv & 4294967294) >>> 0 ? 6 /* S_brcorn */ : 0 /* S_stone */;
+                    case WM.C_INNER:
+                        idx = (seenv & 4294967294) >>> 0 ? S.brcorn : S.stone;
                         break;
                     default:
-                        await impossible($c.lit("wall_angle: unknown %s mode %d"), $c.lit("brcorn"), (lev.flags | 0) & 7);
-                        idx = 0 /* S_stone */;
+                        await impossible($c.lit("wall_angle: unknown %s mode %d"), $c.lit("brcorn"), (lev.flags | 0) & WM_MASK);
+                        idx = S.stone;
                         break;
                 }
                 break;
-            case 7 /* CROSSWALL */:
+            case CROSSWALL:
                 S2: for (;;) {
-                    switch ($goto !== null ? $goto : (lev.flags | 0) & 7) {
+                    switch ($goto !== null ? $goto : (lev.flags | 0) & WM_MASK) {
                         case 0:
-                            if (seenv === 1) {
-                                idx = 6 /* S_brcorn */;
-                            } else if (seenv === 4) {
-                                idx = 5 /* S_blcorn */;
-                            } else if (seenv === 16) {
-                                idx = 3 /* S_tlcorn */;
-                            } else if (seenv === 64) {
-                                idx = 4 /* S_trcorn */;
-                            } else if (!((seenv & 4294967288) >>> 0) && ((seenv & 2) >>> 0 || seenv === 5)) {
-                                idx = 8 /* S_tuwall */;
-                            } else if (!((seenv & 4294967267) >>> 0) && ((seenv & 8) >>> 0 || seenv === 20)) {
-                                idx = 11 /* S_trwall */;
-                            } else if (!((seenv & 4294967183) >>> 0) && ((seenv & 32) >>> 0 || seenv === 80)) {
-                                idx = 9 /* S_tdwall */;
-                            } else if (!((seenv & 4294967102) >>> 0) && ((seenv & 128) >>> 0 || seenv === 65)) {
-                                idx = 10 /* S_tlwall */;
+                            if (seenv === SV0) {
+                                idx = S.brcorn;
+                            } else if (seenv === SV2) {
+                                idx = S.blcorn;
+                            } else if (seenv === SV4) {
+                                idx = S.tlcorn;
+                            } else if (seenv === SV6) {
+                                idx = S.trcorn;
+                            } else if (!((seenv & 4294967288) >>> 0) && ((seenv & SV1) >>> 0 || seenv === (SV0 | SV2))) {
+                                idx = S.tuwall;
+                            } else if (!((seenv & 4294967267) >>> 0) && ((seenv & SV3) >>> 0 || seenv === (SV2 | SV4))) {
+                                idx = S.trwall;
+                            } else if (!((seenv & 4294967183) >>> 0) && ((seenv & SV5) >>> 0 || seenv === (SV4 | SV6))) {
+                                idx = S.tdwall;
+                            } else if (!((seenv & 4294967102) >>> 0) && ((seenv & SV7) >>> 0 || seenv === (SV0 | SV6))) {
+                                idx = S.tlwall;
                             } else {
-                                idx = 7 /* S_crwall */;
+                                idx = S.crwall;
                             }
                             break;
-                        case 1:
-                            row = new $c.Ptr(cross_matrix[1], 0);
+                        case WM.X_TL:
+                            row = new $c.Ptr(cross_matrix[C_tl], 0);
                             seenv = ((seenv >>> 4 | seenv << 4 >>> 0) >>> 0 & 255) >>> 0;
                             $goto = "do_crwall"; continue S2;
-                        case 2:
-                            row = new $c.Ptr(cross_matrix[2], 0);
+                        case WM.X_TR:
+                            row = new $c.Ptr(cross_matrix[C_tr], 0);
                             seenv = ((seenv >>> 6 | seenv << 2 >>> 0) >>> 0 & 255) >>> 0;
                             $goto = "do_crwall"; continue S2;
-                        case 3:
-                            row = new $c.Ptr(cross_matrix[0], 0);
+                        case WM.X_BL:
+                            row = new $c.Ptr(cross_matrix[C_bl], 0);
                             seenv = ((seenv >>> 2 | seenv << 6 >>> 0) >>> 0 & 255) >>> 0;
                             $goto = "do_crwall"; continue S2;
-                        case 4:
-                            row = new $c.Ptr(cross_matrix[3], 0);
+                        case WM.X_BR:
+                            row = new $c.Ptr(cross_matrix[C_br], 0);
                         case "do_crwall":
                             $goto = null;   // do_crwall:
-                            if (seenv === 16) {
-                                idx = 0 /* S_stone */;
+                            if (seenv === SV4) {
+                                idx = S.stone;
                             } else {
                                 seenv = (seenv & 4294967279) >>> 0;
-                                if (seenv === 1) {
-                                    col = 1;
-                                } else if ((seenv & 12) >>> 0) {
-                                    if ((seenv & 224) >>> 0) {
-                                        col = 5;
-                                    } else if ((seenv & 3) >>> 0) {
-                                        col = 4;
+                                if (seenv === SV0) {
+                                    col = C_brcorn;
+                                } else if ((seenv & (SV2 | SV3)) >>> 0) {
+                                    if ((seenv & (SV5 | SV6 | SV7)) >>> 0) {
+                                        col = C_crwall;
+                                    } else if ((seenv & (SV0 | SV1)) >>> 0) {
+                                        col = C_tuwall;
                                     } else {
-                                        col = 2;
+                                        col = C_blcorn;
                                     }
-                                } else if ((seenv & 96) >>> 0) {
-                                    if ((seenv & 14) >>> 0) {
-                                        col = 5;
-                                    } else if ((seenv & 129) >>> 0) {
-                                        col = 3;
+                                } else if ((seenv & (SV5 | SV6)) >>> 0) {
+                                    if ((seenv & (SV1 | SV2 | SV3)) >>> 0) {
+                                        col = C_crwall;
+                                    } else if ((seenv & (SV0 | SV7)) >>> 0) {
+                                        col = C_tlwall;
                                     } else {
-                                        col = 0;
+                                        col = C_trcorn;
                                     }
-                                } else if ((seenv & 2) >>> 0) {
-                                    col = (seenv & 128) >>> 0 ? 5 : 4;
-                                } else if ((seenv & 128) >>> 0) {
-                                    col = (seenv & 2) >>> 0 ? 5 : 3;
+                                } else if ((seenv & SV1) >>> 0) {
+                                    col = (seenv & SV7) >>> 0 ? C_crwall : C_tuwall;
+                                } else if ((seenv & SV7) >>> 0) {
+                                    col = (seenv & SV1) >>> 0 ? C_crwall : C_tlwall;
                                 } else {
                                     await impossible($c.lit("wall_angle: bottom of crwall check"));
-                                    col = 5;
+                                    col = C_crwall;
                                 }
                                 idx = row.get(col);
                             }
                             break;
-                        case 5:
-                            if ((seenv & 14) >>> 0 && !((seenv & 4294967281) >>> 0)) {
-                                idx = 5 /* S_blcorn */;
-                            } else if ((seenv & 224) >>> 0 && !((seenv & 4294967071) >>> 0)) {
-                                idx = 4 /* S_trcorn */;
-                            } else if ((seenv & 17) >>> 0 && !((seenv & 4294967278) >>> 0)) {
-                                idx = 0 /* S_stone */;
+                        case WM.X_TLBR:
+                            if ((seenv & (SV1 | SV2 | SV3)) >>> 0 && !((seenv & 4294967281) >>> 0)) {
+                                idx = S.blcorn;
+                            } else if ((seenv & (SV5 | SV6 | SV7)) >>> 0 && !((seenv & 4294967071) >>> 0)) {
+                                idx = S.trcorn;
+                            } else if ((seenv & (SV0 | SV4)) >>> 0 && !((seenv & 4294967278) >>> 0)) {
+                                idx = S.stone;
                             } else {
-                                idx = 7 /* S_crwall */;
+                                idx = S.crwall;
                             }
                             break;
-                        case 6:
-                            if ((seenv & 131) >>> 0 && !((seenv & 4294967164) >>> 0)) {
-                                idx = 6 /* S_brcorn */;
-                            } else if ((seenv & 56) >>> 0 && !((seenv & 4294967239) >>> 0)) {
-                                idx = 3 /* S_tlcorn */;
-                            } else if ((seenv & 68) >>> 0 && !((seenv & 4294967227) >>> 0)) {
-                                idx = 0 /* S_stone */;
+                        case WM.X_BLTR:
+                            if ((seenv & (SV0 | SV1 | SV7)) >>> 0 && !((seenv & 4294967164) >>> 0)) {
+                                idx = S.brcorn;
+                            } else if ((seenv & (SV3 | SV4 | SV5)) >>> 0 && !((seenv & 4294967239) >>> 0)) {
+                                idx = S.tlcorn;
+                            } else if ((seenv & (SV2 | SV6)) >>> 0 && !((seenv & 4294967227) >>> 0)) {
+                                idx = S.stone;
                             } else {
-                                idx = 7 /* S_crwall */;
+                                idx = S.crwall;
                             }
                             break;
                         default:
                             await impossible($c.lit("wall_angle: unknown crosswall mode"));
-                            idx = 0 /* S_stone */;
+                            idx = S.stone;
                             break;
                     }
                     break;
@@ -2300,36 +2356,39 @@ async function wall_angle(lev) {   // display.c:3513
                 break;
             default:
                 await impossible($c.lit("wall_angle: unexpected wall type %d"), lev.typ);
-                idx = 0 /* S_stone */;
+                idx = S.stone;
         }
         break;
     }
     return idx;
 }
 export function fn_cmap_to_glyph(cmap) {   // display.c:3797
-    return cmap === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : cmap <= 11 /* S_trwall */ ? (cmap - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : cmap < 33 /* S_altar */ ? (cmap - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : cmap === 33 /* S_altar */ ? 4008 : cmap < 74 ? (cmap - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : cmap <= 87 /* S_goodpos */ ? (cmap - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+    return cmap === S.stone ? GLYPH.CMAP_STONE_OFF : cmap <= S.trwall ? (cmap - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : cmap < S.altar ? (cmap - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : cmap === S.altar ? 4008 : cmap < S.arrow_trap + MAXTCHARS ? (cmap - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : cmap <= S.goodpos ? (cmap - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
+}
+function _suppress_map_output() {
+    return gi.in_mklev || program_state.saving || program_state.restoring || program_state.done_hup ? 1 : 0;
 }
 
 export function $init() {
     tgfirst.$copyFrom(new $T.tmp_glyph());
     no_ginfo.$copyFrom(new $T.glyphinfo());
-    no_ginfo.glyph = 9624 /* MAX_GLYPH */;
+    no_ginfo.glyph = NO_GLYPH;
     no_ginfo.ttychar = 32;
-    no_ginfo.framecolor = 8;
-    no_ginfo.gm.glyphflags = 16384;
-    no_ginfo.gm.sym.color = 8;
+    no_ginfo.framecolor = NO_COLOR;
+    no_ginfo.gm.glyphflags = MG.BADXY;
+    no_ginfo.gm.sym.color = NO_COLOR;
     no_ginfo.gm.sym.symidx = 0;
     no_ginfo.gm.customcolor = 0;
     no_ginfo.gm.color256idx = 0;
     no_ginfo.gm.tileidx = 0;
     no_ginfo.gm.u = null;
     nul_glyphinfo.$copyFrom(new $T.glyphinfo());
-    nul_glyphinfo.glyph = 9624 /* MAX_GLYPH */;
+    nul_glyphinfo.glyph = NO_GLYPH;
     nul_glyphinfo.ttychar = 32;
-    nul_glyphinfo.framecolor = 8;
-    nul_glyphinfo.gm.glyphflags = 2048;
-    nul_glyphinfo.gm.sym.color = 8;
-    nul_glyphinfo.gm.sym.symidx = 191;
+    nul_glyphinfo.framecolor = NO_COLOR;
+    nul_glyphinfo.gm.glyphflags = MG.UNEXPL;
+    nul_glyphinfo.gm.sym.color = NO_COLOR;
+    nul_glyphinfo.gm.sym.symidx = SYM.UNEXPLORED + SYM_OFF_X;
     nul_glyphinfo.gm.customcolor = 0;
     nul_glyphinfo.gm.color256idx = 0;
     nul_glyphinfo.gm.tileidx = 0;
@@ -2337,116 +2396,87 @@ export function $init() {
     for (let $i0 = 0; $i0 < 9624; $i0++) {
         glyphmap[$i0].$copyFrom(new $T.glyph_map_entry());
     }
-    glyphmap[0].glyphflags = 0;
-    glyphmap[0].sym.color = 8;
-    glyphmap[0].sym.symidx = 0;
-    glyphmap[0].customcolor = 0;
-    glyphmap[0].color256idx = 0;
-    glyphmap[0].tileidx = 0;
-    glyphmap[0].u = null;
+    $c.init(glyphmap, [
+        { glyphflags: 0, sym: { color: NO_COLOR, symidx: 0 },
+          customcolor: 0,
+          color256idx: 0, tileidx: 0,
+          u: null }
+    ]);
     nul_gbuf.$copyFrom(new $T.gbuf_entry());
     nul_gbuf.gnew = 0;
-    nul_gbuf.glyphinfo.glyph = 9622 /* GLYPH_UNEXPLORED_OFF */;
+    nul_gbuf.glyphinfo.glyph = GLYPH_UNEXPLORED;
     nul_gbuf.glyphinfo.ttychar = 32;
-    nul_gbuf.glyphinfo.framecolor = 8;
-    nul_gbuf.glyphinfo.gm.glyphflags = 2048;
-    nul_gbuf.glyphinfo.gm.sym.color = 8;
+    nul_gbuf.glyphinfo.framecolor = NO_COLOR;
+    nul_gbuf.glyphinfo.gm.glyphflags = MG.UNEXPL;
+    nul_gbuf.glyphinfo.gm.sym.color = NO_COLOR;
     nul_gbuf.glyphinfo.gm.sym.symidx = 0;
     nul_gbuf.glyphinfo.gm.customcolor = 0;
     nul_gbuf.glyphinfo.gm.color256idx = 0;
     nul_gbuf.glyphinfo.gm.tileidx = 0;
     nul_gbuf.glyphinfo.gm.u = null;
     zapcolors.fill(0);
-    zapcolors[0] = 12 /* zap_color_missile */;
-    zapcolors[1] = 9 /* zap_color_fire */;
-    zapcolors[2] = 15 /* zap_color_frost */;
-    zapcolors[3] = 12 /* zap_color_sleep */;
-    zapcolors[4] = 0 /* zap_color_death */;
-    zapcolors[5] = 15 /* zap_color_lightning */;
-    zapcolors[6] = 2 /* zap_color_poison_gas */;
-    zapcolors[7] = 11 /* zap_color_acid */;
+    $c.init(zapcolors, [
+        zap_color_missile,
+        zap_color_fire,
+        zap_color_frost,
+        zap_color_sleep,
+        zap_color_death,
+        zap_color_lightning,
+        zap_color_poison_gas,
+        zap_color_acid
+    ]);
     altarcolors.fill(0);
-    altarcolors[0] = 1 /* altar_color_unaligned */;
-    altarcolors[1] = 7 /* altar_color_chaotic */;
-    altarcolors[2] = 7 /* altar_color_neutral */;
-    altarcolors[3] = 7 /* altar_color_lawful */;
-    altarcolors[4] = 13 /* altar_color_other */;
+    $c.init(altarcolors, [
+        altar_color_unaligned,
+        altar_color_chaotic,
+        altar_color_neutral,
+        altar_color_lawful,
+        altar_color_other
+    ]);
     explodecolors.fill(0);
-    explodecolors[0] = 0 /* explode_color_dark */;
-    explodecolors[1] = 2 /* explode_color_noxious */;
-    explodecolors[2] = 3 /* explode_color_muddy */;
-    explodecolors[3] = 4 /* explode_color_wet */;
-    explodecolors[4] = 5 /* explode_color_magical */;
-    explodecolors[5] = 9 /* explode_color_fiery */;
-    explodecolors[6] = 15 /* explode_color_frosty */;
+    $c.init(explodecolors, [
+        explode_color_dark,
+        explode_color_noxious,
+        explode_color_muddy,
+        explode_color_wet,
+        explode_color_magical,
+        explode_color_fiery,
+        explode_color_frosty
+    ]);
     wallcolors.fill(0);
-    wallcolors[0] = 7;
-    wallcolors[1] = 7;
-    wallcolors[2] = 7;
-    wallcolors[3] = 7;
-    wallcolors[4] = 7;
+    $c.init(wallcolors, [
+        CLR.GRAY,
+        CLR.GRAY,
+        CLR.GRAY,
+        CLR.GRAY,
+        CLR.GRAY
+    ]);
     for (let $i0 = 0; $i0 < 3; $i0++) {
         seenv_matrix[$i0].fill(0);
     }
-    seenv_matrix[0][0] = 4;
-    seenv_matrix[0][1] = 2;
-    seenv_matrix[0][2] = 1;
-    seenv_matrix[1][0] = 8;
-    seenv_matrix[1][1] = 255;
-    seenv_matrix[1][2] = 128;
-    seenv_matrix[2][0] = 16;
-    seenv_matrix[2][1] = 32;
-    seenv_matrix[2][2] = 64;
+    $c.init(seenv_matrix, [
+        [4, 2, 1],
+        [8, 255, 128],
+        [16, 32, 64]
+    ]);
     for (let $i0 = 0; $i0 < 4; $i0++) {
         wall_matrix[$i0].fill(0);
     }
-    wall_matrix[0][0] = 0 /* S_stone */;
-    wall_matrix[0][1] = 3 /* S_tlcorn */;
-    wall_matrix[0][2] = 4 /* S_trcorn */;
-    wall_matrix[0][3] = 2 /* S_hwall */;
-    wall_matrix[0][4] = 9 /* S_tdwall */;
-    wall_matrix[1][0] = 0 /* S_stone */;
-    wall_matrix[1][1] = 4 /* S_trcorn */;
-    wall_matrix[1][2] = 6 /* S_brcorn */;
-    wall_matrix[1][3] = 1 /* S_vwall */;
-    wall_matrix[1][4] = 10 /* S_tlwall */;
-    wall_matrix[2][0] = 0 /* S_stone */;
-    wall_matrix[2][1] = 6 /* S_brcorn */;
-    wall_matrix[2][2] = 5 /* S_blcorn */;
-    wall_matrix[2][3] = 2 /* S_hwall */;
-    wall_matrix[2][4] = 8 /* S_tuwall */;
-    wall_matrix[3][0] = 0 /* S_stone */;
-    wall_matrix[3][1] = 5 /* S_blcorn */;
-    wall_matrix[3][2] = 3 /* S_tlcorn */;
-    wall_matrix[3][3] = 1 /* S_vwall */;
-    wall_matrix[3][4] = 11 /* S_trwall */;
+    $c.init(wall_matrix, [
+        [S.stone, S.tlcorn, S.trcorn, S.hwall, S.tdwall],
+        [S.stone, S.trcorn, S.brcorn, S.vwall, S.tlwall],
+        [S.stone, S.brcorn, S.blcorn, S.hwall, S.tuwall],
+        [S.stone, S.blcorn, S.tlcorn, S.vwall, S.trwall]
+    ]);
     for (let $i0 = 0; $i0 < 4; $i0++) {
         cross_matrix[$i0].fill(0);
     }
-    cross_matrix[0][0] = 6 /* S_brcorn */;
-    cross_matrix[0][1] = 5 /* S_blcorn */;
-    cross_matrix[0][2] = 3 /* S_tlcorn */;
-    cross_matrix[0][3] = 8 /* S_tuwall */;
-    cross_matrix[0][4] = 11 /* S_trwall */;
-    cross_matrix[0][5] = 7 /* S_crwall */;
-    cross_matrix[1][0] = 5 /* S_blcorn */;
-    cross_matrix[1][1] = 3 /* S_tlcorn */;
-    cross_matrix[1][2] = 4 /* S_trcorn */;
-    cross_matrix[1][3] = 11 /* S_trwall */;
-    cross_matrix[1][4] = 9 /* S_tdwall */;
-    cross_matrix[1][5] = 7 /* S_crwall */;
-    cross_matrix[2][0] = 3 /* S_tlcorn */;
-    cross_matrix[2][1] = 4 /* S_trcorn */;
-    cross_matrix[2][2] = 6 /* S_brcorn */;
-    cross_matrix[2][3] = 9 /* S_tdwall */;
-    cross_matrix[2][4] = 10 /* S_tlwall */;
-    cross_matrix[2][5] = 7 /* S_crwall */;
-    cross_matrix[3][0] = 4 /* S_trcorn */;
-    cross_matrix[3][1] = 6 /* S_brcorn */;
-    cross_matrix[3][2] = 5 /* S_blcorn */;
-    cross_matrix[3][3] = 10 /* S_tlwall */;
-    cross_matrix[3][4] = 8 /* S_tuwall */;
-    cross_matrix[3][5] = 7 /* S_crwall */;
+    $c.init(cross_matrix, [
+        [S.brcorn, S.blcorn, S.tlcorn, S.tuwall, S.trwall, S.crwall],
+        [S.blcorn, S.tlcorn, S.trcorn, S.trwall, S.tdwall, S.crwall],
+        [S.tlcorn, S.trcorn, S.brcorn, S.tdwall, S.tlwall, S.crwall],
+        [S.trcorn, S.brcorn, S.blcorn, S.tlwall, S.tuwall, S.crwall]
+    ]);
     tmp_at$tglyph = null;
     swallowed$lastx = 0;
     swallowed$lasty = 0;

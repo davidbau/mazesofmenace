@@ -14,7 +14,12 @@ import {
     GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, Has_contents, ONAME, has_oname,
     P_DAGGER, P_SABER, P_BOW, P_CROSSBOW, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN,
     IS_WALL, IS_DOOR, IS_ROOM, SDOOR, STAIRS, LADDER, CORR,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, CLOUD, IS_AIR, Is_waterlevel, Is_earthlevel,
 } from './const.js';
+import { db_under_typ, stairway_at } from './display.js';
+import { is_pool, is_lava } from './makemon.js';
+import { is_ice } from './dig.js';
+import { hliquid } from './potion.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
@@ -22,8 +27,8 @@ import {
 } from './wintty.js';
 import { xname, makeplural, makesingular, fruit_from_name, an,
          armor_simple_name } from './objnam.js';
-import { data_base_keys } from './data_base_keys.js';
-import { is_weptool, Is_container } from './mkobj.js';
+import { data_base } from './data_base.js';
+import { is_weptool, Is_container, is_flammable } from './mkobj.js';
 import * as M from './monsters.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
 import { artiname } from './artifact.js';
@@ -124,43 +129,89 @@ function body_part_hand() {
     return "hand"; /* humanoid_parts[HAND] */
 }
 
-/* C ref: eat.c is_edible() -- for an unpolymorphed hero */
+/* C ref: mondata.h metallivorous(), noncorporeal(), vegan() */
+function ia_metallivorous(ptr) { return (ptr.mflags1 & M.M1_METALLIVORE) !== 0; }
+function ia_vegan(ptr) {
+    return (ptr.mlet === M.S_BLOB || ptr.mlet === M.S_JELLY
+            || ptr.mlet === M.S_FUNGUS || ptr.mlet === M.S_VORTEX
+            || ptr.mlet === M.S_LIGHT
+            || (ptr.mlet === M.S_ELEMENTAL && ptr !== M.mons[M.PM_STALKER])
+            || (ptr.mlet === M.S_GOLEM && ptr !== M.mons[M.PM_FLESH_GOLEM]
+                && ptr !== M.mons[M.PM_LEATHER_GOLEM])
+            || ptr.mlet === M.S_GHOST /* noncorporeal() */);
+}
+
+// C ref: eat.c is_edible()
 export function is_edible(obj) {
+    /* protect invocation tools but not Rider corpses (handled elsewhere)*/
+    /* if (obj->oclass != FOOD_CLASS && obj_resists(obj, 0, 0)) */
     if (objects[obj.otyp].oc_unique)
         return false;
-    /* fire elemental, metallivore, gelatinous cube and lithivore forms */
-    if (game.u.mtimedone) /* Upolyd */
-        ia_not_ported('is_edible() for a polymorphed hero');
+    /* above also prevents the Amulet from being eaten, so we must never
+       allow fake amulets to be eaten either [which is already the case] */
+
+    const ydata = hero_data();
+    if (ydata === M.mons[M.PM_FIRE_ELEMENTAL] && is_flammable(obj))
+        return true;
+
+    if (ia_metallivorous(ydata) && O.is_metallic(obj)
+        && (ydata !== M.mons[M.PM_RUST_MONSTER] || O.is_rustprone(obj)))
+        return true;
+
+    /* Ghouls only eat non-veggy corpses or eggs (see dogfood()) */
+    if (game.u.umonnum === M.PM_GHOUL)
+        return ((obj.otyp === O.CORPSE && !ia_vegan(M.mons[obj.corpsenm]))
+                || obj.otyp === O.EGG);
+
+    if (game.u.umonnum === M.PM_GELATINOUS_CUBE && O.is_organic(obj)
+        /* [g-cubes can eat containers and retain all contents
+            as engulfed items, but poly'd player can't do that] */
+        && !Has_contents(obj))
+        return true;
+
     return obj.oclass === O.FOOD_CLASS;
 }
 
-/* C ref: dungeon.c surface() -- the hero's spot on ordinary terrain */
+// C ref: dungeon.c surface()
 export function surface(x, y) {
+    const u = game.u;
     const lev = game.level.at(x, y);
-    const levtyp = lev.typ;
+    /* SURFACE_AT(x, y) */
+    const levtyp = (lev.typ === DRAWBRIDGE_UP) ? db_under_typ(lev.drawbridgemask)
+                                               : lev.typ;
 
-    if (game.u.uswallow)
-        ia_not_ported('surface() while swallowed');
-    if (IS_ALTAR(levtyp))
+    if (u.ux === x && u.uy === y && u.uswallow
+        && (u.ustuck.data.mflags1 & M.M1_ANIMAL)) /* is_animal() */
+        /* 'husk' is iffy but maw is wrong for 't' class */
+        ia_not_ported('surface() inside an engulfer (digests()/enfolds())');
+    else if (IS_AIR(levtyp))
+        return Is_waterlevel(u.uz) ? "air bubble"
+                                   : (levtyp === CLOUD) ? "cloud" : "air";
+    else if (is_pool(x, y))
+        return (u.uinwater /* Underwater */ && !Is_waterlevel(u.uz))
+            ? "bottom" : hliquid("water");
+    else if (is_ice(x, y))
+        return "ice";
+    else if (is_lava(x, y))
+        return hliquid("lava");
+    else if (lev.typ === DRAWBRIDGE_DOWN)
+        return "bridge";
+    else if (IS_ALTAR(levtyp))
         return "altar";
     else if (IS_GRAVE(levtyp))
         return "headstone";
     else if (IS_FOUNTAIN(levtyp))
         return "fountain";
-    else if (levtyp === STAIRS || levtyp === LADDER) /* On_stairs() */
+    else if (stairway_at(x, y)) /* On_stairs() */
         return "stairs";
     else if (IS_WALL(levtyp) || levtyp === SDOOR)
-        return "wall";
+        return "wall"; /* 'surface' during Passes_walls */
     else if (IS_DOOR(levtyp))
-        return "doorway";
-    else if (IS_ROOM(levtyp) || levtyp === CORR) {
-        /* pools, ice, lava, air and drawbridges are not ported */
-        if (!IS_ROOM(levtyp))
-            return "ground";
-        return "floor"; /* !Is_earthlevel(&u.uz) */
-    }
-    ia_not_ported('surface() for water/ice/lava/air/drawbridge');
-    return "";
+        return "doorway"; /* even for closed door */
+    else if (IS_ROOM(levtyp) && !Is_earthlevel(u.uz))
+        return "floor";
+    else
+        return "ground";
 }
 
 /* C ref: do_name.c objtyp_is_callable() */
@@ -529,7 +580,7 @@ function pmatch(patrn, strng) {
 
 // C ref: pager.c checkfile() -- the chkfilIaCheck | chkfilDontAsk case:
 // is there a data.base entry for 'inp'?  (The entry names come from
-// data_base_keys.js; the entry text is not needed for this check.)
+// data_base.js; the entry text is not needed for this check.)
 function checkfile_iacheck(inp) {
     let dbase_str = inp.toLowerCase();
     let ep, ap, alt = null;
@@ -594,7 +645,7 @@ function checkfile_iacheck(inp) {
 
     for (let pass = (alt === dbase_str) ? 0 : 1; pass >= 0; --pass) {
         const target = pass ? alt : dbase_str;
-        for (const entry of data_base_keys) {
+        for (const { keys: entry } of data_base) {
             for (const key of entry) {
                 const chk_skip = (key[0] === '~') ? 1 : 0;
                 if (pmatch(key.slice(chk_skip), target)) {

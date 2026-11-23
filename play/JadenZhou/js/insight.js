@@ -64,7 +64,7 @@ import {
     RIN_PROTECTION, AMULET_OF_GUARDING, ROBE, is_metallic,
 } from './objects.js';
 import * as M from './monsters.js';
-import { rank_of } from './botl.js';
+import { rank_of, rank_to_xlev } from './botl.js';
 import { an, makeplural, makesingular } from './objnam.js';
 import { strstri, highc, lowc, mungspaces } from './hacklib.js';
 import { align_gname, u_gname, can_pray } from './pray.js';
@@ -76,6 +76,13 @@ import { find_ac, money_cnt } from './u_init.js';
 import { near_capacity, inv_weight, in_rooms } from './hack.js';
 import { SHOPBASE, NO_ROOM, ROOMOFFSET } from './const.js';
 import { ACH_RNK1, ACH_RNK8, ACH_SOKO, N_ACH } from './const.js';
+import {
+    ACH_BELL, ACH_HELL, ACH_CNDL, ACH_BOOK, ACH_INVK, ACH_AMUL, ACH_ENDG,
+    ACH_ASTR, ACH_UWIN, ACH_MINE_PRIZE, ACH_SOKO_PRIZE, ACH_MEDU, ACH_BLND,
+    ACH_NUDE, ACH_MINE, ACH_TOWN, ACH_SHOP, ACH_TMPL, ACH_ORCL, ACH_NOVL,
+    ACH_BGRM, ACH_RNK2, ACH_RNK3, ACH_RNK4, ACH_RNK5, ACH_RNK6, ACH_RNK7,
+    ACH_TUNE,
+} from './const.js';
 import { ACURR, ABASE, AMAX, ATTRMAX, from_what } from './attrib.js';
 import { P_SKILL, P_MAX_SKILL, P_ADVANCE, P_RESTRICTED, weapon_type,
          practice_needed_to_advance } from './weapon.js';
@@ -89,7 +96,9 @@ import { stone_luck } from './attrib.js';
 import { carrying } from './invent.js';
 import { u_adtyp_resistance_obj, item_what } from './zap.js';
 import { shield_simple_name } from './iactions.js';
-import { pline } from './display.js';
+import { pline, livelog_printf } from './display.js';
+import { NHW_TEXT, LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
+         LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER, LL_MINORAC } from './const.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { find_mac } from './worn.js';
 import { x_monnam, ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE } from './do_name.js';
@@ -615,6 +624,54 @@ export function can_advance(skill, speedy) {
 
 // ---------------------------------------------------------------------------
 // enlightenment output
+
+/* C ref: insight.c achieve_msg[] -- for livelogging; ordered per
+   'enum achievements' in you.h */
+const achieve_msg = [
+    { llflag: 0, msg: "" }, /* actual achievements are numbered from 1 */
+    { llflag: LL_ACHIEVE, msg: "acquired the Bell of Opening" },
+    { llflag: LL_ACHIEVE, msg: "entered Gehennom" },
+    { llflag: LL_ACHIEVE, msg: "acquired the Candelabrum of Invocation" },
+    { llflag: LL_ACHIEVE, msg: "acquired the Book of the Dead" },
+    { llflag: LL_ACHIEVE, msg: "performed the invocation" },
+    { llflag: LL_ACHIEVE, msg: "acquired The Amulet of Yendor" },
+    { llflag: LL_ACHIEVE, msg: "entered the Elemental Planes" },
+    { llflag: LL_ACHIEVE, msg: "entered the Astral Plane" },
+    { llflag: LL_ACHIEVE, msg: "ascended" },
+    /* if the type of item isn't discovered yet, disclosing the event
+       via #chronicle would be a spoiler (particularly for gray stone);
+       the ID'd name for the type of item will be appended to the next
+       two messages, for display via livelog and/or dumplog */
+    { llflag: LL_ACHIEVE | LL_SPOILER, msg: "acquired the Mines' End" }, /* " luckstone" */
+    { llflag: LL_ACHIEVE | LL_SPOILER, msg: "acquired the Sokoban" }, /* " <item>" */
+    { llflag: LL_ACHIEVE | LL_UMONST, msg: "killed Medusa" },
+     /* these two are not logged */
+    { llflag: 0, msg: "hero was always blond, no, blind" },
+    { llflag: 0, msg: "hero never wore armor" },
+     /* */
+    { llflag: LL_MINORAC | LL_DUMP, msg: "entered the Gnomish Mines" },
+    { llflag: LL_ACHIEVE, msg: "reached Mine Town" }, /* probably minor, but dnh logs it */
+    { llflag: LL_MINORAC, msg: "entered a shop" },
+    { llflag: LL_MINORAC, msg: "entered a temple" },
+    { llflag: LL_ACHIEVE, msg: "consulted the Oracle" }, /* minor, but rare enough */
+    { llflag: LL_MINORAC | LL_DUMP, msg: "read a Discworld novel" }, /* even more so */
+    { llflag: LL_ACHIEVE, msg: "entered Sokoban" }, /* keep as major for turn comparison
+                                                     * with completed sokoban */
+    { llflag: LL_ACHIEVE, msg: "entered the Bigroom" },
+    /* The following 8 are for advancing through the ranks
+       and messages differ by role so are created on the fly;
+       rank 0 (Xp 1 and 2) isn't an achievement */
+    { llflag: LL_MINORAC | LL_DUMP, msg: "" }, /* Xp 3 */
+    { llflag: LL_MINORAC | LL_DUMP, msg: "" }, /* Xp 6 */
+    { llflag: LL_MINORAC | LL_DUMP, msg: "" }, /* Xp 10 */
+    { llflag: LL_ACHIEVE, msg: "" }, /* Xp 14, so able to attempt the quest */
+    { llflag: LL_ACHIEVE, msg: "" }, /* Xp 18 */
+    { llflag: LL_ACHIEVE, msg: "" }, /* Xp 22 */
+    { llflag: LL_ACHIEVE, msg: "" }, /* Xp 26 */
+    { llflag: LL_ACHIEVE, msg: "" }, /* Xp 30 */
+    { llflag: LL_MINORAC, msg: "learned castle drawbridge's tune" }, /* achievement #31 */
+    { llflag: 0, msg: "" }, /* keep this one at the end */
+];
 
 /* C ref: insight.c You_, are, were, have, had, can, could */
 const You_ = "You ", are = "are ", were = "were ",
@@ -2173,6 +2230,345 @@ export async function doattributes() {
     return 0; /* ECMD_OK */
 }
 
+/* C ref: insight.c have_been, have_never, never */
+const have_been = "have been ", have_never = "have never ";
+
+/* C ref: insight.c you_have_been(), you_have_never(), you_have_X() macros */
+function you_have_been(goodthing) { enl_msg(You_, have_been, were, goodthing, ""); }
+function you_have_never(badthing) {
+    enl_msg(You_, have_never, "never ", badthing, "");
+}
+function you_have_X(something) { enl_msg(You_, have, "", something, ""); }
+
+// C ref: insight.c doconduct() -- #conduct command [KMH]; shares
+// enlightenment's tense handling
+export async function doconduct() {
+    await show_conduct(ENL_GAMEINPROGRESS);
+    return 0; /* ECMD_OK */
+}
+
+// C ref: insight.c show_conduct()
+/* display conducts; for doconduct(), also disclose() and dump_everything() */
+export async function show_conduct(final) {
+    const u = U();
+    let buf;
+    let ngenocided;
+
+    /* 'final' is used by the enl_msg() macros */
+    game.en_final = final;
+    /* Create the conduct window */
+    game.en_win = tty_create_nhwindow(NHW_MENU);
+    tty_putstr_sync(game.en_win, 0, "Voluntary challenges:");
+
+    /* rerolling; "You <this or that>" is about the character, rerolling
+       is about the player so phrase it differently;
+       also, always use past tense since the chance to do something with it
+       is gone by time player can issue #conduct command or see disclosure */
+    if (!u.uroleplay.reroll)
+        buf = " Character rerolling was not enabled.";
+    else if (!u.uroleplay.numrerolls)
+        buf = " Your character was not rerolled.";
+    else
+        buf = ` Your character was rerolled ${N_times(u.uroleplay.numrerolls)}.`;
+    enlght_out(buf);
+
+    if (u.uroleplay.blind)
+        you_have_been("blind from birth");
+    if (u.uroleplay.deaf)
+        you_have_been("deaf from birth");
+    /* note: we don't report "you are without possessions" unless the
+       game started with the pauper option set */
+    if (u.uroleplay.pauper)
+        enl_msg(You_, game.invent ? "started" : "are", "started out",
+                " without possessions", "");
+    /* nudist is far more than a subset of possessionless, and a much
+       more impressive accomplishment, but showing "started out without
+       possessions" before "faithfully nudist" looks more logical */
+    if (u.uroleplay.nudist)
+        you_have_been("faithfully nudist");
+
+    const cnd = u.uconduct;
+    if (!cnd.food)
+        enl_msg(You_, "have gone", "went", " without food", "");
+        /* but beverages are okay */
+    else if (!cnd.unvegan)
+        you_have_X("followed a strict vegan diet");
+    else if (!cnd.unvegetarian)
+        you_have_been("vegetarian");
+
+    if (!cnd.gnostic)
+        you_have_been("an atheist");
+
+    if (!cnd.weaphit) {
+        you_have_never("hit with a wielded weapon");
+    } else if (wizard()) {
+        buf = `hit with a wielded weapon ${cnd.weaphit} time${plur(cnd.weaphit)}`;
+        you_have_X(buf);
+    }
+    if (!cnd.killer)
+        you_have_been("a pacifist");
+
+    if (!cnd.literate) {
+        you_have_been("illiterate");
+    } else if (wizard()) {
+        buf = `read items or engraved ${cnd.literate} time${plur(cnd.literate)}`;
+        you_have_X(buf);
+    }
+
+    if (!cnd.pets)
+        you_have_never("had a pet");
+
+    ngenocided = num_genocides();
+    if (ngenocided === 0) {
+        you_have_never("genocided any monsters");
+    } else {
+        buf = `genocided ${ngenocided} type${plur(ngenocided)} of monster${plur(ngenocided)}`;
+        you_have_X(buf);
+    }
+
+    if (!cnd.polypiles) {
+        you_have_never("polymorphed an object");
+    } else if (wizard()) {
+        buf = `polymorphed ${cnd.polypiles} item${plur(cnd.polypiles)}`;
+        you_have_X(buf);
+    }
+
+    if (!cnd.polyselfs) {
+        you_have_never("changed form");
+    } else if (wizard()) {
+        buf = `changed form ${cnd.polyselfs} time${plur(cnd.polyselfs)}`;
+        you_have_X(buf);
+    }
+
+    if (!cnd.wishes) {
+        you_have_X("used no wishes");
+    } else {
+        buf = `used ${cnd.wishes} wish${(cnd.wishes > 1) ? "es" : ""}`;
+        if (cnd.wisharti) {
+            /* if wisharti == wishes
+             *  1 wish (for an artifact)
+             *  2 wishes (both for artifacts)
+             *  N wishes (all for artifacts)
+             * else (N is at least 2 in order to get here; M < N)
+             *  N wishes (1 for an artifact)
+             *  N wishes (M for artifacts)
+             */
+            if (cnd.wisharti === cnd.wishes)
+                buf += ` (${(cnd.wisharti > 2) ? "all "
+                            : (cnd.wisharti === 2) ? "both " : ""}`;
+            else
+                buf += ` (${cnd.wisharti} `;
+
+            buf += `for ${(cnd.wisharti === 1) ? "an artifact" : "artifacts"})`;
+        }
+        you_have_X(buf);
+
+        if (!cnd.wisharti)
+            enl_msg(You_, "have not wished", "did not wish",
+                    " for any artifacts", "");
+    }
+
+    /* only report Sokoban conduct if the Sokoban branch has been entered */
+    if (sokoban_in_play()) {
+        let presentverb = "have violated", pastverb = "violated";
+
+        if (!cnd.sokocheat) {
+            presentverb = "have not violated";
+            pastverb = "did not violate";
+            buf = " any of the special Sokoban rules";
+        } else {
+            buf = " the special Sokoban rules ";
+            buf += N_times(cnd.sokocheat);
+        }
+        enl_msg(You_, presentverb, pastverb, buf, "");
+    }
+
+    show_achievements(final);
+
+    /* Pop up the window and wait for a key */
+    await tty_display_nhwindow(game.en_win, true);
+    await tty_destroy_nhwindow(game.en_win);
+    game.en_win = WIN_ERR;
+}
+
+// C ref: insight.c show_achievements()
+/* 'final' is used "behind the curtain" by enl_foo() macros; the
+   stand-alone window (awin != en_win: #achievements) isn't ported */
+function show_achievements(final) {
+    const u = U();
+    let i, achidx, absidx, acnt;
+    let title, buf;
+    let awin = WIN_ERR;
+
+    /* unfortunately we can't show the achievements (at least not all of
+       them) while the game is in progress because it would give away the
+       ID of luckstone (at Mine's End) and of real Amulet of Yendor */
+    if (!final && !wizard())
+        return;
+
+    /* first, figure whether any achievements have been accomplished
+       so that we don't show the header for them if the resulting list
+       below it would be empty */
+    if ((acnt = count_achievements()) === 0)
+        return;
+
+    if (game.en_win !== WIN_ERR) {
+        awin = game.en_win; /* end of game disclosure window */
+        tty_putstr_sync(awin, 0, "");
+    } else {
+        throw new Error('show_achievements(): stand-alone window not ported yet');
+    }
+    title = `Achievement${plur(acnt)}:`;
+    tty_putstr_sync(awin, 0, title);
+
+    /* display achievements in the order in which they were recorded;
+       lone exception is to defer the Amulet if we just ascended;
+       it warrants alternate wording when given away during ascension,
+       but the Amulet achievement is always attained before entering
+       endgame and the alternate wording looks strange if shown before
+       "reached endgame" and "reached Astral" */
+    if (remove_achievement(ACH_UWIN)) { /* UWIN == Ascended! */
+        /* for ascension, force it to be last and Amulet next to last
+           by taking them out and then adding them back */
+        if (remove_achievement(ACH_AMUL)) /* should always be True here */
+            record_achievement(ACH_AMUL);
+        record_achievement(ACH_UWIN);
+    }
+    for (i = 0; i < acnt; ++i) {
+        achidx = u.uachieved[i];
+        absidx = Math.abs(achidx);
+
+        switch (absidx) {
+        case ACH_BLND:
+            enl_msg(You_, "are exploring", "explored",
+                    " without being able to see", "");
+            break;
+        case ACH_NUDE:
+            enl_msg(You_, "have gone", "went", " without any armor", "");
+            break;
+        case ACH_MINE:
+            you_have_X("entered the Gnomish Mines");
+            break;
+        case ACH_TOWN:
+            you_have_X("entered Minetown");
+            break;
+        case ACH_SHOP:
+            you_have_X("entered a shop");
+            break;
+        case ACH_TMPL:
+            you_have_X("entered a temple");
+            break;
+        case ACH_ORCL:
+            you_have_X("consulted the Oracle of Delphi");
+            break;
+        case ACH_NOVL:
+            you_have_X("read from a Discworld novel");
+            break;
+        case ACH_SOKO:
+            you_have_X("entered Sokoban");
+            break;
+        case ACH_SOKO_PRIZE: /* hard to reach guaranteed bag or amulet */
+            you_have_X("completed Sokoban");
+            break;
+        case ACH_MINE_PRIZE: /* hidden guaranteed luckstone */
+            you_have_X("completed the Gnomish Mines");
+            break;
+        case ACH_BGRM:
+            you_have_X("entered the Big Room");
+            break;
+        case ACH_MEDU:
+            you_have_X("defeated Medusa");
+            break;
+        case ACH_TUNE:
+            you_have_X(
+                "learned the tune to open and close the Castle's drawbridge");
+            break;
+        case ACH_BELL:
+            /* alternate phrasing for present vs past and also for
+               possessing the item vs once held it */
+            enl_msg(You_,
+                    u.uhave.bell ? "have" : "have handled",
+                    u.uhave.bell ? "had" : "handled",
+                    " the Bell of Opening", "");
+            break;
+        case ACH_HELL:
+            enl_msg(You_, "have ", "", "entered Gehennom", "");
+            break;
+        case ACH_CNDL:
+            enl_msg(You_,
+                    u.uhave.menorah ? "have" : "have handled",
+                    u.uhave.menorah ? "had" : "handled",
+                    " the Candelabrum of Invocation", "");
+            break;
+        case ACH_BOOK:
+            enl_msg(You_,
+                    u.uhave.book ? "have" : "have handled",
+                    u.uhave.book ? "had" : "handled",
+                    " the Book of the Dead", "");
+            break;
+        case ACH_INVK:
+            you_have_X("gained access to Moloch's Sanctum");
+            break;
+        case ACH_AMUL:
+            /* alternate wording for ascended (always past tense) since
+               hero had it until #offer forced it to be relinquished */
+            enl_msg(You_,
+                    u.uhave.amulet ? "have" : "have obtained",
+                    u.uevent.ascended ? "delivered"
+                     : u.uhave.amulet ? "had" : "had obtained",
+                    " the Amulet of Yendor", "");
+            break;
+
+        /* reaching Astral makes feedback about reaching the Planes
+           be redundant and ascending makes both be redundant, but
+           we display all that apply */
+        case ACH_ENDG:
+            you_have_X("reached the Elemental Planes");
+            break;
+        case ACH_ASTR:
+            you_have_X("reached the Astral Plane");
+            break;
+        case ACH_UWIN:
+            /* the ultimate achievement... */
+            enlght_out(" You ascended!");
+            break;
+
+        /* rank 0 is the starting condition, not an achievement; 8 is Xp 30 */
+        case ACH_RNK1: case ACH_RNK2: case ACH_RNK3: case ACH_RNK4:
+        case ACH_RNK5: case ACH_RNK6: case ACH_RNK7: case ACH_RNK8:
+            buf = `attained the rank of ${
+                rank_of(rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+                        game.urole.mnum /* Role_switch */,
+                        (achidx < 0) ? true : false)}`;
+            you_have_X(buf);
+            break;
+
+        default:
+            buf = ` [Unexpected achievement #${achidx}.]`;
+            enlght_out(buf);
+            break;
+        } /* switch */
+    } /* for */
+
+    /* (awin != en_win: the stand-alone window isn't ported, see above) */
+}
+
+// C ref: insight.c num_genocides()
+/* number of monster species which have been genocided */
+export function num_genocides() {
+    let i, n = 0;
+    const G_GENOD = 0x02; /* C ref: monflag.h */
+
+    for (i = M.LOW_PM; i < M.NUMMONS; ++i) {
+        if (game.mvitals[i].mvflags & G_GENOD) {
+            ++n;
+            if (UniqCritterIndx(i))
+                console.error(`impossible: unique creature '${i}: ${M.mons[i].pmnames[NEUTRAL]}' genocided?`);
+        }
+    }
+    return n;
+}
+
 // C ref: insight.c piousness()
 /* used for self-probing */
 export function piousness(showneg, suffix) {
@@ -2441,7 +2837,33 @@ export function record_achievement(achidx) {
         return; /* already recorded, don't duplicate it */
     u.uachieved[i] = achidx;
 
-    /* livelog_printf(): the livelog isn't shown on the tty */
+    /* avoid livelog for achievements recorded during final disclosure:
+       nudist and blind-from-birth; also ascension which is suppressed
+       by this gets logged separately in really_done() */
+    if (game.program_state?.gameover)
+        return;
+
+    if (absidx >= ACH_RNK1 && absidx <= ACH_RNK8) {
+        livelog_printf(achieve_msg[absidx].llflag,
+                       `attained the rank of ${
+                           rank_of(rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+                                   game.urole.mnum /* Role_switch */,
+                                   (achidx < 0) ? true : false)} (level ${u.ulevel})`);
+    } else if (achidx === ACH_SOKO_PRIZE
+               || achidx === ACH_MINE_PRIZE) {
+        /* need to supply extra information for these two */
+        const otyp = ((achidx === ACH_SOKO_PRIZE)
+                      ? game.context.achieveo.soko_prize_otyp
+                      : game.context.achieveo.mines_prize_otyp);
+
+        /* note: OBJ_NAME() works here because both "bag of holding" and
+           "amulet of reflection" are fully named in their objects[] entry
+           but that's not true in the general case */
+        livelog_printf(achieve_msg[achidx].llflag,
+                       `${achieve_msg[achidx].msg} ${OBJ_NAME(objects[otyp])}`);
+    } else {
+        livelog_printf(achieve_msg[absidx].llflag, achieve_msg[absidx].msg);
+    }
 }
 
 // C ref: insight.c remove_achievement()
@@ -2713,6 +3135,65 @@ export async function list_genocided(defquery, ask) {
 // C ref: insight.c dogenocided() -- M-g - #genocided command
 export async function dogenocided() {
     await list_genocided(game.iflags.menu_requested ? 'a' : 'y', false);
+    return 0; /* ECMD_OK */
+}
+
+// C ref: insight.c do_gamelog() -- #chronicle command (CHRONICLE is on)
+export async function do_gamelog() {
+    if (game.gamelog) {
+        await show_gamelog(ENL_GAMEINPROGRESS);
+    } else {
+        await pline("No chronicled events.");
+    }
+    return 0; /* ECMD_OK */
+}
+
+/* C ref: insight.c LL_majors, majorevent(), spoilerevent() --
+   'major' events for dumplog */
+const LL_majors = (0
+                   | LL_WISH
+                   | LL_ACHIEVE
+                   | LL_UMONST
+                   | LL_DIVINEGIFT
+                   | LL_LIFESAVE
+                   | LL_ARTIFACT
+                   | LL_GENOCIDE
+                   | LL_DUMP); /* explicitly for dumplog */
+function majorevent(llmsg) { return (llmsg.flags & LL_majors) !== 0; }
+function spoilerevent(llmsg) { return (llmsg.flags & LL_SPOILER) !== 0; }
+
+// C ref: insight.c show_gamelog() -- #chronicle details
+export async function show_gamelog(final) {
+    let llmsg;
+    let buf;
+    let eventcnt = 0;
+
+    const win = tty_create_nhwindow(NHW_TEXT);
+    buf = `${final ? "Major" : "Logged"} events:`;
+    await tty_putstr(win, 0, buf);
+    for (llmsg = game.gamelog; llmsg; llmsg = llmsg.next) {
+        if (final && !majorevent(llmsg))
+            continue;
+        if (!final && !wizard() && spoilerevent(llmsg))
+            continue;
+        if (!eventcnt++)
+            await tty_putstr(win, 0, " Turn");
+        buf = `${String(llmsg.turn).padStart(5)}: ${llmsg.text}`;
+        await tty_putstr(win, 0, buf);
+    }
+    /* since start of game is logged as a major event, 'eventcnt' should
+       never end up as 0; for 'final', end of game is a major event too */
+    if (!eventcnt)
+        await tty_putstr(win, 0, " none");
+
+    await tty_display_nhwindow(win, true);
+    await tty_destroy_nhwindow(win);
+}
+
+// C ref: insight.c dovanquished() -- #vanquished command
+export async function dovanquished() {
+    await list_vanquished(game.iflags.menu_requested ? 'A' : 'y', false);
+    game.iflags.menu_requested = false;
     return 0; /* ECMD_OK */
 }
 

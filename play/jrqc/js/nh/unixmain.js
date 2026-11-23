@@ -10,6 +10,9 @@ import { flags, ge, gh, gl, gp, gs, iflags, program_state, svh, svn, svp, u, ync
 import { early_options } from './earlyarg.js';
 import { build_english_list, done1 } from './end.js';
 import { check_panic_save, check_recordfile, delete_levelfile, delete_savefile, fqname, nh_compress, paniclog, restore_saved_game } from './files.js';
+import { discover, wizard } from './flag.macros.js';
+import { FALSE, TRUE } from './global.h.js';
+import { SAVEPREFIX } from './hack.h.js';
 import { eos, strncmpi } from './hacklib.js';
 import { getmailstatus } from './mail.js';
 import { initoptions, nh_getenv, set_playmode } from './options.js';
@@ -18,12 +21,15 @@ import { panictrace_setsignals } from './report.js';
 import { dorecover } from './restore.js';
 import { rng_log_init } from './rnd.js';
 import { plnamesuffix, str2race, str2role } from './role.js';
+import { PRIMARYSET, ROGUESET } from './sym.h.js';
 import { load_symset, switch_symbols } from './symbols.js';
 import { sysopt } from './sys.js';
+import { FCMASK } from './unixconf.h.js';
 import { error } from './unixtty.js';
 import { ask_about_panic_save, getlock } from './unixunix.js';
 import { vision_init } from './vision.js';
-import { choose_windows, windowprocs } from './windows.js';
+import { choose_windows } from './windows.js';
+import { display_file, init_nhwindows, mark_synch, player_selection, raw_print } from './winprocs.macros.js';
 
 let get_unix_pw$pw = null;   // static in get_unix_pw()
 const get_login_name$buf = new Int8Array(256);   // static in get_login_name()
@@ -32,8 +38,8 @@ export async function main(argc$in, argv$in) {   // unixmain.c:58
     const argv = [argv$in];
     let dir = [null], nhfp = null, exact_username = 0, resuming = 0, plsel_once = 0, mac_cwd = new Int8Array(1024), mac_exe = null, mac_tmp = null, arg0_len = 0, mac_tmp_len = 0, mac_lhs_len = 0, fq_save = null, neednewlock = 0, $t1, $t2;
     dir[0] = null;
-    resuming = 0;
-    plsel_once = 0;
+    resuming = FALSE;
+    plsel_once = FALSE;
     await early_init(argc[0], argv[0]);
     rng_log_init();
     {
@@ -66,7 +72,7 @@ export async function main(argc$in, argv$in) {   // unixmain.c:58
     }
     gh.hname = argv[0].get(0);
     $t1 = $c.getpid(), svh.hackpid = $t1;
-    $c.umask(79);
+    $c.umask(511 & ~FCMASK);
     await choose_windows($c.lit("tty"));
     dir[0] = nh_getenv($c.lit("NETHACKDIR"));
     if (!dir[0]) {
@@ -75,21 +81,21 @@ export async function main(argc$in, argv$in) {   // unixmain.c:58
     program_state.early_options = 1;
     await early_options(new $c.Ptr(argc, 0), new $c.Ptr(argv, 0), new $c.Ptr(dir, 0));
     program_state.early_options = 0;
-    await chdirx(dir[0], 1);
+    await chdirx(dir[0], TRUE);
     await initoptions();
     $G.ARGV0 = gh.hname;
-    await panictrace_setsignals(1);
+    await panictrace_setsignals(TRUE);
     exact_username = whoami();
     u.uhp = 1;
     program_state.preserve_locks = 1;
     sethanguphandler(hangup);
     await process_options(argc[0], argv[0]);
-    await windowprocs.win_init_nhwindows(new $c.Ptr(argc, 0), argv[0]);
+    await init_nhwindows()(new $c.Ptr(argc, 0), argv[0]);
     await getmailstatus();
     set_playmode();
     $t2 = exact_username ? $c.i32($c.strlen(new $c.Ptr(svp.plname, 0))) : 0, gp.plnamelen = $t2;
     await plnamesuffix();
-    if (flags.debug) {
+    if (wizard()) {
         gl.locknum = 0;
     } else {
         $c.signal(3, $c.ptrConst(1));
@@ -103,42 +109,42 @@ export async function main(argc$in, argv$in) {   // unixmain.c:58
             program_state.preserve_locks = 0;
         }
         if (new $c.Ptr(svp.plname, 0).get(0) && (nhfp = await restore_saved_game()) !== null) {
-            fq_save = fqname(new $c.Ptr(gs.SAVEF, 0), 2, 1);
+            fq_save = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 1);
             $c.chmod(fq_save, 0);
             $c.signal(2, done1);
             if (iflags.news) {
-                await windowprocs.win_display_file($c.lit("news"), 0);
-                iflags.news = 0;
+                await display_file()($c.lit("news"), FALSE);
+                iflags.news = FALSE;
             }
             if (ge.early_raw_messages) {
-                await windowprocs.win_raw_print($c.lit("Restoring save file..."));
+                await raw_print()($c.lit("Restoring save file..."));
             } else {
                 await pline($c.lit("Restoring save file..."));
             }
-            await windowprocs.win_mark_synch();
+            await mark_synch()();
             if (await dorecover(nhfp)) {
-                resuming = 1;
+                resuming = TRUE;
                 await wd_message();
-                if (flags.explore || flags.debug) {
-                    if (await yn_function($c.lit("Do you want to keep the save file?"), new $c.Ptr(ynchars, 0), 110, 1) === 110) {
+                if (discover() || wizard()) {
+                    if (await yn_function($c.lit("Do you want to keep the save file?"), new $c.Ptr(ynchars, 0), 110, TRUE) === 110) {
                         await delete_savefile();
                     } else {
-                        $c.chmod(fq_save, 432);
+                        $c.chmod(fq_save, FCMASK);
                         await nh_compress(fq_save);
                     }
                 }
             }
             if (program_state.in_self_recover) {
-                program_state.in_self_recover = 0;
+                program_state.in_self_recover = FALSE;
             }
         }
         if (!resuming) {
             neednewlock = $c.i8(!new $c.Ptr(svp.plname, 0).get(0) ? 1 : 0);
             if (!iflags.renameinprogress || iflags.defer_plname || neednewlock) {
                 if (!plsel_once) {
-                    await windowprocs.win_player_selection();
+                    await player_selection()();
                 }
-                plsel_once = 1;
+                plsel_once = TRUE;
                 if (neednewlock && new $c.Ptr(svp.plname, 0).get(0)) {
                     continue attempt_restore$;
                 }
@@ -164,7 +170,7 @@ export async function main(argc$in, argv$in) {   // unixmain.c:58
 }
 async function process_options(argc, argv) {   // unixmain.c:330
     let arg = null, origarg = null, i = 0, l = 0, mxplyrs = 0, mx_ok = 0;
-    await config_error_init(0, $c.lit("command line"), 0);
+    await config_error_init(FALSE, $c.lit("command line"), FALSE);
     while (argc > 1 && argv.get(1).get(0) === 45) {
         argv = argv.add(1);
         argc = argc - 1 | 0;
@@ -182,23 +188,23 @@ async function process_options(argc, argv) {   // unixmain.c:330
             case 68:
             case 100:
                 if (arg.get(1) === 68 && !arg.get(2) || !strncmpi(arg, $c.lit("-debug"), -1)) {
-                    flags.debug = 1, flags.explore = 0;
+                    flags.debug = TRUE, flags.explore = FALSE;
                 } else if (!strncmpi(arg, $c.lit("-DECgraphics"), l)) {
-                    await load_symset($c.lit("DECGraphics"), 0 /* PRIMARYSET */);
-                    await switch_symbols(1);
+                    await load_symset($c.lit("DECGraphics"), PRIMARYSET);
+                    await switch_symbols(TRUE);
                 } else {
                     await config_error_add($c.lit("Unknown option: %.60s"), origarg);
                 }
                 break;
             case 88:
-                flags.explore = 1, flags.debug = 0;
+                flags.explore = TRUE, flags.debug = FALSE;
                 break;
             case 110:
                 if (!arg.get(2) || !$c.strcmp(arg, $c.lit("-no-news"))) {
-                    iflags.news = 0;
+                    iflags.news = FALSE;
                     break;
                 } else if (!$c.strcmp(arg, $c.lit("-news"))) {
-                    iflags.news = 1;
+                    iflags.news = TRUE;
                     break;
                 }
                 break;
@@ -218,9 +224,9 @@ async function process_options(argc, argv) {   // unixmain.c:330
             case 73:
             case 105:
                 if (!strncmpi(arg, $c.lit("-IBMgraphics"), l)) {
-                    await load_symset($c.lit("IBMGraphics"), 0 /* PRIMARYSET */);
-                    await load_symset($c.lit("RogueIBM"), 1 /* ROGUESET */);
-                    await switch_symbols(1);
+                    await load_symset($c.lit("IBMGraphics"), PRIMARYSET);
+                    await load_symset($c.lit("RogueIBM"), ROGUESET);
+                    await switch_symbols(TRUE);
                 } else {
                     await config_error_add($c.lit("Unknown option: %.60s"), origarg);
                 }
@@ -311,11 +317,11 @@ export function whoami() {   // unixmain.c:558
         if (s && s.get(0)) {
             $c.__builtin___strncpy_chk(new $c.Ptr(svp.plname, 0), s, 31, 32);
             if ($c.strchr(new $c.Ptr(svp.plname, 0), 45)) {
-                return 1;
+                return TRUE;
             }
         }
     }
-    return 0;
+    return FALSE;
 }
 export function sethanguphandler(handler) {   // unixmain.c:590
     let sact = new $T.sigaction();
@@ -327,20 +333,20 @@ export function sethanguphandler(handler) {   // unixmain.c:590
 export function authorize_wizard_mode() {   // unixmain.c:629
     if (sysopt.wizards && sysopt.wizards.get(0)) {
         if (check_user_string(sysopt.wizards)) {
-            return 1;
+            return TRUE;
         }
     }
-    iflags.wiz_error_flag = 1;
-    return 0;
+    iflags.wiz_error_flag = TRUE;
+    return FALSE;
 }
 export function authorize_explore_mode() {   // unixmain.c:641
     if (sysopt.explorers && sysopt.explorers.get(0)) {
         if (check_user_string(sysopt.explorers)) {
-            return 1;
+            return TRUE;
         }
     }
-    iflags.explore_error_flag = 1;
-    return 0;
+    iflags.explore_error_flag = TRUE;
+    return FALSE;
 }
 async function wd_message() {   // unixmain.c:656
     let tmp = null, $t1;
@@ -352,14 +358,14 @@ async function wd_message() {   // unixmain.c:656
         } else {
             await You($c.lit("cannot access debug (wizard) mode."));
         }
-        flags.debug = 0;
+        flags.debug = FALSE;
         if (!iflags.explore_error_flag) {
             await pline($c.lit("Entering explore/discovery mode instead."));
         }
     } else if (iflags.explore_error_flag) {
         await You($c.lit("cannot access explore mode."));
-        $t1 = iflags.deferred_X = 0, flags.explore = $t1;
-    } else if (flags.explore) {
+        $t1 = iflags.deferred_X = FALSE, flags.explore = $t1;
+    } else if (discover()) {
         await You($c.lit("are in non-scoring explore/discovery mode."));
     }
 }
@@ -379,7 +385,7 @@ export function check_user_string(optstr) {   // unixmain.c:697
     let pw = null, pwlen = 0, eop = null, w = null, pwname = null;
     pwname = null;
     if (optstr.get(0) === 42) {
-        return 1;
+        return TRUE;
     }
     if (sysopt.check_plname) {
         pwname = new $c.Ptr(svp.plname, 0);
@@ -387,7 +393,7 @@ export function check_user_string(optstr) {   // unixmain.c:697
         pwname = pw.pw_name;
     }
     if (!pwname || !pwname.get(0)) {
-        return 0;
+        return FALSE;
     }
     pwlen = $c.i32($c.strlen(pwname));
     eop = eos(optstr);
@@ -402,14 +408,14 @@ export function check_user_string(optstr) {   // unixmain.c:697
         }
         if (!$c.strncmp(w, pwname, $c.u64(pwlen))) {
             if (!w.get(pwlen) || $c.isspace(w.get(pwlen))) {
-                return 1;
+                return TRUE;
             }
         }
         while (w.get(0) && !$c.isspace(w.get(0))) {
             w = w.add(1);
         }
     }
-    return 0;
+    return FALSE;
 }
 function get_unix_pw() {   // unixmain.c:733
     let user = null, uid = 0;
@@ -481,12 +487,12 @@ export function sys_random_seed() {   // unixmain.c:814
     }
     seed$2[0] = 0;
     pid = $c.u64($c.getpid());
-    no_seed = 1;
+    no_seed = TRUE;
     fptr = $c.fopen($c.lit("/dev/random"), $c.lit("r"));
     if (fptr) {
         $c.fread(new $c.Ptr(seed$2, 0), 8, 1, fptr);
-        $G.has_strong_rngseed = 1;
-        no_seed = 0;
+        $G.has_strong_rngseed = TRUE;
+        no_seed = FALSE;
         $c.fclose(fptr);
     } else {
         paniclog($c.lit("sys_random_seed"), $c.lit("falling back to weak seed"));

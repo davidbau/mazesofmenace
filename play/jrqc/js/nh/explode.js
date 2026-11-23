@@ -5,78 +5,106 @@ import { $G } from './globals.js';
 import { stop_occupation } from './allmain.js';
 import { alloc } from './alloc.js';
 import { exercise } from './attrib.js';
+import { A } from './attrib.h.js';
 import { isok } from './cmd.js';
-import { disp, flags, gb, gi, gm, gt, gu, gv, gy, iflags, shield_static, svc, svd, svk, svl, u, xdir, ydir } from './decl.js';
-import { canseemon, curs_on_u, map_invisible, newsym, sensemon, show_glyph, tmp_at, unmap_invisible } from './display.js';
+import { disp, flags, gb, gi, gm, gt, gu, gy, iflags, shield_static, svc, svd, svk, svl, u, xdir, ydir } from './decl.js';
+import { S, SCROLL_CLASS, WAND_CLASS } from './defsym.h.js';
+import { curs_on_u, map_invisible, newsym, show_glyph, tmp_at, unmap_invisible } from './display.js';
+import { DISP_BEAM, DISP_CHANGE, DISP_END, EXPL, GLYPH, NO_GLYPH, SHIELD_COUNT } from './display.h.js';
+import { canspotmon, explosion_to_glyph } from './display.macros.js';
 import { flooreffects } from './do.js';
 import { Mgender, Monnam, pmname, rndmonnam } from './do_name.js';
 import { breaks } from './dothrow.js';
 import { In_hell, In_mines, on_level } from './dungeon.js';
 import { done } from './end.js';
+import { PLNMSG } from './flag.h.js';
+import { FALSE, LARGEST_INT, TRUE } from './global.h.js';
 import { in_rooms, nomul } from './hack.js';
+import { BURNING, DIED, KILLED, MAY, NO_KILLER_PREFIX, N_DIRS, PHYS_EXPL_TYPE, VIS_EFFECTS, XKILL } from './hack.h.js';
+import { Maybe_Half_Phys } from './hack.macros.js';
 import { dist2, lowc, nh_snprintf, s_suffix, strncmpi, strstri } from './hacklib.js';
 import { sobj_at, stackobj } from './invent.js';
 import { obj_extract_self, place_object, splitobj } from './mkobj.js';
+import { SHOPBASE } from './mkroom.h.js';
 import { golemeffects, hideunder, maybe_unhide_at, mondead, monkilled, seemimic, setmangry, wake_nearto, xkilled } from './mon.js';
-import { Resists_Elem, cvt_adtyp_to_mseenres, dmgtype_fromattack, monstseesu, monstunseesu, resists_magm, sticks } from './mondata.js';
+import { AD, AT } from './monattk.h.js';
+import { dmgtype_fromattack, resists_magm, sticks } from './mondata.js';
+import { bigmonst, completelyburns, hides_under, is_demon, nonliving } from './mondata.macros.js';
 import { closed_door } from './monmove.js';
-import { mons } from './monst.js';
+import { DEADMONSTER, engulfing_u, is_vampshifter, monstseesu_ad, monstunseesu_ad, resists_acid, resists_cold, resists_disint, resists_elec, resists_fire, resists_poison } from './monst.macros.js';
+import { PM } from './monsters.h.js';
 import { ohitmon, thitu } from './mthrowu.js';
+import { LOST } from './obj.h.js';
+import { BURNING_OIL, GLASS, MON_EXPLODE, RAY, TRAP_EXPLODE } from './objclass.h.js';
 import { objects } from './objects.js';
+import { BOULDER, EGG, GOLD_PIECE, POT_OIL, SCR_FIRE, STATUE, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP } from './objects.h.js';
 import { Tobjnam } from './objnam.js';
 import { You, You_hear, impossible, pline, pline_The } from './pline.js';
 import { rehumanize, ugolemeffects } from './polyself.js';
 import { unpunish } from './read.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { SINK, STONE } from './rm.h.js';
+import { ZAP_POS } from './rm.macros.js';
+import { d, rn2, rnd } from './rnd.js';
 import { genders } from './role.js';
 import { addtobill, costly_spot, credit_report, pay_for_damage, shop_keeper } from './shk.js';
+import { MAXTCHARS } from './sym.h.js';
 import { burn_away_slime, end_burn } from './timeout.js';
 import { burnarmor, deltrap, ignite_items, t_at } from './trap.js';
+import { STATUE_TRAP } from './trap.h.js';
+import { cansee } from './vision.macros.js';
 import { dmgval } from './weapon.js';
-import { windowprocs } from './windows.js';
+import { nh_delay_output } from './winprocs.macros.js';
+import { Upolyd, u_at } from './you.macros.js';
+import { Acid_resistance, Antimagic, Cold_resistance, Deaf, Disint_resistance, Fire_resistance, Hallucination, Invulnerable, Poison_resistance, Shock_resistance } from './youprop.macros.js';
 import { break_statue, destroy_items, fracture_rock, resist, zap_over_floor } from './zap.js';
+
+const EXPL_NONE = 0;
+const EXPL_MON = 1;
+const EXPL_HERO = 2;
+const EXPL_SKIP = 4;
+const ZT_SPELL_O_FIRE = 11;
 
 const explosion = $c.matrix(Int32Array, [3, 3]);
 async function explosionmask(m, adtyp, olet) {   // explode.c:26
     let res = 0;
-    res = 0 /* EXPL_NONE */;
+    res = EXPL_NONE;
     if ($c.peq(m, gy.youmonst)) {
         switch (adtyp) {
-            case 0:
+            case AD.PHYS:
                 break;
-            case 1:
-                if (u.uprops[12 /* ANTIMAGIC */].intrinsic || u.uprops[12 /* ANTIMAGIC */].extrinsic) {
-                    res = 2 /* EXPL_HERO */;
+            case AD.MAGM:
+                if (Antimagic()) {
+                    res = EXPL_HERO;
                 }
                 break;
-            case 2:
-                if (u.uprops[1 /* FIRE_RES */].intrinsic || u.uprops[1 /* FIRE_RES */].extrinsic) {
-                    res = 2 /* EXPL_HERO */;
+            case AD.FIRE:
+                if (Fire_resistance()) {
+                    res = EXPL_HERO;
                 }
                 break;
-            case 3:
-                if (u.uprops[2 /* COLD_RES */].intrinsic || u.uprops[2 /* COLD_RES */].extrinsic) {
-                    res = 2 /* EXPL_HERO */;
+            case AD.COLD:
+                if (Cold_resistance()) {
+                    res = EXPL_HERO;
                 }
                 break;
-            case 5:
-                if (olet === 11 /* WAND_CLASS */ ? $c.andu64(m.data.mflags2, 2) !== 0 || $c.peq(m.data, $c.relem(mons, 50 /* PM_MANES */)) || (m.data.mlet === 55 /* S_GOLEM */ || m.data.mlet === 22 /* S_VORTEX */) || $c.andu64(m.data.mflags2, 256) !== 0 : u.uprops[4 /* DISINT_RES */].intrinsic || u.uprops[4 /* DISINT_RES */].extrinsic) {
-                    res = 2 /* EXPL_HERO */;
+            case AD.DISN:
+                if (olet === WAND_CLASS ? nonliving(m.data) || is_demon(m.data) : Disint_resistance()) {
+                    res = EXPL_HERO;
                 }
                 break;
-            case 6:
-                if (u.uprops[5 /* SHOCK_RES */].intrinsic || u.uprops[5 /* SHOCK_RES */].extrinsic) {
-                    res = 2 /* EXPL_HERO */;
+            case AD.ELEC:
+                if (Shock_resistance()) {
+                    res = EXPL_HERO;
                 }
                 break;
-            case 7:
-                if (u.uprops[6 /* POISON_RES */].intrinsic || u.uprops[6 /* POISON_RES */].extrinsic) {
-                    res = 2 /* EXPL_HERO */;
+            case AD.DRST:
+                if (Poison_resistance()) {
+                    res = EXPL_HERO;
                 }
                 break;
-            case 8:
-                if (u.uprops[7 /* ACID_RES */].intrinsic || u.uprops[7 /* ACID_RES */].extrinsic) {
-                    res = 2 /* EXPL_HERO */;
+            case AD.ACID:
+                if (Acid_resistance()) {
+                    res = EXPL_HERO;
                 }
                 break;
             default:
@@ -85,41 +113,41 @@ async function explosionmask(m, adtyp, olet) {   // explode.c:26
         }
     } else {
         switch (adtyp) {
-            case 0:
+            case AD.PHYS:
                 break;
-            case 1:
+            case AD.MAGM:
                 if (resists_magm(m)) {
-                    res = 1 /* EXPL_MON */;
+                    res = EXPL_MON;
                 }
                 break;
-            case 2:
-                if (await Resists_Elem(m, 1 /* FIRE_RES */)) {
-                    res = 1 /* EXPL_MON */;
+            case AD.FIRE:
+                if (await resists_fire(m)) {
+                    res = EXPL_MON;
                 }
                 break;
-            case 3:
-                if (await Resists_Elem(m, 2 /* COLD_RES */)) {
-                    res = 1 /* EXPL_MON */;
+            case AD.COLD:
+                if (await resists_cold(m)) {
+                    res = EXPL_MON;
                 }
                 break;
-            case 5:
-                if (olet === 11 /* WAND_CLASS */ ? $c.andu64(m.data.mflags2, 2) !== 0 || $c.peq(m.data, $c.relem(mons, 50 /* PM_MANES */)) || (m.data.mlet === 55 /* S_GOLEM */ || m.data.mlet === 22 /* S_VORTEX */) || $c.andu64(m.data.mflags2, 256) !== 0 || (m.cham === 226 /* PM_VAMPIRE */ || m.cham === 227 /* PM_VAMPIRE_LEADER */ || m.cham === 228 /* PM_VLAD_THE_IMPALER */) : !!await Resists_Elem(m, 4 /* DISINT_RES */)) {
-                    res = 1 /* EXPL_MON */;
+            case AD.DISN:
+                if (olet === WAND_CLASS ? nonliving(m.data) || is_demon(m.data) || is_vampshifter(m) : !!await resists_disint(m)) {
+                    res = EXPL_MON;
                 }
                 break;
-            case 6:
-                if (await Resists_Elem(m, 5 /* SHOCK_RES */)) {
-                    res = 1 /* EXPL_MON */;
+            case AD.ELEC:
+                if (await resists_elec(m)) {
+                    res = EXPL_MON;
                 }
                 break;
-            case 7:
-                if (await Resists_Elem(m, 6 /* POISON_RES */)) {
-                    res = 1 /* EXPL_MON */;
+            case AD.DRST:
+                if (await resists_poison(m)) {
+                    res = EXPL_MON;
                 }
                 break;
-            case 8:
-                if (await Resists_Elem(m, 7 /* ACID_RES */)) {
-                    res = 1 /* EXPL_MON */;
+            case AD.ACID:
+                if (await resists_acid(m)) {
+                    res = EXPL_MON;
                 }
                 break;
             default:
@@ -132,28 +160,28 @@ async function explosionmask(m, adtyp, olet) {   // explode.c:26
 async function engulfer_explosion_msg(adtyp, olet) {   // explode.c:118
     let adj = null;
     adj = null;
-    if (dmgtype_fromattack(u.ustuck.data, 26, 11) !== null) {
+    if (dmgtype_fromattack(u.ustuck.data, AD.DGST, AT.ENGL) !== null) {
         switch (adtyp) {
-            case 2:
+            case AD.FIRE:
                 adj = $c.lit("heartburn");
                 break;
-            case 3:
+            case AD.COLD:
                 adj = $c.lit("chilly");
                 break;
-            case 5:
-                if (olet === 11 /* WAND_CLASS */) {
+            case AD.DISN:
+                if (olet === WAND_CLASS) {
                     adj = $c.lit("irradiated by pure energy");
                 } else {
                     adj = $c.lit("perforated");
                 }
                 break;
-            case 6:
+            case AD.ELEC:
                 adj = $c.lit("shocked");
                 break;
-            case 7:
+            case AD.DRST:
                 adj = $c.lit("poisoned");
                 break;
-            case 8:
+            case AD.ACID:
                 adj = $c.lit("an upset stomach");
                 break;
             default:
@@ -163,26 +191,26 @@ async function engulfer_explosion_msg(adtyp, olet) {   // explode.c:118
         await pline($c.lit("%s gets %s!"), await Monnam(u.ustuck), adj);
     } else {
         switch (adtyp) {
-            case 2:
+            case AD.FIRE:
                 adj = $c.lit("toasted");
                 break;
-            case 3:
+            case AD.COLD:
                 adj = $c.lit("chilly");
                 break;
-            case 5:
-                if (olet === 11 /* WAND_CLASS */) {
+            case AD.DISN:
+                if (olet === WAND_CLASS) {
                     adj = $c.lit("overwhelmed by pure energy");
                 } else {
                     adj = $c.lit("perforated");
                 }
                 break;
-            case 6:
+            case AD.ELEC:
                 adj = $c.lit("shocked");
                 break;
-            case 7:
+            case AD.DRST:
                 adj = $c.lit("intoxicated");
                 break;
-            case 8:
+            case AD.ACID:
                 adj = $c.lit("burned");
                 break;
             default:
@@ -199,18 +227,18 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
     uhurt = 0;
     str = null;
     mdef = null;
-    shopdamage[0] = 0;
-    generic = 0;
-    do_hallu = 0;
+    shopdamage[0] = FALSE;
+    generic = FALSE;
+    do_hallu = FALSE;
     exploding_wand_typ = 0;
-    you_exploding = $c.i8(olet === 20 && type >= 0 ? 1 : 0);
-    didmsg = 0;
-    if (olet === 11 /* WAND_CLASS */) {
+    you_exploding = $c.i8(olet === MON_EXPLODE && type >= 0 ? 1 : 0);
+    didmsg = FALSE;
+    if (olet === WAND_CLASS) {
         if (type < 0) {
             type = -type | 0;
             exploding_wand_typ = $c.i16(type);
-            if ((objects[type].oc_dir | 0) === 3 && type !== 428 /* WAN_DIGGING */ && type !== 432 /* WAN_SLEEP */) {
-                type = type - 429 /* WAN_MAGIC_MISSILE */ | 0;
+            if ((objects[type].oc_dir | 0) === RAY && type !== WAN_DIGGING && type !== WAN_SLEEP) {
+                type = type - WAN_MAGIC_MISSILE | 0;
                 if (type < 0 || type > 9) {
                     await impossible($c.lit("explode: wand has bad zap type (%d)."), type);
                     type = 0;
@@ -220,23 +248,23 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
             }
         }
         switch (gu.urole.mnum) {
-            case 337 /* PM_CLERIC */:
-            case 336 /* PM_MONK */:
-            case 343 /* PM_WIZARD */:
+            case PM.CLERIC:
+            case PM.MONK:
+            case PM.WIZARD:
                 damu = $c.div32(damu, 5);
                 break;
-            case 334 /* PM_HEALER */:
-            case 335 /* PM_KNIGHT */:
+            case PM.HEALER:
+            case PM.KNIGHT:
                 damu = $c.div32(damu, 2);
                 break;
             default:
                 break;
         }
-    } else if (olet === 19) {
-        exploding_wand_typ = 321;
-    } else if (olet === 9 /* SCROLL_CLASS */) {
-        exploding_wand_typ = 339;
-    } else if (olet === 21) {
+    } else if (olet === BURNING_OIL) {
+        exploding_wand_typ = POT_OIL;
+    } else if (olet === SCROLL_CLASS) {
+        exploding_wand_typ = SCR_FIRE;
+    } else if (olet === TRAP_EXPLODE) {
         type = 0;
     }
     if (expltype < 0) {
@@ -244,54 +272,54 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
         expltype = -expltype | 0;
     }
     inside_engulfer = $c.i8(u.uswallow | 0 && type >= 0 ? 1 : 0);
-    grabbed = grabbing = 0;
+    grabbed = grabbing = FALSE;
     if (u.ustuck && !u.uswallow) {
-        if (u.umonnum !== u.umonster && sticks(gy.youmonst.data)) {
-            grabbing = 1;
+        if (Upolyd() && sticks(gy.youmonst.data)) {
+            grabbing = TRUE;
         } else {
-            grabbed = 1;
+            grabbed = TRUE;
         }
         grabxy.x = u.ustuck.mx;
         grabxy.y = u.ustuck.my;
     } else {
         $t1 = grabxy.y = 0, grabxy.x = $t1;
     }
-    if (olet === 20 && !you_exploding) {
+    if (olet === MON_EXPLODE && !you_exploding) {
         str = $c.__builtin___strcpy_chk(new $c.Ptr(killr_buf, 0), new $c.Ptr(svk.killer.name, 0), 256);
-        do_hallu = $c.i8(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) && (strstri(str, $c.lit("'s explosion")) || strstri(str, $c.lit("s' explosion"))) ? 1 : 0);
+        do_hallu = $c.i8(Hallucination() && (strstri(str, $c.lit("'s explosion")) || strstri(str, $c.lit("s' explosion"))) ? 1 : 0);
     }
-    if (type === -1) {
-        adtyp = 0;
+    if (type === PHYS_EXPL_TYPE) {
+        adtyp = AD.PHYS;
     } else {
         adstr = null;
         switch ($c.rem32($c.abs(type), 10)) {
             case 0:
                 adstr = $c.lit("magical blast");
-                adtyp = 1;
+                adtyp = AD.MAGM;
                 break;
             case 1:
-                adstr = olet === 19 ? $c.lit("burning oil") : olet === 9 /* SCROLL_CLASS */ ? $c.lit("tower of flame") : $c.lit("fireball");
-                adtyp = 2;
+                adstr = olet === BURNING_OIL ? $c.lit("burning oil") : olet === SCROLL_CLASS ? $c.lit("tower of flame") : $c.lit("fireball");
+                adtyp = AD.FIRE;
                 break;
             case 2:
                 adstr = $c.lit("ball of cold");
-                adtyp = 3;
+                adtyp = AD.COLD;
                 break;
             case 4:
-                adstr = olet === 11 /* WAND_CLASS */ ? $c.lit("death field") : $c.lit("disintegration field");
-                adtyp = 5;
+                adstr = olet === WAND_CLASS ? $c.lit("death field") : $c.lit("disintegration field");
+                adtyp = AD.DISN;
                 break;
             case 5:
                 adstr = $c.lit("ball of lightning");
-                adtyp = 6;
+                adtyp = AD.ELEC;
                 break;
             case 6:
                 adstr = $c.lit("poison gas cloud");
-                adtyp = 7;
+                adtyp = AD.DRST;
                 break;
             case 7:
                 adstr = $c.lit("splash of acid");
-                adtyp = 8;
+                adtyp = AD.ACID;
                 break;
             default:
                 await impossible($c.lit("explosion base type %d?"), type);
@@ -301,108 +329,108 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
             str = adstr;
         }
     }
-    any_shield = visible = 0;
+    any_shield = visible = FALSE;
     for (i = 0; i < 3; i = i + 1 | 0) {
         for (j = 0; j < 3; j = j + 1 | 0) {
             xx = $c.i16((x + i | 0) - 1 | 0);
             yy = $c.i16((y + j | 0) - 1 | 0);
             if (!isok(xx, yy)) {
-                explmask[i][j] = 4 /* EXPL_SKIP */;
+                explmask[i][j] = EXPL_SKIP;
                 continue;
             }
-            explmask[i][j] = 0 /* EXPL_NONE */;
-            if (xx === u.ux && yy === u.uy) {
+            explmask[i][j] = EXPL_NONE;
+            if (u_at(xx, yy)) {
                 $t2 = await explosionmask(gy.youmonst, adtyp, olet), explmask[i][j] = $t2;
             }
             mtmp = svl.level.monsters[xx][yy];
-            if (!mtmp && (xx === u.ux && yy === u.uy)) {
+            if (!mtmp && u_at(xx, yy)) {
                 mtmp = u.usteed;
             }
-            if (mtmp && mtmp.mhp < 1) {
+            if (mtmp && DEADMONSTER(mtmp)) {
                 mtmp = null;
             }
             if (mtmp) {
                 $t3 = await explosionmask(mtmp, adtyp, olet), explmask[i][j] = explmask[i][j] | $t3;
             }
-            if (mtmp && (gv.viz_array.get(yy).get(xx) & 2) !== 0 && !(canseemon(mtmp) || sensemon(mtmp))) {
+            if (mtmp && cansee(xx, yy) && !canspotmon(mtmp)) {
                 await map_invisible(xx, yy);
             } else if (!mtmp) {
                 await unmap_invisible(xx, yy);
             }
-            if ((gv.viz_array.get(yy).get(xx) & 2) !== 0) {
-                visible = 1;
+            if (cansee(xx, yy)) {
+                visible = TRUE;
             }
-            if ((explmask[i][j] & 3) !== 0) {
-                any_shield = 1;
+            if ((explmask[i][j] & (EXPL_MON | EXPL_HERO)) !== 0) {
+                any_shield = TRUE;
             }
         }
     }
     if (visible) {
         for (i = 0; i < 3; i = i + 1 | 0) {
             for (j = 0; j < 3; j = j + 1 | 0) {
-                if (explmask[i][j] === 4 /* EXPL_SKIP */) {
+                if (explmask[i][j] === EXPL_SKIP) {
                     continue;
                 }
                 xx = $c.i16((x + i | 0) - 1 | 0);
                 yy = $c.i16((y + j | 0) - 1 | 0);
-                await tmp_at($c.i16(starting ? -1 : -6), $c.i16((explosion[i][j] - 96 /* S_expl_tl */ | 0) + (expltype === 6 /* EXPL_FROSTY */ ? 7211 /* GLYPH_EXPLODE_FROSTY_OFF */ : expltype === 4 /* EXPL_MAGICAL */ ? 7193 /* GLYPH_EXPLODE_MAGICAL_OFF */ : expltype === 3 /* EXPL_WET */ ? 7184 /* GLYPH_EXPLODE_WET_OFF */ : expltype === 2 /* EXPL_MUDDY */ ? 7175 /* GLYPH_EXPLODE_MUDDY_OFF */ : expltype === 1 /* EXPL_NOXIOUS */ ? 7166 /* GLYPH_EXPLODE_NOXIOUS_OFF */ : 7202 /* GLYPH_EXPLODE_FIERY_OFF */) | 0));
+                await tmp_at($c.i16(starting ? DISP_BEAM : DISP_CHANGE), $c.i16(explosion_to_glyph(expltype, explosion[i][j])));
                 await tmp_at(xx, yy);
                 starting = 0;
             }
         }
         await curs_on_u();
         if (any_shield && flags.sparkle) {
-            for (k = 0; k < 21; k = k + 1 | 0) {
+            for (k = 0; k < SHIELD_COUNT; k = k + 1 | 0) {
                 for (i = 0; i < 3; i = i + 1 | 0) {
                     for (j = 0; j < 3; j = j + 1 | 0) {
                         xx = $c.i16((x + i | 0) - 1 | 0);
                         yy = $c.i16((y + j | 0) - 1 | 0);
-                        if ((explmask[i][j] & 3) !== 0) {
-                            await show_glyph(xx, yy, shield_static[k] === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : shield_static[k] <= 11 /* S_trwall */ ? (shield_static[k] - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : shield_static[k] < 33 /* S_altar */ ? (shield_static[k] - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : shield_static[k] === 33 /* S_altar */ ? 4008 : shield_static[k] < 74 ? (shield_static[k] - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : shield_static[k] <= 87 /* S_goodpos */ ? (shield_static[k] - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */);
+                        if ((explmask[i][j] & (EXPL_MON | EXPL_HERO)) !== 0) {
+                            await show_glyph(xx, yy, shield_static[k] === S.stone ? GLYPH.CMAP_STONE_OFF : shield_static[k] <= S.trwall ? (shield_static[k] - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : shield_static[k] < S.altar ? (shield_static[k] - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : shield_static[k] === S.altar ? 4008 : shield_static[k] < S.arrow_trap + MAXTCHARS ? (shield_static[k] - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : shield_static[k] <= S.goodpos ? (shield_static[k] - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH);
                         }
                     }
                 }
                 await curs_on_u();
-                await windowprocs.win_delay_output();
+                await nh_delay_output()();
             }
             for (i = 0; i < 3; i = i + 1 | 0) {
                 for (j = 0; j < 3; j = j + 1 | 0) {
                     xx = $c.i16((x + i | 0) - 1 | 0);
                     yy = $c.i16((y + j | 0) - 1 | 0);
-                    if ((explmask[i][j] & 3) !== 0) {
-                        await show_glyph(xx, yy, (explosion[i][j] - 96 /* S_expl_tl */ | 0) + (expltype === 6 /* EXPL_FROSTY */ ? 7211 /* GLYPH_EXPLODE_FROSTY_OFF */ : expltype === 4 /* EXPL_MAGICAL */ ? 7193 /* GLYPH_EXPLODE_MAGICAL_OFF */ : expltype === 3 /* EXPL_WET */ ? 7184 /* GLYPH_EXPLODE_WET_OFF */ : expltype === 2 /* EXPL_MUDDY */ ? 7175 /* GLYPH_EXPLODE_MUDDY_OFF */ : expltype === 1 /* EXPL_NOXIOUS */ ? 7166 /* GLYPH_EXPLODE_NOXIOUS_OFF */ : 7202 /* GLYPH_EXPLODE_FIERY_OFF */) | 0);
+                    if ((explmask[i][j] & (EXPL_MON | EXPL_HERO)) !== 0) {
+                        await show_glyph(xx, yy, explosion_to_glyph(expltype, explosion[i][j]));
                     }
                 }
             }
         } else {
-            await windowprocs.win_delay_output();
-            await windowprocs.win_delay_output();
+            await nh_delay_output()();
+            await nh_delay_output()();
         }
-        await tmp_at(-7, 0);
+        await tmp_at(DISP_END, 0);
     } else {
-        if (olet === 20 || olet === 21) {
+        if (olet === MON_EXPLODE || olet === TRAP_EXPLODE) {
             str = $c.lit("explosion");
-            generic = 1;
+            generic = TRUE;
         }
-        if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) && olet !== 9 /* SCROLL_CLASS */) {
+        if (!Deaf() && olet !== SCROLL_CLASS) {
             await You_hear($c.lit("a blast."));
-            didmsg = 1;
+            didmsg = TRUE;
         }
     }
-    if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) && !didmsg) {
+    if (!Deaf() && !didmsg) {
         await pline($c.lit("Boom!"));
     }
     if (dam) {
         for (i = 0; i < 3; i = i + 1 | 0) {
             for (j = 0; j < 3; j = j + 1 | 0) {
                 itemdmg = 0;
-                if (explmask[i][j] === 4 /* EXPL_SKIP */) {
+                if (explmask[i][j] === EXPL_SKIP) {
                     continue;
                 }
                 xx = $c.i16((x + i | 0) - 1 | 0);
                 yy = $c.i16((y + j | 0) - 1 | 0);
-                if (xx === u.ux && yy === u.uy) {
-                    uhurt = (explmask[i][j] & 2 /* EXPL_HERO */) !== 0 ? 1 : 2;
+                if (u_at(xx, yy)) {
+                    uhurt = (explmask[i][j] & EXPL_HERO) !== 0 ? 1 : 2;
                     if (!svc.context.mon_moving && you_exploding) {
                         uhurt = 0;
                     }
@@ -410,10 +438,10 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
                     continue;
                 }
                 if (!(u.uswallow | 0 && !svc.context.mon_moving)) {
-                    await zap_over_floor(xx, yy, type, new $c.Ptr(shopdamage, 0), 0, exploding_wand_typ);
+                    await zap_over_floor(xx, yy, type, new $c.Ptr(shopdamage, 0), FALSE, exploding_wand_typ);
                 }
                 mtmp = svl.level.monsters[xx][yy];
-                if (!mtmp && (xx === u.ux && yy === u.uy)) {
+                if (!mtmp && u_at(xx, yy)) {
                     mtmp = u.usteed;
                 }
                 if (!mtmp) {
@@ -426,26 +454,26 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
                     } while (new $c.Ptr(hallu_buf, 0).get(0) !== lowc(new $c.Ptr(hallu_buf, 0).get(0)) && (tryct = tryct + 1 | 0) < 20);
                     str = new $c.Ptr(hallu_buf, 0);
                 }
-                if (u.uswallow | 0 && $c.peq(u.ustuck, mtmp)) {
+                if (engulfing_u(mtmp)) {
                     await engulfer_explosion_msg(adtyp, olet);
-                } else if ((gv.viz_array.get(yy).get(xx) & 2) !== 0) {
+                } else if (cansee(xx, yy)) {
                     if (mtmp.m_ap_type) {
                         await seemimic(mtmp);
                     }
                     await pline($c.lit("%s is caught in the %s!"), await Monnam(mtmp), str);
                 }
                 itemdmg = await destroy_items(mtmp, adtyp, dam);
-                if (adtyp === 2) {
+                if (adtyp === AD.FIRE) {
                     await burnarmor(mtmp);
                     await ignite_items(mtmp.minvent);
                 }
-                if ((explmask[i][j] & 1 /* EXPL_MON */) !== 0) {
+                if ((explmask[i][j] & EXPL_MON) !== 0) {
                     await golemeffects(mtmp, adtyp, dam);
                     mtmp.mhp = mtmp.mhp - itemdmg | 0;
                 } else {
                     mdam = dam;
-                    if (await resist(mtmp, olet, 0, 0)) {
-                        if ((gv.viz_array.get(yy).get(xx) & 2) !== 0 || inside_engulfer) {
+                    if (await resist(mtmp, olet, 0, FALSE)) {
+                        if (cansee(xx, yy) || inside_engulfer) {
                             await pline($c.lit("%s resists the %s!"), await Monnam(mtmp), str);
                         }
                         mdam = $c.div32(dam + 1 | 0, 2);
@@ -453,36 +481,36 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
                     if (grabbed && $c.peq(mtmp, u.ustuck) && dist2(x, y, u.ux, u.uy) <= 2) {
                         mdam = Math.imul(mdam, 2);
                     }
-                    if (await Resists_Elem(mtmp, 2 /* COLD_RES */) && adtyp === 2) {
+                    if (await resists_cold(mtmp) && adtyp === AD.FIRE) {
                         mdam = Math.imul(mdam, 2);
-                    } else if (await Resists_Elem(mtmp, 1 /* FIRE_RES */) && adtyp === 3) {
+                    } else if (await resists_fire(mtmp) && adtyp === AD.COLD) {
                         mdam = Math.imul(mdam, 2);
                     }
                     mtmp.mhp = mtmp.mhp - (mdam + itemdmg | 0) | 0;
                 }
-                if (mtmp.mhp < 1) {
-                    xkflg = adtyp === 2 && ($c.peq(mtmp.data, $c.relem(mons, 250 /* PM_PAPER_GOLEM */)) || $c.peq(mtmp.data, $c.relem(mons, 249 /* PM_STRAW_GOLEM */))) ? 2 : 0;
+                if (DEADMONSTER(mtmp)) {
+                    xkflg = adtyp === AD.FIRE && completelyburns(mtmp.data) ? XKILL.NOCORPSE : 0;
                     if (!svc.context.mon_moving) {
-                        await xkilled(mtmp, 0 | xkflg);
+                        await xkilled(mtmp, XKILL.GIVEMSG | xkflg);
                     } else if (mdef && $c.peq(mtmp, mdef)) {
-                        if ((gv.viz_array.get(mtmp.my).get(mtmp.mx) & 2) !== 0 || (canseemon(mtmp) || sensemon(mtmp))) {
-                            await pline($c.lit("%s is %s!"), await Monnam(mtmp), xkflg ? $c.lit("burned completely") : $c.andu64(mtmp.data.mflags2, 2) !== 0 || $c.peq(mtmp.data, $c.relem(mons, 50 /* PM_MANES */)) || (mtmp.data.mlet === 55 /* S_GOLEM */ || mtmp.data.mlet === 22 /* S_VORTEX */) ? $c.lit("destroyed") : $c.lit("killed"));
+                        if (cansee(mtmp.mx, mtmp.my) || canspotmon(mtmp)) {
+                            await pline($c.lit("%s is %s!"), await Monnam(mtmp), xkflg ? $c.lit("burned completely") : nonliving(mtmp.data) ? $c.lit("destroyed") : $c.lit("killed"));
                         }
-                        await xkilled(mtmp, 5 | xkflg);
+                        await xkilled(mtmp, XKILL.NOMSG | XKILL.NOCONDUCT | xkflg);
                     } else {
                         if (xkflg) {
-                            adtyp = 242;
+                            adtyp = AD.RBRE;
                         }
                         await monkilled(mtmp, $c.lit(""), adtyp);
                     }
                 } else if (!svc.context.mon_moving) {
-                    await setmangry(mtmp, 1);
+                    await setmangry(mtmp, TRUE);
                 }
             }
         }
     }
     if (uhurt) {
-        if (flags.verbose && (type < 0 || olet !== 9 /* SCROLL_CLASS */)) {
+        if (flags.verbose && (type < 0 || olet !== SCROLL_CLASS)) {
             if (do_hallu) {
                 do {
                     $c.__builtin___sprintf_chk(new $c.Ptr(hallu_buf, 0), 0, 256, $c.lit("%s explosion"), s_suffix(await rndmonnam(null)));
@@ -490,18 +518,18 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
                 str = new $c.Ptr(hallu_buf, 0);
             }
             await You($c.lit("are caught in the %s!"), str);
-            iflags.last_msg = 3 /* PLNMSG_CAUGHT_IN_EXPLOSION */;
+            iflags.last_msg = PLNMSG.CAUGHT_IN_EXPLOSION;
         }
-        if (adtyp === 2) {
+        if (adtyp === AD.FIRE) {
             await burn_away_slime();
         }
-        if (u.uprops[11 /* INVULNERABLE */].intrinsic) {
+        if (Invulnerable()) {
             damu = 0;
             await You($c.lit("are unharmed!"));
-        } else if (adtyp === 0 || adtyp === 8) {
-            damu = u.uprops[56 /* HALF_PHDAM */].intrinsic || u.uprops[56 /* HALF_PHDAM */].extrinsic ? $c.div32(damu + 1 | 0, 2) : damu;
+        } else if (adtyp === AD.PHYS || adtyp === AD.ACID) {
+            damu = Maybe_Half_Phys(damu);
         }
-        if (adtyp === 2) {
+        if (adtyp === AD.FIRE) {
             await burnarmor(gy.youmonst);
             await ignite_items(gi.invent);
         }
@@ -511,50 +539,50 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
             if (grabbing && dist2($c.i16(grabxy.x), $c.i16(grabxy.y), x, y) <= 2) {
                 damu = Math.imul(damu, 2);
             }
-            if (u.umonnum !== u.umonster) {
+            if (Upolyd()) {
                 u.mh = u.mh - damu | 0;
             } else {
                 u.uhp = u.uhp - damu | 0;
             }
-            disp.botl = 1;
+            disp.botl = TRUE;
         }
         if (uhurt === 1) {
-            monstseesu(cvt_adtyp_to_mseenres(adtyp));
+            monstseesu_ad(adtyp);
         } else {
-            monstunseesu(cvt_adtyp_to_mseenres(adtyp));
+            monstunseesu_ad(adtyp);
         }
-        if (u.uhp <= 0 || u.umonnum !== u.umonster && u.mh <= 0) {
-            if (u.umonnum !== u.umonster) {
+        if (u.uhp <= 0 || Upolyd() && u.mh <= 0) {
+            if (Upolyd()) {
                 await rehumanize();
             } else {
-                if (olet === 20) {
+                if (olet === MON_EXPLODE) {
                     if (generic) {
                     } else if (!$c.peq(str, new $c.Ptr(svk.killer.name, 0)) && !$c.peq(str, new $c.Ptr(hallu_buf, 0))) {
                         $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), str, 256);
                     }
-                    svk.killer.format = 0;
-                } else if (olet === 21) {
-                    svk.killer.format = 2;
+                    svk.killer.format = KILLED.BY_AN;
+                } else if (olet === TRAP_EXPLODE) {
+                    svk.killer.format = NO_KILLER_PREFIX;
                     nh_snprintf($c.lit("explode"), 655, new $c.Ptr(svk.killer.name, 0), 256, $c.lit("caught %sself in a %s"), genders[flags.female ? 1 : 0].him, str);
-                } else if (type >= 0 && olet !== 9 /* SCROLL_CLASS */) {
-                    svk.killer.format = 2;
+                } else if (type >= 0 && olet !== SCROLL_CLASS) {
+                    svk.killer.format = NO_KILLER_PREFIX;
                     nh_snprintf($c.lit("explode"), 660, new $c.Ptr(svk.killer.name, 0), 256, $c.lit("caught %sself in %s own %s"), genders[flags.female ? 1 : 0].him, genders[flags.female ? 1 : 0].his, str);
                 } else {
-                    $t4 = !strncmpi(str, $c.lit("tower of flame"), -1) || !strncmpi(str, $c.lit("fireball"), -1) ? 0 : 1, svk.killer.format = $t4;
+                    $t4 = !strncmpi(str, $c.lit("tower of flame"), -1) || !strncmpi(str, $c.lit("fireball"), -1) ? KILLED.BY_AN : KILLED.BY, svk.killer.format = $t4;
                     $c.__builtin___strcpy_chk(new $c.Ptr(svk.killer.name, 0), str, 256);
                 }
-                if (iflags.last_msg === 3 /* PLNMSG_CAUGHT_IN_EXPLOSION */ || iflags.last_msg === 2 /* PLNMSG_TOWER_OF_FLAME */) {
+                if (iflags.last_msg === PLNMSG.CAUGHT_IN_EXPLOSION || iflags.last_msg === PLNMSG.TOWER_OF_FLAME) {
                     await pline($c.lit("It is fatal."));
                 } else {
                     await pline_The($c.lit("%s is fatal."), str);
                 }
-                await done(adtyp === 2 ? 5 /* BURNING */ : 0 /* DIED */);
+                await done(adtyp === AD.FIRE ? BURNING : DIED);
             }
         }
-        await exercise(0 /* A_STR */, 0);
+        await exercise(A.STR, FALSE);
     }
     if (shopdamage[0]) {
-        await pay_for_damage(adtyp === 2 ? $c.lit("burn away") : adtyp === 3 ? $c.lit("shatter") : adtyp === 5 ? $c.lit("disintegrate") : $c.lit("destroy"), 0);
+        await pay_for_damage(adtyp === AD.FIRE ? $c.lit("burn away") : adtyp === AD.COLD ? $c.lit("shatter") : adtyp === AD.DISN ? $c.lit("disintegrate") : $c.lit("destroy"), FALSE);
     }
     i = Math.imul(dam, dam);
     if (i < 50) {
@@ -568,8 +596,8 @@ export async function explode(x, y, type, dam, olet, expltype) {   // explode.c:
 export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c:721
     let otmp = null, tmp = 0, farthest = 0, typ = 0, qtmp = 0, used_up = 0, individual_object = 0, shop_origin = 0, lostgoods = 0, mtmp = null, shkp = null, stmp = null, stmp2 = null, schain = null, total = 0, waschain = 0, trap = null, dam = 0, hitvalu = 0, hitu = 0, x = 0, y = 0, obj_left_shop = 0, $t1, $t2, $t3;
     farthest = 0;
-    individual_object = $c.i8(obj ? 1 : 0);
-    lostgoods = 0;
+    individual_object = $c.i8(obj ? TRUE : FALSE);
+    lostgoods = FALSE;
     shkp = null;
     stmp2 = null;
     schain = null;
@@ -577,9 +605,9 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
     if (individual_object && (obj.ox !== sx || obj.oy !== sy)) {
         await impossible($c.lit("scattered object <%d,%d> not at scatter site <%d,%d>"), obj.ox, obj.oy, sx, sy);
     }
-    shop_origin = $c.i8((shkp = await shop_keeper(in_rooms(sx, sy, 14 /* SHOPBASE */).get(0))) !== null && await costly_spot(sx, sy) ? 1 : 0);
+    shop_origin = $c.i8((shkp = await shop_keeper(in_rooms(sx, sy, SHOPBASE).get(0))) !== null && await costly_spot(sx, sy) ? 1 : 0);
     if (shop_origin) {
-        await credit_report(shkp, 0, 1);
+        await credit_report(shkp, 0, TRUE);
     }
     while ((otmp = individual_object ? obj : svl.level.objects[sx][sy]) !== null) {
         if ($c.peq(otmp, $G.uball) || $c.peq(otmp, $G.uchain)) {
@@ -592,34 +620,34 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
         }
         if (otmp.quan > 1) {
             qtmp = $c.sub64(otmp.quan, 1);
-            if (qtmp > 32767) {
-                qtmp = 32767;
+            if (qtmp > LARGEST_INT) {
+                qtmp = LARGEST_INT;
             }
-            qtmp = rng_log_enabled() ? (rng_log_set_caller($c.lit("explode.c"), 764, $c.lit("scatter")), rnd($c.i32(qtmp))) : rnd($c.i32(qtmp));
+            qtmp = rnd($c.i32(qtmp));
             otmp = await splitobj(otmp, qtmp);
         } else {
             obj = null;
         }
         await obj_extract_self(otmp);
-        used_up = 0;
-        if ((scflags & 16) >>> 0 !== 0 && (otmp.otyp === 475 /* BOULDER */ || otmp.otyp === 476 /* STATUE */) && (rng_log_enabled() ? (rng_log_set_caller($c.lit("explode.c"), 775, $c.lit("scatter")), rn2(10)) : rn2(10))) {
-            if (otmp.otyp === 475 /* BOULDER */) {
-                if ((gv.viz_array.get(sy).get(sx) & 2) !== 0) {
+        used_up = FALSE;
+        if ((scflags & MAY.FRACTURE) >>> 0 !== 0 && (otmp.otyp === BOULDER || otmp.otyp === STATUE) && rn2(10)) {
+            if (otmp.otyp === BOULDER) {
+                if (cansee(sx, sy)) {
                     await pline($c.lit("%s apart."), await Tobjnam(otmp, $c.lit("break")));
                 } else {
                     await You_hear($c.lit("stone breaking."));
                 }
                 await fracture_rock(otmp);
                 await place_object(otmp, sx, sy);
-                if ((otmp = sobj_at(475 /* BOULDER */, sx, sy)) !== null) {
+                if ((otmp = sobj_at(BOULDER, sx, sy)) !== null) {
                     await obj_extract_self(otmp);
                     await place_object(otmp, sx, sy);
                 }
             } else {
-                if ((trap = t_at(sx, sy)) && (trap.ttyp | 0) === 19 /* STATUE_TRAP */) {
+                if ((trap = t_at(sx, sy)) && (trap.ttyp | 0) === STATUE_TRAP) {
                     await deltrap(trap);
                 }
-                if ((gv.viz_array.get(sy).get(sx) & 2) !== 0) {
+                if (cansee(sx, sy)) {
                     await pline($c.lit("%s."), await Tobjnam(otmp, $c.lit("crumble")));
                 } else {
                     await You_hear($c.lit("stone crumbling."));
@@ -628,10 +656,10 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
                 await place_object(otmp, sx, sy);
             }
             await newsym(sx, sy);
-            used_up = 1;
-        } else if ((scflags & 8) >>> 0 !== 0 && (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("explode.c"), 809, $c.lit("scatter")), rn2(10)) : rn2(10)) || ((objects[otmp.otyp].oc_material | 0) === 19 /* GLASS */ || otmp.otyp === 266 /* EGG */))) {
+            used_up = TRUE;
+        } else if ((scflags & MAY.DESTROY) >>> 0 !== 0 && (!rn2(10) || ((objects[otmp.otyp].oc_material | 0) === GLASS || otmp.otyp === EGG))) {
             if (await breaks(otmp, sx, sy)) {
-                used_up = 1;
+                used_up = TRUE;
             }
         }
         if (!used_up) {
@@ -640,18 +668,18 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
             stmp.obj = otmp;
             stmp.ox = sx;
             stmp.oy = sy;
-            tmp = rng_log_enabled() ? (rng_log_set_caller($c.lit("explode.c"), 821, $c.lit("scatter")), rn2(8)) : rn2(8);
+            tmp = rn2(N_DIRS);
             stmp.dx = xdir[tmp];
             stmp.dy = ydir[tmp];
             tmp = (blastforce >>> 0) - $c.divu32(otmp.owt, 40) >>> 0 | 0;
             if (tmp < 1) {
                 tmp = 1;
             }
-            $t1 = rng_log_enabled() ? (rng_log_set_caller($c.lit("explode.c"), 827, $c.lit("scatter")), rnd(tmp)) : rnd(tmp), stmp.range = $t1;
+            $t1 = rnd(tmp), stmp.range = $t1;
             if (farthest < stmp.range) {
                 farthest = stmp.range;
             }
-            stmp.stopped = 0;
+            stmp.stopped = FALSE;
             if (!schain) {
                 schain = stmp;
             } else {
@@ -669,37 +697,37 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
                 if (isok(gb.bhitpos.x, gb.bhitpos.y)) {
                     typ = $c.u8(svl.level.locations[gb.bhitpos.x][gb.bhitpos.y].typ);
                 } else {
-                    typ = 0;
+                    typ = STONE;
                 }
                 if (!isok(gb.bhitpos.x, gb.bhitpos.y)) {
                     gb.bhitpos.x = $c.i16(gb.bhitpos.x - stmp.dx | 0);
                     gb.bhitpos.y = $c.i16(gb.bhitpos.y - stmp.dy | 0);
-                    stmp.stopped = 1;
-                } else if (!(typ >= 16 /* POOL */) || closed_door(gb.bhitpos.x, gb.bhitpos.y)) {
+                    stmp.stopped = TRUE;
+                } else if (!ZAP_POS(typ) || closed_door(gb.bhitpos.x, gb.bhitpos.y)) {
                     gb.bhitpos.x = $c.i16(gb.bhitpos.x - stmp.dx | 0);
                     gb.bhitpos.y = $c.i16(gb.bhitpos.y - stmp.dy | 0);
-                    stmp.stopped = 1;
+                    stmp.stopped = TRUE;
                 } else if ((mtmp = svl.level.monsters[gb.bhitpos.x][gb.bhitpos.y]) !== null) {
-                    if ((scflags & 2) >>> 0) {
+                    if ((scflags & MAY.HITMON) >>> 0) {
                         stmp.range = stmp.range - 1 | 0;
-                        if (await ohitmon(mtmp, stmp.obj, 1, 0)) {
+                        if (await ohitmon(mtmp, stmp.obj, 1, FALSE)) {
                             stmp.obj = null;
-                            stmp.stopped = 1;
+                            stmp.stopped = TRUE;
                         }
                     }
                 } else if (gb.bhitpos.x === u.ux && gb.bhitpos.y === u.uy) {
-                    if ((scflags & 4) >>> 0) {
+                    if ((scflags & MAY.HITYOU) >>> 0) {
                         if (gm.multi) {
                             nomul(0);
                         }
                         dam = await dmgval(stmp.obj, gy.youmonst);
                         hitvalu = 8 + stmp.obj.spe | 0;
-                        if (gy.youmonst.data.msize >= 3) {
+                        if (bigmonst(gy.youmonst.data)) {
                             hitvalu = hitvalu + 1 | 0;
                         }
-                        hitu = await thitu(hitvalu, u.uprops[56 /* HALF_PHDAM */].intrinsic || u.uprops[56 /* HALF_PHDAM */].extrinsic ? $c.div32(dam + 1 | 0, 2) : dam, new $c.FieldRef(stmp, "obj", "ptr"), null);
+                        hitu = await thitu(hitvalu, Maybe_Half_Phys(dam), new $c.FieldRef(stmp, "obj", "ptr"), null);
                         if (!stmp.obj) {
-                            stmp.stopped = 1;
+                            stmp.stopped = TRUE;
                         }
                         if (hitu) {
                             stmp.range = stmp.range - 3 | 0;
@@ -707,20 +735,20 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
                         }
                     }
                 } else {
-                    if ((scflags & 1) >>> 0) {
+                    if ((scflags & VIS_EFFECTS) >>> 0) {
                     }
                 }
                 stmp.ox = gb.bhitpos.x;
                 stmp.oy = gb.bhitpos.y;
-                if (svl.level.locations[stmp.ox][stmp.oy].typ === 30 /* SINK */) {
-                    stmp.stopped = 1;
+                if (svl.level.locations[stmp.ox][stmp.oy].typ === SINK) {
+                    stmp.stopped = TRUE;
                 }
                 gt.thrownobj = null;
             }
         }
     }
     for (stmp = schain; stmp; stmp = stmp2) {
-        obj_left_shop = 0;
+        obj_left_shop = FALSE;
         stmp2 = stmp.next;
         x = stmp.ox;
         y = stmp.oy;
@@ -730,10 +758,10 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
                 obj_left_shop = $c.i8(shop_origin && !await costly_spot(x, y) ? 1 : 0);
             }
             if (!await flooreffects(stmp.obj, x, y, $c.lit("land"))) {
-                if (obj_left_shop && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(u.ux, u.uy, 14 /* SHOPBASE */).get(0))) {
-                    if (stmp.obj.otyp === 438 /* GOLD_PIECE */) {
-                        await addtobill(stmp.obj, 0, 0, 1);
-                        lostgoods = 1;
+                if (obj_left_shop && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(u.ux, u.uy, SHOPBASE).get(0))) {
+                    if (stmp.obj.otyp === GOLD_PIECE) {
+                        await addtobill(stmp.obj, FALSE, FALSE, TRUE);
+                        lostgoods = TRUE;
                     }
                 }
                 await place_object(stmp.obj, x, y);
@@ -744,7 +772,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
         await newsym(x, y);
     }
     await newsym(sx, sy);
-    if (sx === u.ux && sy === u.uy && u.uundetected | 0 && $c.andu64(gy.youmonst.data.mflags1, 128) !== 0) {
+    if (u_at(sx, sy) && u.uundetected | 0 && hides_under(gy.youmonst.data)) {
         await hideunder(gy.youmonst);
     }
     if ((mtmp = svl.level.monsters[sx][sy]) !== null && mtmp.mtrapped | 0) {
@@ -752,14 +780,14 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {   // explode.c
     }
     await maybe_unhide_at(sx, sy);
     if (lostgoods) {
-        await credit_report(shkp, 1, 0);
+        await credit_report(shkp, 1, FALSE);
     }
     return total;
 }
 export async function splatter_burning_oil(x, y, diluted_oil) {   // explode.c:962
     let dmg = 0;
-    dmg = rng_log_enabled() ? (rng_log_set_caller($c.lit("explode.c"), 964, $c.lit("splatter_burning_oil")), d(diluted_oil ? 3 : 4, 4)) : d(diluted_oil ? 3 : 4, 4);
-    await explode(x, y, 11, dmg, 19, 5 /* EXPL_FIERY */);
+    dmg = d(diluted_oil ? 3 : 4, 4);
+    await explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL.FIERY);
 }
 export async function explode_oil(obj, x, y) {   // explode.c:974
     let diluted_oil = 0;
@@ -767,56 +795,56 @@ export async function explode_oil(obj, x, y) {   // explode.c:974
     if (!obj.lamplit) {
         await impossible($c.lit("exploding unlit oil"));
     }
-    await end_burn(obj, 1);
-    obj.how_lost = (4) & 7;
+    await end_burn(obj, TRUE);
+    obj.how_lost = (LOST.EXPLODING) & 7;
     await splatter_burning_oil(x, y, diluted_oil);
 }
 export async function adtyp_to_expltype(adtyp) {   // explode.c:987
     switch (adtyp) {
-        case 6:
-        case 241:
-        case 16:
-        case 41:
-            return 4 /* EXPL_MAGICAL */;
-        case 2:
-            return 5 /* EXPL_FIERY */;
-        case 3:
-            return 6 /* EXPL_FROSTY */;
-        case 7:
-        case 30:
-        case 31:
-        case 33:
-        case 38:
-        case 0:
-            return 1 /* EXPL_NOXIOUS */;
+        case AD.ELEC:
+        case AD.SPEL:
+        case AD.DREN:
+        case AD.ENCH:
+            return EXPL.MAGICAL;
+        case AD.FIRE:
+            return EXPL.FIERY;
+        case AD.COLD:
+            return EXPL.FROSTY;
+        case AD.DRST:
+        case AD.DRDX:
+        case AD.DRCO:
+        case AD.DISE:
+        case AD.PEST:
+        case AD.PHYS:
+            return EXPL.NOXIOUS;
         default:
             await impossible($c.lit("adtyp_to_expltype: bad explosion type %d"), adtyp);
-            return 5 /* EXPL_FIERY */;
+            return EXPL.FIERY;
     }
 }
 export async function mon_explodes(mon, mattk) {   // explode.c:1019
     let dmg = 0, type = 0;
     if (mattk.damn) {
-        dmg = rng_log_enabled() ? (rng_log_set_caller($c.lit("explode.c"), 1026, $c.lit("mon_explodes")), d(mattk.damn, mattk.damd)) : d(mattk.damn, mattk.damd);
+        dmg = d(mattk.damn, mattk.damd);
     } else if (mattk.damd) {
-        dmg = rng_log_enabled() ? (rng_log_set_caller($c.lit("explode.c"), 1029, $c.lit("mon_explodes")), d(mon.data.mlevel + 1 | 0, mattk.damd)) : d(mon.data.mlevel + 1 | 0, mattk.damd);
+        dmg = d(mon.data.mlevel + 1 | 0, mattk.damd);
     } else {
         dmg = 0;
     }
-    if (mattk.adtyp === 0) {
-        type = -1;
-    } else if (mattk.adtyp >= 1 && mattk.adtyp <= 10) {
+    if (mattk.adtyp === AD.PHYS) {
+        type = PHYS_EXPL_TYPE;
+    } else if (mattk.adtyp >= AD.MAGM && mattk.adtyp <= AD.SPC2) {
         type = -((mattk.adtyp - 1 | 0) + 20 | 0) | 0;
     } else {
         await impossible($c.lit("unknown type for mon_explode %d"), mattk.adtyp);
         return;
     }
-    if (!(mon.mhp < 1)) {
+    if (!DEADMONSTER(mon)) {
         await mondead(mon);
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(svk.killer.name, 0), 0, 256, $c.lit("%s explosion"), s_suffix(pmname(mon.data, Mgender(mon))));
-    svk.killer.format = 0;
-    await explode(mon.mx, mon.my, type, dmg, 20, await adtyp_to_expltype(mattk.adtyp));
+    svk.killer.format = KILLED.BY_AN;
+    await explode(mon.mx, mon.my, type, dmg, MON_EXPLODE, await adtyp_to_expltype(mattk.adtyp));
     svk.killer.name[0] = 0;
 }
 
@@ -824,13 +852,9 @@ export function $init() {
     for (let $i0 = 0; $i0 < 3; $i0++) {
         explosion[$i0].fill(0);
     }
-    explosion[0][0] = 96 /* S_expl_tl */;
-    explosion[0][1] = 99 /* S_expl_ml */;
-    explosion[0][2] = 102 /* S_expl_bl */;
-    explosion[1][0] = 97 /* S_expl_tc */;
-    explosion[1][1] = 100 /* S_expl_mc */;
-    explosion[1][2] = 103 /* S_expl_bc */;
-    explosion[2][0] = 98 /* S_expl_tr */;
-    explosion[2][1] = 101 /* S_expl_mr */;
-    explosion[2][2] = 104 /* S_expl_br */;
+    $c.init(explosion, [
+        [S.expl_tl, S.expl_ml, S.expl_bl],
+        [S.expl_tc, S.expl_mc, S.expl_bc],
+        [S.expl_tr, S.expl_mr, S.expl_br]
+    ]);
 }

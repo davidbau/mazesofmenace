@@ -136,7 +136,7 @@ const is_minion = (ptr) => (ptr.mflags2 & M2_MINION) !== 0;
 const is_lminion = (mon) => is_minion(mon.data) && mon_aligntyp(mon) === A_LAWFUL;
 const likes_gold = (ptr) => (ptr.mflags2 & M2_GREEDY) !== 0;
 const is_domestic = (ptr) => (ptr.mflags2 & M2_DOMESTIC) !== 0;
-const race_hostile = (ptr) => (ptr.mflags2 & (game.urace?.hatemask ?? 0)) !== 0;
+export const race_hostile = (ptr) => (ptr.mflags2 & (game.urace?.hatemask ?? 0)) !== 0;
 const race_peaceful = (ptr) => (ptr.mflags2 & (game.urace?.lovemask ?? 0)) !== 0;
 export const likes_gems = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
 const is_unicorn = (ptr) => ptr.mlet === S_UNICORN && likes_gems(ptr);

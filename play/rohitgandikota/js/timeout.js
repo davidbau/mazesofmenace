@@ -1494,6 +1494,46 @@ async function slip_or_trip() {
     }
 }
 
+// src/timeout.c:528 phaze_texts[]
+const phaze_texts = [
+    'You start to feel bloated.',
+    'You are feeling rather flabby.',
+];
+
+// src/timeout.c:534 phaze_dialogue()
+async function phaze_dialogue() {
+    const h = game.u.intrinsic.HPasses_walls | 0;
+    const i = Math.trunc((h & TIMEOUT) / 2);
+
+    if (game.u.uprops?.PASSES_WALLS || (h & ~TIMEOUT))
+        return;
+    if ((h & TIMEOUT) % 2 && i > 0 && i <= phaze_texts.length)
+        await pline(phaze_texts[phaze_texts.length - i]);
+}
+
+// src/timeout.c:548 region_texts[]
+const region_texts = [
+    'You seem to have some trouble breathing.',
+    'The air here seems foul.',
+];
+
+// src/timeout.c:554 region_dialogue()
+async function region_dialogue() {
+    const intr = game.u.intrinsic;
+    const r = intr.HMagical_breathing & TIMEOUT, i = Math.trunc(r / 2);
+
+    /* Test whether another source still protects the hero without this
+       temporary prayer benefit. Restore the timeout before any message. */
+    intr.HMagical_breathing &= ~TIMEOUT;
+    const no_need_to_breathe = Breathless();
+    const in_poison_gas_cloud = region_danger();
+    intr.HMagical_breathing |= r;
+    if (no_need_to_breathe || !in_poison_gas_cloud)
+        return;
+    if (r % 2 && i > 0 && i <= region_texts.length)
+        await pline(region_texts[region_texts.length - i]);
+}
+
 // src/timeout.c:575 done_timeout()
 async function done_timeout(how, which) {
     const props = which === STRANGLED ? game.u.intrinsic : game.u.uprops;

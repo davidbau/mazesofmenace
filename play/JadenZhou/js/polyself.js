@@ -6,6 +6,8 @@
 // uunstick(), skinback().  newman() is not ported yet.
 
 import { game } from './gstate.js';
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT } from './const.js';
 import {
     NON_PM, FROMFORM, I_SPECIAL, TT_PIT, FIRE_RES, COLD_RES, SLEEP_RES,
     DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, DRAIN_RES,
@@ -891,11 +893,10 @@ export async function polymon(mntmp) {
     }
 
     /* KMH, conduct */
-    const prev_polyselfs = u.uconduct.polyselfs || 0;
-    u.uconduct.polyselfs = prev_polyselfs + 1;
-    if (!prev_polyselfs) {
-        /* livelog_printf(LL_CONDUCT, ...): no livelog in this port */
-    }
+    if (!u.uconduct.polyselfs++)
+        livelog_printf(LL_CONDUCT,
+                       `changed form for the first time, becoming ${
+                           an(pmname(mons[mntmp], game.flags.female ? FEMALE : MALE))}`);
 
     /* exercise used to be at the very end but only Wis was affected
        there since the polymorph was always in effect by then */

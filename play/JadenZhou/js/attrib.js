@@ -665,7 +665,7 @@ export async function poisoned(
     /* inform player about being poisoned unless that's already been done;
        "blast" has given a "blast of poison gas" message; "poison arrow",
        "poison dart", etc have implicitly given poison messages too... */
-    if (!blast && !strstri(reason, "poison")) {
+    if (!blast && strstri(reason, "poison") < 0) { /* !strstri() */
         const plural = (reason[reason.length - 1] === 's');
 
         /* avoid "The" Orcus's sting was poisoned... */

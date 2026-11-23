@@ -4,8 +4,13 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { u } from './decl.js';
 import { panic } from './end.js';
+import { FALSE, TRUE } from './global.h.js';
+import { release_data, update_file } from './hack.macros.js';
 import { distmin } from './hacklib.js';
+import { RIN_STEALTH } from './objects.h.js';
 import { sfi_int, sfi_nhcoord, sfo_int, sfo_nhcoord } from './sfbase.js';
+
+const UTSZ = 100;
 
 const utcnt = Int32Array.of(0);   // address taken
 const utpnt = Int32Array.of(0);   // address taken
@@ -15,13 +20,13 @@ export function initrack() {   // track.c:15
     $c.__builtin___memset_chk(new $c.Ptr([utrack], 0), 0, 400, 400);
 }
 export function settrack() {   // track.c:24
-    if ($G.uleft && $G.uleft.otyp === 181 /* RIN_STEALTH */ || $G.uright && $G.uright.otyp === 181 /* RIN_STEALTH */) {
+    if ($G.uleft && $G.uleft.otyp === RIN_STEALTH || $G.uright && $G.uright.otyp === RIN_STEALTH) {
         return;
     }
-    if (utcnt[0] < 100) {
+    if (utcnt[0] < UTSZ) {
         utcnt[0] = utcnt[0] + 1 | 0;
     }
-    if (utpnt[0] === 100) {
+    if (utpnt[0] === UTSZ) {
         utpnt[0] = 0;
     }
     utrack[utpnt[0]].x = u.ux;
@@ -33,7 +38,7 @@ export function gettrack(x, y) {   // track.c:42
     cnt = utcnt[0];
     for (tc = $c.relem(utrack, utpnt[0]); $t1 = cnt, cnt = $t1 - 1 | 0, $t1; ) {
         if ($c.peq(tc, $c.relem(utrack, 0))) {
-            tc = $c.relem(utrack, 99);
+            tc = $c.relem(utrack, UTSZ - 1);
         } else {
             tc = $c.radd(tc, -1);
         }
@@ -48,21 +53,21 @@ export function hastrack(x, y) {   // track.c:63
     let i = 0;
     for (i = 0; i < utcnt[0]; i = i + 1 | 0) {
         if (utrack[i].x === x && utrack[i].y === y) {
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 export async function save_track(nhfp) {   // track.c:76
     let i = 0;
-    if (nhfp.mode & 3) {
+    if (update_file(nhfp)) {
         await sfo_int(nhfp, new $c.Ptr(utcnt, 0), $c.lit("track-utcnt"));
         await sfo_int(nhfp, new $c.Ptr(utpnt, 0), $c.lit("track-utpnt"));
         for (i = 0; i < utcnt[0]; i = i + 1 | 0) {
             await sfo_nhcoord(nhfp, $c.relem(utrack, i), $c.lit("utrack"));
         }
     }
-    if (nhfp.mode & 4) {
+    if (release_data(nhfp)) {
         initrack();
     }
 }
@@ -70,7 +75,7 @@ export async function rest_track(nhfp) {   // track.c:93
     let i = 0;
     await sfi_int(nhfp, new $c.Ptr(utcnt, 0), $c.lit("track-utcnt"));
     await sfi_int(nhfp, new $c.Ptr(utpnt, 0), $c.lit("track-utpnt"));
-    if (utcnt[0] > 100 || utpnt[0] > 100) {
+    if (utcnt[0] > UTSZ || utpnt[0] > UTSZ) {
         await panic($c.lit("rest_track: impossible pt counts"));
     }
     for (i = 0; i < utcnt[0]; i = i + 1 | 0) {

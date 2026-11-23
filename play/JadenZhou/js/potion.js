@@ -2074,9 +2074,32 @@ export async function djinni_from_bottle(obj) {
 }
 
 // C ref: potion.c split_mon() -- clone a gremlin or mold
-async function split_mon(mon, mtmp) {
-    void mon; void mtmp;
-    throw new Error('split_mon(): cloneu()/clone_mon() not ported yet');
+export async function split_mon(
+    mon,    /* monster being split */
+    mtmp) { /* optional attacker whose heat triggered it */
+    let mtmp2;
+    let reason = '';
+
+    if (mtmp)
+        reason = ` from ${(mtmp === game.youmonst) ? "your" /* the_your[1] */
+                                                   : s_suffix(mon_nam(mtmp))} heat`;
+
+    if (mon === game.youmonst) {
+        throw new Error('split_mon(): cloneu() not ported yet');
+    } else {
+        if (mon.mhp > mon.mhpmax) /* sanity precaution */
+            mon.mhp = mon.mhpmax;
+        mtmp2 = (mon.mhp > 1) ? await clone_mon_sm(mon, 0, 0) : null;
+        if (mtmp2) {
+            /* mtmp2 has been created with mhpmax = mon->mhpmax,
+               mhp = mon->mhp / 2, and mon->mh -= mtmp2->mhp;
+               dividing max by 2 can't result in it exceeding current */
+            mtmp2.mhpmax = Math.trunc(mon.mhpmax / 2);
+            mon.mhpmax -= mtmp2.mhpmax;
+            if (canspotmon(mon))
+                await pline(`${Monnam(mon)} multiplies${reason}!`);
+        }
+    }
 }
 
 // C ref: potion.c speed_up() -- Character becomes very fast temporarily.
@@ -2402,3 +2425,4 @@ function dip_pair_of(o) {
                 && (objects[o.otyp].oc_armcat === O.ARM_GLOVES
                     || objects[o.otyp].oc_armcat === O.ARM_BOOTS)));
 }
+import { clone_mon as clone_mon_sm } from './makemon.js';

@@ -3,112 +3,122 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { exercise } from './attrib.js';
+import { A } from './attrib.h.js';
 import { gu, gy, svb, svp, u } from './decl.js';
+import { SCROLL_CLASS, SPBOOK_CLASS } from './defsym.h.js';
 import { dropx } from './do.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { wipeout_text } from './engrave.js';
+import { FALSE, LL, MAXULEV, TRUE } from './global.h.js';
+import { ECMD, GETOBJ } from './hack.h.js';
 import { mungspaces, strncmpi, strstri, upstart } from './hacklib.js';
 import { getobj, hold_another_object, update_inventory, useup } from './invent.js';
+import { nhUse } from './lint.macros.js';
 import { bcsign, mksobj } from './mkobj.js';
+import { nohands } from './mondata.macros.js';
+import { PM } from './monsters.h.js';
 import { discover_object, observe_object } from './o_init.js';
 import { obj_descr, objects } from './objects.js';
+import { SCR_AMNESIA, SCR_BLANK_PAPER, SCR_CHARGING, SCR_CONFUSE_MONSTER, SCR_CREATE_MONSTER, SCR_DESTROY_ARMOR, SCR_EARTH, SCR_ENCHANT_ARMOR, SCR_ENCHANT_WEAPON, SCR_FIRE, SCR_FOOD_DETECTION, SCR_GENOCIDE, SCR_GOLD_DETECTION, SCR_IDENTIFY, SCR_LIGHT, SCR_MAGIC_MAPPING, SCR_MAIL, SCR_PUNISHMENT, SCR_REMOVE_CURSE, SCR_SCARE_MONSTER, SCR_STINKING_CLOUD, SCR_TAMING, SCR_TELEPORTATION, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL } from './objects.h.js';
 import { The, Tobjnam, an, aobjnam, ysimple_name } from './objnam.js';
 import { There, You, You_cant, Your, impossible, livelog_printf, pline, pline_The } from './pline.js';
-import { rn2, rng_log_enabled, rng_log_set_caller, rnl } from './rnd.js';
+import { rn2, rnl } from './rnd.js';
 import { check_unpaid, obfree } from './shk.js';
 import { known_spell } from './spell.js';
+import { spe_Fresh, spe_GoingStale, spe_Unknown } from './spell.h.js';
 import { getlin } from './windows.js';
+import { Blind, Glib, Hallucination } from './youprop.macros.js';
 
 const new_book_description$compositions = $c.nulls(4);   // static in new_book_description()
 async function cost(otmp) {   // write.c:14
-    if (otmp.oclass === 10 /* SPBOOK_CLASS */) {
+    if (otmp.oclass === SPBOOK_CLASS) {
         return Math.imul(10, objects[otmp.otyp].oc_oc2);
     }
     switch (otmp.otyp) {
-        case 364 /* SCR_MAIL */:
+        case SCR_MAIL:
             return 2;
-        case 332 /* SCR_LIGHT */:
-        case 334 /* SCR_GOLD_DETECTION */:
-        case 335 /* SCR_FOOD_DETECTION */:
-        case 337 /* SCR_MAGIC_MAPPING */:
-        case 338 /* SCR_AMNESIA */:
-        case 339 /* SCR_FIRE */:
-        case 340 /* SCR_EARTH */:
+        case SCR_LIGHT:
+        case SCR_GOLD_DETECTION:
+        case SCR_FOOD_DETECTION:
+        case SCR_MAGIC_MAPPING:
+        case SCR_AMNESIA:
+        case SCR_FIRE:
+        case SCR_EARTH:
             return 8;
-        case 324 /* SCR_DESTROY_ARMOR */:
-        case 329 /* SCR_CREATE_MONSTER */:
-        case 341 /* SCR_PUNISHMENT */:
+        case SCR_DESTROY_ARMOR:
+        case SCR_CREATE_MONSTER:
+        case SCR_PUNISHMENT:
             return 10;
-        case 325 /* SCR_CONFUSE_MONSTER */:
+        case SCR_CONFUSE_MONSTER:
             return 12;
-        case 336 /* SCR_IDENTIFY */:
+        case SCR_IDENTIFY:
             return 14;
-        case 323 /* SCR_ENCHANT_ARMOR */:
-        case 327 /* SCR_REMOVE_CURSE */:
-        case 328 /* SCR_ENCHANT_WEAPON */:
-        case 342 /* SCR_CHARGING */:
+        case SCR_ENCHANT_ARMOR:
+        case SCR_REMOVE_CURSE:
+        case SCR_ENCHANT_WEAPON:
+        case SCR_CHARGING:
             return 16;
-        case 326 /* SCR_SCARE_MONSTER */:
-        case 343 /* SCR_STINKING_CLOUD */:
-        case 330 /* SCR_TAMING */:
-        case 333 /* SCR_TELEPORTATION */:
+        case SCR_SCARE_MONSTER:
+        case SCR_STINKING_CLOUD:
+        case SCR_TAMING:
+        case SCR_TELEPORTATION:
             return 20;
-        case 331 /* SCR_GENOCIDE */:
+        case SCR_GENOCIDE:
             return 30;
-        case 365 /* SCR_BLANK_PAPER */:
+        case SCR_BLANK_PAPER:
         default:
             await impossible($c.lit("You can't write such a weird scroll!"));
     }
     return 1000;
 }
 function write_ok(obj) {   // write.c:61
-    if (!obj || obj.oclass !== 9 /* SCROLL_CLASS */ && obj.oclass !== 10 /* SPBOOK_CLASS */) {
-        return -3 /* GETOBJ_EXCLUDE */;
+    if (!obj || obj.oclass !== SCROLL_CLASS && obj.oclass !== SPBOOK_CLASS) {
+        return GETOBJ.EXCLUDE;
     }
-    if (obj.otyp === 365 /* SCR_BLANK_PAPER */ || obj.otyp === 407 /* SPE_BLANK_PAPER */) {
-        return 2 /* GETOBJ_SUGGEST */;
+    if (obj.otyp === SCR_BLANK_PAPER || obj.otyp === SPE_BLANK_PAPER) {
+        return GETOBJ.SUGGEST;
     }
-    return 1 /* GETOBJ_DOWNPLAY */;
+    return GETOBJ.DOWNPLAY;
 }
 export async function dowrite(pen) {   // write.c:74
     let paper = null, namebuf = new Int8Array(256), nm = null, bp = null, new_obj = null, basecost = 0, actualcost = 0, curseval = 0, qbuf = new Int8Array(128), first = 0, last = 0, i = 0, deferred = 0, deferralchance = 0, real = 0, by_descr = 0, typeword = null, spell_knowledge = 0, fanfic = 0, tearup = 0, $t1;
     namebuf.fill(0);
     namebuf[0] = 0;
-    by_descr = 0;
-    if ($c.andu64(gy.youmonst.data.mflags1, 8192) !== 0) {
+    by_descr = FALSE;
+    if (nohands(gy.youmonst.data)) {
         await You($c.lit("need hands to be able to write!"));
-        return 0;
-    } else if (u.uprops[21 /* GLIB */].intrinsic) {
-        await pline($c.lit("%s from your %s."), await Tobjnam(pen, $c.lit("slip")), await fingers_or_gloves(0));
+        return ECMD.OK;
+    } else if (Glib()) {
+        await pline($c.lit("%s from your %s."), await Tobjnam(pen, $c.lit("slip")), await fingers_or_gloves(FALSE));
         await dropx(pen);
-        return 1;
+        return ECMD.TIME;
     }
-    paper = await getobj($c.lit("write on"), write_ok, 0);
+    paper = await getobj($c.lit("write on"), write_ok, GETOBJ.NOFLAGS);
     if (!paper) {
-        return 2;
+        return ECMD.CANCEL;
     }
-    typeword = paper.otyp === 408 /* SPE_NOVEL */ ? $c.lit("book") : paper.oclass === 10 /* SPBOOK_CLASS */ ? $c.lit("spellbook") : $c.lit("scroll");
-    if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+    typeword = paper.otyp === SPE_NOVEL ? $c.lit("book") : paper.oclass === SPBOOK_CLASS ? $c.lit("spellbook") : $c.lit("scroll");
+    if (Blind()) {
         if (!paper.dknown) {
             await You($c.lit("don't know whether that %s is blank or not."), typeword);
-            return 0;
-        } else if (paper.oclass === 10 /* SPBOOK_CLASS */) {
+            return ECMD.OK;
+        } else if (paper.oclass === SPBOOK_CLASS) {
             await pline($c.lit("%s can't create braille text."), upstart(await ysimple_name(pen)));
-            return 0;
+            return ECMD.OK;
         }
     }
     await observe_object(paper);
-    if (paper.otyp !== 365 /* SCR_BLANK_PAPER */ && paper.otyp !== 407 /* SPE_BLANK_PAPER */) {
+    if (paper.otyp !== SCR_BLANK_PAPER && paper.otyp !== SPE_BLANK_PAPER) {
         await pline($c.lit("That %s is not blank!"), typeword);
-        await exercise(2 /* A_WIS */, 0);
-        return 1;
+        await exercise(A.WIS, FALSE);
+        return ECMD.TIME;
     }
-    await discover_object(365, 1, 1, 1);
+    await discover_object(SCR_BLANK_PAPER, TRUE, TRUE, TRUE);
     $c.__builtin___sprintf_chk(new $c.Ptr(qbuf, 0), 0, 128, $c.lit("What type of %s do you want to write?"), typeword);
     await getlin(new $c.Ptr(qbuf, 0), new $c.Ptr(namebuf, 0));
     mungspaces(new $c.Ptr(namebuf, 0));
     if (namebuf[0] === 27 || !namebuf[0]) {
-        return 1;
+        return ECMD.TIME;
     }
     nm = new $c.Ptr(namebuf, 0);
     if (!strncmpi(nm, $c.lit("scroll "), 7)) {
@@ -133,7 +143,7 @@ export async function dowrite(pen) {   // write.c:74
                 continue;
             }
             if (!strncmpi(obj_descr[objects[i].oc_name_idx].oc_name, nm, -1)) {
-                if (objects[i].oc_name_known | 0 || paper.oclass === 10 /* SPBOOK_CLASS */) {
+                if (objects[i].oc_name_known | 0 || paper.oclass === SPBOOK_CLASS) {
                     break found$;
                 } else {
                     real = deferred = i;
@@ -141,14 +151,14 @@ export async function dowrite(pen) {   // write.c:74
                 }
             }
             if (!strncmpi(obj_descr[objects[i].oc_descr_idx].oc_descr, nm, -1)) {
-                by_descr = 1;
+                by_descr = TRUE;
                 break found$;
             }
         }
         for (i = first; i <= last; i = i + 1 | 0) {
-            if (objects[i].oc_uname && !strncmpi(objects[i].oc_uname, nm, -1) && !(real && objects[i].oc_name_known | 0) && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("write.c"), 193, $c.lit("dowrite")), rn2(deferralchance = deferralchance + 1 | 0)) : rn2(deferralchance = deferralchance + 1 | 0))) {
+            if (objects[i].oc_uname && !strncmpi(objects[i].oc_uname, nm, -1) && !(real && objects[i].oc_name_known | 0) && !rn2(deferralchance = deferralchance + 1 | 0)) {
                 deferred = i;
-                by_descr = 1;
+                by_descr = TRUE;
             }
         }
         if (deferred) {
@@ -156,19 +166,19 @@ export async function dowrite(pen) {   // write.c:74
             break found$;
         }
         await There($c.lit("is no such %s!"), typeword);
-        return 1;
+        return ECMD.TIME;
     }
-    if (i === 365 /* SCR_BLANK_PAPER */ || i === 407 /* SPE_BLANK_PAPER */) {
+    if (i === SCR_BLANK_PAPER || i === SPE_BLANK_PAPER) {
         await You_cant($c.lit("write that!"));
         await pline($c.lit("It's obscene!"));
-        return 1;
-    } else if (i === 408 /* SPE_NOVEL */) {
-        fanfic = $c.i8(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("write.c"), 216, $c.lit("dowrite")), rn2(3)) : rn2(3)) ? 1 : 0);
-        tearup = $c.i8(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("write.c"), 216, $c.lit("dowrite")), rn2(3)) : rn2(3)) ? 1 : 0);
+        return ECMD.TIME;
+    } else if (i === SPE_NOVEL) {
+        fanfic = $c.i8(!rn2(3) ? 1 : 0);
+        tearup = $c.i8(!rn2(3) ? 1 : 0);
         if (!fanfic) {
-            await You($c.lit("%s to write the Great Yendorian Novel, but %s inspiration."), !tearup ? $c.lit("prepare") : $c.lit("try"), !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) ? $c.lit("lack") : $c.lit("have too much"));
+            await You($c.lit("%s to write the Great Yendorian Novel, but %s inspiration."), !tearup ? $c.lit("prepare") : $c.lit("try"), !Hallucination() ? $c.lit("lack") : $c.lit("have too much"));
         } else {
-            await You($c.lit("%sproduce really %s fan-fiction."), !tearup ? $c.lit("start to ") : $c.lit(""), !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) ? $c.lit("lame") : $c.lit("awesome"));
+            await You($c.lit("%sproduce really %s fan-fiction."), !tearup ? $c.lit("start to ") : $c.lit(""), !Hallucination() ? $c.lit("lame") : $c.lit("awesome"));
         }
         if (!tearup) {
             await You($c.lit("give up on the idea."));
@@ -176,33 +186,33 @@ export async function dowrite(pen) {   // write.c:74
             await You($c.lit("tear it up."));
             await useup(paper);
         }
-        return 1;
-    } else if (i === 409 /* SPE_BOOK_OF_THE_DEAD */) {
+        return ECMD.TIME;
+    } else if (i === SPE_BOOK_OF_THE_DEAD) {
         await pline($c.lit("No mere dungeon adventurer could write that."));
-        return 1;
-    } else if (by_descr && paper.oclass === 10 /* SPBOOK_CLASS */ && !objects[i].oc_name_known) {
+        return ECMD.TIME;
+    } else if (by_descr && paper.oclass === SPBOOK_CLASS && !objects[i].oc_name_known) {
         await pline($c.lit("Unfortunately you don't have enough information to go on."));
-        return 1;
+        return ECMD.TIME;
     }
     if (!($t1 = u.uconduct.literate, u.uconduct.literate = $c.add64($t1, 1), $t1)) {
-        await livelog_printf(32, $c.lit("became literate by writing %s"), await an(typeword));
+        await livelog_printf(LL.CONDUCT, $c.lit("became literate by writing %s"), await an(typeword));
     }
-    new_obj = await mksobj(i, 0, 0);
+    new_obj = await mksobj(i, FALSE, FALSE);
     new_obj.bknown = ((paper.bknown | 0 && pen.bknown | 0 ? 1 : 0) >>> 0) & 1;
     await check_unpaid(pen);
     basecost = await cost(new_obj);
     if (pen.spe < $c.div32(basecost, 2)) {
         await Your($c.lit("marker is too dry to write that!"));
         await obfree(new_obj, null);
-        return 1;
+        return ECMD.TIME;
     }
-    actualcost = (rng_log_enabled() ? (rng_log_set_caller($c.lit("write.c"), 265, $c.lit("dowrite")), rn2($c.div32(basecost, 2))) : rn2($c.div32(basecost, 2))) + $c.div32(basecost, 2) | 0;
+    actualcost = rn2($c.div32(basecost, 2)) + $c.div32(basecost, 2) | 0;
     curseval = bcsign(pen) + bcsign(paper) | 0;
-    await exercise(2 /* A_WIS */, 1);
+    await exercise(A.WIS, TRUE);
     if (pen.spe < actualcost) {
         pen.spe = 0;
         await Your($c.lit("marker dries out!"));
-        if (paper.oclass === 10 /* SPBOOK_CLASS */) {
+        if (paper.oclass === SPBOOK_CLASS) {
             await pline_The($c.lit("spellbook is left unfinished and your writing fades."));
             await update_inventory();
         } else {
@@ -210,23 +220,23 @@ export async function dowrite(pen) {   // write.c:74
             await useup(paper);
         }
         await obfree(new_obj, null);
-        return 1;
+        return ECMD.TIME;
     }
     pen.spe = $c.i8(pen.spe - actualcost | 0);
-    if (paper.oclass === 10 /* SPBOOK_CLASS */) {
+    if (paper.oclass === SPBOOK_CLASS) {
         spell_knowledge = known_spell(new_obj.otyp);
     } else {
-        spell_knowledge = 0 /* spe_Unknown */;
+        spell_knowledge = spe_Unknown;
     }
-    if (!objects[new_obj.otyp].oc_name_known && !(by_descr && objects[new_obj.otyp].oc_encountered | 0) && spell_knowledge !== 1 /* spe_Fresh */ && (rng_log_enabled() ? (rng_log_set_caller($c.lit("write.c"), 321, $c.lit("dowrite")), rnl(gu.urole.mnum === 343 && paper.oclass !== 10 /* SPBOOK_CLASS */ || spell_knowledge === 2 /* spe_GoingStale */ ? 5 : 15)) : rnl(gu.urole.mnum === 343 && paper.oclass !== 10 /* SPBOOK_CLASS */ || spell_knowledge === 2 /* spe_GoingStale */ ? 5 : 15))) {
+    if (!objects[new_obj.otyp].oc_name_known && !(by_descr && objects[new_obj.otyp].oc_encountered | 0) && spell_knowledge !== spe_Fresh && rnl(gu.urole.mnum === PM.WIZARD && paper.oclass !== SPBOOK_CLASS || spell_knowledge === spe_GoingStale ? 5 : 15)) {
         await You($c.lit("%s to write that."), by_descr ? $c.lit("fail") : $c.lit("don't know how"));
-        if (paper.oclass === 10 /* SPBOOK_CLASS */) {
+        if (paper.oclass === SPBOOK_CLASS) {
             await You($c.lit("write in your best handwriting:  \"My Diary\", but it quickly fades."));
             await update_inventory();
         } else {
             if (by_descr) {
                 $c.__builtin___strcpy_chk(new $c.Ptr(namebuf, 0), obj_descr[objects[new_obj.otyp].oc_descr_idx].oc_descr, 256);
-                wipeout_text(new $c.Ptr(namebuf, 0), $c.div32(36 - u.ulevel | 0, 6), 0);
+                wipeout_text(new $c.Ptr(namebuf, 0), $c.div32(6 + MAXULEV - u.ulevel | 0, 6), 0);
             } else {
                 $c.__builtin___sprintf_chk(new $c.Ptr(namebuf, 0), 0, 256, $c.lit("%s was here!"), new $c.Ptr(svp.plname, 0));
             }
@@ -234,30 +244,30 @@ export async function dowrite(pen) {   // write.c:74
             await useup(paper);
         }
         await obfree(new_obj, null);
-        return 1;
+        return ECMD.TIME;
     }
-    if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && (rng_log_enabled() ? (rng_log_set_caller($c.lit("write.c"), 342, $c.lit("dowrite")), rnl(3)) : rnl(3))) {
+    if (Blind() && rnl(3)) {
         await You($c.lit("fail to write the scroll correctly and it disappears."));
         await useup(paper);
         await obfree(new_obj, null);
-        return 1;
+        return ECMD.TIME;
     }
     await useup(paper);
-    if (new_obj.oclass === 10 /* SPBOOK_CLASS */) {
+    if (new_obj.oclass === SPBOOK_CLASS) {
         await pline_The($c.lit("spellbook warps strangely, then turns %s."), new_book_description(new_obj.otyp, new $c.Ptr(namebuf, 0)));
     }
     new_obj.blessed = ((curseval > 0 ? 1 : 0) >>> 0) & 1;
     new_obj.cursed = ((curseval < 0 ? 1 : 0) >>> 0) & 1;
-    if (new_obj.otyp === 364 /* SCR_MAIL */) {
+    if (new_obj.otyp === SCR_MAIL) {
         new_obj.spe = 2;
     }
-    new_obj.dknown = (0) & 1;
+    new_obj.dknown = (FALSE) & 1;
     if (objects[new_obj.otyp].oc_name_known | 0 || by_descr) {
         await observe_object(new_obj);
     }
     new_obj = await hold_another_object(new_obj, $c.lit("Oops!  %s out of your grasp!"), await The(await aobjnam(new_obj, $c.lit("slip"))), null);
-    new_obj;
-    return 1;
+    nhUse(new_obj);
+    return ECMD.TIME;
 }
 function new_book_description(booktype, outbuf) {   // write.c:395
     let descr = null, comp_p = null;
@@ -273,8 +283,10 @@ function new_book_description(booktype, outbuf) {   // write.c:395
 
 export function $init() {
     new_book_description$compositions.fill(null);
-    new_book_description$compositions[0] = $c.lit("parchment");
-    new_book_description$compositions[1] = $c.lit("vellum");
-    new_book_description$compositions[2] = $c.lit("cloth");
-    new_book_description$compositions[3] = null;
+    $c.init(new_book_description$compositions, [
+        $c.lit("parchment"),
+        $c.lit("vellum"),
+        $c.lit("cloth"),
+        null
+    ]);
 }

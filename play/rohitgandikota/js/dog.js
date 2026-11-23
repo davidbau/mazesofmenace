@@ -22,7 +22,7 @@ import { count_wsegs, wormgone, redraw_worm } from './worm.js';
 import { bee_eat_jelly, should_displace, undesirable_disp } from './monmove.js';
 import { costly_alteration } from './mkobj.js';
 import { unpaid_cost } from './shk.js';
-import { currency } from './invent.js';
+import { currency, obfree } from './invent.js';
 import { domonnoise } from './sounds.js';
 import { Conflict, Aggravate_monster } from './youprop.js';
 import { mhis } from './mondata.js';
@@ -1883,7 +1883,7 @@ function distmin(x0, y0, x1, y1) {
 }
 
 /* src/dogmove.c cursed_object_at() */
-function cursed_object_at(x, y) {
+export function cursed_object_at(x, y) {
     return (game.level?.objects || [])
                .some(o => o.ox === x && o.oy === y && o.cursed);
 }

@@ -2,6 +2,11 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { BUFSZ, FALSE, LARGEST_INT, TRUE } from './global.h.js';
+
+const VISCTRL_NBUF = 5;
+const TABSIZ = 0x20;
+const MAX_D = 5;
 
 const s_suffix$buf = new Int8Array(256);   // static in s_suffix()
 const ing_suffix$vowel = new Int8Array(8);   // static in ing_suffix()
@@ -67,22 +72,22 @@ export function upstart(s) {   // hacklib.c:178
 }
 export function upwords(s) {   // hacklib.c:187
     let p = null, space = 0, $t1;
-    space = 1;
+    space = TRUE;
     for (p = s; p.get(0); p = p.add(1)) {
         if (p.get(0) === 32) {
-            space = 1;
+            space = TRUE;
         } else if (space && letter(p.get(0))) {
             $t1 = highc(p.get(0)), p.set(0, $t1);
-            space = 0;
+            space = FALSE;
         } else {
-            space = 0;
+            space = FALSE;
         }
     }
     return s;
 }
 export function mungspaces(bp) {   // hacklib.c:206
     let c = 0, p = null, p2 = null, was_space = 0, $t1;
-    was_space = 1;
+    was_space = TRUE;
     for (p = p2 = bp; (c = p.get(0)) !== 0; p = p.add(1)) {
         if (c === 10) {
             break;
@@ -137,21 +142,21 @@ export function c_eos(s) {   // hacklib.c:267
 }
 export function str_start_is(str, chkstr, caseblind) {   // hacklib.c:277
     let t1 = 0, t2 = 0, n = 0;
-    n = 32767;
+    n = LARGEST_INT;
     while (n = n - 1 | 0) {
         if (!str.get(0)) {
             return $c.i8(chkstr.get(0) === 0 ? 1 : 0);
         } else if (!chkstr.get(0)) {
-            return 1;
+            return TRUE;
         }
         t1 = $c.i8(caseblind ? lowc(str.get(0)) : str.get(0));
         t2 = $c.i8(caseblind ? lowc(chkstr.get(0)) : chkstr.get(0));
         str = str.add(1), chkstr = chkstr.add(1);
         if (t1 !== t2) {
-            return 0;
+            return FALSE;
         }
     }
-    return 1;
+    return TRUE;
 }
 export function str_end_is(str, chkstr) {   // hacklib.c:305
     let clen = 0;
@@ -159,7 +164,7 @@ export function str_end_is(str, chkstr) {   // hacklib.c:305
     if ($c.i32($c.strlen(str)) >= clen) {
         return $c.i8(!$c.strncmp(eos(str).add(-clen), chkstr, $c.u64(clen)) ? 1 : 0);
     }
-    return 0;
+    return FALSE;
 }
 export function str_lines_maxlen(str) {   // hacklib.c:316
     let s1 = null, s2 = null, len = 0, max_len = 0;
@@ -277,10 +282,10 @@ export function xcrypt(str, buf) {   // hacklib.c:464
 export function onlyspace(s) {   // hacklib.c:483
     for (; s.get(0); s = s.add(1)) {
         if (s.get(0) !== 32 && s.get(0) !== 9) {
-            return 0;
+            return FALSE;
         }
     }
-    return 1;
+    return TRUE;
 }
 export function tabexpand(sbuf) {   // hacklib.c:493
     let buf = new Int8Array(266), bp = null, s = null, idx = 0, $t1, $t2;
@@ -297,8 +302,8 @@ export function tabexpand(sbuf) {   // hacklib.c:493
             ($t2 = bp, bp = $t2.add(1), $t2).set(0, s.get(0));
             idx = idx + 1 | 0;
         }
-        if (idx >= 256) {
-            bp = new $c.Ptr(buf, 255);
+        if (idx >= BUFSZ) {
+            bp = new $c.Ptr(buf, BUFSZ - 1);
             break;
         }
     }
@@ -309,7 +314,7 @@ export function visctrl(c) {   // hacklib.c:533
     let i = 0, ccc = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
     i = 0;
     ccc = new $c.Ptr(visctrl$visctrl_bufs[visctrl$nbuf], 0);
-    visctrl$nbuf = $c.rem32(visctrl$nbuf + 1 | 0, 5);
+    visctrl$nbuf = $c.rem32(visctrl$nbuf + 1 | 0, VISCTRL_NBUF);
     if ($c.u8(c) & 128) {
         ccc.set(($t1 = i, i = $t1 + 1 | 0, $t1), 77);
         ccc.set(($t2 = i, i = $t2 + 1 | 0, $t2), 45);
@@ -331,7 +336,7 @@ export function stripchars(bp, stuff_to_strip, orig) {   // hacklib.c:563
     let i = 0, s = null, $t1;
     i = 0;
     s = bp;
-    while (orig.get(0) && i < 255) {
+    while (orig.get(0) && i < BUFSZ - 1) {
         if (!$c.strchr(stuff_to_strip, orig.get(0))) {
             ($t1 = s, s = $t1.add(1), $t1).set(0, orig.get(0));
             i = i + 1 | 0;
@@ -366,9 +371,9 @@ export function strNsubst(inoutbuf, orig, replacement, n) {   // hacklib.c:621
     len = $c.u32($c.strlen(orig));
     ocount = 0;
     rcount = 0;
-    for (bp = inoutbuf, op = new $c.Ptr(workbuf, 0); bp.get(0) && $c.pcmp(op, new $c.Ptr(workbuf, 255)) < 0; ) {
+    for (bp = inoutbuf, op = new $c.Ptr(workbuf, 0); bp.get(0) && $c.pcmp(op, new $c.Ptr(workbuf, BUFSZ - 1)) < 0; ) {
         if ((!len || !$c.strncmp(bp, orig, len)) && ((ocount = ocount + 1 | 0) === n || n === 0)) {
-            for (rp = replacement; rp.get(0) && $c.pcmp(op, new $c.Ptr(workbuf, 255)) < 0; ) {
+            for (rp = replacement; rp.get(0) && $c.pcmp(op, new $c.Ptr(workbuf, BUFSZ - 1)) < 0; ) {
                 $t3 = ($t2 = rp, rp = $t2.add(1), $t2).get(0), $t4 = ($t1 = op, op = $t1.add(1), $t1), $t4.set(0, $t3);
             }
             rcount = rcount + 1 | 0;
@@ -380,7 +385,7 @@ export function strNsubst(inoutbuf, orig, replacement, n) {   // hacklib.c:621
         $t7 = ($t6 = bp, bp = $t6.add(1), $t6).get(0), $t8 = ($t5 = op, op = $t5.add(1), $t5), $t8.set(0, $t7);
     }
     if (!len && n === (ocount + 1 | 0)) {
-        for (rp = replacement; rp.get(0) && $c.pcmp(op, new $c.Ptr(workbuf, 255)) < 0; ) {
+        for (rp = replacement; rp.get(0) && $c.pcmp(op, new $c.Ptr(workbuf, BUFSZ - 1)) < 0; ) {
             $t11 = ($t10 = rp, rp = $t10.add(1), $t10).get(0), $t12 = ($t9 = op, op = $t9.add(1), $t9), $t12.set(0, $t11);
         }
         rcount = rcount + 1 | 0;
@@ -476,19 +481,19 @@ export function strstri(str, sub) {   // hacklib.c:804
     if (!sub.get(0)) {
         return str;
     }
-    for (i = 0; i < 32; i = i + 1 | 0) {
+    for (i = 0; i < TABSIZ; i = i + 1 | 0) {
         $t1 = tsub[i] = 0, tstr[i] = $t1;
     }
     for (k = 0, s1 = str; s1.get(0); k = k + 1 | 0) {
-        $t3 = new $c.Ptr(tstr, ($t2 = s1, s1 = $t2.add(1), $t2).get(0) & 31), $t3.set(0, $c.i8($t3.get(0) + 1));
+        $t3 = new $c.Ptr(tstr, ($t2 = s1, s1 = $t2.add(1), $t2).get(0) & TABSIZ - 1), $t3.set(0, $c.i8($t3.get(0) + 1));
     }
     for (s2 = sub; s2.get(0); k = k - 1 | 0) {
-        $t5 = new $c.Ptr(tsub, ($t4 = s2, s2 = $t4.add(1), $t4).get(0) & 31), $t5.set(0, $c.i8($t5.get(0) + 1));
+        $t5 = new $c.Ptr(tsub, ($t4 = s2, s2 = $t4.add(1), $t4).get(0) & TABSIZ - 1), $t5.set(0, $c.i8($t5.get(0) + 1));
     }
     if (k < 0) {
         return null;
     }
-    for (i = 0; i < 32; i = i + 1 | 0) {
+    for (i = 0; i < TABSIZ; i = i + 1 | 0) {
         if (tsub[i] > tstr[i]) {
             return null;
         }
@@ -592,21 +597,21 @@ export function copy_bytes(ifd, ofd) {   // hacklib.c:1010
             nto = $c.write(ofd, new $c.Ptr(buf, 0), $c.u64(nfrom));
         }
         if (nto !== nfrom || nfrom < 0) {
-            return 0;
+            return FALSE;
         }
     } while (nfrom === 1024);
-    return 1;
+    return TRUE;
 }
 export function datamodel(retidx) {   // hacklib.c:1046
     let i = 0, j = 0, matchcount = 0;
     for (i = 1; i < 5; i = i + 1 | 0) {
         matchcount = 0;
-        for (j = 0; j < 5; j = j + 1 | 0) {
+        for (j = 0; j < MAX_D; j = j + 1 | 0) {
             if (dm[0].sz[j] === dm[i].sz[j]) {
                 matchcount = matchcount + 1 | 0;
             }
         }
-        if (matchcount === 5) {
+        if (matchcount === MAX_D) {
             return retidx === 0 ? dm[i].datamodel : dm[i].dmplatform;
         }
     }
@@ -629,41 +634,15 @@ export function $init() {
     for (let $i0 = 0; $i0 < 5; $i0++) {
         dm[$i0].$copyFrom(new $T.datamodel_information());
     }
-    dm[0].sz[0] = 2;
-    dm[0].sz[1] = 4;
-    dm[0].sz[2] = 8;
-    dm[0].sz[3] = 8;
-    dm[0].sz[4] = 8;
-    dm[0].datamodel = $c.lit("");
-    dm[0].dmplatform = $c.lit("");
-    dm[1].sz[0] = 2;
-    dm[1].sz[1] = 4;
-    dm[1].sz[2] = 4;
-    dm[1].sz[3] = 8;
-    dm[1].sz[4] = 4;
-    dm[1].datamodel = $c.lit("ILP32LL64");
-    dm[1].dmplatform = $c.lit("x86 32-bit");
-    dm[2].sz[0] = 2;
-    dm[2].sz[1] = 4;
-    dm[2].sz[2] = 4;
-    dm[2].sz[3] = 8;
-    dm[2].sz[4] = 8;
-    dm[2].datamodel = $c.lit("IL32LLP64");
-    dm[2].dmplatform = $c.lit("Windows x64 64-bit");
-    dm[3].sz[0] = 2;
-    dm[3].sz[1] = 4;
-    dm[3].sz[2] = 8;
-    dm[3].sz[3] = 8;
-    dm[3].sz[4] = 8;
-    dm[3].datamodel = $c.lit("I32LP64");
-    dm[3].dmplatform = $c.lit("Unix 64-bit");
-    dm[4].sz[0] = 2;
-    dm[4].sz[1] = 8;
-    dm[4].sz[2] = 8;
-    dm[4].sz[3] = 8;
-    dm[4].sz[4] = 8;
-    dm[4].datamodel = $c.lit("ILP64");
-    dm[4].dmplatform = $c.lit("Unix ILP64");
+    $c.init(dm, [
+        { sz: [2, 4, 8,
+          8, 8],
+          datamodel: $c.lit(""), dmplatform: $c.lit("") },
+        { sz: [2, 4, 4, 8, 4], datamodel: $c.lit("ILP32LL64"), dmplatform: $c.lit("x86 32-bit") },
+        { sz: [2, 4, 4, 8, 8], datamodel: $c.lit("IL32LLP64"), dmplatform: $c.lit("Windows x64 64-bit") },
+        { sz: [2, 4, 8, 8, 8], datamodel: $c.lit("I32LP64"), dmplatform: $c.lit("Unix 64-bit") },
+        { sz: [2, 8, 8, 8, 8], datamodel: $c.lit("ILP64"), dmplatform: $c.lit("Unix ILP64") }
+    ]);
     s_suffix$buf.fill(0);
     ing_suffix$vowel.fill(0);
     ing_suffix$vowel.set([97, 101, 105, 111, 117, 119, 121]);   // "aeiouwy"

@@ -106,7 +106,11 @@ const LARGEST_INT = 32767;
 import { done_in_by } from './end.js';
 import { ART_SNICKERSNEE } from './artilist.js';
 import { genders } from './role.js';
-import { xname } from './objnam.js';
+import { xname, doname } from './objnam.js';
+import { tp_sensemon, vobj_at } from './display.js';
+import { Amonnam } from './do_name.js';
+import { is_pool } from './makemon.js';
+import { DETECT_MONSTERS } from './const.js';
 
 /* C ref: mhitu.c static mon_currwep */
 let mon_currwep = null;
@@ -933,8 +937,32 @@ async function hitmu(mtmp, mattk) {
     /*  If the monster is undetected & hits you, you should know where
      *  the attack came from.
      */
-    if (mtmp.mundetected && (hides_under(mdat) || mdat.mlet === M.S_EEL))
-        throw new Error('hitmu(): undetected attacker reveal not ported yet');
+    if (mtmp.mundetected && (hides_under(mdat) || mdat.mlet === M.S_EEL)) {
+        mtmp.mundetected = 0;
+        const dm = game.u.uprops[DETECT_MONSTERS];
+        if (!tp_sensemon(mtmp)
+            && !(dm.intrinsic || dm.extrinsic)) { /* !Detect_monsters */
+            let obj;
+            let what;
+            let Amonbuf;
+
+            if ((obj = vobj_at(mtmp.mx, mtmp.my)) != null) {
+                if (Blind() && !obj.dknown)
+                    what = "something";
+                else if (is_pool(mtmp.mx, mtmp.my) && !Underwater())
+                    what = "the water";
+                else
+                    what = doname(obj);
+
+                Amonbuf = Amonnam(mtmp);
+                /* mtmp might be invisible with hero unable to see same */
+                if (Amonbuf === "It") /* note: not strcmpi() */
+                    Amonbuf = "Something";
+                await pline(`${Amonbuf} was hidden under ${what}!`);
+            }
+            newsym(mtmp.mx, mtmp.my);
+        }
+    }
 
     /*  First determine the base damage done */
     mhm.damage = d(mattk.damn, mattk.damd);
@@ -2035,8 +2063,58 @@ async function passiveum(olduasmon, mtmp, mattk) {
     }
     if (!Upolyd())
         return M_ATTK_HIT;
-    throw new Error('passiveum(): polymorphed hero passives not ported yet');
+
+    /* These affect the enemy only if you are still a monster */
+    if (rn2(3))
+        switch (oldu_mattk.adtyp) {
+        case AD_PHYS:
+            if (oldu_mattk.aatyp === AT_BOOM)
+                throw new Error('passiveum(): exploding hero (rehumanize()) not ported yet');
+            break;
+        case AD_COLD: /* Brown mold or blue jelly */
+            if (resists_cold_mu(mtmp)) {
+                /* shieldeff(mtmp->mx, mtmp->my): transient display only */
+                await pline(`${Monnam(mtmp)} is mildly chilly.`); /* pline_mon() */
+                /* golemeffects(mtmp, AD_COLD, tmp): no effect for cold */
+                tmp = 0;
+                break;
+            }
+            await pline(`${Monnam(mtmp)} is suddenly very cold!`); /* pline_mon() */
+            game.u.mh += Math.trunc((tmp + rn2(2)) / 2);
+            if (game.u.mhmax < game.u.mh)
+                game.u.mhmax = game.u.mh;
+            if (game.u.mhmax > ((game.youmonst.data.mlevel + 1) * 8))
+                throw new Error('passiveum(): split_mon() not ported yet');
+            break;
+        case M.AD_PLYS: /* Floating eye */
+        case M.AD_STUN: /* Yellow mold */
+        case M.AD_FIRE: /* Red mold */
+        case M.AD_ELEC:
+            throw new Error('passiveum(): polymorphed hero passive damage types not ported yet');
+        default:
+            tmp = 0;
+            break;
+        }
+    else
+        tmp = 0;
+
+    return await assess_dmg_mu(mtmp, tmp);
 }
+
+// C ref: mhitu.c assess_dmg()
+async function assess_dmg_mu(mtmp, tmp) {
+    if ((mtmp.mhp -= tmp) <= 0) {
+        await pline(`${Monnam(mtmp)} dies!`); /* pline_mon() */
+        await xkilled_mu(mtmp, XKILL_NOMSG_MU);
+        if (!(mtmp.mhp < 1)) /* !DEADMONSTER(mtmp) */
+            return M_ATTK_HIT;
+        return M_ATTK_AGR_DIED;
+    }
+    return M_ATTK_HIT;
+}
+import { xkilled as xkilled_mu } from './mon.js';
+import { resists_cold as resists_cold_mu } from './mondata.js';
+import { XKILL_NOMSG as XKILL_NOMSG_MU } from './const.js';
 
 void mon_currwep; void Blind; void AT_GAZE;
 import { mon_explodes } from './explode.js';

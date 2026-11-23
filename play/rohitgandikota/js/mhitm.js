@@ -708,7 +708,7 @@ function engulfVerb(ptr) {
 export async function gazemm(magr, mdef, mattk) {
     let buf;
     const archon = (magr.data === game.mons[PMNAMES.PM_ARCHON]
-                    && mattk[1] === A.AD_BLND),
+                    && mattk[1] === ATTKS.AD_BLND),
           altmesg = (archon && !magr.mcansee);
 
     /* this is the mhitm rather than mhitu case (the latter
@@ -784,8 +784,8 @@ export async function explmm(magr, mdef, mattk) {
     else
         await noises(magr, mattk);
 
-    if (mattk[1] === A.AD_FIRE || mattk[1] === A.AD_COLD
-        || mattk[1] === A.AD_ELEC) {
+    if (mattk[1] === ATTKS.AD_FIRE || mattk[1] === ATTKS.AD_COLD
+        || mattk[1] === ATTKS.AD_ELEC) {
         await mon_explodes(magr, mattk);
         result = M_ATTK_AGR_DIED | (DEADMONSTER(mdef) ? M_ATTK_DEF_DIED : 0);
     } else {

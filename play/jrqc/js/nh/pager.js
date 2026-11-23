@@ -2,42 +2,85 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { AM } from './align.h.js';
+import { A } from './attrib.h.js';
 import { cmd_from_func, cmdname_from_func, cmdq_clear, cmdq_pop, do_reqmenu, doextlist, dokeylist, getdir, isok, key2extcmddesc, key2txt, yn_function } from './cmd.js';
-import { db_under_typ, is_drawbridge_wall, is_lava, is_pool } from './dbridge.js';
-import { c_common_strings, cg, flags, gd, gf, gi, go, gs, gu, gv, gw, gy, iflags, program_state, svc, svd, svl, svp, u, ynchars } from './decl.js';
+import { NO_COLOR } from './color.h.js';
+import { is_drawbridge_wall, is_lava, is_pool } from './dbridge.js';
+import { c_common_strings, cg, flags, gd, gf, gi, go, gs, gu, gw, gy, iflags, program_state, svc, svd, svl, svp, u } from './decl.js';
+import { COIN_CLASS, DEF, ROCK_CLASS, S, VENOM_CLASS } from './defsym.h.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { glyph_at, map_glyphinfo, nul_glyphinfo } from './display.js';
+import { GLYPH, GLYPH_TRAP_OFF, MG, NO_GLYPH } from './display.h.js';
+import { canspotself, glyph_is_body, glyph_is_cmap, glyph_is_invisible, glyph_is_monster, glyph_is_nothing, glyph_is_object, glyph_is_statue, glyph_is_trap, glyph_is_unexplored, glyph_is_warning, glyph_to_body_corpsenm, glyph_to_obj, glyph_to_statue_corpsenm, glyph_to_warning } from './display.macros.js';
 import { Mgender, coyotename, distant_monnam, hliquid, mon_nam, pmname, rndmonnam, y_monnam } from './do_name.js';
 import { def_monsyms, def_oc_syms, def_warnsyms, defsyms } from './drawing.js';
 import { In_hell, In_mines, on_level, surface } from './dungeon.js';
+import { Inhell } from './dungeon.macros.js';
 import { engr_at } from './engrave.js';
+import { remembered_text } from './engrave.h.js';
+import { TER } from './flag.h.js';
+import { wizard } from './flag.macros.js';
 import { coord_desc, getpos } from './getpos.js';
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE } from './global.h.js';
 import { glyph_to_cmap } from './glyphs.js';
+import { ARTICLE, BOLT_LIM, CMDQ, CQ_CANNED, ECMD, LOOK, MHID, SYM_MAX, SYM_OFF_M, SYM_OFF_O, SYM_OFF_X } from './hack.h.js';
+import { distu, y_n } from './hack.macros.js';
 import { copynchars, digit, dist2, eos, lcase, mungspaces, nh_snprintf, strip_newline, strkitten, strncmpi, strstri, strsubst, tabexpand, upstart, visctrl } from './hacklib.js';
 import { align_str, trap_predicament } from './insight.js';
 import { display_inventory, sobj_at } from './invent.js';
+import { nhUse } from './lint.macros.js';
+import { has_mcorpsenm } from './mextra.macros.js';
 import { dealloc_obj, is_treefruit, mkobj, mksobj } from './mkobj.js';
+import { AD, AT } from './monattk.h.js';
 import { dmgtype_fromattack, sticks } from './mondata.js';
+import { hides_under, is_hider, is_orc } from './mondata.macros.js';
+import { M1, M2, NEUTRAL } from './monflag.h.js';
 import { closed_door } from './monmove.js';
 import { mons } from './monst.js';
+import { M_AP, STRAT_WAITMASK } from './monst.h.js';
+import { M_AP_FLAG, M_AP_TYPE, U_AP_TYPE, is_obj_mappear } from './monst.macros.js';
+import { PM } from './monsters.h.js';
 import { observe_object } from './o_init.js';
+import { OBJ } from './obj.h.js';
+import { MAXOCLASSES } from './objclass.h.js';
 import { obj_descr, objects } from './objects.js';
+import { BOULDER, CHEST, CORPSE, LARGE_BOX, LEASH, SLIME_MOLD, STATUE, STRANGE_OBJECT } from './objects.h.js';
 import { an, ansimpleoname, distant_name, doname_vague_quan, doname_with_price, fruit_from_name, makeplural, makesingular, simpleonames, singular, the, xname } from './objnam.js';
 import { doset, doset_simple, option_help, show_menu_controls } from './options.js';
+import { NUMMONS } from './permonst.h.js';
 import { dumplogmsg, impossible, pline } from './pline.js';
 import { altarmask_at } from './pray.js';
+import { BLINDED, DETECT_MONSTERS, HALLUC, HALLUC_RES, INVIS, I_SPECIAL, SEE_INVIS, TELEPAT } from './prop.h.js';
 import { ok_to_quest } from './quest.js';
 import { visible_region_at } from './region.js';
+import { CORR, D, DBWALL, ICE, LAVAPOOL, LAVAWALL, MOAT, POOL, SCORR, SDOOR, STONE, TREE, WATER } from './rm.h.js';
+import { IS_GRAVE, IS_WATERWALL, SURFACE_AT } from './rm.macros.js';
 import { rn2_on_display_rng } from './rnd.js';
 import { costly_spot } from './shk.js';
 import { pmatch } from './strutil.js';
+import { MAXMCLASSES, MAXPCHARS, MAXTCHARS, SYM, WARNCOUNT } from './sym.h.js';
+import { is_cmap_drawbridge, is_cmap_engraving, is_cmap_trap } from './sym.macros.js';
 import { sysopt } from './sys.js';
 import { obj_stop_timers, spot_time_left } from './timeout.js';
+import { MELT_ICE_AWAY } from './timeout.h.js';
 import { t_at, trapname } from './trap.js';
+import { BEAR_TRAP, HOLE, NO_TRAP, PIT, ROCKTRAP, SPIKED_PIT, TRAPDOOR, TRAPPED_CHEST, TRAPPED_DOOR, VIBRATING_SQUARE, WEB } from './trap.h.js';
 import { introff, intron } from './unixtty.js';
 import { doextversion } from './version.js';
 import { howmonseen } from './vision.js';
-import { add_menu, add_menu_str, decode_mixed, encglyph, getlin, select_menu, windowprocs } from './windows.js';
+import { MONSEEN } from './vision.h.js';
+import { cansee, couldsee } from './vision.macros.js';
+import { add_menu, add_menu_str, decode_mixed, encglyph, getlin, select_menu } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, display_file, display_nhwindow, end_menu, putmixed, putstr, start_menu } from './winprocs.macros.js';
+import { ATR, MENU, NHW, PICK, WIN_ERR } from './wintype.h.js';
+import { Upolyd, u_at } from './you.macros.js';
+import { Blind, Detect_monsters, Hallucination, Infravision, Invisible, Levitation, Punished, Unblind_telepat } from './youprop.macros.js';
+
+const chkfilNone = 0;
+const chkfilUsrTyped = 1;
+const chkfilDontAsk = 2;
+const chkfilIaCheck = 4;
 
 const append_str$sep = new Int8Array(5);   // static in append_str()
 const waterbody_name$pooltype = new Int8Array(40);   // static in waterbody_name()
@@ -54,12 +97,12 @@ const suptext2 = $c.nulls(7);
 const help_menu_items = $c.recArray($T.anon_pager_2830, 17);
 function is_swallow_sym(c) {   // pager.c:68
     let i = 0;
-    for (i = 88 /* S_sw_tl */; i <= 95 /* S_sw_br */; i = i + 1 | 0) {
+    for (i = S.sw_tl; i <= S.sw_br; i = i + 1 | 0) {
         if (gs.showsyms[i] === c) {
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 async function append_str(buf, new_str) {   // pager.c:82
     let oldlen = 0, space_left = 0;
@@ -67,13 +110,13 @@ async function append_str(buf, new_str) {   // pager.c:82
         return 0;
     }
     oldlen = $c.strlen(buf);
-    if (oldlen >= 255) {
-        if (oldlen > 255) {
+    if (oldlen >= BUFSZ - 1) {
+        if (oldlen > BUFSZ - 1) {
             await impossible($c.lit("append_str: 'buf' contains %lu characters."), oldlen);
         }
         return 0;
     }
-    space_left = $c.subu64(255, oldlen);
+    space_left = $c.subu64(BUFSZ - 1, oldlen);
     $c.__builtin___strncat_chk(buf, new $c.Ptr(append_str$sep, 0), space_left, -1);
     if (space_left > 4) {
         $c.__builtin___strncat_chk(buf, new_str, $c.subu64(space_left, 4), -1);
@@ -83,27 +126,27 @@ async function append_str(buf, new_str) {   // pager.c:82
 export async function self_lookat(outbuf) {   // pager.c:108
     let race = new Int8Array(128), trapbuf = new Int8Array(128);
     race[0] = 0;
-    if (!(u.umonnum !== u.umonster)) {
+    if (!Upolyd()) {
         $c.__builtin___sprintf_chk(new $c.Ptr(race, 0), 0, 128, $c.lit("%s "), gu.urace.adj);
     }
-    $c.__builtin___sprintf_chk(outbuf, 0, -1, $c.lit("%s%s%s called %s"), (u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked && (u.uprops[30 /* TELEPAT */].extrinsic || (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic) || !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) ? $c.lit("invisible ") : $c.lit(""), new $c.Ptr(race, 0), pmname($c.relem(mons, u.umonnum), (u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0), new $c.Ptr(svp.plname, 0));
+    $c.__builtin___sprintf_chk(outbuf, 0, -1, $c.lit("%s%s%s called %s"), (u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked && (u.uprops[TELEPAT].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic) || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked)) ? $c.lit("invisible ") : $c.lit(""), new $c.Ptr(race, 0), pmname($c.relem(mons, u.umonnum), (u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0), new $c.Ptr(svp.plname, 0));
     if (u.usteed) {
         $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(", mounted on %s"), await y_monnam(u.usteed));
     }
-    if (u.uundetected | 0 || u.umonnum !== u.umonster && gy.youmonst.m_ap_type & 7 || visible_region_at(u.ux, u.uy)) {
-        await mhidden_description(gy.youmonst, 11, eos(outbuf));
+    if (u.uundetected | 0 || Upolyd() && U_AP_TYPE() || visible_region_at(u.ux, u.uy)) {
+        await mhidden_description(gy.youmonst, MHID.PREFIX | MHID.ARTICLE | MHID.REGION, eos(outbuf));
     }
-    if ($G.uball !== null) {
+    if (Punished()) {
         $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(", chained to %s"), $G.uball ? await ansimpleoname($G.uball) : $c.lit("nothing?"));
     }
     if (u.utrap) {
-        $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(", %s"), await trap_predicament(new $c.Ptr(trapbuf, 0), 0, 0));
+        $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(", %s"), await trap_predicament(new $c.Ptr(trapbuf, 0), 0, FALSE));
     }
     return outbuf;
 }
 export function monhealthdescr(mon, addspace, outbuf) {   // pager.c:138
-    mon;
-    addspace;
+    nhUse(mon);
+    nhUse(addspace);
     outbuf.set(0, 0);
     return outbuf;
 }
@@ -113,7 +156,7 @@ function trap_description(outbuf, tnum, x, y) {   // pager.c:167
     } else if (trapped_door_at(tnum, x, y)) {
         $c.__builtin___strcpy_chk(outbuf, $c.lit("trapped door"), -1);
     } else {
-        $c.__builtin___strcpy_chk(outbuf, trapname(tnum, 0), -1);
+        $c.__builtin___strcpy_chk(outbuf, trapname(tnum, FALSE), -1);
     }
     return;
 }
@@ -122,17 +165,17 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
     D1: for (;;) {
         switch ($goto) {
         case null:
-            incl_prefix = $c.i8((mhid_flags & 1) >>> 0 !== 0 ? 1 : 0);
-            incl_article = $c.i8((mhid_flags & 2) >>> 0 !== 0 ? 1 : 0);
-            show_altmon = $c.i8((mhid_flags & 4) >>> 0 !== 0 ? 1 : 0);
-            force_region = $c.i8((mhid_flags & 8) >>> 0 !== 0 ? 1 : 0);
+            incl_prefix = $c.i8((mhid_flags & MHID.PREFIX) >>> 0 !== 0 ? 1 : 0);
+            incl_article = $c.i8((mhid_flags & MHID.ARTICLE) >>> 0 !== 0 ? 1 : 0);
+            show_altmon = $c.i8((mhid_flags & MHID.ALTMON) >>> 0 !== 0 ? 1 : 0);
+            force_region = $c.i8((mhid_flags & MHID.REGION) >>> 0 !== 0 ? 1 : 0);
             isyou = $c.i8($c.peq(mon, gy.youmonst) ? 1 : 0);
             x = $c.i16(isyou ? u.ux : mon.mx);
             y = $c.i16(isyou ? u.uy : mon.my);
             glyph = svl.level.flags.hero_memory | 0 && !isyou ? svl.level.locations[x][y].glyph : glyph_at(x, y);
             outbuf.set(0, 0);
         case "objfrommap":
-            if ($goto === "objfrommap" || ((mon.m_ap_type & 7) === 1 /* M_AP_FURNITURE */ || (mon.m_ap_type & 7) === 2 /* M_AP_OBJECT */)) {
+            if ($goto === "objfrommap" || (M_AP_TYPE(mon) === M_AP.FURNITURE || M_AP_TYPE(mon) === M_AP.OBJECT)) {
                 D2: for (;;) {
                     switch ($goto) {
                     case null:
@@ -140,23 +183,23 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
                             $c.__builtin___strcpy_chk(outbuf, $c.lit(", mimicking "), -1);
                         }
                     case "objfrommap":
-                        if ($goto !== "objfrommap" && (mon.m_ap_type & 7) === 1 /* M_AP_FURNITURE */) {
+                        if ($goto !== "objfrommap" && M_AP_TYPE(mon) === M_AP.FURNITURE) {
                             what = defsyms[mon.mappearance].explanation;
                             if (incl_article) {
                                 what = await an(what);
                             }
                             $c.__builtin___strcat_chk(outbuf, what, -1);
-                        } else if ($goto === "objfrommap" || (mon.m_ap_type & 7) === 2 /* M_AP_OBJECT */ && (glyph === 3448 /* GLYPH_OBJ_OFF */ || glyph >= 3465 && glyph < 3929 || (glyph === 7992 /* GLYPH_OBJ_PILETOP_OFF */ || glyph > 8009 && glyph < 8473) || (glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 || glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009) || (glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622)) || (glyph >= 2299 /* GLYPH_BODY_OFF */ && glyph < 2682 || glyph >= 8473 /* GLYPH_BODY_PILETOP_OFF */ && glyph < 8856))) {
+                        } else if ($goto === "objfrommap" || M_AP_TYPE(mon) === M_AP.OBJECT && glyph_is_object(glyph)) {
                             $goto = null;   // objfrommap:
                             otmp[0] = null;
                             fakeobj = await object_from_map(glyph, x, y, new $c.Ptr(otmp, 0));
-                            what = otmp[0] && otmp[0].otyp !== 0 /* STRANGE_OBJECT */ ? await simpleonames(otmp[0]) : obj_descr[0 /* STRANGE_OBJECT */].oc_name;
+                            what = otmp[0] && otmp[0].otyp !== STRANGE_OBJECT ? await simpleonames(otmp[0]) : obj_descr[STRANGE_OBJECT].oc_name;
                             if (incl_article && (!otmp[0] || otmp[0].quan === 1)) {
                                 what = await an(what);
                             }
                             $c.__builtin___strcat_chk(outbuf, what, -1);
                             if (fakeobj && otmp[0]) {
-                                otmp[0].where = 0;
+                                otmp[0].where = OBJ.FREE;
                                 await dealloc_obj(otmp[0]);
                             }
                         } else {
@@ -165,7 +208,7 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
                     }
                     break;
                 }
-            } else if ((mon.m_ap_type & 7) === 3 /* M_AP_MONSTER */) {
+            } else if (M_AP_TYPE(mon) === M_AP.MONSTER) {
                 if (show_altmon) {
                     if (incl_prefix) {
                         $c.__builtin___strcat_chk(outbuf, $c.lit(", masquerading as "), -1);
@@ -178,26 +221,26 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
                 }
             } else if (isyou ? u.uundetected | 0 : mon.mundetected | 0) {
                 $c.__builtin___strcpy_chk(outbuf, $c.lit(", hiding"), -1);
-                if ($c.andu64(mon.data.mflags1, 128) !== 0) {
+                if (hides_under(mon.data)) {
                     $c.__builtin___strcat_chk(outbuf, $c.lit(" under "), -1);
-                    if (glyph === 3448 /* GLYPH_OBJ_OFF */ || glyph >= 3465 && glyph < 3929 || (glyph === 7992 /* GLYPH_OBJ_PILETOP_OFF */ || glyph > 8009 && glyph < 8473) || (glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 || glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009) || (glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622)) || (glyph >= 2299 /* GLYPH_BODY_OFF */ && glyph < 2682 || glyph >= 8473 /* GLYPH_BODY_PILETOP_OFF */ && glyph < 8856)) {
+                    if (glyph_is_object(glyph)) {
                         $goto = "objfrommap"; continue D1;
                     }
                     $c.__builtin___strcat_chk(outbuf, c_common_strings.c_something, -1);
-                } else if ($c.andu64(mon.data.mflags1, 256) !== 0) {
-                    $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(" on the %s"), $c.andu64(mon.data.mflags1, 256) !== 0 && ($c.andu64(mon.data.mflags1, 16) !== 0 && mon.data.mlet !== 13 /* S_MIMIC */ || $c.andu64(mon.data.mflags1, 1) !== 0) ? $c.lit("ceiling") : surface(x, y));
+                } else if (is_hider(mon.data)) {
+                    $c.__builtin___sprintf_chk(eos(outbuf), 0, -1, $c.lit(" on the %s"), $c.andu64(mon.data.mflags1, M1.HIDE) !== 0 && ($c.andu64(mon.data.mflags1, M1.CLING) !== 0 && mon.data.mlet !== S.MIMIC || $c.andu64(mon.data.mflags1, M1.FLY) !== 0) ? $c.lit("ceiling") : surface(x, y));
                 } else {
-                    if (mon.data.mlet === 57 /* S_EEL */ && is_pool(x, y)) {
+                    if (mon.data.mlet === S.EEL && is_pool(x, y)) {
                         $c.__builtin___strcat_chk(outbuf, $c.lit(" in murky water"), -1);
                     }
                 }
             }
-            if ((reg = visible_region_at(x, y)) !== null && (buflen = $c.strlen(outbuf)) < 255) {
+            if ((reg = visible_region_at(x, y)) !== null && (buflen = $c.strlen(outbuf)) < BUFSZ - 1) {
                 r = u.xray_range > 1 ? u.xray_range : 1;
-                if (dist2(x, y, u.ux, u.uy) <= Math.imul(r, r + 1 | 0) || force_region) {
+                if (distu(x, y) <= Math.imul(r, r + 1 | 0) || force_region) {
                     rglyph = reg.glyph;
-                    poison_gas = $c.i8(rglyph >= 3929 /* GLYPH_CMAP_STONE_OFF */ && rglyph < 4093 && glyph_to_cmap(rglyph) === 86 /* S_poisoncloud */ ? 1 : 0);
-                    nh_snprintf($c.lit("mhidden_description"), 277, eos(outbuf), $c.subu64(256, buflen), $c.lit(", in a cloud of %s"), poison_gas ? $c.lit("poison gas") : $c.lit("vapor"));
+                    poison_gas = $c.i8(glyph_is_cmap(rglyph) && glyph_to_cmap(rglyph) === S.poisoncloud ? 1 : 0);
+                    nh_snprintf($c.lit("mhidden_description"), 277, eos(outbuf), $c.subu64(BUFSZ, buflen), $c.lit(", in a cloud of %s"), poison_gas ? $c.lit("poison gas") : $c.lit("vapor"));
                 }
             }
         }
@@ -206,9 +249,9 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
 }
 export async function object_from_map(glyph, x, y, obj_p) {   // pager.c:284
     let fakeobj = 0, mimic_obj = 0, mtmp = null, otmp = null, glyphotyp = 0, $t1;
-    fakeobj = 0;
-    mimic_obj = 0;
-    glyphotyp = glyph === 3448 /* GLYPH_OBJ_OFF */ || glyph >= 3465 && glyph < 3929 || (glyph === 7992 /* GLYPH_OBJ_PILETOP_OFF */ || glyph > 8009 && glyph < 8473) || (glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 || glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009) || (glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622)) || (glyph >= 2299 /* GLYPH_BODY_OFF */ && glyph < 2682 || glyph >= 8473 /* GLYPH_BODY_PILETOP_OFF */ && glyph < 8856) ? glyph >= 2299 /* GLYPH_BODY_OFF */ && glyph < 2682 || glyph >= 8473 /* GLYPH_BODY_PILETOP_OFF */ && glyph < 8856 ? 265 /* CORPSE */ : glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622) ? 476 /* STATUE */ : glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 || glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009 ? glyph - (glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009 ? 7992 /* GLYPH_OBJ_PILETOP_OFF */ : 3448 /* GLYPH_OBJ_OFF */) | 0 : glyph === 3448 /* GLYPH_OBJ_OFF */ || glyph >= 3465 && glyph < 3929 || (glyph === 7992 /* GLYPH_OBJ_PILETOP_OFF */ || glyph > 8009 && glyph < 8473) ? glyph - (glyph === 7992 /* GLYPH_OBJ_PILETOP_OFF */ || glyph > 8009 && glyph < 8473 ? 7992 /* GLYPH_OBJ_PILETOP_OFF */ : 3448 /* GLYPH_OBJ_OFF */) | 0 : 481 /* NUM_OBJECTS */ : glyph >= 3929 /* GLYPH_CMAP_STONE_OFF */ && glyph < 4093 ? sobj_at(215 /* CHEST */, x, y) ? 215 /* CHEST */ : 214 /* LARGE_BOX */ : 0 /* STRANGE_OBJECT */;
+    fakeobj = FALSE;
+    mimic_obj = FALSE;
+    glyphotyp = glyph_is_object(glyph) ? glyph_to_obj(glyph) : glyph_is_cmap(glyph) ? sobj_at(CHEST, x, y) ? CHEST : LARGE_BOX : STRANGE_OBJECT;
     obj_p.set(0, null);
     if ((otmp = sobj_at(glyphotyp, x, y)) === null) {
         for (otmp = svl.level.buriedobjlist; otmp; otmp = otmp.nobj) {
@@ -218,50 +261,50 @@ export async function object_from_map(glyph, x, y, obj_p) {   // pager.c:284
         }
     }
     mtmp = svl.level.monsters[x][y];
-    if (mtmp && ((mtmp.m_ap_type & 7) === 2 /* M_AP_OBJECT */ && mtmp.mappearance === glyphotyp >>> 0)) {
+    if (mtmp && is_obj_mappear(mtmp, glyphotyp >>> 0)) {
         otmp = null;
-        mimic_obj = 1;
+        mimic_obj = TRUE;
     } else {
         mtmp = null;
     }
     if (!otmp || otmp.otyp !== glyphotyp) {
         if (obj_descr[objects[glyphotyp].oc_name_idx].oc_name) {
-            otmp = await mksobj(glyphotyp, 0, 0);
+            otmp = await mksobj(glyphotyp, FALSE, FALSE);
         } else {
-            otmp = await mkobj(objects[glyphotyp].oc_class, 0);
+            otmp = await mkobj(objects[glyphotyp].oc_class, FALSE);
         }
         if (otmp.timed) {
             await obj_stop_timers(otmp);
         }
-        fakeobj = 1;
-        if (otmp.oclass === 12 /* COIN_CLASS */) {
+        fakeobj = TRUE;
+        if (otmp.oclass === COIN_CLASS) {
             otmp.quan = 2;
-        } else if (otmp.otyp === 285 /* SLIME_MOLD */) {
+        } else if (otmp.otyp === SLIME_MOLD) {
             otmp.spe = $c.i8(svc.context.current_fruit);
         }
-        if (mtmp && (mtmp.mextra && mtmp.mextra.mcorpsenm !== -1 /* NON_PM */)) {
-            if (otmp.otyp === 285 /* SLIME_MOLD */) {
+        if (mtmp && has_mcorpsenm(mtmp)) {
+            if (otmp.otyp === SLIME_MOLD) {
                 otmp.spe = $c.i8(mtmp.mextra.mcorpsenm);
             } else {
                 otmp.corpsenm = mtmp.mextra.mcorpsenm;
             }
-        } else if (otmp.otyp === 265 /* CORPSE */ && (glyph >= 2299 /* GLYPH_BODY_OFF */ && glyph < 2682 || glyph >= 8473 /* GLYPH_BODY_PILETOP_OFF */ && glyph < 8856)) {
-            otmp.corpsenm = glyph >= 8473 /* GLYPH_BODY_PILETOP_OFF */ && glyph < 8856 ? glyph - 8473 /* GLYPH_BODY_PILETOP_OFF */ | 0 : glyph - 2299 /* GLYPH_BODY_OFF */ | 0;
-        } else if (otmp.otyp === 476 /* STATUE */ && (glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622))) {
-            otmp.corpsenm = glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622 ? glyph - 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ | 0 : glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 ? glyph - 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ | 0 : glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622 ? glyph - 7609 /* GLYPH_STATUE_FEM_OFF */ | 0 : glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 ? glyph - 7226 /* GLYPH_STATUE_MALE_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+        } else if (otmp.otyp === CORPSE && glyph_is_body(glyph)) {
+            otmp.corpsenm = glyph_to_body_corpsenm(glyph);
+        } else if (otmp.otyp === STATUE && glyph_is_statue(glyph)) {
+            otmp.corpsenm = glyph_to_statue_corpsenm(glyph);
         }
-        if (otmp.otyp === 236 /* LEASH */) {
+        if (otmp.otyp === LEASH) {
             otmp.corpsenm = 0;
         }
-        otmp.where = 1;
+        otmp.where = OBJ.FLOOR;
         otmp.ox = x, otmp.oy = y;
-        $t1 = (otmp.otyp === 0 /* STRANGE_OBJECT */ && await costly_spot(x, y) ? 1 : 0) >>> 0, otmp.no_charge = ($t1) & 1;
+        $t1 = (otmp.otyp === STRANGE_OBJECT && await costly_spot(x, y) ? 1 : 0) >>> 0, otmp.no_charge = ($t1) & 1;
     }
-    if (otmp && dist2(x, y, u.ux, u.uy) <= 2 && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) && (fakeobj || otmp.where === 1) && !iflags.terrainmode) {
+    if (otmp && dist2(x, y, u.ux, u.uy) <= 2 && !Blind() && !Hallucination() && (fakeobj || otmp.where === OBJ.FLOOR) && !iflags.terrainmode) {
         await observe_object(otmp);
     }
-    if (fakeobj && mtmp && mimic_obj && (otmp.dknown | 0 || mtmp.m_ap_type & -8 & 8)) {
-        mtmp.m_ap_type = $c.u8(mtmp.m_ap_type | 8);
+    if (fakeobj && mtmp && mimic_obj && (otmp.dknown | 0 || M_AP_FLAG(mtmp) & M_AP.F_DKNOWN)) {
+        mtmp.m_ap_type = $c.u8(mtmp.m_ap_type | M_AP.F_DKNOWN);
         await observe_object(otmp);
     }
     obj_p.set(0, otmp);
@@ -272,21 +315,21 @@ async function look_at_object(buf, x, y, glyph) {   // pager.c:380
     otmp[0] = null;
     fakeobj = await object_from_map(glyph, x, y, new $c.Ptr(otmp, 0));
     if (otmp[0]) {
-        $c.__builtin___strcpy_chk(buf, otmp[0].otyp !== 0 /* STRANGE_OBJECT */ ? await distant_name(otmp[0], otmp[0].dknown | 0 ? doname_with_price : doname_vague_quan) : obj_descr[0 /* STRANGE_OBJECT */].oc_name, -1);
+        $c.__builtin___strcpy_chk(buf, otmp[0].otyp !== STRANGE_OBJECT ? await distant_name(otmp[0], otmp[0].dknown | 0 ? doname_with_price : doname_vague_quan) : obj_descr[STRANGE_OBJECT].oc_name, -1);
         if (fakeobj) {
-            otmp[0].where = 0;
+            otmp[0].where = OBJ.FREE;
             await dealloc_obj(otmp[0]), otmp[0] = null;
         }
     } else {
         $c.__builtin___strcpy_chk(buf, c_common_strings.c_something, -1);
     }
-    if (otmp[0] && otmp[0].where === 6) {
+    if (otmp[0] && otmp[0].where === OBJ.BURIED) {
         $c.__builtin___strcat_chk(buf, $c.lit(" (buried)"), -1);
-    } else if (svl.level.locations[x][y].typ === 13 /* TREE */ || svl.level.flags.arboreal | 0 && svl.level.locations[x][y].typ === 0 /* STONE */) {
-        nh_snprintf($c.lit("look_at_object"), 407, eos(buf), $c.subu64(256, $c.strlen(buf)), $c.lit(" %s in a tree"), otmp[0] && is_treefruit(otmp[0]) ? $c.lit("dangling") : $c.lit("stuck"));
-    } else if (svl.level.locations[x][y].typ === 0 /* STONE */ || svl.level.locations[x][y].typ === 15 /* SCORR */) {
+    } else if (svl.level.locations[x][y].typ === TREE || svl.level.flags.arboreal | 0 && svl.level.locations[x][y].typ === STONE) {
+        nh_snprintf($c.lit("look_at_object"), 407, eos(buf), $c.subu64(BUFSZ, $c.strlen(buf)), $c.lit(" %s in a tree"), otmp[0] && is_treefruit(otmp[0]) ? $c.lit("dangling") : $c.lit("stuck"));
+    } else if (svl.level.locations[x][y].typ === STONE || svl.level.locations[x][y].typ === SCORR) {
         $c.__builtin___strcat_chk(buf, $c.lit(" embedded in stone"), -1);
-    } else if (svl.level.locations[x][y].typ && svl.level.locations[x][y].typ <= 12 /* DBWALL */ || svl.level.locations[x][y].typ === 14 /* SDOOR */) {
+    } else if (svl.level.locations[x][y].typ && svl.level.locations[x][y].typ <= DBWALL || svl.level.locations[x][y].typ === SDOOR) {
         $c.__builtin___strcat_chk(buf, $c.lit(" embedded in a wall"), -1);
     } else if (closed_door(x, y)) {
         $c.__builtin___strcat_chk(buf, $c.lit(" embedded in a door"), -1);
@@ -299,12 +342,12 @@ async function look_at_object(buf, x, y, glyph) {   // pager.c:380
 }
 async function look_at_monster(buf, monbuf, mtmp, x, y) {   // pager.c:422
     let name = null, monnambuf = new Int8Array(256), healthbuf = new Int8Array(256), accurate = 0, t = null, tt = 0, how_seen = 0, mW = 0, m2 = 0, whom = null;
-    accurate = $c.i8(!(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) ? 1 : 0);
-    name = $c.peq(mtmp.data, $c.relem(mons, 14 /* PM_COYOTE */)) && accurate ? await coyotename(mtmp, new $c.Ptr(monnambuf, 0)) : await distant_monnam(mtmp, 0, new $c.Ptr(monnambuf, 0));
-    $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%s%s%s%s"), mtmp.mx !== x || mtmp.my !== y ? mtmp.isshk | 0 && accurate ? $c.lit("tail of ") : $c.lit("tail of a ") : $c.lit(""), accurate ? monhealthdescr(mtmp, 1, new $c.Ptr(healthbuf, 0)) : $c.lit(""), mtmp.mtame && accurate ? $c.lit("tame ") : mtmp.mpeaceful | 0 && accurate ? $c.lit("peaceful ") : $c.lit(""), name);
+    accurate = $c.i8(!Hallucination() ? 1 : 0);
+    name = $c.peq(mtmp.data, $c.relem(mons, PM.COYOTE)) && accurate ? await coyotename(mtmp, new $c.Ptr(monnambuf, 0)) : await distant_monnam(mtmp, ARTICLE.NONE, new $c.Ptr(monnambuf, 0));
+    $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%s%s%s%s"), mtmp.mx !== x || mtmp.my !== y ? mtmp.isshk | 0 && accurate ? $c.lit("tail of ") : $c.lit("tail of a ") : $c.lit(""), accurate ? monhealthdescr(mtmp, TRUE, new $c.Ptr(healthbuf, 0)) : $c.lit(""), mtmp.mtame && accurate ? $c.lit("tame ") : mtmp.mpeaceful | 0 && accurate ? $c.lit("peaceful ") : $c.lit(""), name);
     if ($c.peq(u.ustuck, mtmp)) {
         if (u.uswallow | 0 || iflags.save_uswallow | 0) {
-            $c.__builtin___strcat_chk(buf, dmgtype_fromattack(mtmp.data, 26, 11) !== null ? $c.lit(", swallowing you") : $c.lit(", engulfing you"), -1);
+            $c.__builtin___strcat_chk(buf, dmgtype_fromattack(mtmp.data, AD.DGST, AT.ENGL) !== null ? $c.lit(", swallowing you") : $c.lit(", engulfing you"), -1);
         } else {
             $c.__builtin___strcat_chk(buf, u.umonnum !== u.umonster && sticks(gy.youmonst.data) ? $c.lit(", being held") : $c.lit(", holding you"), -1);
         }
@@ -313,76 +356,76 @@ async function look_at_monster(buf, monbuf, mtmp, x, y) {   // pager.c:422
         $c.__builtin___strcat_chk(buf, $c.lit(", can't move (paralyzed or sleeping or busy)"), -1);
     } else if (mtmp.msleeping) {
         $c.__builtin___strcat_chk(buf, $c.lit(", asleep"), -1);
-    } else if ($c.andu64(mtmp.mstrategy, 805306368) !== 0) {
+    } else if ($c.andu64(mtmp.mstrategy, STRAT_WAITMASK) !== 0) {
         $c.__builtin___strcat_chk(buf, $c.lit(", meditating"), -1);
     }
     if (mtmp.mleashed) {
         $c.__builtin___strcat_chk(buf, $c.lit(", leashed to you"), -1);
     }
-    if (mtmp.mtrapped | 0 && (gv.viz_array.get(mtmp.my).get(mtmp.mx) & 2) !== 0) {
+    if (mtmp.mtrapped | 0 && cansee(mtmp.mx, mtmp.my)) {
         t = t_at(mtmp.mx, mtmp.my);
-        tt = t ? t.ttyp | 0 : 0 /* NO_TRAP */;
-        if (tt === 5 /* BEAR_TRAP */ || (tt === 11 /* PIT */ || tt === 12 /* SPIKED_PIT */) || tt === 18 /* WEB */) {
-            $c.__builtin___sprintf_chk(eos(buf), 0, -1, $c.lit(", trapped in %s"), await an(trapname(tt, 0)));
+        tt = t ? t.ttyp | 0 : NO_TRAP;
+        if (tt === BEAR_TRAP || (tt === PIT || tt === SPIKED_PIT) || tt === WEB) {
+            $c.__builtin___sprintf_chk(eos(buf), 0, -1, $c.lit(", trapped in %s"), await an(trapname(tt, FALSE)));
             t.tseen = (1) & 1;
         }
     }
-    if (mtmp.mundetected | 0 || mtmp.m_ap_type & 7 || visible_region_at(x, y)) {
-        await mhidden_description(mtmp, 11, eos(buf));
+    if (mtmp.mundetected | 0 || M_AP_TYPE(mtmp) || visible_region_at(x, y)) {
+        await mhidden_description(mtmp, MHID.PREFIX | MHID.ARTICLE | MHID.REGION, eos(buf));
     }
     if (monbuf) {
         how_seen = howmonseen(mtmp);
         monbuf.set(0, 0);
-        if (how_seen !== 0 && how_seen !== 1) {
-            if ((how_seen & 1) >>> 0) {
+        if (how_seen !== 0 && how_seen !== MONSEEN.NORMAL) {
+            if ((how_seen & MONSEEN.NORMAL) >>> 0) {
                 $c.__builtin___strcat_chk(monbuf, $c.lit("normal vision"), -1);
                 how_seen = (how_seen & 4294967294) >>> 0;
                 if (how_seen) {
                     $c.__builtin___strcat_chk(monbuf, $c.lit(", "), -1);
                 }
             }
-            if ((how_seen & 2) >>> 0) {
+            if ((how_seen & MONSEEN.SEEINVIS) >>> 0) {
                 $c.__builtin___strcat_chk(monbuf, $c.lit("see invisible"), -1);
                 how_seen = (how_seen & 4294967293) >>> 0;
                 if (how_seen) {
                     $c.__builtin___strcat_chk(monbuf, $c.lit(", "), -1);
                 }
             }
-            if ((how_seen & 4) >>> 0) {
+            if ((how_seen & MONSEEN.INFRAVIS) >>> 0) {
                 $c.__builtin___strcat_chk(monbuf, $c.lit("infravision"), -1);
                 how_seen = (how_seen & 4294967291) >>> 0;
                 if (how_seen) {
                     $c.__builtin___strcat_chk(monbuf, $c.lit(", "), -1);
                 }
             }
-            if ((how_seen & 8) >>> 0) {
+            if ((how_seen & MONSEEN.TELEPAT) >>> 0) {
                 $c.__builtin___strcat_chk(monbuf, $c.lit("telepathy"), -1);
                 how_seen = (how_seen & 4294967287) >>> 0;
                 if (how_seen) {
                     $c.__builtin___strcat_chk(monbuf, $c.lit(", "), -1);
                 }
             }
-            if ((how_seen & 16) >>> 0) {
+            if ((how_seen & MONSEEN.XRAYVIS) >>> 0) {
                 $c.__builtin___strcat_chk(monbuf, $c.lit("astral vision"), -1);
                 how_seen = (how_seen & 4294967279) >>> 0;
                 if (how_seen) {
                     $c.__builtin___strcat_chk(monbuf, $c.lit(", "), -1);
                 }
             }
-            if ((how_seen & 32) >>> 0) {
+            if ((how_seen & MONSEEN.DETECT) >>> 0) {
                 $c.__builtin___strcat_chk(monbuf, $c.lit("monster detection"), -1);
                 how_seen = (how_seen & 4294967263) >>> 0;
                 if (how_seen) {
                     $c.__builtin___strcat_chk(monbuf, $c.lit(", "), -1);
                 }
             }
-            if ((how_seen & 64) >>> 0) {
-                if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+            if ((how_seen & MONSEEN.WARNMON) >>> 0) {
+                if (Hallucination()) {
                     $c.__builtin___strcat_chk(monbuf, $c.lit("paranoid delusion"), -1);
                 } else {
                     mW = $c.oru64(svc.context.warntype.obj, svc.context.warntype.polyd);
                     m2 = mtmp.data.mflags2;
-                    whom = $c.andu64($c.andu64(mW, 8), m2) ? $c.lit("human") : $c.andu64($c.andu64(mW, 16), m2) ? $c.lit("elf") : $c.andu64($c.andu64(mW, 128), m2) ? $c.lit("orc") : $c.andu64($c.andu64(mW, 256), m2) ? $c.lit("demon") : pmname(mtmp.data, Mgender(mtmp));
+                    whom = $c.andu64($c.andu64(mW, M2.HUMAN), m2) ? $c.lit("human") : $c.andu64($c.andu64(mW, M2.ELF), m2) ? $c.lit("elf") : $c.andu64($c.andu64(mW, M2.ORC), m2) ? $c.lit("orc") : $c.andu64($c.andu64(mW, M2.DEMON), m2) ? $c.lit("demon") : pmname(mtmp.data, Mgender(mtmp));
                     $c.__builtin___sprintf_chk(eos(monbuf), 0, -1, $c.lit("warned of %s"), await makeplural(whom));
                 }
                 how_seen = (how_seen & 4294967231) >>> 0;
@@ -399,24 +442,24 @@ async function look_at_monster(buf, monbuf, mtmp, x, y) {   // pager.c:422
 }
 export function waterbody_name(x, y) {   // pager.c:561
     let ltyp = 0, hallucinate = 0;
-    hallucinate = $c.i8(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) && !program_state.gameover ? 1 : 0);
+    hallucinate = $c.i8(Hallucination() && !program_state.gameover ? 1 : 0);
     if (!isok(x, y)) {
         return $c.lit("drink");
     }
-    ltyp = $c.i8(svl.level.locations[x][y].typ === 19 /* DRAWBRIDGE_UP */ ? db_under_typ(svl.level.locations[x][y].flags | 0) : svl.level.locations[x][y].typ);
-    if (ltyp === 20 /* LAVAPOOL */) {
+    ltyp = $c.i8(SURFACE_AT(x, y));
+    if (ltyp === LAVAPOOL) {
         nh_snprintf($c.lit("waterbody_name"), 572, new $c.Ptr(waterbody_name$pooltype, 0), 40, $c.lit("molten %s"), hliquid($c.lit("lava")));
         return new $c.Ptr(waterbody_name$pooltype, 0);
-    } else if (ltyp === 33 /* ICE */) {
+    } else if (ltyp === ICE) {
         if (!hallucinate) {
             return $c.lit("ice");
         }
         nh_snprintf($c.lit("waterbody_name"), 577, new $c.Ptr(waterbody_name$pooltype, 0), 40, $c.lit("frozen %s"), hliquid($c.lit("water")));
         return new $c.Ptr(waterbody_name$pooltype, 0);
-    } else if (ltyp === 16 /* POOL */) {
+    } else if (ltyp === POOL) {
         nh_snprintf($c.lit("waterbody_name"), 580, new $c.Ptr(waterbody_name$pooltype, 0), 40, $c.lit("pool of %s"), hliquid($c.lit("water")));
         return new $c.Ptr(waterbody_name$pooltype, 0);
-    } else if (ltyp === 17 /* MOAT */) {
+    } else if (ltyp === MOAT) {
         if (hallucinate) {
             nh_snprintf($c.lit("waterbody_name"), 585, new $c.Ptr(waterbody_name$pooltype, 0), 40, $c.lit("deep %s"), hliquid($c.lit("water")));
             return new $c.Ptr(waterbody_name$pooltype, 0);
@@ -424,18 +467,18 @@ export function waterbody_name(x, y) {   // pager.c:561
             return $c.lit("shallow sea");
         } else if ((svd.dungeon_topology.d_juiblex_level.dlevel || svd.dungeon_topology.d_juiblex_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_juiblex_level)) {
             return $c.lit("swamp");
-        } else if (gu.urole.mnum === 340 && ((svd.dungeon_topology.d_qstart_level.dlevel || svd.dungeon_topology.d_qstart_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_qstart_level))) {
+        } else if (gu.urole.mnum === PM.SAMURAI && ((svd.dungeon_topology.d_qstart_level.dlevel || svd.dungeon_topology.d_qstart_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_qstart_level))) {
             return $c.lit("pond");
         } else {
             return $c.lit("moat");
         }
-    } else if (ltyp === 18 /* WATER */) {
+    } else if (IS_WATERWALL(ltyp)) {
         if ((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) {
             return $c.lit("limitless water");
         }
         nh_snprintf($c.lit("waterbody_name"), 603, new $c.Ptr(waterbody_name$pooltype, 0), 40, $c.lit("wall of %s"), hliquid($c.lit("water")));
         return new $c.Ptr(waterbody_name$pooltype, 0);
-    } else if (ltyp === 21 /* LAVAWALL */) {
+    } else if (ltyp === LAVAWALL) {
         nh_snprintf($c.lit("waterbody_name"), 606, new $c.Ptr(waterbody_name$pooltype, 0), 40, $c.lit("wall of %s"), hliquid($c.lit("lava")));
         return new $c.Ptr(waterbody_name$pooltype, 0);
     }
@@ -446,12 +489,12 @@ export function ice_descr(x, y, outbuf) {   // pager.c:614
     r = u.xray_range > 2 ? u.xray_range : 2;
     neardist = Math.imul(Math.imul(r, r), 2) - r | 0;
     iflags.ice_rating = -1;
-    if ((svl.level.locations[x][y].typ === 19 /* DRAWBRIDGE_UP */ ? db_under_typ(svl.level.locations[x][y].flags | 0) : svl.level.locations[x][y].typ) !== 33 /* ICE */) {
+    if (SURFACE_AT(x, y) !== ICE) {
         $c.__builtin___sprintf_chk(outbuf, 0, -1, $c.lit("[ice:%d?]"), svl.level.locations[x][y].typ);
-    } else if ((dist2(x, y, u.ux, u.uy) > neardist || !((gv.viz_array.get(y).get(x) & 2) !== 0) && (!(x === u.ux && y === u.uy) || (u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked)) && !gd.decor_levitate_override) {
+    } else if ((distu(x, y) > neardist || !cansee(x, y) && (!u_at(x, y) || Levitation())) && !gd.decor_levitate_override) {
         $c.__builtin___strcpy_chk(outbuf, waterbody_name(x, y), -1);
     } else {
-        time_left = spot_time_left(x, y, 8);
+        time_left = spot_time_left(x, y, MELT_ICE_AWAY);
         iflags.ice_rating = $c.i8(!time_left ? 0 : time_left > 1000 ? 1 : time_left > 100 ? 2 : time_left > 50 ? 3 : time_left > 14 ? 4 : 5);
         $c.__builtin___sprintf_chk(outbuf, 0, -1, $c.lit("%s %s"), ice_descr$icetyp[iflags.ice_rating], waterbody_name(x, y));
     }
@@ -463,20 +506,20 @@ async function lookat(x, y, buf, monbuf) {   // pager.c:657
     pm = null;
     $t1 = monbuf.set(0, 0), buf.set(0, $t1);
     glyph = glyph_at(x, y);
-    if (x === u.ux && y === u.uy && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked || u.uswallow | 0 || !((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked && !(u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.uundetected || (u.uprops[30 /* TELEPAT */].extrinsic || (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic))) && !(iflags.save_uswallow | 0 && glyph === ((u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : u.ustuck.data.pmidx) + ((u.ustuck.female | 0) === 0 ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0)) && (!iflags.terrainmode || (iflags.terrainmode & 8) >>> 0 !== 0)) {
+    if (u_at(x, y) && canspotself() && !(iflags.save_uswallow | 0 && glyph === ((u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.ustuck.data.pmidx) + ((u.ustuck.female | 0) === 0 ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0)) && (!iflags.terrainmode || (iflags.terrainmode & TER.MON) >>> 0 !== 0)) {
         await self_lookat(buf);
-        if (gu.urole.mnum === 343 && gu.urace.mnum === 165 && !(u.umonnum !== u.umonster)) {
-            pm = $c.relem(mons, 343 /* PM_WIZARD */);
+        if (gu.urole.mnum === PM.WIZARD && gu.urace.mnum === PM.GNOME && !Upolyd()) {
+            pm = $c.relem(mons, PM.WIZARD);
         }
-        if (((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked && !(u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic) || u.uundetected | 0) && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && !(u.uswallow | 0 || iflags.save_uswallow | 0)) {
+        if ((Invisible() || u.uundetected | 0) && !Blind() && !(u.uswallow | 0 || iflags.save_uswallow | 0)) {
             how = 0;
-            if (u.uprops[36 /* INFRAVISION */].intrinsic || u.uprops[36 /* INFRAVISION */].extrinsic) {
+            if (Infravision()) {
                 how = (how | 1) >>> 0;
             }
-            if (u.uprops[30 /* TELEPAT */].extrinsic) {
+            if (Unblind_telepat()) {
                 how = (how | 2) >>> 0;
             }
-            if (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic) {
+            if (Detect_monsters()) {
                 how = (how | 4) >>> 0;
             }
             if (how) {
@@ -486,70 +529,70 @@ async function lookat(x, y, buf, monbuf) {   // pager.c:657
     } else if (u.uswallow) {
         $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("interior of %s"), await mon_nam(u.ustuck));
         pm = u.ustuck.data;
-    } else if (glyph >= 0 /* GLYPH_MON_MALE_OFF */ && glyph < 383 || glyph >= 383 /* GLYPH_MON_FEM_OFF */ && glyph < 766 || (glyph >= 766 /* GLYPH_PET_MALE_OFF */ && glyph < 1149 || glyph >= 1149 /* GLYPH_PET_FEM_OFF */ && glyph < 1532) || (glyph >= 2682 /* GLYPH_RIDDEN_MALE_OFF */ && glyph < 3065 || glyph >= 3065 /* GLYPH_RIDDEN_FEM_OFF */ && glyph < 3448) || (glyph >= 1533 /* GLYPH_DETECT_MALE_OFF */ && glyph < 1916 || glyph >= 1916 /* GLYPH_DETECT_FEM_OFF */ && glyph < 2299)) {
+    } else if (glyph_is_monster(glyph)) {
         if ((mtmp = svl.level.monsters[x][y]) !== null) {
             await look_at_monster(buf, monbuf, mtmp, x, y);
             pm = mtmp.data;
-        } else if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+        } else if (Hallucination()) {
             $c.__builtin___strcpy_chk(buf, await rndmonnam(null), -1);
         }
-    } else if (glyph === 3448 /* GLYPH_OBJ_OFF */ || glyph >= 3465 && glyph < 3929 || (glyph === 7992 /* GLYPH_OBJ_PILETOP_OFF */ || glyph > 8009 && glyph < 8473) || (glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 || glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009) || (glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622)) || (glyph >= 2299 /* GLYPH_BODY_OFF */ && glyph < 2682 || glyph >= 8473 /* GLYPH_BODY_PILETOP_OFF */ && glyph < 8856)) {
+    } else if (glyph_is_object(glyph)) {
         await look_at_object(buf, x, y, glyph);
-    } else if (glyph >= 4026 && glyph < 4051) {
-        tnum = glyph >= 4026 && glyph < 4051 ? (((glyph - 4026 | 0) + 49 /* S_arrow_trap */ | 0) - 49 /* S_arrow_trap */ | 0) + 1 | 0 : 9624 /* MAX_GLYPH */;
+    } else if (glyph_is_trap(glyph)) {
+        tnum = glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH;
         trap_description(buf, tnum, x, y);
-    } else if (glyph >= 7220 /* GLYPH_WARNING_OFF */ && glyph < 7226) {
-        warnindx = glyph >= 7220 /* GLYPH_WARNING_OFF */ && glyph < 7226 ? glyph - 7220 /* GLYPH_WARNING_OFF */ | 0 : 0;
+    } else if (glyph_is_warning(glyph)) {
+        warnindx = glyph_to_warning(glyph);
         $c.__builtin___strcpy_chk(buf, def_warnsyms[warnindx].explanation, -1);
-    } else if (glyph === 1532 /* GLYPH_INVIS_OFF */) {
+    } else if (glyph_is_invisible(glyph)) {
         $c.__builtin___strcpy_chk(buf, new $c.Ptr(invisexplain, 0), -1);
-    } else if (glyph === 9623 /* GLYPH_NOTHING_OFF */) {
+    } else if (glyph_is_nothing(glyph)) {
         $c.__builtin___strcpy_chk(buf, $c.lit("dark part of a room"), -1);
-    } else if (glyph === 9622 /* GLYPH_UNEXPLORED_OFF */) {
-        if (u.uinwater | 0 && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+    } else if (glyph_is_unexplored(glyph)) {
+        if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
             $c.__builtin___strcpy_chk(buf, dist2(x, y, u.ux, u.uy) <= 2 ? $c.lit("land") : $c.lit("unknown"), -1);
         } else {
             $c.__builtin___strcpy_chk(buf, $c.lit("unexplored area"), -1);
         }
-    } else if (glyph >= 3929 /* GLYPH_CMAP_STONE_OFF */ && glyph < 4093) {
+    } else if (glyph_is_cmap(glyph)) {
         symidx = $c.i16(glyph_to_cmap(glyph));
         switch (symidx) {
-            case 33 /* S_altar */:
+            case S.altar:
                 amsk = altarmask_at(x, y);
-                algn = $c.i8((amsk & 7 & 7) === 0 ? -128 : (amsk & 7 & 7) === 4 ? 1 : (amsk & 7 & 7) - 2 | 0);
-                $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%s %saltar"), (svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level) && !(dist2(x, y, u.ux, u.uy) <= 2) && amsk & 16 ? $c.lit("aligned") : align_str(algn), amsk & 16 ? $c.lit("high ") : $c.lit(""));
+                algn = $c.i8((amsk & AM.MASK & AM.MASK) === 0 ? A.NONE : (amsk & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : (amsk & AM.MASK & AM.MASK) - 2 | 0);
+                $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%s %saltar"), (svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level) && !(dist2(x, y, u.ux, u.uy) <= 2) && amsk & AM.SANCTUM ? $c.lit("aligned") : align_str(algn), amsk & AM.SANCTUM ? $c.lit("high ") : $c.lit(""));
                 break;
-            case 12 /* S_ndoor */:
+            case S.ndoor:
                 if (is_drawbridge_wall(x, y) >= 0) {
                     $c.__builtin___strcpy_chk(buf, $c.lit("open drawbridge portcullis"), -1);
-                } else if (((svl.level.locations[x][y].flags | 0) & -17) === 1) {
+                } else if (((svl.level.locations[x][y].flags | 0) & ~D.TRAPPED) === D.BROKEN) {
                     $c.__builtin___strcpy_chk(buf, $c.lit("broken door"), -1);
                 } else {
                     $c.__builtin___strcpy_chk(buf, $c.lit("doorway"), -1);
                 }
                 break;
-            case 47 /* S_cloud */:
+            case S.cloud:
                 $c.__builtin___strcpy_chk(buf, (svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) ? $c.lit("cloudy area") : $c.lit("fog/vapor cloud"), -1);
                 break;
-            case 38 /* S_pool */:
-            case 48 /* S_water */:
-            case 40 /* S_lava */:
-            case 41 /* S_lavawall */:
-            case 39 /* S_ice */:
+            case S.pool:
+            case S.water:
+            case S.lava:
+            case S.lavawall:
+            case S.ice:
                 $c.__builtin___strcpy_chk(buf, waterbody_name(x, y), -1);
                 break;
-            case 21 /* S_engroom */:
-            case 24 /* S_engrcorr */:
+            case S.engroom:
+            case S.engrcorr:
                 $c.__builtin___strcpy_chk(buf, $c.lit("engraving"), -1);
                 break;
-            case 0 /* S_stone */:
+            case S.stone:
                 if (!svl.level.locations[x][y].seenv) {
                     $c.__builtin___strcpy_chk(buf, $c.lit("unexplored"), -1);
                     break;
-                } else if (u.uinwater | 0 && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+                } else if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
                     $c.__builtin___strcpy_chk(buf, dist2(x, y, u.ux, u.uy) <= 2 ? $c.lit("land") : $c.lit("unknown"), -1);
                     break;
-                } else if (svl.level.locations[x][y].typ === 0 /* STONE */ || svl.level.locations[x][y].typ === 15 /* SCORR */) {
+                } else if (svl.level.locations[x][y].typ === STONE || svl.level.locations[x][y].typ === SCORR) {
                     $c.__builtin___strcpy_chk(buf, $c.lit("stone"), -1);
                     break;
                 }
@@ -560,33 +603,33 @@ async function lookat(x, y, buf, monbuf) {   // pager.c:657
     } else {
         $c.__builtin___strcpy_chk(buf, $c.lit("unexplored area"), -1);
     }
-    return pm && !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) ? pm : null;
+    return pm && !Hallucination() ? pm : null;
 }
 export async function ia_checkfile(otmp) {   // pager.c:807
     let itemnam = new Int8Array(256);
     $c.__builtin___strcpy_chk(new $c.Ptr(itemnam, 0), await singular(otmp, xname), 256);
-    return await checkfile(new $c.Ptr(itemnam, 0), null, 6, null);
+    return await checkfile(new $c.Ptr(itemnam, 0), null, chkfilIaCheck | chkfilDontAsk, null);
 }
 async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:830
     let fp = null, buf = new Int8Array(256), newstr = new Int8Array(256), givenname = new Int8Array(256), ep = null, dbase_str = null, user_typed_name = 0, without_asking = 0, ia_checking = 0, txt_offset = [0], datawin = 0, res = 0, pass1offset = 0, chk_skip = 0, pass = 0, yes_to_moreinfo = 0, found_in_file = 0, pass1found_in_file = 0, skipping_entry = 0, sp = null, ap = null, alt = null, entry_offset = [0], fseekoffset = 0, entry_count = Int32Array.of(0), i = 0, entrytext = null, question = new Int8Array(128), tabbuf = new Int8Array(264), tp = null;
-    user_typed_name = $c.i8((chkflags & 1) >>> 0 !== 0 ? 1 : 0);
-    without_asking = $c.i8((chkflags & 2) >>> 0 !== 0 ? 1 : 0);
-    ia_checking = $c.i8((chkflags & 4) >>> 0 !== 0 ? 1 : 0);
+    user_typed_name = $c.i8((chkflags & chkfilUsrTyped) >>> 0 !== 0 ? 1 : 0);
+    without_asking = $c.i8((chkflags & chkfilDontAsk) >>> 0 !== 0 ? 1 : 0);
+    ia_checking = $c.i8((chkflags & chkfilIaCheck) >>> 0 !== 0 ? 1 : 0);
     txt_offset[0] = 0;
-    datawin = -1;
-    res = 0;
+    datawin = WIN_ERR;
+    res = FALSE;
     fp = $c.fopen($c.lit("data"), $c.lit("r"));
     if (!fp) {
         await pline($c.lit("Cannot open 'data' file!"));
         return res;
     }
     checkfile_done$: {
-        if (!inp || $c.strlen(inp) > 255) {
+        if (!inp || $c.strlen(inp) > BUFSZ - 1) {
             await impossible($c.lit("bad do_look buffer passed (%s)!"), !inp ? $c.lit("null") : $c.lit("too long"));
             break checkfile_done$;
         }
         if (pm !== null && !user_typed_name) {
-            dbase_str = $c.__builtin___strcpy_chk(new $c.Ptr(newstr, 0), pm.pmnames[2 /* NEUTRAL */], 256);
+            dbase_str = $c.__builtin___strcpy_chk(new $c.Ptr(newstr, 0), pm.pmnames[NEUTRAL], 256);
         } else {
             dbase_str = $c.__builtin___strcpy_chk(new $c.Ptr(newstr, 0), inp, 256);
         }
@@ -667,10 +710,10 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
                         ep = ap;
                     }
                 } else if ((ep = strstri(dbase_str, $c.lit(" called "))) !== null) {
-                    copynchars(new $c.Ptr(givenname, 0), ep.add(8), 255);
+                    copynchars(new $c.Ptr(givenname, 0), ep.add(8), BUFSZ - 1);
                     alt = new $c.Ptr(givenname, 0);
                     if (supplemental_name && (sp = strstri(inp, $c.lit(" called "))) !== null) {
-                        copynchars(supplemental_name, sp.add(8), 255);
+                        copynchars(supplemental_name, sp.add(8), BUFSZ - 1);
                     }
                 } else {
                     ep = strstri(dbase_str, $c.lit(", "));
@@ -687,31 +730,31 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
                 if (alt && (ap = strstri(alt, $c.lit(" ("))) !== null && $c.pcmp(ap, alt) > 0) {
                     ap.set(0, 0);
                 }
-                if (!alt && await fruit_from_name(dbase_str, 1, null)) {
-                    alt = $c.__builtin___strcpy_chk(new $c.Ptr(newstr, 0), obj_descr[285 /* SLIME_MOLD */].oc_name, 256);
+                if (!alt && await fruit_from_name(dbase_str, TRUE, null)) {
+                    alt = $c.__builtin___strcpy_chk(new $c.Ptr(newstr, 0), obj_descr[SLIME_MOLD].oc_name, 256);
                 } else if (!alt) {
                     alt = await makesingular(dbase_str);
                 }
-                pass1found_in_file = 0;
+                pass1found_in_file = FALSE;
                 for (pass = !$c.strcmp(alt, dbase_str) ? 0 : 1; pass >= 0; pass = pass - 1 | 0) {
-                    found_in_file = skipping_entry = 0;
+                    found_in_file = skipping_entry = FALSE;
                     txt_offset[0] = 0;
                     if ($c.fseek(fp, $c.i64(txt_offset[0]), 0) < 0) {
                         await impossible($c.lit("can't get to start of 'data' file"));
                         break checkfile_done$;
                     }
-                    if (!$c.fgets(new $c.Ptr(buf, 0), 256, fp) || !$c.fgets(new $c.Ptr(buf, 0), 256, fp)) {
+                    if (!$c.fgets(new $c.Ptr(buf, 0), BUFSZ, fp) || !$c.fgets(new $c.Ptr(buf, 0), BUFSZ, fp)) {
                         await impossible($c.lit("can't read 'data' file"));
                         break checkfile_done$;
                     } else if ($c.sscanf(new $c.Ptr(buf, 0), $c.lit("%8lx\n"), new $c.Ptr(txt_offset, 0)) < 1 || txt_offset[0] === 0) {
                         break bad_data_file$;
                     }
-                    while ($c.fgets(new $c.Ptr(buf, 0), 256, fp)) {
+                    while ($c.fgets(new $c.Ptr(buf, 0), BUFSZ, fp)) {
                         if (new $c.Ptr(buf, 0).get(0) === 46) {
                             break;
                         }
                         if (digit(new $c.Ptr(buf, 0).get(0))) {
-                            skipping_entry = 0;
+                            skipping_entry = FALSE;
                         } else if (!skipping_entry) {
                             if (!(ep = $c.strchr(new $c.Ptr(buf, 0), 10))) {
                                 break bad_data_file$;
@@ -720,12 +763,12 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
                             chk_skip = new $c.Ptr(buf, 0).get(0) === 126 ? 1 : 0;
                             if (pass === 0 && pmatch(new $c.Ptr(buf, chk_skip), dbase_str) || pass === 1 && alt && pmatch(new $c.Ptr(buf, chk_skip), alt)) {
                                 if (chk_skip) {
-                                    skipping_entry = 1;
+                                    skipping_entry = TRUE;
                                     continue;
                                 } else {
-                                    found_in_file = 1;
+                                    found_in_file = TRUE;
                                     if (pass === 1) {
-                                        pass1found_in_file = 1;
+                                        pass1found_in_file = TRUE;
                                     }
                                     break;
                                 }
@@ -734,7 +777,7 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
                     }
                     if (found_in_file) {
                         do {
-                            if (!$c.fgets(new $c.Ptr(buf, 0), 256, fp)) {
+                            if (!$c.fgets(new $c.Ptr(buf, 0), BUFSZ, fp)) {
                                 break bad_data_file$;
                             }
                         } while (!digit(new $c.Ptr(buf, 0).get(0)));
@@ -747,14 +790,14 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
                         } else if (fseekoffset === pass1offset) {
                             break checkfile_done$;
                         }
-                        yes_to_moreinfo = 0;
+                        yes_to_moreinfo = FALSE;
                         if (!user_typed_name && !without_asking) {
                             entrytext = pass ? alt : dbase_str;
                             $c.__builtin___strcpy_chk(new $c.Ptr(question, 0), $c.lit("More info about \""), 128);
                             copynchars(eos(new $c.Ptr(question, 0)), entrytext, $c.i32($c.subu64(127, $c.addu64($c.strlen(new $c.Ptr(question, 0)), 2))));
                             $c.__builtin___strcat_chk(new $c.Ptr(question, 0), $c.lit("\"?"), 128);
-                            if (await yn_function(new $c.Ptr(question, 0), new $c.Ptr(ynchars, 0), 110, 1) === 121) {
-                                yes_to_moreinfo = 1;
+                            if (await y_n(new $c.Ptr(question, 0)) === 121) {
+                                yes_to_moreinfo = TRUE;
                             }
                         }
                         if (user_typed_name || without_asking || yes_to_moreinfo) {
@@ -762,13 +805,13 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
                                 await pline($c.lit("? Seek error on 'data' file!"));
                                 break checkfile_done$;
                             }
-                            res = 1;
+                            res = TRUE;
                             if (ia_checking) {
                                 break checkfile_done$;
                             }
-                            datawin = await windowprocs.win_create_nhwindow(4);
+                            datawin = await create_nhwindow()(NHW.MENU);
                             for (i = 0; i < entry_count[0]; i = i + 1 | 0) {
-                                if (!$c.fgets(new $c.Ptr(tabbuf, 0), 256, fp)) {
+                                if (!$c.fgets(new $c.Ptr(tabbuf, 0), BUFSZ, fp)) {
                                     break bad_data_file$;
                                 }
                                 tp = new $c.Ptr(tabbuf, 0);
@@ -788,10 +831,10 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
                                 if ($c.strchr(tp, 9) !== null) {
                                     tabexpand(tp);
                                 }
-                                await windowprocs.win_putstr(datawin, 0, tp);
+                                await putstr()(datawin, 0, tp);
                             }
-                            await windowprocs.win_display_nhwindow(datawin, 0);
-                            await windowprocs.win_destroy_nhwindow(datawin), datawin = -1;
+                            await display_nhwindow()(datawin, FALSE);
+                            await destroy_nhwindow()(datawin), datawin = WIN_ERR;
                         }
                     } else if (user_typed_name && pass === 0 && !pass1found_in_file) {
                         await pline($c.lit("You don't have any information on those things."));
@@ -802,8 +845,8 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
         }
         await impossible($c.lit("'data' file in wrong format or corrupted"));
     }
-    if (datawin !== -1) {
-        await windowprocs.win_destroy_nhwindow(datawin);
+    if (datawin !== WIN_ERR) {
+        await destroy_nhwindow()(datawin);
     }
     $c.fclose(fp);
     return res;
@@ -813,30 +856,30 @@ async function add_cmap_descr(found, idx, glyph, article, cc$in, x_str, prefix, 
     let mbuf = null, p = null, absidx = 0, save_ltyp = 0, save_prop = 0;
     mbuf = null;
     absidx = $c.abs(idx);
-    if (glyph === 9624 /* MAX_GLYPH */) {
+    if (glyph === NO_GLYPH) {
         if (!$c.strcmp(x_str, $c.lit("water"))) {
-            if (idx === 38 /* S_pool */) {
+            if (idx === S.pool) {
                 x_str = $c.lit("pool of water");
-            } else if (idx === 48 /* S_water */) {
+            } else if (idx === S.water) {
                 x_str = !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? $c.lit("wall of water") : $c.lit("limitless water");
             }
         }
-        if (absidx === 38 /* S_pool */) {
-            idx = 38 /* S_pool */;
+        if (absidx === S.pool) {
+            idx = S.pool;
         }
-    } else if (absidx === 38 /* S_pool */ || idx === 48 /* S_water */ || idx === 40 /* S_lava */ || idx === 41 /* S_lavawall */ || idx === 39 /* S_ice */) {
+    } else if (absidx === S.pool || idx === S.water || idx === S.lava || idx === S.lavawall || idx === S.ice) {
         save_ltyp = svl.level.locations[cc.x][cc.y].typ;
-        save_prop = u.uprops[24 /* HALLUC_RES */].extrinsic;
+        save_prop = u.uprops[HALLUC_RES].extrinsic;
         mbuf = await mon_nam(gy.youmonst);
-        if (absidx === 38 /* S_pool */) {
-            svl.level.locations[cc.x][cc.y].typ = $c.i8(idx === 38 /* S_pool */ ? 16 /* POOL */ : 17 /* MOAT */);
-            idx = 38 /* S_pool */;
+        if (absidx === S.pool) {
+            svl.level.locations[cc.x][cc.y].typ = $c.i8(idx === S.pool ? POOL : MOAT);
+            idx = S.pool;
         } else {
-            svl.level.locations[cc.x][cc.y].typ = $c.i8(idx === 48 /* S_water */ ? 18 /* WATER */ : idx === 40 /* S_lava */ ? 20 /* LAVAPOOL */ : idx === 41 /* S_lavawall */ ? 21 /* LAVAWALL */ : 33 /* ICE */);
+            svl.level.locations[cc.x][cc.y].typ = $c.i8(idx === S.water ? WATER : idx === S.lava ? LAVAPOOL : idx === S.lavawall ? LAVAWALL : ICE);
         }
-        u.uprops[24 /* HALLUC_RES */].extrinsic = 1;
+        u.uprops[HALLUC_RES].extrinsic = 1;
         $c.__builtin___strcpy_chk(mbuf, waterbody_name(cc.x, cc.y), -1);
-        u.uprops[24 /* HALLUC_RES */].extrinsic = save_prop;
+        u.uprops[HALLUC_RES].extrinsic = save_prop;
         svl.level.locations[cc.x][cc.y].typ = save_ltyp;
         if (!$c.strcmp(mbuf, $c.lit("pool of water"))) {
             mbuf.set(4, 0);
@@ -847,18 +890,18 @@ async function add_cmap_descr(found, idx, glyph, article, cc$in, x_str, prefix, 
         article = !(!$c.strncmp(x_str, $c.lit("water"), 5) || !$c.strncmp(x_str, $c.lit("ice"), 3) || !$c.strncmp(x_str, $c.lit("pool"), 4) || !$c.strncmp(x_str, $c.lit("moat"), 4) || !$c.strncmp(x_str, $c.lit("lava"), 4) || !$c.strncmp(x_str, $c.lit("swamp"), 5) || !$c.strncmp(x_str, $c.lit("molten"), 6) || !$c.strncmp(x_str, $c.lit("shallow"), 7) || !$c.strncmp(x_str, $c.lit("limitless"), 9) || !$c.strncmp(x_str, $c.lit("wall of lava"), 12) || !$c.strncmp(x_str, $c.lit("wall of water"), 13) || !$c.strncmp(x_str, $c.lit("frozen"), 6) || (p = $c.strchr(x_str, 32)) !== null && !strncmpi(p, $c.lit(" ice"), -1)) ? 1 : 0;
     }
     if (!found) {
-        if (idx >= 49 /* S_arrow_trap */ && idx < 74 && idx !== 71 /* S_vibrating_square */) {
+        if (is_cmap_trap(idx) && idx !== S.vibrating_square) {
             $c.__builtin___sprintf_chk(out_str, 0, -1, $c.lit("%sa trap"), prefix);
-            hit_trap.set(0, 1);
+            hit_trap.set(0, TRUE);
         } else {
             $c.__builtin___sprintf_chk(out_str, 0, -1, $c.lit("%s%s"), prefix, article === 2 ? await the(x_str) : article === 1 ? await an(x_str) : x_str);
         }
         firstmatch.set(0, x_str);
         found = 1;
-    } else if (!(hit_trap.get(0) && (idx >= 49 /* S_arrow_trap */ && idx < 74)) && !(found >= 3 && (idx >= 42 /* S_vodbridge */ && idx <= 45 /* S_hcdbridge */)) && (idx !== 71 /* S_vibrating_square */ || In_hell(u.uz) || glyph >= 4026 && glyph < 4051 && (glyph >= 4026 && glyph < 4051 ? (((glyph - 4026 | 0) + 49 /* S_arrow_trap */ | 0) - 49 /* S_arrow_trap */ | 0) + 1 | 0 : 9624 /* MAX_GLYPH */) === 23 /* VIBRATING_SQUARE */)) {
+    } else if (!(hit_trap.get(0) && is_cmap_trap(idx)) && !(found >= 3 && is_cmap_drawbridge(idx)) && (idx !== S.vibrating_square || Inhell() || glyph_is_trap(glyph) && (glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH) === VIBRATING_SQUARE)) {
         found = found + await append_str(out_str, article === 2 ? await the(x_str) : article === 1 ? await an(x_str) : x_str) | 0;
-        if (idx >= 49 /* S_arrow_trap */ && idx < 74 && idx !== 71 /* S_vibrating_square */) {
-            hit_trap.set(0, 1);
+        if (is_cmap_trap(idx) && idx !== S.vibrating_square) {
+            hit_trap.set(0, TRUE);
         }
     }
     return found;
@@ -866,12 +909,12 @@ async function add_cmap_descr(found, idx, glyph, article, cc$in, x_str, prefix, 
 export async function do_screen_description(cc$in, looked, sym, out_str, firstmatch, for_supplement) {   // pager.c:1247
     const cc = cc$in;   // passed by value: the caller copies
     let prefix = new Int8Array(256), i = 0, j = 0, alt_i = 0, glyph = 0, skipped_venom = 0, found = 0, hit_trap = Int8Array.of(0), need_to_look = 0, submerged = 0, hallucinate = 0, x_str = null, tmpsym = 0, glyphinfo = new $T.glyphinfo(), oc_ptr = null, bouldersym = 0, usealt = 0, unseen_explain = null, article = 0, pm = null, monbuf = new Int8Array(256), temp_buf = new Int8Array(256);
-    glyph = 9624 /* MAX_GLYPH */;
+    glyph = NO_GLYPH;
     skipped_venom = 0;
     found = 0;
-    need_to_look = 0;
-    submerged = $c.i8(u.uinwater | 0 && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? 1 : 0);
-    hallucinate = $c.i8(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) && !program_state.gameover ? 1 : 0);
+    need_to_look = FALSE;
+    submerged = $c.i8((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? 1 : 0);
+    hallucinate = $c.i8(Hallucination() && !program_state.gameover ? 1 : 0);
     glyphinfo.$copyFrom(nul_glyphinfo);
     if (looked) {
         glyph = glyph_at(cc.x, cc.y);
@@ -883,12 +926,12 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
     }
     x_str = null;
     if (!looked) {
-    } else if ((u.uswallow | 0 || submerged) && !(dist2(cc.x, cc.y, u.ux, u.uy) <= 2) || (iflags.terrainmode & 33) >>> 0 === 32 && glyph === 3929) {
+    } else if ((u.uswallow | 0 || submerged) && !(dist2(cc.x, cc.y, u.ux, u.uy) <= 2) || (iflags.terrainmode & (TER.DETECT | TER.MAP)) >>> 0 === TER.DETECT && glyph === 3929) {
         x_str = new $c.Ptr(do_screen_description$unreconnoitered, 0);
-        need_to_look = 0;
+        need_to_look = FALSE;
     } else if (is_swallow_sym(sym)) {
         x_str = new $c.Ptr(do_screen_description$mon_interior, 0);
-        need_to_look = 1;
+        need_to_look = TRUE;
     }
     didlook$: {
         if (x_str) {
@@ -904,13 +947,13 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
             }
         }
         check_monsters$: for (;;) {
-            if (!iflags.terrainmode || (iflags.terrainmode & 8) >>> 0 !== 0) {
-                for (i = 1; i < 61 /* MAXMCLASSES */; i = i + 1 | 0) {
-                    if (i === 35 /* S_invisible */) {
+            if (!iflags.terrainmode || (iflags.terrainmode & TER.MON) >>> 0 !== 0) {
+                for (i = 1; i < MAXMCLASSES; i = i + 1 | 0) {
+                    if (i === S.invisible) {
                         continue;
                     }
-                    if (sym === (looked ? gs.showsyms[i + 123 | 0] : def_monsyms[i].sym) && def_monsyms[i].explain && def_monsyms[i].explain.get(0)) {
-                        need_to_look = 1;
+                    if (sym === (looked ? gs.showsyms[i + SYM_OFF_M | 0] : def_monsyms[i].sym) && def_monsyms[i].explain && def_monsyms[i].explain.get(0)) {
+                        need_to_look = TRUE;
                         if (!found) {
                             $c.__builtin___sprintf_chk(out_str, 0, -1, $c.lit("%s%s"), new $c.Ptr(prefix, 0), await an(def_monsyms[i].explain));
                             firstmatch.set(0, def_monsyms[i].explain);
@@ -920,30 +963,30 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
                         }
                     }
                 }
-                if ((looked ? sym === gs.showsyms[176] && (cc.x === u.ux && cc.y === u.uy) : sym === def_monsyms[53 /* S_HUMAN */].sym && !flags.showrace) && !(gu.urace.mnum === 260 || gu.urace.mnum === 264) && !(u.umonnum !== u.umonster)) {
+                if ((looked ? sym === gs.showsyms[S.HUMAN + SYM_OFF_M] && (cc.x === u.ux && cc.y === u.uy) : sym === def_monsyms[S.HUMAN].sym && !flags.showrace) && !(gu.urace.mnum === PM.HUMAN || gu.urace.mnum === PM.ELF) && !Upolyd()) {
                     found = found + await append_str(out_str, $c.lit("you")) | 0;
                 }
             }
-            if (!iflags.terrainmode || (iflags.terrainmode & 4) >>> 0 !== 0) {
-                j = 192;
+            if (!iflags.terrainmode || (iflags.terrainmode & TER.OBJ) >>> 0 !== 0) {
+                j = SYM.BOULDER + SYM_OFF_X;
                 bouldersym = $c.u8((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? go.ov_rogue_syms[j] : go.ov_primary_syms[j]);
                 if (!bouldersym) {
-                    bouldersym = $c.u8(def_oc_syms[14 /* ROCK_CLASS */].sym);
+                    bouldersym = $c.u8(def_oc_syms[ROCK_CLASS].sym);
                 }
-                for (i = 1; i < 18 /* MAXOCLASSES */; i = i + 1 | 0) {
-                    if (i !== 14 /* ROCK_CLASS */ ? sym === (looked ? gs.showsyms[i + 105 | 0] : def_oc_syms[i].sym) : glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622) || sym === bouldersym) {
+                for (i = 1; i < MAXOCLASSES; i = i + 1 | 0) {
+                    if (i !== ROCK_CLASS ? sym === (looked ? gs.showsyms[i + SYM_OFF_O | 0] : def_oc_syms[i].sym) : glyph_is_statue(glyph) || sym === bouldersym) {
                         oc_ptr = def_oc_syms[i].explain;
-                        if (i === 14 /* ROCK_CLASS */ && !$c.strcmp(oc_ptr, $c.lit("boulder or statue"))) {
+                        if (i === ROCK_CLASS && !$c.strcmp(oc_ptr, $c.lit("boulder or statue"))) {
                             if (sym === bouldersym) {
                                 oc_ptr = $c.lit("boulder");
-                            } else if (glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622)) {
+                            } else if (glyph_is_statue(glyph)) {
                                 oc_ptr = $c.lit("statue");
                             } else if (looked) {
                                 continue;
                             }
                         }
-                        need_to_look = 1;
-                        if (looked && i === 17 /* VENOM_CLASS */) {
+                        need_to_look = TRUE;
+                        if (looked && i === VENOM_CLASS) {
                             skipped_venom = skipped_venom + 1 | 0;
                             continue;
                         }
@@ -957,9 +1000,9 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
                     }
                 }
             }
-            if (sym === 73 /* DEF_INVISIBLE */) {
-                usealt = $c.i8($c.and64(u.uprops[37 /* DETECT_MONSTERS */].extrinsic, 536870912) !== 0 ? 1 : 0);
-                unseen_explain = usealt || (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? new $c.Ptr(altinvisexplain, 0) : new $c.Ptr(invisexplain, 0);
+            if (sym === DEF.INVISIBLE) {
+                usealt = $c.i8($c.and64(u.uprops[DETECT_MONSTERS].extrinsic, I_SPECIAL) !== 0 ? 1 : 0);
+                unseen_explain = usealt || Blind() ? new $c.Ptr(altinvisexplain, 0) : new $c.Ptr(invisexplain, 0);
                 if (!found) {
                     $c.__builtin___sprintf_chk(out_str, 0, -1, $c.lit("%s%s"), new $c.Ptr(prefix, 0), await an(unseen_explain));
                     firstmatch.set(0, unseen_explain);
@@ -968,7 +1011,7 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
                     found = found + await append_str(out_str, await an(unseen_explain)) | 0;
                 }
             }
-            if (glyph && glyph === 9623 /* GLYPH_NOTHING_OFF */ || looked && sym === gs.showsyms[190]) {
+            if (glyph && glyph_is_nothing(glyph) || looked && sym === gs.showsyms[SYM.NOTHING + SYM_OFF_X]) {
                 x_str = $c.lit("the dark part of a room");
                 if (!found) {
                     $c.__builtin___sprintf_chk(out_str, 0, -1, $c.lit("%s%s"), new $c.Ptr(prefix, 0), x_str);
@@ -978,7 +1021,7 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
                     found = found + await append_str(out_str, x_str) | 0;
                 }
             }
-            if (glyph && glyph === 9622 /* GLYPH_UNEXPLORED_OFF */ || looked && sym === gs.showsyms[191]) {
+            if (glyph && glyph_is_unexplored(glyph) || looked && sym === gs.showsyms[SYM.UNEXPLORED + SYM_OFF_X]) {
                 x_str = $c.lit("unexplored");
                 if (submerged) {
                     x_str = $c.lit("land");
@@ -991,28 +1034,28 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
                     found = found + await append_str(out_str, x_str) | 0;
                 }
             }
-            for (hit_trap[0] = 0, i = 0; i < 105 /* MAXPCHARS */; i = i + 1 | 0) {
-                alt_i = i === 40 /* S_lava */ ? 48 /* S_water */ : i === 41 /* S_lavawall */ ? 40 /* S_lava */ : i === 48 /* S_water */ ? 41 /* S_lavawall */ : i;
+            for (hit_trap[0] = FALSE, i = 0; i < MAXPCHARS; i = i + 1 | 0) {
+                alt_i = i === S.lava ? S.water : i === S.lavawall ? S.lava : i === S.water ? S.lavawall : i;
                 x_str = defsyms[alt_i].explanation;
                 if (!x_str.get(0)) {
                     continue;
                 }
                 if (sym === (looked ? gs.showsyms[alt_i] : defsyms[alt_i].sym)) {
-                    if (alt_i === 20 /* S_darkroom */ && glyph && glyph === 9623 /* GLYPH_NOTHING_OFF */) {
+                    if (alt_i === S.darkroom && glyph && glyph_is_nothing(glyph)) {
                         continue;
                     }
-                    article = strstri(x_str, $c.lit(" of a room")) ? 2 : !(alt_i === 0 /* S_stone */ || $c.strcmp(x_str, $c.lit("air")) === 0 || $c.strcmp(x_str, $c.lit("land")) === 0) ? 1 : 0;
+                    article = strstri(x_str, $c.lit(" of a room")) ? 2 : !(alt_i === S.stone || $c.strcmp(x_str, $c.lit("air")) === 0 || $c.strcmp(x_str, $c.lit("land")) === 0) ? 1 : 0;
                     found = await add_cmap_descr(found, alt_i, glyph, article, cc.$clone(), x_str, new $c.Ptr(prefix, 0), new $c.Ptr(hit_trap, 0), firstmatch, out_str);
-                    if (alt_i === 38 /* S_pool */) {
-                        await add_cmap_descr(found, -38, glyph, 1, cc.$clone(), $c.lit("moat"), new $c.Ptr(prefix, 0), new $c.Ptr(hit_trap, 0), firstmatch, out_str);
-                        need_to_look = 1;
+                    if (alt_i === S.pool) {
+                        await add_cmap_descr(found, -S.pool, glyph, 1, cc.$clone(), $c.lit("moat"), new $c.Ptr(prefix, 0), new $c.Ptr(hit_trap, 0), firstmatch, out_str);
+                        need_to_look = TRUE;
                     }
-                    if (alt_i === 33 /* S_altar */ || alt_i >= 49 /* S_arrow_trap */ && alt_i < 74 || hallucinate && (alt_i === 48 /* S_water */ || alt_i === 40 /* S_lava */ || alt_i === 41 /* S_lavawall */ || alt_i === 39 /* S_ice */) || alt_i === 21 /* S_engroom */ || alt_i === 24 /* S_engrcorr */ || alt_i === 34 /* S_grave */) {
-                        need_to_look = 1;
+                    if (alt_i === S.altar || is_cmap_trap(alt_i) || hallucinate && (alt_i === S.water || alt_i === S.lava || alt_i === S.lavawall || alt_i === S.ice) || alt_i === S.engroom || alt_i === S.engrcorr || alt_i === S.grave) {
+                        need_to_look = TRUE;
                     }
                 }
             }
-            for (i = 1; i < 6; i = i + 1 | 0) {
+            for (i = 1; i < WARNCOUNT; i = i + 1 | 0) {
                 x_str = def_warnsyms[i].explanation;
                 if (sym === (looked ? gw.warnsyms[i] : def_warnsyms[i].sym)) {
                     if (!found) {
@@ -1022,14 +1065,14 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
                     } else {
                         found = found + await append_str(out_str, x_str) | 0;
                     }
-                    if (looked && sobj_at(475 /* BOULDER */, cc.x, cc.y)) {
+                    if (looked && sobj_at(BOULDER, cc.x, cc.y)) {
                         $c.__builtin___strcat_chk(out_str, $c.lit(" co-located with a boulder"), -1);
                     }
                     break;
                 }
             }
             if (skipped_venom && found < 2) {
-                x_str = def_oc_syms[17 /* VENOM_CLASS */].explain;
+                x_str = def_oc_syms[VENOM_CLASS].explain;
                 if (!found) {
                     $c.__builtin___sprintf_chk(out_str, 0, -1, $c.lit("%s%s"), new $c.Ptr(prefix, 0), await an(x_str));
                     firstmatch.set(0, x_str);
@@ -1038,22 +1081,22 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
                     found = found + await append_str(out_str, await an(x_str)) | 0;
                 }
             }
-            for (j = 190; j < 196; j = j + 1 | 0) {
-                if (j === 193 || j === 192) {
+            for (j = SYM_OFF_X; j < SYM_MAX; j = j + 1 | 0) {
+                if (j === SYM.INVISIBLE + SYM_OFF_X || j === SYM.BOULDER + SYM_OFF_X) {
                     continue;
                 }
                 tmpsym = $c.u8((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? go.ov_rogue_syms[j] : go.ov_primary_syms[j]);
                 if (tmpsym && sym === tmpsym) {
                     switch (j) {
-                        case 194:
+                        case SYM.PET_OVERRIDE + SYM_OFF_X:
                             if (looked) {
-                                map_glyphinfo(cc.x, cc.y, glyph, 1, glyphinfo);
+                                map_glyphinfo(cc.x, cc.y, glyph, MG.FLAG_NOOVERRIDE, glyphinfo);
                                 sym = glyphinfo.ttychar;
                                 continue check_monsters$;
                             }
                             break;
-                        case 195:
-                            sym = gs.showsyms[176];
+                        case SYM.HERO_OVERRIDE + SYM_OFF_X:
+                            sym = gs.showsyms[S.HUMAN + SYM_OFF_M];
                             continue check_monsters$;
                     }
                 }
@@ -1082,14 +1125,14 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
             }
             if (firstmatch.get(0).get(0)) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(temp_buf, 0), 0, 256, $c.lit(" (%s"), firstmatch.get(0));
-                add_quoted_engraving(cc.x, cc.y, new $c.Ptr(temp_buf, 0), 0);
+                add_quoted_engraving(cc.x, cc.y, new $c.Ptr(temp_buf, 0), FALSE);
                 $c.__builtin___strcat_chk(new $c.Ptr(temp_buf, 0), $c.lit(")"), 256);
-                $c.__builtin___strncat_chk(out_str, new $c.Ptr(temp_buf, 0), $c.subu64($c.subu64(256, $c.strlen(out_str)), 1), -1);
+                $c.__builtin___strncat_chk(out_str, new $c.Ptr(temp_buf, 0), $c.subu64($c.subu64(BUFSZ, $c.strlen(out_str)), 1), -1);
                 found = 1;
             }
             if (monbuf[0]) {
                 nh_snprintf($c.lit("do_screen_description"), 1619, new $c.Ptr(temp_buf, 0), 256, $c.lit(" [seen: %s]"), new $c.Ptr(monbuf, 0));
-                $c.__builtin___strncat_chk(out_str, new $c.Ptr(temp_buf, 0), $c.subu64($c.subu64(256, $c.strlen(out_str)), 1), -1);
+                $c.__builtin___strncat_chk(out_str, new $c.Ptr(temp_buf, 0), $c.subu64($c.subu64(BUFSZ, $c.strlen(out_str)), 1), -1);
             }
         }
     }
@@ -1101,18 +1144,18 @@ function add_quoted_engraving(x, y, buf, force) {   // pager.c:1631
     floorengr = $c.i8(!$c.strcmp(buf, $c.lit(" (engraving")) ? 1 : 0);
     headstone = $c.i8(!$c.strcmp(buf, $c.lit(" (grave")) ? 1 : 0);
     if (!ep) {
-        return 0;
+        return FALSE;
     }
     if (!floorengr && !headstone && !force) {
-        return 0;
+        return FALSE;
     }
     if (ep.eread) {
-        nh_snprintf($c.lit("add_quoted_engraving"), 1660, new $c.Ptr(temp_buf, 0), 256, $c.lit(" with %s: \"%s\""), headstone ? $c.lit("headstone reading") : $c.lit("remembered text"), ep.engr_txt[1 /* remembered_text */]);
+        nh_snprintf($c.lit("add_quoted_engraving"), 1660, new $c.Ptr(temp_buf, 0), 256, $c.lit(" with %s: \"%s\""), headstone ? $c.lit("headstone reading") : $c.lit("remembered text"), ep.engr_txt[remembered_text]);
     } else {
         nh_snprintf($c.lit("add_quoted_engraving"), 1663, new $c.Ptr(temp_buf, 0), 256, $c.lit(" %s you haven't read"), headstone ? $c.lit("whose headstone") : $c.lit("that"));
     }
-    $c.__builtin___strncat_chk(buf, new $c.Ptr(temp_buf, 0), $c.subu64($c.subu64(256, $c.strlen(buf)), 1), -1);
-    return 1;
+    $c.__builtin___strncat_chk(buf, new $c.Ptr(temp_buf, 0), $c.subu64($c.subu64(BUFSZ, $c.strlen(buf)), 1), -1);
+    return TRUE;
 }
 export async function do_look(mode, click_cc) {   // pager.c:1673
     let quick = 0, clicklook = 0, out_str = new Int8Array(256), cq = new $T._cmd_queue(), cmdq = null, firstmatch = [null], pm = null, supplemental_pm = [null], i = 0, ans = 0, sym = 0, found = 0, cc = new $T.nhcoord(), save_verbose = 0, from_screen = 0, clr = 0, pick_list = [null], win = 0, any = new $T.any(), invlet = 0, invobj = null, dmpbuf = new Int8Array(256), temp_buf = new Int8Array(256), supplemental_name = new Int8Array(256), $goto = null;
@@ -1128,16 +1171,16 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
             supplemental_pm[0] = null;
             i = 0;
             ans = 0;
-            clr = 8;
+            clr = NO_COLOR;
             cc.x = 0;
             cc.y = 0;
             if ((cmdq = cmdq_pop()) !== null) {
                 cq.$copyFrom(cmdq);
                 $c.free(cmdq);
-                if (cq.typ === 0 /* CMDQ_KEY */) {
+                if (cq.typ === CMDQ.KEY) {
                     i = cq.key;
                 } else {
-                    cmdq_clear(0 /* CQ_CANNED */);
+                    cmdq_clear(CQ_CANNED);
                 }
                 $goto = "dowhatiscmd"; continue D1;
             }
@@ -1151,59 +1194,59 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                         } else {
                             pick_list[0] = null;
                             any.$copyFrom(cg.zeroany);
-                            win = await windowprocs.win_create_nhwindow(4);
-                            await windowprocs.win_start_menu(win, 0);
+                            win = await create_nhwindow()(NHW.MENU);
+                            await start_menu()(win, MENU.BEHAVE_STANDARD);
                             any.a_char = 47;
-                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 47 : 121), 0, clr, $c.lit("something on the map"), 0);
+                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 47 : 121), ATR.NONE, clr, $c.lit("something on the map"), MENU.ITEMFLAGS_NONE);
                             any.a_char = 105;
-                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), 0, 0, clr, $c.lit("something you're carrying"), 0);
+                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), 0, ATR.NONE, clr, $c.lit("something you're carrying"), MENU.ITEMFLAGS_NONE);
                             any.a_char = 63;
-                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 63 : 110), 0, clr, $c.lit("something else (by symbol or name)"), 0);
-                            if (!u.uswallow && !(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic))) {
+                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 63 : 110), ATR.NONE, clr, $c.lit("something else (by symbol or name)"), MENU.ITEMFLAGS_NONE);
+                            if (!u.uswallow && !Hallucination()) {
                                 any.$copyFrom(cg.zeroany);
                                 await add_menu_str(win, $c.lit(""));
                                 any.a_char = 109;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), 0, clr, $c.lit("nearby monsters"), 0);
+                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), ATR.NONE, clr, $c.lit("nearby monsters"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 77;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), 0, clr, $c.lit("all monsters shown on map"), 0);
+                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), ATR.NONE, clr, $c.lit("all monsters shown on map"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 111;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), 0, clr, $c.lit("nearby objects"), 0);
+                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), ATR.NONE, clr, $c.lit("nearby objects"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 79;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), 0, clr, $c.lit("all objects shown on map"), 0);
+                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), ATR.NONE, clr, $c.lit("all objects shown on map"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 116;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 94), 0, clr, $c.lit("nearby traps"), 0);
+                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 94), ATR.NONE, clr, $c.lit("nearby traps"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 84;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 34), 0, clr, $c.lit("all seen or remembered traps"), 0);
+                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 34), ATR.NONE, clr, $c.lit("all seen or remembered traps"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 101;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 0 : 96), 0, clr, $c.lit("nearby engravings"), 0);
+                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 0 : 96), ATR.NONE, clr, $c.lit("nearby engravings"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 69;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 124), 0, clr, $c.lit("all seen or remembered engravings"), 0);
+                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 124), ATR.NONE, clr, $c.lit("all seen or remembered engravings"), MENU.ITEMFLAGS_NONE);
                             }
-                            await windowprocs.win_end_menu(win, $c.lit("What do you want to look at:"));
-                            if (await select_menu(win, 1, new $c.Ptr(pick_list, 0)) > 0) {
+                            await end_menu()(win, $c.lit("What do you want to look at:"));
+                            if (await select_menu(win, PICK.ONE, new $c.Ptr(pick_list, 0)) > 0) {
                                 i = pick_list[0].item.a_char;
                                 $c.free(pick_list[0]);
                             }
-                            await windowprocs.win_destroy_nhwindow(win);
+                            await destroy_nhwindow()(win);
                         }
                     case "dowhatiscmd":
                         $goto = null;   // dowhatiscmd:
                         switch (i) {
                             default:
                             case 113:
-                                return 0;
+                                return ECMD.OK;
                             case 121:
                             case 47:
-                                from_screen = 1;
+                                from_screen = TRUE;
                                 sym = 0;
                                 cc.x = u.ux;
                                 cc.y = u.uy;
                                 break;
                             case 105:
                                 {
-                                    invlet = await display_inventory(null, 1);
+                                    invlet = await display_inventory(null, TRUE);
                                     if (!invlet || invlet === 27) {
-                                        return 0;
+                                        return ECMD.OK;
                                     }
                                     new $c.Ptr(out_str, 0).set(0, 0);
                                     for (invobj = gi.invent; invobj; invobj = invobj.nobj) {
@@ -1213,49 +1256,49 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                                         }
                                     }
                                     if (new $c.Ptr(out_str, 0).get(0)) {
-                                        await checkfile(new $c.Ptr(out_str, 0), pm, 3, null);
+                                        await checkfile(new $c.Ptr(out_str, 0), pm, chkfilUsrTyped | chkfilDontAsk, null);
                                     }
-                                    return 0;
+                                    return ECMD.OK;
                                 }
                             case 63:
-                                from_screen = 0;
+                                from_screen = FALSE;
                                 await getlin($c.lit("Specify what? (type the word)"), new $c.Ptr(out_str, 0));
                                 if ($c.strcmp(new $c.Ptr(out_str, 0), $c.lit(" "))) {
                                     mungspaces(new $c.Ptr(out_str, 0));
                                 }
                                 if (out_str[0] === 0 || out_str[0] === 27) {
-                                    return 0;
+                                    return ECMD.OK;
                                 }
                                 if (out_str[1]) {
-                                    await checkfile(new $c.Ptr(out_str, 0), pm, 3, null);
-                                    return 0;
+                                    await checkfile(new $c.Ptr(out_str, 0), pm, chkfilUsrTyped | chkfilDontAsk, null);
+                                    return ECMD.OK;
                                 }
                                 sym = out_str[0];
                                 break;
                             case 109:
-                                await look_all(1, 1);
-                                return 0;
+                                await look_all(TRUE, TRUE);
+                                return ECMD.OK;
                             case 77:
-                                await look_all(0, 1);
-                                return 0;
+                                await look_all(FALSE, TRUE);
+                                return ECMD.OK;
                             case 111:
-                                await look_all(1, 0);
-                                return 0;
+                                await look_all(TRUE, FALSE);
+                                return ECMD.OK;
                             case 79:
-                                await look_all(0, 0);
-                                return 0;
+                                await look_all(FALSE, FALSE);
+                                return ECMD.OK;
                             case 116:
-                                await look_traps(1);
-                                return 0;
+                                await look_traps(TRUE);
+                                return ECMD.OK;
                             case 84:
-                                await look_traps(0);
-                                return 0;
+                                await look_traps(FALSE);
+                                return ECMD.OK;
                             case 101:
-                                await look_engrs(1);
-                                return 0;
+                                await look_engrs(TRUE);
+                                return ECMD.OK;
                             case 69:
-                                await look_engrs(0);
-                                return 0;
+                                await look_engrs(FALSE);
+                                return ECMD.OK;
                         }
                     }
                     break;
@@ -1264,7 +1307,7 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                 cc.x = click_cc.x;
                 cc.y = click_cc.y;
                 sym = 0;
-                from_screen = 0;
+                from_screen = FALSE;
             }
             save_verbose = flags.verbose;
             flags.verbose = $c.i8(flags.verbose && !quick ? 1 : 0);
@@ -1282,12 +1325,12 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                         if (ans < 0 || cc.x < 0) {
                             break;
                         }
-                        flags.verbose = 0;
+                        flags.verbose = FALSE;
                     }
                 }
                 found = await do_screen_description(cc.$clone(), $c.i8(from_screen || clicklook ? 1 : 0), sym, new $c.Ptr(out_str, 0), new $c.Ptr(firstmatch, 0), new $c.Ptr(supplemental_pm, 0));
                 if (found) {
-                    await windowprocs.win_putmixed($G.WIN_MESSAGE, 0, new $c.Ptr(out_str, 0));
+                    await putmixed()($G.WIN_MESSAGE, 0, new $c.Ptr(out_str, 0));
                     {
                         decode_mixed(new $c.Ptr(dmpbuf, 0), new $c.Ptr(out_str, 0));
                         if (dmpbuf[0] < 32 || dmpbuf[0] >= 127) {
@@ -1295,58 +1338,58 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                         }
                         await dumplogmsg(new $c.Ptr(dmpbuf, 0));
                     }
-                    if (found === 1 && ans !== 1 /* LOOK_QUICK */ && ans !== 2 /* LOOK_ONCE */ && (ans === 3 /* LOOK_VERBOSE */ || flags.help && !quick) && !clicklook) {
+                    if (found === 1 && ans !== LOOK.QUICK && ans !== LOOK.ONCE && (ans === LOOK.VERBOSE || flags.help && !quick) && !clicklook) {
                         supplemental_name[0] = 0;
                         $c.__builtin___strcpy_chk(new $c.Ptr(temp_buf, 0), firstmatch[0], 256);
-                        await checkfile(new $c.Ptr(temp_buf, 0), pm, (ans === 3 /* LOOK_VERBOSE */ ? 2 /* chkfilDontAsk */ : 0 /* chkfilNone */) >>> 0, new $c.Ptr(supplemental_name, 0));
+                        await checkfile(new $c.Ptr(temp_buf, 0), pm, (ans === LOOK.VERBOSE ? chkfilDontAsk : chkfilNone) >>> 0, new $c.Ptr(supplemental_name, 0));
                         if (supplemental_pm[0]) {
-                            await do_supplemental_info(new $c.Ptr(supplemental_name, 0), supplemental_pm[0], $c.i8(ans === 3 /* LOOK_VERBOSE */ ? 1 : 0));
+                            await do_supplemental_info(new $c.Ptr(supplemental_name, 0), supplemental_pm[0], $c.i8(ans === LOOK.VERBOSE ? 1 : 0));
                         }
                     }
                 } else {
                     await pline($c.lit("I've never heard of such things."));
                 }
-            } while (from_screen && !quick && ans !== 2 /* LOOK_ONCE */ && !clicklook);
+            } while (from_screen && !quick && ans !== LOOK.ONCE && !clicklook);
             flags.verbose = save_verbose;
-            return 0;
+            return ECMD.OK;
         }
         break;
     }
 }
 function look_region_nearby(lo_x, lo_y, hi_x, hi_y, nearby) {   // pager.c:1966
-    lo_y.set(0, $c.i16(nearby ? (u.uy - 8 | 0) > 0 ? u.uy - 8 | 0 : 0 : 0));
-    lo_x.set(0, $c.i16(nearby ? (u.ux - 8 | 0) > 1 ? u.ux - 8 | 0 : 1 : 1));
-    hi_y.set(0, $c.i16(nearby ? (u.uy + 8 | 0) < 20 ? u.uy + 8 | 0 : 20 : 20));
-    hi_x.set(0, $c.i16(nearby ? (u.ux + 8 | 0) < 79 ? u.ux + 8 | 0 : 79 : 79));
+    lo_y.set(0, $c.i16(nearby ? (u.uy - BOLT_LIM | 0) > 0 ? u.uy - BOLT_LIM | 0 : 0 : 0));
+    lo_x.set(0, $c.i16(nearby ? (u.ux - BOLT_LIM | 0) > 1 ? u.ux - BOLT_LIM | 0 : 1 : 1));
+    hi_y.set(0, $c.i16(nearby ? (u.uy + BOLT_LIM | 0) < ROWNO - 1 ? u.uy + BOLT_LIM | 0 : ROWNO - 1 : ROWNO - 1));
+    hi_x.set(0, $c.i16(nearby ? (u.ux + BOLT_LIM | 0) < COLNO - 1 ? u.ux + BOLT_LIM | 0 : COLNO - 1 : COLNO - 1));
 }
 async function look_all(nearby, do_mons) {   // pager.c:1979
     let win = 0, glyph = 0, count = 0, x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), lookbuf = new Int8Array(256), outbuf = new Int8Array(256), mtmp = null, warnindx = 0, coordbuf = new Int8Array(20), which = new Int8Array(12), cmode = 0;
     count = 0;
-    win = await windowprocs.win_create_nhwindow(5);
+    win = await create_nhwindow()(NHW.TEXT);
     look_region_nearby(new $c.Ptr(lo_x, 0), new $c.Ptr(lo_y, 0), new $c.Ptr(hi_x, 0), new $c.Ptr(hi_y, 0), nearby);
     for (y = lo_y[0]; y <= hi_y[0]; y = $c.i16(y + 1)) {
         for (x = lo_x[0]; x <= hi_x[0]; x = $c.i16(x + 1)) {
             lookbuf[0] = 0;
             glyph = glyph_at(x, y);
             if (do_mons) {
-                if (glyph >= 0 /* GLYPH_MON_MALE_OFF */ && glyph < 383 || glyph >= 383 /* GLYPH_MON_FEM_OFF */ && glyph < 766 || (glyph >= 766 /* GLYPH_PET_MALE_OFF */ && glyph < 1149 || glyph >= 1149 /* GLYPH_PET_FEM_OFF */ && glyph < 1532) || (glyph >= 2682 /* GLYPH_RIDDEN_MALE_OFF */ && glyph < 3065 || glyph >= 3065 /* GLYPH_RIDDEN_FEM_OFF */ && glyph < 3448) || (glyph >= 1533 /* GLYPH_DETECT_MALE_OFF */ && glyph < 1916 || glyph >= 1916 /* GLYPH_DETECT_FEM_OFF */ && glyph < 2299)) {
-                    if (x === u.ux && y === u.uy && ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked || u.uswallow | 0 || !((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked && !(u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.uundetected || (u.uprops[30 /* TELEPAT */].extrinsic || (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic)))) {
+                if (glyph_is_monster(glyph)) {
+                    if (u_at(x, y) && canspotself()) {
                         await self_lookat(new $c.Ptr(lookbuf, 0));
                         count = count + 1 | 0;
                     } else if ((mtmp = svl.level.monsters[x][y]) !== null) {
                         await look_at_monster(new $c.Ptr(lookbuf, 0), null, mtmp, x, y);
                         count = count + 1 | 0;
                     }
-                } else if (glyph === 1532 /* GLYPH_INVIS_OFF */) {
+                } else if (glyph_is_invisible(glyph)) {
                     $c.__builtin___strcpy_chk(new $c.Ptr(lookbuf, 0), new $c.Ptr(invisexplain, 0), 256);
                     count = count + 1 | 0;
-                } else if (glyph >= 7220 /* GLYPH_WARNING_OFF */ && glyph < 7226) {
-                    warnindx = glyph >= 7220 /* GLYPH_WARNING_OFF */ && glyph < 7226 ? glyph - 7220 /* GLYPH_WARNING_OFF */ | 0 : 0;
+                } else if (glyph_is_warning(glyph)) {
+                    warnindx = glyph_to_warning(glyph);
                     $c.__builtin___strcpy_chk(new $c.Ptr(lookbuf, 0), def_warnsyms[warnindx].explanation, 256);
                     count = count + 1 | 0;
                 }
             } else {
-                if (glyph === 3448 /* GLYPH_OBJ_OFF */ || glyph >= 3465 && glyph < 3929 || (glyph === 7992 /* GLYPH_OBJ_PILETOP_OFF */ || glyph > 8009 && glyph < 8473) || (glyph > 3448 /* GLYPH_OBJ_OFF */ && glyph < 3465 || glyph > 7992 /* GLYPH_OBJ_PILETOP_OFF */ && glyph < 8009) || (glyph >= 7226 /* GLYPH_STATUE_MALE_OFF */ && glyph < 7609 || glyph >= 8856 /* GLYPH_STATUE_MALE_PILETOP_OFF */ && glyph < 9239 || (glyph >= 7609 /* GLYPH_STATUE_FEM_OFF */ && glyph < 7992 || glyph >= 9239 /* GLYPH_STATUE_FEM_PILETOP_OFF */ && glyph < 9622)) || (glyph >= 2299 /* GLYPH_BODY_OFF */ && glyph < 2682 || glyph >= 8473 /* GLYPH_BODY_PILETOP_OFF */ && glyph < 8856)) {
+                if (glyph_is_object(glyph)) {
                     await look_at_object(new $c.Ptr(lookbuf, 0), x, y, glyph);
                     count = count + 1 | 0;
                 }
@@ -1356,12 +1399,12 @@ async function look_all(nearby, do_mons) {   // pager.c:1979
                 if (count === 1) {
                     $c.__builtin___strcpy_chk(new $c.Ptr(which, 0), do_mons ? $c.lit("monsters") : $c.lit("objects"), 12);
                     if (nearby) {
-                        $c.__builtin___sprintf_chk(new $c.Ptr(outbuf, 0), 0, 256, $c.lit("%s currently shown near %s:"), upstart(new $c.Ptr(which, 0)), cmode !== 99 ? coord_desc(u.ux, u.uy, new $c.Ptr(coordbuf, 0), cmode) : !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked || u.uswallow | 0 || !((u.uprops[40 /* INVIS */].intrinsic || u.uprops[40 /* INVIS */].extrinsic) && !u.uprops[40 /* INVIS */].blocked && !(u.uprops[29 /* SEE_INVIS */].intrinsic || u.uprops[29 /* SEE_INVIS */].extrinsic)) && !u.uundetected || (u.uprops[30 /* TELEPAT */].extrinsic || (u.uprops[37 /* DETECT_MONSTERS */].intrinsic || u.uprops[37 /* DETECT_MONSTERS */].extrinsic))) ? $c.lit("your position") : $c.lit("you"));
+                        $c.__builtin___sprintf_chk(new $c.Ptr(outbuf, 0), 0, 256, $c.lit("%s currently shown near %s:"), upstart(new $c.Ptr(which, 0)), cmode !== 99 ? coord_desc(u.ux, u.uy, new $c.Ptr(coordbuf, 0), cmode) : !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked || u.uswallow | 0 || !((u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked && !(u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.uundetected || (u.uprops[TELEPAT].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic))) ? $c.lit("your position") : $c.lit("you"));
                     } else {
                         $c.__builtin___sprintf_chk(new $c.Ptr(outbuf, 0), 0, 256, $c.lit("All %s currently shown on the map:"), new $c.Ptr(which, 0));
                     }
-                    await windowprocs.win_putstr(win, 0, new $c.Ptr(outbuf, 0));
-                    await windowprocs.win_putstr(win, 0, $c.lit("    "));
+                    await putstr()(win, 0, new $c.Ptr(outbuf, 0));
+                    await putstr()(win, 0, $c.lit("    "));
                 }
                 coord_desc(x, y, new $c.Ptr(coordbuf, 0), cmode);
                 if (cmode === 109 && y < 10) {
@@ -1371,62 +1414,62 @@ async function look_all(nearby, do_mons) {   // pager.c:1979
                 $c.__builtin___sprintf_chk(eos(new $c.Ptr(outbuf, 0)), 0, -1, $c.lit("%s  "), encglyph(glyph));
                 lookbuf[$c.idx($c.subu64(255, $c.strlen(new $c.Ptr(outbuf, 0))))] = 0;
                 $c.__builtin___strcat_chk(new $c.Ptr(outbuf, 0), new $c.Ptr(lookbuf, 0), 256);
-                await windowprocs.win_putmixed(win, 0, new $c.Ptr(outbuf, 0));
+                await putmixed()(win, 0, new $c.Ptr(outbuf, 0));
             }
         }
     }
     if (count) {
-        await windowprocs.win_display_nhwindow(win, 1);
+        await display_nhwindow()(win, TRUE);
     } else {
         await pline($c.lit("No %s are currently shown %s."), do_mons ? $c.lit("monsters") : $c.lit("objects"), nearby ? $c.lit("nearby") : $c.lit("on the map"));
     }
-    await windowprocs.win_destroy_nhwindow(win);
+    await destroy_nhwindow()(win);
 }
 async function look_traps(nearby) {   // pager.c:2078
     let win = 0, t = null, glyph = 0, tnum = 0, count = 0, x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), lookbuf = new Int8Array(256), outbuf = new Int8Array(256), coordbuf = new Int8Array(20), cmode = 0;
     count = 0;
-    win = await windowprocs.win_create_nhwindow(5);
+    win = await create_nhwindow()(NHW.TEXT);
     look_region_nearby(new $c.Ptr(lo_x, 0), new $c.Ptr(lo_y, 0), new $c.Ptr(hi_x, 0), new $c.Ptr(hi_y, 0), nearby);
     for (y = lo_y[0]; y <= hi_y[0]; y = $c.i16(y + 1)) {
         for (x = lo_x[0]; x <= hi_x[0]; x = $c.i16(x + 1)) {
             lookbuf[0] = 0;
             glyph = glyph_at(x, y);
-            if (glyph >= 4026 && glyph < 4051) {
-                tnum = glyph >= 4026 && glyph < 4051 ? (((glyph - 4026 | 0) + 49 /* S_arrow_trap */ | 0) - 49 /* S_arrow_trap */ | 0) + 1 | 0 : 9624 /* MAX_GLYPH */;
+            if (glyph_is_trap(glyph)) {
+                tnum = glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH;
                 trap_description(new $c.Ptr(lookbuf, 0), tnum, x, y);
                 count = count + 1 | 0;
-            } else if ((t = t_at(x, y)) !== null && t.tseen | 0 && (!((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && !((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) || (gv.viz_array.get(y).get(x) & 1) !== 0)) {
-                $c.__builtin___strcpy_chk(new $c.Ptr(lookbuf, 0), trapname(t.ttyp | 0, 0), 256);
+            } else if ((t = t_at(x, y)) !== null && t.tseen | 0 && (!((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && !((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) || couldsee(x, y))) {
+                $c.__builtin___strcpy_chk(new $c.Ptr(lookbuf, 0), trapname(t.ttyp | 0, FALSE), 256);
                 $c.__builtin___sprintf_chk(eos(new $c.Ptr(lookbuf, 0)), 0, -1, $c.lit(", obscured by %s"), encglyph(glyph));
-                glyph = ((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : ((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) <= 11 /* S_trwall */ ? (((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : ((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) < 33 /* S_altar */ ? (((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : ((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) === 33 /* S_altar */ ? 4008 : ((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) < 74 ? (((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : ((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) <= 87 /* S_goodpos */ ? (((49 /* S_arrow_trap */ + (t.ttyp | 0) | 0) - 1 | 0) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+                glyph = ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) <= S.trwall ? (((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) < S.altar ? (((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) === S.altar ? 4008 : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) < S.arrow_trap + MAXTCHARS ? (((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) <= S.goodpos ? (((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
                 count = count + 1 | 0;
             }
             if (new $c.Ptr(lookbuf, 0).get(0)) {
                 cmode = $c.i8(iflags.getpos_coords !== 110 ? iflags.getpos_coords : 109);
                 if (count === 1) {
                     $c.__builtin___sprintf_chk(new $c.Ptr(outbuf, 0), 0, 256, $c.lit("%sseen or remembered traps%s:"), nearby ? $c.lit("nearby ") : $c.lit(""), nearby ? $c.lit("") : $c.lit(" on this level"));
-                    await windowprocs.win_putstr(win, 0, upstart(new $c.Ptr(outbuf, 0)));
-                    await windowprocs.win_putstr(win, 0, $c.lit("    "));
+                    await putstr()(win, 0, upstart(new $c.Ptr(outbuf, 0)));
+                    await putstr()(win, 0, $c.lit("    "));
                 }
                 $c.__builtin___sprintf_chk(new $c.Ptr(outbuf, 0), 0, 256, cmode === 115 ? $c.lit("%s  ") : cmode === 109 ? $c.lit("%8s  ") : $c.lit("%12s  "), coord_desc(x, y, new $c.Ptr(coordbuf, 0), cmode));
                 $c.__builtin___sprintf_chk(eos(new $c.Ptr(outbuf, 0)), 0, -1, $c.lit("%s  "), encglyph(glyph));
                 lookbuf[$c.idx($c.subu64(255, $c.strlen(new $c.Ptr(outbuf, 0))))] = 0;
                 $c.__builtin___strcat_chk(new $c.Ptr(outbuf, 0), new $c.Ptr(lookbuf, 0), 256);
-                await windowprocs.win_putmixed(win, 0, new $c.Ptr(outbuf, 0));
+                await putmixed()(win, 0, new $c.Ptr(outbuf, 0));
             }
         }
     }
     if (count) {
-        await windowprocs.win_display_nhwindow(win, 1);
+        await display_nhwindow()(win, TRUE);
     } else {
         await pline($c.lit("No traps seen or remembered%s."), nearby ? $c.lit(" nearby") : $c.lit(""));
     }
-    await windowprocs.win_destroy_nhwindow(win);
+    await destroy_nhwindow()(win);
 }
 async function look_engrs(nearby) {   // pager.c:2144
     let win = 0, e = null, lookbuf = new Int8Array(256), outbuf = new Int8Array(256), x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), is_headstone = 0, sym = 0, glyph = 0, count = 0, coordbuf = new Int8Array(20), cmode = 0;
     count = 0;
-    win = await windowprocs.win_create_nhwindow(5);
+    win = await create_nhwindow()(NHW.TEXT);
     look_region_nearby(new $c.Ptr(lo_x, 0), new $c.Ptr(lo_y, 0), new $c.Ptr(hi_x, 0), new $c.Ptr(hi_y, 0), nearby);
     for (y = lo_y[0]; y <= hi_y[0]; y = $c.i16(y + 1)) {
         for (x = lo_x[0]; x <= hi_x[0]; x = $c.i16(x + 1)) {
@@ -1438,9 +1481,9 @@ async function look_engrs(nearby) {   // pager.c:2144
             if (!e) {
                 continue;
             }
-            is_headstone = $c.i8(svl.lastseentyp[x][y] === 31 /* GRAVE */ ? 1 : 0);
+            is_headstone = $c.i8(IS_GRAVE(svl.lastseentyp[x][y]));
             $c.__builtin___sprintf_chk(new $c.Ptr(lookbuf, 0), 0, 256, $c.lit(" (%s"), is_headstone ? $c.lit("grave") : $c.lit("engraving"));
-            add_quoted_engraving(x, y, new $c.Ptr(lookbuf, 0), 1);
+            add_quoted_engraving(x, y, new $c.Ptr(lookbuf, 0), TRUE);
             if (is_headstone) {
                 strsubst(new $c.Ptr(lookbuf, 0), $c.lit("(grave with "), $c.lit(""));
                 strsubst(new $c.Ptr(lookbuf, 0), $c.lit("(grave whose "), $c.lit(""));
@@ -1449,45 +1492,45 @@ async function look_engrs(nearby) {   // pager.c:2144
                 strsubst(new $c.Ptr(lookbuf, 0), $c.lit("(engraving "), $c.lit("engraving "));
             }
             glyph = glyph_at(x, y);
-            sym = $c.u8(glyph >= 3929 /* GLYPH_CMAP_STONE_OFF */ && glyph < 4093 ? glyph_to_cmap(glyph) : 0 /* SYM_NOTHING */);
-            if (sym === 21 /* S_engroom */ || sym === 24 /* S_engrcorr */ || sym === 34 /* S_grave */) {
+            sym = $c.u8(glyph_is_cmap(glyph) ? glyph_to_cmap(glyph) : SYM.NOTHING);
+            if (is_cmap_engraving(sym) || sym === S.grave) {
                 count = count + 1 | 0;
             } else {
                 nh_snprintf($c.lit("look_engrs"), 2190, eos(new $c.Ptr(lookbuf, 0)), $c.subu64(256, $c.strlen(new $c.Ptr(lookbuf, 0))), $c.lit(", obscured by %s"), encglyph(glyph));
-                glyph = is_headstone ? 4011 : (svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : (svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) <= 11 /* S_trwall */ ? ((svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) < 33 /* S_altar */ ? ((svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) === 33 /* S_altar */ ? 4008 : (svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) < 74 ? ((svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) <= 87 /* S_goodpos */ ? ((svl.level.locations[e.engr_x][e.engr_y].typ === 24 /* CORR */ ? 24 /* S_engrcorr */ : 21 /* S_engroom */) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */;
+                glyph = is_headstone ? 4011 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) === S.stone ? GLYPH.CMAP_STONE_OFF : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) <= S.trwall ? ((svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) < S.altar ? ((svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) === S.altar ? 4008 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) < S.arrow_trap + MAXTCHARS ? ((svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) <= S.goodpos ? ((svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
                 count = count + 1 | 0;
             }
             if (new $c.Ptr(lookbuf, 0).get(0)) {
                 cmode = $c.i8(iflags.getpos_coords !== 110 ? iflags.getpos_coords : 109);
                 if (count === 1) {
                     $c.__builtin___sprintf_chk(new $c.Ptr(outbuf, 0), 0, 256, $c.lit("%sseen or remembered engravings%s:"), nearby ? $c.lit("nearby ") : $c.lit(""), nearby ? $c.lit("") : $c.lit(" on this level"));
-                    await windowprocs.win_putstr(win, 0, upstart(new $c.Ptr(outbuf, 0)));
-                    await windowprocs.win_putstr(win, 0, $c.lit("    "));
+                    await putstr()(win, 0, upstart(new $c.Ptr(outbuf, 0)));
+                    await putstr()(win, 0, $c.lit("    "));
                 }
                 $c.__builtin___sprintf_chk(new $c.Ptr(outbuf, 0), 0, 256, cmode === 115 ? $c.lit("%s  ") : cmode === 109 ? $c.lit("%8s  ") : $c.lit("%12s  "), coord_desc(x, y, new $c.Ptr(coordbuf, 0), cmode));
                 $c.__builtin___sprintf_chk(eos(new $c.Ptr(outbuf, 0)), 0, -1, $c.lit("%s "), encglyph(glyph));
                 lookbuf[$c.idx($c.subu64(255, $c.strlen(new $c.Ptr(outbuf, 0))))] = 0;
                 $c.__builtin___strcat_chk(new $c.Ptr(outbuf, 0), new $c.Ptr(lookbuf, 0), 256);
-                await windowprocs.win_putmixed(win, 0, new $c.Ptr(outbuf, 0));
+                await putmixed()(win, 0, new $c.Ptr(outbuf, 0));
             }
         }
     }
     if (count) {
-        await windowprocs.win_display_nhwindow(win, 1);
+        await display_nhwindow()(win, TRUE);
     } else {
         await pline($c.lit("No engravings seen or remembered%s."), nearby ? $c.lit(" nearby") : $c.lit(""));
     }
-    await windowprocs.win_destroy_nhwindow(win);
+    await destroy_nhwindow()(win);
 }
 async function do_supplemental_info(name, pm, without_asking) {   // pager.c:2253
     let textp = null, datawin = 0, entrytext = null, bp = null, bp2 = null, question = new Int8Array(128), yes_to_moreinfo = 0, is_marauder = 0, fullname = new Int8Array(256), i = 0, subs = 0, gang = null, buf = new Int8Array(256), txt = null, $t1;
-    datawin = -1;
+    datawin = WIN_ERR;
     entrytext = name;
     bp = null;
     bp2 = null;
-    yes_to_moreinfo = 0;
-    is_marauder = $c.i8($c.andu64(pm.mflags2, 128) !== 0 ? 1 : 0);
-    if (is_marauder && $c.strlen(name) < 255) {
+    yes_to_moreinfo = FALSE;
+    is_marauder = $c.i8(is_orc(pm));
+    if (is_marauder && $c.strlen(name) < BUFSZ - 1) {
         bp = strstri(name, $c.lit(" of "));
         bp2 = strstri(name, $c.lit(" the Fence"));
         if (bp || bp2) {
@@ -1496,8 +1539,8 @@ async function do_supplemental_info(name, pm, without_asking) {   // pager.c:225
                 $c.__builtin___strcpy_chk(new $c.Ptr(question, 0), $c.lit("More info about \""), 128);
                 copynchars(eos(new $c.Ptr(question, 0)), entrytext, $c.i32($c.subu64(127, $c.addu64($c.strlen(new $c.Ptr(question, 0)), 2))));
                 $c.__builtin___strcat_chk(new $c.Ptr(question, 0), $c.lit("\"?"), 128);
-                if (await yn_function(new $c.Ptr(question, 0), new $c.Ptr(ynchars, 0), 110, 1) === 121) {
-                    yes_to_moreinfo = 1;
+                if (await y_n(new $c.Ptr(question, 0)) === 121) {
+                    yes_to_moreinfo = TRUE;
                 }
             }
             if (yes_to_moreinfo) {
@@ -1511,7 +1554,7 @@ async function do_supplemental_info(name, pm, without_asking) {   // pager.c:225
                     textp = new $c.Ptr(suptext2, 0);
                     gang = $c.lit("");
                 }
-                datawin = await windowprocs.win_create_nhwindow(4);
+                datawin = await create_nhwindow()(NHW.MENU);
                 for (i = 0; textp.get(i); i = i + 1 | 0) {
                     if (strstri(textp.get(i), $c.lit("%s")) !== null) {
                         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, textp.get(i), ($t1 = subs, subs = $t1 + 1 | 0, $t1) ? gang : new $c.Ptr(fullname, 0));
@@ -1519,10 +1562,10 @@ async function do_supplemental_info(name, pm, without_asking) {   // pager.c:225
                     } else {
                         txt = textp.get(i);
                     }
-                    await windowprocs.win_putstr(datawin, 0, txt);
+                    await putstr()(datawin, 0, txt);
                 }
-                await windowprocs.win_display_nhwindow(datawin, 0);
-                await windowprocs.win_destroy_nhwindow(datawin), datawin = -1;
+                await display_nhwindow()(datawin, FALSE);
+                await destroy_nhwindow()(datawin), datawin = WIN_ERR;
             }
         }
     }
@@ -1536,16 +1579,16 @@ export async function doquickwhatis() {   // pager.c:2329
 export async function doidtrap() {   // pager.c:2336
     let trap = null, tt = 0, glyph = 0, x = 0, y = 0, chesttrap = 0;
     if (!await getdir($c.lit("^"))) {
-        return 2;
+        return ECMD.CANCEL;
     }
     x = $c.i16(u.ux + u.dx | 0);
     y = $c.i16(u.uy + u.dy | 0);
     glyph = glyph_at(x, y);
-    if (glyph >= 4026 && glyph < 4051 && ((tt = glyph >= 4026 && glyph < 4051 ? (((glyph - 4026 | 0) + 49 /* S_arrow_trap */ | 0) - 49 /* S_arrow_trap */ | 0) + 1 | 0 : 9624 /* MAX_GLYPH */) === 5 /* BEAR_TRAP */ || tt === 24 /* TRAPPED_DOOR */ || tt === 25 /* TRAPPED_CHEST */)) {
+    if (glyph_is_trap(glyph) && ((tt = glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH) === BEAR_TRAP || tt === TRAPPED_DOOR || tt === TRAPPED_CHEST)) {
         chesttrap = trapped_chest_at(tt, x, y);
         if (chesttrap || trapped_door_at(tt, x, y)) {
             await pline($c.lit("That is a trapped %s."), chesttrap ? $c.lit("chest") : $c.lit("door"));
-            return 0;
+            return ECMD.OK;
         }
     }
     for (trap = gf.ftrap; trap; trap = trap.ntrap) {
@@ -1555,26 +1598,26 @@ export async function doidtrap() {   // pager.c:2336
             }
             tt = trap.ttyp | 0;
             if (u.dz) {
-                if (u.dz < 0 ? tt === 13 /* HOLE */ || tt === 14 /* TRAPDOOR */ : tt === 3 /* ROCKTRAP */) {
+                if (u.dz < 0 ? (tt === HOLE || tt === TRAPDOOR) : tt === ROCKTRAP) {
                     break;
                 }
             }
-            await pline($c.lit("That is %s%s%s."), await an(trapname(tt, 0)), !trap.madeby_u ? $c.lit("") : tt === 18 /* WEB */ ? $c.lit(" woven") : tt === 13 /* HOLE */ || tt === 11 /* PIT */ ? $c.lit(" dug") : $c.lit(" set"), !trap.madeby_u ? $c.lit("") : $c.lit(" by you"));
-            return 0;
+            await pline($c.lit("That is %s%s%s."), await an(trapname(tt, FALSE)), !trap.madeby_u ? $c.lit("") : tt === WEB ? $c.lit(" woven") : tt === HOLE || tt === PIT ? $c.lit(" dug") : $c.lit(" set"), !trap.madeby_u ? $c.lit("") : $c.lit(" by you"));
+            return ECMD.OK;
         }
     }
     await pline($c.lit("I can't see a trap there."));
-    return 0;
+    return ECMD.OK;
 }
 async function whatdoes_help() {   // pager.c:2421
     let fp = null, p = null, buf = new Int8Array(256), tmpwin = 0;
     fp = $c.fopen($c.lit("keyhelp"), $c.lit("r"));
     if (!fp) {
         await pline($c.lit("Cannot open \"%s\" data file!"), $c.lit("keyhelp"));
-        await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 1);
+        await display_nhwindow()($G.WIN_MESSAGE, TRUE);
         return;
     }
-    tmpwin = await windowprocs.win_create_nhwindow(5);
+    tmpwin = await create_nhwindow()(NHW.TEXT);
     while ($c.fgets(new $c.Ptr(buf, 0), 256, fp)) {
         if (new $c.Ptr(buf, 0).get(0) === 35) {
             continue;
@@ -1584,11 +1627,11 @@ async function whatdoes_help() {   // pager.c:2421
                 break;
             }
         }
-        await windowprocs.win_putstr(tmpwin, 0, p);
+        await putstr()(tmpwin, 0, p);
     }
     $c.fclose(fp);
-    await windowprocs.win_display_nhwindow(tmpwin, 1);
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await display_nhwindow()(tmpwin, TRUE);
+    await destroy_nhwindow()(tmpwin);
 }
 export function dowhatdoes_core(q, cbuf) {   // pager.c:2577
     let buf = new Int8Array(256), ec_desc = null, keybuf = new Int8Array(128);
@@ -1603,12 +1646,12 @@ export async function dowhatdoes() {   // pager.c:2659
     let bufr = new Int8Array(256), q = 0, reslt = null, p = null;
     if (!dowhatdoes$once) {
         await pline($c.lit("Ask about '&' or '?' to get more info.%s"), iflags.altmeta ? $c.lit("  (For ESC, type it twice.)") : $c.lit(""));
-        dowhatdoes$once = 1;
+        dowhatdoes$once = TRUE;
     }
     introff();
-    q = await yn_function($c.lit("What command?"), null, 0, 1);
+    q = await yn_function($c.lit("What command?"), null, 0, TRUE);
     if (q === 27 && iflags.altmeta) {
-        q = await yn_function($c.lit("]"), null, 0, 1);
+        q = await yn_function($c.lit("]"), null, 0, TRUE);
         if (q !== 27) {
             q = $c.i8($c.u8(q) | 128);
         }
@@ -1630,50 +1673,50 @@ export async function dowhatdoes() {   // pager.c:2659
     } else {
         await pline($c.lit("No such command '%s', char code %d (0%03o or 0x%02x)."), visctrl(q), $c.u8(q), $c.u8(q), $c.u8(q));
     }
-    return 0;
+    return ECMD.OK;
 }
 async function docontact() {   // pager.c:2718
     let cwin = 0, buf = new Int8Array(256);
-    cwin = await windowprocs.win_create_nhwindow(5);
+    cwin = await create_nhwindow()(NHW.TEXT);
     if (sysopt.support) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("To contact local support, %s"), sysopt.support);
-        await windowprocs.win_putstr(cwin, 0, new $c.Ptr(buf, 0));
-        await windowprocs.win_putstr(cwin, 0, $c.lit(""));
+        await putstr()(cwin, 0, new $c.Ptr(buf, 0));
+        await putstr()(cwin, 0, $c.lit(""));
     } else if (sysopt.fmtd_wizard_list) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("To contact local support, contact %s."), sysopt.fmtd_wizard_list);
-        await windowprocs.win_putstr(cwin, 0, new $c.Ptr(buf, 0));
-        await windowprocs.win_putstr(cwin, 0, $c.lit(""));
+        await putstr()(cwin, 0, new $c.Ptr(buf, 0));
+        await putstr()(cwin, 0, $c.lit(""));
     }
-    await windowprocs.win_putstr(cwin, 0, $c.lit("To contact the NetHack development team directly,"));
+    await putstr()(cwin, 0, $c.lit("To contact the NetHack development team directly,"));
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("see the 'Contact' form on our website or email <%s>."), $c.lit("devteam@nethack.org"));
-    await windowprocs.win_putstr(cwin, 0, new $c.Ptr(buf, 0));
-    await windowprocs.win_putstr(cwin, 0, $c.lit(""));
-    await windowprocs.win_putstr(cwin, 0, $c.lit("For more information on NetHack, or to report a bug,"));
+    await putstr()(cwin, 0, new $c.Ptr(buf, 0));
+    await putstr()(cwin, 0, $c.lit(""));
+    await putstr()(cwin, 0, $c.lit("For more information on NetHack, or to report a bug,"));
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("visit our website \"%s\"."), $c.lit("https://www.nethack.org/"));
-    await windowprocs.win_putstr(cwin, 0, new $c.Ptr(buf, 0));
-    await windowprocs.win_display_nhwindow(cwin, 0);
-    await windowprocs.win_destroy_nhwindow(cwin);
+    await putstr()(cwin, 0, new $c.Ptr(buf, 0));
+    await display_nhwindow()(cwin, FALSE);
+    await destroy_nhwindow()(cwin);
 }
 async function dispfile_help() {   // pager.c:2748
-    await windowprocs.win_display_file($c.lit("help"), 1);
+    await display_file()($c.lit("help"), TRUE);
 }
 async function dispfile_shelp() {   // pager.c:2754
-    await windowprocs.win_display_file($c.lit("hh"), 1);
+    await display_file()($c.lit("hh"), TRUE);
 }
 async function dispfile_optionfile() {   // pager.c:2760
-    await windowprocs.win_display_file($c.lit("opthelp"), 1);
+    await display_file()($c.lit("opthelp"), TRUE);
 }
 async function dispfile_optmenu() {   // pager.c:2766
-    await windowprocs.win_display_file($c.lit("optmenu"), 1);
+    await display_file()($c.lit("optmenu"), TRUE);
 }
 async function dispfile_license() {   // pager.c:2772
-    await windowprocs.win_display_file($c.lit("license"), 1);
+    await display_file()($c.lit("license"), TRUE);
 }
 async function dispfile_debughelp() {   // pager.c:2778
-    await windowprocs.win_display_file($c.lit("wizhelp"), 1);
+    await display_file()($c.lit("wizhelp"), TRUE);
 }
 async function dispfile_usagehelp() {   // pager.c:2784
-    await windowprocs.win_display_file($c.lit("usagehlp"), 1);
+    await display_file()($c.lit("usagehlp"), TRUE);
 }
 async function hmenu_doextversion() {   // pager.c:2790
     await doextversion();
@@ -1692,19 +1735,19 @@ async function hmenu_doextlist() {   // pager.c:2814
 }
 async function domenucontrols() {   // pager.c:2820
     let cwin = 0;
-    cwin = await windowprocs.win_create_nhwindow(5);
-    await show_menu_controls(cwin, 0);
-    await windowprocs.win_display_nhwindow(cwin, 0);
-    await windowprocs.win_destroy_nhwindow(cwin);
+    cwin = await create_nhwindow()(NHW.TEXT);
+    await show_menu_controls(cwin, FALSE);
+    await display_nhwindow()(cwin, FALSE);
+    await destroy_nhwindow()(cwin);
 }
 export async function dohelp() {   // pager.c:2860
     let tmpwin = 0, helpbuf = new Int8Array(128), tmpbuf = new Int8Array(128), i = 0, n = 0, selected = [null], any = new $T.any(), sel = 0, clr = 0;
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    clr = 8;
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
-    await windowprocs.win_start_menu(tmpwin, 0);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     for (i = 0; help_menu_items[i].text; i = i + 1 | 0) {
-        if (!flags.debug && help_menu_items[i].f === dispfile_debughelp) {
+        if (!wizard() && help_menu_items[i].f === dispfile_debughelp) {
             continue;
         }
         if (sysopt.hideusage && help_menu_items[i].f === dispfile_usagehelp) {
@@ -1718,17 +1761,17 @@ export async function dohelp() {   // pager.c:2860
             $c.__builtin___strcpy_chk(new $c.Ptr(helpbuf, 0), help_menu_items[i].text, 128);
         }
         any.a_int = i + 1 | 0;
-        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(helpbuf, 0), 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(helpbuf, 0), MENU.ITEMFLAGS_NONE);
     }
-    await windowprocs.win_end_menu(tmpwin, $c.lit("Select one item:"));
-    n = await select_menu(tmpwin, 1, new $c.Ptr(selected, 0));
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await end_menu()(tmpwin, $c.lit("Select one item:"));
+    n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
+    await destroy_nhwindow()(tmpwin);
     if (n > 0) {
         sel = $c.radd(selected[0], 0).item.a_int - 1 | 0;
         $c.free(selected[0]);
         await help_menu_items[sel].f();
     }
-    return 0;
+    return ECMD.OK;
 }
 async function setopt_cmd(outbuf) {   // pager.c:2908
     let cmdbuf = new Int8Array(128), cmdnm = null, key = 0;
@@ -1737,7 +1780,7 @@ async function setopt_cmd(outbuf) {   // pager.c:2908
     if (key) {
         $c.__builtin___strcat_chk(outbuf, visctrl(key), -1);
     } else {
-        cmdnm = await cmdname_from_func(doset, new $c.Ptr(cmdbuf, 0), 1);
+        cmdnm = await cmdname_from_func(doset, new $c.Ptr(cmdbuf, 0), TRUE);
         if (!cmdnm) {
             cmdnm = $c.lit("optionsfull");
         }
@@ -1747,7 +1790,7 @@ async function setopt_cmd(outbuf) {   // pager.c:2908
         if (key) {
             $c.__builtin___strcat_chk(outbuf, visctrl(key), -1);
         } else {
-            cmdnm = await cmdname_from_func(do_reqmenu, new $c.Ptr(cmdbuf, 0), 1);
+            cmdnm = await cmdname_from_func(do_reqmenu, new $c.Ptr(cmdbuf, 0), TRUE);
             if (!cmdnm) {
                 cmdnm = $c.lit("reqmenu");
             }
@@ -1758,7 +1801,7 @@ async function setopt_cmd(outbuf) {   // pager.c:2908
         if (key) {
             $c.__builtin___strcat_chk(outbuf, visctrl(key), -1);
         } else {
-            cmdnm = await cmdname_from_func(doset_simple, new $c.Ptr(cmdbuf, 0), 1);
+            cmdnm = await cmdname_from_func(doset_simple, new $c.Ptr(cmdbuf, 0), TRUE);
             if (!cmdnm) {
                 cmdnm = $c.lit("options");
             }
@@ -1769,8 +1812,8 @@ async function setopt_cmd(outbuf) {   // pager.c:2908
     return outbuf;
 }
 export async function dohistory() {   // pager.c:2961
-    await windowprocs.win_display_file($c.lit("history"), 1);
-    return 0;
+    await display_file()($c.lit("history"), TRUE);
+    return ECMD.OK;
 }
 
 export function $init() {
@@ -1781,74 +1824,65 @@ export function $init() {
     what_is_a_location.fill(0);
     what_is_a_location.set([97, 32, 109, 111, 110, 115, 116, 101, 114, 44, 32, 111, 98, 106, 101, 99, 116, 32, 111, 114, 32, 108, 111, 99, 97, 116, 105, 111, 110]);   // "a monster, object or location"
     suptext1.fill(null);
-    suptext1[0] = $c.lit("%s is a member of a marauding horde of orcs");
-    suptext1[1] = $c.lit("rumored to have brutally attacked and plundered");
-    suptext1[2] = $c.lit("the ordinarily sheltered town that is located ");
-    suptext1[3] = $c.lit("deep within The Gnomish Mines.");
-    suptext1[4] = $c.lit("");
-    suptext1[5] = $c.lit("The members of that vicious horde proudly and ");
-    suptext1[6] = $c.lit("defiantly acclaim their allegiance to their");
-    suptext1[7] = $c.lit("leader %s in their names.");
-    suptext1[8] = null;
+    $c.init(suptext1, [
+        $c.lit("%s is a member of a marauding horde of orcs"),
+        $c.lit("rumored to have brutally attacked and plundered"),
+        $c.lit("the ordinarily sheltered town that is located "),
+        $c.lit("deep within The Gnomish Mines."),
+        $c.lit(""),
+        $c.lit("The members of that vicious horde proudly and "),
+        $c.lit("defiantly acclaim their allegiance to their"),
+        $c.lit("leader %s in their names."),
+        null
+    ]);
     suptext2.fill(null);
-    suptext2[0] = $c.lit("\"%s\" is the common dungeon name of");
-    suptext2[1] = $c.lit("a nefarious orc who is known to acquire property");
-    suptext2[2] = $c.lit("from thieves and sell it off for profit.");
-    suptext2[3] = $c.lit("");
-    suptext2[4] = $c.lit("The perpetrator was last seen hanging around the");
-    suptext2[5] = $c.lit("stairs leading to the Gnomish Mines.");
-    suptext2[6] = null;
+    $c.init(suptext2, [
+        $c.lit("\"%s\" is the common dungeon name of"),
+        $c.lit("a nefarious orc who is known to acquire property"),
+        $c.lit("from thieves and sell it off for profit."),
+        $c.lit(""),
+        $c.lit("The perpetrator was last seen hanging around the"),
+        $c.lit("stairs leading to the Gnomish Mines."),
+        null
+    ]);
     for (let $i0 = 0; $i0 < 17; $i0++) {
         help_menu_items[$i0].$copyFrom(new $T.anon_pager_2830());
     }
-    help_menu_items[0].f = hmenu_doextversion;
-    help_menu_items[0].text = $c.lit("About NetHack (version information).");
-    help_menu_items[1].f = dispfile_help;
-    help_menu_items[1].text = $c.lit("Long description of the game and commands.");
-    help_menu_items[2].f = dispfile_shelp;
-    help_menu_items[2].text = $c.lit("List of game commands.");
-    help_menu_items[3].f = hmenu_dohistory;
-    help_menu_items[3].text = $c.lit("Concise history of NetHack.");
-    help_menu_items[4].f = hmenu_dowhatis;
-    help_menu_items[4].text = $c.lit("Info on a character in the game display.");
-    help_menu_items[5].f = hmenu_dowhatdoes;
-    help_menu_items[5].text = $c.lit("Info on what a given key does.");
-    help_menu_items[6].f = option_help;
-    help_menu_items[6].text = $c.lit("List of game options.");
-    help_menu_items[7].f = dispfile_optionfile;
-    help_menu_items[7].text = $c.lit("Longer explanation of game options.");
-    help_menu_items[8].f = dispfile_optmenu;
-    help_menu_items[8].text = $c.lit("Using the %s command to set options.");
-    help_menu_items[9].f = dokeylist;
-    help_menu_items[9].text = $c.lit("Full list of keyboard commands.");
-    help_menu_items[10].f = hmenu_doextlist;
-    help_menu_items[10].text = $c.lit("List of extended commands.");
-    help_menu_items[11].f = domenucontrols;
-    help_menu_items[11].text = $c.lit("List menu control keys.");
-    help_menu_items[12].f = dispfile_usagehelp;
-    help_menu_items[12].text = $c.lit("Description of NetHack's command line.");
-    help_menu_items[13].f = dispfile_license;
-    help_menu_items[13].text = $c.lit("The NetHack license.");
-    help_menu_items[14].f = docontact;
-    help_menu_items[14].text = $c.lit("Support information.");
-    help_menu_items[15].f = dispfile_debughelp;
-    help_menu_items[15].text = $c.lit("List of wizard-mode commands.");
-    help_menu_items[16].f = null;
-    help_menu_items[16].text = null;
+    $c.init(help_menu_items, [
+        { f: hmenu_doextversion, text: $c.lit("About NetHack (version information).") },
+        { f: dispfile_help, text: $c.lit("Long description of the game and commands.") },
+        { f: dispfile_shelp, text: $c.lit("List of game commands.") },
+        { f: hmenu_dohistory, text: $c.lit("Concise history of NetHack.") },
+        { f: hmenu_dowhatis, text: $c.lit("Info on a character in the game display.") },
+        { f: hmenu_dowhatdoes, text: $c.lit("Info on what a given key does.") },
+        { f: option_help, text: $c.lit("List of game options.") },
+        { f: dispfile_optionfile, text: $c.lit("Longer explanation of game options.") },
+        { f: dispfile_optmenu, text: $c.lit("Using the %s command to set options.") },
+        { f: dokeylist, text: $c.lit("Full list of keyboard commands.") },
+        { f: hmenu_doextlist, text: $c.lit("List of extended commands.") },
+        { f: domenucontrols, text: $c.lit("List menu control keys.") },
+        { f: dispfile_usagehelp, text: $c.lit("Description of NetHack's command line.") },
+        { f: dispfile_license, text: $c.lit("The NetHack license.") },
+        { f: docontact, text: $c.lit("Support information.") },
+        { f: dispfile_debughelp, text: $c.lit("List of wizard-mode commands.") },
+        {}
+    ]);
     append_str$sep.fill(0);
     append_str$sep.set([32, 111, 114, 32]);   // " or "
     waterbody_name$pooltype.fill(0);
     ice_descr$icetyp.fill(null);
-    ice_descr$icetyp[0] = $c.lit("solid");
-    ice_descr$icetyp[1] = $c.lit("sturdy");
-    ice_descr$icetyp[2] = $c.lit("steady");
-    ice_descr$icetyp[3] = $c.lit("unsteady");
-    ice_descr$icetyp[4] = $c.lit("thin");
-    ice_descr$icetyp[5] = $c.lit("slushy");
+    $c.init(ice_descr$icetyp, [
+        $c.lit("solid"),
+        $c.lit("sturdy"),
+        $c.lit("steady"),
+        $c.lit("unsteady"),
+        $c.lit("thin"),
+        $c.lit("slushy")
+    ]);
     do_screen_description$mon_interior.fill(0);
     do_screen_description$mon_interior.set([116, 104, 101, 32, 105, 110, 116, 101, 114, 105, 111, 114, 32, 111, 102, 32, 97, 32, 109, 111, 110, 115, 116, 101, 114]);   // "the interior of a monster"
     do_screen_description$unreconnoitered.fill(0);
     do_screen_description$unreconnoitered.set([117, 110, 114, 101, 99, 111, 110, 110, 111, 105, 116, 101, 114, 101, 100]);   // "unreconnoitered"
     do_screen_description$look_buf.fill(0);
-    dowhatdoes$once = 0;
+    dowhatdoes$once = FALSE;
 }

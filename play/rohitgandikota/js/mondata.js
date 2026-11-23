@@ -14,7 +14,7 @@ import { W_AMUL, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP } from './const.js';
 import { is_weptool, big_to_little, little_to_big } from './mkobj.js';
 import { Breathless } from './youprop.js';
 import { monsndx, is_golem } from './makemon.js';
-import { M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID } from './const.js';
+import { M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID, M_SEEN_REFL } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, MSOUND, ATTKS, GROWNUPS, mons as MONS_INIT } from './monst_data.js';
 import { game } from './gstate.js';
 import { NEUTRAL } from './const.js';
@@ -35,7 +35,7 @@ import { MON_WEP } from './monst.js';
 import { which_armor } from './worn.js';
 import { W_ARM, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
          POISON_RES, ACID_RES, STONE_RES, ANTIMAGIC, DRAIN_RES,
-         BLND_RES, INTRINSIC } from './const.js';
+         BLND_RES, INTRINSIC, REFLECTING } from './const.js';
 
 // src/mondata.c give_u_to_m_resistances(), permanent hero intrinsics only.
 export function give_u_to_m_resistances(mon) {
@@ -1139,6 +1139,27 @@ export function cvt_adtyp_to_mseenres(adtyp) {
     case ATTKS.AD_ACID: return M_SEEN_ACID;
     default: return M_SEEN_NOTHING;
     }
+}
+
+// src/mondata.c:1540 cvt_prop_to_mseenres(), property resistance to memory.
+export function cvt_prop_to_mseenres(prop) {
+    switch (prop) {
+    case ANTIMAGIC: return M_SEEN_MAGR;
+    case FIRE_RES: return M_SEEN_FIRE;
+    case COLD_RES: return M_SEEN_COLD;
+    case SLEEP_RES: return M_SEEN_SLEEP;
+    case DISINT_RES: return M_SEEN_DISINT;
+    case POISON_RES: return M_SEEN_POISON;
+    case SHOCK_RES: return M_SEEN_ELEC;
+    case ACID_RES: return M_SEEN_ACID;
+    case REFLECTING: return M_SEEN_REFL;
+    default: return M_SEEN_NOTHING;
+    }
+}
+
+// include/monst.h:94 monstunseesu_prop().
+export function monstunseesu_prop(prop) {
+    monstunseesu(cvt_prop_to_mseenres(prop));
 }
 
 // src/mondata.c:547 mon_hates_light()

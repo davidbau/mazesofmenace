@@ -18,14 +18,13 @@ import { BELL_OF_OPENING } from './objclass_ranges.js';
 import { stinky_nemesis } from './questpgr.js'; // relocate-fns
 import { nomul } from './hack.js'; // relocate-fns
 import { adjalign, exercise } from './attrib.js'; // relocate-fns
-import { LL_ACHIEVE, MAGIC_PORTAL, MS_DJINNI, MS_GUARDIAN, UTOTYPE_PORTAL, _quest_status, impossible_cmd, set_cursor } from './cmd.js'; // relocate-fns
+import { LL_ACHIEVE, MAGIC_PORTAL, MS_DJINNI, MS_GUARDIAN, UTOTYPE_PORTAL, _quest_status, impossible_cmd, yn_function } from './cmd.js'; // relocate-fns
 import { A_CURRENT, A_ORIGINAL, A_WIS, MIN_QUEST_ALIGN, MIN_QUEST_LEVEL, STRAT_WAITMASK } from './const.js'; // relocate-fns
-import { canseemon, flush_screen, force_more } from './display.js'; // relocate-fns
+import { canseemon } from './display.js'; // relocate-fns
 import { schedule_goto } from './do.js'; // relocate-fns
 import { Monnam } from './do_name.js'; // relocate-fns
 import { dungeon_branch, on_level, remdun_mapseen } from './dungeon.js'; // relocate-fns
 import { questStatusStruct, wizard } from './gstate.js'; // relocate-fns
-import { nhgetch } from './input.js'; // relocate-fns
 import { align_str } from './insight.js'; // relocate-fns
 import { noit_mon_nam } from './do_name.js'; // relocate-fns
 import { sp_levchn_lookup } from './mklev.js'; // relocate-fns
@@ -251,18 +250,23 @@ async function _is_pure_wizard_prelude() {
     } else if ((u.ualign?.record | 0) < MIN_QUEST_ALIGN) {
         await pline('You are currently %d and require %d.',
                     u.ualign?.record | 0, MIN_QUEST_ALIGN);
-        /* topl.c:389-391 — the pending You() line is more()d before the prompt
-         * overwrites the topline. */
-        if (g._pending_message)
-            await force_more(g._pending_message);
-        const prompt = 'adjust?';
-        g._pending_message = prompt;
-        await flush_screen(1);
-        /* tty_yn_function cursor: one past the prompt's trailing space. */
-        set_cursor(prompt.length + 1, 0);
-        const q = (await nhgetch()) & 0xff;
-        g._pending_message = '';
-        if (String.fromCharCode(q) === 'y')
+        /* C quest.c:167 — the real reader, not a hand-rolled prompt:
+         * yn_function("adjust?", (char *) 0, 'y', TRUE).  resp == NULL takes
+         * tty_yn_function's short arm (topl.c:426-431): the prompt is
+         * custompline(SUPPRESS_HISTORY)'d — which also acks the pending You()
+         * line via the opening NEED_MORE more() (topl.c:389-391) — ANY key is
+         * taken by a raw readchar() with no validation and no default
+         * fallback, and clean_up (topl.c:533-548) then rewrites gt.toplines as
+         * prompt + key2txt(q) WITHOUT repainting, so the entry the next
+         * pline's remember_topl files into the ^P ring — and a later ^P
+         * recalls — is the ANSWERED line ("adjust? h"), never the bare
+         * prompt.  The hand-rolled twin this replaces read its key with a
+         * bare nhgetch, whose input-boundary commit (js/input.js) filed the
+         * bare "adjust?" into the ring instead, and lost clean_up's
+         * <esc>/<space>/<enter> answer spellings too
+         * (df-x1d2e8c0fff step 253: C="adjust? h" JS="adjust?").  The
+         * NULL-responses arm of end.js _yn_prompt is exactly this arm. */
+        if (await yn_function('adjust?', null, 'y', true) === 'y')
             u.ualign.record = MIN_QUEST_ALIGN;
     }
 }

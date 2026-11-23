@@ -1738,13 +1738,12 @@ export function dowhatdoes_core(q) {
 
 // src/pager.c:2658 dowhatdoes() — the '?f' viewer: read one key and say
 // what it is bound to.
-let dowhatdoes_once = false;
 export async function dowhatdoes() {
-    if (!dowhatdoes_once) {
+    if (!game.dowhatdoes_once) {
         /* ALTMETA is defined and iflags.altmeta defaults off, so the
            "(For ESC, type it twice.)" suffix stays empty */
         await pline("Ask about '&' or '?' to get more info.");
-        dowhatdoes_once = true;
+        game.dowhatdoes_once = true;
     }
     const q = await tty_yn_function('What command?', null, '\0');
     const line = dowhatdoes_core(q.charCodeAt(0));

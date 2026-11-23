@@ -6,7 +6,7 @@ import { gt } from './decl.js';
 import { Norep, pline } from './pline.js';
 import { sysopt } from './sys.js';
 import { check_user_string } from './unixmain.js';
-import { windowprocs } from './windows.js';
+import { resume_nhwindows, suspend_nhwindows } from './winprocs.macros.js';
 
 export const termio = new $T.termios();
 export function getwindowsz() {   // ioctl.c:96
@@ -33,10 +33,10 @@ export async function dosuspend() {   // ioctl.c:161
         return 0;
     }
     if ($c.signal(18, $c.ptrConst(1)) === null) {
-        await windowprocs.win_suspend_nhwindows(null);
+        await suspend_nhwindows()(null);
         $c.signal(18, null);
         $c.kill(0, 18);
-        await windowprocs.win_resume_nhwindows();
+        await resume_nhwindows()();
     } else {
         await pline($c.lit("I don't think your shell has job control."));
     }

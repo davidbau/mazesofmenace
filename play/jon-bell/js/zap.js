@@ -7375,6 +7375,16 @@ async function _wish_drop_overburdened(obj, dropSpec) {
     }
 }
 
+async function _wish_prinv_vision_drain() {
+    if (!game.vision_full_recalc)
+        return;
+    const _mmBefore = game._mentionMapPending;
+    const _notices = vision_recalc(0);
+    if (_notices && game.a11y?.mon_notices) await _notices;
+    if (game._mentionMapPending && game._mentionMapPending !== _mmBefore)
+        await game._mentionMapPending;
+}
+
 async function _wish_addinv_prinv(otmp, dropSpec) {
     const g = game;
 
@@ -7503,6 +7513,7 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
                 && (is_missile(o) || ammo_and_launcher(o, game.u.uwep)
                     || ammo_and_launcher(o, game.u.uswapwep)))
                 await setuqwep(o);
+            await _wish_prinv_vision_drain();
             let prinvLine = null;
             if (o.invlet) {
                 _wish_obj_to_let(o);
@@ -7611,6 +7622,7 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
             || ammo_and_launcher(otmp, game.u.uswapwep)))
         await setuqwep(otmp);
     /* C invent.c:2889 prinv — "<invlet> - <doname>." on the topline. */
+    await _wish_prinv_vision_drain();
     let prinvLine = null;
     if (otmp.invlet) {
         _wish_obj_to_let(otmp);

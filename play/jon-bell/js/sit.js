@@ -26,6 +26,7 @@
  *
  * @ts-nocheck — js sibling imports; ambient game types not declared.
  */
+import { c_atoi } from './c_atoi.js';
 import { game, wizard } from './gstate.js';
 import { Blind } from './vision.js';
 import { EYE, HEAD, FROMOUTSIDE, SEE_INVIS } from './const.js';
@@ -575,7 +576,7 @@ export async function throne_sit_effect() {
                 await pline("%s", "Never mind.");
                 return; /* caller will still cause a move to elapse */
             }
-            const which = parseInt(buf, 10) || 0; /* atoi */
+            const which = c_atoi(buf); /* atoi */
             if (which >= 1 && which <= 13)
                 effect = which;
         }

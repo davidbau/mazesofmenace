@@ -1095,20 +1095,15 @@ export function display_pickinv_entries(allowed_choices = null, want_reply = fal
                 if (wizid && !not_fully_identified(otmp))
                     continue;
                 if (sortpack && !classcount) {
-                    /* add_menu_heading(win, class_header) — iflags.menu_headings
-                       style, and src/windows.c:1822 suppresses the highlighting
-                       during end-of-game disclosure */
                     out.push({ heading: true,
                                str: let_to_name(oclass, false,
-                                   want_reply && game.iflags.menu_head_objsym),
-                               attr: game.program_state_gameover ? ATR_NONE
-                                     : (game.iflags?.menu_headings?.attr ?? ATR_INVERSE) });
+                                   want_reply && game.iflags.menu_head_objsym) });
                     classcount++;
                 }
                 /* src/invent.c:3320. obj_to_glyph() precedes doname(), even when
                    the tty window never renders the supplied glyph. */
                 const glyphinfo = temporary_object_glyph(otmp);
-                out.push({ heading: false, str: doname(otmp), attr: ATR_NONE,
+                out.push({ heading: false, str: doname(otmp),
                            invlet: otmp.invlet, glyphinfo });
             }
         }
@@ -1455,12 +1450,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
         if (allowed_choices && !allowed_choices.includes(e.invlet))
             continue;
         if (pending_heading) {
-            /* add_menu_heading(): iflags.menu_headings style, suppressed
-               during end-of-game disclosure (src/windows.c:1822) */
-            tty_add_menu(win, null, 0, 0, 0, pending_heading.attr,
-                         game.program_state_gameover ? NO_COLOR
-                         : (game.iflags?.menu_headings?.color ?? NO_COLOR),
-                         pending_heading.str, MENU_ITEMFLAGS_NONE);
+            add_menu_heading(win, pending_heading.str);
             pending_heading = null;
         }
         const obj = (game.invent || []).find(o => o.invlet === e.invlet);

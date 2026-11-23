@@ -23,6 +23,8 @@ import {
     DISINT_RES,
     DISMOUNT_FELL,
     DISMOUNT_GENERIC,
+    DISP_ALL,
+    DISP_END,
     DOOR,
     DO_MOVE,
     DOMOVE_RUSH,
@@ -208,8 +210,10 @@ import {
     map_object,
     newsym,
     back_to_glyph_steps,
+    tmp_at,
     unmap_invisible,
     unmap_object,
+    warning_to_glyph,
 } from './display.js';
 // cmd.c owns the command queue and js/cmd.js already imports this file, so
 // this pair of modules forms an import cycle. Only the hoisted function
@@ -518,7 +522,6 @@ import {
 } from './tty_message.js';
 import { tty_raw_print } from './tty_rawprint.js';
 import { init_objects, objdescr_is } from './o_init.js';
-import { note_unported } from './unported.js';
 import { impossible, impossible_printer, livelog_printf, youFeel } from './pline.js';
 import { finish_steps } from './source_steps.js';
 import { makeplural } from './fruit.js';
@@ -541,6 +544,7 @@ import {
     Maybe_Half_Phys, Passes_walls, Protection_from_shape_changers, Stealth,
     Stunned, Swimming, Unchanging, Warning, Wwalking,
 } from './youprop.js';
+import { sync_impossible } from './source_steps.js';
 
 function reset_tmp_anything(state) {
     state.tmp_anything ??= {};
@@ -2247,7 +2251,9 @@ async function moverock_core(sx, sy, state, env) {
         if (mtmp && !noncorporeal(mtmp.data)
             && (!mtmp.mtrapped || !(ttmp && is_pit(ttmp.ttyp)))) {
             let deliver_part1 = false;
-            // 459-460, the Blind arm, remains a source-backed map-memory gap.
+            // 459-460. moverock_core() returned at 356-361 unless the square
+            // already shows the boulder, so this re-maps what is displayed.
+            if (Blind(state.u)) feel_location(sx, sy, state);
             if (canspotmon(mtmp, state)) {
                 await message(
                     `There's ${a_monnam(mtmp, { state })} on the other side.`,
@@ -3011,6 +3017,22 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
                 }
             }
 
+            // 1430-1445, wizard mode's travel_debug option: show this
+            // radius's squares as warning glyphs. Erasing them redraws each
+            // square with newsym(), which draws from the display random
+            // stream for a hallucinating hero.
+            if (state.iflags?.trav_debug) {
+                await tmp_at(DISP_ALL, warning_to_glyph(1, state), state);
+                for (let i = 0; i < nn; ++i)
+                    await tmp_at(nextX[i], nextY[i], state);
+                await nh_delay_output(state);
+                if (state.flags.runmode === RUN_CRAWL) {
+                    await nh_delay_output(state);
+                    await nh_delay_output(state);
+                }
+                await tmp_at(DISP_END, 0, state);
+            }
+
             n = nn;
             set = 1 - set;
             radius += 1;
@@ -3090,6 +3112,19 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
             return false;
         }
 
+        // 1491-1504, travel_debug again: show the guessed target.
+        if (state.iflags?.trav_debug) {
+            await tmp_at(DISP_ALL, warning_to_glyph(2, state), state);
+            await tmp_at(px, py, state);
+            await nh_delay_output(state);
+            if (state.flags.runmode === RUN_CRAWL) {
+                await nh_delay_output(state);
+                await nh_delay_output(state);
+                await nh_delay_output(state);
+                await nh_delay_output(state);
+            }
+            await tmp_at(DISP_END, 0, state);
+        }
         tx = px;
         ty = py;
         ux = state.u.ux;
@@ -5441,12 +5476,12 @@ export function notice_mon_off(state = game) {
 
 // C ref: flag.h:234-237 notice_mon_on(). C reports an unpaired resume
 // through impossible("mon_notices_blocked<0") and clamps to zero; the macro's
-// callers are synchronous here, so the print is recorded as a gap.
+// callers are synchronous here, so the report is queued.
 export function notice_mon_on(state = game) {
     state.a11y ??= {};
     let blocked = (state.a11y.mon_notices_blocked ?? 0) - 1;
     if (blocked < 0) {
-        note_unported('pline.c impossible');
+        sync_impossible('mon_notices_blocked<0', state);
         blocked = 0;
     }
     state.a11y.mon_notices_blocked = blocked;

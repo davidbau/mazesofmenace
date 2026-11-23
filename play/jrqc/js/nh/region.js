@@ -4,28 +4,52 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc } from './alloc.js';
 import { isok } from './cmd.js';
-import { c_common_strings, cg, gg, gi, gm, gr, gv, gy, iflags, svc, svd, svl, svm, svn, u } from './decl.js';
+import { c_common_strings, cg, gg, gi, gm, gr, gy, iflags, svc, svd, svl, svm, svn, u } from './decl.js';
+import { S } from './defsym.h.js';
 import { newsym, show_glyph } from './display.js';
+import { GLYPH, NO_GLYPH } from './display.h.js';
 import { Monnam, m_monnam } from './do_name.js';
 import { In_hell, In_mines, on_level } from './dungeon.js';
+import { PLNMSG } from './flag.h.js';
+import { COLNO, FALSE, ROWNO, TRUE } from './global.h.js';
 import { losehp } from './hack.js';
+import { EYE, FM, KILLED, LUNG, M_POISONGAS, NHF, TELEDS } from './hack.h.js';
+import { plur, release_data, update_file } from './hack.macros.js';
 import { dist2, eos } from './hacklib.js';
 import { find_mid } from './light.js';
 import { killed, m_poisongas_ok, monkilled, setmangry, wake_nearto } from './mon.js';
-import { Resists_Elem, monstseesu, monstunseesu } from './mondata.js';
+import { AD } from './monattk.h.js';
+import { monstseesu, monstunseesu } from './mondata.js';
+import { haseyes, is_silent, nonliving } from './mondata.macros.js';
+import { M1 } from './monflag.h.js';
 import { mons } from './monst.js';
+import { M_SEEN } from './monst.h.js';
+import { DEADMONSTER, resists_poison } from './monst.macros.js';
+import { PM } from './monsters.h.js';
 import { makeplural } from './objnam.js';
 import { You, You_feel, You_see, Your, impossible, pline, pline_The } from './pline.js';
 import { body_part } from './polyself.js';
 import { make_blinded, set_itimeout } from './potion.js';
+import { HALF_PHDAM, MAGICAL_BREATHING } from './prop.h.js';
 import { valid_cloud_pos } from './read.js';
+import { MONST_INC, REG } from './region.h.js';
+import { clear_hero_inside, clear_heros_fault, hero_inside, heros_fault, set_hero_inside, set_heros_fault } from './region.macros.js';
 import { lookup_id_mapping } from './restore.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { d, rn2, rnd } from './rnd.js';
 import { selection_getbounds, selection_getpoint } from './selvar.js';
 import { sfi_any, sfi_boolean, sfi_char, sfi_int, sfi_long, sfi_nhrect, sfi_short, sfi_unsigned, sfo_any, sfo_boolean, sfo_char, sfo_int, sfo_long, sfo_nhrect, sfo_short, sfo_unsigned } from './sfbase.js';
+import { MAXTCHARS } from './sym.h.js';
 import { safe_teleds } from './teleport.js';
 import { block_point, does_block, unblock_point } from './vision.js';
-import { windowprocs } from './windows.js';
+import { cansee } from './vision.macros.js';
+import { putstr } from './winprocs.macros.js';
+import { u_at } from './you.macros.js';
+import { Blind, BlindedTimeout, Half_gas_damage, Poison_resistance } from './youprop.macros.js';
+
+const NO_CALLBACK = (-1);
+const INSIDE_GAS_CLOUD = 0;
+const EXPIRE_GAS_CLOUD = 1;
+const MAX_CLOUD_SIZE = 150;
 
 const callbacks = $c.nulls(2);
 export function inside_rect(r, x, y) {   // region.c:54
@@ -34,14 +58,14 @@ export function inside_rect(r, x, y) {   // region.c:54
 export function inside_region(reg, x, y) {   // region.c:63
     let i = 0;
     if (reg === null || !inside_rect(reg.bounding_box, x, y)) {
-        return 0;
+        return FALSE;
     }
     for (i = 0; i < reg.nrects; i = i + 1 | 0) {
         if (inside_rect($c.radd(reg.rects, i), x, y)) {
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 export async function create_region(rects, nrect) {   // region.c:79
     let i = 0, reg = null, $t1;
@@ -50,8 +74,8 @@ export async function create_region(rects, nrect) {   // region.c:79
     if (nrect > 0) {
         reg.bounding_box.$copyFrom($c.radd(rects, 0));
     } else {
-        reg.bounding_box.lx = 80;
-        reg.bounding_box.ly = 21;
+        reg.bounding_box.lx = COLNO;
+        reg.bounding_box.ly = ROWNO;
         reg.bounding_box.hx = 0;
         reg.bounding_box.hy = 0;
     }
@@ -73,18 +97,18 @@ export async function create_region(rects, nrect) {   // region.c:79
         $c.radd(reg.rects, i).$copyFrom($c.radd(rects, i));
     }
     reg.ttl = -1;
-    reg.attach_2_u = 0;
+    reg.attach_2_u = FALSE;
     reg.attach_2_m = 0;
     reg.enter_msg = null;
     reg.leave_msg = null;
-    reg.expire_f = -1;
-    reg.enter_f = -1;
-    reg.can_enter_f = -1;
-    reg.leave_f = -1;
-    reg.can_leave_f = -1;
-    reg.inside_f = -1;
-    reg.player_flags = (reg.player_flags & 4294967294) >>> 0;
-    reg.player_flags = (reg.player_flags | 2) >>> 0;
+    reg.expire_f = NO_CALLBACK;
+    reg.enter_f = NO_CALLBACK;
+    reg.can_enter_f = NO_CALLBACK;
+    reg.leave_f = NO_CALLBACK;
+    reg.can_leave_f = NO_CALLBACK;
+    reg.inside_f = NO_CALLBACK;
+    clear_hero_inside(reg);
+    clear_heros_fault(reg);
     reg.n_monst = 0;
     reg.max_monst = 0;
     reg.monsters = null;
@@ -117,13 +141,13 @@ export async function add_rect_to_reg(reg, rect) {   // region.c:133
 export async function add_mon_to_reg(reg, mon) {   // region.c:161
     let i = 0, tmp_m = null, $t1;
     if (mon_in_region(reg, mon)) {
-        if (!$c.peq(mon.data, $c.relem(mons, 114 /* PM_LONG_WORM */))) {
+        if (!$c.peq(mon.data, $c.relem(mons, PM.LONG_WORM))) {
             await impossible($c.lit("add_mon_to_reg: %s [#%u] already in region."), await m_monnam(mon), mon.m_id);
         }
         return;
     }
     if (reg.max_monst <= reg.n_monst) {
-        tmp_m = $c.asArr(await alloc($c.u32($c.mulu64(4, $c.u64(reg.max_monst + 5 | 0)))), Uint32Array);
+        tmp_m = $c.asArr(await alloc($c.u32($c.mulu64(4, $c.u64(reg.max_monst + MONST_INC | 0)))), Uint32Array);
         if (reg.max_monst > 0) {
             for (i = 0; i < reg.max_monst; i = i + 1 | 0) {
                 tmp_m.set(i, reg.monsters.get(i));
@@ -131,7 +155,7 @@ export async function add_mon_to_reg(reg, mon) {   // region.c:161
             $c.free(reg.monsters);
         }
         reg.monsters = tmp_m;
-        reg.max_monst = $c.i16(reg.max_monst + 5 | 0);
+        reg.max_monst = $c.i16(reg.max_monst + MONST_INC | 0);
     }
     reg.monsters.set(($t1 = reg.n_monst, reg.n_monst = $c.i16($t1 + 1), $t1), mon.m_id);
 }
@@ -149,10 +173,10 @@ export function mon_in_region(reg, mon) {   // region.c:210
     let i = 0;
     for (i = 0; i < reg.n_monst; i = i + 1 | 0) {
         if (reg.monsters.get(i) === mon.m_id) {
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 export function free_region(reg) {   // region.c:263
     if (reg) {
@@ -186,12 +210,12 @@ export async function add_region(reg) {   // region.c:284
     svn.n_regions = svn.n_regions + 1 | 0;
     for (i = reg.bounding_box.lx; i <= reg.bounding_box.hx; i = i + 1 | 0) {
         for (j = reg.bounding_box.ly; j <= reg.bounding_box.hy; j = j + 1 | 0) {
-            is_inside = 0;
+            is_inside = FALSE;
             if (!isok($c.i16(i), $c.i16(j))) {
                 continue;
             }
             if (inside_region(reg, i, j)) {
-                is_inside = 1;
+                is_inside = TRUE;
                 if ((mtmp = svl.level.monsters[i][j]) !== null) {
                     await add_mon_to_reg(reg, mtmp);
                 }
@@ -200,16 +224,16 @@ export async function add_region(reg) {   // region.c:284
                 if (is_inside) {
                     block_point(i, j);
                 }
-                if ((gv.viz_array.get(j).get(i) & 2) !== 0) {
+                if (cansee(i, j)) {
                     await newsym($c.i16(i), $c.i16(j));
                 }
             }
         }
     }
     if (inside_region(reg, u.ux, u.uy)) {
-        reg.player_flags = (reg.player_flags | 1) >>> 0;
+        set_hero_inside(reg);
     } else {
-        reg.player_flags = (reg.player_flags & 4294967294) >>> 0;
+        clear_hero_inside(reg);
     }
 }
 export async function remove_region(reg) {   // region.c:344
@@ -229,7 +253,7 @@ export async function remove_region(reg) {   // region.c:344
     reg.ttl = -2;
     if (reg.visible) {
         tmp_uinwater = $c.i8(u.uinwater);
-        for (pass = 1; pass <= ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? 1 : 2); pass = pass + 1 | 0) {
+        for (pass = 1; pass <= (Blind() ? 1 : 2); pass = pass + 1 | 0) {
             u.uinwater = ((pass === 1 ? 0 : tmp_uinwater) >>> 0) & 1;
             for (x = reg.bounding_box.lx; x <= reg.bounding_box.hx; x = x + 1 | 0) {
                 for (y = reg.bounding_box.ly; y <= reg.bounding_box.hy; y = y + 1 | 0) {
@@ -239,7 +263,7 @@ export async function remove_region(reg) {   // region.c:344
                                 unblock_point(x, y);
                             }
                         } else {
-                            if ((gv.viz_array.get(y).get(x) & 2) !== 0) {
+                            if (cansee(x, y)) {
                                 await newsym($c.i16(x), $c.i16(y));
                             }
                         }
@@ -265,11 +289,11 @@ export function clear_regions() {   // region.c:394
 }
 export async function run_regions() {   // region.c:414
     let i = 0, j = 0, k = 0, f_indx = 0, mtmp = null;
-    gg.gas_cloud_diss_within = 0;
+    gg.gas_cloud_diss_within = FALSE;
     gg.gas_cloud_diss_seen = 0;
     for (i = svn.n_regions - 1 | 0; i >= 0; i = i - 1 | 0) {
         if (gr.regions.get(i).ttl === 0) {
-            if ((f_indx = gr.regions.get(i).expire_f) === -1 || await callbacks[f_indx](gr.regions.get(i), null)) {
+            if ((f_indx = gr.regions.get(i).expire_f) === NO_CALLBACK || await callbacks[f_indx](gr.regions.get(i), null)) {
                 await remove_region(gr.regions.get(i));
             }
         }
@@ -279,13 +303,13 @@ export async function run_regions() {   // region.c:414
             gr.regions.get(i).ttl = $c.sub64(gr.regions.get(i).ttl, 1);
         }
         f_indx = gr.regions.get(i).inside_f;
-        if (f_indx !== -1 && (gr.regions.get(i).player_flags & 1) >>> 0) {
+        if (f_indx !== NO_CALLBACK && hero_inside(gr.regions.get(i))) {
             await callbacks[f_indx](gr.regions.get(i), null);
         }
-        if (f_indx !== -1) {
+        if (f_indx !== NO_CALLBACK) {
             for (j = 0; j < gr.regions.get(i).n_monst; j = j + 1 | 0) {
-                mtmp = find_mid(gr.regions.get(i).monsters.get(j), 1);
-                if (!mtmp || mtmp.mhp < 1 || await callbacks[f_indx](gr.regions.get(i), mtmp)) {
+                mtmp = find_mid(gr.regions.get(i).monsters.get(j), FM.FMON);
+                if (!mtmp || DEADMONSTER(mtmp) || await callbacks[f_indx](gr.regions.get(i), mtmp)) {
                     k = gr.regions.get(i).n_monst = $c.i16(gr.regions.get(i).n_monst - 1 | 0);
                     gr.regions.get(i).monsters.set(j, gr.regions.get(i).monsters.get(k));
                     gr.regions.get(i).monsters.set(k, 0);
@@ -299,10 +323,10 @@ export async function run_regions() {   // region.c:414
         if (u.xray_range <= 1) {
             gg.gas_cloud_diss_seen = 0;
         }
-        gg.gas_cloud_diss_within = 0;
+        gg.gas_cloud_diss_within = FALSE;
     }
     if (gg.gas_cloud_diss_seen) {
-        await You_see($c.lit("%s gas cloud%s dissipate."), gg.gas_cloud_diss_seen === 1 ? $c.lit("a") : $c.lit("some"), gg.gas_cloud_diss_seen === 1 ? $c.lit("") : $c.lit("s"));
+        await You_see($c.lit("%s gas cloud%s dissipate."), gg.gas_cloud_diss_seen === 1 ? $c.lit("a") : $c.lit("some"), plur(gg.gas_cloud_diss_seen));
         gg.gas_cloud_diss_seen = 0;
     }
 }
@@ -313,9 +337,9 @@ export async function in_out_region(x, y) {   // region.c:480
         if (gr.regions.get(i).attach_2_u) {
             continue;
         }
-        if (inside_region(gr.regions.get(i), x, y) ? !((gr.regions.get(i).player_flags & 1) >>> 0) && (f_indx = gr.regions.get(i).can_enter_f) !== -1 : (gr.regions.get(i).player_flags & 1) >>> 0 && (f_indx = gr.regions.get(i).can_leave_f) !== -1) {
+        if (inside_region(gr.regions.get(i), x, y) ? !hero_inside(gr.regions.get(i)) && (f_indx = gr.regions.get(i).can_enter_f) !== NO_CALLBACK : hero_inside(gr.regions.get(i)) && (f_indx = gr.regions.get(i).can_leave_f) !== NO_CALLBACK) {
             if (!await callbacks[f_indx](gr.regions.get(i), null)) {
-                return 0;
+                return FALSE;
             }
         }
     }
@@ -323,12 +347,12 @@ export async function in_out_region(x, y) {   // region.c:480
         if (gr.regions.get(i).attach_2_u) {
             continue;
         }
-        if ((gr.regions.get(i).player_flags & 1) >>> 0 && !inside_region(gr.regions.get(i), x, y)) {
+        if (hero_inside(gr.regions.get(i)) && !inside_region(gr.regions.get(i), x, y)) {
             gr.regions.get(i).player_flags = (gr.regions.get(i).player_flags & 4294967294) >>> 0;
             if (gr.regions.get(i).leave_msg !== null) {
                 await pline($c.lit("%s"), gr.regions.get(i).leave_msg);
             }
-            if ((f_indx = gr.regions.get(i).leave_f) !== -1) {
+            if ((f_indx = gr.regions.get(i).leave_f) !== NO_CALLBACK) {
                 await callbacks[f_indx](gr.regions.get(i), null);
             }
         }
@@ -337,17 +361,17 @@ export async function in_out_region(x, y) {   // region.c:480
         if (gr.regions.get(i).attach_2_u) {
             continue;
         }
-        if (!((gr.regions.get(i).player_flags & 1) >>> 0) && inside_region(gr.regions.get(i), x, y)) {
-            gr.regions.get(i).player_flags = (gr.regions.get(i).player_flags | 1) >>> 0;
+        if (!hero_inside(gr.regions.get(i)) && inside_region(gr.regions.get(i), x, y)) {
+            gr.regions.get(i).player_flags = (gr.regions.get(i).player_flags | REG.HERO_INSIDE) >>> 0;
             if (gr.regions.get(i).enter_msg !== null) {
                 await pline($c.lit("%s"), gr.regions.get(i).enter_msg);
             }
-            if ((f_indx = gr.regions.get(i).enter_f) !== -1) {
+            if ((f_indx = gr.regions.get(i).enter_f) !== NO_CALLBACK) {
                 await callbacks[f_indx](gr.regions.get(i), null);
             }
         }
     }
-    return 1;
+    return TRUE;
 }
 export async function m_in_out_region(mon, x, y) {   // region.c:533
     let i = 0, f_indx = 0;
@@ -356,9 +380,9 @@ export async function m_in_out_region(mon, x, y) {   // region.c:533
         if (gr.regions.get(i).attach_2_m === mon.m_id) {
             continue;
         }
-        if (inside_region(gr.regions.get(i), x, y) ? !mon_in_region(gr.regions.get(i), mon) && (f_indx = gr.regions.get(i).can_enter_f) !== -1 : mon_in_region(gr.regions.get(i), mon) && (f_indx = gr.regions.get(i).can_leave_f) !== -1) {
+        if (inside_region(gr.regions.get(i), x, y) ? !mon_in_region(gr.regions.get(i), mon) && (f_indx = gr.regions.get(i).can_enter_f) !== NO_CALLBACK : mon_in_region(gr.regions.get(i), mon) && (f_indx = gr.regions.get(i).can_leave_f) !== NO_CALLBACK) {
             if (!await callbacks[f_indx](gr.regions.get(i), mon)) {
-                return 0;
+                return FALSE;
             }
         }
     }
@@ -368,7 +392,7 @@ export async function m_in_out_region(mon, x, y) {   // region.c:533
         }
         if (mon_in_region(gr.regions.get(i), mon) && !inside_region(gr.regions.get(i), x, y)) {
             remove_mon_from_reg(gr.regions.get(i), mon);
-            if ((f_indx = gr.regions.get(i).leave_f) !== -1) {
+            if ((f_indx = gr.regions.get(i).leave_f) !== NO_CALLBACK) {
                 await callbacks[f_indx](gr.regions.get(i), mon);
             }
         }
@@ -379,18 +403,18 @@ export async function m_in_out_region(mon, x, y) {   // region.c:533
         }
         if (!mon_in_region(gr.regions.get(i), mon) && inside_region(gr.regions.get(i), x, y)) {
             await add_mon_to_reg(gr.regions.get(i), mon);
-            if ((f_indx = gr.regions.get(i).enter_f) !== -1) {
+            if ((f_indx = gr.regions.get(i).enter_f) !== NO_CALLBACK) {
                 await callbacks[f_indx](gr.regions.get(i), mon);
             }
         }
     }
-    return 1;
+    return TRUE;
 }
 export function update_player_regions() {   // region.c:582
     let i = 0;
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
         if (!gr.regions.get(i).attach_2_u && inside_region(gr.regions.get(i), u.ux, u.uy)) {
-            gr.regions.get(i).player_flags = (gr.regions.get(i).player_flags | 1) >>> 0;
+            gr.regions.get(i).player_flags = (gr.regions.get(i).player_flags | REG.HERO_INSIDE) >>> 0;
         } else {
             gr.regions.get(i).player_flags = (gr.regions.get(i).player_flags & 4294967294) >>> 0;
         }
@@ -421,9 +445,9 @@ export function any_visible_region() {   // region.c:660
         if (!gr.regions.get(i).visible || gr.regions.get(i).ttl === -2) {
             continue;
         }
-        return 1;
+        return TRUE;
     }
-    return 0;
+    return FALSE;
 }
 export async function visible_region_summary(win) {   // region.c:674
     let reg = null, buf = new Int8Array(256), typbuf = new Int8Array(128), i = 0, damg = 0, hdr_done = 0, fldsep = null, $t1;
@@ -435,8 +459,8 @@ export async function visible_region_summary(win) {   // region.c:674
             continue;
         }
         if (!($t1 = hdr_done, hdr_done = $t1 + 1 | 0, $t1)) {
-            await windowprocs.win_putstr(win, 0, $c.lit(""));
-            await windowprocs.win_putstr(win, 0, $c.lit("Visible regions"));
+            await putstr()(win, 0, $c.lit(""));
+            await putstr()(win, 0, $c.lit("Visible regions"));
         }
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%5ld"), $c.add64(reg.ttl, 1));
         damg = reg.arg.a_int;
@@ -447,7 +471,7 @@ export async function visible_region_summary(win) {   // region.c:674
         }
         $c.__builtin___sprintf_chk(eos(new $c.Ptr(buf, 0)), 0, -1, $c.lit("%s%-16s"), fldsep, new $c.Ptr(typbuf, 0));
         $c.__builtin___sprintf_chk(eos(new $c.Ptr(buf, 0)), 0, -1, $c.lit("%s@[%d,%d..%d,%d]"), fldsep, reg.bounding_box.lx, reg.bounding_box.ly, reg.bounding_box.hx, reg.bounding_box.hy);
-        await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+        await putstr()(win, 0, new $c.Ptr(buf, 0));
     }
 }
 export function visible_region_at(x, y) {   // region.c:718
@@ -468,7 +492,7 @@ export async function show_region(reg, x, y) {   // region.c:732
 export async function save_regions(nhfp) {   // region.c:741
     let r = null, i = 0, j = 0, n = Uint32Array.of(0);
     skip_lots$: {
-        if (!(nhfp.mode & 3)) {
+        if (!update_file(nhfp)) {
             break skip_lots$;
         }
         await sfo_long(nhfp, new $c.FieldRef(svm, "moves", "i64"), $c.lit("region-tmstamp"));
@@ -510,7 +534,7 @@ export async function save_regions(nhfp) {   // region.c:741
             await sfo_any(nhfp, r.arg, $c.lit("region-arg"));
         }
     }
-    if (nhfp.mode & 4) {
+    if (release_data(nhfp)) {
         clear_regions();
     }
 }
@@ -518,7 +542,7 @@ export async function rest_regions(nhfp) {   // region.c:799
     let r = null, i = 0, j = 0, n = Uint32Array.of(0), tmstamp = [0], msg_buf = null, ghostly = 0, $t1, $t2, $t3, $t4;
     n[0] = 0;
     tmstamp[0] = 0;
-    ghostly = $c.i8(nhfp.ftype === 3 ? 1 : 0);
+    ghostly = $c.i8(nhfp.ftype === NHF.BONESFILE ? 1 : 0);
     clear_regions();
     await sfi_long(nhfp, new $c.Ptr(tmstamp, 0), $c.lit("region-tmstamp"));
     if (ghostly) {
@@ -576,8 +600,8 @@ export async function rest_regions(nhfp) {   // region.c:799
         await sfi_short(nhfp, new $c.FieldRef(r, "inside_f", "i16"), $c.lit("region-inside_f"));
         await sfi_unsigned(nhfp, new $c.FieldRef(r, "player_flags", "u32"), $c.lit("region-player_flags"));
         if (ghostly) {
-            r.player_flags = (r.player_flags & 4294967294) >>> 0;
-            r.player_flags = (r.player_flags | 2) >>> 0;
+            clear_hero_inside(r);
+            clear_heros_fault(r);
         }
         await sfi_short(nhfp, new $c.FieldRef(r, "n_monst", "i16"), $c.lit("region-monster_count"));
         if (r.n_monst > 0) {
@@ -643,9 +667,9 @@ export function expire_gas_cloud(p1, p2) {   // region.c:1046
         reg.arg.$copyFrom(cg.zeroany);
         reg.arg.a_int = damage;
         reg.ttl = 2;
-        return 0;
+        return FALSE;
     }
-    for (pass = 1; pass <= ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? 1 : 2); pass = pass + 1 | 0) {
+    for (pass = 1; pass <= (Blind() ? 1 : 2); pass = pass + 1 | 0) {
         for (x = reg.bounding_box.lx; x <= reg.bounding_box.hx; x = $c.i16(x + 1)) {
             for (y = reg.bounding_box.ly; y <= reg.bounding_box.hy; y = $c.i16(y + 1)) {
                 if (inside_region(reg, x, y)) {
@@ -655,9 +679,9 @@ export function expire_gas_cloud(p1, p2) {   // region.c:1046
                         }
                     } else {
                         if (!u.uswallow) {
-                            if (x === u.ux && y === u.uy) {
-                                gg.gas_cloud_diss_within = 1;
-                            } else if ((gv.viz_array.get(y).get(x) & 2) !== 0) {
+                            if (u_at(x, y)) {
+                                gg.gas_cloud_diss_within = TRUE;
+                            } else if (cansee(x, y)) {
                                 gg.gas_cloud_diss_seen = gg.gas_cloud_diss_seen + 1 | 0;
                             }
                         }
@@ -666,7 +690,7 @@ export function expire_gas_cloud(p1, p2) {   // region.c:1046
             }
         }
     }
-    return 1;
+    return TRUE;
 }
 export async function inside_gas_cloud(p1, p2) {   // region.c:1091
     let reg = null, mtmp = null, umon = null, dam = 0, $t1;
@@ -674,95 +698,95 @@ export async function inside_gas_cloud(p1, p2) {   // region.c:1091
     mtmp = $c.asRec(p2, $T.monst, 192);
     umon = mtmp ? mtmp : gy.youmonst;
     dam = reg.arg.a_int;
-    if (reg.ttl < 20 && umon && $c.peq(umon.data, $c.relem(mons, 106 /* PM_FOG_CLOUD */))) {
+    if (reg.ttl < 20 && umon && $c.peq(umon.data, $c.relem(mons, PM.FOG_CLOUD))) {
         reg.ttl = $c.add64(reg.ttl, 5);
     }
     if (dam < 1) {
-        return 0;
+        return FALSE;
     }
     if (!mtmp) {
-        if (await m_poisongas_ok(gy.youmonst) === 2) {
-            return 0;
+        if (await m_poisongas_ok(gy.youmonst) === M_POISONGAS.OK) {
+            return FALSE;
         }
-        if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
-            await Your($c.lit("%s sting."), await makeplural(await body_part(1 /* EYE */)));
-            await make_blinded(1, 0);
+        if (!Blind()) {
+            await Your($c.lit("%s sting."), await makeplural(await body_part(EYE)));
+            await make_blinded(1, FALSE);
         }
-        if (!(u.uprops[6 /* POISON_RES */].intrinsic || u.uprops[6 /* POISON_RES */].extrinsic)) {
-            await pline($c.lit("%s is burning your %s!"), c_common_strings.c_Something, await makeplural(await body_part(16 /* LUNG */)));
+        if (!Poison_resistance()) {
+            await pline($c.lit("%s is burning your %s!"), c_common_strings.c_Something, await makeplural(await body_part(LUNG)));
             await You($c.lit("cough and spit blood!"));
             await wake_nearto(u.ux, u.uy, 2);
-            dam = u.uprops[56 /* HALF_PHDAM */].intrinsic || u.uprops[56 /* HALF_PHDAM */].extrinsic ? $c.div32(((rng_log_enabled() ? (rng_log_set_caller($c.lit("region.c"), 1122, $c.lit("inside_gas_cloud")), rnd(dam)) : rnd(dam)) + 5 | 0) + 1 | 0, 2) : (rng_log_enabled() ? (rng_log_set_caller($c.lit("region.c"), 1122, $c.lit("inside_gas_cloud")), rnd(dam)) : rnd(dam)) + 5 | 0;
-            if ($G.ublindf && $G.ublindf.otyp === 234 /* TOWEL */ && $G.ublindf.spe > 0) {
+            dam = u.uprops[HALF_PHDAM].intrinsic || u.uprops[HALF_PHDAM].extrinsic ? $c.div32((rnd(dam) + 5 | 0) + 1 | 0, 2) : rnd(dam) + 5 | 0;
+            if (Half_gas_damage()) {
                 dam = $c.div32(dam + 1 | 0, 2);
             }
-            await losehp(dam, $c.lit("gas cloud"), 0);
-            monstunseesu(64);
-            return 0;
+            await losehp(dam, $c.lit("gas cloud"), KILLED.BY_AN);
+            monstunseesu(M_SEEN.POISON);
+            return FALSE;
         } else {
             await You($c.lit("cough!"));
             await wake_nearto(u.ux, u.uy, 2);
-            monstseesu(64);
-            return 0;
+            monstseesu(M_SEEN.POISON);
+            return FALSE;
         }
     } else {
         mtmp = $c.asRec(p2, $T.monst, 192);
-        if (await m_poisongas_ok(mtmp) !== 2) {
-            if (!(mtmp.data.msound === 0 /* MS_SILENT */)) {
-                if ((gv.viz_array.get(mtmp.my).get(mtmp.mx) & 2) !== 0 || dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < 8) {
+        if (await m_poisongas_ok(mtmp) !== M_POISONGAS.OK) {
+            if (!is_silent(mtmp.data)) {
+                if (cansee(mtmp.mx, mtmp.my) || dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < 8) {
                     await pline($c.lit("%s coughs!"), await Monnam(mtmp));
                 }
                 await wake_nearto(mtmp.mx, mtmp.my, 2);
             }
-            if (!((reg.player_flags & 2) >>> 0)) {
-                await setmangry(mtmp, 1);
+            if (heros_fault(reg)) {
+                await setmangry(mtmp, TRUE);
             }
-            if ($c.andu64(mtmp.data.mflags1, 4096) === 0 && mtmp.mcansee | 0) {
+            if (haseyes(mtmp.data) && mtmp.mcansee | 0) {
                 mtmp.mblinded = (1) & 127;
                 mtmp.mcansee = (0) & 1;
             }
-            if (await Resists_Elem(mtmp, 6 /* POISON_RES */)) {
-                return 0;
+            if (await resists_poison(mtmp)) {
+                return FALSE;
             }
-            $t1 = (rng_log_enabled() ? (rng_log_set_caller($c.lit("region.c"), 1152, $c.lit("inside_gas_cloud")), rnd(dam)) : rnd(dam)) + 5 | 0, mtmp.mhp = mtmp.mhp - $t1 | 0;
-            if (mtmp.mhp < 1) {
-                if (!((reg.player_flags & 2) >>> 0)) {
+            $t1 = rnd(dam) + 5 | 0, mtmp.mhp = mtmp.mhp - $t1 | 0;
+            if (DEADMONSTER(mtmp)) {
+                if (heros_fault(reg)) {
                     await killed(mtmp);
                 } else {
-                    await monkilled(mtmp, $c.lit("gas cloud"), 7);
+                    await monkilled(mtmp, $c.lit("gas cloud"), AD.DRST);
                 }
-                if (mtmp.mhp < 1) {
-                    return 1;
+                if (DEADMONSTER(mtmp)) {
+                    return TRUE;
                 }
             }
         }
     }
-    return 0;
+    return FALSE;
 }
 function is_hero_inside_gas_cloud() {   // region.c:1168
     let i = 0;
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
-        if ((gr.regions.get(i).player_flags & 1) >>> 0 && gr.regions.get(i).inside_f === 0) {
-            return 1;
+        if (hero_inside(gr.regions.get(i)) && gr.regions.get(i).inside_f === INSIDE_GAS_CLOUD) {
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 async function make_gas_cloud(cloud, damage, inside_cloud) {   // region.c:1182
     let $t1;
     if (!gi.in_mklev && !svc.context.mon_moving) {
-        cloud.player_flags = (cloud.player_flags & 4294967293) >>> 0;
+        set_heros_fault(cloud);
     }
-    cloud.inside_f = 0;
-    cloud.expire_f = 1;
+    cloud.inside_f = INSIDE_GAS_CLOUD;
+    cloud.expire_f = EXPIRE_GAS_CLOUD;
     cloud.arg.$copyFrom(cg.zeroany);
     cloud.arg.a_int = damage;
-    cloud.visible = 1;
-    $t1 = (damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) === 0 /* S_stone */ ? 3929 /* GLYPH_CMAP_STONE_OFF */ : (damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) <= 11 /* S_trwall */ ? ((damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) - 1 /* S_vwall */ | 0) + (In_mines(u.uz) ? 3941 /* GLYPH_CMAP_MINES_OFF */ : In_hell(u.uz) ? 3952 /* GLYPH_CMAP_GEH_OFF */ : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? 3963 /* GLYPH_CMAP_KNOX_OFF */ : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? 3974 /* GLYPH_CMAP_SOKO_OFF */ : 3930 /* GLYPH_CMAP_MAIN_OFF */) | 0 : (damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) < 33 /* S_altar */ ? ((damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) - 12 /* S_ndoor */ | 0) + 3985 /* GLYPH_CMAP_A_OFF */ | 0 : (damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) === 33 /* S_altar */ ? 4008 : (damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) < 74 ? ((damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) - 34 /* S_grave */ | 0) + 4011 /* GLYPH_CMAP_B_OFF */ | 0 : (damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) <= 87 /* S_goodpos */ ? ((damage ? 86 /* S_poisoncloud */ : 47 /* S_cloud */) - 78 /* S_digbeam */ | 0) + 4083 /* GLYPH_CMAP_C_OFF */ | 0 : 9624 /* MAX_GLYPH */, cloud.glyph = $t1;
+    cloud.visible = TRUE;
+    $t1 = (damage ? S.poisoncloud : S.cloud) === S.stone ? GLYPH.CMAP_STONE_OFF : (damage ? S.poisoncloud : S.cloud) <= S.trwall ? ((damage ? S.poisoncloud : S.cloud) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (damage ? S.poisoncloud : S.cloud) < S.altar ? ((damage ? S.poisoncloud : S.cloud) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (damage ? S.poisoncloud : S.cloud) === S.altar ? 4008 : (damage ? S.poisoncloud : S.cloud) < S.arrow_trap + MAXTCHARS ? ((damage ? S.poisoncloud : S.cloud) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (damage ? S.poisoncloud : S.cloud) <= S.goodpos ? ((damage ? S.poisoncloud : S.cloud) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH, cloud.glyph = $t1;
     await add_region(cloud);
     if (!gi.in_mklev && !inside_cloud && is_hero_inside_gas_cloud()) {
         await You($c.lit("are enveloped in a cloud of %s!"), damage ? $c.lit("noxious gas") : $c.lit("steam"));
-        iflags.last_msg = 4 /* PLNMSG_ENVELOPED_IN_GAS */;
+        iflags.last_msg = PLNMSG.ENVELOPED_IN_GAS;
     }
 }
 export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:1213
@@ -771,12 +795,12 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:
     ycoords[0] = y;
     newidx = 1;
     inside_cloud = is_hero_inside_gas_cloud();
-    if (!svc.context.mon_moving && (x === u.ux && y === u.uy) && cloudsize === 1 && (!damage || damage && await m_poisongas_ok(gy.youmonst) === 2)) {
-        inside_cloud = 1;
+    if (!svc.context.mon_moving && u_at(x, y) && cloudsize === 1 && (!damage || damage && await m_poisongas_ok(gy.youmonst) === M_POISONGAS.OK)) {
+        inside_cloud = TRUE;
     }
-    if (cloudsize > 150) {
+    if (cloudsize > MAX_CLOUD_SIZE) {
         await impossible($c.lit("create_gas_cloud: cloud too large (%d)!"), cloudsize);
-        cloudsize = 150;
+        cloudsize = MAX_CLOUD_SIZE;
     }
     for (curridx = 0; curridx < newidx; curridx = curridx + 1 | 0) {
         if (newidx >= cloudsize) {
@@ -796,7 +820,7 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:
         dirs[3].x = 1;
         dirs[3].y = 0;
         for (i = 4; i > 0; i = i - 1 | 0) {
-            swapidx = $c.i16(rng_log_enabled() ? (rng_log_set_caller($c.lit("region.c"), 1255, $c.lit("create_gas_cloud")), rn2(i)) : rn2(i));
+            swapidx = $c.i16(rn2(i));
             tmp.$copyFrom(dirs[swapidx]);
             dirs[swapidx].$copyFrom(dirs[i - 1 | 0]);
             dirs[i - 1 | 0].$copyFrom(tmp);
@@ -805,16 +829,16 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:
         for (i = 0; i < 4; i = i + 1 | 0) {
             dx = dirs[i].x;
             dy = dirs[i].y;
-            isunpicked = 1;
+            isunpicked = TRUE;
             if (valid_cloud_pos($c.i16(xx + dx | 0), $c.i16(yy + dy | 0))) {
                 nvalid = nvalid + 1 | 0;
                 for (j = 0; j < newidx; j = j + 1 | 0) {
                     if (xcoords[j] === (xx + dx | 0) && ycoords[j] === (yy + dy | 0)) {
-                        isunpicked = 0;
+                        isunpicked = FALSE;
                         break;
                     }
                 }
-                if (nvalid === 4 && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("region.c"), 1279, $c.lit("create_gas_cloud")), rn2(2)) : rn2(2))) {
+                if (nvalid === 4 && !rn2(2)) {
                     continue;
                 }
                 if (isunpicked) {
@@ -834,7 +858,7 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:
         $t2 = tmprect.hy = ycoords[i], tmprect.ly = $t2;
         await add_rect_to_reg(cloud, tmprect);
     }
-    $t3 = (rng_log_enabled() ? (rng_log_set_caller($c.lit("region.c"), 1303, $c.lit("create_gas_cloud")), rn2(3)) : rn2(3)) + 4 | 0, cloud.ttl = $t3;
+    $t3 = rn2(3) + 4 | 0, cloud.ttl = $t3;
     cloud.ttl = $c.div64($c.mul64(cloud.ttl, cloudsize), newidx);
     await make_gas_cloud(cloud, damage, inside_cloud);
     return cloud;
@@ -861,41 +885,41 @@ export function region_danger() {   // region.c:1341
     let i = 0, f_indx = 0, n = 0;
     n = 0;
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
-        if (!((gr.regions.get(i).player_flags & 1) >>> 0)) {
+        if (!hero_inside(gr.regions.get(i))) {
             continue;
         }
         f_indx = gr.regions.get(i).inside_f;
-        if (f_indx === 0) {
-            if ($c.andu64(gy.youmonst.data.mflags2, 2) !== 0 || $c.peq(gy.youmonst.data, $c.relem(mons, 50 /* PM_MANES */)) || (gy.youmonst.data.mlet === 55 /* S_GOLEM */ || gy.youmonst.data.mlet === 22 /* S_VORTEX */) || (u.uprops[52 /* MAGICAL_BREATHING */].intrinsic || u.uprops[52 /* MAGICAL_BREATHING */].extrinsic || $c.andu64(gy.youmonst.data.mflags1, 1024) !== 0)) {
+        if (f_indx === INSIDE_GAS_CLOUD) {
+            if (nonliving(gy.youmonst.data) || (u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0)) {
                 continue;
             }
-            if (u.uprops[6 /* POISON_RES */].intrinsic || u.uprops[6 /* POISON_RES */].extrinsic) {
+            if (Poison_resistance()) {
                 continue;
             }
             n = n + 1 | 0;
         }
     }
-    return $c.i8(n ? 1 : 0);
+    return $c.i8(n ? TRUE : FALSE);
 }
 export async function region_safety() {   // region.c:1368
     let r = null, i = 0, f_indx = 0, n = 0, $t1;
     r = null;
     n = 0;
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
-        if (!((gr.regions.get(i).player_flags & 1) >>> 0)) {
+        if (!hero_inside(gr.regions.get(i))) {
             continue;
         }
         f_indx = gr.regions.get(i).inside_f;
-        if (f_indx === 0) {
+        if (f_indx === INSIDE_GAS_CLOUD) {
             if (!($t1 = n, n = $t1 + 1 | 0, $t1) && gr.regions.get(i).ttl >= 0) {
                 r = gr.regions.get(i);
             }
         }
     }
     if (n > 1 || n === 1 && !r) {
-        await safe_teleds(0);
+        await safe_teleds(TELEDS.NO_FLAGS);
         if (region_danger()) {
-            set_itimeout(new $c.FieldRef(u.uprops[52 /* MAGICAL_BREATHING */], "intrinsic", "i64"), (rng_log_enabled() ? (rng_log_set_caller($c.lit("region.c"), 1391, $c.lit("region_safety")), d(4, 4)) : d(4, 4)) + 4 | 0);
+            set_itimeout(new $c.FieldRef(u.uprops[MAGICAL_BREATHING], "intrinsic", "i64"), d(4, 4) + 4 | 0);
             await You_feel($c.lit("able to breathe."));
         }
     } else if (r) {
@@ -904,13 +928,15 @@ export async function region_safety() {   // region.c:1368
     } else {
         await pline_The($c.lit("gas cloud has dissipated."));
     }
-    if ($c.and64(u.uprops[15 /* BLINDED */].intrinsic, 16777215) === 1) {
-        await make_blinded(0, 1);
+    if (BlindedTimeout() === 1) {
+        await make_blinded(0, TRUE);
     }
 }
 
 export function $init() {
     callbacks.fill(null);
-    callbacks[0] = inside_gas_cloud;
-    callbacks[1] = expire_gas_cloud;
+    $c.init(callbacks, [
+        inside_gas_cloud,
+        expire_gas_cloud
+    ]);
 }

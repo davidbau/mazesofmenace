@@ -3,31 +3,58 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc, dupstr, fmt_ptr } from './alloc.js';
+import { ART } from './artilist.h.js';
 import { acurr } from './attrib.js';
+import { A } from './attrib.h.js';
+import { ACURR } from './attrib.macros.js';
+import { BL, BL_MASK, BL_TH, BOTL_NSIZ, CONDITION_COUNT, EQ_VALUE, GE_VALUE, GT_VALUE, HL, LE_VALUE, LT_VALUE, MAXBLSTATS, MAXVALWIDTH, NO_LTEQGT, TXT_VALUE, bl_bareh, bl_blind, bl_busy, bl_conf, bl_deaf, bl_elf_iron, bl_fly, bl_foodpois, bl_glowhands, bl_grab, bl_hallu, bl_held, bl_holding, bl_icy, bl_inlava, bl_lev, bl_parlyz, bl_ride, bl_sleeping, bl_slime, bl_slippery, bl_stone, bl_strngl, bl_stun, bl_submerged, bl_termill, bl_tethered, bl_trapped, bl_unconsc, bl_woundedl } from './botl.h.js';
+import { VIA_WINDOWPORT } from './botl.macros.js';
 import { config_error_add } from './cfgfiles.js';
+import { CLR, NO_COLOR } from './color.h.js';
 import { clr2colorname, match_str2attr, match_str2clr, query_attr, query_color } from './coloratt.js';
 import { cg, disp, flags, gb, gc, gi, gm, gn, gs, gu, gv, gy, iflags, svc, svd, svl, svm, svp, u } from './decl.js';
+import { COIN_CLASS, S, WEAPON_CLASS } from './defsym.h.js';
 import { nul_glyphinfo, suppress_map_output } from './display.js';
+import { GLYPH } from './display.h.js';
 import { pmname } from './do_name.js';
 import { In_quest, depth, dunlev, endgamelevelname, on_level } from './dungeon.js';
+import { In_endgame } from './dungeon.macros.js';
 import { hu_stat } from './eat.js';
 import { panic } from './end.js';
 import { newuexp } from './exper.js';
+import { BUFSZ, COLNO, FALSE, LARGEST_INT, QBUFSZ, TRUE, opt_in, opt_out } from './global.h.js';
 import { classify_terrain, money_cnt, near_capacity } from './hack.js';
+import { NOT_HUNGRY, OVERLOADED, SATIATED, SLT_ENCUMBER, STARVED, SYM_OFF_O, UNENCUMBERED } from './hack.h.js';
 import { digit, eos, fuzzymatch, highc, lowc, mungspaces, nh_snprintf, sgn, strNsubst, str_start_is, stripchars, strkitten, strncmpi, strstri, strsubst, trimspaces, upstart } from './hacklib.js';
 import { sticks } from './mondata.js';
+import { humanoid } from './mondata.macros.js';
+import { M1 } from './monflag.h.js';
 import { mons } from './monst.js';
-import { objects } from './objects.js';
+import { bimanual, is_sword, is_weptool } from './obj.macros.js';
+import { AKLYS, AMULET_OF_GUARDING, CLOAK_OF_PROTECTION, CREAM_PIE, GOLD_PIECE, RIN_PROTECTION } from './objects.h.js';
 import { helm_simple_name } from './objnam.js';
 import { match_optname } from './options.js';
+import { NON_PM } from './permonst.h.js';
 import { impossible, pline } from './pline.js';
 import { critically_low_hp } from './pray.js';
+import { BLINDED, CONFUSION, DEAF, FLYING, GLIB, HALLUC, HALLUC_RES, LEVITATION, SLIMED, STONED, STRANGLED, STUNNED, WOUNDED_LEGS } from './prop.h.js';
+import { ICE, MAX_TYPE } from './rm.h.js';
 import { roles } from './role.js';
+import { P } from './skills.h.js';
 import { Strlen_, strbuf_append } from './strutil.js';
 import { unconscious } from './trap.js';
 import { status_version } from './version.js';
 import { weapon_descr, weapon_type } from './weapon.js';
 import { add_menu, add_menu_heading, add_menu_str, encglyph, getlin, select_menu, windowprocs } from './windows.js';
+import { WC2_FLUSH_STATUS, WC2_RESET_STATUS } from './winprocs.h.js';
+import { create_nhwindow, curs, destroy_nhwindow, display_nhwindow, end_menu, putmixed, putstr, start_menu, status_enablefield, status_update } from './winprocs.macros.js';
+import { ANY, ATR, MENU, NHW, PICK } from './wintype.h.js';
+import { SICK_NONVOMITABLE, SICK_VOMITABLE, TT } from './you.h.js';
+import { Ugender, Upolyd } from './you.macros.js';
+import { Blind, Deaf, Hallucination, Levitation, Sick, Slimed, Stoned, Strangled } from './youprop.macros.js';
+
+const MAX_THRESH = 21;
+const MAX_SUBFIELDS = 16;
 
 const get_strength_str$buf = new Int8Array(32);   // static in get_strength_str()
 const do_statusline1$newbot1 = new Int8Array(256);   // static in do_statusline1()
@@ -68,7 +95,7 @@ let status_hilite_str = null;
 let status_hilite_str_id = 0;
 export function get_strength_str() {   // botl.c:21
     let st = 0;
-    st = acurr(0 /* A_STR */);
+    st = ACURR(A.STR);
     if (st > 18) {
         if (st > 118) {
             $c.__builtin___sprintf_chk(new $c.Ptr(get_strength_str$buf, 0), 0, 32, $c.lit("%2d"), st - 100 | 0);
@@ -84,7 +111,7 @@ export function get_strength_str() {   // botl.c:21
 }
 export function check_gold_symbol() {   // botl.c:40
     let goldch = 0;
-    goldch = gs.showsyms[117];
+    goldch = gs.showsyms[COIN_CLASS + SYM_OFF_O];
     iflags.invis_goldsym = $c.i8(goldch <= 32 ? 1 : 0);
 }
 export function do_statusline1() {   // botl.c:48
@@ -96,9 +123,9 @@ export function do_statusline1() {   // botl.c:48
     if (97 <= do_statusline1$newbot1[0] && do_statusline1$newbot1[0] <= 122) {
         do_statusline1$newbot1[0] = $c.i8(do_statusline1$newbot1[0] + -32 | 0);
     }
-    do_statusline1$newbot1[16] = 0;
+    do_statusline1$newbot1[BOTL_NSIZ] = 0;
     $c.__builtin___sprintf_chk(nb = eos(new $c.Ptr(do_statusline1$newbot1, 0)), 0, -1, $c.lit(" the "));
-    if (u.umonnum !== u.umonster) {
+    if (Upolyd()) {
         k = 0;
         $c.__builtin___strcpy_chk(new $c.Ptr(mbot, 0), pmname($c.relem(mons, u.umonnum), (u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0), 256);
         while (mbot[k] !== 0) {
@@ -117,8 +144,8 @@ export function do_statusline1() {   // botl.c:48
     if ((i - j | 0) > 0) {
         $c.__builtin___sprintf_chk(nb = eos(nb), 0, -1, $c.lit("%*s"), i - j | 0, $c.lit(" "));
     }
-    $c.__builtin___sprintf_chk(nb = eos(nb), 0, -1, $c.lit("St:%s Dx:%-1d Co:%-1d In:%-1d Wi:%-1d Ch:%-1d"), get_strength_str(), acurr(3 /* A_DEX */), acurr(4 /* A_CON */), acurr(1 /* A_INT */), acurr(2 /* A_WIS */), acurr(5 /* A_CHA */));
-    $c.__builtin___sprintf_chk(nb = eos(nb), 0, -1, $c.lit("%s"), u.ualign.type === -1 ? $c.lit("  Chaotic") : u.ualign.type === 0 ? $c.lit("  Neutral") : $c.lit("  Lawful"));
+    $c.__builtin___sprintf_chk(nb = eos(nb), 0, -1, $c.lit("St:%s Dx:%-1d Co:%-1d In:%-1d Wi:%-1d Ch:%-1d"), get_strength_str(), acurr(A.DEX), acurr(A.CON), acurr(A.INT), acurr(A.WIS), acurr(A.CHA));
+    $c.__builtin___sprintf_chk(nb = eos(nb), 0, -1, $c.lit("%s"), u.ualign.type === A.CHAOTIC ? $c.lit("  Chaotic") : u.ualign.type === A.NEUTRAL ? $c.lit("  Neutral") : $c.lit("  Lawful"));
     return new $c.Ptr(do_statusline1$newbot1, 0);
 }
 export async function do_statusline2() {   // botl.c:101
@@ -130,17 +157,17 @@ export async function do_statusline2() {   // botl.c:101
     if ((money = money_cnt(gi.invent)) < 0) {
         money = 0;
     }
-    $c.__builtin___sprintf_chk(eos(new $c.Ptr(do_statusline2$dloc, 0)), 0, -1, $c.lit("%s:%-2ld"), iflags.in_dumplog || iflags.invis_goldsym ? $c.lit("$") : encglyph(3886), money < 999999 ? money : 999999);
+    $c.__builtin___sprintf_chk(eos(new $c.Ptr(do_statusline2$dloc, 0)), 0, -1, $c.lit("%s:%-2ld"), iflags.in_dumplog || iflags.invis_goldsym ? $c.lit("$") : encglyph(GOLD_PIECE + GLYPH.OBJ_OFF), money < 999999 ? money : 999999);
     dln = $c.strlen(new $c.Ptr(do_statusline2$dloc, 0));
     dx = $c.u64(strstri(new $c.Ptr(do_statusline2$dloc, 0), $c.lit("\\G")) ? 9 : 0);
-    hp = u.umonnum !== u.umonster ? u.mh : u.uhp;
-    hpmax = u.umonnum !== u.umonster ? u.mhmax : u.uhpmax;
+    hp = Upolyd() ? u.mh : u.uhp;
+    hpmax = Upolyd() ? u.mhmax : u.uhpmax;
     if (hp < 0) {
         hp = 0;
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(do_statusline2$hlth, 0), 0, 128, $c.lit("HP:%d(%d) Pw:%d(%d) AC:%-2d"), hp < 9999 ? hp : 9999, hpmax < 9999 ? hpmax : 9999, u.uen < 9999 ? u.uen : 9999, u.uenmax < 9999 ? u.uenmax : 9999, u.uac);
     hln = $c.strlen(new $c.Ptr(do_statusline2$hlth, 0));
-    if (u.umonnum !== u.umonster) {
+    if (Upolyd()) {
         $c.__builtin___sprintf_chk(new $c.Ptr(do_statusline2$expr, 0), 0, 128, $c.lit("HD:%d"), mons[u.umonnum].mlevel);
     } else if (flags.showexp) {
         $c.__builtin___sprintf_chk(new $c.Ptr(do_statusline2$expr, 0), 0, 128, $c.lit("Xp:%d/%-1ld"), u.ulevel, u.uexp);
@@ -156,48 +183,48 @@ export async function do_statusline2() {   // botl.c:101
     tln = $c.strlen(new $c.Ptr(do_statusline2$tmmv, 0));
     do_statusline2$cond[0] = 0;
     nb = new $c.Ptr(do_statusline2$cond, 0);
-    if (u.uprops[18 /* STONED */].intrinsic) {
+    if (Stoned()) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Stone"), -1);
     }
-    if (u.uprops[22 /* SLIMED */].intrinsic) {
+    if (Slimed()) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Slime"), -1);
     }
-    if (u.uprops[19 /* STRANGLED */].intrinsic) {
+    if (Strangled()) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Strngl"), -1);
     }
-    if (u.uprops[17 /* SICK */].intrinsic) {
-        if ((u.usick_type | 0) & 1) {
+    if (Sick()) {
+        if ((u.usick_type | 0) & SICK_VOMITABLE) {
             $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" FoodPois"), -1);
         }
-        if ((u.usick_type | 0) & 2) {
+        if ((u.usick_type | 0) & SICK_NONVOMITABLE) {
             $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" TermIll"), -1);
         }
     }
-    if (u.uhs !== 1) {
+    if (u.uhs !== NOT_HUNGRY) {
         $c.__builtin___sprintf_chk(nb = eos(nb), 0, -1, $c.lit(" %s"), hu_stat[u.uhs]);
     }
-    if ((cap = near_capacity()) > 0 /* UNENCUMBERED */) {
+    if ((cap = near_capacity()) > UNENCUMBERED) {
         $c.__builtin___sprintf_chk(nb = eos(nb), 0, -1, $c.lit(" %s"), enc_stat[cap]);
     }
-    if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+    if (Blind()) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Blind"), -1);
     }
-    if (u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) {
+    if (Deaf()) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Deaf"), -1);
     }
-    if (u.uprops[13 /* STUNNED */].intrinsic) {
+    if (u.uprops[STUNNED].intrinsic) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Stun"), -1);
     }
-    if (u.uprops[14 /* CONFUSION */].intrinsic) {
+    if (u.uprops[CONFUSION].intrinsic) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Conf"), -1);
     }
-    if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+    if (Hallucination()) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Hallu"), -1);
     }
-    if ((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked) {
+    if (Levitation()) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Lev"), -1);
     }
-    if ((u.uprops[49 /* FLYING */].intrinsic || u.uprops[49 /* FLYING */].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, 1) !== 0) && !u.uprops[49 /* FLYING */].blocked) {
+    if ((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked) {
         $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" Fly"), -1);
     }
     if (u.usteed) {
@@ -205,19 +232,19 @@ export async function do_statusline2() {   // botl.c:101
     }
     cln = $c.strlen(new $c.Ptr(do_statusline2$cond, 0));
     if (flags.showvers) {
-        status_version(new $c.Ptr(do_statusline2$vers, 0), 128, 1);
+        status_version(new $c.Ptr(do_statusline2$vers, 0), 128, TRUE);
     } else {
         do_statusline2$vers[0] = 0;
     }
     vrn = $c.strlen(new $c.Ptr(do_statusline2$vers, 0));
-    if ($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.subu64(dln, dx), 1), hln), 1), xln), 1), tln), 1), cln), vrn) <= 80) {
+    if ($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.subu64(dln, dx), 1), hln), 1), xln), 1), tln), 1), cln), vrn) <= COLNO) {
         nh_snprintf($c.lit("do_statusline2"), 229, new $c.Ptr(do_statusline2$newbot2, 0), 256, $c.lit("%s %s %s %s %s%s"), new $c.Ptr(do_statusline2$dloc, 0), new $c.Ptr(do_statusline2$hlth, 0), new $c.Ptr(do_statusline2$expr, 0), new $c.Ptr(do_statusline2$tmmv, 0), new $c.Ptr(do_statusline2$cond, 0), new $c.Ptr(do_statusline2$vers, 0));
     } else {
         if ($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64(dln, 1), hln), 1), xln), 1), tln), 1), cln), vrn) > 200) {
             await panic($c.lit("bot2: second status line exceeds MAXCO (%u > %d)"), $c.u32($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64(dln, 1), hln), 1), xln), 1), tln), 1), cln), vrn)), 200);
-        } else if ($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.subu64(dln, dx), 1), hln), 1), xln), 1), cln) <= 80) {
+        } else if ($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.addu64($c.subu64(dln, dx), 1), hln), 1), xln), 1), cln) <= COLNO) {
             nh_snprintf($c.lit("do_statusline2"), 238, new $c.Ptr(do_statusline2$newbot2, 0), 256, $c.lit("%s %s %s %s %s%s"), new $c.Ptr(do_statusline2$dloc, 0), new $c.Ptr(do_statusline2$hlth, 0), new $c.Ptr(do_statusline2$expr, 0), new $c.Ptr(do_statusline2$cond, 0), new $c.Ptr(do_statusline2$tmmv, 0), new $c.Ptr(do_statusline2$vers, 0));
-        } else if ($c.addu64($c.addu64($c.addu64($c.addu64($c.subu64(dln, dx), 1), hln), 1), cln) <= 80) {
+        } else if ($c.addu64($c.addu64($c.addu64($c.addu64($c.subu64(dln, dx), 1), hln), 1), cln) <= COLNO) {
             nh_snprintf($c.lit("do_statusline2"), 241, new $c.Ptr(do_statusline2$newbot2, 0), 256, $c.lit("%s %s %s %s %s%s"), new $c.Ptr(do_statusline2$dloc, 0), new $c.Ptr(do_statusline2$hlth, 0), new $c.Ptr(do_statusline2$cond, 0), new $c.Ptr(do_statusline2$expr, 0), new $c.Ptr(do_statusline2$tmmv, 0), new $c.Ptr(do_statusline2$vers, 0));
         } else {
             nh_snprintf($c.lit("do_statusline2"), 244, new $c.Ptr(do_statusline2$newbot2, 0), 256, $c.lit("%s %s %s %s %s%s"), new $c.Ptr(do_statusline2$hlth, 0), new $c.Ptr(do_statusline2$cond, 0), new $c.Ptr(do_statusline2$dloc, 0), new $c.Ptr(do_statusline2$expr, 0), new $c.Ptr(do_statusline2$tmmv, 0), new $c.Ptr(do_statusline2$vers, 0));
@@ -232,29 +259,29 @@ export async function bot() {   // botl.c:253
         return;
     }
     if (u.uhp !== -1 && gy.youmonst.data && iflags.status_updates && !suppress_map_output()) {
-        if ($c.andu64(windowprocs.wincap2, 136) !== 0) {
+        if (VIA_WINDOWPORT()) {
             await bot_via_windowport();
         } else {
-            await windowprocs.win_curs($G.WIN_STATUS, 1, 0);
-            await windowprocs.win_putstr($G.WIN_STATUS, 0, do_statusline1());
-            await windowprocs.win_curs($G.WIN_STATUS, 1, 1);
-            await windowprocs.win_putmixed($G.WIN_STATUS, 0, await do_statusline2());
+            await curs()($G.WIN_STATUS, 1, 0);
+            await putstr()($G.WIN_STATUS, 0, do_statusline1());
+            await curs()($G.WIN_STATUS, 1, 1);
+            await putmixed()($G.WIN_STATUS, 0, await do_statusline2());
         }
     }
-    $t2 = ($t1 = disp.time_botl = 0, disp.botlx = $t1), disp.botl = $t2;
+    $t2 = ($t1 = disp.time_botl = FALSE, disp.botlx = $t1), disp.botl = $t2;
 }
 export async function timebot() {   // botl.c:275
     if (gb.bot_disabled) {
         return;
     }
     if (flags.time && iflags.status_updates && !suppress_map_output()) {
-        if ($c.andu64(windowprocs.wincap2, 136) !== 0) {
+        if (VIA_WINDOWPORT()) {
             await stat_update_time();
         } else {
             await bot();
         }
     }
-    disp.time_botl = 0;
+    disp.time_botl = FALSE;
 }
 export function xlev_to_rank(xlev) {   // botl.c:298
     return xlev <= 2 ? 0 : xlev <= 30 ? $c.div32(xlev + 2 | 0, 4) : 8;
@@ -294,7 +321,7 @@ export async function title_to_mon(str, rank_indx, title_length) {   // botl.c:3
     let i = 0, j = 0, $t1, $t2;
     for (i = 0; roles[i].name.m; i = i + 1 | 0) {
         for (j = 0; j < 9; j = j + 1 | 0) {
-            if (roles[i].rank[j].m && str_start_is(str, roles[i].rank[j].m, 1)) {
+            if (roles[i].rank[j].m && str_start_is(str, roles[i].rank[j].m, TRUE)) {
                 if (rank_indx) {
                     rank_indx.set(0, j);
                 }
@@ -303,7 +330,7 @@ export async function title_to_mon(str, rank_indx, title_length) {   // botl.c:3
                 }
                 return roles[i].mnum;
             }
-            if (roles[i].rank[j].f && str_start_is(str, roles[i].rank[j].f, 1)) {
+            if (roles[i].rank[j].f && str_start_is(str, roles[i].rank[j].f, TRUE)) {
                 if (rank_indx) {
                     rank_indx.set(0, j);
                 }
@@ -317,7 +344,7 @@ export async function title_to_mon(str, rank_indx, title_length) {   // botl.c:3
     if (title_length) {
         title_length.set(0, 0);
     }
-    return -1 /* NON_PM */;
+    return NON_PM;
 }
 export function max_rank_sz() {   // botl.c:402
     let i = 0, r = 0, maxr = 0;
@@ -340,15 +367,15 @@ export function describe_level(buf, dflgs) {   // botl.c:441
     ret = 1;
     if ((svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level)) {
         $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%s"), new $c.Ptr(svd.dungeons[u.uz.dnum].dname, 0));
-        addbranch = 0;
+        addbranch = FALSE;
     } else if (In_quest(u.uz)) {
         $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("Home %d"), dunlev(u.uz));
-    } else if (u.uz.dnum === svd.dungeon_topology.d_astral_level.dnum) {
+    } else if (In_endgame(u.uz)) {
         endgamelevelname(buf, depth(u.uz));
         if (!addbranch) {
             strsubst(buf, $c.lit("Plane of "), $c.lit(""));
         }
-        addbranch = 0;
+        addbranch = FALSE;
     } else {
         if (!addbranch) {
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%s:%-2d"), u.uz.dnum === svd.dungeon_topology.d_tutorial_dnum ? $c.lit("Tutorial") : $c.lit("Dlvl"), depth(u.uz));
@@ -371,43 +398,43 @@ export async function weapon_status(outbuf) {   // botl.c:481
     res = null;
     outbuf.set(0, 0);
     if (!$G.uwep) {
-        res = $G.uarmg ? $c.lit("Empty-hnd") : $c.andu64(gy.youmonst.data.mflags1, 131072) !== 0 ? $c.lit("Bare-hnds") : $c.lit("No-weapon");
+        res = $G.uarmg ? $c.lit("Empty-hnd") : humanoid(gy.youmonst.data) ? $c.lit("Bare-hnds") : $c.lit("No-weapon");
     } else if (u.twoweap) {
         res = $c.lit("Dual-weps");
-        if (u.usteed && (weapon_type($G.uwep) === 19 /* P_LANCE */ || weapon_type($G.uswapwep) === 19 /* P_LANCE */)) {
+        if (u.usteed && (weapon_type($G.uwep) === P.LANCE || weapon_type($G.uswapwep) === P.LANCE)) {
             res = $c.lit("Dual+joust");
         }
     } else {
         skill = weapon_type($G.uwep);
-        if (u.usteed && skill === 19 /* P_LANCE */) {
+        if (u.usteed && skill === P.LANCE) {
             res = $c.lit("joust");
-        } else if ($G.uwep.otyp === 80 /* AKLYS */) {
+        } else if ($G.uwep.otyp === AKLYS) {
             res = $c.lit("aklys");
-        } else if ($G.uwep.oclass === 2 /* WEAPON_CLASS */ && objects[$G.uwep.otyp].oc_subtyp >= 5 /* P_SHORT_SWORD */ && objects[$G.uwep.otyp].oc_subtyp <= 9 /* P_SABER */) {
+        } else if (is_sword($G.uwep)) {
             res = $c.lit("sword");
         } else {
             switch (skill) {
-                case 15 /* P_QUARTERSTAFF */:
+                case P.QUARTERSTAFF:
                     res = $c.lit("staff");
                     break;
-                case 12 /* P_MORNING_STAR */:
+                case P.MORNING_STAR:
                     res = $c.lit("mrng-star");
                     break;
-                case 16 /* P_POLEARMS */:
+                case P.POLEARMS:
                     res = $c.lit("pole");
                     break;
-                case 27 /* P_UNICORN_HORN */:
+                case P.UNICORN_HORN:
                     res = $c.lit("unihorn");
                     break;
                 default:
                     res = await weapon_descr($G.uwep);
-                    if (!strncmpi(res, $c.lit("food"), -1) && $G.uwep.otyp === 287 /* CREAM_PIE */) {
+                    if (!strncmpi(res, $c.lit("food"), -1) && $G.uwep.otyp === CREAM_PIE) {
                         res = $c.lit("pie");
                     }
                     break;
             }
         }
-        if (($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */ && objects[$G.uwep.otyp].oc_subtyp !== 0 /* P_NONE */) && (($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */) && objects[$G.uwep.otyp].oc_big | 0) && res.get(0) !== 50 && strncmpi(res, $c.lit("two"), 3)) {
+        if (($G.uwep.oclass === WEAPON_CLASS || is_weptool($G.uwep)) && bimanual($G.uwep) && res.get(0) !== 50 && strncmpi(res, $c.lit("two"), 3)) {
             $c.__builtin___strcat_chk(outbuf, $c.lit("2H-"), -1);
         }
         $c.__builtin___strcpy_chk(p = eos(outbuf), res, -1), res = outbuf;
@@ -448,7 +475,7 @@ export function armor_status(armbuf) {   // botl.c:559
         }
         p.set(0, 0);
     }
-    if ($G.uright && $G.uright.otyp === 178 /* RIN_PROTECTION */ || $G.uleft && $G.uleft.otyp === 178 /* RIN_PROTECTION */ || $G.uamul && $G.uamul.otyp === 210 /* AMULET_OF_GUARDING */ || $G.uarmc && $G.uarmc.otyp === 146 /* CLOAK_OF_PROTECTION */ || $G.uarmh && $G.uarmh.oartifact === 27 /* ART_MITRE_OF_HOLINESS */ || $G.uwep && $G.uwep.oartifact === 30 /* ART_TSURUGI_OF_MURAMASA */) {
+    if ($G.uright && $G.uright.otyp === RIN_PROTECTION || $G.uleft && $G.uleft.otyp === RIN_PROTECTION || $G.uamul && $G.uamul.otyp === AMULET_OF_GUARDING || $G.uarmc && $G.uarmc.otyp === CLOAK_OF_PROTECTION || $G.uarmh && $G.uarmh.oartifact === ART.MITRE_OF_HOLINESS || $G.uwep && $G.uwep.oartifact === ART.TSURUGI_OF_MURAMASA) {
         strkitten(armbuf, 43);
     }
     return upstart(armbuf);
@@ -463,161 +490,161 @@ async function bot_via_windowport() {   // botl.c:962
     $c.__builtin___memset_chk(new $c.Ptr(gv.valset, 0), 0, 27, 200);
     $c.__builtin___strcpy_chk(nb = new $c.Ptr(buf, 0), new $c.Ptr(svp.plname, 0), -1);
     $t1 = highc(nb.get(0)), nb.set(0, $t1);
-    titl = !(u.umonnum !== u.umonster) ? rank() : pmname($c.relem(mons, u.umonnum), (u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0);
+    titl = !Upolyd() ? rank() : pmname($c.relem(mons, u.umonnum), Ugender());
     i = $c.i32($c.subu64($c.addu64($c.addu64($c.strlen(new $c.Ptr(buf, 0)), 6), $c.strlen(titl)), 1));
     if (i > 30) {
         i = 30 - $c.i32($c.subu64($c.addu64(6, $c.strlen(titl)), 1)) | 0;
-        nb.set(i > 16 ? i : 16, 0);
+        nb.set(i > BOTL_NSIZ ? i : BOTL_NSIZ, 0);
     }
     $c.__builtin___strcpy_chk(nb = eos(nb), $c.lit(" the "), -1);
     $c.__builtin___strcpy_chk(nb = eos(nb), titl, -1);
-    if (u.umonnum !== u.umonster) {
+    if (Upolyd()) {
         for (i = 0; nb.get(i); i = i + 1 | 0) {
             if (i === 0 || nb.get(i - 1 | 0) === 32) {
                 $t2 = highc(nb.get(i)), nb.set(i, $t2);
             }
         }
     }
-    $c.__builtin___sprintf_chk(gb.blstats[idx][0 /* BL_TITLE */].val, 0, -1, $c.lit("%-30s"), new $c.Ptr(buf, 0));
-    gv.valset[0 /* BL_TITLE */] = 1;
-    $t3 = acurr(0 /* A_STR */), gb.blstats[idx][1 /* BL_STR */].a.a_int = $t3;
-    $c.__builtin___strcpy_chk(gb.blstats[idx][1 /* BL_STR */].val, get_strength_str(), -1);
-    gv.valset[1 /* BL_STR */] = 1;
-    $t4 = acurr(3 /* A_DEX */), gb.blstats[idx][2 /* BL_DX */].a.a_int = $t4;
-    $t5 = acurr(4 /* A_CON */), gb.blstats[idx][3 /* BL_CO */].a.a_int = $t5;
-    $t6 = acurr(1 /* A_INT */), gb.blstats[idx][4 /* BL_IN */].a.a_int = $t6;
-    $t7 = acurr(2 /* A_WIS */), gb.blstats[idx][5 /* BL_WI */].a.a_int = $t7;
-    $t8 = acurr(5 /* A_CHA */), gb.blstats[idx][6 /* BL_CH */].a.a_int = $t8;
-    $c.__builtin___strcpy_chk(gb.blstats[idx][7 /* BL_ALIGN */].val, u.ualign.type === -1 ? $c.lit("Chaotic") : u.ualign.type === 0 ? $c.lit("Neutral") : $c.lit("Lawful"), -1);
-    gb.blstats[idx][8 /* BL_SCORE */].a.a_long = 0;
-    i = u.umonnum !== u.umonster ? u.mh : u.uhp;
+    $c.__builtin___sprintf_chk(gb.blstats[idx][BL.TITLE].val, 0, -1, $c.lit("%-30s"), new $c.Ptr(buf, 0));
+    gv.valset[BL.TITLE] = TRUE;
+    $t3 = ACURR(A.STR), gb.blstats[idx][BL.STR].a.a_int = $t3;
+    $c.__builtin___strcpy_chk(gb.blstats[idx][BL.STR].val, get_strength_str(), -1);
+    gv.valset[BL.STR] = TRUE;
+    $t4 = ACURR(A.DEX), gb.blstats[idx][BL.DX].a.a_int = $t4;
+    $t5 = ACURR(A.CON), gb.blstats[idx][BL.CO].a.a_int = $t5;
+    $t6 = ACURR(A.INT), gb.blstats[idx][BL.IN].a.a_int = $t6;
+    $t7 = ACURR(A.WIS), gb.blstats[idx][BL.WI].a.a_int = $t7;
+    $t8 = ACURR(A.CHA), gb.blstats[idx][BL.CH].a.a_int = $t8;
+    $c.__builtin___strcpy_chk(gb.blstats[idx][BL.ALIGN].val, u.ualign.type === A.CHAOTIC ? $c.lit("Chaotic") : u.ualign.type === A.NEUTRAL ? $c.lit("Neutral") : $c.lit("Lawful"), -1);
+    gb.blstats[idx][BL.SCORE].a.a_long = 0;
+    i = Upolyd() ? u.mh : u.uhp;
     if (i < 0) {
         i = 0;
     }
-    gb.blstats[idx][18 /* BL_HP */].rawval.a_int = i;
-    gb.blstats[idx][18 /* BL_HP */].a.a_int = i < 9999 ? i : 9999;
-    i = u.umonnum !== u.umonster ? u.mhmax : u.uhpmax;
-    gb.blstats[idx][19 /* BL_HPMAX */].rawval.a_int = i;
-    gb.blstats[idx][19 /* BL_HPMAX */].a.a_int = i < 9999 ? i : 9999;
-    describe_level(gb.blstats[idx][20 /* BL_LEVELDESC */].val, 1);
-    gv.valset[20 /* BL_LEVELDESC */] = 1;
+    gb.blstats[idx][BL.HP].rawval.a_int = i;
+    gb.blstats[idx][BL.HP].a.a_int = i < 9999 ? i : 9999;
+    i = Upolyd() ? u.mhmax : u.uhpmax;
+    gb.blstats[idx][BL.HPMAX].rawval.a_int = i;
+    gb.blstats[idx][BL.HPMAX].a.a_int = i < 9999 ? i : 9999;
+    describe_level(gb.blstats[idx][BL.LEVELDESC].val, 1);
+    gv.valset[BL.LEVELDESC] = TRUE;
     if ((money = money_cnt(gi.invent)) < 0) {
         money = 0;
     }
-    gb.blstats[idx][10 /* BL_GOLD */].rawval.a_long = money;
-    gb.blstats[idx][10 /* BL_GOLD */].a.a_long = money < 999999 ? money : 999999;
-    $c.__builtin___sprintf_chk(gb.blstats[idx][10 /* BL_GOLD */].val, 0, -1, $c.lit("%s:%ld"), iflags.in_dumplog || iflags.invis_goldsym ? $c.lit("$") : encglyph(3886), gb.blstats[idx][10 /* BL_GOLD */].a.a_long);
-    gv.valset[10 /* BL_GOLD */] = 1;
-    gb.blstats[idx][11 /* BL_ENE */].rawval.a_int = u.uen;
-    gb.blstats[idx][11 /* BL_ENE */].a.a_int = u.uen < 9999 ? u.uen : 9999;
-    gb.blstats[idx][12 /* BL_ENEMAX */].rawval.a_int = u.uenmax;
-    gb.blstats[idx][12 /* BL_ENEMAX */].a.a_int = u.uenmax < 9999 ? u.uenmax : 9999;
-    gb.blstats[idx][14 /* BL_AC */].a.a_int = u.uac;
-    gb.blstats[idx][15 /* BL_HD */].a.a_int = u.umonnum !== u.umonster ? mons[u.umonnum].mlevel : 0;
-    gb.blstats[idx][13 /* BL_XP */].a.a_int = u.ulevel;
-    gb.blstats[idx][21 /* BL_EXP */].a.a_long = u.uexp;
-    gb.blstats[idx][16 /* BL_TIME */].a.a_long = svm.moves;
-    gb.blstats[idx][17 /* BL_HUNGER */].a.a_int = u.uhs | 0;
-    $c.__builtin___strcpy_chk(gb.blstats[idx][17 /* BL_HUNGER */].val, u.uhs !== 1 ? hu_stat[u.uhs] : $c.lit(""), -1);
-    gv.valset[17 /* BL_HUNGER */] = 1;
+    gb.blstats[idx][BL.GOLD].rawval.a_long = money;
+    gb.blstats[idx][BL.GOLD].a.a_long = money < 999999 ? money : 999999;
+    $c.__builtin___sprintf_chk(gb.blstats[idx][BL.GOLD].val, 0, -1, $c.lit("%s:%ld"), iflags.in_dumplog || iflags.invis_goldsym ? $c.lit("$") : encglyph(GOLD_PIECE + GLYPH.OBJ_OFF), gb.blstats[idx][BL.GOLD].a.a_long);
+    gv.valset[BL.GOLD] = TRUE;
+    gb.blstats[idx][BL.ENE].rawval.a_int = u.uen;
+    gb.blstats[idx][BL.ENE].a.a_int = u.uen < 9999 ? u.uen : 9999;
+    gb.blstats[idx][BL.ENEMAX].rawval.a_int = u.uenmax;
+    gb.blstats[idx][BL.ENEMAX].a.a_int = u.uenmax < 9999 ? u.uenmax : 9999;
+    gb.blstats[idx][BL.AC].a.a_int = u.uac;
+    gb.blstats[idx][BL.HD].a.a_int = Upolyd() ? mons[u.umonnum].mlevel : 0;
+    gb.blstats[idx][BL.XP].a.a_int = u.ulevel;
+    gb.blstats[idx][BL.EXP].a.a_long = u.uexp;
+    gb.blstats[idx][BL.TIME].a.a_long = svm.moves;
+    gb.blstats[idx][BL.HUNGER].a.a_int = u.uhs | 0;
+    $c.__builtin___strcpy_chk(gb.blstats[idx][BL.HUNGER].val, u.uhs !== NOT_HUNGRY ? hu_stat[u.uhs] : $c.lit(""), -1);
+    gv.valset[BL.HUNGER] = TRUE;
     cap = near_capacity();
-    gb.blstats[idx][9 /* BL_CAP */].a.a_int = cap;
-    $c.__builtin___strcpy_chk(gb.blstats[idx][9 /* BL_CAP */].val, cap > 0 /* UNENCUMBERED */ ? enc_stat[cap] : $c.lit(""), -1);
-    gv.valset[9 /* BL_CAP */] = 1;
-    if (gb.blstats[idx][26 /* BL_VERS */].a.a_int !== (flags.versinfo | 0)) {
-        gb.blstats[idx][26 /* BL_VERS */].a.a_int = flags.versinfo | 0;
-        gv.valset[26 /* BL_VERS */] = 0;
+    gb.blstats[idx][BL.CAP].a.a_int = cap;
+    $c.__builtin___strcpy_chk(gb.blstats[idx][BL.CAP].val, cap > UNENCUMBERED ? enc_stat[cap] : $c.lit(""), -1);
+    gv.valset[BL.CAP] = TRUE;
+    if (gb.blstats[idx][BL.VERS].a.a_int !== (flags.versinfo | 0)) {
+        gb.blstats[idx][BL.VERS].a.a_int = flags.versinfo | 0;
+        gv.valset[BL.VERS] = FALSE;
     }
-    if (!gv.valset[26 /* BL_VERS */]) {
-        status_version(gb.blstats[idx][26 /* BL_VERS */].val, $c.u64(gb.blstats[idx][26 /* BL_VERS */].valwidth), 0);
-        gv.valset[26 /* BL_VERS */] = 1;
+    if (!gv.valset[BL.VERS]) {
+        status_version(gb.blstats[idx][BL.VERS].val, $c.u64(gb.blstats[idx][BL.VERS].valwidth), FALSE);
+        gv.valset[BL.VERS] = TRUE;
     }
-    gb.blstats[idx][22 /* BL_CONDITION */].a.a_ulong = 0;
-    $t9 = condtests[24 /* bl_termill */].test = 0, condtests[7 /* bl_foodpois */].test = $t9;
-    if (u.uprops[17 /* SICK */].intrinsic) {
-        if (condtests[7].enabled) {
-            condtests[7].test = $c.i8(((u.usick_type | 0) & 1) !== 0 ? 1 : 0);
+    gb.blstats[idx][BL.CONDITION].a.a_ulong = 0;
+    $t9 = condtests[bl_termill].test = FALSE, condtests[bl_foodpois].test = $t9;
+    if (Sick()) {
+        if (condtests[bl_foodpois].enabled) {
+            condtests[bl_foodpois].test = $c.i8(((u.usick_type | 0) & SICK_VOMITABLE) !== 0 ? 1 : 0);
         }
-        if (condtests[24].enabled) {
-            condtests[24].test = $c.i8(((u.usick_type | 0) & 2) !== 0 ? 1 : 0);
+        if (condtests[bl_termill].enabled) {
+            condtests[bl_termill].test = $c.i8(((u.usick_type | 0) & SICK_NONVOMITABLE) !== 0 ? 1 : 0);
         }
     }
-    $t11 = ($t10 = condtests[26 /* bl_trapped */].test = 0, condtests[25 /* bl_tethered */].test = $t10), condtests[13 /* bl_inlava */].test = $t11;
+    $t11 = ($t10 = condtests[bl_trapped].test = FALSE, condtests[bl_tethered].test = $t10), condtests[bl_inlava].test = $t11;
     if (u.utrap) {
-        if (condtests[13].enabled) {
-            condtests[13].test = $c.i8(u.utraptype === 4 ? 1 : 0);
+        if (condtests[bl_inlava].enabled) {
+            condtests[bl_inlava].test = $c.i8(u.utraptype === TT.LAVA ? 1 : 0);
         }
-        if (condtests[25].enabled) {
-            condtests[25].test = $c.i8(u.utraptype === 6 ? 1 : 0);
+        if (condtests[bl_tethered].enabled) {
+            condtests[bl_tethered].test = $c.i8(u.utraptype === TT.BURIEDBALL ? 1 : 0);
         }
-        if (condtests[26].enabled) {
-            condtests[26].test = $c.i8(!condtests[13 /* bl_inlava */].test && !condtests[25 /* bl_tethered */].test ? 1 : 0);
+        if (condtests[bl_trapped].enabled) {
+            condtests[bl_trapped].test = $c.i8(!condtests[bl_inlava].test && !condtests[bl_tethered].test ? 1 : 0);
         }
     }
-    $t13 = ($t12 = condtests[29 /* bl_holding */].test = 0, condtests[11 /* bl_held */].test = $t12), condtests[9 /* bl_grab */].test = $t13;
+    $t13 = ($t12 = condtests[bl_holding].test = FALSE, condtests[bl_held].test = $t12), condtests[bl_grab].test = $t13;
     if (u.ustuck) {
         if (u.uswallow) {
-            if (condtests[11].enabled) {
-                condtests[11].test = 1;
+            if (condtests[bl_held].enabled) {
+                condtests[bl_held].test = TRUE;
             }
-        } else if (u.umonnum !== u.umonster && sticks(gy.youmonst.data)) {
-            if (condtests[29].enabled) {
-                condtests[29].test = 1;
+        } else if (Upolyd() && sticks(gy.youmonst.data)) {
+            if (condtests[bl_holding].enabled) {
+                condtests[bl_holding].test = TRUE;
             }
         } else {
-            if (condtests[9].enabled) {
-                condtests[9].test = $c.i8(u.ustuck.data.mlet === 57 /* S_EEL */ ? 1 : 0);
+            if (condtests[bl_grab].enabled) {
+                condtests[bl_grab].test = $c.i8(u.ustuck.data.mlet === S.EEL ? 1 : 0);
             }
-            if (condtests[11].enabled) {
-                condtests[11].test = $c.i8(!condtests[9 /* bl_grab */].test ? 1 : 0);
+            if (condtests[bl_held].enabled) {
+                condtests[bl_held].test = $c.i8(!condtests[bl_grab].test ? 1 : 0);
             }
         }
     }
-    condtests[1 /* bl_blind */].test = $c.i8((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? 1 : 0);
-    condtests[3 /* bl_conf */].test = $c.i8(u.uprops[14 /* CONFUSION */].intrinsic ? 1 : 0);
-    condtests[4 /* bl_deaf */].test = $c.i8(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf ? 1 : 0);
-    condtests[6 /* bl_fly */].test = $c.i8((u.uprops[49 /* FLYING */].intrinsic || u.uprops[49 /* FLYING */].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, 1) !== 0) && !u.uprops[49 /* FLYING */].blocked ? 1 : 0);
-    condtests[8 /* bl_glowhands */].test = $c.i8(u.umconf ? 1 : 0);
-    condtests[10 /* bl_hallu */].test = $c.i8(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? 1 : 0);
-    condtests[14 /* bl_lev */].test = $c.i8((u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked ? 1 : 0);
-    condtests[16 /* bl_ride */].test = $c.i8(u.usteed ? 1 : 0);
-    condtests[18 /* bl_slime */].test = $c.i8(u.uprops[22 /* SLIMED */].intrinsic ? 1 : 0);
-    condtests[20 /* bl_stone */].test = $c.i8(u.uprops[18 /* STONED */].intrinsic ? 1 : 0);
-    condtests[21 /* bl_strngl */].test = $c.i8(u.uprops[19 /* STRANGLED */].intrinsic ? 1 : 0);
-    condtests[22 /* bl_stun */].test = $c.i8(u.uprops[13 /* STUNNED */].intrinsic ? 1 : 0);
-    condtests[23 /* bl_submerged */].test = $c.i8(u.uinwater | 0 ? 1 : 0);
-    if (condtests[5].enabled) {
-        condtests[5].test = 0;
+    condtests[bl_blind].test = $c.i8((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked ? TRUE : FALSE);
+    condtests[bl_conf].test = $c.i8(u.uprops[CONFUSION].intrinsic ? TRUE : FALSE);
+    condtests[bl_deaf].test = $c.i8(u.uprops[DEAF].intrinsic || u.uprops[DEAF].extrinsic || u.uroleplay.deaf ? TRUE : FALSE);
+    condtests[bl_fly].test = $c.i8((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked ? TRUE : FALSE);
+    condtests[bl_glowhands].test = $c.i8(u.umconf ? TRUE : FALSE);
+    condtests[bl_hallu].test = $c.i8(u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? TRUE : FALSE);
+    condtests[bl_lev].test = $c.i8((u.uprops[LEVITATION].intrinsic || u.uprops[LEVITATION].extrinsic) && !u.uprops[LEVITATION].blocked ? TRUE : FALSE);
+    condtests[bl_ride].test = $c.i8(u.usteed ? TRUE : FALSE);
+    condtests[bl_slime].test = $c.i8(u.uprops[SLIMED].intrinsic ? TRUE : FALSE);
+    condtests[bl_stone].test = $c.i8(u.uprops[STONED].intrinsic ? TRUE : FALSE);
+    condtests[bl_strngl].test = $c.i8(u.uprops[STRANGLED].intrinsic ? TRUE : FALSE);
+    condtests[bl_stun].test = $c.i8(u.uprops[STUNNED].intrinsic ? TRUE : FALSE);
+    condtests[bl_submerged].test = $c.i8(u.uinwater | 0 ? TRUE : FALSE);
+    if (condtests[bl_elf_iron].enabled) {
+        condtests[bl_elf_iron].test = FALSE;
     }
-    if (condtests[0].enabled) {
-        condtests[0].test = $c.i8(!$G.uarmg && !$G.uwep ? 1 : 0);
+    if (condtests[bl_bareh].enabled) {
+        condtests[bl_bareh].test = $c.i8(!$G.uarmg && !$G.uwep ? 1 : 0);
     }
-    if (condtests[12].enabled) {
-        condtests[12].test = $c.i8(svl.level.locations[u.ux][u.uy].typ === 33 /* ICE */ ? 1 : 0);
+    if (condtests[bl_icy].enabled) {
+        condtests[bl_icy].test = $c.i8(svl.level.locations[u.ux][u.uy].typ === ICE ? 1 : 0);
     }
-    if (condtests[19].enabled) {
-        condtests[19].test = $c.i8(u.uprops[21 /* GLIB */].intrinsic ? 1 : 0);
+    if (condtests[bl_slippery].enabled) {
+        condtests[bl_slippery].test = $c.i8(u.uprops[GLIB].intrinsic ? TRUE : FALSE);
     }
-    if (condtests[28].enabled) {
-        condtests[28].test = $c.i8(u.uprops[26 /* WOUNDED_LEGS */].intrinsic || u.uprops[26 /* WOUNDED_LEGS */].extrinsic ? 1 : 0);
+    if (condtests[bl_woundedl].enabled) {
+        condtests[bl_woundedl].test = $c.i8(u.uprops[WOUNDED_LEGS].intrinsic || u.uprops[WOUNDED_LEGS].extrinsic ? TRUE : FALSE);
     }
     if (gm.multi < 0) {
         do {
-            clear_cache = 0;
-            refresh_cache = 0;
+            clear_cache = FALSE;
+            refresh_cache = FALSE;
             if (gm.multi < 0) {
                 if (gn.nomovemsg || gm.multi_reason) {
                     if (!$c.peq(cache_nomovemsg, gn.nomovemsg)) {
-                        refresh_cache = 1;
+                        refresh_cache = TRUE;
                     }
                     if (!$c.peq(cache_multi_reason, gm.multi_reason)) {
-                        refresh_cache = 1;
+                        refresh_cache = TRUE;
                     }
                 } else {
-                    clear_cache = 1;
+                    clear_cache = TRUE;
                 }
             } else {
-                clear_cache = 1;
+                clear_cache = TRUE;
             }
             if (clear_cache) {
                 cache_nomovemsg = null;
@@ -628,89 +655,89 @@ async function bot_via_windowport() {   // botl.c:962
                 cache_multi_reason = gm.multi_reason;
             }
             if (clear_cache || refresh_cache) {
-                $t14 = cache_avail[0] = 0, cache_reslt[0] = $t14;
-                $t15 = cache_avail[1] = 0, cache_reslt[1] = $t15;
+                $t14 = cache_avail[0] = FALSE, cache_reslt[0] = $t14;
+                $t15 = cache_avail[1] = FALSE, cache_reslt[1] = $t15;
             }
         } while (0);
-        if (condtests[27 /* bl_unconsc */].enabled && cache_nomovemsg && !cache_avail[0]) {
+        if (condtests[bl_unconsc].enabled && cache_nomovemsg && !cache_avail[0]) {
             $t16 = $c.i8(!u.usleep && unconscious() ? 1 : 0), cache_reslt[0] = $t16;
-            cache_avail[0] = 1;
+            cache_avail[0] = TRUE;
         }
-        if (condtests[15 /* bl_parlyz */].enabled && cache_multi_reason && !cache_avail[1]) {
+        if (condtests[bl_parlyz].enabled && cache_multi_reason && !cache_avail[1]) {
             $t17 = $c.i8(!$c.strncmp(cache_multi_reason, $c.lit("paralyzed"), 9) || !$c.strncmp(cache_multi_reason, $c.lit("frozen"), 6) ? 1 : 0), cache_reslt[1] = $t17;
-            cache_avail[1] = 1;
+            cache_avail[1] = TRUE;
         }
         if (cache_avail[0] && cache_reslt[0]) {
-            condtests[27 /* bl_unconsc */].test = cache_reslt[0];
+            condtests[bl_unconsc].test = cache_reslt[0];
         } else if (cache_avail[1] && cache_reslt[1]) {
-            condtests[15 /* bl_parlyz */].test = cache_reslt[1];
-        } else if (condtests[17 /* bl_sleeping */].enabled && u.usleep) {
-            condtests[17 /* bl_sleeping */].test = 1;
-        } else if (condtests[2 /* bl_busy */].enabled) {
-            condtests[2 /* bl_busy */].test = 1;
+            condtests[bl_parlyz].test = cache_reslt[1];
+        } else if (condtests[bl_sleeping].enabled && u.usleep) {
+            condtests[bl_sleeping].test = TRUE;
+        } else if (condtests[bl_busy].enabled) {
+            condtests[bl_busy].test = TRUE;
         }
     } else {
-        $t20 = ($t19 = ($t18 = condtests[2 /* bl_busy */].test = 0, condtests[17 /* bl_sleeping */].test = $t18), condtests[15 /* bl_parlyz */].test = $t19), condtests[27 /* bl_unconsc */].test = $t20;
+        $t20 = ($t19 = ($t18 = condtests[bl_busy].test = FALSE, condtests[bl_sleeping].test = $t18), condtests[bl_parlyz].test = $t19), condtests[bl_unconsc].test = $t20;
     }
-    for (i = 0; i < 30 /* CONDITION_COUNT */; i = i + 1 | 0) {
+    for (i = 0; i < CONDITION_COUNT; i = i + 1 | 0) {
         if (condtests[i].enabled && condtests[i].test) {
-            gb.blstats[idx][22 /* BL_CONDITION */].a.a_ulong = $c.oru64(gb.blstats[idx][22 /* BL_CONDITION */].a.a_ulong, $c.u64(conditions[i].mask));
+            gb.blstats[idx][BL.CONDITION].a.a_ulong = $c.oru64(gb.blstats[idx][BL.CONDITION].a.a_ulong, $c.u64(conditions[i].mask));
         }
     }
     if (flags.weaponstatus) {
-        await weapon_status(gb.blstats[idx][23 /* BL_WEAPON */].val);
+        await weapon_status(gb.blstats[idx][BL.WEAPON].val);
     } else {
-        gb.blstats[idx][23 /* BL_WEAPON */].val.set(0, 0);
+        gb.blstats[idx][BL.WEAPON].val.set(0, 0);
     }
     if (flags.armorstatus) {
-        armor_status(gb.blstats[idx][24 /* BL_ARMOR */].val);
+        armor_status(gb.blstats[idx][BL.ARMOR].val);
     } else {
-        gb.blstats[idx][24 /* BL_ARMOR */].val.set(0, 0);
+        gb.blstats[idx][BL.ARMOR].val.set(0, 0);
     }
     if (flags.terrainstatus) {
-        if (iflags.terrain_typ === 37 /* MAX_TYPE */) {
+        if (iflags.terrain_typ === MAX_TYPE) {
             classify_terrain();
         }
         i = iflags.terrain_typ;
-        if (gb.blstats[idx][25 /* BL_TERRAIN */].a.a_int !== i) {
-            $c.__builtin___strcpy_chk(gb.blstats[idx][25 /* BL_TERRAIN */].val, terrain_descr[i], -1);
-            gb.blstats[idx][25 /* BL_TERRAIN */].a.a_int = i;
+        if (gb.blstats[idx][BL.TERRAIN].a.a_int !== i) {
+            $c.__builtin___strcpy_chk(gb.blstats[idx][BL.TERRAIN].val, terrain_descr[i], -1);
+            gb.blstats[idx][BL.TERRAIN].a.a_int = i;
         }
     } else {
-        gb.blstats[idx][25 /* BL_TERRAIN */].val.set(0, 0);
-        gb.blstats[idx][25 /* BL_TERRAIN */].a.a_int = 37 /* MAX_TYPE */;
+        gb.blstats[idx][BL.TERRAIN].val.set(0, 0);
+        gb.blstats[idx][BL.TERRAIN].a.a_int = MAX_TYPE;
     }
-    gv.valset[25 /* BL_TERRAIN */] = 1;
+    gv.valset[BL.TERRAIN] = TRUE;
     await evaluate_and_notify_windowport(new $c.Ptr(gv.valset, 0), idx);
 }
 async function stat_update_time() {   // botl.c:1285
     let idx = 0, fld = 0;
     idx = gn.now_or_before_idx;
-    fld = 16 /* BL_TIME */;
+    fld = BL.TIME;
     gb.blstats[idx][fld].a.a_long = svm.moves;
-    gv.valset[fld] = 0;
+    gv.valset[fld] = FALSE;
     await eval_notify_windowport_field(fld, new $c.Ptr(gv.valset, 0), idx);
-    if ($c.andu64(windowprocs.wincap2, 128) !== 0) {
-        await windowprocs.win_status_update(-1 /* BL_FLUSH */, null, 0, 0, 8, null);
+    if ($c.andu64(windowprocs.wincap2, WC2_FLUSH_STATUS) !== 0) {
+        await status_update()(BL.FLUSH, null, 0, 0, NO_COLOR, null);
     }
     return;
 }
 export async function condopt(idx, addr, negated) {   // botl.c:1303
     let i = 0;
-    if (idx < 0 || idx >= 30 /* CONDITION_COUNT */ || addr && !$c.peq(addr, new $c.FieldRef(condtests[idx], "choice", "i8"))) {
+    if (idx < 0 || idx >= CONDITION_COUNT || addr && !$c.peq(addr, new $c.FieldRef(condtests[idx], "choice", "i8"))) {
         return;
     }
     if (!addr) {
         gc.condmenu_sortorder = 0;
-        for (i = 0; i < 30 /* CONDITION_COUNT */; i = i + 1 | 0) {
+        for (i = 0; i < CONDITION_COUNT; i = i + 1 | 0) {
             cond_idx[i] = i;
             condtests[i].choice = condtests[i].enabled;
         }
-        $c.nh_deterministic_qsort(new $c.Ptr(cond_idx, 0), 30, 4, cond_cmp);
+        $c.nh_deterministic_qsort(new $c.Ptr(cond_idx, 0), CONDITION_COUNT, 4, cond_cmp);
     } else {
-        condtests[idx].enabled = $c.i8(negated ? 0 : 1);
+        condtests[idx].enabled = $c.i8(negated ? FALSE : TRUE);
         condtests[idx].choice = condtests[idx].enabled;
-        condtests[idx].test = 0;
+        condtests[idx].test = FALSE;
     }
 }
 function cond_cmp(vptr1, vptr2) {   // botl.c:1333
@@ -738,10 +765,10 @@ export async function parse_cond_option(negated, opts) {   // botl.c:1354
         return 2;
     }
     uniqpart = opts.add($c.idx(5));
-    for (i = 0; i < 30 /* CONDITION_COUNT */; i = i + 1 | 0) {
+    for (i = 0; i < CONDITION_COUNT; i = i + 1 | 0) {
         compareto = condtests[i].useroption;
         sl = await Strlen_(compareto, $c.lit("parse_cond_option"), 1364) | 0;
-        if (match_optname(uniqpart, compareto, sl >= 4 ? 4 : sl, 0)) {
+        if (match_optname(uniqpart, compareto, sl >= 4 ? 4 : sl, FALSE)) {
             await condopt(i, new $c.FieldRef(condtests[i], "choice", "i8"), negated);
             return 0;
         }
@@ -752,20 +779,20 @@ export async function cond_menu() {   // botl.c:1376
     let i = 0, res = 0, idx = 0, sequence = new Int32Array(30), tmpwin = 0, any = new $T.any(), picks = [null], mbuf = new Int8Array(128), showmenu = 0, clr = 0, changed = 0, $t1;
     idx = 0;
     picks[0] = null;
-    showmenu = 1;
-    clr = 8;
-    changed = 0;
+    showmenu = TRUE;
+    clr = NO_COLOR;
+    changed = FALSE;
     do {
-        for (i = 0; i < 30 /* CONDITION_COUNT */; i = i + 1 | 0) {
+        for (i = 0; i < CONDITION_COUNT; i = i + 1 | 0) {
             sequence[i] = i;
         }
-        await $c.nh_deterministic_qsort$async(new $c.Ptr(sequence, 0), 30, 4, gc.condmenu_sortorder ? cond_cmp : menualpha_cmp);
-        tmpwin = await windowprocs.win_create_nhwindow(4);
-        await windowprocs.win_start_menu(tmpwin, 0);
+        await $c.nh_deterministic_qsort$async(new $c.Ptr(sequence, 0), CONDITION_COUNT, 4, gc.condmenu_sortorder ? cond_cmp : menualpha_cmp);
+        tmpwin = await create_nhwindow()(NHW.MENU);
+        await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
         any.$copyFrom(cg.zeroany);
         any.a_int = 1;
         $c.__builtin___sprintf_chk(new $c.Ptr(mbuf, 0), 0, 128, $c.lit("change sort order from \"%s\" to \"%s\""), cond_menu$menutitle[gc.condmenu_sortorder], cond_menu$menutitle[1 - gc.condmenu_sortorder | 0]);
-        await add_menu(tmpwin, nul_glyphinfo, any, 83, 0, 0, clr, new $c.Ptr(mbuf, 0), 2);
+        await add_menu(tmpwin, nul_glyphinfo, any, 83, 0, ATR.NONE, clr, new $c.Ptr(mbuf, 0), MENU.ITEMFLAGS_SKIPINVERT);
         any.$copyFrom(cg.zeroany);
         $c.__builtin___sprintf_chk(new $c.Ptr(mbuf, 0), 0, 128, $c.lit("sorted %s"), cond_menu$menutitle[gc.condmenu_sortorder]);
         await add_menu_heading(tmpwin, new $c.Ptr(mbuf, 0));
@@ -774,34 +801,34 @@ export async function cond_menu() {   // botl.c:1376
             $c.__builtin___sprintf_chk(new $c.Ptr(mbuf, 0), 0, 128, $c.lit("cond_%-14s"), condtests[idx].useroption);
             any.$copyFrom(cg.zeroany);
             any.a_int = idx + 2 | 0;
-            condtests[idx].choice = 0;
-            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(mbuf, 0), condtests[idx].enabled ? 1 : 0);
+            condtests[idx].choice = FALSE;
+            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(mbuf, 0), condtests[idx].enabled ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
         }
-        await windowprocs.win_end_menu(tmpwin, $c.lit("Choose status conditions to toggle"));
-        res = await select_menu(tmpwin, 2, new $c.Ptr(picks, 0));
-        await windowprocs.win_destroy_nhwindow(tmpwin);
-        showmenu = 0;
+        await end_menu()(tmpwin, $c.lit("Choose status conditions to toggle"));
+        res = await select_menu(tmpwin, PICK.ANY, new $c.Ptr(picks, 0));
+        await destroy_nhwindow()(tmpwin);
+        showmenu = FALSE;
         if (res > 0) {
             for (i = 0; i < res; i = i + 1 | 0) {
                 idx = $c.radd(picks[0], i).item.a_int;
                 if (idx === 1) {
                     gc.condmenu_sortorder = 1 - gc.condmenu_sortorder | 0;
-                    showmenu = 1;
+                    showmenu = TRUE;
                     break;
                 } else {
                     idx = idx - 2 | 0;
-                    condtests[idx].choice = 1;
+                    condtests[idx].choice = TRUE;
                 }
             }
             $c.free(picks[0]);
         }
     } while (showmenu);
     if (res >= 0) {
-        for (i = 0; i < 30 /* CONDITION_COUNT */; i = i + 1 | 0) {
+        for (i = 0; i < CONDITION_COUNT; i = i + 1 | 0) {
             if (condtests[i].enabled !== condtests[i].choice) {
                 condtests[i].enabled = condtests[i].choice;
-                condtests[idx].test = 0;
-                $t1 = changed = 1, disp.botl = $t1;
+                condtests[idx].test = FALSE;
+                $t1 = changed = TRUE, disp.botl = $t1;
             }
         }
     }
@@ -809,26 +836,26 @@ export async function cond_menu() {   // botl.c:1376
 }
 export function opt_next_cond(indx, outbuf) {   // botl.c:1460
     outbuf.set(0, 0);
-    if (indx >= 30 /* CONDITION_COUNT */) {
-        return 0;
+    if (indx >= CONDITION_COUNT) {
+        return FALSE;
     }
-    if (condtests[indx].opt === 0 && condtests[indx].enabled || condtests[indx].opt === 1 && !condtests[indx].enabled) {
+    if (condtests[indx].opt === opt_in && condtests[indx].enabled || condtests[indx].opt === opt_out && !condtests[indx].enabled) {
         $c.__builtin___sprintf_chk(outbuf, 0, -1, $c.lit("%scond_%s"), condtests[indx].enabled ? $c.lit("") : $c.lit("!"), condtests[indx].useroption);
     }
-    return 1;
+    return TRUE;
 }
 async function eval_notify_windowport_field(fld, valsetlist, idx) {   // botl.c:1493
     let pc = 0, chg = 0, color = Int32Array.of(0), anytype = 0, updated = 0, reset = 0, curr = null, prev = null, fldmax = 0, $t1, $t2, $t3, $t4;
-    color[0] = 8;
-    updated = 0;
+    color[0] = NO_COLOR;
+    updated = FALSE;
     anytype = gb.blstats[idx][fld].anytype;
     curr = $c.relem(gb.blstats[idx], fld);
     prev = $c.relem(gb.blstats[1 - idx | 0], fld);
-    color[0] = 8;
+    color[0] = NO_COLOR;
     chg = gu.update_all ? 0 : await compare_blstats(prev, curr);
-    if ((chg || gu.update_all || fld === 13 /* BL_XP */) && curr.percent_matters && curr.thresholds || fld === 18 /* BL_HP */ && iflags.wc2_hitpointbar) {
+    if ((chg || gu.update_all || fld === BL.XP) && curr.percent_matters && curr.thresholds || fld === BL.HP && iflags.wc2_hitpointbar) {
         fldmax = curr.idxmax;
-        pc = fldmax === 21 /* BL_EXP */ ? await exp_percentage() : fldmax >= 0 && fldmax < 27 /* MAXBLSTATS */ ? await percentage(curr, $c.relem(gb.blstats[idx], fldmax)) : 0;
+        pc = fldmax === BL.EXP ? await exp_percentage() : fldmax >= 0 && fldmax < MAXBLSTATS ? await percentage(curr, $c.relem(gb.blstats[idx], fldmax)) : 0;
         if (pc !== prev.percent_value) {
             chg = pc < prev.percent_value ? -1 : 1;
         }
@@ -836,12 +863,12 @@ async function eval_notify_windowport_field(fld, valsetlist, idx) {   // botl.c:
     } else {
         pc = 0;
     }
-    if (fld === 10 /* BL_GOLD */ && (svc.context.rndencode !== eval_notify_windowport_field$oldrndencode || gs.showsyms[117] !== eval_notify_windowport_field$oldgoldsym)) {
-        gu.update_all = 1;
+    if (fld === BL.GOLD && (svc.context.rndencode !== eval_notify_windowport_field$oldrndencode || gs.showsyms[COIN_CLASS + SYM_OFF_O] !== eval_notify_windowport_field$oldgoldsym)) {
+        gu.update_all = TRUE;
         eval_notify_windowport_field$oldrndencode = svc.context.rndencode;
-        eval_notify_windowport_field$oldgoldsym = gs.showsyms[117];
+        eval_notify_windowport_field$oldgoldsym = gs.showsyms[COIN_CLASS + SYM_OFF_O];
     }
-    reset = 0;
+    reset = FALSE;
     if (gu.update_all) {
         chg = 0;
         $t1 = prev.time = 0, curr.time = $t1;
@@ -855,46 +882,46 @@ async function eval_notify_windowport_field(fld, valsetlist, idx) {   // botl.c:
         if (!valsetlist.get(fld)) {
             anything_to_s(curr.val, curr.a, anytype | 0);
         }
-        if (anytype !== 17) {
+        if (anytype !== ANY.MASK32) {
             if (chg || curr.val.get(0)) {
-                if (chg === 1 && fld === 13 /* BL_XP */) {
+                if (chg === 1 && fld === BL.XP) {
                     chg = await compare_blstats(prev, curr);
                 }
                 $t3 = get_hilite(idx, fld, curr.a, chg, pc, new $c.Ptr(color, 0)), curr.hilite_rule = $t3;
                 prev.hilite_rule = curr.hilite_rule;
                 if (chg === 2) {
-                    color[0] = 8;
+                    color[0] = NO_COLOR;
                     chg = 0;
                 }
             }
-            await windowprocs.win_status_update(fld, curr.val, chg, pc, color[0], null);
+            await status_update()(fld, curr.val, chg, pc, color[0], null);
         } else {
-            await windowprocs.win_status_update(fld, new $c.FieldRef(curr.a, "a_ulong", "u64"), chg, pc, color[0], new $c.Ptr(gc.cond_hilites, 0));
+            await status_update()(fld, new $c.FieldRef(curr.a, "a_ulong", "u64"), chg, pc, color[0], new $c.Ptr(gc.cond_hilites, 0));
         }
-        $t4 = prev.chg = 1, curr.chg = $t4;
-        updated = 1;
+        $t4 = prev.chg = TRUE, curr.chg = $t4;
+        updated = TRUE;
     }
     return updated;
 }
 async function evaluate_and_notify_windowport(valsetlist, idx) {   // botl.c:1621
     let i = 0, fld = 0, updated = 0, $t1, $t2;
     updated = 0;
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         fld = initblstats[i].fld;
-        if (fld === 8 /* BL_SCORE */ && !flags.showscore || fld === 21 /* BL_EXP */ && !flags.showexp || fld === 16 /* BL_TIME */ && !flags.time || fld === 15 /* BL_HD */ && !(u.umonnum !== u.umonster) || (fld === 13 /* BL_XP */ || fld === 21 /* BL_EXP */) && u.umonnum !== u.umonster || fld === 26 /* BL_VERS */ && !flags.showvers || fld === 25 /* BL_TERRAIN */ && !flags.terrainstatus || fld === 23 /* BL_WEAPON */ && !flags.weaponstatus || fld === 24 /* BL_ARMOR */ && !flags.armorstatus) {
+        if (fld === BL.SCORE && !flags.showscore || fld === BL.EXP && !flags.showexp || fld === BL.TIME && !flags.time || fld === BL.HD && !Upolyd() || (fld === BL.XP || fld === BL.EXP) && Upolyd() || fld === BL.VERS && !flags.showvers || fld === BL.TERRAIN && !flags.terrainstatus || fld === BL.WEAPON && !flags.weaponstatus || fld === BL.ARMOR && !flags.armorstatus) {
             continue;
         }
         if (await eval_notify_windowport_field(fld, valsetlist, idx)) {
             updated = updated + 1 | 0;
         }
     }
-    if (disp.botlx && $c.andu64(windowprocs.wincap2, 256) !== 0) {
-        await windowprocs.win_status_update(-2 /* BL_RESET */, null, 0, 0, 8, null);
-    } else if ((updated || disp.botlx) && $c.andu64(windowprocs.wincap2, 128) !== 0) {
-        await windowprocs.win_status_update(-1 /* BL_FLUSH */, null, 0, 0, 8, null);
+    if (disp.botlx && $c.andu64(windowprocs.wincap2, WC2_RESET_STATUS) !== 0) {
+        await status_update()(BL.RESET, null, 0, 0, NO_COLOR, null);
+    } else if ((updated || disp.botlx) && $c.andu64(windowprocs.wincap2, WC2_FLUSH_STATUS) !== 0) {
+        await status_update()(BL.FLUSH, null, 0, 0, NO_COLOR, null);
     }
-    $t2 = ($t1 = disp.time_botl = 0, disp.botlx = $t1), disp.botl = $t2;
-    gu.update_all = 0;
+    $t2 = ($t1 = disp.time_botl = FALSE, disp.botlx = $t1), disp.botl = $t2;
+    gu.update_all = FALSE;
 }
 export async function status_initialize(reassessment) {   // botl.c:1683
     let fld = 0, fldenabl = 0, i = 0, fieldfmt = null, fieldname = null;
@@ -904,26 +931,26 @@ export async function status_initialize(reassessment) {   // botl.c:1683
         }
         await init_blstats();
         await windowprocs.win_status_init();
-        gb.blinit = 1;
+        gb.blinit = TRUE;
     } else if (!gb.blinit) {
         await panic($c.lit("status 'reassess' before init"));
     }
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         fld = initblstats[i].fld;
-        fldenabl = $c.i8(fld === 8 /* BL_SCORE */ ? flags.showscore : fld === 16 /* BL_TIME */ ? flags.time : fld === 21 /* BL_EXP */ ? $c.i8(flags.showexp && !(u.umonnum !== u.umonster) ? 1 : 0) : fld === 13 /* BL_XP */ ? $c.i8(!(u.umonnum !== u.umonster) ? 1 : 0) : fld === 15 /* BL_HD */ ? $c.i8(u.umonnum !== u.umonster ? 1 : 0) : fld === 26 /* BL_VERS */ ? flags.showvers : fld === 23 /* BL_WEAPON */ ? flags.weaponstatus : fld === 24 /* BL_ARMOR */ ? flags.armorstatus : fld === 25 /* BL_TERRAIN */ ? flags.terrainstatus : 1);
+        fldenabl = $c.i8(fld === BL.SCORE ? flags.showscore : fld === BL.TIME ? flags.time : fld === BL.EXP ? $c.i8(flags.showexp && !Upolyd() ? 1 : 0) : fld === BL.XP ? $c.i8(!Upolyd() ? 1 : 0) : fld === BL.HD ? $c.i8(Upolyd()) : fld === BL.VERS ? flags.showvers : fld === BL.WEAPON ? flags.weaponstatus : fld === BL.ARMOR ? flags.armorstatus : fld === BL.TERRAIN ? flags.terrainstatus : TRUE);
         fieldname = initblstats[i].fldname;
-        fieldfmt = fld === 0 /* BL_TITLE */ && iflags.wc2_hitpointbar ? $c.lit("%-30.30s") : initblstats[i].fldfmt;
-        windowprocs.win_status_enablefield(fld, fieldname, fieldfmt, fldenabl);
+        fieldfmt = fld === BL.TITLE && iflags.wc2_hitpointbar ? $c.lit("%-30.30s") : initblstats[i].fldfmt;
+        status_enablefield()(fld, fieldname, fieldfmt, fldenabl);
     }
-    gu.update_all = 1;
-    disp.botlx = 1;
+    gu.update_all = TRUE;
+    disp.botlx = TRUE;
 }
 export async function status_finish() {   // botl.c:1723
     let i = 0, temp = null, next = null, $t1, $t2;
     if (windowprocs.win_status_finish) {
         await windowprocs.win_status_finish();
     }
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         if (gb.blstats[0][i].val) {
             $c.free(gb.blstats[0][i].val), gb.blstats[0][i].val = $c.asArr(null, Int8Array);
         }
@@ -947,7 +974,7 @@ async function init_blstats() {   // botl.c:1759
         return;
     }
     for (i = 0; i <= 1; i = i + 1 | 0) {
-        for (j = 0; j < 27 /* MAXBLSTATS */; j = j + 1 | 0) {
+        for (j = 0; j < MAXBLSTATS; j = j + 1 | 0) {
             keep_hilite_chain = gb.blstats[i][j].thresholds;
             gb.blstats[i][j].$copyFrom(initblstats[j]);
             gb.blstats[i][j].a.$copyFrom(cg.zeroany);
@@ -960,7 +987,7 @@ async function init_blstats() {   // botl.c:1759
             gb.blstats[i][j].thresholds = keep_hilite_chain;
         }
     }
-    init_blstats$initalready = 1;
+    init_blstats$initalready = TRUE;
 }
 async function compare_blstats(bl1, bl2) {   // botl.c:1809
     let a1 = null, a2 = null, use_rawval = 0, anytype = 0, fld = 0, result = 0;
@@ -969,45 +996,45 @@ async function compare_blstats(bl1, bl2) {   // botl.c:1809
         await panic($c.lit("compare_blstat: bad istat pointer %s, %s"), fmt_ptr(bl1), fmt_ptr(bl2));
     }
     anytype = bl1.anytype | 0;
-    if ((!bl1.a.a_void || !bl2.a.a_void) && (anytype === 11 /* ANY_IPTR */ || anytype === 12 /* ANY_UPTR */ || anytype === 13 /* ANY_LPTR */ || anytype === 14 /* ANY_ULPTR */)) {
+    if ((!bl1.a.a_void || !bl2.a.a_void) && (anytype === ANY.IPTR || anytype === ANY.UPTR || anytype === ANY.LPTR || anytype === ANY.ULPTR)) {
         await panic($c.lit("compare_blstat: invalid pointer %s, %s"), fmt_ptr(bl1.a.a_void), fmt_ptr(bl2.a.a_void));
     }
-    if (bl1.fld === 25 /* BL_TERRAIN */) {
-        anytype = 4 /* ANY_INT */;
+    if (bl1.fld === BL.TERRAIN) {
+        anytype = ANY.INT;
     }
     fld = bl1.fld;
-    use_rawval = $c.i8(fld === 18 /* BL_HP */ || fld === 19 /* BL_HPMAX */ || fld === 11 /* BL_ENE */ || fld === 12 /* BL_ENEMAX */ || fld === 10 /* BL_GOLD */ ? 1 : 0);
+    use_rawval = $c.i8(fld === BL.HP || fld === BL.HPMAX || fld === BL.ENE || fld === BL.ENEMAX || fld === BL.GOLD ? 1 : 0);
     a1 = use_rawval ? bl1.rawval : bl1.a;
     a2 = use_rawval ? bl2.rawval : bl2.a;
     switch (anytype) {
-        case 4 /* ANY_INT */:
+        case ANY.INT:
             result = a1.a_int < a2.a_int ? 1 : a1.a_int > a2.a_int ? -1 : 0;
             break;
-        case 11 /* ANY_IPTR */:
+        case ANY.IPTR:
             result = a1.a_iptr.get(0) < a2.a_iptr.get(0) ? 1 : a1.a_iptr.get(0) > a2.a_iptr.get(0) ? -1 : 0;
             break;
-        case 9 /* ANY_LONG */:
+        case ANY.LONG:
             result = a1.a_long < a2.a_long ? 1 : a1.a_long > a2.a_long ? -1 : 0;
             break;
-        case 13 /* ANY_LPTR */:
+        case ANY.LPTR:
             result = a1.a_lptr.get(0) < a2.a_lptr.get(0) ? 1 : a1.a_lptr.get(0) > a2.a_lptr.get(0) ? -1 : 0;
             break;
-        case 8 /* ANY_UINT */:
+        case ANY.UINT:
             result = a1.a_uint < a2.a_uint ? 1 : a1.a_uint > a2.a_uint ? -1 : 0;
             break;
-        case 12 /* ANY_UPTR */:
+        case ANY.UPTR:
             result = a1.a_uptr.get(0) < a2.a_uptr.get(0) ? 1 : a1.a_uptr.get(0) > a2.a_uptr.get(0) ? -1 : 0;
             break;
-        case 10 /* ANY_ULONG */:
+        case ANY.ULONG:
             result = a1.a_ulong < a2.a_ulong ? 1 : a1.a_ulong > a2.a_ulong ? -1 : 0;
             break;
-        case 14 /* ANY_ULPTR */:
+        case ANY.ULPTR:
             result = a1.a_ulptr.get(0) < a2.a_ulptr.get(0) ? 1 : a1.a_ulptr.get(0) > a2.a_ulptr.get(0) ? -1 : 0;
             break;
-        case 15 /* ANY_STR */:
+        case ANY.STR:
             result = sgn($c.strcmp(bl1.val, bl2.val));
             break;
-        case 17 /* ANY_MASK32 */:
+        case ANY.MASK32:
             result = a1.a_ulong !== a2.a_ulong ? 1 : 0;
             break;
         default:
@@ -1020,34 +1047,34 @@ function anything_to_s(buf, a, anytype) {   // botl.c:1886
         return null;
     }
     switch (anytype) {
-        case 10 /* ANY_ULONG */:
+        case ANY.ULONG:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%lu"), a.a_ulong);
             break;
-        case 17 /* ANY_MASK32 */:
+        case ANY.MASK32:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%lx"), a.a_ulong);
             break;
-        case 9 /* ANY_LONG */:
+        case ANY.LONG:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%ld"), a.a_long);
             break;
-        case 4 /* ANY_INT */:
+        case ANY.INT:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%d"), a.a_int);
             break;
-        case 8 /* ANY_UINT */:
+        case ANY.UINT:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%u"), a.a_uint);
             break;
-        case 11 /* ANY_IPTR */:
+        case ANY.IPTR:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%d"), a.a_iptr.get(0));
             break;
-        case 13 /* ANY_LPTR */:
+        case ANY.LPTR:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%ld"), a.a_lptr.get(0));
             break;
-        case 14 /* ANY_ULPTR */:
+        case ANY.ULPTR:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%lu"), a.a_ulptr.get(0));
             break;
-        case 12 /* ANY_UPTR */:
+        case ANY.UPTR:
             $c.__builtin___sprintf_chk(buf, 0, -1, $c.lit("%u"), a.a_uptr.get(0));
             break;
-        case 15 /* ANY_STR */:
+        case ANY.STR:
             break;
         default:
             buf.set(0, 0);
@@ -1060,39 +1087,39 @@ function s_to_anything(a, buf, anytype) {   // botl.c:1930
         return;
     }
     switch (anytype) {
-        case 9 /* ANY_LONG */:
+        case ANY.LONG:
             $t1 = $c.atol(buf), a.a_long = $t1;
             break;
-        case 4 /* ANY_INT */:
+        case ANY.INT:
             $t2 = $c.atoi(buf), a.a_int = $t2;
             break;
-        case 8 /* ANY_UINT */:
+        case ANY.UINT:
             $t3 = $c.atoi(buf) >>> 0, a.a_uint = $t3;
             break;
-        case 10 /* ANY_ULONG */:
+        case ANY.ULONG:
             $t4 = $c.u64($c.atol(buf)), a.a_ulong = $t4;
             break;
-        case 11 /* ANY_IPTR */:
+        case ANY.IPTR:
             if (a.a_iptr) {
                 $t5 = $c.atoi(buf), a.a_iptr.set(0, $t5);
             }
             break;
-        case 12 /* ANY_UPTR */:
+        case ANY.UPTR:
             if (a.a_uptr) {
                 $t6 = $c.atoi(buf) >>> 0, a.a_uptr.set(0, $t6);
             }
             break;
-        case 13 /* ANY_LPTR */:
+        case ANY.LPTR:
             if (a.a_lptr) {
                 $t7 = $c.atol(buf), a.a_lptr.set(0, $t7);
             }
             break;
-        case 14 /* ANY_ULPTR */:
+        case ANY.ULPTR:
             if (a.a_ulptr) {
                 $t8 = $c.u64($c.atol(buf)), a.a_ulptr.set(0, $t8);
             }
             break;
-        case 17 /* ANY_MASK32 */:
+        case ANY.MASK32:
             $t9 = $c.u64($c.atol(buf)), a.a_ulong = $t9;
             break;
         default:
@@ -1109,41 +1136,41 @@ async function percentage(bl, maxbl) {   // botl.c:1977
         return 0;
     }
     fld = bl.fld;
-    use_rawval = $c.i8(fld === 18 /* BL_HP */ || fld === 11 /* BL_ENE */ ? 1 : 0);
+    use_rawval = $c.i8(fld === BL.HP || fld === BL.ENE ? 1 : 0);
     ival = 0, lval = 0, uval = 0, ulval = 0;
     anytype = bl.anytype | 0;
     if (maxbl.a.a_void) {
         switch (anytype) {
-            case 4 /* ANY_INT */:
+            case ANY.INT:
                 ival = use_rawval ? bl.rawval.a_int : bl.a.a_int;
                 mval = use_rawval ? maxbl.rawval.a_int : maxbl.a.a_int;
                 result = $c.div32(Math.imul(100, ival), mval);
                 break;
-            case 9 /* ANY_LONG */:
+            case ANY.LONG:
                 lval = bl.a.a_long;
                 result = $c.i32($c.div64($c.mul64(100, lval), maxbl.a.a_long));
                 break;
-            case 8 /* ANY_UINT */:
+            case ANY.UINT:
                 uval = bl.a.a_uint;
                 result = $c.divu32(Math.imul(100, uval) >>> 0, maxbl.a.a_uint) | 0;
                 break;
-            case 10 /* ANY_ULONG */:
+            case ANY.ULONG:
                 ulval = bl.a.a_ulong;
                 result = $c.i32($c.divu64($c.mulu64(100, ulval), maxbl.a.a_ulong));
                 break;
-            case 11 /* ANY_IPTR */:
+            case ANY.IPTR:
                 ival = bl.a.a_iptr.get(0);
                 result = $c.div32(Math.imul(100, ival), maxbl.a.a_iptr.get(0));
                 break;
-            case 13 /* ANY_LPTR */:
+            case ANY.LPTR:
                 lval = bl.a.a_lptr.get(0);
                 result = $c.i32($c.div64($c.mul64(100, lval), maxbl.a.a_lptr.get(0)));
                 break;
-            case 12 /* ANY_UPTR */:
+            case ANY.UPTR:
                 uval = bl.a.a_uptr.get(0);
                 result = $c.divu32(Math.imul(100, uval) >>> 0, maxbl.a.a_uptr.get(0)) | 0;
                 break;
-            case 14 /* ANY_ULPTR */:
+            case ANY.ULPTR:
                 ulval = bl.a.a_ulptr.get(0);
                 result = $c.i32($c.divu64($c.mulu64(100, ulval), maxbl.a.a_ulptr.get(0)));
                 break;
@@ -1164,11 +1191,11 @@ async function exp_percentage() {   // botl.c:2052
         if (exp_val === $c.sub64(nxt_exp_val, 1)) {
             res = 100;
         } else {
-            $t1 = maxval.anytype = 9, curval.anytype = $t1;
+            $t1 = maxval.anytype = ANY.LONG, curval.anytype = $t1;
             curval.a.$copyFrom(maxval.a.$copyFrom(cg.zeroany));
             curval.a.a_long = exp_val;
             maxval.a.a_long = nxt_exp_val;
-            $t2 = maxval.fld = 21, curval.fld = $t2;
+            $t2 = maxval.fld = BL.EXP, curval.fld = $t2;
             res = await percentage(curval, maxval);
         }
     }
@@ -1177,30 +1204,30 @@ async function exp_percentage() {   // botl.c:2052
 export async function exp_percent_changing() {   // botl.c:2090
     let pc = 0, a = new $T.any(), color_dummy = Int32Array.of(0), rule = null, curr = null;
     if (!disp.botl) {
-        curr = $c.relem(gb.blstats[gn.now_or_before_idx], 13 /* BL_XP */);
+        curr = $c.relem(gb.blstats[gn.now_or_before_idx], BL.XP);
         if (curr.percent_matters && curr.thresholds && (pc = await exp_percentage()) !== curr.percent_value) {
             a.$copyFrom(cg.zeroany);
             a.a_int = u.ulevel;
-            rule = get_hilite(gn.now_or_before_idx, 13 /* BL_XP */, a, 0, pc, new $c.Ptr(color_dummy, 0));
+            rule = get_hilite(gn.now_or_before_idx, BL.XP, a, 0, pc, new $c.Ptr(color_dummy, 0));
             if (!$c.peq(rule, curr.hilite_rule)) {
-                return 1;
+                return TRUE;
             }
         }
     }
-    return 0;
+    return FALSE;
 }
 export function stat_cap_indx() {   // botl.c:2131
     let cap = 0;
-    cap = gb.blstats[gn.now_or_before_idx][9 /* BL_CAP */].a.a_int;
+    cap = gb.blstats[gn.now_or_before_idx][BL.CAP].a.a_int;
     return cap;
 }
 export function stat_hunger_indx() {   // botl.c:2146
     let uhs = 0;
-    uhs = gb.blstats[gn.now_or_before_idx][17 /* BL_HUNGER */].a.a_int;
+    uhs = gb.blstats[gn.now_or_before_idx][BL.HUNGER].a.a_int;
     return uhs;
 }
 export function bl_idx_to_fldname(idx) {   // botl.c:2160
-    if (idx >= 0 && idx < 27 /* MAXBLSTATS */) {
+    if (idx >= 0 && idx < MAXBLSTATS) {
         return initblstats[idx].fldname;
     }
     return null;
@@ -1219,14 +1246,14 @@ function fldname_to_bl_indx(name) {   // botl.c:2221
     fld = 0;
     if (name && name.get(0)) {
         for (i = 0; i < 27; i = i + 1 | 0) {
-            if (fuzzymatch(initblstats[i].fldname, name, $c.lit(" -_"), 1)) {
+            if (fuzzymatch(initblstats[i].fldname, name, $c.lit(" -_"), TRUE)) {
                 fld = initblstats[i].fld;
                 nmatches = nmatches + 1 | 0;
             }
         }
         if (!nmatches) {
             for (i = 0; fieldids_alias[i].fieldname; i = i + 1 | 0) {
-                if (fuzzymatch(fieldids_alias[i].fieldname, name, $c.lit(" -_"), 1)) {
+                if (fuzzymatch(fieldids_alias[i].fieldname, name, $c.lit(" -_"), TRUE)) {
                     fld = fieldids_alias[i].fldid;
                     nmatches = nmatches + 1 | 0;
                 }
@@ -1242,36 +1269,36 @@ function fldname_to_bl_indx(name) {   // botl.c:2221
             }
         }
     }
-    return nmatches === 1 ? fld : -1 /* BL_FLUSH */;
+    return nmatches === 1 ? fld : BL.FLUSH;
 }
 function hilite_reset_needed(bl_p, augmented_time) {   // botl.c:2257
     if (gm.multi) {
-        return 0;
+        return FALSE;
     }
-    if (!(bl_p.hilite_rule && bl_p.hilite_rule.behavior === 102)) {
-        return 0;
+    if (!Is_Temp_Hilite(bl_p.hilite_rule)) {
+        return FALSE;
     }
     if (bl_p.time === 0 || bl_p.time >= augmented_time) {
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 export function status_eval_next_unhilite() {   // botl.c:2279
     let i = 0, curr = null, next_unhilite = 0, this_unhilite = 0, prev = null, $t1;
     gb.bl_hilite_moves = svm.moves;
     next_unhilite = 0;
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         curr = $c.relem(gb.blstats[0], i);
         if (curr.chg) {
             prev = $c.relem(gb.blstats[1], i);
-            if (curr.hilite_rule && curr.hilite_rule.behavior === 102) {
+            if (Is_Temp_Hilite(curr.hilite_rule)) {
                 curr.time = $c.add64(gb.bl_hilite_moves, iflags.hilite_delta);
             } else {
                 curr.time = 0;
             }
             prev.time = curr.time;
-            $t1 = prev.chg = 0, curr.chg = $t1;
-            disp.botl = 1;
+            $t1 = prev.chg = FALSE, curr.chg = $t1;
+            disp.botl = TRUE;
         }
         if (disp.botl) {
             continue;
@@ -1280,7 +1307,7 @@ export function status_eval_next_unhilite() {   // botl.c:2279
         if (this_unhilite > 0 && (next_unhilite === 0 || this_unhilite < next_unhilite) && hilite_reset_needed(curr, $c.add64(this_unhilite, 1))) {
             next_unhilite = this_unhilite;
             if (next_unhilite < gb.bl_hilite_moves) {
-                disp.botl = 1;
+                disp.botl = TRUE;
             }
         }
     }
@@ -1288,168 +1315,168 @@ export function status_eval_next_unhilite() {   // botl.c:2279
 export function reset_status_hilites() {   // botl.c:2321
     let i = 0, $t1;
     if (iflags.hilite_delta) {
-        for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+        for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
             $t1 = gb.blstats[1][i].time = 0, gb.blstats[0][i].time = $t1;
         }
-        gu.update_all = 1;
+        gu.update_all = TRUE;
     }
-    disp.botlx = 1;
+    disp.botlx = TRUE;
 }
 function noneoftheabove(hl_text) {   // botl.c:2336
-    if (fuzzymatch(hl_text, $c.lit("none of the above"), $c.lit("\" -_"), 1) || fuzzymatch(hl_text, $c.lit("(polymorphed)"), $c.lit("\"()"), 1) || fuzzymatch(hl_text, $c.lit("none of the above (polymorphed)"), $c.lit("\" -_()"), 1)) {
-        return 1;
+    if (fuzzymatch(hl_text, $c.lit("none of the above"), $c.lit("\" -_"), TRUE) || fuzzymatch(hl_text, $c.lit("(polymorphed)"), $c.lit("\"()"), TRUE) || fuzzymatch(hl_text, $c.lit("none of the above (polymorphed)"), $c.lit("\" -_()"), TRUE)) {
+        return TRUE;
     }
-    return 0;
+    return FALSE;
 }
 function get_hilite(idx, fldidx, vp, chg, pc, colorptr) {   // botl.c:2364
     let hl = null, rule = null, value = null, txtstr = null, dt = 0, max_pc = 0, min_pc = 0, max_ival = 0, min_ival = 0, max_lval = 0, min_lval = 0, exactmatch = 0, updown = 0, changed = 0, perc_or_abs = 0, crit_hp = 0;
     rule = null;
     value = $c.asRec(vp, $T.any, 8);
-    if (fldidx < 0 || fldidx >= 27 /* MAXBLSTATS */) {
+    if (fldidx < 0 || fldidx >= MAXBLSTATS) {
         return null;
     }
-    if (gb.blstats[0][fldidx].thresholds) {
+    if (has_hilite(fldidx)) {
         max_pc = -1;
         min_pc = 101;
-        max_ival = -32767;
-        min_ival = 32767;
+        max_ival = -LARGEST_INT;
+        min_ival = LARGEST_INT;
         max_lval = -9223372036854775807n;
         min_lval = 9223372036854775807n;
-        exactmatch = 0;
-        updown = 0;
-        changed = 0;
-        perc_or_abs = 0;
-        crit_hp = 0;
+        exactmatch = FALSE;
+        updown = FALSE;
+        changed = FALSE;
+        perc_or_abs = FALSE;
+        crit_hp = FALSE;
         for (hl = gb.blstats[0][fldidx].thresholds; hl; hl = hl.next) {
             dt = initblstats[fldidx].anytype | 0;
-            if (crit_hp && hl.behavior !== 106) {
+            if (crit_hp && hl.behavior !== BL_TH.CRITICALHP) {
                 continue;
             }
-            if ((updown || changed) && hl.behavior !== 102) {
+            if ((updown || changed) && hl.behavior !== BL_TH.UPDOWN) {
                 continue;
             }
-            if (perc_or_abs && hl.behavior === 105) {
+            if (perc_or_abs && hl.behavior === BL_TH.ALWAYS_HILITE) {
                 continue;
             }
             switch (hl.behavior) {
-                case 100:
-                    if (hl.rel === 0 /* EQ_VALUE */ && pc === hl.value.a_int) {
+                case BL_TH.VAL_PERCENTAGE:
+                    if (hl.rel === EQ_VALUE && pc === hl.value.a_int) {
                         rule = hl;
                         min_pc = max_pc = hl.value.a_int;
-                        exactmatch = perc_or_abs = 1;
+                        exactmatch = perc_or_abs = TRUE;
                     } else if (exactmatch) {
-                    } else if (hl.rel === 1 /* LT_VALUE */ && pc < hl.value.a_int && hl.value.a_int <= min_pc) {
+                    } else if (hl.rel === LT_VALUE && pc < hl.value.a_int && hl.value.a_int <= min_pc) {
                         rule = hl;
                         min_pc = hl.value.a_int;
-                        perc_or_abs = 1;
-                    } else if (hl.rel === 2 /* LE_VALUE */ && pc <= hl.value.a_int && hl.value.a_int <= min_pc) {
+                        perc_or_abs = TRUE;
+                    } else if (hl.rel === LE_VALUE && pc <= hl.value.a_int && hl.value.a_int <= min_pc) {
                         rule = hl;
                         min_pc = hl.value.a_int;
-                        perc_or_abs = 1;
-                    } else if (hl.rel === 4 /* GT_VALUE */ && pc > hl.value.a_int && hl.value.a_int >= max_pc) {
+                        perc_or_abs = TRUE;
+                    } else if (hl.rel === GT_VALUE && pc > hl.value.a_int && hl.value.a_int >= max_pc) {
                         rule = hl;
                         max_pc = hl.value.a_int;
-                        perc_or_abs = 1;
-                    } else if (hl.rel === 3 /* GE_VALUE */ && pc >= hl.value.a_int && hl.value.a_int >= max_pc) {
+                        perc_or_abs = TRUE;
+                    } else if (hl.rel === GE_VALUE && pc >= hl.value.a_int && hl.value.a_int >= max_pc) {
                         rule = hl;
                         max_pc = hl.value.a_int;
-                        perc_or_abs = 1;
+                        perc_or_abs = TRUE;
                     }
                     break;
-                case 102:
-                    if (chg < 0 && hl.rel === 1 /* LT_VALUE */) {
+                case BL_TH.UPDOWN:
+                    if (chg < 0 && hl.rel === LT_VALUE) {
                         rule = hl;
-                        updown = 1;
-                    } else if (chg > 0 && hl.rel === 4 /* GT_VALUE */) {
+                        updown = TRUE;
+                    } else if (chg > 0 && hl.rel === GT_VALUE) {
                         rule = hl;
-                        updown = 1;
-                    } else if (chg !== 0 && hl.rel === 0 /* EQ_VALUE */ && !updown) {
+                        updown = TRUE;
+                    } else if (chg !== 0 && hl.rel === EQ_VALUE && !updown) {
                         rule = hl;
-                        changed = 1;
+                        changed = TRUE;
                     }
                     break;
-                case 101:
-                    if (dt === 4 /* ANY_INT */) {
-                        if (hl.rel === 0 /* EQ_VALUE */ && hl.value.a_int === value.a_int) {
+                case BL_TH.VAL_ABSOLUTE:
+                    if (dt === ANY.INT) {
+                        if (hl.rel === EQ_VALUE && hl.value.a_int === value.a_int) {
                             rule = hl;
                             min_ival = max_ival = hl.value.a_int;
-                            exactmatch = perc_or_abs = 1;
+                            exactmatch = perc_or_abs = TRUE;
                         } else if (exactmatch) {
-                        } else if (hl.rel === 1 /* LT_VALUE */ && value.a_int < hl.value.a_int && hl.value.a_int <= min_ival) {
+                        } else if (hl.rel === LT_VALUE && value.a_int < hl.value.a_int && hl.value.a_int <= min_ival) {
                             rule = hl;
                             min_ival = hl.value.a_int;
-                            perc_or_abs = 1;
-                        } else if (hl.rel === 2 /* LE_VALUE */ && value.a_int <= hl.value.a_int && hl.value.a_int <= min_ival) {
+                            perc_or_abs = TRUE;
+                        } else if (hl.rel === LE_VALUE && value.a_int <= hl.value.a_int && hl.value.a_int <= min_ival) {
                             rule = hl;
                             min_ival = hl.value.a_int;
-                            perc_or_abs = 1;
-                        } else if (hl.rel === 4 /* GT_VALUE */ && value.a_int > hl.value.a_int && hl.value.a_int >= max_ival) {
+                            perc_or_abs = TRUE;
+                        } else if (hl.rel === GT_VALUE && value.a_int > hl.value.a_int && hl.value.a_int >= max_ival) {
                             rule = hl;
                             max_ival = hl.value.a_int;
-                            perc_or_abs = 1;
-                        } else if (hl.rel === 3 /* GE_VALUE */ && value.a_int >= hl.value.a_int && hl.value.a_int >= max_ival) {
+                            perc_or_abs = TRUE;
+                        } else if (hl.rel === GE_VALUE && value.a_int >= hl.value.a_int && hl.value.a_int >= max_ival) {
                             rule = hl;
                             max_ival = hl.value.a_int;
-                            perc_or_abs = 1;
+                            perc_or_abs = TRUE;
                         }
                     } else {
-                        if (hl.rel === 0 /* EQ_VALUE */ && hl.value.a_long === value.a_long) {
+                        if (hl.rel === EQ_VALUE && hl.value.a_long === value.a_long) {
                             rule = hl;
                             min_lval = max_lval = hl.value.a_long;
-                            exactmatch = perc_or_abs = 1;
+                            exactmatch = perc_or_abs = TRUE;
                         } else if (exactmatch) {
-                        } else if (hl.rel === 1 /* LT_VALUE */ && value.a_long < hl.value.a_long && hl.value.a_long <= min_lval) {
+                        } else if (hl.rel === LT_VALUE && value.a_long < hl.value.a_long && hl.value.a_long <= min_lval) {
                             rule = hl;
                             min_lval = hl.value.a_long;
-                            perc_or_abs = 1;
-                        } else if (hl.rel === 2 /* LE_VALUE */ && value.a_long <= hl.value.a_long && hl.value.a_long <= min_lval) {
+                            perc_or_abs = TRUE;
+                        } else if (hl.rel === LE_VALUE && value.a_long <= hl.value.a_long && hl.value.a_long <= min_lval) {
                             rule = hl;
                             min_lval = hl.value.a_long;
-                            perc_or_abs = 1;
-                        } else if (hl.rel === 4 /* GT_VALUE */ && value.a_long > hl.value.a_long && hl.value.a_long >= max_lval) {
+                            perc_or_abs = TRUE;
+                        } else if (hl.rel === GT_VALUE && value.a_long > hl.value.a_long && hl.value.a_long >= max_lval) {
                             rule = hl;
                             max_lval = hl.value.a_long;
-                            perc_or_abs = 1;
-                        } else if (hl.rel === 3 /* GE_VALUE */ && value.a_long >= hl.value.a_long && hl.value.a_long >= max_lval) {
+                            perc_or_abs = TRUE;
+                        } else if (hl.rel === GE_VALUE && value.a_long >= hl.value.a_long && hl.value.a_long >= max_lval) {
                             rule = hl;
                             max_lval = hl.value.a_long;
-                            perc_or_abs = 1;
+                            perc_or_abs = TRUE;
                         }
                     }
                     break;
-                case 104:
+                case BL_TH.TEXTMATCH:
                     txtstr = gb.blstats[idx][fldidx].val;
-                    if (fldidx === 0 /* BL_TITLE */) {
+                    if (fldidx === BL.TITLE) {
                         txtstr = txtstr.add($c.idx($c.subu64($c.addu64($c.strlen(new $c.Ptr(svp.plname, 0)), 6), 1)));
                     }
-                    if (hl.rel === 5 /* TXT_VALUE */ && hl.textmatch[0]) {
-                        if (fuzzymatch(new $c.Ptr(hl.textmatch, 0), txtstr, $c.lit("\" -_"), 1)) {
+                    if (hl.rel === TXT_VALUE && hl.textmatch[0]) {
+                        if (fuzzymatch(new $c.Ptr(hl.textmatch, 0), txtstr, $c.lit("\" -_"), TRUE)) {
                             rule = hl;
-                            exactmatch = 1;
+                            exactmatch = TRUE;
                         } else if (exactmatch) {
-                        } else if (fldidx === 0 /* BL_TITLE */ && u.umonnum !== u.umonster && noneoftheabove(new $c.Ptr(hl.textmatch, 0))) {
+                        } else if (fldidx === BL.TITLE && Upolyd() && noneoftheabove(new $c.Ptr(hl.textmatch, 0))) {
                             rule = hl;
                         }
                     }
                     break;
-                case 105:
+                case BL_TH.ALWAYS_HILITE:
                     rule = hl;
                     break;
-                case 106:
-                    if (fldidx === 18 /* BL_HP */ && critically_low_hp(0)) {
+                case BL_TH.CRITICALHP:
+                    if (fldidx === BL.HP && critically_low_hp(FALSE)) {
                         rule = hl;
-                        crit_hp = 1;
-                        updown = changed = perc_or_abs = 0;
+                        crit_hp = TRUE;
+                        updown = changed = perc_or_abs = FALSE;
                     }
                     break;
-                case 0:
+                case BL_TH.NONE:
                     break;
                 default:
                     break;
             }
         }
     }
-    colorptr.set(0, rule ? rule.coloridx : 8);
+    colorptr.set(0, rule ? rule.coloridx : NO_COLOR);
     return rule;
 }
 function split_clridx(idx, coloridx, attrib) {   // botl.c:2576
@@ -1462,13 +1489,13 @@ function split_clridx(idx, coloridx, attrib) {   // botl.c:2576
 }
 export async function parse_status_hl1(op, from_configfile) {   // botl.c:2593
     let hsbuf = $c.matrix(Int8Array, [21, 128]), rslt = 0, badopt = 0, i = 0, fldnum = 0, ccount = 0, c = 0, $t1, $t2;
-    badopt = 0;
+    badopt = FALSE;
     ccount = 0;
     fldnum = 0;
-    for (i = 0; i < 21; i = i + 1 | 0) {
+    for (i = 0; i < MAX_THRESH; i = i + 1 | 0) {
         hsbuf[i][0] = 0;
     }
-    while (op.get(0) && fldnum < 21 && ccount < 126) {
+    while (op.get(0) && fldnum < MAX_THRESH && ccount < QBUFSZ - 2) {
         c = lowc(op.get(0));
         if (c === 32) {
             if (fldnum >= 1) {
@@ -1480,11 +1507,11 @@ export async function parse_status_hl1(op, from_configfile) {   // botl.c:2593
                 }
                 rslt = await parse_status_hl2(new $c.Ptr(hsbuf, 0), from_configfile);
                 if (!rslt) {
-                    badopt = 1;
+                    badopt = TRUE;
                     break;
                 }
             }
-            for (i = 0; i < 21; i = i + 1 | 0) {
+            for (i = 0; i < MAX_THRESH; i = i + 1 | 0) {
                 hsbuf[i][0] = 0;
             }
             fldnum = 0;
@@ -1501,16 +1528,16 @@ export async function parse_status_hl1(op, from_configfile) {   // botl.c:2593
     if (fldnum >= 1 && !badopt) {
         rslt = await parse_status_hl2(new $c.Ptr(hsbuf, 0), from_configfile);
         if (!rslt) {
-            badopt = 1;
+            badopt = TRUE;
         }
     }
     if (badopt) {
-        return 0;
+        return FALSE;
     }
     if (!iflags.hilite_delta) {
         iflags.hilite_delta = 3;
     }
-    return 1;
+    return TRUE;
 }
 function is_ltgt_percentnumber(str) {   // botl.c:2652
     let s = null;
@@ -1525,7 +1552,7 @@ function is_ltgt_percentnumber(str) {   // botl.c:2652
         s = s.add(1);
     }
     if (!digit(s.get(0))) {
-        return 0;
+        return FALSE;
     }
     while (digit(s.get(0))) {
         s = s.add(1);
@@ -1540,11 +1567,11 @@ function has_ltgt_percentnumber(str) {   // botl.c:2673
     s = str;
     while (s.get(0)) {
         if (!$c.strchr($c.lit("<>=-+0123456789%"), s.get(0))) {
-            return 0;
+            return FALSE;
         }
         s = s.add(1);
     }
-    return 1;
+    return TRUE;
 }
 function splitsubfields(str, sfarr, maxsf) {   // botl.c:2688
     let st = null, sf = 0, c = null, $t1;
@@ -1553,10 +1580,10 @@ function splitsubfields(str, sfarr, maxsf) {   // botl.c:2688
     if (!str) {
         return 0;
     }
-    for (sf = 0; sf < 16; sf = sf + 1 | 0) {
+    for (sf = 0; sf < MAX_SUBFIELDS; sf = sf + 1 | 0) {
         splitsubfields$subfields[sf] = null;
     }
-    maxsf = maxsf === 0 ? 16 : maxsf < 16 ? maxsf : 16;
+    maxsf = maxsf === 0 ? MAX_SUBFIELDS : maxsf < MAX_SUBFIELDS ? maxsf : MAX_SUBFIELDS;
     if ($c.strchr(str, 43) || $c.strchr(str, 38)) {
         c = str;
         sf = 0;
@@ -1588,30 +1615,30 @@ function is_fld_arrayvalues(str, arr, arrmin, arrmax, retidx) {   // botl.c:2730
     for (i = arrmin; i < arrmax; i = i + 1 | 0) {
         if (!strncmpi(str, arr.get(i), -1)) {
             retidx.set(0, i);
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 async function query_arrayvalue(querystr, arr, arrmin, arrmax) {   // botl.c:2747
     let i = 0, res = 0, ret = 0, tmpwin = 0, any = new $T.any(), picks = [null], adj = 0, clr = 0;
     ret = arrmin - 1 | 0;
     picks[0] = null;
     adj = arrmin > 0 ? 1 : arrmax;
-    clr = 8;
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(tmpwin, 0);
+    clr = NO_COLOR;
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     for (i = arrmin; i < arrmax; i = i + 1 | 0) {
         if (!arr.get(i)) {
             continue;
         }
         any.$copyFrom(cg.zeroany);
         any.a_int = i + adj | 0;
-        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, arr.get(i), 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, arr.get(i), MENU.ITEMFLAGS_NONE);
     }
-    await windowprocs.win_end_menu(tmpwin, querystr);
-    res = await select_menu(tmpwin, 1, new $c.Ptr(picks, 0));
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await end_menu()(tmpwin, querystr);
+    res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
+    await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         ret = picks[0].item.a_int - adj | 0;
         $c.free(picks[0]);
@@ -1625,7 +1652,7 @@ async function status_hilite_add_threshold(fld, hilite) {   // botl.c:2784
     }
     new_hilite = $c.asRec(await alloc(128), $T.hilite_s, 128);
     new_hilite.$copyFrom(hilite);
-    new_hilite.set = 1;
+    new_hilite.set = TRUE;
     new_hilite.fld = fld;
     new_hilite.next = null;
     if (!gb.blstats[0][fld].thresholds) {
@@ -1642,194 +1669,194 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
     let tmp = null, how = null, sidx = 0, i = 0, dt = 0, coloridx = 0, successes = 0, disp_attrib = 0, percent = 0, changed = 0, numeric = 0, down = 0, up = 0, grt = 0, lt = 0, gte = 0, le = 0, eq = 0, txtval = 0, always = 0, criticalhp = 0, txt = null, fld = 0, hilite = new $T.hilite_s(), tmpbuf = new Int8Array(256), res = 0, buf = new Int8Array(256), subfields = [null], sf = 0, kidx = Int32Array.of(0), op = null, a = 0, c = 0;
     sidx = 0;
     i = -1;
-    dt = 18 /* ANY_INVALID */;
+    dt = ANY.INVALID;
     coloridx = -1;
     successes = 0;
     disp_attrib = 0;
-    fld = -1;
+    fld = BL.FLUSH;
     fld = fldname_to_bl_indx(new $c.Ptr(s.get(sidx), 0));
-    if (fld === -3 /* BL_CHARACTERISTICS */) {
-        res = 0;
-        for (fld = 1; fld <= 6 /* BL_CH */; fld = fld + 1 | 0) {
+    if (fld === BL.CHARACTERISTICS) {
+        res = FALSE;
+        for (fld = BL.STR; fld <= BL.CH; fld = fld + 1 | 0) {
             $c.__builtin___strcpy_chk(new $c.Ptr(s.get(sidx), 0), initblstats[fld].fldname, -1);
             res = await parse_status_hl2(s, from_configfile);
             if (!res) {
-                return 0;
+                return FALSE;
             }
         }
-        return 1;
+        return TRUE;
     }
-    if (fld === -1 /* BL_FLUSH */) {
+    if (fld === BL.FLUSH) {
         await config_error_add($c.lit("Unknown status field '%s'"), new $c.Ptr(s.get(sidx), 0));
-        return 0;
+        return FALSE;
     }
-    if (fld === 22 /* BL_CONDITION */) {
+    if (fld === BL.CONDITION) {
         return await parse_condition(s, sidx);
     }
     sidx = sidx + 1 | 0;
     while (s.get(sidx)[0]) {
         sf = 0;
         txt = null;
-        percent = numeric = always = 0;
-        down = up = changed = 0;
-        criticalhp = 0;
-        grt = gte = eq = le = lt = txtval = 0;
+        percent = numeric = always = FALSE;
+        down = up = changed = FALSE;
+        criticalhp = FALSE;
+        grt = gte = eq = le = lt = txtval = FALSE;
         $c.__builtin___memset_chk(hilite, 0, 128, 128);
-        hilite.set = 0;
+        hilite.set = FALSE;
         hilite.fld = fld;
         if (new $c.Ptr(s.get(sidx + 1 | 0), 0).get(0) === 0 || !strncmpi(new $c.Ptr(s.get(sidx), 0), $c.lit("always"), -1)) {
-            always = 1;
+            always = TRUE;
             if (new $c.Ptr(s.get(sidx + 1 | 0), 0).get(0) === 0) {
                 sidx = sidx - 1 | 0;
             }
         } else if (!strncmpi(new $c.Ptr(s.get(sidx), 0), $c.lit("up"), -1) || !strncmpi(new $c.Ptr(s.get(sidx), 0), $c.lit("down"), -1)) {
-            if (initblstats[fld].anytype === 15) {
+            if (initblstats[fld].anytype === ANY.STR) {
             } else if (!strncmpi(new $c.Ptr(s.get(sidx), 0), $c.lit("down"), -1)) {
-                down = 1;
+                down = TRUE;
             } else {
-                up = 1;
+                up = TRUE;
             }
-            changed = 1;
-        } else if (fld === 9 /* BL_CAP */ && is_fld_arrayvalues(new $c.Ptr(s.get(sidx), 0), new $c.Ptr(enc_stat, 0), 1 /* SLT_ENCUMBER */, 6, new $c.Ptr(kidx, 0))) {
+            changed = TRUE;
+        } else if (fld === BL.CAP && is_fld_arrayvalues(new $c.Ptr(s.get(sidx), 0), new $c.Ptr(enc_stat, 0), SLT_ENCUMBER, OVERLOADED + 1, new $c.Ptr(kidx, 0))) {
             txt = enc_stat[kidx[0]];
-            txtval = 1;
-        } else if (fld === 7 /* BL_ALIGN */ && is_fld_arrayvalues(new $c.Ptr(s.get(sidx), 0), new $c.Ptr(parse_status_hl2$aligntxt, 0), 0, 3, new $c.Ptr(kidx, 0))) {
+            txtval = TRUE;
+        } else if (fld === BL.ALIGN && is_fld_arrayvalues(new $c.Ptr(s.get(sidx), 0), new $c.Ptr(parse_status_hl2$aligntxt, 0), 0, 3, new $c.Ptr(kidx, 0))) {
             txt = parse_status_hl2$aligntxt[kidx[0]];
-            txtval = 1;
-        } else if (fld === 17 /* BL_HUNGER */ && is_fld_arrayvalues(new $c.Ptr(s.get(sidx), 0), new $c.Ptr(parse_status_hl2$hutxt, 0), 0 /* SATIATED */, 7, new $c.Ptr(kidx, 0))) {
+            txtval = TRUE;
+        } else if (fld === BL.HUNGER && is_fld_arrayvalues(new $c.Ptr(s.get(sidx), 0), new $c.Ptr(parse_status_hl2$hutxt, 0), SATIATED, STARVED + 1, new $c.Ptr(kidx, 0))) {
             txt = hu_stat[kidx[0]];
-            txtval = 1;
+            txtval = TRUE;
         } else if (!strncmpi(new $c.Ptr(s.get(sidx), 0), $c.lit("changed"), -1)) {
-            changed = 1;
-        } else if (fld === 18 /* BL_HP */ && !strncmpi(new $c.Ptr(s.get(sidx), 0), $c.lit("criticalhp"), -1)) {
-            criticalhp = 1;
+            changed = TRUE;
+        } else if (fld === BL.HP && !strncmpi(new $c.Ptr(s.get(sidx), 0), $c.lit("criticalhp"), -1)) {
+            criticalhp = TRUE;
         } else if (is_ltgt_percentnumber(new $c.Ptr(s.get(sidx), 0))) {
             tmp = new $c.Ptr(s.get(sidx), 0);
             if ($c.strchr(tmp, 37)) {
-                percent = 1;
+                percent = TRUE;
             }
             if (tmp.get(0) === 60) {
                 if (tmp.get(1) === 61) {
-                    le = 1;
+                    le = TRUE;
                 } else {
-                    lt = 1;
+                    lt = TRUE;
                 }
             } else if (tmp.get(0) === 62) {
                 if (tmp.get(1) === 61) {
-                    gte = 1;
+                    gte = TRUE;
                 } else {
-                    grt = 1;
+                    grt = TRUE;
                 }
             }
             tmp = stripchars(new $c.Ptr(tmpbuf, 0), $c.lit("%<>=+"), tmp);
-            numeric = 1;
-            dt = (percent ? 4 : initblstats[fld].anytype) | 0;
+            numeric = TRUE;
+            dt = (percent ? ANY.INT : initblstats[fld].anytype) | 0;
             s_to_anything(hilite.value, tmp, dt);
             op = grt ? $c.lit(">") : gte ? $c.lit(">=") : lt ? $c.lit("<") : le ? $c.lit("<=") : $c.lit("=");
-            if (dt === 4 /* ANY_INT */ && (hilite.value.a_int < (fld === 14 /* BL_AC */ ? -128 : grt ? -1 : lt ? 1 : 0) || hilite.value.a_int > (percent ? lt ? 101 : 100 : 32767))) {
+            if (dt === ANY.INT && (hilite.value.a_int < (fld === BL.AC ? -128 : grt ? -1 : lt ? 1 : 0) || hilite.value.a_int > (percent ? lt ? 101 : 100 : LARGEST_INT))) {
                 await config_error_add($c.lit("%s'%s%d%s'%s"), new $c.Ptr(threshold_value, 0), op, hilite.value.a_int, percent ? $c.lit("%") : $c.lit(""), new $c.Ptr(is_out_of_range, 0));
-                return 0;
-            } else if (dt === 9 /* ANY_LONG */ && hilite.value.a_long < (grt ? -1 : lt ? 1 : 0)) {
+                return FALSE;
+            } else if (dt === ANY.LONG && hilite.value.a_long < (grt ? -1 : lt ? 1 : 0)) {
                 await config_error_add($c.lit("%s'%s%ld'%s"), new $c.Ptr(threshold_value, 0), op, hilite.value.a_long, new $c.Ptr(is_out_of_range, 0));
-                return 0;
+                return FALSE;
             }
-        } else if (initblstats[fld].anytype === 15) {
+        } else if (initblstats[fld].anytype === ANY.STR) {
             txt = new $c.Ptr(s.get(sidx), 0);
-            txtval = 1;
+            txtval = TRUE;
         } else {
             await config_error_add(has_ltgt_percentnumber(new $c.Ptr(s.get(sidx), 0)) ? $c.lit("Wrong format '%s', expected a threshold number or percent") : $c.lit("Unknown behavior '%s'"), new $c.Ptr(s.get(sidx), 0));
-            return 0;
+            return FALSE;
         }
         if (grt || up) {
-            hilite.rel = 4;
+            hilite.rel = GT_VALUE;
         } else if (lt || down) {
-            hilite.rel = 1;
+            hilite.rel = LT_VALUE;
         } else if (gte) {
-            hilite.rel = 3;
+            hilite.rel = GE_VALUE;
         } else if (le) {
-            hilite.rel = 2;
+            hilite.rel = LE_VALUE;
         } else if (eq || percent || numeric || changed) {
-            hilite.rel = 0;
+            hilite.rel = EQ_VALUE;
         } else if (txtval) {
-            hilite.rel = 5;
+            hilite.rel = TXT_VALUE;
         } else {
-            hilite.rel = 1;
+            hilite.rel = LT_VALUE;
         }
-        if (initblstats[fld].anytype === 15 && (percent || numeric)) {
+        if (initblstats[fld].anytype === ANY.STR && (percent || numeric)) {
             await config_error_add($c.lit("Field '%s' does not support numeric values"), initblstats[fld].fldname);
-            return 0;
+            return FALSE;
         }
         if (percent) {
             if (initblstats[fld].idxmax < 0) {
                 await config_error_add($c.lit("Cannot use percent with '%s'"), initblstats[fld].fldname);
-                return 0;
-            } else if (hilite.value.a_int < -1 || hilite.value.a_int === -1 && hilite.value.a_int !== 4 /* GT_VALUE */ || hilite.value.a_int === 0 && hilite.rel === 1 /* LT_VALUE */ || hilite.value.a_int === 100 && hilite.rel === 4 /* GT_VALUE */ || hilite.value.a_int === 101 && hilite.value.a_int !== 1 /* LT_VALUE */ || hilite.value.a_int > 101) {
-                await config_error_add($c.lit("hilite_status: invalid percentage value '%s%d%%'"), hilite.rel === 1 /* LT_VALUE */ ? $c.lit("<") : hilite.rel === 2 /* LE_VALUE */ ? $c.lit("<=") : hilite.rel === 4 /* GT_VALUE */ ? $c.lit(">") : hilite.rel === 3 /* GE_VALUE */ ? $c.lit(">=") : $c.lit("="), hilite.value.a_int);
-                return 0;
+                return FALSE;
+            } else if (hilite.value.a_int < -1 || hilite.value.a_int === -1 && hilite.value.a_int !== GT_VALUE || hilite.value.a_int === 0 && hilite.rel === LT_VALUE || hilite.value.a_int === 100 && hilite.rel === GT_VALUE || hilite.value.a_int === 101 && hilite.value.a_int !== LT_VALUE || hilite.value.a_int > 101) {
+                await config_error_add($c.lit("hilite_status: invalid percentage value '%s%d%%'"), hilite.rel === LT_VALUE ? $c.lit("<") : hilite.rel === LE_VALUE ? $c.lit("<=") : hilite.rel === GT_VALUE ? $c.lit(">") : hilite.rel === GE_VALUE ? $c.lit(">=") : $c.lit("="), hilite.value.a_int);
+                return FALSE;
             }
         }
         sidx = sidx + 1 | 0;
         how = new $c.Ptr(s.get(sidx), 0);
         if (!how) {
             if (!successes) {
-                return 0;
+                return FALSE;
             }
         }
         coloridx = -1;
         $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), how, 256);
         sf = splitsubfields(new $c.Ptr(buf, 0), new $c.Ptr(subfields, 0), 0);
         if (sf < 1) {
-            return 0;
+            return FALSE;
         }
-        disp_attrib = 0 /* HL_UNDEF */;
+        disp_attrib = HL.UNDEF;
         for (i = 0; i < sf; i = i + 1 | 0) {
-            a = await match_str2attr(subfields[0].get(i), 0);
-            if (a === 1) {
-                disp_attrib = disp_attrib | 2 /* HL_BOLD */;
-            } else if (a === 2) {
-                disp_attrib = disp_attrib | 4 /* HL_DIM */;
-            } else if (a === 3) {
-                disp_attrib = disp_attrib | 8 /* HL_ITALIC */;
-            } else if (a === 4) {
-                disp_attrib = disp_attrib | 16 /* HL_ULINE */;
-            } else if (a === 5) {
-                disp_attrib = disp_attrib | 32 /* HL_BLINK */;
-            } else if (a === 7) {
-                disp_attrib = disp_attrib | 64 /* HL_INVERSE */;
-            } else if (a === 0) {
-                disp_attrib = 1 /* HL_NONE */;
+            a = await match_str2attr(subfields[0].get(i), FALSE);
+            if (a === ATR.BOLD) {
+                disp_attrib = disp_attrib | HL.BOLD;
+            } else if (a === ATR.DIM) {
+                disp_attrib = disp_attrib | HL.DIM;
+            } else if (a === ATR.ITALIC) {
+                disp_attrib = disp_attrib | HL.ITALIC;
+            } else if (a === ATR.ULINE) {
+                disp_attrib = disp_attrib | HL.ULINE;
+            } else if (a === ATR.BLINK) {
+                disp_attrib = disp_attrib | HL.BLINK;
+            } else if (a === ATR.INVERSE) {
+                disp_attrib = disp_attrib | HL.INVERSE;
+            } else if (a === ATR.NONE) {
+                disp_attrib = HL.NONE;
             } else {
-                c = await match_str2clr(subfields[0].get(i), 0);
-                if (c >= 16 || coloridx !== -1) {
+                c = await match_str2clr(subfields[0].get(i), FALSE);
+                if (c >= CLR.MAX || coloridx !== -1) {
                     await config_error_add($c.lit("bad color '%d %d'"), c, coloridx);
-                    return 0;
+                    return FALSE;
                 }
                 coloridx = c;
             }
         }
         if (coloridx === -1) {
-            coloridx = 8;
+            coloridx = NO_COLOR;
         }
         hilite.coloridx = coloridx | disp_attrib << 8;
         if (always) {
-            hilite.behavior = 105;
+            hilite.behavior = BL_TH.ALWAYS_HILITE;
         } else if (percent) {
-            hilite.behavior = 100;
+            hilite.behavior = BL_TH.VAL_PERCENTAGE;
         } else if (changed) {
-            hilite.behavior = 102;
+            hilite.behavior = BL_TH.UPDOWN;
         } else if (numeric) {
-            hilite.behavior = 101;
+            hilite.behavior = BL_TH.VAL_ABSOLUTE;
         } else if (txtval) {
-            hilite.behavior = 104;
+            hilite.behavior = BL_TH.TEXTMATCH;
         } else if (hilite.value.a_void) {
-            hilite.behavior = 101;
+            hilite.behavior = BL_TH.VAL_ABSOLUTE;
         } else if (criticalhp) {
-            hilite.behavior = 106;
+            hilite.behavior = BL_TH.CRITICALHP;
         } else {
-            hilite.behavior = 0;
+            hilite.behavior = BL_TH.NONE;
         }
         hilite.anytype = dt >>> 0;
-        if (hilite.behavior === 104 && txt) {
+        if (hilite.behavior === BL_TH.TEXTMATCH && txt) {
             $c.__builtin___strncpy_chk(new $c.Ptr(hilite.textmatch, 0), txt, 80, 80);
             hilite.textmatch[$c.idx(79)] = 0;
             trimspaces(new $c.Ptr(hilite.textmatch, 0));
@@ -1844,17 +1871,17 @@ async function query_conditions() {   // botl.c:3109
     let i = 0, res = 0, ret = 0, tmpwin = 0, any = new $T.any(), picks = [null], clr = 0;
     ret = 0;
     picks[0] = null;
-    clr = 8;
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(tmpwin, 0);
+    clr = NO_COLOR;
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     for (i = 0; i < 30; i = i + 1 | 0) {
         any.$copyFrom(cg.zeroany);
         any.a_ulong = $c.u64(conditions[i].mask);
-        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, conditions[i].text[0], 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, conditions[i].text[0], MENU.ITEMFLAGS_NONE);
     }
-    await windowprocs.win_end_menu(tmpwin, $c.lit("Choose status conditions"));
-    res = await select_menu(tmpwin, 2, new $c.Ptr(picks, 0));
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await end_menu()(tmpwin, $c.lit("Choose status conditions"));
+    res = await select_menu(tmpwin, PICK.ANY, new $c.Ptr(picks, 0));
+    await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         for (i = 0; i < res; i = i + 1 | 0) {
             ret = $c.oru64(ret, $c.radd(picks[0], i).item.a_ulong);
@@ -1865,7 +1892,7 @@ async function query_conditions() {   // botl.c:3109
 }
 function conditionbitmask2str(ul) {   // botl.c:3141
     let i = 0, first = 0, alias = null;
-    first = 1;
+    first = TRUE;
     alias = null;
     conditionbitmask2str$buf[0] = 0;
     if (!ul) {
@@ -1879,7 +1906,7 @@ function conditionbitmask2str(ul) {   // botl.c:3141
     for (i = 0; i < 30; i = i + 1 | 0) {
         if ($c.andu64($c.u64(conditions[i].mask), ul) !== 0) {
             $c.__builtin___sprintf_chk(eos(new $c.Ptr(conditionbitmask2str$buf, 0)), 0, -1, $c.lit("%s%s"), first ? $c.lit("") : $c.lit("+"), conditions[i].text[0]);
-            first = 0;
+            first = FALSE;
         }
     }
     if (!first && alias) {
@@ -1893,14 +1920,14 @@ function match_str2conditionbitmask(str) {   // botl.c:3171
     mask = 0;
     if (str && str.get(0)) {
         for (i = 0; i < 30; i = i + 1 | 0) {
-            if (fuzzymatch(conditions[i].text[0], str, $c.lit(" -_"), 1)) {
+            if (fuzzymatch(conditions[i].text[0], str, $c.lit(" -_"), TRUE)) {
                 mask = $c.oru64(mask, $c.u64(conditions[i].mask));
                 nmatches = nmatches + 1 | 0;
             }
         }
         if (!nmatches) {
             for (i = 0; i < 6; i = i + 1 | 0) {
-                if (fuzzymatch(condition_aliases[i].id, str, $c.lit(" -_"), 1)) {
+                if (fuzzymatch(condition_aliases[i].id, str, $c.lit(" -_"), TRUE)) {
                     mask = $c.oru64(mask, condition_aliases[i].bitmask);
                     nmatches = nmatches + 1 | 0;
                 }
@@ -1937,16 +1964,16 @@ async function str2conditionbitmask(str) {   // botl.c:3209
 }
 async function parse_condition(s, sidx) {   // botl.c:3233
     let i = 0, coloridx = 0, tmp = null, how = null, conditions_bitmask = 0, result = 0, sf = 0, buf = new Int8Array(256), subfields = [null], a = 0, k = 0;
-    coloridx = 8;
+    coloridx = NO_COLOR;
     conditions_bitmask = 0;
-    result = 0;
+    result = FALSE;
     if (!s) {
-        return 0;
+        return FALSE;
     }
     sidx = sidx + 1 | 0;
     if (!s.get(sidx)[0]) {
         await config_error_add($c.lit("Missing condition(s)"));
-        return 0;
+        return FALSE;
     }
     while (s.get(sidx)[0]) {
         sf = 0;
@@ -1954,55 +1981,55 @@ async function parse_condition(s, sidx) {   // botl.c:3233
         $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), tmp, 256);
         conditions_bitmask = await str2conditionbitmask(new $c.Ptr(buf, 0));
         if (!conditions_bitmask) {
-            return 0;
+            return FALSE;
         }
         sidx = sidx + 1 | 0;
         how = new $c.Ptr(s.get(sidx), 0);
         if (!how || !how.get(0)) {
             await config_error_add($c.lit("Missing color+attribute"));
-            return 0;
+            return FALSE;
         }
         $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), how, 256);
         sf = splitsubfields(new $c.Ptr(buf, 0), new $c.Ptr(subfields, 0), 0);
         for (i = 0; i < sf; i = i + 1 | 0) {
-            a = await match_str2attr(subfields[0].get(i), 0);
-            if (a === 1) {
-                gc.cond_hilites[18] = $c.oru64(gc.cond_hilites[18], conditions_bitmask);
-            } else if (a === 2) {
-                gc.cond_hilites[19] = $c.oru64(gc.cond_hilites[19], conditions_bitmask);
-            } else if (a === 3) {
-                gc.cond_hilites[20] = $c.oru64(gc.cond_hilites[20], conditions_bitmask);
-            } else if (a === 4) {
-                gc.cond_hilites[21] = $c.oru64(gc.cond_hilites[21], conditions_bitmask);
-            } else if (a === 5) {
-                gc.cond_hilites[22] = $c.oru64(gc.cond_hilites[22], conditions_bitmask);
-            } else if (a === 7) {
-                gc.cond_hilites[23] = $c.oru64(gc.cond_hilites[23], conditions_bitmask);
-            } else if (a === 0) {
-                gc.cond_hilites[18] = $c.andu64(gc.cond_hilites[18], $c.notu64(conditions_bitmask));
-                gc.cond_hilites[19] = $c.andu64(gc.cond_hilites[19], $c.notu64(conditions_bitmask));
-                gc.cond_hilites[20] = $c.andu64(gc.cond_hilites[20], $c.notu64(conditions_bitmask));
-                gc.cond_hilites[21] = $c.andu64(gc.cond_hilites[21], $c.notu64(conditions_bitmask));
-                gc.cond_hilites[22] = $c.andu64(gc.cond_hilites[22], $c.notu64(conditions_bitmask));
-                gc.cond_hilites[23] = $c.andu64(gc.cond_hilites[23], $c.notu64(conditions_bitmask));
+            a = await match_str2attr(subfields[0].get(i), FALSE);
+            if (a === ATR.BOLD) {
+                gc.cond_hilites[CLR.MAX + 2] = $c.oru64(gc.cond_hilites[CLR.MAX + 2], conditions_bitmask);
+            } else if (a === ATR.DIM) {
+                gc.cond_hilites[CLR.MAX + 3] = $c.oru64(gc.cond_hilites[CLR.MAX + 3], conditions_bitmask);
+            } else if (a === ATR.ITALIC) {
+                gc.cond_hilites[CLR.MAX + 4] = $c.oru64(gc.cond_hilites[CLR.MAX + 4], conditions_bitmask);
+            } else if (a === ATR.ULINE) {
+                gc.cond_hilites[CLR.MAX + 5] = $c.oru64(gc.cond_hilites[CLR.MAX + 5], conditions_bitmask);
+            } else if (a === ATR.BLINK) {
+                gc.cond_hilites[CLR.MAX + 6] = $c.oru64(gc.cond_hilites[CLR.MAX + 6], conditions_bitmask);
+            } else if (a === ATR.INVERSE) {
+                gc.cond_hilites[CLR.MAX + 7] = $c.oru64(gc.cond_hilites[CLR.MAX + 7], conditions_bitmask);
+            } else if (a === ATR.NONE) {
+                gc.cond_hilites[CLR.MAX + 2] = $c.andu64(gc.cond_hilites[CLR.MAX + 2], $c.notu64(conditions_bitmask));
+                gc.cond_hilites[CLR.MAX + 3] = $c.andu64(gc.cond_hilites[CLR.MAX + 3], $c.notu64(conditions_bitmask));
+                gc.cond_hilites[CLR.MAX + 4] = $c.andu64(gc.cond_hilites[CLR.MAX + 4], $c.notu64(conditions_bitmask));
+                gc.cond_hilites[CLR.MAX + 5] = $c.andu64(gc.cond_hilites[CLR.MAX + 5], $c.notu64(conditions_bitmask));
+                gc.cond_hilites[CLR.MAX + 6] = $c.andu64(gc.cond_hilites[CLR.MAX + 6], $c.notu64(conditions_bitmask));
+                gc.cond_hilites[CLR.MAX + 7] = $c.andu64(gc.cond_hilites[CLR.MAX + 7], $c.notu64(conditions_bitmask));
             } else {
-                k = await match_str2clr(subfields[0].get(i), 0);
-                if (k >= 16) {
+                k = await match_str2clr(subfields[0].get(i), FALSE);
+                if (k >= CLR.MAX) {
                     await config_error_add($c.lit("bad color %d"), k);
-                    return 0;
+                    return FALSE;
                 }
                 coloridx = k;
             }
         }
         gc.cond_hilites[coloridx] = $c.oru64(gc.cond_hilites[coloridx], conditions_bitmask);
-        result = 1;
+        result = TRUE;
         sidx = sidx + 1 | 0;
     }
     return result;
 }
 export function clear_status_hilites() {   // botl.c:3351
     let i = 0, temp = null, next = null, $t1, $t2;
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         for (temp = gb.blstats[0][i].thresholds; temp; temp = next) {
             next = temp.next;
             $c.free(temp);
@@ -2016,26 +2043,26 @@ function hlattr2attrname(attrib, buf, bufsz) {   // botl.c:3369
     if (attrib && buf) {
         first = 0;
         attbuf[0] = 0;
-        if (attrib === 1 /* HL_NONE */) {
+        if (attrib === HL.NONE) {
             $c.__builtin___strcpy_chk(buf, $c.lit("normal"), -1);
             return buf;
         }
-        if (attrib & 2 /* HL_BOLD */) {
+        if (attrib & HL.BOLD) {
             $c.__builtin___strcat_chk(new $c.Ptr(attbuf, 0), ($t1 = first, first = $t1 + 1 | 0, $t1) ? $c.lit("+bold") : $c.lit("bold"), 256);
         }
-        if (attrib & 4 /* HL_DIM */) {
+        if (attrib & HL.DIM) {
             $c.__builtin___strcat_chk(new $c.Ptr(attbuf, 0), ($t2 = first, first = $t2 + 1 | 0, $t2) ? $c.lit("+dim") : $c.lit("dim"), 256);
         }
-        if (attrib & 8 /* HL_ITALIC */) {
+        if (attrib & HL.ITALIC) {
             $c.__builtin___strcat_chk(new $c.Ptr(attbuf, 0), ($t3 = first, first = $t3 + 1 | 0, $t3) ? $c.lit("+italic") : $c.lit("italic"), 256);
         }
-        if (attrib & 16 /* HL_ULINE */) {
+        if (attrib & HL.ULINE) {
             $c.__builtin___strcat_chk(new $c.Ptr(attbuf, 0), ($t4 = first, first = $t4 + 1 | 0, $t4) ? $c.lit("+underline") : $c.lit("underline"), 256);
         }
-        if (attrib & 32 /* HL_BLINK */) {
+        if (attrib & HL.BLINK) {
             $c.__builtin___strcat_chk(new $c.Ptr(attbuf, 0), ($t5 = first, first = $t5 + 1 | 0, $t5) ? $c.lit("+blink") : $c.lit("blink"), 256);
         }
-        if (attrib & 64 /* HL_INVERSE */) {
+        if (attrib & HL.INVERSE) {
             $c.__builtin___strcat_chk(new $c.Ptr(attbuf, 0), ($t6 = first, first = $t6 + 1 | 0, $t6) ? $c.lit("+inverse") : $c.lit("inverse"), 256);
         }
         k = $c.strlen(new $c.Ptr(attbuf, 0));
@@ -2055,7 +2082,7 @@ async function status_hilite_linestr_add(fld, hl, mask, str) {   // botl.c:3417
     tmp.fld = fld;
     tmp.hl = hl;
     tmp.mask = mask;
-    if (fld === 0 /* BL_TITLE */) {
+    if (fld === BL.TITLE) {
         $c.__builtin___strcpy_chk(new $c.Ptr(tmp.str, 0), str, 256);
     } else {
         stripchars(new $c.Ptr(tmp.str, 0), $c.lit(" "), str);
@@ -2082,7 +2109,7 @@ function status_hilite_linestr_done() {   // botl.c:3448
 }
 function status_hilite_linestr_countfield(fld) {   // botl.c:3462
     let tmp = null, countall = 0, count = 0;
-    countall = $c.i8(fld === -1 /* BL_FLUSH */ ? 1 : 0);
+    countall = $c.i8(fld === BL.FLUSH ? 1 : 0);
     count = 0;
     for (tmp = status_hilite_str; tmp; tmp = tmp.next) {
         if (countall || tmp.fld === fld) {
@@ -2094,7 +2121,7 @@ function status_hilite_linestr_countfield(fld) {   // botl.c:3462
 export async function count_status_hilites() {   // botl.c:3477
     let count = 0;
     await status_hilite_linestr_gather();
-    count = status_hilite_linestr_countfield(-1 /* BL_FLUSH */);
+    count = status_hilite_linestr_countfield(BL.FLUSH);
     status_hilite_linestr_done();
     return count;
 }
@@ -2102,42 +2129,42 @@ async function status_hilite_linestr_gather_conditions() {   // botl.c:3488
     let i = 0, cond_maps = $c.recArray($T._cond_map, 30), clr = 0, atr = 0, j = 0, ca = 0, added_condmap = 0, clr$2 = Int32Array.of(0), atr$2 = Int32Array.of(0), clrbuf = new Int8Array(256), attrbuf = new Int8Array(256), condbuf = new Int8Array(256), tmpattr = null;
     $c.__builtin___memset_chk($c.relem(cond_maps, 0), 0, 480, 480);
     for (i = 0; i < 30; i = i + 1 | 0) {
-        clr = 8;
-        atr = 1 /* HL_NONE */;
-        for (j = 0; j < 16; j = j + 1 | 0) {
+        clr = NO_COLOR;
+        atr = HL.NONE;
+        for (j = 0; j < CLR.MAX; j = j + 1 | 0) {
             if ($c.andu64(gc.cond_hilites[j], $c.u64(conditions[i].mask))) {
                 clr = j;
                 break;
             }
         }
-        if ($c.andu64(gc.cond_hilites[18], $c.u64(conditions[i].mask))) {
-            atr = atr | 2 /* HL_BOLD */;
+        if ($c.andu64(gc.cond_hilites[CLR.MAX + 2], $c.u64(conditions[i].mask))) {
+            atr = atr | HL.BOLD;
         }
-        if ($c.andu64(gc.cond_hilites[19], $c.u64(conditions[i].mask))) {
-            atr = atr | 4 /* HL_DIM */;
+        if ($c.andu64(gc.cond_hilites[CLR.MAX + 3], $c.u64(conditions[i].mask))) {
+            atr = atr | HL.DIM;
         }
-        if ($c.andu64(gc.cond_hilites[20], $c.u64(conditions[i].mask))) {
-            atr = atr | 8 /* HL_ITALIC */;
+        if ($c.andu64(gc.cond_hilites[CLR.MAX + 4], $c.u64(conditions[i].mask))) {
+            atr = atr | HL.ITALIC;
         }
-        if ($c.andu64(gc.cond_hilites[21], $c.u64(conditions[i].mask))) {
-            atr = atr | 16 /* HL_ULINE */;
+        if ($c.andu64(gc.cond_hilites[CLR.MAX + 5], $c.u64(conditions[i].mask))) {
+            atr = atr | HL.ULINE;
         }
-        if ($c.andu64(gc.cond_hilites[22], $c.u64(conditions[i].mask))) {
-            atr = atr | 32 /* HL_BLINK */;
+        if ($c.andu64(gc.cond_hilites[CLR.MAX + 6], $c.u64(conditions[i].mask))) {
+            atr = atr | HL.BLINK;
         }
-        if ($c.andu64(gc.cond_hilites[23], $c.u64(conditions[i].mask))) {
-            atr = atr | 64 /* HL_INVERSE */;
+        if ($c.andu64(gc.cond_hilites[CLR.MAX + 7], $c.u64(conditions[i].mask))) {
+            atr = atr | HL.INVERSE;
         }
-        if (atr !== 1 /* HL_NONE */) {
-            atr = atr & -2;
+        if (atr !== HL.NONE) {
+            atr = atr & ~HL.NONE;
         }
-        if (clr !== 8 || atr !== 1 /* HL_NONE */) {
+        if (clr !== NO_COLOR || atr !== HL.NONE) {
             ca = (clr | atr << 8) >>> 0;
-            added_condmap = 0;
+            added_condmap = FALSE;
             for (j = 0; j < 30; j = j + 1 | 0) {
                 if (cond_maps[j].clratr === ca) {
                     cond_maps[j].bm = $c.oru64(cond_maps[j].bm, $c.u64(conditions[i].mask));
-                    added_condmap = 1;
+                    added_condmap = TRUE;
                     break;
                 }
             }
@@ -2154,17 +2181,17 @@ async function status_hilite_linestr_gather_conditions() {   // botl.c:3488
     }
     for (i = 0; i < 30; i = i + 1 | 0) {
         if (cond_maps[i].bm) {
-            clr$2[0] = 8;
-            atr$2[0] = 1 /* HL_NONE */;
+            clr$2[0] = NO_COLOR;
+            atr$2[0] = HL.NONE;
             split_clridx(cond_maps[i].clratr | 0, new $c.Ptr(clr$2, 0), new $c.Ptr(atr$2, 0));
-            if (clr$2[0] !== 8 || atr$2[0] !== 1 /* HL_NONE */) {
+            if (clr$2[0] !== NO_COLOR || atr$2[0] !== HL.NONE) {
                 strNsubst($c.__builtin___strcpy_chk(new $c.Ptr(clrbuf, 0), clr2colorname(clr$2[0]), 256), $c.lit(" "), $c.lit("-"), 0);
-                tmpattr = hlattr2attrname(atr$2[0], new $c.Ptr(attrbuf, 0), 256);
+                tmpattr = hlattr2attrname(atr$2[0], new $c.Ptr(attrbuf, 0), BUFSZ);
                 if (tmpattr) {
                     $c.__builtin___sprintf_chk(eos(new $c.Ptr(clrbuf, 0)), 0, -1, $c.lit("&%s"), tmpattr);
                 }
                 nh_snprintf($c.lit("status_hilite_linestr_gather_conditions"), 3562, new $c.Ptr(condbuf, 0), 256, $c.lit("condition/%s/%s"), conditionbitmask2str(cond_maps[i].bm), new $c.Ptr(clrbuf, 0));
-                await status_hilite_linestr_add(22 /* BL_CONDITION */, null, cond_maps[i].bm, new $c.Ptr(condbuf, 0));
+                await status_hilite_linestr_add(BL.CONDITION, null, cond_maps[i].bm, new $c.Ptr(condbuf, 0));
             }
         }
     }
@@ -2172,7 +2199,7 @@ async function status_hilite_linestr_gather_conditions() {   // botl.c:3488
 async function status_hilite_linestr_gather() {   // botl.c:3570
     let i = 0, hl = null;
     status_hilite_linestr_done();
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         hl = gb.blstats[0][i].thresholds;
         while (hl) {
             await status_hilite_linestr_add(i, hl, 0, await status_hilite2str(hl));
@@ -2183,69 +2210,69 @@ async function status_hilite_linestr_gather() {   // botl.c:3570
 }
 async function status_hilite2str(hl) {   // botl.c:3590
     let clr = Int32Array.of(0), attr = Int32Array.of(0), behavebuf = new Int8Array(256), clrbuf = new Int8Array(256), attrbuf = new Int8Array(256), tmpattr = null, op = null;
-    clr[0] = 8;
-    attr[0] = 0;
+    clr[0] = NO_COLOR;
+    attr[0] = ATR.NONE;
     if (!hl) {
         return null;
     }
     behavebuf[0] = 0;
     clrbuf[0] = 0;
-    op = hl.rel === 1 /* LT_VALUE */ ? $c.lit("<") : hl.rel === 2 /* LE_VALUE */ ? $c.lit("<=") : hl.rel === 4 /* GT_VALUE */ ? $c.lit(">") : hl.rel === 3 /* GE_VALUE */ ? $c.lit(">=") : hl.rel === 0 /* EQ_VALUE */ ? $c.lit("=") : null;
+    op = hl.rel === LT_VALUE ? $c.lit("<") : hl.rel === LE_VALUE ? $c.lit("<=") : hl.rel === GT_VALUE ? $c.lit(">") : hl.rel === GE_VALUE ? $c.lit(">=") : hl.rel === EQ_VALUE ? $c.lit("=") : null;
     switch (hl.behavior) {
-        case 100:
+        case BL_TH.VAL_PERCENTAGE:
             if (op) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("%s%d%%"), op, hl.value.a_int);
             } else {
                 await impossible($c.lit("hl->behavior=percentage, rel error"));
             }
             break;
-        case 102:
-            if (hl.rel === 1 /* LT_VALUE */) {
+        case BL_TH.UPDOWN:
+            if (hl.rel === LT_VALUE) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("down"));
-            } else if (hl.rel === 4 /* GT_VALUE */) {
+            } else if (hl.rel === GT_VALUE) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("up"));
-            } else if (hl.rel === 0 /* EQ_VALUE */) {
+            } else if (hl.rel === EQ_VALUE) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("changed"));
             } else {
                 await impossible($c.lit("hl->behavior=updown, rel error"));
             }
             break;
-        case 101:
+        case BL_TH.VAL_ABSOLUTE:
             if (op) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("%s%d"), op, hl.value.a_int);
             } else {
                 await impossible($c.lit("hl->behavior=absolute, rel error"));
             }
             break;
-        case 104:
-            if (hl.rel === 5 /* TXT_VALUE */ && hl.textmatch[0]) {
+        case BL_TH.TEXTMATCH:
+            if (hl.rel === TXT_VALUE && hl.textmatch[0]) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("%s"), new $c.Ptr(hl.textmatch, 0));
             } else {
                 await impossible($c.lit("hl->behavior=textmatch, rel or textmatch error"));
             }
             break;
-        case 103:
-            if (hl.rel === 0 /* EQ_VALUE */) {
+        case BL_TH.CONDITION:
+            if (hl.rel === EQ_VALUE) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("%s"), conditionbitmask2str(hl.value.a_ulong));
             } else {
                 await impossible($c.lit("hl->behavior=condition, rel error"));
             }
             break;
-        case 105:
+        case BL_TH.ALWAYS_HILITE:
             $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("always"));
             break;
-        case 106:
+        case BL_TH.CRITICALHP:
             $c.__builtin___sprintf_chk(new $c.Ptr(behavebuf, 0), 0, 256, $c.lit("criticalhp"));
             break;
-        case 0:
+        case BL_TH.NONE:
             break;
         default:
             break;
     }
     split_clridx(hl.coloridx, new $c.Ptr(clr, 0), new $c.Ptr(attr, 0));
     strNsubst($c.__builtin___strcpy_chk(new $c.Ptr(clrbuf, 0), clr2colorname(clr[0]), 256), $c.lit(" "), $c.lit("-"), 0);
-    if (attr[0] !== 0 /* HL_UNDEF */) {
-        if ((tmpattr = hlattr2attrname(attr[0], new $c.Ptr(attrbuf, 0), 256)) !== null) {
+    if (attr[0] !== HL.UNDEF) {
+        if ((tmpattr = hlattr2attrname(attr[0], new $c.Ptr(attrbuf, 0), BUFSZ)) !== null) {
             $c.__builtin___sprintf_chk(eos(new $c.Ptr(clrbuf, 0)), 0, -1, $c.lit("&%s"), tmpattr);
         }
     }
@@ -2254,22 +2281,22 @@ async function status_hilite2str(hl) {   // botl.c:3590
 }
 async function status_hilite_menu_choose_field() {   // botl.c:3672
     let tmpwin = 0, i = 0, res = 0, fld = 0, any = new $T.any(), picks = [null], clr = 0;
-    fld = -1 /* BL_FLUSH */;
+    fld = BL.FLUSH;
     picks[0] = null;
-    clr = 8;
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(tmpwin, 0);
-    for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
-        if (initblstats[i].fld === 8 /* BL_SCORE */ && !gb.blstats[0][8 /* BL_SCORE */].thresholds) {
+    clr = NO_COLOR;
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
+    for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
+        if (initblstats[i].fld === BL.SCORE && !gb.blstats[0][BL.SCORE].thresholds) {
             continue;
         }
         any.$copyFrom(cg.zeroany);
         any.a_int = i + 1 | 0;
-        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, initblstats[i].fldname, 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, initblstats[i].fldname, MENU.ITEMFLAGS_NONE);
     }
-    await windowprocs.win_end_menu(tmpwin, $c.lit("Select a hilite field:"));
-    res = await select_menu(tmpwin, 1, new $c.Ptr(picks, 0));
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await end_menu()(tmpwin, $c.lit("Select a hilite field:"));
+    res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
+    await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         fld = picks[0].item.a_int - 1 | 0;
         $c.free(picks[0]);
@@ -2279,76 +2306,76 @@ async function status_hilite_menu_choose_field() {   // botl.c:3672
 async function status_hilite_menu_choose_behavior(fld) {   // botl.c:3707
     let tmpwin = 0, res = 0, beh = 0, any = new $T.any(), picks = [null], buf = new Int8Array(256), at = 0, onlybeh = 0, nopts = 0, clr = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
     res = 0;
-    beh = -1;
+    beh = BL_TH.NONE - 1;
     picks[0] = null;
-    onlybeh = 0;
+    onlybeh = BL_TH.NONE;
     nopts = 0;
-    clr = 8;
-    if (fld < 0 || fld >= 27 /* MAXBLSTATS */) {
-        return 0;
+    clr = NO_COLOR;
+    if (fld < 0 || fld >= MAXBLSTATS) {
+        return BL_TH.NONE;
     }
     at = initblstats[fld].anytype | 0;
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(tmpwin, 0);
-    if (fld !== 22 /* BL_CONDITION */) {
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
+    if (fld !== BL.CONDITION) {
         any.$copyFrom(cg.zeroany);
-        $t1 = onlybeh = 105, any.a_int = $t1;
+        $t1 = onlybeh = BL_TH.ALWAYS_HILITE, any.a_int = $t1;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Always highlight %s"), initblstats[fld].fldname);
-        await add_menu(tmpwin, nul_glyphinfo, any, 97, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 97, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         nopts = nopts + 1 | 0;
     }
-    if (fld === 22 /* BL_CONDITION */) {
+    if (fld === BL.CONDITION) {
         any.$copyFrom(cg.zeroany);
-        $t2 = onlybeh = 103, any.a_int = $t2;
-        await add_menu(tmpwin, nul_glyphinfo, any, 98, 0, 0, clr, $c.lit("Bitmask of conditions"), 0);
+        $t2 = onlybeh = BL_TH.CONDITION, any.a_int = $t2;
+        await add_menu(tmpwin, nul_glyphinfo, any, 98, 0, ATR.NONE, clr, $c.lit("Bitmask of conditions"), MENU.ITEMFLAGS_NONE);
         nopts = nopts + 1 | 0;
     }
-    if (fld !== 22 /* BL_CONDITION */ && fld !== 26 /* BL_VERS */) {
+    if (fld !== BL.CONDITION && fld !== BL.VERS) {
         any.$copyFrom(cg.zeroany);
-        $t3 = onlybeh = 102, any.a_int = $t3;
+        $t3 = onlybeh = BL_TH.UPDOWN, any.a_int = $t3;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s value changes"), initblstats[fld].fldname);
-        await add_menu(tmpwin, nul_glyphinfo, any, 99, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 99, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         nopts = nopts + 1 | 0;
     }
-    if (fld !== 9 /* BL_CAP */ && fld !== 17 /* BL_HUNGER */ && (at === 4 /* ANY_INT */ || at === 9 /* ANY_LONG */)) {
+    if (fld !== BL.CAP && fld !== BL.HUNGER && (at === ANY.INT || at === ANY.LONG)) {
         any.$copyFrom(cg.zeroany);
-        $t4 = onlybeh = 101, any.a_int = $t4;
-        await add_menu(tmpwin, nul_glyphinfo, any, 110, 0, 0, clr, $c.lit("Number threshold"), 0);
+        $t4 = onlybeh = BL_TH.VAL_ABSOLUTE, any.a_int = $t4;
+        await add_menu(tmpwin, nul_glyphinfo, any, 110, 0, ATR.NONE, clr, $c.lit("Number threshold"), MENU.ITEMFLAGS_NONE);
         nopts = nopts + 1 | 0;
     }
     if (initblstats[fld].idxmax >= 0) {
         any.$copyFrom(cg.zeroany);
-        $t5 = onlybeh = 100, any.a_int = $t5;
-        await add_menu(tmpwin, nul_glyphinfo, any, 112, 0, 0, clr, $c.lit("Percentage threshold"), 0);
+        $t5 = onlybeh = BL_TH.VAL_PERCENTAGE, any.a_int = $t5;
+        await add_menu(tmpwin, nul_glyphinfo, any, 112, 0, ATR.NONE, clr, $c.lit("Percentage threshold"), MENU.ITEMFLAGS_NONE);
         nopts = nopts + 1 | 0;
     }
-    if (fld === 18 /* BL_HP */) {
+    if (fld === BL.HP) {
         any.$copyFrom(cg.zeroany);
-        $t6 = onlybeh = 106, any.a_int = $t6;
+        $t6 = onlybeh = BL_TH.CRITICALHP, any.a_int = $t6;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Highlight critically low %s"), initblstats[fld].fldname);
-        await add_menu(tmpwin, nul_glyphinfo, any, 67, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 67, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         nopts = nopts + 1 | 0;
     }
-    if (initblstats[fld].anytype === 15 || fld === 9 /* BL_CAP */ || fld === 17 /* BL_HUNGER */) {
+    if (initblstats[fld].anytype === ANY.STR || fld === BL.CAP || fld === BL.HUNGER) {
         any.$copyFrom(cg.zeroany);
-        $t7 = onlybeh = 104, any.a_int = $t7;
+        $t7 = onlybeh = BL_TH.TEXTMATCH, any.a_int = $t7;
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s text match"), initblstats[fld].fldname);
-        await add_menu(tmpwin, nul_glyphinfo, any, 116, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 116, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         nopts = nopts + 1 | 0;
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Select %s field hilite behavior:"), initblstats[fld].fldname);
-    await windowprocs.win_end_menu(tmpwin, new $c.Ptr(buf, 0));
+    await end_menu()(tmpwin, new $c.Ptr(buf, 0));
     if (nopts > 1) {
-        res = await select_menu(tmpwin, 1, new $c.Ptr(picks, 0));
+        res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
         if (res === 0) {
-            beh = 0;
+            beh = BL_TH.NONE;
         } else if (res === -1) {
-            beh = -1;
+            beh = BL_TH.NONE - 1;
         }
-    } else if (onlybeh !== 0) {
+    } else if (onlybeh !== BL_TH.NONE) {
         beh = onlybeh;
     }
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         beh = picks[0].item.a_int;
         $c.free(picks[0]);
@@ -2357,25 +2384,25 @@ async function status_hilite_menu_choose_behavior(fld) {   // botl.c:3707
 }
 async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok) {   // botl.c:3811
     let res = 0, ret = 0, tmpwin = 0, buf = new Int8Array(256), any = new $T.any(), picks = [null], clr = 0;
-    ret = -1 /* NO_LTEQGT */;
+    ret = NO_LTEQGT;
     picks[0] = null;
-    clr = 8;
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(tmpwin, 0);
+    clr = NO_COLOR;
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     if (ltok) {
         if (str) {
-            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s than %s"), fld === 14 /* BL_AC */ ? $c.lit("Better (lower)") : $c.lit("Less"), str);
+            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s than %s"), fld === BL.AC ? $c.lit("Better (lower)") : $c.lit("Less"), str);
         } else {
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Value goes down"));
         }
         any.$copyFrom(cg.zeroany);
-        any.a_int = 11;
-        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        any.a_int = 10 + LT_VALUE;
+        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         if (str) {
-            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s or %s"), str, fld === 14 /* BL_AC */ ? $c.lit("better (lower)") : $c.lit("less"));
+            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s or %s"), str, fld === BL.AC ? $c.lit("better (lower)") : $c.lit("less"));
             any.$copyFrom(cg.zeroany);
-            any.a_int = 12;
-            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+            any.a_int = 10 + LE_VALUE;
+            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         }
     }
     if (str) {
@@ -2384,28 +2411,28 @@ async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok) {   //
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Value changes"));
     }
     any.$copyFrom(cg.zeroany);
-    any.a_int = 10;
-    await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+    any.a_int = 10 + EQ_VALUE;
+    await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
     if (gtok) {
         if (str) {
-            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s or %s"), str, fld === 14 /* BL_AC */ ? $c.lit("worse (higher)") : $c.lit("more"));
+            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s or %s"), str, fld === BL.AC ? $c.lit("worse (higher)") : $c.lit("more"));
             any.$copyFrom(cg.zeroany);
-            any.a_int = 13;
-            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+            any.a_int = 10 + GE_VALUE;
+            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         }
         if (str) {
-            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s than %s"), fld === 14 /* BL_AC */ ? $c.lit("Worse (higher)") : $c.lit("More"), str);
+            $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%s than %s"), fld === BL.AC ? $c.lit("Worse (higher)") : $c.lit("More"), str);
         } else {
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Value goes up"));
         }
         any.$copyFrom(cg.zeroany);
-        any.a_int = 14;
-        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+        any.a_int = 10 + GT_VALUE;
+        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Select field %s value:"), initblstats[fld].fldname);
-    await windowprocs.win_end_menu(tmpwin, new $c.Ptr(buf, 0));
-    res = await select_menu(tmpwin, 1, new $c.Ptr(picks, 0));
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await end_menu()(tmpwin, new $c.Ptr(buf, 0));
+    res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
+    await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         ret = picks[0].item.a_int - 10 | 0;
         $c.free(picks[0]);
@@ -2417,50 +2444,50 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
     D1: for (;;) {
         switch ($goto) {
         case null:
-            clr = 8;
-            atr = 0 /* HL_UNDEF */;
+            clr = NO_COLOR;
+            atr = HL.UNDEF;
             cond = 0;
             retry = 0;
         case "choose_field":
             $goto = null;   // choose_field:
             fld = origfld;
-            if (fld === -1 /* BL_FLUSH */) {
+            if (fld === BL.FLUSH) {
                 fld = await status_hilite_menu_choose_field();
-                if (fld === -1 /* BL_FLUSH */) {
-                    return 0;
+                if (fld === BL.FLUSH) {
+                    return FALSE;
                 }
             }
-            if (fld === -1 /* BL_FLUSH */) {
-                return 0;
+            if (fld === BL.FLUSH) {
+                return FALSE;
             }
             colorqry[0] = 0;
             attrqry[0] = 0;
             $c.__builtin___memset_chk(hilite, 0, 128, 128);
             hilite.next = null;
-            hilite.set = 0;
+            hilite.set = FALSE;
             hilite.fld = fld;
         case "choose_behavior":
             $goto = null;   // choose_behavior:
             behavior = await status_hilite_menu_choose_behavior(fld);
-            if (behavior === -1) {
-                return 0;
-            } else if (behavior === 0) {
-                if (origfld === -1 /* BL_FLUSH */) {
+            if (behavior === BL_TH.NONE - 1) {
+                return FALSE;
+            } else if (behavior === BL_TH.NONE) {
+                if (origfld === BL.FLUSH) {
                     $goto = "choose_field"; continue D1;
                 }
-                return 0;
+                return FALSE;
             }
             hilite.behavior = behavior;
         case "choose_value":
             $goto = null;   // choose_value:
             if (($t1 = retry, retry = $t1 + 1 | 0, $t1) > 5) {
                 await pline($c.lit("That's enough tries."));
-                return 0;
+                return FALSE;
             }
-            if (behavior === 100 || behavior === 101) {
-                gotnum = 0;
-                percent = $c.i8(behavior === 100 ? 1 : 0);
-                lt_gt_eq = -1 /* NO_LTEQGT */;
+            if (behavior === BL_TH.VAL_PERCENTAGE || behavior === BL_TH.VAL_ABSOLUTE) {
+                gotnum = FALSE;
+                percent = $c.i8(behavior === BL_TH.VAL_PERCENTAGE ? 1 : 0);
+                lt_gt_eq = NO_LTEQGT;
                 inbuf[0] = 0;
                 $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Enter %svalue for %s threshold:"), percent ? $c.lit("percentage ") : $c.lit(""), initblstats[fld].fldname);
                 await getlin(new $c.Ptr(buf, 0), new $c.Ptr(inbuf, 0));
@@ -2472,10 +2499,10 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
                     $goto = "choose_behavior"; continue D1;
                 }
                 if (inp.get(0) === 62 || inp.get(0) === 60 || inp.get(0) === 61) {
-                    lt_gt_eq = inp.get(0) === 62 ? inp.get(1) === 61 ? 3 /* GE_VALUE */ : 4 /* GT_VALUE */ : inp.get(0) === 60 ? inp.get(1) === 61 ? 2 /* LE_VALUE */ : 1 /* LT_VALUE */ : 0 /* EQ_VALUE */;
+                    lt_gt_eq = inp.get(0) === 62 ? inp.get(1) === 61 ? GE_VALUE : GT_VALUE : inp.get(0) === 60 ? inp.get(1) === 61 ? LE_VALUE : LT_VALUE : EQ_VALUE;
                     ($t2 = inp, inp = $t2.add(1), $t2).set(0, 32);
                     numstart = numstart.add(1);
-                    if (lt_gt_eq === 3 /* GE_VALUE */ || lt_gt_eq === 2 /* LE_VALUE */) {
+                    if (lt_gt_eq === GE_VALUE || lt_gt_eq === LE_VALUE) {
                         ($t3 = inp, inp = $t3.add(1), $t3).set(0, 32);
                         numstart = numstart.add(1);
                     }
@@ -2488,7 +2515,7 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
                 }
                 while (digit(inp.get(0))) {
                     inp = inp.add(1);
-                    gotnum = 1;
+                    gotnum = TRUE;
                 }
                 if (inp.get(0) === 37) {
                     if (!percent) {
@@ -2504,91 +2531,91 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
                     await pline($c.lit("Is that an invisible number?"));
                     $goto = "choose_value"; continue D1;
                 }
-                op = lt_gt_eq === 1 /* LT_VALUE */ ? $c.lit("<") : lt_gt_eq === 2 /* LE_VALUE */ ? $c.lit("<=") : lt_gt_eq === 4 /* GT_VALUE */ ? $c.lit(">") : lt_gt_eq === 3 /* GE_VALUE */ ? $c.lit(">=") : lt_gt_eq === 0 /* EQ_VALUE */ ? $c.lit("=") : $c.lit("");
+                op = lt_gt_eq === LT_VALUE ? $c.lit("<") : lt_gt_eq === LE_VALUE ? $c.lit("<=") : lt_gt_eq === GT_VALUE ? $c.lit(">") : lt_gt_eq === GE_VALUE ? $c.lit(">=") : lt_gt_eq === EQ_VALUE ? $c.lit("=") : $c.lit("");
                 aval.$copyFrom(cg.zeroany);
-                dt = (percent ? 4 : initblstats[fld].anytype) | 0;
+                dt = (percent ? ANY.INT : initblstats[fld].anytype) | 0;
                 s_to_anything(aval, numstart, dt);
                 if (percent) {
                     val = aval.a_int;
                     if (initblstats[fld].idxmax === -1) {
                         await pline($c.lit("Field '%s' does not support percentage values."), initblstats[fld].fldname);
-                        behavior = 101;
+                        behavior = BL_TH.VAL_ABSOLUTE;
                         $goto = "choose_value"; continue D1;
                     }
-                    if (val < 0 && (val !== -1 || lt_gt_eq !== 4 /* GT_VALUE */) || val === 0 && lt_gt_eq === 1 /* LT_VALUE */ || val === 100 && lt_gt_eq === 4 /* GT_VALUE */ || val > 100 && (val !== 101 || lt_gt_eq !== 1 /* LT_VALUE */)) {
+                    if (val < 0 && (val !== -1 || lt_gt_eq !== GT_VALUE) || val === 0 && lt_gt_eq === LT_VALUE || val === 100 && lt_gt_eq === GT_VALUE || val > 100 && (val !== 101 || lt_gt_eq !== LT_VALUE)) {
                         await pline($c.lit("'%s%d%%' is not a valid percent value."), op, val);
                         $goto = "choose_value"; continue D1;
                     }
                     if (!$c.strchr(numstart, 37)) {
                         $c.__builtin___strcat_chk(numstart, $c.lit("%"), -1);
                     }
-                } else if (dt === 4 /* ANY_INT */ && aval.a_int < (fld === 14 /* BL_AC */ ? -128 : lt_gt_eq === 4 /* GT_VALUE */ ? -1 : lt_gt_eq === 1 /* LT_VALUE */ ? 1 : 0)) {
+                } else if (dt === ANY.INT && aval.a_int < (fld === BL.AC ? -128 : lt_gt_eq === GT_VALUE ? -1 : lt_gt_eq === LT_VALUE ? 1 : 0)) {
                     await pline($c.lit("%s'%s%d'%s"), new $c.Ptr(threshold_value, 0), op, aval.a_int, new $c.Ptr(is_out_of_range, 0));
                     $goto = "choose_value"; continue D1;
-                } else if (dt === 9 /* ANY_LONG */ && aval.a_long < (lt_gt_eq === 4 /* GT_VALUE */ ? -1 : lt_gt_eq === 1 /* LT_VALUE */ ? 1 : 0)) {
+                } else if (dt === ANY.LONG && aval.a_long < (lt_gt_eq === GT_VALUE ? -1 : lt_gt_eq === LT_VALUE ? 1 : 0)) {
                     await pline($c.lit("%s'%s%ld'%s"), new $c.Ptr(threshold_value, 0), op, aval.a_long, new $c.Ptr(is_out_of_range, 0));
                     $goto = "choose_value"; continue D1;
                 }
-                if (lt_gt_eq === -1 /* NO_LTEQGT */) {
-                    ltok = $c.i8(dt === 4 /* ANY_INT */ ? aval.a_int > 0 || fld === 14 /* BL_AC */ ? 1 : 0 : aval.a_long > 0 ? 1 : 0);
+                if (lt_gt_eq === NO_LTEQGT) {
+                    ltok = $c.i8(dt === ANY.INT ? aval.a_int > 0 || fld === BL.AC ? 1 : 0 : aval.a_long > 0 ? 1 : 0);
                     gtok = $c.i8(!percent || aval.a_long < 100 ? 1 : 0);
                     lt_gt_eq = await status_hilite_menu_choose_updownboth(fld, new $c.Ptr(inbuf, 0), ltok, gtok);
-                    if (lt_gt_eq === -1 /* NO_LTEQGT */) {
+                    if (lt_gt_eq === NO_LTEQGT) {
                         $goto = "choose_value"; continue D1;
                     }
                 }
-                $c.__builtin___sprintf_chk(new $c.Ptr(colorqry, 0), 0, 256, $c.lit("Choose a color for when %s is %s%s%s:"), initblstats[fld].fldname, lt_gt_eq === 1 /* LT_VALUE */ ? $c.lit("less than ") : lt_gt_eq === 4 /* GT_VALUE */ ? $c.lit("more than ") : $c.lit(""), numstart, lt_gt_eq === 2 /* LE_VALUE */ ? $c.lit(" or less") : lt_gt_eq === 3 /* GE_VALUE */ ? $c.lit(" or more") : $c.lit(""));
-                $c.__builtin___sprintf_chk(new $c.Ptr(attrqry, 0), 0, 256, $c.lit("Choose attribute for when %s is %s%s%s:"), initblstats[fld].fldname, lt_gt_eq === 1 /* LT_VALUE */ ? $c.lit("less than ") : lt_gt_eq === 4 /* GT_VALUE */ ? $c.lit("more than ") : $c.lit(""), numstart, lt_gt_eq === 2 /* LE_VALUE */ ? $c.lit(" or less") : lt_gt_eq === 3 /* GE_VALUE */ ? $c.lit(" or more") : $c.lit(""));
+                $c.__builtin___sprintf_chk(new $c.Ptr(colorqry, 0), 0, 256, $c.lit("Choose a color for when %s is %s%s%s:"), initblstats[fld].fldname, lt_gt_eq === LT_VALUE ? $c.lit("less than ") : lt_gt_eq === GT_VALUE ? $c.lit("more than ") : $c.lit(""), numstart, lt_gt_eq === LE_VALUE ? $c.lit(" or less") : lt_gt_eq === GE_VALUE ? $c.lit(" or more") : $c.lit(""));
+                $c.__builtin___sprintf_chk(new $c.Ptr(attrqry, 0), 0, 256, $c.lit("Choose attribute for when %s is %s%s%s:"), initblstats[fld].fldname, lt_gt_eq === LT_VALUE ? $c.lit("less than ") : lt_gt_eq === GT_VALUE ? $c.lit("more than ") : $c.lit(""), numstart, lt_gt_eq === LE_VALUE ? $c.lit(" or less") : lt_gt_eq === GE_VALUE ? $c.lit(" or more") : $c.lit(""));
                 hilite.rel = lt_gt_eq;
                 hilite.value.$copyFrom(aval);
-            } else if (behavior === 102) {
-                if (initblstats[fld].anytype !== 15) {
-                    ltok$2 = $c.i8(fld !== 16 /* BL_TIME */ ? 1 : 0);
-                    gtok$2 = 1;
+            } else if (behavior === BL_TH.UPDOWN) {
+                if (initblstats[fld].anytype !== ANY.STR) {
+                    ltok$2 = $c.i8(fld !== BL.TIME ? 1 : 0);
+                    gtok$2 = TRUE;
                     lt_gt_eq = await status_hilite_menu_choose_updownboth(fld, null, ltok$2, gtok$2);
-                    if (lt_gt_eq === -1 /* NO_LTEQGT */) {
+                    if (lt_gt_eq === NO_LTEQGT) {
                         $goto = "choose_behavior"; continue D1;
                     }
                 } else {
-                    lt_gt_eq = 0 /* EQ_VALUE */;
+                    lt_gt_eq = EQ_VALUE;
                 }
-                $c.__builtin___sprintf_chk(new $c.Ptr(colorqry, 0), 0, 256, $c.lit("Choose a color for when %s %s:"), initblstats[fld].fldname, lt_gt_eq === 0 /* EQ_VALUE */ ? $c.lit("changes") : lt_gt_eq === 1 /* LT_VALUE */ ? $c.lit("decreases") : $c.lit("increases"));
-                $c.__builtin___sprintf_chk(new $c.Ptr(attrqry, 0), 0, 256, $c.lit("Choose attribute for when %s %s:"), initblstats[fld].fldname, lt_gt_eq === 0 /* EQ_VALUE */ ? $c.lit("changes") : lt_gt_eq === 1 /* LT_VALUE */ ? $c.lit("decreases") : $c.lit("increases"));
+                $c.__builtin___sprintf_chk(new $c.Ptr(colorqry, 0), 0, 256, $c.lit("Choose a color for when %s %s:"), initblstats[fld].fldname, lt_gt_eq === EQ_VALUE ? $c.lit("changes") : lt_gt_eq === LT_VALUE ? $c.lit("decreases") : $c.lit("increases"));
+                $c.__builtin___sprintf_chk(new $c.Ptr(attrqry, 0), 0, 256, $c.lit("Choose attribute for when %s %s:"), initblstats[fld].fldname, lt_gt_eq === EQ_VALUE ? $c.lit("changes") : lt_gt_eq === LT_VALUE ? $c.lit("decreases") : $c.lit("increases"));
                 hilite.rel = lt_gt_eq;
-            } else if (behavior === 103) {
+            } else if (behavior === BL_TH.CONDITION) {
                 cond = await query_conditions();
                 if (!cond) {
-                    if (origfld === -1 /* BL_FLUSH */) {
+                    if (origfld === BL.FLUSH) {
                         $goto = "choose_field"; continue D1;
                     }
-                    return 0;
+                    return FALSE;
                 }
                 nh_snprintf($c.lit("status_hilite_menu_add"), 4121, new $c.Ptr(colorqry, 0), 256, $c.lit("Choose a color for conditions %s:"), conditionbitmask2str(cond));
                 nh_snprintf($c.lit("status_hilite_menu_add"), 4124, new $c.Ptr(attrqry, 0), 256, $c.lit("Choose attribute for conditions %s:"), conditionbitmask2str(cond));
-            } else if (behavior === 104) {
-                $c.__builtin___sprintf_chk(new $c.Ptr(qry_buf, 0), 0, 256, $c.lit("%s %s text value to match:"), fld === 9 /* BL_CAP */ || fld === 7 /* BL_ALIGN */ || fld === 17 /* BL_HUNGER */ || fld === 0 /* BL_TITLE */ ? $c.lit("Choose") : $c.lit("Enter"), initblstats[fld].fldname);
-                if (fld === 9 /* BL_CAP */) {
-                    rv = await query_arrayvalue(new $c.Ptr(qry_buf, 0), new $c.Ptr(enc_stat, 0), 1 /* SLT_ENCUMBER */, 6);
-                    if (rv < 1 /* SLT_ENCUMBER */) {
+            } else if (behavior === BL_TH.TEXTMATCH) {
+                $c.__builtin___sprintf_chk(new $c.Ptr(qry_buf, 0), 0, 256, $c.lit("%s %s text value to match:"), fld === BL.CAP || fld === BL.ALIGN || fld === BL.HUNGER || fld === BL.TITLE ? $c.lit("Choose") : $c.lit("Enter"), initblstats[fld].fldname);
+                if (fld === BL.CAP) {
+                    rv = await query_arrayvalue(new $c.Ptr(qry_buf, 0), new $c.Ptr(enc_stat, 0), SLT_ENCUMBER, OVERLOADED + 1);
+                    if (rv < SLT_ENCUMBER) {
                         $goto = "choose_behavior"; continue D1;
                     }
-                    hilite.rel = 5;
+                    hilite.rel = TXT_VALUE;
                     $c.__builtin___strcpy_chk(new $c.Ptr(hilite.textmatch, 0), enc_stat[rv], 80);
-                } else if (fld === 7 /* BL_ALIGN */) {
+                } else if (fld === BL.ALIGN) {
                     rv$2 = await query_arrayvalue(new $c.Ptr(qry_buf, 0), new $c.Ptr(status_hilite_menu_add$aligntxt, 0), 0, 3);
                     if (rv$2 < 0) {
                         $goto = "choose_behavior"; continue D1;
                     }
-                    hilite.rel = 5;
+                    hilite.rel = TXT_VALUE;
                     $c.__builtin___strcpy_chk(new $c.Ptr(hilite.textmatch, 0), status_hilite_menu_add$aligntxt[rv$2], 80);
-                } else if (fld === 17 /* BL_HUNGER */) {
-                    rv$3 = await query_arrayvalue(new $c.Ptr(qry_buf, 0), new $c.Ptr(status_hilite_menu_add$hutxt, 0), 0 /* SATIATED */, 7);
-                    if (rv$3 < 0 /* SATIATED */) {
+                } else if (fld === BL.HUNGER) {
+                    rv$3 = await query_arrayvalue(new $c.Ptr(qry_buf, 0), new $c.Ptr(status_hilite_menu_add$hutxt, 0), SATIATED, STARVED + 1);
+                    if (rv$3 < SATIATED) {
                         $goto = "choose_behavior"; continue D1;
                     }
-                    hilite.rel = 5;
+                    hilite.rel = TXT_VALUE;
                     $c.__builtin___strcpy_chk(new $c.Ptr(hilite.textmatch, 0), status_hilite_menu_add$hutxt[rv$3], 80);
-                } else if (fld === 0 /* BL_TITLE */) {
+                } else if (fld === BL.TITLE) {
                     for (i = j = 0; i < 9; i = i + 1 | 0) {
                         $c.__builtin___sprintf_chk(new $c.Ptr(mbuf, 0), 0, 80, $c.lit("\"%s\""), gu.urole.rank[i].m);
                         if (gu.urole.rank[i].f) {
@@ -2618,7 +2645,7 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
                     $t25 = await dupstr($c.lit("\"none of the above (polymorphed)\"")), $t26 = new $c.Ptr(rolelist, ($t24 = j, j = $t24 + 1 | 0, $t24)), $t26.set(0, $t25);
                     rv$4 = await query_arrayvalue(new $c.Ptr(qry_buf, 0), new $c.Ptr(rolelist, 0), 0, j);
                     if (rv$4 >= 0) {
-                        hilite.rel = 5;
+                        hilite.rel = TXT_VALUE;
                         $c.__builtin___strcpy_chk(new $c.Ptr(hilite.textmatch, 0), rolelist[rv$4], 80);
                     }
                     for (i = 0; i < j; i = i + 1 | 0) {
@@ -2633,63 +2660,63 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
                     if (inbuf$2[0] === 0 || inbuf$2[0] === 27) {
                         $goto = "choose_behavior"; continue D1;
                     }
-                    hilite.rel = 5;
+                    hilite.rel = TXT_VALUE;
                     if ($c.strlen(new $c.Ptr(inbuf$2, 0)) < 80) {
                         $c.__builtin___strcpy_chk(new $c.Ptr(hilite.textmatch, 0), new $c.Ptr(inbuf$2, 0), 80);
                     } else {
-                        return 0;
+                        return FALSE;
                     }
                 }
                 $c.__builtin___sprintf_chk(new $c.Ptr(colorqry, 0), 0, 256, $c.lit("Choose a color for when %s is '%s':"), initblstats[fld].fldname, new $c.Ptr(hilite.textmatch, 0));
                 $c.__builtin___sprintf_chk(new $c.Ptr(attrqry, 0), 0, 256, $c.lit("Choose attribute for when %s is '%s':"), initblstats[fld].fldname, new $c.Ptr(hilite.textmatch, 0));
-            } else if (behavior === 105) {
+            } else if (behavior === BL_TH.ALWAYS_HILITE) {
                 $c.__builtin___sprintf_chk(new $c.Ptr(colorqry, 0), 0, 256, $c.lit("Choose a color to always hilite %s:"), initblstats[fld].fldname);
                 $c.__builtin___sprintf_chk(new $c.Ptr(attrqry, 0), 0, 256, $c.lit("Choose attribute to always hilite %s:"), initblstats[fld].fldname);
             }
         case "choose_color":
             $goto = null;   // choose_color:
-            clr = await query_color(new $c.Ptr(colorqry, 0), 8);
+            clr = await query_color(new $c.Ptr(colorqry, 0), NO_COLOR);
             if (clr === -1) {
-                if (behavior !== 105) {
+                if (behavior !== BL_TH.ALWAYS_HILITE) {
                     $goto = "choose_value"; continue D1;
                 } else {
                     $goto = "choose_behavior"; continue D1;
                 }
             }
-            atr = await query_attr(new $c.Ptr(attrqry, 0), 0);
+            atr = await query_attr(new $c.Ptr(attrqry, 0), ATR.NONE);
             if (atr === -1) {
                 $goto = "choose_color"; continue D1;
             }
-            if (behavior === 103) {
-                if (atr & 2 /* HL_BOLD */) {
-                    gc.cond_hilites[18] = $c.oru64(gc.cond_hilites[18], cond);
+            if (behavior === BL_TH.CONDITION) {
+                if (atr & HL.BOLD) {
+                    gc.cond_hilites[CLR.MAX + 2] = $c.oru64(gc.cond_hilites[CLR.MAX + 2], cond);
                 }
-                if (atr & 4 /* HL_DIM */) {
-                    gc.cond_hilites[19] = $c.oru64(gc.cond_hilites[19], cond);
+                if (atr & HL.DIM) {
+                    gc.cond_hilites[CLR.MAX + 3] = $c.oru64(gc.cond_hilites[CLR.MAX + 3], cond);
                 }
-                if (atr & 8 /* HL_ITALIC */) {
-                    gc.cond_hilites[20] = $c.oru64(gc.cond_hilites[20], cond);
+                if (atr & HL.ITALIC) {
+                    gc.cond_hilites[CLR.MAX + 4] = $c.oru64(gc.cond_hilites[CLR.MAX + 4], cond);
                 }
-                if (atr & 16 /* HL_ULINE */) {
-                    gc.cond_hilites[21] = $c.oru64(gc.cond_hilites[21], cond);
+                if (atr & HL.ULINE) {
+                    gc.cond_hilites[CLR.MAX + 5] = $c.oru64(gc.cond_hilites[CLR.MAX + 5], cond);
                 }
-                if (atr & 32 /* HL_BLINK */) {
-                    gc.cond_hilites[22] = $c.oru64(gc.cond_hilites[22], cond);
+                if (atr & HL.BLINK) {
+                    gc.cond_hilites[CLR.MAX + 6] = $c.oru64(gc.cond_hilites[CLR.MAX + 6], cond);
                 }
-                if (atr & 64 /* HL_INVERSE */) {
-                    gc.cond_hilites[23] = $c.oru64(gc.cond_hilites[23], cond);
+                if (atr & HL.INVERSE) {
+                    gc.cond_hilites[CLR.MAX + 7] = $c.oru64(gc.cond_hilites[CLR.MAX + 7], cond);
                 }
-                if (atr === 1 /* HL_NONE */) {
-                    gc.cond_hilites[18] = $c.andu64(gc.cond_hilites[18], $c.notu64(cond));
-                    gc.cond_hilites[19] = $c.andu64(gc.cond_hilites[19], $c.notu64(cond));
-                    gc.cond_hilites[20] = $c.andu64(gc.cond_hilites[20], $c.notu64(cond));
-                    gc.cond_hilites[21] = $c.andu64(gc.cond_hilites[21], $c.notu64(cond));
-                    gc.cond_hilites[22] = $c.andu64(gc.cond_hilites[22], $c.notu64(cond));
-                    gc.cond_hilites[23] = $c.andu64(gc.cond_hilites[23], $c.notu64(cond));
+                if (atr === HL.NONE) {
+                    gc.cond_hilites[CLR.MAX + 2] = $c.andu64(gc.cond_hilites[CLR.MAX + 2], $c.notu64(cond));
+                    gc.cond_hilites[CLR.MAX + 3] = $c.andu64(gc.cond_hilites[CLR.MAX + 3], $c.notu64(cond));
+                    gc.cond_hilites[CLR.MAX + 4] = $c.andu64(gc.cond_hilites[CLR.MAX + 4], $c.notu64(cond));
+                    gc.cond_hilites[CLR.MAX + 5] = $c.andu64(gc.cond_hilites[CLR.MAX + 5], $c.notu64(cond));
+                    gc.cond_hilites[CLR.MAX + 6] = $c.andu64(gc.cond_hilites[CLR.MAX + 6], $c.notu64(cond));
+                    gc.cond_hilites[CLR.MAX + 7] = $c.andu64(gc.cond_hilites[CLR.MAX + 7], $c.notu64(cond));
                 }
                 gc.cond_hilites[clr] = $c.oru64(gc.cond_hilites[clr], cond);
                 strNsubst($c.__builtin___strcpy_chk(new $c.Ptr(clrbuf, 0), clr2colorname(clr), 256), $c.lit(" "), $c.lit("-"), 0);
-                tmpattr = hlattr2attrname(atr, new $c.Ptr(attrbuf, 0), 256);
+                tmpattr = hlattr2attrname(atr, new $c.Ptr(attrbuf, 0), BUFSZ);
                 if (tmpattr) {
                     $c.__builtin___sprintf_chk(eos(new $c.Ptr(clrbuf, 0)), 0, -1, $c.lit("&%s"), tmpattr);
                 }
@@ -2697,7 +2724,7 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
             } else {
                 hilite.coloridx = clr | atr << 8;
                 hilite.anytype = initblstats[fld].anytype;
-                if (fld === 0 /* BL_TITLE */ && (p = strstri(new $c.Ptr(hilite.textmatch, 0), $c.lit(" or "))) !== null) {
+                if (fld === BL.TITLE && (p = strstri(new $c.Ptr(hilite.textmatch, 0), $c.lit(" or "))) !== null) {
                     p.set(0, 0);
                     await status_hilite_add_threshold(fld, hilite);
                     await pline($c.lit("Added hilite %s"), await status_hilite2str(hilite));
@@ -2711,7 +2738,7 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
                 await pline($c.lit("Added hilite %s"), await status_hilite2str(hilite));
             }
             reset_status_hilites();
-            return 1;
+            return TRUE;
         }
         break;
     }
@@ -2723,19 +2750,19 @@ function status_hilite_remove(id) {   // botl.c:4305
         hlstr = hlstr.next;
     }
     if (!hlstr) {
-        return 0;
+        return FALSE;
     }
-    if (hlstr.fld === 22 /* BL_CONDITION */) {
-        for (i = 0; i < 16; i = i + 1 | 0) {
+    if (hlstr.fld === BL.CONDITION) {
+        for (i = 0; i < CLR.MAX; i = i + 1 | 0) {
             gc.cond_hilites[i] = $c.andu64(gc.cond_hilites[i], $c.notu64(hlstr.mask));
         }
-        gc.cond_hilites[18] = $c.andu64(gc.cond_hilites[18], $c.notu64(hlstr.mask));
-        gc.cond_hilites[19] = $c.andu64(gc.cond_hilites[19], $c.notu64(hlstr.mask));
-        gc.cond_hilites[20] = $c.andu64(gc.cond_hilites[20], $c.notu64(hlstr.mask));
-        gc.cond_hilites[21] = $c.andu64(gc.cond_hilites[21], $c.notu64(hlstr.mask));
-        gc.cond_hilites[22] = $c.andu64(gc.cond_hilites[22], $c.notu64(hlstr.mask));
-        gc.cond_hilites[23] = $c.andu64(gc.cond_hilites[23], $c.notu64(hlstr.mask));
-        return 1;
+        gc.cond_hilites[CLR.MAX + 2] = $c.andu64(gc.cond_hilites[CLR.MAX + 2], $c.notu64(hlstr.mask));
+        gc.cond_hilites[CLR.MAX + 3] = $c.andu64(gc.cond_hilites[CLR.MAX + 3], $c.notu64(hlstr.mask));
+        gc.cond_hilites[CLR.MAX + 4] = $c.andu64(gc.cond_hilites[CLR.MAX + 4], $c.notu64(hlstr.mask));
+        gc.cond_hilites[CLR.MAX + 5] = $c.andu64(gc.cond_hilites[CLR.MAX + 5], $c.notu64(hlstr.mask));
+        gc.cond_hilites[CLR.MAX + 6] = $c.andu64(gc.cond_hilites[CLR.MAX + 6], $c.notu64(hlstr.mask));
+        gc.cond_hilites[CLR.MAX + 7] = $c.andu64(gc.cond_hilites[CLR.MAX + 7], $c.notu64(hlstr.mask));
+        return TRUE;
     } else {
         fld = hlstr.fld;
         hlprev = null;
@@ -2752,36 +2779,36 @@ function status_hilite_remove(id) {   // botl.c:4305
                     $t2 = gb.blstats[1][fld].time = 0, gb.blstats[0][fld].time = $t2;
                 }
                 $c.free(hl);
-                return 1;
+                return TRUE;
             }
             hlprev = hl;
         }
     }
-    return 0;
+    return FALSE;
 }
 async function status_hilite_menu_fld(fld) {   // botl.c:4357
     let tmpwin = 0, i = 0, res = 0, picks = [null], any = new $T.any(), count = 0, hlstr = null, buf = new Int8Array(256), acted = 0, clr = 0, idx = 0, mode = 0;
     picks[0] = null;
     count = status_hilite_linestr_countfield(fld);
-    clr = 8;
+    clr = NO_COLOR;
     if (!count) {
         if (await status_hilite_menu_add(fld)) {
             status_hilite_linestr_done();
             await status_hilite_linestr_gather();
             count = status_hilite_linestr_countfield(fld);
         } else {
-            return 0;
+            return FALSE;
         }
     }
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(tmpwin, 0);
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     if (count) {
         hlstr = status_hilite_str;
         while (hlstr) {
             if (hlstr.fld === fld) {
                 any.$copyFrom(cg.zeroany);
                 any.a_int = hlstr.id;
-                await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(hlstr.str, 0), 0);
+                await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(hlstr.str, 0), MENU.ITEMFLAGS_NONE);
             }
             hlstr = hlstr.next;
         }
@@ -2793,18 +2820,18 @@ async function status_hilite_menu_fld(fld) {   // botl.c:4357
     if (count) {
         any.$copyFrom(cg.zeroany);
         any.a_int = -1;
-        await add_menu(tmpwin, nul_glyphinfo, any, 88, 0, 0, clr, $c.lit("Remove selected hilites"), 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 88, 0, ATR.NONE, clr, $c.lit("Remove selected hilites"), MENU.ITEMFLAGS_NONE);
     }
-    if (fld === 8 /* BL_SCORE */) {
+    if (fld === BL.SCORE) {
     } else {
         any.$copyFrom(cg.zeroany);
         any.a_int = -2;
-        await add_menu(tmpwin, nul_glyphinfo, any, 90, 0, 0, clr, $c.lit("Add new hilites"), 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 90, 0, ATR.NONE, clr, $c.lit("Add new hilites"), MENU.ITEMFLAGS_NONE);
     }
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("Current %s hilites:"), initblstats[fld].fldname);
-    await windowprocs.win_end_menu(tmpwin, new $c.Ptr(buf, 0));
-    acted = 0;
-    if ((res = await select_menu(tmpwin, 2, new $c.Ptr(picks, 0))) > 0) {
+    await end_menu()(tmpwin, new $c.Ptr(buf, 0));
+    acted = FALSE;
+    if ((res = await select_menu(tmpwin, PICK.ANY, new $c.Ptr(picks, 0))) > 0) {
         mode = 0;
         for (i = 0; i < res; i = i + 1 | 0) {
             idx = $c.radd(picks[0], i).item.a_int;
@@ -2818,31 +2845,31 @@ async function status_hilite_menu_fld(fld) {   // botl.c:4357
             for (i = 0; i < res; i = i + 1 | 0) {
                 idx = $c.radd(picks[0], i).item.a_int;
                 if (idx > 0 && status_hilite_remove(idx)) {
-                    acted = 1;
+                    acted = TRUE;
                 }
             }
         }
         if ((mode & 2) >>> 0) {
             while (await status_hilite_menu_add(fld)) {
-                acted = 1;
+                acted = TRUE;
             }
         }
         $c.free(picks[0]), picks[0] = null;
     }
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await destroy_nhwindow()(tmpwin);
     return acted;
 }
 async function status_hilites_viewall() {   // botl.c:4456
     let datawin = 0, hlstr = null, buf = new Int8Array(256);
     hlstr = status_hilite_str;
-    datawin = await windowprocs.win_create_nhwindow(5);
+    datawin = await create_nhwindow()(NHW.TEXT);
     while (hlstr) {
         $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("OPTIONS=hilite_status: %.*s"), 231, new $c.Ptr(hlstr.str, 0));
-        await windowprocs.win_putstr(datawin, 0, new $c.Ptr(buf, 0));
+        await putstr()(datawin, 0, new $c.Ptr(buf, 0));
         hlstr = hlstr.next;
     }
-    await windowprocs.win_display_nhwindow(datawin, 0);
-    await windowprocs.win_destroy_nhwindow(datawin);
+    await display_nhwindow()(datawin, FALSE);
+    await destroy_nhwindow()(datawin);
 }
 export async function all_options_statushilites(sbuf) {   // botl.c:4477
     let hlstr = null, buf = new Int8Array(256);
@@ -2859,23 +2886,23 @@ export async function all_options_statushilites(sbuf) {   // botl.c:4477
 export async function status_hilite_menu() {   // botl.c:4498
     let tmpwin = 0, i = 0, fld = 0, res = 0, picks = [null], any = new $T.any(), redo = 0, countall = 0, clr = 0, count = 0, buf = new Int8Array(256);
     picks[0] = null;
-    clr = 8;
+    clr = NO_COLOR;
     shlmenu_redo$: for (;;) {
-        redo = 0;
-        tmpwin = await windowprocs.win_create_nhwindow(4);
-        await windowprocs.win_start_menu(tmpwin, 0);
+        redo = FALSE;
+        tmpwin = await create_nhwindow()(NHW.MENU);
+        await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
         await status_hilite_linestr_gather();
-        countall = status_hilite_linestr_countfield(-1 /* BL_FLUSH */);
+        countall = status_hilite_linestr_countfield(BL.FLUSH);
         if (countall) {
             any.$copyFrom(cg.zeroany);
             any.a_int = -1;
-            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, $c.lit("View all hilites in config format"), 0);
+            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, $c.lit("View all hilites in config format"), MENU.ITEMFLAGS_NONE);
             await add_menu_str(tmpwin, $c.lit(""));
         }
-        for (i = 0; i < 27 /* MAXBLSTATS */; i = i + 1 | 0) {
+        for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
             fld = initblstats[i].fld;
             count = status_hilite_linestr_countfield(fld);
-            if (fld === 8 /* BL_SCORE */ && !count) {
+            if (fld === BL.SCORE && !count) {
                 continue;
             }
             any.$copyFrom(cg.zeroany);
@@ -2884,10 +2911,10 @@ export async function status_hilite_menu() {   // botl.c:4498
             if (count) {
                 $c.__builtin___sprintf_chk(eos(new $c.Ptr(buf, 0)), 0, -1, $c.lit(" (%d defined)"), count);
             }
-            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, clr, new $c.Ptr(buf, 0), 0);
+            await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), MENU.ITEMFLAGS_NONE);
         }
-        await windowprocs.win_end_menu(tmpwin, $c.lit("Status hilites:"));
-        if ((res = await select_menu(tmpwin, 1, new $c.Ptr(picks, 0))) > 0) {
+        await end_menu()(tmpwin, $c.lit("Status hilites:"));
+        if ((res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0))) > 0) {
             fld = picks[0].item.a_int - 1 | 0;
             if (fld < 0) {
                 await status_hilites_viewall();
@@ -2897,10 +2924,10 @@ export async function status_hilite_menu() {   // botl.c:4498
                 }
             }
             $c.free(picks[0]), picks[0] = null;
-            redo = 1;
+            redo = TRUE;
         }
-        await windowprocs.win_destroy_nhwindow(tmpwin);
-        countall = status_hilite_linestr_countfield(-1 /* BL_FLUSH */);
+        await destroy_nhwindow()(tmpwin);
+        countall = status_hilite_linestr_countfield(BL.FLUSH);
         status_hilite_linestr_done();
         if (redo && !iflags.debug_fuzzer) {
             continue shlmenu_redo$;
@@ -2910,915 +2937,267 @@ export async function status_hilite_menu() {   // botl.c:4498
     if (countall > 0 && !iflags.hilite_delta) {
         iflags.hilite_delta = 3;
     }
-    return 1;
+    return TRUE;
+}
+function has_hilite(i) {
+    return gb.blstats[0][i].thresholds;
+}
+function Is_Temp_Hilite(rule) {
+    return rule && rule.behavior === BL_TH.UPDOWN ? 1 : 0;
 }
 
 export function $init() {
     enc_stat.fill(null);
-    enc_stat[0] = $c.lit("");
-    enc_stat[1] = $c.lit("Burdened");
-    enc_stat[2] = $c.lit("Stressed");
-    enc_stat[3] = $c.lit("Strained");
-    enc_stat[4] = $c.lit("Overtaxed");
-    enc_stat[5] = $c.lit("Overloaded");
+    $c.init(enc_stat, [
+        $c.lit(""),
+        $c.lit("Burdened"),
+        $c.lit("Stressed"),
+        $c.lit("Strained"),
+        $c.lit("Overtaxed"),
+        $c.lit("Overloaded")
+    ]);
     for (let $i0 = 0; $i0 < 27; $i0++) {
         initblstats[$i0].$copyFrom(new $T.istat_s());
     }
-    initblstats[0].fldname = $c.lit("title");
-    initblstats[0].fldfmt = $c.lit("%s");
-    initblstats[0].time = 0;
-    initblstats[0].chg = 0;
-    initblstats[0].percent_matters = 0;
-    initblstats[0].percent_value = 0;
-    initblstats[0].anytype = 15;
-    initblstats[0].a.a_void = null;
-    initblstats[0].rawval.a_void = null;
-    initblstats[0].val = null;
-    initblstats[0].valwidth = 80;
-    initblstats[0].idxmax = -1;
-    initblstats[0].fld = 0;
-    initblstats[0].hilite_rule = null;
-    initblstats[0].thresholds = null;
-    initblstats[1].fldname = $c.lit("strength");
-    initblstats[1].fldfmt = $c.lit(" St:%s");
-    initblstats[1].time = 0;
-    initblstats[1].chg = 0;
-    initblstats[1].percent_matters = 0;
-    initblstats[1].percent_value = 0;
-    initblstats[1].anytype = 4;
-    initblstats[1].a.a_void = null;
-    initblstats[1].rawval.a_void = null;
-    initblstats[1].val = null;
-    initblstats[1].valwidth = 10;
-    initblstats[1].idxmax = -1;
-    initblstats[1].fld = 1;
-    initblstats[1].hilite_rule = null;
-    initblstats[1].thresholds = null;
-    initblstats[2].fldname = $c.lit("dexterity");
-    initblstats[2].fldfmt = $c.lit(" Dx:%s");
-    initblstats[2].time = 0;
-    initblstats[2].chg = 0;
-    initblstats[2].percent_matters = 0;
-    initblstats[2].percent_value = 0;
-    initblstats[2].anytype = 4;
-    initblstats[2].a.a_void = null;
-    initblstats[2].rawval.a_void = null;
-    initblstats[2].val = null;
-    initblstats[2].valwidth = 10;
-    initblstats[2].idxmax = -1;
-    initblstats[2].fld = 2;
-    initblstats[2].hilite_rule = null;
-    initblstats[2].thresholds = null;
-    initblstats[3].fldname = $c.lit("constitution");
-    initblstats[3].fldfmt = $c.lit(" Co:%s");
-    initblstats[3].time = 0;
-    initblstats[3].chg = 0;
-    initblstats[3].percent_matters = 0;
-    initblstats[3].percent_value = 0;
-    initblstats[3].anytype = 4;
-    initblstats[3].a.a_void = null;
-    initblstats[3].rawval.a_void = null;
-    initblstats[3].val = null;
-    initblstats[3].valwidth = 10;
-    initblstats[3].idxmax = -1;
-    initblstats[3].fld = 3;
-    initblstats[3].hilite_rule = null;
-    initblstats[3].thresholds = null;
-    initblstats[4].fldname = $c.lit("intelligence");
-    initblstats[4].fldfmt = $c.lit(" In:%s");
-    initblstats[4].time = 0;
-    initblstats[4].chg = 0;
-    initblstats[4].percent_matters = 0;
-    initblstats[4].percent_value = 0;
-    initblstats[4].anytype = 4;
-    initblstats[4].a.a_void = null;
-    initblstats[4].rawval.a_void = null;
-    initblstats[4].val = null;
-    initblstats[4].valwidth = 10;
-    initblstats[4].idxmax = -1;
-    initblstats[4].fld = 4;
-    initblstats[4].hilite_rule = null;
-    initblstats[4].thresholds = null;
-    initblstats[5].fldname = $c.lit("wisdom");
-    initblstats[5].fldfmt = $c.lit(" Wi:%s");
-    initblstats[5].time = 0;
-    initblstats[5].chg = 0;
-    initblstats[5].percent_matters = 0;
-    initblstats[5].percent_value = 0;
-    initblstats[5].anytype = 4;
-    initblstats[5].a.a_void = null;
-    initblstats[5].rawval.a_void = null;
-    initblstats[5].val = null;
-    initblstats[5].valwidth = 10;
-    initblstats[5].idxmax = -1;
-    initblstats[5].fld = 5;
-    initblstats[5].hilite_rule = null;
-    initblstats[5].thresholds = null;
-    initblstats[6].fldname = $c.lit("charisma");
-    initblstats[6].fldfmt = $c.lit(" Ch:%s");
-    initblstats[6].time = 0;
-    initblstats[6].chg = 0;
-    initblstats[6].percent_matters = 0;
-    initblstats[6].percent_value = 0;
-    initblstats[6].anytype = 4;
-    initblstats[6].a.a_void = null;
-    initblstats[6].rawval.a_void = null;
-    initblstats[6].val = null;
-    initblstats[6].valwidth = 10;
-    initblstats[6].idxmax = -1;
-    initblstats[6].fld = 6;
-    initblstats[6].hilite_rule = null;
-    initblstats[6].thresholds = null;
-    initblstats[7].fldname = $c.lit("alignment");
-    initblstats[7].fldfmt = $c.lit(" %s");
-    initblstats[7].time = 0;
-    initblstats[7].chg = 0;
-    initblstats[7].percent_matters = 0;
-    initblstats[7].percent_value = 0;
-    initblstats[7].anytype = 15;
-    initblstats[7].a.a_void = null;
-    initblstats[7].rawval.a_void = null;
-    initblstats[7].val = null;
-    initblstats[7].valwidth = 20;
-    initblstats[7].idxmax = -1;
-    initblstats[7].fld = 7;
-    initblstats[7].hilite_rule = null;
-    initblstats[7].thresholds = null;
-    initblstats[8].fldname = $c.lit("score");
-    initblstats[8].fldfmt = $c.lit(" S:%s");
-    initblstats[8].time = 0;
-    initblstats[8].chg = 0;
-    initblstats[8].percent_matters = 0;
-    initblstats[8].percent_value = 0;
-    initblstats[8].anytype = 9;
-    initblstats[8].a.a_void = null;
-    initblstats[8].rawval.a_void = null;
-    initblstats[8].val = null;
-    initblstats[8].valwidth = 30;
-    initblstats[8].idxmax = -1;
-    initblstats[8].fld = 8;
-    initblstats[8].hilite_rule = null;
-    initblstats[8].thresholds = null;
-    initblstats[9].fldname = $c.lit("carrying-capacity");
-    initblstats[9].fldfmt = $c.lit(" %s");
-    initblstats[9].time = 0;
-    initblstats[9].chg = 0;
-    initblstats[9].percent_matters = 0;
-    initblstats[9].percent_value = 0;
-    initblstats[9].anytype = 4;
-    initblstats[9].a.a_void = null;
-    initblstats[9].rawval.a_void = null;
-    initblstats[9].val = null;
-    initblstats[9].valwidth = 20;
-    initblstats[9].idxmax = -1;
-    initblstats[9].fld = 9;
-    initblstats[9].hilite_rule = null;
-    initblstats[9].thresholds = null;
-    initblstats[10].fldname = $c.lit("gold");
-    initblstats[10].fldfmt = $c.lit(" %s");
-    initblstats[10].time = 0;
-    initblstats[10].chg = 0;
-    initblstats[10].percent_matters = 0;
-    initblstats[10].percent_value = 0;
-    initblstats[10].anytype = 9;
-    initblstats[10].a.a_void = null;
-    initblstats[10].rawval.a_void = null;
-    initblstats[10].val = null;
-    initblstats[10].valwidth = 40;
-    initblstats[10].idxmax = -1;
-    initblstats[10].fld = 10;
-    initblstats[10].hilite_rule = null;
-    initblstats[10].thresholds = null;
-    initblstats[11].fldname = $c.lit("power");
-    initblstats[11].fldfmt = $c.lit(" Pw:%s");
-    initblstats[11].time = 0;
-    initblstats[11].chg = 0;
-    initblstats[11].percent_matters = 1;
-    initblstats[11].percent_value = 0;
-    initblstats[11].anytype = 4;
-    initblstats[11].a.a_void = null;
-    initblstats[11].rawval.a_void = null;
-    initblstats[11].val = null;
-    initblstats[11].valwidth = 10;
-    initblstats[11].idxmax = 12;
-    initblstats[11].fld = 11;
-    initblstats[11].hilite_rule = null;
-    initblstats[11].thresholds = null;
-    initblstats[12].fldname = $c.lit("power-max");
-    initblstats[12].fldfmt = $c.lit("(%s)");
-    initblstats[12].time = 0;
-    initblstats[12].chg = 0;
-    initblstats[12].percent_matters = 0;
-    initblstats[12].percent_value = 0;
-    initblstats[12].anytype = 4;
-    initblstats[12].a.a_void = null;
-    initblstats[12].rawval.a_void = null;
-    initblstats[12].val = null;
-    initblstats[12].valwidth = 10;
-    initblstats[12].idxmax = -1;
-    initblstats[12].fld = 12;
-    initblstats[12].hilite_rule = null;
-    initblstats[12].thresholds = null;
-    initblstats[13].fldname = $c.lit("experience-level");
-    initblstats[13].fldfmt = $c.lit(" Xp:%s");
-    initblstats[13].time = 0;
-    initblstats[13].chg = 0;
-    initblstats[13].percent_matters = 1;
-    initblstats[13].percent_value = 0;
-    initblstats[13].anytype = 4;
-    initblstats[13].a.a_void = null;
-    initblstats[13].rawval.a_void = null;
-    initblstats[13].val = null;
-    initblstats[13].valwidth = 10;
-    initblstats[13].idxmax = 21;
-    initblstats[13].fld = 13;
-    initblstats[13].hilite_rule = null;
-    initblstats[13].thresholds = null;
-    initblstats[14].fldname = $c.lit("armor-class");
-    initblstats[14].fldfmt = $c.lit(" AC:%s");
-    initblstats[14].time = 0;
-    initblstats[14].chg = 0;
-    initblstats[14].percent_matters = 0;
-    initblstats[14].percent_value = 0;
-    initblstats[14].anytype = 4;
-    initblstats[14].a.a_void = null;
-    initblstats[14].rawval.a_void = null;
-    initblstats[14].val = null;
-    initblstats[14].valwidth = 10;
-    initblstats[14].idxmax = -1;
-    initblstats[14].fld = 14;
-    initblstats[14].hilite_rule = null;
-    initblstats[14].thresholds = null;
-    initblstats[15].fldname = $c.lit("HD");
-    initblstats[15].fldfmt = $c.lit(" HD:%s");
-    initblstats[15].time = 0;
-    initblstats[15].chg = 0;
-    initblstats[15].percent_matters = 0;
-    initblstats[15].percent_value = 0;
-    initblstats[15].anytype = 4;
-    initblstats[15].a.a_void = null;
-    initblstats[15].rawval.a_void = null;
-    initblstats[15].val = null;
-    initblstats[15].valwidth = 10;
-    initblstats[15].idxmax = -1;
-    initblstats[15].fld = 15;
-    initblstats[15].hilite_rule = null;
-    initblstats[15].thresholds = null;
-    initblstats[16].fldname = $c.lit("time");
-    initblstats[16].fldfmt = $c.lit(" T:%s");
-    initblstats[16].time = 0;
-    initblstats[16].chg = 0;
-    initblstats[16].percent_matters = 0;
-    initblstats[16].percent_value = 0;
-    initblstats[16].anytype = 9;
-    initblstats[16].a.a_void = null;
-    initblstats[16].rawval.a_void = null;
-    initblstats[16].val = null;
-    initblstats[16].valwidth = 30;
-    initblstats[16].idxmax = -1;
-    initblstats[16].fld = 16;
-    initblstats[16].hilite_rule = null;
-    initblstats[16].thresholds = null;
-    initblstats[17].fldname = $c.lit("hunger");
-    initblstats[17].fldfmt = $c.lit(" %s");
-    initblstats[17].time = 0;
-    initblstats[17].chg = 0;
-    initblstats[17].percent_matters = 0;
-    initblstats[17].percent_value = 0;
-    initblstats[17].anytype = 4;
-    initblstats[17].a.a_void = null;
-    initblstats[17].rawval.a_void = null;
-    initblstats[17].val = null;
-    initblstats[17].valwidth = 20;
-    initblstats[17].idxmax = -1;
-    initblstats[17].fld = 17;
-    initblstats[17].hilite_rule = null;
-    initblstats[17].thresholds = null;
-    initblstats[18].fldname = $c.lit("hitpoints");
-    initblstats[18].fldfmt = $c.lit(" HP:%s");
-    initblstats[18].time = 0;
-    initblstats[18].chg = 0;
-    initblstats[18].percent_matters = 1;
-    initblstats[18].percent_value = 0;
-    initblstats[18].anytype = 4;
-    initblstats[18].a.a_void = null;
-    initblstats[18].rawval.a_void = null;
-    initblstats[18].val = null;
-    initblstats[18].valwidth = 10;
-    initblstats[18].idxmax = 19;
-    initblstats[18].fld = 18;
-    initblstats[18].hilite_rule = null;
-    initblstats[18].thresholds = null;
-    initblstats[19].fldname = $c.lit("hitpoints-max");
-    initblstats[19].fldfmt = $c.lit("(%s)");
-    initblstats[19].time = 0;
-    initblstats[19].chg = 0;
-    initblstats[19].percent_matters = 0;
-    initblstats[19].percent_value = 0;
-    initblstats[19].anytype = 4;
-    initblstats[19].a.a_void = null;
-    initblstats[19].rawval.a_void = null;
-    initblstats[19].val = null;
-    initblstats[19].valwidth = 10;
-    initblstats[19].idxmax = -1;
-    initblstats[19].fld = 19;
-    initblstats[19].hilite_rule = null;
-    initblstats[19].thresholds = null;
-    initblstats[20].fldname = $c.lit("dungeon-level");
-    initblstats[20].fldfmt = $c.lit("%s");
-    initblstats[20].time = 0;
-    initblstats[20].chg = 0;
-    initblstats[20].percent_matters = 0;
-    initblstats[20].percent_value = 0;
-    initblstats[20].anytype = 15;
-    initblstats[20].a.a_void = null;
-    initblstats[20].rawval.a_void = null;
-    initblstats[20].val = null;
-    initblstats[20].valwidth = 80;
-    initblstats[20].idxmax = -1;
-    initblstats[20].fld = 20;
-    initblstats[20].hilite_rule = null;
-    initblstats[20].thresholds = null;
-    initblstats[21].fldname = $c.lit("experience");
-    initblstats[21].fldfmt = $c.lit("/%s");
-    initblstats[21].time = 0;
-    initblstats[21].chg = 0;
-    initblstats[21].percent_matters = 1;
-    initblstats[21].percent_value = 0;
-    initblstats[21].anytype = 9;
-    initblstats[21].a.a_void = null;
-    initblstats[21].rawval.a_void = null;
-    initblstats[21].val = null;
-    initblstats[21].valwidth = 30;
-    initblstats[21].idxmax = 21;
-    initblstats[21].fld = 21;
-    initblstats[21].hilite_rule = null;
-    initblstats[21].thresholds = null;
-    initblstats[22].fldname = $c.lit("condition");
-    initblstats[22].fldfmt = $c.lit("%s");
-    initblstats[22].time = 0;
-    initblstats[22].chg = 0;
-    initblstats[22].percent_matters = 0;
-    initblstats[22].percent_value = 0;
-    initblstats[22].anytype = 17;
-    initblstats[22].a.a_void = null;
-    initblstats[22].rawval.a_void = null;
-    initblstats[22].val = null;
-    initblstats[22].valwidth = 0;
-    initblstats[22].idxmax = -1;
-    initblstats[22].fld = 22;
-    initblstats[22].hilite_rule = null;
-    initblstats[22].thresholds = null;
-    initblstats[23].fldname = $c.lit("version");
-    initblstats[23].fldfmt = $c.lit(" %s");
-    initblstats[23].time = 0;
-    initblstats[23].chg = 0;
-    initblstats[23].percent_matters = 0;
-    initblstats[23].percent_value = 0;
-    initblstats[23].anytype = 15;
-    initblstats[23].a.a_void = null;
-    initblstats[23].rawval.a_void = null;
-    initblstats[23].val = null;
-    initblstats[23].valwidth = 80;
-    initblstats[23].idxmax = -1;
-    initblstats[23].fld = 26;
-    initblstats[23].hilite_rule = null;
-    initblstats[23].thresholds = null;
-    initblstats[24].fldname = $c.lit("weapon");
-    initblstats[24].fldfmt = $c.lit(" %s");
-    initblstats[24].time = 0;
-    initblstats[24].chg = 0;
-    initblstats[24].percent_matters = 0;
-    initblstats[24].percent_value = 0;
-    initblstats[24].anytype = 15;
-    initblstats[24].a.a_void = null;
-    initblstats[24].rawval.a_void = null;
-    initblstats[24].val = null;
-    initblstats[24].valwidth = 20;
-    initblstats[24].idxmax = -1;
-    initblstats[24].fld = 23;
-    initblstats[24].hilite_rule = null;
-    initblstats[24].thresholds = null;
-    initblstats[25].fldname = $c.lit("armor");
-    initblstats[25].fldfmt = $c.lit(" %s");
-    initblstats[25].time = 0;
-    initblstats[25].chg = 0;
-    initblstats[25].percent_matters = 0;
-    initblstats[25].percent_value = 0;
-    initblstats[25].anytype = 15;
-    initblstats[25].a.a_void = null;
-    initblstats[25].rawval.a_void = null;
-    initblstats[25].val = null;
-    initblstats[25].valwidth = 20;
-    initblstats[25].idxmax = -1;
-    initblstats[25].fld = 24;
-    initblstats[25].hilite_rule = null;
-    initblstats[25].thresholds = null;
-    initblstats[26].fldname = $c.lit("terrain");
-    initblstats[26].fldfmt = $c.lit(" %s");
-    initblstats[26].time = 0;
-    initblstats[26].chg = 0;
-    initblstats[26].percent_matters = 0;
-    initblstats[26].percent_value = 0;
-    initblstats[26].anytype = 15;
-    initblstats[26].a.a_void = null;
-    initblstats[26].rawval.a_void = null;
-    initblstats[26].val = null;
-    initblstats[26].valwidth = 20;
-    initblstats[26].idxmax = -1;
-    initblstats[26].fld = 25;
-    initblstats[26].hilite_rule = null;
-    initblstats[26].thresholds = null;
+    $c.init(initblstats, [
+        { fldname: $c.lit("title"), fldfmt: $c.lit("%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.STR, a: {}, rawval: {}, val: null,
+          valwidth: MAXVALWIDTH, idxmax: -1, fld: BL.TITLE, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("strength"), fldfmt: $c.lit(" St:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.STR, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("dexterity"), fldfmt: $c.lit(" Dx:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.DX, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("constitution"), fldfmt: $c.lit(" Co:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.CO, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("intelligence"), fldfmt: $c.lit(" In:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.IN, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("wisdom"), fldfmt: $c.lit(" Wi:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.WI, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("charisma"), fldfmt: $c.lit(" Ch:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.CH, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("alignment"), fldfmt: $c.lit(" %s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.STR, a: {}, rawval: {},
+          val: null, valwidth: 20, idxmax: -1, fld: BL.ALIGN, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("score"), fldfmt: $c.lit(" S:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.LONG, a: {}, rawval: {},
+          val: null, valwidth: 30, idxmax: -1, fld: BL.SCORE, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("carrying-capacity"), fldfmt: $c.lit(" %s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval:
+          {}, val: null, valwidth: 20, idxmax: -1, fld: BL.CAP, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("gold"), fldfmt: $c.lit(" %s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.LONG, a: {}, rawval: {},
+          val: null, valwidth: 40, idxmax: -1, fld: BL.GOLD, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("power"), fldfmt: $c.lit(" Pw:%s"), time: 0, chg: 0, percent_matters: 1, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: BL.ENEMAX, fld: BL.ENE, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("power-max"), fldfmt: $c.lit("(%s)"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.ENEMAX, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("experience-level"), fldfmt: $c.lit(" Xp:%s"), time: 0, chg: 0, percent_matters: 1, percent_value: 0, anytype: ANY.INT, a: {}, rawval:
+          {}, val: null, valwidth: 10, idxmax: BL.EXP, fld: BL.XP, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("armor-class"), fldfmt: $c.lit(" AC:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.AC, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("HD"), fldfmt: $c.lit(" HD:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.HD, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("time"), fldfmt: $c.lit(" T:%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.LONG, a: {}, rawval: {},
+          val: null, valwidth: 30, idxmax: -1, fld: BL.TIME, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("hunger"), fldfmt: $c.lit(" %s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 20, idxmax: -1, fld: BL.HUNGER, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("hitpoints"), fldfmt: $c.lit(" HP:%s"), time: 0, chg: 0, percent_matters: 1, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: BL.HPMAX, fld: BL.HP, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("hitpoints-max"), fldfmt: $c.lit("(%s)"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.INT, a: {}, rawval: {},
+          val: null, valwidth: 10, idxmax: -1, fld: BL.HPMAX, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("dungeon-level"), fldfmt: $c.lit("%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.STR, a: {}, rawval: {},
+          val: null, valwidth: MAXVALWIDTH, idxmax: -1, fld: BL.LEVELDESC, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("experience"), fldfmt: $c.lit("/%s"), time: 0, chg: 0, percent_matters: 1, percent_value: 0, anytype: ANY.LONG, a: {}, rawval: {},
+          val: null, valwidth: 30, idxmax: BL.EXP, fld: BL.EXP, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("condition"), fldfmt: $c.lit("%s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.MASK32, a: {}, rawval: {},
+          val: null, valwidth: 0, idxmax: -1, fld: BL.CONDITION, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("version"), fldfmt: $c.lit(" %s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.STR, a: {}, rawval: {},
+          val: null, valwidth: MAXVALWIDTH, idxmax: -1, fld: BL.VERS, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("weapon"), fldfmt: $c.lit(" %s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.STR, a: {}, rawval: {},
+          val: null, valwidth: 20, idxmax: -1, fld: BL.WEAPON, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("armor"), fldfmt: $c.lit(" %s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.STR, a: {}, rawval: {},
+          val: null, valwidth: 20, idxmax: -1, fld: BL.ARMOR, hilite_rule: null, thresholds: null },
+        { fldname: $c.lit("terrain"), fldfmt: $c.lit(" %s"), time: 0, chg: 0, percent_matters: 0, percent_value: 0, anytype: ANY.STR, a: {}, rawval: {},
+          val: null, valwidth: 20, idxmax: -1, fld: BL.TERRAIN,
+          hilite_rule: null, thresholds: null }
+    ]);
     for (let $i0 = 0; $i0 < 6; $i0++) {
         condition_aliases[$i0].$copyFrom(new $T.condmap());
     }
-    condition_aliases[0].id = $c.lit("strangled");
-    condition_aliases[0].bitmask = 2097152;
-    condition_aliases[1].id = $c.lit("all");
-    condition_aliases[1].bitmask = 1073741823;
-    condition_aliases[2].id = $c.lit("major_troubles");
-    condition_aliases[2].bitmask = 20193920;
-    condition_aliases[3].id = $c.lit("minor_troubles");
-    condition_aliases[3].bitmask = 12616730;
-    condition_aliases[4].id = $c.lit("movement");
-    condition_aliases[4].bitmask = 81984;
-    condition_aliases[5].id = $c.lit("opt_in");
-    condition_aliases[5].bitmask = 1049270533;
+    $c.init(condition_aliases, [
+        { id: $c.lit("strangled"), bitmask: BL_MASK.STRNGL },
+        { id: $c.lit("all"),
+          bitmask: BL_MASK.BAREH | BL_MASK.BLIND | BL_MASK.BUSY | BL_MASK.CONF | BL_MASK.DEAF | BL_MASK.ELF_IRON | BL_MASK.FLY | BL_MASK.FOODPOIS | BL_MASK.GLOWHANDS | BL_MASK.GRAB | BL_MASK.HALLU | BL_MASK.HELD | BL_MASK.ICY | BL_MASK.INLAVA | BL_MASK.LEV | BL_MASK.PARLYZ | BL_MASK.RIDE | BL_MASK.SLEEPING | BL_MASK.SLIME | BL_MASK.SLIPPERY | BL_MASK.STONE | BL_MASK.STRNGL | BL_MASK.STUN | BL_MASK.SUBMERGED | BL_MASK.TERMILL | BL_MASK.TETHERED | BL_MASK.TRAPPED | BL_MASK.UNCONSC | BL_MASK.WOUNDEDL | BL_MASK.HOLDING },
+        { id: $c.lit("major_troubles"),
+          bitmask: BL_MASK.FOODPOIS | BL_MASK.GRAB | BL_MASK.INLAVA | BL_MASK.SLIME | BL_MASK.STONE | BL_MASK.STRNGL | BL_MASK.TERMILL },
+        { id: $c.lit("minor_troubles"),
+          bitmask: BL_MASK.BLIND | BL_MASK.CONF | BL_MASK.DEAF | BL_MASK.HALLU | BL_MASK.PARLYZ | BL_MASK.SUBMERGED | BL_MASK.STUN },
+        { id: $c.lit("movement"), bitmask: BL_MASK.LEV | BL_MASK.FLY | BL_MASK.RIDE },
+        { id: $c.lit("opt_in"),
+          bitmask: BL_MASK.BAREH | BL_MASK.BUSY | BL_MASK.GLOWHANDS | BL_MASK.HELD | BL_MASK.ICY | BL_MASK.PARLYZ | BL_MASK.SLEEPING | BL_MASK.SLIPPERY | BL_MASK.SUBMERGED | BL_MASK.TETHERED | BL_MASK.TRAPPED | BL_MASK.UNCONSC | BL_MASK.WOUNDEDL | BL_MASK.HOLDING }
+    ]);
     for (let $i0 = 0; $i0 < 30; $i0++) {
         conditions[$i0].$copyFrom(new $T.conditions_t());
     }
-    conditions[0].ranking = 20;
-    conditions[0].mask = 1;
-    conditions[0].c = 0;
-    conditions[0].text[0] = $c.lit("Bare");
-    conditions[0].text[1] = $c.lit("Bar");
-    conditions[0].text[2] = $c.lit("Bh");
-    conditions[1].ranking = 10;
-    conditions[1].mask = 2;
-    conditions[1].c = 1;
-    conditions[1].text[0] = $c.lit("Blind");
-    conditions[1].text[1] = $c.lit("Blnd");
-    conditions[1].text[2] = $c.lit("Bl");
-    conditions[2].ranking = 20;
-    conditions[2].mask = 4;
-    conditions[2].c = 2;
-    conditions[2].text[0] = $c.lit("Busy");
-    conditions[2].text[1] = $c.lit("Bsy");
-    conditions[2].text[2] = $c.lit("By");
-    conditions[3].ranking = 10;
-    conditions[3].mask = 8;
-    conditions[3].c = 3;
-    conditions[3].text[0] = $c.lit("Conf");
-    conditions[3].text[1] = $c.lit("Cnf");
-    conditions[3].text[2] = $c.lit("Cf");
-    conditions[4].ranking = 10;
-    conditions[4].mask = 16;
-    conditions[4].c = 4;
-    conditions[4].text[0] = $c.lit("Deaf");
-    conditions[4].text[1] = $c.lit("Def");
-    conditions[4].text[2] = $c.lit("Df");
-    conditions[5].ranking = 15;
-    conditions[5].mask = 32;
-    conditions[5].c = 5;
-    conditions[5].text[0] = $c.lit("Iron");
-    conditions[5].text[1] = $c.lit("Irn");
-    conditions[5].text[2] = $c.lit("Fe");
-    conditions[6].ranking = 10;
-    conditions[6].mask = 64;
-    conditions[6].c = 6;
-    conditions[6].text[0] = $c.lit("Fly");
-    conditions[6].text[1] = $c.lit("Fly");
-    conditions[6].text[2] = $c.lit("Fl");
-    conditions[7].ranking = 6;
-    conditions[7].mask = 128;
-    conditions[7].c = 7;
-    conditions[7].text[0] = $c.lit("FoodPois");
-    conditions[7].text[1] = $c.lit("Fpois");
-    conditions[7].text[2] = $c.lit("Poi");
-    conditions[8].ranking = 20;
-    conditions[8].mask = 256;
-    conditions[8].c = 8;
-    conditions[8].text[0] = $c.lit("Glow");
-    conditions[8].text[1] = $c.lit("Glo");
-    conditions[8].text[2] = $c.lit("Gl");
-    conditions[9].ranking = 2;
-    conditions[9].mask = 512;
-    conditions[9].c = 9;
-    conditions[9].text[0] = $c.lit("Grab");
-    conditions[9].text[1] = $c.lit("Grb");
-    conditions[9].text[2] = $c.lit("Gr");
-    conditions[10].ranking = 10;
-    conditions[10].mask = 1024;
-    conditions[10].c = 10;
-    conditions[10].text[0] = $c.lit("Hallu");
-    conditions[10].text[1] = $c.lit("Hal");
-    conditions[10].text[2] = $c.lit("Hl");
-    conditions[11].ranking = 20;
-    conditions[11].mask = 2048;
-    conditions[11].c = 11;
-    conditions[11].text[0] = $c.lit("Held");
-    conditions[11].text[1] = $c.lit("Hld");
-    conditions[11].text[2] = $c.lit("Hd");
-    conditions[12].ranking = 20;
-    conditions[12].mask = 4096;
-    conditions[12].c = 12;
-    conditions[12].text[0] = $c.lit("Icy");
-    conditions[12].text[1] = $c.lit("Icy");
-    conditions[12].text[2] = $c.lit("Ic");
-    conditions[13].ranking = 8;
-    conditions[13].mask = 8192;
-    conditions[13].c = 13;
-    conditions[13].text[0] = $c.lit("InLava");
-    conditions[13].text[1] = $c.lit("Lav");
-    conditions[13].text[2] = $c.lit("La");
-    conditions[14].ranking = 10;
-    conditions[14].mask = 16384;
-    conditions[14].c = 14;
-    conditions[14].text[0] = $c.lit("Lev");
-    conditions[14].text[1] = $c.lit("Lev");
-    conditions[14].text[2] = $c.lit("Lv");
-    conditions[15].ranking = 20;
-    conditions[15].mask = 32768;
-    conditions[15].c = 15;
-    conditions[15].text[0] = $c.lit("Parlyz");
-    conditions[15].text[1] = $c.lit("Para");
-    conditions[15].text[2] = $c.lit("Par");
-    conditions[16].ranking = 10;
-    conditions[16].mask = 65536;
-    conditions[16].c = 16;
-    conditions[16].text[0] = $c.lit("Ride");
-    conditions[16].text[1] = $c.lit("Rid");
-    conditions[16].text[2] = $c.lit("Rd");
-    conditions[17].ranking = 20;
-    conditions[17].mask = 131072;
-    conditions[17].c = 17;
-    conditions[17].text[0] = $c.lit("Zzz");
-    conditions[17].text[1] = $c.lit("Zzz");
-    conditions[17].text[2] = $c.lit("Zz");
-    conditions[18].ranking = 6;
-    conditions[18].mask = 262144;
-    conditions[18].c = 18;
-    conditions[18].text[0] = $c.lit("Slime");
-    conditions[18].text[1] = $c.lit("Slim");
-    conditions[18].text[2] = $c.lit("Slm");
-    conditions[19].ranking = 20;
-    conditions[19].mask = 524288;
-    conditions[19].c = 19;
-    conditions[19].text[0] = $c.lit("Slip");
-    conditions[19].text[1] = $c.lit("Slp");
-    conditions[19].text[2] = $c.lit("Sl");
-    conditions[20].ranking = 6;
-    conditions[20].mask = 1048576;
-    conditions[20].c = 20;
-    conditions[20].text[0] = $c.lit("Stone");
-    conditions[20].text[1] = $c.lit("Ston");
-    conditions[20].text[2] = $c.lit("Sto");
-    conditions[21].ranking = 4;
-    conditions[21].mask = 2097152;
-    conditions[21].c = 21;
-    conditions[21].text[0] = $c.lit("Strngl");
-    conditions[21].text[1] = $c.lit("Stngl");
-    conditions[21].text[2] = $c.lit("Str");
-    conditions[22].ranking = 10;
-    conditions[22].mask = 4194304;
-    conditions[22].c = 22;
-    conditions[22].text[0] = $c.lit("Stun");
-    conditions[22].text[1] = $c.lit("Stun");
-    conditions[22].text[2] = $c.lit("St");
-    conditions[23].ranking = 15;
-    conditions[23].mask = 8388608;
-    conditions[23].c = 23;
-    conditions[23].text[0] = $c.lit("Submrg");
-    conditions[23].text[1] = $c.lit("Subm");
-    conditions[23].text[2] = $c.lit("Sm");
-    conditions[24].ranking = 6;
-    conditions[24].mask = 16777216;
-    conditions[24].c = 24;
-    conditions[24].text[0] = $c.lit("TermIll");
-    conditions[24].text[1] = $c.lit("Ill");
-    conditions[24].text[2] = $c.lit("Ill");
-    conditions[25].ranking = 20;
-    conditions[25].mask = 33554432;
-    conditions[25].c = 25;
-    conditions[25].text[0] = $c.lit("Teth");
-    conditions[25].text[1] = $c.lit("Tth");
-    conditions[25].text[2] = $c.lit("Te");
-    conditions[26].ranking = 20;
-    conditions[26].mask = 67108864;
-    conditions[26].c = 26;
-    conditions[26].text[0] = $c.lit("Trap");
-    conditions[26].text[1] = $c.lit("Trp");
-    conditions[26].text[2] = $c.lit("Tr");
-    conditions[27].ranking = 20;
-    conditions[27].mask = 134217728;
-    conditions[27].c = 27;
-    conditions[27].text[0] = $c.lit("Out");
-    conditions[27].text[1] = $c.lit("Out");
-    conditions[27].text[2] = $c.lit("KO");
-    conditions[28].ranking = 20;
-    conditions[28].mask = 268435456;
-    conditions[28].c = 28;
-    conditions[28].text[0] = $c.lit("WLegs");
-    conditions[28].text[1] = $c.lit("Leg");
-    conditions[28].text[2] = $c.lit("Lg");
-    conditions[29].ranking = 20;
-    conditions[29].mask = 536870912;
-    conditions[29].c = 29;
-    conditions[29].text[0] = $c.lit("UHold");
-    conditions[29].text[1] = $c.lit("UHld");
-    conditions[29].text[2] = $c.lit("UHd");
+    $c.init(conditions, [
+        { ranking: 20, mask: BL_MASK.BAREH, c: bl_bareh, text: [$c.lit("Bare"), $c.lit("Bar"), $c.lit("Bh")] },
+        { ranking: 10, mask: BL_MASK.BLIND, c: bl_blind, text: [$c.lit("Blind"), $c.lit("Blnd"), $c.lit("Bl")] },
+        { ranking: 20, mask: BL_MASK.BUSY, c: bl_busy, text: [$c.lit("Busy"), $c.lit("Bsy"), $c.lit("By")] },
+        { ranking: 10, mask: BL_MASK.CONF, c: bl_conf, text: [$c.lit("Conf"), $c.lit("Cnf"), $c.lit("Cf")] },
+        { ranking: 10, mask: BL_MASK.DEAF, c: bl_deaf, text: [$c.lit("Deaf"), $c.lit("Def"), $c.lit("Df")] },
+        { ranking: 15, mask: BL_MASK.ELF_IRON, c: bl_elf_iron, text: [$c.lit("Iron"), $c.lit("Irn"), $c.lit("Fe")] },
+        { ranking: 10, mask: BL_MASK.FLY, c: bl_fly, text: [$c.lit("Fly"), $c.lit("Fly"), $c.lit("Fl")] },
+        { ranking: 6, mask: BL_MASK.FOODPOIS, c: bl_foodpois, text: [$c.lit("FoodPois"), $c.lit("Fpois"), $c.lit("Poi")] },
+        { ranking: 20, mask: BL_MASK.GLOWHANDS, c: bl_glowhands, text: [$c.lit("Glow"), $c.lit("Glo"), $c.lit("Gl")] },
+        { ranking: 2, mask: BL_MASK.GRAB, c: bl_grab, text: [$c.lit("Grab"), $c.lit("Grb"), $c.lit("Gr")] },
+        { ranking: 10, mask: BL_MASK.HALLU, c: bl_hallu, text: [$c.lit("Hallu"), $c.lit("Hal"), $c.lit("Hl")] },
+        { ranking: 20, mask: BL_MASK.HELD, c: bl_held, text: [$c.lit("Held"), $c.lit("Hld"), $c.lit("Hd")] },
+        { ranking: 20, mask: BL_MASK.ICY, c: bl_icy, text: [$c.lit("Icy"), $c.lit("Icy"), $c.lit("Ic")] },
+        { ranking: 8, mask: BL_MASK.INLAVA, c: bl_inlava, text: [$c.lit("InLava"), $c.lit("Lav"), $c.lit("La")] },
+        { ranking: 10, mask: BL_MASK.LEV, c: bl_lev, text: [$c.lit("Lev"), $c.lit("Lev"), $c.lit("Lv")] },
+        { ranking: 20, mask: BL_MASK.PARLYZ, c: bl_parlyz, text: [$c.lit("Parlyz"), $c.lit("Para"), $c.lit("Par")] },
+        { ranking: 10, mask: BL_MASK.RIDE, c: bl_ride, text: [$c.lit("Ride"), $c.lit("Rid"), $c.lit("Rd")] },
+        { ranking: 20, mask: BL_MASK.SLEEPING, c: bl_sleeping, text: [$c.lit("Zzz"), $c.lit("Zzz"), $c.lit("Zz")] },
+        { ranking: 6, mask: BL_MASK.SLIME, c: bl_slime, text: [$c.lit("Slime"), $c.lit("Slim"), $c.lit("Slm")] },
+        { ranking: 20, mask: BL_MASK.SLIPPERY, c: bl_slippery, text: [$c.lit("Slip"), $c.lit("Slp"), $c.lit("Sl")] },
+        { ranking: 6, mask: BL_MASK.STONE, c: bl_stone, text: [$c.lit("Stone"), $c.lit("Ston"), $c.lit("Sto")] },
+        { ranking: 4, mask: BL_MASK.STRNGL, c: bl_strngl, text: [$c.lit("Strngl"), $c.lit("Stngl"), $c.lit("Str")] },
+        { ranking: 10, mask: BL_MASK.STUN, c: bl_stun, text: [$c.lit("Stun"), $c.lit("Stun"), $c.lit("St")] },
+        { ranking: 15, mask: BL_MASK.SUBMERGED, c: bl_submerged, text: [$c.lit("Submrg"), $c.lit("Subm"), $c.lit("Sm")] },
+        { ranking: 6, mask: BL_MASK.TERMILL, c: bl_termill, text: [$c.lit("TermIll"), $c.lit("Ill"), $c.lit("Ill")] },
+        { ranking: 20, mask: BL_MASK.TETHERED, c: bl_tethered, text: [$c.lit("Teth"), $c.lit("Tth"), $c.lit("Te")] },
+        { ranking: 20, mask: BL_MASK.TRAPPED, c: bl_trapped, text: [$c.lit("Trap"), $c.lit("Trp"), $c.lit("Tr")] },
+        { ranking: 20, mask: BL_MASK.UNCONSC, c: bl_unconsc, text: [$c.lit("Out"), $c.lit("Out"), $c.lit("KO")] },
+        { ranking: 20, mask: BL_MASK.WOUNDEDL, c: bl_woundedl, text: [$c.lit("WLegs"), $c.lit("Leg"), $c.lit("Lg")] },
+        { ranking: 20, mask: BL_MASK.HOLDING, c: bl_holding, text: [$c.lit("UHold"), $c.lit("UHld"), $c.lit("UHd")] }
+    ]);
     for (let $i0 = 0; $i0 < 30; $i0++) {
         condtests[$i0].$copyFrom(new $T.condtests_t());
     }
-    condtests[0].c = 0;
-    condtests[0].useroption = $c.lit("barehanded");
-    condtests[0].opt = 0;
-    condtests[0].enabled = 0;
-    condtests[0].choice = 0;
-    condtests[0].test = 0;
-    condtests[1].c = 1;
-    condtests[1].useroption = $c.lit("blind");
-    condtests[1].opt = 1;
-    condtests[1].enabled = 1;
-    condtests[1].choice = 0;
-    condtests[1].test = 0;
-    condtests[2].c = 2;
-    condtests[2].useroption = $c.lit("busy");
-    condtests[2].opt = 0;
-    condtests[2].enabled = 0;
-    condtests[2].choice = 0;
-    condtests[2].test = 0;
-    condtests[3].c = 3;
-    condtests[3].useroption = $c.lit("conf");
-    condtests[3].opt = 1;
-    condtests[3].enabled = 1;
-    condtests[3].choice = 0;
-    condtests[3].test = 0;
-    condtests[4].c = 4;
-    condtests[4].useroption = $c.lit("deaf");
-    condtests[4].opt = 1;
-    condtests[4].enabled = 1;
-    condtests[4].choice = 0;
-    condtests[4].test = 0;
-    condtests[5].c = 5;
-    condtests[5].useroption = $c.lit("iron");
-    condtests[5].opt = 1;
-    condtests[5].enabled = 1;
-    condtests[5].choice = 0;
-    condtests[5].test = 0;
-    condtests[6].c = 6;
-    condtests[6].useroption = $c.lit("fly");
-    condtests[6].opt = 1;
-    condtests[6].enabled = 1;
-    condtests[6].choice = 0;
-    condtests[6].test = 0;
-    condtests[7].c = 7;
-    condtests[7].useroption = $c.lit("foodPois");
-    condtests[7].opt = 1;
-    condtests[7].enabled = 1;
-    condtests[7].choice = 0;
-    condtests[7].test = 0;
-    condtests[8].c = 8;
-    condtests[8].useroption = $c.lit("glowhands");
-    condtests[8].opt = 0;
-    condtests[8].enabled = 0;
-    condtests[8].choice = 0;
-    condtests[8].test = 0;
-    condtests[9].c = 9;
-    condtests[9].useroption = $c.lit("grab");
-    condtests[9].opt = 1;
-    condtests[9].enabled = 1;
-    condtests[9].choice = 0;
-    condtests[9].test = 0;
-    condtests[10].c = 10;
-    condtests[10].useroption = $c.lit("hallucinat");
-    condtests[10].opt = 1;
-    condtests[10].enabled = 1;
-    condtests[10].choice = 0;
-    condtests[10].test = 0;
-    condtests[11].c = 11;
-    condtests[11].useroption = $c.lit("held");
-    condtests[11].opt = 0;
-    condtests[11].enabled = 0;
-    condtests[11].choice = 0;
-    condtests[11].test = 0;
-    condtests[12].c = 12;
-    condtests[12].useroption = $c.lit("ice");
-    condtests[12].opt = 0;
-    condtests[12].enabled = 0;
-    condtests[12].choice = 0;
-    condtests[12].test = 0;
-    condtests[13].c = 13;
-    condtests[13].useroption = $c.lit("lava");
-    condtests[13].opt = 1;
-    condtests[13].enabled = 1;
-    condtests[13].choice = 0;
-    condtests[13].test = 0;
-    condtests[14].c = 14;
-    condtests[14].useroption = $c.lit("levitate");
-    condtests[14].opt = 1;
-    condtests[14].enabled = 1;
-    condtests[14].choice = 0;
-    condtests[14].test = 0;
-    condtests[15].c = 15;
-    condtests[15].useroption = $c.lit("paralyzed");
-    condtests[15].opt = 0;
-    condtests[15].enabled = 0;
-    condtests[15].choice = 0;
-    condtests[15].test = 0;
-    condtests[16].c = 16;
-    condtests[16].useroption = $c.lit("ride");
-    condtests[16].opt = 1;
-    condtests[16].enabled = 1;
-    condtests[16].choice = 0;
-    condtests[16].test = 0;
-    condtests[17].c = 17;
-    condtests[17].useroption = $c.lit("sleep");
-    condtests[17].opt = 0;
-    condtests[17].enabled = 0;
-    condtests[17].choice = 0;
-    condtests[17].test = 0;
-    condtests[18].c = 18;
-    condtests[18].useroption = $c.lit("slime");
-    condtests[18].opt = 1;
-    condtests[18].enabled = 1;
-    condtests[18].choice = 0;
-    condtests[18].test = 0;
-    condtests[19].c = 19;
-    condtests[19].useroption = $c.lit("slip");
-    condtests[19].opt = 0;
-    condtests[19].enabled = 0;
-    condtests[19].choice = 0;
-    condtests[19].test = 0;
-    condtests[20].c = 20;
-    condtests[20].useroption = $c.lit("stone");
-    condtests[20].opt = 1;
-    condtests[20].enabled = 1;
-    condtests[20].choice = 0;
-    condtests[20].test = 0;
-    condtests[21].c = 21;
-    condtests[21].useroption = $c.lit("strngl");
-    condtests[21].opt = 1;
-    condtests[21].enabled = 1;
-    condtests[21].choice = 0;
-    condtests[21].test = 0;
-    condtests[22].c = 22;
-    condtests[22].useroption = $c.lit("stun");
-    condtests[22].opt = 1;
-    condtests[22].enabled = 1;
-    condtests[22].choice = 0;
-    condtests[22].test = 0;
-    condtests[23].c = 23;
-    condtests[23].useroption = $c.lit("submerged");
-    condtests[23].opt = 0;
-    condtests[23].enabled = 0;
-    condtests[23].choice = 0;
-    condtests[23].test = 0;
-    condtests[24].c = 24;
-    condtests[24].useroption = $c.lit("termIll");
-    condtests[24].opt = 1;
-    condtests[24].enabled = 1;
-    condtests[24].choice = 0;
-    condtests[24].test = 0;
-    condtests[25].c = 25;
-    condtests[25].useroption = $c.lit("tethered");
-    condtests[25].opt = 0;
-    condtests[25].enabled = 0;
-    condtests[25].choice = 0;
-    condtests[25].test = 0;
-    condtests[26].c = 26;
-    condtests[26].useroption = $c.lit("trap");
-    condtests[26].opt = 0;
-    condtests[26].enabled = 0;
-    condtests[26].choice = 0;
-    condtests[26].test = 0;
-    condtests[27].c = 27;
-    condtests[27].useroption = $c.lit("unconscious");
-    condtests[27].opt = 0;
-    condtests[27].enabled = 0;
-    condtests[27].choice = 0;
-    condtests[27].test = 0;
-    condtests[28].c = 28;
-    condtests[28].useroption = $c.lit("woundedlegs");
-    condtests[28].opt = 0;
-    condtests[28].enabled = 0;
-    condtests[28].choice = 0;
-    condtests[28].test = 0;
-    condtests[29].c = 29;
-    condtests[29].useroption = $c.lit("holding");
-    condtests[29].opt = 0;
-    condtests[29].enabled = 0;
-    condtests[29].choice = 0;
-    condtests[29].test = 0;
+    $c.init(condtests, [
+        { c: bl_bareh, useroption: $c.lit("barehanded"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_blind, useroption: $c.lit("blind"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_busy, useroption: $c.lit("busy"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_conf, useroption: $c.lit("conf"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_deaf, useroption: $c.lit("deaf"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_elf_iron, useroption: $c.lit("iron"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_fly, useroption: $c.lit("fly"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_foodpois, useroption: $c.lit("foodPois"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_glowhands, useroption: $c.lit("glowhands"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_grab, useroption: $c.lit("grab"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_hallu, useroption: $c.lit("hallucinat"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_held, useroption: $c.lit("held"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_icy, useroption: $c.lit("ice"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_inlava, useroption: $c.lit("lava"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_lev, useroption: $c.lit("levitate"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_parlyz, useroption: $c.lit("paralyzed"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_ride, useroption: $c.lit("ride"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_sleeping, useroption: $c.lit("sleep"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_slime, useroption: $c.lit("slime"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_slippery, useroption: $c.lit("slip"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_stone, useroption: $c.lit("stone"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_strngl, useroption: $c.lit("strngl"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_stun, useroption: $c.lit("stun"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_submerged, useroption: $c.lit("submerged"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_termill, useroption: $c.lit("termIll"), opt: opt_out, enabled: 1, choice: 0, test: 0 },
+        { c: bl_tethered, useroption: $c.lit("tethered"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_trapped, useroption: $c.lit("trap"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_unconsc, useroption: $c.lit("unconscious"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_woundedl, useroption: $c.lit("woundedlegs"), opt: opt_in, enabled: 0, choice: 0, test: 0 },
+        { c: bl_holding, useroption: $c.lit("holding"), opt: opt_in, enabled: 0, choice: 0, test: 0 }
+    ]);
     cond_idx.fill(0);
-    cond_idx[0] = 0;
+    $c.init(cond_idx, [
+        0
+    ]);
     c_Wall.fill(0);
     c_Wall.set([87, 97, 108, 108]);   // "Wall"
     terrain_descr.fill(null);
-    terrain_descr[0] = $c.lit("Stone");
-    terrain_descr[1] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[2] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[3] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[4] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[5] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[6] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[7] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[8] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[9] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[10] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[11] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[12] = $c.lit("Portcullis");
-    terrain_descr[13] = $c.lit("Tree");
-    terrain_descr[14] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[15] = $c.lit("Stone");
-    terrain_descr[16] = $c.lit("Pool");
-    terrain_descr[17] = $c.lit("Moat");
-    terrain_descr[18] = $c.lit("Water");
-    terrain_descr[19] = $c.lit("(gap)");
-    terrain_descr[20] = $c.lit("Lava");
-    terrain_descr[21] = $c.lit("LavaWall");
-    terrain_descr[22] = $c.lit("Bars");
-    terrain_descr[23] = $c.lit("Doorway");
-    terrain_descr[24] = $c.lit("Corridor");
-    terrain_descr[25] = $c.lit("Room");
-    terrain_descr[26] = $c.lit("Stairs");
-    terrain_descr[27] = $c.lit("Ladder");
-    terrain_descr[28] = $c.lit("Fountain");
-    terrain_descr[29] = $c.lit("Throne");
-    terrain_descr[30] = $c.lit("Sink");
-    terrain_descr[31] = $c.lit("Grave");
-    terrain_descr[32] = $c.lit("Altar");
-    terrain_descr[33] = $c.lit("Ice");
-    terrain_descr[34] = $c.lit("Bridge");
-    terrain_descr[35] = $c.lit("Air");
-    terrain_descr[36] = $c.lit("Cloud");
-    terrain_descr[37] = $c.lit("");
-    terrain_descr[38] = new $c.Ptr(c_Wall, 0);
-    terrain_descr[39] = $c.lit("Floor");
-    terrain_descr[40] = $c.lit("Ground");
-    terrain_descr[41] = $c.lit("Open-door");
-    terrain_descr[42] = $c.lit("Shut-door");
-    terrain_descr[43] = $c.lit("Swamp");
-    terrain_descr[44] = $c.lit("Submerged");
-    terrain_descr[45] = $c.lit("Sea");
-    terrain_descr[46] = $c.lit("WaterWall");
+    $c.init(terrain_descr, [
+        $c.lit("Stone"),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        new $c.Ptr(c_Wall, 0),
+        $c.lit("Portcullis"),
+        $c.lit("Tree"),
+        new $c.Ptr(c_Wall, 0),
+        $c.lit("Stone"),
+        $c.lit("Pool"),
+        $c.lit("Moat"),
+        $c.lit("Water"),
+        $c.lit("(gap)"),
+        $c.lit("Lava"),
+        $c.lit("LavaWall"),
+        $c.lit("Bars"),
+        $c.lit("Doorway"),
+        $c.lit("Corridor"),
+        $c.lit("Room"),
+        $c.lit("Stairs"),
+        $c.lit("Ladder"),
+        $c.lit("Fountain"),
+        $c.lit("Throne"),
+        $c.lit("Sink"),
+        $c.lit("Grave"),
+        $c.lit("Altar"),
+        $c.lit("Ice"),
+        $c.lit("Bridge"),
+        $c.lit("Air"),
+        $c.lit("Cloud"),
+        $c.lit(""),
+        new $c.Ptr(c_Wall, 0),
+        $c.lit("Floor"),
+        $c.lit("Ground"),
+        $c.lit("Open-door"),
+        $c.lit("Shut-door"),
+        $c.lit("Swamp"),
+        $c.lit("Submerged"),
+        $c.lit("Sea"),
+        $c.lit("WaterWall")
+    ]);
     cache_avail.fill(0);
-    cache_avail[0] = 0;
-    cache_avail[1] = 0;
-    cache_avail[2] = 0;
+    $c.init(cache_avail, [
+        0,
+        0,
+        0
+    ]);
     cache_reslt.fill(0);
-    cache_reslt[0] = 0;
-    cache_reslt[1] = 0;
-    cache_reslt[2] = 0;
+    $c.init(cache_reslt, [
+        0,
+        0,
+        0
+    ]);
     cache_nomovemsg = null;
     cache_multi_reason = null;
     for (let $i0 = 0; $i0 < 22; $i0++) {
         fieldids_alias[$i0].$copyFrom(new $T.fieldid_t());
     }
-    fieldids_alias[0].fieldname = $c.lit("characteristics");
-    fieldids_alias[0].fldid = -3;
-    fieldids_alias[1].fieldname = $c.lit("encumbrance");
-    fieldids_alias[1].fldid = 9;
-    fieldids_alias[2].fieldname = $c.lit("experience-points");
-    fieldids_alias[2].fldid = 21;
-    fieldids_alias[3].fieldname = $c.lit("dx");
-    fieldids_alias[3].fldid = 2;
-    fieldids_alias[4].fieldname = $c.lit("co");
-    fieldids_alias[4].fldid = 3;
-    fieldids_alias[5].fieldname = $c.lit("con");
-    fieldids_alias[5].fldid = 3;
-    fieldids_alias[6].fieldname = $c.lit("points");
-    fieldids_alias[6].fldid = 8;
-    fieldids_alias[7].fieldname = $c.lit("cap");
-    fieldids_alias[7].fldid = 9;
-    fieldids_alias[8].fieldname = $c.lit("pw");
-    fieldids_alias[8].fldid = 11;
-    fieldids_alias[9].fieldname = $c.lit("pw-max");
-    fieldids_alias[9].fldid = 12;
-    fieldids_alias[10].fieldname = $c.lit("xl");
-    fieldids_alias[10].fldid = 13;
-    fieldids_alias[11].fieldname = $c.lit("xplvl");
-    fieldids_alias[11].fldid = 13;
-    fieldids_alias[12].fieldname = $c.lit("ac");
-    fieldids_alias[12].fldid = 14;
-    fieldids_alias[13].fieldname = $c.lit("hit-dice");
-    fieldids_alias[13].fldid = 15;
-    fieldids_alias[14].fieldname = $c.lit("turns");
-    fieldids_alias[14].fldid = 16;
-    fieldids_alias[15].fieldname = $c.lit("hp");
-    fieldids_alias[15].fldid = 18;
-    fieldids_alias[16].fieldname = $c.lit("hp-max");
-    fieldids_alias[16].fldid = 19;
-    fieldids_alias[17].fieldname = $c.lit("dgn");
-    fieldids_alias[17].fldid = 20;
-    fieldids_alias[18].fieldname = $c.lit("xp");
-    fieldids_alias[18].fldid = 21;
-    fieldids_alias[19].fieldname = $c.lit("exp");
-    fieldids_alias[19].fldid = 21;
-    fieldids_alias[20].fieldname = $c.lit("flags");
-    fieldids_alias[20].fldid = 22;
-    fieldids_alias[21].fieldname = null;
-    fieldids_alias[21].fldid = -1;
+    $c.init(fieldids_alias, [
+        { fieldname: $c.lit("characteristics"), fldid: BL.CHARACTERISTICS },
+        { fieldname: $c.lit("encumbrance"), fldid: BL.CAP },
+        { fieldname: $c.lit("experience-points"), fldid: BL.EXP },
+        { fieldname: $c.lit("dx"), fldid: BL.DX },
+        { fieldname: $c.lit("co"), fldid: BL.CO },
+        { fieldname: $c.lit("con"), fldid: BL.CO },
+        { fieldname: $c.lit("points"), fldid: BL.SCORE },
+        { fieldname: $c.lit("cap"), fldid: BL.CAP },
+        { fieldname: $c.lit("pw"), fldid: BL.ENE },
+        { fieldname: $c.lit("pw-max"), fldid: BL.ENEMAX },
+        { fieldname: $c.lit("xl"), fldid: BL.XP },
+        { fieldname: $c.lit("xplvl"), fldid: BL.XP },
+        { fieldname: $c.lit("ac"), fldid: BL.AC },
+        { fieldname: $c.lit("hit-dice"), fldid: BL.HD },
+        { fieldname: $c.lit("turns"), fldid: BL.TIME },
+        { fieldname: $c.lit("hp"), fldid: BL.HP },
+        { fieldname: $c.lit("hp-max"), fldid: BL.HPMAX },
+        { fieldname: $c.lit("dgn"), fldid: BL.LEVELDESC },
+        { fieldname: $c.lit("xp"), fldid: BL.EXP },
+        { fieldname: $c.lit("exp"), fldid: BL.EXP },
+        { fieldname: $c.lit("flags"), fldid: BL.CONDITION },
+        { fieldname: null, fldid: BL.FLUSH }
+    ]);
     threshold_value.fill(0);
     threshold_value.set([104, 105, 108, 105, 116, 101, 95, 115, 116, 97, 116, 117, 115, 32, 116, 104, 114, 101, 115, 104, 111, 108, 100, 32]);   // "hilite_status threshold "
     is_out_of_range.fill(0);
@@ -3835,36 +3214,46 @@ export function $init() {
     do_statusline2$cond.fill(0);
     do_statusline2$vers.fill(0);
     cond_menu$menutitle.fill(null);
-    cond_menu$menutitle[0] = $c.lit("alphabetically");
-    cond_menu$menutitle[1] = $c.lit("by ranking");
+    $c.init(cond_menu$menutitle, [
+        $c.lit("alphabetically"),
+        $c.lit("by ranking")
+    ]);
     eval_notify_windowport_field$oldrndencode = 0;
     eval_notify_windowport_field$oldgoldsym = 0;
-    init_blstats$initalready = 0;
+    init_blstats$initalready = FALSE;
     splitsubfields$subfields.fill(null);
     parse_status_hl2$aligntxt.fill(null);
-    parse_status_hl2$aligntxt[0] = $c.lit("chaotic");
-    parse_status_hl2$aligntxt[1] = $c.lit("neutral");
-    parse_status_hl2$aligntxt[2] = $c.lit("lawful");
+    $c.init(parse_status_hl2$aligntxt, [
+        $c.lit("chaotic"),
+        $c.lit("neutral"),
+        $c.lit("lawful")
+    ]);
     parse_status_hl2$hutxt.fill(null);
-    parse_status_hl2$hutxt[0] = $c.lit("Satiated");
-    parse_status_hl2$hutxt[1] = $c.lit("");
-    parse_status_hl2$hutxt[2] = $c.lit("Hungry");
-    parse_status_hl2$hutxt[3] = $c.lit("Weak");
-    parse_status_hl2$hutxt[4] = $c.lit("Fainting");
-    parse_status_hl2$hutxt[5] = $c.lit("Fainted");
-    parse_status_hl2$hutxt[6] = $c.lit("Starved");
+    $c.init(parse_status_hl2$hutxt, [
+        $c.lit("Satiated"),
+        $c.lit(""),
+        $c.lit("Hungry"),
+        $c.lit("Weak"),
+        $c.lit("Fainting"),
+        $c.lit("Fainted"),
+        $c.lit("Starved")
+    ]);
     conditionbitmask2str$buf.fill(0);
     status_hilite2str$buf.fill(0);
     status_hilite_menu_add$aligntxt.fill(null);
-    status_hilite_menu_add$aligntxt[0] = $c.lit("chaotic");
-    status_hilite_menu_add$aligntxt[1] = $c.lit("neutral");
-    status_hilite_menu_add$aligntxt[2] = $c.lit("lawful");
+    $c.init(status_hilite_menu_add$aligntxt, [
+        $c.lit("chaotic"),
+        $c.lit("neutral"),
+        $c.lit("lawful")
+    ]);
     status_hilite_menu_add$hutxt.fill(null);
-    status_hilite_menu_add$hutxt[0] = $c.lit("Satiated");
-    status_hilite_menu_add$hutxt[1] = null;
-    status_hilite_menu_add$hutxt[2] = $c.lit("Hungry");
-    status_hilite_menu_add$hutxt[3] = $c.lit("Weak");
-    status_hilite_menu_add$hutxt[4] = $c.lit("Fainting");
-    status_hilite_menu_add$hutxt[5] = $c.lit("Fainted");
-    status_hilite_menu_add$hutxt[6] = $c.lit("Starved");
+    $c.init(status_hilite_menu_add$hutxt, [
+        $c.lit("Satiated"),
+        null,
+        $c.lit("Hungry"),
+        $c.lit("Weak"),
+        $c.lit("Fainting"),
+        $c.lit("Fainted"),
+        $c.lit("Starved")
+    ]);
 }

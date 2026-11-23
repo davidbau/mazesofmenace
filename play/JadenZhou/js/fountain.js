@@ -8,6 +8,9 @@
 // Paths that reach unported code throw 'not ported yet'.
 
 import { game } from './gstate.js';
+import { monster_detect } from './detect.js';
+import { livelog_printf } from './display.js';
+import { LL_ARTIFACT } from './const.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { pline, You, Your, You_feel, You_see, pline_The, newsym,
          canspotmon, glyph_at, Hallucination as Hallucination_d,
@@ -506,34 +509,6 @@ export async function drinkfountain() {
     await dryup(u.ux, u.uy, true);
 }
 
-// C ref: detect.c monster_detect() -- used by crystal balls, potions,
-// fountains.  Returns 1 if nothing was detected, 0 if something was.
-// Only the nothing-detected path and the fountain caller (no object)
-// are reached; the detection display (browse_map()) isn't ported yet.
-export async function monster_detect(otmp, mclass) {
-    let mcnt = 0;
-
-    /* Note: This used to just check fmon for a non-zero value
-     * but in versions since 3.3.0 fmon can test TRUE due to the
-     * presence of dmons, so we have to find at least one
-     * with positive hit-points to know for sure.
-     */
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (DEADMONSTER(mtmp) || (mtmp.isgd && !mtmp.mx))
-            continue;
-        ++mcnt;
-        break; /* no need for full count, just 1 or more vs 0 */
-    }
-
-    if (!mcnt) {
-        if (otmp)
-            throw new Error('monster_detect(): strange_feeling() for an object not ported yet');
-        return 1;
-    }
-    void mclass;
-    throw new Error('monster_detect(): monster display and browse_map() not ported yet');
-}
-
 // C ref: fountain.c dipfountain() -- dip an object into a fountain when
 // standing on its location
 export async function dipfountain(obj) {
@@ -551,7 +526,7 @@ export async function dipfountain(obj) {
         /* once upon a time it was possible to poly N daggers into N swords */
         && obj.quan === 1 && !obj.oartifact
         && !exist_artifact(LONG_SWORD, artiname(ART_EXCALIBUR))) {
-        /* static const char lady[] = "Lady of the Lake"; (livelog only) */
+        const lady = "Lady of the Lake";
 
         if (u.ualign.type !== A_LAWFUL) {
             /* Ha!  Trying to cheat her. */
@@ -563,7 +538,9 @@ export async function dipfountain(obj) {
                 obj.spe--;
             obj.oerodeproof = 0;
             exercise(A_WIS, false);
-            /* livelog_printf(LL_ARTIFACT, ...): no livelog */
+            livelog_printf(LL_ARTIFACT, `was denied ${artiname(ART_EXCALIBUR)}!  The ${
+                               lady} has deemed ${game.flags.female ? "her" : "him" /* uhim() */
+                               } unworthy`);
         } else {
             /* The lady of the lake acts! - Eric Backus */
             /* Be *REAL* nice */
@@ -577,7 +554,7 @@ export async function dipfountain(obj) {
             obj.oeroded = obj.oeroded2 = 0;
             obj.oerodeproof = 1;
             exercise(A_WIS, true);
-            /* livelog_printf(LL_ARTIFACT, ...): no livelog */
+            livelog_printf(LL_ARTIFACT, `was given ${artiname(ART_EXCALIBUR)} by the ${lady}`);
         }
         /* update_inventory(): no perm_invent */
         set_levltyp(u.ux, u.uy, ROOM); /* updates level.flags.nfountains */

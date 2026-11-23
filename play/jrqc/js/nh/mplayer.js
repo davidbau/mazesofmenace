@@ -3,18 +3,30 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { is_art, mk_artifact } from './artifact.js';
+import { ART } from './artilist.h.js';
+import { A } from './attrib.h.js';
 import { rank_of } from './botl.js';
-import { cg, gu, svd, svl, u } from './decl.js';
+import { cg, gu, svl, u } from './decl.js';
+import { WEAPON_CLASS } from './defsym.h.js';
 import { christen_monst } from './do_name.js';
+import { In_endgame } from './dungeon.macros.js';
+import { COLNO, FALSE, ROWNO, TRUE } from './global.h.js';
+import { MM, NO, RLOC } from './hack.h.js';
 import { makemon, mkmonmoney, mongets, set_malign } from './makemon.js';
 import { bless, curse, mkobj, mksobj, weight } from './mkobj.js';
 import { set_mon_data } from './mondata.js';
+import { is_female, is_mplayer } from './mondata.macros.js';
 import { mons } from './monst.js';
+import { PM } from './monsters.h.js';
 import { rnd_defensive_item, rnd_misc_item, rnd_offensive_item } from './muse.js';
+import { RANDOM_CLASS } from './objclass.h.js';
 import { objects } from './objects.js';
+import { ATHAME, BATTLE_AXE, BLACK_DRAGON_SCALE_MAIL, BULLWHIP, CHAIN_MAIL, CLOAK_OF_DISPLACEMENT, CLOAK_OF_MAGIC_RESISTANCE, CLUB, DILITHIUM_CRYSTAL, ELVEN_DAGGER, ELVEN_LEATHER_HELM, ELVEN_SHIELD, FAKE_AMULET_OF_YENDOR, GAUNTLETS_OF_DEXTERITY, GAUNTLETS_OF_POWER, GRAY_DRAGON_SCALE_MAIL, HELM_OF_BRILLIANCE, HELM_OF_TELEPATHY, JADE, KATANA, LEATHER_GLOVES, LEVITATION_BOOTS, LOADSTONE, LONG_SWORD, LOW_BOOTS, LUCKSTONE, MACE, OILSKIN_CLOAK, ORCISH_DAGGER, PLATE_MAIL, QUARTERSTAFF, ROBE, SCALPEL, SHIELD_OF_REFLECTION, SHORT_SWORD, SHURIKEN, SILVER_DRAGON_SCALE_MAIL, SPEAR, STRANGE_OBJECT, TWO_HANDED_SWORD, UNICORN_HORN, WAR_HAMMER, YELLOW_DRAGON_SCALE_MAIL } from './objects.h.js';
 import { rnd_class } from './objnam.js';
 import { impossible, verbalize } from './pline.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { MON_AT } from './rm.macros.js';
+import { d, rn2, rnd } from './rnd.js';
+import { P } from './skills.h.js';
 import { mpickobj } from './steal.js';
 import { goodpos, rloc } from './teleport.js';
 import { monmightthrowwep } from './weapon.js';
@@ -28,14 +40,14 @@ function dev_name() {   // mplayer.c:44
     m = 0;
     n = 58;
     do {
-        match = 0;
-        i = rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 52, $c.lit("dev_name")), rn2(n)) : rn2(n);
+        match = FALSE;
+        i = rn2(n);
         for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
-            if (!($c.pcmp(mtmp.data, $c.relem(mons, 331 /* PM_ARCHEOLOGIST */)) >= 0 && $c.pcmp(mtmp.data, $c.relem(mons, 343 /* PM_WIZARD */)) <= 0)) {
+            if (!is_mplayer(mtmp.data)) {
                 continue;
             }
             if (!$c.strncmp(developers[i], mtmp.mextra && mtmp.mextra.mgivenname ? mtmp.mextra.mgivenname : $c.lit(""), $c.strlen(developers[i]))) {
-                match = 1;
+                match = TRUE;
                 break;
             }
         }
@@ -48,12 +60,12 @@ function dev_name() {   // mplayer.c:44
 }
 function get_mplname(mtmp, nam) {   // mplayer.c:72
     let fmlkind = 0, devnam = null;
-    fmlkind = $c.i8($c.andu64(mtmp.data.mflags2, 131072) !== 0 ? 1 : 0);
+    fmlkind = $c.i8(is_female(mtmp.data));
     devnam = dev_name();
     if (!devnam) {
         $c.__builtin___strcpy_chk(nam, fmlkind ? $c.lit("Eve") : $c.lit("Adam"), -1);
     } else if (fmlkind && !!$c.strcmp(devnam, $c.lit("Janet"))) {
-        $c.__builtin___strcpy_chk(nam, (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 81, $c.lit("get_mplname")), rn2(2)) : rn2(2)) ? $c.lit("Maud") : $c.lit("Eve"), -1);
+        $c.__builtin___strcpy_chk(nam, rn2(2) ? $c.lit("Maud") : $c.lit("Eve"), -1);
     } else {
         $c.__builtin___strcpy_chk(nam, devnam, -1);
     }
@@ -67,223 +79,223 @@ function get_mplname(mtmp, nam) {   // mplayer.c:72
 }
 async function mk_mplayer_armor(mon, typ) {   // mplayer.c:95
     let obj = null, $t1, $t2;
-    if (typ === 0 /* STRANGE_OBJECT */) {
+    if (typ === STRANGE_OBJECT) {
         return;
     }
-    obj = await mksobj(typ, 0, 0);
+    obj = await mksobj(typ, FALSE, FALSE);
     $t1 = obj.oeroded2 = (0) & 3, obj.oeroded = ($t1) & 3;
-    if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 103, $c.lit("mk_mplayer_armor")), rn2(3)) : rn2(3))) {
+    if (!rn2(3)) {
         obj.oerodeproof = (1) & 1;
     }
-    if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 105, $c.lit("mk_mplayer_armor")), rn2(3)) : rn2(3))) {
+    if (!rn2(3)) {
         await curse(obj);
     }
-    if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 107, $c.lit("mk_mplayer_armor")), rn2(3)) : rn2(3))) {
+    if (!rn2(3)) {
         await bless(obj);
     }
-    $t2 = $c.i8((rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 113, $c.lit("mk_mplayer_armor")), rn2(10)) : rn2(10)) ? (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 113, $c.lit("mk_mplayer_armor")), rn2(3)) : rn2(3)) ? rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 113, $c.lit("mk_mplayer_armor")), rn2(5)) : rn2(5) : (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 113, $c.lit("mk_mplayer_armor")), rn2(4)) : rn2(4)) + 4 | 0 : -(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 113, $c.lit("mk_mplayer_armor")), rnd(3)) : rnd(3)) | 0), obj.spe = $t2;
+    $t2 = $c.i8(rn2(10) ? rn2(3) ? rn2(5) : rn2(4) + 4 | 0 : -rnd(3) | 0), obj.spe = $t2;
     await mpickobj(mon, obj);
 }
 export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
     let mtmp = null, nam = new Int8Array(32), weapon = 0, armor = 0, cloak = 0, helm = 0, shield = 0, quan = 0, otmp = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13;
-    if (!($c.pcmp(ptr, $c.relem(mons, 331 /* PM_ARCHEOLOGIST */)) >= 0 && $c.pcmp(ptr, $c.relem(mons, 343 /* PM_WIZARD */)) <= 0)) {
+    if (!is_mplayer(ptr)) {
         return null;
     }
-    if (svl.level.monsters[x][y] !== null) {
-        await rloc(svl.level.monsters[x][y], 5);
+    if (MON_AT(x, y)) {
+        await rloc(svl.level.monsters[x][y], RLOC.ERR | RLOC.NOMSG);
     }
-    if (!(u.uz.dnum === svd.dungeon_topology.d_astral_level.dnum)) {
-        special = 0;
+    if (!In_endgame(u.uz)) {
+        special = FALSE;
     }
-    if ((mtmp = await makemon(ptr, x, y, $c.u32(special ? 131072 : 0))) !== null) {
-        $t1 = $c.u8(special ? (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 137, $c.lit("mk_mplayer")), rn2(16)) : rn2(16)) + 15 | 0 : rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 137, $c.lit("mk_mplayer")), rnd(16)) : rnd(16)), mtmp.m_lev = $t1;
-        $t3 = ($t2 = (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 138, $c.lit("mk_mplayer")), d(mtmp.m_lev, 10)) : d(mtmp.m_lev, 10)) + (special ? 30 + (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 139, $c.lit("mk_mplayer")), rnd(30)) : rnd(30)) | 0 : 30) | 0, mtmp.mhpmax = $t2), mtmp.mhp = $t3;
+    if ((mtmp = await makemon(ptr, x, y, $c.u32(special ? MM.NOMSG : NO.MM_FLAGS))) !== null) {
+        $t1 = $c.u8(special ? rn2(16) + 15 | 0 : rnd(16)), mtmp.m_lev = $t1;
+        $t3 = ($t2 = d(mtmp.m_lev, 10) + (special ? 30 + rnd(30) | 0 : 30) | 0, mtmp.mhpmax = $t2), mtmp.mhp = $t3;
         if (special) {
             get_mplname(mtmp, new $c.Ptr(nam, 0));
             mtmp = await christen_monst(mtmp, new $c.Ptr(nam, 0));
-            await mongets(mtmp, 212 /* FAKE_AMULET_OF_YENDOR */);
+            await mongets(mtmp, FAKE_AMULET_OF_YENDOR);
         }
         mtmp.mpeaceful = (0) & 1;
         set_malign(mtmp);
-        weapon = $c.i16(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 150, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) ? 54 /* LONG_SWORD */ : rnd_class(27 /* SPEAR */, 82 /* BULLWHIP */));
-        armor = $c.i16(rnd_class(101 /* GRAY_DRAGON_SCALE_MAIL */, 110 /* YELLOW_DRAGON_SCALE_MAIL */));
-        cloak = $c.i16(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 152, $c.lit("mk_mplayer")), rn2(8)) : rn2(8)) ? 0 /* STRANGE_OBJECT */ : rnd_class(142 /* OILSKIN_CLOAK */, 149 /* CLOAK_OF_DISPLACEMENT */));
-        helm = $c.i16(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 154, $c.lit("mk_mplayer")), rn2(8)) : rn2(8)) ? 0 /* STRANGE_OBJECT */ : rnd_class(89 /* ELVEN_LEATHER_HELM */, 100 /* HELM_OF_TELEPATHY */));
-        shield = $c.i16(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 156, $c.lit("mk_mplayer")), rn2(8)) : rn2(8)) ? 0 /* STRANGE_OBJECT */ : rnd_class(153 /* ELVEN_SHIELD */, 158 /* SHIELD_OF_REFLECTION */));
+        weapon = $c.i16(!rn2(2) ? LONG_SWORD : rnd_class(SPEAR, BULLWHIP));
+        armor = $c.i16(rnd_class(GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL));
+        cloak = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(OILSKIN_CLOAK, CLOAK_OF_DISPLACEMENT));
+        helm = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(ELVEN_LEATHER_HELM, HELM_OF_TELEPATHY));
+        shield = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(ELVEN_SHIELD, SHIELD_OF_REFLECTION));
         switch (ptr.pmidx) {
-            case 331 /* PM_ARCHEOLOGIST */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 161, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = 82;
+            case PM.ARCHEOLOGIST:
+                if (rn2(2)) {
+                    weapon = BULLWHIP;
                 }
                 break;
-            case 332 /* PM_BARBARIAN */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 165, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 166, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) ? 55 /* TWO_HANDED_SWORD */ : 45 /* BATTLE_AXE */);
-                    shield = 0;
+            case PM.BARBARIAN:
+                if (rn2(2)) {
+                    weapon = $c.i16(rn2(2) ? TWO_HANDED_SWORD : BATTLE_AXE);
+                    shield = STRANGE_OBJECT;
                 }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 169, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    armor = $c.i16(rnd_class(121 /* PLATE_MAIL */, 128 /* CHAIN_MAIL */));
+                if (rn2(2)) {
+                    armor = $c.i16(rnd_class(PLATE_MAIL, CHAIN_MAIL));
                 }
-                if (helm === 96 /* HELM_OF_BRILLIANCE */) {
-                    helm = 0;
-                }
-                break;
-            case 333 /* PM_CAVE_DWELLER */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 175, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)) {
-                    weapon = 73;
-                } else if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 177, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = 77;
-                }
-                if (helm === 96 /* HELM_OF_BRILLIANCE */) {
-                    helm = 0;
+                if (helm === HELM_OF_BRILLIANCE) {
+                    helm = STRANGE_OBJECT;
                 }
                 break;
-            case 334 /* PM_HEALER */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 183, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)) {
-                    weapon = 79;
-                } else if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 185, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 186, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) ? 261 /* UNICORN_HORN */ : 39 /* SCALPEL */);
+            case PM.CAVE_DWELLER:
+                if (rn2(4)) {
+                    weapon = MACE;
+                } else if (rn2(2)) {
+                    weapon = CLUB;
                 }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 187, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)) {
-                    helm = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 188, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) ? 96 /* HELM_OF_BRILLIANCE */ : 100 /* HELM_OF_TELEPATHY */);
-                }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 189, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    shield = 0;
+                if (helm === HELM_OF_BRILLIANCE) {
+                    helm = STRANGE_OBJECT;
                 }
                 break;
-            case 335 /* PM_KNIGHT */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 193, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)) {
-                    weapon = 54;
+            case PM.HEALER:
+                if (rn2(4)) {
+                    weapon = QUARTERSTAFF;
+                } else if (rn2(2)) {
+                    weapon = $c.i16(rn2(2) ? UNICORN_HORN : SCALPEL);
                 }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 195, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    armor = $c.i16(rnd_class(121 /* PLATE_MAIL */, 128 /* CHAIN_MAIL */));
+                if (rn2(4)) {
+                    helm = $c.i16(rn2(2) ? HELM_OF_BRILLIANCE : HELM_OF_TELEPATHY);
                 }
-                break;
-            case 336 /* PM_MONK */:
-                weapon = $c.i16(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 199, $c.lit("mk_mplayer")), rn2(3)) : rn2(3)) ? 25 /* SHURIKEN */ : 0 /* STRANGE_OBJECT */);
-                armor = 0;
-                cloak = 143;
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 202, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    shield = 0;
+                if (rn2(2)) {
+                    shield = STRANGE_OBJECT;
                 }
                 break;
-            case 337 /* PM_CLERIC */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 206, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = 73;
+            case PM.KNIGHT:
+                if (rn2(4)) {
+                    weapon = LONG_SWORD;
                 }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 208, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    armor = $c.i16(rnd_class(121 /* PLATE_MAIL */, 128 /* CHAIN_MAIL */));
-                }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 210, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)) {
-                    cloak = 143;
-                }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 212, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)) {
-                    helm = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 213, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) ? 96 /* HELM_OF_BRILLIANCE */ : 100 /* HELM_OF_TELEPATHY */);
-                }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 214, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    shield = 0;
+                if (rn2(2)) {
+                    armor = $c.i16(rnd_class(PLATE_MAIL, CHAIN_MAIL));
                 }
                 break;
-            case 338 /* PM_RANGER */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 218, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = 35;
+            case PM.MONK:
+                weapon = $c.i16(!rn2(3) ? SHURIKEN : STRANGE_OBJECT);
+                armor = STRANGE_OBJECT;
+                cloak = ROBE;
+                if (rn2(2)) {
+                    shield = STRANGE_OBJECT;
                 }
                 break;
-            case 339 /* PM_ROGUE */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 222, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 223, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) ? 46 /* SHORT_SWORD */ : 36 /* ORCISH_DAGGER */);
+            case PM.CLERIC:
+                if (rn2(2)) {
+                    weapon = MACE;
+                }
+                if (rn2(2)) {
+                    armor = $c.i16(rnd_class(PLATE_MAIL, CHAIN_MAIL));
+                }
+                if (rn2(4)) {
+                    cloak = ROBE;
+                }
+                if (rn2(4)) {
+                    helm = $c.i16(rn2(2) ? HELM_OF_BRILLIANCE : HELM_OF_TELEPATHY);
+                }
+                if (rn2(2)) {
+                    shield = STRANGE_OBJECT;
                 }
                 break;
-            case 340 /* PM_SAMURAI */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 226, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = 56;
+            case PM.RANGER:
+                if (rn2(2)) {
+                    weapon = ELVEN_DAGGER;
                 }
                 break;
-            case 341 /* PM_TOURIST */:
-                break;
-            case 342 /* PM_VALKYRIE */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 233, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    weapon = 76;
-                }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 235, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    armor = $c.i16(rnd_class(121 /* PLATE_MAIL */, 128 /* CHAIN_MAIL */));
+            case PM.ROGUE:
+                if (rn2(2)) {
+                    weapon = $c.i16(rn2(2) ? SHORT_SWORD : ORCISH_DAGGER);
                 }
                 break;
-            case 343 /* PM_WIZARD */:
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 239, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)) {
-                    weapon = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 240, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) ? 79 /* QUARTERSTAFF */ : 38 /* ATHAME */);
+            case PM.SAMURAI:
+                if (rn2(2)) {
+                    weapon = KATANA;
                 }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 241, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) {
-                    armor = $c.i16((rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 242, $c.lit("mk_mplayer")), rn2(2)) : rn2(2)) ? 107 /* BLACK_DRAGON_SCALE_MAIL */ : 103 /* SILVER_DRAGON_SCALE_MAIL */);
-                    cloak = 148;
+                break;
+            case PM.TOURIST:
+                break;
+            case PM.VALKYRIE:
+                if (rn2(2)) {
+                    weapon = WAR_HAMMER;
                 }
-                if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 246, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)) {
-                    helm = 96;
+                if (rn2(2)) {
+                    armor = $c.i16(rnd_class(PLATE_MAIL, CHAIN_MAIL));
                 }
-                shield = 0;
+                break;
+            case PM.WIZARD:
+                if (rn2(4)) {
+                    weapon = $c.i16(rn2(2) ? QUARTERSTAFF : ATHAME);
+                }
+                if (rn2(2)) {
+                    armor = $c.i16(rn2(2) ? BLACK_DRAGON_SCALE_MAIL : SILVER_DRAGON_SCALE_MAIL);
+                    cloak = CLOAK_OF_MAGIC_RESISTANCE;
+                }
+                if (rn2(4)) {
+                    helm = HELM_OF_BRILLIANCE;
+                }
+                shield = STRANGE_OBJECT;
                 break;
             default:
                 await impossible($c.lit("bad mplayer monster"));
                 weapon = 0;
                 break;
         }
-        if (weapon !== 0 /* STRANGE_OBJECT */) {
-            otmp = await mksobj(weapon, 1, 0);
+        if (weapon !== STRANGE_OBJECT) {
+            otmp = await mksobj(weapon, TRUE, FALSE);
             $t4 = otmp.oeroded2 = (0) & 3, otmp.oeroded = ($t4) & 3;
-            $t5 = $c.i8(special ? (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 259, $c.lit("mk_mplayer")), rn2(5)) : rn2(5)) + 4 | 0 : rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 259, $c.lit("mk_mplayer")), rn2(4)) : rn2(4)), otmp.spe = $t5;
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 260, $c.lit("mk_mplayer")), rn2(3)) : rn2(3))) {
+            $t5 = $c.i8(special ? rn2(5) + 4 | 0 : rn2(4)), otmp.spe = $t5;
+            if (!rn2(3)) {
                 otmp.oerodeproof = (1) & 1;
-            } else if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 262, $c.lit("mk_mplayer")), rn2(2)) : rn2(2))) {
+            } else if (!rn2(2)) {
                 otmp.greased = (1) & 1;
             }
-            if (special && (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 265, $c.lit("mk_mplayer")), rn2(2)) : rn2(2))) {
-                otmp = await mk_artifact(otmp, -128, 99, 0);
+            if (special && rn2(2)) {
+                otmp = await mk_artifact(otmp, A.NONE, 99, FALSE);
             }
             if (objects[otmp.otyp].oc_merge | 0 && !otmp.oartifact && monmightthrowwep(otmp)) {
-                $t6 = rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 270, $c.lit("mk_mplayer")), rn2(otmp.oclass === 2 /* WEAPON_CLASS */ && objects[otmp.otyp].oc_subtyp === 17 /* P_SPEAR */ ? 4 : 8)) : rn2(otmp.oclass === 2 /* WEAPON_CLASS */ && objects[otmp.otyp].oc_subtyp === 17 /* P_SPEAR */ ? 4 : 8), otmp.quan = $c.add64(otmp.quan, $t6);
+                $t6 = rn2(otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_subtyp === P.SPEAR ? 4 : 8), otmp.quan = $c.add64(otmp.quan, $t6);
             }
             $t7 = await weight(otmp) >>> 0, otmp.owt = $t7;
-            if (is_art(otmp, 8 /* ART_MAGICBANE */)) {
-                $t8 = $c.i8(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 274, $c.lit("mk_mplayer")), rnd(4)) : rnd(4)), otmp.spe = $t8;
+            if (is_art(otmp, ART.MAGICBANE)) {
+                $t8 = $c.i8(rnd(4)), otmp.spe = $t8;
             }
             await mpickobj(mtmp, otmp);
         }
         if (special) {
-            if (!(rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 279, $c.lit("mk_mplayer")), rn2(10)) : rn2(10))) {
-                await mongets(mtmp, (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 280, $c.lit("mk_mplayer")), rn2(3)) : rn2(3)) ? 470 /* LUCKSTONE */ : 471 /* LOADSTONE */);
+            if (!rn2(10)) {
+                await mongets(mtmp, rn2(3) ? LUCKSTONE : LOADSTONE);
             }
             await mk_mplayer_armor(mtmp, armor);
             await mk_mplayer_armor(mtmp, cloak);
             await mk_mplayer_armor(mtmp, helm);
             await mk_mplayer_armor(mtmp, shield);
-            if (weapon === 76 /* WAR_HAMMER */) {
-                await mk_mplayer_armor(mtmp, 161);
-            } else if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 287, $c.lit("mk_mplayer")), rn2(8)) : rn2(8)) {
-                await mk_mplayer_armor(mtmp, $c.i16(rnd_class(159 /* LEATHER_GLOVES */, 162 /* GAUNTLETS_OF_DEXTERITY */)));
+            if (weapon === WAR_HAMMER) {
+                await mk_mplayer_armor(mtmp, GAUNTLETS_OF_POWER);
+            } else if (rn2(8)) {
+                await mk_mplayer_armor(mtmp, $c.i16(rnd_class(LEATHER_GLOVES, GAUNTLETS_OF_DEXTERITY)));
             }
-            if (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 290, $c.lit("mk_mplayer")), rn2(8)) : rn2(8)) {
-                await mk_mplayer_armor(mtmp, $c.i16(rnd_class(163 /* LOW_BOOTS */, 172 /* LEVITATION_BOOTS */)));
+            if (rn2(8)) {
+                await mk_mplayer_armor(mtmp, $c.i16(rnd_class(LOW_BOOTS, LEVITATION_BOOTS)));
             }
-            await m_dowear(mtmp, 1);
-            quan = (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 295, $c.lit("mk_mplayer")), rn2(3)) : rn2(3)) ? rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 295, $c.lit("mk_mplayer")), rn2(3)) : rn2(3) : rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 295, $c.lit("mk_mplayer")), rn2(16)) : rn2(16);
+            await m_dowear(mtmp, TRUE);
+            quan = rn2(3) ? rn2(3) : rn2(16);
             while ($t9 = quan, quan = $t9 - 1 | 0, $t9) {
-                await mongets(mtmp, rnd_class(439 /* DILITHIUM_CRYSTAL */, 460 /* JADE */));
+                await mongets(mtmp, rnd_class(DILITHIUM_CRYSTAL, JADE));
             }
-            await mkmonmoney(mtmp, rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 300, $c.lit("mk_mplayer")), rn2(1000)) : rn2(1000));
-            quan = rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 301, $c.lit("mk_mplayer")), rn2(10)) : rn2(10);
+            await mkmonmoney(mtmp, rn2(1000));
+            quan = rn2(10);
             while ($t10 = quan, quan = $t10 - 1 | 0, $t10) {
-                await mpickobj(mtmp, await mkobj(0 /* RANDOM_CLASS */, 0));
+                await mpickobj(mtmp, await mkobj(RANDOM_CLASS, FALSE));
             }
         }
-        quan = rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 305, $c.lit("mk_mplayer")), rnd(3)) : rnd(3);
+        quan = rnd(3);
         while ($t11 = quan, quan = $t11 - 1 | 0, $t11) {
             await mongets(mtmp, await rnd_offensive_item(mtmp));
         }
-        quan = rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 308, $c.lit("mk_mplayer")), rnd(3)) : rnd(3);
+        quan = rnd(3);
         while ($t12 = quan, quan = $t12 - 1 | 0, $t12) {
             await mongets(mtmp, await rnd_defensive_item(mtmp));
         }
-        quan = rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 311, $c.lit("mk_mplayer")), rnd(3)) : rnd(3);
+        quan = rnd(3);
         while ($t13 = quan, quan = $t13 - 1 | 0, $t13) {
             await mongets(mtmp, rnd_misc_item(mtmp));
         }
@@ -295,11 +307,11 @@ export async function create_mplayers(num, special) {   // mplayer.c:327
     fakemon.$copyFrom(cg.zeromonst);
     while (num) {
         tryct = 0;
-        pm = (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 337, $c.lit("create_mplayers")), rn2(13)) : rn2(13)) + 331 | 0;
+        pm = rn2(PM.WIZARD - PM.ARCHEOLOGIST + 1) + PM.ARCHEOLOGIST | 0;
         set_mon_data(fakemon, $c.relem(mons, pm));
         do {
-            x = (rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 342, $c.lit("create_mplayers")), rn2(76)) : rn2(76)) + 2 | 0;
-            y = rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 343, $c.lit("create_mplayers")), rnd(19)) : rnd(19);
+            x = rn2(COLNO - 4) + 2 | 0;
+            y = rnd(ROWNO - 2);
         } while (!goodpos($c.i16(x), $c.i16(y), fakemon, 0) && ($t1 = tryct, tryct = $t1 + 1 | 0, $t1) <= 50);
         if (tryct > 50) {
             return;
@@ -312,75 +324,81 @@ export async function mplayer_talk(mtmp) {   // mplayer.c:356
     if (mtmp.mpeaceful) {
         return;
     }
-    await verbalize($c.lit("Talk? -- %s"), $c.peq(mtmp.data, $c.relem(mons, gu.urole.mnum)) ? mplayer_talk$same_class_msg[rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 375, $c.lit("mplayer_talk")), rn2(3)) : rn2(3)] : mplayer_talk$other_class_msg[rng_log_enabled() ? (rng_log_set_caller($c.lit("mplayer.c"), 376, $c.lit("mplayer_talk")), rn2(3)) : rn2(3)]);
+    await verbalize($c.lit("Talk? -- %s"), $c.peq(mtmp.data, $c.relem(mons, gu.urole.mnum)) ? mplayer_talk$same_class_msg[rn2(3)] : mplayer_talk$other_class_msg[rn2(3)]);
 }
 
 export function $init() {
     developers.fill(null);
-    developers[0] = $c.lit("Alex");
-    developers[1] = $c.lit("Dave");
-    developers[2] = $c.lit("Dean");
-    developers[3] = $c.lit("Derek");
-    developers[4] = $c.lit("Eric");
-    developers[5] = $c.lit("Izchak");
-    developers[6] = $c.lit("Janet");
-    developers[7] = $c.lit("Jessie");
-    developers[8] = $c.lit("Ken");
-    developers[9] = $c.lit("Kevin");
-    developers[10] = $c.lit("Michael");
-    developers[11] = $c.lit("Mike");
-    developers[12] = $c.lit("Pasi");
-    developers[13] = $c.lit("Pat");
-    developers[14] = $c.lit("Patric");
-    developers[15] = $c.lit("Paul");
-    developers[16] = $c.lit("Sean");
-    developers[17] = $c.lit("Steve");
-    developers[18] = $c.lit("Timo");
-    developers[19] = $c.lit("Warwick");
-    developers[20] = $c.lit("Bill");
-    developers[21] = $c.lit("Eric");
-    developers[22] = $c.lit("Keizo");
-    developers[23] = $c.lit("Ken");
-    developers[24] = $c.lit("Kevin");
-    developers[25] = $c.lit("Michael");
-    developers[26] = $c.lit("Mike");
-    developers[27] = $c.lit("Paul");
-    developers[28] = $c.lit("Stephen");
-    developers[29] = $c.lit("Steve");
-    developers[30] = $c.lit("Timo");
-    developers[31] = $c.lit("Yitzhak");
-    developers[32] = $c.lit("Andy");
-    developers[33] = $c.lit("Gregg");
-    developers[34] = $c.lit("Janne");
-    developers[35] = $c.lit("Keni");
-    developers[36] = $c.lit("Mike");
-    developers[37] = $c.lit("Olaf");
-    developers[38] = $c.lit("Richard");
-    developers[39] = $c.lit("Andy");
-    developers[40] = $c.lit("Chris");
-    developers[41] = $c.lit("Dean");
-    developers[42] = $c.lit("Jon");
-    developers[43] = $c.lit("Jonathan");
-    developers[44] = $c.lit("Kevin");
-    developers[45] = $c.lit("Wang");
-    developers[46] = $c.lit("Eric");
-    developers[47] = $c.lit("Marvin");
-    developers[48] = $c.lit("Warwick");
-    developers[49] = $c.lit("Alex");
-    developers[50] = $c.lit("Dion");
-    developers[51] = $c.lit("Michael");
-    developers[52] = $c.lit("Helge");
-    developers[53] = $c.lit("Ron");
-    developers[54] = $c.lit("Timo");
-    developers[55] = $c.lit("Joshua");
-    developers[56] = $c.lit("Pat");
-    developers[57] = $c.lit("");
+    $c.init(developers, [
+        $c.lit("Alex"),
+        $c.lit("Dave"),
+        $c.lit("Dean"),
+        $c.lit("Derek"),
+        $c.lit("Eric"),
+        $c.lit("Izchak"),
+        $c.lit("Janet"),
+        $c.lit("Jessie"),
+        $c.lit("Ken"),
+        $c.lit("Kevin"),
+        $c.lit("Michael"),
+        $c.lit("Mike"),
+        $c.lit("Pasi"),
+        $c.lit("Pat"),
+        $c.lit("Patric"),
+        $c.lit("Paul"),
+        $c.lit("Sean"),
+        $c.lit("Steve"),
+        $c.lit("Timo"),
+        $c.lit("Warwick"),
+        $c.lit("Bill"),
+        $c.lit("Eric"),
+        $c.lit("Keizo"),
+        $c.lit("Ken"),
+        $c.lit("Kevin"),
+        $c.lit("Michael"),
+        $c.lit("Mike"),
+        $c.lit("Paul"),
+        $c.lit("Stephen"),
+        $c.lit("Steve"),
+        $c.lit("Timo"),
+        $c.lit("Yitzhak"),
+        $c.lit("Andy"),
+        $c.lit("Gregg"),
+        $c.lit("Janne"),
+        $c.lit("Keni"),
+        $c.lit("Mike"),
+        $c.lit("Olaf"),
+        $c.lit("Richard"),
+        $c.lit("Andy"),
+        $c.lit("Chris"),
+        $c.lit("Dean"),
+        $c.lit("Jon"),
+        $c.lit("Jonathan"),
+        $c.lit("Kevin"),
+        $c.lit("Wang"),
+        $c.lit("Eric"),
+        $c.lit("Marvin"),
+        $c.lit("Warwick"),
+        $c.lit("Alex"),
+        $c.lit("Dion"),
+        $c.lit("Michael"),
+        $c.lit("Helge"),
+        $c.lit("Ron"),
+        $c.lit("Timo"),
+        $c.lit("Joshua"),
+        $c.lit("Pat"),
+        $c.lit("")
+    ]);
     mplayer_talk$same_class_msg.fill(null);
-    mplayer_talk$same_class_msg[0] = $c.lit("I can't win, and neither will you!");
-    mplayer_talk$same_class_msg[1] = $c.lit("You don't deserve to win!");
-    mplayer_talk$same_class_msg[2] = $c.lit("Mine should be the honor, not yours!");
+    $c.init(mplayer_talk$same_class_msg, [
+        $c.lit("I can't win, and neither will you!"),
+        $c.lit("You don't deserve to win!"),
+        $c.lit("Mine should be the honor, not yours!")
+    ]);
     mplayer_talk$other_class_msg.fill(null);
-    mplayer_talk$other_class_msg[0] = $c.lit("The low-life wants to talk, eh?");
-    mplayer_talk$other_class_msg[1] = $c.lit("Fight, scum!");
-    mplayer_talk$other_class_msg[2] = $c.lit("Here is what I have to say!");
+    $c.init(mplayer_talk$other_class_msg, [
+        $c.lit("The low-life wants to talk, eh?"),
+        $c.lit("Fight, scum!"),
+        $c.lit("Here is what I have to say!")
+    ]);
 }

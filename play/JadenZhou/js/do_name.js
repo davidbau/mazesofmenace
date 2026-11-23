@@ -4,6 +4,9 @@
 // family.
 
 import { set_artifact_intrinsic_sync } from './artifact.js';
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT, LL_ARTIFACT } from './const.js';
+import { ansimpleoname, bare_artifactname } from './iactions.js';
 import { W_WEP } from './const.js';
 import { game } from './gstate.js';
 import { rn2, ROLL_FROM, rn2_on_display_rng } from './rng.js';
@@ -285,11 +288,12 @@ export function oname(
             throw new Error('oname(): alter_cost() is not ported yet');
         if (via_naming) {
             /* violate illiteracy conduct since successfully wrote arti-name */
-            const literate = game.u.uconduct.literate || 0;
-            game.u.uconduct.literate = literate + 1;
-            if (!literate) {
-                /* livelog_printf(): no livelog */
-            }
+            if (!game.u.uconduct.literate++)
+                livelog_printf(LL_CONDUCT | LL_ARTIFACT,
+                               `became literate by naming ${bare_artifactname(obj)}`);
+            else
+                livelog_printf(LL_ARTIFACT,
+                               `chose ${ansimpleoname(obj)} to be named "${bare_artifactname(obj)}"`);
         }
     }
     /* if (carried(obj) && !skip_inv_update) update_inventory():
@@ -379,7 +383,7 @@ export function pmname(pm, mgender) {
         return pm.pmnames[mgender];
     return pm.pmnames[NEUTRAL];
 }
-function mon_pmname(mon) {
+export function mon_pmname(mon) {
     return pmname(mon.data, mon.female ? FEMALE : MALE);
 }
 function uhave(prop) {

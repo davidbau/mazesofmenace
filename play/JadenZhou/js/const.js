@@ -1991,7 +1991,7 @@ export const TIMER_FUNC = Object.freeze({
     ROT_CORPSE: 'ROT_CORPSE',
     MELT_ICE_AWAY: 'MELT_ICE_AWAY',
 });
-export const MELT_ICE_AWAY = TIMER_FUNC.MELT_ICE_AWAY;
+export const MELT_ICE_AWAY = (SHRINK_GLOB + 1);
 
 // Corpse taint/revival age window (src/mkobj.c)
 // Runtime fields: rot/revive scheduling bound for corpse timers.

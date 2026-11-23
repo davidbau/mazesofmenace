@@ -10,6 +10,8 @@ import { game } from './gstate.js';
 import { eaten_stat } from './eat.js';
 import { mon_wield_item } from './weapon.js';
 import { rn2, rnd } from './rng.js';
+import { resist_conflict } from './mhitm.js';
+import { mattacku } from './mhitu.js';
 import { dist2, distmin } from './hacklib.js';
 import { cansee, couldsee, clear_path, do_clear_area } from './vision.js';
 import { m_at, MON_AT, place_monster, is_pool, is_lava, sobj_at, u_at,
@@ -1264,8 +1266,8 @@ export async function dog_move(mtmp, after) {
     udist = distu(omx, omy);
     /* Let steeds eat and maybe throw rider during Conflict */
     if (mtmp === u.usteed) {
-        if (Conflict())
-            throw new Error('dog_move(): steed conflict not ported yet');
+        if (Conflict() && !resist_conflict(mtmp))
+            throw new Error('dog_move(): dismount_steed(DISMOUNT_THROWN) not ported yet');
         udist = 1;
     } else if (!udist) {
         /* maybe we tamed him while being swallowed --jgm */
@@ -1296,8 +1298,10 @@ export async function dog_move(mtmp, after) {
     if (appr === -2)
         return MMOVE_NOTHING;
 
-    if (Conflict())
-        throw new Error('dog_move(): resist_conflict() not ported yet');
+    if (Conflict() && !resist_conflict(mtmp)) {
+        if (!edog)
+            throw new Error('dog_move(): lose_guardian_angel() not ported yet');
+    }
 
     const allowflags = mon_allowflags(mtmp);
     const mfp = { cnt: 0, poss: [], info: [] };
@@ -1489,7 +1493,10 @@ export async function dog_move(mtmp, after) {
     /* newdogpos: */
     if (nix !== omx || niy !== omy) {
         if (mfp.info[chi] & ALLOW_U) {
-            throw new Error('dog_move(): mattacku() not ported yet');
+            if (mtmp.mleashed) /* play it safe */
+                throw new Error('dog_move(): m_unleash() of a conflicted leashed pet not ported yet');
+            await mattacku(mtmp);
+            return MMOVE_DONE;
         }
         if (!(await m_in_out_region(mtmp, nix, niy)))
             return MMOVE_MOVED;

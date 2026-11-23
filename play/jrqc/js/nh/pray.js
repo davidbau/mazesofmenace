@@ -2,58 +2,118 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { AM, A_CG } from './align.h.js';
+import { ALIGNLIM, Align2amask } from './align.macros.js';
 import { artifact_origin, artiname, confers_luck, discover_artifact, exist_artifact, is_art, mk_artifact, nartifact_exist } from './artifact.js';
+import { ART } from './artilist.h.js';
 import { adjalign, adjattrib, change_luck, exercise, setuhpmax, uchangealign } from './attrib.js';
+import { A } from './attrib.h.js';
 import { xlev_to_rank } from './botl.js';
 import { isok, paranoid_query, yn_function } from './cmd.js';
 import { is_pool_or_lava } from './dbridge.js';
-import { c_color_names, c_common_strings, disp, flags, ga, gi, gm, gn, gp, gu, gv, gy, iflags, svb, svd, svk, svl, svm, svt, u, ynchars } from './decl.js';
+import { c_color_names, c_common_strings, disp, flags, ga, gi, gm, gn, gp, gu, gy, iflags, svb, svd, svk, svl, svm, svt, u, ynchars } from './decl.js';
+import { POTION_CLASS, S, SPBOOK_CLASS, TOOL_CLASS, WEAPON_CLASS } from './defsym.h.js';
 import { buried_ball_to_freedom } from './dig.js';
 import { newsym, see_monsters, shieldeff } from './display.js';
 import { dropy, heal_legs } from './do.js';
 import { Monnam, a_monnam, hcolor, mon_nam, oname } from './do_name.js';
 import { Amulet_off, disintegrate_arm, stuck_ring, unchanger } from './do_wear.js';
-import { In_hell, on_level } from './dungeon.js';
+import { on_level } from './dungeon.js';
+import { Inhell } from './dungeon.macros.js';
 import { eaten_stat, floorfood, init_uhunger } from './eat.js';
 import { done } from './end.js';
 import { freehand } from './engrave.js';
 import { losexp, pluslvl } from './exper.js';
+import { PLNMSG } from './flag.h.js';
+import { ParanoidConfirm, ParanoidPray, wizard } from './flag.macros.js';
+import { FALSE, LARGEST_INT, LL, LL_SPOILER, TRUE } from './global.h.js';
 import { losehp, near_capacity, nomul } from './hack.js';
+import { ASCENDED, BOLT_LIM, CXN, DIED, DISSOLVED, ECMD, ESCAPED, EXT_ENCUMBER, EYE, FOOT, HUNGRY, HVY_ENCUMBER, KILLED, MM, NOTELL, ONAME_GIFT, ONAME_KNOW_ARTI, STOMACH, TELEDS, TELL, WEAK, XKILL } from './hack.h.js';
 import { dist2, eos, s_suffix, sgn, strncmpi, upstart } from './hacklib.js';
 import { align_str, record_achievement } from './insight.js';
 import { carrying, feel_cockatrice, sobj_at, update_inventory, useup, useupf } from './invent.js';
 import { makemon, set_malign } from './makemon.js';
+import { has_mcorpsenm } from './mextra.macros.js';
 import { dlord, summon_minion } from './minion.js';
 import { bless, get_mtraits, mkobj, mksobj, peek_at_iced_corpse_age, place_object, set_bknown, uncurse } from './mkobj.js';
 import { iter_mons, killed, wake_nearby, xkilled } from './mon.js';
+import { AD, AT } from './monattk.h.js';
 import { Resists_Elem, attacktype_fordmg, can_chant, monstseesu, monstunseesu } from './mondata.js';
+import { eyecount, is_demon, is_human, is_undead, is_unicorn, nohands, throws_rocks, your_race } from './mondata.macros.js';
+import { M1 } from './monflag.h.js';
 import { monflee } from './monmove.js';
 import { mons } from './monst.js';
+import { M_AP, M_SEEN } from './monst.h.js';
+import { M_AP_TYPE, is_vampshifter, ismnum } from './monst.macros.js';
+import { PM } from './monsters.h.js';
 import { ureflects } from './muse.js';
 import { discover_object, observe_object } from './o_init.js';
+import { bimanual, carried, has_omonst, is_weptool, u_wield_art } from './obj.macros.js';
+import { SPBOOK_no_NOVEL } from './objclass.h.js';
 import { obj_descr, objects } from './objects.js';
+import { AMULET_OF_STRANGULATION, AMULET_OF_YENDOR, BOULDER, CORPSE, FAKE_AMULET_OF_YENDOR, FUMBLE_BOOTS, GAUNTLETS_OF_FUMBLING, HELM_OF_OPPOSITE_ALIGNMENT, LEVITATION_BOOTS, LOADSTONE, LONG_SWORD, MAGIC_MARKER, POT_WATER, RIN_LEVITATION, RIN_SUSTAIN_ABILITY, RUNESWORD, SADDLE, SPE_BLANK_PAPER, SPE_FINGER_OF_DEATH, SPE_RESTORE_ABILITY, SPE_TURN_UNDEAD, STATUE, STRANGE_OBJECT } from './objects.h.js';
 import { An, Yobjnam2, actualoname, an, ansimpleoname, bare_artifactname, corpse_xname, gloves_simple_name, makeplural, otense, rnd_class, simpleonames, vtense, xname, yname } from './objnam.js';
+import { NON_PM } from './permonst.h.js';
 import { encumber_msg, rider_corpse_revival } from './pickup.js';
 import { You, You_feel, You_hear, Your, impossible, livelog_printf, pline, pline_The, verbalize } from './pline.js';
 import { body_part, mbodypart, rehumanize } from './polyself.js';
 import { make_blinded, make_confused, make_deaf, make_glib, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, set_itimeout } from './potion.js';
 import { angry_priest, findpriest, p_coaligned, temple_occupied } from './priest.js';
+import { AGGRAVATE_MONSTER, BLINDED, COLD_RES, CONFUSION, DEAF, DISINT_RES, FAST, FIRE_RES, FLYING, FROMOUTSIDE, HALLUC, HALLUC_RES, INTRINSIC, PASSES_WALLS, POISON_RES, PROTECTION, REFLECTING, SEE_INVIS, SHOCK_RES, SLEEP_RES, STEALTH, STRANGLED, STUNNED, TELEPAT, TIMEOUT, W } from './prop.h.js';
 import { punish, unpunish } from './read.js';
 import { region_danger, region_safety } from './region.js';
-import { d, rn2, rn2_on_display_rng, rnd, rng_log_enabled, rng_log_set_caller, rnl, rnz } from './rnd.js';
+import { ALTAR, POOL, ROOM, SCORR, SDOOR } from './rm.h.js';
+import { d, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rnd.js';
 import { genders, randrole, roles } from './role.js';
 import { obfree } from './shk.js';
 import { attrcurse, rndcurse } from './sit.js';
+import { P } from './skills.h.js';
 import { force_learn_spell, known_spell, spell_skilltype, spelleffects } from './spell.js';
+import { spe_Forgotten, spe_Fresh, spe_Unknown } from './spell.h.js';
 import { safe_teleds } from './teleport.js';
 import { animate_statue, rescued_from_terrain, reset_utrap } from './trap.js';
+import { ANIMATE } from './trap.h.js';
+import { couldsee } from './vision.macros.js';
 import { add_weapon_skill, unrestrict_weapon_skill, weapon_type } from './weapon.js';
 import { you_unwere } from './were.js';
 import { welded } from './wield.js';
-import { windowprocs } from './windows.js';
+import { display_nhwindow } from './winprocs.macros.js';
 import { aggravate } from './wizard.js';
 import { which_armor } from './worn.js';
+import { ACH, LUCKMAX, SICK_ALL, TT } from './you.h.js';
+import { Luck, Upolyd } from './you.macros.js';
+import { Antimagic, Blind, Blinded, BlindedTimeout, Blindfolded_only, Deaf, Disint_resistance, Fixed_abil, Glib, Hallucination, Levitation, Passes_walls, Punished, Reflecting, Shock_resistance, Sick, Slimed, Stoned, Strangled, Unchanging, Wounded_legs } from './youprop.macros.js';
 import { resist, revive } from './zap.js';
+
+const PIOUS = 20;
+const DEVOUT = 14;
+const STRIDENT = 4;
+const TROUBLE_STONED = 14;
+const TROUBLE_SLIMED = 13;
+const TROUBLE_STRANGLED = 12;
+const TROUBLE_LAVA = 11;
+const TROUBLE_SICK = 10;
+const TROUBLE_STARVING = 9;
+const TROUBLE_REGION = 8;
+const TROUBLE_HIT = 7;
+const TROUBLE_LYCANTHROPE = 6;
+const TROUBLE_COLLAPSING = 5;
+const TROUBLE_STUCK_IN_WALL = 4;
+const TROUBLE_CURSED_LEVITATION = 3;
+const TROUBLE_UNUSEABLE_HANDS = 2;
+const TROUBLE_CURSED_BLINDFOLD = 1;
+const TROUBLE_PUNISHED = (-1);
+const TROUBLE_FUMBLING = (-2);
+const TROUBLE_CURSED_ITEMS = (-3);
+const TROUBLE_SADDLE = (-4);
+const TROUBLE_BLIND = (-5);
+const TROUBLE_POISONED = (-6);
+const TROUBLE_WOUNDED_LEGS = (-7);
+const TROUBLE_HUNGRY = (-8);
+const TROUBLE_STUNNED = (-9);
+const TROUBLE_CONFUSED = (-10);
+const TROUBLE_HALLUCINATION = (-11);
+const MAXVALUE = 24;
 
 const fix_worst_trouble$leftglow = new Int8Array(28);   // static in fix_worst_trouble()
 const fix_worst_trouble$rightglow = new Int8Array(29);   // static in fix_worst_trouble()
@@ -67,10 +127,10 @@ let turn_undead_msg_cnt = 0;
 const hallu_gods = $c.nulls(14);
 export function critically_low_hp(only_if_injured) {   // pray.c:116
     let divisor = 0, hplim = 0, curhp = 0, maxhp = 0;
-    curhp = u.umonnum !== u.umonster ? u.mh : u.uhp;
-    maxhp = u.umonnum !== u.umonster ? u.mhmax : u.uhpmax;
+    curhp = Upolyd() ? u.mh : u.uhp;
+    maxhp = Upolyd() ? u.mhmax : u.uhpmax;
     if (only_if_injured && !(curhp < maxhp)) {
-        return 0;
+        return FALSE;
     }
     hplim = Math.imul(15, u.ulevel);
     if (maxhp > hplim) {
@@ -102,8 +162,8 @@ export function critically_low_hp(only_if_injured) {   // pray.c:116
 export function stuck_in_wall() {   // pray.c:161
     let i = 0, j = 0, x = 0, y = 0, count = 0;
     count = 0;
-    if (u.uprops[53 /* PASSES_WALLS */].intrinsic || u.uprops[53 /* PASSES_WALLS */].extrinsic) {
-        return 0;
+    if (Passes_walls()) {
+        return FALSE;
     }
     for (i = -1; i <= 1; i = i + 1 | 0) {
         x = u.ux + i | 0;
@@ -112,115 +172,115 @@ export function stuck_in_wall() {   // pray.c:161
                 continue;
             }
             y = u.uy + j | 0;
-            if (!isok($c.i16(x), $c.i16(y)) || svl.level.locations[x][y].typ < 16 /* POOL */ && (svl.level.locations[x][y].typ !== 14 /* SDOOR */ && svl.level.locations[x][y].typ !== 15 /* SCORR */) || blocked_boulder(i, j) && !($c.andu64(gy.youmonst.data.mflags2, 134217728) !== 0)) {
+            if (!isok($c.i16(x), $c.i16(y)) || svl.level.locations[x][y].typ < POOL && (svl.level.locations[x][y].typ !== SDOOR && svl.level.locations[x][y].typ !== SCORR) || blocked_boulder(i, j) && !throws_rocks(gy.youmonst.data)) {
                 count = count + 1 | 0;
             }
         }
     }
-    return $c.i8(count === 8 ? 1 : 0);
+    return $c.i8(count === 8 ? TRUE : FALSE);
 }
 async function in_trouble() {   // pray.c:198
     let otmp = null, i = 0;
-    if (u.uprops[18 /* STONED */].intrinsic) {
-        return 14;
+    if (Stoned()) {
+        return TROUBLE_STONED;
     }
-    if (u.uprops[22 /* SLIMED */].intrinsic) {
-        return 13;
+    if (Slimed()) {
+        return TROUBLE_SLIMED;
     }
-    if (u.uprops[19 /* STRANGLED */].intrinsic) {
-        return 12;
+    if (Strangled()) {
+        return TROUBLE_STRANGLED;
     }
-    if (u.utrap && u.utraptype === 4) {
-        return 11;
+    if (u.utrap && u.utraptype === TT.LAVA) {
+        return TROUBLE_LAVA;
     }
-    if (u.uprops[17 /* SICK */].intrinsic) {
-        return 10;
+    if (Sick()) {
+        return TROUBLE_SICK;
     }
-    if (u.uhs >= 3) {
-        return 9;
+    if (u.uhs >= WEAK) {
+        return TROUBLE_STARVING;
     }
     if (region_danger()) {
-        return 8;
+        return TROUBLE_REGION;
     }
-    if ((!(u.umonnum !== u.umonster) || (u.uprops[63 /* UNCHANGING */].intrinsic || u.uprops[63 /* UNCHANGING */].extrinsic)) && critically_low_hp(0)) {
-        return 7;
+    if ((!Upolyd() || Unchanging()) && critically_low_hp(FALSE)) {
+        return TROUBLE_HIT;
     }
-    if (u.ulycn >= 0 /* LOW_PM */ && u.ulycn < 383 /* NUMMONS */) {
-        return 6;
+    if (ismnum(u.ulycn)) {
+        return TROUBLE_LYCANTHROPE;
     }
-    if (near_capacity() >= 4 /* EXT_ENCUMBER */ && (u.amax.a[0 /* A_STR */] - u.acurr.a[0 /* A_STR */] | 0) > 3) {
-        return 5;
+    if (near_capacity() >= EXT_ENCUMBER && (u.amax.a[A.STR] - u.acurr.a[A.STR] | 0) > 3) {
+        return TROUBLE_COLLAPSING;
     }
     if (stuck_in_wall()) {
-        return 4;
+        return TROUBLE_STUCK_IN_WALL;
     }
-    if ($G.uarmf && $G.uarmf.otyp === 172 && $G.uarmf.cursed | 0 || await stuck_ring($G.uleft, 183 /* RIN_LEVITATION */) || await stuck_ring($G.uright, 183 /* RIN_LEVITATION */)) {
-        return 3;
+    if ($G.uarmf && $G.uarmf.otyp === LEVITATION_BOOTS && $G.uarmf.cursed | 0 || await stuck_ring($G.uleft, RIN_LEVITATION) || await stuck_ring($G.uright, RIN_LEVITATION)) {
+        return TROUBLE_CURSED_LEVITATION;
     }
-    if ($c.andu64(gy.youmonst.data.mflags1, 8192) !== 0 || !await freehand()) {
+    if (nohands(gy.youmonst.data) || !await freehand()) {
         if (await welded($G.uwep)) {
-            return 2;
+            return TROUBLE_UNUSEABLE_HANDS;
         }
-        if (u.umonnum !== u.umonster && $c.andu64(gy.youmonst.data.mflags1, 8192) !== 0 && (!(u.uprops[63 /* UNCHANGING */].intrinsic || u.uprops[63 /* UNCHANGING */].extrinsic) || (otmp = unchanger()) !== null && otmp.cursed | 0)) {
-            return 2;
+        if (Upolyd() && nohands(gy.youmonst.data) && (!Unchanging() || (otmp = unchanger()) !== null && otmp.cursed | 0)) {
+            return TROUBLE_UNUSEABLE_HANDS;
         }
     }
-    if (u.uprops[15 /* BLINDED */].extrinsic && $G.ublindf.cursed | 0) {
-        return 1;
+    if (u.uprops[BLINDED].extrinsic && $G.ublindf.cursed | 0) {
+        return TROUBLE_CURSED_BLINDFOLD;
     }
-    if ($G.uball !== null || u.utrap && u.utraptype === 6) {
-        return -1;
+    if (Punished() || u.utrap && u.utraptype === TT.BURIEDBALL) {
+        return TROUBLE_PUNISHED;
     }
-    if ($G.uarmg && $G.uarmg.otyp === 160 && $G.uarmg.cursed | 0 || $G.uarmf && $G.uarmf.otyp === 171 && $G.uarmf.cursed | 0) {
-        return -2;
+    if ($G.uarmg && $G.uarmg.otyp === GAUNTLETS_OF_FUMBLING && $G.uarmg.cursed | 0 || $G.uarmf && $G.uarmf.otyp === FUMBLE_BOOTS && $G.uarmf.cursed | 0) {
+        return TROUBLE_FUMBLING;
     }
     if (await worst_cursed_item()) {
-        return -3;
+        return TROUBLE_CURSED_ITEMS;
     }
     if (u.usteed) {
-        otmp = await which_armor(u.usteed, 1048576);
-        if (otmp && otmp.otyp === 235 && otmp.cursed | 0) {
-            return -4;
+        otmp = await which_armor(u.usteed, W.SADDLE);
+        if (otmp && otmp.otyp === SADDLE && otmp.cursed | 0) {
+            return TROUBLE_SADDLE;
         }
     }
-    if ($c.and64(u.uprops[15 /* BLINDED */].intrinsic, 16777215) > 1 && !$c.and64(u.uprops[15 /* BLINDED */].intrinsic, -16777216) && (!u.uswallow || !attacktype_fordmg(u.ustuck.data, 11, 11))) {
-        return -5;
+    if (BlindedTimeout() > 1 && !$c.and64(u.uprops[BLINDED].intrinsic, ~TIMEOUT) && (!u.uswallow || !attacktype_fordmg(u.ustuck.data, AT.ENGL, AD.BLND))) {
+        return TROUBLE_BLIND;
     }
-    if ($c.and64(u.uprops[16 /* DEAF */].intrinsic, 16777215) > 1) {
-        return -5;
+    if ($c.and64(u.uprops[DEAF].intrinsic, TIMEOUT) > 1) {
+        return TROUBLE_BLIND;
     }
-    for (i = 0; i < 6 /* A_MAX */; i = i + 1 | 0) {
+    for (i = 0; i < A.MAX; i = i + 1 | 0) {
         if (u.acurr.a[i] < u.amax.a[i]) {
-            return -6;
+            return TROUBLE_POISONED;
         }
     }
-    if ((u.uprops[26 /* WOUNDED_LEGS */].intrinsic || u.uprops[26 /* WOUNDED_LEGS */].extrinsic) && !u.usteed) {
-        return -7;
+    if (Wounded_legs() && !u.usteed) {
+        return TROUBLE_WOUNDED_LEGS;
     }
-    if (u.uhs >= 2) {
-        return -8;
+    if (u.uhs >= HUNGRY) {
+        return TROUBLE_HUNGRY;
     }
-    if ($c.and64(u.uprops[13 /* STUNNED */].intrinsic, 16777215)) {
-        return -9;
+    if ($c.and64(u.uprops[STUNNED].intrinsic, TIMEOUT)) {
+        return TROUBLE_STUNNED;
     }
-    if ($c.and64(u.uprops[14 /* CONFUSION */].intrinsic, 16777215)) {
-        return -10;
+    if ($c.and64(u.uprops[CONFUSION].intrinsic, TIMEOUT)) {
+        return TROUBLE_CONFUSED;
     }
-    if ($c.and64(u.uprops[23 /* HALLUC */].intrinsic, 16777215)) {
-        return -11;
+    if ($c.and64(u.uprops[HALLUC].intrinsic, TIMEOUT)) {
+        return TROUBLE_HALLUCINATION;
     }
     return 0;
 }
 async function worst_cursed_item() {   // pray.c:288
     let otmp = null;
-    if (near_capacity() >= 3 /* HVY_ENCUMBER */) {
+    if (near_capacity() >= HVY_ENCUMBER) {
         for (otmp = gi.invent; otmp; otmp = otmp.nobj) {
-            if (otmp && otmp.otyp === 471 && otmp.cursed | 0) {
+            if (otmp && otmp.otyp === LOADSTONE && otmp.cursed | 0) {
                 return otmp;
             }
         }
     }
-    if (await welded($G.uwep) && ($G.uright || ($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */) && objects[$G.uwep.otyp].oc_big | 0)) {
+    if (await welded($G.uwep) && ($G.uright || bimanual($G.uwep))) {
         otmp = $G.uwep;
     } else if ($G.uarmg && $G.uarmg.cursed | 0) {
         otmp = $G.uarmg;
@@ -230,7 +290,7 @@ async function worst_cursed_item() {   // pray.c:288
         otmp = $G.uarmc;
     } else if ($G.uarm && $G.uarm.cursed | 0) {
         otmp = $G.uarm;
-    } else if ($G.uarmh && $G.uarmh.cursed | 0 && $G.uarmh.otyp !== 99 /* HELM_OF_OPPOSITE_ALIGNMENT */) {
+    } else if ($G.uarmh && $G.uarmh.cursed | 0 && $G.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT) {
         otmp = $G.uarmh;
     } else if ($G.uarmf && $G.uarmf.cursed | 0) {
         otmp = $G.uarmf;
@@ -253,7 +313,7 @@ async function worst_cursed_item() {   // pray.c:288
             if (!otmp.cursed) {
                 continue;
             }
-            if (otmp.otyp === 471 /* LOADSTONE */ || confers_luck(otmp)) {
+            if (otmp.otyp === LOADSTONE || confers_luck(otmp)) {
                 break;
             }
         }
@@ -265,17 +325,17 @@ async function fix_curse_trouble(otmp, what) {   // pray.c:349
         await impossible($c.lit("fix_curse_trouble: nothing to uncurse."));
         return;
     }
-    if ($c.peq(otmp, $G.uarmg) && u.uprops[21 /* GLIB */].intrinsic) {
+    if ($c.peq(otmp, $G.uarmg) && Glib()) {
         await make_glib(0);
         await Your($c.lit("%s are no longer slippery."), gloves_simple_name($G.uarmg));
         if (!otmp.cursed) {
             return;
         }
     }
-    if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) || $c.peq(otmp, $G.ublindf) && (u.uprops[15 /* BLINDED */].extrinsic && !(u.uprops[15 /* BLINDED */].intrinsic && !u.uprops[15 /* BLINDED */].blocked))) {
+    if (!Blind() || $c.peq(otmp, $G.ublindf) && Blindfolded_only()) {
         await pline($c.lit("%s %s."), what ? what : await Yobjnam2(otmp, $c.lit("softly glow")), hcolor(c_color_names.c_amber));
-        iflags.last_msg = 5 /* PLNMSG_OBJ_GLOWS */;
-        otmp.bknown = ((!(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) ? 1 : 0) >>> 0) & 1;
+        iflags.last_msg = PLNMSG.OBJ_GLOWS;
+        otmp.bknown = ((!Hallucination() ? 1 : 0) >>> 0) & 1;
     }
     await uncurse(otmp);
     await update_inventory();
@@ -285,65 +345,65 @@ async function fix_worst_trouble(trouble) {   // pray.c:373
     otmp = null;
     what = null;
     switch (trouble) {
-        case 14:
+        case TROUBLE_STONED:
             await make_stoned(0, $c.lit("You feel more limber."), 0, null);
             break;
-        case 13:
+        case TROUBLE_SLIMED:
             await make_slimed(0, $c.lit("The slime disappears."));
             break;
-        case 12:
-            if ($G.uamul && $G.uamul.otyp === 203 /* AMULET_OF_STRANGULATION */) {
+        case TROUBLE_STRANGLED:
+            if ($G.uamul && $G.uamul.otyp === AMULET_OF_STRANGULATION) {
                 await Your($c.lit("amulet vanishes!"));
                 await useup($G.uamul);
             }
             await You($c.lit("can breathe again."));
-            u.uprops[19 /* STRANGLED */].intrinsic = 0;
-            disp.botl = 1;
+            u.uprops[STRANGLED].intrinsic = 0;
+            disp.botl = TRUE;
             break;
-        case 11:
-            if (!await safe_teleds(0)) {
-                await reset_utrap(1);
+        case TROUBLE_LAVA:
+            if (!await safe_teleds(TELEDS.NO_FLAGS)) {
+                await reset_utrap(TRUE);
             }
-            await rescued_from_terrain(6 /* DISSOLVED */);
+            await rescued_from_terrain(DISSOLVED);
             break;
-        case 9:
-        case -8:
-            await Your($c.lit("%s feels content."), await body_part(18 /* STOMACH */));
+        case TROUBLE_STARVING:
+        case TROUBLE_HUNGRY:
+            await Your($c.lit("%s feels content."), await body_part(STOMACH));
             await init_uhunger();
-            disp.botl = 1;
+            disp.botl = TRUE;
             break;
-        case 10:
+        case TROUBLE_SICK:
             await You_feel($c.lit("better."));
-            await make_sick(0, null, 0, 3);
+            await make_sick(0, null, FALSE, SICK_ALL);
             break;
-        case 8:
+        case TROUBLE_REGION:
             await region_safety();
             break;
-        case 7:
+        case TROUBLE_HIT:
             await You_feel($c.lit("much better."));
-            if (u.umonnum !== u.umonster) {
-                maxhp = u.mhmax + (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 427, $c.lit("fix_worst_trouble")), rnd(5)) : rnd(5)) | 0;
-                setuhpmax(maxhp > 6 ? maxhp : 6, 0);
+            if (Upolyd()) {
+                maxhp = u.mhmax + rnd(5) | 0;
+                setuhpmax(maxhp > 6 ? maxhp : 6, FALSE);
                 u.mh = u.mhmax;
             }
             maxhp = u.uhpmax;
             if (maxhp < (Math.imul(u.ulevel, 5) + 11 | 0)) {
-                maxhp = maxhp + (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 433, $c.lit("fix_worst_trouble")), rnd(5)) : rnd(5)) | 0;
+                maxhp = maxhp + rnd(5) | 0;
             }
-            setuhpmax(maxhp > 6 ? maxhp : 6, 1);
+            setuhpmax(maxhp > 6 ? maxhp : 6, TRUE);
             u.uhp = u.uhpmax;
-            disp.botl = 1;
+            disp.botl = TRUE;
             break;
-        case 5:
-            await You_feel($c.lit("%sstronger."), (u.amax.a[0 /* A_STR */] - u.acurr.a[0 /* A_STR */] | 0) > 6 ? $c.lit("much ") : $c.lit(""));
-            u.acurr.a[0 /* A_STR */] = u.amax.a[0 /* A_STR */];
-            disp.botl = 1;
-            if (u.uprops[67 /* FIXED_ABIL */].extrinsic) {
-                if ((otmp = await stuck_ring($G.uleft, 182 /* RIN_SUSTAIN_ABILITY */)) !== null) {
+        case TROUBLE_COLLAPSING:
+            await You_feel($c.lit("%sstronger."), (u.amax.a[A.STR] - u.acurr.a[A.STR] | 0) > 6 ? $c.lit("much ") : $c.lit(""));
+            u.acurr.a[A.STR] = u.amax.a[A.STR];
+            disp.botl = TRUE;
+            if (Fixed_abil()) {
+                if ((otmp = await stuck_ring($G.uleft, RIN_SUSTAIN_ABILITY)) !== null) {
                     if ($c.peq(otmp, $G.uleft)) {
                         what = new $c.Ptr(fix_worst_trouble$leftglow, 0);
                     }
-                } else if ((otmp = await stuck_ring($G.uright, 182 /* RIN_SUSTAIN_ABILITY */)) !== null) {
+                } else if ((otmp = await stuck_ring($G.uright, RIN_SUSTAIN_ABILITY)) !== null) {
                     if ($c.peq(otmp, $G.uright)) {
                         what = new $c.Ptr(fix_worst_trouble$rightglow, 0);
                     }
@@ -354,36 +414,36 @@ async function fix_worst_trouble(trouble) {   // pray.c:373
                 }
             }
             break;
-        case 4:
-            if (await safe_teleds(0)) {
+        case TROUBLE_STUCK_IN_WALL:
+            if (await safe_teleds(TELEDS.NO_FLAGS)) {
                 await Your($c.lit("surroundings change."));
             } else {
-                set_itimeout(new $c.FieldRef(u.uprops[53 /* PASSES_WALLS */], "intrinsic", "i64"), (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 473, $c.lit("fix_worst_trouble")), d(4, 4)) : d(4, 4)) + 4 | 0);
+                set_itimeout(new $c.FieldRef(u.uprops[PASSES_WALLS], "intrinsic", "i64"), d(4, 4) + 4 | 0);
                 await You_feel($c.lit("much slimmer."));
             }
             break;
-        case 3:
-            if ($G.uarmf && $G.uarmf.otyp === 172 && $G.uarmf.cursed | 0) {
+        case TROUBLE_CURSED_LEVITATION:
+            if ($G.uarmf && $G.uarmf.otyp === LEVITATION_BOOTS && $G.uarmf.cursed | 0) {
                 otmp = $G.uarmf;
-            } else if ((otmp = await stuck_ring($G.uleft, 183 /* RIN_LEVITATION */)) !== null) {
+            } else if ((otmp = await stuck_ring($G.uleft, RIN_LEVITATION)) !== null) {
                 if ($c.peq(otmp, $G.uleft)) {
                     what = new $c.Ptr(fix_worst_trouble$leftglow, 0);
                 }
-            } else if ((otmp = await stuck_ring($G.uright, 183 /* RIN_LEVITATION */)) !== null) {
+            } else if ((otmp = await stuck_ring($G.uright, RIN_LEVITATION)) !== null) {
                 if ($c.peq(otmp, $G.uright)) {
                     what = new $c.Ptr(fix_worst_trouble$rightglow, 0);
                 }
             }
             await fix_curse_trouble(otmp, what);
             break;
-        case 2:
+        case TROUBLE_UNUSEABLE_HANDS:
             if (await welded($G.uwep)) {
                 otmp = $G.uwep;
                 await fix_curse_trouble(otmp, what);
                 break;
             }
-            if (u.umonnum !== u.umonster && $c.andu64(gy.youmonst.data.mflags1, 8192) !== 0) {
-                if (!(u.uprops[63 /* UNCHANGING */].intrinsic || u.uprops[63 /* UNCHANGING */].extrinsic)) {
+            if (Upolyd() && nohands(gy.youmonst.data)) {
+                if (!Unchanging()) {
                     await Your($c.lit("shape becomes uncertain."));
                     await rehumanize();
                 } else if ((otmp = unchanger()) !== null && otmp.cursed | 0) {
@@ -391,34 +451,34 @@ async function fix_worst_trouble(trouble) {   // pray.c:373
                     break;
                 }
             }
-            if ($c.andu64(gy.youmonst.data.mflags1, 8192) !== 0 || !await freehand()) {
+            if (nohands(gy.youmonst.data) || !await freehand()) {
                 await impossible($c.lit("fix_worst_trouble: couldn't cure hands."));
             }
             break;
-        case 1:
+        case TROUBLE_CURSED_BLINDFOLD:
             otmp = $G.ublindf;
             await fix_curse_trouble(otmp, what);
             break;
-        case 6:
-            await you_unwere(1);
+        case TROUBLE_LYCANTHROPE:
+            await you_unwere(TRUE);
             break;
-        case -1:
+        case TROUBLE_PUNISHED:
             await Your($c.lit("chain disappears."));
-            if (u.utrap && u.utraptype === 6) {
+            if (u.utrap && u.utraptype === TT.BURIEDBALL) {
                 await buried_ball_to_freedom();
             } else {
                 await unpunish();
             }
             break;
-        case -2:
-            if ($G.uarmg && $G.uarmg.otyp === 160 && $G.uarmg.cursed | 0) {
+        case TROUBLE_FUMBLING:
+            if ($G.uarmg && $G.uarmg.otyp === GAUNTLETS_OF_FUMBLING && $G.uarmg.cursed | 0) {
                 otmp = $G.uarmg;
-            } else if ($G.uarmf && $G.uarmf.otyp === 171 && $G.uarmf.cursed | 0) {
+            } else if ($G.uarmf && $G.uarmf.otyp === FUMBLE_BOOTS && $G.uarmf.cursed | 0) {
                 otmp = $G.uarmf;
             }
             await fix_curse_trouble(otmp, what);
             break;
-        case -3:
+        case TROUBLE_CURSED_ITEMS:
             otmp = await worst_cursed_item();
             if ($c.peq(otmp, $G.uright)) {
                 what = new $c.Ptr(fix_worst_trouble$rightglow, 0);
@@ -427,36 +487,36 @@ async function fix_worst_trouble(trouble) {   // pray.c:373
             }
             await fix_curse_trouble(otmp, what);
             break;
-        case -6:
-            if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+        case TROUBLE_POISONED:
+            if (Hallucination()) {
                 await pline($c.lit("There's a tiger in your tank."));
             } else {
                 await You_feel($c.lit("in good health again."));
             }
-            for (i = 0; i < 6 /* A_MAX */; i = i + 1 | 0) {
+            for (i = 0; i < A.MAX; i = i + 1 | 0) {
                 if (u.acurr.a[i] < u.amax.a[i]) {
                     u.acurr.a[i] = u.amax.a[i];
-                    disp.botl = 1;
+                    disp.botl = TRUE;
                 }
             }
             await encumber_msg();
             break;
-        case -5:
+        case TROUBLE_BLIND:
             {
-                eyes = await body_part(1 /* EYE */);
-                cure_deaf = $c.i8($c.and64(u.uprops[16 /* DEAF */].intrinsic, 16777215) ? 1 : 0);
+                eyes = await body_part(EYE);
+                cure_deaf = $c.i8($c.and64(u.uprops[DEAF].intrinsic, TIMEOUT) ? TRUE : FALSE);
                 msgbuf[0] = 0;
-                if (u.uprops[15 /* BLINDED */].intrinsic && !u.uprops[15 /* BLINDED */].blocked) {
-                    if ((!($c.andu64(gy.youmonst.data.mflags1, 4096) === 0) ? 0 : $c.peq(gy.youmonst.data, $c.relem(mons, 360 /* PM_CYCLOPS */)) || $c.peq(gy.youmonst.data, $c.relem(mons, 28 /* PM_FLOATING_EYE */)) ? 1 : 2) !== 1) {
+                if (Blinded()) {
+                    if (eyecount(gy.youmonst.data) !== 1) {
                         eyes = await makeplural(eyes);
                     }
                     $c.__builtin___sprintf_chk(new $c.Ptr(msgbuf, 0), 0, 256, $c.lit("Your %s %s better"), eyes, await vtense(eyes, $c.lit("feel")));
                     u.ucreamed = 0;
-                    await make_blinded(0, 0);
+                    await make_blinded(0, FALSE);
                 }
                 if (cure_deaf) {
-                    await make_deaf(0, 0);
-                    if (!(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf)) {
+                    await make_deaf(0, FALSE);
+                    if (!Deaf()) {
                         $c.__builtin___sprintf_chk(eos(new $c.Ptr(msgbuf, 0)), 0, -1, $c.lit("%s can hear again"), !new $c.Ptr(msgbuf, 0).get(0) ? $c.lit("You") : $c.lit(" and you"));
                     }
                 }
@@ -465,22 +525,22 @@ async function fix_worst_trouble(trouble) {   // pray.c:373
                 }
                 break;
             }
-        case -7:
+        case TROUBLE_WOUNDED_LEGS:
             await heal_legs(0);
             break;
-        case -9:
-            await make_stunned(0, 1);
+        case TROUBLE_STUNNED:
+            await make_stunned(0, TRUE);
             break;
-        case -10:
-            await make_confused(0, 1);
+        case TROUBLE_CONFUSED:
+            await make_confused(0, TRUE);
             break;
-        case -11:
+        case TROUBLE_HALLUCINATION:
             await pline($c.lit("Looks like you are back in Kansas."));
-            await make_hallucinated(0, 0, 0);
+            await make_hallucinated(0, FALSE, 0);
             break;
-        case -4:
-            otmp = await which_armor(u.usteed, 1048576);
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+        case TROUBLE_SADDLE:
+            otmp = await which_armor(u.usteed, W.SADDLE);
+            if (!Blind()) {
                 await pline($c.lit("%s %s."), await Yobjnam2(otmp, $c.lit("softly glow")), hcolor(c_color_names.c_amber));
                 await set_bknown(otmp, 1);
             }
@@ -492,109 +552,109 @@ async function god_zaps_you(resp_god) {   // pray.c:610
     if (u.uswallow) {
         await pline($c.lit("Suddenly a bolt of lightning comes down at you from the heavens!"));
         await pline($c.lit("It strikes %s!"), await mon_nam(u.ustuck));
-        if (!await Resists_Elem(u.ustuck, 5 /* SHOCK_RES */)) {
+        if (!await Resists_Elem(u.ustuck, SHOCK_RES)) {
             await pline($c.lit("%s fries to a crisp!"), await Monnam(u.ustuck));
-            await xkilled(u.ustuck, 5);
+            await xkilled(u.ustuck, XKILL.NOMSG | XKILL.NOCONDUCT);
         } else {
             await pline($c.lit("%s seems unaffected."), await Monnam(u.ustuck));
         }
     } else {
         await pline($c.lit("Suddenly, a bolt of lightning strikes you!"));
-        if (u.uprops[65 /* REFLECTING */].intrinsic || u.uprops[65 /* REFLECTING */].extrinsic) {
+        if (Reflecting()) {
             await shieldeff(u.ux, u.uy);
-            if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+            if (Blind()) {
                 await pline($c.lit("For some reason you're unaffected."));
             } else {
                 await ureflects($c.lit("%s reflects from your %s."), $c.lit("It"));
             }
-            monstseesu(256);
-        } else if (u.uprops[5 /* SHOCK_RES */].intrinsic || u.uprops[5 /* SHOCK_RES */].extrinsic) {
+            monstseesu(M_SEEN.REFL);
+        } else if (Shock_resistance()) {
             await shieldeff(u.ux, u.uy);
             await pline($c.lit("It seems not to affect you."));
-            monstseesu(32);
-            monstunseesu(256);
+            monstseesu(M_SEEN.ELEC);
+            monstunseesu(M_SEEN.REFL);
         } else {
-            await fry_by_god(resp_god, 0);
-            monstunseesu(288);
+            await fry_by_god(resp_god, FALSE);
+            monstunseesu(M_SEEN.REFL | M_SEEN.ELEC);
         }
     }
     await pline($c.lit("%s is not deterred..."), await align_gname(resp_god));
     if (u.uswallow) {
         await pline($c.lit("A wide-angle disintegration beam aimed at you hits %s!"), await mon_nam(u.ustuck));
-        if (!await Resists_Elem(u.ustuck, 4 /* DISINT_RES */)) {
+        if (!await Resists_Elem(u.ustuck, DISINT_RES)) {
             await pline($c.lit("%s disintegrates into a pile of dust!"), await Monnam(u.ustuck));
-            await xkilled(u.ustuck, 7);
+            await xkilled(u.ustuck, XKILL.NOMSG | XKILL.NOCORPSE | XKILL.NOCONDUCT);
         } else {
             await pline($c.lit("%s seems unaffected."), await Monnam(u.ustuck));
         }
     } else {
         await pline($c.lit("A wide-angle disintegration beam hits you!"));
-        if ($G.uarms && !$c.and64(u.uprops[65 /* REFLECTING */].extrinsic, 8) && !$c.and64(u.uprops[4 /* DISINT_RES */].extrinsic, 8)) {
+        if ($G.uarms && !$c.and64(u.uprops[REFLECTING].extrinsic, W.ARMS) && !$c.and64(u.uprops[DISINT_RES].extrinsic, W.ARMS)) {
             await disintegrate_arm($G.uarms);
         }
-        if ($G.uarmc && !$c.and64(u.uprops[65 /* REFLECTING */].extrinsic, 2) && !$c.and64(u.uprops[4 /* DISINT_RES */].extrinsic, 2)) {
+        if ($G.uarmc && !$c.and64(u.uprops[REFLECTING].extrinsic, W.ARMC) && !$c.and64(u.uprops[DISINT_RES].extrinsic, W.ARMC)) {
             await disintegrate_arm($G.uarmc);
         }
-        if ($G.uarm && !$c.and64(u.uprops[65 /* REFLECTING */].extrinsic, 1) && !$c.and64(u.uprops[4 /* DISINT_RES */].extrinsic, 1) && !$G.uarmc) {
+        if ($G.uarm && !$c.and64(u.uprops[REFLECTING].extrinsic, W.ARM) && !$c.and64(u.uprops[DISINT_RES].extrinsic, W.ARM) && !$G.uarmc) {
             await disintegrate_arm($G.uarm);
         }
         if ($G.uarmu && !$G.uarm && !$G.uarmc) {
             await disintegrate_arm($G.uarmu);
         }
-        if (!(u.uprops[4 /* DISINT_RES */].intrinsic || u.uprops[4 /* DISINT_RES */].extrinsic)) {
-            await fry_by_god(resp_god, 1);
-            monstunseesu(16);
+        if (!Disint_resistance()) {
+            await fry_by_god(resp_god, TRUE);
+            monstunseesu(M_SEEN.DISINT);
         } else {
             await You($c.lit("bask in its %s glow for a minute..."), c_color_names.c_black);
             await godvoice(resp_god, $c.lit("I believe it not!"));
-            monstseesu(16);
+            monstseesu(M_SEEN.DISINT);
         }
         if ((svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level) || (svd.dungeon_topology.d_sanctum_level.dlevel || svd.dungeon_topology.d_sanctum_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_sanctum_level)) {
             await verbalize($c.lit("Thou cannot escape my wrath, mortal!"));
-            await summon_minion(resp_god, 0);
-            await summon_minion(resp_god, 0);
-            await summon_minion(resp_god, 0);
+            await summon_minion(resp_god, FALSE);
+            await summon_minion(resp_god, FALSE);
+            await summon_minion(resp_god, FALSE);
             await verbalize($c.lit("Destroy %s, my servants!"), genders[flags.female ? 1 : 0].him);
         }
     }
 }
 async function fry_by_god(resp_god, via_disintegration) {   // pray.c:694
     await You($c.lit("%s!"), !via_disintegration ? $c.lit("fry to a crisp") : $c.lit("disintegrate into a pile of dust"));
-    svk.killer.format = 1;
+    svk.killer.format = KILLED.BY;
     $c.__builtin___sprintf_chk(new $c.Ptr(svk.killer.name, 0), 0, 256, $c.lit("the wrath of %s"), await align_gname(resp_god));
-    await done(0 /* DIED */);
+    await done(DIED);
 }
 async function angrygods(resp_god) {   // pray.c:704
     let maxanger = 0, new_ublesscnt = 0;
-    if (In_hell(u.uz)) {
-        resp_god = -128;
+    if (Inhell()) {
+        resp_god = A.NONE;
     }
     u.ublessed = 0;
     if (resp_god !== u.ualign.type) {
-        maxanger = $c.div32(u.ualign.record, 2) + ((u.uluck + u.moreluck | 0) > 0 ? $c.div32(-(u.uluck + u.moreluck | 0) | 0, 3) : -(u.uluck + u.moreluck | 0) | 0) | 0;
+        maxanger = $c.div32(u.ualign.record, 2) + (Luck() > 0 ? $c.div32(-Luck() | 0, 3) : -Luck() | 0) | 0;
     } else {
-        maxanger = Math.imul(3, u.ugangr) + ((u.uluck + u.moreluck | 0) > 0 || u.ualign.record >= 4 ? $c.div32(-(u.uluck + u.moreluck | 0) | 0, 3) : -(u.uluck + u.moreluck | 0) | 0) | 0;
+        maxanger = Math.imul(3, u.ugangr) + (Luck() > 0 || u.ualign.record >= STRIDENT ? $c.div32(-Luck() | 0, 3) : -Luck() | 0) | 0;
     }
     if (maxanger < 1) {
         maxanger = 1;
     } else if (maxanger > 15) {
         maxanger = 15;
     }
-    switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 725, $c.lit("angrygods")), rn2(maxanger)) : rn2(maxanger)) {
+    switch (rn2(maxanger)) {
         case 0:
         case 1:
-            await You_feel($c.lit("that %s is %s."), await align_gname(resp_god), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("bummed") : $c.lit("displeased"));
+            await You_feel($c.lit("that %s is %s."), await align_gname(resp_god), Hallucination() ? $c.lit("bummed") : $c.lit("displeased"));
             break;
         case 2:
         case 3:
             await godvoice(resp_god, null);
-            await pline($c.lit("\"Thou %s, %s.\""), u.ualign.record < 0 && resp_god === u.ualign.type ? $c.lit("hast strayed from the path") : $c.lit("art arrogant"), gy.youmonst.data.mlet === 53 /* S_HUMAN */ ? $c.lit("mortal") : $c.lit("creature"));
+            await pline($c.lit("\"Thou %s, %s.\""), ugod_is_angry() && resp_god === u.ualign.type ? $c.lit("hast strayed from the path") : $c.lit("art arrogant"), gy.youmonst.data.mlet === S.HUMAN ? $c.lit("mortal") : $c.lit("creature"));
             await verbalize($c.lit("Thou must relearn thy lessons!"));
-            await adjattrib(2 /* A_WIS */, -1, 0);
+            await adjattrib(A.WIS, -1, FALSE);
             await losexp(null);
             break;
         case 6:
-            if (!($G.uball !== null)) {
+            if (!Punished()) {
                 await gods_angry(resp_god);
                 await punish(null);
                 break;
@@ -602,82 +662,82 @@ async function angrygods(resp_god) {   // pray.c:704
         case 4:
         case 5:
             await gods_angry(resp_god);
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && !(u.uprops[12 /* ANTIMAGIC */].intrinsic || u.uprops[12 /* ANTIMAGIC */].extrinsic)) {
+            if (!Blind() && !Antimagic()) {
                 await pline($c.lit("%s glow surrounds you."), await An(hcolor(c_color_names.c_black)));
             }
-            if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 757, $c.lit("angrygods")), rn2(2)) : rn2(2)) || !await attrcurse()) {
+            if (rn2(2) || !await attrcurse()) {
                 await rndcurse();
             }
             break;
         case 7:
         case 8:
             await godvoice(resp_god, null);
-            await verbalize($c.lit("Thou durst %s me?"), svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ && $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) === 0 ? -128 : ((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) === 4 ? 1 : ((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) - 2 | 0) !== resp_god ? $c.lit("scorn") : $c.lit("call upon"));
-            await pline($c.lit("\"Then die, %s!\""), gy.youmonst.data.mlet === 53 /* S_HUMAN */ ? $c.lit("mortal") : $c.lit("creature"));
-            await summon_minion(resp_god, 0);
+            await verbalize($c.lit("Thou durst %s me?"), svl.level.locations[u.ux][u.uy].typ === ALTAR && $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) === 0 ? A.NONE : ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) - 2 | 0) !== resp_god ? $c.lit("scorn") : $c.lit("call upon"));
+            await pline($c.lit("\"Then die, %s!\""), gy.youmonst.data.mlet === S.HUMAN ? $c.lit("mortal") : $c.lit("creature"));
+            await summon_minion(resp_god, FALSE);
             break;
         default:
             await gods_angry(resp_god);
             await god_zaps_you(resp_god);
             break;
     }
-    new_ublesscnt = rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 780, $c.lit("angrygods")), rnz(300)) : rnz(300);
+    new_ublesscnt = rnz(300);
     if (new_ublesscnt > u.ublesscnt) {
         u.ublesscnt = new_ublesscnt;
     }
     return;
 }
 async function at_your_feet(str) {   // pray.c:788
-    if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+    if (Blind()) {
         str = c_common_strings.c_Something;
     }
     if (u.uswallow) {
-        await pline($c.lit("%s %s into %s %s."), str, await vtense(str, $c.lit("drop")), s_suffix(await mon_nam(u.ustuck)), await mbodypart(u.ustuck, 18 /* STOMACH */));
+        await pline($c.lit("%s %s into %s %s."), str, await vtense(str, $c.lit("drop")), s_suffix(await mon_nam(u.ustuck)), await mbodypart(u.ustuck, STOMACH));
     } else {
-        await pline($c.lit("%s %s %s your %s!"), str, await vtense(str, (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("land") : $c.lit("appear")), (u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked ? $c.lit("beneath") : $c.lit("at"), await makeplural(await body_part(5 /* FOOT */)));
+        await pline($c.lit("%s %s %s your %s!"), str, await vtense(str, Blind() ? $c.lit("land") : $c.lit("appear")), Levitation() ? $c.lit("beneath") : $c.lit("at"), await makeplural(await body_part(FOOT)));
     }
 }
 async function gcrownu() {   // pray.c:805
     let obj = null, what = null, already_exists = 0, in_hand = 0, class_gift = 0, bbuf = new Int8Array(256), lbuf = new Int8Array(256), swordbuf = new Int8Array(256), $t1, $t2;
-    u.uprops[29 /* SEE_INVIS */].intrinsic = $c.or64(u.uprops[29 /* SEE_INVIS */].intrinsic, 67108864);
-    u.uprops[1 /* FIRE_RES */].intrinsic = $c.or64(u.uprops[1 /* FIRE_RES */].intrinsic, 67108864);
-    u.uprops[2 /* COLD_RES */].intrinsic = $c.or64(u.uprops[2 /* COLD_RES */].intrinsic, 67108864);
-    u.uprops[5 /* SHOCK_RES */].intrinsic = $c.or64(u.uprops[5 /* SHOCK_RES */].intrinsic, 67108864);
-    u.uprops[3 /* SLEEP_RES */].intrinsic = $c.or64(u.uprops[3 /* SLEEP_RES */].intrinsic, 67108864);
-    u.uprops[6 /* POISON_RES */].intrinsic = $c.or64(u.uprops[6 /* POISON_RES */].intrinsic, 67108864);
+    u.uprops[SEE_INVIS].intrinsic = $c.or64(u.uprops[SEE_INVIS].intrinsic, FROMOUTSIDE);
+    u.uprops[FIRE_RES].intrinsic = $c.or64(u.uprops[FIRE_RES].intrinsic, FROMOUTSIDE);
+    u.uprops[COLD_RES].intrinsic = $c.or64(u.uprops[COLD_RES].intrinsic, FROMOUTSIDE);
+    u.uprops[SHOCK_RES].intrinsic = $c.or64(u.uprops[SHOCK_RES].intrinsic, FROMOUTSIDE);
+    u.uprops[SLEEP_RES].intrinsic = $c.or64(u.uprops[SLEEP_RES].intrinsic, FROMOUTSIDE);
+    u.uprops[POISON_RES].intrinsic = $c.or64(u.uprops[POISON_RES].intrinsic, FROMOUTSIDE);
     await godvoice(u.ualign.type, null);
-    class_gift = 0;
-    if (gu.urole.mnum === 343 && !is_art($G.uwep, 18 /* ART_VORPAL_BLADE */) && !is_art($G.uwep, 2 /* ART_STORMBRINGER */) && !carrying(371 /* SPE_FINGER_OF_DEATH */)) {
-        class_gift = 371;
-    } else if (gu.urole.mnum === 336 && (!$G.uwep || !$G.uwep.oartifact) && !carrying(392 /* SPE_RESTORE_ABILITY */)) {
-        class_gift = 392;
+    class_gift = STRANGE_OBJECT;
+    if (gu.urole.mnum === PM.WIZARD && !u_wield_art(ART.VORPAL_BLADE) && !u_wield_art(ART.STORMBRINGER) && !carrying(SPE_FINGER_OF_DEATH)) {
+        class_gift = SPE_FINGER_OF_DEATH;
+    } else if (gu.urole.mnum === PM.MONK && (!$G.uwep || !$G.uwep.oartifact) && !carrying(SPE_RESTORE_ABILITY)) {
+        class_gift = SPE_RESTORE_ABILITY;
     }
-    obj = $G.uwep && ($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */ && objects[$G.uwep.otyp].oc_subtyp !== 0 /* P_NONE */) ? $G.uwep : null;
-    already_exists = in_hand = 0;
+    obj = ok_wep($G.uwep) ? $G.uwep : null;
+    already_exists = in_hand = FALSE;
     switch (u.ualign.type) {
-        case 1:
+        case A.LAWFUL:
             u.uevent.uhand_of_elbereth = (1) & 3;
             await verbalize($c.lit("I crown thee...  The Hand of Elbereth!"));
-            await livelog_printf(8, $c.lit("was crowned \"The Hand of Elbereth\" by %s"), await u_gname());
+            await livelog_printf(LL.DIVINEGIFT, $c.lit("was crowned \"The Hand of Elbereth\" by %s"), await u_gname());
             break;
-        case 0:
+        case A.NEUTRAL:
             u.uevent.uhand_of_elbereth = (2) & 3;
-            in_hand = is_art($G.uwep, 18 /* ART_VORPAL_BLADE */);
-            already_exists = exist_artifact(54 /* LONG_SWORD */, artiname(18 /* ART_VORPAL_BLADE */));
+            in_hand = u_wield_art(ART.VORPAL_BLADE);
+            already_exists = exist_artifact(LONG_SWORD, artiname(ART.VORPAL_BLADE));
             await verbalize($c.lit("Thou shalt be my Envoy of Balance!"));
-            await livelog_printf(8, $c.lit("became %s Envoy of Balance"), s_suffix(await u_gname()));
+            await livelog_printf(LL.DIVINEGIFT, $c.lit("became %s Envoy of Balance"), s_suffix(await u_gname()));
             break;
-        case -1:
+        case A.CHAOTIC:
             u.uevent.uhand_of_elbereth = (3) & 3;
-            in_hand = is_art($G.uwep, 2 /* ART_STORMBRINGER */);
-            already_exists = exist_artifact(58 /* RUNESWORD */, artiname(2 /* ART_STORMBRINGER */));
-            what = already_exists && !in_hand || class_gift !== 0 /* STRANGE_OBJECT */ ? $c.lit("take lives") : $c.lit("steal souls");
+            in_hand = u_wield_art(ART.STORMBRINGER);
+            already_exists = exist_artifact(RUNESWORD, artiname(ART.STORMBRINGER));
+            what = already_exists && !in_hand || class_gift !== STRANGE_OBJECT ? $c.lit("take lives") : $c.lit("steal souls");
             await verbalize($c.lit("Thou art chosen to %s for My Glory!"), what);
-            await livelog_printf(8, $c.lit("was chosen to %s for the Glory of %s"), what, await u_gname());
+            await livelog_printf(LL.DIVINEGIFT, $c.lit("was chosen to %s for the Glory of %s"), what, await u_gname());
             break;
     }
-    if (objects[class_gift].oc_class === 10 /* SPBOOK_CLASS */) {
-        obj = await mksobj(class_gift, 1, 0);
+    if (objects[class_gift].oc_class === SPBOOK_CLASS) {
+        obj = await mksobj(class_gift, TRUE, FALSE);
         $c.__builtin___strcpy_chk(new $c.Ptr(bbuf, 0), await actualoname(obj), 256);
         await bless(obj);
         obj.bknown = (1) & 1;
@@ -685,68 +745,68 @@ async function gcrownu() {   // pray.c:805
         await at_your_feet(upstart(await ansimpleoname(obj)));
         await dropy(obj);
         u.ugifts = u.ugifts + 1 | 0;
-        await livelog_printf(8264, $c.lit("was bestowed with %s"), new $c.Ptr(bbuf, 0));
-        if (known_spell(class_gift) !== 0 /* spe_Unknown */ && ($G.uwep && ($G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */ && objects[$G.uwep.otyp].oc_subtyp !== 0 /* P_NONE */))) {
+        await livelog_printf(LL.DIVINEGIFT | LL.ARTIFACT | LL_SPOILER, $c.lit("was bestowed with %s"), new $c.Ptr(bbuf, 0));
+        if (known_spell(class_gift) !== spe_Unknown && ok_wep($G.uwep)) {
             obj = $G.uwep;
         }
     }
     switch (u.ualign.type) {
-        case 1:
-            if (class_gift !== 0 /* STRANGE_OBJECT */) {
-            } else if (obj && obj.otyp === 54 /* LONG_SWORD */ && !obj.oartifact) {
+        case A.LAWFUL:
+            if (class_gift !== STRANGE_OBJECT) {
+            } else if (obj && obj.otyp === LONG_SWORD && !obj.oartifact) {
                 $c.__builtin___strcpy_chk(new $c.Ptr(lbuf, 0), await simpleonames(obj), 256);
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                if (!Blind()) {
                     await Your($c.lit("sword shines brightly for a moment."));
                 }
-                obj = await oname(obj, artiname(1 /* ART_EXCALIBUR */), 264);
-                if (is_art(obj, 1 /* ART_EXCALIBUR */)) {
+                obj = await oname(obj, artiname(ART.EXCALIBUR), ONAME_GIFT | ONAME_KNOW_ARTI);
+                if (is_art(obj, ART.EXCALIBUR)) {
                     u.ugifts = u.ugifts + 1 | 0;
-                    await livelog_printf(72, $c.lit("had %s wielded %s transformed into %s"), genders[flags.female ? 1 : 0].his, new $c.Ptr(lbuf, 0), artiname(1 /* ART_EXCALIBUR */));
+                    await livelog_printf(LL.DIVINEGIFT | LL.ARTIFACT, $c.lit("had %s wielded %s transformed into %s"), genders[flags.female ? 1 : 0].his, new $c.Ptr(lbuf, 0), artiname(ART.EXCALIBUR));
                 }
             }
-            unrestrict_weapon_skill(7 /* P_LONG_SWORD */);
-            if (is_art(obj, 1 /* ART_EXCALIBUR */)) {
-                await discover_artifact(1);
+            unrestrict_weapon_skill(P.LONG_SWORD);
+            if (is_art(obj, ART.EXCALIBUR)) {
+                await discover_artifact(ART.EXCALIBUR);
             }
             break;
-        case 0:
-            if (class_gift !== 0 /* STRANGE_OBJECT */) {
+        case A.NEUTRAL:
+            if (class_gift !== STRANGE_OBJECT) {
             } else if (obj && in_hand) {
                 await Your($c.lit("%s goes snicker-snack!"), await xname(obj));
                 await observe_object(obj);
             } else if (!already_exists) {
-                obj = await mksobj(54 /* LONG_SWORD */, 0, 0);
-                obj = await oname(obj, artiname(18 /* ART_VORPAL_BLADE */), 264);
+                obj = await mksobj(LONG_SWORD, FALSE, FALSE);
+                obj = await oname(obj, artiname(ART.VORPAL_BLADE), ONAME_GIFT | ONAME_KNOW_ARTI);
                 obj.spe = 1;
                 await at_your_feet($c.lit("A sword"));
                 await dropy(obj);
                 u.ugifts = u.ugifts + 1 | 0;
-                await livelog_printf(72, $c.lit("was bestowed with %s"), artiname(18 /* ART_VORPAL_BLADE */));
+                await livelog_printf(LL.DIVINEGIFT | LL.ARTIFACT, $c.lit("was bestowed with %s"), artiname(ART.VORPAL_BLADE));
             }
-            unrestrict_weapon_skill(7 /* P_LONG_SWORD */);
-            if (is_art(obj, 18 /* ART_VORPAL_BLADE */)) {
-                await discover_artifact(18);
+            unrestrict_weapon_skill(P.LONG_SWORD);
+            if (is_art(obj, ART.VORPAL_BLADE)) {
+                await discover_artifact(ART.VORPAL_BLADE);
             }
             break;
-        case -1:
+        case A.CHAOTIC:
             {
                 $c.__builtin___sprintf_chk(new $c.Ptr(swordbuf, 0), 0, 256, $c.lit("%s sword"), hcolor(c_color_names.c_black));
-                if (class_gift !== 0 /* STRANGE_OBJECT */) {
+                if (class_gift !== STRANGE_OBJECT) {
                 } else if (obj && in_hand) {
                     await Your($c.lit("%s hums ominously!"), new $c.Ptr(swordbuf, 0));
                     await observe_object(obj);
                 } else if (!already_exists) {
-                    obj = await mksobj(58 /* RUNESWORD */, 0, 0);
-                    obj = await oname(obj, artiname(2 /* ART_STORMBRINGER */), 264);
+                    obj = await mksobj(RUNESWORD, FALSE, FALSE);
+                    obj = await oname(obj, artiname(ART.STORMBRINGER), ONAME_GIFT | ONAME_KNOW_ARTI);
                     obj.spe = 1;
                     await at_your_feet(await An(new $c.Ptr(swordbuf, 0)));
                     await dropy(obj);
                     u.ugifts = u.ugifts + 1 | 0;
-                    await livelog_printf(72, $c.lit("was bestowed with %s"), artiname(2 /* ART_STORMBRINGER */));
+                    await livelog_printf(LL.DIVINEGIFT | LL.ARTIFACT, $c.lit("was bestowed with %s"), artiname(ART.STORMBRINGER));
                 }
-                unrestrict_weapon_skill(6 /* P_BROAD_SWORD */);
-                if (is_art(obj, 2 /* ART_STORMBRINGER */)) {
-                    await discover_artifact(2);
+                unrestrict_weapon_skill(P.BROAD_SWORD);
+                if (is_art(obj, ART.STORMBRINGER)) {
+                    await discover_artifact(ART.STORMBRINGER);
                 }
                 break;
             }
@@ -754,16 +814,16 @@ async function gcrownu() {   // pray.c:805
             obj = null;
             break;
     }
-    if (obj && (obj.oclass === 2 /* WEAPON_CLASS */ || obj.oclass === 6 /* TOOL_CLASS */ && objects[obj.otyp].oc_subtyp !== 0 /* P_NONE */)) {
+    if (ok_wep(obj)) {
         await bless(obj);
         $t1 = obj.oeroded2 = (0) & 3, obj.oeroded = ($t1) & 3;
-        obj.oerodeproof = (1) & 1;
+        obj.oerodeproof = (TRUE) & 1;
         $t2 = obj.rknown = (1) & 1, obj.bknown = ($t2) & 1;
         if (obj.spe < 1) {
             obj.spe = 1;
         }
         unrestrict_weapon_skill(weapon_type(obj));
-    } else if (class_gift === 0 /* STRANGE_OBJECT */) {
+    } else if (class_gift === STRANGE_OBJECT) {
         await You_feel($c.lit("unworthy."));
     }
     await update_inventory();
@@ -773,33 +833,33 @@ async function gcrownu() {   // pray.c:805
 async function give_spell() {   // pray.c:999
     let otmp = null, spe_let = 0, spe_knowledge = 0, trycnt = 0, spe_name = null, $t1;
     trycnt = u.ulevel + 1 | 0;
-    otmp = await mkobj(-10, 1);
+    otmp = await mkobj(SPBOOK_no_NOVEL, TRUE);
     while ((trycnt = trycnt - 1 | 0) > 0) {
-        if (otmp.otyp !== 407 /* SPE_BLANK_PAPER */) {
-            if (known_spell(otmp.otyp) <= 0 /* spe_Unknown */ && !(u.weapon_skills[spell_skilltype(otmp.otyp)].skill === 0 /* P_ISRESTRICTED */)) {
+        if (otmp.otyp !== SPE_BLANK_PAPER) {
+            if (known_spell(otmp.otyp) <= spe_Unknown && !(u.weapon_skills[spell_skilltype(otmp.otyp)].skill === P.ISRESTRICTED)) {
                 break;
             }
         } else {
-            if (!objects[407 /* SPE_BLANK_PAPER */].oc_name_known || carrying(242 /* MAGIC_MARKER */)) {
+            if (!objects[SPE_BLANK_PAPER].oc_name_known || carrying(MAGIC_MARKER)) {
                 break;
             }
         }
-        $t1 = $c.i16(rnd_class(svb.bases[10 /* SPBOOK_CLASS */], 407 /* SPE_BLANK_PAPER */)), otmp.otyp = $t1;
+        $t1 = $c.i16(rnd_class(svb.bases[SPBOOK_CLASS], SPE_BLANK_PAPER)), otmp.otyp = $t1;
     }
-    if (otmp.otyp !== 407 /* SPE_BLANK_PAPER */ && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1030, $c.lit("give_spell")), rn2(4)) : rn2(4)) && (spe_knowledge = known_spell(otmp.otyp)) !== 1 /* spe_Fresh */) {
+    if (otmp.otyp !== SPE_BLANK_PAPER && !rn2(4) && (spe_knowledge = known_spell(otmp.otyp)) !== spe_Fresh) {
         if ((spe_let = await force_learn_spell(otmp.otyp)) !== 0) {
             spe_name = obj_descr[objects[otmp.otyp].oc_name_idx].oc_name;
-            if (spe_knowledge === 0 /* spe_Unknown */) {
+            if (spe_knowledge === spe_Unknown) {
                 await pline($c.lit("Divine knowledge of %s fills your mind!  Spell '%c'."), spe_name, spe_let);
             } else {
-                await Your($c.lit("knowledge of spell '%c' - %s is %s."), spe_let, spe_name, spe_knowledge === -1 /* spe_Forgotten */ ? $c.lit("restored") : $c.lit("refreshed"));
+                await Your($c.lit("knowledge of spell '%c' - %s is %s."), spe_let, spe_name, spe_knowledge === spe_Forgotten ? $c.lit("restored") : $c.lit("refreshed"));
             }
         }
         await obfree(otmp, null);
     } else {
         await observe_object(otmp);
-        if (otmp.otyp === 407 /* SPE_BLANK_PAPER */ || !(rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1060, $c.lit("give_spell")), rn2(100)) : rn2(100))) {
-            await discover_object(otmp.otyp, 1, 1, 1);
+        if (otmp.otyp === SPE_BLANK_PAPER || !rn2(100)) {
+            await discover_object(otmp.otyp, TRUE, TRUE, TRUE);
         }
         await bless(otmp);
         await at_your_feet(upstart(await ansimpleoname(otmp)));
@@ -812,26 +872,26 @@ async function pleased(g_align) {   // pray.c:1071
     let trouble = 0, pat_on_head = 0, kick_on_butt = 0, action = 0, prayer_luck = 0, tryct = 0, repair_buf = new Int8Array(256), otmp = null, nextobj = null, any = 0, incr = 0, largest_ublesscnt_incr = 0, $t1, $t2, $t3, $t4;
     trouble = await in_trouble();
     pat_on_head = 0;
-    await You_feel($c.lit("that %s is %s."), await align_gname(g_align), u.ualign.record >= 14 ? u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("pleased as punch") : $c.lit("well-pleased") : u.ualign.record >= 4 ? u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("ticklish") : $c.lit("pleased") : u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("full") : $c.lit("satisfied"));
-    if (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ && gp.p_aligntyp !== u.ualign.type) {
+    await You_feel($c.lit("that %s is %s."), await align_gname(g_align), u.ualign.record >= DEVOUT ? Hallucination() ? $c.lit("pleased as punch") : $c.lit("well-pleased") : u.ualign.record >= STRIDENT ? Hallucination() ? $c.lit("ticklish") : $c.lit("pleased") : Hallucination() ? $c.lit("full") : $c.lit("satisfied"));
+    if (svl.level.locations[u.ux][u.uy].typ === ALTAR && gp.p_aligntyp !== u.ualign.type) {
         adjalign(-1);
         return;
     } else if (u.ualign.record < 2 && trouble <= 0) {
         adjalign(1);
     }
-    if (!trouble && u.ualign.record >= 14) {
+    if (!trouble && u.ualign.record >= DEVOUT) {
         if (gp.p_trouble === 0) {
             pat_on_head = 1;
         }
     } else {
         tryct = 0;
         prayer_luck = (u.uluck + u.moreluck | 0) > -1 ? u.uluck + u.moreluck | 0 : -1;
-        action = (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1126, $c.lit("pleased")), rn2(prayer_luck + (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ ? 3 + (((svl.level.locations[u.ux][u.uy].flags | 0) & 8) !== 0 ? 1 : 0) | 0 : 2) | 0)) : rn2(prayer_luck + (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ ? 3 + (((svl.level.locations[u.ux][u.uy].flags | 0) & 8) !== 0 ? 1 : 0) | 0 : 2) | 0)) + 1 | 0;
-        if (!(svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */)) {
+        action = rn2(prayer_luck + (svl.level.locations[u.ux][u.uy].typ === ALTAR ? 3 + (((svl.level.locations[u.ux][u.uy].flags | 0) & AM.SHRINE) !== 0 ? 1 : 0) | 0 : 2) | 0) + 1 | 0;
+        if (!(svl.level.locations[u.ux][u.uy].typ === ALTAR)) {
             action = action < 3 ? action : 3;
         }
-        if (u.ualign.record < 4) {
-            action = u.ualign.record > 0 || !(rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1130, $c.lit("pleased")), rnl(2)) : rnl(2)) ? 1 : 0;
+        if (u.ualign.record < STRIDENT) {
+            action = u.ualign.record > 0 || !rnl(2) ? 1 : 0;
         }
         switch (action < 5 ? action : 5) {
             case 5:
@@ -858,19 +918,19 @@ async function pleased(g_align) {   // pray.c:1071
         }
     }
     if (pat_on_head) {
-        switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1167, $c.lit("pleased")), rn2(((u.uluck + u.moreluck | 0) + 6 | 0) >> 1)) : rn2(((u.uluck + u.moreluck | 0) + 6 | 0) >> 1)) {
+        switch (rn2(((u.uluck + u.moreluck | 0) + 6 | 0) >> 1)) {
             case 0:
                 break;
             case 1:
-                if ($G.uwep && (await welded($G.uwep) || $G.uwep.oclass === 2 /* WEAPON_CLASS */ || $G.uwep.oclass === 6 /* TOOL_CLASS */ && objects[$G.uwep.otyp].oc_subtyp !== 0 /* P_NONE */)) {
+                if ($G.uwep && (await welded($G.uwep) || $G.uwep.oclass === WEAPON_CLASS || is_weptool($G.uwep))) {
                     new $c.Ptr(repair_buf, 0).set(0, 0);
                     if ($G.uwep.oeroded | 0 || $G.uwep.oeroded2 | 0) {
                         $c.__builtin___sprintf_chk(new $c.Ptr(repair_buf, 0), 0, 256, $c.lit(" and %s now as good as new"), await otense($G.uwep, $c.lit("are")));
                     }
                     if ($G.uwep.cursed) {
-                        if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                        if (!Blind()) {
                             await pline($c.lit("%s %s%s."), await Yobjnam2($G.uwep, $c.lit("softly glow")), hcolor(c_color_names.c_amber), new $c.Ptr(repair_buf, 0));
-                            iflags.last_msg = 5 /* PLNMSG_OBJ_GLOWS */;
+                            iflags.last_msg = PLNMSG.OBJ_GLOWS;
                         } else {
                             await You_feel($c.lit("the power of %s over %s."), await u_gname(), await yname($G.uwep));
                         }
@@ -878,9 +938,9 @@ async function pleased(g_align) {   // pray.c:1071
                         $G.uwep.bknown = (1) & 1;
                         new $c.Ptr(repair_buf, 0).set(0, 0);
                     } else if (!$G.uwep.blessed) {
-                        if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                        if (!Blind()) {
                             await pline($c.lit("%s with %s aura%s."), await Yobjnam2($G.uwep, $c.lit("softly glow")), await an(hcolor(c_color_names.c_light_blue)), new $c.Ptr(repair_buf, 0));
-                            iflags.last_msg = 5 /* PLNMSG_OBJ_GLOWS */;
+                            iflags.last_msg = PLNMSG.OBJ_GLOWS;
                         } else {
                             await You_feel($c.lit("the blessing of %s over %s."), await u_gname(), await yname($G.uwep));
                         }
@@ -891,7 +951,7 @@ async function pleased(g_align) {   // pray.c:1071
                     if ($G.uwep.oeroded | 0 || $G.uwep.oeroded2 | 0) {
                         $t1 = $G.uwep.oeroded2 = (0) & 3, $G.uwep.oeroded = ($t1) & 3;
                         if (new $c.Ptr(repair_buf, 0).get(0)) {
-                            await pline($c.lit("%s as good as new!"), await Yobjnam2($G.uwep, (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("feel") : $c.lit("look")));
+                            await pline($c.lit("%s as good as new!"), await Yobjnam2($G.uwep, Blind() ? $c.lit("feel") : $c.lit("look")));
                         }
                     }
                     await update_inventory();
@@ -901,7 +961,7 @@ async function pleased(g_align) {   // pray.c:1071
                 if (!u.uevent.uopened_dbridge && !u.uevent.gehennom_entered) {
                     if ((u.uevent.uheard_tune | 0) < 1) {
                         await godvoice(g_align, null);
-                        await verbalize($c.lit("Hark, %s!"), $c.andu64(gy.youmonst.data.mflags2, 8) !== 0 ? $c.lit("mortal") : $c.lit("creature"));
+                        await verbalize($c.lit("Hark, %s!"), is_human(gy.youmonst.data) ? $c.lit("mortal") : $c.lit("creature"));
                         await verbalize($c.lit("To enter the castle, thou must play the right tune!"));
                         u.uevent.uheard_tune = (u.uevent.uheard_tune + 1 >>> 0) & 3;
                         break;
@@ -909,33 +969,33 @@ async function pleased(g_align) {   // pray.c:1071
                         await You_hear($c.lit("a divine music..."));
                         await pline($c.lit("It sounds like:  \"%s\"."), new $c.Ptr(svt.tune, 0));
                         u.uevent.uheard_tune = (u.uevent.uheard_tune + 1 >>> 0) & 3;
-                        await record_achievement(31);
+                        await record_achievement(ACH.TUNE);
                         break;
                     }
                 }
             case 2:
-                if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                if (!Blind()) {
                     await You($c.lit("are surrounded by %s glow."), await an(hcolor(c_color_names.c_golden)));
                 }
                 if (u.ulevel < u.ulevelmax) {
                     u.ulevelmax = u.ulevelmax - 1 | 0;
-                    await pluslvl(0);
+                    await pluslvl(FALSE);
                 } else {
                     u.uhpmax = u.uhpmax + 5 | 0;
                     if (u.uhpmax > u.uhppeak) {
                         u.uhppeak = u.uhpmax;
                     }
-                    if (u.umonnum !== u.umonster) {
+                    if (Upolyd()) {
                         u.mhmax = u.mhmax + 5 | 0;
                     }
                 }
                 u.uhp = u.uhpmax;
-                if (u.umonnum !== u.umonster) {
+                if (Upolyd()) {
                     u.mh = u.mhmax;
                 }
-                if (u.acurr.a[0 /* A_STR */] < u.amax.a[0 /* A_STR */]) {
-                    u.acurr.a[0 /* A_STR */] = u.amax.a[0 /* A_STR */];
-                    disp.botl = 1;
+                if (u.acurr.a[A.STR] < u.amax.a[A.STR]) {
+                    u.acurr.a[A.STR] = u.amax.a[A.STR];
+                    disp.botl = TRUE;
                     await encumber_msg();
                 }
                 if (u.uhunger < 900) {
@@ -945,23 +1005,23 @@ async function pleased(g_align) {   // pray.c:1071
                     u.uluck = 0;
                 }
                 u.ucreamed = 0;
-                await make_blinded(0, 1);
-                disp.botl = 1;
+                await make_blinded(0, TRUE);
+                disp.botl = TRUE;
                 break;
             case 4:
                 {
                     any = 0;
-                    if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+                    if (Blind()) {
                         await You_feel($c.lit("the power of %s."), await u_gname());
                     } else {
                         await You($c.lit("are surrounded by %s aura."), await an(hcolor(c_color_names.c_light_blue)));
                     }
                     for (otmp = gi.invent; otmp; otmp = nextobj) {
                         nextobj = otmp.nobj;
-                        if (otmp.cursed | 0 && (!$c.peq(otmp, $G.uarmh) || $G.uarmh.otyp !== 99 /* HELM_OF_OPPOSITE_ALIGNMENT */)) {
-                            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+                        if (otmp.cursed | 0 && (!$c.peq(otmp, $G.uarmh) || $G.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)) {
+                            if (!Blind()) {
                                 await pline($c.lit("%s %s."), await Yobjnam2(otmp, $c.lit("softly glow")), hcolor(c_color_names.c_amber));
-                                iflags.last_msg = 5 /* PLNMSG_OBJ_GLOWS */;
+                                iflags.last_msg = PLNMSG.OBJ_GLOWS;
                                 otmp.bknown = (1) & 1;
                                 any = any + 1 | 0;
                             }
@@ -976,23 +1036,23 @@ async function pleased(g_align) {   // pray.c:1071
             case 5:
                 {
                     await godvoice(u.ualign.type, $c.lit("Thou hast pleased me with thy progress,"));
-                    if (!$c.and64(u.uprops[30 /* TELEPAT */].intrinsic, 117440512)) {
-                        u.uprops[30 /* TELEPAT */].intrinsic = $c.or64(u.uprops[30 /* TELEPAT */].intrinsic, 67108864);
+                    if (!$c.and64(u.uprops[TELEPAT].intrinsic, INTRINSIC)) {
+                        u.uprops[TELEPAT].intrinsic = $c.or64(u.uprops[TELEPAT].intrinsic, FROMOUTSIDE);
                         await pline(new $c.Ptr(pleased$msg, 0), $c.lit("Telepathy"));
-                        if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+                        if (Blind()) {
                             await see_monsters();
                         }
-                    } else if (!$c.and64(u.uprops[64 /* FAST */].intrinsic, 117440512)) {
-                        u.uprops[64 /* FAST */].intrinsic = $c.or64(u.uprops[64 /* FAST */].intrinsic, 67108864);
+                    } else if (!$c.and64(u.uprops[FAST].intrinsic, INTRINSIC)) {
+                        u.uprops[FAST].intrinsic = $c.or64(u.uprops[FAST].intrinsic, FROMOUTSIDE);
                         await pline(new $c.Ptr(pleased$msg, 0), $c.lit("Speed"));
-                    } else if (!$c.and64(u.uprops[42 /* STEALTH */].intrinsic, 117440512)) {
-                        u.uprops[42 /* STEALTH */].intrinsic = $c.or64(u.uprops[42 /* STEALTH */].intrinsic, 67108864);
+                    } else if (!$c.and64(u.uprops[STEALTH].intrinsic, INTRINSIC)) {
+                        u.uprops[STEALTH].intrinsic = $c.or64(u.uprops[STEALTH].intrinsic, FROMOUTSIDE);
                         await pline(new $c.Ptr(pleased$msg, 0), $c.lit("Stealth"));
                     } else {
-                        if (!$c.and64(u.uprops[59 /* PROTECTION */].intrinsic, 117440512)) {
-                            u.uprops[59 /* PROTECTION */].intrinsic = $c.or64(u.uprops[59 /* PROTECTION */].intrinsic, 67108864);
+                        if (!$c.and64(u.uprops[PROTECTION].intrinsic, INTRINSIC)) {
+                            u.uprops[PROTECTION].intrinsic = $c.or64(u.uprops[PROTECTION].intrinsic, FROMOUTSIDE);
                             if (!u.ublessed) {
-                                $t2 = (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1331, $c.lit("pleased")), rn2(3)) : rn2(3)) + 2 | 0, u.ublessed = $t2;
+                                $t2 = rn2(3) + 2 | 0, u.ublessed = $t2;
                             }
                         } else {
                             u.ublessed = u.ublessed + 1 | 0;
@@ -1004,7 +1064,7 @@ async function pleased(g_align) {   // pray.c:1071
                 }
             case 7:
             case 8:
-                if (u.ualign.record >= 20 && !u.uevent.uhand_of_elbereth) {
+                if (u.ualign.record >= PIOUS && !u.uevent.uhand_of_elbereth) {
                     await gcrownu();
                     break;
                 }
@@ -1016,17 +1076,17 @@ async function pleased(g_align) {   // pray.c:1071
                 break;
         }
     }
-    $t3 = rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1356, $c.lit("pleased")), rnz(350)) : rnz(350), u.ublesscnt = $t3;
+    $t3 = rnz(350), u.ublesscnt = $t3;
     kick_on_butt = u.uevent.udemigod | 0 ? 1 : 0;
     if (u.uevent.uhand_of_elbereth) {
         kick_on_butt = kick_on_butt + 1 | 0;
     }
     if (kick_on_butt) {
-        $t4 = Math.imul(kick_on_butt, rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1361, $c.lit("pleased")), rnz(1000)) : rnz(1000)), u.ublesscnt = u.ublesscnt + $t4 | 0;
+        $t4 = Math.imul(kick_on_butt, rnz(1000)), u.ublesscnt = u.ublesscnt + $t4 | 0;
     }
     if (svm.moves > 100000) {
         incr = $c.div64($c.sub64(svm.moves, 100000), 100);
-        largest_ublesscnt_incr = 32767 - u.ublesscnt | 0;
+        largest_ublesscnt_incr = LARGEST_INT - u.ublesscnt | 0;
         if (incr > largest_ublesscnt_incr) {
             incr = largest_ublesscnt_incr;
         }
@@ -1037,19 +1097,19 @@ async function pleased(g_align) {   // pray.c:1071
 async function water_prayer(bless_water) {   // pray.c:1387
     let otmp = null, changed = 0, other = 0, bc_known = 0;
     changed = 0;
-    other = 0;
-    bc_known = $c.i8(!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked || u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) ? 1 : 0);
+    other = FALSE;
+    bc_known = $c.i8(!(Blind() || Hallucination()) ? 1 : 0);
     for (otmp = svl.level.objects[u.ux][u.uy]; otmp; otmp = otmp.v.v_nexthere) {
-        if (otmp.otyp === 322 /* POT_WATER */ && (bless_water ? !otmp.blessed : !otmp.cursed)) {
+        if (otmp.otyp === POT_WATER && (bless_water ? !otmp.blessed : !otmp.cursed)) {
             otmp.blessed = (bless_water >>> 0) & 1;
             otmp.cursed = ((!bless_water ? 1 : 0) >>> 0) & 1;
             otmp.bknown = (bc_known >>> 0) & 1;
             changed = $c.add64(changed, otmp.quan);
-        } else if (otmp.oclass === 8 /* POTION_CLASS */) {
-            other = 1;
+        } else if (otmp.oclass === POTION_CLASS) {
+            other = TRUE;
         }
     }
-    if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) && changed) {
+    if (!Blind() && changed) {
         await pline($c.lit("%s potion%s on the altar glow%s %s for a moment."), other && changed > 1 ? $c.lit("Some of the") : other ? $c.lit("One of the") : $c.lit("The"), other || changed > 1 ? $c.lit("s") : $c.lit(""), changed > 1 ? $c.lit("") : $c.lit("s"), bless_water ? hcolor(c_color_names.c_light_blue) : hcolor(c_color_names.c_black));
     }
     return $c.i8(changed > 0 ? 1 : 0);
@@ -1062,7 +1122,7 @@ async function godvoice(g_align, words) {   // pray.c:1415
     } else {
         words = $c.lit("");
     }
-    await pline_The($c.lit("voice of %s %s: %s%s%s"), await align_gname(g_align), godvoices[rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1425, $c.lit("godvoice")), rn2(4)) : rn2(4)], quot, words, quot);
+    await pline_The($c.lit("voice of %s %s: %s%s%s"), await align_gname(g_align), godvoices[rn2(4)], quot, words, quot);
 }
 async function gods_angry(g_align) {   // pray.c:1429
     await godvoice(g_align, $c.lit("Thou hast angered me."));
@@ -1076,8 +1136,8 @@ async function gods_upset(g_align) {   // pray.c:1436
     await angrygods(g_align);
 }
 async function consume_offering(otmp) {   // pray.c:1446
-    if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
-        switch (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1449, $c.lit("consume_offering")), rn2(3)) : rn2(3)) {
+    if (Hallucination()) {
+        switch (rn2(3)) {
             case 0:
                 await Your($c.lit("sacrifice sprouts wings and a propeller and roars away!"));
                 break;
@@ -1088,24 +1148,24 @@ async function consume_offering(otmp) {   // pray.c:1446
                 await Your($c.lit("sacrifice collapses into a cloud of dancing particles and fades away!"));
                 break;
         }
-    } else if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked && u.ualign.type === 1) {
+    } else if (Blind() && u.ualign.type === A.LAWFUL) {
         await Your($c.lit("sacrifice disappears!"));
     } else {
-        await Your($c.lit("sacrifice is consumed in a %s!"), u.ualign.type === 1 ? $c.lit("flash of light") : u.ualign.type === 0 ? $c.lit("plume of smoke") : $c.lit("burst of flame"));
+        await Your($c.lit("sacrifice is consumed in a %s!"), u.ualign.type === A.LAWFUL ? $c.lit("flash of light") : u.ualign.type === A.NEUTRAL ? $c.lit("plume of smoke") : $c.lit("burst of flame"));
     }
-    if (otmp.where === 3) {
+    if (carried(otmp)) {
         await useup(otmp);
     } else {
         await useupf(otmp, 1);
     }
-    await exercise(2 /* A_WIS */, 1);
+    await exercise(A.WIS, TRUE);
 }
 async function offer_too_soon(altaralign) {   // pray.c:1480
-    if (altaralign === -128 && In_hell(u.uz)) {
-        await gods_upset(-128);
+    if (altaralign === A.NONE && Inhell()) {
+        await gods_upset(A.NONE);
         return;
     }
-    await You_feel($c.lit("%s."), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("homesick") : altaralign === u.ualign.type ? $c.lit("an urge to return to the surface") : $c.lit("ashamed"));
+    await You_feel($c.lit("%s."), Hallucination() ? $c.lit("homesick") : altaralign === u.ualign.type ? $c.lit("an urge to return to the surface") : $c.lit("ashamed"));
 }
 export async function desecrate_altar(highaltar, altaralign) {   // pray.c:1501
     let gvbuf = new Int8Array(256);
@@ -1123,13 +1183,13 @@ async function offer_real_amulet(otmp, altaralign) {   // pray.c:1529
     if ($c.peq($G.uamul, otmp)) {
         await Amulet_off();
     }
-    if (otmp.where === 3) {
+    if (carried(otmp)) {
         await useup(otmp);
     } else {
         await useupf(otmp, 1);
     }
     await You($c.lit("offer the Amulet of Yendor to %s..."), await a_gname());
-    if (altaralign === -128) {
+    if (altaralign === A.NONE) {
         if (u.ualign.record > -99) {
             u.ualign.record = -99;
         }
@@ -1137,28 +1197,28 @@ async function offer_real_amulet(otmp, altaralign) {   // pray.c:1529
         await pline($c.lit("%s shrugs and retains dominion over %s,"), Moloch, await u_gname());
         await pline($c.lit("then mercilessly snuffs out your life."));
         $c.__builtin___sprintf_chk(new $c.Ptr(svk.killer.name, 0), 0, 256, $c.lit("%s indifference"), s_suffix(Moloch));
-        svk.killer.format = 1;
-        await done(0 /* DIED */);
+        svk.killer.format = KILLED.BY;
+        await done(DIED);
         await pline($c.lit("%s snarls and tries again..."), Moloch);
-        await fry_by_god(-128, 1);
+        await fry_by_god(A.NONE, TRUE);
         await pline(new $c.Ptr(offer_real_amulet$cloud_of_smoke, 0), hcolor(c_color_names.c_black));
-        await done(14 /* ESCAPED */);
+        await done(ESCAPED);
     } else if (u.ualign.type !== altaralign) {
         adjalign(-99);
         await pline($c.lit("%s accepts your gift, and gains dominion over %s..."), await a_gname(), await u_gname());
         await pline($c.lit("%s is enraged..."), await u_gname());
         await pline($c.lit("Fortunately, %s permits you to live..."), await a_gname());
         await pline(new $c.Ptr(offer_real_amulet$cloud_of_smoke, 0), hcolor(c_color_names.c_orange));
-        await done(14 /* ESCAPED */);
+        await done(ESCAPED);
     } else {
         u.uevent.ascended = (1) & 1;
         adjalign(10);
         await pline($c.lit("An invisible choir sings, and you are bathed in radiance..."));
         await godvoice(altaralign, $c.lit("Mortal, thou hast done well!"));
-        await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 0);
+        await display_nhwindow()($G.WIN_MESSAGE, FALSE);
         await verbalize($c.lit("In return for thy service, I grant thee the gift of Immortality!"));
         await You($c.lit("ascend to the status of Demigod%s..."), flags.female ? $c.lit("dess") : $c.lit(""));
-        await done(15 /* ASCENDED */);
+        await done(ASCENDED);
     }
 }
 async function offer_negative_valued(highaltar, altaralign) {   // pray.c:1592
@@ -1175,11 +1235,11 @@ async function offer_fake_amulet(otmp, highaltar, altaralign) {   // pray.c:1602
     }
     await You_hear($c.lit("a nearby thunderclap."));
     if (!otmp.known) {
-        await You($c.lit("realize you have made a %s."), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("boo-boo") : $c.lit("mistake"));
-        otmp.known = (1) & 1;
+        await You($c.lit("realize you have made a %s."), Hallucination() ? $c.lit("boo-boo") : $c.lit("mistake"));
+        otmp.known = (TRUE) & 1;
         change_luck(-1);
     } else {
-        if (u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) {
+        if (Deaf()) {
             await pline($c.lit("Oh, no."));
         }
         change_luck(-3);
@@ -1190,12 +1250,12 @@ async function offer_fake_amulet(otmp, highaltar, altaralign) {   // pray.c:1602
 }
 async function offer_different_alignment_altar(otmp, altaralign) {   // pray.c:1631
     let pri = null, shrine = 0;
-    if (u.ualign.record < 0 || altaralign === -128 && In_hell(u.uz)) {
-        if (u.ualignbase[0] === u.ualignbase[1] && altaralign !== -128) {
+    if (ugod_is_angry() || altaralign === A.NONE && Inhell()) {
+        if (u.ualignbase[A.CURRENT] === u.ualignbase[A.ORIGINAL] && altaralign !== A.NONE) {
             await You($c.lit("have a strong feeling that %s is angry..."), await u_gname());
             await consume_offering(otmp);
             await pline($c.lit("%s accepts your allegiance."), await a_gname());
-            await uchangealign(altaralign, 0 /* A_CG_CONVERT */);
+            await uchangealign(altaralign, A_CG.CONVERT);
             change_luck(-3);
             u.ublesscnt = u.ublesscnt + 300 | 0;
         } else {
@@ -1204,29 +1264,29 @@ async function offer_different_alignment_altar(otmp, altaralign) {   // pray.c:1
             await pline($c.lit("%s rejects your sacrifice!"), await a_gname());
             await godvoice(altaralign, $c.lit("Suffer, infidel!"));
             change_luck(-5);
-            await adjattrib(2 /* A_WIS */, -2, 1);
-            if (!In_hell(u.uz)) {
+            await adjattrib(A.WIS, -2, TRUE);
+            if (!Inhell()) {
                 await angrygods(u.ualign.type);
             }
         }
     } else {
         await consume_offering(otmp);
         await You($c.lit("sense a conflict between %s and %s."), await u_gname(), await a_gname());
-        if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1661, $c.lit("offer_different_alignment_altar")), rn2(8 + u.ulevel | 0)) : rn2(8 + u.ulevel | 0)) > 5) {
+        if (rn2(8 + u.ulevel | 0) > 5) {
             await You_feel($c.lit("the power of %s increase."), await u_gname());
-            await exercise(2 /* A_WIS */, 1);
+            await exercise(A.WIS, TRUE);
             change_luck(1);
-            shrine = $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & 8) !== 0 ? 1 : 0);
-            svl.level.locations[u.ux][u.uy].flags = ((u.ualign.type === -128 ? 0 : u.ualign.type === 1 ? 4 : u.ualign.type + 2 | 0) >>> 0) & 31;
+            shrine = $c.i8(on_shrine());
+            svl.level.locations[u.ux][u.uy].flags = (Align2amask(u.ualign.type)) & 31;
             if (shrine) {
-                svl.level.locations[u.ux][u.uy].flags = ((svl.level.locations[u.ux][u.uy].flags | 0 | 8) >>> 0) & 31;
+                svl.level.locations[u.ux][u.uy].flags = ((svl.level.locations[u.ux][u.uy].flags | 0 | AM.SHRINE) >>> 0) & 31;
             }
             await newsym(u.ux, u.uy);
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
-                await pline_The($c.lit("altar glows %s."), hcolor(u.ualign.type === 1 ? c_color_names.c_white : u.ualign.type ? c_color_names.c_black : $c.lit("gray")));
+            if (!Blind()) {
+                await pline_The($c.lit("altar glows %s."), hcolor(u.ualign.type === A.LAWFUL ? c_color_names.c_white : u.ualign.type ? c_color_names.c_black : $c.lit("gray")));
             }
-            if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1679, $c.lit("offer_different_alignment_altar")), rnl(u.ulevel)) : rnl(u.ulevel)) > 6 && u.ualign.record > 0 && (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1680, $c.lit("offer_different_alignment_altar")), rnd(u.ualign.record)) : rnd(u.ualign.record)) > $c.div64($c.mul64(3, $c.add64(10, $c.div64(svm.moves, 200))), 4)) {
-                await summon_minion(altaralign, 1);
+            if (rnl(u.ulevel) > 6 && u.ualign.record > 0 && rnd(u.ualign.record) > $c.div64($c.mul64(3, ALIGNLIM()), 4)) {
+                await summon_minion(altaralign, TRUE);
             }
             if ((pri = findpriest(temple_occupied(new $c.Ptr(u.urooms, 0)))) && !p_coaligned(pri)) {
                 await angry_priest();
@@ -1234,44 +1294,44 @@ async function offer_different_alignment_altar(otmp, altaralign) {   // pray.c:1
         } else {
             await pline($c.lit("Unluckily, you feel the power of %s decrease."), await u_gname());
             change_luck(-1);
-            await exercise(2 /* A_WIS */, 0);
-            if ((rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1690, $c.lit("offer_different_alignment_altar")), rnl(u.ulevel)) : rnl(u.ulevel)) > 6 && u.ualign.record > 0 && (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1691, $c.lit("offer_different_alignment_altar")), rnd(u.ualign.record)) : rnd(u.ualign.record)) > $c.div64($c.mul64(7, $c.add64(10, $c.div64(svm.moves, 200))), 8)) {
-                await summon_minion(altaralign, 1);
+            await exercise(A.WIS, FALSE);
+            if (rnl(u.ulevel) > 6 && u.ualign.record > 0 && rnd(u.ualign.record) > $c.div64($c.mul64(7, ALIGNLIM()), 8)) {
+                await summon_minion(altaralign, TRUE);
             }
         }
     }
 }
 async function sacrifice_your_race(otmp, highaltar, altaralign) {   // pray.c:1698
     let pm = 0, dmon = null, demonless_msg = null, dbuf = new Int8Array(256);
-    if ($c.andu64(gy.youmonst.data.mflags2, 256) !== 0) {
+    if (is_demon(gy.youmonst.data)) {
         await You($c.lit("find the idea very satisfying."));
-        await exercise(2 /* A_WIS */, 1);
-    } else if (u.ualign.type !== -1) {
+        await exercise(A.WIS, TRUE);
+    } else if (u.ualign.type !== A.CHAOTIC) {
         await pline($c.lit("You'll regret this infamous offense!"));
-        await exercise(2 /* A_WIS */, 0);
+        await exercise(A.WIS, FALSE);
     }
-    if (highaltar && (altaralign !== -1 || u.ualign.type !== -1)) {
+    if (highaltar && (altaralign !== A.CHAOTIC || u.ualign.type !== A.CHAOTIC)) {
         await desecrate_altar(highaltar, altaralign);
         return;
-    } else if (altaralign !== -1 && altaralign !== -128) {
+    } else if (altaralign !== A.CHAOTIC && altaralign !== A.NONE) {
         await pline_The($c.lit("altar is stained with %s blood."), gu.urace.adj);
-        svl.level.locations[u.ux][u.uy].flags = (1) & 31;
+        svl.level.locations[u.ux][u.uy].flags = (AM.CHAOTIC) & 31;
         await newsym(u.ux, u.uy);
         await angry_priest();
     } else {
-        if (altaralign === -1 && u.ualign.type !== -1) {
+        if (altaralign === A.CHAOTIC && u.ualign.type !== A.CHAOTIC) {
             await pline($c.lit("The blood floods the altar, which vanishes in %s cloud!"), await an(hcolor(c_color_names.c_black)));
-            svl.level.locations[u.ux][u.uy].typ = 25;
+            svl.level.locations[u.ux][u.uy].typ = ROOM;
             svl.level.locations[u.ux][u.uy].flags = (0) & 31;
             await newsym(u.ux, u.uy);
             await angry_priest();
             demonless_msg = $c.lit("cloud dissipates");
         } else {
             await pline_The($c.lit("blood covers the altar!"));
-            change_luck($c.i8(altaralign === -128 ? -2 : 2));
+            change_luck($c.i8(altaralign === A.NONE ? -2 : 2));
             demonless_msg = $c.lit("blood coagulates");
         }
-        if ((pm = await dlord(altaralign)) !== -1 /* NON_PM */ && (dmon = await makemon($c.relem(mons, pm), u.ux, u.uy, 131072)) !== null) {
+        if ((pm = await dlord(altaralign)) !== NON_PM && (dmon = await makemon($c.relem(mons, pm), u.ux, u.uy, MM.NOMSG)) !== null) {
             $c.__builtin___strcpy_chk(new $c.Ptr(dbuf, 0), await a_monnam(dmon), 256);
             if (!strncmpi(new $c.Ptr(dbuf, 0), $c.lit("it"), -1)) {
                 $c.__builtin___strcpy_chk(new $c.Ptr(dbuf, 0), $c.lit("something dreadful"), 256);
@@ -1280,7 +1340,7 @@ async function sacrifice_your_race(otmp, highaltar, altaralign) {   // pray.c:16
             }
             await You($c.lit("have summoned %s!"), new $c.Ptr(dbuf, 0));
             if (sgn(u.ualign.type) === sgn(dmon.data.maligntyp)) {
-                dmon.mpeaceful = (1) & 1;
+                dmon.mpeaceful = (TRUE) & 1;
             }
             await You($c.lit("are terrified, and unable to move."));
             nomul(-3);
@@ -1290,18 +1350,18 @@ async function sacrifice_your_race(otmp, highaltar, altaralign) {   // pray.c:16
             await pline_The($c.lit("%s."), demonless_msg);
         }
     }
-    if (u.ualign.type !== -1) {
+    if (u.ualign.type !== A.CHAOTIC) {
         adjalign(-5);
         u.ugangr = u.ugangr + 3 | 0;
-        await adjattrib(2 /* A_WIS */, -1, 1);
-        if (!In_hell(u.uz)) {
+        await adjattrib(A.WIS, -1, TRUE);
+        if (!Inhell()) {
             await angrygods(u.ualign.type);
         }
         change_luck(-5);
     } else {
         adjalign(5);
     }
-    if (otmp.where === 3) {
+    if (carried(otmp)) {
         await useup(otmp);
     } else {
         await useupf(otmp, 1);
@@ -1312,49 +1372,49 @@ async function bestow_artifact(max_giftvalue) {   // pray.c:1781
     nartifacts = nartifact_exist();
     do_bestow = $c.i8(u.ulevel > 2 && u.uluck >= 0 ? 1 : 0);
     if (do_bestow) {
-        if (flags.debug) {
-            do_bestow = $c.i8(await yn_function($c.lit("Gift an artifact?"), new $c.Ptr(ynchars, 0), 110, 1) === 121 ? 1 : 0);
+        if (wizard()) {
+            do_bestow = $c.i8(await yn_function($c.lit("Gift an artifact?"), new $c.Ptr(ynchars, 0), 110, TRUE) === 121 ? 1 : 0);
         } else {
-            do_bestow = $c.i8(!(rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1792, $c.lit("bestow_artifact")), rn2(6 + Math.imul(Math.imul(2, u.ugifts), nartifacts) | 0)) : rn2(6 + Math.imul(Math.imul(2, u.ugifts), nartifacts) | 0)) ? 1 : 0);
+            do_bestow = $c.i8(!rn2(6 + Math.imul(Math.imul(2, u.ugifts), nartifacts) | 0) ? 1 : 0);
         }
     }
     if (do_bestow) {
-        otmp = await mk_artifact(null, $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) === 0 ? -128 : ((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) === 4 ? 1 : ((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) - 2 | 0), max_giftvalue, 1);
+        otmp = await mk_artifact(null, $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) === 0 ? A.NONE : ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) - 2 | 0), max_giftvalue, TRUE);
         if (otmp) {
-            await artifact_origin(otmp, 264);
+            await artifact_origin(otmp, ONAME_GIFT | ONAME_KNOW_ARTI);
             if (otmp.spe < 0) {
                 otmp.spe = 0;
             }
             if (otmp.cursed) {
                 await uncurse(otmp);
             }
-            otmp.oerodeproof = (1) & 1;
-            $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("a doodad") : (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("an object") : await ansimpleoname(otmp), 256);
-            if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            otmp.oerodeproof = (TRUE) & 1;
+            $c.__builtin___strcpy_chk(new $c.Ptr(buf, 0), u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? $c.lit("a doodad") : (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked ? $c.lit("an object") : await ansimpleoname(otmp), 256);
+            if (!Blind()) {
                 $c.__builtin___sprintf_chk(eos(new $c.Ptr(buf, 0)), 0, -1, $c.lit(" named %s"), await bare_artifactname(otmp));
             }
             await at_your_feet(upstart(new $c.Ptr(buf, 0)));
             await dropy(otmp);
             await godvoice(u.ualign.type, $c.lit("Use my gift wisely!"));
             u.ugifts = u.ugifts + 1 | 0;
-            $t1 = rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 1819, $c.lit("bestow_artifact")), rnz(300 + Math.imul(50, nartifacts) | 0)) : rnz(300 + Math.imul(50, nartifacts) | 0), u.ublesscnt = $t1;
-            await exercise(2 /* A_WIS */, 1);
-            await livelog_printf(72, $c.lit("was bestowed with %s by %s"), artiname(otmp.oartifact), await align_gname(u.ualign.type));
+            $t1 = rnz(300 + Math.imul(50, nartifacts) | 0), u.ublesscnt = $t1;
+            await exercise(A.WIS, TRUE);
+            await livelog_printf(LL.DIVINEGIFT | LL.ARTIFACT, $c.lit("was bestowed with %s by %s"), artiname(otmp.oartifact), await align_gname(u.ualign.type));
             unrestrict_weapon_skill(weapon_type(otmp));
-            if (!(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) && !((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+            if (!Hallucination() && !Blind()) {
                 await observe_object(otmp);
-                await discover_object(otmp.otyp, 1, 1, 1);
+                await discover_object(otmp.otyp, TRUE, TRUE, TRUE);
                 await discover_artifact($c.i16(otmp.oartifact));
             }
-            return 1;
+            return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 async function sacrifice_value(otmp) {   // pray.c:1839
     let value = 0;
     value = 0;
-    if (otmp.corpsenm === 6 /* PM_ACID_BLOB */ || svm.moves <= $c.add64(await peek_at_iced_corpse_age(otmp), 50)) {
+    if (otmp.corpsenm === PM.ACID_BLOB || svm.moves <= $c.add64(await peek_at_iced_corpse_age(otmp), 50)) {
         value = mons[otmp.corpsenm].difficulty + 1 | 0;
         if (otmp.oeaten) {
             value = await eaten_stat(value, otmp);
@@ -1364,37 +1424,37 @@ async function sacrifice_value(otmp) {   // pray.c:1839
 }
 export async function dosacrifice() {   // pray.c:1854
     let otmp = null, highaltar = 0, altaralign = 0;
-    altaralign = $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) === 0 ? -128 : ((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) === 4 ? 1 : ((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) - 2 | 0);
-    if (!(svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */) || u.uswallow | 0) {
-        await You($c.lit("are not %s an altar."), (u.uprops[48 /* LEVITATION */].intrinsic || u.uprops[48 /* LEVITATION */].extrinsic) && !u.uprops[48 /* LEVITATION */].blocked || (u.uprops[49 /* FLYING */].intrinsic || u.uprops[49 /* FLYING */].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, 1) !== 0) && !u.uprops[49 /* FLYING */].blocked ? $c.lit("over") : $c.lit("on"));
-        return 0;
-    } else if (u.uprops[14 /* CONFUSION */].intrinsic || u.uprops[13 /* STUNNED */].intrinsic) {
+    altaralign = $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) === 0 ? A.NONE : ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) - 2 | 0);
+    if (!(svl.level.locations[u.ux][u.uy].typ === ALTAR) || u.uswallow | 0) {
+        await You($c.lit("are not %s an altar."), Levitation() || (u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked ? $c.lit("over") : $c.lit("on"));
+        return ECMD.OK;
+    } else if (u.uprops[CONFUSION].intrinsic || u.uprops[STUNNED].intrinsic) {
         await You($c.lit("are too impaired to perform the rite."));
-        return 0;
+        return ECMD.OK;
     }
-    highaltar = $c.i8((svl.level.locations[u.ux][u.uy].flags | 0) & 16);
+    highaltar = $c.i8((svl.level.locations[u.ux][u.uy].flags | 0) & AM.SANCTUM);
     otmp = await floorfood($c.lit("sacrifice"), 1);
     if (!otmp) {
-        return 0;
+        return ECMD.OK;
     }
-    if (otmp.otyp === 213 /* AMULET_OF_YENDOR */) {
+    if (otmp.otyp === AMULET_OF_YENDOR) {
         if (!highaltar) {
             await offer_too_soon(altaralign);
-            return 1;
+            return ECMD.TIME;
         } else {
             await offer_real_amulet(otmp, altaralign);
         }
     }
-    if (otmp.otyp === 212 /* FAKE_AMULET_OF_YENDOR */) {
+    if (otmp.otyp === FAKE_AMULET_OF_YENDOR) {
         await offer_fake_amulet(otmp, highaltar, altaralign);
-        return 1;
+        return ECMD.TIME;
     }
-    if (otmp.otyp === 265 /* CORPSE */) {
+    if (otmp.otyp === CORPSE) {
         await offer_corpse(otmp, highaltar, altaralign);
-        return 1;
+        return ECMD.TIME;
     }
     await pline($c.lit("%s"), c_common_strings.c_nothing_happens);
-    return 1;
+    return ECMD.TIME;
 }
 async function eval_offering(otmp, altaralign) {   // pray.c:1899
     let ptr = null, value = 0, unicalign = 0;
@@ -1403,18 +1463,18 @@ async function eval_offering(otmp, altaralign) {   // pray.c:1899
         return 0;
     }
     ptr = $c.relem(mons, otmp.corpsenm);
-    if ($c.andu64(ptr.mflags2, 2) !== 0) {
-        if (u.ualign.type !== -1 || $c.peq(ptr, $c.relem(mons, 230 /* PM_WRAITH */)) && u.uconduct.unvegetarian) {
+    if (is_undead(ptr)) {
+        if (u.ualign.type !== A.CHAOTIC || $c.peq(ptr, $c.relem(mons, PM.WRAITH)) && u.uconduct.unvegetarian) {
             value = value + 1 | 0;
         }
-    } else if (ptr.mlet === 21 /* S_UNICORN */ && $c.andu64(ptr.mflags2, 536870912) !== 0) {
+    } else if (is_unicorn(ptr)) {
         unicalign = sgn(ptr.maligntyp);
         if (unicalign === altaralign) {
-            await pline($c.lit("Such an action is an insult to %s!"), unicalign === -1 ? $c.lit("chaos") : unicalign ? $c.lit("law") : $c.lit("balance"));
-            await adjattrib(2 /* A_WIS */, -1, 1);
+            await pline($c.lit("Such an action is an insult to %s!"), unicalign === A.CHAOTIC ? $c.lit("chaos") : unicalign ? $c.lit("law") : $c.lit("balance"));
+            await adjattrib(A.WIS, -1, TRUE);
             return -1;
         } else if (u.ualign.type === altaralign) {
-            if (u.ualign.record < $c.add64(10, $c.div64(svm.moves, 200))) {
+            if (u.ualign.record < ALIGNLIM()) {
                 await You_feel($c.lit("appropriately %s."), align_str(u.ualign.type));
             } else {
                 await You_feel($c.lit("you are thoroughly on the right path."));
@@ -1433,21 +1493,21 @@ async function eval_offering(otmp, altaralign) {   // pray.c:1899
 async function offer_corpse(otmp, highaltar, altaralign) {   // pray.c:1959
     let value = 0, ptr = null, mtmp = null, saved_anger = 0, saved_cnt = 0, orig_luck = 0, luck_increase = 0, $t1;
     if (!($t1 = u.uconduct.gnostic, u.uconduct.gnostic = $c.add64($t1, 1), $t1)) {
-        await livelog_printf(32, $c.lit("rejected atheism by offering %s on an altar of %s"), await corpse_xname(otmp, null, 8), await a_gname());
+        await livelog_printf(LL.CONDUCT, $c.lit("rejected atheism by offering %s on an altar of %s"), await corpse_xname(otmp, null, CXN.ARTICLE), await a_gname());
     }
-    await feel_cockatrice(otmp, 1);
-    if (await rider_corpse_revival(otmp, 0)) {
+    await feel_cockatrice(otmp, TRUE);
+    if (await rider_corpse_revival(otmp, FALSE)) {
         return;
     }
     ptr = $c.relem(mons, otmp.corpsenm);
-    if ($c.andu64(ptr.mflags2, $c.u64(gu.urace.selfmask)) !== 0) {
+    if (your_race(ptr)) {
         await sacrifice_your_race(otmp, highaltar, altaralign);
         return;
     }
-    if (otmp.oextra && otmp.oextra.omonst && (mtmp = await get_mtraits(otmp, 0)) !== null && mtmp.mtame) {
+    if (has_omonst(otmp) && (mtmp = await get_mtraits(otmp, FALSE)) !== null && mtmp.mtame) {
         await pline($c.lit("So this is how you repay loyalty?"));
         adjalign(-3);
-        u.uprops[43 /* AGGRAVATE_MONSTER */].intrinsic = $c.or64(u.uprops[43 /* AGGRAVATE_MONSTER */].intrinsic, 67108864);
+        u.uprops[AGGRAVATE_MONSTER].intrinsic = $c.or64(u.uprops[AGGRAVATE_MONSTER].intrinsic, FROMOUTSIDE);
         await offer_negative_valued(highaltar, altaralign);
         return;
     }
@@ -1471,32 +1531,32 @@ async function offer_corpse(otmp, highaltar, altaralign) {   // pray.c:1959
     await consume_offering(otmp);
     if (u.ugangr) {
         saved_anger = u.ugangr;
-        u.ugangr = u.ugangr - $c.div32(Math.imul(value, u.ualign.type === -1 ? 2 : 3), 24) | 0;
+        u.ugangr = u.ugangr - $c.div32(Math.imul(value, u.ualign.type === A.CHAOTIC ? 2 : 3), MAXVALUE) | 0;
         if (u.ugangr < 0) {
             u.ugangr = 0;
         }
         if (u.ugangr !== saved_anger) {
             if (u.ugangr) {
-                await pline($c.lit("%s seems %s."), await u_gname(), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("groovy") : $c.lit("slightly mollified"));
+                await pline($c.lit("%s seems %s."), await u_gname(), Hallucination() ? $c.lit("groovy") : $c.lit("slightly mollified"));
                 if (u.uluck < 0) {
                     change_luck(1);
                 }
             } else {
-                await pline($c.lit("%s seems %s."), await u_gname(), u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("cosmic (not a new fact)") : $c.lit("mollified"));
+                await pline($c.lit("%s seems %s."), await u_gname(), Hallucination() ? $c.lit("cosmic (not a new fact)") : $c.lit("mollified"));
                 if (u.uluck < 0) {
                     u.uluck = 0;
                 }
             }
         } else {
-            if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+            if (Hallucination()) {
                 await pline_The($c.lit("gods seem tall."));
             } else {
                 await You($c.lit("have a feeling of inadequacy."));
             }
         }
-    } else if (u.ualign.record < 0) {
-        if (value > 24) {
-            value = 24;
+    } else if (ugod_is_angry()) {
+        if (value > MAXVALUE) {
+            value = MAXVALUE;
         }
         if (value > (-u.ualign.record | 0)) {
             value = -u.ualign.record | 0;
@@ -1505,13 +1565,13 @@ async function offer_corpse(otmp, highaltar, altaralign) {   // pray.c:1959
         await You_feel($c.lit("partially absolved."));
     } else if (u.ublesscnt > 0) {
         saved_cnt = u.ublesscnt;
-        u.ublesscnt = u.ublesscnt - $c.div32(Math.imul(value, u.ualign.type === -1 ? 500 : 300), 24) | 0;
+        u.ublesscnt = u.ublesscnt - $c.div32(Math.imul(value, u.ualign.type === A.CHAOTIC ? 500 : 300), MAXVALUE) | 0;
         if (u.ublesscnt < 0) {
             u.ublesscnt = 0;
         }
         if (u.ublesscnt !== saved_cnt) {
             if (u.ublesscnt) {
-                if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+                if (Hallucination()) {
                     await You($c.lit("realize that the gods are not like you and I."));
                 } else {
                     await You($c.lit("have a hopeful feeling."));
@@ -1520,7 +1580,7 @@ async function offer_corpse(otmp, highaltar, altaralign) {   // pray.c:1959
                     change_luck(1);
                 }
             } else {
-                if (u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic)) {
+                if (Hallucination()) {
                     await pline($c.lit("Overall, there is a smell of fried onions."));
                 } else {
                     await You($c.lit("have a feeling of reconciliation."));
@@ -1535,7 +1595,7 @@ async function offer_corpse(otmp, highaltar, altaralign) {   // pray.c:1959
             return;
         }
         orig_luck = u.uluck;
-        luck_increase = $c.div32(Math.imul(value, 10), 48);
+        luck_increase = $c.div32(Math.imul(value, LUCKMAX), MAXVALUE * 2);
         if (orig_luck > value) {
             luck_increase = 0;
         } else if ((orig_luck + luck_increase | 0) > value) {
@@ -1546,23 +1606,23 @@ async function offer_corpse(otmp, highaltar, altaralign) {   // pray.c:1959
             u.uluck = 0;
         }
         if (u.uluck !== orig_luck) {
-            if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
-                await You($c.lit("think %s brushed your %s."), c_common_strings.c_something, await body_part(5 /* FOOT */));
+            if (Blind()) {
+                await You($c.lit("think %s brushed your %s."), c_common_strings.c_something, await body_part(FOOT));
             } else {
-                await You(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? $c.lit("see crabgrass at your %s.  A funny thing in a dungeon.") : $c.lit("glimpse a four-leaf clover at your %s."), await makeplural(await body_part(5 /* FOOT */)));
+                await You(Hallucination() ? $c.lit("see crabgrass at your %s.  A funny thing in a dungeon.") : $c.lit("glimpse a four-leaf clover at your %s."), await makeplural(await body_part(FOOT)));
             }
         }
     }
 }
 export async function can_pray(praying) {   // pray.c:2124
     let alignment = 0, $t1;
-    gp.p_aligntyp = $c.i8(svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ ? $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) === 0 ? -128 : ((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) === 4 ? 1 : ((svl.level.locations[u.ux][u.uy].flags | 0) & 7 & 7) - 2 | 0) : u.ualign.type);
+    gp.p_aligntyp = $c.i8(svl.level.locations[u.ux][u.uy].typ === ALTAR ? $c.i8(((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) === 0 ? A.NONE : ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.MASK & AM.MASK) - 2 | 0) : u.ualign.type);
     $t1 = await in_trouble(), gp.p_trouble = $t1;
-    if ($c.andu64(gy.youmonst.data.mflags2, 256) !== 0 && (gp.p_aligntyp === 1 || gp.p_aligntyp !== 0)) {
+    if (is_demon(gy.youmonst.data) && (gp.p_aligntyp === A.LAWFUL || gp.p_aligntyp !== A.NEUTRAL)) {
         if (praying) {
             await pline_The($c.lit("very idea of praying to a %s god is repugnant to you."), gp.p_aligntyp ? $c.lit("lawful") : $c.lit("neutral"));
         }
-        return 0;
+        return FALSE;
     }
     if (praying) {
         await You($c.lit("begin praying to %s."), await align_gname(gp.p_aligntyp));
@@ -1574,62 +1634,62 @@ export async function can_pray(praying) {   // pray.c:2124
     } else {
         alignment = u.ualign.record;
     }
-    if (gp.p_aligntyp === -128) {
+    if (gp.p_aligntyp === A.NONE) {
         gp.p_type = -2;
     } else if (gp.p_trouble > 0 ? u.ublesscnt > 200 : gp.p_trouble < 0 ? u.ublesscnt > 100 : u.ublesscnt > 0) {
         gp.p_type = 0;
-    } else if ((u.uluck + u.moreluck | 0) < 0 || u.ugangr || alignment < 0) {
+    } else if (Luck() < 0 || u.ugangr || alignment < 0) {
         gp.p_type = 1;
     } else {
-        if (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ && u.ualign.type !== gp.p_aligntyp) {
+        if (svl.level.locations[u.ux][u.uy].typ === ALTAR && u.ualign.type !== gp.p_aligntyp) {
             gp.p_type = 2;
         } else {
             gp.p_type = 3;
         }
     }
-    if ($c.andu64(gy.youmonst.data.mflags2, 2) !== 0 && !In_hell(u.uz) && (gp.p_aligntyp === 1 || gp.p_aligntyp === 0 && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 2166, $c.lit("can_pray")), rn2(10)) : rn2(10)))) {
+    if (is_undead(gy.youmonst.data) && !Inhell() && (gp.p_aligntyp === A.LAWFUL || gp.p_aligntyp === A.NEUTRAL && !rn2(10))) {
         gp.p_type = -1;
     }
-    return $c.i8(!praying ? $c.i8(gp.p_type === 3 && !In_hell(u.uz) ? 1 : 0) : 1);
+    return $c.i8(!praying ? $c.i8(gp.p_type === 3 && !Inhell() ? 1 : 0) : TRUE);
 }
 async function pray_revive() {   // pray.c:2177
     let otmp = null;
     for (otmp = svl.level.objects[u.ux][u.uy]; otmp; otmp = otmp.v.v_nexthere) {
-        if ((otmp.otyp === 265 /* CORPSE */ || otmp.otyp === 476 /* STATUE */) && (otmp.oextra && otmp.oextra.omonst) && otmp.oextra.omonst.mtame && !otmp.oextra.omonst.isminion) {
+        if ((otmp.otyp === CORPSE || otmp.otyp === STATUE) && has_omonst(otmp) && otmp.oextra.omonst.mtame && !otmp.oextra.omonst.isminion) {
             break;
         }
     }
     if (!otmp) {
-        return 0;
+        return FALSE;
     }
-    if (otmp.otyp === 265 /* CORPSE */) {
-        return $c.i8(!$c.peq(await revive(otmp, 1), $c.asRec(null, $T.monst, 192)) ? 1 : 0);
+    if (otmp.otyp === CORPSE) {
+        return $c.i8(!$c.peq(await revive(otmp, TRUE), $c.asRec(null, $T.monst, 192)) ? 1 : 0);
     } else {
-        return $c.i8(!$c.peq(await animate_statue(otmp, u.ux, u.uy, 2, null), $c.asRec(null, $T.monst, 192)) ? 1 : 0);
+        return $c.i8(!$c.peq(await animate_statue(otmp, u.ux, u.uy, ANIMATE.SPELL, null), $c.asRec(null, $T.monst, 192)) ? 1 : 0);
     }
 }
 export async function dopray() {   // pray.c:2199
     let ok = 0, save_doagain = 0, $t1;
-    if ((flags.paranoia_bits & 32) >>> 0 !== 0) {
-        ok = await paranoid_query($c.i8((flags.paranoia_bits & 1) >>> 0 !== 0 ? 1 : 0), $c.lit("Are you sure you want to pray?"));
+    if (ParanoidPray()) {
+        ok = await paranoid_query($c.i8(ParanoidConfirm()), $c.lit("Are you sure you want to pray?"));
         if (!ok) {
-            return 0;
+            return ECMD.OK;
         }
     }
     if (!($t1 = u.uconduct.gnostic, u.uconduct.gnostic = $c.add64($t1, 1), $t1)) {
-        await livelog_printf(32, $c.lit("rejected atheism with a prayer"));
+        await livelog_printf(LL.CONDUCT, $c.lit("rejected atheism with a prayer"));
     }
-    if (!await can_pray(1)) {
-        return 0;
+    if (!await can_pray(TRUE)) {
+        return ECMD.OK;
     }
-    if (flags.debug && gp.p_type >= 0) {
-        if ((flags.paranoia_bits & 32) >>> 0 !== 0) {
+    if (wizard() && gp.p_type >= 0) {
+        if (ParanoidPray()) {
             save_doagain = $c.i8(gi.in_doagain);
-            gi.in_doagain = 0;
-            ok = $c.i8(await yn_function(new $c.Ptr(dopray$forcesuccess, 0), new $c.Ptr(ynchars, 0), 110, 0) === 121 ? 1 : 0);
+            gi.in_doagain = FALSE;
+            ok = $c.i8(await yn_function(new $c.Ptr(dopray$forcesuccess, 0), new $c.Ptr(ynchars, 0), 110, FALSE) === 121 ? 1 : 0);
             gi.in_doagain = save_doagain;
         } else {
-            ok = $c.i8(await yn_function(new $c.Ptr(dopray$forcesuccess, 0), new $c.Ptr(ynchars, 0), 110, 1) === 121 ? 1 : 0);
+            ok = $c.i8(await yn_function(new $c.Ptr(dopray$forcesuccess, 0), new $c.Ptr(ynchars, 0), 110, TRUE) === 121 ? 1 : 0);
         }
         if (ok) {
             u.ublesscnt = 0;
@@ -1649,66 +1709,66 @@ export async function dopray() {   // pray.c:2199
     gm.multi_reason = $c.lit("praying");
     gn.nomovemsg = $c.lit("You finish your prayer.");
     ga.afternmv = prayer_done;
-    if (gp.p_type === 3 && !In_hell(u.uz)) {
-        if (!((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked)) {
+    if (gp.p_type === 3 && !Inhell()) {
+        if (!Blind()) {
             await You($c.lit("are surrounded by a shimmering light."));
         }
-        u.uinvulnerable = (1) & 1;
+        u.uinvulnerable = (TRUE) & 1;
     }
-    return 1;
+    return ECMD.TIME;
 }
 async function prayer_done() {   // pray.c:2276
     let alignment = 0, $t1, $t2;
     alignment = gp.p_aligntyp;
-    u.uinvulnerable = (0) & 1;
+    u.uinvulnerable = (FALSE) & 1;
     if (gp.p_type === -2) {
-        await You($c.lit("%s diabolical laughter all around you..."), !(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) ? $c.lit("hear") : $c.lit("intuit"));
-        await wake_nearby(0);
+        await You($c.lit("%s diabolical laughter all around you..."), !Deaf() ? $c.lit("hear") : $c.lit("intuit"));
+        await wake_nearby(FALSE);
         adjalign(-2);
-        await exercise(2 /* A_WIS */, 0);
-        if (!In_hell(u.uz)) {
+        await exercise(A.WIS, FALSE);
+        if (!Inhell()) {
             await pline($c.lit("Nothing else happens."));
             return 1;
         }
     } else if (gp.p_type === -1) {
-        await godvoice(alignment, alignment === 1 ? $c.lit("Vile creature, thou durst call upon me?") : $c.lit("Walk no more, perversion of nature!"));
+        await godvoice(alignment, alignment === A.LAWFUL ? $c.lit("Vile creature, thou durst call upon me?") : $c.lit("Walk no more, perversion of nature!"));
         await You_feel($c.lit("like you are falling apart."));
         await rehumanize();
-        await losehp(rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 2303, $c.lit("prayer_done")), rnd(20)) : rnd(20), $c.lit("residual undead turning effect"), 0);
-        await exercise(4 /* A_CON */, 0);
+        await losehp(rnd(20), $c.lit("residual undead turning effect"), KILLED.BY_AN);
+        await exercise(A.CON, FALSE);
         return 1;
     }
-    if (In_hell(u.uz)) {
+    if (Inhell()) {
         await pline($c.lit("Since you are in Gehennom, %s can't help you."), await align_gname(alignment));
-        if (u.ualign.record <= 0 || (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 2311, $c.lit("prayer_done")), rnl(u.ualign.record)) : rnl(u.ualign.record))) {
+        if (u.ualign.record <= 0 || rnl(u.ualign.record)) {
             await angrygods(u.ualign.type);
         }
         return 0;
     }
     if (gp.p_type === 0) {
-        if (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ && u.ualign.type !== alignment) {
-            await water_prayer(0);
+        if (svl.level.locations[u.ux][u.uy].typ === ALTAR && u.ualign.type !== alignment) {
+            await water_prayer(FALSE);
         }
-        $t1 = rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 2319, $c.lit("prayer_done")), rnz(250)) : rnz(250), u.ublesscnt = u.ublesscnt + $t1 | 0;
+        $t1 = rnz(250), u.ublesscnt = u.ublesscnt + $t1 | 0;
         change_luck(-3);
         await gods_upset(u.ualign.type);
     } else if (gp.p_type === 1) {
-        if (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */ && u.ualign.type !== alignment) {
-            await water_prayer(0);
+        if (svl.level.locations[u.ux][u.uy].typ === ALTAR && u.ualign.type !== alignment) {
+            await water_prayer(FALSE);
         }
         await angrygods(u.ualign.type);
     } else if (gp.p_type === 2) {
-        if (await water_prayer(0)) {
-            $t2 = rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 2329, $c.lit("prayer_done")), rnz(250)) : rnz(250), u.ublesscnt = u.ublesscnt + $t2 | 0;
+        if (await water_prayer(FALSE)) {
+            $t2 = rnz(250), u.ublesscnt = u.ublesscnt + $t2 | 0;
             change_luck(-3);
             await gods_upset(u.ualign.type);
         } else {
             await pleased(alignment);
         }
     } else {
-        if (svl.level.locations[u.ux][u.uy].typ === 32 /* ALTAR */) {
+        if (svl.level.locations[u.ux][u.uy].typ === ALTAR) {
             await pray_revive();
-            await water_prayer(1);
+            await water_prayer(TRUE);
         }
         await pleased(alignment);
     }
@@ -1716,34 +1776,34 @@ async function prayer_done() {   // pray.c:2276
 }
 async function maybe_turn_mon_iter(mtmp) {   // pray.c:2347
     let xlev = 0, $t1;
-    if (!((gv.viz_array.get(mtmp.my).get(mtmp.mx) & 1) !== 0) || dist2(mtmp.mx, mtmp.my, u.ux, u.uy) > turn_undead_range) {
+    if (!couldsee(mtmp.mx, mtmp.my) || dist2(mtmp.mx, mtmp.my, u.ux, u.uy) > turn_undead_range) {
         return;
     }
-    if (!mtmp.mpeaceful && ($c.andu64(mtmp.data.mflags2, 2) !== 0 || (mtmp.cham === 226 /* PM_VAMPIRE */ || mtmp.cham === 227 /* PM_VAMPIRE_LEADER */ || mtmp.cham === 228 /* PM_VLAD_THE_IMPALER */) || $c.andu64(mtmp.data.mflags2, 256) !== 0 && u.ulevel > 15)) {
+    if (!mtmp.mpeaceful && (is_undead(mtmp.data) || is_vampshifter(mtmp) || is_demon(mtmp.data) && u.ulevel > 15)) {
         mtmp.msleeping = (0) & 1;
-        if (u.uprops[14 /* CONFUSION */].intrinsic) {
+        if (u.uprops[CONFUSION].intrinsic) {
             if (!($t1 = turn_undead_msg_cnt, turn_undead_msg_cnt = $t1 + 1 | 0, $t1)) {
                 await pline($c.lit("Unfortunately, your voice falters."));
             }
             mtmp.mflee = (0) & 1;
             mtmp.mfrozen = (0) & 127;
             mtmp.mcanmove = (1) & 1;
-        } else if (!await resist(mtmp, 0, 0, 1)) {
+        } else if (!await resist(mtmp, 0, 0, TELL)) {
             xlev = 6;
             switch (mtmp.data.mlet) {
-                case 38 /* S_LICH */:
+                case S.LICH:
                     xlev = xlev + 2 | 0;
-                case 54 /* S_GHOST */:
+                case S.GHOST:
                     xlev = xlev + 2 | 0;
-                case 48 /* S_VAMPIRE */:
+                case S.VAMPIRE:
                     xlev = xlev + 2 | 0;
-                case 49 /* S_WRAITH */:
+                case S.WRAITH:
                     xlev = xlev + 2 | 0;
-                case 39 /* S_MUMMY */:
+                case S.MUMMY:
                     xlev = xlev + 2 | 0;
-                case 52 /* S_ZOMBIE */:
-                    if (u.ulevel >= xlev && !await resist(mtmp, 0, 0, 0)) {
-                        if (u.ualign.type === -1) {
+                case S.ZOMBIE:
+                    if (u.ulevel >= xlev && !await resist(mtmp, 0, 0, NOTELL)) {
+                        if (u.ualign.type === A.CHAOTIC) {
                             mtmp.mpeaceful = (1) & 1;
                             set_malign(mtmp);
                         } else {
@@ -1752,7 +1812,7 @@ async function maybe_turn_mon_iter(mtmp) {   // pray.c:2347
                         break;
                     }
                 default:
-                    await monflee(mtmp, 0, 0, 1);
+                    await monflee(mtmp, 0, FALSE, TRUE);
                     break;
             }
         }
@@ -1760,51 +1820,51 @@ async function maybe_turn_mon_iter(mtmp) {   // pray.c:2347
 }
 export async function doturn() {   // pray.c:2414
     let Gname = null, $t1;
-    if (!(gu.urole.mnum === 337) && !(gu.urole.mnum === 335)) {
-        if (known_spell(398)) {
-            return await spelleffects(398 /* SPE_TURN_UNDEAD */, 0, 0);
+    if (!(gu.urole.mnum === PM.CLERIC) && !(gu.urole.mnum === PM.KNIGHT)) {
+        if (known_spell(SPE_TURN_UNDEAD)) {
+            return await spelleffects(SPE_TURN_UNDEAD, FALSE, FALSE);
         }
         await You($c.lit("don't know how to turn undead!"));
-        return 0;
+        return ECMD.OK;
     }
     if (!($t1 = u.uconduct.gnostic, u.uconduct.gnostic = $c.add64($t1, 1), $t1)) {
-        await livelog_printf(32, $c.lit("rejected atheism by turning undead"));
+        await livelog_printf(LL.CONDUCT, $c.lit("rejected atheism by turning undead"));
     }
     Gname = await halu_gname(u.ualign.type);
     if (!can_chant(gy.youmonst)) {
-        await You($c.lit("are %s upon %s to turn aside evilness."), u.uprops[19 /* STRANGLED */].intrinsic ? $c.lit("not able to call") : $c.lit("incapable of calling"), Gname);
-        return u.uconduct.gnostic === 1 ? 1 : 0;
+        await You($c.lit("are %s upon %s to turn aside evilness."), Strangled() ? $c.lit("not able to call") : $c.lit("incapable of calling"), Gname);
+        return u.uconduct.gnostic === 1 ? ECMD.TIME : ECMD.OK;
     }
-    if (u.ualign.type !== -1 && ($c.andu64(gy.youmonst.data.mflags2, 256) !== 0 || $c.andu64(gy.youmonst.data.mflags2, 2) !== 0 || (gy.youmonst.cham === 226 /* PM_VAMPIRE */ || gy.youmonst.cham === 227 /* PM_VAMPIRE_LEADER */ || gy.youmonst.cham === 228 /* PM_VLAD_THE_IMPALER */)) || u.ugangr > 6) {
+    if (u.ualign.type !== A.CHAOTIC && (is_demon(gy.youmonst.data) || is_undead(gy.youmonst.data) || is_vampshifter(gy.youmonst)) || u.ugangr > 6) {
         await pline($c.lit("For some reason, %s seems to ignore you."), Gname);
         await aggravate();
-        await exercise(2 /* A_WIS */, 0);
-        return 1;
+        await exercise(A.WIS, FALSE);
+        return ECMD.TIME;
     }
-    if (In_hell(u.uz)) {
+    if (Inhell()) {
         await pline($c.lit("Since you are in Gehennom, %s %s help you."), Gname, !$c.strcmp(Gname, Moloch) ? $c.lit("won't") : $c.lit("can't"));
         await aggravate();
-        return 1;
+        return ECMD.TIME;
     }
     await pline($c.lit("Calling upon %s, you chant an arcane formula."), Gname);
-    await exercise(2 /* A_WIS */, 1);
-    turn_undead_range = 8 + $c.div32(u.ulevel, 5) | 0;
+    await exercise(A.WIS, TRUE);
+    turn_undead_range = BOLT_LIM + $c.div32(u.ulevel, 5) | 0;
     turn_undead_range = Math.imul(turn_undead_range, turn_undead_range);
     turn_undead_msg_cnt = 0;
     await iter_mons(maybe_turn_mon_iter);
     nomul(-(5 - $c.div32(u.ulevel - 1 | 0, 6) | 0) | 0);
     gm.multi_reason = $c.lit("trying to turn the monsters");
     gn.nomovemsg = c_common_strings.c_You_can_move_again;
-    return 1;
+    return ECMD.TIME;
 }
 export function altarmask_at(x, y) {   // pray.c:2490
     let res = 0, mon = null;
     res = 0;
     if (isok(x, y)) {
         mon = svl.level.monsters[x][y];
-        if (mon && (mon.m_ap_type & 7) === 1 /* M_AP_FURNITURE */ && mon.mappearance === 33) {
-            res = mon.mextra && mon.mextra.mcorpsenm !== -1 /* NON_PM */ ? mon.mextra.mcorpsenm : 0;
-        } else if (svl.level.locations[x][y].typ === 32 /* ALTAR */) {
+        if (mon && M_AP_TYPE(mon) === M_AP.FURNITURE && mon.mappearance === S.altar) {
+            res = has_mcorpsenm(mon) ? mon.mextra.mcorpsenm : 0;
+        } else if (svl.level.locations[x][y].typ === ALTAR) {
             res = svl.level.locations[x][y].flags | 0;
         }
     }
@@ -1814,10 +1874,10 @@ export async function a_gname() {   // pray.c:2507
     return await a_gname_at(u.ux, u.uy);
 }
 export async function a_gname_at(x, y) {   // pray.c:2514
-    if (!(svl.level.locations[x][y].typ === 32 /* ALTAR */)) {
+    if (!(svl.level.locations[x][y].typ === ALTAR)) {
         return null;
     }
-    return await align_gname($c.i8(((svl.level.locations[x][y].flags | 0) & 7 & 7) === 0 ? -128 : ((svl.level.locations[x][y].flags | 0) & 7 & 7) === 4 ? 1 : ((svl.level.locations[x][y].flags | 0) & 7 & 7) - 2 | 0));
+    return await align_gname($c.i8(((svl.level.locations[x][y].flags | 0) & AM.MASK & AM.MASK) === 0 ? A.NONE : ((svl.level.locations[x][y].flags | 0) & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((svl.level.locations[x][y].flags | 0) & AM.MASK & AM.MASK) - 2 | 0));
 }
 export async function u_gname() {   // pray.c:2524
     return await align_gname(u.ualign.type);
@@ -1825,16 +1885,16 @@ export async function u_gname() {   // pray.c:2524
 export async function align_gname(alignment) {   // pray.c:2530
     let gnam = null;
     switch (alignment) {
-        case -128:
+        case A.NONE:
             gnam = Moloch;
             break;
-        case 1:
+        case A.LAWFUL:
             gnam = gu.urole.lgod;
             break;
-        case 0:
+        case A.NEUTRAL:
             gnam = gu.urole.ngod;
             break;
-        case -1:
+        case A.CHAOTIC:
             gnam = gu.urole.cgod;
             break;
         default:
@@ -1850,11 +1910,11 @@ export async function align_gname(alignment) {   // pray.c:2530
 export async function halu_gname(alignment) {   // pray.c:2577
     let gnam = null, which = 0;
     gnam = null;
-    if (!(u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic))) {
+    if (!Hallucination()) {
         return await align_gname(alignment);
     }
     do {
-        which = randrole(1);
+        which = randrole(TRUE);
     } while (!roles[which].lgod);
     switch (rn2_on_display_rng(9)) {
         case 0:
@@ -1892,13 +1952,13 @@ export function align_gtitle(alignment) {   // pray.c:2628
     let gnam = null, result = null;
     result = $c.lit("god");
     switch (alignment) {
-        case 1:
+        case A.LAWFUL:
             gnam = gu.urole.lgod;
             break;
-        case 0:
+        case A.NEUTRAL:
             gnam = gu.urole.ngod;
             break;
-        case -1:
+        case A.CHAOTIC:
             gnam = gu.urole.cgod;
             break;
         default:
@@ -1912,16 +1972,16 @@ export function align_gtitle(alignment) {   // pray.c:2628
 }
 export async function altar_wrath(x, y) {   // pray.c:2652
     let altaralign = 0;
-    altaralign = $c.i8(((svl.level.locations[x][y].flags | 0) & 7 & 7) === 0 ? -128 : ((svl.level.locations[x][y].flags | 0) & 7 & 7) === 4 ? 1 : ((svl.level.locations[x][y].flags | 0) & 7 & 7) - 2 | 0);
-    if (u.ualign.type === altaralign && u.ualign.record > (-(rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 2656, $c.lit("altar_wrath")), rn2(4)) : rn2(4)) | 0)) {
+    altaralign = $c.i8(((svl.level.locations[x][y].flags | 0) & AM.MASK & AM.MASK) === 0 ? A.NONE : ((svl.level.locations[x][y].flags | 0) & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : ((svl.level.locations[x][y].flags | 0) & AM.MASK & AM.MASK) - 2 | 0);
+    if (u.ualign.type === altaralign && u.ualign.record > (-rn2(4) | 0)) {
         await godvoice(altaralign, $c.lit("How darest thou desecrate my altar!"));
-        await adjattrib(2 /* A_WIS */, -1, 0);
+        await adjattrib(A.WIS, -1, FALSE);
         u.ualign.record = u.ualign.record - 1 | 0;
     } else {
-        await pline($c.lit("%s %s%s:"), !(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) ? $c.lit("A voice (could it be") : $c.lit("Despite your deafness, you seem to hear"), await align_gname(altaralign), !(u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) ? $c.lit("?) whispers") : $c.lit(" say"));
+        await pline($c.lit("%s %s%s:"), !Deaf() ? $c.lit("A voice (could it be") : $c.lit("Despite your deafness, you seem to hear"), await align_gname(altaralign), !Deaf() ? $c.lit("?) whispers") : $c.lit(" say"));
         await verbalize($c.lit("Thou shalt pay, infidel!"));
-        if ((u.uluck + u.moreluck | 0) > -5 && (rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 2670, $c.lit("altar_wrath")), rn2((u.uluck + u.moreluck | 0) + 6 | 0)) : rn2((u.uluck + u.moreluck | 0) + 6 | 0))) {
-            change_luck($c.i8((rng_log_enabled() ? (rng_log_set_caller($c.lit("pray.c"), 2671, $c.lit("altar_wrath")), rn2(20)) : rn2(20)) ? -1 : -2));
+        if (Luck() > -5 && rn2((u.uluck + u.moreluck | 0) + 6 | 0)) {
+            change_luck($c.i8(rn2(20) ? -1 : -2));
         }
     }
 }
@@ -1929,14 +1989,14 @@ function blocked_boulder(dx, dy) {   // pray.c:2677
     let otmp = null, nx = 0, ny = 0, count = 0;
     count = 0;
     for (otmp = svl.level.objects[u.ux + dx | 0][u.uy + dy | 0]; otmp; otmp = otmp.v.v_nexthere) {
-        if (otmp.otyp === 475 /* BOULDER */) {
+        if (otmp.otyp === BOULDER) {
             count = $c.add64(count, otmp.quan);
         }
     }
     nx = u.ux + Math.imul(2, dx) | 0, ny = u.uy + Math.imul(2, dy) | 0;
     switch (count) {
         case 0:
-            return 0;
+            return FALSE;
         case 1:
             break;
         case 2:
@@ -1944,47 +2004,60 @@ function blocked_boulder(dx, dy) {   // pray.c:2677
                 break;
             }
         default:
-            return 1;
+            return TRUE;
     }
-    if (dx && dy && svl.level.flags.sokoban_rules | 0) {
-        return 1;
+    if (dx && dy && (svl.level.flags.sokoban_rules | 0)) {
+        return TRUE;
     }
     if (!isok($c.i16(nx), $c.i16(ny))) {
-        return 1;
+        return TRUE;
     }
-    if (svl.level.locations[nx][ny].typ < 16 /* POOL */) {
-        return 1;
+    if (svl.level.locations[nx][ny].typ < POOL) {
+        return TRUE;
     }
-    if (sobj_at(475 /* BOULDER */, $c.i16(nx), $c.i16(ny))) {
-        return 1;
+    if (sobj_at(BOULDER, $c.i16(nx), $c.i16(ny))) {
+        return TRUE;
     }
-    return 0;
+    return FALSE;
+}
+function ugod_is_angry() {
+    return u.ualign.record < 0 ? 1 : 0;
+}
+function on_shrine() {
+    return ((svl.level.locations[u.ux][u.uy].flags | 0) & AM.SHRINE) !== 0 ? 1 : 0;
+}
+function ok_wep(o) {
+    return o && (o.oclass === WEAPON_CLASS || o.oclass === TOOL_CLASS && objects[o.otyp].oc_subtyp !== P.NONE) ? 1 : 0;
 }
 
 export function $init() {
     Moloch = $c.lit("Moloch");
     godvoices.fill(null);
-    godvoices[0] = $c.lit("booms out");
-    godvoices[1] = $c.lit("thunders");
-    godvoices[2] = $c.lit("rings out");
-    godvoices[3] = $c.lit("booms");
+    $c.init(godvoices, [
+        $c.lit("booms out"),
+        $c.lit("thunders"),
+        $c.lit("rings out"),
+        $c.lit("booms")
+    ]);
     turn_undead_range = 0;
     turn_undead_msg_cnt = 0;
     hallu_gods.fill(null);
-    hallu_gods[0] = $c.lit("the Flying Spaghetti Monster");
-    hallu_gods[1] = $c.lit("Eris");
-    hallu_gods[2] = $c.lit("the Martians");
-    hallu_gods[3] = $c.lit("Xom");
-    hallu_gods[4] = $c.lit("AnDoR dRaKoN");
-    hallu_gods[5] = $c.lit("the Central Bank of Yendor");
-    hallu_gods[6] = $c.lit("Tooth Fairy");
-    hallu_gods[7] = $c.lit("Om");
-    hallu_gods[8] = $c.lit("Yawgmoth");
-    hallu_gods[9] = $c.lit("Morgoth");
-    hallu_gods[10] = $c.lit("Cthulhu");
-    hallu_gods[11] = $c.lit("the Ori");
-    hallu_gods[12] = $c.lit("destiny");
-    hallu_gods[13] = $c.lit("your Friend the Computer");
+    $c.init(hallu_gods, [
+        $c.lit("the Flying Spaghetti Monster"),
+        $c.lit("Eris"),
+        $c.lit("the Martians"),
+        $c.lit("Xom"),
+        $c.lit("AnDoR dRaKoN"),
+        $c.lit("the Central Bank of Yendor"),
+        $c.lit("Tooth Fairy"),
+        $c.lit("Om"),
+        $c.lit("Yawgmoth"),
+        $c.lit("Morgoth"),
+        $c.lit("Cthulhu"),
+        $c.lit("the Ori"),
+        $c.lit("destiny"),
+        $c.lit("your Friend the Computer")
+    ]);
     fix_worst_trouble$leftglow.fill(0);
     fix_worst_trouble$leftglow.set([89, 111, 117, 114, 32, 108, 101, 102, 116, 32, 114, 105, 110, 103, 32, 115, 111, 102, 116, 108, 121, 32, 103, 108, 111, 119, 115]);   // "Your left ring softly glows"
     fix_worst_trouble$rightglow.fill(0);

@@ -132,7 +132,8 @@ import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Warning, Teleportation, Teleport_control, See_invisible,
          Infravision, Deaf, Blind, Hallucination, Halluc_resistance,
          Invis, Levitation, Flying, Swimming, Amphibious, Breathless,
-         Passes_walls, Regeneration, Reflecting, Blindfolded, Blindfolded_only } from './youprop.js';
+         Passes_walls, Regeneration, Reflecting, Blindfolded, Blindfolded_only,
+         Punished } from './youprop.js';
 
 import { body_part } from './polyself.js';
 
@@ -868,7 +869,7 @@ function status_enlightenment() {
     if (Deaf())
         you_are('deaf');
 
-    if (game.u.uprops?.PUNISHED) {
+    if (Punished()) {
         const punishment = game.u.uball
             ? `chained to ${an(simpleonames(game.u.uball))}`
             : 'punished';

@@ -10,6 +10,21 @@ import { canseemon, newsym, pline, Hallucination } from './display.js';
 import { You_hear } from './sounds.js';
 import { mksobj_at } from './mkobj.js';
 import { acurr } from './attrib.js';
+import { start_timer, obj_to_any } from './timeout.js';
+import { TIMER_OBJECT, ROT_ORGANIC, CXN_NO_PFX, OBJ_AT, u_at } from './const.js';
+import { corpse_xname, otense } from './objnam.js';
+import { Your } from './display.js';
+import { remove_worn_item } from './steal.js';
+import { setmnotwielded } from './weapon.js';
+import { hideunder_async as hideunder, m_at } from './makemon.js';
+import { stop_occupation } from './allmain.js';
+import { obfree } from './invent.js';
+import { M1_CONCEAL } from './monsters.js';
+
+/* C ref: mondata.h hides_under() */
+function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
+/* C ref: invent.c update_inventory() -- no perm_invent window */
+function update_inventory() { }
 import { Unaware } from './eat.js';
 import { D_TRAPPED, D_BROKEN, SCORR, A_STR, A_INT, A_WIS, A_DEX, A_CON,
          A_CHA } from './const.js';
@@ -39,6 +54,11 @@ import { reset_utrap } from './trap.js';
 import { del_engr_at } from './engrave.js';
 import { punish } from './read.js';
 import { obj_extract_self as mkobj_obj_extract_self } from './mkobj.js';
+import { ROWNO as ROWNO_DG, LAVAPOOL as LAVAPOOL_DG, MOAT as MOAT_DG,
+         POOL as POOL_DG } from './const.js';
+import { is_moat as is_moat_dg, is_pool as is_pool_dg,
+         is_lava as is_lava_dg } from './makemon.js';
+import { mb_trapped } from './monmove.js';
 
 /* C ref: obj.h is_pick(), is_axe() */
 function is_pick(otmp) {
@@ -187,12 +207,79 @@ export function bury_an_obj(otmp, dealloced) {
         ; /* should cancel timer if under_ice */
     } else if ((under_ice ? (otmp.oclass === POTION_CLASS) : is_organic(otmp))
                && !obj_resists(otmp, 5, 95)) {
-        /* (void) start_timer(...): timers are not ported yet */
-        otmp.timer = { when: (under_ice ? 0 : 250) + rnd(250),
-                       action: 'ROT_ORGANIC' };
+        start_timer((under_ice ? 0 : 250) + rnd(250),
+                    TIMER_OBJECT, ROT_ORGANIC, obj_to_any(otmp));
     }
     add_to_buried(otmp);
     return otmp2;
+}
+
+// C ref: dig.c rot_organic()
+/*
+ * Called when a buried object has rotted away.
+ */
+export async function rot_organic(arg, timeout) {
+    const obj = arg.a_obj;
+
+    while (obj.cobj && obj.cobj.length) { /* Has_contents(obj) */
+        /* We don't need to place contained object on the floor
+           first, but we do need to update its map coordinates. */
+        obj.cobj[0].ox = obj.ox, obj.cobj[0].oy = obj.oy;
+        /* Everything which can be held in a container can also be
+           buried, so bury_an_obj's use of obj_extract_self insures
+           that Has_contents(obj) will eventually become false. */
+        bury_an_obj(obj.cobj[0], null);
+    }
+    mkobj_obj_extract_self(obj);
+    obfree(obj, null);
+}
+
+// C ref: dig.c rot_corpse()
+/*
+ * Called when a corpse has rotted completely away.
+ */
+export async function rot_corpse(arg, timeout) {
+    let x = 0, y = 0;
+    const obj = arg.a_obj;
+    const on_floor = obj.where === 'OBJ_FLOOR',
+        in_invent = obj.where === 'OBJ_INVENT';
+
+    if (on_floor) {
+        x = obj.ox;
+        y = obj.oy;
+    } else if (in_invent) {
+        if (game.flags.verbose) {
+            const cname = corpse_xname(obj, null, CXN_NO_PFX);
+
+            await Your(`${(obj === game.uwep) ? "wielded " : ""}${cname} ${
+                otense(obj, "rot")} away${(obj === game.uwep) ? '!' : '.'}`);
+        }
+        if (obj.owornmask) {
+            await remove_worn_item(obj, true);
+            await stop_occupation();
+        }
+    } else if (obj.where === 'OBJ_MINVENT') {
+        if (obj.owornmask && obj === obj.ocarry.mw) /* MON_WEP(obj->ocarry) */
+            setmnotwielded(obj.ocarry, obj); /* clears owornmask */
+    } else if (obj.where === 'OBJ_MIGRATING') {
+        /* clear destination flag so that obfree()'s check for
+           freeing a worn object doesn't get a false hit */
+        obj.owornmask = 0;
+    }
+    await rot_organic(arg, timeout);
+    if (on_floor) {
+        const mtmp = m_at(x, y);
+
+        /* a hiding monster may be exposed */
+        if (mtmp && !OBJ_AT(x, y) && mtmp.mundetected
+            && hides_under(mtmp.data)) {
+            mtmp.mundetected = 0;
+        } else if (u_at(x, y)
+                   && game.u.uundetected && hides_under(game.youmonst.data))
+            await hideunder(game.youmonst);
+        newsym(x, y);
+    } else if (in_invent)
+        update_inventory();
 }
 
 // C ref: dig.c holetime()
@@ -212,6 +299,41 @@ export function may_dig(x, y) {
              && ((lev.wall_info ?? 0) & W_NONDIGGABLE));
 }
 
+
+// C ref: dig.c fillholetyp()
+/* When digging a hole or exploding a land mine next to liquid, the
+   hole may fill in */
+export function fillholetyp(x, y,
+                            fill_if_any) { /* force filling if it exists at all */
+    let x1, y1;
+    const lo_x = Math.max(1, x - 1), hi_x = Math.min(x + 1, COLNO - 1),
+          lo_y = Math.max(0, y - 1), hi_y = Math.min(y + 1, ROWNO_DG - 1);
+    let pool_cnt = 0, moat_cnt = 0, lava_cnt = 0;
+
+    for (x1 = lo_x; x1 <= hi_x; x1++)
+        for (y1 = lo_y; y1 <= hi_y; y1++)
+            if (is_moat_dg(x1, y1))
+                moat_cnt++;
+            else if (is_pool_dg(x1, y1))
+                /* This must come after is_moat since moats are pools
+                 * but not vice-versa. */
+                pool_cnt++;
+            else if (is_lava_dg(x1, y1))
+                lava_cnt++;
+
+    if (!fill_if_any)
+        pool_cnt = Math.trunc(pool_cnt / 3); /* not as much liquid as the others */
+
+    if ((lava_cnt > moat_cnt + pool_cnt && rn2(lava_cnt + 1))
+        || (lava_cnt && fill_if_any))
+        return LAVAPOOL_DG;
+    else if ((moat_cnt > 0 && rn2(moat_cnt + 1)) || (moat_cnt && fill_if_any))
+        return MOAT_DG;
+    else if ((pool_cnt > 0 && rn2(pool_cnt + 1)) || (pool_cnt && fill_if_any))
+        return POOL_DG;
+    else
+        return ROOM;
+}
 
 // C ref: dig.c is_digging()
 /* the hero's occupation is the dig() occupation */
@@ -257,8 +379,10 @@ export async function mdig_tunnel(mtmp) {
         newsym(mtmp.mx, mtmp.my);
         if (trapped) {
             seeit = canseemon(mtmp);
-            void sawit; void seeit;
-            throw new Error('mdig_tunnel(): mb_trapped() not ported yet');
+            if (await mb_trapped(mtmp, sawit || seeit)) { /* mtmp is killed */
+                newsym(mtmp.mx, mtmp.my);
+                return true;
+            }
         } else {
             if (g.flags.verbose) {
                 if (!Unaware() && !rn2(3)) /* not too often.. */

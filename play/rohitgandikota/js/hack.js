@@ -24,7 +24,8 @@ import { is_flimsy } from './obj.js';
 import { You, You_feel, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { feel_location } from './display.js';
 import { can_ooze, accessible } from './monmove.js';
-import { dig_typ, use_pick_axe2, bury_objs, buried_ball } from './dig.js';
+import { dig_typ, use_pick_axe2, bury_objs, buried_ball,
+         buried_ball_to_punishment } from './dig.js';
 import { docrt } from './display.js';
 import { worm_cross } from './worm.js';
 import { block_door, block_entry, u_entered_shop, u_left_shop } from './shk.js';

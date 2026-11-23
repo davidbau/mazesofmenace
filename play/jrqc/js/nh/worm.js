@@ -4,18 +4,29 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc, fmt_ptr } from './alloc.js';
 import { isok } from './cmd.js';
-import { gv, svc, svl, svm, u } from './decl.js';
-import { canseemon, newsym, sensemon, show_glyph } from './display.js';
+import { svc, svl, svm, u } from './decl.js';
+import { newsym, show_glyph } from './display.js';
+import { canspotmon, detected_monnum_to_glyph, monnum_to_glyph, petnum_to_glyph } from './display.macros.js';
 import { Monnam, mon_nam } from './do_name.js';
+import { FALSE, MHPMAX, TRUE } from './global.h.js';
+import { max, release_data, update_file } from './hack.macros.js';
 import { dist2, distmin, s_suffix } from './hacklib.js';
 import { clone_mon } from './makemon.js';
+import { has_mcorpsenm } from './mextra.macros.js';
 import { mattacku } from './mhitu.js';
 import { mcalcmove } from './mon.js';
+import { FEMALE, MALE } from './monflag.h.js';
 import { mons } from './monst.js';
+import { MAX_NUM_WORMS } from './monst.h.js';
+import { PM } from './monsters.h.js';
+import { NON_PM, NORMAL_SPEED, NUMMONS } from './permonst.h.js';
 import { You, impossible, pline } from './pline.js';
-import { d, rn2, rn2_on_display_rng, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { HALLUC, HALLUC_RES } from './prop.h.js';
+import { remove_monster } from './rm.macros.js';
+import { d, rn2, rn2_on_display_rng, rnd } from './rnd.js';
 import { sfi_int, sfi_int16, sfi_long, sfo_int, sfo_int16, sfo_long } from './sfbase.js';
 import { rnd_nextto_goodpos } from './trap.js';
+import { cansee } from './vision.macros.js';
 
 const wheads = $c.nulls(32);
 const wtails = $c.nulls(32);
@@ -23,7 +34,7 @@ const wgrowtime = $c.zeros(32);
 export function get_wormno() {   // worm.c:96
     let new_wormno = 0;
     new_wormno = 1;
-    while (new_wormno < 32) {
+    while (new_wormno < MAX_NUM_WORMS) {
         if (!wheads[new_wormno]) {
             return new_wormno;
         }
@@ -42,7 +53,7 @@ export async function initworm(worm, wseg_count) {   // worm.c:120
         }
         wheads[wnum] = seg;
     } else {
-        $t2 = ($t1 = seg = $c.asRec(await alloc(16), $T.wseg, 16), wheads[wnum] = $t1), wtails[wnum] = $t2;
+        $t2 = ($t1 = seg = await newseg(), wheads[wnum] = $t1), wtails[wnum] = $t2;
         seg.nseg = null;
     }
     seg.wx = worm.mx;
@@ -59,7 +70,7 @@ async function toss_wsegs(curr, display_update) {   // worm.c:146
                 await newsym(curr.wx, curr.wy);
             }
         }
-        $c.free(curr);
+        dealloc_seg(curr);
         curr = nxtseg;
     }
 }
@@ -71,7 +82,7 @@ async function shrink_worm(wnum) {   // worm.c:175
     seg = wtails[wnum];
     wtails[wnum] = seg.nseg;
     seg.nseg = null;
-    await toss_wsegs(seg, 1);
+    await toss_wsegs(seg, TRUE);
 }
 export async function worm_move(worm) {   // worm.c:196
     let seg = null, new_seg = null, wnum = 0, whplimit = 0, whpcap = 0, prev_mhp = 0, wsegs = 0, mmove = 0, incr = 0, $t1, $t2;
@@ -79,7 +90,7 @@ export async function worm_move(worm) {   // worm.c:196
     seg = wheads[wnum];
     svl.level.monsters[seg.wx][seg.wy] = worm;
     await newsym(seg.wx, seg.wy);
-    new_seg = $c.asRec(await alloc(16), $T.wseg, 16);
+    new_seg = await newseg();
     new_seg.wx = worm.mx;
     new_seg.wy = worm.my;
     new_seg.nseg = null;
@@ -88,11 +99,11 @@ export async function worm_move(worm) {   // worm.c:196
     if (wgrowtime[wnum] <= svm.moves) {
         wsegs = count_wsegs(worm);
         if (!wgrowtime[wnum]) {
-            $t1 = $c.add64(svm.moves, rng_log_enabled() ? (rng_log_set_caller($c.lit("worm.c"), 224, $c.lit("worm_move")), rnd(5)) : rnd(5)), wgrowtime[wnum] = $t1;
+            $t1 = $c.add64(svm.moves, rnd(5)), wgrowtime[wnum] = $t1;
         } else {
-            mmove = mcalcmove(worm, 0);
-            incr = (rng_log_enabled() ? (rng_log_set_caller($c.lit("worm.c"), 233, $c.lit("worm_move")), rn2(10)) : rn2(10)) + 2 | 0;
-            incr = $c.div32(Math.imul(incr, 12), mmove > 1 ? mmove : 1);
+            mmove = mcalcmove(worm, FALSE);
+            incr = rn2(10) + 2 | 0;
+            incr = $c.div32(Math.imul(incr, NORMAL_SPEED), mmove > 1 ? mmove : 1);
             wgrowtime[wnum] = $c.add64(svm.moves, incr);
         }
         whplimit = !worm.m_lev ? 4 : Math.imul(8, worm.m_lev);
@@ -106,15 +117,15 @@ export async function worm_move(worm) {   // worm.c:196
             whplimit = whplimit + Math.imul(6, wsegs - 11 | 0) | 0, wsegs = 11;
         }
         whplimit = whplimit + Math.imul(8, wsegs) | 0;
-        if (whplimit > 500) {
-            whplimit = 500;
+        if (whplimit > MHPMAX) {
+            whplimit = MHPMAX;
         }
         prev_mhp = worm.mhp;
-        $t2 = rng_log_enabled() ? (rng_log_set_caller($c.lit("worm.c"), 257, $c.lit("worm_move")), d(2, 2)) : d(2, 2), worm.mhp = worm.mhp + $t2 | 0;
-        whpcap = whplimit > worm.mhpmax ? whplimit : worm.mhpmax;
+        $t2 = d(2, 2), worm.mhp = worm.mhp + $t2 | 0;
+        whpcap = max(whplimit, worm.mhpmax);
         if (worm.mhp < whpcap) {
             if (worm.mhp > whplimit) {
-                worm.mhp = prev_mhp > whplimit ? prev_mhp : whplimit;
+                worm.mhp = max(prev_mhp, whplimit);
             }
             if (worm.mhp > worm.mhpmax) {
                 worm.mhpmax = worm.mhp;
@@ -132,7 +143,7 @@ export async function worm_nomove(worm) {   // worm.c:288
     let $t1;
     await shrink_worm(worm.wormno | 0);
     if (worm.mhp > count_wsegs(worm)) {
-        $t1 = rng_log_enabled() ? (rng_log_set_caller($c.lit("worm.c"), 293, $c.lit("worm_nomove")), d(2, 2)) : d(2, 2), worm.mhp = worm.mhp - $t1 | 0;
+        $t1 = d(2, 2), worm.mhp = worm.mhp - $t1 | 0;
         if (worm.mhp < 1) {
             worm.mhp = 1;
         }
@@ -145,11 +156,11 @@ export async function wormgone(worm) {   // worm.c:308
         await impossible($c.lit("wormgone: wormno is 0"));
     }
     worm.wormno = (0) & 31;
-    await toss_wsegs(wtails[wnum], 1);
+    await toss_wsegs(wtails[wnum], TRUE);
     $t1 = wtails[wnum] = null, wheads[wnum] = $t1;
     wgrowtime[wnum] = 0;
-    if ($c.peq(worm.data, $c.relem(mons, 114 /* PM_LONG_WORM */)) && (worm.mextra && worm.mextra.mcorpsenm !== -1 /* NON_PM */)) {
-        worm.mextra.mcorpsenm = -1 /* NON_PM */;
+    if ($c.peq(worm.data, $c.relem(mons, PM.LONG_WORM)) && has_mcorpsenm(worm)) {
+        worm.mextra.mcorpsenm = NON_PM;
     }
 }
 export async function wormhitu(worm) {   // worm.c:344
@@ -173,7 +184,7 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
     if (x === worm.mx && y === worm.my) {
         return;
     }
-    cut_chance = rng_log_enabled() ? (rng_log_set_caller($c.lit("worm.c"), 388, $c.lit("cutworm")), rnd(20)) : rnd(20);
+    cut_chance = rnd(20);
     if (cuttier) {
         cut_chance = cut_chance + 10 | 0;
     }
@@ -196,21 +207,21 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
     wtails[wnum] = curr.nseg;
     curr.nseg = null;
     new_worm = null;
-    new_wnum = worm.m_lev >= 3 && !(rng_log_enabled() ? (rng_log_set_caller($c.lit("worm.c"), 427, $c.lit("cutworm")), rn2(3)) : rn2(3)) ? get_wormno() : 0;
+    new_wnum = worm.m_lev >= 3 && !rn2(3) ? get_wormno() : 0;
     if (new_wnum) {
-        svl.level.monsters[x][y] = null;
+        remove_monster(x, y);
         new_worm = await clone_mon(worm, x, y);
     }
     if (!new_worm) {
         svl.level.monsters[x][y] = worm;
         if (svc.context.mon_moving) {
-            if (canseemon(worm) || sensemon(worm)) {
+            if (canspotmon(worm)) {
                 await pline($c.lit("Part of %s tail has been cut off."), s_suffix(await mon_nam(worm)));
             }
         } else {
             await You($c.lit("cut part of the tail off of %s."), await mon_nam(worm));
         }
-        await toss_wsegs(new_tail, 1);
+        await toss_wsegs(new_tail, TRUE);
         if (worm.mhp > 1) {
             worm.mhp = $c.div32(worm.mhp, 2);
         }
@@ -220,8 +231,8 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
     new_worm.mcloned = (0) & 1;
     worm.m_lev = $c.u8(worm.m_lev - 2 >>> 0 > 3 ? worm.m_lev - 2 >>> 0 : 3);
     new_worm.m_lev = worm.m_lev;
-    $t2 = ($t1 = rng_log_enabled() ? (rng_log_set_caller($c.lit("worm.c"), 461, $c.lit("cutworm")), d(new_worm.m_lev, 8)) : d(new_worm.m_lev, 8), new_worm.mhp = $t1), new_worm.mhpmax = $t2;
-    $t3 = rng_log_enabled() ? (rng_log_set_caller($c.lit("worm.c"), 462, $c.lit("cutworm")), d(worm.m_lev, 8)) : d(worm.m_lev, 8), worm.mhpmax = $t3;
+    $t2 = ($t1 = d(new_worm.m_lev, 8), new_worm.mhp = $t1), new_worm.mhpmax = $t2;
+    $t3 = d(worm.m_lev, 8), worm.mhpmax = $t3;
     if (worm.mhpmax < worm.mhp) {
         worm.mhp = worm.mhpmax;
     }
@@ -246,17 +257,17 @@ export async function see_wsegs(worm) {   // worm.c:487
 export async function detect_wsegs(worm, use_detection_glyph) {   // worm.c:503
     let num = 0, curr = null, what_tail = 0;
     curr = wtails[worm.wormno];
-    what_tail = u.uprops[23 /* HALLUC */].intrinsic && !(u.uprops[24 /* HALLUC_RES */].intrinsic || u.uprops[24 /* HALLUC_RES */].extrinsic) ? await rn2_on_display_rng(383 /* NUMMONS */) : 330 /* PM_LONG_WORM_TAIL */;
+    what_tail = u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : PM.LONG_WORM_TAIL;
     while (!$c.peq(curr, wheads[worm.wormno])) {
-        num = use_detection_glyph ? what_tail + ((worm.female | 0 ? 1 /* FEMALE */ : 0 /* MALE */) === 0 /* MALE */ ? 1533 /* GLYPH_DETECT_MALE_OFF */ : 1916 /* GLYPH_DETECT_FEM_OFF */) | 0 : worm.mtame ? what_tail + ((worm.female | 0 ? 1 /* FEMALE */ : 0 /* MALE */) === 0 /* MALE */ ? 766 /* GLYPH_PET_MALE_OFF */ : 1149 /* GLYPH_PET_FEM_OFF */) | 0 : what_tail + ((worm.female | 0 ? 1 /* FEMALE */ : 0 /* MALE */) === 0 /* MALE */ ? 0 /* GLYPH_MON_MALE_OFF */ : 383 /* GLYPH_MON_FEM_OFF */) | 0;
+        num = use_detection_glyph ? detected_monnum_to_glyph(what_tail, worm.female | 0 ? FEMALE : MALE) : worm.mtame ? petnum_to_glyph(what_tail, worm.female | 0 ? FEMALE : MALE) : monnum_to_glyph(what_tail, worm.female | 0 ? FEMALE : MALE);
         await show_glyph(curr.wx, curr.wy, num);
         curr = curr.nseg;
     }
 }
 export async function save_worm(nhfp) {   // worm.c:528
     let i = 0, count = Int32Array.of(0), curr = null, temp = null, $t1;
-    if (nhfp.mode & 3) {
-        for (i = 1; i < 32; i = i + 1 | 0) {
+    if (update_file(nhfp)) {
+        for (i = 1; i < MAX_NUM_WORMS; i = i + 1 | 0) {
             for (count[0] = 0, curr = wtails[i]; curr; curr = curr.nseg) {
                 count[0] = count[0] + 1 | 0;
             }
@@ -268,18 +279,18 @@ export async function save_worm(nhfp) {   // worm.c:528
                 }
             }
         }
-        for (i = 0; i < 32; i = i + 1 | 0) {
+        for (i = 0; i < MAX_NUM_WORMS; i = i + 1 | 0) {
             await sfo_long(nhfp, new $c.Ptr(wgrowtime, i), $c.lit("worm-wgrowtime"));
         }
     }
-    if (nhfp.mode & 4) {
-        for (i = 1; i < 32; i = i + 1 | 0) {
+    if (release_data(nhfp)) {
+        for (i = 1; i < MAX_NUM_WORMS; i = i + 1 | 0) {
             if (!(curr = wtails[i])) {
                 continue;
             }
             while (curr) {
                 temp = curr.nseg;
-                $c.free(curr);
+                dealloc_seg(curr);
                 curr = temp;
             }
             $t1 = wtails[i] = null, wheads[i] = $t1;
@@ -290,10 +301,10 @@ export async function save_worm(nhfp) {   // worm.c:528
 export async function rest_worm(nhfp) {   // worm.c:577
     let i = 0, j = 0, count = Int32Array.of(0), curr = null, temp = null;
     count[0] = 0;
-    for (i = 1; i < 32; i = i + 1 | 0) {
+    for (i = 1; i < MAX_NUM_WORMS; i = i + 1 | 0) {
         await sfi_int(nhfp, new $c.Ptr(count, 0), $c.lit("worm-segment_count"));
         for (curr = null, j = 0; j < count[0]; j = j + 1 | 0) {
-            temp = $c.asRec(await alloc(16), $T.wseg, 16);
+            temp = await newseg();
             temp.nseg = null;
             await sfi_int16(nhfp, new $c.FieldRef(temp, "wx", "i16"), $c.lit("worm-wx"));
             await sfi_int16(nhfp, new $c.FieldRef(temp, "wy", "i16"), $c.lit("worm-wy"));
@@ -306,7 +317,7 @@ export async function rest_worm(nhfp) {   // worm.c:577
         }
         wheads[i] = curr;
     }
-    for (i = 0; i < 32; i = i + 1 | 0) {
+    for (i = 0; i < MAX_NUM_WORMS; i = i + 1 | 0) {
         await sfi_long(nhfp, new $c.Ptr(wgrowtime, i), $c.lit("worm-wgrowtime"));
     }
 }
@@ -318,7 +329,7 @@ export async function place_wsegs(worm, oldworm) {   // worm.c:615
         y = curr.wy;
         mtmp = svl.level.monsters[x][y];
         if (oldworm && $c.peq(mtmp, oldworm)) {
-            svl.level.monsters[x][y] = null;
+            remove_monster(x, y);
         } else if (mtmp) {
             await impossible($c.lit("placing worm seg <%d,%d> over another mon"), x, y);
         } else if (oldworm) {
@@ -411,7 +422,7 @@ export async function place_worm_tail_randomly(worm, x, y) {   // worm.c:738
             new_tail = wtails[wnum];
             await newsym(nx[0], ny[0]);
         } else {
-            await toss_wsegs(curr, 0);
+            await toss_wsegs(curr, FALSE);
             curr = null;
         }
     }
@@ -435,12 +446,12 @@ async function create_worm_tail(num_segs) {   // worm.c:852
     if (!num_segs) {
         return null;
     }
-    new_tail = curr = $c.asRec(await alloc(16), $T.wseg, 16);
+    new_tail = curr = await newseg();
     curr.nseg = null;
     curr.wx = 0;
     curr.wy = 0;
     while (i < num_segs) {
-        $t1 = $c.asRec(await alloc(16), $T.wseg, 16), curr.nseg = $t1;
+        $t1 = await newseg(), curr.nseg = $t1;
         curr = curr.nseg;
         curr.nseg = null;
         curr.wx = 0;
@@ -453,25 +464,25 @@ export function worm_known(worm) {   // worm.c:883
     let curr = null;
     curr = wtails[worm.wormno];
     while (curr) {
-        if ((gv.viz_array.get(curr.wy).get(curr.wx) & 2) !== 0) {
-            return 1;
+        if (cansee(curr.wx, curr.wy)) {
+            return TRUE;
         }
         curr = curr.nseg;
     }
-    return 0;
+    return FALSE;
 }
 export async function worm_cross(x1, y1, x2, y2) {   // worm.c:898
     let worm = null, curr = null, wnxt = null;
     if (distmin($c.i16(x1), $c.i16(y1), $c.i16(x2), $c.i16(y2)) !== 1) {
         await impossible($c.lit("worm_cross checking for non-adjacent location?"));
-        return 0;
+        return FALSE;
     }
     if (x1 === x2 || y1 === y2) {
-        return 0;
+        return FALSE;
     }
     worm = svl.level.monsters[x1][y2];
     if (!worm || !$c.peq(svl.level.monsters[x2][y1], worm)) {
-        return 0;
+        return FALSE;
     }
     for (curr = wtails[worm.wormno]; curr; curr = wnxt) {
         wnxt = curr.nseg;
@@ -485,7 +496,7 @@ export async function worm_cross(x1, y1, x2, y2) {   // worm.c:898
             return $c.i8(wnxt.wx === x1 && wnxt.wy === y2 ? 1 : 0);
         }
     }
-    return 0;
+    return FALSE;
 }
 export function wseg_at(worm, x, y) {   // worm.c:946
     let res = 0, curr = null, i = 0, n = 0, wx = 0, wy = 0;
@@ -530,12 +541,24 @@ export async function redraw_worm(worm) {   // worm.c:990
         curr = curr.nseg;
     }
 }
+async function newseg() {
+    return $c.asRec(await alloc(16), $T.wseg, 16);
+}
+function dealloc_seg(wseg) {
+    $c.free(wseg);
+}
 
 export function $init() {
     wheads.fill(null);
-    wheads[0] = null;
+    $c.init(wheads, [
+        null
+    ]);
     wtails.fill(null);
-    wtails[0] = null;
+    $c.init(wtails, [
+        null
+    ]);
     wgrowtime.fill(0);
-    wgrowtime[0] = 0;
+    $c.init(wgrowtime, [
+        0
+    ]);
 }

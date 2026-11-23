@@ -895,7 +895,7 @@ async function mcast_paralyze(mtmp) {
     }
     nomul(-dmg);
     game.multi_reason = "paralyzed by a monster";
-    game.nomovemsg = 0;
+    game.nomovemsg = null; /* C: (char *) 0 -- "You can move again." */
     return dmg;
 }
 

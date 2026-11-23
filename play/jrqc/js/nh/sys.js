@@ -5,6 +5,8 @@ import { $G } from './globals.js';
 import { dupstr } from './alloc.js';
 import { gc } from './decl.js';
 import { panic } from './end.js';
+import { LL } from './global.h.js';
+import { historical } from './hack.h.js';
 
 export const sysopt = new $T.sysopt_s();
 export async function sys_early_init() {   // sys.c:21
@@ -28,7 +30,7 @@ export async function sys_early_init() {   // sys.c:21
     sysopt.msghandler = null;
     sysopt.maxplayers = 0;
     sysopt.bones_pools = 0;
-    sysopt.livelog = 0;
+    sysopt.livelog = LL.NONE;
     sysopt.persmax = 3;
     sysopt.entrymax = 100;
     sysopt.pointsmin = 1;
@@ -52,7 +54,7 @@ export async function sys_early_init() {   // sys.c:21
     sysopt.check_plname = 0;
     sysopt.seduce = 1;
     sysopt_seduce_set(sysopt.seduce);
-    $t4 = sysopt.bonesformat[0] = 1 /* historical */, sysopt.saveformat[0] = $t4;
+    $t4 = sysopt.bonesformat[0] = historical, sysopt.saveformat[0] = $t4;
     sysopt.accessibility = 0;
     sysopt.hideusage = 0;
     return;

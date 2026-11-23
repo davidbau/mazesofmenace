@@ -3,12 +3,21 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc, dupstr } from './alloc.js';
+import { HL } from './botl.h.js';
 import { config_error_add } from './cfgfiles.js';
+import { CLR, NH_BASIC_COLOR, NO_COLOR, nh_color, rgb_color } from './color.h.js';
 import { cg, gc, gm, gs, hexdd, iflags } from './decl.js';
 import { nul_glyphinfo } from './display.js';
+import { FALSE, TRUE } from './global.h.js';
 import { digit, fuzzymatch, mungspaces, nh_snprintf, strncmpi, strstri } from './hacklib.js';
 import { regex_compile, regex_error_desc, regex_free, regex_id, regex_init } from './posixregex.js';
-import { add_menu, select_menu, windowprocs } from './windows.js';
+import { add_menu, select_menu } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, end_menu, start_menu } from './winprocs.macros.js';
+import { ATR, MENU, NHW, PICK } from './wintype.h.js';
+
+const NHC = 1;
+const NOC = 0;
+const RGBC = 2;
 
 const color_attr_to_str$buf = new Int8Array(256);   // static in color_attr_to_str()
 const add_menu_coloring_parsed$re_error = new Int8Array(22);   // static in add_menu_coloring_parsed()
@@ -19,11 +28,11 @@ export const colortable = $c.recArray($T.nethack_color, 155);
 const color_256_definitions = $c.recArray($T.anon_coloratt_885, 240);
 export function colortable_to_int32(cte) {   // coloratt.c:237
     let clr = 0;
-    clr = 16777224;
-    if (cte.colortyp === 2) {
+    clr = NO_COLOR | NH_BASIC_COLOR;
+    if (cte.colortyp === rgb_color) {
         clr = $c.i32($c.or64($c.or64($c.shl64(cte.r, 16), $c.shl64(cte.g, 8)), cte.b));
-    } else if (cte.colortyp === 1) {
-        clr = cte.tableindex | 16777216;
+    } else if (cte.colortyp === nh_color) {
+        clr = cte.tableindex | NH_BASIC_COLOR;
     }
     return clr;
 }
@@ -34,8 +43,8 @@ export function color_attr_to_str(ca) {   // coloratt.c:249
 export async function color_attr_parse_str(ca, str) {   // coloratt.c:261
     let buf = new Int8Array(256), amp = null, tmp = 0, c = 0, a = 0;
     amp = null;
-    c = 8;
-    a = 0;
+    c = NO_COLOR;
+    a = ATR.NONE;
     $c.__builtin___strncpy_chk(new $c.Ptr(buf, 0), str, 255, 256);
     buf[$c.idx(255)] = 0;
     if ((amp = $c.strchr(new $c.Ptr(buf, 0), 38)) !== null) {
@@ -43,21 +52,21 @@ export async function color_attr_parse_str(ca, str) {   // coloratt.c:261
     }
     if (amp) {
         amp = amp.add(1);
-        c = await match_str2clr(new $c.Ptr(buf, 0), 0);
-        a = await match_str2attr(amp, 1);
-        if (c >= 16 && a === -1) {
-            c = await match_str2clr(amp, 0);
-            a = await match_str2attr(new $c.Ptr(buf, 0), 1);
+        c = await match_str2clr(new $c.Ptr(buf, 0), FALSE);
+        a = await match_str2attr(amp, TRUE);
+        if (c >= CLR.MAX && a === -1) {
+            c = await match_str2clr(amp, FALSE);
+            a = await match_str2attr(new $c.Ptr(buf, 0), TRUE);
         }
-        if (c >= 16 || a === -1) {
-            return 0;
+        if (c >= CLR.MAX || a === -1) {
+            return FALSE;
         }
     } else {
-        tmp = await match_str2attr(new $c.Ptr(buf, 0), 0);
+        tmp = await match_str2attr(new $c.Ptr(buf, 0), FALSE);
         if (tmp === -1) {
-            tmp = await match_str2clr(new $c.Ptr(buf, 0), 0);
-            if (tmp >= 16) {
-                return 0;
+            tmp = await match_str2clr(new $c.Ptr(buf, 0), FALSE);
+            if (tmp >= CLR.MAX) {
+                return FALSE;
             }
             c = tmp;
         } else {
@@ -66,21 +75,21 @@ export async function color_attr_parse_str(ca, str) {   // coloratt.c:261
     }
     ca.attr = a;
     ca.color = c;
-    return 1;
+    return TRUE;
 }
 export async function query_color_attr(ca, prompt) {   // coloratt.c:304
     let c = 0, a = 0;
     c = await query_color(prompt, ca.color);
     if (c === -1) {
-        return 0;
+        return FALSE;
     }
     a = await query_attr(prompt, ca.attr);
     if (a === -1) {
-        return 0;
+        return FALSE;
     }
     ca.color = c;
     ca.attr = a;
-    return 1;
+    return TRUE;
 }
 export function attr2attrname(attr) {   // coloratt.c:320
     let i = 0;
@@ -102,9 +111,9 @@ export function clr2colorname(clr) {   // coloratt.c:338
 }
 export async function match_str2clr(str, suppress_msg) {   // coloratt.c:349
     let i = 0, c = 0;
-    c = 16;
+    c = CLR.MAX;
     for (i = 0; i < 27; i = i + 1 | 0) {
-        if (colornames[i].name && fuzzymatch(str, colornames[i].name, $c.lit(" -_"), 1)) {
+        if (colornames[i].name && fuzzymatch(str, colornames[i].name, $c.lit(" -_"), TRUE)) {
             c = colornames[i].color;
             break;
         }
@@ -112,11 +121,11 @@ export async function match_str2clr(str, suppress_msg) {   // coloratt.c:349
     if (i === 27 && digit(str.get(0))) {
         c = $c.atoi(str);
     }
-    if (c < 0 || c >= 16) {
+    if (c < 0 || c >= CLR.MAX) {
         if (!suppress_msg) {
             await config_error_add($c.lit("Unknown color '%.60s'"), str);
         }
-        c = 16;
+        c = CLR.MAX;
     }
     return c;
 }
@@ -124,7 +133,7 @@ export async function match_str2attr(str, complain) {   // coloratt.c:374
     let i = 0, a = 0;
     a = -1;
     for (i = 0; i < 11; i = i + 1 | 0) {
-        if (attrnames[i].name && fuzzymatch(str, attrnames[i].name, $c.lit(" -_"), 1)) {
+        if (attrnames[i].name && fuzzymatch(str, attrnames[i].name, $c.lit(" -_"), TRUE)) {
             a = attrnames[i].attr;
             break;
         }
@@ -138,47 +147,47 @@ export async function query_attr(prompt, dflt_attr) {   // coloratt.c:396
     let tmpwin = 0, any = new $T.any(), i = 0, pick_cnt = 0, picks = [null], allow_many = 0, clr = 0, j = 0, k = 0;
     picks[0] = null;
     allow_many = $c.i8(prompt && !strncmpi(prompt, $c.lit("Choose"), 6) ? 1 : 0);
-    clr = 8;
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(tmpwin, 0);
+    clr = NO_COLOR;
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);
     for (i = 0; i < 11; i = i + 1 | 0) {
         if (!attrnames[i].name) {
             break;
         }
         any.a_int = i + 1 | 0;
-        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, attrnames[i].attr, clr, attrnames[i].name, attrnames[i].attr === dflt_attr ? 1 : 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, attrnames[i].attr, clr, attrnames[i].name, attrnames[i].attr === dflt_attr ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
-    await windowprocs.win_end_menu(tmpwin, prompt && prompt.get(0) ? prompt : $c.lit("Pick an attribute"));
-    pick_cnt = await select_menu(tmpwin, allow_many ? 2 : 1, new $c.Ptr(picks, 0));
-    await windowprocs.win_destroy_nhwindow(tmpwin);
+    await end_menu()(tmpwin, prompt && prompt.get(0) ? prompt : $c.lit("Pick an attribute"));
+    pick_cnt = await select_menu(tmpwin, allow_many ? PICK.ANY : PICK.ONE, new $c.Ptr(picks, 0));
+    await destroy_nhwindow()(tmpwin);
     if (pick_cnt > 0) {
         k = 0;
         if (allow_many) {
             for (i = 0; i < pick_cnt; i = i + 1 | 0) {
                 j = $c.radd(picks[0], i).item.a_int - 1 | 0;
-                if (attrnames[j].attr !== 0 || pick_cnt === 1) {
+                if (attrnames[j].attr !== ATR.NONE || pick_cnt === 1) {
                     switch (attrnames[j].attr) {
-                        case 0:
-                            k = 1 /* HL_NONE */;
+                        case ATR.NONE:
+                            k = HL.NONE;
                             break;
-                        case 1:
-                            k = k | 2 /* HL_BOLD */;
+                        case ATR.BOLD:
+                            k = k | HL.BOLD;
                             break;
-                        case 2:
-                            k = k | 4 /* HL_DIM */;
+                        case ATR.DIM:
+                            k = k | HL.DIM;
                             break;
-                        case 3:
-                            k = k | 8 /* HL_ITALIC */;
+                        case ATR.ITALIC:
+                            k = k | HL.ITALIC;
                             break;
-                        case 4:
-                            k = k | 16 /* HL_ULINE */;
+                        case ATR.ULINE:
+                            k = k | HL.ULINE;
                             break;
-                        case 5:
-                            k = k | 32 /* HL_BLINK */;
+                        case ATR.BLINK:
+                            k = k | HL.BLINK;
                             break;
-                        case 7:
-                            k = k | 64 /* HL_INVERSE */;
+                        case ATR.INVERSE:
+                            k = k | HL.INVERSE;
                             break;
                     }
                 }
@@ -200,24 +209,24 @@ export async function query_attr(prompt, dflt_attr) {   // coloratt.c:396
 export async function query_color(prompt, dflt_color) {   // coloratt.c:475
     let tmpwin = 0, any = new $T.any(), i = 0, pick_cnt = 0, picks = [null];
     picks[0] = null;
-    await basic_menu_colors(1);
-    tmpwin = await windowprocs.win_create_nhwindow(4);
-    await windowprocs.win_start_menu(tmpwin, 0);
+    await basic_menu_colors(TRUE);
+    tmpwin = await create_nhwindow()(NHW.MENU);
+    await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);
     for (i = 0; i < 27; i = i + 1 | 0) {
         if (!colornames[i].name) {
             break;
         }
         any.a_int = i + 1 | 0;
-        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, 0, 8, colornames[i].name, colornames[i].color === dflt_color ? 1 : 0);
+        await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, NO_COLOR, colornames[i].name, colornames[i].color === dflt_color ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
-    await windowprocs.win_end_menu(tmpwin, prompt && prompt.get(0) ? prompt : $c.lit("Pick a color"));
-    pick_cnt = await select_menu(tmpwin, 1, new $c.Ptr(picks, 0));
-    await windowprocs.win_destroy_nhwindow(tmpwin);
-    await basic_menu_colors(0);
+    await end_menu()(tmpwin, prompt && prompt.get(0) ? prompt : $c.lit("Pick a color"));
+    pick_cnt = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
+    await destroy_nhwindow()(tmpwin);
+    await basic_menu_colors(FALSE);
     if (pick_cnt > 0) {
         i = colornames[$c.radd(picks[0], 0).item.a_int - 1 | 0].color;
-        if (pick_cnt === 2 && i === 8) {
+        if (pick_cnt === 2 && i === NO_COLOR) {
             i = colornames[$c.radd(picks[0], 1).item.a_int - 1 | 0].color;
         }
         $c.free(picks[0]);
@@ -232,7 +241,7 @@ export async function basic_menu_colors(load_colors) {   // coloratt.c:530
     if (load_colors) {
         gs.save_menucolors = iflags.use_menu_color;
         gs.save_colorings = gm.menu_colorings;
-        iflags.use_menu_color = 1;
+        iflags.use_menu_color = TRUE;
         if (gc.color_colorings) {
             gm.menu_colorings = gc.color_colorings;
         } else {
@@ -244,11 +253,11 @@ export async function basic_menu_colors(load_colors) {   // coloratt.c:530
                     break;
                 }
                 c = colornames[i].color;
-                if (c === 0 || c === 15 || c === 8) {
+                if (c === CLR.BLACK || c === CLR.WHITE || c === NO_COLOR) {
                     continue;
                 }
                 $c.__builtin___sprintf_chk(new $c.Ptr(cnm, 0), 0, 128, patternfmt, colornames[i].name);
-                await add_menu_coloring_parsed(new $c.Ptr(cnm, 0), c, 0);
+                await add_menu_coloring_parsed(new $c.Ptr(cnm, 0), c, ATR.NONE);
             }
             gc.color_colorings = gm.menu_colorings;
         }
@@ -260,7 +269,7 @@ export async function basic_menu_colors(load_colors) {   // coloratt.c:530
 export async function add_menu_coloring_parsed(str, c, a) {   // coloratt.c:585
     let tmp = null, errbuf = new Int8Array(256), re_error_desc = null, $t1, $t2;
     if (!str) {
-        return 0;
+        return FALSE;
     }
     tmp = $c.asRec(await alloc(32), $T.menucoloring, 32);
     $t1 = await regex_init(), tmp.match = $t1;
@@ -269,40 +278,40 @@ export async function add_menu_coloring_parsed(str, c, a) {   // coloratt.c:585
         regex_free(tmp.match);
         $c.free(tmp);
         await config_error_add($c.lit("%s: %s"), new $c.Ptr(add_menu_coloring_parsed$re_error, 0), re_error_desc);
-        return 0;
+        return FALSE;
     }
     tmp.next = gm.menu_colorings;
     $t2 = await dupstr(str), tmp.origstr = $t2;
     tmp.color = c;
     tmp.attr = a;
     gm.menu_colorings = tmp;
-    iflags.use_menu_color = 1;
-    return 1;
+    iflags.use_menu_color = TRUE;
+    return TRUE;
 }
 export async function add_menu_coloring(tmpstr) {   // coloratt.c:617
     let c = 0, a = 0, tmps = null, cs = null, amp = null, str = new Int8Array(256);
-    c = 8;
-    a = 0;
+    c = NO_COLOR;
+    a = ATR.NONE;
     $c.__builtin___strncpy_chk(new $c.Ptr(str, 0), tmpstr, 255, 256);
     str[$c.idx(255)] = 0;
     if ((cs = $c.strchr(new $c.Ptr(str, 0), 61)) === null) {
         await config_error_add($c.lit("Malformed MENUCOLOR"));
-        return 0;
+        return FALSE;
     }
     tmps = cs.add(1);
     mungspaces(tmps);
     if ((amp = $c.strchr(tmps, 38)) !== null) {
         amp.set(0, 0);
     }
-    c = await match_str2clr(tmps, 0);
-    if (c >= 16) {
-        return 0;
+    c = await match_str2clr(tmps, FALSE);
+    if (c >= CLR.MAX) {
+        return FALSE;
     }
     if (amp) {
         tmps = amp.add(1);
-        a = await match_str2attr(tmps, 1);
+        a = await match_str2attr(tmps, TRUE);
         if (a === -1) {
-            return 0;
+            return FALSE;
         }
     }
     cs.set(0, 0);
@@ -366,8 +375,8 @@ export async function check_enhanced_colors(buf) {   // coloratt.c:723
     let xtra = Int8Array.of(0), r = Uint32Array.of(0), g = Uint32Array.of(0), b = Uint32Array.of(0), retcolor = 0, color = 0, altbuf = null, grey = null, greyoffset = 0;
     xtra[0] = 0;
     retcolor = -1;
-    if ((color = await match_str2clr(buf, 1)) !== 16) {
-        retcolor = color | 16777216;
+    if ((color = await match_str2clr(buf, TRUE)) !== CLR.MAX) {
+        retcolor = color | NH_BASIC_COLOR;
     } else if ($c.sscanf(buf, $c.lit("#%02x%02x%02x%c"), new $c.Ptr(r, 0), new $c.Ptr(g, 0), new $c.Ptr(b, 0), new $c.Ptr(xtra, 0)) >= 3) {
         retcolor = !xtra[0] ? ((r[0] << 16 >>> 0 | g[0] << 8 >>> 0) >>> 0 | b[0]) >>> 0 | 0 : -1;
     } else {
@@ -379,7 +388,7 @@ export async function check_enhanced_colors(buf) {   // coloratt.c:723
             $c.__builtin___memcpy_chk(altbuf.add($c.idx(greyoffset)), $c.lit("gray"), 4, -1);
         }
         for (color = 0; color < 155; color = color + 1 | 0) {
-            if (fuzzymatch(buf, colortable[color].name, $c.lit(" -_"), 1) || altbuf && fuzzymatch(altbuf, colortable[color].name, $c.lit(" -_"), 1)) {
+            if (fuzzymatch(buf, colortable[color].name, $c.lit(" -_"), TRUE) || altbuf && fuzzymatch(altbuf, colortable[color].name, $c.lit(" -_"), TRUE)) {
                 retcolor = colortable_to_int32($c.relem(colortable, color));
                 break;
             }
@@ -394,7 +403,7 @@ export function wc_color_name(colorindx) {   // coloratt.c:764
     let result = null, basicindx = 0, indx = 0, r = 0, g = 0, b = 0;
     result = $c.lit("no-color");
     if (colorindx >= 0) {
-        basicindx = colorindx & -16777217;
+        basicindx = colorindx & ~NH_BASIC_COLOR;
         if (basicindx !== colorindx) {
             (!(basicindx < 16) ? 1 : 0) ? $c.__assert_rtn($c.lit("wc_color_name"), $c.lit("coloratt.c"), 775, $c.lit("basicindx < 16")) : 0;
             result = colortable[basicindx].name;
@@ -419,16 +428,16 @@ export function onlyhexdigits(buf) {   // coloratt.c:801
     dp = buf;
     for (dp = buf; dp.get(0); dp = dp.add(1)) {
         if (!($c.strchr(new $c.Ptr(hexdd, 0), dp.get(0)) || dp.get(0) === 45)) {
-            return 0;
+            return FALSE;
         }
     }
-    return 1;
+    return TRUE;
 }
 export async function rgbstr_to_int32(rgbstr) {   // coloratt.c:813
     let r = 0, g = 0, b = 0, milestone = 0, cp = null, c_r = null, c_g = null, c_b = null, rgb = 0, buf = new Int8Array(256), dash = 0;
     milestone = 0;
     rgb = 0;
-    dash = 0;
+    dash = FALSE;
     nh_snprintf($c.lit("rgbstr_to_int32"), 823, new $c.Ptr(buf, 0), 256, $c.lit("%s"), rgbstr ? rgbstr : $c.lit(""));
     if (new $c.Ptr(buf, 0).get(0) && onlyhexdigits(new $c.Ptr(buf, 0))) {
         c_g = c_b = null;
@@ -438,7 +447,7 @@ export async function rgbstr_to_int32(rgbstr) {   // coloratt.c:813
                 if (cp.get(0) === 45) {
                     cp.set(0, 0);
                     milestone = milestone + 1 | 0;
-                    dash = 1;
+                    dash = TRUE;
                 }
                 cp = cp.add(1);
                 if (dash) {
@@ -447,7 +456,7 @@ export async function rgbstr_to_int32(rgbstr) {   // coloratt.c:813
                     } else {
                         c_b = cp;
                     }
-                    dash = 0;
+                    dash = FALSE;
                 }
             } else {
                 return -1;
@@ -501,7 +510,7 @@ export function closest_color(lcolor, closecolor, clridx) {   // coloratt.c:997
     let i = 0, color_index = 0, similar = 0, current = 0, retbool = 0;
     color_index = -1;
     similar = 2147483647;
-    retbool = 0;
+    retbool = FALSE;
     for (i = 0; i < 240; i = i + 1 | 0) {
         if (lcolor === color_256_definitions[i].value) {
             color_index = i;
@@ -516,13 +525,13 @@ export function closest_color(lcolor, closecolor, clridx) {   // coloratt.c:997
     if (closecolor && clridx && color_index >= 0) {
         closecolor.set(0, color_256_definitions[color_index].value);
         clridx.set(0, $c.u16(color_256_definitions[color_index].index));
-        retbool = 1;
+        retbool = TRUE;
     }
     return retbool;
 }
 export function get_nhcolor_from_256_index(idx) {   // coloratt.c:1024
     let retcolor = 0;
-    retcolor = 16777224;
+    retcolor = NO_COLOR | NH_BASIC_COLOR;
     if (idx >= 0 && idx < 240) {
         retcolor = color_256_definitions[idx].value;
     }
@@ -533,1656 +542,459 @@ export function $init() {
     for (let $i0 = 0; $i0 < 27; $i0++) {
         colornames[$i0].$copyFrom(new $T.color_names());
     }
-    colornames[0].name = $c.lit("black");
-    colornames[0].color = 0;
-    colornames[1].name = $c.lit("red");
-    colornames[1].color = 1;
-    colornames[2].name = $c.lit("green");
-    colornames[2].color = 2;
-    colornames[3].name = $c.lit("brown");
-    colornames[3].color = 3;
-    colornames[4].name = $c.lit("blue");
-    colornames[4].color = 4;
-    colornames[5].name = $c.lit("magenta");
-    colornames[5].color = 5;
-    colornames[6].name = $c.lit("cyan");
-    colornames[6].color = 6;
-    colornames[7].name = $c.lit("gray");
-    colornames[7].color = 7;
-    colornames[8].name = $c.lit("orange");
-    colornames[8].color = 9;
-    colornames[9].name = $c.lit("light green");
-    colornames[9].color = 10;
-    colornames[10].name = $c.lit("yellow");
-    colornames[10].color = 11;
-    colornames[11].name = $c.lit("light blue");
-    colornames[11].color = 12;
-    colornames[12].name = $c.lit("light magenta");
-    colornames[12].color = 13;
-    colornames[13].name = $c.lit("light cyan");
-    colornames[13].color = 14;
-    colornames[14].name = $c.lit("white");
-    colornames[14].color = 15;
-    colornames[15].name = $c.lit("no color");
-    colornames[15].color = 8;
-    colornames[16].name = null;
-    colornames[16].color = 0;
-    colornames[17].name = $c.lit("transparent");
-    colornames[17].color = 8;
-    colornames[18].name = $c.lit("purple");
-    colornames[18].color = 5;
-    colornames[19].name = $c.lit("light purple");
-    colornames[19].color = 13;
-    colornames[20].name = $c.lit("bright purple");
-    colornames[20].color = 13;
-    colornames[21].name = $c.lit("grey");
-    colornames[21].color = 7;
-    colornames[22].name = $c.lit("bright red");
-    colornames[22].color = 9;
-    colornames[23].name = $c.lit("bright green");
-    colornames[23].color = 10;
-    colornames[24].name = $c.lit("bright blue");
-    colornames[24].color = 12;
-    colornames[25].name = $c.lit("bright magenta");
-    colornames[25].color = 13;
-    colornames[26].name = $c.lit("bright cyan");
-    colornames[26].color = 14;
+    $c.init(colornames, [
+        { name: $c.lit("black"), color: CLR.BLACK },
+        { name: $c.lit("red"), color: CLR.RED },
+        { name: $c.lit("green"), color: CLR.GREEN },
+        { name: $c.lit("brown"), color: CLR.BROWN },
+        { name: $c.lit("blue"), color: CLR.BLUE },
+        { name: $c.lit("magenta"), color: CLR.MAGENTA },
+        { name: $c.lit("cyan"), color: CLR.CYAN },
+        { name: $c.lit("gray"), color: CLR.GRAY },
+        { name: $c.lit("orange"), color: CLR.ORANGE },
+        { name: $c.lit("light green"), color: CLR.BRIGHT_GREEN },
+        { name: $c.lit("yellow"), color: CLR.YELLOW },
+        { name: $c.lit("light blue"), color: CLR.BRIGHT_BLUE },
+        { name: $c.lit("light magenta"), color: CLR.BRIGHT_MAGENTA },
+        { name: $c.lit("light cyan"), color: CLR.BRIGHT_CYAN },
+        { name: $c.lit("white"), color: CLR.WHITE },
+        { name: $c.lit("no color"), color: NO_COLOR },
+        {},
+        { name: $c.lit("transparent"), color: NO_COLOR },
+        { name: $c.lit("purple"), color: CLR.MAGENTA },
+        { name: $c.lit("light purple"), color: CLR.BRIGHT_MAGENTA },
+        { name: $c.lit("bright purple"), color: CLR.BRIGHT_MAGENTA },
+        { name: $c.lit("grey"), color: CLR.GRAY },
+        { name: $c.lit("bright red"), color: CLR.ORANGE },
+        { name: $c.lit("bright green"), color: CLR.BRIGHT_GREEN },
+        { name: $c.lit("bright blue"), color: CLR.BRIGHT_BLUE },
+        { name: $c.lit("bright magenta"), color: CLR.BRIGHT_MAGENTA },
+        { name: $c.lit("bright cyan"), color: CLR.BRIGHT_CYAN }
+    ]);
     for (let $i0 = 0; $i0 < 11; $i0++) {
         attrnames[$i0].$copyFrom(new $T.attr_names());
     }
-    attrnames[0].name = $c.lit("none");
-    attrnames[0].attr = 0;
-    attrnames[1].name = $c.lit("bold");
-    attrnames[1].attr = 1;
-    attrnames[2].name = $c.lit("dim");
-    attrnames[2].attr = 2;
-    attrnames[3].name = $c.lit("italic");
-    attrnames[3].attr = 3;
-    attrnames[4].name = $c.lit("underline");
-    attrnames[4].attr = 4;
-    attrnames[5].name = $c.lit("blink");
-    attrnames[5].attr = 5;
-    attrnames[6].name = $c.lit("inverse");
-    attrnames[6].attr = 7;
-    attrnames[7].name = null;
-    attrnames[7].attr = 0;
-    attrnames[8].name = $c.lit("normal");
-    attrnames[8].attr = 0;
-    attrnames[9].name = $c.lit("uline");
-    attrnames[9].attr = 4;
-    attrnames[10].name = $c.lit("reverse");
-    attrnames[10].attr = 7;
+    $c.init(attrnames, [
+        { name: $c.lit("none"), attr: ATR.NONE },
+        { name: $c.lit("bold"), attr: ATR.BOLD },
+        { name: $c.lit("dim"), attr: ATR.DIM },
+        { name: $c.lit("italic"), attr: ATR.ITALIC },
+        { name: $c.lit("underline"), attr: ATR.ULINE },
+        { name: $c.lit("blink"), attr: ATR.BLINK },
+        { name: $c.lit("inverse"), attr: ATR.INVERSE },
+        {},
+        { name: $c.lit("normal"), attr: ATR.NONE },
+        { name: $c.lit("uline"), attr: ATR.ULINE },
+        { name: $c.lit("reverse"), attr: ATR.INVERSE }
+    ]);
     for (let $i0 = 0; $i0 < 155; $i0++) {
         colortable[$i0].$copyFrom(new $T.nethack_color());
     }
-    colortable[0].colortyp = 1;
-    colortable[0].tableindex = 0;
-    colortable[0].rgbindex = 0;
-    colortable[0].name = $c.lit("black");
-    colortable[0].r = 0;
-    colortable[0].g = 0;
-    colortable[0].b = 0;
-    colortable[1].colortyp = 1;
-    colortable[1].tableindex = 1;
-    colortable[1].rgbindex = 0;
-    colortable[1].name = $c.lit("red");
-    colortable[1].r = 255;
-    colortable[1].g = 0;
-    colortable[1].b = 0;
-    colortable[2].colortyp = 1;
-    colortable[2].tableindex = 2;
-    colortable[2].rgbindex = 0;
-    colortable[2].name = $c.lit("green");
-    colortable[2].r = 34;
-    colortable[2].g = 139;
-    colortable[2].b = 34;
-    colortable[3].colortyp = 1;
-    colortable[3].tableindex = 3;
-    colortable[3].rgbindex = 0;
-    colortable[3].name = $c.lit("brown");
-    colortable[3].r = 165;
-    colortable[3].g = 42;
-    colortable[3].b = 42;
-    colortable[4].colortyp = 1;
-    colortable[4].tableindex = 4;
-    colortable[4].rgbindex = 0;
-    colortable[4].name = $c.lit("blue");
-    colortable[4].r = 0;
-    colortable[4].g = 0;
-    colortable[4].b = 255;
-    colortable[5].colortyp = 1;
-    colortable[5].tableindex = 5;
-    colortable[5].rgbindex = 0;
-    colortable[5].name = $c.lit("magenta");
-    colortable[5].r = 255;
-    colortable[5].g = 0;
-    colortable[5].b = 255;
-    colortable[6].colortyp = 1;
-    colortable[6].tableindex = 6;
-    colortable[6].rgbindex = 0;
-    colortable[6].name = $c.lit("cyan");
-    colortable[6].r = 0;
-    colortable[6].g = 255;
-    colortable[6].b = 255;
-    colortable[7].colortyp = 1;
-    colortable[7].tableindex = 7;
-    colortable[7].rgbindex = 0;
-    colortable[7].name = $c.lit("gray");
-    colortable[7].r = 128;
-    colortable[7].g = 128;
-    colortable[7].b = 128;
-    colortable[8].colortyp = 0;
-    colortable[8].tableindex = 8;
-    colortable[8].rgbindex = 0;
-    colortable[8].name = $c.lit("nocolor");
-    colortable[8].r = 0;
-    colortable[8].g = 0;
-    colortable[8].b = 0;
-    colortable[9].colortyp = 1;
-    colortable[9].tableindex = 9;
-    colortable[9].rgbindex = 0;
-    colortable[9].name = $c.lit("orange");
-    colortable[9].r = 255;
-    colortable[9].g = 165;
-    colortable[9].b = 0;
-    colortable[10].colortyp = 1;
-    colortable[10].tableindex = 10;
-    colortable[10].rgbindex = 0;
-    colortable[10].name = $c.lit("bright-green");
-    colortable[10].r = 0;
-    colortable[10].g = 128;
-    colortable[10].b = 0;
-    colortable[11].colortyp = 1;
-    colortable[11].tableindex = 11;
-    colortable[11].rgbindex = 0;
-    colortable[11].name = $c.lit("yellow");
-    colortable[11].r = 255;
-    colortable[11].g = 255;
-    colortable[11].b = 0;
-    colortable[12].colortyp = 1;
-    colortable[12].tableindex = 12;
-    colortable[12].rgbindex = 0;
-    colortable[12].name = $c.lit("bright-blue");
-    colortable[12].r = 173;
-    colortable[12].g = 216;
-    colortable[12].b = 230;
-    colortable[13].colortyp = 1;
-    colortable[13].tableindex = 13;
-    colortable[13].rgbindex = 0;
-    colortable[13].name = $c.lit("bright-magenta");
-    colortable[13].r = 147;
-    colortable[13].g = 112;
-    colortable[13].b = 219;
-    colortable[14].colortyp = 1;
-    colortable[14].tableindex = 14;
-    colortable[14].rgbindex = 0;
-    colortable[14].name = $c.lit("light-cyan");
-    colortable[14].r = 224;
-    colortable[14].g = 255;
-    colortable[14].b = 255;
-    colortable[15].colortyp = 1;
-    colortable[15].tableindex = 15;
-    colortable[15].rgbindex = 0;
-    colortable[15].name = $c.lit("white");
-    colortable[15].r = 255;
-    colortable[15].g = 255;
-    colortable[15].b = 255;
-    colortable[16].colortyp = 2;
-    colortable[16].tableindex = 16;
-    colortable[16].rgbindex = 0;
-    colortable[16].name = $c.lit("maroon");
-    colortable[16].r = 128;
-    colortable[16].g = 0;
-    colortable[16].b = 0;
-    colortable[17].colortyp = 2;
-    colortable[17].tableindex = 17;
-    colortable[17].rgbindex = 1;
-    colortable[17].name = $c.lit("dark-red");
-    colortable[17].r = 139;
-    colortable[17].g = 0;
-    colortable[17].b = 0;
-    colortable[18].colortyp = 2;
-    colortable[18].tableindex = 18;
-    colortable[18].rgbindex = 2;
-    colortable[18].name = $c.lit("brown");
-    colortable[18].r = 165;
-    colortable[18].g = 42;
-    colortable[18].b = 42;
-    colortable[19].colortyp = 2;
-    colortable[19].tableindex = 19;
-    colortable[19].rgbindex = 3;
-    colortable[19].name = $c.lit("firebrick");
-    colortable[19].r = 178;
-    colortable[19].g = 34;
-    colortable[19].b = 34;
-    colortable[20].colortyp = 2;
-    colortable[20].tableindex = 20;
-    colortable[20].rgbindex = 4;
-    colortable[20].name = $c.lit("crimson");
-    colortable[20].r = 220;
-    colortable[20].g = 20;
-    colortable[20].b = 60;
-    colortable[21].colortyp = 2;
-    colortable[21].tableindex = 21;
-    colortable[21].rgbindex = 5;
-    colortable[21].name = $c.lit("red");
-    colortable[21].r = 255;
-    colortable[21].g = 0;
-    colortable[21].b = 0;
-    colortable[22].colortyp = 2;
-    colortable[22].tableindex = 22;
-    colortable[22].rgbindex = 6;
-    colortable[22].name = $c.lit("tomato");
-    colortable[22].r = 255;
-    colortable[22].g = 99;
-    colortable[22].b = 71;
-    colortable[23].colortyp = 2;
-    colortable[23].tableindex = 23;
-    colortable[23].rgbindex = 7;
-    colortable[23].name = $c.lit("coral");
-    colortable[23].r = 255;
-    colortable[23].g = 127;
-    colortable[23].b = 80;
-    colortable[24].colortyp = 2;
-    colortable[24].tableindex = 24;
-    colortable[24].rgbindex = 8;
-    colortable[24].name = $c.lit("indian-red");
-    colortable[24].r = 205;
-    colortable[24].g = 92;
-    colortable[24].b = 92;
-    colortable[25].colortyp = 2;
-    colortable[25].tableindex = 25;
-    colortable[25].rgbindex = 9;
-    colortable[25].name = $c.lit("light-coral");
-    colortable[25].r = 240;
-    colortable[25].g = 128;
-    colortable[25].b = 128;
-    colortable[26].colortyp = 2;
-    colortable[26].tableindex = 26;
-    colortable[26].rgbindex = 10;
-    colortable[26].name = $c.lit("dark-salmon");
-    colortable[26].r = 233;
-    colortable[26].g = 150;
-    colortable[26].b = 122;
-    colortable[27].colortyp = 2;
-    colortable[27].tableindex = 27;
-    colortable[27].rgbindex = 11;
-    colortable[27].name = $c.lit("salmon");
-    colortable[27].r = 250;
-    colortable[27].g = 128;
-    colortable[27].b = 114;
-    colortable[28].colortyp = 2;
-    colortable[28].tableindex = 28;
-    colortable[28].rgbindex = 12;
-    colortable[28].name = $c.lit("light-salmon");
-    colortable[28].r = 255;
-    colortable[28].g = 160;
-    colortable[28].b = 122;
-    colortable[29].colortyp = 2;
-    colortable[29].tableindex = 29;
-    colortable[29].rgbindex = 13;
-    colortable[29].name = $c.lit("orange-red");
-    colortable[29].r = 255;
-    colortable[29].g = 69;
-    colortable[29].b = 0;
-    colortable[30].colortyp = 2;
-    colortable[30].tableindex = 30;
-    colortable[30].rgbindex = 14;
-    colortable[30].name = $c.lit("dark-orange");
-    colortable[30].r = 255;
-    colortable[30].g = 140;
-    colortable[30].b = 0;
-    colortable[31].colortyp = 2;
-    colortable[31].tableindex = 31;
-    colortable[31].rgbindex = 15;
-    colortable[31].name = $c.lit("orange");
-    colortable[31].r = 255;
-    colortable[31].g = 165;
-    colortable[31].b = 0;
-    colortable[32].colortyp = 2;
-    colortable[32].tableindex = 32;
-    colortable[32].rgbindex = 16;
-    colortable[32].name = $c.lit("gold");
-    colortable[32].r = 255;
-    colortable[32].g = 215;
-    colortable[32].b = 0;
-    colortable[33].colortyp = 2;
-    colortable[33].tableindex = 33;
-    colortable[33].rgbindex = 17;
-    colortable[33].name = $c.lit("dark-golden-rod");
-    colortable[33].r = 184;
-    colortable[33].g = 134;
-    colortable[33].b = 11;
-    colortable[34].colortyp = 2;
-    colortable[34].tableindex = 34;
-    colortable[34].rgbindex = 18;
-    colortable[34].name = $c.lit("golden-rod");
-    colortable[34].r = 218;
-    colortable[34].g = 165;
-    colortable[34].b = 32;
-    colortable[35].colortyp = 2;
-    colortable[35].tableindex = 35;
-    colortable[35].rgbindex = 19;
-    colortable[35].name = $c.lit("pale-golden-rod");
-    colortable[35].r = 238;
-    colortable[35].g = 232;
-    colortable[35].b = 170;
-    colortable[36].colortyp = 2;
-    colortable[36].tableindex = 36;
-    colortable[36].rgbindex = 20;
-    colortable[36].name = $c.lit("dark-khaki");
-    colortable[36].r = 189;
-    colortable[36].g = 183;
-    colortable[36].b = 107;
-    colortable[37].colortyp = 2;
-    colortable[37].tableindex = 37;
-    colortable[37].rgbindex = 21;
-    colortable[37].name = $c.lit("khaki");
-    colortable[37].r = 240;
-    colortable[37].g = 230;
-    colortable[37].b = 140;
-    colortable[38].colortyp = 2;
-    colortable[38].tableindex = 38;
-    colortable[38].rgbindex = 22;
-    colortable[38].name = $c.lit("olive");
-    colortable[38].r = 128;
-    colortable[38].g = 128;
-    colortable[38].b = 0;
-    colortable[39].colortyp = 2;
-    colortable[39].tableindex = 39;
-    colortable[39].rgbindex = 23;
-    colortable[39].name = $c.lit("yellow");
-    colortable[39].r = 255;
-    colortable[39].g = 255;
-    colortable[39].b = 0;
-    colortable[40].colortyp = 2;
-    colortable[40].tableindex = 40;
-    colortable[40].rgbindex = 24;
-    colortable[40].name = $c.lit("yellow-green");
-    colortable[40].r = 154;
-    colortable[40].g = 205;
-    colortable[40].b = 50;
-    colortable[41].colortyp = 2;
-    colortable[41].tableindex = 41;
-    colortable[41].rgbindex = 25;
-    colortable[41].name = $c.lit("dark-olive-green");
-    colortable[41].r = 85;
-    colortable[41].g = 107;
-    colortable[41].b = 47;
-    colortable[42].colortyp = 2;
-    colortable[42].tableindex = 42;
-    colortable[42].rgbindex = 26;
-    colortable[42].name = $c.lit("olive-drab");
-    colortable[42].r = 107;
-    colortable[42].g = 142;
-    colortable[42].b = 35;
-    colortable[43].colortyp = 2;
-    colortable[43].tableindex = 43;
-    colortable[43].rgbindex = 27;
-    colortable[43].name = $c.lit("lawn-green");
-    colortable[43].r = 124;
-    colortable[43].g = 252;
-    colortable[43].b = 0;
-    colortable[44].colortyp = 2;
-    colortable[44].tableindex = 44;
-    colortable[44].rgbindex = 28;
-    colortable[44].name = $c.lit("chart-reuse");
-    colortable[44].r = 127;
-    colortable[44].g = 255;
-    colortable[44].b = 0;
-    colortable[45].colortyp = 2;
-    colortable[45].tableindex = 45;
-    colortable[45].rgbindex = 29;
-    colortable[45].name = $c.lit("green-yellow");
-    colortable[45].r = 173;
-    colortable[45].g = 255;
-    colortable[45].b = 47;
-    colortable[46].colortyp = 2;
-    colortable[46].tableindex = 46;
-    colortable[46].rgbindex = 30;
-    colortable[46].name = $c.lit("dark-green");
-    colortable[46].r = 0;
-    colortable[46].g = 100;
-    colortable[46].b = 0;
-    colortable[47].colortyp = 2;
-    colortable[47].tableindex = 47;
-    colortable[47].rgbindex = 31;
-    colortable[47].name = $c.lit("green");
-    colortable[47].r = 0;
-    colortable[47].g = 128;
-    colortable[47].b = 0;
-    colortable[48].colortyp = 2;
-    colortable[48].tableindex = 48;
-    colortable[48].rgbindex = 32;
-    colortable[48].name = $c.lit("forest-green");
-    colortable[48].r = 34;
-    colortable[48].g = 139;
-    colortable[48].b = 34;
-    colortable[49].colortyp = 2;
-    colortable[49].tableindex = 49;
-    colortable[49].rgbindex = 33;
-    colortable[49].name = $c.lit("lime");
-    colortable[49].r = 0;
-    colortable[49].g = 255;
-    colortable[49].b = 0;
-    colortable[50].colortyp = 2;
-    colortable[50].tableindex = 50;
-    colortable[50].rgbindex = 34;
-    colortable[50].name = $c.lit("lime-green");
-    colortable[50].r = 50;
-    colortable[50].g = 205;
-    colortable[50].b = 50;
-    colortable[51].colortyp = 2;
-    colortable[51].tableindex = 51;
-    colortable[51].rgbindex = 35;
-    colortable[51].name = $c.lit("light-green");
-    colortable[51].r = 144;
-    colortable[51].g = 238;
-    colortable[51].b = 144;
-    colortable[52].colortyp = 2;
-    colortable[52].tableindex = 52;
-    colortable[52].rgbindex = 36;
-    colortable[52].name = $c.lit("pale-green");
-    colortable[52].r = 152;
-    colortable[52].g = 251;
-    colortable[52].b = 152;
-    colortable[53].colortyp = 2;
-    colortable[53].tableindex = 53;
-    colortable[53].rgbindex = 37;
-    colortable[53].name = $c.lit("dark-sea-green");
-    colortable[53].r = 143;
-    colortable[53].g = 188;
-    colortable[53].b = 143;
-    colortable[54].colortyp = 2;
-    colortable[54].tableindex = 54;
-    colortable[54].rgbindex = 38;
-    colortable[54].name = $c.lit("medium-spring-green");
-    colortable[54].r = 0;
-    colortable[54].g = 250;
-    colortable[54].b = 154;
-    colortable[55].colortyp = 2;
-    colortable[55].tableindex = 55;
-    colortable[55].rgbindex = 39;
-    colortable[55].name = $c.lit("spring-green");
-    colortable[55].r = 0;
-    colortable[55].g = 255;
-    colortable[55].b = 127;
-    colortable[56].colortyp = 2;
-    colortable[56].tableindex = 56;
-    colortable[56].rgbindex = 40;
-    colortable[56].name = $c.lit("sea-green");
-    colortable[56].r = 46;
-    colortable[56].g = 139;
-    colortable[56].b = 87;
-    colortable[57].colortyp = 2;
-    colortable[57].tableindex = 57;
-    colortable[57].rgbindex = 41;
-    colortable[57].name = $c.lit("medium-aqua-marine");
-    colortable[57].r = 102;
-    colortable[57].g = 205;
-    colortable[57].b = 170;
-    colortable[58].colortyp = 2;
-    colortable[58].tableindex = 58;
-    colortable[58].rgbindex = 42;
-    colortable[58].name = $c.lit("medium-sea-green");
-    colortable[58].r = 60;
-    colortable[58].g = 179;
-    colortable[58].b = 113;
-    colortable[59].colortyp = 2;
-    colortable[59].tableindex = 59;
-    colortable[59].rgbindex = 43;
-    colortable[59].name = $c.lit("light-sea-green");
-    colortable[59].r = 32;
-    colortable[59].g = 178;
-    colortable[59].b = 170;
-    colortable[60].colortyp = 2;
-    colortable[60].tableindex = 60;
-    colortable[60].rgbindex = 44;
-    colortable[60].name = $c.lit("dark-slate-gray");
-    colortable[60].r = 47;
-    colortable[60].g = 79;
-    colortable[60].b = 79;
-    colortable[61].colortyp = 2;
-    colortable[61].tableindex = 61;
-    colortable[61].rgbindex = 45;
-    colortable[61].name = $c.lit("teal");
-    colortable[61].r = 0;
-    colortable[61].g = 128;
-    colortable[61].b = 128;
-    colortable[62].colortyp = 2;
-    colortable[62].tableindex = 62;
-    colortable[62].rgbindex = 46;
-    colortable[62].name = $c.lit("dark-cyan");
-    colortable[62].r = 0;
-    colortable[62].g = 139;
-    colortable[62].b = 139;
-    colortable[63].colortyp = 2;
-    colortable[63].tableindex = 63;
-    colortable[63].rgbindex = 47;
-    colortable[63].name = $c.lit("aqua");
-    colortable[63].r = 0;
-    colortable[63].g = 255;
-    colortable[63].b = 255;
-    colortable[64].colortyp = 2;
-    colortable[64].tableindex = 64;
-    colortable[64].rgbindex = 48;
-    colortable[64].name = $c.lit("cyan");
-    colortable[64].r = 0;
-    colortable[64].g = 255;
-    colortable[64].b = 255;
-    colortable[65].colortyp = 2;
-    colortable[65].tableindex = 65;
-    colortable[65].rgbindex = 49;
-    colortable[65].name = $c.lit("light-cyan");
-    colortable[65].r = 224;
-    colortable[65].g = 255;
-    colortable[65].b = 255;
-    colortable[66].colortyp = 2;
-    colortable[66].tableindex = 66;
-    colortable[66].rgbindex = 50;
-    colortable[66].name = $c.lit("dark-turquoise");
-    colortable[66].r = 0;
-    colortable[66].g = 206;
-    colortable[66].b = 209;
-    colortable[67].colortyp = 2;
-    colortable[67].tableindex = 67;
-    colortable[67].rgbindex = 51;
-    colortable[67].name = $c.lit("turquoise");
-    colortable[67].r = 64;
-    colortable[67].g = 224;
-    colortable[67].b = 208;
-    colortable[68].colortyp = 2;
-    colortable[68].tableindex = 68;
-    colortable[68].rgbindex = 52;
-    colortable[68].name = $c.lit("medium-turquoise");
-    colortable[68].r = 72;
-    colortable[68].g = 209;
-    colortable[68].b = 204;
-    colortable[69].colortyp = 2;
-    colortable[69].tableindex = 69;
-    colortable[69].rgbindex = 53;
-    colortable[69].name = $c.lit("pale-turquoise");
-    colortable[69].r = 175;
-    colortable[69].g = 238;
-    colortable[69].b = 238;
-    colortable[70].colortyp = 2;
-    colortable[70].tableindex = 70;
-    colortable[70].rgbindex = 54;
-    colortable[70].name = $c.lit("aqua-marine");
-    colortable[70].r = 127;
-    colortable[70].g = 255;
-    colortable[70].b = 212;
-    colortable[71].colortyp = 2;
-    colortable[71].tableindex = 71;
-    colortable[71].rgbindex = 55;
-    colortable[71].name = $c.lit("powder-blue");
-    colortable[71].r = 176;
-    colortable[71].g = 224;
-    colortable[71].b = 230;
-    colortable[72].colortyp = 2;
-    colortable[72].tableindex = 72;
-    colortable[72].rgbindex = 56;
-    colortable[72].name = $c.lit("cadet-blue");
-    colortable[72].r = 95;
-    colortable[72].g = 158;
-    colortable[72].b = 160;
-    colortable[73].colortyp = 2;
-    colortable[73].tableindex = 73;
-    colortable[73].rgbindex = 57;
-    colortable[73].name = $c.lit("steel-blue");
-    colortable[73].r = 70;
-    colortable[73].g = 130;
-    colortable[73].b = 180;
-    colortable[74].colortyp = 2;
-    colortable[74].tableindex = 74;
-    colortable[74].rgbindex = 58;
-    colortable[74].name = $c.lit("corn-flower-blue");
-    colortable[74].r = 100;
-    colortable[74].g = 149;
-    colortable[74].b = 237;
-    colortable[75].colortyp = 2;
-    colortable[75].tableindex = 75;
-    colortable[75].rgbindex = 59;
-    colortable[75].name = $c.lit("deep-sky-blue");
-    colortable[75].r = 0;
-    colortable[75].g = 191;
-    colortable[75].b = 255;
-    colortable[76].colortyp = 2;
-    colortable[76].tableindex = 76;
-    colortable[76].rgbindex = 60;
-    colortable[76].name = $c.lit("dodger-blue");
-    colortable[76].r = 30;
-    colortable[76].g = 144;
-    colortable[76].b = 255;
-    colortable[77].colortyp = 2;
-    colortable[77].tableindex = 77;
-    colortable[77].rgbindex = 61;
-    colortable[77].name = $c.lit("light-blue");
-    colortable[77].r = 173;
-    colortable[77].g = 216;
-    colortable[77].b = 230;
-    colortable[78].colortyp = 2;
-    colortable[78].tableindex = 78;
-    colortable[78].rgbindex = 62;
-    colortable[78].name = $c.lit("sky-blue");
-    colortable[78].r = 135;
-    colortable[78].g = 206;
-    colortable[78].b = 235;
-    colortable[79].colortyp = 2;
-    colortable[79].tableindex = 79;
-    colortable[79].rgbindex = 63;
-    colortable[79].name = $c.lit("light-sky-blue");
-    colortable[79].r = 135;
-    colortable[79].g = 206;
-    colortable[79].b = 250;
-    colortable[80].colortyp = 2;
-    colortable[80].tableindex = 80;
-    colortable[80].rgbindex = 64;
-    colortable[80].name = $c.lit("midnight-blue");
-    colortable[80].r = 25;
-    colortable[80].g = 25;
-    colortable[80].b = 112;
-    colortable[81].colortyp = 2;
-    colortable[81].tableindex = 81;
-    colortable[81].rgbindex = 65;
-    colortable[81].name = $c.lit("navy");
-    colortable[81].r = 0;
-    colortable[81].g = 0;
-    colortable[81].b = 128;
-    colortable[82].colortyp = 2;
-    colortable[82].tableindex = 82;
-    colortable[82].rgbindex = 66;
-    colortable[82].name = $c.lit("dark-blue");
-    colortable[82].r = 0;
-    colortable[82].g = 0;
-    colortable[82].b = 139;
-    colortable[83].colortyp = 2;
-    colortable[83].tableindex = 83;
-    colortable[83].rgbindex = 67;
-    colortable[83].name = $c.lit("medium-blue");
-    colortable[83].r = 0;
-    colortable[83].g = 0;
-    colortable[83].b = 205;
-    colortable[84].colortyp = 2;
-    colortable[84].tableindex = 84;
-    colortable[84].rgbindex = 68;
-    colortable[84].name = $c.lit("blue");
-    colortable[84].r = 0;
-    colortable[84].g = 0;
-    colortable[84].b = 255;
-    colortable[85].colortyp = 2;
-    colortable[85].tableindex = 85;
-    colortable[85].rgbindex = 69;
-    colortable[85].name = $c.lit("royal-blue");
-    colortable[85].r = 65;
-    colortable[85].g = 105;
-    colortable[85].b = 225;
-    colortable[86].colortyp = 2;
-    colortable[86].tableindex = 86;
-    colortable[86].rgbindex = 70;
-    colortable[86].name = $c.lit("blue-violet");
-    colortable[86].r = 138;
-    colortable[86].g = 43;
-    colortable[86].b = 226;
-    colortable[87].colortyp = 2;
-    colortable[87].tableindex = 87;
-    colortable[87].rgbindex = 71;
-    colortable[87].name = $c.lit("indigo");
-    colortable[87].r = 75;
-    colortable[87].g = 0;
-    colortable[87].b = 130;
-    colortable[88].colortyp = 2;
-    colortable[88].tableindex = 88;
-    colortable[88].rgbindex = 72;
-    colortable[88].name = $c.lit("dark-slate-blue");
-    colortable[88].r = 72;
-    colortable[88].g = 61;
-    colortable[88].b = 139;
-    colortable[89].colortyp = 2;
-    colortable[89].tableindex = 89;
-    colortable[89].rgbindex = 73;
-    colortable[89].name = $c.lit("slate-blue");
-    colortable[89].r = 106;
-    colortable[89].g = 90;
-    colortable[89].b = 205;
-    colortable[90].colortyp = 2;
-    colortable[90].tableindex = 90;
-    colortable[90].rgbindex = 74;
-    colortable[90].name = $c.lit("medium-slate-blue");
-    colortable[90].r = 123;
-    colortable[90].g = 104;
-    colortable[90].b = 238;
-    colortable[91].colortyp = 2;
-    colortable[91].tableindex = 91;
-    colortable[91].rgbindex = 75;
-    colortable[91].name = $c.lit("medium-purple");
-    colortable[91].r = 147;
-    colortable[91].g = 112;
-    colortable[91].b = 219;
-    colortable[92].colortyp = 2;
-    colortable[92].tableindex = 92;
-    colortable[92].rgbindex = 76;
-    colortable[92].name = $c.lit("dark-magenta");
-    colortable[92].r = 139;
-    colortable[92].g = 0;
-    colortable[92].b = 139;
-    colortable[93].colortyp = 2;
-    colortable[93].tableindex = 93;
-    colortable[93].rgbindex = 77;
-    colortable[93].name = $c.lit("dark-violet");
-    colortable[93].r = 148;
-    colortable[93].g = 0;
-    colortable[93].b = 211;
-    colortable[94].colortyp = 2;
-    colortable[94].tableindex = 94;
-    colortable[94].rgbindex = 78;
-    colortable[94].name = $c.lit("dark-orchid");
-    colortable[94].r = 153;
-    colortable[94].g = 50;
-    colortable[94].b = 204;
-    colortable[95].colortyp = 2;
-    colortable[95].tableindex = 95;
-    colortable[95].rgbindex = 79;
-    colortable[95].name = $c.lit("medium-orchid");
-    colortable[95].r = 186;
-    colortable[95].g = 85;
-    colortable[95].b = 211;
-    colortable[96].colortyp = 2;
-    colortable[96].tableindex = 96;
-    colortable[96].rgbindex = 80;
-    colortable[96].name = $c.lit("purple");
-    colortable[96].r = 128;
-    colortable[96].g = 0;
-    colortable[96].b = 128;
-    colortable[97].colortyp = 2;
-    colortable[97].tableindex = 97;
-    colortable[97].rgbindex = 81;
-    colortable[97].name = $c.lit("thistle");
-    colortable[97].r = 216;
-    colortable[97].g = 191;
-    colortable[97].b = 216;
-    colortable[98].colortyp = 2;
-    colortable[98].tableindex = 98;
-    colortable[98].rgbindex = 82;
-    colortable[98].name = $c.lit("plum");
-    colortable[98].r = 221;
-    colortable[98].g = 160;
-    colortable[98].b = 221;
-    colortable[99].colortyp = 2;
-    colortable[99].tableindex = 99;
-    colortable[99].rgbindex = 83;
-    colortable[99].name = $c.lit("violet");
-    colortable[99].r = 238;
-    colortable[99].g = 130;
-    colortable[99].b = 238;
-    colortable[100].colortyp = 2;
-    colortable[100].tableindex = 100;
-    colortable[100].rgbindex = 84;
-    colortable[100].name = $c.lit("magenta");
-    colortable[100].r = 255;
-    colortable[100].g = 0;
-    colortable[100].b = 255;
-    colortable[101].colortyp = 2;
-    colortable[101].tableindex = 101;
-    colortable[101].rgbindex = 85;
-    colortable[101].name = $c.lit("orchid");
-    colortable[101].r = 218;
-    colortable[101].g = 112;
-    colortable[101].b = 214;
-    colortable[102].colortyp = 2;
-    colortable[102].tableindex = 102;
-    colortable[102].rgbindex = 86;
-    colortable[102].name = $c.lit("medium-violet-red");
-    colortable[102].r = 199;
-    colortable[102].g = 21;
-    colortable[102].b = 133;
-    colortable[103].colortyp = 2;
-    colortable[103].tableindex = 103;
-    colortable[103].rgbindex = 87;
-    colortable[103].name = $c.lit("pale-violet-red");
-    colortable[103].r = 219;
-    colortable[103].g = 112;
-    colortable[103].b = 147;
-    colortable[104].colortyp = 2;
-    colortable[104].tableindex = 104;
-    colortable[104].rgbindex = 88;
-    colortable[104].name = $c.lit("deep-pink");
-    colortable[104].r = 255;
-    colortable[104].g = 20;
-    colortable[104].b = 147;
-    colortable[105].colortyp = 2;
-    colortable[105].tableindex = 105;
-    colortable[105].rgbindex = 89;
-    colortable[105].name = $c.lit("hot-pink");
-    colortable[105].r = 255;
-    colortable[105].g = 105;
-    colortable[105].b = 180;
-    colortable[106].colortyp = 2;
-    colortable[106].tableindex = 106;
-    colortable[106].rgbindex = 90;
-    colortable[106].name = $c.lit("light-pink");
-    colortable[106].r = 255;
-    colortable[106].g = 182;
-    colortable[106].b = 193;
-    colortable[107].colortyp = 2;
-    colortable[107].tableindex = 107;
-    colortable[107].rgbindex = 91;
-    colortable[107].name = $c.lit("pink");
-    colortable[107].r = 255;
-    colortable[107].g = 192;
-    colortable[107].b = 203;
-    colortable[108].colortyp = 2;
-    colortable[108].tableindex = 108;
-    colortable[108].rgbindex = 92;
-    colortable[108].name = $c.lit("antique-white");
-    colortable[108].r = 250;
-    colortable[108].g = 235;
-    colortable[108].b = 215;
-    colortable[109].colortyp = 2;
-    colortable[109].tableindex = 109;
-    colortable[109].rgbindex = 93;
-    colortable[109].name = $c.lit("beige");
-    colortable[109].r = 245;
-    colortable[109].g = 245;
-    colortable[109].b = 220;
-    colortable[110].colortyp = 2;
-    colortable[110].tableindex = 110;
-    colortable[110].rgbindex = 94;
-    colortable[110].name = $c.lit("bisque");
-    colortable[110].r = 255;
-    colortable[110].g = 228;
-    colortable[110].b = 196;
-    colortable[111].colortyp = 2;
-    colortable[111].tableindex = 111;
-    colortable[111].rgbindex = 95;
-    colortable[111].name = $c.lit("blanched-almond");
-    colortable[111].r = 255;
-    colortable[111].g = 235;
-    colortable[111].b = 205;
-    colortable[112].colortyp = 2;
-    colortable[112].tableindex = 112;
-    colortable[112].rgbindex = 96;
-    colortable[112].name = $c.lit("wheat");
-    colortable[112].r = 245;
-    colortable[112].g = 222;
-    colortable[112].b = 179;
-    colortable[113].colortyp = 2;
-    colortable[113].tableindex = 113;
-    colortable[113].rgbindex = 97;
-    colortable[113].name = $c.lit("corn-silk");
-    colortable[113].r = 255;
-    colortable[113].g = 248;
-    colortable[113].b = 220;
-    colortable[114].colortyp = 2;
-    colortable[114].tableindex = 114;
-    colortable[114].rgbindex = 98;
-    colortable[114].name = $c.lit("lemon-chiffon");
-    colortable[114].r = 255;
-    colortable[114].g = 250;
-    colortable[114].b = 205;
-    colortable[115].colortyp = 2;
-    colortable[115].tableindex = 115;
-    colortable[115].rgbindex = 99;
-    colortable[115].name = $c.lit("light-golden-rod-yellow");
-    colortable[115].r = 250;
-    colortable[115].g = 250;
-    colortable[115].b = 210;
-    colortable[116].colortyp = 2;
-    colortable[116].tableindex = 116;
-    colortable[116].rgbindex = 100;
-    colortable[116].name = $c.lit("light-yellow");
-    colortable[116].r = 255;
-    colortable[116].g = 255;
-    colortable[116].b = 224;
-    colortable[117].colortyp = 2;
-    colortable[117].tableindex = 117;
-    colortable[117].rgbindex = 101;
-    colortable[117].name = $c.lit("saddle-brown");
-    colortable[117].r = 139;
-    colortable[117].g = 69;
-    colortable[117].b = 19;
-    colortable[118].colortyp = 2;
-    colortable[118].tableindex = 118;
-    colortable[118].rgbindex = 102;
-    colortable[118].name = $c.lit("sienna");
-    colortable[118].r = 160;
-    colortable[118].g = 82;
-    colortable[118].b = 45;
-    colortable[119].colortyp = 2;
-    colortable[119].tableindex = 119;
-    colortable[119].rgbindex = 103;
-    colortable[119].name = $c.lit("chocolate");
-    colortable[119].r = 210;
-    colortable[119].g = 105;
-    colortable[119].b = 30;
-    colortable[120].colortyp = 2;
-    colortable[120].tableindex = 120;
-    colortable[120].rgbindex = 104;
-    colortable[120].name = $c.lit("peru");
-    colortable[120].r = 205;
-    colortable[120].g = 133;
-    colortable[120].b = 63;
-    colortable[121].colortyp = 2;
-    colortable[121].tableindex = 121;
-    colortable[121].rgbindex = 105;
-    colortable[121].name = $c.lit("sandy-brown");
-    colortable[121].r = 244;
-    colortable[121].g = 164;
-    colortable[121].b = 96;
-    colortable[122].colortyp = 2;
-    colortable[122].tableindex = 122;
-    colortable[122].rgbindex = 106;
-    colortable[122].name = $c.lit("burly-wood");
-    colortable[122].r = 222;
-    colortable[122].g = 184;
-    colortable[122].b = 135;
-    colortable[123].colortyp = 2;
-    colortable[123].tableindex = 123;
-    colortable[123].rgbindex = 107;
-    colortable[123].name = $c.lit("tan");
-    colortable[123].r = 210;
-    colortable[123].g = 180;
-    colortable[123].b = 140;
-    colortable[124].colortyp = 2;
-    colortable[124].tableindex = 124;
-    colortable[124].rgbindex = 108;
-    colortable[124].name = $c.lit("rosy-brown");
-    colortable[124].r = 188;
-    colortable[124].g = 143;
-    colortable[124].b = 143;
-    colortable[125].colortyp = 2;
-    colortable[125].tableindex = 125;
-    colortable[125].rgbindex = 109;
-    colortable[125].name = $c.lit("moccasin");
-    colortable[125].r = 255;
-    colortable[125].g = 228;
-    colortable[125].b = 181;
-    colortable[126].colortyp = 2;
-    colortable[126].tableindex = 126;
-    colortable[126].rgbindex = 110;
-    colortable[126].name = $c.lit("navajo-white");
-    colortable[126].r = 255;
-    colortable[126].g = 222;
-    colortable[126].b = 173;
-    colortable[127].colortyp = 2;
-    colortable[127].tableindex = 127;
-    colortable[127].rgbindex = 111;
-    colortable[127].name = $c.lit("peach-puff");
-    colortable[127].r = 255;
-    colortable[127].g = 218;
-    colortable[127].b = 185;
-    colortable[128].colortyp = 2;
-    colortable[128].tableindex = 128;
-    colortable[128].rgbindex = 112;
-    colortable[128].name = $c.lit("misty-rose");
-    colortable[128].r = 255;
-    colortable[128].g = 228;
-    colortable[128].b = 225;
-    colortable[129].colortyp = 2;
-    colortable[129].tableindex = 129;
-    colortable[129].rgbindex = 113;
-    colortable[129].name = $c.lit("lavender-blush");
-    colortable[129].r = 255;
-    colortable[129].g = 240;
-    colortable[129].b = 245;
-    colortable[130].colortyp = 2;
-    colortable[130].tableindex = 130;
-    colortable[130].rgbindex = 114;
-    colortable[130].name = $c.lit("linen");
-    colortable[130].r = 250;
-    colortable[130].g = 240;
-    colortable[130].b = 230;
-    colortable[131].colortyp = 2;
-    colortable[131].tableindex = 131;
-    colortable[131].rgbindex = 115;
-    colortable[131].name = $c.lit("old-lace");
-    colortable[131].r = 253;
-    colortable[131].g = 245;
-    colortable[131].b = 230;
-    colortable[132].colortyp = 2;
-    colortable[132].tableindex = 132;
-    colortable[132].rgbindex = 116;
-    colortable[132].name = $c.lit("papaya-whip");
-    colortable[132].r = 255;
-    colortable[132].g = 239;
-    colortable[132].b = 213;
-    colortable[133].colortyp = 2;
-    colortable[133].tableindex = 133;
-    colortable[133].rgbindex = 117;
-    colortable[133].name = $c.lit("sea-shell");
-    colortable[133].r = 255;
-    colortable[133].g = 245;
-    colortable[133].b = 238;
-    colortable[134].colortyp = 2;
-    colortable[134].tableindex = 134;
-    colortable[134].rgbindex = 118;
-    colortable[134].name = $c.lit("mint-cream");
-    colortable[134].r = 245;
-    colortable[134].g = 255;
-    colortable[134].b = 250;
-    colortable[135].colortyp = 2;
-    colortable[135].tableindex = 135;
-    colortable[135].rgbindex = 119;
-    colortable[135].name = $c.lit("slate-gray");
-    colortable[135].r = 112;
-    colortable[135].g = 128;
-    colortable[135].b = 144;
-    colortable[136].colortyp = 2;
-    colortable[136].tableindex = 136;
-    colortable[136].rgbindex = 120;
-    colortable[136].name = $c.lit("light-slate-gray");
-    colortable[136].r = 119;
-    colortable[136].g = 136;
-    colortable[136].b = 153;
-    colortable[137].colortyp = 2;
-    colortable[137].tableindex = 137;
-    colortable[137].rgbindex = 121;
-    colortable[137].name = $c.lit("light-steel-blue");
-    colortable[137].r = 176;
-    colortable[137].g = 196;
-    colortable[137].b = 222;
-    colortable[138].colortyp = 2;
-    colortable[138].tableindex = 138;
-    colortable[138].rgbindex = 122;
-    colortable[138].name = $c.lit("lavender");
-    colortable[138].r = 230;
-    colortable[138].g = 230;
-    colortable[138].b = 250;
-    colortable[139].colortyp = 2;
-    colortable[139].tableindex = 139;
-    colortable[139].rgbindex = 123;
-    colortable[139].name = $c.lit("floral-white");
-    colortable[139].r = 255;
-    colortable[139].g = 250;
-    colortable[139].b = 240;
-    colortable[140].colortyp = 2;
-    colortable[140].tableindex = 140;
-    colortable[140].rgbindex = 124;
-    colortable[140].name = $c.lit("alice-blue");
-    colortable[140].r = 240;
-    colortable[140].g = 248;
-    colortable[140].b = 255;
-    colortable[141].colortyp = 2;
-    colortable[141].tableindex = 141;
-    colortable[141].rgbindex = 125;
-    colortable[141].name = $c.lit("ghost-white");
-    colortable[141].r = 248;
-    colortable[141].g = 248;
-    colortable[141].b = 255;
-    colortable[142].colortyp = 2;
-    colortable[142].tableindex = 142;
-    colortable[142].rgbindex = 126;
-    colortable[142].name = $c.lit("honeydew");
-    colortable[142].r = 240;
-    colortable[142].g = 255;
-    colortable[142].b = 240;
-    colortable[143].colortyp = 2;
-    colortable[143].tableindex = 143;
-    colortable[143].rgbindex = 127;
-    colortable[143].name = $c.lit("ivory");
-    colortable[143].r = 255;
-    colortable[143].g = 255;
-    colortable[143].b = 240;
-    colortable[144].colortyp = 2;
-    colortable[144].tableindex = 144;
-    colortable[144].rgbindex = 128;
-    colortable[144].name = $c.lit("azure");
-    colortable[144].r = 240;
-    colortable[144].g = 255;
-    colortable[144].b = 255;
-    colortable[145].colortyp = 2;
-    colortable[145].tableindex = 145;
-    colortable[145].rgbindex = 129;
-    colortable[145].name = $c.lit("snow");
-    colortable[145].r = 255;
-    colortable[145].g = 250;
-    colortable[145].b = 250;
-    colortable[146].colortyp = 2;
-    colortable[146].tableindex = 146;
-    colortable[146].rgbindex = 130;
-    colortable[146].name = $c.lit("black");
-    colortable[146].r = 0;
-    colortable[146].g = 0;
-    colortable[146].b = 0;
-    colortable[147].colortyp = 2;
-    colortable[147].tableindex = 147;
-    colortable[147].rgbindex = 131;
-    colortable[147].name = $c.lit("dim-gray");
-    colortable[147].r = 105;
-    colortable[147].g = 105;
-    colortable[147].b = 105;
-    colortable[148].colortyp = 2;
-    colortable[148].tableindex = 148;
-    colortable[148].rgbindex = 132;
-    colortable[148].name = $c.lit("gray");
-    colortable[148].r = 128;
-    colortable[148].g = 128;
-    colortable[148].b = 128;
-    colortable[149].colortyp = 2;
-    colortable[149].tableindex = 149;
-    colortable[149].rgbindex = 133;
-    colortable[149].name = $c.lit("dark-gray");
-    colortable[149].r = 169;
-    colortable[149].g = 169;
-    colortable[149].b = 169;
-    colortable[150].colortyp = 2;
-    colortable[150].tableindex = 150;
-    colortable[150].rgbindex = 134;
-    colortable[150].name = $c.lit("silver");
-    colortable[150].r = 192;
-    colortable[150].g = 192;
-    colortable[150].b = 192;
-    colortable[151].colortyp = 2;
-    colortable[151].tableindex = 151;
-    colortable[151].rgbindex = 135;
-    colortable[151].name = $c.lit("light-gray");
-    colortable[151].r = 211;
-    colortable[151].g = 211;
-    colortable[151].b = 211;
-    colortable[152].colortyp = 2;
-    colortable[152].tableindex = 152;
-    colortable[152].rgbindex = 136;
-    colortable[152].name = $c.lit("gainsboro");
-    colortable[152].r = 220;
-    colortable[152].g = 220;
-    colortable[152].b = 220;
-    colortable[153].colortyp = 2;
-    colortable[153].tableindex = 153;
-    colortable[153].rgbindex = 137;
-    colortable[153].name = $c.lit("white-smoke");
-    colortable[153].r = 245;
-    colortable[153].g = 245;
-    colortable[153].b = 245;
-    colortable[154].colortyp = 2;
-    colortable[154].tableindex = 154;
-    colortable[154].rgbindex = 138;
-    colortable[154].name = $c.lit("white");
-    colortable[154].r = 255;
-    colortable[154].g = 255;
-    colortable[154].b = 255;
+    $c.init(colortable, [
+        { colortyp: NHC, tableindex: 0, rgbindex: 0, name: $c.lit("black"), r: 0, g: 0, b: 0 },
+        { colortyp: NHC, tableindex: 1, rgbindex: 0, name: $c.lit("red"), r: 255, g: 0, b: 0 },
+        { colortyp: NHC, tableindex: 2, rgbindex: 0, name: $c.lit("green"), r: 34, g: 139, b: 34 },
+        { colortyp: NHC, tableindex: 3, rgbindex: 0, name: $c.lit("brown"), r: 165, g: 42, b: 42 },
+        { colortyp: NHC, tableindex: 4, rgbindex: 0, name: $c.lit("blue"), r: 0, g: 0, b: 255 },
+        { colortyp: NHC, tableindex: 5, rgbindex: 0, name: $c.lit("magenta"), r: 255, g: 0, b: 255 },
+        { colortyp: NHC, tableindex: 6, rgbindex: 0, name: $c.lit("cyan"), r: 0, g: 255, b: 255 },
+        { colortyp: NHC, tableindex: 7, rgbindex: 0, name: $c.lit("gray"), r: 128, g: 128, b: 128 },
+        { colortyp: NOC, tableindex: 8, rgbindex: 0, name: $c.lit("nocolor"), r: 0, g: 0, b: 0 },
+        { colortyp: NHC, tableindex: 9, rgbindex: 0, name: $c.lit("orange"), r: 255, g: 165, b: 0 },
+        { colortyp: NHC, tableindex: 10, rgbindex: 0, name: $c.lit("bright-green"),
+          r: 0, g: 128, b: 0 },
+        { colortyp: NHC, tableindex: 11, rgbindex: 0, name: $c.lit("yellow"), r: 255, g: 255, b: 0 },
+        { colortyp: NHC, tableindex: 12, rgbindex: 0, name: $c.lit("bright-blue"), r: 173, g: 216, b: 230 },
+        { colortyp: NHC, tableindex: 13, rgbindex: 0, name: $c.lit("bright-magenta"),
+          r: 147, g: 112, b: 219 },
+        { colortyp: NHC, tableindex: 14, rgbindex: 0, name: $c.lit("light-cyan"), r: 224, g: 255, b: 255 },
+        { colortyp: NHC, tableindex: 15, rgbindex: 0, name: $c.lit("white"), r: 255, g: 255, b: 255 },
+        { colortyp: RGBC, tableindex: 16, rgbindex: 0, name: $c.lit("maroon"), r: 128, g: 0, b: 0 },
+        { colortyp: RGBC, tableindex: 17, rgbindex: 1, name: $c.lit("dark-red"), r: 139, g: 0, b: 0 },
+        { colortyp: RGBC, tableindex: 18, rgbindex: 2, name: $c.lit("brown"), r: 165, g: 42, b: 42 },
+        { colortyp: RGBC, tableindex: 19, rgbindex: 3, name: $c.lit("firebrick"), r: 178, g: 34, b: 34 },
+        { colortyp: RGBC, tableindex: 20, rgbindex: 4, name: $c.lit("crimson"), r: 220, g: 20, b: 60 },
+        { colortyp: RGBC, tableindex: 21, rgbindex: 5, name: $c.lit("red"), r: 255, g: 0, b: 0 },
+        { colortyp: RGBC, tableindex: 22, rgbindex: 6, name: $c.lit("tomato"), r: 255, g: 99, b: 71 },
+        { colortyp: RGBC, tableindex: 23, rgbindex: 7, name: $c.lit("coral"), r: 255, g: 127, b: 80 },
+        { colortyp: RGBC, tableindex: 24, rgbindex: 8, name: $c.lit("indian-red"), r: 205, g: 92, b: 92 },
+        { colortyp: RGBC, tableindex: 25, rgbindex: 9, name: $c.lit("light-coral"), r: 240, g: 128, b: 128 },
+        { colortyp: RGBC, tableindex: 26, rgbindex: 10, name: $c.lit("dark-salmon"), r: 233, g: 150, b: 122 },
+        { colortyp: RGBC, tableindex: 27, rgbindex: 11, name: $c.lit("salmon"), r: 250, g: 128, b: 114 },
+        { colortyp: RGBC, tableindex: 28, rgbindex: 12, name: $c.lit("light-salmon"), r: 255, g: 160, b: 122 },
+        { colortyp: RGBC, tableindex: 29, rgbindex: 13, name: $c.lit("orange-red"), r: 255, g: 69, b: 0 },
+        { colortyp: RGBC, tableindex: 30, rgbindex: 14, name: $c.lit("dark-orange"), r: 255, g: 140, b: 0 },
+        { colortyp: RGBC, tableindex: 31, rgbindex: 15, name: $c.lit("orange"), r: 255, g: 165, b: 0 },
+        { colortyp: RGBC, tableindex: 32, rgbindex: 16, name: $c.lit("gold"), r: 255, g: 215, b: 0 },
+        { colortyp: RGBC, tableindex: 33, rgbindex: 17, name: $c.lit("dark-golden-rod"), r: 184, g: 134, b: 11 },
+        { colortyp: RGBC, tableindex: 34, rgbindex: 18, name: $c.lit("golden-rod"), r: 218, g: 165, b: 32 },
+        { colortyp: RGBC, tableindex: 35, rgbindex: 19, name: $c.lit("pale-golden-rod"), r: 238, g: 232, b: 170 },
+        { colortyp: RGBC, tableindex: 36, rgbindex: 20, name: $c.lit("dark-khaki"), r: 189, g: 183, b: 107 },
+        { colortyp: RGBC, tableindex: 37, rgbindex: 21, name: $c.lit("khaki"), r: 240, g: 230, b: 140 },
+        { colortyp: RGBC, tableindex: 38, rgbindex: 22, name: $c.lit("olive"), r: 128, g: 128, b: 0 },
+        { colortyp: RGBC, tableindex: 39, rgbindex: 23, name: $c.lit("yellow"), r: 255, g: 255, b: 0 },
+        { colortyp: RGBC, tableindex: 40, rgbindex: 24, name: $c.lit("yellow-green"), r: 154, g: 205, b: 50 },
+        { colortyp: RGBC, tableindex: 41, rgbindex: 25, name: $c.lit("dark-olive-green"), r: 85, g: 107, b: 47 },
+        { colortyp: RGBC, tableindex: 42, rgbindex: 26, name: $c.lit("olive-drab"), r: 107, g: 142, b: 35 },
+        { colortyp: RGBC, tableindex: 43, rgbindex: 27, name: $c.lit("lawn-green"), r: 124, g: 252, b: 0 },
+        { colortyp: RGBC, tableindex: 44, rgbindex: 28, name: $c.lit("chart-reuse"), r: 127, g: 255, b: 0 },
+        { colortyp: RGBC, tableindex: 45, rgbindex: 29, name: $c.lit("green-yellow"), r: 173, g: 255, b: 47 },
+        { colortyp: RGBC, tableindex: 46, rgbindex: 30, name: $c.lit("dark-green"), r: 0, g: 100, b: 0 },
+        { colortyp: RGBC, tableindex: 47, rgbindex: 31, name: $c.lit("green"), r: 0, g: 128, b: 0 },
+        { colortyp: RGBC, tableindex: 48, rgbindex: 32, name: $c.lit("forest-green"), r: 34, g: 139, b: 34 },
+        { colortyp: RGBC, tableindex: 49, rgbindex: 33, name: $c.lit("lime"), r: 0, g: 255, b: 0 },
+        { colortyp: RGBC, tableindex: 50, rgbindex: 34, name: $c.lit("lime-green"), r: 50, g: 205, b: 50 },
+        { colortyp: RGBC, tableindex: 51, rgbindex: 35, name: $c.lit("light-green"), r: 144, g: 238, b: 144 },
+        { colortyp: RGBC, tableindex: 52, rgbindex: 36, name: $c.lit("pale-green"), r: 152, g: 251, b: 152 },
+        { colortyp: RGBC, tableindex: 53, rgbindex: 37, name: $c.lit("dark-sea-green"), r: 143, g: 188, b: 143 },
+        { colortyp: RGBC, tableindex: 54, rgbindex: 38, name: $c.lit("medium-spring-green"), r: 0, g: 250, b: 154 },
+        { colortyp: RGBC, tableindex: 55, rgbindex: 39, name: $c.lit("spring-green"), r: 0, g: 255, b: 127 },
+        { colortyp: RGBC, tableindex: 56, rgbindex: 40, name: $c.lit("sea-green"), r: 46, g: 139, b: 87 },
+        { colortyp: RGBC, tableindex: 57, rgbindex: 41, name: $c.lit("medium-aqua-marine"), r: 102, g: 205, b: 170 },
+        { colortyp: RGBC, tableindex: 58, rgbindex: 42, name: $c.lit("medium-sea-green"), r: 60, g: 179, b: 113 },
+        { colortyp: RGBC, tableindex: 59, rgbindex: 43, name: $c.lit("light-sea-green"), r: 32, g: 178, b: 170 },
+        { colortyp: RGBC, tableindex: 60, rgbindex: 44, name: $c.lit("dark-slate-gray"), r: 47, g: 79, b: 79 },
+        { colortyp: RGBC, tableindex: 61, rgbindex: 45, name: $c.lit("teal"), r: 0, g: 128, b: 128 },
+        { colortyp: RGBC, tableindex: 62, rgbindex: 46, name: $c.lit("dark-cyan"), r: 0, g: 139, b: 139 },
+        { colortyp: RGBC, tableindex: 63, rgbindex: 47, name: $c.lit("aqua"), r: 0, g: 255, b: 255 },
+        { colortyp: RGBC, tableindex: 64, rgbindex: 48, name: $c.lit("cyan"), r: 0, g: 255, b: 255 },
+        { colortyp: RGBC, tableindex: 65, rgbindex: 49, name: $c.lit("light-cyan"), r: 224, g: 255, b: 255 },
+        { colortyp: RGBC, tableindex: 66, rgbindex: 50, name: $c.lit("dark-turquoise"), r: 0, g: 206, b: 209 },
+        { colortyp: RGBC, tableindex: 67, rgbindex: 51, name: $c.lit("turquoise"), r: 64, g: 224, b: 208 },
+        { colortyp: RGBC, tableindex: 68, rgbindex: 52, name: $c.lit("medium-turquoise"), r: 72, g: 209, b: 204 },
+        { colortyp: RGBC, tableindex: 69, rgbindex: 53, name: $c.lit("pale-turquoise"), r: 175, g: 238, b: 238 },
+        { colortyp: RGBC, tableindex: 70, rgbindex: 54, name: $c.lit("aqua-marine"), r: 127, g: 255, b: 212 },
+        { colortyp: RGBC, tableindex: 71, rgbindex: 55, name: $c.lit("powder-blue"), r: 176, g: 224, b: 230 },
+        { colortyp: RGBC, tableindex: 72, rgbindex: 56, name: $c.lit("cadet-blue"), r: 95, g: 158, b: 160 },
+        { colortyp: RGBC, tableindex: 73, rgbindex: 57, name: $c.lit("steel-blue"), r: 70, g: 130, b: 180 },
+        { colortyp: RGBC, tableindex: 74, rgbindex: 58, name: $c.lit("corn-flower-blue"), r: 100, g: 149, b: 237 },
+        { colortyp: RGBC, tableindex: 75, rgbindex: 59, name: $c.lit("deep-sky-blue"), r: 0, g: 191, b: 255 },
+        { colortyp: RGBC, tableindex: 76, rgbindex: 60, name: $c.lit("dodger-blue"), r: 30, g: 144, b: 255 },
+        { colortyp: RGBC, tableindex: 77, rgbindex: 61, name: $c.lit("light-blue"), r: 173, g: 216, b: 230 },
+        { colortyp: RGBC, tableindex: 78, rgbindex: 62, name: $c.lit("sky-blue"), r: 135, g: 206, b: 235 },
+        { colortyp: RGBC, tableindex: 79, rgbindex: 63, name: $c.lit("light-sky-blue"), r: 135, g: 206, b: 250 },
+        { colortyp: RGBC, tableindex: 80, rgbindex: 64, name: $c.lit("midnight-blue"), r: 25, g: 25, b: 112 },
+        { colortyp: RGBC, tableindex: 81, rgbindex: 65, name: $c.lit("navy"), r: 0, g: 0, b: 128 },
+        { colortyp: RGBC, tableindex: 82, rgbindex: 66, name: $c.lit("dark-blue"), r: 0, g: 0, b: 139 },
+        { colortyp: RGBC, tableindex: 83, rgbindex: 67, name: $c.lit("medium-blue"), r: 0, g: 0, b: 205 },
+        { colortyp: RGBC, tableindex: 84, rgbindex: 68, name: $c.lit("blue"), r: 0, g: 0, b: 255 },
+        { colortyp: RGBC, tableindex: 85, rgbindex: 69, name: $c.lit("royal-blue"), r: 65, g: 105, b: 225 },
+        { colortyp: RGBC, tableindex: 86, rgbindex: 70, name: $c.lit("blue-violet"), r: 138, g: 43, b: 226 },
+        { colortyp: RGBC, tableindex: 87, rgbindex: 71, name: $c.lit("indigo"), r: 75, g: 0, b: 130 },
+        { colortyp: RGBC, tableindex: 88, rgbindex: 72, name: $c.lit("dark-slate-blue"), r: 72, g: 61, b: 139 },
+        { colortyp: RGBC, tableindex: 89, rgbindex: 73, name: $c.lit("slate-blue"), r: 106, g: 90, b: 205 },
+        { colortyp: RGBC, tableindex: 90, rgbindex: 74, name: $c.lit("medium-slate-blue"), r: 123, g: 104, b: 238 },
+        { colortyp: RGBC, tableindex: 91, rgbindex: 75, name: $c.lit("medium-purple"), r: 147, g: 112, b: 219 },
+        { colortyp: RGBC, tableindex: 92, rgbindex: 76, name: $c.lit("dark-magenta"), r: 139, g: 0, b: 139 },
+        { colortyp: RGBC, tableindex: 93, rgbindex: 77, name: $c.lit("dark-violet"), r: 148, g: 0, b: 211 },
+        { colortyp: RGBC, tableindex: 94, rgbindex: 78, name: $c.lit("dark-orchid"), r: 153, g: 50, b: 204 },
+        { colortyp: RGBC, tableindex: 95, rgbindex: 79, name: $c.lit("medium-orchid"), r: 186, g: 85, b: 211 },
+        { colortyp: RGBC, tableindex: 96, rgbindex: 80, name: $c.lit("purple"), r: 128, g: 0, b: 128 },
+        { colortyp: RGBC, tableindex: 97, rgbindex: 81, name: $c.lit("thistle"), r: 216, g: 191, b: 216 },
+        { colortyp: RGBC, tableindex: 98, rgbindex: 82, name: $c.lit("plum"), r: 221, g: 160, b: 221 },
+        { colortyp: RGBC, tableindex: 99, rgbindex: 83, name: $c.lit("violet"), r: 238, g: 130, b: 238 },
+        { colortyp: RGBC, tableindex: 100, rgbindex: 84, name: $c.lit("magenta"), r: 255, g: 0, b: 255 },
+        { colortyp: RGBC, tableindex: 101, rgbindex: 85, name: $c.lit("orchid"), r: 218, g: 112, b: 214 },
+        { colortyp: RGBC, tableindex: 102, rgbindex: 86, name: $c.lit("medium-violet-red"), r: 199, g: 21, b: 133 },
+        { colortyp: RGBC, tableindex: 103, rgbindex: 87, name: $c.lit("pale-violet-red"), r: 219, g: 112, b: 147 },
+        { colortyp: RGBC, tableindex: 104, rgbindex: 88, name: $c.lit("deep-pink"), r: 255, g: 20, b: 147 },
+        { colortyp: RGBC, tableindex: 105, rgbindex: 89, name: $c.lit("hot-pink"), r: 255, g: 105, b: 180 },
+        { colortyp: RGBC, tableindex: 106, rgbindex: 90, name: $c.lit("light-pink"), r: 255, g: 182, b: 193 },
+        { colortyp: RGBC, tableindex: 107, rgbindex: 91, name: $c.lit("pink"), r: 255, g: 192, b: 203 },
+        { colortyp: RGBC, tableindex: 108, rgbindex: 92, name: $c.lit("antique-white"), r: 250, g: 235, b: 215 },
+        { colortyp: RGBC, tableindex: 109, rgbindex: 93, name: $c.lit("beige"), r: 245, g: 245, b: 220 },
+        { colortyp: RGBC, tableindex: 110, rgbindex: 94, name: $c.lit("bisque"), r: 255, g: 228, b: 196 },
+        { colortyp: RGBC, tableindex: 111, rgbindex: 95, name: $c.lit("blanched-almond"), r: 255, g: 235, b: 205 },
+        { colortyp: RGBC, tableindex: 112, rgbindex: 96, name: $c.lit("wheat"), r: 245, g: 222, b: 179 },
+        { colortyp: RGBC, tableindex: 113, rgbindex: 97, name: $c.lit("corn-silk"), r: 255, g: 248, b: 220 },
+        { colortyp: RGBC, tableindex: 114, rgbindex: 98, name: $c.lit("lemon-chiffon"), r: 255, g: 250, b: 205 },
+        { colortyp: RGBC, tableindex: 115, rgbindex: 99, name: $c.lit("light-golden-rod-yellow"),
+          r: 250, g: 250, b: 210 },
+        { colortyp: RGBC, tableindex: 116, rgbindex: 100, name: $c.lit("light-yellow"), r: 255, g: 255, b: 224 },
+        { colortyp: RGBC, tableindex: 117, rgbindex: 101, name: $c.lit("saddle-brown"), r: 139, g: 69, b: 19 },
+        { colortyp: RGBC, tableindex: 118, rgbindex: 102, name: $c.lit("sienna"), r: 160, g: 82, b: 45 },
+        { colortyp: RGBC, tableindex: 119, rgbindex: 103, name: $c.lit("chocolate"), r: 210, g: 105, b: 30 },
+        { colortyp: RGBC, tableindex: 120, rgbindex: 104, name: $c.lit("peru"), r: 205, g: 133, b: 63 },
+        { colortyp: RGBC, tableindex: 121, rgbindex: 105, name: $c.lit("sandy-brown"), r: 244, g: 164, b: 96 },
+        { colortyp: RGBC, tableindex: 122, rgbindex: 106, name: $c.lit("burly-wood"), r: 222, g: 184, b: 135 },
+        { colortyp: RGBC, tableindex: 123, rgbindex: 107, name: $c.lit("tan"), r: 210, g: 180, b: 140 },
+        { colortyp: RGBC, tableindex: 124, rgbindex: 108, name: $c.lit("rosy-brown"), r: 188, g: 143, b: 143 },
+        { colortyp: RGBC, tableindex: 125, rgbindex: 109, name: $c.lit("moccasin"), r: 255, g: 228, b: 181 },
+        { colortyp: RGBC, tableindex: 126, rgbindex: 110, name: $c.lit("navajo-white"), r: 255, g: 222, b: 173 },
+        { colortyp: RGBC, tableindex: 127, rgbindex: 111, name: $c.lit("peach-puff"), r: 255, g: 218, b: 185 },
+        { colortyp: RGBC, tableindex: 128, rgbindex: 112, name: $c.lit("misty-rose"), r: 255, g: 228, b: 225 },
+        { colortyp: RGBC, tableindex: 129, rgbindex: 113, name: $c.lit("lavender-blush"), r: 255, g: 240, b: 245 },
+        { colortyp: RGBC, tableindex: 130, rgbindex: 114, name: $c.lit("linen"), r: 250, g: 240, b: 230 },
+        { colortyp: RGBC, tableindex: 131, rgbindex: 115, name: $c.lit("old-lace"), r: 253, g: 245, b: 230 },
+        { colortyp: RGBC, tableindex: 132, rgbindex: 116, name: $c.lit("papaya-whip"), r: 255, g: 239, b: 213 },
+        { colortyp: RGBC, tableindex: 133, rgbindex: 117, name: $c.lit("sea-shell"), r: 255, g: 245, b: 238 },
+        { colortyp: RGBC, tableindex: 134, rgbindex: 118, name: $c.lit("mint-cream"), r: 245, g: 255, b: 250 },
+        { colortyp: RGBC, tableindex: 135, rgbindex: 119, name: $c.lit("slate-gray"), r: 112, g: 128, b: 144 },
+        { colortyp: RGBC, tableindex: 136, rgbindex: 120, name: $c.lit("light-slate-gray"), r: 119, g: 136, b: 153 },
+        { colortyp: RGBC, tableindex: 137, rgbindex: 121, name: $c.lit("light-steel-blue"), r: 176, g: 196, b: 222 },
+        { colortyp: RGBC, tableindex: 138, rgbindex: 122, name: $c.lit("lavender"), r: 230, g: 230, b: 250 },
+        { colortyp: RGBC, tableindex: 139, rgbindex: 123, name: $c.lit("floral-white"), r: 255, g: 250, b: 240 },
+        { colortyp: RGBC, tableindex: 140, rgbindex: 124, name: $c.lit("alice-blue"), r: 240, g: 248, b: 255 },
+        { colortyp: RGBC, tableindex: 141, rgbindex: 125, name: $c.lit("ghost-white"), r: 248, g: 248, b: 255 },
+        { colortyp: RGBC, tableindex: 142, rgbindex: 126, name: $c.lit("honeydew"), r: 240, g: 255, b: 240 },
+        { colortyp: RGBC, tableindex: 143, rgbindex: 127, name: $c.lit("ivory"), r: 255, g: 255, b: 240 },
+        { colortyp: RGBC, tableindex: 144, rgbindex: 128, name: $c.lit("azure"), r: 240, g: 255, b: 255 },
+        { colortyp: RGBC, tableindex: 145, rgbindex: 129, name: $c.lit("snow"), r: 255, g: 250, b: 250 },
+        { colortyp: RGBC, tableindex: 146, rgbindex: 130, name: $c.lit("black"), r: 0, g: 0, b: 0 },
+        { colortyp: RGBC, tableindex: 147, rgbindex: 131, name: $c.lit("dim-gray"), r: 105, g: 105, b: 105 },
+        { colortyp: RGBC, tableindex: 148, rgbindex: 132, name: $c.lit("gray"), r: 128, g: 128, b: 128 },
+        { colortyp: RGBC, tableindex: 149, rgbindex: 133, name: $c.lit("dark-gray"), r: 169, g: 169, b: 169 },
+        { colortyp: RGBC, tableindex: 150, rgbindex: 134, name: $c.lit("silver"), r: 192, g: 192, b: 192 },
+        { colortyp: RGBC, tableindex: 151, rgbindex: 135, name: $c.lit("light-gray"), r: 211, g: 211, b: 211 },
+        { colortyp: RGBC, tableindex: 152, rgbindex: 136, name: $c.lit("gainsboro"), r: 220, g: 220, b: 220 },
+        { colortyp: RGBC, tableindex: 153, rgbindex: 137, name: $c.lit("white-smoke"), r: 245, g: 245, b: 245 },
+        { colortyp: RGBC, tableindex: 154, rgbindex: 138, name: $c.lit("white"), r: 255, g: 255, b: 255 }
+    ]);
     for (let $i0 = 0; $i0 < 240; $i0++) {
         color_256_definitions[$i0].$copyFrom(new $T.anon_coloratt_885());
     }
-    color_256_definitions[0].index = 16;
-    color_256_definitions[0].value = 0;
-    color_256_definitions[1].index = 17;
-    color_256_definitions[1].value = 95;
-    color_256_definitions[2].index = 18;
-    color_256_definitions[2].value = 135;
-    color_256_definitions[3].index = 19;
-    color_256_definitions[3].value = 175;
-    color_256_definitions[4].index = 20;
-    color_256_definitions[4].value = 215;
-    color_256_definitions[5].index = 21;
-    color_256_definitions[5].value = 255;
-    color_256_definitions[6].index = 22;
-    color_256_definitions[6].value = 24320;
-    color_256_definitions[7].index = 23;
-    color_256_definitions[7].value = 24415;
-    color_256_definitions[8].index = 24;
-    color_256_definitions[8].value = 24455;
-    color_256_definitions[9].index = 25;
-    color_256_definitions[9].value = 24495;
-    color_256_definitions[10].index = 26;
-    color_256_definitions[10].value = 24535;
-    color_256_definitions[11].index = 27;
-    color_256_definitions[11].value = 24575;
-    color_256_definitions[12].index = 28;
-    color_256_definitions[12].value = 34560;
-    color_256_definitions[13].index = 29;
-    color_256_definitions[13].value = 34655;
-    color_256_definitions[14].index = 30;
-    color_256_definitions[14].value = 34695;
-    color_256_definitions[15].index = 31;
-    color_256_definitions[15].value = 34735;
-    color_256_definitions[16].index = 32;
-    color_256_definitions[16].value = 34775;
-    color_256_definitions[17].index = 33;
-    color_256_definitions[17].value = 34815;
-    color_256_definitions[18].index = 34;
-    color_256_definitions[18].value = 44800;
-    color_256_definitions[19].index = 35;
-    color_256_definitions[19].value = 44895;
-    color_256_definitions[20].index = 36;
-    color_256_definitions[20].value = 44935;
-    color_256_definitions[21].index = 37;
-    color_256_definitions[21].value = 44975;
-    color_256_definitions[22].index = 38;
-    color_256_definitions[22].value = 45015;
-    color_256_definitions[23].index = 39;
-    color_256_definitions[23].value = 45055;
-    color_256_definitions[24].index = 40;
-    color_256_definitions[24].value = 55040;
-    color_256_definitions[25].index = 41;
-    color_256_definitions[25].value = 55135;
-    color_256_definitions[26].index = 42;
-    color_256_definitions[26].value = 55175;
-    color_256_definitions[27].index = 43;
-    color_256_definitions[27].value = 55215;
-    color_256_definitions[28].index = 44;
-    color_256_definitions[28].value = 55255;
-    color_256_definitions[29].index = 45;
-    color_256_definitions[29].value = 55295;
-    color_256_definitions[30].index = 46;
-    color_256_definitions[30].value = 65280;
-    color_256_definitions[31].index = 47;
-    color_256_definitions[31].value = 65375;
-    color_256_definitions[32].index = 48;
-    color_256_definitions[32].value = 65415;
-    color_256_definitions[33].index = 49;
-    color_256_definitions[33].value = 65455;
-    color_256_definitions[34].index = 50;
-    color_256_definitions[34].value = 65495;
-    color_256_definitions[35].index = 51;
-    color_256_definitions[35].value = 65535;
-    color_256_definitions[36].index = 52;
-    color_256_definitions[36].value = 6225920;
-    color_256_definitions[37].index = 53;
-    color_256_definitions[37].value = 6226015;
-    color_256_definitions[38].index = 54;
-    color_256_definitions[38].value = 6226055;
-    color_256_definitions[39].index = 55;
-    color_256_definitions[39].value = 6226095;
-    color_256_definitions[40].index = 56;
-    color_256_definitions[40].value = 6226135;
-    color_256_definitions[41].index = 57;
-    color_256_definitions[41].value = 6226175;
-    color_256_definitions[42].index = 58;
-    color_256_definitions[42].value = 6250240;
-    color_256_definitions[43].index = 59;
-    color_256_definitions[43].value = 6250335;
-    color_256_definitions[44].index = 60;
-    color_256_definitions[44].value = 6250375;
-    color_256_definitions[45].index = 61;
-    color_256_definitions[45].value = 6250415;
-    color_256_definitions[46].index = 62;
-    color_256_definitions[46].value = 6250455;
-    color_256_definitions[47].index = 63;
-    color_256_definitions[47].value = 6250495;
-    color_256_definitions[48].index = 64;
-    color_256_definitions[48].value = 6260480;
-    color_256_definitions[49].index = 65;
-    color_256_definitions[49].value = 6260575;
-    color_256_definitions[50].index = 66;
-    color_256_definitions[50].value = 6260615;
-    color_256_definitions[51].index = 67;
-    color_256_definitions[51].value = 6260655;
-    color_256_definitions[52].index = 68;
-    color_256_definitions[52].value = 6260695;
-    color_256_definitions[53].index = 69;
-    color_256_definitions[53].value = 6260735;
-    color_256_definitions[54].index = 70;
-    color_256_definitions[54].value = 6270720;
-    color_256_definitions[55].index = 71;
-    color_256_definitions[55].value = 6270815;
-    color_256_definitions[56].index = 72;
-    color_256_definitions[56].value = 6270855;
-    color_256_definitions[57].index = 73;
-    color_256_definitions[57].value = 6270895;
-    color_256_definitions[58].index = 74;
-    color_256_definitions[58].value = 6270935;
-    color_256_definitions[59].index = 75;
-    color_256_definitions[59].value = 6270975;
-    color_256_definitions[60].index = 76;
-    color_256_definitions[60].value = 6280960;
-    color_256_definitions[61].index = 77;
-    color_256_definitions[61].value = 6281055;
-    color_256_definitions[62].index = 78;
-    color_256_definitions[62].value = 6281095;
-    color_256_definitions[63].index = 79;
-    color_256_definitions[63].value = 6281135;
-    color_256_definitions[64].index = 80;
-    color_256_definitions[64].value = 6281175;
-    color_256_definitions[65].index = 81;
-    color_256_definitions[65].value = 6281215;
-    color_256_definitions[66].index = 82;
-    color_256_definitions[66].value = 6291200;
-    color_256_definitions[67].index = 83;
-    color_256_definitions[67].value = 6291295;
-    color_256_definitions[68].index = 84;
-    color_256_definitions[68].value = 6291335;
-    color_256_definitions[69].index = 85;
-    color_256_definitions[69].value = 6291375;
-    color_256_definitions[70].index = 86;
-    color_256_definitions[70].value = 6291415;
-    color_256_definitions[71].index = 87;
-    color_256_definitions[71].value = 6291455;
-    color_256_definitions[72].index = 88;
-    color_256_definitions[72].value = 8847360;
-    color_256_definitions[73].index = 89;
-    color_256_definitions[73].value = 8847455;
-    color_256_definitions[74].index = 90;
-    color_256_definitions[74].value = 8847495;
-    color_256_definitions[75].index = 91;
-    color_256_definitions[75].value = 8847535;
-    color_256_definitions[76].index = 92;
-    color_256_definitions[76].value = 8847575;
-    color_256_definitions[77].index = 93;
-    color_256_definitions[77].value = 8847615;
-    color_256_definitions[78].index = 94;
-    color_256_definitions[78].value = 8871680;
-    color_256_definitions[79].index = 95;
-    color_256_definitions[79].value = 8871775;
-    color_256_definitions[80].index = 96;
-    color_256_definitions[80].value = 8871815;
-    color_256_definitions[81].index = 97;
-    color_256_definitions[81].value = 8871855;
-    color_256_definitions[82].index = 98;
-    color_256_definitions[82].value = 8871895;
-    color_256_definitions[83].index = 99;
-    color_256_definitions[83].value = 8871935;
-    color_256_definitions[84].index = 100;
-    color_256_definitions[84].value = 8881920;
-    color_256_definitions[85].index = 101;
-    color_256_definitions[85].value = 8882015;
-    color_256_definitions[86].index = 102;
-    color_256_definitions[86].value = 8882055;
-    color_256_definitions[87].index = 103;
-    color_256_definitions[87].value = 8882095;
-    color_256_definitions[88].index = 104;
-    color_256_definitions[88].value = 8882135;
-    color_256_definitions[89].index = 105;
-    color_256_definitions[89].value = 8882175;
-    color_256_definitions[90].index = 106;
-    color_256_definitions[90].value = 8892160;
-    color_256_definitions[91].index = 107;
-    color_256_definitions[91].value = 8892255;
-    color_256_definitions[92].index = 108;
-    color_256_definitions[92].value = 8892295;
-    color_256_definitions[93].index = 109;
-    color_256_definitions[93].value = 8892335;
-    color_256_definitions[94].index = 110;
-    color_256_definitions[94].value = 8892375;
-    color_256_definitions[95].index = 111;
-    color_256_definitions[95].value = 8892415;
-    color_256_definitions[96].index = 112;
-    color_256_definitions[96].value = 8902400;
-    color_256_definitions[97].index = 113;
-    color_256_definitions[97].value = 8902495;
-    color_256_definitions[98].index = 114;
-    color_256_definitions[98].value = 8902535;
-    color_256_definitions[99].index = 115;
-    color_256_definitions[99].value = 8902575;
-    color_256_definitions[100].index = 116;
-    color_256_definitions[100].value = 8902615;
-    color_256_definitions[101].index = 117;
-    color_256_definitions[101].value = 8902655;
-    color_256_definitions[102].index = 118;
-    color_256_definitions[102].value = 8912640;
-    color_256_definitions[103].index = 119;
-    color_256_definitions[103].value = 8912735;
-    color_256_definitions[104].index = 120;
-    color_256_definitions[104].value = 8912775;
-    color_256_definitions[105].index = 121;
-    color_256_definitions[105].value = 8912815;
-    color_256_definitions[106].index = 122;
-    color_256_definitions[106].value = 8912855;
-    color_256_definitions[107].index = 123;
-    color_256_definitions[107].value = 8912895;
-    color_256_definitions[108].index = 124;
-    color_256_definitions[108].value = 11468800;
-    color_256_definitions[109].index = 125;
-    color_256_definitions[109].value = 11468895;
-    color_256_definitions[110].index = 126;
-    color_256_definitions[110].value = 11468935;
-    color_256_definitions[111].index = 127;
-    color_256_definitions[111].value = 11468975;
-    color_256_definitions[112].index = 128;
-    color_256_definitions[112].value = 11469015;
-    color_256_definitions[113].index = 129;
-    color_256_definitions[113].value = 11469055;
-    color_256_definitions[114].index = 130;
-    color_256_definitions[114].value = 11493120;
-    color_256_definitions[115].index = 131;
-    color_256_definitions[115].value = 11493215;
-    color_256_definitions[116].index = 132;
-    color_256_definitions[116].value = 11493255;
-    color_256_definitions[117].index = 133;
-    color_256_definitions[117].value = 11493295;
-    color_256_definitions[118].index = 134;
-    color_256_definitions[118].value = 11493335;
-    color_256_definitions[119].index = 135;
-    color_256_definitions[119].value = 11493375;
-    color_256_definitions[120].index = 136;
-    color_256_definitions[120].value = 11503360;
-    color_256_definitions[121].index = 137;
-    color_256_definitions[121].value = 11503455;
-    color_256_definitions[122].index = 138;
-    color_256_definitions[122].value = 11503495;
-    color_256_definitions[123].index = 139;
-    color_256_definitions[123].value = 11503535;
-    color_256_definitions[124].index = 140;
-    color_256_definitions[124].value = 11503575;
-    color_256_definitions[125].index = 141;
-    color_256_definitions[125].value = 11503615;
-    color_256_definitions[126].index = 142;
-    color_256_definitions[126].value = 11513600;
-    color_256_definitions[127].index = 143;
-    color_256_definitions[127].value = 11513695;
-    color_256_definitions[128].index = 144;
-    color_256_definitions[128].value = 11513735;
-    color_256_definitions[129].index = 145;
-    color_256_definitions[129].value = 11513775;
-    color_256_definitions[130].index = 146;
-    color_256_definitions[130].value = 11513815;
-    color_256_definitions[131].index = 147;
-    color_256_definitions[131].value = 11513855;
-    color_256_definitions[132].index = 148;
-    color_256_definitions[132].value = 11523840;
-    color_256_definitions[133].index = 149;
-    color_256_definitions[133].value = 11523935;
-    color_256_definitions[134].index = 150;
-    color_256_definitions[134].value = 11523975;
-    color_256_definitions[135].index = 151;
-    color_256_definitions[135].value = 11524015;
-    color_256_definitions[136].index = 152;
-    color_256_definitions[136].value = 11524055;
-    color_256_definitions[137].index = 153;
-    color_256_definitions[137].value = 11524095;
-    color_256_definitions[138].index = 154;
-    color_256_definitions[138].value = 11534080;
-    color_256_definitions[139].index = 155;
-    color_256_definitions[139].value = 11534175;
-    color_256_definitions[140].index = 156;
-    color_256_definitions[140].value = 11534215;
-    color_256_definitions[141].index = 157;
-    color_256_definitions[141].value = 11534255;
-    color_256_definitions[142].index = 158;
-    color_256_definitions[142].value = 11534295;
-    color_256_definitions[143].index = 159;
-    color_256_definitions[143].value = 11534335;
-    color_256_definitions[144].index = 160;
-    color_256_definitions[144].value = 14090240;
-    color_256_definitions[145].index = 161;
-    color_256_definitions[145].value = 14090335;
-    color_256_definitions[146].index = 162;
-    color_256_definitions[146].value = 14090375;
-    color_256_definitions[147].index = 163;
-    color_256_definitions[147].value = 14090415;
-    color_256_definitions[148].index = 164;
-    color_256_definitions[148].value = 14090455;
-    color_256_definitions[149].index = 165;
-    color_256_definitions[149].value = 14090495;
-    color_256_definitions[150].index = 166;
-    color_256_definitions[150].value = 14114560;
-    color_256_definitions[151].index = 167;
-    color_256_definitions[151].value = 14114655;
-    color_256_definitions[152].index = 168;
-    color_256_definitions[152].value = 14114695;
-    color_256_definitions[153].index = 169;
-    color_256_definitions[153].value = 14114735;
-    color_256_definitions[154].index = 170;
-    color_256_definitions[154].value = 14114775;
-    color_256_definitions[155].index = 171;
-    color_256_definitions[155].value = 14114815;
-    color_256_definitions[156].index = 172;
-    color_256_definitions[156].value = 14124800;
-    color_256_definitions[157].index = 173;
-    color_256_definitions[157].value = 14124895;
-    color_256_definitions[158].index = 174;
-    color_256_definitions[158].value = 14124935;
-    color_256_definitions[159].index = 175;
-    color_256_definitions[159].value = 14124975;
-    color_256_definitions[160].index = 176;
-    color_256_definitions[160].value = 14125015;
-    color_256_definitions[161].index = 177;
-    color_256_definitions[161].value = 14125055;
-    color_256_definitions[162].index = 178;
-    color_256_definitions[162].value = 14135040;
-    color_256_definitions[163].index = 179;
-    color_256_definitions[163].value = 14135135;
-    color_256_definitions[164].index = 180;
-    color_256_definitions[164].value = 14135175;
-    color_256_definitions[165].index = 181;
-    color_256_definitions[165].value = 14135215;
-    color_256_definitions[166].index = 182;
-    color_256_definitions[166].value = 14135255;
-    color_256_definitions[167].index = 183;
-    color_256_definitions[167].value = 14135295;
-    color_256_definitions[168].index = 184;
-    color_256_definitions[168].value = 14145280;
-    color_256_definitions[169].index = 185;
-    color_256_definitions[169].value = 14145375;
-    color_256_definitions[170].index = 186;
-    color_256_definitions[170].value = 14145415;
-    color_256_definitions[171].index = 187;
-    color_256_definitions[171].value = 14145455;
-    color_256_definitions[172].index = 188;
-    color_256_definitions[172].value = 14145495;
-    color_256_definitions[173].index = 189;
-    color_256_definitions[173].value = 14145535;
-    color_256_definitions[174].index = 190;
-    color_256_definitions[174].value = 14155520;
-    color_256_definitions[175].index = 191;
-    color_256_definitions[175].value = 14155615;
-    color_256_definitions[176].index = 192;
-    color_256_definitions[176].value = 14155655;
-    color_256_definitions[177].index = 193;
-    color_256_definitions[177].value = 14155695;
-    color_256_definitions[178].index = 194;
-    color_256_definitions[178].value = 14155735;
-    color_256_definitions[179].index = 195;
-    color_256_definitions[179].value = 14155775;
-    color_256_definitions[180].index = 196;
-    color_256_definitions[180].value = 16711680;
-    color_256_definitions[181].index = 197;
-    color_256_definitions[181].value = 16711775;
-    color_256_definitions[182].index = 198;
-    color_256_definitions[182].value = 16711815;
-    color_256_definitions[183].index = 199;
-    color_256_definitions[183].value = 16711855;
-    color_256_definitions[184].index = 200;
-    color_256_definitions[184].value = 16711895;
-    color_256_definitions[185].index = 201;
-    color_256_definitions[185].value = 16711935;
-    color_256_definitions[186].index = 202;
-    color_256_definitions[186].value = 16736000;
-    color_256_definitions[187].index = 203;
-    color_256_definitions[187].value = 16736095;
-    color_256_definitions[188].index = 204;
-    color_256_definitions[188].value = 16736135;
-    color_256_definitions[189].index = 205;
-    color_256_definitions[189].value = 16736175;
-    color_256_definitions[190].index = 206;
-    color_256_definitions[190].value = 16736215;
-    color_256_definitions[191].index = 207;
-    color_256_definitions[191].value = 16736255;
-    color_256_definitions[192].index = 208;
-    color_256_definitions[192].value = 16746240;
-    color_256_definitions[193].index = 209;
-    color_256_definitions[193].value = 16746335;
-    color_256_definitions[194].index = 210;
-    color_256_definitions[194].value = 16746375;
-    color_256_definitions[195].index = 211;
-    color_256_definitions[195].value = 16746415;
-    color_256_definitions[196].index = 212;
-    color_256_definitions[196].value = 16746455;
-    color_256_definitions[197].index = 213;
-    color_256_definitions[197].value = 16746495;
-    color_256_definitions[198].index = 214;
-    color_256_definitions[198].value = 16756480;
-    color_256_definitions[199].index = 215;
-    color_256_definitions[199].value = 16756575;
-    color_256_definitions[200].index = 216;
-    color_256_definitions[200].value = 16756615;
-    color_256_definitions[201].index = 217;
-    color_256_definitions[201].value = 16756655;
-    color_256_definitions[202].index = 218;
-    color_256_definitions[202].value = 16756695;
-    color_256_definitions[203].index = 219;
-    color_256_definitions[203].value = 16756735;
-    color_256_definitions[204].index = 220;
-    color_256_definitions[204].value = 16766720;
-    color_256_definitions[205].index = 221;
-    color_256_definitions[205].value = 16766815;
-    color_256_definitions[206].index = 222;
-    color_256_definitions[206].value = 16766855;
-    color_256_definitions[207].index = 223;
-    color_256_definitions[207].value = 16766895;
-    color_256_definitions[208].index = 224;
-    color_256_definitions[208].value = 16766935;
-    color_256_definitions[209].index = 225;
-    color_256_definitions[209].value = 16766975;
-    color_256_definitions[210].index = 226;
-    color_256_definitions[210].value = 16776960;
-    color_256_definitions[211].index = 227;
-    color_256_definitions[211].value = 16777055;
-    color_256_definitions[212].index = 228;
-    color_256_definitions[212].value = 16777095;
-    color_256_definitions[213].index = 229;
-    color_256_definitions[213].value = 16777135;
-    color_256_definitions[214].index = 230;
-    color_256_definitions[214].value = 16777175;
-    color_256_definitions[215].index = 231;
-    color_256_definitions[215].value = 16777215;
-    color_256_definitions[216].index = 232;
-    color_256_definitions[216].value = 526344;
-    color_256_definitions[217].index = 233;
-    color_256_definitions[217].value = 1184274;
-    color_256_definitions[218].index = 234;
-    color_256_definitions[218].value = 1842204;
-    color_256_definitions[219].index = 235;
-    color_256_definitions[219].value = 2500134;
-    color_256_definitions[220].index = 236;
-    color_256_definitions[220].value = 3158064;
-    color_256_definitions[221].index = 237;
-    color_256_definitions[221].value = 3815994;
-    color_256_definitions[222].index = 238;
-    color_256_definitions[222].value = 4473924;
-    color_256_definitions[223].index = 239;
-    color_256_definitions[223].value = 5131854;
-    color_256_definitions[224].index = 240;
-    color_256_definitions[224].value = 5789784;
-    color_256_definitions[225].index = 241;
-    color_256_definitions[225].value = 6447714;
-    color_256_definitions[226].index = 242;
-    color_256_definitions[226].value = 7105644;
-    color_256_definitions[227].index = 243;
-    color_256_definitions[227].value = 7763574;
-    color_256_definitions[228].index = 244;
-    color_256_definitions[228].value = 8421504;
-    color_256_definitions[229].index = 245;
-    color_256_definitions[229].value = 9079434;
-    color_256_definitions[230].index = 246;
-    color_256_definitions[230].value = 9737364;
-    color_256_definitions[231].index = 247;
-    color_256_definitions[231].value = 10395294;
-    color_256_definitions[232].index = 248;
-    color_256_definitions[232].value = 11053224;
-    color_256_definitions[233].index = 249;
-    color_256_definitions[233].value = 11711154;
-    color_256_definitions[234].index = 250;
-    color_256_definitions[234].value = 12369084;
-    color_256_definitions[235].index = 251;
-    color_256_definitions[235].value = 13027014;
-    color_256_definitions[236].index = 252;
-    color_256_definitions[236].value = 13684944;
-    color_256_definitions[237].index = 253;
-    color_256_definitions[237].value = 14342874;
-    color_256_definitions[238].index = 254;
-    color_256_definitions[238].value = 15000804;
-    color_256_definitions[239].index = 255;
-    color_256_definitions[239].value = 15658734;
+    $c.init(color_256_definitions, [
+        { index: 16, value: 0 },
+        { index: 17, value: 95 },
+        { index: 18, value: 135 },
+        { index: 19, value: 175 },
+        { index: 20, value: 215 },
+        { index: 21, value: 255 },
+        { index: 22, value: 24320 },
+        { index: 23, value: 24415 },
+        { index: 24, value: 24455 },
+        { index: 25, value: 24495 },
+        { index: 26, value: 24535 },
+        { index: 27, value: 24575 },
+        { index: 28, value: 34560 },
+        { index: 29, value: 34655 },
+        { index: 30, value: 34695 },
+        { index: 31, value: 34735 },
+        { index: 32, value: 34775 },
+        { index: 33, value: 34815 },
+        { index: 34, value: 44800 },
+        { index: 35, value: 44895 },
+        { index: 36, value: 44935 },
+        { index: 37, value: 44975 },
+        { index: 38, value: 45015 },
+        { index: 39, value: 45055 },
+        { index: 40, value: 55040 },
+        { index: 41, value: 55135 },
+        { index: 42, value: 55175 },
+        { index: 43, value: 55215 },
+        { index: 44, value: 55255 },
+        { index: 45, value: 55295 },
+        { index: 46, value: 65280 },
+        { index: 47, value: 65375 },
+        { index: 48, value: 65415 },
+        { index: 49, value: 65455 },
+        { index: 50, value: 65495 },
+        { index: 51, value: 65535 },
+        { index: 52, value: 6225920 },
+        { index: 53, value: 6226015 },
+        { index: 54, value: 6226055 },
+        { index: 55, value: 6226095 },
+        { index: 56, value: 6226135 },
+        { index: 57, value: 6226175 },
+        { index: 58, value: 6250240 },
+        { index: 59, value: 6250335 },
+        { index: 60, value: 6250375 },
+        { index: 61, value: 6250415 },
+        { index: 62, value: 6250455 },
+        { index: 63, value: 6250495 },
+        { index: 64, value: 6260480 },
+        { index: 65, value: 6260575 },
+        { index: 66, value: 6260615 },
+        { index: 67, value: 6260655 },
+        { index: 68, value: 6260695 },
+        { index: 69, value: 6260735 },
+        { index: 70, value: 6270720 },
+        { index: 71, value: 6270815 },
+        { index: 72, value: 6270855 },
+        { index: 73, value: 6270895 },
+        { index: 74, value: 6270935 },
+        { index: 75, value: 6270975 },
+        { index: 76, value: 6280960 },
+        { index: 77, value: 6281055 },
+        { index: 78, value: 6281095 },
+        { index: 79, value: 6281135 },
+        { index: 80, value: 6281175 },
+        { index: 81, value: 6281215 },
+        { index: 82, value: 6291200 },
+        { index: 83, value: 6291295 },
+        { index: 84, value: 6291335 },
+        { index: 85, value: 6291375 },
+        { index: 86, value: 6291415 },
+        { index: 87, value: 6291455 },
+        { index: 88, value: 8847360 },
+        { index: 89, value: 8847455 },
+        { index: 90, value: 8847495 },
+        { index: 91, value: 8847535 },
+        { index: 92, value: 8847575 },
+        { index: 93, value: 8847615 },
+        { index: 94, value: 8871680 },
+        { index: 95, value: 8871775 },
+        { index: 96, value: 8871815 },
+        { index: 97, value: 8871855 },
+        { index: 98, value: 8871895 },
+        { index: 99, value: 8871935 },
+        { index: 100, value: 8881920 },
+        { index: 101, value: 8882015 },
+        { index: 102, value: 8882055 },
+        { index: 103, value: 8882095 },
+        { index: 104, value: 8882135 },
+        { index: 105, value: 8882175 },
+        { index: 106, value: 8892160 },
+        { index: 107, value: 8892255 },
+        { index: 108, value: 8892295 },
+        { index: 109, value: 8892335 },
+        { index: 110, value: 8892375 },
+        { index: 111, value: 8892415 },
+        { index: 112, value: 8902400 },
+        { index: 113, value: 8902495 },
+        { index: 114, value: 8902535 },
+        { index: 115, value: 8902575 },
+        { index: 116, value: 8902615 },
+        { index: 117, value: 8902655 },
+        { index: 118, value: 8912640 },
+        { index: 119, value: 8912735 },
+        { index: 120, value: 8912775 },
+        { index: 121, value: 8912815 },
+        { index: 122, value: 8912855 },
+        { index: 123, value: 8912895 },
+        { index: 124, value: 11468800 },
+        { index: 125, value: 11468895 },
+        { index: 126, value: 11468935 },
+        { index: 127, value: 11468975 },
+        { index: 128, value: 11469015 },
+        { index: 129, value: 11469055 },
+        { index: 130, value: 11493120 },
+        { index: 131, value: 11493215 },
+        { index: 132, value: 11493255 },
+        { index: 133, value: 11493295 },
+        { index: 134, value: 11493335 },
+        { index: 135, value: 11493375 },
+        { index: 136, value: 11503360 },
+        { index: 137, value: 11503455 },
+        { index: 138, value: 11503495 },
+        { index: 139, value: 11503535 },
+        { index: 140, value: 11503575 },
+        { index: 141, value: 11503615 },
+        { index: 142, value: 11513600 },
+        { index: 143, value: 11513695 },
+        { index: 144, value: 11513735 },
+        { index: 145, value: 11513775 },
+        { index: 146, value: 11513815 },
+        { index: 147, value: 11513855 },
+        { index: 148, value: 11523840 },
+        { index: 149, value: 11523935 },
+        { index: 150, value: 11523975 },
+        { index: 151, value: 11524015 },
+        { index: 152, value: 11524055 },
+        { index: 153, value: 11524095 },
+        { index: 154, value: 11534080 },
+        { index: 155, value: 11534175 },
+        { index: 156, value: 11534215 },
+        { index: 157, value: 11534255 },
+        { index: 158, value: 11534295 },
+        { index: 159, value: 11534335 },
+        { index: 160, value: 14090240 },
+        { index: 161, value: 14090335 },
+        { index: 162, value: 14090375 },
+        { index: 163, value: 14090415 },
+        { index: 164, value: 14090455 },
+        { index: 165, value: 14090495 },
+        { index: 166, value: 14114560 },
+        { index: 167, value: 14114655 },
+        { index: 168, value: 14114695 },
+        { index: 169, value: 14114735 },
+        { index: 170, value: 14114775 },
+        { index: 171, value: 14114815 },
+        { index: 172, value: 14124800 },
+        { index: 173, value: 14124895 },
+        { index: 174, value: 14124935 },
+        { index: 175, value: 14124975 },
+        { index: 176, value: 14125015 },
+        { index: 177, value: 14125055 },
+        { index: 178, value: 14135040 },
+        { index: 179, value: 14135135 },
+        { index: 180, value: 14135175 },
+        { index: 181, value: 14135215 },
+        { index: 182, value: 14135255 },
+        { index: 183, value: 14135295 },
+        { index: 184, value: 14145280 },
+        { index: 185, value: 14145375 },
+        { index: 186, value: 14145415 },
+        { index: 187, value: 14145455 },
+        { index: 188, value: 14145495 },
+        { index: 189, value: 14145535 },
+        { index: 190, value: 14155520 },
+        { index: 191, value: 14155615 },
+        { index: 192, value: 14155655 },
+        { index: 193, value: 14155695 },
+        { index: 194, value: 14155735 },
+        { index: 195, value: 14155775 },
+        { index: 196, value: 16711680 },
+        { index: 197, value: 16711775 },
+        { index: 198, value: 16711815 },
+        { index: 199, value: 16711855 },
+        { index: 200, value: 16711895 },
+        { index: 201, value: 16711935 },
+        { index: 202, value: 16736000 },
+        { index: 203, value: 16736095 },
+        { index: 204, value: 16736135 },
+        { index: 205, value: 16736175 },
+        { index: 206, value: 16736215 },
+        { index: 207, value: 16736255 },
+        { index: 208, value: 16746240 },
+        { index: 209, value: 16746335 },
+        { index: 210, value: 16746375 },
+        { index: 211, value: 16746415 },
+        { index: 212, value: 16746455 },
+        { index: 213, value: 16746495 },
+        { index: 214, value: 16756480 },
+        { index: 215, value: 16756575 },
+        { index: 216, value: 16756615 },
+        { index: 217, value: 16756655 },
+        { index: 218, value: 16756695 },
+        { index: 219, value: 16756735 },
+        { index: 220, value: 16766720 },
+        { index: 221, value: 16766815 },
+        { index: 222, value: 16766855 },
+        { index: 223, value: 16766895 },
+        { index: 224, value: 16766935 },
+        { index: 225, value: 16766975 },
+        { index: 226, value: 16776960 },
+        { index: 227, value: 16777055 },
+        { index: 228, value: 16777095 },
+        { index: 229, value: 16777135 },
+        { index: 230, value: 16777175 },
+        { index: 231, value: 16777215 },
+        { index: 232, value: 526344 },
+        { index: 233, value: 1184274 },
+        { index: 234, value: 1842204 },
+        { index: 235, value: 2500134 },
+        { index: 236, value: 3158064 },
+        { index: 237, value: 3815994 },
+        { index: 238, value: 4473924 },
+        { index: 239, value: 5131854 },
+        { index: 240, value: 5789784 },
+        { index: 241, value: 6447714 },
+        { index: 242, value: 7105644 },
+        { index: 243, value: 7763574 },
+        { index: 244, value: 8421504 },
+        { index: 245, value: 9079434 },
+        { index: 246, value: 9737364 },
+        { index: 247, value: 10395294 },
+        { index: 248, value: 11053224 },
+        { index: 249, value: 11711154 },
+        { index: 250, value: 12369084 },
+        { index: 251, value: 13027014 },
+        { index: 252, value: 13684944 },
+        { index: 253, value: 14342874 },
+        { index: 254, value: 15000804 },
+        { index: 255, value: 15658734 }
+    ]);
     color_attr_to_str$buf.fill(0);
     add_menu_coloring_parsed$re_error.fill(0);
     add_menu_coloring_parsed$re_error.set([77, 101, 110, 117, 99, 111, 108, 111, 114, 32, 114, 101, 103, 101, 120, 32, 101, 114, 114, 111, 114]);   // "Menucolor regex error"

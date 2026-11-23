@@ -4,8 +4,13 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc } from './alloc.js';
 import { panic } from './end.js';
+import { COLNO, FALSE, ROWNO, TRUE } from './global.h.js';
+import { max, min } from './hack.macros.js';
 import { impossible } from './pline.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { rn2 } from './rnd.js';
+
+const XLIM = 4;
+const YLIM = 3;
 
 let rect = null;
 let n_rects = 0;
@@ -21,8 +26,8 @@ export async function init_rect() {   // rect.c:29
     }
     rect_cnt = 1;
     $t1 = $c.radd(rect, 0).ly = 0, $c.radd(rect, 0).lx = $t1;
-    $c.radd(rect, 0).hx = 79;
-    $c.radd(rect, 0).hy = 20;
+    $c.radd(rect, 0).hx = COLNO - 1;
+    $c.radd(rect, 0).hy = ROWNO - 1;
 }
 export function free_rect() {   // rect.c:45
     if (rect) {
@@ -58,28 +63,28 @@ export function get_rect(r) {   // rect.c:82
     return null;
 }
 export function rnd_rect() {   // rect.c:104
-    return rect_cnt > 0 ? $c.radd(rect, rng_log_enabled() ? (rng_log_set_caller($c.lit("rect.c"), 106, $c.lit("rnd_rect")), rn2(rect_cnt)) : rn2(rect_cnt)) : null;
+    return rect_cnt > 0 ? $c.radd(rect, rn2(rect_cnt)) : null;
 }
 function intersect(r1, r2, r3) {   // rect.c:116
     if (r2.lx > r1.hx || r2.ly > r1.hy || r2.hx < r1.lx || r2.hy < r1.ly) {
-        return 0;
+        return FALSE;
     }
     r3.lx = $c.i16(r2.lx > r1.lx ? r2.lx : r1.lx);
     r3.ly = $c.i16(r2.ly > r1.ly ? r2.ly : r1.ly);
     r3.hx = $c.i16(r2.hx > r1.hx ? r1.hx : r2.hx);
     r3.hy = $c.i16(r2.hy > r1.hy ? r1.hy : r2.hy);
     if (r3.lx > r3.hx || r3.ly > r3.hy) {
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 export function rect_bounds(r1$in, r2$in, r3) {   // rect.c:134
     const r1 = r1$in;   // passed by value: the caller copies
     const r2 = r2$in;   // passed by value: the caller copies
-    r3.lx = $c.i16(r1.lx < r2.lx ? r1.lx : r2.lx);
-    r3.ly = $c.i16(r1.ly < r2.ly ? r1.ly : r2.ly);
-    r3.hx = $c.i16(r1.hx > r2.hx ? r1.hx : r2.hx);
-    r3.hy = $c.i16(r1.hy > r2.hy ? r1.hy : r2.hy);
+    r3.lx = $c.i16(min(r1.lx, r2.lx));
+    r3.ly = $c.i16(min(r1.ly, r2.ly));
+    r3.hx = $c.i16(max(r1.hx, r2.hx));
+    r3.hy = $c.i16(max(r1.hy, r2.hy));
 }
 export function remove_rect(r) {   // rect.c:147
     let ind = 0;
@@ -108,22 +113,22 @@ export async function split_rects(r1, r2) {   // rect.c:182
             await split_rects($c.radd(rect, i), r);
         }
     }
-    if (((r2.ly - old_r.ly | 0) - 1 | 0) > ((old_r.hy < 20 ? 6 : 4) + 4 | 0)) {
+    if (((r2.ly - old_r.ly | 0) - 1 | 0) > ((old_r.hy < ROWNO - 1 ? 2 * YLIM : YLIM + 1) + 4 | 0)) {
         r.$copyFrom(old_r);
         r.hy = $c.i16(r2.ly - 2 | 0);
         await add_rect(r);
     }
-    if (((r2.lx - old_r.lx | 0) - 1 | 0) > ((old_r.hx < 79 ? 8 : 5) + 4 | 0)) {
+    if (((r2.lx - old_r.lx | 0) - 1 | 0) > ((old_r.hx < COLNO - 1 ? 2 * XLIM : XLIM + 1) + 4 | 0)) {
         r.$copyFrom(old_r);
         r.hx = $c.i16(r2.lx - 2 | 0);
         await add_rect(r);
     }
-    if (((old_r.hy - r2.hy | 0) - 1 | 0) > ((old_r.ly > 0 ? 6 : 4) + 4 | 0)) {
+    if (((old_r.hy - r2.hy | 0) - 1 | 0) > ((old_r.ly > 0 ? 2 * YLIM : YLIM + 1) + 4 | 0)) {
         r.$copyFrom(old_r);
         r.ly = $c.i16(r2.hy + 2 | 0);
         await add_rect(r);
     }
-    if (((old_r.hx - r2.hx | 0) - 1 | 0) > ((old_r.lx > 0 ? 8 : 5) + 4 | 0)) {
+    if (((old_r.hx - r2.hx | 0) - 1 | 0) > ((old_r.lx > 0 ? 2 * XLIM : XLIM + 1) + 4 | 0)) {
         r.$copyFrom(old_r);
         r.lx = $c.i16(r2.hx + 2 | 0);
         await add_rect(r);

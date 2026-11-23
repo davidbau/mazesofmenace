@@ -698,8 +698,9 @@ function Shirt_on()  { return reveal_worn_armor(W_ARMU); }
 
 /* include/prop.h enum prop_types, index -> uprops key. The flat uprops map
    keys by the C constant's name; setworn's generic property arm (src/worn.c)
-   writes through this table when gear is put on. Index 0 is unused in C. */
-export const PROP_KEYS = [null,
+   writes through this table when gear is put on. Index 0 grants no property,
+   but C still stores its worn-slot mask for Ring_off_or_gone's sanity check. */
+export const PROP_KEYS = ['0',
     'FIRE_RES', 'COLD_RES', 'SLEEP_RES', 'DISINT_RES', 'SHOCK_RES',
     'POISON_RES', 'ACID_RES', 'STONE_RES', 'DRAIN_RES', 'SICK_RES',
     'INVULNERABLE', 'ANTIMAGIC', 'STUNNED', 'CONFUSION', 'BLINDED', 'DEAF',
@@ -1563,7 +1564,7 @@ async function Ring_off_or_gone(obj, gone) {
 
     (game.context_takeoff ||= {}).mask &= ~mask;
     if (!((prop ? (game.u.uprops?.[prop] || 0) : 0) & mask))
-        void impossible("Strange... I didn't know you had that ring.");
+        await impossible("Strange... I didn't know you had that ring.");
     if (gone)
         setnotworn(obj);
     else

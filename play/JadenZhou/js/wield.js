@@ -31,7 +31,9 @@ import { splitobj, unsplitobj } from './mkobj.js';
 import { simpleonames } from './iactions.js';
 import { vtense, otense } from './objnam.js';
 import { inv_cnt } from './hack.js';
-import { highc } from './hacklib.js';
+import { highc, s_suffix as s_suffix_wd } from './hacklib.js';
+import { get_obj_location as get_obj_location_wd, costly_spot as costly_spot_wd } from './shk.js';
+import { y_monnam as y_monnam_wd } from './do_name.js';
 import { tty_yn_function } from './wintty.js';
 import { LENSES, ARMOR_CLASS, ARM_GLOVES, ARM_BOOTS } from './objects.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT, GETOBJ_ALLOWCNT,
@@ -524,13 +526,16 @@ function pair_of(o) {
 
 // C ref: shk.c Shk_Your()/shk_your() -- the hero's own (unpaid-free,
 // carried) objects
-function Shk_Your(obj) {
+export function Shk_Your(obj) {
     let buf;
+    const loc = get_obj_location_wd(obj, 0);
     if (obj.otyp === CORPSE)
         throw new Error('shk_your(): corpse ownership not ported yet');
-    else if (obj.unpaid || obj.where === 'OBJ_MINVENT'
-             || obj.where === 'OBJ_FLOOR')
-        throw new Error('shk_your(): shk_owns()/mon_owns() not ported yet');
+    else if (loc && (obj.unpaid || (obj.where === 'OBJ_FLOOR' && !obj.no_charge
+                                    && costly_spot_wd(loc[0], loc[1]))))
+        throw new Error('shk_your(): shk_owns() not ported yet');
+    else if (obj.where === 'OBJ_MINVENT') /* mon_owns() */
+        buf = s_suffix_wd(y_monnam_wd(obj.ocarry));
     else
         buf = (obj.where === 'OBJ_INVENT') ? "your" : "the"; /* the_your[carried(obj)] */
     buf += " ";

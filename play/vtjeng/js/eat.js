@@ -202,7 +202,8 @@ import { fall_asleep } from './timeout.js';
 import {
     b_trapped, deltrap, float_up, reset_utrap, selftouch, t_at,
 } from './trap.js';
-import { displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
+import { ttyPline } from './tty_message.js';
+import { tty_display_nhwindow_map_blocking } from './wintty.js';
 import { remove_worn_item } from './steal.js';
 import { costly_spot, sellobj_state } from './shk.js';
 import { explode } from './explode.js';
@@ -219,6 +220,8 @@ import {
     Sick, Sick_resistance, Sleep_resistance, Slimed, Slow_digestion,
     Stone_resistance, Stoned, Strangled, Unaware, Unchanging, Vomiting,
 } from './youprop.js';
+import { sync_impossible } from './source_steps.js';
+import { impossible } from './pline.js';
 
 // C ref: eat.c hu_stat[], indexed by u.uhs and shared with botl.c and
 // insight.c. Every entry is eight columns wide, so a reader that wants the
@@ -1493,8 +1496,10 @@ export function eaten_stat(base, obj, env = {}) {
     if (uneaten_amt > full_amount) {
         // C prints "partly eaten food (%ld) more nutritious than untouched
         // food (%ld)" through impossible(), which this synchronous caller
-        // cannot wait on, and clamps.
-        note_unported('pline.c impossible');
+        // queues, and clamps.
+        sync_impossible(
+            `partly eaten food (${uneaten_amt}) more nutritious than untouched food (${full_amount})`,
+            state);
         uneaten_amt = full_amount;
     }
     const scaled = full_amount
@@ -1587,8 +1592,8 @@ function recalc_wt(env) {
     const piece = victual(env.state).piece;
     if (!piece) {
         // C prints "recalc_wt without piece" through impossible(), which
-        // this synchronous function cannot wait on.
-        note_unported('pline.c impossible');
+        // this synchronous function queues.
+        sync_impossible('recalc_wt without piece', env.state);
         return;
     }
     piece.owt = weight(piece, env);
@@ -1607,10 +1612,17 @@ export function reset_eat(state = game) {
 // to untouched, so the last bite leaves 1 and shortens the meal instead.
 export function consume_oeaten(obj, amt, state = game) {
     if (!obj_nutrition(obj, state)) {
-        // C prints "oeaten: attempting to set 0 nutrition food (%s)
-        // partially eaten" through impossible(), which this synchronous
-        // function cannot wait on, and leaves oeaten alone.
-        note_unported('pline.c impossible');
+        // eat.c:3809-3823: the report names a corpse, egg or tin with its
+        // monster type and any other food by object type, and leaves oeaten
+        // alone.
+        const otyp = obj.otyp;
+        const itembuf = otyp === CORPSE || otyp === EGG || otyp === TIN
+            ? `${otyp === CORPSE ? 'corpse' : otyp === EGG ? 'egg' : 'tin'}`
+                + ` [${obj.corpsenm}]`
+            : `${otyp}`;
+        sync_impossible(
+            `oeaten: attempting to set 0 nutrition food (${itembuf}) partially eaten`,
+            state);
         return;
     }
 
@@ -2669,9 +2681,12 @@ async function cpostfx(pm, state, env = {}) {
             state.afternmv = eatmdone;
             state.youmonst.m_ap_type = M_AP_OBJECT;
             state.youmonst.mappearance = hallucinating ? ORANGE : GOLD_PIECE;
+            // "make gold symbol show up now": display_nhwindow(WIN_MAP,
+            // TRUE) waits at --More-- whenever the top line holds text, even
+            // text that an earlier key already acknowledged.
             newsym(state.u.ux, state.u.uy);
             await curs_on_u(state);
-            await displayPendingTtyMessageWindow(state);
+            await tty_display_nhwindow_map_blocking(state);
         }
         break;
     case PM_QUANTUM_MECHANIC: {
@@ -3733,7 +3748,7 @@ export async function floorfood(verb, corpsecheck, state = game) {
         // C's impossible() arm has no return value and leaves no selected
         // object. Preserve the source gap until an owning diagnostic sink
         // is ported; this call is deliberately not used as data.
-        note_unported('pline.c impossible');
+        await impossible(`floorfood: unknown request (${verb})`, state);
         otmp = null;
     }
     if (otmp && corpsecheck && !(offering && otmp.oclass === AMULET_CLASS)) {

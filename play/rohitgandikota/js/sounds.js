@@ -34,7 +34,7 @@ import { getdir } from './cmd.js';
 import { Deaf, Hallucination, Underwater } from './youprop.js';
 import { pline_The, You, You_hear, verbalize } from './pline.js';
 import { pline } from './display.js';
-import { Monnam, noveltitle, pmname } from './do_name.js';
+import { Monnam, noveltitle, pmname, mon_nam } from './do_name.js';
 import { an, vtense } from './objnam.js';
 import { nomul } from './hack.js';
 import { poly_gender } from './polyself.js';
@@ -329,6 +329,7 @@ export async function beg(mtmp) {
 }
 
 export async function domonnoise(mtmp) {
+    let verbuf;
     const ptr = game.mons[mtmp.mnum];
     let msound = ptr.msound;
     let pline_msg = null, verbl_msg = null, verbl_msg_mcan = null;

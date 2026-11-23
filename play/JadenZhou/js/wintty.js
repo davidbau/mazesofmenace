@@ -24,8 +24,10 @@ import {
     TELEPORT_BANNER_C, PL_NSIZ, ROWNO, COLNO,
 } from './const.js';
 import { genl_player_setup } from './role.js';
-import { lowc } from './hacklib.js';
-import { row_refresh, bot, flush_screen, pline, docrt } from './display.js';
+import { lowc, tabexpand } from './hacklib.js';
+import { help_files } from './help_files.js';
+import { row_refresh, bot, flush_screen, pline, docrt, dec_cell_char,
+         decode_mixed } from './display.js';
 import { vision_recalc } from './vision.js';
 import { extcmds_match, readchar as core_readchar, key2txt } from './cmd.js';
 import { extcmdlist, ECM_NOFLAGS, ECM_IGNOREAC, ECM_EXACTMATCH } from './func_tab.js';
@@ -626,12 +628,74 @@ async function redotoplin(str) {
     const otoplin = t.toplin;
 
     home();
+    if (t.mixed && (str.charCodeAt(0) & 0x80)) {
+        /* kludge for the / command, the only time we ever want a */
+        /* graphics character on the top line */
+        g_putch(str.charCodeAt(0));
+        str = str.slice(1);
+        t.curx++;
+    }
     /* end_glyphout(): in case message printed during graphics output */
     putsyms(str);
     cl_end();
     t.toplin = TOPLINE_NEED_MORE;
     if (t.cury && otoplin !== TOPLINE_SPECIAL_PROMPT)
         await more();
+}
+
+// C ref: wintty.c g_putch() -- a DECgraphics symbol (high bit set) is
+// shown from the line-drawing character set, with the 8th bit stripped
+function g_putch(in_ch) {
+    const ch = String.fromCharCode(in_ch & 0x7f);
+    xputc((in_ch & 0x80) ? dec_cell_char(ch) : ch);
+}
+
+// C ref: wintty.c tty_display_file() -- the internal pager (no DEF_PAGER);
+// the files are the help texts of help_files.js
+export async function tty_display_file(fname, complain) {
+    tty_clear_nhwindow(game.WIN_MESSAGE);
+    const f = help_files[fname];
+    if (!f) {
+        if (complain)
+            throw new Error(`tty_display_file(): can't open "${fname}" not ported yet`);
+        return;
+    }
+    const datawin = tty_create_nhwindow(NHW_TEXT);
+    let empty = true;
+
+    /* if (complain && nh_CD): "attempt to scroll text below map window if
+       there's room" -- the status window ends at the last of the 24 tty
+       rows, so offy + 12 exceeds the rows and offy stays 0 */
+    for (let buf of f) {
+        if (buf.includes('\t'))
+            buf = tabexpand(buf);
+        empty = false;
+        await tty_putstr(datawin, 0, buf);
+        if (wins()[datawin].flags & WIN_CANCELLED)
+            break;
+    }
+    if (!empty)
+        await tty_display_nhwindow(datawin, false);
+    await tty_destroy_nhwindow(datawin);
+}
+
+// C ref: wintty.c tty_putmixed() -- 'str' may contain glyphs encoded by
+// encglyph(); decode_mixed() replaces each with its screen symbol
+export async function tty_putmixed(window, attr, str) {
+    const cw = wins()[window];
+
+    if (!cw)
+        throw new Error('tty_putmixed(): tty_raw_print() of a mixed string not ported yet');
+    tty().mixed = 1;
+    const buf = decode_mixed(str);
+    if (cw.type !== NHW_MESSAGE && /[\x80-\xff]/.test(buf))
+        throw new Error('tty_putmixed(): graphics symbol in a text window not ported yet');
+    try {
+        /* now send it to the normal tty_putstr */
+        await tty_putstr(window, attr, buf);
+    } finally {
+        tty().mixed = 0;
+    }
 }
 
 // C ref: topl.c remember_topl() -- used by update_topl(); the message

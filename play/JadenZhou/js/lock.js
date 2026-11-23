@@ -10,7 +10,7 @@
 // forcelock(), breakchestlock(), u_have_forceable_weapon(),
 // chest_shatter_msg()) and #close (doclose()).
 
-import { touch_artifact } from './artifact.js';
+import { touch_artifact, is_magic_key } from './artifact.js';
 import { game } from './gstate.js';
 import { rn2, rnl } from './rng.js';
 import { pline, newsym, You, You_cant, pline_The, canseemon } from './display.js';
@@ -23,6 +23,8 @@ import { mon_nam } from './do_name.js';
 import { doname, yname } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import { mons, PM_ORACLE, PM_ROGUE } from './monsters.js';
+import { ART_ORB_OF_DETECTION, ART_MASTER_KEY_OF_THIEVERY } from './artilist.js';
+import { is_quest_artifact } from './questpgr.js';
 import { CHEST } from './objects.js';
 import { D_LOCKED, M_AP_OBJECT } from './const.js';
 import { recalc_block_point } from './vision.js';
@@ -254,13 +256,6 @@ export function maybe_reset_pick(container) {
 
 function carried(obj) { return obj.where === 'OBJ_INVENT'; }
 function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
-
-// C ref: artifact.c is_magic_key() -- only the Master Key of Thievery
-function is_magic_key(mon, obj) {
-    if (obj.oartifact)
-        throw new Error('is_magic_key(): artifacts not ported yet');
-    return false;
-}
 
 /* C ref: lock.c PICKLOCK_* */
 const PICKLOCK_LEARNED_SOMETHING = -1; /* time passes */
@@ -586,34 +581,59 @@ function impossible(msg) { console.error(`impossible: ${msg}`); }
 // C ref: lock.c autokey() -- the unlocking tool autounlock would apply
 /* opening: True: key, pick, or card; False: key or pick */
 export function autokey(opening) {
-    let key = null, pick = null, card = null;
+    let o, key, pick, card, akey, apick, acard;
 
-    for (let o = game.invent; o; o = o.nobj) {
-        /* any_quest_artifact(o) && !is_quest_artifact(o): other roles'
-           quest artifacts (Rogue's Key, Tourist's Credit Card) aren't
-           in a starting inventory */
-        if (o.oartifact)
-            throw new Error('autokey(): quest artifact unlocking tools not ported yet');
-        switch (o.otyp) {
-        case SKELETON_KEY:
-            /* || is_magic_key(&youmonst, o): only artifact keys */
-            if (!key)
-                key = o;
-            break;
-        case LOCK_PICK:
-            if (!pick)
-                pick = o;
-            break;
-        case CREDIT_CARD:
-            if (!card)
-                card = o;
-            break;
-        default:
-            break;
+    /* mundane item or regular artifact or own role's quest artifact */
+    key = pick = card = null;
+    /* other role's quest artifact (Rogue's Key or Tourist's Credit Card) */
+    akey = apick = acard = null;
+    for (o = game.invent; o; o = o.nobj) {
+        if ((o.oartifact || 0) >= ART_ORB_OF_DETECTION /* any_quest_artifact(o) */
+            && !is_quest_artifact(o)) {
+            switch (o.otyp) {
+            case SKELETON_KEY:
+                if (!akey)
+                    akey = o;
+                break;
+            case LOCK_PICK:
+                if (!apick)
+                    apick = o;
+                break;
+            case CREDIT_CARD:
+                if (!acard)
+                    acard = o;
+                break;
+            default:
+                break;
+            }
+        } else {
+            switch (o.otyp) {
+            case SKELETON_KEY:
+                if (!key || is_magic_key(game.youmonst, o))
+                    key = o;
+                break;
+            case LOCK_PICK:
+                if (!pick)
+                    pick = o;
+                break;
+            case CREDIT_CARD:
+                if (!card)
+                    card = o;
+                break;
+            default:
+                break;
+            }
         }
     }
     if (!opening)
-        card = null;
+        card = acard = null;
+    /* only resort to other role's quest artifact if no other choice */
+    if (!key && !pick && !card)
+        key = akey;
+    if (!pick && !card)
+        pick = apick;
+    if (!card)
+        card = acard;
     return key ? key : pick ? pick : card ? card : null;
 }
 

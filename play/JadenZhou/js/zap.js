@@ -9,6 +9,8 @@
 // item_what().
 
 import { game } from './gstate.js';
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT } from './const.js';
 import { You, Your, pline, pline_The, Blind, Hallucination } from './display.js';
 import { getobj, useupall } from './invent.js';
 import { check_capacity } from './hack.js';
@@ -265,8 +267,9 @@ export async function bhito(obj, otmp) {
                 break;
             }
             /* KMH, conduct */
-            u.uconduct.polypiles = (u.uconduct.polypiles || 0) + 1;
-            /* livelog_printf(LL_CONDUCT, ...) on the first: no livelog */
+            if (!u.uconduct.polypiles++)
+                livelog_printf(LL_CONDUCT, `polymorphed ${
+                               game.flags.female ? "her" : "his" /* uhis() */} first object`);
 
             /* any saved lock context will be dangerously obsolete */
             if (Is_box(obj))
@@ -314,6 +317,84 @@ function Is_box(otmp) { return otmp.otyp === LARGE_BOX || otmp.otyp === CHEST; }
 function unpolyable(o) {
     return o.otyp === WAN_POLYMORPH || o.otyp === SPE_POLYMORPH
         || o.otyp === POT_POLYMORPH || o.otyp === AMULET_OF_UNCHANGING;
+}
+
+// C ref: zap.c drain_item()
+/* Remove a positive enchantment or charge from obj,
+ * possibly carried by you or a monster
+ */
+export function drain_item(obj, by_you) {
+    const u = game.u;
+    let u_ring;
+
+    /* Is this a charged/enchanted object? */
+    if (!obj
+        || (!objects[obj.otyp].oc_charged && obj.oclass !== WEAPON_CLASS
+            && obj.oclass !== ARMOR_CLASS && !is_weptool_di(obj))
+        || obj.spe <= 0)
+        return false;
+    if (defends_di(AD_DRLI_DI, obj) || defends_when_carried_di(AD_DRLI_DI, obj)
+        || obj_resists(obj, 10, 90))
+        return false;
+
+    /* Charge for the cost of the object */
+    if (by_you)
+        costly_alteration_di(obj, COST_DRAIN_DI);
+
+    /* Drain the object and any implied effects */
+    obj.spe--;
+    u_ring = (obj === game.uleft) || (obj === game.uright);
+    switch (obj.otyp) {
+    case RIN_GAIN_STRENGTH_DI:
+        if ((obj.owornmask & W_RING) && u_ring) {
+            u.abon.a[A_STR]--;
+            game.disp_botl = true;
+        }
+        break;
+    case RIN_GAIN_CONSTITUTION_DI:
+        if ((obj.owornmask & W_RING) && u_ring) {
+            u.abon.a[A_CON_DI]--;
+            game.disp_botl = true;
+        }
+        break;
+    case RIN_ADORNMENT_DI:
+        if ((obj.owornmask & W_RING) && u_ring) {
+            u.abon.a[A_CHA_DI]--;
+            game.disp_botl = true;
+        }
+        break;
+    case RIN_INCREASE_ACCURACY_DI:
+        if ((obj.owornmask & W_RING) && u_ring)
+            u.uhitinc--;
+        break;
+    case RIN_INCREASE_DAMAGE_DI:
+        if ((obj.owornmask & W_RING) && u_ring)
+            u.udaminc--;
+        break;
+    case RIN_PROTECTION_DI:
+        if (u_ring)
+            game.disp_botl = true; /* bot() will recalc u.uac */
+        break;
+    case HELM_OF_BRILLIANCE_DI:
+        if ((obj.owornmask & W_ARMH) && (obj === game.uarmh)) {
+            u.abon.a[A_INT_DI]--;
+            u.abon.a[A_WIS]--;
+            game.disp_botl = true;
+        }
+        break;
+    case GAUNTLETS_OF_DEXTERITY_DI:
+        if ((obj.owornmask & W_ARMG) && (obj === game.uarmg)) {
+            u.abon.a[A_DEX_DI]--;
+            game.disp_botl = true;
+        }
+        break;
+    default:
+        break;
+    }
+    if (game.disp_botl)
+        bot_di();
+    /* if (carried(obj)) update_inventory(): no perm_invent */
+    return true;
 }
 
 // C ref: zap.c obj_shudders()
@@ -2652,30 +2733,11 @@ export function start_melt_ice_timeout(x, y,
     /* if we're within MAX_ICE_TIME, install a melt timer;
        otherwise, omit it to leave this ice permanent */
     if (when <= MAX_ICE_TIME) {
-        /* start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, long_to_any(where));
-           the timer queue isn't ported: like nhlua.js, the location keeps
-           its pending timer, with its absolute expiry */
-        game.level.at(x, y).timer = { when, action: MELT_ICE_AWAY_ZP,
-                                      timeout: game.moves + when };
+        const where = (x << 16) | y;
+
+        start_timer_zp(when, TIMER_LEVEL_ZP, MELT_ICE_AWAY_ZP,
+                       long_to_any_zp(where));
     }
-}
-
-// C ref: timeout.c spot_time_left() -- the location's pending level timer
-function spot_time_left_zp(x, y, func_index) {
-    const t = game.level.at(x, y).timer;
-    if (!t || t.action !== func_index)
-        return 0;
-    if (t.timeout === undefined)
-        throw new Error('spot_time_left(): a timer started by a level script not ported yet');
-    const expires = t.timeout;
-    return (expires > 0) ? expires - game.moves : 0;
-}
-
-// C ref: timeout.c spot_stop_timers()
-function spot_stop_timers_zp(x, y, func_index) {
-    const lev = game.level.at(x, y);
-    if (lev.timer && lev.timer.action === func_index)
-        lev.timer = null; /* no cleanup function for MELT_ICE_AWAY */
 }
 
 // C ref: dig.c bury_objs()
@@ -2696,18 +2758,6 @@ function unearth_objs_zp(x, y) {
         throw new Error('unearth_objs(): unearthing buried objects not ported yet');
     del_engr_at_zp(x, y);
     newsym(x, y);
-}
-
-// C ref: mkobj.c obj_ice_effects()
-function obj_ice_effects_zp(x, y, do_buried) {
-    for (const o of game.level.objects || [])
-        if (o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR' && o.timer)
-            throw new Error('obj_ice_effects(): obj_timer_checks() not ported yet');
-    if (do_buried) {
-        for (const o of game.level.buriedobjlist || [])
-            if (o.ox === x && o.oy === y && o.timer)
-                throw new Error('obj_ice_effects(): obj_timer_checks() not ported yet');
-    }
 }
 
 // C ref: zap.c zap_over_floor()
@@ -3301,3 +3351,41 @@ import { del_engr_at as del_engr_at_zp } from './engrave.js';
 import { maybe_unhide_at as maybe_unhide_at_zp, minliquid as minliquid_zp } from './mon.js';
 import { spoteffects as spoteffects_zp } from './hack.js';
 import { is_moat as is_moat_zp } from './makemon.js';
+import { start_timer as start_timer_zp, long_to_any as long_to_any_zp,
+         spot_time_left as spot_time_left_zp, spot_stop_timers as spot_stop_timers_zp } from './timeout.js';
+import { TIMER_LEVEL as TIMER_LEVEL_ZP } from './const.js';
+import { obj_ice_effects as obj_ice_effects_zp } from './mkobj.js';
+
+// C ref: zap.c revive_mon()
+/* timer callback routine: turn a corpse back into a monster */
+export async function revive_mon(arg, timeout) {
+    throw new Error('revive_mon() not ported yet');
+}
+
+// C ref: zap.c zombify_mon()
+/* timer callback routine: turn a corpse into a zombie */
+export async function zombify_mon(arg, timeout) {
+    throw new Error('zombify_mon() not ported yet');
+}
+
+// C ref: zap.c melt_ice_away()
+/* timer callback routine: melt ice at a location */
+export async function melt_ice_away(arg, timeout) {
+    throw new Error('melt_ice_away() not ported yet');
+}
+import { defends as defends_di, defends_when_carried as defends_when_carried_di }
+       from './artifact.js';
+import { is_weptool as is_weptool_di, costly_alteration as costly_alteration_di }
+       from './mkobj.js';
+import { bot as bot_di } from './display.js';
+import { COST_DRAIN as COST_DRAIN_DI, A_CON as A_CON_DI, A_CHA as A_CHA_DI,
+         A_INT as A_INT_DI, A_DEX as A_DEX_DI } from './const.js';
+import { AD_DRLI as AD_DRLI_DI } from './monsters.js';
+import { RIN_GAIN_STRENGTH as RIN_GAIN_STRENGTH_DI,
+         RIN_GAIN_CONSTITUTION as RIN_GAIN_CONSTITUTION_DI,
+         RIN_ADORNMENT as RIN_ADORNMENT_DI,
+         RIN_INCREASE_ACCURACY as RIN_INCREASE_ACCURACY_DI,
+         RIN_INCREASE_DAMAGE as RIN_INCREASE_DAMAGE_DI,
+         RIN_PROTECTION as RIN_PROTECTION_DI,
+         HELM_OF_BRILLIANCE as HELM_OF_BRILLIANCE_DI,
+         GAUNTLETS_OF_DEXTERITY as GAUNTLETS_OF_DEXTERITY_DI } from './objects.js';

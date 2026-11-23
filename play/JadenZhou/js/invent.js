@@ -7,13 +7,13 @@ import { pline, You, pline_The, newsym, There } from './display.js';
 import { obj_resists } from './dogmove.js';
 import { maybe_unhide_at } from './mon.js';
 import { doname, doname_with_price, makeplural } from './objnam.js';
-import { rn2 } from './rng.js';
+import { rn2, rn2_on_display_rng } from './rng.js';
 import { ing_suffix, visctrl } from './hacklib.js';
 import { def_oc_syms } from './drawing.js';
 import { body_part, hidden_gold, currency, empty_handed } from './insight.js';
 import { money_cnt } from './u_init.js';
 import { welded } from './wield.js';
-import { stairway_at } from './display.js';
+import { stairway_at, obj_to_glyph } from './display.js';
 import { an, vtense } from './objnam.js';
 import { t_at, trapname } from './trap.js';
 import { visible_region_at, reg_damg } from './region.js';
@@ -40,7 +40,7 @@ import { mons, PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
 import { STONE_RES, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
          BUC_UNKNOWN } from './const.js';
 import { weight, erosion_matters, Is_candle, obj_extract_self, splitobj,
-         dead_species, curse } from './mkobj.js';
+         dead_species, curse, dealloc_obj } from './mkobj.js';
 import { itemactions } from './iactions.js';
 import { NON_PM, P_DAGGER, P_SHORT_SWORD, P_SABER, P_SPEAR, Is_knox_level,
          Is_earthlevel, Is_airlevel, Is_firelevel, Is_waterlevel } from './const.js';
@@ -53,7 +53,9 @@ import { ACH_AMUL, ACH_CNDL, ACH_BELL, ACH_BOOK, ACH_MINE_PRIZE, ACH_SOKO_PRIZE,
          W_ART } from './const.js';
 import { ART_MJOLLNIR } from './artilist.js';
 import { is_missile, is_ammo, setuqwep } from './wield.js';
-import { confers_luck } from './timeout.js';
+import { confers_luck, stop_timer, obj_stop_timers, obj_to_any, attach_fig_transform_timeout } from './timeout.js';
+import { FIG_TRANSFORM } from './const.js';
+import { obj_merge_light_sources } from './light.js';
 import { set_moreluck } from './attrib.js';
 import { setnotworn, setworn } from './worn.js';
 import { oname } from './do_name.js';
@@ -414,9 +416,11 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
                     classcount++;
                 }
                 const ilet = otmp.invlet;
-                /* any.a_obj = otmp (wizid) or any.a_char = ilet;
-                   obj_to_glyph()/map_glyphinfo(): tty menus don't show
-                   the glyph */
+                /* any.a_obj = otmp (wizid) or any.a_char = ilet */
+                /* normal inventory item */
+                const tmpglyph = obj_to_glyph(otmp, rn2_on_display_rng);
+                /* map_glyphinfo(): tty menus don't show the glyph */
+                void tmpglyph;
                 tty_add_menu(win, null, wizid ? otmp : ilet, ilet,
                              wizid ? def_oc_syms[otmp.oclass] : '',
                              ATR_NONE, clr, doname(otmp), MENU_ITEMFLAGS_NONE);
@@ -513,7 +517,7 @@ function freeinv_core(obj) {
         set_moreluck();
         game.disp_botl = true;
     } else if (obj.otyp === O.FIGURINE && obj.timed) {
-        throw new Error('freeinv_core(): figurine stop_timer() not ported yet');
+        stop_timer(FIG_TRANSFORM, obj_to_any(obj));
     }
 
     if (game.context?.tin?.tin === obj) {
@@ -810,8 +814,7 @@ export function obfree(obj, merge) {
         /* impossible("obfree: deleting worn obj") */
         setnotworn(obj);
     }
-    /* dealloc_obj(obj): garbage collected */
-    obj.where = 'OBJ_DELETED';
+    dealloc_obj(obj);
 }
 
 // C ref: shk.c picked_container()
@@ -841,9 +844,23 @@ export function carry_obj_effects(obj) {
     if (obj.otyp === O.FIGURINE) {
         if (obj.cursed && obj.corpsenm !== NON_PM
             && !dead_species(obj.corpsenm, true)) {
-            throw new Error('carry_obj_effects(): attach_fig_transform_timeout() not ported yet');
+            attach_fig_transform_timeout(obj);
         }
     }
+}
+
+// C ref: invent.c nxtobj()
+/* return the next object of the given type after obj in its list
+   (the floor's nexthere chain when by_nexthere) */
+export function nxtobj(obj, type, by_nexthere) {
+    let otmp = obj; /* start with the object after this one */
+    do {
+        otmp = !by_nexthere ? otmp.nobj : otmp.nexthere;
+        if (!otmp)
+            break;
+    } while (otmp.otyp !== type);
+
+    return otmp || null;
 }
 
 // C ref: invent.c carrying()
@@ -2091,8 +2108,10 @@ export function merged(r) {
         if (obj.pickup_prev && otmp.where === 'OBJ_INVENT')
             otmp.pickup_prev = 1;
         /* really should merge the timeouts */
-        if (obj.lamplit || obj.timed)
-            throw new Error('merged(): light sources/timers are not ported yet');
+        if (obj.lamplit)
+            obj_merge_light_sources(obj, otmp);
+        if (obj.timed)
+            obj_stop_timers(obj); /* follows lights */
 
         /* objects can be identified by comparing them */
         if (!!obj.known !== !!otmp.known) {

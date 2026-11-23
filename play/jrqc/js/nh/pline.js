@@ -4,19 +4,25 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc, dupstr } from './alloc.js';
 import { dirtocoord, isok, yn_function } from './cmd.js';
-import { a11y, flags, ge, gg, gm, gp, gs, gv, gy, iflags, program_state, svm, u, ynchars } from './decl.js';
+import { DUMPLOG_MSG_COUNT } from './config.h.js';
+import { a11y, flags, ge, gg, gp, gs, gv, gy, iflags, program_state, svm, u, ynchars } from './decl.js';
 import { flush_screen } from './display.js';
-import { is_fainted } from './eat.js';
 import { nh_terminate, panic } from './end.js';
 import { livelog_add, paniclog } from './files.js';
+import { PLNMSG, fuzzer_impossible_panic } from './flag.h.js';
 import { coord_desc } from './getpos.js';
+import { BUFSZ, FALSE, TRUE } from './global.h.js';
+import { MSGTYP, NO_CURS_ON_U, OVERRIDE_MSGTYPE, PLINE_NOREPEAT, PLINE_VERBALIZE, SUPPRESS_HISTORY, URGENT_MESSAGE } from './hack.h.js';
 import { strNsubst } from './hacklib.js';
 import { msgtype_type } from './options.js';
 import { submit_web_report } from './report.js';
 import { sysopt } from './sys.js';
-import { unconscious } from './trap.js';
 import { vision_recalc } from './vision.js';
 import { windowprocs } from './windows.js';
+import { WC2_SUPPRESS_HIST, WC2_URGENT_MESG } from './winprocs.h.js';
+import { display_nhwindow, putstr, raw_print } from './winprocs.macros.js';
+import { ATR } from './wintype.h.js';
+import { Blind, Deaf, Unaware, Underwater } from './youprop.macros.js';
 
 let vpline$in_pline = 0;   // static in vpline()
 let use_pline_handler = 0;
@@ -35,11 +41,11 @@ export async function dumplogmsg(line) {   // pline.c:22
         }
         $t1 = await dupstr(line), gs.saved_plines[indx] = $t1;
     }
-    gs.saved_pline_index = $c.remu32(indx + 1 >>> 0, 50);
+    gs.saved_pline_index = $c.remu32(indx + 1 >>> 0, DUMPLOG_MSG_COUNT);
 }
 export function dumplogfreemessages() {   // pline.c:52
     let i = 0;
-    for (i = 0; i < 50; i = i + 1 >>> 0) {
+    for (i = 0; i < DUMPLOG_MSG_COUNT; i = i + 1 >>> 0) {
         if (gs.saved_plines[i]) {
             $c.free(gs.saved_plines[i]), gs.saved_plines[i] = null;
         }
@@ -48,17 +54,17 @@ export function dumplogfreemessages() {   // pline.c:52
 }
 async function putmesg(line) {   // pline.c:65
     let attr = 0;
-    attr = 0;
+    attr = ATR.NONE;
     if (iflags.debug_prevent_pline) {
         return;
     }
-    if ((gp.pline_flags & 8) >>> 0 !== 0 && $c.andu64(windowprocs.wincap2, 16384) !== 0) {
-        attr = attr | 16;
+    if ((gp.pline_flags & URGENT_MESSAGE) >>> 0 !== 0 && $c.andu64(windowprocs.wincap2, WC2_URGENT_MESG) !== 0) {
+        attr = attr | ATR.URGENT;
     }
-    if ((gp.pline_flags & 4) >>> 0 !== 0 && $c.andu64(windowprocs.wincap2, 32768) !== 0) {
-        attr = attr | 32;
+    if ((gp.pline_flags & SUPPRESS_HISTORY) >>> 0 !== 0 && $c.andu64(windowprocs.wincap2, WC2_SUPPRESS_HIST) !== 0) {
+        attr = attr | ATR.NOHISTORY;
     }
-    await windowprocs.win_putstr($G.WIN_MESSAGE, attr, line);
+    await putstr()($G.WIN_MESSAGE, attr, line);
 }
 export function set_msg_dir(dir) {   // pline.c:84
     dirtocoord(a11y.msg_loc, dir);
@@ -135,31 +141,31 @@ async function vpline(line, the_args) {   // pline.c:153
     if (ln > 1279) {
         await panic($c.lit("pline attempting to print %d characters!"), ln);
     }
-    if (ln > 255) {
+    if (ln > BUFSZ - 1) {
         if (!$c.peq(line, new $c.Ptr(pbuf, 0))) {
-            $c.__builtin___strncpy_chk(new $c.Ptr(pbuf, 0), line, 255, 1280);
+            $c.__builtin___strncpy_chk(new $c.Ptr(pbuf, 0), line, BUFSZ - 1, 1280);
         }
-        $t3 = ($t2 = pbuf[251] = 46, pbuf[250] = $t2), pbuf[249] = $t3;
-        pbuf[252] = line.get(ln - 3 | 0);
-        pbuf[253] = line.get(ln - 2 | 0);
-        pbuf[254] = line.get(ln - 1 | 0);
-        pbuf[255] = 0;
+        $t3 = ($t2 = pbuf[BUFSZ - 1 - 4] = 46, pbuf[BUFSZ - 1 - 5] = $t2), pbuf[BUFSZ - 1 - 6] = $t3;
+        pbuf[BUFSZ - 1 - 3] = line.get(ln - 3 | 0);
+        pbuf[BUFSZ - 1 - 2] = line.get(ln - 2 | 0);
+        pbuf[BUFSZ - 1 - 1] = line.get(ln - 1 | 0);
+        pbuf[BUFSZ - 1] = 0;
         line = new $c.Ptr(pbuf, 0);
     }
-    msgtyp = 0;
-    if ((gp.pline_flags & 4) >>> 0 === 0) {
+    msgtyp = MSGTYP.NORMAL;
+    if ((gp.pline_flags & SUPPRESS_HISTORY) >>> 0 === 0) {
         await dumplogmsg(line);
     }
     pline_done$: {
         if (($t4 = vpline$in_pline, vpline$in_pline = $t4 + 1 | 0, $t4) || !iflags.window_inited) {
-            await windowprocs.win_raw_print(line);
-            iflags.last_msg = 0 /* PLNMSG_UNKNOWN */;
+            await raw_print()(line);
+            iflags.last_msg = PLNMSG.UNKNOWN;
             break pline_done$;
         }
-        no_repeat = $c.i8((gp.pline_flags & 1) >>> 0 ? 1 : 0);
-        if ((gp.pline_flags & 2) >>> 0 === 0) {
+        no_repeat = $c.i8((gp.pline_flags & PLINE_NOREPEAT) >>> 0 ? TRUE : FALSE);
+        if ((gp.pline_flags & OVERRIDE_MSGTYPE) >>> 0 === 0) {
             msgtyp = msgtype_type(line, no_repeat);
-            if ((gp.pline_flags & 8) >>> 0 === 0 && (msgtyp === 2 || msgtyp === 1 && !$c.strcmp(line, new $c.Ptr(gp.prevmsg, 0)))) {
+            if ((gp.pline_flags & URGENT_MESSAGE) >>> 0 === 0 && (msgtyp === MSGTYP.NOSHOW || msgtyp === MSGTYP.NOREP && !$c.strcmp(line, new $c.Ptr(gp.prevmsg, 0)))) {
                 break pline_done$;
             }
         }
@@ -170,14 +176,14 @@ async function vpline(line, the_args) {   // pline.c:153
             vpline$in_pline = tmp_in_pline;
         }
         if (u.ux) {
-            await flush_screen((gp.pline_flags & 64) >>> 0 ? 0 : 1);
+            await flush_screen((gp.pline_flags & NO_CURS_ON_U) >>> 0 ? 0 : 1);
         }
         await putmesg(line);
         await execplinehandler(line);
-        iflags.last_msg = 0 /* PLNMSG_UNKNOWN */;
-        $c.__builtin___strncpy_chk(new $c.Ptr(gp.prevmsg, 0), line, 256, 256), gp.prevmsg[255] = 0;
-        if (msgtyp === 3) {
-            await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 1);
+        iflags.last_msg = PLNMSG.UNKNOWN;
+        $c.__builtin___strncpy_chk(new $c.Ptr(gp.prevmsg, 0), line, BUFSZ, 256), gp.prevmsg[BUFSZ - 1] = 0;
+        if (msgtyp === MSGTYP.STOP) {
+            await display_nhwindow()($G.WIN_MESSAGE, TRUE);
         }
     }
     vpline$in_pline = vpline$in_pline - 1 | 0;
@@ -193,7 +199,7 @@ export async function custompline(pflags, line, ...$va) {   // pline.c:299
 export async function urgent_pline(line, ...$va) {   // pline.c:315
     let the_args = null;
     the_args = new $c.VaList($va);
-    gp.pline_flags = 8;
+    gp.pline_flags = URGENT_MESSAGE;
     await vpline(line, the_args);
     gp.pline_flags = 0;
     void 0;
@@ -201,7 +207,7 @@ export async function urgent_pline(line, ...$va) {   // pline.c:315
 export async function Norep(line, ...$va) {   // pline.c:327
     let the_args = null;
     the_args = new $c.VaList($va);
-    gp.pline_flags = 1;
+    gp.pline_flags = PLINE_NOREPEAT;
     await vpline(line, the_args);
     gp.pline_flags = 0;
     void 0;
@@ -238,7 +244,7 @@ export async function Your(line, ...$va) {   // pline.c:377
 export async function You_feel(line, ...$va) {   // pline.c:388
     let the_args = null, tmp = null;
     the_args = new $c.VaList($va);
-    if (gm.multi < 0 && (unconscious() || is_fainted())) {
+    if (Unaware()) {
         $c.__builtin___strcpy_chk(tmp = await You_buf($c.i32($c.addu64($c.strlen(line), 25))), $c.lit("You dream that you feel "), -1);
     } else {
         $c.__builtin___strcpy_chk(tmp = await You_buf($c.i32($c.addu64($c.strlen(line), 10))), $c.lit("You feel "), -1);
@@ -266,13 +272,13 @@ export async function There(line, ...$va) {   // pline.c:425
 }
 export async function You_hear(line, ...$va) {   // pline.c:436
     let the_args = null, tmp = null;
-    if ((u.uprops[16 /* DEAF */].intrinsic || u.uprops[16 /* DEAF */].extrinsic || u.uroleplay.deaf) && !(gm.multi < 0 && (unconscious() || is_fainted())) || !flags.acoustics) {
+    if (Deaf() && !Unaware() || !flags.acoustics) {
         return;
     }
     the_args = new $c.VaList($va);
-    if (u.uinwater) {
+    if (Underwater()) {
         $c.__builtin___strcpy_chk(tmp = await You_buf($c.i32($c.addu64($c.strlen(line), 17))), $c.lit("You barely hear "), -1);
-    } else if (gm.multi < 0 && (unconscious() || is_fainted())) {
+    } else if (Unaware()) {
         $c.__builtin___strcpy_chk(tmp = await You_buf($c.i32($c.addu64($c.strlen(line), 25))), $c.lit("You dream that you hear "), -1);
     } else {
         $c.__builtin___strcpy_chk(tmp = await You_buf($c.i32($c.addu64($c.strlen(line), 10))), $c.lit("You hear "), -1);
@@ -283,9 +289,9 @@ export async function You_hear(line, ...$va) {   // pline.c:436
 export async function You_see(line, ...$va) {   // pline.c:455
     let the_args = null, tmp = null;
     the_args = new $c.VaList($va);
-    if (gm.multi < 0 && (unconscious() || is_fainted())) {
+    if (Unaware()) {
         $c.__builtin___strcpy_chk(tmp = await You_buf($c.i32($c.addu64($c.strlen(line), 24))), $c.lit("You dream that you see "), -1);
-    } else if ((u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked) {
+    } else if (Blind()) {
         $c.__builtin___strcpy_chk(tmp = await You_buf($c.i32($c.addu64($c.strlen(line), 11))), $c.lit("You sense "), -1);
     } else {
         $c.__builtin___strcpy_chk(tmp = await You_buf($c.i32($c.addu64($c.strlen(line), 9))), $c.lit("You see "), -1);
@@ -296,7 +302,7 @@ export async function You_see(line, ...$va) {   // pline.c:455
 export async function verbalize(line, ...$va) {   // pline.c:476
     let the_args = null, tmp = null;
     the_args = new $c.VaList($va);
-    gp.pline_flags = (gp.pline_flags | 16) >>> 0;
+    gp.pline_flags = (gp.pline_flags | PLINE_VERBALIZE) >>> 0;
     tmp = await You_buf($c.i32($c.addu64($c.u64($c.i32($c.strlen(line))), 3)));
     $c.__builtin___strcpy_chk(tmp, $c.lit("\""), -1);
     $c.__builtin___strcat_chk(tmp, line, -1);
@@ -346,13 +352,13 @@ async function vraw_printf(line, the_args) {   // pline.c:563
         $c.__builtin___vsnprintf_chk(new $c.Ptr(pbuf, 0), 1280, 0, 1280, line, the_args);
         line = new $c.Ptr(pbuf, 0);
     }
-    if ($c.i32($c.strlen(line)) > 255) {
+    if ($c.i32($c.strlen(line)) > BUFSZ - 1) {
         if (!$c.peq(line, new $c.Ptr(pbuf, 0))) {
-            line = $c.__builtin___strncpy_chk(new $c.Ptr(pbuf, 0), line, 255, 1280);
+            line = $c.__builtin___strncpy_chk(new $c.Ptr(pbuf, 0), line, BUFSZ - 1, 1280);
         }
-        pbuf[255] = 0;
+        pbuf[BUFSZ - 1] = 0;
     }
-    await windowprocs.win_raw_print(line);
+    await raw_print()(line);
     await execplinehandler(line);
     if (!program_state.beyond_savefile_load) {
         ge.early_raw_messages = ge.early_raw_messages + 1 | 0;
@@ -367,12 +373,12 @@ export async function impossible(s, ...$va) {   // pline.c:584
     program_state.in_impossible = 1;
     $c.__builtin___vsnprintf_chk(new $c.Ptr(pbuf, 0), 1280, 0, 1280, s, the_args);
     void 0;
-    pbuf[255] = 0;
+    pbuf[BUFSZ - 1] = 0;
     paniclog($c.lit("impossible"), new $c.Ptr(pbuf, 0));
-    if (iflags.debug_fuzzer === 1 /* fuzzer_impossible_panic */) {
+    if (iflags.debug_fuzzer === fuzzer_impossible_panic) {
         await panic($c.lit("%s"), new $c.Ptr(pbuf, 0));
     }
-    gp.pline_flags = 8;
+    gp.pline_flags = URGENT_MESSAGE;
     await pline($c.lit("%s"), new $c.Ptr(pbuf, 0));
     gp.pline_flags = 0;
     if (program_state.in_sanity_check) {
@@ -389,8 +395,8 @@ export async function impossible(s, ...$va) {   // pline.c:584
         await pline($c.lit("Alternatively, contact local support: %s"), sysopt.support);
     }
     if (sysopt.crashreporturl) {
-        report = $c.i8(121 === await yn_function($c.lit("Report now?"), new $c.Ptr(ynchars, 0), 110, 0) ? 1 : 0);
-        await windowprocs.win_raw_print($c.lit(""));
+        report = $c.i8(121 === await yn_function($c.lit("Report now?"), new $c.Ptr(ynchars, 0), 110, FALSE) ? 1 : 0);
+        await raw_print()($c.lit(""));
         if (report) {
             await submit_web_report(1, $c.lit("Impossible"), new $c.Ptr(pbuf, 0));
         }
@@ -417,7 +423,7 @@ async function execplinehandler(line) {   // pline.c:641
         $c.waitpid(f, new $c.Ptr(status, 0), 0);
     } else if (f === -1) {
         $c.perror(null);
-        use_pline_handler = 0;
+        use_pline_handler = FALSE;
         await pline($c.lit("%s"), $c.lit("Fork to message handler failed."));
     }
 }
@@ -434,6 +440,6 @@ export async function nhassert_failed(expression, filepath, line) {   // pline.c
 }
 
 export function $init() {
-    use_pline_handler = 1;
+    use_pline_handler = TRUE;
     vpline$in_pline = 0;
 }

@@ -38,6 +38,9 @@ const SKIP_KEYS = new Set([
     'nhDisplay', 'coreCtx', 'dispCtx', 'storage',
     '_preNhgetchHook', '_pendingDisplay', 'coder', 'rc', 'unported',
     'currentSeed', 'fixed_datetime', 'animationFrame',
+    // C rebuilds command bindings from this process's configuration. Command
+    // queues and the one-time key-help message also start fresh after restore.
+    'Cmd', 'cmd_bind', 'command_queue', 'dowhatdoes_once',
     /* transient topline machinery: C never saves the message window's
        state, and restoring a mid-'Saving...' pending line replayed a
        stale --More-- on the welcome-back boot */

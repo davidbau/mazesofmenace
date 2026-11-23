@@ -8,6 +8,10 @@
 // ported yet.
 
 import { game } from './gstate.js';
+import { livelog_printf } from './display.js';
+import { LL_CONDUCT, LL_WISH, LL_ARTIFACT } from './const.js';
+/* C ref: you.h uhis() */
+function uhis() { return game.flags.female ? "her" : "his"; }
 import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
 import { MAXULEV, IRONBARS, ICE, Is_airlevel, Is_waterlevel, ONAME_WISH,
@@ -160,6 +164,8 @@ export async function makewish() {
     let otmp;
     const nothing = {}; /* only its address matters */
     const oldwisharti = u.uconduct.wisharti || 0;
+    let bufcpy = '';
+    let maybe_LL_arti;
 
     g.context.resume_wish = 0;
     if (g.flags.verbose)
@@ -180,7 +186,7 @@ export async function makewish() {
         } else if (buf.toLowerCase() === "help") {
             throw new Error('wishcmdassist() is not ported yet');
         }
-        const bufcpy = buf;
+        bufcpy = buf;
         otmp = readobjnam(buf, nothing);
         if (!otmp) {
             await pline("Nothing fitting that description exists in the game.");
@@ -191,13 +197,15 @@ export async function makewish() {
             if (!otmp)
                 return; /* for safety; should never happen */
         } else if (otmp === nothing) {
-            /* livelog_printf(LL_WISH, "declined to make a wish") */
+            /* explicitly wished for "nothing", presumably attempting
+               to retain wishless conduct */
+            livelog_printf(LL_WISH, "declined to make a wish");
             return;
         } else if (otmp === 'hands_obj') {
             /* wish_history_add(bufcpy) -- not ported yet */
             return;
         }
-        void bufcpy; /* wish_history_add(bufcpy) -- not ported yet */
+        /* wish_history_add(bufcpy) -- not ported yet */
         break;
     }
 
@@ -207,11 +215,19 @@ export async function makewish() {
     }
 
     /* wisharti conduct handled in readobjnam() */
-    /* the livelog wish text formats doname(otmp) */
-    void doname(otmp);
-    /* KMH, conduct; livelog_printf() -- no livelog */
-    if (!u.uconduct.wishes) u.uconduct.wishes = 0;
-    u.uconduct.wishes++;
+    maybe_LL_arti = ((oldwisharti < u.uconduct.wisharti) ? LL_ARTIFACT : 0);
+    const wish = `"${bufcpy}", got "${doname(otmp)}"`.slice(0, 256 - 1); /* BUFSZ */
+    /* KMH, conduct */
+    if (!u.uconduct.wishes++)
+        livelog_printf((LL_CONDUCT | LL_WISH | maybe_LL_arti),
+                       `made ${uhis()} first wish - ${wish}`);
+    else if (!oldwisharti && u.uconduct.wisharti)
+        livelog_printf((LL_CONDUCT | LL_WISH | LL_ARTIFACT),
+                       `made ${uhis()} first artifact wish - ${wish}`);
+    else
+        livelog_printf((LL_WISH | maybe_LL_arti), `wished for ${wish}`);
+    /* TODO? maybe generate a second event describing what was received since
+       these just echo player's request rather than show actual result */
 
     if (otmp.otyp === O.CORPSE)
         throw new Error('makewish(): corpse wishes (u_safe_from_fatal_corpse) are not ported yet');
@@ -427,6 +443,15 @@ export async function wiz_intrinsic() {
     return 0; /* ECMD_OK */
 }
 
+// C ref: wizcmds.c wiz_where() -- #wizwhere, ^O in wizard mode
+export async function wiz_where() {
+    if (game.flags?.debug)
+        await print_dungeon(false);
+    else
+        await pline("Unavailable command 'wizwhere'."); /* unavailcmd */
+    return 0; /* ECMD_OK */
+}
+
 // C ref: wizcmds.c wiz_map() -- #wizmap, ^F
 /* the #wizmap command - reveal the level map
    and any traps or engravings on it */
@@ -475,3 +500,4 @@ export async function wiz_detect() {
 import { CONFUSION, POLY_CONTROLLED } from './const.js';
 import { map_trap, map_engraving } from './display.js';
 import { do_mapping, findit } from './detect.js';
+import { print_dungeon } from './dungeon.js';

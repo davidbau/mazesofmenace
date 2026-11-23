@@ -37,7 +37,7 @@ import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY,
     from './const.js';
 import { rn2 } from './rng.js';
 import { getdir, getlin, cmd_from_func } from './cmd.js';
-import { display_pickinv } from './invent.js';
+import { display_inventory } from './invent.js';
 import { docrt, map_trap, pline, unmap_invisible, canspotmon, map_engraving }
     from './display.js';
 import { pluslvl, losexp } from './exper.js';
@@ -117,7 +117,7 @@ export async function wiz_identify() {
             key = '\t';
         (game.iflags ||= {}).override_ID = key;
         try {
-            await display_pickinv(null, null, null, false);
+            await display_inventory(null, false);
         } finally {
             game.iflags.override_ID = 0;
         }

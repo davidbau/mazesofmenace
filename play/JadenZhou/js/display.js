@@ -790,7 +790,7 @@ function terrain_glyph_dec(loc, x, y) {
     case ICE:       return { ch: '~', color: CLR_CYAN, dec: true, asc: '.', cmapidx: 39 };
     case AIR:       return { ch: ' ', color: CLR_CYAN, dec: false, cmapidx: 46 };
     case CLOUD:     return { ch: '#', color: CLR_GRAY, dec: false, cmapidx: 47 };
-    case WATER:     return { ch: '`', color: CLR_BLUE, dec: true, asc: '}', cmapidx: 48 };
+    case WATER:     return { ch: '`', color: CLR_BRIGHT_BLUE, dec: true, asc: '}', cmapidx: 48 };  /* S_water */
     case DBWALL:    return { ch: '#', color: CLR_BROWN, dec: false,
                              cmapidx: loc.horizontal ? 45 : 44 };
     case DRAWBRIDGE_UP: return S_room;
@@ -958,10 +958,12 @@ export function glyph_at(x, y) {
 // C ref: defsym.h MONSYMS -- def_monsyms[].sym, indexed by mlet (S_ANT = 1)
 const def_monsyms = " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ '&;:~]";
 
-// C ref: display.h m_at() via level.monsters[][]
+// C ref: display.h m_at() via level.monsters[][] (a ridden steed isn't
+// on the grid)
 function mon_at_loc(x, y) {
     for (const m of game.level?.monsters || [])
-        if (m.mx === x && m.my === y && !m.dead) return m;
+        if (m.mx === x && m.my === y && !m.dead && m !== game.u?.usteed)
+            return m;
     return wseg_mon_at(x, y); /* a long worm's tail segment */
 }
 
@@ -1001,7 +1003,7 @@ export function Blind() {
 }
 
 // C ref: display.h _see_with_infrared()
-function see_with_infrared(mon) {
+export function see_with_infrared(mon) {
     return !Blind() && uprop(INFRAVISION)
            && (mon.data.mflags3 & M3_INFRAVISIBLE) !== 0
            && couldsee(mon.mx, mon.my);
@@ -1028,7 +1030,7 @@ export function tp_sensemon(mon) {
 }
 
 // C ref: display.h MATCH_WARN_OF_MON()
-function MATCH_WARN_OF_MON(mon) {
+export function MATCH_WARN_OF_MON(mon) {
     const wt = game.context.warntype || {};
     return uprop(WARN_OF_MON)
            && (((wt.obj ?? 0) & mon.data.mflags2) !== 0
@@ -1740,6 +1742,11 @@ export function map_engraving(ep, show) {
 
 // C ref: display.c _map_location() -- gas
 // regions (show_region()) are not ported yet
+// C ref: display.h map_location()
+export function map_location(x, y, show) {
+    _map_location(x, y, show);
+}
+
 function _map_location(x, y, show) {
     let obj, trap, ml_ep;
     if ((obj = vobj_at(x, y)) && !covers_objects(x, y)) {
@@ -1980,16 +1987,10 @@ export function newsym(x, y) {
             if (!see_self)
                 return;
         } else {
+            feel_location(game.u.ux, game.u.uy); /* forces an update */
+
             if (!canspotself())
-                throw new Error('newsym(): feel_location() of an unseen hero spot not ported yet');
-            const tg = terrain_glyph(loc, x, y);
-            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
-                                     cmap: tg.cmap, cmapidx: tg.cmapidx };
-            /* C ref: display.c feel_location(): Corridors are never felt
-               as lit (unless remembered that way) (lit_corridor only). */
-            if (loc.typ === CORR && loc.remembered_glyph.cmap === 'S_litcorr'
-                && !loc.waslit)
-                loc.remembered_glyph = rememb_glyph(S_corr_g);
+                return;
         }
         display_self();
         return;
@@ -2046,6 +2047,14 @@ export function newsym(x, y) {
                              && game.iflags.wc_color !== false))
             && loc.typ === CORR && loc.remembered_glyph.cmap === 'S_litcorr')
             loc.remembered_glyph = rememb_glyph(S_corr_g);
+        /* lev->glyph = cmap_to_glyph(DARKROOMSYM) for a remembered lit
+           floor spot; with dark_room set the S_darkroom glyph is drawn
+           like the remembered S_room spot (see feel_location()) */
+        else if (game.flags.dark_room !== false && game.iflags.wc_color !== false
+                 && loc.typ === ROOM && loc.remembered_glyph.cmap === 'S_room'
+                 && game.currentgraphics !== ROGUESET)
+            loc.remembered_glyph = { ...loc.remembered_glyph,
+                                     cmap: 'S_darkroom', cmapidx: 20 /* S_darkroom */ };
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx, 0,
@@ -2075,6 +2084,19 @@ function engr_can_be_felt(ep) {
     default:
         return false;
     }
+}
+
+// C ref: display.c feel_newsym()
+/*
+ * feel_newsym()
+ *
+ * When hero knows what happened to location, even when blind.
+ */
+export function feel_newsym(x, y) {
+    if (Blind())
+        feel_location(x, y);
+    else
+        newsym(x, y);
 }
 
 // C ref: display.c feel_location()
@@ -2143,12 +2165,19 @@ export function feel_location(x, y) {
         }
 
         /* Floor spaces are dark if unlit.  Corridors are dark if unlit.
-           (JS remembers no S_darkroom glyphs; see newsym()) */
+           cmap_to_glyph(flags.dark_room ? S_darkroom : S_stone); the
+           S_darkroom glyph is a new glyph (lock.c and pager.c tell it
+           apart) but is drawn like the remembered S_room spot, as newsym()
+           draws out-of-sight dark room spots */
         if (lev.typ === ROOM && lev.remembered_glyph?.cmap === 'S_room'
             && (!lev.waslit || (game.flags.dark_room !== false
                                 && game.iflags.wc_color !== false))) {
-            lev.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false,
-                                     cmap: 'S_stone' };
+            if (game.flags.dark_room === false)
+                lev.remembered_glyph = { ch: ' ', color: NO_COLOR, decgfx: false,
+                                         cmap: 'S_stone' };
+            else
+                lev.remembered_glyph = { ...lev.remembered_glyph,
+                                         cmap: 'S_darkroom', cmapidx: 20 /* S_darkroom */ };
             show_glyph(x, y, lev.remembered_glyph);
         } else if (lev.typ === CORR && lev.remembered_glyph?.cmap === 'S_litcorr'
                    && !lev.waslit) {
@@ -2184,6 +2213,23 @@ export async function docrt() {
     await docrt_flags(docrtRecalc);
 }
 
+// C ref: display.c redraw_map() -- redraw the map from the glyph buffer
+// (glyph_at(), not levl[x][y].glyph); the JS map cells keep their shown
+// glyph (disp_*), which row_refresh() prints
+async function redraw_map(cursor_on_u) {
+    const u = game.u;
+
+    /* !u.ux: display isn't ready yet; (restoring || !on_level()): was part
+       of cliparound() but interface shouldn't access this much internals */
+    if (!u.ux || game.in_mklev /* suppress_map_output() */
+        || (u.uz0 && (u.uz0.dnum !== u.uz.dnum || u.uz0.dlevel !== u.uz.dlevel)))
+        return;
+
+    for (let y = 0; y < ROWNO; ++y)
+        row_refresh(1, COLNO - 1, y); /* print_glyph() of each spot */
+    await flush_screen(cursor_on_u);
+}
+
 // C ref: display.c docrt_flags()
 /* docrt() with finer control */
 export async function docrt_flags(refresh_flags) {
@@ -2199,7 +2245,7 @@ export async function docrt_flags(refresh_flags) {
     game.program_state.in_docrt = true;
 
     if (redrawonly) {
-        throw new Error('docrt_flags(): redraw_map() not ported yet');
+        await redraw_map(false);
     } else if (u.uswallow) {
         await swallowed(1);
     } else if (u.uinwater && !Is_waterlevel(u.uz)) { /* Underwater */
@@ -2313,8 +2359,97 @@ export function row_refresh(start, stop, y) {
 // '|' not-equal, ...) stay as their ASCII letters (frozen/screen-decode.mjs
 // DEC_MAP), so only that subset is converted.
 const DEC_LINE_DRAWING = 'lqkxmjtuwvna~';
-function dec_cell_char(ch) {
+export function dec_cell_char(ch) {
     return DEC_LINE_DRAWING.includes(ch) ? (DEC_TO_UNICODE[ch] || ch) : ch;
+}
+
+// C ref: map_glyphinfo() glyphinfo.ttychar -- the screen symbol a glyph is
+// shown with, as an nhsym: a DECgraphics line-drawing symbol is the meta
+// (high bit set) form of its alternate-charset letter, as dat/symbols
+// gives it (S_room: \xfe for '~')
+export function glyph_ttychar(glyph) {
+    const c = (glyph.ch || ' ').charCodeAt(0);
+    return glyph.decgfx ? (0x80 | c) : c;
+}
+
+/* glyphs encoded by encglyph(), by the number in their "\G" sequence */
+const encoded_glyphs = [];
+let encoded_glyph_next = 0;
+
+// C ref: windows.c encglyph() -- "\GXXXXNNNN": context.rndencode, then the
+// glyph; a JS glyph has no glyph number, so NNNN indexes encoded_glyphs[]
+export function encglyph(glyph) {
+    const n = encoded_glyph_next;
+    encoded_glyph_next = (encoded_glyph_next + 1) & 0xffff;
+    encoded_glyphs[n] = glyph;
+    const hex4 = v => (v & 0xffff).toString(16).toUpperCase().padStart(4, '0');
+    return `\\G${hex4(game.context?.rndencode ?? 0)}${hex4(n)}`;
+}
+
+// C ref: windows.c decode_glyph() -- returns [count of hex digits used,
+// glyph], or [0, null] if the rndencode check fails
+function decode_glyph(str) {
+    let rndchk = 0, dcount = 0, retval = 0, i = 0;
+    const ishex = c => /^[0-9a-fA-F]$/.test(c || '');
+
+    for (; i < str.length && ++dcount <= 4; ++i) {
+        if (ishex(str[i])) {
+            retval++;
+            rndchk = (rndchk * 16) + parseInt(str[i], 16);
+        } else
+            break;
+    }
+    if (rndchk === (game.context?.rndencode ?? 0)) {
+        let gv = 0;
+        dcount = 0;
+        for (; i < str.length && ++dcount <= 4; ++i) {
+            if (ishex(str[i])) {
+                retval++;
+                gv = (gv * 16) + parseInt(str[i], 16);
+            } else
+                break;
+        }
+        return [retval, encoded_glyphs[gv] ?? null];
+    }
+    return [0, null];
+}
+
+// C ref: windows.c decode_mixed() -- replace each encoded glyph with its
+// screen symbol (gs.showsyms[], as a char code that may have the high bit
+// set for a DECgraphics symbol)
+export function decode_mixed(str) {
+    let put = '';
+    let i = 0;
+
+    if (!str)
+        return '';
+    while (i < str.length) {
+        if (str[i] === '\\') {
+            const save_i = i++;
+            switch (str[i]) {
+            case 'G': { /* glyph value \GXXXXNNNN */
+                const [dcount, glyph] = decode_glyph(str.slice(i + 1));
+                if (dcount && glyph) {
+                    i += (dcount + 1);
+                    put += String.fromCharCode(glyph_ttychar(glyph));
+                    continue;
+                } else {
+                    /* possible forgery - leave it the way it is */
+                    i = save_i;
+                }
+                break;
+            }
+            case '\\':
+                break;
+            case undefined:
+                /* String ended with '\\' */
+                i = save_i;
+                break;
+            }
+        }
+        put += str[i++];
+    }
+    return put;
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -2660,6 +2795,8 @@ export async function flush_screen(cursor_on_u) {
     /* get this done now, before we place the cursor on the hero */
     if (game.disp_botl || game.disp_botlx)
         bot();
+    else if (game.disp_time_botl)
+        timebot();
     _buildScreenOutput(cursor_on_u);
 }
 
@@ -2685,12 +2822,26 @@ function clear_glyph_buffer() {
     for (let x = 1; x < COLNO; x++)
         for (let y = 0; y < ROWNO; y++)
             if (game.level.at(x, y))
-                show_glyph_cell(x, y, ' ', NO_COLOR, false);
+                /* GLYPH_UNEXPLORED: glyph_at() reports it as 'unexplored'
+                   until something else is shown there */
+                show_glyph_cell(x, y, ' ', NO_COLOR, false, 0, 'cmap', false,
+                                { unexplored: true });
 }
 
 // C ref: display.h display_self() -- the hero's glyph at <u.ux,u.uy>
 function display_self() {
     const u = game.u;
+    /* C ref: display.h maybe_display_usteed() -- a visible steed is shown
+       with ridden_mon_to_glyph(u.usteed, rn2_on_display_rng): the
+       monster's symbol and color (MG_RIDDEN has no tty highlighting) */
+    if (u.usteed && mon_visible(u.usteed)) {
+        const mndx = what_mon(u.usteed.data.pmidx, rn2_on_display_rng);
+        const ptr = mons[mndx];
+        show_glyph_cell(u.ux, u.uy, def_monsyms[ptr.mlet] ?? '?',
+                        ptr.mcolor ?? NO_COLOR, false, 0, 'mon', false,
+                        { mndx });
+        return;
+    }
     /* hero_glyph: monnum_to_glyph((Upolyd || !flags.showrace) ? u.umonnum
        : gu.urace.mnum, Ugender); a polymorphed hero shows the monster */
     if (u.umonnum !== u.umonster) { /* Upolyd */
@@ -2814,7 +2965,43 @@ export function bot() {
             }
         }
     }
-    game.disp_botl = game.disp_botlx = false;
+    game.disp_botl = game.disp_botlx = game.disp_time_botl = false;
+}
+
+// C ref: botl.c timebot() -- special purpose status update: move counter
+// ('time' status) only.  tty's windowport stat_update_time() redraws the
+// status line with only the time field re-evaluated; bot() recomposes
+// every field from current state (C's "old status display" path).
+export function timebot() {
+    if (game.bot_disabled)
+        return;
+    /* iflags.status_updates is always on; suppress_map_output() */
+    if (game.flags?.time && !game.in_mklev && game.u?.ux)
+        bot();
+    game.disp_time_botl = false;
+}
+
+// C ref: pline.c gamelog_add() (CHRONICLE) -- append an event to the
+// #chronicle log, game.gamelog (gg.gamelog: a list linked through .next)
+export function gamelog_add(glflags, gltime, str) {
+    const tmp = { turn: gltime, flags: glflags, text: str, next: null };
+    let lst = game.gamelog || null;
+
+    while (lst && lst.next)
+        lst = lst.next;
+    if (!lst)
+        game.gamelog = tmp;
+    else
+        lst.next = tmp;
+}
+
+// C ref: pline.c livelog_printf() (CHRONICLE) -- callers pass the
+// formatted text; livelog_add() (the LIVELOG file) isn't written here
+export function livelog_printf(ll_type, line) {
+    const gamelogbuf = line.slice(0, 2 * 256 - 1); /* BUFSZ * 2 */
+
+    gamelog_add(ll_type, game.moves, gamelogbuf);
+    /* strNsubst(gamelogbuf, "\t", "_", 0); livelog_add(ll_type, gamelogbuf) */
 }
 
 // ── pline ──

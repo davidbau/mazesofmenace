@@ -36,8 +36,10 @@ import {
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
-    tty_select_menu, tty_destroy_nhwindow,
+    tty_select_menu, tty_destroy_nhwindow, tty_putstr_sync,
+    tty_display_nhwindow,
 } from './wintty.js';
+import { Is_airlevel, Is_qstart, MAGIC_PORTAL } from './const.js';
 import { add_menu_heading } from './invent.js';
 import { makeplural } from './objnam.js';
 import {
@@ -1409,13 +1411,13 @@ function print_branch(win, dnum, lower_bound, upper_bound, bymenu, lchoices_p) {
                 tport_menu(win, buf, lchoices_p, br.end1,
                            unreachable_level(br.end1, false));
             else
-                throw new Error('print_branch(): putstr() to a text window not ported yet');
+                tty_putstr_sync(win, 0, buf);
         }
     }
 }
 
 // C ref: dungeon.c print_dungeon() -- the wizard mode level teleport
-// menu (bymenu); the text window listing isn't ported yet.  Returns
+// menu (bymenu) or the #wizwhere text listing.  Returns
 // { lev, rlev, rdgn } for C's return value and *rlev, *rdgn.
 export async function print_dungeon(bymenu) {
     let i, last_level, nlev;
@@ -1424,14 +1426,16 @@ export async function print_dungeon(bymenu) {
     let unplaced;
     let slev;
     let dptr;
+    let first;
+    let br;
     const lchoices = { idx: 0, menuletter: 'a', lev: [], dgn: [], playerlev: [] };
     const win = tty_create_nhwindow(NHW_MENU);
 
-    if (!bymenu)
-        throw new Error('print_dungeon(): the text window listing not ported yet');
-    tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    lchoices.idx = 0;
-    lchoices.menuletter = 'a';
+    if (bymenu) {
+        tty_start_menu(win, MENU_BEHAVE_STANDARD);
+        lchoices.idx = 0;
+        lchoices.menuletter = 'a';
+    }
 
     for (i = 0; i < game.n_dgns; i++) {
         dptr = game.dungeons[i];
@@ -1454,7 +1458,10 @@ export async function print_dungeon(bymenu) {
             else
                 buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
         }
-        add_menu_heading(win, buf);
+        if (bymenu) {
+            add_menu_heading(win, buf);
+        } else
+            tty_putstr_sync(win, 0, buf);
 
         /*
          * Circle through the special levels to find levels that are in
@@ -1471,8 +1478,11 @@ export async function print_dungeon(bymenu) {
             buf = `${chr_u_on_lvl(slev.dlevel)} ${slev.proto}: ${depth(slev.dlevel)}`;
             if (on_level(slev.dlevel, game.dungeon_topology.d_stronghold_level))
                 buf += ` (tune ${game.tune})`; /* Is_stronghold() */
-            tport_menu(win, buf, lchoices, slev.dlevel,
-                       unreachable_level(slev.dlevel, unplaced));
+            if (bymenu)
+                tport_menu(win, buf, lchoices, slev.dlevel,
+                           unreachable_level(slev.dlevel, unplaced));
+            else
+                tty_putstr_sync(win, 0, buf);
 
             last_level = slev.dlevel.dlevel;
         }
@@ -1480,7 +1490,7 @@ export async function print_dungeon(bymenu) {
         print_branch(win, i, last_level, MAXLEVEL, bymenu, lchoices);
     }
 
-    {
+    if (bymenu) {
         let n;
         let idx;
 
@@ -1495,6 +1505,57 @@ export async function print_dungeon(bymenu) {
         }
         return { lev: 0, rlev: 0, rdgn: 0 };
     }
+
+    /* Print out floating branches (if any). */
+    for (first = true, br = game.branches; br; br = br.next) {
+        if (br.end1.dnum === game.n_dgns) {
+            if (first) {
+                tty_putstr_sync(win, 0, "");
+                tty_putstr_sync(win, 0, "Floating branches");
+                first = false;
+            }
+            buf = `   ${br_string(br.type)} to ${game.dungeons[br.end2.dnum].dname}`;
+            tty_putstr_sync(win, 0, buf);
+        }
+    }
+
+    /* I hate searching for the invocation pos while debugging. -dean */
+    if (Invocation_lev(game.u.uz)) {
+        tty_putstr_sync(win, 0, "");
+        buf = `Invocation position @ (${game.inv_pos.x},${game.inv_pos.y}), hero @ (${
+               game.u.ux},${game.u.uy})`;
+        tty_putstr_sync(win, 0, buf);
+    } else {
+        let trap;
+
+        /* if current level has a magic portal, report its location;
+           this assumes that there is at most one magic portal on any
+           given level; quest and ft.ludios have pairs (one in main
+           dungeon matched with one in the corresponding branch), the
+           elemental planes have singletons (connection to next plane) */
+        buf = '';
+        trap = (game.level.traps || []).find(t => t.ttyp === MAGIC_PORTAL) || null;
+
+        if (trap)
+            buf = `Portal @ (${trap.tx},${trap.ty}), hero @ (${game.u.ux},${game.u.uy})`;
+
+        /* only report "no portal found" when actually expecting a portal */
+        else if (Is_earthlevel(game.u.uz) || Is_waterlevel(game.u.uz)
+                 || Is_firelevel(game.u.uz) || Is_airlevel(game.u.uz)
+                 || Is_qstart(game.u.uz) || at_dgn_entrance("The Quest")
+                 || Is_knox(game.u.uz))
+            buf = "No portal found.";
+
+        /* only give output if we found a portal or expected one and didn't */
+        if (buf) {
+            tty_putstr_sync(win, 0, "");
+            tty_putstr_sync(win, 0, buf);
+        }
+    }
+
+    await tty_display_nhwindow(win, true);
+    await tty_destroy_nhwindow(win);
+    return { lev: 0, rlev: 0, rdgn: 0 };
 }
 
 // C ref: flag.h wizard macro

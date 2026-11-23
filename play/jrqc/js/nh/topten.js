@@ -4,6 +4,7 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { timet_to_seconds } from './allmain.js';
 import { alloc } from './alloc.js';
+import { A } from './attrib.h.js';
 import { rank_of, rank_to_xlev } from './botl.js';
 import { yyyymmdd } from './calendar.js';
 import { flags, gh, gi, gm, gt, gu, iflags, program_state, svd, svk, svm, svp, u, urealtime } from './decl.js';
@@ -11,19 +12,31 @@ import { canseemon } from './display.js';
 import { christen_monst, oname } from './do_name.js';
 import { deepest_lev_reached, depth, init_dungeons } from './dungeon.js';
 import { fopen_datafile, lock_file, unlock_file } from './files.js';
+import { discover, wizard } from './flag.macros.js';
+import { BUFSZ, COLNO, FALSE, TRUE } from './global.h.js';
 import { money_cnt } from './hack.js';
+import { CORPSTAT, KILLED, NO_KILLER_PREFIX, ONAME_NO_FLAGS, PANICKED, SCOREPREFIX } from './hack.h.js';
 import { copynchars, digit, eos, highc, lcase, nh_snprintf, onlyspace, ordin, strNsubst, strsubst } from './hacklib.js';
 import { num_genocides, sokoban_in_play } from './insight.js';
 import { set_corpsenm } from './mkobj.js';
+import { PM } from './monsters.h.js';
 import { an } from './objnam.js';
+import { PATCHLEVEL, VERSION } from './patchlevel.h.js';
+import { NON_PM } from './permonst.h.js';
 import { impossible, raw_printf } from './pline.js';
-import { rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { rn2, rnd } from './rnd.js';
 import { aligns, genders, roles, str2race, str2role } from './role.js';
 import { free_dungeons } from './save.js';
 import { Strlen_ } from './strutil.js';
 import { sysopt } from './sys.js';
 import { hidden_gold } from './vault.js';
-import { windowprocs } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, display_nhwindow, putstr, raw_print, raw_print_bold } from './winprocs.macros.js';
+import { ATR, NHW, WIN_ERR } from './wintype.h.js';
+import { ACH } from './you.h.js';
+
+const NAMSZ = 10;
+const ROLESZ = 3;
+const TTFIELDS = 13;
 
 const formatkiller$killed_by_prefix = $c.nulls(16);   // static in formatkiller()
 const readentry$fmt = new Int8Array(43);   // static in readentry()
@@ -43,11 +56,11 @@ export async function formatkiller(buf, siz, how, incl_helpless) {   // topten.c
     switch (svk.killer.format) {
         default:
             await impossible($c.lit("bad killer format? (%d)"), svk.killer.format);
-        case 2:
+        case NO_KILLER_PREFIX:
             break;
-        case 0:
+        case KILLED.BY_AN:
             kname = await an(kname);
-        case 1:
+        case KILLED.BY:
             $c.__builtin___strncat_chk(buf, formatkiller$killed_by_prefix[how], siz - 1 >>> 0, -1);
             l = await Strlen_(buf, $c.lit("formatkiller"), 123);
             buf = buf.add(l), siz = siz - l >>> 0;
@@ -76,17 +89,17 @@ export async function formatkiller(buf, siz, how, incl_helpless) {   // topten.c
     }
 }
 async function topten_print(x) {   // topten.c:165
-    if (gt.toptenwin === -1) {
-        await windowprocs.win_raw_print(x);
+    if (gt.toptenwin === WIN_ERR) {
+        await raw_print()(x);
     } else {
-        await windowprocs.win_putstr(gt.toptenwin, 0, x);
+        await putstr()(gt.toptenwin, ATR.NONE, x);
     }
 }
 async function topten_print_bold(x) {   // topten.c:174
-    if (gt.toptenwin === -1) {
-        await windowprocs.win_raw_print_bold(x);
+    if (gt.toptenwin === WIN_ERR) {
+        await raw_print_bold()(x);
     } else {
-        await windowprocs.win_putstr(gt.toptenwin, 1, x);
+        await putstr()(gt.toptenwin, ATR.BOLD, x);
     }
 }
 export function observable_depth(lev) {   // topten.c:183
@@ -100,7 +113,7 @@ function discardexcess(rfile) {   // topten.c:208
 }
 async function readentry(rfile, tt) {   // topten.c:220
     let inbuf = new Int8Array(129), s1 = new Int8Array(129), s2 = new Int8Array(129), s3 = new Int8Array(129), s4 = new Int8Array(129), s5 = new Int8Array(129), s6 = new Int8Array(129), i = 0, $t1;
-    if ($c.fscanf(rfile, new $c.Ptr(readentry$fmt, 0), new $c.FieldRef(tt, "ver_major", "i32"), new $c.FieldRef(tt, "ver_minor", "i32"), new $c.FieldRef(tt, "patchlevel", "i32"), new $c.FieldRef(tt, "points", "i64"), new $c.FieldRef(tt, "deathdnum", "i32"), new $c.FieldRef(tt, "deathlev", "i32"), new $c.FieldRef(tt, "maxlvl", "i32"), new $c.FieldRef(tt, "hp", "i32"), new $c.FieldRef(tt, "maxhp", "i32"), new $c.FieldRef(tt, "deaths", "i32"), new $c.FieldRef(tt, "deathdate", "i64"), new $c.FieldRef(tt, "birthdate", "i64"), new $c.FieldRef(tt, "uid", "i32")) !== 13) {
+    if ($c.fscanf(rfile, new $c.Ptr(readentry$fmt, 0), new $c.FieldRef(tt, "ver_major", "i32"), new $c.FieldRef(tt, "ver_minor", "i32"), new $c.FieldRef(tt, "patchlevel", "i32"), new $c.FieldRef(tt, "points", "i64"), new $c.FieldRef(tt, "deathdnum", "i32"), new $c.FieldRef(tt, "deathlev", "i32"), new $c.FieldRef(tt, "maxlvl", "i32"), new $c.FieldRef(tt, "hp", "i32"), new $c.FieldRef(tt, "maxhp", "i32"), new $c.FieldRef(tt, "deaths", "i32"), new $c.FieldRef(tt, "deathdate", "i64"), new $c.FieldRef(tt, "birthdate", "i64"), new $c.FieldRef(tt, "uid", "i32")) !== TTFIELDS) {
         tt.points = 0;
         discardexcess(rfile);
     } else {
@@ -162,18 +175,18 @@ async function writexlentry(rfile, tt, how) {   // topten.c:340
     $c.__builtin___sprintf_chk(eos(new $c.Ptr(buf, 0)), 0, -1, $c.lit("%cdeaths=%d%cdeathdate=%ld%cbirthdate=%ld%cuid=%d"), 9, tt.deaths, 9, tt.deathdate, 9, tt.birthdate, 9, tt.uid);
     $c.fprintf(rfile, $c.lit("%s"), new $c.Ptr(buf, 0));
     $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("%crole=%s%crace=%s%cgender=%s%calign=%s"), 9, new $c.Ptr(tt.plrole, 0), 9, new $c.Ptr(tt.plrace, 0), 9, new $c.Ptr(tt.plgend, 0), 9, new $c.Ptr(tt.plalign, 0));
-    await formatkiller(new $c.Ptr(tmpbuf, 0), 101, how, 0);
+    await formatkiller(new $c.Ptr(tmpbuf, 0), 101, how, FALSE);
     $c.fprintf(rfile, $c.lit("%s%cname=%s%cdeath=%s"), new $c.Ptr(buf, 0), 9, new $c.Ptr(svp.plname, 0), 9, new $c.Ptr(tmpbuf, 0));
     if (gm.multi < 0) {
         $c.fprintf(rfile, $c.lit("%cwhile=%s"), 9, gm.multi_reason ? gm.multi_reason : $c.lit("helpless"));
     }
-    $c.fprintf(rfile, $c.lit("%cconduct=0x%lx%cturns=%ld%cachieve=0x%lx"), 9, await encodeconduct(), 9, svm.moves, 9, encodeachieve(0));
+    $c.fprintf(rfile, $c.lit("%cconduct=0x%lx%cturns=%ld%cachieve=0x%lx"), 9, await encodeconduct(), 9, svm.moves, 9, encodeachieve(FALSE));
     $c.fprintf(rfile, $c.lit("%cachieveX=%s"), 9, encode_extended_achievements(new $c.Ptr(achbuf, 0)));
     $c.fprintf(rfile, $c.lit("%cconductX=%s"), 9, await encode_extended_conducts(new $c.Ptr(buf, 0)));
     $c.fprintf(rfile, $c.lit("%crealtime=%ld%cstarttime=%ld%cendtime=%ld"), 9, urealtime.realtime, 9, timet_to_seconds($G.ubirthday), 9, timet_to_seconds(urealtime.finish_time));
-    $c.fprintf(rfile, $c.lit("%cgender0=%s%calign0=%s"), 9, genders[flags.initgend].filecode, 9, aligns[1 - u.ualignbase[1] | 0].filecode);
+    $c.fprintf(rfile, $c.lit("%cgender0=%s%calign0=%s"), 9, genders[flags.initgend].filecode, 9, aligns[1 - u.ualignbase[A.ORIGINAL] | 0].filecode);
     $c.fprintf(rfile, $c.lit("%cflags=0x%lx"), 9, encodexlogflags());
-    $c.fprintf(rfile, $c.lit("%cgold=%ld"), 9, $c.add64(money_cnt(gi.invent), hidden_gold(1)));
+    $c.fprintf(rfile, $c.lit("%cgold=%ld"), 9, $c.add64(money_cnt(gi.invent), hidden_gold(TRUE)));
     $c.fprintf(rfile, $c.lit("%cwish_cnt=%ld"), 9, u.uconduct.wishes);
     $c.fprintf(rfile, $c.lit("%carti_wish_cnt=%ld"), 9, u.uconduct.wisharti);
     $c.fprintf(rfile, $c.lit("%cbones=%ld"), 9, u.uroleplay.numbones);
@@ -183,10 +196,10 @@ async function writexlentry(rfile, tt, how) {   // topten.c:340
 function encodexlogflags() {   // topten.c:394
     let e = 0;
     e = 0;
-    if (flags.debug) {
+    if (wizard()) {
         e = $c.or64(e, 1);
     }
-    if (flags.explore) {
+    if (discover()) {
         e = $c.or64(e, 2);
     }
     if (!u.uroleplay.numbones) {
@@ -272,85 +285,85 @@ function encode_extended_achievements(buf) {   // topten.c:491
         achidx = u.uachieved[i];
         absidx = $c.abs(achidx);
         switch (absidx) {
-            case 9 /* ACH_UWIN */:
+            case ACH.UWIN:
                 achievement = $c.lit("ascended");
                 break;
-            case 8 /* ACH_ASTR */:
+            case ACH.ASTR:
                 achievement = $c.lit("entered_astral_plane");
                 break;
-            case 7 /* ACH_ENDG */:
+            case ACH.ENDG:
                 achievement = $c.lit("entered_elemental_planes");
                 break;
-            case 6 /* ACH_AMUL */:
+            case ACH.AMUL:
                 achievement = $c.lit("obtained_the_amulet_of_yendor");
                 break;
-            case 5 /* ACH_INVK */:
+            case ACH.INVK:
                 achievement = $c.lit("performed_the_invocation_ritual");
                 break;
-            case 4 /* ACH_BOOK */:
+            case ACH.BOOK:
                 achievement = $c.lit("obtained_the_book_of_the_dead");
                 break;
-            case 1 /* ACH_BELL */:
+            case ACH.BELL:
                 achievement = $c.lit("obtained_the_bell_of_opening");
                 break;
-            case 3 /* ACH_CNDL */:
+            case ACH.CNDL:
                 achievement = $c.lit("obtained_the_candelabrum_of_invocation");
                 break;
-            case 2 /* ACH_HELL */:
+            case ACH.HELL:
                 achievement = $c.lit("entered_gehennom");
                 break;
-            case 12 /* ACH_MEDU */:
+            case ACH.MEDU:
                 achievement = $c.lit("defeated_medusa");
                 break;
-            case 10 /* ACH_MINE_PRIZE */:
+            case ACH.MINE_PRIZE:
                 achievement = $c.lit("obtained_the_luckstone_from_the_mines");
                 break;
-            case 11 /* ACH_SOKO_PRIZE */:
+            case ACH.SOKO_PRIZE:
                 achievement = $c.lit("obtained_the_sokoban_prize");
                 break;
-            case 19 /* ACH_ORCL */:
+            case ACH.ORCL:
                 achievement = $c.lit("consulted_the_oracle");
                 break;
-            case 20 /* ACH_NOVL */:
+            case ACH.NOVL:
                 achievement = $c.lit("read_a_discworld_novel");
                 break;
-            case 15 /* ACH_MINE */:
+            case ACH.MINE:
                 achievement = $c.lit("entered_the_gnomish_mines");
                 break;
-            case 16 /* ACH_TOWN */:
+            case ACH.TOWN:
                 achievement = $c.lit("entered_mine_town");
                 break;
-            case 17 /* ACH_SHOP */:
+            case ACH.SHOP:
                 achievement = $c.lit("entered_a_shop");
                 break;
-            case 18 /* ACH_TMPL */:
+            case ACH.TMPL:
                 achievement = $c.lit("entered_a_temple");
                 break;
-            case 21 /* ACH_SOKO */:
+            case ACH.SOKO:
                 achievement = $c.lit("entered_sokoban");
                 break;
-            case 22 /* ACH_BGRM */:
+            case ACH.BGRM:
                 achievement = $c.lit("entered_bigroom");
                 break;
-            case 31 /* ACH_TUNE */:
+            case ACH.TUNE:
                 achievement = $c.lit("learned_castle_drawbridge_tune");
                 break;
-            case 23 /* ACH_RNK1 */:
-            case 24 /* ACH_RNK2 */:
-            case 25 /* ACH_RNK3 */:
-            case 26 /* ACH_RNK4 */:
-            case 27 /* ACH_RNK5 */:
-            case 28 /* ACH_RNK6 */:
-            case 29 /* ACH_RNK7 */:
-            case 30 /* ACH_RNK8 */:
-                $c.__builtin___sprintf_chk(new $c.Ptr(rnkbuf, 0), 0, 40, $c.lit("attained_the_rank_of_%s"), rank_of(rank_to_xlev(absidx - 22 | 0), gu.urole.mnum, $c.i8(achidx < 0 ? 1 : 0)));
+            case ACH.RNK1:
+            case ACH.RNK2:
+            case ACH.RNK3:
+            case ACH.RNK4:
+            case ACH.RNK5:
+            case ACH.RNK6:
+            case ACH.RNK7:
+            case ACH.RNK8:
+                $c.__builtin___sprintf_chk(new $c.Ptr(rnkbuf, 0), 0, 40, $c.lit("attained_the_rank_of_%s"), rank_of(rank_to_xlev(absidx - (ACH.RNK1 - 1) | 0), gu.urole.mnum, $c.i8(achidx < 0 ? TRUE : FALSE)));
                 strNsubst(new $c.Ptr(rnkbuf, 0), $c.lit(" "), $c.lit("_"), 0);
                 achievement = lcase(new $c.Ptr(rnkbuf, 0));
                 break;
             default:
                 continue L1;
         }
-        add_achieveX(buf, achievement, 1);
+        add_achieveX(buf, achievement, TRUE);
     }
     return buf;
 }
@@ -384,10 +397,10 @@ function free_ttlist(tt) {   // topten.c:615
     let ttnext = null;
     while (tt.points > 0) {
         ttnext = tt.tt_next;
-        $c.free(tt);
+        dealloc_ttentry(tt);
         tt = ttnext;
     }
-    $c.free(tt);
+    dealloc_ttentry(tt);
 }
 export async function topten(how, when) {   // topten.c:628
     let t0 = null, tprev = null, t1 = null, rfile = null, lfile = null, xlfile = null, uid = 0, rank = 0, rank0 = 0, rank1 = 0, occ_cnt = 0, flg = 0, t0_used = 0, skip_scores = 0, pbuf = new Int8Array(256), pbuf$2 = new Int8Array(256), pbuf$3 = new Int8Array(256), $goto = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
@@ -403,35 +416,35 @@ export async function topten(how, when) {   // topten.c:628
                 return;
             }
             if (iflags.toptenwin) {
-                $t1 = await windowprocs.win_create_nhwindow(5), gt.toptenwin = $t1;
+                $t1 = await create_nhwindow()(NHW.TEXT), gt.toptenwin = $t1;
             }
-            t0_used = 0;
-            t0 = $c.asRec(await alloc(208), $T.toptenentry, 208);
+            t0_used = FALSE;
+            t0 = await newttentry();
             t0.$copyFrom(zerott);
-            t0.ver_major = 5;
-            t0.ver_minor = 0;
-            t0.patchlevel = 0;
+            t0.ver_major = VERSION.MAJOR;
+            t0.ver_minor = VERSION.MINOR;
+            t0.patchlevel = PATCHLEVEL;
             t0.points = u.urexp;
             t0.deathdnum = u.uz.dnum;
             $t2 = observable_depth(u.uz), t0.deathlev = $t2;
-            $t3 = deepest_lev_reached(1), t0.maxlvl = $t3;
+            $t3 = deepest_lev_reached(TRUE), t0.maxlvl = $t3;
             t0.hp = u.uhp;
             t0.maxhp = u.uhpmax;
             t0.deaths = u.umortality;
             t0.uid = uid;
-            copynchars(new $c.Ptr(t0.plrole, 0), gu.urole.filecode, 3);
-            copynchars(new $c.Ptr(t0.plrace, 0), gu.urace.filecode, 3);
-            copynchars(new $c.Ptr(t0.plgend, 0), genders[flags.female].filecode, 3);
-            copynchars(new $c.Ptr(t0.plalign, 0), aligns[1 - u.ualign.type | 0].filecode, 3);
-            copynchars(new $c.Ptr(t0.name, 0), new $c.Ptr(svp.plname, 0), 10);
-            await formatkiller(new $c.Ptr(t0.death, 0), 101, how, 1);
+            copynchars(new $c.Ptr(t0.plrole, 0), gu.urole.filecode, ROLESZ);
+            copynchars(new $c.Ptr(t0.plrace, 0), gu.urace.filecode, ROLESZ);
+            copynchars(new $c.Ptr(t0.plgend, 0), genders[flags.female].filecode, ROLESZ);
+            copynchars(new $c.Ptr(t0.plalign, 0), aligns[1 - u.ualign.type | 0].filecode, ROLESZ);
+            copynchars(new $c.Ptr(t0.name, 0), new $c.Ptr(svp.plname, 0), NAMSZ);
+            await formatkiller(new $c.Ptr(t0.death, 0), 101, how, TRUE);
             $t4 = yyyymmdd($G.ubirthday), t0.birthdate = $t4;
             $t5 = yyyymmdd(when), t0.deathdate = $t5;
             t0.tt_next = null;
-            if (await lock_file($c.lit("logfile"), 5, 10)) {
-                if (!(lfile = fopen_datafile($c.lit("logfile"), $c.lit("a"), 5))) {
+            if (await lock_file($c.lit("logfile"), SCOREPREFIX, 10)) {
+                if (!(lfile = fopen_datafile($c.lit("logfile"), $c.lit("a"), SCOREPREFIX))) {
                     if (!program_state.done_hup) {
-                        await windowprocs.win_raw_print($c.lit("Cannot open log file!"));
+                        await raw_print()($c.lit("Cannot open log file!"));
                     }
                 } else {
                     writeentry(lfile, t0);
@@ -439,10 +452,10 @@ export async function topten(how, when) {   // topten.c:628
                 }
                 await unlock_file($c.lit("logfile"));
             }
-            if (await lock_file($c.lit("xlogfile"), 5, 10)) {
-                if (!(xlfile = fopen_datafile($c.lit("xlogfile"), $c.lit("a"), 5))) {
+            if (await lock_file($c.lit("xlogfile"), SCOREPREFIX, 10)) {
+                if (!(xlfile = fopen_datafile($c.lit("xlogfile"), $c.lit("a"), SCOREPREFIX))) {
                     if (!program_state.done_hup) {
-                        await windowprocs.win_raw_print($c.lit("Cannot open extended log file!"));
+                        await raw_print()($c.lit("Cannot open extended log file!"));
                     }
                 } else {
                     await writexlentry(xlfile, t0, how);
@@ -450,8 +463,8 @@ export async function topten(how, when) {   // topten.c:628
                 }
                 await unlock_file($c.lit("xlogfile"));
             }
-            if (flags.debug || flags.explore) {
-                if (how !== 11 /* PANICKED */) {
+            if (wizard() || discover()) {
+                if (how !== PANICKED) {
                     if (!program_state.done_hup) {
                         await topten_print($c.lit(""));
                         $c.__builtin___sprintf_chk(new $c.Ptr(pbuf, 0), 0, 256, $c.lit("Since you were in %s mode, the score list will not be checked."), flags.debug ? $c.lit("wizard") : $c.lit("discover"));
@@ -460,13 +473,13 @@ export async function topten(how, when) {   // topten.c:628
                 }
                 $goto = "showwin"; continue D1;
             }
-            if (!await lock_file($c.lit("record"), 5, 60)) {
+            if (!await lock_file($c.lit("record"), SCOREPREFIX, 60)) {
                 $goto = "destroywin"; continue D1;
             }
-            rfile = fopen_datafile($c.lit("record"), $c.lit("r"), 5);
+            rfile = fopen_datafile($c.lit("record"), $c.lit("r"), SCOREPREFIX);
             if (!rfile) {
                 if (!program_state.done_hup) {
-                    await windowprocs.win_raw_print($c.lit("Cannot open record file!"));
+                    await raw_print()($c.lit("Cannot open record file!"));
                 }
                 await unlock_file($c.lit("record"));
                 $goto = "destroywin"; continue D1;
@@ -477,7 +490,7 @@ export async function topten(how, when) {   // topten.c:628
             if (t0.points < sysopt.pointsmin) {
                 t0.points = 0;
             }
-            t1 = tt_head = $c.asRec(await alloc(208), $T.toptenentry, 208);
+            t1 = tt_head = await newttentry();
             tprev = null;
             for (rank = 1; ; ) {
                 await readentry(rfile, t1);
@@ -492,7 +505,7 @@ export async function topten(how, when) {   // topten.c:628
                         tprev.tt_next = t0;
                     }
                     t0.tt_next = t1;
-                    t0_used = 1;
+                    t0_used = TRUE;
                     occ_cnt = occ_cnt - 1 | 0;
                     flg = flg + 1 | 0;
                 } else {
@@ -501,7 +514,7 @@ export async function topten(how, when) {   // topten.c:628
                 if (t1.points === 0) {
                     break;
                 }
-                if ((sysopt.pers_is_uid ? t1.uid === t0.uid : $c.strncmp(new $c.Ptr(t1.name, 0), new $c.Ptr(t0.name, 0), 10) === 0) && !$c.strncmp(new $c.Ptr(t1.plrole, 0), new $c.Ptr(t0.plrole, 0), 3) && (occ_cnt = occ_cnt - 1 | 0) <= 0) {
+                if ((sysopt.pers_is_uid ? t1.uid === t0.uid : $c.strncmp(new $c.Ptr(t1.name, 0), new $c.Ptr(t0.name, 0), NAMSZ) === 0) && !$c.strncmp(new $c.Ptr(t1.plrole, 0), new $c.Ptr(t0.plrole, 0), ROLESZ) && (occ_cnt = occ_cnt - 1 | 0) <= 0) {
                     if (rank0 < 0) {
                         rank0 = 0;
                         rank1 = rank;
@@ -517,7 +530,7 @@ export async function topten(how, when) {   // topten.c:628
                     }
                 }
                 if (rank <= sysopt.entrymax) {
-                    $t7 = $c.asRec(await alloc(208), $T.toptenentry, 208), t1.tt_next = $t7;
+                    $t7 = await newttentry(), t1.tt_next = $t7;
                     t1 = t1.tt_next;
                     rank = rank + 1 | 0;
                 }
@@ -528,9 +541,9 @@ export async function topten(how, when) {   // topten.c:628
             }
             if (flg) {
                 $c.fclose(rfile);
-                if (!(rfile = fopen_datafile($c.lit("record"), $c.lit("w"), 5))) {
+                if (!(rfile = fopen_datafile($c.lit("record"), $c.lit("w"), SCOREPREFIX))) {
                     if (!program_state.done_hup) {
-                        await windowprocs.win_raw_print($c.lit("Cannot write record file"));
+                        await raw_print()($c.lit("Cannot write record file"));
                     }
                     await unlock_file($c.lit("record"));
                     free_ttlist(tt_head);
@@ -565,23 +578,23 @@ export async function topten(how, when) {   // topten.c:628
                 if (skip_scores || program_state.stopprint) {
                     continue;
                 }
-                if (rank <= flags.end_top || rank >= (rank0 - flags.end_around | 0) && rank <= (rank0 + flags.end_around | 0) || flags.end_own && (sysopt.pers_is_uid ? t1.uid === t0.uid : !$c.strncmp(new $c.Ptr(t1.name, 0), new $c.Ptr(t0.name, 0), 10))) {
+                if (rank <= flags.end_top || rank >= (rank0 - flags.end_around | 0) && rank <= (rank0 + flags.end_around | 0) || flags.end_own && (sysopt.pers_is_uid ? t1.uid === t0.uid : !$c.strncmp(new $c.Ptr(t1.name, 0), new $c.Ptr(t0.name, 0), NAMSZ))) {
                     if (rank === (rank0 - flags.end_around | 0) && rank0 > ((flags.end_top + flags.end_around | 0) + 1 | 0) && !flags.end_own) {
                         await topten_print($c.lit(""));
                     }
                     if (rank !== rank0) {
-                        await outentry(rank, t1, 0);
+                        await outentry(rank, t1, FALSE);
                     } else if (!rank1) {
-                        await outentry(rank, t1, 1);
+                        await outentry(rank, t1, TRUE);
                     } else {
-                        await outentry(rank, t1, 1);
-                        await outentry(0, t0, 1);
+                        await outentry(rank, t1, TRUE);
+                        await outentry(0, t0, TRUE);
                     }
                 }
             }
             if (rank0 >= rank) {
                 if (!skip_scores && !program_state.stopprint) {
-                    await outentry(0, t0, 1);
+                    await outentry(0, t0, TRUE);
                 }
             }
             $c.fclose(rfile);
@@ -591,18 +604,18 @@ export async function topten(how, when) {   // topten.c:628
             $goto = null;   // showwin:
             if (!program_state.stopprint) {
                 if (iflags.toptenwin) {
-                    await windowprocs.win_display_nhwindow(gt.toptenwin, 1);
+                    await display_nhwindow()(gt.toptenwin, TRUE);
                 } else {
                 }
             }
         case "destroywin":
             $goto = null;   // destroywin:
             if (!t0_used) {
-                $c.free(t0);
+                dealloc_ttentry(t0);
             }
             if (iflags.toptenwin) {
-                await windowprocs.win_destroy_nhwindow(gt.toptenwin);
-                gt.toptenwin = -1;
+                await destroy_nhwindow()(gt.toptenwin);
+                gt.toptenwin = WIN_ERR;
             }
         }
         break;
@@ -612,7 +625,7 @@ async function outheader() {   // topten.c:929
     let linebuf = new Int8Array(256), bp = null, $t1;
     $c.__builtin___strcpy_chk(new $c.Ptr(linebuf, 0), $c.lit(" No  Points     Name"), 256);
     bp = eos(new $c.Ptr(linebuf, 0));
-    while ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(80).add(-9)) < 0) {
+    while ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(COLNO).add(-9)) < 0) {
         ($t1 = bp, bp = $t1.add(1), $t1).set(0, 32);
     }
     $c.__builtin___strcpy_chk(bp, $c.lit("Hp [max]"), -1);
@@ -620,7 +633,7 @@ async function outheader() {   // topten.c:929
 }
 async function outentry(rank, t1, so) {   // topten.c:946
     let second_line = 0, linebuf = new Int8Array(256), bp = null, hpbuf = new Int8Array(24), linebuf3 = new Int8Array(256), hppos = 0, lngr = 0, arg = null, fmt = null, $t1, $t2, $t3;
-    second_line = 1;
+    second_line = TRUE;
     linebuf[0] = 0;
     if (rank) {
         $c.__builtin___sprintf_chk(eos(new $c.Ptr(linebuf, 0)), 0, -1, $c.lit("%3d"), rank);
@@ -643,17 +656,17 @@ async function outentry(rank, t1, so) {   // topten.c:946
         if ((bp = $c.strchr(new $c.Ptr(linebuf, 0), 41)) !== null) {
             bp.set(0, $c.i8(t1.deathdnum === svd.dungeon_topology.d_astral_level.dnum ? 0 : 32));
         }
-        second_line = 0;
+        second_line = FALSE;
     } else if (!$c.strncmp($c.lit("ascended"), new $c.Ptr(t1.death, 0), 8)) {
         $c.__builtin___sprintf_chk(eos(new $c.Ptr(linebuf, 0)), 0, -1, $c.lit("ascended to demigod%s-hood"), t1.plgend[0] === 70 ? $c.lit("dess") : $c.lit(""));
-        second_line = 0;
+        second_line = FALSE;
     } else {
         if (!$c.strncmp(new $c.Ptr(t1.death, 0), $c.lit("quit"), 4)) {
             $c.__builtin___strcat_chk(new $c.Ptr(linebuf, 0), $c.lit("quit"), 256);
-            second_line = 0;
+            second_line = FALSE;
         } else if (!$c.strncmp(new $c.Ptr(t1.death, 0), $c.lit("died of st"), 10)) {
             $c.__builtin___strcat_chk(new $c.Ptr(linebuf, 0), $c.lit("starved to death"), 256);
-            second_line = 0;
+            second_line = FALSE;
         } else if (!$c.strncmp(new $c.Ptr(t1.death, 0), $c.lit("choked"), 6)) {
             $c.__builtin___sprintf_chk(eos(new $c.Ptr(linebuf, 0)), 0, -1, $c.lit("choked on h%s food"), t1.plgend[0] === 70 ? $c.lit("er") : $c.lit("is"));
         } else if (!$c.strncmp(new $c.Ptr(t1.death, 0), $c.lit("poisoned"), 8)) {
@@ -731,7 +744,7 @@ async function outentry(rank, t1, so) {   // topten.c:946
         }
         bp.set(0, 0);
         if (so) {
-            while ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(79)) < 0) {
+            while ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(COLNO - 1)) < 0) {
                 ($t1 = bp, bp = $t1.add(1), $t1).set(0, 32);
             }
             bp.set(0, 0);
@@ -742,7 +755,7 @@ async function outentry(rank, t1, so) {   // topten.c:946
         nh_snprintf($c.lit("outentry"), 1082, new $c.Ptr(linebuf, 0), 256, $c.lit("%15s %s"), $c.lit(""), new $c.Ptr(linebuf3, 0));
         lngr = await Strlen_(new $c.Ptr(linebuf, 0), $c.lit("outentry"), 1083) | 0;
     }
-    hppos = 73 - $c.i32($c.strlen(new $c.Ptr(hpbuf, 0))) | 0;
+    hppos = COLNO - 7 - $c.i32($c.strlen(new $c.Ptr(hpbuf, 0))) | 0;
     bp = eos(new $c.Ptr(linebuf, 0));
     if ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(hppos)) <= 0) {
         while ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(hppos)) < 0) {
@@ -753,7 +766,7 @@ async function outentry(rank, t1, so) {   // topten.c:946
     }
     if (so) {
         bp = eos(new $c.Ptr(linebuf, 0));
-        while ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(79)) < 0) {
+        while ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(COLNO - 1)) < 0) {
             ($t3 = bp, bp = $t3.add(1), $t3).set(0, 32);
         }
         bp.set(0, 0);
@@ -764,7 +777,7 @@ async function outentry(rank, t1, so) {   // topten.c:946
 }
 async function score_wanted(current_ver, rank, t1, playerct, players, uid) {   // topten.c:1112
     let arg = null, nxt = null, i = 0;
-    if (current_ver && (t1.ver_major !== 5 || t1.ver_minor !== 0 || t1.patchlevel !== 0)) {
+    if (current_ver && (t1.ver_major !== VERSION.MAJOR || t1.ver_minor !== VERSION.MINOR || t1.patchlevel !== PATCHLEVEL)) {
         return 0;
     }
     if (sysopt.pers_is_uid && !playerct && t1.uid === uid) {
@@ -777,11 +790,11 @@ async function score_wanted(current_ver, rank, t1, playerct, players, uid) {   /
         }
         if (arg.get(0) === 45 && $c.strchr($c.lit("pru"), arg.get(1)) && !arg.get(2) && (i + 1 | 0) < playerct) {
             nxt = players.get(i + 1 | 0);
-            if (arg.get(1) === 112 && await str2role(nxt) === await str2role(new $c.Ptr(t1.plrole, 0)) || arg.get(1) === 114 && await str2race(nxt) === await str2race(new $c.Ptr(t1.plrace, 0)) || arg.get(1) === 117 && (!$c.strcmp(nxt, $c.lit("all")) || !$c.strncmp(new $c.Ptr(t1.name, 0), nxt, 10))) {
+            if (arg.get(1) === 112 && await str2role(nxt) === await str2role(new $c.Ptr(t1.plrole, 0)) || arg.get(1) === 114 && await str2race(nxt) === await str2race(new $c.Ptr(t1.plrace, 0)) || arg.get(1) === 117 && (!$c.strcmp(nxt, $c.lit("all")) || !$c.strncmp(new $c.Ptr(t1.name, 0), nxt, NAMSZ))) {
                 return 1;
             }
             i = i + 1 | 0;
-        } else if (!$c.strcmp(arg, $c.lit("all")) || !$c.strncmp(new $c.Ptr(t1.name, 0), arg, 10) || arg.get(0) === 45 && arg.get(1) === t1.plrole[0] && !arg.get(2) || digit(arg.get(0)) && rank <= $c.atoi(arg)) {
+        } else if (!$c.strcmp(arg, $c.lit("all")) || !$c.strncmp(new $c.Ptr(t1.name, 0), arg, NAMSZ) || arg.get(0) === 45 && arg.get(1) === t1.plrole[0] && !arg.get(2) || digit(arg.get(0)) && rank <= $c.atoi(arg)) {
             return 1;
         }
     }
@@ -790,22 +803,22 @@ async function score_wanted(current_ver, rank, t1, playerct, players, uid) {   /
 export async function prscore(argc, argv) {   // topten.c:1194
     let players = null, player0 = [null], i = 0, playerct = 0, rank = 0, t1 = null, rfile = null, pbuf = new Int8Array(256), p = null, ln = 0, uid = 0, current_ver = 0, init_done = 0, match_found = 0, $t1;
     uid = -1;
-    current_ver = 1;
-    init_done = 0;
-    match_found = 0;
+    current_ver = TRUE;
+    init_done = FALSE;
+    match_found = FALSE;
     ln = argc < 2 ? 0 : (p = $c.strchr(argv.get(1), 32)) !== null ? $c.u32($c.pdiff(p, argv.get(1))) : await Strlen_(argv.get(1), $c.lit("prscore"), 1208);
     if (ln < 2 || $c.strncmp(argv.get(1), $c.lit("-s"), 2) && $c.strcmp(argv.get(1), $c.lit("--scores"))) {
         await raw_printf($c.lit("prscore: bad arguments (%d)"), argc);
         return;
     }
-    rfile = fopen_datafile($c.lit("record"), $c.lit("r"), 5);
+    rfile = fopen_datafile($c.lit("record"), $c.lit("r"), SCOREPREFIX);
     if (!rfile) {
-        await windowprocs.win_raw_print($c.lit("Cannot open record file!"));
+        await raw_print()($c.lit("Cannot open record file!"));
         return;
     }
     if (svd.dungeon_topology.d_wiz1_level.dlevel === 0) {
         await init_dungeons();
-        init_done = 1;
+        init_done = TRUE;
     }
     if (argv.get(1).get(1) === 45 || !argv.get(1).get(2)) {
         argc = argc - 1 | 0;
@@ -814,7 +827,7 @@ export async function prscore(argc, argv) {   // topten.c:1194
         argv.set(1, argv.get(1).add(2));
     }
     if (argc > 1 && !$c.strcmp(argv.get(1), $c.lit("-v"))) {
-        current_ver = 0;
+        current_ver = FALSE;
         argc = argc - 1 | 0;
         argv = argv.add(1);
     }
@@ -835,17 +848,17 @@ export async function prscore(argc, argv) {   // topten.c:1194
         playerct = argc = argc - 1 | 0;
         players = argv = argv.add(1);
     }
-    await windowprocs.win_raw_print($c.lit(""));
-    t1 = tt_head = $c.asRec(await alloc(208), $T.toptenentry, 208);
+    await raw_print()($c.lit(""));
+    t1 = tt_head = await newttentry();
     for (rank = 1; ; rank = rank + 1 | 0) {
         await readentry(rfile, t1);
         if (t1.points === 0) {
             break;
         }
         if (!match_found && await score_wanted(current_ver, rank, t1, playerct, players, uid)) {
-            match_found = 1;
+            match_found = TRUE;
         }
-        $t1 = $c.asRec(await alloc(208), $T.toptenentry, 208), t1.tt_next = $t1;
+        $t1 = await newttentry(), t1.tt_next = $t1;
         t1 = t1.tt_next;
     }
     $c.fclose(rfile);
@@ -857,7 +870,7 @@ export async function prscore(argc, argv) {   // topten.c:1194
         t1 = tt_head;
         for (rank = 1; t1.points !== 0; rank = rank + 1 | 0, t1 = t1.tt_next) {
             if (await score_wanted(current_ver, rank, t1, playerct, players, uid)) {
-                await outentry(rank, t1, 0);
+                await outentry(rank, t1, FALSE);
             }
         }
     } else {
@@ -875,8 +888,8 @@ export async function prscore(argc, argv) {   // topten.c:1194
                     }
                     players.set(i, players.get(i).add(2));
                 }
-                if ($c.addu64($c.addu64($c.strlen(new $c.Ptr(pbuf, 0)), $c.strlen(players.get(i))), 2) >= 256) {
-                    if ($c.strlen(new $c.Ptr(pbuf, 0)) < 252) {
+                if ($c.addu64($c.addu64($c.strlen(new $c.Ptr(pbuf, 0)), $c.strlen(players.get(i))), 2) >= BUFSZ) {
+                    if ($c.strlen(new $c.Ptr(pbuf, 0)) < BUFSZ - 4) {
                         $c.__builtin___strcat_chk(new $c.Ptr(pbuf, 0), $c.lit("..."), 256);
                     } else {
                         $c.__builtin___strcpy_chk(new $c.Ptr(pbuf, 0).add($c.idx($c.strlen(new $c.Ptr(pbuf, 0)))).add(-4), $c.lit("..."), -1);
@@ -893,10 +906,10 @@ export async function prscore(argc, argv) {   // topten.c:1194
                 }
             }
         }
-        if ($c.strlen(new $c.Ptr(pbuf, 0)) < 255) {
+        if ($c.strlen(new $c.Ptr(pbuf, 0)) < BUFSZ - 1) {
             $c.__builtin___strcat_chk(new $c.Ptr(pbuf, 0), $c.lit("."), 256);
         }
-        await windowprocs.win_raw_print(new $c.Ptr(pbuf, 0));
+        await raw_print()(new $c.Ptr(pbuf, 0));
         await raw_printf($c.lit("Usage: %s -s [-v] <playertypes> [maxrank] [playernames]"), gh.hname);
         await raw_printf($c.lit("Player types are: [-p role] [-r race]"));
     }
@@ -905,29 +918,29 @@ export async function prscore(argc, argv) {   // topten.c:1194
 async function classmon(plch) {   // topten.c:1356
     let i = 0;
     for (i = 0; roles[i].name.m; i = i + 1 | 0) {
-        if (!$c.strncmp(plch, roles[i].filecode, 3)) {
-            if (roles[i].mnum !== -1 /* NON_PM */) {
+        if (!$c.strncmp(plch, roles[i].filecode, ROLESZ)) {
+            if (roles[i].mnum !== NON_PM) {
                 return roles[i].mnum;
             } else {
-                return 260 /* PM_HUMAN */;
+                return PM.HUMAN;
             }
         }
     }
     if (!$c.strcmp(plch, $c.lit("E"))) {
-        return 338 /* PM_RANGER */;
+        return PM.RANGER;
     }
     await impossible($c.lit("What weird role is this? (%s)"), plch);
-    return 192 /* PM_HUMAN_MUMMY */;
+    return PM.HUMAN_MUMMY;
 }
 export async function get_rnd_toptenentry() {   // topten.c:1381
     let rank = 0, i = 0, rfile = null, tt = null;
-    rfile = fopen_datafile($c.lit("record"), $c.lit("r"), 5);
+    rfile = fopen_datafile($c.lit("record"), $c.lit("r"), SCOREPREFIX);
     if (!rfile) {
         await impossible($c.lit("Cannot open record file!"));
         return null;
     }
     tt = get_rnd_toptenentry$tt_buf;
-    rank = rng_log_enabled() ? (rng_log_set_caller($c.lit("topten.c"), 1395, $c.lit("get_rnd_toptenentry")), rnd(sysopt.tt_oname_maxrank)) : rnd(sysopt.tt_oname_maxrank);
+    rank = rnd(sysopt.tt_oname_maxrank);
     pickentry$: for (;;) {
         for (i = rank; i; i = i - 1 | 0) {
             await readentry(rfile, tt);
@@ -959,18 +972,18 @@ export async function tt_oname(otmp) {   // topten.c:1422
     }
     await set_corpsenm(otmp, await classmon(new $c.Ptr(tt.plrole, 0)));
     if (tt.plgend[0] === 70) {
-        otmp.spe = 1;
+        otmp.spe = CORPSTAT.FEMALE;
     } else if (tt.plgend[0] === 77) {
-        otmp.spe = 2;
+        otmp.spe = CORPSTAT.MALE;
     }
-    otmp = await oname(otmp, new $c.Ptr(tt.name, 0), 0);
+    otmp = await oname(otmp, new $c.Ptr(tt.name, 0), ONAME_NO_FLAGS);
     return otmp;
 }
 export async function tt_doppel(mon) {   // topten.c:1445
     let tt = null, ret = 0;
-    tt = (rng_log_enabled() ? (rng_log_set_caller($c.lit("topten.c"), 1446, $c.lit("tt_doppel")), rn2(13)) : rn2(13)) ? await get_rnd_toptenentry() : null;
+    tt = rn2(13) ? await get_rnd_toptenentry() : null;
     if (!tt) {
-        ret = (rng_log_enabled() ? (rng_log_set_caller($c.lit("topten.c"), 1450, $c.lit("tt_doppel")), rn2(13)) : rn2(13)) + 331 | 0;
+        ret = rn2(PM.WIZARD - PM.ARCHEOLOGIST + 1) + PM.ARCHEOLOGIST | 0;
     } else {
         if (tt.plgend[0] === 70) {
             mon.female = (1) & 1;
@@ -984,27 +997,35 @@ export async function tt_doppel(mon) {   // topten.c:1445
     }
     return ret;
 }
+async function newttentry() {
+    return $c.asRec(await alloc(208), $T.toptenentry, 208);
+}
+function dealloc_ttentry(ttent) {
+    $c.free(ttent);
+}
 
 export function $init() {
     tt_head = null;
     zerott.$copyFrom(new $T.toptenentry());
     formatkiller$killed_by_prefix.fill(null);
-    formatkiller$killed_by_prefix[0] = $c.lit("killed by ");
-    formatkiller$killed_by_prefix[1] = $c.lit("choked on ");
-    formatkiller$killed_by_prefix[2] = $c.lit("poisoned by ");
-    formatkiller$killed_by_prefix[3] = $c.lit("died of ");
-    formatkiller$killed_by_prefix[4] = $c.lit("drowned in ");
-    formatkiller$killed_by_prefix[5] = $c.lit("burned by ");
-    formatkiller$killed_by_prefix[6] = $c.lit("dissolved in ");
-    formatkiller$killed_by_prefix[7] = $c.lit("crushed to death by ");
-    formatkiller$killed_by_prefix[8] = $c.lit("petrified by ");
-    formatkiller$killed_by_prefix[9] = $c.lit("turned to slime by ");
-    formatkiller$killed_by_prefix[10] = $c.lit("killed by ");
-    formatkiller$killed_by_prefix[11] = $c.lit("");
-    formatkiller$killed_by_prefix[12] = $c.lit("");
-    formatkiller$killed_by_prefix[13] = $c.lit("");
-    formatkiller$killed_by_prefix[14] = $c.lit("");
-    formatkiller$killed_by_prefix[15] = $c.lit("");
+    $c.init(formatkiller$killed_by_prefix, [
+        $c.lit("killed by "),
+        $c.lit("choked on "),
+        $c.lit("poisoned by "),
+        $c.lit("died of "),
+        $c.lit("drowned in "),
+        $c.lit("burned by "),
+        $c.lit("dissolved in "),
+        $c.lit("crushed to death by "),
+        $c.lit("petrified by "),
+        $c.lit("turned to slime by "),
+        $c.lit("killed by "),
+        $c.lit(""),
+        $c.lit(""),
+        $c.lit(""),
+        $c.lit(""),
+        $c.lit("")
+    ]);
     readentry$fmt.fill(0);
     readentry$fmt.set([37, 100, 46, 37, 100, 46, 37, 100, 32, 37, 108, 100, 32, 37, 100, 32, 37, 100, 32, 37, 100, 32, 37, 100, 32, 37, 100, 32, 37, 100, 32, 37, 108, 100, 32, 37, 108, 100, 32, 37, 100, 32]);   // "%d.%d.%d %ld %d %d %d %d %d %d %ld %ld %d "
     readentry$fmt32.fill(0);

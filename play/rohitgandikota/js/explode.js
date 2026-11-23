@@ -854,10 +854,10 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                         hitvalu = 8 + stmp.obj.spe;
                         if (bigmonst(game.youmonst.data))
                             hitvalu++;
-                        const objp = { o: stmp.obj };
+                        const objp = { obj: stmp.obj };
                         hitu = await thitu(hitvalu, Maybe_Half_Phys(dam),
                                            objp, null);
-                        stmp.obj = objp.o;
+                        stmp.obj = objp.obj;
                         if (!stmp.obj)
                             stmp.stopped = true;
                         if (hitu) {

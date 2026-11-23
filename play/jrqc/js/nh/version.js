@@ -5,15 +5,22 @@ import { $G } from './globals.js';
 import { nomakedefs } from './date.js';
 import { flags, gc, gh, gl, iflags } from './decl.js';
 import { nh_basename } from './files.js';
+import { VI } from './flag.h.js';
+import { BUFSZ, COLNO, FALSE, SFCTOOL_BIT, TRUE } from './global.h.js';
+import { ECMD, SF, UTD, WRITING, exportascii } from './hack.h.js';
+import { FEATURE_NOTICE_VER } from './hack.macros.js';
 import { datamodel, eos, nh_snprintf, strip_newline, strncmpi, strstri, strsubst, tabexpand, what_datamodel_is_this } from './hacklib.js';
+import { nhStr } from './lint.macros.js';
 import { do_runtime_info, mdlib_version_string, release_runtime_info, runtime_info_init } from './mdlib.js';
 import { get_lua_version } from './nhlua.js';
+import { PATCHLEVEL, VERSION } from './patchlevel.h.js';
 import { pline, raw_printf } from './pline.js';
 import { regex_id } from './posixregex.js';
 import { sfi_char, sfi_uchar, sfi_version_info, sfo_char, sfo_uchar, sfo_version_info } from './sfbase.js';
 import { bufoff, bufon } from './sfstruct.js';
 import { port_insert_pastebuf } from './unixmain.js';
-import { windowprocs } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, display_nhwindow, putstr, raw_print, wait_synch } from './winprocs.macros.js';
+import { NHW, WIN_ERR } from './wintype.h.js';
 
 const rt_opts = $c.recArray($T.rt_opt, 3);
 export const critical_sizes = $c.recArray($T.critical_sizes_with_names, 80);
@@ -55,27 +62,27 @@ export function status_version(buf, bufsz, indent) {   // version.c:89
     name = null;
     altname = null;
     vflags = flags.versinfo;
-    shownum = $c.i8((vflags & 1) >>> 0 !== 0 ? 1 : 0);
-    showname = $c.i8((vflags & 2) >>> 0 !== 0 ? 1 : 0);
-    showbranch = $c.i8((vflags & 4) >>> 0 !== 0 ? 1 : 0);
+    shownum = $c.i8((vflags & VI.NUMBER) >>> 0 !== 0 ? 1 : 0);
+    showname = $c.i8((vflags & VI.NAME) >>> 0 !== 0 ? 1 : 0);
+    showbranch = $c.i8((vflags & VI.BRANCH) >>> 0 !== 0 ? 1 : 0);
     if (showname) {
-        name = nh_basename(gh.hname, 0);
+        name = nh_basename(gh.hname, FALSE);
         if (!name || !name.get(0)) {
-            showname = 0;
+            showname = FALSE;
         }
     }
     if (showbranch) {
         altname = nomakedefs.git_branch;
         if (!altname || !altname.get(0)) {
-            showbranch = 0;
+            showbranch = FALSE;
         }
     }
     if (showname && showbranch) {
         if (!strncmpi(name, altname, $c.i32($c.strlen(name)))) {
-            showname = 0;
+            showname = FALSE;
         }
     } else if (!showname && !showbranch) {
-        shownum = 1;
+        shownum = TRUE;
     }
     buf.set(0, 0);
     indentation = indent ? $c.lit(" ") : $c.lit("");
@@ -98,20 +105,20 @@ export async function doversion() {   // version.c:156
         return await doextversion();
     }
     await pline($c.lit("%s"), getversionstring(new $c.Ptr(buf, 0), 256));
-    return 0;
+    return ECMD.OK;
 }
 export async function doextversion() {   // version.c:169
     let rtcontext = Int32Array.of(0), rtbuf = null, f = null, buf = new Int8Array(256), p = null, win = 0, use_dlb = 0, done_rt = 0, done_dlb = 0, prolog = 0;
     rtcontext[0] = 0;
     f = null;
     p = null;
-    win = await windowprocs.win_create_nhwindow(5);
-    use_dlb = 1;
-    done_rt = 0;
-    done_dlb = 0;
-    use_dlb = 0;
+    win = await create_nhwindow()(NHW.TEXT);
+    use_dlb = TRUE;
+    done_rt = FALSE;
+    done_dlb = FALSE;
+    use_dlb = FALSE;
     getversionstring(new $c.Ptr(buf, 0), 256);
-    if ($c.strlen(new $c.Ptr(buf, 0)) >= 80) {
+    if ($c.strlen(new $c.Ptr(buf, 0)) >= COLNO) {
         p = $c.strrchr(new $c.Ptr(buf, 0), 40);
     }
     if (p && $c.pcmp(p, new $c.Ptr(buf, 0)) > 0 && p.get(-1) === 32 && p.get(1) !== 120) {
@@ -119,34 +126,34 @@ export async function doextversion() {   // version.c:169
     } else {
         p = null;
     }
-    await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+    await putstr()(win, 0, new $c.Ptr(buf, 0));
     if (p) {
         (p = p.add(-1)).set(0, 32);
-        await windowprocs.win_putstr(win, 0, p);
+        await putstr()(win, 0, p);
     }
     if (use_dlb) {
         f = $c.fopen($c.lit("options"), $c.lit("r"));
         if (!f) {
-            await windowprocs.win_putstr(win, 0, $c.lit(""));
+            await putstr()(win, 0, $c.lit(""));
             $c.__builtin___sprintf_chk(new $c.Ptr(buf, 0), 0, 256, $c.lit("[Configuration '%s' not available?]"), $c.lit("options"));
-            await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
-            done_dlb = 1;
+            await putstr()(win, 0, new $c.Ptr(buf, 0));
+            done_dlb = TRUE;
         }
     }
-    prolog = 1;
+    prolog = TRUE;
     for (; ; ) {
         if (use_dlb && !done_dlb) {
-            if (!$c.fgets(new $c.Ptr(buf, 0), 256, f)) {
-                done_dlb = 1;
+            if (!$c.fgets(new $c.Ptr(buf, 0), BUFSZ, f)) {
+                done_dlb = TRUE;
                 continue;
             }
         } else if (!done_rt) {
             if (!(rtbuf = await do_runtime_info(new $c.Ptr(rtcontext, 0)))) {
-                done_rt = 1;
+                done_rt = TRUE;
                 continue;
             }
-            $c.__builtin___strncpy_chk(new $c.Ptr(buf, 0), rtbuf, 255, 256);
-            buf[255] = 0;
+            $c.__builtin___strncpy_chk(new $c.Ptr(buf, 0), rtbuf, BUFSZ - 1, 256);
+            buf[BUFSZ - 1] = 0;
         } else {
             break;
         }
@@ -155,8 +162,8 @@ export async function doextversion() {   // version.c:169
             tabexpand(new $c.Ptr(buf, 0));
         }
         if (new $c.Ptr(buf, 0).get(0) && new $c.Ptr(buf, 0).get(0) !== 32) {
-            await windowprocs.win_putstr(win, 0, $c.lit(""));
-            prolog = 0;
+            await putstr()(win, 0, $c.lit(""));
+            prolog = FALSE;
         }
         if (prolog || !new $c.Ptr(buf, 0).get(0)) {
             continue;
@@ -165,15 +172,15 @@ export async function doextversion() {   // version.c:169
             await insert_rtoption(new $c.Ptr(buf, 0));
         }
         if (new $c.Ptr(buf, 0).get(0)) {
-            await windowprocs.win_putstr(win, 0, new $c.Ptr(buf, 0));
+            await putstr()(win, 0, new $c.Ptr(buf, 0));
         }
     }
     if (use_dlb) {
         $c.fclose(f);
     }
-    await windowprocs.win_display_nhwindow(win, 0);
-    await windowprocs.win_destroy_nhwindow(win);
-    return 0;
+    await display_nhwindow()(win, FALSE);
+    await destroy_nhwindow()(win);
+    return ECMD.OK;
 }
 export async function early_version_info(pastebuf) {   // version.c:280
     let buf1 = new Int8Array(256), buf2 = new Int8Array(256), buf = null, tmp = null, $t1;
@@ -205,28 +212,28 @@ async function insert_rtoption(buf) {   // version.c:339
 }
 export async function check_version(version_data, filename, complain, utdflags) {   // version.c:374
     if (!filename) {
-        complain = 0;
+        complain = FALSE;
     }
-    if ($c.andu64(version_data.feature_set, 1073741824) !== 0) {
-        gc.converted_savefile_loaded = 1;
+    if ($c.andu64(version_data.feature_set, SFCTOOL_BIT) !== 0) {
+        gc.converted_savefile_loaded = TRUE;
         version_data.feature_set = $c.andu64(version_data.feature_set, 18446744072635809791n);
     }
     if (version_data.incarnation !== nomakedefs.version_number) {
         if (complain) {
             await pline($c.lit("Version mismatch for file \"%s\"."), filename);
-            if ($G.WIN_MESSAGE !== -1) {
-                await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 1);
+            if ($G.WIN_MESSAGE !== WIN_ERR) {
+                await display_nhwindow()($G.WIN_MESSAGE, TRUE);
             }
         }
-        return 0;
-    } else if ($c.andu64(version_data.feature_set, $c.notu64(nomakedefs.ignored_features)) !== $c.andu64(nomakedefs.version_features, $c.notu64(nomakedefs.ignored_features)) || $c.andu64(utdflags, 4) === 0 && version_data.entity_count !== nomakedefs.version_sanity1) {
+        return FALSE;
+    } else if ($c.andu64(version_data.feature_set, $c.notu64(nomakedefs.ignored_features)) !== $c.andu64(nomakedefs.version_features, $c.notu64(nomakedefs.ignored_features)) || $c.andu64(utdflags, UTD.SKIP_SANITY1) === 0 && version_data.entity_count !== nomakedefs.version_sanity1) {
         if (complain) {
             await pline($c.lit("Configuration incompatibility for file \"%s\"."), filename);
-            await windowprocs.win_display_nhwindow($G.WIN_MESSAGE, 1);
+            await display_nhwindow()($G.WIN_MESSAGE, TRUE);
         }
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 export function get_feature_notice_ver(str) {   // version.c:431
     let buf = new Int8Array(256), ver_maj = 0, ver_min = 0, patch = 0, istr = $c.nulls(3), j = 0, $t1;
@@ -256,10 +263,10 @@ export function get_feature_notice_ver(str) {   // version.c:431
     ver_maj = $c.atoi(istr[0]);
     ver_min = $c.atoi(istr[1]);
     patch = $c.atoi(istr[2]);
-    return $c.oru64($c.oru64($c.oru64($c.shlu64($c.u64(ver_maj), 24), $c.shlu64($c.u64(ver_min), 16)), $c.shlu64($c.u64(patch), 8)), 0);
+    return FEATURE_NOTICE_VER(ver_maj, ver_min, patch);
 }
 export function get_current_feature_ver() {   // version.c:464
-    return 83886080;
+    return VERSION.MAJOR << 24 | VERSION.MINOR << 16 | PATCHLEVEL << 8 | 0;
 }
 export function copyright_banner_line(indx) {   // version.c:471
     if (indx === 1) {
@@ -280,11 +287,11 @@ export async function dump_version_info() {   // version.c:494
     let buf = new Int8Array(256), hname = null;
     hname = gh.hname ? gh.hname : $c.lit("nethack");
     if ($c.strlen(hname) > 33) {
-        hname = eos(hname).add(-33);
+        hname = eos(nhStr(hname)).add(-33);
     }
     await runtime_info_init();
     nh_snprintf($c.lit("dump_version_info"), 506, new $c.Ptr(buf, 0), 256, $c.lit("%-12.33s %08lx %08lx %08lx"), hname, nomakedefs.version_number, $c.andu64(nomakedefs.version_features, $c.notu64(nomakedefs.ignored_features)), nomakedefs.version_sanity1);
-    await windowprocs.win_raw_print(new $c.Ptr(buf, 0));
+    await raw_print()(new $c.Ptr(buf, 0));
     release_runtime_info();
     return;
 }
@@ -314,8 +321,8 @@ export async function store_critical_bytes(nhfp) {   // version.c:676
     let i = 0, cnt = 0, indicate = Int8Array.of(0), csc_count = Int8Array.of(0);
     indicate[0] = 117;
     csc_count[0] = 80;
-    if (nhfp.mode & 2) {
-        indicate[0] = $c.i8(nhfp.structlevel ? 104 : nhfp.fnidx === 2 /* exportascii */ ? 97 : 63);
+    if (nhfp.mode & WRITING) {
+        indicate[0] = $c.i8(nhfp.structlevel ? 104 : nhfp.fnidx === exportascii ? 97 : 63);
         await sfo_char(nhfp, new $c.Ptr(indicate, 0), $c.lit("indicate-format"), 1);
         await sfo_char(nhfp, new $c.Ptr(csc_count, 0), $c.lit("count-critical_sizes"), 1);
         cnt = csc_count[0];
@@ -328,10 +335,10 @@ export async function uptodate(nhfp, name, utdflags) {   // version.c:713
     let vers_info = new $T.version_info(), indicator = Int8Array.of(0), sfstatus = 0, idx_1st_mismatch = Int32Array.of(0), quietly = 0, verbose = 0;
     sfstatus = 0;
     idx_1st_mismatch[0] = 0;
-    quietly = $c.i8($c.andu64(utdflags, 32) !== 0 ? 1 : 0);
-    verbose = $c.i8(name ? 1 : 0);
+    quietly = $c.i8($c.andu64(utdflags, UTD.QUIETLY) !== 0 ? 1 : 0);
+    verbose = $c.i8(name ? TRUE : FALSE);
     await sfi_char(nhfp, new $c.Ptr(indicator, 0), $c.lit("indicate-format"), 1);
-    if ((sfstatus = await compare_critical_bytes(nhfp, new $c.Ptr(idx_1st_mismatch, 0), utdflags)) !== 0) {
+    if ((sfstatus = await compare_critical_bytes(nhfp, new $c.Ptr(idx_1st_mismatch, 0), utdflags)) !== SF.UPTODATE) {
         if (sfstatus > 0 && idx_1st_mismatch[0]) {
             if (!quietly) {
                 await raw_printf($c.lit("comparison of critical bytes mismatched at %d (%s)."), critical_sizes[idx_1st_mismatch[0]].ucsize, critical_sizes[idx_1st_mismatch[0]].nm);
@@ -341,11 +348,11 @@ export async function uptodate(nhfp, name, utdflags) {   // version.c:713
     await sfi_version_info(nhfp, vers_info, $c.lit("version_info"));
     if (!await check_version(vers_info, name, verbose, utdflags)) {
         if (verbose) {
-            if ($c.andu64(utdflags, 16) === 0) {
-                await windowprocs.win_wait_synch();
+            if ($c.andu64(utdflags, UTD.WITHOUT_WAITSYNCH_PERFILE) === 0) {
+                await wait_synch()();
             }
         }
-        return 1;
+        return SF.OUTDATED;
     }
     return sfstatus;
 }
@@ -353,14 +360,14 @@ export async function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
     let active_csc_count = 0, file_csc_count = Int8Array.of(0), i = 0, cnt = 0, dmmismatch = 0, quietly = 0, dm = null, dmfile = null;
     active_csc_count = 80;
     cnt = active_csc_count;
-    dmmismatch = 9;
-    quietly = $c.i8($c.andu64(utdflags, 32) !== 0 ? 1 : 0);
+    dmmismatch = SF.DM_MISMATCH;
+    quietly = $c.i8($c.andu64(utdflags, UTD.QUIETLY) !== 0 ? 1 : 0);
     await sfi_char(nhfp, new $c.Ptr(file_csc_count, 0), $c.lit("count-critical_sizes"), 1);
     if (file_csc_count[0] > cnt) {
         if (!quietly) {
             await raw_printf($c.lit("critical byte counts do not match, file:%d, critical_sizes:%d."), file_csc_count[0], 80);
         }
-        return 2;
+        return SF.CRITICAL_BYTE_COUNT_MISMATCH;
     }
     for (i = 0; i < file_csc_count[0]; i = i + 1 | 0) {
         await sfi_uchar(nhfp, new $c.Ptr(cscbuf, i), $c.lit("critical_sizes"));
@@ -370,17 +377,17 @@ export async function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
             dm = datamodel(0);
             dmfile = what_datamodel_is_this(0, cscbuf[1], cscbuf[2], cscbuf[3], cscbuf[4], cscbuf[5]);
             if (!$c.strcmp(dmfile, $c.lit("IL32LLP64")) && !$c.strcmp(dm, $c.lit("ILP32LL64"))) {
-                dmmismatch = 3;
+                dmmismatch = SF.DM_IL32LLP64_ON_ILP32LL64;
             } else if (!$c.strcmp(dmfile, $c.lit("I32LP64")) && !$c.strcmp(dm, $c.lit("ILP32LL64"))) {
-                dmmismatch = 4;
+                dmmismatch = SF.DM_I32LP64_ON_ILP32LL64;
             } else if (!$c.strcmp(dmfile, $c.lit("ILP32LL64")) && !$c.strcmp(dm, $c.lit("I32LP64"))) {
-                dmmismatch = 5;
+                dmmismatch = SF.DM_ILP32LL64_ON_I32LP64;
             } else if (!$c.strcmp(dmfile, $c.lit("ILP32LL64")) && !$c.strcmp(dm, $c.lit("IL32LLP64"))) {
-                dmmismatch = 6;
+                dmmismatch = SF.DM_ILP32LL64_ON_IL32LLP64;
             } else if (!$c.strcmp(dmfile, $c.lit("I32LP64")) && !$c.strcmp(dm, $c.lit("IL32LLP64"))) {
-                dmmismatch = 7;
+                dmmismatch = SF.DM_I32LP64_ON_IL32LLP64;
             } else if (!$c.strcmp(dmfile, $c.lit("IL32LLP64")) && !$c.strcmp(dm, $c.lit("I32LP64"))) {
-                dmmismatch = 8;
+                dmmismatch = SF.DM_IL32LLP64_ON_I32LP64;
             }
             if (idx_1st_mismatch) {
                 idx_1st_mismatch.set(0, i);
@@ -388,20 +395,20 @@ export async function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
             return dmmismatch;
         }
     }
-    return 0;
+    return SF.UPTODATE;
 }
 export async function validate(nhfp, name, without_waitsynch_perfile) {   // version.c:840
     let utdflags = 0, validsf = 0;
     utdflags = 0;
     validsf = 0;
     if (nhfp.structlevel) {
-        utdflags = $c.oru64(utdflags, 1);
+        utdflags = $c.oru64(utdflags, UTD.CHECKSIZES);
     }
     if (without_waitsynch_perfile) {
-        utdflags = $c.oru64(utdflags, 16);
+        utdflags = $c.oru64(utdflags, UTD.WITHOUT_WAITSYNCH_PERFILE);
     }
     if (nhfp.fieldlevel) {
-        utdflags = $c.oru64(utdflags, 6);
+        utdflags = $c.oru64(utdflags, UTD.CHECKFIELDCOUNTS | UTD.SKIP_SANITY1);
     }
     validsf = await uptodate(nhfp, name, utdflags);
     return validsf;
@@ -411,174 +418,95 @@ export function $init() {
     for (let $i0 = 0; $i0 < 3; $i0++) {
         rt_opts[$i0].$copyFrom(new $T.rt_opt());
     }
-    rt_opts[0].token = $c.lit(":PATMATCH:");
-    rt_opts[0].value = new $c.Ptr(regex_id, 0);
-    rt_opts[1].token = $c.lit(":LUAVERSION:");
-    rt_opts[1].value = new $c.Ptr(gl.lua_ver, 0);
-    rt_opts[2].token = $c.lit(":LUACOPYRIGHT:");
-    rt_opts[2].value = new $c.Ptr(gl.lua_copyright, 0);
+    $c.init(rt_opts, [
+        { token: $c.lit(":PATMATCH:"), value: new $c.Ptr(regex_id, 0) },
+        { token: $c.lit(":LUAVERSION:"), value: new $c.Ptr(gl.lua_ver, 0) },
+        { token: $c.lit(":LUACOPYRIGHT:"), value: new $c.Ptr(gl.lua_copyright, 0) }
+    ]);
     for (let $i0 = 0; $i0 < 80; $i0++) {
         critical_sizes[$i0].$copyFrom(new $T.critical_sizes_with_names());
     }
-    critical_sizes[0].ucsize = 0;
-    critical_sizes[0].nm = $c.lit("unused");
-    critical_sizes[1].ucsize = 2;
-    critical_sizes[1].nm = $c.lit("short");
-    critical_sizes[2].ucsize = 4;
-    critical_sizes[2].nm = $c.lit("int");
-    critical_sizes[3].ucsize = 8;
-    critical_sizes[3].nm = $c.lit("long");
-    critical_sizes[4].ucsize = 8;
-    critical_sizes[4].nm = $c.lit("long long");
-    critical_sizes[5].ucsize = 8;
-    critical_sizes[5].nm = $c.lit("genericptr_t");
-    critical_sizes[6].ucsize = 1;
-    critical_sizes[6].nm = $c.lit("aligntyp");
-    critical_sizes[7].ucsize = 1;
-    critical_sizes[7].nm = $c.lit("boolean");
-    critical_sizes[8].ucsize = 2;
-    critical_sizes[8].nm = $c.lit("coordxy");
-    critical_sizes[9].ucsize = 2;
-    critical_sizes[9].nm = $c.lit("int16");
-    critical_sizes[10].ucsize = 4;
-    critical_sizes[10].nm = $c.lit("int32");
-    critical_sizes[11].ucsize = 8;
-    critical_sizes[11].nm = $c.lit("int64");
-    critical_sizes[12].ucsize = 1;
-    critical_sizes[12].nm = $c.lit("schar");
-    critical_sizes[13].ucsize = 8;
-    critical_sizes[13].nm = $c.lit("size_t");
-    critical_sizes[14].ucsize = 1;
-    critical_sizes[14].nm = $c.lit("uchar");
-    critical_sizes[15].ucsize = 2;
-    critical_sizes[15].nm = $c.lit("uint16");
-    critical_sizes[16].ucsize = 4;
-    critical_sizes[16].nm = $c.lit("uint32");
-    critical_sizes[17].ucsize = 8;
-    critical_sizes[17].nm = $c.lit("uint64");
-    critical_sizes[18].ucsize = 8;
-    critical_sizes[18].nm = $c.lit("ulong");
-    critical_sizes[19].ucsize = 4;
-    critical_sizes[19].nm = $c.lit("unsigned");
-    critical_sizes[20].ucsize = 2;
-    critical_sizes[20].nm = $c.lit("ushort");
-    critical_sizes[21].ucsize = 2;
-    critical_sizes[21].nm = $c.lit("xint16");
-    critical_sizes[22].ucsize = 1;
-    critical_sizes[22].nm = $c.lit("xint8");
-    critical_sizes[23].ucsize = 4;
-    critical_sizes[23].nm = $c.lit("struct arti_info");
-    critical_sizes[24].ucsize = 8;
-    critical_sizes[24].nm = $c.lit("struct nhrect");
-    critical_sizes[25].ucsize = 32;
-    critical_sizes[25].nm = $c.lit("struct branch");
-    critical_sizes[26].ucsize = 40;
-    critical_sizes[26].nm = $c.lit("struct bubble");
-    critical_sizes[27].ucsize = 184;
-    critical_sizes[27].nm = $c.lit("struct cemetery");
-    critical_sizes[28].ucsize = 192;
-    critical_sizes[28].nm = $c.lit("struct context_info");
-    critical_sizes[29].ucsize = 4;
-    critical_sizes[29].nm = $c.lit("struct nhcoord");
-    critical_sizes[30].ucsize = 32;
-    critical_sizes[30].nm = $c.lit("struct damage");
-    critical_sizes[31].ucsize = 16;
-    critical_sizes[31].nm = $c.lit("struct dest_area");
-    critical_sizes[32].ucsize = 114;
-    critical_sizes[32].nm = $c.lit("struct dgn_topology");
-    critical_sizes[33].ucsize = 92;
-    critical_sizes[33].nm = $c.lit("struct dungeon");
-    critical_sizes[34].ucsize = 4;
-    critical_sizes[34].nm = $c.lit("struct d_level");
-    critical_sizes[35].ucsize = 28;
-    critical_sizes[35].nm = $c.lit("struct ebones");
-    critical_sizes[36].ucsize = 64;
-    critical_sizes[36].nm = $c.lit("struct edog");
-    critical_sizes[37].ucsize = 128;
-    critical_sizes[37].nm = $c.lit("struct egd");
-    critical_sizes[38].ucsize = 8;
-    critical_sizes[38].nm = $c.lit("struct emin");
-    critical_sizes[39].ucsize = 64;
-    critical_sizes[39].nm = $c.lit("struct engr");
-    critical_sizes[40].ucsize = 56;
-    critical_sizes[40].nm = $c.lit("struct epri");
-    critical_sizes[41].ucsize = 96;
-    critical_sizes[41].nm = $c.lit("struct eshk");
-    critical_sizes[42].ucsize = 48;
-    critical_sizes[42].nm = $c.lit("struct fe");
-    critical_sizes[43].ucsize = 208;
-    critical_sizes[43].nm = $c.lit("struct flag");
-    critical_sizes[44].ucsize = 48;
-    critical_sizes[44].nm = $c.lit("struct fruit");
-    critical_sizes[45].ucsize = 32;
-    critical_sizes[45].nm = $c.lit("struct gamelog_line");
-    critical_sizes[46].ucsize = 16;
-    critical_sizes[46].nm = $c.lit("struct kinfo");
-    critical_sizes[47].ucsize = 16;
-    critical_sizes[47].nm = $c.lit("struct levelflags");
-    critical_sizes[48].ucsize = 32;
-    critical_sizes[48].nm = $c.lit("struct ls_t");
-    critical_sizes[49].ucsize = 1;
-    critical_sizes[49].nm = $c.lit("struct linfo");
-    critical_sizes[50].ucsize = 4;
-    critical_sizes[50].nm = $c.lit("struct mapseen_feat");
-    critical_sizes[51].ucsize = 4;
-    critical_sizes[51].nm = $c.lit("struct mapseen_flags");
-    critical_sizes[52].ucsize = 4;
-    critical_sizes[52].nm = $c.lit("struct mapseen_rooms");
-    critical_sizes[53].ucsize = 64;
-    critical_sizes[53].nm = $c.lit("struct mextra");
-    critical_sizes[54].ucsize = 224;
-    critical_sizes[54].nm = $c.lit("struct mkroom");
-    critical_sizes[55].ucsize = 192;
-    critical_sizes[55].nm = $c.lit("struct monst");
-    critical_sizes[56].ucsize = 4;
-    critical_sizes[56].nm = $c.lit("struct mvitals");
-    critical_sizes[57].ucsize = 112;
-    critical_sizes[57].nm = $c.lit("struct obj");
-    critical_sizes[58].ucsize = 72;
-    critical_sizes[58].nm = $c.lit("struct objclass");
-    critical_sizes[59].ucsize = 32;
-    critical_sizes[59].nm = $c.lit("struct oextra");
-    critical_sizes[60].ucsize = 8;
-    critical_sizes[60].nm = $c.lit("struct q_score");
-    critical_sizes[61].ucsize = 8;
-    critical_sizes[61].nm = $c.lit("struct rm");
-    critical_sizes[62].ucsize = 8;
-    critical_sizes[62].nm = $c.lit("struct spell");
-    critical_sizes[63].ucsize = 24;
-    critical_sizes[63].nm = $c.lit("struct stairway");
-    critical_sizes[64].ucsize = 40;
-    critical_sizes[64].nm = $c.lit("struct s_level");
-    critical_sizes[65].ucsize = 32;
-    critical_sizes[65].nm = $c.lit("struct trap");
-    critical_sizes[66].ucsize = 24;
-    critical_sizes[66].nm = $c.lit("struct version_info");
-    critical_sizes[67].ucsize = 8;
-    critical_sizes[67].nm = $c.lit("anything");
-    critical_sizes[68].ucsize = 200;
-    critical_sizes[68].nm = $c.lit("you_LO");
-    critical_sizes[69].ucsize = 10;
-    critical_sizes[69].nm = $c.lit("you_HI");
-    critical_sizes[70].ucsize = 0;
-    critical_sizes[70].nm = $c.lit("");
-    critical_sizes[71].ucsize = 0;
-    critical_sizes[71].nm = $c.lit("");
-    critical_sizes[72].ucsize = 0;
-    critical_sizes[72].nm = $c.lit("");
-    critical_sizes[73].ucsize = 0;
-    critical_sizes[73].nm = $c.lit("");
-    critical_sizes[74].ucsize = 0;
-    critical_sizes[74].nm = $c.lit("");
-    critical_sizes[75].ucsize = 0;
-    critical_sizes[75].nm = $c.lit("");
-    critical_sizes[76].ucsize = 0;
-    critical_sizes[76].nm = $c.lit("");
-    critical_sizes[77].ucsize = 0;
-    critical_sizes[77].nm = $c.lit("");
-    critical_sizes[78].ucsize = 0;
-    critical_sizes[78].nm = $c.lit("");
-    critical_sizes[79].ucsize = 0;
-    critical_sizes[79].nm = $c.lit("");
+    $c.init(critical_sizes, [
+        { ucsize: 0, nm: $c.lit("unused") },
+        { ucsize: 2, nm: $c.lit("short") },
+        { ucsize: 4, nm: $c.lit("int") },
+        { ucsize: 8, nm: $c.lit("long") },
+        { ucsize: 8, nm: $c.lit("long long") },
+        { ucsize: 8, nm: $c.lit("genericptr_t") },
+        { ucsize: 1, nm: $c.lit("aligntyp") },
+        { ucsize: 1, nm: $c.lit("boolean") },
+        { ucsize: 2, nm: $c.lit("coordxy") },
+        { ucsize: 2, nm: $c.lit("int16") },
+        { ucsize: 4, nm: $c.lit("int32") },
+        { ucsize: 8, nm: $c.lit("int64") },
+        { ucsize: 1, nm: $c.lit("schar") },
+        { ucsize: 8, nm: $c.lit("size_t") },
+        { ucsize: 1, nm: $c.lit("uchar") },
+        { ucsize: 2, nm: $c.lit("uint16") },
+        { ucsize: 4, nm: $c.lit("uint32") },
+        { ucsize: 8, nm: $c.lit("uint64") },
+        { ucsize: 8, nm: $c.lit("ulong") },
+        { ucsize: 4, nm: $c.lit("unsigned") },
+        { ucsize: 2, nm: $c.lit("ushort") },
+        { ucsize: 2, nm: $c.lit("xint16") },
+        { ucsize: 1, nm: $c.lit("xint8") },
+        { ucsize: 4, nm: $c.lit("struct arti_info") },
+        { ucsize: 8, nm: $c.lit("struct nhrect") },
+        { ucsize: 32, nm: $c.lit("struct branch") },
+        { ucsize: 40, nm: $c.lit("struct bubble") },
+        { ucsize: 184, nm: $c.lit("struct cemetery") },
+        { ucsize: 192, nm: $c.lit("struct context_info") },
+        { ucsize: 4, nm: $c.lit("struct nhcoord") },
+        { ucsize: 32, nm: $c.lit("struct damage") },
+        { ucsize: 16, nm: $c.lit("struct dest_area") },
+        { ucsize: 114, nm: $c.lit("struct dgn_topology") },
+        { ucsize: 92, nm: $c.lit("struct dungeon") },
+        { ucsize: 4, nm: $c.lit("struct d_level") },
+        { ucsize: 28, nm: $c.lit("struct ebones") },
+        { ucsize: 64, nm: $c.lit("struct edog") },
+        { ucsize: 128, nm: $c.lit("struct egd") },
+        { ucsize: 8, nm: $c.lit("struct emin") },
+        { ucsize: 64, nm: $c.lit("struct engr") },
+        { ucsize: 56, nm: $c.lit("struct epri") },
+        { ucsize: 96, nm: $c.lit("struct eshk") },
+        { ucsize: 48, nm: $c.lit("struct fe") },
+        { ucsize: 208, nm: $c.lit("struct flag") },
+        { ucsize: 48, nm: $c.lit("struct fruit") },
+        { ucsize: 32, nm: $c.lit("struct gamelog_line") },
+        { ucsize: 16, nm: $c.lit("struct kinfo") },
+        { ucsize: 16, nm: $c.lit("struct levelflags") },
+        { ucsize: 32, nm: $c.lit("struct ls_t") },
+        { ucsize: 1, nm: $c.lit("struct linfo") },
+        { ucsize: 4, nm: $c.lit("struct mapseen_feat") },
+        { ucsize: 4, nm: $c.lit("struct mapseen_flags") },
+        { ucsize: 4, nm: $c.lit("struct mapseen_rooms") },
+        { ucsize: 64, nm: $c.lit("struct mextra") },
+        { ucsize: 224, nm: $c.lit("struct mkroom") },
+        { ucsize: 192, nm: $c.lit("struct monst") },
+        { ucsize: 4, nm: $c.lit("struct mvitals") },
+        { ucsize: 112, nm: $c.lit("struct obj") },
+        { ucsize: 72, nm: $c.lit("struct objclass") },
+        { ucsize: 32, nm: $c.lit("struct oextra") },
+        { ucsize: 8, nm: $c.lit("struct q_score") },
+        { ucsize: 8, nm: $c.lit("struct rm") },
+        { ucsize: 8, nm: $c.lit("struct spell") },
+        { ucsize: 24, nm: $c.lit("struct stairway") },
+        { ucsize: 40, nm: $c.lit("struct s_level") },
+        { ucsize: 32, nm: $c.lit("struct trap") },
+        { ucsize: 24, nm: $c.lit("struct version_info") },
+        { ucsize: 8, nm: $c.lit("anything") },
+        { ucsize: 200, nm: $c.lit("you_LO") },
+        { ucsize: 10, nm: $c.lit("you_HI") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") },
+        { ucsize: 0, nm: $c.lit("") }
+    ]);
     cscbuf.fill(0);
 }

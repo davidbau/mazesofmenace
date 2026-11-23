@@ -10,7 +10,7 @@
 // For browser play, see nethack.js (uses NethackGame directly).
 
 import { game, resetGame } from './gstate.js';
-import { reset_commands } from './cmd.js';
+import { reset_commands, update_rest_on_space } from './cmd.js';
 import { MENU_FULL, AUTOUNLOCK_APPLY_KEY } from './const.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
@@ -121,6 +121,8 @@ export class NethackGame {
         init_ov_primary_symbols();
         init_ov_rogue_symbols();
         savedsym_free();
+        // initoptions_init(): defaults precede each OPTIONS/BIND line.
+        reset_commands(true);
         const rc = parseNethackrc(this._nethackrc);
         g.rc = rc;
         /* src/options.c optfn_boulder() and initoptions_finish(). The active
@@ -132,35 +134,6 @@ export class NethackGame {
             go_ov_primary_syms[SYM_BOULDER + SYM_OFF_X]
                 = go_ov_rogue_syms[SYM_BOULDER + SYM_OFF_X]
                 = String(optValue(rc, 'boulder')).charCodeAt(0);
-        /* src/options.c:7596 parsebindings() — BIND=key:command lines rebind
-           a command key. txt2key handles the '^X' control form; the map is
-           consulted by rhack() before its default dispatch. */
-        g.rc_key_bindings = {};
-        for (const b of rc.bindings) {
-            for (const one of b.split(',')) {
-                const ci = one.indexOf(':');
-                if (ci < 0) continue;
-                const keytxt = one.slice(0, ci).trim();
-                let cmdname = one.slice(ci + 1).trim();
-                /* src/cmd.c:2680 bind_key() — "command(param)": the text in
-                   parentheses is the binding's parameter (#toggle's option),
-                   at most 30 characters */
-                let param = null;
-                const lp = cmdname.indexOf('('), rp = cmdname.lastIndexOf(')');
-                if (lp >= 0 && rp > lp) {
-                    param = cmdname.slice(lp + 1, rp).slice(0, 30);
-                    cmdname = cmdname.slice(0, lp);
-                }
-                const key = (keytxt.length === 2 && keytxt[0] === '^')
-                    ? String.fromCharCode(keytxt.charCodeAt(1) & 0x1f)
-                    : (keytxt.length === 1 ? keytxt : null);
-                if (key !== null) {
-                    g.rc_key_bindings[key] = cmdname;
-                    if (param)
-                        (g.rc_key_params ||= {})[key] = param;
-                }
-            }
-        }
         /* src/symbols.c init_symbols() then assign_graphics(PRIMARYSET).
            Without OPTIONS=symset:<name> the built-in ASCII defaults stand;
            DECgraphics is the only alternate set any recorded configuration
@@ -202,17 +175,11 @@ export class NethackGame {
                 delete g.flags[name];
             }
         }
-        /* src/options.c:2622 optfn_number_pad() writes iflags.num_pad and
-           iflags.num_pad_mode; initoptions_init() ran reset_commands(TRUE)
-           beforehand and the option's do_set tail reruns it */
-        reset_commands(true);
-        if ('num_pad' in rc.opts) {
-            g.iflags.num_pad = rc.opts.num_pad;
-            g.iflags.num_pad_mode = rc.opts.num_pad_mode;
-            delete g.flags.num_pad;
-            delete g.flags.num_pad_mode;
-            reset_commands(false);
-        }
+        // optfn_number_pad() already updated the live bindings during parse.
+        delete g.flags.num_pad;
+        delete g.flags.num_pad_mode;
+        // initoptions_finish(): remember a configured space binding.
+        update_rest_on_space();
         /* src/options.c:4099 optfn_statuslines() writes
            iflags.wc2_statuslines and :4018 optfn_statushilites()
            iflags.hilite_delta (the hilite_status rules were installed by

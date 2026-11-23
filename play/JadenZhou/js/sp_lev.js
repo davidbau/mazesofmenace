@@ -98,7 +98,7 @@ import { nhl_push_obj } from './nhlobj.js';
 import { bury_an_obj } from './dig.js';
 import { stock_room } from './shknam.js';
 import { priestini, mk_roamer } from './priest.js';
-import { Amask2align } from './const.js';
+import { Amask2align, MELT_ICE_AWAY } from './const.js';
 import { make_engr_at, engr_at, del_engr_at } from './engrave.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, Is_waterlevel } from './const.js';
 import {
@@ -3857,8 +3857,19 @@ export function flip_level(flp, extras) {
     /* level.monsters[][] cells holding long worm tail segments */
     flip_wseg_cells(flp, minx, miny, maxx, maxy);
 
-    /* timed effects: MELT_ICE_AWAY level timers are kept on the location
-       (levl[x][y].timer, see nhlua.js), so they moved with the map */
+    /* timed effects */
+    for (let timer = game.timer_base; timer; timer = timer.next) {
+        if (timer.func_index === MELT_ICE_AWAY) {
+            let ty = timer.arg.a_long & 0xffff;
+            let tx = (timer.arg.a_long >> 16) & 0xffff;
+
+            if (flp & 1)
+                ty = FlipY(ty);
+            if (flp & 2)
+                tx = FlipX(tx);
+            timer.arg.a_long = ((tx << 16) | ty);
+        }
+    }
 
     /* exclusion zones */
     for (let ez = game.exclusion_zones; ez; ez = ez.next) {

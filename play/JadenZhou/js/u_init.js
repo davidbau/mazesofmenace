@@ -61,7 +61,15 @@ function zero_you() {
         ucreamed: 0, uswldtim: 0, uswallow: 0, uinwater: 0, uundetected: 0,
         mfemale: 0, uinvulnerable: 0, uburied: 0, uedibility: 0,
         uhandedness: 0, udg_cnt: 0,
-        uevent: {}, uhave: {}, uconduct: {}, uroleplay: {},
+        uevent: {}, uhave: {},
+        /* C ref: you.h struct u_conduct -- zeroed like the rest of u */
+        uconduct: {
+            unvegetarian: 0, unvegan: 0, food: 0, gnostic: 0, weaphit: 0,
+            killer: 0, literate: 0, polypiles: 0, polyselfs: 0, wishes: 0,
+            wisharti: 0, hf_reserved1: 0, sokocheat: 0, pets: 0,
+            reserved1: 0, reserved2: 0, reserved3: 0, reserved4: 0,
+        },
+        uroleplay: {},
         acurr: attribs(), aexe: attribs(), abon: attribs(), amax: attribs(),
         atemp: attribs(), atime: attribs(),
         ualign: { type: 0, record: 0 }, ualignbase: [0, 0],

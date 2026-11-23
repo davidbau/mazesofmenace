@@ -22,15 +22,17 @@ import { W_SADDLE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, SLT_ENCUMBER,
          TT_BEARTRAP, TT_PIT, TT_WEB, TEST_MOVE,
          DISMOUNT_GENERIC, DISMOUNT_FELL, DISMOUNT_THROWN, DISMOUNT_KNOCKED,
          DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES, DISMOUNT_BYCHOICE,
-         has_mgivenname, RLOC_ERR, RLOC_NOMSG, KILLED_BY_AN } from './const.js';
+         has_mgivenname, RLOC_ERR, RLOC_NOMSG, KILLED_BY_AN,
+         LEG, MAXULEV, NO_KILLER_PREFIX, ARTICLE_A, SUPPRESS_IT,
+         SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION } from './const.js';
 import { OBJ_MINVENT, is_metallic } from './obj.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { newsym, pline } from './display.js';
-import { You, You_cant, Your } from './pline.js';
+import { You, You_cant, Your, impossible } from './pline.js';
 import { x_monnam } from './do_name.js';
 import { ARTICLE_YOUR, SUPPRESS_SADDLE } from './const.js';
 import { strsubst } from './hacklib.js';
-import { Monnam, mon_nam, pmname, hliquid, y_monnam } from './do_name.js';
+import { Monnam, mon_nam, pmname, hliquid, y_monnam, a_monnam } from './do_name.js';
 import { m_at, is_pool, is_lava, t_at, killed, monkilled } from './mon.js';
 import { remove_monster, place_monster } from './makemon.js';
 import { near_capacity, encumber_msg, adjalign } from './attrib.js';
@@ -51,7 +53,8 @@ import { M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, BOTH_SIDES } from './const.js';
 import { grounded, sokoban_guilt } from './trap.js';
 import { is_pole } from './mhitu.js';
 import { PMNAMES } from './monst_data.js';
-import { Glib, Flying, Levitation, Half_physical_damage, Stealth, Hallucination } from './youprop.js';
+import { Glib, Flying, Levitation, Half_physical_damage, Stealth, Hallucination,
+         Confusion, Wounded_legs, Punished } from './youprop.js';
 import { greatest_erosion } from './do_wear.js';
 import { u_handsy } from './pickup.js';
 import { Underwater } from './youprop.js';
@@ -72,7 +75,7 @@ import { Mgender } from './const.js';
 import { canspotmon } from './display.js';
 import { touch_petrifies } from './dog.js';
 import { poly_when_stoned } from './mondata.js';
-import { polymon, steed_vs_stealth } from './polyself.js';
+import { polymon, steed_vs_stealth, body_part } from './polyself.js';
 import { ATTKS } from './monst_data.js';
 import { instapetrify } from './trap.js';
 import { exercise } from './attrib.js';
@@ -154,9 +157,6 @@ export function can_saddle(mtmp) {
         && !amorphous(ptr) && !noncorporeal(ptr) && !is_whirly(ptr)
         && !unsolid(ptr);
 }
-
-/* include/youprop.h Confusion */
-const Confusion = () => !!(game.u.intrinsic?.HConfusion);
 
 // src/steed.c:36 use_saddle(); apply a saddle to an adjacent animal
 export async function use_saddle(otmp) {
@@ -388,23 +388,23 @@ export async function kick_steed() {
     game.u.ugallop = (game.u.ugallop | 0) + rn1(20, 30);
 }
 
-// src/steed.c:197 mount_steed() — start riding the given monster.
+// src/steed.c:197 mount_steed()
 export async function mount_steed(mtmp, force) {
     if (game.u.usteed) {
         await You(`are already riding ${mon_nam(game.u.usteed)}.`);
         return false;
     }
-    if (game.u.uprops?.HALLUC && !force) {
+    if (Hallucination() && !force) {
         await pline('Maybe you should find a designated driver.');
         return false;
     }
     /* While riding, Wounded_legs refers to the steed's legs, not the
        hero's legs; a hero with Wounded_legs may not mount (src/steed.c) */
-    if ((game.u.intrinsic?.HWounded_legs | 0) || (game.u.EWounded_legs | 0)) {
+    if (Wounded_legs()) {
         const { legs_in_no_shape, heal_legs } = await import('./do.js');
         await legs_in_no_shape('riding', false);
         const qbuf = `Heal your leg${
-            ((game.u.EWounded_legs | 0) & BOTH_SIDES) === BOTH_SIDES ? 's' : ''}?`;
+            ((game.u.intrinsic?.HWounded_legs | 0) & BOTH_SIDES) === BOTH_SIDES ? 's' : ''}?`;
         if (force && game.wizard) {
             const { tty_yn_function } = await import('./tty/topl.js');
             if ((await tty_yn_function(qbuf, 'yn', 'n')) === 'y')
@@ -432,11 +432,19 @@ export async function mount_steed(mtmp, force) {
         await pline('I see nobody there.');
         return false;
     }
-    if (game.u.uswallow || game.u.ustuck || game.u.utrap
-        || game.uball /* Punished */ || game.u.uprops?.FUMBLING) {
-        if (game.uball
+    if (mtmp.data === game.mons[PMNAMES.PM_LONG_WORM]
+        && (game.u.ux + game.u.dx !== mtmp.mx
+            || game.u.uy + game.u.dy !== mtmp.my)) {
+        /* A tail segment must be rejected before test_move's worm_cross. */
+        await You(`couldn't ride ${a_monnam(mtmp)}, let alone its tail.`);
+        return false;
+    }
+    if (game.u.uswallow || game.u.ustuck || game.u.utrap || Punished()
+        || !(await test_move(game.u.ux, game.u.uy, mtmp.mx - game.u.ux,
+                             mtmp.my - game.u.uy, TEST_MOVE))) {
+        if (Punished()
             || !(game.u.uswallow || game.u.ustuck || game.u.utrap))
-            await You('are unable to swing your leg over.');
+            await You(`are unable to swing your ${body_part(LEG)} over.`);
         else
             await You('are stuck here for now.');
         return false;
@@ -446,6 +454,12 @@ export async function mount_steed(mtmp, force) {
     if (!otmp) {
         await pline(`${Monnam(mtmp)} is not saddled.`);
         return false;
+    }
+    const ptr = mtmp.data;
+    if (touch_petrifies(ptr) && !Stone_resistance()) {
+        await You(`touch ${mon_nam(mtmp)}.`);
+        const kbuf = `attempting to ride ${an(pmname(mtmp.data, Mgender(mtmp)))}`;
+        await instapetrify(kbuf);
     }
     if (!mtmp.mtame || mtmp.isminion) {
         await pline(`I think ${mon_nam(mtmp)} would mind.`);
@@ -458,13 +472,25 @@ export async function mount_steed(mtmp, force) {
             an(trapname(t.ttyp, false))}.`);
         return false;
     }
+    if (!force && !Role_if(PMNAMES.PM_KNIGHT) && !(--mtmp.mtame)) {
+        /* no longer tame */
+        newsym(mtmp.mx, mtmp.my);
+        await pline(`${Monnam(mtmp)} resists${
+            mtmp.mleashed ? ' and its leash comes off' : ''}!`);
+        if (mtmp.mleashed)
+            await m_unleash(mtmp, false);
+        return false;
+    }
+    if (!force && Underwater() && !is_swimmer(ptr)) {
+        await You_cant(`ride that creature while under ${hliquid('water')}.`);
+        return false;
+    }
     if (!can_saddle(mtmp) || !can_ride(mtmp)) {
         await You_cant('ride such a creature.');
         return false;
     }
 
     /* Is the player impaired? */
-    const ptr = mtmp.data;
     if (!force && !is_floater(ptr) && !is_flyer(ptr) && Levitation()
         && !Lev_at_will()) {
         await You(`cannot reach ${mon_nam(mtmp)}.`);
@@ -477,31 +503,31 @@ export async function mount_steed(mtmp, force) {
             mon_nam(mtmp)}.`);
         return false;
     }
-    const Confusion = game.u.intrinsic?.HConfusion
-                      || game.u.uprops?.CONFUSION;
-    const Wounded_legs = (game.u.intrinsic?.HWounded_legs || 0) > 0
-                         || (game.u.EWounded_legs || 0);
     if (!force
-        && (Confusion || game.u.uprops?.FUMBLING || Glib()
-            || Wounded_legs || otmp.cursed || otmp.greased
+        && (Confusion() || Fumbling() || Glib()
+            || Wounded_legs() || otmp.cursed || otmp.greased
             || (game.u.ulevel + mtmp.mtame
-                < rnd(20)))) { /* rnd(MAXULEV / 2 + 5) */
-        if (game.u.uprops?.LEVITATION) {
+                < rnd(MAXULEV / 2 + 5)))) {
+        if (Levitation()) {
             await pline(`${Monnam(mtmp)} slips away from you.`);
             return false;
         }
         await You(`slip while trying to get on ${mon_nam(mtmp)}.`);
-        await losehp(rn1(5, 10),
-               `slipped while mounting ${mon_nam(mtmp)}`,
-               2 /* NO_KILLER_PREFIX */);
+        const buf = `slipped while mounting ${x_monnam(mtmp, ARTICLE_A, null,
+            SUPPRESS_IT | SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION, true)}`;
+        const damage = rn1(5, 10);
+        await losehp(Half_physical_damage() ? Math.trunc((damage + 1) / 2)
+                                           : damage, buf, NO_KILLER_PREFIX);
         return false;
     }
 
     /* Success */
     await maybewakesteed(mtmp);
     if (!force) {
+        if (Levitation() && !is_floater(ptr) && !is_flyer(ptr))
+            await pline(`${Monnam(mtmp)} magically floats up!`);
         await You(`mount ${mon_nam(mtmp)}.`);
-        if (game.u.uprops?.FLYING)
+        if (Flying())
             await You(`and ${mon_nam(mtmp)} take flight together.`);
     }
     /* src/steed.c:368: a polearm which was unsuitable on foot becomes a

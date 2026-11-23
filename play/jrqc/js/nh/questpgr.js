@@ -4,21 +4,33 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { dupstr } from './alloc.js';
 import { artiname } from './artifact.js';
+import { A } from './attrib.h.js';
 import { rank_of } from './botl.js';
 import { flags, gc, gi, gl, gm, gn, gu, program_state, svd, svl, svm, svp, svq, u } from './decl.js';
 import { panic } from './end.js';
+import { BUFSZ, NHL_SB } from './global.h.js';
 import { copynchars, eos, highc, lowc, s_suffix, strNsubst, strncmpi, strstri } from './hacklib.js';
 import { align_str } from './insight.js';
+import { nhUse } from './lint.macros.js';
+import { LUA } from './lua.h.js';
 import { luaL_checklstring, lua_getfield, lua_getglobal, lua_gettable, lua_len, lua_pushinteger, lua_settop, lua_tointegerx, lua_type } from './luabridge.js';
 import { mkclass } from './makemon.js';
+import { G_GENOD, M2, MS, NEUTRAL } from './monflag.h.js';
 import { mons } from './monst.js';
+import { DEADMONSTER } from './monst.macros.js';
 import { get_table_option, get_table_str_opt, nhl_done, nhl_init, nhl_loadlua } from './nhlua.js';
+import { OBJ } from './obj.h.js';
+import { Has_contents } from './obj.macros.js';
 import { An, an, makeplural, makesingular, the } from './objnam.js';
+import { NON_PM } from './permonst.h.js';
 import { impossible, pline } from './pline.js';
 import { align_gname, align_gtitle } from './pray.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
+import { MIN_QUEST } from './quest.h.js';
+import { rn2 } from './rnd.js';
 import { genders } from './role.js';
-import { windowprocs } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, display_nhwindow, putmsghistory, putstr } from './winprocs.macros.js';
+import { NHW } from './wintype.h.js';
+import { Blind } from './youprop.macros.js';
 
 const com_pager_core$howtoput = $c.nulls(6);   // static in com_pager_core()
 const com_pager_core$howtoput2i = new Int32Array(6);   // static in com_pager_core()
@@ -26,11 +38,11 @@ export async function quest_info(typ) {   // questpgr.c:31
     switch (typ) {
         case 0:
             return gu.urole.questarti;
-        case 36 /* MS_LEADER */:
+        case MS.LEADER:
             return gu.urole.ldrnum;
-        case 37 /* MS_NEMESIS */:
+        case MS.NEMESIS:
             return gu.urole.neminum;
-        case 38 /* MS_GUARDIAN */:
+        case MS.GUARDIAN:
             return gu.urole.guardnum;
         default:
             await impossible($c.lit("quest_info(%d)"), typ);
@@ -40,7 +52,7 @@ export async function quest_info(typ) {   // questpgr.c:31
 export function ldrname() {   // questpgr.c:50
     let i = 0;
     i = gu.urole.ldrnum;
-    $c.__builtin___sprintf_chk(new $c.Ptr(gn.nambuf, 0), 0, 64, $c.lit("%s%s"), $c.andu64($c.relem(mons, i).mflags2, 524288) !== 0 ? $c.lit("") : $c.lit("the "), mons[i].pmnames[2 /* NEUTRAL */]);
+    $c.__builtin___sprintf_chk(new $c.Ptr(gn.nambuf, 0), 0, 64, $c.lit("%s%s"), $c.andu64($c.relem(mons, i).mflags2, M2.PNAME) !== 0 ? $c.lit("") : $c.lit("the "), mons[i].pmnames[NEUTRAL]);
     return new $c.Ptr(gn.nambuf, 0);
 }
 function intermed() {   // questpgr.c:61
@@ -55,7 +67,7 @@ function find_qarti(ochain) {   // questpgr.c:73
         if (is_quest_artifact(otmp)) {
             return otmp;
         }
-        if (otmp.cobj !== null && (qarti = find_qarti(otmp.cobj)) !== null) {
+        if (Has_contents(otmp) && (qarti = find_qarti(otmp.cobj)) !== null) {
             return qarti;
         }
     }
@@ -64,15 +76,15 @@ function find_qarti(ochain) {   // questpgr.c:73
 export function find_quest_artifact(whichchains) {   // questpgr.c:89
     let mtmp = null, qarti = null;
     qarti = null;
-    if ((whichchains & 8) >>> 0 !== 0) {
+    if ((whichchains & 1 << OBJ.INVENT) >>> 0 !== 0) {
         qarti = find_qarti(gi.invent);
     }
-    if (!qarti && (whichchains & 2) >>> 0 !== 0) {
+    if (!qarti && (whichchains & 1 << OBJ.FLOOR) >>> 0 !== 0) {
         qarti = find_qarti(svl.level.objlist);
     }
-    if (!qarti && (whichchains & 16) >>> 0 !== 0) {
+    if (!qarti && (whichchains & 1 << OBJ.MINVENT) >>> 0 !== 0) {
         for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
-            if (mtmp.mhp < 1) {
+            if (DEADMONSTER(mtmp)) {
                 continue;
             }
             if ((qarti = find_qarti(mtmp.minvent)) !== null) {
@@ -80,9 +92,9 @@ export function find_quest_artifact(whichchains) {   // questpgr.c:89
             }
         }
     }
-    if (!qarti && (whichchains & 32) >>> 0 !== 0) {
+    if (!qarti && (whichchains & 1 << OBJ.MIGRATING) >>> 0 !== 0) {
         for (mtmp = gm.migrating_mons; mtmp; mtmp = mtmp.nmon) {
-            if (mtmp.mhp < 1) {
+            if (DEADMONSTER(mtmp)) {
                 continue;
             }
             if ((qarti = find_qarti(mtmp.minvent)) !== null) {
@@ -93,7 +105,7 @@ export function find_quest_artifact(whichchains) {   // questpgr.c:89
             qarti = find_qarti(gm.migrating_objs);
         }
     }
-    if (!qarti && (whichchains & 64) >>> 0 !== 0) {
+    if (!qarti && (whichchains & 1 << OBJ.BURIED) >>> 0 !== 0) {
         qarti = find_qarti(svl.level.buriedobjlist);
     }
     return qarti;
@@ -101,13 +113,13 @@ export function find_quest_artifact(whichchains) {   // questpgr.c:89
 function neminame() {   // questpgr.c:124
     let i = 0;
     i = gu.urole.neminum;
-    $c.__builtin___sprintf_chk(new $c.Ptr(gn.nambuf, 0), 0, 64, $c.lit("%s%s"), $c.andu64($c.relem(mons, i).mflags2, 524288) !== 0 ? $c.lit("") : $c.lit("the "), mons[i].pmnames[2 /* NEUTRAL */]);
+    $c.__builtin___sprintf_chk(new $c.Ptr(gn.nambuf, 0), 0, 64, $c.lit("%s%s"), $c.andu64($c.relem(mons, i).mflags2, M2.PNAME) !== 0 ? $c.lit("") : $c.lit("the "), mons[i].pmnames[NEUTRAL]);
     return new $c.Ptr(gn.nambuf, 0);
 }
 function guardname() {   // questpgr.c:134
     let i = 0;
     i = gu.urole.guardnum;
-    return mons[i].pmnames[2 /* NEUTRAL */];
+    return mons[i].pmnames[NEUTRAL];
 }
 function homebase() {   // questpgr.c:142
     return gu.urole.homebase;
@@ -116,7 +128,7 @@ export async function stinky_nemesis(mon) {   // questpgr.c:150
     let mesg = [null], res = 0, p = null;
     mesg[0] = null;
     res = 0;
-    mon;
+    nhUse(mon);
     await com_pager_core(gu.urole.filecode, $c.lit("killed_nemesis"), 0, new $c.Ptr(mesg, 0));
     if (mesg[0]) {
         strNsubst(mesg[0], $c.lit("\n"), $c.lit(" "), 0);
@@ -155,7 +167,7 @@ async function convert_arg(c) {   // questpgr.c:236
             str = rank_of(u.ulevel, gu.urole.mnum, flags.female);
             break;
         case 82:
-            str = rank_of(14, gu.urole.mnum, flags.female);
+            str = rank_of(MIN_QUEST.LEVEL, gu.urole.mnum, flags.female);
             break;
         case 115:
             str = flags.female ? $c.lit("sister") : $c.lit("brother");
@@ -186,22 +198,22 @@ async function convert_arg(c) {   // questpgr.c:236
             str = guardname();
             break;
         case 71:
-            str = align_gtitle(u.ualignbase[1]);
+            str = align_gtitle(u.ualignbase[A.ORIGINAL]);
             break;
         case 72:
             str = homebase();
             break;
         case 97:
-            str = align_str(u.ualignbase[1]);
+            str = align_str(u.ualignbase[A.ORIGINAL]);
             break;
         case 65:
             str = align_str(u.ualign.type);
             break;
         case 100:
-            str = await align_gname(u.ualignbase[1]);
+            str = await align_gname(u.ualignbase[A.ORIGINAL]);
             break;
         case 68:
-            str = await align_gname(1);
+            str = await align_gname(A.LAWFUL);
             break;
         case 67:
             str = $c.lit("chaotic");
@@ -213,7 +225,7 @@ async function convert_arg(c) {   // questpgr.c:236
             str = $c.lit("lawful");
             break;
         case 120:
-            str = (u.uprops[15 /* BLINDED */].intrinsic || u.uprops[15 /* BLINDED */].extrinsic) && !u.uprops[15 /* BLINDED */].blocked ? $c.lit("sense") : $c.lit("see");
+            str = Blind() ? $c.lit("sense") : $c.lit("see");
             break;
         case 90:
             str = new $c.Ptr(svd.dungeons[0].dname, 0);
@@ -293,7 +305,7 @@ async function convert_line(in_line, out_line) {   // questpgr.c:328
                 ($t4 = cc, cc = $t4.add(1), $t4).set(0, c.get(0));
                 break;
         }
-        if ($c.pcmp(cc, out_line.add(255)) > 0) {
+        if ($c.pcmp(cc, out_line.add(BUFSZ - 1)) > 0) {
             await panic($c.lit("convert_line: overflow"));
         }
     }
@@ -315,15 +327,15 @@ async function deliver_by_window(msg, how) {   // questpgr.c:439
     let in_line = new Int8Array(256), out_line = new Int8Array(256), msgp = null, msgend = null, datawin = 0;
     msgp = msg;
     msgend = eos(msg);
-    datawin = await windowprocs.win_create_nhwindow(how);
+    datawin = await create_nhwindow()(how);
     while ($c.pcmp(msgp, msgend) < 0) {
         copynchars(new $c.Ptr(in_line, 0), msgp, 255);
         msgp = msgp.add($c.idx($c.addu64($c.strlen(new $c.Ptr(in_line, 0)), 1)));
         await convert_line(new $c.Ptr(in_line, 0), new $c.Ptr(out_line, 0));
-        await windowprocs.win_putstr(datawin, 0, new $c.Ptr(out_line, 0));
+        await putstr()(datawin, 0, new $c.Ptr(out_line, 0));
     }
-    await windowprocs.win_display_nhwindow(datawin, 1);
-    await windowprocs.win_destroy_nhwindow(datawin);
+    await display_nhwindow()(datawin, 1);
+    await destroy_nhwindow()(datawin);
 }
 function skip_pager(common) {   // questpgr.c:459
     if (program_state.wizkit_wishing) {
@@ -338,7 +350,7 @@ async function com_pager_core(section, msgid, showerror, rawtext) {   // questpg
     fallback_msgid = null;
     res = 0;
     sbi.$copyFrom(new $T.nhl_sandbox_info());
-    sbi.flags = 2147483648;
+    sbi.flags = NHL_SB.SAFE;
     sbi.memlimit = 1048576;
     sbi.steps = 0;
     sbi.perpcall = 1048576;
@@ -361,14 +373,14 @@ async function com_pager_core(section, msgid, showerror, rawtext) {   // questpg
         }
         await lua_settop(L, 0);
         await lua_getglobal(L, $c.lit("questtext"));
-        if (!(lua_type(L, -1) === 5)) {
+        if (!(lua_type(L, -1) === LUA.TTABLE)) {
             if (showerror) {
                 await impossible($c.lit("com_pager: questtext in %s is not a lua table"), $c.lit("quest.lua"));
             }
             break compagerdone$;
         }
         await lua_getfield(L, -1, section);
-        if (!(lua_type(L, -1) === 5)) {
+        if (!(lua_type(L, -1) === LUA.TTABLE)) {
             if (showerror) {
                 await impossible($c.lit("com_pager: questtext[%s] in %s is not a lua table"), section, $c.lit("quest.lua"));
             }
@@ -376,10 +388,10 @@ async function com_pager_core(section, msgid, showerror, rawtext) {   // questpg
         }
         tryagain$: for (;;) {
             await lua_getfield(L, -1, fallback_msgid ? fallback_msgid : msgid);
-            if (!(lua_type(L, -1) === 5)) {
+            if (!(lua_type(L, -1) === LUA.TTABLE)) {
                 if (!fallback_msgid) {
                     await lua_getfield(L, -3, $c.lit("msg_fallbacks"));
-                    if (lua_type(L, -1) === 5) {
+                    if (lua_type(L, -1) === LUA.TTABLE) {
                         fallback_msgid = await get_table_str_opt(L, msgid, null);
                         await lua_settop(L, -3);
                         if (fallback_msgid) {
@@ -416,15 +428,15 @@ async function com_pager_core(section, msgid, showerror, rawtext) {   // questpg
                 }
                 break compagerdone$;
             }
-            nelems = (rng_log_enabled() ? (rng_log_set_caller($c.lit("questpgr.c"), 566, $c.lit("com_pager_core")), rn2(nelems)) : rn2(nelems)) + 1 | 0;
+            nelems = rn2(nelems) + 1 | 0;
             lua_pushinteger(L, nelems);
             await lua_gettable(L, -2);
             text = await dupstr(await luaL_checklstring(L, -1, null));
         }
-        if (output === 0 && ($c.strchr(text, 10) || $c.strlen(text) >= 255)) {
+        if (output === 0 && ($c.strchr(text, 10) || $c.strlen(text) >= BUFSZ - 1)) {
             output = 2;
             if (!synopsis) {
-                $c.__builtin___sprintf_chk(new $c.Ptr(tmpbuf, 0), 0, 256, $c.lit("[%.*s]"), 253, text);
+                $c.__builtin___sprintf_chk(new $c.Ptr(tmpbuf, 0), 0, 256, $c.lit("[%.*s]"), BUFSZ - 1 - 2, text);
                 strNsubst(new $c.Ptr(tmpbuf, 0), $c.lit("\n"), $c.lit(" "), 0);
                 synopsis = await dupstr(new $c.Ptr(tmpbuf, 0));
             }
@@ -432,12 +444,12 @@ async function com_pager_core(section, msgid, showerror, rawtext) {   // questpg
         if (output === 0 || output === 1) {
             await deliver_by_pline(text);
         } else {
-            await deliver_by_window(text, output === 3 ? 4 : 5);
+            await deliver_by_window(text, output === 3 ? NHW.MENU : NHW.TEXT);
         }
         if (synopsis) {
             $c.__builtin___strcpy_chk(new $c.Ptr(in_line, 0), synopsis, 256);
             await convert_line(new $c.Ptr(in_line, 0), new $c.Ptr(out_line, 0));
-            await windowprocs.win_putmsghistory(new $c.Ptr(out_line, 0), 0);
+            await putmsghistory()(new $c.Ptr(out_line, 0), 0);
         }
         res = 1;
     }
@@ -463,15 +475,15 @@ export async function qt_pager(msgid) {   // questpgr.c:630
 }
 export async function qt_montype() {   // questpgr.c:637
     let qpm = 0;
-    if (rng_log_enabled() ? (rng_log_set_caller($c.lit("questpgr.c"), 641, $c.lit("qt_montype")), rn2(5)) : rn2(5)) {
+    if (rn2(5)) {
         qpm = gu.urole.enemy1num;
-        if (qpm !== -1 /* NON_PM */ && (rng_log_enabled() ? (rng_log_set_caller($c.lit("questpgr.c"), 643, $c.lit("qt_montype")), rn2(5)) : rn2(5)) && !(svm.mvitals[qpm].mvflags & 2)) {
+        if (qpm !== NON_PM && rn2(5) && !(svm.mvitals[qpm].mvflags & G_GENOD)) {
             return $c.relem(mons, qpm);
         }
         return await mkclass(gu.urole.enemy1sym, 0);
     }
     qpm = gu.urole.enemy2num;
-    if (qpm !== -1 /* NON_PM */ && (rng_log_enabled() ? (rng_log_set_caller($c.lit("questpgr.c"), 648, $c.lit("qt_montype")), rn2(5)) : rn2(5)) && !(svm.mvitals[qpm].mvflags & 2)) {
+    if (qpm !== NON_PM && rn2(5) && !(svm.mvitals[qpm].mvflags & G_GENOD)) {
         return $c.relem(mons, qpm);
     }
     return await mkclass(gu.urole.enemy2sym, 0);
@@ -486,17 +498,21 @@ export async function deliver_splev_message() {   // questpgr.c:655
 
 export function $init() {
     com_pager_core$howtoput.fill(null);
-    com_pager_core$howtoput[0] = $c.lit("pline");
-    com_pager_core$howtoput[1] = $c.lit("window");
-    com_pager_core$howtoput[2] = $c.lit("text");
-    com_pager_core$howtoput[3] = $c.lit("menu");
-    com_pager_core$howtoput[4] = $c.lit("default");
-    com_pager_core$howtoput[5] = null;
+    $c.init(com_pager_core$howtoput, [
+        $c.lit("pline"),
+        $c.lit("window"),
+        $c.lit("text"),
+        $c.lit("menu"),
+        $c.lit("default"),
+        null
+    ]);
     com_pager_core$howtoput2i.fill(0);
-    com_pager_core$howtoput2i[0] = 1;
-    com_pager_core$howtoput2i[1] = 2;
-    com_pager_core$howtoput2i[2] = 2;
-    com_pager_core$howtoput2i[3] = 3;
-    com_pager_core$howtoput2i[4] = 0;
-    com_pager_core$howtoput2i[5] = 0;
+    $c.init(com_pager_core$howtoput2i, [
+        1,
+        2,
+        2,
+        3,
+        0,
+        0
+    ]);
 }

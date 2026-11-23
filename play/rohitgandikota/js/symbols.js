@@ -18,6 +18,7 @@ import { match_glyph, glyphrep_to_custom_map_entries, purge_custom_entries,
          apply_customizations } from './glyphs.js';
 import { def_warnsyms, do_custom_symbols, do_custom_colors, gm_symchange } from './const.js';
 import { game } from './gstate.js';
+import { config_error_add } from './options.js';
 
 /* src/decl.c gs.showsyms[] — the live table. Terrain entries only; object and
    monster class symbols are the same in both sets, because dat/symbols'

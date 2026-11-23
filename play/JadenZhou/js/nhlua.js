@@ -54,6 +54,8 @@ import { name_to_mon } from './mondata.js';
 import { l_register_des, get_coord, cvt_to_abscoord } from './sp_lev.js';
 import { l_selection_register } from './selvar.js';
 import { l_obj_register, nhl_get_timertype } from './nhlobj.js';
+import { spot_stop_timers, start_timer, long_to_any } from './timeout.js';
+import { MELT_ICE_AWAY, TIMER_LEVEL } from './const.js';
 import { level_difficulty, depth } from './dungeon.js';
 import { Invocation_lev } from './mklev.js';
 import { NUMMONS, HIGH_PM } from './monsters.js';
@@ -400,16 +402,7 @@ function nhl_get_xy_params(args) {
 }
 
 // C ref: timeout.h timer_is_pos()
-function timer_is_pos(ttype) { return ttype === 'MELT_ICE_AWAY'; }
-
-// C ref: timeout.c spot_stop_timers() -- the timer queue is not ported
-// yet; like obj.timer (nhlobj.js), a location's pending level timer is
-// kept in levl[x][y].timer = { when, action }
-function spot_stop_timers(x, y, func_index) {
-    const lev = game.level.at(x, y);
-    if (lev.timer && lev.timer.action === func_index)
-        lev.timer = null; /* no cleanup function for MELT_ICE_AWAY */
-}
+function timer_is_pos(ttype) { return ttype === MELT_ICE_AWAY; }
 
 // C ref: nhlua.c nhl_timer_start_at()
 /* start timer at location x,y */
@@ -430,8 +423,9 @@ function nhl_timer_start_at(...args) {
 
     if (timer_is_pos(timertype) && C.isok(x, y)) {
         spot_stop_timers(x, y, timertype);
-        /* start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, long_to_any(where)) */
-        game.level.at(x, y).timer = { when, action: timertype };
+        const where = (x << 16) | y;
+
+        start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, long_to_any(where));
     }
     return 0;
 }
