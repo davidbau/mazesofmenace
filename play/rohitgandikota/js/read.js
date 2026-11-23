@@ -984,7 +984,7 @@ async function seffect_charging(sobj) {
     const otyp = sobj.otyp;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!u.uprops?.CONFUSION;
+    const confused = Confusion();
     const already_known = (sobj.oclass === OCLASSES.SPBOOK_CLASS /* spell */
                            || !!game.objects[otyp].oc_name_known);
 
@@ -1182,7 +1182,7 @@ async function seffect_earth(sobj) {
     const u = game.u;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!u.uprops?.CONFUSION;
+    const confused = Confusion();
 
     /* TODO: handle steeds */
     if (!Is_rogue_level(u.uz) && has_ceiling(u.uz)
@@ -1327,7 +1327,7 @@ export async function seffects(sobj) {
 async function seffect_scare_monster(sobj) {
     const otyp = sobj.otyp;
     const scursed = !!sobj.cursed;
-    const confused = !!game.u.uprops?.CONFUSION;
+    const confused = Confusion();
     let ct = 0;
 
     for (const mtmp of game.level?.monsters || []) {
@@ -1356,7 +1356,7 @@ async function seffect_scare_monster(sobj) {
 async function seffect_create_monster(sobj) {
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!game.u.uprops?.CONFUSION;
+    const confused = Confusion();
 
     if (await create_critters(1 + ((confused || scursed) ? 12 : 0)
                               + ((sblessed || rn2(73)) ? 0 : rnd(4)),
@@ -2129,7 +2129,7 @@ async function seffect_enchant_armor(sobj) {
     const otmp = some_armor(game.youmonst);
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!game.u.uprops?.CONFUSION;
+    const confused = Confusion();
     let old_erodeproof, new_erodeproof;
 
     if (!otmp) {
@@ -2718,8 +2718,7 @@ async function seffect_identify(sobj) {
 // src/read.c:2015 seffect_teleportation()
 async function seffect_teleportation(sobj) {
     const scursed = !!sobj.cursed;
-    const confused = !!game.u.uprops?.CONFUSION?.intrinsic
-                     || !!game.u.intrinsic?.HConfusion;
+    const confused = Confusion();
 
     if (confused || scursed) {
         const { level_tele } = await import('./teleport.js');
@@ -2728,11 +2727,9 @@ async function seffect_teleportation(sobj) {
            be a teleport scroll */
         game.known = true;
     } else {
-        /* src/read.c:2090 — scrolltele(): controlled getpos teleport when
-           Teleport_control/blessed, else a random destination */
         const { scrolltele } = await import('./teleport.js');
         await scrolltele(sobj);
-        game.known = true;
+        /* scrolltele() calls learnscroll() when the effect reveals its type. */
     }
 }
 

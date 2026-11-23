@@ -9,7 +9,7 @@
 // item_what().
 
 import { game } from './gstate.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, urgent_pline } from './display.js';
 import { LL_CONDUCT } from './const.js';
 import { You, Your, pline, pline_The, Blind, Hallucination } from './display.js';
 import { getobj, useupall } from './invent.js';
@@ -1182,8 +1182,8 @@ export async function zapyourself(obj, ordinary) {
         killer_zy().format = NO_KILLER_PREFIX_ZY;
         /* probably don't need these to be urgent; player just gave input
            without subsequent opportunity to dismiss --More-- with ESC */
-        await pline("You irradiate yourself with pure energy!"); /* urgent_pline() */
-        await pline("You die."); /* urgent_pline() */
+        await urgent_pline("You irradiate yourself with pure energy!");
+        await urgent_pline("You die.");
         /* They might survive with an amulet of life saving */
         await done_zy(DIED_ZY);
         break;

@@ -174,6 +174,9 @@ export class NethackGame {
                     sortpack: true, sortloot: 'l', // optlist.h and options.c:7208
                     pickup_thrown: true,
                     ...rc.opts };
+        /* include/optlist.h:634 stores safe_pet in flags.safe_dog, default On. */
+        g.flags.safe_dog = rc.opts.safe_pet ?? true;
+        delete g.flags.safe_pet;
         /* MENUCOLOR= lines in the rc have already set iflags.use_menu_color
            (coloratt.js add_menu_coloring_parsed()); keep what the parse left */
         g.iflags = { ...(g.iflags || {}),

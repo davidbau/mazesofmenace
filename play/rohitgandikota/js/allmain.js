@@ -8,6 +8,7 @@ import { POLY_NOFLAGS } from './const.js';
 import { set_uasmon } from './polyself.js';
 import { do_vicinity_map } from './detect.js';
 import { game } from './gstate.js';
+import { maybe_shuffle_customizations } from './glyphs.js';
 import { status_initialize, status_eval_next_unhilite } from './botl.js';
 import { new_status_window } from './tty/wintty.js';
 import { glibr, set_wear } from './do_wear.js';
@@ -622,7 +623,8 @@ async function regen_pw(wtcap) {
             || u.uprops?.ENERGY_REGENERATION)) {
         let upper = Math.trunc((ACURR(A_WIS) + ACURR(A_INT)) / 15) + 1;
 
-        /* EMagical_breathing: amulet of magical breathing worn — absent */
+        if (u.uprops?.MAGICAL_BREATHING)
+            upper += 2;
 
         u.uen += rn1(upper, 1);
         if (u.uen > u.uenmax)
@@ -765,6 +767,9 @@ async function moveloop_core_turn() {
         await notice_all_mons_flush();
         return;
     }
+
+    // src/allmain.c:189, after object descriptions have been initialized.
+    maybe_shuffle_customizations();
 
     if (g.context?.bypasses)
         clear_bypasses();

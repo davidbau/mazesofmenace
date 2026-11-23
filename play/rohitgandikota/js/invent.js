@@ -33,11 +33,11 @@ import { tty_select_menu } from './tty/wintty.js';
 import { tty_end_menu } from './tty/wintty.js';
 import { tty_add_menu_str } from './tty/wintty.js';
 import { tty_start_menu } from './tty/wintty.js';
-import { Has_contents } from './obj.js';
+import { Has_contents, is_mines_prize, is_soko_prize } from './obj.js';
 import { get_obj_location } from './zap.js';
 import { unpunish } from './read.js';
 import { game } from './gstate.js';
-import { OBJ_ONBILL } from './const.js';
+import { OBJ_ONBILL, OBJ_MIGRATING, OBJ_LUAFREE } from './const.js';
 import { suppress_map_output } from './display.js';
 import { tty_update_inventory } from './tty/wintty.js';
 import { wc_supported } from './options.js';
@@ -79,11 +79,11 @@ import { setworn, setnotworn, recalc_telepat_range, bypass_objlist,
          nxt_unbypassed_loot, clear_bypasses } from './worn.js';
 import { is_rider, hideunder } from './makemon.js';
 import { Fumbling } from './youprop.js';
-import { st_all, MOD_ENCUMBER, invlet_basic } from './const.js';
+import { st_all, MOD_ENCUMBER, invlet_basic, Upolyd } from './const.js';
 import { u_safe_from_fatal_corpse, can_reach_floor } from './pickup.js';
 import { near_capacity, encumber_msg } from './attrib.js';
 import { in_rooms, inv_cnt, notice_all_mons_flush } from './hack.js';
-import { place_object } from './mkobj.js';
+import { place_object, remove_object } from './mkobj.js';
 import { touch_artifact } from './mon.js';
 import { dropy, dropx } from './do.js';
 import { is_ammo, is_missile, ammo_and_launcher, setuqwep } from './wield.js';
@@ -97,8 +97,10 @@ import { pline, tty_clear_nhwindow_message, display_nhwindow_message, temporary_
 import { makeknown, observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
 import { You, You_hear, You_see, Your, impossible } from './pline.js';
-import { cansee, recalc_block_point } from './vision.js';
+import { cansee } from './vision.js';
 import { surface } from './dungeon.js';
+import { is_ice } from './dbridge.js';
+import { ice_descr } from './pager.js';
 import { discover_artifact, set_artifact_intrinsic,
          artifact_confers_luck } from './artifact.js';
 import { ART_MJOLLNIR } from './artilist_data.js';
@@ -106,7 +108,9 @@ import { body_part, mbodypart } from './polyself.js';
 import { HAND, STOMACH } from './const.js';
 import { obj_stop_timers, stop_timer, SHRINK_GLOB, learn_egg_type,
          FIG_TRANSFORM, attach_fig_transform_timeout } from './timeout.js';
-import { NON_PM } from './const.js';
+import { NON_PM, ACH_MINE_PRIZE, ACH_SOKO_PRIZE,
+         ACH_AMUL, ACH_CNDL, ACH_BELL, ACH_BOOK } from './const.js';
+import { record_achievement } from './insight.js';
 import { obj_merge_light_sources } from './light.js';
 import { def_char_to_objclass } from './sp_lev.js';
 import { cxname_singular } from './objnam.js';
@@ -483,31 +487,50 @@ export function assigninvlet(otmp) {
 // port, so addinv() waits for it before assigning an inventory letter and
 // printing the ordinary pickup message.
 export function addinv_core1(obj) {
+    // src/invent.c:994-1004. Run the shared tail after carrying effects,
+    // including awaited quest-artifact text, and before addinv() can merge.
+    const release_prize = () => {
+        if (is_mines_prize(obj)) {
+            record_achievement(ACH_MINE_PRIZE);
+            game.context.achieveo.mines_prize_oid = 0;
+            obj.nomerge = 0;
+        } else if (is_soko_prize(obj)) {
+            record_achievement(ACH_SOKO_PRIZE);
+            game.context.achieveo.soko_prize_oid = 0;
+            obj.nomerge = 0;
+        }
+        return null;
+    };
+
     if (obj.oclass === OCLASSES.COIN_CLASS) {
         (game.disp ||= {}).botl = true;
-        return null;
+        return release_prize();
     }
 
     const uhave = (game.u.uhave ||= {});
     if (obj.otyp === ONAMES.AMULET_OF_YENDOR) {
         uhave.amulet = 1;
-        return null;
+        record_achievement(ACH_AMUL);
+        return release_prize();
     }
     if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
         uhave.menorah = 1;
-        return null;
+        record_achievement(ACH_CNDL);
+        return release_prize();
     }
     if (obj.otyp === ONAMES.BELL_OF_OPENING) {
         uhave.bell = 1;
-        return null;
+        record_achievement(ACH_BELL);
+        return release_prize();
     }
     if (obj.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD) {
         uhave.book = 1;
-        return null;
+        record_achievement(ACH_BOOK);
+        return release_prize();
     }
 
     if (!obj.oartifact)
-        return null;
+        return release_prize();
 
     return (async () => {
         const { is_quest_artifact } = await import('./questpgr.js');
@@ -519,6 +542,7 @@ export function addinv_core1(obj) {
         set_artifact_intrinsic(obj, true, W_ART);
         recalc_telepat_range();
         see_monsters();
+        release_prize();
     })();
 }
 
@@ -762,8 +786,8 @@ export function dfeature_at(x, y) {
         dfeature = 'opulent throne';
     } else if (is_lava(x, y)) {
         dfeature = 'molten lava';
-    } else if (ltyp === ICE) {
-        dfeature = 'solid ice';
+    } else if (is_ice(x, y)) {
+        dfeature = ice_descr(x, y);
     } else if (is_pool(x, y)) {
         dfeature = 'pool of water';
     } else if (ltyp === SINK) {
@@ -870,11 +894,8 @@ export async function look_here(obj_cnt, lhflags) {
         }
     }
 
-    /* src/mkobj.c place_object() puts the newest object at the chain head,
-       and the js place_object unshifts, so the filtered array is already in
-       C's newest-first pile order. */
-    const pile = (game.level?.objects || [])
-        .filter(o => o.ox === game.u.ux && o.oy === game.u.uy);
+    /* src/invent.c:4299, display the retained local nexthere order. */
+    const pile = game.level.objectsAt(game.u.ux, game.u.uy);
 
     if (!pile.length || is_lava(game.u.ux, game.u.uy)
         || (is_pool(game.u.ux, game.u.uy) && !game.u.uinwater)) {
@@ -1920,10 +1941,6 @@ export async function silly_thing(word, otmp) {
 // src/invent.c:1466 sobj_at() — try to find a particular type of object at
 // designated map location.
 //
-// C walks svl.level.objects[x][y] through ->nexthere. This port keeps one flat
-// list that place_object() PREPENDS to, so filtering it in order yields the
-// same relative order the per-square chain would.
-//
 // It was stubbed to a bare `false` in two files. Everything that asks "is there
 // a boulder here" (mfndpos' Sokoban arm, a pet's dig check) or "is there a
 // scroll of scare monster here" (onscary) got NO from a function that had never
@@ -1952,8 +1969,8 @@ export function o_on(id, objchn) {
 
 // looked, which is a wrong answer rather than a missing one.
 export function sobj_at(otyp, x, y) {
-    for (const otmp of (game.level.objects || []))
-        if (otmp.ox === x && otmp.oy === y && otmp.otyp === otyp)
+    for (let otmp = game.level.objectAt(x, y); otmp; otmp = otmp.nexthere)
+        if (otmp.otyp === otyp)
             return otmp;
 
     return null;
@@ -1995,16 +2012,11 @@ export async function useupf(obj, numused) {
 // src/invent.c:4366 stackobj() — merge a just-dropped object into any
 // compatible stack already on its square.
 //
-// C walks svl.level.objects[ox][oy] through the nexthere chain; the port keeps
-// one flat array and filters on ox/oy, so the iteration order is the array's.
-// merged() does the real work and is already ported.
-//
 // The break matters: C stops at the FIRST successful merge rather than
 // continuing, because merged() has already freed the merged-away object.
 export function stackobj(obj) {
-    for (const otmp of (game.level?.objects || []))
-        if (otmp.ox === obj.ox && otmp.oy === obj.oy
-            && otmp !== obj && merged({ o: obj }, { o: otmp }))
+    for (let otmp = game.level.objectAt(obj.ox, obj.oy); otmp; otmp = otmp.nexthere)
+        if (otmp !== obj && merged({ o: obj }, { o: otmp }))
             break;
     return;
 }
@@ -2493,16 +2505,14 @@ export function obj_extract_self(obj) {
         }
         break;
     }
-    default: {   /* OBJ_FLOOR — remove_object() */
-        const objs = game.level?.objects;
-        if (objs) {
-            const i = objs.indexOf(obj);
-            if (i >= 0) objs.splice(i, 1);
-        }
-        /* src/mkobj.c:2517 remove_object() — a boulder leaving the floor may
-           open the point up again (or not, if another boulder remains). */
-        if (obj.otyp === ONAMES.BOULDER)
-            recalc_block_point(obj.ox, obj.oy); /* vision */
+    case OBJ_MIGRATING:
+        extract_nobj(obj, game.migrating_objs);
+        break;
+    case OBJ_LUAFREE:
+    case OBJ_DELETED:
+        return;
+    case OBJ_FLOOR: {
+        remove_object(obj);
         break;
     }
     }
@@ -2723,9 +2733,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         /* place_object may change these */
         const crysknife = (obj.otyp === ONAMES.CRYSKNIFE);
         const oerode = obj.oerodeproof;
-        /* wasUpolyd: hero polymorph is not modeled; touch_artifact
-           (js/mon.js) records itself and allows every touch, so the
-           lose-your-grip arm cannot trigger yet */
+        const wasUpolyd = Upolyd(game.u);
 
         /* in case touching this object turns out to be fatal */
         place_object(obj, game.u.ux, game.u.uy);
@@ -2733,6 +2741,13 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         if (!await touch_artifact(obj, game.youmonst)) {
             obj_extract_self(obj); /* remove it from the floor */
             await dropy(obj);      /* now put it back again :-) */
+            return obj;
+        } else if (wasUpolyd && !Upolyd(game.u)) {
+            /* lose your grip if you revert your form */
+            if (drop_fmt)
+                await pline(drop_fmt.replace('%s', drop_arg));
+            obj_extract_self(obj);
+            await dropy(obj);
             return obj;
         }
         obj_extract_self(obj);
@@ -3947,10 +3962,10 @@ async function doorganize_core(obj) {
 // src/invent.c:1413 delallobj(); destroy every object at <x,y> except the
 // hero's chain; the ball is unpunished first
 export function delallobj(x, y) {
-    for (const otmp of (game.level?.objects || []).filter(
-             (o) => o.ox === x && o.oy === y)) {
+    for (let otmp = game.level.objectAt(x, y), next; otmp; otmp = next) {
         if (otmp === game.u.uball)
             unpunish();
+        next = otmp.nexthere;
         if (otmp === game.u.uchain)
             continue;
         delobj(otmp);
@@ -4113,20 +4128,17 @@ export async function display_minventory(mon,    /* monster whose minvent we're 
 
 // src/invent.c:1602 obj_here()
 export function obj_here(obj, x, y) {
-    for (const otmp of game.level?.objects || [])
-        if (otmp.ox === x && otmp.oy === y && obj === otmp)
+    for (let otmp = game.level.objectAt(x, y); otmp; otmp = otmp.nexthere)
+        if (obj === otmp)
             return true;
     return false;
 }
 
 // src/invent.c g_at(); the gold on the floor at <x,y>, if any
 export function g_at(x, y) {
-    for (const obj of game.level.objects) {
-        if (obj.where !== OBJ_FLOOR || obj.ox !== x || obj.oy !== y)
-            continue;
+    for (let obj = game.level.objectAt(x, y); obj; obj = obj.nexthere)
         if (obj.oclass === OCLASSES.COIN_CLASS)
             return obj;
-    }
     return null;
 }
 
@@ -4137,8 +4149,7 @@ export function nxtobj(obj, type, by_nexthere) {
     let chain;
 
     if (by_nexthere)
-        chain = (game.level?.objects || []).filter((o) => o.ox === obj.ox && o.oy === obj.oy
-                                                      && (o.where === undefined || o.where === OBJ_FLOOR));
+        chain = game.level.objectsAt(obj.ox, obj.oy);
     else if (obj.where === OBJ_CONTAINED && obj.ocontainer)
         chain = obj.ocontainer.cobj || [];
     else if (obj.where === OBJ_MINVENT && obj.ocarry)

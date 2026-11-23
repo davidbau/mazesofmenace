@@ -1,3 +1,125 @@
+/* NetHack 5.0	display.c	$NHDT-Date: 1777000050 2026/04/23 19:07:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.263 $ */
+/* Copyright (c) Dean Luick, with acknowledgements to Kevin Darcy */
+/* and Dave Cohrs, 1990.                                          */
+/* NetHack may be freely redistributed.  See license for details. */
+/*
+ *                      THE NEW DISPLAY CODE
+ *
+ * The old display code has been broken up into three parts: vision, display,
+ * and drawing.  Vision decides what locations can and cannot be physically
+ * seen by the hero.  Display decides _what_ is displayed at a given location.
+ * Drawing decides _how_ to draw a monster, fountain, sword, etc.
+ *
+ * The display system uses information from the vision system to decide
+ * what to draw at a given location.  The routines for the vision system
+ * can be found in vision.c and vision.h.  The routines for display can
+ * be found in this file (display.c) and display.h.  The drawing routines
+ * are part of the window port.  See doc/window.txt for the drawing
+ * interface.
+ *
+ * The display system deals with an abstraction called a glyph.  Anything
+ * that could possibly be displayed has a unique glyph identifier.
+ *
+ * What is seen on the screen is a combination of what the hero remembers
+ * and what the hero currently sees.  Objects and dungeon features (walls
+ * doors, etc) are remembered when out of sight.  Monsters and temporary
+ * effects are not remembered.  Each location on the level has an
+ * associated glyph.  This is the hero's _memory_ of what he or she has
+ * seen there before.
+ *
+ * Display rules:
+ *
+ *      If the location is in sight, display in order:
+ *              visible (or sensed) monsters
+ *              visible objects
+ *              known traps
+ *              background
+ *
+ *      If the location is out of sight, display in order:
+ *              sensed monsters (via telepathy or persistent detection)
+ *              warning (partly-sensed monster shown as an abstraction)
+ *              memory
+ *
+ *      "Remembered, unseen monster" is handled like an object rather
+ *      than a monster, and stays displayed whether or not it is in sight.
+ *      It is removed when a visible or sensed or warned-of monster gets
+ *      shown at its location or when searching or fighting reveals that
+ *      no monster is there.
+ *
+ *
+ * Here is a list of the major routines in this file to be used externally:
+ *
+ * newsym
+ *
+ * Possibly update the screen location (x,y).  This is the workhorse routine.
+ * It is always correct --- where correct means following the in-sight/out-
+ * of-sight rules.  **Most of the code should use this routine.**  This
+ * routine updates the map and displays monsters.
+ *
+ *
+ * map_background
+ * map_object
+ * map_trap or map_engraving
+ * map_invisible
+ * unmap_object
+ *
+ * If you absolutely must override the in-sight/out-of-sight rules, there
+ * are two possibilities.  First, you can mess with vision to force the
+ * location in sight then use newsym(), or you can  use the map_* routines.
+ * The first has not been tried [no need] and the second is used in the
+ * detect routines --- detect object, magic mapping, etc.  The map_*
+ * routines *change* what the hero remembers.  All changes made by these
+ * routines will be sticky --- they will survive screen redraws.  Do *not*
+ * use these for things that only temporarily change the screen.  These
+ * routines are also used directly by newsym().  unmap_object is used to
+ * clear a remembered object when/if detection reveals it isn't there.
+ *
+ *
+ * show_glyph
+ *
+ * This is direct (no processing in between) buffered access to the screen.
+ * Temporary screen effects are run through this and its companion,
+ * flush_screen().  There is yet a lower level routine, print_glyph(),
+ * but this is unbuffered and graphic dependent (i.e. it must be surrounded
+ * by graphic set-up and tear-down routines).  Do not use print_glyph().
+ *
+ *
+ * see_monsters
+ * see_objects
+ * see_traps
+ *
+ * These are only used when something affects all of the monsters or
+ * objects or traps.  For objects and traps, the only thing is hallucination.
+ * For monsters, there are hallucination and changing from/to blindness, etc.
+ *
+ *
+ * tmp_at
+ *
+ * This is a useful interface for displaying temporary items on the screen.
+ * Its interface is different than previously, so look at it carefully.
+ *
+ *
+ *
+ * Parts of the rm structure that are used:
+ *
+ *      typ     - What is really there.
+ *      glyph   - What the hero remembers.  This will never be a monster.
+ *                Monsters "float" above this.
+ *      lit     - True if the position is lit.  An optimization for
+ *                lit/unlit rooms.
+ *      waslit  - True if the position was *remembered* as lit.
+ *      seenv   - A vector of bits representing the directions from which the
+ *                hero has seen this position.  The vector's primary use is
+ *                determining how walls are seen.  E.g. a wall sometimes looks
+ *                like stone on one side, but is seen as wall from the other.
+ *                Other uses are for unmapping detected objects and felt
+ *                locations, where we need to know if the hero has ever
+ *                seen the location.
+ *      flags   - Additional information for the typ field.  Different for
+ *                each typ.
+ *      horizontal - Indicates whether the wall or door is horizontal or
+ *                vertical.
+ */
 // tools/recorder-env/build/nethack-c/recorder/src/display.c: generated by transpiler/emit from the C source. Do not edit.
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
@@ -99,47 +221,178 @@ let cls$in_cls = 0;   // static in cls()
 let flush_screen$flushing = 0;   // static in flush_screen()
 let flush_screen$delay_flushing = 0;   // static in flush_screen()
 const t_warn$warn_str = new Int8Array(38);   // static in t_warn()
+/*
+ * tmp_at()
+ *
+ * Temporarily place glyphs on the screen.  Do not call nh_delay_output().  It
+ * is up to the caller to decide if it wants to wait [presently, everyone
+ * but explode() wants to delay].
+ *
+ * Call:
+ *      (DISP_BEAM,    glyph)   open, initialize glyph
+ *      (DISP_FLASH,   glyph)   open, initialize glyph
+ *      (DISP_ALWAYS,  glyph)   open, initialize glyph
+ *      (DISP_CHANGE,  glyph)   change glyph
+ *      (DISP_END,     0)       close & clean up (2nd argument doesn't matter)
+ *      (DISP_FREEMEM, 0)       only used to prevent memory leak during exit)
+ *      (x, y)                  display the glyph at the location
+ *
+ * DISP_BEAM   - Display the given glyph at each location, but do not erase
+ *               any until the close call.
+ * DISP_ALL    - Same as DISP_BEAM except glyph is shown at the specified
+ *               spot even when that spot can't be seen.
+ * DISP_TETHER - Display a tether glyph at each location, and the tethered
+ *               object at the farthest location, but do not erase any
+ *               until the return trip or close.
+ * DISP_FLASH  - Display the given glyph at each location, but erase the
+ *               previous location's glyph.
+ * DISP_ALWAYS - Like DISP_FLASH, but vision is not taken into account.
+ */
 const tgfirst = new $T.tmp_glyph();
+/*  glyph, ttychar, framecolor,
+    { glyphflags, { NO_COLOR, sym.symidx },
+    customcolor, color256idx, tileidx, u } */
 const no_ginfo = new $T.glyphinfo();
+/* Note that the 'glyph' argument is not used in the expansion
+ * of this !UNBUFFERED_GLYPHINFO (default) variation, but is
+ * a requirement for the UNBUFFERED_GLYPHINFO variation */
+/* tile.c */
+/* glyph, ttychar, framecolor, { glyphflags, { sym.symidx }, nhcolor,
+                     tileidx, 0} */
 export const nul_glyphinfo = new $T.glyphinfo();
+/* from tile.c */
 export const glyphmap = $c.recArray($T.glyph_map_entry, 9624);
+/*
+ * Reset the changed glyph borders so that none of the 3rd screen has
+ * changed.
+ */
 const nul_gbuf = new $T.gbuf_entry();
+/*
+ *  This must be the same order as used for buzz() in zap.c.
+ *  The zap_color_ and altar_color_ enums are in decl.h.
+ */
 export const zapcolors = new Int32Array(8);
 export const altarcolors = new Int32Array(5);
 export const explodecolors = new Int32Array(7);
+/* main_walls, mines_walls, gehennom_walls, knox_walls, sokoban_walls */
 export const wallcolors = new Int32Array(5);
+/* ------------------------------------------------------------------------ */
+/* This matrix is used here and in vision.c. */
 export const seenv_matrix = $c.matrix(Uint8Array, [3, 3]);
+/* ------------------------------------------------------------------------ */
+/* T wall types, one for each row in wall_matrix[][]. */
+/*
+ * These are the column names of wall_matrix[][].  They are the "results"
+ * of a tdwall pattern match.  All T walls are rotated so they become
+ * a tdwall.  Then we do a single pattern match, but return the
+ * correct result for the original wall by using different rows for
+ * each of the wall types.
+ */
 const wall_matrix = $c.matrix(Int32Array, [4, 5]);
+/* Cross wall types, one for each "solid" quarter.  Rows of cross_matrix[][].
+ */
+/*
+ * These are the column names for cross_matrix[][].  They express results
+ * in C_br (bottom right) terms.  All crosswalls with a single solid
+ * quarter are rotated so the solid section is at the bottom right.
+ * We pattern match on that, but return the correct result depending
+ * on which row we're looking at.
+ */
 const cross_matrix = $c.matrix(Int32Array, [4, 6]);
+/*
+ *      See display.h for descriptions of tp_sensemon() through
+ *      is_safemon().  Some of these were generating an awful lot of
+ *      code "behind the curtain", particularly canspotmon() (which is
+ *      still a macro but one that now expands to a pair of function
+ *      calls rather than to a ton of special case checks).  Return
+ *      values are all int 0 or 1, not boolean.
+ *
+ *      They're still implemented as macros within this file.
+ */
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function tp_sensemon(mon) {   // display.c:166
     return !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) ? 1 : 0;
 }
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function sensemon(mon) {   // display.c:173
     return (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))) ? 1 : 0;
 }
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function mon_warning(mon) {   // display.c:180
     return (u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel ? 1 : 0;
 }
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function mon_visible(mon) {   // display.c:187
     return _mon_visible(mon);
 }
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function see_with_infrared(mon) {   // display.c:194
     return !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (u.uprops[INFRAVISION].intrinsic || u.uprops[INFRAVISION].extrinsic) && mon.data.mflags3 & M3.INFRAVISIBLE && (gv.viz_array.get(mon.my).get(mon.mx) & COULD_SEE) !== 0 ? 1 : 0;
 }
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function canseemon(mon) {   // display.c:201
     return (mon.wormno | 0 ? worm_known(mon) : (gv.viz_array.get(mon.my).get(mon.mx) & IN_SIGHT) !== 0 || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (u.uprops[INFRAVISION].intrinsic || u.uprops[INFRAVISION].extrinsic) && mon.data.mflags3 & M3.INFRAVISIBLE && (gv.viz_array.get(mon.my).get(mon.mx) & COULD_SEE) !== 0) && ((!mon.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !mon.mundetected) ? 1 : 0;
 }
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function knowninvisible(mon) {   // display.c:208
     return mon.minvis | 0 && ((gv.viz_array.get(mon.my).get(mon.mx) & IN_SIGHT) !== 0 && (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic)) || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && $c.and64(u.uprops[TELEPAT].intrinsic, ~INTRINSIC) && dist2(mon.mx, mon.my, u.ux, u.uy) <= 64) ? 1 : 0;
 }
+/* #define knowninvisible() isn't useful here */
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function is_safemon(mon) {   // display.c:215
     return flags.safe_dog && mon.mpeaceful | 0 && ((mon.wormno | 0 ? worm_known(mon) : (gv.viz_array.get(mon.my).get(mon.mx) & IN_SIGHT) !== 0 || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (u.uprops[INFRAVISION].intrinsic || u.uprops[INFRAVISION].extrinsic) && mon.data.mflags3 & M3.INFRAVISIBLE && (gv.viz_array.get(mon.my).get(mon.mx) & COULD_SEE) !== 0) && ((!mon.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !mon.mundetected) || (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)))) && !u.uprops[CONFUSION].intrinsic && !(u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic)) && !u.uprops[STUNNED].intrinsic ? 1 : 0;
 }
+/* #define is_safemon() isn't useful here */
+/*
+ *      End of former macro-only vision related (mostly) routines
+ *      converted to functions.
+ */
+/*
+ * magic_map_background()
+ *
+ * This function is similar to map_background (see below) except we pay
+ * attention to and correct unexplored, lit ROOM and CORR spots.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} show int
+ * @returns {Promise<void>}
+ */
 export async function magic_map_background(x, y, show) {   // display.c:233
     let glyph = 0, lev = null;
-    glyph = await back_to_glyph(x, y);
+    glyph = await back_to_glyph(x, y);   /* assumes hero can see x,y */
     lev = $c.relem(svl.level.locations[x], y);
+    /*
+     * Correct for out of sight lit corridors and rooms that the hero
+     * doesn't remember as lit.
+     */
     if (!cansee(x, y) && !lev.waslit) {
+        /* Floor spaces are dark if unlit.  Corridors are dark if unlit. */
         if (lev.typ === ROOM && glyph === 3992) {
             glyph = flags.dark_room && iflags.wc_color ? ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) === S.stone ? GLYPH.CMAP_STONE_OFF : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) <= S.trwall ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) < S.altar ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) === S.altar ? 4008 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) < S.arrow_trap + MAXTCHARS ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) <= S.goodpos ? (((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH : GLYPH_NOTHING;
         } else if (lev.typ === CORR && glyph === 3996) {
@@ -154,6 +407,29 @@ export async function magic_map_background(x, y, show) {   // display.c:233
     }
     update_lastseentyp(x, y);
 }
+/*
+ * The routines map_background(), map_object(), and map_trap() could just
+ * as easily be:
+ *
+ *      map_glyph(x,y,glyph,show)
+ *
+ * Which is called with the xx_to_glyph() in the call.  Then I can get
+ * rid of 3 routines that don't do very much anyway.  And then stop
+ * having to create fake objects and traps.  However, I am reluctant to
+ * make this change.
+ */
+/*
+ * map_background()
+ *
+ * Make the real background part of our map.  This routine assumes that
+ * the hero can physically see the location.  Update the screen if directed.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} show int
+ * @returns {Promise<void>}
+ */
 export async function map_background(x, y, show) {   // display.c:279
     let glyph = 0;
     glyph = await back_to_glyph(x, y);
@@ -164,6 +440,17 @@ export async function map_background(x, y, show) {   // display.c:279
         await show_glyph(x, y, glyph);
     }
 }
+/*
+ * map_trap()
+ *
+ * Map the trap and print it out if directed.  This routine assumes that the
+ * hero can physically see the location.
+ */
+/**
+ * @param {$T.trap | null} trap struct trap *
+ * @param {number} show int
+ * @returns {Promise<void>}
+ */
 export async function map_trap(trap, show) {   // display.c:296
     let x = 0, y = 0, glyph = 0;
     x = trap.tx;
@@ -176,6 +463,16 @@ export async function map_trap(trap, show) {   // display.c:296
         await show_glyph(x, y, glyph);
     }
 }
+/*
+ * map_engraving()
+ *
+ * Map the engraving and print it out if directed.
+ */
+/**
+ * @param {$T.engr | null} ep struct engr *
+ * @param {number} show int
+ * @returns {Promise<void>}
+ */
 export async function map_engraving(ep, show) {   // display.c:313
     let x = 0, y = 0, glyph = 0;
     x = ep.engr_x;
@@ -188,20 +485,41 @@ export async function map_engraving(ep, show) {   // display.c:313
         await show_glyph(x, y, glyph);
     }
 }
+/*
+ * map_object()
+ *
+ * Map the given object.  This routine assumes that the hero can physically
+ * see the location of the object.  Update the screen if directed.
+ * [Note: feel_location() -> map_location() -> map_object() contradicts
+ * the claim here that the hero can see obj's <ox,oy>.]
+ */
+/**
+ * @param {$T.obj | null} obj struct obj *
+ * @param {number} show int
+ * @returns {Promise<void>}
+ */
 export async function map_object(obj, show) {   // display.c:333
     let x = 0, y = 0, glyph = 0, r = 0, neardist = 0, $t1, $t2, $t3, $t4;
     x = obj.ox;
     y = obj.oy;
     glyph = obj.otyp === STATUE ? u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) + (!rn2_on_display_rng(2) ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : obj.corpsenm + ((obj.spe & CORPSTAT.GENDER) === CORPSTAT.FEMALE ? obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_FEM_PILETOP_OFF : GLYPH.STATUE_FEM_OFF : obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_MALE_PILETOP_OFF : GLYPH.STATUE_MALE_OFF) | 0 : u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? ($t1 = await rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT | 0, go.otg_temp = $t1) === CORPSE ? await rn2_on_display_rng(NUMMONS) + GLYPH.BODY_OFF | 0 : go.otg_temp + GLYPH.OBJ_OFF | 0 : obj.otyp === CORPSE ? obj.corpsenm + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.BODY_PILETOP_OFF : GLYPH.BODY_OFF) | 0 : !obj.dknown && (obj.oclass === POTION_CLASS || obj.otyp >= FIRST_REAL_GEM && obj.otyp <= LAST_GLASS_GEM || obj.otyp >= FIRST_SPELL && obj.otyp <= LAST_SPELL) ? obj.oclass + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0 : obj.otyp + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0;
+    /* if this object is already displayed as a generic object, it might
+       become a specific one now */
     if (glyph_is_generic_object(glyph) && cansee(x, y) && !Hallucination()) {
+        /* these 'r' and 'neardist' calculations match distant_name(objnam.c)
+           and see_nearby_objects(below); we assume that this is a lone
+           object or a pile-top, not something below the top of a pile */
+        /* neardist produces a small square with rounded corners */
         r = u.xray_range > 2 ? u.xray_range : 2;
-        neardist = Math.imul(Math.imul(r, r), 2) - r | 0;
+        neardist = Math.imul(Math.imul(r, r), 2) - r | 0;   /* same as r*r + r*(r-1) */
         if (distu(x, y) <= neardist) {
             await observe_object(obj);
             glyph = obj.otyp === STATUE ? u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) + (!rn2_on_display_rng(2) ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : obj.corpsenm + ((obj.spe & CORPSTAT.GENDER) === CORPSTAT.FEMALE ? obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_FEM_PILETOP_OFF : GLYPH.STATUE_FEM_OFF : obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.STATUE_MALE_PILETOP_OFF : GLYPH.STATUE_MALE_OFF) | 0 : u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? ($t2 = await rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT | 0, go.otg_temp = $t2) === CORPSE ? await rn2_on_display_rng(NUMMONS) + GLYPH.BODY_OFF | 0 : go.otg_temp + GLYPH.OBJ_OFF | 0 : obj.otyp === CORPSE ? obj.corpsenm + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.BODY_PILETOP_OFF : GLYPH.BODY_OFF) | 0 : !obj.dknown && (obj.oclass === POTION_CLASS || obj.otyp >= FIRST_REAL_GEM && obj.otyp <= LAST_GLASS_GEM || obj.otyp >= FIRST_SPELL && obj.otyp <= LAST_SPELL) ? obj.oclass + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0 : obj.otyp + (obj.where === OBJ.FLOOR && (go.otg_otmp = svl.level.objects[obj.ox][obj.oy].v.v_nexthere) !== null && (obj.otyp !== BOULDER || go.otg_otmp.otyp === BOULDER) ? GLYPH.OBJ_PILETOP_OFF : GLYPH.OBJ_OFF) | 0;
         }
     }
     if (svl.level.flags.hero_memory) {
+        /* MRKR: While hallucinating, statues are seen as random monsters */
+        /*       but remembered as random objects.                        */
         if (Hallucination() && obj.otyp === STATUE) {
             $t4 = ($t3 = await rn2_on_display_rng(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT | 0, go.otg_temp = $t3) === CORPSE ? await rn2_on_display_rng(NUMMONS) + GLYPH.BODY_OFF | 0 : go.otg_temp + GLYPH.OBJ_OFF | 0, svl.level.locations[x][y].glyph = $t4;
         } else {
@@ -212,14 +530,34 @@ export async function map_object(obj, show) {   // display.c:333
         await show_glyph(x, y, glyph);
     }
 }
+/*
+ * map_invisible()
+ *
+ * Make the hero remember that a square contains an invisible monster.
+ * This is a special case in that the square will continue to be displayed
+ * this way even when the hero is close enough to see it.  To get rid of
+ * this and display the square's actual contents, use unmap_object() followed
+ * by newsym() if necessary.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function map_invisible(x, y) {   // display.c:378
     if (x !== u.ux || y !== u.uy) {
+        /* don't display I at hero's location */
         if (svl.level.flags.hero_memory) {
             svl.level.locations[x][y].glyph = GLYPH_INVISIBLE;
         }
         await show_glyph(x, y, GLYPH_INVISIBLE);
     }
 }
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<number>} boolean
+ */
 export async function unmap_invisible(x, y) {   // display.c:388
     if (isok(x, y) && svl.level.locations[x][y].glyph === GLYPH_INVISIBLE) {
         await unmap_object(x, y);
@@ -228,6 +566,20 @@ export async function unmap_invisible(x, y) {   // display.c:388
     }
     return FALSE;
 }
+/*
+ * unmap_object()
+ *
+ * Remove something from the map when the hero realizes it's not there
+ * anymore.  Replace it with background or known trap, but not with
+ * any other remembered object.  If this is used for detection, a full
+ * screen update is imminent anyway; if this is used to get rid of an
+ * invisible monster notation, we might have to call newsym().
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function unmap_object(x, y) {   // display.c:409
     let trap = null, ep = null, lev = null, $t1, $t2;
     if (!svl.level.flags.hero_memory) {
@@ -245,13 +597,28 @@ export async function unmap_object(x, y) {   // display.c:409
         } else {
             await map_background(x, y, 0);
         }
+        /* turn remembered dark room squares dark */
         if (!lev.waslit && lev.glyph === 3992 && lev.typ === ROOM) {
             $t1 = 3929, lev.glyph = $t1;
         }
     } else {
-        $t2 = 3929, svl.level.locations[x][y].glyph = $t2;
+        $t2 = 3929, svl.level.locations[x][y].glyph = $t2;   /* default val */
     }
 }
+/*
+ * map_location()
+ *
+ * Make whatever at this location show up.  This is only for non-living
+ * things.  This will not handle feeling invisible objects correctly.
+ *
+ * Internal to display.c, this is a #define for speed.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} show int
+ * @returns {Promise<void>}
+ */
 export async function map_location(x, y, show) {   // display.c:475
     let obj = null, trap = null, ml_ep = null, _ml_reg = null;
     do {
@@ -270,8 +637,18 @@ export async function map_location(x, y, show) {   // display.c:475
         }
     } while (0);
 }
+/* display something on monster layer; may need to fixup object layer */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} monglyph int
+ * @returns {Promise<void>}
+ */
 async function show_mon_or_warn(x, y, monglyph) {   // display.c:482
     let o = null;
+    /* "remembered, unseen monster" is tracked by object layer so if we're
+       putting something on monster layer at same spot, stop remembering
+       that; if an object is in view there, start remembering it instead */
     if (svl.level.locations[x][y].glyph === GLYPH_INVISIBLE) {
         await unmap_object(x, y);
         if (cansee(x, y) && (o = svl.level.objects[x][y]) !== null) {
@@ -280,35 +657,78 @@ async function show_mon_or_warn(x, y, monglyph) {   // display.c:482
     }
     await show_glyph(x, y, monglyph);
 }
+/*
+ * display_monster()
+ *
+ * Note that this is *not* a map_XXXX() function!  Monsters sort of float
+ * above everything.
+ *
+ * Yuck.  Display body parts by recognizing that the display position is
+ * not the same as the monster position.  Currently the only body part is
+ * a worm tail.
+ *
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {$T.monst | null} mon struct monst *
+ * @param {number} sightflags int
+ * @param {number} worm_tail boolean
+ * @returns {Promise<void>}
+ */
 async function display_monster(x, y, mon, sightflags, worm_tail) {   // display.c:514
     let mon_mimic = 0, sensed = 0, mgendercode = 0, sym = 0, glyph = 0, obj = new $T.obj(), mndx = 0, num = 0, $t1;
+    /* display position */
+    /* monster to display */
+    /* 1 if the monster is physically seen;
+     * 2 if detected using Detect_monsters */
+    /* mon is actually a worm tail */
     mon_mimic = $c.i8(M_AP_TYPE(mon) !== M_AP.NOTHING ? 1 : 0);
     sensed = mon_mimic && (Protection_from_shape_changers() || (!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data)))) ? 1 : 0;
     mgendercode = mon.female | 0 ? FEMALE : MALE;
+    /*
+     * We must do the mimic check first.  If the mimic is mimicking something,
+     * and the location is in sight, we have to change the hero's memory
+     * so that when the position is out of sight, the hero remembers what
+     * the mimic was mimicking.
+     */
     if (mon_mimic && sightflags === PHYSICALLY_SEEN) {
         switch (M_AP_TYPE(mon)) {
             default:
                 await impossible($c.lit("display_monster:  bad m_ap_type value [ = %d ]"), mon.m_ap_type);
             case M_AP.NOTHING:
+                /*FALLTHRU*/
                 await show_glyph(x, y, (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mon.data.pmidx) + ((mon.female | 0) === 0 ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0);
                 break;
             case M_AP.FURNITURE:
                 {
+                    /*
+                     * This is a poor man's version of map_background().  I can't
+                     * use map_background() because we are overriding what is in
+                     * the 'typ' field.  Maybe have map_background()'s parameters
+                     * be (x,y,glyph) instead of just (x,y).
+                     *
+                     * mappearance is currently set to an S_ index value in
+                     * makemon.c.
+                     */
                     sym = mon.mappearance | 0;
                     glyph = sym === S.stone ? GLYPH.CMAP_STONE_OFF : sym <= S.trwall ? (sym - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : sym < S.altar ? (sym - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : sym === S.altar ? 4008 : sym < S.arrow_trap + MAXTCHARS ? (sym - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : sym <= S.goodpos ? (sym - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
                     svl.level.locations[x][y].glyph = glyph;
                     if (!sensed) {
                         await show_glyph(x, y, glyph);
+                        /* override real topology with mimic's fake one */
                         $t1 = $c.i8(cmap_to_type(sym)), svl.lastseentyp[x][y] = $t1;
                     }
                     break;
                 }
             case M_AP.OBJECT:
                 {
+                    /* Make a fake object to send to map_object(). */
                     obj.$copyFrom(cg.zeroobj);
                     obj.ox = x;
                     obj.oy = y;
                     obj.otyp = $c.i16(mon.mappearance);
+                    /* might be mimicking a corpse or statue */
                     obj.corpsenm = has_mcorpsenm(mon) ? mon.mextra.mcorpsenm : PM.TENGU;
                     await map_object(obj, !sensed ? 1 : 0);
                     break;
@@ -318,10 +738,19 @@ async function display_monster(x, y, mon, sightflags, worm_tail) {   // display.
                     mndx = u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mon.mappearance | 0;
                     await show_glyph(x, y, monnum_to_glyph(mndx, mgendercode));
                     break;
-                }
-        }
+                }   /* case M_AP_MONSTER */
+        }   /* switch M_AP_TYPE() */
     }
+    /* If mimic is unsuccessfully mimicking something, display the monster. */
     if (!mon_mimic || sensed) {
+        /* [ALI] Only use detected glyphs when monster wouldn't be
+         * visible by any other means.
+         *
+         * There are no glyphs for "detected pets" so we have to
+         * decide whether to display such things as detected or as tame.
+         * If both are being highlighted in the same way, it doesn't
+         * matter, but if not, showing them as pets is preferrable.
+         */
         if (mon.mtame && !Hallucination()) {
             if (worm_tail) {
                 num = PM.LONG_WORM_TAIL + (mgendercode === MALE ? GLYPH.PET_MALE_OFF : GLYPH.PET_FEM_OFF) | 0;
@@ -345,6 +774,19 @@ async function display_monster(x, y, mon, sightflags, worm_tail) {   // display.
         mon.meverseen = (1) & 1;
     }
 }
+/*
+ * display_warning()
+ *
+ * This is also *not* a map_XXXX() function!  Monster warnings float
+ * above everything just like monsters do, but only if the monster
+ * is not showing.
+ *
+ * Do not call for worm tails.
+ */
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {Promise<void>}
+ */
 async function display_warning(mon) {   // display.c:634
     let x = 0, y = 0, glyph = 0, wl = 0;
     x = mon.mx;
@@ -360,35 +802,74 @@ async function display_warning(mon) {   // display.c:634
     }
     await show_mon_or_warn(x, y, glyph);
 }
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @returns {number} int
+ */
 export function warning_of(mon) {   // display.c:654
     let wl = 0, tmp = 0;
     wl = 0;
     tmp = 0;
     if ((u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) {
-        tmp = $c.div32(mon.m_lev, 4);
+        tmp = $c.div32(mon.m_lev, 4);   /* match display.h */
         wl = tmp > WARNCOUNT - 1 ? WARNCOUNT - 1 : tmp;
     }
     return wl;
 }
+/* used by newsym() to decide whether to show a monster or a visible gas
+   cloud region when both are at the same spot; caller deals with region */
+/**
+ * @param {$T.monst | null} mon struct monst *
+ * @param {number} mx coordxy
+ * @param {number} my coordxy
+ * @returns {number} boolean
+ */
 function mon_overrides_region(mon, mx, my) {   // display.c:668
     let r = 0;
+    /* might be Null */
+    /* won't match mon->mx,my if long worm's tail */
+    /* this is redundant because newsym() doesn't call us when swallowed */
     if (u.uswallow | 0 && (!mon || !$c.peq(mon, u.ustuck))) {
         return FALSE;
     }
     if (mon) {
+        /* when not a worm tail, show mon if sensed rather than seen */
         if (mx === mon.mx && my === mon.my && ((!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))) || (u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel)) {
             return TRUE;
         }
+        /* even if worm tail;
+           check whether the spot is adjacent and 'mon' would be visible
+           there if the gas cloud wasn't interfering with normal vision;
+           _mon_visible() handles mon->mundetected; don't need to check
+           infravision when monster is adjacent */
         r = u.xray_range > 1 ? u.xray_range : 1;
         if (!Blind() && _mon_visible(mon) && M_AP_TYPE(mon) !== M_AP.FURNITURE && M_AP_TYPE(mon) !== M_AP.OBJECT && distu(mx, my) <= Math.imul(r, r + 1 | 0)) {
             return TRUE;
         }
     }
+    /* if not overriding region for current mon, propagate "remembered,
+       unseen monster" */
     return $c.i8(svl.level.locations[mx][my].glyph === GLYPH_INVISIBLE ? TRUE : FALSE);
 }
+/* map or status window might not be ready for output during level creation
+   or game restoration (something like u.usteed which affects display of
+   the hero and also a status condition might not be set up yet) */
+/**
+ * @returns {number} boolean
+ */
 export function suppress_map_output() {   // display.c:715
     return $c.i8(_suppress_map_output());
 }
+/*
+ * feel_newsym()
+ *
+ * When hero knows what happened to location, even when blind.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function feel_newsym(x, y) {   // display.c:726
     if (Blind()) {
         await feel_location(x, y);
@@ -396,8 +877,24 @@ export async function feel_newsym(x, y) {   // display.c:726
         await newsym(x, y);
     }
 }
+/*
+ * feel_location()
+ *
+ * Feel the given location.  This assumes that the hero is blind and that
+ * the given position is either the hero's or one of the eight squares
+ * adjacent to the hero (except for a boulder push).
+ * If an invisible monster has gone away, that will be discovered.  If an
+ * invisible monster has appeared, this will _not_ be discovered since
+ * searching only finds one monster per turn so we must check that separately.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function feel_location(x, y) {   // display.c:746
     let lev = null, boulder = null, mon = null, ep = null, do_room_glyph = 0, obj = null, trap = null, ml_ep = null, _ml_reg = null, $t1, $t2, $t3, $t4, $t5;
+    /* replicate safeguards used by newsym(); might not be required here */
     if (_suppress_map_output()) {
         return;
     }
@@ -405,14 +902,38 @@ export async function feel_location(x, y) {   // display.c:746
         return;
     }
     lev = $c.relem(svl.level.locations[x], y);
+    /* If hero's memory of an invisible monster is accurate, we want to keep
+     * him from detecting the same monster over and over again on each turn.
+     * We must return (so we don't erase the monster).  (We must also, in the
+     * search function, be sure to skip over previously detected 'I's.)
+     */
     if (glyph_is_invisible(lev.glyph) && m_at(x, y)) {
         return;
     }
+    /* The hero can't feel non pool locations while under water
+       except for lava and ice. */
     if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && !is_pool_or_lava(x, y) && !is_ice(x, y)) {
         return;
     }
+    /* Set the seen vector as if the hero had seen it.
+       It doesn't matter if the hero is levitating or not. */
     set_seenv(lev, u.ux, u.uy, x, y);
     if (!can_reach_floor(FALSE)) {
+        /*
+         * Levitation Rules.  It is assumed that the hero can feel the state
+         * of the walls around herself and can tell if she is in a corridor,
+         * room, or doorway.  Boulders are felt because they are large enough.
+         * Anything else is unknown because the hero can't reach the ground.
+         * This makes things difficult.
+         *
+         * Check (and display) in order:
+         *
+         *      + Stone, walls, and closed doors.
+         *      + Boulders.  [see a boulder before a doorway]
+         *      + doors.
+         *      + Room/water positions
+         *      + Everything else (hallways!)
+         */
         if (IS_OBSTRUCTED(lev.typ) || IS_DOOR(lev.typ) && (lev.flags | 0) & (D.LOCKED | D.CLOSED)) {
             await map_background(x, y, 1);
         } else if ((boulder = sobj_at(BOULDER, x, y)) !== null) {
@@ -420,6 +941,30 @@ export async function feel_location(x, y) {   // display.c:746
         } else if (IS_DOOR(lev.typ)) {
             await map_background(x, y, 1);
         } else if (IS_ROOM(lev.typ) || IS_POOL(lev.typ)) {
+            /*
+             * An open room or water location.  Normally we wouldn't touch
+             * this, but we have to get rid of remembered boulder symbols.
+             * This will only occur in rare occasions when the hero goes
+             * blind and doesn't find a boulder where expected (something
+             * came along and picked it up).  We know that there is not a
+             * boulder at this location.  Show fountains, pools, etc.
+             * underneath if already seen.  Otherwise, show the appropriate
+             * floor symbol.
+             *
+             * Similarly, if the hero digs a hole in a wall or feels a
+             * location that used to contain an unseen monster.  In these
+             * cases, there's no reason to assume anything was underneath,
+             * so just show the appropriate floor symbol.  If something was
+             * embedded in the wall, the glyph will probably already
+             * reflect that.  Don't change the symbol in this case.
+             *
+             * This isn't quite correct.  If the boulder was on top of some
+             * other objects they should be seen once the boulder is removed.
+             * However, we have no way of knowing that what is there now
+             * was there then.  So we let the hero have a lapse of memory.
+             * We could also just display what is currently on the top of the
+             * object stack (if anything).
+             */
             do_room_glyph = FALSE;
             if (lev.glyph === BOULDER + GLYPH.OBJ_OFF || glyph_is_invisible(lev.glyph)) {
                 if (lev.typ !== ROOM && lev.seenv) {
@@ -435,7 +980,10 @@ export async function feel_location(x, y) {   // display.c:746
                 await show_glyph(x, y, lev.glyph);
             }
         } else {
+            /* We feel it (I think hallways are the only things left). */
             await map_background(x, y, 1);
+            /* Corridors are never felt as lit (unless remembered that way) */
+            /* (lit_corridor only).                                         */
             if (lev.typ === CORR && lev.glyph === 3996 && !lev.waslit) {
                 await show_glyph(x, y, ($t2 = 3995, lev.glyph = $t2));
             } else if (lev.typ === ROOM && flags.dark_room && iflags.wc_color && lev.glyph === 3992) {
@@ -462,37 +1010,64 @@ export async function feel_location(x, y) {   // display.c:746
             }
         } while (0);
         if (Punished()) {
+            /*
+             * A ball or chain is only felt if it is first on the object
+             * location list.  Otherwise, we need to clear the felt bit ---
+             * something has been dropped on the ball/chain.  If the bit is
+             * not cleared, then when the ball/chain is moved it will drop
+             * the wrong glyph.
+             *
+             * Note: during unpunish() we can be called by delobj() when
+             * destroying uchain while uball hasn't been cleared yet (so
+             * Punished will still yield True but uchain might not be part
+             * of the floor list anymore).
+             */
             if ($G.uchain && $G.uchain.where === OBJ.FLOOR && $G.uchain.ox === x && $G.uchain.oy === y && $c.peq(svl.level.objects[x][y], $G.uchain)) {
                 u.bc_felt = u.bc_felt | BC.CHAIN;
             } else {
-                u.bc_felt = u.bc_felt & ~BC.CHAIN;
+                u.bc_felt = u.bc_felt & ~BC.CHAIN;   /* do not feel the chain */
             }
             if ($G.uball && $G.uball.where === OBJ.FLOOR && $G.uball.ox === x && $G.uball.oy === y && $c.peq(svl.level.objects[x][y], $G.uball)) {
                 u.bc_felt = u.bc_felt | BC.BALL;
             } else {
-                u.bc_felt = u.bc_felt & ~BC.BALL;
+                u.bc_felt = u.bc_felt & ~BC.BALL;   /* do not feel the ball */
             }
         }
+        /* Floor spaces are dark if unlit.  Corridors are dark if unlit. */
         if (lev.typ === ROOM && lev.glyph === 3992 && (!lev.waslit || flags.dark_room && iflags.wc_color)) {
             await show_glyph(x, y, ($t4 = (flags.dark_room ? S.darkroom : S.stone) === S.stone ? GLYPH.CMAP_STONE_OFF : (flags.dark_room ? S.darkroom : S.stone) <= S.trwall ? ((flags.dark_room ? S.darkroom : S.stone) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (flags.dark_room ? S.darkroom : S.stone) < S.altar ? ((flags.dark_room ? S.darkroom : S.stone) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (flags.dark_room ? S.darkroom : S.stone) === S.altar ? 4008 : (flags.dark_room ? S.darkroom : S.stone) < S.arrow_trap + MAXTCHARS ? ((flags.dark_room ? S.darkroom : S.stone) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (flags.dark_room ? S.darkroom : S.stone) <= S.goodpos ? ((flags.dark_room ? S.darkroom : S.stone) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH, lev.glyph = $t4));
         } else if (lev.typ === CORR && lev.glyph === 3996 && !lev.waslit) {
             await show_glyph(x, y, ($t5 = 3995, lev.glyph = $t5));
         }
     }
+    /* draw monster on top if we can sense it */
     if (!u_at(x, y) && (mon = svl.level.monsters[x][y]) !== null && ((!u.uswallow || $c.peq(mon, u.ustuck)) && (!u.uinwater || dist2(mon.mx, mon.my, u.ux, u.uy) <= 2 && is_pool(mon.mx, mon.my)) && (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic || !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || (u.uprops[WARN_OF_MON].intrinsic || u.uprops[WARN_OF_MON].extrinsic) && ($c.andu64(svc.context.warntype.obj, mon.data.mflags2) !== 0 || $c.andu64(svc.context.warntype.polyd, mon.data.mflags2) !== 0 || svc.context.warntype.species && $c.peq(svc.context.warntype.species, mon.data))))) {
         await display_monster(x, y, mon, !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || MATCH_WARN_OF_MON(mon) ? PHYSICALLY_SEEN : DETECTED, $c.i8(mon && (x !== mon.mx || y !== mon.my) ? 1 : 0));
     }
 }
+/*
+ * newsym()
+ *
+ * Possibly put a new glyph at the given location.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function newsym(x, y) {   // display.c:917
     let lev = null, ep = null, mon = null, see_it = 0, worm_tail = 0, errfunc = null, reg = null, see_self = 0, obj = null, trap = null, ml_ep = null, _ml_reg = null, show = 0, trap$2 = null, tt = 0, obj$2 = null, trap$3 = null, ml_ep$2 = null, _ml_reg$2 = null, obj$3 = null, trap$4 = null, ml_ep$3 = null, _ml_reg$3 = null, $goto = null, $t1, $t2, $t3, $t4;
+    /* don't try to produce map output when level is in a state of flux */
     if (_suppress_map_output()) {
         return;
     }
+    /* should never happen; same error handling as u_on_newpos() */
     if (!isok(x, y)) {
-        errfunc = x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1 ? panic : impossible;
+        errfunc = x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1 ? panic : impossible;   /* misuse of column 0 is less severe */
         await errfunc($c.lit("newsym: attempting screen update for <%d,%d>"), x, y);
         return;
     }
+    /* only permit updating the hero when swallowed */
     if (u.uswallow) {
         if (u_at(x, y)) {
             await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? GLYPH.RIDDEN_MALE_OFF : GLYPH.RIDDEN_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.NOTHING ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE ? (gy.youmonst.mappearance | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : (gy.youmonst.mappearance | 0) <= S.trwall ? ((gy.youmonst.mappearance | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (gy.youmonst.mappearance | 0) < S.altar ? ((gy.youmonst.mappearance | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (gy.youmonst.mappearance | 0) === S.altar ? 4008 : (gy.youmonst.mappearance | 0) < S.arrow_trap + MAXTCHARS ? ((gy.youmonst.mappearance | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (gy.youmonst.mappearance | 0) <= S.goodpos ? ((gy.youmonst.mappearance | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT ? (gy.youmonst.mappearance | 0) + GLYPH.OBJ_OFF | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0);
@@ -500,19 +1075,53 @@ export async function newsym(x, y) {   // display.c:917
         return;
     }
     if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+        /* when underwater, don't do anything unless <x,y> is an
+           adjacent water or lava or ice position */
         if (!(is_pool_or_lava(x, y) || is_ice(x, y)) || !(dist2(x, y, u.ux, u.uy) <= 2)) {
             return;
         }
     }
     lev = $c.relem(svl.level.locations[x], y);
+    /* Can physically see the location. */
     if (cansee(x, y)) {
         reg = visible_region_at(x, y);
-        lev.waslit = (((lev.lit | 0) !== 0 ? 1 : 0) >>> 0) & 1;
+        /*
+         * Don't use templit here:  E.g.
+         *
+         *      lev->waslit = !!(lev->lit || templit(x,y));
+         *
+         * Otherwise we have the "light pool" problem, where non-permanently
+         * lit areas just out of sight stay remembered as lit.  They should
+         * re-darken.
+         *
+         * Perhaps ALL areas should revert to their "unlit" look when
+         * out of sight.
+         */
+        lev.waslit = (((lev.lit | 0) !== 0 ? 1 : 0) >>> 0) & 1;   /* remember lit condition */
         mon = svl.level.monsters[x][y];
         worm_tail = $c.i8(mon && (x !== mon.mx || y !== mon.my) ? 1 : 0);
         if ((ep = engr_at(x, y)) !== null) {
-            ep.erevealed = (1) & 1;
+            ep.erevealed = (1) & 1;   /* even when covered by objects or a monster */
         }
+        /*
+         * Normal region shown only on accessible positions, but
+         * poison clouds and steam clouds also shown above lava,
+         * pools and moats.
+         * However, sensed monsters (via detection or telepathy or
+         * warning) take precedence over all regions.
+         * Adjacent monsters also take precedence if they would be
+         * seen when there's no gas region.
+         *
+         * FIXME:
+         *  The adjacency checking [in mon_overrides_region()] works
+         *  when the hero is outside the region and the monster is
+         *  inside, and when they're both inside, but not when the
+         *  hero is inside and monster outside (because 'reg' will be
+         *  Null for mon's <x,y>).  Checking whether hero is inside
+         *  a region for every newsym() seems excessive.  The hero is
+         *  usually blind when in a gas cloud so the problem is less
+         *  noticeable then it might otherwise be.
+         */
         if (reg && (ACCESSIBLE(lev.typ) || reg.visible && is_pool_or_lava(x, y))) {
             if (!mon_overrides_region(mon, x, y)) {
                 await show_region(reg, x, y);
@@ -521,6 +1130,9 @@ export async function newsym(x, y) {   // display.c:917
         }
         if (u_at(x, y)) {
             see_self = canspotself();
+            /* update map information for <u.ux,u.uy> (remembered topology
+               and object/known trap/terrain glyph) but only display it if
+               hero can't see him/herself, then show self if appropriate */
             do {
                 if ((obj = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                     await map_object(obj, !see_self ? 1 : 0);
@@ -546,11 +1158,13 @@ export async function newsym(x, y) {   // display.c:917
                 if (mon.mtrapped) {
                     trap$2 = t_at(x, y);
                     tt = trap$2 ? trap$2.ttyp | 0 : NO_TRAP;
+                    /* if monster is in a physical trap, you see trap too */
                     if (tt === BEAR_TRAP || (tt === PIT || tt === SPIKED_PIT) || tt === WEB) {
                         trap$2.tseen = (1) & 1;
                     }
                 }
                 do {
+                    /* map under the monster */
                     if ((obj$2 = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                         await map_object(obj$2, show);
                     } else if ((trap$3 = t_at(x, y)) && trap$3.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
@@ -565,6 +1179,7 @@ export async function newsym(x, y) {   // display.c:917
                         await show_region(_ml_reg$2, x, y);
                     }
                 } while (0);
+                /* also gets rid of any invisibility glyph */
                 await display_monster(x, y, mon, see_it ? PHYSICALLY_SEEN : DETECTED, worm_tail);
             } else if (mon && ((u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) && !worm_tail) {
                 await display_warning(mon);
@@ -572,6 +1187,7 @@ export async function newsym(x, y) {   // display.c:917
                 await map_invisible(x, y);
             } else {
                 do {
+                    /* map the location */
                     if ((obj$3 = svl.level.objects[x][y]) && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
                         await map_object(obj$3, 1);
                     } else if ((trap$4 = t_at(x, y)) && trap$4.tseen | 0 && !(is_pool(x, y) && !u.uinwater || svl.level.locations[x][y].typ === LAVAPOOL || svl.level.locations[x][y].typ === LAVAWALL)) {
@@ -588,19 +1204,43 @@ export async function newsym(x, y) {   // display.c:917
                 } while (0);
             }
         }
+        /* Can't see the location. */
     } else {
         D1: for (;;) {
             switch ($goto) {
             case null: case "show_mem":
                 if ($goto !== "show_mem" && u_at(x, y)) {
-                    await feel_location(u.ux, u.uy);
+                    await feel_location(u.ux, u.uy);   /* forces an update */
                     if (canspotself()) {
                         await show_glyph(u.ux, u.uy, u.usteed && ((!u.usteed.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.usteed.mundetected) ? (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.usteed.data.pmidx) + ((u.usteed.female | 0) === 0 ? GLYPH.RIDDEN_MALE_OFF : GLYPH.RIDDEN_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.NOTHING ? (u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0 : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE ? (gy.youmonst.mappearance | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : (gy.youmonst.mappearance | 0) <= S.trwall ? ((gy.youmonst.mappearance | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (gy.youmonst.mappearance | 0) < S.altar ? ((gy.youmonst.mappearance | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (gy.youmonst.mappearance | 0) === S.altar ? 4008 : (gy.youmonst.mappearance | 0) < S.arrow_trap + MAXTCHARS ? ((gy.youmonst.mappearance | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (gy.youmonst.mappearance | 0) <= S.goodpos ? ((gy.youmonst.mappearance | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH : (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT ? (gy.youmonst.mappearance | 0) + GLYPH.OBJ_OFF | 0 : (gy.youmonst.mappearance | 0) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0);
                     }
                 } else if ($goto !== "show_mem" && ((mon = svl.level.monsters[x][y]) !== null && ((see_it = !($c.andu64(mon.data.mflags1, M1.MINDLESS) !== 0) && ((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked && (u.uprops[TELEPAT].intrinsic || u.uprops[TELEPAT].extrinsic) || u.uprops[TELEPAT].extrinsic && dist2(mon.mx, mon.my, u.ux, u.uy) <= u.unblind_telepat_range) || MATCH_WARN_OF_MON(mon) || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked) && (u.uprops[INFRAVISION].intrinsic || u.uprops[INFRAVISION].extrinsic) && mon.data.mflags3 & M3.INFRAVISIBLE && (gv.viz_array.get(mon.my).get(mon.mx) & COULD_SEE) !== 0 && ((!mon.minvis || (u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !mon.mundetected) ? 1 : 0) !== 0 || Detect_monsters() && !(mon && (x !== mon.mx || y !== mon.my))))) {
+                    /* Seen or sensed monsters are printed every time.
+                       This also gets rid of any invisibility glyph. */
                     await display_monster(x, y, mon, see_it ? 0 : DETECTED, $c.i8(mon && (x !== mon.mx || y !== mon.my) ? TRUE : FALSE));
                 } else if ($goto !== "show_mem" && (mon && ((u.uprops[WARNING].intrinsic || u.uprops[WARNING].extrinsic) && !mon.mpeaceful && dist2(mon.mx, mon.my, u.ux, u.uy) < 100 && $c.div32(mon.m_lev, 4) >= svc.context.warnlevel) && !(mon && (x !== mon.mx || y !== mon.my)))) {
                     await display_warning(mon);
+                    /*
+                     * If the location is remembered as being both dark (waslit is false)
+                     * and lit (glyph is a lit room or lit corridor) then it was either:
+                     *
+                     *      (1) A dark location that the hero could see through night
+                     *          vision.
+                     *      (2) Darkened while out of the hero's sight.  This can happen
+                     *          when cursed scroll of light is read.
+                     *
+                     * In either case, we have to manually correct the hero's memory to
+                     * match waslit.  Deciding when to change waslit is non-trivial.
+                     *
+                     *  Note:  If flags.lit_corridor is set, then corridors act like room
+                     *         squares.  That is, they light up if in night vision range.
+                     *         If flags.lit_corridor is not set, then corridors will
+                     *         remain dark unless lit by a light spell and may darken
+                     *         again, as discussed above.
+                     *
+                     * These checks and changes must be here and not in back_to_glyph().
+                     * They are dependent on the position being out of sight.
+                     */
                 } else if ($goto !== "show_mem" && ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level))) {
                     if (lev.glyph === 3996 && lev.typ === CORR) {
                         await show_glyph(x, y, ($t1 = 3995, lev.glyph = $t1));
@@ -626,26 +1266,48 @@ export async function newsym(x, y) {   // display.c:917
         }
     }
 }
+/*
+ * shieldeff()
+ *
+ * Put magic shield pyrotechnics at the given location.  This *could* be
+ * pulled into a platform dependent routine for fancier graphics if desired.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function shieldeff(x, y) {   // display.c:1110
     let i = 0;
     if (!flags.sparkle) {
         return;
     }
     if (cansee(x, y)) {
+        /* Don't see anything if can't see the location */
         for (i = 0; i < SHIELD_COUNT; i = i + 1 | 0) {
             await show_glyph(x, y, shield_static[i] === S.stone ? GLYPH.CMAP_STONE_OFF : shield_static[i] <= S.trwall ? (shield_static[i] - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : shield_static[i] < S.altar ? (shield_static[i] - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : shield_static[i] === S.altar ? 4008 : shield_static[i] < S.arrow_trap + MAXTCHARS ? (shield_static[i] - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : shield_static[i] <= S.goodpos ? (shield_static[i] - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH);
-            await flush_screen(1);
+            await flush_screen(1);   /* make sure the glyph shows up */
             await nh_delay_output()();
         }
-        await newsym(x, y);
+        await newsym(x, y);   /* restore the old information */
     }
 }
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<number>} int
+ */
 async function tether_glyph(x, y) {   // display.c:1127
     let tdx = 0, tdy = 0;
     tdx = u.ux - x | 0;
     tdy = u.uy - y | 0;
     return await zapdir_to_glyph(sgn(tdx), sgn(tdy), 2);
 }
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function tmp_at(x, y) {   // display.c:1174
     let tmp = null, i = 0, i$2 = 0, px = 0, py = 0;
     switch (x) {
@@ -657,6 +1319,7 @@ export async function tmp_at(x, y) {   // display.c:1174
             if (!tmp_at$tglyph) {
                 tmp = tgfirst;
             } else {
+                /* nested effect; we need dynamic memory */
                 tmp = $c.asRec(await alloc(664), $T.tmp_glyph, 664);
             }
             tmp.prev = tmp_at$tglyph;
@@ -664,9 +1327,10 @@ export async function tmp_at(x, y) {   // display.c:1174
             tmp_at$tglyph.sidx = 0;
             tmp_at$tglyph.style = x;
             tmp_at$tglyph.glyph = y;
-            await flush_screen(0);
+            await flush_screen(0);   /* flush buffered glyphs */
             return;
         case DISP_FREEMEM:
+            /* in case game ends with tmp_at() in progress */
             while (tmp_at$tglyph) {
                 tmp = tmp_at$tglyph.prev;
                 if (!$c.peq(tmp_at$tglyph, tgfirst)) {
@@ -687,15 +1351,17 @@ export async function tmp_at(x, y) {   // display.c:1174
                 break;
             case DISP_END:
                 if (tmp_at$tglyph.style === DISP_BEAM || tmp_at$tglyph.style === DISP_ALL) {
+                    /* Erase (reset) from source to end */
                     for (i = 0; i < tmp_at$tglyph.sidx; i = i + 1 | 0) {
                         await newsym(tmp_at$tglyph.saved[i].x, tmp_at$tglyph.saved[i].y);
                     }
                 } else if (tmp_at$tglyph.style === DISP_TETHER) {
                     if (y === BACKTRACK && tmp_at$tglyph.sidx > 1) {
+                        /* backtrack */
                         for (i$2 = tmp_at$tglyph.sidx - 1 | 0; i$2 > 0; i$2 = i$2 - 1 | 0) {
                             await newsym(tmp_at$tglyph.saved[i$2].x, tmp_at$tglyph.saved[i$2].y);
                             await show_glyph(tmp_at$tglyph.saved[i$2 - 1 | 0].x, tmp_at$tglyph.saved[i$2 - 1 | 0].y, tmp_at$tglyph.glyph);
-                            await flush_screen(0);
+                            await flush_screen(0);   /* make sure it shows up */
                             await nh_delay_output()();
                         }
                         tmp_at$tglyph.sidx = 1;
@@ -704,10 +1370,12 @@ export async function tmp_at(x, y) {   // display.c:1174
                         await newsym(tmp_at$tglyph.saved[i$2].x, tmp_at$tglyph.saved[i$2].y);
                     }
                 } else {
-                    if (tmp_at$tglyph.sidx) {
+                    /* DISP_FLASH or DISP_ALWAYS */
+                    if (tmp_at$tglyph.sidx) {   /* been called at least once */
                         await newsym(tmp_at$tglyph.saved[0].x, tmp_at$tglyph.saved[0].y);
                     }
                 }
+                /* tglyph->sidx = 0; -- about to be freed, so not necessary */
                 tmp = tmp_at$tglyph.prev;
                 if (!$c.peq(tmp_at$tglyph, tgfirst)) {
                     $c.free(tmp_at$tglyph);
@@ -715,6 +1383,7 @@ export async function tmp_at(x, y) {   // display.c:1174
                 tmp_at$tglyph = tmp;
                 break;
             default:
+                /* do it */
                 if (!isok(x, y)) {
                     break;
                 }
@@ -723,27 +1392,31 @@ export async function tmp_at(x, y) {   // display.c:1174
                         break;
                     }
                     if (tmp_at$tglyph.sidx >= TMP_AT_MAX_GLYPHS) {
-                        break;
+                        break;   /* too many locations */
                     }
+                    /* save pos for later erasing */
                     tmp_at$tglyph.saved[tmp_at$tglyph.sidx].x = x;
                     tmp_at$tglyph.saved[tmp_at$tglyph.sidx].y = y;
                     tmp_at$tglyph.sidx = tmp_at$tglyph.sidx + 1 | 0;
                 } else if (tmp_at$tglyph.style === DISP_TETHER) {
                     if (tmp_at$tglyph.sidx >= TMP_AT_MAX_GLYPHS) {
-                        break;
+                        break;   /* too many locations */
                     }
                     if (tmp_at$tglyph.sidx) {
                         px = tmp_at$tglyph.saved[tmp_at$tglyph.sidx - 1 | 0].x;
                         py = tmp_at$tglyph.saved[tmp_at$tglyph.sidx - 1 | 0].y;
                         await show_glyph($c.i16(px), $c.i16(py), await tether_glyph($c.i16(px), $c.i16(py)));
                     }
+                    /* save pos for later use or erasure */
                     tmp_at$tglyph.saved[tmp_at$tglyph.sidx].x = x;
                     tmp_at$tglyph.saved[tmp_at$tglyph.sidx].y = y;
                     tmp_at$tglyph.sidx = tmp_at$tglyph.sidx + 1 | 0;
                 } else {
+                    /* DISP_FLASH/ALWAYS */
                     if (tmp_at$tglyph.sidx) {
+                        /* not first call, so reset previous pos */
                         await newsym(tmp_at$tglyph.saved[0].x, tmp_at$tglyph.saved[0].y);
-                        tmp_at$tglyph.sidx = 0;
+                        tmp_at$tglyph.sidx = 0;   /* display is presently up to date */
                     }
                     if (!cansee(x, y) && tmp_at$tglyph.style !== DISP_ALWAYS) {
                         break;
@@ -752,29 +1425,59 @@ export async function tmp_at(x, y) {   // display.c:1174
                     tmp_at$tglyph.saved[0].y = y;
                     tmp_at$tglyph.sidx = 1;
                 }
-                await show_glyph(x, y, tmp_at$tglyph.glyph);
-                await flush_screen(0);
+                await show_glyph(x, y, tmp_at$tglyph.glyph);   /* show it */
+                await flush_screen(0);   /* make sure it shows up */
                 break;
-        }
+        }   /* end switch */
     }
 }
+/*
+ * flash_glyph_at(x, y, glyph, repeatcount)
+ *
+ * Briefly flash between the passed glyph and the glyph that's
+ * meant to be at the location.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} tg int
+ * @param {number} rpt int
+ * @returns {Promise<void>}
+ */
 export async function flash_glyph_at(x, y, tg, rpt) {   // display.c:1305
     let i = 0, glyph = new Int32Array(2), $t1;
-    rpt = Math.imul(rpt, 2);
+    rpt = Math.imul(rpt, 2);   /* two loop iterations per 'count' */
     glyph[0] = tg;
     $t1 = svl.level.flags.hero_memory | 0 ? svl.level.locations[x][y].glyph : await back_to_glyph(x, y), glyph[1] = $t1;
+    /* even iteration count (guaranteed) ends with glyph[1] showing;
+       caller might want to override that, but no newsym() calls here
+       in case caller has tinkered with location visibility */
     for (i = 0; i < rpt; i = i + 1 | 0) {
         await show_glyph(x, y, glyph[$c.rem32(i, 2)]);
         await flush_screen(1);
         await nh_delay_output()();
     }
 }
+/*
+ * swallowed()
+ *
+ * The hero is swallowed.  Show a special graphics sequence for this.  This
+ * bypasses all of the display routines and messes with buffered screen
+ * directly.  This method works because both vision and display check for
+ * being swallowed.
+ */
+/**
+ * @param {number} first int
+ * @returns {Promise<void>}
+ */
 export async function swallowed(first) {   // display.c:1332
     let swallower = 0, left_ok = 0, rght_ok = 0, x = 0, y = 0;
+    /* last swallowed position */
     if (first) {
         await cls();
         await bot();
     } else {
+        /* Clear old location */
         for (y = $c.i16(swallowed$lasty - 1 | 0); y <= (swallowed$lasty + 1 | 0); y = $c.i16(y + 1)) {
             for (x = $c.i16(swallowed$lastx - 1 | 0); x <= (swallowed$lastx + 1 | 0); x = $c.i16(x + 1)) {
                 if (isok(x, y)) {
@@ -784,8 +1487,12 @@ export async function swallowed(first) {   // display.c:1332
         }
     }
     swallower = u.ustuck.data.pmidx;
+    /* assume isok(u.ux,u.uy) */
     left_ok = isok($c.i16(u.ux - 1 | 0), u.uy);
     rght_ok = isok($c.i16(u.ux + 1 | 0), u.uy);
+    /*
+     *  Display the hero surrounded by the monster's stomach.
+     */
     if (isok(u.ux, $c.i16(u.uy - 1 | 0))) {
         if (left_ok) {
             await show_glyph($c.i16(u.ux - 1 | 0), $c.i16(u.uy - 1 | 0), await swallow_to_glyph(swallower, S.sw_tl));
@@ -811,20 +1518,35 @@ export async function swallowed(first) {   // display.c:1332
             await show_glyph($c.i16(u.ux + 1 | 0), $c.i16(u.uy + 1 | 0), await swallow_to_glyph(swallower, S.sw_br));
         }
     }
+    /* Update the swallowed position. */
     swallowed$lastx = u.ux;
     swallowed$lasty = u.uy;
 }
+/*
+ * under_water()
+ *
+ * Similar to swallowed() in operation.  Shows hero when underwater
+ * except when in water level.  Special routines exist for that.
+ */
+/**
+ * @param {number} mode int
+ * @returns {Promise<void>}
+ */
 export async function under_water(mode) {   // display.c:1395
     let x = 0, y = 0;
+    /* swallowing has a higher precedence than under water */
     if ((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) || u.uswallow | 0) {
         return;
     }
+    /* full update */
     if (mode === 1 || under_water$dela) {
         await cls();
         under_water$dela = FALSE;
+        /* delayed full update */
     } else if (mode === 2) {
         under_water$dela = TRUE;
         return;
+        /* limited update */
     } else {
         for (y = $c.i16(under_water$lasty - 1 | 0); y <= (under_water$lasty + 1 | 0); y = $c.i16(y + 1)) {
             for (x = $c.i16(under_water$lastx - 1 | 0); x <= (under_water$lastx + 1 | 0); x = $c.i16(x + 1)) {
@@ -834,6 +1556,9 @@ export async function under_water(mode) {   // display.c:1395
             }
         }
     }
+    /*
+     * TODO?  Should this honor Xray radius rather than force radius 1?
+     */
     for (x = $c.i16(u.ux - 1 | 0); x <= (u.ux + 1 | 0); x = $c.i16(x + 1)) {
         for (y = $c.i16(u.uy - 1 | 0); y <= (u.uy + 1 | 0); y = $c.i16(y + 1)) {
             if (isok(x, y) && (is_pool_or_lava(x, y) || is_ice(x, y))) {
@@ -848,32 +1573,69 @@ export async function under_water(mode) {   // display.c:1395
     under_water$lastx = u.ux;
     under_water$lasty = u.uy;
 }
+/*
+ *      under_ground()
+ *
+ *      Very restricted display.  You can only see yourself.
+ */
+/**
+ * @param {number} mode int
+ * @returns {Promise<void>}
+ */
 export async function under_ground(mode) {   // display.c:1445
+    /* swallowing has a higher precedence than under ground */
     if (u.uswallow) {
         return;
     }
+    /* full update */
     if (mode === 1 || under_ground$dela) {
         await cls();
         under_ground$dela = FALSE;
+        /* delayed full update */
     } else if (mode === 2) {
         under_ground$dela = TRUE;
         return;
+        /* limited update */
     } else {
         await newsym(u.ux, u.uy);
     }
 }
+/* ======================================================================== */
+/*
+ * Loop through all of the monsters and update them.  Called when:
+ *      + going blind & telepathic
+ *      + regaining sight & telepathic
+ *      + getting and losing infravision
+ *      + hallucinating
+ *      + doing a full screen redraw
+ *      + see invisible times out or a ring of see invisible is taken off
+ *        or intrinsic see invisible is stolen by a gremlin
+ *      + when a potion of see invisible is quaffed or a ring of see
+ *        invisible is put on
+ *      + gaining telepathy when blind [givit() in eat.c, pleased() in pray.c]
+ *      + losing telepathy while blind [xkilled() in mon.c, attrcurse() in
+ *        sit.c]
+ */
+/**
+ * @returns {Promise<void>}
+ */
 export async function see_monsters() {   // display.c:1487
     let mon = null, new_warn_obj_cnt = 0;
     new_warn_obj_cnt = 0;
     if (gd.defer_see_monsters) {
         return;
     }
+    /* steed and unseen engulfer/holder/holdee are recognized via touch
+       even if they aren't going to be rendered; other monsters
+       may get flagged as having been seen by display_monster() if it's
+       called by newsym() */
     if (u.usteed) {
         u.usteed.meverseen = (1) & 1;
     }
     if (u.ustuck) {
         u.ustuck.meverseen = (1) & 1;
     }
+    /* loop through level.monsters (aka fmon) */
     for (mon = svl.level.monlist; mon; mon = mon.nmon) {
         if (DEADMONSTER(mon)) {
             continue;
@@ -889,14 +1651,21 @@ export async function see_monsters() {   // display.c:1487
             new_warn_obj_cnt = new_warn_obj_cnt + 1 | 0;
         }
     }
+    /*
+     * Make Sting glow blue or stop glowing if required.
+     */
     if (new_warn_obj_cnt !== gw.warn_obj_cnt) {
         await Sting_effects(new_warn_obj_cnt);
         gw.warn_obj_cnt = new_warn_obj_cnt;
     }
+    /* when mounted, hero's location gets caught by monster loop */
     if (!u.usteed) {
         await newsym(u.ux, u.uy);
     }
 }
+/**
+ * @param {$T.monst | null} mtmp struct monst *
+ */
 function mimic_light_blocking(mtmp) {   // display.c:1532
     if (mtmp.minvis | 0 && ((mtmp.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT && mtmp.mappearance === BOULDER || (mtmp.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE && (mtmp.mappearance === S.hcdoor || mtmp.mappearance === S.vcdoor || mtmp.mappearance < S.ndoor || mtmp.mappearance === S.tree))) {
         if (See_invisible()) {
@@ -906,9 +1675,24 @@ function mimic_light_blocking(mtmp) {   // display.c:1532
         }
     }
 }
+/*
+ * Block/unblock light depending on what a mimic is mimicking and if it's
+ * invisible or not.  Should be called only when the state of See_invisible
+ * changes.
+ */
+/**
+ * @returns {Promise<void>}
+ */
 export async function set_mimic_blocking() {   // display.c:1548
     await iter_mons(mimic_light_blocking);
 }
+/*
+ * Loop through all of the object *locations* and update them.  Called when
+ *      + hallucinating.
+ */
+/**
+ * @returns {Promise<void>}
+ */
 export async function see_objects() {   // display.c:1558
     let obj = null;
     for (obj = svl.level.objlist; obj; obj = obj.nobj) {
@@ -916,26 +1700,42 @@ export async function see_objects() {   // display.c:1558
             await newsym(obj.ox, obj.oy);
         }
     }
+    /* Qt's "paper doll" subset of persistent inventory shows map tiles
+       for objects which aren't on the floor so not handled by above loop;
+       inventory which includes glyphs should also be affected, so do this
+       for all interfaces in case any feature that for persistent inventory */
     await update_inventory();
 }
+/* mark the top object of nearby stacks as having been seen, and if
+   that object was being displayed as generic, redisplay it as specific */
+/**
+ * @returns {Promise<void>}
+ */
 export async function see_nearby_objects() {   // display.c:1576
     let obj = null, glyph = 0, ix = 0, iy = 0, x = 0, y = 0, r = 0, neardist = 0;
     x = u.ux;
     y = u.uy;
+    /* these 'r' and 'neardist' calculations match distant_name(objnam.c) */
+    /* neardist produces a small square with rounded corners */
     r = u.xray_range > 2 ? u.xray_range : 2;
-    neardist = Math.imul(Math.imul(r, r), 2) - r | 0;
+    neardist = Math.imul(Math.imul(r, r), 2) - r | 0;   /* same as r*r + r*(r-1) */
+    /* [note: this could be optimized to avoid the distu() calculations] */
     for (iy = $c.i16(y - r | 0); iy <= (y + r | 0); iy = $c.i16(iy + 1)) {
         for (ix = $c.i16(x - r | 0); ix <= (x + r | 0); ix = $c.i16(ix + 1)) {
             if (!isok(ix, iy)) {
                 continue;
             }
+            /* skip if no object or the object has already been marked as
+               having been seen up close */
             if ((obj = svl.level.objects[ix][iy]) === null || obj.dknown | 0) {
                 continue;
             }
+            /* skip if the spot can't be seen or is too far (diagonal) */
             if (!cansee(ix, iy) || distu(ix, iy) > neardist) {
                 continue;
             }
             await observe_object(obj);
+            /* operate on remembered glyph rather than current one */
             glyph = svl.level.locations[ix][iy].glyph;
             if (glyph_is_generic_object(glyph)) {
                 await newsym_force(ix, iy);
@@ -943,6 +1743,12 @@ export async function see_nearby_objects() {   // display.c:1576
         }
     }
 }
+/*
+ * Update hallucinated traps.
+ */
+/**
+ * @returns {Promise<void>}
+ */
 export async function see_traps() {   // display.c:1611
     let trap = null, glyph = 0;
     for (trap = gf.ftrap; trap; trap = trap.ntrap) {
@@ -952,23 +1758,42 @@ export async function see_traps() {   // display.c:1611
         }
     }
 }
+/*
+ * Put the cursor on the hero.  Flush all accumulated glyphs before doing it.
+ */
+/**
+ * @returns {Promise<void>}
+ */
 export async function curs_on_u() {   // display.c:1687
-    await flush_screen(1);
+    await flush_screen(1);   /* Flush waiting glyphs & put cursor on hero */
 }
+/* the #redraw command */
+/**
+ * @returns {Promise<number>} int
+ */
 export async function doredraw() {   // display.c:1694
     await docrt();
     return ECMD.OK;
 }
+/* the main refresh-the-screen routine */
+/**
+ * @returns {Promise<void>}
+ */
 export async function docrt() {   // display.c:1702
     await docrt_flags(docrtRecalc);
 }
+/* docrt() with finer control */
+/**
+ * @param {number} refresh_flags int
+ * @returns {Promise<void>}
+ */
 export async function docrt_flags(refresh_flags) {   // display.c:1709
     let x = 0, y = 0, lev = null, maponly = 0, redrawonly = 0, nocls = 0;
     maponly = $c.i8((refresh_flags & docrtMapOnly) !== 0 ? 1 : 0);
     redrawonly = $c.i8((refresh_flags & docrtRefresh) !== 0 ? 1 : 0);
     nocls = $c.i8((refresh_flags & docrtNocls) !== 0 ? 1 : 0);
     if (!u.ux || program_state.in_docrt) {
-        return;
+        return;   /* display isn't ready yet */
     }
     program_state.in_docrt = TRUE;
     post_map$: {
@@ -985,37 +1810,69 @@ export async function docrt_flags(refresh_flags) {   // display.c:1709
             break post_map$;
         }
         if (u.uburied) {
+            /* [not implemented] */
             await under_ground(1);
             break post_map$;
         }
+        /* shut down vision */
         await vision_recalc(2);
+        /*
+         * This routine assumes that cls() does the following:
+         *      + fills the physical screen with the symbol for rock
+         *      + clears the glyph buffer
+         */
         if (!nocls) {
             await cls();
         }
+        /* display memory */
         for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
             lev = $c.relem(svl.level.locations[x], 0);
             for (y = 0; y < ROWNO; y = $c.i16(y + 1), lev = $c.radd(lev, 1)) {
                 await show_glyph(x, y, lev.glyph);
             }
         }
+        /* see what is to be seen */
         await vision_recalc(0);
+        /* overlay with monsters */
         await see_monsters();
     }
     if (!maponly) {
+        /* perm_invent */
         await update_inventory();
-        disp.botlx = TRUE;
+        /* status */
+        disp.botlx = TRUE;   /* force a redraw of the bottom lines */
+        /* note: caller needs to call bot() to actually redraw status */
     }
     program_state.in_docrt = FALSE;
 }
+/* for panning beyond a clipped region; resend the current map data to
+   the interface rather than use docrt()'s regeneration of that data */
+/**
+ * @param {number} cursor_on_u boolean
+ * @returns {Promise<void>}
+ */
 export async function redraw_map(cursor_on_u) {   // display.c:1778
     let x = 0, y = 0, glyph = 0, bkglyphinfo = new $T.glyphinfo();
     bkglyphinfo.$copyFrom(nul_glyphinfo);
+    /*
+     * Not sure whether this is actually necessary; save and restore did
+     * used to get much too involved with each dungeon level as it was
+     * read and written.
+     *
+     * !u.ux: display isn't ready yet; (restoring || !on_level()): was part
+     * of cliparound() but interface shouldn't access this much internals
+     */
     if (!u.ux || suppress_map_output() || !on_level(u.uz0, u.uz)) {
         return;
     }
+    /*
+     * This yields sensible clipping when #terrain+getpos is in
+     * progress and the screen displays something other than what
+     * the map would currently be showing.
+     */
     for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
         for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
-            glyph = gg.gbuf[y][x].glyphinfo.glyph;
+            glyph = gg.gbuf[y][x].glyphinfo.glyph;   /* not levl[x][y].glyph */
             await get_bkglyph_and_framecolor(x, y, new $c.FieldRef(bkglyphinfo, "glyph", "i32"), new $c.FieldRef(bkglyphinfo, "framecolor", "u32"));
             await print_glyph()($G.WIN_MAP, x, y, x < 0 || y < 0 || x >= COLNO || y >= ROWNO ? no_ginfo : gg.gbuf[y][x].glyphinfo, bkglyphinfo);
         }
@@ -1023,6 +1880,9 @@ export async function redraw_map(cursor_on_u) {   // display.c:1778
     await flush_screen(cursor_on_u);
     nhUse(glyph);
 }
+/*
+ * =======================================================
+ */
 export function reglyph_darkroom() {   // display.c:1818
     let x = 0, y = 0, lev = null, $t1, $t2, $t3, $t4, $t5;
     for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
@@ -1056,6 +1916,16 @@ export function reglyph_darkroom() {   // display.c:1818
         gs.showsyms[S.darkroom] = gs.showsyms[SYM.NOTHING + SYM_OFF_X];
     }
 }
+/* ======================================================================== */
+/* Glyph Buffering (3rd screen) =========================================== */
+/* FIXME: This is a dirty hack, because newsym() doesn't distinguish
+ * between object piles and single objects, it doesn't mark the location
+ * for update. */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function newsym_force(x, y) {   // display.c:1863
     await newsym(x, y);
     gg.gbuf[y][x].gnew = 1;
@@ -1066,19 +1936,40 @@ export async function newsym_force(x, y) {   // display.c:1863
         gg.gbuf_stop[y] = x;
     }
 }
+/*
+ * Store the glyph in the 3rd screen for later flushing.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} glyph int
+ * @returns {Promise<void>}
+ */
 export async function show_glyph(x, y, glyph) {   // display.c:1877
     let glyphinfo = new $T.glyphinfo(), show_glyph_change = 0, oldglyph = 0, text = null, offset = 0, c = 0, buf = new Int8Array(256), cc = new $T.nhcoord(), sym = 0, firstmatch = [null], tmp_accessiblemsg = 0;
     show_glyph_change = FALSE;
+    /* don't process map glyphs when saving, restoring, or in_mklev */
     if (_suppress_map_output()) {
         return;
     }
+    //if (glyph == 3972 || glyph == 3988)
+    //    __debugbreak();
+    /*
+     * Check for bad positions and glyphs.
+     */
     if (!isok(x, y)) {
         text = $c.lit("");
         offset = -1;
+        /* column 0 is invalid, but it's often used as a flag, so ignore it */
         if (x === 0) {
             return;
         }
+        /*
+         *  This assumes an ordering of the offsets.  See display.h for
+         *  the definition.
+         */
         if (glyph < 0 || glyph >= MAX_GLYPH) {
+            /* invalid location and also invalid glyph */
             text = $c.lit("invalid");
         } else if ((offset = glyph - GLYPH.NOTHING_OFF | 0) >= 0) {
             text = $c.lit("nothing");
@@ -1097,6 +1988,7 @@ export async function show_glyph(x, y, glyph) {   // display.c:1877
         } else if ((offset = glyph - GLYPH.STATUE_MALE_OFF | 0) >= 0) {
             text = $c.lit("statue of male monster");
         } else if ((offset = glyph - GLYPH.WARNING_OFF | 0) >= 0) {
+            /* warn flash */
             text = $c.lit("warning explosion");
         } else if ((offset = glyph - GLYPH.EXPLODE_FROSTY_OFF | 0) >= 0) {
             text = $c.lit("frosty explosion");
@@ -1162,20 +2054,31 @@ export async function show_glyph(x, y, glyph) {   // display.c:1877
         await impossible($c.lit("show_glyph:  bad pos <%d,%d> with glyph %d [%s %d]."), x, y, glyph, text, offset);
         return;
     } else if (glyph < 0 || glyph >= MAX_GLYPH) {
+        /* valid location but invalid glyph */
         await impossible($c.lit("show_glyph:  bad glyph %d [max %d] at <%d,%d>."), glyph, MAX_GLYPH, x, y);
         return;
     }
+    /* without UNBUFFERED_GLYPHINFO defined the glyphinfo values are buffered
+       alongside the glyphs themselves for better performance, increased
+       buffer size */
     map_glyphinfo(x, y, glyph, 0, glyphinfo);
     oldglyph = gg.gbuf[y][x].glyphinfo.glyph;
     if (a11y.glyph_updates && !a11y.mon_notices_blocked && !program_state.in_docrt && !program_state.gameover && !program_state.in_getlev && !program_state.stopprint && !_suppress_map_output() && (oldglyph !== glyph || gg.gbuf[y][x].gnew)) {
         c = glyph_to_cmap(glyph);
         if ((glyph_is_nothing(oldglyph) || glyph_is_unexplored(oldglyph) || is_cmap_furniture(c)) && !is_cmap_wall(c) && !is_cmap_room(c)) {
             if (a11y.mon_notices && glyph_is_monster(glyph) || (oldglyph >= GLYPH.MON_MALE_OFF && oldglyph < GLYPH.MON_MALE_OFF + NUMMONS || oldglyph >= GLYPH.MON_FEM_OFF && oldglyph < GLYPH.MON_FEM_OFF + NUMMONS || (oldglyph >= GLYPH.PET_MALE_OFF && oldglyph < GLYPH.PET_MALE_OFF + NUMMONS || oldglyph >= GLYPH.PET_FEM_OFF && oldglyph < GLYPH.PET_FEM_OFF + NUMMONS) || (oldglyph >= GLYPH.RIDDEN_MALE_OFF && oldglyph < GLYPH.RIDDEN_MALE_OFF + NUMMONS || oldglyph >= GLYPH.RIDDEN_FEM_OFF && oldglyph < GLYPH.RIDDEN_FEM_OFF + NUMMONS) || (oldglyph >= GLYPH.DETECT_MALE_OFF && oldglyph < GLYPH.DETECT_MALE_OFF + NUMMONS || oldglyph >= GLYPH.DETECT_FEM_OFF && oldglyph < GLYPH.DETECT_FEM_OFF + NUMMONS)) || u_at(x, y)) {
+                /* nothing */
             } else {
                 show_glyph_change = TRUE;
             }
         }
     }
+    /* flags might change (single object vs pile, monster tamed or pet
+       gone feral), color might change (altar's alignment converted by
+       invisible hero), but ttychar normally won't change unless the
+       glyph does too (changing boulder symbol would be an exception,
+       but that triggers full redraw so doesn't matter here); still,
+       be thorough and check everything */
     if (gg.gbuf[y][x].glyphinfo.glyph !== glyph || gg.gbuf[y][x].glyphinfo.ttychar !== glyphinfo.ttychar || gg.gbuf[y][x].glyphinfo.gm.customcolor !== glyphinfo.gm.customcolor || gg.gbuf[y][x].glyphinfo.gm.glyphflags !== glyphinfo.gm.glyphflags || gg.gbuf[y][x].glyphinfo.gm.sym.color !== glyphinfo.gm.sym.color || gg.gbuf[y][x].glyphinfo.gm.tileidx !== glyphinfo.gm.tileidx || iflags.use_background_glyph) {
         gg.gbuf[y][x].glyphinfo.glyph = glyph;
         gg.gbuf[y][x].gnew = 1;
@@ -1200,6 +2103,9 @@ export async function show_glyph(x, y, glyph) {   // display.c:1877
         a11y.accessiblemsg = tmp_accessiblemsg;
     }
 }
+/*
+ * Turn the 3rd screen into UNEXPLORED that needs to be refreshed.
+ */
 export function clear_glyph_buffer() {   // display.c:2107
     let x = 0, y = 0, gptr = null, giptr = null, $t1;
     gptr = $c.relem(gg.gbuf[0], 0);
@@ -1214,6 +2120,14 @@ export function clear_glyph_buffer() {   // display.c:2107
         gg.gbuf_stop[y] = COLNO - 1;
     }
 }
+/* used by tty after menu or text popup has temporarily overwritten the map
+   and it has been erased so shows spaces, not necessarily S_unexplored */
+/**
+ * @param {number} start coordxy
+ * @param {number} stop coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<void>}
+ */
 export async function row_refresh(start, stop, y) {   // display.c:2147
     let x = 0, glyph = 0, force = 0, gptr = null, bkglyphinfo = new $T.glyphinfo(), giptr = null;
     gptr = $c.relem(gg.gbuf[0], 0);
@@ -1229,20 +2143,34 @@ export async function row_refresh(start, stop, y) {   // display.c:2147
         }
     }
 }
+/**
+ * @returns {Promise<void>}
+ */
 export async function cls() {   // display.c:2189
     if (cls$in_cls) {
         return;
     }
     cls$in_cls = TRUE;
-    await display_nhwindow()($G.WIN_MESSAGE, FALSE);
-    disp.botlx = TRUE;
-    await clear_nhwindow()($G.WIN_MAP);
-    clear_glyph_buffer();
+    await display_nhwindow()($G.WIN_MESSAGE, FALSE);   /* flush messages */
+    disp.botlx = TRUE;   /* force update of botl window */
+    await clear_nhwindow()($G.WIN_MAP);   /* clear physical screen */
+    clear_glyph_buffer();   /* force gbuf[][].glyph to unexplored */
     cls$in_cls = FALSE;
 }
+/*
+ * Synch the third screen with the display.
+ */
+/**
+ * @param {number} cursor_on_u int
+ * @returns {Promise<void>}
+ */
 export async function flush_screen(cursor_on_u) {   // display.c:2208
     let x = 0, y = 0, bkglyphinfo = new $T.glyphinfo(), bkglyph = Int32Array.of(0), gptr = null, i = 0;
+    /* Prevent infinite loops on errors:
+     *      flush_screen->print_glyph->impossible->pline->flush_screen
+     */
     bkglyphinfo.$copyFrom(nul_glyphinfo);
+    /* 5.0: don't update map, status, or perm_invent during save/restore */
     if (_suppress_map_output()) {
         return;
     }
@@ -1253,12 +2181,13 @@ export async function flush_screen(cursor_on_u) {   // display.c:2208
         return;
     }
     if (flush_screen$flushing) {
-        return;
+        return;   /* if already flushing then return */
     }
     flush_screen$flushing = 1;
     if (program_state.done_hup) {
         return;
     }
+    /* get this done now, before we place the cursor on the hero */
     if (disp.botl || disp.botlx) {
         await bot();
     } else if (disp.time_botl) {
@@ -1269,6 +2198,7 @@ export async function flush_screen(cursor_on_u) {   // display.c:2208
         for (; x <= gg.gbuf_stop[y]; gptr = $c.radd(gptr, 1), x = $c.i16(x + 1)) {
             await get_bkglyph_and_framecolor(x, y, new $c.Ptr(bkglyph, 0), new $c.FieldRef(bkglyphinfo, "framecolor", "u32"));
             if (gptr.gnew || gw.wsettings.map_frame_color !== NO_COLOR && bkglyphinfo.framecolor !== NO_COLOR) {
+                /* map_glyphinfo() won't touch framecolor */
                 map_glyphinfo(x, y, bkglyph[0], 0, bkglyphinfo);
                 await print_glyph()($G.WIN_MAP, x, y, x < 0 || y < 0 || x >= COLNO || y >= ROWNO ? no_ginfo : gg.gbuf[y][x].glyphinfo, bkglyphinfo);
                 gptr.gnew = 0;
@@ -1281,12 +2211,34 @@ export async function flush_screen(cursor_on_u) {   // display.c:2208
             gg.gbuf_stop[i] = 0;
         }
     }
+    /* after map update, before display_nhwindow(WIN_MAP) */
     if (cursor_on_u) {
-        await curs()($G.WIN_MAP, u.ux, u.uy);
+        await curs()($G.WIN_MAP, u.ux, u.uy);   /* move cursor to the hero */
     }
     await display_nhwindow()($G.WIN_MAP, FALSE);
     flush_screen$flushing = 0;
 }
+/* ======================================================================== */
+/*
+ * back_to_glyph()
+ *
+ * Use the information in the rm structure at the given position to create
+ * a glyph of a background.
+ *
+ * I had to add a field in the rm structure (horizontal) so that we knew
+ * if open doors and secret doors were horizontal or vertical.  Previously,
+ * the screen symbol had the horizontal/vertical information set at
+ * level generation time.
+ *
+ * I used the 'ladder' field (really doormask) for deciding if stairwells
+ * were up or down.  I didn't want to check the upstairs and dnstairs
+ * variables.
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {Promise<number>} int
+ */
 export async function back_to_glyph(x, y) {   // display.c:2287
     let idx = 0, bypass_glyph = 0, ptr = null, sway = null;
     bypass_glyph = NO_GLYPH;
@@ -1318,6 +2270,7 @@ export async function back_to_glyph(x, y) {   // display.c:2287
         case TDWALL:
         case TLWALL:
         case TRWALL:
+            /*FALLTHRU*/
             idx = ptr.seenv ? await wall_angle(ptr) : S.stone;
             break;
         case DOOR:
@@ -1327,6 +2280,7 @@ export async function back_to_glyph(x, y) {   // display.c:2287
                 } else if ((ptr.flags | 0) & D.ISOPEN) {
                     idx = ptr.horizontal | 0 ? S.hodoor : S.vodoor;
                 } else {
+                    /* else is closed */
                     idx = ptr.horizontal | 0 ? S.hcdoor : S.vcdoor;
                 }
             } else {
@@ -1366,7 +2320,7 @@ export async function back_to_glyph(x, y) {   // display.c:2287
             idx = S.sink;
             break;
         case ALTAR:
-            idx = S.altar;
+            idx = S.altar;   /* not really used */
             bypass_glyph = ((ptr.flags | 0) & AM.SANCTUM) === AM.SANCTUM ? GLYPH.ALTAR_OFF + altar_other : ((ptr.flags | 0) & AM.MASK) === AM.LAWFUL ? GLYPH.ALTAR_OFF + altar_lawful : ((ptr.flags | 0) & AM.MASK) === AM.NEUTRAL ? GLYPH.ALTAR_OFF + altar_neutral : ((ptr.flags | 0) & AM.MASK) === AM.CHAOTIC ? GLYPH.ALTAR_OFF + altar_chaotic : GLYPH.ALTAR_OFF + altar_unaligned;
             break;
         case GRAVE:
@@ -1412,7 +2366,7 @@ export async function back_to_glyph(x, y) {   // display.c:2287
                     break;
                 default:
                     await impossible($c.lit("Strange db-under: %d"), (ptr.flags | 0) & DB.UNDER);
-                    idx = S.room;
+                    idx = S.room;   /* something is better than nothing */
                     break;
             }
             break;
@@ -1426,6 +2380,18 @@ export async function back_to_glyph(x, y) {   // display.c:2287
     }
     return bypass_glyph !== NO_GLYPH ? bypass_glyph : idx === S.stone ? GLYPH.CMAP_STONE_OFF : idx <= S.trwall ? (idx - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : idx < S.altar ? (idx - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : idx === S.altar ? 4008 : idx < S.arrow_trap + MAXTCHARS ? (idx - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : idx <= S.goodpos ? (idx - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
 }
+/*
+ * swallow_to_glyph()
+ *
+ * Convert a monster number and a swallow location into the correct glyph.
+ * If you don't want a patchwork monster while hallucinating, decide on
+ * a random monster in swallowed() and don't use what_mon() here.
+ */
+/**
+ * @param {number} mnum int
+ * @param {number} loc int
+ * @returns {Promise<number>} int
+ */
 async function swallow_to_glyph(mnum, loc) {   // display.c:2437
     let m_3 = 0;
     m_3 = (u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : mnum) << 3;
@@ -1435,6 +2401,24 @@ async function swallow_to_glyph(mnum, loc) {   // display.c:2437
     }
     return (m_3 | (loc - S.sw_tl | 0)) + GLYPH.SWALLOW_OFF | 0;
 }
+/*
+ * zapdir_to_glyph()
+ *
+ * Change the given zap direction and beam type into a glyph.  Each beam
+ * type has four glyphs, one for each of the symbols below.  The order of
+ * the zap symbols [0-3] as defined in defsym.h are:
+ *
+ *      |  S_vbeam      ( 0, 1) or ( 0,-1)
+ *      -  S_hbeam      ( 1, 0) or (-1, 0)
+ *      \  S_lslant     ( 1, 1) or (-1,-1)
+ *      /  S_rslant     (-1, 1) or ( 1,-1)
+ */
+/**
+ * @param {number} dx int
+ * @param {number} dy int
+ * @param {number} beam_type int
+ * @returns {Promise<number>} int
+ */
 export async function zapdir_to_glyph(dx, dy, beam_type) {   // display.c:2461
     if (beam_type >= NUM_ZAP) {
         await impossible($c.lit("zapdir_to_glyph:  illegal beam type"));
@@ -1443,12 +2427,41 @@ export async function zapdir_to_glyph(dx, dy, beam_type) {   // display.c:2461
     dx = dx === dy ? 2 : dx && dy ? 3 : dx ? 1 : 0;
     return (beam_type << 2 | dx) + GLYPH.ZAP_OFF | 0;
 }
+/*
+ * Utility routine for dowhatis() used to find out the glyph displayed at
+ * the location.  This isn't necessarily the same as the glyph in the levl
+ * structure, so we must check the "third screen".
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {number} int
+ */
 export function glyph_at(x, y) {   // display.c:2478
     if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO) {
-        return 3992;
+        return 3992;   /* XXX */
     }
-    return gg.gbuf[y][x].glyphinfo.glyph;
+    return gg.gbuf[y][x].glyphinfo.glyph;   /* _glyph_at(x,y) */
 }
+/* ginfo declared at file scope */
+/*
+ * Get the glyph for the background so that it can potentially
+ * be merged into graphical window ports to improve the appearance
+ * of stuff on dark room squares and the plane of air etc.
+ * [This should be using background as recorded for #overview rather
+ * than current data from the map.]
+ *
+ * Also get the frame color to use for highlighting the map location
+ * for some purpose.
+ *
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {*} bkglyph int *
+ * @param {*} framecolor uint32 *
+ * @returns {Promise<void>}
+ */
 async function get_bkglyph_and_framecolor(x, y, bkglyph, framecolor) {   // display.c:2507
     let idx = 0, tmp_bkglyph = 0, lev = null;
     tmp_bkglyph = GLYPH_UNEXPLORED;
@@ -1492,6 +2505,7 @@ async function get_bkglyph_and_framecolor(x, y, bkglyph, framecolor) {   // disp
                 break;
         }
         if (!cansee(x, y) && (!lev.waslit || flags.dark_room)) {
+            /* Floor spaces and corridors are dark if unlit. */
             if (lev.typ === CORR && idx === S.litcorr) {
                 idx = S.corr;
             } else if (idx === S.room) {
@@ -1503,24 +2517,57 @@ async function get_bkglyph_and_framecolor(x, y, bkglyph, framecolor) {   // disp
         }
     }
     bkglyph.set(0, tmp_bkglyph);
+    /* this guard should be unnecessary */
     if (iflags.bgcolors && gw.wsettings.map_frame_color !== NO_COLOR && await mapxy_valid(x, y)) {
         framecolor.set(0, gw.wsettings.map_frame_color);
     } else {
         framecolor.set(0, NO_COLOR);
     }
 }
+/* masks for per-level variances kept in gg.glyphmap_perlevel_flags */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} glyph int
+ * @param {number} mgflags unsigned int
+ * @param {$T.glyphinfo | null} glyphinfo glyph_info *
+ */
 export function map_glyphinfo(x, y, glyph, mgflags, glyphinfo) {   // display.c:2594
     let offset = 0, is_you = 0, gmap = null;
+    /* verify hero or steed (not something underneath
+       when hero is invisible without see invisible,
+       or a temporary display effect like an explosion);
+       this is only approximate, because hero might be
+       mimicking an object (after eating mimic corpse or
+       if polyd into mimic) or furniture (only if polyd) */
     is_you = $c.i8(u_at(x, y) && glyph_is_monster(glyph) ? 1 : 0);
     gmap = $c.relem(glyphmap, glyph);
-    glyphinfo.gm.$copyFrom(gmap);
+    glyphinfo.gm.$copyFrom(gmap);   /* glyphflags, sym.symidx, sym.color, tileidx */
+    /*
+     * Only hero tinkering permitted on-the-fly (who).
+     * Unique glyphs in glyphmap[] determine everything else (what).
+     *
+     * (Note: if hero is invisible without see invisible, he/she usually
+     * can't see himself/herself.  This applies to accessibility hacks
+     * as well as to regular display.)
+     */
     if (is_you) {
         if (!iflags.wc_color || Upolyd() || glyph !== ((u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0)) {
+            /* color tweak not needed (!use_color) or not wanted (poly'd
+               or riding--which uses steed's color, not hero's) */
         } else if (gc.currentgraphics === ROGUESET && gs.symset[gc.currentgraphics].handling === H_IBM && (gs.symset[gc.currentgraphics].nocolor | 0) === 0) {
+            /* actually player should be yellow-on-gray if in corridor */
             glyphinfo.gm.sym.color = CLR.YELLOW;
         } else if (flags.showrace) {
+            /* for showrace, non-human hero is displayed by the symbol of
+               corresponding type of monster rather than by '@' (handled
+               by newsym()); we change the color to same as human hero */
             glyphinfo.gm.sym.color = CLR.WHITE;
         }
+        /* accessibility
+          This unchanging display character for hero was requested by
+          a blind player to enhance screen reader use.
+          Turn on override symbol if caller hasn't specified NOOVERRIDE. */
         if (sysopt.accessibility === 1 && !((mgflags & MG.FLAG_NOOVERRIDE) >>> 0)) {
             offset = SYM.HERO_OVERRIDE + SYM_OFF_X;
             if ($c.and64(gg.glyphmap_perlevel_flags, GMAP_ROGUELEVEL) ? go.ov_rogue_syms[offset] : go.ov_primary_syms[offset]) {
@@ -1530,11 +2577,17 @@ export function map_glyphinfo(x, y, glyph, mgflags, glyphinfo) {   // display.c:
         glyphinfo.gm.glyphflags = (glyphinfo.gm.glyphflags | MG.HERO) >>> 0;
     }
     if (sysopt.accessibility === 1 && (mgflags & MG.FLAG_NOOVERRIDE) >>> 0 && glyph_is_pet(glyph)) {
+        /* one more accessibility kludge;
+           turn off override symbol if caller has specified NOOVERRIDE */
         glyphinfo.gm.sym.symidx = mons[glyph_to_mon(glyph)].mlet + SYM_OFF_M | 0;
     }
     glyphinfo.ttychar = gs.showsyms[glyphinfo.gm.sym.symidx];
     glyphinfo.glyph = glyph;
 }
+/**
+ * @param {number} cmap int
+ * @returns {number} int
+ */
 function cmap_to_roguecolor(cmap) {   // display.c:2699
     let color = 0;
     color = NO_COLOR;
@@ -1554,15 +2607,39 @@ function cmap_to_roguecolor(cmap) {   // display.c:2699
     }
     return color;
 }
+/*
+   reset_glyphmap(trigger)
+
+   The glyphmap likely needs to be re-calculated for the following triggers:
+
+   gm_levelchange    called when the player has gone to a new level.
+
+   gm_symchange      called if someone has interactively altered the symbols
+                     for the game, most likely at the options menu.
+
+   gm_optionchange   The game settings have been toggled and some of them
+                     are configured to trigger a reset_glyphmap()
+
+   gm_accessibility_change  One of the accessibility flags has changed.
+
+*/
+/**
+ * @param {number} trigger enum glyphmap_change_triggers
+ */
 export function reset_glyphmap(trigger) {   // display.c:2739
     let glyph = 0, offset = 0, color = 0, has_rogue_ibm_graphics = 0, has_rogue_color = 0, gmap = null, cmap = 0, sym = 0, spec_cmap = 0, sym$2 = 0, cmap$2 = 0, pet_override = 0;
     color = NO_COLOR;
+    /* condense multiple tests in macro version down to single */
     has_rogue_ibm_graphics = $c.i8(gc.currentgraphics === ROGUESET && gs.symset[gc.currentgraphics].handling === H_IBM ? 1 : 0);
     has_rogue_color = $c.i8(has_rogue_ibm_graphics && (gs.symset[gc.currentgraphics].nocolor | 0) === 0 ? 1 : 0);
     if (trigger === gm_levelchange) {
         gg.glyphmap_perlevel_flags = 0;
     }
     if (!gg.glyphmap_perlevel_flags) {
+        /*
+         *    GMAP_SET                0x00000001
+         *    GMAP_ROGUELEVEL         0x00000002
+         */
         gg.glyphmap_perlevel_flags = $c.or64(gg.glyphmap_perlevel_flags, GMAP_SET);
         if ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level)) {
             gg.glyphmap_perlevel_flags = $c.or64(gg.glyphmap_perlevel_flags, GMAP_ROGUELEVEL);
@@ -1571,6 +2648,12 @@ export function reset_glyphmap(trigger) {   // display.c:2739
     for (glyph = 0; glyph < MAX_GLYPH; glyph = glyph + 1 | 0) {
         gmap = $c.relem(glyphmap, glyph);
         gmap.glyphflags = 0;
+        /*
+         *  Map the glyph to a character and color.
+         *
+         *  Warning:  For speed, this makes an assumption on the order of
+         *            offsets.  The order is set in display.h.
+         */
         if ((offset = glyph - GLYPH.NOTHING_OFF | 0) >= 0) {
             gmap.sym.symidx = SYM.NOTHING + SYM_OFF_X;
             color = NO_COLOR;
@@ -1641,6 +2724,7 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             }
             gmap.glyphflags = (gmap.glyphflags | (MG.STATUE | MG.MALE)) >>> 0;
         } else if ((offset = glyph - GLYPH.WARNING_OFF | 0) >= 0) {
+            /* warn flash */
             gmap.sym.symidx = offset + SYM_OFF_W | 0;
             if (has_rogue_color) {
                 color = NO_COLOR;
@@ -1669,6 +2753,7 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             gmap.sym.symidx = (S.expl_tl + offset | 0) + SYM_OFF_P | 0;
             color = iflags.wc_color ? explodecolors[expl_dark] : NO_COLOR;
         } else if ((offset = glyph - GLYPH.SWALLOW_OFF | 0) >= 0) {
+            /* see swallow_to_glyph() in display.c */
             gmap.sym.symidx = (S.sw_tl + (offset & 7) | 0) + SYM_OFF_P | 0;
             if (has_rogue_color) {
                 color = NO_COLOR;
@@ -1683,6 +2768,7 @@ export function reset_glyphmap(trigger) {   // display.c:2739
                 color = iflags.wc_color ? defsyms[S.digbeam + offset | 0].color : NO_COLOR;
             }
         } else if ((offset = glyph - GLYPH.ZAP_OFF | 0) >= 0) {
+            /* see zapdir_to_glyph() in display.c */
             gmap.sym.symidx = (S.vbeam + (offset & 3) | 0) + SYM_OFF_P | 0;
             if (has_rogue_color) {
                 color = NO_COLOR;
@@ -1696,6 +2782,10 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             color = iflags.wc_color ? defsyms[cmap].color : NO_COLOR;
             if (!iflags.wc_color) {
                 spec_cmap = 0;
+                /* try to provide a visible difference between water and lava
+                   if they use the same symbol and color is disabled;
+                   similar for floor and ice, for fountain vs sink, and for
+                   corridor engravings (CMAP_A below) */
                 switch (cmap) {
                     case S.lava:
                     case S.lavawall:
@@ -1719,6 +2809,7 @@ export function reset_glyphmap(trigger) {   // display.c:2739
                 color = cmap_to_roguecolor(cmap);
             }
         } else if ((offset = glyph - GLYPH.ALTAR_OFF | 0) >= 0) {
+            /* unaligned, chaotic, neutral, lawful, other altar */
             gmap.sym.symidx = S.altar + SYM_OFF_P;
             if (has_rogue_color) {
                 color = cmap_to_roguecolor(S.altar);
@@ -1730,10 +2821,16 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             gmap.sym.symidx = cmap$2 + SYM_OFF_P | 0;
             color = iflags.wc_color ? defsyms[cmap$2].color : NO_COLOR;
             sym$2 = gs.showsyms[gmap.sym.symidx];
+            /*
+             *   Some specialty color mappings not hardcoded in data init
+             */
             if (has_rogue_color) {
                 color = cmap_to_roguecolor(cmap$2);
+                /* provide a visible difference if normal and lit corridor
+                   use the same symbol */
             } else if (cmap$2 === S.litcorr && sym$2 === gs.showsyms[S.corr + SYM_OFF_P]) {
                 color = CLR.WHITE;
+                /* likewise for corridor and engraving-in-corridor */
             } else if (cmap$2 === S.engrcorr && (sym$2 === gs.showsyms[S.corr + SYM_OFF_P] || sym$2 === gs.showsyms[S.litcorr + SYM_OFF_P])) {
                 gmap.glyphflags = (gmap.glyphflags | MG.BW_ENGR) >>> 0;
             }
@@ -1781,6 +2878,10 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             }
         } else if ((offset = glyph - GLYPH.RIDDEN_FEM_OFF | 0) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
+            /* This currently implies that the hero is here -- monsters */
+            /* don't ride (yet...).  Should we set it to yellow like in */
+            /* the monster case below?  There is no equivalent in rogue.
+             */
             if (has_rogue_color) {
                 color = NO_COLOR;
             } else {
@@ -1810,6 +2911,8 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             } else {
                 color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
+            /* Disabled for now; anyone want to get reverse video to work? */
+            /* is_reverse = TRUE; */
             gmap.glyphflags = (gmap.glyphflags | (MG.DETECT | MG.FEMALE)) >>> 0;
         } else if ((offset = glyph - GLYPH.DETECT_MALE_OFF | 0) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M | 0;
@@ -1818,6 +2921,8 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             } else {
                 color = iflags.wc_color ? mons[offset].mcolor : NO_COLOR;
             }
+            /* Disabled for now; anyone want to get reverse video to work? */
+            /* is_reverse = TRUE; */
             gmap.glyphflags = (gmap.glyphflags | (MG.DETECT | MG.MALE)) >>> 0;
         } else if ((offset = glyph - GLYPH.INVIS_OFF | 0) >= 0) {
             gmap.sym.symidx = SYM.INVISIBLE + SYM_OFF_X;
@@ -1860,12 +2965,16 @@ export function reset_glyphmap(trigger) {   // display.c:2739
             }
             gmap.glyphflags = (gmap.glyphflags | MG.MALE) >>> 0;
         }
+        /* This was requested by a blind player to enhance screen reader use
+         */
         if (sysopt.accessibility === 1 && (gmap.glyphflags & MG.PET) >>> 0 !== 0) {
             pet_override = $c.and64(gg.glyphmap_perlevel_flags, GMAP_ROGUELEVEL) ? go.ov_rogue_syms[SYM.PET_OVERRIDE + SYM_OFF_X] : go.ov_primary_syms[SYM.PET_OVERRIDE + SYM_OFF_X];
             if (gs.showsyms[pet_override] !== 32) {
                 gmap.sym.symidx = SYM.PET_OVERRIDE + SYM_OFF_X;
             }
         }
+        /* Turn off color if no color defined, or rogue level w/o PC graphics.
+         */
         if (!has_color(color) || $c.and64(gg.glyphmap_perlevel_flags, GMAP_ROGUELEVEL) && !has_rogue_color || !iflags.wc_color) {
             color = NO_COLOR;
         }
@@ -1873,19 +2982,51 @@ export function reset_glyphmap(trigger) {   // display.c:2739
     }
     gg.glyph_reset_timestamp = svm.moves;
 }
+/* ------------------------------------------------------------------------ */
+/* Wall Angle ------------------------------------------------------------- */
+/* count of positions flagged as bad */
+/* WA_VERBOSE */
+/*
+ * Return 'which' if position is implies an unfinished exterior.  Return
+ * zero otherwise.  Unfinished implies outer area is rock or a corridor.
+ *
+ * Things that are ambiguous: lava
+ */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} which int
+ * @returns {number} int
+ */
 function check_pos(x, y, which) {   // display.c:3130
     let type = 0;
     if (!isok(x, y)) {
         return which;
     }
     type = svl.level.locations[x][y].typ;
+    /* Everything below POOL, excluding TREE */
     if (IS_STWALL(type) || type === CORR || type === SCORR || IS_SDOOR(type)) {
         return which;
     }
     return 0;
 }
+/* Return TRUE if more than one is non-zero. */
+/*ARGSUSED*/
+/* Return the wall mode for a T wall. */
+/**
+ * @param {number} x0 coordxy
+ * @param {number} y0 coordxy
+ * @param {number} x1 coordxy
+ * @param {number} y1 coordxy
+ * @param {number} x2 coordxy
+ * @param {number} y2 coordxy
+ * @param {number} x3 coordxy
+ * @param {number} y3 coordxy
+ * @returns {number} int
+ */
 function set_twall(x0, y0, x1, y1, x2, y2, x3, y3) {   // display.c:3162
     let wmode = 0, is_1 = 0, is_2 = 0, is_3 = 0;
+    /* used #if WA_VERBOSE */
     is_1 = check_pos(x1, y1, WM.T_LONG);
     is_2 = check_pos(x2, y2, WM.T_BL);
     is_3 = check_pos(x3, y3, WM.T_BR);
@@ -1896,6 +3037,13 @@ function set_twall(x0, y0, x1, y1, x2, y2, x3, y3) {   // display.c:3162
     }
     return wmode;
 }
+/* Return wall mode for a horizontal or vertical wall. */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @param {number} horiz int
+ * @returns {number} int
+ */
 function set_wall(x, y, horiz) {   // display.c:3187
     let wmode = 0, is_1 = 0, is_2 = 0;
     if (horiz) {
@@ -1912,21 +3060,46 @@ function set_wall(x, y, horiz) {   // display.c:3187
     }
     return wmode;
 }
+/* Return a wall mode for a corner wall. (x4,y4) is the "inner" position. */
+/**
+ * @param {number} x1 coordxy
+ * @param {number} y1 coordxy
+ * @param {number} x2 coordxy
+ * @param {number} y2 coordxy
+ * @param {number} x3 coordxy
+ * @param {number} y3 coordxy
+ * @param {number} x4 coordxy
+ * @param {number} y4 coordxy
+ * @returns {number} int
+ */
 function set_corn(x1, y1, x2, y2, x3, y3, x4, y4) {   // display.c:3208
     let wmode = 0, is_1 = 0, is_2 = 0, is_3 = 0, is_4 = 0;
     is_1 = $c.i16(check_pos(x1, y1, 1));
     is_2 = $c.i16(check_pos(x2, y2, 1));
     is_3 = $c.i16(check_pos(x3, y3, 1));
-    is_4 = $c.i16(check_pos(x4, y4, 1));
+    is_4 = $c.i16(check_pos(x4, y4, 1));   /* inner location */
+    /*
+     * All 4 should not be true.  So if the inner location is rock,
+     * use it.  If all of the outer 3 are true, use outer.  We currently
+     * can't cover the case where only part of the outer is rock, so
+     * we just say that all the walls are finished (if not overridden
+     * by the inner section).
+     */
     if (is_4) {
         wmode = WM.C_INNER;
     } else if (is_1 && is_2 && is_3) {
         wmode = WM.C_OUTER;
     } else {
-        wmode = 0;
+        wmode = 0;   /* finished walls on all sides */
     }
     return wmode;
 }
+/* Return mode for a crosswall. */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ * @returns {number} int
+ */
 function set_crosswall(x, y) {   // display.c:3240
     let wmode = 0, is_1 = 0, is_2 = 0, is_3 = 0, is_4 = 0;
     is_1 = $c.i16(check_pos($c.i16(x - 1 | 0), $c.i16(y - 1 | 0), 1));
@@ -1953,6 +3126,12 @@ function set_crosswall(x, y) {   // display.c:3240
     }
     return wmode;
 }
+/* called for every <x,y> by set_wall_state() and for specific <x,y> during
+   vault wall repair */
+/**
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ */
 export function xy_set_wall_state(x, y) {   // display.c:3276
     let wmode = 0, lev = null;
     lev = $c.relem(svl.level.locations[x], y);
@@ -1994,13 +3173,14 @@ export function xy_set_wall_state(x, y) {   // display.c:3276
             wmode = $c.i16(set_crosswall(x, y));
             break;
         default:
-            wmode = -1;
+            wmode = -1;   /* don't set wall info */
             break;
     }
     if (wmode >= 0) {
         lev.flags = (((lev.flags | 0) & ~WM_MASK | wmode) >>> 0) & 31;
     }
 }
+/* Called from mklev.  Scan the level and set the wall modes. */
 export function set_wall_state() {   // display.c:3330
     let x = 0, y = 0;
     for (x = 0; x < COLNO; x = $c.i16(x + 1)) {
@@ -2008,21 +3188,55 @@ export function set_wall_state() {   // display.c:3330
             xy_set_wall_state(x, y);
         }
     }
+    /* check if any bad positions found */
+    /* only prcoordxy once */
+    /* WA_VERBOSE */
 }
+/* negative: -1, zero: 0, positive +1; same as sgn() function (hacklib.c) */
+/* Set the seen vector of lev as if seen from (x0,y0) to (x,y). */
+/**
+ * @param {$T.rm | null} lev struct rm *
+ * @param {number} x0 coordxy
+ * @param {number} y0 coordxy
+ * @param {number} x coordxy
+ * @param {number} y coordxy
+ */
 function set_seenv(lev, x0, y0, x, y) {   // display.c:3369
     let dx = 0, dy = 0;
+    /* from */
+    /*  to  */
     dx = $c.i16(x - x0 | 0);
     dy = $c.i16(y0 - y | 0);
     lev.seenv = $c.u8(lev.seenv | seenv_matrix[(dy < 0 ? -1 : dy !== 0 ? 1 : 0) + 1 | 0][(dx < 0 ? -1 : dx !== 0 ? 1 : 0) + 1 | 0]);
 }
+/* Called by blackout(vault.c) when vault guard removes temporary corridor,
+   turning spot <x0,y0> back into stone; <x1,y1> is an adjacent spot. */
+/**
+ * @param {$T.rm | null} lev struct rm *
+ * @param {number} x0 coordxy
+ * @param {number} y0 coordxy
+ * @param {number} x1 coordxy
+ * @param {number} y1 coordxy
+ */
 export function unset_seenv(lev, x0, y0, x1, y1) {   // display.c:3384
     let dx = 0, dy = 0;
+    /* &levl[x1][y1] */
+    /* from */
+    /*  to; abs(x1-x0)==1 && abs(y0-y1)==1 */
     dx = $c.i16(x1 - x0 | 0);
     dy = $c.i16(y0 - y1 | 0);
     lev.seenv = $c.u8(lev.seenv & ~seenv_matrix[dy + 1 | 0][dx + 1 | 0]);
 }
+/* Print out a T wall warning and all interesting info. */
+/**
+ * @param {$T.rm | null} lev struct rm *
+ * @returns {Promise<void>}
+ */
 async function t_warn(lev) {   // display.c:3453
     let wname = null;
+    /* 5.0: non-T_wall cases added after shop repair (via breaching a wall,
+       using locking magic to put a door there, then unlocking the door;
+       D_CLOSED carried over to the wall) triggered warning for "unknown" */
     switch (lev.typ) {
         case TUWALL:
             wname = $c.lit("tuwall");
@@ -2060,6 +3274,22 @@ async function t_warn(lev) {   // display.c:3453
     }
     await impossible(new $c.Ptr(t_warn$warn_str, 0), wname, (lev.flags | 0) & WM_MASK, lev.seenv);
 }
+/*
+ * Return the correct graphics character index using wall type, wall mode,
+ * and the seen vector.  It is expected that seenv is non zero.
+ *
+ * All T-wall vectors are rotated to be TDWALL.  All single crosswall
+ * blocks are rotated to bottom right.  All double crosswall are rotated
+ * to W_X_BLTR.  All results are converted back.
+ *
+ * The only way to understand this is to take out pen and paper and
+ * draw diagrams.  See rm.h for more details on the wall modes and
+ * seen vector (SV).
+ */
+/**
+ * @param {$T.rm | null} lev struct rm *
+ * @returns {Promise<number>} int
+ */
 async function wall_angle(lev) {   // display.c:3513
     let seenv = 0, row = null, col = 0, idx = 0, $goto = null;
     seenv = (lev.seenv & 255) >>> 0;
@@ -2067,15 +3297,15 @@ async function wall_angle(lev) {   // display.c:3513
         switch ($goto !== null ? $goto : lev.typ) {
             case TUWALL:
                 row = new $c.Ptr(wall_matrix[T_u], 0);
-                seenv = ((seenv >>> 4 | seenv << 4 >>> 0) >>> 0 & 255) >>> 0;
+                seenv = ((seenv >>> 4 | seenv << 4 >>> 0) >>> 0 & 255) >>> 0;   /* rotate to tdwall */
                 $goto = "do_twall"; continue S1;
             case TLWALL:
                 row = new $c.Ptr(wall_matrix[T_l], 0);
-                seenv = ((seenv >>> 2 | seenv << 6 >>> 0) >>> 0 & 255) >>> 0;
+                seenv = ((seenv >>> 2 | seenv << 6 >>> 0) >>> 0 & 255) >>> 0;   /* rotate to tdwall */
                 $goto = "do_twall"; continue S1;
             case TRWALL:
                 row = new $c.Ptr(wall_matrix[T_r], 0);
-                seenv = ((seenv >>> 6 | seenv << 2 >>> 0) >>> 0 & 255) >>> 0;
+                seenv = ((seenv >>> 6 | seenv << 2 >>> 0) >>> 0 & 255) >>> 0;   /* rotate to tdwall */
                 $goto = "do_twall"; continue S1;
             case TDWALL:
                 row = new $c.Ptr(wall_matrix[T_d], 0);
@@ -2104,6 +3334,7 @@ async function wall_angle(lev) {   // display.c:3513
                         } else if ((seenv & SV5) >>> 0 || (seenv & (SV3 | SV4)) >>> 0 && (seenv & (SV6 | SV7)) >>> 0) {
                             col = T_tdwall;
                         } else {
+                            /* only SV0|SV1|SV2 */
                             if (!((seenv & (SV0 | SV1 | SV2)) >>> 0 && !((seenv & 4294967288) >>> 0))) {
                                 await t_warn(lev);
                             }
@@ -2148,6 +3379,7 @@ async function wall_angle(lev) {   // display.c:3513
                     $goto = "horiz"; continue S1;
                 }
             case VWALL:
+                /*FALLTHRU*/
                 switch ((lev.flags | 0) & WM_MASK) {
                     case 0:
                         idx = seenv ? S.vwall : S.stone;
@@ -2294,7 +3526,7 @@ async function wall_angle(lev) {   // display.c:3513
                             if (seenv === SV4) {
                                 idx = S.stone;
                             } else {
-                                seenv = (seenv & 4294967279) >>> 0;
+                                seenv = (seenv & 4294967279) >>> 0;   /* strip SV4 */
                                 if (seenv === SV0) {
                                     col = C_brcorn;
                                 } else if ((seenv & (SV2 | SV3)) >>> 0) {
@@ -2362,6 +3594,17 @@ async function wall_angle(lev) {   // display.c:3513
     }
     return idx;
 }
+/*
+ * c++ 20 has problems with some of the display.h macros because
+ * comparisons and bit-fiddling and math between different enums
+ * is deprecated.
+ * Create function versions of some of the macros used in some
+ * NetHack c++ source files (Qt) for use there.
+ */
+/**
+ * @param {number} cmap int
+ * @returns {number} int
+ */
 export function fn_cmap_to_glyph(cmap) {   // display.c:3797
     return cmap === S.stone ? GLYPH.CMAP_STONE_OFF : cmap <= S.trwall ? (cmap - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : cmap < S.altar ? (cmap - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : cmap === S.altar ? 4008 : cmap < S.arrow_trap + MAXTCHARS ? (cmap - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : cmap <= S.goodpos ? (cmap - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
 }
@@ -2386,6 +3629,7 @@ export function $init() {
     nul_glyphinfo.glyph = NO_GLYPH;
     nul_glyphinfo.ttychar = 32;
     nul_glyphinfo.framecolor = NO_COLOR;
+    /* glyph_map */
     nul_glyphinfo.gm.glyphflags = MG.UNEXPL;
     nul_glyphinfo.gm.sym.color = NO_COLOR;
     nul_glyphinfo.gm.sym.symidx = SYM.UNEXPLORED + SYM_OFF_X;
@@ -2403,10 +3647,12 @@ export function $init() {
           u: null }
     ]);
     nul_gbuf.$copyFrom(new $T.gbuf_entry());
-    nul_gbuf.gnew = 0;
+    nul_gbuf.gnew = 0;   /* gnew */
     nul_gbuf.glyphinfo.glyph = GLYPH_UNEXPLORED;
     nul_gbuf.glyphinfo.ttychar = 32;
     nul_gbuf.glyphinfo.framecolor = NO_COLOR;
+    /* glyphinfo.glyph, glyphinfo.ttychar */
+    /* glyphinfo.gm */
     nul_gbuf.glyphinfo.gm.glyphflags = MG.UNEXPL;
     nul_gbuf.glyphinfo.gm.sym.color = NO_COLOR;
     nul_gbuf.glyphinfo.gm.sym.symidx = 0;
@@ -2463,10 +3709,10 @@ export function $init() {
         wall_matrix[$i0].fill(0);
     }
     $c.init(wall_matrix, [
-        [S.stone, S.tlcorn, S.trcorn, S.hwall, S.tdwall],
-        [S.stone, S.trcorn, S.brcorn, S.vwall, S.tlwall],
-        [S.stone, S.brcorn, S.blcorn, S.hwall, S.tuwall],
-        [S.stone, S.blcorn, S.tlcorn, S.vwall, S.trwall]
+        [S.stone, S.tlcorn, S.trcorn, S.hwall, S.tdwall],   /* tdwall */
+        [S.stone, S.trcorn, S.brcorn, S.vwall, S.tlwall],   /* tlwall */
+        [S.stone, S.brcorn, S.blcorn, S.hwall, S.tuwall],   /* tuwall */
+        [S.stone, S.blcorn, S.tlcorn, S.vwall, S.trwall]   /* trwall */
     ]);
     for (let $i0 = 0; $i0 < 4; $i0++) {
         cross_matrix[$i0].fill(0);

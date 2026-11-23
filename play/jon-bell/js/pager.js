@@ -520,7 +520,9 @@ export async function dohelp() {
             return ECMD_OK;
         }
         if (filelines) {
-            if (!fullScreen) g._pending_message = '';
+            /* C wintty.c:2467 tty_display_file() begins with
+             * tty_clear_nhwindow(WIN_MESSAGE) before opening datawin. */
+            g._pending_message = '';
             await display_text_window(filelines);
             await flush_screen(1);
             return ECMD_OK;

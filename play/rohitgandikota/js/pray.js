@@ -166,7 +166,7 @@ export function critically_low_hp(only_if_injured) {
 function blocked_boulder(dx, dy) {
     const u = game.u;
     let count = 0;
-    for (const otmp of (game.level.objects || [])) {
+    for (let otmp = game.level.objectAt(u.ux + dx, u.uy + dy); otmp; otmp = otmp.nexthere) {
         if (otmp.ox === u.ux + dx && otmp.oy === u.uy + dy
             && otmp.otyp === ONAMES.BOULDER)
             count += otmp.quan;
@@ -2294,8 +2294,7 @@ async function water_prayer(bless_water) {
     let other = false;
     const bc_known = !(Blind() || Hallucination());
 
-    for (const otmp of (game.level?.objects || [])
-             .filter(o => o.ox === game.u.ux && o.oy === game.u.uy)) {
+    for (const otmp of game.level.objectsAt(game.u.ux, game.u.uy)) {
         /* turn water into (un)holy water */
         if (otmp.otyp === ONAMES.POT_WATER
             && (bless_water ? !otmp.blessed : !otmp.cursed)) {
@@ -2322,8 +2321,7 @@ async function pray_revive() {
     const u = game.u;
     let otmp = null;
 
-    for (const o of (game.level.objects || []).filter(
-             (obj) => obj.ox === u.ux && obj.oy === u.uy))
+    for (const o of game.level.objectsAt(u.ux, u.uy))
         if ((o.otyp === ONAMES.CORPSE || o.otyp === ONAMES.STATUE)
             && has_omonst(o)
             && OMONST(o).mtame && !OMONST(o).isminion) {

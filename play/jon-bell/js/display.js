@@ -1,7 +1,7 @@
 import { hcolor } from './do_name.js';
 import { decode_mixed } from './windows.js';
 import { mixed_to_utf8 } from './utf8map.js';
-import { PLINE_NOREPEAT, OVERRIDE_MSGTYPE } from './const.js';
+import { PLINE_NOREPEAT, OVERRIDE_MSGTYPE, MAX_MSG_HISTORY } from './const.js';
 // @ts-nocheck
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
@@ -8969,26 +8969,33 @@ export async function menu_search_prevmsg_walk(opts) {
                         Math.min(lines.length - 1, rows.length - 1)]);
         }
     };
+    /* C topl.c:105-115: cw->maxcol == cw->maxrow shows gt.toplines (the live
+     * queryLine rebuilt before every read, getline.c:81), otherwise data[maxcol];
+     * past the oldest ring slot (!cw->data[cw->maxcol]) maxcol resets to maxrow,
+     * so the next ^P step wraps back to gt.toplines (modeled as index -1). */
+    const ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
+    const floor = Math.max(0, (hist ? hist.length : 0) - ring + 1);
+    const stepIdx = (i) => (!hist || !hist.length ? -1
+        : i < 0 ? hist.length - 1
+        : (i - 1 < floor ? -1 : i - 1));
+    if (!shown) idx = -1;
     g._ttyDismissMore = 16; /* topl.c:103 — ^P ok at --More-- for the walk */
     let steps = opts.first ? 2 : 1;
     try {
         while (steps-- > 0) {
             let cur;
-            if (opts.first && steps === 1) {
-                /* getline.c:114-115, call 1: redotoplin(gt.toplines). */
+            if (idx < 0) {
+                /* getline.c:114-115 / topl.c:106-107: redotoplin(gt.toplines). */
                 await paint('query');
                 cur = lastCur;
                 recall = queryLine;
             } else {
-                if (!hist || !hist.length)
-                    break;
-                idx = shown ? (idx - 1 + hist.length) % hist.length
-                            : hist.length - 1;
-                shown = true;
                 recall = hist[idx];
                 await paint('lines', _topl_recall_lines(recall));
                 cur = lastCur;
             }
+            idx = stepIdx(idx);
+            shown = true;
             if (cur && cur[1] > 0) {
                 /* topl.c:139-140 — cury != 0: the recall pages. */
                 if (cur[0] >= TOPL_CO - 8) /* topl.c:220-221: own row */
@@ -10595,6 +10602,12 @@ export function _pline_flush_frame_record(off, msg) {
     /* C pline.c:273-276 / tty/topl.c:274 blocks at each overflowing pline.
      * Our deferred pager needs every flush until this window is acknowledged;
      * a long command (such as emptying a horn) must not evict its first pages. */
+    const _botl = (g.disp && !(g.disp.botl | 0) && !(g.disp.botlx | 0) && !(g.disp.time_botl | 0)
+               && g._lastPaintedBotl && (g._lastPaintedBotl.mh | 0) === 0 && g.u && (g.u.mh | 0) !== 0)
+            ? g._lastPaintedBotl : _capture_botl();
+    const _r1physical = _threeStatusLines() && !_map_row20_clipped()
+        ? String(g._screen_output || '').split('\n')[21] : undefined;
+    if (_botl && _r1physical !== undefined) _botl.r1physical = _r1physical;
     g._plineFlushFrames.push({
         off,
         msg,
@@ -10613,9 +10626,7 @@ export function _pline_flush_frame_record(off, msg) {
          * the physical status rows are still blank when more() blocks. */
         statusBlankAfterDocrt: g._statusBlankAfterDocrt === true
             || (!g._lastPaintedBotl && !g.u?.ux),
-        botl: (g.disp && !(g.disp.botl | 0) && !(g.disp.botlx | 0) && !(g.disp.time_botl | 0)
-               && g._lastPaintedBotl && (g._lastPaintedBotl.mh | 0) === 0 && g.u && (g.u.mh | 0) !== 0)
-            ? g._lastPaintedBotl : _capture_botl(),
+        botl: _botl,
         statusSeq: g._statusPaintSeq | 0,
         runFlush: g._runFlushSeq | 0,
         /* Row 1's whole-rewrite latch as of THIS pline's flush: the paging
@@ -10628,8 +10639,7 @@ export function _pline_flush_frame_record(off, msg) {
          * rows, map y=20 can erase unchanged fields (display.c:2236-2255,
          * wintty.c:5018,5237-5238). Keep that physical row: rendering its old
          * field values against a later live overlay would mistake them for new writes. */
-        r1physical: _threeStatusLines() && !_map_row20_clipped()
-            ? String(g._screen_output || '').split('\n')[21] : undefined,
+        r1physical: _r1physical,
     });
     const bg = g._docrtTextBackdrop;
     if (bg) bg.frames.set(g._plineFlushFrames.at(-1).cells, new Set(bg.dirty));
@@ -10771,6 +10781,7 @@ function _capture_botl(paint = false) {
     const _unpainted = !paint && !game._lastPaintedBotl && !game.u?.ux;
     const _snap = {
         dnum: u.uz?.dnum, dlevel: u.uz?.dlevel,
+        botlSeq: (game._botlPaintSeq | 0) + (paint ? 1 : 0),
         /* C botl.c:1261-1274: BL_TERRAIN is cached at this status paint,
          * just like HP and conditions, rather than read again by more().
          * hack.c:3165-3170 changes terrain_typ during a run without
@@ -11815,8 +11826,9 @@ async function _topl_more(committed, dismissMore) {
      * the text (display.c:2236-2256) -- so when neither has run since, keep
      * that row rather than re-deriving it from later state. */
     const _lff = game._lastFlushFrame;
+    const _snapBotlSeq = game._paintedSnapshot?.botl?.botlSeq;
     const _r1Frozen = (_lff && _lff.r1row !== undefined && _lff.epoch === _flush_epoch
-        && _lff.botlSeq === (game._botlPaintSeq | 0) && _lff.level === game.level
+        && _lff.botlSeq === (_snapBotlSeq ?? (game._botlPaintSeq | 0)) && _lff.level === game.level
         && _threeStatusLines() && !_map_row20_clipped()) ? _lff.r1row : undefined;
     const _renderMore = () => {
         game._r1MoreFrozen = _r1Frozen;
@@ -13039,7 +13051,8 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
     if (frame) {
         g._paintedSnapshot = { cells: frame, moves: (framesMoves | 0),
             uhs: (framesUhs == null ? null : (framesUhs | 0)),
-            botl: g._occCurBotl || null };
+            botl: g._occCurBotl || null,
+            r1physical: g._occCurBotl?.r1physical };
         /* done_eating (eat.c:549-556) runs newuhs(FALSE) — botl = TRUE — BEFORE
          * its "You finish eating" pline, whose flush_screen repaints the status
          * with the NEW hunger before more() pages the prior line. */
@@ -13060,11 +13073,15 @@ export async function occupation_force_more(committed, frame, framesMoves, frame
         if (g._occ_committed_topl?.postMeal && g._paintedSnapshot.botl) {
             const _inc = (g._plineFlushFrames || []).findLast(
                 (f) => f.off === committed.length && f.botl?.attrs);
-            if (_inc) g._paintedSnapshot.botl = { ...g._paintedSnapshot.botl, attrs: _inc.botl.attrs,
-                /* cpostfx's make_stunned flags botl before this pline's flush (eat.c:1177) */
-                stunned: _inc.botl.stunned,
-                /* make_confused (vomiting_dialogue, timeout.c:211) flags botl too */
-                confused: _inc.botl.confused };
+            if (_inc) {
+                g._paintedSnapshot.botl = { ...g._paintedSnapshot.botl, attrs: _inc.botl.attrs,
+                    /* cpostfx's make_stunned flags botl before this pline's flush (eat.c:1177) */
+                    stunned: _inc.botl.stunned,
+                    /* make_confused (vomiting_dialogue, timeout.c:211) flags botl too */
+                    confused: _inc.botl.confused };
+                if (_inc.r1physical !== undefined)
+                    g._paintedSnapshot.r1physical = _inc.r1physical;
+            }
         }
         /* stop_occupation() plines before the turn's regen_hp (allmain.c:684-695), and its
          * flush_screen() finds botl clear: HP stays what the tick's bot() painted. */

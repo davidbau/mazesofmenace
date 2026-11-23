@@ -527,7 +527,8 @@ export async function chest_trap(obj, bodypart, disarm) {
             await pline(`${upstart(the(xname(obj)))} explodes!`);
             obj.cobj = [];
             const { delobj } = await import('./mon.js');
-            for (const floorObj of [...(game.level?.objects || [])]) {
+            for (let floorObj = game.level.objectAt(ox, oy), next; floorObj; floorObj = next) {
+                next = floorObj.nexthere;
                 if (floorObj.ox === ox && floorObj.oy === oy) {
                     if (floorObj === obj)
                         destroyed = true;
@@ -989,7 +990,7 @@ export async function untrap(force, rx, ry, container) {
     const trapdescr = ttmp ? trapname(ttmp.ttyp, false) : null;
     const here = u.ux === x && u.uy === y;
     if (here)
-        for (const obj of game.level.objects)
+        for (let obj = game.level.objectAt(x, y); obj; obj = obj.nexthere)
             if (obj.ox === x && obj.oy === y && Is_box(obj) && ++boxcnt > 1) break;
     let deal_with_floor_trap = can_reach_floor(false);
     if (autounlock_door) {
@@ -1055,7 +1056,7 @@ export async function untrap(force, rx, ry, container) {
             }
         }
         if (boxcnt) {
-            for (const obj of game.level.objects) {
+            for (let obj = game.level.objectAt(x, y); obj; obj = obj.nexthere) {
                 if (obj.ox !== x || obj.oy !== y || !Is_box(obj)) continue;
                 const q = obj.tknown && obj.dknown
                     ? safe_qbuf('Disarm this ', null, obj, xname, ansimpleoname, 'a box')
@@ -1887,7 +1888,7 @@ export async function dotrap(trap, trflags) {
             }
             return Trap_Effect_Finished;
         }
-        if (already_seen && !game.u.uprops?.FUMBLING
+        if (already_seen && !Fumbling()
             && !(ttype === MAGIC_PORTAL || ttype === VIBRATING_SQUARE)
             && ttype !== ANTI_MAGIC && !forcebungle && !plunged
             && !conj_pit && !adj_pit
@@ -3577,7 +3578,7 @@ async function trapeffect_level_telep(mtmp, trap, trflags) {
     if (Hallucination() || Teleport_control()) {
         await You(`briefly feel ${Hallucination() ? 'oriented' : 'centered'}.`);
     } else {
-        await You_feel(`${game.u.uprops?.CONFUSION ? 'even more ' : ''}disoriented.`);
+        await You_feel(`${Confusion() ? 'even more ' : ''}disoriented.`);
     }
     if (!Teleport_control()) {
         const { make_confused } = await import('./potion.js');
@@ -4276,11 +4277,15 @@ export async function water_damage_chain(obj, here) {
     if (get_obj_location(obj[0], cc, CONTAINED_TOO))
         game.bhitpos = { x: cc.x, y: cc.y };
 
-    /* C walks the chain fetching each next link before damaging the current
-       object; the snapshot copy gives the same sequence when an object is
-       deleted from the list part way through */
-    for (const otmp of [...obj])
-        await water_damage(otmp, null, false);
+    if (here) {
+        for (let otmp = obj[0], next; otmp; otmp = next) {
+            next = otmp.nexthere;
+            await water_damage(otmp, null, false);
+        }
+    } else {
+        for (const otmp of [...obj])
+            await water_damage(otmp, null, false);
+    }
 
     /* reset acid context and bhitpos */
     game.acid_ctx = { dkn_boom: 0, unk_boom: 0, ctx_valid: false };
@@ -4355,9 +4360,17 @@ export async function fire_damage(obj, force, x, y) {
 export async function fire_damage_chain(objs, force, here, x, y) {
     game.bhitpos = { x, y };
     let destroyed = 0;
-    for (const obj of [...(objs || [])])
-        if (await fire_damage(obj, force, x, y))
-            destroyed++;
+    if (here) {
+        for (let obj = objs?.[0], next; obj; obj = next) {
+            next = obj.nexthere;
+            if (await fire_damage(obj, force, x, y))
+                destroyed++;
+        }
+    } else {
+        for (const obj of [...(objs || [])])
+            if (await fire_damage(obj, force, x, y))
+                destroyed++;
+    }
     if (destroyed && Blind() && !couldsee(x, y))
         await You('smell smoke.');
     return destroyed;

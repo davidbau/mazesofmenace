@@ -7,7 +7,7 @@ import { yyyymmddhhmmss } from './calendar.js';
 import { pline, There } from './pline.js';
 import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH, OBJ_FREE, W_BALL, W_CHAIN } from './const.js';
 import { setworn } from './worn.js';
-import { save_light_sources, lights_save_snapshot, dangling_light_check } from './light.js';
+import { save_light_sources, lights_save_snapshot, dangling_light_check, dangling_light_panics } from './light.js';
 import { clear_level_structures } from './mklev.js';
 import { dobjsfree } from './mkobj.js';
 import { save_engravings } from './engrave.js';
@@ -430,6 +430,8 @@ export async function dosave0() {
             change_luck(1);
         if (g.iflags?.window_inited)
             _remember_and_clear_topl(g); /* C save.c:147 clear_nhwindow(WIN_MESSAGE) */
+        if (dangling_light_panics())
+            vfsWriteFile(path, SAVE_TRUNCATED);
         await dangling_light_check(); /* save_light_sources -> obj_is_local panic */
         try {
             // C save.c:168 -> savelev_core(:483-488): purge before writing.
@@ -543,6 +545,11 @@ function reverse_chain(head, link) {
     }
     return prev;
 }
+
+/* A save file whose writer panicked part way (see dosave0's
+ * dangling_light_panics() arm): it exists, but restore's first short read
+ * fails.  js/jsmain.js turns it into C's restore failure. */
+export const SAVE_TRUNCATED = 'NHSAVE TRUNCATED\n';
 
 /* Decode a fresh detached graph for every restore attempt. */
 export function saved_state_for(body) {

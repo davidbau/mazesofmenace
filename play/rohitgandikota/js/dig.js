@@ -180,12 +180,12 @@ export { stairway_at } from './stairs.js';
 
 /* the top object of the pile at <x,y> (svl.level.objects[x][y]) */
 function level_objects_top(x, y) {
-    return (game.level.objects || []).find((o) => o.ox === x && o.oy === y)
+    return game.level.objectAt(x, y)
            || null;
 }
 /* the whole pile at <x,y>, top first */
 function level_objects_pile(x, y) {
-    return (game.level.objects || []).filter((o) => o.ox === x && o.oy === y);
+    return game.level.objectsAt(x, y);
 }
 
 // src/dig.c:30 rm_waslit()
@@ -2036,9 +2036,7 @@ export async function buried_ball_to_freedom() {
 }
 
 // src/dig.c:1984 bury_an_obj(); move objects from fobj/nexthere lists to
-// buriedobjlist; the C returns the pile's next object so a caller can keep
-// walking a chain it is mutating; this port's callers iterate a snapshot of
-// the pile, so nothing is returned
+// buriedobjlist; return the next local object after possible unpunish().
 export async function bury_an_obj(otmp, dealloced) {
     const u = game.u;
     let under_ice;
@@ -2050,6 +2048,7 @@ export async function bury_an_obj(otmp, dealloced) {
         set_utrap(rn1(50, 20), TT_BURIEDBALL);
         await pline_The('iron ball gets buried!');
     }
+    const next = otmp.nexthere;
     /*
      * obj_resists(,0,0) prevents Rider corpses from being buried.
      * It also prevents The Amulet and invocation tools from being
@@ -2059,7 +2058,7 @@ export async function bury_an_obj(otmp, dealloced) {
      * completely different.
      */
     if (otmp === u.uchain || obj_resists(otmp, 0, 0))
-        return null;
+        return next;
 
     if (otmp.otyp === ONAMES.LEASH && otmp.leashmon)
         o_unleash(otmp);
@@ -2075,7 +2074,7 @@ export async function bury_an_obj(otmp, dealloced) {
         if (dealloced)
             dealloced.v = true;
         obfree(otmp);
-        return null;
+        return next;
     }
     /*
      * Start a rot on organic material.  Not corpses -- they
@@ -2090,7 +2089,7 @@ export async function bury_an_obj(otmp, dealloced) {
     /* rusting of buried metal not yet implemented */
     }
     add_to_buried(otmp);
-    return null;
+    return next;
 }
 
 // src/dig.c:2050 bury_objs()
@@ -2102,16 +2101,13 @@ export async function bury_objs(x, y) {
     costly = ((shkp = shop_keeper((in_rooms(x, y, SHOPBASE) || '\0').charCodeAt(0)))
               && costly_spot(x, y));
 
-    for (const otmp of level_objects_pile(x, y)) {
-        // Burying the ball frees its chain. C reads the next link afterward.
-        if (otmp.where !== OBJ_FLOOR)
-            continue;
+    for (let otmp = game.level.objectAt(x, y), next; otmp; otmp = next) {
         if (costly && !game.context?.mon_moving) {
             loss += await stolen_value(otmp, x, y, !!shkp.mpeaceful, true);
             if (otmp.oclass !== OCLASSES.COIN_CLASS)
                 otmp.no_charge = 1;
         }
-        await bury_an_obj(otmp, null);
+        next = await bury_an_obj(otmp, null);
     }
 
     /* don't expect any engravings here, but just in case */

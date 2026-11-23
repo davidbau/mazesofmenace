@@ -493,7 +493,7 @@ const SQSRCHRADIUS = 5;
 const is_mercenary = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
 
 function objects_at(x, y) {
-    return (game.level?.objects || []).filter(o => o.ox === x && o.oy === y);
+    return game.level.objectsAt(x, y);
 }
 
 /* include/mondata.h:143-146 and friends — what a monster is willing to pick up.
@@ -974,8 +974,7 @@ export function onscary(x, y, mtmp) {
     return !!ep
         && ((game.u.ux === x && game.u.uy === y)
             || (game.u.uprops?.DISPLACED && mtmp.mux === x && mtmp.muy === y)
-            || (ep.guardobjects && !!(game.level?.objects || [])
-                                        .find(o => o.ox === x && o.oy === y)))
+            || (ep.guardobjects && !!game.level.objectAt(x, y)))
         && !(mtmp.isshk || mtmp.isgd || !mtmp.mcansee
              || mtmp.mpeaceful
              || mtmp.mnum === PMNAMES.PM_MINOTAUR
@@ -2070,8 +2069,7 @@ export function maybe_unhide_at_mon(mtmp) {
     if (!mtmp.mundetected)
         return;
     const ptr = game.mons[mtmp.mnum];
-    const obj = (game.level?.objects || []).find(
-        (o) => o.ox === mtmp.mx && o.oy === mtmp.my);
+    const obj = game.level.objectAt(mtmp.mx, mtmp.my);
     if ((hides_under(ptr)
          && (!obj || mtmp.mtrapped || !can_hide_under_obj(obj)))
         || (ptr.mlet === MONSYMS.S_EEL && !is_pool(mtmp.mx, mtmp.my)))
@@ -2420,9 +2418,7 @@ export function can_hide_under_obj(obj) {
        present; we expect coins to be a single stack but don't assume that */
     if (obj.oclass === OCLASSES.COIN_CLASS) {
         let coinquan = 0;
-        const chain = (game.level?.objects || []).filter(
-            (o) => o.ox === obj.ox && o.oy === obj.oy
-                && (o.where === undefined || o.where === 1));
+        const chain = game.level.objectsAt(obj.ox, obj.oy);
         let i = chain.indexOf(obj);
         if (i < 0) i = 0;
         for (;;) {

@@ -58,29 +58,38 @@ let light_base = null;
 // (mon->mx == 0 implies migrating).
 function mon_is_local_light(mon) { return (mon?.mx | 0) > 0; }
 
-function ls_obj_is_local(obj) {
+const OBJ_IS_LOCAL_CASES = [OBJ_INVENT, OBJ_MIGRATING, OBJ_FLOOR, OBJ_BURIED,
+                            OBJ_CONTAINED, OBJ_MINVENT];
+function ls_obj_read(obj) {
     while (obj.freed_chunk && obj.occupant)
         obj = obj.occupant;
-    return (obj.where | 0) === OBJ_DELETED ? false : obj_is_local(obj);
+    return obj;
+}
+function ls_obj_panics(obj) {
+    return !OBJ_IS_LOCAL_CASES.includes(ls_obj_read(obj).where | 0);
+}
+async function ls_obj_is_local(obj) {
+    if (ls_obj_panics(obj))
+        await (await import('./dog.js')).panic('obj_is_local'); /* timeout.c:2574 */
+    return obj_is_local(ls_obj_read(obj));
 }
 
-/* A dangling light-source object that was free()d (dealloc_obj_real zeroes it,
- * so where == OBJ_FREE) is read back through its stale pointer by dosave0()'s
- * obj_is_local() (timeout.c:2560); a `where` outside that switch ends in
- * panic("obj_is_local").  Malloc reuse is modeled as a LIFO of freed chunks
- * that newobj() pops: the stale pointer then reads the `where` of whatever
- * object now occupies the chunk. */
-export async function dangling_light_check() {
+/* dosave0() (save.c:168 savelev -> savelev_core) frees the deleted-object
+ * queue (save.c:489-491) and then counts the level's light sources
+ * (light.c:436 maybe_write_ls -> obj_is_local).  js/save.js serializes the
+ * whole game later, so run C's light-source read here, at C's point in the
+ * save, before anything else is written: a dangling object source, whether
+ * already freed or about to be freed by that dobjsfree(), panics. */
+export function dangling_light_panics() {
     for (let ls = light_base; ls; ls = ls.next) {
-        let o = ls.type === LS_OBJECT ? ls.id.a_obj : null;
-        if (!o || !o.freed_chunk)
-            continue;
-        while (o.occupant)
-            o = o.occupant;
-        if (![OBJ_INVENT, OBJ_FLOOR, OBJ_CONTAINED, OBJ_MINVENT, OBJ_MIGRATING,
-              OBJ_BURIED].includes(o.where | 0))
-            await (await import('./dog.js')).panic('obj_is_local');
+        if (ls.type === LS_OBJECT && ls.id.a_obj && ls_obj_panics(ls.id.a_obj))
+            return true;
     }
+    return false;
+}
+export async function dangling_light_check() {
+    if (dangling_light_panics())
+        await (await import('./dog.js')).panic('obj_is_local');
 }
 
 
@@ -423,7 +432,7 @@ export async function save_light_sources(range) {
             is_global = false;
         } else switch (curr.type) {
         case LS_OBJECT:
-            is_global = !ls_obj_is_local(curr.id.a_obj);
+            is_global = !(await ls_obj_is_local(curr.id.a_obj));
             break;
         case LS_MONSTER:
             is_global = !mon_is_local_light(curr.id.a_monst);
@@ -471,7 +480,8 @@ export function lights_save_snapshot() {
     discard_flashes();
     const local = [], global = [];
     for (let ls = light_base; ls; ls = ls.next) {
-        const isGlobal = ls.type === LS_OBJECT ? !ls_obj_is_local(ls.id.a_obj)
+        /* dosave0 ran dangling_light_check() first, so no read panics here. */
+        const isGlobal = ls.type === LS_OBJECT ? !obj_is_local(ls_obj_read(ls.id.a_obj))
             : ls.type === LS_MONSTER ? !mon_is_local_light(ls.id.a_monst) : false;
         (isGlobal ? global : local).push(ls);
     }

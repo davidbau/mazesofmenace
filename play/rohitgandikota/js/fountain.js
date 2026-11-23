@@ -300,8 +300,7 @@ async function gush(x, y, state) {
     if (engraving)
         del_engr(engraving);
 
-    const floor_objects = (game.level.objects || [])
-        .filter(obj => obj.ox === x && obj.oy === y);
+    const floor_objects = game.level.objectsAt(x, y);
     await water_damage_chain(floor_objects, true);
 
     let mtmp;

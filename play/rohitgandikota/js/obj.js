@@ -122,10 +122,8 @@ export const is_metallic = (otmp) =>
 // Sokoban prize was generated. Monsters skip these on the floor until the
 // hero has picked them up, at which point they stop being special.
 //
-// svc.context.achieveo is not modelled, so both ids are undefined and these
-// return false -- which is correct for any level that has not generated a
-// prize, and wrong only on the Mines-end and Sokoban-end levels. Recording
-// that here rather than in the callers, because the callers cannot tell.
+// sp_lev.create_object records the prize ID in context.achieveo;
+// invent.addinv_core1 clears it when the hero acquires that object.
 export const is_mines_prize = (o) =>
     o?.o_id !== undefined && o.o_id === game.context?.achieveo?.mines_prize_oid;
 export const is_soko_prize = (o) =>

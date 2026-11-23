@@ -11,7 +11,7 @@
 // Both can draw from the fresh process's RNG before play resumes.
 
 import { assign_graphics, ROGUESET } from './symbols.js';
-import { Is_rogue_level, gm_levelchange } from './const.js';
+import { Is_rogue_level, gm_levelchange, RANGE_LEVEL, RANGE_GLOBAL } from './const.js';
 import { reset_glyphmap, reglyph_darkroom } from './display.js';
 import { game } from './gstate.js';
 import { pline, tty_clear_nhwindow_message } from './display.js';
@@ -22,7 +22,8 @@ import { GameMap } from './game.js';
 import { set_playmode } from './options.js';
 import { role_init } from './role.js';
 import { save_engravings, rest_engravings } from './engrave.js';
-import { loadfruitchn } from './restore.js';
+import { loadfruitchn, find_lev_obj } from './restore.js';
+import { TIMER_OBJECT, save_timers, restore_timers, relink_timers } from './timeout.js';
 
 // src/save.c:951 savefruitchn()
 export function savefruitchn(release = false) {
@@ -234,11 +235,20 @@ export function dorecover() {
     let snap;
     try {
         snap = gamestate_decode(JSON.parse(raw));
+        // restore.c:1144 and timeout.c:2505: object timers hold IDs until
+        // all objects are restored, including find_lev_obj's pile rebuild.
+        for (const timer of snap.timer_base || []) {
+            if (timer.kind === TIMER_OBJECT && !timer.needs_fixup) {
+                timer.arg = timer.arg.o_id;
+                timer.needs_fixup = 1;
+            }
+        }
     } catch (e) {
         return false;
     }
 
     const bootWizard = !!game.wizard, bootDiscover = !!game.discover;
+    const bootHilitePet = !!game.flags.hilite_pet;
 
     /* reinstall everything except the per-process keys, which keep the
        fresh boot's values */
@@ -250,6 +260,10 @@ export function dorecover() {
         if (!SKIP_KEYS.has(k))
             game[k] = v;
     }
+
+    // include/flag.h:420 and src/restore.c:571: hilite_pet is an instance
+    // option in C, though this port stores it under flags.
+    game.flags.hilite_pet = bootHilitePet;
 
     // src/restore.c restgamestate(), startup debug mode overrides the save.
     (game.iflags ||= {}).deferred_X = bootDiscover && !game.discover;
@@ -265,6 +279,15 @@ export function dorecover() {
     role_init(game.flags.initrole, game.flags.initalign);
     [game.quest_ldrgend, game.quest_nemgend] = savedGenders;
 
+    find_lev_obj();
+    relink_timers(false); /* restore.c:1299, after all objects are restored */
+    // restore.c:831,898 writes the temporary level, then reloads the original
+    // current level after globals. Reverse ties within each range, local first.
+    const levelTimers = save_timers(RANGE_LEVEL, true);
+    const globalTimers = save_timers(RANGE_GLOBAL, true);
+    restore_timers(globalTimers, RANGE_GLOBAL);
+    restore_timers(levelTimers, RANGE_LEVEL);
+    relink_timers(false);
     /* restore.c:705 recalculates this process-local movement sequence from
        the restored turn. It is not carried across the save boundary. */
     game.hero_seq = game.moves * 8;

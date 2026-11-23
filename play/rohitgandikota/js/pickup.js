@@ -345,7 +345,7 @@ export async function check_here(picked_some) {
     }
 
     /* count the objects here */
-    for (const obj of game.level?.objects || []) {
+    for (let obj = game.level.objectAt(game.u.ux, game.u.uy); obj; obj = obj.nexthere) {
         if (obj.ox === game.u.ux && obj.oy === game.u.uy
             && obj !== game.u.uchain)
             ct++;
@@ -491,9 +491,7 @@ export async function pickup(what) {
     add_valid_menu_class(0);
     let objchain, traverse_how;
     if (!game.u.uswallow) {
-        objchain = game.level.objects.filter(o => o.ox === game.u.ux && o.oy === game.u.uy);
-        // C place_object() keeps boulders ahead of other nexthere entries.
-        objchain.sort((a, b) => (b.otyp === ONAMES.BOULDER) - (a.otyp === ONAMES.BOULDER));
+        objchain = game.level.objectsAt(game.u.ux, game.u.uy);
         traverse_how = BY_NEXTHERE;
     } else {
         objchain = game.u.ustuck.minvent || [];
@@ -1202,7 +1200,7 @@ export async function doloot_core() {
                 if (num_conts > 1) {
                     const win = tty_create_nhwindow(NHW_MENU);
                     tty_start_menu(win, MENU_BEHAVE_STANDARD);
-                    for (const obj of game.level.objects)
+                    for (let obj = game.level.objectAt(cc.x, cc.y); obj; obj = obj.nexthere)
                         if (obj.ox === cc.x && obj.oy === cc.y && Is_container(obj))
                             tty_add_menu(win, null, obj, 0, 0, ATR_NONE, NO_COLOR,
                                          doname(obj), MENU_ITEMFLAGS_NONE);
@@ -1219,7 +1217,8 @@ export async function doloot_core() {
                     if (n !== 0)
                         c = 'y';
                 } else {
-                    for (const obj of [...game.level.objects]) {
+                    for (let obj = game.level.objectAt(cc.x, cc.y), next; obj; obj = next) {
+                        next = obj.nexthere;
                         if (obj.ox !== cc.x || obj.oy !== cc.y)
                             continue;
                         if (Is_container(obj)) {
@@ -1575,9 +1574,7 @@ export async function tipcontainer(box) {
 // src/pickup.c:3562 dotip(): floor-container selection and carried horn of
 // plenty emptying.
 export async function dotip() {
-    const here = (game.level?.objects || [])
-        .filter(o => o.ox === game.u.ux && o.oy === game.u.uy
-                     && Is_container(o));
+    const here = game.level.objectsAt(game.u.ux, game.u.uy).filter(o => Is_container(o));
     if (here.length === 1) {
         const { tty_yn_function } = await import('./tty/topl.js');
         const c = await tty_yn_function(
@@ -2614,7 +2611,7 @@ export function sortloot_items(items, sortByLootName = true) {
 // just whether there is one when !countem)
 export function container_at(x, y, countem) {
     let container_count = 0;
-    for (const cobj of (game.level?.objects || [])) {
+    for (let cobj = game.level.objectAt(x, y); cobj; cobj = cobj.nexthere) {
         if (cobj.ox !== x || cobj.oy !== y)
             continue;
         if (Is_container(cobj)) {

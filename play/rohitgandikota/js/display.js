@@ -48,7 +48,7 @@ import { Upolyd, WARNCOUNT, IS_OBSTRUCTED, IS_ROOM, IS_POOL,
 import { cansee, couldsee, vision_recalc } from './vision.js';
 
 import { Blind, Infravision, Hallucination, Invis, See_invisible,
-         Underwater, Detect_monsters, Warn_of_mon } from './youprop.js';
+         Underwater, Detect_monsters, Warn_of_mon, Protection_from_shape_changers } from './youprop.js';
 
 import { observe_object } from './o_init.js';
 
@@ -86,6 +86,8 @@ import { is_pool } from './mon.js';
 import { nhgetch } from './input.js';
 
 import { update_lastseentyp } from './dungeon.js';
+import { cmap_to_type } from './mkroom.js';
+import { DETECTED, PHYSICALLY_SEEN, NON_PM } from './const.js';
 
 import { def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
 
@@ -1050,8 +1052,14 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
                 && M_AP_TYPE(game.youmonst) === M_AP_NOTHING)
                 color = CLR_YELLOW;
         } else if (glyph?.kind === 'mon') {
-            color = glyph.detected || (glyph.mon?.mtame && !Hallucination())
-                || (glyph.female ?? glyph.mon?.female) ? NO_COLOR : CLR_YELLOW;
+            if (glyph.glyphnum !== undefined) {
+                // src/display.c:2987-3067: only normal male glyphs are yellow.
+                color = glyph.glyphnum >= GLYPH_MON_MALE_OFF
+                    && glyph.glyphnum < GLYPH_MON_FEM_OFF ? CLR_YELLOW : NO_COLOR;
+            } else {
+                color = glyph.detected || (glyph.mon?.mtame && !Hallucination())
+                    || (glyph.female ?? glyph.mon?.female) ? NO_COLOR : CLR_YELLOW;
+            }
         } else if (glyph?.kind === 'warn') {
             color = NO_COLOR;
         }
@@ -1129,19 +1137,41 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
             glyphnum = GLYPH_UNEXPLORED_OFF;
     }
     const gm = glyphnum === undefined ? null : glyphmap()[glyphnum];
-    const rows = (game.gbuf ||= []);
-    (rows[y] ||= [])[x] = {
-        disp_ch: ch,
-        disp_color: color,
-        disp_decgfx: !!decgfx,
-        disp_attr: attr | 0,
-        disp_glyph: glyph,
-        disp_glyphnum: glyphnum,
-        disp_customcolor: gm?.customcolor ?? 0,
-        disp_color256idx: gm?.color256idx ?? 0,
-        disp_u: gm?.u ?? null,
-        gnew: 1,       /* src/display.c gbuf_entry.gnew — not yet flushed */
+    // Unresolved descriptors retain their existing tame hint until their
+    // producer supplies an identity. Capture it here, never during repaint.
+    const glyphflags = gm?.glyphflags ?? (glyph?.mon?.mtame ? MG_PET : 0);
+    // src/display.c:2088 nul_gbuf: absent buffer entries are unexplored.
+    const old = gbuf_at(x, y) ?? {
+        disp_glyphnum: GLYPH_UNEXPLORED_OFF, disp_ch: ' ',
+        disp_color: NO_COLOR, disp_decgfx: false, disp_attr: 0,
+        disp_customcolor: 0, disp_glyphflags: MG_UNEXPL, disp_tileidx: 0,
     };
+    /* src/display.c:2031 show_glyph(): unchanged glyph information leaves
+       the existing dirty flag and buffered metadata alone. Descriptors
+       without a numeric identity still require conservative redraws. */
+    if (glyphnum === undefined || old.disp_glyphnum !== glyphnum
+        || old.disp_ch !== ch || old.disp_color !== color
+        || old.disp_decgfx !== !!decgfx || old.disp_attr !== (attr | 0)
+        || old.disp_customcolor !== (gm?.customcolor ?? 0)
+        || old.disp_glyphflags !== glyphflags
+        || old.disp_tileidx !== (gm?.tileidx ?? 0)
+        || game.iflags?.use_background_glyph) {
+        const rows = (game.gbuf ||= []);
+        (rows[y] ||= [])[x] = {
+            disp_ch: ch,
+            disp_color: color,
+            disp_decgfx: !!decgfx,
+            disp_attr: attr | 0,
+            disp_glyph: glyph,
+            disp_glyphnum: glyphnum,
+            disp_customcolor: gm?.customcolor ?? 0,
+            disp_glyphflags: glyphflags,
+            disp_tileidx: gm?.tileidx ?? 0,
+            disp_color256idx: gm?.color256idx ?? 0,
+            disp_u: gm?.u ?? null,
+            gnew: 1,
+        };
+    }
     loc.disp_ch = ch;
     loc.disp_color = color;
     loc.disp_decgfx = !!decgfx;
@@ -1217,15 +1247,9 @@ function pile_attr(glyph) {
            && game.flags?.use_inverse !== false ? TERM_INVERSE : 0;
 }
 
-/* src/mkobj.c:2336-2348 place_object() keeps every boulder at the head of
-   its per-square nexthere chain.  The port's flat fobj-style list must remain
-   newest-first for global traversals, so derive the visible pile head here. */
+/* include/display.h: vobj_at(), the actual per-square pile head. */
 export function vobj_at(x, y) {
-    const objects = game.level?.objects || [];
-    return objects.find(o => o.ox === x && o.oy === y
-                             && o.otyp === ONAMES.BOULDER)
-           || objects.find(o => o.ox === x && o.oy === y)
-           || null;
+    return game.level?.objectAt(x, y) || null;
 }
 
 function floor_object_glyph(obj, x, y, piletop = true,
@@ -1290,8 +1314,7 @@ function floor_object_glyph(obj, x, y, piletop = true,
                     statue: obj.otyp === ONAMES.STATUE && obj.corpsenm >= 0,
                     body: obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0 };
     if (piletop && (game.level?.objects || []).includes(obj)
-        && (game.level.objects || []).filter(
-            o => o.ox === x && o.oy === y).length > 1)
+        && game.level.objectsAt(x, y).length > 1)
         gdesc.pile = true;
 
     /* include/display.h:950 statue_to_glyph() — a STATUE becomes
@@ -1518,6 +1541,94 @@ export function see_nearby_objects() {
         }
 }
 
+// src/display.c:483 show_mon_or_warn(), clear a stale object-layer marker.
+function show_mon_or_warn(x, y, monglyph) {
+    if (glyph_is_invisible_at(x, y)) {
+        unmap_object(x, y);
+        const obj = cansee(x, y) ? vobj_at(x, y) : null;
+        if (obj)
+            map_object(obj, false);
+    }
+    show_glyph_cell(x, y, monglyph.ch, monglyph.color, monglyph.decgfx,
+                    monglyph.attr, monglyph.glyph);
+}
+
+// src/display.c:514 display_monster(), including an overridden mimic glyph.
+function display_monster(x, y, mon, sightflags, worm_tail) {
+    const mon_mimic = M_AP_TYPE(mon) !== M_AP_NOTHING;
+    const sensed = mon_mimic && (Protection_from_shape_changers() || sensemon(mon));
+    const female = !!mon.female;
+
+    // A physically seen disguise updates memory even when sensing reveals
+    // the real monster afterward. Its hallucination draws still occur.
+    if (mon_mimic && sightflags === PHYSICALLY_SEEN) {
+        switch (M_AP_TYPE(mon)) {
+        default:
+            impossible(`display_monster:  bad m_ap_type value [ = ${mon.m_ap_type} ]`);
+            // fall through
+        case M_AP_NOTHING: {
+            const g = mon_to_glyph(mon, rn2_on_display_rng);
+            show_glyph_cell(x, y, g.ch, g.color, g.decgfx, 0, g.glyph);
+            break;
+        }
+        case M_AP_FURNITURE: {
+            const sym = mon.mappearance;
+            const s = showsym(sym);
+            const g = { ch: s.ch, color: defsyms[sym].color, decgfx: !!s.dec,
+                glyph: { kind: 'cmap', cmap: sym, glyphnum: cmap_to_glyph(sym) } };
+            const loc = game.level.at(x, y);
+            loc.remembered_glyph = g;
+            if (!sensed) {
+                show_glyph_cell(x, y, g.ch, g.color, g.decgfx, 0, g.glyph);
+                loc.lastseentyp = cmap_to_type(sym);
+            }
+            break;
+        }
+        case M_AP_OBJECT: {
+            // C starts with zeroobj, including a zero object class and gender.
+            const mcorpsenm = mon.mcorpsenm ?? mon.mextra?.mcorpsenm ?? NON_PM;
+            const obj = { ox: x, oy: y, otyp: mon.mappearance,
+                corpsenm: mcorpsenm !== NON_PM ? mcorpsenm : PMNAMES.PM_TENGU,
+                oclass: OCLASSES.RANDOM_CLASS, quan: 0, spe: 0, dknown: 0 };
+            map_object(obj, !sensed);
+            break;
+        }
+        case M_AP_MONSTER: {
+            const mnum = Hallucination() ? rn2_on_display_rng(NUMMONS) : mon.mappearance;
+            const shown = game.mons[mnum];
+            const glyphnum = mnum + (female ? GLYPH_MON_FEM_OFF : GLYPH_MON_MALE_OFF);
+            show_glyph_cell(x, y, showsym_mon(shown.mlet), shown.mcolor, false, 0,
+                { kind: 'mon', mon, mnum, female, detected: false, glyphnum });
+            break;
+        }
+        }
+    }
+
+    if (!mon_mimic || sensed) {
+        let mnum, glyphnum, detected = false;
+        // Pet glyphs take priority over detection, except during hallucination.
+        if (mon.mtame && !Hallucination()) {
+            mnum = worm_tail ? PMNAMES.PM_LONG_WORM_TAIL : monsndx(mon.data);
+            glyphnum = mnum + (female ? GLYPH_PET_FEM_OFF : GLYPH_PET_MALE_OFF);
+        } else if (sightflags === DETECTED) {
+            mnum = Hallucination() ? rn2_on_display_rng(NUMMONS)
+                : worm_tail ? PMNAMES.PM_LONG_WORM_TAIL : monsndx(mon.data);
+            glyphnum = mnum + (female ? GLYPH_DETECT_FEM_OFF : GLYPH_DETECT_MALE_OFF);
+            detected = true;
+        } else {
+            mnum = Hallucination() ? rn2_on_display_rng(NUMMONS)
+                : worm_tail ? PMNAMES.PM_LONG_WORM_TAIL : monsndx(mon.data);
+            glyphnum = mnum + (female ? GLYPH_MON_FEM_OFF : GLYPH_MON_MALE_OFF);
+        }
+        const shown = game.mons[mnum];
+        const attr = detected && game.flags?.use_inverse !== false ? TERM_INVERSE : 0;
+        show_mon_or_warn(x, y, { ch: showsym_mon(shown.mlet), color: shown.mcolor,
+            decgfx: false, attr,
+            glyph: { kind: 'mon', mon, mnum, female, detected, glyphnum } });
+        mon.meverseen = 1;
+    }
+}
+
 // src/display.c:715 suppress_map_output(), including the hangup build guard.
 export function suppress_map_output() {
     const state = game.program_state || {};
@@ -1640,13 +1751,10 @@ export function newsym(x, y) {
            but the monster's own coordinates remain at its head.  Since this
            square is visible, mon_visible() is enough to see the tail; using
            canspotmon() would incorrectly test cansee() at the distant head. */
-        const wormTail = !!(mon?.wormno
-                            && (mon.mx !== x || mon.my !== y));
-        const spotMon = !!(mon && (mon_visible(mon)
-                                   || (!wormTail && sensemon(mon))));
-        const detectedOnly = !!(spotMon && !wormTail
-            && Detect_monsters() && !mon_visible(mon)
-            && !tp_sensemon(mon) && !match_warn_of_mon(mon));
+        const wormTail = !!(mon && (mon.mx !== x || mon.my !== y));
+        const see_it = !!(mon && (mon_visible(mon)
+            || (!wormTail && (tp_sensemon(mon) || match_warn_of_mon(mon)))));
+        const spotMon = !!(mon && (see_it || (!wormTail && Detect_monsters())));
         /* src/display.c:1029, a warning glyph takes precedence over a
            remembered invisible-monster marker. */
         if (!spotMon && mon && mon_warning(mon) && !wormTail) {
@@ -1688,56 +1796,9 @@ export function newsym(x, y) {
                                          ?? { kind: 'cmap', cmap: memg.cmap } };
         update_lastseentyp(x, y);   /* _map_location(x, y, 1) */
 
-        /* src/display.c:1420 newsym() — the monster arm is gated on
-           canspotmon(): an undetected hider (snake under a corpse, eel under
-           water) shows the layer beneath it, not its letter. Disguised
-           mimics stay spottable (mundetected 0) and display_monster() draws
-           the DISGUISE (display.c:533). */
         if (spotMon) {
-            if (M_AP_TYPE(mon) === M_AP_OBJECT) {
-                /* display.c:564 — a fake object sent to map_object() */
-                const fake = { otyp: mon.mappearance, ox: x, oy: y,
-                               /* obj = zeroobj; C only fills these fields. */
-                               oclass: OCLASSES.RANDOM_CLASS,
-                               corpsenm: mon.mcorpsenm ?? PMNAMES.PM_TENGU,
-                               quan: 1, dknown: 0 };
-                const mappedFake = mapped_object_glyphs(fake, x, y, false);
-                const g = mappedFake.shown;
-                /* display_monster() maps a mimic's fake object into hero
-                   memory before drawing it. That memory survives a level
-                   change even when the terminal still holds an older cell. */
-                if (game.level?.flags?.hero_memory)
-                    loc.remembered_glyph = {
-                        ch: mappedFake.remembered.ch,
-                        color: mappedFake.remembered.color,
-                        decgfx: mappedFake.remembered.dec,
-                        glyph: mappedFake.remembered.glyph,
-                    };
-                show_glyph_cell(x, y, g.ch, g.color, g.dec ?? false, g.attr,
-                                g.glyph ?? { kind: 'obj', otyp: fake.otyp });
-                return;
-            }
-            if (M_AP_TYPE(mon) === M_AP_FURNITURE) {
-                /* display.c:543 — poor man's map_background of the S_ sym */
-                const s = showsym(mon.mappearance);
-                show_glyph_cell(x, y, s ? s.ch : '?',
-                                defsyms[mon.mappearance]?.color ?? NO_COLOR,
-                                s ? s.dec : false, 0,
-                                { kind: 'cmap', cmap: mon.mappearance });
-                return;
-            }
-            const shown = game.mons[Hallucination()
-                ? rn2_on_display_rng(NUMMONS)
-                : (wormTail ? PMNAMES.PM_LONG_WORM_TAIL
-                    : (M_AP_TYPE(mon) === M_AP_MONSTER
-                        ? mon.mappearance : mon.mnum))];
-            const attr = detectedOnly && !(mon.mtame && !Hallucination())
-                         && game.flags?.use_inverse !== false
-                ? TERM_INVERSE : 0;
-            show_glyph_cell(x, y, showsym_mon(shown.mlet) || '?',
-                            shown.mcolor ?? NO_COLOR, false, attr,
-                            { kind: 'mon', mon, detected: detectedOnly });
-            mon.meverseen = 1; /* display.c:620 display_monster() */
+            display_monster(x, y, mon, see_it ? PHYSICALLY_SEEN : DETECTED,
+                            wormTail);
             return;
         }
 
@@ -1748,25 +1809,14 @@ export function newsym(x, y) {
             return;
         }
     } else {
-        /* src/display.c newsym(), the can't-see branch: a monster the hero
-           senses, or sees with infravision, is still displayed */
+        /* src/display.c:1047, sensed tails are shown by telepathy or
+           specific warning; monster detection alone shows only the head. */
         const mon = m_at(x, y);
-        const spotMon = !!(mon && (sensemon(mon)
-                    || (see_with_infrared(mon) && mon_visible(mon))));
-        const detectedOnly = !!(spotMon && Detect_monsters()
-            && !tp_sensemon(mon) && !match_warn_of_mon(mon)
-            && !(see_with_infrared(mon) && mon_visible(mon)));
-        if (spotMon) {
-            const shown = game.mons[Hallucination()
-                ? rn2_on_display_rng(NUMMONS) : mon.mnum];
-            const attr = detectedOnly && !(mon.mtame && !Hallucination())
-                         && game.flags?.use_inverse !== false
-                ? TERM_INVERSE : 0;
-            clear_invisible_memory(x, y);
-            show_glyph_cell(x, y, showsym_mon(shown.mlet) || '?',
-                            shown.mcolor ?? NO_COLOR, false, attr,
-                            { kind: 'mon', mon, detected: detectedOnly });
-            mon.meverseen = 1; /* display.c:620 display_monster() */
+        const wormTail = !!(mon && (mon.mx !== x || mon.my !== y));
+        const see_it = !!(mon && (tp_sensemon(mon) || match_warn_of_mon(mon)
+            || (see_with_infrared(mon) && mon_visible(mon))));
+        if (mon && (see_it || (Detect_monsters() && !wormTail))) {
+            display_monster(x, y, mon, see_it ? 0 : DETECTED, wormTail);
             return;
         }
     }
@@ -2123,6 +2173,9 @@ const CMP_DEC_MAP = {
 function _paint_map_cell(display, x, y) {
     const g = gbuf_at(x, y);
     if (!g) return;
+    /* win/tty/wintty.c:3949,4042: tty_print_glyph() positions the cursor
+       and advances it once even when nomux does not capture the byte. */
+    display.setCursor(x, y + 1);
     /* tty_print_glyph() sends a UTF-8 override through g_pututf8(), which
        bypasses the recorder's nomux screen buffer. The physical recorder
        cell therefore stays unchanged. This is observable when a hero moves
@@ -2149,7 +2202,7 @@ function _paint_map_cell(display, x, y) {
     if (raw.charCodeAt(0) < 0x20)
         return;
     const ch = dec ? (CMP_DEC_MAP[raw] || raw) : raw;
-    const attr = (g.disp_attr ?? 0) | pet_terminal_attr(g.disp_glyph?.mon);
+    const attr = (g.disp_attr ?? 0) | pet_terminal_attr(g.disp_glyphflags);
     // win/tty/wintty.c:3966 tty_print_glyph(). Extra RGB/256-color
     // escapes bypass the nomux foreground buffer; basic colors use g_putch.
     let color = g.disp_color ?? NO_COLOR;
@@ -2240,7 +2293,9 @@ export function feel_location(x, y) {
         }
         const mon = m_at(x, y);
         if ((game.u.ux !== x || game.u.uy !== y) && mon && sensemon(mon))
-            newsym(x, y);
+            display_monster(x, y, mon,
+                tp_sensemon(mon) || match_warn_of_mon(mon) ? PHYSICALLY_SEEN : DETECTED,
+                mon.mx !== x || mon.my !== y);
         return;
     }
 
@@ -2276,7 +2331,9 @@ export function feel_location(x, y) {
     }
     const mon = m_at(x, y);
     if ((game.u.ux !== x || game.u.uy !== y) && mon && sensemon(mon))
-        newsym(x, y);
+        display_monster(x, y, mon,
+            tp_sensemon(mon) || match_warn_of_mon(mon) ? PHYSICALLY_SEEN : DETECTED,
+            mon.mx !== x || mon.my !== y);
 }
 
 // src/display.c:726 feel_newsym(): use touch mapping while blind, otherwise
@@ -2316,6 +2373,8 @@ export function paint_topline() {
             display.setCell(c, r, c < line.length ? line[c] : ' ',
                             NO_COLOR, 0);
     }
+    // win/tty/topl.c:305 putsyms()/topl_putsym() leave the cursor after the text.
+    display.setCursor(msgLines[msgLines.length - 1].length, msgLines.length - 1);
 }
 
 // src/display.c:1912 flush_screen() — push every not-yet-flushed gbuf
@@ -2677,6 +2736,8 @@ export function tty_clear_nhwindow_message(cury) {
 
     const display = game?.nhDisplay;
     if (display) {
+        // win/tty/wintty.c:1080 home() precedes clearing the message.
+        display.setCursor(0, 0);
         const CO = display.cols ?? 80;
         /* row 0 is the message window's own row: blank it */
         for (let c = 0; c < CO; c++)
@@ -2848,8 +2909,8 @@ export function see_traps() {
 
 // win/tty/wintty.c tty_print_glyph(), MG_PET with hilite_pet. NetHack's
 // attribute numbers differ from the terminal grid's bit flags.
-function pet_terminal_attr(mon) {
-    if (!mon?.mtame || !game.flags?.hilite_pet)
+function pet_terminal_attr(glyphflags) {
+    if (!(glyphflags & MG_PET) || !game.flags?.hilite_pet)
         return 0;
     switch (game.iflags?.wc2_petattr ?? 7 /* ATR_INVERSE */) {
     case 1: return TERM_BOLD;
@@ -3342,11 +3403,17 @@ export function display_self() {
     const steed = game.u.usteed;
     const aptype = M_AP_TYPE(game.youmonst);
 
-    /* maybe_display_usteed(): the steed's glyph while riding */
+    /* include/display.h:246, :560, the visible steed uses a ridden glyph. */
     if (steed && mon_visible(steed)) {
-        show_glyph_cell(x, y, showsym_mon(steed.data.mlet) || '?',
-                        steed.data.mcolor ?? NO_COLOR, false, 0,
-                        { kind: 'hero', mon: steed });
+        const mnum = Hallucination() ? rn2_on_display_rng(NUMMONS)
+            : monsndx(steed.data);
+        const female = !!steed.female;
+        const shown = game.mons[mnum];
+        show_glyph_cell(x, y, showsym_mon(shown.mlet) || '?',
+                        shown.mcolor ?? NO_COLOR, false, 0,
+                        { kind: 'hero', mon: steed, mnum, female,
+                          glyphnum: mnum + (female
+                              ? GLYPH_RIDDEN_FEM_OFF : GLYPH_RIDDEN_MALE_OFF) });
     } else if (aptype === M_AP_FURNITURE) {
         const s = showsym(game.youmonst.mappearance);
         show_glyph_cell(x, y, s ? s.ch : '?',
@@ -3354,12 +3421,14 @@ export function display_self() {
                         s ? s.dec : false, 0,
                         { kind: 'cmap', cmap: game.youmonst.mappearance });
     } else if (aptype === M_AP_OBJECT) {
-        const fake = { otyp: game.youmonst.mappearance, ox: x, oy: y,
-                       oclass: OCLASSES.RANDOM_CLASS, quan: 1, dknown: 0,
-                       corpsenm: PMNAMES.PM_TENGU };
-        const g = floor_object_glyph(fake, x, y, false);
-        show_glyph_cell(x, y, g.ch, g.color, g.dec ?? false, g.attr,
-                        g.glyph ?? { kind: 'obj', otyp: fake.otyp });
+        // objnum_to_glyph() keeps the exact object type, even while
+        // hallucinating. A disguise is not a floor corpse or statue.
+        const otyp = game.youmonst.mappearance;
+        const oclass = game.objects[otyp].oc_class;
+        show_glyph_cell(x, y, showsym_oc(oclass),
+                        game.objects[otyp].oc_color, false, 0,
+                        { kind: 'obj', otyp, oclass,
+                          glyphnum: GLYPH_OBJ_OFF + otyp });
     } else if (aptype === M_AP_MONSTER) {
         const shown = game.mons[game.youmonst.mappearance];
         show_glyph_cell(x, y, showsym_mon(shown.mlet) || '?',
@@ -3383,9 +3452,9 @@ export function display_self() {
 
 /* ---------------------------------------------------------------------------
  * src/display.c:1672 glyphmap[MAX_GLYPH] and :2739 reset_glyphmap(). The
- * port draws from glyph records, not from this table; it carries the C's
- * per-glyph symbol index, colour, flags and symset customizations for
- * #wizcustom and the customization pipeline (js/glyphs.js).
+ * Base glyph metadata and symbol-set customizations. show_glyph_cell
+ * snapshots the selected entry into the map buffer. glyphs.js names
+ * these identities and applies their customizations.
  * ------------------------------------------------------------------------- */
 
 let glyphmap_table = null;

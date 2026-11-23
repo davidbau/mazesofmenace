@@ -419,10 +419,8 @@ function mon_has_friends(mtmp) {
 function mon_likes_objpile_at(mtmp, x, y) {
     if (!isok(x, y))
         return false;
-    /* C walks svl.level.objects[x][y] through nexthere; the port keeps one
-       flat list, filtered here in the same front-first order */
-    const pile = (game.level?.objects || []).filter((o) => o.ox === x
-                                                        && o.oy === y);
+    /* src/muse.c:1404, inspect the first three objects in local order. */
+    const pile = game.level.objectsAt(x, y);
     if (!pile.length)
         return false;
 
@@ -2519,7 +2517,8 @@ async function fhito_loc(obj, tx, ty, fhito) {
 
     if (!fhito || !OBJ_AT(tx, ty))
         return false;
-    for (const otmp of [...(game.level.objects || [])]) {
+    for (let otmp = game.level.objectAt(tx, ty), next_obj; otmp; otmp = next_obj) {
+        next_obj = otmp.nexthere;
         /* this used to just take objects at the location, but
            bhito() (via poly_obj()) can move objects [into containers]
            and the 'nexthere' chain could be broken */

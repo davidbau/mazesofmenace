@@ -70,7 +70,7 @@ import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
 import { rnl } from './rng.js';
 import { pline, see_nearby_objects, canspotmon, canseemon,
          sensemon, see_monsters, display_nhwindow_message, map_location } from './display.js';
-import { Blind, Hallucination, Teleport_control, Teleportation }
+import { Blind, Hallucination, Teleport_control, Teleportation, Stunned, Confusion }
     from './youprop.js';
 import { is_demon, is_lord, is_prince, is_covetous,
          passes_walls, can_teleport } from './mondata.js';
@@ -554,8 +554,6 @@ async function next_to_u() {
 const isdigit = (c) => c >= '0' && c <= '9';
 /* include/hack.h:1330 ynq() */
 const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
-const Stunned = () => !!game.u?.uprops?.STUNNED;
-const Confusion = () => !!game.u?.uprops?.CONFUSION;
 
 function note_unported_tele(what) {
     (game.unported ||= new Set()).add(what);

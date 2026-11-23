@@ -1,3 +1,4 @@
+import { find_lev_obj } from './restore.js';
 import { assign_graphics, PRIMARYSET, ROGUESET } from './symbols.js';
 import { check_gold_symbol } from './botl.js';
 import { allow_all } from './pickup.js';
@@ -30,7 +31,8 @@ import { hmon } from './uhitm.js';
 import { lava_damage, water_damage, delfloortrap, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { OBJ_MINVENT, OBJ_CONTAINED, CONTAINED_TOO, BURIED_TOO, CXN_SINGULAR } from './const.js';
 import { MONSYMS } from './monst_data.js';
-import { maketrap } from './mklev.js';
+import { maketrap, add_to_buried } from './mklev.js';
+import { engr_at } from './engrave.js';
 import { mdistu } from './monmove.js';
 import { canspotmon } from './display.js';
 import { Adjmonnam, mon_nam } from './do_name.js';
@@ -64,7 +66,7 @@ import { freeinv, getobj, any_obj_ok, obj_extract_self, useup }
 import { place_object, rider_revival_time, set_bknown, set_corpsenm,
          splitobj, zombie_form, obj_nexto_xy } from './mkobj.js';
 import { canseemon, cls, docrt, pline, newsym, reglyph_darkroom } from './display.js';
-import { Norep, pline_The, There, You, You_cant, You_feel, You_hear, Your }
+import { Norep, pline_The, There, You, You_cant, You_feel, You_hear, You_see, Your }
     from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp, check_special_room } from './hack.js';
@@ -83,7 +85,7 @@ import { can_reach_floor, u_safe_from_fatal_corpse,
 import { body_part } from './polyself.js';
 import { dmgtype, is_displacer } from './mondata.js';
 import { ATTKS, PMNAMES, MFLAGS } from './monst_data.js';
-import { Amonnam, hliquid, Monnam, upstart, y_monnam } from './do_name.js';
+import { Amonnam, hliquid, hcolor, Monnam, rndmonnam, trycall, upstart, y_monnam } from './do_name.js';
 import { corpse_xname, CXN_NOCORPSE, CXN_PFX_THE, the, vtense, xname }
     from './objnam.js';
 import { waterbody_name } from './pager.js';
@@ -96,7 +98,7 @@ import { makeplural } from './objnam.js';
 import { digests, touch_petrifies } from './mondata.js';
 import { polyfood } from './obj.js';
 import { is_unpaid, stolen_value } from './shk.js';
-import { doname, yobjnam } from './objnam.js';
+import { doname, fruitname, otense, yobjnam } from './objnam.js';
 import { mbodypart } from './polyself.js';
 import { STOMACH, NC_SHOW_MSG, NO_NC_FLAGS } from './const.js';
 import { mpickobj } from './steal.js';
@@ -122,6 +124,7 @@ import { artifact_has_invprop } from './artifact.js';
 import { set_levltyp } from './mkmaze.js';
 import { make_grave } from './mklev.js';
 import { Align2amask, AM_NONE, T_LOOTED, FOUNTAIN, THRONE, ALTAR, SINK } from './const.js';
+import { COLNO, ROWNO, NH_SILVER, NH_WHITE } from './const.js';
 import { Inhell } from './makemon.js';
 import { defsyms } from './drawing_data.js';
 import { burn_away_slime } from './timeout.js';
@@ -474,8 +477,8 @@ export async function flooreffects(obj, x, y, verb) {
     let ttyp = NO_TRAP, res = false;
 
     /* C: panic("flooreffects: obj not free") */
-    /* make sure things like water_damage() have no pointers to follow;
-       this port's objects have no nobj/nexthere chain links to clear */
+    /* src/do.c:171, water_damage() must have no floor links to follow. */
+    obj.nexthere = null;
     /* erode_obj() (called from water_damage() or lava_damage()) needs
        bhitpos, but that was screwing up wand zapping that called us from
        rloco(), so we now restore bhitpos before we return */
@@ -1254,6 +1257,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
            the same state; the visible cost is restore.c:1190's monster
            catchup against the time spent away. */
         game.level = game.saved_levels.get(ledger);
+        find_lev_obj();
         game.stairs = game.level._saved_stairs || null;
         /* src/region.c rest_regions() subtracts the turns spent away and
            silently drops expired regions before the restored map is shown. */
@@ -2053,10 +2057,178 @@ export async function polymorph_sink() {
     /* give message even if blind; we know we're not levitating,
        so can feel the outcome even if we can't directly see it */
     if (loc.typ !== ROOM)
-        await pline_The(`sink transforms into ${an(defsyms[sym].explanation)}!`);
+        await pline_The(`sink transforms into ${an(defsyms[sym].explain)}!`);
     else
         await pline_The('sink vanishes.');
     newsym(game.u.ux, game.u.uy);
+}
+
+// src/do.c:459 teleport_sink(). Preserve the old sink's looted flag.
+function teleport_sink() {
+    let trycnt = 0;
+    do {
+        const cx = 1 + rnd((COLNO - 1) - 2);
+        const cy = 1 + rn2(ROWNO - 2);
+        if (game.level.at(cx, cy).typ === ROOM
+            && !t_at(cx, cy) && !engr_at(cx, cy)
+            && (!cansee(cx, cy) || distu(cx, cy) > 3 * 3)) {
+            const old = game.level.at(game.u.ux, game.u.uy);
+            const alreadylooted = old.looted;
+            set_levltyp(game.u.ux, game.u.uy, ROOM);
+            old.looted = 0;
+            newsym(game.u.ux, game.u.uy);
+            set_levltyp(cx, cy, SINK);
+            game.level.at(cx, cy).looted = alreadylooted ? 1 : 0;
+            newsym(cx, cy);
+            return true;
+        }
+    } while (++trycnt < 200);
+    return false;
+}
+
+// src/do.c:498 dosinkring(). Drop a ring into the sink's drain.
+async function dosinkring(obj) {
+    let ideed = true;
+    let nosink = false;
+
+    await You(`drop ${doname(obj)} down the drain.`);
+    obj.in_use = true;
+    switch (obj.otyp) { /* effects that can be noticed without eyes */
+    case ONAMES.RIN_SEARCHING:
+    case ONAMES.RIN_SLOW_DIGESTION:
+        if (obj.otyp === ONAMES.RIN_SEARCHING)
+            await You(`thought ${yname(obj)} got lost in the sink, but there it is!`);
+        else
+            await pline_The('ring is regurgitated!');
+        obj.in_use = false;
+        await dropx(obj);
+        await trycall(obj);
+        return;
+    case ONAMES.RIN_LEVITATION:
+        await pline_The('sink quivers upward for a moment.');
+        break;
+    case ONAMES.RIN_POISON_RESISTANCE:
+        await You(`smell rotten ${makeplural(fruitname(false))}.`);
+        break;
+    case ONAMES.RIN_AGGRAVATE_MONSTER:
+        await pline(`Several ${Hallucination() ? makeplural(rndmonnam(null)) : 'flies'} buzz angrily around the sink.`);
+        break;
+    case ONAMES.RIN_SHOCK_RESISTANCE:
+        await pline('Static electricity surrounds the sink.');
+        break;
+    case ONAMES.RIN_CONFLICT:
+        await You_hear('loud noises coming from the drain.');
+        break;
+    case ONAMES.RIN_SUSTAIN_ABILITY:
+        await pline_The(`${hliquid('water')} flow seems fixed.`);
+        break;
+    case ONAMES.RIN_GAIN_STRENGTH:
+        await pline_The(`${hliquid('water')} flow seems ${obj.spe < 0 ? 'weak' : 'strong'}er now.`);
+        break;
+    case ONAMES.RIN_GAIN_CONSTITUTION:
+        await pline_The(`${hliquid('water')} flow seems ${obj.spe < 0 ? 'less' : 'great'}er now.`);
+        break;
+    case ONAMES.RIN_INCREASE_ACCURACY:
+        await pline_The(`${hliquid('water')} flow ${obj.spe < 0 ? 'misses' : 'hits'} the drain.`);
+        break;
+    case ONAMES.RIN_INCREASE_DAMAGE:
+        await pline_The(`water's force seems ${obj.spe < 0 ? 'small' : 'great'}er now.`);
+        break;
+    case ONAMES.RIN_HUNGER:
+        ideed = false;
+        for (let otmp = game.level.objectAt(game.u.ux, game.u.uy), next; otmp; otmp = next) {
+            next = otmp.nexthere;
+            if (otmp !== game.u.uball && otmp !== game.u.uchain
+                && !obj_resists(otmp, 1, 99)) {
+                if (!Blind()) {
+                    await pline(`Suddenly, ${doname(otmp)} ${otense(otmp, 'vanish')} from the sink!`);
+                    ideed = true;
+                }
+                await delobj(otmp);
+            }
+        }
+        break;
+    case ONAMES.MEAT_RING:
+        await pline('Several flies buzz around the sink.');
+        break;
+    case ONAMES.RIN_TELEPORTATION:
+        nosink = teleport_sink();
+        await pline_The(`sink ${nosink ? '' : 'momentarily '}vanishes.`);
+        ideed = false;
+        break;
+    case ONAMES.RIN_POLYMORPH:
+        await polymorph_sink();
+        nosink = true;
+        ideed = game.level.at(game.u.ux, game.u.uy).typ !== ROOM;
+        break;
+    default:
+        ideed = false;
+        break;
+    }
+    if (!Blind() && !ideed) {
+        ideed = true;
+        switch (obj.otyp) { /* effects that need eyes */
+        case ONAMES.RIN_ADORNMENT:
+            await pline_The('faucets flash brightly for a moment.');
+            break;
+        case ONAMES.RIN_REGENERATION:
+            await pline_The('sink looks as good as new.');
+            break;
+        case ONAMES.RIN_INVISIBILITY:
+            await You("don't see anything happen to the sink.");
+            break;
+        case ONAMES.RIN_FREE_ACTION:
+            await You_see('the ring slide right down the drain!');
+            break;
+        case ONAMES.RIN_SEE_INVISIBLE:
+            await You_see(`some ${Hallucination() ? 'oxygen molecules' : 'air'} in the sink.`);
+            break;
+        case ONAMES.RIN_STEALTH:
+            await pline_The('sink seems to blend into the floor for a moment.');
+            break;
+        case ONAMES.RIN_FIRE_RESISTANCE:
+            await pline_The(`hot ${hliquid('water')} faucet flashes brightly for a moment.`);
+            break;
+        case ONAMES.RIN_COLD_RESISTANCE:
+            await pline_The(`cold ${hliquid('water')} faucet flashes brightly for a moment.`);
+            break;
+        case ONAMES.RIN_PROTECTION_FROM_SHAPE_CHAN:
+            await pline_The('sink looks nothing like a fountain.');
+            break;
+        case ONAMES.RIN_PROTECTION:
+            await pline_The(`sink glows ${hcolor(obj.spe < 0 ? NH_BLACK : NH_SILVER)} for a moment.`);
+            break;
+        case ONAMES.RIN_WARNING:
+            await pline_The(`sink glows ${hcolor(NH_WHITE)} for a moment.`);
+            break;
+        case ONAMES.RIN_TELEPORT_CONTROL:
+            await pline_The('sink looks like it is being beamed aboard somewhere.');
+            break;
+        case ONAMES.RIN_POLYMORPH_CONTROL:
+            await pline_The('sink momentarily looks like a regularly erupting geyser.');
+            break;
+        default:
+            break;
+        }
+    }
+    if (ideed)
+        await trycall(obj);
+    else if (!nosink)
+        await You_hear('the ring bouncing down the drainpipe.');
+
+    if (!rn2(20) && !nosink) {
+        await pline_The(`sink backs up, leaving ${doname(obj)}.`);
+        obj.in_use = false;
+        await dropx(obj);
+    } else if (!rn2(5)) {
+        await freeinv(obj);
+        obj.in_use = false;
+        obj.ox = game.u.ux;
+        obj.oy = game.u.uy;
+        add_to_buried(obj);
+    } else {
+        await useup(obj);
+    }
 }
 
 // src/do.c dropx() — take it out of inventory, then put it down.
@@ -2133,9 +2305,11 @@ export async function drop(obj) {
             await You(`drop ${onam} into ${mnam}.`);
         }
     } else {
-        /* src/do.c:747 — the sink-ring and can't-reach-floor (levitation)
-           arms come first; on the ordinary path the drop is announced
-           unless it lands on an altar (doaltarobj speaks there) */
+        if ((obj.oclass === OCLASSES.RING_CLASS || obj.otyp === ONAMES.MEAT_RING)
+            && game.level.at(game.u.ux, game.u.uy).typ === SINK) {
+            await dosinkring(obj);
+            return ECMD_TIME;
+        }
         if (!can_reach_floor(true)) {
             const levhack = finesse_ahriman(obj);
             if (levhack)

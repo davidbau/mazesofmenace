@@ -72,7 +72,7 @@ import { crawl_destination } from './hack.js';
 import { linedup } from './monmove.js';
 import { xdir, ydir, N_DIRS, ZAP_POS, is_xport } from './const.js';
 import { mongone, wake_nearto } from './mon.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, urgent_pline } from './display.js';
 import { done } from './end.js';
 import { killer } from './topten.js';
 import { DIED } from './const.js';
@@ -379,7 +379,7 @@ export async function losehp(n, knam, k_format) {
         killer().format = k_format;
         if (killer().name !== knam) /* the thing that killed you */
             killer().name = knam ? knam : "";
-        await pline("You die..."); /* urgent_pline() */
+        await urgent_pline("You die...");
         await done(DIED);
     } else if (n > 0 && u.uhp * 10 < u.uhpmax)
         await maybe_wail();

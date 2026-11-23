@@ -103,7 +103,6 @@ import { NATTK } from './const.js';
 import { M_ATTK_MISS } from './const.js';
 import { M_ATTK_DEF_DIED } from './const.js';
 import { STONE } from './const.js';
-import { OBJ_FLOOR } from './const.js';
 import { OBJ_MINVENT } from './const.js';
 import { OBJ_MIGRATING } from './const.js';
 import { WEB } from './const.js';
@@ -580,7 +579,7 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
     unpaid = is_unpaid(otmp);
 
     if (OBJ_AT(x, y)) {
-        for (const obj of (game.level?.objects || [])) {
+        for (let obj = game.level.objectAt(x, y); obj; obj = obj.nexthere) {
             if (obj.ox !== x || obj.oy !== y)
                 continue;
             if (obj === game.u.uchain)
@@ -1106,7 +1105,7 @@ async function kick_object(x, y, kickobjnam) {
 
     kickobjnam.v = '';
     /* if a pile, the "top" object gets kicked */
-    game.kickedobj = (game.level.objects || []).find(o => o.where === OBJ_FLOOR && o.ox === x && o.oy === y) || null;
+    game.kickedobj = game.level.objectAt(x, y);
     if (game.kickedobj) {
         /* formatted object name matters iff res==0 */
         kickobjnam.v = killer_xname(game.kickedobj);
@@ -2213,8 +2212,8 @@ export async function impact_drop(missile, x, y, dlev) {
 
     isrock = (missile && missile.otyp === ONAMES.ROCK);
     oct = dct = 0;
-    for (const obj of (game.level.objects || []).filter(
-             (o) => o.ox === x && o.oy === y)) {
+    for (let obj = game.level.objectAt(x, y), next; obj; obj = next) {
+        next = obj.nexthere;
         if (obj === missile)
             continue;
         /* number of objects in the pile */

@@ -57,12 +57,15 @@ import { is_organic } from './objects.js';
 import { eaten_stat } from './eat.js';
 import { extract_from_minvent } from './steal.js';
 import { m_consume_obj, mondied, wake_nearto, disturb_buried_zombies } from './mon.js';
+import { newcham } from './mon.js';
+import { PROT_FROM_SHAPE_CHANGERS, NC_SHOW_MSG, NO_NC_FLAGS } from './const.js';
+import { tty_display_nhwindow } from './wintty.js';
 import { mon_learns_traps } from './mondata.js';
 import { Unaware } from './eat.js';
 import { TRAPPED_DOOR } from './const.js';
 import { has_ceiling } from './insight.js';
 import { resist_conflict } from './mhitm.js';
-import { cuss } from './wizard.js';
+import { cuss, tactics } from './wizard.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon,
          m_has_launcher_and_ammo } from './weapon.js';
 import { visible_region_at, create_gas_cloud, m_in_out_region } from './region.js';
@@ -677,10 +680,31 @@ function stuff_prevents_passage(mtmp) {
     return false;
 }
 // C ref: monmove.c can_fog()
-function can_fog(mtmp) {
-    if ((mtmp.data.mflags2 & M.M2_SHAPESHIFTER) !== 0 && is_vampshifter(mtmp))
-        throw new Error('can_fog(): vampshifters not ported yet');
+export function can_fog(mtmp) {
+    if (!(game.mvitals[M.PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
+        && !uhave(PROT_FROM_SHAPE_CHANGERS) /* !Protection_from_shape_changers */
+        && !stuff_prevents_passage(mtmp))
+        return true;
     return false;
+}
+
+// C ref: monmove.c vamp_shift()
+/* this is called when a vampire turns into a fog cloud in order to move
+   under a closed door; if it was sensed via telepathy or seen via
+   infravision, its new fog cloud shape will disappear */
+async function vamp_shift(mon, ptr, domsg) {
+    let reslt = 0;
+
+    if (mon.data === ptr) {
+        /* already right shape */
+        reslt = 1;
+    } else if (is_vampshifter(mon)) {
+        reslt = await newcham(mon, ptr, domsg ? NC_SHOW_MSG : NO_NC_FLAGS);
+        /* shape-change message is given when vampshifter turns into a
+           fog cloud in order to move under a closed door */
+        await tty_display_nhwindow(game.WIN_MESSAGE, false);
+    }
+    return reslt;
 }
 
 // ── C ref: mhitu.c ranged_attk_available() ──
@@ -883,8 +907,13 @@ export async function dochug(mtmp) {
 
     /* Monsters that want to acquire things may teleport, so do it before
        inrange is set. This costs a turn only if mstate is set.  */
-    if (is_covetous(mdat))
-        throw new Error('dochug(): tactics() not ported yet');
+    if (is_covetous(mdat)) {
+        await tactics(mtmp);
+        /* tactics -> mnexto -> deal_with_overcrowding */
+        if (mtmp.mstate)
+            return 0;
+        set_apparxy(mtmp);
+    }
 
     /* check distance and scariness of attacks */
     await distfleeck(mtmp, d);
@@ -1807,8 +1836,32 @@ export async function m_move(mtmp, after) {
     }
 
     /* and the acquisitive monsters get special treatment */
-    if (is_covetous(ptr))
-        throw new Error('m_move(): covetous monsters not ported yet');
+    if (is_covetous(ptr)) { /* [should this include
+                             *  '&& mtmp->mstrategy != STRAT_NONE'?] */
+        let covetousattack;
+        const tx = mtmp.mgoal ? mtmp.mgoal.x : 0,
+              ty = mtmp.mgoal ? mtmp.mgoal.y : 0;
+        const intruder = isok(tx, ty) ? m_at(tx, ty) : null;
+        /*
+         * if there's a monster on the object or in possession of it,
+         * attack it.
+         */
+        if (intruder && intruder !== mtmp
+            /* 5.0: this used to use 'dist2() < 2' which meant that intended
+               attack was disallowed if they were adjacent diagonally */
+            && dist2(mtmp.mx, mtmp.my, tx, ty) <= 2) {
+            game.bhitpos = { x: tx, y: ty };
+            game.notonhead = (intruder.mx !== tx || intruder.my !== ty);
+            covetousattack = await mattackm(mtmp, intruder);
+            /* 5.0: this used to erroneously use '== 2' (M_ATTK_DEF_DIED) */
+            if (covetousattack & M_ATTK_AGR_DIED)
+                return MMOVE_DIED;
+            mmoved = MMOVE_MOVED;
+            return await postmov(mtmp, ptr, omx, omy, mmoved,
+                                 seenflgs, can_tunnel, can_unlock, can_open);
+        }
+        /* otherwise continue with normal AI routine */
+    }
 
     /* likewise for shopkeeper, guard, or priest */
     if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
@@ -2114,8 +2167,22 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
         if (is_vampshifter(mtmp) && !amorphous(mtmp.data)
             && IS_DOOR(lev.at(nix, niy).typ)
             && ((lev.at(nix, niy).doormask & (D_LOCKED | D_CLOSED)) !== 0)
-            && can_fog(mtmp))
-            throw new Error('postmov(): vamp_shift() not ported yet');
+            && can_fog(mtmp)) {
+            /* note: remove_monster()+place_monster is not right for
+               long worms but they won't reach here */
+            if (seenflgs) {
+                place_monster(mtmp, omx, omy); /* remove_monster(nix, niy) */
+                newsym(nix, niy), newsym(omx, omy);
+            }
+            if (await vamp_shift(mtmp, mons[M.PM_FOG_CLOUD],
+                                 ((seenflgs & 1) !== 0) ? true : false)) {
+                ptr = mtmp.data; /* update cached value */
+            }
+            if (seenflgs) {
+                place_monster(mtmp, nix, niy); /* remove_monster(omx, omy) */
+                newsym(omx, omy), newsym(nix, niy);
+            }
+        }
 
         newsym(omx, omy); /* update the old position */
         trapret = await mintrap(mtmp, NO_TRAP_FLAGS);

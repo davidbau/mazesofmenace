@@ -2043,8 +2043,7 @@ export async function dohide() {
     }
     if (hides_under(youmonst.data)) {
         let ct = 0;
-        const pile = (game.level.objects || []).filter(
-            (o) => o.ox === u.ux && o.oy === u.uy);
+        const pile = game.level.objectsAt(u.ux, u.uy);
         const otop = pile[0] || null;
         let otmp = null;
 

@@ -622,10 +622,12 @@ export async function getpos(ccp, force, goal) {
                 show_goal_msg = true;
             msg_given = true;
             /* goto nxtc */
-        } else if (c === 0x3f) { /* gc.Cmd.spkeys[NHKF_GETPOS_HELP] '?' */
+        } else if (c === 0x3f /* gc.Cmd.spkeys[NHKF_GETPOS_HELP] '?' */
+                   || c === 0x12) { /* redraw_cmd(c): ^R */
             /* '?' will redraw twice, first when removing popup text window
                after showing the help text, then to reset highlighting */
-            await getpos_help(force, goal);
+            if (c === 0x3f) /* gc.Cmd.spkeys[NHKF_GETPOS_HELP] */
+                await getpos_help(force, goal);
             /* ^R: docrt(), hilite_state = default */
             await getpos_refresh();
             curs_map(cx, cy);
@@ -684,8 +686,6 @@ export async function getpos(ccp, force, goal) {
                 throw new Error('getpos(): getpos_toggle_hilite_state() not ported yet');
             show_goal_msg = true; /* we're still targeting */
             /* goto nxtc */
-        } else if (c === 0x12) { /* ^R: redraw_cmd() */
-            throw new Error(`getpos(): key '${ch}' not ported yet`);
         } else {
             /* !strchr(quitchars, c): the quitchars were handled above */
             let k = 0;

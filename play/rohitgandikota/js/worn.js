@@ -470,9 +470,8 @@ function m_dowear_type(mon, flag, creation, racialexception) {
             update_mon_extrinsics(mon, best, true, creation);
             if (!creation && sawmon !== canseemon(mon)
                 && mon.minvis && !See_invisible()) {
-                const message = pline(`Suddenly you cannot see ${nambuf}.`);
-                makeknown(best.otyp);
-                return message;
+                return pline(`Suddenly you cannot see ${nambuf}.`)
+                    .then(() => makeknown(best.otyp));
             }
             return null;
         };

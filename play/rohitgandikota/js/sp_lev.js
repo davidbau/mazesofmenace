@@ -1563,10 +1563,7 @@ const NO_INVENT = 0, CUSTOM_INVENT = 0x01, DEFAULT_INVENT = 0x02;
 // memory. create_object is one such caller -- see the container_obj clear at
 // its call site.
 //
-// C also returns otmp2 (the pile's nexthere, read before the extract so the
-// caller can keep walking a chain it is mutating). This port keeps object
-// piles as a flat list rather than a nexthere chain (see js/invent.js:141);
-// bury_objs() in js/dig.js walks the pile list instead.
+// The return value is the next local object, retained before extraction.
 /* bury_an_obj() lives in js/dig.js, where src/dig.c has it */
 export { bury_an_obj } from './dig.js';
 
@@ -2807,10 +2804,8 @@ export async function flip_level_rnd(flp) {
 // src/sp_lev.c:533 flip_level() — mirror the level on one or both axes.
 //
 // Everything positional moves: the terrain grid, objects, monsters, traps,
-// stairways, engravings and doors. This port keeps objects and monsters in
-// flat lists rather than per-square chains, so C's grid swap of
-// level.objects[][] / level.monsters[][] is implicit once their coordinates
-// are flipped -- only the terrain cells need exchanging.
+// stairways, engravings and doors. The per-square object and monster maps
+// move with their coordinates, preserving each object's nexthere link.
 //
 // Recorded: the ball-and-chain repositioning, the vault guard's egd,
 // migrating monsters, timers and the level-teleport regions. `extras` is
@@ -2904,6 +2899,10 @@ export async function flip_level(flp, extras) {
         if (flp & 1) o.oy = FlipY(o.oy);
         if (flp & 2) o.ox = FlipX(o.ox);
     }
+
+    // src/sp_lev.c:835, move the heads without rebuilding local chains.
+    game.level.objAt = new Map([...game.level.objAt.values()]
+        .map(obj => [`${obj.ox},${obj.oy}`, obj]));
 
     /* sp_lev.c:520 Flip_coord() — only inside the flip area, and never a
        zeroed coordinate */

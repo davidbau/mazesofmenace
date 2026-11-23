@@ -497,11 +497,8 @@ export async function dosit() {
     if (!in_water && OBJ_AT(u.ux, u.uy)
         /* ensure we're not standing on the precipice */
         && !(uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
-        /* C reads svl.level.objects[x][y], the head of the per-square
-           chain; place_object() prepends, so the first flat-list match is
-           the same object. */
-        const obj = (game.level?.objects || [])
-            .find(o => o.ox === u.ux && o.oy === u.uy);
+        /* src/sit.c:442, inspect the head of the per-square chain. */
+        const obj = game.level.objectAt(u.ux, u.uy);
         if (game.youmonst.data.mlet === MONSYMS.S_DRAGON && obj.oclass === OCLASSES.COIN_CLASS) {
             await You(`coil up around your ${
                 (obj.quan + money_cnt(game.invent) < u.ulevel * 1000)

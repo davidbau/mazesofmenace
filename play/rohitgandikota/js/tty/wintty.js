@@ -212,14 +212,14 @@ export function tty_clear_nhwindow(window) {
     const cw = windows[window];
     if (!cw) return;
     if (cw.type === NHW_STATUS) {
-        /* win/tty/wintty.c:1332 the NHW_STATUS arm: erase the rows, blank
+        /* win/tty/wintty.c:1089 the NHW_STATUS arm: erase the rows, blank
            the window data and ask for a full status redraw */
-        const display = game?.nhDisplay;
         const m = cw.maxrow, n = cw.cols;
         for (let i = 0; i < m; ++i) {
-            if (display && !game._erasing_tty_screen)
-                for (let x = 0; x < COLS; x++)
-                    display.setCell(x, cw.offy + i, ' ', NO_COLOR, 0); /* cl_end() */
+            if (!game._erasing_tty_screen) {
+                tty_curs_status(cw, 1, i);
+                status_cl_end(cw, i);
+            }
             cw.data[i] = new Array(n).fill(' ');
         }
         (game.disp ||= {}).botlx = true;
@@ -1617,7 +1617,7 @@ function check_fields(forcefields, sz) {
     return valid;
 }
 
-// win/tty/wintty.c:4803 tty_putstatusfield() — this is what places a field
+// win/tty/wintty.c:4882 tty_putstatusfield() places a field
 // on the tty display
 function tty_putstatusfield(text, x, y) {
     let i, n, ncols, nrows, lth = 0;
@@ -1659,25 +1659,26 @@ function tty_putstatusfield(text, x, y) {
                                     plain[i] ? NO_COLOR : st.cur_color,
                                     plain[i] ? 0 : st.cur_attr);
                 cw.curx++;
+                display?.setCursor(cw.curx + cw.offx, cw.cury + cw.offy);
                 cw.data[y][n - 1] = text[i];
             }
         }
     }
 }
 
-/* tty_curs(WIN_STATUS, x, y): the window's cursor; the terminal cursor
-   moves with the last cell written */
+// win/tty/wintty.c:2112 tty_curs(): x is 1-based; stored cursors are 0-based.
 function tty_curs_status(cw, x, y) {
-    cw.curx = x;
+    cw.curx = x - 1;
     cw.cury = y;
+    game?.nhDisplay?.setCursor(cw.curx + cw.offx, cw.cury + cw.offy);
 }
 
-/* cl_end() on the status window's row from the window cursor on */
+/* win/tty/termcap.c:983 cl_end(): clear from the cursor without moving it. */
 function status_cl_end(cw, y) {
     const display = game?.nhDisplay;
     if (!display)
         return;
-    for (let x = cw.curx - 1 + cw.offx; x < COLS; x++)
+    for (let x = cw.curx + cw.offx; x < COLS; x++)
         display.setCell(x, y + cw.offy, ' ', NO_COLOR, 0);
 }
 

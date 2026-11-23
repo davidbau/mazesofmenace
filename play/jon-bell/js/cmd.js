@@ -13458,6 +13458,16 @@ async function dispatch_command(command, outcome = {}, queued = false) {
             const selected = String.fromCharCode(pickKey);
             choice = rows.find(r => r.ch === selected)
                 || rows.find(r => rowGacc(r) === selected);
+            /* C o_init.c:1036 destroy_nhwindow(tmpwin) -> tty_dismiss_nhwindow ->
+             * erase_menu_or_text -> docorner(offx, maxrow + 1) (wintty.c:982). */
+            if (game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0) {
+                const savedBotDisabled = game._bot_disabled;
+                game._bot_disabled = true;
+                try { await docrt(false, game._screen_output); await flush_screen(1); }
+                finally { game._bot_disabled = savedBotDisabled; }
+            } else {
+                docorner_blank_utf8_captures(34, promptLines.length + 1);
+            }
         }
         if (choice && await show_special_discoveries(choice.key)) { game.context.move = 0; return true; }
         if (choice) {

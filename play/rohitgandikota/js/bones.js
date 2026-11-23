@@ -50,7 +50,7 @@ import { save_engravings, rest_engravings,
          forget_engravings, sanitize_engravings } from './engrave.js';
 import { NO_COLOR } from './terminal.js';
 import { savefruitchn } from './save.js';
-import { loadfruitchn, ghostfruit } from './restore.js';
+import { loadfruitchn, ghostfruit, find_lev_obj } from './restore.js';
 import { xname, the } from './objnam.js';
 import { You } from './pline.js';
 
@@ -449,6 +449,7 @@ function strip_objs(list) {
         const copy = { ...o };
         delete copy.ocarry;
         delete copy.ocontainer;
+        delete copy.nexthere;
         if (copy.cobj)
             copy.cobj = strip_objs(copy.cobj);
         return copy;
@@ -711,6 +712,7 @@ export async function getbones_load() {
     // held-state transition is relevant even to objects inside a statue.
     for (const obj of [...lvl.objects].reverse())
         await obj_no_longer_held(obj);
+    find_lev_obj();
     await renumber(lvl.buriedobjs);
 
     /* restore.c:1202 ghostly monsters meet a different hero, so their

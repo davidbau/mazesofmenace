@@ -1842,8 +1842,7 @@ export async function youhiding(via_enlghtmt, msgflag) {
             if (is_pool(u.ux, u.uy))
                 buf += ` in the ${waterbody_name(u.ux, u.uy)}`;
         } else if (hides_under(youmonst.data)) {
-            const o = (game.level.objects || [])
-                .find((obj) => obj.ox === u.ux && obj.oy === u.uy);
+            const o = game.level.objectAt(u.ux, u.uy);
 
             if (o)
                 buf += ` underneath ${ansimpleoname(o)}`;

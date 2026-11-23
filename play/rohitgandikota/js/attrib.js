@@ -37,7 +37,7 @@ import { LL_ALIGNMENT, A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF, A_CURRENT, Is_
 import { aligns } from './role_data.js';
 import { summon_furies } from './makemon.js';
 import { retouch_equipment, what_gives, is_art } from './artifact.js';
-import { Hallucination, Blindfolded_only } from './youprop.js';
+import { Hallucination, Blindfolded_only, Fumbling } from './youprop.js';
 import { ysimple_name, bare_artifactname } from './objnam.js';
 import { strstri } from './hacklib.js';
 import { body_part } from './polyself.js';
@@ -889,11 +889,12 @@ export function exerper() {
             || ((game.u.intrinsic?.HHallucination || game.u.uprops?.HALLUC)
                 && !game.u.uprops?.HALLUC_RES))
             exercise(A_WIS, false);
-        /* src/attrib.c:582 tests plain `HStun`, not `Stunned` — intrinsic
-           only, so an extrinsic stun deliberately does not exercise DEX. */
+        /* src/attrib.c:581 reads HStun directly. C's Stunned aliases HStun;
+           the port's flat STUNNED entry is compatibility state, not a
+           separate extrinsic source. */
         if ((((game.u.intrinsic?.HWounded_legs || 0) > 0
               || (game.u.EWounded_legs || 0)) && !game.u.usteed)
-            || game.u.uprops?.FUMBLING || game.u.intrinsic?.HStun)
+            || Fumbling() || game.u.intrinsic?.HStun)
             exercise(A_DEX, false);
     }
 }

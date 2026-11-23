@@ -64,7 +64,7 @@ import { splitobj, obj_extract_self, add_to_minv, weight,
 import { freeinv, addinv, merge_choice, count_unpaid } from './invent.js';
 import { inv_cnt } from './hack.js';
 import { dropy } from './do.js';
-import { hidden_gold, currency } from './insight.js';
+import { hidden_gold, currency, mbodypart } from './insight.js';
 import { getpos } from './getpos.js';
 import { cansee } from './vision.js';
 import { There, You_cant } from './display.js';
@@ -169,20 +169,8 @@ function noit_mhis(mtmp) {
 function noit_mhe(mtmp) {
     return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].he;
 }
-/* C ref: polyself.c mbodypart() -- humanoid monsters (shopkeepers) only */
-export function mbodypart(mon, part) {
-    const mptr = mon.data;
-    if (!(mptr.mflags1 & M1_HUMANOID) || mptr.mlet === S_DOG
-        || mptr.mlet === S_FELINE || mptr.mlet === S_RODENT
-        || mptr.mlet === S_YETI || mptr === mons[PM_GRID_BUG])
-        throw new Error('mbodypart(): non-humanoid shopkeeper not ported yet');
-    const humanoid_parts = [ "arm",       "eye",  "face",         "finger",
-                             "fingertip", "foot", "hand",         "handed",
-                             "head",      "leg",  "light headed", "neck",
-                             "spine",     "toe",  "hair",         "blood",
-                             "lung",      "nose", "stomach" ];
-    return humanoid_parts[part];
-}
+/* C ref: polyself.c mbodypart() -- ported in insight.js beside body_part() */
+export { mbodypart };
 /* C ref: pline.c verbalize() -- SetVoice() only matters for speech
    output, which the tty doesn't do */
 async function verbalize(line) {

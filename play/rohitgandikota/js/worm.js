@@ -22,7 +22,10 @@ import { show_glyph_cell } from './display.js';
 import { NUMMONS } from './monst_data.js';
 import { rn2_on_display_rng } from './rng.js';
 import { Hallucination } from './youprop.js';
-import { NON_PM, NORMAL_SPEED, MHPMAX, SIZEOF_STRUCT_WSEG } from './const.js';
+import { NON_PM, NORMAL_SPEED, MHPMAX, SIZEOF_STRUCT_WSEG,
+         GLYPH_MON_MALE_OFF, GLYPH_MON_FEM_OFF,
+         GLYPH_PET_MALE_OFF, GLYPH_PET_FEM_OFF,
+         GLYPH_DETECT_MALE_OFF, GLYPH_DETECT_FEM_OFF } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
@@ -314,10 +317,16 @@ export function detect_wsegs(worm, use_detection_glyph) {
                  ? TERM_INVERSE : 0;
 
     while (curr !== w.wheads[worm.wormno]) {
+        const female = !!worm.female;
+        const glyphnum = what_tail + (use_detection_glyph
+            ? (female ? GLYPH_DETECT_FEM_OFF : GLYPH_DETECT_MALE_OFF)
+            : worm.mtame
+              ? (female ? GLYPH_PET_FEM_OFF : GLYPH_PET_MALE_OFF)
+              : (female ? GLYPH_MON_FEM_OFF : GLYPH_MON_MALE_OFF));
         show_glyph_cell(curr.wx, curr.wy, showsym_mon(shown.mlet),
                         shown.mcolor ?? NO_COLOR, false, attr,
                         { kind: 'mon', mon: worm, mnum: what_tail,
-                          female: !!worm.female, detected: !!use_detection_glyph });
+                          female, detected: !!use_detection_glyph, glyphnum });
         curr = curr.nseg;
     }
 }

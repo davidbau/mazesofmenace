@@ -1792,7 +1792,7 @@ export async function dog_move(mtmp, after) {
             const loc = game.level.at(nix, niy);
             const memobj = (!Hallucination()
                             && loc?.remembered_glyph?.glyph?.kind === 'obj')
-                ? (game.level.objects || []).find(o => o.ox === nix && o.oy === niy)
+                ? game.level.objectAt(nix, niy)
                 : null;
             const what = memobj ? doname(memobj) : 'something';
             await pline(`${x_monnam(mtmp, ARTICLE_YOUR, null, 0, false)
@@ -1888,17 +1888,9 @@ export function cursed_object_at(x, y) {
                .some(o => o.ox === x && o.oy === y && o.cursed);
 }
 
-/* src/rm.h svl.level.objects[x][y] — the pile on one square, walked through
-   ->nexthere. place_object() PREPENDS to the level list, so filtering it in
-   order gives newest-first, which is the order the chain has. Every caller
-   that draws per object depends on that order. */
+// include/rm.h: level.objects[x][y], in retained nexthere order.
 function objects_at(x, y) {
-    /* C's svl.level.objects[x][y] nexthere chain holds FLOOR objects only;
-       a contained/buried object at the same coords must not be scanned.
-       (Retried per NOTES now that place_object stamps where=OBJ_FLOOR.) */
-    return (game.level?.objects || [])
-        .filter(o => o.ox === x && o.oy === y
-                     && (o.where === undefined || o.where === OBJ_FLOOR));
+    return game.level.objectsAt(x, y);
 }
 
 // src/dogmove.c:410 dog_invent() — the pet drops what it carries, or picks up
@@ -1926,8 +1918,7 @@ export async function dog_invent(mtmp, edog, udist) {
                 edog.droptime = game.moves;
             }
     } else {
-        const obj = (game.level.objects || [])
-                        .find(o => o.ox === omx && o.oy === omy);
+        const obj = game.level.objectAt(omx, omy);
         if (obj && !nofetch.includes(obj.oclass)) {
             const edible = dogfood(mtmp, obj);
 

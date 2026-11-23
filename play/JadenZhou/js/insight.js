@@ -95,7 +95,7 @@ import { magic_negation } from './mhitu.js';
 import { stone_luck } from './attrib.js';
 import { carrying } from './invent.js';
 import { u_adtyp_resistance_obj, item_what } from './zap.js';
-import { shield_simple_name } from './iactions.js';
+import { shield_simple_name, ansimpleoname } from './iactions.js';
 import { pline, livelog_printf } from './display.js';
 import { NHW_TEXT, LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
          LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER, LL_MINORAC } from './const.js';
@@ -389,20 +389,188 @@ const enc_stat = [
 const attrname = [ "strength", "intelligence", "wisdom",
                    "dexterity", "constitution", "charisma" ];
 
-// C ref: polyself.c body_part() -- mbodypart(&youmonst, part) for the
-// hero's own (unpolymorphed, humanoid) form
+/* C ref: polyself.c mbodypart() static tables */
+const humanoid_parts = [ "arm",       "eye",  "face",         "finger",
+                         "fingertip", "foot", "hand",         "handed",
+                         "head",      "leg",  "light headed", "neck",
+                         "spine",     "toe",  "hair",         "blood",
+                         "lung",      "nose", "stomach" ],
+    jelly_parts = [ "pseudopod", "dark spot", "front",
+                    "pseudopod extension", "pseudopod extremity",
+                    "pseudopod root", "grasp", "grasped",
+                    "cerebral area", "lower pseudopod", "viscous",
+                    "middle", "surface", "pseudopod extremity",
+                    "ripples", "juices", "surface", "sensor",
+                    "stomach" ],
+    animal_parts = [ "forelimb",  "eye",           "face",
+                     "foreclaw",  "claw tip",      "rear claw",
+                     "foreclaw",  "clawed",        "head",
+                     "rear limb", "light headed",  "neck",
+                     "spine",     "rear claw tip", "fur",
+                     "blood",     "lung",          "nose",
+                     "stomach" ],
+    bird_parts = [ "wing",     "eye",  "face",         "wing",
+                   "wing tip", "foot", "wing",         "winged",
+                   "head",     "leg",  "light headed", "neck",
+                   "spine",    "toe",  "feathers",     "blood",
+                   "lung",     "bill", "stomach" ],
+    horse_parts = [ "foreleg",  "eye",           "face",
+                    "forehoof", "hoof tip",      "rear hoof",
+                    "forehoof", "hooved",        "head",
+                    "rear leg", "light headed",  "neck",
+                    "backbone", "rear hoof tip", "mane",
+                    "blood",    "lung",          "nose",
+                    "stomach" ],
+    sphere_parts = [ "appendage", "optic nerve", "body", "tentacle",
+                     "tentacle tip", "lower appendage", "tentacle",
+                     "tentacled", "body", "lower tentacle",
+                     "rotational", "equator", "body",
+                     "lower tentacle tip", "cilia", "life force",
+                     "retina", "olfactory nerve", "interior" ],
+    fungus_parts = [ "mycelium", "visual area", "front",
+                     "hypha",    "hypha",       "root",
+                     "strand",   "stranded",    "cap area",
+                     "rhizome",  "sporulated",  "stalk",
+                     "root",     "rhizome tip", "spores",
+                     "juices",   "gill",        "gill",
+                     "interior" ],
+    vortex_parts = [ "region",        "eye",           "front",
+                     "minor current", "minor current", "lower current",
+                     "swirl",         "swirled",       "central core",
+                     "lower current", "addled",        "center",
+                     "currents",      "edge",          "currents",
+                     "life force",    "center",        "leading edge",
+                     "interior" ],
+    snake_parts = [ "vestigial limb", "eye", "face", "large scale",
+                    "large scale tip", "rear region", "scale gap",
+                    "scale gapped", "head", "rear region",
+                    "light headed", "neck", "length", "rear scale",
+                    "scales", "blood", "lung", "forked tongue",
+                    "stomach" ],
+    worm_parts = [ "anterior segment", "light sensitive cell",
+                   "clitellum", "setae", "setae", "posterior segment",
+                   "segment", "segmented", "anterior segment",
+                   "posterior", "over stretched", "clitellum",
+                   "length", "posterior setae", "setae", "blood",
+                   "skin", "prostomium", "stomach" ],
+    spider_parts = [ "pedipalp", "eye", "face", "pedipalp", "tarsus",
+                     "claw", "pedipalp", "palped", "cephalothorax",
+                     "leg", "spun out", "cephalothorax", "abdomen",
+                     "claw", "hair", "hemolymph", "book lung",
+                     "labrum", "digestive tract" ],
+    fish_parts = [ "fin", "eye", "premaxillary", "pelvic axillary",
+                   "pelvic fin", "anal fin", "pectoral fin", "finned",
+                   "head", "peduncle", "played out", "gills",
+                   "dorsal fin", "caudal fin", "scales", "blood",
+                   "gill", "nostril", "stomach" ];
+/* claw attacks are overloaded in mons[]; most humanoids with
+   such attacks should still reference hands rather than claws */
+const not_claws = [
+    M.S_HUMAN,     M.S_MUMMY,   M.S_ZOMBIE, M.S_ANGEL, M.S_NYMPH, M.S_LEPRECHAUN,
+    M.S_QUANTMECH, M.S_VAMPIRE, M.S_ORC,    M.S_GIANT, /* quest nemeses */
+];
+/* C ref: polyself.c mbodypart() body part indices (polyself.h) */
+const BP_ARM = 0, BP_EYE = 1, BP_FINGER = 3, BP_FINGERTIP = 4, BP_FOOT = 5,
+      BP_HAND = 6, BP_HANDED = 7, BP_HEAD = 8, BP_LEG = 9, BP_TOE = 13,
+      BP_HAIR = 14, BP_NOSE = 17, BP_NO_PART = -1;
+
+// C ref: polyself.c mbodypart()
+export function mbodypart(mon, part) {
+    const mptr = mon.data;
+    /* mondata.h attacktype(), slithy() */
+    const attacktype = (ptr, atyp) => ptr.mattk.some(a => a.aatyp === atyp);
+    const slithy = (ptr) => (ptr.mflags1 & M.M1_SLITHY) !== 0;
+
+    if (part <= BP_NO_PART) {
+        /* impossible("mbodypart: bad part %d", part) */
+        return "mystery part";
+    }
+
+    /* some special cases */
+    if (mptr.mlet === M.S_DOG || mptr.mlet === M.S_FELINE
+        || mptr.mlet === M.S_RODENT || mptr === M.mons[M.PM_OWLBEAR]) {
+        switch (part) {
+        case BP_HAND:
+            return "paw";
+        case BP_HANDED:
+            return "pawed";
+        case BP_FOOT:
+            return "rear paw";
+        case BP_ARM:
+        case BP_LEG:
+            return horse_parts[part]; /* "foreleg", "rear leg" */
+        default:
+            break; /* for other parts, use animal_parts[] below */
+        }
+    } else if (mptr.mlet === M.S_YETI) { /* excl. owlbear due to 'if' above */
+        /* opposable thumbs, hence "hands", "arms", "legs", &c */
+        return humanoid_parts[part]; /* yeti/sasquatch, monkey/ape */
+    }
+    if ((part === BP_HAND || part === BP_HANDED)
+        && (humanoid(mptr) && attacktype(mptr, M.AT_CLAW)
+            && !not_claws.includes(mptr.mlet)
+            && mptr !== M.mons[M.PM_STONE_GOLEM]
+            && mptr !== M.mons[M.PM_AMOROUS_DEMON]))
+        return (part === BP_HAND) ? "claw" : "clawed";
+    if ((mptr === M.mons[M.PM_MUMAK] || mptr === M.mons[M.PM_MASTODON])
+        && part === BP_NOSE)
+        return "trunk";
+    if (mptr === M.mons[M.PM_SHARK] && part === BP_HAIR)
+        return "skin"; /* sharks don't have scales */
+    if ((mptr === M.mons[M.PM_JELLYFISH] || mptr === M.mons[M.PM_KRAKEN])
+        && (part === BP_ARM || part === BP_FINGER || part === BP_HAND
+            || part === BP_FOOT || part === BP_TOE))
+        return "tentacle";
+    if (mptr === M.mons[M.PM_FLOATING_EYE] && part === BP_EYE)
+        return "cornea";
+    if (humanoid(mptr) && (part === BP_ARM || part === BP_FINGER
+                           || part === BP_FINGERTIP || part === BP_HAND
+                           || part === BP_HANDED))
+        return humanoid_parts[part];
+    if (mptr.mlet === M.S_COCKATRICE)
+        return (part === BP_HAIR) ? snake_parts[part] : bird_parts[part];
+    if (mptr === M.mons[M.PM_RAVEN])
+        return bird_parts[part];
+    if (mptr.mlet === M.S_CENTAUR || mptr.mlet === M.S_UNICORN
+        || mptr === M.mons[M.PM_KI_RIN]
+        || (mptr === M.mons[M.PM_ROTHE] && part !== BP_HAIR))
+        return horse_parts[part];
+    if (mptr.mlet === M.S_LIGHT) {
+        if (part === BP_HANDED)
+            return "rayed";
+        else if (part === BP_ARM || part === BP_FINGER
+                 || part === BP_FINGERTIP || part === BP_HAND)
+            return "ray";
+        else
+            return "beam";
+    }
+    if (mptr === M.mons[M.PM_STALKER] && part === BP_HEAD)
+        return "head";
+    if (mptr.mlet === M.S_EEL && mptr !== M.mons[M.PM_JELLYFISH])
+        return fish_parts[part];
+    if (mptr.mlet === M.S_WORM)
+        return worm_parts[part];
+    if (mptr.mlet === M.S_SPIDER)
+        return spider_parts[part];
+    if (slithy(mptr) || (mptr.mlet === M.S_DRAGON && part === BP_HAIR))
+        return snake_parts[part];
+    if (mptr.mlet === M.S_EYE)
+        return sphere_parts[part];
+    if (mptr.mlet === M.S_JELLY || mptr.mlet === M.S_PUDDING
+        || mptr.mlet === M.S_BLOB || mptr === M.mons[M.PM_JELLYFISH])
+        return jelly_parts[part];
+    if (mptr.mlet === M.S_VORTEX || mptr.mlet === M.S_ELEMENTAL)
+        return vortex_parts[part];
+    if (mptr.mlet === M.S_FUNGUS)
+        return fungus_parts[part];
+    if (humanoid(mptr))
+        return humanoid_parts[part];
+    return animal_parts[part];
+}
+
+// C ref: polyself.c body_part()
 export function body_part(part) {
-    const mptr = game.youmonst?.data;
-    if (Upolyd() || !mptr || !humanoid(mptr)
-        || mptr.mlet === M.S_DOG || mptr.mlet === M.S_FELINE
-        || mptr.mlet === M.S_RODENT || mptr.mlet === M.S_YETI)
-        throw new Error('body_part(): non-humanoid hero form not ported yet');
-    const humanoid_parts = [ "arm",       "eye",  "face",         "finger",
-                             "fingertip", "foot", "hand",         "handed",
-                             "head",      "leg",  "light headed", "neck",
-                             "spine",     "toe",  "hair",         "blood",
-                             "lung",      "nose", "stomach" ];
-    return humanoid_parts[part];
+    return mbodypart(game.youmonst, part);
 }
 
 // C ref: invent.c contained_gold()
@@ -1429,10 +1597,23 @@ function status_enlightenment(mode, final) {
         you_are("deaf", from_what(DEAF));
 
     /* external troubles, more or less */
-    if (Punished())
-        throw new Error('status_enlightenment(): punishment not ported yet');
-    if (u.utrap)
-        throw new Error('status_enlightenment(): trap_predicament() not ported yet');
+    if (Punished()) {
+        if (game.uball) {
+            buf = `chained to ${ansimpleoname(game.uball)}`;
+        } else {
+            /* impossible("Punished without uball?") */
+            buf = "punished";
+        }
+        you_are(buf, "");
+    }
+    if (u.utrap) {
+        const predicament = trap_predicament(final, wizard());
+
+        if (u.usteed) /* not `Riding' here */
+            throw new Error('status_enlightenment(): trapped steed not ported yet');
+        else
+            you_are(predicament, "");
+    } /* (u.utrap) */
     if (u.ustuck) /* includes u.uswallow */
         throw new Error('status_enlightenment(): held/engulfed hero not ported yet');
     if (Wounded_legs()) {

@@ -1392,8 +1392,7 @@ export async function meatmetal(mtmp) {
         return 0;
 
     /* Eats topmost metal object if it is there */
-    for (const otmp of (game.level?.objects || [])
-                         .filter(o => o.ox === mtmp.mx && o.oy === mtmp.my)) {
+    for (let otmp = game.level.objectAt(mtmp.mx, mtmp.my); otmp; otmp = otmp.nexthere) {
         /* Don't eat indigestible/choking/inappropriate objects */
         if ((game.mons[mtmp.mnum].pmidx === PMNAMES.PM_RUST_MONSTER
              && !is_rustprone(otmp))
@@ -1458,11 +1457,8 @@ export async function meatobj(mtmp) {
 
     const original_mnum = mtmp.mnum;
     let count = 0, ecount = 0, engulf_message = '';
-    const here = (game.level?.objects || [])
-        .filter(o => o.where === OBJ_FLOOR
-                     && o.ox === mtmp.mx && o.oy === mtmp.my);
-
-    for (const otmp of here) {
+    for (let otmp = game.level.objectAt(mtmp.mx, mtmp.my), next; otmp; otmp = next) {
+        next = otmp.nexthere;
         if (!(game.level?.objects || []).includes(otmp))
             continue;
         if (is_mines_prize(otmp) || is_soko_prize(otmp))
@@ -3181,9 +3177,8 @@ export async function mpickstuff(mtmp) {
     if (!could_reach_item(mtmp, mtmp.mx, mtmp.my))
         return false;
 
-    const here = (game.level.objects || [])
-                     .filter(o => o.ox === mtmp.mx && o.oy === mtmp.my);
-    for (const otmp of here) {
+    for (let otmp = game.level.objectAt(mtmp.mx, mtmp.my), next; otmp; otmp = next) {
+        next = otmp.nexthere;
         /* avoid special items; once the hero picks them up they cease being
            special and become eligible for normal pickup */
         /* avoid special items; once the hero picks them up they cease being
@@ -4691,8 +4686,7 @@ export function maybe_unhide_at(x, y) {
     if (undetected
         && ((hides_under(mtmp.data)
              && (!OBJ_AT(x, y) || trapped
-                 || !can_hide_under_obj((game.level.objects || [])
-                                        .find(o => o.ox === x && o.oy === y))))
+                 || !can_hide_under_obj(game.level.objectAt(x, y))))
             || (mtmp.data.mlet === MONSYMS.S_EEL && !is_pool(x, y))))
         hideunder(mtmp);
 }

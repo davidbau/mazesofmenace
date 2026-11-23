@@ -1,3 +1,7 @@
+/* Generated from the NetHack 5.0 sources (NetHack General Public License: "NetHack may be
+ * freely redistributed.  See license for details.") and the Lua 5.4.8, TRE and Darwin Libc
+ * sources NetHack is built with (MIT, BSD and Apple Public Source licenses: see the notices
+ * at the top of the modules generated from them). */
 // index.js: module list and static initialization order (generated). Do not edit.
 import { $init as allmain$init } from './allmain.js';
 import { $init as alloc$init } from './alloc.js';

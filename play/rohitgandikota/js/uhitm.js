@@ -113,7 +113,7 @@ import { Acid_resistance, Antimagic, Blind, Cold_resistance, Deaf,
          Fire_resistance, Free_action, Fumbling, Hallucination, Flying, Levitation,
          Invisible, Shock_resistance, Swimming, Amphibious, Breathless,
          Sleep_resistance, Stone_resistance, Sick_resistance,
-         Slow_digestion, Unchanging, Teleport_control, Stunned } from './youprop.js';
+         Slow_digestion, Unchanging, Teleport_control, Stunned, Hate_silver } from './youprop.js';
 import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline, shieldeff,
          flush_screen, glyph_is_invisible_at, map_invisible,
          unmap_invisible, urgent_pline, map_location, mon_to_glyph,
@@ -131,7 +131,7 @@ import { obj_extract_self, update_inventory, useup } from './invent.js';
 import { rnl } from './rng.js';
 import { ART_CLEAVER, ART_SNICKERSNEE, ART_GIANTSLAYER,
          artifact_names,
-         ART_OGRESMASHER } from './artilist_data.js';
+         ART_OGRESMASHER, ART_STORMBRINGER } from './artilist_data.js';
 import { an, aobjnam, yname, cxname, xname, The, makeplural, simpleonames,
          obj_is_pname, otense, mshot_xname, Yname2, Yobjnam2,
          doname } from './objnam.js';
@@ -205,7 +205,7 @@ import { M_AP_TYPE, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT,
          SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE } from './const.js';
 import { defsyms } from './drawing_data.js';
 import { defends, get_artifact, permapoisoned,
-         spec_dbon } from './artifact.js';
+         spec_dbon, is_art, u_wield_art } from './artifact.js';
 import { cansee, vision_recalc } from './vision.js';
 import { make_stunned, paralyze_monst } from './potion.js';
 import { stop_occupation } from './allmain.js';
@@ -536,71 +536,65 @@ const is_longworm = (ptr) =>
 // src/mon.c helpless()
 /* helpless() lives in js/monst.js, matching include/monst.h:251. */
 
-// src/uhitm.c:462 do_attack() — returns TRUE if the hero's move is used up.
-//
-// Returning FALSE is what lets the caller swap places with the monster, so the
-// three arms below are "you stop", "it doesn't budge", and "go ahead and swap".
+// src/uhitm.c:448 do_attack(); u.dx and u.dy must already be set.
+// Handles attacks and safe monster bumps. Returns false when the caller may
+// continue moving to displace the monster or because it evaded. A handled
+// encounter returns true; declining an attack also clears context.move.
 export async function do_attack(mtmp) {
+    /* Intelligent chaotic weapons (Stormbringer) want blood */
     if (is_safemon(mtmp) && !game.context?.forcefight) {
-        /* u_wield_art(ART_STORMBRINGER) — no artifact is wielded this early */
-        const mdat = game.mons[mtmp.mnum];
+        if (!u_wield_art(ART_STORMBRINGER)) {
+            const mdat = game.mons[mtmp.mnum];
 
-        /* src/uhitm.c:474 — the rn2(7) fires on EVERY step onto a peaceful,
-           before any of the cheaper terms, because || evaluates left to right
-           and Punished is false for an unpunished hero.
+            /* Punished (uball != null) short-circuits rn2(7). Displacement
+               is refused by punishment, a failed roll, a worm tail, or a
+               wall the hero occupies but the monster cannot pass through. */
+            const foo = !!(game.u.uball || !rn2(7)
+                           || (is_longworm(mdat) && mtmp.wormno)
+                           || (IS_OBSTRUCTED(game.level.at(game.u.ux, game.u.uy)?.typ)
+                               && !passes_walls(mdat)));
 
-           include/youprop.h:77 defines Punished as (uball != 0): it is the
-           heavy iron ball, NOT a uprops intrinsic. This first read it as
-           game.u.uprops.PUNISHED, which is permanently undefined -- falsy, so
-           the rn2(7) did still draw and the common path was right by accident,
-           but the term could never become true once punishment is ported.
-           The ball subsystem does not exist yet, so u.uball is absent and this
-           is false for the same reason C is false. */
-        const foo = !!(game.u.uball || !rn2(7)
-                       || (is_longworm(mdat) && mtmp.wormno)
-                       || (IS_OBSTRUCTED(game.level.at(game.u.ux, game.u.uy)?.typ)
-                           && !passes_walls(mdat)));
-
-        /* The in-shop check only runs when foo is false. Peaceful monsters
-           cannot be displaced inside a tended shop, and bumping the resident
-           shopkeeper starts payment when this is an ordinary move. */
-        let inshop = false;
-        if (!foo) {
-            const [{ in_rooms }, { tended_shop }] = await Promise.all([
-                import('./hack.js'), import('./shk.js'),
-            ]);
-            for (const roomno of in_rooms(mtmp.mx, mtmp.my, SHOPBASE) || '') {
-                const room = game.level?.rooms?.[roomno.charCodeAt(0) - ROOMOFFSET];
-                if (room && tended_shop(room)) {
-                    inshop = true;
-                    break;
+            /* The in-shop check only runs when foo is false. Peaceful monsters
+               cannot be displaced inside a tended shop, and bumping the resident
+               shopkeeper starts payment when this is an ordinary move. */
+            let inshop = false;
+            if (!foo) {
+                const [{ in_rooms }, { tended_shop }] = await Promise.all([
+                    import('./hack.js'), import('./shk.js'),
+                ]);
+                for (const roomno of in_rooms(mtmp.mx, mtmp.my, SHOPBASE) || '') {
+                    const room = game.level?.rooms?.[roomno.charCodeAt(0) - ROOMOFFSET];
+                    if (room && tended_shop(room)) {
+                        inshop = true;
+                        break;
+                    }
                 }
             }
-        }
 
-        if (inshop || foo) {
-            if (!game.context?.travel && !game.context?.run
-                && canspotmon(mtmp) && mtmp.isshk) {
-                const { dopay } = await import('./shk.js');
-                await dopay();
+            if (inshop || foo) {
+                if (!game.context?.travel && !game.context?.run
+                    && canspotmon(mtmp) && mtmp.isshk) {
+                    const { dopay } = await import('./shk.js');
+                    await dopay();
+                    return true;
+                }
+                if (mtmp.mtame)     /* see 'additional considerations' in the C */
+                    await monflee(mtmp, rnd(6), false, false);
+                /* You("stop.  %s is in the way!", highc(y_monnam(mtmp))) */
+                {
+                    const buf = upstart(y_monnam(mtmp));
+                    await You(`stop.  ${buf} is in the way!`);
+                }
+                end_running(true);
                 return true;
+            } else if (mtmp.mfrozen || helpless(mtmp)
+                       || (mdat.mmove === 0 && rn2(6))) {
+                await pline(`${Monnam(mtmp)} doesn't seem to move!`);
+                end_running(true);
+                return true;
+            } else {
+                return false;       /* caller swaps places with it */
             }
-            if (mtmp.mtame)     /* see 'additional considerations' in the C */
-                await monflee(mtmp, rnd(6), false, false);
-            /* You("stop.  %s is in the way!", highc(y_monnam(mtmp))) */
-            {
-                const buf = upstart(y_monnam(mtmp));
-                await You(`stop.  ${buf} is in the way!`);
-            }
-            end_running(true);
-            return true;
-        } else if (mtmp.mfrozen || helpless(mtmp)
-                   || (mdat.mmove === 0 && rn2(6))) {
-            await pline(`${Monnam(mtmp)} doesn't seem to move!`);
-            end_running(true);
-            return true;
-        } else {
-            return false;       /* caller swaps places with it */
         }
     }
 
@@ -849,8 +843,7 @@ export async function attack_checks(mtmp, wep) {
                             notseen ? 'is present' : 'appears'}!`);
             else if (Blind() || (is_pool(mtmp.mx, mtmp.my) && !Underwater()))
                 await pline("Wait!  There's a hidden monster there!");
-            else if ((obj = (game.level?.objects || [])
-                          .find(o => o.ox === mtmp.mx && o.oy === mtmp.my)) != null)
+            else if ((obj = game.level.objectAt(mtmp.mx, mtmp.my)) != null)
                 await pline(`Wait!  There's ${
                             notseen ? 'something' : an(lmonbuf)} hiding under ${
                             doname(obj)}!`);
@@ -867,7 +860,11 @@ export async function attack_checks(mtmp, wep) {
     if (game.flags?.confirm !== false && mtmp.mpeaceful
         && !game.u.uprops?.CONFUSION && !game.u.uprops?.HALLUC
         && !game.u.uprops?.STUNNED) {
-        /* is_art(wep, ART_STORMBRINGER) — no artifact is wielded this early */
+        /* Intelligent chaotic weapons (Stormbringer) want blood */
+        if (is_art(wep, ART_STORMBRINGER)) {
+            game.override_confirmation = true;
+            return false;
+        }
         if (canspotmon(mtmp)) {
             const { tty_yn_function } = await import('./tty/topl.js');
             const answer = await tty_yn_function(
@@ -5122,6 +5119,7 @@ function dynamic_multi_reason(mon, verb, byGaze) {
     game.multi_reason = reason;
 }
 
+// src/uhitm.c:3981 mhitm_ad_phys()
 export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     const A = ATTKS;
     const pa = magr.data;
@@ -5216,7 +5214,7 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                 if (!mhm.damage)
                     return;
                 if (game.objects[otmp.otyp].oc_material === MATERIALS.SILVER
-                    && hates_silver_you()) {
+                    && Hate_silver()) {
                     await pline_The('silver sears your flesh!');
                     exercise(A_CON, false);
                 }
@@ -5391,12 +5389,6 @@ export async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
         if (mhm.done)
             return;
     }
-}
-
-/* include/youprop.h Hate_silver — hero form that hates silver; base heroes
-   never do, and the polymorph state that could is recorded elsewhere. */
-function hates_silver_you() {
-    return false;
 }
 
 // src/mhitm.c:1260 rustm() — the defender's rust/corrode/burn passive

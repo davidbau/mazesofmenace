@@ -41,7 +41,8 @@ export class GameMap {
         this.nroom = 0;
         this.doors = [];
         this.doorindex = 0;
-        this.objects = [];
+        this.objects = []; // fobj, independent of the per-square chains
+        this.objAt = new Map(); // level.objects[x][y] heads
         this.monsters = [];
         this.traps = [];
         this.flags = {
@@ -50,6 +51,18 @@ export class GameMap {
             hero_memory: true,
             is_maze_lev: false,
         };
+    }
+
+    // include/rm.h: level.objects[x][y], followed through obj.nexthere.
+    objectAt(x, y) {
+        return this.objAt.get(`${x},${y}`) || null;
+    }
+
+    objectsAt(x, y) {
+        const pile = [];
+        for (let obj = this.objectAt(x, y); obj; obj = obj.nexthere)
+            pile.push(obj);
+        return pile;
     }
 
     at(x, y) {

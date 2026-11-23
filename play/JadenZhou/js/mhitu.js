@@ -4,7 +4,7 @@
 // C ref: mhitu.c.  Paths that aren't ported yet throw a 'not ported yet'
 // error instead of skipping their rolls.
 
-import { poly_gender } from './polyself.js';
+import { poly_gender, rehumanize } from './polyself.js';
 import { stop_occupation } from './allmain.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d, AC_VALUE } from './rng.js';
@@ -1034,7 +1034,7 @@ export async function mdamageu(mtmp, n) {
         if (u.mh > u.mhmax)
             u.mh = u.mhmax;
         if (u.mh < 1)
-            throw new Error('mdamageu(): rehumanize() not ported yet');
+            await rehumanize();
     } else {
         u.uhp -= n;
         await showdamage(n);

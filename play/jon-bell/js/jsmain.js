@@ -5,7 +5,7 @@
 import { game, resetGame } from './gstate.js';
 import { init_symbols, get_othersym, SYM_OFFSETS } from './symbols.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
-import { savefile_name } from './save.js';
+import { savefile_name, SAVE_TRUNCATED } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
 import { newgame, report_config_errors, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
 import { FF_FAITHFUL } from './fastforward.js';
@@ -355,6 +355,18 @@ export class NethackGame {
         };
         const tryRestore = async (probeName, bannerShown) => {
             const save = restore_saved_game(probeName);
+            if (!save && probeName
+                && vfsReadFile(savefile_name(probeName)) === SAVE_TRUNCATED) {
+                game._base_topline = await tty_restore_base_topline(bannerShown);
+                await pline('Restoring save file...');
+                await pline('Read %d instead of %u bytes.', 0, 4);
+                await game._base_topline.flush();
+                vfsDeleteFile(savefile_name(probeName));
+                exit_nhwindows(null);
+                raw_print('Error restoring old game.');
+                await nh_terminate(1);
+                return true;
+            }
             if (!save) return false;
             /* C unixmain.c:261; dorecover() releases this at restgamestate(). */
             game._base_topline = await tty_restore_base_topline(bannerShown);

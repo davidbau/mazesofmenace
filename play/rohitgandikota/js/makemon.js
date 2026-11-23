@@ -62,7 +62,7 @@ import { t_at, is_pool, is_lava, m_in_air, resists_ston } from './mon.js';
 import { touch_petrifies, mhe, nonliving } from './mondata.js';
 import { can_hide_under_obj, dochugw, set_apparxy } from './monmove.js';
 import { couldsee } from './vision.js';
-import { is_pit, OBJ_FLOOR, PLNMSG_HIDE_UNDER, Mgender, LR_MONGEN } from './const.js';
+import { is_pit, PLNMSG_HIDE_UNDER, Mgender, LR_MONGEN } from './const.js';
 import { is_exclusion_zone } from './mkmaze.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U, GP_CHECKSCARY, GP_AVOID_MONPOS, MM_IGNORELAVA,
@@ -1438,9 +1438,7 @@ export function hideunder(mtmp, defer_newsym = false) {
                       && (!game.u.uprops?.UNDERWATER || !couldsee(x, y)));
     } else if ((ptr.mflags1 & MFLAGS.M1_CONCEAL) !== 0 /* hides_under */) {
         /* hider-underers only hide under objects */
-        const chain = (game.level?.objects || []).filter(
-            (o) => o.ox === x && o.oy === y
-                && (o.where === undefined || o.where === OBJ_FLOOR));
+        const chain = game.level.objectsAt(x, y);
         let oi = 0;
         if (chain.length
             && can_hide_under_obj(chain[0])
@@ -1485,9 +1483,7 @@ export async function hideunder_with_message(mtmp) {
         seenobj = 'the water';
         locomo = 'dive';
     } else if (seeit && (ptr.mflags1 & MFLAGS.M1_CONCEAL) !== 0) {
-        const shelter = (game.level?.objects || []).find(
-            (o) => o.ox === x && o.oy === y
-                && (o.where === undefined || o.where === OBJ_FLOOR));
+        const shelter = game.level.objectAt(x, y);
         if (shelter) {
             const { ansimpleoname } = await import('./objnam.js');
             seenobj = ansimpleoname(shelter);
@@ -1550,7 +1546,7 @@ export function set_mimic_sym(mtmp) {
 
     if (OBJ_AT(mx, my)) {
         ap_type = M_AP_OBJECT;
-        appear = game.level.objects.find((o) => o.ox === mx && o.oy === my).otyp;
+        appear = game.level.objectAt(mx, my).otyp;
     } else if (IS_DOOR(typ) || IS_WALL(typ) || typ === SDOOR || typ === SCORR) {
         ap_type = M_AP_FURNITURE;
         const w = mx !== 0 ? game.level.at(mx - 1, my)?.typ : undefined;

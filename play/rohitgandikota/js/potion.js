@@ -71,7 +71,7 @@ import { speed_up, obj_resists } from './zap.js';
 import { INTRINSIC, FROMOUTSIDE } from './const.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { fall_asleep } from './timeout.js';
-import { Blindfolded_only } from './youprop.js';
+import { Blindfolded, Blindfolded_only } from './youprop.js';
 import { hands_obj, obj_extract_self, prinv } from './invent.js';
 import { near_capacity } from './attrib.js';
 import { Yobjnam2, Yname2, The, the, cxname } from './objnam.js';
@@ -881,13 +881,14 @@ export function make_glib(xtime) {
 // counter. A nonzero mask changes worn hallucination resistance without
 // clearing the underlying timeout.
 export async function make_hallucinated(xtime, talk, mask = 0) {
-    if (Unaware())
-        talk = false;
-
     const intr = (game.u.intrinsic ||= {});
     const props = (game.u.uprops ||= {});
     const old = intr.HHallucination | 0;
-    let changed;
+    let changed = false;
+
+    if (Unaware())
+        talk = false;
+    const verb = Blind() ? 'feels' : 'looks';
 
     if (mask) {
         changed = !!old;
@@ -901,18 +902,32 @@ export async function make_hallucinated(xtime, talk, mask = 0) {
                 delete props.HALLUC_RES;
         }
     } else {
-        changed = !Halluc_resistance() && (!!old !== !!xtime);
-        if (xtime) {
-            intr.HHallucination = xtime;
-            props.HALLUC = xtime;
-        } else {
-            delete intr.HHallucination;
+        changed = !props.HALLUC_RES && (!!old !== !!xtime);
+        set_itimeout('HHallucination', xtime);
+        if (intr.HHallucination)
+            props.HALLUC = intr.HHallucination;
+        else
             delete props.HALLUC;
+
+        if (!changed && !intr.HHallucination && old && talk) {
+            if (!haseyes(game.youmonst.data)) {
+                await strange_feeling(null, null);
+            } else if (Blind()) {
+                let eyes = body_part(EYE);
+                if (eyecount(game.youmonst.data) !== 1)
+                    eyes = makeplural(eyes);
+                await Your(`${eyes} momentarily ${vtense(eyes, 'itch')}.`);
+            } else {
+                await Your('vision seems to flatten for a moment but is normal now.');
+            }
         }
     }
 
     if (changed) {
-        (game.disp ||= {}).botl = true;
+        if (!Hallucination()) {
+            const { eatmupdate } = await import('./eat.js');
+            eatmupdate();
+        }
         const { see_monsters, see_objects, see_traps, swallowed } =
             await import('./display.js');
         if (game.u.uswallow) {
@@ -923,10 +938,11 @@ export async function make_hallucinated(xtime, talk, mask = 0) {
             see_traps();
         }
         update_inventory();
+        (game.disp ||= {}).botl = true;
         if (talk) {
             await pline(!xtime
-                ? `Everything ${Blind() ? 'feels' : 'looks'} SO boring now.`
-                : `Oh wow!  Everything ${Blind() ? 'feels' : 'looks'} so cosmic!`);
+                ? `Everything ${verb} SO boring now.`
+                : `Oh wow!  Everything ${verb} so cosmic!`);
         }
     }
     return changed;
@@ -1082,7 +1098,8 @@ async function peffect_confusion(otmp) {
 // src/potion.c:1073 peffect_blindness()
 async function peffect_blindness(otmp) {
     const was_blind = Blind();
-    if (was_blind)
+    if (was_blind || ((game.u.intrinsic?.HBlinded || Blindfolded())
+                     && game.u.blocked?.BLINDED))
         game.potion_nothing++;
     await make_blinded(
         itimeout_incr(game.u.intrinsic?.HBlinded,

@@ -103,7 +103,7 @@ import { dochugw, onscary, mon_regen, m_everyturn_effect,
 import { tele_restrict, rloc } from './teleport.js';
 import { can_teleport, resists_fire } from './mondata.js';
 import { on_fire } from './uhitm.js';
-import { m_in_air } from './monmove.js';
+import { m_in_air, can_fog } from './monmove.js';
 import { FOUNTAIN, FLYING, LEVITATION, RLOC_MSG } from './const.js';
 import { canseemon, sensemon } from './display.js';
 import { UNICORN_HORN, WORM_TOOTH } from './objects.js';
@@ -2451,7 +2451,7 @@ function cant_squeeze_thru(mon) {
     /* too big? */
     if (bigmonst(ptr)
         && !(amorphous(ptr) || is_whirly(ptr) || ptr.mlet === S_GHOST
-             || slithy(ptr) /* || can_fog(mon) */))
+             || slithy(ptr) || can_fog(mon)))
         return 1;
 
     /* lugging too much junk? */
@@ -2666,8 +2666,9 @@ export function mfndpos(mon, data, flag) {
                 if (IS_DOOR(ntyp)
                     /* an amorphous creature can only move under/through a
                        closed door if it doesn't currently have hero
-                       engulfed (can_fog(): vampshifters aren't ported) */
-                    && !(amorphous(mdat) && !(u.uswallow && u.ustuck === mon))
+                       engulfed */
+                    && !((amorphous(mdat) || can_fog(mon))
+                         && !(u.uswallow && u.ustuck === mon)) /* engulfing_u() */
                     && ((((nloc.doormask ?? 0) & D_CLOSED) && !(flag & OPENDOOR))
                         || (((nloc.doormask ?? 0) & D_LOCKED)
                             && !(flag & UNLOCKDOOR))) && !thrudoor)

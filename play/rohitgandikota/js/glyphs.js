@@ -2,11 +2,9 @@
 // customizations (custom colours and unicode representations).
 // C ref: src/glyphs.c
 //
-// This port draws from {kind, ...} glyph records; the integer glyph
-// numbering of include/display.h (const.js GLYPH_*_OFF) exists for what this
-// file does: naming every glyph ("G_vwall_mines") so a symset or SYMBOLS=
-// line can address one, and keeping the per-glyph customizations that
-// display.c's glyphmap[] carries.
+// Glyph records retain the include/display.h numeric identity so the
+// renderer can select custom colors and Unicode representations. This
+// module names those identities and applies symbol-set customizations.
 
 import { game } from './gstate.js';
 import {
@@ -39,9 +37,8 @@ import { unicode_val, set_map_u, add_custom_urep_entry } from './utf8map.js';
 
 const S = cmap_names;
 
-/* the include/display.h glyph tests over the integer numbering; this file is
-   the only user of that numbering, so they live here rather than in
-   display.js, whose same-named functions test the port's glyph records */
+/* include/display.h tests over numeric glyph identities. The same-named
+   functions in display.js inspect the port's glyph records instead. */
 const glyph_is_normal_male_monster = g => g >= GLYPH_MON_MALE_OFF && g < GLYPH_MON_MALE_OFF + NUMMONS;
 const glyph_is_normal_female_monster = g => g >= GLYPH_MON_FEM_OFF && g < GLYPH_MON_FEM_OFF + NUMMONS;
 const glyph_is_female_pet = g => g >= GLYPH_PET_FEM_OFF && g < GLYPH_PET_FEM_OFF + NUMMONS;
@@ -474,6 +471,59 @@ export function apply_customizations(which_set, docustomize) {
         }
     }
     (game.iflags ||= {}).pending_customizations = at_least_one;
+}
+
+// src/glyphs.c:581 maybe_shuffle_customizations()
+export function maybe_shuffle_customizations() {
+    if (game.iflags?.pending_customizations) {
+        shuffle_customizations();
+        game.iflags.pending_customizations = false;
+    }
+}
+
+// src/glyphs.c:647 shuffle_customizations()
+// Keep custom symbols and colors attached to shuffled object appearances.
+function shuffle_customizations() {
+    const offsets = [GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF];
+    for (const offset of offsets) {
+        const obj_glyphs = glyphmap().slice(offset, offset + NUM_OBJECTS);
+        const tmp_u = Array(NUM_OBJECTS).fill(null);
+        const tmp_customcolor = Array(NUM_OBJECTS).fill(0);
+        const tmp_color256idx = Array(NUM_OBJECTS).fill(0);
+        const duplicate = Array(NUM_OBJECTS).fill(-1);
+
+        for (let i = 0; i < NUM_OBJECTS; i++) {
+            const idx = game.objects[i].oc_descr_idx;
+            // Gem appearances can share a description. Each Unicode
+            // representation must retain its own allocation.
+            if (duplicate[idx] >= 0) {
+                const other = tmp_u[duplicate[idx]];
+                tmp_customcolor[i] = tmp_customcolor[duplicate[idx]];
+                tmp_color256idx[i] = tmp_color256idx[duplicate[idx]];
+                if (other) {
+                    tmp_u[i] = { ...other };
+                    if (other.utf8str !== null)
+                        tmp_u[i].utf8str = other.utf8str.slice();
+                }
+            } else {
+                const gmap = obj_glyphs[idx];
+                tmp_u[i] = gmap.u;
+                tmp_customcolor[i] = gmap.customcolor;
+                tmp_color256idx[i] = gmap.color256idx;
+                if (gmap.u !== null || gmap.customcolor !== 0) {
+                    duplicate[idx] = i;
+                    gmap.u = null;
+                    gmap.customcolor = 0;
+                    gmap.color256idx = 0;
+                }
+            }
+        }
+        for (let i = 0; i < NUM_OBJECTS; i++) {
+            obj_glyphs[i].u = tmp_u[i];
+            obj_glyphs[i].customcolor = tmp_customcolor[i];
+            obj_glyphs[i].color256idx = tmp_color256idx[i];
+        }
+    }
 }
 
 // src/glyphs.c:736 find_matching_customization() — the details list, or null

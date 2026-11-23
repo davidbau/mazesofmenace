@@ -59,7 +59,9 @@ import { NHF_BONESFILE, REST_GSTATE, REST_LEVELS, REST_CURRENT_LEVEL, WRITING,
          TRICKED } from './const.js';
 import { next_ident } from './mkobj.js';
 import { propagate, peace_minded, set_malign } from './makemon.js';
-import { Is_branchlev } from './dungeon.js';
+import { Is_branchlev, on_level } from './dungeon.js';
+import { mazexy } from './mkmaze.js';
+import { BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL, STAIRS } from './const.js';
 import { deltrap } from './trap.js';
 import { killer } from './topten.js';
 import { done } from './end.js';
@@ -1021,12 +1023,46 @@ export async function getlev(nhfp, pid, lev, fixups_from) {
 
         if (lev > ledger_no(g.dungeon_topology.d_medusa_level)
             && lev < ledger_no(g.dungeon_topology.d_stronghold_level) && !stway) {
-            throw new Error('getlev(): adding missing down stairs to a bones level not ported yet');
+            const cc = { x: 0, y: 0 };
+            const dest = { dnum: u.uz.dnum, dlevel: u.uz.dlevel + 1 };
+
+            mazexy(cc);
+            stairway_add(cc.x, cc.y, false, false, dest);
+            L.at(cc.x, cc.y).typ = STAIRS;
         }
 
         const br = Is_branchlev(u.uz);
         if (br && u.uz.dlevel === 1) {
-            throw new Error('getlev(): bones branch level fixup not ported yet');
+            const ltmp = { dnum: 0, dlevel: 0 };
+
+            if (on_level(u.uz, br.end1))
+                assign_level(ltmp, br.end2);
+            else
+                assign_level(ltmp, br.end1);
+
+            switch (br.type) {
+            case BR_STAIR:
+            case BR_NO_END1:
+            case BR_NO_END2:
+                stway = g.stairs;
+                while (stway) {
+                    if (stway.tolev.dnum !== u.uz.dnum)
+                        break;
+                    stway = stway.next;
+                }
+                if (stway)
+                    assign_level(stway.tolev, ltmp);
+                break;
+            case BR_PORTAL: { /* max of 1 portal per level */
+                const trap = (L.traps || []).find(t => t.ttyp === MAGIC_PORTAL);
+                if (!trap)
+                    throw new Error('getlev: need portal but none found'); /* panic() */
+                if (!trap.dst)
+                    trap.dst = { dnum: 0, dlevel: 0 };
+                assign_level(trap.dst, ltmp);
+                break;
+            }
+            }
         } else if (!br) {
             /* Remove any dangling portals. */
             for (const trap of (L.traps || []).slice())

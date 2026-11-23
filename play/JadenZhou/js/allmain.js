@@ -60,7 +60,11 @@ import { gethungry, reset_eat, maybe_finished_meal } from './eat.js';
 import { age_spells } from './spell.js';
 import { u_wipe_engr } from './engrave.js';
 import { dosearch0, warnreveal } from './detect.js';
-import { set_uasmon } from './polyself.js';
+import { set_uasmon, rehumanize } from './polyself.js';
+import { is_pool } from './makemon.js';
+import { HALF_PHDAM } from './const.js';
+import { M1_BREATHLESS } from './monsters.js';
+import { Norep } from './display.js';
 import { init_artifacts } from './artifact.js';
 import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
@@ -363,6 +367,17 @@ export async function unmul(msg_override) {
     }
 }
 
+// C ref: allmain.c interrupt_multi()
+async function interrupt_multi(msg) {
+    const g = game;
+
+    if (g.multi > 0 && !g.context.travel && !g.context.run) {
+        nomul(0);
+        if (g.flags.verbose && msg)
+            await Norep(msg);
+    }
+}
+
 // C ref: allmain.c regen_pw()
 async function regen_pw(wtcap) {
     const g = game;
@@ -385,10 +400,8 @@ async function regen_pw(wtcap) {
         if (u.uen > u.uenmax)
             u.uen = u.uenmax;
         g.disp_botl = true;
-        if (u.uen === u.uenmax) {
-            /* interrupt_multi("You feel full of energy."): multi-turn
-               counts aren't ported yet */
-        }
+        if (u.uen === u.uenmax)
+            await interrupt_multi("You feel full of energy.");
     }
 }
 
@@ -398,6 +411,7 @@ async function regen_hp(wtcap) {
     const u = g.u;
     const P = u.uprops;
     let heal = 0;
+    let reached_full = false;
     const encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved);
     /* C ref: allmain.c U_CAN_REGEN() */
     const Regeneration = P[REGENERATION].intrinsic || P[REGENERATION].extrinsic;
@@ -405,8 +419,34 @@ async function regen_hp(wtcap) {
     const U_CAN_REGEN = () => (Regeneration || (Sleepy && u.usleep));
 
     if (Upolyd()) {
-        /* polymorphed hero: polymorphing isn't ported yet */
-        throw new Error('regen_hp(): Upolyd not ported yet');
+        /* youprop.h Breathless, Half_physical_damage */
+        const Breathless = () => (P[MAGICAL_BREATHING].intrinsic
+                                  || P[MAGICAL_BREATHING].extrinsic
+                                  || (g.youmonst.data.mflags1 & M1_BREATHLESS) !== 0);
+        const Half_physical_damage = () => (P[HALF_PHDAM].intrinsic
+                                            || P[HALF_PHDAM].extrinsic);
+
+        if (u.mh < 1) { /* shouldn't happen... */
+            await rehumanize();
+        } else if (g.youmonst.data.mlet === S_EEL
+                   && !is_pool(u.ux, u.uy) && !Is_waterlevel(u.uz)
+                   && !Breathless()) {
+            /* eel out of water loses hp, similar to monster eels;
+               as hp gets lower, rate of further loss slows down */
+            if (u.mh > 1 && !Regeneration && rn2(u.mh) > rn2(8)
+                && (!Half_physical_damage() || !(g.moves % 2)))
+                heal = -1;
+        } else if (u.mh < u.mhmax) {
+            if (U_CAN_REGEN() || (encumbrance_ok && !(g.moves % 20)))
+                heal = 1;
+        }
+        if (heal) {
+            g.disp_botl = true;
+            u.mh += heal;
+            reached_full = (u.mh === u.mhmax);
+        }
+
+    /* !Upolyd */
     } else {
         /* [when this code was in-line within moveloop(), there was
            no !Upolyd check here, so poly'd hero recovered lost u.uhp
@@ -425,12 +465,14 @@ async function regen_hp(wtcap) {
                 u.uhp += heal;
                 if (u.uhp > u.uhpmax)
                     u.uhp = u.uhpmax;
-                /* stop voluntary multi-turn activity if now fully healed:
-                   interrupt_multi("You are in full health.") -- multi-turn
-                   counts aren't ported yet */
+                /* stop voluntary multi-turn activity if now fully healed */
+                reached_full = (u.uhp === u.uhpmax);
             }
         }
     }
+
+    if (reached_full)
+        await interrupt_multi("You are in full health.");
 }
 
 // C ref: allmain.c overexert_hp()

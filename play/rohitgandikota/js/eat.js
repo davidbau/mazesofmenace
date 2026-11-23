@@ -754,7 +754,7 @@ export async function floorfood(verb,
 
     /* Is there some food (probably a heavy corpse) here on the ground? */
     if (!skipfloor)
-    for (const otmp of [...(game.level?.objects || [])]) {
+    for (let otmp = game.level.objectAt(game.u.ux, game.u.uy); otmp; otmp = otmp.nexthere) {
         if (otmp.where !== OBJ_FLOOR || otmp.ox !== game.u.ux || otmp.oy !== game.u.uy)
             continue;
         if (corpsecheck

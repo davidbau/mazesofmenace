@@ -2896,8 +2896,8 @@ async function domove_core() {
            unless the hero is clumsy enough to walk into it instead. */
         if (closed_door(newx, newy) && !game.context.door_opened
             && (newx === u.ux || newy === u.uy)) {
-            if (u.ublind || game.u.uprops?.STUNNED || ACURR(A_DEX) < 10
-                || game.u.uprops?.FUMBLING) {
+            if (Blind() || Stunned() || ACURR(A_DEX) < 10
+                || Fumbling()) {
                 if (u.usteed) {
                     await You_cant(`lead ${y_monnam(u.usteed)} through that closed door.`);
                 } else {

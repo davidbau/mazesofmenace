@@ -93,7 +93,7 @@ import { mhitm_ad_phys, mhitm_ad_fire, mhitm_ad_cold, mhitm_ad_elec,
          mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_drli,
          mhitm_ad_ench, mhitm_ad_samu, mhitm_ad_sedu, mhitm_ad_wrap,
          mhitm_ad_heal, mhitm_ad_plys, mhitm_ad_slee, mhitm_ad_slim,
-         mhitm_knockback, mhitm_ad_legs,
+         mhitm_knockback, mhitm_ad_legs, mhitm_ad_stck,
          mhitm_mgc_atk_negated, attk_protection, erode_armor,
          golemeffects } from './uhitm.js';
 import { is_pool, t_at, newcham } from './mon.js';
@@ -973,8 +973,7 @@ export async function mattacku(mtmp) {
                  * parallelism to work, we can't rephrase it, so we
                  * zap the "laid by you" momentarily instead.
                  */
-                const obj = (game.level?.objects || [])
-                    .find(o => o.ox === game.u.ux && o.oy === game.u.uy);
+                const obj = game.level.objectAt(game.u.ux, game.u.uy);
 
                 if (obj || game.u.umonnum === PMNAMES.PM_TRAPPER
                     || (game.youmonst.data.mlet === MONSYMS.S_EEL
@@ -1426,8 +1425,7 @@ async function hitmu(mtmp, mattk, indx) {
         && (hides_under(mdat) || mdat.mlet === MONSYMS.S_EEL)) {
         mtmp.mundetected = 0;
         if (!sensemon(mtmp) && !Detect_monsters()) {
-            const obj = (game.level?.objects || [])
-                .find(o => o.ox === mtmp.mx && o.oy === mtmp.my);
+            const obj = game.level.objectAt(mtmp.mx, mtmp.my);
             if (obj) {
                 const what = Blind() && !obj.dknown
                     ? 'something'
@@ -1514,14 +1512,7 @@ async function hitmu(mtmp, mattk, indx) {
     } else if (mattk[1] === A.AD_SLOW) {
         await mhitm_ad_slow(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_STCK) {
-        await hitmsg(mtmp, mattk, indx);
-        const negated = await mhitm_mgc_atk_negated(
-            mtmp, game.youmonst, false);
-        if (!negated && !game.u.ustuck && !sticks(game.youmonst.data)) {
-            set_ustuck_mh(mtmp);
-            if (mdat.pmidx === PMNAMES.PM_BARBED_DEVIL)
-                await pline('The barbs stick to you!');
-        }
+        await mhitm_ad_stck(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_STUN) {
         await hitmsg(mtmp, mattk, indx);
         if (!mtmp.mcan && !rn2(4)) {
@@ -2609,12 +2600,6 @@ export async function gulpmu(mtmp, mattk) {
         await expels(mtmp, mdat, false);
     }
     return M_ATTK_HIT;
-}
-
-function set_ustuck_mh(mtmp) {
-    /* routed through mon.js at call time to avoid deepening the cycle */
-    (game.disp ||= {}).botl = true;
-    game.u.ustuck = mtmp;
 }
 
 // src/mhitu.c u_slip_free(); greased or slippery armor lets the hero slip

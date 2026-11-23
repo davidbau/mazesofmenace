@@ -8,7 +8,7 @@ import { worm_move } from './worm.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { distmin } from './hacklib.js';
 import { cansee, couldsee } from './vision.js';
-import { pline, pline_The, canseemon, canspotmon, map_invisible,
+import { pline, urgent_pline, pline_The, canseemon, canspotmon, map_invisible,
          Hallucination } from './display.js';
 import { You_hear } from './sounds.js';
 import { Monnam } from './do_name.js';
@@ -2021,8 +2021,7 @@ export async function use_misc(mtmp) {
                 await pline(`${The_whip} fails to wrap around ${the_weapon}.`);
                 return 1;
             }
-            /* urgent_pline() */
-            await pline(`${The_whip} wraps around ${the_weapon} you're wielding!`);
+            await urgent_pline(`${The_whip} wraps around ${the_weapon} you're wielding!`);
             if (welded(obj)) {
                 await pline(`${(obj.quan === 1) /* !is_plural(obj) */
                                ? "It is" : "They are"} welded to your ${hand_buf}${

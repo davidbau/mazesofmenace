@@ -21,13 +21,12 @@ import { is_hider } from './mondata.js';
 import { hides_under } from './mondata.js';
 import { obj_descr } from './objects_data.js';
 import { IS_WATERWALL, Is_waterlevel } from './const.js';
-import { MELT_ICE_AWAY } from './const.js';
 import { u_at } from './const.js';
 import { DRAWBRIDGE_UP } from './const.js';
 import { Levitation } from './youprop.js';
 import { cansee } from './vision.js';
 import { distu } from './hacklib.js';
-import { spot_time_left } from './timeout.js';
+import { spot_time_left, MELT_ICE_AWAY } from './timeout.js';
 import { obj_stop_timers } from './timeout.js';
 import { db_under_typ } from './dbridge.js';
 import { doextlist } from './cmd.js';
@@ -177,8 +176,7 @@ export function object_from_map(glyph, x, y) {
         ? ((game.level?.objects || []).some(o => o.ox === x && o.oy === y
             && o.otyp === ONAMES.CHEST) ? ONAMES.CHEST : ONAMES.LARGE_BOX)
         : ONAMES.STRANGE_OBJECT;
-    let otmp = (game.level?.objects || [])
-        .find(o => o.ox === x && o.oy === y && o.otyp === glyphotyp) || null;
+    let otmp = game.level.objectsAt(x, y).find(o => o.otyp === glyphotyp) || null;
     if (!otmp)
         otmp = (game.level?.buriedobjs || [])
             .find(o => o.ox === x && o.oy === y && o.otyp === glyphotyp) || null;

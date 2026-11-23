@@ -8,6 +8,8 @@ import { BUFSZ, W_ARMOR, GETOBJ_SUGGEST, GETOBJ_EXCLUDE, LEFT_HANDED } from './c
 import { obj_resists } from './zap.js';
 import { selftouch, instapetrify } from './trap.js';
 import { remove_worn_item } from './steal.js';
+import { set_bc } from './ball.js';
+import { gulp_blnd_check } from './mhitu.js';
 import { shirt_simple_name, shield_simple_name, vtense } from './objnam.js';
 import { urgent_pline } from './display.js';
 import { artifact_light } from './artifact.js';
@@ -65,7 +67,7 @@ import { ACURR, adjalign, change_luck, encumber_msg, Fast,
          Very_fast } from './attrib.js';
 import { paranoia_bits, PARANOID_REMOVE } from './options.js';
 import { Blind, Flying, Glib, Hallucination, Invis, Levitation, Stone_resistance,
-         Protection_from_shape_changers, See_invisible, Detect_monsters } from './youprop.js';
+         Protection_from_shape_changers, See_invisible, Detect_monsters, Punished } from './youprop.js';
 import { body_part, change_sex, poly_gender, float_vs_flight } from './polyself.js';
 import { surface } from './dungeon.js';
 import { region_danger } from './region.js';
@@ -1971,35 +1973,33 @@ export async function accessory_or_armor_on(obj) {
     return ECMD_TIME;
 }
 
-// src/do_wear.c:1461 Blindf_on() — wear a blindfold/towel/lenses. The
-// wielded-release, ball&chain and Eyes-of-the-Overworld arms need absent
-// state; the blindness toggle itself is the live path.
-
-function current_equipment_blindness() {
-    const u = game.u;
-    const facewear_blinds = u.ublindf
-        && (u.ublindf.otyp === ONAMES.BLINDFOLD
-            || u.ublindf.otyp === ONAMES.TOWEL);
-    return !u.blocked?.BLINDED
-        && (!!u.intrinsic?.HBlinded || facewear_blinds);
-}
-
+// src/do_wear.c:1461 Blindf_on()
 export async function Blindf_on(otmp) {
     const already_blind = Blind();
+    let changed = false;
 
+    await remove_worn_item(otmp, false);
     setworn(otmp, W_TOOL);
-    game.u.ublind = current_equipment_blindness() ? 1 : 0;
+    game.u.ublind = Blind() ? 1 : 0;
     await on_msg(otmp);
 
-    const blind_now = Blind();
-    if (blind_now && !already_blind) {
+    if (Blind() && !already_blind) {
+        changed = true;
         if (game.flags?.verbose)
             await You_cant('see any more.');
-        await toggle_blindness();
-    } else if (already_blind && !blind_now) {
-        await You('can see!');
-        await toggle_blindness();
+        if (Punished())
+            set_bc(0);
+    } else if (already_blind && !Blind()) {
+        changed = true;
+        if (game.u.uroleplay?.blind) {
+            await pline('For the first time in your life, you can see!');
+            game.u.uroleplay.blind = false;
+        } else {
+            await You('can see!');
+        }
     }
+    if (changed)
+        await toggle_blindness();
 }
 
 // src/do_wear.c:1893 cursed() — check if something worn is cursed _and_
@@ -2470,32 +2470,39 @@ export async function armor_or_accessory_off(obj) {
 
 // src/do_wear.c:1495 Blindf_off()
 export async function Blindf_off(otmp) {
-    const nooffmsg = !otmp;
+    const was_blind = Blind(), nooffmsg = !otmp;
+    let changed = false;
+
     if (!otmp)
         otmp = game.u.ublindf;
-    if (!otmp)
+    if (!otmp) {
+        await impossible('Blindf_off without eyewear?');
         return;
-    const was_blind = Blind();
-
-    setworn(null, W_TOOL);   /* src/do_wear.c Blindf_off */
-    game.u.ublind = current_equipment_blindness() ? 1 : 0;
+    }
+    (game.context_takeoff ||= {}).mask &= ~W_TOOL;
+    setworn(null, otmp.owornmask);
+    game.u.ublind = Blind() ? 1 : 0;
     if (!nooffmsg)
         await off_msg(otmp);
 
-    const blind_now = Blind();
-    if (blind_now) {
+    if (Blind()) {
         if (was_blind) {
             if (otmp.otyp !== ONAMES.LENSES)
                 await You('still cannot see.');
         } else {
+            changed = true;
             await You_cant('see anything now!');
-            await toggle_blindness();
+            if (Punished())
+                set_bc(0);
         }
     } else if (was_blind) {
-        /* gulp_blnd_check() needs the engulfed state; absent */
-        await You('can see again.');
-        await toggle_blindness();
+        if (!await gulp_blnd_check()) {
+            changed = true;
+            await You('can see again.');
+        }
     }
+    if (changed)
+        await toggle_blindness();
 }
 
 /* src/do_wear.c:1733 count_worn_stuff() */

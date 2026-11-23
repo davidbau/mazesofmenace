@@ -54,7 +54,7 @@ import { grounded, sokoban_guilt } from './trap.js';
 import { is_pole } from './mhitu.js';
 import { PMNAMES } from './monst_data.js';
 import { Glib, Flying, Levitation, Half_physical_damage, Stealth, Hallucination,
-         Confusion, Wounded_legs, Punished } from './youprop.js';
+         Confusion, Stunned, Wounded_legs, Punished } from './youprop.js';
 import { greatest_erosion } from './do_wear.js';
 import { u_handsy } from './pickup.js';
 import { Underwater } from './youprop.js';
@@ -609,10 +609,7 @@ async function landing_spot(spot, reason, forceit) {
      *       avoids boulders but allows known traps;
      * i==2: other, allow traps and boulders.
      */
-    const impaird = !!(game.u.uprops?.STUNNED
-                       || game.u.intrinsic?.HConfusion
-                       || game.u.uprops?.CONFUSION
-                       || game.u.uprops?.FUMBLING);
+    const impaird = Stunned() || Confusion() || Fumbling();
     viable = 0;
     for (let i = (reason === DISMOUNT_BYCHOICE && !impaird) ? 0
                  : ((reason === DISMOUNT_BYCHOICE && impaird)

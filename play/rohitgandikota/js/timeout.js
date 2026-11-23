@@ -1290,9 +1290,10 @@ export function spot_time_left(x, y, func_index) {
 // The list is ordered; we are done when the first element is in the future.
 // Runs from nh_timeout()'s tail (timeout.c:947) and from goto_level.
 export async function run_timers() {
-    const base = (game.timer_base ||= []);
-    while (base.length && base[0].timeout <= (game.moves ?? 0)) {
-        const curr = base.shift();
+    game.timer_base ||= [];
+    // Callbacks may replace the queue; C rereads its global head each time.
+    while (game.timer_base.length && game.timer_base[0].timeout <= (game.moves ?? 0)) {
+        const curr = game.timer_base.shift();
         if (curr.kind === TIMER_OBJECT && curr.arg)
             curr.arg.timed = Math.max(0, (curr.arg.timed ?? 1) - 1);
         switch (curr.func_index) {

@@ -8,7 +8,7 @@ import { spot_time_left, spot_stop_timers, MELT_ICE_AWAY } from './timeout.js';
 import { float_vs_flight } from './polyself.js';
 import { float_up, blow_up_landmine, fill_pit, deltrap, seetrap, feeltrap, launch_obj } from './trap.js';
 import { You_cant, pline_dir } from './pline.js';
-import { FROMOUTSIDE, TIMEOUT, A_DEX, Is_airlevel, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, MAX_TYPE, OBJ_FLOOR, IN_SIGHT, MIGR_RANDOM, ROLL, LAUNCH_KNOWN, xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA, xWATERWALL, TREE, DOOR, D_TRAPPED, MOAT, Is_earthlevel, Is_juiblex_level } from './const.js';
+import { FROMOUTSIDE, TIMEOUT, A_DEX, Is_airlevel, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, MAX_TYPE, IN_SIGHT, MIGR_RANDOM, ROLL, LAUNCH_KNOWN, xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA, xWATERWALL, TREE, DOOR, D_TRAPPED, MOAT, Is_earthlevel, Is_juiblex_level } from './const.js';
 import { obj_extract_self, useupf } from './invent.js';
 import { place_object } from './mkobj.js';
 import { exercise, ACURR } from './attrib.js';
@@ -2674,7 +2674,7 @@ async function cannot_push(otmp, sx, sy) {
 
 // src/hack.c:327 moverock_done()
 function moverock_done(sx, sy) {
-    for (const otmp of (game.level?.objects || []))
+    for (let otmp = game.level.objectAt(sx, sy); otmp; otmp = otmp.nexthere)
         if (otmp.ox === sx && otmp.oy === sy && otmp.otyp === ONAMES.BOULDER)
             otmp.next_boulder = 0; /* resume normal xname() */
 }
@@ -2718,17 +2718,8 @@ async function moverock_core(sx, sy) {
         /* make sure that this boulder is visible as the top object:
            C compares with svl.level.objects[sx][sy], the top of the pile on
            that square, and only then re-links through movobj() */
-        const pile_top = game.level.objects.find(
-            (o) => o.ox === sx && o.oy === sy
-                   && (o.where === undefined || o.where === OBJ_FLOOR));
-        if (pile_top !== otmp) {
-            const i = game.level.objects.indexOf(otmp);
-            if (i > 0) {
-                game.level.objects.splice(i, 1);
-                game.level.objects.unshift(otmp);
-            }
-            newsym(sx, sy);
-        }
+        if (game.level.objectAt(sx, sy) !== otmp)
+            movobj(otmp, sx, sy);
 
         const rx = game.u.ux + 2 * game.u.dx; /* boulder destination */
         const ry = game.u.uy + 2 * game.u.dy;
@@ -3361,8 +3352,7 @@ export async function revive_nasty(x, y, msg) {
     const cc = { x: 0, y: 0 };
     let revived = false;
 
-    for (const otmp of (game.level?.objects || []).filter(
-             (o) => o.ox === x && o.oy === y)) {
+    for (const otmp of game.level.objectsAt(x, y)) {
         if (otmp.otyp === ONAMES.CORPSE
             && (is_rider(game.mons[otmp.corpsenm])
                 || otmp.corpsenm === PMNAMES.PM_WIZARD_OF_YENDOR)) {

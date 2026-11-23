@@ -737,7 +737,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
 
     /* svl.level.objects[sx][sy]: the top of the pile at <sx,sy> */
     const level_objects_at = (x, y) =>
-        (game.level.objects || []).find(o => o.ox === x && o.oy === y) ?? null;
+        game.level.objectAt(x, y) ?? null;
 
     while ((otmp = (individual_object ? obj
                                       : level_objects_at(sx, sy))) != null) {

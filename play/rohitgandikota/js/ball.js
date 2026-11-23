@@ -233,11 +233,7 @@ function bc_order() {
         || u.uswallow)
         return BCPOS_DIFFER;
 
-    /* level.objects[x][y] chains newest-first through nexthere; the flat
-       floor list keeps that order, so the first entry at the square is the
-       head of the pile */
-    for (const obj of (game.level?.objects || []).filter(
-             o => o.where === OBJ_FLOOR && o.ox === u.uball.ox && o.oy === u.uball.oy)) {
+    for (let obj = game.level.objectAt(u.uball.ox, u.uball.oy); obj; obj = obj.nexthere) {
         if (obj === u.uchain)
             return BCPOS_CHAIN;
         if (obj === u.uball)

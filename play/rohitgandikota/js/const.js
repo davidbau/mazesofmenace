@@ -1309,6 +1309,10 @@ export const FCSIZ = (ROWNO + COLNO);
 export const REPAIR_DELAY = 5;
 export const BILLSZ = 200;
 
+// src/display.c:498-499 monster display sight flags.
+export const DETECTED = 2;
+export const PHYSICALLY_SEEN = 1;
+
 // ===== monst.h =====
 export const M_AP_NOTHING = 0;
 export const M_AP_FURNITURE = 1;

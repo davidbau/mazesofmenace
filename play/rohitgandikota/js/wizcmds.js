@@ -473,6 +473,8 @@ function wiz_intrinsic_timeout(key) {
         return (game.u.intrinsic?.HUnchanging || 0) & TIMEOUT;
     if (key === 'STRANGLED')
         return (game.u.intrinsic?.HStrangled || 0) & TIMEOUT;
+    if (key === 'MAGICAL_BREATHING')
+        return (game.u.intrinsic?.HMagical_breathing || 0) & TIMEOUT;
     if (key === 'CONFUSION')
         return game.u.intrinsic?.HConfusion | 0;
     if (key === 'HALLUC')
@@ -585,6 +587,12 @@ export async function wiz_intrinsic() {
                (timeout.js, botl.js) */
             const { incr_itimeout } = await import('./potion.js');
             incr_itimeout('HStrangled', amount);
+            (game.disp ||= {}).botl = true;
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} ${amount}.`);
+        } else if (key === 'MAGICAL_BREATHING') {
+            const { incr_itimeout } = await import('./potion.js');
+            incr_itimeout('HMagical_breathing', amount);
             (game.disp ||= {}).botl = true;
             await pline(`Timeout for ${name} ${oldtimeout
                 ? 'increased by' : 'set to'} ${amount}.`);

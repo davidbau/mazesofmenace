@@ -6,7 +6,7 @@
 // uunstick(), skinback().  newman() is not ported yet.
 
 import { game } from './gstate.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, urgent_pline } from './display.js';
 import { LL_CONDUCT } from './const.js';
 import {
     NON_PM, FROMFORM, I_SPECIAL, TT_PIT, FIRE_RES, COLD_RES, SLEEP_RES,
@@ -62,7 +62,7 @@ import { the, simpleonames, surface, cloak_simple_name,
          helm_simple_name } from './iactions.js';
 import { Unaware } from './eat.js';
 import { unmul } from './allmain.js';
-import { make_glib, set_mimic_blocking } from './potion.js';
+import { make_glib, set_mimic_blocking, set_itimeout, make_blinded } from './potion.js';
 import { golemhp, is_pool, is_lava } from './makemon.js';
 import { find_ac } from './u_init.js';
 import { set_ustuck } from './uhitm.js';
@@ -471,7 +471,7 @@ async function polyman(fmt, arg) {
 
     newsym(u.ux, u.uy);
 
-    await pline(fmt.replace('%s', arg)); /* urgent_pline() */
+    await urgent_pline(fmt.replace("%s", arg));
     /* check whether player foolishly genocided self while poly'd */
     if (game.mvitals && (game.mvitals[u.umonster]?.mvflags & G_GENOD))
         throw new Error('polyman(): self-genocide while polymorphed not ported yet');
@@ -485,8 +485,10 @@ async function polyman(fmt, arg) {
     if (u.utrap && u.utraptype === TT_PIT) {
         set_utrap(rn1(6, 2), TT_PIT); /* time to escape resets */
     }
-    if (was_blind && !Blind()) /* reverting from eyeless */
-        throw new Error('polyman(): set_itimeout(&HBlinded)/make_blinded() not ported yet');
+    if (was_blind && !Blind()) { /* reverting from eyeless */
+        set_itimeout(BLINDED, 1); /* set_itimeout(&HBlinded, 1L) */
+        await make_blinded(0, true); /* remove blindness */
+    }
     await check_strangling(true);
 
     if (!uprop_on(LEVITATION) && !u.ustuck && is_pool_or_lava(u.ux, u.uy))

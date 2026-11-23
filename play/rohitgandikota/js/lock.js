@@ -635,8 +635,7 @@ export async function pick_lock(pick, rx, ry, container) {
         let c = 'n'; /* in case there are no boxes here */
         let ch = 0;
         let box = null;
-        for (const otmp of (game.level?.objects || [])
-                 .filter(o => o.ox === cc.x && o.oy === cc.y)) {
+        for (const otmp of game.level.objectsAt(cc.x, cc.y)) {
             /* autounlock on boxes: only the one that was just discovered
                to be locked; don't include any other boxes here */
             if (autounlock && otmp !== container)
@@ -1082,7 +1081,7 @@ export async function doforce() {
 
     /* A lock is made only for the honest man, the thief will break it. */
     xl.box = null;
-    for (const otmp of (game.level?.objects || [])) {
+    for (let otmp = game.level.objectAt(game.u.ux, game.u.uy); otmp; otmp = otmp.nexthere) {
         if (otmp.ox !== game.u.ux || otmp.oy !== game.u.uy || !Is_box(otmp))
             continue;
         if (otmp.obroken || !otmp.olocked) {

@@ -102,7 +102,7 @@ import { bimanual } from './obj.js';
 import { is_poisonable } from './obj.js';
 import { stone_object_type } from './mkobj.js';
 import { stone_furniture_type } from './mkobj.js';
-import { replace_object } from './mkobj.js';
+import { replace_object, recreate_pile_at } from './mkobj.js';
 import { fixup_oil } from './mkobj.js';
 import { is_corrodeable } from './mkobj.js';
 import { is_crackable } from './mkobj.js';
@@ -155,7 +155,7 @@ import { show_map_spot } from './detect.js';
 import { set_utrap } from './trap.js';
 import { reset_utrap } from './trap.js';
 import { acid_damage } from './trap.js';
-import { delfloortrap } from './trap.js';
+import { delfloortrap, fill_pit } from './trap.js';
 import { explode } from './explode.js';
 import { setnotworn } from './worn.js';
 import { which_armor } from './worn.js';
@@ -285,7 +285,7 @@ import { is_lava, is_pool, m_at, t_at } from './mon.js';
 import { cansee, couldsee, block_point, unblock_point, recalc_block_point,
          vision_recalc } from './vision.js';
 import { display_cmap_at, display_object_at, flush_screen, map_invisible,
-         newsym, shieldeff, temporary_object_glyph,
+         newsym, shieldeff, temporary_object_glyph, tmp_at, zapdir_to_glyph,
          unmap_invisible, bot, docrt } from './display.js';
 import { closed_door } from './cmd.js';
 import { is_drawbridge_wall, is_ice, is_moat } from './dbridge.js';
@@ -295,10 +295,10 @@ import { STONE, WATER, LAVAWALL, IRONBARS, IS_SINK, POOL, MOAT, WEB, u_at,
          M_AP_NOTHING, M_AP_MONSTER, M_AP_OBJECT, ICE, DRAWBRIDGE_UP,
          DRAWBRIDGE_DOWN, DB_ICE, DB_UNDER, DB_FLOOR, ICED_POOL, ICED_MOAT,
          ROOM, PIT, VWALL, HWALL, IS_WALL, IS_WATERWALL,
-         TT_LAVA, TT_INFLOOR,
+         TT_LAVA, TT_INFLOOR, DISP_BEAM, DISP_CHANGE, DISP_END,
          Is_airlevel, Is_waterlevel, st_all, plur,
          ONAME_WISH, ONAME_KNOW_ARTI, IS_ROOM, STRAT_WAITMASK,
-         ZAP_POS, W_ARM, W_ARMS, W_ARMG, W_ARMH, W_WEP, W_AMUL, HI_ZAP,
+         ZAP_POS, W_ARM, W_ARMS, W_ARMG, W_ARMH, W_WEP, W_AMUL,
          W_RING, W_ARMOR, W_ACCESSORY, W_ART,
          A_STR, A_CON, A_CHA, A_DEX, A_INT, M_SEEN_MAGR,
          KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX,
@@ -380,8 +380,7 @@ import { Reflecting, Sleep_resistance, Fire_resistance, Cold_resistance,
          Underwater, Levitation, Antimagic, Passes_walls, Fumbling }
     from './youprop.js';
 import { cmap_names } from './drawing_data.js';
-import { CLR_ORANGE, CLR_WHITE, CLR_BLACK, CLR_GREEN,
-         CLR_YELLOW } from './terminal.js';
+import { CLR_WHITE } from './terminal.js';
 import { create_gas_cloud } from './region.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { boolean_option } from './options.js';
@@ -2468,7 +2467,8 @@ export async function poly_obj(obj, id) {
 // src/zap.c:1505 polyuse(); consume up to minwt weight of objects of
 // material mat from the pile (objhdr is the pile in nexthere order)
 async function polyuse(objhdr, mat, minwt) {
-    for (const otmp of objhdr) {
+    for (let otmp = objhdr[0], next; otmp; otmp = next) {
+        next = otmp.nexthere;
         if (!(minwt > 0))
             break;
         if (game.context?.bypasses && otmp.bypass)
@@ -2774,8 +2774,7 @@ export async function bhito(obj, otmp) {
                 await boxlock(obj, otmp);
 
             if (obj_shudders(obj)) {
-                const cover = ((obj === game.level.objects.find(o => o.where === OBJ_FLOOR
-                                                                && o.ox === game.u.ux && o.oy === game.u.uy))
+                const cover = ((obj === game.level.objectAt(game.u.ux, game.u.uy))
                                && game.u.uundetected
                                && hides_under(game.youmonst.data));
 
@@ -2994,38 +2993,52 @@ export async function bhito(obj, otmp) {
 }
 
 // src/zap.c:2428 bhitpile() — apply fhito to every object in the pile at
-// (tx,ty). The flat objects list is PREPEND-ordered, so filtering it gives
-// the same order C's per-square nexthere chain would.
+// (tx,ty), retaining the successor before each callback.
 export async function bhitpile(obj, fhito, tx, ty, zz) {
     let hitanything = 0;
-
-    const pile = (game.level.objects || [])
-        .filter(o => o.where === OBJ_FLOOR && o.ox === tx && o.oy === ty);
-    if (!pile.length)
+    if (!game.level.objectAt(tx, ty))
         return 0;
-
-    /* hidingunder — hero hiding under the top of the pile; hides_under
-       hero forms are not modelled */
-
+    const hidingunder = zz !== 0 && game.u.uundetected && hides_under(game.youmonst.data);
+    let first = true;
     if (obj.otyp === ONAMES.SPE_FORCE_BOLT
         || obj.otyp === ONAMES.WAN_STRIKING) {
+        const topofpile = game.level.objectAt(tx, ty);
         const trap = t_at(tx, ty);
         if (trap?.ttyp === STATUE_TRAP
             && await activate_statue_trap(trap, tx, ty, true))
             learnwand(obj);
+        if (game.level.objectAt(tx, ty) !== topofpile)
+            first = false;
     }
-
     poly_zapped = -1;
-    for (const otmp of pile) {
+    for (let otmp = game.level.objectAt(tx, ty), next_obj; otmp; otmp = next_obj) {
+        next_obj = otmp.nexthere;
+        if (hidingunder) {
+            if (first) {
+                first = false;
+                if (zz > 0)
+                    continue;
+            } else if (zz < 0) {
+                continue;
+            }
+        }
         if (otmp.where !== OBJ_FLOOR || otmp.ox !== tx || otmp.oy !== ty)
             continue;
         hitanything += await fhito(otmp, obj);
     }
     if (poly_zapped >= 0)
-        await create_polymon(game.level.objects.filter(o => o.where === OBJ_FLOOR && o.ox === tx && o.oy === ty), poly_zapped);
-
-    /* boulder re-stack — boulders polymorphed mid-pile; recorded */
-
+        await create_polymon(game.level.objectsAt(tx, ty), poly_zapped);
+    let prevotyp = ONAMES.BOULDER;
+    for (let otmp = game.level.objectAt(tx, ty); otmp; otmp = otmp.nexthere) {
+        if (otmp.otyp === ONAMES.BOULDER && prevotyp !== ONAMES.BOULDER) {
+            recreate_pile_at(tx, ty);
+            break;
+        }
+        prevotyp = otmp.otyp;
+    }
+    if (hidingunder)
+        maybe_unhide_at(tx, ty);
+    await fill_pit(tx, ty);
     return hitanything;
 }
 
@@ -4473,11 +4486,6 @@ function bounce_dir(sx, sy, delta, bounceback) {
     }
 }
 
-const zap_colors = [
-    HI_ZAP, CLR_ORANGE, CLR_WHITE, HI_ZAP,
-    CLR_BLACK, CLR_WHITE, CLR_GREEN, CLR_YELLOW,
-];
-
 // src/display.c:2461 zapdir_to_glyph(). A zap type changes the color, while
 // these four cmap entries supply the active symbol-set character.
 function zapdir_cmap(dx, dy) {
@@ -4491,8 +4499,7 @@ function zapdir_cmap(dx, dy) {
 // src/zap.c:4598 burn_floor_objects(). Fire consumes eligible paper and slime
 // stacks, then lights every exposed fuel source left on the square.
 export async function burn_floor_objects(x, y, give_feedback, u_caused) {
-    const at = () => (game.level?.objects || []).filter(obj =>
-        obj.where === OBJ_FLOOR && obj.ox === x && obj.oy === y);
+    const at = () => game.level.objectsAt(x, y);
     let count = 0;
 
     for (const obj of [...at()]) {
@@ -4574,13 +4581,7 @@ export async function melt_ice(x, y, msg = null) {
         loc.icedpool = 0;
     }
 
-    const packed = ((x & 0xffff) << 16) | (y & 0xffff);
-    game.timer_base = (game.timer_base || []).filter(timer => {
-        if (timer.func_index !== MELT_ICE_AWAY)
-            return true;
-        const arg = timer.arg?.a_long ?? timer.arg;
-        return arg !== packed;
-    });
+    spot_stop_timers(x, y, MELT_ICE_AWAY); /* no more ice to melt away */
 
     const trap = t_at(x, y);
     if (trap) {
@@ -5020,7 +5021,6 @@ export async function zap_over_floor(
 
 // src/zap.c:4780 dobuzz(); sayhit/saymiss: report out of sight hit/miss
 // events; forcemiss: an inexperienced monster wand user always misses.
-// tmp_at(DISP_BEAM...) is the display_cmap_at/beam_cells pair below.
 export async function dobuzz(type,     /* 0..29 (by hero) or -39..-10 (by monster) */
                              nd,       /* damage strength ('number of dice') */
                              sx, sy,   /* starting point */
@@ -5037,7 +5037,6 @@ export async function dobuzz(type,     /* 0..29 (by hero) or -39..-10 (by monste
     const otmp = { v: null };
     let spell_type;
     const hdmgtype = Hallucination() ? rn2(6) : damgtype;
-    const beam_cells = [];
 
     /* if it's a hero spell then get its SPE_TYPE */
     spell_type = is_hero_spell(type) ? ONAMES.SPE_MAGIC_MISSILE + damgtype : 0;
@@ -5157,6 +5156,7 @@ export async function dobuzz(type,     /* 0..29 (by hero) or -39..-10 (by monste
         return null;
     };
 
+    await tmp_at(DISP_BEAM, await zapdir_to_glyph(dx, dy, hdmgtype));
     try {
         while (range-- > 0) {
             lsx = sx;
@@ -5175,12 +5175,8 @@ export async function dobuzz(type,     /* 0..29 (by hero) or -39..-10 (by monste
                     else if (!mon)
                         unmap_invisible(sx, sy);
                     if (ZAP_POS(game.level.at(sx, sy).typ)
-                        || (isok(lsx, lsy) && cansee(lsx, lsy))) {
-                        display_cmap_at(zapdir_cmap(dx, dy), sx, sy,
-                                        zap_colors[hdmgtype] ?? HI_ZAP, 'zap');
-                        beam_cells.push([sx, sy]);
-                    }
-                    await flush_screen(0);
+                        || (isok(lsx, lsy) && cansee(lsx, lsy)))
+                        await tmp_at(sx, sy);
                     await game.animationFrame(); /* wait a little */
                 }
 
@@ -5275,13 +5271,11 @@ export async function dobuzz(type,     /* 0..29 (by hero) or -39..-10 (by monste
                 bounce_dir(sx, sy, delta, bchance);
                 dx = delta.dx;
                 dy = delta.dy;
-                /* tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype)) */
+                await tmp_at(DISP_CHANGE, await zapdir_to_glyph(dx, dy, hdmgtype));
             }
         }
     } finally {
-        /* tmp_at(DISP_END, 0) */
-        for (const [x, y] of beam_cells)
-            newsym(x, y);
+        await tmp_at(DISP_END, 0);
     }
     if (fireball)
         await explode(sx, sy, type, d(12, 6), 0, EXPL_FIERY);
@@ -5553,8 +5547,7 @@ async function zap_updown(obj) {
         if (u.uundetected && hides_under(game.youmonst.data)) {
             let hitit = 0;
 
-            otmp = (game.level.objects || []).find(
-                (o) => o.ox === u.ux && o.oy === u.uy) || null;
+            otmp = game.level.objectAt(u.ux, u.uy) || null;
             if (otmp)
                 hitit = await bhito(otmp, obj);
             if (hitit) {
@@ -5824,6 +5817,10 @@ export async function bhit(ddx, ddy, range,  /* direction and range */
     };
     if (tethered_weapon)
         pobj.endTether = endTether;
+
+    // src/display.c:1194 tmp_at() flushes buffered glyphs when a flight opens.
+    if (weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM)
+        await flush_screen(0);
 
     while (range-- > 0) {
         let x, y;

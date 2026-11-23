@@ -1058,8 +1058,7 @@ export async function use_whip(obj) {
             /* Have a shot at snaring something on the floor.  A flyer
                can reach the floor so could just pick an item up, but
                allow snagging by whip too. */
-            otmp = (game.level.objects || []).find((o) => o.ox === game.u.ux && o.oy === game.u.uy
-                                                        && (o.where === undefined || o.where === OBJ_FLOOR)) || null;
+            otmp = game.level.objectAt(game.u.ux, game.u.uy) || null;
             if (otmp && otmp.otyp === ONAMES.CORPSE
                 && (otmp.corpsenm === PMNAMES.PM_HORSE
                     || otmp.corpsenm === little_to_big(PMNAMES.PM_HORSE) /* warhorse */
@@ -4475,8 +4474,7 @@ async function use_grapple(obj) {
         /* FIXME -- untrap needs to deal with non-adjacent traps */
         break;
     case 1: /* Object */
-        if ((otmp = (game.level.objects || []).find((o) => o.ox === cc.x && o.oy === cc.y
-                        && (o.where === undefined || o.where === OBJ_FLOOR))) != null) {
+        if ((otmp = game.level.objectAt(cc.x, cc.y)) != null) {
             await You(`snag an object from the ${surface(cc.x, cc.y)}!`);
             await pickup_object(otmp, 1, false);
             /* If pickup fails, leave it alone */

@@ -3,7 +3,6 @@
 // C ref: rm.h struct rm, dungeon.h, you.h
 import { COLNO, ROWNO, STONE } from './const.js';
 import { NO_COLOR } from './terminal.js';
-import { registerStaticReset } from './statics.js';
 // C obj.h: scalar #define aliases in struct obj.  Store each value once,
 // while keeping the C field names at the call sites.  These accessors belong
 // to the prototype: struct copies and saves contain the real fields only.
@@ -27,27 +26,31 @@ for (const [alias, field] of Object.entries({
 // copy, not a copy of objects reached through its pointers (including oextra).
 // The caller supplies zero-initialization or an existing struct as C does.
 //
-// free()d struct obj chunks (112 bytes -> glibc's 0x80 bin) await reuse by the
-// at most 7 chunks (malloc.c TCACHE_FILL_COUNT, tcache_put/tcache_get, LIFO)
-// in front of a LIFO fastbin: _int_free sends a chunk to the fastbin once the
-// cache is full, and _int_malloc, taking a fastbin chunk, first stashes up to
-// 7 more fastbin chunks into the cache.  A freed chunk is therefore not always
-// the next one handed out.  Each segment is a new process with a fresh heap.
-const obj_tcache = [], obj_fastbin = [];
-registerStaticReset('game.js: freed struct obj chunks (fresh heap)', () => {
-    obj_tcache.length = obj_fastbin.length = 0;
-});
+// WHICH ALLOCATION A STALE struct obj POINTER READS.  C can keep a pointer to
+// a free()d object (muse_unslime's lit oil, see js/light.js); mkobj.c:2825
+// dealloc_obj_real() zeroes the struct before free(), so the stale pointer
+// reads a zeroed obj (where == OBJ_FREE, ox == oy == otyp == lamplit == 0)
+// until malloc hands the same block to a later allocation, and then it reads
+// fitted to Linux recordings, is 6ea644291).
+//
+// bytes and lives in the nano allocator's 97..112-byte class (freed bytes 1-5
+// and 8-9 hold nanov2's free-slot guard and next-slot index), which it shares
+// with win/tty's tty_menu_item (104 bytes), strings of 97..112 bytes and Lua
+// objects.  Nano hands a freed slot back only to an allocation served from
+// the same 16 KB block, and each CPU has its own current block, so reuse
+// depends on scheduling: re-recording 103 dangling-oil games three times each
+// 77%, and the per-game split 48/41/13/1 for 3/2/1/0 panics is the binomial
+// for p = 0.77, with no game reliably reusing -- including the 97 where the
+// slot's very next 112-byte object request reuses it under LIFO.  So the
+// pointer reads it: a freed chunk keeps its zeroed contents (the stale pointer
+// reads them) and newobj() takes fresh memory.  `occupant` links stay the
+// representation of reuse for readers (js/light.js) should a reusing policy
 export const freed_obj_chunks = {
     push(chunk) {
-        (obj_tcache.length < 7 ? obj_tcache : obj_fastbin).push(chunk);
+        void chunk; /* free(): the slot joins its nano block's free list */
     },
     pop() {
-        if (obj_tcache.length || !obj_fastbin.length)
-            return obj_tcache.pop();
-        const chunk = obj_fastbin.pop();
-        while (obj_tcache.length < 7 && obj_fastbin.length)
-            obj_tcache.push(obj_fastbin.pop());
-        return chunk;
+        return null; /* macOS nano: the next request is served from another block */
     },
 };
 export function newobj(...fields) {

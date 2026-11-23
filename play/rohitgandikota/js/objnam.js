@@ -2874,8 +2874,7 @@ async function wizterrainwish(d) {
     const oldtyp = lev.typ;
     const isDrawbridge = oldtyp === DRAWBRIDGE_DOWN
         || oldtyp === DRAWBRIDGE_UP;
-    const floorObjects = () => (game.level.objects || [])
-        .filter(obj => obj.ox === x && obj.oy === y);
+    const floorObjects = () => game.level.objectsAt(x, y);
     const clearRmFlags = () => {
         /* C's rm fields below all alias the same five-bit flags member. */
         lev.flags = lev.doormask = lev.wall_info = lev.altarmask = 0;

@@ -53,7 +53,7 @@ import { hliquid } from './potion.js';
 import { dist2, distmin } from './hacklib.js';
 import { selection_new, selection_free, selection_getpoint,
          selection_setpoint } from './selvar.js';
-import { onscary, m_postmove_effect } from './monmove.js';
+import { onscary, m_postmove_effect, can_fog } from './monmove.js';
 import { COIN_CLASS, BOULDER, PICK_AXE, DWARVISH_MATTOCK, STATUE, WEAPON_CLASS,
          TOOL_CLASS, objects, WATER_WALKING_BOOTS } from './objects.js';
 import { back_to_cmap, defsyms_explanation } from './pager.js';
@@ -1586,7 +1586,7 @@ function cant_squeeze_thru_u() {
     /* too big? */
     if (bigmonst(ptr)
         && !(amorphous(ptr) || is_whirly(ptr) || noncorporeal(ptr)
-             || slithy(ptr) /* || can_fog(&youmonst) */))
+             || slithy(ptr) || can_fog(game.youmonst)))
         return 1;
 
     /* lugging too much junk? */

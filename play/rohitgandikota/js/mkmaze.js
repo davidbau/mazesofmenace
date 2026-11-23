@@ -1121,8 +1121,7 @@ export async function movebubbles() {
                             continue;   /* impossible("bad pos") */
 
                         /* pick up objects, monsters, hero, and traps */
-                        const olist = (g.level.objects || [])
-                            .filter(o => o.ox === x && o.oy === y);
+                        const olist = g.level.objectsAt(x, y);
                         if (olist.length) {
                             for (const otmp of olist) {
                                 obj_extract_self(otmp);  /* remove_object */

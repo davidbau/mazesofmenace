@@ -3806,9 +3806,7 @@ const vert = (i) => Math.trunc(i / 3) - 1;
 
 /* svl.level.objects[x][y]: the top of the floor pile at <x,y> */
 function level_objects_at(x, y) {
-    return (game.level?.objects || []).find(
-        o => o.ox === x && o.oy === y
-             && (o.where === undefined || o.where === OBJ_FLOOR)) || null;
+    return game.level.objectAt(x, y) || null;
 }
 
 // src/shk.c:4591 litter_getpos() — fill litter[] with the adjacent spots a

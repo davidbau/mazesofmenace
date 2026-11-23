@@ -1,5 +1,5 @@
 import { DEADMONSTER } from './monst.js';
-import { M_AP_TYPE, CXN_PFX_THE, HAND } from './const.js';
+import { M_AP_TYPE, CXN_PFX_THE, HAND, LARGEST_INT } from './const.js';
 import { TT_BURIEDBALL } from './const.js';
 import { TT_INFLOOR } from './const.js';
 import { TT_LAVA } from './const.js';
@@ -157,7 +157,7 @@ import { is_blade } from './mon.js';
 import { is_missile, is_sword , welded } from './wield.js';
 import { cansee } from './vision.js';
 import { newsym, canseemon } from './display.js';
-import { Levitation, Blind, Underwater, Fumbling } from './youprop.js';
+import { Levitation, Blind, Underwater, Fumbling, Confusion, Stunned } from './youprop.js';
 import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { doswapweapon, dowield, doquiver_core, is_ammo, setuwep,
          setuswapwep, setuqwep, set_twoweap } from './wield.js';
@@ -339,7 +339,7 @@ export async function throw_obj(obj, shotlimit) {
     if (obj.quan > 1
         && (is_ammo(obj) ? ammo_and_launcher(obj, game.u.uwep)
                          : obj.oclass === OCLASSES.WEAPON_CLASS)
-        && !(u.uprops?.CONFUSION || u.uprops?.STUNNED)) {
+        && !(Confusion() || Stunned())) {
         const skill = game.objects[obj.otyp].oc_skill;
         const mnum = game.urole?.mnum;
         const role_is = (pm) => mnum === pm || mnum === PMNAMES[pm];
@@ -347,7 +347,7 @@ export async function throw_obj(obj, shotlimit) {
             (role_is('PM_WIZARD') || role_is('PM_CLERIC')
              || (role_is('PM_HEALER') && skill !== SKILLS.P_KNIFE)
              || (role_is('PM_TOURIST') && skill !== -SKILLS.P_DART)
-             || u.uprops?.FUMBLING || ACURR(A_DEX) <= 6);
+             || Fumbling() || ACURR(A_DEX) <= 6);
 
         switch (P_SKILL(weapon_type(obj))) {
         case SKILLS.P_EXPERT:
@@ -585,6 +585,8 @@ async function sho_obj_return_to_u(obj) {
     let y = game.bhitpos.y - u.dy;
     let flightPos = null;
     const glyph = temporary_object_glyph(obj);
+    // src/dothrow.c:1448 tmp_at(DISP_FLASH) flushes the outgoing flight's cleanup.
+    await flush_screen(0);
     while (isok(x, y) && (x !== u.ux || y !== u.uy)) {
         if (flightPos)
             newsym(flightPos.x, flightPos.y);
@@ -1528,7 +1530,9 @@ function throw_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
-async function ok_to_throw() {
+// src/dothrow.c:297 ok_to_throw(), a count limits this volley to one turn.
+async function ok_to_throw(shotlimit_p) {
+    shotlimit_p.value = Math.max(0, Math.min(LARGEST_INT, game.command_count ?? 0));
     game.multi = 0;
     if (notake(game.youmonst.data)) {
         await You('are physically incapable of throwing or shooting anything.');
@@ -1542,12 +1546,14 @@ async function ok_to_throw() {
     return !await check_capacity(null);
 }
 
+// src/dothrow.c:352 dothrow()
 export async function dothrow() {
-    if (!await ok_to_throw())
+    const shotlimit = { value: 0 };
+    if (!await ok_to_throw(shotlimit))
         return ECMD_OK;
     const obj = await getobj('throw', throw_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
 
-    return obj ? await throw_obj(obj, 0) : ECMD_OK;
+    return obj ? await throw_obj(obj, shotlimit.value) : ECMD_CANCEL;
 }
 
 function note_unported_dothrow(what) {
@@ -2128,16 +2134,9 @@ function autoquiver() {
     return;
 }
 
-/*
- * src/dothrow.c:469 dofire() — the 'f' command: fire from the quiver.
- *
- * The shot-count prefix (ok_to_throw/shotlimit) cannot arise here because
- * this port's input path has no count prefixes, so shotlimit is always 0.
- * The polearm/bullwhip arms, autoquiver, and the throw-and-return artifact
- * head are recorded where their state can occur.
- */
+// src/dothrow.c:469 dofire(), fire from the quiver or use a wielded polearm.
 export async function dofire() {
-    const shotlimit = 0;
+    const shotlimit = { value: 0 };
     let obj;
     let skip_fireassist = false;
     let res = ECMD_OK;
@@ -2147,7 +2146,7 @@ export async function dofire() {
         && (uwep.oartifact !== ART_MJOLLNIR
             || ACURR(A_STR) >= STR19(25)));
 
-    if (!await ok_to_throw())
+    if (!await ok_to_throw(shotlimit))
         return ECMD_OK;
 
     obj = game.u.uquiver;
@@ -2223,7 +2222,7 @@ export async function dofire() {
         }
     }
 
-    const altres = obj ? await throw_obj(obj, shotlimit) : ECMD_CANCEL;
+    const altres = obj ? await throw_obj(obj, shotlimit.value) : ECMD_CANCEL;
     /* fire can take time by filling quiver (if that causes something which
        was wielded to be unwielded) even if the throw itself gets cancelled */
     return (res === ECMD_TIME) ? res : altres;

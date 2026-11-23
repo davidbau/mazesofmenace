@@ -894,15 +894,9 @@ const hcolors = [
     "bistre", "ecru", "fulvous", "tekhelet", "selective yellow",
 ];
 
-// src/do_name.c:1460 hcolor() — `colorpref`, or a hallucinatory colour.
-//
-// The draw goes to the DISPLAY rng, not the core one, so this costs no scored
-// draw however often it is called. Hallucination is the full macro
-// (intrinsic OR extrinsic), the same convention botl.js uses.
+// src/do_name.c:1460 hcolor(). Use the display RNG for hallucinated colors.
 export function hcolor(colorpref) {
-    const Hallucination = game.u?.intrinsic?.HHallucination
-                          || game.u?.uprops?.HALLUC;
-    return (Hallucination || !colorpref)
+    return (Hallucination() || !colorpref)
         ? hcolors[rn2_on_display_rng(hcolors.length)]
         : colorpref;
 }
