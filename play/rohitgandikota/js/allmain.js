@@ -64,7 +64,7 @@ import { encumber_msg, exerchk, change_luck, ACURR,
          near_capacity } from './attrib.js';
 import { init_uhunger } from './eat.js';
 import { settrack, initrack } from './track.js';
-import { phase_of_the_moon, friday_13th, night } from './calendar.js';
+import { phase_of_the_moon, friday_13th, night, getnow_seconds } from './calendar.js';
 import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
 import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
          FULL_MOON, NEW_MOON, COLNO, A_CON, A_WIS, A_INT, MOD_ENCUMBER,
@@ -106,7 +106,8 @@ import { NO_COLOR } from './terminal.js';
 // into the tty's menu prompt style.
 function init_sound_disp_gamewindows() {
     /* src/options.c:7188 — the default heading style */
-    adjust_menu_promptstyle({ color: NO_COLOR, attr: ATR_INVERSE });
+    adjust_menu_promptstyle(game.iflags?.menu_headings
+                            ?? { color: NO_COLOR, attr: ATR_INVERSE });
 }
 
 // include/you.h:441-442
@@ -241,6 +242,8 @@ export async function newgame() {
     {
         const { dorecover } = await import('./save.js');
         if (dorecover()) {
+            init_vision_globals();
+            vision_reset();
             l_nhcore_init();
             await docrt();
             /* src/allmain.c:914 welcome(FALSE) — align and gender words
@@ -376,6 +379,8 @@ export async function newgame() {
         // alignment the hero started with; convert_arg()'s %d, %G and %a all
         // read [A_ORIGINAL], so the legacy text needs it.
         g.u.ualignbase = [g.u.ualign.type, g.u.ualign.type];
+        // src/u_init.c:1010. Save the birth time, not the current restore time.
+        g.ubirthday = getnow_seconds();
         g.u.uhave = {};
 
         // src/u_init.c:1027 u_init_misc(), permanent blindness is a source
@@ -720,6 +725,21 @@ async function maybe_generate_rnd_mon() {
 // The last one is a useful self-check: seed8000 records rn2(82), and 82 is
 // 40 + 14 * 3, so it only comes out right if the hero's Dexterity does.
 export async function moveloop_core() {
+    if (game.program_state?.gameover)
+        return;
+    try {
+        await moveloop_core_turn();
+    } catch (error) {
+        if (!error?.__nh_gameover)
+            throw error;
+        // C exits from inside the turn. Complete the browser action and
+        // record its final boundary after that turn has fully unwound.
+        game.program_state.gameover = true;
+        await game._preNhgetchHook?.();
+    }
+}
+
+async function moveloop_core_turn() {
     const g = game;
 
     /* src/end.c nh_terminate(): after really_done the process has exited;

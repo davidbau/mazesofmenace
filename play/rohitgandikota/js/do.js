@@ -1,3 +1,5 @@
+import { assign_graphics, PRIMARYSET, ROGUESET } from './symbols.js';
+import { check_gold_symbol } from './botl.js';
 import { allow_all } from './pickup.js';
 import { TOOKPLUNGE } from './const.js';
 import { PICK_ANY, In_endgame, ESCAPED, Is_knox_level } from './const.js';
@@ -1199,6 +1201,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const { initrack } = await import('./track.js');
         initrack();
     }
+
+    if (Is_rogue_level(newlevel) || Is_rogue_level(game.u.uz))
+        assign_graphics(Is_rogue_level(newlevel) ? ROGUESET : PRIMARYSET);
+    check_gold_symbol();
 
     /* src/do.c:1674 — u.uz0 holds the level being left until the tail's
        "reset u.uz0" catches it up; onquest() and the arrival messages

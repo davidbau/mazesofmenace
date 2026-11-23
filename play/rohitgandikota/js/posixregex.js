@@ -8,6 +8,15 @@
 // whether any match exists, where a backtracking engine and POSIX
 // leftmost-longest agree.
 
+// The pinned Unix build never calls setlocale, so regex_t matches bytes in
+// the C locale. Accept byte arrays for patterns truncated by C's scanf limits.
+function regex_bytes(text) {
+    const bytes = text instanceof Uint8Array
+        ? text : new TextEncoder().encode(String(text));
+    return Array.from(bytes, byte => String.fromCharCode(byte)).join('')
+        .split('\0', 1)[0];
+}
+
 export const regex_id = 'posixregex';
 
 /* <regex.h> error codes, with the regerror() text for each */
@@ -207,7 +216,7 @@ export function regex_compile(s, re) {
     if (!re)
         return false;
     try {
-        re.re = ere_to_js(String(s));
+        re.re = ere_to_js(regex_bytes(s));
         re.err = 0;
     } catch (e) {
         if (!(e instanceof RegexError))
@@ -232,7 +241,7 @@ export function regex_error_desc(re) {
 export function regex_match(s, re) {
     if (!re || s == null || !re.re)
         return false;
-    return re.re.test(String(s));
+    return re.re.test(regex_bytes(s));
 }
 
 // sys/share/posixregex.c:70 regex_free()

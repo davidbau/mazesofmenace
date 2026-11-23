@@ -1058,7 +1058,7 @@ import('./priest.js').then(m => { sp_lev_wire_priest(m.priestini); });
 async function makerooms() {
     const g = game;
     let tried_vault = false;
-    const difficulty = depth_of_level(g.u?.uz);
+    const difficulty = level_difficulty();
     let themeroom_tries = 0;
 
     while (g.level.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
@@ -1402,11 +1402,8 @@ function fill_eligible(fill, rm, difficulty) {
 
 // dat/themerms.lua:1009 themeroom_fill() — a second reservoir sample, this one
 // over the 15 themeroom_fills, then the chosen fill's own contents.
-//
-// The sample is ported; the contents are not. Each fill places monsters,
-// objects or terrain with draws of its own, and they are 15 separate functions.
 function themeroom_fill(rm) {
-    const difficulty = depth_of_level(game.u?.uz);
+    const difficulty = level_difficulty();
     let pick = null;
     let total_frequency = 0;
     for (const fill of themeroom_fills) {
@@ -3396,20 +3393,21 @@ async function fill_ordinary_room(croom, bonus_items) {
     /* src/mklev.c:974 — the || SHORT-CIRCUITS: carrying the Amulet skips the
        rn2(3) entirely, so spending it unconditionally is a draw C never makes. */
     if ((game.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
-        await makemon(null, pos.x, pos.y, MM_NOGRP);
+        const mon = await makemon(null, pos.x, pos.y, MM_NOGRP);
+        if (mon?.data === game.mons[PMNAMES.PM_GIANT_SPIDER]
+            && !occupied(pos.x, pos.y))
+            maketrap(pos.x, pos.y, WEB);
     }
     // Traps
-    const u_depth = g.u?.uz?.dlevel ?? 1;
-    let x = 8 - Math.trunc(u_depth / 6);
+    const u_depth = depth_of_level(g.u.uz);
+    let x = 8 - Math.trunc(level_difficulty() / 6);
     if (x <= 1) x = 2;
     let trycnt = 0;
     while (!rn2(x) && ++trycnt < 1000) {
         mktrap(0, MKTRAP_NOFLAGS, croom, null);
     }
     // Gold
-    /* src/mklev.c:974 — the || SHORT-CIRCUITS: carrying the Amulet skips the
-       rn2(3) entirely, so spending it unconditionally is a draw C never makes. */
-    if ((game.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
+    if (!rn2(3) && somexyspace(croom, pos)) {
         mkgold(0, pos.x, pos.y);
     }
     // Fountain

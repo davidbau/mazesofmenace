@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 
-import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, A_CHAOTIC, A_NEUTRAL, MAX_TYPE, ICE, TT_BURIEDBALL, BOTL_NSIZ, QBUFSZ, MAXVALWIDTH, BL_CHARACTERISTICS, BL_RESET, CONDITION_COUNT, Is_rogue_level } from './const.js';
+import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, A_CHAOTIC, A_NEUTRAL, MAX_TYPE, ICE, TT_BURIEDBALL, BOTL_NSIZ, QBUFSZ, MAXVALWIDTH, BL_CHARACTERISTICS, BL_RESET, CONDITION_COUNT } from './const.js';
 import { ACURR } from './attrib.js';
 
 import { Upolyd } from './const.js';
@@ -1687,19 +1687,23 @@ function cond_cache_prepA(cache) {
     }
 }
 
+// src/botl.c:40 check_gold_symbol()
+export function check_gold_symbol() {
+    const goldch = gs_showsyms.O?.[OCLASSES.COIN_CLASS]
+        ?? def_oc_syms[OCLASSES.COIN_CLASS];
+    (game.iflags ||= {}).invis_goldsym = goldch <= ' ';
+}
+
 /* the current gold symbol of the status line; the C passes
    encglyph(objnum_to_glyph(GOLD_PIECE)) and the tty decodes it through
    the current symset (the Rogue level shows the Rogue set's '*') */
 function status_gold_symbol() {
-    const u = game.u;
-    let goldch;
-
-    if (Is_rogue_level(u.uz))
-        goldch = def_oc_syms[OCLASSES.GEM_CLASS];
-    else
-        goldch = gs_showsyms.O?.[OCLASSES.COIN_CLASS] ?? def_oc_syms[OCLASSES.COIN_CLASS];
-    /* check_gold_symbol(): iflags.invis_goldsym = (goldch <= ' ') */
-    return (game.iflags?.in_dumplog || !goldch || goldch <= ' ') ? '$' : goldch;
+    const goldch = gs_showsyms.O?.[OCLASSES.COIN_CLASS]
+        ?? def_oc_syms[OCLASSES.COIN_CLASS];
+    if (game.iflags?.in_dumplog || game.iflags?.invis_goldsym)
+        return '$';
+    // nomux_putch ignores a control byte, while tty status advances one cell.
+    return goldch.charCodeAt(0) < 0x20 ? ' ' : goldch;
 }
 
 // src/botl.c:962 bot_via_windowport()
@@ -2096,7 +2100,8 @@ function eval_notify_windowport_field(fld, valsetlist, idx) {
      * encoding may have changed if a new symset was put into effect.
      */
     if (fld === BL_GOLD) {
-        const goldsym = status_gold_symbol();
+        const goldsym = gs_showsyms.O?.[OCLASSES.COIN_CLASS]
+            ?? def_oc_syms[OCLASSES.COIN_CLASS];
         if ((game.context?.rndencode | 0) !== (game._botl_oldrndencode | 0)
             || goldsym !== game._botl_oldgoldsym) {
             game.update_all = true; /* chg = 2; */

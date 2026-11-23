@@ -64,6 +64,16 @@ export function getnow() {
                   d.getHours(), d.getMinutes(), d.getSeconds());
 }
 
+// C's time_t form of getnow(), used for the saved ubirthday value. The
+// contest recordings use UTC-4 when converting their fixed wall time.
+export function getnow_seconds() {
+    const t = time_from_yyyymmddhhmmss(game.fixed_datetime);
+    if (t)
+        return Date.UTC(t.tm_year + 1900, t.tm_mon, t.tm_mday,
+                        t.tm_hour, t.tm_min, t.tm_sec) / 1000 + 4 * 60 * 60;
+    return Math.floor(Date.now() / 1000);
+}
+
 // src/calendar.c:40 getlt() — localtime(getnow()).
 // The recorder parses the fixed string as local time and reads it back as
 // local time, so the calendar fields round-trip unchanged and we can work

@@ -3002,6 +3002,7 @@ export async function doapply() {
                      * joined by update_topl (topl.c:262-275), never replaced. */
                     if (g._pending_message) await pline('%s', plainMsg);
                     else g._pending_message = plainMsg;
+                    if (plainMsg.length >= 80) await flush_screen(1);
                 }
             } else if (_standEsc) {
                 /* ESC at the standing page's more() set WIN_STOP (topl.c:232-235):
@@ -3012,8 +3013,14 @@ export async function doapply() {
                 g._topl_win_stop_armed = false;
                 g._topl_win_stop_buf = g._pending_message;
             } else {
-                await _showMsg1();
-                await await_topl_more_dismiss(_showMsg1);
+                const _m1Base = msg1.slice(0, -'--More--'.length);
+                if (_m1Base.length >= 80) {
+                    g._pending_message = _m1Base;
+                    await flush_screen(1);
+                } else {
+                    await _showMsg1();
+                    await await_topl_more_dismiss(_showMsg1);
+                }
                 if (_swapExtra) {
                     const _em = `${_swapExtra}--More--`;
                     await _showMsg1(_em);
@@ -3045,7 +3052,15 @@ export async function doapply() {
             const msg2 = oldwep
                 ? `${await _prinv_line(oldwep, `alternate weapon${((oldwep.quan ?? 1) | 0) === 1 ? '' : 's'}; not wielded`)}--More--`
                 : 'You have no secondary weapon readied.--More--';
-            if (!_standEsc) g._pending_message = msg2.slice(0, -'--More--'.length);
+            if (!_standEsc) {
+                g._pending_message = msg2.slice(0, -'--More--'.length);
+                /* C topl.c:139-140 redotoplin(): when msg2 itself wraps onto a
+                 * second row (n0 >= CO), C pages it immediately inside
+                 * prinv(uswapwep), before use_pick_axe returns ECMD_TIME and
+                 * before the wield turn's movemon() runs. */
+                if (g._pending_message.length >= 80)
+                    await flush_screen(1);
+            }
             /* topl.c more():232-235 — an ESC on page #1 set WIN_STOP at more()
              * time; msg2 is the pline that raised it and is still drawn (skip
              * was sampled before), but everything the wield turn prints after

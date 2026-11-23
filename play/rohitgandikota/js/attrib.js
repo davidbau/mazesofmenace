@@ -32,7 +32,7 @@ import {
 } from './const.js';
 import { ATTKS, MFLAGS, PMNAMES, MONSYMS } from './monst_data.js';
 import { Upolyd } from './const.js';
-import { livelog_printf } from './pline.js';
+import { livelog_printf, impossible } from './pline.js';
 import { LL_ALIGNMENT, A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF, A_CURRENT, Is_astralevel } from './const.js';
 import { aligns } from './role_data.js';
 import { summon_furies } from './makemon.js';
@@ -370,8 +370,12 @@ export async function adjattrib(ndx, incr, msgflg) {
 // would cross the racial floor becomes 3..6 HP damage per point. Those rolls
 // happen before the remaining attribute reduction.
 export async function losestr(num, knam, k_format) {
-    if (num <= 0 || ABASE(A_STR) < ATTRMIN(A_STR))
+    const uhpmin = minuhpmax(1);
+    const waspolyd = Upolyd(game.u);
+    if (num <= 0 || ABASE(A_STR) < ATTRMIN(A_STR)) {
+        await impossible(`losestr: ${ABASE(A_STR)} - ${num}`);
         return;
+    }
 
     let ustr = ABASE(A_STR) - num;
     let damage = 0;
@@ -383,13 +387,17 @@ export async function losestr(num, knam, k_format) {
 
     if (damage) {
         const { losehp } = await import('./hack.js');
-        await losehp(damage, knam || 'terminal frailty', knam ? k_format : 0);
-        if (game.u.uhpmax > 1)
-            game.u.uhpmax = Math.max(game.u.uhpmax - damage, 1);
+        const { setuhpmax } = await import('./exper.js');
+        await losehp(damage, knam || 'terminal frailty', knam ? k_format : KILLED_BY);
+        if (Upolyd(game.u)) {
+            setuhpmax(Math.max(game.u.mhmax - damage, 1), false);
+        } else if (!waspolyd && game.u.uhpmax > uhpmin) {
+            setuhpmax(Math.max(game.u.uhpmax - damage, uhpmin), false);
+        }
         (game.disp ||= {}).botl = true;
     }
 
-    if (num > 0)
+    if (num > 0 && (Upolyd(game.u) || !waspolyd))
         await adjattrib(A_STR, -num, 1);
 }
 

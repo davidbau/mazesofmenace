@@ -91,6 +91,7 @@ import { arti_cost } from './artifact.js';
 import { holetime } from './dig.js';
 import { block_point, cansee } from './vision.js';
 import { del_engr_at } from './engrave.js';
+import { getnow_seconds } from './calendar.js';
 import { Norep, You_feel, You_hear } from './pline.js';
 import { COST_SINGLEOBJ, COST_CONTENTS } from './const.js';
 import { has_omid, OMID } from './const.js';
@@ -1364,13 +1365,7 @@ export function get_cost(obj, shkp) {
                 [ONAMES.AMETHYST, ONAMES.FLUORITE],
             ];
             const pair = pairs[obj.otyp - ONAMES.FIRST_GLASS_GEM];
-            const dt = String(game.fixed_datetime || '');
-            const birthday = dt.length === 14
-                ? Date.UTC(Number(dt.slice(0, 4)), Number(dt.slice(4, 6)) - 1,
-                           Number(dt.slice(6, 8)), Number(dt.slice(8, 10)),
-                           Number(dt.slice(10, 12)), Number(dt.slice(12, 14)))
-                    / 1000 + 4 * 60 * 60
-                : 0;
+            const birthday = game.ubirthday ?? getnow_seconds();
             const pseudorand = ((birthday | 0) % obj.otyp)
                              >= Math.trunc(obj.otyp / 2);
             if (pair)

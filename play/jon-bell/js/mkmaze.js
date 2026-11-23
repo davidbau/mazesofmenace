@@ -1134,7 +1134,7 @@ export async function setup_waterlevel() {
             if (!loc) continue;
             loc.remembered_glyph = waterlev
                 ? water_memory_glyph()
-                : { ch: ' ', color: CLR_CYAN, decgfx: false };
+                : { ch: ' ', color: CLR_CYAN, decgfx: false, cmap: 46 };
             if ((loc.typ | 0) === STONE)
                 loc.typ = typ;
         }

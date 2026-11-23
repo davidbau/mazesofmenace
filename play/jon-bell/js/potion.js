@@ -40,7 +40,7 @@ import { aggravate } from './wizard.js';
 import { COLNO, ROWNO, INVIS } from './const.js';
 import { set_bc } from './ball.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
-import { pair_of, yn_function } from './cmd.js';
+import { pair_of, yn_function, doprev_message } from './cmd.js';
 import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ, pager_boulder_symbol, pager_showsyms } from './display.js';
 import { def_oc_syms_chars } from './drawing.js';
 import { SchroedingersBox } from './pickup_container.js';
@@ -352,6 +352,8 @@ async function y_n(question) {
                 await force_more_lone_frame(game._pending_message);
         } finally { if (_hold) game._botlPaintHeld = false; }
     }
+    game._topl_win_stop = game._topl_win_stop_armed = false;
+    game._topl_win_stop_buf = null;
     const wraps = topl_park_cursor(null, prompt + ' ')[1] > 0;
     const paintPrompt = async () => {
         const savedEcho = game._topl_prompt_echo;
@@ -363,7 +365,7 @@ async function y_n(question) {
         } finally { game._topl_prompt_echo = savedEcho; }
     };
     await paintPrompt();
-    let key, answer;
+    let key, answer, doprev = false;
     do {
         /* C topl.c:420-425: the prompt is custompline(OVERRIDE_MSGTYPE |
          * SUPPRESS_HISTORY), so wintty.c:2290-2299 remember_topl()'s it OUT of
@@ -376,6 +378,27 @@ async function y_n(question) {
         game._topl_suppress_history = true;
         try { key = await nhgetch(); }
         finally { game._topl_suppress_history = _savedHist; }
+        /* C topl.c:434-460 — ^P recalls message history; in single mode the
+         * next key is swallowed by the reprompt. */
+        if (key === 16) {
+            if ((game.iflags?.prevmsg_window || 's')[0] !== 's') {
+                await doprev_message();
+                game._prevmsg_combo = 0;
+                game._prevmsg_next = null;
+                await paintPrompt();
+            } else {
+                if (!doprev) await doprev_message();
+                await doprev_message();
+                if (game.nhDisplay) topl_park_cursor(game.nhDisplay, game._topl_history_recall || '');
+                doprev = true;
+            }
+            continue;
+        } else if (doprev) {
+            doprev = false;
+            game._prevmsg_next = null;
+            await paintPrompt();
+            continue;
+        }
         answer = String.fromCharCode(key).toLowerCase();
         if (answer === '\u001b' || answer === ' ' || answer === '\n' || answer === '\r')
             answer = 'n';

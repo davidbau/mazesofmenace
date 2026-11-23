@@ -5601,7 +5601,7 @@ export function mkroll_launch(ttmp, x, y, otyp, ocount) {
     return 1;
 }
 
-// src/trap.c:3282 launch_obj() moves a trap-launched object along its fixed
+// src/trap.c:3260 launch_obj() moves a trap-launched object along its fixed
 // path. Rolling boulders keep moving after a monster hit unless consumed.
 export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     let otmp = sobj_at(otyp, x1, y1);
@@ -5641,8 +5641,6 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     let used_up = false;
     game.bhitpos = { x, y };
 
-    /* src/trap.c:3318 — the style switch; its delaycnt/tmp_at arms are
-       animation only and the temporary glyph is handled above */
     switch (style) {
     case ROLL | LAUNCH_UNSEEN:
         if (otyp === ONAMES.BOULDER) {
@@ -5667,11 +5665,13 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     default:
         break;
     }
-    /* src/trap.c:3316 `roll:` / `default:` — delaycnt is animation timing
-       and curs_on_u() for an unseen launch point only moves the cursor.
+    /* src/trap.c:3341 roll: / default:
        tmp_at(DISP_FLASH, obj_to_glyph(singleobj, rn2_on_display_rng)) keeps
        one glyph for the whole flight; tmp_at(x, y) draws it only on squares
        the hero can see (display.c tmp_at(), the DISP_FLASH arm). */
+    const delaycnt = style === ROLL ? 2 : 1;
+    if (!cansee(x, y))
+        game.nhDisplay.setCursor(game.u.ux - 1, game.u.uy + 1);
     {
         const og = temporary_object_glyph(singleobj);
         await tmp_at(DISP_FLASH, { ch: og.ch, color: og.color, decgfx: !!og.dec,
@@ -5684,7 +5684,9 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     /* Set the object in motion */
     while (dist-- > 0 && !used_up) {
         await tmp_at(x, y);
-        /* the nh_delay_output() frames while cansee(x, y) are timing only */
+        if (cansee(x, y) && game.animationFrame)
+            for (let tmp = delaycnt; tmp > 0; --tmp)
+                await game.animationFrame();
         if (!isok(game.bhitpos.x + dx, game.bhitpos.y + dy)) {
             finalx = x;
             finaly = y;

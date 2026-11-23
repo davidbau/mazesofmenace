@@ -384,10 +384,10 @@ export function ini_inv(trop_table) {
 
         /* src/u_init.c:1343. Object creation and racial substitution have
            already happened, but a nudist discards this whole armor entry
-           before its post-creation adjustments or inventory insertion. */
+           before its post-creation adjustments or inventory insertion.
+           C retains quan here instead of rolling the next entry's quantity. */
         if (game.u.uroleplay?.nudist && obj.oclass === ARMOR_CLASS) {
             trop = trop_table[++ti];
-            if (trop) quan = trquan(trop);
             continue;
         }
 

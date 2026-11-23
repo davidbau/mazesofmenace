@@ -650,7 +650,7 @@ function* cornerAngle(seenv, mode, which, outer, inner, name) {
 // impossible() C prints for a wall whose wall_info mode its type does not
 // know, which a wall gets when a level program that #wizloadlua runs puts it
 // on a square whose flags held something else (a closed door's D_CLOSED is
-// mode 4); the synchronous form below records the print as a gap.
+// mode 4); the synchronous form below queues the report for the next message.
 // scripts/wall-angle-callers.test.mjs lists the callers that still use it.
 export function* wall_angle_steps(loc) {
     let seenv = (loc.seenv ?? 0) & 0xFF;
@@ -853,7 +853,7 @@ function* hwallAngle(seenv, mode) {
 
 // wall_angle() for a caller that cannot wait: an impossible() is a gap.
 export function wall_angle(loc) {
-    return finish_steps(wall_angle_steps(loc));
+    return finish_steps(wall_angle_steps(loc), sync_impossible, game);
 }
 
 // C ref: display.c reset_glyphmap() (3078-3082), which stores NO_COLOR for
@@ -2925,7 +2925,7 @@ export function* back_to_glyph_steps(x, y, state = game) {
 export function back_to_glyph(x, y, state = game) {
     const ptr = state.level?.at(x, y);
     if (WALL_TYPES.has(ptr.typ))
-        return finish_steps(back_to_glyph_steps(x, y, state));
+        return finish_steps(back_to_glyph_steps(x, y, state), sync_impossible, state);
     return terrain_to_glyph(ptr, x, y, state);
 }
 
@@ -3481,9 +3481,9 @@ export function same_remembered_glyph(before, after) {
 //
 // A step generator (js/source_steps.js), for wall_angle()'s impossible(): a
 // blind hero who feels a wall laid with a mode wall_angle() cannot draw
-// reports it here in C. The synchronous feel_location() records it as a gap.
+// reports it here in C. The synchronous feel_location() queues it for the next message.
 export function feel_location(x, y, state = game) {
-    finish_steps(feel_location_steps(x, y, state));
+    finish_steps(feel_location_steps(x, y, state), sync_impossible, state);
 }
 
 export function* feel_location_steps(x, y, state = game) {
@@ -3677,9 +3677,9 @@ function rememberedCmap(cmap, state) {
 // it are map_engraving()'s two statements.
 //
 // A step generator (js/source_steps.js), for wall_angle()'s impossible() in
-// its background arm; the synchronous map_location() records it as a gap.
+// its background arm; the synchronous map_location() queues it for the next message.
 export function map_location(x, y, show, state) {
-    finish_steps(map_location_steps(x, y, show, state));
+    finish_steps(map_location_steps(x, y, show, state), sync_impossible, state ?? game);
 }
 
 export function* map_location_steps(x, y, show, state) {
@@ -3939,9 +3939,9 @@ export function map_trap(trap, show, state = game) {
 // C ref: display.c map_background() (278-287). Puts the square's own terrain
 // back into map memory, and paints it when `show` is set.
 // A step generator (js/source_steps.js), for wall_angle()'s impossible();
-// the synchronous map_background() records it as a gap.
+// the synchronous map_background() queues it for the next message.
 export function map_background(x, y, show, state = game) {
-    finish_steps(map_background_steps(x, y, show, state));
+    finish_steps(map_background_steps(x, y, show, state), sync_impossible, state);
 }
 
 export function* map_background_steps(x, y, show, state = game) {
@@ -3990,7 +3990,8 @@ export function* magic_map_background_steps(x, y, show, state = game) {
 
 // magic_map_background() for a caller that cannot wait.
 export function magic_map_background(x, y, show, state = game) {
-    return finish_steps(magic_map_background_steps(x, y, show, state));
+    return finish_steps(magic_map_background_steps(x, y, show, state),
+        sync_impossible, state);
 }
 
 // C ref: display.c map_engraving() (318-325). Mapping reveals the engraving
@@ -4088,9 +4089,15 @@ export function see_nearby_objects(state = game, { redraw = null } = {}) {
     }
 }
 
+// C ref: display.c map_object() (339-351). C asks whether the glyph is a
+// generic one, not whether the object is: glyph_is_generic_object() starts
+// above GLYPH_OBJ_OFF, so the class-zero glyph that detect.c
+// object_detect() gets for a mimic's gem or spellbook disguise (a copy of
+// cg.zeroobj with only the type set) is left unobserved and stays ']'.
 function observeNearbyObject(object, x, y, state) {
     if (Hallucination(state.u)
         || !object_is_generic(object)
+        || !glyph_is_generic_object(generic_obj_to_glyph(object, state))
         || !cansee(x, y, state)) return;
     const radius = state.u?.xray_range > 2 ? state.u.xray_range : 2;
     const nearDistance = radius * radius * 2 - radius;
@@ -4108,10 +4115,10 @@ function observeNearbyObject(object, x, y, state) {
 // see, and a seen wall whose mode wall_angle() does not know reports there,
 // with the map drawn so far behind the report. vision.js vision_recalc()
 // delegates to it, so a caller that can wait prints the report at C's point
-// in the recalculation. The synchronous newsym() below records it as a gap;
+// in the recalculation. The synchronous newsym() below queues it for the next message;
 // scripts/wall-angle-callers.test.mjs counts its callers.
 export function newsym(x, y) {
-    finish_steps(newsym_steps(x, y));
+    finish_steps(newsym_steps(x, y), sync_impossible, game);
 }
 
 // newsym() for a caller that can wait, which awaits the result: it prints
@@ -4129,6 +4136,17 @@ export function* newsym_steps(x, y) {
     // C display.c:926-928 suppresses both map memory and output while the
     // level is in flux, before even accessing the requested location.
     if (suppress_map_output()) return;
+    // display.c:928-936. Column 0 is misuse rather than a corrupt
+    // coordinate: C reports it through impossible() and draws nothing, as
+    // when dog.c mon_arrive() calls mon.c restore_cham() on a shapeshifter
+    // that is not yet placed and normal_shape() redraws <0,0>. A coordinate
+    // outside the map array reaches panic() in C; nothing is drawn for it.
+    if (newsymReportsOffMap(x, y)) {
+        yield new ImpossibleCall(
+            `newsym: attempting screen update for <${x},${y}>`,
+        );
+        return;
+    }
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
@@ -4586,9 +4604,11 @@ export function newsymReportsOffMap(x, y) {
     return !isok(x, y) && x >= 0 && y >= 0 && x <= COLNO - 1 && y <= ROWNO - 1;
 }
 
-// The port's newsym() is synchronous and cannot wait at the --More-- that
-// impossible() reaches, so callers that can meet an off-map square raise the
-// report through this helper.
+// newsym_steps() raises this report itself, and the synchronous newsym()
+// queues it for the next message. A caller that can wait and knows it may
+// hold an off-map square (a vault guard parked at <0,0>) prints the report
+// through this helper instead, at C's point in its own messages, and does
+// not call newsym() for that square.
 export function newsymOffMapImpossible(x, y, state = game, env = {}) {
     return impossible(`newsym: attempting screen update for <${x},${y}>`,
         state, {
@@ -7881,7 +7901,12 @@ export async function flush_screen(mode) {
     try {
         // C ref: display.c flush_screen() (2235-2239). The turn counter has
         // its own arm, which refreshes that field alone.
-        if (game.disp?.botl || game.disp?.botlx) {
+        // A queued line took this step when it was queued
+        // (queued_flush_screen_status()), where C printed it; the status
+        // marked dirty since belongs to the next flush.
+        if (game._queuedNoticeStatusSpent) {
+            // nothing
+        } else if (game.disp?.botl || game.disp?.botlx) {
             await bot();
         } else if (game.disp?.time_botl) {
             await timebot();
@@ -7904,6 +7929,25 @@ export async function flush_screen(mode) {
     } finally {
         game.flushing = false;
     }
+}
+
+// C ref: display.c flush_screen() (2220-2239), for a line the port queues
+// instead of printing (js/startup_a11y.js queueNoticeLine()). C's vpline()
+// calls flush_screen() before it prints the line, and flush_screen() brings
+// the status rows up to date first: bot() when disp.botl or disp.botlx is
+// set, timebot() when only disp.time_botl is. The line then waits at
+// --More-- under that status if the top line is full. Code after the line
+// may change what the status shows (mon.c xkilled() awards experience after
+// the newsym() whose notice this is), so the status step cannot wait for the
+// queue to drain. The guards are flush_screen()'s own; the map half of the
+// flush is the notice's glyph frame. Answers whether the step ran.
+export function queued_flush_screen_status() {
+    if (suppress_map_output()) return false;
+    if (game.delay_flushing || game.flushing) return false;
+    if (game.program_state?.done_hup) return false;
+    if (game.disp?.botl || game.disp?.botlx) bot_now();
+    else if (game.disp?.time_botl) timebot_now();
+    return true;
 }
 
 // ── cls ──
@@ -7994,6 +8038,12 @@ export async function cls() {
 // during the "You die..." --More-- sequence would show HP:0 instead of the
 // pre-damage value that C's incremental terminal leaves on screen.
 export async function bot() {
+    bot_now();
+}
+
+// bot()'s whole body. It never waits, so a synchronous caller standing where
+// C calls bot() -- queued_flush_screen_status() below -- runs it in place.
+export function bot_now() {
     if (game.gb?.bot_disabled === true)
         return;
     // C botl.c bot() line 259: skip the status update when u.uhp == -1 but
@@ -8077,6 +8127,11 @@ export async function bot() {
 // cleared, exactly as bot() does above; suppress_map_output() covers the save,
 // restore and hangup states this port does not enter.
 export async function timebot() {
+    timebot_now();
+}
+
+// timebot()'s whole body; see bot_now().
+export function timebot_now() {
     if (game.gb?.bot_disabled === true)
         return;
     if (game.flags?.time && game.iflags?.status_updates !== false) {

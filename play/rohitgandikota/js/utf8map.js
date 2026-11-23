@@ -3,12 +3,14 @@
 //
 // A symset or SYMBOLS= line can give a glyph a "U+xxxx" representation.
 // The recorder's tty prints those through g_pututf8(), which its screen
-// model does not capture (js/symbols.js keeps such cells blank); this file
-// keeps the values the C keeps, for #wizcustom and the customization
-// bookkeeping.
+// model does not capture. Retain C's representations for #wizcustom
+// and clear or reapply them when options and symbol sets change.
 
-import { custom_ureps } from './const.js';
-import { gs_sym_customizations, find_matching_customization } from './glyphs.js';
+import { custom_ureps, do_custom_symbols } from './const.js';
+import { gs_sym_customizations, find_matching_customization, apply_customizations } from './glyphs.js';
+import { glyphmap } from './display.js';
+import { game } from './gstate.js';
+import { gc_currentgraphics } from './symbols.js';
 
 const hexdd = '00112233445566778899aAbBcCdDeEfF';
 
@@ -45,6 +47,17 @@ export function set_map_u(gmap, utf32ch, utf8str) {
     return 1;
 }
 
+// src/utf8map.c:59 free_all_glyphmap_u()
+export function free_all_glyphmap_u() {
+    for (const gmap of glyphmap())
+        gmap.u = null;
+    // Buffered glyphs also retain the shared representation.
+    for (const row of game.gbuf || [])
+        for (const cell of row || [])
+            if (cell)
+                cell.disp_u = null;
+}
+
 // src/utf8map.c:148 add_custom_urep_entry()
 export function add_custom_urep_entry(customization_name, glyphidx, utf32ch,
                                       utf8str, which_set) {
@@ -79,4 +92,10 @@ export function add_custom_urep_entry(customization_name, glyphidx, utf32ch,
     gdc.details.push(newdetails);
     gdc.count++;
     return 1;
+}
+
+// src/utf8map.c:211 reset_customsymbols()
+export function reset_customsymbols() {
+    free_all_glyphmap_u();
+    apply_customizations(gc_currentgraphics.set, do_custom_symbols);
 }

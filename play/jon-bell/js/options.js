@@ -2072,9 +2072,20 @@ export function parseNethackrc(rc) {
                      * set_wiznofuz -> optn_err; debug_hunger/debug_mongen/
                      * debug_overwrite_stairs cannot come from the config file. */
                     if (row?.wizNoFuz) { /* config error, value not stored */ }
-                    else if (row?.box === 'flags' || row?.box === 'iflags')
+                    else if (row?.box === 'flags' || row?.box === 'iflags') {
                         /* options.c:5314-5317: opt_idlecheckpoint forces it back off */
                         result[row.box][row.fld || lname] = lname === 'idlecheckpoint' ? false : value;
+                        /* C options.c:5300-5311 optfn_boolean case opt_hilite_pet:
+                         * sets go.opt_need_redraw = TRUE (before the go.opt_initial early
+                         * return at :5327) and defaults wc2_petattr to ATR_INVERSE when
+                         * enabling. Nothing clears opt_need_redraw before the first
+                         * reset_needed_visuals()/doset. */
+                        if (lname === 'hilite_pet') {
+                            if (value && !result.iflags.wc2_petattr)
+                                result.iflags.wc2_petattr = 7; /* ATR_INVERSE */
+                            result.opt_need_redraw = true;
+                        }
+                    }
                     else if (row?.box === 'a11y')
                         (result.a11y ||= {})[row.fld || lname] = value;
                     else if (row?.box === 'u.uroleplay') {

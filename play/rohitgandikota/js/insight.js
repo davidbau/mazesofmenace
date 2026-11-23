@@ -1902,9 +1902,7 @@ export async function do_gamelog() {
 }
 
 
-// src/insight.c:2089 show_conduct() — the #conduct window. The arms whose
-// state no session reaches (blind/deaf/pauper/nudist rolls, wish details)
-// stay silent exactly as C's would with zeroed fields.
+// src/insight.c:2089 show_conduct(), voluntary challenges during play and at exit.
 export async function show_conduct(final) {
     const {
         tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
@@ -1914,6 +1912,7 @@ export async function show_conduct(final) {
     const { docrt } = await import('./display.js');
     const { xwaitforspace } = await import('./tty/getline.js');
     const c = game.u.uconduct || {};
+    const roleplay = game.u.uroleplay || {};
     const fin = final | 0;
     const win = tty_create_nhwindow(NHW_MENU);
     const put = (s) => tty_putstr(win, 0, s);
@@ -1931,9 +1930,23 @@ export async function show_conduct(final) {
     const have_X = (x) => cmsg('have ', '', x);
 
     put('Voluntary challenges:');
-    /* u.uroleplay.reroll is never enabled in a recorded rc; C phrases this
-       one in past tense always */
-    put(' Character rerolling was not enabled.');
+    // Rerolling describes character creation, so it always uses past tense.
+    if (!roleplay.reroll)
+        put(' Character rerolling was not enabled.');
+    else if (!roleplay.numrerolls)
+        put(' Your character was not rerolled.');
+    else
+        put(` Your character was rerolled ${N_times(roleplay.numrerolls)}.`);
+
+    if (roleplay.blind)
+        have_been('blind from birth');
+    if (roleplay.deaf)
+        have_been('deaf from birth');
+    if (roleplay.pauper)
+        cmsg(game.invent ? 'started ' : 'are ', 'started out ',
+             'without possessions');
+    if (roleplay.nudist)
+        have_been('faithfully nudist');
 
     if (!c.food)
         cmsg('have gone ', 'went ', 'without food');

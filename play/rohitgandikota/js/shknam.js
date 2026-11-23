@@ -29,6 +29,7 @@ import { newsym } from './display.js';
 import { depth, Is_special } from './dungeon.js';
 import { inside_shop } from './shk.js';
 import { make_engr_at } from './engrave.js';
+import { getnow_seconds } from './calendar.js';
 import { DUST, CORR, ROOM } from './const.js';
 import { in_rooms } from './hack.js';
 import { SHKNAMES, SHKNMS_ORDER } from './shknam_data.js';
@@ -123,18 +124,6 @@ export function good_shopdoor(sroom) {
 }
 
 // src/shknam.c nameshk() — name the shopkeeper.
-//
-// Reads as a blocker because name_wanted is seeded from ubirthday, which we do
-// not model. Work the control flow instead: name_wanted is reduced by
-// `% names_avail` before the loop, so it is ALWAYS less than names_avail, and
-// every shop that is not a tools shop takes the `name_wanted < names_avail`
-// arm on the first iteration and DRAWS NOTHING. Only a tools shop draws, and
-// exactly one rn2(names_avail).
-//
-// So the unmodelled ubirthday changes WHICH NAME appears, a screen difference,
-// and not the draw count. The name itself is recorded as unported; the draw is
-// faithful, and names_avail is the generated list's length, which is why the
-// list must not lose or gain an entry.
 export function nameshk(shk, shknms) {
     let list_name = shknms;
     let nlp = SHKNAMES[list_name];
@@ -150,17 +139,7 @@ export function nameshk(shk, shknms) {
         shk.shknam = nlp[rn2(names_avail)];
         shk.female = 0;         /* reversed below for '_' prefix */
     } else {
-        /* The canonical recorder runs in America/New_York and copied the
-           recorder's daylight-saving flag before replacing its calendar
-           fields. The public and hidden corpus was recorded during EDT, so
-           every fixed wall time converts with the same UTC-4 offset. */
-        const dt = String(game.fixed_datetime || '');
-        const birthday = dt.length === 14
-            ? Date.UTC(Number(dt.slice(0, 4)), Number(dt.slice(4, 6)) - 1,
-                       Number(dt.slice(6, 8)), Number(dt.slice(8, 10)),
-                       Number(dt.slice(10, 12)), Number(dt.slice(12, 14)))
-                / 1000 + 4 * 60 * 60
-            : 0;
+        const birthday = game.ubirthday ?? getnow_seconds();
         const nseed = Math.trunc(birthday / 257);
         const ledger = (game.dungeons?.[game.u.uz.dnum]?.ledger_start || 0)
             + game.u.uz.dlevel;

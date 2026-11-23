@@ -35,13 +35,14 @@ import { dropy } from './do.js';
 import { is_whirly } from './mondata.js';
 import { WT_IRON_BALL_INCR } from './const.js';
 import { game } from './gstate.js';
+import { wipeout_text } from './engrave.js';
 import { unavailcmd, ecname_from_fn } from './cmd.js';
 import { getobj, GETOBJ_PROMPT, ECMD_TIME, ECMD_OK } from './invent.js';
 import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR, W_ARM, NODIR,
          A_STR, A_CON, W_BALL, W_CHAIN, W_ART, W_ARTI, TT_BURIEDBALL,
          BY_COOKIE, G_UNIQ, MM_FEMALE, MM_MALE, NON_PM, W_SADDLE,
          OBJ_AT, COLNO, ROWNO, HAND, HEAD, NH_RED,
-         NH_PURPLE } from './const.js';
+         NH_PURPLE, MAX_ERODE } from './const.js';
 import { sgn, distu, isok } from './hacklib.js';
 import { ACCESSIBLE } from './const.js';
 import { cansee, unblock_point } from './vision.js';
@@ -149,26 +150,19 @@ import { showsym } from './symbols.js';
 import { cmap_names, defsyms } from './drawing_data.js';
 import { DISP_BEAM, DISP_END } from './const.js';
 import { getpos_sethilite } from './getpos.js';
-function note_unported_read(what) {
-    (game.unported ||= new Set()).add('read:' + what);
-}
-
 // src/read.c:89 erode_obj_text()
 function erode_obj_text(otmp, buf) {
     const erosion = greatest_erosion(otmp);
 
     if (erosion) {
-        /* wipeout_text(buf, strlen(buf) * erosion / (2 * MAX_ERODE),
-           o_id ^ ubirthday): the seed folds in ubirthday, the recording
-           machine's mktime() of the fixed datetime, which is not modelled
-           (NOTES "ubirthday"), so an eroded shirt's text is not derivable */
-        note_unported_read('erode_obj_text:ubirthday');
+        buf = wipeout_text(buf, Math.trunc(buf.length * erosion / (2 * MAX_ERODE)),
+                          (otmp.o_id ^ game.ubirthday) >>> 0);
     }
     return buf;
 }
 
 // src/read.c:100 tshirt_text()
-function tshirt_text(tshirt) {
+export function tshirt_text(tshirt) {
     const shirt_msgs = [
         "I explored the Dungeons of Doom and all I got was this lousy T-shirt!",
         "Is that Mjollnir in your pocket or are you just happy to see me?",
@@ -179,7 +173,7 @@ function tshirt_text(tshirt) {
         "Yendor Military Soldiers Do It In Large Groups",
         "I survived Yendor Military Boot Camp",
         "Ludios Accounting School Intra-Mural Lacrosse Team",
-        "Oracle TM  Fountains 10th Annual Wet T-Shirt Contest",
+        "Oracle(TM) Fountains 10th Annual Wet T-Shirt Contest",
         "Hey, black dragon!  Disintegrate THIS!",
         "I'm With Stupid -->",
         "Don't blame me, I voted for Izchak!",
@@ -245,13 +239,32 @@ function tshirt_text(tshirt) {
     return erode_obj_text(tshirt, shirt_msgs[tshirt.o_id % shirt_msgs.length]);
 }
 
-// src/read.c:190 hawaiian_motif() and
-// :224 hawaiian_design() hash o_id with ubirthday (motif = o_id ^ ubirthday,
-// bg = o_id ^ ~ubirthday) and are not derivable without it; doread's
-// HAWAIIAN_SHIRT arm records them as unported.
+// src/read.c:190 hawaiian_motif(). A Tourist's initial shirt always has the
+// same object id, so the birthday varies its design between games.
+export function hawaiian_motif(shirt) {
+    const motifs = [
+        'flamingo', 'parrot', 'toucan', 'bird of paradise',
+        'sea turtle', 'tropical fish', 'jellyfish', 'giant eel', 'water nymph',
+        'plumeria', 'orchid', 'hibiscus flower', 'palm tree',
+        'hula dancer', 'sailboat', 'ukulele',
+    ];
+    const motif = (shirt.o_id ^ game.ubirthday) >>> 0;
+    return motifs[motif % motifs.length];
+}
+
+// src/read.c:224 hawaiian_design(). The background uses a different hash.
+function hawaiian_design(shirt) {
+    const backgrounds = [
+        'purple', 'yellow', 'red', 'blue', 'orange', 'black', 'green',
+        'abstract', 'geometric', 'patterned', 'naturalistic',
+    ];
+    const bg = (shirt.o_id ^ ~game.ubirthday) >>> 0;
+    return `${makeplural(hawaiian_motif(shirt))} on ${
+        an(backgrounds[bg % backgrounds.length])} background`;
+}
 
 // src/read.c:254 apron_text()
-function apron_text(apron) {
+export function apron_text(apron) {
     const apron_msgs = [
         "Kiss the cook",
         "I'm making SCIENCE!",
@@ -338,9 +351,8 @@ export async function doread(read_ok) {
             return ECMD_OK;
         }
         if (otyp === ONAMES.HAWAIIAN_SHIRT) {
-            /* pline("%s features %s.", verbose ? "The design" : "It",
-                     hawaiian_design(scroll, buf)) — see hawaiian_motif above */
-            note_unported_read('hawaiian_design:ubirthday');
+            await pline(`${game.flags.verbose ? 'The design' : 'It'} features ${
+                hawaiian_design(scroll)}.`);
             return ECMD_TIME;
         }
         game.u.uconduct = game.u.uconduct || {};

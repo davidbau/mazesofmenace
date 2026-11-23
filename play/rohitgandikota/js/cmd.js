@@ -145,7 +145,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
          tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_add_menu_str,
          tty_end_menu,
          tty_select_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
-import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH, BC_BALL, BC_CHAIN, SLT_ENCUMBER, OBJ_FLOOR, WT_ELF } from './const.js';
+import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH, BC_BALL, BC_CHAIN, SLT_ENCUMBER, WT_ELF } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { doeat } from './eat.js';
@@ -771,7 +771,10 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
         /* what the tty has painted: typed characters as typed (the
            completion hook rewrites the buffer in canonical case, but only
            the remainder after the cursor is echoed from it) */
-        const promptText = `${query} ${shown}`;
+        // topl_putsym counts nonprinting query bytes as columns. Their cells
+        // stay blank; emitting control bytes would collapse the captured row.
+        const visibleQuery = query.replace(/[\x00-\x07\x09\x0b-\x1f]/g, ' ');
+        const promptText = `${visibleQuery} ${shown}`;
         game._toplin = TOPLINE_SPECIAL_PROMPT;
         const display = game?.nhDisplay;
         const CO = display?.cols ?? 80;
@@ -962,24 +965,19 @@ function ext_cmd_getlin_hook(base) {
 // win/tty/getline.c:292 tty_get_ext_cmd() — read an extended command name and
 // match it against extcmdlist.
 async function get_ext_cmd() {
-    /* C passes the completion hook unless replaying with in_doagain. */
-    /* mungspaces(): leading and trailing blanks go, and runs of blanks
-       collapse to one before matching and before the unknown-command
-       message echoes the text */
-    /* suppress_history = TRUE: the extended command prompt never enters
-       the ^P history */
-    const buf = mungspaces(await hooked_tty_getlin('#', ext_cmd_getlin_hook, true));
-
+    const initiator = game.Cmd.extcmd_char;
+    const hook = game.in_doagain ? null : ext_cmd_getlin_hook;
+    // The prompt is excluded from message history, including canceled input.
+    const buf = mungspaces(await hooked_tty_getlin(initiator, hook, true));
     if (buf === '' || buf === '\x1b')
         return null;
-    /* extcmds_match with ECM_IGNOREAC | ECM_EXACTMATCH: the hook has already
-       completed the text, so C matches the whole name; anything else is
-       "<initiator><input>: unknown extended command." and returns -1. */
-    if (!extcmdlist.some((e) => e.ef_txt === buf)) {
-        await pline(`#${buf.slice(0, 60)}: unknown extended command.`);
+    const matches = extcmds_match(buf,
+        EXTCMD_FLAGS.ECM_IGNOREAC | EXTCMD_FLAGS.ECM_EXACTMATCH);
+    if (matches.length !== 1) {
+        await pline(`${visctrl(initiator)}${buf.slice(0, 60)}: unknown extended command.`);
         return null;
     }
-    return buf;
+    return extcmdlist[matches[0]].ef_txt;
 }
 
 /* src/read.c:315 read_ok() — scrolls and spellbooks. Note the else arm is
@@ -1186,6 +1184,13 @@ export async function doextcmd() {
         name = await get_ext_cmd();
         if (name === null)
             return ECMD_OK; /* quit */
+        const entry = extcmdlist.find(e => e.ef_txt === name);
+        if (!(await can_do_extcmd(entry)))
+            return ECMD_OK;
+        if (game.iflags.menu_requested && !accept_menu_prefix(entry)) {
+            await pline(`'${visctrl(cmd_from_func('reqmenu'))}' prefix has no effect for the ${name} command.`);
+            game.iflags.menu_requested = false;
+        }
         /* rhack replaces the '#' initiator with this actual function in the
            repeat queue after execution. Keep the name as the stable command
            identity, then replay it without asking for the extended name
@@ -1197,316 +1202,142 @@ export async function doextcmd() {
 }
 
 async function execute_extcmd(name) {
-    // Shared command handlers for keyboard, named and repeated commands.
-    if (name === 'shell') {
-        /* sys/unix/unixunix.c:dosh — the contest sysconf has no permitted
-           shell users, so both '!' and #shell are rejected here. */
-        await Norep("Unavailable command '!'.");
-        return ECMD_OK;
+    const handler = EXTCMD_FUNCS[name];
+    if (typeof handler === 'function')
+        return await handler();
+    if (handler) {
+        const mod = await import(handler[0]);
+        return await mod[handler[1]]();
     }
-    if (name === 'quit') {
-        const { done2 } = await import('./end.js');
-        return await done2();
-    }
-    if (name === 'wait')
-        return await donull();
-    /* src/cmd.c commands_init(): with number_pad the letter keys land on
-       these entries instead of on movement */
-    if (name === 'help')
-        return await dohelp();
-    if (name === 'kick')
-        return await dokick();
-    if (name === 'redraw') {
-        /* src/display.c doredraw() */
-        await docrt();
-        return ECMD_OK;
-    }
-    if (name === 'exploremode')
-        return await enter_explore_mode();
-    if (name === 'enhance') {
-        const { enhance_weapon_skill } = await import('./weapon.js');
-        return await enhance_weapon_skill();
-    }
-    if (name === 'turn') {
-        const { doturn } = await import('./pray.js');
-        return await doturn();
-    }
-    if (name === 'terrain')
-        return await doterrain();
-    // src/cmd.c:1780..1784, the named options commands share the O handlers.
-    if (name === 'options' || name === 'optionsfull') {
-        const { doset_simple, doset } = await import('./options.js');
-        return await (name === 'options' ? doset_simple() : doset());
-    }
-    if (name === 'adjust') {
-        const { doorganize } = await import('./invent.js');
-        return await doorganize();
-    }
-    if (name === 'wizidentify')
-        return await wiz_identify();
-    if (name === 'genocided') {
-        const { dogenocided } = await import('./insight.js');
-        return await dogenocided();
-    }
-    if (name === 'vanquished') {
-        const { dovanquished } = await import('./insight.js');
-        return await dovanquished();
-    }
-    if (name === 'conduct') {
-        const { show_conduct } = await import('./insight.js');
-        return await show_conduct();
-    }
-    if (name === 'chronicle') {
-        const { do_gamelog } = await import('./insight.js');
-        return await do_gamelog();
-    }
-    if (name === 'overview') {
-        const { dooverview } = await import('./dungeon.js');
-        return await dooverview();
-    }
-    if (name === 'wizwhere') {
-        const { print_dungeon } = await import('./dungeon.js');
-        if (game.wizard)
-            await print_dungeon(false, null);
-        else {
-            const { pline } = await import('./display.js');
-            await pline("Unavailable command '#wizwhere'.");
-        }
-        return ECMD_OK;
-    }
-    if (name === 'offer') {
-        const { dosacrifice } = await import('./pray.js');
-        return await dosacrifice();
-    }
-    if (name === 'loot')
-        return await doloot();
-    if (name === 'force') {
-        const { doforce } = await import('./lock.js');
-        return await doforce();
-    }
-    if (name === 'chat')
-        return await dochat();
-    if (name === 'twoweapon')
-        return await dotwoweapon();
-    if (name === 'name')
-        return await docallcmd();
-    if (name === 'jump')
-        return await dojump();
-    if (name === 'levelchange')
-        return await wiz_level_change();
-    if (name === 'ride') {
-        const { doride } = await import('./steed.js');
-        return await doride();
-    }
-    if (name === 'sit') {
-        const { dosit } = await import('./sit.js');
-        return await dosit();
-    }
-    if (name === 'pray') {
-        const { dopray } = await import('./pray.js');
-        return await dopray();
-    }
-    if (name === 'dip') {
-        const { dodip } = await import('./potion.js');
-        return await dodip();
-    }
-    if (name === 'rub') {
-        const { dorub } = await import('./apply.js');
-        return await dorub();
-    }
-    if (name === 'wipe') {
-        const { dowipe } = await import('./do.js');
-        return await dowipe();
-    }
-    if (name === 'polyself') {
-        const { wiz_polyself } = await import('./wizcmds.js');
-        return await wiz_polyself();
-    }
-    if (name === 'monster') {
-        return await domonability();
-    }
-    if (name === 'invoke') {
-        const { doinvoke } = await import('./artifact.js');
-        return await doinvoke();
-    }
-    if (name === 'untrap') {
-        const { dountrap } = await import('./trap.js');
-        return await dountrap();
-    }
-    if (name === 'tip') {
-        const { dotip } = await import('./pickup.js');
-        return await dotip();
-    }
-    if (name === 'herecmdmenu')
-        return await doherecmdmenu();
-    if (name === 'therecmdmenu')
-        return await dotherecmdmenu();
-    if (name === 'clicklook')
-        return await doclicklook();
-    if (name === 'annotate') {
-        return await donamelevel();
-    }
-    if (name === 'version') {
-        const { doextversion } = await import('./pager.js');
-        return await doextversion();
-    }
-    if (name === 'wizwish')
-        return await wiz_wish();
-    if (name === 'wizgenesis')
-        return await wiz_genesis();
-    if (name === 'wizkill') {
-        const { wiz_kill } = await import('./wizcmds.js');
-        return await wiz_kill();
-    }
-    if (name === 'wiztelekinesis') {
-        const { wiz_telekinesis } = await import('./wizcmds.js');
-        return await wiz_telekinesis();
-    }
-    if (name === 'wizintrinsic') {
-        const { wiz_intrinsic } = await import('./wizcmds.js');
-        return await wiz_intrinsic();
-    }
-    if (name === 'wizmap') {
-        const { wiz_map } = await import('./wizcmds.js');
-        return await wiz_map();
-    }
-    if (name === 'wizdetect') {
-        if (game.wizard)
-            await findit();
-        else
-            await pline("Unavailable command 'wizdetect'.");
-        return ECMD_OK;
-    }
-    if (name === 'wizbury') {
-        const { bury_an_obj } = await import('./sp_lev.js');
-        let before = 0, after = 0;
-        for (let x = game.u.ux - 1; x <= game.u.ux + 1; x++) {
-            for (let y = game.u.uy - 1; y <= game.u.uy + 1; y++) {
-                if (!isok(x, y))
-                    continue;
-                const pile = (game.level?.objects || []).filter(
-                    o => o.where === OBJ_FLOOR && o.ox === x && o.oy === y);
-                before += pile.length;
-                for (const obj of pile)
-                    await bury_an_obj(obj, null);
-                after += (game.level?.objects || []).filter(
-                    o => o.where === OBJ_FLOOR && o.ox === x && o.oy === y)
-                    .length;
-                newsym(x, y);
-            }
-        }
-        const buried = before - after;
-        if (!before)
-            await pline('No objects here or adjacent to bury.');
-        else if (!buried)
-            await pline('No objects buried.');
-        else
-            await pline(`${buried} object${buried === 1 ? '' : 's'} buried.`);
-        return ECMD_OK;
-    }
-
-    if (name === '?')
-        return await doextlist();
-
-    /* src/cmd.c:1667 extcmdlist[] ef_funct: the entries whose function
-       also answers a key in rhack() above */
-    if (name === 'attributes') { /* doattributes(): enlightenment window */
-        await show_attributes();
-        return ECMD_OK;
-    }
-    if (name === 'inventory')
-        return await ddoinv();
-    if (name === 'autopickup')
-        return await dotogglepickup();
-    if (name === 'versionshort')
-        return await doversion();
-    if (name === 'perminv')
-        return await doperminv();
-    if (name === 'toggle')
-        return await dotoggleoption();
-    if (name === 'lookaround')
-        return await dolookaround();
-    if (name === 'read')
-        return await doread(read_ok);
-    if (name === 'repeat')
-        return await do_repeat();
-    if (name === 'retravel')
-        return await dotravel_target();
-    if (name === 'showtrap')
-        return await doidtrap();
-    if (name === 'reqmenu')
-        return await do_reqmenu();
-    if (name === 'travel')
-        return await dotravel();
-    /* src/cmd.c:1697 the prefixes, :2010 the movement entries and the
-       plain commands reachable by name (#fight, #moveeast, #up, ...):
-       the function sets the prefix or direction state; rhack()'s '#' arm
-       then waits for the next key or moves, as for a key bound to them */
-    if (name === 'fight')
-        return await do_fight();
-    if (name === 'run')
-        return await do_run();
-    if (name === 'rush')
-        return await do_rush();
-    if (name === 'up')
-        return await doup();
-    if (name === 'down')
-        return await dodown();
-    if (name === 'pickup')
-        return await dopickup();
-    if (name === 'prevmsg')
-        return await doprev_message();
-    if (name === '?')
-        return await doextlist();
-    if (name === '#')
-        return await doextcmd();
     for (let dir = 0; dir < 8; dir++)
         for (let mode = MV_WALK; mode <= MV_RUSH; mode++)
             if (ext_func_tab_from_func(move_funcs[dir][mode]).ef_txt === name)
                 return await move_funcs[dir][mode]();
-    const ef = EXTCMD_FUNCS[name];
-    if (ef) {
-        const mod = await import(ef[0]);
-        return await mod[ef[1]]();
-    }
-
     note_unported_cmd(`extcmd:${name}`);
     return ECMD_OK;
 }
 
-/* src/cmd.c:1667 extcmdlist[] ef_funct — the command functions that live in
-   other modules, keyed by the ef_txt name: [module, function] */
+// sys/unix/unixunix.c: dosh().
+async function dosh() {
+    // The contest sysconf has no permitted shell users.
+    await Norep("Unavailable command '!'.");
+    return ECMD_OK;
+}
+
+// src/cmd.c: dosuspend_core(), sys/share/ioctl.c: dosuspend().
+async function dosuspend_core() {
+    // The contest sysconf denies suspension before any OS job-control call.
+    await Norep('Suspend command not available.');
+    return ECMD_OK;
+}
+
+// src/display.c: doredraw().
+async function doredraw() {
+    await docrt();
+    return ECMD_OK;
+}
+
+// src/wizcmds.c: wiz_where().
+async function wiz_where() {
+    const { print_dungeon } = await import('./dungeon.js');
+    if (game.wizard)
+        await print_dungeon(false, null);
+    else {
+        const { pline } = await import('./display.js');
+        await pline("Unavailable command '#wizwhere'.");
+    }
+    return ECMD_OK;
+}
+
+// src/wizcmds.c: wiz_detect().
+async function wiz_detect() {
+    if (game.wizard)
+        await findit();
+    else
+        await pline("Unavailable command 'wizdetect'.");
+    return ECMD_OK;
+}
+
+// src/insight.c: doattributes().
+async function doattributes() {
+    await show_attributes();
+    return ECMD_OK;
+}
+
+// Local functions and [module, export] pairs share one command registry.
+// The extcmdlist entries supply availability, prefix and occupation metadata.
 const EXTCMD_FUNCS = {
+    "#": doextcmd,
+    "?": doextlist,
+    adjust: ['./invent.js', 'doorganize'],
+    annotate: donamelevel,
     apply: ['./apply.js', 'doapply'],
+    attributes: doattributes,
+    autopickup: dotogglepickup,
+    bugreport: ['./report.js', 'dobugreport'],
     call: ['./do_name.js', 'docallcmd'],
     cast: ['./spell.js', 'docast'],
+    chat: dochat,
+    chronicle: ['./insight.js', 'do_gamelog'],
+    clicklook: doclicklook,
     close: ['./lock.js', 'doclose'],
+    conduct: ['./insight.js', 'show_conduct'],
+    dip: ['./potion.js', 'dodip'],
+    down: dodown,
     drop: ['./do.js', 'dodrop'],
     droptype: ['./do.js', 'doddrop'],
     eat: ['./eat.js', 'doeat'],
     engrave: ['./engrave.js', 'doengrave'],
+    enhance: ['./weapon.js', 'enhance_weapon_skill'],
+    exploremode: enter_explore_mode,
+    fight: do_fight,
     fire: ['./dothrow.js', 'dofire'],
+    force: ['./lock.js', 'doforce'],
+    genocided: ['./insight.js', 'dogenocided'],
     glance: ['./pager.js', 'doquickwhatis'],
+    help: dohelp,
+    herecmdmenu: doherecmdmenu,
     history: ['./pager.js', 'dohistory'],
+    inventory: ddoinv,
     inventtype: ['./invent.js', 'dotypeinv'],
-    wizborn: ['./insight.js', 'doborn'],
-    wizseenv: ['./wizcmds.js', 'wiz_show_seenv'],
-    vision: ['./wizcmds.js', 'wiz_show_vision'],
-    wmode: ['./wizcmds.js', 'wiz_show_wmodes'],
-    wizfliplevel: ['./wizcmds.js', 'wiz_flip_level'],
-    wizmondiff: ['./wizcmds.js', 'wiz_mon_diff'],
-    wizsmell: ['./wizcmds.js', 'wiz_smell'],
-    migratemons: ['./wizcmds.js', 'wiz_migrate_mons'],
+    invoke: ['./artifact.js', 'doinvoke'],
+    jump: dojump,
+    kick: dokick,
     known: ['./o_init.js', 'dodiscovered'],
     knownclass: ['./o_init.js', 'doclassdisco'],
+    levelchange: wiz_level_change,
+    lightsources: ['./light.js', 'wiz_light_sources'],
     look: ['./invent.js', 'dolook'],
+    lookaround: dolookaround,
+    loot: doloot,
+    migratemons: ['./wizcmds.js', 'wiz_migrate_mons'],
+    monster: domonability,
+    name: docallcmd,
     offer: ['./pray.js', 'dosacrifice'],
     open: ['./lock.js', 'doopen'],
+    options: ['./options.js', 'doset_simple'],
+    optionsfull: ['./options.js', 'doset'],
+    overview: ['./dungeon.js', 'dooverview'],
     pay: ['./shk.js', 'dopay'],
+    perminv: doperminv,
+    pickup: dopickup,
+    polyself: ['./wizcmds.js', 'wiz_polyself'],
+    pray: ['./pray.js', 'dopray'],
+    prevmsg: doprev_message,
     puton: ['./do_wear.js', 'doputon'],
     quaff: ['./potion.js', 'dodrink'],
+    quit: ['./end.js', 'done2'],
     quiver: ['./wield.js', 'dowieldquiver'],
+    read: () => doread(read_ok),
+    redraw: doredraw,
     remove: ['./do_wear.js', 'doremring'],
+    repeat: do_repeat,
+    reqmenu: do_reqmenu,
+    retravel: dotravel_target,
+    ride: ['./steed.js', 'doride'],
+    rub: ['./apply.js', 'dorub'],
+    run: do_run,
+    rush: do_rush,
     save: ['./save.js', 'dosave'],
     search: ['./detect.js', 'dosearch'],
     seeall: ['./invent.js', 'doprinuse'],
@@ -1515,30 +1346,64 @@ const EXTCMD_FUNCS = {
     seerings: ['./invent.js', 'doprring'],
     seetools: ['./invent.js', 'doprtool'],
     seeweapon: ['./invent.js', 'doprwep'],
+    shell: dosh,
     showgold: ['./invent.js', 'doprgold'],
     showspells: ['./spell.js', 'dovspell'],
+    showtrap: doidtrap,
+    sit: ['./sit.js', 'dosit'],
+    stats: ['./wizcmds.js', 'wiz_show_stats'],
+    suspend: dosuspend_core,
     swap: ['./wield.js', 'doswapweapon'],
     takeoff: ['./do_wear.js', 'dotakeoff'],
     takeoffall: ['./do_wear.js', 'doddoremarm'],
     teleport: ['./teleport.js', 'dotelecmd'],
+    terrain: doterrain,
+    therecmdmenu: dotherecmdmenu,
     throw: ['./dothrow.js', 'dothrow'],
+    timeout: ['./timeout.js', 'wiz_timeout_queue'],
+    tip: ['./pickup.js', 'dotip'],
+    toggle: dotoggleoption,
+    travel: dotravel,
+    turn: ['./pray.js', 'doturn'],
+    twoweapon: dotwoweapon,
+    untrap: ['./trap.js', 'dountrap'],
+    up: doup,
+    vanquished: ['./insight.js', 'dovanquished'],
+    version: ['./pager.js', 'doextversion'],
+    versionshort: doversion,
+    vision: ['./wizcmds.js', 'wiz_show_vision'],
+    wait: donull,
     wear: ['./do_wear.js', 'dowear'],
     whatdoes: ['./pager.js', 'dowhatdoes'],
     whatis: ['./pager.js', 'dowhatis'],
     wield: ['./wield.js', 'dowield'],
-    wizlevelport: ['./wizcmds.js', 'wiz_level_tele'],
-    wizmakemap: ['./wizcmds.js', 'wiz_makemap'],
-    wizloaddes: ['./wizcmds.js', 'wiz_load_splua'],
-    wizcustom: ['./wizcmds.js', 'wiz_custom'],
+    wipe: ['./do.js', 'dowipe'],
+    wizborn: ['./insight.js', 'doborn'],
+    wizbury: ['./dig.js', 'wiz_debug_cmd_bury'],
     wizcast: ['./spell.js', 'dowizcast'],
-    bugreport: ['./report.js', 'dobugreport'],
-    wizobjprobs: ['./wizcmds.js', 'wiz_objprobs'],
-    wizloadlua: ['./wizcmds.js', 'wiz_load_lua'],
-    stats: ['./wizcmds.js', 'wiz_show_stats'],
-    timeout: ['./timeout.js', 'wiz_timeout_queue'],
-    lightsources: ['./light.js', 'wiz_light_sources'],
-    wizrumorcheck: ['./wizcmds.js', 'wiz_rumor_check'],
+    wizcustom: ['./wizcmds.js', 'wiz_custom'],
+    wizdetect: wiz_detect,
     wizdispmacros: ['./wizcmds.js', 'wiz_display_macros'],
+    wizfliplevel: ['./wizcmds.js', 'wiz_flip_level'],
+    wizgenesis: wiz_genesis,
+    wizidentify: wiz_identify,
+    wizintrinsic: ['./wizcmds.js', 'wiz_intrinsic'],
+    wizkill: ['./wizcmds.js', 'wiz_kill'],
+    wizlevelport: ['./wizcmds.js', 'wiz_level_tele'],
+    wizloaddes: ['./wizcmds.js', 'wiz_load_splua'],
+    wizloadlua: ['./wizcmds.js', 'wiz_load_lua'],
+    wizmakemap: ['./wizcmds.js', 'wiz_makemap'],
+    wizmap: ['./wizcmds.js', 'wiz_map'],
+    wizmondiff: ['./wizcmds.js', 'wiz_mon_diff'],
+    wizobjprobs: ['./wizcmds.js', 'wiz_objprobs'],
+    wizrumorcheck: ['./wizcmds.js', 'wiz_rumor_check'],
+    wizseenv: ['./wizcmds.js', 'wiz_show_seenv'],
+    wizshownhuuid: ['./wizcmds.js', 'wiz_show_nhuuid'],
+    wizsmell: ['./wizcmds.js', 'wiz_smell'],
+    wiztelekinesis: ['./wizcmds.js', 'wiz_telekinesis'],
+    wizwhere: wiz_where,
+    wizwish: wiz_wish,
+    wmode: ['./wizcmds.js', 'wiz_show_wmodes'],
     zap: ['./zap.js', 'dozap'],
 };
 

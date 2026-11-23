@@ -1562,6 +1562,13 @@ export async function wiz_display_macros() {
     return ECMD_OK;
 }
 
+// src/wizcmds.c:1782 wiz_show_nhuuid().
+export async function wiz_show_nhuuid() {
+    // NHUUID is disabled in the pinned native build.
+    await pline(`The NHUUID for this game is { ${game.nhuuid || ''} }.`);
+    return ECMD_OK;
+}
+
 // src/wizcmds.c:1790 wiz_mon_diff() — the #wizmondiff command
 export async function wiz_mon_diff() {
     const window_title = 'Review of monster difficulty ratings'

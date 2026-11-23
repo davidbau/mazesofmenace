@@ -61,6 +61,7 @@ import {
     Has_contents,
     helpless,
     has_mcorpsenm,
+    MCORPSENM,
     SVALL,
     WM_MASK,
     u_at,
@@ -161,11 +162,12 @@ import { body_part } from './polyself.js';
 import { is_quest_artifact } from './questpgr.js';
 import { consume_obj_charge, currency, money_cnt, useup, sobj_at } from './invent.js';
 import { findgold } from './steal.js';
+import { schar } from './global.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { makeplural } from './fruit.js';
 import { impossible_printer, youFeel, youSee } from './pline.js';
-import { finish_steps } from './source_steps.js';
-import { isBox, objectType } from './obj.js';
+import { finish_steps, sync_impossible } from './source_steps.js';
+import { isBox, newObject, objectType } from './obj.js';
 import {
     CHEST,
     COIN_CLASS,
@@ -367,7 +369,7 @@ export function reveal_terrain_getglyph(
     x, y, swallowed, defaultGlyph, whichSubset, state = game,
 ) {
     return finish_steps(reveal_terrain_getglyph_steps(
-        x, y, swallowed, defaultGlyph, whichSubset, state));
+        x, y, swallowed, defaultGlyph, whichSubset, state), sync_impossible, state);
 }
 
 // C ref: detect.c browse_map() (94-106). The temporary presentation is a
@@ -635,13 +637,12 @@ export async function gold_detect(scroll, state = game) {
         let temp = null;
         if (findgold(monster.minvent)
             || monster.data?.pmidx === PM_GOLD_GOLEM) {
-            temp = {
-                ...state.zeroobj,
+            temp = newObject({ /* temp = cg.zeroobj */
                 otyp: GOLD_PIECE,
                 quan: rnd(10),
                 ox: monster.mx,
                 oy: monster.my,
-            };
+            });
             map_object(temp, 1, state);
         } else {
             for (let obj = monster.minvent; obj; obj = obj.nobj) {
@@ -669,7 +670,7 @@ export async function gold_detect(scroll, state = game) {
         terrainType |= TER_MON;
     }
     await ttyPline(youFeel('very greedy, and sense gold!', state), state);
-    exercise(A_WIS, true, state, coreRandom);
+    await exercise(A_WIS, true, state, coreRandom);
     await browse_map(terrainType, 'gold', state);
     await map_redisplay(state);
     return 0;
@@ -796,7 +797,7 @@ export async function food_detect(scroll, state = game) {
     } else {
         await ttyPline(`You sense ${description}.`, state);
     }
-    exercise(A_WIS, true, state, coreRandom);
+    await exercise(A_WIS, true, state, coreRandom);
     await browse_map(terrainType, 'food', state);
     await map_redisplay(state);
     return 0;
@@ -956,22 +957,25 @@ export async function object_detect(detector = null, objectClass = 0,
         if (detector?.cursed && M_AP_TYPE(monster) === M_AP_OBJECT
             && (!oclass
                 || oclass === state.objects[monster.mappearance]?.oc_class)) {
-            map_object({
+            // temp = cg.zeroobj: the class stays zero, so a gem or spellbook
+            // disguise, which obj_is_generic() takes by type, draws
+            // generic_obj_to_glyph()'s class-zero glyph.
+            map_object(newObject({
                 otyp: monster.mappearance,
                 quan: 1,
                 ox: monster.mx,
                 oy: monster.my,
                 corpsenm: has_mcorpsenm(monster)
-                    ? monster.mextra.mcorpsenm : PM_TENGU,
-            }, 1, state);
+                    ? MCORPSENM(monster) : PM_TENGU,
+            }), 1, state);
         } else if (findgold(monster.minvent)
             && (!oclass || oclass === COIN_CLASS)) {
-            map_object({
+            map_object(newObject({ /* gold = cg.zeroobj */
                 otyp: GOLD_PIECE,
                 quan: rnd(10),
                 ox: monster.mx,
                 oy: monster.my,
-            }, 1, state);
+            }), 1, state);
         }
     }
 
@@ -1075,15 +1079,14 @@ function sense_trap(trap, x, y, srcCursed, state = game) {
         const otyp = !Hallucination(state.u)
             ? GOLD_PIECE
             : FIRST_OBJECT + rn2(NUM_OBJECTS - FIRST_OBJECT);
-        const obj = {
-            ...state.zeroobj,
+        const obj = newObject({ /* obj = cg.zeroobj */
             ox: trap ? trap.tx : x,
             oy: trap ? trap.ty : y,
             otyp,
             quan: otyp === GOLD_PIECE ? rnd(10)
                 : objectType(otyp, state).oc_merge ? rnd(2) : 1,
             corpsenm: rn2(NUMMONS),
-        };
+        });
         map_object(obj, 1, state);
         return;
     }
@@ -1643,7 +1646,8 @@ export function* show_map_spot_steps(
 
 // show_map_spot() for a caller that cannot wait; every caller now waits.
 export function show_map_spot(x, y, cnf, state = game, random = coreRandom) {
-    return finish_steps(show_map_spot_steps(x, y, cnf, state, random));
+    return finish_steps(show_map_spot_steps(x, y, cnf, state, random),
+        sync_impossible, state);
 }
 
 // C ref: detect.c do_mapping() (1422-1444). The temporary map is browsed when
@@ -1651,7 +1655,8 @@ export function show_map_spot(x, y, cnf, state = game, random = coreRandom) {
 export async function do_mapping(state = game, env = {}) {
     const random = env.random ?? coreRandom;
     const unconstrained = unconstrain_map(state);
-    const confused = Boolean(Confusion(state.u));
+    // show_map_spot()'s `boolean cnf` keeps HConfusion's low byte alone.
+    const confused = schar(Confusion(state.u));
     const printer = impossible_printer(state);
     for (let x = 1; x < COLNO; ++x) {
         for (let y = 0; y < ROWNO; ++y) {
@@ -1717,7 +1722,8 @@ export async function do_vicinity_map(sobj, state = game, env = {}) {
             const oldGlyph = glyph_at(x, y, state);
             await finish_steps(show_map_spot_steps(
                 x, y,
-                Boolean(Confusion(state.u)),
+                // `boolean cnf`: HConfusion's low byte alone.
+                schar(Confusion(state.u)),
                 state, random,
             ), impossible_printer(state));
 

@@ -2,6 +2,7 @@
 // C ref: src/options.c. The option table itself is generated from
 // include/optlist.h into js/optlist.js by tools/gen-optlist.mjs.
 
+import { check_gold_symbol } from './botl.js';
 import { game } from './gstate.js';
 import { parse_status_hl1, clear_status_hilites, reset_status_hilites, status_initialize } from './botl.js';
 import { new_status_window } from './tty/wintty.js';
@@ -30,7 +31,11 @@ import { condtests, status_hilite_menu, count_status_hilites } from './botl.js';
 import {
     assign_graphics, gs_symset, gc_currentgraphics, known_handling,
     primary_symsets, PRIMARYSET, ROGUESET, parsesymbols, switch_symbols,
+    init_primary_symbols, init_rogue_symbols, read_sym_file, clear_symsetentry,
 } from './symbols.js';
+import { apply_customizations, reset_customcolors } from './glyphs.js';
+import { reset_customsymbols } from './utf8map.js';
+import { do_custom_symbols, do_custom_colors } from './const.js';
 import { def_char_to_objclass } from './sp_lev.js';
 import { OCLASSES } from './objects_data.js';
 import {
@@ -57,12 +62,12 @@ import { strsubst, highc, strstri } from './hacklib.js';
 import { regex_match } from './posixregex.js';
 import { query_color_attr } from './coloratt.js';
 import { adjust_menu_promptstyle } from './tty/wintty.js';
-import { gp, ALIGN_TOP, ALIGN_BOTTOM, ALIGN_LEFT, ALIGN_RIGHT, GFILTER_NONE, GFILTER_VIEW, GFILTER_AREA, VI_NUMBER, VI_NAME, VI_BRANCH, InvOptNone, InvOptOn, InvSparse, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP } from './const.js';
+import { ALIGN_TOP, ALIGN_BOTTOM, ALIGN_LEFT, ALIGN_RIGHT, GFILTER_NONE, GFILTER_VIEW, GFILTER_AREA, VI_NUMBER, VI_NAME, VI_BRANCH, InvOptNone, InvOptOn, InvSparse, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP } from './const.js';
 import { MAXMCLASSES, SYM_OFF_X, go_ov_primary_syms, go_ov_rogue_syms, escapes } from './symbols.js';
 import { WARNCOUNT, SYM_BOULDER } from './const.js';
 import { NUM_DISCLOSURE_OPTIONS, DISCLOSE_PROMPT_DEFAULT_YES, DISCLOSE_PROMPT_DEFAULT_NO, DISCLOSE_PROMPT_DEFAULT_SPECIAL, DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_SPECIAL_WITHOUT_PROMPT } from './const.js';
 import { RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
-import { Is_rogue_level, H_MAC, H_UNK } from './const.js';
+import { Is_rogue_level, H_MAC } from './const.js';
 import { There } from './pline.js';
 
 function note_unported_options(what) {
@@ -217,8 +222,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         /* src/options.c:663 — Is it a symbol? */
         if (opts.startsWith('S_') && parsesymbols(opts, PRIMARYSET)) {
             switch_symbols(true);
-            /* check_gold_symbol() only re-derives the status line's gold
-               symbol, which this tty model reads at display time */
+            check_gold_symbol();
             return true;
         }
         /* An unrecognised option is reported, never silently dropped — a
@@ -270,6 +274,18 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
             (game.flags ||= {}).rest_on_space = !negated;
     } else if ((opt.name === 'symset' || opt.name === 'roguesymset')
                && value !== null && value !== '') {
+        // src/options.c:4158 optfn_symset(), :3548 optfn_roguesymset().
+        const which_set = opt.name === 'roguesymset' ? ROGUESET : PRIMARYSET;
+        gs_symset[which_set].name = value;
+        if (!read_sym_file(which_set)) {
+            clear_symsetentry(which_set, true);
+            config_error_add(`Unable to load symbol set "${value}" from "symbols"`);
+            return false;
+        }
+        if (which_set === PRIMARYSET)
+            switch_symbols(gs_symset[PRIMARYSET].name !== null);
+        else if (!tinitial && Is_rogue_level(game.u.uz))
+            assign_graphics(ROGUESET);
         /* src/options.c:4198 optfn_symset() / :3567 optfn_roguesymset()
            do_set: a loaded set leaves the redraw and glyph-reset flags up,
            at startup too, so the first reset_needed_visuals() of the game
@@ -823,6 +839,12 @@ export function parseNethackrc(rc) {
                has mungspaces()d the line and stepped past '=' */
             add_menu_coloring(mungspaces(rest));
             break;
+        case 'MSGTYPE':
+            msgtype_parse_add(mungspaces(rest));
+            break;
+        case 'AUTOPICKUP_EXCEPTION':
+            add_autopickup_exception(mungspaces(rest));
+            break;
         case 'BIND':
         case 'BINDI':
         case 'BINDIN':
@@ -1326,6 +1348,7 @@ function longest_option_name(startpass, endpass) {
    menu and the rc must write the same place. */
 export const iflag_boolean_options = new Set([
     'autodescribe', 'cmdassist', 'fireassist', 'menu_overlay', 'menu_tab_sep',
+    'customcolors', 'customsymbols',
     'debug_hunger', 'debug_mongen', 'debug_overwrite_stairs',
     'menucolors', /* iflags.use_menu_color */
     'whatis_menu', /* iflags.getloc_usemenu */
@@ -2037,7 +2060,6 @@ function doset_add_menu(tmpwin, o, fmtstr, indexoffset) {
                  fmtstr(indent, o.name, value), MENU_ITEMFLAGS_SKIPINVERT);
 }
 
-// src/symbols.c:909 do_symset(), primary-set path for the pinned tty build.
 // src/symbols.c:909 do_symset() — the symbol set menu for the primary set
 // or, with rogueflag, for the rogue level's set. The list is dat/symbols
 // (primary_symsets, read at build time); sets restricted to the other level
@@ -2110,29 +2132,39 @@ async function do_symset(rogueflag) {
         /* chose an actual symset name from file */
         const sl = symset_list.find(e => e.index === chosen);
         if (sl) {
-            /* free the old one */
-            gs_symset[which_set] = { name: sl.name, handling: sl.handling };
+            clear_symsetentry(which_set, true);
+            gs_symset[which_set].name = sl.name;
             ready_to_switch = true;
         }
     } else if (chosen === -1) {
         /* explicit selection of defaults */
-        /* free the old symset name if there is one */
-        gs_symset[which_set] = { name: null, handling: H_UNK };
+        clear_symsetentry(which_set, true);
     } else
         nothing_to_do = true;
 
     if (nothing_to_do)
         return true;
 
-    /* init_rogue_symbols()/init_primary_symbols(), read_sym_file(which_set)
-       and switch_symbols(): the loaded sets are the build-time tables */
-    if (ready_to_switch && !rogueflag)
+    if (rogueflag)
+        init_rogue_symbols();
+    else
+        init_primary_symbols();
+    if (gs_symset[which_set].name) {
+        if (read_sym_file(which_set)) {
+            ready_to_switch = true;
+        } else {
+            clear_symsetentry(which_set, true);
+            return true;
+        }
+    }
+    if (ready_to_switch)
         switch_symbols(true);
     if (Is_rogue_level(game.u.uz)) {
         if (rogueflag)
-            note_unported_options('do_symset:assign_graphics(ROGUESET)');
+            assign_graphics(ROGUESET);
     } else if (!rogueflag)
-        assign_graphics(gs_symset[PRIMARYSET]?.name || false);
+        assign_graphics(PRIMARYSET);
+    apply_customizations(which_set, do_custom_symbols | do_custom_colors);
     game.opt_need_redraw = true;
     return true;
 }
@@ -2345,6 +2377,12 @@ function boolopt_side_effects(name) {
     case 'color':
         game.opt_need_redraw = true;
         break;
+    case 'customcolors':
+        game.opt_reset_customcolors = true;
+        break;
+    case 'customsymbols':
+        game.opt_reset_customsymbols = true;
+        break;
     case 'mention_decor':
         (game.iflags ||= {}).prev_decor = 0;    /* STONE */
         break;
@@ -2360,8 +2398,6 @@ function boolopt_side_effects(name) {
         update_inventory();
         break;
     default:
-        /* customcolors/customsymbols touch palette machinery this port
-           does not have */
         break;
     }
 }
@@ -2609,7 +2645,7 @@ export async function doset() {
     return ECMD_OK;
 }
 
-// src/options.c:9131 reset_needed_visuals() — apply whatever display
+// src/options.c:8985 reset_needed_visuals(), apply whatever display
 // refreshes the option changes queued up.
 async function reset_needed_visuals() {
     if (game.opt_need_glyph_reset) {
@@ -2617,16 +2653,26 @@ async function reset_needed_visuals() {
         const { gm_optionchange } = await import('./const.js');
         reset_glyphmap(gm_optionchange);
     }
-    if (game.opt_need_redraw) {
-        reglyph_darkroom(); /* src/options.c:8999, with check_gold_symbol() */
+    if (game.opt_reset_customcolors || game.opt_reset_customsymbols
+        || game.opt_need_redraw) {
+        if (game.opt_reset_customcolors)
+            reset_customcolors();
+        if (game.opt_reset_customsymbols)
+            reset_customsymbols();
+        if (game.opt_need_redraw) {
+            check_gold_symbol();
+            reglyph_darkroom();
+        }
         await docrt();
-        game.opt_need_redraw = false;
     }
     if (game.disp?.botl || game.disp?.botlx) {
         await bot();
         if (game.disp) game.disp.botl = game.disp.botlx = false;
     }
+    game.opt_need_redraw = false;
     game.opt_need_glyph_reset = false;
+    game.opt_reset_customcolors = false;
+    game.opt_reset_customsymbols = false;
 }
 
 /* src/options.c:118 def_inv_order[] — the object classes in the order the
@@ -2880,14 +2926,15 @@ function msgtype_add(typ, pattern) {
         config_error_add(`${re_error}: ${re_error_desc}`);
         return false;
     }
-    tmp.pattern = pattern;
-    (gp.plinemsg_types ||= []).unshift(tmp);
+    tmp.pattern = pattern instanceof Uint8Array
+        ? new TextDecoder().decode(pattern) : pattern;
+    (game.plinemsg_types ||= []).unshift(tmp);
     return true;
 }
 
 // src/options.c:7772 free_one_msgtype()
 function free_one_msgtype(idx) { /* 0 .. */
-    const list = gp.plinemsg_types || [];
+    const list = game.plinemsg_types || [];
 
     if (idx >= 0 && idx < list.length) {
         regex_free(list[idx].regex);
@@ -2897,7 +2944,7 @@ function free_one_msgtype(idx) { /* 0 .. */
 
 // src/options.c:7797 msgtype_type()
 export function msgtype_type(msg, norepeat) { /* called from Norep(via pline) */
-    for (const tmp of gp.plinemsg_types || []) {
+    for (const tmp of game.plinemsg_types || []) {
         /* we don't exclude entries with negative msgtype values
            because then the msg might end up matching a later pattern */
         if (regex_match(msg, tmp.regex))
@@ -2906,9 +2953,44 @@ export function msgtype_type(msg, norepeat) { /* called from Norep(via pline) */
     return norepeat ? MSGTYP_NOREP : MSGTYP_NORMAL;
 }
 
+// src/options.c:7815 hide_unhide_msgtypes(). Negative types retain their
+// matching priority but temporarily disable the associated message handling.
+export function hide_unhide_msgtypes(hide, hide_mask) {
+    for (const tmp of game.plinemsg_types || []) {
+        let mt = tmp.msgtype;
+        if (!hide)
+            mt = -mt;
+        if (mt > 0 && ((1 << mt) & hide_mask))
+            tmp.msgtype = -tmp.msgtype;
+    }
+}
+
 // src/options.c:7831 msgtype_count()
 function msgtype_count() {
-    return (gp.plinemsg_types || []).length;
+    return (game.plinemsg_types || []).length;
+}
+
+// src/options.c:7844 msgtype_parse_add(). A closing quote is optional in
+// sscanf's result: assigning the pattern already supplies the second field.
+export function msgtype_parse_add(str) {
+    const bytes = String.fromCharCode(...new TextEncoder().encode(str))
+        .split('\0', 1)[0];
+    const typeField = bytes.match(/^[ \t\r\n\f\v]*([^ \t\r\n\f\v]{1,10})/);
+    const patternField = typeField && bytes.slice(typeField[0].length)
+        .match(/^[ \t\r\n\f\v]*"([^"]{1,255})/);
+    if (!patternField) {
+        config_error_add('Malformed MSGTYPE');
+        return false;
+    }
+    const type = new TextDecoder().decode(
+        Uint8Array.from(typeField[1], ch => ch.charCodeAt(0)));
+    const pattern = Uint8Array.from(patternField[1], ch => ch.charCodeAt(0));
+    for (const [name, value] of msgtype_names) {
+        if (name.startsWith(type.toLowerCase()))
+            return msgtype_add(value, pattern);
+    }
+    config_error_add(`Unknown message type '${type}'`);
+    return false;
 }
 
 // src/options.c:7871 test_regex_pattern()
@@ -3421,7 +3503,7 @@ async function handler_msgtype() {
             const tmpwin = tty_create_nhwindow(NHW_MENU);
             tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
             let mt_idx = 0;
-            for (const tmp of gp.plinemsg_types || []) {
+            for (const tmp of game.plinemsg_types || []) {
                 const mtype = msgtype2name(tmp.msgtype);
                 const any = ++mt_idx;
                 let mtbuf = `${String(mtype).padEnd(5)} "`; /* "%-5s \"" */

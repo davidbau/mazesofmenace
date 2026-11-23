@@ -729,7 +729,9 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 const priorCol = game._pickinv_window?.WIN_COL;
                 /* docorner's physical clip applies even without pickinv metadata;
                  * rebuilding the title here resurrects the erased cells. */
-                const status = rowStatus(screenRow);
+                const status = rows3 && screenRow === 21
+                    ? docorner_status_row(21, _status_row1_map_overlay(_status_sgr(st3[0])))
+                    : rowStatus(screenRow);
                 /* docorner() clears only offx..79, so every status cell left of
                  * priorWinCol-2 survives (title, cursor-forward gap, and any
                  * stat text that starts before the clip: "...S" of "St:"). */

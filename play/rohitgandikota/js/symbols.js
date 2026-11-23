@@ -1,4 +1,4 @@
-// symbols.js — the active symbol set.
+// symbols.js, loaded symbol sets and the active display table.
 // C ref: src/symbols.c
 //
 // C keeps one table, gs.showsyms[], indexed by SYM_OFF_P + cmap index for
@@ -7,27 +7,24 @@
 // through gp.primary_syms[]; assign_graphics() then copies the chosen set into
 // showsyms.
 //
-// Only the primary set matters here. The built-in ASCII and DEC sets come
-// from defsyms; runtime sets carry the overrides from dat/symbols that affect
-// the tty recorder.
+// Primary and Rogue symbol sets retain their own loaded tables and overrides.
 
-import { defsyms, def_oc_syms, def_monsyms } from './drawing_data.js';
+import { def_r_oc_syms } from './drawing.js';
+import { defsyms, def_oc_syms, def_monsyms, cmap_names } from './drawing_data.js';
 import { mungspaces, fuzzymatch } from './hacklib.js';
 import { symbols as symbols_file } from './dat_files.js';
 import { match_glyph, glyphrep_to_custom_map_entries, purge_custom_entries,
-         apply_customizations } from './glyphs.js';
+         apply_customizations, clear_all_glyphmap_colors } from './glyphs.js';
+import { free_all_glyphmap_u } from './utf8map.js';
 import { def_warnsyms, do_custom_symbols, do_custom_colors, gm_symchange } from './const.js';
 import { game } from './gstate.js';
 import { config_error_add } from './options.js';
 
-/* src/decl.c gs.showsyms[] — the live table. Terrain entries only; object and
-   monster class symbols are the same in both sets, because dat/symbols'
-   DECgraphics section overrides S_* cmap entries and nothing else. */
+/* src/decl.c gs.showsyms[], grouped by terrain, object, monster, warning
+   and other symbols for the display's character and charset representation. */
 export const gs_showsyms = { P: null };
 
-/* src/symbols.c:44 switch_symbols() takes a boolean for "not the default set";
-   PRIMARYSET/ROGUESET are the two graphics sets. Rogue levels are not reached
-   by anything ported, so only the primary set is modelled. */
+/* include/sym.h: PRIMARYSET and ROGUESET select the two graphics tables. */
 export const PRIMARYSET = 0;
 export const ROGUESET = 1;
 
@@ -81,15 +78,11 @@ export const primary_symsets = [
    optfn_symset() reports these back in the options menu. `name` stays null
    for the built-in default, which is what makes that menu row read
    "default". */
-export const gs_symset = [{ name: null, handling: H_UNK }];
+export const gs_symset = [{ name: null, handling: H_UNK },
+                          { name: null, handling: H_UNK }];
 
 /* src/decl.c gc.currentgraphics — the set assign_graphics() last installed. */
 export const gc_currentgraphics = { set: PRIMARYSET };
-
-const note_unported_symbols = (w) => {
-    (game.unported ||= new Set()).add('symbols:' + w);
-    return false;
-};
 
 /* include/hack.h:1080 SYM_OFF_P .. SYM_MAX — one flat table of terrain,
    object class, monster class, warning and "other" symbols */
@@ -119,10 +112,8 @@ export const SYM_CONTROL = 1, SYM_PCHAR = 2, SYM_OC = 3, SYM_MON = 4, SYM_OTH = 
    is being parsed for; gc.chosen_symset_start/end — inside the wanted set */
 export const gs_symset_which_set = { v: PRIMARYSET };
 const gc_chosen_symset = { start: false, end: false };
-/* src/decl.c gp.primary_syms[] / gr.rogue_syms[] — a loaded symset's own
-   symbols as character codes (init_primary_symbols() fills the defaults;
-   parse_sym_line() writes the set's entries). assign_graphics() carries the
-   sets this port draws with; these tables keep what the file said. */
+/* src/decl.c gp.primary_syms[] / gr.rogue_syms[], loaded character codes.
+   assign_graphics() selects one of these tables and applies its overrides. */
 export const gp_primary_syms = new Array(SYM_MAX).fill(0);
 export const gr_rogue_syms = new Array(SYM_MAX).fill(0);
 
@@ -130,6 +121,15 @@ export const gr_rogue_syms = new Array(SYM_MAX).fill(0);
    overrides as character codes; 0 means "no override" */
 export const go_ov_primary_syms = new Array(SYM_MAX).fill(0);
 export const go_ov_rogue_syms = new Array(SYM_MAX).fill(0);
+
+// src/symbols.c:85 init_symbols()
+export function init_symbols() {
+    init_ov_primary_symbols();
+    init_ov_rogue_symbols();
+    init_primary_symbols();
+    init_showsyms();
+    init_rogue_symbols();
+}
 
 // src/symbols.c:113 init_ov_rogue_symbols()
 export function init_ov_rogue_symbols() {
@@ -147,12 +147,10 @@ export function get_othersym(idx, which_set) {
     let sym = 0;
     const oidx = idx + SYM_OFF_X;
 
-    /* gr.rogue_syms[] and gp.primary_syms[] hold nothing for these entries
-       in the sets the tty recorder can load, so only the overrides apply */
     if (which_set === ROGUESET)
-        sym = go_ov_rogue_syms[oidx] ? go_ov_rogue_syms[oidx] : 0;
+        sym = go_ov_rogue_syms[oidx] || gr_rogue_syms[oidx];
     else
-        sym = go_ov_primary_syms[oidx] ? go_ov_primary_syms[oidx] : 0;
+        sym = go_ov_primary_syms[oidx] || gp_primary_syms[oidx];
     if (!sym) {
         switch (idx) {
         case SYM_NOTHING:
@@ -455,9 +453,9 @@ function parsesymbols_buf(buf, opts, which_set) {
 
     symp = match_sym(symname_s);
     if (!symp && symname_s[0] === 'G' && symname_s[1] === '_') {
-        /* src/symbols.c:826 — a customised glyph: the whole "G_x:val" goes
-           to match_glyph(), colour and unicode included */
-        is_glyph = !!match_glyph(`${symname_s}:${strval_s}`);
+        // src/symbols.c:826, the delimiter has already been nulled. C
+        // validates the glyph name here without applying the saved value.
+        is_glyph = !!match_glyph(symname_s);
     }
     if (!symp && !is_glyph)
         return false;
@@ -532,24 +530,45 @@ function symbol_from_code(code, handling) {
     return { ch: String.fromCharCode(code), dec: false };
 }
 
-/* the object class, monster class and "other" halves of gs.showsyms[]:
-   the defaults from src/drawing.c, or the SYMBOLS= override */
-function fill_class_tables(handling, nondefault) {
-    const ov = go_ov_primary_syms;
-    const pick = (i, dflt) => {
-        const code = nondefault ? ov[i] : 0;
-        if (!code)
-            return dflt;
-        if (handling === H_DEC && (code & 0x80))
-            note_unported_symbols('class symbol drawn from the DEC charset');
-        return String.fromCharCode(code);
-    };
-    gs_showsyms.O = def_oc_syms.map((s, i) => pick(SYM_OFF_O + i, s));
-    gs_showsyms.M = def_monsyms.map((s, i) => pick(SYM_OFF_M + i, s));
+/* Copy C's flat showsyms table into its terrain and class ranges. */
+function fill_symbol_tables(which_set) {
+    const syms = which_set === ROGUESET ? gr_rogue_syms : gp_primary_syms;
+    const ov = which_set === ROGUESET ? go_ov_rogue_syms : go_ov_primary_syms;
+    const handling = gs_symset[gc_currentgraphics.set]?.handling ?? H_UNK;
+    const pick = i => ov[i] || syms[i];
+    gs_showsyms.P = defsyms.map((_, i) => symbol_from_code(pick(SYM_OFF_P + i), handling));
+    gs_showsyms.O = def_oc_syms.map((_, i) => String.fromCharCode(pick(SYM_OFF_O + i)));
+    gs_showsyms.M = def_monsyms.map((_, i) => String.fromCharCode(pick(SYM_OFF_M + i)));
+    gs_showsyms.W = def_warnsyms.map((_, i) => String.fromCharCode(pick(SYM_OFF_W + i)));
     gs_showsyms.X = [];
     for (let i = 0; i < MAXOTHER; i++) {
-        const code = get_othersym(i, PRIMARYSET);
+        const code = pick(SYM_OFF_X + i);
         gs_showsyms.X[i] = code ? String.fromCharCode(code) : '';
+    }
+    const name = gs_symset[which_set]?.name?.toLowerCase();
+    if (name === 'enhanced1' || name === 'enhanced2') {
+        /* The deterministic tty recorder snapshots g_putch output. UTF-8
+           glyphs are emitted through g_pututf8 instead, so overridden cmap
+           cells remain blank in its screen model. Preserve that observable
+           behavior rather than substituting unrelated ASCII glyphs. */
+        const common = [
+            'S_corr', 'S_engrcorr', 'S_litcorr', 'S_vwall', 'S_hwall',
+            'S_tlcorn', 'S_trcorn', 'S_blcorn', 'S_brcorn', 'S_crwall',
+            'S_tuwall', 'S_tdwall', 'S_tlwall', 'S_trwall', 'S_ndoor',
+            'S_vodoor', 'S_hodoor', 'S_bars', 'S_tree', 'S_room',
+            'S_engroom', 'S_darkroom', 'S_upladder', 'S_dnladder',
+            'S_altar', 'S_grave', 'S_pool', 'S_ice', 'S_lava',
+            'S_lavawall', 'S_vodbridge', 'S_hodbridge', 'S_water', 'S_web',
+            'S_vbeam', 'S_hbeam', 'S_sw_tc', 'S_sw_ml', 'S_sw_mr',
+            'S_sw_bc', 'S_expl_tc', 'S_expl_ml', 'S_expl_mr', 'S_expl_bc',
+        ];
+        if (name === 'enhanced2')
+            common.push('S_cloud');
+        for (const n of common) {
+            const i = defsyms.findIndex(d => d.name === n);
+            if (i >= 0)
+                gs_showsyms.P[i] = { ...gs_showsyms.P[i], utf8: true };
+        }
     }
 }
 
@@ -566,103 +585,33 @@ export function showsym_other(idx) {
                          : String.fromCharCode(get_othersym(idx, PRIMARYSET));
 }
 
-// src/symbols.c:253 switch_symbols() — nondefault: the loaded set with the
-// overrides on top; otherwise the built-in defaults
+// src/symbols.c:253 switch_symbols()
 export function switch_symbols(nondefault) {
     if (nondefault) {
-        assign_graphics(gs_symset[PRIMARYSET]?.name || null);
+        fill_symbol_tables(PRIMARYSET);
     } else {
+        init_primary_symbols();
         init_showsyms();
-        fill_class_tables(H_UNK, false);
     }
 }
 
-// src/symbols.c:94 init_showsyms() — the ASCII defaults from defsym.h.
+// src/symbols.c:94 init_showsyms()
 export function init_showsyms() {
     gs_showsyms.P = defsyms.map(d => ({ ch: d.sym, dec: false }));
+    gs_showsyms.O = [...def_oc_syms];
+    gs_showsyms.M = [...def_monsyms];
+    gs_showsyms.W = def_warnsyms.map(d => d.ch);
+    gs_showsyms.X = [];
+    for (let i = 0; i < MAXOTHER; i++) {
+        const code = get_othersym(i, PRIMARYSET);
+        gs_showsyms.X[i] = code ? String.fromCharCode(code) : '';
+    }
 }
 
-// src/symbols.c:217 assign_graphics() — copy the selected set into showsyms.
-//
-// A truthy legacy argument selects DECgraphics. A string selects the matching
-// runtime set from dat/symbols; otherwise the built-in table stays active.
-export function assign_graphics(set) {
-    const name = (typeof set === 'string') ? set : set ? 'DECgraphics' : null;
-    init_showsyms();
-    if (name === 'DECgraphics' || name === 'curses')
-        for (let i = 0; i < defsyms.length; i++)
-            gs_showsyms.P[i] = { ch: defsyms[i].ch, dec: defsyms[i].dec };
-    else if (name === 'plain') {
-        for (const n of ['S_tlcorn', 'S_trcorn', 'S_blcorn', 'S_brcorn',
-                         'S_crwall', 'S_tuwall', 'S_tdwall', 'S_tlwall',
-                         'S_trwall']) {
-            const i = defsyms.findIndex(d => d.name === n);
-            if (i >= 0)
-                gs_showsyms.P[i] = { ch: '+', dec: false };
-        }
-    } else if (name === 'Blank') {
-        for (let i = 0; i < defsyms.length; i++)
-            gs_showsyms.P[i] = { ch: ' ', dec: false };
-    } else if (name === 'Enhanced1' || name === 'Enhanced2') {
-        /* The deterministic tty recorder snapshots g_putch output. UTF-8
-           glyphs are emitted through g_pututf8 instead, so overridden cmap
-           cells remain blank in its screen model. Preserve that observable
-           behavior rather than substituting unrelated ASCII glyphs. */
-        const common = [
-            'S_corr', 'S_engrcorr', 'S_litcorr', 'S_vwall', 'S_hwall',
-            'S_tlcorn', 'S_trcorn', 'S_blcorn', 'S_brcorn', 'S_crwall',
-            'S_tuwall', 'S_tdwall', 'S_tlwall', 'S_trwall', 'S_ndoor',
-            'S_vodoor', 'S_hodoor', 'S_bars', 'S_tree', 'S_room',
-            'S_engroom', 'S_darkroom', 'S_upladder', 'S_dnladder',
-            'S_altar', 'S_grave', 'S_pool', 'S_ice', 'S_lava',
-            'S_lavawall', 'S_vodbridge', 'S_hodbridge', 'S_water', 'S_web',
-            'S_vbeam', 'S_hbeam', 'S_sw_tc', 'S_sw_ml', 'S_sw_mr',
-            'S_sw_bc', 'S_expl_tc', 'S_expl_ml', 'S_expl_mr', 'S_expl_bc',
-        ];
-        if (name === 'Enhanced2')
-            common.push('S_cloud');
-        for (const n of common) {
-            const i = defsyms.findIndex(d => d.name === n);
-            if (i >= 0)
-                gs_showsyms.P[i] = { ch: ' ', dec: false, utf8: true };
-        }
-    }
-    /* src/symbols.c:238 — a SYMBOLS= override replaces the set's symbol:
-       showsyms[i] = ov_primary_syms[i] ? ov_primary_syms[i] : primary_syms[i] */
-    const set_handling = (primary_symsets.find(s => s.name === name) || {}).handling ?? H_UNK;
-    for (let i = 0; i < MAXPCHARS; i++)
-        if (go_ov_primary_syms[SYM_OFF_P + i])
-            gs_showsyms.P[i] = symbol_from_code(go_ov_primary_syms[SYM_OFF_P + i],
-                                                set_handling);
-    fill_class_tables(set_handling, true);
-    /* src/display.c:1851 — with dark_room on (the 5.0 default) S_darkroom
-       displays with S_room's symbol: the DEC middle dot under DECgraphics,
-       plain '.' otherwise. Verified against the instrumented recorder:
-       showsyms[S_darkroom] is 0xfe for a symset:DECgraphics rc and '.' for
-       a plain one. */
-    if (game?.flags?.dark_room !== false) {
-        const S_room = 19, S_darkroom = 20; /* cmap_names would cycle */
-        gs_showsyms.P[S_darkroom] = { ...gs_showsyms.P[S_room] };
-    }
-    /* dat/symbols' DECgraphics block carries "handling:DEC"; the built-in
-       default set has no name and no handler. */
-    const entry = primary_symsets.find(s => s.name === name);
-    gs_symset[PRIMARYSET] = entry
-        ? { name: entry.name, handling: entry.handling }
-        : { name: null, handling: H_UNK };
-    gc_currentgraphics.set = PRIMARYSET;
-    /* src/symbols.c:673 load_symset(): the set's own entries in dat/symbols,
-       including its G_ glyph customizations (DECgraphics colours the wall
-       glyphs of the Mines, Gehennom, Fort Ludios and Sokoban), then
-       apply_customizations() and reset_glyphmap(gm_symchange) */
-    purge_custom_entries(PRIMARYSET);
-    if (entry) {
-        read_sym_file(PRIMARYSET);
-        gs_symset[PRIMARYSET].name = entry.name;
-        gs_symset[PRIMARYSET].handling = entry.handling;
-    }
-    apply_customizations(gc_currentgraphics.set,
-                         do_custom_symbols | do_custom_colors);
+// src/symbols.c:217 assign_graphics()
+export function assign_graphics(whichset) {
+    gc_currentgraphics.set = whichset === ROGUESET ? ROGUESET : PRIMARYSET;
+    fill_symbol_tables(gc_currentgraphics.set);
     if (display_fns)
         display_fns.reset_glyphmap(gm_symchange);
 
@@ -715,8 +664,12 @@ export function init_rogue_symbols() {
 
     for (i = 0; i < MAXPCHARS; i++)
         gr_rogue_syms[i + SYM_OFF_P] = defsyms[i].sym.charCodeAt(0);
+    gr_rogue_syms[cmap_names.S_vodoor] = gr_rogue_syms[cmap_names.S_hodoor]
+        = gr_rogue_syms[cmap_names.S_ndoor] = '+'.charCodeAt(0);
+    gr_rogue_syms[cmap_names.S_upstair] = gr_rogue_syms[cmap_names.S_dnstair]
+        = '%'.charCodeAt(0);
     for (i = 0; i < MAXOCLASSES; i++)
-        gr_rogue_syms[i + SYM_OFF_O] = def_oc_syms[i].charCodeAt(0);
+        gr_rogue_syms[i + SYM_OFF_O] = def_r_oc_syms[i].charCodeAt(0);
     for (i = 0; i < MAXMCLASSES; i++)
         gr_rogue_syms[i + SYM_OFF_M] = def_monsyms[i].charCodeAt(0);
     for (i = 0; i < WARNCOUNT; i++)
@@ -724,6 +677,7 @@ export function init_rogue_symbols() {
     for (i = 0; i < MAXOTHER; i++)
         gr_rogue_syms[i + SYM_OFF_X] = get_othersym(i, ROGUESET);
     clear_symsetentry(ROGUESET, false);
+    gs_symset[ROGUESET].nocolor = 1;
 }
 
 // src/symbols.c:307 update_primary_symset() / :313 update_rogue_symset()
@@ -737,6 +691,8 @@ export function update_rogue_symset(symp, val) {
 // src/symbols.c:319 clear_symsetentry()
 export function clear_symsetentry(which_set, name_too) {
     const ss = (gs_symset[which_set] ||= { name: null, handling: H_UNK });
+    const other_set = which_set === PRIMARYSET ? ROGUESET : PRIMARYSET;
+    const old_handling = ss.handling;
     if (ss.desc)
         ss.desc = null;
     if (name_too && ss.name)
@@ -746,7 +702,10 @@ export function clear_symsetentry(which_set, name_too) {
     /* initialize restriction bits */
     ss.primary = 0;
     ss.rogue = 0;
+    if (old_handling === H_UTF8 && gs_symset[other_set].handling !== H_UTF8)
+        free_all_glyphmap_u();
     purge_custom_entries(which_set);
+    clear_all_glyphmap_colors();
 }
 
 // src/symbols.c:376 known_restrictions[]
@@ -951,9 +910,7 @@ export function read_sym_file(which_set) {
     return 1;
 }
 
-// src/symbols.c:673 load_symset() — bundle some common usage into one
-// easy-to-use routine. assign_graphics() carries the switch_symbols() half
-// (the sets this port draws with); the file supplies the customizations.
+// src/symbols.c:673 load_symset()
 export function load_symset(s, which_set) {
     clear_symsetentry(which_set, true);
 

@@ -1,7 +1,15 @@
 // drawing.js, symbol lookups.
 // C ref: src/drawing.c
-import { def_monsyms } from './drawing_data.js';
+import { def_monsyms, def_oc_syms } from './drawing_data.js';
+import { OCLASSES } from './objects_data.js';
 import { defsyms } from './drawing_data.js';
+
+// src/drawing.c:72 def_r_oc_syms[]
+export const def_r_oc_syms = [...def_oc_syms];
+def_r_oc_syms[OCLASSES.ARMOR_CLASS] = ']';
+def_r_oc_syms[OCLASSES.AMULET_CLASS] = ',';
+def_r_oc_syms[OCLASSES.FOOD_CLASS] = ':';
+def_r_oc_syms[OCLASSES.COIN_CLASS] = def_oc_syms[OCLASSES.GEM_CLASS];
 
 // src/drawing.c:108 def_char_to_monclass(), a monster class symbol to its
 // class index (MAXMCLASSES when no class uses that symbol).

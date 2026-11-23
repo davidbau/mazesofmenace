@@ -3291,7 +3291,7 @@ export async function bhito(obj, wand, state = game,
                         if (canspotmon(monster, state))
                             await message(`${Monnam(monster, state)} appears.`, state, rawEnv);
                     }
-                    if (learn_it) exercise(A_WIS, true, state);
+                    if (learn_it) await exercise(A_WIS, true, state);
                 }
             }
             break;
@@ -4379,7 +4379,8 @@ export async function bhit(
                 return mtmp;
             }
         } else if (zapped && obj.otyp === WAN_PROBING
-            && glyph_is_invisible(glyph_at(x, y, state))) {
+            && glyph_is_invisible(
+                state.level.at(x, y)?.remembered_glyph?.glyph)) {
             // C zap.c:4039-4043 clears a remembered invisible marker when
             // probing confirms that the square no longer contains a monster.
             unmap_object(x, y, state);

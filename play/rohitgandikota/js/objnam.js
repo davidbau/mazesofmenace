@@ -8,6 +8,7 @@ import { M_AP_TYPE } from './const.js';
 import { ONAME } from './const.js';
 import { artiname, find_artifact, artifact_light } from './artifact.js';
 import { arti_light_description } from './light.js';
+import { tshirt_text, apron_text, hawaiian_motif, candy_wrapper_text } from './read.js';
 import { BUFSZ, QBUFSZ } from './const.js';
 import { shk_your } from './shk.js';
 import { carried, is_poisonable, Has_contents } from './obj.js';
@@ -579,6 +580,26 @@ export function xname_flags(obj, cxn_flags) {
 
     if (pluralize)
         buf = makeplural(buf);
+
+    // src/objnam.c:959. Zero-ID objects used by minimal names omit this text.
+    if (game.program_state_gameover && obj.o_id) {
+        switch (obj.otyp) {
+        case ONAMES.T_SHIRT:
+        case ONAMES.ALCHEMY_SMOCK:
+            buf += ` with text "${obj.otyp === ONAMES.T_SHIRT
+                ? tshirt_text(obj) : apron_text(obj)}"`;
+            break;
+        case ONAMES.CANDY_BAR: {
+            const label = candy_wrapper_text(obj);
+            if (label)
+                buf += ` labeled "${label}"`;
+            break;
+        }
+        case ONAMES.HAWAIIAN_SHIRT:
+            buf += ` with ${an(hawaiian_motif(obj))} motif`;
+            break;
+        }
+    }
 
     /* src/objnam.c:998: a per-object name follows the ordinary type name.
        Artifact names use the same storage; undiscovered artifacts therefore
@@ -3991,7 +4012,7 @@ export function distant_name(obj, func) {
     const r = ((game.u.xray_range ?? 0) > 2) ? game.u.xray_range : 2;
     const neardist = (r * r) * 2 - r;
     const cc = { x: 0, y: 0 }, save_oid = obj.o_id;
-    if (game.program_state?.gameover)
+    if (game.program_state_gameover)
         obj.o_id = 0;
     let str;
 

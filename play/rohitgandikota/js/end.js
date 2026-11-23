@@ -615,6 +615,8 @@ async function really_done(how) {
     /* src/end.c:1144 — the game is now over; disclosure windows read this
        (add_menu_heading drops its highlight, hallucination stops, &c) */
     game.program_state_gameover = true;
+    // src/end.c:1154: disclosure keeps the hero's final field of view.
+    game.iflags.vision_inited = false;
     if (!game.program_state?.panicking)
         await done_object_cleanup();
     {

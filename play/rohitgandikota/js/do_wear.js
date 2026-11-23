@@ -1823,13 +1823,14 @@ export function helm_simple_name(h) {
         return 'hat';
     return hard_helmet(h) ? 'helm' : 'hat';
 }
+// src/objnam.c:5492 cloak_simple_name()
 export function cloak_simple_name(c) {
     if (c) {
         switch (c.otyp) {
         case ONAMES.ROBE: return 'robe';
         case ONAMES.MUMMY_WRAPPING: return 'wrapping';
         case ONAMES.ALCHEMY_SMOCK:
-            return (objects[c.otyp].oc_name_known && c.dknown)
+            return (game.objects[c.otyp].oc_name_known && c.dknown)
                 ? 'smock' : 'apron';
         default: break;
         }

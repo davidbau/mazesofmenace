@@ -4685,6 +4685,7 @@ async function _docrt_body(pageTopl, physicalScreen) {
  * goto_level's vision_recalc(2) (do.c:1631) has already changed that buffer,
  * but the terminal still holds its last flush until map output resumes. */
 function _levelgen_paint_frame() {
+    if (game?._physBlankToDocrt) return _PHYS_BLANK;
     const frame = game?._levelgenPaintFreeze;
     return frame && suppress_map_output() && game._lastFlushFrame?.cells
         ? game._lastFlushFrame : frame;
@@ -5318,6 +5319,8 @@ export async function level_transition_arrival_more(msg, oldPaint) {
     // map as well as status. docrt's cls() pages that latest terminal image.
     if (g._levelgenWindowUz?.cells)
         oldPaint = { ...oldPaint, cells: g._levelgenWindowUz.cells };
+    if (g._physBlankToDocrt)
+        oldPaint = { ...oldPaint, cells: _PHYS_BLANK.cells };
     // The caller (js/cmd.js deferred_goto/goto_level) hands us whichever of
     // the two message channels was holding the unacknowledged topline; find
     // whichever one actually recorded join offsets for THIS string (a plain
@@ -6496,7 +6499,7 @@ function _statusLine2Parts() {
     if (_hdEnabled) {
         s += ` HD:${Upolyd ? _mon_mlevel(((_p2s ? _p2s.umonnum : u.umonnum) | 0))
             : (_xpFields?.hd ?? 0)}`;
-    } else if (game.flags?.showexp) {
+    } else if ((_bs && _bs.showexp !== undefined) ? _bs.showexp : game.flags?.showexp) {
         s += ` Xp:${_shownLevel}/${_shownExp}`;
     }
     else {
@@ -6679,10 +6682,18 @@ function status_version_text() {
     const shownum = !!(vi & 1) || !showname;
     return [showname ? name : '', shownum ? '5.0.0' : ''].filter(Boolean).join(' ');
 }
+function _painted_version_text() {
+    const frozen = game._inMovemonMore ? game._paintedSnapshot?.botl
+        : ((game.u?.uhp | 0) === -1 || game._botlFrozenDeath
+           || game._botlHeldEat || game._botlPaintHeld)
+            ? game._lastPaintedBotl : null;
+    if (frozen && frozen.version !== undefined) return frozen.version;
+    return game.flags?.showvers ? status_version_text() : '';
+}
 /* C botl.c:1251-1259 optional weapon/armor fields, appended after
  * BL_CONDITION in twolineorder (wintty.c:4284). */
 export function status_row_finish(base) {
-    const v = game.flags?.showvers ? status_version_text() : '';
+    const v = _painted_version_text();
     const _vlen = v ? v.length + 1 : 0;
     const _row = fit_status_line_width(`${base}${_statusExtras()}`, 79 - _vlen);
     /* wintty.c:5185-5210: BL_VERS last in its row is right-justified to the terminal width. */
@@ -6848,8 +6859,8 @@ function _locate_extra_tfields(row) {
     if (from < 0) return { dlm, desc, plain, extras: [] };
     const found = [];
     let limit = plain.length;
-    if (game.flags?.showvers) {
-        const vt = status_version_text();
+    const vt = _painted_version_text();
+    if (vt) {
         const i = plain.lastIndexOf(' ' + vt, limit);
         if (i >= from) {
             found.push({ field: 'version', key: 'version text', text: vt, start: i + 1, len: vt.length, txtstr: vt });
@@ -7943,12 +7954,16 @@ function _terrain_status_text(paint = false, pending = false) {
     return cache.text;
 }
 function _statusExtras(split = false) {
+    const frozen = game._inMovemonMore ? game._paintedSnapshot?.botl
+        : ((game.u?.uhp | 0) === -1 || game._botlFrozenDeath
+           || game._botlHeldEat || game._botlPaintHeld)
+            ? game._lastPaintedBotl : null;
     const parts = [];
-    if (game.flags?.weaponstatus) {
+    if (frozen ? frozen.weapon != null : game.flags?.weaponstatus) {
         /* A paged --More-- holds the weapon field of its flush's bot() paint:
          * eatspecial's "delicious!" page precedes uwepgone() (eat.c:2471). */
-        const text = (game._inMovemonMore && game._paintedSnapshot?.botl?.weapon != null)
-            ? game._paintedSnapshot.botl.weapon
+        const text = (frozen && frozen.weapon != null)
+            ? frozen.weapon
             /* BL_WEAPON (botl.c:1251-1252) is a bot()-time field like BL_ARMOR below: the
              * newgame bot() ran before u_init's ini_inv (allmain.c:891), so a monk's
              * starting gloves leave "Bare-hnds" on the line until the next bot(). */
@@ -7959,9 +7974,9 @@ function _statusExtras(split = false) {
     /* BL_ARMOR (botl.c:1256) is likewise a bot()-time field: a paged --More--
      * keeps the armor string of its own flush's bot() paint (pray.c:661-666
      * disintegrates the cloak while the god's messages page). */
-    if (game.flags?.armorstatus) {
-        const text = (game._inMovemonMore && game._paintedSnapshot?.botl?.armor != null)
-            ? game._paintedSnapshot.botl.armor
+    if (frozen ? frozen.armor != null : game.flags?.armorstatus) {
+        const text = (frozen && frozen.armor != null)
+            ? frozen.armor
             /* The field holds what the last bot() computed (botl.c:1256-1257): an
              * Amulet_on whose find_ac() leaves uac unchanged sets no botl, so a
              * later removal's flush shows the pre-wear string (no '+'). */
@@ -7969,13 +7984,9 @@ function _statusExtras(split = false) {
         parts.push(['armor', ` ${text}`]);
     }
     /* C botl.c:1261-1274 BL_TERRAIN, last of the extra fields. */
-    if (game.flags?.terrainstatus) {
+    if (frozen?.terrainstatus !== undefined ? frozen.terrainstatus : game.flags?.terrainstatus) {
         /* A more() keeps the terrain field painted by bot(), even if
          * set_uinwater() has since classified a different terrain. */
-        const frozen = game._inMovemonMore ? game._paintedSnapshot?.botl
-            : ((game.u?.uhp | 0) === -1 || game._botlFrozenDeath
-               || game._botlHeldEat || game._botlPaintHeld)
-                ? game._lastPaintedBotl : null;
         const d = frozen?.terrainText ?? _terrain_status_text();
         parts.push(['terrain', d ? ` ${d}` : '']);
     }
@@ -8013,7 +8024,7 @@ export function _statusRows3(pinnedRow) {
      * row-3 layout again: its snapshot already holds that physical row. */
     if (pinnedRow != null) return [row1, row2, pinnedRow];
     const extras = _statusExtras(true);
-    if (extras.length || game.flags?.showvers)
+    if (extras.length || _painted_version_text())
         return [row1, row2, _statusRow3(p, row1, row2, extras)];
     /* With no equipment/terrain/version fields, retain the ordinary width
      * fitting after indenting the condition field. */
@@ -8041,7 +8052,8 @@ function _statusRow3(p, row1, row2, extras) {
     /* wintty.c:4584-4638 make_things_fit() measures row 3 (`desc`..`vers`) and
      * shrinks condition spellings (1..2) then Dlvl->Dl when > 79 columns. */
     let desc = p.desc, conds = p.conds;
-    const vers = game.flags?.showvers ? [['version', ` ${status_version_text()}`]] : [];
+    const v = _painted_version_text();
+    const vers = v ? [['version', ` ${v}`]] : [];
     const fitLen = (d, c) => d.length + p.time.length + c.length
         + extras.reduce((a, [, t]) => a + t.length, 0) + (vers.length ? vers[0][1].length : 0);
     if (fitLen(desc, conds) > 79) {
@@ -9569,6 +9581,21 @@ function _buildScreenOutput() {
             return;
         }
     }
+    if (_is_prerendered_more(game._pending_message)) {
+        const committed = String(game._pending_message).slice(0, -TOPL_MORE.length);
+        const wrapped = _topl_wordwrap(committed, TOPL_CO - 1);
+        const lastFits = (_topl_visualLen(wrapped[wrapped.length - 1]) + TOPL_MORE.length)
+            <= (TOPL_CO - 1);
+        if (wrapped.length > 1 || !lastFits) {
+            const msgRows = wrapped.slice();
+            if (lastFits)
+                msgRows[msgRows.length - 1] += TOPL_MORE;
+            else
+                msgRows.push(TOPL_MORE);
+            _buildScreenOutputWithMoreRows(msgRows);
+            return;
+        }
+    }
     let output = '';
     // Row 0: message.  C ref: win/tty/topl.c — the tty topline paints only the
     // message glyphs; trailing blanks are never written to the terminal row, so
@@ -10940,11 +10967,19 @@ function _capture_botl(paint = false) {
             ? (hpPaint?.holding != null ? hpPaint.holding
                : !!(u.ustuck && !u.uswallow && Upolyd && sticks(game.youmonst?.data)))
             : undefined,
-        weapon: game.flags?.weaponstatus ? (hpPaint?.weapon ?? weapon_status()) : undefined,
-        armor: game.flags?.armorstatus ? (hpPaint?.armor ?? armor_status()) : undefined,
+        weapon: hpPaint && 'weapon' in hpPaint ? hpPaint.weapon
+            : (game.flags?.weaponstatus ? weapon_status() : undefined),
+        armor: hpPaint && 'armor' in hpPaint ? hpPaint.armor
+            : (game.flags?.armorstatus ? armor_status() : undefined),
+        terrainstatus: hpPaint && hpPaint.terrainstatus !== undefined ? hpPaint.terrainstatus
+            : !!game.flags?.terrainstatus,
+        version: hpPaint && hpPaint.version !== undefined ? hpPaint.version
+            : (game.flags?.showvers ? status_version_text() : ''),
+        showexp: hpPaint && hpPaint.showexp !== undefined ? hpPaint.showexp
+            : !!game.flags?.showexp,
         /* botl.c bot2(): T: is a field of the painted row; toggling 'time'
          * silently (options.c:5348-5351) changes nothing until bot(). */
-        time: !!game.flags?.time,
+        time: hpPaint && hpPaint.time !== undefined ? hpPaint.time : !!game.flags?.time,
     };
     return _unpainted ? _snap : (game._lastPaintedBotl = _snap);
 }
@@ -11251,10 +11286,21 @@ export async function menu_entry_page() {
 export function restore_occupation_topline() {
     const g = game;
     const take = g._occBeforeInput;
-    if (!take) return;
-    g._occBeforeInput = null;
-    const held = take();
-    if (!held.text) return;
+    const held = take
+        ? (g._occBeforeInput = null, take())
+        : (g.occupation && g._occ_committed_topl && !g._occ_committed_topl.postMeal
+           && !g._topl_win_stop && !g._topl_win_stop_armed)
+            ? (() => {
+                const text = g._occ_committed_topl.text;
+                g._occ_committed_topl = null;
+                if (g._resultMessage === text) {
+                    g._resultMessage = null;
+                    g._resultMessageJoins = null;
+                }
+                return { text, joins: _topl_joins_snapshot(text) || [] };
+            })()
+            : null;
+    if (!held || !held.text) return;
     const live = String(g._pending_message || '');
     const full = String(g._resultMessage || '');
     const head = _topl_result_head(full, live);
@@ -11315,6 +11361,19 @@ export async function flush_pending_messages() {
      * vpline already flushed before update_topl (pline.c:273-276); draining
      * its deferred pages must not print glyphs buffered since that flush. */
     await flush_screen(1, false);
+    /* C pline.c:273-276: putmesg() -> update_topl() -> redotoplin() painted the
+     * remaining unpaged topline onto row 0 of the last-flushed terminal screen.
+     * When a pre-window raw_print already armed nomux_raw_active (_rawCursorFrozen),
+     * an in-window raw_print (end.c:405 panic) writes directly into that live
+     * nomux_buf without calling nomux_enter_raw_mode()/nomux_clear_screen(). */
+    if (g._rawCursorFrozen && g._rawterm?.rows && g._screen_output) {
+        const nl = g._screen_output.indexOf('\n');
+        const top = _toplStr(g._pending_message || g._topl_sticky || '');
+        const screen = nl >= 0 ? top + g._screen_output.slice(nl) : top;
+        g._screen_output = screen;
+        g._rawterm._cells = nomuxCellsFromScreen(screen);
+        g._rawterm._cellsRows = g._rawterm.rows;
+    }
 }
 
 // Snapshot `line`'s current join offsets (if any are on record for it right
@@ -11493,7 +11552,13 @@ function _topl_remainder_segments(rem, joins) {
     out.push(rem.slice(start));
     return out;
 }
+function _is_prerendered_more(line) {
+    const s = String(line || '');
+    return s.endsWith(TOPL_MORE) && !s.endsWith('  ' + TOPL_MORE);
+}
 function _topl_split_for_more(line, joins) {
+    if (_is_prerendered_more(line))
+        return null;
     if (joins === undefined) joins = _topl_joins_for(line);
     if (!joins || joins.length === 0) {
         if (line && !game?._topl_prompt_echo && game?._topl_show_only !== line
@@ -12770,6 +12835,18 @@ async function _pline_stop() {
 // process_text_window turns ESC into WIN_CANCELLED on THAT window instead
 // (wintty.c:1782-1785) and leaves the message window's flags alone.
 export async function await_more_dismiss(rerender, toplMore) {
+    let moreRow = 0;
+    const syncToplMoreCursor = () => {
+        if (!toplMore || !_is_prerendered_more(game._pending_message)) return;
+        const committed = String(game._pending_message).slice(0, -TOPL_MORE.length);
+        const wrapped = _topl_wordwrap(committed, TOPL_CO - 1);
+        const lastLen = _topl_visualLen(wrapped[wrapped.length - 1]);
+        const lastFits = (lastLen + TOPL_MORE.length) <= (TOPL_CO - 1);
+        moreRow = wrapped.length - 1 + (lastFits ? 0 : 1);
+        if (moreRow > 0 && game.nhDisplay)
+            game.nhDisplay.setCursor(lastFits ? lastLen + TOPL_MORE.length : TOPL_MORE.length, moreRow);
+    };
+    syncToplMoreCursor();
     for (;;) {
         const raw = await nhgetch();
         game._snapMoreKeys = (game._snapMoreKeys | 0) + 1;
@@ -12784,10 +12861,13 @@ export async function await_more_dismiss(rerender, toplMore) {
                 game._ttyDismissMore = 1;          /* getline.c:245-247 */
             if (c === 27 && toplMore)
                 game._topl_win_stop_armed = true;   /* topl.c more():232-235 */
+            if (toplMore && moreRow > 0)
+                docorner_blank_utf8_captures(1, moreRow + 1);
             return c;
         }
         if (rerender) {
             await rerender();
+            syncToplMoreCursor();
             /* C topl.c:230 xwaitforspace() retries without remember_topl(); the
              * page was filed on the first read, so the restored copy must not
              * be filed again (same guard as _topl_more's bell arm). */
@@ -14067,6 +14147,8 @@ export function putmsghistory(msg, _restoring) {
     /* C topl.c:539,706: writing gt.toplines ends any SUPPRESS_HISTORY-empty
      * state, so the next ^P recall starts at this line instead of a blank. */
     game._toplEmptyAfterSuppress = false;
+    if (text.length > 0)
+        game._toplEmptyAfterSuppress = false;
     /* C topl.c:706 Strcpy(gt.toplines, msg) skips update_topl's word-wrap
      * loop (:284-297), so redotoplin's putsyms() hard-wraps it on ^P recall. */
     (game._getlin_hist ||= new Set()).add(text);
@@ -14235,7 +14317,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         game._occ_committed_topl = null;
     }
     else if (game.occupation == null && game._occ_committed_topl?.postMeal
-        && (game._inMovemonBlock || game._inDosounds || game._inNhTimeout)
+        && (game._encumber_pline || game._inMovemonBlock || game._inDosounds || game._inNhTimeout)
         && !game._pending_message && !game._resultMessage) {
         game._pending_message = game._occ_committed_topl.text;
         game._occ_committed_topl = null;
@@ -14338,8 +14420,9 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         game._pending_message = _txt;
         game._topl_joins = [];
         game._topl_joins_src = game._pending_message;
-        if (!game._topl_suppress_history)
-        game._toplEmptyAfterSuppress = false; /* topl.c:280 strncpy(gt.toplines,bp) */
+        if (!(game._topl_suppress_history || game._topl_suppress_once)
+            && game._prevmsg_next == null)
+            game._toplEmptyAfterSuppress = false; /* topl.c:280 strncpy(gt.toplines,bp) */
         _maybe_snapshot_painted_screen();
         if (msgtyp === 'stop') {
             await _pline_stop();
@@ -14596,8 +14679,14 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         game._topl_pline_filed_reset = game._topl_pline_filed_reset === true
             || !game._toplEmptyAfterSuppress;
     }
-    if (!(game._topl_suppress_history || game._topl_suppress_once))
-    if (!game._topl_suppress_history)
+    /* When a ^P walk is active (_prevmsg_next != null), topl.c:280's
+     * remember_topl() runs BEFORE strncpy(gt.toplines, bp) and returns early
+     * on the still-empty gt.toplines (topl.c:176), preserving cw->maxcol;
+     * leave _toplEmptyAfterSuppress set until nhgetch() commits _pending_message
+     * (js/input.js:116-143 consumes _wasToplEmpty to keep _prevmsg_next and
+     * advance _prevmsg_history_length, then clears _toplEmptyAfterSuppress). */
+    if (!(game._topl_suppress_history || game._topl_suppress_once)
+        && game._prevmsg_next == null)
         game._toplEmptyAfterSuppress = false;
     if (tabBackground)
         game._topl_tab_background = { ...tabBackground, text: game._pending_message };
@@ -17431,6 +17520,20 @@ export function nomuxOverflowApply(state, screen) {
 }
 
 export function nomuxRawEmitApply(state, str) {
+    const raw = game?._rawterm;
+    if (game?._rawCursorFrozen && raw?.rows && raw._cells && raw._cellsRows === raw.rows) {
+        const r = (raw.row | 0) - 1;
+        const s = str == null ? '' : String(str);
+        if (r >= 0 && r < 24) {
+            for (let c = 0; c < s.length && c < 80; c++) {
+                if ((s.charCodeAt(c) & 0xff) >= 32)
+                    raw._cells[r][c] = { ch: s[c], fg: 7, attr: 0, decgfx: 0 };
+            }
+        }
+        const lines = nomuxSerialize(raw._cells).split('\n');
+        for (let i = 0; i < 24; i++)
+            raw.rows[i] = lines[i] || '';
+    }
     if (!state) return state;
     const view = new DataView(state.buffer, state.byteOffset, 12);
     if (!view.getInt32(0, true)) return state;

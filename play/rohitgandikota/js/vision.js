@@ -192,6 +192,7 @@ export function vision_reset() {
     }
     game._viz_rmin = null;
     game._viz_rmax = null;
+    game.iflags.vision_inited = true;
 }
 
 /* Debug seam, no C counterpart: read-only view of the shadow arrays for
@@ -730,7 +731,9 @@ export function vision_recalc(control = 0) {
     const u = game.u;
     if (!u || !game.level) return;
     game.vision_full_recalc = 0;
-    if (game.in_mklev) return;
+    if (game.in_mklev || game.program_state?.in_getlev
+        || !game.iflags.vision_inited)
+        return;
 
     // Swap to unused buffer
     const next = game.active_buf === 0 ? cs_buf1 : cs_buf0;
@@ -952,6 +955,7 @@ export function couldsee(x, y) {
 }
 
 export function init_vision_globals() {
+    game.iflags.vision_inited = false;
     /* The judge can run several independent segments in one JS process.
        C starts each game with empty static vision buffers, while these
        module-scoped typed arrays otherwise retain the prior segment's sight

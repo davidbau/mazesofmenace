@@ -6073,11 +6073,12 @@ export async function bhit(ddx, ddy, range,  /* direction and range */
                 if (cansee(x, y)) {
                     display_object_at(obj, x, y, flightGlyph);
                     flightPos = { x, y };
-                }
-                if (game.animationFrame) {
                     await flush_screen(0);
-                    await game.animationFrame();
                 }
+                /* tmp_at(DISP_FLASH) leaves restoration buffered when the
+                   next square is unseen; nh_delay_output() still runs. */
+                if (game.animationFrame)
+                    await game.animationFrame();
             }
             /* kicked objects fall in pools */
             if ((weapon === KICKED_WEAPON) && is_pool_or_lava(x, y))

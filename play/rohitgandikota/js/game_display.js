@@ -11,10 +11,17 @@
 //   // display.setCell, display.readKey etc. all delegate to terminal
 //   // display.topMessage, display.putstr_message are NetHack-specific
 
-import { Terminal, CLR_GRAY } from './terminal.js';
+import { Terminal, CLR_GRAY, NO_COLOR } from './terminal.js';
 
 const TOPLINE_EMPTY = 0;
 const TOPLINE_NEED_MORE = 1;
+
+// win/tty/termcap.c:799, retain non-default colors even on blank cells.
+function needsCapture(cell) {
+    return cell.ch !== ' ' || cell.attr
+        || (cell.color > 0 && cell.color <= 15
+            && cell.color !== CLR_GRAY && cell.color !== NO_COLOR);
+}
 
 export class GameDisplay {
     constructor(terminalOrContainerId) {
@@ -28,23 +35,25 @@ export class GameDisplay {
             );
         }
 
-        /* The frozen terminal's serializer skips leading blank cells when it
-           chooses where a row begins. A menu heading can intentionally put
-           inverse video on that leading blank, so preserve it by making the
-           first attributed blank temporarily nonblank during serialization. */
+        /* Preserve colored and attributed blanks at row boundaries. C's
+           capture keeps them; the frozen serializer trims blank characters.
+           Temporary nonblank cells retain their real terminal attributes. */
         const terminalSerialize = this.terminal.serialize.bind(this.terminal);
         this.terminal.serialize = () => {
             const touched = [];
             for (let r = 0; r < this.terminal.rows; r++) {
                 const row = this.terminal.grid[r];
-                const last = row.findLastIndex(cell => cell.ch !== ' ');
+                const last = row.findLastIndex(needsCapture);
                 if (last < 0)
                     continue;
-                const first = row.findIndex((cell, c) => c <= last
-                    && (cell.ch !== ' ' || cell.attr));
+                const first = row.findIndex(needsCapture);
                 if (first >= 0 && row[first].ch === ' ') {
                     row[first].ch = '\0';
                     touched.push(row[first]);
+                }
+                if (row[last].ch === ' ') {
+                    row[last].ch = '\0';
+                    touched.push(row[last]);
                 }
             }
             try {

@@ -7,8 +7,7 @@
 // concern: the shop gate is rn2(u_depth) < 3, so at depths 2 and 3 a shop is
 // made EVERY time there are enough rooms.
 //
-// Only the shop path is ported so far. mkzoo, mkswamp and mktemple are absent
-// and recorded, so do_mkroom's other arms are honest holes rather than stubs.
+// do_mkroom dispatches to the builders for each special room type.
 
 import { revive } from './zap.js';
 import { sobj_at } from './invent.js';
@@ -16,6 +15,7 @@ import { enexto } from './teleport.js';
 import { game } from './gstate.js';
 import { impossible } from './pline.js';
 import { del_engr_at } from './engrave.js';
+import { getnow_seconds } from './calendar.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { level_difficulty, Inhell, set_malign, mongets, MM_ASLEEP,
          MM_NOGRP, NO_MM_FLAGS } from './makemon.js';
@@ -87,37 +87,11 @@ export function rest_rooms(saved) {
    get_shop_item() which reads the other half of the same table. */
 
 // src/mkroom.c:502 antholemon() — which ant species an anthole gets.
-//
-// Draws nothing. It needs ubirthday, the game's start time, which we do not
-// model: the recorder derives it with mktime() from NETHACK_FIXED_DATETIME in
-// the RECORDING MACHINE'S local timezone, taking tm_isdst from the moment the
-// recording was actually made. That value is not derivable from this repo and
-// must not be fitted to the sessions.
-//
-// It does not have to be. antholemon uses ubirthday ONLY as `% 3`, and every
-// timezone offset is a whole or half hour, i.e. a multiple of 1800, which is
-// divisible by 3. So the offset cannot change the result:
-//
-//     2000-06-01 12:00:00 UTC = 959860800, and 959860800 % 3 == 0,
-//     and (959860800 + k * 1800) % 3 == 0 for every k.
-//
-// The fixed datetime already reaches us as game.fixed_datetime, so indx is
-// computed from it rather than assumed, and it stays correct for any recording
-// timezone. nameshk's `ubirthday / 257` has no such invariance, which is why
-// only the chosen NAME there remains unported.
 export function antholemon() {
     let mtyp, trycnt = 0;
 
-    const dt = game.fixed_datetime;
-    if (!dt) {
-        note_unported_mkroom('antholemon:no_fixed_datetime');
-        return null;
-    }
-    const ub = Date.UTC(+dt.slice(0, 4), +dt.slice(4, 6) - 1, +dt.slice(6, 8),
-                        +dt.slice(8, 10), +dt.slice(10, 12),
-                        +dt.slice(12, 14)) / 1000;
-
-    let indx = ((ub % 3) + 3) % 3;      /* timezone-invariant, see above */
+    const birthday = game.ubirthday ?? getnow_seconds();
+    let indx = ((birthday % 3) + 3) % 3;
     indx += level_difficulty();
 
     /* Same monsters within a level, different ones between levels */

@@ -27,7 +27,7 @@ import {
 } from './const.js';
 import { CLR_BLACK } from './terminal.js';
 import { defsyms, cmap_names } from './drawing_data.js';
-import { PMNAMES, NUMMONS } from './monst_data.js';
+import { PMNAMES, NUMMONS, mons as MONS_DATA } from './monst_data.js';
 import { obj_descr, ONAMES, NUM_OBJECTS } from './objects_data.js';
 import { rgbstr_to_int32, set_map_customcolor } from './coloratt.js';
 import { config_error_add } from './options.js';
@@ -285,6 +285,8 @@ export function fix_glyphname(str) {
 // src/glyphs.c:234 glyph_find_core()
 function glyph_find_core(id, findwhat) {
     let do_callback, end_find = false;
+    // Config parsing precedes the per-game copy of C's static monster table.
+    const mons = game.mons || MONS_DATA;
 
     if (parse_id(id, findwhat)) {
         if (findwhat.findtype === find_glyph) {
@@ -299,7 +301,7 @@ function glyph_find_core(id, findwhat) {
                     break;
                 case find_pm:
                     if (glyph_is_monster(glyph)
-                        && game.mons[glyph_to_mon(glyph)].mlet === findwhat.val)
+                        && mons[glyph_to_mon(glyph)].mlet === findwhat.val)
                         do_callback = true;
                     break;
                 case find_oc:

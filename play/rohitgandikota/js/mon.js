@@ -86,7 +86,7 @@ import { mksobj_at, splitobj, mkobj, place_object, clear_splitobjs, mkgold,
          add_to_container } from './mkobj.js';
 import { weight, update_inventory, nxtobj } from './invent.js';
 import { newsym, canseemon, canspotmon, display_nhwindow_message, pline,
-         see_monsters, unmap_invisible, flash_glyph_at } from './display.js';
+         see_monsters, unmap_invisible, flash_glyph_at, mon_to_glyph } from './display.js';
 import { rn1, rn2, rnd, rnl, d, rn2_on_display_rng } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster, place_monster, goodpos, grow_up, makemon } from './makemon.js';
@@ -106,10 +106,9 @@ import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, S
          XKILL_NOMSG, XKILL_NOCORPSE, MON_EXPLODE,
          PLNMSG_UNKNOWN, PLNMSG_GROWL } from './const.js';
 import { NO_MM_FLAGS } from './const.js';
-import { PMNAMES, MONSYMS, MFLAGS, ATTKS, MSOUND, NUMMONS } from './monst_data.js';
+import { PMNAMES, MONSYMS, MFLAGS, ATTKS, MSOUND } from './monst_data.js';
 import { def_monsyms, cmap_names } from './drawing_data.js';
 import { visible_region_at } from './region.js';
-import { NO_COLOR } from './terminal.js';
 
 import { has_ceiling, surface } from './dungeon.js';
 import { new_mgivenname } from './do_name.js';
@@ -3048,16 +3047,8 @@ export async function flash_mon(mtmp) {
     if (game.flags?.sparkle === false)
         count = Math.trunc(count / 2);
     row[mx] = saveviz | IN_SIGHT | COULD_SEE;
-    const mnum = Hallucination()
-        ? rn2_on_display_rng(NUMMONS)
-        : (mtmp.data?.pmidx ?? mtmp.mnum);
-    const shown = game.mons[mnum];
-    await flash_glyph_at(mx, my, {
-        ch: def_monsyms[shown.mlet] || '?',
-        color: shown.mcolor ?? NO_COLOR,
-        decgfx: false,
-        glyph: { kind: 'mon', mon: mtmp },
-    }, count);
+    await flash_glyph_at(mx, my,
+                         mon_to_glyph(mtmp, rn2_on_display_rng), count);
     row[mx] = saveviz;
     newsym(mx, my);
 }

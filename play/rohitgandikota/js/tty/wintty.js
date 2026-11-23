@@ -611,7 +611,7 @@ function process_menu_window(cw, page, display) {
                     ch = item.count === -1 ? '*' : '#';
                 else if (show_obj_syms && item.glyphinfo?.ch) {
                     ch = item.glyphinfo.ch;
-                    color = item.glyphinfo.color;
+                    color = tty_color(item.glyphinfo.color);
                 }
             }
             display.setCell(col, row, ch, color, on);
@@ -1184,8 +1184,14 @@ function erase_menu_or_text(cw, display, clear) {
                synchronously, then paint those cells directly. */
             docrt_sync_rebuild();
             display.clearScreen();
-            for (let y = 0; y < ROWNO; y++)
+            for (let y = 0; y < ROWNO; y++) {
                 row_refresh(1, COLNO - 1, y);
+                // C's flush_screen consumes these updates. Leaving them set
+                // repaints the map over the next menu's search prompt.
+                for (let x = 1; x < COLNO; x++)
+                    if (game.gbuf?.[y]?.[x])
+                        game.gbuf[y][x].gnew = 0;
+            }
             /* docrt() forces the bottom lines (disp.botlx) and flush_screen(1)
                calls bot(); inside select_menu() bot() is disabled
                (windows.c:1860), so the flag stays up and the next flush

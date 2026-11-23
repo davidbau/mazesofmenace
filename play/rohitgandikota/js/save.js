@@ -10,6 +10,9 @@
 // A restore reinitializes role-specific monster data and the Lua core.
 // Both can draw from the fresh process's RNG before play resumes.
 
+import { assign_graphics, ROGUESET } from './symbols.js';
+import { Is_rogue_level, gm_levelchange } from './const.js';
+import { reset_glyphmap, reglyph_darkroom } from './display.js';
 import { game } from './gstate.js';
 import { pline, tty_clear_nhwindow_message } from './display.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -41,6 +44,9 @@ const SKIP_KEYS = new Set([
     // C rebuilds command bindings from this process's configuration. Command
     // queues and the one-time key-help message also start fresh after restore.
     'Cmd', 'cmd_bind', 'command_queue', 'dowhatdoes_once',
+    // C saves flags, but not instance_flags or compiled configuration rules.
+    // These use the restoring process's configuration (include/flag.h).
+    'iflags', 'menu_colorings', 'plinemsg_types', 'apelist',
     /* transient topline machinery: C never saves the message window's
        state, and restoring a mid-'Saving...' pending line replayed a
        stale --More-- on the welcome-back boot */
@@ -268,5 +274,9 @@ export function dorecover() {
     // src/restore.c:903, debug/explore saves await the unixmain prompt.
     if (!game.wizard && !game.discover)
         delete_savefile();
+    if (Is_rogue_level(game.u.uz))
+        assign_graphics(ROGUESET);
+    reset_glyphmap(gm_levelchange);
+    reglyph_darkroom();
     return true;
 }

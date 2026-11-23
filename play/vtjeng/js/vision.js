@@ -1,7 +1,7 @@
 import { queueVisionMonsterNotices } from './startup_a11y.js';
 import { emitQueuedNotices } from './tty_message.js';
 import { impossible_printer } from './pline.js';
-import { finish_steps } from './source_steps.js';
+import { finish_steps, sync_impossible } from './source_steps.js';
 import { panic } from './end.js';
 // vision.js — C ref: vision.c Algorithm C shadow-casting
 
@@ -843,12 +843,13 @@ export function* vision_recalc_steps(control = 0, env = {}) {
 }
 
 // vision_recalc() for a caller that cannot wait: wall_angle()'s impossible()
-// is a gap. A caller that can wait but prints the queued notices itself
+// report is queued for the next message (sync_impossible()). A caller that can wait but prints the queued notices itself
 // passes env.onImpossible, as finish_steps() takes it, and awaits the
 // result. scripts/wall-angle-callers.test.mjs lists the callers that pass
 // none.
 export function vision_recalc(control = 0, env = {}) {
-    return finish_steps(recalc_steps(control, env), env.onImpossible);
+    return finish_steps(recalc_steps(control, env),
+        env.onImpossible ?? sync_impossible, env.state ?? game);
 }
 
 // The body of C's vision_recalc(). Each square it redraws goes through
@@ -1005,7 +1006,11 @@ function* recalc_steps(control, env) {
     // C:670 gives x-ray precedence and suppresses night vision underwater.
     if (!underwaterOutsideWaterLevel && (u.xray_range ?? -1) < (u.nv_range ?? 1)) {
         for (let row = 0; row < ROWNO; row++) {
-            for (let col = next_rmin[row]; col <= next_rmax[row]; col++) {
+            // vision.c:686 `start = max(1, u.ux - ranges[dy])`: night vision
+            // never puts column 0 in sight, so a hero in column 1 does not
+            // send <0,y> to newsym(), which would report it.
+            const start = Math.max(1, next_rmin[row]);
+            for (let col = start; col <= next_rmax[row]; col++) {
                 if (!(next[row][col] & COULD_SEE)) continue;
                 if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1)
                     next[row][col] |= IN_SIGHT;
@@ -1104,7 +1109,7 @@ function* recalc_steps(control, env) {
                             // wall at the end of a dark hallway is not seen,
                             // and the not-in-sight arm below repaints it
                             // when it was in sight before.
-                            yield* draw(col, row);
+                            if (col !== 0) yield* draw(col, row);
                         }
                     } else {
                         next_row[col] |= IN_SIGHT;
@@ -1118,9 +1123,12 @@ function* recalc_steps(control, env) {
                     loc.waslit = 0;
                     yield* draw(col, row);
                 } else {
+                    // vision.c:821-836 not_in_sight. C skips column 0 here
+                    // alone ("avoid calling it for <0,y>"), where newsym()
+                    // would report the square through impossible().
                     if ((ov & IN_SIGHT)
                         || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
-                        yield* draw(col, row);
+                        if (col !== 0) yield* draw(col, row);
                     }
                 }
             }

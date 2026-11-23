@@ -17,7 +17,7 @@ import { clone_mon } from './makemon.js';
 import { remove_monster } from './makemon.js';
 import { m_at, mcalcmove } from './mon.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE } from './terminal.js';
-import { def_monsyms } from './drawing_data.js';
+import { showsym_mon } from './symbols.js';
 import { show_glyph_cell } from './display.js';
 import { NUMMONS } from './monst_data.js';
 import { rn2_on_display_rng } from './rng.js';
@@ -314,9 +314,10 @@ export function detect_wsegs(worm, use_detection_glyph) {
                  ? TERM_INVERSE : 0;
 
     while (curr !== w.wheads[worm.wormno]) {
-        show_glyph_cell(curr.wx, curr.wy, def_monsyms[shown.mlet] || '?',
+        show_glyph_cell(curr.wx, curr.wy, showsym_mon(shown.mlet),
                         shown.mcolor ?? NO_COLOR, false, attr,
-                        { kind: 'mon', mon: worm });
+                        { kind: 'mon', mon: worm, mnum: what_tail,
+                          female: !!worm.female, detected: !!use_detection_glyph });
         curr = curr.nseg;
     }
 }

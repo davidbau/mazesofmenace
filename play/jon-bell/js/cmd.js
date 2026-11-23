@@ -10128,7 +10128,7 @@ function _Levitation() {
 function _sticks() { return sticks_real(_hero_youmonst().data); } /* C: sticks(gy.youmonst.data), the hero, not u.ustuck */
 function _is_pool(x, y) { return flooreffects_is_pool(x, y); }
 function _Underwater() { return !!game.u?.uinwater; }
-function _Deaf() { const p = game.u?.uprops?.[DEAF]; return !!((p?.intrinsic | 0) || (p?.extrinsic | 0)) || !!(game.u?.uroleplay?.deaf); }
+function _Deaf() { const p = game.u?.uprops?.[DEAF]; return !!((p?.intrinsic | 0) || (p?.extrinsic | 0) || (game.u?.HDeaf | 0)) || !!(game.u?.uroleplay?.deaf); }
 /* was `return what` — a second stand-in for the same function; see the
  * hliquid note above. */
 function _hliquid(what) { return hliquid(what); }
@@ -12318,23 +12318,13 @@ async function _pickup_lift_list(pickOrder, _oldcap) {
          * addinv: the page shows the post-add capacity (flush_screen display.c:2286). */
         const prinvCap = (game.disp?.botl | 0) ? newcap : (game._botlPaintedCap ?? _oldcap);
         const encMsg = _encumber_msg_text(_oldcap, newcap);
-        if (game.u)
-            game.u._oldcap = newcap;
         if (encMsg) {
             /* disp.botl = TRUE comes AFTER the pline (pickup.c:1992): the --More-- the
              * encumber line raises still shows the pre-change status row. */
-            if (game._encumberAfterTrap) {
-                game._encumberAfterTrap.text = encMsg;
-                game._pickupEncMorePending = { oldcap: prinvCap, prinvText: prinvLine };
-                if (game.disp) game.disp.botl = true;
-                return picked;
-            }
             /* C topl.c:251-282 updates the same topline as pickup_prinv.
              * A pline during pickup can move the result into the pending
              * buffer; append through the shared helper to retain that text
              * and honor WIN_STOP after an escaped --More--. */
-            _result_append_join(game, encMsg);
-            if (game.disp) game.disp.botl = true;
             game._pickupEncMorePending = { oldcap: prinvCap, prinvText: prinvLine };
         }
     }
@@ -13478,8 +13468,9 @@ async function dispatch_command(command, outcome = {}, queued = false) {
                 return true;
             }
             await display_text_window([discovery_class_title(choice.key), ...entries]);
+        } else {
+            game._pending_message = '';
         }
-        game._pending_message = '';
         await flush_screen(1);
         game.context.move = 0;
     }
@@ -13625,7 +13616,6 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         const lines_hist = dlb_file_lines(HISTORY);
         g._pending_message = '';
         if (lines_hist) await display_text_window(lines_hist);
-        g._pending_message = '';
         await flush_screen(1);
         outcome.value = ECMD_OK;
         g.context.move = 0;
@@ -14855,6 +14845,7 @@ async function _getpos_menu(gloc) {
         }
     }
     let curPage = 0, titleErased = false, shownFull = false, lastWinRows = 0;
+    let counting = false, count = 0, reset_count = true;
     try {
     for (;;) {
         const pg = pages[curPage];
@@ -14879,7 +14870,18 @@ async function _getpos_menu(gloc) {
             disp.cursorRow = windowLines.length - 1;
         }
         const key = await nhgetch();
-        const code = typeof key === 'number' ? key : (key?.charCodeAt(0) ?? 0);
+        const raw = typeof key === 'number' ? key : (key?.charCodeAt(0) ?? 0);
+        const hit = pg.find((r) => r.e && r.e.accel === String.fromCharCode(raw));
+        const resp = ' 0123456789\x1b\n\r' + (g.mapped_menu_cmds || '') + DEFAULT_MENU_CMDS;
+        if (!hit && raw !== 0 && raw !== (g._ttyDismissMore | 0) && !resp.includes(String.fromCharCode(raw))) continue;
+        if (raw === 27) g._ttyDismissMore = 1;
+        const code = hit ? raw : map_menu_cmd(raw);
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
+        if (!hit && code >= 48 && code <= 57) {
+            count = count * 10 + (code - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
         /* C wintty.c:1700-1730: search the entire menu, including other pages.
          * getline.c:213 erases row 0; it stays erased until a page redraw. */
         if (code === 58 /* MENU_SEARCH */) {
@@ -14892,7 +14894,8 @@ async function _getpos_menu(gloc) {
             titleErased = true;
             continue;
         }
-        if (code === 27 || code === 10 || code === 13) return null;
+        if (code === 27) { if (counting) continue; return null; }
+        if (code === 0 || code === 10 || code === 13) return null;
         if (code === 32 || code === 62 /* '>' */) {
             if (curPage < pages.length - 1) { curPage++; titleErased = false; continue; }
             /* C wintty.c:1627-1630: only space finishes on the last page. */
@@ -14900,7 +14903,8 @@ async function _getpos_menu(gloc) {
             continue;
         }
         if (code === 60 /* '<' */) { if (curPage > 0) { curPage--; titleErased = false; } continue; }
-        const hit = pg.find((r) => r.e && r.e.accel === String.fromCharCode(code));
+        if (code === 94 /* '^' */) { if (curPage > 0) { curPage = 0; titleErased = false; } continue; }
+        if (code === 124 /* '|' */) { if (curPage < pages.length - 1) { curPage = pages.length - 1; titleErased = false; } continue; }
         if (hit) return { x: hit.e.x, y: hit.e.y };
     }
     } finally {
@@ -15595,7 +15599,8 @@ async function _do_look_lookat(x, y) {
             dbaseEntry: arboreal ? 'tree' : null, /* dat/data.base has no "wall" entry */
         };
     }
-    if (cell && cell.typ === CLOUD) {
+    if (cell && cell.typ === CLOUD
+        && !(dglyph?.cls === GLYPHCLS_CMAP && dglyph.cmap != null && dglyph.cmap !== 47)) {
         const tg = terrain_glyph(cell, x, y);
         return {
             kind: 'cmap-cloud',
@@ -17397,6 +17402,7 @@ async function doherecmdmenu() {
         }
         await _show();
     }
+    g._pending_message = '';
     const noOverlay = WIN_COL <= 1 || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
     if (!noOverlay) {
         docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
@@ -17470,7 +17476,6 @@ async function doherecmdmenu() {
     } else if (pick >= 0)
         game._uncomputable_herecmdmenu = `act_on_act ${items[pick].act}`;
 
-    g._pending_message = '';
     await flush_screen(1);
     /* C cmd.c:4336-4338 — here_cmd_menu always returns '\0', so ECMD_OK. */
     return ECMD_OK;
@@ -19683,6 +19688,8 @@ async function handler_rebind_keys_add(keyfirst) {
          * (redotoplin, topl.c:122-133) — either way it parks at the END of
          * the whole toplines string, not at this prompt's own length. */
         set_cursor(_topl_visualLen(game._pending_message || 'Bind which key? '), 0);
+        /* tty_putstr leaves the cursor just past the topline text (cw->curx = 16) */
+        set_cursor(String(game._pending_message || 'Bind which key? ').length, 0);
         key = (await pgetchar()) & 0xff;
         if (!key || key === 27) return true;
     }
@@ -19733,6 +19740,7 @@ async function handler_rebind_keys_add(keyfirst) {
              * toplines string either way, so a joined prompt must not be laid
              * out from its own column 0. */
             set_cursor(_topl_visualLen(game._pending_message || 'Bind which key? '), 0); /* cursor left past the topline text */
+            set_cursor(String(game._pending_message || 'Bind which key? ').length, 0); /* cursor left past the topline text */
             key = (await pgetchar()) & 0xff;
             if (!key || key === 27) return true;
         }
@@ -19885,13 +19893,20 @@ async function read_getlin(prompt) {
         let doprev = false, prevIdx = 0;
         for (;;) {
             const key = await nhgetch();
-            if (key === 27 || key === 3) {
+            if (key === 27) {
                 if (buf) {
                     buf = '';
                     await paint(true); /* getline.c:91-95 clear + re-add from home */
                     continue;
                 }
                 return finish('\x1b');
+            }
+            if (key === 21 /* kill_char = VKILL = ^U */) {
+                /* C getline.c:196-208: putsyms("\b \b") back to the start of the
+                 * input, emptying the line without clearing wrapped rows. */
+                buf = '';
+                await paint();
+                continue;
             }
             if (key === 16) {
                 /* ^P — C getline.c:106-119: msg_window:single (or combination

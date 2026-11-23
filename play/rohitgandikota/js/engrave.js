@@ -145,7 +145,7 @@ export function wipeout_text(engr, cnt, seed) {
                 use_rubout = rn2(4);
             } else {
                 nxt = seed % lth;
-                seed = (seed * 31) % (BUFSZ - 1);
+                seed = (Math.imul(seed, 31) >>> 0) % (BUFSZ - 1);
                 use_rubout = seed & 3;
             }
             if (s[nxt] === ' ')
@@ -168,7 +168,7 @@ export function wipeout_text(engr, cnt, seed) {
                         if (!seed) {
                             j = rn2(wipeto.length);
                         } else {
-                            seed = (seed * 31) % (BUFSZ - 1);
+                            seed = (Math.imul(seed, 31) >>> 0) % (BUFSZ - 1);
                             j = seed % wipeto.length;
                         }
                         s[nxt] = wipeto[j];

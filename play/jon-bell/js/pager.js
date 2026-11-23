@@ -474,9 +474,8 @@ export async function dohelp() {
         const dispfile = picked && DISPFILE_TOPICS[picked.f];
         const filelines = dispfile ? dlb_file_lines(dispfile) : null;
         if (picked && picked.f === 'hmenu_doextversion') {
-            g._pending_message = '';
+            if (!fullScreen) g._pending_message = '';
             await display_text_window(doextversion());
-            g._pending_message = '';
             await flush_screen(1);
             return ECMD_OK;
         }
@@ -503,7 +502,6 @@ export async function dohelp() {
              * keeps its --More-- for the new menu; doextlist pages it. */
             if (!fullScreen) g._pending_message = '';
             await doextlist(false);
-            g._pending_message = '';
             await flush_screen(1);
             return ECMD_OK;
         }
@@ -513,19 +511,17 @@ export async function dohelp() {
          * dat file. */
         if (picked && (picked.f === 'domenucontrols' || picked.f === 'docontact'
                        || picked.f === 'dokeylist' || picked.f === 'option_help')) {
-            g._pending_message = '';
+            if (!fullScreen) g._pending_message = '';
             await (picked.f === 'domenucontrols' ? domenucontrols()
                    : picked.f === 'docontact' ? docontact()
                    : picked.f === 'option_help' ? option_help()
                    : dokeylist());
-            g._pending_message = '';
             await flush_screen(1);
             return ECMD_OK;
         }
         if (filelines) {
-            g._pending_message = '';
+            if (!fullScreen) g._pending_message = '';
             await display_text_window(filelines);
-            g._pending_message = '';
             await flush_screen(1);
             return ECMD_OK;
         }
@@ -554,7 +550,7 @@ export async function dohelp() {
         await flush_screen(1);
         await nhgetch();  /* pager dismiss key (space/ESC) */
     }
-    g._pending_message = '';
+    if (!fullScreen) g._pending_message = '';
     await flush_screen(1);
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;

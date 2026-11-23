@@ -64,7 +64,7 @@ import { find_drawbridge, destroy_drawbridge } from './dbridge.js';
 import { rn2, rn1, rnd, d, rn2_on_display_rng } from './rng.js';
 import { sgn, dist2, distmin, s_suffix } from './hacklib.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
-import { ATTKS, MONSYMS, PMNAMES, NUMMONS } from './monst_data.js';
+import { ATTKS, MONSYMS, PMNAMES } from './monst_data.js';
 import { is_animal, mindless, nohands, dmgtype, can_blow, amorphous,
          passes_walls, noncorporeal, unsolid, haseyes, hates_light,
          resists_blnd, attacktype, verysmall, throws_rocks,
@@ -96,7 +96,6 @@ import { isok, W_ARMH, M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE,
 import { Is_container, Has_contents, bimanual, is_plural } from './obj.js';
 import { DEADMONSTER, helpless, MON_WEP } from './monst.js';
 import { canletgo } from './do.js';
-import { def_monsyms } from './drawing_data.js';
 import { genders as genders_tbl } from './role_data.js';
 import { impossible } from './pline.js';
 
@@ -1620,21 +1619,20 @@ const Half_spell_damage = () => !!(game.u.intrinsic?.HHalf_spell_damage
 // ordinary view. The forced monster glyph is intentional even while blind.
 async function you_aggravate(mtmp) {
     const [{ cls, docrt, show_glyph_cell, newsym, canspotmon,
-             map_invisible, more, pline },
-           { noit_mon_nam }, { Hallucination }, { You_feel },
+             map_invisible, more, pline, mon_to_glyph },
+           { noit_mon_nam }, { You_feel },
            { unconscious }] = await Promise.all([
         import('./display.js'), import('./do_name.js'),
-        import('./youprop.js'), import('./pline.js'), import('./trap.js'),
+        import('./pline.js'), import('./trap.js'),
     ]);
 
     const name = noit_mon_nam(mtmp);
     await pline(`For some reason, ${s_suffix(name)} presence is known to you.`);
     await cls();
 
-    const shown = game.mons[Hallucination()
-        ? rn2_on_display_rng(NUMMONS) : mtmp.mnum];
-    show_glyph_cell(mtmp.mx, mtmp.my, def_monsyms[shown.mlet] || '?',
-                    shown.mcolor, false, 0, { kind: 'mon', mon: mtmp });
+    const glyph = mon_to_glyph(mtmp, rn2_on_display_rng);
+    show_glyph_cell(mtmp.mx, mtmp.my, glyph.ch, glyph.color,
+                    glyph.decgfx, 0, glyph.glyph);
     newsym(game.u.ux, game.u.uy);
     await You_feel(`aggravated at ${noit_mon_nam(mtmp)}.`);
     await more();

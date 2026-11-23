@@ -162,7 +162,7 @@ function uHallu(u) {
 /* C youprop.h:125: #define Deaf (HDeaf || EDeaf || u.uroleplay.deaf) */
 function uDeaf(u) {
     const p = u.uprops?.[DEAF];
-    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0) || u.uroleplay?.deaf);
+    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0) || (u.HDeaf | 0) || u.uroleplay?.deaf);
 }
 
 function body_part_fingertip() { return body_part(FINGERTIP); }

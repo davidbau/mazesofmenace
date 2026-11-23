@@ -12,8 +12,8 @@ import { strsubst } from './hacklib.js';
 import { safe_qbuf } from './objnam.js';
 import { ansimpleoname } from './objnam.js';
 import { docrt } from './display.js';
-import { add_menu_heading } from './options.js';
-import { QBUFSZ } from './const.js';
+import { add_menu_heading, hide_unhide_msgtypes } from './options.js';
+import { QBUFSZ, MSGTYP_MASK_REP_SHOW } from './const.js';
 import { BUFSZ, CONTAINED_SYM } from './const.js';
 import { def_oc_syms } from './drawing_data.js';
 import { MINV_PICKMASK } from './const.js';
@@ -964,7 +964,10 @@ export async function look_here(obj_cnt, lhflags) {
 
 // src/invent.c:4319 dolook()
 export async function dolook() {
-    return await look_here(0, 0);
+    hide_unhide_msgtypes(true, MSGTYP_MASK_REP_SHOW);
+    const res = await look_here(0, 0);
+    hide_unhide_msgtypes(false, MSGTYP_MASK_REP_SHOW);
+    return res;
 }
 
 

@@ -2103,6 +2103,9 @@ export async function bury_objs(x, y) {
               && costly_spot(x, y));
 
     for (const otmp of level_objects_pile(x, y)) {
+        // Burying the ball frees its chain. C reads the next link afterward.
+        if (otmp.where !== OBJ_FLOOR)
+            continue;
         if (costly && !game.context?.mon_moving) {
             loss += await stolen_value(otmp, x, y, !!shkp.mpeaceful, true);
             if (otmp.oclass !== OCLASSES.COIN_CLASS)
@@ -2119,6 +2122,28 @@ export async function bury_objs(x, y) {
     if (costly && loss) {
         await You(`owe ${shkname(shkp)} ${loss} ${currency(loss)} for burying merchandise.`);
     }
+}
+
+// src/dig.c:2288 wiz_debug_cmd_bury().
+export async function wiz_debug_cmd_bury() {
+    let before = 0, after = 0;
+    for (let x = game.u.ux - 1; x <= game.u.ux + 1; x++) {
+        for (let y = game.u.uy - 1; y <= game.u.uy + 1; y++) {
+            if (!isok(x, y))
+                continue;
+            before += level_objects_pile(x, y).length;
+            await bury_objs(x, y);
+            after += level_objects_pile(x, y).length;
+        }
+    }
+    const diff = before - after;
+    if (!before)
+        await pline('No objects here or adjacent to bury.');
+    else if (!diff)
+        await pline('No objects buried.');
+    else
+        await pline(`${diff} object${diff === 1 ? '' : 's'} buried.`);
+    return ECMD_OK;
 }
 
 // src/dig.c:2086 unearth_objs(); move objects from buriedobjlist to
