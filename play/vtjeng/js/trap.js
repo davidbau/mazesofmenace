@@ -186,7 +186,7 @@ import {
 } from './dbridge.js';
 import { getdir, xytodir, ynq } from './cmd.js';
 import {
-    Monnam, capitalizedMonsterName, mon_nam, monsterCommonName, mon_pmname,
+    Monnam, mon_nam, mon_pmname,
     noit_Monnam, y_monnam, YMonnam, rndcolor, hliquid, hcolor, rndmonnam,
     a_monnam, christen_monst, obj_pmname,
 } from './do_name.js';
@@ -202,7 +202,7 @@ import {
     In_hell,
     single_level_branch,
     on_level,
-    level_difficulty,
+    level_difficulty_steps,
     u_on_newpos,
     ceiling,
     surface,
@@ -231,7 +231,9 @@ import {
 } from './hack.js';
 import { goodpos } from './teleport.js';
 import { ordin, push_front, sgn, upstart, lcase } from './hacklib.js';
-import { impossible, livelog_printf, youFeel, norep_printer } from './pline.js';
+import {
+    impossible, impossible_printer, livelog_printf, youFeel, norep_printer,
+} from './pline.js';
 import { messageAt } from './startup_a11y.js';
 import {
     stackobj,
@@ -352,7 +354,7 @@ import {
     Teleport_control, Teleportation, Wwalking, Punished,
 } from './youprop.js';
 import { dungeon_at } from './dungeon_table.js';
-import { sync_impossible } from './source_steps.js';
+import { finish_steps, sync_impossible } from './source_steps.js';
 
 // C ref: trap.c sokoban_guilt() (7036-7055). Sokoban is the current-level
 // flag. Conduct and luck remain the separate player values initialized by
@@ -856,7 +858,8 @@ function mk_trap_statue(x, y, env) {
                     return addition.then(transfer);
             }
             statue.owt = weight(statue, donorEnv);
-            mongone(monster, donorEnv);
+            // maketrap() waits for a promise from the donor's removal.
+            return mongone(monster, donorEnv);
         };
         return transfer();
     };
@@ -2313,7 +2316,7 @@ export async function could_untrap(verbosely, check_floor, state = game) {
                || !state.youmonst?.data?.mmove) {
         buf = 'And just how do you expect to do that?';
     } else if (u.ustuck && sticks(state.youmonst?.data)) {
-        buf = `You'll have to let go of ${monsterCommonName(u.ustuck, state)} first.`;
+        buf = `You'll have to let go of ${mon_nam(u.ustuck, state)} first.`;
     } else if (u.ustuck
                || (welded(state.uwep, state) && bimanual(state.uwep, state))) {
         buf = `Your ${makeplural(body_part(HAND, state.youmonst))} seem to be too busy for that.`;
@@ -2475,7 +2478,7 @@ async function try_disarm(ttmp, force_failure, state = game) {
 
     /* Test for monster first, monsters are displayed instead of trap. */
     if (mtmp && (!mtmp.mtrapped || !holdingtrap)) {
-        await ttyPline(`${capitalizedMonsterName(mtmp, state)} is in the way.`, state);
+        await ttyPline(`${Monnam(mtmp, state)} is in the way.`, state);
         return 0;
     }
     /* We might be forced to move onto the trap's location. */
@@ -2533,7 +2536,7 @@ async function try_disarm(ttmp, force_failure, state = game) {
                         }
                     }
                     if (mtmp.mtrapped)
-                        await ttyPline(`${capitalizedMonsterName(mtmp, state)} remains entangled.`, state);
+                        await ttyPline(`${Monnam(mtmp, state)} remains entangled.`, state);
                 }
             } else if (under_u) {
                 await dotrap(ttmp, FAILEDUNTRAP, state);
@@ -2559,7 +2562,7 @@ async function reward_untrap(ttmp, mtmp, state = game) {
             && mtmp.data?.mlet !== S_HUMAN) {
             mtmp.mpeaceful = 1;
             set_malign(mtmp, state); /* reset alignment */
-            await ttyPline(`${capitalizedMonsterName(mtmp, state)} is grateful.`, state);
+            await ttyPline(`${Monnam(mtmp, state)} is grateful.`, state);
         }
         /* Helping someone out of a trap is a nice thing to do. */
         if (!rn2(3) && !rnl(8) && state.u.ualign?.type === A_LAWFUL) {
@@ -2582,7 +2585,7 @@ async function disarm_holdingtrap(ttmp, state = game) {
     const mtmp = m_at(ttmp.tx, ttmp.ty, state);
     if (mtmp) {
         mtmp.mtrapped = 0;
-        await ttyPline(`You extract ${monsterCommonName(mtmp, state)} from ${which} ${(ttmp.ttyp === BEAR_TRAP) ? 'bear trap' : 'web'}.`, state);
+        await ttyPline(`You extract ${mon_nam(mtmp, state)} from ${which} ${(ttmp.ttyp === BEAR_TRAP) ? 'bear trap' : 'web'}.`, state);
         await reward_untrap(ttmp, mtmp, state);
     } else if (ttmp.ttyp === BEAR_TRAP) {
         await ttyPline(`You disarm ${which} bear trap.`, state);
@@ -2674,13 +2677,13 @@ async function disarm_shooting_trap(ttmp, otyp, state = game) {
 async function try_lift(mtmp, ttmp, xtra_wt, stuff, state = game) {
     if (calc_capacity(xtra_wt, state) >= HVY_ENCUMBER) {
         const reason = stuff ? 'carrying too much' : 'too heavy';
-        await ttyPline(`${capitalizedMonsterName(mtmp, state)} is ${reason} for you to lift.`, state);
+        await ttyPline(`${Monnam(mtmp, state)} is ${reason} for you to lift.`, state);
         if (!ttmp.madeby_u && !mtmp.mpeaceful && mtmp.mcanmove
             && !mindless(mtmp.data) && mtmp.data?.mlet !== S_HUMAN
             && rnl(10) < 3) {
             mtmp.mpeaceful = 1;
             set_malign(mtmp, state);
-            await ttyPline(`${capitalizedMonsterName(mtmp, state)} thinks it was nice of you to try.`, state);
+            await ttyPline(`${Monnam(mtmp, state)} thinks it was nice of you to try.`, state);
         }
         return 0;
     }
@@ -2693,7 +2696,7 @@ async function help_monster_out(mtmp, ttmp, state = game) {
     const u = state.u;
 
     if (!mtmp.mtrapped) {
-        await ttyPline(`${capitalizedMonsterName(mtmp, state)} isn't trapped.`, state);
+        await ttyPline(`${Monnam(mtmp, state)} isn't trapped.`, state);
         return 0;
     }
     /* Do you have the necessary capacity to lift anything? */
@@ -2703,7 +2706,7 @@ async function help_monster_out(mtmp, ttmp, state = game) {
     /* Will our hero succeed? */
     const uprob = untrap_prob(ttmp, state);
     if (uprob !== 0 && !helpless(mtmp)) {
-        await ttyPline(`You try to reach out your ${makeplural(body_part(ARM, state.youmonst))}, but ${monsterCommonName(mtmp, state)} backs away skeptically.`, state);
+        await ttyPline(`You try to reach out your ${makeplural(body_part(ARM, state.youmonst))}, but ${mon_nam(mtmp, state)} backs away skeptically.`, state);
         return 1;
     }
 
@@ -2724,23 +2727,23 @@ async function help_monster_out(mtmp, ttmp, state = game) {
     }
     /* need to do cockatrice check first if sleeping or paralyzed */
     if (uprob) {
-        await ttyPline(`You try to grab ${monsterCommonName(mtmp, state)}, but cannot get a firm grasp.`, state);
+        await ttyPline(`You try to grab ${mon_nam(mtmp, state)}, but cannot get a firm grasp.`, state);
         if (mtmp.msleeping) {
             mtmp.msleeping = 0;
-            await ttyPline(`${capitalizedMonsterName(mtmp, state)} awakens.`, state);
+            await ttyPline(`${Monnam(mtmp, state)} awakens.`, state);
         }
         return 1;
     }
 
-    await ttyPline(`You reach out your ${makeplural(body_part(ARM, state.youmonst))} and grab ${monsterCommonName(mtmp, state)}.`, state);
+    await ttyPline(`You reach out your ${makeplural(body_part(ARM, state.youmonst))} and grab ${mon_nam(mtmp, state)}.`, state);
 
     if (mtmp.msleeping) {
         mtmp.msleeping = 0;
-        await ttyPline(`${capitalizedMonsterName(mtmp, state)} awakens.`, state);
+        await ttyPline(`${Monnam(mtmp, state)} awakens.`, state);
     } else if (mtmp.mfrozen && !rn2(mtmp.mfrozen)) {
         mtmp.mcanmove = 1;
         mtmp.mfrozen = 0;
-        await ttyPline(`${capitalizedMonsterName(mtmp, state)} stirs.`, state);
+        await ttyPline(`${Monnam(mtmp, state)} stirs.`, state);
     }
 
     /* is the monster too heavy? */
@@ -2757,7 +2760,7 @@ async function help_monster_out(mtmp, ttmp, state = game) {
             return 1;
     }
 
-    await ttyPline(`You pull ${monsterCommonName(mtmp, state)} out of the pit.`, state);
+    await ttyPline(`You pull ${mon_nam(mtmp, state)} out of the pit.`, state);
     mtmp.mtrapped = 0;
     await reward_untrap(ttmp, mtmp, state);
     await fill_pit(mtmp.mx, mtmp.my, state);
@@ -2770,8 +2773,12 @@ async function disarm_box(box, force, confused, state = game) {
         const ch = acurr(state, A_DEX) + state.u.ulevel;
         let effective_ch = ch;
         if (state.urole?.mnum === PM_ROGUE) effective_ch *= 2;
+        // trap.c:5801-5802. level_difficulty() is rnd()'s argument, so C
+        // calls it, and prints builds_up()'s report, before the draw.
         if (!force && (confused || Fumbling(state.u)
-                       || rnd(75 + Math.trunc(level_difficulty(state) / 2))
+                       || rnd(75 + Math.trunc(await finish_steps(
+                           level_difficulty_steps(state),
+                           impossible_printer(state)) / 2))
                           > effective_ch)) {
             await chest_trap(box, FINGER, true, state);
             if (state.program_state?.gameover) return;
@@ -3008,8 +3015,11 @@ export async function untrap(force, rx, ry, container, state = game) {
             const ch = 15 + (state.urole?.mnum === PM_ROGUE
                 ? u.ulevel * 3 : u.ulevel);
             await exercise(A_DEX, true, state);
+            // trap.c:6073-6074, as in disarm_box() above.
             if (!force && (confused || Fumbling(state.u)
-                           || rnd(75 + Math.trunc(level_difficulty(state) / 2))
+                           || rnd(75 + Math.trunc(await finish_steps(
+                               level_difficulty_steps(state),
+                               impossible_printer(state)) / 2))
                               > ch)) {
                 await ttyPline('You set it off!', state);
                 await b_trapped('door', FINGER, state);
@@ -3140,7 +3150,7 @@ export async function openholdingtrap(mon, state = game) {
         if (canspotmon(mon, state)) {
             noticed = true;
             await ttyPline(
-                `${capitalizedMonsterName(mon, state)} is released from ${which}${trapdescr}.`,
+                `${Monnam(mon, state)} is released from ${which}${trapdescr}.`,
                 state,
             );
         } else if (cansee(t.tx, t.ty, state) && t.tseen) {
@@ -3489,7 +3499,8 @@ export async function activate_statue_trap(
 export async function b_trapped(item, bodypart, state = game, env = {}) {
     const random = env.random ?? coreRandom;
     const message = env.message ?? ttyPline;
-    const lvl = level_difficulty(state);
+    const lvl = await finish_steps(level_difficulty_steps(state),
+        impossible_printer(state));
     const dmg = random.rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
 
     // Soundeffect(se_kaboom, 80) is a sound-backend macro; it has no

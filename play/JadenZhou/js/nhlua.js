@@ -66,6 +66,15 @@ import { sanctum_lua_files } from './sanctum_lua.js';
 import { knox_lua_files } from './knox_lua.js';
 import { lairs_lua_files } from './lairs_lua.js';
 import { endgame_lua_files } from './endgame_lua.js';
+import { tut_lua_files } from './tut_lua.js';
+import { pline } from './display.js';
+import { tty_display_nhwindow } from './wintty.js';
+import { parse_conf_str, parse_config_line } from './options.js';
+import { cmd_from_ecname } from './cmd.js';
+import { useupall, freeinv, addinv_nomerge, obfree } from './invent.js';
+import { setworn, setnotworn } from './worn.js';
+import { init_uhunger } from './eat.js';
+import { objects } from './objects.js';
 
 // C's impossible() (pline.c) is not ported yet.
 function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -486,9 +495,271 @@ function nhl_is_genocided(...args) {
     return undefined;
 }
 
+// C ref: nhlua.c nhl_pline()
+/* pline("It hits!") */
+/* pline("It hits!", true) -- with --more-- */
+async function nhl_pline(...args) {
+    const argc = args.length;
+
+    if (argc === 1 || argc === 2) {
+        await pline(`${luaL_checkstring(args[0])}`);
+        if (args[1]) /* lua_toboolean(L, 2) */
+            await tty_display_nhwindow(game.WIN_MESSAGE, TRUE); /* --more-- */
+    } else
+        nhl_error(null, 'Wrong args');
+
+    return 0;
+}
+
+// C ref: nhlua.c nhl_parse_config()
+/* parse_config("OPTIONS=!color") */
+function nhl_parse_config(...args) {
+    const argc = args.length;
+
+    if (argc === 1)
+        parse_conf_str(luaL_checkstring(args[0]), parse_config_line);
+    else
+        nhl_error(null, 'Wrong args');
+
+    return 0;
+}
+
+// C ref: nhlua.c nhl_get_cmd_key()
+/* returns the visual interpretation of the key bound to an extended command,
+   or the ext cmd name if not bound to any key */
+/* local helpkey = eckey("help"); */
+function nhl_get_cmd_key(...args) {
+    const argc = args.length;
+
+    if (argc === 1) {
+        const cmd = luaL_checkstring(args[0]);
+        const key = cmd_from_ecname(cmd);
+
+        return key;
+    }
+
+    return undefined;
+}
+
+// C ref: decl.h nhcb_name[] (NHCB_CMD_BEFORE .. NHCB_END_TURN)
+export const nhcb_name = [ "cmd_before", "level_enter", "level_leave", "end_turn" ];
+
+// decl.c nhcb_counts[NUM_NHCB]
+export function nhcb_counts() {
+    if (!game.nhcb_counts)
+        game.nhcb_counts = new Array(C.NUM_NHCB).fill(0);
+    return game.nhcb_counts;
+}
+
+// C ref: nhlua.c nhl_callback()
+/* add or remove a lua function callback */
+/* callback("level_enter", "function_name"); */
+/* callback("level_enter", "function_name", true); */
+/* level_enter, level_leave, cmd_before */
+function nhl_callback(...args) {
+    const argc = args.length;
+    let i;
+    let rm, fn, cb;
+
+    if (!game.luacore) {
+        panic("nh luacore not inited");
+        /*NOTREACHED*/
+        return 0;
+    }
+    if (argc === 2 || argc === 3) {
+        if (argc === 2) {
+            rm = FALSE;
+            fn = luaL_checkstring(args[1]);
+            cb = luaL_checkstring(args[0]);
+        } else {
+            rm = !!args[2]; /* lua_toboolean(L, -1) */
+            fn = luaL_checkstring(args[1]);
+            cb = luaL_checkstring(args[0]);
+        }
+        for (i = 0; i < C.NUM_NHCB; i++)
+            if (cb === nhcb_name[i])
+                break;
+        if (i >= C.NUM_NHCB)
+            return 0;
+
+        const counts = nhcb_counts();
+        if (rm) {
+            counts[i]--;
+            if (counts[i] < 0)
+                impossible("nh.callback counts are wrong");
+        } else {
+            counts[i]++;
+        }
+
+        /* lua_getglobal(gl.luacore, rm ? "nh_callback_rm" : "nh_callback_set");
+           nhl_pcall_handle(gl.luacore, 2, 0, "nhl_callback", NHLpa_panic) */
+        const G = game.luacore.globals;
+        nhl_pcall_handle(game.luacore, G[rm ? "nh_callback_rm" : "nh_callback_set"],
+                         [cb, fn], "nhl_callback", NHLpa_panic);
+    }
+    return 0;
+}
+
+// memcpy() of a struct: plain sub-structs and arrays are copied, pointer
+// members (named in 'ptrs') keep pointing at the same thing
+function struct_copy(v, ptrs = []) {
+    if (Array.isArray(v))
+        return v.map(e => struct_copy(e));
+    if (v && typeof v === 'object') {
+        const r = {};
+        for (const k of Object.keys(v))
+            r[k] = ptrs.includes(k) ? v[k] : struct_copy(v[k]);
+        return r;
+    }
+    return v;
+}
+
+// the pointer members of struct you
+const u_ptrs = [ 'ustuck', 'usteed' ];
+
+// C ref: nhlua.c nhl_gamestate()
+/* store or restore game state */
+/*
+ * Currently handles
+ *   turn counter,
+ *   hero inventory and hunger,
+ *   hero attributes and skills and conducts (all via 'struct u'),
+ *   object discoveries,
+ *   monster generation and vanquished statistics.
+ * NOTE: wouldn't work after restore if game has been saved, so the
+ * #save command ('S') is disabled during the tutorial.
+ */
+/* gamestate(); -- save state */
+/* gamestate(true); -- restore state */
+async function nhl_gamestate(...args) {
+    const g = game;
+    let wornmask;
+    let otmp;
+    const argc = args.length;
+    const reststate = (argc > 0) ? !!args[argc - 1] : FALSE;
+    let otyp;
+
+    if (reststate && g.gmst_stored) {
+        const cur_uz = { ...g.u.uz }, cur_uz0 = { ...g.u.uz0 };
+
+        /* restore game state */
+        g.moves = g.gmst_moves;
+        await pline(`Resetting time to move #${g.moves}.`);
+        g.gmst_moves = 0;
+
+        g.lastinvnr = 51;
+        while (g.invent)
+            useupall(g.invent);
+        while ((otmp = g.gmst_invent) != null) {
+            wornmask = otmp.owornmask;
+            otmp.owornmask = 0;
+            /* extract_nobj(otmp, &gg.gmst_invent) */
+            g.gmst_invent = otmp.nobj;
+            otmp.nobj = null;
+            otmp.where = 'OBJ_FREE';
+            await addinv_nomerge(otmp);
+            if (wornmask)
+                setworn(otmp, wornmask);
+        }
+        /* memcpy(&u, gg.gmst_ubak, sizeof u) */
+        const ubak = g.gmst_ubak;
+        for (const k of Object.keys(g.u))
+            if (!Object.hasOwn(ubak, k))
+                delete g.u[k];
+        Object.assign(g.u, struct_copy(ubak, u_ptrs));
+        g.disco = struct_copy(g.gmst_disco);
+        g.mvitals = struct_copy(g.gmst_mvitals);
+        /* clear user-given object type names */
+        for (otyp = 0; otyp < NUM_OBJECTS; otyp++)
+            if (objects[otyp].oc_uname) {
+                objects[otyp].oc_uname = null;
+            }
+        /* some restored state would confuse the level change in progress */
+        g.u.uz = cur_uz, g.u.uz0 = cur_uz0;
+        init_uhunger();
+        free_tutorial(); /* release gg.gmst_XYZ */
+        g.gmst_stored = FALSE;
+        g.spl_book = struct_copy(g.gmst_spl_book);
+    } else if (!reststate && !g.gmst_stored) {
+        /* store game state */
+        g.gmst_moves = g.moves;
+        g.gmst_invent = null;
+        while ((otmp = g.invent) != null) {
+            wornmask = otmp.owornmask;
+            setnotworn(otmp);
+            freeinv(otmp);
+            otmp.owornmask = wornmask; /* flag for later restore */
+            otmp.nobj = g.gmst_invent;
+            g.gmst_invent = otmp;
+        }
+        g.lastinvnr = 51; /* next inv letter to try to use will be 'a' */
+        g.gmst_ubak = struct_copy(g.u, u_ptrs);
+        g.gmst_disco = struct_copy(g.disco);
+        g.gmst_mvitals = struct_copy(g.mvitals);
+        g.gmst_spl_book = struct_copy(g.spl_book);
+        /* memset(svs.spl_book, 0, sizeof svs.spl_book) */
+        for (const sp of g.spl_book) {
+            sp.sp_id = 0; sp.sp_lev = 0; sp.sp_know = 0;
+        }
+        g.gmst_stored = TRUE;
+    } else {
+        impossible(`nhl_gamestate: inconsistent state (${
+            reststate ? "restore" : "save"} vs ${
+            g.gmst_stored ? "already stored" : "not stored"})`);
+    }
+    /* update_inventory(): no perm_invent */
+    return 0;
+}
+
+// C ref: nhlua.c free_tutorial()
+export function free_tutorial() {
+    const g = game;
+    let otmp;
+
+    /* for normal tutorial exit, gmst_invent will already be Null */
+    while ((otmp = g.gmst_invent) != null) {
+        /* set otmp->where = OBJ_FREE, otmp->nobj = NULL */
+        g.gmst_invent = otmp.nobj;
+        otmp.nobj = null;
+        otmp.where = 'OBJ_FREE';
+        /* gmst_invent is a list of invent items sequestered when entering
+           the tutorial; for them, owornmask is used as a flag to re-wear
+           them when exiting tutorial, not that they are currently worn;
+           clear it to avoid a "deleting worn obj" complaint from obfree() */
+        otmp.owornmask = 0;
+        /* dealloc_obj() isn't enough (for containers, it assumes that
+           caller has already freed their contents) */
+        obfree(otmp, null);
+    }
+
+    if (g.gmst_ubak)
+        g.gmst_ubak = null;
+    if (g.gmst_disco)
+        g.gmst_disco = null;
+    if (g.gmst_mvitals)
+        g.gmst_mvitals = null;
+}
+
+// C ref: nhlua.c tutorial()
+/* called from gotolevel(do.c) */
+export async function tutorial(entering) {
+    await l_nhcore_call(entering ? C.NHCORE_ENTER_TUTORIAL : C.NHCORE_LEAVE_TUTORIAL);
+
+    if (!entering) { /* after leaving, can't go back */
+        game.nhcore_call_available[C.NHCORE_ENTER_TUTORIAL]
+            = game.nhcore_call_available[C.NHCORE_LEAVE_TUTORIAL]
+                = FALSE;
+    }
+}
+
 // C ref: nhlua.c nhl_functions[] — the "nh" table. Only some functions
 // are ported so far.
 const nhl_functions = {
+    pline: nhl_pline,
+    eckey: nhl_get_cmd_key,
+    callback: nhl_callback,
+    gamestate: nhl_gamestate,
+    parse_config: nhl_parse_config,
     is_genocided: nhl_is_genocided,
     impossible: nhl_impossible,
     rn2: nhl_rn2,
@@ -543,6 +814,8 @@ function nhl_lua_file(fname) {
         return lairs_lua_files[fname];
     if (Object.hasOwn(endgame_lua_files, fname))
         return endgame_lua_files[fname];
+    if (Object.hasOwn(tut_lua_files, fname))
+        return tut_lua_files[fname];
     return null;
 }
 

@@ -10,10 +10,15 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { debugcore } from './files.js';
+import { FALSE } from './global.h.js';
 
 export function nhStr(str) {
     return str;
 }
 export function nhUse(arg) {
     arg;
+}
+export function explicitdebug(file) {
+    return debugcore(file, FALSE);
 }

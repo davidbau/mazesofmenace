@@ -670,14 +670,24 @@ function save_regions(nhfp) {
 }
 
 // C ref: save.c save_bubbles() -- Plane of Water's air bubbles and Plane
-// of Air's clouds; the elemental planes aren't ported, so this is the
-// zero marker
+// of Air's clouds
 function save_bubbles(nhfp, lev) {
-    const bbubbly = 0;
+    let bbubbly;
+    const topo = game.dungeon_topology;
+
+    /* air bubbles and clouds; the caller passes the ledger number because
+       u.uz and ledger_no() aren't available to it yet */
+    bbubbly = 0;
+    if (lev === ledger_no_sv(topo.d_water_level) || lev === ledger_no_sv(topo.d_air_level))
+        bbubbly = lev; /* non-zero */
     if (update_file(nhfp))
         Sfo(nhfp, bbubbly, "bubbles-bbubbly");
-    void lev;
+
+    if (bbubbly)
+        save_waterlevel(nhfp); /* save air bubbles or clouds */
 }
+import { save_waterlevel } from './mkmaze.js';
+import { ledger_no as ledger_no_sv } from './dungeon.js';
 
 // C ref: decl.c/mklev.c save_exclusions()
 function save_exclusions(nhfp) {

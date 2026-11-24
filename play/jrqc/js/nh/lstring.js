@@ -52,7 +52,9 @@ export function luaS_eqlngstr(a, b) {   // lstring.c:34
     0;
     /* same instance or... */
     /* equal length and ... */
-    return a === b || len === $h.ldu64(b + 16) && $hl.memcmp(a + 24, b + 24, len) === 0 ? 1 : 0;   /* equal contents */
+    return a === b ||
+        len === $h.ldu64(b + 16) &&
+        $hl.memcmp(a + 24, b + 24, len) === 0 ? 1 : 0;   /* equal contents */
 }
 /**
  * @param {number} str const char *

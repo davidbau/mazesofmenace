@@ -836,11 +836,6 @@ export function deliver_obj_to_mon(mtmp, requested, deliverflags = DF_NONE) {
 }
 
 // src/makemon.c:589 m_initinv() — species-specific starting inventory.
-//
-// PORTED: the generic tail (the three draws every monster makes) and the
-// branches that need nothing beyond mksobj(). The mlet switch's remaining arms
-// are noted where they belong; each is reached only by a species that cannot
-// yet be generated, and reaching one is recorded rather than approximated.
 function m_initinv(mtmp) {
     const ptr = mtmp.data;
 
@@ -1056,9 +1051,7 @@ function m_initinv(mtmp) {
     if (ptr.pmidx === PMNAMES.PM_SOLDIER && rn2(13))
         return;
 
-    /* src/makemon.c:826-831 — the generic tail. These two draws happen for
-       every monster regardless of species, and are the only RNG most
-       level-generated monsters spend here. */
+    /* src/makemon.c:826-832: defensive and miscellaneous items, then possible gold. */
     if (mtmp.m_lev > rn2(50))
         mongets(mtmp, rnd_defensive_item(mtmp));
     if (mtmp.m_lev > rn2(100))
@@ -1483,9 +1476,6 @@ export function hideunder(mtmp) {
     return undetected;
 }
 
-// The remaining makemon() callees all draw, and none can be reached by a
-// monster that rndmonst() can currently produce. Each records itself rather
-// than inventing a draw, so `game.unported` names the exact next thing to port.
 /* src/makemon.c:2385 syms[] — the classes a mimic can imitate. The two
    leading MAXOCLASSES and two trailing S_MIMIC_DEF entries are weighting, and
    the shop arm's `rn2(SIZE(syms) - 2) + 2` deliberately skips the leading
@@ -1686,9 +1676,6 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
 /* include/makemon.h m_initsgrp()/m_initlgrp() */
 function m_initsgrp(mtmp, x, y, mmf) { return m_initgrp(mtmp, x, y, 3, mmf); }
 function m_initlgrp(mtmp, x, y, mmf) { return m_initgrp(mtmp, x, y, 10, mmf); }
-/* m_dowear() now lives in js/worn.js, its C home (src/worn.c:757). The copy
-   that stood here short-circuited on an empty minvent and recorded otherwise;
-   the real one does the slot walk. */
 
 // include/mondata.h — the predicates m_initweap() branches on.
 const humanoid = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
@@ -1701,10 +1688,6 @@ const is_lord = (ptr) => (ptr.mflags2 & MFLAGS.M2_LORD) !== 0;
 const is_prince = (ptr) => (ptr.mflags2 & MFLAGS.M2_PRINCE) !== 0;
 // include/mondata.h:141 is_dprince()
 const is_dprince = (ptr) => is_demon(ptr) && is_prince(ptr);
-
-/* quest_mon_represents_role() now has its real body above (makemon.c:11);
-   the old always-false stub assumed quest leaders could never be generated,
-   but the quest-tour sessions walk right up to them. */
 
 // src/makemon.c:481 m_initthrow() — a stack of missiles.
 function m_initthrow(mtmp, otyp, oquan) {

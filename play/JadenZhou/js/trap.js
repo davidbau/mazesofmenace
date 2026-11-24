@@ -4,8 +4,7 @@
 // isclearpath().
 //
 // Not ported yet: shop damage,
-// set_levltyp()'s object/timer side effects, unearth_objs(),
-// recalc_block_point(), Sokoban bookkeeping.
+// set_levltyp()'s object/timer side effects, Sokoban bookkeeping.
 
 import { rehumanize } from './polyself.js';
 import { game } from './gstate.js';
@@ -60,7 +59,7 @@ import { dmgval } from './weapon.js';
 import { doname } from './objnam.js';
 import { monkilled, maybe_unhide_at } from './mon.js';
 import { find_mac, which_armor } from './worn.js';
-import { mtele_trap, mlevel_tele_trap, tele_trap } from './teleport.js';
+import { mtele_trap, mlevel_tele_trap, tele_trap, level_tele_trap } from './teleport.js';
 import { Can_fall_thru } from './mklev.js';
 import { bimanual } from './wield.js';
 
@@ -142,7 +141,7 @@ import { MAY_DESTROY as MAY_DESTROY_L, MAY_HIT as MAY_HIT_L,
 import { del_engr_at as del_engr_at_l } from './engrave.js';
 import { is_drawbridge_wall as is_drawbridge_wall_l } from './dbridge.js';
 import { find_drawbridge as find_drawbridge_l } from './zap.js';
-import { fillholetyp as fillholetyp_l } from './dig.js';
+import { fillholetyp as fillholetyp_l, unearth_objs as unearth_objs_l } from './dig.js';
 import { unconscious as unconscious_l } from './eat.js';
 import { M1_SLITHY, M1_NOLIMBS } from './monsters.js';
 import { CAN_OF_GREASE, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS,
@@ -1129,7 +1128,7 @@ function t_missile(otyp, trap) {
 
     otmp.quan = 1;
     otmp.owt = weight(otmp);
-    otmp.opoisoned = 0;
+    otmp.otrapped /* opoisoned */ = 0;
     otmp.ox = trap.tx, otmp.oy = trap.ty;
     return otmp;
 }
@@ -1276,7 +1275,7 @@ async function trapeffect_dart_trap(mtmp, trap, trflags) {
         await pline("A little dart shoots out at you!");
         otmp = t_missile(DART, trap);
         if (!rn2(6))
-            otmp.opoisoned = 1;
+            otmp.otrapped /* opoisoned */ = 1;
         const dam = dmgval(otmp, game.youmonst);
         const oref = { obj: otmp };
         if (u.usteed && !rn2(2) && await steedintrap(trap, otmp)) {
@@ -1284,7 +1283,7 @@ async function trapeffect_dart_trap(mtmp, trap, trflags) {
         } else if (await thitu(7, Maybe_Half_Phys(dam), oref, "little dart")) {
             otmp = oref.obj;
             if (otmp) {
-                if (otmp.opoisoned)
+                if (otmp.otrapped /* opoisoned */)
                     await poisoned("dart", A_CON, "little dart",
                                    /* if damage triggered life-saving,
                                       poison is limited to attrib loss */
@@ -1315,7 +1314,7 @@ async function trapeffect_dart_trap(mtmp, trap, trflags) {
         trap.once = 1;
         otmp = t_missile(DART, trap);
         if (!rn2(6))
-            otmp.opoisoned = 1;
+            otmp.otrapped /* opoisoned */ = 1;
         if (in_sight)
             seetrap(trap);
         if (await thitm(7, mtmp, otmp, 0, false))
@@ -1331,7 +1330,51 @@ async function trapeffect_rocktrap(mtmp, trap, trflags) {
     let otmp;
 
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_rocktrap(): hero branch not ported yet');
+        const u = game.u;
+        let harmless = false;
+
+        if (trap.once && trap.tseen && !rn2(15)) {
+            await pline(`A trap door in ${the(ceiling_tr(u.ux, u.uy))} opens, but nothing falls out!`);
+            deltrap(trap);
+            newsym(u.ux, u.uy);
+        } else {
+            let dmg = d(2, 6); /* should be std ROCK dmg? */
+
+            trap.once = 1;
+            feeltrap(trap);
+            otmp = t_missile(ROCK, trap);
+            place_object(otmp, u.ux, u.uy);
+
+            await pline(`A trap door in ${the(ceiling_tr(u.ux, u.uy))} opens and ${
+                an_l(xname(otmp))} falls on your ${body_part(HEAD)}!`);
+            if (game.uarmh) {
+                /* normally passes_rocks() would protect against a falling
+                   rock, but not when wearing a helmet */
+                if (passes_rocks(game.youmonst.data)) {
+                    await pline(`Unfortunately, you are wearing ${
+                        an_l(helm_simple_name_tr(game.uarmh))}.`); /* helm or hat */
+                    dmg = 2;
+                } else if (hard_helmet_tr(game.uarmh)) {
+                    await pline("Fortunately, you are wearing a hard helmet.");
+                    dmg = 2;
+                } else if (game.flags.verbose) {
+                    await pline(`${Yname2_fd(game.uarmh)} does not protect you.`);
+                }
+            } else if (passes_rocks(game.youmonst.data)) {
+                await pline("It passes harmlessly through you.");
+                harmless = true;
+            }
+            if (!Blind())
+                observe_object(otmp, Hallucination());
+            stackobj(otmp);
+            newsym(u.ux, u.uy); /* map the rock */
+
+            if (!harmless) {
+                await losehp(Maybe_Half_Phys(dmg), "falling rock", KILLED_BY_AN);
+                exercise(A_STR, false);
+            }
+        }
+        return Trap_Effect_Finished;
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
         const see_it = cansee(mtmp.mx, mtmp.my);
@@ -2035,14 +2078,16 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
             seetrap(trap);
         switch (rn2(5)) {
         case 0:
-            if (in_sight)
-                throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
+            if (in_sight) /* pline_mon() */
+                await pline(`${A_gush_of_water_hits} ${mon_nam(mtmp)} on the ${
+                    mbodypart_tr(mtmp, HEAD)}!`);
             target = which_armor(mtmp, W_ARMH);
-            await water_damage(target, null, true);
+            await water_damage(target, helm_simple_name(target), true);
             break;
         case 1:
-            if (in_sight)
-                throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
+            if (in_sight) /* pline_mon() */
+                await pline(`${A_gush_of_water_hits} ${mon_nam(mtmp)}'s left ${
+                    mbodypart_tr(mtmp, ARM)}!`);
             target = which_armor(mtmp, W_ARMS);
             if (await water_damage(target, "shield", true) !== 0 /* ER_NOTHING */)
                 break;
@@ -2051,15 +2096,16 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
                 await water_damage(target, null, true);
             /* mglovecheck: */
             target = which_armor(mtmp, W_ARMG);
-            await water_damage(target, null, true);
+            await water_damage(target, gloves_simple_name(target), true);
             break;
         case 2:
-            if (in_sight)
-                throw new Error('trapeffect_rust_trap(): mbodypart() message not ported yet');
+            if (in_sight) /* pline_mon() */
+                await pline(`${A_gush_of_water_hits} ${mon_nam(mtmp)}'s right ${
+                    mbodypart_tr(mtmp, ARM)}!`);
             await water_damage(mtmp.mw, null, true);
             /* goto mglovecheck */
             target = which_armor(mtmp, W_ARMG);
-            await water_damage(target, null, true);
+            await water_damage(target, gloves_simple_name(target), true);
             break;
         default:
             if (in_sight)
@@ -2070,9 +2116,9 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
                     && (otmp.owornmask & (W_WEP | W_SWAPWEP)) === 0)
                     throw new Error('trapeffect_rust_trap(): splash_lit() not ported yet');
             if ((target = which_armor(mtmp, W_ARMC)) != null)
-                await water_damage(target, null, true);
+                await water_damage(target, cloak_simple_name(target), true);
             else if ((target = which_armor(mtmp, W_ARM)) != null)
-                await water_damage(target, null, true);
+                await water_damage(target, suit_simple_name(target), true);
             else if ((target = which_armor(mtmp, W_ARMU)) != null)
                 await water_damage(target, "shirt", true);
         }
@@ -2497,13 +2543,15 @@ async function trapeffect_telep_trap(mtmp, trap, trflags) {
 // C ref: trap.c trapeffect_level_telep()
 async function trapeffect_level_telep(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_level_telep(): level_tele_trap() for the hero not ported yet');
+        seetrap(trap);
+        await level_tele_trap(trap, trflags);
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
         const forcetrap = ((trflags & FORCETRAP) !== 0);
 
         return mlevel_tele_trap(mtmp, trap, forcetrap, in_sight);
     }
+    return Trap_Effect_Finished;
 }
 
 // C ref: trap.c trapeffect_magic_portal()
@@ -3045,7 +3093,10 @@ export async function blow_up_landmine(trap) {
             /* fill pit with water, if applicable */
             typ = fillholetyp_l(x, y, false);
             if (typ !== ROOM) {
-                throw new Error('blow_up_landmine(): liquid_flow() not ported yet');
+                lev.typ = typ;
+                await liquid_flow_l(x, y, typ, trap,
+                                    cansee(x, y) ? "The hole fills with %s!"
+                                                 : null);
             } else {
                 trap.ttyp = PIT;       /* explosion creates a pit */
                 trap.madeby_u = 0;     /* resulting pit isn't yours */
@@ -3893,6 +3944,9 @@ export function maketrap(x, y, typ) {
                         : DOOR;
         }
         lev.flags = 0;
+
+        unearth_objs_l(x, y);
+        recalc_block_point_l(x, y);
         break;
     case TELEP_TRAP:
         /* gl.launchplace is only set by special-level loaders */
@@ -4116,3 +4170,700 @@ function nohands_tr(ptr) { return (ptr.mflags1 & M1_NOHANDS_TR) !== 0; }
 function webmaker_tr(ptr) {
     return ptr === mons_tr[PM_CAVE_SPIDER_TR] || ptr === mons_tr[PM_GIANT_SPIDER_TR];
 }
+
+// C ref: trap.c back_on_ground()
+/* print a message about being back on the ground after leaving a pool */
+export async function back_on_ground(rescued) {
+    const g = game;
+    const u = g.u;
+    let preposit = (Levitation() || Flying()) ? "over" : "on";
+    let surf = surface_tr(u.ux, u.uy), you_are_back;
+
+    if (is_ice_bg(u.ux, u.uy)) {
+        /* "on ice" */
+        throw new Error('back_on_ground(): ice_descr() not ported yet');
+    } else if (!strcmpi_bg(surf, "floor") || !strcmpi_bg(surf, "ground")) {
+        /* "on solid ground" */
+        surf = "solid ground";
+    } else if (!strcmpi_bg(surf, "bridge") || !strcmpi_bg(surf, "altar")
+               || !strcmpi_bg(surf, "headstone")) {
+        /* "on a bridge" */
+        surf = an_l(surf);
+    } else if (!strcmpi_bg(surf, "stairs") || !strcmpi_bg(surf, "lava")
+               || !strcmpi_bg(surf, "bottom")) {
+        /* "on the stairs" */
+        surf = the(surf);
+    } else { /* "cloud", "air", "air bubble", "wall", "fountain", "doorway" */
+        /* "in a cloud", "in the air" */
+        surf = (surf === "air") ? the(surf) : an_l(surf);
+        preposit = "in";
+    }
+    if (rescued) {
+        you_are_back = "You find yourself";
+    } else {
+        you_are_back = g.flags.verbose ? "You are back" : "Back";
+    }
+    await pline(`${you_are_back} ${preposit} ${surf}.`);
+    g.iflags.last_msg = PLNMSG_BACK_ON_GROUND_BG;
+}
+import { is_ice as is_ice_bg } from './dig.js';
+import { strcmpi as strcmpi_bg } from './hacklib.js';
+import { PLNMSG_BACK_ON_GROUND as PLNMSG_BACK_ON_GROUND_BG } from './const.js';
+
+/* C ref: youprop.h -- more hero properties for drown()/lava_effects() */
+function Swimming_dr() {
+    return !!(uprop(SWIMMING_DR).intrinsic || uprop(SWIMMING_DR).extrinsic
+              || (game.u.usteed && (game.u.usteed.data.mflags1 & M1_SWIM_DR) !== 0));
+}
+function Amphibious_dr() {
+    return !!(uprop(MAGICAL_BREATHING_DR).intrinsic || uprop(MAGICAL_BREATHING_DR).extrinsic
+              || (game.youmonst.data.mflags1 & M1_AMPHIBIOUS_DR) !== 0);
+}
+function Breathless_dr() {
+    return !!(uprop(MAGICAL_BREATHING_DR).intrinsic || uprop(MAGICAL_BREATHING_DR).extrinsic
+              || (game.youmonst.data.mflags1 & M1_BREATHLESS_DR) !== 0);
+}
+function Teleportation_dr() {
+    return !!(uprop(TELEPORT_DR).intrinsic || uprop(TELEPORT_DR).extrinsic);
+}
+function Teleport_control_dr() {
+    return !!(uprop(TELEPORT_CONTROL_DR).intrinsic || uprop(TELEPORT_CONTROL_DR).extrinsic);
+}
+function Fire_resistance_dr() {
+    return !!(uprop(FIRE_RES_DR).intrinsic || uprop(FIRE_RES_DR).extrinsic);
+}
+function Wwalking_dr() {
+    return !!((uprop(WWALKING).intrinsic || uprop(WWALKING).extrinsic)
+              && !Is_waterlevel_dr(game.u.uz));
+}
+function Lifesaved_dr() { return !!uprop(LIFESAVED_DR).extrinsic; }
+function Punished_dr() { return !!game.uball; }
+/* C ref: mondata.h likes_lava() */
+function likes_lava_dr(ptr) {
+    return ptr === mons_dr[PM_FIRE_ELEMENTAL_DR] || ptr === mons_dr[PM_SALAMANDER_DR];
+}
+
+// C ref: hack.c is_waterwall()
+export function is_waterwall(x, y) {
+    if (isok(x, y) && IS_WATERWALL_DR(game.level.at(x, y).typ))
+        return true;
+    return false;
+}
+
+// C ref: hack.c set_uinwater()
+export async function set_uinwater(in_out) {
+    if (in_out !== (game.u.uinwater ? 1 : 0)) {
+        game.u.uinwater = in_out ? 1 : 0;
+        await switch_terrain_dr();
+    }
+}
+
+// C ref: apply.c number_leashed()
+function number_leashed() {
+    let i = 0;
+
+    for (let obj = game.invent; obj; obj = obj.nobj)
+        if (obj.otyp === LEASH_DR && obj.leashmon !== 0 && obj.leashmon)
+            i++;
+    return i;
+}
+
+// C ref: apply.c unleash_all()
+/* Ensure no leashed monsters */
+function unleash_all() {
+    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+        if (otmp.otyp === LEASH_DR)
+            otmp.leashmon = 0;
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon)
+        mtmp.mleashed = 0;
+}
+
+// C ref: trap.c emergency_disrobe()
+/* returns TRUE if hero can get rid of enough stuff to crawl out of water */
+async function emergency_disrobe(lostsome) {
+    const g = game;
+    let invc = inv_cnt_dr(true);
+
+    while (near_capacity_dr() > (Punished_dr() ? UNENCUMBERED_DR : SLT_ENCUMBER_DR)) {
+        let obj, nextobj, otmp = null;
+        let i;
+
+        /* Pick a random object */
+        if (invc > 0) {
+            i = rn2(invc);
+            for (obj = g.invent; obj; obj = nextobj) {
+                nextobj = obj.nobj;
+                /*
+                 * Undroppables are: body armor, boots, gloves,
+                 * amulets, and rings because of the time and effort
+                 * in removing them + loadstone and other cursed stuff
+                 * for obvious reasons.  Also, any item in the midst
+                 * of being taken off or stolen.
+                 */
+                if (!((obj.otyp === LOADSTONE_DR && obj.cursed) || obj === g.uamul
+                      || obj === g.uleft || obj === g.uright || obj === g.ublindf
+                      || obj === g.uarm || obj === g.uarmc || obj === g.uarmg
+                      || obj === g.uarmf || obj === g.uarmu
+                      || (obj.cursed && (obj === g.uarmh || obj === g.uarms))
+                      || welded_dr(obj)
+                      || obj.o_id === g.stealoid || obj.in_use))
+                    otmp = obj;
+                /* reached the mark and found some stuff to drop? */
+                if (--i < 0 && otmp)
+                    break;
+
+                /* else continue */
+            }
+        }
+        if (!otmp)
+            return false; /* nothing to drop! */
+        if (otmp.owornmask)
+            await remove_worn_item_dr(otmp, false);
+        lostsome.v = true;
+        await dropx_dr(otmp);
+        invc--;
+    }
+    return true;
+}
+
+// C ref: trap.c rescued_from_terrain()
+/* life-saving or divine rescue has attempted to get the hero out of hostile
+   terrain and put hero in an unexpected spot or failed due to overfull level */
+async function rescued_from_terrain(how) {
+    const find_yourself = "find yourself";
+    const u = game.u;
+    const lev = game.level.at(u.ux, u.uy);
+    let mesggiven = false;
+
+    switch (how) {
+    case DROWNING_DR:
+        if (is_pool(u.ux, u.uy)) {
+            await You(`${find_yourself} ${
+                (Is_waterlevel_dr(u.uz) || IS_WATERWALL_DR(lev.typ))
+                  ? "in the midst" : "on top"} of ${hliquid("water")}.`);
+            mesggiven = true;
+        } else if (IS_AIR_DR(lev.typ)) {
+            await You(`${find_yourself} in ${
+                Is_waterlevel_dr(u.uz) ? "an air bubble" : "mid air"}.`);
+            mesggiven = true;
+        }
+        break;
+    case BURNING_DR: /* moved onto lava without fire resistance */
+    case DISSOLVED_DR: /* sunk into lava while fire resistant */
+        if (is_pool(u.ux, u.uy)) {
+            await You(`${find_yourself} ${
+                u.uinwater ? "in" : "on"} ${hliquid("water")}.`);
+            mesggiven = true;
+        } else if (is_lava(u.ux, u.uy)) {
+            await You(`${find_yourself} on top of ${hliquid("molten lava")}.`);
+            mesggiven = true;
+        }
+        break;
+    default:
+        break;
+    }
+    if (!mesggiven)
+        await back_on_ground(true);
+
+    game.iflags.last_msg = PLNMSG_BACK_ON_GROUND_BG; /* for describe_decor() */
+    /* feedback just disclosed this */
+    update_lastseentyp_dr(u.ux, u.uy);
+    game.iflags.prev_decor = game.level.lastseentyp?.[u.ux]?.[u.uy] ?? STONE_DR;
+}
+
+// C ref: trap.c drown()
+/* return TRUE iff player relocated */
+export async function drown() {
+    const g = game;
+    const u = g.u;
+    let pool_of_water;
+    let inpool_ok = false;
+    let i;
+    let x, y;
+    const is_solid = is_waterwall(u.ux, u.uy);
+
+    feel_newsym_dr(u.ux, u.uy); /* in case Blind, map the water here */
+    /* happily wading in the same contiguous pool */
+    if (u.uinwater && is_pool(u.ux - u.dx, u.uy - u.dy)
+        && (Swimming_dr() || Amphibious_dr() || Breathless_dr())) {
+        /* water effects on objects every now and then */
+        if (!rn2(5))
+            inpool_ok = true;
+        else
+            return false;
+    }
+
+    if (!u.uinwater) {
+        await You(`${is_solid ? "plunge" : "fall"} into the ${
+            waterbody_name_dr(u.ux, u.uy)}${
+            (Amphibious_dr() || Swimming_dr() || Breathless_dr()) ? '.' : '!'}`);
+        if (!Swimming_dr() && !is_solid)
+            await You(`sink like ${Hallucination() ? "the Titanic" : "a rock"}.`);
+    }
+
+    await water_damage_chain(g.invent, false);
+
+    if (u.umonnum === PM_GREMLIN_DR && rn2(3)) {
+        throw new Error('drown(): split_mon() of the hero not ported yet');
+    } else if (u.umonnum === PM_IRON_GOLEM_DR) {
+        await You("rust!");
+        i = Maybe_Half_Phys(d(2, 6));
+        if (u.mhmax > i)
+            u.mhmax -= i;
+        await losehp(i, "rusting away", KILLED_BY);
+    }
+    if (inpool_ok)
+        return false;
+
+    if ((i = number_leashed()) > 0) {
+        await pline_The(`leash${(i > 1) ? "es" : ""} slip${
+            (i > 1) ? "" : "s"} loose.`);
+        unleash_all();
+    }
+
+    if (Amphibious_dr() || Breathless_dr() || Swimming_dr()) {
+        /* "But you aren't drowning.", touch bottom, set_uinwater(1),
+           under_water(1) */
+        throw new Error('drown(): staying under water (under_water()) not ported yet');
+    }
+    if ((Teleportation_dr() || can_teleport_dr(g.youmonst.data)) && !Unaware_dr()
+        && (Teleport_control_dr() || rn2(3) < Luck() + 2)) {
+        throw new Error('drown(): teleport spell out of the water not ported yet');
+    }
+    if (u.usteed) {
+        throw new Error('drown(): dismount_steed() in water not ported yet');
+    }
+    /* if sleeping, wake up now so that we don't crawl out of water
+       while still asleep; we can't do that the same way that waking
+       due to combat is handled; note unmul() clears u.usleep */
+    if (u.usleep)
+        await unmul_dr("Suddenly you wake up!");
+    /* being doused will revive from fainting */
+    if (u.uhs === 5 /* is_fainted() */)
+        throw new Error('drown(): reset_faint() not ported yet');
+
+    x = u.ux, y = u.uy;
+    const xy = { x, y };
+    /* have to be able to move in order to crawl */
+    if (g.multi >= 0 && g.youmonst.data.mmove
+        && rnd_nextto_goodpos(xy, g.youmonst)) {
+        x = xy.x, y = xy.y;
+        const lost = { v: false };
+        /* time to do some strip-tease... */
+        const succ = Is_waterlevel_dr(u.uz) ? true : await emergency_disrobe(lost);
+
+        await You(`try to crawl out of the ${hliquid("water")}.`);
+        if (lost.v)
+            await You("dump some of your gear to lose weight...");
+        if (succ) {
+            await pline("Pheew!  That was close.");
+            await teleds_dr(x, y, TELEDS_ALLOW_DRAG_DR);
+            return true;
+        }
+        /* still too much weight */
+        await pline("But in vain.");
+    }
+    await set_uinwater(1); /* u.uinwater = 1 */
+    await urgent_pline("You drown.");
+    /* first pass is survivable by using up an amulet of life-saving or by
+       answering no to "Die?" in explore|wizard mode; second pass can only
+       be survivable via the latter */
+    for (i = 0; i < 2; i++) {
+        /* killer format and name are reconstructed every iteration
+           because lifesaving resets them */
+        pool_of_water = waterbody_name_dr(u.ux, u.uy);
+        killer().format = KILLED_BY_AN;
+        /* avoid "drowned in [a] water" */
+        if (pool_of_water === "water")
+            pool_of_water = "deep water", killer().format = KILLED_BY;
+        /* avoid "drowned in _a_ limitless water" on Plane of Water */
+        else if (pool_of_water === "limitless water")
+            killer().format = KILLED_BY;
+        killer().name = pool_of_water;
+        await done_dr(DROWNING_DR);
+        /* oops, we're still alive.  better get out of the water. */
+        if (await safe_teleds_dr(TELEDS_ALLOW_DRAG_DR | TELEDS_TELEPORT_DR))
+            break; /* successful life-save */
+        /* nowhere safe to land; repeat drowning loop... */
+        await pline("You're still drowning.");
+    }
+
+    if (u.uinwater)
+        await set_uinwater(0); /* u.uinwater = 0 */
+    await rescued_from_terrain(DROWNING_DR);
+    return true;
+}
+
+const lava_killer = "molten lava";
+
+// C ref: trap.c lava_effects()
+/* return TRUE iff hero changes location while surviving the problem */
+export async function lava_effects() {
+    const g = game;
+    const u = g.u;
+    let obj, obj2, nextobj;
+    let usurvive, boil_away;
+    let protect_oid = 0;
+    let burncount = 0, burnmesgcount = 0;
+    const dmg = d(6, 6); /* only applicable for water walking */
+
+    if (g.iflags.in_lava_effects) {
+        /* debugpline0("Skipping recursive lava_effects()."); */
+        return false;
+    }
+    feel_newsym_dr(u.ux, u.uy); /* in case Blind, map the lava here */
+    await burn_away_slime_dr();
+    if (likes_lava_dr(g.youmonst.data))
+        return false;
+
+    usurvive = Fire_resistance_dr() || (Wwalking_dr() && dmg < u.uhp);
+    /*
+     * A timely interrupt might manage to salvage your life
+     * but not your gear.  For scrolls and potions this
+     * will destroy whole stacks, where fire resistant hero
+     * survivor only loses partial stacks via destroy_items().
+     *
+     * Flag items to be destroyed before any messages so
+     * that player causing hangup at --More-- won't get an
+     * emergency save file created before item destruction.
+     */
+    if (!usurvive) {
+        for (obj = g.invent; obj; obj = nextobj) {
+            nextobj = obj.nobj;
+            if (obj.in_use) { /* remove_worn_item() sets in_use */
+                /* one item can be protected from burning up */
+                if (!protect_oid) {
+                    protect_oid = obj.o_id;
+                    obj.in_use = 0;
+                } else {
+                    console.error(`impossible: lava_effects: #${obj.o_id} is already in use; so is #${protect_oid}.`);
+                }
+                continue;
+            }
+            /* set obj->in_use for items which will be destroyed below */
+            if ((is_organic_dr(obj) || obj.oclass === POTION_CLASS_DR)
+                && !obj.oerodeproof
+                && objects_dr[obj.otyp].oc_oprop !== FIRE_RES_DR
+                && obj.otyp !== SCR_FIRE_DR && obj.otyp !== SPE_FIREBALL_DR
+                && !obj_resists_dr(obj, 0, 0)) /* for invocation items */
+                obj.in_use = 1;
+        }
+    }
+
+    /* Check whether we should burn away boots *first* so we know whether to
+     * make the player sink into the lava. Assumption: water walking only
+     * comes from boots.
+     */
+    if (g.uarmf && (g.uarmf.in_use
+                    || (is_organic_dr(g.uarmf) && !g.uarmf.oerodeproof))) {
+        throw new Error('lava_effects(): burning boots (Boots_off()) not ported yet');
+    }
+
+    if (!Fire_resistance_dr()) {
+        if (Wwalking_dr()) {
+            throw new Error('lava_effects(): water walking on lava not ported yet');
+        } else
+            await You(`fall into the ${waterbody_name_dr(u.ux, u.uy)}!`);
+
+        usurvive = Lifesaved_dr() || !!g.flags.explore /* discover */;
+        if (g.flags.debug) /* wizard */
+            usurvive = true;
+
+        /* prevent remove_worn_item() -> Boots_off(WATER_WALKING_BOOTS) ->
+           spoteffects() -> lava_effects() recursion */
+        g.iflags.in_lava_effects = (g.iflags.in_lava_effects || 0) + 1;
+
+        for (obj = g.invent; obj; obj = obj2) {
+            obj2 = obj.nobj;
+            if (obj.o_id === protect_oid) {
+                /* skip protected item; caller expects to retain access */
+                obj.in_use = 1; /* was cleared when setting protect_oid */
+            } else if (obj.otyp === SPE_BOOK_OF_THE_DEAD_DR) {
+                if (usurvive && !Blind())
+                    throw new Error('lava_effects(): Book of the Dead glow not ported yet');
+            } else if (obj.in_use) {
+                if (obj.owornmask) {
+                    if (usurvive) {
+                        await pline(`${Yobjnam2(obj, "burst")} into flame!`);
+                        ++burnmesgcount;
+                    }
+                    await remove_worn_item_dr(obj, true);
+                }
+                useupall_dr(obj);
+                ++burncount;
+            }
+        }
+        if (usurvive && burncount > burnmesgcount)
+            await pline(`${(burnmesgcount > 0)
+                    ? ((burncount - burnmesgcount === 1) ? "Another" : "Other")
+                    : ((burncount === 1) ? "An" : "Some")} item${
+                  (burncount - burnmesgcount === 1) ? "" : "s"} in your inventory ${
+                  (burncount - burnmesgcount === 1) ? "has" : "have"} been destroyed.`);
+
+        /* s/he died... */
+        boil_away = (u.umonnum === PM_WATER_ELEMENTAL_DR
+                     || u.umonnum === PM_STEAM_VORTEX_DR
+                     || u.umonnum === PM_FOG_CLOUD_DR);
+        /* burn to death; if hero is life-saved on the first pass, try
+           to teleport to safety; if that fails, burn all over again */
+        for (burncount = 0; burncount < 2; ++burncount) {
+            u.uhp = -1;
+            /* killer format and name are reconstructed every iteration
+               because lifesaving resets them */
+            killer().format = KILLED_BY;
+            killer().name = lava_killer;
+            await urgent_pline(`You ${boil_away ? "boil away"
+                                                : "burn to a crisp"}...`);
+            await done_dr(BURNING_DR);
+            if (await safe_teleds_dr(TELEDS_ALLOW_DRAG_DR | TELEDS_TELEPORT_DR))
+                break; /* successful life-save */
+            /* nowhere safe to land; repeat burning loop */
+            await pline("You're still burning.");
+        }
+
+        g.iflags.in_lava_effects--;
+
+        if (burncount === 2) {
+            /* life-saved twice and failed to be teleported to safety
+               both times */
+            throw new Error('lava_effects(): surviving the lava twice not ported yet');
+        }
+        await rescued_from_terrain(BURNING_DR);
+
+        /* normally done via safe_teleds() -> teleds() -> spoteffects() but
+           spoteffects() was no-op when called with nonzero in_lava_effects */
+        await spoteffects_dr(false); /* suppress auto-pickup for this landing... */
+
+        return true;
+    } else if (!Wwalking_dr() && (!u.utrap || u.utraptype !== TT_LAVA_DR)) {
+        throw new Error('lava_effects(): sinking into lava while fire resistant not ported yet');
+    }
+
+    /* burn_stuff: */
+    throw new Error('lava_effects(): destroy_items()/ignite_items() not ported yet');
+}
+import { SWIMMING as SWIMMING_DR, MAGICAL_BREATHING as MAGICAL_BREATHING_DR,
+         TELEPORT as TELEPORT_DR, TELEPORT_CONTROL as TELEPORT_CONTROL_DR,
+         FIRE_RES as FIRE_RES_DR, LIFESAVED as LIFESAVED_DR,
+         IS_WATERWALL as IS_WATERWALL_DR, IS_AIR as IS_AIR_DR,
+         Is_waterlevel as Is_waterlevel_dr, UNENCUMBERED as UNENCUMBERED_DR,
+         SLT_ENCUMBER as SLT_ENCUMBER_DR, DROWNING as DROWNING_DR,
+         BURNING as BURNING_DR, DISSOLVED as DISSOLVED_DR, STONE as STONE_DR,
+         TELEDS_ALLOW_DRAG as TELEDS_ALLOW_DRAG_DR,
+         TELEDS_TELEPORT as TELEDS_TELEPORT_DR, TT_LAVA as TT_LAVA_DR } from './const.js';
+import { M1_SWIM as M1_SWIM_DR, M1_AMPHIBIOUS as M1_AMPHIBIOUS_DR,
+         M1_BREATHLESS as M1_BREATHLESS_DR, PM_GREMLIN as PM_GREMLIN_DR,
+         PM_IRON_GOLEM as PM_IRON_GOLEM_DR, PM_WATER_ELEMENTAL as PM_WATER_ELEMENTAL_DR,
+         PM_STEAM_VORTEX as PM_STEAM_VORTEX_DR, PM_FOG_CLOUD as PM_FOG_CLOUD_DR } from './monsters.js';
+import { LEASH as LEASH_DR, LOADSTONE as LOADSTONE_DR, SCR_FIRE as SCR_FIRE_DR,
+         SPE_FIREBALL as SPE_FIREBALL_DR, SPE_BOOK_OF_THE_DEAD as SPE_BOOK_OF_THE_DEAD_DR,
+         objects as objects_dr, POTION_CLASS as POTION_CLASS_DR,
+         is_organic as is_organic_dr } from './objects.js';
+import { switch_terrain as switch_terrain_dr, inv_cnt as inv_cnt_dr,
+         near_capacity as near_capacity_dr, spoteffects as spoteffects_dr } from './hack.js';
+import { welded as welded_dr } from './wield.js';
+import { mons as mons_dr, PM_FIRE_ELEMENTAL as PM_FIRE_ELEMENTAL_DR,
+         PM_SALAMANDER as PM_SALAMANDER_DR } from './monsters.js';
+import { remove_worn_item as remove_worn_item_dr } from './steal.js';
+import { dropx as dropx_dr } from './do.js';
+import { feel_newsym as feel_newsym_dr, update_lastseentyp as update_lastseentyp_dr } from './display.js';
+import { waterbody_name as waterbody_name_dr } from './pager.js';
+import { can_teleport as can_teleport_dr } from './mondata.js';
+import { Unaware as Unaware_dr } from './eat.js';
+import { unmul as unmul_dr } from './allmain.js';
+import { teleds as teleds_dr, safe_teleds as safe_teleds_dr } from './teleport.js';
+import { done as done_dr } from './end.js';
+import { burn_away_slime as burn_away_slime_dr } from './potion.js';
+import { useupall as useupall_dr } from './invent.js';
+import { obj_resists as obj_resists_dr } from './dogmove.js';
+
+// C ref: trap.c fire_damage()
+/* Set an item on fire.  Return whether the object was destroyed. */
+export async function fire_damage(
+    obj,
+    force, /* if True, skip luck-based protection check */
+    x, y) { /* where to place contents of burned up container */
+    let chance;
+    const in_sight = !Blind() && couldsee(x, y); /* Don't care if it's lit */
+    let dindx;
+
+    /* object might light in a controlled manner */
+    if (await catch_lit(obj))
+        return false;
+
+    if (Is_container(obj) || obj.otyp === STATUE) {
+        switch (obj.otyp) {
+        case STATUE:
+        case ICE_BOX:
+            return false; /* Immune */
+        case CHEST:
+            chance = 40;
+            break;
+        case LARGE_BOX:
+            chance = 30;
+            break;
+        default:
+            chance = 20;
+            break;
+        }
+        if ((!force && (Luck() + 5) > rn2(chance))
+            /* note: containers aren't subject to erosion so are never
+               marked fireproof/corrodeproof/&c */
+            /*|| (is_flammable(obj) && obj->oerodeproof)*/
+            ) {
+            return false;
+        }
+        /* Container is burnt up - dump contents out */
+        if (in_sight)
+            await pline(`${Yname2_fd(obj)} catches fire and burns.`);
+        if (obj.cobj && obj.cobj.length) { /* Has_contents(obj) */
+            if (in_sight)
+                await pline("Its contents fall out.");
+            /* for (otmp = obj->cobj; otmp; otmp = ncobj): cobj[] is kept
+               in C's chain order (newest first) */
+            for (const otmp of obj.cobj.slice()) {
+                obj_extract_self_l(otmp);
+                if (!(await flooreffects_l(otmp, x, y, "")))
+                    place_object(otmp, x, y);
+            }
+        }
+        setnotworn_fd(obj);
+        delobj(obj);
+        return true;
+    } else if (!force && (Luck() + 5) > rn2(20)) {
+        /*  chance per item of sustaining damage:
+          *     max luck (Luck==13):    10%
+          *     avg luck (Luck==0):     75%
+          *     awful luck (Luck<-4):  100%
+          */
+        return false;
+    } else if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS) {
+        if (obj.otyp === SCR_FIRE || obj.otyp === SPE_FIREBALL)
+            return false;
+        if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+            if (in_sight)
+                await pline(`Smoke rises from ${the(xname(obj))}.`);
+            return false;
+        }
+        dindx = (obj.oclass === SCROLL_CLASS) ? 3 : 4;
+        if (in_sight)
+            await pline(`${Yname2_fd(obj)} ${
+                destroy_strings_fd[dindx][(obj.quan > 1) ? 1 : 0]}.`);
+        setnotworn_fd(obj);
+        delobj(obj);
+        return true;
+    } else if (obj.oclass === POTION_CLASS) {
+        dindx = (obj.otyp !== POT_OIL_TR) ? 1 : 2;
+        if (in_sight)
+            await pline(`${Yname2_fd(obj)} ${
+                destroy_strings_fd[dindx][(obj.quan > 1) ? 1 : 0]}.`);
+        setnotworn_fd(obj);
+        delobj(obj);
+        return true;
+    } else if (await erode_obj(obj, null, ERODE_BURN, EF_DESTROY)
+               === 3 /* ER_DESTROYED */) {
+        return true;
+    }
+    return false;
+}
+
+/* C ref: zap.c destroy_strings[] (the rows fire_damage() uses) */
+const destroy_strings_fd = [
+    [ "freezes and shatters", "freeze and shatter", "shattered potion" ],
+    [ "boils and explodes", "boil and explode", "boiling potion" ],
+    [ "ignites and explodes", "ignite and explode", "exploding potion" ],
+    [ "catches fire and burns", "catch fire and burn", "burning scroll" ],
+    [ "catches fire and burns", "", "burning book" ],
+    [ "turns to dust and vanishes", "", "" ],
+    [ "breaks apart and explodes", "", "exploding wand" ],
+];
+
+// C ref: trap.c fire_damage_chain()
+/*
+ * Apply fire_damage() to an entire chain.
+ *
+ * Return number of objects destroyed. --ALI
+ *
+ * "chain" is the chain in C's order: an array (the pile at a map spot, top
+ * first, standing in for ->nexthere, or a monster's minvent reversed into
+ * C's newest-first order), or the head of an ->nobj chain (hero inventory);
+ * "here" only picks the link in C.
+ */
+export async function fire_damage_chain(chain, force, here, x, y) {
+    let num = 0;
+
+    void here;
+    /* erode_obj() relies on bhitpos if target objects aren't carried by
+       the hero or a monster, to check visibility controlling feedback */
+    if (!game.bhitpos)
+        game.bhitpos = { x: 0, y: 0 };
+    game.bhitpos.x = x, game.bhitpos.y = y;
+
+    if (Array.isArray(chain)) {
+        for (const obj of chain.slice()) {
+            if (await fire_damage(obj, force, x, y))
+                ++num;
+        }
+    } else {
+        let nobj;
+        for (let obj = chain; obj; obj = nobj) {
+            nobj = obj.nobj;
+            if (await fire_damage(obj, force, x, y))
+                ++num;
+        }
+    }
+
+    if (num && (Blind() && !couldsee(x, y)))
+        await You("smell smoke.");
+    return num;
+}
+
+// C ref: trap.c lava_damage()
+/* obj has been thrown or dropped into lava; damage is worse than mere fire */
+export async function lava_damage(obj, x, y) {
+    const otyp = obj.otyp, ocls = obj.oclass;
+
+    /* the Amulet, invocation items, and Rider corpses are never destroyed
+       (let Book of the Dead fall through to fire_damage() to get feedback) */
+    if (obj_resists_dr(obj, 0, 0) && otyp !== SPE_BOOK_OF_THE_DEAD)
+        return false;
+    /* destroy liquid (venom), wax, veggy, flesh, paper (except for scrolls
+       and books--let fire damage deal with them), cloth, leather, wood, bone
+       unless it's inherently or explicitly fireproof or contains something;
+       note: potions are glass so fall through to fire_damage() and boil */
+    if (objects[otyp].oc_material < DRAGON_HIDE_FD
+        && ocls !== SCROLL_CLASS && ocls !== SPBOOK_CLASS
+        && objects[otyp].oc_oprop !== FIRE_RES
+        && otyp !== WAN_FIRE_FD && otyp !== FIRE_HORN_FD
+        /* assumes oerodeproof isn't overloaded for some other purpose on
+           non-eroding items */
+        && !obj.oerodeproof
+        /* fire_damage() knows how to deal with containers and contents */
+        && !(obj.cobj && obj.cobj.length) /* !Has_contents(obj) */) {
+        if (cansee(x, y)) {
+            /* this feedback is pretty clunky and can become very verbose
+               when former contents of a burned container get here via
+               flooreffects() */
+            if (obj === game.thrownobj || obj === game.kickedobj)
+                await pline(`${(obj.quan !== 1) /* is_plural(obj) */
+                               ? "They" : "It"} ${otense_fd(obj, "burn")} up!`);
+            else
+                await You_see_l(`${doname(obj)} hit lava and burn up!`);
+        }
+        if (obj.where === 'OBJ_INVENT') { /* carried(obj): shouldn't happen */
+            await remove_worn_item_dr(obj, true);
+            useupall_dr(obj);
+        } else
+            delobj(obj);
+        return true;
+    }
+    return await fire_damage(obj, true, x, y);
+}
+import { setnotworn as setnotworn_fd } from './worn.js';
+import { otense as otense_fd, Yname2 as Yname2_fd } from './objnam.js';
+import { DRAGON_HIDE as DRAGON_HIDE_FD, WAN_FIRE as WAN_FIRE_FD,
+         FIRE_HORN as FIRE_HORN_FD } from './objects.js';
+import { liquid_flow as liquid_flow_l } from './dig.js';
+import { ceiling as ceiling_tr } from './dungeon.js';
+import { hard_helmet as hard_helmet_tr } from './objnam.js';
+import { mbodypart as mbodypart_tr } from './insight.js';

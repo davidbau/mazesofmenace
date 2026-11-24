@@ -182,9 +182,7 @@ import {
     Amonnam,
     Monnam,
     YMonnam,
-    capitalizedMonsterName,
     mon_nam,
-    monsterCommonName,
 } from './do_name.js';
 import { dogfood } from './dogfood.js';
 import { is_digging, mdig_tunnel, watch_dig } from './dig.js';
@@ -749,7 +747,7 @@ async function mind_blast(mtmp, env = {}) {
     if (canseemon(mtmp, state)) {
         await message(
             messageAt(
-                `${capitalizedMonsterName(mtmp, state, nameEnv)} concentrates.`,
+                `${Monnam(mtmp, state, nameEnv)} concentrates.`,
                 mtmp.mx, mtmp.my, state,
             ),
             state,
@@ -806,7 +804,7 @@ async function mind_blast(mtmp, env = {}) {
             await wakeup(m2, false, { ...env, state, random, message });
             if (cansee(m2.mx, m2.my, state)) {
                 await message(
-                    `It locks on to ${monsterCommonName(m2, state, 0, nameEnv)}.`,
+                    `It locks on to ${mon_nam(m2, state, nameEnv)}.`,
                     state,
                     env,
                 );
@@ -1045,7 +1043,7 @@ export async function m_break_boulder(mtmp, x, y, env = {}) {
         && (otmp = sobj_at(BOULDER, x, y, state)) != null) {
         if (!is_rider(mtmp.data)) {
             if (!Deaf(state.u) && mdistu(mtmp, state) < 4 * 4) {
-                const text = `${capitalizedMonsterName(mtmp, state)} mutters ${
+                const text = `${Monnam(mtmp, state)} mutters ${
                     mtmp.ispriest ? 'a prayer' : 'an incantation'
                 }.`;
                 // C: canspotmon() gates set_msg_xy() for the location prefix;
@@ -1925,7 +1923,7 @@ export async function bee_eat_jelly(mon, obj, env = {}) {
         if (canseemon(mon, state)) {
             await message(
                 messageAt(
-                    `${capitalizedMonsterName(mon, state)} eats ${an(xnameFresh(obj, state))}.`,
+                    `${Monnam(mon, state)} eats ${an(xnameFresh(obj, state))}.`,
                     mon.mx,
                     mon.my,
                     state,
@@ -2354,7 +2352,7 @@ async function cast_undirected_spell(monster, env) {
     if (!attacks) return false;
     const castEnv = {
         ...env,
-        monsterName: (mtmp) => capitalizedMonsterName(mtmp, state),
+        monsterName: (mtmp) => Monnam(mtmp, state),
         monnam: (mtmp) => mon_nam(mtmp, state, env),
         message: async (text, s) => { await ttyPline(text, s); },
     };
@@ -3199,10 +3197,13 @@ export async function postmov(
 
     // C ref: monmove.c:1526-1536, the UnblockDoor macro.  canseeit is the
     // caller's local there, so this returns the value the macro recomputes.
+    // newsym() as C runs it here: a notice display.c show_glyph() prints
+    // for the square waits at its --More-- before postmov() goes on.
+    const draw = (x, y) => newsym_async(x, y, { state, redraw });
     const unblockDoor = async (where, who, what) => {
         // where->doormask = what; rm.h's doormask is `flags`.
         where.flags = what;
-        redraw(who.mx, who.my);
+        await draw(who.mx, who.my);
         recalcBlockPoint(who.mx, who.my, state);
         await visionRecalc(0, { state, redraw });
         return didseeit || cansee(who.mx, who.my, state);
@@ -3225,8 +3226,8 @@ export async function postmov(
             if (seenFlags) {
                 remove_monster(nix, niy, state);
                 place_monster(monster, omx, omy, state);
-                redraw(nix, niy);
-                redraw(omx, omy);
+                await draw(nix, niy);
+                await draw(omx, omy);
             }
             const domsg = Boolean(seenFlags & 1);
             if (await vamp_shift(monster, state.mons?.[PM_FOG_CLOUD], domsg, {
@@ -3243,13 +3244,13 @@ export async function postmov(
             if (seenFlags) {
                 remove_monster(omx, omy, state);
                 place_monster(monster, nix, niy, state);
-                redraw(omx, omy);
-                redraw(nix, niy);
+                await draw(omx, omy);
+                await draw(nix, niy);
             }
         }
         // A monster leaving a seen wall whose mode wall_angle() cannot draw
         // (one a #wizloadlua program laid around it) reports here in C.
-        await newsym_async(omx, omy, { state, redraw });
+        await draw(omx, omy);
         // C ref: monmove.c:1509-1516.  mintrap() runs here, before the door
         // block, on the monster's current square: MMOVE_MOVED does not imply
         // the square changed, so a monster that stayed put on a trap triggers
@@ -3263,7 +3264,7 @@ export async function postmov(
             youHear,
         });
         if (trapResult === Trap_Killed_Mon || trapResult === Trap_Moved_Mon) {
-            if (monster.mx) redraw(monster.mx, monster.my);
+            if (monster.mx) await draw(monster.mx, monster.my);
             return MMOVE_DIED;
         }
         if (mon_offmap(monster)) return MMOVE_DONE;
@@ -3352,7 +3353,7 @@ export async function postmov(
                     if (canseeit && canspotmon(monster, state)) {
                         await message(
                             messageAt(
-                                `${capitalizedMonsterName(monster, state, rawEnv)}`
+                                `${Monnam(monster, state, rawEnv)}`
                                 + ' opens a door.',
                                 monster.mx,
                                 monster.my,
@@ -3490,7 +3491,7 @@ export async function postmov(
                     urgentMessage: rawEnv.urgentMessage,
                 });
             } else {
-                redraw(monster.mx, monster.my);
+                await draw(monster.mx, monster.my);
             }
         }
     }
@@ -3543,7 +3544,7 @@ export async function postmov(
             // leave an invisible monster needing a second repaint; a worm's
             // tail is synchronously repainted after its head by see_wsegs().
             if (monster.minvis) {
-                redraw(monster.mx, monster.my);
+                await draw(monster.mx, monster.my);
                 if (monster.wormno)
                     see_wsegs(monster, { ...env, redraw });
             }
@@ -3575,7 +3576,7 @@ export async function postmov(
                     redraw,
                 });
             }
-            redraw(monster.mx, monster.my);
+            await draw(monster.mx, monster.my);
         }
         // C ref: monmove.c:1700-1702.  after_shk_move() re-enters the shop
         // for a shopkeeper that moved.
@@ -3599,7 +3600,7 @@ export async function itsstuck(monster, rawEnv = {}) {
         const message = rawEnv.message ?? ttyPline;
         const result = message(
             messageAt(
-                `${capitalizedMonsterName(monster, state)} cannot escape from you!`,
+                `${Monnam(monster, state)} cannot escape from you!`,
                 monster.mx, monster.my, state,
             ),
             state,

@@ -717,3 +717,98 @@ export async function tactics(mtmp) {
     } /* switch */
     /*NOTREACHED*/
 }
+
+// C ref: wizard.c amulet()
+/* if you have the Amulet: maybe the Amulet feels warm near the portal, and
+   maybe wake the Wizard */
+export async function amulet() {
+    const g = game;
+    let mtmp;
+    let amu;
+
+    if ((((amu = g.uamul) != null && amu.otyp === AMULET_OF_YENDOR)
+         || ((amu = g.uwep) != null && amu.otyp === AMULET_OF_YENDOR))
+        && !rn2(15)) {
+        for (const ttmp of (g.level.traps || [])) {
+            if (ttmp.ttyp === MAGIC_PORTAL_WZ) {
+                const du = dist2(ttmp.tx, ttmp.ty, g.u.ux, g.u.uy); /* distu() */
+                if (du <= 9)
+                    await pline(`${Tobjnam_wz(amu, "feel")} hot!`);
+                else if (du <= 64)
+                    await pline(`${Tobjnam_wz(amu, "feel")} very warm.`);
+                else if (du <= 144)
+                    await pline(`${Tobjnam_wz(amu, "feel")} warm.`);
+                /* else, the amulet feels normal */
+                break;
+            }
+        }
+    }
+
+    if (!g.context.no_of_wizards)
+        return;
+    /* find Wizard, and wake him if necessary */
+    for (mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp.mhp <= 0) /* DEADMONSTER(mtmp) */
+            continue;
+        if (mtmp.iswiz && mtmp.msleeping && !rn2(40)) {
+            mtmp.msleeping = 0;
+            if (!(dist2(mtmp.mx, mtmp.my, g.u.ux, g.u.uy) < 3)) /* !m_next2u(mtmp) */
+                await You_wz(
+      "get the creepy feeling that somebody noticed your taking the Amulet.");
+            return;
+        }
+    }
+}
+
+// C ref: wizard.c resurrect()
+/* Let's resurrect the Wizard, for some unexpected fun. */
+export async function resurrect() {
+    const g = game;
+    let mtmp;
+    let verb;
+
+    if (!g.context.no_of_wizards) {
+        /* make a new Wizard */
+        verb = "kill";
+        g.makemon_want_msg = true; /* see makemon()'s Norep() comment */
+        try {
+            mtmp = makemon(mons[MM.PM_WIZARD_OF_YENDOR], g.u.ux, g.u.uy, MM_NOWAIT);
+        } finally {
+            g.makemon_want_msg = false;
+        }
+        await makemon_flush_msg_wz(); /* makemon()'s "<mon> appears" */
+        /* affects experience; he's not coming back from a corpse
+           but is subject to repeated killing like a revived corpse */
+        if (mtmp)
+            mtmp.mrevived = 1;
+    } else {
+        /* look for a migrating Wizard */
+        verb = "elude";
+        /* mon_catchup_elapsed_time(), mon_arrive(mtmp, -1) */
+        throw new Error('resurrect(): bringing back a migrating Wizard not ported yet');
+    }
+
+    if (mtmp) {
+        /* FIXME: when a new wizard is created by makemon(), it gives
+           a "<mon> appears" message, delivered after he's been placed
+           on the map; however, when an existing wizard comes off
+           migrating_mons, he ends up triggering "<mon> vanishes and
+           reappears" on his first move (tactics when hero is carrying
+           the Amulet); setting STRAT_WAITMASK suppresses that but then
+           he just sits wherever he is, "meditating", contradicting the
+           threatening message below */
+        mtmp.mstrategy &= ~STRAT_WAITMASK_WZ;
+
+        mtmp.mtame = 0, mtmp.mpeaceful = 0; /* paranoia */
+        set_malign(mtmp);
+        if (!(g.u.uprops[DEAF]?.intrinsic || g.u.uprops[DEAF]?.extrinsic)) { /* !Deaf */
+            await pline("A voice booms out...");
+            /* SetVoice(mtmp, 0, 80, 0): speech output only */
+            await pline(`"So thou thought thou couldst ${verb} me, fool."`); /* verbalize() */
+        }
+    }
+}
+import { MAGIC_PORTAL as MAGIC_PORTAL_WZ, STRAT_WAITMASK as STRAT_WAITMASK_WZ } from './const.js';
+import { Tobjnam as Tobjnam_wz } from './objnam.js';
+import { You as You_wz } from './display.js';
+import { makemon_flush_msg as makemon_flush_msg_wz } from './makemon.js';

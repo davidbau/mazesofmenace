@@ -165,13 +165,19 @@ function find_lev_obj() {
  * infamous "HUP" cheat) get used up here.
  */
 export async function inven_inuse(quietly) {
-    for (let otmp = game.invent; otmp; otmp = otmp.nobj) {
+    let otmp2;
+
+    for (let otmp = game.invent; otmp; otmp = otmp2) {
+        otmp2 = otmp.nobj;
         if (otmp.in_use) {
-            void quietly;
-            throw new Error('inven_inuse(): useup() of an in-use object not ported yet');
+            if (!quietly)
+                await pline(`Finishing off ${xname_rs(otmp)}...`);
+            useup_rs(otmp);
         }
     }
 }
+import { xname as xname_rs } from './objnam.js';
+import { useup as useup_rs } from './invent.js';
 
 // C ref: restore.c restlevchn()
 function restlevchn(nhfp) {
@@ -1189,8 +1195,9 @@ function rest_regions(nhfp) {
 function rest_bubbles(nhfp) {
     const bbubbly = Sfi(nhfp, "bubbles-bbubbly");
     if (bbubbly)
-        throw new Error('rest_bubbles(): restore_waterlevel() not ported yet');
+        restore_waterlevel(nhfp);
 }
+import { restore_waterlevel } from './mkmaze.js';
 
 // C ref: mklev.c load_exclusions()
 function load_exclusions(nhfp) {

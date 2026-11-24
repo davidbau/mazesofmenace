@@ -5,10 +5,8 @@
 // The chunk only defines globals; it rolls no dice. Its functions are
 // ported as far as their callees exist: those needing parts of the nh
 // table that aren't ported yet (nh.dump_fmtstr, nh.dnum_name, nh.pline,
-// io, u) raise a Lua error when called. nhlib.lua's
-// table_stringify, tutorial_enter and tutorial_leave are not ported yet
-// either (see nhlib_lua.js), so nhcore.enter_tutorial/leave_tutorial are
-// nil for now.
+// io, u) raise a Lua error when called. nhlib.lua's table_stringify is
+// not ported yet either (see nhlib_lua.js).
 
 import { lua_error, lua_type, LUA_TTABLE } from './nhlua.js';
 
@@ -49,14 +47,15 @@ export function nhcore_lua(L) {
     };
 
     // function nh_callback_run(cb, ...)
-    G.nh_callback_run = function nh_callback_run(cb, ...args) {
+    // (async: a callback may print, e.g. tutorial_turn's nh.pline)
+    G.nh_callback_run = async function nh_callback_run(cb, ...args) {
         const cbname = "_CB_" + cb;
 
         if (lua_type(G.nh_lua_variables[cbname]) !== LUA_TTABLE) {
             G.nh_lua_variables[cbname] = {};
         }
         for (const k of Object.keys(G.nh_lua_variables[cbname])) {
-            if (!G[k](...args)) {
+            if (!(await G[k](...args))) {
                 return false;
             }
         }

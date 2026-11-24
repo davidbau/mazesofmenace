@@ -1,10 +1,5 @@
-// trap.js — traps.
+// trap.js: trap effects, launched objects, and terrain hazards.
 // C ref: src/trap.c
-//
-// Only the level-generation entry points are here so far. maketrap() itself
-// still lives in js/mklev.js alongside the rest of the level builder; this file
-// holds the pieces of src/trap.c it calls into, so that a grep for a C symbol
-// finds it in the file its C twin lives in.
 
 import { Is_box, stone_missile } from './obj.js';
 import { Confusion, Stunned, Acid_resistance, Hate_silver } from './youprop.js';
@@ -12,7 +7,7 @@ import { has_magic_key, u_wield_art, attacks } from './artifact.js';
 import { ART_STING } from './artilist_data.js';
 import { test_move, bad_rock, check_capacity } from './hack.js';
 import { getdir } from './cmd.js';
-import { u_on_newpos } from './teleport.js';
+import { u_on_newpos, random_teleport_level, rloco } from './teleport.js';
 import { check_leash, consume_obj_charge } from './apply.js';
 import { inv_weight, weight_cap, calc_capacity, adjalign } from './attrib.js';
 import { bigmonst, unique_corpstat } from './mondata.js';
@@ -34,9 +29,9 @@ import { ECMD_TIME, TEST_MOVE, WT_TOOMUCH_DIAGONAL, P_RIDING, P_BASIC,
          D_NODOOR, D_ISOPEN, D_TRAPPED, DISP_FLASH, DISP_END, POTHIT_OTHER_THROW, M_SEEN_ACID } from './const.js';
 import { IS_OBSTRUCTED } from './const.js';
 import { ALL_TRAPS } from './const.js';
-import { t_at, mon_to_stone } from './mon.js';
+import { t_at, mon_to_stone, maybe_unhide_at } from './mon.js';
 import { mon_adjust_speed } from './worn.js';
-import { pline_mon } from './pline.js';
+import { pline_mon, pline_xy, set_msg_xy } from './pline.js';
 import { aobjnam } from './objnam.js';
 import { has_omonst } from './const.js';
 import { OMONST } from './const.js';
@@ -68,7 +63,7 @@ import { Fumbling } from './youprop.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { MAXULEV, HVY_ENCUMBER, HAND, FINGER, A_WIS } from './const.js';
 import { welded } from './wield.js';
-import { buried_ball } from './dig.js';
+import { buried_ball, digging_context, clear_digging_context } from './dig.js';
 import { liquid_flow } from './dig.js';
 import { fillholetyp } from './dig.js';
 import { is_ice } from './dbridge.js';
@@ -170,7 +165,7 @@ import { done } from './end.js';
 import { recalc_block_point, vision_recalc } from './vision.js';
 import { useupall } from './invent.js';
 import { burn_floor_objects, destroy_items, melt_ice,
-         obj_resists } from './zap.js';
+         obj_resists, fracture_rock } from './zap.js';
 
 import { game } from './gstate.js';
 import { cant_revive } from './read.js';
@@ -183,7 +178,7 @@ import { MSOUND } from './monst_data.js';
 import { strsubst } from './hacklib.js';
 import { nolimbs } from './mondata.js';
 import { rn2, rnd } from './rng.js';
-import { mksobj, place_object, splitobj } from './mkobj.js';
+import { mksobj, place_object, splitobj, add_to_migration } from './mkobj.js';
 import { weight } from './invent.js';
 import { dmgval } from './weapon.js';
 import { makeknown, observe_object } from './o_init.js';
@@ -193,7 +188,7 @@ import { canspotmon, display_nhwindow_message, feel_newsym,
 import { You, You_hear, You_feel, You_see, Your, Norep } from './pline.js';
 import { an, the, doname, mshot_xname, otense, xname, yname, Yname2,
          corpse_xname, CXN_PFX_THE } from './objnam.js';
-import { a_monnam, rndmonnam, upstart } from './do_name.js';
+import { a_monnam, Amonnam, rndmonnam, upstart } from './do_name.js';
 import { losehp } from './hack.js';
 import { delobj, monkilled, monstone, newcham, resists_ston, seemimic,
          vamp_stone, xkilled } from './mon.js';
@@ -202,7 +197,7 @@ import { canseemon } from './display.js';
 import { cansee } from './vision.js';
 import { passes_walls, likes_lava, throws_rocks,
          poly_when_stoned, touch_petrifies } from './mondata.js';
-import { has_ceiling, Can_fall_thru, depth, level_difficulty } from './dungeon.js';
+import { has_ceiling, Can_fall_thru, depth, level_difficulty, get_level } from './dungeon.js';
 import { Monnam, rndcolor } from './do_name.js';
 import { MATERIALS } from './objects_data.js';
 import { W_ARMF, A_DEX, A_CON, NO_PART } from './const.js';
@@ -2701,6 +2696,20 @@ function launch_drop_spot(obj, x, y) {
     }
 }
 
+// src/trap.c:3235 launch_in_progress(), an object may need placement in bones.
+export function launch_in_progress() {
+    return !!game.launchplace?.obj;
+}
+
+// src/trap.c:3241 force_launch_placement(), keep the trap's launch origin.
+export function force_launch_placement() {
+    if (game.launchplace?.obj) {
+        game.launchplace.obj.otrapped = 0;
+        return place_object(game.launchplace.obj, game.launchplace.x,
+                            game.launchplace.y);
+    }
+}
+
 // src/trap.c:2527 trapeffect_landmine()
 async function trapeffect_landmine(mtmp, trap, trflags) {
     let damage = rnd(16);
@@ -3605,12 +3614,7 @@ async function trapeffect_magic_portal(mtmp, trap, trflags) {
     return Trap_Effect_Finished;
 }
 
-// src/trap.c:3733 mintrap() — a monster steps onto a trap.
-//
-// The "already caught in it" half is recorded: escaping draws rn2(40) and
-// then branches through boulders, metallivores and eels, none of which any
-// session has reached. The fresh-trigger half is live, because that is what
-// spends draws on the common path.
+// src/trap.c:3733 mintrap(), handle existing capture and newly triggered traps.
 export async function mintrap(mtmp, mintrapflags) {
     const trap = t_at_mon(mtmp.mx, mtmp.my);
     let trap_result = Trap_Effect_Finished;
@@ -3696,6 +3700,15 @@ export async function mintrap(mtmp, mintrapflags) {
             await setmangry(mtmp, false);
 
         trap_result = await trapeffect_selector(mtmp, trap, mintrapflags);
+
+        // src/trap.c:3827, a trapped monster may lose its hiding place.
+        if (!DEADMONSTER(mtmp) && mtmp.mtrapped) {
+            const alreadyspotted = canspotmon(mtmp);
+
+            maybe_unhide_at(mtmp.mx, mtmp.my);
+            if (!alreadyspotted && canseemon(mtmp))
+                await pline_mon(mtmp, `${Amonnam(mtmp)} appears.`);
+        }
     }
     return trap_result;
 }
@@ -5634,6 +5647,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     let singleobj;
     if (otmp.quan === 1) {
         obj_extract_self(otmp);
+        maybe_unhide_at(otmp.ox, otmp.oy);
         singleobj = otmp;
     } else {
         singleobj = splitobj(otmp, 1);
@@ -5646,11 +5660,15 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
        boulder still blocking the view: a pit it falls into behind that
        line is "You hear a boulder fall." (s40-33). The moveloop recalcs. */
 
+    const digging = digging_context();
+    if ((otyp === ONAMES.BOULDER || otyp === ONAMES.STATUE)
+        && singleobj.ox === digging.pos.x && singleobj.oy === digging.pos.y)
+        clear_digging_context();
+
     let dist = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
     let x = x1, y = y1;
     let finalx = x2, finaly = y2;
     const dx = Math.sign(x2 - x1), dy = Math.sign(y2 - y1);
-    const rolling = (style & ROLL) !== 0;
     let used_up = false;
     game.bhitpos = { x, y };
 
@@ -5692,7 +5710,8 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                                    glyph: og.glyph ?? { kind: 'cmap', cmap: og.cmap } });
         await tmp_at(x, y);
     }
-    /* launch_drop_spot(singleobj, x, y) marks a bones-file spot only */
+    // A fatal hit leaves the object at its launch origin in bones.
+    launch_drop_spot(singleobj, x, y);
 
     /* Set the object in motion */
     while (dist-- > 0 && !used_up) {
@@ -5713,24 +5732,29 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
             if (otyp === ONAMES.BOULDER && throws_rocks(mtmp.data)
                 && rn2(3)) {
                 if (cansee(x, y))
-                    await pline(`${Monnam(mtmp)} snatches the boulder.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} snatches the boulder.`);
                 singleobj.otrapped = 0;
                 const { mpickobj } = await import('./steal.js');
                 await mpickobj(mtmp, singleobj);
                 used_up = true;
+                launch_drop_spot(null, 0, 0);
                 break;
             }
             const { ohitmon } = await import('./mthrowu.js');
-            if (await ohitmon(mtmp, singleobj, rolling ? -1 : dist, false)) {
+            if (await ohitmon(mtmp, singleobj, style === ROLL ? -1 : dist, false)) {
                 used_up = true;
+                launch_drop_spot(null, 0, 0);
                 break;
             }
         } else if (game.u.ux === x && game.u.uy === y) {
             const dam = dmgval(singleobj, game.youmonst);
             if (game.multi)
                 nomul(0);
-            await thitu(9 + (singleobj.spe || 0), dam,
-                        { obj: singleobj }, null);
+            if (await thitu(9 + (singleobj.spe || 0), Maybe_Half_Phys(dam),
+                            { obj: singleobj }, null)) {
+                const { stop_occupation } = await import('./allmain.js');
+                await stop_occupation();
+            }
         }
 
         if (style === ROLL) {
@@ -5742,12 +5766,75 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                     break;
                 }
             }
-        }
-
-        if (rolling) {
-            const floorfx = await import('./do.js');
-            if (await floorfx.flooreffects(singleobj, x, y, 'fall')) {
+            const t = t_at(x, y);
+            if (t && otyp === ONAMES.BOULDER) {
+                let newlev = 0;
+                switch (t.ttyp) {
+                case LANDMINE:
+                    if (rn2(10) > 2) {
+                        if (cansee(x, y))
+                            set_msg_xy(x, y);
+                        await pline(`KAABLAMM!!!${cansee(x, y)
+                            ? '  The rolling boulder triggers a land mine.' : ''}`);
+                        deltrap(t);
+                        del_engr_at(x, y);
+                        await place_object(singleobj, x, y);
+                        singleobj.otrapped = 0;
+                        await fracture_rock(singleobj);
+                        await scatter(x, y, 4,
+                            MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS, null);
+                        if (cansee(x, y))
+                            newsym(x, y);
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
+                    break;
+                case LEVEL_TELEP:
+                    newlev = random_teleport_level();
+                    if (newlev === depth(game.u.uz))
+                        break;
+                    /* FALLTHRU */
+                case TELEP_TRAP:
+                    if (cansee(x, y))
+                        await pline_xy(x, y, 'Suddenly the rolling boulder disappears!');
+                    else if (!Deaf())
+                        await You_hear('a rumbling stop abruptly.');
+                    singleobj.otrapped = 0;
+                    if (t.ttyp === TELEP_TRAP) {
+                        await rloco(singleobj);
+                    } else {
+                        add_to_migration(singleobj);
+                        const dest = {};
+                        get_level(dest, newlev);
+                        singleobj.ox = dest.dnum;
+                        singleobj.oy = dest.dlevel;
+                        singleobj.owornmask = MIGR_RANDOM;
+                    }
+                    seetrap(t);
+                    used_up = true;
+                    launch_drop_spot(null, 0, 0);
+                    break;
+                case PIT:
+                case SPIKED_PIT:
+                case HOLE:
+                case TRAPDOOR:
+                    finalx = x;
+                    finaly = y;
+                    if (await flooreffects(singleobj, x, y, 'fall')) {
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
+                    dist = -1;
+                    break;
+                default:
+                    break;
+                }
+                if (used_up || dist === -1)
+                    break;
+            }
+            if (await flooreffects(singleobj, x, y, 'fall')) {
                 used_up = true;
+                launch_drop_spot(null, 0, 0);
                 break;
             }
 
@@ -5770,8 +5857,10 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
         }
 
         if (otyp === ONAMES.BOULDER && closed_door(x, y)) {
-            if (cansee(x, y))
-                await pline('The boulder crashes through a door.');
+            if (cansee(x, y)) {
+                set_msg_xy(x, y);
+                await pline_The('boulder crashes through a door.');
+            }
             game.level.at(x, y).doormask = D_BROKEN;
             if (dist)
                 recalc_block_point(x, y);
@@ -5803,7 +5892,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     }
 
     await tmp_at(DISP_END, 0);
-    /* launch_drop_spot((struct obj *) 0, 0, 0) */
+    launch_drop_spot(null, 0, 0);
     if (!used_up) {
         singleobj.otrapped = 0;
         await place_object(singleobj, finalx, finaly);
@@ -5813,7 +5902,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     return 2;
 }
 
-// src/trap.c trapeffect_rolling_boulder_trap().
+// src/trap.c:2661 trapeffect_rolling_boulder_trap().
 async function trapeffect_rolling_boulder_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
         const style = ROLL | (trap.tseen ? LAUNCH_KNOWN : 0);
@@ -5829,14 +5918,14 @@ async function trapeffect_rolling_boulder_trap(mtmp, trap, trflags) {
         }
         return Trap_Effect_Finished;
     }
-    if (check_in_air(mtmp, trflags))
+    if (m_in_air(mtmp))
         return Trap_Effect_Finished;
 
     const in_sight = mtmp === game.u.usteed
         || (cansee(mtmp.mx, mtmp.my) && canspotmon(mtmp));
     newsym(mtmp.mx, mtmp.my);
     if (in_sight) {
-        await pline(`${Deaf() ? '' : 'Click!  '}${Monnam(mtmp)} triggers `
+        await pline_mon(mtmp, `${Deaf() ? '' : 'Click!  '}${Monnam(mtmp)} triggers `
                     + `${trap.tseen ? 'a rolling boulder trap' : 'something'}.`);
     }
     if (await launch_obj(ONAMES.BOULDER,

@@ -232,7 +232,8 @@ function mainpositionfromnode(t, nd) {   // ltable.c:189
  */
 function equalkey(k1, n2, deadok) {   // ltable.c:216
     /* not the same variants? */
-    if ($h.u8[k1 + 8] !== $h.u8[n2 + 9] && !(deadok && $h.u8[n2 + 9] === 11 && $h.u8[k1 + 8] & 64)) {
+    if ($h.u8[k1 + 8] !== $h.u8[n2 + 9] &&
+        !(deadok && $h.u8[n2 + 9] === 11 && $h.u8[k1 + 8] & 64)) {
         return 0;   /* cannot be same key */
     }
     switch ($h.u8[n2 + 9]) {
@@ -917,7 +918,8 @@ export function luaH_getint(t, key) {   // ltable.c:745
     alimit = $h.u32[(t + 12) >>> 2];
     if ($c.subu64($c.u64(key), 1) < alimit) {   /* 'key' in [1, t->alimit]? */
         return $h.u32[(t + 16) >>> 2] + $c.idx($c.sub64(key, 1)) * 16;
-    } else if (!!($h.u8[t + 10] & 128) && $c.andu64($c.subu64($c.u64(key), 1), $c.notu64($c.subu64(alimit, 1))) < alimit) {
+    } else if (!!($h.u8[t + 10] & 128) &&
+        $c.andu64($c.subu64($c.u64(key), 1), $c.notu64($c.subu64(alimit, 1))) < alimit) {
         /* key still may be in the array part? */
         $h.u32[(t + 12) >>> 2] = $c.u32(key);   /* probably '#t' is here now */
         return $h.u32[(t + 16) >>> 2] + $c.idx($c.sub64(key, 1)) * 16;

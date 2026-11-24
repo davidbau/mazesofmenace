@@ -7,8 +7,74 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { svd, u } from './decl.js';
-import { In_hell } from './dungeon.js';
+import { In_hell, on_level } from './dungeon.js';
 
+export function Is_astralevel(x) {
+    return (svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(x, svd.dungeon_topology.d_astral_level) ? 1 : 0;
+}
+export function Is_earthlevel(x) {
+    return (svd.dungeon_topology.d_earth_level.dlevel || svd.dungeon_topology.d_earth_level.dnum) && on_level(x, svd.dungeon_topology.d_earth_level) ? 1 : 0;
+}
+export function Is_waterlevel(x) {
+    return (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(x, svd.dungeon_topology.d_water_level) ? 1 : 0;
+}
+export function Is_firelevel(x) {
+    return (svd.dungeon_topology.d_fire_level.dlevel || svd.dungeon_topology.d_fire_level.dnum) && on_level(x, svd.dungeon_topology.d_fire_level) ? 1 : 0;
+}
+export function Is_airlevel(x) {
+    return (svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(x, svd.dungeon_topology.d_air_level) ? 1 : 0;
+}
+export function Is_medusa_level(x) {
+    return (svd.dungeon_topology.d_medusa_level.dlevel || svd.dungeon_topology.d_medusa_level.dnum) && on_level(x, svd.dungeon_topology.d_medusa_level) ? 1 : 0;
+}
+export function Is_oracle_level(x) {
+    return (svd.dungeon_topology.d_oracle_level.dlevel || svd.dungeon_topology.d_oracle_level.dnum) && on_level(x, svd.dungeon_topology.d_oracle_level) ? 1 : 0;
+}
+export function Is_valley(x) {
+    return (svd.dungeon_topology.d_valley_level.dlevel || svd.dungeon_topology.d_valley_level.dnum) && on_level(x, svd.dungeon_topology.d_valley_level) ? 1 : 0;
+}
+export function Is_juiblex_level(x) {
+    return (svd.dungeon_topology.d_juiblex_level.dlevel || svd.dungeon_topology.d_juiblex_level.dnum) && on_level(x, svd.dungeon_topology.d_juiblex_level) ? 1 : 0;
+}
+export function Is_wiz1_level(x) {
+    return (svd.dungeon_topology.d_wiz1_level.dlevel || svd.dungeon_topology.d_wiz1_level.dnum) && on_level(x, svd.dungeon_topology.d_wiz1_level) ? 1 : 0;
+}
+export function Is_wiz2_level(x) {
+    return (svd.dungeon_topology.d_wiz2_level.dlevel || svd.dungeon_topology.d_wiz2_level.dnum) && on_level(x, svd.dungeon_topology.d_wiz2_level) ? 1 : 0;
+}
+export function Is_wiz3_level(x) {
+    return (svd.dungeon_topology.d_wiz3_level.dlevel || svd.dungeon_topology.d_wiz3_level.dnum) && on_level(x, svd.dungeon_topology.d_wiz3_level) ? 1 : 0;
+}
+export function Is_sanctum(x) {
+    return (svd.dungeon_topology.d_sanctum_level.dlevel || svd.dungeon_topology.d_sanctum_level.dnum) && on_level(x, svd.dungeon_topology.d_sanctum_level) ? 1 : 0;
+}
+export function Is_rogue_level(x) {
+    return (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(x, svd.dungeon_topology.d_rogue_level) ? 1 : 0;
+}
+export function Is_stronghold(x) {
+    return (svd.dungeon_topology.d_stronghold_level.dlevel || svd.dungeon_topology.d_stronghold_level.dnum) && on_level(x, svd.dungeon_topology.d_stronghold_level) ? 1 : 0;
+}
+export function Is_bigroom(x) {
+    return (svd.dungeon_topology.d_bigroom_level.dlevel || svd.dungeon_topology.d_bigroom_level.dnum) && on_level(x, svd.dungeon_topology.d_bigroom_level) ? 1 : 0;
+}
+export function Is_qstart(x) {
+    return (svd.dungeon_topology.d_qstart_level.dlevel || svd.dungeon_topology.d_qstart_level.dnum) && on_level(x, svd.dungeon_topology.d_qstart_level) ? 1 : 0;
+}
+export function Is_qlocate(x) {
+    return (svd.dungeon_topology.d_qlocate_level.dlevel || svd.dungeon_topology.d_qlocate_level.dnum) && on_level(x, svd.dungeon_topology.d_qlocate_level) ? 1 : 0;
+}
+export function Is_nemesis(x) {
+    return (svd.dungeon_topology.d_nemesis_level.dlevel || svd.dungeon_topology.d_nemesis_level.dnum) && on_level(x, svd.dungeon_topology.d_nemesis_level) ? 1 : 0;
+}
+export function Is_knox(x) {
+    return (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(x, svd.dungeon_topology.d_knox_level) ? 1 : 0;
+}
+export function Is_mineend_level(x) {
+    return (svd.dungeon_topology.d_mineend_level.dlevel || svd.dungeon_topology.d_mineend_level.dnum) && on_level(x, svd.dungeon_topology.d_mineend_level) ? 1 : 0;
+}
+export function Is_sokoend_level(x) {
+    return (svd.dungeon_topology.d_sokoend_level.dlevel || svd.dungeon_topology.d_sokoend_level.dnum) && on_level(x, svd.dungeon_topology.d_sokoend_level) ? 1 : 0;
+}
 export function In_sokoban(x) {
     return x.dnum === svd.dungeon_topology.d_sokoban_dnum ? 1 : 0;
 }

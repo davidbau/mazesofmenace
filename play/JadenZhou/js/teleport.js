@@ -560,8 +560,14 @@ export async function scrolltele(scroll) {
     if (!tp_prop(BLINDED).intrinsic) /* !Blinded */
         await make_blinded(0, false);
 
-    if ((u.uhave?.amulet || On_W_tower_level(u.uz)) && !rn2(3))
-        throw new Error('scrolltele(): "You feel disoriented for a moment." not ported yet');
+    if ((u.uhave?.amulet || On_W_tower_level_tp(u.uz)) && !rn2(3)) {
+        await You_feel_lt("disoriented for a moment.");
+        /* don't discover the scroll [at least not yet for wizard override];
+           disorientation doesn't reveal that this is a teleport attempt */
+        if (!game.flags?.debug
+            || await tty_yn_function_tp("Override?", "yn", 'n') !== 'y') /* y_n() */
+            return;
+    }
     if (((tp_prop(TELEPORT_CONTROL).intrinsic || tp_prop(TELEPORT_CONTROL).extrinsic
           || (scroll && scroll.blessed)) && !tp_prop(STUNNED).intrinsic
          && !tp_prop(STUNNED).extrinsic)
@@ -749,12 +755,6 @@ async function dotele(break_the_rules) { /* True: wizard mode ^T */
     return 1;
 }
 
-/* C ref: dungeon.h On_W_tower_level() -- Vlad's Tower isn't reachable
-   in the JS port yet */
-function On_W_tower_level(lev) {
-    void lev;
-    return false;
-}
 
 /* C ref: decl.c You_feel/You1 message strings */
 const shudder_for_moment = "shudder for a moment.";
@@ -846,6 +846,49 @@ function is_pool_or_lava_at(x, y) {
            || typ === LAVAWALL;
 }
 
+// C ref: teleport.c level_tele_trap()
+export async function level_tele_trap(trap, trflags) {
+    const u = game.u;
+    let verbbuf;
+    let intentional = false;
+    const Antimagic = !!(tp_prop(ANTIMAGIC).intrinsic || tp_prop(ANTIMAGIC).extrinsic
+                         || (u.umonnum !== u.umonster /* Upolyd */
+                             && resists_magm(game.youmonst)));
+
+    if ((trflags & (VIASITTING_TP | FORCETRAP_TP)) !== 0) {
+        verbbuf = "trigger"; /* follows "You sit down." */
+        intentional = true;
+    } else
+        verbbuf = `${u_locomotion("step")} onto`;
+    await You(`${verbbuf} a level teleport trap!`);
+
+    if (Antimagic && !intentional) {
+        /* shieldeff(u.ux, u.uy): transient display only */
+    }
+    if ((Antimagic && !intentional) || In_endgame(u.uz)) {
+        await pline("You feel a wrenching sensation."); /* You_feel() */
+        return;
+    }
+    deltrap(trap);
+    newsym(u.ux, u.uy); /* get rid of trap symbol */
+    await level_tele();
+
+    const Teleport_control = !!(tp_prop(TELEPORT_CONTROL).intrinsic
+                                || tp_prop(TELEPORT_CONTROL).extrinsic);
+    const HConfusion = tp_prop(CONFUSION).intrinsic || 0;
+    const Confusion = !!(HConfusion || tp_prop(CONFUSION).extrinsic);
+    if (Hallucination_tp() || Teleport_control)
+        await You(`briefly feel ${Hallucination_tp() ? "oriented" : "centered"}.`);
+    else
+        await pline(`You feel ${Confusion ? "even more " : ""}disoriented.`); /* You_feel() */
+    /* magic portal traversal causes brief Stun; for level teleport, use
+       confusion instead, and only when hero lacks control; do this after
+       processing the level teleportation attempt because being confused
+       can affect the outcome ("Oops" result) */
+    if (!Teleport_control)
+        await make_confused_tp((HConfusion & TIMEOUT_TP) + 3, false);
+}
+
 // C ref: teleport.c level_tele() -- the prompt for the destination and
 // the wizard-mode level menu; random_levtport and lev_by_name() are not
 // ported yet
@@ -915,9 +958,8 @@ export async function level_tele() {
                 }
                 force_dest = true;
             } else {
-                if (!/^-?\d+$/.test(buf))
-                    throw new Error('level_tele(): lev_by_name() not ported yet');
-                newlev = parseInt(buf, 10); /* atoi() */
+                if ((newlev = lev_by_name_tp(buf)) === 0)
+                    newlev = parseInt(buf, 10) || 0; /* atoi() */
             }
         } while (!newlev && !digit(buf[0])
                  && (buf[0] !== '-' || !digit(buf[1])) && trycnt < 10);
@@ -966,17 +1008,78 @@ export async function level_tele() {
 
     /* if (!next_to_u() && !force_dest): leashed pets aren't ported yet;
        next_to_u() is TRUE without them */
-    if (In_endgame(u.uz)) /* must already be wizard */
-        throw new Error('level_tele(): level teleport in the endgame not ported yet');
+    if (In_endgame(u.uz)) { /* must already be wizard */
+        const llimit = dunlevs_in_dungeon(u.uz);
 
-    /* svk.killer.name[0] = 0: still alive, so far... */
+        if (newlev >= 0 || newlev <= -llimit) {
+            /* You_cant(get_there_from, "here") */
+            await pline("You can't get there from here.");
+            return;
+        }
+        newlevel.dnum = u.uz.dnum;
+        newlevel.dlevel = llimit + newlev;
+        schedule_goto(newlevel, UTOTYPE_NONE, null, null);
+        return;
+    }
 
-    if (newlev < 0 && !force_dest)
-        throw new Error('level_tele(): teleporting above the dungeon not ported yet');
+    killer_lt().name = ''; /* still alive, so far... */
 
-    /* escape_by_flying: not reached */
+    let escape_by_flying = null;
+    if (newlev < 0 && !force_dest) {
+        if (u.ushops0) {
+            /* take unpaid inventory items off of shop bills */
+            throw new Error('level_tele(): u_left_shop() when teleporting out of the dungeon not ported yet');
+        }
+        if (newlev <= -10) {
+            await You("arrive in heaven.");
+            /* SetVoice((struct monst *) 0, 0, 80, voice_deity) */
+            await pline('"Thou art early, but we\'ll admit thee."'); /* verbalize() */
+            killer_lt().format = NO_KILLER_PREFIX_LT;
+            killer_lt().name = "went to heaven prematurely";
+        } else if (newlev === -9) {
+            await You_feel_lt("deliriously happy.");
+            await pline("(In fact, you're on Cloud 9!)");
+            await tty_display_nhwindow_lt(g.WIN_MESSAGE, false);
+        } else
+            await You("are now high above the clouds...");
+
+        if (killer_lt().name) {
+            ; /* arrival in heaven is pending */
+        } else if (tp_Levitation()) {
+            escape_by_flying = "float gently down to earth";
+        } else if (tp_Flying()) {
+            escape_by_flying = "fly down to the ground";
+        } else {
+            await pline("Unfortunately, you don't know how to fly.");
+            await You("plummet a few thousand feet to your death.");
+            killer_lt().name = `teleported out of the dungeon and fell to ${
+                g.flags.female ? "her" : "his"} death`; /* uhis() */
+            killer_lt().format = NO_KILLER_PREFIX_LT;
+        }
+    }
+
+    if (killer_lt().name) { /* the chosen destination was not survivable */
+        /* set specific death location; this also suppresses bones */
+        const lsav = { ...u.uz }; /* save current level; see below */
+        u.uz.dnum = 0; /* main dungeon */
+        u.uz.dlevel = (newlev <= -10) ? -10 : 0; /* heaven or surface */
+        await done_lt(DIED_LT);
+        /* can only get here via life-saving (or declining to die in
+           explore|debug mode); the hero has now left the dungeon... */
+        escape_by_flying = "find yourself back on the surface";
+        u.uz.dnum = lsav.dnum, u.uz.dlevel = lsav.dlevel; /* restore u.uz so escape code works */
+    }
+
+    /* calls done(ESCAPED) if newlevel==0 */
     const topo = g.dungeon_topology;
-    if (force_dest) {
+    if (escape_by_flying) {
+        await You(`${escape_by_flying}.`);
+        /* [dlevel used to be set to 1, but it doesn't make sense to
+            teleport out of the dungeon and float or fly down to the
+            surface but then actually arrive back inside the dungeon] */
+        newlevel.dnum = 0;   /* specify main dungeon */
+        newlevel.dlevel = 0; /* escape the dungeon */
+    } else if (force_dest) {
         /* wizard mode menu; no further validation needed */
         ;
     } else if (u.uz.dnum === topo.d_medusa_level.dnum
@@ -1564,8 +1667,16 @@ export async function rloco(obj) {
                      || (dndest.nlx
                          && within_bounded_area(tx, ty,
                                                 dndest.nlx, dndest.nly,
-                                                dndest.nhx, dndest.nhy)))));
-    /* On_W_tower_level(): the Wizard's tower isn't generated yet */
+                                                dndest.nhx, dndest.nhy))))
+             /* on the Wizard Tower levels, objects inside should
+                stay inside and objects outside should stay outside */
+             || (dndest?.nlx && On_W_tower_level_tp(game.u.uz)
+                 && within_bounded_area(tx, ty,
+                                        dndest.nlx, dndest.nly,
+                                        dndest.nhx, dndest.nhy)
+                    !== within_bounded_area(otx, oty,
+                                            dndest.nlx, dndest.nly,
+                                            dndest.nhx, dndest.nhy)));
 
     if (await flooreffects(obj, tx, ty, "fall")) {
         /* update old location (if any) since flooreffects() couldn't;
@@ -1585,4 +1696,16 @@ export async function rloco(obj) {
     newsym(tx, ty);
     return true;
 }
+import { VIASITTING as VIASITTING_TP, FORCETRAP as FORCETRAP_TP,
+         TIMEOUT as TIMEOUT_TP } from './const.js';
+import { Hallucination as Hallucination_tp } from './display.js';
+import { make_confused as make_confused_tp } from './potion.js';
+import { lev_by_name as lev_by_name_tp } from './dungeon.js';
 
+import { killer as killer_lt } from './topten.js';
+import { done as done_lt } from './end.js';
+import { NO_KILLER_PREFIX as NO_KILLER_PREFIX_LT, DIED as DIED_LT } from './const.js';
+import { tty_display_nhwindow as tty_display_nhwindow_lt } from './wintty.js';
+import { You_feel as You_feel_lt } from './display.js';
+import { tty_yn_function as tty_yn_function_tp } from './wintty.js';
+import { On_W_tower_level as On_W_tower_level_tp } from './dungeon.js';

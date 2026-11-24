@@ -103,7 +103,8 @@ function b_str2int(s, base, pn) {   // lbaselib.c:60
         return 0;
     }
     do {
-        digit = $c.isdigit($c.u8($h.i8[s])) ? $h.i8[s] - 48 | 0 : ($c.toupper($c.u8($h.i8[s])) - 65 | 0) + 10 | 0;
+        digit = $c.isdigit($c.u8($h.i8[s])) ? $h.i8[s] - 48 | 0
+            : ($c.toupper($c.u8($h.i8[s])) - 65 | 0) + 10 | 0;
         if (digit >= base) {
             return 0;   /* invalid numeral */
         }
@@ -248,7 +249,8 @@ async function pushmode(L, oldmode) {   // lbaselib.c:184
     if (oldmode === -1) {
         lua_pushnil(L);   /* invalid call to 'lua_gc' */
     } else {
-        await lua_pushstring(L, oldmode === 11 ? $h.lit("incremental") : $h.lit("generational"));
+        await lua_pushstring(L, oldmode === 11 ? $h.lit("incremental")
+            : $h.lit("generational"));
     }
     return 1;
 }

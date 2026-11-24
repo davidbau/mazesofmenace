@@ -7,6 +7,7 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { flags, gu, u } from './decl.js';
+import { dist2 } from './hacklib.js';
 import { LEFT_HANDED, RIGHT_HANDED } from './you.h.js';
 
 export function Role_if(X) {
@@ -23,6 +24,12 @@ export function Upolyd() {
 }
 export function Ugender() {
     return (u.umonnum !== u.umonster ? u.mfemale : flags.female) ? 1 : 0;
+}
+export function next2u(px, py) {
+    return dist2(px, py, u.ux, u.uy) <= 2 ? 1 : 0;
+}
+export function m_next2u(m) {
+    return dist2(m.mx, m.my, u.ux, u.uy) <= 2 ? 1 : 0;
 }
 export function u_at(x, y) {
     return x === u.ux && y === u.uy ? 1 : 0;

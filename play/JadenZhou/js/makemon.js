@@ -17,7 +17,7 @@ import { canspotmon } from './display.js';
 import { mondied } from './mon.js';
 import { in_town } from './hack.js';
 import { game } from './gstate.js';
-import { stop_timer, obj_to_any, begin_burn } from './timeout.js';
+import { stop_timer, obj_to_any, monst_to_any, begin_burn } from './timeout.js';
 import { ROT_CORPSE } from './const.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { level_difficulty, Is_special, In_hell } from './dungeon.js';
@@ -57,8 +57,10 @@ import { mksobj, mkobj_at, curse, bless, next_ident, set_corpsenm } from './mkob
 import {
     monsndx, set_mon_data, is_elf, is_dwarf, is_demon, is_male, is_female,
     is_neuter, is_undead, is_swimmer, is_floater, passes_walls, haseyes,
-    is_bat, little_to_big, pm_invisible,
+    is_bat, little_to_big, pm_invisible, emits_light,
 } from './mondata.js';
+import { new_light_source } from './light.js';
+import { LS_MONSTER } from './const.js';
 import { engr_at } from './engrave.js';
 import { enexto_core, enexto_gpflags } from './teleport.js';
 import { newedog } from './dog.js';
@@ -831,7 +833,7 @@ function m_initthrow(mtmp, otyp, oquan) {
     otmp.quan = rn1(oquan, 3);
     otmp.owt = weight(otmp);
     if (otyp === O.ORCISH_ARROW)
-        otmp.opoisoned = true;
+        otmp.otrapped /* opoisoned */ = true;
     mpickobj(mtmp, otmp);
 }
 
@@ -1576,8 +1578,9 @@ export async function clone_mon(
     mon_track_clear_cm(m2);
 
     place_monster(m2, m2.mx, m2.my);
-    /* if (emits_light(m2->data)) new_light_source(...): light sources
-       aren't ported (see makemon()) */
+    if (emits_light(m2.data))
+        new_light_source(m2.mx, m2.my, emits_light(m2.data), LS_MONSTER,
+                         monst_to_any(m2));
     /* if 'parent' is named, give the clone the same name */
     if (has_mgivenname_cm(mon)) {
         m2 = christen_monst(m2, MGIVENNAME_cm(mon));
@@ -1984,9 +1987,10 @@ export function makemon(ptr, x, y, mmflags) {
             mon_adjust_speed_sync(mtmp, 2, null);
         break;
     }
-    /* if ((ct = emits_light(mtmp->data)) > 0) new_light_source(...):
-       light.c isn't ported and vision.js has no light sources (no dice
-       are rolled; only what the hero can see is affected) */
+    let ct;
+    if ((ct = emits_light(mtmp.data)) > 0)
+        new_light_source(mtmp.mx, mtmp.my, ct, LS_MONSTER,
+                         monst_to_any(mtmp));
     mitem = O.STRANGE_OBJECT; /* extra inventory item for this monster */
 
     if (mndx === M.PM_VLAD_THE_IMPALER)

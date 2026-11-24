@@ -200,7 +200,8 @@ export function regncomp(preg, regex, n, cflags) {   // regcomp.c:139
 export function regcomp_l(preg, regex, cflags, loc) {   // regcomp.c:154
     let len = 0;
     if (cflags & 32) {
-        if (regex === 0 || $h.u32[(preg + 16) >>> 2] === 0 || $h.u32[(preg + 16) >>> 2] < regex) {
+        if (regex === 0 || $h.u32[(preg + 16) >>> 2] === 0 ||
+            $h.u32[(preg + 16) >>> 2] < regex) {
             return 16;
         }
         len = $c.u64($h.u32[(preg + 16) >>> 2] - regex);

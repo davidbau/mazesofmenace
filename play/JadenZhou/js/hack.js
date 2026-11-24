@@ -569,7 +569,7 @@ function is_door_mappear(mon) {
 }
 
 // C ref: dbridge.c is_pool_or_lava()
-function is_pool_or_lava(x, y) {
+export function is_pool_or_lava(x, y) {
     return is_pool(x, y) || is_lava(x, y);
 }
 
@@ -1391,8 +1391,39 @@ export async function pooleffects(newspot) /* true if called by spoteffects */ {
     const u = game.u;
 
     /* check for leaving water */
-    if (u.uinwater)
-        throw new Error('pooleffects(): leaving water not ported yet');
+    if (u.uinwater) {
+        let still_inwater = false; /* assume we're getting out */
+
+        if (!is_pool(u.ux, u.uy)) {
+            if (Is_waterlevel(u.uz)) {
+                await You("pop into an air bubble.");
+                game.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
+            } else if (is_lava(u.ux, u.uy)) {
+                await You(`leave the ${hliquid("water")}...`); /* oops! */
+            } else {
+                await back_on_ground(false);
+            }
+        } else if (Is_waterlevel(u.uz)) {
+            still_inwater = true;
+        } else if (sp_Levitation()) {
+            await You(`pop out of the ${hliquid("water")} like a cork!`);
+        } else if (sp_Flying()) {
+            await You(`fly out of the ${hliquid("water")}.`);
+        } else if (pe_Wwalking()) {
+            await You("slowly rise above the surface.");
+        } else {
+            still_inwater = true;
+        }
+        if (!still_inwater) {
+            const was_underwater = (u.uinwater && !Is_waterlevel(u.uz));
+
+            await set_uinwater(0); /* u.uinwater = 0; leave the water */
+            if (was_underwater) { /* restore vision */
+                await docrt_pe();
+                game.vision_full_recalc = 1;
+            }
+        }
+    }
 
     /* check for entering water or lava */
     if (!u.ustuck && !sp_Levitation() && !sp_Flying()
@@ -1415,14 +1446,42 @@ export async function pooleffects(newspot) /* true if called by spoteffects */ {
 
         /* drown(),lava_effects() return true if hero changes
            location while surviving the problem */
-        if (is_lava(u.ux, u.uy))
-            throw new Error('pooleffects(): lava_effects() not ported yet');
-        else
-            throw new Error('pooleffects(): drown() not ported yet');
+        if (is_lava(u.ux, u.uy)) {
+            if (await lava_effects())
+                return true;
+        } else if ((!pe_Wwalking() || is_waterwall(u.ux, u.uy))
+                   && (newspot || !u.uinwater
+                       || !(pe_Swimming() || pe_Amphibious() || pe_Breathless()))) {
+            if (await drown())
+                return true;
+        }
     }
-    void newspot;
     return false;
 }
+/* C ref: youprop.h Wwalking, Swimming, Amphibious, Breathless */
+function pe_Wwalking() {
+    const p = sp_prop(WWALKING);
+    return !!((p.intrinsic || p.extrinsic) && !Is_waterlevel(game.u.uz));
+}
+function pe_Swimming() {
+    const p = sp_prop(SWIMMING);
+    return !!(p.intrinsic || p.extrinsic
+              || (game.u.usteed && (game.u.usteed.data.mflags1 & M1_SWIM) !== 0));
+}
+function pe_Amphibious() {
+    const p = sp_prop(MAGICAL_BREATHING);
+    return !!(p.intrinsic || p.extrinsic
+              || (game.youmonst.data.mflags1 & M1_AMPHIBIOUS) !== 0);
+}
+function pe_Breathless() {
+    const p = sp_prop(MAGICAL_BREATHING);
+    return !!(p.intrinsic || p.extrinsic
+              || (game.youmonst.data.mflags1 & M1_BREATHLESS) !== 0);
+}
+import { drown, lava_effects, is_waterwall, set_uinwater, back_on_ground } from './trap.js';
+import { docrt as docrt_pe } from './display.js';
+import { PLNMSG_BACK_ON_GROUND, SWIMMING, MAGICAL_BREATHING } from './const.js';
+import { M1_SWIM, M1_AMPHIBIOUS, M1_BREATHLESS } from './monsters.js';
 
 /* C ref: hack.c spoteffects() static locals */
 let inspoteffects = 0;

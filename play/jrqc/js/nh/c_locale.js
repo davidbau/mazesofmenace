@@ -91,7 +91,8 @@ export function ___mb_cur_max_l(loc) {   // c_locale.c:48
  * @returns {number} int
  */
 export function __maskrune_l(_c, _f, _l) {   // c_locale.c:55
-    return (((_c < 0 || _c >= 256 ? $c.u32(___runetype_l(_c, _l)) : $h.u32[($h.u32[($h.u32[(__locale_ptr(_l) + 1304 + 1 /* XLC_CTYPE */ * 8) >>> 2] + 120) >>> 2] + 60 + _c * 4) >>> 2]) | 0) >>> 0 & $c.u32(_f)) >>> 0 | 0;
+    return (((_c < 0 || _c >= 256 ? $c.u32(___runetype_l(_c, _l)) :
+        $h.u32[($h.u32[($h.u32[(__locale_ptr(_l) + 1304 + 1 /* XLC_CTYPE */ * 8) >>> 2] + 120) >>> 2] + 60 + _c * 4) >>> 2]) | 0) >>> 0 & $c.u32(_f)) >>> 0 | 0;
 }
 /* locale/FreeBSD/collate.c:1789 __collate_equiv_value: the length check and the
  * POSIX-locale branch (XLOCALE_COLLATE(loc)->__collate_load_error is set in
@@ -128,7 +129,8 @@ export function __collate_equiv_value(loc, str, len) {   // c_locale.c:66
  * @returns {number} int
  */
 function __istype_l(_c, _f, _l) {   // c_locale.c:87
-    return !!($c.isascii(_c) ? $c.andu64($h.u32[(_DefaultRuneLocale + 60 + _c * 4) >>> 2], _f) : $c.u64(__maskrune_l(_c, _f, _l))) ? 1 : 0;
+    return !!($c.isascii(_c) ? $c.andu64($h.u32[(_DefaultRuneLocale + 60 + _c * 4) >>> 2], _f)
+        : $c.u64(__maskrune_l(_c, _f, _l))) ? 1 : 0;
 }
 /* include/xlocale/___wctype.h */
 /**
@@ -187,7 +189,8 @@ export function iswxdigit_l(_wc, _l) {   // c_locale.c:99
  * @returns {number} wint_t
  */
 export function towlower_l(_wc, _l) {   // c_locale.c:103
-    return $c.isascii(_wc) ? $h.i32[(_DefaultRuneLocale + 1084 + _wc * 4) >>> 2] : ___tolower_l(_wc, _l);
+    return $c.isascii(_wc) ? $h.i32[(_DefaultRuneLocale + 1084 + _wc * 4) >>> 2]
+        : ___tolower_l(_wc, _l);
 }
 /**
  * @param {number} _wc wint_t
@@ -195,7 +198,8 @@ export function towlower_l(_wc, _l) {   // c_locale.c:103
  * @returns {number} wint_t
  */
 export function towupper_l(_wc, _l) {   // c_locale.c:110
-    return $c.isascii(_wc) ? $h.i32[(_DefaultRuneLocale + 2108 + _wc * 4) >>> 2] : ___toupper_l(_wc, _l);
+    return $c.isascii(_wc) ? $h.i32[(_DefaultRuneLocale + 2108 + _wc * 4) >>> 2]
+        : ___toupper_l(_wc, _l);
 }
 /*
  * locale/FreeBSD/collcmp.c:46 __collate_range_cmp(char c1, char c2). TRE

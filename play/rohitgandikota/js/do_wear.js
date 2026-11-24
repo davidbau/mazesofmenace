@@ -115,7 +115,7 @@ export function ARM_BONUS(obj) {
     return a_ac + (obj.spe || 0) - Math.min(greatest_erosion(obj), a_ac);
 }
 
-// src/do_wear.c:1500 find_ac()
+// src/do_wear.c:2473 find_ac()
 export function find_ac() {
     const u = game.u;
     let uac = mons[u.umonnum ?? 0].ac;   /* base AC for the current form */
@@ -128,7 +128,7 @@ export function find_ac() {
         const obj = worn(mask);
         if (obj && obj.otyp === ONAMES.RIN_PROTECTION) uac -= (obj.spe || 0);
     }
-    const amul = worn(W_AMUL);
+    const amul = u.uamul;
     if (amul && amul.otyp === ONAMES.AMULET_OF_GUARDING) uac -= 2;
 
     if (((u.intrinsic?.HProtection || 0) & INTRINSIC) !== 0)
@@ -718,51 +718,33 @@ export const PROP_KEYS = ['0',
     'POLYMORPH', 'POLYMORPH_CONTROL', 'UNCHANGING', 'FAST', 'REFLECTING',
     'FREE_ACTION', 'FIXED_ABIL', 'LIFESAVED'];
 
-// src/do_wear.c set_wear() — apply the on-effects of worn gear.
-//
-// With obj null it walks EVERY worn slot; with an object it does just that
-// one. C's `!obj ? uslot != 0 : (obj == uslot)` is that test written once per
-// slot, and the ORDER is fixed: blindfold, right ring, left ring, amulet,
-// then shirt, suit, cloak, boots, gloves, helmet, shield.
-//
-// The property grant each handler relies on comes from setworn and is applied
-// here per slot. The handlers' remaining effects are messages (suppressed at
-// initial don) and side effects like vision recalcs; the slots whose handler
-// does more than the property keep their record.
+// src/do_wear.c:1539 set_wear()
 export async function set_wear(obj) {
     game.initial_don = !obj;
-    const slotobj = (mask) => worn(mask);
 
-    if (game.u.ublindf && (!obj || obj === game.u.ublindf))
+    if (!obj ? game.u.ublindf : obj === game.u.ublindf)
         await Blindf_on(game.u.ublindf);
-    for (const mask of [W_RINGR, W_RINGL]) {
-        const o = slotobj(mask);
-        if (o && (!obj || obj === o))
-            await Ring_on(o);
-    }
-    {
-        const o = slotobj(W_AMUL);
-        if (o && (!obj || obj === o))
-            await Amulet_on(o);
-    }
+    if (!obj ? game.u.uright : obj === game.u.uright)
+        await Ring_on(game.u.uright);
+    if (!obj ? game.u.uleft : obj === game.u.uleft)
+        await Ring_on(game.u.uleft);
+    if (!obj ? game.u.uamul : obj === game.u.uamul)
+        await Amulet_on(game.u.uamul);
 
-    /* the worn items' oc_oprop extrinsics were granted by setworn() when
-       u_init dressed the hero, exactly as in C; the handlers here add only
-       their slot-specific side effects (messages are suppressed at initial
-       don, C gates them on gi.initial_don) */
-    for (const [mask, arm] of [[W_ARMU, 'Shirt_on'], [W_ARM, 'Armor_on'],
-                               [W_ARMC, 'Cloak_on'], [W_ARMF, 'Boots_on'],
-                               [W_ARMG, 'Gloves_on'], [W_ARMH, 'Helmet_on'],
-                               [W_ARMS, 'Shield_on']]) {
-        const o = slotobj(mask);
-        if (o && (!obj || obj === o)) {
-            if (arm === 'Armor_on')
-                await Armor_on();
-            else if (arm === 'Helmet_on' && o.otyp === ONAMES.FEDORA
-                     && game.urole?.name?.m === 'Archeologist')
-                change_luck(1);
-        }
-    }
+    if (!obj ? game.u.uarmu : obj === game.u.uarmu)
+        await Shirt_on();
+    if (!obj ? game.u.uarm : obj === game.u.uarm)
+        await Armor_on();
+    if (!obj ? game.u.uarmc : obj === game.u.uarmc)
+        await Cloak_on();
+    if (!obj ? game.u.uarmf : obj === game.u.uarmf)
+        await Boots_on();
+    if (!obj ? game.u.uarmg : obj === game.u.uarmg)
+        await Gloves_on();
+    if (!obj ? game.u.uarmh : obj === game.u.uarmh)
+        await Helmet_on();
+    if (!obj ? game.u.uarms : obj === game.u.uarms)
+        await Shield_on();
 
     game.initial_don = false;
 }
@@ -1168,7 +1150,7 @@ export async function Amulet_on(amul) {
 // src/do_wear.c:1030 Amulet_off() — does its own off_msg.
 // src/do_wear.c:733 Shield_off()
 export async function Shield_off() {
-    const uarms = worn(W_ARMS);
+    const uarms = game.u.uarms;
     (game.context_takeoff ||= {}).mask &= ~W_ARMS;
     /* no shield currently requires special handling when taken off, but
        keep this uncommented in case somebody adds a new one which does */
@@ -1193,7 +1175,7 @@ export async function Shield_off() {
 
 // src/do_wear.c:778 Shirt_off()
 export async function Shirt_off() {
-    const uarmu = worn(W_ARMU);
+    const uarmu = game.u.uarmu;
     (game.context_takeoff ||= {}).mask &= ~W_ARMU;
     /* no shirt currently requires special handling when taken off, but
        keep this uncommented in case somebody adds a new one which does */
@@ -1212,7 +1194,7 @@ export async function Shirt_off() {
 // src/do_wear.c:909 Armor_off() — the body armor comes off; a lit artifact
 // stops shining and dragon armor's secondary property is withdrawn.
 export async function Armor_off() {
-    const otmp = worn(W_ARM);
+    const otmp = game.u.uarm;
     const was_arti_light = !!(otmp && otmp.lamplit && artifact_light(otmp));
 
     (game.context_takeoff ||= {}).mask &= ~W_ARM;
@@ -1255,8 +1237,9 @@ export async function Armor_gone() {
     return 0;
 }
 
+// src/do_wear.c:1090 Amulet_off()
 export async function Amulet_off() {
-    const amul = worn(W_AMUL); /* for off_msg() after setworn(NULL,W_AMUL) */
+    const amul = game.u.uamul; /* for off_msg() after setworn(NULL,W_AMUL) */
     let mkn = false, early_off_msg = false;
 
     if (!amul)
@@ -2730,7 +2713,7 @@ export function some_armor(victim) {
 // src/do_wear.c:3319 adj_abon() — gauntlets of dexterity and helm of
 // brilliance move the attribute bonus with their enchantment.
 export function adj_abon(otmp, delta) {
-    const uarmg = worn(W_ARMG), uarmh = worn(W_ARMH);
+    const {uarmg, uarmh} = game.u;
     const abon = ((game.u.abon ||= {}).a ||= new Array(A_MAX).fill(0));
 
     if (uarmg && uarmg === otmp && otmp.otyp === ONAMES.GAUNTLETS_OF_DEXTERITY) {

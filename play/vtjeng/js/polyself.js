@@ -155,8 +155,8 @@ import {
     amorphous, attacktype, attacktype_fordmg, breakarm, can_be_strangled, can_breathe, could_twoweap, dmgtype, dmgtype_fromattack, emits_light, has_head, has_horns, hides_under, humanoid, infravision, is_animal, is_bat, is_clinger, is_floater, is_flyer, is_hider, is_female, is_male, is_neuter, is_placeholder, is_swimmer, is_vampire, is_vampshifter, is_mind_flayer, is_unicorn, is_were, is_whirly, lays_eggs, eggs_in_water, likes_lava, mindless, Resists_Elem, nohands, nonliving, unsolid, passes_walls, perceives, pm_invisible, poly_when_stoned, polyok, regenerates, resists_drli, sliparm, slithy, sticks, strongmonst, telepathic, touch_petrifies, valid_vampshiftform, verysmall, webmaker, weirdnonliving, can_teleport, control_teleport, your_race, flaming, name_to_monclass, name_to_monplus, num_horns, type_is_pname, } from './mondata.js';
 import { character_race, genders } from './roles.js';
 import {
-    capitalizedMonsterName, hliquid, l_monnam, Mgender, Monnam, mon_nam,
-    monsterCommonName, pmname, Some_Monnam, y_monnam,
+    hliquid, l_monnam, Mgender, Monnam, mon_nam,
+    pmname, Some_Monnam, y_monnam,
 } from './do_name.js';
 import { set_mon_data } from './mondata.js';
 import { golemhp, is_home_elemental, mkclass_poly } from './makemon.js';
@@ -2023,7 +2023,7 @@ export async function rehumanize(state = game, rawEnv = {}) {
     update_inventory(env);
     if (was_flying && !Flying(state.u) && u.usteed)
         await message(
-            `You and ${monsterCommonName(u.usteed, state, 0, env)} return gently `
+            `You and ${mon_nam(u.usteed, state, env)} return gently `
             + `to the ${surface(u.ux, u.uy, state)}.`, state, env,
         );
     await retouch_equipment(2, state, env); // polyself.c:rehumanize
@@ -2151,7 +2151,7 @@ export async function dospinweb(state = game) {
     }
     if (u.uswallow) {
         await ttyPline(
-            `You release web fluid inside ${monsterCommonName(u.ustuck, state)}.`,
+            `You release web fluid inside ${mon_nam(u.ustuck, state)}.`,
             state,
         );
         if (is_animal(u.ustuck.data)) {
@@ -2185,7 +2185,7 @@ export async function dospinweb(state = game) {
             return ECMD_OK;
         } /* default: a nasty jelly-like creature */
         await ttyPline(
-            `The web dissolves into ${monsterCommonName(u.ustuck, state)}.`,
+            `The web dissolves into ${mon_nam(u.ustuck, state)}.`,
             state,
         );
         return ECMD_OK;
@@ -2672,7 +2672,7 @@ export async function uunstick(state = game, rawEnv = {}) {
     set_ustuck(null, state); /* before pline() */
     const message = rawEnv.message ?? ttyPline;
     await message(
-        `${capitalizedMonsterName(mtmp, state)} is no longer in your clutches.`,
+        `${Monnam(mtmp, state)} is no longer in your clutches.`,
         state,
         rawEnv,
     );

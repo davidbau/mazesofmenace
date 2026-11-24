@@ -67,7 +67,13 @@ import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
    Both sides export function DECLARATIONS, which hoist, so each module sees the
    other's bindings by the time anything is called. */
 import { merged, mergable, weight, update_inventory,
-         obj_extract_self, confers_luck, set_moreluck, hold_another_object } from './invent.js';
+         obj_extract_self, confers_luck, set_moreluck, hold_another_object,
+         useupall, obfree } from './invent.js';
+import { remove_worn_item } from './steal.js';
+import { stop_occupation } from './allmain.js';
+import { setmnotwielded } from './weapon.js';
+import { MON_WEP } from './monst.js';
+import { eatfood } from './eat.js';
 import { reset_remarm } from './do_wear.js';
 import { drop_uswapwep } from './wield.js';
 import { book_cursed } from './spell.js';
@@ -1153,86 +1159,123 @@ function item_on_ice(item) {
     return outer.where === OBJ_BURIED ? BURIED_UNDER_ICE : SET_ON_ICE;
 }
 
-// src/mkobj.c shrink_glob() - reduce a glob by one weight unit and keep its
-// timer active until it dissolves.
-export async function shrink_glob(obj) {
+// src/mkobj.c:1500 shrink_glob(), including overdue level timers.
+export async function shrink_glob(obj, expire_time) {
     if (!obj?.globby)
         return;
 
-    const globLocation = item_on_ice(obj);
-    let eatingGlob = false;
-    if (game.context?.victual?.piece === obj && game.occupation) {
-        const { eatfood } = await import('./eat.js');
-        eatingGlob = game.occupation === eatfood;
+    const globloc = item_on_ice(obj);
+    const ininv = obj.where === OBJ_INVENT;
+    const contnr = obj.where === OBJ_CONTAINED ? obj.ocontainer : null;
+    let topcontnr = null, old_top_owt = 0;
+    let shrink = false, updinv = false;
+
+    if (expire_time < game.moves && globloc !== BURIED_UNDER_ICE) {
+        let delta = Math.trunc((game.moves - expire_time + 24) / 25);
+        const moddelta = 25 - (delta % 25);
+        if (globloc === SET_ON_ICE)
+            delta = Math.trunc((delta + 2) / 3);
+
+        if (delta >= obj.owt) {
+            obj.owt = 0;
+            await shrinking_glob_gone(obj);
+        } else {
+            obj.owt -= delta;
+            if (contnr)
+                container_weight(contnr);
+            start_glob_timeout(obj, moddelta);
+        }
+        return;
     }
-    if (eatingGlob || globLocation === BURIED_UNDER_ICE
-        || (globLocation === SET_ON_ICE && (game.moves ?? 0) % 3 === 1)) {
+
+    // src/eat.c:2078 eating_glob(), the existing occupation and meal owners.
+    if ((game.occupation === eatfood && game.context.victual.piece === obj)
+        || globloc === BURIED_UNDER_ICE
+        || (globloc === SET_ON_ICE && game.moves % 3 === 1)) {
         start_glob_timeout(obj, 0);
         return;
     }
 
-    const inInvent = obj.where === OBJ_INVENT;
-    const onFloor = obj.where === OBJ_FLOOR;
-    const container = obj.where === OBJ_CONTAINED ? obj.ocontainer : null;
-    let topContainer = null, oldTopWeight = 0;
-    if (container) {
-        topContainer = container;
-        while (topContainer.where === OBJ_CONTAINED && topContainer.ocontainer)
-            topContainer = topContainer.ocontainer;
-        oldTopWeight = topContainer.owt;
-    }
-    const ox = obj.ox, oy = obj.oy;
-    const { Yname2 } = await import('./objnam.js');
-    const globName = Yname2(obj);
-    const baseWeight = Math.max(game.objects[obj.otyp].oc_weight || 0, 1);
-    const messageWeight = Math.trunc((baseWeight + 1) / 2);
-    const shrinksVisibly = obj.owt > 0 && obj.owt % messageWeight === 0;
+    game.iflags.partly_eaten_hack = true;
+    let globnambuf = Yname2(obj);
+    game.iflags.partly_eaten_hack = false;
 
     if (obj.owt > 0) {
+        const basewt = game.objects[obj.otyp].oc_weight;
+        const msgwt = Math.trunc((Math.max(basewt, 1) + 1) / 2);
+        shrink = obj.owt % msgwt === 0;
         obj.owt--;
         if (obj.oeaten > 1)
             obj.oeaten--;
     }
     const gone = !obj.owt;
 
-    if (container) {
-        for (let parent = container; parent; parent = parent.ocontainer)
-            parent.owt = weight(parent);
-    }
-    if (inInvent && (shrinksVisibly || gone)) {
-        const { pline } = await import('./display.js');
-        await pline(`${globName} ${gone ? 'dissolves completely' : 'shrinks'}.`);
-    } else if (topContainer?.where === OBJ_INVENT) {
-        const { near_capacity } = await import('./attrib.js');
-        if (gone || (shrinksVisibly && topContainer.owt !== oldTopWeight)
-            || near_capacity() !== game.oldcap) {
-            const { pline } = await import('./display.js');
-            await pline(`${Yname2(topContainer)} ${
-                topContainer.owt !== oldTopWeight ? 'becomes' : 'seems'
-            }${gone ? '' : ' slightly'} lighter.`);
+    if (ininv) {
+        if (shrink || gone)
+            await pline(`${globnambuf} ${gone ? 'dissolves completely' : 'shrinks'}.`);
+        updinv = true;
+    } else if (contnr) {
+        topcontnr = contnr;
+        while (topcontnr.where === OBJ_CONTAINED)
+            topcontnr = topcontnr.ocontainer;
+        old_top_owt = topcontnr.owt;
+        container_weight(contnr);
+
+        if (topcontnr.where === OBJ_INVENT) {
+            if (gone || (shrink && topcontnr.owt !== old_top_owt)
+                || near_capacity() !== game.oldcap) {
+                await pline(`${Yname2(topcontnr)} ${
+                    topcontnr.owt !== old_top_owt ? 'becomes' : 'seems'
+                }${gone ? '' : ' slightly'} lighter.`);
+            }
+            updinv = true;
         }
     }
 
     if (gone) {
-        let visible = false;
-        if (onFloor) {
-            const { cansee } = await import('./vision.js');
-            visible = cansee(ox, oy);
-        }
-        obj_extract_self(obj);
-        if (onFloor) {
-            const { newsym, pline } = await import('./display.js');
-            newsym(ox, oy);
-            if (visible)
-                await pline(`${globName} fades away.`);
+        const cc = { x: 0, y: 0 };
+        const seeit = obj.where === OBJ_FLOOR
+            && get_obj_location(obj, cc, 0) && cansee(cc.x, cc.y);
+        await shrinking_glob_gone(obj);
+
+        if (seeit) {
+            newsym(cc.x, cc.y);
+            if ((cc.x !== game.u.ux || cc.y !== game.u.uy)
+                && globnambuf.startsWith('The ')) {
+                globnambuf = 'A ' + globnambuf.slice(4);
+            }
+            await pline(`${globnambuf} fades away.`);
         }
     } else {
         start_glob_timeout(obj, 0);
     }
-    if (inInvent || topContainer?.where === OBJ_INVENT) {
+    if (updinv) {
         update_inventory();
-        const { encumber_msg } = await import('./attrib.js');
         await encumber_msg();
+    }
+}
+
+// src/mkobj.c:1673 shrinking_glob_gone(), dispose through the existing owners.
+async function shrinking_glob_gone(obj) {
+    const owhere = obj.where;
+
+    if (owhere === OBJ_INVENT) {
+        if (obj.owornmask) {
+            await remove_worn_item(obj, false);
+            await stop_occupation();
+        }
+        await useupall(obj);
+    } else {
+        if (owhere === OBJ_MIGRATING) {
+            obj.owornmask = 0;
+        } else if (owhere === OBJ_MINVENT) {
+            if (obj.owornmask && obj === MON_WEP(obj.ocarry))
+                await setmnotwielded(obj.ocarry, obj);
+        }
+        obj_extract_self(obj);
+        if (owhere === OBJ_FLOOR)
+            maybe_unhide_at(obj.ox, obj.oy);
+        await obfree(obj, null);
     }
 }
 
@@ -2519,6 +2562,6 @@ import { consume_obj_charge } from './apply.js';
 import { can_reach_floor } from './pickup.js';
 import { hitfloor } from './dothrow.js';
 import { dropy, doaltarobj, obj_no_longer_held } from './do.js';
-import { encumber_msg } from './attrib.js';
+import { encumber_msg, near_capacity } from './attrib.js';
 import { surface } from './dungeon.js';
 import { makeknown } from './o_init.js';

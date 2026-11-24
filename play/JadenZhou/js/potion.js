@@ -2222,7 +2222,7 @@ function docall_xname(obj) {
     /* remove attributes that are doname() caliber but get formatted
        by xname() */
     if (otemp.oclass === O.WEAPON_CLASS)
-        otemp.opoisoned = 0; /* not poisoned */
+        otemp.otrapped /* opoisoned */ = 0; /* not poisoned */
     else if (otemp.oclass === POTION_CLASS)
         otemp.odiluted = 0; /* not diluted */
     else if (otemp.otyp === O.TOWEL || otemp.otyp === O.STATUE)

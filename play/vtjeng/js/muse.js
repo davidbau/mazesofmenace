@@ -121,10 +121,10 @@ import { dog_nutrition } from './dogmove.js';
 import {
     Some_Monnam,
     a_monnam,
-    capitalizedMonsterName,
+    Monnam,
     hcolor,
-    monsterCommonName,
     mon_nam,
+    noit_mon_nam,
     monverbself,
     rndmonnam,
     x_monnam,
@@ -139,7 +139,7 @@ import { game } from './gstate.js';
 import { can_carry } from './moncarry.js';
 import { dist2, distmin, sgn, strsubst } from './hacklib.js';
 import { makemon_runtime } from './makemon_create.js';
-import { grow_up, rndmonst, set_malign } from './makemon.js';
+import { grow_up, rndmonst_steps, set_malign } from './makemon.js';
 import { awaken_soldiers } from './music.js';
 import { m_next2u } from './mhitu.js';
 import { paralyze_monst } from './mhitm.js';
@@ -329,7 +329,7 @@ async function precheck(mon, obj, state, env = {}, selection = null) {
                         // C uses plain pline() here, unlike the djinni's
                         // pline_mon(), so accessiblemsg adds no location.
                         await ttyPline(
-                            `As ${monsterCommonName(mon, state)} opens `
+                            `As ${mon_nam(mon, state)} opens `
                             + `the bottle, an enormous `
                             + `${Hallucination(state.u)
                                 ? rndmonnam({
@@ -339,7 +339,7 @@ async function precheck(mon, obj, state, env = {}, selection = null) {
                                 : 'ghost'}`
                             + ` emerges!`, state);
                         await ttyPline(
-                            `${capitalizedMonsterName(mon, state)} `
+                            `${Monnam(mon, state)} `
                             + `is frightened to death, `
                             + `and unable to move.`, state);
                     }
@@ -373,7 +373,7 @@ async function precheck(mon, obj, state, env = {}, selection = null) {
                         state);
                 }
                 await ttyPline(
-                    `${vis ? capitalizedMonsterName(mtmp, state) : 'Something'} speaks.`,
+                    `${vis ? Monnam(mtmp, state) : 'Something'} speaks.`,
                     state);
                 // SetVoice() is a no-op in the tty build.
                 if (random.rn2(2)) {
@@ -384,7 +384,7 @@ async function precheck(mon, obj, state, env = {}, selection = null) {
                     await verbalize("It is about time.", state);
                     if (vis) {
                         await ttyPline(
-                            `${capitalizedMonsterName(mtmp, state)} vanishes.`,
+                            `${Monnam(mtmp, state)} vanishes.`,
                             state);
                     }
                     await mongone(mtmp, { state });
@@ -400,7 +400,7 @@ async function precheck(mon, obj, state, env = {}, selection = null) {
 
         if (vis) {
             await pline_mon(mon,
-                `${capitalizedMonsterName(mon, state)} zaps `
+                `${Monnam(mon, state)} zaps `
                 + `${an(xnameFresh(obj, state))}, which suddenly explodes!`,
                 state);
         } else {
@@ -454,14 +454,14 @@ async function mzapwand(mtmp, otmp, self, state, rawEnv = {}) {
         unknow_object(otmp, state);
     } else if (self) {
         await message(
-            `${monverbself(mtmp, capitalizedMonsterName(mtmp, state, rawEnv), 'zap', null, state, rawEnv)} with ${donameFresh(otmp, state)}!`,
+            `${monverbself(mtmp, Monnam(mtmp, state, rawEnv), 'zap', null, state, rawEnv)} with ${donameFresh(otmp, state)}!`,
             state,
             rawEnv,
         );
     } else {
         await message(
             messageAt(
-                `${capitalizedMonsterName(mtmp, state, rawEnv)} zaps ${an(xnameFresh(otmp, state))}!`,
+                `${Monnam(mtmp, state, rawEnv)} zaps ${an(xnameFresh(otmp, state))}!`,
                 mtmp.mx,
                 mtmp.my,
                 state,
@@ -494,7 +494,7 @@ async function mplayhorn(mtmp, otmp, self, state, rawEnv = {}) {
             objnamp = simpleonames(otmp, state);
         const objbuf = `a ${objnamp} directed at`;
         await message(
-            `${monverbself(mtmp, capitalizedMonsterName(mtmp, state, rawEnv), 'play', objbuf, state, rawEnv)}!`,
+            `${monverbself(mtmp, Monnam(mtmp, state, rawEnv), 'play', objbuf, state, rawEnv)}!`,
             state,
             rawEnv,
         );
@@ -505,7 +505,7 @@ async function mplayhorn(mtmp, otmp, self, state, rawEnv = {}) {
         if (objnamp.length >= 128 /* QBUFSZ */)
             objnamp = simpleonames(otmp, state);
         await message(
-            `${capitalizedMonsterName(mtmp, state, rawEnv)} plays `
+            `${Monnam(mtmp, state, rawEnv)} plays `
             + `${an(objnamp)} directed at you!`,
             state,
             rawEnv,
@@ -534,7 +534,7 @@ async function mreadmsg(mtmp, otmp, state, rawEnv = {}) {
 
     if (vismon) {
         await pline_mon(mtmp,
-            `${capitalizedMonsterName(mtmp, state, rawEnv)} reads ${onambuf}!`,
+            `${Monnam(mtmp, state, rawEnv)} reads ${onambuf}!`,
             state,
             rawEnv,
         );
@@ -568,7 +568,7 @@ async function mreadmsg(mtmp, otmp, state, rawEnv = {}) {
     if (mtmp.mconf) /* (note: won't get if not seen and hero can't hear) */
         await message(
                 `Being confused, ${
-                vismon ? monsterCommonName(mtmp, state, 0, rawEnv) : mhe(mtmp, rawEnv)
+                vismon ? mon_nam(mtmp, state, rawEnv) : mhe(mtmp, rawEnv)
             } mispronounces the magic words...`,
             state,
             rawEnv,
@@ -581,7 +581,7 @@ async function mquaffmsg(mtmp, otmp, state) {
     if (canseemon(mtmp, state)) {
         observe_object(otmp, state);
         await pline_mon(mtmp,
-            `${capitalizedMonsterName(mtmp, state)} drinks ${singular(otmp, donameFresh, state)}!`,
+            `${Monnam(mtmp, state)} drinks ${singular(otmp, donameFresh, state)}!`,
             state);
     } else if (!Deaf(state.u)) {
         // Soundeffect is a no-op in the tty build.
@@ -647,7 +647,7 @@ async function m_tele(mtmp, vismon, oseen, how, state, trapCoords) {
         if (vismon) {
             await pline_mon(
                 mtmp,
-                `${capitalizedMonsterName(mtmp, state)} seems disoriented`
+                `${Monnam(mtmp, state)} seems disoriented`
                     + ' for a moment.',
                 state,
             );
@@ -709,7 +709,7 @@ async function mon_escape(mtmp, vismon, state, env) {
         return 0;
     if (vismon)
         await pline_mon(mtmp,
-            `${capitalizedMonsterName(mtmp, state)} escapes the dungeon!`,
+            `${Monnam(mtmp, state)} escapes the dungeon!`,
             state);
     // mongone() answers a promise when the departure must print first.
     await mongone(mtmp, env);
@@ -724,7 +724,7 @@ export async function mcureblindness(mon, verbos, state) {
         mon.mblinded = 0;
         if (verbos && haseyes(mon.data))
             await pline_mon(mon,
-                `${capitalizedMonsterName(mon, state)} can see again.`,
+                `${Monnam(mon, state)} can see again.`,
                 state);
     }
 }
@@ -765,11 +765,11 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         if (vismon) {
             if (otmp)
                 await pline_mon(mtmp,
-                    `${capitalizedMonsterName(mtmp, state)} uses a unicorn horn!`,
+                    `${Monnam(mtmp, state)} uses a unicorn horn!`,
                     state);
             else
                 await ttyPline(
-                    `The tip of ${monsterCommonName(mtmp, state)}'s horn glows!`,
+                    `The tip of ${mon_nam(mtmp, state)}'s horn glows!`,
                     state);
         }
         if (!mtmp.mcansee) {
@@ -779,7 +779,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             mtmp.mstun = 0;
             if (vismon)
                 await pline_mon(mtmp,
-                    `${capitalizedMonsterName(mtmp, state)} seems steadier now.`,
+                    `${Monnam(mtmp, state)} seems steadier now.`,
                     state);
         } else {
             await impossible('No need for unicorn horn?', state);
@@ -790,7 +790,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         // MUSE_BUGLE
         if (vismon) {
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} plays ${donameFresh(otmp, state)}!`,
+                `${Monnam(mtmp, state)} plays ${donameFresh(otmp, state)}!`,
                 state);
         } else if (!Deaf(state.u)) {
             // Soundeffect is a no-op in the tty build.
@@ -855,12 +855,12 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
                 || In_endgame(state.u?.uz, state)) {
                 if (vismon)
                     await pline_mon(mtmp,
-                        `${capitalizedMonsterName(mtmp, state)} seems very disoriented for a moment.`,
+                        `${Monnam(mtmp, state)} seems very disoriented for a moment.`,
                         state);
             } else if (nlev === depth(state.u?.uz, state)) {
                 if (vismon)
                     await pline_mon(mtmp,
-                        `${capitalizedMonsterName(mtmp, state)} shudders for a moment.`,
+                        `${Monnam(mtmp, state)} shudders for a moment.`,
                         state);
             } else {
                 const flev = {};
@@ -906,7 +906,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             if (vis) {
                 seetrap(t, { redraw: newsym });
                 await pline_mon(mtmp,
-                    `${capitalizedMonsterName(mtmp, state)} has made a pit in the ${surface(mtmp.mx, mtmp.my, state)}.`,
+                    `${Monnam(mtmp, state)} has made a pit in the ${surface(mtmp.mx, mtmp.my, state)}.`,
                     state);
             }
             await fill_pit(mtmp.mx, mtmp.my, state, env);
@@ -920,10 +920,10 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         seetrap(t, { redraw: newsym });
         if (vis) {
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} has made a hole in the ${surface(mtmp.mx, mtmp.my, state)}.`,
+                `${Monnam(mtmp, state)} has made a hole in the ${surface(mtmp.mx, mtmp.my, state)}.`,
                 state);
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} ${is_flyer(mtmp.data) ? 'dives' : 'falls'} through...`,
+                `${Monnam(mtmp, state)} ${is_flyer(mtmp.data) ? 'dives' : 'falls'} through...`,
                 state);
         } else if (!Deaf(state.u)) {
             // Soundeffect is a no-op in the tty build.
@@ -1018,7 +1018,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         const t = t_at(trapx, trapy, state);
         if (vis) {
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} into a ${trapname(t.ttyp, false, state)}!`,
+                `${Monnam(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} into a ${trapname(t.ttyp, false, state)}!`,
                 state);
         }
         reveal_trap(t, vis, state, { redraw: newsym });
@@ -1044,14 +1044,14 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             && (dunlev(state.u?.uz) < dunlevs_in_dungeon(state.u?.uz, state) - 3)) {
             if (vismon)
                 await ttyPline(
-                    `As ${monsterCommonName(mtmp, state)} climbs the stairs, a mysterious force momentarily surrounds ${mhim(mtmp, { state })}...`,
+                    `As ${mon_nam(mtmp, state)} climbs the stairs, a mysterious force momentarily surrounds ${mhim(mtmp, { state })}...`,
                     state);
             await migrate_to_level(mtmp, ledger_no(state.u?.uz, state) + 1,
                 MIGR_RANDOM, null, { state });
         } else {
             if (vismon)
                 await pline_mon(mtmp,
-                    `${capitalizedMonsterName(mtmp, state)} escapes upstairs!`,
+                    `${Monnam(mtmp, state)} escapes upstairs!`,
                     state);
             await migrate_to_level(mtmp, ledger_no(stway.tolev, state),
                 MIGR_STAIRS_DOWN, null, { state });
@@ -1065,7 +1065,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         if (!stway) return 0;
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} escapes downstairs!`,
+                `${Monnam(mtmp, state)} escapes downstairs!`,
                 state);
         await migrate_to_level(mtmp, ledger_no(stway.tolev, state),
             MIGR_STAIRS_UP, null, { state });
@@ -1078,7 +1078,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         if (!stway) return 0;
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} escapes up the ladder!`,
+                `${Monnam(mtmp, state)} escapes up the ladder!`,
                 state);
         await migrate_to_level(mtmp, ledger_no(stway.tolev, state),
             MIGR_LADDER_DOWN, null, { state });
@@ -1091,7 +1091,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         if (!stway) return 0;
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} escapes down the ladder!`,
+                `${Monnam(mtmp, state)} escapes down the ladder!`,
                 state);
         await migrate_to_level(mtmp, ledger_no(stway.tolev, state),
             MIGR_LADDER_UP, null, { state });
@@ -1106,7 +1106,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             return await mon_escape(mtmp, vismon, state, { state });
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} escapes ${stway.up ? 'up' : 'down'}stairs!`,
+                `${Monnam(mtmp, state)} escapes ${stway.up ? 'up' : 'down'}stairs!`,
                 state);
         await migrate_to_level(mtmp, ledger_no(stway.tolev, state),
             MIGR_SSTAIRS, null, { state });
@@ -1120,7 +1120,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         const t = t_at(trapx, trapy, state);
         if (vis) {
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} onto a ${trapname(t.ttyp, false, state)}!`,
+                `${Monnam(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} onto a ${trapname(t.ttyp, false, state)}!`,
                 state);
         }
         reveal_trap(t, vis, state, { redraw: newsym });
@@ -1147,7 +1147,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             await mcureblindness(mtmp, vismon, state);
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} looks better.`,
+                `${Monnam(mtmp, state)} looks better.`,
                 state);
         if (oseen)
             discover_object(O.POT_HEALING, true, true, true, state);
@@ -1165,7 +1165,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             await mcureblindness(mtmp, vismon, state);
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} looks much better.`,
+                `${Monnam(mtmp, state)} looks much better.`,
                 state);
         if (oseen)
             discover_object(O.POT_EXTRA_HEALING, true, true, true, state);
@@ -1185,7 +1185,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             await mcureblindness(mtmp, vismon, state);
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} looks completely healed.`,
+                `${Monnam(mtmp, state)} looks completely healed.`,
                 state);
         if (oseen)
             discover_object(otmp.otyp, true, true, true, state);
@@ -1336,7 +1336,7 @@ export function find_misc(monster, rawEnv = {}) {
 // for a monster: if it wears dragon scales or scale mail, become the
 // corresponding dragon; otherwise pick a random monster suitable for the
 // current level.
-export function muse_newcham_mon(mon, rawEnv = {}) {
+export async function muse_newcham_mon(mon, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const m_armr = which_armor(mon, W_ARM, state);
     if (m_armr) {
@@ -1345,7 +1345,9 @@ export function muse_newcham_mon(mon, rawEnv = {}) {
         if (Is_dragon_mail(m_armr))
             return Dragon_mail_to_pm(m_armr, state);
     }
-    return rndmonst(rawEnv);
+    // muse.c:2260. rndmonst() prints level_difficulty()'s and its own
+    // impossible() reports before its draws, and use_misc() can wait.
+    return finish_steps(rndmonst_steps(rawEnv), impossible_printer(state));
 }
 
 // C ref: muse.c mloot_container() (2264-2382). A monster loots items from
@@ -1435,12 +1437,12 @@ export async function mloot_container(mon, container, vismon, rawEnv = {}) {
             if (vismon) {
                 if (howfar > 2) /* not adjacent */
                     await ttyNorep(
-                        `${capitalizedMonsterName(mon, state)} rummages through ${contnr_nam}.`,
+                        `${Monnam(mon, state)} rummages through ${contnr_nam}.`,
                         state,
                     );
                 else if (takeout_indx === 0) /* adjacent, first item */
                     await pline_mon(mon,
-                        `${capitalizedMonsterName(mon, state)} removes ${donameFresh(xobj, state)} from ${contnr_nam}.`,
+                        `${Monnam(mon, state)} removes ${donameFresh(xobj, state)} from ${contnr_nam}.`,
                         state);
                 else /* adjacent, additional items */
                     await ttyPline(
@@ -1507,7 +1509,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
                 if (!on_level(tolevel, state.u.uz)) {
                     if (vismon) {
                         await pline_mon(mtmp,
-                            `${capitalizedMonsterName(mtmp, state)} rises up, through the ${ceiling(mtmp.mx, mtmp.my, state)}!`,
+                            `${Monnam(mtmp, state)} rises up, through the ${ceiling(mtmp.mx, mtmp.my, state)}!`,
                             state);
                         await trycall(otmp, state);
                     }
@@ -1520,7 +1522,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
             // skipmsg: falls through when Can_rise_up is false or on_level
             if (vismon) {
                 await pline_mon(mtmp,
-                    `${capitalizedMonsterName(mtmp, state)} looks uneasy.`,
+                    `${Monnam(mtmp, state)} looks uneasy.`,
                     state);
                 await trycall(otmp, state);
             }
@@ -1529,7 +1531,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         }
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} seems more experienced.`,
+                `${Monnam(mtmp, state)} seems more experienced.`,
                 state);
         if (oseen)
             discover_object(O.POT_GAIN_LEVEL, true, true, true, state);
@@ -1548,7 +1550,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
             await mquaffmsg(mtmp, otmp, state);
         }
         // format monster's name before altering its visibility
-        const nambuf = monsterCommonName(mtmp, state);
+        const nambuf = mon_nam(mtmp, state);
         mon_set_minvis(mtmp, Boolean(otmp.cursed), state);
         if (vismon && mtmp.minvis) { /* was seen, now invisible */
             // C prints both lines with plain pline(), so accessiblemsg
@@ -1567,13 +1569,13 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         } else if (vismon && !mtmp.minvis) {
             /* cursed potion; mon tried to make itself invisible but failed */
             await ttyPline(
-                `${capitalizedMonsterName(mtmp, state)} briefly seems to be transparent.`,
+                `${Monnam(mtmp, state)} briefly seems to be transparent.`,
                 state);
         } else if (!vismon && canseemon(mtmp, state)) {
             /* cursed potion; this won't happen because a monster will only
                drink a potion of invisibility when not already invisible */
             await ttyPline(
-                `${capitalizedMonsterName(mtmp, state)} suddenly appears!`,
+                `${Monnam(mtmp, state)} suddenly appears!`,
                 state);
         }
         if (otmp.otyp === O.POT_INVISIBILITY) {
@@ -1602,7 +1604,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         // MUSE_WAN_POLYMORPH
         if (!otmp) throw new Error('use_misc: no wand of polymorph');
         await mzapwand(mtmp, otmp, true, state);
-        const target = muse_newcham_mon(mtmp, { ...env, state });
+        const target = await muse_newcham_mon(mtmp, { ...env, state });
         await newcham(mtmp, target, {
             ...env,
             state,
@@ -1619,9 +1621,9 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         await m_useup(mtmp, otmp, { state });
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} suddenly mutates!`,
+                `${Monnam(mtmp, state)} suddenly mutates!`,
                 state);
-        const target = muse_newcham_mon(mtmp, { ...env, state });
+        const target = await muse_newcham_mon(mtmp, { ...env, state });
         await newcham(mtmp, target, {
             ...env,
             state,
@@ -1698,7 +1700,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
 
         if (vismon)
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} flicks a bullwhip towards your ${hand_buf}!`,
+                `${Monnam(mtmp, state)} flicks a bullwhip towards your ${hand_buf}!`,
                 state, env);
         if (obj.otyp === O.HEAVY_IRON_BALL) {
             await message(
@@ -1732,20 +1734,20 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         switch (where_to) {
         case 1: /* onto floor beneath mon */
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} yanks ${the_weapon} from your ${hand_buf}!`,
+                `${Monnam(mtmp, state)} yanks ${the_weapon} from your ${hand_buf}!`,
                 state, env);
             const placement = place_object(obj, mtmp.mx, mtmp.my, { state });
             if (placement && typeof placement.then === 'function') await placement;
             break;
         case 2: /* onto floor beneath you */
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} yanks ${the_weapon} to the ${surface(state.u.ux, state.u.uy, state)}!`,
+                `${Monnam(mtmp, state)} yanks ${the_weapon} to the ${surface(state.u.ux, state.u.uy, state)}!`,
                 state, env);
             await dropy(obj, { state });
             break;
         case 3: /* into mon's inventory */
             await pline_mon(mtmp,
-                `${capitalizedMonsterName(mtmp, state)} snatches ${the_weapon}!`,
+                `${Monnam(mtmp, state)} snatches ${the_weapon}!`,
                 state, env);
             await mpickobj(mtmp, obj, { state });
             break;
@@ -1759,7 +1761,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         // muse.c use_misc():2620-2623. C prints gm.m.has_misc's number; the
         // port keys the selection by name.
         await impossible(
-            `${capitalizedMonsterName(mtmp, state)} wanted to perform action ${selection.kind}?`,
+            `${Monnam(mtmp, state)} wanted to perform action ${selection.kind}?`,
             state, env);
         break;
     }
@@ -1772,7 +1774,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
 // hero awake.
 async function you_aggravate(mtmp, state) {
     await ttyPline(
-        `For some reason, ${s_suffix(monsterCommonName(mtmp, state, SUPPRESS_IT))} presence is known to you.`,
+        `For some reason, ${s_suffix(noit_mon_nam(mtmp, state))} presence is known to you.`,
         state);
     await cls();
     await cliparound(mtmp.mx, mtmp.my, state); // CLIPPING
@@ -1780,7 +1782,7 @@ async function you_aggravate(mtmp, state) {
     display_self(state);
     // C's You_feel() records no location.
     await ttyPline(
-        youFeel(`aggravated at ${monsterCommonName(mtmp, state, SUPPRESS_IT)}.`,
+        youFeel(`aggravated at ${noit_mon_nam(mtmp, state)}.`,
             state),
         state);
     await tty_display_nhwindow_map_blocking(state);
@@ -2314,7 +2316,7 @@ export async function mbhitm(mtmp, otmp, state, rawEnv = {}) {
                 && in_rooms(mtmp.mx, mtmp.my, TEMPLE, state).length > 0) {
                 if (cansee(mtmp.mx, mtmp.my, state))
                     await pline_mon(mtmp,
-                        `${capitalizedMonsterName(mtmp, state, rawEnv)} resists the magic!`,
+                        `${Monnam(mtmp, state, rawEnv)} resists the magic!`,
                         state, rawEnv);
             } else if (!(await tele_restrict(mtmp, state, rawEnv)))
                 await rloc(mtmp, RLOC_MSG, { ...rawEnv, state, random });
@@ -2737,7 +2739,7 @@ export async function use_offensive(mtmp, rawEnv = {}) {
             await verbalize('Say cheese!', state, { message });
         } else if (!Blind(state.u)) {
             await message(
-                capitalizedMonsterName(mtmp, state, env)
+                Monnam(mtmp, state, env)
                     + ' takes a picture of you with '
                     + an(xnameFresh(otmp, state)) + '!',
                 state,
@@ -2775,7 +2777,7 @@ export async function use_offensive(mtmp, rawEnv = {}) {
             // C's pline_mon() with Monnam(); a caller may replace either.
             const message = env.message ?? ttyPline;
             const monsterName = env.monsterName
-                ?? ((monster) => capitalizedMonsterName(monster, state, {
+                ?? ((monster) => Monnam(monster, state, {
                     displayRandom: env.displayRandom,
                 }));
             observe_object(otmp, state);
@@ -2894,7 +2896,7 @@ export async function use_offensive(mtmp, rawEnv = {}) {
     default:
         // muse.c use_offensive():2026-2029
         await impossible(
-            capitalizedMonsterName(mtmp, state, env)
+            Monnam(mtmp, state, env)
                 + ' wanted to perform action ' + selection.has_offense + '?',
             state, env);
         return 0;
@@ -3070,7 +3072,7 @@ export async function mon_reflects(mon, str, state = game, rawEnv = {}) {
     const objectEnv = { ...rawEnv, state };
     const message = rawEnv.message ?? ttyPline;
     const reflectMessage = (kind) => formatReflectionMessage(str, [
-        s_suffix(monsterCommonName(mon, state, 0, rawEnv)),
+        s_suffix(mon_nam(mon, state, rawEnv)),
         kind,
     ]);
     let orefl = which_armor(mon, W_ARMS, state);
@@ -3209,7 +3211,7 @@ async function mon_consume_unstone(
             : (obj.otyp === O.TIN) ? 'opens and eats the contents of'
             : 'eats';
         await pline_mon(mon,
-            `${capitalizedMonsterName(mon, state)} ${verb} ${distant_name(obj, donameFresh, state)}.`,
+            `${Monnam(mon, state)} ${verb} ${distant_name(obj, donameFresh, state)}.`,
             state);
         obj.quan = save_quan;
     } else if (!Deaf(state.u)) {
@@ -3226,11 +3228,11 @@ async function mon_consume_unstone(
         mon.mhp -= random.rnd(15);
         if (vis)
             await pline_mon(mon,
-                `${capitalizedMonsterName(mon, state)} has a very bad case of stomach acid.`,
+                `${Monnam(mon, state)} has a very bad case of stomach acid.`,
                 state);
         if (mon.mhp < 1) { /* DEADMONSTER */
             await pline_mon(mon,
-                `${capitalizedMonsterName(mon, state)} dies!`,
+                `${Monnam(mon, state)} dies!`,
                 state);
             if (by_you)
                 // hero gets credit and blame for the kill but does not
@@ -3244,11 +3246,11 @@ async function mon_consume_unstone(
     if (stoning && vis) {
         if (Hallucination(state.u))
             await ttyPline(
-                `What a pity - ${monsterCommonName(mon, state)} just ruined a future piece of art!`,
+                `What a pity - ${mon_nam(mon, state)} just ruined a future piece of art!`,
                 state);
         else
             await pline_mon(mon,
-                `${capitalizedMonsterName(mon, state)} seems limber!`,
+                `${Monnam(mon, state)} seems limber!`,
                 state);
     }
     if (lizard && (mon.mconf || mon.mstun)) {
@@ -3256,7 +3258,7 @@ async function mon_consume_unstone(
         mon.mstun = 0;
         if (vis && !is_bat(mon.data) && mon.data !== state.mons[M.PM_STALKER])
             await pline_mon(mon,
-                `${capitalizedMonsterName(mon, state)} seems steadier now.`,
+                `${Monnam(mon, state)} seems steadier now.`,
                 state);
     }
     if (mon.mtame && !mon.isminion && nutrit > 0) {
@@ -3361,7 +3363,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
 
     if (vis)
         await pline_mon(mon,
-            `${capitalizedMonsterName(mon, state, actionEnv)} starts turning ${green_mon(mon, state) ? 'into ooze' : hcolor('green', state, actionEnv)}.`,
+            `${Monnam(mon, state, actionEnv)} starts turning ${green_mon(mon, state) ? 'into ooze' : hcolor('green', state, actionEnv)}.`,
             state,
             actionEnv,
         );
@@ -3369,7 +3371,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
     await mon_adjust_speed(mon, -4, null, state, actionEnv);
 
     if (trap) {
-        const Mnam = vis ? capitalizedMonsterName(mon, state, actionEnv) : null;
+        const Mnam = vis ? Monnam(mon, state, actionEnv) : null;
 
         if (mon.mx === trap.tx && mon.my === trap.ty) {
             if (vis)
@@ -3397,7 +3399,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
         /* monster is using fire breath on self */
         if (vis)
             await pline_mon(mon,
-                `${monverbself(mon, capitalizedMonsterName(mon, state, actionEnv), 'breath', 'fire on', state, actionEnv)}.`,
+                `${monverbself(mon, Monnam(mon, state, actionEnv), 'breath', 'fire on', state, actionEnv)}.`,
                 state,
                 actionEnv,
             );
@@ -3442,7 +3444,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
             obj = await splitobj(obj, 1, { state });
         if (vis && !was_lit) {
             await pline_mon(mon,
-                `${capitalizedMonsterName(mon, state, actionEnv)} ignites ${ansimpleoname(obj, state)}.`,
+                `${Monnam(mon, state, actionEnv)} ignites ${ansimpleoname(obj, state)}.`,
                 state,
                 actionEnv,
             );
@@ -3454,7 +3456,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
             if (!Unaware(state))
                 observe_object(obj, state); /* hero is watching mon drink obj */
             await (actionEnv.message ?? ttyPline)(
-                `${saw_lit ? upstart(mhe(mon, actionEnv)) : capitalizedMonsterName(mon, state, actionEnv)} quaffs a burning ${simpleonames(obj, state)}`,
+                `${saw_lit ? upstart(mhe(mon, actionEnv)) : Monnam(mon, state, actionEnv)} quaffs a burning ${simpleonames(obj, state)}`,
                 state,
                 actionEnv,
             );
@@ -3485,7 +3487,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
             if (by_you) {
                 if (vis)
                     await pline_mon(mon,
-                        `${capitalizedMonsterName(mon, state, actionEnv)} is ${nonliving(mon.data) ? 'destroyed' : 'killed'} by the fire!`,
+                        `${Monnam(mon, state, actionEnv)} is ${nonliving(mon.data) ? 'destroyed' : 'killed'} by the fire!`,
                         state,
                         actionEnv,
                     );
@@ -3497,7 +3499,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
             /* non-fatal damage occurred */
             if (vis)
                 await pline_mon(mon,
-                    `${capitalizedMonsterName(mon, state, actionEnv)} is burned${exclam(dmg)}`,
+                    `${Monnam(mon, state, actionEnv)} is burned${exclam(dmg)}`,
                     state,
                     actionEnv,
                 );
@@ -3506,7 +3508,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
     if (vis) {
         if (res && mon.mhp >= 1) /* !DEADMONSTER */
             await pline_mon(mon,
-                `${s_suffix(capitalizedMonsterName(mon, state, actionEnv))} slime is burned away!`,
+                `${s_suffix(Monnam(mon, state, actionEnv))} slime is burned away!`,
                 state,
                 actionEnv,
             );

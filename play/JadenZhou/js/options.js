@@ -514,6 +514,9 @@ export function parseNethackrc(rc) {
 
             const negated = trimmed.startsWith('!');
             const stripped = negated ? trimmed.slice(1) : trimmed;
+            /* opt_set_in_config[]: the option names this file set */
+            (result.set_in_config ||= []).push(
+                stripped.split(/[:=]/)[0].trim().toLowerCase());
 
             const colonIdx = stripped.indexOf(':');
             if (colonIdx >= 0) {
@@ -1088,6 +1091,94 @@ function boolopt_get(o) {
 /* *allopt[i].addr = val */
 function boolopt_set(o, val) {
     optaddr_struct(o)[o.addr[1]] = val;
+}
+
+// C ref: cfgfiles.c parse_conf_str() -- feed each line of 'str' to
+// 'proc' (as nh.parse_config() does with parse_config_line). The config
+// error reporting (config_error_init/config_error_done) has nothing to
+// report for the lines the ported callers pass.
+export function parse_conf_str(str, proc) {
+    let rv = true;
+
+    while (str) {
+        const nl = str.indexOf('\n');
+        const line = (nl >= 0) ? str.slice(0, nl + 1) : str;
+        str = (nl >= 0) ? str.slice(nl + 1) : '';
+        /* parse_conf_buf(): ignore empty lines and full-line comments */
+        const ep = line.replace(/\n$/, '').trim();
+        if (!ep || ep[0] === '#')
+            continue;
+        if (!proc(ep))
+            rv = false;
+    }
+    return rv;
+}
+
+// C ref: cfgfiles.c parse_config_line() -- only the OPTIONS statement
+// (cnf_line_OPTIONS) is ported; the others stop explicitly
+export function parse_config_line(origbuf) {
+    const buf = mungspaces(origbuf.replace(/^[ \t]+/, ''));
+    /* find the '=' or ':' */
+    const eq = buf.search(/[=:]/);
+    if (eq < 0)
+        throw new Error('parse_config_line(): config_error_add() not ported yet');
+    const name = buf.slice(0, eq).trim();
+    if (name.length >= 4 && !strncmpi(name, "OPTIONS", name.length)) {
+        /* cnf_line_OPTIONS(): parseoptions(bufp, TRUE, TRUE) */
+        return parseoptions_initial(origbuf.slice(origbuf.search(/[=:]/) + 1));
+    }
+    throw new Error(`parse_config_line(): ${name} statement not ported yet`);
+}
+
+// C ref: options.c parseoptions() with tinitial and tfrom_file set (a
+// config file line). Only boolean options are ported on this path; their
+// optfn_boolean() does nothing after setting the value while opt_initial.
+function parseoptions_initial(opts) {
+    let negated = false;
+    let retval = true;
+
+    game.opt_initial = true;
+    game.opt_from_file = true;
+    /* Process elements of comma-separated list in right to left order. */
+    const comma = opts.indexOf(',');
+    if (comma >= 0) {
+        if (!parseoptions_initial(opts.slice(comma + 1)))
+            retval = false;
+        opts = opts.slice(0, comma);
+    }
+    /* strip leading and trailing white space */
+    opts = opts.trim();
+    if (!opts)
+        throw new Error('parseoptions(): config_error_add() not ported yet');
+    while (opts[0] === '!' || !strncmpi(opts, "no", 2)) {
+        opts = opts.slice((opts[0] === '!') ? 1 : (opts[2] !== '-') ? 2 : 3);
+        negated = !negated;
+    }
+    const colon = opts.search(/[:=]/);
+    const optname = (colon >= 0) ? opts.slice(0, colon) : opts;
+    const o = allopt.find(a => !a.pfx && !strcmpi(optname, a.name));
+    if (!o)
+        throw new Error(`parseoptions(): option '${optname}' not ported yet`);
+    if (o.opttyp !== BoolOpt || colon >= 0)
+        throw new Error(`parseoptions(): config option '${optname}' not ported yet`);
+    /* duplicate = duplicate_opt_detection(matchidx) */
+    if ((game.opt_set_in_config_names || []).includes(o.name.toLowerCase()))
+        /* boolean options aren't dupeok */
+        throw new Error('parseoptions(): complain_about_duplicate() not ported yet');
+    /* check for bad negation, so option functions don't have to */
+    if (negated && !o.negateok)
+        throw new Error('parseoptions(): bad_negation() not ported yet');
+    /* optfn_boolean(): */
+    if (o.addr) {
+        if (o.name === "female" || o.name === "perm_invent"
+            || o.name === "idlecheckpoint" || o.name === "pauper"
+            || o.name === "ascii_map" || o.name === "tiled_map"
+            || o.name === "hilite_pet")
+            throw new Error(`parseoptions(): config option '${o.name}' not ported yet`);
+        boolopt_set(o, !negated); /* <==== SET IT HERE */
+    }
+    (game.opt_set_in_config_names ||= []).push(o.name.toLowerCase());
+    return retval;
 }
 
 // C ref: options.c initoptions_init() -- the defaults set before the

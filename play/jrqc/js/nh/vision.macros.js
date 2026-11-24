@@ -5,7 +5,9 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
-import { gv } from './decl.js';
+import { gv, u } from './decl.js';
+import { M1 } from './monflag.h.js';
+import { INVIS } from './prop.h.js';
 import { circle_data, circle_start, clear_path } from './vision.js';
 import { COULD_SEE, IN_SIGHT } from './vision.h.js';
 
@@ -17,6 +19,9 @@ export function couldsee(x, y) {
 }
 export function m_cansee(mtmp, x2, y2) {
     return clear_path(mtmp.mx, mtmp.my, x2, y2);
+}
+export function m_canseeu(m) {
+    return (!((u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked) || $c.andu64(m.data.mflags1, M1.SEE_INVIS) !== 0) && !u.uinwater && (gv.viz_array.get(m.my).get(m.mx) & COULD_SEE) !== 0 ? 1 : 0;
 }
 export function circle_ptr(z) {
     return new $c.Ptr(circle_data, circle_start[z]);

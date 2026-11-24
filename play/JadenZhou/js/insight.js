@@ -72,6 +72,8 @@ import { genders } from './role.js';
 import { newuexp } from './exper.js';
 import { night, midnight } from './calendar.js';
 import { depth, dunlev, on_level } from './dungeon.js';
+import { endgamelevelname as endgamelevelname_in } from './dungeon.js';
+import { observable_depth as observable_depth_in } from './topten.js';
 import { find_ac, money_cnt } from './u_init.js';
 import { near_capacity, inv_weight, in_rooms } from './hack.js';
 import { SHOPBASE, NO_ROOM, ROOMOFFSET } from './const.js';
@@ -1220,7 +1222,11 @@ function background_enlightenment(unused_mode, final) {
     /* dungeon level */
     buf = tmpbuf = "";
     if (In_endgame(u.uz)) {
-        throw new Error('background_enlightenment(): endgame level name not ported yet');
+        const egdepth = observable_depth_in(u.uz);
+
+        tmpbuf = endgamelevelname_in(egdepth);
+        buf = `in the endgame, on the ${
+                tmpbuf.startsWith("Plane") ? "Elemental " : ""}${tmpbuf}`;
     } else if (Is_knox(u.uz)) {
         /* this gives away the fact that the knox branch is only 1 level */
         buf = `on the ${game.dungeons[u.uz.dnum].dname} level`;
@@ -1614,8 +1620,36 @@ function status_enlightenment(mode, final) {
         else
             you_are(predicament, "");
     } /* (u.utrap) */
-    if (u.ustuck) /* includes u.uswallow */
-        throw new Error('status_enlightenment(): held/engulfed hero not ported yet');
+    let heldmon = ''; /* lint suppression */
+    if (u.ustuck) { /* includes u.uswallow */
+        heldmon = a_monnam_in(u.ustuck);
+        if (heldmon === "it"
+            && (!has_mgivenname_in(u.ustuck)
+                || MGIVENNAME_in(u.ustuck) !== "it"))
+            heldmon = "an unseen creature";
+    }
+    if (u.uswallow) {
+        buf = `${dmgtype_fromattack_in(u.ustuck.data, AD_DGST_IN, AT_ENGL_IN) /* digests() */
+                 ? "swallowed" : "engulfed"} by ${heldmon}`;
+        if (dmgtype_in(u.ustuck.data, AD_DGST_IN)) {
+            /* if final, death via digestion can be deduced by u.uswallow
+               still being True and u.uswldtim having been decremented to 0 */
+            if (final && !u.uswldtim)
+                buf += " and got totally digested";
+            else
+                buf += ` and ${final ? "were" : "are"} being digested`;
+        }
+        if (wizard())
+            buf += ` (${u.uswldtim >>> 0})`;
+        you_are(buf, "");
+    } else if (u.ustuck) {
+        const ustick = (Upolyd() && sticks_in(game.youmonst.data));
+        const dx = u.ustuck.mx - u.ux, dy = u.ustuck.my - u.uy;
+
+        buf = `${ustick ? "holding" : "held by"} ${heldmon} (${
+            dxdy_to_dist_descr_in(dx, dy, true)})`;
+        you_are(buf, "");
+    }
     if (Wounded_legs()) {
         /* EWounded_legs is used to track left/right/both rather than some
            form of extrinsic impairment; HWounded_legs is used for timeout;
@@ -3415,3 +3449,9 @@ import { TT_BURIEDBALL as TT_BURIEDBALL_IS, TT_LAVA as TT_LAVA_IS,
 import { hliquid as hliquid_is } from './potion.js';
 import { the as the_is, surface as surface_is } from './iactions.js';
 import { t_at as t_at_is, trapname as trapname_is } from './trap.js';
+import { a_monnam as a_monnam_in } from './do_name.js';
+import { has_mgivenname as has_mgivenname_in, MGIVENNAME as MGIVENNAME_in } from './const.js';
+import { dmgtype_fromattack as dmgtype_fromattack_in, dmgtype as dmgtype_in } from './mondata.js';
+import { AD_DGST as AD_DGST_IN, AT_ENGL as AT_ENGL_IN } from './monsters.js';
+import { sticks as sticks_in } from './engrave.js';
+import { dxdy_to_dist_descr as dxdy_to_dist_descr_in } from './getpos.js';

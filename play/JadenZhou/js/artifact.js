@@ -515,7 +515,7 @@ export function mk_artifact(
         } /* otherwise, otmp has not changed; just fallthrough to return it */
     }
     if (otmp && permapoisoned(otmp))
-        otmp.opoisoned = 1;
+        otmp.otrapped /* opoisoned */ = 1;
     return otmp;
 }
 
@@ -1857,3 +1857,15 @@ export function has_magic_key(mon) { /* if null, hero assumed */
     }
     return null;
 }
+
+// C ref: artifact.c arti_cost()
+/* the zorkmid value of an object, artifact or not */
+export function arti_cost(otmp) {
+    if (!otmp.oartifact)
+        return objects_ac[otmp.otyp].oc_cost;
+    else if (artilist()[otmp.oartifact].cost)
+        return artilist()[otmp.oartifact].cost;
+    else
+        return (100 * objects_ac[otmp.otyp].oc_cost);
+}
+import { objects as objects_ac } from './objects.js';

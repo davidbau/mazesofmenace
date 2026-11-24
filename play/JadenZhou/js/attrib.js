@@ -860,8 +860,8 @@ export async function adjattrib(ndx,    /* which characteristic */
     game.disp_botl = true;
     if (msgflg <= 0)
         await pline(`You feel ${(incr > 1 || incr < -1) ? "very " : ""}${attrstr}!`); /* You_feel() */
-    /* encumber_msg() once in_moveloop for A_STR/A_CON: its messages are
-       not ported yet */
+    if (game.program_state?.in_moveloop && (ndx === A_STR || ndx === A_CON))
+        await encumber_msg();
     return true;
 }
 

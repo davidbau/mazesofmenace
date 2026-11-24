@@ -400,14 +400,16 @@ function tre_parse_bracket_items(ctx, items, items_size, result) {   // tre-pars
                                             }
                                             if ($h.i32[re >>> 2] === kind) {
                                                 if (re + 4 >= re_end) {
-                                                    status = kind === 61 ? 3 : 4;
+                                                    status = kind === 61 ? 3 :
+                                                        4;
                                                     break error$;
                                                 }
                                                 /* Found end */
                                                 if ($h.i32[(re + 4) >>> 2] === 93) {
                                                     if (re === start) {
                                                         /* Empty class name */
-                                                        status = kind === 61 ? 3 : 4;
+                                                        status = kind === 61 ? 3 :
+                                                            4;
                                                         break error$;
                                                     }
                                                     /* Process equivalence class */
@@ -614,7 +616,10 @@ function tre_parse_bracket(ctx, result) {   // tre-parse.c:723
         $h.i32[($fp + 8) >>> 2] = 32;
         $h.stp($fp + 16, 0);
         /* Handle special cases [[:<:]] and [[:>:]] */
-        if (($h.u32[(ctx + 40) >>> 2] - $h.u32[(ctx + 24) >>> 2]) / 4 >= 6 && $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 91 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 58 && ($h.i32[($h.u32[(ctx + 24) >>> 2] + 8) >>> 2] === 60 || $h.i32[($h.u32[(ctx + 24) >>> 2] + 8) >>> 2] === 62) && $h.i32[($h.u32[(ctx + 24) >>> 2] + 12) >>> 2] === 58 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 16) >>> 2] === 93 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 20) >>> 2] === 93) {
+        if (($h.u32[(ctx + 40) >>> 2] - $h.u32[(ctx + 24) >>> 2]) / 4 >= 6 && $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 91
+            && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 58 && ($h.i32[($h.u32[(ctx + 24) >>> 2] + 8) >>> 2] === 60 || $h.i32[($h.u32[(ctx + 24) >>> 2] + 8) >>> 2] === 62)
+            && $h.i32[($h.u32[(ctx + 24) >>> 2] + 12) >>> 2] === 58 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 16) >>> 2] === 93
+            && $h.i32[($h.u32[(ctx + 24) >>> 2] + 20) >>> 2] === 93) {
             $t1 = tre_ast_new_literal($h.u32[ctx >>> 2], -2, $h.i32[($h.u32[(ctx + 24) >>> 2] + 8) >>> 2] === 60 ? 8 : 16), $h.stp(result, $t1);
             do {
             } while (0, 0);
@@ -874,7 +879,9 @@ function tre_parse_bound(ctx, result) {   // tre-parse.c:917
                 }
             }
         } else {
-            if ($h.u32[$fp >>> 2] + 4 >= $h.u32[(ctx + 40) >>> 2] || $h.i32[($h.u32[$fp >>> 2]) >>> 2] !== 92 || $h.i32[($h.u32[$fp >>> 2] + 4) >>> 2] !== 125) {
+            if ($h.u32[$fp >>> 2] + 4 >= $h.u32[(ctx + 40) >>> 2]
+                || $h.i32[($h.u32[$fp >>> 2]) >>> 2] !== 92
+                || $h.i32[($h.u32[$fp >>> 2] + 4) >>> 2] !== 125) {
                 return 10;
             }
             $h.stp($fp, $h.u32[$fp >>> 2] + 8);
@@ -966,7 +973,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                   separated by the union operator `|'. */
                         bre_branch_begin = tre_stack_pop_int(stack);
                         /* REG_LITERAL */
-                        if (!($h.i32[(ctx + 84) >>> 2] & 16) && $h.i32[(ctx + 84) >>> 2] & 257) {
+                        if (!($h.i32[(ctx + 84) >>> 2] & 16) &&
+                            $h.i32[(ctx + 84) >>> 2] & 257) {
                             status = tre_stack_push_int(stack, 7 /* PARSE_UNION */);
                             if (status !== 0) {
                                 break;
@@ -1040,10 +1048,17 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                             c = $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2];
                             if (!($h.i32[(ctx + 84) >>> 2] & 16)) {
                                 /* REG_LITERAL */
-                                if ($h.i32[(ctx + 84) >>> 2] & 1 && c === 124 || ($h.i32[(ctx + 84) >>> 2] & 257) === 256 && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2] && c === 92 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 124) {
+                                if ($h.i32[(ctx + 84) >>> 2] & 1 && c === 124 ||
+                                    ($h.i32[(ctx + 84) >>> 2] & 257) === 256
+                                    && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2] && c === 92 &&
+                                    $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 124) {
                                     break;
                                 }
-                                if ($h.i32[(ctx + 84) >>> 2] & 1 && c === 41 && depth > 0 || !($h.i32[(ctx + 84) >>> 2] & 1) && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2] && c === 92 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 41) {
+                                if ($h.i32[(ctx + 84) >>> 2] & 1
+                                    && c === 41 && depth > 0
+                                    || !($h.i32[(ctx + 84) >>> 2] & 1)
+                                    && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2] && c === 92
+                                    && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 41) {
                                     if (!($h.i32[(ctx + 84) >>> 2] & 1) && depth === 0) {
                                         return 8;
                                     }
@@ -1247,7 +1262,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                             case "handle_plus_or_question":
                                                 $goto = null;   // handle_plus_or_question:
                                                 /* error on iteration of raw assertion (not in subexpression) */
-                                                if ($h.u32[($h.u32[$fp >>> 2] + 48) >>> 2] === 0 && $h.i32[($h.u32[$fp >>> 2] + 52) >>> 2] < 0 && $h.i32[($h.u32[($h.u32[$fp >>> 2]) >>> 2]) >>> 2] === -2) {
+                                                if ($h.u32[($h.u32[$fp >>> 2] + 48) >>> 2] === 0 && $h.i32[($h.u32[$fp >>> 2] + 52) >>> 2] < 0 &&
+                                                    $h.i32[($h.u32[($h.u32[$fp >>> 2]) >>> 2]) >>> 2] === -2) {
                                                     if (!($h.i32[(ctx + 84) >>> 2] & 1)) {
                                                         break L4;
                                                     }
@@ -1270,7 +1286,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                                             } else {
                                                                 return 13;
                                                             }
-                                                        } else if ($h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 42 || $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 43) {
+                                                        } else if ($h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 42
+                                                            || $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 43) {
                                                             /* These are reserved for future extensions. */
                                                             return 13;
                                                         }
@@ -1325,7 +1342,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                 case 92:
                                     /* "\{" is special without REG_EXTENDED */
                                     /* "\+" and "\?" are special with REG_ENHANCED for BRE */
-                                    if (!($h.i32[(ctx + 84) >>> 2] & 1) && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2]) {
+                                    if (!($h.i32[(ctx + 84) >>> 2] & 1)
+                                        && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2]) {
                                         switch ($h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2]) {
                                             case 123:
                                                 $h.stp(ctx + 24, $h.u32[(ctx + 24) >>> 2] + 4);
@@ -1356,7 +1374,9 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                                 $goto = null;   // parse_brace:
                                                 /* error on iteration of raw assertion (not in subexpression),
                                                                  but wait until after parsing bounds */
-                                                raw_assertion = $h.u32[($h.u32[$fp >>> 2] + 48) >>> 2] === 0 && $h.i32[($h.u32[$fp >>> 2] + 52) >>> 2] < 0 && $h.i32[($h.u32[($h.u32[$fp >>> 2]) >>> 2]) >>> 2] === -2 ? 1 : 0;
+                                                raw_assertion = $h.u32[($h.u32[$fp >>> 2] + 48) >>> 2] === 0
+                                                    && $h.i32[($h.u32[$fp >>> 2] + 52) >>> 2] < 0
+                                                    && $h.i32[($h.u32[($h.u32[$fp >>> 2]) >>> 2]) >>> 2] === -2 ? 1 : 0;
                                                 $h.stp(ctx + 24, $h.u32[(ctx + 24) >>> 2] + 4);
                                                 status = tre_parse_bound(ctx, $fp);
                                                 /* For ERE, if status is REG_NOMATCH, this mean the lbrace
@@ -1414,7 +1434,9 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                     /* parenthesized subexpression */
                                     /* Handle "(?...)" extensions.  They work in a way similar
                                               to Perls corresponding extensions. */
-                                    if (($h.i32[(ctx + 84) >>> 2] & 257) === 257 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 63) {
+                                    if (($h.i32[(ctx + 84) >>> 2] & 257) ===
+                                        257
+                                        && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 63) {
                                         new_cflags = $h.i32[(ctx + 84) >>> 2];
                                         bit = 1;
                                         invisible_submatch = 0;
@@ -1478,7 +1500,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                                 } while (0, 0);
                                                 /* A comment can contain any character except a
                                                                         right parenthesis */
-                                                while ($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] !== 41 && $h.u32[(ctx + 24) >>> 2] < $h.u32[(ctx + 40) >>> 2]) {
+                                                while ($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] !== 41
+                                                    && $h.u32[(ctx + 24) >>> 2] < $h.u32[(ctx + 40) >>> 2]) {
                                                     $h.stp(ctx + 24, $h.u32[(ctx + 24) >>> 2] + 4);
                                                 }
                                                 if ($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 41 && $h.u32[(ctx + 24) >>> 2] < $h.u32[(ctx + 40) >>> 2]) {
@@ -1628,7 +1651,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                     break;
                                 case 92:
                                     /* Deal with "\(", "\)" or "\{" for BREs */
-                                    if (!($h.i32[(ctx + 84) >>> 2] & 1) && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2]) {
+                                    if (!($h.i32[(ctx + 84) >>> 2] & 1)
+                                        && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2]) {
                                         if ($h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 40) {
                                             $h.stp(ctx + 24, $h.u32[(ctx + 24) >>> 2] + 4);
                                             $goto = "parse_bre_lparen"; continue S6;
@@ -1718,11 +1742,13 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                                 $h.i8[$fp + 400 + 2] = 0;
                                                 do {
                                                 } while (0, 0);
-                                                if (iswxdigit_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]) && $h.u32[(ctx + 24) >>> 2] < $h.u32[(ctx + 40) >>> 2]) {
+                                                if (iswxdigit_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]) &&
+                                                    $h.u32[(ctx + 24) >>> 2] < $h.u32[(ctx + 40) >>> 2]) {
                                                     $h.i8[$fp + 400] = $c.i8($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2]);
                                                     $h.stp(ctx + 24, $h.u32[(ctx + 24) >>> 2] + 4);
                                                 }
-                                                if (iswxdigit_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]) && $h.u32[(ctx + 24) >>> 2] < $h.u32[(ctx + 40) >>> 2]) {
+                                                if (iswxdigit_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]) &&
+                                                    $h.u32[(ctx + 24) >>> 2] < $h.u32[(ctx + 40) >>> 2]) {
                                                     $h.i8[$fp + 400 + 1] = $c.i8($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2]);
                                                     $h.stp(ctx + 24, $h.u32[(ctx + 24) >>> 2] + 4);
                                                 }
@@ -1759,7 +1785,9 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                         case "unenhanced_backslash":
                                             /*FALLTHROUGH*/
                                             $goto = null;   // unenhanced_backslash:
-                                            if (($h.i32[(ctx + 84) >>> 2] & 257) !== 1 && iswdigit_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]) && $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] !== 48) {
+                                            if (($h.i32[(ctx + 84) >>> 2] & 257) !==
+                                                1 &&
+                                                iswdigit_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]) && $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] !== 48) {
                                                 /* Back reference (only in BRE or enhanced). */
                                                 val$3 = $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] - 48 | 0;
                                                 do {
@@ -1819,7 +1847,9 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                               beginning of the RE and after \( is BREs.  It is also
                                               special in enhanced BREs at the beginning of each branches
                                               of a union */
-                                    if ($h.i32[(ctx + 84) >>> 2] & 1 || bre_branch_begin || $h.u32[(ctx + 24) >>> 2] === $h.u32[(ctx + 32) >>> 2]) {
+                                    if ($h.i32[(ctx + 84) >>> 2] & 1
+                                        || bre_branch_begin
+                                        || $h.u32[(ctx + 24) >>> 2] === $h.u32[(ctx + 32) >>> 2]) {
                                         do {
                                         } while (0, 0);
                                         $h.stp($fp, tre_ast_new_literal($h.u32[ctx >>> 2], -2, 1));
@@ -1835,7 +1865,11 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                     /* end of line assertion. */
                                     /* '$' is special everywhere in EREs, and in the end of the
                                               string and before \) is BREs. */
-                                    if ($h.i32[(ctx + 84) >>> 2] & 1 || $h.u32[(ctx + 24) >>> 2] + 8 < $h.u32[(ctx + 40) >>> 2] && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 92 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 8) >>> 2] === 41 || $h.u32[(ctx + 24) >>> 2] + 4 === $h.u32[(ctx + 40) >>> 2]) {
+                                    if ($h.i32[(ctx + 84) >>> 2] & 1
+                                        || $h.u32[(ctx + 24) >>> 2] + 8 < $h.u32[(ctx + 40) >>> 2]
+                                        && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 92
+                                        && $h.i32[($h.u32[(ctx + 24) >>> 2] + 8) >>> 2] === 41
+                                        || $h.u32[(ctx + 24) >>> 2] + 4 === $h.u32[(ctx + 40) >>> 2]) {
                                         do {
                                         } while (0, 0);
                                         $h.stp($fp, tre_ast_new_literal($h.u32[ctx >>> 2], -2, 2));
@@ -1850,7 +1884,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                 default:
                                 case "parse_literal":
                                     $goto = null;   // parse_literal:
-                                    if (temporary_cflags && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2] && $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 92 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 69) {
+                                    if (temporary_cflags && $h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2]
+                                        && $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 92 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 69) {
                                         do {
                                         } while (0, 0);
                                         $h.i32[(ctx + 84) >>> 2] = $h.i32[(ctx + 84) >>> 2] & ~temporary_cflags;
@@ -1888,7 +1923,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                                 /* REG_LITERAL */
                                                 /* error on end of string */
                                                 if ($h.u32[(ctx + 24) >>> 2] >= $h.u32[(ctx + 40) >>> 2]) {
-                                                    return depth > 0 ? 8 : 14;
+                                                    return depth > 0 ? 8
+                                                        : 14;
                                                 }
                                             case "empty_parse_bound":
                                                 /* error on unions and iterations of empty expressions */
@@ -1928,7 +1964,9 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                                                         break;
                                                                     }
                                                                     /* ERE_LITERAL_LBRACE_ON_NON_NUMERIC_BOUND */
-                                                                } else if ($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 42 || $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 43 || $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 63) {
+                                                                } else if ($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 42
+                                                                    || $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 43
+                                                                    || $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 63) {
                                                                     /* ERE_LITERAL_LBRACE_ON_NON_NUMERIC_BOUND */
                                                                     return 13;
                                                                 }
@@ -1936,7 +1974,9 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                                             break;
                                                         }
                                                     }
-                                                } else if ($h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2] && $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 92 && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 123) {
+                                                } else if ($h.u32[(ctx + 24) >>> 2] + 4 < $h.u32[(ctx + 40) >>> 2]
+                                                    && $h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2] === 92
+                                                    && $h.i32[($h.u32[(ctx + 24) >>> 2] + 4) >>> 2] === 123) {
                                                     $h.stp(ctx + 24, $h.u32[(ctx + 24) >>> 2] + 8);
                                                     $goto = "empty_parse_bound"; continue D7;
                                                 }
@@ -1950,7 +1990,9 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                                     /* Note that we can't use an tre_isalpha() test here, since there
                                               may be characters which are alphabetic but neither upper or
                                               lower case. */
-                                    if ($h.i32[(ctx + 84) >>> 2] & 2 && (iswupper_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]) || iswlower_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]))) {
+                                    if ($h.i32[(ctx + 84) >>> 2] & 2
+                                        && (iswupper_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]) ||
+                                        iswlower_l($h.i32[($h.u32[(ctx + 24) >>> 2]) >>> 2], $h.u32[(ctx + 48) >>> 2]))) {
                                         /* XXX - Can there be more than one opposite-case
                                                          counterpoints for some character in some locale?  Or
                                                          more than two characters which all should be regarded
@@ -1988,7 +2030,8 @@ export function tre_parse(ctx) {   // tre-parse.c:1304
                             submatch_id = tre_stack_pop_int(stack);
                             0;
                             $t8 = tre_stack_pop_int(stack), $h.i32[(ctx + 84) >>> 2] = $t8;   /* restore cflags */
-                            if ($h.i32[($h.u32[$fp >>> 2] + 52) >>> 2] >= 0 && $h.i32[($h.u32[$fp >>> 2] + 52) >>> 2] < 1073741824) {
+                            if ($h.i32[($h.u32[$fp >>> 2] + 52) >>> 2] >= 0 &&
+                                $h.i32[($h.u32[$fp >>> 2] + 52) >>> 2] < 1073741824) {
                                 if (submatch_id >= 1073741824) {
                                     break;
                                 }

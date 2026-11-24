@@ -362,8 +362,19 @@ export async function keepdogs(pets_only) /* true for ascension or final escape 
         mtmp2 = mtmp.nmon;
         if (mtmp.mhp <= 0) /* DEADMONSTER() */
             continue;
-        if (pets_only)
-            throw new Error('keepdogs(): pets_only not ported yet');
+        if (pets_only) {
+            if (!mtmp.mtame)
+                continue; /* reject non-pets */
+            /* don't block pets from accompanying hero's dungeon
+               escape or ascension simply due to mundane trifles;
+               unlike level change for steed, don't bother trying
+               to achieve a normal trap escape first */
+            mtmp.mtrapped = 0;
+            finish_meating(mtmp);
+            mtmp.msleeping = 0;
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
+        }
         if (((Math.abs(mtmp.mx - u.ux) <= 1 && Math.abs(mtmp.my - u.uy) <= 1 /* monnear() */
               && levl_follower(mtmp))
              /* the wiz will level t-port from anywhere to chase

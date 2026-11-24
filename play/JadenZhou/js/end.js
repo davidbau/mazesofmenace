@@ -504,9 +504,93 @@ export async function done_object_cleanup() {
 
 // C ref: end.c artifact_score()
 /* called twice; first to calculate total, then to list relevant items */
-function artifact_score(list, counting, endwin) {
-    void list; void counting; void endwin;
-    throw new Error('artifact_score(): not ported yet');
+async function artifact_score(list, counting, endwin) {
+    const u = game.u;
+    let pbuf;
+    let otmp;
+    let value, points;
+
+    for (otmp = list; otmp; otmp = otmp.nobj) {
+        if (otmp.oartifact || otmp.otyp === O_EN.BELL_OF_OPENING
+            || otmp.otyp === O_EN.SPE_BOOK_OF_THE_DEAD
+            || otmp.otyp === O_EN.CANDELABRUM_OF_INVOCATION) {
+            value = arti_cost_en(otmp); /* zorkmid value */
+            points = Math.trunc(value * 5 / 2);  /* score value */
+            if (counting) {
+                u.urexp = nowrap_add(u.urexp, points);
+            } else {
+                discover_object(otmp.otyp, true, true, false);
+                /* not observe_object; dead characters don't observe */
+                otmp.known = otmp.dknown = otmp.bknown = otmp.rknown = 1;
+                /* assumes artifacts don't have quan > 1 */
+                pbuf = `${the_unique_obj_en(otmp) ? "The " : ""}${
+                        otmp.oartifact ? artiname_en(otmp.oartifact)
+                                       : O_EN.OBJ_NAME(O_EN.objects[otmp.otyp])} (worth ${
+                        value} ${currency(value)} and ${points} points)`;
+                await tty_putstr(endwin, 0, pbuf);
+            }
+        }
+        if (otmp.cobj) /* Has_contents(otmp) */
+            await artifact_score(otmp.cobj, counting, endwin);
+    }
+}
+
+// C ref: end.c get_valuables()
+/* gv.valuables[]: [0] gems (the glass gems share the last slot),
+   [1] amulets */
+function get_valuables(list, valuables) /* inventory or container contents */ {
+    let obj;
+    let i;
+
+    /* find amulets and gems, ignoring all artifacts */
+    for (obj = list; obj; obj = obj.nobj)
+        if (obj.cobj) { /* Has_contents(obj) */
+            get_valuables(obj.cobj, valuables);
+        } else if (obj.oartifact) {
+            continue;
+        } else if (obj.oclass === O_EN.AMULET_CLASS) {
+            const amulets = valuables[1];
+            i = obj.otyp - O_EN.FIRST_AMULET;
+            if (!amulets[i].count) {
+                amulets[i].count = obj.quan;
+                amulets[i].typ = obj.otyp;
+            } else
+                amulets[i].count += obj.quan; /* always adds one */
+        } else if (obj.oclass === O_EN.GEM_CLASS && obj.otyp <= O_EN.LAST_GLASS_GEM) {
+            const gems = valuables[0];
+            /* last+1: combine all glass gems into one slot */
+            i = Math.min(obj.otyp, O_EN.LAST_REAL_GEM + 1) - O_EN.FIRST_REAL_GEM;
+            if (!gems[i].count) {
+                gems[i].count = obj.quan;
+                gems[i].typ = obj.otyp;
+            } else
+                gems[i].count += obj.quan;
+        }
+    return;
+}
+
+// C ref: end.c sort_valuables()
+/*
+ *  Sort collected valuables, most frequent to least.  We could just
+ *  as easily use qsort, but we don't care about efficiency here.
+ */
+function sort_valuables(list, size) /* max value is less than 20 */ {
+    let i, j;
+    let ltmp;
+
+    /* move greater quantities to the front of the list */
+    for (i = 1; i < size; i++) {
+        if (list[i].count === 0)
+            continue;   /* empty slot */
+        ltmp = list[i]; /* structure copy */
+        for (j = i; j > 0; --j) {
+            if (list[j - 1].count >= ltmp.count)
+                break;
+            list[j] = list[j - 1];
+        }
+        list[j] = ltmp;
+    }
+    return;
 }
 
 // C ref: end.c done2()
@@ -958,8 +1042,92 @@ async function really_done(how) {
     await dump_forward_putstr(endwin, 0, "", done_stopprint());
 
     if (how === ESCAPED || how === ASCENDED) {
-        void artifact_score;
-        throw new Error('really_done(): escaped/ascended score not ported yet');
+        let mtmp;
+        let otmp;
+        let i;
+        /* gv.valuables[]: the counts start out zeroed */
+        const mkval = (n) => Array.from({ length: n }, () => ({ count: 0, typ: 0 }));
+        const valuables = [
+            mkval(O_EN.LAST_REAL_GEM + 1 - O_EN.FIRST_REAL_GEM + 1), /* gems */
+            mkval(O_EN.LAST_AMULET + 1 - O_EN.FIRST_AMULET), /* amulets */
+        ];
+
+        get_valuables(g.invent, valuables);
+
+        /* add points for collected valuables */
+        for (const val of valuables)
+            for (i = 0; i < val.length; i++)
+                if (val[i].count !== 0) {
+                    tmp = val[i].count * O_EN.objects[val[i].typ].oc_cost;
+                    u.urexp = nowrap_add(u.urexp, tmp);
+                }
+
+        /* count the points for artifacts */
+        await artifact_score(g.invent, true, endwin);
+
+        /* gv.viz_array[0][0] |= IN_SIGHT: need visibility for naming */
+        if (g.viz_array?.[0])
+            g.viz_array[0][0] |= 0x2; /* IN_SIGHT */
+        mtmp = g.mydogs;
+        pbuf = "You";
+        if (mtmp || Schroedingers_cat()) {
+            while (mtmp) {
+                pbuf += ` and ${mon_nam_en(mtmp)}`;
+                if (mtmp.mtame)
+                    u.urexp = nowrap_add(u.urexp, mtmp.mhp);
+                mtmp = mtmp.nmon;
+            }
+            /* [it might be more robust to create a housecat and add it to
+               gm.mydogs; it doesn't have to be placed on the map for that] */
+            if (Schroedingers_cat()) {
+                const m_lev = adj_lev_en(mons_en[PM_HOUSECAT_EN]);
+                const mhp = d_en(m_lev, 8);
+                u.urexp = nowrap_add(u.urexp, mhp);
+                pbuf += " and Schroedinger's cat";
+            }
+            await dump_forward_putstr(endwin, 0, pbuf, done_stopprint());
+            pbuf = '';
+        } else {
+            pbuf += " ";
+        }
+        pbuf += `${(how === ASCENDED) ? "went to your reward"
+                                      : "escaped from the dungeon"} with ${
+                u.urexp} point${plur(u.urexp)},`;
+        await dump_forward_putstr(endwin, 0, pbuf, done_stopprint());
+
+        if (!done_stopprint())
+            await artifact_score(g.invent, false, endwin); /* list artifacts */
+
+        /* list valuables here */
+        for (const val of valuables) {
+            sort_valuables(val, val.length);
+            for (i = 0; i < val.length && !done_stopprint(); i++) {
+                const typ = val[i].typ;
+                const count = val[i].count;
+
+                if (count === 0)
+                    continue;
+                if (O_EN.objects[typ].oc_class !== O_EN.GEM_CLASS
+                    || typ <= O_EN.LAST_REAL_GEM) {
+                    otmp = mksobj_en(typ, false, false);
+                    discover_object(otmp.otyp, true, true, false);
+                    otmp.dknown = 1; /* seen it (blindness fix) */
+                    /* observe_object not necessary after discover_object */
+                    otmp.known = 1;  /* for fake amulets */
+                    if (otmp.oextra?.oname) /* has_oname(otmp) */
+                        otmp.oextra.oname = null; /* free_oname(otmp) */
+                    otmp.quan = count;
+                    pbuf = `${String(count).padStart(8)} ${xname(otmp)} (worth ${
+                            count * O_EN.objects[typ].oc_cost} ${currency(2)}),`;
+                    obfree_en(otmp, null);
+                } else {
+                    pbuf = `${String(count).padStart(8)} worthless piece${
+                            plur(count)} of colored glass,`;
+                }
+                await dump_forward_putstr(endwin, 0, pbuf, 0);
+            }
+        }
+
     } else {
         /* did not escape or ascend */
         if (u.uz.dnum === 0 && u.uz.dlevel <= 0) {
@@ -1101,3 +1269,12 @@ export async function container_contents(list, identified, all_containers,
             break;
     }
 }
+import * as O_EN from './objects.js';
+import { arti_cost as arti_cost_en, artiname as artiname_en } from './artifact.js';
+import { the_unique_obj as the_unique_obj_en } from './objnam.js';
+import { mon_nam as mon_nam_en } from './do_name.js';
+import { adj_lev as adj_lev_en } from './makemon.js';
+import { mons as mons_en, PM_HOUSECAT as PM_HOUSECAT_EN } from './monsters.js';
+import { d as d_en } from './rng.js';
+import { mksobj as mksobj_en } from './mkobj.js';
+import { obfree as obfree_en } from './invent.js';

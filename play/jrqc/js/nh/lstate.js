@@ -546,7 +546,9 @@ export function luaE_warning(L, msg, tocont) {   // lstate.c:426
 export function luaE_warnerror(L, where) {   // lstate.c:436
     let errobj = 0, msg = 0;
     errobj = $h.u32[(L + 16) >>> 2] - 16;   /* error object */
-    msg = ($h.u8[errobj + 8] & 15) === 4 ? $h.u32[errobj >>> 2] + 24 : $h.lit("error object is not a string");
+    msg = ($h.u8[errobj + 8] & 15) === 4
+        ? $h.u32[errobj >>> 2] + 24
+        : $h.lit("error object is not a string");
     /* produce warning "error in %s (%s)" (where, msg) */
     luaE_warning(L, $h.lit("error in "), 1);
     luaE_warning(L, where, 1);

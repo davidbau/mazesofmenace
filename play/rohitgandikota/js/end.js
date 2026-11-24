@@ -39,7 +39,7 @@ import { setuhpmax } from './exper.js';
 import { init_uhunger } from './eat.js';
 import { make_sick } from './potion.js';
 import { TIMEOUT, SICK_ALL, TT_LAVA, PLNMSG_OK_DONT_DIE, plur, has_oname, IN_SIGHT } from './const.js';
-import { reset_utrap } from './trap.js';
+import { reset_utrap, launch_in_progress, force_launch_placement } from './trap.js';
 import { endmultishot } from './dothrow.js';
 import { expels } from './mhitu.js';
 import { unstuck } from './mon.js';
@@ -648,6 +648,9 @@ async function really_done(how) {
 
     const { can_make_bones, savebones } = await import('./bones.js');
     const bones_ok = (how < GENOCIDED) && can_make_bones();
+
+    if (bones_ok && launch_in_progress())
+        await force_launch_placement();
 
     /* maintain ugrave_arise even for !bones_ok */
     if (how === PANICKED)

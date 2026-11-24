@@ -16,12 +16,13 @@
 // its own tag.
 //
 // Ported so far: math.random, shuffle, align, d, monkfoodshop, percent,
-// hell_tweaks. Not ported yet (they need nh.pline or the tutorial, and their
-// definitions roll no dice): pline, nh_set_variables_string,
-// nh_get_variables_string, table_stringify and the tutorial functions.
+// hell_tweaks and the tutorial functions (tutorial_cmd_before, tutorial_enter,
+// tutorial_leave, tutorial_turn). Not ported yet (their definitions roll no
+// dice): pline, nh_set_variables_string, nh_get_variables_string and
+// table_stringify.
 
 import { withRngCaller } from './rng.js';
-import { lua_error, lua_bor, lua_band } from './nhlua.js';
+import { lua_error, lua_bor, lua_band, lua_callmeth } from './nhlua.js';
 
 // C ref: dat/nhlib.lua (top-level chunk)
 export function nhlib_lua(L) {
@@ -190,5 +191,81 @@ export function nhlib_lua(L) {
             fwalls = lua_band(lua_band(fwalls.grow(), selection.match('w')), prot);
             des.terrain(fwalls, 'F');
         }
+    };
+
+    // --
+    // -- TUTORIAL
+    // --
+
+    // -- extended commands NOT available in tutorial
+    // local tutorial_blacklist_commands = {
+    const tutorial_blacklist_commands = {
+        ["save"]: true,
+    };
+
+    // function tutorial_cmd_before(cmd)
+    G.tutorial_cmd_before = function tutorial_cmd_before(cmd) {
+        // -- nh.pline("TUT:cmd_before:" .. cmd);
+
+        if (tutorial_blacklist_commands[cmd]) {
+            return false;
+        }
+        return true;
+    };
+
+    // function tutorial_enter()
+    G.tutorial_enter = function tutorial_enter() {
+        // -- nh.pline("TUT:enter");
+
+        // -- add the tutorial branch callbacks
+        nh.callback("cmd_before", "tutorial_cmd_before");
+        nh.callback("end_turn", "tutorial_turn");
+
+        // -- save state for later restore
+        return nh.gamestate();
+    };
+
+    // function tutorial_leave()
+    G.tutorial_leave = function tutorial_leave() {
+        // -- nh.pline("TUT:leave");
+
+        // -- remove the tutorial branch callbacks
+        nh.callback("cmd_before", "tutorial_cmd_before", true);
+        nh.callback("end_turn", "tutorial_turn", true);
+
+        // -- restore state for regular play
+        return nh.gamestate(true);
+    };
+
+    // local tutorial_events = {
+    // (a Lua sequence; tutorial_events[k] = nil leaves a hole at k)
+    const tutorial_events = [
+        {
+            func: async function () {
+                if (G.u.uhunger < 148) {
+                    const o = G.obj.new("blessed food ration");
+                    lua_callmeth(o, 'placeobj', G.u.ux, G.u.uy); // o:placeobj(u.ux, u.uy)
+                    await nh.pline("Looks like you're getting hungry.  You'll starve to death, unless you eat something.", true);
+                    await nh.pline("Comestibles are eaten with '" + nh.eckey("eat") + "'", true);
+                    return true;
+                }
+            },
+        },
+    ];
+
+    // function tutorial_turn()
+    G.tutorial_turn = async function tutorial_turn() {
+        // for k, v in pairs(tutorial_events) do
+        for (let k = 0; k < tutorial_events.length; k++) {
+            const v = tutorial_events[k];
+            if (v === undefined) continue; /* a removed entry */
+            if ((v.ucoord && G.u.ux === v.ucoord[0] + 3 && G.u.uy === v.ucoord[1] + 3)
+                || (v.ucoord === undefined)) {
+                if ((await v.func()) || v.remove) {
+                    tutorial_events[k] = undefined; /* = nil */
+                }
+            }
+        }
+        // -- nh.pline("TUT:turn");
     };
 }

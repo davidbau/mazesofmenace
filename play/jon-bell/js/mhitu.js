@@ -4033,7 +4033,7 @@ async function gulpmu(mtmp, mattk) {
         if ((mattk.adtyp | 0) === AD_DGST_GU) {
             tim_tmp = (acurr_mu(A_CON_GU) | 0) + 10 - (u.uac | 0) + rn2(20);
             if (tim_tmp < 0) tim_tmp = 0;
-            tim_tmp = Math.trunc(tim_tmp / (mtmp.m_lev | 0 || 1));
+            tim_tmp = (mtmp.m_lev | 0) ? Math.trunc(tim_tmp / (mtmp.m_lev | 0)) : 0;
             tim_tmp += 3;
         } else {
             /* higher level attacker takes longer to eject hero */

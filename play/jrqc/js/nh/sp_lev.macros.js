@@ -5,6 +5,7 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { SP_COORD_IS_RANDOM } from './sp_lev.h.js';
 
 export function SP_COORD_X(l) {
     return $c.and64(l, 255);
@@ -14,4 +15,7 @@ export function SP_COORD_Y(l) {
 }
 export function SP_COORD_PACK(x, y) {
     return (x & 255) + ((y & 255) << 16) | 0;
+}
+export function SP_COORD_PACK_RANDOM(f) {
+    return $c.or64(SP_COORD_IS_RANDOM, f);
 }

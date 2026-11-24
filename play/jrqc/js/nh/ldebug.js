@@ -1357,7 +1357,8 @@ export async function luaG_traceexec(L, pc) {   // ldebug.c:928
         oldpc = $h.i32[(L + 180) >>> 2] < $h.i32[(p + 24) >>> 2] ? $h.i32[(L + 180) >>> 2] : 0;
         npci = $c.i32((pc - $h.u32[(p + 64) >>> 2]) / 4) - 1 | 0;
         /* call hook when jump back (loop), */
-        if (npci <= oldpc || changedline(p, oldpc, npci)) {
+        if (npci <= oldpc ||
+            changedline(p, oldpc, npci)) {
             /* or when enter new line */
             newline = luaG_getfuncline(p, npci);
             await luaD_hook(L, 2, newline, 0, 0);   /* call line hook */

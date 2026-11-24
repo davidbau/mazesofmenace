@@ -29,8 +29,15 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
-import { luaL_checklstring } from './luabridge.js';
+import { LUA_REGISTRYINDEX } from './lua.h.js';
+import { luaL_checklstring, luaL_optlstring, lua_getfield } from './luabridge.js';
 
 export async function luaL_checkstring(L, n) {
     return await luaL_checklstring(L, n, null);
+}
+export async function luaL_optstring(L, n, d) {
+    return await luaL_optlstring(L, n, d, null);
+}
+export async function luaL_getmetatable(L, n) {
+    return await lua_getfield(L, LUA_REGISTRYINDEX, n);
 }

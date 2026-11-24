@@ -6,9 +6,13 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { alloc } from './alloc.js';
 import { svl } from './decl.js';
 import { CORR, ICE, ROOM } from './rm.h.js';
 
+export async function newengr(lth) {
+    return $c.asRec(await alloc(lth + 64 >>> 0), $T.engr, 64);
+}
 export function dealloc_engr(engr) {
     $c.free(engr);
 }

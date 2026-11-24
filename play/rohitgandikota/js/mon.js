@@ -1362,14 +1362,13 @@ export async function mon_to_stone(mtmp) {
     }
 }
 
-// src/mkobj.c delobj() — take the object off the floor and free it.
+// src/invent.c:1430 delobj(), delete normally; unpaid objects stay on the bill.
 export function delobj(obj) {
     return delobj_core(obj, false);
 }
 
-// src/invent.c:1438 delobj_core() — destroy an object; `force` is for reviving
-// Rider corpses. The obj_resists() guard DRAWS rn2(100) on every call, which
-// is why deleting an object is never draw-neutral.
+// src/invent.c:1438 delobj_core(), force bypasses resistance for Rider revival.
+// Protected types return without RNG; other unforced removals draw rn2(100).
 export function delobj_core(obj, force) {
     /* obj_resists(obj,0,0) protects the Amulet, the invocation tools,
        and Rider corpses */
@@ -1387,8 +1386,10 @@ export function delobj_core(obj, force) {
             const i = objs.indexOf(obj);
             if (i >= 0) objs.splice(i, 1);
         }
-        if (update_map)  /* floor object's coordinates are always up to date */
+        if (update_map) { /* floor object's coordinates are always up to date */
+            maybe_unhide_at(obj.ox, obj.oy);
             newsym(obj.ox, obj.oy);
+        }
         return obfree(obj);
     }
 }

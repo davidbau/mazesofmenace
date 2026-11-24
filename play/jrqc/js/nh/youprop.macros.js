@@ -5,13 +5,15 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
-import { gm, gy, u } from './decl.js';
+import { gm, gy, svd, u } from './decl.js';
+import { on_level } from './dungeon.js';
 import { is_fainted } from './eat.js';
 import { AD } from './monattk.h.js';
 import { defended, hates_silver } from './mondata.js';
+import { M1 } from './monflag.h.js';
 import { TOWEL } from './objects.h.js';
 import { LOW_PM } from './permonst.h.js';
-import { ACID_RES, ADORNED, AGGRAVATE_MONSTER, ANTIMAGIC, BLINDED, BLND_RES, CLAIRVOYANT, COLD_RES, CONFLICT, CONFUSION, DEAF, DETECT_MONSTERS, DISINT_RES, DISPLACED, DRAIN_RES, ENERGY_REGENERATION, FAST, FIRE_RES, FIXED_ABIL, FLYING, FREE_ACTION, FROMOUTSIDE, FUMBLING, GLIB, HALF_PHDAM, HALF_SPDAM, HALLUC, HALLUC_RES, HUNGER, INFRAVISION, INTRINSIC, INVIS, INVULNERABLE, I_SPECIAL, JUMPING, LEVITATION, LIFESAVED, MAGICAL_BREATHING, PASSES_WALLS, POISON_RES, POLYMORPH, POLYMORPH_CONTROL, PROTECTION, PROT_FROM_SHAPE_CHANGERS, REFLECTING, REGENERATION, SEARCHING, SEE_INVIS, SHOCK_RES, SICK, SICK_RES, SLEEPY, SLEEP_RES, SLIMED, SLOW_DIGESTION, STEALTH, STONED, STONE_RES, STRANGLED, STUNNED, TELEPAT, TELEPORT, TELEPORT_CONTROL, TIMEOUT, UNCHANGING, VOMITING, W, WARNING, WARN_OF_MON, WARN_UNDEAD, WOUNDED_LEGS } from './prop.h.js';
+import { ACID_RES, ADORNED, AGGRAVATE_MONSTER, ANTIMAGIC, BLINDED, BLND_RES, CLAIRVOYANT, COLD_RES, CONFLICT, CONFUSION, DEAF, DETECT_MONSTERS, DISINT_RES, DISPLACED, DRAIN_RES, ENERGY_REGENERATION, FAST, FIRE_RES, FIXED_ABIL, FLYING, FREE_ACTION, FROMOUTSIDE, FUMBLING, GLIB, HALF_PHDAM, HALF_SPDAM, HALLUC, HALLUC_RES, HUNGER, INFRAVISION, INTRINSIC, INVIS, INVULNERABLE, I_SPECIAL, JUMPING, LEVITATION, LIFESAVED, MAGICAL_BREATHING, PASSES_WALLS, POISON_RES, POLYMORPH, POLYMORPH_CONTROL, PROTECTION, PROT_FROM_SHAPE_CHANGERS, REFLECTING, REGENERATION, SEARCHING, SEE_INVIS, SHOCK_RES, SICK, SICK_RES, SLEEPY, SLEEP_RES, SLIMED, SLOW_DIGESTION, STEALTH, STONED, STONE_RES, STRANGLED, STUNNED, SWIMMING, TELEPAT, TELEPORT, TELEPORT_CONTROL, TIMEOUT, UNCHANGING, VOMITING, W, WARNING, WARN_OF_MON, WARN_UNDEAD, WOUNDED_LEGS, WWALKING } from './prop.h.js';
 import { unconscious } from './trap.js';
 
 export function Fire_resistance() {
@@ -263,8 +265,23 @@ export function EFlying() {
 export function BFlying() {
     return u.uprops[FLYING].blocked;
 }
+export function Flying() {
+    return (u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked ? 1 : 0;
+}
+export function Wwalking() {
+    return (u.uprops[WWALKING].intrinsic || u.uprops[WWALKING].extrinsic) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? 1 : 0;
+}
+export function Swimming() {
+    return u.uprops[SWIMMING].intrinsic || u.uprops[SWIMMING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.SWIM) !== 0 ? 1 : 0;
+}
 export function EMagical_breathing() {
     return u.uprops[MAGICAL_BREATHING].extrinsic;
+}
+export function Amphibious() {
+    return u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.AMPHIBIOUS) !== 0 ? 1 : 0;
+}
+export function Breathless() {
+    return u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0 ? 1 : 0;
 }
 export function Underwater() {
     return u.uinwater;

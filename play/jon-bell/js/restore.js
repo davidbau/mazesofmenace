@@ -33,7 +33,7 @@ import { regions_rest_snapshot } from './region.js';
 import { restore_timer_order, restore_timers_level, run_timers } from './timeout.js';
 import { mon_catchup_elapsed_time } from './dog.js';
 import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
-import { vfsReadFile, vfsDeleteFile } from './storage.js';
+import { vfsReadFile, vfsDeleteFile, vfsWriteFile } from './storage.js';
 import { docrt, cls, clear_glyph_buffer, see_monsters, _topline_more_pending, flush_screen, reglyph_darkroom, reset_glyphmap } from './display.js';
 import { max_rank_sz } from './botl.js';
 import { assign_graphics } from './symbols.js';
@@ -41,7 +41,14 @@ import { pline, You } from './pline.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { restore_light_sources } from './light.js';
 import { place_wsegs, worm_seg_clear_level, worm_seg_at, worm_seg_clear_at } from './worm.js';
-import { change_luck } from './attrib.js';
+import { change_luck, arti_spfx } from './attrib.js';
+import { get_artifact } from './artifact.js';
+/* obj.h worn masks, prop.h I_SPECIAL, artifact.h SPFX_HALRES */
+const _W_ARM = 0x00000001, _W_QUIVER = 0x00000200, _W_SWAPWEP = 0x00000400;
+const _I_SPECIAL = 0x20000000, _SPFX_HALRES = 0x00000800;
+/* A save file left at mode 0000 by a restore that crashed (see dorecover):
+ * open_savefile() cannot read it, so restore_saved_game() finds no game. */
+export const SAVE_MODE0 = 'NHSAVE MODE 0000\n';
 import { HALLUC, HALLUC_RES, OBJ_FREE, W_BALL, W_CHAIN, MAXNROFROOMS, MAGIC_PORTAL, BR_STAIR, BR_NO_END1, BR_NO_END2, BR_PORTAL, Is_rogue_level, REST_GSTATE, REST_LEVELS, REST_CURRENT_LEVEL } from './const.js';
 import { set_residency, restshk } from './shk.js';
 import { setworn } from './worn.js';
@@ -745,6 +752,26 @@ export async function dorecover(save) {
         g.u.usteed_mid = g.u.ustuck_mid = 0;
         g.program_state.restoring = 0;
         return 0;
+    }
+    {
+        const _halluc = g.u?.uprops?.[HALLUC]?.intrinsic || 0;
+        const _crash = _halluc && g.u?.uswallow;
+        for (let otmp = g.invent; _crash && otmp; otmp = otmp.nobj) {
+            const mask = otmp.owornmask | 0;
+            if (!mask || !otmp.oartifact)
+                continue;
+            if ((mask & (_W_ARM | _I_SPECIAL)) === (_W_ARM | _I_SPECIAL))
+                continue; /* worn.c:79-82 uskin: no properties conferred */
+            if (!(mask & ~(_W_SWAPWEP | _W_QUIVER)))
+                continue; /* worn.c:120 */
+            if (!(arti_spfx(get_artifact(otmp)) & _SPFX_HALRES))
+                continue;
+            vfsWriteFile(savefile_name(g.plname), SAVE_MODE0);
+            g.program_state.exiting = 1;
+            const err = new Error('nh_terminate: Signal received (restore setworn)');
+            err.status = 134;
+            throw err;
+        }
     }
     /* C restore.c:281-282 on dorecover's reads: restgamestate() brings back
      * invent (:657), the loose ball & chain (:660) and migrating_objs (:671)

@@ -701,7 +701,8 @@ async function match_capture(ms, s, l) {   // lstrlib.c:559
     let len = 0;
     l = await check_capture(ms, l);
     len = $c.u64($h.ld64(ms + 40 + l * 16 + 8));
-    if ($c.u64($h.u32[(ms + 8) >>> 2] - s) >= len && $hl.memcmp($h.u32[(ms + 40 + l * 16) >>> 2], s, len) === 0) {
+    if ($c.u64($h.u32[(ms + 8) >>> 2] - s) >= len &&
+        $hl.memcmp($h.u32[(ms + 40 + l * 16) >>> 2], s, len) === 0) {
         return s + $c.idx(len);
     } else {
         return 0;
@@ -771,7 +772,8 @@ async function match(ms, s, p) {   // lstrlib.c:570
                                         }
                                         ep = await classend(ms, p);   /* points to what is next */
                                         previous = $c.i8(s === $h.u32[ms >>> 2] ? 0 : $h.i8[s - 1]);
-                                        if (!matchbracketclass($c.u8(previous), p, ep - 1) && matchbracketclass($c.u8($h.i8[s]), p, ep - 1)) {
+                                        if (!matchbracketclass($c.u8(previous), p, ep - 1) &&
+                                            matchbracketclass($c.u8($h.i8[s]), p, ep - 1)) {
                                             p = ep;
                                             continue init$;   /* return match(ms, s, ep); */
                                         }
@@ -1405,7 +1407,9 @@ async function addliteral(L, b, arg) {   // lstrlib.c:1175
                         n = lua_tointegerx(L, arg, 0);
                         /* corner case? */
                         /* use hex */
-                        format = n === -9223372036854775808n ? $h.lit("0x%llx") : $h.lit("%lld");   /* else use default format */
+                        format = n === -9223372036854775808n
+                            ? $h.lit("0x%llx")
+                            : $h.lit("%lld");   /* else use default format */
                         nb = $c.snprintf($h.P(buff), 120, $h.P(format), n);
                     }
                     $h.st64(b + 16, $c.addu64($h.ldu64(b + 16), $c.u64(nb)));

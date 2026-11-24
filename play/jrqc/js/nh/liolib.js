@@ -63,7 +63,9 @@ const metameth = $h.data(80, 8);
 function l_checkmode(mode) {   // liolib.c:40
     let $t1;
     /* skip if char is '+' */
-    return $h.i8[mode] !== 0 && $hl.strchr($h.lit("rwa"), $h.i8[($t1 = mode, mode = $t1 + 1, $t1)]) !== 0 && ($h.i8[mode] !== 43 || (mode = mode + 1, 1)) && $hl.strspn(mode, $h.lit("b")) === $hl.strlen(mode) ? 1 : 0;   /* check extensions */
+    return $h.i8[mode] !== 0 && $hl.strchr($h.lit("rwa"), $h.i8[($t1 = mode, mode = $t1 + 1, $t1)]) !== 0 &&
+        ($h.i8[mode] !== 43 || (mode = mode + 1, 1)) &&
+        $hl.strspn(mode, $h.lit("b")) === $hl.strlen(mode) ? 1 : 0;   /* check extensions */
 }
 /**
  * @param {number} L lua_State *
@@ -701,7 +703,9 @@ async function g_write(L, f, arg) {   // liolib.c:664
         for (; $t1 = nargs, nargs = $t1 - 1 | 0, $t1; arg = arg + 1 | 0) {
             if (lua_type(L, arg) === 3) {
                 /* optimization: could be done exactly as for strings */
-                len = lua_isinteger(L, arg) ? $c.fprintf($h.deref(f), $h.P($h.lit("%lld")), lua_tointegerx(L, arg, 0)) : $c.fprintf($h.deref(f), $h.P($h.lit("%.14g")), lua_tonumberx(L, arg, 0));
+                len = lua_isinteger(L, arg)
+                    ? $c.fprintf($h.deref(f), $h.P($h.lit("%lld")), lua_tointegerx(L, arg, 0))
+                    : $c.fprintf($h.deref(f), $h.P($h.lit("%.14g")), lua_tonumberx(L, arg, 0));
                 status = status && len > 0 ? 1 : 0;
             } else {
                 s = await luaL_checklstring(L, arg, $fp);

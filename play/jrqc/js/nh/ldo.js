@@ -439,7 +439,8 @@ export async function luaD_hookcall(L, ci) {   // ldo.c:376
     $h.i32[(L + 180) >>> 2] = 0;   /* set 'oldpc' for new function */
     if ($h.i32[(L + 192) >>> 2] & 1) {
         /* is call hook on? */
-        event = $h.u16[(ci + 62) >>> 1] & 32 ? 4 : 0;
+        event = $h.u16[(ci + 62) >>> 1] & 32 ? 4
+            : 0;
         p = $h.u32[($h.u32[($h.u32[ci >>> 2]) >>> 2] + 24) >>> 2];
         $h.stp(ci + 32, $h.u32[(ci + 32) >>> 2] + 4);   /* hooks assume 'pc' is already incremented */
         await luaD_hook(L, event, -1, 1, $h.u8[p + 10]);
@@ -1155,7 +1156,8 @@ export async function lua_resume(L, from, nargs$in, nresults) {   // ldo.c:842
             luaD_seterrorobj(L, status, $h.u32[(L + 16) >>> 2]);   /* push error message */
             $h.stp($h.u32[(L + 32) >>> 2] + 8, $h.u32[(L + 16) >>> 2]);
         }
-        $h.i32[nresults >>> 2] = status === 1 ? $h.i32[($h.u32[(L + 32) >>> 2] + 56) >>> 2] : $c.i32(($h.u32[(L + 16) >>> 2] - ($h.u32[($h.u32[(L + 32) >>> 2]) >>> 2] + 16)) / 16);
+        $h.i32[nresults >>> 2] = status === 1 ? $h.i32[($h.u32[(L + 32) >>> 2] + 56) >>> 2]
+            : $c.i32(($h.u32[(L + 16) >>> 2] - ($h.u32[($h.u32[(L + 32) >>> 2]) >>> 2] + 16)) / 16);
         0;
         return status;
     } finally { $h.st.sp = $sp0; }

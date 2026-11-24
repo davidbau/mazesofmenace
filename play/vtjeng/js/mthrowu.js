@@ -262,8 +262,6 @@ import { messageAt } from './startup_a11y.js';
 
 import { obj_sheds_light } from './light.js';
 import {
-    capitalizedMonsterName,
-    monsterCommonName,
     some_mon_nam,
     Monnam,
     mon_nam,
@@ -802,7 +800,7 @@ async function ucatchgem(gem, mon, rawEnv = {}) {
     /* won't catch rock or gray stone; catch (then drop) worthless glass */
     if (gem.otyp <= LAST_GLASS_GEM && is_unicorn(state.youmonst.data)) {
         const gem_xname = xnameFresh(gem, state);
-        const mon_s_name = s_suffix(monsterCommonName(mon, state));
+        const mon_s_name = s_suffix(mon_nam(mon, state));
 
         if (gem.otyp >= FIRST_GLASS_GEM) {
             const message = env.message ?? ttyPline;
@@ -1428,7 +1426,7 @@ export async function spitmm(mtmp, mattk, mtarg, rawEnv = {}) {
         if (!random.rn2(BOLT_LIM - distmin(mtmp.mx, mtmp.my, tx, ty))) {
             if (canseemon(mtmp, state)) {
                 await message(
-                    `${capitalizedMonsterName(mtmp, state)} spits venom!`,
+                    `${Monnam(mtmp, state)} spits venom!`,
                     state,
                     env,
                 );
@@ -1590,7 +1588,7 @@ export async function monshoot(monster, missile, launcher, rawEnv = {}) {
             })
             : '';
         const message = env.message ?? ttyPline;
-        const monsterName = capitalizedMonsterName(monster, state, {
+        const monsterName = Monnam(monster, state, {
             displayRandom: env.displayRandom,
         });
         await message(

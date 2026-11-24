@@ -127,6 +127,8 @@ export class NethackGame {
         g.pl_race = opts.pl_race || '';
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
+        /* opt_set_in_config[]: for duplicate_opt_detection() */
+        g.opt_set_in_config_names = opts.set_in_config || [];
         /* C ref: options.c initoptions_init() -- set up the command
            parsing; then the config file's BIND= lines (parsebindings()) */
         reset_commands(true); /* init */

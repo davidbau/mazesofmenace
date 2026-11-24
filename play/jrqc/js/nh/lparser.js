@@ -66,7 +66,9 @@ async function errorlimit(fs, limit, what) {   // lparser.c:74
     let L = 0, msg = 0, line = 0, where = 0;
     L = $h.u32[($h.u32[(fs + 16) >>> 2] + 56) >>> 2];
     line = $h.i32[($h.u32[fs >>> 2] + 44) >>> 2];
-    where = line === 0 ? $h.lit("main function") : await luaO_pushfstring(L, $h.lit("function at line %d"), line);
+    where = line === 0
+        ? $h.lit("main function")
+        : await luaO_pushfstring(L, $h.lit("function at line %d"), line);
     msg = await luaO_pushfstring(L, $h.lit("too many %s (limit is %d) in %s"), what, limit, where);
     await luaX_syntaxerror($h.u32[(fs + 16) >>> 2], msg);
 }
@@ -1644,7 +1646,8 @@ async function check_conflict(ls, lh, v) {   // lparser.c:1330
                     $h.u8[lh + 8 + 8 + 2] = $c.u8(extra);   /* assignment will use safe copy */
                 }
                 /* is index the local being assigned? */
-                if ($h.u32[(lh + 8) >>> 2] === 12 && $h.u32[v >>> 2] === 9 && $h.i16[(lh + 8 + 8) >>> 1] === $h.u8[v + 8]) {
+                if ($h.u32[(lh + 8) >>> 2] === 12 && $h.u32[v >>> 2] === 9 &&
+                    $h.i16[(lh + 8 + 8) >>> 1] === $h.u8[v + 8]) {
                     conflict = 1;
                     $h.i16[(lh + 8 + 8) >>> 1] = $c.i16(extra);   /* previous assignment will use safe copy */
                 }
@@ -2058,7 +2061,8 @@ async function test_then_block(ls, escapelist) {   // lparser.c:1637
         }
         await statlist(ls);   /* 'then' part */
         await leaveblock(fs);
-        if ($h.i32[(ls + 16) >>> 2] === 259 /* TK_ELSE */ || $h.i32[(ls + 16) >>> 2] === 260 /* TK_ELSEIF */) {   /* followed by 'else'/'elseif'? */
+        if ($h.i32[(ls + 16) >>> 2] === 259 /* TK_ELSE */ ||
+            $h.i32[(ls + 16) >>> 2] === 260 /* TK_ELSEIF */) {   /* followed by 'else'/'elseif'? */
             await luaK_concat(fs, escapelist, await luaK_jump(fs));   /* must jump over it */
         }
         await luaK_patchtohere(fs, jf);
@@ -2172,7 +2176,9 @@ async function localstat(ls) {   // lparser.c:1725
         var_ = getlocalvardesc(fs, vidx);   /* get last variable */
         /* no adjustments? */
         /* last variable is const? */
-        if (nvars === nexps && $h.u8[var_ + 9] === 1 && luaK_exp2const(fs, $fp, var_)) {
+        if (nvars === nexps &&
+            $h.u8[var_ + 9] === 1 &&
+            luaK_exp2const(fs, $fp, var_)) {
             /* compile-time constant? */
             $h.u8[var_ + 9] = 3;   /* variable is a compile-time constant */
             await adjustlocalvars(ls, nvars - 1 | 0);   /* exclude last variable */

@@ -186,7 +186,8 @@ export async function luaK_nil(fs, from, n) {   // lcode.c:132
         /* previous is LOADNIL? */
         pfrom = ($h.u32[previous >>> 2] >>> 7 & 255) >>> 0 | 0;   /* get previous range */
         pl = pfrom + (($h.u32[previous >>> 2] >>> 16 & 255) >>> 0 | 0) | 0;
-        if (pfrom <= from && from <= (pl + 1 | 0) || from <= pfrom && pfrom <= (l + 1 | 0)) {
+        if (pfrom <= from && from <= (pl + 1 | 0) ||
+            from <= pfrom && pfrom <= (l + 1 | 0)) {
             /* can connect both? */
             if (pfrom < from) {
                 from = pfrom;   /* from = min(from, pfrom) */
@@ -734,7 +735,8 @@ async function addk(fs, key, v) {   // lcode.c:544
             /* is there an index there? */
             k = $c.i32($h.ld64(idx));
             /* correct value? (warning: must distinguish floats from integers!) */
-            if (k < $h.i32[(fs + 44) >>> 2] && ($h.u8[$h.u32[(f + 56) >>> 2] + k * 16 + 8] & 63) === ($h.u8[v + 8] & 63) && await luaV_equalobj(0, $h.u32[(f + 56) >>> 2] + k * 16, v)) {
+            if (k < $h.i32[(fs + 44) >>> 2] && ($h.u8[$h.u32[(f + 56) >>> 2] + k * 16 + 8] & 63) === ($h.u8[v + 8] & 63) &&
+                await luaV_equalobj(0, $h.u32[(f + 56) >>> 2] + k * 16, v)) {
                 return k;   /* reuse index */
             }
         }
@@ -1669,7 +1671,8 @@ async function codenot(fs, e) {   // lcode.c:1188
  * @returns {number} int
  */
 function isKstr(fs, e) {   // lcode.c:1222
-    return $h.u32[e >>> 2] === 4 && !($h.i32[(e + 16) >>> 2] !== $h.i32[(e + 20) >>> 2]) && $h.i32[(e + 8) >>> 2] <= 255 && $h.u8[$h.u32[($h.u32[fs >>> 2] + 56) >>> 2] + $h.i32[(e + 8) >>> 2] * 16 + 8] === 68 ? 1 : 0;
+    return $h.u32[e >>> 2] === 4 && !($h.i32[(e + 16) >>> 2] !== $h.i32[(e + 20) >>> 2]) && $h.i32[(e + 8) >>> 2] <= 255 &&
+        $h.u8[$h.u32[($h.u32[fs >>> 2] + 56) >>> 2] + $h.i32[(e + 8) >>> 2] * 16 + 8] === 68 ? 1 : 0;
 }
 /*
 ** Check whether expression 'e' is a literal integer.
@@ -1796,7 +1799,8 @@ function validop(op, v1, v2) {   // lcode.c:1318
             case 13:
                 {
                     /* conversion errors */
-                    return luaV_tointegerns(v1, $fp, 0) && luaV_tointegerns(v2, $fp, 0) ? 1 : 0;
+                    return luaV_tointegerns(v1, $fp, 0) &&
+                        luaV_tointegerns(v2, $fp, 0) ? 1 : 0;
                 }
             case 5:
             case 6:

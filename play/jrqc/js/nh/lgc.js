@@ -612,7 +612,8 @@ function traversetable(g, h) {   // lgc.c:542
         }
     }
     /* is there a weak mode? */
-    if (mode && $h.u8[mode + 8] === 68 && (smode = $h.u32[mode >>> 2], weakkey = $hl.strchr(smode + 24, 107), weakvalue = $hl.strchr(smode + 24, 118), weakkey || weakvalue ? 1 : 0)) {
+    if (mode && $h.u8[mode + 8] === 68 &&
+        (smode = $h.u32[mode >>> 2], weakkey = $hl.strchr(smode + 24, 107), weakvalue = $hl.strchr(smode + 24, 118), weakkey || weakvalue ? 1 : 0)) {
         /* is really weak? */
         if (!weakkey) {   /* strong keys? */
             traverseweakvalue(g, h);
@@ -1275,7 +1276,9 @@ export async function luaC_checkfinalizer(L, o, mt) {   // lgc.c:1019
     g = $h.u32[(L + 24) >>> 2];
     /* obj. is already marked... */
     /* or has no finalizer... */
-    if ($h.u8[o + 9] & 64 || (mt === 0 ? 0 : ($h.u8[mt + 10] & 4) >>> 0 ? 0 : luaT_gettm(mt, 2, $h.u32[(g + 280 + 2 /* TM_GC */ * 8) >>> 2])) === 0 || $h.u8[g + 106] & 4) {   /* or closing state? */
+    if ($h.u8[o + 9] & 64 ||
+        (mt === 0 ? 0 : ($h.u8[mt + 10] & 4) >>> 0 ? 0 : luaT_gettm(mt, 2, $h.u32[(g + 280 + 2 /* TM_GC */ * 8) >>> 2])) === 0 ||
+        $h.u8[g + 106] & 4) {   /* or closing state? */
         return;   /* nothing to be done */
     } else {
         /* move 'o' to 'finobj' list */
@@ -1319,7 +1322,9 @@ function setpause(g) {   // lgc.c:1059
     0;
     /* overflow? */
     /* no overflow */
-    threshold = pause < $c.div64(9223372036854775807n, estimate) ? $c.mul64(estimate, pause) : 9223372036854775807n;   /* overflow; truncate to maximum */
+    threshold = pause < $c.div64(9223372036854775807n, estimate)
+        ? $c.mul64(estimate, pause)
+        : 9223372036854775807n;   /* overflow; truncate to maximum */
     debt = $c.i64($c.subu64($c.u64($c.add64($h.ld64(g + 16), $h.ld64(g + 24))), $c.u64(threshold)));
     if (debt > 0) {
         debt = 0;
@@ -2046,7 +2051,9 @@ async function incstep(L, g) {   // lgc.c:1667
     let stepmul = 0, debt = 0, stepsize = 0, work = 0;
     stepmul = Math.imul($h.u8[g + 109], 4) | 1;   /* avoid division by 0 */
     debt = $c.i64($c.mulu64($c.divu64($c.u64($h.ld64(g + 24)), 16), $c.u64(stepmul)));
-    stepsize = $c.i64($h.u8[g + 110] <= 62 ? $c.mulu64($c.divu64($c.u64($c.shl64(1, $h.u8[g + 110])), 16), $c.u64(stepmul)) : 9223372036854775807n);   /* overflow; keep maximum value */
+    stepsize = $c.i64($h.u8[g + 110] <= 62
+        ? $c.mulu64($c.divu64($c.u64($c.shl64(1, $h.u8[g + 110])), 16), $c.u64(stepmul))
+        : 9223372036854775807n);   /* overflow; keep maximum value */
     do {
         /* repeat until pause or enough "credit" (negative debt) */
         work = await singlestep(L);   /* perform one single step */

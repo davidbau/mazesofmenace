@@ -8,13 +8,17 @@ import * as $T from './types.js';
 import { $G } from './globals.js';
 import { alloc } from './alloc.js';
 import { ART } from './artilist.h.js';
+import { A } from './attrib.h.js';
 import { gy, svq, u } from './decl.js';
 import { S } from './defsym.h.js';
 import { Resists_Elem, cvt_adtyp_to_mseenres, cvt_prop_to_mseenres, monstseesu, monstunseesu } from './mondata.js';
+import { M2 } from './monflag.h.js';
 import { mons } from './monst.js';
 import { MON, M_AP } from './monst.h.js';
 import { PM } from './monsters.h.js';
+import { BOULDER } from './objects.h.js';
 import { LOW_PM, NUMMONS } from './permonst.h.js';
+import { mon_aligntyp } from './priest.js';
 import { ACID_RES, COLD_RES, DISINT_RES, FIRE_RES, POISON_RES, SHOCK_RES, SLEEP_RES, STONE_RES } from './prop.h.js';
 
 export function U_AP_TYPE() {
@@ -25,6 +29,9 @@ export function M_AP_TYPE(m) {
 }
 export function M_AP_FLAG(m) {
     return m.m_ap_type & ~M_AP.TYPMASK;
+}
+export function m_seenres(mon, mask) {
+    return $c.andu64(mon.seen_resistance, $c.u64(mask));
 }
 export function m_setseenres(mon, mask) {
     return mon.seen_resistance = $c.oru64(mon.seen_resistance, mask);
@@ -56,11 +63,17 @@ export function DEADMONSTER(mon) {
 export function is_vampshifter(mon) {
     return mon.cham === PM.VAMPIRE || mon.cham === PM.VAMPIRE_LEADER || mon.cham === PM.VLAD_THE_IMPALER ? 1 : 0;
 }
+export function vampshifted(mon) {
+    return (mon.cham === PM.VAMPIRE || mon.cham === PM.VAMPIRE_LEADER || mon.cham === PM.VLAD_THE_IMPALER) && !(mon.data.mlet === S.VAMPIRE) ? 1 : 0;
+}
 export function is_Vlad(m) {
     return m.data === mons[PM.VLAD_THE_IMPALER] || m.cham === PM.VLAD_THE_IMPALER ? 1 : 0;
 }
 export function mundisplaceable(mon) {
     return mon.ispriest || mon.isshk || mon.isgd || mon.data === mons[PM.ORACLE] || mon.m_id === svq.quest_status.leader_m_id ? 1 : 0;
+}
+export function is_lightblocker_mappear(mon) {
+    return (mon.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT && mon.mappearance === BOULDER || (mon.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE && (mon.mappearance === S.hcdoor || mon.mappearance === S.vcdoor || mon.mappearance < S.ndoor || mon.mappearance === S.tree) ? 1 : 0;
 }
 export function is_door_mappear(mon) {
     return (mon.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE && (mon.mappearance === S.hcdoor || mon.mappearance === S.vcdoor) ? 1 : 0;
@@ -72,7 +85,7 @@ export function troll_baned(m, o) {
     return m.data.mlet === S.TROLL && o && o.oartifact === ART.TROLLSBANE ? 1 : 0;
 }
 export function engulfing_u(mon) {
-    return u.uswallow && $c.peq(u.ustuck, mon) ? 1 : 0;
+    return u.uswallow && u.ustuck === mon ? 1 : 0;
 }
 export function helpless(mon) {
     return mon.msleeping || !mon.mcanmove ? 1 : 0;
@@ -121,6 +134,9 @@ export async function resists_acid(mon) {
 }
 export async function resists_ston(mon) {
     return await Resists_Elem(mon, STONE_RES);
+}
+export function is_lminion(mon) {
+    return $c.andu64(mon.data.mflags2, M2.MINION) !== 0 && mon_aligntyp(mon) === A.LAWFUL ? 1 : 0;
 }
 export function ismnum(x) {
     return x >= LOW_PM && x < NUMMONS ? 1 : 0;

@@ -86,7 +86,8 @@ function index2value(L, idx) {   // lapi.c:60
         if ($h.u8[$h.u32[ci >>> 2] + 8] === 102) {
             /* C closure? */
             func = $h.u32[($h.u32[ci >>> 2]) >>> 2];
-            return idx <= $h.u8[func + 10] ? func + 32 + (idx - 1 | 0) * 16 : $h.u32[(L + 24) >>> 2] + 80;
+            return idx <= $h.u8[func + 10] ? func + 32 + (idx - 1 | 0) * 16
+                : $h.u32[(L + 24) >>> 2] + 80;
         } else {
             /* light C function or Lua function (through a hook)?) */
             L, 0;
@@ -199,7 +200,9 @@ export function lua_version(L) {   // lapi.c:154
  * @returns {number} int
  */
 export function lua_absindex(L, idx) {   // lapi.c:169
-    return idx > 0 || idx <= -1001000 ? idx : $c.i32(($h.u32[(L + 16) >>> 2] - $h.u32[($h.u32[(L + 32) >>> 2]) >>> 2]) / 16) + idx | 0;
+    return idx > 0 || idx <= -1001000
+        ? idx
+        : $c.i32(($h.u32[(L + 16) >>> 2] - $h.u32[($h.u32[(L + 32) >>> 2]) >>> 2]) / 16) + idx | 0;
 }
 /**
  * @param {number} L lua_State *

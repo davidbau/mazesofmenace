@@ -157,7 +157,7 @@ export function dogfood(mon, obj) {
     const carni = carnivorous(mptr), herbi = herbivorous(mptr);
     let fptr, fx;
 
-    if (obj.opoisoned && !mresists(mon, M.MR_POISON))
+    if (obj.otrapped /* opoisoned */ && !mresists(mon, M.MR_POISON))
         return POISON;
     if (is_quest_artifact(obj) || obj_resists(obj, 0, 95))
         return obj.cursed ? TABU : APPORT;

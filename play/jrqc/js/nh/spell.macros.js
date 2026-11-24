@@ -10,3 +10,6 @@ import { svs } from './decl.js';
 export function spellknow(spell) {
     return svs.spl_book[spell].sp_know;
 }
+export function SPELL_LEV_PW(lvl) {
+    return lvl * 5;
+}

@@ -42,6 +42,19 @@ import {
 // C ref: mondata.h monsndx(ptr) -- ((ptr)->pmidx)
 export function monsndx(ptr) { return ptr.pmidx; }
 
+// C ref: mondata.h emits_light()
+/* this returns the light's range, or 0 if none; if we add more light-emitting
+   monsters, we'll likely have to add a new light range field to mons[] */
+export function emits_light(ptr) {
+    return (ptr.mlet === S_LIGHT || ptr === mons[M.PM_FLAMING_SPHERE]
+            || ptr === mons[M.PM_SHOCKING_SPHERE]
+            || ptr === mons[M.PM_BABY_GOLD_DRAGON]
+            || ptr === mons[M.PM_FIRE_VORTEX])
+        ? 1
+        : (ptr === mons[M.PM_FIRE_ELEMENTAL]
+           || ptr === mons[M.PM_GOLD_DRAGON]) ? 1 : 0;
+}
+
 // C ref: mondata.h is_flyer()
 export function is_flyer(ptr) { return (ptr.mflags1 & M1_FLY) !== 0; }
 // C ref: mondata.h is_floater()

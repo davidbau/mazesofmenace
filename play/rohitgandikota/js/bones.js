@@ -640,7 +640,7 @@ export async function getbones_load() {
     lvl.flags = snap.flags || {};
     rest_rooms(snap.rooms);
     const lastroom = lvl.rooms[lvl.nroom - 1];
-    game.doorindex = lastroom ? lastroom.fdoor + lastroom.doorct : 0;
+    lvl.doorindex = lastroom ? lastroom.fdoor + lastroom.doorct : 0;
     lvl.doors = snap.doors || [];
     lvl.traps = snap.traps || [];
     game.stairs = restore_stairs(snap.stairs);

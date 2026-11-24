@@ -41,7 +41,7 @@ import { fill_zoo } from './mkroom.js';
 import { OBJ_NAME, OBJ_DESCR } from './objnam.js';
 import { obj_resists } from './zap.js';
 import { OBJ_BURIED, OBJ_FREE } from './obj.js';
-import { start_timer, TIMER_OBJECT, ROT_ORGANIC,
+import { start_timer, TIMER_OBJECT, ROT_ORGANIC, MELT_ICE_AWAY,
          begin_burn_level_object } from './timeout.js';
 import { new_light_source, del_light_source, LS_OBJECT, LS_MONSTER } from './light.js';
 import { make_engr_at, engr_at, del_engr } from './engrave.js';
@@ -2823,6 +2823,32 @@ function flip_encoded_dir_bits(flp, val) {
     return val;
 }
 
+// src/sp_lev.c:428 flip_dbridge_horizontal()
+function flip_dbridge_horizontal(lev) {
+    if (IS_DRAWBRIDGE(lev.typ)) {
+        if ((lev.drawbridgemask & DB_DIR) === DB_WEST) {
+            lev.drawbridgemask &= ~DB_WEST;
+            lev.drawbridgemask |= DB_EAST;
+        } else if ((lev.drawbridgemask & DB_DIR) === DB_EAST) {
+            lev.drawbridgemask &= ~DB_EAST;
+            lev.drawbridgemask |= DB_WEST;
+        }
+    }
+}
+
+// src/sp_lev.c:442 flip_dbridge_vertical()
+function flip_dbridge_vertical(lev) {
+    if (IS_DRAWBRIDGE(lev.typ)) {
+        if ((lev.drawbridgemask & DB_DIR) === DB_NORTH) {
+            lev.drawbridgemask &= ~DB_NORTH;
+            lev.drawbridgemask |= DB_SOUTH;
+        } else if ((lev.drawbridgemask & DB_DIR) === DB_SOUTH) {
+            lev.drawbridgemask &= ~DB_SOUTH;
+            lev.drawbridgemask |= DB_NORTH;
+        }
+    }
+}
+
 // src/sp_lev.c:458 flip_visuals() — for #wizfliplevel: update seen vector
 // for whole flip area and glyph for known walls.
 function flip_visuals(flp, minx, miny, maxx, maxy) {
@@ -2900,25 +2926,19 @@ function flip_vault_guard(flp, grd, minx, miny, maxx, maxy) {
 }
 
 // src/sp_lev.c:967 flip_level_rnd() — one rn2(2) per allowed axis.
-export async function flip_level_rnd(flp) {
+export async function flip_level_rnd(flp, extras) {
     let c = 0;
     if ((flp & 1) && rn2(2))
         c |= 1;
     if ((flp & 2) && rn2(2))
         c |= 2;
     if (c)
-        await flip_level(c, false);
+        await flip_level(c, extras);
 }
 
-// src/sp_lev.c:533 flip_level() — mirror the level on one or both axes.
-//
-// Everything positional moves: the terrain grid, objects, monsters, traps,
-// stairways, engravings and doors. The per-square object and monster maps
-// move with their coordinates, preserving each object's nexthere link.
-//
-// Recorded: the ball-and-chain repositioning, the vault guard's egd,
-// migrating monsters, timers and the level-teleport regions. `extras` is
-// false for the post-build flip, which is the only caller so far.
+// src/sp_lev.c:533 flip_level(), mirror the level on one or both axes.
+// The per-square object and monster maps move with their coordinates,
+// preserving each object's nexthere link.
 export async function flip_level(flp, extras) {
     /* extras: False: level creation; True: #wizfliplevel is altering an
        active level so more needs to be done */
@@ -2967,10 +2987,7 @@ export async function flip_level(flp, extras) {
         if (flp & 2) st.sx = FlipX(st.sx);
     }
 
-    /* This port also records the up/down stair coordinates separately on the
-       level (js/mklev.js sets level.upstair / level.dnstair) and the display
-       keys the '<' vs '>' glyph off them, so they have to move too. C reads
-       the stairway list for that and has no such record. */
+    /* Flip the level's cached stair coordinates as well. */
     for (const key of ['upstair', 'dnstair']) {
         const st = game.level?.[key];
         if (!st || !inFlipArea(st.x, st.y)) continue;
@@ -3056,23 +3073,17 @@ export async function flip_level(flp, extras) {
         if (flp & 1) m.my = FlipY(m.my);
         if (flp & 2) m.mx = FlipX(m.mx);
 
-        /* mgoal is not modelled. */
+        Flip_coord(m.mgoal);
         if (m.ispriest) {
             Flip_coord(m.epri?.shrpos);
         } else if (m.isshk) {
             Flip_coord(m.eshk?.shk);
-            /* eshk.shd ALIASES the door record in level.doors, which the
-               doors pass below already flips; C's shd is a value copy and
-               needs its own Flip_coord, ours must not flip it twice. */
+            Flip_coord(m.eshk?.shd);
         } else if (m.wormno) {
             if (flp & 1)
                 flip_worm_segs_vertical(m, miny, maxy);
             if (flp & 2)
                 flip_worm_segs_horizontal(m, minx, maxx);
-        }
-        if (extras) {
-            if (m.mtame && m.edog)
-                Flip_coord(m.edog.ogoal);
         }
     }
     for (const m of on_grid)
@@ -3121,8 +3132,34 @@ export async function flip_level(flp, extras) {
         }
     }
 
-    /* regions (poison clouds, etc, sp_lev.c:735) cannot exist during level
-       creation; the port has no region list to flip. */
+    /* regions (poison clouds, etc), sp_lev.c:735-763 */
+    for (const reg of (game.regions || [])) {
+        let tmp1, tmp2;
+        if (flp & 1) {
+            tmp1 = FlipY(reg.bounding_box.ly);
+            tmp2 = FlipY(reg.bounding_box.hy);
+            reg.bounding_box.ly = Math.min(tmp1, tmp2);
+            reg.bounding_box.hy = Math.max(tmp1, tmp2);
+            for (let j = 0; j < reg.nrects; j++) {
+                tmp1 = FlipY(reg.rects[j].ly);
+                tmp2 = FlipY(reg.rects[j].hy);
+                reg.rects[j].ly = Math.min(tmp1, tmp2);
+                reg.rects[j].hy = Math.max(tmp1, tmp2);
+            }
+        }
+        if (flp & 2) {
+            tmp1 = FlipX(reg.bounding_box.lx);
+            tmp2 = FlipX(reg.bounding_box.hx);
+            reg.bounding_box.lx = Math.min(tmp1, tmp2);
+            reg.bounding_box.hx = Math.max(tmp1, tmp2);
+            for (let j = 0; j < reg.nrects; j++) {
+                tmp1 = FlipX(reg.rects[j].lx);
+                tmp2 = FlipX(reg.rects[j].hx);
+                reg.rects[j].lx = Math.min(tmp1, tmp2);
+                reg.rects[j].hx = Math.max(tmp1, tmp2);
+            }
+        }
+    }
 
     /* rooms — sp_lev.c:764; subrooms flip with their parents */
     const flip_room = (sroom) => {
@@ -3147,10 +3184,8 @@ export async function flip_level(flp, extras) {
         flip_room(sroom);
 
     /* doors */
-    for (const d of (game.level?.doors || [])) {
-        if (flp & 1) d.y = FlipY(d.y);
-        if (flp & 2) d.x = FlipX(d.x);
-    }
+    for (let i = 0; i < game.level.doorindex; i++)
+        Flip_coord(game.level.doors[i]);
 
     /* the map */
     if (flp & 1) {
@@ -3159,9 +3194,14 @@ export async function flip_level(flp, extras) {
                 const ny = FlipY(y);
                 const a = game.level.at(x, y), b = game.level.at(x, ny);
                 if (!a || !b) continue;
-                const tmp = { ...a };
-                Object.assign(a, b);
-                Object.assign(b, tmp);
+                flip_dbridge_vertical(a);
+                flip_dbridge_vertical(b);
+                // C copies the whole rm value, including unset fields.
+                for (const key of Object.keys({ ...a, ...b })) {
+                    const tmp = a[key];
+                    a[key] = b[key];
+                    b[key] = tmp;
+                }
             }
     }
     if (flp & 2) {
@@ -3170,10 +3210,29 @@ export async function flip_level(flp, extras) {
                 const nx = FlipX(x);
                 const a = game.level.at(x, y), b = game.level.at(nx, y);
                 if (!a || !b) continue;
-                const tmp = { ...a };
-                Object.assign(a, b);
-                Object.assign(b, tmp);
+                flip_dbridge_horizontal(a);
+                flip_dbridge_horizontal(b);
+                // C copies the whole rm value, including unset fields.
+                for (const key of Object.keys({ ...a, ...b })) {
+                    const tmp = a[key];
+                    a[key] = b[key];
+                    b[key] = tmp;
+                }
             }
+    }
+
+    /* timed effects (sp_lev.c:862) */
+    for (const timer of (game.timer_base || [])) {
+        if (timer.func_index === MELT_ICE_AWAY) {
+            let ty = timer.arg & 0xffff;
+            let tx = (timer.arg >> 16) & 0xffff;
+
+            if (flp & 1)
+                ty = FlipY(ty);
+            if (flp & 2)
+                tx = FlipX(tx);
+            timer.arg = (tx << 16) | ty;
+        }
     }
 
     /* exclusion zones (sp_lev.c:877) */
@@ -3298,7 +3357,7 @@ export async function load_special(name) {
     if (!game.level.flags.corrmaze)
         mklev_fns.wallification(1, 0, COLNO - 1, ROWNO - 1);
 
-    await flip_level_rnd(game.coder?.allow_flips ?? 0);
+    await flip_level_rnd(game.coder?.allow_flips ?? 0, false);
 
     if (mklev_fns.count_level_features)
         mklev_fns.count_level_features();
@@ -3402,9 +3461,9 @@ export async function lspo_finalize_level(L) {
 /* ==== the map-based special-level verbs the castle needs ==== */
 
 import { W_NONDIGGABLE, W_NONPASSWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
-         DB_NORTH, DB_SOUTH, DB_WEST, DB_EAST, DB_MOAT, DB_LAVA,
+         DB_NORTH, DB_SOUTH, DB_WEST, DB_EAST, DB_DIR, DB_MOAT, DB_LAVA,
          IS_DOOR as C_IS_DOOR, IS_WALL as C_IS_WALL,
-         IS_TREE } from './const.js';
+         IS_TREE, IS_DRAWBRIDGE } from './const.js';
 const C_STONE = STONE, C_HWALL = HWALL, C_ROOM = ROOM, C_CORR = CORR,
       C_MAX_TYPE = MAX_TYPE;
 

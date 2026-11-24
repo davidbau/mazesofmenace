@@ -86,7 +86,7 @@ import { make_confused, make_stunned, make_vomiting, make_blinded, make_deaf,
 import { CXN_NORMAL, an } from './objnam.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { SICK_VOMITABLE, SICK_ALL } from './const.js';
-import { paranoid_query } from './cmd.js';
+import { paranoid_query, donull } from './cmd.js';
 import { tty_yn_function } from './wintty.js';
 import { safe_qbuf } from './pickup.js';
 import { touch_artifact } from './artifact.js';
@@ -2583,4 +2583,25 @@ export async function maybe_finished_meal(stopping) {
         return true;
     }
     return false;
+}
+
+// C ref: eat.c cant_finish_meal()
+export async function cant_finish_meal(corpse) {
+    /*
+     * When a corpse gets resurrected, the makemon() for that might
+     * call stop_occupation().  If that happens, prevent it from using
+     * up the corpse via maybe_finished_meal() when there's not enough
+     * left for another bite.  revive() needs continued access to the
+     * corpse and will delete it when done.
+     */
+    if (game.occupation === eatfood && victual().piece === corpse) {
+        /* normally performed by done_eating() */
+        clear_victual(); /* victual.piece = 0, .o_id = 0 */
+
+        if (!corpse.oeaten)
+            corpse.oeaten = 1; /* [see consume_oeaten()] */
+        game.occupation = donull; /* any non-Null other than eatfood() */
+        await stop_occupation();
+        await newuhs(false);
+    }
 }

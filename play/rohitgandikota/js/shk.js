@@ -14,7 +14,7 @@ import { map_invisible } from './display.js';
 import { the } from './objnam.js';
 import { mnearto } from './mon.js';
 import { OBJ_BURIED, LS_OBJECT } from './const.js';
-import { You, impossible, You_cant } from './pline.js';
+import { You, impossible, You_cant, livelog_printf } from './pline.js';
 import { angry_guards } from './mon.js';
 import { count_unpaid, count_contents, merge_choice } from './invent.js';
 import { pline_The } from './pline.js';
@@ -51,7 +51,7 @@ import { highc } from './hacklib.js';
 import { safe_qbuf } from './objnam.js';
 import { ESHK, SHOPBASE, IS_DOOR, ROOMOFFSET, NO_ROOM, A_CHA, MAXULEV,
          HUNGRY, PICK_ANY, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
-         ECMD_OK, ECMD_TIME, G_GONE, A_WIS,
+         ECMD_OK, ECMD_TIME, G_GONE, A_WIS, LL_ACHIEVE,
          M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, MIGR_APPROX_XY, RLOC_NOMSG,
          NON_PM, REPAIR_DELAY, BOLT_LIM, D_BROKEN, D_CLOSED, IS_ROOM,
          IS_WALL, SVALL, u_at, HAND, PRONOUN_NO_IT, PRONOUN_HALLU }
@@ -1091,17 +1091,27 @@ async function makekops(origin) {
     }
 }
 
+// src/shk.c:510 call_kops(): alert the watch before creating any Kops.
 async function call_kops(shkp, nearshop) {
-    await pline('An alarm sounds!');
+    if (!shkp)
+        return;
+    if (!Deaf())
+        await pline('An alarm sounds!');
     const types = [PMNAMES.PM_KEYSTONE_KOP, PMNAMES.PM_KOP_SERGEANT,
                    PMNAMES.PM_KOP_LIEUTENANT, PMNAMES.PM_KOP_KAPTAIN];
-    if (types.every(mndx =>
-        ((game.mvitals?.[mndx]?.mvflags || 0) & G_GONE))) {
-        if (game.flags?.verbose !== false)
+    const nokops = types.every(mndx =>
+        ((game.mvitals?.[mndx]?.mvflags || 0) & G_GONE));
+    if (!await angry_guards(!!Deaf()) && nokops) {
+        if (game.flags?.verbose !== false && !Deaf())
             await pline('But no one seems to respond to it.');
         return;
     }
+    if (nokops)
+        return;
 
+    const { choose_stairs } = await import('./wizard.js');
+    const stairs = { sx: 0, sy: 0 };
+    choose_stairs(stairs, true);
     if (nearshop) {
         if (game.flags?.verbose !== false)
             await pline('The Keystone Kops appear!');
@@ -1111,16 +1121,15 @@ async function call_kops(shkp, nearshop) {
 
     if (game.flags?.verbose !== false)
         await pline('The Keystone Kops are after you!');
-    const { choose_stairs } = await import('./wizard.js');
-    const stairs = { sx: 0, sy: 0 };
-    choose_stairs(stairs, true);
     if (isok(stairs.sx, stairs.sy))
         await makekops({ x: stairs.sx, y: stairs.sy });
     await makekops({ x: shkp.mx, y: shkp.my });
 }
 
+// src/shk.c:687 rob_shop()
 async function rob_shop(shkp) {
     const eshk = shkp.eshk || ESHK(shkp);
+    await rouse_shk(shkp, true);
     let total = add_up_bill(shkp) + (eshk.debit || 0);
     if ((eshk.credit || 0) >= total) {
         await pline(`Your credit of ${eshk.credit} ${currency(eshk.credit)} is used to cover your shopping bill.`);
@@ -1135,6 +1144,8 @@ async function rob_shop(shkp) {
 
     eshk.robbed = (eshk.robbed || 0) + total;
     await pline(`You stole ${total} ${currency(total)} worth of merchandise.`);
+    livelog_printf(LL_ACHIEVE, `stole ${total} ${currency(total)} worth of merchandise from ${
+        s_suffix(shkname(shkp))} ${shtypes[eshk.shoptype - SHOPBASE].name}`);
     if (game.urole?.mnum !== PMNAMES.PM_ROGUE)
         adjalign(-Math.sign(game.u.ualign?.type || 0));
     hot_pursuit(shkp);
@@ -4268,9 +4279,11 @@ export function set_residency(shkp, zero_out) {
 
 // src/shk.c:290 restshk(). bill_p already owns the serialized bill array in JS.
 export function restshk(shkp, ghostly) {
+    const eshk = shkp.eshk || ESHK(shkp);
+    // C restores this coord by value; older JSON saves could alias a door.
+    eshk.shd = { ...eshk.shd };
     if (!game.u.uz.dlevel)
         return;
-    const eshk = shkp.eshk || ESHK(shkp);
     if (eshk.bill_p !== -1000)
         eshk.bill_p ||= [];
     if (ghostly) {

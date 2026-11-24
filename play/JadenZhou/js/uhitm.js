@@ -349,7 +349,7 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
             if (mattk.aatyp === AT_WEAP && otmp) {
                 let marmg;
                 let tmp;
-                const was_poisoned = (otmp.opoisoned
+                const was_poisoned = (otmp.otrapped /* opoisoned */
                                       || permapoisoned(otmp));
 
                 if (otmp.otyp === CORPSE
@@ -1973,13 +1973,6 @@ function is_longworm(ptr) {
 /* C ref: monst.h helpless() */
 function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
 
-// C ref: shk.c tended_shop() -- shopkeepers aren't created by the JS
-// port yet
-function tended_shop(sroom) {
-    if (sroom.resident)
-        throw new Error('tended_shop(): inhishop() not ported yet');
-    return false;
-}
 
 // C ref: uhitm.c do_attack()
 /* try to attack; return False if monster evaded;
@@ -2909,7 +2902,7 @@ async function hmon_hitmon_weapon_melee(hmd, mon, obj) /* obj is not NULL */ {
                 hmd.dmg++;
             hmd.train_weapon_skill = (hmd.dmg > 0);
         }
-        if (obj.opoisoned && is_poisonable(obj))
+        if (obj.otrapped /* opoisoned */ && is_poisonable(obj))
             hmd.ispoisoned = true;
     }
     /* permapoisoned is non-ammo/missile, limit the poison */
@@ -3330,7 +3323,7 @@ async function hmon_hitmon_poison(hmd, mon, obj) /* obj is not NULL */ {
     }
     if (!permapoisoned(obj) && !rn2(nopoison)) {
         /* remove poison now in case obj ends up in a bones file */
-        obj.opoisoned = 0;
+        obj.otrapped /* opoisoned */ = 0;
         /* defer "obj is no longer poisoned" until after hit message */
         hmd.unpoisonmsg = true;
     }
@@ -3396,7 +3389,7 @@ async function hmon_hitmon_msg_hit(hmd, mon, obj) {
             || (hmd.thrown && game.m_shot?.n > 1
                 && game.m_shot.o === obj.otyp))) {
         if (hmd.thrown)
-            throw new Error('hmon_hitmon_msg_hit(): hit() for a thrown object not ported yet');
+            await hit_uh(mshot_xname_uh(obj), mon, exclam(hmd.dmg));
         else if (!game.flags.verbose)
             await You("hit it.");
         else /* hand_to_hand */
@@ -4226,3 +4219,6 @@ import { healmon, monnear } from './mon.js';
 import { ugolemeffects } from './mhitu.js';
 import { Yobjnam2 } from './objnam.js';
 import { split_mon } from './potion.js';
+import { hit as hit_uh } from './zap.js';
+import { mshot_xname as mshot_xname_uh } from './mthrowu.js';
+import { tended_shop } from './shk.js';

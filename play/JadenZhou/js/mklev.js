@@ -2669,7 +2669,7 @@ function mktrap_victim(ttmp) {
     switch (kind) {
     case ARROW_TRAP:
         otmp = mksobj(ARROW, true, false);
-        otmp.opoisoned = 0;
+        otmp.otrapped /* opoisoned */ = 0;
         /* don't adjust the quantity; maybe the trap shot multiple
            times, there was an untrapping attempt, etc... */
         break;

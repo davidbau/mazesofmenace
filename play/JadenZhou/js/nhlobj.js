@@ -289,7 +289,7 @@ function l_obj_to_table(v) {
     t.olocked = b(obj.olocked);
     t.obroken = b(obj.obroken);
     if (is_poisonable(obj))
-        t.opoisoned = b(obj.opoisoned);
+        t.opoisoned = b(obj.otrapped /* opoisoned */);
     else
         t.otrapped = b(obj.otrapped);
     t.recharged = obj.recharged || 0;

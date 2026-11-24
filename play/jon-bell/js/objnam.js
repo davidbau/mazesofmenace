@@ -65,7 +65,7 @@ import { NEUTRAL, ONAME, has_oname, BLINDED, P_BOW, P_SHURIKEN,
          ismnum, NO_TRAP, TRAPNUM, ROCKTRAP, MAGIC_PORTAL, BEAR_TRAP, LANDMINE,
          is_hole, M_AP_TYPE, M_AP_OBJECT } from './const.js';
 import { impossible_, maketrap, t_at, deltrap, reset_utrap } from './trap.js';
-import { feel_newsym, docrt } from './display.js';
+import { feel_newsym, docrt, flush_screen } from './display.js';
 import { pooleffects_is_lava as is_lava } from './cmd.js';
 import { pooleffects, switch_terrain, set_uinwater } from './hack.js';
 import { fire_damage_chain, water_damage_chain } from './trap.js';
@@ -5055,10 +5055,13 @@ async function doname_base(obj, doname_flags) {
     /* C:1687-1693 — fix up the default "a " article now that the rest of the
      * prefix is known: just_an() decides "a"/"an"/"" against whatever word
      * actually comes first. */
+    let prefix_overflow = prefix.length >= PREFIX;
     if (prefix.startsWith('a ')) {
         const rest = prefix.slice(2);
         prefix = just_an('', rest || bp) + rest;
     }
+    if (prefix.length >= PREFIX)
+        prefix_overflow = true;
     // C objnam.c:1695-1702: wizard-requested weight follows all other suffixes.
     if (wizard() && g.iflags?.wizweight) {
         if ((doname_flags & DONAME_WITH_PRICE) && bp.endsWith(')'))
@@ -5088,6 +5091,19 @@ async function doname_base(obj, doname_flags) {
             paniclog('doname', `long object description${offsetbp ? ' truncated for menu use' : ''}.`);
         }
         bp = bp.slice(0, 255 - offsetbp);
+    }
+    if (prefix_overflow) {
+        /* C's impossible() blocked in each --More-- it raised before the
+         * return; this port pages lazily, so page what is pending now (a
+         * recording that ends here ends on that --More--, as RKGX277's
+         * does).  The last page is drawn with no wait, and the process dies
+         * before any input wait records it. */
+        if (g._pending_message)
+            await flush_screen(1);
+        g.program_state.exiting = 1;
+        const err = new Error('nh_terminate: stack protector abort (doname_base prefix[80] overflow)');
+        err.status = 134;
+        throw err;
     }
     return obufResult(bufptr + bpoff, bp);
 }

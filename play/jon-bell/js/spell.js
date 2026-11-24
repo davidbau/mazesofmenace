@@ -543,7 +543,7 @@ function percent_success(spellSlot) {
     if (difficulty > 0) {
         chance -= isqrt(900 * difficulty + 2000);
     } else {
-        const learning = Math.trunc(15 * (-difficulty) / spellev);
+        const learning = spellev ? Math.trunc(15 * (-difficulty) / spellev) : 0;
         chance += learning > 20 ? 20 : learning;
     }
 

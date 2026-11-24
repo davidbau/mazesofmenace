@@ -2275,12 +2275,12 @@ export async function use_misc(mtmp) {
                { Some_Monnam }, { vtense },
                { seetrap, trapname },
                { remove_monster, place_monster },
-               { newcham }, { maybe_unhide_at_mon }]
+               { newcham }]
             = await Promise.all([
                 import('./vision.js'), import('./display.js'),
                 import('./do_name.js'), import('./objnam.js'),
                 import('./trap.js'), import('./makemon.js'),
-                import('./mon.js'), import('./monmove.js'),
+                import('./mon.js'),
             ]);
         const vis = cansee(mtmp.mx, mtmp.my);
         const vismon = canseemon(mtmp);
@@ -2298,7 +2298,7 @@ export async function use_misc(mtmp) {
         remove_monster(oldx, oldy);
         newsym(oldx, oldy);
         place_monster(mtmp, game.trapx, game.trapy);
-        maybe_unhide_at_mon(mtmp);
+        maybe_unhide_at(game.trapx, game.trapy);
         newsym(game.trapx, game.trapy);
 
         await newcham(mtmp, null, NC_SHOW_MSG);

@@ -1445,7 +1445,7 @@ const dfeature_expl = {
 };
 
 // C ref: invent.c dfeature_at()
-function dfeature_at(x, y) {
+export function dfeature_at(x, y) {
     const lev = game.level.at(x, y);
     const ltyp = lev.typ;
     let cmap = null;

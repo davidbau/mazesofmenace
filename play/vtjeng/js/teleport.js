@@ -104,9 +104,7 @@ import {
 import {
     Amonnam,
     Monnam,
-    capitalizedMonsterName,
     mon_nam,
-    monsterCommonName,
     noit_mon_nam,
 } from './do_name.js';
 import { docrt, newsym, see_monsters, shieldeff } from './display.js';
@@ -588,7 +586,7 @@ export async function tele_restrict(mon, state = game, rawEnv = {}) {
         if (canseemon(mon, state)) {
             await message(
                 'A mysterious force prevents '
-                    + monsterCommonName(mon, state, 0, rawEnv)
+                    + mon_nam(mon, state, rawEnv)
                     + ' from teleporting!',
                 state,
             );
@@ -651,7 +649,7 @@ export async function mtele_trap(
     if (!await teleport_pet(monster, false, env)) return;
     const message = env.message ?? ttyPline;
 
-    const name = capitalizedMonsterName(monster, state);
+    const name = Monnam(monster, state);
     const destinationX = trap.teledest?.x;
     const destinationY = trap.teledest?.y;
     if (trap.once) {
@@ -740,7 +738,7 @@ export async function mlevel_tele_trap(
             || random.rn2(7))) {
             if (inSight && monster.data?.mlet !== S_ELEMENTAL) {
                 await message(messageAt(
-                    `${capitalizedMonsterName(monster, state)} `
+                    `${Monnam(monster, state)} `
                         + 'seems to shimmer for a moment.',
                     monster.mx,
                     monster.my,
@@ -758,7 +756,7 @@ export async function mlevel_tele_trap(
         if (mon_has_amulet(monster) || inEndgame(state)) {
             if (inSight) {
                 await message(messageAt(
-                    `${capitalizedMonsterName(monster, state)} `
+                    `${Monnam(monster, state)} `
                         + 'seems very disoriented for a moment.',
                     monster.mx,
                     monster.my,
@@ -771,7 +769,7 @@ export async function mlevel_tele_trap(
         if (newLevel === depth(state.u.uz, state)) {
             if (inSight) {
                 await message(messageAt(
-                    `${capitalizedMonsterName(monster, state)} `
+                    `${Monnam(monster, state)} `
                         + 'shudders for a moment.',
                     monster.mx,
                     monster.my,
@@ -793,7 +791,7 @@ export async function mlevel_tele_trap(
             && state.u.uz.dlevel === dungeon.num_dunlevs) {
             if (inSight && trap.tseen) {
                 await message(messageAt(
-                    `${capitalizedMonsterName(monster, state)} avoids the `
+                    `${Monnam(monster, state)} avoids the `
                         + `${trapType === HOLE ? 'hole' : 'trap'}.`,
                     monster.mx,
                     monster.my,
@@ -814,7 +812,7 @@ export async function mlevel_tele_trap(
         await message(messageAt(
             portal || levelTeleporter
                 ? `Suddenly, ${mon_nam(monster, state)} disappears out of sight.`
-                : `Suddenly, ${monsterCommonName(monster, state)} `
+                : `Suddenly, ${mon_nam(monster, state)} `
                     + `${trapType === HOLE
                         ? 'falls into a hole'
                         : 'falls through a trap door'}.`,
@@ -1477,7 +1475,7 @@ export async function scrolltele(scroll, state = game, rawEnv = {}) {
             );
         } else {
             const whobuf = state.u?.usteed
-                ? `you and ${monsterCommonName(state.u.usteed, state)}`
+                ? `you and ${mon_nam(state.u.usteed, state)}`
                 : 'you';
             await message(
                 `Where do ${whobuf} want to be teleported?`,

@@ -289,7 +289,8 @@ async function forprep(L, ra) {   // lvm.c:208
             if ($h.f64[($fp + 24) >>> 3] === 0) {
                 await luaG_runerror(L, $h.lit("'for' step is zero"));
             }
-            if (0 < $h.f64[($fp + 24) >>> 3] ? $h.f64[($fp + 16) >>> 3] < $h.f64[($fp + 8) >>> 3] : $h.f64[($fp + 8) >>> 3] < $h.f64[($fp + 16) >>> 3]) {
+            if (0 < $h.f64[($fp + 24) >>> 3] ? $h.f64[($fp + 16) >>> 3] < $h.f64[($fp + 8) >>> 3]
+                : $h.f64[($fp + 8) >>> 3] < $h.f64[($fp + 16) >>> 3]) {
                 return 1;   /* skip the loop */
             } else {
                 /* make sure internal values are all floats */
@@ -333,7 +334,8 @@ function floatforloop(ra) {   // lvm.c:268
     limit = $h.f64[(ra + 16) >>> 3];
     idx = $h.f64[ra >>> 3];   /* internal index */
     idx = idx + step;   /* increment index */
-    if (0 < step ? idx <= limit : limit <= idx) {
+    if (0 < step ? idx <= limit
+        : limit <= idx) {
         {
             io = ra;   /* update internal index */
             0;
@@ -778,7 +780,9 @@ export async function luaV_equalobj(L, t1, t2) {   // lvm.c:572
                 /* One of them is an integer. If the other does not have an
                    integer value, they cannot be equal; otherwise, compare their
                    integer values. */
-                return luaV_tointegerns(t1, $fp, 0) && luaV_tointegerns(t2, $fp + 8, 0) && $h.ld64($fp) === $h.ld64($fp + 8) ? 1 : 0;
+                return luaV_tointegerns(t1, $fp, 0) &&
+                    luaV_tointegerns(t2, $fp + 8, 0) &&
+                    $h.ld64($fp) === $h.ld64($fp + 8) ? 1 : 0;
             }
         }
         /* values have same type and same variant */
@@ -872,7 +876,8 @@ export async function luaV_concat(L, total) {   // lvm.c:646
         do {
             top = $h.u32[(L + 16) >>> 2];
             n = 2;   /* number of elements handled in this pass (at least 2) */
-            if (!(($h.u8[top - 32 + 8] & 15) === 4 || ($h.u8[top - 32 + 8] & 15) === 3) || !(($h.u8[top - 16 + 8] & 15) === 4 || ($h.u8[top - 16 + 8] & 15) === 3 && (await luaO_tostring(L, top - 16), 1))) {
+            if (!(($h.u8[top - 32 + 8] & 15) === 4 || ($h.u8[top - 32 + 8] & 15) === 3) ||
+                !(($h.u8[top - 16 + 8] & 15) === 4 || ($h.u8[top - 16 + 8] & 15) === 3 && (await luaO_tostring(L, top - 16), 1))) {
                 await luaT_tryconcatTM(L);   /* may invalidate 'top' */
             } else if ($h.u8[top - 16 + 8] === 68 && $h.u8[$h.u32[(top - 16) >>> 2] + 11] === 0) {   /* second operand is empty? */
                 ($h.u8[top - 32 + 8] & 15) === 4 || ($h.u8[top - 32 + 8] & 15) === 3 && (await luaO_tostring(L, top - 32), 1);   /* result is first operand */
@@ -1492,7 +1497,9 @@ export async function luaV_execute(L, ci) {   // lvm.c:1154
                                     rb$3 = base + ((i >>> 16 & 255) >>> 0 | 0) * 16;
                                     rc$2 = base + ((i >>> 24 & 255) >>> 0 | 0) * 16;
                                     /* fast track for integers? */
-                                    if ($h.u8[rc$2 + 8] === 3 ? (n = $c.u64($h.ld64(rc$2)), !($h.u8[rb$3 + 8] === 69) ? (slot$2 = 0, 0) : (slot$2 = $c.subu64(n, 1) < $h.u32[($h.u32[rb$3 >>> 2] + 12) >>> 2] ? $h.u32[($h.u32[rb$3 >>> 2] + 16) >>> 2] + $c.idx($c.subu64(n, 1)) * 16 : luaH_getint($h.u32[rb$3 >>> 2], $c.i64(n)), !(($h.u8[slot$2 + 8] & 15) === 0) ? 1 : 0)) : !($h.u8[rb$3 + 8] === 69) ? (slot$2 = 0, 0) : (slot$2 = luaH_get($h.u32[rb$3 >>> 2], rc$2), !(($h.u8[slot$2 + 8] & 15) === 0) ? 1 : 0)) {
+                                    if ($h.u8[rc$2 + 8] === 3
+                                        ? (n = $c.u64($h.ld64(rc$2)), !($h.u8[rb$3 + 8] === 69) ? (slot$2 = 0, 0) : (slot$2 = $c.subu64(n, 1) < $h.u32[($h.u32[rb$3 >>> 2] + 12) >>> 2] ? $h.u32[($h.u32[rb$3 >>> 2] + 16) >>> 2] + $c.idx($c.subu64(n, 1)) * 16 : luaH_getint($h.u32[rb$3 >>> 2], $c.i64(n)), !(($h.u8[slot$2 + 8] & 15) === 0) ? 1 : 0))
+                                        : !($h.u8[rb$3 + 8] === 69) ? (slot$2 = 0, 0) : (slot$2 = luaH_get($h.u32[rb$3 >>> 2], rc$2), !(($h.u8[slot$2 + 8] & 15) === 0) ? 1 : 0)) {
                                         {
                                             io1$7 = ra$13;
                                             io2$7 = slot$2;
@@ -1579,7 +1586,9 @@ export async function luaV_execute(L, ci) {   // lvm.c:1154
                                     rb$7 = base + ((i >>> 16 & 255) >>> 0 | 0) * 16;   /* key (table is in 'ra') */
                                     rc$5 = (i & 32768) >>> 0 | 0 ? k + ((i >>> 24 & 255) >>> 0 | 0) * 16 : base + ((i >>> 24 & 255) >>> 0 | 0) * 16;   /* value */
                                     /* fast track for integers? */
-                                    if ($h.u8[rb$7 + 8] === 3 ? (n$2 = $c.u64($h.ld64(rb$7)), !($h.u8[ra$16 + 8] === 69) ? (slot$6 = 0, 0) : (slot$6 = $c.subu64(n$2, 1) < $h.u32[($h.u32[ra$16 >>> 2] + 12) >>> 2] ? $h.u32[($h.u32[ra$16 >>> 2] + 16) >>> 2] + $c.idx($c.subu64(n$2, 1)) * 16 : luaH_getint($h.u32[ra$16 >>> 2], $c.i64(n$2)), !(($h.u8[slot$6 + 8] & 15) === 0) ? 1 : 0)) : !($h.u8[ra$16 + 8] === 69) ? (slot$6 = 0, 0) : (slot$6 = luaH_get($h.u32[ra$16 >>> 2], rb$7), !(($h.u8[slot$6 + 8] & 15) === 0) ? 1 : 0)) {
+                                    if ($h.u8[rb$7 + 8] === 3
+                                        ? (n$2 = $c.u64($h.ld64(rb$7)), !($h.u8[ra$16 + 8] === 69) ? (slot$6 = 0, 0) : (slot$6 = $c.subu64(n$2, 1) < $h.u32[($h.u32[ra$16 >>> 2] + 12) >>> 2] ? $h.u32[($h.u32[ra$16 >>> 2] + 16) >>> 2] + $c.idx($c.subu64(n$2, 1)) * 16 : luaH_getint($h.u32[ra$16 >>> 2], $c.i64(n$2)), !(($h.u8[slot$6 + 8] & 15) === 0) ? 1 : 0))
+                                        : !($h.u8[ra$16 + 8] === 69) ? (slot$6 = 0, 0) : (slot$6 = luaH_get($h.u32[ra$16 >>> 2], rb$7), !(($h.u8[slot$6 + 8] & 15) === 0) ? 1 : 0)) {
                                         {
                                             {
                                                 io1$11 = slot$6;

@@ -18,7 +18,8 @@ import { LS_OBJECT, LS_MONSTER, RANGE_LEVEL, COUNTING, WRITING, FREEING,
          TEMP_LIT, COLNO, ROWNO, MAX_RADIUS } from './const.js';
 import { objects, CANDELABRUM_OF_INVOCATION, TALLOW_CANDLE, WAX_CANDLE,
          POT_OIL, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP } from './objects.js';
-import { obj_is_local } from './timeout.js';
+import { obj_is_local, mon_is_local } from './timeout.js';
+import { get_mon_location } from './zap.js';
 import { get_obj_location } from './shk.js';
 import { clear_path, circle_data, circle_start, COULD_SEE } from './vision.js';
 import { artifact_light } from './worn.js';
@@ -140,9 +141,17 @@ export function do_light_sources(cs_rows) {
             } else if ((loc = get_obj_location(ls.id.a_obj, 0))) {
                 ls.x = loc[0], ls.y = loc[1];
                 ls.flags |= LSF_SHOW;
+            } else {
+                ls.x = ls.y = 0; /* get_obj_location() zeroes *xp,*yp */
             }
         } else if (ls.type === LS_MONSTER) {
-            throw new Error('do_light_sources(): monster light sources not ported yet');
+            let loc;
+            if ((loc = get_mon_location(ls.id.a_monst, 0))) {
+                ls.x = loc[0], ls.y = loc[1];
+                ls.flags |= LSF_SHOW;
+            } else {
+                ls.x = ls.y = 0; /* get_mon_location() zeroes *xp,*yp */
+            }
         }
 
         /* minor optimization: don't bother with duplicate light sources
@@ -217,7 +226,8 @@ export function save_light_sources(nhfp, range) {
                 is_global = !obj_is_local(curr.id.a_obj);
                 break;
             case LS_MONSTER:
-                throw new Error('save_light_sources(): monster light sources not ported yet');
+                is_global = !mon_is_local(curr.id.a_monst);
+                break;
             default:
                 is_global = false;
                 break;
@@ -284,7 +294,8 @@ function maybe_write_ls(nhfp, range, write_it) {
             is_global = !obj_is_local(ls.id.a_obj);
             break;
         case LS_MONSTER:
-            throw new Error('maybe_write_ls(): monster light sources not ported yet');
+            is_global = !mon_is_local(ls.id.a_monst);
+            break;
         default:
             is_global = false;
             break;

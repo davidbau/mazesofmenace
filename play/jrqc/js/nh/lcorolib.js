@@ -119,7 +119,8 @@ async function luaB_auxwrap(L) {   // lcorolib.c:73
             lua_xmove(co, L, 1);   /* move error message to the caller */
         }
         /* not a memory error and ... */
-        if (stat !== 4 && lua_type(L, -1) === 4) {
+        if (stat !== 4 &&
+            lua_type(L, -1) === 4) {
             /* ... error object is a string? */
             await luaL_where(L, 1);   /* add extra info, if available */
             lua_rotate(L, -2, 1);

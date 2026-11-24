@@ -560,8 +560,8 @@ export async function poly_obj(obj, id) {
     /* Keep chest/box traps and poisoned ammo if we may */
     if (obj.otrapped && Is_box(otmp))
         otmp.otrapped = 1;
-    if (obj.opoisoned && is_poisonable(otmp))
-        otmp.opoisoned = 1;
+    if (obj.otrapped /* opoisoned */ && is_poisonable(otmp))
+        otmp.otrapped /* opoisoned */ = 1;
 
     if (id === STRANGE_OBJECT && obj.otyp === CORPSE) {
         /* turn crocodile corpses into shoes */
@@ -678,6 +678,23 @@ export async function poly_obj(obj, id) {
         throw new Error('poly_obj(): shopkeeper reaction not ported yet');
     delobj(obj);
     return otmp;
+}
+
+// C ref: zap.c get_mon_location()
+/* returns [x, y], or null for a migrating or buried monster (C returns
+   FALSE with *xp = *yp = 0) */
+export function get_mon_location(
+    mon,
+    locflags) /* non-zero means get location even if monster is buried */
+{
+    const u = game.u;
+    if (mon === game.youmonst || (u.usteed && mon === u.usteed)) {
+        return [u.ux, u.uy];
+    } else if (mon.mx > 0 && (!mon.mburied || locflags)) {
+        return [mon.mx, mon.my];
+    } else { /* migrating or buried */
+        return null;
+    }
 }
 
 // C ref: zap.c bhitpile()
@@ -867,7 +884,10 @@ export async function zapnodir(obj) {
         break;
     }
     case WAN_CREATE_MONSTER:
-        throw new Error('zapnodir(): wand of create monster (create_critters()) not ported yet');
+        /* create_critters() returns True iff hero sees a new monster appear */
+        if (await create_critters_zp(rn2(23) ? 1 : rn1(7, 2), null, false))
+            known = !!obj.dknown;
+        break;
     case WAN_WISHING:
         if ((game.u.uluck || 0) + (game.u.moreluck || 0) + rn2(5) < 0) { /* Luck */
             await pline("Unfortunately, nothing happens.");
@@ -2754,11 +2774,9 @@ function bury_objs_zp(x, y) {
 
 // C ref: dig.c unearth_objs()
 function unearth_objs_zp(x, y) {
-    if ((game.level.buriedobjlist || []).some(o => o.ox === x && o.oy === y))
-        throw new Error('unearth_objs(): unearthing buried objects not ported yet');
-    del_engr_at_zp(x, y);
-    newsym(x, y);
+    unearth_objs_dg(x, y);
 }
+import { unearth_objs as unearth_objs_dg } from './dig.js';
 
 // C ref: zap.c zap_over_floor()
 export async function zap_over_floor(
@@ -3197,6 +3215,7 @@ export async function burn_floor_objects(
 
 import { findit } from './detect.js';
 import { makewish } from './wizcmds.js';
+import { create_critters as create_critters_zp } from './read.js';
 import { SPE_LIGHT as SPE_LIGHT_ZN,
          SPE_DETECT_UNSEEN as SPE_DETECT_UNSEEN_ZN } from './objects.js';
 import { litroom, lightdamage } from './read.js';
@@ -3356,16 +3375,513 @@ import { start_timer as start_timer_zp, long_to_any as long_to_any_zp,
 import { TIMER_LEVEL as TIMER_LEVEL_ZP } from './const.js';
 import { obj_ice_effects as obj_ice_effects_zp } from './mkobj.js';
 
-// C ref: zap.c revive_mon()
-/* timer callback routine: turn a corpse back into a monster */
-export async function revive_mon(arg, timeout) {
-    throw new Error('revive_mon() not ported yet');
+import { mons as mons_rv, S_ZOMBIE as S_ZOMBIE_RV, S_TROLL as S_TROLL_RV,
+         S_EEL as S_EEL_RV, PM_DEATH as PM_DEATH_RV,
+         PM_PESTILENCE as PM_PESTILENCE_RV, PM_FAMINE as PM_FAMINE_RV,
+         PM_DOPPELGANGER as PM_DOPPELGANGER_RV, M3_DISPLACES as M3_DISPLACES_RV,
+         PM_GHOST as PM_GHOST_RV, G_UNIQ as G_UNIQ_RV } from './monsters.js';
+import { G_GENOD as G_GENOD_RV, NON_PM as NON_PM_RV, ROOM as ROOM_RV,
+         CORR as CORR_RV, GRAVE as GRAVE_RV, IS_POOL as IS_POOL_RV,
+         BURIED_TOO as BURIED_TOO_RV, CONTAINED_TOO as CONTAINED_TOO_RV,
+         NO_MINVENT as NO_MINVENT_RV, MM_NOWAIT as MM_NOWAIT_RV,
+         MM_NOMSG as MM_NOMSG_RV, MM_NOCOUNTBIRTH as MM_NOCOUNTBIRTH_RV,
+         MM_MALE as MM_MALE_RV, MM_FEMALE as MM_FEMALE_RV,
+         CORPSTAT_GENDER as CORPSTAT_GENDER_RV, CORPSTAT_MALE as CORPSTAT_MALE_RV,
+         CORPSTAT_FEMALE as CORPSTAT_FEMALE_RV, CXN_PFX_THE as CXN_PFX_THE_RV,
+         CXN_SINGULAR as CXN_SINGULAR_RV, NO_NC_FLAGS as NO_NC_FLAGS_RV,
+         RLOC_NOMSG as RLOC_NOMSG_RV, REVIVE_MON as REVIVE_MON_RV,
+         ROT_CORPSE as ROT_CORPSE_RV, TIMER_OBJECT as TIMER_OBJECT_RV,
+         PIT as PIT_RV, has_oname as has_oname_rv, ONAME as ONAME_rv,
+         isok as isok_rv } from './const.js';
+import { CORPSE as CORPSE_RV, STATUE as STATUE_RV,
+         BAG_OF_HOLDING as BAG_OF_HOLDING_RV } from './objects.js';
+import { makemon as makemon_rv, makemon_flush_msg as makemon_flush_msg_rv } from './makemon.js';
+import { enexto as enexto_rv, rloc as rloc_rv } from './teleport.js';
+import { corpse_xname as corpse_xname_rv, xname as xname_rv, an as an_rv,
+         yname as yname_rv, The as The_rv } from './objnam.js';
+import { Amonnam as Amonnam_rv, Adjmonnam as Adjmonnam_rv,
+         mon_nam as mon_nam_rv, christen_monst as christen_monst_rv } from './do_name.js';
+import { cant_revive as cant_revive_rv } from './read.js';
+import { cant_finish_meal as cant_finish_meal_rv, eaten_stat as eaten_stat_rv } from './eat.js';
+import { set_corpsenm as set_corpsenm_rv, obj_extract_self as obj_extract_self_rv } from './mkobj.js';
+import { delobj_core as delobj_core_rv } from './invent.js';
+import { newcham as newcham_rv, seemimic as seemimic_rv, zombie_form as zombie_form_rv } from './mon.js';
+import { mon_adjust_speed as mon_adjust_speed_rv } from './worn.js';
+import { rot_corpse as rot_corpse_rv } from './dig.js';
+import { fill_pit as fill_pit_rv } from './muse.js';
+import { locomotion as locomotion_rv } from './trap.js';
+import { get_obj_location as get_obj_location_rv } from './shk.js';
+import { obj_has_timer as obj_has_timer_rv } from './timeout.js';
+import { dist2 as dist2_rv } from './hacklib.js';
+
+/* C ref: mondata.h is_rider(), is_reviver(), is_displacer(),
+   dmgtype() for AD_SEDU */
+function is_rider_rv(ptr) {
+    return ptr === mons_rv[PM_DEATH_RV] || ptr === mons_rv[PM_FAMINE_RV]
+        || ptr === mons_rv[PM_PESTILENCE_RV];
+}
+function is_reviver_rv(ptr) { return is_rider_rv(ptr) || ptr.mlet === S_TROLL_RV; }
+function is_displacer_rv(ptr) { return ((ptr.mflags3 || 0) & M3_DISPLACES_RV) !== 0; }
+/* C ref: obj.h has_omonst(), has_omid(), OMID(); mextra.c free_omonst(),
+   free_omid() */
+function has_omonst_rv(obj) { return !!obj.oextra?.omonst; }
+function has_omid_rv(obj) { return !!(obj.oextra?.omid || obj.omid); }
+function free_omonst_rv(obj) { if (obj.oextra) delete obj.oextra.omonst; }
+function free_omid_rv(obj) {
+    if (obj.oextra) delete obj.oextra.omid;
+    delete obj.omid;
+}
+/* C ref: hacklib.c upstart() */
+function upstart_rv(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+function impossible(msg) { console.error(`impossible: ${msg}`); }
+
+// C ref: zap.c get_container_location() -- returns the following
+// information about the outermost container: loc.v gets set to
+// OBJ_INVENT, OBJ_FLOOR, OBJ_BURIED (returning null) or OBJ_MINVENT
+// (returning the monster); nesting.v is updated with the nesting depth of
+// the containers if applicable
+function get_container_location(obj, loc, container_nesting) {
+    if (container_nesting)
+        container_nesting.v = 0;
+    while (obj && obj.where === 'OBJ_CONTAINED') {
+        if (container_nesting)
+            container_nesting.v += 1;
+        obj = obj.ocontainer;
+    }
+    if (obj) {
+        loc.v = obj.where; /* outermost container's location */
+        if (obj.where === 'OBJ_MINVENT')
+            return obj.ocarry;
+    }
+    return null;
 }
 
-// C ref: zap.c zombify_mon()
-/* timer callback routine: turn a corpse into a zombie */
+// C ref: zap.c zombie_can_dig() -- can zombie dig the location at x,y
+function zombie_can_dig(x, y) {
+    if (isok_rv(x, y)) {
+        const typ = game.level.at(x, y).typ;
+
+        if (t_at(x, y) != null)
+            return false;
+        if (typ === ROOM_RV || typ === CORR_RV || typ === GRAVE_RV)
+            return true;
+    }
+    return false;
+}
+
+/* makemon() for revive(): makemon()'s dochugw() for an occupied hero is
+   async in this port, so it is run by makemon_flush_msg() right after
+   makemon() returns (see the Norep() comment in makemon()) */
+async function makemon_revive(ptr, x, y, mmflags) {
+    let mtmp;
+    game.makemon_want_msg = true;
+    try {
+        mtmp = makemon_rv(ptr, x, y, mmflags);
+    } finally {
+        game.makemon_want_msg = false;
+    }
+    await makemon_flush_msg_rv();
+    return mtmp;
+}
+
+// C ref: zap.c revive()
+/*
+ * Attempt to revive the given corpse, return the revived monster if
+ * successful.  Note: this does NOT use up the corpse if it fails.
+ * If corpse->quan is more than 1, only one corpse will be affected
+ * and only one monster will be resurrected.
+ */
+export async function revive(corpse, by_hero) {
+    let mtmp = null;
+    let mptr;
+    let container;
+    const xy = { x: 0, y: 0 };
+    let x, y;
+    let one_of;
+    let mmflags = NO_MINVENT_RV | MM_NOWAIT_RV | MM_NOMSG_RV;
+    let cgend;
+    const container_nesting = { v: 0 };
+
+    if (corpse.otyp !== CORPSE_RV) {
+        impossible(`Attempting to revive ${xname_rv(corpse)}?`);
+        return null;
+    }
+    const montype = { v: corpse.corpsenm };
+    /* treat buried auto-reviver (troll, Rider?) like a zombie
+       so that it can dig itself out of the ground if it revives */
+    const is_zomb = mons_rv[montype.v].mlet === S_ZOMBIE_RV
+              || (corpse.where === 'OBJ_BURIED' && is_reviver_rv(mons_rv[montype.v]));
+
+    /* if this corpse is being eaten, stop doing that; this should be done
+       after makemon() succeeds and skipped if it fails, but waiting until
+       we know the result for that would be too late */
+    await cant_finish_meal_rv(corpse);
+
+    x = y = 0;
+    if (corpse.where !== 'OBJ_CONTAINED') {
+        const locflags = is_zomb ? BURIED_TOO_RV : 0;
+
+        /* only for invent, minvent, or floor, or if zombie, buried */
+        container = null;
+        const loc = get_obj_location_rv(corpse, locflags);
+        if (loc)
+            [x, y] = loc;
+    } else {
+        /* deal with corpses in [possibly nested] containers */
+        const holder = { v: 'OBJ_FREE' };
+
+        container = corpse.ocontainer;
+        const carrier = get_container_location(container, holder,
+                                               container_nesting);
+        switch (holder.v) {
+        case 'OBJ_MINVENT':
+            x = carrier.mx, y = carrier.my;
+            break;
+        case 'OBJ_INVENT':
+            x = game.u.ux, y = game.u.uy;
+            break;
+        case 'OBJ_FLOOR': {
+            const loc = get_obj_location_rv(corpse, CONTAINED_TOO_RV);
+            if (loc)
+                [x, y] = loc;
+            break;
+        }
+        default:
+            break; /* x,y are 0 */
+        }
+    }
+    if (x) /* update corpse's location now that we're sure where it is */
+        corpse.ox = x, corpse.oy = y;
+
+    if (!x
+        /* Rules for revival from containers:
+         *  - the container cannot be locked
+         *  - the container cannot be heavily nested (>2 is arbitrary)
+         *  - the container cannot be a statue or bag of holding
+         *    (except in very rare cases for the latter)
+         */
+        || (container && (container.olocked || container_nesting.v > 2
+                          || container.otyp === STATUE_RV
+                          || (container.otyp === BAG_OF_HOLDING_RV && rn2(40))))
+        /* if buried zombie cannot dig itself out, do not revive */
+        || (is_zomb && corpse.where === 'OBJ_BURIED' && !zombie_can_dig(x, y)))
+        return null;
+
+    /* prepare for the monster */
+    mptr = mons_rv[montype.v];
+    /* [should probably handle recorporealization first; if corpse and
+       ghost are at same location, revived creature shouldn't be bumped
+       to an adjacent spot by ghost which joins with it] */
+    if (m_at(x, y)) { /* MON_AT(x, y) */
+        if (enexto_rv(xy, x, y, mptr))
+            x = xy.x, y = xy.y;
+    }
+
+    if (corpse.norevive
+        || (mons_rv[montype.v].mlet === S_EEL_RV
+            && !IS_POOL_RV(game.level.at(x, y).typ))) {
+        if (cansee(x, y))
+            await pline(`${upstart_rv(corpse_xname_rv(corpse, null,
+                                                      CXN_PFX_THE_RV))} twitches feebly.`);
+        return null;
+    }
+
+    /* applicable when montraits/corpse->oextra->omonst aren't used */
+    cgend = (corpse.spe & CORPSTAT_GENDER_RV);
+    if (cgend === CORPSTAT_MALE_RV)
+        mmflags |= MM_MALE_RV;
+    else if (cgend === CORPSTAT_FEMALE_RV)
+        mmflags |= MM_FEMALE_RV;
+
+    if (cant_revive_rv(montype, true, corpse)) {
+        /* make a zombie or doppelganger instead */
+        /* note: montype has changed; mptr keeps old value for newcham() */
+        mtmp = await makemon_revive(mons_rv[montype.v], x, y, mmflags);
+        if (mtmp) {
+            /* skip ghost handling */
+            if (has_omid_rv(corpse))
+                free_omid_rv(corpse);
+            if (has_omonst_rv(corpse))
+                free_omonst_rv(corpse);
+            if (mtmp.cham === PM_DOPPELGANGER_RV) {
+                /* change shape to match the corpse */
+                await newcham_rv(mtmp, mptr, NO_NC_FLAGS_RV);
+            } else if (mtmp.data.mlet === S_ZOMBIE_RV) {
+                mtmp.mhp = mtmp.mhpmax = 100;
+                await mon_adjust_speed_rv(mtmp, 2, null); /* MFAST */
+            }
+        }
+    } else if (has_omonst_rv(corpse)) {
+        /* use saved traits: montraits(corpse, &xy, FALSE), then
+           wary_dog() for a tame one */
+        throw new Error('revive(): montraits() not ported yet');
+    } else {
+        /* make a new monster */
+        mtmp = await makemon_revive(mptr, x, y, mmflags | MM_NOCOUNTBIRTH_RV);
+    }
+    if (!mtmp)
+        return null;
+
+    /* hiders shouldn't already be re-hidden when they revive */
+    if (mtmp.mundetected) {
+        mtmp.mundetected = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
+    if (mtmp.m_ap_type) /* M_AP_TYPE(mtmp) */
+        seemimic_rv(mtmp);
+
+    one_of = (corpse.quan > 1);
+    if (one_of)
+        corpse = splitobj(corpse, 1);
+
+    /* if this is caused by the hero there might be a shop charge */
+    if (by_hero) {
+        /* costly_spot()/shop_keeper(), the "%s glows iridescently."
+           message and stolen_value() */
+        throw new Error('revive(): by_hero shop handling not ported yet');
+    }
+
+    /* handle recorporealization of an active ghost */
+    if (has_omid_rv(corpse)) {
+        const m_id = corpse.oextra?.omid || corpse.omid; /* OMID(corpse) */
+        const ghost = (game.level.monsters || []).find(
+            m => m.m_id === m_id && !m.dead); /* find_mid(m_id, FM_FMON) */
+        if (ghost && ghost.data === mons_rv[PM_GHOST_RV])
+            throw new Error('revive(): ghost recorporealization not ported yet');
+        free_omid_rv(corpse);
+    }
+
+    /* monster retains its name */
+    if (has_oname_rv(corpse) && !((mtmp.data.geno & G_UNIQ_RV) !== 0))
+        mtmp = christen_monst_rv(mtmp, ONAME_rv(corpse));
+    /* partially eaten corpse yields wounded monster */
+    if (corpse.oeaten)
+        mtmp.mhp = eaten_stat_rv(mtmp.mhp, corpse);
+    /* track that this monster was revived at least once */
+    mtmp.mrevived = 1;
+
+    /* finally, get rid of the corpse--it's gone now */
+    switch (corpse.where) {
+    case 'OBJ_INVENT':
+        useup_zp(corpse);
+        break;
+    case 'OBJ_FLOOR':
+        /* not useupf(), which charges;
+           delobj() won't use up a Rider's corpse, delobj_core(,TRUE) will */
+        delobj_core_rv(corpse, true); /* for floor, also calls newsym() */
+        break;
+    case 'OBJ_MINVENT':
+        m_useup(corpse.ocarry, corpse);
+        break;
+    case 'OBJ_CONTAINED':
+        /* obj_extract_self() will update corpse->ocontainer->owt */
+        obj_extract_self_rv(corpse);
+        obfree_zp(corpse, null);
+        break;
+    case 'OBJ_BURIED':
+        if (is_zomb) {
+            obj_extract_self_rv(corpse);
+            obfree_zp(corpse, null);
+            break;
+        }
+        /*FALLTHRU*/
+    default:
+        throw new Error(`revive default case ${corpse.where}`); /* panic() */
+    }
+
+    return mtmp;
+}
+
+// C ref: do.c revive_corpse()
+/*
+ * Return TRUE if we created a monster for the corpse.  If successful, the
+ * corpse is gone.
+ */
+export async function revive_corpse(corpse) {
+    let mtmp, mcarry;
+    let container = null;
+    const container_where = { v: 0 };
+
+    const where = corpse.where;
+    const montype = corpse.corpsenm;
+    /* treat buried auto-reviver (troll, Rider?) like a zombie
+       so that it can dig itself out of the ground if it revives */
+    const is_zomb = (mons_rv[montype].mlet === S_ZOMBIE_RV
+               || (where === 'OBJ_BURIED' && is_reviver_rv(mons_rv[montype])));
+    const is_uwep = (corpse === game.uwep);
+    const chewed = (corpse.oeaten !== 0 && !!corpse.oeaten);
+    const cname = corpse_xname_rv(corpse, chewed ? "bite-covered" : null,
+                                  CXN_SINGULAR_RV);
+    mcarry = (where === 'OBJ_MINVENT') ? corpse.ocarry : null;
+    /* mcarry is NULL for (where == OBJ_BURIED and OBJ_CONTAINED) now */
+
+    const cloc = get_obj_location_rv(corpse, CONTAINED_TOO_RV | BURIED_TOO_RV);
+    const [corpsex, corpsey] = cloc || [0, 0];
+
+    if (where === 'OBJ_CONTAINED') {
+        container = corpse.ocontainer;
+        const mtmp2 = get_container_location(container, container_where, null);
+        /* container_where is outermost container's location even if nested */
+        if (container_where.v === 'OBJ_MINVENT' && mtmp2)
+            mcarry = mtmp2;
+    }
+    mtmp = await revive(corpse, false); /* corpse is gone if successful */
+
+    if (mtmp) {
+        switch (where) {
+        case 'OBJ_INVENT':
+            if (is_uwep)
+                await pline_The(`${cname} writhes out of your grasp!`);
+            else
+                await You_feel("squirming in your backpack!");
+            break;
+
+        case 'OBJ_FLOOR':
+            if (cansee(corpsex, corpsey) || canseemon(mtmp)) {
+                let effect = "";
+
+                if (mtmp.data === mons_rv[PM_DEATH_RV])
+                    effect = " in a whirl of spectral skulls";
+                else if (mtmp.data === mons_rv[PM_PESTILENCE_RV])
+                    effect = " in a churning pillar of flies";
+                else if (mtmp.data === mons_rv[PM_FAMINE_RV])
+                    effect = " in a ring of withered crops";
+
+                if (canseemon(mtmp)) {
+                    await pline(`${chewed ? Adjmonnam_rv(mtmp, "bite-covered")
+                                          : Monnam(mtmp)} rises from the dead${effect}!`);
+                } else {
+                    await pline(`${The_rv(cname)} disappears${effect}!`);
+                }
+            }
+            break;
+
+        case 'OBJ_MINVENT': /* probably a nymph's */
+            if (cansee(mtmp.mx, mtmp.my)) {
+                if (mcarry && canseemon(mcarry))
+                    await pline(`Startled, ${mon_nam_rv(mcarry)} drops ${an_rv(cname)} as it ${
+                        canspotmon(mtmp) ? "revives" : "disappears"}!`);
+                else if (canspotmon(mtmp))
+                    await pline(`${chewed ? Adjmonnam_rv(mtmp, "bite-covered")
+                                          : Monnam(mtmp)} suddenly appears!`);
+            }
+            break;
+        case 'OBJ_CONTAINED': {
+            /* Could use x_monnam(..., AUGMENT_IT) but that'd say "someone"
+               for humanoid monsters, which seems like a distinction the hero
+               doesn't have knowledge to make here. */
+            const mnam = canspotmon(mtmp) ? Amonnam_rv(mtmp) : "Something";
+
+            if (!container) {
+                impossible("reviving corpse from non-existent container");
+            } else if (mcarry && canseemon(mcarry)) {
+                await pline(`${mnam} writhes out of ${yname_rv(container)}!`);
+            } else if (container_where.v === 'OBJ_INVENT') {
+                const sackname = an_rv(xname_rv(container));
+                await pline(`${mnam} ${locomotion_rv(mtmp.data, "writhes")} out of ${
+                    sackname} in your pack!`);
+            } else if (container_where.v === 'OBJ_FLOOR'
+                       && cansee(corpsex, corpsey)) {
+                const sackname = an_rv(xname_rv(container));
+                await pline(`${mnam} escapes from ${sackname}!`);
+            }
+            break;
+        }
+        case 'OBJ_BURIED':
+            if (is_zomb) {
+                maketrap_zp(mtmp.mx, mtmp.my, PIT_RV);
+                if (cansee(mtmp.mx, mtmp.my)) {
+                    const ttmp = t_at(mtmp.mx, mtmp.my);
+                    if (ttmp)
+                        ttmp.tseen = true;
+                    await pline(`${canspotmon(mtmp) ? Amonnam_rv(mtmp) : "Something"
+                                } claws itself out of the ground!`);
+                    newsym(mtmp.mx, mtmp.my);
+                } else if (dist2_rv(mtmp.mx, mtmp.my, game.u.ux, game.u.uy)
+                           < 5 * 5) { /* mdistu(mtmp) */
+                    /* Soundeffect(se_scratching, 50); */
+                    await You_hear_zp("scratching noises.");
+                }
+                await fill_pit_rv(mtmp.mx, mtmp.my);
+                break;
+            }
+            /*FALLTHRU*/
+        default:
+            /* we should be able to handle the other cases... */
+            impossible(`revive_corpse: lost corpse @ ${where}`);
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
+// C ref: do.c revive_mon()
+/* Revive the corpse via a timeout. */
+export async function revive_mon(arg, timeout) {
+    const body = arg.a_obj;
+    const mptr = mons_rv[body.corpsenm];
+    let mtmp;
+
+    void timeout; /* UNUSED */
+    /* corpse will revive somewhere else if there is a monster in the way;
+       Riders get a chance to try to bump the obstacle out of their way */
+    const loc = (is_displacer_rv(mptr) && body.where === 'OBJ_FLOOR')
+                ? get_obj_location_rv(body, 0) : null;
+    if (loc && (mtmp = m_at(loc[0], loc[1])) != null
+        && (game.level.flags.stasis_until || 0) < game.moves) {
+        const [x, y] = loc;
+        const notice_it = canseemon(mtmp); /* before rloc() */
+        const monname = Monnam(mtmp);
+
+        if (await rloc_rv(mtmp, RLOC_NOMSG_RV)) {
+            if (notice_it && !canseemon(mtmp))
+                await pline(`${monname} vanishes.`);
+            else if (!notice_it && canseemon(mtmp))
+                await pline(`${Monnam(mtmp)} appears.`); /* not pre-rloc monname */
+            else if (notice_it && dist2_rv(mtmp.mx, mtmp.my, x, y) > 2)
+                await pline(`${monname} teleports.`); /* saw it and still see it */
+        }
+    }
+
+    /* if we succeed, the corpse is gone */
+    if (!(await revive_corpse(body))) {
+        let when;
+        let action;
+
+        if (is_rider_rv(mptr) && rn2(99)) { /* Rider usually tries again */
+            /* action = REVIVE_MON; when = rider_revival_time(body, TRUE); */
+            throw new Error('revive_mon(): rider_revival_time() not ported yet');
+        } else { /* rot this corpse away */
+            if (!obj_has_timer_rv(body, ROT_CORPSE_RV))
+                await You_feel(`${is_rider_rv(mptr) ? "much " : ""}less hassled.`);
+            action = ROT_CORPSE_RV;
+            when = d(5, 50) - (game.moves - body.age);
+            if (when < 1)
+                when = 1;
+        }
+        if (!obj_has_timer_rv(body, action))
+            start_timer_zp(when, TIMER_OBJECT_RV, action, arg);
+    }
+}
+
+// C ref: do.c zombify_mon()
+/* Timeout callback. Revive the corpse as a zombie. */
 export async function zombify_mon(arg, timeout) {
-    throw new Error('zombify_mon() not ported yet');
+    const body = arg.a_obj;
+    const zmon = zombie_form_rv(mons_rv[body.corpsenm]);
+
+    if (zmon !== NON_PM_RV && !(game.mvitals[zmon].mvflags & G_GENOD_RV)) {
+        if (has_omid_rv(body))
+            free_omid_rv(body);
+        if (has_omonst_rv(body))
+            free_omonst_rv(body);
+
+        set_corpsenm_rv(body, zmon);
+        await revive_mon(arg, timeout);
+    } else {
+        await rot_corpse_rv(arg, timeout);
+    }
 }
 
 // C ref: zap.c melt_ice_away()

@@ -32,12 +32,12 @@ import { rn2, rn1, rnd } from './rng.js';
 import { setnotworn } from './worn.js';
 import { stop_occupation } from './allmain.js';
 import { encumber_msg } from './attrib.js';
-import { donning, doffing, stop_donning, cancel_don, Armor_off, Cloak_off, Boots_off, Gloves_off, Helmet_off, Shield_off, Shirt_off, Amulet_off, Ring_gone, Blindf_off, worn } from './do_wear.js';
+import { donning, doffing, stop_donning, cancel_don, Armor_off, Cloak_off, Boots_off, Gloves_off, Helmet_off, Shield_off, Shirt_off, Amulet_off, Ring_gone, Blindf_off } from './do_wear.js';
 import { uwepgone, uswapwepgone, uqwepgone, welded } from './wield.js';
 import { unpunish } from './read.js';
 import { skinback, body_part } from './polyself.js';
 import { setworn } from './worn.js';
-import { W_AMUL, W_RING, W_TOOL, W_BALL, W_CHAIN, OBJ_DELETED, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU } from './const.js';
+import { W_AMUL, W_RING, W_TOOL, W_BALL, W_CHAIN, OBJ_DELETED, W_ARMG } from './const.js';
 import { LEFT_RING, RIGHT_RING, LEFT_HANDED, TT_BURIEDBALL,
          PLNMSG_MON_TAKES_OFF_ITEM } from './const.js';
 import { Unaware, Blind } from './youprop.js';
@@ -150,19 +150,19 @@ export async function remove_worn_item(obj, unchain_ball) {
             /* impossible("Removing embedded scales?") */
             await skinback(true); /* uarm = uskin; uskin = 0; */
         }
-        if (obj === worn(W_ARM))
+        if (obj === u.uarm)
             await Armor_off();
-        else if (obj === worn(W_ARMC))
+        else if (obj === u.uarmc)
             await Cloak_off(obj);
-        else if (obj === worn(W_ARMF))
+        else if (obj === u.uarmf)
             await Boots_off(obj);
-        else if (obj === worn(W_ARMG))
+        else if (obj === u.uarmg)
             await Gloves_off(obj);
-        else if (obj === worn(W_ARMH))
+        else if (obj === u.uarmh)
             await Helmet_off(obj);
-        else if (obj === worn(W_ARMS))
+        else if (obj === u.uarms)
             await Shield_off();
-        else if (obj === worn(W_ARMU))
+        else if (obj === u.uarmu)
             await Shirt_off();
         else
             setworn(null, obj.owornmask & W_ARMOR);

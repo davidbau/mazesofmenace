@@ -2597,3 +2597,287 @@ import { is_flammable, is_rustprone, is_crackable, is_rottable,
 import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
          ERODE_NONE, ER_NOTHING, ER_DESTROYED, EF_PAY,
          EF_DESTROY } from './const.js';
+
+/* C ref: do_wear.c takeoff_order[] */
+const takeoff_order = [
+    WORN_BLINDF_DW, W_WEP_DW, WORN_SHIELD_DW, WORN_GLOVES_DW, LEFT_RING_DW,
+    RIGHT_RING_DW, WORN_CLOAK_DW, WORN_HELMET_DW, WORN_AMUL_DW, WORN_ARMOR_DW,
+    WORN_SHIRT_DW, WORN_BOOTS_DW, W_SWAPWEP_DW, W_QUIVER_DW, 0
+];
+
+// C ref: do_wear.c do_takeoff()
+async function do_takeoff() {
+    const g = game;
+    let otmp = null;
+    const was_twoweap = g.u.twoweap;
+    const doff = takeoff_ctx();
+
+    doff.mask |= I_SPECIAL; /* set flag for cancel_doff() */
+    if (doff.what === W_WEP_DW) {
+        if (!(await cursed(g.uwep))) {
+            setuwep(null);
+            if (was_twoweap)
+                await You("are no longer wielding either weapon.");
+            else
+                await You(`are ${empty_handed_dw()}.`);
+        }
+    } else if (doff.what === W_SWAPWEP_DW) {
+        setuswapwep(null);
+        await You(`${was_twoweap ? "are " : ""}no longer ${
+            was_twoweap ? "wielding two weapons at once"
+                        : "have a second weapon readied"}.`);
+    } else if (doff.what === W_QUIVER_DW) {
+        setuqwep(null);
+        await You("no longer have ammunition readied.");
+    } else if (doff.what === WORN_ARMOR_DW) {
+        otmp = g.uarm;
+        if (!(await cursed(otmp)))
+            await Armor_off();
+    } else if (doff.what === WORN_CLOAK_DW) {
+        otmp = g.uarmc;
+        if (!(await cursed(otmp)))
+            await Cloak_off();
+    } else if (doff.what === WORN_BOOTS_DW) {
+        otmp = g.uarmf;
+        if (!(await cursed(otmp)))
+            await Boots_off();
+    } else if (doff.what === WORN_GLOVES_DW) {
+        otmp = g.uarmg;
+        if (!(await cursed(otmp)))
+            await Gloves_off();
+    } else if (doff.what === WORN_HELMET_DW) {
+        otmp = g.uarmh;
+        if (!(await cursed(otmp)))
+            await Helmet_off();
+    } else if (doff.what === WORN_SHIELD_DW) {
+        otmp = g.uarms;
+        if (!(await cursed(otmp)))
+            await Shield_off();
+    } else if (doff.what === WORN_SHIRT_DW) {
+        otmp = g.uarmu;
+        if (!(await cursed(otmp)))
+            await Shirt_off();
+    } else if (doff.what === WORN_AMUL_DW) {
+        otmp = g.uamul;
+        if (!(await cursed(otmp)))
+            await Amulet_off();
+    } else if (doff.what === LEFT_RING_DW) {
+        otmp = g.uleft;
+        if (!(await cursed(otmp)))
+            await Ring_off(g.uleft);
+    } else if (doff.what === RIGHT_RING_DW) {
+        otmp = g.uright;
+        if (!(await cursed(otmp)))
+            await Ring_off(g.uright);
+    } else if (doff.what === WORN_BLINDF_DW) {
+        if (!(await cursed(g.ublindf)))
+            await Blindf_off(g.ublindf);
+    } else {
+        impossible(`do_takeoff: taking off ${doff.what.toString(16)}`);
+    }
+    doff.mask &= ~I_SPECIAL; /* clear cancel_doff() flag */
+
+    return otmp;
+}
+
+// C ref: do_wear.c take_off() -- occupation callback for 'A'
+async function take_off() {
+    const g = game;
+    let otmp;
+    const doff = takeoff_ctx();
+
+    if (doff.what) {
+        if (doff.delay > 0) {
+            doff.delay--;
+            return 1; /* still busy */
+        }
+        if ((otmp = await do_takeoff()) != null)
+            await off_msg(otmp);
+        doff.mask &= ~doff.what;
+        doff.what = 0;
+    }
+
+    for (let i = 0; takeoff_order[i]; i++)
+        if (doff.mask & takeoff_order[i]) {
+            doff.what = takeoff_order[i];
+            break;
+        }
+
+    otmp = null;
+    doff.delay = 0;
+
+    if (doff.what === 0) {
+        await You(`finish ${doff.disrobing}.`);
+        return 0;
+    } else if (doff.what === W_WEP_DW) {
+        doff.delay = 1;
+    } else if (doff.what === W_SWAPWEP_DW) {
+        doff.delay = 1;
+    } else if (doff.what === W_QUIVER_DW) {
+        doff.delay = 1;
+    } else if (doff.what === WORN_ARMOR_DW) {
+        otmp = g.uarm;
+        /* If a cloak is being worn, add the time to take it off and put
+         * it back on again.  Kludge alert! since that time is 0 for all
+         * known cloaks, add 1 so that it actually matters...
+         */
+        if (g.uarmc)
+            doff.delay += 2 * objects[g.uarmc.otyp].oc_delay + 1;
+    } else if (doff.what === WORN_CLOAK_DW) {
+        otmp = g.uarmc;
+    } else if (doff.what === WORN_BOOTS_DW) {
+        otmp = g.uarmf;
+    } else if (doff.what === WORN_GLOVES_DW) {
+        otmp = g.uarmg;
+    } else if (doff.what === WORN_HELMET_DW) {
+        otmp = g.uarmh;
+    } else if (doff.what === WORN_SHIELD_DW) {
+        otmp = g.uarms;
+    } else if (doff.what === WORN_SHIRT_DW) {
+        otmp = g.uarmu;
+        /* add the time to take off and put back on armor and/or cloak */
+        if (g.uarm)
+            doff.delay += 2 * objects[g.uarm.otyp].oc_delay;
+        if (g.uarmc)
+            doff.delay += 2 * objects[g.uarmc.otyp].oc_delay + 1;
+    } else if (doff.what === WORN_AMUL_DW) {
+        doff.delay = 1;
+    } else if (doff.what === LEFT_RING_DW) {
+        doff.delay = 1;
+    } else if (doff.what === RIGHT_RING_DW) {
+        doff.delay = 1;
+    } else if (doff.what === WORN_BLINDF_DW) {
+        /* [this used to be 2, but 'R' (and 'T') only require 1 turn to
+           remove a blindfold, so 'A' shouldn't have been requiring 2] */
+        doff.delay = 1;
+    } else {
+        impossible(`take_off: taking off ${doff.what.toString(16)}`);
+        return 0; /* force done */
+    }
+
+    if (otmp)
+        doff.delay += objects[otmp.otyp].oc_delay;
+
+    /* Since setting the occupation now starts the counter next move, that
+     * would always produce a delay 1 too big per item unless we subtract
+     * 1 here to account for it.
+     */
+    if (doff.delay > 0)
+        doff.delay--;
+
+    set_occupation_dw(take_off, doff.disrobing, 0);
+    return 1; /* get busy */
+}
+
+// C ref: do_wear.c doddoremarm() -- the #takeoffall command, remove
+// multiple worn items
+export async function doddoremarm() {
+    const g = game;
+    const tk = takeoff_ctx();
+    const result = 0;
+
+    if (tk.what || tk.mask) {
+        await You(`continue ${tk.disrobing}.`);
+        set_occupation_dw(take_off, tk.disrobing, 0);
+        return ECMD_OK;
+    } else if (!g.uwep && !g.uswapwep && !g.uquiver && !g.uamul && !g.ublindf
+               && !g.uleft && !g.uright && !wearing_armor_dw()) {
+        await You("are not wearing anything.");
+        return ECMD_OK;
+    }
+
+    add_valid_menu_class_dw(0); /* reset */
+    if ((g.flags.menu_style ?? MENU_FULL_DW) !== MENU_TRADITIONAL_DW)
+        await menu_remarm(result);
+    else /* (result = ggetobj("take off", select_off, 0, FALSE, NULL)) < -1 */
+        throw new Error('doddoremarm(): ggetobj() (menustyle:traditional) not ported yet');
+
+    if (tk.mask) {
+        tk.disrobing = ((tk.mask & ~W_WEAPONS) !== 0)
+                       /* default activity for armor and/or accessories,
+                          possibly combined with weapons */
+                       ? "disrobing"
+                       /* specific activity when handling weapons only */
+                       : "disarming";
+        await take_off();
+    }
+    /* The time to perform the command is already completely accounted for
+     * in take_off(); if we return 1, that would add an extra turn to each
+     * disrobe.
+     */
+    return ECMD_OK;
+}
+
+// C ref: do_wear.c menu_remarm()
+async function menu_remarm(retry) {
+    const g = game;
+    let n, i = 0;
+    const pick_list = [];
+    let all_worn_categories = true;
+    const menu_style = g.flags.menu_style ?? MENU_FULL_DW;
+
+    if (retry) {
+        all_worn_categories = (retry === -2);
+    } else if (menu_style === MENU_FULL_DW) {
+        all_worn_categories = false;
+        n = await query_category_dw("What type of things do you want to take off?",
+                                    g.invent, (WORN_TYPES_DW | ALL_TYPES_DW
+                                               | UNPAID_TYPES_DW | BUCX_TYPES_DW),
+                                    pick_list, PICK_ANY_DW);
+        if (!n)
+            return 0;
+        for (i = 0; i < n; i++) {
+            if (pick_list[i].item === ALL_TYPES_SELECTED_DW)
+                all_worn_categories = true;
+            else
+                add_valid_menu_class_dw(pick_list[i].item);
+        }
+    } else if (menu_style === MENU_COMBINATION_DW) {
+        /* i = ggetobj("take off", select_off, 0, TRUE, &ggofeedback); */
+        throw new Error('menu_remarm(): ggetobj() (menustyle:combination) not ported yet');
+    }
+    if (menu_class_present_dw('u'.charCodeAt(0))
+        || menu_class_present_dw('B'.charCodeAt(0))
+        || menu_class_present_dw('U'.charCodeAt(0))
+        || menu_class_present_dw('C'.charCodeAt(0))
+        || menu_class_present_dw('X'.charCodeAt(0)))
+        all_worn_categories = false;
+
+    const invlist = [];
+    for (let o = g.invent; o; o = o.nobj)
+        invlist.push(o);
+    const picks = [];
+    n = await query_objlist_dw("What do you want to take off?", invlist,
+                               (SIGNAL_NOMENU_DW | USE_INVLET_DW | INVORDER_SORT_DW),
+                               picks, PICK_ANY_DW,
+                               all_worn_categories ? is_worn_dw : is_worn_by_type_dw);
+    if (n > 0) {
+        for (i = 0; i < n; i++)
+            await select_off(picks[i].obj);
+    } else if (n < 0 && menu_style !== MENU_COMBINATION_DW) {
+        await There("is nothing else you can remove or unwield.");
+    }
+    return 0;
+}
+import { WORN_BLINDF as WORN_BLINDF_DW, W_WEP as W_WEP_DW,
+         WORN_SHIELD as WORN_SHIELD_DW, WORN_GLOVES as WORN_GLOVES_DW,
+         LEFT_RING as LEFT_RING_DW, RIGHT_RING as RIGHT_RING_DW,
+         WORN_CLOAK as WORN_CLOAK_DW, WORN_HELMET as WORN_HELMET_DW,
+         WORN_AMUL as WORN_AMUL_DW, WORN_ARMOR as WORN_ARMOR_DW,
+         WORN_SHIRT as WORN_SHIRT_DW, WORN_BOOTS as WORN_BOOTS_DW,
+         W_SWAPWEP as W_SWAPWEP_DW, W_QUIVER as W_QUIVER_DW,
+         MENU_FULL as MENU_FULL_DW, MENU_TRADITIONAL as MENU_TRADITIONAL_DW,
+         MENU_COMBINATION as MENU_COMBINATION_DW, WORN_TYPES as WORN_TYPES_DW,
+         ALL_TYPES as ALL_TYPES_DW, UNPAID_TYPES as UNPAID_TYPES_DW,
+         BUCX_TYPES as BUCX_TYPES_DW, PICK_ANY as PICK_ANY_DW,
+         ALL_TYPES_SELECTED as ALL_TYPES_SELECTED_DW,
+         SIGNAL_NOMENU as SIGNAL_NOMENU_DW, USE_INVLET as USE_INVLET_DW,
+         INVORDER_SORT as INVORDER_SORT_DW } from './const.js';
+import { empty_handed as empty_handed_dw } from './insight.js';
+import { set_occupation as set_occupation_dw } from './allmain.js';
+import { wearing_armor as wearing_armor_dw, is_worn as is_worn_dw } from './invent.js';
+import { add_valid_menu_class as add_valid_menu_class_dw,
+         menu_class_present as menu_class_present_dw,
+         is_worn_by_type as is_worn_by_type_dw,
+         query_category as query_category_dw,
+         query_objlist as query_objlist_dw } from './pickup.js';

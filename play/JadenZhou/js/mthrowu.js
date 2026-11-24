@@ -205,7 +205,7 @@ export function killer_xname(obj) {
         obj.blessed = obj.cursed = 0;
     else
         obj.bknown = 1; /* describe holy/unholy water as such */
-    obj.opoisoned = 0;
+    obj.otrapped /* opoisoned */ = 0;
     /* strip user-supplied name; artifacts keep theirs */
     if (save_oname)
         obj.oextra.oname = null;
@@ -607,7 +607,7 @@ export async function ohitmon(
             await pline(`${(otmp.otyp === O.EGG) ? "Splat!  " : ""}${
                 Monnam(mtmp)} is hit${exclam(damage)}`);
 
-        if (otmp.opoisoned && is_poisonable(otmp)) {
+        if (otmp.otrapped /* opoisoned */ && is_poisonable(otmp)) {
             if (resists_poison(mtmp)) {
                 if (vis)
                     await pline_The(`poison doesn't seem to affect ${mon_nam(mtmp)}.`);
@@ -929,7 +929,7 @@ export async function m_throw(
             }
             }
             singleobj = oref.obj;
-            if (hitu && singleobj.opoisoned && is_poisonable(singleobj)) {
+            if (hitu && singleobj.otrapped /* opoisoned */ && is_poisonable(singleobj)) {
                 const onmbuf = xname(singleobj);
                 const knmbuf = killer_xname(singleobj);
                 await poisoned(onmbuf, A_STR, knmbuf,

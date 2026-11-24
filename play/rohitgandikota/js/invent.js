@@ -74,7 +74,8 @@ import { OBJ_DESCR, not_fully_identified } from './objnam.js';
 export { not_fully_identified } from './objnam.js';
 import { MONSYMS, NUMMONS, PMNAMES } from './monst_data.js';
 import { erosion_matters, curse, splitobj, clear_splitobjs, extract_nobj,
-         start_glob_timeout, dead_species, unsplitobj, unknwn_contnr_contents } from './mkobj.js';
+         start_glob_timeout, dead_species, unsplitobj, unknwn_contnr_contents,
+         container_weight } from './mkobj.js';
 import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, Is_container, Is_candle, Is_pudding } from './obj.js';
 import { setworn, setnotworn, bypass_objlist,
          nxt_unbypassed_loot, clear_bypasses } from './worn.js';
@@ -2480,7 +2481,7 @@ export function obj_extract_self(obj) {
         if (c && c.cobj) {
             const i = c.cobj.indexOf(obj);
             if (i >= 0) c.cobj.splice(i, 1);
-            c.owt = weight(c);          /* container_weight() */
+            container_weight(c);
         }
         obj.ocontainer = null;
         break;

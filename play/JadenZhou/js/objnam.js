@@ -2501,7 +2501,7 @@ export function readobjnam(bp, no_wish) {
     /* set poisoned */
     if (d.ispoisoned) {
         if (is_poisonable(d.otmp))
-            d.otmp.opoisoned = (Luck() >= 0) ? 1 : 0;
+            d.otmp.otrapped /* opoisoned */ = (Luck() >= 0) ? 1 : 0;
         else if (d.oclass === O.FOOD_CLASS)
             /* try to taint by making it as old as possible */
             d.otmp.age = 1;
@@ -2565,7 +2565,7 @@ export function readobjnam(bp, no_wish) {
     }
 
     if (permapoisoned(d.otmp))
-        d.otmp.opoisoned = 1;
+        d.otmp.otrapped /* opoisoned */ = 1;
 
     /* more wishing abuse: don't allow wishing for certain artifacts */
     /* and make them pay; charge them for the wish anyway! */
@@ -3130,7 +3130,7 @@ function xname_flags(obj, cxn_flags) {
             buf = `${dn} amulet`;
         break;
     case O.WEAPON_CLASS:
-        if (is_poisonable(obj) && obj.opoisoned)
+        if (is_poisonable(obj) && obj.otrapped /* opoisoned */)
             buf = "poisoned ";
         /* FALLTHROUGH */
     case O.VENOM_CLASS:
@@ -3561,7 +3561,7 @@ function doname_base(obj, doname_flags) {
         lknown = obj.lknown;
     }
 
-    if (bp.startsWith("poisoned ") && obj.opoisoned) {
+    if (bp.startsWith("poisoned ") && obj.otrapped /* opoisoned */) {
         bp = bp.slice(9);
         ispoisoned = true;
     }

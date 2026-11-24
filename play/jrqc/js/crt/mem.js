@@ -145,7 +145,18 @@ export function relem(a, i) {
         const row = rowAt(o, a.__oidx + q);
         if (row !== null) return row[r];
     }
-    return new ElemPtr(a, i);
+    return elemAt(a, i);
+}
+// One ElemPtr per (array, index): a position outside an array is one object, like the
+// elements inside it, so record pointers are equal exactly when they are the same object
+// (peq agrees with ===; the emitter writes === where a side is a record pointer).
+const ELEMS = new WeakMap();
+function elemAt(a, i) {
+    let m = ELEMS.get(a);
+    if (m === undefined) { m = new Map(); ELEMS.set(a, m); }
+    let p = m.get(i);
+    if (p === undefined) { p = new ElemPtr(a, i); m.set(i, p); }
+    return p;
 }
 /** Row k of array-of-arrays o, carrying into o's own neighbors; null outside the whole object. */
 function rowAt(o, k) {
@@ -186,7 +197,7 @@ export function radd(p, n) {
     const a = p.__arr;
     if (a === undefined) {
         if (Number(n) !== 1) throw new CTrap('arithmetic on a pointer to a record that is not an array element');
-        return new ElemPtr(soloOf(p), 1);
+        return elemAt(soloOf(p), 1);
     }
     return relem(a, p.__idx + Number(n));
 }
@@ -222,8 +233,8 @@ export function pdiff(p, q) {
 }
 /**
  * Pointer equality for data pointers of any kind (== in C). null equals only null.
- * Element positions compare by (array, index), so a freshly made ElemPtr equals the
- * object at the same place.
+ * Element positions compare by (array, index); a position has one object (relem, elemAt),
+ * so for record pointers this is ===.
  */
 export function peq(a, b) {
     if (a === b) return true;
@@ -281,6 +292,13 @@ export function lit(s) {
     }
     return p;
 }
+
+/**
+ * A string literal as a tagged template: $C`text` is lit(text), the same shared array (so
+ * the same pointer) for the same text. The emitter writes only escapes whose cooked value is
+ * one char per byte (transpiler/emit/tu.mjs jsTemplate).
+ */
+export function $C(strs) { return lit(strs[0]); }
 
 /** Bytes available from p to the end of its buffer (clang's __builtin_object_size, mode 0, when known). */
 export const bytesLeft = (p) => p.buf.length - p.off;

@@ -448,6 +448,41 @@ export async function mapxy_valid(x, y) {
     return false;
 }
 
+// C ref: getpos.c dxdy_to_dist_descr()
+/* decide whether to use 'up'/'down'/'here' or a numeric distance */
+export function dxdy_to_dist_descr(dx, dy, fulldir) {
+    let buf;
+    let dst;
+
+    if (!dx && !dy) {
+        buf = "here";
+    } else if ((dst = xytodir_gp(dx, dy)) !== -1) {
+        /* explicit direction; 'one step' is implicit */
+        buf = directionname_gp(dst);
+    } else {
+        const dirnames = [
+            [ "n", "north" ],
+            [ "s", "south" ],
+            [ "w", "west" ],
+            [ "e", "east" ] ];
+        const fd = fulldir ? 1 : 0;
+        buf = '';
+        /* 9999: protect buf[] against overflow caused by invalid values */
+        if (dy) {
+            if (Math.abs(dy) > 9999)
+                dy = sgn(dy) * 9999;
+            buf += `${Math.abs(dy)}${dirnames[(dy > 0) ? 1 : 0][fd]}${dx ? "," : ""}`;
+        }
+        if (dx) {
+            if (Math.abs(dx) > 9999)
+                dx = sgn(dx) * 9999;
+            buf += `${Math.abs(dx)}${dirnames[2 + ((dx > 0) ? 1 : 0)][fd]}`;
+        }
+    }
+    return buf;
+}
+import { xytodir as xytodir_gp, directionname as directionname_gp } from './hack.js';
+
 // C ref: getpos.c coord_desc() -- iflags.getpos_coords defaults to
 // GPCOORDS_NONE, which gives an empty string
 function coord_desc(x, y, cmode) {

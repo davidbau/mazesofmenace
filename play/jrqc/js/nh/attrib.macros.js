@@ -20,6 +20,12 @@ export function ACURRSTR() {
 export function ATEMP(x) {
     return u.atemp.a[x];
 }
+export function STR18(x) {
+    return 18 + x;
+}
+export function STR19(x) {
+    return 100 + x;
+}
 export function ATTRMAX(x) {
     return x === A.STR && u.umonnum !== u.umonster ? uasmon_maxStr() : gu.urace.attrmax[x];
 }

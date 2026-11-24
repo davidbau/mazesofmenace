@@ -563,10 +563,12 @@ async function db_debug(L) {   // ldblib.c:420
     try {
         for (; ; ) {
             $c.fprintf($h.deref($h.u32[$hl.__stderrp >>> 2]), $h.P($h.lit("%s")), $h.P($h.lit("lua_debug> "))), $c.fflush($h.deref($h.u32[$hl.__stderrp >>> 2]));
-            if ($h.A($c.fgets($h.P($fp), 250, $h.deref($h.u32[$hl.__stdinp >>> 2]))) === 0 || $hl.strcmp($fp, $h.lit("cont\n")) === 0) {
+            if ($h.A($c.fgets($h.P($fp), 250, $h.deref($h.u32[$hl.__stdinp >>> 2]))) === 0 ||
+                $hl.strcmp($fp, $h.lit("cont\n")) === 0) {
                 return 0;
             }
-            if (await luaL_loadbufferx(L, $fp, $hl.strlen($fp), $h.lit("=(debug command)"), 0) || await lua_pcallk(L, 0, 0, 0, 0, 0)) {
+            if (await luaL_loadbufferx(L, $fp, $hl.strlen($fp), $h.lit("=(debug command)"), 0) ||
+                await lua_pcallk(L, 0, 0, 0, 0, 0)) {
                 $c.fprintf($h.deref($h.u32[$hl.__stderrp >>> 2]), $h.P($h.lit("%s\n")), $h.P(await luaL_tolstring(L, -1, 0))), $c.fflush($h.deref($h.u32[$hl.__stderrp >>> 2]));
             }
             await lua_settop(L, 0);   /* remove eventual returns */

@@ -3,7 +3,7 @@
 //
 // Real mklev.js handles level generation for screen parity.
 
-import { VANQ_MLVL_MNDX, FROMOUTSIDE } from './const.js';
+import { VANQ_MLVL_MNDX, FROMOUTSIDE, CQ_CANNED } from './const.js';
 import { POLY_NOFLAGS } from './const.js';
 import { set_uasmon } from './polyself.js';
 import { do_vicinity_map } from './detect.js';
@@ -50,14 +50,12 @@ export async function stop_occupation() {
             await You(`stop ${game.occtxt}.`);
         }
         game.occupation = null;
-        game.occtxt = null;
         (game.disp ||= {}).botl = true; /* in case u.uhs changed */
+        nomul(0);
+    } else if (game.multi >= 0) {
+        nomul(0);
     }
-    /* nomul(0) preserves a negative multi value.  That matters when a
-       monster attacks while the hero is dressing or disrobing: the attack
-       stops an occupation, but it must not cancel the separate afternmv
-       countdown. */
-    nomul(0);
+    cmdq_clear(CQ_CANNED);
 }
 
 import { rn2, rn1 } from './rng.js';
@@ -73,7 +71,7 @@ import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
          Upolyd, Is_waterlevel, Is_airlevel, FROMFORM, TT_LAVA, NON_PM, RLOC_NOMSG }
          from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
-import { rhack, domove, enter_explore_mode, dolookaround } from './cmd.js';
+import { rhack, domove, enter_explore_mode, dolookaround, cmdq_clear } from './cmd.js';
 import { clear_bypasses } from './worn.js';
 import { lookaround, end_running, unmul, nomul,
          monster_nearby, in_rooms, runmode_delay_output, check_special_room } from './hack.js';

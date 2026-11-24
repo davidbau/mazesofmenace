@@ -979,6 +979,8 @@ export function attach_fig_transform_timeout(figurine) {
 
 // C ref: obj.h obj_to_any(), long_to_any()
 export function obj_to_any(obj) { return { a_obj: obj }; }
+// C ref: hack.c monst_to_any()
+export function monst_to_any(mtmp) { return { a_monst: mtmp }; }
 export function long_to_any(lng) { return { a_long: lng }; }
 /* C compares the union's a_void member */
 function a_void(arg) { return (arg.a_obj !== undefined) ? arg.a_obj : arg.a_long; }
@@ -1316,7 +1318,7 @@ export function obj_is_local(obj) {
  * Return TRUE if the given monster will stay on the level when the
  * level is saved.
  */
-function mon_is_local(mon) {
+export function mon_is_local(mon) {
     let curr;
 
     for (curr = game.migrating_mons; curr; curr = curr.nmon)

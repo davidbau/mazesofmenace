@@ -73,7 +73,7 @@ import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, ECMD_OK,
     AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, AM_SANCTUM,
     ACCESSIBLE, BOLT_LIM, INTRINSIC,
-    H_IBM, H_UTF8, PRIMARYSET, ROGUESET,
+    H_IBM, H_UTF8, ROGUESET,
     CORPSTAT_FEMALE, CORPSTAT_GENDER,
     HL_BOLD, HL_INVERSE, HL_ULINE, HL_UNDEF, NOT_HUNGRY, SICK_NONVOMITABLE, SICK_VOMITABLE, STR18, OBJ_FLOOR,
     BACKTRACK, DISP_ALL, DISP_ALWAYS, DISP_BEAM, DISP_CHANGE, DISP_END,
@@ -964,7 +964,7 @@ function glyphPresentation(symbol, color, state, customization = null) {
     // set is not UTF-8, a primary-set customization is still attached but
     // g_putch() prints the symbol's byte instead.
     const customCh = state.gs?.symset?.[
-        state.gc?.currentgraphics ?? PRIMARYSET
+        state.gc?.currentgraphics
     ]?.handling === H_UTF8 ? customization?.displayCh : undefined;
     const displayCh = customCh ?? symbol.displayCh;
     const result = {
@@ -2336,7 +2336,7 @@ function hasRogueColor(state) {
 // C ref: display.c cmap_to_roguecolor(). reset_glyphmap() calls it only
 // under has_rogue_color, for the cmap arms that have a Rogue colour.
 export function cmap_to_roguecolor(cmap, state = game) {
-    if (state.gs?.symset?.[state.gc?.currentgraphics ?? PRIMARYSET]?.nocolor)
+    if (state.gs?.symset?.[state.gc?.currentgraphics]?.nocolor)
         return NO_COLOR;
     if (cmap >= S_vwall && cmap <= S_hcdoor) return CLR_BROWN;
     if (cmap >= S_arrow_trap && cmap <= S_polymorph_trap) return CLR_MAGENTA;
@@ -2655,7 +2655,7 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
     // Symbol-set S_* Unicode belongs to the glyph before accessibility
     // replaces its base symbol. Concrete G_* customizations override it.
     const activeHandling = state.gs?.symset?.[
-        state.gc?.currentgraphics ?? PRIMARYSET
+        state.gc?.currentgraphics
     ]?.handling;
     const symbolUnicode = activeHandling === H_UTF8
         ? symbol.displayCh : undefined;
@@ -4119,14 +4119,26 @@ export function newsym(x, y) {
 }
 
 // newsym() for a caller that can wait, which awaits the result: it prints
-// wall_angle()'s impossible() where C's newsym() reaches it. env.redraw is
+// wall_angle()'s impossible() where C's newsym() reaches it, and then the
+// lines the draw queued (js/startup_a11y.js queueNoticeLine()): show_glyph()
+// prints its mention_map notice inside newsym(), and C waits at that line's
+// --More-- before the caller's next random-number call. env.redraw is
 // the newsym() a caller injected; any function but newsym itself draws
-// synchronously, as vision_recalc() treats it.
+// synchronously, as vision_recalc() treats it. The result is a promise only
+// when something printed. env.queuedLines false leaves the queued lines for
+// the next message: see_monsters() asks for that, because some of its
+// callers are synchronous and drop its result, and a wait for a notice's
+// --More-- would detach the rest of its scan.
 export function newsym_async(x, y, env = {}) {
     const state = env.state ?? game;
     const redraw = env.redraw ?? newsym;
-    if (redraw !== newsym) return redraw(x, y, state);
-    return finish_steps(newsym_steps(x, y), impossible_printer(state, env));
+    const drawn = redraw !== newsym ? redraw(x, y, state)
+        : finish_steps(newsym_steps(x, y), impossible_printer(state, env));
+    if (env.queuedLines === false) return drawn;
+    const printQueued = () => (state._glyphUpdateNotices?.length
+        ? emitGlyphUpdateNotices(state).then(() => undefined) : undefined);
+    return drawn && typeof drawn.then === 'function'
+        ? drawn.then(printQueued) : printQueued();
 }
 
 export function* newsym_steps(x, y) {
@@ -4541,7 +4553,9 @@ export function see_monsters(state = game, env = {}) {
     // a seen wall whose mode wall_angle() cannot draw (one in a wall a
     // #wizloadlua program laid) raises that impossible() where C does; a
     // caller's own redraw draws synchronously.
-    const draw = (x, y) => newsym_async(x, y, { ...env, state, redraw: repaint });
+    const draw = (x, y) => newsym_async(x, y, {
+        ...env, state, redraw: repaint, queuedLines: false,
+    });
     const scan = (first) => {
         for (let mon = first; mon; mon = mon.nmon) {
             if (mon.mhp < 1) continue; /* DEADMONSTER() */

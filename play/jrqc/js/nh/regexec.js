@@ -358,7 +358,8 @@ function tre_reset_last_matched_branches(tags, lm, n, start_tag, reset_all) {   
             if (start_tag > 0) {
                 do {
                 } while (0, 0);
-                reset = reset_all || tre_tag_touch_get(tags, $h.i32[(b + 20) >>> 2]) < tre_tag_touch_get(tags, start_tag) ? 1 : 0;
+                reset = reset_all || tre_tag_touch_get(tags, $h.i32[(b + 20) >>> 2]) <
+                    tre_tag_touch_get(tags, start_tag) ? 1 : 0;
             } else {
                 reset = 0;
             }
@@ -422,7 +423,8 @@ export function tre_fill_pmatch(nmatch, pmatch, cflags, tnfa, intags, match_eo) 
     i = 0;
     if (match_eo >= 0 && intags) {
         tags = intags;
-        if ($h.u32[(tnfa + 48) >>> 2] && $h.i32[($h.u32[(tnfa + 48) >>> 2] + 16) >>> 2] > 0) {
+        if ($h.u32[(tnfa + 48) >>> 2] &&
+            $h.i32[($h.u32[(tnfa + 48) >>> 2] + 16) >>> 2] > 0) {
             /* !TRE_USE_ALLOCA */
             t = $hl.malloc($c.mulu64(16, $c.u64($h.i32[(tnfa + 80) >>> 2])));
             /* !TRE_USE_ALLOCA */
@@ -536,7 +538,8 @@ function tre_match(tnfa, string, len, type, nmatch, pmatch, eflags) {   // regex
                this into tre_fill_pmatch, because tre_tnfa_run_backtrack calls
                tre_fill_pmatch itself). */
             /* TRE_STR_USER */
-            if (status === 0 && !($h.i32[(tnfa + 96) >>> 2] & 4) && eflags & 4 && pmatch && nmatch > 0) {
+            if (status === 0 && !($h.i32[(tnfa + 96) >>> 2] & 4)
+                && eflags & 4 && pmatch && nmatch > 0) {
                 for (i = nmatch, p = pmatch; i > 0; p = p + 16, i = $c.subu64(i, 1)) {
                     if ($h.ld64(p) >= 0) {
                         $h.st64(p, $c.i64($c.addu64($c.u64($h.ld64(p)), count)));

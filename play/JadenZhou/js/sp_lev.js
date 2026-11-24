@@ -1926,8 +1926,14 @@ function sp_amask_to_amask(sp_amask) {
 
     if (sp_amask === AM_SPLEV_CO)
         amask = Align2amask(game.u.ualignbase[A_ORIGINAL]);
-    else if (sp_amask === AM_SPLEV_NONCO)
-        amask = Align2amask(noncoalignment(game.u.ualignbase[A_ORIGINAL]));
+    else if (sp_amask === AM_SPLEV_NONCO) {
+        /* Align2amask() is a macro (align.h) that evaluates its argument
+           up to three times, so noncoalignment() rolls once per test */
+        const ualign = game.u.ualignbase[A_ORIGINAL];
+        amask = (noncoalignment(ualign) === A_NONE_SP) ? AM_NONE
+                : (noncoalignment(ualign) === A_LAWFUL_SP) ? AM_LAWFUL
+                  : ((noncoalignment(ualign) + 2) >>> 0); /* (unsigned) */
+    }
     else if (sp_amask === AM_SPLEV_RANDOM)
         amask = induced_align(80);
     else
@@ -4992,3 +4998,4 @@ export function l_register_des(L) {
     des.gold = lspo_gold;
     L.globals.des = des;
 }
+import { A_NONE as A_NONE_SP, A_LAWFUL as A_LAWFUL_SP } from './const.js';

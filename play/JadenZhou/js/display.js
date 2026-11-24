@@ -1575,8 +1575,10 @@ export function magic_map_background(x, y, show) {
             glyph = rememb_glyph(S_corr_g);
     }
     if (game.level.flags?.hero_memory
-        /* glyph_is_unexplored(lev->glyph) || glyph_is_cmap(lev->glyph) */
-        && glyph_kind(lev.remembered_glyph) === 'cmap')
+        /* glyph_is_unexplored(lev->glyph) || glyph_is_cmap(lev->glyph);
+           engraving glyphs (S_engroom, S_engrcorr) are cmap glyphs in C */
+        && (glyph_kind(lev.remembered_glyph) === 'cmap'
+            || glyph_kind(lev.remembered_glyph) === 'engr'))
         lev.remembered_glyph = glyph;
     if (show)
         show_glyph(x, y, glyph);
@@ -3066,4 +3068,11 @@ export async function You_see(line) {
         await pline(`You sense ${line}`);
     else
         await pline(`You see ${line}`);
+}
+
+// C ref: display.h cmap_to_glyph(S_cloud / S_air / S_water) -- the glyph
+// the Planes of Air and Water remember everywhere, in the remembered-glyph
+// form (lev->glyph)
+export function waterlevel_glyph(typ) {
+    return rememb_glyph(terrain_glyph({ typ, flags: 0 }, 0, 0));
 }

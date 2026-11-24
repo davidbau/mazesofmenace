@@ -713,10 +713,15 @@ export async function doopen_indir(x, y) {
 
     if (portcullis || !IS_DOOR(door.typ)) {
         /* closed portcullis or spot that opened bridge would span */
-        if (door.typ === DRAWBRIDGE_UP || door.typ === DRAWBRIDGE_DOWN)
-            throw new Error('doopen_indir(): drawbridges not ported yet');
-        /* container_at(cc.x, cc.y, TRUE): "Seems like something lootable" */
-        await You("see no door there.");
+        if (door.typ === DBWALL /* is_db_wall(cc.x, cc.y) */
+            || door.typ === DRAWBRIDGE_UP)
+            await There("is no obvious way to open the drawbridge.");
+        else if (portcullis || door.typ === DRAWBRIDGE_DOWN)
+            await pline_The("drawbridge is already open.");
+        else if (container_at(cc.x, cc.y, true))
+            await pline(`${Blind() ? "Feels" : "Seems"} like something lootable over there.`);
+        else
+            await You(`${Blind() ? "feel" : "see"} no door there.`);
         return res;
     }
 

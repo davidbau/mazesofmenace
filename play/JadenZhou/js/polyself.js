@@ -5,6 +5,9 @@
 // polymon(), polyman(), rehumanize(), break_armor(), drop_weapon(),
 // uunstick(), skinback().  newman() is not ported yet.
 
+import { new_light_source, del_light_source } from './light.js';
+import { monst_to_any } from './timeout.js';
+import { LS_MONSTER } from './const.js';
 import { game } from './gstate.js';
 import { livelog_printf, urgent_pline } from './display.js';
 import { LL_CONDUCT } from './const.js';
@@ -671,10 +674,15 @@ export async function polyself(psflags) {
 
 /* the 'made_change:' tail of polyself() */
 async function polyself_made_change(old_light) {
-    const new_light = emits_light(game.youmonst.data);
+    let new_light = emits_light(game.youmonst.data);
     if (old_light !== new_light) {
-        /* del_light_source()/new_light_source() for LS_MONSTER */
-        throw new Error('polyself(): hero light source change not ported yet');
+        if (old_light)
+            del_light_source(LS_MONSTER, monst_to_any(game.youmonst));
+        if (new_light === 1)
+            ++new_light; /* otherwise it's undetectable */
+        if (new_light)
+            new_light_source(game.u.ux, game.u.uy, new_light, LS_MONSTER,
+                             monst_to_any(game.youmonst));
     }
 }
 
@@ -1419,7 +1427,7 @@ export async function rehumanize() {
      */
 
     if (emits_light(game.youmonst.data))
-        throw new Error('rehumanize(): del_light_source() not ported yet');
+        del_light_source(LS_MONSTER, monst_to_any(game.youmonst));
     await polyman("You return to %s form!", game.urace.adj);
 
     if (u.uhp < 1)

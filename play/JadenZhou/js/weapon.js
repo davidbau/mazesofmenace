@@ -986,8 +986,24 @@ export async function mon_wield_item(mon) {
          * Still....
          */
         if (mw_tmp && mwelded(mw_tmp)) {
-            if (canseemon(mon))
-                throw new Error('mon_wield_item(): welded weapon messages not ported yet');
+            if (canseemon(mon)) {
+                let mon_hand = mbodypart_wp(mon, HAND_WP);
+
+                if (bimanual_wp(mw_tmp))
+                    mon_hand = makeplural_wp(mon_hand);
+                const welded_buf = `${otense_wp(mw_tmp, "are")} welded to ${
+                    mhis_wp(mon)} ${mon_hand}`;
+
+                if (obj.otyp === O.PICK_AXE) {
+                    await pline(`Since ${s_suffix_wp(mon_nam_wp(mon))} weapon${
+                        (mw_tmp.quan === 1) ? "" : "s"} ${welded_buf},`);
+                    await pline(`${mon_nam_wp(mon)} cannot wield that ${xname_wp(obj)}.`);
+                } else {
+                    await pline(`${Monnam(mon)} tries to wield ${doname(obj)}.`); /* pline_mon() */
+                    await pline(`${Yname2_wp(mw_tmp)} ${welded_buf}!`);
+                }
+                mw_tmp.bknown = 1;
+            }
             mon.weapon_check = NO_WEAPON_WANTED;
             return 1;
         }
@@ -999,8 +1015,8 @@ export async function mon_wield_item(mon) {
             let arw;
 
             await pline(`${Monnam(mon)} wields ${doname(obj)}${exclaim ? '!' : '.'}`); /* pline_mon() */
-            if ((arw = autoreturn_weapon(obj)) != null && arw.tethered !== 0)
-                throw new Error('mon_wield_item(): tether message (the()) not ported yet');
+            if ((arw = autoreturn_weapon(obj)) != null && arw.tethered !== 0) /* pline_mon() */
+                await pline(`${Monnam(mon)} secures the tether on ${the_wp(xname_wp(obj))}.`);
 
             /* 3.6.3: mwelded() predicate expects the object to have its
                W_WEP bit set in owormmask, but the pline here and for
@@ -1010,8 +1026,16 @@ export async function mon_wield_item(mon) {
             obj.owornmask = (obj.owornmask || 0) | W_WEP;
             newly_welded = mwelded(obj);
             obj.owornmask &= ~W_WEP;
-            if (newly_welded)
-                throw new Error('mon_wield_item(): "welds itself" message not ported yet');
+            if (newly_welded) {
+                let mon_hand = mbodypart_wp(mon, HAND_WP);
+
+                if (bimanual_wp(obj))
+                    mon_hand = makeplural_wp(mon_hand);
+                await pline(`${Tobjnam_wp(obj, "weld")} ${
+                    (obj.quan !== 1) /* is_plural(obj) */ ? "themselves" : "itself"} to ${
+                    s_suffix_wp(mon_nam_wp(mon))} ${mon_hand}!`);
+                obj.bknown = 1;
+            }
         }
         if (artifact_light(obj) && !obj.lamplit)
             throw new Error('mon_wield_item(): begin_burn() not ported yet');
@@ -1625,3 +1649,12 @@ export function setmnotwielded(mon, obj) {
         MON_NOWEP(mon);
     obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
 }
+import { mbodypart as mbodypart_wp } from './insight.js';
+import { HAND as HAND_WP } from './const.js';
+import { makeplural as makeplural_wp, otense as otense_wp, xname as xname_wp,
+         Yname2 as Yname2_wp, Tobjnam as Tobjnam_wp } from './objnam.js';
+import { mhis as mhis_wp } from './mhitu.js';
+import { s_suffix as s_suffix_wp } from './hacklib.js';
+import { mon_nam as mon_nam_wp } from './do_name.js';
+import { bimanual as bimanual_wp } from './wield.js';
+import { the as the_wp } from './iactions.js';

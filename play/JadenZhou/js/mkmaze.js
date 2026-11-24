@@ -177,9 +177,10 @@ export function fixup_special() {
     let added_branch = false;
 
     if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz)) {
+        game.level.flags.hero_memory = false;
         /* water level is an odd beast - it has to be set up
            before calling place_lregions etc. */
-        throw new Error('fixup_special(): setup_waterlevel() not ported yet');
+        setup_waterlevel();
     }
     for (let x = 0; x < lregions.length; x++) {
         const r = lregions[x];
@@ -743,3 +744,438 @@ export function set_levltyp_lit(x, y, typ, lit) {
     }
     return ret;
 }
+
+// C ref: mkmaze.c fumaroles()
+/* the Plane of Fire (and hot levels): lava pools vent gas clouds */
+export async function fumaroles() {
+    const g = game;
+    let n;
+    const nmax0 = rn2(3);
+    let nmax = nmax0;
+    let sizemin = 5;
+    let snd = false, loud = false;
+
+    if (Is_firelevel_fm(g.u.uz)) {
+        nmax++;
+        sizemin += 5;
+    }
+    if (g.level.flags.temperature > 0) {
+        nmax++;
+        sizemin += 5;
+    }
+
+    for (n = nmax; n; n--) {
+        const x = rn1(COLNO - 4, 3);
+        const y = rn1(ROWNO - 4, 3);
+
+        if (g.level.at(x, y).typ === LAVAPOOL_FM) {
+            const r = await create_gas_cloud_fm(x, y, rn1(10, sizemin), rn1(10, 5));
+
+            clear_heros_fault_fm(r);
+            snd = true;
+            if (dist2_fm(x, y, g.u.ux, g.u.uy) < 15) /* distu() */
+                loud = true;
+        }
+    }
+    if (snd && !g.u.uprops[DEAF_FM]?.intrinsic && !g.u.uprops[DEAF_FM]?.extrinsic)
+        await Norep_fm(`You hear a ${loud ? "loud " : ""}whoosh!`);  /* Deaf-aware */
+}
+import { Is_firelevel as Is_firelevel_fm, LAVAPOOL as LAVAPOOL_FM,
+         DEAF as DEAF_FM } from './const.js';
+import { create_gas_cloud as create_gas_cloud_fm,
+         clear_heros_fault as clear_heros_fault_fm } from './region.js';
+import { dist2 as dist2_fm } from './hacklib.js';
+import { Norep as Norep_fm } from './display.js';
+
+/*
+ * Special waterlevel stuff in endgame (TH).
+ *
+ * Some of these functions would probably logically belong to some
+ * other source files, but they are all so nicely encapsulated here.
+ */
+
+/* bubble movement boundaries (svx.xmin &c are game.wl_xmin &c here) */
+function gbxmin() { return game.wl_xmin + 1; }
+function gbymin() { return game.wl_ymin + 1; }
+function gbxmax() { return game.wl_xmax - 1; }
+function gbymax() { return game.wl_ymax - 1; }
+
+/* the bubble hero is in: game.hero_bubble */
+
+// C ref: mkmaze.c movebubbles()
+/* augment the Planes of Water (for bubbles) and Air (for clouds); called
+   from goto_level() when arriving and moveloop_core() when on the level */
+export function movebubbles() {
+    const g = game;
+    let b;
+    let x, y;
+
+    /* set up the portal the first time bubbles are moved */
+    if (!g.wportal)
+        set_wportal();
+
+    vision_recalc_wl(2);
+
+    g.hero_bubble = null;
+
+    if (Is_waterlevel_wl(g.u.uz)) {
+        /* keep attached ball&chain separate from bubble objects; pick up
+           everything inside of a bubble then fill all bubble locations
+           with water */
+        throw new Error('movebubbles(): moving the Plane of Water bubbles and their contents not ported yet');
+    } else if (Is_airlevel_wl(g.u.uz)) {
+        let xedge, yedge;
+
+        for (x = 1; x <= (COLNO_WL - 1); x++)
+            for (y = 0; y <= (ROWNO_WL - 1); y++) {
+                /* levl[x][y] = air_pos */
+                const lev = g.level.at(x, y);
+                lev.remembered_glyph = waterlevel_glyph_wl(CLOUD_WL);
+                lev.typ = AIR_WL;
+                lev.seenv = 0;
+                lev.flags = 0;
+                lev.wall_info = 0; /* wall_info is flags in C */
+                lev.horizontal = false;
+                lev.lit = true;
+                lev.waslit = false;
+                lev.roomno = 0;
+                lev.edge = false; /* candig: not kept */
+                recalc_block_point_wl(x, y);
+                /* all air or all cloud around the perimeter of the Air
+                   level tends to look strange; break up the pattern */
+                xedge = (x < gbxmin() || x > gbxmax());
+                yedge = (y < gbymin() || y > gbymax());
+                if (xedge || yedge) {
+                    if (!rn2(xedge ? 3 : 5)) {
+                        lev.typ = CLOUD_WL;
+                        block_point_wl(x, y);
+                    }
+                }
+            }
+    }
+
+    /*
+     * Every second time traverse down.  This is because otherwise
+     * all the junk that changes owners when bubbles overlap
+     * would eventually end up in the last bubble in the chain.
+     */
+    g.bubbles_up = !g.bubbles_up;
+    const up = g.bubbles_up;
+    for (b = up ? g.bbubbles : g.ebubbles; b; b = up ? b.next : b.prev) {
+        const rx = rn2(3), ry = rn2(3);
+
+        mv_bubble(b, b.dx + 1 - (!b.dx ? rx : (rx ? 1 : 0)),
+                  b.dy + 1 - (!b.dy ? ry : (ry ? 1 : 0)), false);
+    }
+
+    /* put attached ball&chain back: Plane of Water only */
+    g.vision_full_recalc = 1;
+}
+
+// C ref: mkmaze.c save_waterlevel()
+export function save_waterlevel(nhfp) {
+    const g = game;
+
+    if (!g.bbubbles)
+        return;
+
+    if (update_file_wl(nhfp)) {
+        let n = 0;
+        for (let b = g.bbubbles; b; b = b.next)
+            ++n;
+        Sfo_wl(nhfp, n, "waterlevel-bubble_count");
+        Sfo_wl(nhfp, g.wl_xmin, "waterlevel-xmin");
+        Sfo_wl(nhfp, g.wl_ymin, "waterlevel-ymin");
+        Sfo_wl(nhfp, g.wl_xmax, "waterlevel-xmax");
+        Sfo_wl(nhfp, g.wl_ymax, "waterlevel-ymax");
+        for (let b = g.bbubbles; b; b = b.next) {
+            Sfo_wl(nhfp, { x: b.x, y: b.y, dx: b.dx, dy: b.dy, bm: b.bm.slice() },
+                   "waterlevel-bubble");
+        }
+    }
+    if (release_data_wl(nhfp))
+        unsetup_waterlevel();
+}
+
+// C ref: mkmaze.c restore_waterlevel()
+/* restoring air bubbles on Plane of Water or clouds on Plane of Air */
+export function restore_waterlevel(nhfp) {
+    const g = game;
+    let b = null, btmp;
+    let i, n = 0;
+
+    n = Sfi_wl(nhfp, "waterlevel-bubble_count");
+    g.wl_xmin = Sfi_wl(nhfp, "waterlevel-xmin");
+    g.wl_ymin = Sfi_wl(nhfp, "waterlevel-ymin");
+    g.wl_xmax = Sfi_wl(nhfp, "waterlevel-xmax");
+    g.wl_ymax = Sfi_wl(nhfp, "waterlevel-ymax");
+    for (i = 0; i < n; i++) {
+        btmp = b;
+        const sb = Sfi_wl(nhfp, "waterlevel-bubble");
+        b = { x: sb.x, y: sb.y, dx: sb.dx, dy: sb.dy, bm: sb.bm.slice(),
+              cons: null, next: null, prev: null };
+        if (btmp) {
+            btmp.next = b;
+            b.prev = btmp;
+        } else {
+            g.bbubbles = b;
+            b.prev = null;
+        }
+        mv_bubble(b, 0, 0, true);
+    }
+    g.ebubbles = b;
+    if (b) {
+        b.next = null;
+    } else {
+        throw new Error('restore_waterlevel(): impossible("No air bubbles or clouds to restore?") not ported yet');
+    }
+}
+
+// C ref: mkmaze.c set_wportal()
+function set_wportal() {
+    /* there better be only one magic portal on water level... */
+    for (const t of (game.level.traps || []))
+        if (t.ttyp === MAGIC_PORTAL_WL) {
+            game.wportal = t;
+            return;
+        }
+    game.wportal = null;
+    console.error('impossible: set_wportal(): no portal!');
+}
+
+// C ref: mkmaze.c setup_waterlevel()
+function setup_waterlevel() {
+    const g = game;
+    let typ, glyph;
+    let x, y, xskip, yskip;
+
+    if (!Is_waterlevel_wl(g.u.uz) && !Is_airlevel_wl(g.u.uz))
+        throw new Error(`panic: setup_waterlevel(): [${g.u.uz.dnum}:${g.u.uz.dlevel}] neither 'Water' nor 'Air'`);
+
+    /* ouch, hardcoded... (file scope statics and used in bxmin,bymax,&c) */
+    g.wl_xmin = 3;
+    g.wl_ymin = 1;
+    /* use separate statements so that compiler won't complain about min()
+       comparing two constants */
+    g.wl_xmax = 78;
+    g.wl_xmax = Math.min(g.wl_xmax, (COLNO_WL - 1) - 1);
+    g.wl_ymax = 20;
+    g.wl_ymax = Math.min(g.wl_ymax, (ROWNO_WL - 1));
+
+    /* entire level is remembered as one glyph and any unspecified portion
+       should default to level's base element rather than to usual stone */
+    typ = Is_waterlevel_wl(g.u.uz) ? WATER_WL : AIR_WL;
+    glyph = waterlevel_glyph_wl(typ); /* cmap_to_glyph(S_water or S_air) */
+
+    /* set unspecified terrain (stone) and hero's memory to water or air */
+    for (x = 1; x <= COLNO_WL - 1; x++)
+        for (y = 0; y <= ROWNO_WL - 1; y++) {
+            const lev = g.level.at(x, y);
+            lev.remembered_glyph = { ...glyph };
+            if (lev.typ === STONE_WL)
+                lev.typ = typ;
+        }
+
+    /* make bubbles */
+    if (Is_waterlevel_wl(g.u.uz)) {
+        xskip = 10 + rn2(10);
+        yskip = 4 + rn2(4);
+    } else {
+        xskip = 6 + rn2(4);
+        yskip = 3 + rn2(3);
+    }
+
+    for (x = gbxmin(); x <= gbxmax(); x += xskip)
+        for (y = gbymin(); y <= gbymax(); y += yskip)
+            mk_bubble(x, y, rn2(7));
+}
+
+// C ref: mkmaze.c unsetup_waterlevel()
+function unsetup_waterlevel() {
+    /* free bubbles */
+    game.bbubbles = game.ebubbles = null;
+}
+
+/*
+ * These bit masks make visually pleasing bubbles on a normal aspect
+ * 25x80 terminal, which naturally results in them being mathematically
+ * anything but symmetric.  For this reason they cannot be computed
+ * in situ, either.  The first two elements tell the dimensions of
+ * the bubble's bounding box.
+ */
+const bm2 = [ 2, 1, 0x3 ],
+    bm3 = [ 3, 2, 0x7, 0x7 ],
+    bm4 = [ 4, 3, 0x6, 0xf, 0x6 ],
+    bm5 = [ 5, 3, 0xe, 0x1f, 0xe ],
+    bm6 = [ 6, 4, 0x1e, 0x3f, 0x3f, 0x1e ],
+    bm7 = [ 7, 4, 0x3e, 0x7f, 0x7f, 0x3e ],
+    bm8 = [ 8, 4, 0x7e, 0xff, 0xff, 0x7e ],
+    bmask = [ bm2, bm3, bm4, bm5, bm6, bm7, bm8 ];
+const MAX_BMASK = 4;
+
+// C ref: mkmaze.c mk_bubble()
+function mk_bubble(x, y, n) {
+    const g = game;
+    let b;
+
+    if (x >= gbxmax() || y >= gbymax())
+        return;
+    if (n >= bmask.length) {
+        console.error('impossible: n too large (mk_bubble)');
+        n = bmask.length - 1;
+    }
+    if (bmask[n][1] > MAX_BMASK) {
+        throw new Error('panic: bmask size is larger than MAX_BMASK');
+    }
+    b = { x: 0, y: 0, dx: 0, dy: 0, bm: null, cons: null, next: null, prev: null };
+    if ((x + bmask[n][0] - 1) > gbxmax())
+        x = gbxmax() - bmask[n][0] + 1;
+    if ((y + bmask[n][1] - 1) > gbymax())
+        y = gbymax() - bmask[n][1] + 1;
+    b.x = x;
+    b.y = y;
+    b.dx = 1 - rn2(3);
+    b.dy = 1 - rn2(3);
+    /* y dimension is the length of bitmap data - see bmask above */
+    b.bm = bmask[n].slice(0, bmask[n][1] + 2);
+    b.cons = null;
+    if (!g.bbubbles)
+        g.bbubbles = b;
+    if (g.ebubbles) {
+        g.ebubbles.next = b;
+        b.prev = g.ebubbles;
+    } else
+        b.prev = null;
+    b.next = null;
+    g.ebubbles = b;
+    mv_bubble(b, 0, 0, true);
+}
+
+// C ref: mkmaze.c maybe_adjust_hero_bubble()
+/* maybe change the movement direction of the bubble hero is in */
+export function maybe_adjust_hero_bubble() {
+    const u = game.u;
+
+    if (!Is_waterlevel_wl(u.uz))
+        return;
+
+    if (!u.dx && !u.dy)
+        return;
+
+    if (game.hero_bubble && !rn2(2)) {
+        game.hero_bubble.dx = u.dx;
+        game.hero_bubble.dy = u.dy;
+    }
+}
+
+/*
+ * The player, the portal and all other objects and monsters
+ * float along with their associated bubbles.  Bubbles may overlap
+ * freely, and the contents may get associated with other bubbles in
+ * the process.  Bubbles are "sticky", meaning that if the player is
+ * in the immediate neighborhood of one, he/she may get sucked inside.
+ * This property also makes leaving a bubble slightly difficult.
+ */
+// C ref: mkmaze.c mv_bubble()
+function mv_bubble(b, dx, dy, ini) {
+    const g = game;
+    let i, j, colli = 0;
+    let x, y;
+
+    /* clouds move slowly */
+    if (!Is_airlevel_wl(g.u.uz) || !rn2(6)) {
+        /* move bubble */
+        if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
+            /* pline("mv_bubble: dx = %d, dy = %d", dx, dy); */
+            dx = Math.sign(dx);
+            dy = Math.sign(dy);
+        }
+
+        /*
+         * collision with level borders?
+         *      1 = horizontal border, 2 = vertical, 3 = corner
+         */
+        if (b.x <= gbxmin())
+            colli |= 2;
+        if (b.y <= gbymin())
+            colli |= 1;
+        if ((b.x + b.bm[0] - 1) >= gbxmax())
+            colli |= 2;
+        if ((b.y + b.bm[1] - 1) >= gbymax())
+            colli |= 1;
+
+        /* the "bubble xmin: ..." &c debugging plines: mk_bubble() and the
+           bouncing below keep bubbles inside the boundaries */
+        if (b.x < gbxmin() || b.y < gbymin()
+            || (b.x + b.bm[0] - 1) > gbxmax()
+            || (b.y + b.bm[1] - 1) > gbymax())
+            throw new Error('mv_bubble(): out-of-bounds bubble message not ported yet');
+
+        /* bounce if we're trying to move off the border */
+        if (b.x === gbxmin() && dx < 0)
+            dx = -dx;
+        if (b.x + b.bm[0] - 1 === gbxmax() && dx > 0)
+            dx = -dx;
+        if (b.y === gbymin() && dy < 0)
+            dy = -dy;
+        if (b.y + b.bm[1] - 1 === gbymax() && dy > 0)
+            dy = -dy;
+
+        b.x += dx;
+        b.y += dy;
+    }
+
+    /* draw the bubbles */
+    for (i = 0, x = b.x; i < b.bm[0]; i++, x++)
+        for (j = 0, y = b.y; j < b.bm[1]; j++, y++)
+            if (b.bm[j + 2] & (1 << i)) {
+                if (Is_waterlevel_wl(g.u.uz)) {
+                    g.level.at(x, y).typ = AIR_WL;
+                    g.level.at(x, y).lit = true;
+                    unblock_point_wl(x, y);
+                } else if (Is_airlevel_wl(g.u.uz)) {
+                    g.level.at(x, y).typ = CLOUD_WL;
+                    g.level.at(x, y).lit = true;
+                    block_point_wl(x, y);
+                }
+            }
+
+    if (Is_waterlevel_wl(g.u.uz)) {
+        /* replace contents of bubble */
+        if (b.cons)
+            throw new Error('mv_bubble(): moving bubble contents not ported yet');
+        b.cons = null;
+    }
+
+    /* boing? */
+    switch (colli) {
+    case 1:
+        b.dy = -b.dy;
+        break;
+    case 3:
+        b.dy = -b.dy;
+        /*FALLTHRU*/
+        b.dx = -b.dx;
+        break;
+    case 2:
+        b.dx = -b.dx;
+        break;
+    default:
+        /* sometimes alter direction for fun anyway
+           (higher probability for stationary bubbles) */
+        if (!ini && ((b.dx || b.dy) ? !rn2(20) : !rn2(5))) {
+            b.dx = 1 - rn2(3);
+            b.dy = 1 - rn2(3);
+        }
+    }
+}
+import { Is_airlevel as Is_airlevel_wl, Is_waterlevel as Is_waterlevel_wl,
+         AIR as AIR_WL, CLOUD as CLOUD_WL, WATER as WATER_WL, STONE as STONE_WL,
+         MAGIC_PORTAL as MAGIC_PORTAL_WL, COLNO as COLNO_WL,
+         ROWNO as ROWNO_WL } from './const.js';
+import { vision_recalc as vision_recalc_wl, block_point as block_point_wl,
+         unblock_point as unblock_point_wl,
+         recalc_block_point as recalc_block_point_wl } from './vision.js';
+import { waterlevel_glyph as waterlevel_glyph_wl } from './display.js';
+import { update_file as update_file_wl, release_data as release_data_wl } from './save.js';
+import { Sfo as Sfo_wl, Sfi as Sfi_wl } from './sfbase.js';

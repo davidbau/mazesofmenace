@@ -222,7 +222,7 @@ export function mpoisons_subj(mtmp, mattk) {
         const mwep = (mtmp === game.youmonst) ? game.uwep : (mtmp.mw || null);
         /* "Foo's attack was poisoned." is pretty lame, but at least
            it's better than "sting" when not a stinging attack... */
-        return (!mwep || !mwep.opoisoned) ? "attack" : "weapon";
+        return (!mwep || !mwep.otrapped /* opoisoned */) ? "attack" : "weapon";
     } else {
         return (mattk.aatyp === AT_TUCH) ? "contact"
                : (mattk.aatyp === AT_GAZE) ? "gaze"
@@ -754,7 +754,7 @@ export async function mattacku(mtmp) {
             /* Medusa gaze already operated through m_respond in
                dochug(); don't gaze more than once per round. */
             if (mdat !== mons[M.PM_MEDUSA])
-                throw new Error('mattacku(): gazemu() not ported yet');
+                sum[i] = await gazemu(mtmp, mattk);
             break;
 
         case AT_EXPL: /* automatic hit if next to, and aimed at you */
@@ -1018,6 +1018,169 @@ async function showdamage(dmg) {
 
     await pline(`[HP ${-dmg}, ${Upolyd() ? game.u.mh : game.u.uhp} left]`);
 }
+
+// C ref: mhitu.c gazemu()
+/* monster gazes at you */
+export async function gazemu(mtmp, mattk) {
+    const reactions = [
+        "confused",              /* [0] */
+        "stunned",               /* [1] */
+        "puzzled",   "dazzled",  /* [2,3] */
+        "irritated", "inflamed", /* [4,5] */
+        "tired",                 /* [6] */
+        "dulled",                /* [7] */
+    ];
+    const u = game.u;
+    let react = -1;
+    let cancelled = !!mtmp.mcan, already = false;
+    const mcanseeu = (canseemon(mtmp) && couldsee_mh(mtmp.mx, mtmp.my)
+                      && !!mtmp.mcansee);
+
+    if (m_seenres_mh(mtmp, cvt_adtyp_to_mseenres_mh(mattk.adtyp)))
+        return M_ATTK_MISS;
+
+    const is_medusa = (mtmp.data === mons[M.PM_MEDUSA]);
+    const reflectable = (uhave(REFLECTING_MH) && couldsee_mh(mtmp.mx, mtmp.my)
+                         && is_medusa);
+    /* assumes that hero has to see monster's gaze in order to be
+       affected, rather than monster just having to look at hero;
+       Unaware:  asleep or unconscious => not blind but won't see;
+       when hallucinating, hero's brain doesn't register what
+       it's seeing correctly so the gaze is usually ineffective
+       [this could be taken a lot farther and select a gaze effect
+       appropriate to what's currently being displayed, giving
+       ordinary monsters a gaze attack when hero thinks he or she
+       is facing a gazing creature, but let's not go that far...] */
+    if ((Hallucination() && rn2(4)) || (Unaware_mh() && !reflectable))
+        cancelled = true;
+
+    switch (mattk.adtyp) {
+    case M.AD_STON:
+        /* note: Medusa is the only monster with stoning gaze */
+        throw new Error('gazemu(): AD_STON (Medusa) gaze not ported yet');
+    case M.AD_CONF:
+        if (mcanseeu && !mtmp.mspec_used && rn2(5)) {
+            if (cancelled) {
+                react = 0; /* "confused" */
+                already = !!mtmp.mconf;
+            } else {
+                const conf = d(3, 4);
+
+                mtmp.mspec_used = (mtmp.mspec_used || 0) + (conf + rn2(6));
+                if (!(u.uprops[CONFUSION_MH].intrinsic)) /* !Confusion */
+                    await pline(`${s_suffix(Monnam(mtmp))} gaze confuses you!`); /* pline_mon() */
+                else
+                    await pline("You are getting more and more confused."); /* You() */
+                await make_confused_mh((u.uprops[CONFUSION_MH].intrinsic || 0) + conf,
+                                       false);
+                stop_occupation();
+            }
+        }
+        break;
+    case M.AD_STUN:
+        if (mcanseeu && !mtmp.mspec_used && rn2(5)) {
+            if (cancelled) {
+                react = 1; /* "stunned" */
+                already = !!mtmp.mstun;
+            } else {
+                const stun = d(2, 6);
+
+                mtmp.mspec_used = (mtmp.mspec_used || 0) + (stun + rn2(6));
+                await pline(`${Monnam(mtmp)} stares piercingly at you!`); /* pline_mon() */
+                await make_stunned_mh(((u.uprops[STUNNED_MH].intrinsic || 0) & TIMEOUT_MH)
+                                      + stun, true);
+                stop_occupation();
+            }
+        }
+        break;
+    case M.AD_BLND:
+        if (canseemon(mtmp) && !resists_blnd(game.youmonst)
+            && mdistu(mtmp) <= BOLT_LIM_MH * BOLT_LIM_MH) {
+            if (cancelled) {
+                react = rn1(2, 2); /* "puzzled" || "dazzled" */
+                already = !mtmp.mcansee;
+                /* Archons gaze every round; we don't want cancelled ones
+                   giving the "seems puzzled/dazzled" message that often */
+                if (mtmp.mcan && mtmp.data === mons[M.PM_ARCHON] && rn2(5))
+                    react = -1;
+            } else {
+                const blnd = d(mattk.damn, mattk.damd);
+
+                await pline(`You are blinded by ${s_suffix(mon_nam(mtmp))} radiance!`); /* You() */
+                await make_blinded(blnd, false);
+                stop_occupation();
+                /* not blind at this point implies you're wearing
+                   the Eyes of the Overworld; make them block this
+                   particular stun attack too */
+                if (!Blind()) {
+                    await pline("Your vision quickly clears."); /* Your1(vision_clears) */
+                } else {
+                    const oldstun = ((u.uprops[STUNNED_MH].intrinsic || 0) & TIMEOUT_MH),
+                          newstun = rnd(3);
+
+                    /* we don't want to increment stun duration every time
+                       or sighted hero will become incapacitated */
+                    await make_stunned_mh(Math.max(oldstun, newstun), true);
+                }
+            }
+        }
+        break;
+    case M.AD_FIRE:
+        if (mcanseeu && !mtmp.mspec_used && rn2(5)) {
+            if (cancelled) {
+                react = rn1(2, 4); /* "irritated" || "inflamed" */
+            } else {
+                let dmg = d(2, 6);
+                const orig_dmg = dmg, lev = mtmp.m_lev;
+
+                await pline(`${Monnam(mtmp)} attacks you with a fiery gaze!`); /* pline_mon() */
+                stop_occupation();
+                if (uhave(FIRE_RES)) {
+                    /* shieldeff(u.ux, u.uy): display effect only */
+                    await pline("The fire doesn't feel hot!"); /* pline_The() */
+                    monstseesu(M_SEEN_FIRE);
+                    await ugolemeffects(M.AD_FIRE, d(12, 6));
+                    dmg = 0;
+                } else {
+                    monstunseesu(M_SEEN_FIRE);
+                }
+                await burn_away_slime();
+                if (lev > rn2(20))
+                    await burnarmor_mh(game.youmonst);
+                if (lev > rn2(20)) {
+                    await destroy_items_mh(game.youmonst, M.AD_FIRE, orig_dmg);
+                    await ignite_items_mh(game.invent);
+                }
+                if (dmg)
+                    await mdamageu(mtmp, dmg);
+            }
+        }
+        break;
+    default:
+        /* AD_SLEE and AD_SLOW gazes are #ifdef PM_BEHOLDER */
+        throw new Error(`gazemu(): gaze attack ${mattk.adtyp} not ported yet`);
+    }
+    if (react >= 0) {
+        if (Hallucination() && rn2(3))
+            react = rn2(reactions.length);
+        /* cancelled/hallucinatory feedback; monster might look "confused",
+           "stunned",&c but we don't actually set corresponding attribute */
+        await pline(`${Monnam(mtmp)} looks ${!rn2(3) ? "" : already ? "quite "
+                    : (!rn2(2) ? "a bit " : "somewhat ")}${reactions[react]}.`); /* pline_mon() */
+    }
+    return M_ATTK_MISS;
+}
+import { couldsee as couldsee_mh } from './vision.js';
+import { m_seenres as m_seenres_mh } from './muse.js';
+import { cvt_adtyp_to_mseenres as cvt_adtyp_to_mseenres_mh } from './mondata.js';
+import { REFLECTING as REFLECTING_MH, CONFUSION as CONFUSION_MH,
+         STUNNED as STUNNED_MH, TIMEOUT as TIMEOUT_MH,
+         BOLT_LIM as BOLT_LIM_MH } from './const.js';
+import { Unaware as Unaware_mh } from './eat.js';
+import { make_confused as make_confused_mh,
+         make_stunned as make_stunned_mh } from './potion.js';
+import { burnarmor as burnarmor_mh, ignite_items as ignite_items_mh } from './trap.js';
+import { destroy_items as destroy_items_mh } from './zap.js';
 
 // C ref: mhitu.c mdamageu()
 /* mtmp hits you for n points damage */

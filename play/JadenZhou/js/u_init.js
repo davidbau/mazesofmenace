@@ -1173,8 +1173,8 @@ function ini_inv_adjust_obj(trop, obj) {
             obj.otrapped = 0;
         }
         obj.cursed = 0;
-        if (obj.opoisoned && game.u.ualign.type !== A_CHAOTIC)
-            obj.opoisoned = 0;
+        if (obj.otrapped /* opoisoned */ && game.u.ualign.type !== A_CHAOTIC)
+            obj.otrapped /* opoisoned */ = 0;
         if (obj.oclass === O.WEAPON_CLASS || obj.oclass === O.TOOL_CLASS) {
             obj.quan = trquan(trop);
             stop = true;

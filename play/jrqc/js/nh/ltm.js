@@ -105,7 +105,8 @@ export function luaT_gettmbyobj(L, o, event) {   // ltm.c:71
  */
 export async function luaT_objtypename(L, o) {   // ltm.c:91
     let mt = 0, name = 0;
-    if ($h.u8[o + 8] === 69 && (mt = $h.u32[($h.u32[o >>> 2] + 40) >>> 2]) !== 0 || $h.u8[o + 8] === 71 && (mt = $h.u32[($h.u32[o >>> 2] + 24) >>> 2]) !== 0) {
+    if ($h.u8[o + 8] === 69 && (mt = $h.u32[($h.u32[o >>> 2] + 40) >>> 2]) !== 0 ||
+        $h.u8[o + 8] === 71 && (mt = $h.u32[($h.u32[o >>> 2] + 24) >>> 2]) !== 0) {
         name = luaH_getshortstr(mt, await luaS_new(L, $h.lit("__name")));
         if (($h.u8[name + 8] & 15) === 4) {   /* is '__name' a string? */
             return $h.u32[name >>> 2] + 24;   /* use it as type name */

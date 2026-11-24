@@ -448,7 +448,8 @@ export async function luaL_checkudata(L, ud, tname) {   // lauxlib.c:348
  */
 export async function luaL_checkoption(L, arg, def, lst) {   // lauxlib.c:363
     let name = 0, i = 0;
-    name = def ? await luaL_optlstring(L, arg, def, 0) : await luaL_checklstring(L, arg, 0);
+    name = def ? await luaL_optlstring(L, arg, def, 0) :
+        await luaL_checklstring(L, arg, 0);
     for (i = 0; $h.u32[(lst + i * 8) >>> 2]; i = i + 1 | 0) {
         if ($hl.strcmp($h.u32[(lst + i * 8) >>> 2], name) === 0) {
             return i;
@@ -1148,7 +1149,8 @@ export async function luaL_tolstring(L, idx, len) {   // lauxlib.c:898
             default:
                 {
                     tt = await luaL_getmetafield(L, idx, $h.lit("__name"));   /* try name */
-                    kind = tt === 4 ? await lua_tolstring(L, -1, 0) : lua_typename(L, lua_type(L, idx));
+                    kind = tt === 4 ? await lua_tolstring(L, -1, 0) :
+                        lua_typename(L, lua_type(L, idx));
                     await lua_pushfstring(L, $h.lit("%s: %p"), kind, lua_topointer(L, idx));
                     if (tt !== 0) {
                         lua_rotate(L, -2, -1), await lua_settop(L, -2);   /* remove '__name' */
@@ -1300,7 +1302,9 @@ function l_alloc(ud, ptr, osize, nsize) {   // lauxlib.c:1026
  */
 async function panic(L) {   // lauxlib.c:1041
     let msg = 0;
-    msg = lua_type(L, -1) === 4 ? await lua_tolstring(L, -1, 0) : $h.lit("error object is not a string");
+    msg = lua_type(L, -1) === 4
+        ? await lua_tolstring(L, -1, 0)
+        : $h.lit("error object is not a string");
     $c.fprintf($h.deref($h.u32[$hl.__stderrp >>> 2]), $h.P($h.lit("PANIC: unprotected error in call to Lua API (%s)\n")), $h.P(msg)), $c.fflush($h.deref($h.u32[$hl.__stderrp >>> 2]));
     return 0;   /* return to Lua to abort */
 }

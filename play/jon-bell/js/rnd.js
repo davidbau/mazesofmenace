@@ -113,25 +113,31 @@ function RND(x) {
         // different N args. BigInt arithmetic mirrors the ISAAC64
         // branch exactly — values that are already < x reduce to
         // themselves.
-        return Number(popped % BigInt(x));
+        return RND_mod(BigInt(popped), x);
     }
     const val = isaac64_next_uint64(game.coreCtx);
-    return Number(val % BigInt(x));
+    return RND_mod(val, x);
+}
+
+function RND_mod(val, x) {
+    if (x > 0)
+        return Number(val % BigInt(x));
+    const m = BigInt.asUintN(64, BigInt(x | 0));
+    return Number(BigInt.asIntN(32, m === 0n ? val : val % m));
 }
 
 export function rn2_on_display_rng(x) {
-    if (x <= 0)
-        return 0;
+    /* No x <= 0 guard in C (rnd.c:69-73); see RND_mod. */
     if (!game.dispCtx) {
         _initDispCtx(game.currentSeed | 0);
     }
-    return Number(isaac64_next_uint64(game.dispCtx) % BigInt(x));
+    return RND_mod(isaac64_next_uint64(game.dispCtx), x);
 }
 
 // C ref: rn2(x) — random number 0..x-1
 export function rn2(x) {
-    if (x <= 0)
-        return 0;
+    /* C rnd.c:97-103: the x <= 0 guard is compiled out of a RELEASED build;
+     * RND_mod gives what the organiser's arm64 Mac computes. */
     let val;
     if (_rngResultTape !== null) {
         // Result-tape: popped value is the C-side rn2(x) return,
@@ -139,7 +145,7 @@ export function rn2(x) {
         // a different N than C did at this step (Cardinal Rule 2
         // violation) — surface as rng_result_tape_oor.
         const popped = popResultTape();
-        if (popped < 0 || popped >= x) {
+        if (x > 0 && (popped < 0 || popped >= x)) {
             throw new Error(`rng_result_tape_oor: rn2(${x}) got ${popped}`);
         }
         val = popped;
@@ -154,8 +160,8 @@ export function rn2(x) {
 
 // C ref: rnd(x) — random number 1..x. C impl: rn2(x)+1.
 export function rnd(x) {
-    if (x <= 0)
-        return 0;
+    /* C rnd.c:116-121, guard compiled out (RELEASED): RND(x) + 1, int
+     * arithmetic (wraps at -O0). */
     let val;
     if (_rngResultTape !== null) {
         // Result-tape: popped value is the C-side rnd(x) return,
@@ -164,13 +170,13 @@ export function rnd(x) {
         // result). Out-of-range means JS is invoking rnd with a
         // different N than C did at this step.
         const popped = popResultTape();
-        if (popped < 1 || popped > x) {
+        if (x > 0 && (popped < 1 || popped > x)) {
             throw new Error(`rng_result_tape_oor: rnd(${x}) got ${popped}`);
         }
         val = popped;
     }
     else {
-        val = RND(x) + 1;
+        val = (RND(x) + 1) | 0;
     }
     if (_rngLogEnabled)
         _rngLog.push(_maybeTagEntry(`rnd(${x})=${val}`));
@@ -198,7 +204,7 @@ export function d(n, x) {
     else {
         tmp = n;
         for (let i = 0; i < n; i++)
-            tmp += RND(x);
+            tmp = (tmp + RND(x)) | 0; /* int tmp; d(n,0) adds n raw draws (RND_mod) */
     }
     if (_rngLogEnabled)
         _rngLog.push(_maybeTagEntry(`d(${n},${x})=${tmp}`));
@@ -266,8 +272,9 @@ export function rnz(i) {
 // non-zero-Luck rnl() call (witness: dokick record #32, rn2(38)=8 popped as
 // rnl(7)'s own result).
 export function rnl(x) {
-    if (x <= 0)
-        return 0;
+    /* C rnd.c:136-170: the x <= 0 guard is compiled out (RELEASED); with
+     * x == 0, i is (int) raw (RND_mod) and a luck adjustment clamps any
+     * i >= 0 to x - 1 = -1. */
     let i;
     // C: adjustment = Luck;  Luck = u.uluck + u.moreluck (decl.h). Needed in
     // BOTH branches: when non-zero, C's rnl() makes a SECOND logged draw
@@ -299,7 +306,7 @@ export function rnl(x) {
         }
         // Result-tape: popped value is the C-side rnl(x) return, in [0, x-1].
         const popped = popResultTape();
-        if (popped < 0 || popped >= x) {
+        if (x > 0 && (popped < 0 || popped >= x)) {
             throw new Error(`rng_result_tape_oor: rnl(${x}) got ${popped}`);
         }
         i = popped;
@@ -307,7 +314,7 @@ export function rnl(x) {
     else {
         i = RND(x); // C: i = RND(x) — internal, unlogged (like d())
         if (adjustment && rn2(37 + Math.abs(adjustment))) {
-            i -= adjustment;
+            i = (i - adjustment) | 0;
             if (i < 0) i = 0;
             else if (i >= x) i = x - 1;
         }

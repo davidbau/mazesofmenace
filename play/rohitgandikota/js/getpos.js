@@ -200,7 +200,7 @@ export async function auto_describe(cx, cy) {
     const cc = { x: cx, y: cy };
     const res = do_screen_description(cc, true, 0);
     if (res.found) {
-        /* coord_desc() with the default whatis_coord ('none') is empty */
+        const coords = coord_desc(cx, cy, game.iflags?.getpos_coords);
         /* src/getpos.c:655 — a command that set a validator through
            getpos_sethilite() marks squares it cannot use. */
         const invalid = (game.iflags?.autodescribe !== false
@@ -210,7 +210,7 @@ export async function auto_describe(cx, cy) {
                               && !(await is_valid_travelpt(cx, cy)))
                              ? ' (no travel path)' : '';
         await pline_nohistory_no_cursor(
-            `${res.firstmatch}${invalid}${noTravelPath}`);
+            `${res.firstmatch}${coords ? ' ' : ''}${coords}${invalid}${noTravelPath}`);
         curs_map(cx, cy);
         await flush_screen(0);
     }

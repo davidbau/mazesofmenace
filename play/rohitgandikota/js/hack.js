@@ -2990,28 +2990,23 @@ export async function is_valid_travelpt(x, y) {
     return result;
 }
 
-// src/hack.c:4079 crawl_destination() — is <x,y> a spot the hero could
-// crawl to (used for the travel-to-adjacent shortcut)?
+// src/hack.c:4079 crawl_destination(), check whether a neighboring square permits crawling.
 export async function crawl_destination(x, y) {
     const { goodpos } = await import('./makemon.js');
     if (!goodpos(x, y, game.youmonst, 0))
         return false;
     if (x === game.u.ux || y === game.u.uy)
         return true;
-    /* NODIAG: poly'd into a grid bug — polyself absent */
+    if (NODIAG(game.u.umonnum))
+        return false; /* poly'd into a grid bug... */
     if (Passes_walls())
         return true;
     const loc = game.level.at(x, y);
-    if (IS_DOOR(loc.typ) && (!doorless_door(x, y) || _shk_block_door(x, y)))
+    if (IS_DOOR(loc.typ) && (!doorless_door(x, y) || await block_door(x, y)))
         return false;
     return !(bad_rock(game.youmonst.data, game.u.ux, y)
              && bad_rock(game.youmonst.data, x, game.u.uy)
              && cant_squeeze_thru(game.youmonst));
-}
-
-function _shk_block_door(x, y) {
-    /* shk.js block_door needs shop state; false when no shops exist */
-    return false;
 }
 
 // src/hack.c:1266 findtravelpath() — pick u.dx/u.dy for the next travel

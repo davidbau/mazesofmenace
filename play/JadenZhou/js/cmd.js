@@ -3,6 +3,8 @@
 // (commands_init()/reset_commands()) and the command functions ported so
 // far; hack.c domove() is in hack.js.
 
+import { nhcb_counts, nhcb_name } from './nhlua.js';
+import { NHCB_CMD_BEFORE } from './const.js';
 import { dobreathe } from './polyself.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -58,7 +60,7 @@ import { enhance_weapon_skill } from './weapon.js';
 import { doapply, dorub, dojump } from './apply.js';
 import { dountrap } from './trap.js';
 import { doeat } from './eat.js';
-import { dowear, doputon, dotakeoff, ia_dotakeoff } from './do_wear.js';
+import { dowear, doputon, dotakeoff, ia_dotakeoff, doddoremarm } from './do_wear.js';
 import { dodrink, dodip, aggravate } from './potion.js';
 import { dopay } from './shk.js';
 import { dotogglepickup, doset_simple, doset } from './options.js';
@@ -71,6 +73,28 @@ import { doextversion } from './mdlib.js';
 import { doopen, doforce, doclose } from './lock.js';
 import { dosave } from './save.js';
 import { done2 } from './end.js';
+import { stairway_at, glyph_at, glyph_is_invisible, canspotmon, vobj_at,
+         glyph_kind } from './display.js';
+import { can_reach_floor } from './engrave.js';
+import { x_monnam, mon_nam } from './do_name.js';
+import { doname } from './objnam.js';
+import { Is_container } from './mkobj.js';
+import { num_spells } from './spell.js';
+import { t_at } from './trap.js';
+import { carrying } from './invent.js';
+import { which_armor } from './worn.js';
+import { can_saddle, m_at } from './makemon.js';
+import { linedup } from './monmove.js';
+import { dist2 } from './hacklib.js';
+import { test_move, xytodir } from './hack.js';
+import { defsyms_explanation } from './pager.js';
+import { IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, u_at, Upolyd,
+         has_mgivenname, SCORR, D_CLOSED, D_LOCKED, D_ISOPEN, W_SADDLE,
+         VIBRATING_SQUARE, TEST_MOVE, ARTICLE_THE,
+         SUPPRESS_SADDLE } from './const.js';
+import { SKELETON_KEY, LOCK_PICK, CREDIT_CARD, SADDLE, FOOD_CLASS,
+         BOULDER } from './objects.js';
+import { CLR_WHITE } from './terminal.js';
 
 // C ref: cmd.c extcmds_match() -- the indices of the extcmdlist[]
 // entries matching findstr
@@ -154,6 +178,7 @@ const cmd_funcs = {
     doputon: () => doputon(),
     dotakeoff: () => dotakeoff(),
     ia_dotakeoff: () => ia_dotakeoff(),
+    doddoremarm: () => doddoremarm(),
     dodrink: () => dodrink(),
     dopay: () => dopay(),
     dolook: () => dolook(),
@@ -205,6 +230,8 @@ const cmd_funcs = {
     wiz_detect: () => wiz_detect(),
     wiz_where: () => wiz_where(),
     wiz_polyself: () => wiz_polyself(),
+    doherecmdmenu: () => doherecmdmenu(),
+    dotherecmdmenu: () => dotherecmdmenu(),
 };
 /* C ref: cmd.c do_move_<dir>(), do_run_<dir>(), do_rush_<dir>() */
 ["west", "northwest", "north", "northeast", "east", "southeast", "south",
@@ -251,6 +278,570 @@ async function doextcmd() {
     } while (func === "doextlist");
 
     return retval;
+}
+
+function impossible(msg) { console.error(`impossible: ${msg}`); }
+
+/* C ref: cmd.c cmdq_add_ec(CQ_CANNED, fn), cmdq_add_key(CQ_CANNED, key),
+   cmdq_add_dir(CQ_CANNED, dx, dy, dz) -- the canned command queue is
+   game.cmdq */
+function cmdq_add_ec(fn) {
+    if (!game.cmdq) game.cmdq = [];
+    game.cmdq.push({ typ: 'ec', fn });
+}
+function cmdq_add_key(key) {
+    if (!game.cmdq) game.cmdq = [];
+    game.cmdq.push({ typ: 'key', key });
+}
+function cmdq_add_dir(dx, dy, dz) {
+    if (!game.cmdq) game.cmdq = [];
+    game.cmdq.push({ typ: 'dir', dirx: dx, diry: dy, dirz: dz });
+}
+
+/* C ref: wintype.h CLICK_1, CLICK_2 */
+const CLICK_1 = 1, CLICK_2 = 2;
+/* C ref: defsym.h S_sink, S_fountain (defsyms[] indices) */
+const S_sink = 36, S_fountain = 37;
+
+function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
+/* C ref: you.h next2u() */
+function next2u(x, y) { return dist2(x, y, game.u.ux, game.u.uy) <= 2; }
+/* C ref: hacklib.c upstart() */
+function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+// C ref: cmd.c doherecmdmenu() -- #herecmdmenu command
+async function doherecmdmenu() {
+    const ch = await here_cmd_menu();
+
+    return (ch !== '\0' && ch !== '\x1b') ? ECMD_TIME : ECMD_OK;
+}
+
+// C ref: cmd.c dotherecmdmenu() -- #therecmdmenu command, a way to test
+// there_cmd_menu without mouse
+async function dotherecmdmenu() {
+    const u = game.u;
+    const iflags = game.iflags;
+    let ch;
+    if (!game.clicklook_cc)
+        game.clicklook_cc = { x: 0, y: 0 };
+    const x = game.clicklook_cc.x;
+    const y = game.clicklook_cc.y;
+
+    iflags.getdir_click = CLICK_1 | CLICK_2; /* allow 'far' click */
+
+    if (isok(x, y)) {
+        if (x === u.ux && y === u.uy)
+            ch = await here_cmd_menu();
+        else
+            ch = await there_cmd_menu(x, y, iflags.getdir_click);
+        game.clicklook_cc.x = game.clicklook_cc.y = -1;
+        iflags.getdir_click = 0;
+        return (ch !== '\0' && ch !== '\x1b') ? ECMD_TIME : ECMD_OK;
+    }
+
+    const dir = await getdir(null);
+    const click = iflags.getdir_click;
+    iflags.getdir_click = 0;
+
+    if (!dir || !isok(u.ux + u.dx, u.uy + u.dy))
+        return ECMD_CANCEL;
+
+    if (u.dx || u.dy)
+        ch = await there_cmd_menu(u.ux + u.dx, u.uy + u.dy, click);
+    else
+        ch = await here_cmd_menu();
+
+    return (ch !== '\0' && ch !== '\x1b') ? ECMD_TIME : ECMD_OK;
+}
+
+/* C ref: cmd.c enum menucmd -- commands for [t]herecmdmenu */
+const MCMD_NOTHING = 0, MCMD_OPEN_DOOR = 1, MCMD_LOCK_DOOR = 2,
+    MCMD_UNTRAP_DOOR = 3, MCMD_KICK_DOOR = 4, MCMD_CLOSE_DOOR = 5,
+    MCMD_SEARCH = 6, MCMD_LOOK_TRAP = 7, MCMD_UNTRAP_TRAP = 8,
+    MCMD_MOVE_DIR = 9, MCMD_RIDE = 10, MCMD_REMOVE_SADDLE = 11,
+    MCMD_APPLY_SADDLE = 12, MCMD_TALK = 13, MCMD_NAME = 14,
+
+    MCMD_QUAFF = 15, MCMD_DIP = 16, MCMD_SIT = 17, MCMD_UP = 18,
+    MCMD_DOWN = 19, MCMD_DISMOUNT = 20, MCMD_MONABILITY = 21,
+    MCMD_PICKUP = 22, MCMD_LOOT = 23, MCMD_TIP = 24, MCMD_EAT = 25,
+    MCMD_DROP = 26, MCMD_REST = 27, MCMD_LOOK_HERE = 28, MCMD_LOOK_AT = 29,
+    MCMD_ATTACK_NEXT2U = 30, MCMD_UNTRAP_HERE = 31, MCMD_OFFER = 32,
+    MCMD_INVENTORY = 33, MCMD_CAST_SPELL = 34,
+
+    MCMD_THROW_OBJ = 35, MCMD_TRAVEL = 36;
+
+// C ref: cmd.c mcmd_addmenu()
+function mcmd_addmenu(win, act, txt) {
+    const clr = NO_COLOR;
+
+    /* TODO: fixed letters for the menu entries? */
+    tty_add_menu(win, null, act, 0, 0, ATR_NONE, clr, txt,
+                 MENU_ITEMFLAGS_NONE);
+}
+
+/* the floor pile at <x,y> (svl.level.objects[x][y] via ->nexthere), top
+   first */
+function floor_pile_at(x, y) {
+    const top = vobj_at(x, y);
+    if (!top)
+        return [];
+    return [top, ...(game.level.objects || []).filter(
+        o => o !== top && o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR')];
+}
+
+// C ref: cmd.c there_cmd_menu_self() -- command menu entries when
+// targeting self
+function there_cmd_menu_self(win, x, y, act) {
+    let K = 0;
+    let buf;
+    const typ = game.level.at(x, y).typ;
+    const stway = stairway_at(x, y);
+    let ttmp;
+
+    void act; /* UNUSED */
+    if (!u_at(x, y))
+        return K;
+
+    if ((IS_FOUNTAIN(typ) || IS_SINK(typ)) && can_reach_floor(false)) {
+        buf = `Drink from the ${
+            defsyms_explanation[IS_FOUNTAIN(typ) ? S_fountain : S_sink]}`;
+        mcmd_addmenu(win, MCMD_QUAFF, buf), ++K;
+    }
+    if (IS_FOUNTAIN(typ) && can_reach_floor(false))
+        mcmd_addmenu(win, MCMD_DIP, "Dip something into the fountain"), ++K;
+    if (IS_THRONE(typ))
+        mcmd_addmenu(win, MCMD_SIT, "Sit on the throne"), ++K;
+    if (IS_ALTAR(typ))
+        mcmd_addmenu(win, MCMD_OFFER, "Sacrifice something on the altar"), ++K;
+
+    if (stway && stway.up) {
+        buf = `Go up the ${stway.isladder ? "ladder" : "stairs"}`;
+        mcmd_addmenu(win, MCMD_UP, buf), ++K;
+    }
+    if (stway && !stway.up) {
+        buf = `Go down the ${stway.isladder ? "ladder" : "stairs"}`;
+        mcmd_addmenu(win, MCMD_DOWN, buf), ++K;
+    }
+    if (game.u.usteed) { /* another movement choice */
+        buf = `Dismount ${x_monnam(game.u.usteed, ARTICLE_THE, null,
+                                   SUPPRESS_SADDLE, false)}`;
+        mcmd_addmenu(win, MCMD_DISMOUNT, buf), ++K;
+    }
+
+    /* #if 0 ... Upolyd "Use %s special ability" ... #endif */
+
+    const pile = floor_pile_at(x, y);
+    if (pile.length) { /* OBJ_AT(x, y) */
+        const otmp = pile[0];
+
+        buf = `Pick up ${(pile.length > 1) ? "items" : doname(otmp)}`;
+        mcmd_addmenu(win, MCMD_PICKUP, buf), ++K;
+
+        if (Is_container(otmp)) {
+            buf = `Loot ${doname(otmp)}`;
+            mcmd_addmenu(win, MCMD_LOOT, buf), ++K;
+
+            buf = `Tip ${doname(otmp)}`;
+            mcmd_addmenu(win, MCMD_TIP, buf), ++K;
+        }
+        if (otmp.oclass === FOOD_CLASS) {
+            buf = `Eat ${doname(otmp)}`;
+            mcmd_addmenu(win, MCMD_EAT, buf), ++K;
+        }
+    }
+
+    if (game.invent) {
+        mcmd_addmenu(win, MCMD_INVENTORY, "Inventory"), ++K;
+        mcmd_addmenu(win, MCMD_DROP, "Drop items"), ++K;
+    }
+    mcmd_addmenu(win, MCMD_REST, "Rest one turn"), ++K;
+    mcmd_addmenu(win, MCMD_SEARCH, "Search around you"), ++K;
+    mcmd_addmenu(win, MCMD_LOOK_HERE, "Look at what is here"), ++K;
+
+    if (num_spells() > 0)
+        mcmd_addmenu(win, MCMD_CAST_SPELL, "Cast a spell"), ++K;
+
+    if ((ttmp = t_at(x, y)) != null && ttmp.tseen) {
+        if (ttmp.ttyp !== VIBRATING_SQUARE)
+            mcmd_addmenu(win, MCMD_UNTRAP_HERE,
+                         "Attempt to disarm trap"), ++K;
+    }
+    return K;
+}
+
+// C ref: cmd.c there_cmd_menu_next2u() -- add entries to there_cmd_menu,
+// when x,y is next to hero
+function there_cmd_menu_next2u(win, x, y, mod, act) {
+    let K = 0;
+    let buf;
+    const lev = game.level.at(x, y);
+    const typ = lev.typ;
+    let ttmp, mtmp;
+
+    if (!next2u(x, y))
+        return K;
+
+    if (IS_DOOR(typ)) {
+        let key_or_pick, card;
+        const dm = lev.doormask;
+
+        if ((dm & (D_CLOSED | D_LOCKED))) {
+            mcmd_addmenu(win, MCMD_OPEN_DOOR, "Open the door"), ++K;
+            /* unfortunately there's no lknown flag for doors to
+               remember the locked/unlocked state */
+            key_or_pick = (carrying(SKELETON_KEY) || carrying(LOCK_PICK));
+            card = !!carrying(CREDIT_CARD);
+            if (key_or_pick || card) {
+                buf = `${key_or_pick ? "lock or " : ""}unlock the door`;
+                mcmd_addmenu(win, MCMD_LOCK_DOOR, upstart(buf)), ++K;
+            }
+            /* unfortunately there's no tknown flag for doors (or chests)
+               to remember whether a trap had been found */
+            mcmd_addmenu(win, MCMD_UNTRAP_DOOR,
+                         "Search the door for a trap"), ++K;
+            /* [what about #force?] */
+            mcmd_addmenu(win, MCMD_KICK_DOOR, "Kick the door"), ++K;
+        } else if ((dm & D_ISOPEN) && (mod === CLICK_2)) {
+            mcmd_addmenu(win, MCMD_CLOSE_DOOR, "Close the door"), ++K;
+        }
+    }
+
+    if (typ <= SCORR)
+        mcmd_addmenu(win, MCMD_SEARCH, "Search for secret doors"), ++K;
+
+    if ((ttmp = t_at(x, y)) != null && ttmp.tseen) {
+        mcmd_addmenu(win, MCMD_LOOK_TRAP, "Examine trap"), ++K;
+        if (ttmp.ttyp !== VIBRATING_SQUARE)
+            mcmd_addmenu(win, MCMD_UNTRAP_TRAP,
+                         "Attempt to disarm trap"), ++K;
+        mcmd_addmenu(win, MCMD_MOVE_DIR, "Move on the trap"), ++K;
+    }
+
+    /* levl[x][y].glyph == objnum_to_glyph(BOULDER): the remembered glyph
+       is the plain (not pile-top) boulder glyph */
+    const rg = lev.remembered_glyph;
+    if (rg && glyph_kind(rg) === 'obj' && rg.otyp === BOULDER && !rg.piletop)
+        mcmd_addmenu(win, MCMD_MOVE_DIR, "Push the boulder"), ++K;
+
+    mtmp = m_at(x, y);
+    if (mtmp && !canspotmon(mtmp))
+        mtmp = null;
+    if (mtmp && which_armor(mtmp, W_SADDLE)) {
+        const mnam = x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false);
+
+        if (!game.u.usteed) {
+            buf = `Ride ${mnam}`;
+            mcmd_addmenu(win, MCMD_RIDE, buf), ++K;
+        }
+        buf = `Remove saddle from ${mnam}`;
+        mcmd_addmenu(win, MCMD_REMOVE_SADDLE, buf), ++K;
+    }
+    if (mtmp && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)
+        && carrying(SADDLE)) {
+        buf = `Put saddle on ${mon_nam(mtmp)}`;
+        mcmd_addmenu(win, MCMD_APPLY_SADDLE, buf), ++K;
+    }
+    if (mtmp && (mtmp.mpeaceful || mtmp.mtame)) {
+        buf = `Talk to ${mon_nam(mtmp)}`;
+        mcmd_addmenu(win, MCMD_TALK, buf), ++K;
+
+        buf = `Swap places with ${mon_nam(mtmp)}`;
+        mcmd_addmenu(win, MCMD_MOVE_DIR, buf), ++K;
+
+        buf = `${!has_mgivenname(mtmp) ? "Name" : "Rename"} ${mon_nam(mtmp)}`;
+        mcmd_addmenu(win, MCMD_NAME, buf), ++K;
+    }
+
+    if ((mtmp && !(mtmp.mpeaceful || mtmp.mtame))
+        || glyph_is_invisible(glyph_at(x, y))) {
+        buf = `Attack ${mtmp ? mon_nam(mtmp) : "unseen creature"}`;
+        mcmd_addmenu(win, MCMD_ATTACK_NEXT2U, buf), ++K;
+        /* attacking overrides any other automatic action */
+        act.v = MCMD_ATTACK_NEXT2U;
+    } else {
+        /* "Move %s", direction - handled below */
+    }
+    return K;
+}
+
+// C ref: cmd.c there_cmd_menu_far()
+function there_cmd_menu_far(win, x, y, mod) {
+    const u = game.u;
+    let K = 0;
+
+    if (mod === CLICK_1) {
+        if (linedup(u.ux, u.uy, x, y, 1)
+            && dist2(u.ux, u.uy, x, y) < 18 * 18)
+            mcmd_addmenu(win, MCMD_THROW_OBJ, "Throw something"), ++K;
+
+        mcmd_addmenu(win, MCMD_TRAVEL, "Travel here"), ++K;
+    }
+    return K;
+}
+
+/* C ref: display.h hero_glyph -- monnum_to_glyph((Upolyd || !showrace)
+   ? u.umonnum : urace.mnum, Ugender); for the unpolymorphed hero that is
+   the role's '@' as display_self() shows it */
+function glyph_is_hero_glyph(glyph) {
+    return glyph.kind === 'mon' && glyph.ch === '@'
+        && glyph.color === CLR_WHITE && glyph.mndx === undefined;
+}
+
+// C ref: cmd.c there_cmd_menu_common()
+function there_cmd_menu_common(win, x, y, mod, act) {
+    let K = 0;
+
+    void act; /* UNUSED */
+    if (mod === CLICK_1 || mod === CLICK_2) { /* ignore iflags.clicklook here */
+        /* for self, only include "look at map symbol" if it isn't the
+           ordinary hero symbol (steed, invisible w/o see invisible, ?) */
+        if (!u_at(x, y) || Upolyd(game.u)
+            || !glyph_is_hero_glyph(glyph_at(x, y)))
+            mcmd_addmenu(win, MCMD_LOOK_AT, "Look at map symbol"), ++K;
+    }
+    return K;
+}
+
+// C ref: cmd.c act_on_act() -- queue up command(s) to perform
+// #therecmdmenu action
+function act_on_act(act, dx, dy) {
+    const u = game.u;
+    const iflags = game.iflags;
+    let otmp, dir;
+
+    /* a few there_cmd_menu_far() actions use dx,dy differently */
+    switch (act) {
+    case MCMD_THROW_OBJ:
+    case MCMD_TRAVEL:
+    case MCMD_LOOK_AT:
+        /* keep dx,dy as-is */
+        break;
+    default:
+        /* force dx and dy to be +1, 0, or -1 */
+        dx = sgn(dx);
+        dy = sgn(dy);
+        break;
+    }
+
+    switch (act) {
+    case MCMD_TRAVEL:
+        /* FIXME: player has explicitly picked "travel to this location"
+           from the menu but it will only work if flags.travelcmd is True.
+           That option is intended as way to guard against stray mouse
+           clicks and shouldn't inhibit explicit travel. */
+        if (!iflags.travelcc)
+            iflags.travelcc = { x: 0, y: 0 };
+        iflags.travelcc.x = u.tx = u.ux + dx;
+        iflags.travelcc.y = u.ty = u.uy + dy;
+        cmdq_add_ec("dotravel_target");
+        break;
+    case MCMD_THROW_OBJ:
+        /* cmdq_add_ec(dothrow); cmdq_add_userinput(); cmdq_add_dir() */
+        throw new Error('act_on_act(): queued user-input for dothrow not ported yet');
+    case MCMD_OPEN_DOOR:
+        cmdq_add_ec("doopen");
+        cmdq_add_dir(dx, dy, 0);
+        break;
+    case MCMD_LOCK_DOOR:
+        otmp = carrying(SKELETON_KEY);
+        if (!otmp)
+            otmp = carrying(LOCK_PICK);
+        if (!otmp)
+            otmp = carrying(CREDIT_CARD);
+        if (otmp) {
+            /* cmdq_add_ec(doapply), cmdq_add_key(invlet), cmdq_add_dir(),
+               then cmdq_add_key('y') answers "Lock it?" through
+               yn_function()'s command queue */
+            throw new Error('act_on_act(): queued yn_function() answer not ported yet');
+        }
+        break;
+    case MCMD_UNTRAP_DOOR:
+        cmdq_add_ec("dountrap");
+        cmdq_add_dir(dx, dy, 0);
+        break;
+    case MCMD_KICK_DOOR:
+        cmdq_add_ec("dokick");
+        cmdq_add_dir(dx, dy, 0);
+        break;
+    case MCMD_CLOSE_DOOR:
+        cmdq_add_ec("doclose");
+        cmdq_add_dir(dx, dy, 0);
+        break;
+    case MCMD_SEARCH:
+        cmdq_add_ec("dosearch");
+        break;
+    case MCMD_LOOK_TRAP:
+        cmdq_add_ec("doidtrap");
+        cmdq_add_dir(dx, dy, 0);
+        break;
+    case MCMD_UNTRAP_TRAP:
+        cmdq_add_ec("dountrap");
+        cmdq_add_dir(dx, dy, 0);
+        break;
+    case MCMD_MOVE_DIR:
+        dir = xytodir(dx, dy);
+        cmdq_add_ec(`do_move_${move_dirnames[dir]}`); /* move_funcs[dir][MV_WALK] */
+        break;
+    case MCMD_RIDE:
+        cmdq_add_ec("doride");
+        cmdq_add_dir(dx, dy, 0);
+        break;
+    case MCMD_REMOVE_SADDLE:
+        /* cmdq_add_ec(do_reqmenu) (m-prefix for #loot: skip any floor
+           containers), cmdq_add_ec(doloot), cmdq_add_dir(), then
+           cmdq_add_key('y') answers "Do you want to remove saddle?"
+           through yn_function()'s command queue */
+        throw new Error('act_on_act(): queued yn_function() answer not ported yet');
+    case MCMD_APPLY_SADDLE:
+        if ((otmp = carrying(SADDLE)) != null) {
+            cmdq_add_ec("doapply");
+            cmdq_add_key(otmp.invlet);
+            cmdq_add_dir(dx, dy, 0);
+        }
+        break;
+    case MCMD_ATTACK_NEXT2U:
+        dir = xytodir(dx, dy);
+        cmdq_add_ec(`do_move_${move_dirnames[dir]}`); /* move_funcs[dir][MV_WALK] */
+        break;
+    case MCMD_TALK:
+        cmdq_add_ec("dotalk");
+        cmdq_add_dir(dx, dy, 0);
+        break;
+    case MCMD_NAME:
+        /* cmdq_add_ec(docallcmd); cmdq_add_key('m'); cmdq_add_dir(): the
+           direction is read by getpos() */
+        throw new Error('act_on_act(): queued direction for getpos() not ported yet');
+    case MCMD_QUAFF:
+        /* cmdq_add_ec(dodrink); cmdq_add_key('y') answers "Drink from the
+           fountain?" through yn_function()'s command queue */
+        throw new Error('act_on_act(): queued yn_function() answer not ported yet');
+    case MCMD_DIP:
+        /* cmdq_add_ec(dodip); cmdq_add_userinput(); cmdq_add_key('y') */
+        throw new Error('act_on_act(): queued user-input for dodip not ported yet');
+    case MCMD_SIT:
+        cmdq_add_ec("dosit");
+        break;
+    case MCMD_UP:
+        cmdq_add_ec("doup");
+        break;
+    case MCMD_DOWN:
+        cmdq_add_ec("dodown");
+        break;
+    case MCMD_DISMOUNT:
+        cmdq_add_ec("doride");
+        break;
+    case MCMD_MONABILITY:
+        cmdq_add_ec("domonability");
+        break;
+    case MCMD_PICKUP:
+        cmdq_add_ec("dopickup");
+        break;
+    case MCMD_LOOT:
+        cmdq_add_ec("doloot");
+        break;
+    case MCMD_TIP:
+        /* cmdq_add_ec(dotip); cmdq_add_key('y') answers "There is foo
+           here; tip it?" through yn_function()'s command queue */
+        throw new Error('act_on_act(): queued yn_function() answer not ported yet');
+    case MCMD_EAT:
+        /* cmdq_add_ec(doeat); cmdq_add_key('y') answers "There is foo
+           here; eat it?" through yn_function()'s command queue */
+        throw new Error('act_on_act(): queued yn_function() answer not ported yet');
+    case MCMD_DROP:
+        cmdq_add_ec("dodrop");
+        break;
+    case MCMD_INVENTORY:
+        cmdq_add_ec("ddoinv");
+        break;
+    case MCMD_REST:
+        cmdq_add_ec("donull");
+        break;
+    case MCMD_LOOK_HERE:
+        cmdq_add_ec("dolook");
+        break;
+    case MCMD_LOOK_AT:
+        if (!game.clicklook_cc)
+            game.clicklook_cc = { x: 0, y: 0 };
+        game.clicklook_cc.x = u.ux + dx;
+        game.clicklook_cc.y = u.uy + dy;
+        cmdq_add_ec("doclicklook");
+        break;
+    case MCMD_UNTRAP_HERE:
+        cmdq_add_ec("dountrap");
+        cmdq_add_dir(0, 0, 1);
+        break;
+    case MCMD_OFFER:
+        /* cmdq_add_ec(dosacrifice); cmdq_add_userinput() */
+        throw new Error('act_on_act(): queued user-input for dosacrifice not ported yet');
+    case MCMD_CAST_SPELL:
+        cmdq_add_ec("docast");
+        break;
+    default:
+        break;
+    }
+}
+
+// C ref: cmd.c there_cmd_menu() -- offer choice of actions to perform at
+// adjacent location <x,y>; a few choices can be farther away
+async function there_cmd_menu(x, y, mod) {
+    const u = game.u;
+    let ch = '\0';
+    let npick = 0, K = 0;
+    let picks = null;
+    /*int dx = sgn(x - u.ux), dy = sgn(y - u.uy);*/
+    const dx = x - u.ux, dy = y - u.uy;
+    const act = { v: MCMD_NOTHING };
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    if (u_at(x, y))
+        K += there_cmd_menu_self(win, x, y, act);
+    else if (next2u(x, y))
+        K += there_cmd_menu_next2u(win, x, y, mod, act);
+    else
+        K += there_cmd_menu_far(win, x, y, mod);
+    K += there_cmd_menu_common(win, x, y, mod, act);
+
+    if (!K) {
+        /* no menu options, try to move */
+        if (next2u(x, y) && await test_move(u.ux, u.uy, dx, dy, TEST_MOVE)) {
+            const dir = xytodir(dx, dy);
+
+            cmdq_add_ec(`do_move_${move_dirnames[dir]}`); /* move_funcs[dir][MV_WALK] */
+        } else if (game.flags.travelcmd) {
+            if (!game.iflags.travelcc)
+                game.iflags.travelcc = { x: 0, y: 0 };
+            game.iflags.travelcc.x = u.tx = x;
+            game.iflags.travelcc.y = u.ty = y;
+            cmdq_add_ec("dotravel_target");
+        }
+        npick = 0;
+        ch = '\0';
+    } else if (K === 1 && act.v !== MCMD_NOTHING && act.v !== MCMD_TRAVEL) {
+        await tty_destroy_nhwindow(win);
+
+        act_on_act(act.v, dx, dy);
+        return '\0';
+    } else {
+        tty_end_menu(win, "What do you want to do?");
+        const res = await tty_select_menu(win, PICK_ONE);
+        npick = res.n;
+        picks = res.selected;
+        ch = '\x1b';
+    }
+    await tty_destroy_nhwindow(win);
+    if (npick > 0) {
+        act_on_act(picks[0].item, dx, dy);
+        return '\0';
+    }
+    return ch;
+}
+
+// C ref: cmd.c here_cmd_menu()
+async function here_cmd_menu() {
+    await there_cmd_menu(game.u.ux, game.u.uy, CLICK_1);
+    return '\0';
 }
 
 /* C ref: mondata.h is_hider(), hides_under(), webmaker(), can_breathe(),
@@ -613,7 +1204,7 @@ function accept_menu_prefix(ec) {
 }
 
 // C ref: do.c donull() -- '.' command: do nothing == rest
-async function donull() {
+export async function donull() {
     if (await cmd_safety_prevention("Waiting", "a no-op (to rest)",
                                     "Are you waiting to get hit?",
                                     "did_nothing_flag"))
@@ -811,10 +1402,19 @@ function reset_cmd_vars(reset_cmdq) {
 
 const unavailcmd = (txt) => `Unavailable command '${txt}'.`;
 
-// C ref: cmd.c can_do_extcmd() -- the Lua NHCB_CMD_BEFORE callback isn't
-// ported (only the tutorial registers one)
+// C ref: cmd.c can_do_extcmd()
 async function can_do_extcmd(extcmd) {
     const ecflags = extcmd.flags;
+
+    if (game.luacore && nhcb_counts()[NHCB_CMD_BEFORE]) {
+        /* lua_getglobal(gl.luacore, "nh_callback_run");
+           nhl_pcall_handle(gl.luacore, 2, 1, "can_do_extcmd", NHLpa_panic) */
+        const ok = await game.luacore.globals.nh_callback_run(
+            nhcb_name[NHCB_CMD_BEFORE], extcmd.ef_txt);
+        if (!ok) { /* !lua_toboolean(gl.luacore, -1) */
+            return false;
+        }
+    }
 
     if (!game.flags?.debug && (ecflags & WIZMODECMD)) {
         await pline(unavailcmd(extcmd.ef_txt));
@@ -1465,6 +2065,27 @@ export function cmd_from_func(fn) {
     return ret;
 }
 
+// C ref: cmd.c cmd_from_ecname()
+/* return the visual interpretation of the key bound to an extended command,
+   or the ext cmd name if not bound to any key */
+export function cmd_from_ecname(ecname) {
+    let cmdnamebuf;
+
+    for (const extcmd of extcmdlist)
+        if (extcmd.ef_txt === ecname) {
+            const key = cmd_from_func(extcmd.ef_funct);
+
+            if (key)
+                cmdnamebuf = `${visctrl(key)}`;
+            else
+                cmdnamebuf = `#${ecname}`;
+            return cmdnamebuf;
+        }
+
+    cmdnamebuf = '';
+    return cmdnamebuf;
+}
+
 // C ref: cmd.c show_direction_keys()
 function show_direction_keys(win, centerchar, nodiag) {
     let buf;
@@ -1690,18 +2311,38 @@ export async function getdir(s) {
     const u = game.u;
     let dirsym, is_mov;
 
-    /* cmdq_pop(): queued directions aren't ported */
-    program_state().input_state = getdirInp;
-    dirsym = await tty_yn_function((s && s[0] !== '^') ? s : "In what direction?",
-                                   null, '\0');
-    if (typeof dirsym === 'string')
-        dirsym = dirsym.charCodeAt(0);
-    /* remove the prompt string so caller won't have to */
-    tty_clear_nhwindow(game.WIN_MESSAGE);
+    if (game.cmdq?.length) {
+        const cmdq = game.cmdq.shift(); /* cmdq_pop() */
+        if (cmdq.typ === 'dir') {
+            if (!cmdq.dirz) {
+                dirsym = sdir.charCodeAt(xytodir(cmdq.dirx, cmdq.diry));
+            } else {
+                /* gc.Cmd.dirchars[DIR_DOWN] '>' or [DIR_UP] '<' */
+                dirsym = sdir.charCodeAt((cmdq.dirz > 0) ? N_DIRS : N_DIRS + 1);
+            }
+        } else if (cmdq.typ === 'key') {
+            dirsym = cmdq.key.charCodeAt(0);
+        } else {
+            game.cmdq = []; /* cmdq_clear(CQ_CANNED) */
+            dirsym = 0;
+            impossible("getdir: command queue had no dir?");
+        }
+        /* goto got_dirsym */
+    } else {
+        program_state().input_state = getdirInp;
+        dirsym = await tty_yn_function((s && s[0] !== '^') ? s : "In what direction?",
+                                       null, '\0');
+        if (typeof dirsym === 'string')
+            dirsym = dirsym.charCodeAt(0);
+        /* remove the prompt string so caller won't have to */
+        tty_clear_nhwindow(game.WIN_MESSAGE);
 
-    if (dirsym === 0x12) /* redraw_cmd(): ^R */
-        throw new Error('getdir(): ^R redraw not ported yet');
-    /* cmdq_add_key(CQ_REPEAT, dirsym): ^A repeat isn't ported */
+        if (dirsym === 0x12) /* redraw_cmd(): ^R */
+            throw new Error('getdir(): ^R redraw not ported yet');
+        /* cmdq_add_key(CQ_REPEAT, dirsym): ^A repeat isn't ported */
+    }
+
+    /* got_dirsym: */
 
     const ch = String.fromCharCode(dirsym);
     if (ch === '.' || ch === 's') { /* NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2 */

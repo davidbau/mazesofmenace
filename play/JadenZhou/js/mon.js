@@ -43,7 +43,9 @@ import { m_at, sobj_at, is_pool, is_lava, may_passwall, accessible,
          In_endgame, is_placeholder, mbirth_limit, newmonhp,
          pm_to_cham } from './makemon.js';
 import { is_male, is_female, is_neuter, pm_invisible } from './mondata.js';
-import { set_mon_data } from './mondata.js';
+import { set_mon_data, emits_light } from './mondata.js';
+import { new_light_source, del_light_source, any_light_source } from './light.js';
+import { LS_MONSTER } from './const.js';
 import { Monnam, noit_mon_nam } from './do_name.js';
 import { m_dowear, which_armor, mon_break_armor } from './worn.js';
 import {
@@ -53,7 +55,8 @@ import {
     PM_PAPER_GOLEM, PM_STRAW_GOLEM, PM_IRON_GOLEM, PM_WOOD_GOLEM,
     PM_LEATHER_GOLEM, PM_STEAM_VORTEX, S_KOP,
 } from './monsters.js';
-import { t_at, TRAPNUM, fixed_tele_trap, m_harmless_trap } from './trap.js';
+import { t_at, TRAPNUM, fixed_tele_trap, m_harmless_trap, fire_damage_chain,
+         water_damage_chain as water_damage_chain_mn } from './trap.js';
 import { hastrack } from './track.js';
 import { mon_knows_traps } from './mondata.js';
 import { monsndx, is_flyer, is_floater, is_swimmer, passes_walls,
@@ -95,7 +98,8 @@ import { ceiling_hider } from './engrave.js';
 import { has_ceiling } from './insight.js';
 import { M_AP_FURNITURE, M_AP_OBJECT, ROOM } from './const.js';
 import { dead_species } from './mkobj.js';
-import { kill_egg, peek_timer, stop_timer, start_timer, obj_to_any } from './timeout.js';
+import { kill_egg, peek_timer, stop_timer, start_timer, obj_to_any,
+         monst_to_any } from './timeout.js';
 import { ZOMBIFY_MON, TIMER_OBJECT } from './const.js';
 import { relobj, thiefdead, mdrop_special_objs, discard_minvent } from './steal.js';
 import { dochugw, onscary, mon_regen, m_everyturn_effect,
@@ -375,9 +379,8 @@ function m_detach(mtmp, mptr, due_to_death) {
     if (mtmp.mleashed)
         throw new Error('m_detach(): m_unleash() not ported yet');
 
-    /* if (mx > 0 && emits_light(mptr)) del_light_source(): monster light
-       sources are never created (makemon.js), so there is none to delete */
-    void mptr;
+    if (mx > 0 && emits_light(mptr))
+        del_light_source(LS_MONSTER, monst_to_any(mtmp));
 
     mon_leaving_level(mtmp);
 
@@ -1343,9 +1346,10 @@ async function minliquid_core(mtmp) {
             if (DEADMONSTER(mtmp))
                 return 1;
         }
-        /* water_damage_chain(mtmp->minvent, FALSE) */
-        if (mtmp.minvent?.length)
-            throw new Error('minliquid(): water_damage_chain() not ported yet');
+        /* water_damage_chain(mtmp->minvent, FALSE): minvent in C's chain
+           order (newest first) */
+        await water_damage_chain_mn(mtmp.minvent ? mtmp.minvent.slice().reverse()
+                                                 : null, false);
         return 0;
     }
 
@@ -1396,7 +1400,12 @@ async function minliquid_core(mtmp) {
                        * and become a flyer so not need to teleport */
                 } else {
                     /* (likes_lava case is hypothetical) */
-                    throw new Error('minliquid(): fire_damage_chain() not ported yet');
+                    /* mtmp->minvent in C's chain order (newest first) */
+                    await fire_damage_chain(mtmp.minvent ? mtmp.minvent.slice().reverse()
+                                                         : null,
+                                            false, false, mtmp.mx, mtmp.my);
+                    if (!(await rloc(mtmp, RLOC_MSG)))
+                        throw new Error('minliquid(): deal_with_overcrowding() not ported yet');
                 }
                 return 0;
             }
@@ -1572,8 +1581,8 @@ export async function movemon() {
             break;
     }
 
-    /* if (any_light_source()) vision_full_recalc = 1: light sources
-       aren't ported yet */
+    if (any_light_source())
+        game.vision_full_recalc = 1; /* in case a mon moved w/ a light source */
     /* reset obj bypasses after last monster has moved */
     if (game.context.bypasses)
         clear_bypasses();
@@ -1959,8 +1968,13 @@ function* newcham_g(mtmp, mdat, ncflags) {
                      null, SUPPRESS_SADDLE, false);
         oldname = highc(oldname[0]) + oldname.slice(1);
     }
-    /* we need this one whether msg is true or not: l_oldname is only
-       used by the engulfing case, which isn't ported yet */
+    /* we need this one whether msg is true or not (under hallucination
+       x_monnam() draws a random name from the display rng); l_oldname is
+       only used by the engulfing case, which isn't ported yet */
+    const l_oldname = x_monnam(mtmp, ARTICLE_THE, null,
+                               has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+                               false);
+    void l_oldname;
 
     /* mdat = 0 -> caller wants a random monster shape */
     if (!mdat) {
@@ -2029,8 +2043,15 @@ function* newcham_g(mtmp, mdat, ncflags) {
     if (mtmp.mleashed)
         throw new Error('newcham(): leashed monsters not ported yet');
 
-    /* emits_light(olddata) != emits_light(mtmp->data): light sources
-       aren't ported yet */
+    if (emits_light(olddata) !== emits_light(mtmp.data)) {
+        /* used to give light, now doesn't, or vice versa,
+           or light's range has changed */
+        if (emits_light(olddata))
+            del_light_source(LS_MONSTER, monst_to_any(mtmp));
+        if (emits_light(mtmp.data))
+            new_light_source(mtmp.mx, mtmp.my, emits_light(mtmp.data),
+                             LS_MONSTER, monst_to_any(mtmp));
+    }
     if (!mtmp.perminvis || pm_invisible(olddata))
         mtmp.perminvis = pm_invisible(mdat);
     mtmp.minvis = mtmp.invis_blkd ? 0 : mtmp.perminvis;

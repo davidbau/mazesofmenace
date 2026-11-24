@@ -579,7 +579,7 @@ function mhitm_ad_phys(magr, mattk, mdef, mhm) {
             throw new Error('mhitm_ad_phys(): artifact_hit() not ported yet');
         if (mhm.damage)
             rustm(mdef, mwep);
-        if ((mwep.opoisoned || permapoisoned(mwep)) && !rn2(4))
+        if ((mwep.otrapped /* opoisoned */ || permapoisoned(mwep)) && !rn2(4))
             throw new Error('mhitm_ad_phys(): mhitm_really_poison() not ported yet');
     } else if (magr.data === mons[M.PM_PURPLE_WORM]
                && pd === mons[M.PM_SHRIEKER]) {

@@ -1457,7 +1457,7 @@ function mksobj_init(otmp, artif) {
         } else
             blessorcurse(otmp, 10);
         if (is_poisonable(otmp) && !rn2(100))
-            otmp.opoisoned = 1;
+            otmp.otrapped /* opoisoned */ = 1;
 
         if (artif && !rn2(20 + (10 * nartifact_exist()))) {
             /* mk_artifact() with otmp and A_NONE will never return NULL */
@@ -1725,7 +1725,7 @@ function mksobj_init(otmp, artif) {
 
     mkobj_erosions(otmp);
     if (permapoisoned(otmp))
-        otmp.opoisoned = 1;
+        otmp.otrapped /* opoisoned */ = 1;
 }
 
 // C ref: mkobj.c mksobj()

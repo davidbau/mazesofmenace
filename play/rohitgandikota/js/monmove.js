@@ -9,7 +9,7 @@ import { monsndx } from './makemon.js';
 import { mon_aligntyp } from './priest.js';
 import { is_obj_mappear } from './monst.js';
 import { Invis, Displaced, Underwater, Stealth, Aggravate_monster } from './youprop.js';
-import { artifact_light } from './artifact.js';
+import { artifact_light, has_magic_key } from './artifact.js';
 import { add_damage } from './shk.js';
 import { g_at } from './invent.js';
 import { bury_an_obj } from './dig.js';
@@ -46,7 +46,7 @@ import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE, LAVAWALL, STAIRS, LADDER, IRONBARS,
     WEB,
     P_DAGGER, P_KNIFE,
-    AM_SHRINE, Amask2align, ROOMOFFSET, ALLOW_MDISP, ALLOW_M, SHOPBASE,
+    AM_SHRINE, Amask2align, ROOMOFFSET, ALLOW_MDISP, ALLOW_M, ALLOW_ROCK, SHOPBASE,
     TEMPLE, RLOC_MSG, NC_SHOW_MSG, NO_NC_FLAGS
 , STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE } from './const.js';
 import { amorphous, passes_walls, is_floater, nonliving,
@@ -81,7 +81,7 @@ import {
 } from './dog.js';
 import {
     mfndpos, mon_allowflags, can_carry, t_at, m_at,
-    curr_mon_load, max_mon_load,
+    curr_mon_load, max_mon_load, maybe_unhide_at,
 } from './mon.js';
 import { MONSYMS, MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
 import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE,
@@ -905,9 +905,7 @@ export async function m_break_boulder(mtmp, x, y) {
             await pline_The('boulder falls apart.');
         }
 
-        /* fracture_rock() calls obfree() which calls dealloc_obj() and
-           an item not in hero's inventory can have its unpaid flag set;
-           if the boulder isn't already on the bill, don't charge for it */
+        // A floor boulder may still be unpaid; bill it before fracturing.
         if (otmp.unpaid) {
             await bill_dummy_object(otmp);
         }
@@ -1698,24 +1696,23 @@ async function msg_mon_movement(mtmp, omx, omy) {
 }
 
 
-// src/monmove.c:1720 m_move() — a non-tame monster's turn. The tame case is
-// dispatched to dog_move() above, exactly as C does at :1773.
+// src/monmove.c:1715 m_move(), choose movement and resolve the arrival.
 export async function m_move(mtmp, after) {
-    const ptr = mtmp.data;
-    const omx = mtmp.mx, omy = mtmp.my;
+    let omx = mtmp.mx, omy = mtmp.my;
 
     /* src/monmove.c:1733 — a monster that starts its turn already caught in
        a trap re-triggers it; postmov() handles the ARRIVAL case. */
     if (mtmp.mtrapped) {
         const { mintrap } = await import('./trap.js');
         const i = await mintrap(mtmp, 0 /* NO_TRAP_FLAGS */);
-        if (i === 3 /* Trap_Killed_Mon */) {
+        if (i === 2 /* Trap_Killed_Mon */) {
             newsym(mtmp.mx, mtmp.my);
             return MMOVE_DIED;
         }
         if (i === 1 /* Trap_Caught_Mon */)
             return MMOVE_NOTHING;   /* still in trap, so didn't move */
     }
+    const ptr = mtmp.data; /* mintrap can change the monster's form. */
 
     /* src/monmove.c:1745 — digest the meal. This is the ONLY per-turn
        countdown of meating, and m_move() is the common entry for pets too
@@ -1749,71 +1746,83 @@ export async function m_move(mtmp, after) {
        postmov(). Hostile monsters that need a pick can disable tunneling
        below when close enough to prefer a weapon. */
     let can_tunnel = !IRL_const(game.u.uz) && tunnels(ptr);
+    // src/monmove.c:1765, retain door capabilities across movement and arrival traps.
+    const can_open = !(nohands_mm(ptr) || verysmall_mm(ptr));
+    /* monhaskey(mtmp, TRUE): credit card ok for unlocking */
+    const can_unlock = ((can_open
+                         && (m_carrying(mtmp, ONAMES.CREDIT_CARD)
+                             || m_carrying(mtmp, ONAMES.SKELETON_KEY)
+                             || m_carrying(mtmp, ONAMES.LOCK_PICK)))
+                        || mtmp.iswiz || is_rider(ptr));
 
-    /* src/monmove.c:1772 — my dog gets special treatment. Routing pets here
-       rather than straight from dochug() is what puts them through the
-       mtrapped and meating blocks above, exactly as C does. */
-    if (mtmp.mtame)
-        return await postmov(mtmp, ptr, omx, omy,
-                             await dog_move(mtmp, after), seenflgs, can_tunnel);
-
-    // src/monmove.c:1778, attack a monster on the covetous goal square.
-    if (!mtmp.wormno && is_covetous(ptr)) {
-        const tx = mtmp.mgoal?.x ?? 0, ty = mtmp.mgoal?.y ?? 0;
-        const intruder = isok(tx, ty) ? m_at(tx, ty) : null;
-        if (intruder && intruder !== mtmp
-            && dist2(mtmp.mx, mtmp.my, tx, ty) <= 2) {
-            game.bhitpos = { x: tx, y: ty };
-            game.notonhead = intruder.mx !== tx || intruder.my !== ty;
-            const { mattackm } = await import('./mhitm.js');
-            const covetousattack = await mattackm(mtmp, intruder);
-            if (covetousattack & M_ATTK_AGR_DIED)
-                return MMOVE_DIED;
-            return await postmov(mtmp, ptr, omx, omy, MMOVE_MOVED,
-                                 seenflgs, can_tunnel);
-        }
-    }
-
-    /* src/monmove.c:1806 — likewise for shopkeeper, guard, or priest */
-    if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
-        let xm;
-        if (mtmp.isshk) {
-            const { shk_move } = await import('./shk.js');
-            xm = await shk_move(mtmp);
-        } else if (mtmp.isgd) {
-            const { gd_move } = await import('./vault.js');
-            xm = await gd_move(mtmp);
-        } else {
-            const { pri_move } = await import('./priest.js');
-            xm = await pri_move(mtmp);
-        }
-        switch (xm) {
-        case -2:
-            return MMOVE_DIED;
-        case -1:
-            break;      /* shk follows hero outside shop: normal AI */
-        default:
-        case 0:
-        case 1:
+    // src/monmove.c:1769, long worms skip special movement even when tame.
+    if (!mtmp.wormno) {
+        /* src/monmove.c:1772 — my dog gets special treatment. Routing pets here
+           rather than straight from dochug() is what puts them through the
+           mtrapped and meating blocks above, exactly as C does. */
+        if (mtmp.mtame)
             return await postmov(mtmp, ptr, omx, omy,
-                                 (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED,
-                                 seenflgs, can_tunnel);
-        }
-    }
+                                 await dog_move(mtmp, after), seenflgs,
+                                 can_tunnel, can_unlock, can_open);
 
-    /* src/monmove.c:1840. A tengu checks for spontaneous teleportation on
-       every ordinary move, even when the roll says to stay put. */
-    if (mtmp.mnum === PMNAMES.PM_TENGU && !rn2(5) && !mtmp.mcan) {
-        const { rloc, tele_restrict } = await import('./teleport.js');
-        if (!await tele_restrict(mtmp)) {
-            if (mtmp.mhp < 7 || mtmp.mpeaceful || rn2(2)) {
-                await rloc(mtmp, RLOC_MSG);
-            } else {
-                const { mnexto } = await import('./mon.js');
-                await mnexto(mtmp, RLOC_MSG);
+        // src/monmove.c:1778, attack a monster on the covetous goal square.
+        if (is_covetous(ptr)) {
+            const tx = mtmp.mgoal?.x ?? 0, ty = mtmp.mgoal?.y ?? 0;
+            const intruder = isok(tx, ty) ? m_at(tx, ty) : null;
+            if (intruder && intruder !== mtmp
+                && dist2(mtmp.mx, mtmp.my, tx, ty) <= 2) {
+                game.bhitpos = { x: tx, y: ty };
+                game.notonhead = intruder.mx !== tx || intruder.my !== ty;
+                const { mattackm } = await import('./mhitm.js');
+                const covetousattack = await mattackm(mtmp, intruder);
+                if (covetousattack & M_ATTK_AGR_DIED)
+                    return MMOVE_DIED;
+                return await postmov(mtmp, ptr, omx, omy, MMOVE_MOVED,
+                                     seenflgs, can_tunnel, can_unlock, can_open);
             }
-            return await postmov(mtmp, ptr, omx, omy, MMOVE_MOVED,
-                                 seenflgs, can_tunnel);
+        }
+
+        /* src/monmove.c:1806 — likewise for shopkeeper, guard, or priest */
+        if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
+            let xm;
+            if (mtmp.isshk) {
+                const { shk_move } = await import('./shk.js');
+                xm = await shk_move(mtmp);
+            } else if (mtmp.isgd) {
+                const { gd_move } = await import('./vault.js');
+                xm = await gd_move(mtmp);
+            } else {
+                const { pri_move } = await import('./priest.js');
+                xm = await pri_move(mtmp);
+            }
+            switch (xm) {
+            case -2:
+                return MMOVE_DIED;
+            case -1:
+                break;      /* shk follows hero outside shop: normal AI */
+            default:
+            case 0:
+            case 1:
+                return await postmov(mtmp, ptr, omx, omy,
+                                     (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED,
+                                     seenflgs, can_tunnel, can_unlock, can_open);
+            }
+        }
+
+        /* src/monmove.c:1840. A tengu checks for spontaneous teleportation on
+           every ordinary move, even when the roll says to stay put. */
+        if (mtmp.mnum === PMNAMES.PM_TENGU && !rn2(5) && !mtmp.mcan) {
+            const { rloc, tele_restrict } = await import('./teleport.js');
+            if (!await tele_restrict(mtmp)) {
+                if (mtmp.mhp < 7 || mtmp.mpeaceful || rn2(2)) {
+                    await rloc(mtmp, RLOC_MSG);
+                } else {
+                    const { mnexto } = await import('./mon.js');
+                    await mnexto(mtmp, RLOC_MSG);
+                }
+                return await postmov(mtmp, ptr, omx, omy, MMOVE_MOVED,
+                                     seenflgs, can_tunnel, can_unlock, can_open);
+            }
         }
     }
 
@@ -1822,6 +1831,9 @@ export async function m_move(mtmp, after) {
     if (game.u.uswallow && !mtmp.mflee && game.u.ustuck !== mtmp)
         return MMOVE_MOVED;
 
+    // src/monmove.c:1853, a special mover can relocate before falling back.
+    omx = mtmp.mx;
+    omy = mtmp.my;
     let ggx = mtmp.mux, ggy = mtmp.muy;
     const prange = { min: 0, max: 0 };
     let appr = mtmp.mflee ? -1 : 1;
@@ -1895,7 +1907,7 @@ export async function m_move(mtmp, after) {
         if (m_search_items(mtmp, goal, st)) {
             /* src/monmove.c:1799 — C returns through postmov() here too. */
             return await postmov(mtmp, ptr, omx, omy, MMOVE_DONE,
-                                 seenflgs, can_tunnel);
+                                 seenflgs, can_tunnel, can_unlock, can_open);
         }
         ggx = goal.x; ggy = goal.y; appr = st.appr;
     }
@@ -1996,6 +2008,10 @@ export async function m_move(mtmp, after) {
             mmoved = MMOVE_MOVED;
         }
     }
+    // src/monmove.c:1987, a held monster cannot step away from a sticky hero.
+    if (mmoved === MMOVE_MOVED && !u_at(nix, niy) && await itsstuck(mtmp))
+        return MMOVE_DONE;
+
     if (mmoved === MMOVE_MOVED
         && await m_digweapon_check(mtmp, nix, niy)) {
         return MMOVE_DONE;
@@ -2037,6 +2053,11 @@ export async function m_move(mtmp, after) {
         // src/monmove.c:2039, update the selected region membership.
         if (!(await m_in_out_region(mtmp, nix, niy)))
             return MMOVE_DONE;
+        // src/monmove.c:2042, break the obstruction before moving.
+        if ((mfp.info[chi] & ALLOW_ROCK) && m_can_break_boulder(mtmp)) {
+            await m_break_boulder(mtmp, nix, niy);
+            return MMOVE_DONE;
+        }
         /* src/monmove.c:2047 — postmove effects run BEFORE the location
            changes (monsters have no "previous location" field) */
         await m_postmove_effect(mtmp);
@@ -2049,7 +2070,7 @@ export async function m_move(mtmp, after) {
         // src/monmove.c:2057, reconnect the moved head to its tail.
         if (mtmp.wormno)
             worm_move(mtmp);
-        maybe_unhide_at_mon(mtmp);
+        maybe_unhide_at(mtmp.mx, mtmp.my);
         /* the newsym for the vacated square is in postmov(), not here --
            src/monmove.c:1508 sits inside postmov so that EVERY path returning
            through it redraws, including dog_move's at :1773. */
@@ -2072,21 +2093,8 @@ export async function m_move(mtmp, after) {
             worm_nomove(mtmp);
     }
 
-    return await postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel);
-}
-
-// src/mon.c:4698 maybe_unhide_at(), monster arm. A concealed monster which
-// leaves its covering object must be revealed before postmov() decides
-// whether to roll for hiding again at the destination.
-export function maybe_unhide_at_mon(mtmp) {
-    if (!mtmp.mundetected)
-        return;
-    const ptr = game.mons[mtmp.mnum];
-    const obj = game.level.objectAt(mtmp.mx, mtmp.my);
-    if ((hides_under(ptr)
-         && (!obj || mtmp.mtrapped || !can_hide_under_obj(obj)))
-        || (ptr.mlet === MONSYMS.S_EEL && !is_pool(mtmp.mx, mtmp.my)))
-        hideunder(mtmp);
+    return await postmov(mtmp, ptr, omx, omy, mmoved,
+                         seenflgs, can_tunnel, can_unlock, can_open);
 }
 
 // src/monmove.c:1108 m_digweapon_check() lets a tunneling monster ready the
@@ -2175,15 +2183,9 @@ export function should_displace(mtmp, data, ggx, ggy, cnt) {
            && (shortest_with < shortest_without || !count_without);
 }
 
-// src/monmove.c:1455 postmov() — everything a monster does after arriving.
-//
-// This is a SEPARATE FUNCTION in C, not the tail of m_move, and m_move returns
-// through it from five different places (:1773, :1799, :1823, :1847, :1907).
-// Writing it as a tail meant every early return skipped it, which is why
-// wiring meatmetal() in changed nothing: the block was there but unreachable
-// on the paths that mattered. :1773 is the pet path, so dog_move()'s result
-// goes through here too.
-async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel) {
+// src/monmove.c:1455 postmov(), resolve arrival traps, terrain and floor objects.
+async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
+                       can_tunnel, can_unlock, can_open) {
     notice_mon(mtmp); /* src/monmove.c:1470 */
     await notice_all_mons_flush();
 
@@ -2242,26 +2244,16 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel) {
         }
         ptr = mtmp.data; /* in case mintrap() caused polymorph */
 
-        /* src/monmove.c:1520 — open a door, or crash through it, if 'mtmp'
-           can. can_tunnel is the effective movement decision from m_move();
-           unlike the other predicates, it can be disabled near the hero. */
+        /* src/monmove.c:1520, use the door capabilities retained by m_move. */
         const here = game.level.at(mtmp.mx, mtmp.my);
-        const can_open = !(nohands_mm(ptr) || verysmall_mm(ptr));
-        /* monhaskey(mtmp, TRUE): credit card ok for unlocking */
-        const can_unlock = ((can_open
-                             && (m_carrying(mtmp, ONAMES.CREDIT_CARD)
-                                 || m_carrying(mtmp, ONAMES.SKELETON_KEY)
-                                 || m_carrying(mtmp, ONAMES.LOCK_PICK)))
-                            || mtmp.iswiz);
         if (here && DOOR === here.typ /* IS_DOOR */
             && !passes_walls(ptr) && !can_tunnel) {
-            const btrapped = (here.doormask & D_TRAPPED) !== 0;
+            let btrapped = (here.doormask & D_TRAPPED) !== 0;
             /* src/monmove.c:1467 — canseeit is taken before the door
                changes; UnblockDoor() below refreshes it */
             let canseeit = cansee(mtmp.mx, mtmp.my);
             const didseeit = canseeit;
 
-            /* magic-key disarm: no monster carries the Key yet */
             /* src/monmove.c:1528 UnblockDoor(): used after monster 'who'
                has been moved to closed door spot 'where' which will now be
                changed to door state 'what' with map update */
@@ -2273,12 +2265,19 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel) {
                 /* update cached value since it might change */
                 canseeit = didseeit || cansee(mtmp.mx, mtmp.my);
             };
+            /* src/monmove.c:1539, the Key silently disarms even when the
+               monster will squeeze under or smash through the door. */
+            if (btrapped && has_magic_key(mtmp)) {
+                here.doormask &= ~D_TRAPPED;
+                btrapped = false;
+            }
             if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0
                 && amorphous(ptr)) {
                 if (game.flags?.verbose && canseemon(mtmp))
                     await pline(`${Monnam(mtmp)} ${
-                        ptr.mlet === MONSYMS.S_LIGHT ? 'flows'
-                                                     : 'oozes'} under the door.`);
+                        (ptr === game.mons[PMNAMES.PM_FOG_CLOUD]
+                         || ptr.mlet === MONSYMS.S_LIGHT) ? 'flows'
+                                                          : 'oozes'} under the door.`);
             } else if ((here.doormask & D_LOCKED) !== 0 && can_unlock) {
                 if (btrapped) {
                     await openit(D_NODOOR);

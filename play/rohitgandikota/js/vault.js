@@ -9,24 +9,26 @@ import {
 import { PMNAMES } from './monst_data.js';
 import { hidden_gold, money_cnt, obj_extract_self, sobj_at,
          stackobj } from './invent.js';
-import { canspotmon, map_background, mon_visible, more, newsym,
+import { canspotmon, map_background, map_invisible, mon_visible, more, newsym,
          pline } from './display.js';
 import { getlin } from './cmd.js';
 import { mungspaces } from './hacklib.js';
 import { Monnam, noit_Monnam, noit_mon_nam, pmname,
          x_monnam } from './do_name.js';
-import { makeplural } from './objnam.js';
+import { makeplural, mimic_obj_name } from './objnam.js';
 import { adjalign } from './attrib.js';
 import { block_point, cansee, couldsee, recalc_block_point,
          unblock_point } from './vision.js';
 import { rn2 } from './rng.js';
 import { distmin, isok } from './hacklib.js';
-import { is_fainted } from './eat.js';
+import { is_fainted, reset_faint } from './eat.js';
 import { ONAMES } from './objects_data.js';
-import { m_carrying, mnexto, mongone } from './mon.js';
+import { m_carrying, mnexto, mongone, setmangry } from './mon.js';
+import { MON_WEP } from './monst.js';
+import { mon_wield_item } from './weapon.js';
 import { del_engr, engr_at } from './engrave.js';
 import { place_object } from './mkobj.js';
-import { You, You_hear, Your, pline_The } from './pline.js';
+import { You, You_hear, Your, pline_The, verbalize } from './pline.js';
 import { currency, freeinv } from './invent.js';
 import { make_grave } from './mklev.js';
 import { OCLASSES } from './objects_data.js';
@@ -35,7 +37,8 @@ import {
     A_LAWFUL, COLNO, ROWNO, ROOMOFFSET, VAULT, VAULT_GUARD_TIME,
     ROOM, STONE, CORR, SCORR, HWALL, VWALL, DOOR, D_NODOOR, IS_WALL,
     IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE, ARTICLE_A, BLCORNER,
-    BRCORNER, RLOC_MSG, TLCORNER, TRCORNER,
+    BRCORNER, RLOC_MSG, TLCORNER, TRCORNER, M_AP_TYPE, M_AP_OBJECT,
+    NEED_HTH_WEAPON,
 } from './const.js';
 import { relobj } from './steal.js';
 import { m_into_limbo } from './mon.js';
@@ -43,7 +46,8 @@ import { fracture_rock } from './zap.js';
 import { simpleonames } from './objnam.js';
 import { an } from './objnam.js';
 import { You_see } from './pline.js';
-import { Blind } from './youprop.js';
+import { Blind, Deaf } from './youprop.js';
+import { noit_mhis, sticks, is_silent, mhe } from './mondata.js';
 
 
 export function vault_occupied(urooms) {
@@ -420,21 +424,22 @@ export async function gd_move(guard) {
     if (egd.fcend === 1) {
         if (u_in_vault
             && (u_carry_gold || distmin(u.ux, u.uy, guard.mx, guard.my) > 1)) {
-            if (egd.warncnt === 3) {
+            if (egd.warncnt === 3 && !Deaf()) {
                 const request = `${u_carry_gold
                     ? (!umoney ? 'drop that hidden gold and '
                                : 'drop that gold and ')
                     : ''}follow me!`;
                 if (egd.dropgoldcnt || !u_carry_gold)
-                    await pline(`"I repeat, ${request}"`);
+                    await verbalize(`I repeat, ${request}`);
                 else
-                    await pline(`"${request[0].toUpperCase()}${request.slice(1)}"`);
+                    await verbalize(`${request[0].toUpperCase()}${request.slice(1)}`);
                 if (u_carry_gold)
                     egd.dropgoldcnt++;
             }
             if (egd.warncnt === 7) {
                 const x = guard.mx, y = guard.my;
-                await pline('"You\'ve been warned, knave!"');
+                if (!Deaf())
+                    await verbalize("You've been warned, knave!");
                 guard.mpeaceful = 0;
                 await mnexto(guard, 0);
                 const entry = game.level.at(x, y);
@@ -457,7 +462,8 @@ export async function gd_move(guard) {
                 guard.mpeaceful = 0;
                 return -1;
             }
-            await pline('"Well, begone."');
+            if (!Deaf())
+                await verbalize('Well, begone.');
             egd.gddone = 1;
             return gd_move_cleanup(guard, semi_dead, false);
         }
@@ -467,10 +473,22 @@ export async function gd_move(guard) {
         && (in_fcorridor(guard, u.ux, u.uy) || u_in_vault)) {
         if (egd.warncnt < 6) {
             egd.warncnt = 6;
-            await pline('"Drop all your gold, scoundrel!"');
+            if (Deaf()) {
+                if (!Blind())
+                    await pline(`${noit_Monnam(guard)} holds out ${
+                        noit_mhis(guard)} palm demandingly!`);
+            } else {
+                await verbalize('Drop all your gold, scoundrel!');
+            }
             return 0;
         }
-        await pline('"So be it, rogue!"');
+        if (Deaf()) {
+            if (!Blind())
+                await pline(`${noit_Monnam(guard)} rubs ${
+                    noit_mhis(guard)} hands with enraged delight!`);
+        } else {
+            await verbalize('So be it, rogue!');
+        }
         guard.mpeaceful = 0;
         return -1;
     }
@@ -486,8 +504,9 @@ export async function gd_move(guard) {
     }
 
     if (distmin(u.ux, u.uy, guard.mx, guard.my) > 1 || egd.gddone) {
-        if (!egd.gddone && !rn2(10) && !u.uswallow)
-            await pline('"Move along!"');
+        if (!egd.gddone && !rn2(10) && !Deaf() && !u.uswallow
+            && !(u.ustuck && !sticks(game.youmonst.data)))
+            await verbalize('Move along!');
         await restfakecorr(guard);
         return 0;
     }
@@ -665,7 +684,8 @@ export async function invault() {
     }
 
     const deaths = game.mvitals?.[PMNAMES.PM_GUARD]?.died || 0;
-    if (deaths < 2)
+    if (deaths < 2
+        || (deaths < 50 && !rn2(deaths * deaths)))
         u.uinvault = (u.uinvault | 0) + 1;
     if ((u.uinvault | 0) < VAULT_GUARD_TIME
         || u.uinvault % (VAULT_GUARD_TIME / 2) !== 0)
@@ -693,6 +713,7 @@ export async function invault() {
     });
     u.uinvault++;
 
+    await reset_faint();
     /* if there are any boulders in the guard's way, destroy them;
        perhaps the guard knows a touch equivalent of force bolt;
        otherwise the hero wouldn't be able to push one to follow the
@@ -712,12 +733,39 @@ export async function invault() {
         await func(`${(bcnt === 1) ? an(bname) : makeplural(bname)} shatter.`);
     }
 
-    if (canspotmon(guard)) {
+    const spotted = canspotmon(guard);
+    if (spotted) {
         await pline(`Suddenly one of the Vault's ${
             makeplural(pmname(guard.data, guard.female ? 1 : 0))} enters!`);
         newsym(guard.mx, guard.my);
     } else {
         await pline('Someone else has entered the Vault.');
+        map_invisible(guard.mx, guard.my);
+    }
+
+    if (u.uswallow) {
+        if (!Deaf())
+            await verbalize("What's going on here?");
+        if (!spotted)
+            await pline_The('other presence vanishes.');
+        await mongone(guard);
+        return;
+    }
+    if (M_AP_TYPE(game.youmonst) === M_AP_OBJECT || u.uundetected) {
+        if (M_AP_TYPE(game.youmonst) === M_AP_OBJECT
+            && game.youmonst.mappearance !== ONAMES.GOLD_PIECE && !Deaf())
+            await verbalize(`Hey!  Who left that ${mimic_obj_name(game.youmonst)} in here?`);
+        await pline(`Puzzled, ${mhe(guard)} turns around and leaves.`);
+        await mongone(guard);
+        return;
+    }
+    if (u.intrinsic?.HStrangled || is_silent(game.youmonst.data) || game.multi < 0) {
+        if (Deaf())
+            await pline(`${noit_Monnam(guard)} huffs and turns to leave.`);
+        else
+            await verbalize("I'll be back when you're ready to speak to me!");
+        await mongone(guard);
+        return;
     }
 
     const { stop_occupation } = await import('./allmain.js');
@@ -729,7 +777,9 @@ export async function invault() {
 
     let buf = '';
     for (let tries = 5; !buf && tries > 0; tries--)
-        buf = mungspaces(await getlin('"Hello stranger, who are you?" -'));
+        buf = mungspaces(await getlin(Deaf()
+            ? 'You are required to supply your name. -'
+            : '"Hello stranger, who are you?" -'));
 
     if (u.ualign?.type === A_LAWFUL
         && !buf.toLowerCase().startsWith((game.plname || '').toLowerCase()))
@@ -739,25 +789,62 @@ export async function invault() {
     if (identity === 'croesus' || identity === 'kroisos'
         || identity === 'creosote') {
         if (!(game.mvitals?.[PMNAMES.PM_CROESUS]?.died || 0)) {
-            await pline('"Oh, yes, of course.  Sorry to have disturbed you."');
+            if (Deaf()) {
+                if (!Blind())
+                    await pline(`${noit_Monnam(guard)} waves goodbye.`);
+            } else {
+                await verbalize('Oh, yes, of course.  Sorry to have disturbed you.');
+            }
             await mongone(guard);
         } else {
-            guard.mpeaceful = 0;
-            await pline('"Back from the dead, are you?  I\'ll remedy that!"');
+            await setmangry(guard, false);
+            if (Deaf()) {
+                if (!Blind())
+                    await pline(`${noit_Monnam(guard)} mouths something and looks very angry!`);
+            } else {
+                await verbalize('Back from the dead, are you?  I\'ll remedy that!');
+            }
+            /* don't want guard to waste next turn wielding a weapon */
+            if (!MON_WEP(guard)) {
+                guard.weapon_check = NEED_HTH_WEAPON;
+                await mon_wield_item(guard);
+            }
         }
         return;
     }
 
-    await pline('"I don\'t know you."');
+    if (Deaf()) {
+        await pline(`${noit_Monnam(guard)} doesn't ${
+            Blind() ? '' : 'appear to '}recognize you.`);
+    } else {
+        await verbalize('I don\'t know you.');
+    }
     const umoney = money_cnt(game.invent);
     const concealed = hidden_gold(game.invent, true);
     if (!umoney && !concealed) {
-        await pline('"Please follow me."');
+        if (Deaf()) {
+            await pline(`${noit_Monnam(guard)} stomps${Blind() ? '' : ' and beckons'}.`);
+        } else {
+            await verbalize('Please follow me.');
+        }
     } else {
-        if (!umoney)
-            await pline('"You have hidden gold."');
-        await pline('"Most likely all your gold was stolen from this vault."');
-        await pline('"Please drop that gold and follow me."');
+        if (!umoney) {
+            if (Deaf()) {
+                if (!Blind())
+                    await pline(`${noit_Monnam(guard)} glares at you${
+                        game.invent.length ? 'r stuff' : ''}.`);
+            } else {
+                await verbalize('You have hidden gold.');
+            }
+        }
+        if (Deaf()) {
+            if (!Blind())
+                await pline(`${noit_Monnam(guard)} holds out ${
+                    noit_mhis(guard)} palm and beckons with ${noit_mhis(guard)} other hand.`);
+        } else {
+            await verbalize('Most likely all your gold was stolen from this vault.');
+            await verbalize('Please drop that gold and follow me.');
+        }
         guard.mextra.egd.dropgoldcnt++;
     }
     finish_guard_corridor(guard, roomidx, goal, entry);

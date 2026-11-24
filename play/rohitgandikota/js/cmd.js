@@ -3879,11 +3879,7 @@ export function reset_occupations() {
     reset_trapset();
 }
 
-// src/cmd.c:431 cmdq_clear() — drop every queued command in queue `q`.
-//
-// C walks a linked list and frees it; the queue is an array here, so emptying
-// it is the whole function. The port has no producer for the queue yet, so
-// this clears an empty list exactly as C does when nothing is queued.
+// src/cmd.c:431 cmdq_clear(), discard the selected command queue.
 export function cmdq_clear(q) {
     (game.command_queue ||= [])[q] = null;
 }

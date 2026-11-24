@@ -5,9 +5,14 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
+import { gc, gs, svd, u } from './decl.js';
 import { S } from './defsym.h.js';
+import { on_level } from './dungeon.js';
 import { MAXTCHARS } from './sym.h.js';
 
+export function DARKROOMSYM() {
+    return (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.stone : S.darkroom;
+}
 export function is_cmap_trap(i) {
     return i >= S.arrow_trap && i < S.arrow_trap + MAXTCHARS ? 1 : 0;
 }
@@ -37,4 +42,7 @@ export function is_cmap_lava(i) {
 }
 export function is_cmap_engraving(i) {
     return i === S.engroom || i === S.engrcorr ? 1 : 0;
+}
+export function SYMHANDLING(ht) {
+    return gs.symset[gc.currentgraphics].handling === ht ? 1 : 0;
 }

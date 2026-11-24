@@ -2487,6 +2487,9 @@ function _levtele_addinv(obj) {
     return obj;
 }
 
+const MAC_LCHOICE_PLAYERLEV_RESIDUE = 1;
+const MAC_LCHOICE_DGN_RESIDUE = 0;
+
 // Render print_dungeon's menu, run the PICK_ONE paging loop, and return the
 // selection.  Returns { newlev, dnum, dlevel } on a pick (newlev = depth), or
 // null on ESC / no selection.  Consumes NO RNG (pure menu).
@@ -2783,14 +2786,18 @@ async function print_dungeon_menu() {
             if (npages > 0 && pageIdx !== npages - 1) { pageIdx = npages - 1; row0Erased = false; }
             continue;
         }
-        /* C wintty.c:1424,1755 + dungeon.c:2372-2374: a cannotreach row's letter is
-         * still in resp; PICK_ONE finishes with an a_int == 0 item, so
-         * idx = -1 and lchoices.playerlev[-1] (the stack byte before the array)
-         * is read; the recording shows it as 0, i.e. no teleport. */
         if (ch && !pageHasLetter(pageIdx, ch)) {
             const s0 = pageIdx * PER_PAGE, e0 = Math.min(s0 + PER_PAGE, lines.length);
             for (let i = s0; i < e0; i++)
-                if (deadAccel[i] === ch) { await _dismissMenu(); return null; }
+                if (deadAccel[i] === ch) {
+                    await _dismissMenu();
+                    return {
+                        newlev: MAC_LCHOICE_PLAYERLEV_RESIDUE,
+                        dnum: MAC_LCHOICE_DGN_RESIDUE,
+                        dlevel: 0, /* lev[-1]: high byte of idx */
+                        overlay: !!overlayLines,
+                    };
+                }
         }
         if (ch && pageHasLetter(pageIdx, ch)) {
             const idx = accel.get(ch);

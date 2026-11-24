@@ -630,7 +630,9 @@ function tre_add_tags(mem, stack, tree, tnfa) {   // tre-compile.c:394
                                                     break;
                                                 }
                                                 if (regset_contains === 1 && tag !== 0) {
-                                                    $h.u32[($h.u32[(tnfa + 32) >>> 2] + tag * 4) >>> 2] = (($h.u32[(iter + 16) >>> 2] >>> 0) & 1 | 0 ? 0 /* TRE_TAG_MINIMIZE */ : 2 /* TRE_TAG_LEFT_MAXIMIZE */) >>> 0;
+                                                    $h.u32[($h.u32[(tnfa + 32) >>> 2] + tag * 4) >>> 2] = (($h.u32[(iter + 16) >>> 2] >>> 0) & 1 | 0 ?
+                                                        0 /* TRE_TAG_MINIMIZE */ :
+                                                        2 /* TRE_TAG_LEFT_MAXIMIZE */) >>> 0;
                                                 } else {
                                                     $h.u32[($h.u32[(tnfa + 32) >>> 2] + tag * 4) >>> 2] = direction;
                                                 }
@@ -667,7 +669,9 @@ function tre_add_tags(mem, stack, tree, tnfa) {   // tre-compile.c:394
                                         /* For the top union, walk the tree of consecutive unions,
                                                        * setting the left_tag and right_tag values in increasing
                                                        * order (left to right priority) */
-                                        if (top_union && $h.u32[(node + 56) >>> 2] - (($h.i32[(node + 52) >>> 2] >= 0 && $h.i32[(node + 52) >>> 2] < 1073741824 ? 1 : 0) >>> 0) >>> 0 > 0) {
+                                        if (top_union &&
+                                            $h.u32[(node + 56) >>> 2] - (($h.i32[(node + 52) >>> 2] >= 0 &&
+                                            $h.i32[(node + 52) >>> 2] < 1073741824 ? 1 : 0) >>> 0) >>> 0 > 0) {
                                             last = tre_stack_num_items(stack);
                                             do {
                                                 status = tre_stack_push_voidptr(stack, node);
@@ -1247,7 +1251,9 @@ function tre_add_tags(mem, stack, tree, tnfa) {   // tre-compile.c:394
                     for (i$5 = 0; i$5 < ($h.u32[(tnfa + 72) >>> 2] | 0); i$5 = i$5 + 1 | 0) {
                         /* TRE_DEBUG */
                         $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8) >>> 2] = $h.i32[(to_reorder + $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8) >>> 2] * 4) >>> 2];
-                        $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8 + 4) >>> 2] = $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8 + 4) >>> 2] >>> 0 < num_tags ? $h.i32[(to_reorder + $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8 + 4) >>> 2] * 4) >>> 2] : $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8 + 4) >>> 2];
+                        $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8 + 4) >>> 2] = $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8 + 4) >>> 2] >>> 0 < num_tags ?
+                            $h.i32[(to_reorder + $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8 + 4) >>> 2] * 4) >>> 2] :
+                            $h.i32[($h.u32[(tnfa + 24) >>> 2] + i$5 * 8 + 4) >>> 2];
                         do {
                         } while (0, 0);
                     }
@@ -1269,7 +1275,9 @@ function tre_add_tags(mem, stack, tree, tnfa) {   // tre-compile.c:394
                     do {
                     } while (0, 0);
                     for (i$5 = 0; $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2] >= 0; i$5 = i$5 + 1 | 0) {
-                        $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2] = $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2] >>> 0 < num_tags ? $h.i32[(to_reorder + $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2] * 4) >>> 2] : $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2];
+                        $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2] = $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2] >>> 0 < num_tags ?
+                            $h.i32[(to_reorder + $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2] * 4) >>> 2] :
+                            $h.i32[($h.u32[(tnfa + 40) >>> 2] + i$5 * 4) >>> 2];
                     }
                     do {
                     } while (0, 0);
@@ -1576,7 +1584,9 @@ function tre_copy_ast(mem, stack, ast, flags, pos_add, tag_directions, copy, max
                             pos = $h.i32[(lit + 8) >>> 2];
                             min = $h.i32[lit >>> 2];
                             max = $h.i32[(lit + 4) >>> 2];
-                            list = !($h.i32[lit >>> 2] < 0) ? $h.u32[(lit + 16) >>> 2] : 0;
+                            list = !($h.i32[lit >>> 2] < 0) ?
+                                $h.u32[(lit + 16) >>> 2] :
+                                0;
                             if (!($h.i32[lit >>> 2] < 0) || $h.i32[lit >>> 2] === -4) {
                                 /* XXX - e.g. [ab] has only one position but two
                                                  nodes, so we are creating holes in the state space
@@ -1587,7 +1597,8 @@ function tre_copy_ast(mem, stack, ast, flags, pos_add, tag_directions, copy, max
                                 /* Change this tag to empty. */
                                 min = -1;
                                 max = pos = -1;
-                            } else if ($h.i32[lit >>> 2] === -3 && flags & 2 && first_tag) {
+                            } else if ($h.i32[lit >>> 2] === -3 && flags & 2
+                                && first_tag) {
                                 /* Maximize the first tag. */
                                 if ($h.u32[(tag_directions + $c.idx(max) * 4) >>> 2] === 2) {
                                     $h.u32[(tag_directions + $c.idx(max) * 4) >>> 2] = 1;
@@ -1931,7 +1942,9 @@ function tre_expand_ast(mem, stack, ast, tag_directions, max_depth) {   // tre-c
                             /* Create a catenated sequence of copies of the node. */
                             for (j = 0; j < $h.i32[(iter$2 + 8) >>> 2]; j = j + 1 | 0) {
                                 /* Remove tags from all but the last copy. */
-                                flags = (j + 1 | 0) < $h.i32[(iter$2 + 8) >>> 2] ? 1 : 2;
+                                flags = (j + 1 | 0) < $h.i32[(iter$2 + 8) >>> 2]
+                                    ? 1
+                                    : 2;
                                 do {
                                 } while (0, 0);
                                 pos_add_save = $h.i32[$fp >>> 2];

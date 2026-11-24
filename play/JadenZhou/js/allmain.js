@@ -11,7 +11,13 @@ import { LL_ACHIEVE } from './const.js';
 import { clear_bypasses } from './worn.js';
 import { rn2, rnd } from './rng.js';
 import { mklev, u_on_upstairs } from './mklev.js';
-import { l_nhcore_init } from './nhlua.js';
+import { l_nhcore_init, nhcb_counts, nhcb_name } from './nhlua.js';
+import { NHCB_END_TURN } from './const.js';
+import { fumaroles, movebubbles } from './mkmaze.js';
+import { amulet } from './wizard.js';
+import { makewish } from './wizcmds.js';
+import { urgent_pline } from './display.js';
+import { tty_display_nhwindow } from './wintty.js';
 import { rhack, domove, enter_explore_mode } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, see_monsters } from './display.js';
 import { see_objects, see_traps, Hallucination, Blind, swallowed } from './display.js';
@@ -24,7 +30,8 @@ import { initrack, settrack } from './track.js';
 import { m_at, makemon, makemon_flush_msg } from './makemon.js';
 import { mnexto } from './teleport.js';
 import { makedog } from './dog.js';
-import { deferred_goto, hellish_smoke_mesg } from './do.js';
+import { deferred_goto, hellish_smoke_mesg, schedule_goto, UTOTYPE_NONE } from './do.js';
+import { assign_level } from './dungeon.js';
 import { com_pager } from './questpgr.js';
 import { objects_globals_init } from './objects.js';
 import { init_objects } from './o_init.js';
@@ -638,7 +645,7 @@ export async function moveloop_core() {
                 await exerchk();
                 await invault();
                 if (u.uhave.amulet)
-                    throw new Error('moveloop_core(): amulet() not ported yet');
+                    await amulet();
                 if (!rn2(40 + (ACURR(A_DEX) * 3)))
                     u_wipe_engr(rnd(3));
                 if (u.uevent.udemigod && !u.uinvulnerable) {
@@ -647,9 +654,9 @@ export async function moveloop_core() {
                 }
                 /* vision will be updated as bubbles move */
                 if (Is_waterlevel(u.uz) || Is_airlevel(u.uz))
-                    throw new Error('moveloop_core(): movebubbles() not ported yet');
+                    movebubbles();
                 else if (g.level.flags.fumaroles)
-                    throw new Error('moveloop_core(): fumaroles() not ported yet');
+                    await fumaroles();
 
                 /* when immobile, count is in turns */
                 if (g.multi < 0) {
@@ -704,6 +711,16 @@ export async function moveloop_core() {
     } /* actual time passed */
 
     /* once-per-player-input things go here */
+
+    /* clear_splitobjs(): no split-object context is kept */
+
+    /* the Amulet of Yendor gives a wish when initially picked up */
+    if (u.uhave.amulet && !u.uevent.amulet_wish) {
+        u.uevent.amulet_wish = 1;
+        await tty_display_nhwindow(g.WIN_MESSAGE, true);
+        await urgent_pline("The Amulet is bestowing a wish upon you!");
+        await makewish();
+    }
 
     find_ac();
     if (!g.context.mv || Blind()) {
@@ -776,6 +793,12 @@ export async function moveloop_core() {
     // C ref: allmain.c moveloop_core()
     if (g.u.utotype)       /* change dungeon level */
         await deferred_goto(); /* after rhack() */
+
+    if (g.luacore && nhcb_counts()[NHCB_END_TURN]) {
+        /* lua_getglobal(gl.luacore, "nh_callback_run");
+           nhl_pcall_handle(gl.luacore, 1, 0, "moveloop_core", NHLpa_panic) */
+        await g.luacore.globals.nh_callback_run(nhcb_name[NHCB_END_TURN]);
+    }
 
     // Clear message after command is processed
     g._pending_message = '';
@@ -850,9 +873,15 @@ export async function maybe_do_tutorial() {
         return;
 
     if (await ask_do_tutorial()) {
-        /* assign_level(&u.ucamefrom, &u.uz); schedule_goto(&sp->dlevel,
-           ...); deferred_goto(); vision_recalc(0); docrt(); */
-        throw new Error('maybe_do_tutorial(): entering the tutorial is not ported yet');
+        const u = game.u;
+        assign_level(u.ucamefrom, u.uz);
+        game.iflags.nofollowers = true;
+        schedule_goto(sp.dlevel, UTOTYPE_NONE,
+                      "Entering the tutorial.", null);
+        await deferred_goto();
+        vision_recalc(0);
+        await docrt();
+        game.iflags.nofollowers = false;
     }
 }
 

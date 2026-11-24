@@ -6,9 +6,16 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
-import { u } from './decl.js';
+import { gu, u } from './decl.js';
+import { PM } from './monsters.h.js';
 import { P } from './skills.h.js';
 
+export function martial_bonus() {
+    return gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK ? 1 : 0;
+}
+export function practice_needed_to_advance(level) {
+    return Math.imul(Math.imul(u.weapon_skills[level].skill, u.weapon_skills[level].skill), 20);
+}
 export function P_RESTRICTED(type) {
     return u.weapon_skills[type].skill === P.ISRESTRICTED ? 1 : 0;
 }

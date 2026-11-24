@@ -407,7 +407,7 @@ export async function getlev(record) {
         for (const room of [...(level.rooms || []), ...(level.subrooms || [])])
             room.resident = null;
         const lastRoom = level.rooms?.[(level.nroom || 0) - 1];
-        game.doorindex = lastRoom ? lastRoom.fdoor + lastRoom.doorct : 0;
+        level.doorindex = lastRoom ? lastRoom.fdoor + lastRoom.doorct : 0;
         restore_timers(level._saved_timers, RANGE_LEVEL);
         restore_light_sources(level._saved_lights);
         level.monsters = restmonchn(level.monsters, relative);

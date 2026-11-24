@@ -339,7 +339,9 @@ async function skip_sep(ls) {   // llex.c:265
         await save(ls, $h.i32[ls >>> 2]), ($t6 = ($t4 = $h.ldu64($h.u32[(ls + 64) >>> 2]), $h.st64($h.u32[(ls + 64) >>> 2], $c.subu64($t4, 1)), $t4) > 0 ? $c.u8($h.i8[($t5 = $h.u32[($h.u32[(ls + 64) >>> 2] + 8) >>> 2], $h.stp($h.u32[(ls + 64) >>> 2] + 8, $t5 + 1), $t5)]) : await luaZ_fill($h.u32[(ls + 64) >>> 2]), $h.i32[ls >>> 2] = $t6);
         count = $c.addu64(count, 1);
     }
-    return $h.i32[ls >>> 2] === s ? $c.addu64(count, 2) : $c.u64(count === 0 ? 1 : 0);
+    return $h.i32[ls >>> 2] === s ? $c.addu64(count, 2)
+        : $c.u64(count === 0 ? 1
+        : 0);
 }
 /**
  * @param {number} ls LexState *

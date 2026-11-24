@@ -465,13 +465,6 @@ export function xname_flags(obj, cxn_flags) {
         }
         break;
     case FOOD_CLASS: {
-        if (obj.globby) {
-            const size = obj.owt <= 100 ? 'small'
-                       : obj.owt <= 300 ? 'medium'
-                         : obj.owt <= 500 ? 'large' : 'very large';
-            buf = `${size} ${actualn}`;
-            break;
-        }
         if (obj.otyp === ONAMES.SLIME_MOLD) {
             let fruit = game.ffruit;
             while (fruit && fruit.fid !== obj.spe)
@@ -483,10 +476,18 @@ export function xname_flags(obj, cxn_flags) {
             }
             break;
         }
-        buf = actualn;
+        // src/objnam.c:776, shrink_glob requests this prefix through Yname2.
+        if (game.iflags?.partly_eaten_hack && obj.oeaten)
+            buf += 'partly eaten ';
+        if (obj.globby) {
+            const size = obj.owt <= 100 ? 'small'
+                       : obj.owt <= 300 ? 'medium'
+                         : obj.owt <= 500 ? 'large' : 'very large';
+            buf += `${size} ${actualn}`;
+            break;
+        }
         /* src/objnam.c tin_details(): a tin names its contents once known */
-        if (obj.otyp === ONAMES.TIN && known)
-            buf = tin_details(obj);
+        buf += obj.otyp === ONAMES.TIN && known ? tin_details(obj) : actualn;
         break;
     }
     case AMULET_CLASS:

@@ -5,6 +5,13 @@
 // when there's nothing at the hero's spot.  autopick(), query_objlist(),
 // check_here() and the rest of pickup.c are not ported yet.
 
+import { FUMBLING, TIMEOUT, DRAWBRIDGE_UP, ICE, STONE, IS_POOL, IS_LAVA,
+         IS_FURNITURE, PLNMSG_BACK_ON_GROUND } from './const.js';
+import { db_under_typ } from './display.js';
+import { dfeature_at } from './invent.js';
+import { waterbody_name } from './pager.js';
+import { back_on_ground } from './trap.js';
+import { an } from './objnam.js';
 import { game } from './gstate.js';
 import { is_pool, is_lava } from './makemon.js';
 import { engr_at, read_engr_at } from './engrave.js';
@@ -148,7 +155,7 @@ export async function pickup(what) /* should be a long */ {
                            || (is_pool(u.ux, u.uy) && !u.uinwater)
                            || is_lava(u.ux, u.uy))) {
             if (game.flags?.mention_decor)
-                throw new Error('pickup(): describe_decor() not ported yet');
+                await describe_decor();
             await read_engr_at(u.ux, u.uy);
             return 0;
         }
@@ -257,13 +264,96 @@ export async function pickup(what) /* should be a long */ {
 function notake(ptr) { return (ptr.mflags1 & M1_NOTAKE) !== 0; }
 function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
 
+// C ref: pickup.c describe_decor()
+/* handle 'mention_decor' (when walking onto a dungeon feature such as
+   stairs or altar, describe it even if it isn't covered up by an object) */
+async function describe_decor() {
+    const g = game;
+    const u = g.u;
+    let outbuf, fbuf;
+    let doorhere, waterhere, res = true;
+    let dfeature;
+    let ltyp;
+
+    if ((u.uprops[FUMBLING].intrinsic & TIMEOUT) === 1 /* about to slip_or_trip */
+        && !g.iflags.defer_decor
+        && !g.decor_fumble_override) { /* probe_decor() */
+        /*
+         * Work around a message sequencing issue if Fumbling's periodic
+         * timeout is about to kick in:  avoid the combination
+         *  |You are back on floor.
+         *  |You trip over <object>.  or  You flounder.
+         * when the trip is being caused by moving on ice as hero
+         * steps off ice onto non-ice.  Defer the back-on-floor part if
+         * that is about to happen.
+         */
+        throw new Error('describe_decor(): deferred_decor() not ported yet');
+    }
+
+    {   /* SURFACE_AT(u.ux, u.uy) */
+        const lev = g.level.at(u.ux, u.uy);
+        ltyp = (lev.typ === DRAWBRIDGE_UP) ? db_under_typ(lev.drawbridgemask)
+                                           : lev.typ;
+    }
+    dfeature = dfeature_at(u.ux, u.uy);
+
+    /* we don't mention "ordinary" doors but do mention broken ones (and
+       closed ones, which will only happen for Passes_walls) */
+    doorhere = dfeature && (dfeature === "open door"
+                            || dfeature === "doorway");
+    waterhere = dfeature && dfeature === "pool of water";
+    if (doorhere || u.uinwater /* Underwater */
+        || (ltyp === ICE && IS_POOL(g.iflags.prev_decor))) /* pooleffects() */
+        dfeature = null;
+    /*
+     * TODO: if on ice, report moving between thicker and thinner ice (based
+     * on ice_descr()'s classification) as if moving onto different terrain.
+     */
+
+    if (ltyp === g.iflags.prev_decor && !IS_FURNITURE(ltyp)) {
+        res = false;
+    } else if (dfeature) {
+        if (waterhere)
+            dfeature = fbuf = waterbody_name(u.ux, u.uy);
+        if (dfeature !== "swamp" && ltyp !== ICE)
+            dfeature = an(dfeature);
+
+        if (g.flags.verbose) {
+            outbuf = `There is ${dfeature} here.`;
+        } else {
+            fbuf = dfeature;
+            outbuf = `${fbuf[0].toUpperCase() + fbuf.slice(1)}.`; /* upstart() */
+        }
+        if (ltyp === ICE && g.flags.mention_decor)
+            await Norep(outbuf);
+        else
+            await pline(outbuf);
+    } else if (!u.uinwater /* !Underwater */) {
+        if (IS_POOL(g.iflags.prev_decor)
+            || IS_LAVA(g.iflags.prev_decor)
+            || g.iflags.prev_decor === ICE) {
+            if (g.iflags.last_msg !== PLNMSG_BACK_ON_GROUND) {
+                await back_on_ground(false);
+            }
+        }
+    }
+    /* describe_decor() is normally called when moving onto a different
+       type of terrain, but it is also called by pickup() even when
+       mention_decor is Off if hero can't reach floor; only adapt the next
+       describe_decor() by what has just occurred in this one when it's On */
+    g.iflags.prev_decor = g.flags.mention_decor ? ltyp : STONE;
+    return res;
+}
+
 // C ref: pickup.c check_here()
 async function check_here(picked_some) {
     const u = game.u;
-    const lhflags = picked_some ? 1 /* LOOKHERE_PICKED_SOME */ : 0;
+    let lhflags = picked_some ? 1 /* LOOKHERE_PICKED_SOME */ : 0;
 
-    if (game.flags?.mention_decor)
-        throw new Error('check_here(): describe_decor() not ported yet');
+    if (game.flags?.mention_decor) {
+        if (await describe_decor())
+            lhflags |= 2; /* LOOKHERE_SKIP_DFEATURE */
+    }
 
     /* count the objects here */
     const ct = objects_at(u.ux, u.uy).filter(o => o !== game.uchain).length;
@@ -725,7 +815,7 @@ function sortloot_cmp(sli1, sli2) {
 // C ref: pickup.c menu_class_present()
 /* gv.valid_menu_classes holds object classes (numbers) and the letters
    'B' 'U' 'C' 'X' 'P' 'u' (as char codes) */
-function menu_class_present(c) {
+export function menu_class_present(c) {
     return !!c && (game.valid_menu_classes || []).includes(c);
 }
 
@@ -775,6 +865,12 @@ function ParanoidAutoAll() {
         || game.flags.paranoid_confirm !== undefined)
         throw new Error('paranoia_bits: the paranoid_confirmation option is not ported yet');
     return false;
+}
+
+// C ref: pickup.c is_worn_by_type() -- query_objlist callback: return
+// TRUE if valid class and worn
+export function is_worn_by_type(otmp) {
+    return (is_worn(otmp) && allow_category(otmp)) ? true : false;
 }
 
 // C ref: pickup.c allow_category()

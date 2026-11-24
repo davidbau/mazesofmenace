@@ -292,7 +292,8 @@ function l_str2dloc(s, result, mode) {   // lobject.c:228
     const $sp0 = $h.st.sp, $fp = $h.enter(8);
     try {
         /* try to convert */
-        $t1 = mode === 120 ? $hl.strtod(s, $fp) : $hl.strtod(s, $fp), $h.f64[result >>> 3] = $t1;
+        $t1 = mode === 120 ? $hl.strtod(s, $fp)
+            : $hl.strtod(s, $fp), $h.f64[result >>> 3] = $t1;
         if ($h.u32[$fp >>> 2] === s) {
             return 0;   /* nothing recognized? */
         }
@@ -362,7 +363,8 @@ function l_str2int(s$in, result) {   // lobject.c:276
             $h.stp($fp, $h.u32[$fp >>> 2] + 1);   /* skip initial spaces */
         }
         neg = isneg($fp);
-        if ($h.i8[$h.u32[$fp >>> 2]] === 48 && ($h.i8[$h.u32[$fp >>> 2] + 1] === 120 || $h.i8[$h.u32[$fp >>> 2] + 1] === 88)) {
+        if ($h.i8[$h.u32[$fp >>> 2]] === 48 &&
+            ($h.i8[$h.u32[$fp >>> 2] + 1] === 120 || $h.i8[$h.u32[$fp >>> 2] + 1] === 88)) {
             /* hex? */
             $h.stp($fp, $h.u32[$fp >>> 2] + 2);   /* skip '0x' */
             for (; $h.u8[luai_ctype_ + ($c.u8($h.i8[$h.u32[$fp >>> 2]]) + 1 | 0)] & 16; $h.stp($fp, $h.u32[$fp >>> 2] + 1)) {

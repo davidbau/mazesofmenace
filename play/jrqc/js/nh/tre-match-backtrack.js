@@ -674,7 +674,10 @@ export function tre_tnfa_run_backtrack(tnfa, string, len, type, match_tags, efla
                                         match_eo = -1;
                                     }
                                 }
-                                if (match_eo < pos || match_eo === pos && match_tags && tre_tag_order($h.i32[(tnfa + 80) >>> 2], $h.u32[(tnfa + 32) >>> 2], tags, match_tags)) {
+                                if (match_eo < pos
+                                    || match_eo === pos
+                                    && match_tags
+                                    && tre_tag_order($h.i32[(tnfa + 80) >>> 2], $h.u32[(tnfa + 32) >>> 2], tags, match_tags)) {
                                     /* This match wins the previous match. */
                                     /* TRE_DEBUG */
                                     match_eo = $c.i32(pos);
@@ -867,8 +870,11 @@ export function tre_tnfa_run_backtrack(tnfa, string, len, type, match_tags, efla
                             for (trans_i = state; $h.u32[(trans_i + 8) >>> 2]; trans_i = trans_i + 56) {
                                 do {
                                 } while (0, 0);
-                                if ($h.i32[trans_i >>> 2] <= prev_c && $h.i32[(trans_i + 4) >>> 2] >= prev_c) {
-                                    if ($h.i32[(trans_i + 40) >>> 2] && ($h.i32[(trans_i + 40) >>> 2] & 1 && (pos > 0 || reg_notbol) && (prev_c !== 10 || !reg_newline) || $h.i32[(trans_i + 40) >>> 2] & 2 && ($h.i32[$fp >>> 2] !== 0 || reg_noteol) && ($h.i32[$fp >>> 2] !== 10 || !reg_newline) || $h.i32[(trans_i + 40) >>> 2] & 8 && (prev_c === 95 || iswalnum_l(prev_c, $h.u32[(tnfa + 56) >>> 2]) || !($h.i32[$fp >>> 2] === 95 || iswalnum_l($h.i32[$fp >>> 2], $h.u32[(tnfa + 56) >>> 2]))) || $h.i32[(trans_i + 40) >>> 2] & 16 && (!(prev_c === 95 || iswalnum_l(prev_c, $h.u32[(tnfa + 56) >>> 2])) || ($h.i32[$fp >>> 2] === 95 || iswalnum_l($h.i32[$fp >>> 2], $h.u32[(tnfa + 56) >>> 2]))) || $h.i32[(trans_i + 40) >>> 2] & 32 && (pos !== 0 && $h.i32[$fp >>> 2] !== 0 && (prev_c === 95 || iswalnum_l(prev_c, $h.u32[(tnfa + 56) >>> 2]) ? 1 : 0) === ($h.i32[$fp >>> 2] === 95 || iswalnum_l($h.i32[$fp >>> 2], $h.u32[(tnfa + 56) >>> 2]) ? 1 : 0)) || $h.i32[(trans_i + 40) >>> 2] & 64 && (pos === 0 || $h.i32[$fp >>> 2] === 0 || (prev_c === 95 || iswalnum_l(prev_c, $h.u32[(tnfa + 56) >>> 2]) ? 1 : 0) !== ($h.i32[$fp >>> 2] === 95 || iswalnum_l($h.i32[$fp >>> 2], $h.u32[(tnfa + 56) >>> 2]) ? 1 : 0)) || $h.i32[(trans_i + 40) >>> 2] & 4 && !tre_bracket_match($h.u32[(trans_i + 48) >>> 2], prev_c, tnfa))) {
+                                if ($h.i32[trans_i >>> 2] <= prev_c
+                                    && $h.i32[(trans_i + 4) >>> 2] >= prev_c) {
+                                    if ($h.i32[(trans_i + 40) >>> 2]
+                                        && ($h.i32[(trans_i + 40) >>> 2] & 1 && (pos > 0 || reg_notbol) && (prev_c !== 10 || !reg_newline) || $h.i32[(trans_i + 40) >>> 2] & 2 && ($h.i32[$fp >>> 2] !== 0 || reg_noteol) && ($h.i32[$fp >>> 2] !== 10 || !reg_newline) || $h.i32[(trans_i + 40) >>> 2] & 8 && (prev_c === 95 || iswalnum_l(prev_c, $h.u32[(tnfa + 56) >>> 2]) || !($h.i32[$fp >>> 2] === 95 || iswalnum_l($h.i32[$fp >>> 2], $h.u32[(tnfa + 56) >>> 2]))) || $h.i32[(trans_i + 40) >>> 2] & 16 && (!(prev_c === 95 || iswalnum_l(prev_c, $h.u32[(tnfa + 56) >>> 2])) || ($h.i32[$fp >>> 2] === 95 || iswalnum_l($h.i32[$fp >>> 2], $h.u32[(tnfa + 56) >>> 2]))) || $h.i32[(trans_i + 40) >>> 2] & 32 && (pos !== 0 && $h.i32[$fp >>> 2] !== 0 && (prev_c === 95 || iswalnum_l(prev_c, $h.u32[(tnfa + 56) >>> 2]) ? 1 : 0) === ($h.i32[$fp >>> 2] === 95 || iswalnum_l($h.i32[$fp >>> 2], $h.u32[(tnfa + 56) >>> 2]) ? 1 : 0)) || $h.i32[(trans_i + 40) >>> 2] & 64 && (pos === 0 || $h.i32[$fp >>> 2] === 0 || (prev_c === 95 || iswalnum_l(prev_c, $h.u32[(tnfa + 56) >>> 2]) ? 1 : 0) !== ($h.i32[$fp >>> 2] === 95 || iswalnum_l($h.i32[$fp >>> 2], $h.u32[(tnfa + 56) >>> 2]) ? 1 : 0))
+                                        || $h.i32[(trans_i + 40) >>> 2] & 4 && !tre_bracket_match($h.u32[(trans_i + 48) >>> 2], prev_c, tnfa))) {
                                         do {
                                         } while (0, 0);
                                         continue;

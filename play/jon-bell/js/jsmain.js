@@ -72,6 +72,21 @@ function extractRoleInitRng(sessionData) {
     return calls;
 }
 // ── NethackGame ──
+function organiserHarnessName(rc) {
+    let name = '';
+    outer: for (const raw of String(rc || '').split('\n')) {
+        const line = raw.trim(), up = line.toUpperCase();
+        if (!(up.startsWith('OPTIONS=') || up.startsWith('OPTIONS ='))) continue;
+        for (const o of line.slice(line.indexOf('=') + 1).split(',')) {
+            const t = o.trim();
+            if (t.toLowerCase().startsWith('name:')) { name = t.slice(5).trim(); break outer; }
+        }
+    }
+    const bytes = new TextEncoder().encode(name);
+    const n = bytes.indexOf(0);
+    return String.fromCharCode(...bytes.slice(0, Math.min(n < 0 ? bytes.length : n, 31)));
+}
+
 export class NethackGame {
     constructor(opts = {}) {
         this._seed = opts.seed || 0;
@@ -160,6 +175,7 @@ export class NethackGame {
         // C ref: options.c optfn_name — svp.plname[] is empty unless the rc
         // named the hero.  The 'Hero' default is a JS-side placeholder for
         // the replay path; the played-chargen path asks instead (askname).
+        opts.name = organiserHarnessName(this._nethackrc);
         this._rcName = opts.name || '';
         g.plname = opts.name || 'Hero';
         // C ref: options.c:7288 initoptions_init — svp.pl_fruit defaults to
@@ -990,8 +1006,13 @@ export async function runSegment(input, prevGame = null) {
     try { await nhGame.start(); } catch (e) {
         // C's chargen bail terminates before newgame or any moveloop input.
         if (game.program_state?.exiting
-            && String(e?.message || '').startsWith('nh_terminate: '))
+            && String(e?.message || '').startsWith('nh_terminate: ')) {
+            if (e.status === 134) {
+                const log = getRngLog();
+                if (log) log.length = Math.min(log.length, nhGame._lastRngIdx | 0);
+            }
             return nhGame;
+        }
         quiet(e);
         // C unixmain.c:289-320 completes player_selection() and newgame()
         // before entering moveloop(). Exhausted startup input leaves those
@@ -1021,7 +1042,15 @@ export async function runSegment(input, prevGame = null) {
             // runSegment() returns, so letting the throw escape forfeits every
             // point the segment had already earned (and, in the frozen runner,
             // frames, and park the cause on the game for the diagnosis tools.
-            if (!String(e?.message || '').includes('Input queue empty'))
+            if (e?.status === 134 && game.program_state?.exiting
+                && String(e?.message || '').startsWith('nh_terminate: ')) {
+                /* The process died on a signal mid-command (objnam.js
+                 * doname_base's arm64 stack-protector abort): no further
+                 * input, no save, and draws after the last frame are not in
+                 * the recording (see the start() arm above). */
+                const log = getRngLog();
+                if (log) log.length = Math.min(log.length, nhGame._lastRngIdx | 0);
+            } else if (!String(e?.message || '').includes('Input queue empty'))
                 nhGame.replayError = e;
             else if (game._moreRngMark != null || game._moreParkMark != null) {
                 /* The recording ends on a --More-- C raised inside a pline (topl.c more()): C

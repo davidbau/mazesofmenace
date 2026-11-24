@@ -30,13 +30,38 @@
 import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
-import { lua_createtable, lua_newuserdatauv, lua_settop } from './luabridge.js';
+import { LUA } from './lua.h.js';
+import { lua_callk, lua_createtable, lua_newuserdatauv, lua_pcallk, lua_rotate, lua_settop, lua_tointegerx, lua_tolstring, lua_type } from './luabridge.js';
 
+export async function lua_call(L, n, r) {
+    await lua_callk(L, n, r, 0, null);
+}
+export async function lua_pcall(L, n, r, f) {
+    return await lua_pcallk(L, n, r, f, 0, null);
+}
+export function lua_tointeger(L, i) {
+    return lua_tointegerx(L, i, null);
+}
 export async function lua_pop(L, n) {
-    await lua_settop(L, (-n | 0) - 1 | 0);
+    await lua_settop(L, (-n | 0) - 1);
 }
 export async function lua_newtable(L) {
     await lua_createtable(L, 0, 0);
+}
+export function lua_istable(L, n) {
+    return lua_type(L, n) === LUA.TTABLE ? 1 : 0;
+}
+export function lua_isnil(L, n) {
+    return lua_type(L, n) === LUA.TNIL ? 1 : 0;
+}
+export async function lua_tostring(L, i) {
+    return await lua_tolstring(L, i, null);
+}
+export function lua_insert(L, idx) {
+    lua_rotate(L, idx, 1);
+}
+export async function lua_remove(L, idx) {
+    lua_rotate(L, idx, -1), await lua_settop(L, -2);
 }
 export async function lua_newuserdata(L, s) {
     return await lua_newuserdatauv(L, s, 1);

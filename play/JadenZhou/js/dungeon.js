@@ -1668,6 +1668,103 @@ export async function print_level_annotation() {
         await You(`remember this level as ${annotation}.`);
 }
 
+// C ref: dungeon.c find_mapseen_by_str()
+function find_mapseen_by_str(s) {
+    let mptr;
+
+    for (mptr = game.mapseenchn ?? null; mptr; mptr = mptr.next)
+        if (mptr.custom && !strcmpi(s, mptr.custom))
+            break;
+
+    return mptr ?? null;
+}
+
+/* C ref: dungeon.c dlev_in_current_branch() -- within same branch, or
+   else main dungeon <-> gehennom */
+function dlev_in_current_branch(dlev) {
+    const u = game.u, t = game.dungeon_topology;
+    return (dlev.dnum === u.uz.dnum
+            || (u.uz.dnum === t.d_valley_level.dnum
+                && dlev.dnum === t.d_medusa_level.dnum)
+            || (u.uz.dnum === t.d_medusa_level.dnum
+                && dlev.dnum === t.d_valley_level.dnum));
+}
+
+// C ref: dungeon.c lev_by_name()
+export function lev_by_name(nam) {
+    const u = game.u;
+    let lev = 0;
+    let slev = null;
+    let dlev = null;
+    let p;
+    let idx, idxtoo;
+    let mseen;
+
+    /* look at the player's custom level annotations first */
+    if ((mseen = find_mapseen_by_str(nam)) != null) {
+        dlev = mseen.lev;
+    } else {
+        /* no matching annotation, check whether they used a name we know */
+
+        /* allow strings like "the oracle level" to find "oracle" */
+        if (!strncmpi(nam, "the ", 4))
+            nam = nam.slice(4);
+        if ((p = strstri_dg(nam, " level")) >= 0 && p === nam.length - 6) {
+            nam = nam.slice(0, nam.length - 6);
+        }
+        /* hell is the old name, and wouldn't match; gehennom would match its
+           branch, yielding the castle level instead of valley of the dead */
+        if (!strcmpi(nam, "gehennom") || !strcmpi(nam, "hell")) {
+            if (In_V_tower_dg(u.uz))
+                nam = " to Vlad's tower"; /* branch to... */
+            else
+                nam = "valley";
+        } else if (!strcmpi(nam, "delphi")) {
+            /* Oracle says "welcome to Delphi" so recognize that name too */
+            nam = "oracle";
+        }
+
+        if ((slev = find_level(nam)) != null)
+            dlev = slev.dlevel;
+    }
+
+    if (mseen || slev) {
+        idx = ledger_no(dlev);
+        if (dlev_in_current_branch(dlev)
+            /* either wizard mode or else seen and not forgotten;
+               note: used to be '(flags & (FORGOTTEN|VISITED)) == VISITED'
+               back when amnesia could cause levels to be forgotten */
+            && (wizard() || (level_info_dg(idx).flags & VISITED_DG) === VISITED_DG)) {
+            lev = depth(dlev);
+        }
+    } else { /* not a specific level; try branch names */
+        idx = find_branch(nam, null);
+        /* "<branch> to Xyzzy" */
+        if (idx < 0 && (p = strstri_dg(nam, " to ")) >= 0)
+            idx = find_branch(nam.slice(p + 4), null);
+
+        if (idx >= 0) {
+            idxtoo = (idx >> 8) & 0x00FF;
+            idx &= 0x00FF;
+            /* either wizard mode, or else _both_ sides of branch seen; */
+            /* (flags & VISITED)==VISITED: see comment about amnesia above */
+            if (wizard() || (((level_info_dg(idx).flags & VISITED_DG) === VISITED_DG)
+                             && ((level_info_dg(idxtoo).flags & VISITED_DG)
+                                 === VISITED_DG))) {
+                if (ledger_to_dnum(idxtoo) === u.uz.dnum)
+                    idx = idxtoo;
+                dlev = { dnum: ledger_to_dnum(idx), dlevel: ledger_to_dlev(idx) };
+                if (dlev_in_current_branch(dlev))
+                    lev = depth(dlev);
+            }
+        }
+    }
+    return lev;
+}
+import { strstri as strstri_dg } from './hacklib.js';
+import { In_V_tower as In_V_tower_dg, VISITED as VISITED_DG } from './const.js';
+import { level_info as level_info_dg } from './files.js';
+
 // C ref: dungeon.c find_mapseen()
 /* find the particular mapseen object in the chain; may return null */
 function find_mapseen(lev) {

@@ -70,7 +70,10 @@ async function checktab(L, arg, what) {   // ltablib.c:46
         /* is it not a table? */
         n = 1;   /* number of elements to pop */
         /* must have metatable */
-        if (lua_getmetatable(L, arg) && (!(what & 1) || await checkfield(L, $h.lit("__index"), n = n + 1 | 0)) && (!(what & 2) || await checkfield(L, $h.lit("__newindex"), n = n + 1 | 0)) && (!(what & 4) || await checkfield(L, $h.lit("__len"), n = n + 1 | 0))) {
+        if (lua_getmetatable(L, arg) &&
+            (!(what & 1) || await checkfield(L, $h.lit("__index"), n = n + 1 | 0)) &&
+            (!(what & 2) || await checkfield(L, $h.lit("__newindex"), n = n + 1 | 0)) &&
+            (!(what & 4) || await checkfield(L, $h.lit("__len"), n = n + 1 | 0))) {
             await lua_settop(L, (-n | 0) - 1 | 0);   /* pop metatable and tested metamethods */
         } else {
             await luaL_checktype(L, arg, 5);   /* force an error */
