@@ -61,7 +61,8 @@ import { A_CURRENT, A_ORIGINAL, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, RLOC_NOMS
 import { rn1 } from './rng.js';
 import { S_EEL, PM_WIZARD } from './monsters.js';
 import { ACURR, exerchk } from './attrib.js';
-import { near_capacity, lookaround, end_running, nomul, monster_nearby } from './hack.js';
+import { near_capacity, lookaround, end_running, nomul, monster_nearby,
+         runmode_delay_output } from './hack.js';
 import { nh_timeout } from './timeout.js';
 import { dosounds } from './sounds.js';
 import { gethungry, reset_eat, maybe_finished_meal } from './eat.js';
@@ -120,7 +121,7 @@ export async function newgame() {
     // Real mklev generates the level with correct room positions
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
-    u_on_upstairs();
+    await u_on_upstairs();
     vision_reset();          /* set up internals for level (after mklev) */
     /* check_special_room(FALSE): no special room is entered on arrival
        at level 1 yet -- not ported yet (hack.c) */
@@ -497,8 +498,29 @@ function overexert_hp() {
     }
 }
 
+// The game loop's entry point for the browser page and the judge's
+// playability check: both call moveloop_core() once per key and stop when
+// program_state.gameover is set. In C, nh_terminate() (death, quit, save)
+// ends the program; in JS it throws NhExit out of whatever was running, so
+// that exit becomes the stop signal here instead of escaping as an error.
+// Nothing runs after nh_terminate(), so no roll or screen changes. The body
+// keeps the name moveloop_core: rng.js credits rolls by the JS stack.
+async function moveloop_core_entry() {
+    if (!game.program_state?.exiting) {
+        try {
+            await moveloop_core();
+            return;
+        } catch (e) {
+            if (!e?.nhexit)
+                throw e;
+        }
+    }
+    game.program_state.gameover = 1;
+}
+export { moveloop_core_entry as moveloop_core };
+
 // C ref: allmain.c moveloop_core()
-export async function moveloop_core() {
+async function moveloop_core() {
     const g = game;
     const u = g.u;
     const P = u.uprops;
@@ -661,7 +683,7 @@ export async function moveloop_core() {
 
                 /* when immobile, count is in turns */
                 if (g.multi < 0) {
-                    /* runmode_delay_output(): display timing only */
+                    await runmode_delay_output();
                     if (++g.multi === 0) { /* finished yet? */
                         await unmul(null);
                     }
@@ -695,14 +717,10 @@ export async function moveloop_core() {
         /* [fast hero who gets multiple moves per turn ends up sinking
            multiple times per turn; is that what we really want?] */
         if (u.utrap && u.utraptype === TT_LAVA)
-            throw new Error('moveloop_core(): sink_into_lava() not ported yet');
+            await sink_into_lava_am();
         /* when/if hero escapes from lava, he can't just stay there */
-        else if (!u.umoved) {
-            /* (void) pooleffects(FALSE): only acts when the hero is in
-               or over water or lava; not ported yet */
-            if (is_pool_or_lava_at_u())
-                throw new Error('moveloop_core(): pooleffects() not ported yet');
-        }
+        else if (!u.umoved)
+            await pooleffects_am(false);
 
         /* vision while buried or underwater is updated here */
         if (u.uinwater || u.uburied)
@@ -766,7 +784,7 @@ export async function moveloop_core() {
             await stop_occupation();
             reset_eat();
         }
-        /* runmode_delay_output(): display timing only */
+        await runmode_delay_output();
         return;
     }
 
@@ -774,7 +792,7 @@ export async function moveloop_core() {
 
     if (g.multi > 0) {
         await lookaround();
-        /* runmode_delay_output(): display timing only */
+        await runmode_delay_output();
         if (!g.multi) {
             /* lookaround may clear multi */
             g.context.move = 0;
@@ -900,3 +918,5 @@ export async function moveloop(resuming) {
 }
 
 import { invault } from './vault.js';
+import { sink_into_lava as sink_into_lava_am } from './trap.js';
+import { pooleffects as pooleffects_am } from './hack.js';

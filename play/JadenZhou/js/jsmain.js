@@ -24,6 +24,7 @@ import { init_vision_globals } from './vision.js';
 import { getlock, restore_saved_game, delete_savefile } from './files.js';
 import { dorecover } from './restore.js';
 import { GameDisplay } from './game_display.js';
+import { InMemoryStorage } from './storage.js';
 import { objects, OBJ_NAME, SLIME_MOLD } from './objects.js';
 
 // ── NethackGame ──
@@ -40,7 +41,13 @@ export class NethackGame {
         // those files also survive page reloads. If a port doesn't
         // need persistence (no save/restore implemented yet), it can
         // ignore this; the field just sits unused.
-        this._storage = opts.storage || null;
+        //
+        // With no handle outside a browser (the judge's playability check
+        // constructs the game this way in Node), the game's files are kept
+        // in a fresh in-memory store, as the browser keeps them in
+        // localStorage, so a save still has somewhere to go.
+        this._storage = opts.storage
+            || (typeof window === 'undefined' ? new InMemoryStorage() : null);
         this._screens = [];
         this._cursors = [];
         this._rngSlices = [];
@@ -91,7 +98,20 @@ export class NethackGame {
         }
     }
 
+    // nh_terminate() during start-up (e.g. quitting at a prompt) ends the
+    // game the way moveloop_core() does: program_state.gameover is set and
+    // the caller's loop stops.
     async start() {
+        try {
+            await this._start();
+        } catch (e) {
+            if (!e?.nhexit)
+                throw e;
+            game.program_state.gameover = 1;
+        }
+    }
+
+    async _start() {
         const g = resetGame();
 
         // C ref: unixmain.c main() calls early_init() first
@@ -340,6 +360,10 @@ export async function runSegment(input) {
         stop(e);
         return nhGame;
     }
+    if (game.program_state?.exiting) {
+        nhGame.exited = true;
+        return nhGame;
+    }
 
     // Drive the game loop until input is exhausted. The judge looks
     // at game.getScreens() afterwards; whatever the contestant
@@ -350,6 +374,11 @@ export async function runSegment(input) {
             await moveloop_core();
         } catch (e) {
             stop(e);
+            break;
+        }
+        /* moveloop_core() returns normally once nh_terminate() has run */
+        if (game.program_state?.exiting) {
+            nhGame.exited = true;
             break;
         }
     }

@@ -9,7 +9,7 @@
 // throw a 'not ported yet' error instead of skipping their rolls.
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn2_on_display_rng } from './rng.js';
+import { rn2, rnd, rn2_on_display_rng, ROLL_FROM } from './rng.js';
 import { distmin, dist2, s_suffix, strncmpi } from './hacklib.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, You, Your, pline_The, newsym, canseemon, canspotmon,
@@ -70,7 +70,7 @@ import { monstseesu, monstunseesu, shade_miss, passive_obj } from './uhitm.js';
 import { mswings_verb } from './mhitu.js';
 import { hit, miss, exclam, dobuzz } from './zap.js';
 import { hold_another_object } from './wizcmds.js';
-import { extract_from_minvent } from './steal.js';
+import { extract_from_minvent, extract_from_minvent_g } from './steal.js';
 import { body_part } from './insight.js';
 import { mbodypart } from './shk.js';
 import { m_seenres } from './muse.js';
@@ -1237,9 +1237,37 @@ const breathwep = [
     "lightning", "poison gas", "acid", "strange breath #8",
     "strange breath #9"
 ];
+
+// C ref: mthrowu.c hallublasts[]
+/* hallucinatory ray types */
+const hallublasts = [
+    "asteroids", "beads", "bubbles", "butterflies", "champagne", "chaos",
+    "coins", "cotton candy", "crumbs", "dark matter", "darkness", "data",
+    "dust specks", "emoticons", "emotions", "entropy", "flowers", "foam",
+    "fog", "gamma rays", "gelatin", "gemstones", "ghosts", "glass shards",
+    "glitter", "good vibes", "gravel", "gravity", "gravy", "grawlixes",
+    "holy light", "hornets", "hot air", "hyphens", "hypnosis", "infrared",
+    "insects", "jargon", "laser beams", "leaves", "lightening", "logic gates",
+    "magma", "marbles", "mathematics", "megabytes", "metal shavings",
+    "metapatterns", "meteors", "mist", "mud", "music", "nanites", "needles",
+    "noise", "nostalgia", "oil", "paint", "photons", "pixels", "plasma",
+    "polarity", "powder", "powerups", "prismatic light", "pure logic",
+    "purple", "radio waves", "rainbows", "rock music", "rocket fuel", "rope",
+    "sadness", "salt", "sand", "scrolls", "sludge", "smileys", "snowflakes",
+    "sparkles", "specularity", "spores", "stars", "steam", "tetrahedrons",
+    "text", "the past", "tornadoes", "toxic waste", "ultraviolet light",
+    "viruses", "water", "waveforms", "wind", "X-rays", "zorkmids"
+];
+
+// C ref: mthrowu.c rnd_hallublast()
+/* Return a random hallucinatory blast. */
+export function rnd_hallublast() {
+    return ROLL_FROM(hallublasts);
+}
+
 function breathwep_name(typ) {
     if (Hallucination())
-        throw new Error('breathwep_name(): rnd_hallublast() not ported yet');
+        return rnd_hallublast();
     return breathwep[typ - 1]; /* BZ_OFS_AD(typ) */
 }
 
@@ -1312,6 +1340,12 @@ export function m_useupall(mon, obj) {
     extract_from_minvent(mon, obj, true, false);
     obfree(obj, null);
 }
+/* m_useupall() for a generator caller: yields extract_from_minvent()'s
+   update_mon_extrinsics() messages */
+export function* m_useupall_g(mon, obj) {
+    yield* extract_from_minvent_g(mon, obj, true, false);
+    obfree(obj, null);
+}
 
 // C ref: mthrowu.c m_useup()
 /* remove one instance of an item from a monster's inventory */
@@ -1321,6 +1355,15 @@ export function m_useup(mon, obj) {
         obj.owt = weight(obj);
     } else {
         m_useupall(mon, obj);
+    }
+}
+/* m_useup() for a generator caller (see m_useupall_g()) */
+export function* m_useup_g(mon, obj) {
+    if (obj.quan > 1) {
+        obj.quan--;
+        obj.owt = weight(obj);
+    } else {
+        yield* m_useupall_g(mon, obj);
     }
 }
 

@@ -308,7 +308,7 @@ export async function rumor_check() {
             if (!tty_next_page(tmpwin))
                 break;
         }
-        tty_destroy_nhwindow(tmpwin);
+        await tty_destroy_nhwindow(tmpwin);
     }
 }
 
@@ -510,7 +510,7 @@ export async function outoracle(special, delphi) {
             tty_putstr(tmpwin, 0, xcrypt(line));
         }
         await tty_display_nhwindow(tmpwin);
-        tty_destroy_nhwindow(tmpwin);
+        await tty_destroy_nhwindow(tmpwin);
     } else {
         game.oracle_flg = -1; /* don't try to open it again */
     }

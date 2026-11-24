@@ -32,7 +32,7 @@ import { level_tele, dotelecmd } from './teleport.js';
 import { wiz_level_change, wiz_wish, wiz_identify, wiz_intrinsic, wiz_map,
          wiz_detect, wiz_polyself, wiz_where } from './wizcmds.js';
 import { ddoinv, dolook, doprgold, doprwep, doprarm, doprring, dopramulet,
-         doprtool, add_menu_heading, doorganize, adjust_split,
+         doprtool, doprinuse, add_menu_heading, doorganize, adjust_split,
          dotypeinv } from './invent.js';
 import { cmd_safety_prevention, nomul, domove, DOMOVE_WALK,
          DOMOVE_RUSH, confdir } from './hack.js';
@@ -209,6 +209,7 @@ const cmd_funcs = {
     doprring: () => doprring(),
     dopramulet: () => dopramulet(),
     doprtool: () => doprtool(),
+    doprinuse: () => doprinuse(),
     doterrain: () => doterrain(),
     dowhatis: () => dowhatis(),
     doquickwhatis: () => doquickwhatis(),
@@ -2161,11 +2162,20 @@ export function movecmd_mode(sym, mode) {
 }
 
 // C ref: cmd.c dxdy_moveok()
-function dxdy_moveok() {
+export function dxdy_moveok() {
     const u = game.u;
     if (u.dx && u.dy && u.umonnum === PM_GRID_BUG) /* NODIAG(u.umonnum) */
-        return false;
-    return true;
+        u.dx = u.dy = 0;
+    return !!(u.dx || u.dy);
+}
+
+// C ref: cmd.c cmd_from_dir()
+/* C's move_funcs[dir][mode]: do_{move,run,rush}_<dir>, or dodown/doup
+   for every mode */
+export function cmd_from_dir(dir, mode) {
+    const modename = ["move", "run", "rush"];
+    return cmd_from_func(dir >= N_DIRS ? (dir === N_DIRS ? "dodown" : "doup")
+                         : `do_${modename[mode]}_${move_dirnames[dir]}`);
 }
 
 // C ref: cmd.c cmd_from_func() -- a key bound to the command; C's

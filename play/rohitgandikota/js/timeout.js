@@ -726,7 +726,7 @@ export async function wiz_timeout_queue() {
     await xwaitforspace(' \r\n\x1b');
     while (game.morc !== '\x1b' && tty_next_page(win))
         await xwaitforspace(' \r\n\x1b');
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 
     return ECMD_OK;
 }
@@ -1877,7 +1877,7 @@ export async function nh_timeout() {
             break;
         case 'HSee_invisible':
             set_mimic_blocking(); /* do special mimic handling */
-            see_monsters();       /* make invis mons appear */
+            await see_monsters();       /* make invis mons appear */
             newsym(u.ux, u.uy);   /* make self appear */
             await stop_occupation();
             break;
@@ -1983,7 +1983,7 @@ export async function nh_timeout() {
             }
             break;
         case 'HDetect_monsters':
-            see_monsters();
+            await see_monsters();
             break;
         case 'HProtection_from_shape_changers':
             /* timed Protection_from_shape_changers can only be granted by

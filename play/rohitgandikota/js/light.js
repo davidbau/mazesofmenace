@@ -579,7 +579,7 @@ export async function wiz_light_sources() {
     await xwaitforspace(' \r\n\x1b');
     while (game.morc !== '\x1b' && tty_next_page(win))
         await xwaitforspace(' \r\n\x1b');
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 
     return ECMD_OK;
 }

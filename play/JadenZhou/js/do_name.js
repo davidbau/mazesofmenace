@@ -469,7 +469,7 @@ function m_next2u(m) {
 }
 
 // C ref: do_name.c bogon_codes[]
-const bogon_codes = "-_+|="; /* see dat/bonusmon.txt */
+export const bogon_codes = "-_+|="; /* see dat/bonusmon.txt */
 
 // C ref: do_name.c bogusmon()
 /* fake monsters used to be in a hard-coded array, now in a data file;

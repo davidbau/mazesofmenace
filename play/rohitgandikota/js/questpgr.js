@@ -334,7 +334,7 @@ async function deliver_by_window(msg, how) {
        recorder captures the frame at that read. dmore() accepts quitchars,
        not every key, so control and command keys leave the page open. */
     await xwaitforspace(' \r\n\x1b');
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 }
 
 // src/questpgr.c:468 com_pager_core()

@@ -179,7 +179,7 @@ function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
 function likes_gems(ptr) { return (ptr.mflags2 & M2_JEWELS) !== 0; }
 function is_unicorn(ptr) { return ptr.mlet === S_UNICORN && likes_gems(ptr); }
 // C ref: hacklib.c sgn()
-function sgn(n) { return (n < 0) ? -1 : (n !== 0); }
+function sgn(n) { return (n < 0) ? -1 : (n > 0) ? 1 : 0; }
 
 // C ref: trap.c mk_trap_statue()
 /* create a "living" statue at x,y */
@@ -925,7 +925,7 @@ export function locomotion(ptr, def) {
 }
 
 // C ref: trap.c conjoined_pits()
-function conjoined_pits(trap2, trap1, u_entering_trap2) {
+export function conjoined_pits(trap2, trap1, u_entering_trap2) {
     const u = game.u;
 
     if (!trap1 || !trap2)
@@ -1528,7 +1528,16 @@ function finish_meating(mtmp) {
 // C ref: trap.c trapeffect_slp_gas_trap()
 async function trapeffect_slp_gas_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_slp_gas_trap(): hero branch not ported yet');
+        seetrap(trap);
+        if (Sleep_resistance() || breathless(game.youmonst.data)) {
+            await You("are enveloped in a cloud of gas!");
+            monstseesu_tr(M_SEEN_SLEEP_TR);
+        } else {
+            await pline("A cloud of gas puts you to sleep!");
+            await fall_asleep_tr(-rnd(25), true);
+            monstunseesu_tr(M_SEEN_SLEEP_TR);
+        }
+        await steedintrap(trap, null);
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
 
@@ -2858,7 +2867,80 @@ async function mu_maybe_destroy_web(mtmp, domsg, trap) {
 // C ref: trap.c trapeffect_web()
 async function trapeffect_web(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_web(): hero branch not ported yet');
+        const u = game.u;
+        let webmsgok = (trflags & NOWEBMSG_TR) === 0;
+        const forcetrap = ((trflags & FORCETRAP) !== 0
+                           || (trflags & FAILEDUNTRAP_TR) !== 0);
+        const viasitting = (trflags & VIASITTING_TR) !== 0;
+
+        /* suppress article in various steed messages when using its
+           name (which won't occur when hallucinating) */
+        /* steed_article: x_monnam() for the steed isn't ported */
+
+        feeltrap(trap);
+        if (await mu_maybe_destroy_web(game.youmonst, webmsgok, trap))
+            return Trap_Effect_Finished;
+        if (webmaker(game.youmonst.data)) {
+            if (webmsgok)
+                await pline(trap.madeby_u ? "You take a walk on your web."
+                            : "There is a spider web here.");
+            return Trap_Effect_Finished;
+        }
+        if (webmsgok) {
+            let verbbuf;
+
+            if (forcetrap || viasitting) {
+                verbbuf = "are caught by";
+            } else if (u.usteed) {
+                throw new Error('trapeffect_web(): steed message (x_monnam()) not ported yet');
+            } else {
+                verbbuf = `${u_locomotion("stumble")} into`;
+            }
+            await You(`${verbbuf} ${a_your[trap.madeby_u ? 1 : 0]} spider web!`);
+        }
+
+        /* time will be adjusted below */
+        set_utrap(1, TT_WEB_TR);
+
+        /* Time stuck in the web depends on your/steed's strength. */
+        {
+            let tim;
+            const str = ACURR_tr(A_STR_TR);
+
+            /* If mounted, the steed gets trapped.  Use mintrap
+             * to do all the work.  If mtrapped is set as a result,
+             * unset it and set utrap instead.  In the case of a
+             * strongmonst and mintrap said it's trapped, use a
+             * short but non-zero trap time.  Otherwise, monsters
+             * have no specific strength, so use player strength.
+             * This gets skipped for webmsgok, which implies that
+             * the steed isn't a factor.
+             */
+            if (u.usteed && webmsgok)
+                throw new Error('trapeffect_web(): steed caught in web (mintrap()) not ported yet');
+            if (str <= 3)
+                tim = rn1(6, 6);
+            else if (str < 6)
+                tim = rn1(6, 4);
+            else if (str < 9)
+                tim = rn1(4, 4);
+            else if (str < 12)
+                tim = rn1(4, 2);
+            else if (str < 15)
+                tim = rn1(2, 2);
+            else if (str < 18)
+                tim = rnd(2);
+            else if (str < 69)
+                tim = 1;
+            else {
+                tim = 0;
+                if (webmsgok)
+                    await You(`tear through ${a_your[trap.madeby_u ? 1 : 0]} web!`);
+                deltrap(trap);
+                newsym(u.ux, u.uy); /* get rid of trap symbol */
+            }
+            set_utrap(tim, TT_WEB_TR);
+        }
     } else {
         /* Monster in a web. */
         let tear_web;
@@ -4287,9 +4369,18 @@ export function maketrap(x, y, typ) {
         unearth_objs_l(x, y);
         recalc_block_point_l(x, y);
         break;
-    case TELEP_TRAP:
+    case TELEP_TRAP: {
         /* gl.launchplace is only set by special-level loaders */
+        const launchplace = game.launchplace || { x: 0, y: 0 };
+        if (isok(launchplace.x, launchplace.y)) {
+            ttmp.launch.x = game.xstart + launchplace.x; /* teledest */
+            ttmp.launch.y = game.ystart + launchplace.y;
+            if (ttmp.launch.x === x && ttmp.launch.y === y) {
+                /* impossible("making fixed-dest tele trap pointing to itself") */
+            }
+        }
         break;
+    }
     }
 
     if (!oldplace) {
@@ -5218,3 +5309,58 @@ import { POLY_NOFLAGS as POLY_NOFLAGS_TP, NC_SHOW_MSG as NC_SHOW_MSG_TP } from '
 import { WAND_CLASS as WAND_CLASS_TP } from './objects.js';
 import { resists_blnd as resists_blnd_tr } from './mondata.js';
 import { make_blinded as make_blinded_tr, incr_itimeout as incr_itimeout_tr } from './potion.js';
+import { monstseesu as monstseesu_tr, monstunseesu as monstunseesu_tr } from './uhitm.js';
+import { M_SEEN_SLEEP as M_SEEN_SLEEP_TR, NOWEBMSG as NOWEBMSG_TR,
+         FAILEDUNTRAP as FAILEDUNTRAP_TR, VIASITTING as VIASITTING_TR,
+         A_STR as A_STR_TR, TT_WEB as TT_WEB_TR } from './const.js';
+import { fall_asleep as fall_asleep_tr } from './timeout.js';
+import { ACURR as ACURR_tr } from './attrib.js';
+
+// C ref: trap.c sink_into_lava()
+/* called each turn by moveloop() while hero is trapped in lava */
+export async function sink_into_lava() {
+    const u = game.u;
+    const sink_deeper = "You sink deeper into the lava.";
+
+    if (!u.utrap || u.utraptype !== TT_LAVA_DR) {
+        ; /* do nothing; this usually won't happen but could after
+           * polymorphing from a flier into a ceiling hider and then hiding;
+           * allmain() only checks whether the hero is at a lava location,
+           * not whether he or she is currently sinking */
+    } else if (!is_lava(u.ux, u.uy)) {
+        await reset_utrap(false); /* this shouldn't happen either */
+    } else if (!u.uinvulnerable) {
+        /* ordinarily we'd have to be fire resistant to survive long
+           enough to become stuck in lava, but it can happen without
+           resistance if water walking boots allow survival and then
+           get burned up; u.utrap time will be quite short in that case */
+        if (!Fire_resistance_dr())
+            u.uhp = Math.trunc((u.uhp + 2) / 3);
+
+        u.utrap -= (1 << 8);
+        if (u.utrap < (1 << 8)) {
+            killer().format = KILLED_BY;
+            killer().name = "molten lava";
+            await urgent_pline("You sink below the surface and die.");
+            await burn_away_slime_dr(); /* add insult to injury? */
+            await done_dr(DISSOLVED_DR);
+            /* can only get here via life-saving; try to get away from lava */
+            await reset_utrap(true);
+            /* levitation or flight have become unblocked, otherwise Tport */
+            if (!Levitation() && !Flying())
+                await safe_teleds_dr(TELEDS_ALLOW_DRAG_DR | TELEDS_TELEPORT_DR);
+        } else if (!u.umoved) {
+            /* can't fully turn into slime while in lava, but might not
+               have it be burned away until you've come awfully close */
+            const Slimed = uprop(SLIMED_SL).intrinsic;
+            if (Slimed && rnd(10 - 1) >= (Slimed & TIMEOUT_SL)) {
+                await pline(sink_deeper);
+                await burn_away_slime_dr();
+            } else {
+                await Norep(sink_deeper);
+            }
+            u.utrap += rnd(4);
+        }
+    }
+}
+import { SLIMED as SLIMED_SL, TIMEOUT as TIMEOUT_SL } from './const.js';

@@ -20,7 +20,7 @@ import { M_AP_TYPE, IS_DOOR, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED,
          M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, NATTK, HALLUC, W_SADDLE, W_ARMG,
          NEED_WEAPON, NEED_HTH_WEAPON, P_POLEARMS, P_LANCE, ERODE_BURN,
          ERODE_RUST, ERODE_CORRODE, CONFLICT, BLINDED } from './const.js';
-import { STRAT_WAITFORU } from './const.js';
+import { STRAT_WAITFORU, DEAF } from './const.js';
 import { mons, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH,
          AT_STNG, AT_HUGS, AT_ENGL, AT_TENT, AT_WEAP, AT_EXPL, AT_BOOM,
          AT_BREA, AT_SPIT,
@@ -79,7 +79,12 @@ function DEADMONSTER(mon) { return mon.mhp < 1; }
 function mon_offmap(mon) {
     return ((mon.mstate || 0) & (0x01 | 0x02 | 0x04 | 0x08)) !== 0;
 }
-function Deaf() { return false; }
+/* C ref: youprop.h Deaf */
+function Deaf() {
+    const P = game.u.uprops;
+    return !!(P[DEAF].intrinsic || P[DEAF].extrinsic
+              || game.u.uroleplay?.deaf);
+}
 function mdistu(mon) {
     const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
     return dx * dx + dy * dy;
@@ -102,25 +107,8 @@ import { sticks } from './engrave.js';
 /* C ref: worn.c find_mac() lives in worn.js */
 export { find_mac };
 
-// C ref: mhitu.c getmattk()
-function getmattk(magr, mdef, indx, prev_result) {
-    const mptr = magr.data;
-    const attk = mptr.mattk[indx];
-    if (mptr.mattk[0].adtyp === AD_SSEX || attk.adtyp === AD_SSEX)
-        throw new Error('getmattk(): seduction attacks not ported yet');
-    if ((indx > 0 && prev_result[indx - 1] > M_ATTK_MISS
-         && (attk.adtyp === AD_DISE || attk.adtyp === AD_PEST
-             || attk.adtyp === AD_FAMN)
-         && attk.adtyp === mptr.mattk[indx - 1].adtyp)
-        || attk.adtyp === AD_DREN
-        || (magr.mspec_used && (attk.aatyp === AT_ENGL
-                                || attk.aatyp === AT_HUGS
-                                || attk.adtyp === AD_STCK
-                                || attk.adtyp === AD_POLY))
-        || attk.aatyp === M.AT_MAGC)
-        throw new Error('getmattk(): attack substitution not ported yet');
-    return attk;
-}
+/* C ref: mhitu.c getmattk() is mhitu.js getmattk() (any defender) */
+import { getmattk } from './mhitu.js';
 
 // C ref: mondata.c max_passive_dmg()
 export function max_passive_dmg(mdef, magr) {
@@ -464,6 +452,7 @@ export async function mattackm(magr, mdef) {
             break;
 
         case AT_NONE:
+        case M.AT_MAGC: /* C: default: no attack */
             strike = 0;
             attk = 0;
             break;
@@ -716,7 +705,10 @@ async function mhitm_adtyping(magr, mattk, mdef, mhm) {
     case M.AD_SITM:
     case M.AD_SEDU: await mhitm_ad_sedu(magr, mattk, mdef, mhm); break;
     default:
-        throw new Error(`mhitm_adtyping(): damage type ${mattk.adtyp} not ported yet`);
+        /* the rest of C's switch: uhitm.js mhitm_adtyping() dispatches to
+           the mhitm_ad_*() handlers (unported mhitm branches stop there) */
+        await mhitm_adtyping_uh(magr, mattk, mdef, mhm);
+        break;
     }
 }
 
@@ -1007,8 +999,10 @@ export function paralyze_monst(mon, amt) {
 // doesn't; don't use for paralysis!
 export async function slept_monst(mon) {
     if (helpless(mon) && mon === game.u.ustuck
-        && !sticks(game.youmonst.data) && !game.u.uswallow)
-        throw new Error('slept_monst(): grip relaxes (unstuck()) not ported yet');
+        && !sticks(game.youmonst.data) && !game.u.uswallow) {
+        await pline(`${s_suffix_sm(Monnam(mon))} grip relaxes.`); /* pline_mon() */
+        await unstuck_sm(mon);
+    }
 }
 
 // C ref: mhitm.c attk_protection()
@@ -1059,3 +1053,97 @@ import { AT_NONE as AT_NONE_AP, AT_SPIT as AT_SPIT_AP, AT_EXPL as AT_EXPL_AP,
          AT_ENGL as AT_ENGL_AP, AT_TENT as AT_TENT_AP } from './monsters.js';
 import { W_ARMG as W_ARMG_AP, W_ARMF as W_ARMF_AP, W_ARMH as W_ARMH_AP,
          W_ARMC as W_ARMC_AP } from './const.js';
+
+// C ref: mhitm.c mdisplacem()
+/* monster attempting to displace another monster out of its way */
+export async function mdisplacem(magr, mdef, quietly) {
+    let pa, pd;
+    let tx, ty, fx, fy;
+
+    /* sanity checks; could matter if we unexpectedly get a long worm */
+    if (!magr || !mdef || magr === mdef)
+        return M_ATTK_MISS;
+    pa = magr.data, pd = mdef.data;
+    tx = mdef.mx, ty = mdef.my; /* destination */
+    fx = magr.mx, fy = magr.my; /* current location */
+    if (m_at(fx, fy) !== magr || m_at(tx, ty) !== mdef)
+        return M_ATTK_MISS;
+
+    /* The 1 in 7 failure below matches the chance in do_attack()
+     * for pet displacement.
+     */
+    if (!rn2(7))
+        return M_ATTK_MISS;
+
+    /* Grid bugs cannot displace at an angle. */
+    if (pa === mons[M.PM_GRID_BUG] && magr.mx !== mdef.mx
+        && magr.my !== mdef.my)
+        return M_ATTK_MISS;
+
+    /* undetected monster becomes un-hidden if it is displaced */
+    if (mdef.mundetected)
+        mdef.mundetected = 0;
+    if (mdef.m_ap_type && mdef.m_ap_type !== M_AP_MONSTER_MD)
+        seemimic_md(mdef);
+    /* wake up the displaced defender */
+    mdef.msleeping = 0;
+    mdef.mstrategy &= ~STRAT_WAITMASK_MD;
+    finish_meating_md(mdef);
+
+    /*
+     * Set up the visibility of action.
+     * You can observe monster displacement if you can see both of
+     * the monsters involved.
+     */
+    game.vis = (canspotmon_md(magr) && canspotmon_md(mdef));
+
+    if (touch_petrifies_md(pd) && !resists_ston_md(magr)) {
+        if (!which_armor_md(magr, W_ARMG_MD))
+            /* poly_when_stoned()/mon_to_stone(), monstone() */
+            throw new Error('mdisplacem(): displacing a petrifier not ported yet');
+    }
+
+    /* remove_monster(fx, fy); pick up from orig position --
+       game.level.monsters is a list keyed by mx/my, so place_monster()
+       moving it is enough */
+    if (mdef.wormno)
+        remove_worm_md(mdef);
+    /* else remove_monster(tx, ty) */
+    place_monster_md(magr, tx, ty); /* put down at target spot */
+    place_monster_md(mdef, fx, fy);
+    if (mdef.wormno) /* now put down tail */
+        place_worm_tail_randomly_md(mdef, fx, fy);
+    /* either creature might move into or out of a poison gas cloud */
+    update_monster_region_md(magr);
+    update_monster_region_md(mdef);
+
+    if (game.vis && !quietly)
+        await pline(`${Monnam(magr)} moves ${mon_nam(mdef)} out of ${
+            is_rider_md(pa) ? "the" : mhis_md(magr)} way!`);
+    newsym_md(fx, fy);  /* see it       */
+    newsym_md(tx, ty);  /*   all happen */
+    await flush_screen_md(0); /* make sure it shows up */
+
+    return M_ATTK_HIT;
+}
+import { seemimic as seemimic_md } from './mon.js';
+import { finish_meating as finish_meating_md } from './dog.js';
+import { canspotmon as canspotmon_md, newsym as newsym_md,
+         flush_screen as flush_screen_md } from './display.js';
+import { M_AP_MONSTER as M_AP_MONSTER_MD, STRAT_WAITMASK as STRAT_WAITMASK_MD,
+         W_ARMG as W_ARMG_MD } from './const.js';
+import { remove_worm as remove_worm_md,
+         place_worm_tail_randomly as place_worm_tail_randomly_md } from './worm.js';
+import { place_monster as place_monster_md } from './makemon.js';
+import { update_monster_region as update_monster_region_md } from './region.js';
+import { mhis as mhis_md } from './mhitu.js';
+import { which_armor as which_armor_md } from './worn.js';
+import { touch_petrifies as touch_petrifies_md, resists_ston as resists_ston_md } from './mondata.js';
+/* C ref: mondata.h is_rider() */
+function is_rider_md(ptr) {
+    return ptr === mons[M.PM_DEATH] || ptr === mons[M.PM_FAMINE]
+        || ptr === mons[M.PM_PESTILENCE];
+}
+import { s_suffix as s_suffix_sm } from './hacklib.js';
+import { unstuck as unstuck_sm } from './mhitu.js';
+import { mhitm_adtyping as mhitm_adtyping_uh } from './uhitm.js';

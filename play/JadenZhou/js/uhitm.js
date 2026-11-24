@@ -334,7 +334,14 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
         /* mhitu */
         if (mattk.aatyp === AT_HUGS && !sticks(pd)) {
             if (!u.ustuck && rn2(2)) {
-                throw new Error('mhitm_ad_phys(): u_slip_free()/grab not ported yet');
+                if (await u_slip_free(magr, mattk)) {
+                    mhm.damage = 0;
+                    mhm.hitflags |= M_ATTK_MISS;
+                } else {
+                    set_ustuck(magr);
+                    await pline(`${Monnam(magr)} grabs you!`); /* pline_mon() */
+                    mhm.hitflags |= M_ATTK_HIT;
+                }
             } else if (u.ustuck === magr) {
                 exercise(A_STR, false);
                 await pline(`You are being ${(pa === mons[M.PM_ROPE_GOLEM]) ? 'choked' : 'crushed'}.`);

@@ -540,7 +540,7 @@ export function addinv_core1(obj) {
             const { artitouch } = await import('./quest.js');
             await artitouch(obj);
         }
-        set_artifact_intrinsic(obj, true, W_ART);
+        await set_artifact_intrinsic(obj, true, W_ART);
         release_prize();
     })();
 }
@@ -983,7 +983,7 @@ export async function look_here(obj_cnt, lhflags) {
         await xwaitforspace(' \r\n\x1b');
         while (tty_next_page(tmpwin))
             await xwaitforspace(' \r\n\x1b');
-        tty_destroy_nhwindow(tmpwin);
+        await tty_destroy_nhwindow(tmpwin);
         if (felt_cockatrice)
             await feel_cockatrice(felt_cockatrice, false);
         await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
@@ -1250,7 +1250,7 @@ export async function dounpaid(count, floorcount, buriedcount) {
             await xwaitforspace(' \r\n\x1b');
         } while (game.morc !== '\x1b' && tty_next_page(win));
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 }
 
 // src/invent.c:3827 dotypeinv(), traditional prompts and category menus.

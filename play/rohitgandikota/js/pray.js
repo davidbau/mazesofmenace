@@ -2041,7 +2041,7 @@ async function pleased(g_align) {
                 intrinsic.HTelepat = (intrinsic.HTelepat | 0) | FROMOUTSIDE;
                 gift = 'Telepathy';
                 if (Blind())
-                    see_monsters();
+                    await see_monsters();
             } else if (!((intrinsic.HFast | 0) & INTRINSIC)) {
                 intrinsic.HFast = (intrinsic.HFast | 0) | FROMOUTSIDE;
                 gift = 'Speed';

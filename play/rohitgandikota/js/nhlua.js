@@ -125,7 +125,7 @@ export async function show_getpos_tip() {
        REAL map over it (C has no redraw on this path). */
     await tty_display_nhwindow(win);
     await xwaitforspace(' \r\n\x1b');
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 }
 
 // dat/nhlib.lua:43 percent() — `math.random(0, 99) < threshold`, and the

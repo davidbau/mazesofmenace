@@ -2367,7 +2367,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
            at the top put the pet on screen before its own "steps
            reluctantly" --More--, one frame earlier than C (seed0004
            screen 39). The engulf arm is handled by its own machinery. */
-        newsym(mtmp.mx, mtmp.my);
+        await newsym(mtmp.mx, mtmp.my);
     }
 
     if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {

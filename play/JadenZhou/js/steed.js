@@ -79,7 +79,7 @@ function Role_if(pm) { return game.urole.mnum === pm; }
 
 // C ref: steed.c can_ride()
 /* Can this monster wear a saddle and can the hero ride it? */
-function can_ride(mtmp) {
+export function can_ride(mtmp) {
     const ydat = game.youmonst.data;
     return (mtmp.mtame && (ydat.mflags1 & M1_HUMANOID) !== 0
             && !(ydat.msize < MZ_SMALL) && !(ydat.msize >= MZ_LARGE)

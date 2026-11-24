@@ -581,6 +581,21 @@ async function region_dialogue() {
         await pline(region_texts[region_texts.length - i]);
 }
 
+// C ref: timeout.c done_timeout()
+/* when a status timeout is fatal, keep the status line indicator shown
+   during end of game rundown (and potential dumplog);
+   timeout has already counted down to 0 by the time we get here */
+async function done_timeout(how, which) {
+    const intrinsic_p = game.u.uprops[which];
+
+    intrinsic_p.intrinsic |= I_SPECIAL_TO; /* affects final disclosure */
+    await done_to(how);
+
+    /* life-saved */
+    intrinsic_p.intrinsic &= ~I_SPECIAL_TO;
+    game.disp_botl = true;
+}
+
 // C ref: timeout.c nh_timeout()
 export async function nh_timeout() {
     const g = game;
@@ -756,9 +771,20 @@ export async function nh_timeout() {
                 await heal_legs(0);
                 await stop_occupation();
                 break;
-            case STONED:
-                /* done_timeout(STONING, STONED) */
-                throw new Error('nh_timeout(): petrification (done_timeout()) not ported yet');
+            case STONED: {
+                const kptr = find_delayed_killer_to(idx);
+                if (kptr && kptr.name) {
+                    killer_to().format = kptr.format;
+                    killer_to().name = kptr.name;
+                } else {
+                    killer_to().format = NO_KILLER_PREFIX_TO;
+                    killer_to().name = "killed by petrification";
+                }
+                dealloc_killer_to(kptr);
+                /* (unlike sliming, you aren't changing form here) */
+                await done_timeout(STONING_TO, STONED);
+                break;
+            }
             case SLIMED:
                 /* slimed_to_death() */
                 throw new Error('nh_timeout(): slimed_to_death() not ported yet');
@@ -766,8 +792,16 @@ export async function nh_timeout() {
                 await make_vomiting(0, true);
                 break;
             case STRANGLED:
-                /* done_timeout(DIED, STRANGLED) */
-                throw new Error('nh_timeout(): strangulation (done_timeout()) not ported yet');
+                killer_to().format = KILLED_BY_TO;
+                killer_to().name = (u.uburied) ? "suffocation" : "strangulation";
+                await done_timeout(DIED_TO, STRANGLED);
+                /* must be declining to die in explore|wizard mode;
+                   treat like being cured of strangulation by prayer */
+                if (game.uamul && game.uamul.otyp === AMULET_OF_STRANGULATION_TO) {
+                    await pline("Your amulet vanishes!");
+                    useup_to(game.uamul);
+                }
+                break;
             case SLEEPY:
                 if (unconscious()
                     || P[SLEEP_RES].intrinsic || P[SLEEP_RES].extrinsic) {
@@ -786,9 +820,41 @@ export async function nh_timeout() {
             case MAGICAL_BREATHING:
                 /* stuck_in_wall(), region_danger() feedback */
                 throw new Error(`nh_timeout(): timeout of property ${idx} not ported yet`);
-            case SICK:
-                /* rn2(100) < ACURR(A_CON) and done_timeout() */
-                throw new Error(`nh_timeout(): timeout of property ${idx} not ported yet`);
+            case SICK: {
+                const kptr = find_delayed_killer_to(idx);
+                let m_idx;
+                /* hero might be able to bounce back from food poisoning,
+                   but not other forms of illness */
+                if ((u.usick_type & SICK_NONVOMITABLE_TO) === 0
+                    && rn2(100) < ACURR_to(A_CON_TO)) {
+                    await pline("You have recovered from your illness.");
+                    await make_sick_to(0, null, false, SICK_ALL_TO);
+                    exercise(A_CON_TO, false);
+                    await adjattrib_to(A_CON_TO, -1, 1);
+                    break;
+                }
+                await urgent_pline_to("You die from your illness.");
+                if (kptr && kptr.name) {
+                    killer_to().format = kptr.format;
+                    killer_to().name = kptr.name;
+                } else {
+                    killer_to().format = KILLED_BY_AN_TO;
+                    killer_to().name = ""; /* take the default */
+                }
+                dealloc_killer_to(kptr);
+
+                if ((m_idx = name_to_mon_to(killer_to().name, null)) >= LOW_PM_TO) {
+                    if ((mons_to[m_idx].mflags2 & M2_PNAME_TO) !== 0) { /* type_is_pname() */
+                        killer_to().format = KILLED_BY_TO;
+                    } else if (mons_to[m_idx].geno & G_UNIQ_TO) {
+                        killer_to().name = the_to(killer_to().name);
+                        killer_to().format = KILLED_BY_TO;
+                    }
+                }
+                await done_timeout(POISONING_TO, SICK);
+                u.usick_type = 0;
+                break;
+            }
             case FUMBLING:
                 /* call this only when a move took place.  */
                 /* otherwise handle fumbling msgs locally. */
@@ -1928,3 +1994,21 @@ function cleanup_burn(arg, expire_time) {
 
     /* if (obj->where == OBJ_INVENT) update_inventory() */
 }
+
+import { done as done_to } from './end.js';
+import { killer as killer_to } from './topten.js';
+import { find_delayed_killer as find_delayed_killer_to, dealloc_killer as dealloc_killer_to,
+         make_sick as make_sick_to } from './potion.js';
+import { I_SPECIAL as I_SPECIAL_TO, NO_KILLER_PREFIX as NO_KILLER_PREFIX_TO,
+         KILLED_BY as KILLED_BY_TO, KILLED_BY_AN as KILLED_BY_AN_TO,
+         STONING as STONING_TO, DIED as DIED_TO, POISONING as POISONING_TO,
+         SICK_NONVOMITABLE as SICK_NONVOMITABLE_TO, SICK_ALL as SICK_ALL_TO,
+         A_CON as A_CON_TO } from './const.js';
+import { AMULET_OF_STRANGULATION as AMULET_OF_STRANGULATION_TO } from './objects.js';
+import { useup as useup_to } from './invent.js';
+import { ACURR as ACURR_to, adjattrib as adjattrib_to } from './attrib.js';
+import { urgent_pline as urgent_pline_to } from './display.js';
+import { name_to_mon as name_to_mon_to } from './mondata.js';
+import { LOW_PM as LOW_PM_TO } from './const.js';
+import { mons as mons_to, M2_PNAME as M2_PNAME_TO, G_UNIQ as G_UNIQ_TO } from './monsters.js';
+import { the as the_to } from './iactions.js';

@@ -655,7 +655,7 @@ export async function dodiscovered() {
         while (game.morc !== '\x1b' && tty_next_page(win))
             await xwaitforspace(' \r\n\x1b');
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     return 0;
 }
 
@@ -808,7 +808,7 @@ export async function doclassdisco() {
         while (game.morc !== '\x1b' && tty_next_page(tmpwin))
             await xwaitforspace(' \r\n\x1b');
     }
-    tty_destroy_nhwindow(tmpwin);
+    await tty_destroy_nhwindow(tmpwin);
     return 0;
 }
 

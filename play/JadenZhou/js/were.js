@@ -143,7 +143,7 @@ export async function new_were(mon) {
     /* regenerate by 1/4 of the lost hit points */
     healmon(mon, Math.trunc((mon.mhpmax - mon.mhp) / 4), 0);
     newsym(mon.mx, mon.my);
-    mon_break_armor(mon, false);
+    await mon_break_armor(mon, false);
     await possibly_unwield(mon, false);
 
     /* vision capability isn't changing so we don't call set_apparxy() to

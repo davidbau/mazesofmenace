@@ -27,6 +27,7 @@ import { inhishop, inhistemple } from './monmove.js';
 import { builds_up } from './dungeon.js';
 import { DEADMONSTER, helpless } from './monst.js';
 import { rn1 } from './rng.js';
+import { mon_aligntyp } from './priest.js';
 
 // src/wizard.c:61 amulet() — carrying the Amulet: a worn or wielded Amulet
 // senses the portal (rn2(15) gate), and while the Wizard of Yendor is in
@@ -605,10 +606,7 @@ function is_lawful_minion_for_cuss(mtmp) {
     const ptr = game.mons[mtmp.mnum];
     if (!(ptr.mflags2 & MFLAGS.M2_MINION))
         return false;
-    const alignment = mtmp.isminion
-        ? (mtmp.emin?.min_align ?? mtmp.mextra?.emin?.min_align)
-        : ptr.maligntyp;
-    return alignment === A_LAWFUL;
+    return mon_aligntyp(mtmp) === A_LAWFUL;
 }
 
 function note_unported_wizard(what) {

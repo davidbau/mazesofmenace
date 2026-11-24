@@ -555,7 +555,7 @@ export async function adjabil(oldlevel, newlevel) {
             if (prevabil !== (u.intrinsic[ability] | 0) && u.ulevel
                 && (ability === 'HWarning'
                     || ability === 'HSee_invisible'))
-                see_monsters();
+                await see_monsters();
         }
     };
 

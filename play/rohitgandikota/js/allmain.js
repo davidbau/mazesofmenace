@@ -101,13 +101,13 @@ import { player_selection, plnamesuffix, tty_init_nhwindows } from './plselect.j
 import { adjust_menu_promptstyle, ATR_INVERSE } from './tty/wintty.js';
 import { NO_COLOR } from './terminal.js';
 
-// src/allmain.c:698 init_sound_disp_gamewindows() — only the part that matters
-// before character selection: creating WIN_INVEN pushes iflags.menu_headings
-// into the tty's menu prompt style.
+// src/allmain.c:698 init_sound_disp_gamewindows(), before character selection.
 function init_sound_disp_gamewindows() {
     /* src/options.c:7188 — the default heading style */
     adjust_menu_promptstyle(game.iflags?.menu_headings
                             ?? { color: NO_COLOR, attr: ATR_INVERSE });
+    // src/allmain.c:756: first display of WIN_MESSAGE initializes the windows.
+    (game.iflags ||= {}).window_inited = true;
 }
 
 // include/you.h:441-442
@@ -173,6 +173,11 @@ export async function newgame_moveloop_preamble(resuming = false) {
     }
     /* src/allmain.c:85 */
     (g.disp ||= {}).botlx = true; /* for STATUS_HILITES */
+    /* src/allmain.c:92, restore defers sensing until the map is ready. */
+    if (g.defer_see_monsters) {
+        g.defer_see_monsters = false;
+        await see_monsters();
+    }
 }
 
 // C ref: allmain.c newgame()
@@ -1059,7 +1064,7 @@ async function moveloop_core_turn() {
     if (!g.context.mv || Blind()) {
         /* redo monsters if hallu or wearing a helm of telepathy */
         if (Hallucination()) { /* update screen randomly */
-            see_monsters();
+            await see_monsters();
             see_objects();
             see_traps();
             if (g.u.uswallow)
@@ -1070,7 +1075,7 @@ async function moveloop_core_turn() {
                       and then you moved away; it should no longer be seen
                       when that happens, even if it hasn't moved */
                    || any_visible_region()) { /* TODO: optimize this */
-            see_monsters();
+            await see_monsters();
         }
         /* src/allmain.c:470. During an uninterrupted run, defer this until
            movement stops or a moving monster consumes it mid-sweep. */

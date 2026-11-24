@@ -1828,7 +1828,7 @@ export async function do_enlightenment_effect() {
         await xwaitforspace(' \r\n\x1b');
         while (game.morc !== '\x1b' && tty_next_page(win))
             await xwaitforspace(' \r\n\x1b');
-        tty_destroy_nhwindow(win);
+        await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     }
     await pline_The('feeling subsides.');
@@ -1949,7 +1949,7 @@ async function wishcmdassist(triesleft) {
     if (boolean_option('cmdassist'))
         tty_putstr(win, 0, suppress_cmdassist);
     await tty_display_nhwindow(win);
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 }
 
 /* src/zap.c:6221 MAX_WISH_HISTORY / wish_history[] — the wish history is

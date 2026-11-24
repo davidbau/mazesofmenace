@@ -590,7 +590,7 @@ async function polyman(fmt, arg) {
     if (!Levitation() && !u.ustuck && is_pool_or_lava(u.ux, u.uy))
         await spoteffects(true);
 
-    see_monsters();
+    await see_monsters();
 }
 
 // src/polyself.c:273 change_sex()
@@ -743,7 +743,7 @@ async function newman() {
     }
 
     (game.disp ||= {}).botl = true;
-    see_monsters();
+    await see_monsters();
     await encumber_msg();
 
     await retouch_equipment(2);
@@ -1308,7 +1308,7 @@ export async function polymon(mntmp) {
 
     (game.disp ||= {}).botl = true;
     game.vision_full_recalc = 1;
-    see_monsters();
+    await see_monsters();
     await encumber_msg();
 
     await retouch_equipment(2);

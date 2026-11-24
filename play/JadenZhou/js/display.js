@@ -43,9 +43,27 @@ import { mons, NUMMONS, M3_INFRAVISIBLE, M1_MINDLESS, S_EEL, M1_FLY,
 import { def_oc_syms } from './drawing.js';
 import { observe_object } from './o_init.js';
 import { is_pool, is_lava } from './makemon.js';
+import { sobj_at as sobj_at_dp } from './makemon.js';
+import { IS_OBSTRUCTED, IS_DOOR, IS_ROOM, IS_POOL } from './const.js';
 import { t_at } from './trap.js';
 import { engr_at, sticks, can_reach_floor } from './engrave.js';
 import { ENGRAVE, BURN, HEADSTONE } from './const.js';
+import { AM_MASK, AM_SANCTUM, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC } from './const.js';
+
+// C ref: display.h altar_to_glyph(), enum altar_colors (without
+// USE_GENERAL_ALTAR_COLORS); display.c altarcolors[]
+function altar_color(amsk) {
+    if ((amsk & AM_SANCTUM) === AM_SANCTUM)
+        return CLR_BRIGHT_MAGENTA; /* altar_color_other */
+    switch (amsk & AM_MASK) {
+    case AM_LAWFUL:  /* altar_color_lawful */
+    case AM_NEUTRAL: /* altar_color_neutral */
+    case AM_CHAOTIC: /* altar_color_chaotic */
+        return CLR_GRAY;
+    default:         /* altar_color_unaligned */
+        return CLR_RED;
+    }
+}
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_GREEN, CLR_CYAN,
          CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_BLACK, CLR_MAGENTA,
          CLR_BRIGHT_MAGENTA, CLR_BRIGHT_GREEN, DEC_TO_UNICODE, ATR_INVERSE } from './terminal.js';
@@ -201,7 +219,7 @@ export function stairway_at(x, y) {
 }
 
 // C ref: stairs.c known_branch_stairs() -- hero knows where the stairs go
-function known_branch_stairs(sway) {
+export function known_branch_stairs(sway) {
     return !!(sway && sway.tolev.dnum !== game.u?.uz?.dnum && sway.u_traversed);
 }
 
@@ -783,7 +801,8 @@ function terrain_glyph_dec(loc, x, y) {
     }
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false, cmapidx: 37 };
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false, cmapidx: 36 };
-    case ALTAR:     return { ch: '{', color: CLR_GRAY, dec: true, asc: '_', cmapidx: 33 };  /* S_altar */
+    case ALTAR:     /* bypass_glyph = altar_to_glyph(ptr->altarmask) */
+        return { ch: '{', color: altar_color(loc.altarmask), dec: true, asc: '_', cmapidx: 33 };  /* S_altar */
     case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false, cmapidx: 34 };
     case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false, cmapidx: 35 };
     case LAVAPOOL:  return { ch: '`', color: CLR_RED, dec: true, asc: '}', cmapidx: 40 };
@@ -2171,7 +2190,72 @@ export function feel_location(x, y) {
     set_seenv(lev, u.ux, u.uy, x, y);
 
     if (!can_reach_floor(false)) {
-        throw new Error('feel_location(): levitation rules not ported yet');
+        /*
+         * Levitation Rules.  It is assumed that the hero can feel the state
+         * of the walls around herself and can tell if she is in a corridor,
+         * room, or doorway.  Boulders are felt because they are large enough.
+         * Anything else is unknown because the hero can't reach the ground.
+         * This makes things difficult.
+         *
+         * Check (and display) in order:
+         *
+         *      + Stone, walls, and closed doors.
+         *      + Boulders.  [see a boulder before a doorway]
+         *      + doors.
+         *      + Room/water positions
+         *      + Everything else (hallways!)
+         */
+        let boulder;
+
+        if (IS_OBSTRUCTED(lev.typ)
+            || (IS_DOOR(lev.typ)
+                && (lev.doormask & (D_LOCKED | D_CLOSED)))) {
+            map_background(x, y, 1);
+        } else if ((boulder = sobj_at_dp(BOULDER, x, y)) != null) {
+            map_object(boulder, 1);
+        } else if (IS_DOOR(lev.typ)) {
+            map_background(x, y, 1);
+        } else if (IS_ROOM(lev.typ) || IS_POOL(lev.typ)) {
+            /* An open room or water location: get rid of remembered
+               boulder symbols, or show the appropriate floor symbol
+               (see the C comment) */
+            const rg = lev.remembered_glyph;
+            let do_room_glyph = false;
+
+            if ((rg?.obj && rg.otyp === BOULDER && !rg.piletop && !rg.generic)
+                /* lev->glyph == objnum_to_glyph(BOULDER) */
+                || glyph_is_invisible(rg)) {
+                if (lev.typ !== ROOM && lev.seenv)
+                    map_background(x, y, 1);
+                else
+                    do_room_glyph = true;
+            } else {
+                /* lev->glyph >= cmap_to_glyph(S_stone)
+                   && lev->glyph < cmap_to_glyph(S_darkroom) */
+                const idx = !rg ? 0 /* never seen: S_stone */
+                    : (rg.cmapidx !== undefined) ? rg.cmapidx
+                      : (rg.cmap === 'S_stone') ? 0 : undefined;
+                if (idx === undefined && !rg.obj && !rg.kind)
+                    throw new Error('feel_location(): levitation rules for a remembered glyph without a cmap index not ported yet');
+                if (idx !== undefined && idx >= 0 && idx < 20 /* S_darkroom */)
+                    do_room_glyph = true;
+            }
+            if (do_room_glyph)
+                /* lev->glyph = S_darkroom/S_room/S_stone; show_glyph() */
+                throw new Error('feel_location(): levitation rules room glyph not ported yet');
+        } else {
+            /* We feel it (I think hallways are the only things left). */
+            map_background(x, y, 1);
+            /* Corridors are never felt as lit (unless remembered that way) */
+            /* (lit_corridor only).                                         */
+            if (lev.typ === CORR && lev.remembered_glyph?.cmap === 'S_litcorr'
+                && !lev.waslit) {
+                lev.remembered_glyph = rememb_glyph(S_corr_g);
+                show_glyph(x, y, lev.remembered_glyph);
+            }
+            /* (C's ROOM + dark_room case can't happen here: IS_ROOM() was
+               handled above) */
+        }
     } else {
         const ep = engr_at(x, y);
         if (ep && engr_can_be_felt(ep))

@@ -11,7 +11,7 @@
 
 import { Mgender, NON_PM } from './const.js';
 import { M_AP_MONSTER } from './const.js';
-import { MONSYMS } from './monst_data.js';
+import { MONSYMS, MFLAGS } from './monst_data.js';
 import { visible_region_at } from './region.js';
 import { is_pool } from './mon.js';
 import { surface } from './dungeon.js';
@@ -24,13 +24,15 @@ import { IS_WATERWALL, Is_waterlevel, Is_airlevel } from './const.js';
 import { u_at } from './const.js';
 import { DRAWBRIDGE_UP } from './const.js';
 import { Levitation, Underwater } from './youprop.js';
-import { cansee } from './vision.js';
+import { cansee, howmonseen } from './vision.js';
 import { distu, next2u } from './hacklib.js';
 import { spot_time_left, MELT_ICE_AWAY } from './timeout.js';
 import { obj_stop_timers } from './timeout.js';
 import { db_under_typ, is_drawbridge_wall } from './dbridge.js';
 import { doextlist } from './cmd.js';
 import { game } from './gstate.js';
+import { Role_if } from './attrib.js';
+import { Race_if } from './u_init.js';
 import { notice_all_mons_flush } from './hack.js';
 import { Invis, senseself, Punished } from './youprop.js';
 import { Upolyd, M_AP_TYPMASK } from './const.js';
@@ -45,11 +47,15 @@ import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
          MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, ECMD_OK,
          TER_DETECT, TER_MAP, TER_MON, M_AP_TYPE, M_AP_FURNITURE,
-         M_AP_OBJECT, M_AP_FLAG, M_AP_F_DKNOWN, OBJ_FLOOR,
+         M_AP_OBJECT, M_AP_FLAG, M_AP_F_DKNOWN, OBJ_FREE, OBJ_FLOOR,
          AM_MASK, AM_SANCTUM, Amask2align, Is_astralevel,
          A_LAWFUL, A_NEUTRAL, A_CHAOTIC, STRAT_WAITMASK,
          WARNCOUNT, def_warnsyms, I_SPECIAL,
-         NO_TRAP, BEAR_TRAP, WEB, is_pit } from './const.js';
+         NO_TRAP, BEAR_TRAP, WEB, is_pit,
+         GPCOORDS_NONE, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_SCREEN,
+         MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS,
+         MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT,
+         MONSEEN_WARNMON } from './const.js';
 import { defsyms, monexplain, oc_explain, def_monsyms, def_oc_syms,
          cmap_names } from './drawing_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -61,17 +67,18 @@ import { DEC_TO_UNICODE, NO_COLOR } from './terminal.js';
 import { m_at, t_at } from './mon.js';
 import { is_obj_mappear } from './monst.js';
 import { engr_at } from './engrave.js';
-import { x_monnam, upstart, pmname, hliquid, coyotename, distant_monnam } from './do_name.js';
+import { x_monnam, mon_nam, rndmonnam, upstart, pmname, hliquid, coyotename, distant_monnam } from './do_name.js';
 import { ARTICLE_NONE, MAXTCHARS } from './const.js';
-import { an, the, makesingular, singular, xname, distant_name,
+import { an, the, makesingular, makeplural, singular, xname, distant_name,
          doname_vague_quan, simpleonames, OBJ_NAME } from './objnam.js';
-import { mkobj, mksobj } from './mkobj.js';
+import { mkobj, mksobj, dealloc_obj } from './mkobj.js';
 import { observe_object } from './o_init.js';
-import { Blind, Hallucination } from './youprop.js';
+import { Blind, Hallucination, Invisible, Infravision, Unblind_telepat,
+         Detect_monsters } from './youprop.js';
 import { pmatch, tabexpand, mungspaces, isok, strstri } from './hacklib.js';
 import { data as DATAFILE } from './dat_files.js';
 import * as DAT from './dat_files.js';
-import { getpos, LOOK_QUICK, LOOK_ONCE, LOOK_VERBOSE } from './getpos.js';
+import { getpos, coord_desc, LOOK_QUICK, LOOK_ONCE, LOOK_VERBOSE } from './getpos.js';
 import { tty_yn_function } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
 import { getlin, key2extcmddesc, key2txt } from './cmd.js';
@@ -266,14 +273,16 @@ function look_at_object(x, y, glyph) {
 }
 
 // src/pager.c:422 look_at_monster()
-function look_at_monster(mtmp, x, y) {
+function look_at_monster(mtmp, x, y, monbuf = '') {
     const accurate = !Hallucination();
 
     const name = (mtmp.data === game.mons[PMNAMES.PM_COYOTE] && accurate)
                  ? coyotename(mtmp)
                  : distant_monnam(mtmp, ARTICLE_NONE);
-    let buf = `${(mtmp.mx !== x || mtmp.my !== y) ? 'tail of a ' : ''}`
-        + `${monhealthdescr(mtmp)}`
+    let buf = '';
+    if (mtmp.mx !== x || mtmp.my !== y)
+        buf = (mtmp.isshk && accurate) ? 'tail of ' : 'tail of a ';
+    buf += `${accurate ? monhealthdescr(mtmp) : ''}`
         + `${(mtmp.mtame && accurate) ? 'tame '
             : (mtmp.mpeaceful && accurate) ? 'peaceful ' : ''}`
         + name;
@@ -301,17 +310,65 @@ function look_at_monster(mtmp, x, y) {
             t.tseen = 1;
         }
     }
-    const appearance = M_AP_TYPE(mtmp);
-    if (appearance === M_AP_FURNITURE) {
-        const what = defsyms[mtmp.mappearance]?.explain || 'something';
-        buf += `, mimicking ${an(what)}`;
-    } else if (appearance === M_AP_OBJECT) {
-        /* The detection map replaces the remembered object glyph with the
-           monster glyph, so object_from_map() has no specific object to name. */
-        buf += ', mimicking something';
+    if (mtmp.mundetected || M_AP_TYPE(mtmp) || visible_region_at(x, y))
+        buf += mhidden_description(mtmp, MHID_PREFIX | MHID_ARTICLE | MHID_REGION);
+
+    if (monbuf !== null) {
+        let how_seen = howmonseen(mtmp);
+        monbuf = '';
+        if (how_seen !== 0 && how_seen !== MONSEEN_NORMAL) {
+            if (how_seen & MONSEEN_NORMAL) {
+                monbuf += 'normal vision';
+                how_seen &= ~MONSEEN_NORMAL;
+                if (how_seen) monbuf += ', ';
+            }
+            if (how_seen & MONSEEN_SEEINVIS) {
+                monbuf += 'see invisible';
+                how_seen &= ~MONSEEN_SEEINVIS;
+                if (how_seen) monbuf += ', ';
+            }
+            if (how_seen & MONSEEN_INFRAVIS) {
+                monbuf += 'infravision';
+                how_seen &= ~MONSEEN_INFRAVIS;
+                if (how_seen) monbuf += ', ';
+            }
+            if (how_seen & MONSEEN_TELEPAT) {
+                monbuf += 'telepathy';
+                how_seen &= ~MONSEEN_TELEPAT;
+                if (how_seen) monbuf += ', ';
+            }
+            if (how_seen & MONSEEN_XRAYVIS) {
+                monbuf += 'astral vision';
+                how_seen &= ~MONSEEN_XRAYVIS;
+                if (how_seen) monbuf += ', ';
+            }
+            if (how_seen & MONSEEN_DETECT) {
+                monbuf += 'monster detection';
+                how_seen &= ~MONSEEN_DETECT;
+                if (how_seen) monbuf += ', ';
+            }
+            if (how_seen & MONSEEN_WARNMON) {
+                if (Hallucination()) {
+                    monbuf += 'paranoid delusion';
+                } else {
+                    const mW = (game.context?.warntype?.obj || 0)
+                             | (game.context?.warntype?.polyd || 0);
+                    const m2 = mtmp.data.mflags2;
+                    let whom;
+                    if (mW & MFLAGS.M2_HUMAN & m2) whom = 'human';
+                    else if (mW & MFLAGS.M2_ELF & m2) whom = 'elf';
+                    else if (mW & MFLAGS.M2_ORC & m2) whom = 'orc';
+                    else if (mW & MFLAGS.M2_DEMON & m2) whom = 'demon';
+                    else whom = pmname(mtmp.data, Mgender(mtmp));
+                    monbuf += `warned of ${makeplural(whom)}`;
+                }
+                how_seen &= ~MONSEEN_WARNMON;
+                if (how_seen) monbuf += ', ';
+            }
+            // howmonseen() returns only these seven bits; C's remainder is zero.
+        }
     }
-    /* monbuf (howmonseen beyond normal vision) needs see-invisible &c */
-    return { buf, monbuf: '' };
+    return { buf, monbuf };
 }
 
 // src/pager.c:560 waterbody_name() — 5.0 moved it here from mkmaze.c.
@@ -438,7 +495,10 @@ export function mhidden_description(mon, mhid_flags) {
         if (incl_article && (!otmp || otmp.quan === 1))
             what = an(what);
         outbuf += what;
-        /* dealloc_obj(otmp) for a fake object: nothing to free here */
+        if (fakeobj && otmp) {
+            otmp.where = OBJ_FREE; /* object_from_map set to OBJ_FLOOR */
+            dealloc_obj(otmp); /* has no contents */
+        }
     };
 
     if (M_AP_TYPE(mon) === M_AP_FURNITURE
@@ -519,9 +579,28 @@ function lookat(x, y) {
         && (!game.iflags?.terrainmode
             || (game.iflags.terrainmode & TER_MON) !== 0)) {
         buf = self_lookat();
-        /* pm stays null for self: file lookup uses the name string.
-           The only exception is a gnomish wizard, forced to the generic
-           "wizard" entry (pager.c:673) — not a reachable start. */
+        // src/pager.c:672: identify an unpolymorphed gnome Wizard by role.
+        if (Role_if(PMNAMES.PM_WIZARD) && Race_if(PMNAMES.PM_GNOME)
+            && !Upolyd(game.u))
+            pm = game.mons[PMNAMES.PM_WIZARD];
+        // src/pager.c:684: normal sight, blindness and swallowing need no suffix.
+        if ((Invisible() || game.u.uundetected) && !Blind()
+            && !(game.u.uswallow || game.iflags?.save_uswallow)) {
+            let how = 0;
+            if (Infravision())
+                how |= 1;
+            if (Unblind_telepat())
+                how |= 2;
+            if (Detect_monsters())
+                how |= 4;
+            if (how)
+                buf += ` [seen: ${(how & 1) ? 'infravision' : ''}${
+                    (how & 3) > 2 ? ', ' : ''}${(how & 2) ? 'telepathy' : ''}${
+                    (how & 7) > 4 ? ', ' : ''}${(how & 4) ? 'monster detection' : ''}]`;
+        }
+    } else if (game.u.uswallow) {
+        buf = `interior of ${mon_nam(game.u.ustuck)}`;
+        pm = game.u.ustuck.data;
     } else if ((game.iflags?.terrainmode & (TER_DETECT | TER_MAP))
                === TER_DETECT
                && glyph.kind === 'cmap' && glyph.cmap === CM.S_stone) {
@@ -531,6 +610,9 @@ function lookat(x, y) {
         if (mtmp) {
             ({ buf, monbuf } = look_at_monster(mtmp, x, y));
             pm = mtmp.data;
+        } else if (Hallucination()) {
+            // C pager.c:712: a displayed monster without m_at() is a statue.
+            buf = rndmonnam(null);
         }
     } else if (glyph.kind === 'obj') {
         buf = look_at_object(x, y, glyph);
@@ -606,7 +688,7 @@ function lookat(x, y) {
     } else {
         buf = 'unexplored area';
     }
-    return { buf, monbuf, pm };
+    return { buf, monbuf, pm: pm && !Hallucination() ? pm : null };
 }
 
 // src/pager.c:830 checkfile() — look inp up in the data file; optionally ask
@@ -811,7 +893,7 @@ export async function checkfile(inp, pm, chkflags, supplemental_box) {
                 }
                 await tty_display_nhwindow(datawin);
                 await xwaitforspace(quitchars);
-                tty_destroy_nhwindow(datawin);
+                await tty_destroy_nhwindow(datawin);
                 await notice_all_mons_flush();
             }
         } else if (user_typed_name && pass === 0 && !pass1found_in_file) {
@@ -1236,7 +1318,7 @@ export async function do_look(mode) {
                      "something you're carrying", MENU_ITEMFLAGS_NONE);
         tty_add_menu(win, null, '?', '?', 'n', ATR_NONE, NO_COLOR,
                      'something else (by symbol or name)', MENU_ITEMFLAGS_NONE);
-        if (!game.u.uswallow /* && !Hallucination */) {
+        if (!game.u.uswallow && !Hallucination()) {
             tty_add_menu_str(win, '');
             tty_add_menu(win, null, 'm', 'm', 0, ATR_NONE, NO_COLOR,
                          'nearby monsters', MENU_ITEMFLAGS_NONE);
@@ -1417,16 +1499,21 @@ async function look_all(nearby, do_mons) {
             let lookbuf = '';
             const glyph = glyph_at(x, y);
             if (do_mons) {
-                if (glyph.kind === 'hero'
-                    && game.u.ux === x && game.u.uy === y) {
-                    lookbuf = self_lookat();
-                    ++count;
-                } else if (glyph.kind === 'mon') {
-                    const mtmp = m_at(x, y);
-                    if (mtmp) {
-                        ({ buf: lookbuf } = look_at_monster(mtmp, x, y));
+                if (glyph.kind === 'hero' || glyph.kind === 'mon') {
+                    let mtmp;
+                    if (u_at(x, y) && canspotself()) {
+                        lookbuf = self_lookat();
+                        ++count;
+                    } else if ((mtmp = m_at(x, y)) != null) {
+                        ({ buf: lookbuf } = look_at_monster(mtmp, x, y, null));
                         ++count;
                     }
+                } else if (glyph.kind === 'invis') {
+                    lookbuf = invisexplain;
+                    ++count;
+                } else if (glyph.kind === 'warn') {
+                    lookbuf = def_warnsyms[glyph.wl].desc;
+                    ++count;
                 }
             } else {
                 if (glyph.kind === 'obj') {
@@ -1435,18 +1522,23 @@ async function look_all(nearby, do_mons) {
                 }
             }
             if (lookbuf) {
+                const cmode = game.iflags.getpos_coords !== GPCOORDS_NONE
+                    ? game.iflags.getpos_coords : GPCOORDS_MAP;
                 if (count === 1) {
                     const which = do_mons ? 'monsters' : 'objects';
                     const outbuf = nearby
                         ? `${upstart(which)} currently shown near `
-                          + `${coord_desc_map(game.u.ux, game.u.uy)}:`
+                          + `${cmode !== GPCOORDS_COMPASS
+                              ? coord_desc(game.u.ux, game.u.uy, cmode)
+                              : !canspotself() ? 'your position' : 'you'}:`
                         : `All ${which} currently shown on the map:`;
                     tty_putstr(win, 0, outbuf);
                     tty_putstr(win, 0, '    '); /* separator */
                 }
-                let coordbuf = coord_desc_map(x, y);
-                if (y < 10) coordbuf += ' ';
-                let outbuf = coordbuf.padStart(8) + '  ';
+                let coordbuf = coord_desc(x, y, cmode);
+                if (cmode === GPCOORDS_MAP && y < 10) coordbuf += ' ';
+                let outbuf = (cmode === GPCOORDS_SCREEN ? coordbuf
+                    : coordbuf.padStart(cmode === GPCOORDS_MAP ? 8 : 12)) + '  ';
                 outbuf += `${encglyph_char(x, y)}  `;
                 outbuf += lookbuf;
                 tty_putstr(win, 0, outbuf);
@@ -1458,7 +1550,7 @@ async function look_all(nearby, do_mons) {
         await xwaitforspace(quitchars);
         while (tty_next_page(win))
             await xwaitforspace(quitchars);
-        tty_destroy_nhwindow(win);
+        await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     } else {
         await pline(`No ${do_mons ? 'monsters' : 'objects'} are currently `
@@ -1522,7 +1614,7 @@ async function look_traps(nearby) {
         await xwaitforspace(quitchars);
         while (tty_next_page(win))
             await xwaitforspace(quitchars);
-        tty_destroy_nhwindow(win);
+        await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     } else {
         await pline(`No traps seen or remembered${nearby ? ' nearby' : ''}.`);
@@ -1578,7 +1670,7 @@ async function look_engrs(nearby) {
     if (count) {
         await tty_display_nhwindow(win);
         await xwaitforspace(quitchars);
-        tty_destroy_nhwindow(win);
+        await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     } else {
         await pline('No engravings seen or remembered'
@@ -1657,7 +1749,7 @@ async function do_supplemental_info(name, pm, without_asking) {
                 }
                 await tty_display_nhwindow(datawin);
                 await xwaitforspace(quitchars);
-                tty_destroy_nhwindow(datawin);
+                await tty_destroy_nhwindow(datawin);
                 await notice_all_mons_flush();
             }
         }
@@ -1683,7 +1775,7 @@ export async function doextversion() {
     await xwaitforspace(quitchars);
     while (game.morc !== '\x1b' && tty_next_page(win))
         await xwaitforspace(quitchars);
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return ECMD_OK;
 }
@@ -1714,7 +1806,7 @@ export async function display_file(text) {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return ECMD_OK;
 }
@@ -1772,7 +1864,7 @@ async function domenucontrols() {
     show_menu_controls((s) => tty_putstr(cwin, 0, s), false);
     await tty_display_nhwindow(cwin);
     await xwaitforspace(quitchars);
-    tty_destroy_nhwindow(cwin);
+    await tty_destroy_nhwindow(cwin);
     await notice_all_mons_flush();
 }
 
@@ -1789,7 +1881,7 @@ async function docontact() {
     tty_putstr(win, 0, 'visit our website "https://www.nethack.org/".');
     await tty_display_nhwindow(win);
     await xwaitforspace(quitchars);
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
 }
 

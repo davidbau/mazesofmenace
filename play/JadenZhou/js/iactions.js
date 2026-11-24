@@ -31,7 +31,9 @@ import { data_base } from './data_base.js';
 import { is_weptool, Is_container, is_flammable } from './mkobj.js';
 import * as M from './monsters.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
-import { artiname } from './artifact.js';
+import { artiname, artifact_name } from './artifact.js';
+import { strncmpi, lowc, strstri } from './hacklib.js';
+import { CapitalMon } from './rumors.js';
 
 const IA_NONE = 0,
     IA_UNWIELD = 1, /* hack for 'w-' */
@@ -502,18 +504,59 @@ export function bare_artifactname(obj) {
     return outbuf;
 }
 
-/* C ref: objnam.c the() -- names that don't start with a capital letter */
+// C ref: objnam.c the()
 export function the(str) {
+    let aname;
+    let insert_the = false;
+
     if (!str)
         return "the []";
-    if (str.toLowerCase().startsWith("the ")) {
-        return str[0].toLowerCase() + str.slice(1);
-    } else if (str[0] < 'A' || str[0] > 'Z') {
+    if (!strncmpi(str, "the ", 4)) {
+        return lowc(str[0]) + str.slice(1);
+    } else if (str[0] < 'A' || str[0] > 'Z'
+               /* some capitalized monster names want "the", others don't */
+               || CapitalMon(str)
+               /* treat named fruit as not a proper name, even if player
+                  has assigned a capitalized proper name as his/her fruit,
+                  unless it matches an artifact name */
+               || (fruit_from_name(str, true, null)
+                   && ((aname = artifact_name(str, null, false)) == null
+                       || strncmpi(aname, "the ", 4) === 0))) {
         /* not a proper name, needs an article */
-        return `the ${str}`;
+        insert_the = true;
+    } else {
+        /* Probably a proper name, might not need an article */
+        let named, called;
+        let tmp, l;
+
+        /* some objects have capitalized adjectives in their names
+           (C's tmp[1] is '\0' past the end, which is < 'A') */
+        if (((tmp = str.lastIndexOf(' ')) >= 0
+             || (tmp = str.lastIndexOf('-')) >= 0)
+            && ((str[tmp + 1] || '\0') < 'A' || str[tmp + 1] > 'Z')) {
+            /* insert "the" unless we have an apostrophe (where we assume
+               we're dealing with "Unique's corpse" when "Unique" wasn't
+               caught by CapitalMon() above) */
+            insert_the = !str.includes('\'');
+        } else if (tmp >= 0 && str.indexOf(' ') < tmp) { /* has spaces */
+            /* (C: strchr() is Null, which compares below tmp, when the
+               match came from '-') */
+            /* it needs an article if the name contains "of" */
+            tmp = strstri(str, " of ");
+            named = strstri(str, " named ");
+            called = strstri(str, " called ");
+            if (called >= 0 && (named < 0 || called < named))
+                named = called;
+
+            if (tmp >= 0 && (named < 0 || tmp < named)) /* found an "of" */
+                insert_the = true;
+            /* stupid special case: lacks "of" but needs "the" */
+            else if (named < 0 && (l = str.length) >= 31
+                     && str.slice(l - 31) === "Platinum Yendorian Express Card")
+                insert_the = true;
+        }
     }
-    ia_not_ported('the() for capitalized names');
-    return str;
+    return (insert_the ? "the " : "") + str;
 }
 
 /* C ref: objnam.c cxname() */

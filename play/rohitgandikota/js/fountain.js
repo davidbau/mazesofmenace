@@ -418,7 +418,7 @@ export async function drinkfountain() {
                 await xwaitforspace(' \r\n\x1b');
                 while (tty_next_page(win))
                     await xwaitforspace(' \r\n\x1b');
-                tty_destroy_nhwindow(win);
+                await tty_destroy_nhwindow(win);
                 await notice_all_mons_flush();
 
                 exercise(A_WIS, true);

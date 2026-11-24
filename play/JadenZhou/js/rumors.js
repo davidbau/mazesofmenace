@@ -16,6 +16,10 @@ import { RUMORS_TRU, RUMORS_FAL, ENGRAVE_TXT, EPITAPH_TXT,
 import { A_WIS, BY_ORACLE, BY_COOKIE, BY_PAPER, BLINDED, FAINTED } from './const.js';
 import { exercise } from './attrib.js';
 import { pline } from './display.js';
+import { mons, LOW_PM, NUMMONS, G_UNIQ } from './monsters.js';
+import { MALE, NUM_MGENDERS } from './const.js';
+import { the_unique_pm } from './objnam.js';
+import { bogon_codes, bogon_is_pname } from './do_name.js';
 
 const BUFSZ = 256;
 export const MD_PAD_RUMORS = 60; /* global.h */
@@ -347,6 +351,101 @@ export function get_rnd_text(fname, buf, rng, padlength) {
         buf.s = get_rnd_line(fh, BUFSZ, rng, starttxt, 0, padlength);
     }
     return buf.s;
+}
+
+// C ref: rumors.c CapMons[], CapMonSiz
+let CapMons = null;
+let CapMonSiz = 0;
+
+// C ref: rumors.c CapitalMon()
+/* 'word' is a potential monster name; a name might be followed by
+   something like " corpse" */
+export function CapitalMon(word) {
+    let nam;
+    let i, wln, nln;
+
+    if (!word || word[0] === word[0].toLowerCase())
+        return false; /* 'word' is not a capitalized monster name */
+
+    if (!CapMons)
+        init_CapMons();
+
+    wln = word.length;
+    for (i = 0; i < CapMonSiz - 1; ++i) {
+        nam = CapMons[i];
+        nln = nam.length;
+        if (wln < nln)
+            continue;
+        /*
+         * Unlike name_to_mon(), we don't need to find the longest match
+         * or return the gender or a pointer to trailing stuff.  We do
+         * check full words though: "Foo" matches "Foo" and "Foo bar" and
+         * "Foo's bar" but not "Foobar".  We use case-sensitive matching.
+         */
+        if (word.startsWith(nam)
+            && (nln === wln || word[nln] === ' ' || word[nln] === '\''))
+            return true; /* 'word' is a capitalized monster name */
+    }
+    return false;
+}
+
+// C ref: rumors.c init_CapMons()
+/* one-time initialization of CapMons[], a list of non-unique monsters
+   having a capitalized type name like Green-elf or Archon, plus unique
+   monsters whose "name" is a title rather than a personal name, plus
+   hallucinatory monster names that fall into either of those categories */
+function init_CapMons() {
+    const bogonfile = dlb_fopen(BOGUSMONFILE);
+
+    /* C makes two passes (count, then populate); one pass that appends
+       gives the same array.  The first entries come from mons[].pmnames[]
+       and the next ones from the 'bogusmons' file; CapMonSiz counts C's
+       extra Null terminator */
+    CapMons = [];
+    /* gather applicable actual monsters */
+    for (let mndx = LOW_PM; mndx < NUMMONS; ++mndx) {
+        const mptr = mons[mndx];
+        if ((mptr.geno & G_UNIQ) !== 0 && !the_unique_pm(mptr))
+            continue;
+        for (let mgend = MALE; mgend < NUM_MGENDERS; ++mgend) {
+            const nam = mptr.pmnames[mgend];
+            if (nam && nam[0] !== nam[0].toLowerCase())
+                CapMons.push(nam);
+        }
+    }
+
+    /* now gather applicable hallucinatory monsters */
+    if (bogonfile) {
+        let hline, xbuf, startp, code;
+
+        dlb_fseek(bogonfile, 0, 'SEEK_SET');
+        /* skip "don't edit" comment (first line of file) */
+        dlb_fgets(BUFSZ, bogonfile);
+
+        /* one monster name per line; some are prefixed by a
+           classification code to indicate gender and/or to distinguish
+           an individual from a type (code is a single punctuation
+           character when present); xcrypt() is omitted (see top) */
+        while ((hline = dlb_fgets(BUFSZ, bogonfile)) !== null) {
+            const endp = hline.indexOf('\n');
+            if (endp >= 0)
+                hline = hline.slice(0, endp); /* strip newline */
+            xbuf = unpadline(hline);
+
+            if (!xbuf[0] || !bogon_codes.includes(xbuf[0])) {
+                code = '';
+                startp = xbuf; /* ordinary */
+            } else {
+                code = xbuf[0];
+                startp = xbuf.slice(1); /* special */
+            }
+
+            if (startp && startp[0] !== startp[0].toLowerCase()
+                && !bogon_is_pname(code))
+                CapMons.push(startp);
+        }
+    }
+    CapMonSiz = CapMons.length + 1; /* +1: terminator */
 }
 
 // test hook: lengths of the built files (compare with C's dat/ outputs)

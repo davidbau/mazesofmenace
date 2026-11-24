@@ -2532,3 +2532,135 @@ async function choose_classes_menu(prompt, category, way, class_list, class_sele
     }
     return { ret, class_select };
 }
+
+// C ref: options.c opt_intro[], opt_epilog[] (unix: !MICRO, !MACOS9, !VMS)
+const opt_intro = [
+    "",
+    "                 NetHack Options Help:", "",
+    null, /* CONFIG_SLOT: filled in at run-time */
+    "or use `NETHACKOPTIONS=\"<options>\"' in your environment",
+    "(<options> is a list of options separated by commas)",
+    "or press \"O\" while playing and use the menu.",
+    "",
+    ("Boolean options (which can be negated by prefixing them"
+     + " with '!' or \"no\"):"),
+];
+const CONFIG_SLOT = 3;
+const opt_epilog = [
+    "",
+    "Some of the options can only be set before the game is started;",
+    "those items will not be selectable in the 'O' command's menu.",
+    "Some options are stored in a game's save file, and will keep saved",
+    "values when restoring that game even if you have updated your config-",
+    "uration file to change them.  Such changes will matter for new games.",
+    "The \"other settings\" can be set with 'O', but when set within the",
+    "configuration file they use their own directives rather than OPTIONS.",
+    "See NetHack's \"Guidebook\" for details.",
+];
+
+// C ref: options.c option_help()
+export async function option_help() {
+    let buf, buf2;
+    let optname;
+    let i;
+    const wizard = !!game.flags.debug;
+
+    const datawin = tty_create_nhwindow(NHW_TEXT_OPT);
+    buf = `Set options as OPTIONS=<options> in ${get_configfile()}`
+        .slice(0, BUFSZ_OPT - 1); /* Snprintf(buf, sizeof buf, ...) */
+    /* opt_intro[CONFIG_SLOT] = buf */
+    for (i = 0; i < opt_intro.length; i++)
+        await tty_putstr_opt(datawin, 0,
+                             (i === CONFIG_SLOT) ? buf : opt_intro[i]);
+
+    /* Boolean options */
+    for (i = 0; i < allopt.length; i++) {
+        if ((allopt[i].opttyp !== BoolOpt || !allopt[i].addr)
+            || (allopt[i].setwhere === set_wizonly && !wizard))
+            continue;
+        if (allopt[i].setwhere === set_wiznofuz
+            && (!wizard || game.iflags.debug_fuzzer))
+            continue;
+        optname = allopt[i].name;
+        if ((is_wc_option(optname) && !wc_supported(optname))
+            || (is_wc2_option(optname) && !wc2_supported(optname)))
+            continue;
+        await next_opt(datawin, optname);
+    }
+    await next_opt(datawin, "");
+
+    /* Compound options */
+    await tty_putstr_opt(datawin, 0, "Compound options:");
+    for (i = 0; i < allopt.length; i++) {
+        if (allopt[i].opttyp !== CompOpt
+            || (allopt[i].setwhere === set_wizonly && !wizard))
+            continue;
+        if (allopt[i].setwhere === set_wiznofuz
+            && (!wizard || game.iflags.debug_fuzzer))
+            continue;
+        optname = allopt[i].name;
+        if ((is_wc_option(optname) && !wc_supported(optname))
+            || (is_wc2_option(optname) && !wc2_supported(optname)))
+            continue;
+        buf2 = `\`${optname}'`;
+        /* Snprintf(buf, sizeof(buf), "%-20s - %s%c", ...) */
+        buf = `${buf2.padEnd(20)} - ${allopt[i].descr}${
+            (i + 1 < allopt.length && allopt[i + 1].name) ? ',' : '.'}`
+            .slice(0, BUFSZ_OPT - 1);
+        await tty_putstr_opt(datawin, 0, buf);
+    }
+    await tty_putstr_opt(datawin, 0, "");
+
+    /* Compound options */
+    await tty_putstr_opt(datawin, 0, "Other settings:");
+    for (i = 0; i < allopt.length; i++) {
+        if (allopt[i].opttyp !== OthrOpt)
+            continue;
+        buf = ` ${allopt[i].name}`;
+        await tty_putstr_opt(datawin, 0, buf);
+    }
+
+    await tty_putstr_opt(datawin, 0, "");
+
+    for (i = 0; i < opt_epilog.length; i++)
+        await tty_putstr_opt(datawin, 0, opt_epilog[i]);
+
+    await tty_display_nhwindow_opt(datawin, false);
+    await tty_destroy_nhwindow(datawin);
+    return;
+}
+
+// C ref: options.c next_opt() -- the static buffer is game.next_opt_buf
+async function next_opt(datawin, str) {
+    let i;
+
+    if (game.next_opt_buf == null)
+        game.next_opt_buf = '';
+
+    if (!str) {
+        const s = game.next_opt_buf;
+        if (s.length > 1 && s[s.length - 2] === ',')
+            game.next_opt_buf = s.slice(0, -2) + '.'; /* replace ending ", " with "." */
+        i = COLNO_OPT; /* (greater than COLNO - 2) */
+    } else {
+        i = game.next_opt_buf.length + str.length + 2;
+    }
+
+    if (i > COLNO_OPT - 2) { /* rule of thumb */
+        await tty_putstr_opt(datawin, 0, game.next_opt_buf);
+        game.next_opt_buf = '';
+    }
+    if (str) {
+        game.next_opt_buf += str;
+        game.next_opt_buf += ", ";
+    } else {
+        await tty_putstr_opt(datawin, 0, str);
+        game.next_opt_buf = null;
+    }
+    return;
+}
+
+import { NHW_TEXT as NHW_TEXT_OPT, COLNO as COLNO_OPT,
+         BUFSZ as BUFSZ_OPT } from './const.js';
+import { tty_putstr as tty_putstr_opt,
+         tty_display_nhwindow as tty_display_nhwindow_opt } from './wintty.js';

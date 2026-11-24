@@ -213,13 +213,8 @@ export function reset_status_hilites() {
 
 // ── bot ──
 export async function bot() {
-    // C botl.c:255-256: select_menu() suppresses status even during dismissal.
+    // C botl.c:255-256: select_menu() and getlin() suppress status via gb.bot_disabled.
     if (game?._bot_disabled)
-        return;
-    /* getline.c:63: custompline() reaches flush_screen()->bot(), but the core
-     * disables bot processing while ttyDisplay->inread is nonzero.  Prompt
-     * repainting must therefore leave status and pending disp flags alone. */
-    if (game?._topl_prompt_echo)
         return;
     if (game._statusRulesResetReq) { /* reset_status_hilites()'s botlx */
         game._statusRulesResetReq = false;

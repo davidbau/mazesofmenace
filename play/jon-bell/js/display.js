@@ -2297,6 +2297,10 @@ function _mention_map_cells_or_now(msg) {
     const q = game._mentionMapPlineCells?.get(String(msg));
     return q?.length ? new Map(q[0]) : _capture_painted_cells();
 }
+function _mention_map_r1phys(msg) {
+    const q = game._mentionMapPlineCells?.get(String(msg));
+    return q?.length ? q[0]._r1physical : undefined;
+}
 export function mention_map_pline_cells(msg, cells) {
     const m = (game._mentionMapPlineCells ||= new Map());
     const q = m.get(msg) || [];
@@ -2670,6 +2674,8 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
             const cells = _capture_painted_cells();
             // pline.c:273-274 flushes gnew synchronously before the next show_glyph.
             pline_flush_point();
+            cells._r1physical = _threeStatusLines() && !_map_row20_clipped()
+                ? String(game._screen_output || '').split('\n')[21] : undefined;
             /* C's description pline completes inside show_glyph (2060-2072),
              * before see_monsters can print an artifact's glow message.
              * Descriptions are async here; preserve their order and make the
@@ -5442,9 +5448,31 @@ export async function level_transition_arrival_more(msg, oldPaint) {
                 }
             }
             if (_next >= 0) {
+                /* topl.c:266-280: suppressed messages between the ESC and the
+                 * urgent one still join or replace gt.toplines, and the urgent
+                 * update_topl's remember_topl() files that buffer. */
+                let _urgStart = _arrConsumed;
                 for (let j = i + 1; j < _next; j++)
-                    _arrConsumed += (_pages[j] ? _pages[j].length : 0) + 2;
-                _arrConsumed += _cut;
+                    _urgStart += (_pages[j] ? _pages[j].length : 0) + 2;
+                _urgStart += _cut;
+                if (_urgStart > _arrConsumed) {
+                    const _rem = msg.slice(_arrConsumed, _urgStart - 2);
+                    const _remJoins = (_joins || [])
+                        .filter(j => j >= _arrConsumed && j < _urgStart - 2)
+                        .map(j => j - _arrConsumed);
+                    let _hBuf = null;
+                    for (const _m of _topl_remainder_segments(_rem, _remJoins)) {
+                        if (!_m) continue;
+                        if (_hBuf === null) _hBuf = _m;
+                        else if (_hBuf.length + 2 + _m.length < TOPL_LIMIT && !_m.startsWith('You die'))
+                            _hBuf += '  ' + _m;
+                        else { _msg_history_arr().push(_hBuf); _hBuf = _m; }
+                    }
+                    if (_hBuf) _msg_history_arr().push(_hBuf);
+                }
+                _arrConsumed = _urgStart;
+                g._topl_win_stop_armed = false;
+                g._topl_win_stop = false;
                 /* wintty.c:2277-2281 wipes the stopped message window before
                  * the urgent pline. update_topl (topl.c:262-269) then measures
                  * every later join from that fresh line. The old page cuts
@@ -5459,6 +5487,29 @@ export async function level_transition_arrival_more(msg, oldPaint) {
                     ..._topl_more_pages(tail, tailJoins));
                 i = _next - 1;
                 continue;
+            }
+            /* topl.c:257-290: gt.toplines kept receiving the suppressed
+             * messages after this ESC'd page (the incoming owner was drawn,
+             * later messages joined or replaced it); record that buffer in
+             * history and _topl_win_stop_buf so later remember_topl() /
+             * "You die" fit tests see C's gt.toplines. */
+            if (_arrConsumed <= msg.length) {
+                const _rem = msg.slice(_arrConsumed);
+                const _remJoins = (_joins || [])
+                    .filter(j => j >= _arrConsumed)
+                    .map(j => j - _arrConsumed);
+                let _wsBuf = null;
+                for (const _m of _topl_remainder_segments(_rem, _remJoins)) {
+                    if (!_m) continue;
+                    if (_wsBuf === null) _wsBuf = _m;
+                    else if (_wsBuf.length + 2 + _m.length < TOPL_LIMIT && !_m.startsWith('You die'))
+                        _wsBuf += '  ' + _m;
+                    else { _msg_history_arr().push(_wsBuf); _wsBuf = _m; }
+                }
+                if (_wsBuf) {
+                    _msg_history_arr().push(_wsBuf);
+                    g._topl_win_stop_buf = _wsBuf;
+                }
             }
             g._arrival_more_suppress = true;
             break;
@@ -7024,7 +7075,7 @@ function _status_field_hilites(row) {
         if (!saved || saved.text !== text) {
             const colors = [];
             for (let i = 0; i < text.length; i++)
-                colors.push(cells.get(start + i));
+                colors.push(game.iflags?.hilite_delta ? cells.get(start + i) : undefined);
             saved = delivered[field] = { text, colors };
         }
         for (let i = 0; i < saved.colors.length; i++)
@@ -7090,7 +7141,7 @@ function _status_field_hilites(row) {
         const dkey = tf.key || tf.field;
         let saved = delivered[dkey];
         if (!saved || saved.text !== tf.text) saved = delivered[dkey] = {
-            text: tf.text, rule };
+            text: tf.text, rule: game.iflags?.hilite_delta ? rule : null };
         if (saved.rule) for (let c = tf.start; c < tf.start + tf.len; c++) result.set(c, saved.rule);
     }
     // Hunger has its own text/value matcher; temporary rules run afterwards.
@@ -9418,7 +9469,7 @@ function _prompt_physical_status_rows() {
     /* `_statusHeldPhysical`: cls()'s display_nhwindow(WIN_MESSAGE) more()
      * (display.c cls(), wintty.c:1873) runs no bot() either, so the status rows
      * hold their last paint (js/options_runtime.js reset_needed_visuals). */
-    if (!game?._topl_prompt_echo && !game?._statusHeldPhysical)
+    if (!game?._statusHeldPhysical && !(game?._topl_prompt_echo && game?._bot_disabled))
         return null;
     /* A menu dismissal blanks the status windows before the following getlin;
      * `_screen_output` can still contain the menu which occupied those rows. */
@@ -10145,12 +10196,13 @@ function _buildScreenOutputWithMoreRows(rows) {
          * over blank status row 1, as in _buildScreenOutput */
         const _r1MapPrint = !_promptStatusRows3 && _blank3
             && _status_blank_after_docrt() && !_map_row20_clipped() && game.level;
+        const _statusOut3 = (r) => (_promptStatusRows3 ? r : _status_sgr(r));
         output += (_r1MapPrint ? render_map_row(ROWNO - 1)
                    : _r1Live && _r1Physical !== undefined ? _r1Physical
                    : _r1Live && game._r1MoreFrozen !== undefined ? game._r1MoreFrozen
                    : _r1Live && !_r1Whole ? _status_row1_map_overlay(_r3[0])
                    : _r1Live ? _status_row1_whole_with_tail(_r3[0])
-                   : _status_sgr(_r3[0])) + '\n' + _status_sgr(_r3[1]) + '\n' + _status_sgr(_r3[2]);
+                   : _statusOut3(_r3[0])) + '\n' + _statusOut3(_r3[1]) + '\n' + _statusOut3(_r3[2]);
         game._screen_output = _docrt_text_frame(output, M);
         return;
     }
@@ -10606,8 +10658,8 @@ export function _pline_flush_frame_record(off, msg) {
     const _botl = (g.disp && !(g.disp.botl | 0) && !(g.disp.botlx | 0) && !(g.disp.time_botl | 0)
                && g._lastPaintedBotl && (g._lastPaintedBotl.mh | 0) === 0 && g.u && (g.u.mh | 0) !== 0)
             ? g._lastPaintedBotl : _capture_botl();
-    const _r1physical = _threeStatusLines() && !_map_row20_clipped()
-        ? String(g._screen_output || '').split('\n')[21] : undefined;
+    const _r1physical = _mention_map_r1phys(msg) ?? (_threeStatusLines() && !_map_row20_clipped()
+        ? String(g._screen_output || '').split('\n')[21] : undefined);
     if (_botl && _r1physical !== undefined) _botl.r1physical = _r1physical;
     g._plineFlushFrames.push({
         off,
@@ -13778,7 +13830,7 @@ function _flush_screen_repaint(mode) {
              * map was printed by an earlier bot-disabled flush. */
             if (docrtMapAfterBot) game._status1Whole = false;
             if (game._docrtGnewPending && !_mapPrinted
-                && !game._bot_disabled && !game._topl_prompt_echo)
+                && !game._bot_disabled)
                 game._status1Whole = false;
         } else if (game.disp.time_botl)
             timebot();
@@ -14161,12 +14213,24 @@ export function putmsghistory(msg, _restoring) {
         game._topl_win_stop_buf = text;
     // C topl.c:677-715: remember_topl() stores every nonempty topline,
     // including consecutive identical messages (topl.c:170-191).
-    _msg_history_arr().push(text);
+    const _h = _msg_history_arr();
+    /* C topl.c:176,189 remember_topl(): a SUPPRESS_HISTORY prompt (e.g.
+     * tty_yn_function's custompline, topl.c:420 / wintty.c:2294-2299) ran
+     * remember_topl() when the prompt was shown — which returned early on an
+     * EMPTY gt.toplines (leaving cw->maxcol untouched) — and clean_up
+     * (topl.c:539) only writes prompt+answer into gt.toplines without calling
+     * remember_topl().  tty_putmsghistory (topl.c:705) likewise skips the
+     * cw->maxcol reset when gt.toplines was empty.  When this push enters
+     * the array while gt.toplines was empty (_toplEmptyAfterSuppress), preserve
+     * any active ^P walk cursor across the insertion (same as tty_getlin_history
+     * and input.js's empty-standing commit). */
+    if (game._toplEmptyAfterSuppress
+        && game._prevmsg_next != null && game._prevmsg_history_length === _h.length)
+        game._prevmsg_history_length++;
+    _h.push(text);
     /* C topl.c:539,706: writing gt.toplines ends any SUPPRESS_HISTORY-empty
      * state, so the next ^P recall starts at this line instead of a blank. */
     game._toplEmptyAfterSuppress = false;
-    if (text.length > 0)
-        game._toplEmptyAfterSuppress = false;
     /* C topl.c:706 Strcpy(gt.toplines, msg) skips update_topl's word-wrap
      * loop (:284-297), so redotoplin's putsyms() hard-wraps it on ^P recall. */
     (game._getlin_hist ||= new Set()).add(text);

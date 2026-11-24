@@ -1528,7 +1528,7 @@ async function status_hilites_viewall() {
     for (const hlstr of status_hilite_str)
         tty_putstr(datawin, 0, `OPTIONS=hilite_status: ${hlstr.str}`);
     await tty_display_nhwindow(datawin);
-    tty_destroy_nhwindow(datawin);
+    await tty_destroy_nhwindow(datawin);
 }
 
 // src/botl.c:4498 status_hilite_menu()

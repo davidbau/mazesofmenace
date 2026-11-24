@@ -43,7 +43,7 @@ import { makemon, is_domestic, set_malign, put_saddle_on_mon,
 import { monsndx, regenerates } from './mondata.js';
 import { healmon } from './mon.js';
 import { M1_CARNIVORE, M1_HERBIVORE, S_MIMIC } from './monsters.js';
-import { LARGEST_INT, M_AP_NOTHING } from './const.js';
+import { LARGEST_INT, M_AP_NOTHING, In_endgame } from './const.js';
 import { mon_track_clear } from './monmove.js';
 import { mnexto, rloc_to } from './teleport.js';
 import { on_level, ledger_to_dnum, ledger_to_dlev, depth,
@@ -1042,3 +1042,82 @@ export async function tamedog(
     }
     return true;
 }
+
+// C ref: dog.c wary_dog()
+/*
+ * Called during pet revival or pet life-saving.
+ * If you killed the pet, it revives wild.
+ * If you abused the pet a lot while alive, it revives wild.
+ * If you abused the pet at all while alive, it revives untame.
+ * If the pet wasn't abused and was very tame, it might revive tame.
+ */
+export async function wary_dog(mtmp, was_dead) {
+    const u = game.u;
+    let edog;
+    const quietly = was_dead;
+
+    finish_meating(mtmp);
+
+    if (!mtmp.mtame)
+        return;
+    edog = !mtmp.isminion ? mtmp.edog : null; /* EDOG(mtmp) */
+
+    /* if monster was starving when it died, undo that now */
+    if (edog && edog.mhpmax_penalty) {
+        mtmp.mhpmax += edog.mhpmax_penalty;
+        mtmp.mhp += edog.mhpmax_penalty; /* heal it */
+        edog.mhpmax_penalty = 0;
+    }
+
+    if (edog && (edog.killed_by_u === 1 || edog.abuse > 2)) {
+        mtmp.mpeaceful = mtmp.mtame = 0;
+        if (edog.abuse >= 0 && edog.abuse < 10)
+            if (!rn2(edog.abuse + 1))
+                mtmp.mpeaceful = 1;
+        if (!quietly && cansee(mtmp.mx, mtmp.my)) {
+            if (haseyes_wd(game.youmonst.data)) {
+                if (haseyes_wd(mtmp.data))
+                    await pline(`${Monnam(mtmp)} ${mtmp.mpeaceful ? "seems unable"
+                                                                  : "refuses"} to look you in the ${
+                                    body_part_wd(EYE_WD)}.`); /* pline_mon() */
+                else
+                    await pline(`${Monnam(mtmp)} avoids your gaze.`); /* pline_mon() */
+            }
+        }
+    } else {
+        /* chance it goes wild anyway - Pet Sematary */
+        mtmp.mtame = rn2(mtmp.mtame + 1);
+        if (!mtmp.mtame)
+            mtmp.mpeaceful = rn2(2);
+    }
+
+    if (!mtmp.mtame) {
+        if (!quietly && canspotmon(mtmp))
+            await pline(`${Monnam(mtmp)} ${mtmp.mpeaceful ? "is no longer tame"
+                                                          : "has become feral"}.`); /* pline_mon() */
+        newsym(mtmp.mx, mtmp.my);
+        /* a life-saved monster might be leashed;
+           don't leave it that way if it's no longer tame */
+        if (mtmp.mleashed)
+            throw new Error('wary_dog(): m_unleash() not ported yet');
+        if (mtmp === u.usteed)
+            throw new Error('wary_dog(): dismount_steed() not ported yet');
+    } else if (edog) {
+        /* it's still a pet; start a clean pet-slate now */
+        edog.revivals++;
+        edog.killed_by_u = 0;
+        edog.abuse = 0;
+        edog.ogoal.x = edog.ogoal.y = -1;
+        if (was_dead || edog.hungrytime < game.moves + 500)
+            edog.hungrytime = game.moves + 500;
+        if (was_dead) {
+            edog.droptime = 0;
+            edog.dropdist = 10000;
+            edog.whistletime = 0;
+            edog.apport = 5;
+        } /* else lifesaved, so retain current values */
+    }
+}
+import { haseyes as haseyes_wd } from './mondata.js';
+import { body_part as body_part_wd } from './insight.js';
+import { EYE as EYE_WD } from './const.js';

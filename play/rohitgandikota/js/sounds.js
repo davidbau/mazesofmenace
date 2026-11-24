@@ -48,6 +48,7 @@ import { doconsult } from './rumors.js';
 import { Death_quote } from './files.js';
 import { BUFSZ } from './const.js';
 import { gd_sound, vault_occupied } from './vault.js';
+import { mon_aligntyp } from './priest.js';
 
 
 // src/sounds.c:202 dosounds()
@@ -786,10 +787,7 @@ function guardian_role_sound(mnum) {
 function is_lawful_minion(mtmp) {
     if (!(game.mons[mtmp.mnum].mflags2 & MFLAGS.M2_MINION))
         return false;
-    const alignment = mtmp.isminion
-        ? (mtmp.emin?.min_align ?? mtmp.mextra?.emin?.min_align)
-        : game.mons[mtmp.mnum].maligntyp;
-    return alignment === A_LAWFUL;
+    return mon_aligntyp(mtmp) === A_LAWFUL;
 }
 
 function death_novel_notice() {

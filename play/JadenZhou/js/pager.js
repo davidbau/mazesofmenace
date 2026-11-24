@@ -34,7 +34,8 @@ import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { extcmdlist } from './func_tab.js';
 import { cmd_from_func, key2extcmddesc, key2txt, dokeylist } from './cmd.js';
 import { visctrl } from './hacklib.js';
-import { canspotmon, vobj_at, pline, Hallucination, Blind, back_to_glyph } from './display.js';
+import { canspotmon, vobj_at, pline, Hallucination, Blind, back_to_glyph,
+         known_branch_stairs, stairway_at } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, closed_door, is_pool, is_lava } from './makemon.js';
 import { t_at } from './trap.js';
@@ -148,7 +149,8 @@ const S_stone = 0, S_ndoor = 12, S_vodoor = 13, S_hodoor = 14,
     S_vcdoor = 15, S_hcdoor = 16, S_bars = 17, S_tree = 18, S_room = 19,
     S_darkroom = 20, S_engroom = 21, S_corr = 22, S_litcorr = 23,
     S_engrcorr = 24, S_upstair = 25,
-    S_dnstair = 26, S_upladder = 27, S_dnladder = 28, S_altar = 33,
+    S_dnstair = 26, S_upladder = 27, S_dnladder = 28, S_brupstair = 29,
+    S_brdnstair = 30, S_brupladder = 31, S_brdnladder = 32, S_altar = 33,
     S_grave = 34, S_throne = 35, S_sink = 36, S_fountain = 37, S_pool = 38,
     S_ice = 39, S_lava = 40, S_lavawall = 41, S_vodbridge = 42,
     S_vcdbridge = 44, S_hcdbridge = 45, S_air = 46, S_cloud = 47,
@@ -294,9 +296,12 @@ export function back_to_cmap(x, y) {
     case MOAT:
         return S_pool;
     case STAIRS:
-        /* known_branch_stairs(): the explanation for S_brupstair etc. */
+        if (known_branch_stairs(stairway_at(x, y)))
+            return (ptr.ladder & LA_DOWN) ? S_brdnstair : S_brupstair;
         return (ptr.ladder & LA_DOWN) ? S_dnstair : S_upstair;
     case LADDER:
+        if (known_branch_stairs(stairway_at(x, y)))
+            return (ptr.ladder & LA_DOWN) ? S_brdnladder : S_brupladder;
         return (ptr.ladder & LA_DOWN) ? S_dnladder : S_upladder;
     case FOUNTAIN:
         return S_fountain;
@@ -1784,6 +1789,8 @@ export async function dohelp() {
             await docontact();
         else if (f === 'dokeylist')
             await dokeylist();
+        else if (f === 'option_help')
+            await option_help_pg();
         else if (f === 'domenucontrols')
             await domenucontrols();
         else
@@ -2765,3 +2772,4 @@ import { ceiling_hider as ceiling_hider_pg } from './engrave.js';
 import { M1_CONCEAL as M1_CONCEAL_PG, M1_HIDE as M1_HIDE_PG,
          S_EEL as S_EEL_PG } from './monsters.js';
 import { S_poisoncloud as S_poisoncloud_pg } from './region.js';
+import { option_help as option_help_pg } from './options.js';

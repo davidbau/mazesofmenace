@@ -1531,21 +1531,60 @@ export async function Boots_off() {
     const g = game;
     const otmp = g.uarmf;
     const otyp = otmp.otyp;
-    const oldprop = uprop(objects[otyp].oc_oprop).extrinsic & ~W_ARMF;
-    void oldprop;
+    const oldprop = uprop(objects[otyp].oc_oprop).extrinsic & ~W_ARMF; /* WORN_BOOTS */
+    const tk = takeoff_ctx();
 
-    takeoff_ctx().mask &= ~W_ARMF;
+    tk.mask &= ~W_ARMF;
     /* For levitation, float_down() returns if Levitation, so we
      * must do a setworn() _before_ the levitation case.
      */
     setworn(null, W_ARMF);
     switch (otyp) {
-    case O.SPEED_BOOTS:
-    case O.WATER_WALKING_BOOTS:
+    case O.SPEED_BOOTS: {
+        const HFast = uprop(FAST).intrinsic, EFast = uprop(FAST).extrinsic;
+        const Very_fast = ((HFast & ~INTRINSIC) || EFast);
+        if (!Very_fast && !tk.cancelled_don) {
+            makeknown(otyp);
+            await You_feel(`yourself slow down${(HFast || EFast) ? " a bit" : ""}.`);
+        }
+        break;
+    }
+    case O.WATER_WALKING_BOOTS: {
+        const u = g.u;
+        /* check for lava since fireproofed boots make it viable */
+        if ((is_pool_bo(u.ux, u.uy) || is_lava_bo(u.ux, u.uy))
+            && !Levitation() && !Flying()
+            && !((g.youmonst.data.mflags1 & M1_CLING_BO) /* is_clinger() */
+                 && has_ceiling_bo(u.uz))
+            && !tk.cancelled_don
+            /* avoid recursive call to lava_effects() */
+            && !g.iflags.in_lava_effects) {
+            /* make boots known in case you survive the drowning */
+            makeknown(otyp);
+            await spoteffects_bo(true);
+        }
+        break;
+    }
     case O.ELVEN_BOOTS:
+        await toggle_stealth(otmp, oldprop, false);
+        break;
     case O.FUMBLE_BOOTS:
+        if (!oldprop && !(uprop(FUMBLING).intrinsic & ~TIMEOUT))
+            uprop(FUMBLING).intrinsic = uprop(FUMBLING).extrinsic = 0; /* HFumbling = EFumbling = 0 */
+        break;
     case O.LEVITATION_BOOTS:
-        throw new Error('Boots_off(): magic boots not ported yet');
+        if (!oldprop && !uprop(LEVITATION).intrinsic
+            && !((uprop(LEVITATION).blocked || 0) & FROMOUTSIDE_BO)
+            && !tk.cancelled_don) {
+            /* lava_effects() sets in_lava_effects and calls Boots_off()
+               so hero is already in midst of floating down */
+            if (!g.iflags.in_lava_effects)
+                await float_down_bo(0, 0);
+            makeknown(otyp);
+        } else {
+            float_vs_flight(); /* maybe toggle (BFlying & I_SPECIAL) */
+        }
+        break;
     case O.LOW_BOOTS:
     case O.IRON_SHOES:
     case O.HIGH_BOOTS:
@@ -1555,7 +1594,7 @@ export async function Boots_off() {
     default:
         impossible(`Boots_off(): unknown type of boots (${otyp})`);
     }
-    takeoff_ctx().cancelled_don = false;
+    tk.cancelled_don = false;
     return 0;
 }
 
@@ -1642,15 +1681,25 @@ export async function Helmet_off() {
 export async function Gloves_off() {
     const g = game;
     const tk = takeoff_ctx();
+    const oldprop =
+        uprop(objects[g.uarmg.otyp].oc_oprop).extrinsic & ~W_ARMG; /* WORN_GLOVES */
     tk.mask &= ~W_ARMG;
 
     switch (g.uarmg.otyp) {
     case O.LEATHER_GLOVES:
         break;
     case O.GAUNTLETS_OF_FUMBLING:
+        if (!oldprop && !(uprop(FUMBLING).intrinsic & ~TIMEOUT))
+            uprop(FUMBLING).intrinsic = uprop(FUMBLING).extrinsic = 0; /* HFumbling = EFumbling = 0 */
+        break;
     case O.GAUNTLETS_OF_POWER:
+        makeknown(g.uarmg.otyp);
+        g.disp_botl = true; /* taken care of in attrib.c */
+        break;
     case O.GAUNTLETS_OF_DEXTERITY:
-        throw new Error('Gloves_off(): magic gloves not ported yet');
+        if (!tk.cancelled_don)
+            adj_abon(g.uarmg, -g.uarmg.spe);
+        break;
     default:
         impossible(`Gloves_off(): unknown type of gloves (${g.uarmg.otyp})`);
     }
@@ -2881,3 +2930,9 @@ import { add_valid_menu_class as add_valid_menu_class_dw,
          is_worn_by_type as is_worn_by_type_dw,
          query_category as query_category_dw,
          query_objlist as query_objlist_dw } from './pickup.js';
+import { is_pool as is_pool_bo, is_lava as is_lava_bo } from './makemon.js';
+import { M1_CLING as M1_CLING_BO } from './monsters.js';
+import { has_ceiling as has_ceiling_bo } from './insight.js';
+import { spoteffects as spoteffects_bo } from './hack.js';
+import { float_down as float_down_bo } from './trap.js';
+import { FROMOUTSIDE as FROMOUTSIDE_BO } from './const.js';

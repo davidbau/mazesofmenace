@@ -808,3 +808,319 @@ export async function buried_ball_to_punishment() {
 }
 import { Blind as Blind_dg } from './display.js';
 import { STONE as STONE_DG } from './const.js';
+
+import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, N_DIRS_Z, TT_WEB, WEB, IRONBARS,
+         IS_WATERWALL, LAVAWALL, KILLED_BY, DIR_ERR, DIR_180, FORCEBUNGLE,
+         LANDMINE, BEAR_TRAP, LEVITATION } from './const.js';
+import { getdir, cmd_from_dir, movecmd_mode, dxdy_moveok,
+         MV_WALK } from './cmd.js';
+import { wield_tool } from './wield.js';
+import { can_reach_floor, cant_reach_floor, uteetering_at_seen_pit,
+         uescaped_shaft, u_wipe_engr } from './engrave.js';
+import { confdir, xytodir, nomul } from './hack.js';
+import { do_attack } from './uhitm.js';
+import { set_occupation } from './allmain.js';
+import { fire_damage, seetrap, dotrap, conjoined_pits } from './trap.js';
+import { wake_nearby } from './mon.js';
+import { Yobjnam2, yobjnam, yname } from './objnam.js';
+import { dbon } from './weapon.js';
+import { on_level, assign_level } from './dungeon.js';
+import { surface } from './iactions.js';
+import { You_cant, There } from './display.js';
+import { d } from './rng.js';
+import { OBJ_NAME } from './objects.js';
+
+/* C ref: youprop.h Levitation */
+function Levitation_dg() {
+    const p = game.u.uprops[LEVITATION];
+    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
+}
+
+/* C ref: context.h struct dig_info (svc.context.digging); C's context
+   starts zeroed */
+function digging_ctx() {
+    const g = game;
+    if (!g.context) g.context = {};
+    if (!g.context.digging)
+        g.context.digging = { pos: { x: 0, y: 0 },
+                              level: { dnum: 0, dlevel: 0 },
+                              lastdigtime: 0, down: false, chew: false,
+                              warned: false, quiet: false, effort: 0 };
+    return g.context.digging;
+}
+
+// C ref: dig.c dig()
+/* the digging occupation */
+async function dig() {
+    throw new Error('dig(): the digging occupation is not ported yet');
+}
+
+// C ref: dig.c use_pick_axe()
+export async function use_pick_axe(obj) {
+    const u = game.u;
+    let verb;
+    let dirsyms = '', qbuf;
+    let ispick;
+    let rx, ry, downok, res = ECMD_OK;
+    let dir;
+
+    /* Check tool */
+    if (obj !== game.uwep) {
+        if (await wield_tool(obj, "swing")) {
+            /* we're now wielding it. next turn, apply to dig. */
+            /* cmdq_add_ec(CQ_CANNED, doapply);
+               cmdq_add_key(CQ_CANNED, obj->invlet); */
+            if (!game.cmdq) game.cmdq = [];
+            game.cmdq.push({ typ: 'ec', fn: 'doapply' });
+            game.cmdq.push({ typ: 'key', key: obj.invlet });
+            return ECMD_TIME;
+        }
+        return ECMD_OK;
+    }
+    ispick = is_pick(obj);
+    verb = ispick ? "dig" : "chop";
+
+    if (u.utrap && u.utraptype === TT_WEB) {
+        /* res==0 => no prior message;
+           res==1 => just got "You now wield a pick-axe." message */
+        await pline(`${!res ? "Unfortunately," : "But"} you can't ${verb} while entangled in a web.`);
+        return res;
+    }
+
+    /* construct list of directions to show player for likely choices */
+    downok = !!can_reach_floor(false);
+    for (dir = 0; dir < N_DIRS_Z; dir++) {
+        const dirch = cmd_from_dir(dir, MV_WALK);
+
+        /* filter out useless directions */
+        if (u.uswallow) {
+            ; /* all directions are viable when swallowed */
+        } else if (movecmd_mode(dirch, MV_WALK)) {
+            /* normal direction, within plane of the level map */
+            if (!dxdy_moveok())
+                continue; /* handle NODIAG */
+            rx = u.ux + u.dx;
+            ry = u.uy + u.dy;
+            if (!isok(rx, ry) || dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE)
+                continue;
+        } else {
+            /* up or down; we used to always include down, so that
+               there would always be at least one choice shown, but
+               it shouldn't be a likely candidate when floating high
+               above the floor; include up instead in that situation
+               (as a silly candidate rather than a likely one...) */
+            if ((u.dz > 0) !== downok)
+                continue;
+        }
+        /* include this direction */
+        dirsyms += String.fromCharCode(dirch);
+    }
+    qbuf = `In what direction do you want to ${verb}? [${dirsyms}]`;
+    if (!(await getdir(qbuf)))
+        return (res | ECMD_CANCEL);
+
+    return await use_pick_axe2(obj);
+}
+
+// C ref: dig.c use_pick_axe2()
+/* MRKR: use_pick_axe() is split in two to allow autodig to bypass */
+/*       the "In what direction do you want to dig?" query.        */
+/*       use_pick_axe2() uses the existing u.dx, u.dy and u.dz    */
+export async function use_pick_axe2(obj) {
+    const u = game.u;
+    let rx, ry;
+    let lev;
+    let trap, trap_with_u;
+    let dig_target;
+    const ispick = is_pick(obj);
+    const verbing = ispick ? "digging" : "chopping";
+
+    if (u.uswallow && (await do_attack(u.ustuck))) {
+        ; /* return 1 */
+    } else if (u.uinwater) { /* Underwater */
+        await pline(`Turbulence torpedoes your ${verbing} attempts.`);
+    } else if (u.dz < 0) {
+        if (Levitation_dg())
+            await You_zd("don't have enough leverage.");
+        else
+            await You_cant(`reach the ${ceiling_zd(u.ux, u.uy)}.`);
+    } else if (!u.dx && !u.dy && !u.dz) {
+        let buf;
+        let dam;
+
+        dam = rnd(2) + dbon() + obj.spe;
+        if (dam <= 0)
+            dam = 1;
+        await You_zd(`hit yourself with ${yname(game.uwep)}.`);
+        buf = `${game.flags.female ? "her" : "his" /* uhis() */} own ${
+            OBJ_NAME(objects[obj.otyp])}`;
+        await losehp_zd(Maybe_Half_Phys_zd(dam), buf, KILLED_BY);
+        game.disp_botl = true;
+        return ECMD_TIME;
+    } else if (u.dz === 0) {
+        confdir(false);
+        rx = u.ux + u.dx;
+        ry = u.uy + u.dy;
+        if (!isok(rx, ry)) {
+            /* Soundeffect(se_clash, 40); */
+            await pline("Clash!");
+            return ECMD_TIME;
+        }
+        lev = game.level.at(rx, ry);
+        if (m_at(rx, ry) && (await do_attack(m_at(rx, ry))))
+            return ECMD_TIME;
+        dig_target = dig_typ(obj, rx, ry);
+        if (dig_target === DIGTYP_UNDIGGABLE) {
+            let boulder;
+
+            /* ACCESSIBLE or POOL */
+            trap = t_at(rx, ry);
+            if (trap && trap.ttyp === WEB) {
+                if (!trap.tseen) {
+                    seetrap(trap);
+                    await There("is a spider web there!");
+                }
+                await pline(`${Yobjnam2(obj, "become")} entangled in the web.`);
+                /* you ought to be able to let go; tough luck */
+                /* (maybe `move_into_trap()' would be better) */
+                nomul(-d(2, 2));
+                game.multi_reason = "stuck in a spider web";
+                game.nomovemsg = "You pull free.";
+            } else if (lev.typ === IRONBARS) {
+                await pline("Clang!");
+                await wake_nearby(false);
+            } else if (IS_WATERWALL(lev.typ)) {
+                await pline("Splash!");
+            } else if (lev.typ === LAVAWALL) {
+                await pline("Splash!");
+                await fire_damage(game.uwep, false, rx, ry);
+            } else if (IS_TREE(lev.typ)) {
+                await You_zd("need an axe to cut down a tree.");
+            } else if (IS_OBSTRUCTED(lev.typ)) {
+                await You_zd("need a pick to dig rock.");
+            } else if ((boulder = sobj_at(BOULDER, rx, ry)) != null
+                       || sobj_at(STATUE, rx, ry)) {
+                /* if both boulders and statues are present, the topmost
+                   boulder will be shown on the map so treat it as target */
+                const what = boulder ? "boulder" : "statue";
+
+                if (!ispick) {
+                    const vibrate = !rn2(3);
+
+                    await pline(`Sparks fly as you whack the ${what}.${
+                        vibrate ? "  The axe-handle vibrates violently!" : ""}`);
+                    if (vibrate)
+                        await losehp_zd(Maybe_Half_Phys_zd(2),
+                                        "axing a hard object", KILLED_BY);
+                    await wake_nearby(false);
+                } else {
+                    /* using a pick but dig_target is DIGTYPE_UNDIGGABLE
+                       and there is at least one boulder or statue or both
+                       present; pick_can_reach() returned false */
+                    await You_cant(`reach the ${what}.`);
+                }
+            } else if (u.utrap && u.utraptype === TT_PIT && trap
+                       && (trap_with_u = t_at(u.ux, u.uy))
+                       && is_pit(trap.ttyp)
+                       && !conjoined_pits(trap, trap_with_u, false)) {
+                const idx = xytodir(u.dx, u.dy);
+
+                if (idx !== DIR_ERR) {
+                    const adjidx = DIR_180(idx);
+
+                    trap_with_u.conjoined |= (1 << idx);
+                    trap.conjoined |= (1 << adjidx);
+                    await You_zd("clear some debris from between the pits.");
+                }
+            } else if (u.utrap && u.utraptype === TT_PIT
+                       && (trap_with_u = t_at(u.ux, u.uy)) != null) {
+                await You_zd(`swing ${yobjnam(obj, null)}, but the rubble has no place to go.`);
+            } else {
+                await You_zd(`swing ${yobjnam(obj, null)} through thin air.`);
+            }
+        } else {
+            const d_action = [ "swinging", "digging",
+                               "chipping the statue",
+                               "hitting the boulder",
+                               "chopping at the door",
+                               "cutting the tree" ];
+            const digging = digging_ctx();
+
+            game.did_dig_msg = false;
+            digging.quiet = false;
+            if (digging.pos.x !== rx
+                || digging.pos.y !== ry
+                || !on_level(digging.level, u.uz)
+                || digging.down) {
+                if (game.flags.autodig && dig_target === DIGTYP_ROCK
+                    && !digging.down
+                    && u_at(digging.pos.x, digging.pos.y)
+                    && (game.moves <= digging.lastdigtime + 2
+                        && game.moves >= digging.lastdigtime)) {
+                    /* avoid messages if repeated autodigging */
+                    game.did_dig_msg = true;
+                    digging.quiet = true;
+                }
+                digging.down = digging.chew = false;
+                digging.warned = false;
+                digging.pos.x = rx;
+                digging.pos.y = ry;
+                assign_level(digging.level, u.uz);
+                digging.effort = 0;
+                if (!digging.quiet)
+                    await You_zd(`start ${d_action[dig_target]}.`);
+            } else {
+                await You_zd(`${digging.chew ? "begin" : "continue"} ${
+                    d_action[dig_target]}.`);
+                digging.chew = false;
+            }
+            set_occupation(dig, verbing, 0);
+        }
+    } else if (Is_airlevel_zd(u.uz) || Is_waterlevel_zd(u.uz)) {
+        /* it must be air -- water checked above */
+        await You_zd(`swing ${yobjnam(obj, null)} through thin air.`);
+    } else if (!can_reach_floor(false)) {
+        await cant_reach_floor(u.ux, u.uy, false, false, false);
+    } else if (is_pool_or_lava_dg(u.ux, u.uy)) {
+        /* Monsters which swim also happen not to be able to dig */
+        await You_zd(`cannot stay under${
+            is_pool_dg(u.ux, u.uy) ? "water" : " the lava"} long enough.`);
+    } else if ((trap = t_at(u.ux, u.uy)) != null
+               && (uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
+        await dotrap(trap, FORCEBUNGLE);
+        /* might escape trap and still be teetering at brink */
+        if (!u.utrap)
+            await cant_reach_floor(u.ux, u.uy, false, true, false);
+    } else if (!ispick
+               /* can only dig down with an axe when doing so will
+                  trigger or disarm a trap here */
+               && (!trap || (trap.ttyp !== LANDMINE
+                             && trap.ttyp !== BEAR_TRAP))) {
+        await pline(`${Yobjnam2(obj, null)} merely scratches the ${
+            surface(u.ux, u.uy)}.`);
+        u_wipe_engr(3);
+    } else {
+        const digging = digging_ctx();
+
+        if (digging.pos.x !== u.ux
+            || digging.pos.y !== u.uy
+            || !on_level(digging.level, u.uz)
+            || !digging.down) {
+            digging.chew = false;
+            digging.down = true;
+            digging.warned = false;
+            digging.pos.x = u.ux;
+            digging.pos.y = u.uy;
+            assign_level(digging.level, u.uz);
+            digging.effort = 0;
+            await You_zd(`start ${verbing} downward.`);
+            if (u.ushops && u.ushops[0])
+                /* shopdig(0); add_damage(u.ux, u.uy, SHOP_PIT_COST); */
+                throw new Error('use_pick_axe2(): shopdig() not ported yet');
+        } else
+            await You_zd(`continue ${verbing} downward.`);
+        game.did_dig_msg = false;
+        set_occupation(dig, verbing, 0);
+    }
+    return ECMD_TIME;
+}

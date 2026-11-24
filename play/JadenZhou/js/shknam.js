@@ -19,6 +19,7 @@ import {
 import { mons, PM_SHOPKEEPER, S_MIMIC, PM_LICHEN } from './monsters.js';
 import { makemon, mkmonmoney, mongets, set_malign, m_at, MON_AT, mkclass } from './makemon.js';
 import { RLOC_NOMSG } from './const.js';
+import { SHOPBASE } from './const.js';
 import { mkobj_at, mksobj_at, set_tin_variety } from './mkobj.js';
 import { vegetarian } from './eat.js';
 import { distmin, highc } from './hacklib.js';
@@ -437,8 +438,23 @@ export function stock_room(shp_indx, sroom) {
     if (levl(sx, sy).doormask & D_TRAPPED)
         levl(sx, sy).doormask = D_LOCKED;
 
-    if (levl(sx, sy).doormask === D_LOCKED)
-        throw new Error('stock_room(): "Closed for inventory" engraving not ported yet');
+    if (levl(sx, sy).doormask === D_LOCKED) {
+        let m = sx, n = sy;
+
+        if (inside_shop_sr(sx + 1, sy))
+            m--;
+        else if (inside_shop_sr(sx - 1, sy))
+            m++;
+        if (inside_shop_sr(sx, sy + 1))
+            n--;
+        else if (inside_shop_sr(sx, sy - 1))
+            n++;
+        const buf = "Closed for inventory";
+        make_engr_at_sr(m, n, buf, null, 0, DUST_SR);
+        if (levl(m, n).typ !== CORR_SR && levl(m, n).typ !== ROOM_SR)
+            levl(m, n).typ = (Is_special(game.u.uz)
+                              || in_rooms_sr(m, n, 0).length) ? ROOM_SR : CORR_SR;
+    }
 
     const rmno = sroom.roomnoidx + ROOMOFFSET;
     let stockcount = 0, specialspot = 0;
@@ -713,3 +729,7 @@ export function shkname_is_pname(mtmp) {
 
     return (shknm[0] === '-' || shknm[0] === '+' || shknm[0] === '=');
 }
+import { inside_shop as inside_shop_sr } from './shk.js';
+import { make_engr_at as make_engr_at_sr } from './engrave.js';
+import { in_rooms as in_rooms_sr } from './hack.js';
+import { DUST as DUST_SR, CORR as CORR_SR, ROOM as ROOM_SR } from './const.js';

@@ -25,7 +25,7 @@ import { u_on_newpos } from './mklev.js';
 import { check_special_room } from './hack.js';
 import { m_at, may_passwall, closed_door, sobj_at, is_pool, is_lava } from './makemon.js';
 import { bad_rock, wake_nearto, wakeup, setmangry } from './mon.js';
-import { t_at, VIBRATING_SQUARE, WEB } from './trap.js';
+import { t_at, VIBRATING_SQUARE, WEB, losehp, Maybe_Half_Phys } from './trap.js';
 import { x_monnam, ARTICLE_A, SUPPRESS_SADDLE, AUGMENT_IT } from './do_name.js';
 import { BOULDER } from './objects.js';
 import { isok, IS_DOOR, IS_OBSTRUCTED, D_ISOPEN, IRONBARS, PASSES_WALLS,
@@ -77,6 +77,7 @@ import { the, surface } from './iactions.js';
 import { doname, otense } from './objnam.js';
 import { dropy, dropz } from './do.js';
 import { IS_ALTAR, PIT, SPIKED_PIT, HOLE, TRAPDOOR, is_pit, is_hole } from './const.js';
+import { IS_TREE, KILLED_BY } from './const.js';
 import { BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME } from './const.js';
 import { cansee } from './vision.js';
 import { obj_resists } from './dogmove.js';
@@ -1879,21 +1880,36 @@ export async function hurtle_step(arg, x, y) {
             open_door = IS_DOOR(ltyp) && (lev.doormask & D_ISOPEN) !== 0,
             odoor_diag = open_door && diagonal;
 
+        let obj;
         if (IS_OBSTRUCTED(lev.typ) || closed_door(x, y) || odoor_diag) {
-            why = "bumping";
+            why = IS_TREE(ltyp) ? "bumping into a tree"
+                  : IS_OBSTRUCTED(ltyp) ? "bumping into a wall"
+                    : odoor_diag ? "bumping into a door frame"
+                      : "bumping into a closed door";
+            if (odoor_diag)
+                await You("hit the door frame!");
+            await pline("Ouch!");
         } else if (ltyp === IRONBARS) {
             why = "crashing into iron bars";
-        } else if (sobj_at(BOULDER, x, y)) {
+            await You("crash into some iron bars.  Ouch!");
+        } else if ((obj = sobj_at(BOULDER, x, y))) {
             why = "bumping into a boulder";
+            await You(`bump into a ${xname(obj)}.  Ouch!`);
         } else if (!may_pass) {
+            /* did we hit a no-dig non-wall position? */
             why = "touching the edge of the universe";
+            await You("smack into something!");
         } else if (diagonal
                    && bad_rock(game.youmonst.data, u.ux, y)
                    && bad_rock(game.youmonst.data, x, u.uy)) {
             throw new Error('hurtle_step(): squeezing diagonally not ported yet');
         }
-        if (why)
-            throw new Error(`hurtle_step(): ${why} (losehp()) not ported yet`);
+        if (why) {
+            const dmg = rnd(2 + arg.range);
+            await losehp(Maybe_Half_Phys(dmg), why, KILLED_BY);
+            await wake_nearto(x, y, 10);
+            return false;
+        }
     }
 
     if ((mon = m_at(x, y)) !== null && mon !== undefined) {
@@ -1956,9 +1972,25 @@ export async function hurtle_step(arg, x, y) {
     await check_special_room(false);
 
     if (is_pool(x, y) && !u.uinwater) {
-        throw new Error('hurtle_step(): moving over water not ported yet');
+        const Flying_ht = !!((u.uprops?.[FLYING]?.intrinsic || u.uprops?.[FLYING]?.extrinsic)
+                             && !u.uprops?.[FLYING]?.blocked);
+        /* Wwalking: hurtle_jump()'s EWwalking |= I_SPECIAL is
+           game.hurtle_via_jumping */
+        const Wwalking_ht = !!((u.uprops?.[WWALKING_HT]?.intrinsic
+                                || u.uprops?.[WWALKING_HT]?.extrinsic
+                                || game.hurtle_via_jumping)
+                               && !Is_waterlevel_tg(u.uz));
+        if (is_waterwall_hu(x, y) || !(Levitation() || Flying_ht || Wwalking_ht)) {
+            /* couldn't move while hurtling; allow movement now so that
+               drown() will give a chance to crawl out of pool and survive */
+            game.multi = 0;
+            await drown_ht();
+            return false;
+        } else if (!Is_waterlevel_tg(u.uz) && !stopping_short) {
+            await Norep_ht(`You move over ${an(is_moat_ht(x, y) ? "moat" : "pool")}.`);
+        }
     } else if (is_lava(x, y) && !stopping_short) {
-        throw new Error('hurtle_step(): moving over lava not ported yet');
+        await Norep_ht("You move over some lava.");
     }
 
     if ((ttmp = t_at(x, y)) !== null && ttmp !== undefined) {
@@ -2280,3 +2312,7 @@ import { M1_BREATHLESS, PM_CYCLOPS, PM_FLOATING_EYE, PM_PYROLISK } from './monst
 import { LOW_PM } from './const.js';
 import { delobj } from './invent.js';
 import { dist2 } from './hacklib.js';
+import { WWALKING as WWALKING_HT } from './const.js';
+import { drown as drown_ht } from './trap.js';
+import { Norep as Norep_ht } from './display.js';
+import { is_moat as is_moat_ht } from './makemon.js';

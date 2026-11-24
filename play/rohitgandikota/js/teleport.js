@@ -1079,7 +1079,7 @@ export async function teleds(nux, nuy, teleds_flags) {
     // src/teleport.c:529, teleport updates membership without entry callbacks.
     update_player_regions();
     newsym(ux0, uy0);           /* clear the old position */
-    see_monsters();             /* clear or redraw old sensing glyphs */
+    await see_monsters();       /* clear or redraw old sensing glyphs */
     notice_mon_off();
     vision_recalc(0);           /* vision before effects */
 

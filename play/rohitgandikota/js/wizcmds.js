@@ -893,7 +893,7 @@ export async function wiz_map_levltyp() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return;
 }
@@ -940,7 +940,7 @@ export async function wiz_levltyp_legend() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return;
 }
@@ -1024,7 +1024,7 @@ export async function wiz_show_seenv() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     return ECMD_OK;
 }
 
@@ -1064,7 +1064,7 @@ export async function wiz_show_vision() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     return ECMD_OK;
 }
 
@@ -1107,7 +1107,7 @@ export async function wiz_show_wmodes() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     return ECMD_OK;
 }
 
@@ -1493,7 +1493,7 @@ export async function wiz_show_stats() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     return ECMD_OK;
 }
 
@@ -1576,7 +1576,7 @@ export async function wiz_display_macros() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     return ECMD_OK;
 }
 
@@ -1631,7 +1631,7 @@ export async function wiz_mon_diff() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     return ECMD_OK;
 }
 
@@ -1755,7 +1755,7 @@ async function list_migrating_mons(nextlevl /* default destination for wiz_migra
         if (!tty_next_page(win))
             break;
     }
-            tty_destroy_nhwindow(win);
+            await tty_destroy_nhwindow(win);
         } else if (c !== 'q') {
             await pline('None.');
         }
@@ -1804,7 +1804,7 @@ export async function wiz_objprobs() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 
     return ECMD_OK;
 }

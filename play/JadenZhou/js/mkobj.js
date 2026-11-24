@@ -318,6 +318,45 @@ export function save_mtraits(obj, mtmp) {
     return obj;
 }
 
+// C ref: mkobj.c get_mtraits()
+/* returns a pointer to a new monst structure based on
+ * the one contained within the obj.
+ */
+export function get_mtraits(obj, copyof) {
+    let mtmp = null;
+    let mnew = null;
+
+    if (obj.oextra?.omonst) /* has_omonst(obj) */
+        mtmp = obj.oextra.omonst; /* OMONST(obj) */
+    if (mtmp) {
+        if (copyof) {
+            mnew = { ...mtmp }; /* newmonst(); *mnew = *mtmp */
+            mnew.mextra = null;
+            /* if (mtmp->mextra) copy_mextra(mnew, mtmp): the port keeps
+               the extension structs on the monster (or in mtmp.mextra);
+               give the copy its own */
+            if (mtmp.mextra) {
+                mnew.mextra = {};
+                for (const [k, v] of Object.entries(mtmp.mextra))
+                    mnew.mextra[k] = (v && typeof v === 'object') ? { ...v } : v;
+            }
+            for (const k of ['edog', 'epri', 'emin', 'eshk', 'egd'])
+                if (mtmp[k])
+                    mnew[k] = { ...mtmp[k] };
+            if (mnew.edog?.ogoal)
+                mnew.edog.ogoal = { ...mnew.edog.ogoal };
+            /* struct copy: the track is an array in the monst struct */
+            if (Array.isArray(mtmp.mtrack))
+                mnew.mtrack = mtmp.mtrack.map(p => ({ ...p }));
+        } else {
+            /* Never insert this returned pointer into mon chains! */
+            mnew = mtmp;
+        }
+        mnew.data = mons[mnew.mnum];
+    }
+    return mnew;
+}
+
 // C ref: mkobj.c mkcorpstat()
 /*
  * make a corpse or statue; the corpse type is ptr if given, else random

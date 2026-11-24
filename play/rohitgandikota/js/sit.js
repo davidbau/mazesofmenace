@@ -734,7 +734,7 @@ export async function attrcurse() {
         if ((intr.HTelepat | 0) & INTRINSIC) {
             intr.HTelepat &= ~INTRINSIC;
             if (Blind() && !Blind_telepat())
-                see_monsters(); /* Can't sense mons anymore! */
+                await see_monsters(); /* Can't sense mons anymore! */
             await Your('senses fail!');
             ret = TELEPAT;
             break;
@@ -761,7 +761,7 @@ export async function attrcurse() {
             intr.HSee_invisible &= ~INTRINSIC;
             if (!See_invisible()) {
                 set_mimic_blocking();
-                see_monsters();
+                await see_monsters();
                 /* might not be able to see self anymore */
                 newsym(game.u.ux, game.u.uy);
             }

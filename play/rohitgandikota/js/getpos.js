@@ -11,11 +11,11 @@
 // window the first time the picker is entered.
 
 import { game } from './gstate.js';
-import { COLNO, ROWNO, TER_MON, TER_OBJ, TER_MAP, TER_DETECT } from './const.js';
+import { COLNO, ROWNO, TER_MON, TER_OBJ, TER_MAP, TER_DETECT, docrtRefresh } from './const.js';
 import { sgn, isok } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { pline, pline_nohistory_no_cursor, flush_screen, glyph_at,
-         tty_clear_nhwindow_message, TOPLINE_EMPTY, docrt,
+         tty_clear_nhwindow_message, TOPLINE_EMPTY, docrt_flags,
          newsym } from './display.js';
 import { defsyms, cmap_names } from './drawing_data.js';
 import { do_screen_description, is_cmap_wall, is_cmap_room, is_cmap_corr,
@@ -179,7 +179,7 @@ async function getpos_help(force, goal) {
     await xwaitforspace(quitchars);
     while (game.morc !== '\x1b' && tty_next_page(win))
         await xwaitforspace(quitchars);
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
 }
 
 /* include/hack.h — quitchars */
@@ -291,7 +291,7 @@ async function getpos_refresh() {
         getpos_hilite_state = defaultHiliteState;
     }
 
-    await docrt();
+    await docrt_flags(docrtRefresh);
 
     if (getpos_hilitefunc && getpos_hilite_state === HiliteBackground) {
         /* resetting to current values will draw valid-spots highlighting */

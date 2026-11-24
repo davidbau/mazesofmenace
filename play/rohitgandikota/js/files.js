@@ -217,7 +217,7 @@ export async function read_tribute(tribsection, tribtitle, tribpassage,
                 putmsghistory(lastline, false);
                 grasped = true;
             }
-            tty_destroy_nhwindow(tribwin);
+            await tty_destroy_nhwindow(tribwin);
         }
         if (!grasped)
             /* multi-line window, problem */

@@ -929,7 +929,7 @@ export async function make_hallucinated(xtime, talk, mask = 0) {
         if (game.u.uswallow) {
             await swallowed(0);
         } else {
-            see_monsters();
+            await see_monsters();
             see_objects();
             see_traps();
         }
@@ -1036,7 +1036,7 @@ export async function toggle_blindness() {
        message "a door appears in the wall" because wall spot was IN_SIGHT) */
     vision_recalc(0);
     if (Blind_telepat() || Infravision() || Stinging)
-        see_monsters(); /* also counts EWarn_of_mon monsters */
+        await see_monsters(); /* also counts EWarn_of_mon monsters */
     /*
      * Avoid either of the sequences
      * "Sting starts glowing", [become blind], "Sting stops quivering" or
@@ -1308,7 +1308,7 @@ async function peffect_monster_detection(otmp) {
         }
 
         if (!game.u.uswallow && !Underwater()) {
-            see_monsters();
+            await see_monsters();
             if (game.potion_unkn)
                 await You_feel('lonely.');
             return 0;
@@ -1509,7 +1509,7 @@ async function peffect_hallucination(otmp) {
             await xwaitforspace(' \r\n\x1b');
             while (game.morc !== '\x1b' && tty_next_page(win))
                 await xwaitforspace(' \r\n\x1b');
-            tty_destroy_nhwindow(win);
+            await tty_destroy_nhwindow(win);
         }
         await Your('awareness re-normalizes.');
         exercise(A_WIS, true);
@@ -1994,7 +1994,7 @@ async function peffect_see_invisible(otmp) {
     else
         incr_itimeout('HSee_invisible', rn1(100, 750));
     set_mimic_blocking(); /* do special mimic handling */
-    see_monsters();       /* see invisible monsters */
+    await see_monsters();       /* see invisible monsters */
     newsym(game.u.ux, game.u.uy);   /* see yourself! */
     if (msg && !Blind()) {  /* Blind possible if polymorphed */
         await You('can see through yourself, but you are visible!');

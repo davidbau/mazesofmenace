@@ -187,7 +187,7 @@ export async function simple_look(otmp, here) {
         do {
             await xwaitforspace(' \r\n\x1b');
         } while (game.morc !== '\x1b' && tty_next_page(tmpwin));
-        tty_destroy_nhwindow(tmpwin);
+        await tty_destroy_nhwindow(tmpwin);
         await notice_all_mons_flush();
     }
 }
@@ -1025,14 +1025,18 @@ export async function pickup_object(obj, count, telekinesis) {
     return 1;
 }
 
-// src/pickup.c:1897 pick_obj() — off the floor and into inventory.
+// src/pickup.c:1897 pick_obj(), from the floor or an engulfer into inventory.
 async function pick_obj(otmp) {
-    const ox = otmp.ox, oy = otmp.oy;
+    const fromfloor = otmp.where === OBJ_FLOOR;
+    const cc = { x: 0, y: 0 };
+    get_obj_location(otmp, cc, 0);
+    const { x: ox, y: oy } = cc;
     let robshop = !game.u.uswallow && otmp !== game.u.uball
                && costly_spot(ox, oy);
 
     obj_extract_self(otmp);
-    newsym(ox, oy);
+    if (fromfloor)
+        newsym(ox, oy);
     if (robshop) {
         const saveushops = game.u.ushops || '';
         const fakeshop = in_rooms(ox, oy, SHOPBASE).charAt(0);
@@ -2237,7 +2241,7 @@ export async function explain_container_prompt(more_containers) {
     do {
         await xwaitforspace(' \r\n\x1b');
     } while (game.morc !== '\x1b' && tty_next_page(win));
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
 }
 

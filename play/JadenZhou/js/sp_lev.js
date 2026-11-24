@@ -115,6 +115,7 @@ import { deltrap, maketrap, is_pit, is_hole, trap_explanations } from './trap.js
 import { defsyms_explanation } from './pager.js';
 import { mk_mplayer } from './mplayer.js';
 import { obj_extract_self } from './mkobj.js';
+import { stackobj } from './invent.js';
 import { del_engr } from './engrave.js';
 import { vision_reset } from './vision.js';
 import { load_lua, get_table_int } from './nhlua.js';
@@ -3038,8 +3039,7 @@ function create_object(o, croom) {
     }
 
     if (!(o.containment & SP_OBJ_CONTENT)) {
-        /* stackobj(otmp): floor object chains are not ported yet, so
-           there is no pile to merge with */
+        stackobj(otmp);
 
         if (o.lit)
             nhl_error(null, 'create_object: begin_burn() is not ported yet');
@@ -4892,7 +4892,7 @@ function ensure_way_out() {
 }
 
 // C ref: sp_lev.c load_special()
-export function load_special(name) {
+export async function load_special(name) {
     let result = FALSE;
     const sbi = { flags: NHL_SB_SAFE, memlimit: 1 * 1024 * 1024, steps: 0,
                   perpcall: 1 * 1024 * 1024 };
@@ -4930,7 +4930,7 @@ export function load_special(name) {
 
         /* This must be done before premap_detect(),
          * otherwise branch stairs won't be premapped. */
-        fixup_special();
+        await fixup_special();
 
         if (game.coder.premapped)
             premap_detect();

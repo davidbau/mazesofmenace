@@ -576,6 +576,7 @@ function Fixed_abil() {
 /* strength loss, possibly with damage when going below minimum */
 export async function losestr(num, knam, k_format) {
     const u = game.u;
+    const uhpmin = minuhpmax(1);
     let ustr = ABASE(A_STR) - num, amt, dmg;
     const waspolyd = (u.umonnum !== u.umonster);
 
@@ -591,9 +592,25 @@ export async function losestr(num, knam, k_format) {
         dmg += amt;
     }
     if (dmg) {
-        void knam; void k_format;
-        throw new Error('losestr(): damage from strength below minimum (losehp()/setuhpmax()) not ported yet');
+        /* in case damage is fatal and caller didn't supply killer reason */
+        if (!knam) {
+            knam = "terminal frailty";
+            k_format = KILLED_BY;
+        }
+        await losehp(dmg, knam, k_format);
+
+        if (u.umonnum !== u.umonster) { /* Upolyd */
+            /* when still poly'd, reduce you-as-monst maxHP; never below 1 */
+            setuhpmax(Math.max(u.mhmax - dmg, 1), false); /* acts as setmhmax() */
+        } else if (!waspolyd) {
+            /* not polymorphed now and didn't rehumanize when taking damage;
+               reduce max HP, but not below uhpmin */
+            if (u.uhpmax > uhpmin)
+                setuhpmax(Math.max(u.uhpmax - dmg, uhpmin), false);
+        }
+        game.disp_botl = true;
     }
+    /* #if 0 ... #else nhUse(olduhpmax); #endif */
     /* 'num' could have been reduced to 0 in the minimum strength loop;
        '(Upolyd || !waspolyd)' is True unless damage caused rehumanization */
     if (num > 0 && ((u.umonnum !== u.umonster) || !waspolyd))

@@ -2655,7 +2655,7 @@ async function use_mirror(obj) {
         } else
             await pline(`It steals your ${mirror}!`);
         setnotworn(obj); /* in case mirror was wielded */
-        freeinv(obj);
+        await freeinv(obj);
         await mpickobj(mtmp, obj);
         if (!(await tele_restrict(mtmp)))
             await rloc(mtmp, RLOC_MSG);

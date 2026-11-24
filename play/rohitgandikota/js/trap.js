@@ -2073,11 +2073,11 @@ async function trapeffect_sqky_board(mtmp, trap, trflags) {
         /* stepped on a squeaky board */
         if (in_sight) {
             if (!Deaf()) {
-                await pline(`A board beneath ${mon_nam(mtmp)} squeaks ${
+                await pline_mon(mtmp, `A board beneath ${mon_nam(mtmp)} squeaks ${
                     trapnote(trap, false)} loudly.`);
                 seetrap(trap);
             } else if (!mindless(mtmp.data)) {
-                await pline(
+                await pline_mon(mtmp,
                     `${Monnam(mtmp)} stops momentarily and appears to cringe.`);
             }
         } else {

@@ -299,7 +299,7 @@ export async function container_contents(list, identified, all_containers, repor
                 do {
                     await xwaitforspace(' \r\n\x1b');
                 } while (game.morc !== '\x1b' && tty_next_page(tmpwin));
-                tty_destroy_nhwindow(tmpwin);
+                await tty_destroy_nhwindow(tmpwin);
                 await notice_all_mons_flush();
                 if (all_containers)
                     await container_contents(box.cobj, identified, true, reportempty);
@@ -796,6 +796,11 @@ async function really_done(how) {
 
     game.done_money = umoney;
 
+    // src/end.c:1384-1388: finish messages before destroying WIN_MESSAGE.
+    await display_nhwindow_message();
+    // win/tty/wintty.c:2022: final text dismissal must not erase the screen.
+    game.iflags.window_inited = false;
+
     /* window teardown, then the tombstone text window. C threads
        done_stopprint through dump_forward_putstr and the final
        display_nhwindow gate, so a 'q' at the wizard Dump-core prompt
@@ -942,7 +947,7 @@ async function really_done(how) {
         while (game.morc !== '\x1b' && tty_next_page(endwin))
             await xwaitforspace(' ');
     }
-    tty_destroy_nhwindow(endwin);
+    await tty_destroy_nhwindow(endwin);
 
     /* end.c:1579 — exit_nhwindows() runs before topten(): settty ->
        end_screen clears the terminal and homes the cursor, on every path */
@@ -1082,7 +1087,7 @@ async function disclose(how, taken) {
             await xwaitforspace(' \r\n\x1b');
             while (game.morc !== '\x1b' && tty_next_page(win))
                 await xwaitforspace(' \r\n\x1b');
-            tty_destroy_nhwindow(win);
+            await tty_destroy_nhwindow(win);
         }
         if (c === 'q')
             game.done_stopprint = (game.done_stopprint | 0) + 1;

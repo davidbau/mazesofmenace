@@ -738,6 +738,7 @@ export function getmattk(magr, mdef, indx, prev_result) {
         const alt = [...attk];
         alt.getmattk_alternate = true;
         alt[1] = A.AD_PHYS;
+        attk = alt;
     /* src/mhitu.c:416: a lich uses weaker physical touch damage when its
        target resists cold, unless the target is a shade. */
     } else if (indx === 0 && attk[0] === A.AT_TUCH && attk[1] === A.AD_COLD

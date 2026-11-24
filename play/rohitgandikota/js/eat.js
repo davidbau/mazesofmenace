@@ -7,7 +7,7 @@ import { reset_utrap } from './trap.js';
 import { deltrap } from './trap.js';
 import { t_at } from './mon.js';
 import { is_ice } from './dbridge.js';
-import { retouch_equipment } from './artifact.js';
+import { retouch_equipment, retouch_object, touch_artifact } from './artifact.js';
 import { attrcurse } from './sit.js';
 import { dismount_steed } from './steed.js';
 import { toggle_displacement } from './do_wear.js';
@@ -1379,6 +1379,9 @@ export async function doeat() {
         /* let them eat rings */
         await You_cant(`eat something you're wearing.`);
         return ECMD_OK;
+    } else if (!(carried(otmp) ? await retouch_object(otmp, false)
+                               : await touch_artifact(otmp, game.youmonst))) {
+        return ECMD_TIME; /* got blasted so use a turn */
     }
 
     /* src/eat.c:2922 — picking the interrupted meal again resumes it */
@@ -2786,7 +2789,7 @@ async function givit(type, ptr) {
             intr.HTelepat = (intr.HTelepat | 0) | FROMOUTSIDE;
             /* If blind, make sure monsters show up. */
             if (Blind())
-                see_monsters();
+                await see_monsters();
         }
         break;
     case ACID_RES:

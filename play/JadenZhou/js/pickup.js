@@ -25,6 +25,10 @@ import { M1_NOTAKE, M1_CONCEAL } from './monsters.js';
 import { get_adjacent_loc } from './cmd.js';
 import { Is_container } from './mkobj.js';
 import { isok, IS_GRAVE, CONFUSION, STUNNED, ECMD_OK, ECMD_TIME, ECMD_CANCEL, GETOBJ_DOWNPLAY } from './const.js';
+import { W_QUIVER, W_SWAPWEP, W_WEP,
+         WORN_SHIRT, WORN_BOOTS, WORN_GLOVES, WORN_HELMET, WORN_SHIELD,
+         WORN_CLOAK, WORN_ARMOR, WORN_BLINDF, WORN_AMUL, LEFT_RING,
+         RIGHT_RING } from './const.js';
 import { m_at } from './makemon.js';
 import { mon_nam } from './do_name.js';
 import { M1_NOHANDS, M1_NOLIMBS } from './monsters.js';
@@ -78,6 +82,7 @@ import { UNPAID_TYPES, BILLED_TYPES, WORN_TYPES, ALL_TYPES, CHOOSE_ALL,
          W_WEAPONS, Has_contents } from './const.js';
 import { is_worn, count_unpaid, count_buc } from './invent.js';
 import { add_menu_str } from './wintty.js';
+import { tty_putstr, tty_display_nhwindow } from './wintty.js';
 import { PM_CLERIC } from './monsters.js';
 import { observe_object } from './o_init.js';
 import { touch_artifact } from './artifact.js';
@@ -480,6 +485,65 @@ export function sortloot(olist, mode, by_nexthere, filterfunc) {
     return sliarray;
 }
 
+// C ref: invent.c inuse_classify()
+/* sortloot() classification for in-use sort;
+   called at most once [per sort] for each object */
+function inuse_classify(sort_item, obj) {
+    const u = game.u;
+    const w_mask = ((obj.owornmask || 0) & (W_ACCESSORY | W_WEAPONS | W_ARMOR));
+    let rating = 0, altclass = 0;
+    /* C's USE_RATING(test): 'rating' advances for each call, and the
+       first passing test jumps to assign_rating */
+    const tests = [];
+
+    /*
+     * In order of importance, least to most, somewhat arbitrarily.
+     * (See C for the rationale.)
+     */
+    /* "Miscellaneous" */
+    tests.push([1, () => !w_mask && obj.otyp === LEASH && obj.leashmon]);
+    tests.push([1, () => !w_mask && obj.oclass === TOOL_CLASS && obj.lamplit]);
+    /* "Armor" */
+    tests.push([2, () => w_mask & WORN_SHIRT]);
+    tests.push([2, () => w_mask & WORN_BOOTS]);
+    tests.push([2, () => w_mask & WORN_GLOVES]);
+    tests.push([2, () => w_mask & WORN_HELMET]);
+    tests.push([2, () => w_mask & WORN_SHIELD]);
+    tests.push([2, () => w_mask & WORN_CLOAK]);
+    tests.push([2, () => w_mask & WORN_ARMOR]);
+    /* "Weapons" */
+    tests.push([3, () => w_mask & W_QUIVER]);
+    tests.push([3, () => w_mask & W_SWAPWEP]);
+    tests.push([3, () => w_mask & W_WEP]);
+    /* "Accessories" */
+    tests.push([4, () => w_mask & WORN_BLINDF]);
+    tests.push([4, () => w_mask & (u.uhandedness ? RIGHT_RING : LEFT_RING)]); /* off hand (ULEFTY) */
+    tests.push([4, () => w_mask & (!u.uhandedness ? RIGHT_RING : LEFT_RING)]); /* main hand (URIGHTY) */
+    tests.push([4, () => w_mask & WORN_AMUL]);
+
+    let found = false;
+    for (const [cls, test] of tests) {
+        altclass = cls;
+        ++rating;
+        if (test()) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        /* if we get here, the USE_RATING() checks failed to find a match */
+        rating = 0;
+        altclass = -1; /* 'orderclass' must end up non-zero */
+    }
+    /* assign_rating: */
+    sort_item.inuse = rating;
+    sort_item.orderclass = altclass; /* used for alternate headings */
+
+    /* not applicable for in-use */
+    sort_item.subclass = 0;
+    sort_item.disco = 0;
+}
+
 // C ref: invent.c loot_classify()
 /* sortloot() classification; called at most once [per sort] for each object */
 function loot_classify(sort_item, obj) {
@@ -713,8 +777,22 @@ function sortloot_cmp(sli1, sli2) {
     let val1, val2, namcmp;
 
     /* in-use takes precedence over all others */
-    if ((mode & SORTLOOT_INUSE) !== 0)
-        throw new Error('sortloot_cmp(): in-use ordering (inuse_classify()) not ported yet');
+    if ((mode & SORTLOOT_INUSE) !== 0) {
+        /* Classify each object at most once no matter how many
+           comparisons it is involved in. */
+        if (!sli1.orderclass)
+            inuse_classify(sli1, obj1);
+        if (!sli2.orderclass)
+            inuse_classify(sli2, obj2);
+
+        val1 = sli1.inuse;
+        val2 = sli2.inuse;
+        if (val1 !== val2)
+            return val2 - val1; /* bigger value comes before smaller */
+        /* neither item in use (or both are lit lamps/candles or both are
+           attached leashes; items using owornmask don't produce ties) */
+        return sli1.indx - sli2.indx; /* goto tiebreak */
+    }
 
     /* order by object class unless we're doing by-invlet without sortpack */
     if ((mode & (SORTLOOT_PACK | SORTLOOT_INVLET)) !== SORTLOOT_INVLET) {

@@ -253,7 +253,7 @@ export async function doprev_message() {
             } while (i !== maxcol);
             tty_putstr(prevmsg_win, 0, game._toplines || '');
             await tty_display_nhwindow(prevmsg_win, true);
-            tty_destroy_nhwindow(prevmsg_win);
+            await tty_destroy_nhwindow(prevmsg_win);
         } else if (prevmsg_window === 'c') { /* combination */
             do {
                 game.morc = 0;
@@ -286,7 +286,7 @@ export async function doprev_message() {
                     } while (i !== maxcol);
                     tty_putstr(prevmsg_win, 0, game._toplines || '');
                     await tty_display_nhwindow(prevmsg_win, true);
-                    tty_destroy_nhwindow(prevmsg_win);
+                    await tty_destroy_nhwindow(prevmsg_win);
                 }
 
             } while (game.morc === '\x10');
@@ -310,7 +310,7 @@ export async function doprev_message() {
             } while (maxcol !== maxrow);
 
             await tty_display_nhwindow(prevmsg_win, true);
-            tty_destroy_nhwindow(prevmsg_win);
+            await tty_destroy_nhwindow(prevmsg_win);
             maxcol = maxrow;
             ttyDisplay.dismiss_more = 0;
         }

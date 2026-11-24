@@ -290,9 +290,9 @@ export async function dothrow() {
              * the ANSWERED prompt (df-x8efcaa4ca6 step 11).  The other getobj
              * twins carry this line: cmd.js getObjFromGetobj and end.js
              * _yn_prompt's null-responses arm. */
-            g._toplEmptyAfterSuppress = false;
             putmsghistory(throwQbuf + ' ' + key2txt((typeof itemRaw === 'number'
                 ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0)) & 0xff), false);
+            g._toplEmptyAfterSuppress = false;
         }
         g._topl_sticky = throwQbuf;
         itemKey = typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0);

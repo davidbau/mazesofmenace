@@ -188,7 +188,7 @@ function maze0xy(cc) {
 }
 
 // C ref: mkmaze.c fixup_special()
-export function fixup_special() {
+export async function fixup_special() {
     const lregions = game.lregions || [];
     let added_branch = false;
 
@@ -205,7 +205,7 @@ export function fixup_special() {
         switch (r.rtype) {
         case LR_BRANCH:
             added_branch = true;
-            place_lregion(r.inarea.x1, r.inarea.y1, r.inarea.x2,
+            await place_lregion(r.inarea.x1, r.inarea.y1, r.inarea.x2,
                           r.inarea.y2, r.delarea.x1, r.delarea.y1,
                           r.delarea.x2, r.delarea.y2, r.rtype, lev);
             break;
@@ -222,7 +222,7 @@ export function fixup_special() {
         case LR_UPSTAIR:
         case LR_DOWNSTAIR:
             /* place_it: */
-            place_lregion(r.inarea.x1, r.inarea.y1, r.inarea.x2,
+            await place_lregion(r.inarea.x1, r.inarea.y1, r.inarea.x2,
                           r.inarea.y2, r.delarea.x1, r.delarea.y1,
                           r.delarea.x2, r.delarea.y2, r.rtype, lev);
             break;
@@ -256,7 +256,7 @@ export function fixup_special() {
 
     /* place dungeon branch if not placed above */
     if (!added_branch && Is_branchlev(game.u.uz)) {
-        place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
+        await place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
     }
 
     /* Still need to add some stuff to level file */
@@ -717,7 +717,7 @@ function populate_maze() {
 // C ref: mkmaze.c makemaz()
 /* special levels (des-file/Lua protofiles), dungeon fill levels (e.g. the
    Gnomish Mines' minefill) and random mazes */
-export function makemaz(s) {
+export async function makemaz(s) {
     let protofile;
     const sp = Is_special(game.u.uz);
     const mm = { x: 0, y: 0 };
@@ -748,7 +748,7 @@ export function makemaz(s) {
         check_ransacked(protofile);
         protofile += '.lua'; /* LEV_EXT */
         game.in_mk_themerooms = false;
-        if (load_special(protofile)) {
+        if (await load_special(protofile)) {
             /* some levels can end up with monsters
                on dead mon list, including light source monsters */
             dmonsfree();

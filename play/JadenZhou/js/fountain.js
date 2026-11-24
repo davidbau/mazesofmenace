@@ -7,6 +7,8 @@
 // wash_hands(), breaksink(), drinksink(), dipsink(), sink_backs_up().
 // Paths that reach unported code throw 'not ported yet'.
 
+import { polyself } from './polyself.js';
+import { POLY_NOFLAGS } from './const.js';
 import { game } from './gstate.js';
 import { monster_detect } from './detect.js';
 import { livelog_printf } from './display.js';
@@ -795,7 +797,7 @@ export async function drinksink() {
         await pline(`This ${hliquid("water")} contains toxic wastes!`);
         if (!Unchanging()) {
             await You("undergo a freakish metamorphosis!");
-            throw new Error('drinksink(): polyself() not ported yet');
+            await polyself(POLY_NOFLAGS);
         }
         break;
     /* more odd messages --JJB */

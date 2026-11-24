@@ -357,6 +357,12 @@ export const CMDQ_INT = 4;
 export const CQ_CANNED = 0;
 export const CQ_REPEAT = 1;
 
+// include/display.h:1016 enum docrt_flags_bits.
+export const docrtRecalc = 0;
+export const docrtRefresh = 1;
+export const docrtMapOnly = 2;
+export const docrtNocls = 4;
+
 // Transient animation style/opcode constants (include/display.h DISP_*; src/display.c tmp_at)
 // Runtime fields:
 // - animation tmp_at(x, y): x opcode selector, y style/flush mode

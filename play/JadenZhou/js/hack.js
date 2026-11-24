@@ -35,7 +35,7 @@ import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
          PM_ORACLE, S_EEL, PM_DISPLACER_BEAST, M2_PNAME, AT_EXPL } from './monsters.js';
 import { m_at, is_pool, is_lava, closed_door, may_passwall, sobj_at, goodpos,
          place_monster, accessible } from './makemon.js';
-import { dig_typ } from './dig.js';
+import { dig_typ, use_pick_axe2 } from './dig.js';
 import { pline, canspotmon, mon_visible, newsym, sensemon, You, Your,
          You_cant, pline_The, There, unmap_invisible, unmap_object, map_invisible,
          glyph_is_invisible, map_object } from './display.js';
@@ -62,6 +62,8 @@ import { room_discovered } from './dungeon.js';
 import { inside_room } from './sp_lev.js';
 import { record_achievement } from './do.js';
 import { ACH_TOWN } from './const.js';
+import { RUN_TPORT, RUN_LEAP } from './const.js';
+import { flush_screen as flush_screen_hk } from './display.js';
 import { doopen_indir } from './lock.js';
 import { do_attack } from './uhitm.js';
 import { x_monnam, YMonnam, m_monnam, mon_nam, ARTICLE_NONE, ARTICLE_THE,
@@ -1995,7 +1997,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
                    && is_pick(game.uwep)) {
             /* MRKR: Automatic digging when wielding the appropriate tool */
             if (mode === DO_MOVE)
-                throw new Error('test_move(): use_pick_axe2() not ported yet');
+                /* (void) */ await use_pick_axe2(game.uwep);
             return false;
         } else {
             if (mode === DO_MOVE) {
@@ -2384,6 +2386,8 @@ async function moverock_core(sx, sy) {
                 && (!mtmp.mtrapped || !(ttmp && is_pit(ttmp.ttyp)))) {
                 let deliver_part1 = false;
 
+                if (Blind())
+                    feel_location(sx, sy);
                 if (canspotmon(mtmp)) {
                     await pline(`There's ${a_monnam(mtmp)} on the other side.`);
                     deliver_part1 = true;
@@ -2537,11 +2541,25 @@ async function carrying_too_much() {
 /* C ref: hack.c slippery_ice_fumbling() */
 function slippery_ice_fumbling() {
     const u = game.u;
-    const on_ice = !Levitation() && game.level.at(u.ux, u.uy).typ === ICE;
-    if (on_ice)
-        throw new Error('slippery_ice_fumbling(): ice not ported yet');
-    /* if (!on_ice && (HFumbling & FROMOUTSIDE)) HFumbling &= ~FROMOUTSIDE:
-       nothing sets FROMOUTSIDE fumbling yet */
+    let on_ice = !sp_Levitation() && is_ice_sf(u.ux, u.uy);
+    const iceskater = u.usteed ? u.usteed : game.youmonst;
+    const HFumbling = sp_prop(FUMBLING);
+
+    if (on_ice) {
+        const isd = iceskater.data;
+        if ((game.uarmf && objdescr_is_sf(game.uarmf, "snow boots"))
+            || resists_cold_sf(iceskater) || sp_Flying()
+            || is_floater(isd) || is_clinger(isd)
+            || is_whirly(isd)) {
+            on_ice = false;
+        } else if (!rn2((uhave(COLD_RES_SF)) ? 3 : 2)) {
+            HFumbling.intrinsic |= FROMOUTSIDE;
+            HFumbling.intrinsic &= ~TIMEOUT;
+            HFumbling.intrinsic += 1; /* slip on next move */
+        }
+    }
+    if (!on_ice && (HFumbling.intrinsic & FROMOUTSIDE))
+        HFumbling.intrinsic &= ~FROMOUTSIDE;
 }
 
 /* C ref: hack.c impaired_movement() -- change movement dir if impaired.
@@ -3192,7 +3210,25 @@ async function domove_core() {
         game.nomovemsg = "";
     }
 
-    /* runmode_delay_output(): display timing only */
+    await runmode_delay_output();
+}
+
+// C ref: hack.c runmode_delay_output()
+export async function runmode_delay_output() {
+    const g = game;
+    if ((g.context.run || g.multi) && g.flags.runmode !== RUN_TPORT) {
+        /* for tport mode, don't display anything until we've stopped;
+           for normal (leap) mode, update display every 7th step
+           (relative to turn counter; ought to be to start of running);
+           for walk and crawl (visual debugging) modes, update the
+           display after every step */
+        if (g.flags.runmode !== RUN_LEAP || !(g.moves % 7)) {
+            /* moveloop() suppresses time_botl when running */
+            g.disp_time_botl = !!g.flags.time;
+            await flush_screen_hk(1); /* curs_on_u() */
+            /* nh_delay_output(): display timing only */
+        }
+    }
 }
 
 // C ref: hack.c domove()
@@ -3231,3 +3267,7 @@ function glyph_to_obj_hk(glyph) {
     return (glyph && glyph.kind === 'obj' && glyph.otyp !== undefined
             && glyph.otyp !== null) ? glyph.otyp : -1;
 }
+import { is_ice as is_ice_sf } from './dig.js';
+import { objdescr_is as objdescr_is_sf } from './o_init.js';
+import { resists_cold as resists_cold_sf } from './mondata.js';
+import { COLD_RES as COLD_RES_SF } from './const.js';

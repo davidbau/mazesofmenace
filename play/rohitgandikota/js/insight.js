@@ -39,7 +39,7 @@ import { ceiling, surface, Is_bigroom } from './dungeon.js';
 
 import { hides_under, is_clinger } from './mondata.js';
 
-import { waterbody_name } from './pager.js';
+import { waterbody_name, mhidden_description } from './pager.js';
 
 import { is_pool, t_at } from './mon.js';
 
@@ -73,6 +73,7 @@ import { has_ceiling } from './dungeon.js';
 import { is_pool_or_lava } from './dbridge.js';
 
 import { visible_region_at, reg_damg } from './region.js';
+import { MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION } from './const.js';
 
 import { fingers_or_gloves } from './do_wear.js';
 
@@ -1685,6 +1686,10 @@ export async function mstatusline(mtmp) {
     else if (mtmp.mpeaceful)
         info += ', peaceful';
     if (mtmp.meating) info += ', eating';
+    if (mtmp.mundetected || mtmp.m_ap_type
+        || visible_region_at(game.bhitpos.x, game.bhitpos.y))
+        info += mhidden_description(mtmp,
+            MHID_PREFIX | MHID_ARTICLE | MHID_ALTMON | MHID_REGION);
     if (mtmp.mcan) info += ', cancelled';
     if (mtmp.mconf) info += ', confused';
     if (mtmp.mblinded || mtmp.mcansee === 0) info += ', blind';
@@ -1892,7 +1897,7 @@ export async function do_gamelog() {
         await xwaitforspace(' \r\n\x1b');
         while (game.morc !== '\x1b' && tty_next_page(win))
             await xwaitforspace(' \r\n\x1b');
-        tty_destroy_nhwindow(win);
+        await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     } else {
         await pline('No chronicled events.');
@@ -2035,7 +2040,7 @@ export async function show_conduct(final) {
     await xwaitforspace(' \r\n\x1b');
     while (tty_next_page(win))
         await xwaitforspace(' \r\n\x1b');
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return 0;
 }
@@ -2382,7 +2387,7 @@ export async function list_vanquished(defquery, ask) {
                 tty_putstr(klwin, 0, buf);
             }
             await display_menu_window_blocking(klwin);
-            tty_destroy_nhwindow(klwin);
+            await tty_destroy_nhwindow(klwin);
             await notice_all_mons_flush();
         }
     } else if (!game.program_state_gameover) {
@@ -2542,7 +2547,7 @@ export async function list_genocided(defquery, ask) {
             }
 
             await display_menu_window_blocking(klwin);
-            tty_destroy_nhwindow(klwin);
+            await tty_destroy_nhwindow(klwin);
             await notice_all_mons_flush();
         }
     } else if (!game.program_state_gameover) {
@@ -2599,7 +2604,7 @@ export async function doborn() {
         if (!tty_next_page(datawin))
             break;
     }
-    tty_destroy_nhwindow(datawin);
+    await tty_destroy_nhwindow(datawin);
 
     return ECMD_OK;
 }

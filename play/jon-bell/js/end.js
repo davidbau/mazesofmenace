@@ -1396,8 +1396,8 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             const key = typeof raw === 'number' ? raw
                       : (raw && raw.charCodeAt ? raw.charCodeAt(0) : 0);
             const _answered = (c) => {
-                g._toplEmptyAfterSuppress = false;
                 putmsghistory(qbuf + ' ' + key2txt(c.charCodeAt(0)));
+                g._toplEmptyAfterSuppress = false;
                 g._topl_prompt_filed = qbuf;
                 // C topl.c:537-548 leaves a cancelled, unwrapped prompt
                 // painted. A NUL default has no following result message;

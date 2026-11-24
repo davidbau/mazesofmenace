@@ -2568,8 +2568,8 @@ async function study_book_already_known(spellName, booktype) {
          * second ^P recalled "You know ..." where C walks
          * "Refresh your memory anyway? [yn] (n) y" (df-xad6d836b9b frame 31). */
         const answered = (a) => {
-            g._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
             putmsghistory(`${ynPrompt} ${a}`, false);
+            g._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
             /* the bare prompt still painted on the topline is already filed */
             g._topl_prompt_filed = ynPrompt;
             return a;

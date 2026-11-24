@@ -28,7 +28,8 @@ import { newsym, pline } from './display.js';
 import { Your } from './display.js';
 import { mon_nam } from './do_name.js';
 import { dist2 } from './hacklib.js';
-import { in_rooms, check_special_room } from './hack.js';
+import { in_rooms, check_special_room, nomul } from './hack.js';
+import { canspotmon } from './display.js';
 import { inhishop } from './shk.js';
 import { mattacku } from './mhitu.js';
 import { m_canseeu } from './monmove.js';
@@ -490,9 +491,19 @@ export async function intemple(roomno) {
         if (!rn2(5)
             && (mtmp = await makemon(mons[PM_GHOST], u.ux, u.uy, MM_NOMSG))
                    !== null) {
-            /* the ghost's appearance message, set_malign(), and the
-               nomul(-3) "being terrified of a ghost" paralysis */
-            throw new Error('intemple(): the temple ghost not ported yet');
+            const ngen = game.mvitals[PM_GHOST].born;
+            if (canspotmon(mtmp))
+                await pline(`A${ngen < 5 ? "n enormous" : ""} ghost appears next to you${
+                    ngen < 10 ? '!' : '.'}`);
+            else
+                await You("sense a presence close by!");
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp);
+            if (game.flags.verbose)
+                await You("are frightened to death, and unable to move.");
+            nomul(-3);
+            game.multi_reason = "being terrified of a ghost";
+            game.nomovemsg = "You regain your composure.";
         }
     }
 }

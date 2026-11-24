@@ -2169,7 +2169,7 @@ export async function do_vicinity_map(sobj) {
                     map_invisible(zx, zy);
             }
         }
-    see_monsters();
+    await see_monsters();
     if (refresh)
         await docrt();
 }

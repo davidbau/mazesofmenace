@@ -52,6 +52,8 @@ import { depth } from './dungeon.js';
 import { mkobj, rndmonnum, can_be_hatched } from './mkobj.js';
 import { t_at, locomotion } from './trap.js';
 import { ansimpleoname } from './iactions.js';
+import { oname } from './do_name.js';
+import { ONAME_RANDOM } from './const.js';
 import { get_shop_item } from './shknam.js';
 import { mksobj, mkobj_at, curse, bless, next_ident, set_corpsenm } from './mkobj.js';
 import {
@@ -100,7 +102,7 @@ function montoostrong(monindx, lev) { return mons[monindx].difficulty > lev; }
 function montooweak(monindx, lev) { return mons[monindx].difficulty < lev; }
 
 // C ref: hacklib.c sgn()
-function sgn(n) { return (n < 0) ? -1 : (n !== 0); }
+function sgn(n) { return (n < 0) ? -1 : (n > 0) ? 1 : 0; }
 
 // C ref: mondata.h pm_resistance(), is_placeholder()
 function pm_resistance(ptr, typ) { return (ptr.mresists & typ) !== 0; }
@@ -1009,15 +1011,14 @@ function m_initweap(mtmp) {
         if (humanoid(ptr)) {
             /* create minion stuff; bypass mongets */
             const typ = rn2(3) ? O.LONG_SWORD : O.SILVER_MACE;
+            const nam = (typ === O.LONG_SWORD) ? "Sunsword" : "Demonbane";
 
             otmp = mksobj(typ, false, false);
             /* maybe promote weapon to an artifact */
             if ((!rn2(20) || is_lord(ptr))
                 && sgn(mtmp.isminion ? mtmp.emin.min_align
-                                     : ptr.maligntyp) === A_LAWFUL) {
-                /* otmp = oname(otmp, nam, ONAME_RANDOM): artifacts are not
-                   ported yet (artifact.c) */
-            }
+                                     : ptr.maligntyp) === A_LAWFUL)
+                otmp = oname(otmp, nam, ONAME_RANDOM); /* randomly created */
             /* enhance the weapon */
             bless(otmp);
             otmp.oerodeproof = true;
@@ -1667,6 +1668,30 @@ export function golemhp(type) {
     case M.PM_IRON_GOLEM: return 120;
     default: return 0;
     }
+}
+
+// C ref: makemon.c monhp_per_lvl()
+/* amount of HP to lose from level drain (or gain from Stormbringer) */
+export function monhp_per_lvl(mon) {
+    const ptr = mon.data;
+    let hp = rnd(8); /* default is d8 */
+
+    /* like newmonhp, but home elementals are ignored, riders use normal d8 */
+    if (ptr.mlet === M.S_GOLEM) { /* is_golem(ptr) */
+        /* draining usually won't be applicable for these critters */
+        hp = Math.trunc(golemhp(monsndx(ptr)) / ptr.mlevel);
+    } else if (ptr.mlevel > 49) {
+        /* arbitrary; such monsters won't be involved in draining anyway */
+        hp = 4 + rnd(4); /* 5..8 */
+    } else if (ptr.mlet === M.S_DRAGON && monsndx(ptr) >= M.PM_GRAY_DRAGON) {
+        /* adult dragons; newmonhp() uses In_endgame(&u.uz) ? 8 : 4 + rnd(4)
+         */
+        hp = 4 + rn2(5); /* 4..8 */
+    } else if (!mon.m_lev) {
+        /* level 0 monsters use 1d4 instead of Nd8 */
+        hp = rnd(4);
+    }
+    return hp;
 }
 
 // C ref: makemon.c newmonhp()

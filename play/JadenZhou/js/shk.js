@@ -77,6 +77,7 @@ import { hidden_gold, currency, mbodypart } from './insight.js';
 import { getpos } from './getpos.js';
 import { cansee } from './vision.js';
 import { There, You_cant } from './display.js';
+import { newsym } from './display.js';
 import { Monnam, x_monnam, ARTICLE_THE } from './do_name.js';
 import { money_cnt } from './u_init.js';
 import { the } from './iactions.js';
@@ -3929,3 +3930,50 @@ export function append_price_quote(buf, otyp) {
         buf += buf2;
     return buf;
 }
+
+// C ref: shk.c shop_debt()
+function shop_debt(eshkp) {
+    let debt = eshkp.debit || 0;
+
+    const bp = Array.isArray(eshkp.bill_p) ? eshkp.bill_p : [];
+    for (let i = 0, ct = eshkp.billct; ct > 0; i++, ct--)
+        debt += bp[i].price * bp[i].bquan;
+    return debt;
+}
+
+// C ref: shk.c shopper_financial_report()
+/* called in response to the `$' command */
+export async function shopper_financial_report() {
+    const u = game.u;
+    let shkp, this_shkp = shop_keeper(inside_shop(u.ux, u.uy));
+    let eshkp;
+    let amt;
+    let pass;
+
+    eshkp = this_shkp ? this_shkp.mextra.eshk : null;
+    if (eshkp && !(eshkp.credit || shop_debt(eshkp))) {
+        await You("have no credit or debt in here.");
+        this_shkp = null; /* skip first pass */
+    }
+
+    /* pass 0: report for the shop we're currently in, if any;
+       pass 1: report for all other shops on this level. */
+    for (pass = this_shkp ? 0 : 1; pass <= 1; pass++)
+        for (shkp = next_shkp(game.fmon, false); shkp;
+             shkp = next_shkp(shkp.nmon, false)) {
+            if (((shkp !== this_shkp) ? 1 : 0) ^ pass)
+                continue;
+            eshkp = shkp.mextra.eshk;
+            if ((amt = eshkp.credit || 0) !== 0)
+                await You(`have ${amt} ${currency(amt)} credit at ${
+                    s_suffix(shkname(shkp))} ${
+                    shtypes[eshkp.shoptype - SHOPBASE_FR].name}.`);
+            else if (shkp === this_shkp)
+                await You("have no credit in here.");
+            if ((amt = shop_debt(eshkp)) !== 0)
+                await You(`owe ${shkname(shkp)} ${amt} ${currency(amt)}.`);
+            else if (shkp === this_shkp)
+                await You("don't owe any gold here.");
+        }
+}
+import { SHOPBASE as SHOPBASE_FR } from './const.js';

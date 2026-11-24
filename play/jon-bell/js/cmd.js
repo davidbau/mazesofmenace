@@ -1121,7 +1121,6 @@ async function tty_menu_pick_one_ext(entries, title, statusClipCol) {
  * echo is never remembered in the message history. */
 async function tty_get_ext_cmd() {
     const saved = game._topl_suppress_history;
-    game._topl_suppress_history = true;
     try {
         return await tty_get_ext_cmd_inner();
     } finally {
@@ -1182,6 +1181,11 @@ async function tty_get_ext_cmd_inner() {
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
     g._topl_win_stop_buf = null;
+    if (g._pending_message && g._pending_message !== g._topl_history_recall) {
+        (g._msg_history ||= []).push(String(g._pending_message));
+        g._prevmsg_next = null;
+    }
+    g._topl_suppress_history = true;
     let buf = '';
     /* C ref: win/tty/getline.c:11 `#define NEWAUTOCOMP` (it is defined on every
      * platform but MACOS9, so the NEWAUTOCOMP arms are the live ones).  Under
@@ -3708,8 +3712,8 @@ export async function y_n_default(query, def) {
          * — the ANSWERED prompt is what the next remember_topl files, so a later
          * ^P recalls "Really save? [yn] (n) y", never the bare question. */
         const _answered = (a) => {
-            g._toplEmptyAfterSuppress = false;
             putmsghistory(`${prompt} ${a}`);
+            g._toplEmptyAfterSuppress = false;
             return a;
         };
         /* C topl.c:432-453 ctrl-P: a window mode shows the history and
@@ -4070,16 +4074,12 @@ async function doextlist(restoreExtPrompt = false) {
             let ch = String.fromCharCode(raw | 0);
             if (raw === 27 || raw === 10 || raw === 13) {
                 await dismiss();
-                g._pending_message = restoreExtPrompt ? '#' : '';
-                await flush_screen(1);
                 return ECMD_OK;
             }
             if (raw === 32 || ch === '>') {
                 if (page < pages.length - 1) page++;
                 else if (raw === 32) {
                     await dismiss();
-                    g._pending_message = restoreExtPrompt ? '#' : '';
-                    await flush_screen(1);
                     return ECMD_OK;
                 }
                 continue;
@@ -4134,8 +4134,6 @@ async function doextlist(restoreExtPrompt = false) {
                 if (!redisplay) {
                     /* cmd.c:719-733: an empty/cancelled search leaves redisplay
                      * FALSE, so the do-while ends and the menu is destroyed. */
-                    g._pending_message = restoreExtPrompt ? '#' : '';
-                    await flush_screen(1);
                     return ECMD_OK;
                 }
             }
@@ -6338,8 +6336,8 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
          * arm (cmd.c:5217-5219) never enters tty_nhgetch. */
         try { itemRaw = g.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
         finally { g._topl_suppress_history = _sh; }
-        g._toplEmptyAfterSuppress = false; /* topl.c:537-539 gt.toplines is now prompt + answer */
         putmsghistory(prompt + ' ' + key2txt((typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0)) & 0xff), false);
+        g._toplEmptyAfterSuppress = false; /* topl.c:537-539 gt.toplines is now prompt + answer */
         }
         // tty_yn_function leaves a one-line prompt physically painted after
         // accepting a key. A following message wins; opening a menu clears
@@ -14844,13 +14842,15 @@ async function _getpos_menu(gloc) {
         const rawLines = [...pg.map((r) => (r.e ? `${r.e.accel} - ${menucolor_text(r.text)}` : r.text)), footer];
         const windowLines = rawLines.map((ln, i) => (pg[i]?.head && i === 0 ? menu_heading_text(ln) : ln));
         if (titleErased) windowLines[0] = '';
-        /* C wintty.c:1927 — `cw->maxrow >= rows || !iflags.menu_overlay` drops the
+        /* C wintty.c:1406-1413,1908-1927 — `cw->maxrow >= rows || !iflags.menu_overlay`
+         * or a line wide enough for `cw->offx == 0` (content column 1) drops the
          * menu to offx 0 and clears the whole screen (map and status included). */
+        const offx = tty_window_offx(rawLines, 'end');
         const fullScreen = pages.length > 1 || windowLines.length >= 24
+            || offx === 1
             || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
         shownFull = fullScreen;
         lastWinRows = windowLines.length;
-        const offx = fullScreen ? 1 : tty_window_offx(rawLines, 'end');
         g._screen_output = fullScreen
             ? windowLines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
             : build_window_screen(windowLines, offx, g.u?.uac ?? 0);
@@ -17275,8 +17275,8 @@ async function _ynq_cmd(query) {
      * (df-xb363ae6b21 step 81). */
     /* C topl.c:531-536 clean_up: gt.toplines = prompt + key2txt(q); the prompt
      * was SUPPRESS_HISTORY, so the next remember_topl() files the ANSWERED line. */
-    g._toplEmptyAfterSuppress = false;
     putmsghistory(`${prompt} ${key2txt(ch.charCodeAt(0))}`);
+    g._toplEmptyAfterSuppress = false;
     /* C win/tty/topl.c:547-548 clears WIN_MESSAGE when cw->cury is nonzero. */
     g._topl_sticky = pcy > 0 ? null : prompt;
     return ch;
@@ -19802,6 +19802,9 @@ function mungspaces_paranoid(s) {
 
 async function read_getlin(prompt) {
     const g = game;
+    const oldBotDisabled = g._bot_disabled;
+    g._bot_disabled = true; // windows.c:1898 getlin sets gb.bot_disabled = TRUE
+    try {
     let buf = '';
     /* hooked_tty_getlin first drains width-driven pages, then acknowledges
      * the final pending message window before replacing it with its prompt. */
@@ -19976,6 +19979,9 @@ async function read_getlin(prompt) {
         g._topl_prompt_echo = savedEcho;
         g._topl_prompt_written = savedWritten;
     }
+    } finally {
+        g._bot_disabled = oldBotDisabled;
+    }
 }
 
 async function read_yn(prompt, acceptQ) {
@@ -20069,8 +20075,8 @@ async function read_yn(prompt, acceptQ) {
     /* C topl.c:537-539 rewrites gt.toplines as prompt + key2txt(q) and
      * remember_topl() files THAT: the answered prompt, never the bare one. */
     const answered = (a) => {
-        g._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
         putmsghistory(`${shown} ${a}`, false);
+        g._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
         /* the bare prompt still on the topline is already filed as prompt + answer */
         g._topl_prompt_filed = shown;
         stick(); return a;

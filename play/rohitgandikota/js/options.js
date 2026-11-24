@@ -1352,7 +1352,7 @@ export async function option_help() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
 }
 

@@ -688,7 +688,8 @@ export async function doapply() {
         break;
     case PICK_AXE:
     case DWARVISH_MATTOCK:
-        throw new Error('doapply(): use_pick_axe() not ported yet');
+        res = await use_pick_axe(obj);
+        break;
     case O.TINNING_KIT:
         throw new Error('doapply(): use_tinning_kit() not ported yet');
     case O.LEASH:
@@ -772,7 +773,8 @@ export async function doapply() {
         if (is_pole(obj)) {
             throw new Error('doapply(): use_pole() not ported yet');
         } else if (is_pick(obj) || is_axe(obj)) {
-            throw new Error('doapply(): use_pick_axe() not ported yet');
+            res = await use_pick_axe(obj);
+            break;
         }
         await pline("Sorry, I don't know how to use that.");
         return ECMD_FAIL;
@@ -1240,7 +1242,7 @@ import { losehp, Maybe_Half_Phys } from './trap.js';
 import { dropx } from './do.js';
 
 // C ref: invent.c consume_obj_charge()
-function consume_obj_charge(obj,
+export function consume_obj_charge(obj,
                             maybe_unpaid) { /* false if caller handles shop billing */
     if (maybe_unpaid)
         check_unpaid_cam(obj);
@@ -1399,6 +1401,7 @@ async function use_leash_core(obj, mtmp, cc, spotmon) {
 import { noit_mon_nam as noit_mon_nam_ls, Monnam as Monnam_ls,
          l_monnam as l_monnam_ls } from './do_name.js';
 import { get_adjacent_loc as get_adjacent_loc_ls } from './cmd.js';
+import { use_pick_axe } from './dig.js';
 import { glyph_is_invisible as glyph_is_invisible_ls } from './display.js';
 import { mons as mons_ls, PM_LONG_WORM as PM_LONG_WORM_LS, M1_UNSOLID as M1_UNSOLID_LS,
          M1_NOLIMBS as M1_NOLIMBS_LS, M1_NOHEAD as M1_NOHEAD_LS } from './monsters.js';

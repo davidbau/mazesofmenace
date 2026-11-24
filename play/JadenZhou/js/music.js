@@ -169,7 +169,15 @@ async function do_improvisation(instr) {
 
     switch (itmp_otyp) { /* note: itmp.otyp might differ from instr->otyp */
     case O.MAGIC_FLUTE: /* Make monster fall asleep */
-        throw new Error('do_improvisation(): magic flute (consume_obj_charge(), put_monsters_to_sleep()) not ported yet');
+        consume_obj_charge_mu(instr, true);
+
+        await You(`${!Deaf() ? "" : "seem to "}produce ${
+            Hallucination() ? "piped" : "soft"}${
+            same_old_song.val ? ", familiar" : ""} music.`);
+        /* Hero_playnotes(obj_to_instr(&itmp), improvisation, 50): sound only */
+        await put_monsters_to_sleep(u.ulevel * 5);
+        exercise(A_DEX, true);
+        break;
     case O.WOODEN_FLUTE: /* May charm snakes */
         do_spec &= (rn2(ACURR(A_DEX)) + u.ulevel > 25) ? 1 : 0;
         if (!Deaf())
@@ -196,7 +204,17 @@ async function do_improvisation(instr) {
     case O.BUGLE: /* Awaken & attract soldiers */
         throw new Error('do_improvisation(): awaken_soldiers() not ported yet');
     case O.MAGIC_HARP: /* Charm monsters */
-        throw new Error('do_improvisation(): magic harp (consume_obj_charge(), charm_monsters()) not ported yet');
+        consume_obj_charge_mu(instr, true);
+
+        if (!Deaf())
+            await pline(`${Tobjnam(instr, "produce")} very attractive${
+                same_old_song.val ? " and familiar" : ""} music.`);
+        else
+            await You_feel("very soothing vibrations.");
+        /* Hero_playnotes(obj_to_instr(&itmp), improvisation, 50): sound only */
+        await charm_monsters(Math.trunc((u.ulevel - 1) / 3) + 1);
+        exercise(A_DEX, true);
+        break;
     case O.WOODEN_HARP: /* May calm Nymph */
         do_spec &= (rn2(ACURR(A_DEX)) + u.ulevel > 25) ? 1 : 0;
         if (!Deaf())
@@ -293,3 +311,49 @@ export async function do_play_instrument(instr) {
     /* playing a tune (passtune, Mastermind hints at the Castle drawbridge) */
     throw new Error('do_play_instrument(): playing a tune not ported yet');
 }
+
+// C ref: music.c put_monsters_to_sleep()
+/* Make monsters fall asleep.  Note that they may resist the spell. */
+async function put_monsters_to_sleep(distance) {
+    let mtmp;
+
+    for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
+            continue;
+        if (mdistu(mtmp) < distance
+            && sleep_monst_mu(mtmp, d_mu(10, 10), TOOL_CLASS)) {
+            mtmp.msleeping = 1; /* 10d10 turns + wake_nearby to rouse */
+            await slept_monst_mu(mtmp);
+        }
+    }
+}
+
+// C ref: music.c charm_monsters()
+/* Charm monsters in range.  Note that they may resist the spell. */
+async function charm_monsters(distance) {
+    let mtmp, mtmp2;
+
+    if (game.u.uswallow)
+        distance = 0; /* only u.ustuck will be affected (u.usteed is Null
+                       * since hero gets forcibly dismounted when engulfed) */
+
+    for (mtmp = game.fmon; mtmp; mtmp = mtmp2) {
+        mtmp2 = mtmp.nmon;
+        if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
+            continue;
+
+        if (mdistu(mtmp) <= distance) {
+            /* a shopkeeper can't be tamed but tamedog() pacifies an angry
+               one; do that even if mtmp resists in order to behave the same
+               as a non-cursed scroll of taming or spell of charm monster */
+            if (!resist(mtmp, TOOL_CLASS, 0, NOTELL_MU) || mtmp.isshk)
+                await tamedog_mu(mtmp, null, true);
+        }
+    }
+}
+import { consume_obj_charge as consume_obj_charge_mu } from './apply.js';
+import { sleep_monst as sleep_monst_mu } from './trap.js';
+import { slept_monst as slept_monst_mu } from './mhitm.js';
+import { tamedog as tamedog_mu } from './dog.js';
+import { d as d_mu } from './rng.js';
+import { NOTELL as NOTELL_MU } from './const.js';

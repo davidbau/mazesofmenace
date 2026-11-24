@@ -26,7 +26,7 @@ import { ONAMES } from './objects_data.js';
 import { m_at, m_carrying, mnexto, mongone, mpickgold, setmangry, t_at } from './mon.js';
 import { MON_WEP } from './monst.js';
 import { mon_wield_item } from './weapon.js';
-import { del_engr, engr_at } from './engrave.js';
+import { del_engr, del_engr_at, engr_at } from './engrave.js';
 import { add_to_minv, place_object } from './mkobj.js';
 import { You, You_hear, Your, impossible, pline_The, verbalize } from './pline.js';
 import { currency, freeinv } from './invent.js';
@@ -686,6 +686,7 @@ export async function gd_move(guard) {
                     loc.doormask = D_NODOOR;
                 else
                     loc.flags = 0;
+                del_engr_at(nx, ny);
                 newspot = true;
             }
         }
@@ -750,20 +751,16 @@ export async function gd_move(guard) {
             egd.gdx = ggx = newgoal.x;
             egd.gdy = ggy = newgoal.y;
         }
-
-        if ((nx !== egd.gdx || ny !== egd.gdy)
-            || (guard.mx !== egd.gdx || guard.my !== egd.gdy)) {
-            egd.fakecorr[egd.fcend++] = {
-                fx: nx, fy: ny, ftyp: typ, flags: loc.flags || 0,
-                doormask: loc.doormask || 0,
-            };
-        }
     }
 
     if (newspot) {
         unblock_point(nx, ny);
         if (cansee(nx, ny))
             newsym(nx, ny);
+        egd.fakecorr[egd.fcend++] = {
+            fx: nx, fy: ny, ftyp: typ, flags: loc.flags || 0,
+            doormask: loc.doormask || 0,
+        };
     }
 
     await gd_mv_monaway(guard, nx, ny);

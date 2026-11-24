@@ -33,7 +33,7 @@ import { critically_low_hp } from './../pray.js';
 import { impossible } from './../pline.js';
 import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './../display.js';
 import { tty_clear_nhwindow_message, row_refresh, bot,
-         docrt_sync_rebuild } from './../display.js';
+         docrt, flush_screen } from './../display.js';
 import { nhgetch } from './../input.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
@@ -202,7 +202,9 @@ export function tty_get_nhwindow(window) {
 // win/tty/wintty.c tty_destroy_nhwindow()
 export function tty_destroy_nhwindow(window) {
     const cw = windows[window];
-    if (cw && cw.active) tty_dismiss_nhwindow(window);
+    const pending = cw?.active ? tty_dismiss_nhwindow(window) : null;
+    if (pending)
+        return pending.then(() => { delete windows[window]; });
     delete windows[window];
 }
 
@@ -1096,9 +1098,8 @@ export async function tty_select_menu(window, how) {
        Skipping this leaves the menu painted behind whatever the caller opens
        next, e.g. doset_simple_menu()'s handler menus.
 
-       erase_menu_or_text() handles the repaint (its offx==0 arm is C's
-       `docrt(); flush_screen(1);` restructured for a sync context). */
-    tty_dismiss_nhwindow(window);
+       erase_menu_or_text() handles the repaint and any sensing feedback. */
+    await tty_dismiss_nhwindow(window);
     /* erase_menu_or_text()'s docrt() ends with vision_recalc(), whose
        notice_all_mons(TRUE) this port queues; run it here, in C's order */
     await notice_all_mons_flush();
@@ -1179,27 +1180,7 @@ function erase_menu_or_text(cw, display, clear) {
         } else if (clear) {
             display.clearScreen();
         } else {
-            /* C: docrt(); flush_screen(1); — async in this port and this
-               runs under synchronous destroy sites. Rebuild the glyph buffer
-               synchronously, then paint those cells directly. */
-            docrt_sync_rebuild();
-            display.clearScreen();
-            for (let y = 0; y < ROWNO; y++) {
-                row_refresh(1, COLNO - 1, y);
-                // C's flush_screen consumes these updates. Leaving them set
-                // repaints the map over the next menu's search prompt.
-                for (let x = 1; x < COLNO; x++)
-                    if (game.gbuf?.[y]?.[x])
-                        game.gbuf[y][x].gnew = 0;
-            }
-            /* docrt() forces the bottom lines (disp.botlx) and flush_screen(1)
-               calls bot(); inside select_menu() bot() is disabled
-               (windows.c:1860), so the flag stays up and the next flush
-               repaints the status rows once the menu call has returned */
-            (game.disp ||= {}).botlx = true;
-            bot();
-            if (game.u?.ux > 0)
-                display.setCursor(game.u.ux - 1, game.u.uy + 1);
+            return docrt().then(() => flush_screen(1));
         }
     } else {
         docorner(cw.offx, cw.maxrow + 1, display);
@@ -1218,7 +1199,11 @@ export function tty_dismiss_nhwindow(window) {
     if (!cw || !display) return;
     if (cw.type !== NHW_MENU && cw.type !== NHW_TEXT) return;
     if (cw.active) {
-        erase_menu_or_text(cw, display, !!game.in_role_selection);
+        if (game.iflags?.window_inited && !game._erasing_tty_screen) {
+            const pending = erase_menu_or_text(cw, display, !!game.in_role_selection);
+            if (pending)
+                return pending.then(() => { cw.active = 0; });
+        }
         cw.active = 0;
     }
 }

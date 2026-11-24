@@ -824,13 +824,44 @@ export function vision_recalc(control = 0) {
         return;
     }
 
+    const level = game.level;
+    const ux = u.ux, uy = u.uy;
+
+    /* src/vision.c:631: xray updates precede lighting and the buffer swap.
+       newsym() still reads the old active visibility here. */
+    const xray = u.xray_range ?? -1;
+    if (!u.uswallow && control !== 2 && !Is_rogue_level(u.uz) && xray >= 0) {
+        if (xray) {
+            const ranges = circle_data.slice(circle_start[xray]);
+            for (let row = Math.max(0, uy - xray);
+                 row <= Math.min(ROWNO - 1, uy + xray); row++) {
+                const halfwidth = ranges[Math.abs(uy - row)];
+                const start = Math.max(1, ux - halfwidth);
+                const stop = Math.min(COLNO - 1, ux + halfwidth);
+                for (let col = start; col <= stop; col++) {
+                    const old_row_val = next[row][col];
+                    const loc = level.at(col, row);
+                    const oldseenv = loc.seenv || 0;
+                    next[row][col] |= IN_SIGHT;
+                    loc.seenv = SVALL;
+                    if (!(old_row_val & IN_SIGHT) || oldseenv !== SVALL)
+                        newsym(col, row);
+                }
+                next_rmin[row] = Math.min(start, next_rmin[row]);
+                next_rmax[row] = Math.max(stop, next_rmax[row]);
+            }
+        } else {
+            next[uy][ux] |= IN_SIGHT;
+            level.at(ux, uy).seenv = SVALL;
+            next_rmin[uy] = Math.min(ux, next_rmin[uy]);
+            next_rmax[uy] = Math.max(ux, next_rmax[uy]);
+        }
+    }
+
     /* src/vision.c:703 — set the correct bits for all light sources */
     do_light_sources(next);
 
     // Compute IN_SIGHT from COULD_SEE + lighting
-    const level = game.level;
-    const ux = u.ux, uy = u.uy;
-
     for (let row = 0; row < ROWNO; row++) {
         const dy = Math.sign(uy - row);
         for (let col = next_rmin[row]; col <= next_rmax[row]; col++) {
@@ -838,8 +869,8 @@ export function vision_recalc(control = 0) {
             const loc = level?.at(col, row);
             if (!loc) continue;
 
-            // Night vision: adjacent cells always IN_SIGHT
-            if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
+            // C vision.c:690: night vision excludes column zero.
+            if (col > 0 && Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
                 next[row][col] |= IN_SIGHT;
                 continue;
             }
@@ -859,25 +890,6 @@ export function vision_recalc(control = 0) {
                     next[row][col] |= IN_SIGHT;
                 }
             }
-        }
-    }
-
-    /* src/vision.c:631, the Eyes of the Overworld see every square in a
-       radius-three circle, including through walls. */
-    const xray = u.xray_range ?? -1;
-    if (!u.uswallow && control !== 2 && xray >= 0) {
-        const ranges = circle_data.slice(circle_start[xray]);
-        for (let row = Math.max(0, uy - xray);
-             row <= Math.min(ROWNO - 1, uy + xray); row++) {
-            const halfwidth = ranges[Math.abs(uy - row)];
-            const start = Math.max(1, ux - halfwidth);
-            const stop = Math.min(COLNO - 1, ux + halfwidth);
-            for (let col = start; col <= stop; col++) {
-                next[row][col] |= IN_SIGHT;
-                level.at(col, row).seenv = SVALL;
-            }
-            next_rmin[row] = Math.min(start, next_rmin[row]);
-            next_rmax[row] = Math.max(stop, next_rmax[row]);
         }
     }
 
@@ -942,7 +954,9 @@ export function vision_recalc(control = 0) {
                 } else {
                     if ((ov & IN_SIGHT)
                         || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
-                        newsym(col, row);
+                        // src/vision.c:828: this visibility transition can include column zero.
+                        if (col !== 0)
+                            newsym(col, row);
                     }
                 }
             }

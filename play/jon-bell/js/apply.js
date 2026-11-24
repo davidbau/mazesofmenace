@@ -2745,8 +2745,8 @@ export async function doapply() {
             try { itemRaw = game.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); /* C: getobj's yn_function nhgetch */ }
             finally { g._topl_suppress_history = _sh; }
             itemKey = typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0);
-            game._toplEmptyAfterSuppress = false; /* topl.c:537-539 */
             putmsghistory(qbuf + ' ' + key2txt(itemKey & 0xff), false);
+            game._toplEmptyAfterSuppress = false; /* topl.c:537-539 */
             /* topl.c:547-549 clears a prompt that wrapped onto another row. */
             answeredApplyPrompt = topl_park_cursor(null, qbuf + ' ')[1] === 0 ? qbuf : null;
         }

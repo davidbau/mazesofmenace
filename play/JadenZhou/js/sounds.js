@@ -36,6 +36,7 @@ import { night } from './calendar.js';
 import * as MM from './monsters.js';
 import { p_coaligned } from './priest.js';
 import { getdir } from './cmd.js';
+import { Unaware } from './eat.js';
 import { is_flyer, is_undead, is_vampshifter } from './mondata.js';
 
 /* C ref: mondata.h predicates */
@@ -53,11 +54,16 @@ function Hallucination() {
               && !(P[HALLUC_RES].intrinsic || P[HALLUC_RES].extrinsic));
 }
 
-/* C ref: pline.c You_hear() -- the "You hear" prefix; the hearing-
-   while-asleep/unconscious variant ("You dream that you hear") isn't
-   ported yet */
+// C ref: pline.c You_hear()
 export async function You_hear(msg) {
-    await pline(`You hear ${msg}`);
+    if ((Deaf() && !Unaware()) || !game.flags.acoustics)
+        return;
+    if (game.u.uinwater) /* Underwater */
+        await pline(`You barely hear ${msg}`);
+    else if (Unaware())
+        await pline(`You dream that you hear ${msg}`);
+    else
+        await pline(`You hear ${msg}`); /* Deaf-aware */
 }
 
 // C ref: sounds.c mon_in_room()
@@ -388,7 +394,7 @@ function uprop(prop) {
     const p = game.u.uprops[prop];
     return !!(p && (p.intrinsic || p.extrinsic));
 }
-function Deaf() { return uprop(DEAF); }
+function Deaf() { return uprop(DEAF) || !!game.u.uroleplay?.deaf; }
 
 /* C ref: sounds.c h_sounds[] */
 const h_sounds = [

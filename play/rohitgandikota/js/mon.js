@@ -2958,7 +2958,7 @@ export async function xkilled(mtmp, xkill_flags) /* 1: suppress mesg, 2: suppres
         change_luck(-2);
         await You('murderer!');
         if (Blind() && !Blind_telepat())
-            see_monsters(); /* Can't sense monsters any more. */
+            await see_monsters(); /* Can't sense monsters any more. */
     }
     if ((mtmp.mpeaceful && !rn2(2)) || mtmp.mtame)
         change_luck(-1);
@@ -3127,7 +3127,7 @@ export async function normal_shape(mon) {
         mon.cham = NON_PM;
         if (wasCancelled)
             mon.mcan = 1;
-        newsym(mon.mx, mon.my);
+        await newsym(mon.mx, mon.my);
     }
 
     const { is_were, new_were } = await import('./were.js');
@@ -4522,8 +4522,10 @@ export function newcham(mtmp, mdat, ncflags) {
             place_worm_tail_randomly(mtmp, mtmp.mx, mtmp.my);
         }
         mtmp.meverseen = 0;
-        newsym(mtmp.mx, mtmp.my);
-        return msg ? showChange().then(finishEquipment) : finishEquipment();
+        const pending = newsym(mtmp.mx, mtmp.my);
+        const finish = () => msg ? showChange().then(finishEquipment)
+                                : finishEquipment();
+        return pending ? pending.then(finish) : finish();
     }
 
     async function showChange() {

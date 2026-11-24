@@ -34,7 +34,9 @@ import { AMULET_OF_LIFE_SAVING, LARGE_BOX, STATUE, TIN, CORPSE,
          FAKE_AMULET_OF_YENDOR } from './objects.js';
 import { pmname, Mgender, m_monnam } from './do_name.js';
 import { shkname, shkname_is_pname } from './shknam.js';
-import { an } from './objnam.js';
+import { an, the_unique_pm } from './objnam.js';
+import { is_vampshifter } from './mondata.js';
+import { strstri } from './hacklib.js';
 import { zombie_maker, mongone } from './mon.js';
 import { night, midnight, getnow } from './calendar.js';
 import { record_achievement } from './do.js';
@@ -177,7 +179,36 @@ export async function done_in_by(mtmp, how) {
         buf += "hallucinogen-distorted ";
 
     if (imitator) {
-        throw new Error('done_in_by(): an imitating killer not ported yet');
+        let shape;
+        const realnm = pmname(champtr, Mgender(mtmp));
+        let fakenm = pmname(mptr, Mgender(mtmp));
+        const alt = is_vampshifter(mtmp);
+
+        if (mimicker) {
+            /* realnm is already correct because champtr==mptr;
+               set up fake mptr for type_is_pname/the_unique_pm */
+            mptr = mons[mtmp.mappearance];
+            fakenm = pmname(mptr, Mgender(mtmp));
+        } else if (alt && strstri(realnm, "vampire") >= 0
+                   && fakenm === "vampire bat") {
+            /* special case: use "vampire in bat form" in preference
+               to redundant looking "vampire in vampire bat form" */
+            fakenm = "bat";
+        }
+        /* for the alternate format, always suppress any article;
+           pname and the_unique should also have s_suffix() applied,
+           but vampires don't take on any shapes which warrant that */
+        if (alt || type_is_pname(mptr)) /* no article */
+            shape = fakenm;
+        else if (the_unique_pm(mptr)) /* "the"; don't use the() here */
+            shape = `the ${fakenm}`;
+        else /* "a"/"an" */
+            shape = an(fakenm);
+        /* omit "called" to avoid excessive verbosity */
+        buf += alt ? `${realnm} in ${shape} form`
+                   : mimicker ? `${realnm} disguised as ${shape}`
+                              : `${realnm} imitating ${shape}`;
+        mptr = mtmp.data; /* reset for mimicker case */
     } else if (mptr === mons[PM_GHOST]) {
         buf += "ghost";
         if (has_mgivenname(mtmp))

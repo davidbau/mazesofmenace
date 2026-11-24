@@ -74,7 +74,9 @@ function version_id_string(build_date) {
 /* C ref: mdlib.c static state of the opttext[] collection */
 let opttext = [];
 let optbuf = "";
-let done_runtime_opt_init_once = 0;
+/* done_runtime_opt_init_once is kept in game (game.done_runtime_opt_init_once):
+   in C it lasts for the process, which is one game, and it has to be cleared
+   with game.nomakedefs_version_id when another game starts in the same page */
 let save_bones_compat_buf = "";
 const opt_indent = "    ";
 
@@ -280,8 +282,8 @@ function build_options() {
 
 // C ref: mdlib.c runtime_info_init()
 function runtime_info_init() {
-    if (!done_runtime_opt_init_once) {
-        done_runtime_opt_init_once = 1;
+    if (!game.done_runtime_opt_init_once) {
+        game.done_runtime_opt_init_once = 1;
         build_savebones_compat_string();
         /* construct the current version number: make_version();
            populate_nomakedefs(&version) (date.c) */
@@ -295,7 +297,7 @@ function runtime_info_init() {
 function do_runtime_info(rtcontext) {
     let retval = null;
 
-    if (!done_runtime_opt_init_once)
+    if (!game.done_runtime_opt_init_once)
         runtime_info_init();
     if (opttext.length && rtcontext)
         if (rtcontext.n >= 0 && rtcontext.n < opttext.length) {

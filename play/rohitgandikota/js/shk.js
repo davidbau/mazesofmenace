@@ -4111,7 +4111,7 @@ export async function doinvbill(mode) {
     do {
         await xwaitforspace(' \r\n\x1b');
     } while (game.morc !== '\x1b' && tty_next_page(datawin));
-    tty_destroy_nhwindow(datawin);
+    await tty_destroy_nhwindow(datawin);
     return 0;
 }
 

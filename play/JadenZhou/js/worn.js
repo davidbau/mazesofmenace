@@ -42,6 +42,16 @@ import { mhim, mhis } from './mhitu.js';
 import { learnwand } from './zap.js';
 import { cancel_doff } from './do_wear.js';
 import { is_weptool } from './wield.js';
+import { DEAF, W_SADDLE } from './const.js';
+import { Unaware } from './eat.js';
+import { extract_from_minvent_g } from './steal.js';
+import { place_object } from './mkobj.js';
+import { m_useup_g } from './mthrowu.js';
+import { cloak_simple_name } from './objnam.js';
+import { s_suffix } from './hacklib.js';
+import { can_saddle } from './makemon.js';
+import { can_ride } from './steed.js';
+import { surface } from './iactions.js';
 
 function impossible(msg) { console.error(`impossible: ${msg}`); }
 
@@ -493,7 +503,7 @@ export async function update_mon_extrinsics(mon, obj, on, silently) {
 export function update_mon_extrinsics_sync(mon, obj, on) {
     run_msgs_sync(update_mon_extrinsics_g(mon, obj, on, true));
 }
-function* update_mon_extrinsics_g(
+export function* update_mon_extrinsics_g(
     mon,
     obj, /* armor being worn or taken off */
     on,
@@ -921,19 +931,196 @@ function* m_dowear_type(
     void sawloc; /* used by the artifact light messages (begin_burn) */
 }
 
+/* C ref: pline.c You_hear() -- worn.c generators yield { you_hear: line }
+   where C calls You_hear() */
+async function You_hear_wn(line) {
+    const u = game.u;
+    const P = u.uprops[DEAF];
+    const Deaf = !!(P.intrinsic || P.extrinsic || u.uroleplay?.deaf);
+
+    if ((Deaf && !Unaware()) || !game.flags.acoustics)
+        return;
+    if (u.uinwater) /* Underwater */
+        await pline(`You barely hear ${line}`);
+    else if (Unaware())
+        await pline(`You dream that you hear ${line}`);
+    else
+        await pline(`You hear ${line}`); /* Deaf-aware */
+}
+
+// print one message yielded by a worn.c generator
+export async function worn_pline(msg) {
+    if (typeof msg === 'object' && msg.you_hear !== undefined)
+        await You_hear_wn(msg.you_hear);
+    else
+        await pline(msg);
+}
+
+/* C ref: worn.c m_lose_armor() */
+function* m_lose_armor_g(mon, obj, polyspot) {
+    yield* extract_from_minvent_g(mon, obj, true, false);
+    place_object(obj, mon.mx, mon.my);
+    if (polyspot)
+        bypass_obj(obj);
+    /* call stackobj() if we ever drop anything that can merge */
+    newsym(mon.mx, mon.my);
+}
+
+/* C ref: obj.h Is_dragon_scales() ... Dragon_mail_to_pm() */
+function Is_dragon_scales(o) {
+    return o.otyp >= O.GRAY_DRAGON_SCALES && o.otyp <= O.YELLOW_DRAGON_SCALES;
+}
+function Is_dragon_mail(o) {
+    return o.otyp >= O.GRAY_DRAGON_SCALE_MAIL
+           && o.otyp <= O.YELLOW_DRAGON_SCALE_MAIL;
+}
+function Dragon_scales_to_pm(o) {
+    return mons[M.PM_GRAY_DRAGON + o.otyp - O.GRAY_DRAGON_SCALES];
+}
+function Dragon_mail_to_pm(o) {
+    return mons[M.PM_GRAY_DRAGON + o.otyp - O.GRAY_DRAGON_SCALE_MAIL];
+}
 // C ref: worn.c mon_break_armor()
 /* the monster's new form (mon->data) may break, slip out of or drop its
-   worn armor and saddle, or stop carrying the hero; only the pronouns the
-   messages use (worked out first, so rolled even when nothing is worn
-   while hallucinating) are ported */
-export function mon_break_armor(mon, polyspot) {
+   worn armor and saddle, or stop carrying the hero */
+export async function mon_break_armor(mon, polyspot) {
+    for (const msg of mon_break_armor_g(mon, polyspot))
+        await worn_pline(msg);
+}
+/* the body of mon_break_armor(); yields its messages */
+export function* mon_break_armor_g(mon, polyspot) {
+    let otmp;
+    const mdat = mon.data;
+    const vis = cansee(mon.mx, mon.my),
+          handless_or_tiny = (nohands(mdat) || verysmall(mdat));
+    let noride = false;
     const pronoun = mhim(mon), ppronoun = mhis(mon);
 
-    void pronoun, ppronoun, polyspot;
-    if ((mon.misc_worn_check || 0) & ~I_SPECIAL)
-        throw new Error('mon_break_armor(): worn armor not ported yet');
-    if (mon === game.u?.usteed)
-        throw new Error('mon_break_armor(): steed not ported yet');
+    if (breakarm(mdat)) {
+        if ((otmp = which_armor(mon, W_ARM)) != null) {
+            if ((Is_dragon_scales(otmp) && mdat === Dragon_scales_to_pm(otmp))
+                || (Is_dragon_mail(otmp) && mdat === Dragon_mail_to_pm(otmp))) {
+                ; /* no message here;
+                     "the dragon merges with his scaly armor" is odd
+                     and the monster's previous form is already gone */
+            } else {
+                /* Soundeffect(se_cracking_sound, 100); */
+                if (vis)
+                    yield `${Monnam(mon)} breaks out of ${ppronoun} armor!`;
+                else
+                    yield { you_hear: "a cracking sound." };
+            }
+            yield* m_useup_g(mon, otmp);
+        }
+        if ((otmp = which_armor(mon, W_ARMC)) != null
+            /* mummy wrapping adapts to small and very big sizes */
+            && (otmp.otyp !== O.MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
+            if (otmp.oartifact) {
+                if (vis)
+                    yield `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls off!`;
+                yield* m_lose_armor_g(mon, otmp, polyspot);
+            } else {
+                /* Soundeffect(se_ripping_sound, 100); */
+                if (vis)
+                    yield `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} tears apart!`;
+                else
+                    yield { you_hear: "a ripping sound." };
+                yield* m_useup_g(mon, otmp);
+            }
+        }
+        if ((otmp = which_armor(mon, W_ARMU)) != null) {
+            if (vis)
+                yield `${s_suffix(Monnam(mon))} shirt rips to shreds!`;
+            else
+                yield { you_hear: "a ripping sound." };
+            yield* m_useup_g(mon, otmp);
+        }
+    } else if (sliparm(mdat)) {
+        /* sliparm checks whirly, noncorporeal, and small or under */
+        const passes_thru_clothes = !(mdat.msize <= M.MZ_SMALL);
+
+        if ((otmp = which_armor(mon, W_ARM)) != null) {
+            /* Soundeffect(se_thud, 50); */
+            if (vis)
+                yield `${s_suffix(Monnam(mon))} armor falls around ${pronoun}!`;
+            else
+                yield { you_hear: "a thud." };
+            yield* m_lose_armor_g(mon, otmp, polyspot);
+        }
+        if ((otmp = which_armor(mon, W_ARMC)) != null
+            /* mummy wrapping adapts to small and very big sizes */
+            && (otmp.otyp !== O.MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
+            if (vis) {
+                if (is_whirly(mon.data))
+                    yield `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls, unsupported!`;
+                else
+                    yield `${Monnam(mon)} shrinks out of ${ppronoun} ${cloak_simple_name(otmp)}!`;
+            }
+            yield* m_lose_armor_g(mon, otmp, polyspot);
+        }
+        if ((otmp = which_armor(mon, W_ARMU)) != null) {
+            if (vis) {
+                if (passes_thru_clothes)
+                    yield `${Monnam(mon)} seeps right through ${ppronoun} shirt!`;
+                else
+                    yield `${Monnam(mon)} becomes much too small for ${ppronoun} shirt!`;
+            }
+            yield* m_lose_armor_g(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny) {
+        /* [caller needs to handle weapon checks] */
+        if ((otmp = which_armor(mon, W_ARMG)) != null) {
+            if (vis)
+                yield `${Monnam(mon)} drops ${ppronoun} gloves${
+                    MON_WEP(mon) ? " and weapon" : ""}!`;
+            yield* m_lose_armor_g(mon, otmp, polyspot);
+        }
+        if ((otmp = which_armor(mon, W_ARMS)) != null) {
+            /* Soundeffect(se_clank, 50); */
+            if (vis)
+                yield `${Monnam(mon)} can no longer hold ${ppronoun} shield!`;
+            else
+                yield { you_hear: "a clank." };
+            yield* m_lose_armor_g(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny || has_horns(mdat)) {
+        if ((otmp = which_armor(mon, W_ARMH)) != null
+            /* flimsy test for horns matches polyself handling */
+            && (handless_or_tiny || !is_flimsy(otmp))) {
+            if (vis)
+                yield `${s_suffix(Monnam(mon))} helmet falls to the ${
+                    surface(mon.mx, mon.my)}!`;
+            else
+                yield { you_hear: "a clank." };
+            yield* m_lose_armor_g(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny || slithy(mdat) || mdat.mlet === M.S_CENTAUR) {
+        if ((otmp = which_armor(mon, W_ARMF)) != null) {
+            if (vis) {
+                if (is_whirly(mon.data))
+                    yield `${s_suffix(Monnam(mon))} boots fall away!`;
+                else
+                    yield `${s_suffix(Monnam(mon))} boots ${
+                        verysmall(mdat) ? "slide" : "are pushed"} off ${ppronoun} feet!`;
+            }
+            yield* m_lose_armor_g(mon, otmp, polyspot);
+        }
+    }
+    if (!can_saddle(mon)) {
+        if ((otmp = which_armor(mon, W_SADDLE)) != null) {
+            yield* m_lose_armor_g(mon, otmp, polyspot);
+            if (vis)
+                yield `${s_suffix(Monnam(mon))} saddle falls off.`;
+        }
+        if (mon === game.u.usteed)
+            noride = true;
+    }
+    if (noride || (mon === game.u.usteed && !can_ride(mon)))
+        /* "You can no longer ride <mon>.", instapetrify(), dismount_steed() */
+        throw new Error('mon_break_armor(): no longer riding the steed not ported yet');
     return;
 }
 

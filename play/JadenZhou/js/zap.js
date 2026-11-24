@@ -1146,7 +1146,8 @@ export async function zapyourself(obj, ordinary) {
 
     case O_zy.WAN_CANCELLATION:
     case O_zy.SPE_CANCELLATION:
-        throw new Error('zapyourself(): cancel_monst() not ported yet');
+        await cancel_monst(game.youmonst, obj, true, true, true);
+        break;
 
     case O_zy.SPE_DRAIN_LIFE:
         if (!uhave_zp(DRAIN_RES_ZP)) { /* !Drain_resistance */
@@ -1572,8 +1573,12 @@ function zaptype(type) {
 // C ref: zap.c flash_str()
 export function flash_str(typ, nohallu) { /* suppress hallucination (for death reasons) */
     typ = zaptype(typ);
-    if (Hallucination() && !nohallu)
-        throw new Error('flash_str(): rnd_hallublast() not ported yet');
+    if (Hallucination() && !nohallu) {
+        /* always return "blast of foo" for simplicity;
+           this could be extended with hallucinatory rays, but probably
+           not worth it at this time */
+        return `blast of ${rnd_hallublast()}`;
+    }
     return flash_types[typ];
 }
 
@@ -3344,7 +3349,7 @@ import { PM_DEATH as PM_DEATH_ZP, PM_FAMINE as PM_FAMINE_ZP,
 import { which_armor as which_armor_zp, setnotworn as setnotworn_zp,
          bypass_objlist as bypass_objlist_zp,
          nxt_unbypassed_obj as nxt_unbypassed_obj_zp } from './worn.js';
-import { m_useup } from './mthrowu.js';
+import { m_useup, rnd_hallublast } from './mthrowu.js';
 import { ugolemeffects as ugolemeffects_zp } from './mhitu.js';
 import { burn_away_slime as burn_away_slime_zp,
          hliquid as hliquid_zp, potionbreathe as potionbreathe_zp,
@@ -3459,6 +3464,14 @@ import { locomotion as locomotion_rv } from './trap.js';
 import { get_obj_location as get_obj_location_rv } from './shk.js';
 import { obj_has_timer as obj_has_timer_rv } from './timeout.js';
 import { dist2 as dist2_rv } from './hacklib.js';
+import { get_mtraits as get_mtraits_rv } from './mkobj.js';
+import { monhp_per_lvl as monhp_per_lvl_rv } from './makemon.js';
+import { replmon as replmon_rv } from './mon.js';
+import { restore_cham as restore_cham_rv } from './restore.js';
+import { wary_dog as wary_dog_rv } from './dog.js';
+import { dmgtype as dmgtype_rv } from './mondata.js';
+import { AD_SEDU as AD_SEDU_RV, AD_SSEX as AD_SSEX_RV } from './monsters.js';
+import { MM_NOTAIL as MM_NOTAIL_RV, MM_ADJACENTOK as MM_ADJACENTOK_RV } from './const.js';
 
 /* C ref: mondata.h is_rider(), is_reviver(), is_displacer(),
    dmgtype() for AD_SEDU */
@@ -3513,6 +3526,123 @@ function zombie_can_dig(x, y) {
             return true;
     }
     return false;
+}
+
+// C ref: zap.c montraits()
+/* used by revive() and animate_statue() */
+export async function montraits(
+    obj,
+    cc,
+    adjacentok) /* False: at obj's spot only,
+                 * True: nearby is allowed */
+{
+    let mtmp = null;
+    const mtmp2 = has_omonst_rv(obj) ? get_mtraits_rv(obj, true) : null;
+
+    if (mtmp2) {
+        /* save_mtraits() validated mtmp2->mnum */
+        mtmp2.data = mons_rv[mtmp2.mnum];
+
+        if (mtmp2.mhpmax > 0 || is_rider_rv(mtmp2.data)) {
+            mtmp = await makemon_revive(mtmp2.data, cc.x, cc.y,
+                           (NO_MINVENT_RV | MM_NOWAIT_RV | MM_NOCOUNTBIRTH_RV
+                            /* in case mtmp2 is a long worm; saved traits for
+                               long worm don't include tail segments so don't
+                               give mtmp any; it will be given a new 'wormno'
+                               though (unless those are exhausted) so be able
+                               to grow new tail segments */
+                            | MM_NOTAIL_RV | MM_NOMSG_RV
+                            | (adjacentok ? MM_ADJACENTOK_RV : 0)));
+        }
+        if (!mtmp) {
+            /* mtmp2 is a copy of obj's object->oextra->omonst extension
+               and is not on the map or on any monst lists */
+            /* dealloc_monst(mtmp2) */
+            return null;
+        }
+
+        /* heal the monster; lower than normal level might come from
+           adj_lev() but we assume it has come from 'mtmp' being level
+           drained before finally killed; give a chance to restore
+           some levels so that trolls and Riders can't be drained to
+           level 0 and then trivially killed repeatedly */
+        if (mtmp.m_lev < mtmp.data.mlevel) {
+            const ltmp = rnd(mtmp.data.mlevel + 1);
+
+            if (ltmp > mtmp.m_lev) {
+                while (mtmp.m_lev < ltmp) {
+                    mtmp.m_lev++;
+                    mtmp.mhpmax += monhp_per_lvl_rv(mtmp);
+                }
+                mtmp2.m_lev = mtmp.m_lev;
+            }
+        }
+        if (mtmp.mhpmax > mtmp2.mhpmax) /* &&is_rider(mtmp2->data)*/
+            mtmp2.mhpmax = mtmp.mhpmax;
+        mtmp2.mhp = mtmp2.mhpmax;
+        /* Get these ones from mtmp */
+        mtmp2.minvent = mtmp.minvent; /*redundant*/
+        /* monster ID is available if the monster died in the current
+           game, but will be zero if the corpse was in a bones level
+           (we cleared it when loading bones) */
+        if (mtmp.m_id) {
+            mtmp2.m_id = mtmp.m_id;
+            /* might be bringing quest leader back to life */
+            const qs = game.quest_status;
+            if (qs?.leader_is_dead
+                /* leader_is_dead implies leader_m_id is valid */
+                && mtmp2.m_id === qs.leader_m_id)
+                qs.leader_is_dead = false;
+        }
+        mtmp2.mx = mtmp.mx;
+        mtmp2.my = mtmp.my;
+        mtmp2.mux = mtmp.mux;
+        mtmp2.muy = mtmp.muy;
+        mtmp2.mw = mtmp.mw;
+        mtmp2.wormno = mtmp.wormno;
+        mtmp2.misc_worn_check = mtmp.misc_worn_check;
+        mtmp2.weapon_check = mtmp.weapon_check;
+        mtmp2.mtrapseen = mtmp.mtrapseen;
+        mtmp2.mflee = mtmp.mflee;
+        mtmp2.mburied = mtmp.mburied;
+        mtmp2.mundetected = mtmp.mundetected;
+        mtmp2.mfleetim = mtmp.mfleetim;
+        mtmp2.mlstmv = mtmp.mlstmv;
+        mtmp2.m_ap_type = mtmp.m_ap_type;
+        /* set these ones explicitly */
+        mtmp2.mrevived = 1;
+        mtmp2.mavenge = 0;
+        mtmp2.meating = 0;
+        mtmp2.mleashed = 0;
+        mtmp2.mtrapped = 0;
+        mtmp2.msleeping = 0;
+        mtmp2.mfrozen = 0;
+        mtmp2.mcanmove = 1;
+        /* most cancelled monsters return to normal,
+           but some need to stay cancelled */
+        /* SYSOPT_SEDUCE is on in the recorded games */
+        if (!dmgtype_rv(mtmp2.data, AD_SEDU_RV)
+            && (!dmgtype_rv(mtmp2.data, AD_SSEX_RV)))
+            mtmp2.mcan = 0;
+        mtmp2.mcansee = 1; /* set like in makemon */
+        mtmp2.mblinded = 0;
+        mtmp2.mstun = 0;
+        mtmp2.mconf = 0;
+        /* when traits are for a shopkeeper, dummy monster 'mtmp' won't
+           have necessary eshk data for replmon() -> replshk() */
+        if (mtmp2.isshk) {
+            /* neweshk(mtmp); *ESHK(mtmp) = *ESHK(mtmp2); ...; and
+               replmon()'s replshk() */
+            throw new Error('montraits(): shopkeeper traits (replshk()) not ported yet');
+        }
+        replmon_rv(mtmp, mtmp2);
+        newsym(mtmp2.mx, mtmp2.my); /* Might now be invisible */
+
+        /* in case Protection_from_shape_changers is different
+           now than it was when the traits were stored */
+        restore_cham_rv(mtmp2);
+    }
+    return mtmp2;
 }
 
 /* makemon() for revive(): makemon()'s dochugw() for an occupied hero is
@@ -3658,9 +3788,11 @@ export async function revive(corpse, by_hero) {
             }
         }
     } else if (has_omonst_rv(corpse)) {
-        /* use saved traits: montraits(corpse, &xy, FALSE), then
-           wary_dog() for a tame one */
-        throw new Error('revive(): montraits() not ported yet');
+        /* use saved traits */
+        xy.x = x, xy.y = y;
+        mtmp = await montraits(corpse, xy, false);
+        if (mtmp && mtmp.mtame && !mtmp.isminion)
+            await wary_dog_rv(mtmp, true);
     } else {
         /* make a new monster */
         mtmp = await makemon_revive(mptr, x, y, mmflags | MM_NOCOUNTBIRTH_RV);
@@ -3952,3 +4084,206 @@ import { RIN_GAIN_STRENGTH as RIN_GAIN_STRENGTH_DI,
          HELM_OF_BRILLIANCE as HELM_OF_BRILLIANCE_DI,
          GAUNTLETS_OF_DEXTERITY as GAUNTLETS_OF_DEXTERITY_DI } from './objects.js';
 import { killer_xname as killer_xname_zp } from './mthrowu.js';
+
+// C ref: zap.c cancel_item()
+/* cancel obj, possibly carried by you or a monster */
+export function cancel_item(obj) {
+    const u = game.u;
+    const otyp = obj.otyp;
+
+    if (obj.where === 'OBJ_INVENT') { /* carried(obj) */
+        /* handle items being worn by hero */
+        switch (otyp) {
+        case O_ci.RIN_GAIN_STRENGTH:
+            if ((obj.owornmask & W_RING_CI) !== 0) {
+                u.abon.a[A_STR_CI] -= obj.spe;
+                game.disp_botl = true;
+            }
+            break;
+        case O_ci.RIN_GAIN_CONSTITUTION:
+            if ((obj.owornmask & W_RING_CI) !== 0) {
+                u.abon.a[A_CON_CI] -= obj.spe;
+                game.disp_botl = true;
+            }
+            break;
+        case O_ci.RIN_ADORNMENT:
+            if ((obj.owornmask & W_RING_CI) !== 0) {
+                u.abon.a[A_CHA_CI] -= obj.spe;
+                game.disp_botl = true;
+            }
+            break;
+        case O_ci.RIN_INCREASE_ACCURACY:
+            if ((obj.owornmask & W_RING_CI) !== 0)
+                u.uhitinc -= obj.spe;
+            break;
+        case O_ci.RIN_INCREASE_DAMAGE:
+            if ((obj.owornmask & W_RING_CI) !== 0)
+                u.udaminc -= obj.spe;
+            break;
+        case O_ci.RIN_PROTECTION:
+            if ((obj.owornmask & W_RING_CI) !== 0)
+                game.disp_botl = true;
+            break;
+        case O_ci.GAUNTLETS_OF_DEXTERITY:
+            if ((obj.owornmask & W_ARMG_CI) !== 0) {
+                u.abon.a[A_DEX_CI] -= obj.spe;
+                game.disp_botl = true;
+            }
+            break;
+        case O_ci.HELM_OF_BRILLIANCE:
+            if ((obj.owornmask & W_ARMH_CI) !== 0) {
+                u.abon.a[A_INT_CI] -= obj.spe;
+                u.abon.a[A_WIS_CI] -= obj.spe;
+                game.disp_botl = true;
+            }
+            break;
+        default:
+            if ((obj.owornmask & W_ARMOR_CI) !== 0) /* AC */
+                game.disp_botl = true;
+            break;
+        }
+    }
+    /* cancelled item might not be in hero's possession but
+       cancellation is presumed to be instigated by hero */
+    if (O_ci.objects[otyp].oc_magic
+        || (obj.spe && (obj.oclass === O_ci.ARMOR_CLASS
+                        || obj.oclass === O_ci.WEAPON_CLASS || is_weptool_ci(obj)))
+        || otyp === O_ci.POT_ACID
+        || otyp === O_ci.POT_SICKNESS
+        || (otyp === O_ci.POT_WATER && (obj.blessed || obj.cursed))
+        /* not magic; cancels to blank spellbook */
+        || otyp === O_ci.SPE_NOVEL) {
+        const cancelled_spe = (obj.oclass === O_ci.WAND_CLASS
+                               || otyp === O_ci.CRYSTAL_BALL) ? -1 : 0;
+
+        if (obj.spe !== cancelled_spe
+            && otyp !== O_ci.WAN_CANCELLATION /* can't cancel cancellation */
+            && otyp !== O_ci.MAGIC_LAMP /* cancelling doesn't remove djinni */
+            && otyp !== O_ci.CANDELABRUM_OF_INVOCATION) {
+            costly_alteration_ci(obj, COST_CANCEL_CI);
+            obj.spe = cancelled_spe;
+        }
+        switch (obj.oclass) {
+        case O_ci.SCROLL_CLASS:
+            costly_alteration_ci(obj, COST_CANCEL_CI);
+            obj.otyp = O_ci.SCR_BLANK_PAPER;
+            obj.spe = 0;
+            break;
+        case O_ci.SPBOOK_CLASS:
+            if (otyp !== O_ci.SPE_CANCELLATION && otyp !== O_ci.SPE_BOOK_OF_THE_DEAD) {
+                costly_alteration_ci(obj, COST_CANCEL_CI);
+                obj.otyp = O_ci.SPE_BLANK_PAPER;
+                /* cancelling a novel is more involved than a spellbook */
+                if (otyp === O_ci.SPE_NOVEL) /* old type */
+                    throw new Error('cancel_item(): blank_novel() not ported yet');
+            }
+            break;
+        case O_ci.POTION_CLASS:
+            costly_alteration_ci(obj, (otyp !== O_ci.POT_WATER) ? COST_CANCEL_CI
+                                 : obj.cursed ? COST_UNCURS_CI : COST_UNBLSS_CI);
+            if (otyp === O_ci.POT_SICKNESS || otyp === O_ci.POT_SEE_INVISIBLE) {
+                /* sickness is "biologically contaminated" fruit juice;
+                   cancel it and it just becomes fruit juice...
+                   whereas see invisible tastes like "enchanted" fruit
+                   juice, it similarly cancels */
+                obj.otyp = O_ci.POT_FRUIT_JUICE;
+            } else {
+                obj.otyp = O_ci.POT_WATER;
+                obj.odiluted = 0; /* same as any other water */
+            }
+            break;
+        }
+    }
+    /* cancelling a troll's corpse prevents it from reviving (on its own;
+       does not affect undead turning induced revival) */
+    if (obj.otyp === O_ci.CORPSE && obj.timed
+        && !is_rider_rv(mons_rv[obj.corpsenm])) {
+        const a = obj_to_any_ci(obj);
+        const timout = peek_timer_ci(REVIVE_MON_RV, a);
+
+        if (timout) {
+            stop_timer_ci(REVIVE_MON_RV, a);
+            start_timer_zp(timout, TIMER_OBJECT_RV, ROT_CORPSE_RV, a);
+        }
+    }
+
+    unbless_ci(obj);
+    uncurse_ci(obj);
+    return;
+}
+
+// C ref: zap.c cancel_monst()
+/* cancel a monster (possibly the hero); inventory is cancelled only
+   if the monster is zapping itself directly, since otherwise the
+   effect is too strong.  currently non-hero monsters do not zap
+   themselves with cancellation. */
+export async function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self_cancel) {
+    const u = game.u;
+    const writing_vanishes = (whose) => `Some writing vanishes from ${whose} head!`;
+    const your = "your"; /* should be extern */
+    const youdefend = (mdef === game.youmonst);
+
+    if (youdefend ? (!youattack && uhave_zp(ANTIMAGIC_CI))
+                  : resist(mdef, obj.oclass, 0, NOTELL_CI))
+        return false; /* resisted cancellation */
+
+    if (self_cancel) { /* 1st cancel inventory */
+        let otmp;
+
+        if (youdefend) {
+            for (otmp = game.invent; otmp; otmp = otmp.nobj)
+                cancel_item(otmp);
+        } else {
+            for (otmp of (mdef.minvent || []))
+                cancel_item(otmp);
+        }
+
+        if (youdefend) {
+            game.disp_botl = true; /* potential AC change */
+            find_ac_ci();
+            /* update_inventory(); -- handled by caller */
+        }
+    }
+
+    /* now handle special cases */
+    if (youdefend) {
+        if (u.umonnum !== u.umonster) { /* Upolyd: includes lycanthrope in creature form */
+            /*
+             * Return to normal form unless Unchanging.
+             * Hero in clay golem form dies if Unchanging.
+             * Does not cure lycanthropy or stop timed random polymorph.
+             */
+            if (u.umonnum === PM_CLAY_GOLEM_CI) {
+                if (!uhave_zp(BLINDED_CI))
+                    await pline(writing_vanishes(your));
+                else /* note: "dark" rather than "heavy" is intentional... */
+                    await You_feel_ci(`${Hallucination_ci() ? "dark" : "light"} headed.`);
+                u.mh = 0; /* fatal; death handled by rehumanize() */
+            }
+            if (uhave_zp(UNCHANGING_ZP) && u.mh > 0)
+                await pline("Your amulet grows hot for a moment, then cools.");
+            else
+                await rehumanize_ci();
+        }
+    } else {
+        mdef.mcan = 1;
+        /* force shapeshifter into its base form or mimic to unhide */
+        throw new Error('cancel_monst(): normal_shape() not ported yet');
+    }
+    return true;
+}
+import * as O_ci from './objects.js';
+import { W_RING as W_RING_CI, W_ARMG as W_ARMG_CI, W_ARMH as W_ARMH_CI,
+         W_ARMOR as W_ARMOR_CI, A_STR as A_STR_CI, A_CON as A_CON_CI,
+         A_CHA as A_CHA_CI, A_DEX as A_DEX_CI, A_INT as A_INT_CI, A_WIS as A_WIS_CI,
+         COST_CANCEL as COST_CANCEL_CI, COST_UNCURS as COST_UNCURS_CI,
+         COST_UNBLSS as COST_UNBLSS_CI, ANTIMAGIC as ANTIMAGIC_CI,
+         NOTELL as NOTELL_CI, BLINDED as BLINDED_CI } from './const.js';
+import { PM_CLAY_GOLEM as PM_CLAY_GOLEM_CI } from './monsters.js';
+import { is_weptool as is_weptool_ci, costly_alteration as costly_alteration_ci,
+         unbless as unbless_ci, uncurse as uncurse_ci } from './mkobj.js';
+import { obj_to_any as obj_to_any_ci, peek_timer as peek_timer_ci,
+         stop_timer as stop_timer_ci } from './timeout.js';
+import { find_ac as find_ac_ci } from './u_init.js';
+import { rehumanize as rehumanize_ci } from './polyself.js';
+import { You_feel as You_feel_ci, Hallucination as Hallucination_ci } from './display.js';

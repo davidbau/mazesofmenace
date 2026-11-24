@@ -206,7 +206,7 @@ export async function dodown() {
                    || !Can_fall_thru(u.uz) || !trap.tseen) {
             if (g.flags.autodig && !g.context.nopick
                 && g.uwep && is_pick(g.uwep)) {
-                throw new Error('dodown(): use_pick_axe2() not ported yet');
+                return await use_pick_axe2(g.uwep);
             } else {
                 await You_cant(`go down here${
                     (trap && trap.ttyp === VIBRATING_SQUARE) ? " yet" : ""}.`);
@@ -726,11 +726,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 /* we're coming back from or going into the quest home level,
                    after already getting expelled once. The portal back
                    doesn't exist anymore - see expulsion(). */
-                u_on_rndspot(0);
+                await u_on_rndspot(0);
             } else {
                 /* !iflags.debug_fuzzer */
                 console.error('impossible: goto_level: no corresponding portal!');
-                u_on_rndspot(0);
+                await u_on_rndspot(0);
             }
         } else {
             seetrap(ttrap);
@@ -743,9 +743,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 u_on_newpos(stway.sx, stway.sy);
                 stway.u_traversed = true;
             } else if (newdungeon)
-                u_on_sstairs(1);
+                await u_on_sstairs(1);
             else
-                u_on_dnstairs();
+                await u_on_dnstairs();
             /* you climb up the {stairs|ladder};
                fly up the stairs; fly up along the ladder */
             const great_effort = (Punished() && !Levitation());
@@ -760,9 +760,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 u_on_newpos(stway.sx, stway.sy);
                 stway.u_traversed = true;
             } else if (newdungeon)
-                u_on_sstairs(0);
+                await u_on_sstairs(0);
             else
-                u_on_upstairs();
+                await u_on_upstairs();
             if (!u.dz) {
                 ; /* stayed on same level? (no transit effects) */
             } else if (Flying()) {
@@ -793,7 +793,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             }
         }
     } else { /* trap door or level_tele or In_endgame */
-        u_on_rndspot((up ? 1 : 0) | (was_in_W_tower ? 2 : 0));
+        await u_on_rndspot((up ? 1 : 0) | (was_in_W_tower ? 2 : 0));
         if (falling) {
             if (Punished() && !welded(g.uball))
                 await ballfall();
@@ -1432,7 +1432,7 @@ export function obj_no_longer_held(obj) {
 
 // C ref: dungeon.c u_on_rndspot()
 /* place you on a random location when arriving on a level */
-export function u_on_rndspot(upflag) {
+export async function u_on_rndspot(upflag) {
     const g = game;
     const up = (upflag & 1), was_in_W_tower = (upflag & 2);
 
@@ -1444,13 +1444,13 @@ export function u_on_rndspot(upflag) {
     if (was_in_W_tower /* && On_W_tower_level(&u.uz) */)
         throw new Error('u_on_rndspot(): the Wizard Tower not ported yet');
     else if (up)
-        place_lregion(g.updest.lx, g.updest.ly,
+        await place_lregion(g.updest.lx, g.updest.ly,
                       g.updest.hx, g.updest.hy,
                       g.updest.nlx, g.updest.nly,
                       g.updest.nhx, g.updest.nhy,
                       LR_UPTELE, null);
     else
-        place_lregion(g.dndest.lx, g.dndest.ly,
+        await place_lregion(g.dndest.lx, g.dndest.ly,
                       g.dndest.hx, g.dndest.hy,
                       g.dndest.nlx, g.dndest.nly,
                       g.dndest.nhx, g.dndest.nhy,
@@ -1517,5 +1517,6 @@ import { impact_drop } from './dokick.js';
 import { water_damage as water_damage_do } from './trap.js';
 import { weight as weight_do } from './mkobj.js';
 import { map_background as map_background_do } from './display.js';
+import { use_pick_axe2 } from './dig.js';
 import { WT_SPLASH_THRESHOLD as WT_SPLASH_THRESHOLD_DO, ER_DESTROYED as ER_DESTROYED_DO,
          DEAF as DEAF_DO } from './const.js';

@@ -382,7 +382,13 @@ async function enhance_menu(items, prompt, pickOne) {
     let counting = false, count = 0, resetCount = true, countState = null;
     for (;;) {
         const key = await nhgetch();
-        const ch = String.fromCharCode(key);
+        let ch = String.fromCharCode(key);
+        const isPageSel = cur.page.some((it, i) => accel[cur.start + i] === ch && it.a_int);
+        if (!isPageSel) {
+            const mi = (g.mapped_menu_cmds || '').indexOf(ch);
+            if (mi >= 0) ch = g.mapped_menu_op[mi];
+        }
+        if (key === 27) g._ttyDismissMore = 1;
         countState = [counting, count, resetCount];
         if (resetCount) {
             counting = false;
@@ -390,7 +396,7 @@ async function enhance_menu(items, prompt, pickOne) {
         } else {
             resetCount = true;
         }
-        if (ch >= '0' && ch <= '9') {
+        if (ch >= '0' && ch <= '9' && !isPageSel) {
             count = Math.min(count * 10 + (key - 48), 0x7fffffff);
             if (count !== 0) {
                 counting = true;
@@ -415,7 +421,7 @@ async function enhance_menu(items, prompt, pickOne) {
             }
             continue;
         }
-        if (ch === '\n' || ch === '\r') /* finished, nothing selected */
+        if (key === 0 || ch === '\n' || ch === '\r') /* finished, nothing selected */
             return 0;
         if (ch === ':' && pickOne) {
             /* C wintty.c:1700-1730: search all selectable entries in mlist
@@ -443,10 +449,14 @@ async function enhance_menu(items, prompt, pickOne) {
             if (idx >= 0)
                 return cur.page[idx].a_int;
         }
-        /* Unrecognised key: bell, no redraw, read again.  C's xwaitforspace
-         * (wintty.c:1558) swallows it before the loop top, so the count state
-         * is untouched. */
-        [counting, count, resetCount] = countState;
+        /* C wintty.c:1532-1535, 1650-1703: the remaining default_menu_cmds
+         * (',', '\\', '~', '.', '-', '@', and ':' under PICK_NONE) and
+         * ttyDisplay->dismiss_more are in resp and accepted by xwaitforspace,
+         * so process_menu_window's loop turns over and reset_count clears any
+         * active count.  Only keys outside resp are swallowed inside
+         * xwaitforspace without touching the count state. */
+        if (!',\\~.-@:'.includes(ch) && key !== (g._ttyDismissMore | 0))
+            [counting, count, resetCount] = countState;
     }
 }
 

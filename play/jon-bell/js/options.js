@@ -4044,7 +4044,7 @@ export async function handler_msgtype(preserveStatus = false) {
         if (opt_idx === 3) return;
         if (opt_idx === 0) {
             game._status_blanked = !preserveStatus;
-            const mtbuf = mungspaces(await getlin('What new message pattern?'));
+            const mtbuf = await getlin('What new message pattern?');
             game._status_blanked = false;
             if (mtbuf[0] === '\x1b') return;
             let re = null;
@@ -4845,8 +4845,9 @@ export async function doset() {
                         }
                     } else if (abuf !== '\x1b' && ent.row.name === 'scores') {
                         /* C options.c:3676-3733 optfn_scores(do_set): "5t[op] 5a[round] o[wn]" */
-                        // C :3679 rejects a missing value before changing flags.
-                        let op = await string_for_opt(`scores:${abuf}`, false);
+                        // C :3679 rejects a missing value before changing flags;
+                        // options.c:531-533 parseoptions() strips trailing isspace() first.
+                        let op = await string_for_opt(`scores:${abuf.replace(/[\t\n\v\f\r ]+$/, '')}`, false);
                         const fl = g.flags;
                         if (op) { fl.end_top = fl.end_around = 0; fl.end_own = false; }
                         scoresParse: while (op.length) {

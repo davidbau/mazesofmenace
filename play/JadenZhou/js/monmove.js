@@ -863,10 +863,10 @@ async function bee_eat_jelly(mon, obj) {
 }
 
 /* C ref: obj.h is_mines_prize(), is_soko_prize() */
-function is_mines_prize(o) {
+export function is_mines_prize(o) {
     return o.o_id === game.context.achieveo?.mines_prize_oid;
 }
-function is_soko_prize(o) {
+export function is_soko_prize(o) {
     return o.o_id === game.context.achieveo?.soko_prize_oid;
 }
 
@@ -1059,7 +1059,8 @@ export async function dochug(mtmp) {
        to move. Movement itself is handled by the m_move() function. */
     if (!d.nearby || mtmp.mflee || d.scared || mtmp.mconf || mtmp.mstun
         || (mtmp.minvis && !rn2(3))
-        || (mdat.mlet === M.S_LEPRECHAUN && leprechaun_check(mtmp))
+        || (mdat.mlet === M.S_LEPRECHAUN && !findgold_mm(game.invent)
+            && (findgold_mm(mtmp.minvent) || rn2(2)))
         || (is_wanderer(mdat) && !rn2(4)) || (Conflict() && !mtmp.iswiz)
         || (!mtmp.mcansee && !rn2(4)) || mtmp.mpeaceful) {
 
@@ -1163,11 +1164,6 @@ export async function dochug(mtmp) {
     return (status === MMOVE_DIED) ? 1 : 0;
 }
 
-/* (mdat->mlet == S_LEPRECHAUN && !findgold(invent)
-    && (findgold(mtmp->minvent) || rn2(2))) */
-function leprechaun_check(mtmp) {
-    throw new Error('dochug(): leprechaun findgold() not ported yet');
-}
 
 // ── C ref: monmove.c mon_track_add() ──
 export function mon_track_add(mtmp, x, y) {
@@ -1529,8 +1525,45 @@ export function should_displace(mtmp, mfp, ggx, ggy) {
         return true;
     return false;
 }
-function undesirable_disp(mtmp, x, y) {
-    throw new Error('undesirable_disp() not ported yet');
+// C ref: monmove.c undesirable_disp()
+/* Is the square close enough for the monster to move or attack into?
+ * Is a monster barging into a square (to swap places) undesirable?
+ * not an accidental bump, so we don't consider mstun or mconf here. */
+export function undesirable_disp(
+    mtmp, /* barging creature */
+    x,
+    y) /* spot 'mtmp' is considering moving to */
+{
+    const is_pet = (mtmp.mtame && !mtmp.isminion);
+    const trap = t_at_mm(x, y);
+
+    if (is_pet) {
+        /* Pets avoid a trap if you've seen it usually. */
+        if (trap && trap.tseen && rn2(40))
+            return true;
+        /* Pets avoid cursed locations */
+        if (cursed_object_at_ud(x, y))
+            return true;
+
+    /* Monsters avoid a trap if they've seen that type before */
+    } else if (trap && rn2(40)
+               && mon_knows_traps(mtmp, trap.ttyp)) {
+        return true;
+    }
+
+    /* oversimplification:  creatures that bargethrough can't swap places
+       when target monster is in rock or closed door or water (in particular,
+       avoid moving to spots where mondied() won't leave a corpse; doesn't
+       matter whether barger is capable of moving to such a target spot if
+       it were unoccupied) */
+    if (!accessible(x, y)
+        /* mondied() allows is_pool() as an exception to !accessible(),
+           but we'll only do that if 'mtmp' is already at a water location
+           so that we don't swap a water critter onto land */
+        && !(is_pool(x, y) && is_pool(mtmp.mx, mtmp.my)))
+        return true;
+
+    return false;
 }
 
 // ── C ref: mthrowu.c linedup() ──
@@ -1886,8 +1919,10 @@ function m_search_items(mtmp, st) {
                        their way to grab them */
                     if (otmp.otyp === ROCK)
                         continue;
-                    /* is_mines_prize/is_soko_prize: those levels aren't
-                       ported yet */
+                    /* avoid special items; once hero picks them up, they'll
+                       cease being special */
+                    if (is_mines_prize(otmp) || is_soko_prize(otmp))
+                        continue;
                     /* skip shop merchandise */
                     if (costly && !otmp.no_charge)
                         continue;
@@ -2182,8 +2217,8 @@ export async function m_move(mtmp, after) {
                  || ptr.mlet === M.S_LIGHT) && !rn2(3)))
             appr = 0;
 
-        if (appr === 1 && ptr.mlet === M.S_LEPRECHAUN)
-            throw new Error('m_move(): leppie_avoidance() not ported yet');
+        if (appr === 1 && leppie_avoidance(mtmp))
+            appr = -1;
 
         /* hostiles with ranged weapon or attack try to stay away */
         appr = m_balks_at_approaching(appr, mtmp, pr);
@@ -2327,8 +2362,16 @@ export async function m_move(mtmp, after) {
             || (nix === mtmp.mux && niy === mtmp.muy))
             return await m_move_aggress(mtmp, nix, niy);
 
-        if ((mfp.info[chi] & ALLOW_MDISP) !== 0)
-            throw new Error('m_move(): mdisplacem() not ported yet');
+        if ((mfp.info[chi] & ALLOW_MDISP) !== 0) {
+            const mtmp2 = m_at(nix, niy); /* ALLOW_MDISP implies m_at() is !Null */
+            const mstatus = await mdisplacem_mm(mtmp, mtmp2, false);
+            /*[if either dies, this reports mtmp has died; is that correct?]*/
+            if (mstatus & (M_ATTK_AGR_DIED_MM | M_ATTK_DEF_DIED_MM))
+                return MMOVE_DIED;
+            if (mstatus & M_ATTK_HIT_MM)
+                return MMOVE_MOVED;
+            return MMOVE_DONE;
+        }
 
         if (!(await m_in_out_region(mtmp, nix, niy)))
             return MMOVE_DONE;
@@ -2640,8 +2683,10 @@ async function mpickstuff(mtmp) {
         return false;
 
     for (const otmp of objects_at(mtmp.mx, mtmp.my)) {
-        /* avoid special items (is_mines_prize/is_soko_prize): those
-           levels aren't ported yet */
+        /* avoid special items; once hero picks them up, they'll cease
+           being special, becoming eligible for normal pickup */
+        if (is_mines_prize(otmp) || is_soko_prize(otmp))
+            continue;
 
         /* Nymphs take everything.  Most monsters don't pick up corpses. */
         if (mon_would_take_item(mtmp, otmp)) {
@@ -2702,6 +2747,20 @@ import { DOOR as DOOR_MM, ROOM as ROOM_MM, CORR as CORR_MM } from './const.js';
 import { Is_special as Is_special_mm } from './dungeon.js';
 import { switch_terrain as switch_terrain_mm } from './hack.js';
 
+// C ref: monmove.c leppie_avoidance()
+/* does leprechaun want to avoid the hero? */
+function leppie_avoidance(mtmp) {
+    let lepgold, ygold;
+
+    if (mtmp.data === mons_mm[PM_LEPRECHAUN_MM]
+        && ((lepgold = findgold_mm(mtmp.minvent))
+            && (lepgold.quan
+                > ((ygold = findgold_mm(game.invent)) ? ygold.quan : 0))))
+        return true;
+
+    return false;
+}
+
 // C ref: monmove.c leppie_stash()
 /* leprechaun might bury its gold after teleporting away */
 async function leppie_stash(mtmp) {
@@ -2749,3 +2808,7 @@ import { slimeproof as slimeproof_mo } from './eat.js';
 import { revive_corpse as revive_corpse_mo } from './zap.js';
 import { objdescr_is } from './o_init.js';
 import { wake_msg as wake_msg_mm } from './mon.js';
+import { cursed_object_at as cursed_object_at_ud } from './dogmove.js';
+import { mdisplacem as mdisplacem_mm } from './mhitm.js';
+import { M_ATTK_HIT as M_ATTK_HIT_MM, M_ATTK_DEF_DIED as M_ATTK_DEF_DIED_MM,
+         M_ATTK_AGR_DIED as M_ATTK_AGR_DIED_MM } from './const.js';

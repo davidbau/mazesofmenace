@@ -344,7 +344,7 @@ async function dragon_armor_handling(otmp, puton, on_purpose) {
             if (!props.INFRAVISION)
                 delete props.INFRAVISION;
         }
-        see_monsters();
+        await see_monsters();
         break;
     case ONAMES.GOLD_DRAGON_SCALES:
     case ONAMES.GOLD_DRAGON_SCALE_MAIL:
@@ -563,7 +563,7 @@ async function Helmet_on() {
             change_luck(1);
         break;
     case ONAMES.HELM_OF_CAUTION:
-        see_monsters();
+        await see_monsters();
         break;
     case ONAMES.HELM_OF_BRILLIANCE:
         adjust_helmet_brilliance(uarmh, uarmh.spe || 0);
@@ -646,7 +646,7 @@ export async function Helmet_off() {
     case ONAMES.HELM_OF_TELEPATHY:
     case ONAMES.HELM_OF_CAUTION:
         setworn(null, W_ARMH);
-        see_monsters();
+        await see_monsters();
         return;
     case ONAMES.HELM_OF_BRILLIANCE:
         if (!game.context_takeoff?.cancelled_don)
@@ -1253,7 +1253,7 @@ export async function Amulet_off() {
         await off_msg(amul);
         early_off_msg = true;
 
-        see_monsters();
+        await see_monsters();
         break;
     case ONAMES.AMULET_OF_LIFE_SAVING:
     case ONAMES.AMULET_VERSUS_POISON:
@@ -1482,12 +1482,12 @@ export async function Ring_on(obj) {
         await toggle_stealth(obj, oldprop, true);
         break;
     case ONAMES.RIN_WARNING:
-        see_monsters();
+        await see_monsters();
         break;
     case ONAMES.RIN_SEE_INVISIBLE:
         /* can now see invisible monsters */
         set_mimic_blocking(); /* do special mimic handling */
-        see_monsters();
+        await see_monsters();
 
         if (Invis() && !oldprop && !game.u.intrinsic?.HSee_invisible
             && !Blind()) {
@@ -1584,13 +1584,13 @@ async function Ring_off_or_gone(obj, gone) {
         await toggle_stealth(obj, ((game.u.uprops?.STEALTH || 0) & ~mask), false);
         break;
     case ONAMES.RIN_WARNING:
-        see_monsters();
+        await see_monsters();
         break;
     case ONAMES.RIN_SEE_INVISIBLE:
         /* Make invisible monsters go away */
         if (!See_invisible()) {
             set_mimic_blocking(); /* do special mimic handling */
-            see_monsters();
+            await see_monsters();
         }
 
         if (Invis() && !See_invisible() /* Invisible */ && !Blind()) {

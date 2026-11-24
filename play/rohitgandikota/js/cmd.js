@@ -1,6 +1,6 @@
 import { NODIAG, handle_tip, TIP_UNTRAP_MON, avoid_running_into_trap_or_liquid,
          air_turbulence, slippery_ice_fumbling } from './hack.js';
-import { IFBURIED, NOFUZZERCMD, MV_ANY, MV_RUN, MV_RUSH, MV_WALK, CMDQ_INT, CMDQ_DIR, DIR_DOWN, DIR_UP, IRONBARS, DO_MOVE } from './const.js';
+import { IFBURIED, NOFUZZERCMD, MV_ANY, MV_RUN, MV_RUSH, MV_WALK, CMDQ_INT, CMDQ_DIR, DIR_DOWN, DIR_UP, IRONBARS, DO_MOVE, docrtRefresh } from './const.js';
 import { impossible } from './pline.js';
 import { nh_callback_run } from './nhlua.js';
 import { can_ooze } from './monmove.js';
@@ -162,7 +162,7 @@ import { boolean_option, show_menu_controls, paranoia_bits,
 import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, docrt, map_object, paint_topline, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
+import { newsym, flush_screen, pline, docrt, docrt_flags, map_object, paint_topline, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, DBWALL, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch, findit } from './detect.js';
@@ -421,7 +421,7 @@ async function help_dir(sym, msg) {
     await xwaitforspace('\x1b ');
     while (tty_next_page(win))
         await xwaitforspace('\x1b ');
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     return true;
 }
 
@@ -632,6 +632,10 @@ export async function getdir(s) {
                 (s && s[0] !== '^') ? s : 'In what direction?', null, '\0', false);
             tty_clear_nhwindow_message(game._topl_cury || 0);
             game._pending_message = '';
+            if (cmdbind_get(dirsym.charCodeAt(0) & 0xff)?.cmd?.ef_funct === 'doredraw') {
+                await docrt_flags(docrtRefresh);
+                continue;
+            }
             /* src/cmd.c:4017, getdir records the literal answer itself. Its
                yn_function call uses addcmdq=FALSE so the key appears once. */
             if (!game.in_doagain)
@@ -4292,7 +4296,7 @@ export async function dokeylist() {
         if (!tty_next_page(win))
             break;
     }
-    tty_destroy_nhwindow(win);
+    await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return 0; /* ECMD_OK */
 }

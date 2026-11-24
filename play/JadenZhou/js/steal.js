@@ -19,7 +19,7 @@ import { artifact_exists } from './artifact.js';
 import { ONAME_NO_FLAGS, RLOC_MSG } from './const.js';
 import { LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, W_ARM, W_WEP,
          W_SADDLE } from './const.js';
-import { update_mon_extrinsics, update_mon_extrinsics_sync } from './worn.js';
+import { update_mon_extrinsics, update_mon_extrinsics_g } from './worn.js';
 import { mwepgone } from './weapon.js';
 import { check_gear_next_turn } from './mon.js';
 import { W_ARMOR, W_AMUL, W_RING, W_TOOL, W_WEAPONS, W_BALL,
@@ -113,6 +113,14 @@ function RING_ON_SECONDARY() { return game.u.uhandedness ? game.uright : game.ul
 export function findgold(argchain) {
     let chain = argchain; /* allow arg to be nonnull */
 
+    if (Array.isArray(chain)) {
+        /* a monster's minvent: JS arrays are oldest first, C's chain
+           starts with the newest object */
+        for (let i = chain.length - 1; i >= 0; i--)
+            if (chain[i].otyp === O.GOLD_PIECE)
+                return chain[i];
+        return null;
+    }
     while (chain && chain.otyp !== O.GOLD_PIECE)
         chain = chain.nobj;
     return chain;
@@ -445,8 +453,216 @@ export async function steal(mtmp, objnambuf) {
     if (game.occupation)
         await maybe_finished_meal(false);
 
-    /* the C goto targets nothing_to_steal and cant_take */
-    const nothing_to_steal = async () => {
+    /* the C goto targets nothing_to_steal and cant_take are the code
+       after these labelled blocks, so their rolls stay in steal() */
+    cant_take: {
+        nothing_to_steal: {
+            icnt = inv_cnt(false); /* don't include gold */
+            if (!icnt || (icnt === 1 && game.uskin))
+                /* Not even a thousand men in armor can strip a naked man. */
+                break nothing_to_steal;
+
+            let gotobj = false;
+            if (monkey_business || game.uarmg) {
+                ; /* skip ring special cases */
+            } else if (Adornment() & LEFT_RING) {
+                otmp = game.uleft;
+                gotobj = true;
+            } else if (Adornment() & RIGHT_RING) {
+                otmp = game.uright;
+                gotobj = true;
+            }
+
+            for (;;) { /* retry: */
+                if (!gotobj) {
+                    tmp = 0;
+                    for (otmp = game.invent; otmp; otmp = otmp.nobj)
+                        if ((!game.uarm || otmp !== game.uarmc) && otmp !== game.uskin
+                            && otmp.oclass !== O.COIN_CLASS)
+                            tmp += (otmp.owornmask & (W_ARMOR | W_ACCESSORY)) ? 5 : 1;
+                    if (!tmp)
+                        break nothing_to_steal;
+                    tmp = rn2(tmp);
+                    for (otmp = game.invent; otmp; otmp = otmp.nobj)
+                        if ((!game.uarm || otmp !== game.uarmc) && otmp !== game.uskin
+                            && otmp.oclass !== O.COIN_CLASS) {
+                            tmp -= (otmp.owornmask & (W_ARMOR | W_ACCESSORY)) ? 5 : 1;
+                            if (tmp < 0)
+                                break;
+                        }
+                    if (!otmp) {
+                        /* impossible("Steal fails!") */
+                        return 0;
+                    }
+                    /* can't steal ring(s) while wearing gloves */
+                    if ((otmp === game.uleft || otmp === game.uright) && game.uarmg)
+                        otmp = game.uarmg;
+                    /* can't steal gloves while wielding - so steal the wielded item. */
+                    if (otmp === game.uarmg && game.uwep)
+                        otmp = game.uwep;
+                    /* can't steal armor while wearing cloak - so steal the cloak. */
+                    else if (otmp === game.uarm && game.uarmc)
+                        otmp = game.uarmc;
+                    /* can't steal shirt while wearing cloak or suit */
+                    else if (otmp === game.uarmu && game.uarmc)
+                        otmp = game.uarmc;
+                    else if (otmp === game.uarmu && game.uarm)
+                        otmp = game.uarm;
+                }
+                gotobj = false;
+
+                /* gotobj: */
+                if (otmp.o_id === game.stealoid)
+                    return 0;
+
+                if (otmp.otyp === O.BOULDER && !throws_rocks(mtmp.data)) {
+                    if (!retrycnt++)
+                        continue; /* goto retry */
+                    break cant_take;
+                }
+                break;
+            }
+            /* animals can't overcome curse stickiness nor unlock chains */
+            if (monkey_business) {
+                let ostuck;
+
+                /* is the player prevented from voluntarily giving up this item?
+                   (ignores loadstones; the !can_carry() check will catch those) */
+                if (otmp === game.uball)
+                    ostuck = true; /* effectively worn; curse is implicit */
+                else if (otmp === game.uquiver || (otmp === game.uswapwep && !u.twoweap))
+                    ostuck = false; /* not really worn; curse doesn't matter */
+                else
+                    ostuck = ((otmp.cursed && otmp.owornmask)
+                              /* nymphs can steal rings from under
+                                 cursed weapon but animals can't */
+                              || (otmp === RING_ON_PRIMARY() && welded(game.uwep))
+                              || (otmp === RING_ON_SECONDARY() && welded(game.uwep)
+                                  && bimanual(game.uwep)));
+
+                if (ostuck || can_carry(mtmp, otmp) === 0)
+                    break cant_take;
+            }
+
+            if (otmp.otyp === O.LEASH && otmp.leashmon) {
+                if (monkey_business && otmp.cursed)
+                    break cant_take;
+                throw new Error('steal(): o_unleash() not ported yet');
+            }
+
+            was_doffing = doffing(otmp);
+            /* stop donning/doffing now so that afternmv won't be clobbered
+               below; stop_occupation doesn't handle donning/doffing */
+            olddelay = await stop_donning(otmp);
+            /* you're going to notice the theft... */
+            await stop_occupation();
+
+            if (otmp.owornmask & (W_ARMOR | W_ACCESSORY)) {
+                switch (otmp.oclass) {
+                case O.TOOL_CLASS:
+                case O.AMULET_CLASS:
+                case O.RING_CLASS:
+                case O.FOOD_CLASS: /* meat ring */
+                    await worn_item_removal(mtmp, otmp);
+                    break;
+                case O.ARMOR_CLASS:
+                    armordelay = O.objects[otmp.otyp].oc_delay;
+                    if (olddelay > 0 && olddelay < armordelay)
+                        armordelay = olddelay;
+                    if (monkey_business || unresponsive()) {
+                        /* animals usually don't have enough patience to take off
+                           items which require extra time; unconscious or paralyzed
+                           hero can't be charmed into taking off his own armor */
+                        if (armordelay >= 1 && !olddelay && rn2(10))
+                            break cant_take;
+                        await worn_item_removal(mtmp, otmp);
+                        break;
+                    } else {
+                        const curssv = otmp.cursed;
+                        let slowly;
+
+                        otmp.cursed = 0;
+                        slowly = (armordelay >= 1 || game.multi < 0);
+                        if (game.flags.female)
+                            await urgent_pline(`${!seen ? "She" : Monnambuf} charms you.  You gladly ${
+                                curssv ? "let her take"
+                                : !slowly ? "hand over"
+                                  : was_doffing ? "continue removing"
+                                    : "start removing"} your ${armor_simple_name(otmp)}.`);
+                        else
+                            await urgent_pline(`${!seen ? "She" : Adjmonnam(mtmp, "beautiful")} seduces you and ${
+                                curssv ? "helps you to take"
+                                : !slowly ? "you take"
+                                  : was_doffing ? "you continue taking"
+                                    : "you start taking"} off your ${armor_simple_name(otmp)}.`);
+                        named++;
+                        /* the following is to set multi for later on */
+                        nomul(-armordelay);
+                        game.multi_reason = "taking off clothes";
+                        game.nomovemsg = null;
+                        await remove_worn_item(otmp, true);
+                        otmp.cursed = curssv;
+                        if (game.multi < 0) {
+                            game.stealoid = otmp.o_id;
+                            game.stealmid = mtmp.m_id;
+                            game.afternmv = stealarm;
+                            return 0;
+                        }
+                    }
+                    break;
+                default:
+                    /* impossible("Tried to steal a strange worn thing. [%d]") */
+                    break;
+                }
+                /* hero's blindfold might have just been stolen; if so, replace
+                   cached "Someone" or "Something" with Monnam */
+                if (!seen && canspotmon(mtmp))
+                    Monnambuf = Monnam(mtmp);
+            } else if (otmp.owornmask) { /* weapon or ball&chain */
+                let item = otmp;
+
+                if (otmp === game.uball) /* non-Null uball implies non-Null uchain */
+                    item = game.uchain; /* yields a more accurate 'takes off' message */
+                await worn_item_removal(mtmp, item);
+                /* if we switched from uball to uchain for the preface message,
+                   then unpunish() took place and both those pointers are now Null,
+                   with 'item' a stale pointer to freed chain; the ball is still
+                   present though and 'otmp' is still valid; if uball was also
+                   wielded or quivered, the corresponding weapon pointer hasn't
+                   been cleared yet; do that, with no preface message this time */
+                if ((otmp.owornmask & W_WEAPONS) !== 0)
+                    await remove_worn_item(otmp, false);
+            }
+
+            /* do this before removing it from inventory */
+            if (objnambuf)
+                objnambuf.buf = yname(otmp);
+            /* usually set mavenge bit so knights won't suffer an alignment penalty
+               during retaliation; not applicable for removing attached iron ball */
+            if (!Conflict() && !(was_punished && !Punished()))
+                mtmp.mavenge = 1;
+
+            if (otmp.unpaid)
+                subfrombill(otmp, ushops_keeper());
+            freeinv(otmp);
+
+            /* if we just gave a message about removing a worn item and there have
+               been no intervening messages, shorten '<mon> stole <item>' message */
+            if (game.iflags.last_msg === PLNMSG_MON_TAKES_OFF_ITEM
+                && mtmp.data.mlet === M.S_NYMPH)
+                ++named;
+            await urgent_pline(`${named ? "She" : Monnambuf} stole ${doname(otmp)}.`);
+            await encumber_msg();
+            could_petrify = (otmp.otyp === O.CORPSE
+                             && touch_petrifies(mons[otmp.corpsenm]));
+            otmp.how_lost = LOST_STOLEN;
+            mpickobj(mtmp, otmp); /* may free otmp */
+            if (could_petrify && !((mtmp.misc_worn_check || 0) & W_ARMG)) {
+                throw new Error('steal(): minstapetrify() not ported yet');
+            }
+            return (game.multi < 0) ? 0 : 1;
+        }
+        /* nothing_to_steal: */
         /* nymphs might target uchain if invent is empty; monkeys won't;
            hero becomes unpunished but nymph ends up empty handed */
         if (Punished() && !monkey_business && rn2(4)) {
@@ -466,222 +682,16 @@ export async function steal(mtmp, objnambuf) {
             await pline(`${Monnambuf} tries to rob you, but there is nothing to steal!`);
         }
         return 1; /* let her flee */
-    };
-    const cant_take = async () => {
-        const how = [ "steal", "snatch", "grab", "take" ];
-        await pline(`${Monnambuf} tries to ${ROLL_FROM(how)} ${
-            (otmp.owornmask & W_ARMOR) ? "your " : ""}${
-            (otmp.owornmask & W_ARMOR) ? armor_simple_name(otmp) : yname(otmp)} but gives up.`);
-        /* the fewer items you have, the less likely the thief
-           is going to stick around to try again (0) instead of
-           running away (1) */
-        return !rn2(Math.trunc(inv_cnt(false) / 5) + 2) ? 1 : 0;
-    };
-
-    icnt = inv_cnt(false); /* don't include gold */
-    if (!icnt || (icnt === 1 && game.uskin))
-        /* Not even a thousand men in armor can strip a naked man. */
-        return await nothing_to_steal();
-
-    let gotobj = false;
-    if (monkey_business || game.uarmg) {
-        ; /* skip ring special cases */
-    } else if (Adornment() & LEFT_RING) {
-        otmp = game.uleft;
-        gotobj = true;
-    } else if (Adornment() & RIGHT_RING) {
-        otmp = game.uright;
-        gotobj = true;
     }
-
-    for (;;) { /* retry: */
-        if (!gotobj) {
-            tmp = 0;
-            for (otmp = game.invent; otmp; otmp = otmp.nobj)
-                if ((!game.uarm || otmp !== game.uarmc) && otmp !== game.uskin
-                    && otmp.oclass !== O.COIN_CLASS)
-                    tmp += (otmp.owornmask & (W_ARMOR | W_ACCESSORY)) ? 5 : 1;
-            if (!tmp)
-                return await nothing_to_steal();
-            tmp = rn2(tmp);
-            for (otmp = game.invent; otmp; otmp = otmp.nobj)
-                if ((!game.uarm || otmp !== game.uarmc) && otmp !== game.uskin
-                    && otmp.oclass !== O.COIN_CLASS) {
-                    tmp -= (otmp.owornmask & (W_ARMOR | W_ACCESSORY)) ? 5 : 1;
-                    if (tmp < 0)
-                        break;
-                }
-            if (!otmp) {
-                /* impossible("Steal fails!") */
-                return 0;
-            }
-            /* can't steal ring(s) while wearing gloves */
-            if ((otmp === game.uleft || otmp === game.uright) && game.uarmg)
-                otmp = game.uarmg;
-            /* can't steal gloves while wielding - so steal the wielded item. */
-            if (otmp === game.uarmg && game.uwep)
-                otmp = game.uwep;
-            /* can't steal armor while wearing cloak - so steal the cloak. */
-            else if (otmp === game.uarm && game.uarmc)
-                otmp = game.uarmc;
-            /* can't steal shirt while wearing cloak or suit */
-            else if (otmp === game.uarmu && game.uarmc)
-                otmp = game.uarmc;
-            else if (otmp === game.uarmu && game.uarm)
-                otmp = game.uarm;
-        }
-        gotobj = false;
-
-        /* gotobj: */
-        if (otmp.o_id === game.stealoid)
-            return 0;
-
-        if (otmp.otyp === O.BOULDER && !throws_rocks(mtmp.data)) {
-            if (!retrycnt++)
-                continue; /* goto retry */
-            return await cant_take();
-        }
-        break;
-    }
-    /* animals can't overcome curse stickiness nor unlock chains */
-    if (monkey_business) {
-        let ostuck;
-
-        /* is the player prevented from voluntarily giving up this item?
-           (ignores loadstones; the !can_carry() check will catch those) */
-        if (otmp === game.uball)
-            ostuck = true; /* effectively worn; curse is implicit */
-        else if (otmp === game.uquiver || (otmp === game.uswapwep && !u.twoweap))
-            ostuck = false; /* not really worn; curse doesn't matter */
-        else
-            ostuck = ((otmp.cursed && otmp.owornmask)
-                      /* nymphs can steal rings from under
-                         cursed weapon but animals can't */
-                      || (otmp === RING_ON_PRIMARY() && welded(game.uwep))
-                      || (otmp === RING_ON_SECONDARY() && welded(game.uwep)
-                          && bimanual(game.uwep)));
-
-        if (ostuck || can_carry(mtmp, otmp) === 0)
-            return await cant_take();
-    }
-
-    if (otmp.otyp === O.LEASH && otmp.leashmon) {
-        if (monkey_business && otmp.cursed)
-            return await cant_take();
-        throw new Error('steal(): o_unleash() not ported yet');
-    }
-
-    was_doffing = doffing(otmp);
-    /* stop donning/doffing now so that afternmv won't be clobbered
-       below; stop_occupation doesn't handle donning/doffing */
-    olddelay = await stop_donning(otmp);
-    /* you're going to notice the theft... */
-    await stop_occupation();
-
-    if (otmp.owornmask & (W_ARMOR | W_ACCESSORY)) {
-        switch (otmp.oclass) {
-        case O.TOOL_CLASS:
-        case O.AMULET_CLASS:
-        case O.RING_CLASS:
-        case O.FOOD_CLASS: /* meat ring */
-            await worn_item_removal(mtmp, otmp);
-            break;
-        case O.ARMOR_CLASS:
-            armordelay = O.objects[otmp.otyp].oc_delay;
-            if (olddelay > 0 && olddelay < armordelay)
-                armordelay = olddelay;
-            if (monkey_business || unresponsive()) {
-                /* animals usually don't have enough patience to take off
-                   items which require extra time; unconscious or paralyzed
-                   hero can't be charmed into taking off his own armor */
-                if (armordelay >= 1 && !olddelay && rn2(10))
-                    return await cant_take();
-                await worn_item_removal(mtmp, otmp);
-                break;
-            } else {
-                const curssv = otmp.cursed;
-                let slowly;
-
-                otmp.cursed = 0;
-                slowly = (armordelay >= 1 || game.multi < 0);
-                if (game.flags.female)
-                    await urgent_pline(`${!seen ? "She" : Monnambuf} charms you.  You gladly ${
-                        curssv ? "let her take"
-                        : !slowly ? "hand over"
-                          : was_doffing ? "continue removing"
-                            : "start removing"} your ${armor_simple_name(otmp)}.`);
-                else
-                    await urgent_pline(`${!seen ? "She" : Adjmonnam(mtmp, "beautiful")} seduces you and ${
-                        curssv ? "helps you to take"
-                        : !slowly ? "you take"
-                          : was_doffing ? "you continue taking"
-                            : "you start taking"} off your ${armor_simple_name(otmp)}.`);
-                named++;
-                /* the following is to set multi for later on */
-                nomul(-armordelay);
-                game.multi_reason = "taking off clothes";
-                game.nomovemsg = null;
-                await remove_worn_item(otmp, true);
-                otmp.cursed = curssv;
-                if (game.multi < 0) {
-                    game.stealoid = otmp.o_id;
-                    game.stealmid = mtmp.m_id;
-                    game.afternmv = stealarm;
-                    return 0;
-                }
-            }
-            break;
-        default:
-            /* impossible("Tried to steal a strange worn thing. [%d]") */
-            break;
-        }
-        /* hero's blindfold might have just been stolen; if so, replace
-           cached "Someone" or "Something" with Monnam */
-        if (!seen && canspotmon(mtmp))
-            Monnambuf = Monnam(mtmp);
-    } else if (otmp.owornmask) { /* weapon or ball&chain */
-        let item = otmp;
-
-        if (otmp === game.uball) /* non-Null uball implies non-Null uchain */
-            item = game.uchain; /* yields a more accurate 'takes off' message */
-        await worn_item_removal(mtmp, item);
-        /* if we switched from uball to uchain for the preface message,
-           then unpunish() took place and both those pointers are now Null,
-           with 'item' a stale pointer to freed chain; the ball is still
-           present though and 'otmp' is still valid; if uball was also
-           wielded or quivered, the corresponding weapon pointer hasn't
-           been cleared yet; do that, with no preface message this time */
-        if ((otmp.owornmask & W_WEAPONS) !== 0)
-            await remove_worn_item(otmp, false);
-    }
-
-    /* do this before removing it from inventory */
-    if (objnambuf)
-        objnambuf.buf = yname(otmp);
-    /* usually set mavenge bit so knights won't suffer an alignment penalty
-       during retaliation; not applicable for removing attached iron ball */
-    if (!Conflict() && !(was_punished && !Punished()))
-        mtmp.mavenge = 1;
-
-    if (otmp.unpaid)
-        subfrombill(otmp, ushops_keeper());
-    freeinv(otmp);
-
-    /* if we just gave a message about removing a worn item and there have
-       been no intervening messages, shorten '<mon> stole <item>' message */
-    if (game.iflags.last_msg === PLNMSG_MON_TAKES_OFF_ITEM
-        && mtmp.data.mlet === M.S_NYMPH)
-        ++named;
-    await urgent_pline(`${named ? "She" : Monnambuf} stole ${doname(otmp)}.`);
-    await encumber_msg();
-    could_petrify = (otmp.otyp === O.CORPSE
-                     && touch_petrifies(mons[otmp.corpsenm]));
-    otmp.how_lost = LOST_STOLEN;
-    mpickobj(mtmp, otmp); /* may free otmp */
-    if (could_petrify && !((mtmp.misc_worn_check || 0) & W_ARMG)) {
-        throw new Error('steal(): minstapetrify() not ported yet');
-    }
-    return (game.multi < 0) ? 0 : 1;
+    /* cant_take: */
+    const how = [ "steal", "snatch", "grab", "take" ];
+    await pline(`${Monnambuf} tries to ${ROLL_FROM(how)} ${
+        (otmp.owornmask & W_ARMOR) ? "your " : ""}${
+        (otmp.owornmask & W_ARMOR) ? armor_simple_name(otmp) : yname(otmp)} but gives up.`);
+    /* the fewer items you have, the less likely the thief
+       is going to stick around to try again (0) instead of
+       running away (1) */
+    return !rn2(Math.trunc(inv_cnt(false) / 5) + 2) ? 1 : 0;
 }
 
 // C ref: steal.c stealamulet()
@@ -826,6 +836,12 @@ export function extract_from_minvent(
     silently)      /* doesn't affect all possible messages,
                     * just update_mon_extrinsics's */
 {
+    for (const msg of extract_from_minvent_g(mon, obj, do_extrinsics, silently))
+        throw new Error(`extract_from_minvent(): update_mon_extrinsics() message in a synchronous caller not ported yet: ${msg}`);
+}
+/* the body of extract_from_minvent(); yields update_mon_extrinsics()'s
+   messages */
+export function* extract_from_minvent_g(mon, obj, do_extrinsics, silently) {
     const unwornmask = obj.owornmask || 0;
 
     /*
@@ -847,11 +863,8 @@ export function extract_from_minvent(
     obj_extract_self(obj);
     obj.owornmask = 0;
     if (unwornmask) {
-        if (!(mon.mhp < 1) && do_extrinsics) { /* !DEADMONSTER(mon) */
-            if (!silently)
-                throw new Error('extract_from_minvent(): update_mon_extrinsics() messages not ported yet');
-            update_mon_extrinsics_sync(mon, obj, false);
-        }
+        if (!(mon.mhp < 1) && do_extrinsics) /* !DEADMONSTER(mon) */
+            yield* update_mon_extrinsics_g(mon, obj, false, silently);
         mon.misc_worn_check = (mon.misc_worn_check || 0) & ~unwornmask;
         /* give monster a chance to wear other equipment on its next
            move instead of waiting until it picks something up */

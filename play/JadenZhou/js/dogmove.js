@@ -22,7 +22,7 @@ import { mfndpos, monnear, mon_allowflags, check_gear_next_turn,
          m_consume_obj, mondied } from './mon.js';
 import { gettrack } from './track.js';
 import { onscary, should_displace, m_avoid_kicked_loc, m_avoid_soko_push_loc, mon_track_add,
-         m_digweapon_check } from './monmove.js';
+         m_digweapon_check, is_mines_prize, is_soko_prize } from './monmove.js';
 import { monsndx, is_swimmer, passes_walls, haseyes, perceives, is_undead,
          is_elf, is_vampshifter, mon_hates_silver, is_flyer, is_floater } from './mondata.js';
 import * as M from './monsters.js';
@@ -490,7 +490,7 @@ export function droppables(mon) {
 }
 
 // ── C ref: dogmove.c cursed_object_at() ──
-function cursed_object_at(x, y) {
+export function cursed_object_at(x, y) {
     for (const otmp of objects_at(x, y))
         if (otmp.cursed)
             return true;
@@ -723,8 +723,9 @@ async function dog_invent(mtmp, edog, udist) {
         if (obj
             && !(obj.oclass === O.BALL_CLASS || obj.oclass === O.CHAIN_CLASS
                  || obj.oclass === O.ROCK_CLASS) /* nofetch[] */
-            /* avoid special items (is_mines_prize/is_soko_prize): those
-               levels aren't ported yet */) {
+            /* avoid special items; once hero picks them up, they'll cease
+               being special and become eligible for normal monst activity */
+            && !(is_mines_prize(obj) || is_soko_prize(obj))) {
             const edible = dogfood(mtmp, obj);
 
             if ((edible <= CADAVER
@@ -1386,8 +1387,14 @@ export async function dog_move(mtmp, after) {
             return MMOVE_DONE;
         }
         if ((mfp.info[i] & ALLOW_MDISP) && MON_AT(nx, ny)
-            && better_with_displacing)
-            throw new Error('dog_move(): mdisplacem() not ported yet');
+            && better_with_displacing && !undesirable_disp_dm(mtmp, nx, ny)) {
+            const mtmp2 = m_at(nx, ny);
+
+            const mstatus = await mdisplacem_dm(mtmp, mtmp2, false); /* displace monster */
+            if (mstatus & M_ATTK_DEF_DIED)
+                return MMOVE_DIED;
+            return MMOVE_NOTHING;
+        }
 
         /* avoid a location hero just kicked */
         if (m_avoid_kicked_loc(mtmp, nx, ny))
@@ -1538,3 +1545,5 @@ export async function dog_move(mtmp, after) {
     }
     return MMOVE_MOVED;
 }
+import { undesirable_disp as undesirable_disp_dm } from './monmove.js';
+import { mdisplacem as mdisplacem_dm } from './mhitm.js';

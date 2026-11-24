@@ -417,8 +417,8 @@ async function y_n(question) {
      * never the bare question.  Same shape as y_n_default's _answered
      * (js/cmd.js:4267), eat.js's read_yn and the shared _yn_prompt's
      * answered() (js/cmd.js:24320). */
-    game._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
     putmsghistory(`${prompt} ${answer}`);
+    game._toplEmptyAfterSuppress = false; /* gt.toplines is now prompt + answer */
     /* The bare prompt that may still ride _pending_message is already filed as
      * prompt + answer; js/input.js:134 skips re-filing it. */
     game._topl_prompt_filed = prompt;

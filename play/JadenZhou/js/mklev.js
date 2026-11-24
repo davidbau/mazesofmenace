@@ -83,8 +83,9 @@ import {
 } from './monsters.js';
 import {
     IS_THRONE, THRONE, IS_ROOM, OBJ_AT, AM_SHRINE, MM_ASLEEP, A_NONE, NON_PM,
-    Is_earthlevel,
+    Is_earthlevel, RLOC_NOMSG,
 } from './const.js';
+import { rloc } from './teleport.js';
 import { MACE, LUMP_OF_ROYAL_JELLY } from './objects.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
 import { add_to_buried } from './dig.js';
@@ -217,7 +218,7 @@ function bad_location(x, y, nlx, nly, nhx, nhy) {
 // C ref: mkmaze.c place_lregion()
 /* pick a location in area (lx, ly, hx, hy) but not in (nlx, nly, nhx, nhy)
    and place something (based on rtype) in that region */
-export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
+export async function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     let trycnt;
     let oneshot;
     let x, y;
@@ -254,7 +255,7 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     for (trycnt = 0; trycnt < 200; trycnt++) {
         x = rn1((hx - lx) + 1, lx);
         y = rn1((hy - ly) + 1, ly);
-        if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
+        if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
             return;
     }
 
@@ -262,14 +263,14 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
 
     for (x = lx; x <= hx; x++)
         for (y = ly; y <= hy; y++)
-            if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev))
+            if (await put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev))
                 return;
 
     /* impossible("Couldn't place lregion type %d!", rtype) */
 }
 
 // C ref: mkmaze.c put_lregion_here()
-function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
+async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
     let mtmp;
 
     if (bad_location(x, y, nlx, nly, nhx, nhy)
@@ -299,9 +300,10 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
         /* "something" means the player in this case */
         if ((mtmp = m_at(x, y)) != null) {
             /* move the monster if no choice, or just try again */
-            if (oneshot)
-                throw new Error('put_lregion_here(): rloc() not ported yet');
-            else
+            if (oneshot) {
+                if (!(await rloc(mtmp, RLOC_NOMSG)))
+                    throw new Error('put_lregion_here(): m_into_limbo() not ported yet');
+            } else
                 return false;
         }
         u_on_newpos(x, y);
@@ -322,35 +324,35 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
 
 // C ref: stairs.c u_on_sstairs()
 /* place you on the special staircase */
-export function u_on_sstairs(upflag) {
+export async function u_on_sstairs(upflag) {
     const stway = stairway_find_special_dir(upflag);
 
     if (stway)
         u_on_newpos(stway.sx, stway.sy);
     else
-        u_on_rndspot(upflag);
+        await u_on_rndspot(upflag);
 }
 
 // C ref: stairs.c u_on_upstairs()
 /* place you on upstairs (or special equivalent) */
-export function u_on_upstairs() {
+export async function u_on_upstairs() {
     const stway = stairway_find_dir(true);
 
     if (stway)
         u_on_newpos(stway.sx, stway.sy);
     else
-        u_on_sstairs(0); /* destination upstairs implies moving down */
+        await u_on_sstairs(0); /* destination upstairs implies moving down */
 }
 
 // C ref: stairs.c u_on_dnstairs()
 /* place you on dnstairs (or special equivalent) */
-export function u_on_dnstairs() {
+export async function u_on_dnstairs() {
     const stway = stairway_find_dir(false);
 
     if (stway)
         u_on_newpos(stway.sx, stway.sy);
     else
-        u_on_sstairs(1); /* destination dnstairs implies moving up */
+        await u_on_sstairs(1); /* destination dnstairs implies moving up */
 }
 
 // C ref: o_init.c oinit() -- level dependent obj probabilities (o_init.js)
@@ -482,11 +484,11 @@ async function makelevel() {
     const medusa = g.dungeon_topology.d_medusa_level; /* C: medusa_level */
     /* check for special levels */
     if (slev && !Is_rogue_level(g.u.uz)) {
-        makemaz(slev.proto);
+        await makemaz(slev.proto);
     } else if (g.dungeons[g.u.uz.dnum].proto) {
-        makemaz('');
+        await makemaz('');
     } else if (g.dungeons[g.u.uz.dnum].fill_lvl) {
-        makemaz(g.dungeons[g.u.uz.dnum].fill_lvl);
+        await makemaz(g.dungeons[g.u.uz.dnum].fill_lvl);
     } else if (In_quest(g.u.uz)) {
         let fillname;
         let loc_lev;
@@ -496,11 +498,11 @@ async function makelevel() {
 
         fillname = `${g.urole.filecode}-fil`;
         fillname += (g.u.uz.dlevel < loc_lev.dlevel.dlevel) ? 'a' : 'b';
-        makemaz(fillname);
+        await makemaz(fillname);
     } else if (In_hell(g.u.uz)
                || (rn2(5) && g.u.uz.dnum === medusa.dnum
                    && depth_of_level(g.u.uz) > depth_of_level(medusa))) {
-        makemaz('');
+        await makemaz('');
     } else {
         /* otherwise, fall through - it's a "regular" level. */
         const u_depth = depth_of_level(g.u.uz);

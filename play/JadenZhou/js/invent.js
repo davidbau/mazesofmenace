@@ -306,7 +306,7 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
     let n, classcount;
     let ret;
     const clr = NO_COLOR;
-    const sortpack = game.flags?.sortpack ?? true;
+    let sortpack = game.flags?.sortpack ?? true;
     const usextra = !!(xtra_choice && allowxtra);
 
     if (lets && !lets.length)
@@ -361,10 +361,44 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
         return ret;
     }
 
-    if (inuse_only || (game.flags?.sortloot && game.flags.sortloot !== 'n'
-                       && game.flags.sortloot !== 'l'))
-        throw new Error('display_pickinv(): in-use/sortloot menus are not ported yet');
-    const sortedinvent = sortloot_invent(sortpack);
+    if (!inuse_only && game.flags?.sortloot && game.flags.sortloot !== 'n'
+        && game.flags.sortloot !== 'l')
+        throw new Error('display_pickinv(): sortloot menus are not ported yet');
+    let sortedinvent;
+    let inuse_fakeobj = null;
+    let inusecount = 0, prevorderclass = 0;
+    if (inuse_only) {
+        /* flags.sortpack = FALSE; sortflags = SORTLOOT_INUSE (override);
+           filter = is_inuse */
+        sortpack = false;
+        if (!game.uwep) {
+            /*
+             * inuse_only and not wielding anything: insert "bare hands"
+             * into primary weapon slot.  Unlike adding an extra menu
+             * entry for 'xtra_choice' at top of menu, we need an object
+             * in invent for it to be sorted into desired position.
+             * It will need custom formatting below.
+             */
+            inuse_fakeobj = { otyp: 0, oclass: 0, /* STRANGE_OBJECT, ILLOBJ_CLASS */
+                              invlet: HANDS_SYM, /* '-' */
+                              owornmask: W_WEP, /* inuse_classify needs this */
+                              where: 'OBJ_INVENT', /* is_inuse filter needs this */
+                              nobj: game.invent };
+        }
+        const olist = [];
+        for (let o = inuse_fakeobj || game.invent; o; o = o.nobj)
+            olist.push(o);
+        sortedinvent = sortloot_pk(olist, SORTLOOT_INUSE, false, is_inuse);
+        /* inuse_only: if we inserted bare hands as a fake weapon, remove
+           them (they were never linked into invent here); if
+           inuse_fakeobj is the only thing present in sortedinvent, get
+           rid of it in order to produce "not using any items" */
+        if (inuse_fakeobj && sortedinvent.length === 1
+            && sortedinvent[0].obj === inuse_fakeobj)
+            sortedinvent = [];
+    } else {
+        sortedinvent = sortloot_invent(sortpack);
+    }
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
     const wizid_fakeobj = { wizid_fakeobj: true }; /* struct obj wizid_fakeobj */
     if (wizid) {
@@ -408,22 +442,40 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
             if (!sortpack || otmp.oclass === def_inv_order[invlet]) {
                 if (wizid && !not_fully_identified_iv(otmp))
                     continue;
+                if (inuse_only) {
+                    /* for inuse-only, start with an extra header */
+                    if (!inusecount++)
+                        add_menu_heading(win, "Inventory in use");
+                }
                 /* maybe insert a class header */
-                if (sortpack && !classcount) {
+                if (inuse_only ? (srtinv.orderclass !== prevorderclass)
+                               : (sortpack && !classcount)) {
                     const withsym = (want_reply && game.iflags?.menu_head_objsym);
-                    add_menu_heading(win, let_to_name(def_inv_order[invlet],
-                                                      false, withsym));
+                    const class_header = inuse_only
+                        ? inuse_header(srtinv.orderclass)
+                        : let_to_name(def_inv_order[invlet], false, withsym);
+
+                    add_menu_heading(win, class_header);
                     classcount++;
+                    prevorderclass = srtinv.orderclass;
                 }
                 const ilet = otmp.invlet;
                 /* any.a_obj = otmp (wizid) or any.a_char = ilet */
-                /* normal inventory item */
-                const tmpglyph = obj_to_glyph(otmp, rn2_on_display_rng);
-                /* map_glyphinfo(): tty menus don't show the glyph */
-                void tmpglyph;
-                tty_add_menu(win, null, wizid ? otmp : ilet, ilet,
-                             wizid ? def_oc_syms[otmp.oclass] : '',
-                             ATR_NONE, clr, doname(otmp), MENU_ITEMFLAGS_NONE);
+                if (otmp === inuse_fakeobj) {
+                    /* fake item to format as "bare|gloved hands" */
+                    const formattedobj = makeplural(body_part(HAND));
+                    const barehands = `${game.uarmg ? "gloved" : "bare"} ${formattedobj} (no weapon)`;
+                    tty_add_menu(win, null, ilet, ilet, '',
+                                 ATR_NONE, clr, barehands, MENU_ITEMFLAGS_NONE);
+                } else {
+                    /* normal inventory item */
+                    const tmpglyph = obj_to_glyph(otmp, rn2_on_display_rng);
+                    /* map_glyphinfo(): tty menus don't show the glyph */
+                    void tmpglyph;
+                    tty_add_menu(win, null, wizid ? otmp : ilet, ilet,
+                                 wizid ? def_oc_syms[otmp.oclass] : '',
+                                 ATR_NONE, clr, doname(otmp), MENU_ITEMFLAGS_NONE);
+                }
             }
         }
         if (!sortpack)
@@ -1668,6 +1720,42 @@ export async function dolook() {
    dispinv_with_action() can relabel */
 let inuse_accessories = "Accessories";
 
+/* C ref: invent.c inuse_headers[] -- menu heading lines used instead of
+   object classes when sorting by in-use; [4] shown first, [1] last */
+function inuse_header(orderclass) {
+    return ["", "Miscellaneous", "Worn Armor", "Wielded/Readied Weapons",
+            inuse_accessories][orderclass];
+}
+
+// C ref: invent.c is_inuse()
+/* is 'obj' being used by the hero?  worn, wielded, active lamp or leash;
+   not to be confused with obj->in_use, which finishes using up an item
+   (destroys it) if restoring a save file finds that bit set */
+export function is_inuse(obj) {
+    return (obj.where === 'OBJ_INVENT' /* carried() */
+            && (is_worn(obj) || tool_being_used(obj)));
+}
+
+// C ref: invent.c doprinuse()
+/* '*' command; combines the ')' + '[' + '=' + '"' + '(' commands;
+   show inventory of all currently wielded, worn, or used objects */
+export async function doprinuse() {
+    let ct = 0;
+
+    /* no longer need to collect letters; sortloot() takes care of it, but
+       still want to count far enough to know whether anything is in use */
+    for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+        if (is_inuse(otmp)) {
+            ++ct;
+            break;
+        }
+    if (!ct)
+        await You("are not wearing or wielding anything.");
+    else
+        await dispinv_with_action(null, true, null);
+    return ECMD_OK;
+}
+
 // C ref: invent.c dispinv_with_action()
 async function dispinv_with_action(lets, use_inuse_ordering, alt_label) {
     let save_accessories = null;
@@ -1939,7 +2027,7 @@ export async function doprgold() {
         else
             await You("have no money.");
     }
-    shopper_financial_report();
+    await shopper_financial_report_iv();
 
     if (umoney && game.iflags.menu_requested) {
         /* mustn't use TRUE or gold wouldn't show up unless it was quivered */
@@ -1949,14 +2037,7 @@ export async function doprgold() {
     return ECMD_OK;
 }
 
-// C ref: shk.c shopper_financial_report() -- the report for the shop the
-// hero is in (shop_keeper(inside_shop(u.ux, u.uy))) and the level's other
-// shops (next_shkp()); without a shopkeeper there is nothing to report
-function shopper_financial_report() {
-    for (let shkp = game.fmon; shkp; shkp = shkp.nmon)
-        if (shkp.isshk && !shkp.dead)
-            throw new Error('shopper_financial_report(): shopkeepers not ported yet');
-}
+/* C ref: shk.c shopper_financial_report() is shk.js shopper_financial_report() */
 
 // C ref: invent.c doprwep() -- the #seeweapon command
 export async function doprwep() {
@@ -2395,8 +2476,8 @@ export function delobj_core(obj, force) {
         return;
     }
     const update_map = (obj.where === 'OBJ_FLOOR');
-    if (obj.where === 'OBJ_INVENT' || obj.unpaid || obj.cobj?.length)
-        throw new Error('delobj_core(): obfree() of carried/unpaid/container objects not ported yet');
+    /* obj_extract_self() -> freeinv() for a carried object; obfree()
+       frees contents (delete_contents()) and stops on a bill entry */
     obj_extract_self(obj);
     if (update_map) { /* floor object's coordinates are always up to date */
         maybe_unhide_at(obj.ox, obj.oy);
@@ -2565,6 +2646,8 @@ import { discover_object as discover_object_iv,
 import { discover_artifact } from './artifact.js';
 import { not_fully_identified as not_fully_identified_iv } from './objnam.js';
 import { query_objlist as query_objlist_iv } from './pickup.js';
+import { sortloot as sortloot_pk } from './pickup.js';
+import { SORTLOOT_INUSE } from './const.js';
 import { little_to_big } from './mondata.js';
 import { MV_KNOWS_EGG, SIGNAL_NOMENU, SIGNAL_ESCAPE, USE_INVLET,
          INVORDER_SORT, PICK_ANY, thats_enough_tries,
@@ -2957,3 +3040,4 @@ import { MENU_PARTIAL as MENU_PARTIAL_IV, UNPAID_TYPES as UNPAID_TYPES_IV,
          BILLED_TYPES as BILLED_TYPES_IV, BUC_UNKNOWN as BUC_UNKNOWN_IV,
          JUSTPICKED as JUSTPICKED_IV,
          INCLUDE_VENOM as INCLUDE_VENOM_IV } from './const.js';
+import { shopper_financial_report as shopper_financial_report_iv } from './shk.js';
