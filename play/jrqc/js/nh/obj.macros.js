@@ -25,7 +25,7 @@ import { LOW_PM, NON_PM } from './permonst.h.js';
 import { P } from './skills.h.js';
 
 export function greatest_erosion(otmp) {
-    return (otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0;
+    return otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2;
 }
 export async function newobj() {
     return $c.asRec(await alloc(112), $T.obj, 112);
@@ -91,13 +91,13 @@ export function is_weptool(o) {
     return o.oclass === TOOL_CLASS && objects[o.otyp].oc_subtyp !== P.NONE ? 1 : 0;
 }
 export function is_blunt_weapon(o) {
-    return (o.oclass === WEAPON_CLASS || o.oclass === TOOL_CLASS && objects[o.otyp].oc_subtyp !== P.NONE) && ((objects[o.otyp].oc_dir | 0) & WHACK) !== 0 ? 1 : 0;
+    return (o.oclass === WEAPON_CLASS || o.oclass === TOOL_CLASS && objects[o.otyp].oc_subtyp !== P.NONE) && (objects[o.otyp].oc_dir & WHACK) !== 0 ? 1 : 0;
 }
 export function is_wet_towel(o) {
     return o.otyp === TOWEL && o.spe > 0 ? 1 : 0;
 }
 export function bimanual(otmp) {
-    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS) && objects[otmp.otyp].oc_big | 0 ? 1 : 0;
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS) && objects[otmp.otyp].oc_big ? 1 : 0;
 }
 export function is_multigen(otmp) {
     return otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_subtyp >= -P.SHURIKEN && objects[otmp.otyp].oc_subtyp <= -P.BOW ? 1 : 0;
@@ -112,7 +112,7 @@ export function any_quest_artifact(o) {
     return o.oartifact >= ART.ORB_OF_DETECTION ? 1 : 0;
 }
 export function stone_missile(o) {
-    return ((objects[o.otyp].oc_material | 0) === GEMSTONE || (objects[o.otyp].oc_material | 0) === MINERAL) && o.oclass !== RING_CLASS ? 1 : 0;
+    return (objects[o.otyp].oc_material === GEMSTONE || objects[o.otyp].oc_material === MINERAL) && o.oclass !== RING_CLASS ? 1 : 0;
 }
 export function is_shield(otmp) {
     return otmp.oclass === ARMOR_CLASS && objects[otmp.otyp].oc_subtyp === ARM_SHIELD ? 1 : 0;
@@ -187,10 +187,10 @@ export function Is_dragon_armor(obj) {
     return obj.otyp >= GRAY_DRAGON_SCALES && obj.otyp <= YELLOW_DRAGON_SCALES || obj.otyp >= GRAY_DRAGON_SCALE_MAIL && obj.otyp <= YELLOW_DRAGON_SCALE_MAIL ? 1 : 0;
 }
 export function Dragon_scales_to_pm(obj) {
-    return $c.relem(mons, (PM.GRAY_DRAGON + obj.otyp | 0) - GRAY_DRAGON_SCALES | 0);
+    return $c.relem(mons, PM.GRAY_DRAGON + obj.otyp - GRAY_DRAGON_SCALES);
 }
 export function Dragon_mail_to_pm(obj) {
-    return $c.relem(mons, (PM.GRAY_DRAGON + obj.otyp | 0) - GRAY_DRAGON_SCALE_MAIL | 0);
+    return $c.relem(mons, PM.GRAY_DRAGON + obj.otyp - GRAY_DRAGON_SCALE_MAIL);
 }
 export function is_elven_weapon(otmp) {
     return otmp.otyp === ELVEN_ARROW || otmp.otyp === ELVEN_SPEAR || otmp.otyp === ELVEN_DAGGER || otmp.otyp === ELVEN_SHORT_SWORD || otmp.otyp === ELVEN_BROADSWORD || otmp.otyp === ELVEN_BOW ? 1 : 0;
@@ -208,7 +208,7 @@ export function is_graystone(obj) {
     return obj.otyp === LUCKSTONE || obj.otyp === LOADSTONE || obj.otyp === FLINT || obj.otyp === TOUCHSTONE ? 1 : 0;
 }
 export function is_flimsy(otmp) {
-    return (objects[otmp.otyp].oc_material | 0) <= LEATHER || otmp.otyp === RUBBER_HOSE ? 1 : 0;
+    return objects[otmp.otyp].oc_material <= LEATHER || otmp.otyp === RUBBER_HOSE ? 1 : 0;
 }
 export function is_plural(o) {
     return o.quan !== 1 || o.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) ? 1 : 0;
@@ -229,5 +229,5 @@ export function u_wield_art(art) {
     return is_art($G.uwep, art);
 }
 export function WrappingAllowed(mptr) {
-    return $c.andu64(mptr.mflags1, M1.HUMANOID) !== 0 && mptr.msize >= MZ.SMALL && mptr.msize <= MZ.HUGE && !(mptr.mlet === S.GHOST) && mptr.mlet !== S.CENTAUR && !$c.peq(mptr, $c.relem(mons, PM.WINGED_GARGOYLE)) && !$c.peq(mptr, $c.relem(mons, PM.MARILITH)) ? 1 : 0;
+    return $c.andu64(mptr.mflags1, M1.HUMANOID) !== 0 && mptr.msize >= MZ.SMALL && mptr.msize <= MZ.HUGE && !(mptr.mlet === S.GHOST) && mptr.mlet !== S.CENTAUR && mptr !== mons[PM.WINGED_GARGOYLE] && mptr !== mons[PM.MARILITH] ? 1 : 0;
 }

@@ -52,8 +52,7 @@ let CapMons = null;
  * @param {$c.Ptr | null} line char *
  */
 function unpadline(line) {   // rumors.c:67
-    let p = null;
-    p = eos(line);
+    let p = eos(line);
     /* remove newline if still present; caller should have stripped it */
     if ($c.pcmp(p, line) > 0 && p.get(-1) === 10) {
         p = p.add(-1);
@@ -94,16 +93,16 @@ function init_rumors(fp) {   // rumors.c:85
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function getrumor(truth, rumor_buf, exclude_cookie) {   // rumors.c:117
-    let rumors = null, beginning = 0, ending = 0, line = new Int8Array(256), marklen = 0, count = 0, adjtruth = 0, src = null, dst = null, $t1;
+    let beginning = 0, ending = 0, line = new Int8Array(256), adjtruth = 0, $t1;
     /* 1=true, -1=false, 0=either */
-    marklen = $c.i32($c.strlen(getrumor$cookie_marker));
+    const marklen = $c.i32($c.strlen(getrumor$cookie_marker));
     rumor_buf.set(0, 0);
     if (gt.true_rumor_size < 0) {   /* a previous try failed to open RUMORFILE */
         return rumor_buf;
     }
-    rumors = $c.fopen($c.lit("rumors"), $c.lit("r"));
+    const rumors = $c.fopen($c.lit("rumors"), $c.lit("r"));
     if (rumors) {
-        count = 0;
+        let count = 0;
         do {
             rumor_buf.set(0, 0);
             if (gt.true_rumor_size === 0) {
@@ -143,7 +142,7 @@ export async function getrumor(truth, rumor_buf, exclude_cookie) {   // rumors.c
         if (count >= 50) {
             await impossible($c.lit("Can't find non-cookie rumor?"));
         } else if (!gi.in_mklev) {   /* avoid exercising wisdom for graffiti */
-            await exercise(A.WIS, $c.i8(adjtruth > 0 ? 1 : 0));
+            await exercise(A.WIS, adjtruth > 0 ? 1 : 0);
         }
     } else {
         await couldnt_open_file($c.lit("rumors"));
@@ -151,8 +150,8 @@ export async function getrumor(truth, rumor_buf, exclude_cookie) {   // rumors.c
     }
     if (!exclude_cookie && !$c.strncmp(rumor_buf, getrumor$cookie_marker, $c.u64(marklen))) {
         /* remove cookie_marker from the string */
-        src = rumor_buf.add(marklen);
-        dst = rumor_buf;
+        let src = rumor_buf.add(marklen);
+        let dst = rumor_buf;
         for (; src.get(0) !== 0; src = src.add(1), dst = dst.add(1)) {
             dst.set(0, src.get(0));
         }
@@ -387,7 +386,7 @@ async function others_check(ftype, fname, winptr) {   // rumors.c:308
  * @returns {Promise<$c.Ptr | null>} char *
  */
 async function get_rnd_line(fh, buf, bufsiz, rng, startpos, endpos, padlength) {   // rumors.c:420
-    let newl = null, xbufp = null, xbuf = new Int8Array(256), filechunksize = 0, chunkoffset = 0, trylimit = 0;
+    let newl = null, xbuf = new Int8Array(256), trylimit = 0;
     /* already opened file */
     /* output buffer */
     /* (unsigned) sizeof buf */
@@ -401,7 +400,7 @@ async function get_rnd_line(fh, buf, bufsiz, rng, startpos, endpos, padlength) {
         $c.fseek(fh, 0, 2);
         endpos = $c.ftell(fh);
     }
-    filechunksize = $c.sub64(endpos, startpos);
+    const filechunksize = $c.sub64(endpos, startpos);
     /* might be zero (only if file is empty); should complain in that
        case but it could happen over and over, also the suggestion
        that save and restore might fix the problem wouldn't be useful */
@@ -426,7 +425,7 @@ async function get_rnd_line(fh, buf, bufsiz, rng, startpos, endpos, padlength) {
      * them to normal length.  That yields even selection distribution.
      */
     for (trylimit = 10; trylimit > 0; trylimit = trylimit - 1 | 0) {
-        chunkoffset = await rng($c.i32(filechunksize));
+        const chunkoffset = await rng($c.i32(filechunksize));
         $c.fseek(fh, $c.add64(startpos, chunkoffset), 0);
         $c.fgets(buf, bufsiz | 0, fh);
         /* if padlength is 0, accept any position; when non-zero,
@@ -448,7 +447,7 @@ async function get_rnd_line(fh, buf, bufsiz, rng, startpos, endpos, padlength) {
         newl.set(0, 0);
     }
     /* decrypt line; make sure that our intermediate buffer is big enough */
-    xbufp = $c.strlen(buf) <= 255 ? new $c.Ptr(xbuf, 0) : $c.asArr(await alloc($c.u32($c.strlen(buf)) + 1 >>> 0), Int8Array);
+    const xbufp = $c.strlen(buf) <= 255 ? new $c.Ptr(xbuf, 0) : $c.asArr(await alloc($c.u32($c.strlen(buf)) + 1 >>> 0), Int8Array);
     $c.strcpy(buf, xcrypt(buf, xbufp));
     if (!$c.peq(xbufp, new $c.Ptr(xbuf, 0))) {
         $c.free(xbufp);
@@ -469,11 +468,11 @@ async function get_rnd_line(fh, buf, bufsiz, rng, startpos, endpos, padlength) {
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function get_rnd_text(fname, buf, rng, padlength) {   // rumors.c:499
-    let fh = null, starttxt = 0, line = new Int8Array(256);
-    fh = $c.fopen(fname, $c.lit("r"));
+    let line = new Int8Array(256);
+    const fh = $c.fopen(fname, $c.lit("r"));
     buf.set(0, 0);
     if (fh) {
-        starttxt = 0;
+        let starttxt = 0;
         /* skip "don't edit" comment */
         $c.fgets(new $c.Ptr(line, 0), 256, fh);
         /* obtain current file position */
@@ -493,9 +492,9 @@ export async function get_rnd_text(fname, buf, rng, padlength) {   // rumors.c:4
  * @returns {Promise<void>}
  */
 export async function outrumor(truth, mechanism) {   // rumors.c:529
-    let line = null, buf = new Int8Array(256), reading = 0;
+    let buf = new Int8Array(256);
     /* 1=true, -1=false, 0=either */
-    reading = $c.i8(mechanism === BY.COOKIE || mechanism === BY.PAPER ? 1 : 0);
+    const reading = mechanism === BY.COOKIE || mechanism === BY.PAPER ? 1 : 0;
     if (reading) {
         /* deal with various things that prevent reading */
         if (is_fainted() && mechanism === BY.COOKIE) {
@@ -508,7 +507,7 @@ export async function outrumor(truth, mechanism) {   // rumors.c:529
             return;
         }
     }
-    line = await getrumor(truth, new $c.Ptr(buf, 0), $c.i8(reading ? FALSE : TRUE));
+    let line = await getrumor(truth, new $c.Ptr(buf, 0), reading ? FALSE : TRUE);
     if (!line.get(0)) {
         line = $c.lit("NetHack rumors file closed for renovation.");
     }
@@ -648,11 +647,11 @@ export async function outoracle(special, delphi) {   // rumors.c:640
  * @returns {Promise<number>} int
  */
 export async function doconsult(oracl) {   // rumors.c:696
-    let umoney = 0, u_pay = 0, minor_cost = 0, major_cost = 0, add_xpts = 0, qbuf = new Int8Array(128), cheapskate = 0;
-    minor_cost = 50;
-    major_cost = 500 + Math.imul(50, u.ulevel) | 0;
+    let u_pay = 0, qbuf = new Int8Array(128);
+    const minor_cost = 50;
+    const major_cost = 500 + Math.imul(50, u.ulevel) | 0;
     gm.multi = 0;
-    umoney = money_cnt(gi.invent);
+    const umoney = money_cnt(gi.invent);
     if (!oracl) {
         await There($c.lit("is no one here to consult."));
         return ECMD.OK;
@@ -692,23 +691,23 @@ export async function doconsult(oracl) {   // rumors.c:696
     if (!u.uevent.major_oracle && !u.uevent.minor_oracle) {
         await record_achievement(ACH.ORCL);
     }
-    add_xpts = 0;   /* first oracle of each type gives experience points */
+    let add_xpts = 0;   /* first oracle of each type gives experience points */
     if (u_pay === minor_cost) {
         await outrumor(1, BY.ORACLE);
         if (!u.uevent.minor_oracle) {
-            add_xpts = $c.div32(u_pay, u.uevent.major_oracle | 0 ? 25 : 10);
+            add_xpts = $c.div32(u_pay, u.uevent.major_oracle ? 25 : 10);
         }
         /* 5 pts if very 1st, or 2 pts if major already done */
         u.uevent.minor_oracle = (TRUE) & 1;
     } else {
-        cheapskate = $c.i8(u_pay < major_cost ? 1 : 0);
+        const cheapskate = u_pay < major_cost ? 1 : 0;
         await outoracle(cheapskate, TRUE);
         if (!cheapskate && !u.uevent.major_oracle) {
-            add_xpts = $c.div32(u_pay, u.uevent.minor_oracle | 0 ? 25 : 10);
+            add_xpts = $c.div32(u_pay, u.uevent.minor_oracle ? 25 : 10);
         }
         /* ~100 pts if very 1st, ~40 pts if minor already done */
         u.uevent.major_oracle = (TRUE) & 1;
-        await exercise(A.WIS, $c.i8(!cheapskate ? 1 : 0));
+        await exercise(A.WIS, !cheapskate ? 1 : 0);
     }
     if (add_xpts) {
         await more_experienced(add_xpts, $c.div32(u_pay, 50));
@@ -721,8 +720,7 @@ export async function doconsult(oracl) {   // rumors.c:696
  * @returns {Promise<void>}
  */
 async function couldnt_open_file(filename) {   // rumors.c:770
-    let save_something = 0;
-    save_something = program_state.something_worth_saving;
+    const save_something = program_state.something_worth_saving;
     /* most likely the file is missing, so suppress impossible()'s
        "saving and restoring might fix this" (unless the fuzzer,
        which escalates impossible to panic, is running) */
@@ -743,7 +741,7 @@ async function couldnt_open_file(filename) {   // rumors.c:770
  * @returns {Promise<number>} boolean
  */
 export async function CapitalMon(word) {   // rumors.c:791
-    let nam = null, i = 0, wln = 0, nln = 0;
+    let i = 0;
     /* potential monster name; a name might be followed by
      * something like " corpse" */
     if (!word || !word.get(0) || word.get(0) === lowc(word.get(0))) {
@@ -753,10 +751,10 @@ export async function CapitalMon(word) {   // rumors.c:791
         await init_CapMons();
     }
     (!(CapMons !== null) ? 1 : 0) ? $c.__assert_rtn($c.lit("CapitalMon"), $c.lit("rumors.c"), 803, $c.lit("CapMons != 0")) : 0;
-    wln = $c.u32($c.strlen(word));
+    const wln = $c.u32($c.strlen(word));
     for (i = 0; i < CapMonSiz - 1 >>> 0; i = i + 1 >>> 0) {
-        nam = CapMons.get(i);
-        nln = $c.u32($c.strlen(nam));
+        const nam = CapMons.get(i);
+        const nln = $c.u32($c.strlen(nam));
         if (wln < nln) {
             continue;
         }
@@ -780,8 +778,8 @@ export async function CapitalMon(word) {   // rumors.c:791
  * @returns {Promise<void>}
  */
 async function init_CapMons() {   // rumors.c:829
-    let pass = 0, bogonfile = null, mptr = null, nam = null, mndx = 0, mgend = 0, hline = new Int8Array(256), xbuf = new Int8Array(256), endp = null, startp = null, code = 0, buf = new Int8Array(256), i = 0, tmpwin = 0, $t1;
-    bogonfile = $c.fopen($c.lit("bogusmon"), $c.lit("r"));
+    let pass = 0, mndx = 0, mgend = 0, hline = new Int8Array(256), xbuf = new Int8Array(256), endp = null, startp = null, code = 0, buf = new Int8Array(256), i = 0, $t1;
+    let bogonfile = $c.fopen($c.lit("bogusmon"), $c.lit("r"));
     if (CapMons) {   /* sanity precaution */
         free_CapMons();
     }
@@ -796,12 +794,12 @@ async function init_CapMons() {   // rumors.c:829
         CapMonstCnt = CapBogonCnt = 0;
         /* gather applicable actual monsters */
         for (mndx = LOW_PM; mndx < NUMMONS; mndx = mndx + 1 >>> 0) {
-            mptr = $c.relem(mons, mndx);
+            const mptr = $c.relem(mons, mndx);
             if ((mptr.geno & G_UNIQ) !== 0 && !the_unique_pm(mptr)) {
                 continue;
             }
             for (mgend = MALE; mgend < NUM_MGENDERS; mgend = mgend + 1 >>> 0) {
-                nam = mptr.pmnames[mgend];
+                const nam = mptr.pmnames[mgend];
                 if (nam && nam.get(0) !== lowc(nam.get(0))) {
                     if (pass === 2) {
                         CapMons.set(CapMonstCnt, nam);
@@ -861,7 +859,7 @@ async function init_CapMons() {   // rumors.c:829
      * then call CapitalMon() which in turn will call init_CapMons().
      */
     if (wizard() && debugcore($c.lit("CapMons"), FALSE)) {
-        tmpwin = await create_nhwindow()(NHW.TEXT);
+        const tmpwin = await create_nhwindow()(NHW.TEXT);
         await putstr()(tmpwin, 0, $c.lit("Capitalized monster type names normally preceded by \"the\":"));
         for (i = 0; i < CapMonSiz - 1 >>> 0; i = i + 1 >>> 0) {
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("  %.77s"), CapMons.get(i));

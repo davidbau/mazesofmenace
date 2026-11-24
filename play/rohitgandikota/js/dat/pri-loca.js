@@ -65,7 +65,7 @@ export async function priloca_level() {
                  irregular: 1 });
     /* The altar inside the temple */
     des.altar({ x: 20, y: 7, align: 'noalign', type: 'shrine' });
-    des.monster({ id: 'aligned cleric', x: 20, y: 7, align: 'noalign',
+    await des.monster({ id: 'aligned cleric', x: 20, y: 7, align: 'noalign',
                   peaceful: 0 });
     /* Doors */
     des.door('locked', 10, 6);
@@ -97,11 +97,11 @@ export async function priloca_level() {
     des.object({ coord: [26, 10] });
     des.object({ coord: [27, 10] });
     /* Random traps */
-    des.trap({ coord: [15, 4] });
-    des.trap({ coord: [25, 4] });
-    des.trap({ coord: [15, 9] });
-    des.trap({ coord: [25, 9] });
-    des.trap();
-    des.trap();
+    await des.trap({ coord: [15, 4] });
+    await des.trap({ coord: [25, 4] });
+    await des.trap({ coord: [15, 9] });
+    await des.trap({ coord: [25, 9] });
+    await des.trap();
+    await des.trap();
     /* No random monsters - the morgue generation will put them in. */
 }

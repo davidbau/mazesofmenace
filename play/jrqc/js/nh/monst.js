@@ -27,7 +27,7 @@ export const mons = $c.recArray($T.permonst, 384);
 export const c_sa_yes = $c.recArray($T.attack, 6);
 export const c_sa_no = $c.recArray($T.attack, 6);
 export function monst_globals_init() {   // monst.c:72
-    $c.memcpy($c.relem(mons, 0), $c.relem(mons_init, 0), 36864);
+    $c.memcpy(mons[0], mons_init[0], 36864);
     return;
 }
 

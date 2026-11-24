@@ -3,8 +3,10 @@
 
 import {
     bindingAt,
+    cmd_from_func,
     commandForKey,
     createCommandBindingModel,
+    EXTCMD_BY_NAME,
     keyForCommand,
     resetCommandBindingModel,
     SOURCE_SPECIAL_KEY_DEFAULTS,
@@ -2622,9 +2624,10 @@ export async function lookaround_known_room(x, y, state = game) {
     );
 }
 
-// C ref: cmd.c dolookaround() (1311-1375). startup_a11y.js owns the same
-// source-order room and visible-cell description primitives; this wrapper
-// supplies the command's filter lifetime and emits their pline_xy messages.
+// C ref: cmd.c dolookaround() (1311-1375). lookaround_known_room() above
+// describes the rooms and startup_a11y.js collectLookaroundMessages() the
+// visible squares; this wrapper supplies the command's filter lifetime and
+// emits their pline_xy messages.
 export async function dolookaround(state = game) {
     const oldFilter = state.iflags?.getloc_filter;
     const oldAccessible = state.a11y?.accessiblemsg;
@@ -2652,7 +2655,7 @@ export async function dolookaround(state = game) {
         }
         // The room/area description above is emitted by this cmd.c function;
         // the shared helper supplies only the visible-cell pline_xy loop.
-        const messages = collectLookaroundMessages(state, { includeRoom: false });
+        const messages = collectLookaroundMessages(state);
         for (const message of messages)
             await ttyPline(message, state);
         // pager.c do_screen_description() ended the process at a square.
@@ -4095,28 +4098,6 @@ export function cmd_from_dir(dir, mode, state = game) {
     return cmd_from_func(MOVE_FUNCS[dir]?.[mode], state);
 }
 
-// C ref: cmd.c cmd_from_func() (3036-3069).
-export function cmd_from_func(fn, state = game) {
-    const name = handlerName(fn);
-    const model = commandBindings(state);
-    let fallback = 0;
-    for (const binding of model.bindings) {
-        const key = binding.key & 0xFF;
-        if (key === 0x20) continue;
-        if (((key >= 0x30 && key <= 0x39)
-                || (key === 0x2D && name === 'do_fight'))
-            && !model.numPad) continue;
-        const entry = EXTCMD_BY_NAME.get(binding.command);
-        if (!entry || entry.ef_funct !== name) continue;
-        if (key >= 0x20 && key <= 0x7E) return key;
-        fallback = key;
-    }
-    const space = bindingAt(model.bindings, 0x20);
-    if (space && EXTCMD_BY_NAME.get(space.command)?.ef_funct === name)
-        return 0x20;
-    return fallback;
-}
-
 // C ref: cmd.c cmd_from_ecname() (3072-3090).
 export function cmd_from_ecname(ecname, state = game) {
     const entry = extcmdlist.find((candidate) => candidate.ef_txt === ecname);
@@ -4882,10 +4863,6 @@ async function can_do_extcmd(entry, state) {
 // extcmdlist[] indexed by the name commandForKey() answers, which is the row's
 // ef_txt. C keeps the row itself in the binding, so rhack() reaches it through
 // gc.cmd_bind->cmd; this port stores the name and looks the row back up.
-const EXTCMD_BY_NAME = new Map(
-    extcmdlist.map((entry) => [entry.ef_txt, entry]),
-);
-
 // C ref: cmd.c update_rest_on_space()'s static `restonspace`, cloned from
 // extcmdlist['.'] with its own key and description. command_bindings.js marks
 // the Space binding that holds it with `restBinding`.

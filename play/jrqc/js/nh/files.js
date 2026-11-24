@@ -103,12 +103,12 @@ const sflock = new $T.flock();   /* for unlocking, same as above */
  * @returns {$c.Ptr | null} const char *
  */
 export function nh_basename(fname, keep_suffix) {   // files.c:199
-    let p = null, ln = 0;
+    let p = null;
     if ((p = $c.strrchr(fname, 47)) !== null) {
         fname = p.add(1);
     }
     if ((p = $c.strrchr(fname, 46)) !== null && !keep_suffix) {
-        ln = $c.u64($c.pdiff(p, fname));
+        const ln = $c.u64($c.pdiff(p, fname));
         /* note that without path, name should be reasonable length;
            it is expected to refer to a source file name or run-time
            configuration file name and those aren't arbitrarily long;
@@ -155,10 +155,10 @@ export function nh_basename(fname, keep_suffix) {   // files.c:199
  * @returns {$c.Ptr | null} char *
  */
 export function fname_encode(legal, quotechar, s, callerbuf, bufsz) {   // files.c:255
-    let sp = null, op = null, cnt = 0, $t1;
-    cnt = 0;
-    sp = s;
-    op = callerbuf;
+    let $t1;
+    let cnt = 0;
+    let sp = s;
+    let op = callerbuf;
     op.set(0, 0);
     while (sp.get(0)) {
         /* Do we have room for one more character or encoding? */
@@ -200,10 +200,10 @@ export function fname_encode(legal, quotechar, s, callerbuf, bufsz) {   // files
  * @returns {$c.Ptr | null} char *
  */
 export function fname_decode(quotechar, s, callerbuf, bufsz) {   // files.c:305
-    let sp = null, op = null, k = 0, calc = 0, cnt = 0, $t1, $t2, $t3, $t4, $t5;
-    cnt = 0;
-    sp = s;
-    op = callerbuf;
+    let k = 0, $t1, $t2, $t3, $t4, $t5;
+    let cnt = 0;
+    let sp = s;
+    let op = callerbuf;
     op.set(0, 0);
     while (sp.get(0)) {
         /* Do we have room for one more character? */
@@ -220,7 +220,7 @@ export function fname_decode(quotechar, s, callerbuf, bufsz) {   // files.c:305
             if (k >= 16) {
                 return callerbuf;   /* impossible, so bail */
             }
-            calc = k << 4;
+            let calc = k << 4;
             sp = sp.add(1);
             for (k = 0; k < 16; k = k + 1 | 0) {
                 if (sp.get(0) === fname_decode$hexdigits[k]) {
@@ -277,9 +277,8 @@ export function validate_prefix_locations(reasonbuf) {   // files.c:394
  * @returns {$T.__sFILE | null} FILE *
  */
 export function fopen_datafile(filename, mode, prefix) {   // files.c:444
-    let fp = null;
     filename = fqname(filename, prefix, prefix === TROUBLEPREFIX ? 3 : 0);
-    fp = $c.fopen(filename, mode);
+    const fp = $c.fopen(filename, mode);
     return fp;
 }
 /**
@@ -305,7 +304,7 @@ export async function init_nhfile(nhfp) {   // files.c:461
     nhfp.structlevel = 1;
     nhfp.fieldlevel = 0;
     nhfp.addinfo = 0;
-    nhfp.bendian = $c.i8(IS_BIGENDIAN());
+    nhfp.bendian = IS_BIGENDIAN();
     nhfp.fplog = null;
     nhfp.fpdebug = null;
     $t1 = nhfp.wcount = 0, nhfp.rcount = $t1;
@@ -406,7 +405,6 @@ async function viable_nhfile(nhfp) {   // files.c:549
  */
 export async function nhclose(fd) {   // files.c:583
     let retval = 0;
-    retval = 0;
     if (fd >= 0) {
         if (close_check(fd)) {
             await bclose(fd);
@@ -428,8 +426,7 @@ export async function nhclose(fd) {   // files.c:583
  * @param {number} lev int
  */
 export function set_levelfile_name(file, lev) {   // files.c:606
-    let tf = null;
-    tf = $c.strrchr(file, 46);
+    let tf = $c.strrchr(file, 46);
     if (!tf) {
         tf = eos(file);
     }
@@ -442,13 +439,13 @@ export function set_levelfile_name(file, lev) {   // files.c:606
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 export async function create_levelfile(lev, errbuf) {   // files.c:621
-    let fq_lock = null, nhfp = null, $t1;
-    nhfp = null;
+    let $t1;
+    let nhfp = null;
     if (errbuf) {
         errbuf.set(0, 0);
     }
     set_levelfile_name(new $c.Ptr(gl.lock, 0), lev);
-    fq_lock = fqname(new $c.Ptr(gl.lock, 0), LEVELPREFIX, 0);
+    const fq_lock = fqname(new $c.Ptr(gl.lock, 0), LEVELPREFIX, 0);
     nhfp = await new_nhfile();
     if (nhfp) {
         nhfp.ftype = NHF.LEVELFILE;
@@ -481,13 +478,13 @@ export async function create_levelfile(lev, errbuf) {   // files.c:621
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 export async function open_levelfile(lev, errbuf) {   // files.c:673
-    let fq_lock = null, nhfp = null, $t1;
-    nhfp = null;
+    let $t1;
+    let nhfp = null;
     if (errbuf) {
         errbuf.set(0, 0);
     }
     set_levelfile_name(new $c.Ptr(gl.lock, 0), lev);
-    fq_lock = fqname(new $c.Ptr(gl.lock, 0), LEVELPREFIX, 0);
+    const fq_lock = fqname(new $c.Ptr(gl.lock, 0), LEVELPREFIX, 0);
     nhfp = await new_nhfile();
     if (nhfp) {
         nhfp.mode = READING;
@@ -563,7 +560,7 @@ function strcmp_wrap(p, q) {   // files.c:755
  * @returns {$c.Ptr | null} char *
  */
 function set_bonesfile_name(file, lev) {   // files.c:769
-    let sptr = null, dptr = null, poolnum = 0;
+    let sptr = null;
     /*
      * "bonD0.nn"   = bones for level nn in the main dungeon;
      * "bonM0.T"    = bones for Minetown;
@@ -579,11 +576,11 @@ function set_bonesfile_name(file, lev) {   // files.c:769
      */
     $c.strcpy(file, $c.lit("bon"));
     if (sysopt.bones_pools > 1) {
-        poolnum = sysopt.bones_pools >>> 0 < 10 ? sysopt.bones_pools >>> 0 : 10;
+        let poolnum = sysopt.bones_pools >>> 0 < 10 ? sysopt.bones_pools >>> 0 : 10;
         poolnum = $c.remu32($c.u32($G.ubirthday), poolnum);   /* 0..9 */
         $c.sprintf(eos(file), $c.lit("%u"), poolnum);
     }
-    dptr = eos(file);
+    const dptr = eos(file);
     /* when this naming scheme was adopted, 'filecode' was one letter;
        3.3.0 turned it into a three letter string for quest levels */
     $c.sprintf(dptr, $c.lit("%c%s"), svd.dungeons[lev.dnum].boneid, In_quest(lev) ? gu.urole.filecode : $c.lit("0"));
@@ -604,8 +601,7 @@ function set_bonesfile_name(file, lev) {   // files.c:769
  * @returns {$c.Ptr | null} char *
  */
 function set_bonestemp_name() {   // files.c:818
-    let tf = null;
-    tf = $c.strrchr(new $c.Ptr(gl.lock, 0), 46);
+    let tf = $c.strrchr(new $c.Ptr(gl.lock, 0), 46);
     if (!tf) {
         tf = eos(new $c.Ptr(gl.lock, 0));
     }
@@ -619,14 +615,14 @@ function set_bonestemp_name() {   // files.c:818
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 export async function create_bonesfile(lev, bonesid, errbuf) {   // files.c:833
-    let file = null, nhfp = null, failed = 0, $t1, $t2;
-    nhfp = null;
-    failed = 0;
+    let $t1, $t2;
+    let nhfp = null;
+    let failed = 0;
     if (errbuf) {
         errbuf.set(0, 0);
     }
     $t1 = set_bonesfile_name(new $c.Ptr(gb.bones, 0), lev), bonesid.set(0, $t1);
-    file = set_bonestemp_name();
+    let file = set_bonestemp_name();
     file = fqname(file, BONESPREFIX, 0);
     nhfp = await new_nhfile();
     if (nhfp) {
@@ -680,15 +676,14 @@ export async function create_bonesfile(lev, bonesid, errbuf) {   // files.c:833
  * @returns {Promise<void>}
  */
 export async function commit_bonesfile(lev) {   // files.c:915
-    let fq_bones = null, tempname = null, ret = 0;
     set_bonesfile_name(new $c.Ptr(gb.bones, 0), lev);
-    fq_bones = fqname(new $c.Ptr(gb.bones, 0), BONESPREFIX, 0);
-    tempname = set_bonestemp_name();
+    const fq_bones = fqname(new $c.Ptr(gb.bones, 0), BONESPREFIX, 0);
+    let tempname = set_bonestemp_name();
     tempname = fqname(tempname, BONESPREFIX, 1);
     /* old SYSVs don't have rename.  Some SVR3's may, but since they
      * also have link/unlink, it doesn't matter. :-)
      */
-    ret = $c.rename(tempname, fq_bones);
+    const ret = $c.rename(tempname, fq_bones);
     if (wizard() && ret !== 0) {
         await pline($c.lit("couldn't rename %s to %s."), tempname, fq_bones);
     }
@@ -699,10 +694,10 @@ export async function commit_bonesfile(lev) {   // files.c:915
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 export async function open_bonesfile(lev, bonesid) {   // files.c:940
-    let fq_bones = null, nhfp = null, $t1, $t2;
-    nhfp = null;
+    let $t1, $t2;
+    let nhfp = null;
     $t1 = set_bonesfile_name(new $c.Ptr(gb.bones, 0), lev), bonesid.set(0, $t1);
-    fq_bones = fqname(new $c.Ptr(gb.bones, 0), BONESPREFIX, 0);
+    const fq_bones = fqname(new $c.Ptr(gb.bones, 0), BONESPREFIX, 0);
     await nh_uncompress(fq_bones);   /* no effect if nonexistent */
     nhfp = await new_nhfile();
     if (nhfp) {
@@ -712,7 +707,7 @@ export async function open_bonesfile(lev, bonesid) {   // files.c:940
         nhfp.mode = READING;
         nhfp.addinfo = 1;
         nhfp.style.deflt = 1;
-        nhfp.style.binary = $c.i8(sysopt.bonesformat[0] !== exportascii ? 1 : 0);
+        nhfp.style.binary = sysopt.bonesformat[0] !== exportascii ? 1 : 0;
         nhfp.fnidx = sysopt.bonesformat[0];
         nhfp.fd = -1;
         nhfp.fpdef = null;
@@ -730,9 +725,8 @@ export async function open_bonesfile(lev, bonesid) {   // files.c:940
  * @returns {Promise<number>} int
  */
 export async function delete_bonesfile(lev) {   // files.c:993
-    let reslt = 0;
     set_bonesfile_name(new $c.Ptr(gb.bones, 0), lev);
-    reslt = $c.unlink(fqname(new $c.Ptr(gb.bones, 0), BONESPREFIX, 0));
+    const reslt = $c.unlink(fqname(new $c.Ptr(gb.bones, 0), BONESPREFIX, 0));
     await delete_convertedfile(fqname(new $c.Ptr(gb.bones, 0), BONESPREFIX, 0));
     return !(reslt < 0) ? 1 : 0;
 }
@@ -754,12 +748,11 @@ export async function compress_bonesfile() {   // files.c:1006
  * @param {number} regularize_it boolean
  */
 export function set_savefile_name(regularize_it) {   // files.c:1020
-    let regoffset = 0, overflow = 0, indicator_spot = 0, postappend = null, sfindicator = null;
-    regoffset = 0;
-    overflow = 0;
-    indicator_spot = 0;   /* 0=no indicator, 1=before ext, 2=after ext */
-    postappend = null;
-    sfindicator = null;
+    let regoffset = 0;
+    let overflow = 0;
+    let indicator_spot = 0;   /* 0=no indicator, 1=before ext, 2=after ext */
+    const postappend = null;
+    const sfindicator = null;
     /* skip '*' wildcard character */
     $c.sprintf(new $c.Ptr(gs.SAVEF, 0), $c.lit("save/%d%s"), $c.getuid() | 0, new $c.Ptr(svp.plname, 0));
     regoffset = 5;
@@ -817,10 +810,10 @@ export function set_error_savefile() {   // files.c:1137
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 export async function create_savefile() {   // files.c:1159
-    let fq_save = null, nhfp = null, do_historical = 0, $t1;
-    nhfp = null;
-    do_historical = 1;
-    fq_save = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
+    let $t1;
+    let nhfp = null;
+    const do_historical = 1;
+    const fq_save = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
     nhfp = await new_nhfile();
     if (nhfp) {
         nhfp.ftype = NHF.SAVEFILE;
@@ -855,10 +848,10 @@ export async function create_savefile() {   // files.c:1159
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 export async function open_savefile() {   // files.c:1217
-    let fq_save = null, nhfp = null, do_historical = 0, $t1;
-    nhfp = null;
-    do_historical = 1;
-    fq_save = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
+    let $t1;
+    let nhfp = null;
+    let do_historical = 1;
+    const fq_save = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
     nhfp = await new_nhfile();
     if (nhfp) {
         nhfp.ftype = NHF.SAVEFILE;
@@ -885,8 +878,7 @@ export async function open_savefile() {   // files.c:1217
  * @returns {Promise<number>} int
  */
 export async function delete_savefile() {   // files.c:1259
-    let sfname = null;
-    sfname = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
+    const sfname = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
     $c.unlink(sfname);
     await delete_convertedfile(sfname);
     return 0;   /* for restore_saved_game() (ex-xxxmain.c) test */
@@ -896,11 +888,10 @@ export async function delete_savefile() {   // files.c:1259
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 export async function restore_saved_game() {   // files.c:1270
-    let fq_save = null, nhfp = null, sfstatus = 0;
-    nhfp = null;
-    sfstatus = 0;
+    let nhfp = null;
+    let sfstatus = 0;
     set_savefile_name(1);
-    fq_save = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
+    const fq_save = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
     await nh_uncompress(fq_save);
     if ((nhfp = await open_savefile()) !== null) {
         if ((sfstatus = await validate(nhfp, fq_save, 0)) !== SF.UPTODATE) {
@@ -923,7 +914,6 @@ export async function restore_saved_game() {   // files.c:1270
  */
 export async function get_freeing_nhfile() {   // files.c:1299
     let nhfp = null;
-    nhfp = null;
     nhfp = await new_nhfile();   /* also sets fd to -1 */
     if (nhfp) {
         nhfp.mode = FREEING;
@@ -935,17 +925,17 @@ export async function get_freeing_nhfile() {   // files.c:1299
  * @returns {Promise<number>} int
  */
 export async function check_panic_save() {   // files.c:1312
-    let result = 0, cf = null, savef = null, ln = 0, cfn = null;
-    result = 0;
+    let cf = null;
+    let result = 0;
     set_error_savefile();
-    savef = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
+    const savef = fqname(new $c.Ptr(gs.SAVEF, 0), SAVEPREFIX, 0);
     /*
      * This duplicates part of docompress_file().
      * We don't want to start by uncompressing just to check for the
      * file's existence and then have to recompress it.
      */
-    ln = $c.u32($c.addu64($c.strlen(savef), $c.strlen($c.lit(".Z"))));
-    cfn = $c.asArr(await alloc(ln + 1 >>> 0), Int8Array);
+    const ln = $c.u32($c.addu64($c.strlen(savef), $c.strlen($c.lit(".Z"))));
+    const cfn = $c.asArr(await alloc(ln + 1 >>> 0), Int8Array);
     $c.strcpy(cfn, savef);
     $c.strcat(cfn, $c.lit(".Z"));
     if (!$c.peq(cf = $c.fopen(cfn, $c.lit("r")), $c.asRec(null, $T.__sFILE, 152))) {
@@ -971,14 +961,14 @@ export async function check_panic_save() {   // files.c:1312
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function plname_from_file(filename, without_wait_synch_per_file) {   // files.c:1357
-    let nhfp = null, ln = 0, result = null, sfstatus = 0, sln = 0, xln = 0;
-    result = null;
-    sfstatus = 0;
+    let nhfp = null;
+    let result = null;
+    let sfstatus = 0;
     $c.strcpy(new $c.Ptr(gs.SAVEF, 0), filename);
     {
         /* if COMPRESS_EXTENSION is present, strip it off */
-        sln = $c.i32($c.strlen(new $c.Ptr(gs.SAVEF, 0)));
-        xln = $c.i32($c.strlen($c.lit(".Z")));
+        const sln = $c.i32($c.strlen(new $c.Ptr(gs.SAVEF, 0)));
+        const xln = $c.i32($c.strlen($c.lit(".Z")));
         if (sln > xln && !$c.strcmp(new $c.Ptr(gs.SAVEF, sln - xln | 0), $c.lit(".Z"))) {
             gs.SAVEF[sln - xln | 0] = 0;
         }
@@ -988,7 +978,7 @@ export async function plname_from_file(filename, without_wait_synch_per_file) { 
         if ((sfstatus = await validate(nhfp, filename, without_wait_synch_per_file)) === SF.UPTODATE) {
             /* room for "name+role+race+gend+algn X" where the space before
                X is actually NUL and X is playmode: one of '-', 'X', or 'D' */
-            ln = PL_NSIZ_PLUS;
+            const ln = PL_NSIZ_PLUS;
             result = $c.asArr($c.memset(await alloc(ln), 0, ln), Int8Array);
             await get_plname_from_file(nhfp, result, 0);
         }
@@ -1003,9 +993,9 @@ export async function plname_from_file(filename, without_wait_synch_per_file) { 
  * @returns {Promise<*>} char **
  */
 export async function get_saved_games() {   // files.c:1399
-    let result = null, n = 0, j = 0, myuid = 0, dir = null, i = 0, uid = Int32Array.of(0), name = new Int8Array(64), entry = null, filename = new Int8Array(256), r = null, $t1;
-    result = null;
-    j = 0;
+    let n = 0, dir = null, i = 0, uid = Int32Array.of(0), name = new Int8Array(64), filename = new Int8Array(256), $t1;
+    let result = null;
+    let j = 0;
     /* at most */
     /* at most */
     /* this renaming of the savefile is not compatible
@@ -1016,7 +1006,7 @@ export async function get_saved_games() {   // files.c:1399
     /* rename file if it is not named as expected */
     /* WIN32 */
     /* posixly correct version */
-    myuid = $c.getuid() | 0;
+    const myuid = $c.getuid() | 0;
     if (dir = $c.opendir(fqname($c.lit("save"), SAVEPREFIX, 0))) {
         for (n = 0; $c.readdir(dir); n = n + 1 | 0) {
         }
@@ -1029,14 +1019,14 @@ export async function get_saved_games() {   // files.c:1399
             $c.memset(result, 0, $c.mulu64($c.u64(n + 1 | 0), 8));
             for (i = 0, j = 0; i < n; i = i + 1 | 0) {
                 /* more than PL_NSIZ+1 */
-                entry = $c.readdir(dir);
+                const entry = $c.readdir(dir);
                 if (!entry) {
                     break;
                 }
                 if ($c.sscanf(new $c.Ptr(entry.d_name, 0), $c.lit("%d%63s"), new $c.Ptr(uid, 0), new $c.Ptr(name, 0)) === 2) {
                     if (uid[0] === myuid) {
                         $c.sprintf(new $c.Ptr(filename, 0), $c.lit("save/%d%s"), uid[0], new $c.Ptr(name, 0));
-                        r = await plname_from_file(new $c.Ptr(filename, 0), 0);
+                        const r = await plname_from_file(new $c.Ptr(filename, 0), 0);
                         if (r) {
                             result.set(($t1 = j, j = $t1 + 1 | 0, $t1), r);
                         }
@@ -1118,8 +1108,8 @@ export async function nh_uncompress(filename) {   // files.c:1796
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 async function problematic_savefile(sfstatus, savefilenm) {   // files.c:2015
-    let i = 0, nhfp = null;
-    nhfp = null;
+    let i = 0;
+    const nhfp = null;
     switch (sfstatus) {
         case SF.UPTODATE:
             break;
@@ -1180,9 +1170,8 @@ export function nh_sfunconvert(filename) {   // files.c:2079
  * @returns {Promise<number>} boolean
  */
 async function make_converted_name(filename) {   // files.c:2090
-    let ln = 0, xtra = null, finaldirchar = null, dir = null, needsep = 0;
-    dir = null;
-    needsep = 0;
+    let dir = null;
+    let needsep = 0;
     if (!filename) {
         return 0;
     }
@@ -1194,7 +1183,7 @@ async function make_converted_name(filename) {   // files.c:2090
     }
     /* do we need to do some ms-dos processing here? */
     /* SHORT_FILENAMES */
-    ln = $c.u32($c.strlen(filename));
+    let ln = $c.u32($c.strlen(filename));
     if (!contains_directory(filename)) {
         dir = nh_getenv($c.lit("NETHACKDIR"));
         if (!dir) {
@@ -1205,7 +1194,7 @@ async function make_converted_name(filename) {   // files.c:2090
         }
         /* UNIX || WIN32 */
         if (dir) {
-            finaldirchar = c_eos(dir);
+            let finaldirchar = c_eos(dir);
             finaldirchar = finaldirchar.add(-1);
             if (!(finaldirchar.get(0) === 47 || finaldirchar.get(0) === 92 || finaldirchar.get(0) === 58)) {
                 needsep = 1;
@@ -1216,7 +1205,7 @@ async function make_converted_name(filename) {   // files.c:2090
     }
     unconverted_filename = $c.asArr(await alloc(ln + 1 >>> 0), Int8Array);
     nh_snprintf($c.lit("make_converted_name"), 2146, unconverted_filename, ln + 1 >>> 0, $c.lit("%s%s%s"), dir ? dir : $c.lit(""), dir && needsep ? $c.lit("/") : $c.lit(""), filename);
-    xtra = $c.lit(".exportascii");
+    const xtra = $c.lit(".exportascii");
     ln = ln + $c.u32($c.strlen(xtra)) >>> 0;
     converted_filename = $c.asArr(await alloc(ln + 1 >>> 0), Int8Array);
     $c.strcpy(converted_filename, unconverted_filename);
@@ -1252,9 +1241,9 @@ export function free_convert_filenames() {   // files.c:2168
  * @returns {number} boolean
  */
 export function contains_directory(s) {   // files.c:2179
-    let i = 0, slen = 0, cp = null;
-    slen = $c.i32($c.strlen(s));
-    cp = s;
+    let i = 0;
+    const slen = $c.i32($c.strlen(s));
+    let cp = s;
     for (i = 0; i < slen; i = i + 1 | 0) {
         if (cp.get(0) === 92 || cp.get(0) === 47 || cp.get(0) === 58) {
             return 1;
@@ -1351,8 +1340,8 @@ export async function unlock_file(filename) {   // files.c:2416
  * @returns {Promise<$T.__sFILE | null>} FILE *
  */
 async function fopen_wizkit_file() {   // files.c:2465
-    let fp = null, tmp_wizkit = new Int8Array(256), envp = null;
-    envp = nh_getenv($c.lit("WIZKIT"));
+    let fp = null, tmp_wizkit = new Int8Array(256);
+    let envp = nh_getenv($c.lit("WIZKIT"));
     if (envp && envp.get(0)) {
         $c.strncpy(new $c.Ptr(gw.wizkit, 0), envp, WIZKIT_MAX - 1);
     }
@@ -1405,7 +1394,7 @@ async function wizkit_addinv(obj) {   // files.c:2537
     /* subset of starting inventory pre-ID */
     await observe_object(obj);
     if (gu.urole.mnum === PM.CLERIC) {
-        obj.bknown = (1) & 1;   /* ok to bypass set_bknown() */
+        obj.bknown = 1;   /* ok to bypass set_bknown() */
     }
     /* same criteria as lift_object()'s check for available inventory slot */
     if (obj.oclass !== COIN_CLASS && inv_cnt(0) >= invlet_basic && !await merge_choice(gi.invent, obj)) {
@@ -1424,11 +1413,10 @@ async function wizkit_addinv(obj) {   // files.c:2537
  * @returns {Promise<number>} boolean
  */
 export async function proc_wizkit_line(buf) {   // files.c:2562
-    let otmp = null;
     if ($c.strlen(buf) >= BUFSZ) {
         buf.set(BUFSZ - 1, 0);
     }
-    otmp = await readobjnam(buf, null);
+    const otmp = await readobjnam(buf, null);
     if (otmp) {
         if (!$c.peq(otmp, hands_obj)) {
             await wish_history_add(buf);
@@ -1462,8 +1450,7 @@ export async function read_wizkit() {   // files.c:2584
  * @returns {$T.__sFILE | null} FILE *
  */
 function fopen_sym_file() {   // files.c:2611
-    let fp = null;
-    fp = fopen_datafile($c.lit("symbols"), $c.lit("r"), HACKPREFIX);
+    const fp = fopen_datafile($c.lit("symbols"), $c.lit("r"), HACKPREFIX);
     return fp;
 }
 /*
@@ -1476,11 +1463,11 @@ function fopen_sym_file() {   // files.c:2611
  */
 export async function read_sym_file(which_set) {   // files.c:2631
     let fp = null, $t1;
-    gs.symset[which_set].explicitly = (0) & 1;
+    gs.symset[which_set].explicitly = 0;
     if (!(fp = fopen_sym_file())) {
         return 0;
     }
-    gs.symset[which_set].explicitly = (1) & 1;
+    gs.symset[which_set].explicitly = 1;
     $t1 = gc.chosen_symset_end = 0, gc.chosen_symset_start = $t1;
     gs.symset_which_set = which_set;
     gs.symset_count = 0;
@@ -1497,7 +1484,7 @@ export async function read_sym_file(which_set) {   // files.c:2631
         await config_error_done();
         /* If name was defined, it was invalid. Then we're loading fallback */
         if (gs.symset[which_set].name) {
-            gs.symset[which_set].explicitly = (0) & 1;
+            gs.symset[which_set].explicitly = 0;
             return 0;
         }
         return 1;
@@ -1518,9 +1505,8 @@ export async function read_sym_file(which_set) {   // files.c:2631
  * @returns {Promise<void>}
  */
 export async function check_recordfile(dir) {   // files.c:2689
-    let fq_record = null, fd = 0;
-    fq_record = fqname($c.lit("record"), SCOREPREFIX, 0);
-    fd = $c.open(fq_record, 2, 0);
+    const fq_record = fqname($c.lit("record"), SCOREPREFIX, 0);
+    let fd = $c.open(fq_record, 2, 0);
     if (fd >= 0) {
         /* must be stream-lf to use UPDATE_RECORD_IN_PLACE */
         await nhclose(fd);   /* RECORD is accessible */
@@ -1556,16 +1542,16 @@ export async function check_recordfile(dir) {   // files.c:2689
  * @param {$c.Ptr | null} reason const char *
  */
 export function paniclog(type, reason) {   // files.c:2801
-    let lfile = null, buf = new Int8Array(256), now = 0, uid = 0, playmode = 0;
+    let buf = new Int8Array(256);
     /* panic, impossible, trickery, [lua] */
     /* explanation */
     if (!program_state.in_paniclog) {
         program_state.in_paniclog = 1;
-        lfile = fopen_datafile($c.lit("paniclog"), $c.lit("a"), TROUBLEPREFIX);
+        const lfile = fopen_datafile($c.lit("paniclog"), $c.lit("a"), TROUBLEPREFIX);
         if (lfile) {
-            now = getnow();
-            uid = $c.getuid() | 0;
-            playmode = $c.i8(wizard() ? 68 : discover() ? 88 : 45);
+            const now = getnow();
+            const uid = $c.getuid() | 0;
+            const playmode = wizard() ? 68 : discover() ? 88 : 45;
             $c.fprintf(lfile, $c.lit("%s %08ld %06ld %d %c: %s %s\n"), version_string(new $c.Ptr(buf, 0), 256), yyyymmdd(now), hhmmss(now), uid, playmode, type, reason);
             /* !PANICLOG_FMT2 */
             $c.fclose(lfile);
@@ -1581,7 +1567,7 @@ export function paniclog(type, reason) {   // files.c:2801
  * @param {$c.Ptr | null} reason const char *
  */
 export function testinglog(filenm, type, reason) {   // files.c:2836
-    let lfile = null, fnbuf = new Int8Array(256);
+    let fnbuf = new Int8Array(256);
     /* ad hoc file name */
     /* explanation */
     if (!filenm) {
@@ -1591,7 +1577,7 @@ export function testinglog(filenm, type, reason) {   // files.c:2836
     if ($c.strchr(new $c.Ptr(fnbuf, 0), 46) === null) {
         $c.strcat(new $c.Ptr(fnbuf, 0), $c.lit(".log"));
     }
-    lfile = fopen_datafile(new $c.Ptr(fnbuf, 0), $c.lit("a"), TROUBLEPREFIX);
+    const lfile = fopen_datafile(new $c.Ptr(fnbuf, 0), $c.lit("a"), TROUBLEPREFIX);
     if (lfile) {
         $c.fprintf(lfile, $c.lit("%s\n%s\n"), type, reason);
         $c.fclose(lfile);
@@ -1672,7 +1658,7 @@ export async function do_deferred_showpaths(code) {   // files.c:3090
  * @returns {number} boolean
  */
 export function debugcore(filename, wildcards) {   // files.c:3126
-    let debugfiles = null, p = null, l = 0;
+    let p = null;
     /* debugpline() messages might disclose information that the player
        doesn't normally get to see, so only display them in wizard mode */
     if (!wizard()) {
@@ -1681,7 +1667,7 @@ export function debugcore(filename, wildcards) {   // files.c:3126
     if (!filename || !filename.get(0)) {
         return 0;   /* sanity precaution */
     }
-    debugfiles = sysopt.debugfiles;
+    const debugfiles = sysopt.debugfiles;
     /* usual case: sysopt.debugfiles will be empty */
     if (!debugfiles || !debugfiles.get(0)) {
         return 0;
@@ -1701,7 +1687,7 @@ export function debugcore(filename, wildcards) {   // files.c:3126
     }
     /* check whether filename is an element of the list */
     if ((p = $c.strstr(debugfiles, filename)) !== null) {
-        l = $c.i32($c.strlen(filename));
+        const l = $c.i32($c.strlen(filename));
         if (($c.peq(p, debugfiles) || p.get(-1) === 32 || p.get(-1) === 47) && (p.get(l) === 32 || p.get(l) === 0)) {
             return 1;
         }
@@ -1714,14 +1700,14 @@ export function debugcore(filename, wildcards) {   // files.c:3126
  * @returns {Promise<void>}
  */
 export async function reveal_paths(code) {   // files.c:3175
-    let skip_sysopt = 0, fqn = null, nodumpreason = null, buf = new Int8Array(256), filep = null, gamename = null, endp = null, envp = null, cwdbuf = new Int8Array(1024);
-    skip_sysopt = 0;
-    gamename = gh.hname && gh.hname.get(0) ? gh.hname : $c.lit("NetHack");
+    let buf = new Int8Array(256), cwdbuf = new Int8Array(1024);
+    let skip_sysopt = 0;
+    const gamename = gh.hname && gh.hname.get(0) ? gh.hname : $c.lit("NetHack");
     /* sysconf file */
     buf[0] = 0;
     await raw_printf($c.lit("%s %s%s:"), s_suffix(gamename), $c.lit("system configuration file"), new $c.Ptr(buf, 0));
-    filep = $c.lit("sysconf");
-    fqn = fqname(filep, SYSCONFPREFIX, 0);
+    let filep = $c.lit("sysconf");
+    let fqn = fqname(filep, SYSCONFPREFIX, 0);
     if (fqn) {
         set_configfile_name(fqn);
         filep = get_configfile();
@@ -1738,7 +1724,7 @@ export async function reveal_paths(code) {   // files.c:3175
     /* WIN32 */
     /* PREFIXES_IN_USE */
     /* UNIX */
-    envp = $c.getcwd(new $c.Ptr(cwdbuf, 0), 1024);
+    let envp = $c.getcwd(new $c.Ptr(cwdbuf, 0), 1024);
     if (envp) {
         await raw_print()($c.lit("The loadable symbols file:"));
         await raw_printf($c.lit("    \"%s/%s\""), envp, $c.lit("symbols"));
@@ -1755,7 +1741,7 @@ export async function reveal_paths(code) {   // files.c:3175
     /* ?DLB */
     /* dumplog */
     fqn = null;
-    nodumpreason = $c.lit("not supported");
+    const nodumpreason = $c.lit("not supported");
     /* !SYSCF */
     /* ?SYSCF */
     /* ?DUMPLOG */
@@ -1771,7 +1757,7 @@ export async function reveal_paths(code) {   // files.c:3175
         copynchars(new $c.Ptr(buf, 0), envp, 254);
         $c.strcat(new $c.Ptr(buf, 0), $c.lit("/"));
     }
-    endp = eos(new $c.Ptr(buf, 0));
+    const endp = eos(new $c.Ptr(buf, 0));
     copynchars(endp, get_default_configfile(), $c.i32($c.subu64(255, $c.strlen(new $c.Ptr(buf, 0)))));
     /* UNIX+__APPLE__ => MacOSX aka OSX aka macOS */
     if (envp) {
@@ -1809,7 +1795,7 @@ export async function reveal_paths(code) {   // files.c:3175
  * @returns {number} int
  */
 function choose_passage(passagecnt, oid) {   // files.c:3431
-    let idx = 0, res = 0, i = 0, range = 0, limit = 0, $t1, $t2;
+    let idx = 0, i = 0, $t1, $t2;
     /* total of available passages */
     /* book.o_id, used to determine whether
        re-reading same book */
@@ -1819,8 +1805,8 @@ function choose_passage(passagecnt, oid) {   // files.c:3431
     /* if a different book or we've used up all the passages already,
        reset in order to have all 'passagecnt' passages available */
     if (oid !== svc.context.novel.id || svc.context.novel.count === 0) {
-        range = passagecnt;
-        limit = 30;
+        let range = passagecnt;
+        let limit = 30;
         svc.context.novel.id = oid;
         if (range <= limit) {
             /* collect all of the N indices */
@@ -1840,7 +1826,7 @@ function choose_passage(passagecnt, oid) {   // files.c:3431
         }
     }
     idx = rn2(svc.context.novel.count);
-    res = svc.context.novel.pasg[idx];
+    const res = svc.context.novel.pasg[idx];
     /* move the last slot's passage index into the slot just used
        and reduce the number of passages available */
     $t2 = svc.context.novel.pasg[svc.context.novel.count = svc.context.novel.count - 1 | 0], svc.context.novel.pasg[idx] = $t2;
@@ -1922,7 +1908,7 @@ export async function read_tribute(tribsection, tribtitle, tribpassage, nowin_bu
                     if (!strncmpi(new $c.Ptr(line, 1), $c.lit("section "), 8)) {
                         st = new $c.Ptr(line, 9);   /* 9 from "%section " */
                         scope = SECTIONSCOPE;
-                        matchedsection = $c.i8(!strcmpi(st, tribsection) ? 1 : 0);
+                        matchedsection = !strcmpi(st, tribsection) ? 1 : 0;
                     } else if (!strncmpi(new $c.Ptr(line, 1), $c.lit("title "), 6)) {
                         st$2 = new $c.Ptr(line, 7);   /* 7 from "%title " */
                         if ((p1 = $c.strchr(st$2, 40)) !== null) {
@@ -2003,7 +1989,7 @@ export async function read_tribute(tribsection, tribtitle, tribpassage, nowin_bu
     $c.fclose(fp);
     if (nowin_buf) {
         /* one-line buffer */
-        grasped = $c.i8(nowin_buf.get(0) ? 1 : 0);
+        grasped = nowin_buf.get(0) ? 1 : 0;
     } else {
         if (tribwin !== WIN_ERR) {
             /* implies 'foundpassage' */
@@ -2040,8 +2026,7 @@ export async function read_tribute(tribsection, tribtitle, tribpassage, nowin_bu
  * @returns {Promise<number>} boolean
  */
 export async function Death_quote(buf, bufsz) {   // files.c:3648
-    let death_oid = 0;
-    death_oid = 1;   /* chance of oid #1 being a novel is negligible */
+    const death_oid = 1;   /* chance of oid #1 being a novel is negligible */
     return await read_tribute($c.lit("Death"), $c.lit("Death Quotes"), 0, buf, bufsz, death_oid);
 }
 /* ----------  END TRIBUTE ----------- */
@@ -2058,7 +2043,7 @@ export async function Death_quote(buf, bufsz) {   // files.c:3648
  * @returns {Promise<void>}
  */
 export async function livelog_add(ll_type, str) {   // files.c:3667
-    let livelogfile = null, now = 0, gindx = 0, aindx = 0;
+    let livelogfile = null;
     if (!$c.and64(ll_type, sysopt.livelog)) {
         return;
     }
@@ -2068,13 +2053,13 @@ export async function livelog_add(ll_type, str) {   // files.c:3667
             await unlock_file($c.lit("livelog"));
             return;
         }
-        now = getnow();
-        gindx = flags.female ? 1 : 0;
+        const now = getnow();
+        const gindx = flags.female ? 1 : 0;
         /* note on alignment designation:
                aligns[] uses [0] lawful, [1] neutral, [2] chaotic;
                u.ualign.type uses -1 chaotic, 0 neutral, 1 lawful;
            so subtracting from 1 converts from either to the other */
-        aindx = 1 - u.ualign.type | 0;
+        const aindx = 1 - u.ualign.type;
         /* format relies on STD C's implicit concatenation of
            adjacent string literals */
         $c.fprintf(livelogfile, $c.lit("lltype=%ld\tname=%s\trole=%s\trace=%s\tgender=%s\talign=%s\tturns=%ld\tstarttime=%ld\tcurtime=%ld\tmessage=%s\n"), $c.and64(ll_type, sysopt.livelog), new $c.Ptr(svp.plname, 0), gu.urole.filecode, gu.urace.filecode, genders[gindx].filecode, aligns[aindx].filecode, svm.moves, timet_to_seconds($G.ubirthday), timet_to_seconds(now), str);

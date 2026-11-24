@@ -1790,8 +1790,8 @@ export async function historical_sfi_bitfield(nhfp, d_bitfield, myname, bflen) {
  * @returns {number} int
  */
 function getidx(fd, flg) {   // sfstruct.c:384
-    let i = 0, retval = 0;
-    retval = -1;
+    let i = 0;
+    let retval = -1;
     for (i = 0; i < MAXFD; i = i + 1 | 0) {
         if (bw_sticky[i] === fd) {
             return i;
@@ -1815,9 +1815,8 @@ function getidx(fd, flg) {   // sfstruct.c:384
  * @returns {number} boolean
  */
 export function close_check(fd) {   // sfstruct.c:404
-    let idx = 0, retval = 0;
-    idx = getidx(fd, NOSLOT);
-    retval = FALSE;
+    const idx = getidx(fd, NOSLOT);
+    let retval = FALSE;
     if (idx >= 0) {
         retval = TRUE;
     }
@@ -1828,8 +1827,8 @@ export function close_check(fd) {   // sfstruct.c:404
  * @returns {Promise<void>}
  */
 export async function bufon(fd) {   // sfstruct.c:415
-    let idx = 0, $t1;
-    idx = getidx(fd, NOFLG);
+    let $t1;
+    const idx = getidx(fd, NOFLG);
     if (idx >= 0) {
         bw_sticky[idx] = fd;
         if (bw_buffered[idx]) {
@@ -1848,8 +1847,7 @@ export async function bufon(fd) {   // sfstruct.c:415
  * @returns {Promise<void>}
  */
 export async function bufoff(fd) {   // sfstruct.c:436
-    let idx = 0;
-    idx = getidx(fd, NOFLG);
+    const idx = getidx(fd, NOFLG);
     if (idx >= 0) {
         await bflush(fd);
         bw_buffered[idx] = 0;   /* just a flag that says "use write(fd)" */
@@ -1860,8 +1858,7 @@ export async function bufoff(fd) {   // sfstruct.c:436
  * @returns {Promise<void>}
  */
 export async function bclose(fd) {   // sfstruct.c:447
-    let idx = 0;
-    idx = getidx(fd, NOSLOT);
+    const idx = getidx(fd, NOSLOT);
     await bufoff(fd);   /* sets bw_buffered[idx] = 0 */
     if (idx >= 0) {
         if (bw_FILE[idx]) {
@@ -1880,8 +1877,7 @@ export async function bclose(fd) {   // sfstruct.c:447
  * @returns {Promise<void>}
  */
 export async function bflush(fd) {   // sfstruct.c:478
-    let idx = 0;
-    idx = getidx(fd, NOFLG);
+    const idx = getidx(fd, NOFLG);
     if (idx >= 0) {
         if (bw_FILE[idx]) {
             if ($c.fflush(bw_FILE[idx]) === -1) {
@@ -1898,8 +1894,8 @@ export async function bflush(fd) {   // sfstruct.c:478
  * @returns {Promise<void>}
  */
 export async function bwrite(fd, loc, num) {   // sfstruct.c:494
-    let failed = 0, idx = 0;
-    idx = getidx(fd, NOFLG);
+    let failed = 0;
+    const idx = getidx(fd, NOFLG);
     if (idx >= 0) {
         if (num === 0) {
             /* nothing to do; we need a special case to exit early
@@ -1908,12 +1904,12 @@ export async function bwrite(fd, loc, num) {   // sfstruct.c:494
             return;
         }
         if (bw_buffered[idx] && bw_FILE[idx]) {
-            failed = $c.i8($c.fwrite(loc, $c.u64(num | 0), 1, bw_FILE[idx]) !== 1 ? 1 : 0);
+            failed = $c.fwrite(loc, $c.u64(num | 0), 1, bw_FILE[idx]) !== 1 ? 1 : 0;
         } else {
             /* UNIX */
             /* lint wants 3rd arg of write to be an int; lint -p an unsigned */
             /* e.g. SYSV, __TURBOC__ */
-            failed = $c.i8($c.write(fd, loc, num) !== num ? 1 : 0);
+            failed = $c.write(fd, loc, num) !== num ? 1 : 0;
         }
         if (failed) {
             if (program_state.done_hup) {
@@ -1934,10 +1930,9 @@ export async function bwrite(fd, loc, num) {   // sfstruct.c:494
  * @returns {Promise<void>}
  */
 export async function mread(fd, buf, len) {   // sfstruct.c:549
-    let rlen = 0;
     /* e.g. SYSV, __TURBOC__ */
     /* Not perfect, but we don't have ssize_t available. */
-    rlen = $c.u32($c.read(fd, buf, len));
+    const rlen = $c.u32($c.read(fd, buf, len));
     if (rlen !== len) {
         /* means "return anyway" */
         if (restoreinfo.mread_flags === 1 || program_state.reading_bonesfile === 1) {

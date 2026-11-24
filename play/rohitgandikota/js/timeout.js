@@ -171,7 +171,8 @@ async function vomiting_dialogue() {
         break;
     case 6: {
         const { make_stunned, make_confused } = await import('./potion.js');
-        await make_stunned((game.u.intrinsic?.HStun || 0) + d(2, 4), false);
+        await make_stunned(((game.u.intrinsic?.HStun || 0) & TIMEOUT)
+                           + d(2, 4), false);
         await stop_occupation();
         await make_confused((game.u.intrinsic?.HConfusion || 0) + d(2, 4),
                             false);
@@ -188,8 +189,8 @@ async function vomiting_dialogue() {
         break;
     }
     case 8:
-        text = game.u.uprops?.STUNNED ? "can't think straight."
-                                     : "can't seem to think straight.";
+        text = Stunned() ? "can't think straight."
+                         : "can't seem to think straight.";
         break;
     case 5:
         text = 'feel incredibly sick.';
@@ -1802,7 +1803,6 @@ export async function nh_timeout() {
         case 'HWounded_legs': {
             /* src/timeout.c nh_timeout WOUNDED_LEGS arm: heal_legs(0) */
             const { heal_legs } = await import('./do.js');
-            intr.HWounded_legs = 1; /* Wounded_legs still true for the heal */
             await heal_legs(0);
             const { stop_occupation } = await import('./allmain.js');
             await stop_occupation();
@@ -1903,6 +1903,10 @@ export async function nh_timeout() {
                 const timeout = Math.min(TIMEOUT,
                     (intr.HFumbling & TIMEOUT) + rnd(20));
                 intr.HFumbling = (intr.HFumbling & ~TIMEOUT) | timeout;
+            }
+            if (game.iflags.defer_decor) {
+                const { deferred_decor } = await import('./pickup.js');
+                await deferred_decor(false);
             }
             break;
         }
@@ -2189,7 +2193,7 @@ export async function hatch_egg(egg, timeout) {
         const { m_at } = await import('./mon.js');
         const { hideunder } = await import('./makemon.js');
         const floorMon = m_at(x, y);
-        if (floorMon && !hideunder(floorMon) && cansee(x, y))
+        if (floorMon && !await hideunder(floorMon) && cansee(x, y))
             redraw = true;
     }
     if (redraw) {
@@ -2234,11 +2238,8 @@ export async function do_storms() {
         /* Even if already deaf, we sense the thunder's vibrations. */
         const { pline } = await import('./display.js');
         await pline('Kaboom!!!  Boom!!  Boom!!');
-        /* incr_itimeout(&HDeaf, rn1(20, 30)) — the draw is C's; the
-           deafness property linkage past the timer is not wired */
         const { rn1 } = await import('./rng.js');
-        (game.u.intrinsic ||= {}).HDeaf =
-            ((game.u.intrinsic.HDeaf | 0) + rn1(20, 30));
+        incr_itimeout('HDeaf', rn1(20, 30));
         game.botl = true;
         if (!game.u.uinvulnerable) {
             const { stop_occupation } = await import('./allmain.js');

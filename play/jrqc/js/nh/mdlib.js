@@ -141,8 +141,8 @@ function build_savebones_compat_string() {   // mdlib.c:393
  * @returns {number} int
  */
 function count_and_validate_winopts() {   // mdlib.c:602
-    let i = 0, cnt = 0;
-    cnt = 0;
+    let i = 0;
+    let cnt = 0;
     /* window_opts has a fencepost entry at the end */
     for (i = 0; i < 1; i = i + 1 | 0) {
         /* !MAKEDEFS_C && FOR_RUNTIME */
@@ -155,8 +155,8 @@ function count_and_validate_winopts() {   // mdlib.c:602
  * @returns {number} int
  */
 function count_and_validate_soundlibopts() {   // mdlib.c:627
-    let i = 0, cnt = 0;
-    cnt = 0;
+    let i = 0;
+    let cnt = 0;
     /* soundlib_opts has a fencepost entry at the end */
     for (i = 0; i < 1; i = i + 1 | 0) {
         cnt = cnt + 1 | 0;
@@ -170,11 +170,11 @@ function count_and_validate_soundlibopts() {   // mdlib.c:627
  * @returns {Promise<void>}
  */
 async function opt_out_words(str, length_p) {   // mdlib.c:641
-    let word = null, $t1, $t2, $t3, $t4, $t5;
+    let $t1, $t2, $t3, $t4, $t5;
     /* input, but modified during processing */
     /* in/out */
     while (str.get(0)) {
-        word = $c.strchr(str, 32);
+        const word = $c.strchr(str, 32);
         /* treat " (" as unbreakable space */
         if (word) {
             word.set(0, 0);
@@ -193,9 +193,9 @@ async function opt_out_words(str, length_p) {   // mdlib.c:641
  * @returns {Promise<void>}
  */
 async function build_options() {   // mdlib.c:669
-    let buf = new Int8Array(256), i = 0, length = Int32Array.of(0), winsyscnt = 0, cnt = 0, defwinsys = null, soundlibcnt = 0, soundlib = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20, $t21, $t22, $t23, $t24, $t25, $t26, $t27, $t28, $t29, $t30, $t31, $t32, $t33, $t34, $t35, $t36;
-    cnt = 0;
-    defwinsys = $c.lit("tty");
+    let buf = new Int8Array(256), i = 0, length = Int32Array.of(0), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20, $t21, $t22, $t23, $t24, $t25, $t26, $t27, $t28, $t29, $t30, $t31, $t32, $t33, $t34, $t35, $t36;
+    let cnt = 0;
+    const defwinsys = $c.lit("tty");
     build_savebones_compat_string();
     idxopttext < MAXOPT ? ($t2 = await dupstr(new $c.Ptr(optbuf, 0)), $t3 = new $c.Ptr(opttext, ($t1 = idxopttext, idxopttext = $t1 + 1 | 0, $t1)), $t3.set(0, $t2)) : null;
     /* NH_DEVEL_STATUS == NH_STATUS_RELEASED */
@@ -215,7 +215,7 @@ async function build_options() {   // mdlib.c:669
     }
     idxopttext < MAXOPT ? ($t11 = await dupstr(new $c.Ptr(optbuf, 0)), $t12 = new $c.Ptr(opttext, ($t10 = idxopttext, idxopttext = $t10 + 1 | 0, $t10)), $t12.set(0, $t11)) : null;
     optbuf[0] = 0;
-    winsyscnt = count_and_validate_winopts();
+    const winsyscnt = count_and_validate_winopts();
     idxopttext < MAXOPT ? ($t14 = await dupstr(new $c.Ptr(optbuf, 0)), $t15 = new $c.Ptr(opttext, ($t13 = idxopttext, idxopttext = $t13 + 1 | 0, $t13)), $t15.set(0, $t14)) : null;
     $c.sprintf(new $c.Ptr(optbuf, 0), $c.lit("Supported windowing system%s:"), winsyscnt > 1 ? $c.lit("s") : $c.lit(""));
     idxopttext < MAXOPT ? ($t17 = await dupstr(new $c.Ptr(optbuf, 0)), $t18 = new $c.Ptr(opttext, ($t16 = idxopttext, idxopttext = $t16 + 1 | 0, $t16)), $t18.set(0, $t17)) : null;
@@ -249,7 +249,7 @@ async function build_options() {   // mdlib.c:669
     cnt = 0;
     idxopttext < MAXOPT ? ($t20 = await dupstr(new $c.Ptr(optbuf, 0)), $t21 = new $c.Ptr(opttext, ($t19 = idxopttext, idxopttext = $t19 + 1 | 0, $t19)), $t21.set(0, $t20)) : null;
     optbuf[0] = 0;
-    soundlibcnt = count_and_validate_soundlibopts();
+    const soundlibcnt = count_and_validate_soundlibopts();
     idxopttext < MAXOPT ? ($t23 = await dupstr(new $c.Ptr(optbuf, 0)), $t24 = new $c.Ptr(opttext, ($t22 = idxopttext, idxopttext = $t22 + 1 | 0, $t22)), $t24.set(0, $t23)) : null;
     $c.sprintf(new $c.Ptr(optbuf, 0), $c.lit("Supported soundlib%s:"), soundlibcnt > 1 ? $c.lit("s") : $c.lit(""));
     idxopttext < MAXOPT ? ($t26 = await dupstr(new $c.Ptr(optbuf, 0)), $t27 = new $c.Ptr(opttext, ($t25 = idxopttext, idxopttext = $t25 + 1 | 0, $t25)), $t27.set(0, $t26)) : null;
@@ -259,7 +259,7 @@ async function build_options() {   // mdlib.c:669
         if (!soundlib_opts[i].valid) {
             continue;
         }
-        soundlib = soundlib_opts[i].text_id;
+        let soundlib = soundlib_opts[i].text_id;
         if (!$c.strncmp(soundlib, $c.lit("soundlib_"), 9)) {
             soundlib = soundlib.add(9);
         }
@@ -310,7 +310,6 @@ export async function runtime_info_init() {   // mdlib.c:835
  */
 export async function do_runtime_info(rtcontext) {   // mdlib.c:849
     let retval = null;
-    retval = null;
     if (!done_runtime_opt_init_once) {
         await runtime_info_init();
     }

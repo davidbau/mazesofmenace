@@ -116,28 +116,28 @@ export async function monstrt_level() {
     } });
     /* No treasure chest! */
     /* guards for the audience chamber */
-    des.monster('abbot', 32, 7);
-    des.monster('abbot', 32, 8);
-    des.monster('abbot', 32, 11);
-    des.monster('abbot', 32, 12);
-    des.monster('abbot', 33, 7);
-    des.monster('abbot', 33, 8);
-    des.monster('abbot', 33, 11);
-    des.monster('abbot', 33, 12);
+    await des.monster('abbot', 32, 7);
+    await des.monster('abbot', 32, 8);
+    await des.monster('abbot', 32, 11);
+    await des.monster('abbot', 32, 12);
+    await des.monster('abbot', 33, 7);
+    await des.monster('abbot', 33, 8);
+    await des.monster('abbot', 33, 11);
+    await des.monster('abbot', 33, 12);
     /* Non diggable walls */
     des.non_diggable(selection.area(18, 3, 55, 16));
     /* Random traps */
     for (let i = 1; i <= 2; i++)
         des.trap('dart', selection_rndcoord(spacelocs, 1));
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     /* Monsters on siege duty. */
     for (let i = 1; i <= 8; i++)
-        des.monster('earth elemental', selection_rndcoord(spacelocs, 1));
+        await des.monster('earth elemental', selection_rndcoord(spacelocs, 1));
     for (let i = 1; i <= 4; i++)
-        des.monster('xorn', selection_rndcoord(spacelocs, 1));
+        await des.monster('xorn', selection_rndcoord(spacelocs, 1));
     /* next to leader, so possibly tricky to pick up if not ready for quest
        yet; there's no protection against a xorn eating these tins; BUC
        state is random */

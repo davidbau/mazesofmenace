@@ -131,31 +131,31 @@ export async function medusa4_level() {
 
     /* first random statue is in one of the designated stair rooms but not
        the one with Medusa plus downstairs */
-    des.object({ id: 'statue', coord: [altloc.x, altloc.y], contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', coord: [altloc.x, altloc.y], contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
     for (let i = 1; i <= 8; i++)
         des.object();
 
     for (let i = 1; i <= 7; i++)
-        des.trap();
+        await des.trap();
 
     /* place Medusa before placing other monsters so that they won't be able
        to unintentionally steal her spot on the downstairs */
     des.monster({ id: 'Medusa', coord: [medloc.x, medloc.y], asleep: 1 });
-    des.monster('kraken', 7, 7);
+    await des.monster('kraken', 7, 7);
 
     /* the nesting dragon */
-    des.monster({ id: 'yellow dragon', x: 5, y: 4, asleep: 1 });
+    await des.monster({ id: 'yellow dragon', x: 5, y: 4, asleep: 1 });
     if (percent(50)) {
-        des.monster({ id: 'baby yellow dragon', x: 4, y: 4, asleep: 1 });
+        await des.monster({ id: 'baby yellow dragon', x: 4, y: 4, asleep: 1 });
     }
     if (percent(25)) {
-        des.monster({ id: 'baby yellow dragon', x: 4, y: 5, asleep: 1 });
+        await des.monster({ id: 'baby yellow dragon', x: 4, y: 5, asleep: 1 });
     }
     des.object({ id: 'egg', x: 5, y: 4, montype: 'yellow dragon' });
     if (percent(50)) {
@@ -165,14 +165,14 @@ export async function medusa4_level() {
         des.object({ id: 'egg', x: 5, y: 4, montype: 'yellow dragon' });
     }
 
-    des.monster('giant eel');
-    des.monster('giant eel');
-    des.monster('jellyfish');
-    des.monster('jellyfish');
+    await des.monster('giant eel');
+    await des.monster('giant eel');
+    await des.monster('jellyfish');
+    await des.monster('jellyfish');
     for (let i = 1; i <= 14; i++)
-        des.monster('S');
+        await des.monster('S');
     for (let i = 1; i <= 4; i++) {
-        des.monster('black naga hatchling');
-        des.monster('black naga');
+        await des.monster('black naga hatchling');
+        await des.monster('black naga');
     }
 }

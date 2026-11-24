@@ -64,9 +64,9 @@ const zerott = new $T.toptenentry();
  * @returns {Promise<void>}
  */
 export async function formatkiller(buf, siz, how, incl_helpless) {   // topten.c:90
-    let l = 0, c = 0, kname = null, $t1, $t2;
+    let l = 0, $t1, $t2;
     /* DIED, CHOKING, POISONING, STARVING, */
-    kname = new $c.Ptr(svk.killer.name, 0);
+    let kname = new $c.Ptr(svk.killer.name, 0);
     buf.set(0, 0);   /* lint suppression */
     switch (svk.killer.format) {
         default:
@@ -90,7 +90,7 @@ export async function formatkiller(buf, siz, how, incl_helpless) {   // topten.c
      * record, logfile, or xlogfile is re-read at some later point.
      */
     while ((siz = siz - 1 >>> 0) > 0) {
-        c = ($t1 = kname, kname = $t1.add(1), $t1).get(0);
+        let c = ($t1 = kname, kname = $t1.add(1), $t1).get(0);
         if (!c) {
             break;
         } else if (c === 44) {
@@ -264,7 +264,7 @@ async function writexlentry(rfile, tt, how) {   // topten.c:340
     $c.fprintf(rfile, $c.lit("%cachieveX=%s"), 9, encode_extended_achievements(new $c.Ptr(achbuf, 0)));
     $c.fprintf(rfile, $c.lit("%cconductX=%s"), 9, await encode_extended_conducts(new $c.Ptr(buf, 0)));   /* reuse 'buf[]' */
     $c.fprintf(rfile, $c.lit("%crealtime=%ld%cstarttime=%ld%cendtime=%ld"), 9, urealtime.realtime, 9, timet_to_seconds($G.ubirthday), 9, timet_to_seconds(urealtime.finish_time));
-    $c.fprintf(rfile, $c.lit("%cgender0=%s%calign0=%s"), 9, genders[flags.initgend].filecode, 9, aligns[1 - u.ualignbase[A.ORIGINAL] | 0].filecode);
+    $c.fprintf(rfile, $c.lit("%cgender0=%s%calign0=%s"), 9, genders[flags.initgend].filecode, 9, aligns[1 - u.ualignbase[A.ORIGINAL]].filecode);
     $c.fprintf(rfile, $c.lit("%cflags=0x%lx"), 9, encodexlogflags());
     $c.fprintf(rfile, $c.lit("%cgold=%ld"), 9, $c.add64(money_cnt(gi.invent), hidden_gold(TRUE)));
     $c.fprintf(rfile, $c.lit("%cwish_cnt=%ld"), 9, u.uconduct.wishes);
@@ -278,7 +278,6 @@ async function writexlentry(rfile, tt, how) {   // topten.c:340
  */
 function encodexlogflags() {   // topten.c:394
     let e = 0;
-    e = 0;
     if (wizard()) {
         e = $c.or64(e, 1);
     }
@@ -298,7 +297,6 @@ function encodexlogflags() {   // topten.c:394
  */
 async function encodeconduct() {   // topten.c:411
     let e = 0;
-    e = 0;
     if (!u.uconduct.food) {
         e = $c.or64(e, 1);
     }
@@ -355,9 +353,9 @@ async function encodeconduct() {   // topten.c:411
  * @returns {number | bigint} long
  */
 function encodeachieve(secondlong) {   // topten.c:455
-    let i = 0, achidx = 0, offset = 0, r = 0;
+    let i = 0;
     /* False: handle achievements 1..31, True: 32..62 */
-    r = 0;
+    let r = 0;
     /*
      * 32: portable limit for 'long'.
      * Force 32 even on configurations that are using 64 bit longs.
@@ -366,9 +364,9 @@ function encodeachieve(secondlong) {   // topten.c:455
      * that post-process xlogfile might not be able to cope with
      * 'unsigned long'.
      */
-    offset = secondlong ? 31 : 0;
+    const offset = secondlong ? 31 : 0;
     for (i = 0; u.uachieved[i]; i = i + 1 | 0) {
-        achidx = u.uachieved[i] - offset | 0;
+        const achidx = u.uachieved[i] - offset | 0;
         if (achidx > 0 && achidx < 32) {   /* value 1..31 sets bit 0..30 */
             r = $c.or64(r, $c.shl64(1, achidx - 1 | 0));
         }
@@ -394,12 +392,12 @@ function add_achieveX(buf, achievement, condition) {   // topten.c:480
  * @returns {$c.Ptr | null} char *
  */
 function encode_extended_achievements(buf) {   // topten.c:491
-    let rnkbuf = new Int8Array(40), achievement = null, i = 0, achidx = 0, absidx = 0;
-    achievement = null;
+    let rnkbuf = new Int8Array(40), i = 0;
+    let achievement = null;
     buf.set(0, 0);
     L1: for (i = 0; u.uachieved[i]; i = i + 1 | 0) {
-        achidx = u.uachieved[i];
-        absidx = $c.abs(achidx);
+        const achidx = u.uachieved[i];
+        const absidx = $c.abs(achidx);
         switch (absidx) {
             case ACH.UWIN:
                 achievement = $c.lit("ascended");
@@ -473,7 +471,7 @@ function encode_extended_achievements(buf) {   // topten.c:491
             case ACH.RNK7:
             case ACH.RNK8:
                 /* rank 0 is the starting condition, not an achievement; 8 is Xp 30 */
-                $c.sprintf(new $c.Ptr(rnkbuf, 0), $c.lit("attained_the_rank_of_%s"), rank_of(rank_to_xlev(absidx - (ACH.RNK1 - 1) | 0), gu.urole.mnum, $c.i8(achidx < 0 ? TRUE : FALSE)));
+                $c.sprintf(new $c.Ptr(rnkbuf, 0), $c.lit("attained_the_rank_of_%s"), rank_of(rank_to_xlev(absidx - (ACH.RNK1 - 1) | 0), gu.urole.mnum, achidx < 0 ? TRUE : FALSE));
                 strNsubst(new $c.Ptr(rnkbuf, 0), $c.lit(" "), $c.lit("_"), 0);   /* replace every ' ' with '_' */
                 achievement = lcase(new $c.Ptr(rnkbuf, 0));
                 break;
@@ -490,28 +488,28 @@ function encode_extended_achievements(buf) {   // topten.c:491
  */
 async function encode_extended_conducts(buf) {   // topten.c:584
     buf.set(0, 0);
-    add_achieveX(buf, $c.lit("foodless"), $c.i8(!u.uconduct.food ? 1 : 0));
-    add_achieveX(buf, $c.lit("vegan"), $c.i8(!u.uconduct.unvegan ? 1 : 0));
-    add_achieveX(buf, $c.lit("vegetarian"), $c.i8(!u.uconduct.unvegetarian ? 1 : 0));
-    add_achieveX(buf, $c.lit("atheist"), $c.i8(!u.uconduct.gnostic ? 1 : 0));
-    add_achieveX(buf, $c.lit("weaponless"), $c.i8(!u.uconduct.weaphit ? 1 : 0));
-    add_achieveX(buf, $c.lit("pacifist"), $c.i8(!u.uconduct.killer ? 1 : 0));
-    add_achieveX(buf, $c.lit("illiterate"), $c.i8(!u.uconduct.literate ? 1 : 0));
-    add_achieveX(buf, $c.lit("polyless"), $c.i8(!u.uconduct.polypiles ? 1 : 0));
-    add_achieveX(buf, $c.lit("polyselfless"), $c.i8(!u.uconduct.polyselfs ? 1 : 0));
-    add_achieveX(buf, $c.lit("wishless"), $c.i8(!u.uconduct.wishes ? 1 : 0));
-    add_achieveX(buf, $c.lit("artiwishless"), $c.i8(!u.uconduct.wisharti ? 1 : 0));
-    add_achieveX(buf, $c.lit("genocideless"), $c.i8(!await num_genocides() ? 1 : 0));
+    add_achieveX(buf, $c.lit("foodless"), !u.uconduct.food ? 1 : 0);
+    add_achieveX(buf, $c.lit("vegan"), !u.uconduct.unvegan ? 1 : 0);
+    add_achieveX(buf, $c.lit("vegetarian"), !u.uconduct.unvegetarian ? 1 : 0);
+    add_achieveX(buf, $c.lit("atheist"), !u.uconduct.gnostic ? 1 : 0);
+    add_achieveX(buf, $c.lit("weaponless"), !u.uconduct.weaphit ? 1 : 0);
+    add_achieveX(buf, $c.lit("pacifist"), !u.uconduct.killer ? 1 : 0);
+    add_achieveX(buf, $c.lit("illiterate"), !u.uconduct.literate ? 1 : 0);
+    add_achieveX(buf, $c.lit("polyless"), !u.uconduct.polypiles ? 1 : 0);
+    add_achieveX(buf, $c.lit("polyselfless"), !u.uconduct.polyselfs ? 1 : 0);
+    add_achieveX(buf, $c.lit("wishless"), !u.uconduct.wishes ? 1 : 0);
+    add_achieveX(buf, $c.lit("artiwishless"), !u.uconduct.wisharti ? 1 : 0);
+    add_achieveX(buf, $c.lit("genocideless"), !await num_genocides() ? 1 : 0);
     if (sokoban_in_play()) {
-        add_achieveX(buf, $c.lit("sokoban"), $c.i8(!u.uconduct.sokocheat ? 1 : 0));
+        add_achieveX(buf, $c.lit("sokoban"), !u.uconduct.sokocheat ? 1 : 0);
     }
     add_achieveX(buf, $c.lit("blind"), u.uroleplay.blind);
     add_achieveX(buf, $c.lit("deaf"), u.uroleplay.deaf);
     add_achieveX(buf, $c.lit("nudist"), u.uroleplay.nudist);
     add_achieveX(buf, $c.lit("pauper"), u.uroleplay.pauper);
-    add_achieveX(buf, $c.lit("bonesless"), $c.i8(!flags.bones ? 1 : 0));
-    add_achieveX(buf, $c.lit("petless"), $c.i8(!u.uconduct.pets ? 1 : 0));
-    add_achieveX(buf, $c.lit("unrerolled"), $c.i8(!u.uroleplay.reroll ? 1 : 0));
+    add_achieveX(buf, $c.lit("bonesless"), !flags.bones ? 1 : 0);
+    add_achieveX(buf, $c.lit("petless"), !u.uconduct.pets ? 1 : 0);
+    add_achieveX(buf, $c.lit("unrerolled"), !u.uroleplay.reroll ? 1 : 0);
     return buf;
 }
 /* XLOGFILE */
@@ -519,9 +517,8 @@ async function encode_extended_conducts(buf) {   // topten.c:584
  * @param {$T.toptenentry | null} tt struct toptenentry *
  */
 function free_ttlist(tt) {   // topten.c:615
-    let ttnext = null;
     while (tt.points > 0) {
-        ttnext = tt.tt_next;
+        const ttnext = tt.tt_next;
         dealloc_ttentry(tt);
         tt = ttnext;
     }
@@ -577,7 +574,7 @@ export async function topten(how, when) {   // topten.c:628
             copynchars(new $c.Ptr(t0.plrole, 0), gu.urole.filecode, ROLESZ);
             copynchars(new $c.Ptr(t0.plrace, 0), gu.urace.filecode, ROLESZ);
             copynchars(new $c.Ptr(t0.plgend, 0), genders[flags.female].filecode, ROLESZ);
-            copynchars(new $c.Ptr(t0.plalign, 0), aligns[1 - u.ualign.type | 0].filecode, ROLESZ);
+            copynchars(new $c.Ptr(t0.plalign, 0), aligns[1 - u.ualign.type].filecode, ROLESZ);
             copynchars(new $c.Ptr(t0.name, 0), new $c.Ptr(svp.plname, 0), NAMSZ);
             await formatkiller(new $c.Ptr(t0.death, 0), 101, how, TRUE);
             $t4 = yyyymmdd($G.ubirthday), t0.birthdate = $t4;
@@ -711,7 +708,7 @@ export async function topten(how, when) {   // topten.c:628
                     }
                 }
             }
-            skip_scores = $c.i8(!flags.end_top && !flags.end_around && !flags.end_own ? 1 : 0);
+            skip_scores = !flags.end_top && !flags.end_around && !flags.end_own ? 1 : 0;
             if (rank0 === 0) {
                 rank0 = rank1;
             }
@@ -787,9 +784,9 @@ export async function topten(how, when) {   // topten.c:628
  * @returns {Promise<void>}
  */
 async function outheader() {   // topten.c:929
-    let linebuf = new Int8Array(256), bp = null, $t1;
+    let linebuf = new Int8Array(256), $t1;
     $c.strcpy(new $c.Ptr(linebuf, 0), $c.lit(" No  Points     Name"));
-    bp = eos(new $c.Ptr(linebuf, 0));
+    let bp = eos(new $c.Ptr(linebuf, 0));
     while ($c.pcmp(bp, new $c.Ptr(linebuf, 0).add(COLNO).add(-9)) < 0) {
         ($t1 = bp, bp = $t1.add(1), $t1).set(0, 32);
     }
@@ -804,8 +801,8 @@ async function outheader() {   // topten.c:929
  * @returns {Promise<void>}
  */
 async function outentry(rank, t1, so) {   // topten.c:946
-    let second_line = 0, linebuf = new Int8Array(256), bp = null, hpbuf = new Int8Array(24), linebuf3 = new Int8Array(256), hppos = 0, lngr = 0, arg = null, fmt = null, $t1, $t2, $t3;
-    second_line = TRUE;
+    let linebuf = new Int8Array(256), bp = null, hpbuf = new Int8Array(24), linebuf3 = new Int8Array(256), arg = null, $t1, $t2, $t3;
+    let second_line = TRUE;
     linebuf[0] = 0;
     if (rank) {
         $c.sprintf(eos(new $c.Ptr(linebuf, 0)), $c.lit("%3d"), rank);
@@ -831,7 +828,7 @@ async function outentry(rank, t1, so) {   // topten.c:946
         $c.sprintf(eos(new $c.Ptr(linebuf, 0)), $c.lit("escaped the dungeon %s[max level %d]"), !$c.strncmp($c.lit(" ("), new $c.Ptr(t1.death, 0).add(7), 2) ? new $c.Ptr(t1.death, 0).add(7).add(2) : $c.lit(""), t1.maxlvl);
         /* fixup for closing paren in "escaped... with...Amulet)[max..." */
         if ((bp = $c.strchr(new $c.Ptr(linebuf, 0), 41)) !== null) {
-            bp.set(0, $c.i8(t1.deathdnum === svd.dungeon_topology.d_astral_level.dnum ? 0 : 32));
+            bp.set(0, t1.deathdnum === svd.dungeon_topology.d_astral_level.dnum ? 0 : 32);
         }
         second_line = FALSE;
     } else if (!$c.strncmp($c.lit("ascended"), new $c.Ptr(t1.death, 0), 8)) {
@@ -856,7 +853,7 @@ async function outentry(rank, t1, so) {   // topten.c:946
             $c.strcat(new $c.Ptr(linebuf, 0), $c.lit("died"));
         }
         if (t1.deathdnum === svd.dungeon_topology.d_astral_level.dnum) {
-            fmt = $c.lit(" on the Plane of %s");
+            let fmt = $c.lit(" on the Plane of %s");
             switch (t1.deathlev) {
                 case -5:
                     fmt = $c.lit(" on the %s Plane");
@@ -903,14 +900,14 @@ async function outentry(rank, t1, so) {   // topten.c:946
            out of 'record'; change it back for display */
         strsubst(bp, $c.lit("; the "), $c.lit(", the "));
     }
-    lngr = $c.i32($c.strlen(new $c.Ptr(linebuf, 0)));
+    let lngr = $c.i32($c.strlen(new $c.Ptr(linebuf, 0)));
     if (t1.hp <= 0) {
         hpbuf[0] = 45, hpbuf[1] = 0;
     } else {
         $c.sprintf(new $c.Ptr(hpbuf, 0), $c.lit("%d"), t1.hp);
     }
     /* beginning of hp column after padding (not actually padded yet) */
-    hppos = 70;
+    let hppos = 70;
     while (lngr >= hppos) {
         for (bp = eos(new $c.Ptr(linebuf, 0)); !(bp.get(0) === 32 && $c.pdiff(bp, new $c.Ptr(linebuf, 0)) < hppos); bp = bp.add(-1)) {
         }
@@ -973,7 +970,7 @@ async function outentry(rank, t1, so) {   // topten.c:946
  * @returns {Promise<number>} int
  */
 async function score_wanted(current_ver, rank, t1, playerct, players, uid) {   // topten.c:1112
-    let arg = null, nxt = null, i = 0;
+    let i = 0;
     if (current_ver && (t1.ver_major !== VERSION.MAJOR || t1.ver_minor !== VERSION.MINOR || t1.patchlevel !== PATCHLEVEL)) {
         return 0;
     }
@@ -1012,12 +1009,12 @@ async function score_wanted(current_ver, rank, t1, playerct, players, uid) {   /
      *  with some custom tool.
      */
     for (i = 0; i < playerct; i = i + 1 | 0) {
-        arg = players.get(i);
+        let arg = players.get(i);
         if (arg.get(0) === 45 && arg.get(1) === 117 && arg.get(2) !== 0) {
             arg = arg.add(2);   /* handle '-uname' */
         }
         if (arg.get(0) === 45 && $c.strchr($c.lit("pru"), arg.get(1)) && !arg.get(2) && (i + 1 | 0) < playerct) {
-            nxt = players.get(i + 1 | 0);
+            const nxt = players.get(i + 1 | 0);
             /* handle '-u name' */
             if (arg.get(1) === 112 && await str2role(nxt) === await str2role(new $c.Ptr(t1.plrole, 0)) || arg.get(1) === 114 && await str2race(nxt) === await str2race(new $c.Ptr(t1.plrace, 0)) || arg.get(1) === 117 && (!$c.strcmp(nxt, $c.lit("all")) || !$c.strncmp(new $c.Ptr(t1.name, 0), nxt, NAMSZ))) {
                 return 1;
@@ -1041,18 +1038,18 @@ async function score_wanted(current_ver, rank, t1, playerct, players, uid) {   /
  * @returns {Promise<void>}
  */
 export async function prscore(argc, argv) {   // topten.c:1194
-    let players = null, player0 = [null], i = 0, playerct = 0, rank = 0, t1 = null, rfile = null, pbuf = new Int8Array(256), p = null, ln = 0, uid = 0, current_ver = 0, init_done = 0, match_found = 0, $t1;
-    uid = -1;
-    current_ver = TRUE;
-    init_done = FALSE;
-    match_found = FALSE;
+    let players = null, player0 = [null], i = 0, playerct = 0, rank = 0, pbuf = new Int8Array(256), p = null, $t1;
+    let uid = -1;
+    let current_ver = TRUE;
+    let init_done = FALSE;
+    let match_found = FALSE;
     /* expect "-s" or "--scores"; "-s<anything> is accepted */
-    ln = argc < 2 ? 0 : (p = $c.strchr(argv.get(1), 32)) !== null ? $c.u32($c.pdiff(p, argv.get(1))) : await Strlen_(argv.get(1), $c.lit("prscore"), 1208);
+    const ln = argc < 2 ? 0 : (p = $c.strchr(argv.get(1), 32)) !== null ? $c.u32($c.pdiff(p, argv.get(1))) : await Strlen_(argv.get(1), $c.lit("prscore"), 1208);
     if (ln < 2 || $c.strncmp(argv.get(1), $c.lit("-s"), 2) && $c.strcmp(argv.get(1), $c.lit("--scores"))) {
         await raw_printf($c.lit("prscore: bad arguments (%d)"), argc);
         return;
     }
-    rfile = fopen_datafile($c.lit("record"), $c.lit("r"), SCOREPREFIX);
+    const rfile = fopen_datafile($c.lit("record"), $c.lit("r"), SCOREPREFIX);
     if (!rfile) {
         await raw_print()($c.lit("Cannot open record file!"));
         return;
@@ -1100,7 +1097,7 @@ export async function prscore(argc, argv) {   // topten.c:1194
         players = argv = argv.add(1);
     }
     await raw_print()($c.lit(""));
-    t1 = tt_head = await newttentry();
+    let t1 = tt_head = await newttentry();
     for (rank = 1; ; rank = rank + 1 | 0) {
         await readentry(rfile, t1);
         if (t1.points === 0) {
@@ -1239,11 +1236,10 @@ export async function get_rnd_toptenentry() {   // topten.c:1381
  * @returns {Promise<$T.obj | null>} struct obj *
  */
 export async function tt_oname(otmp) {   // topten.c:1422
-    let tt = null;
     if (!otmp) {
         return null;
     }
-    tt = await get_rnd_toptenentry();
+    const tt = await get_rnd_toptenentry();
     if (!tt) {
         return null;
     }
@@ -1262,15 +1258,15 @@ export async function tt_oname(otmp) {   // topten.c:1422
  * @returns {Promise<number>} int
  */
 export async function tt_doppel(mon) {   // topten.c:1445
-    let tt = null, ret = 0;
-    tt = rn2(13) ? await get_rnd_toptenentry() : null;
+    let ret = 0;
+    const tt = rn2(13) ? await get_rnd_toptenentry() : null;
     if (!tt) {
         ret = rn2(PM.WIZARD - PM.ARCHEOLOGIST + 1) + PM.ARCHEOLOGIST | 0;
     } else {
         if (tt.plgend[0] === 70) {
-            mon.female = (1) & 1;
+            mon.female = 1;
         } else if (tt.plgend[0] === 77) {
-            mon.female = (0) & 1;
+            mon.female = 0;
         }
         ret = await classmon(new $c.Ptr(tt.plrole, 0));
         /* Only take on a name if the player can see

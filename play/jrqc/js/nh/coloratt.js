@@ -35,8 +35,7 @@ const color_256_definitions = $c.recArray($T.anon_coloratt_885, 240);
  * @returns {number} int32
  */
 export function colortable_to_int32(cte) {   // coloratt.c:237
-    let clr = 0;
-    clr = NO_COLOR | NH_BASIC_COLOR;
+    let clr = NO_COLOR | NH_BASIC_COLOR;
     if (cte.colortyp === rgb_color) {
         clr = $c.i32($c.or64($c.or64($c.shl64(cte.r, 16), $c.shl64(cte.g, 8)), cte.b));
     } else if (cte.colortyp === nh_color) {
@@ -59,10 +58,10 @@ export function color_attr_to_str(ca) {   // coloratt.c:249
  * @returns {Promise<number>} boolean
  */
 export async function color_attr_parse_str(ca, str) {   // coloratt.c:261
-    let buf = new Int8Array(256), amp = null, tmp = 0, c = 0, a = 0;
-    amp = null;
-    c = NO_COLOR;
-    a = ATR.NONE;
+    let buf = new Int8Array(256);
+    let amp = null;
+    let c = NO_COLOR;
+    let a = ATR.NONE;
     $c.strncpy(new $c.Ptr(buf, 0), str, 255);
     buf[$c.idx(255)] = 0;
     if ((amp = $c.strchr(new $c.Ptr(buf, 0), 38)) !== null) {
@@ -84,7 +83,7 @@ export async function color_attr_parse_str(ca, str) {   // coloratt.c:261
         }
     } else {
         /* one param only */
-        tmp = await match_str2attr(new $c.Ptr(buf, 0), FALSE);
+        let tmp = await match_str2attr(new $c.Ptr(buf, 0), FALSE);
         if (tmp === -1) {
             tmp = await match_str2clr(new $c.Ptr(buf, 0), FALSE);
             if (tmp >= CLR.MAX) {
@@ -105,12 +104,11 @@ export async function color_attr_parse_str(ca, str) {   // coloratt.c:261
  * @returns {Promise<number>} boolean
  */
 export async function query_color_attr(ca, prompt) {   // coloratt.c:304
-    let c = 0, a = 0;
-    c = await query_color(prompt, ca.color);
+    const c = await query_color(prompt, ca.color);
     if (c === -1) {
         return FALSE;
     }
-    a = await query_attr(prompt, ca.attr);
+    const a = await query_attr(prompt, ca.attr);
     if (a === -1) {
         return FALSE;
     }
@@ -156,8 +154,8 @@ export function clr2colorname(clr) {   // coloratt.c:338
  * @returns {Promise<number>} int
  */
 export async function match_str2clr(str, suppress_msg) {   // coloratt.c:349
-    let i = 0, c = 0;
-    c = CLR.MAX;
+    let i = 0;
+    let c = CLR.MAX;
     /* allow "lightblue", "light blue", and "light-blue" to match "light blue"
        (also junk like "_l i-gh_t---b l u e" but we won't worry about that);
        also copes with trailing space; caller has removed any leading space */
@@ -184,8 +182,8 @@ export async function match_str2clr(str, suppress_msg) {   // coloratt.c:349
  * @returns {Promise<number>} int
  */
 export async function match_str2attr(str, complain) {   // coloratt.c:374
-    let i = 0, a = 0;
-    a = -1;
+    let i = 0;
+    let a = -1;
     for (i = 0; i < 11; i = i + 1 | 0) {
         if (attrnames[i].name && fuzzymatch(str, attrnames[i].name, $c.lit(" -_"), TRUE)) {
             a = attrnames[i].attr;
@@ -207,11 +205,11 @@ export async function match_str2attr(str, complain) {   // coloratt.c:374
  * @returns {Promise<number>} int
  */
 export async function query_attr(prompt, dflt_attr) {   // coloratt.c:396
-    let tmpwin = 0, any = new $T.any(), i = 0, pick_cnt = 0, picks = [null], allow_many = 0, clr = 0, j = 0, k = 0;
+    let any = new $T.any(), i = 0, picks = [null], j = 0;
     picks[0] = null;
-    allow_many = $c.i8(prompt && !strncmpi(prompt, $c.lit("Choose"), 6) ? 1 : 0);
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const allow_many = prompt && !strncmpi(prompt, $c.lit("Choose"), 6) ? 1 : 0;
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);
     for (i = 0; i < 11; i = i + 1 | 0) {
@@ -222,10 +220,10 @@ export async function query_attr(prompt, dflt_attr) {   // coloratt.c:396
         await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, attrnames[i].attr, clr, attrnames[i].name, attrnames[i].attr === dflt_attr ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
     await end_menu()(tmpwin, prompt && prompt.get(0) ? prompt : $c.lit("Pick an attribute"));
-    pick_cnt = await select_menu(tmpwin, allow_many ? PICK.ANY : PICK.ONE, new $c.Ptr(picks, 0));
+    const pick_cnt = await select_menu(tmpwin, allow_many ? PICK.ANY : PICK.ONE, new $c.Ptr(picks, 0));
     await destroy_nhwindow()(tmpwin);
     if (pick_cnt > 0) {
-        k = 0;
+        let k = 0;
         if (allow_many) {
             /* PICK_ANY, with one preselected entry (ATR_NONE) which
                should be excluded if any other choices were picked */
@@ -283,11 +281,11 @@ export async function query_attr(prompt, dflt_attr) {   // coloratt.c:396
  * @returns {Promise<number>} int
  */
 export async function query_color(prompt, dflt_color) {   // coloratt.c:475
-    let tmpwin = 0, any = new $T.any(), i = 0, pick_cnt = 0, picks = [null];
+    let any = new $T.any(), i = 0, picks = [null];
     picks[0] = null;
     /* replace user patterns with color name ones and force 'menucolors' On */
     await basic_menu_colors(TRUE);
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);
     for (i = 0; i < 27; i = i + 1 | 0) {
@@ -298,7 +296,7 @@ export async function query_color(prompt, dflt_color) {   // coloratt.c:475
         await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, NO_COLOR, colornames[i].name, colornames[i].color === dflt_color ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
     await end_menu()(tmpwin, prompt && prompt.get(0) ? prompt : $c.lit("Pick a color"));
-    pick_cnt = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
+    const pick_cnt = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
     await destroy_nhwindow()(tmpwin);
     /* remove temporary color name patterns and restore user-specified ones;
        reset 'menucolors' option to its previous value */
@@ -329,7 +327,7 @@ export async function query_color(prompt, dflt_color) {   // coloratt.c:475
  * @returns {Promise<void>}
  */
 export async function basic_menu_colors(load_colors) {   // coloratt.c:530
-    let cnm = new Int8Array(128), i = 0, c = 0, pmatchregex = 0, patternfmt = null;
+    let cnm = new Int8Array(128), i = 0;
     /* True: temporarily replace menu color entries with
      * a fake set of menu colors which match their names;
      * False: restore user-specified colorings */
@@ -343,8 +341,8 @@ export async function basic_menu_colors(load_colors) {   // coloratt.c:530
             gm.menu_colorings = gc.color_colorings;
         } else {
             /* create the alternate colorings once */
-            pmatchregex = $c.i8(!strncmpi(new $c.Ptr(regex_id, 0), $c.lit("pmatchregex"), -1) ? 1 : 0);
-            patternfmt = pmatchregex ? $c.lit("*%s") : $c.lit("%s");
+            const pmatchregex = !strncmpi(new $c.Ptr(regex_id, 0), $c.lit("pmatchregex"), -1) ? 1 : 0;
+            const patternfmt = pmatchregex ? $c.lit("*%s") : $c.lit("%s");
             /* menu_colorings pointer has been saved; clear it in order
                to add the alternate entries as if from scratch */
             gm.menu_colorings = null;
@@ -357,7 +355,7 @@ export async function basic_menu_colors(load_colors) {   // coloratt.c:530
                 if (!colornames[i].name) {   /* first alias entry has no name */
                     break;
                 }
-                c = colornames[i].color;
+                const c = colornames[i].color;
                 if (c === CLR.BLACK || c === CLR.WHITE || c === NO_COLOR) {
                     continue;   /* skip these */
                 }
@@ -382,7 +380,7 @@ export async function basic_menu_colors(load_colors) {   // coloratt.c:530
  * @returns {Promise<number>} boolean
  */
 export async function add_menu_coloring_parsed(str, c, a) {   // coloratt.c:585
-    let tmp = null, errbuf = new Int8Array(256), re_error_desc = null, $t1, $t2;
+    let tmp = null, errbuf = new Int8Array(256), $t1, $t2;
     if (!str) {
         return FALSE;
     }
@@ -391,7 +389,7 @@ export async function add_menu_coloring_parsed(str, c, a) {   // coloratt.c:585
     /* test_regex_pattern() has already validated this regexp but parsing
        it again could conceivably run out of memory */
     if (!regex_compile(str, tmp.match)) {
-        re_error_desc = regex_error_desc(tmp.match, new $c.Ptr(errbuf, 0));
+        const re_error_desc = regex_error_desc(tmp.match, new $c.Ptr(errbuf, 0));
         /* free first in case reason for regcomp failure was out-of-memory */
         regex_free(tmp.match);
         $c.free(tmp);
@@ -412,17 +410,17 @@ export async function add_menu_coloring_parsed(str, c, a) {   // coloratt.c:585
  * @returns {Promise<number>} boolean
  */
 export async function add_menu_coloring(tmpstr) {   // coloratt.c:617
-    let c = 0, a = 0, tmps = null, cs = null, amp = null, str = new Int8Array(256);
+    let cs = null, amp = null, str = new Int8Array(256);
     /* never Null but could be empty */
-    c = NO_COLOR;
-    a = ATR.NONE;
+    let c = NO_COLOR;
+    let a = ATR.NONE;
     $c.strncpy(new $c.Ptr(str, 0), tmpstr, 255);
     str[$c.idx(255)] = 0;
     if ((cs = $c.strchr(new $c.Ptr(str, 0), 61)) === null) {
         await config_error_add($c.lit("Malformed MENUCOLOR"));
         return FALSE;
     }
-    tmps = cs.add(1);   /* advance past '=' */
+    let tmps = cs.add(1);   /* advance past '=' */
     mungspaces(tmps);
     if ((amp = $c.strchr(tmps, 38)) !== null) {
         amp.set(0, 0);
@@ -474,13 +472,12 @@ export function free_menu_coloring() {   // coloratt.c:664
  * @param {number} idx int
  */
 export function free_one_menu_coloring(idx) {   // coloratt.c:684
-    let tmp = null, prev = null, next = null;
     /* 0 .. */
-    tmp = gm.menu_colorings;
-    prev = null;
+    let tmp = gm.menu_colorings;
+    let prev = null;
     while (tmp) {
         if (idx === 0) {
-            next = tmp.next;
+            const next = tmp.next;
             regex_free(tmp.match);
             $c.free(tmp.origstr);
             $c.free(tmp);
@@ -500,8 +497,8 @@ export function free_one_menu_coloring(idx) {   // coloratt.c:684
  * @returns {number} int
  */
 export function count_menucolors() {   // coloratt.c:709
-    let tmp = null, count = 0;
-    count = 0;
+    let tmp = null;
+    let count = 0;
     for (tmp = gm.menu_colorings; tmp; tmp = tmp.next) {
         count = count + 1 | 0;
     }
@@ -515,9 +512,9 @@ export function count_menucolors() {   // coloratt.c:709
  * @returns {Promise<number>} int32
  */
 export async function check_enhanced_colors(buf) {   // coloratt.c:723
-    let xtra = Int8Array.of(0), r = Uint32Array.of(0), g = Uint32Array.of(0), b = Uint32Array.of(0), retcolor = 0, color = 0, altbuf = null, grey = null, greyoffset = 0;
+    let xtra = Int8Array.of(0), r = Uint32Array.of(0), g = Uint32Array.of(0), b = Uint32Array.of(0), color = 0;
     xtra[0] = 0;   /* used to catch trailing junk after "#rrggbb" */
-    retcolor = -1;
+    let retcolor = -1;
     if ((color = await match_str2clr(buf, TRUE)) !== CLR.MAX) {
         retcolor = color | NH_BASIC_COLOR;
     } else if ($c.sscanf(buf, $c.lit("#%02x%02x%02x%c"), new $c.Ptr(r, 0), new $c.Ptr(g, 0), new $c.Ptr(b, 0), new $c.Ptr(xtra, 0)) >= 3) {
@@ -528,9 +525,9 @@ export async function check_enhanced_colors(buf) {   // coloratt.c:723
          * space or underscore in user-supplied name will match hyphen
          * [note: caller splits text at spaces so we won't see any here]
          */
-        altbuf = null;
-        grey = strstri(buf, $c.lit("grey"));
-        greyoffset = grey ? $c.pdiff(grey, buf) : -1;
+        let altbuf = null;
+        const grey = strstri(buf, $c.lit("grey"));
+        const greyoffset = grey ? $c.pdiff(grey, buf) : -1;
         if (greyoffset >= 0) {
             altbuf = await dupstr(buf);
             /* use direct copy because strsubst() is case-sensitive */
@@ -555,11 +552,11 @@ export async function check_enhanced_colors(buf) {   // coloratt.c:723
  * @returns {$c.Ptr | null} const char *
  */
 export function wc_color_name(colorindx) {   // coloratt.c:764
-    let result = null, basicindx = 0, indx = 0, r = 0, g = 0, b = 0;
+    let indx = 0;
     /* includes room for '\0' */
-    result = $c.lit("no-color");
+    let result = $c.lit("no-color");
     if (colorindx >= 0) {
-        basicindx = colorindx & ~NH_BASIC_COLOR;
+        const basicindx = colorindx & ~NH_BASIC_COLOR;
         /* if colorindx has NH_BASIC_COLOR bit set, basicindx won't,
            so differing implies a basic color */
         if (basicindx !== colorindx) {
@@ -568,9 +565,9 @@ export function wc_color_name(colorindx) {   // coloratt.c:764
         } else {
             /* shift rrXXXX to rr */
             /* shift XXggXX to gg */
-            r = colorindx >> 16 & 255;
-            g = colorindx >> 8 & 255;
-            b = colorindx & 255;   /* mask  XXXXbb to bb */
+            const r = colorindx >> 16 & 255;
+            const g = colorindx >> 8 & 255;
+            const b = colorindx & 255;   /* mask  XXXXbb to bb */
             nh_snprintf($c.lit("wc_color_name"), 784, new $c.Ptr(wc_color_name$hexcolor, 0), 8, $c.lit("#%02x%02x%02x"), $c.u8(r), $c.u8(g), $c.u8(b));
             result = new $c.Ptr(wc_color_name$hexcolor, 0);
             /* override hex value if this is a named color */
@@ -590,8 +587,7 @@ export function wc_color_name(colorindx) {   // coloratt.c:764
  * @returns {number} boolean
  */
 export function onlyhexdigits(buf) {   // coloratt.c:801
-    let dp = null;
-    dp = buf;
+    let dp = buf;
     for (dp = buf; dp.get(0); dp = dp.add(1)) {
         if (!($c.strchr(new $c.Ptr(hexdd, 0), dp.get(0)) || dp.get(0) === 45)) {
             return FALSE;
@@ -604,14 +600,14 @@ export function onlyhexdigits(buf) {   // coloratt.c:801
  * @returns {Promise<number>} int32_t
  */
 export async function rgbstr_to_int32(rgbstr) {   // coloratt.c:813
-    let r = 0, g = 0, b = 0, milestone = 0, cp = null, c_r = null, c_g = null, c_b = null, rgb = 0, buf = new Int8Array(256), dash = 0;
-    milestone = 0;
-    rgb = 0;
-    dash = FALSE;
+    let cp = null, c_b = null, buf = new Int8Array(256);
+    let milestone = 0;
+    let rgb = 0;
+    let dash = FALSE;
     nh_snprintf($c.lit("rgbstr_to_int32"), 823, new $c.Ptr(buf, 0), 256, $c.lit("%s"), rgbstr ? rgbstr : $c.lit(""));
     if (new $c.Ptr(buf, 0).get(0) && onlyhexdigits(new $c.Ptr(buf, 0))) {
-        c_g = c_b = null;
-        c_r = cp = new $c.Ptr(buf, 0);
+        let c_g = c_b = null;
+        const c_r = cp = new $c.Ptr(buf, 0);
         while (cp.get(0)) {
             if (digit(cp.get(0)) || cp.get(0) === 45) {
                 if (cp.get(0) === 45) {
@@ -634,9 +630,9 @@ export async function rgbstr_to_int32(rgbstr) {   // coloratt.c:813
         }
         /* sanity checks */
         if (c_r && c_g && c_b && ($c.strlen(c_r) > 0 && $c.strlen(c_r) < 4) && ($c.strlen(c_g) > 0 && $c.strlen(c_g) < 4) && ($c.strlen(c_b) > 0 && $c.strlen(c_b) < 4)) {
-            r = $c.atoi(c_r);
-            g = $c.atoi(c_g);
-            b = $c.atoi(c_b);
+            const r = $c.atoi(c_r);
+            const g = $c.atoi(c_g);
+            const b = $c.atoi(c_b);
             rgb = r << 16 | g << 8 | b << 0;
             return rgb;
         }
@@ -654,8 +650,8 @@ export async function rgbstr_to_int32(rgbstr) {   // coloratt.c:813
  * @returns {number} int
  */
 export function set_map_customcolor(gmap, nhcolor) {   // coloratt.c:868
-    let tmpgm = null, closecolor = Uint32Array.of(0), clridx = Uint16Array.of(0);
-    tmpgm = gmap;
+    let closecolor = Uint32Array.of(0), clridx = Uint16Array.of(0);
+    const tmpgm = gmap;
     closecolor[0] = 0;
     clridx[0] = 0;
     if (!tmpgm) {
@@ -680,17 +676,16 @@ export function set_map_customcolor(gmap, nhcolor) {   // coloratt.c:868
  * @returns {number} int
  */
 export function color_distance(rgb1, rgb2) {   // coloratt.c:979
-    let r1 = 0, g1 = 0, b1 = 0, r2 = 0, g2 = 0, b2 = 0, rmean = 0, r = 0, g = 0, b = 0;
-    r1 = (rgb1 >>> 16 & 255) >>> 0 | 0;
-    g1 = (rgb1 >>> 8 & 255) >>> 0 | 0;
-    b1 = (rgb1 & 255) >>> 0 | 0;
-    r2 = (rgb2 >>> 16 & 255) >>> 0 | 0;
-    g2 = (rgb2 >>> 8 & 255) >>> 0 | 0;
-    b2 = (rgb2 & 255) >>> 0 | 0;
-    rmean = $c.div32(r1 + r2 | 0, 2);
-    r = r1 - r2 | 0;
-    g = g1 - g2 | 0;
-    b = b1 - b2 | 0;
+    const r1 = (rgb1 >>> 16 & 255) >>> 0;
+    const g1 = (rgb1 >>> 8 & 255) >>> 0;
+    const b1 = (rgb1 & 255) >>> 0;
+    const r2 = (rgb2 >>> 16 & 255) >>> 0;
+    const g2 = (rgb2 >>> 8 & 255) >>> 0;
+    const b2 = (rgb2 & 255) >>> 0;
+    const rmean = $c.div32(r1 + r2 | 0, 2);
+    const r = r1 - r2 | 0;
+    const g = g1 - g2 | 0;
+    const b = b1 - b2 | 0;
     return ((Math.imul(Math.imul(512 + rmean | 0, r), r) >> 8) + Math.imul(Math.imul(4, g), g) | 0) + (Math.imul(Math.imul(767 - rmean | 0, b), b) >> 8) | 0;
 }
 /**
@@ -700,10 +695,10 @@ export function color_distance(rgb1, rgb2) {   // coloratt.c:979
  * @returns {number} boolean
  */
 export function closest_color(lcolor, closecolor, clridx) {   // coloratt.c:997
-    let i = 0, color_index = 0, similar = 0, current = 0, retbool = 0;
-    color_index = -1;
-    similar = 2147483647;
-    retbool = FALSE;
+    let i = 0;
+    let color_index = -1;
+    let similar = 2147483647;
+    let retbool = FALSE;
     for (i = 0; i < 240; i = i + 1 | 0) {
         /* look for an exact match */
         if (lcolor === color_256_definitions[i].value) {
@@ -711,7 +706,7 @@ export function closest_color(lcolor, closecolor, clridx) {   // coloratt.c:997
             break;
         }
         /* find a close color match */
-        current = color_distance(lcolor, color_256_definitions[i].value);
+        const current = color_distance(lcolor, color_256_definitions[i].value);
         if (current < similar) {
             color_index = i;
             similar = current;
@@ -729,8 +724,7 @@ export function closest_color(lcolor, closecolor, clridx) {   // coloratt.c:997
  * @returns {number} uint32
  */
 export function get_nhcolor_from_256_index(idx) {   // coloratt.c:1024
-    let retcolor = 0;
-    retcolor = NO_COLOR | NH_BASIC_COLOR;
+    let retcolor = NO_COLOR | NH_BASIC_COLOR;
     if (idx >= 0 && idx < 240) {
         retcolor = color_256_definitions[idx].value;
     }

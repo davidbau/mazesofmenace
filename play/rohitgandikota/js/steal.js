@@ -186,7 +186,7 @@ export async function remove_worn_item(obj, unchain_ball) {
             unpunish();
     } else if (obj.owornmask) {
         /* catchall */
-        setnotworn(obj);
+        await setnotworn(obj);
     }
     /* if (obj->where == OBJ_DELETED) debugpline1("remove_worn_item() \"%s\" deleted!", ...) */
     obj.in_use = oldinuse;
@@ -480,7 +480,7 @@ export async function steal(mtmp, objnambuf = null) {
         mtmp.mavenge = 1;
     if (otmp.unpaid)
         subfrombill(otmp, shop_keeper(u.ushops?.[0]));
-    freeinv(otmp);
+    await freeinv(otmp);
     if (game.iflags.last_msg === PLNMSG_MON_TAKES_OFF_ITEM
         && mtmp.data.mlet === MONSYMS.S_NYMPH)
         named++;
@@ -546,7 +546,7 @@ export async function stealamulet(mtmp) {
     if (otmp.unpaid)
         subfrombill(otmp, shop_keeper((game.u.ushops || '').charCodeAt(0)));
 
-    freeinv(otmp);
+    await freeinv(otmp);
     const stolenName = doname(otmp);
     await mpickobj(mtmp, otmp);
     await pline(`${Some_Monnam(mtmp)} steals ${stolenName}!`);
@@ -579,7 +579,7 @@ export async function maybe_absorb_item(mon, obj, ochance, achance) {
                 hand_s = makeplural(hand_s);
             await pline(`${upstart(yname(obj))} ${otense(obj, 'are')} pulled from your ${hand_s}!`);
         }
-        freeinv(obj);
+        await freeinv(obj);
         await encumber_msg();
     } else if (canspotmon(mon)) {
         await pline(`${Monnam(mon)} absorbs ${yname(obj)}!`);
@@ -614,7 +614,7 @@ export async function mdrop_obj(mon, obj, verbosely) {
     /* src/steal.c — flooreffects(obj, x, y, "fall") consumes the object when
        it lands in water, lava or a pit; only place it when it survived */
     if (!await flooreffects(obj, omx, omy, 'fall')) {
-        place_object(obj, omx, omy);
+        await place_object(obj, omx, omy);
         stackobj(obj);
     }
 
@@ -629,20 +629,18 @@ export async function mdrop_obj(mon, obj, verbosely) {
 // (or, off the map, relocates) the unique objects it carries.  The DRAW is
 // obj_resists(obj, 0, 0): one rn2(100) per ordinary object even though a 0%
 // chance can never pass.
-export async function mdrop_special_objs(mon) {
-    /* C caches obj->nobj before the body because the drop unlinks obj;
-       walking a snapshot of the chain is the same traversal. */
-    for (const obj of [...(mon.minvent || [])]) {
-        /* the Amulet, invocation tools, and Rider corpses resist even when
-           artifacts and ordinary objects are given 0% resistance chance;
-           current role's quest artifact is rescued too--quest artifacts
-           for the other roles are not */
-        if (obj_resists(obj, 0, 0) || is_quest_artifact(obj)) {
-            if (mon.mx) {
-                await mdrop_obj(mon, obj, false);
-            } else { /* migrating monster not on map */
-                await extract_from_minvent(mon, obj, true, true);
-                await rloco(obj);
+export function mdrop_special_objs(mon) {
+    const inventory = [...(mon.minvent || [])];
+    let index = 0;
+    return dropNext();
+
+    function dropNext() {
+        for (; index < inventory.length; index++) {
+            const obj = inventory[index];
+            if (obj_resists(obj, 0, 0) || is_quest_artifact(obj)) {
+                const dropped = mon.mx ? mdrop_obj(mon, obj, false)
+                    : extract_from_minvent(mon, obj, true, true).then(() => rloco(obj));
+                return dropped.then(() => { ++index; return dropNext(); });
             }
         }
     }

@@ -1246,7 +1246,7 @@ async function really_kick_object(x, y) {
                 game.kickedobj.no_charge = 0;
         }
         if (!(await flooreffects(game.kickedobj, game.u.ux, game.u.uy, 'fall'))) {
-            place_object(game.kickedobj, game.u.ux, game.u.uy);
+            await place_object(game.kickedobj, game.u.ux, game.u.uy);
             impact_disturbs_zombies(game.kickedobj, true);
             stackobj(game.kickedobj);
             newsym(game.u.ux, game.u.uy);
@@ -1379,7 +1379,7 @@ async function really_kick_object(x, y) {
             && (gtg = contained_gold(game.kickedobj, true)) > 0)
             await donate_gold(gtg, shkp, false);
     }
-    place_object(game.kickedobj, game.bhitpos.x, game.bhitpos.y);
+    await place_object(game.kickedobj, game.bhitpos.x, game.bhitpos.y);
     impact_disturbs_zombies(game.kickedobj, true);
     stackobj(game.kickedobj);
     newsym(game.kickedobj.ox, game.kickedobj.oy);
@@ -2342,7 +2342,7 @@ export async function obj_delivery(near_hero) {
         otmp.omigr_from_dnum = 0;
         otmp.omigr_from_dlevel = 0;
         if (nx > 0) {
-            place_object(otmp, nx, ny);
+            await place_object(otmp, nx, ny);
             if (!nobreak && !IS_SOFT(game.level.at(nx, ny).typ)) {
                 const { breaks, breaktest } = await import('./dothrow.js');
                 if (where === MIGR_WITH_HERO) {

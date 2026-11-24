@@ -220,7 +220,7 @@ export async function drop_throw(obj, ohit, x, y) {
         if (!broken) {
             let mtmp = m_at(x, y);
             if (!(broken = await flooreffects(obj, x, y, 'fall'))) {
-                place_object(obj, x, y);
+                await place_object(obj, x, y);
                 if (!mtmp && u_at(x, y))
                     mtmp = game.youmonst;
                 if (mtmp && ohit)
@@ -860,7 +860,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                         newsym(x, y);
                     return;
                 }
-                place_object(otmp, x, y);
+                await place_object(otmp, x, y);
                 stackobj(otmp);
             }
             if (!Deaf() && !Underwater()) {

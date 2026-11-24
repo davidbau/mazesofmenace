@@ -1,4 +1,5 @@
 // dothrow.js — C ref: dothrow.c.
+import { nh_qsort } from './nhsort.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
 import { acurr, change_luck, exercise } from './attrib.js';
@@ -198,7 +199,7 @@ export async function dothrow() {
         }
         /* C qsort over the whole list; ties keep C's relative order, which for
          * distinct invlets cannot arise. */
-        _sorted.sort((a, b) => a.key - b.key);
+        nh_qsort(_sorted, (a, b) => a.key - b.key); /* C invent.c:1861 sortloot(SORTLOOT_INVLET) */
         for (const ent of _sorted) {
             const o = ent.o;
             if (_throw_ok_obj(o) !== 'suggest') {

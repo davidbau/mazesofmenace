@@ -116,8 +116,8 @@ export async function soko11_level() {
     des.trap('hole', 22, 1);
     des.trap('hole', 23, 1);
 
-    des.monster({ id: 'giant mimic', appear_as: 'obj:boulder' });
-    des.monster({ id: 'giant mimic', appear_as: 'obj:boulder' });
+    await des.monster({ id: 'giant mimic', appear_as: 'obj:boulder' });
+    await des.monster({ id: 'giant mimic', appear_as: 'obj:boulder' });
 
     /* Random objects */
     des.object({ class: '%' });

@@ -71,7 +71,7 @@ export function get_default_configfile() {   // cfgfiles.c:149
  * @returns {Promise<number>} int
  */
 export async function do_write_config_file() {   // cfgfiles.c:169
-    let fp = null, tmp = new Int8Array(256), len = 0, wrote = 0, buf = new $T.strbuf();
+    let tmp = new Int8Array(256), buf = new $T.strbuf();
     if (!configfile[0]) {
         await pline($c.lit("Strange, could not figure out config file name."));
         return ECMD.OK;
@@ -88,12 +88,12 @@ export async function do_write_config_file() {   // cfgfiles.c:169
     if (!await paranoid_query(TRUE, new $c.Ptr(tmp, 0))) {
         return ECMD.OK;
     }
-    fp = $c.fopen(new $c.Ptr(configfile, 0), $c.lit("w"));
+    const fp = $c.fopen(new $c.Ptr(configfile, 0), $c.lit("w"));
     if (fp) {
         strbuf_init(buf);
         await all_options_strbuf(buf);
-        len = $c.strlen(buf.str);
-        wrote = $c.fwrite(buf.str, 1, len, fp);
+        const len = $c.strlen(buf.str);
+        const wrote = $c.fwrite(buf.str, 1, len, fp);
         $c.fclose(fp);
         strbuf_empty(buf);
         if (wrote !== len) {
@@ -270,7 +270,7 @@ async function get_uchars(bufp, list, modlist, size, name) {   // cfgfiles.c:381
                 case 56:
                 case 57:
                     havenum = TRUE;
-                    num = (Math.imul(num, 10) >>> 0) + ((bufp.get(0) - 48 | 0) >>> 0) >>> 0;
+                    num = (Math.imul(num, 10) >>> 0) + (bufp.get(0) - 48 >>> 0) >>> 0;
                     bufp = bufp.add(1);
                     break;
                 case 92:
@@ -296,10 +296,9 @@ async function get_uchars(bufp, list, modlist, size, name) {   // cfgfiles.c:381
  * @returns {$c.Ptr | null} char *
  */
 function choose_random_part(str, sep) {   // cfgfiles.c:464
-    let nsep = 0, csep = 0, len = 0, begin = null;
-    nsep = 1;
-    len = 0;
-    begin = str;
+    let nsep = 1;
+    let len = 0;
+    let begin = str;
     if (!str) {
         return null;
     }
@@ -309,7 +308,7 @@ function choose_random_part(str, sep) {   // cfgfiles.c:464
         }
         str = str.add(1);
     }
-    csep = rn2(nsep);
+    let csep = rn2(nsep);
     str = begin;
     while (csep > 0 && str.get(0)) {
         str = str.add(1);
@@ -351,17 +350,17 @@ function free_config_sections() {   // cfgfiles.c:507
  * @returns {$c.Ptr | null} char *
  */
 function is_config_section(str) {   // cfgfiles.c:523
-    let a = null, c = null, z = null, $t1;
+    let c = null, $t1;
     /* trailing spaces are stripped, ']' too iff result is good */
     /* remove any spaces at start and end; won't significantly interfere
        with echoing the string in a config error message, if warranted */
-    a = trimspaces(str);
+    let a = trimspaces(str);
     /* first character should be open square bracket; set pointer past it */
     if (($t1 = a, a = $t1.add(1), $t1).get(0) !== 91) {
         return null;
     }
     /* last character should be close bracket, ignoring any comment */
-    z = $c.strchr(a, 93);
+    const z = $c.strchr(a, 93);
     if (!z) {
         return null;
     }
@@ -384,8 +383,8 @@ function is_config_section(str) {   // cfgfiles.c:523
  * @returns {Promise<number>} boolean
  */
 async function handle_config_section(buf) {   // cfgfiles.c:552
-    let sect = null, save_plnmsg = 0, save_plnmsg$2 = 0, $t1;
-    sect = is_config_section(buf);
+    let $t1;
+    const sect = is_config_section(buf);
     if (sect) {
         if (gc.config_section_current) {
             $c.free(gc.config_section_current), gc.config_section_current = null;
@@ -400,7 +399,7 @@ async function handle_config_section(buf) {   // cfgfiles.c:552
             $t1 = await dupstr(sect), gc.config_section_current = $t1;
             do {
                 if (debugcore($c.lit("cfgfiles.c"), TRUE)) {
-                    save_plnmsg = iflags.last_msg;
+                    const save_plnmsg = iflags.last_msg;
                     await pline($c.lit("set config section: '%s'"), gc.config_section_current);
                     iflags.last_msg = save_plnmsg;
                 }
@@ -410,7 +409,7 @@ async function handle_config_section(buf) {   // cfgfiles.c:552
             free_config_sections();
             do {
                 if (debugcore($c.lit("cfgfiles.c"), TRUE)) {
-                    save_plnmsg$2 = iflags.last_msg;
+                    const save_plnmsg$2 = iflags.last_msg;
                     await pline($c.lit("unset config section"));
                     iflags.last_msg = save_plnmsg$2;
                 }
@@ -434,9 +433,8 @@ async function handle_config_section(buf) {   // cfgfiles.c:552
  * @returns {$c.Ptr | null} char *
  */
 function find_optparam(buf) {   // cfgfiles.c:588
-    let bufp = null, altp = null;
-    bufp = $c.strchr(buf, 61);
-    altp = $c.strchr(buf, 58);
+    let bufp = $c.strchr(buf, 61);
+    const altp = $c.strchr(buf, 58);
     if (!bufp || altp && $c.pcmp(altp, bufp) < 0) {
         bufp = altp;
     }
@@ -447,8 +445,7 @@ function find_optparam(buf) {   // cfgfiles.c:588
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_OPTIONS(origbuf) {   // cfgfiles.c:603
-    let bufp = null;
-    bufp = find_optparam(origbuf);
+    let bufp = find_optparam(origbuf);
     bufp = bufp.add(1);   /* skip '='; parseoptions() handles spaces */
     return await parseoptions(bufp, TRUE, TRUE);
 }
@@ -701,10 +698,9 @@ async function cnf_line_GENERICUSERS(bufp) {   // cfgfiles.c:865
  * @returns {number} boolean
  */
 function cnf_line_BONES_POOLS(bufp) {   // cfgfiles.c:874
-    let n = 0;
     /* max value of 10 guarantees (N % bones.pools) will be one digit
        so we don't lose control of the length of bones file names */
-    n = $c.atoi(bufp);
+    const n = $c.atoi(bufp);
     sysopt.bones_pools = n <= 0 ? 0 : n < 10 ? n : 10;
     /* note: right now bones_pools==0 is the same as bones_pools==1,
        but we could change that and make bones_pools==0 become an
@@ -740,8 +736,7 @@ async function cnf_line_RECOVER(bufp) {   // cfgfiles.c:897
  * @returns {number} boolean
  */
 function cnf_line_CHECK_SAVE_UID(bufp) {   // cfgfiles.c:906
-    let n = 0;
-    n = $c.atoi(bufp);
+    const n = $c.atoi(bufp);
     sysopt.check_save_uid = n;
     return TRUE;
 }
@@ -750,8 +745,7 @@ function cnf_line_CHECK_SAVE_UID(bufp) {   // cfgfiles.c:906
  * @returns {number} boolean
  */
 function cnf_line_CHECK_PLNAME(bufp) {   // cfgfiles.c:915
-    let n = 0;
-    n = $c.atoi(bufp);
+    const n = $c.atoi(bufp);
     sysopt.check_plname = n;
     return TRUE;
 }
@@ -760,10 +754,9 @@ function cnf_line_CHECK_PLNAME(bufp) {   // cfgfiles.c:915
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_SEDUCE(bufp) {   // cfgfiles.c:924
-    let n = 0, src = 0, in_sysconf = 0;
-    n = !!$c.atoi(bufp) ? 1 : 0;   /* XXX this could be tighter */
-    src = iflags.parse_config_file_src;
-    in_sysconf = $c.i8(src === set_in_sysconf ? 1 : 0);
+    let n = !!$c.atoi(bufp) ? 1 : 0;   /* XXX this could be tighter */
+    const src = iflags.parse_config_file_src;
+    const in_sysconf = src === set_in_sysconf ? 1 : 0;
     /* allow anyone to disable it but can only enable it in sysconf
        or as a no-op for the user when sysconf hasn't disabled it */
     if (!in_sysconf && !sysopt.seduce && n !== 0) {
@@ -779,8 +772,7 @@ async function cnf_line_SEDUCE(bufp) {   // cfgfiles.c:924
  * @returns {number} boolean
  */
 function cnf_line_HIDEUSAGE(bufp) {   // cfgfiles.c:946
-    let n = 0;
-    n = !!$c.atoi(bufp) ? 1 : 0;
+    const n = !!$c.atoi(bufp) ? 1 : 0;
     sysopt.hideusage = n;
     return TRUE;
 }
@@ -789,8 +781,7 @@ function cnf_line_HIDEUSAGE(bufp) {   // cfgfiles.c:946
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_MAXPLAYERS(bufp) {   // cfgfiles.c:955
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     /* XXX to get more than 25, need to rewrite all lock code */
     if (n < 0 || n > 25) {
         await config_error_add($c.lit("Illegal value in MAXPLAYERS (maximum is 25)"));
@@ -804,8 +795,7 @@ async function cnf_line_MAXPLAYERS(bufp) {   // cfgfiles.c:955
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_PERSMAX(bufp) {   // cfgfiles.c:969
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     if (n < 1) {
         await config_error_add($c.lit("Illegal value in PERSMAX (minimum is 1)"));
         n = 0;
@@ -818,8 +808,7 @@ async function cnf_line_PERSMAX(bufp) {   // cfgfiles.c:969
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_PERS_IS_UID(bufp) {   // cfgfiles.c:982
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     if (n !== 0 && n !== 1) {
         await config_error_add($c.lit("Illegal value in PERS_IS_UID (must be 0 or 1)"));
         n = 0;
@@ -832,8 +821,7 @@ async function cnf_line_PERS_IS_UID(bufp) {   // cfgfiles.c:982
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_ENTRYMAX(bufp) {   // cfgfiles.c:995
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     if (n < 10) {
         await config_error_add($c.lit("Illegal value in ENTRYMAX (minimum is 10)"));
         n = 10;
@@ -846,8 +834,7 @@ async function cnf_line_ENTRYMAX(bufp) {   // cfgfiles.c:995
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_POINTSMIN(bufp) {   // cfgfiles.c:1008
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     if (n < 1) {
         await config_error_add($c.lit("Illegal value in POINTSMIN (minimum is 1)"));
         n = 100;
@@ -860,8 +847,7 @@ async function cnf_line_POINTSMIN(bufp) {   // cfgfiles.c:1008
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_MAX_STATUENAME_RANK(bufp) {   // cfgfiles.c:1021
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     if (n < 1) {
         await config_error_add($c.lit("Illegal value in MAX_STATUENAME_RANK (minimum is 1)"));
         n = 10;
@@ -874,11 +860,10 @@ async function cnf_line_MAX_STATUENAME_RANK(bufp) {   // cfgfiles.c:1021
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_LIVELOG(bufp) {   // cfgfiles.c:1035
-    let L = 0;
     /* using 0 for base accepts "dddd" as decimal provided that first 'd'
        isn't '0', "0xhhhh" as hexadecimal, and "0oooo" as octal; ignores
        any trailing junk, including '8' or '9' for leading '0' octal */
-    L = $c.strtol(bufp, null, 0);
+    const L = $c.strtol(bufp, null, 0);
     if (L < 0 || L > 65535) {
         await config_error_add($c.lit("Illegal value for LIVELOG (must be between 0 and 0xFFFF)."));
         return 0;
@@ -891,8 +876,7 @@ async function cnf_line_LIVELOG(bufp) {   // cfgfiles.c:1035
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_PANICTRACE_LIBC(bufp) {   // cfgfiles.c:1052
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     if (n < 0 || n > 2) {
         await config_error_add($c.lit("Illegal value in PANICTRACE_LIBC (not 0,1,2)"));
         n = 0;
@@ -905,8 +889,7 @@ async function cnf_line_PANICTRACE_LIBC(bufp) {   // cfgfiles.c:1052
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_PANICTRACE_GDB(bufp) {   // cfgfiles.c:1067
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     if (n < 0 || n > 2) {
         await config_error_add($c.lit("Illegal value in PANICTRACE_GDB (not 0,1,2)"));
         n = 0;
@@ -963,8 +946,7 @@ async function cnf_line_CRASHREPORTURL(bufp) {   // cfgfiles.c:1112
  * @returns {Promise<number>} boolean
  */
 async function cnf_line_ACCESSIBILITY(bufp) {   // cfgfiles.c:1121
-    let n = 0;
-    n = $c.atoi(bufp);
+    let n = $c.atoi(bufp);
     if (n < 0 || n > 1) {
         await config_error_add($c.lit("Illegal value in ACCESSIBILITY (not 0,1)"));
         n = 0;
@@ -1087,9 +1069,9 @@ function cnf_line_QT_COMPACT(bufp) {   // cfgfiles.c:1281
  * @returns {Promise<number>} boolean
  */
 export async function parse_config_line(origbuf) {   // cfgfiles.c:1389
-    let src = 0, in_sysconf = 0, bufp = null, buf = new Int8Array(1024), i = 0, parm = null;
-    src = iflags.parse_config_file_src;
-    in_sysconf = $c.i8(src === set_in_sysconf ? 1 : 0);
+    let buf = new Int8Array(1024), i = 0;
+    const src = iflags.parse_config_file_src;
+    const in_sysconf = src === set_in_sysconf ? 1 : 0;
     while (origbuf.get(0) === 32 || origbuf.get(0) === 9) {   /* skip leading whitespace */
         origbuf = origbuf.add(1);   /* (caller probably already did this) */
     }
@@ -1100,7 +1082,7 @@ export async function parse_config_line(origbuf) {   // cfgfiles.c:1389
        but spaces, one of them will be kept even though it leads/trails) */
     mungspaces(new $c.Ptr(buf, 0));
     /* find the '=' or ':' */
-    bufp = find_optparam(new $c.Ptr(buf, 0));
+    let bufp = find_optparam(new $c.Ptr(buf, 0));
     if (!bufp) {
         if (!ignore_statement_errors) {
             await config_error_add($c.lit("Not a config statement, missing '='"));
@@ -1117,7 +1099,7 @@ export async function parse_config_line(origbuf) {   // cfgfiles.c:1389
             continue;
         }
         if (match_optname(new $c.Ptr(buf, 0), config_line_stmt[i].name, config_line_stmt[i].len, TRUE)) {
-            parm = config_line_stmt[i].origbuf ? origbuf : bufp;
+            const parm = config_line_stmt[i].origbuf ? origbuf : bufp;
             if (!disregarded_config_lines[i]) {
                 return await config_line_stmt[i].fn(parm);
             }
@@ -1158,8 +1140,7 @@ export async function config_error_init(from_file, sourcename, secure) {   // cf
  * @returns {number} boolean
  */
 function config_error_nextline(line) {   // cfgfiles.c:1493
-    let ced = null;
-    ced = config_error_data;
+    const ced = config_error_data;
     if (!ced) {
         return FALSE;
     }
@@ -1181,9 +1162,9 @@ function config_error_nextline(line) {   // cfgfiles.c:1493
  * @returns {Promise<number>} int
  */
 export async function l_get_config_errors(L) {   // cfgfiles.c:1516
-    let dat = null, tmp = null, idx = 0, $t1;
-    dat = config_error_msg;
-    idx = 1;
+    let $t1;
+    let dat = config_error_msg;
+    let idx = 1;
     await lua_newtable(L);
     while (dat) {
         lua_pushinteger(L, ($t1 = idx, idx = $t1 + 1 | 0, $t1));
@@ -1191,7 +1172,7 @@ export async function l_get_config_errors(L) {   // cfgfiles.c:1516
         await nhl_add_table_entry_int(L, $c.lit("line"), dat.line_num);
         await nhl_add_table_entry_str(L, $c.lit("error"), dat.errormsg);
         await lua_settable(L, -3);
-        tmp = dat.next;
+        const tmp = dat.next;
         $c.free(dat.errormsg);
         dat.errormsg = null;
         $c.free(dat);
@@ -1207,13 +1188,13 @@ export async function l_get_config_errors(L) {   // cfgfiles.c:1516
  * @returns {Promise<void>}
  */
 export async function config_erradd(buf) {   // cfgfiles.c:1544
-    let lineno = new Int8Array(128), punct = null, dat = null, $t1;
+    let lineno = new Int8Array(128), dat = null, $t1;
     if (!buf || !buf.get(0)) {
         buf = $c.lit("Unknown error");
     }
     /* if buf[] doesn't end in a period, exclamation point, or question mark,
        we'll include a period (in the message, not appended to buf[]) */
-    punct = c_eos(buf).add(-1);   /* eos(buf)-1 is valid */
+    let punct = c_eos(buf).add(-1);   /* eos(buf)-1 is valid */
     punct = $c.strchr($c.lit(".!?"), punct.get(0)) ? $c.lit("") : $c.lit(".");
     if (!program_state.config_error_ready) {
         /* either very early, where pline() will use raw_print(), or
@@ -1246,12 +1227,11 @@ export async function config_erradd(buf) {   // cfgfiles.c:1544
  * @returns {Promise<number>} int
  */
 export async function config_error_done() {   // cfgfiles.c:1592
-    let n = 0, tmp = null, cmdline = 0;
-    tmp = config_error_data;
+    const tmp = config_error_data;
     if (!config_error_data) {
         return 0;
     }
-    n = config_error_data.num_errors;
+    let n = config_error_data.num_errors;
     if (gn.no_sound_notified > 0) {
         /* no USER_SOUNDS; config_error_add() was called once for first
            SOUND or SOUNDDIR entry seen, then skipped for any others;
@@ -1260,7 +1240,7 @@ export async function config_error_done() {   // cfgfiles.c:1592
         gn.no_sound_notified = 0;
     }
     if (n) {
-        cmdline = $c.i8(!$c.strcmp(new $c.Ptr(config_error_data.source, 0), $c.lit("command line")) ? 1 : 0);
+        const cmdline = !$c.strcmp(new $c.Ptr(config_error_data.source, 0), $c.lit("command line")) ? 1 : 0;
         await pline($c.lit("\n%d error%s %s %s.\n"), n, plur(n), cmdline ? $c.lit("on") : $c.lit("in"), new $c.Ptr(config_error_data.source, 0).get(0) ? new $c.Ptr(config_error_data.source, 0) : new $c.Ptr(configfile, 0));
         await wait_synch()();
     }
@@ -1275,8 +1255,8 @@ export async function config_error_done() {   // cfgfiles.c:1592
  * @returns {Promise<number>} boolean
  */
 export async function read_config_file(filename, src) {   // cfgfiles.c:1624
-    let fp = null, rv = 0;
-    rv = TRUE;
+    let fp = null;
+    let rv = TRUE;
     if (!(fp = await fopen_config_file(filename, src))) {
         return FALSE;
     }
@@ -1335,7 +1315,7 @@ function cnf_parser_done(parser) {   // cfgfiles.c:1677
  * @returns {Promise<void>}
  */
 async function parse_conf_buf(p, proc) {   // cfgfiles.c:1693
-    let tmpbuf = null, len = 0, ignoreline = 0, oldline = 0, section = null, bufp = null, $t1, $t2, $t3, $t4, $t5, $t6;
+    let $t1, $t2, $t3, $t4, $t5, $t6;
     p.cont = FALSE;
     p.pbreak = FALSE;
     $t1 = $c.strchr(p.inbuf, 10), p.ep = $t1;
@@ -1359,11 +1339,11 @@ async function parse_conf_buf(p, proc) {   // cfgfiles.c:1693
             p.ep.set(0, 0);   /* remove newline */
         }
         if (p.ep) {
-            tmpbuf = null;
-            ignoreline = FALSE;
-            oldline = FALSE;
+            let tmpbuf = null;
+            let ignoreline = FALSE;
+            let oldline = FALSE;
             /* line continuation (trailing '\') */
-            $t3 = $c.i8($c.pcmp(p.ep = p.ep.add(-1), p.inbuf) >= 0 && p.ep.get(0) === 92 ? 1 : 0), p.morelines = $t3;
+            $t3 = $c.pcmp(p.ep = p.ep.add(-1), p.inbuf) >= 0 && p.ep.get(0) === 92 ? 1 : 0, p.morelines = $t3;
             if (p.morelines) {
                 p.ep.set(0, 0);
             }
@@ -1392,7 +1372,7 @@ async function parse_conf_buf(p, proc) {   // cfgfiles.c:1693
             }
             /* merge now read line with previous ones, if necessary */
             if (!ignoreline) {
-                len = $c.i32($c.strlen(p.ep)) + 1 | 0;   /* +1: final '\0' */
+                let len = $c.i32($c.strlen(p.ep)) + 1 | 0;   /* +1: final '\0' */
                 if (p.buf) {
                     len = len + ($c.i32($c.strlen(p.buf)) + 1 | 0) | 0;   /* +1: space */
                 }
@@ -1416,7 +1396,7 @@ async function parse_conf_buf(p, proc) {   // cfgfiles.c:1693
             }
             /* from here onwards, we'll handle buf only */
             if (match_optname(p.buf, $c.lit("CHOOSE"), 6, TRUE)) {
-                bufp = find_optparam(p.buf);
+                let bufp = find_optparam(p.buf);
                 if (!bufp) {
                     await config_error_add($c.lit("Format is CHOOSE=section1,section2,..."));
                     p.rv = FALSE;
@@ -1427,7 +1407,7 @@ async function parse_conf_buf(p, proc) {   // cfgfiles.c:1693
                 if (gc.config_section_chosen) {
                     $c.free(gc.config_section_chosen), gc.config_section_chosen = null;
                 }
-                section = choose_random_part(bufp, 44);
+                const section = choose_random_part(bufp, 44);
                 if (section) {
                     $t6 = await dupstr(section), gc.config_section_chosen = $t6;
                 } else {
@@ -1450,12 +1430,12 @@ async function parse_conf_buf(p, proc) {   // cfgfiles.c:1693
  * @returns {Promise<number>} boolean
  */
 export async function parse_conf_str(str, proc) {   // cfgfiles.c:1810
-    let len = 0, parser = new $T._cnf_parser_state();
+    let parser = new $T._cnf_parser_state();
     await cnf_parser_init(parser);
     free_config_sections();
     await config_error_init(FALSE, $c.lit("parse_conf_str"), FALSE);
     while (str && str.get(0)) {
-        len = 0;
+        let len = 0;
         while (str.get(0) && len < parser.inbufsz - 1 >>> 0) {
             parser.inbuf.set($c.idx(len), str.get(0));
             len = $c.addu64(len, 1);
@@ -1515,9 +1495,9 @@ export async function config_error_add(str, ...$va) {   // cfgfiles.c:1865
  * @returns {Promise<void>}
  */
 async function vconfig_error_add(str, the_args) {   // cfgfiles.c:1875
-    let vlen = 0, buf = new Int8Array(1280);
+    let buf = new Int8Array(1280);
     /* start of vconf...() or of nested block in USE_OLDARG's conf...() */
-    vlen = 0;
+    let vlen = 0;
     /* will be chopped down to BUFSZ-1 if longer */
     vlen = $c.vsnprintf(new $c.Ptr(buf, 0), 1280, str, the_args);
     nhUse(vlen);
@@ -1528,13 +1508,13 @@ async function vconfig_error_add(str, the_args) {   // cfgfiles.c:1875
  * @returns {Promise<void>}
  */
 export async function rcfile() {   // cfgfiles.c:1894
-    let opts = null, xtraopts = null, envname = null, namesrc = null, nameval = null;
-    opts = null;
-    xtraopts = null;
+    let namesrc = null, nameval = null;
+    let opts = null;
+    let xtraopts = null;
     go.opt_phase = environ_opt;
     /* getenv() instead of nhgetenv(): let total length of options be long;
        parseoptions() will check each individually */
-    envname = $c.lit("NETHACKOPTIONS");
+    let envname = $c.lit("NETHACKOPTIONS");
     opts = $c.getenv(envname);
     if (!opts) {
         /* fall back to original name; discouraged */
@@ -1572,7 +1552,7 @@ export async function rcfile() {   // cfgfiles.c:1894
         await config_error_done();
         nameval = namesrc = null;   /* revert to default nethackrc */
     }
-    await config_error_init(TRUE, nameval, $c.i8(nameval ? TRUE : FALSE));
+    await config_error_init(TRUE, nameval, nameval ? TRUE : FALSE);
     await read_config_file(nameval, set_in_config);
     await config_error_done();
     if (xtraopts) {
@@ -1654,7 +1634,6 @@ export function config_unmatched_ignored() {   // cfgfiles.c:2020
  * @returns {Promise<void>}
  */
 export async function assure_syscf_file() {   // cfgfiles.c:2031
-    let fd = 0;
     /* We are checking that the sysconf exists ... lock the path */
     /*
      * All we really care about is the end result - can we read the file?
@@ -1665,7 +1644,7 @@ export async function assure_syscf_file() {   // cfgfiles.c:2031
      * Some ports don't like open()'s optional third argument;
      * VMS overrides open() usage with a macro which requires it.
      */
-    fd = $c.open($c.lit("sysconf"), 0);
+    const fd = $c.open($c.lit("sysconf"), 0);
     /* VMS */
     /* VMS */
     if (fd >= 0) {

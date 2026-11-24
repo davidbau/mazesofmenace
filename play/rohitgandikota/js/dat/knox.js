@@ -149,35 +149,35 @@ export async function knox_level() {
     des.door('closed', 4, 3);
     des.door('closed', 4, 9);
     /* Soldiers guarding the fort */
-    des.monster('soldier', 12, 14);
-    des.monster('soldier', 12, 13);
-    des.monster('soldier', 11, 10);
-    des.monster('soldier', 13, 2);
-    des.monster('soldier', 14, 3);
-    des.monster('soldier', 20, 2);
-    des.monster('soldier', 30, 2);
-    des.monster('soldier', 40, 2);
-    des.monster('soldier', 30, 16);
-    des.monster('soldier', 32, 16);
-    des.monster('soldier', 40, 16);
-    des.monster('soldier', 54, 16);
-    des.monster('soldier', 54, 14);
-    des.monster('soldier', 54, 13);
-    des.monster('soldier', 57, 10);
-    des.monster('soldier', 57, 9);
-    des.monster('lieutenant', 15, 8);
+    await des.monster('soldier', 12, 14);
+    await des.monster('soldier', 12, 13);
+    await des.monster('soldier', 11, 10);
+    await des.monster('soldier', 13, 2);
+    await des.monster('soldier', 14, 3);
+    await des.monster('soldier', 20, 2);
+    await des.monster('soldier', 30, 2);
+    await des.monster('soldier', 40, 2);
+    await des.monster('soldier', 30, 16);
+    await des.monster('soldier', 32, 16);
+    await des.monster('soldier', 40, 16);
+    await des.monster('soldier', 54, 16);
+    await des.monster('soldier', 54, 14);
+    await des.monster('soldier', 54, 13);
+    await des.monster('soldier', 57, 10);
+    await des.monster('soldier', 57, 9);
+    await des.monster('lieutenant', 15, 8);
     /* Possible source of a boulder */
-    des.monster('stone giant', 3, 1);
+    await des.monster('stone giant', 3, 1);
     /* Four dragons guarding each side */
-    des.monster('D', 18, 9);
-    des.monster('D', 49, 10);
-    des.monster('D', 33, 5);
-    des.monster('D', 33, 14);
+    await des.monster('D', 18, 9);
+    await des.monster('D', 49, 10);
+    await des.monster('D', 33, 5);
+    await des.monster('D', 33, 14);
     /* Eels in the moat */
-    des.monster('giant eel', 17, 8);
-    des.monster('giant eel', 17, 11);
-    des.monster('giant eel', 48, 8);
-    des.monster('giant eel', 48, 11);
+    await des.monster('giant eel', 17, 8);
+    await des.monster('giant eel', 17, 11);
+    await des.monster('giant eel', 48, 8);
+    await des.monster('giant eel', 48, 11);
     /* The corner rooms treasures */
     des.object('diamond', 19, 6);
     des.object('diamond', 20, 6);

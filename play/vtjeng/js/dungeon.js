@@ -77,7 +77,9 @@ import {
 import { SHTYPES } from './shtypes_data.js';
 // js/display.js imports update_lastseentyp() from this file. Both sides use
 // the other's exports only inside function bodies, so the cycle resolves.
-import { describe_level, map_location, see_nearby_objects } from './display.js';
+import {
+    canseemon, describe_level, map_location, see_nearby_objects,
+} from './display.js';
 import { hliquid } from './do_name.js';
 import { makeplural } from './fruit.js';
 import { switch_terrain } from './hack.js';
@@ -1063,14 +1065,40 @@ export function level_info(ledgerNumber, state = game) {
     const ledger = Math.trunc(ledgerNumber);
     // C does not check the ledger. A wished magic portal's destination,
     // ledger_no() of {-1, -1}, is jingle[0..1] - 1 (js/dungeon_table.js), so
-    // a tune of two or more notes gives 16000 or more and C reads past
-    // svl.level_info[MAXLINFO] into svr.rooms[]. That read is not modelled.
-    if (ledger < 0 || ledger > maxledgerno(state))
+    // a tune of two or more notes gives 16704 to 18246 and C reads and
+    // writes past svl.level_info[MAXLINFO].
+    if (ledger < 0 || (ledger >= MAXLINFO && !level_info_in_spare_subroom(ledger, state)))
         throw new RangeError(`level_info: ledger ${ledger} out of range`);
     state.svl ??= {};
     state.svl.level_info ??= [];
     state.svl.level_info[ledger] ??= { flags: 0 };
     return state.svl.level_info[ledger];
+}
+
+// C's MAXLINFO (hack.h 425).
+const MAXLINFO = MAXDUNGEON * MAXLEVEL;
+
+// Where svl.level_info[ledger] lands in the recorder's Linux build once the
+// ledger passes MAXLINFO. `nm` puts svl at 0x542bc8 and svr at 0x54d8d8, and
+// a program compiled against the recorder's headers gives
+// offsetof(svl, level_info) 42056, sizeof(struct linfo) 1 and
+// sizeof(struct mkroom) 224, so the byte is svr.rooms[] byte `ledger - 2248`.
+// svr.rooms[] holds MAXNROFROOMS + 1 = 41 rooms and then 41 subrooms
+// (mkroom.h, decl.h 1203).
+//
+// A subroom slot past gn.nsubroom holds zeros, which no room code reads, so
+// the flags byte there behaves like a level_info[] row of its own: zero until
+// goto_level() sets it. This answers whether the ledger lands in such a slot.
+// It tests the current level's gn.nsubroom; C keeps the bytes of an earlier
+// level's longer subroom list, which this does not model. Any other address
+// (svm, the rooms in use, or memory past svr) is not modelled, and a build
+// laid out differently, such as the judge's macOS one, reads other bytes.
+const levelInfoToRooms = 0x54d8d8 - (0x542bc8 + 42056);
+const sizeofMkroom = 224;
+const roomSlots = 41; // MAXNROFROOMS + 1
+function level_info_in_spare_subroom(ledger, state) {
+    const slot = Math.floor((ledger - levelInfoToRooms) / sizeofMkroom);
+    return slot > roomSlots + (state.nsubroom ?? 0) && slot < 2 * roomSlots;
 }
 
 export function maxledgerno(state = game) {
@@ -1864,8 +1892,6 @@ export function surface(x, y, state = game) {
         return 'ground';
 }
 
-// C ref: dungeon.c update_lastseentyp(). The caller supplies canseemon()
-// because dungeon topology does not own hero sensing.
 // C ref: svl.lastseentyp[COLNO][ROWNO], the terrain type the hero last saw at
 // each square. It is one game-wide grid, not part of the level structure:
 // init_mapseen() clears it for a newly made level, savelev() and getlev()
@@ -1886,19 +1912,15 @@ export function copy_lastseentyp_grid(grid) {
     return grid ? grid.map((column) => [...column]) : new_lastseentyp_grid();
 }
 
-export function update_lastseentyp(
-    x,
-    y,
-    state = game,
-    { canSeeMonster = () => false } = {},
-) {
+// C ref: dungeon.c update_lastseentyp() (2925-2938).
+export function update_lastseentyp(x, y, state = game) {
     const location = state.level?.at(x, y);
     if (!location) return STONE;
     let typ = surface_typ(location);
     const monster = state.level?.monsters?.[x]?.[y] ?? null;
     if (monster
         && (monster.m_ap_type & M_AP_TYPMASK) === M_AP_FURNITURE
-        && canSeeMonster(monster)) {
+        && canseemon(monster, state)) {
         typ = cmap_to_type(monster.mappearance);
     }
     lastseentyp_grid(state)[x][y] = typ;

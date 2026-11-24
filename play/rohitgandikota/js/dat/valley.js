@@ -173,19 +173,19 @@ export async function valley_level() {
 
     /* Random monsters. */
     for (let i = 0; i < 6; i++)
-        des.monster('ghost');
+        await des.monster('ghost');
     for (let i = 0; i < 3; i++)
-        des.monster('vampire bat');
-    des.monster('L');
-    des.monster('V');
-    des.monster('V');
-    des.monster('V');
-    des.monster('Z');
-    des.monster('Z');
-    des.monster('Z');
-    des.monster('Z');
-    des.monster('M');
-    des.monster('M');
-    des.monster('M');
-    des.monster('M');
+        await des.monster('vampire bat');
+    await des.monster('L');
+    await des.monster('V');
+    await des.monster('V');
+    await des.monster('V');
+    await des.monster('Z');
+    await des.monster('Z');
+    await des.monster('Z');
+    await des.monster('Z');
+    await des.monster('M');
+    await des.monster('M');
+    await des.monster('M');
+    await des.monster('M');
 }

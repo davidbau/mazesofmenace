@@ -21,8 +21,8 @@ import { decode_glyph } from './windows.js';
  * @returns {number} int
  */
 export function unicode_val(cp) {   // utf8map.c:18
-    let dp = null, cval = 0, dcount = 0;
-    cval = 0;
+    let dp = null, dcount = 0;
+    let cval = 0;
     if (cp && cp.get(0)) {
         cval = dcount = 0;
         if ((cp.get(0) === 85 || cp.get(0) === 117) && cp.get(1) === 43 && cp.get(2) && (dp = $c.strchr(new $c.Ptr(hexdd, 0), cp.get(2))) !== null) {
@@ -41,8 +41,8 @@ export function unicode_val(cp) {   // utf8map.c:18
  * @returns {Promise<number>} int
  */
 export async function set_map_u(gmap, utf32ch, utf8str) {   // utf8map.c:37
-    let tmpgm = null, $t1, $t2;
-    tmpgm = gmap;
+    let $t1, $t2;
+    const tmpgm = gmap;
     if (!tmpgm || !utf32ch) {
         return 0;
     }
@@ -88,15 +88,15 @@ export function free_all_glyphmap_u() {   // utf8map.c:59
  * @returns {$c.Ptr | null} char *
  */
 export function mixed_to_utf8(buf, bufsz, str, retflags) {   // utf8map.c:86
-    let put = null, glyphinfo = new $T.glyphinfo(), dcount = 0, so = 0, ggv = Int32Array.of(0), save_str = null, ucp = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10;
-    put = buf;
+    let glyphinfo = new $T.glyphinfo(), dcount = 0, ggv = Int32Array.of(0), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10;
+    let put = buf;
     glyphinfo.$copyFrom(nul_glyphinfo);
     if (!str) {
         return $c.strcpy(buf, $c.lit(""));
     }
     L1: while (str.get(0) && $c.pcmp(put, buf.add($c.idx(bufsz)).add(-1)) < 0) {
         if (str.get(0) === 92) {
-            save_str = ($t1 = str, str = $t1.add(1), $t1);
+            const save_str = ($t1 = str, str = $t1.add(1), $t1);
             switch (str.get(0)) {
                 case 71:
                     /* glyph value \GXXXXNNNN*/
@@ -104,7 +104,7 @@ export function mixed_to_utf8(buf, bufsz, str, retflags) {   // utf8map.c:86
                         str = str.add(dcount + 1 | 0);
                         map_glyphinfo(0, 0, ggv[0], 0, glyphinfo);
                         if (glyphinfo.gm.u && glyphinfo.gm.u.utf8str) {
-                            ucp = glyphinfo.gm.u.utf8str;
+                            let ucp = glyphinfo.gm.u.utf8str;
                             while (ucp.get(0) && $c.pcmp(put, buf.add($c.idx(bufsz)).add(-1)) < 0) {
                                 $t4 = $c.i8(($t3 = ucp, ucp = $t3.add(1), $t3).get(0)), $t5 = ($t2 = put, put = $t2.add(1), $t2), $t5.set(0, $t4);
                             }
@@ -112,7 +112,7 @@ export function mixed_to_utf8(buf, bufsz, str, retflags) {   // utf8map.c:86
                                 retflags.set(0, 1);
                             }
                         } else {
-                            so = glyphinfo.gm.sym.symidx;
+                            const so = glyphinfo.gm.sym.symidx;
                             ($t6 = put, put = $t6.add(1), $t6).set(0, $c.i8(gs.showsyms[so]));
                             if (retflags) {
                                 retflags.set(0, 0);
@@ -156,16 +156,16 @@ export function mixed_to_utf8(buf, bufsz, str, retflags) {   // utf8map.c:86
  * @returns {Promise<number>} int
  */
 export async function add_custom_urep_entry(customization_name, glyphidx, utf32ch, utf8str, which_set) {   // utf8map.c:148
-    let gdc = null, details = null, newdetails = null, $t1, $t2, $t3;
-    gdc = $c.relem(gs.sym_customizations[which_set], custom_ureps);
-    newdetails = null;
+    let $t1, $t2, $t3;
+    const gdc = gs.sym_customizations[which_set][custom_ureps];
+    let newdetails = null;
     if (!gdc.details) {
         $t1 = await dupstr(customization_name), gdc.customization_name = $t1;
         gdc.custtype = custom_ureps;
         gdc.details = null;
         gdc.details_end = null;
     }
-    details = find_matching_customization(customization_name, custom_ureps, which_set);   /* FIXME */
+    let details = find_matching_customization(customization_name, custom_ureps, which_set);   /* FIXME */
     if (details) {
         while (details) {
             if (details.content.urep.glyphidx === glyphidx) {

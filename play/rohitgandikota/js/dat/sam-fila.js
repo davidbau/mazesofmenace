@@ -38,16 +38,16 @@ export async function samfila_level() {
     des.object();
     des.object();
 
-    des.monster('d');
-    des.monster('wolf');
-    des.monster('wolf');
-    des.monster('wolf');
-    des.monster('wolf');
-    des.monster('wolf');
-    des.monster('stalker');
+    await des.monster('d');
+    await des.monster('wolf');
+    await des.monster('wolf');
+    await des.monster('wolf');
+    await des.monster('wolf');
+    await des.monster('wolf');
+    await des.monster('stalker');
 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 }

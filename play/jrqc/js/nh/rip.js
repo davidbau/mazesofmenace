@@ -37,9 +37,9 @@ const rip_txt = $c.nulls(16);
  * @param {$c.Ptr | null} text char *
  */
 function center(line, text) {   // rip.c:76
-    let ip = null, op = null, $t1, $t2, $t3, $t4;
-    ip = text;
-    op = gr.rip.get(line).add($c.idx($c.subu64(28, $c.shru64($c.addu64($c.strlen(text), 1), 1))));
+    let $t1, $t2, $t3, $t4;
+    let ip = text;
+    let op = gr.rip.get(line).add($c.idx($c.subu64(28, $c.shru64($c.addu64($c.strlen(text), 1), 1))));
     while (ip.get(0)) {
         $t3 = ($t2 = ip, ip = $t2.add(1), $t2).get(0), $t4 = ($t1 = op, op = $t1.add(1), $t1), $t4.set(0, $t3);
     }
@@ -51,7 +51,7 @@ function center(line, text) {   // rip.c:76
  * @returns {Promise<void>}
  */
 export async function genl_outrip(tmpwin, how, when) {   // rip.c:86
-    let dp = null, dpx = null, buf = new Int8Array(256), x = 0, line = 0, year = 0, cash = 0, tmpchar = 0, i = 0, i0 = 0, $t1, $t2;
+    let dp = null, dpx = null, buf = new Int8Array(256), x = 0, line = 0, i = 0, $t1, $t2;
     $t1 = dp = $c.asArr(await alloc(128), 'ptr'), gr.rip = $t1;
     for (x = 0; rip_txt[x]; x = x + 1 | 0) {
         $t2 = await dupstr(rip_txt[x]), dp.set(x, $t2);
@@ -61,7 +61,7 @@ export async function genl_outrip(tmpwin, how, when) {   // rip.c:86
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%.*s"), STONE_LINE_LEN, new $c.Ptr(svp.plname, 0));
     center(NAME_LINE, new $c.Ptr(buf, 0));
     /* Put $ on stone */
-    cash = gd.done_money > 0 ? gd.done_money : 0;
+    let cash = gd.done_money > 0 ? gd.done_money : 0;
     /* arbitrary upper limit; practical upper limit is quite a bit less */
     if (cash > 999999999) {
         cash = 999999999;
@@ -72,7 +72,7 @@ export async function genl_outrip(tmpwin, how, when) {   // rip.c:86
     await formatkiller(new $c.Ptr(buf, 0), 256, how, FALSE);
     /* Put death type on stone */
     for (line = DEATH_LINE, dpx = new $c.Ptr(buf, 0); line < YEAR_LINE; line = line + 1 | 0) {
-        i0 = $c.i32($c.strlen(dpx));
+        let i0 = $c.i32($c.strlen(dpx));
         if (i0 > STONE_LINE_LEN) {
             for (i = STONE_LINE_LEN; i > 0 && i0 > STONE_LINE_LEN; i = i - 1 | 0) {
                 if (dpx.get(i) === 32) {
@@ -83,7 +83,7 @@ export async function genl_outrip(tmpwin, how, when) {   // rip.c:86
                 i0 = STONE_LINE_LEN;
             }
         }
-        tmpchar = dpx.get(i0);
+        const tmpchar = dpx.get(i0);
         dpx.set(i0, 0);
         center(line, dpx);
         if (tmpchar !== 32) {
@@ -94,7 +94,7 @@ export async function genl_outrip(tmpwin, how, when) {   // rip.c:86
         }
     }
     /* Put year on stone */
-    year = $c.i32($c.rem64($c.div64(yyyymmdd(when), 10000), 10000));
+    const year = $c.i32($c.rem64($c.div64(yyyymmdd(when), 10000), 10000));
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%4d"), year);
     center(YEAR_LINE, new $c.Ptr(buf, 0));
     await putstr()(tmpwin, 0, $c.lit(""));

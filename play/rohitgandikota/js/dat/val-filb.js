@@ -40,19 +40,19 @@ export async function valfilb_level() {
     des.object();
     des.object();
 
-    des.monster('fire ant');
-    des.monster('fire ant');
-    des.monster('fire ant');
-    des.monster('a');
-    des.monster({ id: 'fire giant', peaceful: 0 });
-    des.monster({ id: 'fire giant', peaceful: 0 });
-    des.monster({ id: 'fire giant', peaceful: 0 });
+    await des.monster('fire ant');
+    await des.monster('fire ant');
+    await des.monster('fire ant');
+    await des.monster('a');
+    await des.monster({ id: 'fire giant', peaceful: 0 });
+    await des.monster({ id: 'fire giant', peaceful: 0 });
+    await des.monster({ id: 'fire giant', peaceful: 0 });
 
     des.trap('fire');
     des.trap('fire');
     des.trap('fire');
     des.trap('fire');
     des.trap('fire');
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
 }

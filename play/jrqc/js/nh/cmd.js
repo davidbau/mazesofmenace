@@ -302,9 +302,9 @@ cmdq_print(int q)
  * @returns {Promise<void>}
  */
 export async function cmdq_add_ec(q, fn) {   // cmd.c:254
-    let tmp = null, cq = null, $t1;
+    let tmp = null, $t1;
     tmp = $c.asRec(await alloc(32), $T._cmd_queue, 32);
-    cq = gc.command_queue[q];
+    let cq = gc.command_queue[q];
     tmp.typ = CMDQ.EXTCMD;
     $t1 = ext_func_tab_from_func(fn), tmp.ec_entry = $t1;
     tmp.next = null;
@@ -324,9 +324,9 @@ export async function cmdq_add_ec(q, fn) {   // cmd.c:254
  * @returns {Promise<void>}
  */
 export async function cmdq_add_key(q, key) {   // cmd.c:274
-    let tmp = null, cq = null;
+    let tmp = null;
     tmp = $c.asRec(await alloc(32), $T._cmd_queue, 32);
-    cq = gc.command_queue[q];
+    let cq = gc.command_queue[q];
     tmp.typ = CMDQ.KEY;
     tmp.key = key;
     tmp.next = null;
@@ -348,9 +348,9 @@ export async function cmdq_add_key(q, key) {   // cmd.c:274
  * @returns {Promise<void>}
  */
 export async function cmdq_add_dir(q, dx, dy, dz) {   // cmd.c:294
-    let tmp = null, cq = null;
+    let tmp = null;
     tmp = $c.asRec(await alloc(32), $T._cmd_queue, 32);
-    cq = gc.command_queue[q];
+    let cq = gc.command_queue[q];
     tmp.typ = CMDQ.DIR;
     tmp.dirx = dx;
     tmp.diry = dy;
@@ -371,9 +371,9 @@ export async function cmdq_add_dir(q, dx, dy, dz) {   // cmd.c:294
  * @returns {Promise<void>}
  */
 export async function cmdq_add_userinput(q) {   // cmd.c:316
-    let tmp = null, cq = null;
+    let tmp = null;
     tmp = $c.asRec(await alloc(32), $T._cmd_queue, 32);
-    cq = gc.command_queue[q];
+    let cq = gc.command_queue[q];
     tmp.typ = CMDQ.USER_INPUT;
     tmp.next = null;
     while (cq && cq.next) {
@@ -392,9 +392,9 @@ export async function cmdq_add_userinput(q) {   // cmd.c:316
  * @returns {Promise<void>}
  */
 export async function cmdq_add_int(q, val) {   // cmd.c:335
-    let tmp = null, cq = null;
+    let tmp = null;
     tmp = $c.asRec(await alloc(32), $T._cmd_queue, 32);
-    cq = gc.command_queue[q];
+    let cq = gc.command_queue[q];
     tmp.typ = CMDQ.INT;
     tmp.intval = val;
     tmp.next = null;
@@ -412,9 +412,8 @@ export async function cmdq_add_int(q, val) {   // cmd.c:335
  * @param {number} q int
  */
 export function cmdq_shift(q) {   // cmd.c:355
-    let tmp = null, cq = null;
-    tmp = null;
-    cq = gc.command_queue[q];
+    let tmp = null;
+    let cq = gc.command_queue[q];
     while (cq && cq.next && cq.next.next) {
         cq = cq.next;
     }
@@ -432,11 +431,10 @@ export function cmdq_shift(q) {   // cmd.c:355
  * @returns {$T._cmd_queue | null} struct _cmd_queue *
  */
 export function cmdq_reverse(head) {   // cmd.c:373
-    let prev = null, curr = null, next = null;
-    prev = null;
-    curr = head;
+    let prev = null;
+    let curr = head;
     while (curr) {
-        next = curr.next;
+        const next = curr.next;
         curr.next = prev;
         prev = curr;
         curr = next;
@@ -448,9 +446,9 @@ export function cmdq_reverse(head) {   // cmd.c:373
  * @returns {Promise<$T._cmd_queue | null>} struct _cmd_queue *
  */
 export async function cmdq_copy(q) {   // cmd.c:387
-    let tmp = null, cq = null, tmp2 = null;
-    tmp = null;
-    cq = gc.command_queue[q];
+    let tmp2 = null;
+    let tmp = null;
+    let cq = gc.command_queue[q];
     while (cq) {
         tmp2 = $c.asRec(await alloc(32), $T._cmd_queue, 32);
         tmp2.$copyFrom(cq);
@@ -468,9 +466,8 @@ export async function cmdq_copy(q) {   // cmd.c:387
  * @returns {$T._cmd_queue | null} struct _cmd_queue *
  */
 export function cmdq_pop() {   // cmd.c:410
-    let q = 0, tmp = null;
-    q = gi.in_doagain ? CQ_REPEAT : CQ_CANNED;
-    tmp = gc.command_queue[q];
+    const q = gi.in_doagain ? CQ_REPEAT : CQ_CANNED;
+    const tmp = gc.command_queue[q];
     if (tmp) {
         gc.command_queue[q] = tmp.next;
         tmp.next = null;
@@ -490,10 +487,9 @@ export function cmdq_peek(q) {   // cmd.c:424
  * @param {number} q int
  */
 export function cmdq_clear(q) {   // cmd.c:431
-    let tmp = null, tmp2 = null;
-    tmp = gc.command_queue[q];
+    let tmp = gc.command_queue[q];
     while (tmp) {
-        tmp2 = tmp.next;
+        const tmp2 = tmp.next;
         $c.free(tmp);
         tmp = tmp2;
     }
@@ -503,9 +499,8 @@ export function cmdq_clear(q) {   // cmd.c:431
  * @returns {Promise<number>} char
  */
 export async function pgetchar() {   // cmd.c:445
-    let ch = 0;
     /* courtesy of aeb@cwi.nl */
-    ch = 0;
+    let ch = 0;
     if (iflags.debug_fuzzer) {
         return await randomkey();
     }
@@ -524,8 +519,7 @@ export function extcmd_initiator() {   // cmd.c:457
  * @returns {Promise<number>} boolean
  */
 async function can_do_extcmd(extcmd) {   // cmd.c:463
-    let ecflags = 0;
-    ecflags = extcmd.flags | 0;
+    const ecflags = extcmd.flags | 0;
     if (gl.luacore && nhcb_counts[NHCB.CMD_BEFORE]) {
         await lua_getglobal(gl.luacore, $c.lit("nh_callback_run"));
         await lua_pushstring(gl.luacore, nhcb_name[NHCB.CMD_BEFORE]);
@@ -540,7 +534,7 @@ async function can_do_extcmd(extcmd) {   // cmd.c:463
     if (!wizard() && ecflags & WIZMODECMD) {
         await pline(new $c.Ptr(unavailcmd, 0), extcmd.ef_txt);
         return FALSE;
-    } else if (u.uburied | 0 && !(ecflags & IFBURIED)) {
+    } else if (u.uburied && !(ecflags & IFBURIED)) {
         await You_cant($c.lit("do that while you are buried!"));
         return FALSE;
     } else if (iflags.debug_fuzzer && ecflags & NOFUZZERCMD) {
@@ -553,10 +547,10 @@ async function can_do_extcmd(extcmd) {   // cmd.c:463
  * @returns {Promise<number>} int
  */
 export async function doextcmd() {   // cmd.c:493
-    let idx = 0, retval = 0, func = null;
+    let retval = 0, func = null;
     /* keep repeating until we don't run help or quit */
     do {
-        idx = await get_ext_cmd()();
+        const idx = await get_ext_cmd()();
         if (idx < 0) {
             return ECMD.OK;   /* quit */
         }
@@ -581,7 +575,7 @@ export async function doextcmd() {   // cmd.c:493
  * @returns {Promise<$c.Ptr | null>} char *
  */
 async function doc_extcmd_flagstr(menuwin, efp) {   // cmd.c:524
-    let qbuf = new Int8Array(128), mprefix = 0, autocomplete = 0, p = null, $t1, $t2, $t3, $t4;
+    let qbuf = new Int8Array(128), $t1, $t2, $t3, $t4;
     /* if Null, add a footnote to the menu */
     /* 5 would suffice: {'[','m','A',']','\0'} */
     /* note: tag shown for menu prefix is 'm' even if m-prefix action
@@ -592,9 +586,9 @@ async function doc_extcmd_flagstr(menuwin, efp) {   // cmd.c:524
         await add_menu_str(menuwin, new $c.Ptr(qbuf, 0));
         return null;
     } else {
-        mprefix = accept_menu_prefix(efp);
-        autocomplete = $c.i8((efp.flags & AUTOCOMPLETE) >>> 0 !== 0 ? 1 : 0);
-        p = new $c.Ptr(doc_extcmd_flagstr$Abuf, 0);
+        const mprefix = accept_menu_prefix(efp);
+        const autocomplete = (efp.flags & AUTOCOMPLETE) >>> 0 !== 0 ? 1 : 0;
+        let p = new $c.Ptr(doc_extcmd_flagstr$Abuf, 0);
         /* "" or "[m]" or "[A]" or "[mA]" */
         if (mprefix || autocomplete) {
             ($t1 = p, p = $t1.add(1), $t1).set(0, 91);
@@ -616,15 +610,15 @@ async function doc_extcmd_flagstr(menuwin, efp) {   // cmd.c:524
  * @returns {Promise<number>} int
  */
 export async function doextlist() {   // cmd.c:562
-    let efp = null, buf = new Int8Array(256), searchbuf = new Int8Array(256), descbuf = new Int8Array(256), promptbuf = new Int8Array(128), cmd_desc = null, menuwin = 0, any = new $T.any(), selected = [null], n = 0, pass = 0, menumode = 0, menushown = new Int32Array(2), onelist = 0, redisplay = 0, search = 0, clr = 0, wizc = 0, $t1;
-    efp = null;
-    menumode = 0;
-    onelist = 0;
-    redisplay = TRUE;
-    search = FALSE;
-    clr = NO_COLOR;
+    let buf = new Int8Array(256), searchbuf = new Int8Array(256), descbuf = new Int8Array(256), promptbuf = new Int8Array(128), any = new $T.any(), selected = [null], pass = 0, menushown = new Int32Array(2), $t1;
+    let efp = null;
+    let menumode = 0;
+    let onelist = 0;
+    let redisplay = TRUE;
+    let search = FALSE;
+    const clr = NO_COLOR;
     searchbuf[0] = 0;
-    menuwin = await create_nhwindow()(NHW.MENU);
+    const menuwin = await create_nhwindow()(NHW.MENU);
     while (redisplay) {
         redisplay = FALSE;
         any.$copyFrom(cg.zeroany);
@@ -661,7 +655,7 @@ export async function doextlist() {   // cmd.c:562
         }
         await add_menu_str(menuwin, $c.lit(""));
         $t1 = menushown[1] = 0, menushown[0] = $t1;
-        n = 0;
+        let n = 0;
         for (pass = 0; pass <= 1; pass = pass + 1 | 0) {
             /* skip second pass if not in wizard mode or wizard mode
                commands are being integrated into a single list */
@@ -679,7 +673,7 @@ export async function doextlist() {   // cmd.c:562
                 /* skip wizard mode commands if not in wizard mode;
                    when showing two sections, skip wizard mode commands
                    in pass==0 and skip other commands in pass==1 */
-                wizc = (efp.flags & WIZMODECMD) >>> 0 !== 0 ? 1 : 0;
+                const wizc = (efp.flags & WIZMODECMD) >>> 0 !== 0 ? 1 : 0;
                 if (wizc && !wizard()) {
                     continue;
                 }
@@ -687,7 +681,7 @@ export async function doextlist() {   // cmd.c:562
                     continue;
                 }
                 /* command description might get modified on the fly */
-                cmd_desc = efp.ef_desc;
+                let cmd_desc = efp.ef_desc;
                 /* suppress part of the description for #genocided if it
                    doesn't apply during the current game */
                 /* minor optimization */
@@ -789,15 +783,15 @@ export async function doextlist() {   // cmd.c:562
  * @returns {Promise<number>} int
  */
 export async function extcmd_via_menu() {   // cmd.c:752
-    let efp = null, pick_list = [null], win = 0, any = new $T.any(), choices = $c.nulls(201), buf = new Int8Array(256), cbuf = new Int8Array(128), prompt = new Int8Array(128), fmtstr = new Int8Array(20), i = 0, n = 0, nchoices = 0, acount = 0, ret = 0, len = 0, biggest = 0, accelerator = 0, prevaccelerator = 0, matchlevel = 0, wastoolong = 0, one_per_line = 0, clr = 0, $t1;
+    let efp = null, pick_list = [null], any = new $T.any(), choices = $c.nulls(201), buf = new Int8Array(256), cbuf = new Int8Array(128), prompt = new Int8Array(128), fmtstr = new Int8Array(20), n = 0, len = 0, $t1;
     pick_list[0] = null;
-    matchlevel = 0;
-    clr = NO_COLOR;
-    ret = 0;
+    let matchlevel = 0;
+    const clr = NO_COLOR;
+    let ret = 0;
     cbuf[0] = 0;
-    biggest = 0;
+    let biggest = 0;
     while (!ret) {
-        i = n = 0;
+        let i = n = 0;
         any.$copyFrom(cg.zeroany);
         /* populate choices */
         for (efp = $c.relem(extcmdlist, 0); efp.ef_txt; efp = $c.radd(efp, 1)) {
@@ -817,26 +811,26 @@ export async function extcmd_via_menu() {   // cmd.c:752
             }
         }
         choices[i] = null;
-        nchoices = i;
+        const nchoices = i;
         /* if we're down to one, we have our selection so get out of here */
         if (nchoices <= 1) {
             ret = nchoices === 1 ? $c.i32($c.rdiff(choices[0], $c.relem(extcmdlist, 0))) : -1;
             break;
         }
         /* otherwise... */
-        win = await create_nhwindow()(NHW.MENU);
+        const win = await create_nhwindow()(NHW.MENU);
         await start_menu()(win, MENU.BEHAVE_STANDARD);
         $c.sprintf(new $c.Ptr(fmtstr, 0), $c.lit("%%-%ds"), biggest + 15 | 0);
         prompt[0] = 0;
-        wastoolong = FALSE;
+        let wastoolong = FALSE;
         /* True => had to wrap due to line width
          * ('w' in wizard mode) */
         /* -3: two line menu header, 1 line menu footer (for prompt) */
-        one_per_line = $c.i8(nchoices < ROWNO - 3 ? 1 : 0);
-        prevaccelerator = 0;
-        acount = 0;
+        const one_per_line = nchoices < ROWNO - 3 ? 1 : 0;
+        let prevaccelerator = 0;
+        let acount = 0;
         for (i = 0; choices[i]; i = i + 1 | 0) {
-            accelerator = choices[i].ef_txt.get(matchlevel);
+            const accelerator = choices[i].ef_txt.get(matchlevel);
             if (accelerator !== prevaccelerator || one_per_line) {
                 wastoolong = FALSE;
             }
@@ -902,10 +896,9 @@ export async function extcmd_via_menu() {   // cmd.c:752
  * @returns {Promise<number>} int
  */
 export async function domonability() {   // cmd.c:890
-    let uptr = null, might_hide = 0, c = 0;
-    uptr = gy.youmonst.data;
-    might_hide = $c.i8(is_hider(uptr) || hides_under(uptr) ? 1 : 0);
-    c = 0;
+    const uptr = gy.youmonst.data;
+    const might_hide = is_hider(uptr) || hides_under(uptr) ? 1 : 0;
+    let c = 0;
     if (might_hide && webmaker(uptr)) {
         c = await yn_function($c.lit("Hide [h] or spin a web [s]?"), new $c.Ptr(hidespinchars, 0), 113, TRUE);
         if (c === 113 || c === 27) {
@@ -966,11 +959,10 @@ export async function domonability() {   // cmd.c:890
  * @returns {Promise<number>} int
  */
 export async function enter_explore_mode() {   // cmd.c:952
-    let oldmode = null;
     if (discover()) {
         await You($c.lit("are already in explore mode."));
     } else {
-        oldmode = !wizard() ? $c.lit("normal game") : $c.lit("debug mode");
+        const oldmode = !wizard() ? $c.lit("normal game") : $c.lit("debug mode");
         if (!authorize_explore_mode()) {
             if (!wizard()) {
                 await You($c.lit("cannot access explore mode."));
@@ -981,7 +973,7 @@ export async function enter_explore_mode() {   // cmd.c:952
             }
         }
         await pline($c.lit("Beware!  From explore mode there will be no return to %s,"), oldmode);
-        if (await paranoid_query($c.i8(ParanoidQuit()), $c.lit("Do you want to enter explore mode?"))) {
+        if (await paranoid_query(ParanoidQuit(), $c.lit("Do you want to enter explore mode?"))) {
             flags.explore = TRUE;
             flags.debug = FALSE;
             await clear_nhwindow()($G.WIN_MESSAGE);
@@ -999,7 +991,7 @@ export async function enter_explore_mode() {   // cmd.c:952
  * @returns {Promise<void>}
  */
 export async function makemap_prepost(pre, wiztower) {   // cmd.c:986
-    let tmpnhfp = null, mtmp = null, $t1, $t2;
+    let mtmp = null, $t1, $t2;
     if (pre) {
         await makemap_remove_mons();
         rm_mapseen(ledger_no(u.uz));   /* discard overview info for level */
@@ -1040,11 +1032,11 @@ export async function makemap_prepost(pre, wiztower) {   // cmd.c:986
         u.ustuck = null;
         $t2 = u.uswldtim = 0, u.uswallow = ($t2) & 1;
         await set_uinwater(0);   /* u.uinwater = 0 */
-        u.uundetected = (0) & 1;   /* not hidden, even if means are available */
+        u.uundetected = 0;   /* not hidden, even if means are available */
         await dmonsfree();   /* purge dead monsters from 'fmon' */
         await dobjsfree();
         /* discard current level; "saving" is used to release dynamic data */
-        tmpnhfp = await get_freeing_nhfile();
+        const tmpnhfp = await get_freeing_nhfile();
         await savelev(tmpnhfp, $c.i8(ledger_no(u.uz)));
         await close_nhfile(tmpnhfp);
     } else {
@@ -1054,7 +1046,7 @@ export async function makemap_prepost(pre, wiztower) {   // cmd.c:986
         /* was using safe_teleds() but that doesn't honor arrival region
            on levels which have such; we don't force stairs, just area */
         /* 'going up' flag */
-        await u_on_rndspot((u.uhave.amulet | 0 ? 1 : 0) | (wiztower ? 2 : 0));
+        await u_on_rndspot((u.uhave.amulet ? 1 : 0) | (wiztower ? 2 : 0));
         await losedogs();
         await kill_genocided_monsters();
         /* u_on_rndspot() might pick a spot that has a monster, or losedogs()
@@ -1090,8 +1082,8 @@ export function levltyp_to_name(typ) {   // cmd.c:1089
  * @returns {Promise<number>} int
  */
 async function doterrain() {   // cmd.c:1098
-    let men = 0, sel = [null], any = new $T.any(), n = 0, which = 0, clr = 0;
-    clr = NO_COLOR;
+    let sel = [null], any = new $T.any();
+    const clr = NO_COLOR;
     /* this used to be done each time vision was recalculated, so would
        always be up to date (hopefully); now we do it on demand instead */
     await recalc_mapseen();
@@ -1105,7 +1097,7 @@ async function doterrain() {   // cmd.c:1098
      *  a dump of the internal levl[][].typ codes w/ level flags, or
      *  a legend for the levl[][].typ codes dump
      */
-    men = await create_nhwindow()(NHW.MENU);
+    const men = await create_nhwindow()(NHW.MENU);
     await start_menu()(men, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);
     any.a_int = 1;
@@ -1125,7 +1117,7 @@ async function doterrain() {   // cmd.c:1098
         }
     }
     await end_menu()(men, $c.lit("View which?"));
-    n = await select_menu(men, PICK.ONE, new $c.Ptr(sel, 0));
+    const n = await select_menu(men, PICK.ONE, new $c.Ptr(sel, 0));
     await destroy_nhwindow()(men);
     /*
      * n <  0: player used ESC to cancel;
@@ -1133,7 +1125,7 @@ async function doterrain() {   // cmd.c:1098
      * n == 1: preselected entry was implicitly chosen via <space>|<enter>;
      * n == 2: another entry was explicitly chosen, so skip preselected one.
      */
-    which = n < 0 ? -1 : n === 0 ? 1 : $c.radd(sel[0], 0).item.a_int;
+    let which = n < 0 ? -1 : n === 0 ? 1 : $c.radd(sel[0], 0).item.a_int;
     if (n > 1 && which === 1) {
         which = $c.radd(sel[0], 1).item.a_int;
     }
@@ -1244,8 +1236,7 @@ function u_can_see_whole_selection(sel) {   // cmd.c:1246
  * @returns {number} int
  */
 function dolookaround_floodfill_findroom(x, y) {   // cmd.c:1263
-    let typ = 0;
-    typ = svl.level.locations[x][y].typ;
+    const typ = svl.level.locations[x][y].typ;
     if (IS_STWALL(typ) || IS_DOOR(typ) || IS_TREE(typ) || IS_WATERWALL(typ) || typ === LAVAWALL || typ === IRONBARS || typ === SCORR || typ === SDOOR || typ === DRAWBRIDGE_UP) {
         return FALSE;
     }
@@ -1258,16 +1249,16 @@ function dolookaround_floodfill_findroom(x, y) {   // cmd.c:1263
  * @returns {Promise<void>}
  */
 async function lookaround_known_room(x, y) {   // cmd.c:1276
-    let sel = null, rmno = 0, qbuf = new Int8Array(128), u_in = 0;
-    sel = await selection_new();
-    rmno = u.urooms[0] - ROOMOFFSET | 0;
+    let qbuf = new Int8Array(128);
+    const sel = await selection_new();
+    const rmno = u.urooms[0] - ROOMOFFSET;
     set_selection_floodfillchk(dolookaround_floodfill_findroom);
     await selection_floodfill(sel, x, y, TRUE);
     if (!u_at(x, y)) {
         set_msg_xy(x, y);
     }
     if (u_have_seen_whole_selection(sel)) {
-        u_in = $c.i8(selection_getpoint(x, y, sel));
+        const u_in = $c.i8(selection_getpoint(x, y, sel));
         await You($c.lit("%s %s %s."), u_at(x, y) && u_in && u_can_see_whole_selection(sel) ? $c.lit("are in") : u_at(x, y) ? $c.lit("remember this as") : $c.lit("remember that as"), await an(selection_size_description(sel, new $c.Ptr(qbuf, 0))), rmno >= 0 ? $c.lit("room") : $c.lit("area"));
     } else if (u_have_seen_bounds_selection(sel)) {
         await You($c.lit("guess %s to be %s %s."), u_at(x, y) ? $c.lit("this") : $c.lit("that"), await an(selection_size_description(sel, new $c.Ptr(qbuf, 0))), rmno >= 0 ? $c.lit("room") : $c.lit("area"));
@@ -1281,10 +1272,10 @@ async function lookaround_known_room(x, y) {   // cmd.c:1276
  * @returns {Promise<number>} int
  */
 export async function dolookaround() {   // cmd.c:1310
-    let x = 0, y = 0, tmp_getloc_filter = 0, tmp_accessiblemsg = 0, corr_next2u = 0, i = 0, glyph = 0, mapsym = 0, iscorr = 0, buf = new Int8Array(256), cc = new $T.nhcoord(), sym = 0, firstmatch = [null];
-    tmp_getloc_filter = iflags.getloc_filter;
-    tmp_accessiblemsg = a11y.accessiblemsg;
-    corr_next2u = FALSE;
+    let x = 0, y = 0, i = 0, glyph = 0, mapsym = 0, buf = new Int8Array(256), cc = new $T.nhcoord(), firstmatch = [null];
+    const tmp_getloc_filter = iflags.getloc_filter;
+    const tmp_accessiblemsg = a11y.accessiblemsg;
+    let corr_next2u = FALSE;
     a11y.accessiblemsg = TRUE;
     if (svl.level.locations[u.ux][u.uy].typ === CORR) {
         /* In a corridor, mention corridors next to you. */
@@ -1294,8 +1285,8 @@ export async function dolookaround() {   // cmd.c:1310
     } else if (svl.level.locations[u.ux][u.uy].typ === DOOR) {
         /* In a doorway, describe the rooms next to you */
         for (i = DIR.W; i < N_DIRS; i = i + 2 | 0) {
-            x = $c.i16(u.ux + xdir[i] | 0);
-            y = $c.i16(u.uy + ydir[i] | 0);
+            x = $c.i16(u.ux + xdir[i]);
+            y = $c.i16(u.uy + ydir[i]);
             if (isok(x, y) && svl.level.locations[x][y].typ >= ROOM) {
                 await lookaround_known_room(x, y);
             }
@@ -1308,10 +1299,10 @@ export async function dolookaround() {   // cmd.c:1310
     iflags.getloc_filter = GFILTER_VIEW;
     for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
         for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
-            iscorr = $c.i8(corr_next2u && (glyph = glyph_at(x, y)) >= 0 && glyph_is_cmap(glyph) && ((mapsym = glyph_to_cmap(glyph)) === S.corr || mapsym === S.litcorr) ? 1 : 0);
+            const iscorr = corr_next2u && (glyph = glyph_at(x, y)) >= 0 && glyph_is_cmap(glyph) && ((mapsym = glyph_to_cmap(glyph)) === S.corr || mapsym === S.litcorr) ? 1 : 0;
             /* note: GLOC_INTERESTING catches S_engrcorr */
             if (!u_at(x, y) && (await gather_locs_interesting(x, y, GLOC.INTERESTING) || iscorr)) {
-                sym = 0;
+                const sym = 0;
                 firstmatch[0] = null;
                 cc.x = x, cc.y = y;
                 await do_screen_description(cc.$clone(), TRUE, sym, new $c.Ptr(buf, 0), new $c.Ptr(firstmatch, 0), null);
@@ -1591,14 +1582,13 @@ export async function do_fight() {   // cmd.c:1622
  * @returns {Promise<number>} int
  */
 export async function do_repeat() {   // cmd.c:1638
-    let res = 0, repeat_copy = null;
-    res = ECMD.OK;
+    let res = ECMD.OK;
     if (!gi.in_doagain) {
         if (!cmdq_peek(CQ_REPEAT)) {
             await Norep($c.lit("There is no command available to repeat."));
             return ECMD.FAIL;
         }
-        repeat_copy = await cmdq_copy(CQ_REPEAT);
+        const repeat_copy = await cmdq_copy(CQ_REPEAT);
         gi.in_doagain = TRUE;
         await rhack(0);   /* read and execute command */
         gi.in_doagain = FALSE;
@@ -1628,8 +1618,7 @@ export function extcmds_getentry(i) {   // cmd.c:2101
  * @returns {$T.Cmd_bind | null} struct Cmd_bind *
  */
 function cmdbind_get(key) {   // cmd.c:2110
-    let bind = null;
-    bind = gc.Cmd.cmdbinds;
+    let bind = gc.Cmd.cmdbinds;
     if (!key) {
         return null;
     }
@@ -1648,8 +1637,7 @@ function cmdbind_get(key) {   // cmd.c:2110
  * @returns {Promise<void>}
  */
 async function cmdbind_add(key, extcmd, user) {   // cmd.c:2126
-    let bind = null;
-    bind = cmdbind_get(key);
+    let bind = cmdbind_get(key);
     if (!key) {
         return;
     }
@@ -1680,9 +1668,8 @@ async function cmdbind_add(key, extcmd, user) {   // cmd.c:2126
  * @param {number} key uchar
  */
 function cmdbind_remove(key) {   // cmd.c:2158
-    let bind = null, prev = null;
-    bind = gc.Cmd.cmdbinds;
-    prev = null;
+    let bind = gc.Cmd.cmdbinds;
+    let prev = null;
     while (bind) {
         if (bind.key === key) {
             if (prev) {
@@ -1701,9 +1688,8 @@ function cmdbind_remove(key) {   // cmd.c:2158
     }
 }
 export function cmdbind_freeall() {   // cmd.c:2180
-    let next = null;
     while (gc.Cmd.cmdbinds) {
-        next = gc.Cmd.cmdbinds.next;
+        const next = gc.Cmd.cmdbinds.next;
         if (gc.Cmd.cmdbinds.param) {
             $c.free(gc.Cmd.cmdbinds.param);
         }
@@ -1717,9 +1703,8 @@ export function cmdbind_freeall() {   // cmd.c:2180
  * @param {number} key2 uchar
  */
 function cmdbind_swapkeys(key1, key2) {   // cmd.c:2195
-    let bind1 = null, bind2 = null;
-    bind1 = cmdbind_get(key1);
-    bind2 = cmdbind_get(key2);
+    const bind1 = cmdbind_get(key1);
+    const bind2 = cmdbind_get(key2);
     if (bind1 && bind2) {
         bind1.key = key2;
         bind2.key = key1;
@@ -1730,9 +1715,9 @@ function cmdbind_swapkeys(key1, key2) {   // cmd.c:2195
  * @returns {number} int
  */
 export function count_bind_keys() {   // cmd.c:2208
-    let bind = null, i = 0, nbinds = 0, keys = new Uint8Array(256);
-    bind = gc.Cmd.cmdbinds;
-    nbinds = 0;
+    let i = 0, keys = new Uint8Array(256);
+    let bind = gc.Cmd.cmdbinds;
+    let nbinds = 0;
     $c.memset(new $c.Ptr(keys, 0), 0, 256);
     /* commands bound to different key */
     while (bind) {
@@ -1756,9 +1741,9 @@ export function count_bind_keys() {   // cmd.c:2208
  * @returns {Promise<void>}
  */
 export async function get_changed_key_binds(sbuf) {   // cmd.c:2235
-    let win = 0, i = 0, buf = new Int8Array(256), buf2 = new Int8Array(128), bind = null, keys = new Uint8Array(256), ec = null;
-    win = WIN_ERR;
-    bind = gc.Cmd.cmdbinds;
+    let i = 0, buf = new Int8Array(256), buf2 = new Int8Array(128), keys = new Uint8Array(256);
+    let win = WIN_ERR;
+    let bind = gc.Cmd.cmdbinds;
     $c.memset(new $c.Ptr(keys, 0), 0, 256);
     if (!sbuf) {
         win = await create_nhwindow()(NHW.TEXT);
@@ -1782,7 +1767,7 @@ export async function get_changed_key_binds(sbuf) {   // cmd.c:2235
     }
     /* commands which should be bound to a key, but aren't */
     for (i = 0; i < extcmdlist_length; i = i + 1 | 0) {
-        ec = $c.relem(extcmdlist, i);
+        const ec = $c.relem(extcmdlist, i);
         if (ec.key && !keys[ec.key]) {
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("BIND=%s:nothing%s"), key2txt(ec.key, new $c.Ptr(buf2, 0)), sbuf ? $c.lit("\n") : $c.lit(""));
             if (sbuf) {
@@ -1914,7 +1899,7 @@ export async function handler_rebind_keys() {   // cmd.c:2408
             i = picks[0].item.a_int;
             $c.free(picks[0]);
             if (i === 1 || i === 2) {
-                await handler_rebind_keys_add($c.i8(i === 1 ? 1 : 0));
+                await handler_rebind_keys_add(i === 1 ? 1 : 0);
             } else if (i === 3) {
                 await get_changed_key_binds(null);
             }
@@ -1927,10 +1912,10 @@ export async function handler_rebind_keys() {   // cmd.c:2408
  * @returns {Promise<void>}
  */
 export async function handler_change_autocompletions() {   // cmd.c:2449
-    let win = 0, any = new $T.any(), i = 0, n = 0, picks = [null], clr = 0, ec = null, buf = new Int8Array(256), j = 0, setit = 0;
+    let any = new $T.any(), i = 0, picks = [null], ec = null, buf = new Int8Array(256), j = 0;
     picks[0] = null;
-    clr = NO_COLOR;
-    win = await create_nhwindow()(NHW.MENU);
+    const clr = NO_COLOR;
+    const win = await create_nhwindow()(NHW.MENU);
     await start_menu()(win, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);
     for (i = 0; i < extcmdlist_length; i = i + 1 | 0) {
@@ -1946,10 +1931,10 @@ export async function handler_change_autocompletions() {   // cmd.c:2449
         await add_menu(win, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(buf, 0), (ec.flags & AUTOCOMPLETE) >>> 0 ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
     await end_menu()(win, $c.lit("Which commands autocomplete?"));
-    n = await select_menu(win, PICK.ANY, new $c.Ptr(picks, 0));
+    const n = await select_menu(win, PICK.ANY, new $c.Ptr(picks, 0));
     if (n >= 0) {
         for (i = 0; i < extcmdlist_length; i = i + 1 | 0) {
-            setit = FALSE;
+            let setit = FALSE;
             ec = $c.relem(extcmdlist, i);
             if ((ec.flags & (INTERNALCMD | CMD_NOT_AVAILABLE)) >>> 0 !== 0) {
                 continue;
@@ -1987,12 +1972,12 @@ export async function handler_change_autocompletions() {   // cmd.c:2449
  * @returns {Promise<number>} int
  */
 export async function extcmds_match(findstr, ecmflags, matchlist) {   // cmd.c:2523
-    let i = 0, mi = 0, fslen = 0, ignoreac = 0, exactmatch = 0, no1charcmd = 0, $t1, $t2, $t3;
-    mi = 0;
-    fslen = (findstr ? await Strlen_(findstr, $c.lit("extcmds_match"), 2527) : 0) | 0;
-    ignoreac = $c.i8((ecmflags & ECM.IGNOREAC) !== 0 ? 1 : 0);
-    exactmatch = $c.i8((ecmflags & ECM.EXACTMATCH) !== 0 ? 1 : 0);
-    no1charcmd = $c.i8((ecmflags & ECM.NO1CHARCMD) !== 0 ? 1 : 0);
+    let i = 0, $t1, $t2, $t3;
+    let mi = 0;
+    const fslen = (findstr ? await Strlen_(findstr, $c.lit("extcmds_match"), 2527) : 0) | 0;
+    const ignoreac = (ecmflags & ECM.IGNOREAC) !== 0 ? 1 : 0;
+    const exactmatch = (ecmflags & ECM.EXACTMATCH) !== 0 ? 1 : 0;
+    const no1charcmd = (ecmflags & ECM.NO1CHARCMD) !== 0 ? 1 : 0;
     for (i = 0; extcmdlist[i].ef_txt; i = i + 1 | 0) {
         if ((extcmdlist[i].flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) >>> 0) {
             continue;
@@ -2028,9 +2013,9 @@ export async function extcmds_match(findstr, ecmflags, matchlist) {   // cmd.c:2
  * @returns {$c.Ptr | null} const char *
  */
 export function key2extcmddesc(key) {   // cmd.c:2561
-    let txt = null, k = 0, i = 0, j = 0, M_5 = 0, M_0 = 0, cmdbind = null;
-    M_5 = 181;
-    M_0 = 176;
+    let txt = null, k = 0, i = 0, cmdbind = null;
+    const M_5 = 181;
+    const M_0 = 176;
     /* need to check for movement commands before checking the extended
        commands table because it contains entries for number_pad commands
        that match !number_pad movement (like 'j' for "jump") */
@@ -2042,7 +2027,7 @@ export function key2extcmddesc(key) {   // cmd.c:2561
     } else if (movecmd($c.i8(k = key), MV.RUN)) {
         $c.strcpy(new $c.Ptr(key2extcmddesc$key2cmdbuf, 0), $c.lit("run"));
     }
-    if (digit($c.i8(key)) || gc.Cmd.num_pad && digit($c.i8(unmeta(key)))) {
+    if (digit($c.i8(key)) || gc.Cmd.num_pad && digit(unmeta(key))) {
         key2extcmddesc$key2cmdbuf[0] = 0;
         if (!gc.Cmd.num_pad) {
             $c.strcpy(new $c.Ptr(key2extcmddesc$key2cmdbuf, 0), $c.lit("start of, or continuation of, a count"));
@@ -2060,7 +2045,7 @@ export function key2extcmddesc(key) {   // cmd.c:2561
         if (misc_keys[i].numpad && !iflags.num_pad) {
             continue;
         }
-        j = misc_keys[i].nhkf;
+        const j = misc_keys[i].nhkf;
         if (key === $c.u8(gc.Cmd.spkeys[j])) {
             return misc_keys[i].desc;
         }
@@ -2098,7 +2083,7 @@ export async function bind_mousebtn(btn, command) {   // cmd.c:2624
         gc.Cmd.mousebtn[btn] = null;
         return TRUE;
     }
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (strncmpi(command, extcmd.ef_txt, -1)) {
             continue;
         }
@@ -2118,17 +2103,17 @@ export async function bind_mousebtn(btn, command) {   // cmd.c:2624
  * @returns {Promise<number>} boolean
  */
 export async function bind_key(key, command, user) {   // cmd.c:2662
-    let extcmd = null, len = 0, buf = null, p = null, lastp = null, bind = null, maxlen = 0, $t1;
-    p = null;
-    lastp = null;
+    let extcmd = null, $t1;
+    let p = null;
+    let lastp = null;
     /* special case: "nothing" is reserved for unbinding */
     if (!strncmpi(command, $c.lit("nothing"), -1)) {
         cmdbind_remove(key);
         return TRUE;
     }
     /* copy command to buf for modification */
-    len = $c.i64($c.addu64($c.strlen(command), 1));
-    buf = $c.asArr(await alloc($c.u32(len)), Int8Array);
+    const len = $c.i64($c.addu64($c.strlen(command), 1));
+    const buf = $c.asArr(await alloc($c.u32(len)), Int8Array);
     $c.strncpy(buf, command, $c.u64(len));
     /* does buf have a parameter in parenthesis? */
     if ((p = $c.strchr(buf, 40)) !== null && (lastp = $c.strrchr(buf, 41)) !== null && $c.pcmp(lastp, p) > 0) {
@@ -2137,7 +2122,7 @@ export async function bind_key(key, command, user) {   // cmd.c:2662
         /* p points to the parameter */
         p = p.add(1);
     }
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (strncmpi(buf, extcmd.ef_txt, -1)) {
             continue;
         }
@@ -2149,8 +2134,8 @@ export async function bind_key(key, command, user) {   // cmd.c:2662
             if (!p) {
                 await config_error_add($c.lit("'%s' requires a parameter"), buf);
             } else {
-                bind = cmdbind_get(key);
-                maxlen = $c.i32($c.addu64(30 < $c.strlen(p) ? 30 : $c.strlen(p), 1));
+                const bind = cmdbind_get(key);
+                const maxlen = $c.i32($c.addu64(30 < $c.strlen(p) ? 30 : $c.strlen(p), 1));
                 if (maxlen <= 1) {
                     await config_error_add($c.lit("Required parameter cannot be empty"));
                 } else {
@@ -2177,7 +2162,7 @@ export async function bind_key(key, command, user) {   // cmd.c:2662
  */
 async function bind_key_fn(key, fn) {   // cmd.c:2732
     let extcmd = null;
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (extcmd.ef_funct !== fn) {
             continue;
         }
@@ -2195,7 +2180,7 @@ async function bind_key_fn(key, fn) {   // cmd.c:2732
  */
 async function commands_init() {   // cmd.c:2750
     let extcmd = null;
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (extcmd.key) {
             await cmdbind_add(extcmd.key, extcmd, FALSE);
         }
@@ -2247,12 +2232,12 @@ function keylist_func_has_key(extcmd, skip_keys_used) {   // cmd.c:2785
  * @returns {Promise<number>} int
  */
 async function keylist_putcmds(datawin, docount, incl_flags, excl_flags, keys_used) {   // cmd.c:2802
-    let extcmd = null, i = 0, buf = new Int8Array(256), buf2 = new Int8Array(128), keys_already_used = new Int8Array(256), count = 0, bind = null, key = 0;
+    let extcmd = null, i = 0, buf = new Int8Array(256), buf2 = new Int8Array(128), keys_already_used = new Int8Array(256);
     /* boolean keys_used[256] */
     /* copy of keys_used[] before updates */
-    count = 0;
+    let count = 0;
     for (i = 0; i < 256; i = i + 1 | 0) {
-        key = $c.u8(i);
+        const key = $c.u8(i);
         keys_already_used[i] = keys_used.get(i);
         if (keys_used.get(i)) {
             continue;
@@ -2260,7 +2245,7 @@ async function keylist_putcmds(datawin, docount, incl_flags, excl_flags, keys_us
         if (key === 32 && !flags.rest_on_space) {
             continue;
         }
-        bind = cmdbind_get(key);
+        const bind = cmdbind_get(key);
         if (bind && bind.cmd !== null) {
             if (incl_flags && !((bind.cmd.flags & incl_flags >>> 0) >>> 0) || excl_flags && (bind.cmd.flags & excl_flags >>> 0) >>> 0) {
                 continue;
@@ -2279,7 +2264,7 @@ async function keylist_putcmds(datawin, docount, incl_flags, excl_flags, keys_us
         }
     }
     /* also list commands that lack key assignments; most are wizard mode */
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (incl_flags && !((extcmd.flags & incl_flags >>> 0) >>> 0) || excl_flags && (extcmd.flags & excl_flags >>> 0) >>> 0) {
             continue;
         }
@@ -2307,17 +2292,17 @@ async function keylist_putcmds(datawin, docount, incl_flags, excl_flags, keys_us
  * @returns {Promise<void>}
  */
 export async function dokeylist() {   // cmd.c:2867
-    let extcmd = null, datawin = 0, buf = new Int8Array(256), buf2 = new Int8Array(256), key = 0, spkey_gap = 0, keys_used = new Int8Array(256), mov_seen = new Int8Array(256), i = 0, j = 0, pfx_seen = new Int32Array(256);
+    let extcmd = null, buf = new Int8Array(256), buf2 = new Int8Array(256), keys_used = new Int8Array(256), mov_seen = new Int8Array(256), i = 0, j = 0, pfx_seen = new Int32Array(256);
     $c.memset(new $c.Ptr(keys_used, 0), 0, 256);
     $c.memset(new $c.Ptr(pfx_seen, 0), 0, 1024);
     /* this is actually ambiguous; tty raw mode will override SIGINT;
        when enabled, treat it like a movement command since assigning
        other commands to this keystroke would be unwise... */
-    key = 3;
+    let key = 3;
     keys_used[key] = TRUE;
     /* movement keys have been flagged in keys_used[]; clone them */
     $c.memcpy(new $c.Ptr(mov_seen, 0), new $c.Ptr(keys_used, 0), 256);
-    spkey_gap = FALSE;
+    let spkey_gap = FALSE;
     for (i = 0; misc_keys[i].desc; i = i + 1 | 0) {
         if (misc_keys[i].numpad && !iflags.num_pad) {
             continue;
@@ -2331,11 +2316,11 @@ export async function dokeylist() {   // cmd.c:2867
             spkey_gap = TRUE;
         }
     }
-    datawin = await create_nhwindow()(NHW.TEXT);
+    const datawin = await create_nhwindow()(NHW.TEXT);
     await putstr()(datawin, 0, $c.lit(""));
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%7s %s"), $c.lit(""), $c.lit("    Full Current Key Bindings List"));
     await putstr()(datawin, 0, new $c.Ptr(buf, 0));
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (spkey_gap || !keylist_func_has_key(extcmd, new $c.Ptr(keys_used, 0))) {
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%7s %s"), $c.lit(""), $c.lit("(also commands with no key assignment)"));
             await putstr()(datawin, 0, new $c.Ptr(buf, 0));
@@ -2424,7 +2409,7 @@ export async function dokeylist() {   // cmd.c:2867
  */
 export function ext_func_tab_from_func(fn) {   // cmd.c:3016
     let extcmd = null;
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (extcmd.ef_funct === fn) {
             return extcmd;
         }
@@ -2446,10 +2431,10 @@ export async function cmd_from_dir(dir, mode) {   // cmd.c:3029
  * @returns {number} char
  */
 export function cmd_from_func(fn) {   // cmd.c:3036
-    let i = 0, ret = 0, bind = null;
-    ret = 0;
+    let bind = null;
+    let ret = 0;
     for (bind = gc.Cmd.cmdbinds; bind; bind = bind.next) {
-        i = bind.key;
+        const i = bind.key;
         /* skip space; we'll use it below as last resort if no other
            keystroke invokes space's command */
         if (i === 32) {
@@ -2480,10 +2465,10 @@ export function cmd_from_func(fn) {   // cmd.c:3036
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function cmd_from_ecname(ecname) {   // cmd.c:3071
-    let extcmd = null, key = 0;
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    let extcmd = null;
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (!$c.strcmp(extcmd.ef_txt, ecname)) {
-            key = cmd_from_func(extcmd.ef_funct);
+            const key = cmd_from_func(extcmd.ef_funct);
             if (key) {
                 $c.sprintf(new $c.Ptr(cmd_from_ecname$cmdnamebuf, 0), $c.lit("%s"), visctrl(key));
             } else {
@@ -2500,9 +2485,9 @@ export async function cmd_from_ecname(ecname) {   // cmd.c:3071
  * @returns {$c.Ptr | null} const char *
  */
 export function ecname_from_fn(fn) {   // cmd.c:3092
-    let extcmd = null, cmdptr = null;
-    cmdptr = null;
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    let extcmd = null;
+    let cmdptr = null;
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (extcmd.ef_funct === fn) {
             cmdptr = extcmd;
             return cmdptr.ef_txt;
@@ -2518,13 +2503,13 @@ export function ecname_from_fn(fn) {   // cmd.c:3092
  * @returns {Promise<$c.Ptr | null>} const char *
  */
 export async function cmdname_from_func(fn, outbuf, fullname) {   // cmd.c:3106
-    let extcmd = null, cmdptr = null, res = null, matchcmd = null, len = 0, maxlen = 0, save_plnmsg = 0;
+    let extcmd = null;
     /* function whose command name is wanted */
     /* place to store the result */
     /* False: just enough to disambiguate */
-    cmdptr = null;
-    res = null;
-    for (extcmd = $c.relem(extcmdlist, 0); extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
+    let cmdptr = null;
+    let res = null;
+    for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = $c.radd(extcmd, 1)) {
         if (extcmd.ef_funct === fn) {
             cmdptr = extcmd;
             res = cmdptr.ef_txt;
@@ -2539,9 +2524,9 @@ export async function cmdname_from_func(fn, outbuf, fullname) {   // cmd.c:3106
         /* easy; the entire command name */
         res = $c.strcpy(outbuf, res);
     } else {
-        matchcmd = $c.relem(extcmdlist, 0);
-        len = 0;
-        maxlen = await Strlen_(res, $c.lit("cmdname_from_func"), 3130);
+        let matchcmd = extcmdlist[0];
+        let len = 0;
+        const maxlen = await Strlen_(res, $c.lit("cmdname_from_func"), 3130);
         /* find the shortest leading substring which is unambiguous */
         do {
             if ((len = len + 1 >>> 0) >= maxlen) {
@@ -2565,7 +2550,7 @@ export async function cmdname_from_func(fn, outbuf, fullname) {   // cmd.c:3106
             stdout during menu setup when message window isn't ready yet] */
         do {
             if (debugcore($c.lit("cmd.c"), TRUE)) {
-                save_plnmsg = iflags.last_msg;
+                const save_plnmsg = iflags.last_msg;
                 await pline($c.lit("shortened %s: \"%s\""), res, outbuf);
                 iflags.last_msg = save_plnmsg;
             }
@@ -2595,8 +2580,8 @@ export function bind_specialkey(key, command) {   // cmd.c:3194
  * @returns {$c.Ptr | null} const char *
  */
 function spkey_name(nhkf) {   // cmd.c:3208
-    let name = null, i = 0;
-    name = null;
+    let i = 0;
+    let name = null;
     for (i = 0; i < 29; i = i + 1 | 0) {
         if (spkeys_binds[i].nhkf === nhkf) {
             name = nhkf === NHKF.ESC ? $c.lit("escape") : spkeys_binds[i].name;
@@ -2652,10 +2637,10 @@ export async function parseautocomplete(autocomplete, condition) {   // cmd.c:32
          * the extended command.  Thus you have to use ! */
         autocomplete = autocomplete.add(1);
         autocomplete = trimspaces(autocomplete);
-        condition = $c.i8(!condition ? 1 : 0);
+        condition = !condition ? 1 : 0;
     }
     /* find and modify the extended command */
-    for (efp = $c.relem(extcmdlist, 0); efp.ef_txt; efp = $c.radd(efp, 1)) {
+    for (efp = extcmdlist[0]; efp.ef_txt; efp = $c.radd(efp, 1)) {
         if (!$c.strcmp(autocomplete, efp.ef_txt)) {
             if (condition === ((efp.flags & AUTOCOMPLETE) >>> 0 ? FALSE : TRUE)) {
                 if ((efp.flags & AUTOCOMP_ADJ) >>> 0) {
@@ -2683,7 +2668,7 @@ export async function parseautocomplete(autocomplete, condition) {   // cmd.c:32
  */
 export async function all_options_autocomplete(sbuf) {   // cmd.c:3296
     let efp = null, buf = new Int8Array(256);
-    for (efp = $c.relem(extcmdlist, 0); efp.ef_txt; efp = $c.radd(efp, 1)) {
+    for (efp = extcmdlist[0]; efp.ef_txt; efp = $c.radd(efp, 1)) {
         if ((efp.flags & AUTOCOMP_ADJ) >>> 0 !== 0) {
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("AUTOCOMPLETE=%s%s\n"), (efp.flags & AUTOCOMPLETE) >>> 0 ? $c.lit("") : $c.lit("!"), efp.ef_txt);
             await strbuf_append(sbuf, new $c.Ptr(buf, 0));
@@ -2695,9 +2680,9 @@ export async function all_options_autocomplete(sbuf) {   // cmd.c:3296
  * @returns {number} int
  */
 export function count_autocompletions() {   // cmd.c:3312
-    let efp = null, n = 0;
-    n = 0;
-    for (efp = $c.relem(extcmdlist, 0); efp.ef_txt; efp = $c.radd(efp, 1)) {
+    let efp = null;
+    let n = 0;
+    for (efp = extcmdlist[0]; efp.ef_txt; efp = $c.radd(efp, 1)) {
         if ((efp.flags & AUTOCOMP_ADJ) >>> 0 !== 0) {
             n = n + 1 | 0;
         }
@@ -2727,8 +2712,8 @@ export function lock_mouse_buttons(savebtns) {   // cmd.c:3326
  * @returns {Promise<void>}
  */
 export async function reset_commands(initial) {   // cmd.c:3344
-    let flagtemp = 0, c = 0, i = 0, updated = 0, dir = 0, mode = 0, di = 0, bind = null, $t1, $t2, $t3;
-    updated = 0;
+    let c = 0, i = 0, dir = 0, mode = 0, bind = null, $t1, $t2, $t3;
+    let updated = 0;
     if (initial) {
         updated = 1;
         gc.Cmd.num_pad = FALSE;
@@ -2746,14 +2731,14 @@ export async function reset_commands(initial) {   // cmd.c:3344
             }
         }
         /* basic num_pad */
-        flagtemp = iflags.num_pad;
+        let flagtemp = iflags.num_pad;
         if (flagtemp !== gc.Cmd.num_pad) {
             gc.Cmd.num_pad = flagtemp;
             updated = updated + 1 | 0;
         }
         /* swap_yz mode (only applicable for !num_pad); intended for
            QWERTZ keyboard used in Central Europe, particularly Germany */
-        flagtemp = $c.i8(iflags.num_pad_mode & 1 ? !gc.Cmd.num_pad ? 1 : 0 : FALSE);
+        flagtemp = iflags.num_pad_mode & 1 ? !gc.Cmd.num_pad ? 1 : 0 : FALSE;
         if (flagtemp !== gc.Cmd.swap_yz) {
             gc.Cmd.swap_yz = flagtemp;
             updated = updated + 1 | 0;
@@ -2766,7 +2751,7 @@ export async function reset_commands(initial) {   // cmd.c:3344
             }
         }
         /* MSDOS compatibility mode (only applicable for num_pad) */
-        flagtemp = $c.i8(iflags.num_pad_mode & 1 ? gc.Cmd.num_pad : FALSE);
+        flagtemp = iflags.num_pad_mode & 1 ? gc.Cmd.num_pad : FALSE;
         if (flagtemp !== gc.Cmd.pcHack_compat) {
             gc.Cmd.pcHack_compat = flagtemp;
             updated = updated + 1 | 0;
@@ -2780,7 +2765,7 @@ export async function reset_commands(initial) {   // cmd.c:3344
             }
         }
         /* phone keypad layout (only applicable for num_pad) */
-        flagtemp = $c.i8(iflags.num_pad_mode & 2 ? gc.Cmd.num_pad : FALSE);
+        flagtemp = iflags.num_pad_mode & 2 ? gc.Cmd.num_pad : FALSE;
         if (flagtemp !== gc.Cmd.phone_layout) {
             gc.Cmd.phone_layout = flagtemp;
             updated = updated + 1 | 0;
@@ -2802,12 +2787,12 @@ export async function reset_commands(initial) {   // cmd.c:3344
     /* back up the commands & keys overwritten by new movement keys */
     for (dir = 0; dir < N_DIRS; dir = dir + 1 | 0) {
         for (mode = MV.WALK; mode < N_MOVEMODES; mode = mode + 1 | 0) {
-            di = $c.u8(gc.Cmd.dirchars.get(dir));
+            let di = $c.u8(gc.Cmd.dirchars.get(dir));
             if (!gc.Cmd.num_pad) {
                 if (mode === MV.RUN) {
                     di = $c.u8(highc($c.i8(di)));
                 } else if (mode === MV.RUSH) {
-                    di = $c.u8(C(di));
+                    di = C(di);
                 }
             } else {
                 if (mode === MV.RUN) {
@@ -2831,7 +2816,7 @@ export async function reset_commands(initial) {   // cmd.c:3344
         await bind_key_fn($c.u8(gc.Cmd.dirchars.get(i)), move_funcs[i][MV.WALK]);
         if (!gc.Cmd.num_pad) {
             await bind_key_fn($c.u8(highc(gc.Cmd.dirchars.get(i))), move_funcs[i][MV.RUN]);
-            await bind_key_fn($c.u8(C(gc.Cmd.dirchars.get(i))), move_funcs[i][MV.RUSH]);
+            await bind_key_fn(C(gc.Cmd.dirchars.get(i)), move_funcs[i][MV.RUSH]);
         } else {
             /* M(number) works when altmeta is on */
             await bind_key_fn($c.u8(M(gc.Cmd.dirchars.get(i))), move_funcs[i][MV.RUN]);
@@ -2849,12 +2834,11 @@ export async function reset_commands(initial) {   // cmd.c:3344
  * @returns {Promise<void>}
  */
 export async function update_rest_on_space() {   // cmd.c:3483
-    let bind = null;
     /* cloned from extcmdlist['.'], then slightly modified to be distinct;
        donull is all that's needed for it to operate; command name and
        description get shown by help menu's "Info on what a given key does"
        (which runs the '&' command) and "Full list of keyboard commands" */
-    bind = cmdbind_get(32);
+    const bind = cmdbind_get(32);
     /* when 'rest_on_space' is On, <space> will run the #wait command;
        when it is Off, <space> will use 'unrestonspace' which will either
        be Null and elicit "Unknown command ' '." or have some non-Null
@@ -2872,7 +2856,7 @@ export async function update_rest_on_space() {   // cmd.c:3483
  * @returns {number} boolean
  */
 function accept_menu_prefix(ec) {   // cmd.c:3509
-    return $c.i8(ec && (ec.flags & CMD.M_PREFIX) >>> 0 !== 0 ? 1 : 0);
+    return ec && (ec.flags & CMD.M_PREFIX) >>> 0 !== 0 ? 1 : 0;
 }
 /* choose a random character, biased towards movement commands, primarily
    for debug-fuzzer testing */
@@ -2880,7 +2864,7 @@ function accept_menu_prefix(ec) {   // cmd.c:3509
  * @returns {Promise<number>} char
  */
 export async function randomkey() {   // cmd.c:3517
-    let c = 0, d = 0, m = 0, $t1;
+    let c = 0, $t1;
     /* give ^A and ^P a high probability of being repeated */
     if ((randomkey$last_c === 1 || randomkey$last_c === 16) && program_state.input_state === commandInp && rn2(5)) {
         return randomkey$last_c;
@@ -2899,7 +2883,7 @@ export async function randomkey() {   // cmd.c:3517
             c = $c.i8(rn2(95) + 32 | 0);
             break;
         case 5:
-            c = $c.i8(rn2(2) ? 9 : 32);
+            c = rn2(2) ? 9 : 32;
             break;
         case 6:
             c = $c.i8(rn2(26) + 97 | 0);
@@ -2917,8 +2901,8 @@ export async function randomkey() {   // cmd.c:3517
         case 11:
         case 12:
             {
-                d = rn2(N_DIRS);
-                m = rn2(7) ? MV.WALK : !rn2(3) ? MV.RUSH : MV.RUN;
+                const d = rn2(N_DIRS);
+                const m = rn2(7) ? MV.WALK : !rn2(3) ? MV.RUSH : MV.RUN;
                 c = await cmd_from_dir(d, m);
             }
             break;
@@ -2941,10 +2925,10 @@ export async function randomkey() {   // cmd.c:3517
  * @returns {Promise<void>}
  */
 export async function random_response(buf, sz) {   // cmd.c:3581
-    let c = 0, count = 0, $t1;
-    count = 0;
+    let $t1;
+    let count = 0;
     for (; ; ) {
-        c = await randomkey();
+        const c = await randomkey();
         if (c === 10) {
             break;
         }
@@ -2994,7 +2978,7 @@ export async function rhack(key) {   // cmd.c:3627
     D1: for (;;) {
         switch ($goto) {
         case null:
-            firsttime = $c.i8(key === 0 ? 1 : 0);
+            firsttime = key === 0 ? 1 : 0;
             cmdq = null;
             cmdq_ec = null;
             prefix_seen = null;
@@ -3045,7 +3029,7 @@ export async function rhack(key) {   // cmd.c:3627
                 D2: for (;;) {
                     switch ($goto) {
                     case null:
-                        $t2 = cmdbind_get($c.u8(key & 255)), gc.cmd_bind = $t2;
+                        $t2 = cmdbind_get(key & 255), gc.cmd_bind = $t2;
                     case "do_cmdq_extcmd":
                         $goto = null;   // do_cmdq_extcmd:
                         if (cmdq_ec) {
@@ -3059,7 +3043,7 @@ export async function rhack(key) {   // cmd.c:3627
                                 /* can_do_extcmd() already gave a message */
                                 reset_cmd_vars(TRUE);
                                 res = ECMD.OK;
-                            } else if (prefix_seen && !((tlist.flags & PREFIXCMD) >>> 0) && !((tlist.flags & (was_m_prefix ? CMD.M_PREFIX : CMD.gGF_PREFIX) >>> 0) >>> 0)) {
+                            } else if (prefix_seen && !((tlist.flags & PREFIXCMD) >>> 0) && !((tlist.flags & (was_m_prefix ? CMD.M_PREFIX : CMD.gGF_PREFIX)) >>> 0)) {
                                 pfxidx = cmd_from_func(prefix_seen.ef_funct);
                                 which = pfxidx !== 0 ? visctrl(pfxidx) : prefix_seen.ef_funct === do_reqmenu ? $c.lit("move-no-pickup or request-menu") : prefix_seen.ef_txt;
                                 /*
@@ -3072,8 +3056,8 @@ export async function rhack(key) {   // cmd.c:3627
                                     await custompline(SUPPRESS_HISTORY, $c.lit("The %s command does not accept '%s' prefix."), tlist.ef_txt, which);
                                 } else {
                                     ch = tlist.key;
-                                    up = $c.i8(ch === 60 || tlist.ef_funct === doup ? 1 : 0);
-                                    down = $c.i8(ch === 62 || tlist.ef_funct === dodown ? 1 : 0);
+                                    up = ch === 60 || tlist.ef_funct === doup ? 1 : 0;
+                                    down = ch === 62 || tlist.ef_funct === dodown ? 1 : 0;
                                     await pline($c.lit("The '%s' prefix should be followed by a movement command%s."), which, up || down ? $c.lit(" other than up or down") : $c.lit(""));
                                 }
                                 res = ECMD.FAIL;
@@ -3167,7 +3151,7 @@ export async function rhack(key) {   // cmd.c:3627
                                    pick an object to act on, or command failed to finish */
                                 reset_cmd_vars(TRUE);
                             } else if ((res & (ECMD.OK | ECMD.TIME)) === ECMD.OK) {
-                                reset_cmd_vars($c.i8(gm.multi < 0 ? 1 : 0));
+                                reset_cmd_vars(gm.multi < 0 ? 1 : 0);
                             }
                             /* reset_cmd_vars() sets context.move to False so we might
                                need to change it [back] to True */
@@ -3223,8 +3207,8 @@ export function xytodir(x, y) {   // cmd.c:3847
  */
 export function dirtocoord(cc, dd) {   // cmd.c:3859
     if (dd > DIR.ERR && dd < N_DIRS_Z) {
-        cc.x = $c.i16(xdir[dd]);
-        cc.y = $c.i16(ydir[dd]);
+        cc.x = xdir[dd];
+        cc.y = ydir[dd];
     }
 }
 /* also sets u.dz, but returns false for <> */
@@ -3234,11 +3218,10 @@ export function dirtocoord(cc, dd) {   // cmd.c:3859
  * @returns {number} int
  */
 export function movecmd(sym, mode) {   // cmd.c:3869
-    let d = 0, bind = null, fnc = null;
-    d = DIR.ERR;
-    bind = cmdbind_get($c.u8(sym));
+    let d = DIR.ERR;
+    const bind = cmdbind_get($c.u8(sym));
     if (bind && bind.cmd) {
-        fnc = bind.cmd.ef_funct;
+        const fnc = bind.cmd.ef_funct;
         if (mode === MV.ANY) {
             for (d = N_DIRS_Z - 1; d > DIR.ERR; d = d - 1 | 0) {
                 if (fnc === move_funcs[d][MV.WALK] || fnc === move_funcs[d][MV.RUN] || fnc === move_funcs[d][MV.RUSH]) {
@@ -3279,10 +3262,9 @@ export function dxdy_moveok() {   // cmd.c:3902
  * @returns {number} boolean
  */
 export function redraw_cmd(c) {   // cmd.c:3911
-    let uc = 0, bind = null;
-    uc = $c.u8(c);
-    bind = cmdbind_get(uc);
-    return $c.i8(bind && bind.cmd && bind.cmd.ef_funct === doredraw ? 1 : 0);
+    const uc = $c.u8(c);
+    const bind = cmdbind_get(uc);
+    return bind && bind.cmd && bind.cmd.ef_funct === doredraw ? 1 : 0;
 }
 /*
  * uses getdir() but unlike getdir() it specifically
@@ -3303,13 +3285,12 @@ export function redraw_cmd(c) {   // cmd.c:3911
  * @returns {Promise<number>} int
  */
 export async function get_adjacent_loc(prompt, emsg, x, y, cc) {   // cmd.c:3931
-    let new_x = 0, new_y = 0;
     if (!await getdir(prompt)) {
         await pline($c.lit("%s"), c_common_strings.c_Never_mind);
         return 0;
     }
-    new_x = $c.i16(x + u.dx | 0);
-    new_y = $c.i16(y + u.dy | 0);
+    const new_x = $c.i16(x + u.dx | 0);
+    const new_y = $c.i16(y + u.dy | 0);
     if (cc && isok(new_x, new_y)) {
         cc.x = new_x;
         cc.y = new_y;
@@ -3422,8 +3403,8 @@ export async function getdir(s) {   // cmd.c:3958
                     mod = 0;   /* neither CLICK_1 nor CLICK_2 */
                 } else {
                     /* caller expects simulated click to be relative to hero's spot */
-                    u.dx = cc.x - u.ux | 0;
-                    u.dy = cc.y - u.uy | 0;
+                    u.dx = cc.x - u.ux;
+                    u.dy = cc.y - u.uy;
                     /* non-zero getdir_click actually means ok to click farther than
                        one spot away from hero; adjacent click is always allowed */
                     if (!iflags.getdir_click) {
@@ -3461,9 +3442,9 @@ export async function getdir(s) {   // cmd.c:3958
             } else if (!(is_mov = movecmd(dirsym, MV.ANY)) && !u.dz) {
                 did_help = FALSE;
                 if (!$c.strchr(new $c.Ptr(quitchars, 0), dirsym)) {
-                    help_requested = $c.i8(dirsym === gc.Cmd.spkeys[NHKF.GETDIR_HELP] ? 1 : 0);
+                    help_requested = dirsym === gc.Cmd.spkeys[NHKF.GETDIR_HELP] ? 1 : 0;
                     if (help_requested || iflags.cmdassist) {
-                        did_help = await help_dir($c.i8(s && s.get(0) === 94 ? dirsym : 0), $c.u8(gc.Cmd.spkeys[NHKF.ESC]), help_requested ? null : $c.lit("Invalid direction key!"));
+                        did_help = await help_dir(s && s.get(0) === 94 ? dirsym : 0, $c.u8(gc.Cmd.spkeys[NHKF.ESC]), help_requested ? null : $c.lit("Invalid direction key!"));
                         if (help_requested) {
                             $goto = "retry"; continue D1;
                         }
@@ -3528,19 +3509,19 @@ async function show_direction_keys(win, centerchar, nodiag) {   // cmd.c:4122
  * @returns {Promise<number>} boolean
  */
 async function help_dir(sym, spkey, msg) {   // cmd.c:4171
-    let ctrl = 0, win = 0, buf = new Int8Array(256), buf2 = new Int8Array(256), explain = null, dothat = null, prefixhandling = 0, selfi = 0;
+    let buf = new Int8Array(256), buf2 = new Int8Array(256), explain = null;
     /* actual key; either prefix or ESC */
     /*, *how */
     /*, viawindow */
     /* NHKF_ESC indicates that player asked for help at getdir prompt */
     /* viawindow = (spkey == gc.Cmd.spkeys[NHKF_ESC] || iflags.cmdassist); */
-    prefixhandling = $c.i8(spkey !== gc.Cmd.spkeys[NHKF.ESC] ? 1 : 0);
+    const prefixhandling = spkey !== gc.Cmd.spkeys[NHKF.ESC] ? 1 : 0;
     /*
      * Handling for prefix keys that don't want special directions.
      * Delivered via pline if 'cmdassist' is off, or instead of the
      * general message if it's on.
      */
-    dothat = $c.lit("do that");
+    const dothat = $c.lit("do that");
     /* how = " at"; */
     /* for "<action> at yourself"; not used for up/down */
     buf[0] = 0;
@@ -3556,7 +3537,7 @@ async function help_dir(sym, spkey, msg) {   // cmd.c:4171
        for help at getdir() prompt forces cmdassist for this operation) */
     /* when 'cmdassist' is off and caller doesn't insist, do nothing */
     nhUse(prefixhandling);
-    win = await create_nhwindow()(NHW.TEXT);
+    const win = await create_nhwindow()(NHW.TEXT);
     if (!win) {
         return FALSE;
     }
@@ -3572,7 +3553,7 @@ async function help_dir(sym, spkey, msg) {   // cmd.c:4171
     if (!prefixhandling && (letter(sym) || sym === 91)) {
         /* '[': old 'cmdhelp' showed ESC as ^[ */
         sym = highc(sym);   /* @A-Z[ (note: letter() accepts '@') */
-        ctrl = $c.i8((sym - 65 | 0) + 1 | 0);   /* 0-27 (note: 28-31 aren't applicable) */
+        const ctrl = $c.i8(sym - 65 + 1);   /* 0-27 (note: 28-31 aren't applicable) */
         if ((explain = dowhatdoes_core(ctrl, new $c.Ptr(buf2, 0))) !== null && (!$c.strchr(new $c.Ptr(help_dir$wiz_only_list, 0), sym) || wizard())) {
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Are you trying to use ^%c%s?"), sym, $c.strchr(new $c.Ptr(help_dir$wiz_only_list, 0), sym) ? $c.lit("") : $c.lit(" as specified in the Guidebook"));
             await putstr()(win, 0, new $c.Ptr(buf, 0));
@@ -3587,7 +3568,7 @@ async function help_dir(sym, spkey, msg) {   // cmd.c:4171
     }
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Valid direction keys%s%s%s are:"), prefixhandling ? $c.lit(" to ") : $c.lit(""), prefixhandling ? dothat : $c.lit(""), u.umonnum === PM.GRID_BUG ? $c.lit(" in your current form") : $c.lit(""));
     await putstr()(win, 0, new $c.Ptr(buf, 0));
-    await show_direction_keys(win, $c.i8(!prefixhandling ? 46 : 32), $c.i8(NODIAG(u.umonnum)));
+    await show_direction_keys(win, !prefixhandling ? 46 : 32, NODIAG(u.umonnum));
     if (!prefixhandling) {
         /* NOPICKUP: unlike the other prefix keys, 'm' allows up/down for
            stair traversal; we won't get here when "m<" or "m>" has been
@@ -3597,7 +3578,7 @@ async function help_dir(sym, spkey, msg) {   // cmd.c:4171
         await putstr()(win, 0, $c.lit("          <  up"));
         await putstr()(win, 0, $c.lit("          >  down"));
         if (!prefixhandling) {
-            selfi = gc.Cmd.num_pad ? NHKF.GETDIR_SELF2 : NHKF.GETDIR_SELF;
+            const selfi = gc.Cmd.num_pad ? NHKF.GETDIR_SELF2 : NHKF.GETDIR_SELF;
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("       %4s  direct at yourself"), visctrl(gc.Cmd.spkeys[selfi]));
             await putstr()(win, 0, new $c.Ptr(buf, 0));
         }
@@ -3616,10 +3597,9 @@ async function help_dir(sym, spkey, msg) {   // cmd.c:4171
  * @param {number} force_impairment boolean
  */
 export function confdir(force_impairment) {   // cmd.c:4300
-    let kmax = 0, k = 0;
     if (force_impairment || u_maybe_impaired()) {
-        kmax = NODIAG(u.umonnum) ? 4 : N_DIRS;
-        k = dirs_ord[rn2(kmax)];
+        const kmax = NODIAG(u.umonnum) ? 4 : N_DIRS;
+        const k = dirs_ord[rn2(kmax)];
         u.dx = xdir[k];
         u.dy = ydir[k];
     }
@@ -3649,8 +3629,7 @@ export function isok(x, y) {   // cmd.c:4326
  * @returns {Promise<number>} int
  */
 async function doherecmdmenu() {   // cmd.c:4334
-    let ch = 0;
-    ch = await here_cmd_menu();
+    const ch = await here_cmd_menu();
     return ch && ch !== 27 ? ECMD.TIME : ECMD.OK;
 }
 /* #therecmdmenu command, a way to test there_cmd_menu without mouse */
@@ -3658,9 +3637,9 @@ async function doherecmdmenu() {   // cmd.c:4334
  * @returns {Promise<number>} int
  */
 async function dotherecmdmenu() {   // cmd.c:4343
-    let ch = 0, dir = 0, click = 0, x = 0, y = 0, $t1;
-    x = gc.clicklook_cc.x;
-    y = gc.clicklook_cc.y;
+    let ch = 0, $t1;
+    const x = gc.clicklook_cc.x;
+    const y = gc.clicklook_cc.y;
     iflags.getdir_click = CLICK_1 | CLICK_2;   /* allow 'far' click */
     if (isok(x, y)) {
         if (x === u.ux && y === u.uy) {
@@ -3672,8 +3651,8 @@ async function dotherecmdmenu() {   // cmd.c:4343
         iflags.getdir_click = 0;
         return ch && ch !== 27 ? ECMD.TIME : ECMD.OK;
     }
-    dir = await getdir(null);
-    click = iflags.getdir_click;
+    const dir = await getdir(null);
+    const click = iflags.getdir_click;
     iflags.getdir_click = 0;
     if (!dir || !isok($c.i16(u.ux + u.dx | 0), $c.i16(u.uy + u.dy | 0))) {
         return ECMD.CANCEL;
@@ -3692,8 +3671,8 @@ async function dotherecmdmenu() {   // cmd.c:4343
  * @returns {Promise<void>}
  */
 async function mcmd_addmenu(win, act, txt) {   // cmd.c:4421
-    let any = new $T.any(), clr = 0;
-    clr = NO_COLOR;
+    let any = new $T.any();
+    const clr = NO_COLOR;
     /* TODO: fixed letters for the menu entries? */
     any.$copyFrom(cg.zeroany);
     any.a_int = act;
@@ -3708,10 +3687,10 @@ async function mcmd_addmenu(win, act, txt) {   // cmd.c:4421
  * @returns {Promise<number>} int
  */
 async function there_cmd_menu_self(win, x, y, act) {   // cmd.c:4435
-    let K = 0, buf = new Int8Array(256), typ = 0, stway = null, ttmp = null, otmp = null;
-    K = 0;
-    typ = svl.level.locations[x][y].typ;
-    stway = stairway_at(x, y);
+    let buf = new Int8Array(256), ttmp = null;
+    let K = 0;
+    const typ = svl.level.locations[x][y].typ;
+    const stway = stairway_at(x, y);
     if (!u_at(x, y)) {
         return K;
     }
@@ -3743,7 +3722,7 @@ async function there_cmd_menu_self(win, x, y, act) {   // cmd.c:4435
     }
     /* before objects */
     if (OBJ_AT(x, y)) {
-        otmp = svl.level.objects[x][y];
+        const otmp = svl.level.objects[x][y];
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Pick up %s"), otmp.v.v_nexthere ? $c.lit("items") : await doname(otmp));
         await mcmd_addmenu(win, MCMD.PICKUP, new $c.Ptr(buf, 0)), K = K + 1 | 0;
         if (Is_container(otmp)) {
@@ -3767,8 +3746,8 @@ async function there_cmd_menu_self(win, x, y, act) {   // cmd.c:4435
     if (num_spells() > 0) {
         await mcmd_addmenu(win, MCMD.CAST_SPELL, $c.lit("Cast a spell")), K = K + 1 | 0;
     }
-    if ((ttmp = t_at(x, y)) !== null && ttmp.tseen | 0) {
-        if ((ttmp.ttyp | 0) !== VIBRATING_SQUARE) {
+    if ((ttmp = t_at(x, y)) !== null && ttmp.tseen) {
+        if (ttmp.ttyp !== VIBRATING_SQUARE) {
             await mcmd_addmenu(win, MCMD.UNTRAP_HERE, $c.lit("Attempt to disarm trap")), K = K + 1 | 0;
         }
     }
@@ -3784,20 +3763,20 @@ async function there_cmd_menu_self(win, x, y, act) {   // cmd.c:4435
  * @returns {Promise<number>} int
  */
 async function there_cmd_menu_next2u(win, x, y, mod, act) {   // cmd.c:4524
-    let K = 0, buf = new Int8Array(256), typ = 0, ttmp = null, mtmp = null, key_or_pick = 0, card = 0, dm = 0, mnam = null;
-    K = 0;
-    typ = svl.level.locations[x][y].typ;
+    let buf = new Int8Array(256), ttmp = null;
+    let K = 0;
+    const typ = svl.level.locations[x][y].typ;
     if (!(dist2(x, y, u.ux, u.uy) <= 2)) {
         return K;
     }
     if (IS_DOOR(typ)) {
-        dm = svl.level.locations[x][y].flags | 0;
+        const dm = svl.level.locations[x][y].flags;
         if (dm & (D.CLOSED | D.LOCKED)) {
             await mcmd_addmenu(win, MCMD.OPEN_DOOR, $c.lit("Open the door")), K = K + 1 | 0;
             /* unfortunately there's no lknown flag for doors to
                remember the locked/unlocked state */
-            key_or_pick = $c.i8(carrying(SKELETON_KEY) || carrying(LOCK_PICK) ? 1 : 0);
-            card = $c.i8(carrying(CREDIT_CARD) !== null ? 1 : 0);
+            const key_or_pick = carrying(SKELETON_KEY) || carrying(LOCK_PICK) ? 1 : 0;
+            const card = carrying(CREDIT_CARD) !== null ? 1 : 0;
             if (key_or_pick || card) {
                 $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%sunlock the door"), key_or_pick ? $c.lit("lock or ") : $c.lit(""));
                 await mcmd_addmenu(win, MCMD.LOCK_DOOR, upstart(new $c.Ptr(buf, 0))), K = K + 1 | 0;
@@ -3814,9 +3793,9 @@ async function there_cmd_menu_next2u(win, x, y, mod, act) {   // cmd.c:4524
     if (typ <= SCORR) {
         await mcmd_addmenu(win, MCMD.SEARCH, $c.lit("Search for secret doors")), K = K + 1 | 0;
     }
-    if ((ttmp = t_at(x, y)) !== null && ttmp.tseen | 0) {
+    if ((ttmp = t_at(x, y)) !== null && ttmp.tseen) {
         await mcmd_addmenu(win, MCMD.LOOK_TRAP, $c.lit("Examine trap")), K = K + 1 | 0;
-        if ((ttmp.ttyp | 0) !== VIBRATING_SQUARE) {
+        if (ttmp.ttyp !== VIBRATING_SQUARE) {
             await mcmd_addmenu(win, MCMD.UNTRAP_TRAP, $c.lit("Attempt to disarm trap")), K = K + 1 | 0;
         }
         await mcmd_addmenu(win, MCMD.MOVE_DIR, $c.lit("Move on the trap")), K = K + 1 | 0;
@@ -3824,12 +3803,12 @@ async function there_cmd_menu_next2u(win, x, y, mod, act) {   // cmd.c:4524
     if (svl.level.locations[x][y].glyph === BOULDER + GLYPH.OBJ_OFF) {
         await mcmd_addmenu(win, MCMD.MOVE_DIR, $c.lit("Push the boulder")), K = K + 1 | 0;
     }
-    mtmp = svl.level.monsters[x][y];
+    let mtmp = svl.level.monsters[x][y];
     if (mtmp && !canspotmon(mtmp)) {
         mtmp = null;
     }
     if (mtmp && await which_armor(mtmp, W.SADDLE)) {
-        mnam = await x_monnam(mtmp, ARTICLE.THE, null, SUPPRESS.SADDLE, FALSE);
+        const mnam = await x_monnam(mtmp, ARTICLE.THE, null, SUPPRESS.SADDLE, FALSE);
         if (!u.usteed) {
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Ride %s"), mnam);
             await mcmd_addmenu(win, MCMD.RIDE, new $c.Ptr(buf, 0)), K = K + 1 | 0;
@@ -3841,7 +3820,7 @@ async function there_cmd_menu_next2u(win, x, y, mod, act) {   // cmd.c:4524
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Put saddle on %s"), await mon_nam(mtmp));
         await mcmd_addmenu(win, MCMD.APPLY_SADDLE, new $c.Ptr(buf, 0)), K = K + 1 | 0;
     }
-    if (mtmp && (mtmp.mpeaceful | 0 || mtmp.mtame)) {
+    if (mtmp && (mtmp.mpeaceful || mtmp.mtame)) {
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Talk to %s"), await mon_nam(mtmp));
         await mcmd_addmenu(win, MCMD.TALK, new $c.Ptr(buf, 0)), K = K + 1 | 0;
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Swap places with %s"), await mon_nam(mtmp));
@@ -3849,7 +3828,7 @@ async function there_cmd_menu_next2u(win, x, y, mod, act) {   // cmd.c:4524
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s %s"), !(mtmp.mextra && mtmp.mextra.mgivenname) ? $c.lit("Name") : $c.lit("Rename"), await mon_nam(mtmp));
         await mcmd_addmenu(win, MCMD.NAME, new $c.Ptr(buf, 0)), K = K + 1 | 0;
     }
-    if (mtmp && !(mtmp.mpeaceful | 0 || mtmp.mtame) || glyph_at(x, y) === GLYPH_INVISIBLE) {
+    if (mtmp && !(mtmp.mpeaceful || mtmp.mtame) || glyph_at(x, y) === GLYPH_INVISIBLE) {
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Attack %s"), mtmp ? await mon_nam(mtmp) : $c.lit("unseen creature"));
         await mcmd_addmenu(win, MCMD.ATTACK_NEXT2U, new $c.Ptr(buf, 0)), K = K + 1 | 0;
         /* attacking overrides any other automatic action */
@@ -3868,7 +3847,6 @@ async function there_cmd_menu_next2u(win, x, y, mod, act) {   // cmd.c:4524
  */
 async function there_cmd_menu_far(win, x, y, mod) {   // cmd.c:4624
     let K = 0;
-    K = 0;
     if (mod === CLICK_1) {
         if (linedup(u.ux, u.uy, x, y, 1) && dist2(u.ux, u.uy, x, y) < 324) {
             await mcmd_addmenu(win, MCMD.THROW_OBJ, $c.lit("Throw something")), K = K + 1 | 0;
@@ -3887,12 +3865,11 @@ async function there_cmd_menu_far(win, x, y, mod) {   // cmd.c:4624
  */
 async function there_cmd_menu_common(win, x, y, mod, act) {   // cmd.c:4639
     let K = 0;
-    K = 0;
     if (mod === CLICK_1 || mod === CLICK_2) {
         /* ignore iflags.clicklook here */
         /* for self, only include "look at map symbol" if it isn't the
            ordinary hero symbol (steed, invisible w/o see invisible, ?) */
-        if (!u_at(x, y) || Upolyd() || glyph_at(x, y) !== ((u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0)) {
+        if (!u_at(x, y) || Upolyd() || glyph_at(x, y) !== ((u.umonnum !== u.umonster || !flags.showrace ? u.umonnum : gu.urace.mnum) + (((u.umonnum !== u.umonster ? u.mfemale : flags.female) ? 1 : 0) === MALE ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0)) {
             await mcmd_addmenu(win, MCMD.LOOK_AT, $c.lit("Look at map symbol")), K = K + 1 | 0;
         }
     }
@@ -3928,8 +3905,8 @@ async function act_on_act(act, dx, dy) {   // cmd.c:4658
                from the menu but it will only work if flags.travelcmd is True.
                That option is intended as way to guard against stray mouse
                clicks and shouldn't inhibit explicit travel. */
-            $t1 = u.tx = $c.i16(u.ux + dx | 0), iflags.travelcc.x = $t1;
-            $t2 = u.ty = $c.i16(u.uy + dy | 0), iflags.travelcc.y = $t2;
+            $t1 = u.tx = $c.i16(u.ux + dx), iflags.travelcc.x = $t1;
+            $t2 = u.ty = $c.i16(u.uy + dy), iflags.travelcc.y = $t2;
             await cmdq_add_ec(CQ_CANNED, dotravel_target);
             break;
         case MCMD.THROW_OBJ:
@@ -4065,8 +4042,8 @@ async function act_on_act(act, dx, dy) {   // cmd.c:4658
             await cmdq_add_ec(CQ_CANNED, dolook);
             break;
         case MCMD.LOOK_AT:
-            gc.clicklook_cc.x = $c.i16(u.ux + dx | 0);
-            gc.clicklook_cc.y = $c.i16(u.uy + dy | 0);
+            gc.clicklook_cc.x = $c.i16(u.ux + dx);
+            gc.clicklook_cc.y = $c.i16(u.uy + dy);
             await cmdq_add_ec(CQ_CANNED, doclicklook);
             break;
         case MCMD.UNTRAP_HERE:
@@ -4093,16 +4070,16 @@ async function act_on_act(act, dx, dy) {   // cmd.c:4658
  * @returns {Promise<number>} char
  */
 async function there_cmd_menu(x, y, mod) {   // cmd.c:4843
-    let win = 0, ch = 0, npick = 0, K = 0, picks = [null], dx = 0, dy = 0, act = Int32Array.of(0), dir = 0, $t1, $t2;
-    ch = 0;
-    npick = 0;
-    K = 0;
+    let picks = [null], act = Int32Array.of(0), $t1, $t2;
+    let ch = 0;
+    let npick = 0;
+    let K = 0;
     picks[0] = null;
     /*int dx = sgn(x - u.ux), dy = sgn(y - u.uy);*/
-    dx = $c.i16(x - u.ux | 0);
-    dy = $c.i16(y - u.uy | 0);
+    const dx = $c.i16(x - u.ux);
+    const dy = $c.i16(y - u.uy);
     act[0] = MCMD.NOTHING;
-    win = await create_nhwindow()(NHW.MENU);
+    const win = await create_nhwindow()(NHW.MENU);
     await start_menu()(win, MENU.BEHAVE_STANDARD);
     if (u_at(x, y)) {
         K = K + await there_cmd_menu_self(win, x, y, new $c.Ptr(act, 0)) | 0;
@@ -4115,7 +4092,7 @@ async function there_cmd_menu(x, y, mod) {   // cmd.c:4843
     if (!K) {
         /* no menu options, try to move */
         if (dist2(x, y, u.ux, u.uy) <= 2 && await test_move(u.ux, u.uy, dx, dy, TEST.MOVE)) {
-            dir = xytodir(dx, dy);
+            const dir = xytodir(dx, dy);
             await cmdq_add_ec(CQ_CANNED, move_funcs[dir][MV.WALK]);
         } else if (flags.travelcmd) {
             $t1 = u.tx = x, iflags.travelcc.x = $t1;
@@ -4166,15 +4143,15 @@ export async function click_to_cmd(x, y, mod) {   // cmd.c:4906
  * @returns {Promise<number>} int
  */
 async function domouseaction() {   // cmd.c:4916
-    let x = 0, y = 0, o = null, dir = 0, $t1, $t2;
-    x = $c.i16(gc.clicklook_cc.x - u.ux | 0);
-    y = $c.i16(gc.clicklook_cc.y - u.uy | 0);
+    let o = null, dir = 0, $t1, $t2;
+    let x = $c.i16(gc.clicklook_cc.x - u.ux);
+    let y = $c.i16(gc.clicklook_cc.y - u.uy);
     if (flags.travelcmd) {
         if ($c.abs(x) <= 1 && $c.abs(y) <= 1) {
             x = $c.i16(sgn(x)), y = $c.i16(sgn(y));
         } else {
-            $t1 = u.tx = $c.i16(u.ux + x | 0), iflags.travelcc.x = $t1;
-            $t2 = u.ty = $c.i16(u.uy + y | 0), iflags.travelcc.y = $t2;
+            $t1 = u.tx = $c.i16(u.ux + x), iflags.travelcc.x = $t1;
+            $t2 = u.ty = $c.i16(u.uy + y), iflags.travelcc.y = $t2;
             await cmdq_add_ec(CQ_CANNED, dotravel_target);
             return ECMD.OK;
         }
@@ -4202,19 +4179,19 @@ async function domouseaction() {   // cmd.c:4916
         }
         /* directional commands */
         dir = xytodir(x, y);
-        if (!m_at(u.ux + x | 0, u.uy + y | 0) && !await test_move(u.ux, u.uy, x, y, TEST.MOVE)) {
-            if (svl.level.locations[u.ux + x | 0][u.uy + y | 0].typ === DOOR) {
+        if (!m_at(u.ux + x, u.uy + y) && !await test_move(u.ux, u.uy, x, y, TEST.MOVE)) {
+            if (svl.level.locations[u.ux + x][u.uy + y].typ === DOOR) {
                 /* slight assistance to player: choose kick/open for them */
-                if ((svl.level.locations[u.ux + x | 0][u.uy + y | 0].flags | 0) & D.LOCKED) {
+                if (svl.level.locations[u.ux + x][u.uy + y].flags & D.LOCKED) {
                     await cmdq_add_ec(CQ_CANNED, dokick);
                     return ECMD.OK;
                 }
-                if ((svl.level.locations[u.ux + x | 0][u.uy + y | 0].flags | 0) & D.CLOSED) {
+                if (svl.level.locations[u.ux + x][u.uy + y].flags & D.CLOSED) {
                     await cmdq_add_ec(CQ_CANNED, doopen);
                     return ECMD.OK;
                 }
             }
-            if (svl.level.locations[u.ux + x | 0][u.uy + y | 0].typ <= SCORR) {
+            if (svl.level.locations[u.ux + x][u.uy + y].typ <= SCORR) {
                 await cmdq_add_ec(CQ_CANNED, dosearch);
                 return ECMD.OK;
             }
@@ -4255,24 +4232,24 @@ async function domouseaction() {   // cmd.c:4916
  * @returns {Promise<number>} char
  */
 export async function get_count(allowchars, inkey, maxcount, count, gc_flags) {   // cmd.c:5010
-    let qbuf = new Int8Array(128), key = 0, save_input_state = 0, cnt = 0, first = 0, backspaced = 0, showzero = 0, historicmsg = 0, conditionalmsg = 0, echoalways = 0, dgt = 0;
+    let qbuf = new Int8Array(128), key = 0;
     /* what comes after digits; if Null, anything */
     /* if caller already got first digit, this is it */
     /* if user tries to enter a bigger count, use this */
     /* primary output */
     /* control flags: GC_SAVEHIST, GC_ECHOFIRST */
-    save_input_state = program_state.input_state;
-    cnt = 0;
-    first = inkey ? inkey - 48 | 0 : 0;
+    const save_input_state = program_state.input_state;
+    let cnt = 0;
+    const first = inkey ? inkey - 48 : 0;
     /* should "Count: 123" go into message history? */
     /* put "Count: N" into mesg hist unless N is the same as the
        [first digit] value passed in via 'inkey' */
     /* normally "Count: 12" isn't echoed until the second digit */
-    backspaced = FALSE;
-    showzero = TRUE;
-    historicmsg = $c.i8((gc_flags & GC.SAVEHIST) >>> 0 !== 0 ? 1 : 0);
-    conditionalmsg = $c.i8((gc_flags & GC_CONDHIST) >>> 0 !== 0 ? 1 : 0);
-    echoalways = $c.i8((gc_flags & GC.ECHOFIRST) >>> 0 !== 0 ? 1 : 0);
+    let backspaced = FALSE;
+    let showzero = TRUE;
+    const historicmsg = (gc_flags & GC.SAVEHIST) >>> 0 !== 0 ? 1 : 0;
+    const conditionalmsg = (gc_flags & GC_CONDHIST) >>> 0 !== 0 ? 1 : 0;
+    const echoalways = (gc_flags & GC.ECHOFIRST) >>> 0 !== 0 ? 1 : 0;
     /* this should be done in port code so that we have erase_char
        and kill_char available; we can at least fake erase_char */
     count.set(0, 0);
@@ -4287,7 +4264,7 @@ export async function get_count(allowchars, inkey, maxcount, count, gc_flags) { 
             key = await readchar();
         }
         if (digit($c.i8(key))) {
-            dgt = key - 48 | 0;
+            const dgt = key - 48 | 0;
             /* cnt = (10 * cnt) + (key - '0'); */
             cnt = AppendLongDigit(cnt, dgt);
             if (cnt < 0) {
@@ -4296,7 +4273,7 @@ export async function get_count(allowchars, inkey, maxcount, count, gc_flags) { 
                 cnt = maxcount;
             }
             /* if we've backed up to nothing, then typed 0, show that 0 */
-            showzero = $c.i8(key === 48 ? 1 : 0);
+            showzero = key === 48 ? 1 : 0;
         } else if (key === 8 || key === 127) {
             if (!cnt && !echoalways) {
                 break;
@@ -4364,7 +4341,7 @@ async function parse() {   // cmd.c:5096
         gl.last_command_count = 0;
     } else if (gi.in_doagain) {
         gc.command_count = gl.last_command_count;
-    } else if (foo && (bind = cmdbind_get($c.u8(foo & 255))) !== null && bind && bind.cmd && (bind.cmd.ef_funct === do_repeat || bind.cmd.ef_funct === doprev_message || bind.cmd.ef_funct === doextcmd)) {
+    } else if (foo && (bind = cmdbind_get(foo & 255)) !== null && bind && bind.cmd && (bind.cmd.ef_funct === do_repeat || bind.cmd.ef_funct === doprev_message || bind.cmd.ef_funct === doextcmd)) {
         /* these shouldn't go into the do-again buffer */
         /* this one might get put into the do-again buffer but
            only if the interface code tells the core to do it */
@@ -4499,11 +4476,11 @@ async function readchar_core(x, y, mod) {   // cmd.c:5213
  * @returns {Promise<number>} char
  */
 export async function readchar() {   // cmd.c:5276
-    let ch = 0, x = Int16Array.of(0), y = Int16Array.of(0), mod = Int32Array.of(0);
+    let x = Int16Array.of(0), y = Int16Array.of(0), mod = Int32Array.of(0);
     x[0] = u.ux;
     y[0] = u.uy;
     mod[0] = 0;
-    ch = await readchar_core(new $c.Ptr(x, 0), new $c.Ptr(y, 0), new $c.Ptr(mod, 0));
+    const ch = await readchar_core(new $c.Ptr(x, 0), new $c.Ptr(y, 0), new $c.Ptr(mod, 0));
     return ch;
 }
 /* used by getpos() to accept mouse input as well as keyboard input */
@@ -4514,9 +4491,8 @@ export async function readchar() {   // cmd.c:5276
  * @returns {Promise<number>} char
  */
 export async function readchar_poskey(x, y, mod) {   // cmd.c:5288
-    let ch = 0;
     program_state.input_state = getposInp;
-    ch = await readchar_core(x, y, mod);
+    const ch = await readchar_core(x, y, mod);
     return ch;
 }
 /* '_' command, #travel, via keyboard rather than mouse click */
@@ -4524,7 +4500,7 @@ export async function readchar_poskey(x, y, mod) {   // cmd.c:5288
  * @returns {Promise<number>} int
  */
 async function dotravel() {   // cmd.c:5299
-    let cc = new $T.nhcoord(), gfilt = 0, $t1, $t2;
+    let cc = new $T.nhcoord(), $t1, $t2;
     /*
      * Traveling used to be a no-op if user toggled 'travel' option
      * Off.  However, travel was initially implemented as a mouse-only
@@ -4544,7 +4520,7 @@ async function dotravel() {   // cmd.c:5299
     }
     iflags.getloc_travelmode = TRUE;
     if (iflags.menu_requested) {
-        gfilt = iflags.getloc_filter;
+        const gfilt = iflags.getloc_filter;
         iflags.getloc_filter = GFILTER_VIEW;
         if (!await getpos_menu(cc, GLOC.INTERESTING)) {
             iflags.getloc_filter = gfilt;
@@ -4613,7 +4589,7 @@ async function doclicklook() {   // cmd.c:5381
  * @returns {number} boolean
  */
 function yn_menuable_resp(resp) {   // cmd.c:5394
-    return $c.i8(iflags.query_menu && iflags.window_inited && ($c.peq(resp, new $c.Ptr(ynchars, 0)) || $c.peq(resp, new $c.Ptr(ynqchars, 0)) || $c.peq(resp, new $c.Ptr(ynaqchars, 0)) || $c.peq(resp, new $c.Ptr(rightleftchars, 0)) || $c.peq(resp, new $c.Ptr(hidespinchars, 0))) ? 1 : 0);
+    return iflags.query_menu && iflags.window_inited && ($c.peq(resp, new $c.Ptr(ynchars, 0)) || $c.peq(resp, new $c.Ptr(ynqchars, 0)) || $c.peq(resp, new $c.Ptr(ynaqchars, 0)) || $c.peq(resp, new $c.Ptr(rightleftchars, 0)) || $c.peq(resp, new $c.Ptr(hidespinchars, 0))) ? 1 : 0;
 }
 /**
  * @param {number} win winid
@@ -4639,9 +4615,9 @@ async function yn_func_menu_opt(win, key, text, def) {   // cmd.c:5402
  * @returns {Promise<number>} boolean
  */
 async function yn_function_menu(query, resp, def, res) {   // cmd.c:5419
-    let win = 0, sel = [null], n = 0, keybuf = new Int8Array(128);
+    let sel = [null], keybuf = new Int8Array(128);
     if (yn_menuable_resp(resp)) {
-        win = await create_nhwindow()(NHW.MENU);
+        const win = await create_nhwindow()(NHW.MENU);
         await start_menu()(win, MENU.BEHAVE_STANDARD);
         if ($c.peq(resp, new $c.Ptr(rightleftchars, 0))) {
             await yn_func_menu_opt(win, 114, $c.lit("Right"), def);
@@ -4660,7 +4636,7 @@ async function yn_function_menu(query, resp, def, res) {   // cmd.c:5419
             await yn_func_menu_opt(win, 113, $c.lit("Quit"), def);
         }
         await end_menu()(win, query);
-        n = await select_menu(win, PICK.ONE, new $c.Ptr(sel, 0));
+        const n = await select_menu(win, PICK.ONE, new $c.Ptr(sel, 0));
         await destroy_nhwindow()(win);
         if (n > 0) {
             res.set(0, $c.radd(sel[0], 0).item.a_char);
@@ -4691,9 +4667,9 @@ async function yn_function_menu(query, resp, def, res) {   // cmd.c:5419
  * @returns {Promise<number>} char
  */
 export async function yn_function(query, resp, def, addcmdq) {   // cmd.c:5471
-    let res = Int8Array.of(0), qbuf = new Int8Array(128), cq = new $T._cmd_queue(), cmdq = null, idx = 0, dumplog_buf = new Int8Array(144), ln = 0, ridx = 0, altres = 0, fuzzing = 0, dbg_buf = new Int8Array(256);
+    let res = Int8Array.of(0), qbuf = new Int8Array(128), cq = new $T._cmd_queue(), cmdq = null, dumplog_buf = new Int8Array(144), dbg_buf = new Int8Array(256);
     res[0] = 27;
-    idx = gs.saved_pline_index;
+    const idx = gs.saved_pline_index;
     /* buffer to hold query+space+formatted_single_char_response */
     /* [QBUFSZ+1+7] should suffice */
     iflags.last_msg = PLNMSG.UNKNOWN;   /* most recent pline is clobbered */
@@ -4722,8 +4698,8 @@ export async function yn_function(query, resp, def, addcmdq) {   // cmd.c:5471
         /* for the fuzzer, usually force a valid response, but sometimes let
            it exercise windowport yn_function and invalid response handling */
     } else if (iflags.debug_fuzzer && resp && resp.get(0) && rn2(20)) {
-        ln = $c.i32($c.strlen(resp));
-        ridx = rn2(ln);
+        const ln = $c.i32($c.strlen(resp));
+        let ridx = rn2(ln);
         res[0] = resp.get(ridx);
         /* if valid-responses includes ESC followed by unshown candidates
            and we randomly picked the ESC, try again with only whatever is
@@ -4762,10 +4738,10 @@ export async function yn_function(query, resp, def, addcmdq) {   // cmd.c:5471
         /* this probably needs refinement since caller is expecting something
            within 'resp' and ESC won't be (it could be present, but as a flag
            for unshown possibilities rather than as acceptable input) */
-        altres = def ? def : 27;
+        const altres = def ? def : 27;
         if (!gi.in_doagain || wizard()) {
             /*TEMP*/
-            fuzzing = iflags.debug_fuzzer;
+            const fuzzing = iflags.debug_fuzzer;
             nh_snprintf($c.lit("yn_function"), 5570, new $c.Ptr(dbg_buf, 0), 256, $c.lit("%s [%s] (%s)"), query, resp ? resp : $c.lit(""), def ? visctrl(def) : $c.lit(""));
             paniclog($c.lit("yn debug"), new $c.Ptr(dbg_buf, 0));
             /*TEMP*/
@@ -4791,8 +4767,8 @@ export async function yn_function(query, resp, def, addcmdq) {   // cmd.c:5471
  * @returns {Promise<number>} char
  */
 export async function paranoid_ynq(be_paranoid, prompt, accept_q) {   // cmd.c:5588
-    let c = 0, pbuf = new Int8Array(256), qbuf = new Int8Array(128), ans = new Int8Array(256), promptprefix = null, responsetype = null, k = 0, trylimit = 0;
-    c = 110;   /* default result */
+    let pbuf = new Int8Array(256), qbuf = new Int8Array(128), ans = new Int8Array(256);
+    let c = 110;   /* default result */
     /* when paranoid, player must respond with "yes" rather than just 'y'
        to give the go-ahead for this query; default is "no" unless the
        ParanoidConfirm flag is set in which case there's no default */
@@ -4800,9 +4776,9 @@ export async function paranoid_ynq(be_paranoid, prompt, accept_q) {   // cmd.c:5
         /* empty for first iteration */
         /* default of 'n' is shown for
          * the !ParanoidConfirm cases */
-        promptprefix = $c.lit("");
-        responsetype = ParanoidConfirm() ? accept_q ? $c.lit("[yes|no|quit]") : $c.lit("[yes|no]") : accept_q ? $c.lit("[yes|n|q] (n)") : $c.lit("[yes|n] (n)");
-        trylimit = 6;   /* 1 normal, 5 more with "Yes or No:" prefix */
+        let promptprefix = $c.lit("");
+        const responsetype = ParanoidConfirm() ? accept_q ? $c.lit("[yes|no|quit]") : $c.lit("[yes|no]") : accept_q ? $c.lit("[yes|n|q] (n)") : $c.lit("[yes|n] (n)");
+        let trylimit = 6;   /* 1 normal, 5 more with "Yes or No:" prefix */
         copynchars(new $c.Ptr(pbuf, 0), prompt, BUFSZ - 1);
         /* in addition to being paranoid about this particular
            query, we might be even more paranoid about all paranoia
@@ -4811,7 +4787,7 @@ export async function paranoid_ynq(be_paranoid, prompt, accept_q) {   // cmd.c:5
            (except we won't loop if response is ESC; it means no) */
         do {
             /* make sure we won't overflow a QBUFSZ sized buffer */
-            k = $c.i32($c.addu64($c.addu64($c.strlen(promptprefix), 1), $c.strlen(responsetype)));
+            const k = $c.i32($c.addu64($c.addu64($c.strlen(promptprefix), 1), $c.strlen(responsetype)));
             if (($c.i32($c.strlen(new $c.Ptr(pbuf, 0))) + k | 0) > QBUFSZ - 1) {
                 /* chop off some at the end */
                 $c.strcpy(new $c.Ptr(pbuf, 0).add(QBUFSZ - 1).add(-k).add(-4), $c.lit("...?"));   /* -4: "...?" */
@@ -4852,17 +4828,17 @@ export async function paranoid_ynq(be_paranoid, prompt, accept_q) {   // cmd.c:5
  * @returns {Promise<number>} boolean
  */
 export async function paranoid_query(be_paranoid, prompt) {   // cmd.c:5655
-    return $c.i8(await paranoid_ynq(be_paranoid, prompt, FALSE) === 121 ? 1 : 0);
+    return await paranoid_ynq(be_paranoid, prompt, FALSE) === 121 ? 1 : 0;
 }
 /* ^Z command, #suspend */
 /**
  * @returns {Promise<number>} int
  */
 async function dosuspend_core() {   // cmd.c:5662
-    let now = 0, $t1, $t2;
+    let $t1, $t2;
     /* Does current window system support suspend? */
     if (windowprocs.win_can_suspend()) {
-        now = getnow();
+        const now = getnow();
         $t1 = timet_delta(now, urealtime.start_timing), urealtime.realtime = $c.add64(urealtime.realtime, $t1);
         urealtime.start_timing = now;   /* as a safeguard against panic save */
         /* NB: SYSCF SHELLERS handled in port code. */
@@ -4878,8 +4854,8 @@ async function dosuspend_core() {   // cmd.c:5662
  * @returns {Promise<number>} int
  */
 async function dosh_core() {   // cmd.c:5682
-    let now = 0, $t1, $t2;
-    now = getnow();
+    let $t1, $t2;
+    const now = getnow();
     $t1 = timet_delta(now, urealtime.start_timing), urealtime.realtime = $c.add64(urealtime.realtime, $t1);
     urealtime.start_timing = now;   /* (see dosuspend_core) */
     /* access restrictions, if any, are handled in port code */

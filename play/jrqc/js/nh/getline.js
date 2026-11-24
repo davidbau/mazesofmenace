@@ -45,10 +45,10 @@ export async function tty_getlin(query, bufp) {   // getline.c:36
  * @returns {Promise<void>}
  */
 async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
-    let obufp = null, c = 0, cw = null, doprev = 0, sav = 0, i = null, i$2 = null, s = null;
-    obufp = bufp;
-    cw = wins[$G.WIN_MESSAGE];
-    doprev = 0;
+    let i = null;
+    const obufp = bufp;
+    const cw = wins[$G.WIN_MESSAGE];
+    let doprev = 0;
     if ($G.ttyDisplay.toplin === TOPLINE.NEED_MORE && !(cw.flags & WIN_STOP)) {
         await more();
     }
@@ -72,7 +72,7 @@ async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
         $c.fflush($c.__stdoutp);
         $c.strcat($c.strcat($c.strcpy(new $c.Ptr(gt.toplines, 0), query), $c.lit(" ")), obufp);
         term_curs_set(1);
-        c = await pgetchar();
+        const c = await pgetchar();
         term_curs_set(0);
         if (c === 27 || c === -1) {
             if (c === -1) {
@@ -98,7 +98,7 @@ async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
         }
         if (c === 16) {
             /* ctrl-P, doesn't honor rebinding #prevmsg cmd */
-            sav = $G.ttyDisplay.inread;
+            const sav = $G.ttyDisplay.inread;
             $G.ttyDisplay.inread = 0;
             if (iflags.prevmsg_window === 115 || iflags.prevmsg_window === 99 && !doprev) {
                 /* msg_window:single, or msg_window:combination while it's
@@ -156,7 +156,7 @@ async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
         } else if (32 <= $c.u8(c) && c !== 127 && ($c.pdiff(bufp, obufp) < BUFSZ - 1 && $c.pdiff(bufp, obufp) < COLNO)) {
             /* avoid isprint() - some people don't have it
                ' ' is not always a printing char */
-            i$2 = eos(bufp);
+            let i$2 = eos(bufp);
             /* NEWAUTOCOMP */
             bufp.set(0, $c.i8(c));
             bufp.set(1, 0);
@@ -170,7 +170,7 @@ async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
                     await putsyms($c.lit("\x08"));
                 }
             } else if ($c.pcmp(i$2, bufp) > 0) {
-                s = i$2;
+                let s = i$2;
                 /* erase rest of prior guess */
                 for (; $c.pcmp(i$2, bufp) > 0; i$2 = i$2.add(-1)) {
                     await putsyms($c.lit(" "));
@@ -213,9 +213,9 @@ async function hooked_tty_getlin(query, bufp, hook) {   // getline.c:43
  * @returns {Promise<void>}
  */
 export async function xwaitforspace(s) {   // getline.c:230
-    let c = 0, x = 0;
+    let c = 0;
     /* chars allowed besides return */
-    x = $G.ttyDisplay ? $G.ttyDisplay.dismiss_more : 10;
+    const x = $G.ttyDisplay ? $G.ttyDisplay.dismiss_more : 10;
     $G.morc = 0;
     while (!program_state.done_hup && (c = await tty_nhgetch()) !== -1) {
         if (c === 10 || c === 13) {
@@ -254,10 +254,10 @@ export async function xwaitforspace(s) {   // getline.c:230
  * @returns {Promise<number>} boolean
  */
 async function ext_cmd_getlin_hook(base) {   // getline.c:272
-    let ecmatches = [null], nmatches = 0, ec = null;
-    nmatches = await extcmds_match(base, ECM.NOFLAGS, new $c.Ptr(ecmatches, 0));
+    let ecmatches = [null];
+    const nmatches = await extcmds_match(base, ECM.NOFLAGS, new $c.Ptr(ecmatches, 0));
     if (nmatches === 1) {
-        ec = extcmds_getentry(ecmatches[0].get(0));
+        const ec = extcmds_getentry(ecmatches[0].get(0));
         $c.strcpy(base, ec.ef_txt);
         return 1;
     }
@@ -271,9 +271,9 @@ async function ext_cmd_getlin_hook(base) {   // getline.c:272
  * @returns {Promise<number>} int
  */
 export async function tty_get_ext_cmd() {   // getline.c:292
-    let buf = new Int8Array(256), nmatches = 0, ecmatches = [null], no_hook = null, extcmd_char = new Int8Array(2), $t1;
+    let buf = new Int8Array(256), ecmatches = [null], extcmd_char = new Int8Array(2), $t1;
     ecmatches[0] = null;
-    no_hook = null;
+    const no_hook = null;
     if (iflags.extmenu) {
         return await extcmd_via_menu();
     }
@@ -288,7 +288,7 @@ export async function tty_get_ext_cmd() {   // getline.c:292
     buf[0] = 0;
     await hooked_tty_getlin(new $c.Ptr(extcmd_char, 0), new $c.Ptr(buf, 0), !gi.in_doagain ? ext_cmd_getlin_hook : no_hook);
     mungspaces(new $c.Ptr(buf, 0));
-    nmatches = buf[0] === 0 || buf[0] === 27 ? -1 : await extcmds_match(new $c.Ptr(buf, 0), ECM.IGNOREAC | ECM.EXACTMATCH, new $c.Ptr(ecmatches, 0));
+    const nmatches = buf[0] === 0 || buf[0] === 27 ? -1 : await extcmds_match(new $c.Ptr(buf, 0), ECM.IGNOREAC | ECM.EXACTMATCH, new $c.Ptr(ecmatches, 0));
     if (nmatches !== 1) {
         if (nmatches !== -1) {
             await pline($c.lit("%s%.60s: unknown extended command."), visctrl(extcmd_char[0]), new $c.Ptr(buf, 0));

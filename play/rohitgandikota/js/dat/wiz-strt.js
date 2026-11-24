@@ -102,41 +102,41 @@ export async function wizstrt_level() {
     /* The treasure of the quest leader */
     des.object('chest', 24, 5);
     /* apprentice guards for the audience chamber */
-    des.monster('apprentice', 30, 7);
-    des.monster('apprentice', 24, 6);
-    des.monster('apprentice', 15, 6);
-    des.monster('apprentice', 15, 12);
-    des.monster('apprentice', 26, 11);
-    des.monster('apprentice', 27, 11);
-    des.monster('apprentice', 19, 9);
-    des.monster('apprentice', 20, 9);
+    await des.monster('apprentice', 30, 7);
+    await des.monster('apprentice', 24, 6);
+    await des.monster('apprentice', 15, 6);
+    await des.monster('apprentice', 15, 12);
+    await des.monster('apprentice', 26, 11);
+    await des.monster('apprentice', 27, 11);
+    await des.monster('apprentice', 19, 9);
+    await des.monster('apprentice', 20, 9);
     /* Eels in the pond */
-    des.monster('giant eel', 62, 14);
-    des.monster('giant eel', 69, 15);
-    des.monster('giant eel', 67, 17);
+    await des.monster('giant eel', 62, 14);
+    await des.monster('giant eel', 69, 15);
+    await des.monster('giant eel', 67, 17);
     /* Non diggable walls */
     des.non_diggable(selection.area(0, 0, 75, 19));
     /* Random traps */
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     /* Monsters on siege duty. */
-    des.monster({ class: 'B', x: 60, y: 9, peaceful: 0 });
-    des.monster({ class: 'W', x: 60, y: 10, peaceful: 0 });
-    des.monster({ class: 'B', x: 60, y: 11, peaceful: 0 });
-    des.monster({ class: 'B', x: 60, y: 12, peaceful: 0 });
-    des.monster({ class: 'i', x: 60, y: 13, peaceful: 0 });
-    des.monster({ class: 'B', x: 61, y: 10, peaceful: 0 });
-    des.monster({ class: 'B', x: 61, y: 11, peaceful: 0 });
-    des.monster({ class: 'B', x: 61, y: 12, peaceful: 0 });
-    des.monster({ class: 'B', x: 35, y: 3, peaceful: 0 });
-    des.monster({ class: 'i', x: 35, y: 17, peaceful: 0 });
-    des.monster({ class: 'B', x: 36, y: 17, peaceful: 0 });
-    des.monster({ class: 'B', x: 34, y: 16, peaceful: 0 });
-    des.monster({ class: 'i', x: 34, y: 17, peaceful: 0 });
-    des.monster({ class: 'W', x: 67, y: 2, peaceful: 0 });
-    des.monster({ class: 'B', x: 10, y: 19, peaceful: 0 });
+    await des.monster({ class: 'B', x: 60, y: 9, peaceful: 0 });
+    await des.monster({ class: 'W', x: 60, y: 10, peaceful: 0 });
+    await des.monster({ class: 'B', x: 60, y: 11, peaceful: 0 });
+    await des.monster({ class: 'B', x: 60, y: 12, peaceful: 0 });
+    await des.monster({ class: 'i', x: 60, y: 13, peaceful: 0 });
+    await des.monster({ class: 'B', x: 61, y: 10, peaceful: 0 });
+    await des.monster({ class: 'B', x: 61, y: 11, peaceful: 0 });
+    await des.monster({ class: 'B', x: 61, y: 12, peaceful: 0 });
+    await des.monster({ class: 'B', x: 35, y: 3, peaceful: 0 });
+    await des.monster({ class: 'i', x: 35, y: 17, peaceful: 0 });
+    await des.monster({ class: 'B', x: 36, y: 17, peaceful: 0 });
+    await des.monster({ class: 'B', x: 34, y: 16, peaceful: 0 });
+    await des.monster({ class: 'i', x: 34, y: 17, peaceful: 0 });
+    await des.monster({ class: 'W', x: 67, y: 2, peaceful: 0 });
+    await des.monster({ class: 'B', x: 10, y: 19, peaceful: 0 });
 }

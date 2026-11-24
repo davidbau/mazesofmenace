@@ -16,26 +16,26 @@ export function Race_if(X) {
     return gu.urace.mnum === X ? 1 : 0;
 }
 export function Luck() {
-    return u.uluck + u.moreluck | 0;
+    return u.uluck + u.moreluck;
 }
 export function Upolyd() {
     return u.umonnum !== u.umonster ? 1 : 0;
 }
 export function Ugender() {
-    return (u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0;
+    return (u.umonnum !== u.umonster ? u.mfemale : flags.female) ? 1 : 0;
 }
 export function u_at(x, y) {
     return x === u.ux && y === u.uy ? 1 : 0;
 }
 export function URIGHTY() {
-    return (u.uhandedness | 0) === RIGHT_HANDED ? 1 : 0;
+    return u.uhandedness === RIGHT_HANDED ? 1 : 0;
 }
 export function ULEFTY() {
-    return (u.uhandedness | 0) === LEFT_HANDED ? 1 : 0;
+    return u.uhandedness === LEFT_HANDED ? 1 : 0;
 }
 export function RING_ON_PRIMARY() {
-    return (u.uhandedness | 0) === LEFT_HANDED ? $G.uleft : $G.uright;
+    return u.uhandedness === LEFT_HANDED ? $G.uleft : $G.uright;
 }
 export function RING_ON_SECONDARY() {
-    return (u.uhandedness | 0) === LEFT_HANDED ? $G.uright : $G.uleft;
+    return u.uhandedness === LEFT_HANDED ? $G.uright : $G.uleft;
 }

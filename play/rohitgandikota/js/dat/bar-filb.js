@@ -40,21 +40,21 @@ export async function barfilb_level() {
     des.object();
     des.object();
 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 
-    des.monster({ id: 'ogre', peaceful: 0 });
-    des.monster({ id: 'ogre', peaceful: 0 });
-    des.monster({ id: 'ogre', peaceful: 0 });
-    des.monster({ id: 'ogre', peaceful: 0 });
-    des.monster({ id: 'ogre', peaceful: 0 });
-    des.monster({ id: 'ogre', peaceful: 0 });
-    des.monster({ id: 'ogre', peaceful: 0 });
-    des.monster({ class: 'O', peaceful: 0 });
-    des.monster({ id: 'rock troll', peaceful: 0 });
-    des.monster({ id: 'rock troll', peaceful: 0 });
-    des.monster({ id: 'rock troll', peaceful: 0 });
-    des.monster({ class: 'T', peaceful: 0 });
+    await des.monster({ id: 'ogre', peaceful: 0 });
+    await des.monster({ id: 'ogre', peaceful: 0 });
+    await des.monster({ id: 'ogre', peaceful: 0 });
+    await des.monster({ id: 'ogre', peaceful: 0 });
+    await des.monster({ id: 'ogre', peaceful: 0 });
+    await des.monster({ id: 'ogre', peaceful: 0 });
+    await des.monster({ id: 'ogre', peaceful: 0 });
+    await des.monster({ class: 'O', peaceful: 0 });
+    await des.monster({ id: 'rock troll', peaceful: 0 });
+    await des.monster({ id: 'rock troll', peaceful: 0 });
+    await des.monster({ id: 'rock troll', peaceful: 0 });
+    await des.monster({ class: 'T', peaceful: 0 });
 }

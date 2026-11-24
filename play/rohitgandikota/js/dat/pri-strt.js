@@ -118,24 +118,24 @@ export async function pristrt_level() {
     /* The treasure of High Priest */
     des.object('chest', 27, 10);
     /* knight guards for the audience chamber */
-    des.monster('acolyte', 32, 7);
-    des.monster('acolyte', 32, 8);
-    des.monster('acolyte', 32, 11);
-    des.monster('acolyte', 32, 12);
-    des.monster('acolyte', 33, 7);
-    des.monster('acolyte', 33, 8);
-    des.monster('acolyte', 33, 11);
-    des.monster('acolyte', 33, 12);
+    await des.monster('acolyte', 32, 7);
+    await des.monster('acolyte', 32, 8);
+    await des.monster('acolyte', 32, 11);
+    await des.monster('acolyte', 32, 12);
+    await des.monster('acolyte', 33, 7);
+    await des.monster('acolyte', 33, 8);
+    await des.monster('acolyte', 33, 11);
+    await des.monster('acolyte', 33, 12);
     /* Non diggable walls */
     des.non_diggable(selection.area(18, 3, 55, 16));
     /* Random traps */
     for (let i = 1; i <= 2; i++)
         des.trap('dart', selection_rndcoord(spacelocs, 1));
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     /* Monsters on siege duty. */
     for (let i = 1; i <= 12; i++)
-        des.monster('human zombie', selection_rndcoord(spacelocs, 1));
+        await des.monster('human zombie', selection_rndcoord(spacelocs, 1));
 }

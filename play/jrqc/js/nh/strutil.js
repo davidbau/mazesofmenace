@@ -26,8 +26,7 @@ export function strbuf_init(strbuf) {   // strutil.c:9
  * @returns {Promise<void>}
  */
 export async function strbuf_append(strbuf, str) {   // strutil.c:17
-    let len = 0;
-    len = $c.i32($c.strlen(str)) + 1 | 0;
+    const len = $c.i32($c.strlen(str)) + 1 | 0;
     await strbuf_reserve(strbuf, len + (strbuf.str ? $c.i32($c.strlen(strbuf.str)) : 0) | 0);
     $c.strcat(strbuf.str, str);
 }
@@ -38,14 +37,14 @@ export async function strbuf_append(strbuf, str) {   // strutil.c:17
  * @returns {Promise<void>}
  */
 export async function strbuf_reserve(strbuf, len) {   // strutil.c:28
-    let oldbuf = null, $t1;
+    let $t1;
     if ($c.peq(strbuf.str, $c.asArr(null, Int8Array))) {
         strbuf.str = new $c.Ptr(strbuf.buf, 0);
         strbuf.str.set(0, 0);
         strbuf.len = 256;
     }
     if (len > strbuf.len) {
-        oldbuf = strbuf.str;
+        const oldbuf = strbuf.str;
         strbuf.len = len + 256 | 0;
         $t1 = $c.asArr(await alloc(strbuf.len >>> 0), Int8Array), strbuf.str = $t1;
         $c.strcpy(strbuf.str, oldbuf);
@@ -70,11 +69,11 @@ export function strbuf_empty(strbuf) {   // strutil.c:49
  * @returns {Promise<void>}
  */
 export async function strbuf_nl_to_crlf(strbuf) {   // strutil.c:58
-    let len = 0, count = 0, cp = null, $t1;
+    let $t1;
     if (strbuf.str) {
-        len = $c.i32($c.strlen(strbuf.str));
-        count = 0;
-        cp = strbuf.str;
+        const len = $c.i32($c.strlen(strbuf.str));
+        let count = 0;
+        let cp = strbuf.str;
         while (cp.get(0)) {
             if (($t1 = cp, cp = $t1.add(1), $t1).get(0) === 10) {
                 count = count + 1 | 0;
@@ -144,9 +143,9 @@ function pmatch_internal(patrn, strng, ci, sk) {   // strutil.c:105
             } while ($c.strchr(sk, p));
         }
         if (!p) {   /* end of pattern */
-            return $c.i8(s === 0 ? 1 : 0);   /* matches iff end of string too */
+            return s === 0 ? 1 : 0;   /* matches iff end of string too */
         } else if (p === 42) {   /* wildcard reached */
-            return $c.i8(!patrn.get(0) || pmatch_internal(patrn, strng.add(-1), ci, sk) ? TRUE : s ? pmatch_internal(patrn.add(-1), strng, ci, sk) : FALSE);
+            return !patrn.get(0) || pmatch_internal(patrn, strng.add(-1), ci, sk) ? TRUE : s ? pmatch_internal(patrn.add(-1), strng, ci, sk) : FALSE;
         } else if ((ci ? lowc(p) !== lowc(s) : p !== s) && (p !== 63 || !s)) {   /* & single-char wildcard */
             /* check single character */
             return FALSE;   /* doesn't match */

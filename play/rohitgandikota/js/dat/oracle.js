@@ -25,9 +25,9 @@ export async function oracle_level() {
 
     des.level_flags('noflip');
 
-    des.room({ type: 'ordinary', lit: 1, x: 3, y: 3,
+    await des.room({ type: 'ordinary', lit: 1, x: 3, y: 3,
                xalign: 'center', yalign: 'center', w: 11, h: 9,
-               contents: () => {
+               contents: async () => {
         des.object('statue', 0, 0, { montype: 'C', historic: true });
         des.object('statue', 0, 8, { montype: 'C', historic: true });
         des.object('statue', 10, 0, { montype: 'C', historic: true });
@@ -47,8 +47,8 @@ export async function oracle_level() {
             des.door({ state: 'nodoor', wall: 'all' });
         } });
 
-        des.monster();
-        des.monster();
+        await des.monster();
+        await des.monster();
     } });
 
     des.room({ contents: () => {
@@ -56,30 +56,30 @@ export async function oracle_level() {
         des.object();
     } });
 
-    des.room({ contents: () => {
+    await des.room({ contents: async () => {
         des.stair('down');
         des.object();
-        des.trap();
-        des.monster();
-        des.monster();
+        await des.trap();
+        await des.monster();
+        await des.monster();
     } });
 
-    des.room({ contents: () => {
+    await des.room({ contents: async () => {
         des.object();
         des.object();
-        des.monster();
+        await des.monster();
     } });
 
-    des.room({ contents: () => {
+    await des.room({ contents: async () => {
         des.object();
-        des.trap();
-        des.monster();
+        await des.trap();
+        await des.monster();
     } });
 
-    des.room({ contents: () => {
+    await des.room({ contents: async () => {
         des.object();
-        des.trap();
-        des.monster();
+        await des.trap();
+        await des.monster();
     } });
 
     des.random_corridors();

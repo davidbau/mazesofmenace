@@ -42,7 +42,7 @@ import { mon_to_glyph, display_self, more, unmap_object, glyph_at, see_monsters,
 import { engr_at } from './engrave.js';
 import { OCLASSES, MATERIALS } from './objects_data.js';
 import { PMNAMES, NUMMONS } from './monst_data.js';
-import { Deaf } from './youprop.js';
+import { Deaf, Stunned } from './youprop.js';
 import { strange_feeling, make_confused, make_blinded, make_hallucinated } from './potion.js';
 import { DEADMONSTER, helpless } from './monst.js';
 import { game } from './gstate.js';
@@ -837,11 +837,8 @@ export async function reveal_terrain(which_subset) {
     /* 'full' overrides impairment and implies no-traps, no-objs, no-mons */
     const full = (which_subset & TER_FULL) !== 0;
     const u = game.u;
-    const intr = u.intrinsics || {};
-    const props = u.uprops || {};
 
-    if ((Hallucination() || intr.HStun || props.STUNNED
-         || intr.HConfusion || props.CONFUSION) && !full) {
+    if ((Hallucination() || Stunned() || Confusion()) && !full) {
         await You('are too disoriented for this.');
     } else {
         const keep_traps = (which_subset & TER_TRP) !== 0,
@@ -1952,7 +1949,7 @@ export async function use_crystal_ball(obj) {
             if (obj.spe < 0) {
                 /* implode: destroy it when it has been cancelled */
                 await pline(`${Tobjnam(obj, 'implode')}!`);
-                useup(obj);
+                await useup(obj);
                 return;
             }
         } else {
@@ -2001,7 +1998,7 @@ export async function use_crystal_ball(obj) {
         if (obj.spe < 0) { /* destroy ball if used after being cancelled */
  /* implode: */ /* no damage to hero but 'multi' has a small negative value */
             await pline(`${Tobjnam(obj, 'implode')}!`);
-            useup(obj);
+            await useup(obj);
             return;
         }
     } else {

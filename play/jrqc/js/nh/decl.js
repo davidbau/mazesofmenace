@@ -204,9 +204,9 @@ export async function decl_globals_init() {   // decl.c:1080
     svw.$copyFrom(init_svw);
     svx.$copyFrom(init_svx);
     svy.$copyFrom(init_svy);
-    gv.valuables[0].list = $c.relem(gg.gems, 0);
+    gv.valuables[0].list = gg.gems[0];
     gv.valuables[0].size = 23;
-    gv.valuables[1].list = $c.relem(ga.amulets, 0);
+    gv.valuables[1].list = ga.amulets[0];
     gv.valuables[1].size = 13;
     gv.valuables[2].list = null;
     gv.valuables[2].size = 0;
@@ -366,7 +366,7 @@ export async function decl_globals_init() {   // decl.c:1080
             $c.exit(1);
         }
     } while (0);
-    gs.subrooms = $c.relem(svr.rooms, MAXNROFROOMS + 1);
+    gs.subrooms = svr.rooms[MAXNROFROOMS + 1];
     $c.memset(flags, 0, 208);
     $c.memset(iflags, 0, 424);
     $c.memset(a11y, 0, 16);
@@ -1456,7 +1456,7 @@ export function $init() {
     init_svd.dungeons[0].fill_lvl[0] = 0;
     init_svd.dungeons[0].themerms[0] = 0;
     init_svd.dungeons[0].boneid = 0;
-    init_svd.dungeons[0].flags.town = (0) & 1;
+    init_svd.dungeons[0].flags.town = 0;
     init_svd.dungeons[0].entry_lev = 0;
     init_svd.dungeons[0].num_dunlevs = 0;
     init_svd.dungeons[0].dunlev_ureached = 0;
@@ -1596,7 +1596,7 @@ export function $init() {
     init_svp.pl_fruit[0] = 0;   /* pl_fruit */
     init_svq.$copyFrom(new $T.instance_globals_saved_q());
     /* quest.c */
-    init_svq.quest_status.first_start = (0) & 1;   /* quest_status */
+    init_svq.quest_status.first_start = 0;   /* quest_status */
     init_svr.$copyFrom(new $T.instance_globals_saved_r());
     /* mkroom.c */
     init_svr.rooms[0].lx = 0;   /* rooms */

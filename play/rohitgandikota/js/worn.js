@@ -128,6 +128,7 @@ export function recalc_telepat_range() {
 export function setworn(obj, mask) {
     const u = game.u;
     let p;
+    let pending;
 
     if ((mask & (W_ARM | I_SPECIAL)) === (W_ARM | I_SPECIAL)) {
         /* restoring saved game; no properties are conferred via skin */
@@ -135,67 +136,82 @@ export function setworn(obj, mask) {
     } else {
         for (const wp of worn) {
             if (wp.w_mask & mask) {
-                const oobj = u[wp.w_obj];
-                /* C: impossible("Setworn: mask=...") when oobj lacks the bit */
-                if (oobj) {
-                    if (u.twoweap && (oobj.owornmask & (W_WEP | W_SWAPWEP)))
-                        set_twoweap(false); /* u.twoweap = FALSE */
-                    oobj.owornmask &= ~wp.w_mask;
-                    if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
-                        p = game.objects[oobj.otyp].oc_oprop;
-                        if (PROP_KEYS[p]) {
-                            const left = ((u.uprops?.[PROP_KEYS[p]] || 0)
-                                          & ~wp.w_mask);
-                            if (left)
-                                u.uprops[PROP_KEYS[p]] = left;
-                            else if (u.uprops)
-                                delete u.uprops[PROP_KEYS[p]];
+                const replace_slot = () => {
+                    const oobj = u[wp.w_obj];
+                    let removed;
+                    /* C: impossible("Setworn: mask=...") when oobj lacks the bit */
+                    if (oobj) {
+                        if (u.twoweap && (oobj.owornmask & (W_WEP | W_SWAPWEP)))
+                            set_twoweap(false); /* u.twoweap = FALSE */
+                        oobj.owornmask &= ~wp.w_mask;
+                        if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
+                            p = game.objects[oobj.otyp].oc_oprop;
+                            if (PROP_KEYS[p]) {
+                                const left = ((u.uprops?.[PROP_KEYS[p]] || 0)
+                                              & ~wp.w_mask);
+                                if (left)
+                                    u.uprops[PROP_KEYS[p]] = left;
+                                else if (u.uprops)
+                                    delete u.uprops[PROP_KEYS[p]];
+                            }
+                            /* Nearby monsters can try this attack type again. */
+                            monstunseesu_prop(p);
+                            if ((p = w_blocks(oobj, mask)) !== 0)
+                                update_blocked(u, p, wp.w_mask, false);
+                            if (oobj.oartifact)
+                                removed = set_artifact_intrinsic(oobj, false, mask);
                         }
-                        /* Nearby monsters can try this attack type again. */
-                        monstunseesu_prop(p);
-                        if ((p = w_blocks(oobj, mask)) !== 0)
-                            update_blocked(u, p, wp.w_mask, false);
-                        if (oobj.oartifact)
-                            set_artifact_intrinsic(oobj, false, wp.w_mask);
                     }
-                    /* in case wearing or removal is in progress or removal
-                       is pending (via 'A' command for multiple items) */
-                    cancel_doff(oobj, wp.w_mask);
-                }
-                u[wp.w_obj] = obj;
-                if (obj) {
-                    obj.owornmask |= wp.w_mask;
-                    /* Prevent getting/blocking intrinsics from wielding
-                     * potions, through the quiver, etc.
-                     * Allow weapon-tools, too. */
-                    if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
-                        if (obj.oclass === OCLASSES.WEAPON_CLASS
-                            || is_weptool(obj, game.objects)
-                            || mask !== W_WEP) {
-                            p = game.objects[obj.otyp].oc_oprop;
-                            if (PROP_KEYS[p])
-                                (u.uprops ||= {})[PROP_KEYS[p]] =
-                                    (u.uprops[PROP_KEYS[p]] || 0) | wp.w_mask;
-                            if ((p = w_blocks(obj, mask)) !== 0)
-                                update_blocked(u, p, wp.w_mask, true);
+                    return removed ? removed.then(equip) : equip();
+
+                    function equip() {
+                        /* in case wearing or removal is in progress or removal
+                           is pending (via 'A' command for multiple items) */
+                        if (oobj)
+                            cancel_doff(oobj, wp.w_mask);
+                        u[wp.w_obj] = obj;
+                        if (obj) {
+                            obj.owornmask |= wp.w_mask;
+                            /* Prevent getting/blocking intrinsics from wielding
+                             * potions, through the quiver, etc.
+                             * Allow weapon-tools, too. */
+                            if (wp.w_mask & ~(W_SWAPWEP | W_QUIVER)) {
+                                if (obj.oclass === OCLASSES.WEAPON_CLASS
+                                    || is_weptool(obj, game.objects)
+                                    || mask !== W_WEP) {
+                                    p = game.objects[obj.otyp].oc_oprop;
+                                    if (PROP_KEYS[p])
+                                        (u.uprops ||= {})[PROP_KEYS[p]] =
+                                            (u.uprops[PROP_KEYS[p]] || 0) | wp.w_mask;
+                                    if ((p = w_blocks(obj, mask)) !== 0)
+                                        update_blocked(u, p, wp.w_mask, true);
+                                }
+                                if (obj.oartifact)
+                                    return set_artifact_intrinsic(obj, true, mask);
+                            }
                         }
-                        if (obj.oartifact)
-                            set_artifact_intrinsic(obj, true, wp.w_mask);
                     }
-                }
+                };
+                pending = pending ? pending.then(replace_slot) : replace_slot();
             }
         }
-        if (obj && (obj.owornmask & W_ARMOR) !== 0)
-            (u.uroleplay ||= {}).nudist = false;
-        /* tux -> tuxedo -> "monkey suit" -> monk's suit */
-        game.iflags.tux_penalty = !!(u.uarm && game.urole?.name?.m === 'Monk'
-                                     && game.urole?.spelarmr);
     }
-    if ((game.flags.weaponstatus && (mask & W_WEP) !== 0)
-        || (game.flags.armorstatus && (mask & W_ARMOR) !== 0))
-        (game.disp ||= {}).botl = true;
-    update_inventory();
-    recalc_telepat_range();
+    return pending ? pending.then(finish) : finish();
+
+    function finish() {
+        if ((mask & (W_ARM | I_SPECIAL)) !== (W_ARM | I_SPECIAL)) {
+            if (obj && (obj.owornmask & W_ARMOR) !== 0)
+                (u.uroleplay ||= {}).nudist = false;
+            /* tux -> tuxedo -> "monkey suit" -> monk's suit */
+            game.iflags.tux_penalty = !!(u.uarm && game.urole?.name?.m === 'Monk'
+                                         && game.urole?.spelarmr);
+        }
+        if ((game.flags.weaponstatus && (mask & W_WEP) !== 0)
+            || (game.flags.armorstatus && (mask & W_ARMOR) !== 0))
+            (game.disp ||= {}).botl = true;
+        update_inventory();
+        recalc_telepat_range();
+    }
 }
 
 // src/worn.c:150 setnotworn() — called e.g. when obj is destroyed.
@@ -203,41 +219,53 @@ export function setnotworn(obj) {
     const u = game.u;
     let p;
     let unworn = 0;
+    let pending;
 
     if (!obj)
         return;
     if (u.twoweap && (obj === u.uwep || obj === u.uswapwep))
         set_twoweap(false); /* u.twoweap = FALSE */
-    for (const wp of worn)
-        if (obj === u[wp.w_obj]) {
-            /* in case wearing or removal is in progress or removal
-               is pending (via 'A' command for multiple items) */
-            cancel_doff(obj, wp.w_mask);
+    for (const wp of worn) {
+        const clear_slot = () => {
+            if (obj === u[wp.w_obj]) {
+                /* in case wearing or removal is in progress or removal
+                   is pending (via 'A' command for multiple items) */
+                cancel_doff(obj, wp.w_mask);
 
-            u[wp.w_obj] = null;
-            unworn |= wp.w_mask;
-            p = game.objects[obj.otyp].oc_oprop;
-            if (PROP_KEYS[p]) {
-                const left = (u.uprops?.[PROP_KEYS[p]] || 0) & ~wp.w_mask;
-                if (left)
-                    u.uprops[PROP_KEYS[p]] = left;
-                else if (u.uprops)
-                    delete u.uprops[PROP_KEYS[p]];
+                u[wp.w_obj] = null;
+                unworn |= wp.w_mask;
+                p = game.objects[obj.otyp].oc_oprop;
+                if (PROP_KEYS[p]) {
+                    const left = (u.uprops?.[PROP_KEYS[p]] || 0) & ~wp.w_mask;
+                    if (left)
+                        u.uprops[PROP_KEYS[p]] = left;
+                    else if (u.uprops)
+                        delete u.uprops[PROP_KEYS[p]];
+                }
+                monstunseesu_prop(p);
+                obj.owornmask &= ~wp.w_mask;
+                const removed = obj.oartifact
+                    ? set_artifact_intrinsic(obj, false, wp.w_mask) : null;
+                const unblock = () => {
+                    if ((p = w_blocks(obj, wp.w_mask)) !== 0)
+                        update_blocked(u, p, wp.w_mask, false);
+                };
+                return removed ? removed.then(unblock) : unblock();
             }
-            monstunseesu_prop(p);
-            obj.owornmask &= ~wp.w_mask;
-            if (obj.oartifact)
-                set_artifact_intrinsic(obj, false, wp.w_mask);
-            if ((p = w_blocks(obj, wp.w_mask)) !== 0)
-                update_blocked(u, p, wp.w_mask, false);
-        }
-    if (!u.uarm)
-        game.iflags.tux_penalty = false;
-    if ((game.flags.weaponstatus && (unworn & W_WEP) !== 0)
-        || (game.flags.armorstatus && (unworn & W_ARMOR) !== 0))
-        (game.disp ||= {}).botl = true;
-    update_inventory();
-    recalc_telepat_range();
+        };
+        pending = pending ? pending.then(clear_slot) : clear_slot();
+    }
+    return pending ? pending.then(finish) : finish();
+
+    function finish() {
+        if (!u.uarm)
+            game.iflags.tux_penalty = false;
+        if ((game.flags.weaponstatus && (unworn & W_WEP) !== 0)
+            || (game.flags.armorstatus && (unworn & W_ARMOR) !== 0))
+            (game.disp ||= {}).botl = true;
+        update_inventory();
+        recalc_telepat_range();
+    }
 }
 
 // src/worn.c which_armor() — the object worn in a given slot, or null.

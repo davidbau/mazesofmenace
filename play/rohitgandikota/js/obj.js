@@ -134,19 +134,13 @@ export const is_elven_weapon = (otmp) =>
     || otmp.otyp === ONAMES.ELVEN_DAGGER || otmp.otyp === ONAMES.ELVEN_SHORT_SWORD
     || otmp.otyp === ONAMES.ELVEN_BROADSWORD || otmp.otyp === ONAMES.ELVEN_BOW;
 
-// include/obj.h:421 is_plural() — a stack, or the (discovered) Eyes of the
-// Overworld. undiscovered_artifact scans artidisco[], which nothing ported
-// records into, so an artifact is always still "undiscovered" here; the term
-// is exact until artifact discovery lands.
+// include/obj.h:421 is_plural(): a stack or the discovered Eyes of the Overworld.
+// discover_artifact() keeps artidisco as a dense list of discovered artifacts.
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
 export const is_plural = (o) =>
     o.quan !== 1
     || (o.oartifact === ART_EYES_OF_THE_OVERWORLD
-        && !undiscovered_artifact_obj(ART_EYES_OF_THE_OVERWORLD));
-function undiscovered_artifact_obj(m) {
-    (game.unported ||= new Set()).add('obj:undiscovered_artifact');
-    return true;    /* empty artidisco[]: everything is undiscovered */
-}
+        && (game.artidisco || []).includes(ART_EYES_OF_THE_OVERWORLD));
 
 // include/obj.h:427 pair_of()
 export const pair_of = (o) =>

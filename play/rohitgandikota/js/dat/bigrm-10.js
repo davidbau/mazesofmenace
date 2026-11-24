@@ -78,11 +78,11 @@ export async function bigrm10_level() {
     for (let i = 0; i < 15; i++)
         des.object();
     for (let i = 0; i < 6; i++)
-        des.trap();
+        await des.trap();
     for (let i = 0; i < 28; i++)
-        des.monster();
+        await des.monster();
 
-    des.mazewalk({ x: 4, y: 2, dir: 'south', stocked: 0 });
+    await des.mazewalk({ x: 4, y: 2, dir: 'south', stocked: 0 });
 
     /* Stairs up, not in the fog maze */
     des.levregion({ region: [0, 0, 70, 18], exclude: [2, 3, 68, 15],

@@ -47,8 +47,8 @@ export async function fakewiz2_level() {
     const bounds2 = l_selection_fillrect(bnds.lx, bnds.ly + 1,
                                          bnds.hx - 2, bnds.hy - 1);
 
-    const fakewiz2 = des.map({ halign: 'center', valign: 'center',
-                               map: FAKEWIZ2_MAP, contents: (rm) => {
+    const fakewiz2 = await des.map({ halign: 'center', valign: 'center',
+                               map: FAKEWIZ2_MAP, contents: async (rm) => {
         des.levregion({ region: [1, 0, 79, 20], region_islev: 1,
                         exclude: [0, 0, 8, 8], type: 'stair-up' });
         des.levregion({ region: [1, 0, 79, 20], region_islev: 1,
@@ -57,10 +57,10 @@ export async function fakewiz2_level() {
                         exclude: [0, 0, 8, 8], type: 'branch' });
         des.teleport_region({ region: [1, 0, 79, 20], region_islev: 1,
                               exclude: [2, 2, 6, 6] });
-        des.mazewalk(8, 5, 'east');
-        des.monster('L', 4, 4);
-        des.monster('vampire lord', 3, 4);
-        des.monster('kraken', 6, 6);
+        await des.mazewalk(8, 5, 'east');
+        await des.monster('L', 4, 4);
+        await des.monster('vampire lord', 3, 4);
+        await des.monster('kraken', 6, 6);
         /* And to make things a little harder. */
         des.trap('board', 4, 3);
         des.trap('board', 4, 5);

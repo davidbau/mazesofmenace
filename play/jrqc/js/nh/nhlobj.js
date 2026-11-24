@@ -43,9 +43,8 @@ const l_obj_meta = $c.recArray($T.luaL_Reg, 2);
  * @returns {Promise<$T._lua_obj | null>} struct _lua_obj *
  */
 async function l_obj_check(L, indx) {   // nhlobj.c:35
-    let lo = null;
     await luaL_checktype(L, indx, LUA.TUSERDATA);
-    lo = $c.asRec(await luaL_checkudata(L, indx, $c.lit("obj")), $T._lua_obj, 16);
+    const lo = $c.asRec(await luaL_checkudata(L, indx, $c.lit("obj")), $T._lua_obj, 16);
     if (!lo) {
         await nhl_error(L, $c.lit("Obj error"));
     }
@@ -56,8 +55,8 @@ async function l_obj_check(L, indx) {   // nhlobj.c:35
  * @returns {Promise<number>} int
  */
 async function l_obj_gc(L) {   // nhlobj.c:47
-    let obj = null, otmp = null, lo = null;
-    lo = await l_obj_check(L, 1);
+    let obj = null, otmp = null;
+    const lo = await l_obj_check(L, 1);
     if (lo && (obj = lo.obj) !== null) {
         if (obj.lua_ref_cnt > 0) {
             obj.lua_ref_cnt = obj.lua_ref_cnt - 1 >>> 0;
@@ -83,8 +82,7 @@ async function l_obj_gc(L) {   // nhlobj.c:47
  * @returns {Promise<$T._lua_obj | null>} struct _lua_obj *
  */
 async function l_obj_push(L, otmp) {   // nhlobj.c:73
-    let lo = null;
-    lo = $c.asRec(await lua_newuserdata(L, 16), $T._lua_obj, 16);
+    const lo = $c.asRec(await lua_newuserdata(L, 16), $T._lua_obj, 16);
     await lua_getfield(L, LUA_REGISTRYINDEX, $c.lit("obj"));
     await lua_setmetatable(L, -2);
     lo.state = 0;
@@ -109,9 +107,8 @@ export async function nhl_push_obj(L, otmp) {   // nhlobj.c:89
  * @returns {Promise<number>} int
  */
 async function l_obj_getcontents(L) {   // nhlobj.c:97
-    let lo = null, obj = null;
-    lo = await l_obj_check(L, 1);
-    obj = lo.obj;
+    const lo = await l_obj_check(L, 1);
+    const obj = lo.obj;
     if (!obj) {
         await nhl_error(L, $c.lit("l_obj_getcontents: no obj"));
     }
@@ -127,15 +124,15 @@ async function l_obj_getcontents(L) {   // nhlobj.c:97
  * @returns {Promise<number>} int
  */
 async function l_obj_add_to_container(L) {   // nhlobj.c:114
-    let lobox = null, lo = null, otmp = null, refs = 0, $t1;
-    lobox = await l_obj_check(L, 1);
-    lo = await l_obj_check(L, 2);
+    let $t1;
+    const lobox = await l_obj_check(L, 1);
+    const lo = await l_obj_check(L, 2);
     if (!lobj_is_ok(lo) || !lobj_is_ok(lobox)) {
         return 0;
     }
-    refs = lo.obj.lua_ref_cnt | 0;
+    const refs = lo.obj.lua_ref_cnt | 0;
     await obj_extract_self(lo.obj);
-    otmp = await add_to_container(lobox.obj, lo.obj);
+    const otmp = await add_to_container(lobox.obj, lo.obj);
     /* was lo->obj merged? */
     if (!$c.peq(otmp, lo.obj)) {
         lo.obj = otmp;
@@ -151,14 +148,13 @@ async function l_obj_add_to_container(L) {   // nhlobj.c:114
  * @returns {Promise<number>} int
  */
 export async function nhl_obj_u_giveobj(L) {   // nhlobj.c:142
-    let lo = null, otmp = null, refs = 0;
-    lo = await l_obj_check(L, 1);
+    const lo = await l_obj_check(L, 1);
     if (!lobj_is_ok(lo) || lo.obj.where === OBJ.INVENT) {
         return 0;
     }
-    refs = lo.obj.lua_ref_cnt | 0;
+    const refs = lo.obj.lua_ref_cnt | 0;
     await obj_extract_self(lo.obj);
-    otmp = await addinv(lo.obj);
+    const otmp = await addinv(lo.obj);
     if (!$c.peq(otmp, lo.obj)) {
         lo.obj.lua_ref_cnt = lo.obj.lua_ref_cnt + (refs >>> 0) >>> 0;
         lo.obj = otmp;
@@ -174,9 +170,8 @@ export async function nhl_obj_u_giveobj(L) {   // nhlobj.c:142
  * @returns {Promise<number>} int
  */
 async function l_obj_objects_to_table(L) {   // nhlobj.c:171
-    let argc = 0, otyp = 0, o = null, lo = null;
-    argc = lua_gettop(L);
-    otyp = -1;
+    const argc = lua_gettop(L);
+    let otyp = -1;
     if (argc !== 1) {
         await nhl_error(L, $c.lit("l_obj_objects_to_table: Wrong args"));
         /*NOTREACHED*/
@@ -185,7 +180,7 @@ async function l_obj_objects_to_table(L) {   // nhlobj.c:171
     if (lua_type(L, 1) === LUA.TNUMBER) {
         otyp = $c.i32(await luaL_checkinteger(L, 1));
     } else if (lua_type(L, 1) === LUA.TUSERDATA) {
-        lo = await l_obj_check(L, 1);
+        const lo = await l_obj_check(L, 1);
         if (lo && lo.obj) {
             otyp = lo.obj.otyp;
         }
@@ -196,7 +191,7 @@ async function l_obj_objects_to_table(L) {   // nhlobj.c:171
         /*NOTREACHED*/
         return 0;
     }
-    o = $c.relem(objects, otyp);
+    const o = $c.relem(objects, otyp);
     await lua_newtable(L);
     if (obj_descr[objects[otyp].oc_name_idx].oc_name) {
         await nhl_add_table_entry_str(L, $c.lit("name"), obj_descr[objects[otyp].oc_name_idx].oc_name);
@@ -243,9 +238,8 @@ async function l_obj_objects_to_table(L) {   // nhlobj.c:171
  * @returns {Promise<number>} int
  */
 async function l_obj_to_table(L) {   // nhlobj.c:247
-    let lo = null, obj = null;
-    lo = await l_obj_check(L, 1);
-    obj = lo.obj;
+    const lo = await l_obj_check(L, 1);
+    const obj = lo.obj;
     await lua_newtable(L);
     if (!obj || obj.where === OBJ.LUAFREE) {
         await nhl_add_table_entry_int(L, $c.lit("NO_OBJ"), 1);
@@ -339,8 +333,8 @@ async function l_obj_to_table(L) {   // nhlobj.c:247
  * @returns {Promise<number>} int
  */
 async function l_obj_new_readobjnam(L) {   // nhlobj.c:350
-    let argc = 0, buf = new Int8Array(256), otmp = null, id = 0, class_ = 0, otmp$2 = null;
-    argc = lua_gettop(L);
+    let buf = new Int8Array(256), otmp = null, otmp$2 = null;
+    const argc = lua_gettop(L);
     if (argc === 1 && lua_type(L, 1) === LUA.TSTRING) {
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s"), await luaL_checklstring(L, 1, null));
         await lua_settop(L, -2);
@@ -350,8 +344,8 @@ async function l_obj_new_readobjnam(L) {   // nhlobj.c:350
         await l_obj_push(L, otmp);
         return 1;
     } else if (argc === 1 && lua_type(L, 1) === LUA.TTABLE) {
-        id = $c.i16(await get_table_objtype(L));
-        class_ = $c.i16(await get_table_objclass(L));
+        const id = $c.i16(await get_table_objtype(L));
+        let class_ = $c.i16(await get_table_objclass(L));
         if (id >= FIRST_OBJECT) {
             otmp$2 = await mksobj(id, TRUE, FALSE);
         } else {
@@ -377,8 +371,8 @@ async function l_obj_new_readobjnam(L) {   // nhlobj.c:350
  * @returns {Promise<number>} int
  */
 async function l_obj_at(L) {   // nhlobj.c:389
-    let argc = 0, x = Int16Array.of(0), y = Int16Array.of(0);
-    argc = lua_gettop(L);
+    let x = Int16Array.of(0), y = Int16Array.of(0);
+    const argc = lua_gettop(L);
     if (argc === 2) {
         x[0] = $c.i16(await luaL_checkinteger(L, 1));
         y[0] = $c.i16(await luaL_checkinteger(L, 2));
@@ -400,9 +394,9 @@ async function l_obj_at(L) {   // nhlobj.c:389
  * @returns {Promise<number>} int
  */
 async function l_obj_placeobj(L) {   // nhlobj.c:413
-    let argc = 0, lo = null, x = Int16Array.of(0), y = Int16Array.of(0);
-    argc = lua_gettop(L);
-    lo = await l_obj_check(L, 1);
+    let x = Int16Array.of(0), y = Int16Array.of(0);
+    const argc = lua_gettop(L);
+    const lo = await l_obj_check(L, 1);
     if (argc !== 3) {
         await nhl_error(L, $c.lit("l_obj_placeobj: Wrong args"));
     }
@@ -427,13 +421,12 @@ async function l_obj_placeobj(L) {   // nhlobj.c:413
  * @returns {Promise<number>} int
  */
 async function l_obj_nextobj(L) {   // nhlobj.c:445
-    let argc = 0, lo = null, use_nexthere = 0;
-    argc = lua_gettop(L);
+    const argc = lua_gettop(L);
     if (argc === 0) {
         await l_obj_push(L, svl.level.objlist);
     } else {
-        lo = await l_obj_check(L, 1);
-        use_nexthere = FALSE;
+        const lo = await l_obj_check(L, 1);
+        let use_nexthere = FALSE;
         if (argc === 2) {
             use_nexthere = $c.i8(lua_toboolean(L, 2));
         }
@@ -450,8 +443,7 @@ async function l_obj_nextobj(L) {   // nhlobj.c:445
  * @returns {Promise<number>} int
  */
 async function l_obj_container(L) {   // nhlobj.c:469
-    let lo = null;
-    lo = await l_obj_check(L, 1);
+    const lo = await l_obj_check(L, 1);
     if (lo && lo.obj && lo.obj.where === OBJ.CONTAINED) {
         await l_obj_push(L, lo.obj.v.v_ocontainer);
     } else {
@@ -466,8 +458,7 @@ async function l_obj_container(L) {   // nhlobj.c:469
  * @returns {Promise<number>} int
  */
 async function l_obj_isnull(L) {   // nhlobj.c:483
-    let lo = null;
-    lo = await l_obj_check(L, 1);
+    const lo = await l_obj_check(L, 1);
     lua_pushboolean(L, !lobj_is_ok(lo) ? 1 : 0);
     return 1;
 }
@@ -478,11 +469,10 @@ async function l_obj_isnull(L) {   // nhlobj.c:483
  * @returns {Promise<number>} int
  */
 async function l_obj_timer_has(L) {   // nhlobj.c:496
-    let argc = 0, lo = null, timertype = 0;
-    argc = lua_gettop(L);
+    const argc = lua_gettop(L);
     if (argc === 2) {
-        lo = await l_obj_check(L, 1);
-        timertype = await nhl_get_timertype(L, 2);
+        const lo = await l_obj_check(L, 1);
+        const timertype = await nhl_get_timertype(L, 2);
         if (timer_is_obj(timertype) && lo && lo.obj) {
             lua_pushboolean(L, obj_has_timer(lo.obj, timertype));
             return 1;
@@ -503,11 +493,10 @@ async function l_obj_timer_has(L) {   // nhlobj.c:496
  * @returns {Promise<number>} int
  */
 async function l_obj_timer_peek(L) {   // nhlobj.c:520
-    let argc = 0, lo = null, timertype = 0;
-    argc = lua_gettop(L);
+    const argc = lua_gettop(L);
     if (argc === 2) {
-        lo = await l_obj_check(L, 1);
-        timertype = await nhl_get_timertype(L, 2);
+        const lo = await l_obj_check(L, 1);
+        const timertype = await nhl_get_timertype(L, 2);
         if (timer_is_obj(timertype) && lo && lo.obj) {
             lua_pushinteger(L, peek_timer(timertype, obj_to_any(lo.obj)));
             return 1;
@@ -531,17 +520,16 @@ async function l_obj_timer_peek(L) {   // nhlobj.c:520
  * @returns {Promise<number>} int
  */
 async function l_obj_timer_stop(L) {   // nhlobj.c:547
-    let argc = 0, lo = null, lo$2 = null, timertype = 0;
-    argc = lua_gettop(L);
+    const argc = lua_gettop(L);
     if (argc === 1) {
-        lo = await l_obj_check(L, 1);
+        const lo = await l_obj_check(L, 1);
         if (lo && lo.obj) {
             await obj_stop_timers(lo.obj);
         }
         return 0;
     } else if (argc === 2) {
-        lo$2 = await l_obj_check(L, 1);
-        timertype = await nhl_get_timertype(L, 2);
+        const lo$2 = await l_obj_check(L, 1);
+        const timertype = await nhl_get_timertype(L, 2);
         if (timer_is_obj(timertype) && lo$2 && lo$2.obj) {
             lua_pushinteger(L, await stop_timer(timertype, obj_to_any(lo$2.obj)));
             return 1;
@@ -561,12 +549,11 @@ async function l_obj_timer_stop(L) {   // nhlobj.c:547
  * @returns {Promise<number>} int
  */
 async function l_obj_timer_start(L) {   // nhlobj.c:579
-    let argc = 0, lo = null, timertype = 0, when = 0;
-    argc = lua_gettop(L);
+    const argc = lua_gettop(L);
     if (argc === 3) {
-        lo = await l_obj_check(L, 1);
-        timertype = await nhl_get_timertype(L, 2);
-        when = await luaL_checkinteger(L, 3);
+        const lo = await l_obj_check(L, 1);
+        const timertype = await nhl_get_timertype(L, 2);
+        const when = await luaL_checkinteger(L, 3);
         if (timer_is_obj(timertype) && lo && lo.obj && when > 0) {
             if (obj_has_timer(lo.obj, timertype)) {
                 await stop_timer(timertype, obj_to_any(lo.obj));
@@ -587,10 +574,10 @@ async function l_obj_timer_start(L) {   // nhlobj.c:579
  * @returns {Promise<number>} int
  */
 async function l_obj_bury(L) {   // nhlobj.c:603
-    let argc = 0, dealloced = Int8Array.of(0), lo = null, x = Int16Array.of(0), y = Int16Array.of(0);
-    argc = lua_gettop(L);
+    let dealloced = Int8Array.of(0), x = Int16Array.of(0), y = Int16Array.of(0);
+    const argc = lua_gettop(L);
     dealloced[0] = FALSE;
-    lo = await l_obj_check(L, 1);
+    const lo = await l_obj_check(L, 1);
     x[0] = 0;
     y[0] = 0;
     if (argc === 1) {
@@ -618,16 +605,16 @@ async function l_obj_bury(L) {   // nhlobj.c:603
 export async function l_obj_register(L) {   // nhlobj.c:654
     /* Table of instance methods (e.g. an_object:isnull())
        and static methods (e.g. obj.new("dagger")). */
-    await luaL_checkversion_(L, LUA.VERSION_NUM, LUAL_NUMSIZES), await lua_createtable(L, 0, 15), await luaL_setfuncs(L, $c.relem(l_obj_methods, 0), 0);
+    await luaL_checkversion_(L, LUA.VERSION_NUM, LUAL_NUMSIZES), await lua_createtable(L, 0, 15), await luaL_setfuncs(L, l_obj_methods[0], 0);
     /* metatable = { __name = "obj", __gc = l_obj_gc } */
     await luaL_newmetatable(L, $c.lit("obj"));
-    await luaL_setfuncs(L, $c.relem(l_obj_meta, 0), 0);
+    await luaL_setfuncs(L, l_obj_meta[0], 0);
     /* metatable.__index points at the object method table. */
     lua_pushvalue(L, -2);
     await lua_setfield(L, -2, $c.lit("__index"));
     /* Don't let lua code mess with the real metatable.
        Instead offer a fake one that only contains __gc. */
-    await luaL_checkversion_(L, LUA.VERSION_NUM, LUAL_NUMSIZES), await lua_createtable(L, 0, 1), await luaL_setfuncs(L, $c.relem(l_obj_meta, 0), 0);
+    await luaL_checkversion_(L, LUA.VERSION_NUM, LUAL_NUMSIZES), await lua_createtable(L, 0, 1), await luaL_setfuncs(L, l_obj_meta[0], 0);
     await lua_setfield(L, -2, $c.lit("__metatable"));
     /* We don't need the metatable anymore. It's safe in the
        Lua registry for use by luaL_setmetatable. */

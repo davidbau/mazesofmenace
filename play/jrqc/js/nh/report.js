@@ -127,7 +127,7 @@ export async function crashreport_bidshow() {   // report.c:189
  * @returns {number} boolean
  */
 export function swr_add_uricoded(in_, out, remaining, markp) {   // report.c:237
-    let chr = new Int8Array(40), x = 0;
+    let chr = new Int8Array(40);
     while (in_.get(0)) {
         if ($c.isalnum(in_.get(0)) || $c.strchr($c.lit("_-.~"), in_.get(0))) {
             out.get(0).set(0, in_.get(0));
@@ -147,7 +147,7 @@ export function swr_add_uricoded(in_, out, remaining, markp) {   // report.c:237
             } else {
                 /* [4] should suffice */
                 $c.sprintf(new $c.Ptr(chr, 0), $c.lit("%%%02X"), in_.get(0));
-                x = $c.i32($c.strlen(new $c.Ptr(chr, 0)));
+                const x = $c.i32($c.strlen(new $c.Ptr(chr, 0)));
                 if (x <= remaining.get(0)) {
                     $c.strcpy(out.get(0), new $c.Ptr(chr, 0));
                     out.set(0, out.get(0).add(x));
@@ -402,11 +402,11 @@ export async function dobugreport() {   // report.c:461
  * @returns {Promise<number>} boolean
  */
 export async function NH_panictrace_libc() {   // report.c:485
-    let bt = $c.nulls(20), count = 0, x = 0, info = null, buf = new Int8Array(256);
+    let bt = $c.nulls(20), x = 0, buf = new Int8Array(256);
     /* XXX how did this get left here? */
     await raw_print()($c.lit("  Generating more information you may report:\n"));
-    count = $c.backtrace(new $c.Ptr(bt, 0), 20);
-    info = $c.backtrace_symbols(new $c.Ptr(bt, 0), count);
+    const count = $c.backtrace(new $c.Ptr(bt, 0), 20);
+    const info = $c.backtrace_symbols(new $c.Ptr(bt, 0), count);
     for (x = 0; x < count; x = x + 1 | 0) {
         copynchars(new $c.Ptr(buf, 0), info.get(x), 255);
         /* try to remove up to 16 blank spaces by removing 8 twice */
@@ -429,11 +429,11 @@ export async function NH_panictrace_libc() {   // report.c:485
  * @returns {Promise<number>} boolean
  */
 export async function NH_panictrace_gdb() {   // report.c:529
-    let gdbpath = null, greppath = null, buf = new Int8Array(256), gdb = null;
+    let buf = new Int8Array(256);
     /* A (more) generic method to get a stack trace - invoke
      * gdb on ourself. */
-    gdbpath = sysopt.gdbpath;
-    greppath = sysopt.greppath;
+    const gdbpath = sysopt.gdbpath;
+    const greppath = sysopt.greppath;
     if ($c.peq(gdbpath, $c.asArr(null, Int8Array)) || gdbpath.get(0) === 0) {
         return FALSE;
     }
@@ -441,7 +441,7 @@ export async function NH_panictrace_gdb() {   // report.c:529
         return FALSE;
     }
     nh_snprintf($c.lit("NH_panictrace_gdb"), 545, new $c.Ptr(buf, 0), 256, $c.lit("%s -n -q %s %d 2>&1 | %s '^#'"), gdbpath, $G.ARGV0, $c.getpid(), greppath);
-    gdb = $c.popen(new $c.Ptr(buf, 0), $c.lit("w"));
+    const gdb = $c.popen(new $c.Ptr(buf, 0), $c.lit("w"));
     if (gdb) {
         await raw_print()($c.lit("  Generating more information you may report:\n"));
         $c.fprintf(gdb, $c.lit("bt\nquit\ny"));
@@ -461,12 +461,12 @@ export async function NH_panictrace_gdb() {   // report.c:529
  * @returns {$c.Ptr | null} const char *
  */
 export function get_saved_pline(lineno) {   // report.c:571
-    let p = 0, limit = 0, $t1, $t2;
-    limit = DUMPLOG_MSG_COUNT;
+    let $t1, $t2;
+    let limit = DUMPLOG_MSG_COUNT;
     if (lineno >= DUMPLOG_MSG_COUNT) {
         return null;
     }
-    p = $c.remu32(gs.saved_pline_index - 1 >>> 0, DUMPLOG_MSG_COUNT) | 0;
+    let p = $c.remu32(gs.saved_pline_index - 1 >>> 0, DUMPLOG_MSG_COUNT) | 0;
     while ($t1 = limit, limit = $t1 - 1 | 0, $t1) {
         if (gs.saved_plines[p]) {
             /* valid line */
@@ -487,7 +487,6 @@ export function get_saved_pline(lineno) {   // report.c:571
  * @returns {Promise<void>}
  */
 export async function panictrace_handler(sig_unused) {   // report.c:600
-    let f2 = 0;
     /* wincurs.h */
     /* it is risky calling this during a program-terminating signal,
        but without it the subsequent backtrace is useless because
@@ -495,7 +494,7 @@ export async function panictrace_handler(sig_unused) {   // report.c:600
        here rather than in NH_abort() because panic() calls both
        exit_nhwindows(), which makes this same call under curses,
        then NH_abort() and we don't want to call this twice */
-    f2 = $c.i32($c.write(2, $c.lit("\nSignal received.\n"), 18));
+    const f2 = $c.i32($c.write(2, $c.lit("\nSignal received.\n"), 18));
     nhUse(f2);   /* what could we do if write to fd#2 (stderr) fails  */
     await NH_abort(null);   /* ... and we're already in the process of quitting? */
 }

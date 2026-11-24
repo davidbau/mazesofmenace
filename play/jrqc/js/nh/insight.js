@@ -161,11 +161,11 @@ async function enlght_line(start, middle, end, ps) {   // insight.c:127
  * @returns {Promise<$c.Ptr | null>} char *
  */
 async function enlght_combatinc(inctyp, incamt, final, outbuf) {   // insight.c:160
-    let modif = null, bonus = null, invrt = 0, absamt = 0;
+    let modif = null;
     /* "to hit" or "damage" or "defense" */
     /* amount of increment (negative if decrement) */
     /* ENL_{GAMEINPROGRESS,GAMEOVERALIVE,GAMEOVERDEAD} */
-    absamt = $c.abs(incamt);
+    let absamt = $c.abs(incamt);
     /* Protection amount is typically larger than damage or to-hit;
        reduce magnitude by a third in order to stretch modifier ranges
        (small:1..5, moderate:6..10, large:11..19, huge:20+) */
@@ -182,9 +182,9 @@ async function enlght_combatinc(inctyp, incamt, final, outbuf) {   // insight.c:
         modif = $c.lit("huge");
     }
     modif = !incamt ? $c.lit("no") : await an(modif);   /* ("no" case shouldn't happen) */
-    bonus = incamt >= 0 ? $c.lit("bonus") : $c.lit("penalty");
+    const bonus = incamt >= 0 ? $c.lit("bonus") : $c.lit("penalty");
     /* "bonus <foo>" (to hit) vs "<bar> bonus" (damage, defense) */
-    invrt = $c.i8($c.strcmp(inctyp, $c.lit("to hit")) ? TRUE : FALSE);
+    const invrt = $c.strcmp(inctyp, $c.lit("to hit")) ? TRUE : FALSE;
     $c.sprintf(outbuf, $c.lit("%s %s %s"), modif, invrt ? inctyp : bonus, invrt ? bonus : inctyp);
     if (final || wizard()) {
         $c.sprintf(eos(outbuf), $c.lit(" (%s%d)"), incamt > 0 ? $c.lit("+") : $c.lit(""), incamt);
@@ -218,10 +218,10 @@ async function enlght_halfdmg(category, final) {   // insight.c:201
  * @returns {number} boolean
  */
 function walking_on_water() {   // insight.c:224
-    if (u.uinwater | 0 || Levitation() || (u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked) {
+    if (u.uinwater || Levitation() || (u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked) {
         return FALSE;
     }
-    return $c.i8((u.uprops[WWALKING].intrinsic || u.uprops[WWALKING].extrinsic) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && is_pool_or_lava(u.ux, u.uy) ? 1 : 0);
+    return (u.uprops[WWALKING].intrinsic || u.uprops[WWALKING].extrinsic) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && is_pool_or_lava(u.ux, u.uy) ? 1 : 0;
 }
 /* describe u.utraptype; used by status_enlightenment() and self_lookat() */
 /**
@@ -248,7 +248,7 @@ export async function trap_predicament(outbuf, final, wizxtra) {   // insight.c:
             /* TT_BEARTRAP, TT_PIT, or TT_WEB */
             $c.strcpy(outbuf, $c.lit("trapped"));
             if ((t = t_at(u.ux, u.uy)) !== null) {   /* should never be null */
-                $c.sprintf(eos(outbuf), $c.lit(" in %s"), await an(trapname(t.ttyp | 0, FALSE)));
+                $c.sprintf(eos(outbuf), $c.lit(" in %s"), await an(trapname(t.ttyp, FALSE)));
             }
             break;
     }
@@ -268,16 +268,16 @@ export async function trap_predicament(outbuf, final, wizxtra) {   // insight.c:
  * @returns {number} boolean
  */
 function cause_known(propindx) {   // insight.c:267
-    let o = null, mask = 0;
+    let o = null;
     /* index of a property which can be conveyed by worn item */
-    mask = W_ARMOR | W.AMUL | W_RING | W.TOOL;
+    const mask = W_ARMOR | W.AMUL | W_RING | W.TOOL;
     /* simpler than from_what()/what_gives(); we don't attempt to
        handle artifacts and we deliberately ignore wielded items */
     for (o = gi.invent; o; o = o.nobj) {
         if (!$c.and64(o.owornmask, mask)) {
             continue;
         }
-        if (objects[o.otyp].oc_oprop === propindx && objects[o.otyp].oc_name_known | 0 && o.dknown | 0) {
+        if (objects[o.otyp].oc_oprop === propindx && objects[o.otyp].oc_name_known && o.dknown) {
             return TRUE;
         }
     }
@@ -320,14 +320,14 @@ function attrval(attrindx, attrvalue, resultbuf) {   // insight.c:287
  * @returns {$c.Ptr | null} char *
  */
 function fmt_elapsed_time(outbuf, final) {   // insight.c:314
-    let fieldcnt = 0, edays = 0, ehours = 0, eminutes = 0, eseconds = 0, etim = 0;
+    let eminutes = 0, eseconds = 0;
     /* for a game that's over, reallydone() has updated urealtime.realtime
        to its final value before calling us during end of game disclosure;
        for a game that's still in progress, it holds the amount of elapsed
        game time from previous sessions up through most recent save/restore
        (or up through latest level change when 'checkpoint' is On);
        '.start_timing' has a non-zero value even if '.realtime' is 0 */
-    etim = urealtime.realtime;
+    let etim = urealtime.realtime;
     if (!final) {
         etim = $c.add64(etim, timet_delta(getnow(), urealtime.start_timing));
     }
@@ -335,9 +335,9 @@ function fmt_elapsed_time(outbuf, final) {   // insight.c:314
        to get date and time fields but this is simple and straightforward */
     eseconds = $c.rem64(etim, 60), etim = $c.div64(etim, 60);
     eminutes = $c.rem64(etim, 60), etim = $c.div64(etim, 60);
-    ehours = $c.rem64(etim, 24);
-    edays = $c.div64(etim, 24);
-    fieldcnt = (((!!edays ? 1 : 0) + (!!ehours ? 1 : 0) | 0) + (!!eminutes ? 1 : 0) | 0) + (!!eseconds ? 1 : 0) | 0;
+    const ehours = $c.rem64(etim, 24);
+    const edays = $c.div64(etim, 24);
+    let fieldcnt = (!!edays ? 1 : 0) + (!!ehours ? 1 : 0) + (!!eminutes ? 1 : 0) + (!!eseconds ? 1 : 0);
     $c.strcpy(outbuf, fieldcnt ? $c.lit("") : $c.lit(" none"));   /* 'none' should never happen */
     if (edays) {
         $c.sprintf(eos(outbuf), $c.lit(" %ld day%s"), edays, edays === 1 ? $c.lit("") : $c.lit("s"));
@@ -399,7 +399,7 @@ export async function enlightenment(mode, final) {   // insight.c:383
     /* BASICENLIGHTENMENT | MAGICENLIGHTENMENT (| both) */
     /* ENL_GAMEINPROGRESS:0, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD */
     $t1 = await create_nhwindow()(NHW.MENU), ge.en_win = $t1;
-    ge.en_via_menu = $c.i8(!final ? 1 : 0);
+    ge.en_via_menu = !final ? 1 : 0;
     if (ge.en_via_menu) {
         await start_menu()(ge.en_win, MENU.BEHAVE_STANDARD);
     }
@@ -407,7 +407,7 @@ export async function enlightenment(mode, final) {   // insight.c:383
     $t2 = highc(new $c.Ptr(tmpbuf, 0).get(0)), new $c.Ptr(tmpbuf, 0).set(0, $t2);   /* same adjustment as bottom line */
     /* as in background_enlightenment, when poly'd we need to use the saved
        gender in u.mfemale rather than the current you-as-monster gender */
-    nh_snprintf($c.lit("enlightenment"), 401, new $c.Ptr(buf, 0), 256, $c.lit("%s the %s's attributes:"), new $c.Ptr(tmpbuf, 0), (u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) && gu.urole.name.f ? gu.urole.name.f : gu.urole.name.m);
+    nh_snprintf($c.lit("enlightenment"), 401, new $c.Ptr(buf, 0), 256, $c.lit("%s the %s's attributes:"), new $c.Ptr(tmpbuf, 0), (u.umonnum !== u.umonster ? u.mfemale : flags.female) && gu.urole.name.f ? gu.urole.name.f : gu.urole.name.m);
     /* title */
     await enlght_out(new $c.Ptr(buf, 0));   /* "Conan the Archeologist's attributes:" */
     /* background and characteristics; ^X or end-of-game disclosure */
@@ -471,12 +471,12 @@ export async function enlightenment(mode, final) {   // insight.c:383
  * @returns {Promise<void>}
  */
 async function background_enlightenment(unused_mode, final) {   // insight.c:468
-    let role_titl = null, rank_titl = null, innategend = 0, difgend = 0, difalgn = 0, buf = new Int8Array(256), tmpbuf = new Int8Array(256), anbuf = new Int8Array(20), uasmon = null, altphrasing = 0, egdepth = 0, dgnbuf = new Int8Array(128), ulvl = 0, nxtlvl = 0, delta = 0, $t1, $t2;
+    let buf = new Int8Array(256), tmpbuf = new Int8Array(256), anbuf = new Int8Array(20), dgnbuf = new Int8Array(128), $t1, $t2;
     /* note that if poly'd, we need to use u.mfemale instead of flags.female
        to access hero's saved gender-as-human/elf/&c rather than current */
-    innategend = (Upolyd() ? u.mfemale | 0 : flags.female) ? 1 : 0;
-    role_titl = innategend && gu.urole.name.f ? gu.urole.name.f : gu.urole.name.m;
-    rank_titl = rank_of(u.ulevel, gu.urole.mnum, $c.i8(innategend));
+    const innategend = (Upolyd() ? u.mfemale : flags.female) ? 1 : 0;
+    const role_titl = innategend && gu.urole.name.f ? gu.urole.name.f : gu.urole.name.m;
+    const rank_titl = rank_of(u.ulevel, gu.urole.mnum, $c.i8(innategend));
     await enlght_out($c.lit(""));   /* separator after title */
     await enlght_out($c.lit("Background:"));
     /* if polymorphed, report current shape before underlying role;
@@ -487,8 +487,8 @@ async function background_enlightenment(unused_mode, final) {   // insight.c:468
        the player to know he's not a samurai at the moment... */
     if (Upolyd()) {
         /* includes trailing space; [4] suffices */
-        uasmon = gy.youmonst.data;
-        altphrasing = $c.i8((gy.youmonst.cham === PM.VAMPIRE || gy.youmonst.cham === PM.VAMPIRE_LEADER || gy.youmonst.cham === PM.VLAD_THE_IMPALER) && !(gy.youmonst.data.mlet === S.VAMPIRE) ? 1 : 0);
+        const uasmon = gy.youmonst.data;
+        const altphrasing = (gy.youmonst.cham === PM.VAMPIRE || gy.youmonst.cham === PM.VAMPIRE_LEADER || gy.youmonst.cham === PM.VLAD_THE_IMPALER) && !(gy.youmonst.data.mlet === S.VAMPIRE) ? 1 : 0;
         tmpbuf[0] = 0;
         /* here we always use current gender, not saved role gender */
         if (!is_male(uasmon) && !is_female(uasmon) && !is_neuter(uasmon)) {
@@ -549,8 +549,8 @@ async function background_enlightenment(unused_mode, final) {   // insight.c:468
        giving separate message for temporary alignment change bypasses need
        for tricky phrasing otherwise necessitated by possibility of having
        helm of opposite alignment mask a permanent alignment conversion */
-    difgend = innategend !== flags.initgend ? 1 : 0;
-    difalgn = (u.ualign.type !== u.ualignbase[A.CURRENT] ? 1 : 0) + (u.ualignbase[A.CURRENT] !== u.ualignbase[A.ORIGINAL] ? 2 : 0) | 0;
+    const difgend = innategend !== flags.initgend ? 1 : 0;
+    let difalgn = (u.ualign.type !== u.ualignbase[A.CURRENT] ? 1 : 0) + (u.ualignbase[A.CURRENT] !== u.ualignbase[A.ORIGINAL] ? 2 : 0);
     if (difalgn & 1) {
         /* have temporary alignment so report permanent one */
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("actually %s"), align_str(u.ualignbase[A.CURRENT]));
@@ -564,7 +564,7 @@ async function background_enlightenment(unused_mode, final) {   // insight.c:468
     }
     /* "You are left-handed." won't work well if polymorphed into something
        without hands; use "You are normally left-handed." in that situation */
-    $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s%s-handed"), !$c.strcmp(await body_part(HANDED), $c.lit("handed")) ? $c.lit("") : $c.lit("normally "), (u.uhandedness | 0) === RIGHT_HANDED ? $c.lit("right") : $c.lit("left"));
+    $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s%s-handed"), !$c.strcmp(await body_part(HANDED), $c.lit("handed")) ? $c.lit("") : $c.lit("normally "), u.uhandedness === RIGHT_HANDED ? $c.lit("right") : $c.lit("left"));
     await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), $c.lit(""));
     /* As of 3.6.2: dungeon level, so that ^X really has all status info as
        claimed by the comment below; this reveals more information than
@@ -573,7 +573,7 @@ async function background_enlightenment(unused_mode, final) {   // insight.c:468
        <location>" given by really_done() is more rudimentary than this */
     $t1 = new $c.Ptr(tmpbuf, 0).set(0, 0), new $c.Ptr(buf, 0).set(0, $t1);
     if (In_endgame(u.uz)) {
-        egdepth = observable_depth(u.uz);
+        const egdepth = observable_depth(u.uz);
         endgamelevelname(new $c.Ptr(tmpbuf, 0), egdepth);
         nh_snprintf($c.lit("background_enlightenment"), 609, new $c.Ptr(buf, 0), 256, $c.lit("in the endgame, on the %s%s"), !$c.strncmp(new $c.Ptr(tmpbuf, 0), $c.lit("Plane"), 5) ? $c.lit("Elemental ") : $c.lit(""), new $c.Ptr(tmpbuf, 0));
     } else if ((svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level)) {
@@ -641,7 +641,7 @@ async function background_enlightenment(unused_mode, final) {   // insight.c:468
         await enlght_out(new $c.Ptr(buf, 0));
     }
     if (!Upolyd()) {
-        ulvl = u.ulevel;
+        const ulvl = u.ulevel;
         /* [flags.showexp currently does not matter; should it?] */
         /* experience level is already shown above */
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%-1ld experience point%s"), u.uexp, u.uexp === 1 ? $c.lit("") : $c.lit("s"));
@@ -654,8 +654,8 @@ async function background_enlightenment(unused_mode, final) {   // insight.c:468
          *  or being level-drained by vampires).
          */
         if (ulvl < 30 && (final || wizard())) {
-            nxtlvl = newuexp(ulvl);
-            delta = $c.sub64(nxtlvl, u.uexp);
+            const nxtlvl = newuexp(ulvl);
+            const delta = $c.sub64(nxtlvl, u.uexp);
             $c.sprintf(eos(new $c.Ptr(buf, 0)), $c.lit(", %ld %s%sneeded %s level %d"), delta, u.uexp > 0 ? $c.lit("more ") : $c.lit(""), !final ? $c.lit("") : delta === 1 ? $c.lit("was ") : $c.lit("were "), ulvl < 18 ? $c.lit("to attain") : $c.lit("for"), ulvl + 1 | 0);
             /* present tense=="needed", past tense=="were needed" */
             /* "for": grammatically iffy but less likely to wrap */
@@ -674,11 +674,11 @@ async function background_enlightenment(unused_mode, final) {   // insight.c:468
  * @returns {Promise<void>}
  */
 async function basics_enlightenment(mode, final) {   // insight.c:728
-    let buf = new Int8Array(256), pw = 0, hp = 0, pwmax = 0, hpmax = 0, umoney = 0, hmoney = 0, ocl = new Int8Array(19);
-    pw = u.uen;
-    hp = Upolyd() ? u.mh : u.uhp;
-    pwmax = u.uenmax;
-    hpmax = Upolyd() ? u.mhmax : u.uhpmax;
+    let buf = new Int8Array(256), ocl = new Int8Array(19);
+    const pw = u.uen;
+    let hp = Upolyd() ? u.mh : u.uhp;
+    const pwmax = u.uenmax;
+    const hpmax = Upolyd() ? u.mhmax : u.uhpmax;
     await enlght_out($c.lit(""));   /* separator after background */
     await enlght_out($c.lit("Basics:"));
     if (hp < 0) {
@@ -724,8 +724,8 @@ async function basics_enlightenment(mode, final) {   // insight.c:728
     /* gold; similar to doprgold (#showgold) but without shop billing info;
        includes container contents, unlike status line but like doprgold */
     {
-        umoney = money_cnt(gi.invent);
-        hmoney = hidden_gold($c.i8(final));
+        const umoney = money_cnt(gi.invent);
+        const hmoney = hidden_gold($c.i8(final));
         if (!umoney) {
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit(" Your wallet %s empty"), !final ? $c.lit("is") : $c.lit("was"));
         } else {
@@ -789,9 +789,9 @@ async function characteristics_enlightenment(mode, final) {   // insight.c:827
  * @returns {Promise<void>}
  */
 async function one_characteristic(mode, final, attrindx) {   // insight.c:846
-    let hide_innate_value = 0, interesting_alimit = 0, acurrent = 0, abase = 0, apeak = 0, alimit = 0, paren_pfx = null, subjbuf = new Int8Array(256), valubuf = new Int8Array(256), valstring = new Int8Array(32);
+    let subjbuf = new Int8Array(256), valubuf = new Int8Array(256), valstring = new Int8Array(32);
     /* attrib.c */
-    hide_innate_value = FALSE;
+    let hide_innate_value = FALSE;
     /* being polymorphed or wearing certain cursed items prevents
        hero from reliably tracking changes to characteristics so
        we don't show base & peak values then; when the items aren't
@@ -807,24 +807,24 @@ async function one_characteristic(mode, final, attrindx) {   // insight.c:846
     }
     switch (attrindx) {
         case A.STR:
-            if ($G.uarmg && $G.uarmg.otyp === GAUNTLETS_OF_POWER && $G.uarmg.cursed | 0) {
+            if ($G.uarmg && $G.uarmg.otyp === GAUNTLETS_OF_POWER && $G.uarmg.cursed) {
                 hide_innate_value = TRUE;
             }
             break;
         case A.DEX:
             break;
         case A.CON:
-            if (u_wield_art(ART.OGRESMASHER) && $G.uwep.cursed | 0) {
+            if (u_wield_art(ART.OGRESMASHER) && $G.uwep.cursed) {
                 hide_innate_value = TRUE;
             }
             break;
         case A.INT:
-            if ($G.uarmh && $G.uarmh.otyp === DUNCE_CAP && $G.uarmh.cursed | 0) {
+            if ($G.uarmh && $G.uarmh.otyp === DUNCE_CAP && $G.uarmh.cursed) {
                 hide_innate_value = TRUE;
             }
             break;
         case A.WIS:
-            if ($G.uarmh && $G.uarmh.otyp === DUNCE_CAP && $G.uarmh.cursed | 0) {
+            if ($G.uarmh && $G.uarmh.otyp === DUNCE_CAP && $G.uarmh.cursed) {
                 hide_innate_value = TRUE;
             }
             break;
@@ -837,7 +837,7 @@ async function one_characteristic(mode, final, attrindx) {   // insight.c:846
     if (mode & MAGICENLIGHTENMENT && !Upolyd()) {
         hide_innate_value = FALSE;
     }
-    acurrent = ACURR(attrindx);
+    const acurrent = ACURR(attrindx);
     attrval(attrindx, acurrent, new $c.Ptr(valubuf, 0));   /* Sprintf(valubuf,"%d",) */
     $c.sprintf(new $c.Ptr(subjbuf, 0), $c.lit("Your %s "), attrname[attrindx]);
     if (!hide_innate_value) {
@@ -848,13 +848,13 @@ async function one_characteristic(mode, final, attrindx) {   // insight.c:846
            (while game is in progress; trying to reduce dependency on
            spoilers to keep track of such stuff) or attrmax was different
            from abase (at end of game; this attribute wasn't maxed out) */
-        abase = u.acurr.a[attrindx];
-        apeak = u.amax.a[attrindx];
-        alimit = ATTRMAX(attrindx);
+        const abase = u.acurr.a[attrindx];
+        const apeak = u.amax.a[attrindx];
+        const alimit = ATTRMAX(attrindx);
         /* criterium for whether the limit is interesting varies */
         /* was originally `(abase != alimit)' */
-        interesting_alimit = $c.i8(final ? TRUE : alimit !== (attrindx !== A.STR ? 18 : 118) ? 1 : 0);
-        paren_pfx = final ? $c.lit(" (") : $c.lit(" (current; ");
+        const interesting_alimit = final ? TRUE : alimit !== (attrindx !== A.STR ? 18 : 118) ? 1 : 0;
+        let paren_pfx = final ? $c.lit(" (") : $c.lit(" (current; ");
         if (acurrent !== abase) {
             $c.sprintf(eos(new $c.Ptr(valubuf, 0)), $c.lit("%sbase:%s"), paren_pfx, attrval(attrindx, abase, new $c.Ptr(valstring, 0)));
             paren_pfx = $c.lit(", ");
@@ -881,12 +881,12 @@ async function one_characteristic(mode, final, attrindx) {   // insight.c:846
  * @returns {Promise<void>}
  */
 async function status_enlightenment(mode, final) {   // insight.c:940
-    let magic = 0, cap = 0, buf = new Int8Array(256), youtoo = new Int8Array(256), heldmon = new Int8Array(256), Riding = 0, steedname = null, predicament = new Int8Array(256), anchored = 0, ustick = 0, dx = 0, dy = 0, saddle = null, whichleg = 0, bp = null, article = null, leftright = null, steednambuf = new Int8Array(256), adj = null, $t1, $t2, $t3, $t4;
-    magic = $c.i8(mode & MAGICENLIGHTENMENT ? TRUE : FALSE);
+    let cap = 0, buf = new Int8Array(256), youtoo = new Int8Array(256), heldmon = new Int8Array(256), predicament = new Int8Array(256), steednambuf = new Int8Array(256), $t1, $t2, $t3, $t4;
+    const magic = mode & MAGICENLIGHTENMENT ? TRUE : FALSE;
     /* if hero dies while dismounting, u.usteed will still
        be set; we want to ignore steed in that situation */
-    Riding = $c.i8(u.usteed && !(final === ENL.GAMEOVERDEAD && !$c.strcmp(new $c.Ptr(svk.killer.name, 0), $c.lit("riding accident"))) ? 1 : 0);
-    steedname = !Riding ? null : await x_monnam(u.usteed, u.usteed.mtame ? ARTICLE.YOUR : ARTICLE.THE, null, SUPPRESS.SADDLE | SUPPRESS.HALLUCINATION, FALSE);
+    const Riding = u.usteed && !(final === ENL.GAMEOVERDEAD && !$c.strcmp(new $c.Ptr(svk.killer.name, 0), $c.lit("riding accident"))) ? 1 : 0;
+    const steedname = !Riding ? null : await x_monnam(u.usteed, u.usteed.mtame ? ARTICLE.YOUR : ARTICLE.THE, null, SUPPRESS.SADDLE | SUPPRESS.HALLUCINATION, FALSE);
     /*\
      * Status (many are abbreviated on bottom line; others are or
      *     should be discernible to the hero hence to the player)
@@ -931,7 +931,7 @@ async function status_enlightenment(mode, final) {   // insight.c:940
         /* catchall; shouldn't happen */
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), await from_what(WWALKING));
     }
-    if (Upolyd() && (u.uundetected | 0 || U_AP_TYPE() !== M_AP.NOTHING)) {
+    if (Upolyd() && (u.uundetected || U_AP_TYPE() !== M_AP.NOTHING)) {
         await youhiding(TRUE, final);
     }
     /* internal troubles, mostly in the order that prayer ranks them */
@@ -970,16 +970,16 @@ async function status_enlightenment(mode, final) {   // insight.c:940
            puts TermIll before FoodPois and death due to timeout reports
            terminal illness if both are in effect, so do the same here */
         if (final && $c.and64(u.uprops[SICK].intrinsic, I_SPECIAL)) {
-            $c.sprintf(new $c.Ptr(buf, 0), $c.lit(" %sdied from %s."), new $c.Ptr(You_, 0), (u.usick_type | 0) & SICK_NONVOMITABLE ? $c.lit("terminal illness") : $c.lit("food poisoning"));
+            $c.sprintf(new $c.Ptr(buf, 0), $c.lit(" %sdied from %s."), new $c.Ptr(You_, 0), u.usick_type & SICK_NONVOMITABLE ? $c.lit("terminal illness") : $c.lit("food poisoning"));
             /* has trailing space */
             await enlght_out(new $c.Ptr(buf, 0));
         } else {
             /* unlike death due to sickness, report the two cases separately
                because it is possible to cure one without curing the other */
-            if ((u.usick_type | 0) & SICK_NONVOMITABLE) {
+            if (u.usick_type & SICK_NONVOMITABLE) {
                 await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), $c.lit("terminally sick from illness"), $c.lit(""));
             }
-            if ((u.usick_type | 0) & SICK_VOMITABLE) {
+            if (u.usick_type & SICK_VOMITABLE) {
                 await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), $c.lit("terminally sick from food poisoning"), $c.lit(""));
             }
         }
@@ -1021,7 +1021,7 @@ async function status_enlightenment(mode, final) {   // insight.c:940
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), $c.lit(""));
     }
     if (u.utrap) {
-        anchored = $c.i8(u.utraptype === TT.BURIEDBALL ? 1 : 0);
+        const anchored = u.utraptype === TT.BURIEDBALL ? 1 : 0;
         await trap_predicament(new $c.Ptr(predicament, 0), final, flags.debug);
         if (u.usteed) {
             /* not `Riding' here */
@@ -1057,15 +1057,15 @@ async function status_enlightenment(mode, final) {   // insight.c:940
         }
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), $c.lit(""));
     } else if (u.ustuck) {
-        ustick = $c.i8(Upolyd() && sticks(gy.youmonst.data) ? 1 : 0);
-        dx = u.ustuck.mx - u.ux | 0;
-        dy = u.ustuck.my - u.uy | 0;
+        const ustick = Upolyd() && sticks(gy.youmonst.data) ? 1 : 0;
+        const dx = u.ustuck.mx - u.ux;
+        const dy = u.ustuck.my - u.uy;
         nh_snprintf($c.lit("status_enlightenment"), 1130, new $c.Ptr(buf, 0), 256, $c.lit("%s %s (%s)"), ustick ? $c.lit("holding") : $c.lit("held by"), new $c.Ptr(heldmon, 0), dxdy_to_dist_descr($c.i16(dx), $c.i16(dy), TRUE));
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), $c.lit(""));
     }
     if (Riding) {
-        saddle = await which_armor(u.usteed, W.SADDLE);
-        if (saddle && saddle.cursed | 0) {
+        const saddle = await which_armor(u.usteed, W.SADDLE);
+        if (saddle && saddle.cursed) {
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("stuck to %s %s"), s_suffix(steedname), await simpleonames(saddle));
             await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), $c.lit(""));
         }
@@ -1074,11 +1074,11 @@ async function status_enlightenment(mode, final) {   // insight.c:940
         /* EWounded_legs is used to track left/right/both rather than some
            form of extrinsic impairment; HWounded_legs is used for timeout;
            both apply to steed instead of hero when mounted */
-        whichleg = $c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES);
+        const whichleg = $c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES);
         /* precedes "wounded", so never "an " */
-        bp = u.usteed ? await mbodypart(u.usteed, LEG) : await body_part(LEG);
-        article = $c.lit("a ");
-        leftright = $c.lit("");
+        let bp = u.usteed ? await mbodypart(u.usteed, LEG) : await body_part(LEG);
+        let article = $c.lit("a ");
+        let leftright = $c.lit("");
         if (whichleg === BOTH_SIDES) {
             bp = await makeplural(bp), article = $c.lit("");
         } else {
@@ -1147,7 +1147,7 @@ async function status_enlightenment(mode, final) {   // insight.c:940
     }
     /* encumbrance */
     if ((cap = near_capacity()) > UNENCUMBERED) {
-        adj = $c.lit("?_?");   /* (should always get overridden) */
+        let adj = $c.lit("?_?");   /* (should always get overridden) */
         $c.strcpy(new $c.Ptr(buf, 0), enc_stat[cap]);
         $t4 = lowc(new $c.Ptr(buf, 0).get(0)), new $c.Ptr(buf, 0).set(0, $t4);
         switch (cap) {
@@ -1208,7 +1208,7 @@ async function status_enlightenment(mode, final) {   // insight.c:940
  * @returns {Promise<void>}
  */
 async function weapon_insight(final) {   // insight.c:1270
-    let buf = new Int8Array(256), wtype = 0, what = null, sklvlbuf = new Int8Array(20), sklvl = 0, hav = 0, pfx = new Int8Array(128), sfx = new Int8Array(128), sknambuf2 = new Int8Array(20), sklvlbuf2 = new Int8Array(20), twobuf = new Int8Array(20), also = null, also2 = null, also3 = null, verb_present = null, verb_past = null, wtype2 = 0, sklvl2 = 0, twoskl = 0, a1 = 0, a2 = 0, ab = 0, hav2 = 0, $t1, $t2, $t3;
+    let buf = new Int8Array(256), wtype = 0, sklvlbuf = new Int8Array(20), pfx = new Int8Array(128), sfx = new Int8Array(128), sknambuf2 = new Int8Array(20), sklvlbuf2 = new Int8Array(20), twobuf = new Int8Array(20), verb_present = null, verb_past = null, $t1, $t2, $t3;
     /* report being weaponless; distinguish whether gloves are worn
        [perhaps mention silver ring(s) when not wearing gloves?] */
     if (!$G.uwep) {
@@ -1221,7 +1221,7 @@ async function weapon_insight(final) {   // insight.c:1270
            described as a long sword, for instance; mattock, hook, and aklys
            are exceptions), or wielded non-weapon item by its object class */
     } else {
-        what = await weapon_descr($G.uwep);
+        let what = await weapon_descr($G.uwep);
         /* [what about other silver items?] */
         if ($G.uwep.otyp === SHIELD_OF_REFLECTION) {
             what = shield_simple_name($G.uwep);   /* silver|smooth shield */
@@ -1242,8 +1242,8 @@ async function weapon_insight(final) {   // insight.c:1270
      * noticed #enhance or decided that it was pointless.
      */
     if ((wtype = weapon_type($G.uwep)) !== P.NONE && (!$G.uwep || !is_ammo($G.uwep))) {
-        sklvl = u.weapon_skills[wtype].skill;
-        hav = $c.i8(sklvl !== P.UNSKILLED && sklvl !== P.SKILLED ? 1 : 0);
+        const sklvl = u.weapon_skills[wtype].skill;
+        const hav = sklvl !== P.UNSKILLED && sklvl !== P.SKILLED ? 1 : 0;
         if (sklvl === P.ISRESTRICTED) {
             $c.strcpy(new $c.Ptr(sklvlbuf, 0), $c.lit("no"));
         } else {
@@ -1263,13 +1263,13 @@ async function weapon_insight(final) {   // insight.c:1270
             }
         } else {
             /* two-weapon */
-            also = $c.lit("");
-            also2 = $c.lit("");
-            also3 = null;
-            wtype2 = weapon_type($G.uswapwep);
-            sklvl2 = u.weapon_skills[wtype2].skill;
-            twoskl = u.weapon_skills[P.TWO_WEAPON_COMBAT].skill;
-            hav2 = $c.i8(sklvl2 !== P.UNSKILLED && sklvl2 !== P.SKILLED ? 1 : 0);
+            let also = $c.lit("");
+            let also2 = $c.lit("");
+            let also3 = null;
+            const wtype2 = weapon_type($G.uswapwep);
+            const sklvl2 = u.weapon_skills[wtype2].skill;
+            let twoskl = u.weapon_skills[P.TWO_WEAPON_COMBAT].skill;
+            const hav2 = sklvl2 !== P.UNSKILLED && sklvl2 !== P.SKILLED ? 1 : 0;
             /* normally hero must have access to two-weapon skill in
                order to initiate u.twoweap, but not if polymorphed into
                a form which has multiple weapon attacks, so we need to
@@ -1360,9 +1360,9 @@ async function weapon_insight(final) {   // insight.c:1270
                tell the player; avoid attempting figure out whether
                spending skill credits enhancing one might make either
                or both of the others become ineligible for enhancement */
-            a1 = can_advance(wtype, FALSE);
-            a2 = $c.i8(wtype2 !== wtype ? can_advance(wtype2, FALSE) : FALSE);
-            ab = can_advance(P.TWO_WEAPON_COMBAT, FALSE);
+            const a1 = can_advance(wtype, FALSE);
+            const a2 = wtype2 !== wtype ? can_advance(wtype2, FALSE) : FALSE;
+            const ab = can_advance(P.TWO_WEAPON_COMBAT, FALSE);
             if (a1 || a2 || ab) {
                 /* for just one, the conditionals yield
                    1) "skill with <that one>"; for more than one:
@@ -1373,7 +1373,7 @@ async function weapon_insight(final) {   // insight.c:1270
                    (no 'also's or extra 'with's for case 5); when primary
                    and secondary use the same skill, only cases 1 and 3 are
                    possible because 'a2' gets forced to False above */
-                $c.sprintf(new $c.Ptr(sfx, 0), $c.lit(" skill%s with %s%s%s%s%s"), ((a1 + a2 | 0) + ab | 0) > 1 ? $c.lit("s") : $c.lit(""), a1 ? skill_name(wtype) : $c.lit(""), a1 && a2 && ab ? $c.lit(", ") : a1 && (a2 || ab) ? new $c.Ptr(weapon_insight$also_wik_, 0) : $c.lit(""), a2 ? skill_name(wtype2) : $c.lit(""), a1 && a2 && ab ? $c.lit(", and ") : a2 && ab ? new $c.Ptr(weapon_insight$also_wik_, 0) : $c.lit(""), ab ? $c.lit("two weapons") : $c.lit(""));
+                $c.sprintf(new $c.Ptr(sfx, 0), $c.lit(" skill%s with %s%s%s%s%s"), a1 + a2 + ab > 1 ? $c.lit("s") : $c.lit(""), a1 ? skill_name(wtype) : $c.lit(""), a1 && a2 && ab ? $c.lit(", ") : a1 && (a2 || ab) ? new $c.Ptr(weapon_insight$also_wik_, 0) : $c.lit(""), a2 ? skill_name(wtype2) : $c.lit(""), a1 && a2 && ab ? $c.lit(", and ") : a2 && ab ? new $c.Ptr(weapon_insight$also_wik_, 0) : $c.lit(""), ab ? $c.lit("two weapons") : $c.lit(""));
                 await enlght_line(new $c.Ptr(You_, 0), final ? $c.lit("could have enhanced") : $c.lit("can enhance"), new $c.Ptr(sfx, 0), $c.lit(""));
             }
         }   /* two-weapon */
@@ -1386,10 +1386,9 @@ async function weapon_insight(final) {   // insight.c:1270
  * @returns {Promise<void>}
  */
 async function item_resistance_message(adtyp, prot_message, final) {   // insight.c:1468
-    let protection = 0, somewhat = 0;
-    protection = u_adtyp_resistance_obj(adtyp);
+    const protection = u_adtyp_resistance_obj(adtyp);
     if (protection) {
-        somewhat = $c.i8(protection < 99 ? 1 : 0);
+        const somewhat = protection < 99 ? 1 : 0;
         await enlght_line($c.lit("Your items "), final ? somewhat ? $c.lit("were somewhat") : $c.lit("were") : somewhat ? $c.lit("are somewhat") : $c.lit("are"), prot_message, await item_what(adtyp));
     }
 }
@@ -1400,14 +1399,14 @@ async function item_resistance_message(adtyp, prot_message, final) {   // insigh
  * @returns {Promise<void>}
  */
 async function attributes_enlightenment(unused_mode, final) {   // insight.c:1487
-    let ltmp = 0, armpro = 0, warnspecies = 0, buf = new Int8Array(256), detectmon_timeout = 0, adorn = 0, save_BLev = 0, trapped = 0, terrain = 0, save_BFly = 0, has_lid = 0, prot = 0, cast_adj = new Int8Array(128), suit = 0, robe = 0, what = null, f = null, p = null;
+    let ltmp = 0, armpro = 0, buf = new Int8Array(256), cast_adj = new Int8Array(128), f = null, p = null;
     /*\
      *  Attributes
     \*/
     await enlght_out($c.lit(""));
     await enlght_out(final ? $c.lit("Final Attributes:") : $c.lit("Attributes:"));
     if (u.uevent.uhand_of_elbereth) {
-        await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), attributes_enlightenment$hofe_titles[(u.uevent.uhand_of_elbereth | 0) - 1 | 0], $c.lit(""));
+        await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), attributes_enlightenment$hofe_titles[u.uevent.uhand_of_elbereth - 1], $c.lit(""));
     }
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s"), piousness(TRUE, $c.lit("aligned")));
     if (u.ualign.record >= 0) {
@@ -1499,7 +1498,7 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("aware of the presence of %s"), $c.andu64(svc.context.warntype.polyd, M2.HUMAN | M2.ELF) === (M2.HUMAN | M2.ELF) ? $c.lit("humans and elves") : $c.andu64(svc.context.warntype.polyd, M2.HUMAN) ? $c.lit("humans") : $c.andu64(svc.context.warntype.polyd, M2.ELF) ? $c.lit("elves") : $c.andu64(svc.context.warntype.polyd, M2.ORC) ? $c.lit("orcs") : $c.andu64(svc.context.warntype.polyd, M2.DEMON) ? $c.lit("demons") : $c.lit("certain monsters"));
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), $c.lit(""));
     }
-    warnspecies = svc.context.warntype.speciesidx;
+    const warnspecies = svc.context.warntype.speciesidx;
     if (Warn_of_mon() && ismnum(warnspecies)) {
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("aware of the presence of %s"), await makeplural(mons[warnspecies].pmnames[NEUTRAL]));
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), await from_what(WARN_OF_MON));
@@ -1523,7 +1522,7 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
     if (Detect_monsters()) {
         $c.strcpy(new $c.Ptr(buf, 0), $c.lit("sensing the presence of monsters"));
         if (wizard()) {
-            detectmon_timeout = $c.and64(u.uprops[DETECT_MONSTERS].intrinsic, TIMEOUT);
+            const detectmon_timeout = $c.and64(u.uprops[DETECT_MONSTERS].intrinsic, TIMEOUT);
             if (detectmon_timeout) {
                 $c.sprintf(eos(new $c.Ptr(buf, 0)), $c.lit(" (%ld)"), detectmon_timeout);
             }
@@ -1545,7 +1544,7 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
     }
     /*** Appearance and behavior ***/
     if (Adornment()) {
-        adorn = 0;
+        let adorn = 0;
         if ($G.uleft && $G.uleft.otyp === RIN_ADORNMENT) {
             adorn = adorn + $G.uleft.spe | 0;
         }
@@ -1595,14 +1594,14 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
     /* actively levitating handled earlier as a status condition */
     if (BLevitation()) {
         /* levitation is blocked */
-        save_BLev = u.uprops[LEVITATION].blocked;
+        const save_BLev = u.uprops[LEVITATION].blocked;
         u.uprops[LEVITATION].blocked = 0;
         if (Levitation()) {
             /* either trapped in the floor or inside solid rock
                (or both if chained to buried iron ball and have
                moved one step into solid rock somehow) */
-            trapped = $c.i8($c.and64(save_BLev, I_SPECIAL) !== 0 ? 1 : 0);
-            terrain = $c.i8($c.and64(save_BLev, FROMOUTSIDE) !== 0 ? 1 : 0);
+            const trapped = $c.and64(save_BLev, I_SPECIAL) !== 0 ? 1 : 0;
+            const terrain = $c.and64(save_BLev, FROMOUTSIDE) !== 0 ? 1 : 0;
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s%s%s"), trapped ? $c.lit(" if not trapped") : $c.lit(""), trapped && terrain ? $c.lit(" and") : $c.lit(""), terrain ? new $c.Ptr(attributes_enlightenment$if_surroundings_permitted, 0) : $c.lit(""));
             await enlght_line(new $c.Ptr(You_, 0), final ? $c.lit("would have levitated") : $c.lit("would levitate"), new $c.Ptr(buf, 0), $c.lit(""));
         }
@@ -1611,7 +1610,7 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
     /* actively flying handled earlier as a status condition */
     if (BFlying()) {
         /* flight is blocked */
-        save_BFly = u.uprops[FLYING].blocked;
+        const save_BFly = u.uprops[FLYING].blocked;
         u.uprops[FLYING].blocked = 0;
         if ((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked) {
             await enlght_line(new $c.Ptr(You_, 0), final ? $c.lit("would have flown") : $c.lit("would fly"), (u.uprops[LEVITATION].intrinsic || u.uprops[LEVITATION].extrinsic) && !u.uprops[LEVITATION].blocked ? $c.lit(" if you weren't levitating") : save_BFly === I_SPECIAL ? $c.lit(" if you weren't trapped") : save_BFly === FROMOUTSIDE ? new $c.Ptr(attributes_enlightenment$if_surroundings_permitted, 0) : $c.lit(" if circumstances permitted"), $c.lit(""));
@@ -1631,11 +1630,11 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
     /* including this might bring attention to the fact that ceiling
        clinging has inconsistencies... */
     if (is_clinger(gy.youmonst.data)) {
-        has_lid = has_ceiling(u.uz);
+        const has_lid = has_ceiling(u.uz);
         if (has_lid && !u.uinwater) {
             await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(could, 0) : new $c.Ptr(can, 0), $c.lit("cling to the ceiling"), $c.lit(""));
         } else {
-            $c.sprintf(new $c.Ptr(buf, 0), $c.lit(" to the ceiling if %s%s%s"), !has_lid ? $c.lit("there was one") : $c.lit(""), !has_lid && u.uinwater | 0 ? $c.lit(" and ") : $c.lit(""), u.uinwater | 0 ? u.uinwater | 0 ? $c.lit("you weren't underwater") : $c.lit("you weren't in the water") : $c.lit(""));
+            $c.sprintf(new $c.Ptr(buf, 0), $c.lit(" to the ceiling if %s%s%s"), !has_lid ? $c.lit("there was one") : $c.lit(""), !has_lid && u.uinwater ? $c.lit(" and ") : $c.lit(""), u.uinwater ? u.uinwater ? $c.lit("you weren't underwater") : $c.lit("you weren't in the water") : $c.lit(""));
             /* past tense is applicable for death while Unchanging */
             await enlght_line(new $c.Ptr(You_, 0), final ? $c.lit("could have clung") : $c.lit("could cling"), new $c.Ptr(buf, 0), $c.lit(""));
         }
@@ -1645,7 +1644,7 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(could, 0) : new $c.Ptr(can, 0), $c.lit("walk on water"), await from_what(WWALKING));
     }
     /* actively swimming (in water but not under it) handled earlier */
-    if ((u.uprops[SWIMMING].intrinsic || u.uprops[SWIMMING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.SWIM) !== 0) && ((u.uinwater | 0) || !u.uinwater)) {
+    if ((u.uprops[SWIMMING].intrinsic || u.uprops[SWIMMING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.SWIM) !== 0) && (Underwater() || !u.uinwater)) {
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(could, 0) : new $c.Ptr(can, 0), $c.lit("swim"), await from_what(SWIMMING));
     }
     if (u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0) {
@@ -1674,7 +1673,7 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(had, 0) : new $c.Ptr(have, 0), await enlght_combatinc($c.lit("damage"), u.udaminc, final, new $c.Ptr(buf, 0)), $c.lit(""));
     }
     if (u.uspellprot || Protection()) {
-        prot = 0;
+        let prot = 0;
         if ($G.uleft && $G.uleft.otyp === RIN_PROTECTION) {
             prot = prot + $G.uleft.spe | 0;
         }
@@ -1713,8 +1712,8 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
         /* skip if no spells are known yet */
         /* greatly simplified edition of percent_success(spell.c)--may need
            to be suppressed if oversimplification leads to player confusion */
-        suit = $c.i8($G.uarm && is_metallic($G.uarm) ? 1 : 0);
-        robe = $c.i8($G.uarmc && $G.uarmc.otyp === ROBE ? 1 : 0);
+        const suit = $G.uarm && is_metallic($G.uarm) ? 1 : 0;
+        const robe = $G.uarmc && $G.uarmc.otyp === ROBE ? 1 : 0;
         new $c.Ptr(cast_adj, 0).set(0, 0);
         if (suit) {   /* omit "wearing" to shorten the text */
             $c.sprintf(new $c.Ptr(cast_adj, 0), $c.lit(" impaired by metallic armor%s"), robe ? $c.lit(", mitigated by your robe") : $c.lit(""));
@@ -1730,7 +1729,7 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), $c.lit("protected from shape changers"), await from_what(PROT_FROM_SHAPE_CHANGERS));
     }
     if (Unchanging()) {
-        what = null;
+        let what = null;
         if (!Upolyd()) {   /* Upolyd handled below after current form */
             await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(could, 0) : new $c.Ptr(can, 0), $c.lit("not change from your current form"), await from_what(UNCHANGING));
         }
@@ -1805,9 +1804,9 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
     /*** Miscellany ***/
     if (Luck()) {
         ltmp = $c.abs(Luck());
-        $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s%slucky"), ltmp >= 10 ? $c.lit("extremely ") : ltmp >= 5 ? $c.lit("very ") : $c.lit(""), (u.uluck + u.moreluck | 0) < 0 ? $c.lit("un") : $c.lit(""));
+        $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s%slucky"), ltmp >= 10 ? $c.lit("extremely ") : ltmp >= 5 ? $c.lit("very ") : $c.lit(""), u.uluck + u.moreluck < 0 ? $c.lit("un") : $c.lit(""));
         if (wizard()) {
-            $c.sprintf(eos(new $c.Ptr(buf, 0)), $c.lit(" (%d)"), u.uluck + u.moreluck | 0);
+            $c.sprintf(eos(new $c.Ptr(buf, 0)), $c.lit(" (%d)"), u.uluck + u.moreluck);
         }
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), $c.lit(""));
     } else if (wizard()) {
@@ -1898,8 +1897,7 @@ async function attributes_enlightenment(unused_mode, final) {   // insight.c:148
  * @returns {Promise<number>} int
  */
 export async function doattributes() {   // insight.c:2009
-    let mode = 0;
-    mode = BASICENLIGHTENMENT;
+    let mode = BASICENLIGHTENMENT;
     /* show more--as if final disclosure--for wizard and explore modes */
     if (wizard() || discover()) {
         mode = mode | MAGICENLIGHTENMENT;
@@ -1913,7 +1911,7 @@ export async function doattributes() {   // insight.c:2009
  * @returns {Promise<void>}
  */
 export async function youhiding(via_enlghtmt, msgflag) {   // insight.c:2022
-    let bp = null, buf = new Int8Array(256), o = null, t = null, final = 0;
+    let bp = null, buf = new Int8Array(256);
     /* enlightenment line vs topl message */
     /* for variant message phrasing */
     $c.strcpy(new $c.Ptr(buf, 0), $c.lit("hiding"));
@@ -1938,7 +1936,7 @@ export async function youhiding(via_enlghtmt, msgflag) {   // insight.c:2022
                 $c.sprintf(bp, $c.lit(" in the %s"), waterbody_name(u.ux, u.uy));
             }
         } else if (hides_under(gy.youmonst.data)) {
-            o = svl.level.objects[u.ux][u.uy];
+            const o = svl.level.objects[u.ux][u.uy];
             if (o) {
                 $c.sprintf(bp, $c.lit(" underneath %s"), await ansimpleoname(o));
             }
@@ -1948,8 +1946,8 @@ export async function youhiding(via_enlghtmt, msgflag) {   // insight.c:2022
         } else {
             /* on floor; is_hider() but otherwise not special: 'trapper' */
             if (u.utrap && u.utraptype === TT.PIT) {
-                t = t_at(u.ux, u.uy);
-                $c.sprintf(bp, $c.lit(" in a %spit"), t && (t.ttyp | 0) === SPIKED_PIT ? $c.lit("spiked ") : $c.lit(""));
+                const t = t_at(u.ux, u.uy);
+                $c.sprintf(bp, $c.lit(" in a %spit"), t && t.ttyp === SPIKED_PIT ? $c.lit("spiked ") : $c.lit(""));
             } else {
                 $c.sprintf(bp, $c.lit(" on the %s"), surface(u.ux, u.uy));
             }
@@ -1958,7 +1956,7 @@ export async function youhiding(via_enlghtmt, msgflag) {   // insight.c:2022
         /* shouldn't happen; will result in generic "you are hiding" */
     }
     if (via_enlghtmt) {
-        final = msgflag;   /* 'final' is used by you_are() macro */
+        const final = msgflag;   /* 'final' is used by you_are() macro */
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(were, 0) : new $c.Ptr(are, 0), new $c.Ptr(buf, 0), $c.lit(""));
     } else {
         /* for dohide(), when player uses '#monster' command */
@@ -1979,7 +1977,7 @@ export async function doconduct() {   // insight.c:2081
  * @returns {Promise<void>}
  */
 export async function show_conduct(final) {   // insight.c:2089
-    let buf = new Int8Array(256), bufN = new Int8Array(40), ngenocided = 0, presentverb = null, pastverb = null, $t1;
+    let buf = new Int8Array(256), bufN = new Int8Array(40), $t1;
     /* Create the conduct window */
     $t1 = await create_nhwindow()(NHW.MENU), ge.en_win = $t1;
     await putstr()(ge.en_win, 0, $c.lit("Voluntary challenges:"));
@@ -2041,7 +2039,7 @@ export async function show_conduct(final) {   // insight.c:2089
     if (!u.uconduct.pets) {
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(never, 0) : new $c.Ptr(have_never, 0), $c.lit("had a pet"), $c.lit(""));
     }
-    ngenocided = await num_genocides();
+    const ngenocided = await num_genocides();
     if (ngenocided === 0) {
         await enlght_line(new $c.Ptr(You_, 0), final ? new $c.Ptr(never, 0) : new $c.Ptr(have_never, 0), $c.lit("genocided any monsters"), $c.lit(""));
     } else {
@@ -2087,8 +2085,8 @@ export async function show_conduct(final) {   // insight.c:2089
     }
     /* only report Sokoban conduct if the Sokoban branch has been entered */
     if (sokoban_in_play()) {
-        presentverb = $c.lit("have violated");
-        pastverb = $c.lit("violated");
+        let presentverb = $c.lit("have violated");
+        let pastverb = $c.lit("violated");
         if (!u.uconduct.sokocheat) {
             presentverb = $c.lit("have not violated");
             pastverb = $c.lit("did not violate");
@@ -2113,9 +2111,9 @@ export async function show_conduct(final) {   // insight.c:2089
  * @returns {Promise<void>}
  */
 async function show_achievements(final) {   // insight.c:2243
-    let i = 0, achidx = 0, absidx = 0, acnt = 0, title = new Int8Array(128), buf = new Int8Array(128), awin = 0;
+    let i = 0, acnt = 0, title = new Int8Array(128), buf = new Int8Array(128);
     /* 'final' is used "behind the curtain" by enl_foo() macros */
-    awin = WIN_ERR;
+    let awin = WIN_ERR;
     /* unfortunately we can't show the achievements (at least not all of
        them) while the game is in progress because it would give away the
        ID of luckstone (at Mine's End) and of real Amulet of Yendor */
@@ -2152,8 +2150,8 @@ async function show_achievements(final) {   // insight.c:2243
         await record_achievement(ACH.UWIN);
     }
     for (i = 0; i < acnt; i = i + 1 | 0) {
-        achidx = u.uachieved[i];
-        absidx = $c.abs(achidx);
+        const achidx = u.uachieved[i];
+        const absidx = $c.abs(achidx);
         switch (absidx) {
             case ACH.BLND:
                 await enlght_line(new $c.Ptr(You_, 0), final ? $c.lit("explored") : $c.lit("are exploring"), $c.lit(" without being able to see"), $c.lit(""));
@@ -2202,16 +2200,16 @@ async function show_achievements(final) {   // insight.c:2243
             case ACH.BELL:
                 /* alternate phrasing for present vs past and also for
                    possessing the item vs once held it */
-                await enlght_line(new $c.Ptr(You_, 0), final ? u.uhave.bell | 0 ? $c.lit("had") : $c.lit("handled") : u.uhave.bell | 0 ? $c.lit("have") : $c.lit("have handled"), $c.lit(" the Bell of Opening"), $c.lit(""));
+                await enlght_line(new $c.Ptr(You_, 0), final ? u.uhave.bell ? $c.lit("had") : $c.lit("handled") : u.uhave.bell ? $c.lit("have") : $c.lit("have handled"), $c.lit(" the Bell of Opening"), $c.lit(""));
                 break;
             case ACH.HELL:
                 await enlght_line(new $c.Ptr(You_, 0), final ? $c.lit("") : $c.lit("have "), $c.lit("entered Gehennom"), $c.lit(""));
                 break;
             case ACH.CNDL:
-                await enlght_line(new $c.Ptr(You_, 0), final ? u.uhave.menorah | 0 ? $c.lit("had") : $c.lit("handled") : u.uhave.menorah | 0 ? $c.lit("have") : $c.lit("have handled"), $c.lit(" the Candelabrum of Invocation"), $c.lit(""));
+                await enlght_line(new $c.Ptr(You_, 0), final ? u.uhave.menorah ? $c.lit("had") : $c.lit("handled") : u.uhave.menorah ? $c.lit("have") : $c.lit("have handled"), $c.lit(" the Candelabrum of Invocation"), $c.lit(""));
                 break;
             case ACH.BOOK:
-                await enlght_line(new $c.Ptr(You_, 0), final ? u.uhave.book | 0 ? $c.lit("had") : $c.lit("handled") : u.uhave.book | 0 ? $c.lit("have") : $c.lit("have handled"), $c.lit(" the Book of the Dead"), $c.lit(""));
+                await enlght_line(new $c.Ptr(You_, 0), final ? u.uhave.book ? $c.lit("had") : $c.lit("handled") : u.uhave.book ? $c.lit("have") : $c.lit("have handled"), $c.lit(" the Book of the Dead"), $c.lit(""));
                 break;
             case ACH.INVK:
                 await enlght_line(new $c.Ptr(You_, 0), final ? $c.lit("") : new $c.Ptr(have, 0), $c.lit("gained access to Moloch's Sanctum"), $c.lit(""));
@@ -2219,7 +2217,7 @@ async function show_achievements(final) {   // insight.c:2243
             case ACH.AMUL:
                 /* alternate wording for ascended (always past tense) since
                    hero had it until #offer forced it to be relinquished */
-                await enlght_line(new $c.Ptr(You_, 0), final ? u.uevent.ascended | 0 ? $c.lit("delivered") : u.uhave.amulet | 0 ? $c.lit("had") : $c.lit("had obtained") : u.uhave.amulet | 0 ? $c.lit("have") : $c.lit("have obtained"), $c.lit(" the Amulet of Yendor"), $c.lit(""));
+                await enlght_line(new $c.Ptr(You_, 0), final ? u.uevent.ascended ? $c.lit("delivered") : u.uhave.amulet ? $c.lit("had") : $c.lit("had obtained") : u.uhave.amulet ? $c.lit("have") : $c.lit("have obtained"), $c.lit(" the Amulet of Yendor"), $c.lit(""));
                 break;
             case ACH.ENDG:
                 /* reaching Astral makes feedback about reaching the Planes
@@ -2243,7 +2241,7 @@ async function show_achievements(final) {   // insight.c:2243
             case ACH.RNK7:
             case ACH.RNK8:
                 /* rank 0 is the starting condition, not an achievement; 8 is Xp 30 */
-                $c.sprintf(new $c.Ptr(buf, 0), $c.lit("attained the rank of %s"), rank_of(rank_to_xlev(absidx - (ACH.RNK1 - 1) | 0), gu.urole.mnum, $c.i8(achidx < 0 ? TRUE : FALSE)));
+                $c.sprintf(new $c.Ptr(buf, 0), $c.lit("attained the rank of %s"), rank_of(rank_to_xlev(absidx - (ACH.RNK1 - 1) | 0), gu.urole.mnum, achidx < 0 ? TRUE : FALSE));
                 await enlght_line(new $c.Ptr(You_, 0), final ? $c.lit("") : new $c.Ptr(have, 0), new $c.Ptr(buf, 0), $c.lit(""));
                 break;
             default:
@@ -2263,9 +2261,9 @@ async function show_achievements(final) {   // insight.c:2243
  * @returns {Promise<void>}
  */
 export async function record_achievement(achidx) {   // insight.c:2407
-    let i = 0, absidx = 0, repeat_achievement = 0, otyp = 0;
-    repeat_achievement = 0;
-    absidx = $c.abs(achidx);
+    let i = 0;
+    let repeat_achievement = 0;
+    const absidx = $c.abs(achidx);
     /* valid achievements range from 1 to N_ACH-1; however, ranks can be
        stored as the complement (ie, negative) to track gender */
     if (achidx < 1 && (absidx < ACH.RNK1 || absidx > ACH.RNK8) || achidx >= N_ACH) {
@@ -2300,10 +2298,10 @@ export async function record_achievement(achidx) {   // insight.c:2407
         return;
     }
     if (absidx >= ACH.RNK1 && absidx <= ACH.RNK8) {
-        await livelog_printf(achieve_msg[absidx].llflag, $c.lit("attained the rank of %s (level %d)"), rank_of(rank_to_xlev(absidx - (ACH.RNK1 - 1) | 0), gu.urole.mnum, $c.i8(achidx < 0 ? TRUE : FALSE)), u.ulevel);
+        await livelog_printf(achieve_msg[absidx].llflag, $c.lit("attained the rank of %s (level %d)"), rank_of(rank_to_xlev(absidx - (ACH.RNK1 - 1) | 0), gu.urole.mnum, achidx < 0 ? TRUE : FALSE), u.ulevel);
     } else if (achidx === ACH.SOKO_PRIZE || achidx === ACH.MINE_PRIZE) {
         /* need to supply extra information for these two */
-        otyp = $c.i16(achidx === ACH.SOKO_PRIZE ? svc.context.achieveo.soko_prize_otyp : svc.context.achieveo.mines_prize_otyp);
+        const otyp = achidx === ACH.SOKO_PRIZE ? svc.context.achieveo.soko_prize_otyp : svc.context.achieveo.mines_prize_otyp;
         /* note: OBJ_NAME() works here because both "bag of holding" and
            "amulet of reflection" are fully named in their objects[] entry
            but that's not true in the general case */
@@ -2338,8 +2336,8 @@ export function remove_achievement(achidx) {   // insight.c:2476
  * @returns {number} int
  */
 export function count_achievements() {   // insight.c:2494
-    let i = 0, acnt = 0;
-    acnt = 0;
+    let i = 0;
+    let acnt = 0;
     for (i = 0; u.uachieved[i]; i = i + 1 | 0) {
         acnt = acnt + 1 | 0;
     }
@@ -2352,9 +2350,8 @@ export function count_achievements() {   // insight.c:2494
  * @returns {number} schar
  */
 export function achieve_rank(rank) {   // insight.c:2506
-    let achidx = 0;
     /* 1..8 */
-    achidx = $c.i8((rank - 1 | 0) + ACH.RNK1 | 0);
+    let achidx = $c.i8((rank - 1 | 0) + ACH.RNK1 | 0);
     if (flags.female) {
         achidx = $c.i8(-achidx | 0);
     }
@@ -2396,9 +2393,9 @@ export async function do_gamelog() {   // insight.c:2532
  * @returns {Promise<void>}
  */
 export async function show_gamelog(final) {   // insight.c:2561
-    let llmsg = null, win = 0, buf = new Int8Array(256), eventcnt = 0, $t1;
-    eventcnt = 0;
-    win = await create_nhwindow()(NHW.TEXT);
+    let llmsg = null, buf = new Int8Array(256), $t1;
+    let eventcnt = 0;
+    const win = await create_nhwindow()(NHW.TEXT);
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s events:"), final ? $c.lit("Major") : $c.lit("Logged"));
     await putstr()(win, 0, new $c.Ptr(buf, 0));
     for (llmsg = gg.gamelog; llmsg; llmsg = llmsg.next) {
@@ -2430,9 +2427,9 @@ export async function show_gamelog(final) {   // insight.c:2561
  * @returns {number} int
  */
 function vanqsort_cmp(vptr1, vptr2) {   // insight.c:2621
-    let indx1 = 0, indx2 = 0, mlev1 = 0, mlev2 = 0, mstr1 = 0, mstr2 = 0, uniq1 = 0, uniq2 = 0, died1 = 0, died2 = 0, res = 0, name1 = null, name2 = null, punct = null, mcls1 = 0, mcls2 = 0;
-    indx1 = $c.asArr(vptr1, Int16Array).get(0);
-    indx2 = $c.asArr(vptr2, Int16Array).get(0);
+    let mlev1 = 0, mlev2 = 0, mstr1 = 0, mstr2 = 0, uniq1 = 0, uniq2 = 0, died1 = 0, died2 = 0, res = 0, name1 = null, name2 = null, punct = null, mcls1 = 0, mcls2 = 0;
+    const indx1 = $c.asArr(vptr1, Int16Array).get(0);
+    const indx2 = $c.asArr(vptr2, Int16Array).get(0);
     switch (flags.vanq_sortmode) {
         default:
         case VANQ.MLVL_MNDX:
@@ -2484,12 +2481,12 @@ function vanqsort_cmp(vptr1, vptr2) {   // insight.c:2621
                     mcls2 = $c.i8(S.ZOMBIE + 1 + $c.i32($c.pdiff(punct, new $c.Ptr(vanqsort_cmp$punctclasses, 0))) | 0);
                 }
             }
-            res = mcls1 - mcls2 | 0;   /* class */
+            res = mcls1 - mcls2;   /* class */
             if (res === 0) {
                 /* Riders are in the same class as major demons, yielding res==0
                    above when both mcls1 and mcls2 are either Riders or demons or
                    one of each; force Riders to be sorted before demons */
-                res = is_rider($c.relem(mons, indx2)) - is_rider($c.relem(mons, indx1)) | 0;
+                res = is_rider($c.relem(mons, indx2)) - is_rider($c.relem(mons, indx1));
                 /* res -1 => #1 is a Rider, #2 isn't;
                         0 => both Riders or neither;
                        +1 => #2 is a Rider, #1 isn't */
@@ -2526,9 +2523,9 @@ function vanqsort_cmp(vptr1, vptr2) {   // insight.c:2621
  * @returns {Promise<number>} int
  */
 export async function set_vanq_order(for_vanq) {   // insight.c:2718
-    let tmpwin = 0, selected = [null], any = new $T.any(), buf = new Int8Array(256), desc = null, i = 0, n = 0, choice = 0, clr = 0;
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    let selected = [null], any = new $T.any(), buf = new Int8Array(256), i = 0;
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);   /* zero out all bits */
     for (i = 0; i < 8; i = i + 1 | 0) {
@@ -2539,7 +2536,7 @@ export async function set_vanq_order(for_vanq) {   // insight.c:2718
         if (!for_vanq && (i === VANQ.COUNT_H_L || i === VANQ.COUNT_L_H)) {
             continue;
         }
-        desc = vanqorders[i][2];
+        let desc = vanqorders[i][2];
         /* unique monsters can't be genocided so "alpha, unique separate"
            and "alpha, unique intermixed" are confusing descriptions when
            this menu is for #genocided rather than for #vanquished */
@@ -2551,10 +2548,10 @@ export async function set_vanq_order(for_vanq) {   // insight.c:2718
     }
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Sort order for %s"), for_vanq ? $c.lit("vanquished monster counts (also genocided types)") : $c.lit("genocided monster types (also vanquished counts)"));
     await end_menu()(tmpwin, new $c.Ptr(buf, 0));
-    n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
+    const n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
     await destroy_nhwindow()(tmpwin);
     if (n > 0) {
-        choice = $c.radd(selected[0], 0).item.a_int - 1 | 0;
+        let choice = $c.radd(selected[0], 0).item.a_int - 1 | 0;
         /* skip preselected entry if we have more than one item chosen */
         if (n > 1 && choice === flags.vanq_sortmode) {
             choice = $c.radd(selected[0], 1).item.a_int - 1 | 0;
@@ -2569,7 +2566,7 @@ export async function set_vanq_order(for_vanq) {   // insight.c:2718
  * @returns {Promise<number>} int
  */
 export async function dovanquished() {   // insight.c:2769
-    await list_vanquished($c.i8(iflags.menu_requested ? 65 : 121), FALSE);
+    await list_vanquished(iflags.menu_requested ? 65 : 121, FALSE);
     iflags.menu_requested = FALSE;
     return ECMD.OK;
 }
@@ -2581,13 +2578,13 @@ export async function dovanquished() {   // insight.c:2769
  * @returns {Promise<void>}
  */
 export async function list_vanquished(defquery, ask) {   // insight.c:2784
-    let i = 0, pfx = 0, nkilled = 0, ntypes = 0, ni = 0, total_killed = 0, klwin = 0, mindx = new Int16Array(383), c = 0, buf = new Int8Array(256), buftoo = new Int8Array(256), force_sort = 0, dumping = 0, mlet = 0, prev_mlet = 0, class_header = 0, uniq_header = 0, Rider = 0, was_uniq = 0, special_hdr = 0, allow_yn = new Int8Array(10), $t1;
-    total_killed = 0;
+    let i = 0, nkilled = 0, ni = 0, mindx = new Int16Array(383), c = 0, buf = new Int8Array(256), buftoo = new Int8Array(256), allow_yn = new Int8Array(10), $t1;
+    let total_killed = 0;
     /* 'A' is only supplied by 'm #vanquished'; 'd' is only supplied by
        dump_everything() when writing dumplog, so won't happen if built
        without '#define DUMPLOG' but there's no need for conditionals here */
-    force_sort = $c.i8(defquery === 65 ? 1 : 0);
-    dumping = $c.i8(defquery === 100 ? 1 : 0);
+    const force_sort = defquery === 65 ? 1 : 0;
+    const dumping = defquery === 100 ? 1 : 0;
     /* normally we don't ask about sort order for the vanquished list unless
        it contains at least two entries; however, if player has used explicit
        'm #vanquished', choose order no matter what it contains so far */
@@ -2604,7 +2601,7 @@ export async function list_vanquished(defquery, ask) {   // insight.c:2784
         ask = FALSE;   /* redundant */
     }
     /* get totals first */
-    ntypes = 0;
+    let ntypes = 0;
     for (i = LOW_PM; i < NUMMONS; i = i + 1 | 0) {
         if ((nkilled = svm.mvitals[i].died) === 0) {
             continue;
@@ -2616,9 +2613,9 @@ export async function list_vanquished(defquery, ask) {   // insight.c:2784
      * includes all dead monsters, not just those killed by the player
      */
     if (ntypes !== 0) {
-        prev_mlet = 0;   /* used as small integer, not character */
-        was_uniq = FALSE;
-        special_hdr = FALSE;
+        let prev_mlet = 0;   /* used as small integer, not character */
+        let was_uniq = FALSE;
+        let special_hdr = FALSE;
         if (ask) {
             if (ntypes > 1) {
                 $c.strcpy(new $c.Ptr(allow_yn, 0), new $c.Ptr(ynaqchars, 0));
@@ -2645,9 +2642,9 @@ export async function list_vanquished(defquery, ask) {   // insight.c:2784
                     return;
                 }
             }
-            uniq_header = $c.i8(flags.vanq_sortmode === VANQ.ALPHA_SEP ? 1 : 0);
-            class_header = $c.i8((flags.vanq_sortmode === VANQ.MCLS_LTOH || flags.vanq_sortmode === VANQ.MCLS_HTOL) && ntypes > 1 ? 1 : 0);
-            klwin = await create_nhwindow()(NHW.MENU);
+            const uniq_header = flags.vanq_sortmode === VANQ.ALPHA_SEP ? 1 : 0;
+            const class_header = (flags.vanq_sortmode === VANQ.MCLS_LTOH || flags.vanq_sortmode === VANQ.MCLS_HTOL) && ntypes > 1 ? 1 : 0;
+            const klwin = await create_nhwindow()(NHW.MENU);
             await putstr()(klwin, 0, $c.lit("Vanquished creatures:"));
             if (!dumping) {
                 await putstr()(klwin, 0, $c.lit(""));
@@ -2656,8 +2653,8 @@ export async function list_vanquished(defquery, ask) {   // insight.c:2784
             for (ni = 0; ni < ntypes; ni = ni + 1 >>> 0) {
                 i = mindx[ni];
                 nkilled = svm.mvitals[i].died;
-                Rider = $c.i8(is_rider($c.relem(mons, i)));
-                mlet = mons[i].mlet;
+                const Rider = is_rider($c.relem(mons, i));
+                const mlet = mons[i].mlet;
                 if (class_header && (mlet !== prev_mlet || special_hdr && !Rider)) {
                     if (!Rider) {
                         $c.strcpy(new $c.Ptr(buf, 0), def_monsyms[mlet].explain);
@@ -2691,7 +2688,7 @@ export async function list_vanquished(defquery, ask) {   // insight.c:2784
                     }
                 }
                 /* number of leading spaces to match 3 digit prefix */
-                pfx = !strncmpi(new $c.Ptr(buf, 0), $c.lit("the "), 4) ? 0 : !strncmpi(new $c.Ptr(buf, 0), $c.lit("an "), 3) ? 1 : !strncmpi(new $c.Ptr(buf, 0), $c.lit("a "), 2) ? 2 : !digit(buf[2]) ? 4 : 0;
+                let pfx = !strncmpi(new $c.Ptr(buf, 0), $c.lit("the "), 4) ? 0 : !strncmpi(new $c.Ptr(buf, 0), $c.lit("an "), 3) ? 1 : !strncmpi(new $c.Ptr(buf, 0), $c.lit("a "), 2) ? 2 : !digit(buf[2]) ? 4 : 0;
                 if (class_header) {
                     pfx = pfx + 1 | 0;
                 }
@@ -2731,8 +2728,8 @@ export async function list_vanquished(defquery, ask) {   // insight.c:2784
  * @returns {Promise<number>} int
  */
 export async function num_genocides() {   // insight.c:2953
-    let i = 0, n = 0;
-    n = 0;
+    let i = 0;
+    let n = 0;
     for (i = LOW_PM; i < NUMMONS; i = i + 1 | 0) {
         if (svm.mvitals[i].mvflags & G_GENOD) {
             n = n + 1 | 0;
@@ -2748,8 +2745,8 @@ export async function num_genocides() {   // insight.c:2953
  * @returns {number} int
  */
 function num_extinct() {   // insight.c:2970
-    let i = 0, n = 0;
-    n = 0;
+    let i = 0;
+    let n = 0;
     for (i = LOW_PM; i < NUMMONS; i = i + 1 | 0) {
         if (UniqCritterIndx(i)) {
             continue;
@@ -2767,9 +2764,9 @@ function num_extinct() {   // insight.c:2970
  * @returns {number} int
  */
 function num_gone(mvflags, mindx) {   // insight.c:2985
-    let mflg = 0, i = 0, n = 0, $t1;
-    mflg = $c.u8(mvflags);
-    n = 0;
+    let i = 0, $t1;
+    const mflg = $c.u8(mvflags);
+    let n = 0;
     $c.memset(mindx, 0, 1532);
     for (i = LOW_PM; i < NUMMONS; i = i + 1 | 0) {
         /* uniques can't be genocided but can become extinct;
@@ -2791,12 +2788,12 @@ function num_gone(mvflags, mindx) {   // insight.c:2985
  * @returns {Promise<void>}
  */
 export async function list_genocided(defquery, ask) {   // insight.c:3007
-    let i = 0, mndx = 0, ngenocided = 0, nextinct = 0, ngone = 0, mvflags = 0, mindx = new Int32Array(383), c = 0, klwin = 0, buf = new Int8Array(256), genoing = 0, dumping = 0, both = 0, save_sortmode = 0, mlet = 0, prev_mlet = 0, class_header = 0;
+    let i = 0, mindx = new Int32Array(383), buf = new Int8Array(256);
     /* prompting for genocide or class genocide */
     /* for DUMPLOG; doesn't need to be conditional */
-    both = $c.i8(program_state.gameover || wizard() || discover() ? 1 : 0);
-    dumping = $c.i8(defquery === 100 ? 1 : 0);
-    genoing = $c.i8(defquery === 103 ? 1 : 0);
+    let both = program_state.gameover || wizard() || discover() ? 1 : 0;
+    const dumping = defquery === 100 ? 1 : 0;
+    const genoing = defquery === 103 ? 1 : 0;
     if (dumping || genoing) {
         defquery = 121;
     }
@@ -2807,20 +2804,20 @@ export async function list_genocided(defquery, ask) {   // insight.c:3007
        happen rarely and is simpler than a more general single pass check;
        extinctions are only revealed during end of game disclosure or when
        running in wizard or explore mode */
-    ngenocided = await num_genocides();
-    nextinct = both ? num_extinct() : 0;
-    mvflags = G_GENOD | (both ? G_EXTINCT : 0);
-    ngone = num_gone(mvflags, new $c.Ptr(mindx, 0));
+    const ngenocided = await num_genocides();
+    const nextinct = both ? num_extinct() : 0;
+    const mvflags = G_GENOD | (both ? G_EXTINCT : 0);
+    const ngone = num_gone(mvflags, new $c.Ptr(mindx, 0));
     /* genocided or extinct species list */
     if (ngone > 0) {
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Do you want a list of %sspecies%s%s?"), nextinct && !ngenocided ? $c.lit("extinct ") : $c.lit(""), ngenocided ? $c.lit(" genocided") : $c.lit(""), nextinct && ngenocided ? $c.lit(" and extinct") : $c.lit(""));
-        c = $c.i8(ask ? await yn_function(new $c.Ptr(buf, 0), ngone > 1 ? $c.lit("ynaq") : $c.lit("ynq\x1ba"), defquery, TRUE) : defquery);
+        const c = ask ? await yn_function(new $c.Ptr(buf, 0), ngone > 1 ? $c.lit("ynaq") : $c.lit("ynq\x1ba"), defquery, TRUE) : defquery;
         if (c === 113) {
             program_state.stopprint = program_state.stopprint + 1 | 0;
         }
         if (c === 121 || c === 97) {
-            prev_mlet = 0;
-            class_header = FALSE;
+            let prev_mlet = 0;
+            let class_header = FALSE;
             if (ngone > 1) {
                 if (c === 97) {
                     /* ask player to choose sort order */
@@ -2834,23 +2831,23 @@ export async function list_genocided(defquery, ask) {   // insight.c:3007
                    to set to either of those, use alphabetical instead;
                    note: the tie breaker for by-class is level-high-to-low
                    or level-low-to-high rather than count so is ok as-is */
-                save_sortmode = flags.vanq_sortmode;
+                const save_sortmode = flags.vanq_sortmode;
                 if (flags.vanq_sortmode === VANQ.COUNT_H_L || flags.vanq_sortmode === VANQ.COUNT_L_H) {
                     flags.vanq_sortmode = VANQ.ALPHA_MIX;
                 }
                 $c.nh_deterministic_qsort(new $c.Ptr(mindx, 0), $c.u64(ngone), 4, vanqsort_cmp);
-                class_header = $c.i8(flags.vanq_sortmode === VANQ.MCLS_LTOH || flags.vanq_sortmode === VANQ.MCLS_HTOL ? 1 : 0);
+                class_header = flags.vanq_sortmode === VANQ.MCLS_LTOH || flags.vanq_sortmode === VANQ.MCLS_HTOL ? 1 : 0;
                 flags.vanq_sortmode = $c.u8(save_sortmode);
             }
-            klwin = await create_nhwindow()(NHW.MENU);
+            const klwin = await create_nhwindow()(NHW.MENU);
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s%s species:"), ngenocided ? $c.lit("Genocided") : $c.lit("Extinct"), nextinct && ngenocided ? $c.lit(" or extinct") : $c.lit(""));
             await putstr()(klwin, 0, new $c.Ptr(buf, 0));
             if (!dumping) {
                 await putstr()(klwin, 0, $c.lit(""));
             }
             for (i = 0; i < ngone; i = i + 1 | 0) {
-                mndx = mindx[i];
-                mlet = mons[mndx].mlet;
+                const mndx = mindx[i];
+                const mlet = mons[mndx].mlet;
                 if (class_header && mlet !== prev_mlet) {
                     $c.strcpy(new $c.Ptr(buf, 0), def_monsyms[mlet].explain);
                     /* 'ask' implies final disclosure, where highlighting
@@ -2901,7 +2898,7 @@ export async function list_genocided(defquery, ask) {   // insight.c:3007
  * @returns {Promise<number>} int
  */
 export async function dogenocided() {   // insight.c:3135
-    await list_genocided($c.i8(iflags.menu_requested ? 97 : 121), FALSE);
+    await list_genocided(iflags.menu_requested ? 97 : 121, FALSE);
     return ECMD.OK;
 }
 /* #wizborn extended command */
@@ -2909,10 +2906,10 @@ export async function dogenocided() {   // insight.c:3135
  * @returns {Promise<number>} int
  */
 export async function doborn() {   // insight.c:3145
-    let i = 0, datawin = 0, buf = new Int8Array(256), nborn = 0, ndied = 0;
-    datawin = await create_nhwindow()(NHW.TEXT);
-    nborn = 0;
-    ndied = 0;
+    let i = 0, buf = new Int8Array(256);
+    const datawin = await create_nhwindow()(NHW.TEXT);
+    let nborn = 0;
+    let ndied = 0;
     await putstr()(datawin, 0, $c.lit("died born"));
     for (i = LOW_PM; i < NUMMONS; i = i + 1 | 0) {
         if (svm.mvitals[i].born || svm.mvitals[i].died || (svm.mvitals[i].mvflags & G_GONE) !== 0) {
@@ -3028,8 +3025,8 @@ export function piousness(showneg, suffix) {   // insight.c:3235
  * @returns {Promise<void>}
  */
 export async function mstatusline(mtmp) {   // insight.c:3275
-    let alignment = 0, info = new Int8Array(256), monnambuf = new Int8Array(256), segndx = 0, nsegs = 0, pm = null, legs = 0, what = null;
-    alignment = mon_aligntyp(mtmp);
+    let info = new Int8Array(256), monnambuf = new Int8Array(256);
+    const alignment = mon_aligntyp(mtmp);
     info[0] = 0;
     if (mtmp.mtame) {
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", tame"));
@@ -3043,8 +3040,8 @@ export async function mstatusline(mtmp) {   // insight.c:3275
     } else if (mtmp.mpeaceful) {
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", peaceful"));
     }
-    if ($c.peq(mtmp.data, $c.relem(mons, PM.LONG_WORM))) {
-        nsegs = count_wsegs(mtmp);
+    if (mtmp.data === mons[PM.LONG_WORM]) {
+        let nsegs = count_wsegs(mtmp);
         /* the worm code internals don't consider the head to be one of
            the worm's segments, but we count it as such when presenting
            worm feedback to the player */
@@ -3052,7 +3049,7 @@ export async function mstatusline(mtmp) {   // insight.c:3275
             $c.strcat(new $c.Ptr(info, 0), $c.lit(", single segment"));
         } else {
             nsegs = nsegs + 1 | 0;   /* include head in the segment count */
-            segndx = wseg_at(mtmp, gb.bhitpos.x, gb.bhitpos.y);
+            const segndx = wseg_at(mtmp, gb.bhitpos.x, gb.bhitpos.y);
             $c.sprintf(eos(new $c.Ptr(info, 0)), $c.lit(", %d%s of %d segments"), segndx, ordin(segndx), nsegs);
         }
     }
@@ -3067,7 +3064,7 @@ export async function mstatusline(mtmp) {   // insight.c:3275
     }
     /* a stethoscope exposes mimic before getting here so this
        won't be relevant for it, but wand of probing doesn't */
-    if (mtmp.mundetected | 0 || mtmp.m_ap_type || visible_region_at(gb.bhitpos.x, gb.bhitpos.y)) {
+    if (mtmp.mundetected || mtmp.m_ap_type || visible_region_at(gb.bhitpos.x, gb.bhitpos.y)) {
         await mhidden_description(mtmp, MHID.PREFIX | MHID.ARTICLE | MHID.ALTMON | MHID.REGION, eos(new $c.Ptr(info, 0)));
     }
     if (mtmp.mcan) {
@@ -3076,7 +3073,7 @@ export async function mstatusline(mtmp) {   // insight.c:3275
     if (mtmp.mconf) {
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", confused"));
     }
-    if (mtmp.mblinded | 0 || !mtmp.mcansee) {
+    if (mtmp.mblinded || !mtmp.mcansee) {
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", blind"));
     }
     if (mtmp.mstun) {
@@ -3084,7 +3081,7 @@ export async function mstatusline(mtmp) {   // insight.c:3275
     }
     if (mtmp.msleeping) {
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", asleep"));
-    } else if (mtmp.mfrozen | 0 || !mtmp.mcanmove) {
+    } else if (mtmp.mfrozen || !mtmp.mcanmove) {
         /* unfortunately mfrozen covers temporary sleep and being busy
          * (donning armor, for instance) as well as paralysis */
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", can't move"));
@@ -3099,16 +3096,16 @@ export async function mstatusline(mtmp) {   // insight.c:3275
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", trapped"));
     }
     if (mtmp.mspeed) {
-        $c.strcat(new $c.Ptr(info, 0), (mtmp.mspeed | 0) === MFAST ? $c.lit(", fast") : (mtmp.mspeed | 0) === MSLOW ? $c.lit(", slow") : $c.lit(", [? speed]"));
+        $c.strcat(new $c.Ptr(info, 0), mtmp.mspeed === MFAST ? $c.lit(", fast") : mtmp.mspeed === MSLOW ? $c.lit(", slow") : $c.lit(", [? speed]"));
     }
     if (mtmp.minvis) {
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", invisible"));
     }
     if ($c.peq(mtmp, u.ustuck)) {
-        pm = u.ustuck.data;
+        const pm = u.ustuck.data;
         /* being swallowed/engulfed takes priority over sticks(youmonst);
            this used to have that backwards and checked sticks() first */
-        $c.strcat(new $c.Ptr(info, 0), u.uswallow | 0 ? dmgtype_fromattack(pm, AD.DGST, AT.ENGL) !== null ? $c.lit(", digesting you") : $c.andu64(pm.mflags1, M1.ANIMAL) !== 0 && !(dmgtype_fromattack(pm, AD.WRAP, AT.ENGL) !== null) ? $c.lit(", swallowing you") : $c.lit(", engulfing you") : !sticks(gy.youmonst.data) ? $c.lit(", holding you") : $c.lit(", held by you"));
+        $c.strcat(new $c.Ptr(info, 0), u.uswallow ? dmgtype_fromattack(pm, AD.DGST, AT.ENGL) !== null ? $c.lit(", digesting you") : $c.andu64(pm.mflags1, M1.ANIMAL) !== 0 && !(dmgtype_fromattack(pm, AD.WRAP, AT.ENGL) !== null) ? $c.lit(", swallowing you") : $c.lit(", engulfing you") : !sticks(gy.youmonst.data) ? $c.lit(", holding you") : $c.lit(", held by you"));
         /* note: the "swallowing you" case won't
            happen because all animal engulfers
            either digest their victims (purple
@@ -3123,8 +3120,8 @@ export async function mstatusline(mtmp) {   // insight.c:3275
             /* EWounded_legs is used to track left/right/both rather than
                some form of extrinsic impairment; HWounded_legs is used for
                timeout; both apply to steed instead of hero when mounted */
-            legs = $c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES);
-            what = await mbodypart(mtmp, LEG);
+            const legs = $c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES);
+            let what = await mbodypart(mtmp, LEG);
             if (legs === BOTH_SIDES) {
                 what = await makeplural(what);
             }
@@ -3144,15 +3141,15 @@ export async function mstatusline(mtmp) {   // insight.c:3275
  * @returns {Promise<void>}
  */
 export async function ustatusline() {   // insight.c:3402
-    let reg = null, info = new Int8Array(256), ln = 0, legs = 0, what = null;
+    let reg = null, info = new Int8Array(256), ln = 0;
     info[0] = 0;
     if (Sick()) {
         $c.strcat(new $c.Ptr(info, 0), $c.lit(", dying from"));
-        if ((u.usick_type | 0) & SICK_VOMITABLE) {
+        if (u.usick_type & SICK_VOMITABLE) {
             $c.strcat(new $c.Ptr(info, 0), $c.lit(" food poisoning"));
         }
-        if ((u.usick_type | 0) & SICK_NONVOMITABLE) {
-            if ((u.usick_type | 0) & SICK_VOMITABLE) {
+        if (u.usick_type & SICK_NONVOMITABLE) {
+            if (u.usick_type & SICK_VOMITABLE) {
                 $c.strcat(new $c.Ptr(info, 0), $c.lit(" and"));
             }
             $c.strcat(new $c.Ptr(info, 0), $c.lit(" illness"));
@@ -3189,8 +3186,8 @@ export async function ustatusline() {   // insight.c:3402
         /* EWounded_legs is used to track left/right/both rather than some
            form of extrinsic impairment; HWounded_legs is used for timeout;
            both apply to steed instead of hero when mounted */
-        legs = $c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES);
-        what = await body_part(LEG);
+        const legs = $c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES);
+        let what = await body_part(LEG);
         if (legs === BOTH_SIDES) {
             what = await makeplural(what);
         }

@@ -426,7 +426,7 @@ export async function throw_obj(obj, shotlimit) {
             }
             obj = null;
         }
-        freeinv(otmp);
+        await freeinv(otmp);
         await throwit(otmp, wep_mask, twoweap, oldslot);
         await encumber_msg();
     }
@@ -561,7 +561,7 @@ async function return_throw_to_inv(obj, wep_mask, twoweap, oldslot) {
             && ((obj.owornmask | wep_mask) & (W_WEP | W_SWAPWEP)))
             setuqwep(null);
         if ((wep_mask & W_WEP) && !game.u.uwep)
-            setuwep(obj);
+            await setuwep(obj);
         else if ((wep_mask & W_SWAPWEP) && !game.u.uswapwep)
             setuswapwep(obj);
         else if ((wep_mask & W_QUIVER) && !game.u.uquiver)
@@ -842,7 +842,7 @@ export async function throwit(obj, wep_mask, twoweap = false,
                 await encumber_msg();
                 if (obj.owornmask & W_QUIVER)
                     setuqwep(null);
-                setuwep(obj);
+                await setuwep(obj);
                 set_twoweap(twoweap);
                 if (cansee(bx, by))
                     newsym(bx, by);
@@ -942,7 +942,7 @@ export async function throwit(obj, wep_mask, twoweap = false,
         return;
     }
     game.thrownobj = null;
-    place_object(obj, bx, by);
+    await place_object(obj, bx, by);
     /* container contents might break;
        do so before turning ownership of gt.thrownobj over to shk
        (container_impact_dmg handles item already owned by shop) */

@@ -201,6 +201,18 @@ export function __debug_arrays() {
     return { viz_clear, left_ptrs, right_ptrs };
 }
 
+// JSON storage rollback: loading dormant boulders and expired regions can
+// change geometry while save output is suppressed. Preserve the live buffers.
+export function checkpoint_vision() {
+    const buffers = [viz_clear, left_ptrs, right_ptrs];
+    const saved = buffers.map(rows => rows.map(row => row.slice()));
+    return () => {
+        for (let buffer = 0; buffer < buffers.length; buffer++)
+            for (let row = 0; row < ROWNO; row++)
+                buffers[buffer][row].set(saved[buffer][row]);
+    };
+}
+
 // src/vision.c:967 dig_point() — make (row,col) clear and repair the
 // left/right run pointers around it. Note the (row,col) argument order:
 // everything in C below the pointer-update banner uses (y,x).
@@ -747,9 +759,11 @@ export function vision_recalc(control = 0) {
     }
 
     if (!u.uswallow && control !== 2) {
-        /* src/vision.c:584 — the Blind arm comes first in C (handled below
-           here), then the Rogue level gets its own room-based vision */
-        if (!Blind() && Is_rogue_level(u.uz)) {
+        if (Blind()) {
+            /* src/vision.c:548: blindness keeps ordinary line of sight,
+               including underwater and in pits, so monsters can see us. */
+            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        } else if (Is_rogue_level(u.uz)) {
             rogue_vision(next, next_rmin, next_rmax);
         /* src/vision.c:577. Away from the Plane of Water, an underwater
            hero can only see adjacent squares which are also pools. */

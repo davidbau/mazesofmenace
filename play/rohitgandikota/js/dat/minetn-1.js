@@ -187,16 +187,16 @@ export async function minetn1_level() {
         for (let i = 1; i <= n; i++) {
             if (percent(50)) {
                 const c = selection_rndcoord(inside, 1);
-                des.monster({ id: 'orc-captain', coord: [c.x, c.y],
+                await des.monster({ id: 'orc-captain', coord: [c.x, c.y],
                               peaceful: 0 });
             } else {
                 if (percent(80)) {
                     const c = selection_rndcoord(inside, 1);
-                    des.monster({ id: 'Uruk-hai', coord: [c.x, c.y],
+                    await des.monster({ id: 'Uruk-hai', coord: [c.x, c.y],
                                   peaceful: 0 });
                 } else {
                     const c = selection_rndcoord(inside, 1);
-                    des.monster({ id: 'Mordor orc', coord: [c.x, c.y],
+                    await des.monster({ id: 'Mordor orc', coord: [c.x, c.y],
                                   peaceful: 0 });
                 }
             }
@@ -208,7 +208,7 @@ export async function minetn1_level() {
         const n = mathrandom(1, 6);
         for (let i = 1; i <= n; i++) {
             const c = selection_rndcoord(near_temple, 0);
-            des.monster({ id: 'orc shaman', coord: [c.x, c.y], peaceful: 0,
+            await des.monster({ id: 'orc shaman', coord: [c.x, c.y], peaceful: 0,
                           m_lev_adj: (i === 1) ? 3 : 0 });
         }
     }
@@ -217,9 +217,9 @@ export async function minetn1_level() {
         const n = mathrandom(10, 19);
         for (let i = 1; i <= n; i++) {
             if (percent(90)) {
-                des.monster({ id: 'hill orc', peaceful: 0 });
+                await des.monster({ id: 'hill orc', peaceful: 0 });
             } else {
-                des.monster({ id: 'goblin', peaceful: 0 });
+                await des.monster({ id: 'goblin', peaceful: 0 });
             }
         }
     }

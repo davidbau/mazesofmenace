@@ -15,11 +15,11 @@ const yyyymmddhhmmss$datestr = new Int8Array(15);   // static in yyyymmddhhmmss(
  * @returns {number | bigint} time_t
  */
 export function getnow() {   // calendar.c:32
-    let fixed_dt = null, datetime = [0], parsed = 0;
-    fixed_dt = nh_getenv($c.lit("NETHACK_FIXED_DATETIME"));
+    let datetime = [0];
+    const fixed_dt = nh_getenv($c.lit("NETHACK_FIXED_DATETIME"));
     datetime[0] = 0;
     if (fixed_dt && fixed_dt.get(0)) {
-        parsed = time_from_yyyymmddhhmmss(fixed_dt);
+        const parsed = time_from_yyyymmddhhmmss(fixed_dt);
         if (parsed !== 0) {
             return parsed;
         }
@@ -72,13 +72,13 @@ export function yyyymmdd(date$in) {   // calendar.c:62
  */
 export function hhmmss(date$in) {   // calendar.c:86
     const date = [date$in];
-    let timenum = 0, lt = null;
+    let lt = null;
     if (date[0] === 0) {
         lt = getlt();
     } else {
         lt = $c.localtime(new $c.Ptr(date, 0));
     }
-    timenum = $c.add64($c.add64($c.mul64(lt.tm_hour, 10000), $c.mul64(lt.tm_min, 100)), lt.tm_sec);
+    const timenum = $c.add64($c.add64($c.mul64(lt.tm_hour, 10000), $c.mul64(lt.tm_min, 100)), lt.tm_sec);
     return timenum;
 }
 /**
@@ -109,11 +109,11 @@ export function yyyymmddhhmmss(date$in) {   // calendar.c:101
  * @returns {number | bigint} time_t
  */
 export function time_from_yyyymmddhhmmss(buf) {   // calendar.c:126
-    let k = 0, timeresult = 0, t = new $T.tm(), lt = null, now = [0], d = null, p = null, y = new Int8Array(5), mo = new Int8Array(3), md = new Int8Array(3), h = new Int8Array(3), mi = new Int8Array(3), s = new Int8Array(3), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20, $t21, $t22, $t23, $t24, $t25, $t26, $t27, $t28, $t29, $t30;
-    timeresult = 0;
+    let k = 0, t = new $T.tm(), now = [0], y = new Int8Array(5), mo = new Int8Array(3), md = new Int8Array(3), h = new Int8Array(3), mi = new Int8Array(3), s = new Int8Array(3), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20, $t21, $t22, $t23, $t24, $t25, $t26, $t27, $t28, $t29, $t30;
+    let timeresult = 0;
     if (buf && $c.strlen(buf) === 14) {
-        d = buf;
-        p = new $c.Ptr(y, 0);   /* year */
+        let d = buf;
+        let p = new $c.Ptr(y, 0);   /* year */
         for (k = 0; k < 4; k = k + 1 | 0) {
             $t3 = ($t2 = d, d = $t2.add(1), $t2).get(0), $t4 = ($t1 = p, p = $t1.add(1), $t1), $t4.set(0, $t3);
         }
@@ -145,7 +145,7 @@ export function time_from_yyyymmddhhmmss(buf) {   // calendar.c:126
         p.set(0, 0);
         /* Avoid recursion when getnow() itself is using fixed datetime. */
         $c.time(new $c.Ptr(now, 0));
-        lt = $c.localtime(new $c.Ptr(now, 0));
+        const lt = $c.localtime(new $c.Ptr(now, 0));
         if (lt) {
             t.$copyFrom(lt);
             $t25 = $c.atoi(new $c.Ptr(y, 0)) - 1900 | 0, t.tm_year = $t25;
@@ -180,12 +180,11 @@ export function time_from_yyyymmddhhmmss(buf) {   // calendar.c:126
  * @returns {number} int
  */
 export function phase_of_the_moon() {   // calendar.c:200
-    let lt = null, epact = 0, diy = 0, goldn = 0;
     /* 0-7, with 0: new, 4: full */
-    lt = getlt();
-    diy = lt.tm_yday;
-    goldn = $c.rem32(lt.tm_year, 19) + 1 | 0;
-    epact = $c.rem32(Math.imul(11, goldn) + 18 | 0, 30);
+    const lt = getlt();
+    const diy = lt.tm_yday;
+    const goldn = $c.rem32(lt.tm_year, 19) + 1 | 0;
+    let epact = $c.rem32(Math.imul(11, goldn) + 18 | 0, 30);
     if (epact === 25 && goldn > 11 || epact === 24) {
         epact = epact + 1 | 0;
     }
@@ -195,17 +194,15 @@ export function phase_of_the_moon() {   // calendar.c:200
  * @returns {number} boolean
  */
 export function friday_13th() {   // calendar.c:215
-    let lt = null;
-    lt = getlt();
+    const lt = getlt();
     /* tm_wday (day of week; 0==Sunday) == 5 => Friday */
-    return $c.i8(lt.tm_wday === 5 && lt.tm_mday === 13 ? 1 : 0);
+    return lt.tm_wday === 5 && lt.tm_mday === 13 ? 1 : 0;
 }
 /**
  * @returns {number} int
  */
 export function night() {   // calendar.c:224
-    let hour = 0;
-    hour = getlt().tm_hour;
+    const hour = getlt().tm_hour;
     return hour < 6 || hour > 21 ? 1 : 0;
 }
 /**

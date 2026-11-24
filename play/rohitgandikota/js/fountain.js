@@ -687,7 +687,7 @@ export async function drinksink() {
         await You_hear('snatches of song from among the sewers...');
         break;
     case 19:
-        if (game.u.intrinsic?.HHallucination || game.u.uprops?.HALLUC) {
+        if (Hallucination()) {
             await pline('From the murky drain, a hand reaches up... --oops--');
             break;
         }

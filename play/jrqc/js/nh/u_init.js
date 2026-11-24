@@ -118,20 +118,20 @@ async function knows_object(obj, override_pauper) {   // u_init.c:575
  * @returns {Promise<void>}
  */
 async function knows_class(sym) {   // u_init.c:586
-    let odummy = new $T.obj(), o = null, ct = 0;
+    let odummy = new $T.obj(), ct = 0;
     if (u.uroleplay.pauper) {
         return;
     }
     odummy.$copyFrom(cg.zeroobj);
     odummy.oclass = sym;
-    o = odummy;   /* for use in various obj.h macros */
+    const o = odummy;   /* for use in various obj.h macros */
     /*
      * Note:  the exceptions here can be bypassed if necessary by
      *        calling knows_object() directly.  So an elven ranger,
      *        for example, knows all elven weapons despite the bow,
      *        arrow, and spear limitation below.
      */
-    for (ct = svb.bases[$c.u8(sym)]; ct < svb.bases[$c.u8(sym) + 1 | 0]; ct = ct + 1 | 0) {
+    for (ct = svb.bases[$c.u8(sym)]; ct < svb.bases[$c.u8(sym) + 1]; ct = ct + 1 | 0) {
         /* not flagged as magic but shouldn't be pre-discovered
            (small shields look the same as two types of magical shield;
            cornuthaum / dunce cap look the same as each other) */
@@ -180,13 +180,13 @@ async function u_init_role() {   // u_init.c:637
              * random number generators are bad enough to seriously
              * skew the results if we use rn2(2)...  --KAA
              */
-            await ini_inv($c.relem(Archeologist, 0));
+            await ini_inv(Archeologist[0]);
             if (!rn2(10)) {
-                await ini_inv($c.relem(Tinopener, 0));
+                await ini_inv(Tinopener[0]);
             } else if (!rn2(4)) {
-                await ini_inv($c.relem(Lamp, 0));
+                await ini_inv(Lamp[0]);
             } else if (!rn2(5)) {
-                await ini_inv($c.relem(Magicmarker, 0));
+                await ini_inv(Magicmarker[0]);
             }
             await knows_object(SACK, FALSE);
             await knows_object(TOUCHSTONE, FALSE);
@@ -197,29 +197,29 @@ async function u_init_role() {   // u_init.c:637
         case PM.BARBARIAN:
             if (rn2(100) >= 50) {
                 /* see above comment */
-                await ini_inv($c.relem(Barbarian_0, 0));
+                await ini_inv(Barbarian_0[0]);
             } else {
-                await ini_inv($c.relem(Barbarian_1, 0));
+                await ini_inv(Barbarian_1[0]);
             }
             if (!rn2(6)) {
-                await ini_inv($c.relem(Lamp, 0));
+                await ini_inv(Lamp[0]);
             }
             await knows_class(WEAPON_CLASS);   /* excluding polearms */
             await knows_class(ARMOR_CLASS);
             break;
         case PM.CAVE_DWELLER:
-            await ini_inv($c.relem(Cave_man, 0));
+            await ini_inv(Cave_man[0]);
             break;
         case PM.HEALER:
             $t1 = rn2(1000) + 1001 | 0, u.umoney0 = $t1;
-            await ini_inv($c.relem(Healer, 0));
+            await ini_inv(Healer[0]);
             if (!rn2(25)) {
-                await ini_inv($c.relem(Lamp, 0));
+                await ini_inv(Lamp[0]);
             }
             await knows_object(POT_FULL_HEALING, FALSE);
             break;
         case PM.KNIGHT:
-            await ini_inv($c.relem(Knight, 0));
+            await ini_inv(Knight[0]);
             await knows_class(WEAPON_CLASS);   /* all weapons */
             await knows_class(ARMOR_CLASS);
             /* give knights chess-like mobility--idea from wooledge@..cwru.edu */
@@ -227,12 +227,12 @@ async function u_init_role() {   // u_init.c:637
             break;
         case PM.MONK:
             {
-                await ini_inv($c.relem(Monk, 0));
+                await ini_inv(Monk[0]);
                 await ini_inv(u_init_role$M_spell[$c.div32(rn2(90), 30)]);   /* [0..2] */
                 if (!rn2(4)) {
-                    await ini_inv($c.relem(Magicmarker, 0));
+                    await ini_inv(Magicmarker[0]);
                 } else if (!rn2(10)) {
-                    await ini_inv($c.relem(Lamp, 0));
+                    await ini_inv(Lamp[0]);
                 }
                 await knows_class(ARMOR_CLASS);
                 /* sufficiently martial-arts oriented item to ignore language issue */
@@ -241,11 +241,11 @@ async function u_init_role() {   // u_init.c:637
             }
         case PM.CLERIC:
             /* priest/priestess */
-            await ini_inv($c.relem(Priest, 0));
+            await ini_inv(Priest[0]);
             if (!rn2(5)) {
-                await ini_inv($c.relem(Magicmarker, 0));
+                await ini_inv(Magicmarker[0]);
             } else if (!rn2(10)) {
-                await ini_inv($c.relem(Lamp, 0));
+                await ini_inv(Lamp[0]);
             }
             await knows_object(POT_WATER, TRUE);   /* override pauper */
             /* KMH, conduct --
@@ -257,14 +257,14 @@ async function u_init_role() {   // u_init.c:637
              */
             break;
         case PM.RANGER:
-            await ini_inv($c.relem(Ranger, 0));
+            await ini_inv(Ranger[0]);
             await knows_class(WEAPON_CLASS);   /* bows, arrows, spears only */
             break;
         case PM.ROGUE:
             u.umoney0 = 0;
-            await ini_inv($c.relem(Rogue, 0));
+            await ini_inv(Rogue[0]);
             if (!rn2(5)) {
-                await ini_inv($c.relem(Blindfold, 0));
+                await ini_inv(Blindfold[0]);
             }
             await knows_object(SACK, FALSE);
             /* FALSE: don't override pauper here,
@@ -273,9 +273,9 @@ async function u_init_role() {   // u_init.c:637
             await knows_class(WEAPON_CLASS);   /* daggers only */
             break;
         case PM.SAMURAI:
-            await ini_inv($c.relem(Samurai, 0));
+            await ini_inv(Samurai[0]);
             if (!rn2(5)) {
-                await ini_inv($c.relem(Blindfold, 0));
+                await ini_inv(Blindfold[0]);
             }
             await knows_class(WEAPON_CLASS);   /* all weapons */
             await knows_class(ARMOR_CLASS);
@@ -294,29 +294,29 @@ async function u_init_role() {   // u_init.c:637
             break;
         case PM.TOURIST:
             $t2 = rnd(1000), u.umoney0 = $t2;
-            await ini_inv($c.relem(Tourist, 0));
+            await ini_inv(Tourist[0]);
             if (!rn2(25)) {
-                await ini_inv($c.relem(Tinopener, 0));
+                await ini_inv(Tinopener[0]);
             } else if (!rn2(25)) {
-                await ini_inv($c.relem(Leash, 0));
+                await ini_inv(Leash[0]);
             } else if (!rn2(25)) {
-                await ini_inv($c.relem(Towel, 0));
+                await ini_inv(Towel[0]);
             } else if (!rn2(20)) {
-                await ini_inv($c.relem(Magicmarker, 0));
+                await ini_inv(Magicmarker[0]);
             }
             break;
         case PM.VALKYRIE:
-            await ini_inv($c.relem(Valkyrie, 0));
+            await ini_inv(Valkyrie[0]);
             if (!rn2(6)) {
-                await ini_inv($c.relem(Lamp, 0));
+                await ini_inv(Lamp[0]);
             }
             await knows_class(WEAPON_CLASS);   /* excludes polearms */
             await knows_class(ARMOR_CLASS);
             break;
         case PM.WIZARD:
-            await ini_inv($c.relem(Wizard, 0));
+            await ini_inv(Wizard[0]);
             if (!rn2(5)) {
-                await ini_inv($c.relem(Blindfold, 0));
+                await ini_inv(Blindfold[0]);
             }
             break;
         default:
@@ -360,7 +360,7 @@ async function u_init_race() {   // u_init.c:792
                 Instrument[1].trquan_min = 0;
                 Instrument[1].trquan_max = 0;
                 Instrument[1].trbless = 0;
-                await ini_inv($c.relem(Instrument, 0));
+                await ini_inv(Instrument[0]);
             }
             /* Elves can recognize all elvish objects */
             await knows_object(ELVEN_SHORT_SWORD, FALSE);
@@ -390,7 +390,7 @@ async function u_init_race() {   // u_init.c:792
         case PM.ORC:
             /* compensate for generally inferior equipment */
             if (!(gu.urole.mnum === PM.WIZARD)) {
-                await ini_inv($c.relem(Xtra_food, 0));
+                await ini_inv(Xtra_food[0]);
             }
             /* Orcs can recognize all orcish objects */
             await knows_object(ORCISH_SHORT_SWORD, FALSE);
@@ -417,8 +417,8 @@ async function u_init_race() {   // u_init.c:792
  * @returns {Promise<void>}
  */
 async function pauper_reinit() {   // u_init.c:870
-    let skill = 0, preknown = 0;
-    preknown = STRANGE_OBJECT;
+    let skill = 0;
+    let preknown = STRANGE_OBJECT;
     if (!u.uroleplay.pauper) {
         return;
     }
@@ -550,7 +550,7 @@ export async function u_init_misc() {   // u_init.c:944
         u.uprops[BLINDED].intrinsic = $c.or64(u.uprops[BLINDED].intrinsic, FROMOUTSIDE);   /* set PermaBlind */
     }
     /* roughly based on distribution in human population */
-    $t11 = (rn2(10) ? RIGHT_HANDED : LEFT_HANDED) >>> 0, u.uhandedness = ($t11) & 1;
+    $t11 = rn2(10) ? RIGHT_HANDED : LEFT_HANDED, u.uhandedness = ($t11) & 1;
     max_rank_sz();   /* set max str size for class ranks */
     return;
 }
@@ -562,43 +562,43 @@ async function skills_for_role() {   // u_init.c:1037
     let skills = null;
     switch (gu.urole.mnum) {
         case PM.ARCHEOLOGIST:
-            skills = $c.relem(Skill_A, 0);
+            skills = Skill_A[0];
             break;
         case PM.BARBARIAN:
-            skills = $c.relem(Skill_B, 0);
+            skills = Skill_B[0];
             break;
         case PM.CAVE_DWELLER:
-            skills = $c.relem(Skill_C, 0);
+            skills = Skill_C[0];
             break;
         case PM.HEALER:
-            skills = $c.relem(Skill_H, 0);
+            skills = Skill_H[0];
             break;
         case PM.KNIGHT:
-            skills = $c.relem(Skill_K, 0);
+            skills = Skill_K[0];
             break;
         case PM.MONK:
-            skills = $c.relem(Skill_Mon, 0);
+            skills = Skill_Mon[0];
             break;
         case PM.CLERIC:
-            skills = $c.relem(Skill_P, 0);
+            skills = Skill_P[0];
             break;
         case PM.RANGER:
-            skills = $c.relem(Skill_Ran, 0);
+            skills = Skill_Ran[0];
             break;
         case PM.ROGUE:
-            skills = $c.relem(Skill_R, 0);
+            skills = Skill_R[0];
             break;
         case PM.SAMURAI:
-            skills = $c.relem(Skill_S, 0);
+            skills = Skill_S[0];
             break;
         case PM.TOURIST:
-            skills = $c.relem(Skill_T, 0);
+            skills = Skill_T[0];
             break;
         case PM.VALKYRIE:
-            skills = $c.relem(Skill_V, 0);
+            skills = Skill_V[0];
             break;
         case PM.WIZARD:
-            skills = $c.relem(Skill_W, 0);
+            skills = Skill_W[0];
             break;
         default:
             await panic($c.lit("No skills found for role"));
@@ -612,9 +612,8 @@ async function skills_for_role() {   // u_init.c:1037
  * @returns {Promise<number>} boolean
  */
 async function restricted_spell_discipline(otyp) {   // u_init.c:1091
-    let skills = null, this_skill = 0;
-    skills = await skills_for_role();
-    this_skill = spell_skilltype(otyp);
+    let skills = await skills_for_role();
+    const this_skill = spell_skilltype(otyp);
     while (skills && skills.skill !== P.NONE) {
         if (skills.skill === this_skill) {
             return FALSE;
@@ -632,7 +631,7 @@ function trquan(trop) {   // u_init.c:1106
     if (!trop.trquan_min) {
         return 1;
     }
-    return trop.trquan_min + rn2((trop.trquan_max - trop.trquan_min | 0) + 1 | 0) | 0;
+    return trop.trquan_min + rn2(trop.trquan_max - trop.trquan_min + 1) | 0;
 }
 /* create random object of certain class, filtering out too powerful items */
 /**
@@ -641,8 +640,7 @@ function trquan(trop) {   // u_init.c:1106
  * @returns {Promise<$T.obj | null>} struct obj *
  */
 async function ini_inv_mkobj_filter(oclass, got_level1_spellbook) {   // u_init.c:1115
-    let obj = null, otyp = 0, trycnt = 0;
-    trycnt = 0;
+    let trycnt = 0;
     /*
      * For random objects, do not create certain overly powerful
      * items: wand of wishing, ring of levitation, or the
@@ -653,8 +651,8 @@ async function ini_inv_mkobj_filter(oclass, got_level1_spellbook) {   // u_init.
      * one will immediately read it and use the iron ball as a
      * weapon.)
      */
-    obj = await mkobj(oclass, FALSE);
-    otyp = obj.otyp;
+    let obj = await mkobj(oclass, FALSE);
+    let otyp = obj.otyp;
     /* 'useless' items */
     /* orcs start with poison resistance */
     /* Monks don't use weapons */
@@ -687,7 +685,7 @@ async function ini_inv_mkobj_filter(oclass, got_level1_spellbook) {   // u_init.
  * @returns {Promise<number>} short
  */
 async function ini_inv_obj_substitution(trop, obj) {   // u_init.c:1179
-    let i = 0, save_plnmsg = 0;
+    let i = 0;
     if (gu.urace.mnum !== PM.HUMAN) {
         /* substitute race-specific items; this used to be in
            the 'if (otyp != UNDEF_TYP) { }' block above, but then
@@ -697,7 +695,7 @@ async function ini_inv_obj_substitution(trop, obj) {   // u_init.c:1179
             if (inv_subs[i].race_pm === gu.urace.mnum && obj.otyp === inv_subs[i].item_otyp) {
                 do {
                     if (debugcore($c.lit("u_init.c"), TRUE)) {
-                        save_plnmsg = iflags.last_msg;
+                        const save_plnmsg = iflags.last_msg;
                         await pline($c.lit("ini_inv: substituting %s for %s%s"), obj_descr[objects[inv_subs[i].subs_otyp].oc_name_idx].oc_name, trop.trotyp === UNDEF_TYP ? $c.lit("random ") : $c.lit(""), obj_descr[objects[obj.otyp].oc_name_idx].oc_name);
                         iflags.last_msg = save_plnmsg;
                     }
@@ -717,24 +715,24 @@ async function ini_inv_obj_substitution(trop, obj) {   // u_init.c:1179
  * @returns {Promise<number>} boolean
  */
 async function ini_inv_adjust_obj(trop, obj) {   // u_init.c:1205
-    let stop = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
-    stop = FALSE;
+    let $t1, $t2, $t3, $t4, $t5, $t6, $t7;
+    let stop = FALSE;
     if (trop.trclass === COIN_CLASS) {
         /* no "blessed" or "identified" money */
         obj.quan = u.umoney0;
     } else {
         if (objects[obj.otyp].oc_uses_known) {
-            obj.known = (1) & 1;
+            obj.known = 1;
         }
         /* not observe_object during startup, that's handled later */
-        $t2 = ($t1 = obj.rknown = (1) & 1, obj.bknown = ($t1) & 1), obj.dknown = ($t2) & 1;
+        $t2 = ($t1 = obj.rknown = 1, obj.bknown = ($t1) & 1), obj.dknown = ($t2) & 1;
         if (Is_container(obj) || obj.otyp === STATUE) {
-            $t3 = obj.lknown = (1) & 1, obj.cknown = ($t3) & 1;
-            obj.otrapped = (0) & 1;
+            $t3 = obj.lknown = 1, obj.cknown = ($t3) & 1;
+            obj.otrapped = 0;
         }
-        obj.cursed = (0) & 1;
-        if (obj.otrapped | 0 && u.ualign.type !== A.CHAOTIC) {
-            obj.otrapped = (0) & 1;
+        obj.cursed = 0;
+        if (obj.otrapped && u.ualign.type !== A.CHAOTIC) {
+            obj.otrapped = 0;
         }
         if (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) {
             $t4 = trquan(trop), obj.quan = $t4;
@@ -749,7 +747,7 @@ async function ini_inv_adjust_obj(trop, obj) {   // u_init.c:1205
             }
         } else {
             /* Don't start with +0 or negative rings */
-            if (objects[obj.otyp].oc_class === RING_CLASS && objects[obj.otyp].oc_charged | 0 && obj.spe <= 0) {
+            if (objects[obj.otyp].oc_class === RING_CLASS && objects[obj.otyp].oc_charged && obj.spe <= 0) {
                 $t6 = $c.i8(rne(3)), obj.spe = $t6;
             }
         }
@@ -768,7 +766,7 @@ async function ini_inv_adjust_obj(trop, obj) {   // u_init.c:1205
  */
 async function ini_inv_use_obj(obj) {   // u_init.c:1251
     /* Make the type known if necessary */
-    if (obj_descr[objects[obj.otyp].oc_descr_idx].oc_descr && obj.known | 0) {
+    if (obj_descr[objects[obj.otyp].oc_descr_idx].oc_descr && obj.known) {
         await discover_object(obj.otyp, TRUE, TRUE, FALSE);
     }
     if (obj.otyp === OIL_LAMP) {
@@ -816,14 +814,14 @@ async function ini_inv_use_obj(obj) {   // u_init.c:1251
  * @returns {Promise<void>}
  */
 async function ini_inv(trop) {   // u_init.c:1298
-    let obj = null, otyp = 0, got_sp1 = 0, quan = 0;
-    got_sp1 = FALSE;   /* got a level 1 spellbook? */
+    let obj = null;
+    let got_sp1 = FALSE;   /* got a level 1 spellbook? */
     if (u.uroleplay.pauper) {   /* pauper gets no items */
         return;
     }
-    quan = trquan(trop);
+    let quan = trquan(trop);
     while (trop.trclass) {
-        otyp = trop.trotyp;
+        let otyp = trop.trotyp;
         if (otyp !== UNDEF_TYP) {
             obj = await mksobj(otyp, TRUE, FALSE);
         } else {
@@ -894,10 +892,10 @@ export async function u_init_inventory_attrs() {   // u_init.c:1370
     await u_init_role();
     await u_init_race();
     if (discover()) {
-        await ini_inv($c.relem(Wishing, 0));
+        await ini_inv(Wishing[0]);
     }
     if (u.umoney0) {
-        await ini_inv($c.relem(Money, 0));
+        await ini_inv(Money[0]);
     }
     $t1 = hidden_gold(TRUE), u.umoney0 = $c.add64(u.umoney0, $t1);   /* in case sack has gold in it */
     init_attr(75);   /* init attribute values */
@@ -1580,9 +1578,9 @@ export function $init() {
     ]);
     u_init_role$M_spell.fill(null);
     $c.init(u_init_role$M_spell, [
-        $c.relem(Healing_book, 0),
-        $c.relem(Protection_book, 0),
-        $c.relem(Confuse_monster_book, 0)
+        Healing_book[0],
+        Protection_book[0],
+        Confuse_monster_book[0]
     ]);
     u_init_race$trotyp.fill(0);
     $c.init(u_init_race$trotyp, [

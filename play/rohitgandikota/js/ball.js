@@ -809,8 +809,8 @@ async function litter() {
             if (canletgo(otmp, '')) {
                 await You(`drop ${yname(otmp)} and ${(otmp.quan === 1) ? 'it' : 'they'} ${
                     otense(otmp, 'fall')} down the stairs with you.`);
-                setnotworn(otmp);
-                freeinv(otmp);
+                await setnotworn(otmp);
+                await freeinv(otmp);
                 await hitfloor(otmp, false);
             }
         }

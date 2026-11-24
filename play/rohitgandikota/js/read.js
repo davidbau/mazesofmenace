@@ -2029,7 +2029,7 @@ async function do_stinking_cloud(sobj, mention_stinking) {
         await pline('Never mind.');
         return;
     } else if (!can_center_cloud(cc.x, cc.y)) {
-        if (game.u.uprops?.HALLUC && !game.u.uprops?.HALLUC_RES)
+        if (Hallucination())
             await pline('Ugh... someone cut the cheese.');
         else
             await pline(`${sobj.oclass === OCLASSES.SCROLL_CLASS
@@ -2660,7 +2660,7 @@ async function seffect_enchant_weapon(sobj) {
     }
     s = scursed ? -1
         : !uwep ? 1                     /* guard the tests below against null */
-        : (uwep.spe >= 9) ? (rn2(uwep.spe) === 0)  /* usually 0, maybe 1 */
+        : (uwep.spe >= 9) ? Number(rn2(uwep.spe) === 0) /* usually 0, maybe 1 */
         : sblessed ? rnd(3 - Math.trunc(uwep.spe / 3)) /* >=9 prevents rnd(0) */
         : 1;                            /* uncursed */
     /* nothing enchanted: strange_feeling -> useup */

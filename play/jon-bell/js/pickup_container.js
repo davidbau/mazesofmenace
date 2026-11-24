@@ -1,3 +1,4 @@
+import { sortloot_objs, SORTLOOT_LOOT, SORTLOOT_INVLET, SORTLOOT_PACK } from './cmd.js';
 import { body_part } from './polyself.js';
 // @ts-nocheck
 // pickup_container.js — use_container() take-out / put-in menu.
@@ -324,55 +325,20 @@ function _touch_petrifies_mndx(mndx) {
     return i === PM_COCKATRICE || i === PM_CHICKATRICE;
 }
 function _sortloot(list, byInvlet = false, filterfunc = null, mode = 0) {
-    const arr = [];
-    /* C pickup.c:1079-1086, end.c:1632-1637: SORTLOOT_LOOT is optional;
-     * sortloot:none still uses PACK's class/subclass/discovery tiers. */
-    const loot = game.flags?.sortloot === 'f'
-        || (game.flags?.sortloot === 'l' && !byInvlet);
-    const pack = game.flags?.sortpack !== false;
-    const augment_filter = !!(mode & SORTLOOT_PETRIFY);
-    /* C invent.c:610-621 — filterfunc rejects an object BEFORE it is populated
-     * into sliarray, unless augment_filter preserves a petrifying corpse. */
-    for (let o = list; o; o = o.nobj) {
-        if (filterfunc && !filterfunc(o)
-            && (!augment_filter || (o.otyp | 0) !== _CORPSE_OTYP
-                || !_touch_petrifies_mndx(o.corpsenm)))
-            continue;
-        arr.push({ obj: o, indx: arr.length, orderclass: 0 });
-    }
-    /* C invent.c:632 — `if (mode && n > 1)`; no comparisons, no classify. */
-    if (arr.length > 1 && (loot || byInvlet || pack)) {
-        for (const sli of arr) {
-            /* C invent.c:430-432: INVLET without PACK skips classification. */
-            if (!byInvlet || pack) {
-                sli.orderclass = _loot_classify(sli.obj);
-                sli.subclass = _loot_subclass(sli.obj);
-                sli.disco = _loot_disco(sli.obj);
-            }
-            sli.str = loot ? _loot_xname(sli.obj) : '';
-            /* C invent.c:404-405 — the BUCX tier, "bigger is better". */
-            sli.bucx = (sli.obj.bknown
-                        ? (sli.obj.blessed ? 3 : !sli.obj.cursed ? 2 : 1) : 0);
-        }
-        arr.sort((a, b) => {
-            const classOrder = a.orderclass - b.orderclass;
-            if (classOrder) return classOrder;
-            /* C SORTLOOT_PACK|SORTLOOT_INVLET skips subclass, discovery,
-             * and name tiers. Inventory selection retains letter order. */
-            if (byInvlet)
-                return _invletter_value(a.obj.invlet) - _invletter_value(b.obj.invlet)
-                    || (a.indx - b.indx);
-            const groupOrder = (a.subclass - b.subclass) || (a.disco - b.disco);
-            if (groupOrder) return groupOrder;
-            /* C invent.c:479-480: no LOOT means the original-index tiebreak. */
-            if (!loot) return a.indx - b.indx;
-            return _strcmpi(a.str, b.str)
-                || (b.bucx - a.bucx)
-                || _sortloot_wear_tiers(a.obj, b.obj)
-                || (a.indx - b.indx);
-        });
-    }
-    return arr.map((sli) => sli.obj);
+    /* C pickup.c:1079-1086 query_objlist / end.c:1632-1637 container_contents
+     * sortflags, then C invent.c:593 sortloot() itself (js/cmd.js, faithful
+     * sortloot_cmp through js/nhsort.js's nh_deterministic_qsort model). */
+    const sl = game.flags?.sortloot;
+    const loot = sl === 'f' || (sl === 'l' && !byInvlet);
+    const sortflags = (loot ? SORTLOOT_LOOT : (byInvlet ? SORTLOOT_INVLET : 0))
+        | (game.flags?.sortpack !== false ? SORTLOOT_PACK : 0)
+        | (mode & SORTLOOT_PETRIFY);
+    const chain = [];
+    for (let o = list; o; o = o.nobj) chain.push(o);
+    return sortloot_objs(chain, sortflags, {
+        filter: filterfunc,
+        petrifies: (o) => _touch_petrifies_mndx(o.corpsenm),
+    });
 }
 /* C ref: hacklib.c strcmpi() — case-insensitive strcmp; returns the sign of the
  * first differing BYTE, so it must NOT be localeCompare (which collates). */

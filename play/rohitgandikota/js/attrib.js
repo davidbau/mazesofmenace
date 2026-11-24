@@ -880,14 +880,10 @@ export function exerper() {
             exercise(A_STR, true);
         if (game.u.uprops?.SICK || game.u.uprops?.VOMITING)
             exercise(A_CON, false);
-        /* Confusion/Hallucination are the full macros: intrinsic OR extrinsic.
-           A timed confusion (potion, forcefight) lands in intrinsic.HConfusion,
-           so testing uprops alone made this arm dead — it never fired even
-           while the status line was showing "Conf". Same convention as
-           botl.js's condition string: `intr.HX || props.X`. */
+        /* src/attrib.c:579 uses active Confusion or Hallucination;
+           hallucination resistance suppresses this exercise penalty. */
         if (game.u.intrinsic?.HConfusion || game.u.uprops?.CONFUSION
-            || ((game.u.intrinsic?.HHallucination || game.u.uprops?.HALLUC)
-                && !game.u.uprops?.HALLUC_RES))
+            || Hallucination())
             exercise(A_WIS, false);
         /* src/attrib.c:581 reads HStun directly. C's Stunned aliases HStun;
            the port's flat STUNNED entry is compatibility state, not a

@@ -193,6 +193,7 @@ import {
     Resists_Elem,
     throws_rocks,
     your_race,
+    eyecount,
 } from './mondata.js';
 import { makeplural } from './fruit.js';
 import {
@@ -202,8 +203,6 @@ import {
     PM_CLERIC,
     PM_MONK,
     PM_WIZARD,
-    PM_CYCLOPS,
-    PM_FLOATING_EYE,
     PM_KNIGHT,
     PM_ACID_BLOB,
     PM_WRAITH,
@@ -443,7 +442,7 @@ async function offer_real_amulet(otmp, altaralign, state) {
     const cloudOfSmoke = 'A cloud of %s smoke surrounds you...';
 
     if (state.uamul === otmp) await Amulet_off(state);
-    if (carried(otmp)) useup(otmp, { state });
+    if (carried(otmp)) await useup(otmp, { state });
     else await useupf(otmp, 1, { state });
 
     await ttyPline(
@@ -1596,8 +1595,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
         let eyes = body_part(EYE, state.youmonst);
         const cureDeaf = Boolean(HDeaf(state.u) & TIMEOUT);
         if (Blinded(state.u)) {
-            const pmidx = state.youmonst?.data?.pmidx;
-            if (pmidx !== PM_FLOATING_EYE && pmidx !== PM_CYCLOPS)
+            if (eyecount(state.youmonst.data) !== 1)
                 eyes = makeplural(eyes);
             msgbuf = `Your ${eyes} ${vtense(eyes, 'feel')} better`;
             state.u.ucreamed = 0;
@@ -2158,9 +2156,9 @@ export async function give_spell(state = game, env = {}) {
         observe_object(otmp, state);
         if (otmp.otyp === SPE_BLANK_PAPER || !random.rn2(100))
             discover_object(otmp.otyp, true, true, true, state, { ...env, random });
-        bless(otmp, { ...env, state, random });
+        await bless(otmp, { ...env, state, random });
         await at_your_feet(upstart(ansimpleoname(otmp, state)), state);
-        place_object(otmp, state.u.ux, state.u.uy, { ...env, state, random });
+        await place_object(otmp, state.u.ux, state.u.uy, { ...env, state, random });
         newsym(state.u.ux, state.u.uy);
     }
 }
@@ -2251,7 +2249,7 @@ async function gcrownu(state) {
         const book = mksobj(classGift, true, false, { state });
         obj = book;
         const bookName = actualoname(book, state);
-        bless(book, { state });
+        await bless(book, { state });
         book.bknown = 1;
         observe_object(book, state);
         await at_your_feet(upstart(ansimpleoname(book, state)), state);

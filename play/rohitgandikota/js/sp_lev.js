@@ -11,7 +11,12 @@
 import { create_drawbridge } from './dbridge.js';
 import { bury_an_obj } from './dig.js';
 import { game } from './gstate.js';
-import { vision_reset } from './vision.js';
+import { vision_reset, does_block, block_point } from './vision.js';
+import { select_newcham_form, validvamp, mgender_from_permonst } from './mon.js';
+import { is_vampshifter } from './monst.js';
+import { name_to_mon as name_to_mon_type, set_mon_data, emits_light, pm_invisible } from './mondata.js';
+import { Protection_from_shape_changers } from './youprop.js';
+import { M_AP_NOTHING, M_AP_MONSTER, ismnum } from './const.js';
 import { mk_mplayer } from './mplayer.js';
 import { get_level_extends, fix_wall_spines, stairway_add,
          stairway_find_dir, occupied } from './mklev.js';
@@ -38,7 +43,7 @@ import { obj_resists } from './zap.js';
 import { OBJ_BURIED, OBJ_FREE } from './obj.js';
 import { start_timer, TIMER_OBJECT, ROT_ORGANIC,
          begin_burn_level_object } from './timeout.js';
-import { new_light_source, LS_OBJECT } from './light.js';
+import { new_light_source, del_light_source, LS_OBJECT, LS_MONSTER } from './light.js';
 import { make_engr_at, engr_at, del_engr } from './engrave.js';
 import { oname, christen_monst } from './do_name.js';
 import { ONAME_LEVEL_DEF, is_pit, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, LR_PORTAL, LR_BRANCH, LR_UPSTAIR, LR_DOWNSTAIR } from './const.js';
@@ -78,7 +83,7 @@ import { set_wall_state, terrain_glyph } from './display.js';
 import { SVALL } from './const.js';
 import { mkgold } from './mkobj.js';
 import { mkclass, makemon, is_male, is_female, mpickobj, rndmonnum,
-         propagate } from './makemon.js';
+         propagate, set_malign } from './makemon.js';
 import { m_dowear } from './worn.js';
 import { mdrop_special_objs } from './steal.js';
 import { discard_minvent } from './mkobj.js';
@@ -161,7 +166,7 @@ export async function fill_special_room(croom) {
         case MORGUE:
         case BARRACKS:
             /* src/mkroom.c:275 — mkzoo() marked the room; this fills it. */
-            fill_zoo(croom);
+            await fill_zoo(croom);
             break;
         default:
             break;
@@ -312,7 +317,7 @@ export function lspo_map(mf, contents) {
     game.xstart = xstart; game.ystart = ystart;
     game.xsize = xsize; game.ysize = ysize;
 
-    if (contents) contents();
+    if (contents) return contents();
 }
 
 // src/sp_lev.c:4609 sel_set_ter() — C's arg is a terrain {ter, tlit}; the
@@ -372,11 +377,18 @@ export function lspo_region(dx1, dy1, rtype, irregular, needfill, contents,
     create_des_coder();
     if (contents) {
         spo_push_room(troom);
-        contents(mkroom_table(troom));
-        spo_endroom();
+        const result = contents(mkroom_table(troom));
+        if (result instanceof Promise)
+            return result.then(finishContents);
     }
-    add_doors_to_room(troom);
-    return troom;
+    return finishContents();
+
+    function finishContents() {
+        if (contents)
+            spo_endroom();
+        add_doors_to_room(troom);
+        return troom;
+    }
 }
 
 // src/sp_lev.c add_doors_to_room()
@@ -848,17 +860,21 @@ export function create_trap(t, croom) {
     if (t.seen)           mktrap_flags |= MKTRAP_SEEN;
     if (t.novictim)       mktrap_flags |= MKTRAP_NOVICTIM;
 
-    mktrap_fn(t.type, mktrap_flags, null, { x: pos.x, y: pos.y });
-    const teledest = t.teledest && {
-        x: t.teledest.x + (game.xstart ?? 0),
-        y: t.teledest.y + (game.ystart ?? 0),
-    };
-    if (t.type === TELEP_TRAP && isok(teledest?.x, teledest?.y)) {
-        const trap = (game.level?.traps || [])
-            .find(candidate => candidate.tx === pos.x
-                               && candidate.ty === pos.y);
-        if (trap)
-            trap.teledest = teledest;
+    const trap = mktrap_fn(t.type, mktrap_flags, null, { x: pos.x, y: pos.y });
+    return trap instanceof Promise ? trap.then(finishTrap) : finishTrap();
+
+    function finishTrap() {
+        const teledest = t.teledest && {
+            x: t.teledest.x + (game.xstart ?? 0),
+            y: t.teledest.y + (game.ystart ?? 0),
+        };
+        if (t.type === TELEP_TRAP && isok(teledest?.x, teledest?.y)) {
+            const trap = (game.level?.traps || [])
+                .find(candidate => candidate.tx === pos.x
+                                   && candidate.ty === pos.y);
+            if (trap)
+                trap.teledest = teledest;
+        }
     }
 }
 
@@ -894,7 +910,7 @@ export function lspo_trap(type, x, y, opts) {
     if (t.type === NO_TRAP)
         return;                         /* nhl_error("Unknown trap type") */
 
-    create_trap(t, game.coder?.croom ?? null);
+    return create_trap(t, game.coder?.croom ?? null);
 }
 
 // src/sp_lev.c:3881 lspo_engraving() — the des.engraving() verb.
@@ -1132,98 +1148,109 @@ export function create_object(o, croom) {
     if (o.corpsenm !== undefined && o.corpsenm !== NON_PM)
         set_corpsenm(otmp, o.corpsenm);
 
-    /* src/sp_lev.c:2311 — Medusa level special case: statues are petrified
-       monsters, so they are not stone-resistant and have monster inventory.
-       They also lack other contents, but that can be specified as an empty
-       container. include/dungeon.h Is_medusa_level(). */
-    {
-        const ml = game.special_levels?.medusa_level;
-        if (o.id === ONAMES.STATUE
-            && ml && game.u.uz.dnum === ml.dnum
-            && game.u.uz.dlevel === ml.dlevel
-            && (o.corpsenm === undefined || o.corpsenm === NON_PM)) {
-            let was = null;
-            let wastyp = otmp.corpsenm;
+    const medusa = game.special_levels?.medusa_level;
+    if (o.id === ONAMES.STATUE
+        && medusa && game.u.uz.dnum === medusa.dnum
+        && game.u.uz.dlevel === medusa.dlevel
+        && (o.corpsenm === undefined || o.corpsenm === NON_PM)) {
+        let i = 0, wastyp = otmp.corpsenm;
+        return makeStatueMonster();
 
-            /* Named random statues are of player types, and aren't stone-
-               resistant. */
-            for (let i = 0; i < 1000; i++, wastyp = rndmonnum()) {
-                /* makemon without rndmonst() might create a group */
-                was = makemon(game.mons[wastyp], 0, 0,
-                              MM_NOCOUNTBIRTH | MM_NOMSG);
-                if (was) {
-                    if (!mon_fns.resists_ston(was)
-                        && !poly_when_stoned(game.mons[wastyp])) {
-                        propagate(wastyp, true, false);
-                        break;
-                    }
-                    mon_fns.mongone(was);
-                    was = null;
-                }
+        function makeStatueMonster() {
+            for (; i < 1000; i++, wastyp = rndmonnum()) {
+                const was = makemon(game.mons[wastyp], 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
+                if (was instanceof Promise)
+                    return was.then(finishAttempt);
+                if (was)
+                    return finishAttempt(was);
             }
+            return finishObject();
+        }
+
+        function finishAttempt(was) {
             if (was) {
-                set_corpsenm(otmp, wastyp);
-                while (was.minvent && was.minvent.length) {
-                    const obj = was.minvent[0];
-                    obj.owornmask = 0;
-                    obj_extract_self(obj);
-                    add_to_container(otmp, obj);
+                if (!mon_fns.resists_ston(was) && !poly_when_stoned(game.mons[wastyp])) {
+                    propagate(wastyp, true, false);
+                    set_corpsenm(otmp, wastyp);
+                    return transferInventory(was);
                 }
-                otmp.owt = weight(otmp);
-                mon_fns.mongone(was);
+                return mon_fns.mongone(was).then(nextAttempt);
             }
+            return nextAttempt();
+        }
+
+        function nextAttempt() {
+            ++i;
+            wastyp = rndmonnum();
+            return makeStatueMonster();
+        }
+
+        function transferInventory(was) {
+            while (was.minvent && was.minvent.length) {
+                const obj = was.minvent[0];
+                obj.owornmask = 0;
+                obj_extract_self(obj);
+                const stored = add_to_container(otmp, obj);
+                if (stored instanceof Promise)
+                    return stored.then(() => transferInventory(was));
+            }
+            otmp.owt = weight(otmp);
+            return mon_fns.mongone(was).then(finishObject);
         }
     }
+    return finishObject();
 
-    /* src/sp_lev.c:2354 — the achievement prize markers */
-    if (o.achievement) {
-        const mel = game.special_levels?.mineend_level;
-        const sel = game.special_levels?.sokoend_level;
-        if (mel && game.u.uz.dnum === mel.dnum
-            && game.u.uz.dlevel === mel.dlevel) {
-            const a = ((game.context ||= {}).achieveo ||= {});
-            if (!a.mines_prize_oid) {
-                a.mines_prize_oid = otmp.o_id;
-                a.mines_prize_otyp = otmp.otyp;
-                /* prevent stacking; cleared when achievement is recorded */
-                otmp.nomerge = 1;
-            }
-        } else if (sel && game.u.uz.dnum === sel.dnum
-                   && game.u.uz.dlevel === sel.dlevel) {
-            const a = ((game.context ||= {}).achieveo ||= {});
-            if (!a.soko_prize_oid) {
-                a.soko_prize_oid = otmp.o_id;
-                a.soko_prize_otyp = otmp.otyp;
-                otmp.nomerge = 1; /* redundant; Sokoban prizes don't stack */
+    function finishObject() {
+        /* src/sp_lev.c:2354 — the achievement prize markers */
+        if (o.achievement) {
+            const mel = game.special_levels?.mineend_level;
+            const sel = game.special_levels?.sokoend_level;
+            if (mel && game.u.uz.dnum === mel.dnum
+                && game.u.uz.dlevel === mel.dlevel) {
+                const a = ((game.context ||= {}).achieveo ||= {});
+                if (!a.mines_prize_oid) {
+                    a.mines_prize_oid = otmp.o_id;
+                    a.mines_prize_otyp = otmp.otyp;
+                    /* prevent stacking; cleared when achievement is recorded */
+                    otmp.nomerge = 1;
+                }
+            } else if (sel && game.u.uz.dnum === sel.dnum
+                       && game.u.uz.dlevel === sel.dlevel) {
+                const a = ((game.context ||= {}).achieveo ||= {});
+                if (!a.soko_prize_oid) {
+                    a.soko_prize_oid = otmp.o_id;
+                    a.soko_prize_otyp = otmp.otyp;
+                    otmp.nomerge = 1; /* redundant; Sokoban prizes don't stack */
+                }
             }
         }
+
+        if (!(o.containment & SP_OBJ_CONTENT)) {
+            stackobj(otmp);
+
+            if (o.lit) {
+                begin_burn_level_object(otmp, (lx, ly, radius, oid) =>
+                    new_light_source(lx, ly, radius, LS_OBJECT, oid));
+            }
+
+            if (o.buried) {
+                const dealloced = { v: false };
+
+                bury_an_obj(otmp, dealloced);
+                if (dealloced.v) {
+                    /* C nulls the slot WITHOUT popping it: container_idx keeps its
+                       value, so the stack still has to be popped by lspo_object.
+                       Assigning past the end here would grow the array, so only
+                       touch it when something is actually open. */
+                    if (container_obj.length)
+                        container_obj[container_obj.length - 1] = null;
+                    otmp = null;
+                }
+            }
+        }
+
+        return otmp;
     }
-
-    if (!(o.containment & SP_OBJ_CONTENT)) {
-        stackobj(otmp);
-
-        if (o.lit) {
-            begin_burn_level_object(otmp, (lx, ly, radius, oid) =>
-                new_light_source(lx, ly, radius, LS_OBJECT, oid));
-        }
-
-        if (o.buried) {
-            const dealloced = { v: false };
-
-            bury_an_obj(otmp, dealloced);
-            if (dealloced.v) {
-                /* C nulls the slot WITHOUT popping it: container_idx keeps its
-                   value, so the stack still has to be popped by lspo_object.
-                   Assigning past the end here would grow the array, so only
-                   touch it when something is actually open. */
-                if (container_obj.length)
-                    container_obj[container_obj.length - 1] = null;
-                otmp = null;
-            }
-        }
-    }
-
-    return otmp;
 }
 
 // src/sp_lev.c:3557 lspo_object() — the des.object() verb, simple forms.
@@ -1345,23 +1372,40 @@ export function lspo_object(idOrClass, x, y, opts) {
     lspo_object_fixup(o);
     let quancnt = o.id > STRANGE_OBJECT ? o.quan : 0;
     let otmp;
-    do {
-        otmp = create_object(o, game.coder?.croom ?? null);
-        quancnt--;
-    } while (quancnt > 0 && o.id > STRANGE_OBJECT
-             && !game.objects[o.id].oc_merge);
+    return createObjects();
 
-    /* The contents closure runs with this object open as the container, then
-       the stack is popped. C runs the closure even when create_object returned
-       NULL (nhl_push_obj pushes nil), and pops on the CONTAINER flag rather
-       than on otmp, so a failed container still balances the stack. */
-    if (typeof opts?.contents === 'function')
-        opts.contents(otmp);
-    /* src/sp_lev.c:3748 — pop on the CONTAINER flag, not on the closure:
-       `contents = 0` opened (and emptied) the container too */
-    if (o.containment & SP_OBJ_CONTAINER)
-        spo_pop_container();
-    return otmp;
+    function createObjects() {
+        do {
+            const made = create_object(o, game.coder?.croom ?? null);
+            if (made instanceof Promise)
+                return made.then((obj) => {
+                    otmp = obj;
+                    --quancnt;
+                    return quancnt > 0 && o.id > STRANGE_OBJECT
+                        && !game.objects[o.id].oc_merge ? createObjects() : fillContents();
+                });
+            otmp = made;
+            --quancnt;
+        } while (quancnt > 0 && o.id > STRANGE_OBJECT && !game.objects[o.id].oc_merge);
+        return fillContents();
+    }
+
+    function fillContents() {
+        /* C runs contents even after failed creation. Pop on the flag,
+           including contents=0, after any child creation completes. */
+        if (typeof opts?.contents === 'function') {
+            const contents = opts.contents(otmp);
+            if (contents instanceof Promise)
+                return contents.then(finishContents);
+        }
+        return finishContents();
+    }
+
+    function finishContents() {
+        if (o.containment & SP_OBJ_CONTAINER)
+            spo_pop_container();
+        return otmp;
+    }
 }
 
 // src/sp_lev.c:6334 sp_level_coder_init() / create_des_coder().
@@ -1710,43 +1754,124 @@ export function create_monster(m, croom) {
         mtmp = makemon(pm, x, y, m.mm_flags);
     }
 
-    if (mtmp) {
-        /* src/sp_lev.c:2125 — the gender find_montype settled (its rn2(2)
-           already spent) overrides what makemon rolled. Plain state. */
-        mtmp.female = m.female ?? mtmp.female;
+    return mtmp instanceof Promise ? mtmp.then(finishCreation) : finishCreation(mtmp);
 
-        /* src/sp_lev.c:1994 — a supplied name christens the monster */
+    function finishCreation(mon) {
+        mtmp = mon;
+        if (!mtmp)
+            return mtmp;
+        x = mtmp.mx;
+        y = mtmp.my;
+        m.x = x;
+        m.y = y;
         if (m.name)
             christen_monst(mtmp, m.name);
 
-        /* src/sp_lev.c create_monster() — both are plain state, no draws.
-           BOOL_RANDOM is -1 (include/global.h:103), so "leave it to makemon"
-           and "explicitly awake" are DIFFERENT values and the test is `>`. */
+        if (m.appear_as
+            && (mtmp.data.mlet === MONSYMS.S_MIMIC
+                || (ismnum(mtmp.cham) && m.appear === M_AP_MONSTER))
+            && !Protection_from_shape_changers()) {
+            const what = m.appear_as.slice(4);
+            switch (m.appear) {
+            case M_AP_OBJECT: {
+                const i = game.objects.findIndex(obj => OBJ_NAME(obj) === what);
+                if (i >= 0) {
+                    mtmp.m_ap_type = M_AP_OBJECT;
+                    mtmp.mappearance = i;
+                } else {
+                    return impossible(`create_monster: can't find object "${what}"`).then(finishAppearance);
+                }
+                break;
+            }
+            case M_AP_FURNITURE: {
+                const i = defsyms_sp.findIndex(ds => ds.explain === what);
+                if (i >= 0) {
+                    mtmp.m_ap_type = M_AP_FURNITURE;
+                    mtmp.mappearance = i;
+                } else {
+                    return impossible(`create_monster: can't find feature "${what}"`).then(finishAppearance);
+                }
+                break;
+            }
+            case M_AP_MONSTER: {
+                const gender = { v: NEUTRAL };
+                const choice = what.toLowerCase() === 'random'
+                    ? select_newcham_form(mtmp) : name_to_mon_type(what, gender);
+                return choice instanceof Promise
+                    ? choice.then(mndx => setAppearance(mndx, gender.v, what))
+                    : setAppearance(choice, gender.v, what);
+            }
+            default:
+                return impossible(`create_monster: unimplemented mon appear type [${m.appear},"${what}"]`)
+                    .then(finishAppearance);
+            }
+            return finishAppearance();
+        }
+        return setAttributes();
+    }
+
+    function setAppearance(choice, gender, what) {
+        const mndx = { v: choice };
+        if (mndx.v === NON_PM
+            || (is_vampshifter(mtmp) && !validvamp(mtmp, mndx, MONSYMS.S_HUMAN))) {
+            const kind = mtmp.data.mlet === MONSYMS.S_MIMIC ? 'mimic appearance'
+                : mtmp.data === game.mons[PMNAMES.PM_WIZARD_OF_YENDOR] ? 'Wizard appearance'
+                : is_vampshifter(mtmp) ? 'vampire shape' : 'chameleon shape';
+            return impossible(`create_monster: invalid ${kind} ("${what}")`).then(finishAppearance);
+        }
+        if (game.mons[mndx.v] === mtmp.data) {
+            mtmp.m_ap_type = M_AP_NOTHING;
+            mtmp.mappearance = 0;
+        } else if (mtmp.data.mlet === MONSYMS.S_MIMIC
+                   || mtmp.data === game.mons[PMNAMES.PM_WIZARD_OF_YENDOR]) {
+            mtmp.m_ap_type = M_AP_MONSTER;
+            mtmp.mappearance = mndx.v;
+        } else {
+            const mdat = game.mons[mndx.v], olddata = mtmp.data;
+            mgender_from_permonst(mtmp, mdat);
+            if (gender !== NEUTRAL)
+                mtmp.female = gender;
+            set_mon_data(mtmp, mdat);
+            if (emits_light(olddata) !== emits_light(mtmp.data)) {
+                if (emits_light(olddata))
+                    del_light_source(LS_MONSTER, mtmp.m_id);
+                if (emits_light(mtmp.data))
+                    new_light_source(mtmp.mx, mtmp.my, emits_light(mtmp.data),
+                                     LS_MONSTER, mtmp.m_id);
+            }
+            if (!mtmp.perminvis || pm_invisible(olddata))
+                mtmp.perminvis = pm_invisible(mdat);
+        }
+        return finishAppearance();
+    }
+
+    function finishAppearance() {
+        if (does_block(x, y, game.level.at(x, y)))
+            block_point(x, y);
+        return setAttributes();
+    }
+
+    function setAttributes() {
+        mtmp.female = m.female ?? mtmp.female;
+        if (m.peaceful > BOOL_RANDOM) {
+            mtmp.mpeaceful = m.peaceful;
+            set_malign(mtmp);
+        }
         if (m.asleep > BOOL_RANDOM)
             mtmp.msleeping = m.asleep;
-
-        /* src/sp_lev.c:2143 — explicit peacefulness overrides makemon's */
-        if (m.peaceful >= 0) {
-            mtmp.mpeaceful = m.peaceful;
-            /* set_malign draws nothing */
-        }
-        /* src/sp_lev.c:2160 — a waiting monster stands still until it can
-           see the hero (STRAT_WAITFORU); a vampire that got created already
-           shifted into bat/fog/wolf form shifts back to vampire */
         if (m.waiting) {
             mtmp.mstrategy = (mtmp.mstrategy || 0) | STRAT_WAITFORU;
-            /* monst.h:220 vampshifted(): is_vampshifter (cham is one of
-               the vampire species) and not currently in a vampire
-               (S_VAMPIRE) form */
-            const vampcham = [PMNAMES.PM_VAMPIRE,
-                              PMNAMES.PM_VAMPIRE_LEADER,
-                              PMNAMES.PM_VLAD_THE_IMPALER];
-            if (vampcham.includes(mtmp.cham)
-                && mtmp.data?.mlet !== MONSYMS.S_VAMPIRE
-                && m.appear !== 3 /* M_AP_MONSTER, monst.h:55 */)
-                mon_fns.newcham?.(mtmp, game.mons[mtmp.cham], 0);
+            if (is_vampshifter(mtmp) && mtmp.data.mlet !== MONSYMS.S_VAMPIRE
+                && m.appear !== M_AP_MONSTER) {
+                const changed = mon_fns.newcham(mtmp, game.mons[mtmp.cham], 0);
+                if (changed instanceof Promise)
+                    return changed.then(finishAttributes);
+            }
         }
-        /* src/sp_lev.c:2168 — m_lev_adj clamps into 0..49. No draws. */
+        return finishAttributes();
+    }
+
+    function finishAttributes() {
         if (m.m_lev_adj) {
             if (mtmp.m_lev + m.m_lev_adj > 49)
                 mtmp.m_lev = 49;
@@ -1755,53 +1880,25 @@ export function create_monster(m, croom) {
             else
                 mtmp.m_lev += m.m_lev_adj;
         }
-
-        if (m.appear_as) {
-            /* "obj:chest" -> M_AP_OBJECT with the object's index */
-            const [kind, what] = m.appear_as.split(':');
-            if (kind === 'obj') {
-                let i = 0;
-                for (; i < game.objects.length; i++)
-                    if (OBJ_NAME(game.objects[i]) === what)
-                        break;
-                if (i < game.objects.length) {
-                    mtmp.m_ap_type = M_AP_OBJECT;
-                    mtmp.mappearance = i;
-                } /* else impossible("can't find object") */
-            } else if (kind === 'ter') {
-                /* src/sp_lev.c:2016 M_AP_FURNITURE — scan defsyms for the
-                   explanation string ("staircase down"). No draws. */
-                const i = defsyms_sp.findIndex(ds => ds.explain === what);
-                if (i >= 0) {
-                    mtmp.m_ap_type = M_AP_FURNITURE;
-                    mtmp.mappearance = i;
-                } /* else impossible("can't find feature") */
-            } else {
-                impossible(`create_monster: unimplemented mon appear type [${
-                    kind},"${what}"]`);
-            }
-        }
-
-        /* src/sp_lev.c:2176 — custom inventory: throw away what makemon
-           gave (its creation draws already happened; mdrop_special_objs
-           spends one rn2(100) per item) and let the script's `inventory`
-           closure hand over replacements via invent_carrying_monster. Kept
-           LAST in the mtmp block, as in C, so its draws follow any others. */
         if (!(m.has_invent & DEFAULT_INVENT)) {
-            /* create_monster() is a synchronous Lua binding, so the
-               rescue arm's awaits cannot be waited for here; only the
-               obj_resists() draws run before that arm, and no des monster
-               with a custom inventory gets a unique object from makemon
-               (the nemesis' Bell, Vlad's Candelabrum and the Wizard's
-               wand of digging all come with the default inventory) */
-            void mdrop_special_objs(mtmp);
-            discard_minvent(mtmp, true);
+            const dropped = mdrop_special_objs(mtmp);
+            if (dropped instanceof Promise)
+                return dropped.then(discardInventory);
+            return discardInventory();
         }
-        if (m.has_invent & CUSTOM_INVENT) {
-            invent_carrying_monster = mtmp;
-        }
+        return finishInventory();
     }
-    return mtmp;
+
+    function discardInventory() {
+        discard_minvent(mtmp, true);
+        return finishInventory();
+    }
+
+    function finishInventory() {
+        if (m.has_invent & CUSTOM_INVENT)
+            invent_carrying_monster = mtmp;
+        return mtmp;
+    }
 }
 
 // include/global.h:103 BOOL_RANDOM, include/monst.h:54 M_AP_FURNITURE/OBJECT.
@@ -1908,6 +2005,9 @@ export function lspo_monster(idOrClass, x, y, opts) {
 
     m.asleep = (opts?.asleep === undefined) ? BOOL_RANDOM : (opts.asleep ? 1 : 0);
     m.appear_as = opts?.appear_as ?? null;
+    m.appear = m.appear_as?.startsWith('obj:') ? M_AP_OBJECT
+        : m.appear_as?.startsWith('mon:') ? M_AP_MONSTER
+        : m.appear_as?.startsWith('ter:') ? M_AP_FURNITURE : M_AP_NOTHING;
     m.waiting = !!opts?.waiting;
     /* src/sp_lev.c:3324 get_table_int_opt("m_lev_adj") */
     m.m_lev_adj = opts?.m_lev_adj ?? 0;
@@ -1948,17 +2048,19 @@ export function lspo_monster(idOrClass, x, y, opts) {
     }
 
     const mtmp = create_monster(m, game.coder?.croom ?? null);
+    return mtmp instanceof Promise ? mtmp.then(finishInventory) : finishInventory(mtmp);
 
-    /* src/sp_lev.c:3390 — the inventory closure runs with the monster as
-       carrier; it runs even when the monster could not be made (its objects
-       then stay on the floor), and spo_end_moninvent dresses the carrier. */
-    if ((m.has_invent & CUSTOM_INVENT)
-        && typeof opts?.inventory === 'function') {
-        opts.inventory();
-        spo_end_moninvent();
+    function finishInventory(mtmp) {
+        /* The closure runs even when creation failed; its objects then
+           stay on the floor. Keep the carrier until the closure finishes. */
+        if ((m.has_invent & CUSTOM_INVENT) && typeof opts?.inventory === 'function') {
+            const inventory = opts.inventory();
+            if (inventory instanceof Promise)
+                return inventory.then(() => { spo_end_moninvent(); return mtmp; });
+            spo_end_moninvent();
+        }
+        return mtmp;
     }
-
-    return mtmp;
 }
 
 // include/align.h:44 AM_SPLEV_RANDOM, include/monflag.h:197 G_NOGEN.
@@ -2262,11 +2364,18 @@ export function lspo_room(opts, create_room_fn, topologize_fn) {
     create_des_coder();
     if (opts?.contents) {
         spo_push_room(aroom);
-        opts.contents(mkroom_table(aroom));
-        spo_endroom();
+        const contents = opts.contents(mkroom_table(aroom));
+        if (contents instanceof Promise)
+            return contents.then(finishContents);
     }
-    add_doors_to_room(aroom);
-    return aroom;
+    return finishContents();
+
+    function finishContents() {
+        if (opts?.contents)
+            spo_endroom();
+        add_doors_to_room(aroom);
+        return aroom;
+    }
 }
 
 // src/sp_lev.c create_door() — the des.door() verb's worker.
@@ -3537,7 +3646,9 @@ export function lspo_map_full(mapstr, contents) {
     game.xsize = wid; game.ysize = hei;
 
     if (contents) {
-        contents({ width: wid, height: hei });
+        const result = contents({ width: wid, height: hei });
+        if (result instanceof Promise)
+            return result.then(() => { reset_xystart_size(); return mapsel; });
         /* sp_lev.c:6310 — only a map WITH a contents closure resets the
            frame; without one the later script coords stay map-relative */
         reset_xystart_size();
@@ -3667,7 +3778,7 @@ export function lspo_mazewalk(mx, my, dirname) {
     walkfrom_fn(x, y, ftyp);
     /* sp_lev.c:3095 — `stocked = false` skips the maze filler entirely */
     if (fstocked)
-        fill_empty_maze();
+        return fill_empty_maze();
 }
 
 /* var, not let: wired from mklev.js's top level (see the add_room_fn note). */
@@ -3743,21 +3854,35 @@ export function fill_empty_maze() {
             const mm = maze1xy(DRY);
             mklev_fns?.makemon_at?.(PMNAMES.PM_MINOTAUR, mm.x, mm.y);
         }
-        for (let x = rnd(((12 * mapfact) / 100) | 0); x; x--) {
-            const mm = maze1xy(DRY);
-            mklev_fns?.makemon_at?.(null, mm.x, mm.y);
+        let remaining = rnd(((12 * mapfact) / 100) | 0);
+        return fillMonsters();
+
+        function fillMonsters() {
+            for (; remaining; remaining--) {
+                const mm = maze1xy(DRY);
+                const mon = mklev_fns?.makemon_at?.(null, mm.x, mm.y);
+                if (mon instanceof Promise)
+                    return mon.then(() => { --remaining; return fillMonsters(); });
+            }
+            for (let x = rn2(((15 * mapfact) / 100) | 0); x; x--) {
+                const mm = maze1xy(DRY);
+                mklev_fns?.mkgold?.(0, mm.x, mm.y);
+            }
+            remaining = rn2(((15 * mapfact) / 100) | 0);
+            return fillTraps();
         }
-        for (let x = rn2(((15 * mapfact) / 100) | 0); x; x--) {
-            const mm = maze1xy(DRY);
-            mklev_fns?.mkgold?.(0, mm.x, mm.y);
-        }
-        for (let x = rn2(((15 * mapfact) / 100) | 0); x; x--) {
-            const mm = maze1xy(DRY);
-            let trytrap = rndtrap_sp();
-            if (sobj_at(ONAMES.BOULDER, mm.x, mm.y))
-                while (is_pit_sp(trytrap) || is_hole_sp(trytrap))
-                    trytrap = rndtrap_sp();
-            mklev_fns?.maketrap?.(mm.x, mm.y, trytrap);
+
+        function fillTraps() {
+            for (; remaining; remaining--) {
+                const mm = maze1xy(DRY);
+                let trytrap = rndtrap_sp();
+                if (sobj_at(ONAMES.BOULDER, mm.x, mm.y))
+                    while (is_pit_sp(trytrap) || is_hole_sp(trytrap))
+                        trytrap = rndtrap_sp();
+                const trap = mklev_fns?.maketrap?.(mm.x, mm.y, trytrap);
+                if (trap instanceof Promise)
+                    return trap.then(() => { --remaining; return fillTraps(); });
+            }
         }
     }
 }
@@ -3931,7 +4056,12 @@ export function lspo_region_full(opts) {
            contents closure runs, exactly like lspo_room */
         if (opts.contents) {
             spo_push_room(troom);
-            opts.contents(mkroom_table(troom));
+            const contents = opts.contents(mkroom_table(troom));
+            if (contents instanceof Promise)
+                return contents.then(() => {
+                    spo_endroom();
+                    add_doors_to_room(troom);
+                });
             spo_endroom();
         }
         /* src/sp_lev.c:5710 — a region's room record collects the doors
@@ -4357,7 +4487,9 @@ export function lspo_map_coord(opts) {
     }
 
     if (contents) {
-        contents({ width: game.xsize, height: game.ysize });
+        const result = contents({ width: game.xsize, height: game.ysize });
+        if (result instanceof Promise)
+            return result.then(reset_xystart_size);
         reset_xystart_size();
     }
 }

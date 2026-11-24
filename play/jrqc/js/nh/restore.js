@@ -95,8 +95,8 @@ const N_PER_BUCKET = 64;
  * @returns {Promise<void>}
  */
 async function find_lev_obj() {   // restore.c:71
-    let fobjtmp = null, otmp = null, x = 0, y = 0;
-    fobjtmp = null;
+    let otmp = null, x = 0, y = 0;
+    let fobjtmp = null;
     for (x = 0; x < COLNO; x = x + 1 | 0) {
         for (y = 0; y < ROWNO; y = y + 1 | 0) {
             svl.level.objects[x][y] = null;
@@ -154,12 +154,12 @@ export async function inven_inuse(quietly) {   // restore.c:113
  * @returns {Promise<void>}
  */
 async function restlevchn(nhfp) {   // restore.c:130
-    let cnt = Int32Array.of(0), tmplev = null, x = null;
+    let cnt = Int32Array.of(0), x = null;
     cnt[0] = 0;
     svs.sp_levchn = null;
     await sfi_int(nhfp, new $c.Ptr(cnt, 0), $c.lit("levchn-lev_count"));
     for (; cnt[0] > 0; cnt[0] = cnt[0] - 1 | 0) {
-        tmplev = $c.asRec(await alloc(40), $T.s_level, 40);
+        const tmplev = $c.asRec(await alloc(40), $T.s_level, 40);
         await sfi_s_level(nhfp, tmplev, $c.lit("levchn-s_level"));
         if (!svs.sp_levchn) {
             svs.sp_levchn = tmplev;
@@ -176,11 +176,11 @@ async function restlevchn(nhfp) {   // restore.c:130
  * @returns {Promise<void>}
  */
 async function restdamage(nhfp) {   // restore.c:153
-    let dmgcount = Uint32Array.of(0), counter = 0, tmp_dam = null, ghostly = 0;
+    let dmgcount = Uint32Array.of(0), tmp_dam = null;
     dmgcount[0] = 0;
-    ghostly = $c.i8(nhfp.ftype === NHF.BONESFILE ? 1 : 0);
+    const ghostly = nhfp.ftype === NHF.BONESFILE ? 1 : 0;
     await sfi_unsigned(nhfp, new $c.Ptr(dmgcount, 0), $c.lit("damage-damage_count"));
-    counter = dmgcount[0] | 0;
+    let counter = dmgcount[0] | 0;
     if (!counter) {
         return;
     }
@@ -202,7 +202,7 @@ async function restdamage(nhfp) {   // restore.c:153
  * @returns {Promise<void>}
  */
 async function restobj(nhfp, otmp) {   // restore.c:183
-    let buflen = Int32Array.of(0), omid = Uint32Array.of(0), omailcmd = null, $t1, $t2;
+    let buflen = Int32Array.of(0), omid = Uint32Array.of(0), $t1, $t2;
     buflen[0] = 0;
     omid[0] = 0;
     await sfi_obj(nhfp, otmp, $c.lit("obj"));
@@ -231,7 +231,7 @@ async function restobj(nhfp, otmp) {   // restore.c:183
         /* omailcmd - feedback mechanism for scroll of mail */
         await sfi_int(nhfp, new $c.Ptr(buflen, 0), $c.lit("obj-omailcmd_length"));
         if (buflen[0] > 0) {
-            omailcmd = $c.asArr(await alloc(buflen[0] >>> 0), Int8Array);
+            const omailcmd = $c.asArr(await alloc(buflen[0] >>> 0), Int8Array);
             await sfi_char(nhfp, omailcmd, $c.lit("obj-omailcmd"), buflen[0]);
             await new_omailcmd(otmp, omailcmd);
             $c.free(omailcmd);
@@ -248,17 +248,17 @@ async function restobj(nhfp, otmp) {   // restore.c:183
  * @returns {Promise<$T.obj | null>} struct obj *
  */
 async function restobjchn(nhfp, frozen) {   // restore.c:231
-    let otmp = null, otmp2 = null, first = null, buflen = Int32Array.of(0), ghostly = 0, nid = 0, otmp3 = null, $t1;
-    otmp2 = null;
-    first = null;
+    let buflen = Int32Array.of(0), otmp3 = null, $t1;
+    let otmp2 = null;
+    let first = null;
     buflen[0] = 0;
-    ghostly = $c.i8(nhfp.ftype === NHF.BONESFILE ? 1 : 0);
+    const ghostly = nhfp.ftype === NHF.BONESFILE ? 1 : 0;
     while (1) {
         await sfi_int(nhfp, new $c.Ptr(buflen, 0), $c.lit("obj-obj_length"));
         if (buflen[0] === -1) {
             break;
         }
-        otmp = await newobj();
+        const otmp = await newobj();
         (!(otmp !== null) ? 1 : 0) ? $c.__assert_rtn($c.lit("restobjchn"), $c.lit("restore.c"), 246, $c.lit("otmp != 0")) : 0;
         await restobj(nhfp, otmp);
         if (!first) {
@@ -267,7 +267,7 @@ async function restobjchn(nhfp, frozen) {   // restore.c:231
             otmp2.nobj = otmp;
         }
         if (ghostly) {
-            nid = next_ident();
+            const nid = next_ident();
             await add_id_mapping(otmp.o_id, nid);
             otmp.o_id = nid;
         }
@@ -284,14 +284,14 @@ async function restobjchn(nhfp, frozen) {   // restore.c:231
         /* !SFCTOOL */
         /* get contents of a container or statue */
         if (Has_contents(otmp)) {
-            $t1 = await restobjchn(nhfp, $c.i8(Is_IceBox(otmp))), otmp.cobj = $t1;
+            $t1 = await restobjchn(nhfp, Is_IceBox(otmp)), otmp.cobj = $t1;
             /* restore container back pointers */
             for (otmp3 = otmp.cobj; otmp3; otmp3 = otmp3.nobj) {
                 otmp3.v.v_ocontainer = otmp;
             }
         }
         if (otmp.bypass) {
-            otmp.bypass = (0) & 1;
+            otmp.bypass = 0;
         }
         if (!ghostly) {
             /* fix the pointers */
@@ -391,17 +391,17 @@ async function restmon(nhfp, mtmp) {   // restore.c:307
  * @returns {Promise<$T.monst | null>} struct monst *
  */
 async function restmonchn(nhfp) {   // restore.c:376
-    let mtmp = null, mtmp2 = null, first = null, buflen = Int32Array.of(0), offset = 0, ghostly = 0, nid = 0, mndx = 0, obj = null, obj$2 = null, $t1;
-    mtmp2 = null;
-    first = null;
+    let buflen = Int32Array.of(0), obj = null, obj$2 = null, $t1;
+    let mtmp2 = null;
+    let first = null;
     buflen[0] = 0;
-    ghostly = $c.i8(nhfp.ftype === NHF.BONESFILE ? 1 : 0);
+    const ghostly = nhfp.ftype === NHF.BONESFILE ? 1 : 0;
     while (1) {
         await sfi_int(nhfp, new $c.Ptr(buflen, 0), $c.lit("monst-monst_length"));
         if (buflen[0] === -1) {
             break;
         }
-        mtmp = await newmonst();
+        const mtmp = await newmonst();
         (!(mtmp !== null) ? 1 : 0) ? $c.__assert_rtn($c.lit("restmonchn"), $c.lit("restore.c"), 392, $c.lit("mtmp != 0")) : 0;
         await restmon(nhfp, mtmp);
         if (!first) {
@@ -410,14 +410,14 @@ async function restmonchn(nhfp) {   // restore.c:376
             mtmp2.nmon = mtmp;
         }
         if (ghostly) {
-            nid = next_ident();
+            const nid = next_ident();
             await add_id_mapping(mtmp.m_id, nid);
             mtmp.m_id = nid;
         }
-        offset = mtmp.mnum;
+        const offset = mtmp.mnum;
         mtmp.data = $c.relem(mons, offset);
         if (ghostly) {
-            mndx = mtmp.cham === NON_PM ? mtmp.data.pmidx : mtmp.cham;
+            const mndx = mtmp.cham === NON_PM ? mtmp.data.pmidx : mtmp.cham;
             if (await propagate(mndx, TRUE, ghostly) === 0) {
                 /* cookie to trigger purge in getbones() */
                 mtmp.mhpmax = DEFUNCT_MONSTER;
@@ -469,8 +469,8 @@ async function restmonchn(nhfp) {   // restore.c:376
  * @returns {Promise<$T.fruit | null>} struct fruit *
  */
 async function loadfruitchn(nhfp) {   // restore.c:468
-    let flist = null, fnext = null;
-    flist = null;
+    let fnext = null;
+    let flist = null;
     for (; ; ) {
         fnext = await newfruit();
         await sfi_fruit(nhfp, fnext, $c.lit("fruit"));
@@ -488,9 +488,8 @@ async function loadfruitchn(nhfp) {   // restore.c:468
  * @param {$T.fruit | null} flist struct fruit *
  */
 function freefruitchn(flist) {   // restore.c:487
-    let fnext = null;
     while (flist) {
-        fnext = flist.nextf;
+        const fnext = flist.nextf;
         dealloc_fruit(flist);
         flist = fnext;
     }
@@ -518,7 +517,7 @@ async function ghostfruit(otmp) {   // restore.c:500
  * @returns {Promise<number>} boolean
  */
 async function restgamestate(nhfp) {   // restore.c:525
-    let i = 0, newgameflags = new $T.flag(), newgamecontext = new $T.context_info(), bc_obj = null, timebuf = new Int8Array(15), uid = [0], defer_perm_invent = 0, restoring_special = 0, otmp = null, nobj = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8;
+    let i = 0, newgameflags = new $T.flag(), newgamecontext = new $T.context_info(), timebuf = new Int8Array(15), uid = [0], otmp = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8;
     /* all 0, but has some pointers */
     uid[0] = 0;
     await sfi_ulong(nhfp, new $c.Ptr(uid, 0), $c.lit("gamestate-uid"));
@@ -560,14 +559,14 @@ async function restgamestate(nhfp) {   // restore.c:525
        [3.6.2: moved perm_invent from flags to iflags to keep it out of
        save files; retaining the override here is simpler than trying
        to figure out where it really belongs now] */
-    defer_perm_invent = iflags.perm_invent;
+    const defer_perm_invent = iflags.perm_invent;
     iflags.perm_invent = FALSE;
     /* wizard and discover are actually flags.debug and flags.explore;
        player might be overriding the save file values for them;
        in the discover case, we don't want to set that for a normal
        game until after the save file has been removed */
-    iflags.deferred_X = $c.i8(newgameflags.explore && !discover() ? 1 : 0);
-    restoring_special = $c.i8(wizard() || discover() ? 1 : 0);
+    iflags.deferred_X = newgameflags.explore && !discover() ? 1 : 0;
+    const restoring_special = wizard() || discover() ? 1 : 0;
     if (newgameflags.debug) {
         /* authorized by startup code; wizard mode exists and is allowed */
         flags.debug = TRUE, ($t1 = iflags.deferred_X = FALSE, flags.explore = $t1);
@@ -625,9 +624,9 @@ async function restgamestate(nhfp) {   // restore.c:525
     await restore_light_sources(nhfp);
     $t5 = await restobjchn(nhfp, FALSE), gi.invent = $t5;
     /* restore dangling (not on floor or in inventory) ball and/or chain */
-    bc_obj = await restobjchn(nhfp, FALSE);
+    let bc_obj = await restobjchn(nhfp, FALSE);
     while (bc_obj) {
-        nobj = bc_obj.nobj;
+        const nobj = bc_obj.nobj;
         bc_obj.nobj = null;
         if (bc_obj.owornmask) {
             await setworn(bc_obj, bc_obj.owornmask);
@@ -706,8 +705,8 @@ function restlevelstate() {   // restore.c:742
  * @returns {Promise<number>} int
  */
 async function restlevelfile(ltmp) {   // restore.c:755
-    let whynot = new Int8Array(256), nhfp = null;
-    nhfp = null;
+    let whynot = new Int8Array(256);
+    let nhfp = null;
     nhfp = await create_levelfile(ltmp, new $c.Ptr(whynot, 0));
     if (!nhfp) {
         /* failed to create a new file; don't attempt to make a panic save */
@@ -739,7 +738,7 @@ async function restlevelfile(ltmp) {   // restore.c:755
  * @returns {Promise<number>} int
  */
 export async function dorecover(nhfp) {   // restore.c:789
-    let ltmp = Int8Array.of(0), rtmp = 0, tnhfp = null, $t1, $t2;
+    let ltmp = Int8Array.of(0), $t1, $t2;
     ltmp[0] = 0;
     /* suppress map display if some part of the code tries to update that */
     program_state.restoring = REST.GSTATE;
@@ -759,7 +758,7 @@ export async function dorecover(nhfp) {   // restore.c:789
      */
     await getlev(nhfp, 0, 0);
     if (!await restgamestate(nhfp)) {
-        tnhfp = await get_freeing_nhfile();
+        const tnhfp = await get_freeing_nhfile();
         await display_nhwindow()($G.WIN_MESSAGE, TRUE);
         await savelev(tnhfp, 0);   /* discard current level */
         await close_nhfile(tnhfp);
@@ -773,7 +772,7 @@ export async function dorecover(nhfp) {   // restore.c:789
     await init_oclass_probs();   /* recompute go.oclass_prob_totals[] */
     restlevelstate();
     await savestateinlock();
-    rtmp = await restlevelfile($c.i8(ledger_no(u.uz)));
+    let rtmp = await restlevelfile($c.i8(ledger_no(u.uz)));
     if (rtmp < 2) {
         return rtmp;   /* dorecover called recursively */
     }
@@ -858,7 +857,7 @@ export async function dorecover(nhfp) {   // restore.c:789
  * @returns {Promise<void>}
  */
 async function rest_stairs(nhfp) {   // restore.c:955
-    let buflen = Int32Array.of(0), stway = new $T.stairway(), newst = null;
+    let buflen = Int32Array.of(0), stway = new $T.stairway();
     buflen[0] = 0;
     stway.$copyFrom(new $T.stairway());
     stway.sx = 0;
@@ -874,7 +873,7 @@ async function rest_stairs(nhfp) {   // restore.c:955
             stway.tolev.dlevel = $c.i16(stway.tolev.dlevel + u.uz.dlevel | 0);
         }
         await stairway_add(stway.sx, stway.sy, stway.up, stway.isladder, stway.tolev);
-        newst = stairway_at(stway.sx, stway.sy);
+        const newst = stairway_at(stway.sx, stway.sy);
         if (newst) {
             newst.u_traversed = stway.u_traversed;
         }
@@ -886,11 +885,11 @@ async function rest_stairs(nhfp) {   // restore.c:955
  * @returns {Promise<void>}
  */
 export async function restcemetery(nhfp, cemeteryaddr) {   // restore.c:988
-    let bonesinfo = null, bonesaddr = null, cflag = Int32Array.of(0), thisbones = null, nextbones = null;
+    let bonesinfo = null, cflag = Int32Array.of(0), thisbones = null;
     cflag[0] = 0;
     await sfi_int(nhfp, new $c.Ptr(cflag, 0), $c.lit("cemetery-cemetery_flag"));
     if (cflag[0] === 0) {
-        bonesaddr = cemeteryaddr;
+        let bonesaddr = cemeteryaddr;
         do {
             bonesinfo = $c.asRec(await alloc(184), $T.cemetery, 184);
             await sfi_cemetery(nhfp, bonesinfo, $c.lit("cemetery-bonesinfo"));
@@ -902,7 +901,7 @@ export async function restcemetery(nhfp, cemeteryaddr) {   // restore.c:988
     }
     if ((nhfp.mode & CONVERTING) !== 0 || (nhfp.mode & UNCONVERTING) !== 0) {
         /* free the memory */
-        nextbones = cemeteryaddr.get(0);
+        let nextbones = cemeteryaddr.get(0);
         while ((thisbones = nextbones) !== null) {
             nextbones = thisbones.next;
             $c.free(thisbones);
@@ -942,12 +941,12 @@ export async function trickery(reason) {   // restore.c:1035
  * @returns {Promise<void>}
  */
 export async function getlev(nhfp, pid, lev) {   // restore.c:1046
-    let trap = null, mtmp = null, br = null, x = 0, y = 0, elapsed = 0, hpid = Int32Array.of(0), dlvl = Int8Array.of(0), i = 0, c = 0, r = 0, ghostly = 0, tmpc = null, trickbuf = new Int8Array(256), stway = null, cc = new $T.nhcoord(), dest = new $T.d_level(), ltmp = new $T.d_level(), ttmp = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
-    elapsed = 0;
+    let trap = null, mtmp = null, x = 0, y = 0, hpid = Int32Array.of(0), dlvl = Int8Array.of(0), i = 0, c = 0, r = 0, trickbuf = new Int8Array(256), cc = new $T.nhcoord(), dest = new $T.d_level(), ltmp = new $T.d_level(), $t1, $t2, $t3, $t4, $t5, $t6, $t7;
+    let elapsed = 0;
     hpid[0] = 0;
     dlvl[0] = 0;
-    ghostly = $c.i8(nhfp.ftype === NHF.BONESFILE ? 1 : 0);
-    tmpc = null;
+    const ghostly = nhfp.ftype === NHF.BONESFILE ? 1 : 0;
+    let tmpc = null;
     program_state.in_getlev = TRUE;
     if (ghostly) {
         clear_id_mapping();
@@ -1060,7 +1059,7 @@ export async function getlev(nhfp, pid, lev) {   // restore.c:1046
             if (mtmp.wormno) {
                 await place_wsegs(mtmp, null);
             }
-            if (hides_under(mtmp.data) && mtmp.mundetected | 0) {
+            if (hides_under(mtmp.data) && mtmp.mundetected) {
                 await hideunder(mtmp);
             }
         }
@@ -1093,7 +1092,7 @@ export async function getlev(nhfp, pid, lev) {   // restore.c:1046
     await load_exclusions(nhfp);
     await rest_track(nhfp);
     if (ghostly) {
-        stway = gs.stairs;
+        let stway = gs.stairs;
         while (stway) {
             if (!stway.isladder && !stway.up && stway.tolev.dnum === u.uz.dnum) {
                 break;
@@ -1104,12 +1103,12 @@ export async function getlev(nhfp, pid, lev) {   // restore.c:1046
         freefruitchn(go.oldfruit), go.oldfruit = null;
         if (lev > ledger_no(svd.dungeon_topology.d_medusa_level) && lev < ledger_no(svd.dungeon_topology.d_stronghold_level) && !stway) {
             dest.dnum = u.uz.dnum;
-            dest.dlevel = $c.i16(u.uz.dlevel + 1 | 0);
+            dest.dlevel = $c.i16(u.uz.dlevel + 1);
             await mazexy(cc);
             await stairway_add(cc.x, cc.y, FALSE, FALSE, dest);
             svl.level.locations[cc.x][cc.y].typ = STAIRS;
         }
-        br = Is_branchlev(u.uz);
+        const br = Is_branchlev(u.uz);
         if (br && u.uz.dlevel === 1) {
             if (on_level(u.uz, br.end1)) {
                 assign_level(ltmp, br.end2);
@@ -1134,7 +1133,7 @@ export async function getlev(nhfp, pid, lev) {   // restore.c:1046
                 case BR.PORTAL:
                     /* max of 1 portal per level */
                     for (trap = gf.ftrap; trap; trap = trap.ntrap) {
-                        if ((trap.ttyp | 0) === MAGIC_PORTAL) {
+                        if (trap.ttyp === MAGIC_PORTAL) {
                             break;
                         }
                     }
@@ -1145,11 +1144,11 @@ export async function getlev(nhfp, pid, lev) {   // restore.c:1046
                     break;
             }
         } else if (!br) {
-            ttmp = null;
+            let ttmp = null;
             /* Remove any dangling portals. */
             for (trap = gf.ftrap; trap; trap = ttmp) {
                 ttmp = trap.ntrap;
-                if ((trap.ttyp | 0) === MAGIC_PORTAL) {
+                if (trap.ttyp === MAGIC_PORTAL) {
                     await deltrap(trap);
                 }
             }
@@ -1174,16 +1173,14 @@ export function rest_adjust_levelflags() {   // restore.c:1314
  * @param {*} timestamp long *
  */
 export function moves_to_relative_time(timestamp) {   // restore.c:1320
-    let prevts = 0;
-    prevts = timestamp.get(0);
+    const prevts = timestamp.get(0);
     timestamp.set(0, $c.sub64(prevts, svm.moves));
 }
 /**
  * @param {*} timestamp long *
  */
 export function relative_time_to_moves(timestamp) {   // restore.c:1328
-    let prevts = 0;
-    prevts = timestamp.get(0);
+    const prevts = timestamp.get(0);
     timestamp.set(0, $c.add64(svm.moves, prevts));
 }
 /* "name-role-race-gend-algn" occurs very early in a save file; sometimes we
@@ -1261,9 +1258,9 @@ async function restore_gamelog(nhfp) {   // restore.c:1390
  * @returns {Promise<void>}
  */
 async function restore_msghistory(nhfp) {   // restore.c:1415
-    let msgsize = Int32Array.of(0), msgcount = 0, msg = new Int8Array(256), save_plnmsg = 0;
+    let msgsize = Int32Array.of(0), msg = new Int8Array(256);
     msgsize[0] = 0;
-    msgcount = 0;
+    let msgcount = 0;
     while (1) {
         await sfi_int(nhfp, new $c.Ptr(msgsize, 0), $c.lit("msghistory-length"));
         if (msgsize[0] === -1) {
@@ -1283,7 +1280,7 @@ async function restore_msghistory(nhfp) {   // restore.c:1415
     }
     do {
         if (debugcore($c.lit("restore.c"), TRUE)) {
-            save_plnmsg = iflags.last_msg;
+            const save_plnmsg = iflags.last_msg;
             await pline($c.lit("Read %d messages from savefile."), msgcount);
             iflags.last_msg = save_plnmsg;
         }
@@ -1306,12 +1303,11 @@ function clear_id_mapping() {   // restore.c:1447
  * @returns {Promise<void>}
  */
 async function add_id_mapping(gid, nid) {   // restore.c:1460
-    let idx = 0, gnu = null;
-    idx = $c.rem32(gn.n_ids_mapped, N_PER_BUCKET);
+    const idx = $c.rem32(gn.n_ids_mapped, N_PER_BUCKET);
     /* idx is zero on first time through, as well as when a new bucket is */
     /* needed */
     if (idx === 0) {
-        gnu = $c.asRec(await alloc(520), $T.bucket, 520);
+        const gnu = $c.asRec(await alloc(520), $T.bucket, 520);
         gnu.next = gi.id_map;
         gi.id_map = gnu;
     }
@@ -1356,15 +1352,15 @@ export function lookup_id_mapping(gid, nidp) {   // restore.c:1484
  * @param {number} ghostly boolean
  */
 function reset_oattached_mids(ghostly) {   // restore.c:1510
-    let otmp = null, oldid = 0, nid = Uint32Array.of(0), mtmp = null, $t1;
+    let otmp = null, nid = Uint32Array.of(0), $t1;
     for (otmp = svl.level.objlist; otmp; otmp = otmp.nobj) {
         if (ghostly && has_omonst(otmp)) {
-            mtmp = otmp.oextra.omonst;
+            const mtmp = otmp.oextra.omonst;
             mtmp.m_id = 0;
             $t1 = (mtmp.mtame = 0) >>> 0, mtmp.mpeaceful = ($t1) & 1;   /* pet's owner died! */
         }
         if (ghostly && has_omid(otmp)) {
-            oldid = otmp.oextra.omid;
+            const oldid = otmp.oextra.omid;
             if (lookup_id_mapping(oldid, new $c.Ptr(nid, 0))) {
                 otmp.oextra.omid = nid[0];
             } else {
@@ -1380,16 +1376,16 @@ function reset_oattached_mids(ghostly) {   // restore.c:1510
  * @returns {Promise<number>} int
  */
 export async function restore_menu(bannerwin) {   // restore.c:1536
-    let tmpwin = 0, any = new $T.any(), saved = null, next = null, mode = 0, menutext = new Int8Array(256), all_normal = 0, chosen_game = [null], k = 0, clet = 0, ch = 0, clr = 0;
+    let any = new $T.any(), next = null, mode = 0, menutext = new Int8Array(256), all_normal = 0, chosen_game = [null], k = 0;
     /* if not WIN_ERR, clear window
      * and show copyright in menu */
     chosen_game[0] = null;
-    ch = 0;   /* ch: 0 => new game */
-    clr = NO_COLOR;
+    let ch = 0;   /* ch: 0 => new game */
+    const clr = NO_COLOR;
     new $c.Ptr(svp.plname, 0).set(0, 0);
-    saved = await get_saved_games();   /* array of character names */
+    const saved = await get_saved_games();   /* array of character names */
     if (saved && saved.get(0)) {
-        tmpwin = await create_nhwindow()(NHW.MENU);
+        const tmpwin = await create_nhwindow()(NHW.MENU);
         await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
         any.$copyFrom(cg.zeroany);   /* no selection */
         if (bannerwin !== WIN_ERR) {
@@ -1425,7 +1421,7 @@ export async function restore_menu(bannerwin) {   // restore.c:1536
             await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(menutext, 0), MENU.ITEMFLAGS_SKIPMENUCOLORS);
         }
         /* new game */
-        clet = k <= 13 ? 110 : k <= 39 ? 78 : 0;
+        let clet = k <= 13 ? 110 : k <= 39 ? 78 : 0;
         any.a_int = -1;   /* not >= 0 */
         await add_menu(tmpwin, nul_glyphinfo, any, $c.i8(clet), 78, ATR.NONE, clr, $c.lit("Start a new character"), MENU.ITEMFLAGS_NONE);
         /* quit */

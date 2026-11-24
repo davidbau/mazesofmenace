@@ -1,4 +1,5 @@
 // botl.js — C ref: botl.c.
+import { nh_qsort } from './nhsort.js';
 import { money_cnt } from './hack.js';
 import { CONFUSION, Is_rogue_level, OVERLOADED, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SATIATED, SICK, SLIMED, SLT_ENCUMBER, STARVED, TT_LAVA, gs } from './const.js';
 import { _flush_screen_in_progress, COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, status_r1_hpbar_bot_note, suppress_map_output } from './display.js';
@@ -1246,7 +1247,8 @@ export async function cond_menu() {
     game.condmenu_sortorder |= 0;
     do {
         const sequence = CONDTESTS.map((_, i) => i);
-        sequence.sort(game.condmenu_sortorder
+        /* C botl.c:1395 qsort(sequence, CONDITION_COUNT, cond_cmp | menualpha_cmp) */
+        nh_qsort(sequence, game.condmenu_sortorder
             ? (a, b) => (CONDTESTS[a][1] - CONDTESTS[b][1]) || strcmpi(CONDTESTS[a][0], CONDTESTS[b][0])
             : (a, b) => strcmpi(CONDTESTS[a][0], CONDTESTS[b][0]));
         const m = new TtyMenu();

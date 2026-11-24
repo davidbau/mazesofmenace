@@ -57,12 +57,12 @@ export function version_string(buf, bufsz) {   // version.c:22
  * @returns {$c.Ptr | null} char *
  */
 export function getversionstring(buf, bufsz) {   // version.c:35
-    let c = 0, p = null, dotoff = 0, $t1, $t2;
+    let $t1, $t2;
     $c.strcpy(buf, nomakedefs.version_id);
     {
-        c = 0;
-        p = eos(buf);
-        dotoff = $c.i8($c.pcmp(p, buf) > 0 && p.get(-1) === 46 ? 1 : 0);
+        let c = 0;
+        let p = eos(buf);
+        const dotoff = $c.pcmp(p, buf) > 0 && p.get(-1) === 46 ? 1 : 0;
         if (dotoff) {
             p = p.add(-1);
         }
@@ -99,13 +99,12 @@ export function getversionstring(buf, bufsz) {   // version.c:35
  * @returns {$c.Ptr | null} char *
  */
 export function status_version(buf, bufsz, indent) {   // version.c:89
-    let name = null, altname = null, indentation = null, vflags = 0, shownum = 0, showname = 0, showbranch = 0;
-    name = null;
-    altname = null;
-    vflags = flags.versinfo;
-    shownum = $c.i8((vflags & VI.NUMBER) >>> 0 !== 0 ? 1 : 0);
-    showname = $c.i8((vflags & VI.NAME) >>> 0 !== 0 ? 1 : 0);
-    showbranch = $c.i8((vflags & VI.BRANCH) >>> 0 !== 0 ? 1 : 0);
+    let name = null;
+    let altname = null;
+    const vflags = flags.versinfo;
+    let shownum = (vflags & VI.NUMBER) >>> 0 !== 0 ? 1 : 0;
+    let showname = (vflags & VI.NAME) >>> 0 !== 0 ? 1 : 0;
+    let showbranch = (vflags & VI.BRANCH) >>> 0 !== 0 ? 1 : 0;
     /* game's name {variants should use own name, not "NetHack"} */
     if (showname) {
         /* can be set to override default (base of filename) */
@@ -138,7 +137,7 @@ export function status_version(buf, bufsz, indent) {   // version.c:89
         shownum = TRUE;
     }
     buf.set(0, 0);
-    indentation = indent ? $c.lit(" ") : $c.lit("");
+    let indentation = indent ? $c.lit(" ") : $c.lit("");
     if (showname) {
         nh_snprintf($c.lit("status_version"), 137, eos(buf), $c.subu64(bufsz, $c.strlen(buf)), $c.lit("%s%s"), indentation, name);
         indentation = $c.lit(" ");   /* forced separator rather than optional indent */
@@ -170,14 +169,14 @@ export async function doversion() {   // version.c:156
  * @returns {Promise<number>} int
  */
 export async function doextversion() {   // version.c:169
-    let rtcontext = Int32Array.of(0), rtbuf = null, f = null, buf = new Int8Array(256), p = null, win = 0, use_dlb = 0, done_rt = 0, done_dlb = 0, prolog = 0;
+    let rtcontext = Int32Array.of(0), rtbuf = null, buf = new Int8Array(256);
     rtcontext[0] = 0;
-    f = null;
-    p = null;
-    win = await create_nhwindow()(NHW.TEXT);
-    use_dlb = TRUE;
-    done_rt = FALSE;
-    done_dlb = FALSE;
+    let f = null;
+    let p = null;
+    const win = await create_nhwindow()(NHW.TEXT);
+    let use_dlb = TRUE;
+    let done_rt = FALSE;
+    let done_dlb = FALSE;
     /* lua_info[] moved to util/mdlib.c and rendered via do_runtime_info() */
     use_dlb = FALSE;
     /* instead of using ``display_file(OPTIONS_USED,TRUE)'' we handle
@@ -226,7 +225,7 @@ export async function doextversion() {   // version.c:169
      * - blank-line
      * - EOF
      */
-    prolog = TRUE;   /* to skip indented program name */
+    let prolog = TRUE;   /* to skip indented program name */
     for (; ; ) {
         if (use_dlb && !done_dlb) {
             if (!$c.fgets(new $c.Ptr(buf, 0), BUFSZ, f)) {
@@ -276,11 +275,11 @@ export async function doextversion() {   // version.c:169
  * @returns {Promise<void>}
  */
 export async function early_version_info(pastebuf) {   // version.c:280
-    let buf1 = new Int8Array(256), buf2 = new Int8Array(256), buf = null, tmp = null, $t1;
+    let buf1 = new Int8Array(256), buf2 = new Int8Array(256), buf = null, $t1;
     nh_snprintf($c.lit("early_version_info"), 285, new $c.Ptr(buf1, 0), 256, $c.lit("test"));
     /* this is early enough that we have to do our own line-splitting */
     getversionstring(new $c.Ptr(buf1, 0), 256);
-    tmp = strstri(new $c.Ptr(buf1, 0), $c.lit(" ("));   /* split at start of version info */
+    let tmp = strstri(new $c.Ptr(buf1, 0), $c.lit(" ("));   /* split at start of version info */
     if (tmp) {
         /* retain one buffer so that it all goes into the paste buffer */
         ($t1 = tmp, tmp = $t1.add(1), $t1).set(0, 0);
@@ -364,8 +363,8 @@ export async function check_version(version_data, filename, complain, utdflags) 
  * @returns {number | bigint} unsigned long
  */
 export function get_feature_notice_ver(str) {   // version.c:431
-    let buf = new Int8Array(256), ver_maj = 0, ver_min = 0, patch = 0, istr = $c.nulls(3), j = 0, $t1;
-    j = 0;
+    let buf = new Int8Array(256), istr = $c.nulls(3), $t1;
+    let j = 0;
     if (!str) {
         return 0;
     }
@@ -388,9 +387,9 @@ export function get_feature_notice_ver(str) {   // version.c:431
     if (j !== 2) {
         return 0;
     }
-    ver_maj = $c.atoi(istr[0]);
-    ver_min = $c.atoi(istr[1]);
-    patch = $c.atoi(istr[2]);
+    const ver_maj = $c.atoi(istr[0]);
+    const ver_min = $c.atoi(istr[1]);
+    const patch = $c.atoi(istr[2]);
     return FEATURE_NOTICE_VER(ver_maj, ver_min, patch);
     /* macro from hack.h */
 }
@@ -425,8 +424,8 @@ export function copyright_banner_line(indx) {   // version.c:471
  * @returns {Promise<void>}
  */
 export async function dump_version_info() {   // version.c:494
-    let buf = new Int8Array(256), hname = null;
-    hname = gh.hname ? gh.hname : $c.lit("nethack");
+    let buf = new Int8Array(256);
+    let hname = gh.hname ? gh.hname : $c.lit("nethack");
     if ($c.strlen(hname) > 33) {
         hname = eos(nhStr(hname)).add(-33);   /* discard const for eos() */
     }
@@ -474,15 +473,15 @@ export function get_critical_size_count() {   // version.c:669
  * @returns {Promise<void>}
  */
 export async function store_critical_bytes(nhfp) {   // version.c:676
-    let i = 0, cnt = 0, indicate = Int8Array.of(0), csc_count = Int8Array.of(0);
+    let i = 0, indicate = Int8Array.of(0), csc_count = Int8Array.of(0);
     indicate[0] = 117;
     csc_count[0] = 80;
     /* int cmc = 0; */
     if (nhfp.mode & WRITING) {
-        indicate[0] = $c.i8(nhfp.structlevel ? 104 : nhfp.fnidx === exportascii ? 97 : 63);
+        indicate[0] = nhfp.structlevel ? 104 : nhfp.fnidx === exportascii ? 97 : 63;
         await sfo_char(nhfp, new $c.Ptr(indicate, 0), $c.lit("indicate-format"), 1);
         await sfo_char(nhfp, new $c.Ptr(csc_count, 0), $c.lit("count-critical_sizes"), 1);
-        cnt = csc_count[0];
+        const cnt = csc_count[0];
         for (i = 0; i < cnt; i = i + 1 | 0) {
             await sfo_uchar(nhfp, new $c.FieldRef(critical_sizes[i], "ucsize", "u8"), $c.lit("critical_sizes"));
         }
@@ -511,11 +510,11 @@ export async function store_critical_bytes(nhfp) {   // version.c:676
  * @returns {Promise<number>} int
  */
 export async function uptodate(nhfp, name, utdflags) {   // version.c:713
-    let vers_info = new $T.version_info(), indicator = Int8Array.of(0), sfstatus = 0, idx_1st_mismatch = Int32Array.of(0), quietly = 0, verbose = 0;
-    sfstatus = 0;
+    let vers_info = new $T.version_info(), indicator = Int8Array.of(0), idx_1st_mismatch = Int32Array.of(0);
+    let sfstatus = 0;
     idx_1st_mismatch[0] = 0;
-    quietly = $c.i8($c.andu64(utdflags, UTD.QUIETLY) !== 0 ? 1 : 0);
-    verbose = $c.i8(name ? TRUE : FALSE);
+    const quietly = $c.andu64(utdflags, UTD.QUIETLY) !== 0 ? 1 : 0;
+    const verbose = name ? TRUE : FALSE;
     await sfi_char(nhfp, new $c.Ptr(indicator, 0), $c.lit("indicate-format"), 1);
     if ((sfstatus = await compare_critical_bytes(nhfp, new $c.Ptr(idx_1st_mismatch, 0), utdflags)) !== SF.UPTODATE) {
         if (sfstatus > 0 && idx_1st_mismatch[0]) {
@@ -556,11 +555,11 @@ export async function uptodate(nhfp, name, utdflags) {   // version.c:713
  * @returns {Promise<number>} int
  */
 export async function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {   // version.c:763
-    let active_csc_count = 0, file_csc_count = Int8Array.of(0), i = 0, cnt = 0, dmmismatch = 0, quietly = 0, dm = null, dmfile = null;
-    active_csc_count = 80;
-    cnt = active_csc_count;
-    dmmismatch = SF.DM_MISMATCH;
-    quietly = $c.i8($c.andu64(utdflags, UTD.QUIETLY) !== 0 ? 1 : 0);
+    let file_csc_count = Int8Array.of(0), i = 0;
+    const active_csc_count = 80;
+    const cnt = active_csc_count;
+    let dmmismatch = SF.DM_MISMATCH;
+    const quietly = $c.andu64(utdflags, UTD.QUIETLY) !== 0 ? 1 : 0;
     await sfi_char(nhfp, new $c.Ptr(file_csc_count, 0), $c.lit("count-critical_sizes"), 1);
     if (file_csc_count[0] > cnt) {
         if (!quietly) {
@@ -573,12 +572,12 @@ export async function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
     }
     for (i = 1; i < cnt; i = i + 1 | 0) {
         if (cscbuf[i] !== critical_sizes[i].ucsize) {
-            dm = datamodel(0);
+            const dm = datamodel(0);
             /* short */
             /* int */
             /* long */
             /* long long */
-            dmfile = what_datamodel_is_this(0, cscbuf[1], cscbuf[2], cscbuf[3], cscbuf[4], cscbuf[5]);   /* ptr */
+            const dmfile = what_datamodel_is_this(0, cscbuf[1], cscbuf[2], cscbuf[3], cscbuf[4], cscbuf[5]);   /* ptr */
             if (!$c.strcmp(dmfile, $c.lit("IL32LLP64")) && !$c.strcmp(dm, $c.lit("ILP32LL64"))) {
                 /*  Windows x64 savefile on x86 */
                 dmmismatch = SF.DM_IL32LLP64_ON_ILP32LL64;
@@ -627,9 +626,8 @@ export async function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
  * @returns {Promise<number>} int
  */
 export async function validate(nhfp, name, without_waitsynch_perfile) {   // version.c:840
-    let utdflags = 0, validsf = 0;
-    utdflags = 0;
-    validsf = 0;
+    let utdflags = 0;
+    let validsf = 0;
     if (nhfp.structlevel) {
         utdflags = $c.oru64(utdflags, UTD.CHECKSIZES);
     }

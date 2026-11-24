@@ -57,17 +57,16 @@ import { $G } from './globals.js';
  * @returns {$c.Ptr | null} const unsigned char *
  */
 function nhmd4_body(ctx, data, size) {   // nhmd4.c:83
-    let ptr = null, a = 0, b = 0, c = 0, d = 0, saved_a = 0, saved_b = 0, saved_c = 0, saved_d = 0;
-    ptr = data;
-    a = ctx.a;
-    b = ctx.b;
-    c = ctx.c;
-    d = ctx.d;
+    let ptr = data;
+    let a = ctx.a;
+    let b = ctx.b;
+    let c = ctx.c;
+    let d = ctx.d;
     do {
-        saved_a = a;
-        saved_b = b;
-        saved_c = c;
-        saved_d = d;
+        const saved_a = a;
+        const saved_b = b;
+        const saved_c = c;
+        const saved_d = d;
         /* Round 1 */
         a = a + (((d ^ (b & (c ^ d) >>> 0) >>> 0) >>> 0) + (ctx.block[0] = (((ptr.get(0) | ptr.get(1) << 8 >>> 0) >>> 0 | ptr.get(2) << 16 >>> 0) >>> 0 | ptr.get(3) << 24 >>> 0) >>> 0) >>> 0) >>> 0, a = (a << 3 >>> 0 | a >>> 29) >>> 0;
         d = d + (((c ^ (a & (b ^ c) >>> 0) >>> 0) >>> 0) + (ctx.block[1] = (((ptr.get(4) | ptr.get(5) << 8 >>> 0) >>> 0 | ptr.get(6) << 16 >>> 0) >>> 0 | ptr.get(7) << 24 >>> 0) >>> 0) >>> 0) >>> 0, d = (d << 7 >>> 0 | d >>> 25) >>> 0;
@@ -148,16 +147,15 @@ export function nhmd4_init(ctx) {   // nhmd4.c:183
  * @param {number | bigint} size size_t
  */
 export function nhmd4_update(ctx, data, size) {   // nhmd4.c:196
-    let saved_lo = 0, used = 0, free = 0;
     /* @UNSAFE */
-    saved_lo = ctx.lo;
+    const saved_lo = ctx.lo;
     if ((ctx.lo = $c.u32($c.andu64($c.addu64(saved_lo, size), 536870911))) < saved_lo) {
         ctx.hi = ctx.hi + 1 >>> 0;
     }
     ctx.hi = ctx.hi + $c.u32($c.shru64(size, 29)) >>> 0;
-    used = (saved_lo & 63) >>> 0;
+    const used = (saved_lo & 63) >>> 0;
     if (used) {
-        free = $c.subu64(64, used);
+        const free = $c.subu64(64, used);
         if (size < free) {
             $c.memcpy(new $c.Ptr(ctx.buffer, $c.idx(used)), data, size);
             return;
@@ -178,11 +176,11 @@ export function nhmd4_update(ctx, data, size) {   // nhmd4.c:196
  * @param {$c.Ptr | null} result unsigned char *
  */
 export function nhmd4_final(ctx, result) {   // nhmd4.c:235
-    let used = 0, free = 0, $t1;
+    let $t1;
     /* @UNSAFE */
-    used = $c.andu64(ctx.lo, 63);
+    let used = $c.andu64(ctx.lo, 63);
     ctx.buffer[$c.idx(($t1 = used, used = $c.addu64($t1, 1), $t1))] = 128;
-    free = $c.subu64(64, used);
+    let free = $c.subu64(64, used);
     if (free < 8) {
         $c.memset(new $c.Ptr(ctx.buffer, $c.idx(used)), 0, free);
         nhmd4_body(ctx, new $c.Ptr(ctx.buffer, 0), 64);

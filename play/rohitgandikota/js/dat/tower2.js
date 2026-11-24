@@ -53,11 +53,11 @@ export async function tower2_level() {
     des.ladder('down', 3, 7);
     des.door('locked', 10, 4);
     des.door('locked', 9, 7);
-    des.monster('&', place[9]);
-    des.monster('&', place[0]);
-    des.monster('hell hound pup', place[1]);
-    des.monster('hell hound pup', place[2]);
-    des.monster('winter wolf', place[3]);
+    await des.monster('&', place[9]);
+    await des.monster('&', place[0]);
+    await des.monster('hell hound pup', place[1]);
+    await des.monster('hell hound pup', place[2]);
+    await des.monster('winter wolf', place[3]);
     des.object({ id: 'chest', coord: place[4],
                  contents: () => {
                      des.object('amulet of life saving');

@@ -429,10 +429,10 @@ const alteration_verbs = [
 ];
 
 // src/mkobj.c:752 costly_alteration()
-export async function costly_alteration(obj, alter_type) {
+export function costly_alteration(obj, alter_type) {
     if (alter_type < 0 || alter_type >= alteration_verbs.length) {
-        await impossible(`invalid alteration type (${alter_type})`);
-        alter_type = 0;
+        return impossible(`invalid alteration type (${alter_type})`)
+            .then(() => costly_alteration(obj, 0));
     }
     const cc = { x: 0, y: 0 }, shkpp = { shkp: null };
     let objroom = 0;
@@ -457,20 +457,22 @@ export async function costly_alteration(obj, alter_type) {
     case OBJ_FREE: case OBJ_INVENT:
         if (learn_bknown)
             set_bknown(obj, 1);
-        await verbalize(`You ${alteration_verbs[alter_type]} ${those} ${simpleonames(obj)}, you pay for ${them}!`);
-        await bill_dummy_object(obj);
-        break;
+        return (async () => {
+            await verbalize(`You ${alteration_verbs[alter_type]} ${those} ${simpleonames(obj)}, you pay for ${them}!`);
+            await bill_dummy_object(obj);
+        })();
     case OBJ_FLOOR:
         if (learn_bknown)
             obj.bknown = 1;
         if (costly_spot(game.u.ux, game.u.uy)
             && objroom === (game.u.ushops || '').charCodeAt(0)) {
-            await verbalize(`You ${alteration_verbs[alter_type]} ${those}, you pay for ${them}!`);
-            await bill_dummy_object(obj);
+            return (async () => {
+                await verbalize(`You ${alteration_verbs[alter_type]} ${those}, you pay for ${them}!`);
+                await bill_dummy_object(obj);
+            })();
         } else {
-            await stolen_value(obj, cc.x, cc.y, false, false);
+            return stolen_value(obj, cc.x, cc.y, false, false);
         }
-        break;
     }
 }
 
@@ -1459,34 +1461,42 @@ export function place_object(otmp, x, y) {
     if (otmp.where !== OBJ_FREE)
         throw new Error('place_object: object not free');
     let otmp2 = game.level.objectAt(x, y);
-    if (otmp.otyp === ONAMES.BOULDER
-        && (!otmp2 || otmp2.otyp !== ONAMES.BOULDER))
-        block_point(x, y);
+    // Billing can wait for input while the object is still free.
+    const held = obj_no_longer_held(otmp);
+    if (held)
+        return held.then(finishPlacement);
+    return finishPlacement();
 
-    // src/mkobj.c:2338, non-boulders follow all consecutive leading boulders.
-    if (otmp2?.otyp === ONAMES.BOULDER && otmp.otyp !== ONAMES.BOULDER) {
-        while (otmp2.nexthere?.otyp === ONAMES.BOULDER)
-            otmp2 = otmp2.nexthere;
-        otmp.nexthere = otmp2.nexthere;
-        otmp2.nexthere = otmp;
-    } else {
-        otmp.nexthere = otmp2;
-        game.level.objAt.set(`${x},${y}`, otmp);
+    function finishPlacement() {
+        if (otmp.otyp === ONAMES.BOULDER
+            && (!otmp2 || otmp2.otyp !== ONAMES.BOULDER))
+            block_point(x, y);
+
+        // src/mkobj.c:2338, non-boulders follow all consecutive leading boulders.
+        if (otmp2?.otyp === ONAMES.BOULDER && otmp.otyp !== ONAMES.BOULDER) {
+            while (otmp2.nexthere?.otyp === ONAMES.BOULDER)
+                otmp2 = otmp2.nexthere;
+            otmp.nexthere = otmp2.nexthere;
+            otmp2.nexthere = otmp;
+        } else {
+            otmp.nexthere = otmp2;
+            game.level.objAt.set(`${x},${y}`, otmp);
+        }
+        otmp.ox = x;
+        otmp.oy = y;
+        otmp.where = OBJ_FLOOR;
+        /* if placed outside of shop, no_charge is no longer applicable */
+        if (otmp.no_charge && !costly_spot(x, y)
+            && !costly_adjacent(find_objowner(otmp, x, y), x, y))
+            otmp.no_charge = 0;
+        game.level.objects.unshift(otmp);
+        if (otmp.timed)
+            obj_timer_checks(otmp, x, y, 0);
     }
-    otmp.ox = x;
-    otmp.oy = y;
-    otmp.where = OBJ_FLOOR;
-    /* if placed outside of shop, no_charge is no longer applicable */
-    if (otmp.no_charge && !costly_spot(x, y)
-        && !costly_adjacent(find_objowner(otmp, x, y), x, y))
-        otmp.no_charge = 0;
-    game.level.objects.unshift(otmp);
-    if (otmp.timed)
-        obj_timer_checks(otmp, x, y, 0);
 }
 
 // src/mkobj.c:2371 recreate_pile_at(). Only explicit restacking reorders fobj.
-export function recreate_pile_at(x, y) {
+export async function recreate_pile_at(x, y) {
     const reversed = [];
     for (let obj = game.level.objectAt(x, y), next; obj; obj = next) {
         next = obj.nexthere;
@@ -1494,7 +1504,7 @@ export function recreate_pile_at(x, y) {
         reversed.unshift(obj);
     }
     for (const obj of reversed)
-        place_object(obj, x, y);
+        await place_object(obj, x, y);
 }
 
 // src/mkobj.c:2508 remove_object(). Unlink the two independent chains.
@@ -2103,18 +2113,28 @@ export function discard_minvent(mtmp, uncreate_artifacts) {
 // returned pointer is the SURVIVING object, which is not always the one passed
 // in. Callers that keep using `obj` after this without taking the return value
 // are using a freed pointer.
+// Returns the survivor synchronously unless the held-object hook has pending
+// billing. In that case, the Promise resolves to the survivor after insertion.
 export function add_to_container(container, obj) {
-    /* C also panics on obj->where != OBJ_FREE and calls obj_no_longer_held()
-       when the container is on the floor; neither is modelled yet, and both
-       are bookkeeping rather than draws. */
-    for (const otmp of (container.cobj || []))
-        if (merged({ o: otmp }, { o: obj }) !== 0)
-            return otmp;
+    if ((obj.where | 0) !== OBJ_FREE)
+        throw new Error(`add_to_container: obj where=${obj.where}, not free`);
+    if (container.where !== OBJ_INVENT && container.where !== OBJ_MINVENT) {
+        const held = obj_no_longer_held(obj);
+        if (held)
+            return held.then(finishInsertion);
+    }
+    return finishInsertion();
 
-    obj.where = OBJ_CONTAINED;
-    obj.ocontainer = container;
-    (container.cobj ||= []).unshift(obj);
-    return obj;
+    function finishInsertion() {
+        for (const otmp of (container.cobj || []))
+            if (merged({ o: otmp }, { o: obj }) !== 0)
+                return otmp;
+
+        obj.where = OBJ_CONTAINED;
+        obj.ocontainer = container;
+        (container.cobj ||= []).unshift(obj);
+        return obj;
+    }
 }
 
 
@@ -2316,7 +2336,7 @@ export async function hornoplenty(horn, tipping = false, targetbox = null) {
                 ? 'Oops!  %s away from you!' : 'Oops!  %s to the floor!';
         await hold_another_object(obj, dropFmt, The(aobjnam(obj, 'slip')), null);
     } else if (targetbox) {
-        add_to_container(targetbox, obj);
+        await add_to_container(targetbox, obj);
         targetbox.owt = weight(targetbox);
         if (carried(targetbox)) {
             await encumber_msg();
@@ -2498,7 +2518,7 @@ export function obj_nexto(otmp) {
 import { consume_obj_charge } from './apply.js';
 import { can_reach_floor } from './pickup.js';
 import { hitfloor } from './dothrow.js';
-import { dropy, doaltarobj } from './do.js';
+import { dropy, doaltarobj, obj_no_longer_held } from './do.js';
 import { encumber_msg } from './attrib.js';
 import { surface } from './dungeon.js';
 import { makeknown } from './o_init.js';

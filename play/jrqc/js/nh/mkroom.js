@@ -64,9 +64,8 @@ const squadprob = $c.recArray($T.anon_mkroom_807, 4);
  * @returns {number} boolean
  */
 function isbig(sroom) {   // mkroom.c:42
-    let area = 0;
-    area = Math.imul((sroom.hx - sroom.lx | 0) + 1 | 0, (sroom.hy - sroom.ly | 0) + 1 | 0);
-    return $c.i8(area > 20 ? 1 : 0);
+    const area = Math.imul(sroom.hx - sroom.lx + 1, sroom.hy - sroom.ly + 1);
+    return area > 20 ? 1 : 0;
 }
 /* make and stock a room of a given type */
 /**
@@ -180,7 +179,7 @@ async function mkshop() {   // mkroom.c:95
             }
         }
     }
-    for (sroom = $c.relem(svr.rooms, 0); ; sroom = $c.radd(sroom, 1)) {
+    for (sroom = svr.rooms[0]; ; sroom = $c.radd(sroom, 1)) {
         /* return from this loop: cannot find any eligible room to be a shop
          * continue: sroom is ineligible
          * break: sroom is eligible
@@ -188,7 +187,7 @@ async function mkshop() {   // mkroom.c:95
         if (sroom.hx < 0) {
             return;
         }
-        if ($c.rdiff(sroom, $c.relem(svr.rooms, 0)) >= svn.nroom) {
+        if ($c.rdiff(sroom, svr.rooms[0]) >= svn.nroom) {
             await impossible($c.lit("rooms[] not closed by -1?"));
             return;
         }
@@ -207,9 +206,9 @@ async function mkshop() {   // mkroom.c:95
         }
     }
     if (!sroom.rlit) {
-        for (x = $c.i16(sroom.lx - 1 | 0); x <= (sroom.hx + 1 | 0); x = $c.i16(x + 1)) {
-            for (y = $c.i16(sroom.ly - 1 | 0); y <= (sroom.hy + 1 | 0); y = $c.i16(y + 1)) {
-                svl.level.locations[x][y].lit = (1) & 1;
+        for (x = $c.i16(sroom.lx - 1); x <= sroom.hx + 1; x = $c.i16(x + 1)) {
+            for (y = $c.i16(sroom.ly - 1); y <= sroom.hy + 1; y = $c.i16(y + 1)) {
+                svl.level.locations[x][y].lit = 1;
             }
         }
         sroom.rlit = 1;
@@ -242,11 +241,11 @@ async function mkshop() {   // mkroom.c:95
  * @returns {$T.mkroom | null} struct mkroom *
  */
 function pick_room(strict) {   // mkroom.c:220
-    let sroom = null, i = 0, $t1;
-    i = svn.nroom;
+    let sroom = null, $t1;
+    let i = svn.nroom;
     for (sroom = $c.relem(svr.rooms, rn2(svn.nroom)); $t1 = i, i = $t1 - 1 | 0, $t1; sroom = $c.radd(sroom, 1)) {
         if ($c.peq(sroom, $c.relem(svr.rooms, svn.nroom))) {
-            sroom = $c.relem(svr.rooms, 0);
+            sroom = svr.rooms[0];
         }
         if (sroom.hx < 0) {
             return null;
@@ -285,13 +284,12 @@ function mkzoo(type) {   // mkroom.c:244
  * @returns {Promise<void>}
  */
 async function mk_zoo_thronemon(x, y) {   // mkroom.c:257
-    let i = 0, pm = 0, mon = null;
-    i = rnd(await level_difficulty());
-    pm = i > 9 ? PM.OGRE_TYRANT : i > 5 ? PM.ELVEN_MONARCH : i > 2 ? PM.DWARF_RULER : PM.GNOME_RULER;
-    mon = await makemon($c.relem(mons, pm), x, y, NO.MM_FLAGS);
+    const i = rnd(await level_difficulty());
+    const pm = i > 9 ? PM.OGRE_TYRANT : i > 5 ? PM.ELVEN_MONARCH : i > 2 ? PM.DWARF_RULER : PM.GNOME_RULER;
+    const mon = await makemon($c.relem(mons, pm), x, y, NO.MM_FLAGS);
     if (mon) {
-        mon.msleeping = (1) & 1;
-        mon.mpeaceful = (0) & 1;
+        mon.msleeping = 1;
+        mon.mpeaceful = 0;
         set_malign(mon);
         /* Give him a sceptre to pound in judgment */
         await mongets(mon, MACE);
@@ -307,7 +305,7 @@ export async function fill_zoo(sroom) {   // mkroom.c:276
     type = sroom.rtype;
     tx = 0;
     ty = 0;
-    rmno = $c.i32($c.add64($c.rdiff(sroom, $c.relem(svr.rooms, 0)), ROOMOFFSET));
+    rmno = $c.i32($c.add64($c.rdiff(sroom, svr.rooms[0]), ROOMOFFSET));
     /* Note: This doesn't check needfill; it assumes the caller has already
        done that. */
     sh = sroom.fdoor;
@@ -335,11 +333,11 @@ export async function fill_zoo(sroom) {   // mkroom.c:276
                 await mk_zoo_thronemon(tx, ty);
                 break;
             case BEEHIVE:
-                tx = $c.i16(sroom.lx + $c.div32((sroom.hx - sroom.lx | 0) + 1 | 0, 2) | 0);
-                ty = $c.i16(sroom.ly + $c.div32((sroom.hy - sroom.ly | 0) + 1 | 0, 2) | 0);
+                tx = $c.i16(sroom.lx + $c.div32(sroom.hx - sroom.lx + 1, 2) | 0);
+                ty = $c.i16(sroom.ly + $c.div32(sroom.hy - sroom.ly + 1, 2) | 0);
                 if (sroom.irregular) {
                     /* center might not be valid, so put queen elsewhere */
-                    if ((svl.level.locations[tx][ty].roomno | 0) !== rmno || svl.level.locations[tx][ty].edge | 0) {
+                    if (svl.level.locations[tx][ty].roomno !== rmno || svl.level.locations[tx][ty].edge) {
                         somexyspace(sroom, mm);
                         tx = mm.x;
                         ty = mm.y;
@@ -356,7 +354,7 @@ export async function fill_zoo(sroom) {   // mkroom.c:276
     for (sx = sroom.lx; sx <= sroom.hx; sx = sx + 1 | 0) {
         for (sy = sroom.ly; sy <= sroom.hy; sy = sy + 1 | 0) {
             if (sroom.irregular) {
-                if ((svl.level.locations[sx][sy].roomno | 0) !== rmno || svl.level.locations[sx][sy].edge | 0 || sroom.doorct && distmin($c.i16(sx), $c.i16(sy), $c.radd(svd.doors, sh).x, $c.radd(svd.doors, sh).y) <= 1) {
+                if (svl.level.locations[sx][sy].roomno !== rmno || svl.level.locations[sx][sy].edge || sroom.doorct && distmin($c.i16(sx), $c.i16(sy), $c.radd(svd.doors, sh).x, $c.radd(svd.doors, sh).y) <= 1) {
                     continue;
                 }
             } else if (!(svl.level.locations[sx][sy].typ > DOOR) || sroom.doorct && (sx === sroom.lx && $c.radd(svd.doors, sh).x === (sx - 1 | 0) || sx === sroom.hx && $c.radd(svd.doors, sh).x === (sx + 1 | 0) || sy === sroom.ly && $c.radd(svd.doors, sh).y === (sy - 1 | 0) || sy === sroom.hy && $c.radd(svd.doors, sh).y === (sy + 1 | 0))) {
@@ -366,11 +364,11 @@ export async function fill_zoo(sroom) {   // mkroom.c:276
             if (type === COURT && svl.level.locations[sx][sy].typ === THRONE) {
                 continue;
             }
-            mon = await makemon(type === COURT ? await courtmon() : type === BARRACKS ? await squadmon() : type === MORGUE ? await morguemon() : type === BEEHIVE ? sx === tx && sy === ty ? $c.relem(mons, PM.QUEEN_BEE) : $c.relem(mons, PM.KILLER_BEE) : type === LEPREHALL ? $c.relem(mons, PM.LEPRECHAUN) : type === COCKNEST ? $c.relem(mons, PM.COCKATRICE) : type === ANTHOLE ? await antholemon() : null, $c.i16(sx), $c.i16(sy), MM.ASLEEP | MM.NOGRP);
+            mon = await makemon(type === COURT ? await courtmon() : type === BARRACKS ? await squadmon() : type === MORGUE ? await morguemon() : type === BEEHIVE ? sx === tx && sy === ty ? mons[PM.QUEEN_BEE] : mons[PM.KILLER_BEE] : type === LEPREHALL ? mons[PM.LEPRECHAUN] : type === COCKNEST ? mons[PM.COCKATRICE] : type === ANTHOLE ? await antholemon() : null, $c.i16(sx), $c.i16(sy), MM.ASLEEP | MM.NOGRP);
             if (mon) {
-                mon.msleeping = (1) & 1;
-                if (type === COURT && mon.mpeaceful | 0) {
-                    mon.mpeaceful = (0) & 1;
+                mon.msleeping = 1;
+                if (type === COURT && mon.mpeaceful) {
+                    mon.mpeaceful = 0;
                     set_malign(mon);
                 }
             }
@@ -442,23 +440,23 @@ export async function fill_zoo(sroom) {   // mkroom.c:276
                 await add_to_container(chest, gold);
                 $t4 = await weight(chest) >>> 0, chest.owt = $t4;
                 chest.spe = 2;   /* so it can be found later */
-                svl.level.flags.has_court = (1) & 1;
+                svl.level.flags.has_court = 1;
                 break;
             }
         case BARRACKS:
-            svl.level.flags.has_barracks = (1) & 1;
+            svl.level.flags.has_barracks = 1;
             break;
         case ZOO:
-            svl.level.flags.has_zoo = (1) & 1;
+            svl.level.flags.has_zoo = 1;
             break;
         case MORGUE:
-            svl.level.flags.has_morgue = (1) & 1;
+            svl.level.flags.has_morgue = 1;
             break;
         case SWAMP:
-            svl.level.flags.has_swamp = (1) & 1;
+            svl.level.flags.has_swamp = 1;
             break;
         case BEEHIVE:
-            svl.level.flags.has_beehive = (1) & 1;
+            svl.level.flags.has_beehive = 1;
             break;
     }
 }
@@ -470,10 +468,10 @@ export async function fill_zoo(sroom) {   // mkroom.c:276
  * @returns {Promise<void>}
  */
 export async function mkundead(mm, revive_corpses, mm_flags) {   // mkroom.c:456
-    let cnt = 0, mdat = null, otmp = null, cc = new $T.nhcoord(), $t1;
-    cnt = $c.div32(await level_difficulty() + 1 | 0, 10) + rnd(5) | 0;
+    let otmp = null, cc = new $T.nhcoord(), $t1;
+    let cnt = $c.div32(await level_difficulty() + 1, 10) + rnd(5) | 0;
     while ($t1 = cnt, cnt = $t1 - 1 | 0, $t1) {
-        mdat = await morguemon();
+        const mdat = await morguemon();
         if (mdat && await enexto(cc, mm.x, mm.y, mdat) && (!revive_corpses || !(otmp = sobj_at(CORPSE, cc.x, cc.y)) || !await revive(otmp, FALSE))) {
             await makemon(mdat, cc.x, cc.y, mm_flags >>> 0);
         }
@@ -484,14 +482,13 @@ export async function mkundead(mm, revive_corpses, mm_flags) {   // mkroom.c:456
  * @returns {Promise<$T.permonst | null>} struct permonst *
  */
 async function morguemon() {   // mkroom.c:478
-    let i = 0, hd = 0, ndemon_res = 0;
-    i = rn2(100);
-    hd = rn2(await level_difficulty());
+    const i = rn2(100);
+    const hd = rn2(await level_difficulty());
     if (hd > 10 && i < 10) {
         if (Inhell() || In_endgame(u.uz)) {
             return await mkclass(S.DEMON, 0);
         } else {
-            ndemon_res = await ndemon(A.NONE);
+            const ndemon_res = await ndemon(A.NONE);
             if (ndemon_res !== NON_PM) {
                 return $c.relem(mons, ndemon_res);
             }
@@ -501,16 +498,16 @@ async function morguemon() {   // mkroom.c:478
     if (hd > 8 && i > 85) {
         return await mkclass(S.VAMPIRE, 0);
     }
-    return i < 20 ? $c.relem(mons, PM.GHOST) : i < 40 ? $c.relem(mons, PM.WRAITH) : await mkclass(S.ZOMBIE, 0);
+    return i < 20 ? mons[PM.GHOST] : i < 40 ? mons[PM.WRAITH] : await mkclass(S.ZOMBIE, 0);
 }
 /**
  * @returns {Promise<$T.permonst | null>} struct permonst *
  */
 export async function antholemon() {   // mkroom.c:502
-    let mtyp = 0, indx = 0, trycnt = 0;
-    trycnt = 0;
+    let mtyp = 0;
+    let trycnt = 0;
     /* casts are for dealing with time_t */
-    indx = $c.i32($c.rem64($G.ubirthday, 3));
+    let indx = $c.i32($c.rem64($G.ubirthday, 3));
     indx = indx + await level_difficulty() | 0;
     /* Same monsters within a level, different ones between levels */
     do {
@@ -533,30 +530,30 @@ export async function antholemon() {   // mkroom.c:502
  * @returns {Promise<void>}
  */
 async function mkswamp() {   // mkroom.c:530
-    let sroom = null, i = 0, eelct = 0, sx = 0, sy = 0, rmno = 0;
+    let i = 0, sx = 0, sy = 0;
     /* Michiel Huisjes & Fred de Wilde */
-    eelct = 0;
+    let eelct = 0;
     for (i = 0; i < 5; i = i + 1 | 0) {
         /* turn up to 5 rooms swampy */
-        sroom = $c.relem(svr.rooms, rn2(svn.nroom));
+        const sroom = $c.relem(svr.rooms, rn2(svn.nroom));
         if (sroom.hx < 0 || sroom.rtype !== OROOM || has_upstairs(sroom) || has_dnstairs(sroom)) {
             continue;
         }
-        rmno = $c.i32($c.rdiff(sroom, $c.relem(svr.rooms, 0))) + ROOMOFFSET | 0;
+        const rmno = $c.i32($c.rdiff(sroom, svr.rooms[0])) + ROOMOFFSET | 0;
         /* satisfied; make a swamp */
         sroom.rtype = SWAMP;
         for (sx = sroom.lx; sx <= sroom.hx; sx = $c.i16(sx + 1)) {
             for (sy = sroom.ly; sy <= sroom.hy; sy = $c.i16(sy + 1)) {
-                if (!(svl.level.locations[sx][sy].typ >= ROOM) || (svl.level.locations[sx][sy].roomno | 0) !== rmno) {
+                if (!(svl.level.locations[sx][sy].typ >= ROOM) || svl.level.locations[sx][sy].roomno !== rmno) {
                     continue;
                 }
                 if (!OBJ_AT(sx, sy) && !MON_AT(sx, sy) && !t_at(sx, sy) && !nexttodoor(sx, sy)) {
-                    if ($c.rem32(sx + sy | 0, 2)) {
+                    if ($c.rem32(sx + sy, 2)) {
                         await del_engr_at(sx, sy);
                         svl.level.locations[sx][sy].typ = POOL;
                         if (!eelct || !rn2(4)) {
                             /* mkclass() won't do, as we might get kraken */
-                            await makemon(rn2(5) ? $c.relem(mons, PM.GIANT_EEL) : rn2(2) ? $c.relem(mons, PM.PIRANHA) : $c.relem(mons, PM.ELECTRIC_EEL), sx, sy, NO.MM_FLAGS);
+                            await makemon(rn2(5) ? mons[PM.GIANT_EEL] : rn2(2) ? mons[PM.PIRANHA] : mons[PM.ELECTRIC_EEL], sx, sy, NO.MM_FLAGS);
                             eelct = eelct + 1 | 0;
                         }
                     } else if (!rn2(4)) {   /* swamps tend to be moldy */
@@ -565,7 +562,7 @@ async function mkswamp() {   // mkroom.c:530
                 }
             }
         }
-        svl.level.flags.has_swamp = (1) & 1;
+        svl.level.flags.has_swamp = 1;
     }
 }
 /**
@@ -573,17 +570,16 @@ async function mkswamp() {   // mkroom.c:530
  * @returns {$T.nhcoord | null} coord *
  */
 function shrine_pos(roomno) {   // mkroom.c:577
-    let delta = 0, troom = null;
-    troom = $c.relem(svr.rooms, roomno - ROOMOFFSET | 0);
+    const troom = $c.relem(svr.rooms, roomno - ROOMOFFSET | 0);
     /* if width and height are odd, placement will be the exact center;
        if either or both are even, center point is a hypothetical spot
        between map locations and placement will be adjacent to that */
-    delta = troom.hx - troom.lx | 0;
+    let delta = troom.hx - troom.lx;
     shrine_pos$buf.x = $c.i16(troom.lx + $c.div32(delta, 2) | 0);
     if ($c.rem32(delta, 2) && rn2(2)) {
         shrine_pos$buf.x = $c.i16(shrine_pos$buf.x + 1);
     }
-    delta = troom.hy - troom.ly | 0;
+    delta = troom.hy - troom.ly;
     shrine_pos$buf.y = $c.i16(troom.ly + $c.div32(delta, 2) | 0);
     if ($c.rem32(delta, 2) && rn2(2)) {
         shrine_pos$buf.y = $c.i16(shrine_pos$buf.y + 1);
@@ -594,7 +590,7 @@ function shrine_pos(roomno) {   // mkroom.c:577
  * @returns {Promise<void>}
  */
 async function mktemple() {   // mkroom.c:598
-    let sroom = null, shrine_spot = null, lev = null, $t1;
+    let sroom = null, $t1;
     if (!(sroom = pick_room(TRUE))) {
         return;
     }
@@ -604,13 +600,13 @@ async function mktemple() {   // mkroom.c:598
      * In temples, shrines are blessed altars
      * located in the center of the room
      */
-    shrine_spot = shrine_pos($c.i32($c.add64($c.rdiff(sroom, $c.relem(svr.rooms, 0)), ROOMOFFSET)));
-    lev = $c.relem(svl.level.locations[shrine_spot.x], shrine_spot.y);
+    const shrine_spot = shrine_pos($c.i32($c.add64($c.rdiff(sroom, svr.rooms[0]), ROOMOFFSET)));
+    const lev = $c.relem(svl.level.locations[shrine_spot.x], shrine_spot.y);
     lev.typ = ALTAR;
     $t1 = induced_align(80), lev.flags = ($t1) & 31;
     await priestini(u.uz, sroom, shrine_spot.x, shrine_spot.y, FALSE);
     lev.flags = ((lev.flags | 0 | AM.SHRINE) >>> 0) & 31;
-    svl.level.flags.has_temple = (1) & 1;
+    svl.level.flags.has_temple = 1;
 }
 /**
  * @param {number} sx int
@@ -618,13 +614,13 @@ async function mktemple() {   // mkroom.c:598
  * @returns {number} boolean
  */
 export function nexttodoor(sx, sy) {   // mkroom.c:623
-    let dx = 0, dy = 0, lev = null;
+    let dx = 0, dy = 0;
     for (dx = -1; dx <= 1; dx = dx + 1 | 0) {
         for (dy = -1; dy <= 1; dy = dy + 1 | 0) {
             if (!isok($c.i16(sx + dx | 0), $c.i16(sy + dy | 0))) {
                 continue;
             }
-            lev = $c.relem(svl.level.locations[sx + dx | 0], sy + dy | 0);
+            const lev = $c.relem(svl.level.locations[sx + dx | 0], sy + dy | 0);
             if (IS_DOOR(lev.typ) || lev.typ === SDOOR) {
                 return TRUE;
             }
@@ -637,8 +633,7 @@ export function nexttodoor(sx, sy) {   // mkroom.c:623
  * @returns {number} boolean
  */
 export function has_dnstairs(sroom) {   // mkroom.c:640
-    let stway = null;
-    stway = gs.stairs;
+    let stway = gs.stairs;
     while (stway) {
         if (!stway.up && inside_room(sroom, stway.sx, stway.sy)) {
             return TRUE;
@@ -652,8 +647,7 @@ export function has_dnstairs(sroom) {   // mkroom.c:640
  * @returns {number} boolean
  */
 export function has_upstairs(sroom) {   // mkroom.c:653
-    let stway = null;
-    stway = gs.stairs;
+    let stway = gs.stairs;
     while (stway) {
         if (stway.up && inside_room(sroom, stway.sx, stway.sy)) {
             return TRUE;
@@ -667,14 +661,14 @@ export function has_upstairs(sroom) {   // mkroom.c:653
  * @returns {number} int
  */
 export function somex(croom) {   // mkroom.c:666
-    return rn2((croom.hx - croom.lx | 0) + 1 | 0) + croom.lx | 0;
+    return rn2(croom.hx - croom.lx + 1) + croom.lx | 0;
 }
 /**
  * @param {$T.mkroom | null} croom struct mkroom *
  * @returns {number} int
  */
 export function somey(croom) {   // mkroom.c:672
-    return rn2((croom.hy - croom.ly | 0) + 1 | 0) + croom.ly | 0;
+    return rn2(croom.hy - croom.ly + 1) + croom.ly | 0;
 }
 /**
  * @param {$T.mkroom | null} croom struct mkroom *
@@ -683,12 +677,11 @@ export function somey(croom) {   // mkroom.c:672
  * @returns {number} boolean
  */
 export function inside_room(croom, x, y) {   // mkroom.c:678
-    let i = 0;
     if (croom.irregular) {
-        i = $c.i32($c.add64($c.rdiff(croom, $c.relem(svr.rooms, 0)), ROOMOFFSET));
-        return $c.i8(!svl.level.locations[x][y].edge && (svl.level.locations[x][y].roomno | 0) === i ? 1 : 0);
+        const i = $c.i32($c.add64($c.rdiff(croom, svr.rooms[0]), ROOMOFFSET));
+        return !svl.level.locations[x][y].edge && svl.level.locations[x][y].roomno === i ? 1 : 0;
     }
-    return $c.i8(x >= (croom.lx - 1 | 0) && x <= (croom.hx + 1 | 0) && y >= (croom.ly - 1 | 0) && y <= (croom.hy + 1 | 0) ? 1 : 0);
+    return x >= croom.lx - 1 && x <= croom.hx + 1 && y >= croom.ly - 1 && y <= croom.hy + 1 ? 1 : 0;
 }
 /* return a coord c inside mkroom croom, but not in a subroom.
    returns TRUE if any such space found.
@@ -703,18 +696,18 @@ export function somexy(croom, c) {   // mkroom.c:694
     let try_cnt = 0, i = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8;
     try_cnt = 0;
     if (croom.irregular) {
-        i = $c.i32($c.add64($c.rdiff(croom, $c.relem(svr.rooms, 0)), ROOMOFFSET));
+        i = $c.i32($c.add64($c.rdiff(croom, svr.rooms[0]), ROOMOFFSET));
         while (($t1 = try_cnt, try_cnt = $t1 + 1 | 0, $t1) < 100) {
             $t2 = $c.i16(somex(croom)), c.x = $t2;
             $t3 = $c.i16(somey(croom)), c.y = $t3;
-            if (!svl.level.locations[c.x][c.y].edge && (svl.level.locations[c.x][c.y].roomno | 0) === i) {
+            if (!svl.level.locations[c.x][c.y].edge && svl.level.locations[c.x][c.y].roomno === i) {
                 return TRUE;
             }
         }
         /* try harder; exhaustively search until one is found */
         for (c.x = croom.lx; c.x <= croom.hx; c.x = $c.i16(c.x + 1)) {
             for (c.y = croom.ly; c.y <= croom.hy; c.y = $c.i16(c.y + 1)) {
-                if (!svl.level.locations[c.x][c.y].edge && (svl.level.locations[c.x][c.y].roomno | 0) === i) {
+                if (!svl.level.locations[c.x][c.y].edge && svl.level.locations[c.x][c.y].roomno === i) {
                     return TRUE;
                 }
             }
@@ -754,10 +747,10 @@ export function somexy(croom, c) {   // mkroom.c:694
  * @returns {number} boolean
  */
 export function somexyspace(croom, c) {   // mkroom.c:744
-    let trycnt = 0, okay = 0, $t1;
-    trycnt = 0;
+    let okay = 0, $t1;
+    let trycnt = 0;
     do {
-        okay = $c.i8(somexy(croom, c) && isok(c.x, c.y) && !occupied(c.x, c.y) && (svl.level.locations[c.x][c.y].typ === ROOM || svl.level.locations[c.x][c.y].typ === CORR || svl.level.locations[c.x][c.y].typ === ICE) ? 1 : 0);
+        okay = somexy(croom, c) && isok(c.x, c.y) && !occupied(c.x, c.y) && (svl.level.locations[c.x][c.y].typ === ROOM || svl.level.locations[c.x][c.y].typ === CORR || svl.level.locations[c.x][c.y].typ === ICE) ? 1 : 0;
     } while (($t1 = trycnt, trycnt = $t1 + 1 | 0, $t1) < 100 && !okay);
     return okay;
 }
@@ -773,7 +766,7 @@ export function somexyspace(croom, c) {   // mkroom.c:744
  */
 export function search_special(type) {   // mkroom.c:765
     let croom = null;
-    for (croom = $c.relem(svr.rooms, 0); croom.hx >= 0; croom = $c.radd(croom, 1)) {
+    for (croom = svr.rooms[0]; croom.hx >= 0; croom = $c.radd(croom, 1)) {
         if (type === ANY.TYPE && croom.rtype !== OROOM || type === ANY.SHOP && croom.rtype >= SHOPBASE || croom.rtype === type) {
             return croom;
         }
@@ -789,8 +782,7 @@ export function search_special(type) {   // mkroom.c:765
  * @returns {Promise<$T.permonst | null>} struct permonst *
  */
 export async function courtmon() {   // mkroom.c:783
-    let i = 0;
-    i = rn2(60) + rn2(Math.imul(3, await level_difficulty())) | 0;
+    const i = rn2(60) + rn2(Math.imul(3, await level_difficulty())) | 0;
     if (i > 100) {
         return await mkclass(S.DRAGON, 0);
     } else if (i > 95) {
@@ -802,9 +794,9 @@ export async function courtmon() {   // mkroom.c:783
     } else if (i > 60) {
         return await mkclass(S.ORC, 0);
     } else if (i > 45) {
-        return $c.relem(mons, PM.BUGBEAR);
+        return mons[PM.BUGBEAR];
     } else if (i > 30) {
-        return $c.relem(mons, PM.HOBGOBLIN);
+        return mons[PM.HOBGOBLIN];
     } else if (i > 15) {
         return await mkclass(S.GNOME, 0);
     } else {
@@ -817,7 +809,7 @@ export async function courtmon() {   // mkroom.c:783
  */
 async function squadmon() {   // mkroom.c:817
     let sel_prob = 0, i = 0, cpro = 0, mndx = 0;
-    sel_prob = rnd(80 + await level_difficulty() | 0);
+    sel_prob = rnd(80 + await level_difficulty());
     cpro = 0;
     gotone$: {
         for (i = 0; i < 4; i = i + 1 | 0) {
@@ -912,8 +904,7 @@ export async function rest_rooms(nhfp) {   // mkroom.c:893
  * @returns {number} int
  */
 export function cmap_to_type(sym) {   // mkroom.c:912
-    let typ = 0;
-    typ = STONE;   /* catchall */
+    let typ = STONE;   /* catchall */
     switch (sym) {
         case S.stone:
             typ = STONE;
@@ -1057,15 +1048,15 @@ export function cmap_to_type(sym) {   // mkroom.c:912
  * @returns {Promise<number>} boolean
  */
 async function invalid_shop_shape(sroom) {   // mkroom.c:1050
-    let x = 0, y = 0, doorx = 0, doory = 0, insidex = 0, insidey = 0, insidect = 0;
-    doorx = $c.radd(svd.doors, sroom.fdoor).x;
-    doory = $c.radd(svd.doors, sroom.fdoor).y;
-    insidex = 0;
-    insidey = 0;
-    insidect = 0;
+    let x = 0, y = 0;
+    const doorx = $c.radd(svd.doors, sroom.fdoor).x;
+    const doory = $c.radd(svd.doors, sroom.fdoor).y;
+    let insidex = 0;
+    let insidey = 0;
+    let insidect = 0;
     /* First, identify squares inside the room and next to the door. */
-    for (x = $c.i16(max(doorx - 1 | 0, sroom.lx)); x <= min(doorx + 1 | 0, sroom.hx); x = $c.i16(x + 1)) {
-        for (y = $c.i16(max(doory - 1 | 0, sroom.ly)); y <= min(doory + 1 | 0, sroom.hy); y = $c.i16(y + 1)) {
+    for (x = $c.i16(max(doorx - 1, sroom.lx)); x <= min(doorx + 1, sroom.hx); x = $c.i16(x + 1)) {
+        for (y = $c.i16(max(doory - 1, sroom.ly)); y <= min(doory + 1, sroom.hy); y = $c.i16(y + 1)) {
             if (svl.level.locations[x][y].typ === ROOM) {
                 insidex = x;
                 insidey = y;
@@ -1083,8 +1074,8 @@ async function invalid_shop_shape(sroom) {   // mkroom.c:1050
         /* But if it is 1, scan all adjacent squares for other squares
          * that are part of this room. */
         insidect = 0;
-        for (x = $c.i16(max(insidex - 1 | 0, sroom.lx)); x <= min(insidex + 1 | 0, sroom.hx); x = $c.i16(x + 1)) {
-            for (y = $c.i16(max(insidey - 1 | 0, sroom.ly)); y <= min(insidey + 1 | 0, sroom.hy); y = $c.i16(y + 1)) {
+        for (x = $c.i16(max(insidex - 1, sroom.lx)); x <= min(insidex + 1, sroom.hx); x = $c.i16(x + 1)) {
+            for (y = $c.i16(max(insidey - 1, sroom.ly)); y <= min(insidey + 1, sroom.hy); y = $c.i16(y + 1)) {
                 if (x === insidex && y === insidey) {
                     continue;
                 }

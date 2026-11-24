@@ -37,15 +37,15 @@ export async function knifila_level() {
     des.object();
     des.object();
 
-    des.monster({ id: 'quasit', peaceful: 0 });
-    des.monster({ id: 'quasit', peaceful: 0 });
-    des.monster({ id: 'quasit', peaceful: 0 });
-    des.monster({ id: 'quasit', peaceful: 0 });
-    des.monster({ class: 'i', peaceful: 0 });
-    des.monster({ id: 'ochre jelly', peaceful: 0 });
+    await des.monster({ id: 'quasit', peaceful: 0 });
+    await des.monster({ id: 'quasit', peaceful: 0 });
+    await des.monster({ id: 'quasit', peaceful: 0 });
+    await des.monster({ id: 'quasit', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ id: 'ochre jelly', peaceful: 0 });
 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 }

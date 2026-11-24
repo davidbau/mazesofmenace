@@ -160,7 +160,7 @@ export async function dowrite(pen) {   // write.c:74
     deferred = real = 0;   /* not any scroll or book */
     deferralchance = 0;   /* incremented for each oc_uname match */
     first = svb.bases[paper.oclass];
-    last = svb.bases[paper.oclass + 1 | 0] - 1 | 0;
+    last = svb.bases[paper.oclass + 1] - 1 | 0;
     found$: {
         /* first loop: look for match with name/description */
         for (i = first; i <= last; i = i + 1 | 0) {
@@ -171,7 +171,7 @@ export async function dowrite(pen) {   // write.c:74
             if (!strncmpi(obj_descr[objects[i].oc_name_idx].oc_name, nm, -1)) {
                 /* spellbooks can only be written by_name, so no need to
                    hold out for a 'better' by_descr match */
-                if (objects[i].oc_name_known | 0 || paper.oclass === SPBOOK_CLASS) {
+                if (objects[i].oc_name_known || paper.oclass === SPBOOK_CLASS) {
                     break found$;
                 } else {
                     /* save item in case there are no better by_descr matches */
@@ -203,7 +203,7 @@ export async function dowrite(pen) {   // write.c:74
              *   and 2/3 chance to keep previous 50:50
              *   choice; so on for higher match counts.
              */
-            if (objects[i].oc_uname && !strncmpi(objects[i].oc_uname, nm, -1) && !(real && objects[i].oc_name_known | 0) && !rn2(deferralchance = deferralchance + 1 | 0)) {
+            if (objects[i].oc_uname && !strncmpi(objects[i].oc_uname, nm, -1) && !(real && objects[i].oc_name_known) && !rn2(deferralchance = deferralchance + 1 | 0)) {
                 deferred = i;
                 /* writing by user-assigned name is same as by description:
                    fails for books, works for scrolls (having an assigned
@@ -223,8 +223,8 @@ export async function dowrite(pen) {   // write.c:74
         await pline($c.lit("It's obscene!"));
         return ECMD.TIME;
     } else if (i === SPE_NOVEL) {
-        fanfic = $c.i8(!rn2(3) ? 1 : 0);
-        tearup = $c.i8(!rn2(3) ? 1 : 0);
+        fanfic = !rn2(3) ? 1 : 0;
+        tearup = !rn2(3) ? 1 : 0;
         if (!fanfic) {
             await You($c.lit("%s to write the Great Yendorian Novel, but %s inspiration."), !tearup ? $c.lit("prepare") : $c.lit("try"), !Hallucination() ? $c.lit("lack") : $c.lit("have too much"));
         } else {
@@ -250,7 +250,7 @@ export async function dowrite(pen) {   // write.c:74
         await livelog_printf(LL.CONDUCT, $c.lit("became literate by writing %s"), await an(typeword));
     }
     new_obj = await mksobj(i, FALSE, FALSE);
-    new_obj.bknown = ((paper.bknown | 0 && pen.bknown | 0 ? 1 : 0) >>> 0) & 1;
+    new_obj.bknown = (paper.bknown && pen.bknown ? 1 : 0) & 1;
     /* shk imposes a flat rate per use, not based on actual charges used */
     await check_unpaid(pen);
     /* see if there's enough ink */
@@ -311,7 +311,7 @@ export async function dowrite(pen) {   // write.c:74
     /* else if named, then only by-descr works */
     /* else fresh knowledge of the spell works */
     /* and Luck might override after previous checks have failed */
-    if (!objects[new_obj.otyp].oc_name_known && !(by_descr && objects[new_obj.otyp].oc_encountered | 0) && spell_knowledge !== spe_Fresh && rnl(gu.urole.mnum === PM.WIZARD && paper.oclass !== SPBOOK_CLASS || spell_knowledge === spe_GoingStale ? 5 : 15)) {
+    if (!objects[new_obj.otyp].oc_name_known && !(by_descr && objects[new_obj.otyp].oc_encountered) && spell_knowledge !== spe_Fresh && rnl(gu.urole.mnum === PM.WIZARD && paper.oclass !== SPBOOK_CLASS || spell_knowledge === spe_GoingStale ? 5 : 15)) {
         await You($c.lit("%s to write that."), by_descr ? $c.lit("fail") : $c.lit("don't know how"));
         /* scrolls disappear, spellbooks don't */
         if (paper.oclass === SPBOOK_CLASS) {
@@ -350,8 +350,8 @@ export async function dowrite(pen) {   // write.c:74
         /* acknowledge the change in the object's description... */
         await pline_The($c.lit("spellbook warps strangely, then turns %s."), new_book_description(new_obj.otyp, new $c.Ptr(namebuf, 0)));
     }
-    new_obj.blessed = ((curseval > 0 ? 1 : 0) >>> 0) & 1;
-    new_obj.cursed = ((curseval < 0 ? 1 : 0) >>> 0) & 1;
+    new_obj.blessed = (curseval > 0 ? 1 : 0) & 1;
+    new_obj.cursed = (curseval < 0 ? 1 : 0) & 1;
     /* 0: delivered in-game via external event (or randomly for fake mail);
        1: from bones or wishing; 2: written with marker */
     if (new_obj.otyp === SCR_MAIL) {
@@ -363,7 +363,7 @@ export async function dowrite(pen) {   // write.c:74
        where the label associated with the type-name isn't known yet;
        but if writing by description, the description is always known */
     new_obj.dknown = (FALSE) & 1;
-    if (objects[new_obj.otyp].oc_name_known | 0 || by_descr) {
+    if (objects[new_obj.otyp].oc_name_known || by_descr) {
         await observe_object(new_obj);
     }
     new_obj = await hold_another_object(new_obj, $c.lit("Oops!  %s out of your grasp!"), await The(await aobjnam(new_obj, $c.lit("slip"))), null);
@@ -383,10 +383,10 @@ export async function dowrite(pen) {   // write.c:74
  * @returns {$c.Ptr | null} char *
  */
 function new_book_description(booktype, outbuf) {   // write.c:395
-    let descr = null, comp_p = null;
+    let comp_p = null;
     /* subset of description strings from objects.c; if it grows
        much, we may need to add a new flag field to objects[] instead */
-    descr = obj_descr[objects[booktype].oc_descr_idx].oc_descr;
+    const descr = obj_descr[objects[booktype].oc_descr_idx].oc_descr;
     for (comp_p = new $c.Ptr(new_book_description$compositions, 0); comp_p.get(0); comp_p = comp_p.add(1)) {
         if (!strncmpi(descr, comp_p.get(0), -1)) {
             break;

@@ -30,8 +30,8 @@ let snapshot_mesgs = null;
  * @returns {Promise<number>} int
  */
 export async function tty_doprev_message() {   // topl.c:20
-    let cw = null, prevmsg_win = 0, i = 0;
-    cw = wins[$G.WIN_MESSAGE];
+    let prevmsg_win = 0, i = 0;
+    const cw = wins[$G.WIN_MESSAGE];
     if (iflags.prevmsg_window !== 115 && !$G.ttyDisplay.inread) {
         /* not single */
         if (iflags.prevmsg_window === 102) {
@@ -145,8 +145,8 @@ export async function tty_doprev_message() {   // topl.c:20
  * @returns {Promise<void>}
  */
 async function redotoplin(str) {   // topl.c:122
-    let otoplin = 0, $t1;
-    otoplin = $G.ttyDisplay.toplin;
+    let $t1;
+    const otoplin = $G.ttyDisplay.toplin;
     await home();
     if (!$G.ttyDisplay.topl_utf8) {
         if ($G.ttyDisplay.mixed && str.get(0) & 128) {
@@ -170,8 +170,8 @@ async function redotoplin(str) {   // topl.c:122
  * @returns {Promise<void>}
  */
 export async function show_topl(str) {   // topl.c:145
-    let cw = null, $t1;
-    cw = wins[$G.WIN_MESSAGE];
+    let $t1;
+    const cw = wins[$G.WIN_MESSAGE];
     /* show if either STOP isn't set or current message specifies NOSTOP */
     if ((cw.flags & (WIN_STOP | WIN_NOSTOP)) !== WIN_STOP) {
         /* NOSTOP cancels persistent STOP and is a one-shot operation;
@@ -194,10 +194,10 @@ export async function show_topl(str) {   // topl.c:145
  * @returns {Promise<void>}
  */
 export async function remember_topl() {   // topl.c:170
-    let cw = null, idx = 0, len = 0, $t1, $t2;
-    cw = wins[$G.WIN_MESSAGE];
-    idx = $c.i32(cw.maxrow);
-    len = $c.u32($c.addu64($c.strlen(new $c.Ptr(gt.toplines, 0)), 1));
+    let $t1, $t2;
+    const cw = wins[$G.WIN_MESSAGE];
+    const idx = $c.i32(cw.maxrow);
+    let len = $c.u32($c.addu64($c.strlen(new $c.Ptr(gt.toplines, 0)), 1));
     if (cw.flags & WIN.LOCKHISTORY || !new $c.Ptr(gt.toplines, 0).get(0)) {
         return;
     }
@@ -205,7 +205,7 @@ export async function remember_topl() {   // topl.c:170
         if (cw.data.get(idx)) {
             $c.free(cw.data.get(idx));
         }
-        len = len + (8 - ((len & 7) >>> 0) >>> 0) >>> 0;   /* pad up to next multiple of 8 */
+        len = len + (8 - ((len & 7) >>> 0)) >>> 0;   /* pad up to next multiple of 8 */
         $t1 = $c.asArr(await alloc(len), Int8Array), cw.data.set(idx, $t1);
         cw.datlen.set(idx, $c.i16(len));
     }
@@ -220,8 +220,7 @@ export async function remember_topl() {   // topl.c:170
  * @returns {Promise<void>}
  */
 export async function addtopl(s) {   // topl.c:194
-    let cw = null;
-    cw = wins[$G.WIN_MESSAGE];
+    const cw = wins[$G.WIN_MESSAGE];
     await tty_curs($G.BASE_WINDOW, $c.i32($c.add64(cw.curx, 1)), $c.i32(cw.cury));
     await putsyms(s);
     await cl_end();
@@ -231,8 +230,8 @@ export async function addtopl(s) {   // topl.c:194
  * @returns {Promise<void>}
  */
 export async function more() {   // topl.c:205
-    let cw = null, $t1, $t2;
-    cw = wins[$G.WIN_MESSAGE];
+    let $t1, $t2;
+    const cw = wins[$G.WIN_MESSAGE];
     if (iflags.debug_fuzzer) {
         return;
     }
@@ -277,13 +276,13 @@ export async function more() {   // topl.c:205
  * @returns {Promise<void>}
  */
 export async function update_topl(bp) {   // topl.c:251
-    let tl = null, otl = null, n0 = 0, notdied = 0, cw = null, skip = 0, $t1, $t2;
-    notdied = 1;
-    cw = wins[$G.WIN_MESSAGE];
-    skip = $c.i8((cw.flags & (WIN_STOP | WIN_NOSTOP)) === WIN_STOP ? 1 : 0);
+    let tl = null, $t1, $t2;
+    let notdied = 1;
+    const cw = wins[$G.WIN_MESSAGE];
+    let skip = (cw.flags & (WIN_STOP | WIN_NOSTOP)) === WIN_STOP ? 1 : 0;
     /* If there is room on the line, print message on same line */
     /* But messages like "You die..." deserve their own line */
-    n0 = $c.i32($c.strlen(bp));
+    let n0 = $c.i32($c.strlen(bp));
     /* room for --More-- */
     if (($G.ttyDisplay.toplin === TOPLINE.NEED_MORE || skip) && cw.cury === 0 && ((n0 + $c.i32($c.strlen(new $c.Ptr(gt.toplines, 0))) | 0) + 3 | 0) < (gt.tc_gbl_data.tc_CO - 8 | 0) && (notdied = $c.strncmp(bp, $c.lit("You die"), 7)) !== 0) {
         $c.strcat(new $c.Ptr(gt.toplines, 0), $c.lit("  "));
@@ -306,7 +305,7 @@ export async function update_topl(bp) {   // topl.c:251
     $c.strncpy(new $c.Ptr(gt.toplines, 0), bp, TBUFSZ);
     gt.toplines[TBUFSZ - 1] = 0;
     for (tl = new $c.Ptr(gt.toplines, 0); n0 >= gt.tc_gbl_data.tc_CO; ) {
-        otl = tl;
+        const otl = tl;
         for (tl = tl.add(gt.tc_gbl_data.tc_CO - 1 | 0); !$c.peq(tl, otl); tl = tl.add(-1)) {
             if (tl.get(0) === 32) {
                 break;
@@ -334,15 +333,14 @@ export async function update_topl(bp) {   // topl.c:251
  * @returns {Promise<void>}
  */
 async function topl_putsym(c) {   // topl.c:305
-    let cw = null, svx = 0;
-    cw = wins[$G.WIN_MESSAGE];
+    const cw = wins[$G.WIN_MESSAGE];
     if (cw === null) {
         await panic($c.lit("Putsym window MESSAGE nonexistent"));
     }
     switch (c) {
         case 8:
             if ($G.ttyDisplay.curx === 0 && $G.ttyDisplay.cury > 0) {
-                await tty_curs($G.BASE_WINDOW, gt.tc_gbl_data.tc_CO, $G.ttyDisplay.cury - 1 | 0);
+                await tty_curs($G.BASE_WINDOW, gt.tc_gbl_data.tc_CO, $G.ttyDisplay.cury - 1);
             }
             backsp();
             !!($G.ttyDisplay.curx > 0) || (await nhassert_failed($c.lit("ttyDisplay->curx > 0"), $c.lit("../win/tty/topl.c"), 317), 0);
@@ -372,7 +370,7 @@ async function topl_putsym(c) {   // topl.c:305
        buffer position â same pattern used by process_menu_window,
        process_text_window, and other NOMUX hooks in wintty.c. */
     {
-        svx = $G.ttyDisplay.curx;
+        const svx = $G.ttyDisplay.curx;
         $G.ttyDisplay.curx = $c.i16($G.ttyDisplay.curx - 1);
         nomux_putch(c);
         $G.ttyDisplay.curx = $c.i16(svx);
@@ -433,7 +431,7 @@ export async function tty_yn_function(query, resp, def) {   // topl.c:373
     $G.ttyDisplay.inread = $G.ttyDisplay.inread + 1 | 0;
     clean_up$: {
         if (resp) {
-            allow_num = $c.i8($c.strchr(resp, 35) !== null ? 1 : 0);
+            allow_num = $c.strchr(resp, 35) !== null ? 1 : 0;
             $c.strcpy(new $c.Ptr(respbuf, 0), resp);
             /* normally we force lowercase, but if any uppercase letters
                are present in the allowed response, preserve case;
@@ -502,7 +500,7 @@ export async function tty_yn_function(query, resp, def) {   // topl.c:373
                 q = 0;   /* force another loop iteration */
                 continue;
             }
-            digit_ok = $c.i8(allow_num && digit(q) ? 1 : 0);
+            digit_ok = allow_num && digit(q) ? 1 : 0;
             if (q === 27) {
                 if ($c.strchr(resp, 113)) {
                     q = 113;
@@ -527,7 +525,7 @@ export async function tty_yn_function(query, resp, def) {   // topl.c:373
                 if (q !== 35) {
                     digit_string[0] = q;
                     await addtopl(new $c.Ptr(digit_string, 0)), n_len = n_len + 1 | 0;
-                    value = q - 48 | 0;
+                    value = q - 48;
                     q = 35;
                 }
                 do {
@@ -537,7 +535,7 @@ export async function tty_yn_function(query, resp, def) {   // topl.c:373
                         z = lowc(z);
                     }
                     if (digit(z)) {
-                        dgt = z - 48 | 0;
+                        dgt = z - 48;
                         /* value = (10 * value) + (z - '0'); */
                         value = AppendLongDigit(value, dgt);
                         if (value < 0) {
@@ -601,13 +599,13 @@ export async function tty_yn_function(query, resp, def) {   // topl.c:373
  * @returns {Promise<void>}
  */
 async function msghistory_snapshot(purge) {   // topl.c:567
-    let mesg = null, i = 0, inidx = 0, outidx = 0, cw = null, $t1, $t2;
+    let i = 0, $t1, $t2;
     /* clear message history buffer as we copy it */
     /* paranoia (too early or too late panic save attempt?) */
     if ($G.WIN_MESSAGE === WIN_ERR || !wins[$G.WIN_MESSAGE]) {
         return;
     }
-    cw = wins[$G.WIN_MESSAGE];
+    const cw = wins[$G.WIN_MESSAGE];
     /* flush gt.toplines[], moving most recent message to history */
     await remember_topl();
     /* for a passive snapshot, we just copy pointers, so can't allow further
@@ -616,11 +614,11 @@ async function msghistory_snapshot(purge) {   // topl.c:567
         cw.flags = cw.flags | WIN.LOCKHISTORY;
     }
     snapshot_mesgs = $c.asArr(await alloc($c.u32($c.mulu64($c.u64($c.add64(cw.rows, 1)), 8))), 'ptr');
-    outidx = 0;
-    inidx = $c.i32(cw.maxrow);
+    let outidx = 0;
+    let inidx = $c.i32(cw.maxrow);
     for (i = 0; i < cw.rows; i = i + 1 | 0) {
         snapshot_mesgs.set(i, null);
-        mesg = cw.data.get(inidx);
+        const mesg = cw.data.get(inidx);
         if (mesg && mesg.get(0)) {
             snapshot_mesgs.set(($t1 = outidx, outidx = $t1 + 1 | 0, $t1), mesg);
             if (purge) {
@@ -675,14 +673,14 @@ function free_msghistory_snapshot(purged) {   // topl.c:613
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function tty_getmsghistory(init) {   // topl.c:645
-    let nextmesg = null, result = null, $t1;
-    result = null;
+    let $t1;
+    let result = null;
     if (init) {
         await msghistory_snapshot(0);
         tty_getmsghistory$nxtidx = 0;
     }
     if (snapshot_mesgs) {
-        nextmesg = snapshot_mesgs.get(($t1 = tty_getmsghistory$nxtidx, tty_getmsghistory$nxtidx = $t1 + 1 | 0, $t1));
+        const nextmesg = snapshot_mesgs.get(($t1 = tty_getmsghistory$nxtidx, tty_getmsghistory$nxtidx = $t1 + 1 | 0, $t1));
         if (nextmesg) {
             result = nextmesg;
         } else {

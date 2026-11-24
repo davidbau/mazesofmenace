@@ -155,8 +155,8 @@ async function delete_ls(ls) {   // light.c:142
  * @param {*} cs_rows seenV **
  */
 export function do_light_sources(cs_rows) {   // light.c:169
-    let x = 0, y = 0, min_x = 0, max_x = 0, max_y = 0, offset = 0, limits = null, at_hero_range = 0, ls = null, row = null;
-    at_hero_range = 0;
+    let x = 0, y = 0, min_x = 0, max_x = 0, max_y = 0, ls = null;
+    let at_hero_range = 0;
     for (ls = gl.light_base; ls; ls = ls.next) {
         ls.flags = $c.i16(ls.flags & ~LSF_SHOW);
         /*
@@ -192,16 +192,16 @@ export function do_light_sources(cs_rows) {   // light.c:169
              * Kevin's tests indicated that doing this brute-force
              * method is faster for radius <= 3 (or so).
              */
-            limits = circle_ptr(ls.range);
-            if ((max_y = $c.i16(ls.y + ls.range | 0)) >= ROWNO) {
+            const limits = circle_ptr(ls.range);
+            if ((max_y = $c.i16(ls.y + ls.range)) >= ROWNO) {
                 max_y = ROWNO - 1;
             }
-            if ((y = $c.i16(ls.y - ls.range | 0)) < 0) {
+            if ((y = $c.i16(ls.y - ls.range)) < 0) {
                 y = 0;
             }
             for (; y <= max_y; y = $c.i16(y + 1)) {
-                row = cs_rows.get(y);
-                offset = limits.get($c.abs(y - ls.y | 0));
+                const row = cs_rows.get(y);
+                const offset = limits.get($c.abs(y - ls.y));
                 if ((min_x = $c.i16(ls.x - offset | 0)) < 1) {
                     min_x = 1;
                 }
@@ -247,8 +247,8 @@ export function do_light_sources(cs_rows) {   // light.c:169
  * @returns {Promise<void>}
  */
 export async function show_transient_light(obj, x, y) {   // light.c:257
-    let ls = null, cameraflash = new $T.any(), mon = null, radius_squared = 0;
-    ls = null;
+    let cameraflash = new $T.any(), mon = null;
+    let ls = null;
     /* Null object indicates camera flash */
     if (!obj) {
         /* no need to temporarily light an already lit spot */
@@ -274,7 +274,7 @@ export async function show_transient_light(obj, x, y) {   // light.c:257
         }
         (!!$c.peq(obj, $c.asRec(null, $T.obj, 112)) ? 1 : 0) ? $c.__assert_rtn($c.lit("show_transient_light"), $c.lit("light.c"), 285, $c.lit("obj != NULL")) : 0;   /* necessary condition to get into this 'else' */
         if (!ls || obj.where !== OBJ.FREE) {
-            await impossible($c.lit("transient light %s %s %s not %s?"), obj.lamplit | 0 ? $c.lit("lit") : $c.lit("unlit"), await simpleonames(obj), await otense(obj, $c.lit("are")), !ls ? $c.lit("a light source") : $c.lit("free"));
+            await impossible($c.lit("transient light %s %s %s not %s?"), obj.lamplit ? $c.lit("lit") : $c.lit("unlit"), await simpleonames(obj), await otense(obj, $c.lit("are")), !ls ? $c.lit("a light source") : $c.lit("free"));
             return;
         }
     }
@@ -287,9 +287,9 @@ export async function show_transient_light(obj, x, y) {   // light.c:257
     /* full recalc; runs do_light_sources() */
     await vision_recalc(0);
     await flush_screen(0);
-    radius_squared = Math.imul(ls.range, ls.range);
+    const radius_squared = Math.imul(ls.range, ls.range);
     for (mon = svl.level.monlist; mon; mon = mon.nmon) {
-        if (DEADMONSTER(mon) || mon.isgd | 0 && !mon.mx) {
+        if (DEADMONSTER(mon) || mon.isgd && !mon.mx) {
             continue;
         }
         /* light range is the radius of a circle and we're limiting
@@ -299,7 +299,7 @@ export async function show_transient_light(obj, x, y) {   // light.c:257
            'obj' has reached its destination after missile traversal */
         if (dist2(mon.mx, mon.my, x, y) <= radius_squared) {
             if (canseemon(mon)) {
-                mon.mtemplit = (1) & 1;
+                mon.mtemplit = 1;
             }
         }
         /* [what about worm tails?] */
@@ -317,7 +317,7 @@ export async function show_transient_light(obj, x, y) {   // light.c:257
  * @returns {Promise<void>}
  */
 export async function transient_light_cleanup() {   // light.c:330
-    let mon = null, mtempcount = 0;
+    let mon = null;
     /* in case we're cleaning up a camera flash, remove all object light
        sources which aren't associated with a specific object */
     await discard_flashes();
@@ -327,13 +327,13 @@ export async function transient_light_cleanup() {   // light.c:330
     /* for thrown/kicked candle or lamp or for camera flash, some
        monsters may have been mapped in light which has now gone away
        so need to be replaced by "remembered, unseen monster" glyph */
-    mtempcount = 0;
+    let mtempcount = 0;
     for (mon = svl.level.monlist; mon; mon = mon.nmon) {
         if (DEADMONSTER(mon)) {
             continue;
         }
         if (mon.mtemplit) {
-            mon.mtemplit = (0) & 1;
+            mon.mtemplit = 0;
             mtempcount = mtempcount + 1 | 0;
             if (!canspotmon(mon)) {
                 await map_invisible(mon.mx, mon.my);
@@ -431,7 +431,7 @@ function whereis_mon(mon, fmflags) {   // light.c:398
  * @returns {Promise<void>}
  */
 export async function save_light_sources(nhfp, range) {   // light.c:421
-    let count = Int32Array.of(0), actual = 0, is_global = 0, prev = null, curr = null;
+    let count = Int32Array.of(0), is_global = 0, prev = null, curr = null;
     /* camera flash light sources have Null object and would trigger
        impossible("no id!") below; they can only happen here if we're
        in the midst of a panic save and they wouldn't be useful after
@@ -441,7 +441,7 @@ export async function save_light_sources(nhfp, range) {   // light.c:421
     if (update_file(nhfp)) {
         count[0] = await maybe_write_ls(nhfp, range, FALSE);
         await sfo_int(nhfp, new $c.Ptr(count, 0), $c.lit("lightsource-count"));
-        actual = await maybe_write_ls(nhfp, range, TRUE);
+        const actual = await maybe_write_ls(nhfp, range, TRUE);
         if (actual !== count[0]) {
             await panic($c.lit("counted %d light sources, wrote %d! [range=%d]"), count[0], actual, range);
         }
@@ -486,12 +486,12 @@ export async function save_light_sources(nhfp, range) {   // light.c:421
  * @returns {Promise<void>}
  */
 export async function restore_light_sources(nhfp) {   // light.c:479
-    let count = Int32Array.of(0), ls = null, $t1;
+    let count = Int32Array.of(0), $t1;
     count[0] = 0;
     /* restore elements */
     await sfi_int(nhfp, new $c.Ptr(count, 0), $c.lit("lightsource-count"));
     while (($t1 = count[0], count[0] = $t1 - 1 | 0, $t1) > 0) {
-        ls = $c.asRec(await alloc(32), $T.ls_t, 32);
+        const ls = $c.asRec(await alloc(32), $T.ls_t, 32);
         await sfi_ls_t(nhfp, ls, $c.lit("lightsource"));
         ls.next = gl.light_base;
         gl.light_base = ls;
@@ -519,7 +519,7 @@ export function light_stats(hdrfmt, hdrbuf, count, size) {   // light.c:501
  * @returns {Promise<void>}
  */
 export async function relink_light_sources(ghostly) {   // light.c:517
-    let which = 0, nid = Uint32Array.of(0), ls = null, $t1, $t2;
+    let nid = Uint32Array.of(0), ls = null, $t1, $t2;
     /*
      * Caveat:
      *  There has been at least one instance during to-be-5.0 development
@@ -542,7 +542,7 @@ export async function relink_light_sources(ghostly) {   // light.c:517
                 if (ghostly && !lookup_id_mapping(nid[0], new $c.Ptr(nid, 0))) {
                     await panic($c.lit("relink_light_sources: no id mapping"));
                 }
-                which = 0;
+                let which = 0;
                 if (ls.type === LS_OBJECT) {
                     if (($t1 = find_oid(nid[0]), ls.id.a_obj = $t1) === null) {
                         which = 111;
@@ -574,8 +574,8 @@ export async function relink_light_sources(ghostly) {   // light.c:517
  * @returns {Promise<number>} int
  */
 async function maybe_write_ls(nhfp, range, write_it) {   // light.c:571
-    let count = 0, is_global = 0, ls = null;
-    count = 0;
+    let is_global = 0, ls = null;
+    let count = 0;
     for (ls = gl.light_base; ls; ls = ls.next) {
         if (!ls.id.a_monst) {
             await impossible($c.lit("maybe_write_ls: no id! [range=%d]"), range);
@@ -607,19 +607,19 @@ async function maybe_write_ls(nhfp, range, write_it) {   // light.c:571
  * @returns {Promise<void>}
  */
 export async function light_sources_sanity_check() {   // light.c:606
-    let ls = null, mtmp = null, otmp = null, auint = 0;
+    let ls = null, auint = 0;
     for (ls = gl.light_base; ls; ls = ls.next) {
         if (!ls.id.a_monst) {
             await panic($c.lit("insane light source: no id!"));
         }
         if (ls.type === LS_OBJECT) {
-            otmp = ls.id.a_obj;
+            const otmp = ls.id.a_obj;
             auint = otmp.o_id;
             if (!$c.peq(find_oid(auint), otmp)) {
                 await panic($c.lit("insane light source: can't find obj #%u!"), auint);
             }
         } else if (ls.type === LS_MONSTER) {
-            mtmp = ls.id.a_monst;
+            const mtmp = ls.id.a_monst;
             auint = mtmp.m_id;
             if (!$c.peq(find_mid(auint, FM_EVERYWHERE), mtmp)) {
                 await panic($c.lit("insane light source: can't find mon #%u!"), auint);
@@ -636,7 +636,7 @@ export async function light_sources_sanity_check() {   // light.c:606
  * @returns {Promise<void>}
  */
 async function write_ls(nhfp, ls) {   // light.c:634
-    let arg_save = new $T.any(), otmp = null, mtmp = null, monloc = 0;
+    let arg_save = new $T.any();
     if (ls.type === LS_OBJECT || ls.type === LS_MONSTER) {
         if (ls.flags & LSF_NEEDS_FIXUP) {
             await sfo_ls_t(nhfp, ls, $c.lit("lightsource"));
@@ -644,7 +644,7 @@ async function write_ls(nhfp, ls) {   // light.c:634
             /* replace object pointer with id for write, then put back */
             arg_save.$copyFrom(ls.id);
             if (ls.type === LS_OBJECT) {
-                otmp = ls.id.a_obj;
+                const otmp = ls.id.a_obj;
                 ls.id.$copyFrom(cg.zeroany);
                 ls.id.a_uint = otmp.o_id;
                 if (!$c.peq(find_oid(ls.id.a_uint), otmp)) {
@@ -653,8 +653,8 @@ async function write_ls(nhfp, ls) {   // light.c:634
                 }
             } else {
                 /* ls->type == LS_MONSTER */
-                monloc = 0;
-                mtmp = ls.id.a_monst;
+                let monloc = 0;
+                const mtmp = ls.id.a_monst;
                 /* The monster pointer has been stashed in the light source
                  * for a while and while there is code meant to clean-up the
                  * light source aspects if a monster goes away, there have
@@ -705,15 +705,15 @@ export function obj_move_light_source(src, dest) {   // light.c:706
             ls.id.a_obj = dest;
         }
     }
-    src.lamplit = (0) & 1;
-    dest.lamplit = (1) & 1;
+    src.lamplit = 0;
+    dest.lamplit = 1;
 }
 /* return true if there exist any light sources */
 /**
  * @returns {number} boolean
  */
 export function any_light_source() {   // light.c:719
-    return $c.i8(gl.light_base !== null ? 1 : 0);
+    return gl.light_base !== null ? 1 : 0;
 }
 /*
  * Snuff an object light source if at (x,y).  This currently works
@@ -725,7 +725,7 @@ export function any_light_source() {   // light.c:719
  * @returns {Promise<void>}
  */
 export async function snuff_light_source(x, y) {   // light.c:729
-    let ls = null, obj = null;
+    let ls = null;
     /*
      * Is this position check valid??? Can I assume that the positions
      * will always be correct because the objects would have been
@@ -733,7 +733,7 @@ export async function snuff_light_source(x, y) {   // light.c:729
      */
     for (ls = gl.light_base; ls; ls = ls.next) {
         if (ls.type === LS_OBJECT && ls.x === x && ls.y === y) {
-            obj = ls.id.a_obj;
+            const obj = ls.id.a_obj;
             if (obj_is_burning(obj)) {
                 /* The only way to snuff Sunsword is to unwield it.  Darkness
                  * scrolls won't affect it.  (If we got here because it was
@@ -743,7 +743,7 @@ export async function snuff_light_source(x, y) {   // light.c:729
                 if (artifact_light(obj)) {
                     continue;
                 }
-                await end_burn(obj, $c.i8(obj.otyp !== MAGIC_LAMP ? 1 : 0));
+                await end_burn(obj, obj.otyp !== MAGIC_LAMP ? 1 : 0);
                 /*
                  * The current ls element has just been removed (and
                  * ls->next is now invalid).  Return assuming that there
@@ -769,7 +769,7 @@ export function obj_sheds_light(obj) {   // light.c:763
  * @returns {number} boolean
  */
 export function obj_is_burning(obj) {   // light.c:771
-    return $c.i8(obj.lamplit | 0 && (ignitable(obj) || artifact_light(obj)) ? 1 : 0);
+    return obj.lamplit && (ignitable(obj) || artifact_light(obj)) ? 1 : 0;
 }
 /* copy the light source(s) attached to src, and attach it/them to dest */
 /**
@@ -778,7 +778,7 @@ export function obj_is_burning(obj) {   // light.c:771
  * @returns {Promise<void>}
  */
 export async function obj_split_light_source(src, dest) {   // light.c:779
-    let ls = null, new_ls = null, $t1, $t2;
+    let ls = null, $t1, $t2;
     for (ls = gl.light_base; ls; ls = ls.next) {
         if (ls.type === LS_OBJECT && $c.peq(ls.id.a_obj, src)) {
             /*
@@ -786,7 +786,7 @@ export async function obj_split_light_source(src, dest) {   // light.c:779
              * never interfere us walking down the list - we are already
              * past the insertion point.
              */
-            new_ls = $c.asRec(await alloc(32), $T.ls_t, 32);
+            const new_ls = $c.asRec(await alloc(32), $T.ls_t, 32);
             new_ls.$copyFrom(ls);
             if (Is_candle(src)) {
                 /* split candles may emit less light than original group */
@@ -797,7 +797,7 @@ export async function obj_split_light_source(src, dest) {   // light.c:779
             new_ls.id.a_obj = dest;
             new_ls.next = gl.light_base;
             gl.light_base = new_ls;
-            dest.lamplit = (1) & 1;   /* now an active light source */
+            dest.lamplit = 1;   /* now an active light source */
         }
     }
 }
@@ -848,7 +848,7 @@ export async function obj_adjust_light_radius(obj, new_radius) {   // light.c:82
  * @returns {number} int
  */
 export function candle_light_range(obj) {   // light.c:843
-    let radius = 0, n = 0;
+    let radius = 0;
     if (obj.otyp === CANDELABRUM_OF_INVOCATION) {
         /*
          *      The special candelabrum emits more light than the
@@ -867,7 +867,7 @@ export function candle_light_range(obj) {   // light.c:843
          *       4..8  candles, range 3;
          *       9..15 candles, range 4; &c.
          */
-        n = obj.quan;
+        const n = obj.quan;
         radius = 1;   /* always incremented at least once */
         while (Math.imul(radius, radius) <= n && radius < MAX_RADIUS) {
             radius = radius + 1 | 0;
@@ -885,7 +885,6 @@ export function candle_light_range(obj) {   // light.c:843
  * @returns {number} int
  */
 export function arti_light_radius(obj) {   // light.c:881
-    let res = 0;
     /*
      * Used by begin_burn() when setting up a new light source
      * (obj->lamplit will already be set by this point) and
@@ -899,7 +898,7 @@ export function arti_light_radius(obj) {   // light.c:881
     /* cursed radius of 1 is not noticeable for an item that's
        carried by the hero but is if it's carried by a monster
        or left lit on the floor (not applicable for Sunsword) */
-    res = obj.blessed | 0 ? 3 : !obj.cursed ? 2 : 1;
+    let res = obj.blessed ? 3 : !obj.cursed ? 2 : 1;
     /* if poly'd into gold dragon with embedded scales, make the scales
        have minimum radiance (hero as light source will use light radius
        based on monster form); otherwise, worn gold DSM gives off more
@@ -937,8 +936,8 @@ export function arti_light_description(obj) {   // light.c:916
  * @returns {Promise<number>} int
  */
 export async function wiz_light_sources() {   // light.c:935
-    let win = 0, buf = new Int8Array(256), ls = null;
-    win = await create_nhwindow()(NHW.MENU);   /* corner text window */
+    let buf = new Int8Array(256), ls = null;
+    const win = await create_nhwindow()(NHW.MENU);   /* corner text window */
     if (win === WIN_ERR) {
         return ECMD.OK;
     }

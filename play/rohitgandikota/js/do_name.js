@@ -12,9 +12,9 @@ import { vtense, makeplural } from './objnam.js';
 import { ismnum, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM, MALE, FEMALE, NEUTRAL } from './const.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow } from './tty/wintty.js';
-import { flush_screen, pline, glyph_at, sensemon, see_with_infrared, vobj_at } from './display.js';
+import { flush_screen, pline, glyph_at, sensemon, see_with_infrared, vobj_at, display_nhwindow_message } from './display.js';
 import { discover_object, undiscover_object, rename_disco } from './o_init.js';
-import { an, just_an, xname, simpleonames, safe_qbuf, OBJ_DESCR, The } from './objnam.js';
+import { an, just_an, xname, simpleonames, safe_qbuf, OBJ_DESCR, The, Ysimple_name2 } from './objnam.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
          PICK_ONE, ECMD_OK, GETOBJ_PROMPT, GETOBJ_EXCLUDE,
          GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, ONAME_VIA_NAMING,
@@ -26,7 +26,9 @@ import { set_artifact_intrinsic } from './artifact.js';
 import { alter_cost } from './shk.js';
 import { livelog_printf } from './pline.js';
 import { bare_artifactname, ansimpleoname } from './objnam.js';
-import { W_WEP, LL_CONDUCT, LL_ARTIFACT } from './const.js';
+import { W_WEP, LL_CONDUCT, LL_ARTIFACT, HAND } from './const.js';
+import { body_part } from './polyself.js';
+import { wipeout_text } from './engrave.js';
 import { rn1, rn2, rn2_on_display_rng } from './rng.js';
 import { Hallucination, Deaf, See_invisible, Blind } from './youprop.js';
 import { PMNAMES, MFLAGS, MSOUND } from './monst_data.js';
@@ -42,8 +44,8 @@ import { humanoid, is_animal, is_mplayer, mindless, pronoun_gender,
          type_is_pname, is_rider, mhe, mhis, hides_under } from './mondata.js';
 import { canspotmon } from './display.js';
 import { ONAME_SKIP_INVUPD } from './const.js';
-import { exist_artifact, artifact_exists } from './artifact.js';
-import { carried } from './obj.js';
+import { exist_artifact, artifact_exists, artifact_name, restrict_name } from './artifact.js';
+import { carried, is_plural } from './obj.js';
 import { getobj, update_inventory, carrying } from './invent.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { CMDQ_KEY, CQ_CANNED } from './const.js';
@@ -606,6 +608,7 @@ export function oname(obj, name, oflgs) {
 
     if (lth)
         artifact_exists(obj, name, true, oflgs);
+    let pending;
     if (obj.oartifact) {
         /* can't dual-wield with artifact as secondary weapon */
         if (obj === game.u.uswapwep)
@@ -613,31 +616,35 @@ export function oname(obj, name, oflgs) {
                                    its You() message is deferred */
         /* activate warning if you've just named your weapon "Sting" */
         if (obj === game.u.uwep)
-            set_artifact_intrinsic(obj, true, W_WEP);
-        /* if obj is owned by a shop, increase your bill */
-        if (obj.unpaid)
-            alter_cost(obj, 0);
-        if (via_naming) {
-            const uconduct = (game.u.uconduct ||= {});
-
-            if (!uconduct.literate++)
-                livelog_printf(LL_CONDUCT | LL_ARTIFACT,
-                               `became literate by naming ${
-                                   bare_artifactname(obj)}`);
-            else
-                livelog_printf(LL_ARTIFACT,
-                               `chose ${ansimpleoname(obj)} to be named "${
-                                   bare_artifactname(obj)}"`);
-        }
+            pending = set_artifact_intrinsic(obj, true, W_WEP);
     }
-    if (carried(obj) && !skip_inv_update)
-        update_inventory();
-    return obj;
+    return pending ? pending.then(finish) : finish();
+
+    function finish() {
+        if (obj.oartifact) {
+            /* if obj is owned by a shop, increase your bill */
+            if (obj.unpaid)
+                alter_cost(obj, 0);
+            if (via_naming) {
+                const uconduct = (game.u.uconduct ||= {});
+
+                if (!uconduct.literate++)
+                    livelog_printf(LL_CONDUCT | LL_ARTIFACT,
+                                   `became literate by naming ${
+                                       bare_artifactname(obj)}`);
+                else
+                    livelog_printf(LL_ARTIFACT,
+                                   `chose ${ansimpleoname(obj)} to be named "${
+                                       bare_artifactname(obj)}"`);
+            }
+        }
+        if (carried(obj) && !skip_inv_update)
+            update_inventory();
+        return obj;
+    }
 }
 
-// src/do_name.c:467 name_ok() and :290 do_oname(), select and name one
-// particular inventory object. The artifact-name restriction path is left to
-// oname(); ordinary player notes consume no gameplay RNG.
+// src/do_name.c:467 name_ok(), select a particular inventory object.
 export function name_ok(obj) {
     if (!obj || obj.oclass === OCLASSES.COIN_CLASS)
         return GETOBJ_EXCLUDE;
@@ -646,21 +653,43 @@ export function name_ok(obj) {
     return GETOBJ_SUGGEST;
 }
 
+// src/do_name.c:290 do_oname()
 async function do_oname(obj) {
     if (obj.otyp === ONAMES.SPE_NOVEL) {
-        await pline('That novel already has a published name.');
+        await pline(`${Ysimple_name2(obj)} already has a published name.`);
         return;
     }
 
-    const which = obj.quan > 1 ? 'these' : 'this';
-    const name = await name_from_player(`What do you want to name ${which} ${xname(obj)}?`);
-    if (name === null)
+    const which = is_plural(obj) ? 'these' : 'this';
+    const qbuf = safe_qbuf(`What do you want to name ${which} `,
+                           '?', obj, xname, simpleonames, 'item');
+    let buf = await name_from_player(qbuf);
+    if (buf === null)
         return;
     if (obj.oartifact) {
         await pline(`${obj.oname || 'The artifact'} resists the attempt.`);
         return;
     }
-    oname(obj, name, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
+
+    const objtyp = { v: ONAMES.STRANGE_OBJECT };
+    const aname = artifact_name(buf, objtyp, true);
+    if (aname && (restrict_name(obj, aname) || exist_artifact(obj.otyp, aname))) {
+        buf = aname; /* use canonical spelling before slippage */
+        const bufcpy = buf;
+        // For "the Foo of Bar", scuff only the "Foo of Bar" part.
+        const start = buf.toLowerCase().startsWith('the ') ? 4 : 0;
+        do {
+            buf = buf.slice(0, start)
+                + wipeout_text(buf.slice(start), rn2_on_display_rng(2) + 1, 0);
+        } while (buf === bufcpy);
+        await pline(`While engraving, your ${body_part(HAND)} slips.`);
+        await display_nhwindow_message();
+        await You(`engrave: "${buf}".`);
+        game.u.uconduct.literate++;
+    } else if (obj.otyp === objtyp.v) {
+        buf = aname; /* unrestricted Sting or Orcrist of the right type */
+    }
+    await oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
 }
 
 // src/do_name.c:499 docallcmd() — the #call / #name command: player can name a
@@ -896,7 +925,7 @@ const hcolors = [
 
 // src/do_name.c:1460 hcolor(). Use the display RNG for hallucinated colors.
 export function hcolor(colorpref) {
-    return (Hallucination() || !colorpref)
+    return (Hallucination() || colorpref === null)
         ? hcolors[rn2_on_display_rng(hcolors.length)]
         : colorpref;
 }

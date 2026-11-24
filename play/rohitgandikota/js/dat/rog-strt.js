@@ -89,11 +89,11 @@ export async function rogstrt_level() {
     shuffle(place);
 
     des.stair({ dir: 'down', coord: place[0] });
-    des.monster({ id: 'giant mimic', coord: place[1],
+    await des.monster({ id: 'giant mimic', coord: place[1],
                   appear_as: 'ter:staircase down' });
-    des.monster({ id: 'large mimic', coord: place[2],
+    await des.monster({ id: 'large mimic', coord: place[2],
                   appear_as: 'ter:staircase down' });
-    des.monster({ id: 'small mimic', coord: place[3],
+    await des.monster({ id: 'small mimic', coord: place[3],
                   appear_as: 'ter:staircase down' });
     /* Portal arrival point */
     des.levregion({ region: [19, 9, 19, 9], type: 'branch' });
@@ -156,59 +156,59 @@ export async function rogstrt_level() {
     /* The treasure of Master of Thieves */
     des.object('chest', 36, 11);
     /* thug guards, room #1 */
-    des.monster('thug', 28, 10);
-    des.monster('thug', 29, 11);
-    des.monster('thug', 30, 9);
-    des.monster('thug', 31, 7);
+    await des.monster('thug', 28, 10);
+    await des.monster('thug', 29, 11);
+    await des.monster('thug', 30, 9);
+    await des.monster('thug', 31, 7);
     /* thug guards, room #2 */
-    des.monster('thug', 31, 13);
-    des.monster('thug', 33, 14);
-    des.monster('thug', 30, 15);
+    await des.monster('thug', 31, 13);
+    await des.monster('thug', 33, 14);
+    await des.monster('thug', 30, 15);
     /* thug guards, room #3 */
-    des.monster('thug', 35, 9);
-    des.monster('thug', 36, 13);
+    await des.monster('thug', 35, 9);
+    await des.monster('thug', 36, 13);
     /* Non diggable walls */
     des.non_diggable(selection.area(0, 0, 75, 20));
     /* Random traps */
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     /*
      * Monsters to get in the way.
      */
     /* West exit */
-    des.monster({ id: 'leprechaun', x: 1, y: 12, peaceful: 0 });
-    des.monster({ id: 'water nymph', x: 2, y: 12, peaceful: 0 });
+    await des.monster({ id: 'leprechaun', x: 1, y: 12, peaceful: 0 });
+    await des.monster({ id: 'water nymph', x: 2, y: 12, peaceful: 0 });
     /* North exit */
-    des.monster({ id: 'water nymph', x: 33, y: 1, peaceful: 0 });
-    des.monster({ id: 'leprechaun', x: 33, y: 2, peaceful: 0 });
+    await des.monster({ id: 'water nymph', x: 33, y: 1, peaceful: 0 });
+    await des.monster({ id: 'leprechaun', x: 33, y: 2, peaceful: 0 });
     /* East exit */
-    des.monster({ id: 'water nymph', x: 74, y: 5, peaceful: 0 });
-    des.monster({ id: 'leprechaun', x: 74, y: 4, peaceful: 0 });
+    await des.monster({ id: 'water nymph', x: 74, y: 5, peaceful: 0 });
+    await des.monster({ id: 'leprechaun', x: 74, y: 4, peaceful: 0 });
     /* South exit */
-    des.monster({ id: 'leprechaun', x: 25, y: 19, peaceful: 0 });
-    des.monster({ id: 'water nymph', x: 25, y: 18, peaceful: 0 });
+    await des.monster({ id: 'leprechaun', x: 25, y: 19, peaceful: 0 });
+    await des.monster({ id: 'water nymph', x: 25, y: 18, peaceful: 0 });
     /* Wandering the streets. */
     for (let i = 1, n = mathrandom(4, 7); i <= n; i++) {
-        des.monster({ id: 'water nymph',
+        await des.monster({ id: 'water nymph',
                       coord: selection_rndcoord(streets, 1), peaceful: 0 });
-        des.monster({ id: 'leprechaun',
+        await des.monster({ id: 'leprechaun',
                       coord: selection_rndcoord(streets, 1), peaceful: 0 });
     }
     for (let i = 1, n = mathrandom(7, 10); i <= n; i++)
-        des.monster({ id: 'chameleon',
+        await des.monster({ id: 'chameleon',
                       coord: selection_rndcoord(streets, 1), peaceful: 0 });
 }

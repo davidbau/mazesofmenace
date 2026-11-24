@@ -18,44 +18,44 @@ export async function arcfila_level() {
         random_corridors: lspo_random_corridors,
     };
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.stair('up');
         des.object();
-        des.monster('S');
+        await des.monster('S');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
         des.object();
-        des.monster('S');
+        await des.monster('S');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
-        des.trap();
+        await des.trap();
         des.object();
-        des.monster('S');
+        await des.monster('S');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.stair('down');
         des.object();
-        des.trap();
-        des.monster('S');
-        des.monster('human mummy');
+        await des.trap();
+        await des.monster('S');
+        await des.monster('human mummy');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
         des.object();
-        des.trap();
-        des.monster('S');
+        await des.trap();
+        await des.monster('S');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
-        des.trap();
-        des.monster('S');
+        await des.trap();
+        await des.monster('S');
     } });
 
     des.random_corridors();

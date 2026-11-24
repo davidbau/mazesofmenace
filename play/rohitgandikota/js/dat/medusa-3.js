@@ -134,13 +134,13 @@ export async function medusa3_level() {
 
     /* first random statue is in one of the three designated rooms but not
        the one with Medusa plus downstairs or the one with the fountain */
-    des.object({ id: 'statue', coord: [altloc.x, altloc.y], contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
-    des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', coord: [altloc.x, altloc.y], contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
+    await des.object({ id: 'statue', contents: 0 });
 
     for (let i = 1; i <= 8; i++)
         des.object();
@@ -151,20 +151,20 @@ export async function medusa3_level() {
     des.trap('rust');
     des.trap('board');
     des.trap('board');
-    des.trap();
+    await des.trap();
 
     /* place Medusa before placing other monsters so that they won't be able
        to unintentionally steal her spot on the downstairs */
     des.monster({ id: 'Medusa', coord: [medloc.x, medloc.y], asleep: 1 });
-    des.monster('giant eel');
-    des.monster('giant eel');
-    des.monster('jellyfish');
-    des.monster('jellyfish');
-    des.monster('wood nymph');
-    des.monster('wood nymph');
-    des.monster('water nymph');
-    des.monster('water nymph');
+    await des.monster('giant eel');
+    await des.monster('giant eel');
+    await des.monster('jellyfish');
+    await des.monster('jellyfish');
+    await des.monster('wood nymph');
+    await des.monster('wood nymph');
+    await des.monster('water nymph');
+    await des.monster('water nymph');
 
     for (let i = 1; i <= 30; i++)
-        des.monster({ id: 'raven', peaceful: 0 });
+        await des.monster({ id: 'raven', peaceful: 0 });
 }

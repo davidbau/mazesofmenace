@@ -211,13 +211,20 @@ export function l_selection_iterate(sel, func) {
     const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
     selection_getbounds(sel, rect);
 
-    for (let y = rect.ly; y <= rect.hy; y++)
-        for (let x = Math.max(1, rect.lx); x <= rect.hx; x++)
-            if (selection_getpoint(x, y, sel)) {
-                const c = { x, y };
-                cvt_to_relcoord(c);
-                func(c.x, c.y);
-            }
+    let y = rect.ly, x = Math.max(1, rect.lx);
+    return iterate();
+
+    function iterate() {
+        for (; y <= rect.hy; y++, x = Math.max(1, rect.lx))
+            for (; x <= rect.hx; x++)
+                if (selection_getpoint(x, y, sel)) {
+                    const c = { x, y };
+                    cvt_to_relcoord(c);
+                    const result = func(c.x, c.y);
+                    if (result instanceof Promise)
+                        return result.then(() => { ++x; return iterate(); });
+                }
+    }
 }
 
 // src/selvar.c:211 selection_not() — invert every square of the whole map.

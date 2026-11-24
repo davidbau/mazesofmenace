@@ -118,7 +118,7 @@ export function init_symbols() {   // symbols.c:85
 export function init_showsyms() {   // symbols.c:95
     let i = 0, $t1;
     for (i = 0; i < MAXPCHARS; i = i + 1 | 0) {
-        gs.showsyms[i + SYM_OFF_P | 0] = defsyms[i].sym;
+        gs.showsyms[i + SYM_OFF_P] = defsyms[i].sym;
     }
     for (i = 0; i < MAXOCLASSES; i = i + 1 | 0) {
         gs.showsyms[i + SYM_OFF_O | 0] = $c.u8(def_oc_syms[i].sym);
@@ -153,13 +153,12 @@ export function init_ov_primary_symbols() {   // symbols.c:122
  * @returns {number} nhsym
  */
 export function get_othersym(idx, which_set) {   // symbols.c:131
-    let sym = 0, oidx = 0;
-    sym = 0;
-    oidx = idx + SYM_OFF_X | 0;
+    let sym = 0;
+    const oidx = idx + SYM_OFF_X | 0;
     if (which_set === ROGUESET) {
-        sym = $c.u8(go.ov_rogue_syms[oidx] ? go.ov_rogue_syms[oidx] : gr.rogue_syms[oidx]);
+        sym = go.ov_rogue_syms[oidx] ? go.ov_rogue_syms[oidx] : gr.rogue_syms[oidx];
     } else {
-        sym = $c.u8(go.ov_primary_syms[oidx] ? go.ov_primary_syms[oidx] : gp.primary_syms[oidx]);
+        sym = go.ov_primary_syms[oidx] ? go.ov_primary_syms[oidx] : gp.primary_syms[oidx];
     }
     if (!sym) {
         switch (idx) {
@@ -182,7 +181,7 @@ export function get_othersym(idx, which_set) {   // symbols.c:131
 export function init_primary_symbols() {   // symbols.c:167
     let i = 0, $t1;
     for (i = 0; i < MAXPCHARS; i = i + 1 | 0) {
-        gp.primary_syms[i + SYM_OFF_P | 0] = defsyms[i].sym;
+        gp.primary_syms[i + SYM_OFF_P] = defsyms[i].sym;
     }
     for (i = 0; i < MAXOCLASSES; i = i + 1 | 0) {
         gp.primary_syms[i + SYM_OFF_O | 0] = $c.u8(def_oc_syms[i].sym);
@@ -204,7 +203,7 @@ export function init_rogue_symbols() {   // symbols.c:187
     /* These are defaults that can get overwritten
        later by the roguesymbols option */
     for (i = 0; i < MAXPCHARS; i = i + 1 | 0) {
-        gr.rogue_syms[i + SYM_OFF_P | 0] = defsyms[i].sym;
+        gr.rogue_syms[i + SYM_OFF_P] = defsyms[i].sym;
     }
     $t2 = ($t1 = gr.rogue_syms[S.ndoor] = 43, gr.rogue_syms[S.hodoor] = $t1), gr.rogue_syms[S.vodoor] = $t2;
     $t3 = gr.rogue_syms[S.dnstair] = 37, gr.rogue_syms[S.upstair] = $t3;
@@ -224,7 +223,7 @@ export function init_rogue_symbols() {   // symbols.c:187
     /* default on Rogue level is no color
      * but some symbol sets can override that
      */
-    gs.symset[ROGUESET].nocolor = (1) & 1;
+    gs.symset[ROGUESET].nocolor = 1;
 }
 /**
  * @param {number} whichset int
@@ -235,14 +234,14 @@ export function assign_graphics(whichset) {   // symbols.c:217
         case ROGUESET:
             /* Adjust graphics display characters on Rogue levels */
             for (i = 0; i < SYM_MAX; i = i + 1 | 0) {
-                gs.showsyms[i] = $c.u8(go.ov_rogue_syms[i] ? go.ov_rogue_syms[i] : gr.rogue_syms[i]);
+                gs.showsyms[i] = go.ov_rogue_syms[i] ? go.ov_rogue_syms[i] : gr.rogue_syms[i];
             }
             gc.currentgraphics = ROGUESET;
             break;
         case PRIMARYSET:
         default:
             for (i = 0; i < SYM_MAX; i = i + 1 | 0) {
-                gs.showsyms[i] = $c.u8(go.ov_primary_syms[i] ? go.ov_primary_syms[i] : gp.primary_syms[i]);
+                gs.showsyms[i] = go.ov_primary_syms[i] ? go.ov_primary_syms[i] : gp.primary_syms[i];
             }
             gc.currentgraphics = PRIMARYSET;
             break;
@@ -257,7 +256,7 @@ export async function switch_symbols(nondefault) {   // symbols.c:253
     let i = 0;
     if (nondefault) {
         for (i = 0; i < SYM_MAX; i = i + 1 | 0) {
-            gs.showsyms[i] = $c.u8(go.ov_primary_syms[i] ? go.ov_primary_syms[i] : gp.primary_syms[i]);
+            gs.showsyms[i] = go.ov_primary_syms[i] ? go.ov_primary_syms[i] : gp.primary_syms[i];
         }
         /* curses doesn't assign any routine to dec..._callback but
            probably does the expected initialization under the hood
@@ -308,18 +307,17 @@ export function update_rogue_symset(symp, val) {   // symbols.c:313
  * @param {number} name_too boolean
  */
 export function clear_symsetentry(which_set, name_too) {   // symbols.c:319
-    let other_set = 0, old_handling = 0;
-    other_set = which_set === PRIMARYSET ? ROGUESET : PRIMARYSET;
-    old_handling = gs.symset[which_set].handling;
+    const other_set = which_set === PRIMARYSET ? ROGUESET : PRIMARYSET;
+    const old_handling = gs.symset[which_set].handling;
     if (gs.symset[which_set].desc) {
         $c.free(gs.symset[which_set].desc);
     }
     gs.symset[which_set].desc = null;
     gs.symset[which_set].handling = H_UNK;
-    gs.symset[which_set].nocolor = (0) & 1;
+    gs.symset[which_set].nocolor = 0;
     /* initialize restriction bits */
-    gs.symset[which_set].primary = (0) & 1;
-    gs.symset[which_set].rogue = (0) & 1;
+    gs.symset[which_set].primary = 0;
+    gs.symset[which_set].rogue = 0;
     if (name_too) {
         if (gs.symset[which_set].name) {
             $c.free(gs.symset[which_set].name);
@@ -351,7 +349,7 @@ export function symset_is_compatible(handling, wincap2) {   // symbols.c:353
  * @returns {Promise<number>} boolean
  */
 export async function proc_symset_line(buf) {   // symbols.c:431
-    return $c.i8(!$c.i8(await parse_sym_line(buf, gs.symset_which_set)) ? 1 : 0);
+    return !$c.i8(await parse_sym_line(buf, gs.symset_which_set)) ? 1 : 0;
 }
 /* returns 0 on error */
 /**
@@ -360,11 +358,11 @@ export async function proc_symset_line(buf) {   // symbols.c:431
  * @returns {Promise<number>} int
  */
 export async function parse_sym_line(buf, which_set) {   // symbols.c:438
-    let val = 0, i = 0, symp = null, bufp = null, commentp = null, altp = null, glyph = Int32Array.of(0), enhanced_unavailable = 0, is_glyph = 0, tmpsp = null, lastsp = null, n = 0, $t1, $t2, $t3, $t4;
-    symp = null;
+    let i = 0, commentp = null, glyph = Int32Array.of(0), tmpsp = null, lastsp = null, $t1, $t2, $t3, $t4;
+    let symp = null;
     glyph[0] = NO_GLYPH;
-    enhanced_unavailable = FALSE;
-    is_glyph = FALSE;
+    let enhanced_unavailable = FALSE;
+    let is_glyph = FALSE;
     if ($c.strlen(buf) >= BUFSZ) {
         buf.set(BUFSZ - 1, 0);
     }
@@ -380,8 +378,8 @@ export async function parse_sym_line(buf, which_set) {   // symbols.c:438
         commentp.set(-1, 0);
     }
     /* find the '=' or ':' */
-    bufp = $c.strchr(buf, 61);
-    altp = $c.strchr(buf, 58);
+    let bufp = $c.strchr(buf, 61);
+    const altp = $c.strchr(buf, 58);
     if (!bufp || altp && $c.pcmp(altp, bufp) < 0) {
         bufp = altp;
     }
@@ -440,9 +438,9 @@ export async function parse_sym_line(buf, which_set) {   // symbols.c:438
                         tmpsp.desc = null;
                         tmpsp.handling = H_UNK;
                         /* initialize restriction bits */
-                        tmpsp.nocolor = (0) & 1;
-                        tmpsp.primary = (0) & 1;
-                        tmpsp.rogue = (0) & 1;
+                        tmpsp.nocolor = 0;
+                        tmpsp.primary = 0;
+                        tmpsp.rogue = 0;
                         break;
                     case 2:
                         /* handler type identified */
@@ -471,10 +469,10 @@ export async function parse_sym_line(buf, which_set) {   // symbols.c:438
                                 if (tmpsp) {
                                     switch (i) {
                                         case 0:
-                                            tmpsp.primary = (1) & 1;
+                                            tmpsp.primary = 1;
                                             break;
                                         case 1:
-                                            tmpsp.rogue = (1) & 1;
+                                            tmpsp.rogue = 1;
                                             break;
                                     }
                                 }
@@ -520,9 +518,9 @@ export async function parse_sym_line(buf, which_set) {   // symbols.c:438
                     if (gc.chosen_symset_start) {
                         if (bufp) {
                             if (!strncmpi(bufp, $c.lit("true"), -1) || !strncmpi(bufp, $c.lit("yes"), -1) || !strncmpi(bufp, $c.lit("on"), -1)) {
-                                gs.symset[which_set].nocolor = (0) & 1;
+                                gs.symset[which_set].nocolor = 0;
                             } else if (!strncmpi(bufp, $c.lit("false"), -1) || !strncmpi(bufp, $c.lit("no"), -1) || !strncmpi(bufp, $c.lit("off"), -1)) {
-                                gs.symset[which_set].nocolor = (1) & 1;
+                                gs.symset[which_set].nocolor = 1;
                             }
                         }
                     }
@@ -530,15 +528,15 @@ export async function parse_sym_line(buf, which_set) {   // symbols.c:438
                 case 5:
                     /* restrictions: xxxx*/
                     if (gc.chosen_symset_start) {
-                        n = 0;
+                        let n = 0;
                         while (known_restrictions[n]) {
                             if (!strncmpi(known_restrictions[n], bufp, -1)) {
                                 switch (n) {
                                     case 0:
-                                        gs.symset[which_set].primary = (1) & 1;
+                                        gs.symset[which_set].primary = 1;
                                         break;
                                     case 1:
-                                        gs.symset[which_set].rogue = (1) & 1;
+                                        gs.symset[which_set].rogue = 1;
                                         break;
                                 }
                                 break;   /* while loop */
@@ -552,7 +550,7 @@ export async function parse_sym_line(buf, which_set) {   // symbols.c:438
             /* Not SYM_CONTROL */
             if (gs.symset[which_set].handling !== H_UTF8) {
                 if (gc.chosen_symset_start) {
-                    val = sym_val(bufp);
+                    const val = sym_val(bufp);
                     if (which_set === PRIMARYSET) {
                         update_primary_symset(symp, val);
                     } else if (which_set === ROGUESET) {
@@ -577,7 +575,6 @@ export async function parse_sym_line(buf, which_set) {   // symbols.c:438
  */
 export function set_symhandling(handling, which_set) {   // symbols.c:657
     let i = 0;
-    i = 0;
     gs.symset[which_set].handling = H_UNK;
     while (known_handling[i]) {
         if (!strncmpi(known_handling[i], handling, -1)) {
@@ -617,10 +614,9 @@ export function free_symsets() {   // symbols.c:693
     /* assert( symset_list == NULL ); */
 }
 export function savedsym_free() {   // symbols.c:712
-    let tmp = null, tmp2 = null;
-    tmp = $G.saved_symbols;
+    let tmp = $G.saved_symbols;
     while (tmp) {
-        tmp2 = tmp.next;
+        const tmp2 = tmp.next;
         $c.free(tmp.name);
         $c.free(tmp.val);
         $c.free(tmp);
@@ -633,8 +629,7 @@ export function savedsym_free() {   // symbols.c:712
  * @returns {$T._savedsym | null} struct _savedsym *
  */
 function savedsym_find(name, which_set) {   // symbols.c:726
-    let tmp = null;
-    tmp = $G.saved_symbols;
+    let tmp = $G.saved_symbols;
     while (tmp) {
         if (which_set === tmp.which_set && !$c.strcmp(name, tmp.name)) {
             return tmp;
@@ -650,8 +645,8 @@ function savedsym_find(name, which_set) {   // symbols.c:726
  * @returns {Promise<void>}
  */
 async function savedsym_add(name, val, which_set) {   // symbols.c:739
-    let tmp = null, $t1, $t2, $t3;
-    tmp = null;
+    let $t1, $t2, $t3;
+    let tmp = null;
     if ((tmp = savedsym_find(name, which_set)) !== null) {
         $c.free(tmp.val);
         $t1 = await dupstr(val), tmp.val = $t1;
@@ -669,8 +664,8 @@ async function savedsym_add(name, val, which_set) {   // symbols.c:739
  * @returns {Promise<void>}
  */
 export async function savedsym_strbuf(sbuf) {   // symbols.c:757
-    let tmp = null, buf = new Int8Array(256);
-    tmp = $G.saved_symbols;
+    let buf = new Int8Array(256);
+    let tmp = $G.saved_symbols;
     while (tmp) {
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%sSYMBOLS=%s:%s\n"), tmp.which_set === ROGUESET ? $c.lit("ROGUE") : $c.lit(""), tmp.name, tmp.val);
         await strbuf_append(sbuf, new $c.Ptr(buf, 0));
@@ -684,14 +679,14 @@ export async function savedsym_strbuf(sbuf) {   // symbols.c:757
  * @returns {Promise<number>} boolean
  */
 export async function parsesymbols(opts, which_set) {   // symbols.c:773
-    let val = 0, symname = null, strval = null, ch = null, first_unquoted_comma = null, first_unquoted_colon = null, symp = null, is_glyph = 0, prech = null, postch = null, buf = new Int8Array(256), glyph = Int32Array.of(0), $t1, $t2;
-    first_unquoted_comma = null;
-    first_unquoted_colon = null;
-    is_glyph = FALSE;
+    let ch = null, buf = new Int8Array(256), glyph = Int32Array.of(0), $t1, $t2;
+    let first_unquoted_comma = null;
+    let first_unquoted_colon = null;
+    let is_glyph = FALSE;
     /* are there any commas or colons that aren't quoted? */
     for (ch = opts.add(1); ch.get(0); ch = ch.add(1)) {
-        prech = ch.add(-1);
-        postch = ch.add(1);
+        const prech = ch.add(-1);
+        const postch = ch.add(1);
         if (!postch.get(0)) {
             break;
         }
@@ -722,8 +717,8 @@ export async function parsesymbols(opts, which_set) {   // symbols.c:773
         }
     }
     /* S_sample:string */
-    symname = opts;
-    strval = first_unquoted_colon;
+    const symname = opts;
+    let strval = first_unquoted_colon;
     if (!strval) {
         strval = $c.strchr(opts, 61);
     }
@@ -734,7 +729,7 @@ export async function parsesymbols(opts, which_set) {   // symbols.c:773
     /* strip leading and trailing white space from symname and strval */
     mungspaces(symname);
     mungspaces(strval);
-    symp = match_sym(symname);
+    const symp = match_sym(symname);
     if (!symp && symname.get(0) === 71 && symname.get(1) === 95) {
         is_glyph = $c.i8(await match_glyph(symname));
     }
@@ -747,7 +742,7 @@ export async function parsesymbols(opts, which_set) {   // symbols.c:773
                 nh_snprintf($c.lit("parsesymbols"), 836, new $c.Ptr(buf, 0), 256, $c.lit("%s:%s"), opts, strval);
                 await glyphrep_to_custom_map_entries(new $c.Ptr(buf, 0), new $c.Ptr(glyph, 0));
             } else {
-                val = sym_val(strval);
+                const val = sym_val(strval);
                 if (which_set === ROGUESET) {
                     update_ov_rogue_symset(symp, val);
                 } else {
@@ -764,11 +759,11 @@ export async function parsesymbols(opts, which_set) {   // symbols.c:773
  * @returns {$T.symparse | null} const struct symparse *
  */
 export function match_sym(buf) {   // symbols.c:852
-    let i = 0, len = 0, p = null, q = null, sp = null;
-    len = $c.strlen(buf);
-    p = $c.strchr(buf, 58);
-    q = $c.strchr(buf, 61);
-    sp = $c.relem(loadsyms, 0);
+    let i = 0;
+    let len = $c.strlen(buf);
+    let p = $c.strchr(buf, 58);
+    const q = $c.strchr(buf, 61);
+    let sp = loadsyms[0];
     /* G_ lines will never match here */
     if ((buf.get(0) === 71 || buf.get(0) === 103) && buf.get(1) === 95) {
         return null;
@@ -792,7 +787,7 @@ export function match_sym(buf) {   // symbols.c:852
     }
     for (i = 0; i < 10; i = i + 1 | 0) {
         if (len >= $c.strlen(match_sym$alternates[i].altnm) && !strncmpi(buf, match_sym$alternates[i].altnm, $c.i32(len))) {
-            sp = $c.relem(loadsyms, 0);
+            sp = loadsyms[0];
             while (sp.range) {
                 if (!$c.strcmp(match_sym$alternates[i].nm, sp.name)) {
                     return sp;
@@ -811,28 +806,28 @@ export function match_sym(buf) {   // symbols.c:852
  * @returns {Promise<number>} int
  */
 export async function do_symset(rogueflag) {   // symbols.c:909
-    let tmpwin = 0, any = new $T.any(), n = 0, buf = new Int8Array(256), symset_pick = [null], ready_to_switch = 0, nothing_to_do = 0, symset_name = null, fmtstr = new Int8Array(20), sl = null, res = 0, which_set = 0, setcount = 0, chosen = 0, defindx = 0, clr = 0, thissize = 0, biggest = 0, big_desc = 0, ok = 0, $t1;
+    let any = new $T.any(), buf = new Int8Array(256), symset_pick = [null], fmtstr = new Int8Array(20), sl = null, $t1;
     symset_pick[0] = null;
-    ready_to_switch = FALSE;
-    nothing_to_do = FALSE;
-    setcount = 0;
-    chosen = -2;
-    defindx = 0;
-    clr = NO_COLOR;
-    which_set = rogueflag ? ROGUESET : PRIMARYSET;
+    let ready_to_switch = FALSE;
+    let nothing_to_do = FALSE;
+    let setcount = 0;
+    let chosen = -2;
+    let defindx = 0;
+    const clr = NO_COLOR;
+    const which_set = rogueflag ? ROGUESET : PRIMARYSET;
     gs.symset_list = null;
     /* clear symset[].name as a flag to read_sym_file() to build list */
-    symset_name = gs.symset[which_set].name;
+    const symset_name = gs.symset[which_set].name;
     gs.symset[which_set].name = null;
-    res = await read_sym_file(which_set);
+    const res = await read_sym_file(which_set);
     /* put symset name back */
     gs.symset[which_set].name = symset_name;
     if (res && gs.symset_list) {
-        biggest = 15;
-        big_desc = 0;
+        let biggest = 15;
+        let big_desc = 0;
         for (sl = gs.symset_list; sl; sl = sl.next) {
             /* check restrictions */
-            if (rogueflag ? sl.primary | 0 : sl.rogue | 0) {
+            if (rogueflag ? sl.primary : sl.rogue) {
                 continue;
             }
             if (sl.handling === H_MAC) {
@@ -840,7 +835,7 @@ export async function do_symset(rogueflag) {   // symbols.c:909
             }
             setcount = setcount + 1 | 0;
             /* find biggest name */
-            thissize = sl.name ? $c.i32($c.strlen(sl.name)) : 0;
+            let thissize = sl.name ? $c.i32($c.strlen(sl.name)) : 0;
             if (thissize > biggest) {
                 biggest = thissize;
             }
@@ -854,7 +849,7 @@ export async function do_symset(rogueflag) {   // symbols.c:909
             return TRUE;
         }
         $c.sprintf(new $c.Ptr(fmtstr, 0), $c.lit("%%-%ds %%s"), biggest + 2 | 0);
-        tmpwin = await create_nhwindow()(NHW.MENU);
+        const tmpwin = await create_nhwindow()(NHW.MENU);
         await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
         any.$copyFrom(cg.zeroany);
         any.a_int = 1;   /* -1 + 2 [see 'if (sl->name) {' below]*/
@@ -864,7 +859,7 @@ export async function do_symset(rogueflag) {   // symbols.c:909
         await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, $c.lit("Default Symbols"), any.a_int === defindx ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
         for (sl = gs.symset_list; sl; sl = sl.next) {
             /* check restrictions */
-            if (rogueflag ? sl.primary | 0 : sl.rogue | 0) {
+            if (rogueflag ? sl.primary : sl.rogue) {
                 continue;
             }
             if (sl.handling === H_MAC) {
@@ -884,7 +879,7 @@ export async function do_symset(rogueflag) {   // symbols.c:909
         }
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Select %ssymbol set:"), rogueflag ? $c.lit("rogue level ") : $c.lit(""));
         await end_menu()(tmpwin, new $c.Ptr(buf, 0));
-        n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(symset_pick, 0));
+        const n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(symset_pick, 0));
         if (n > 0) {
             chosen = $c.radd(symset_pick[0], 0).item.a_int;
             /* if picking non-preselected entry yields 2, make sure
@@ -955,7 +950,7 @@ export async function do_symset(rogueflag) {   // symbols.c:909
         if (!glyphid_cache_status()) {
             await fill_glyphid_cache();
         }
-        ok = await read_sym_file(which_set);
+        const ok = await read_sym_file(which_set);
         if (glyphid_cache_status()) {
             free_glyphid_cache();
         }
@@ -976,7 +971,7 @@ export async function do_symset(rogueflag) {   // symbols.c:909
     } else if (!rogueflag) {
         assign_graphics(PRIMARYSET);
     }
-    await apply_customizations((rogueflag ? ROGUESET : PRIMARYSET) >>> 0, do_custom_symbols | do_custom_colors);
+    await apply_customizations(rogueflag ? ROGUESET : PRIMARYSET, do_custom_symbols | do_custom_colors);
     await preference_update()($c.lit("symset"));
     return TRUE;
 }

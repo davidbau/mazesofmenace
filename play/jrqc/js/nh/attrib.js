@@ -95,7 +95,7 @@ const exertext = $c.arrayOf(6, () => $c.nulls(2));
  * @returns {Promise<number>} boolean
  */
 export async function adjattrib(ndx, incr, msgflg) {   // attrib.c:117
-    let old_acurr = 0, old_abase = 0, old_amax = 0, decr = 0, abonflg = 0, attrstr = null, $t1, $t2;
+    let abonflg = 0, attrstr = null, $t1, $t2;
     /* which characteristic */
     /* amount of change */
     /* positive => no message, zero => message, and */
@@ -109,9 +109,9 @@ export async function adjattrib(ndx, incr, msgflg) {   // attrib.c:117
         }
         return FALSE;
     }
-    old_acurr = ACURR(ndx);
-    old_abase = u.acurr.a[ndx];
-    old_amax = u.amax.a[ndx];
+    const old_acurr = ACURR(ndx);
+    const old_abase = u.acurr.a[ndx];
+    const old_amax = u.amax.a[ndx];
     u.acurr.a[ndx] = $c.i8(u.acurr.a[ndx] + incr | 0);   /* when incr is negative, this reduces ABASE() */
     if (incr > 0) {
         if (u.acurr.a[ndx] > u.amax.a[ndx]) {
@@ -121,7 +121,7 @@ export async function adjattrib(ndx, incr, msgflg) {   // attrib.c:117
             }
         }
         attrstr = plusattr[ndx];
-        abonflg = $c.i8(u.abon.a[ndx] < 0 ? 1 : 0);
+        abonflg = u.abon.a[ndx] < 0 ? 1 : 0;
     } else {
         /* incr is negative */
         if (u.acurr.a[ndx] < gu.urace.attrmin[ndx]) {
@@ -142,7 +142,7 @@ export async function adjattrib(ndx, incr, msgflg) {   // attrib.c:117
              *
              * decr = rn2(-(ABASE - ATTRMIN) + 1);
              */
-            decr = rn2((gu.urace.attrmin[ndx] - u.acurr.a[ndx] | 0) + 1 | 0);
+            const decr = rn2(gu.urace.attrmin[ndx] - u.acurr.a[ndx] + 1);
             u.acurr.a[ndx] = $c.i8(gu.urace.attrmin[ndx]);
             u.amax.a[ndx] = $c.i8(u.amax.a[ndx] - decr | 0);
             if (u.amax.a[ndx] < gu.urace.attrmin[ndx]) {
@@ -150,7 +150,7 @@ export async function adjattrib(ndx, incr, msgflg) {   // attrib.c:117
             }
         }
         attrstr = minusattr[ndx];
-        abonflg = $c.i8(u.abon.a[ndx] > 0 ? 1 : 0);
+        abonflg = u.abon.a[ndx] > 0 ? 1 : 0;
     }
     if (ACURR(ndx) === old_acurr) {
         if (msgflg === 0 && flags.verbose) {
@@ -183,8 +183,7 @@ export async function adjattrib(ndx, incr, msgflg) {   // attrib.c:117
  * @returns {Promise<void>}
  */
 export async function gainstr(otmp, incr, givemsg) {   // attrib.c:203
-    let num = 0;
-    num = incr;
+    let num = incr;
     if (!num) {
         if (u.acurr.a[A.STR] < 18) {
             num = rn2(4) ? 1 : rnd(6);
@@ -194,7 +193,7 @@ export async function gainstr(otmp, incr, givemsg) {   // attrib.c:203
             num = 1;
         }
     }
-    await adjattrib(A.STR, otmp && otmp.cursed | 0 ? -num | 0 : num, givemsg ? -1 : 1);
+    await adjattrib(A.STR, otmp && otmp.cursed ? -num | 0 : num, givemsg ? -1 : 1);
 }
 /* strength loss, may kill you; cause may be poison or monster like 'a' */
 /**
@@ -204,20 +203,19 @@ export async function gainstr(otmp, incr, givemsg) {   // attrib.c:203
  * @returns {Promise<void>}
  */
 export async function losestr(num, knam, k_format) {   // attrib.c:221
-    let uhpmin = 0, olduhpmax = 0, ustr = 0, amt = 0, dmg = 0, waspolyd = 0;
-    uhpmin = minuhpmax(1);
-    olduhpmax = u.uhpmax;
-    ustr = u.acurr.a[A.STR] - num | 0;
-    waspolyd = $c.i8(Upolyd());
+    const uhpmin = minuhpmax(1);
+    const olduhpmax = u.uhpmax;
+    let ustr = u.acurr.a[A.STR] - num | 0;
+    const waspolyd = Upolyd();
     if (num <= 0 || u.acurr.a[A.STR] < gu.urace.attrmin[A.STR]) {
         await impossible($c.lit("losestr: %d - %d"), u.acurr.a[A.STR], num);
         return;
     }
-    dmg = 0;
+    let dmg = 0;
     while (ustr < gu.urace.attrmin[A.STR]) {
         ustr = ustr + 1 | 0;
         num = num - 1 | 0;
-        amt = rn2(4) + 3 | 0;   /* (0..(4-1))+3 => 3..6; used to use flat 6 here */
+        const amt = rn2(4) + 3 | 0;   /* (0..(4-1))+3 => 3..6; used to use flat 6 here */
         dmg = dmg + amt | 0;
     }
     if (dmg) {
@@ -267,11 +265,10 @@ export async function poison_strdmg(strloss, dmg, knam, k_format) {   // attrib.
  * @returns {Promise<void>}
  */
 export async function poisontell(typ, exclaim) {   // attrib.c:294
-    let func = null, msg_txt = null;
     /* which attribute */
     /* emphasis */
-    func = poiseff[typ].delivery_func;
-    msg_txt = poiseff[typ].effect_msg;
+    const func = poiseff[typ].delivery_func;
+    let msg_txt = poiseff[typ].effect_msg;
     /*
      * "You feel weaker" or "you feel very sick" aren't appropriate when
      * wearing or wielding something (gauntlets of power, Ogresmasher)
@@ -296,18 +293,18 @@ export async function poisontell(typ, exclaim) {   // attrib.c:294
  * @returns {Promise<void>}
  */
 export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {   // attrib.c:317
-    let i = 0, loss = 0, kprefix = 0, blast = 0, plural = 0, olduhp = 0, newuhpmax = 0, cloud = 0;
+    let loss = 0;
     /* controls what messages we display */
     /* for score+log file if fatal */
     /* if fatal is 0, limit damage to adjattrib */
     /* thrown weapons are less deadly */
-    kprefix = KILLED.BY_AN;
-    blast = $c.i8(!$c.strcmp(reason, $c.lit("blast")) ? 1 : 0);
+    let kprefix = KILLED.BY_AN;
+    const blast = !$c.strcmp(reason, $c.lit("blast")) ? 1 : 0;
     /* inform player about being poisoned unless that's already been done;
        "blast" has given a "blast of poison gas" message; "poison arrow",
        "poison dart", etc have implicitly given poison messages too... */
     if (!blast && !strstri(reason, $c.lit("poison"))) {
-        plural = $c.i8(reason.get($c.idx($c.subu64($c.strlen(reason), 1))) === 115 ? 1 : 0);
+        const plural = reason.get($c.idx($c.subu64($c.strlen(reason), 1))) === 115 ? 1 : 0;
         /* avoid "The" Orcus's sting was poisoned... */
         await pline($c.lit("%s%s %s poisoned!"), $c.isupper($c.u8(reason.get(0))) ? $c.lit("") : $c.lit("The "), reason, plural ? $c.lit("were") : $c.lit("was"));
     }
@@ -319,7 +316,7 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {   /
         return;
     }
     /* suppress killer prefix if it already has one */
-    i = await name_to_mon(pkiller, null);
+    let i = await name_to_mon(pkiller, null);
     if (ismnum(i) && mons[i].geno & G_UNIQ) {
         kprefix = KILLED.BY;
         if (!type_is_pname($c.relem(mons, i))) {
@@ -343,8 +340,8 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {   /
             await pline_The($c.lit("poison was deadly..."));
         } else {
             /* survived, but with severe reaction */
-            olduhp = u.uhp;
-            newuhpmax = u.uhpmax - $c.div32(loss, 2) | 0;
+            const olduhp = u.uhp;
+            const newuhpmax = u.uhpmax - $c.div32(loss, 2) | 0;
             setuhpmax(newuhpmax > minuhpmax(3) ? newuhpmax : minuhpmax(3), TRUE);   /*True: see FIXME*/
             loss = adjuhploss(loss, olduhp);
             await losehp(loss, pkiller, $c.i8(kprefix));   /* poison damage */
@@ -356,7 +353,7 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {   /
             }
         }
     } else if (i > 5) {
-        cloud = $c.i8(!$c.strcmp(reason, $c.lit("gas cloud")) ? 1 : 0);
+        const cloud = !$c.strcmp(reason, $c.lit("gas cloud")) ? 1 : 0;
         /* HP damage; more likely--but less severe--with missiles */
         loss = thrown_weapon ? rnd(6) : rn2(10) + 6 | 0;
         if ((blast || cloud) && Half_gas_damage()) {   /* worn towel */
@@ -399,13 +396,13 @@ export function change_luck(n) {   // attrib.c:411
  * @returns {number} int
  */
 export function stone_luck(include_uncursed) {   // attrib.c:423
-    let otmp = null, bonchance = 0;
-    bonchance = 0;
+    let otmp = null;
+    let bonchance = 0;
     for (otmp = gi.invent; otmp; otmp = otmp.nobj) {
         if (confers_luck(otmp)) {
             if (otmp.cursed) {
                 bonchance = $c.sub64(bonchance, otmp.quan);
-            } else if (otmp.blessed | 0 || include_uncursed) {
+            } else if (otmp.blessed || include_uncursed) {
                 bonchance = $c.add64(bonchance, otmp.quan);
             }
         }
@@ -414,8 +411,7 @@ export function stone_luck(include_uncursed) {   // attrib.c:423
 }
 /* there has just been an inventory change affecting a luck-granting item */
 export function set_moreluck() {   // attrib.c:441
-    let luckbon = 0;
-    luckbon = stone_luck(TRUE);
+    const luckbon = stone_luck(TRUE);
     if (!luckbon && !carrying(LUCKSTONE)) {
         u.moreluck = 0;
     } else if (luckbon >= 0) {
@@ -429,7 +425,7 @@ export function set_moreluck() {   // attrib.c:441
  * @returns {Promise<void>}
  */
 export async function restore_attrib() {   // attrib.c:455
-    let i = 0, equilibrium = 0, $t1;
+    let i = 0, $t1;
     /*
      * Note:  this used to get called by moveloop() on every turn but
      * ATIME() is never set to non-zero anywhere so didn't do anything.
@@ -442,7 +438,7 @@ export async function restore_attrib() {   // attrib.c:455
      */
     for (i = 0; i < A.MAX; i = i + 1 | 0) {
         /* all temporary losses/gains */
-        equilibrium = i === A.STR && u.uhs >= WEAK || i === A.DEX && Wounded_legs() ? -1 : 0;
+        const equilibrium = i === A.STR && u.uhs >= WEAK || i === A.DEX && Wounded_legs() ? -1 : 0;
         if (u.atemp.a[i] !== equilibrium && u.atime.a[i] !== 0) {
             if (!(u.atime.a[i] = $c.i8(u.atime.a[i] - 1))) {
                 /* countdown for change */
@@ -465,10 +461,10 @@ export async function restore_attrib() {   // attrib.c:455
  * @returns {Promise<void>}
  */
 export async function exercise(i, inc_or_dec) {   // attrib.c:489
-    let save_plnmsg = 0, save_plnmsg$2 = 0, $t1;
+    let $t1;
     do {
         if (debugcore($c.lit("attrib.c"), TRUE)) {
-            save_plnmsg = iflags.last_msg;
+            const save_plnmsg = iflags.last_msg;
             await pline($c.lit("Exercise:"));
             iflags.last_msg = save_plnmsg;
         }
@@ -493,7 +489,7 @@ export async function exercise(i, inc_or_dec) {   // attrib.c:489
         $t1 = inc_or_dec ? rn2(19) > ACURR(i) ? 1 : 0 : -rn2(2) | 0, u.aexe.a[i] = $c.i8(u.aexe.a[i] + $t1 | 0);
         do {
             if (debugcore($c.lit("attrib.c"), TRUE)) {
-                save_plnmsg$2 = iflags.last_msg;
+                const save_plnmsg$2 = iflags.last_msg;
                 await pline($c.lit("%s, %s AEXE = %d"), i === A.STR ? $c.lit("Str") : i === A.WIS ? $c.lit("Wis") : i === A.DEX ? $c.lit("Dex") : $c.lit("Con"), inc_or_dec ? $c.lit("inc") : $c.lit("dec"), u.aexe.a[i]);
                 iflags.last_msg = save_plnmsg$2;
             }
@@ -507,13 +503,12 @@ export async function exercise(i, inc_or_dec) {   // attrib.c:489
  * @returns {Promise<void>}
  */
 async function exerper() {   // attrib.c:521
-    let hs = 0, save_plnmsg = 0, save_plnmsg$2 = 0, save_plnmsg$3 = 0;
     if (!$c.rem64(svm.moves, 10)) {
         /* Hunger Checks */
-        hs = u.uhunger > 1000 ? SATIATED : u.uhunger > 150 ? NOT_HUNGRY : u.uhunger > 50 ? HUNGRY : u.uhunger > 0 ? WEAK : FAINTING;
+        const hs = u.uhunger > 1000 ? SATIATED : u.uhunger > 150 ? NOT_HUNGRY : u.uhunger > 50 ? HUNGRY : u.uhunger > 0 ? WEAK : FAINTING;
         do {
             if (debugcore($c.lit("attrib.c"), TRUE)) {
-                save_plnmsg = iflags.last_msg;
+                const save_plnmsg = iflags.last_msg;
                 await pline($c.lit("exerper: Hunger checks"));
                 iflags.last_msg = save_plnmsg;
             }
@@ -542,7 +537,7 @@ async function exerper() {   // attrib.c:521
         /* Encumbrance Checks */
         do {
             if (debugcore($c.lit("attrib.c"), TRUE)) {
-                save_plnmsg$2 = iflags.last_msg;
+                const save_plnmsg$2 = iflags.last_msg;
                 await pline($c.lit("exerper: Encumber checks"));
                 iflags.last_msg = save_plnmsg$2;
             }
@@ -565,7 +560,7 @@ async function exerper() {   // attrib.c:521
     if (!$c.rem64(svm.moves, 5)) {
         do {
             if (debugcore($c.lit("attrib.c"), TRUE)) {
-                save_plnmsg$3 = iflags.last_msg;
+                const save_plnmsg$3 = iflags.last_msg;
                 await pline($c.lit("exerper: Status checks"));
                 iflags.last_msg = save_plnmsg$3;
             }
@@ -701,8 +696,8 @@ export async function exerchk() {   // attrib.c:598
  * @returns {number} int
  */
 function rnd_attr() {   // attrib.c:682
-    let i = 0, x = 0;
-    x = rn2(100);
+    let i = 0;
+    let x = rn2(100);
     /* 5.0: the x -= ... calculation used to have an off by 1 error that
        resulted in the values being biased toward Str and away from Cha */
     for (i = 0; i < A.MAX; i = i + 1 | 0) {
@@ -722,11 +717,10 @@ function rnd_attr() {   // attrib.c:682
  * @returns {number} int
  */
 function init_attr_role_redist(np, addition) {   // attrib.c:699
-    let tryct = 0, adj = 0, i = 0;
-    tryct = 0;
-    adj = addition ? 1 : -1;
+    let tryct = 0;
+    const adj = addition ? 1 : -1;
     while ((addition ? np > 0 : np < 0) && tryct < 100) {
-        i = rnd_attr();
+        const i = rnd_attr();
         if (i >= A.MAX || (addition ? u.acurr.a[i] >= ATTRMAX(i) : u.acurr.a[i] <= gu.urace.attrmin[i])) {
             tryct = tryct + 1 | 0;
             continue;
@@ -755,13 +749,13 @@ export function init_attr(np) {   // attrib.c:723
     np = init_attr_role_redist(np, FALSE);
 }
 export function redist_attr() {   // attrib.c:740
-    let i = 0, tmp = 0, $t1, $t2;
+    let i = 0, $t1, $t2;
     for (i = 0; i < A.MAX; i = i + 1 | 0) {
         if (i === A.INT || i === A.WIS) {
             continue;
         }
         /* Polymorphing doesn't change your mind */
-        tmp = u.amax.a[i];
+        const tmp = u.amax.a[i];
         $t1 = rn2(5) - 2 | 0, u.amax.a[i] = $c.i8(u.amax.a[i] + $t1 | 0);
         if (u.amax.a[i] > ATTRMAX(i)) {
             $t2 = $c.i8(ATTRMAX(i)), u.amax.a[i] = $t2;
@@ -782,10 +776,10 @@ export function redist_attr() {   // attrib.c:740
  * @returns {Promise<void>}
  */
 export async function vary_init_attr() {   // attrib.c:764
-    let i = 0, xd = 0;
+    let i = 0;
     for (i = 0; i < A.MAX; i = i + 1 | 0) {
         if (!rn2(20)) {
-            xd = rn2(7) - 2 | 0;   /* biased variation */
+            const xd = rn2(7) - 2 | 0;   /* biased variation */
             await adjattrib(i, xd, TRUE);
             if (u.acurr.a[i] < u.amax.a[i]) {
                 u.amax.a[i] = u.acurr.a[i];
@@ -815,31 +809,31 @@ function role_abil(r) {   // attrib.c:789
         roleabils[$i4].$copyFrom(new $T.anon_attrib_791());
     }
     roleabils[0].role = PM.ARCHEOLOGIST;
-    roleabils[0].abil = $c.relem(arc_abil, 0);
+    roleabils[0].abil = arc_abil[0];
     roleabils[1].role = PM.BARBARIAN;
-    roleabils[1].abil = $c.relem(bar_abil, 0);
+    roleabils[1].abil = bar_abil[0];
     roleabils[2].role = PM.CAVE_DWELLER;
-    roleabils[2].abil = $c.relem(cav_abil, 0);
+    roleabils[2].abil = cav_abil[0];
     roleabils[3].role = PM.HEALER;
-    roleabils[3].abil = $c.relem(hea_abil, 0);
+    roleabils[3].abil = hea_abil[0];
     roleabils[4].role = PM.KNIGHT;
-    roleabils[4].abil = $c.relem(kni_abil, 0);
+    roleabils[4].abil = kni_abil[0];
     roleabils[5].role = PM.MONK;
-    roleabils[5].abil = $c.relem(mon_abil, 0);
+    roleabils[5].abil = mon_abil[0];
     roleabils[6].role = PM.CLERIC;
-    roleabils[6].abil = $c.relem(pri_abil, 0);
+    roleabils[6].abil = pri_abil[0];
     roleabils[7].role = PM.RANGER;
-    roleabils[7].abil = $c.relem(ran_abil, 0);
+    roleabils[7].abil = ran_abil[0];
     roleabils[8].role = PM.ROGUE;
-    roleabils[8].abil = $c.relem(rog_abil, 0);
+    roleabils[8].abil = rog_abil[0];
     roleabils[9].role = PM.SAMURAI;
-    roleabils[9].abil = $c.relem(sam_abil, 0);
+    roleabils[9].abil = sam_abil[0];
     roleabils[10].role = PM.TOURIST;
-    roleabils[10].abil = $c.relem(tou_abil, 0);
+    roleabils[10].abil = tou_abil[0];
     roleabils[11].role = PM.VALKYRIE;
-    roleabils[11].abil = $c.relem(val_abil, 0);
+    roleabils[11].abil = val_abil[0];
     roleabils[12].role = PM.WIZARD;
-    roleabils[12].abil = $c.relem(wiz_abil, 0);
+    roleabils[12].abil = wiz_abil[0];
     roleabils[13].role = 0;
     roleabils[13].abil = null;
     for (i = 0; roleabils[i].abil && roleabils[i].role !== r; i = i + 1 | 0) {
@@ -854,25 +848,24 @@ function role_abil(r) {   // attrib.c:789
  */
 function check_innate_abil(ability, frommask) {   // attrib.c:818
     let abil = null;
-    abil = null;
     if (frommask === FROMEXPER) {
         abil = role_abil(gu.urole.mnum);
     } else if (frommask === FROMRACE) {
         switch (gu.urace.mnum) {
             case PM.DWARF:
-                abil = $c.relem(dwa_abil, 0);
+                abil = dwa_abil[0];
                 break;
             case PM.ELF:
-                abil = $c.relem(elf_abil, 0);
+                abil = elf_abil[0];
                 break;
             case PM.GNOME:
-                abil = $c.relem(gno_abil, 0);
+                abil = gno_abil[0];
                 break;
             case PM.ORC:
-                abil = $c.relem(orc_abil, 0);
+                abil = orc_abil[0];
                 break;
             case PM.HUMAN:
-                abil = $c.relem(hum_abil, 0);
+                abil = hum_abil[0];
                 break;
             default:
                 break;
@@ -942,7 +935,7 @@ export function is_innate(propidx) {   // attrib.c:880
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function from_what(propidx) {   // attrib.c:905
-    let p = null, obj = null, innateness = 0;
+    let p = null;
     /* special cases can have negative values */
     from_what$buf[0] = 0;
     /*
@@ -950,8 +943,8 @@ export async function from_what(propidx) {   // attrib.c:905
      */
     if (wizard()) {
         if (propidx >= 0) {
-            obj = null;
-            innateness = is_innate(propidx);
+            let obj = null;
+            const innateness = is_innate(propidx);
             /*
              * Properties can be obtained from multiple sources and we
              * try to pick the most significant one.  Classification
@@ -979,7 +972,7 @@ export async function from_what(propidx) {   // attrib.c:905
             } else if (innateness === FROM_FORM) {
                 $c.strcpy(new $c.Ptr(from_what$buf, 0), $c.lit(" from your creature form"));
             } else if (propidx === FAST && Very_fast()) {
-                $c.sprintf(new $c.Ptr(from_what$buf, 0), new $c.Ptr(from_what$because_of, 0), $c.and64(u.uprops[FAST].intrinsic, TIMEOUT) !== 0 ? $c.lit("a potion or spell") : $c.and64(u.uprops[FAST].extrinsic, W.ARMF) !== 0 && $G.uarmf.dknown | 0 && objects[$G.uarmf.otyp].oc_name_known | 0 ? await ysimple_name($G.uarmf) : u.uprops[FAST].extrinsic ? $c.lit("worn equipment") : c_common_strings.c_something);
+                $c.sprintf(new $c.Ptr(from_what$buf, 0), new $c.Ptr(from_what$because_of, 0), $c.and64(u.uprops[FAST].intrinsic, TIMEOUT) !== 0 ? $c.lit("a potion or spell") : $c.and64(u.uprops[FAST].extrinsic, W.ARMF) !== 0 && $G.uarmf.dknown && objects[$G.uarmf.otyp].oc_name_known ? await ysimple_name($G.uarmf) : u.uprops[FAST].extrinsic ? $c.lit("worn equipment") : c_common_strings.c_something);
             } else if (wizard() && (obj = what_gives(new $c.FieldRef(u.uprops[propidx], "extrinsic", "i64"))) !== null) {
                 /* speed boots */
                 $c.sprintf(new $c.Ptr(from_what$buf, 0), new $c.Ptr(from_what$because_of, 0), obj.oartifact ? await bare_artifactname(obj) : await ysimple_name(obj));
@@ -1028,15 +1021,15 @@ export async function from_what(propidx) {   // attrib.c:905
  * @returns {Promise<void>}
  */
 export async function adjabil(oldlevel, newlevel) {   // attrib.c:1006
-    let abil = null, rabil = null, prevabil = 0, mask = 0;
-    mask = FROMEXPER;
-    abil = role_abil(gu.urole.mnum);
+    let rabil = null;
+    let mask = FROMEXPER;
+    let abil = role_abil(gu.urole.mnum);
     switch (gu.urace.mnum) {
         case PM.ELF:
-            rabil = $c.relem(elf_abil, 0);
+            rabil = elf_abil[0];
             break;
         case PM.ORC:
-            rabil = $c.relem(orc_abil, 0);
+            rabil = orc_abil[0];
             break;
         case PM.HUMAN:
         case PM.DWARF:
@@ -1056,7 +1049,7 @@ export async function adjabil(oldlevel, newlevel) {   // attrib.c:1006
             rabil = null;
             mask = FROMRACE;
         }
-        prevabil = abil.ability.get(0);
+        const prevabil = abil.ability.get(0);
         if (oldlevel < abil.ulevel && newlevel >= abil.ulevel) {
             /* Abilities gained at level 1 can never be lost
              * via level loss, only via means that remove _any_
@@ -1104,10 +1097,10 @@ export async function adjabil(oldlevel, newlevel) {   // attrib.c:1006
  * @returns {number} int
  */
 export function newhp() {   // attrib.c:1080
-    let hp = 0, conplus = 0, lim = 0;
+    let hp = 0, conplus = 0;
     if (u.ulevel === 0) {
         /* Initialize hit points */
-        hp = gu.urole.hpadv.infix + gu.urace.hpadv.infix | 0;
+        hp = gu.urole.hpadv.infix + gu.urace.hpadv.infix;
         if (gu.urole.hpadv.inrnd > 0) {
             hp = hp + rnd(gu.urole.hpadv.inrnd) | 0;
         }
@@ -1123,7 +1116,7 @@ export function newhp() {   // attrib.c:1080
         /* no Con adjustment for initial hit points */
     } else {
         if (u.ulevel < gu.urole.xlev) {
-            hp = gu.urole.hpadv.lofix + gu.urace.hpadv.lofix | 0;
+            hp = gu.urole.hpadv.lofix + gu.urace.hpadv.lofix;
             if (gu.urole.hpadv.lornd > 0) {
                 hp = hp + rnd(gu.urole.hpadv.lornd) | 0;
             }
@@ -1131,7 +1124,7 @@ export function newhp() {   // attrib.c:1080
                 hp = hp + rnd(gu.urace.hpadv.lornd) | 0;
             }
         } else {
-            hp = gu.urole.hpadv.hifix + gu.urace.hpadv.hifix | 0;
+            hp = gu.urole.hpadv.hifix + gu.urace.hpadv.hifix;
             if (gu.urole.hpadv.hirnd > 0) {
                 hp = hp + rnd(gu.urole.hpadv.hirnd) | 0;
             }
@@ -1165,8 +1158,8 @@ export function newhp() {   // attrib.c:1080
     } else {
         /* after level 30, throttle hit point gains from extra experience;
            once max reaches 1200, further increments will be just 1 more */
-        lim = $c.i8(5 - $c.div32(u.uhpmax, 300) | 0);
-        lim = $c.i8(lim > 1 ? lim : 1);
+        let lim = $c.i8(5 - $c.div32(u.uhpmax, 300) | 0);
+        lim = lim > 1 ? lim : 1;
         if (hp > lim) {
             hp = lim;
         }
@@ -1244,10 +1237,9 @@ export function adjuhploss(loss, olduhp) {   // attrib.c:1182
  * @returns {number} schar
  */
 export function acurr(chridx) {   // attrib.c:1200
-    let tmp = 0, result = 0;
-    result = 0;   /* 'result' will always be reset to positive value */
+    let result = 0;   /* 'result' will always be reset to positive value */
     (!(chridx >= 0 && chridx < A.MAX) ? 1 : 0) ? $c.__assert_rtn($c.lit("acurr"), $c.lit("attrib.c"), 1204, $c.lit("chridx >= 0 && chridx < A_MAX")) : 0;
-    tmp = (u.abon.a[chridx] + u.atemp.a[chridx] | 0) + u.acurr.a[chridx] | 0;
+    const tmp = u.abon.a[chridx] + u.atemp.a[chridx] + u.acurr.a[chridx];
     /* for Strength:  3 <= result <= 125;
        for all others:  3 <= result <= 25 */
     if (chridx === A.STR) {
@@ -1290,9 +1282,9 @@ export function acurr(chridx) {   // attrib.c:1200
  * @returns {number} schar
  */
 export function acurrstr() {   // attrib.c:1245
-    let str = 0, result = 0;
+    let result = 0;
     /* 3..125 after massaging by acurr() */
-    str = ACURR(A.STR);   /* 3..25 */
+    const str = ACURR(A.STR);   /* 3..25 */
     if (str <= 18) {   /* <= 18; max(,3) here is redundant */
         result = str > 3 ? str : 3;   /* 3..18 */
     } else if (str <= 121) {
@@ -1316,12 +1308,11 @@ export function acurrstr() {   // attrib.c:1245
  * @returns {number} boolean
  */
 export function extremeattr(attrindx) {   // attrib.c:1268
-    let lolimit = 0, hilimit = 0, curval = 0;
     /* does attrindx's value match its max or min? */
     /* Fixed_abil and racial MINATTR/MAXATTR aren't relevant here */
-    lolimit = 3;
-    hilimit = 25;
-    curval = ACURR(attrindx);
+    let lolimit = 3;
+    let hilimit = 25;
+    const curval = ACURR(attrindx);
     /* upper limit for Str is 25 but its value is encoded differently */
     if (attrindx === A.STR) {
         hilimit = 125;   /* 125 */
@@ -1342,7 +1333,7 @@ export function extremeattr(attrindx) {   // attrib.c:1268
         }
     }
     /* are we currently at either limit? */
-    return $c.i8(curval === lolimit || curval === hilimit ? TRUE : FALSE);
+    return curval === lolimit || curval === hilimit ? TRUE : FALSE;
 }
 /* avoid possible problems with alignment overflow, and provide a centralized
    location for any future alignment limits */
@@ -1350,10 +1341,9 @@ export function extremeattr(attrindx) {   // attrib.c:1268
  * @param {number} n int
  */
 export function adjalign(n) {   // attrib.c:1298
-    let newalign = 0, newabuse = 0;
-    newalign = u.ualign.record + n | 0;
+    const newalign = u.ualign.record + n | 0;
     if (n < 0) {
-        newabuse = u.ualign.abuse - (n >>> 0) >>> 0;
+        const newabuse = u.ualign.abuse - (n >>> 0) >>> 0;
         if (newalign < u.ualign.record) {
             u.ualign.record = newalign;
         }
@@ -1375,9 +1365,8 @@ export function adjalign(n) {   // attrib.c:1298
  * @returns {Promise<void>}
  */
 export async function uchangealign(newalign, reason) {   // attrib.c:1320
-    let oldalign = 0;
     /* A_CG_CONVERT, A_CG_HELM_ON, or A_CG_HELM_OFF */
-    oldalign = u.ualign.type;
+    const oldalign = u.ualign.type;
     u.ublessed = 0;   /* lose divine protection */
     /* You/Your/pline message with call flush_screen(), triggering bot(),
        so the actual data change needs to come before the message */

@@ -8,7 +8,6 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { AM } from './align.h.js';
-import { Align2amask } from './align.macros.js';
 import { dupstr } from './alloc.js';
 import { next_to_u, reset_trapset } from './apply.js';
 import { artifact_has_invprop, finesse_ahriman } from './artifact.js';
@@ -126,11 +125,10 @@ const dowipe$buf = new Int8Array(39);   // static in dowipe()
  * @returns {Promise<number>} int
  */
 export async function dodrop() {   // do.c:29
-    let result = 0;
     if (new $c.Ptr(u.ushops, 0).get(0)) {
         sellobj_state(SELL.DELIBERATE);
     }
-    result = await drop(await getobj($c.lit("drop"), any_obj_ok, GETOBJ_PROMPT | GETOBJ.ALLOWCNT));
+    const result = await drop(await getobj($c.lit("drop"), any_obj_ok, GETOBJ_PROMPT | GETOBJ.ALLOWCNT));
     if (new $c.Ptr(u.ushops, 0).get(0)) {
         sellobj_state(SELL.NORMAL);
     }
@@ -151,27 +149,27 @@ export async function dodrop() {   // do.c:29
  * @returns {Promise<number>} boolean
  */
 export async function boulder_hits_pool(otmp, rx, ry, pushing) {   // do.c:50
-    let lava = 0, fills_up = 0, what = null, ltyp = 0, chance = 0, mtmp = null, ttmp = null, whobuf = new Int8Array(256), dmg = 0;
+    let mtmp = null, whobuf = new Int8Array(256);
     /* the object falling into a pool or water or lava */
     /* coordinates of the pool */
     /* for a boulder, whether or not it is being pushed */
     if (!otmp || otmp.otyp !== BOULDER) {
         await impossible($c.lit("Not a boulder?"));
     } else if (is_pool_or_lava(rx, ry)) {
-        lava = is_lava(rx, ry);
-        what = waterbody_name(rx, ry);
-        ltyp = svl.level.locations[rx][ry].typ;
-        chance = rn2(10);   /* water: 90%; lava: 10% */
+        const lava = is_lava(rx, ry);
+        const what = waterbody_name(rx, ry);
+        const ltyp = svl.level.locations[rx][ry].typ;
+        const chance = rn2(10);   /* water: 90%; lava: 10% */
         /* chance for boulder to fill pool:  Plane of Water==0%,
            lava 10%, wall of water==50%, other water==90% */
-        fills_up = $c.i8((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) ? FALSE : IS_WATERWALL(ltyp) ? chance < 5 ? 1 : 0 : lava ? chance === 0 ? 1 : 0 : chance !== 0 ? 1 : 0);
+        const fills_up = (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) ? FALSE : IS_WATERWALL(ltyp) ? chance < 5 ? 1 : 0 : lava ? chance === 0 ? 1 : 0 : chance !== 0 ? 1 : 0;
         if (fills_up) {
-            ttmp = t_at(rx, ry);
+            const ttmp = t_at(rx, ry);
             if (ltyp === DRAWBRIDGE_UP) {
                 svl.level.locations[rx][ry].flags = (((svl.level.locations[rx][ry].flags | 0) & ~DB.UNDER) >>> 0) & 31;   /* clear lava */
                 svl.level.locations[rx][ry].flags = ((svl.level.locations[rx][ry].flags | 0 | DB.FLOOR) >>> 0) & 31;
             } else {
-                svl.level.locations[rx][ry].typ = ROOM, svl.level.locations[rx][ry].flags = (0) & 31;
+                svl.level.locations[rx][ry].typ = ROOM, svl.level.locations[rx][ry].flags = 0;
                 recalc_block_point(rx, ry);
             }
             /* 5.0: normally DEADMONSTER() is used when traversing the fmon
@@ -215,7 +213,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {   // do.c:50
                 }
                 await wake_nearto(rx, ry, 40);
             }
-            if (fills_up && u.uinwater | 0 && distu(rx, ry) === 0) {
+            if (fills_up && u.uinwater && distu(rx, ry) === 0) {
                 await set_uinwater(0);   /* u.uinwater = 0 */
                 await docrt();
                 gv.vision_full_recalc = 1;
@@ -223,7 +221,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {   // do.c:50
             } else if (lava && dist2(rx, ry, u.ux, u.uy) <= 2) {
                 await You($c.lit("are hit by molten %s%c"), hliquid($c.lit("lava")), Fire_resistance() ? 46 : 33);
                 await burn_away_slime();
-                dmg = d(u.uprops[FIRE_RES].intrinsic || u.uprops[FIRE_RES].extrinsic ? 1 : 3, 6);
+                const dmg = d(u.uprops[FIRE_RES].intrinsic || u.uprops[FIRE_RES].extrinsic ? 1 : 3, 6);
                 /* lava damage */
                 await losehp(Maybe_Half_Phys(dmg), $c.lit("molten lava"), KILLED.BY);
             } else if (!fills_up && flags.verbose && (pushing ? !Blind() : cansee(rx, ry))) {
@@ -271,10 +269,10 @@ export async function flooreffects(obj, x, y, verb) {   // do.c:162
     if (obj.otyp === BOULDER && await boulder_hits_pool(obj, x, y, FALSE)) {
         res = TRUE;
     } else if (obj.otyp === BOULDER && (t = t_at(x, y)) !== null && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
-        ttyp = t.ttyp | 0;
-        tseen = $c.i8(t.tseen | 0 ? TRUE : FALSE);
+        ttyp = t.ttyp;
+        tseen = t.tseen ? TRUE : FALSE;
         deletedwithboulder$: {
-            if ((mtmp = svl.level.monsters[x][y]) && mtmp.mtrapped | 0 || u.utrap && u_at(x, y)) {
+            if ((mtmp = svl.level.monsters[x][y]) && mtmp.mtrapped || u.utrap && u_at(x, y)) {
                 if (verb.get(0) && (cansee(x, y) || distu(x, y) === 0)) {
                     await pline($c.lit("%s boulder %s into the pit%s."), Blind() ? $c.lit("A") : $c.lit("The"), await vtense(null, verb), mtmp ? $c.lit("") : $c.lit(" with you"));
                 }
@@ -307,7 +305,7 @@ export async function flooreffects(obj, x, y, verb) {   // do.c:162
                         }
                         nhUse(res);
                     }
-                    mtmp.mtrapped = (0) & 1;
+                    mtmp.mtrapped = 0;
                 } else {
                     if (!Passes_walls() && !throws_rocks(gy.youmonst.data)) {
                         await losehp(u.uprops[HALF_PHDAM].intrinsic || u.uprops[HALF_PHDAM].extrinsic ? $c.div32(rnd(15) + 1 | 0, 2) : rnd(15), $c.lit("squished under a boulder"), NO_KILLER_PREFIX);
@@ -382,7 +380,7 @@ export async function flooreffects(obj, x, y, verb) {   // do.c:162
              * obj to null. */
             await obj_meld(new $c.Ptr(globbyobj, 0), new $c.Ptr(otmp, 0));
         }
-        res = $c.i8(!globbyobj[0] ? 1 : 0);
+        res = !globbyobj[0] ? 1 : 0;
     } else if (svc.context.mon_moving && svl.level.locations[x][y].typ === ALTAR && cansee(x, y)) {
         await doaltarobj(obj);
     } else if (obj.oclass === POTION_CLASS && svl.level.flags.temperature > 0 && (svl.level.locations[x][y].typ === ROOM || svl.level.locations[x][y].typ === CORR)) {
@@ -403,7 +401,7 @@ export async function flooreffects(obj, x, y, verb) {   // do.c:162
                room and corridor tiles */
             await pline($c.lit("%s up as %s the hot ground."), await Tobjnam(obj, $c.lit("heat")), is_plural(obj) ? $c.lit("they hit") : $c.lit("it hits"));
         }
-        survival_chance = obj.blessed | 0 ? 70 : 50;
+        survival_chance = obj.blessed ? 70 : 50;
         if (obj.invlet) {
             survival_chance = survival_chance + Math.imul(Luck(), 2) | 0;
         }
@@ -440,17 +438,17 @@ export async function doaltarobj(obj) {   // do.c:363
         }
     } else {
         /* coins don't have bless/curse status */
-        $t2 = obj.cursed = (0) & 1, obj.blessed = ($t2) & 1;
+        $t2 = obj.cursed = 0, obj.blessed = ($t2) & 1;
     }
-    if (obj.blessed | 0 || obj.cursed | 0) {
-        await There($c.lit("is %s flash as %s %s the altar."), await an(hcolor(obj.blessed | 0 ? c_color_names.c_amber : c_color_names.c_black)), await doname(obj), await otense(obj, $c.lit("hit")));
+    if (obj.blessed || obj.cursed) {
+        await There($c.lit("is %s flash as %s %s the altar."), await an(hcolor(obj.blessed ? c_color_names.c_amber : c_color_names.c_black)), await doname(obj), await otense(obj, $c.lit("hit")));
         if (!Hallucination()) {
-            obj.bknown = (1) & 1;   /* ok to bypass set_bknown() */
+            obj.bknown = 1;   /* ok to bypass set_bknown() */
         }
     } else {
         await pline($c.lit("%s %s on the altar."), await Doname2(obj), await otense(obj, $c.lit("land")));
         if (obj.oclass !== COIN_CLASS) {
-            obj.bknown = (1) & 1;   /* ok to bypass set_bknown() */
+            obj.bknown = 1;   /* ok to bypass set_bknown() */
         }
     }
 }
@@ -471,20 +469,20 @@ export async function trycall(obj) {   // do.c:395
  * @returns {Promise<void>}
  */
 export async function polymorph_sink() {   // do.c:404
-    let sym = 0, sinklooted = 0, algn = 0, $t1;
-    sym = S.sink;
+    let algn = 0, $t1;
+    let sym = S.sink;
     if (svl.level.locations[u.ux][u.uy].typ !== SINK) {
         return;
     }
-    sinklooted = $c.i8((svl.level.locations[u.ux][u.uy].flags | 0) !== 0 ? 1 : 0);
+    const sinklooted = svl.level.locations[u.ux][u.uy].flags !== 0 ? 1 : 0;
     /* svl.level.flags.nsinks--; // set_levltyp() will update this */
-    svl.level.locations[u.ux][u.uy].flags = (0) & 31;
+    svl.level.locations[u.ux][u.uy].flags = 0;
     switch (rn2(4)) {
         default:
         case 0:
             sym = S.fountain;
             await set_levltyp(u.ux, u.uy, FOUNTAIN);   /* updates level.flags.nfountains */
-            svl.level.locations[u.ux][u.uy].horizontal = (0) & 1;
+            svl.level.locations[u.ux][u.uy].horizontal = 0;
             if (sinklooted) {
                 svl.level.locations[u.ux][u.uy].flags = ((svl.level.locations[u.ux][u.uy].flags | 0 | F_LOOTED) >>> 0) & 31;
             }
@@ -502,7 +500,7 @@ export async function polymorph_sink() {   // do.c:404
             /* 3.6.3: this used to pass 'rn2(A_LAWFUL + 2) - 1' to
                Align2amask() but that evaluates its argument more than once */
             algn = rn2(3) - 1 | 0;   /* -1 (A_Cha) or 0 (A_Neu) or +1 (A_Law) */
-            $t1 = Inhell() && rn2(3) ? AM.NONE : Align2amask(algn), svl.level.locations[u.ux][u.uy].flags = ($t1) & 31;
+            $t1 = Inhell() && rn2(3) ? AM.NONE : ((algn === A.NONE ? AM.NONE : algn === A.LAWFUL ? AM.LAWFUL : algn + 2 | 0) >>> 0), svl.level.locations[u.ux][u.uy].flags = ($t1) & 31;
             break;
         case 3:
             sym = S.room;
@@ -528,27 +526,26 @@ export async function polymorph_sink() {   // do.c:404
  * @returns {Promise<number>} boolean
  */
 async function teleport_sink() {   // do.c:460
-    let cx = 0, cy = 0, alreadylooted = 0, trycnt = 0;
-    trycnt = 0;
+    let trycnt = 0;
     do {
         /* this isn't incorrect but it is extremely unlikely that spots
          * on the level's edge will be ROOM so picking such wastes tries */
         /* 1..COLNO-1 */
         /* 0..ROWNO-1 */
         /* use this instead */
-        cx = $c.i16(1 + rnd(COLNO - 1 - 2) | 0);   /* 2..COLNO-2 */
-        cy = $c.i16(1 + rn2(ROWNO - 2) | 0);   /* 1..ROWNO-2 */
+        const cx = $c.i16(1 + rnd(COLNO - 1 - 2) | 0);   /* 2..COLNO-2 */
+        const cy = $c.i16(1 + rn2(ROWNO - 2) | 0);   /* 1..ROWNO-2 */
         if (svl.level.locations[cx][cy].typ === ROOM && !t_at(cx, cy) && !engr_at(cx, cy) && (!cansee(cx, cy) || distu(cx, cy) > 9)) {
             /* this ends up having set_levltyp() count all sinks and
                fountains on the level twice but that is not a problem */
-            alreadylooted = svl.level.locations[u.ux][u.uy].flags;
+            const alreadylooted = svl.level.locations[u.ux][u.uy].flags;
             /* remove old sink */
             await set_levltyp(u.ux, u.uy, ROOM);   /* was SINK so updates nsinks */
-            svl.level.locations[u.ux][u.uy].flags = (0) & 31;
+            svl.level.locations[u.ux][u.uy].flags = 0;
             await newsym(u.ux, u.uy);
             /* create sink at new position */
             await set_levltyp(cx, cy, SINK);   /* now SINK so also updates nsinks */
-            svl.level.locations[cx][cy].flags = ((alreadylooted ? 1 : 0) >>> 0) & 31;
+            svl.level.locations[cx][cy].flags = (alreadylooted ? 1 : 0) & 31;
             await newsym(cx, cy);
             return TRUE;
         }
@@ -640,7 +637,7 @@ async function dosinkring(obj) {   // do.c:498
                 await polymorph_sink();
                 nosink = TRUE;
                 /* for S_room case, same message as for teleportation is given */
-                ideed = $c.i8(svl.level.locations[u.ux][u.uy].typ !== ROOM ? 1 : 0);
+                ideed = svl.level.locations[u.ux][u.uy].typ !== ROOM ? 1 : 0;
                 break;
             default:
                 ideed = FALSE;
@@ -721,7 +718,6 @@ async function dosinkring(obj) {   // do.c:498
  * @returns {Promise<number>} boolean
  */
 export async function canletgo(obj, word) {   // do.c:665
-    let hand = null;
     if ($c.and64(obj.owornmask, W_ARMOR | W_ACCESSORY)) {
         if (word.get(0)) {
             await Norep($c.lit("You cannot %s %s you are wearing."), word, c_common_strings.c_something);
@@ -732,7 +728,7 @@ export async function canletgo(obj, word) {   // do.c:665
         /* no weldmsg(), so uwep->bknown might become set silently
            if word is "" */
         if (word.get(0)) {
-            hand = await body_part(HAND);
+            let hand = await body_part(HAND);
             if (bimanual($G.uwep)) {
                 hand = await makeplural(hand);
             }
@@ -740,7 +736,7 @@ export async function canletgo(obj, word) {   // do.c:665
         }
         return FALSE;
     }
-    if (obj.otyp === LOADSTONE && obj.cursed | 0) {
+    if (obj.otyp === LOADSTONE && obj.cursed) {
         /* getobj() kludge sets corpsenm to user's specified count
            when refusing to split a stack of cursed loadstones */
         if (word.get(0)) {
@@ -774,7 +770,7 @@ export async function canletgo(obj, word) {   // do.c:665
  * @returns {Promise<number>} int
  */
 async function drop(obj) {   // do.c:714
-    let onam_p = null, mnam_p = null, monbuf = new Int8Array(256), levhack = 0;
+    let monbuf = new Int8Array(256);
     if (!obj) {
         return ECMD.FAIL;
     }
@@ -800,13 +796,13 @@ async function drop(obj) {   // do.c:714
     if (u.uswallow) {
         /* barrier between you and the floor */
         if (flags.verbose) {
-            mnam_p = await mon_nam(u.ustuck);
+            let mnam_p = await mon_nam(u.ustuck);
             /* doname can call s_suffix, reusing its buffer */
             if (dmgtype_fromattack(u.ustuck.data, AD.DGST, AT.ENGL) !== null) {
                 $c.sprintf(new $c.Ptr(monbuf, 0), $c.lit("%s %s"), s_suffix(mnam_p), await mbodypart(u.ustuck, STOMACH));
                 mnam_p = new $c.Ptr(monbuf, 0);
             }
-            onam_p = is_unpaid(obj) ? await yobjnam(obj, null) : await doname(obj);
+            const onam_p = is_unpaid(obj) ? await yobjnam(obj, null) : await doname(obj);
             await You($c.lit("drop %s into %s."), onam_p, mnam_p);
         }
     } else {
@@ -818,7 +814,7 @@ async function drop(obj) {   // do.c:714
             /* we might be levitating due to #invoke Heart of Ahriman;
                if so, levitation would end during call to freeinv()
                and we want hitfloor() to happen before float_down() */
-            levhack = finesse_ahriman(obj);
+            const levhack = finesse_ahriman(obj);
             if (levhack) {
                 u.uprops[LEVITATION].extrinsic = W.ART;   /* other than W_ARTI */
             }
@@ -926,27 +922,26 @@ export async function dropz(obj, with_impact) {   // do.c:807
  * @returns {Promise<number>} boolean
  */
 async function engulfer_digests_food(obj) {   // do.c:849
-    let could_petrify = 0, could_poly = 0, could_slime = 0, could_grow = 0, could_heal = 0;
     /* animal swallower (purple worn) eats any
        corpse, glob, or meat <item> but not other types of food */
-    if (dmgtype_fromattack(u.ustuck.data, AD.DGST, AT.ENGL) !== null && (obj.otyp === CORPSE || obj.globby | 0 || obj.otyp === MEATBALL || obj.otyp === ENORMOUS_MEATBALL || obj.otyp === MEAT_RING || obj.otyp === MEAT_STICK)) {
-        could_petrify = FALSE;
-        could_poly = FALSE;
-        could_slime = FALSE;
-        could_grow = FALSE;
-        could_heal = FALSE;
+    if (dmgtype_fromattack(u.ustuck.data, AD.DGST, AT.ENGL) !== null && (obj.otyp === CORPSE || obj.globby || obj.otyp === MEATBALL || obj.otyp === ENORMOUS_MEATBALL || obj.otyp === MEAT_RING || obj.otyp === MEAT_STICK)) {
+        let could_petrify = FALSE;
+        let could_poly = FALSE;
+        let could_slime = FALSE;
+        let could_grow = FALSE;
+        let could_heal = FALSE;
         if (obj.otyp === CORPSE) {
-            could_petrify = $c.i8(touch_petrifies($c.relem(mons, obj.corpsenm)));
-            could_poly = $c.i8(polyfood(obj));
-            could_grow = $c.i8(obj.corpsenm === PM.WRAITH ? 1 : 0);
-            could_heal = $c.i8(obj.corpsenm === PM.NURSE ? 1 : 0);
+            could_petrify = touch_petrifies($c.relem(mons, obj.corpsenm));
+            could_poly = polyfood(obj);
+            could_grow = obj.corpsenm === PM.WRAITH ? 1 : 0;
+            could_heal = obj.corpsenm === PM.NURSE ? 1 : 0;
         } else if (obj.otyp === GLOB_OF_GREEN_SLIME) {
             could_slime = TRUE;
         }
         /* see or feel the effect */
         await pline($c.lit("%s instantly digested!"), await Tobjnam(obj, $c.lit("are")));
         if (could_poly || could_slime) {
-            await newcham(u.ustuck, could_slime ? $c.relem(mons, PM.GREEN_SLIME) : null, could_slime ? NC.SHOW_MSG : NO_NC_FLAGS);
+            await newcham(u.ustuck, could_slime ? mons[PM.GREEN_SLIME] : null, could_slime ? NC.SHOW_MSG : NO_NC_FLAGS);
         } else if (could_petrify) {
             await minstapetrify(u.ustuck, TRUE);
         } else if (could_grow) {
@@ -990,7 +985,7 @@ export async function obj_no_longer_held(obj) {   // do.c:893
                     await costly_alteration(obj, COST.DEGRD);
                 }
                 obj.otyp = WORM_TOOTH;
-                obj.oerodeproof = (0) & 1;
+                obj.oerodeproof = 0;
             }
             break;
     }
@@ -1000,8 +995,7 @@ export async function obj_no_longer_held(obj) {   // do.c:893
  * @returns {Promise<number>} int
  */
 export async function doddrop() {   // do.c:924
-    let result = 0;
-    result = ECMD.OK;
+    let result = ECMD.OK;
     if (!gi.invent) {
         await You($c.lit("have nothing to drop."));
         return ECMD.OK;
@@ -1032,7 +1026,7 @@ async function better_not_try_to_drop_that(otmp) {   // do.c:947
      */
     if (otmp.otyp === CORPSE && !u_safe_from_fatal_corpse(otmp, st_all)) {
         nh_snprintf($c.lit("better_not_try_to_drop_that"), 958, new $c.Ptr(buf, 0), 256, $c.lit("Drop the %s corpse without %s protection on?"), await obj_pmname(otmp), await body_part(HAND));
-        return $c.i8(await paranoid_ynq(TRUE, new $c.Ptr(buf, 0), FALSE) !== 121 ? 1 : 0);
+        return await paranoid_ynq(TRUE, new $c.Ptr(buf, 0), FALSE) !== 121 ? 1 : 0;
     }
     return FALSE;
 }
@@ -1046,7 +1040,7 @@ async function menudrop_split(otmp, cnt) {   // do.c:964
     if (cnt && cnt < otmp.quan) {
         if (await welded(otmp)) {
             /* don't split */
-        } else if (otmp.otyp === LOADSTONE && otmp.cursed | 0) {
+        } else if (otmp.otyp === LOADSTONE && otmp.cursed) {
             /* same kludge as getobj(), for canletgo()'s use */
             otmp.corpsenm = $c.i32(cnt);   /* don't split */
         } else {
@@ -1070,7 +1064,7 @@ async function menu_drop(retry) {   // do.c:981
     justpicked_quan = 0;
     drop_done$: {
         if (retry) {
-            all_categories = $c.i8(retry === -2 ? 1 : 0);
+            all_categories = retry === -2 ? 1 : 0;
         } else if (flags.menu_style === MENU.FULL) {
             all_categories = FALSE;
             n = await query_category($c.lit("Drop what type of items?"), gi.invent, UNPAID_TYPES | ALL_TYPES | CHOOSE_ALL | BUC.BLESSED | BUC.CURSED | BUC.UNCURSED | BUC.UNKNOWN | JUSTPICKED | INCLUDE_VENOM, new $c.Ptr(pick_list, 0), PICK.ANY);
@@ -1186,13 +1180,12 @@ async function menu_drop(retry) {   // do.c:981
  * @returns {Promise<number>} boolean
  */
 async function u_stuck_cannot_go(updn) {   // do.c:1110
-    let mtmp = null;
     if (u.ustuck) {
-        if (u.uswallow | 0 || !sticks(gy.youmonst.data)) {
+        if (u.uswallow || !sticks(gy.youmonst.data)) {
             await You($c.lit("are %s, and cannot go %s."), !u.uswallow ? $c.lit("being held") : dmgtype_fromattack(u.ustuck.data, AD.DGST, AT.ENGL) !== null ? $c.lit("swallowed") : $c.lit("engulfed"), updn);
             return TRUE;
         } else {
-            mtmp = u.ustuck;
+            const mtmp = u.ustuck;
             await set_ustuck(null);
             await You($c.lit("release %s."), await mon_nam(mtmp));
         }
@@ -1204,8 +1197,8 @@ async function u_stuck_cannot_go(updn) {   // do.c:1110
  * @returns {Promise<number>} int
  */
 export async function dodown() {   // do.c:1131
-    let trap = null, stway = null, stairs_down = 0, ladder_down = 0, obj = null, glyph_at_uxuy = 0, down_or_thru = null, actn = null, qbuf = new Int8Array(128), tdst = new $T.d_level(), $t1;
-    trap = null;
+    let stway = null, ladder_down = 0, obj = null, qbuf = new Int8Array(128), tdst = new $T.d_level(), $t1;
+    let trap = null;
     set_move_cmd(DIR.DOWN, 0);
     if (await u_rooted()) {
         return ECMD.TIME;
@@ -1213,10 +1206,10 @@ export async function dodown() {   // do.c:1131
     if (await stucksteed(TRUE)) {
         return ECMD.OK;
     }
-    stairs_down = ladder_down = FALSE;
+    let stairs_down = ladder_down = FALSE;
     if ((stway = stairway_at(u.ux, u.uy)) !== null && !stway.up) {
-        stairs_down = $c.i8(!stway.isladder ? 1 : 0);
-        ladder_down = $c.i8(!stairs_down ? 1 : 0);
+        stairs_down = !stway.isladder ? 1 : 0;
+        ladder_down = !stairs_down ? 1 : 0;
     }
     /* Levitation might be blocked, but player can still use '>' to
        turn off controlled levitation */
@@ -1245,15 +1238,15 @@ export async function dodown() {   // do.c:1131
         } else if (Blind()) {
             /* glyph_to_cmap() is a macro which expands its argument many
                times; use this to do part of its work just once */
-            glyph_at_uxuy = svl.level.locations[u.ux][u.uy].glyph;
+            const glyph_at_uxuy = svl.level.locations[u.ux][u.uy].glyph;
             /* Avoid alerting player to an unknown stair or ladder.
              * Changes the message for a covered, known staircase
              * too; staircase knowledge is not stored anywhere.
              */
             if (stairs_down) {
-                stairs_down = $c.i8(glyph_to_cmap(glyph_at_uxuy) === S.dnstair ? 1 : 0);
+                stairs_down = glyph_to_cmap(glyph_at_uxuy) === S.dnstair ? 1 : 0;
             } else if (ladder_down) {
-                ladder_down = $c.i8(glyph_to_cmap(glyph_at_uxuy) === S.dnladder ? 1 : 0);
+                ladder_down = glyph_to_cmap(glyph_at_uxuy) === S.dnladder ? 1 : 0;
             }
         }
         if ((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) {
@@ -1265,8 +1258,8 @@ export async function dodown() {   // do.c:1131
         }
         return ECMD.OK;   /* didn't move */
     }
-    if (Upolyd() && ceiling_hider($c.relem(mons, u.umonnum)) && u.uundetected | 0) {
-        u.uundetected = (0) & 1;
+    if (Upolyd() && ceiling_hider($c.relem(mons, u.umonnum)) && u.uundetected) {
+        u.uundetected = 0;
         if ((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked) {
             /* lurker above */
             await You($c.lit("fly out of hiding."));
@@ -1296,7 +1289,7 @@ export async function dodown() {   // do.c:1131
             if (flags.autodig && !svc.context.nopick && $G.uwep && is_pick($G.uwep)) {
                 return await use_pick_axe2($G.uwep);
             } else {
-                await You_cant($c.lit("go down here%s."), trap && (trap.ttyp | 0) === VIBRATING_SQUARE ? $c.lit(" yet") : $c.lit(""));
+                await You_cant($c.lit("go down here%s."), trap && trap.ttyp === VIBRATING_SQUARE ? $c.lit(" yet") : $c.lit(""));
                 return ECMD.OK;
             }
         }
@@ -1308,15 +1301,15 @@ export async function dodown() {   // do.c:1131
             return ECMD.OK;
         }
         await pline($c.lit("So be it."));
-        u.uevent.gehennom_entered = (1) & 1;   /* don't ask again */
+        u.uevent.gehennom_entered = 1;   /* don't ask again */
     }
     if (!await next_to_u()) {
         await You($c.lit("are held back by your pet!"));
         return ECMD.OK;
     }
     if (trap) {
-        down_or_thru = (trap.ttyp | 0) === HOLE ? $c.lit("down") : $c.lit("through");
-        actn = u_locomotion($c.lit("jump"));
+        const down_or_thru = trap.ttyp === HOLE ? $c.lit("down") : $c.lit("through");
+        let actn = u_locomotion($c.lit("jump"));
         if (gy.youmonst.data.msize >= MZ.HUGE) {
             await You($c.lit("don't fit %s easily."), down_or_thru);
             $c.sprintf(new $c.Ptr(qbuf, 0), $c.lit("Try to squeeze %s?"), down_or_thru);
@@ -1332,7 +1325,7 @@ export async function dodown() {   // do.c:1131
                 return ECMD.OK;
             }
         }
-        await You($c.lit("%s %s the %s."), actn, down_or_thru, (trap.ttyp | 0) === HOLE ? $c.lit("hole") : $c.lit("trap door"));
+        await You($c.lit("%s %s the %s."), actn, down_or_thru, trap.ttyp === HOLE ? $c.lit("hole") : $c.lit("trap door"));
     }
     if (trap && ((svd.dungeon_topology.d_stronghold_level.dlevel || svd.dungeon_topology.d_stronghold_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_stronghold_level))) {
         await goto_hell(FALSE, TRUE);
@@ -1341,8 +1334,8 @@ export async function dodown() {   // do.c:1131
         clamp_hole_destination(tdst);
         await goto_level(tdst, FALSE, FALSE, FALSE);
     } else {
-        ga.at_ladder = $c.i8(svl.level.locations[u.ux][u.uy].typ === LADDER ? 1 : 0);
-        await next_level($c.i8(!trap ? 1 : 0));
+        ga.at_ladder = svl.level.locations[u.ux][u.uy].typ === LADDER ? 1 : 0;
+        await next_level(!trap ? 1 : 0);
         ga.at_ladder = FALSE;
     }
     return ECMD.TIME;
@@ -1352,8 +1345,7 @@ export async function dodown() {   // do.c:1131
  * @returns {Promise<number>} int
  */
 export async function doup() {   // do.c:1298
-    let stway = null;
-    stway = stairway_at(u.ux, u.uy);
+    const stway = stairway_at(u.ux, u.uy);
     set_move_cmd(DIR.UP, 0);
     if (await u_rooted()) {
         return ECMD.TIME;
@@ -1390,7 +1382,7 @@ export async function doup() {   // do.c:1298
         await You($c.lit("are held back by your pet!"));
         return ECMD.OK;
     }
-    ga.at_ladder = $c.i8(svl.level.locations[u.ux][u.uy].typ === LADDER ? 1 : 0);
+    ga.at_ladder = svl.level.locations[u.ux][u.uy].typ === LADDER ? 1 : 0;
     await prev_level(TRUE);
     ga.at_ladder = FALSE;
     return ECMD.TIME;
@@ -1400,11 +1392,11 @@ export async function doup() {   // do.c:1298
  * @returns {Promise<$T.nh_file | null>} NHFILE *
  */
 async function currentlevel_rewrite() {   // do.c:1348
-    let nhfp = null, whynot = new Int8Array(256);
+    let whynot = new Int8Array(256);
     /* since level change might be a bit slow, flush any buffered screen
      *  output (like "you fall through a trap door") */
     await mark_synch()();
-    nhfp = await create_levelfile(ledger_no(u.uz), new $c.Ptr(whynot, 0));
+    const nhfp = await create_levelfile(ledger_no(u.uz), new $c.Ptr(whynot, 0));
     if (!nhfp) {
         /*
          * This is not quite impossible: e.g., we may have
@@ -1422,11 +1414,10 @@ async function currentlevel_rewrite() {   // do.c:1348
  * @returns {Promise<void>}
  */
 export async function save_currentstate() {   // do.c:1375
-    let nhfp = null;
     program_state.in_checkpoint = program_state.in_checkpoint + 1 | 0;
     if (flags.ins_chkpt) {
         /* write out just-attained level, with pets and everything */
-        nhfp = await currentlevel_rewrite();
+        const nhfp = await currentlevel_rewrite();
         if (!nhfp) {
             return;
         }
@@ -1489,8 +1480,8 @@ export async function u_collide_m(mtmp) {   // do.c:1412
  * @returns {Promise<void>}
  */
 async function familiar_level_msg() {   // do.c:1448
-    let mesg = null, buf = new Int8Array(256), which = 0;
-    which = rn2(4);
+    let mesg = null, buf = new Int8Array(256);
+    const which = rn2(4);
     if (Hallucination()) {
         mesg = familiar_level_msg$halu_fam_msgs[which];
     } else {
@@ -1512,20 +1503,20 @@ async function familiar_level_msg() {   // do.c:1448
  * @returns {Promise<void>}
  */
 export async function goto_level(newlevel, at_stairs, falling, portal) {   // do.c:1479
-    let l_idx = 0, save_mode = 0, nhfp = null, new_ledger = 0, cant_go_back = 0, great_effort = 0, up = 0, newdungeon = 0, leaving_tutorial = 0, was_in_W_tower = 0, familiar = 0, new_ = 0, mtmp = null, whynot = new Int8Array(256), dist = 0, do_fall_dmg = 0, prev_temperature = 0, odds = 0, diff = 0, ttrap = null, stway = null, stway$2 = null, dloc = new Int8Array(128), major = 0, dmg = 0, $t1, $t2, $t3, $t4, $t5;
+    let l_idx = 0, mtmp = null, whynot = new Int8Array(256), ttrap = null, dloc = new Int8Array(128), $t1, $t2, $t3, $t4, $t5;
     /* destination */
     /* True if arriving via stairs/ladder */
     /* when falling to level, objects might tag along */
     /* True if arriving via magic portal */
-    up = $c.i8(depth(newlevel) < depth(u.uz) ? 1 : 0);
-    newdungeon = $c.i8(u.uz.dnum !== newlevel.dnum ? 1 : 0);
-    leaving_tutorial = FALSE;
-    was_in_W_tower = await In_W_tower(u.ux, u.uy, u.uz);
-    familiar = FALSE;
-    new_ = FALSE;   /* made a new level? */
-    dist = depth(newlevel) - depth(u.uz) | 0;
-    do_fall_dmg = FALSE;
-    prev_temperature = svl.level.flags.temperature;
+    let up = depth(newlevel) < depth(u.uz) ? 1 : 0;
+    const newdungeon = u.uz.dnum !== newlevel.dnum ? 1 : 0;
+    let leaving_tutorial = FALSE;
+    const was_in_W_tower = await In_W_tower(u.ux, u.uy, u.uz);
+    let familiar = FALSE;
+    let new_ = FALSE;   /* made a new level? */
+    const dist = depth(newlevel) - depth(u.uz);
+    let do_fall_dmg = FALSE;
+    const prev_temperature = svl.level.flags.temperature;
     if (dunlev(newlevel) > dunlevs_in_dungeon(newlevel)) {
         $t1 = dunlevs_in_dungeon(newlevel), newlevel.dlevel = $t1;
     }
@@ -1546,7 +1537,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
             leaving_tutorial = TRUE;
         }
     }
-    new_ledger = ledger_no(newlevel);
+    let new_ledger = ledger_no(newlevel);
     if (new_ledger <= 0) {
         await done(ESCAPED);   /* in fact < 0 is impossible */
     }
@@ -1570,15 +1561,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
      * gradually but substantially.  The drop off is greater when hero is
      * sent down farther so benefits lawfuls more than chaotics this time.
      */
-    if (Inhell() && up && u.uhave.amulet | 0 && !newdungeon && !portal && dunlev(u.uz) < (dunlevs_in_dungeon(u.uz) - 3 | 0)) {
+    if (Inhell() && up && u.uhave.amulet && !newdungeon && !portal && dunlev(u.uz) < dunlevs_in_dungeon(u.uz) - 3) {
         if (!rn2(4 + svc.context.mysteryforce | 0)) {
             /* 2..4 */
-            odds = 3 + u.ualign.type | 0;
-            diff = odds <= 1 ? 0 : rn2(odds);   /* paranoia */
+            const odds = 3 + u.ualign.type;
+            let diff = odds <= 1 ? 0 : rn2(odds);   /* paranoia */
             if (diff !== 0) {
                 assign_rnd_level(newlevel, u.uz, diff);
                 /* assign_rnd_level() may have used a value less than diff */
-                diff = newlevel.dlevel - u.uz.dlevel | 0;   /* actual descent */
+                diff = newlevel.dlevel - u.uz.dlevel;   /* actual descent */
                 /* if inside the tower, stay inside */
                 if (was_in_W_tower && !On_W_tower_level(newlevel)) {
                     diff = 0;
@@ -1622,7 +1613,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
     if (u.utrap && u.utraptype === TT.BURIEDBALL) {
         await buried_ball_to_punishment();   /* (before we save/leave old level) */
     }
-    nhfp = await currentlevel_rewrite();
+    let nhfp = await currentlevel_rewrite();
     if (!nhfp) {
         return;
     }
@@ -1647,7 +1638,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
     await fill_pit(u.ux, u.uy);
     await set_ustuck(null);   /* clear u.ustuck and u.uswallow */
     await set_uinwater(0);   /* u.uinwater = 0 */
-    u.uundetected = (0) & 1;   /* not hidden, even if means are available */
+    u.uundetected = 0;   /* not hidden, even if means are available */
     if (!iflags.nofollowers) {
         await keepdogs(FALSE);
     }
@@ -1665,16 +1656,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
      * for the level being left, to recover dynamic memory in use and
      * to avoid dangling timers and light sources.
      */
-    cant_go_back = $c.i8(newdungeon && In_endgame(newlevel) || leaving_tutorial ? 1 : 0);
+    const cant_go_back = newdungeon && In_endgame(newlevel) || leaving_tutorial ? 1 : 0;
     if (!cant_go_back) {
         await update_mlstmv();   /* current monsters are becoming inactive */
         if (nhfp.structlevel) {
             await bufon(nhfp.fd);   /* use buffered output */
         }
     } else {
-        await free_luathemes((leaving_tutorial ? tut_themes : most_themes) >>> 0);
+        await free_luathemes(leaving_tutorial ? tut_themes : most_themes);
     }
-    save_mode = nhfp.mode;
+    const save_mode = nhfp.mode;
     nhfp.mode = cant_go_back ? FREEING : WRITING | FREEING;
     await savelev(nhfp, $c.i8(ledger_no(u.uz)));
     nhfp.mode = save_mode;
@@ -1755,12 +1746,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
     if (portal && !In_endgame(u.uz)) {
         /* find the portal on the new level */
         for (ttrap = gf.ftrap; ttrap; ttrap = ttrap.ntrap) {
-            if ((ttrap.ttyp | 0) === MAGIC_PORTAL) {
+            if (ttrap.ttyp === MAGIC_PORTAL) {
                 break;
             }
         }
         if (!ttrap) {
-            if (u.uevent.qexpelled | 0 && ((svd.dungeon_topology.d_qstart_level.dlevel || svd.dungeon_topology.d_qstart_level.dnum) && on_level(u.uz0, svd.dungeon_topology.d_qstart_level) || (svd.dungeon_topology.d_qstart_level.dlevel || svd.dungeon_topology.d_qstart_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_qstart_level))) {
+            if (u.uevent.qexpelled && ((svd.dungeon_topology.d_qstart_level.dlevel || svd.dungeon_topology.d_qstart_level.dnum) && on_level(u.uz0, svd.dungeon_topology.d_qstart_level) || (svd.dungeon_topology.d_qstart_level.dlevel || svd.dungeon_topology.d_qstart_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_qstart_level))) {
                 /* we're coming back from or going into the quest home level,
                    after already getting expelled once. The portal back
                    doesn't exist anymore - see expulsion(). */
@@ -1777,7 +1768,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
         }
     } else if (at_stairs && !In_endgame(u.uz)) {
         if (up) {
-            stway = stairway_find_from(u.uz0, ga.at_ladder);
+            const stway = stairway_find_from(u.uz0, ga.at_ladder);
             if (stway) {
                 await u_on_newpos(stway.sx, stway.sy);
                 stway.u_traversed = TRUE;
@@ -1788,13 +1779,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
             }
             /* you climb up the {stairs|ladder};
                fly up the stairs; fly up along the ladder */
-            great_effort = $c.i8(Punished() && !Levitation() ? 1 : 0);
+            const great_effort = Punished() && !Levitation() ? 1 : 0;
             if (flags.verbose || great_effort) {
                 await pline($c.lit("%s %s up%s the %s."), great_effort ? $c.lit("With great effort, you") : $c.lit("You"), u_locomotion($c.lit("climb")), (u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked && ga.at_ladder ? $c.lit(" along") : $c.lit(""), ga.at_ladder ? $c.lit("ladder") : $c.lit("stairs"));
             }
         } else {
             /* down */
-            stway$2 = stairway_find_from(u.uz0, ga.at_ladder);
+            const stway$2 = stairway_find_from(u.uz0, ga.at_ladder);
             if (stway$2) {
                 await u_on_newpos(stway$2.sx, stway$2.sy);
                 stway$2.u_traversed = TRUE;
@@ -1899,7 +1890,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
     }
     /* in case we've managed to bypass the Valley's stairway down */
     if (Inhell() && !((svd.dungeon_topology.d_valley_level.dlevel || svd.dungeon_topology.d_valley_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_valley_level))) {
-        u.uevent.gehennom_entered = (1) & 1;
+        u.uevent.gehennom_entered = 1;
     }
     if (familiar) {
         await familiar_level_msg();
@@ -1912,7 +1903,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
         if (new_ && on_level(u.uz, svd.dungeon_topology.d_astral_level)) {
             await final_level();   /* guardian angel,&c */
             await record_achievement(ACH.ASTR);   /* reached Astral level */
-        } else if (newdungeon && u.uhave.amulet | 0) {
+        } else if (newdungeon && u.uhave.amulet) {
             await resurrect();   /* force confrontation with Wizard */
         }
     } else if (In_quest(u.uz)) {
@@ -1926,7 +1917,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
                 if (DEADMONSTER(mtmp)) {
                     continue;
                 }
-                mtmp.msleeping = (0) & 1;
+                mtmp.msleeping = 0;
             }
         }
     } else if (In_mines(u.uz)) {
@@ -1944,12 +1935,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
             await record_achievement(ACH.BGRM);
         }
         /* main dungeon message from your quest leader */
-        if (!In_quest(u.uz0) && await at_dgn_entrance($c.lit("The Quest")) && !(u.uevent.qcompleted | 0 || u.uevent.qexpelled | 0 || svq.quest_status.leader_is_dead | 0)) {
+        if (!In_quest(u.uz0) && await at_dgn_entrance($c.lit("The Quest")) && !(u.uevent.qcompleted || u.uevent.qexpelled || svq.quest_status.leader_is_dead)) {
             /* [TODO: copy of same TODO below; if an achievement for
                receiving quest call from leader gets added, that should
                come after logging new level entry] */
             if (!u.uevent.qcalled) {
-                u.uevent.qcalled = (1) & 1;
+                u.uevent.qcalled = 1;
                 /* main "leader needs help" message */
                 await com_pager($c.lit("quest_portal"));
             } else {
@@ -1976,7 +1967,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
            whether level 5 is the end or there's another level (ESP reveals
            the same thing, but is part of normal game play as opposed to
            #chronicle leaking information that hero hasn't discovered yet) */
-        major = $c.i8(In_endgame(u.uz) && !((svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level)) || In_quest(u.uz) ? 1 : 0);
+        const major = In_endgame(u.uz) && !((svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level)) || In_quest(u.uz) ? 1 : 0;
         describe_level(new $c.Ptr(dloc, 0), 2);
         await livelog_printf(major ? LL.ACHIEVE : LL.DEBUG, $c.lit("entered %s"), new $c.Ptr(dloc, 0));
         if (gu.urole.mnum === PM.TOURIST) {
@@ -2008,7 +1999,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {   // do
     }
     /* fall damage? */
     if (do_fall_dmg) {
-        dmg = d(dist > 1 ? dist : 1, 6);
+        let dmg = d(dist > 1 ? dist : 1, 6);
         dmg = Maybe_Half_Phys(dmg);
         await losehp(dmg, $c.lit("falling down a mine shaft"), KILLED.BY);
     }
@@ -2092,18 +2083,18 @@ export async function schedule_goto(tolev, utotype_flags, pre_msg, post_msg) {  
  * @returns {Promise<void>}
  */
 export async function deferred_goto() {   // do.c:2075
-    let dest = new $T.d_level(), oldlev = new $T.d_level(), typmask = 0, t = null;
+    let dest = new $T.d_level(), oldlev = new $T.d_level();
     if (!on_level(u.uz, u.utolev)) {
-        typmask = u.utotype;   /* save it; goto_level zeroes u.utotype */
+        const typmask = u.utotype;   /* save it; goto_level zeroes u.utotype */
         assign_level(dest, u.utolev);
         assign_level(oldlev, u.uz);
         if (gd.dfr_pre_msg) {
             await pline($c.lit("%s"), gd.dfr_pre_msg);
         }
-        await goto_level(dest, $c.i8(!!(typmask & UTOTYPE.ATSTAIRS) ? 1 : 0), $c.i8(!!(typmask & UTOTYPE.FALLING) ? 1 : 0), $c.i8(!!(typmask & UTOTYPE.PORTAL) ? 1 : 0));
+        await goto_level(dest, !!(typmask & UTOTYPE.ATSTAIRS) ? 1 : 0, !!(typmask & UTOTYPE.FALLING) ? 1 : 0, !!(typmask & UTOTYPE.PORTAL) ? 1 : 0);
         if (typmask & UTOTYPE.RMPORTAL) {
             /* remove portal */
-            t = t_at(u.ux, u.uy);
+            const t = t_at(u.ux, u.uy);
             if (t) {
                 await deltrap(t);
                 await newsym(u.ux, u.uy);
@@ -2130,29 +2121,29 @@ export async function deferred_goto() {   // do.c:2075
  * @returns {Promise<number>} boolean
  */
 export async function revive_corpse(corpse) {   // do.c:2111
-    let mtmp = null, mcarry = null, is_uwep = 0, chewed = 0, where = 0, cname = new Int8Array(256), container = null, container_where = Int32Array.of(0), montype = 0, is_zomb = 0, corpsex = Int16Array.of(0), corpsey = Int16Array.of(0), mtmp2 = null, effect = null, sackname = new Int8Array(256), mnam = null, ttmp = null;
-    container = null;
+    let cname = new Int8Array(256), container_where = Int32Array.of(0), corpsex = Int16Array.of(0), corpsey = Int16Array.of(0), sackname = new Int8Array(256);
+    let container = null;
     container_where[0] = 0;
-    where = $c.i16(corpse.where);
-    montype = corpse.corpsenm;
+    const where = corpse.where;
+    const montype = corpse.corpsenm;
     /* treat buried auto-reviver (troll, Rider?) like a zombie
        so that it can dig itself out of the ground if it revives */
-    is_zomb = $c.i8(mons[montype].mlet === S.ZOMBIE || where === OBJ.BURIED && is_reviver($c.relem(mons, montype)) ? 1 : 0);
-    is_uwep = $c.i8($c.peq(corpse, $G.uwep) ? 1 : 0);
-    chewed = $c.i8(corpse.oeaten !== 0 ? 1 : 0);
+    const is_zomb = mons[montype].mlet === S.ZOMBIE || where === OBJ.BURIED && is_reviver($c.relem(mons, montype)) ? 1 : 0;
+    const is_uwep = $c.peq(corpse, $G.uwep) ? 1 : 0;
+    const chewed = corpse.oeaten !== 0 ? 1 : 0;
     $c.strcpy(new $c.Ptr(cname, 0), await corpse_xname(corpse, chewed ? $c.lit("bite-covered") : null, CXN.SINGULAR));
-    mcarry = where === OBJ.MINVENT ? corpse.v.v_ocarry : null;
+    let mcarry = where === OBJ.MINVENT ? corpse.v.v_ocarry : null;
     /* mcarry is NULL for (where == OBJ_BURIED and OBJ_CONTAINED) now */
     get_obj_location(corpse, new $c.Ptr(corpsex, 0), new $c.Ptr(corpsey, 0), CONTAINED_TOO | BURIED_TOO);
     if (where === OBJ.CONTAINED) {
         container = corpse.v.v_ocontainer;
-        mtmp2 = get_container_location(container, new $c.Ptr(container_where, 0), null);
+        const mtmp2 = get_container_location(container, new $c.Ptr(container_where, 0), null);
         /* container_where is outermost container's location even if nested */
         if (container_where[0] === OBJ.MINVENT && mtmp2) {
             mcarry = mtmp2;
         }
     }
-    mtmp = await revive(corpse, FALSE);   /* corpse is gone if successful */
+    const mtmp = await revive(corpse, FALSE);   /* corpse is gone if successful */
     if (mtmp) {
         switch (where) {
             case OBJ.INVENT:
@@ -2164,12 +2155,12 @@ export async function revive_corpse(corpse) {   // do.c:2111
                 break;
             case OBJ.FLOOR:
                 if (cansee(corpsex[0], corpsey[0]) || canseemon(mtmp)) {
-                    effect = $c.lit("");
-                    if ($c.peq(mtmp.data, $c.relem(mons, PM.DEATH))) {
+                    let effect = $c.lit("");
+                    if (mtmp.data === mons[PM.DEATH]) {
                         effect = $c.lit(" in a whirl of spectral skulls");
-                    } else if ($c.peq(mtmp.data, $c.relem(mons, PM.PESTILENCE))) {
+                    } else if (mtmp.data === mons[PM.PESTILENCE]) {
                         effect = $c.lit(" in a churning pillar of flies");
-                    } else if ($c.peq(mtmp.data, $c.relem(mons, PM.FAMINE))) {
+                    } else if (mtmp.data === mons[PM.FAMINE]) {
                         effect = $c.lit(" in a ring of withered crops");
                     }
                     if (canseemon(mtmp)) {
@@ -2194,7 +2185,7 @@ export async function revive_corpse(corpse) {   // do.c:2111
                     /* Could use x_monnam(..., AUGMENT_IT) but that'd say "someone"
                        for humanoid monsters, which seems like a distinction the hero
                        doesn't have knowledge to make here. */
-                    mnam = canspotmon(mtmp) ? await Amonnam(mtmp) : c_common_strings.c_Something;
+                    const mnam = canspotmon(mtmp) ? await Amonnam(mtmp) : c_common_strings.c_Something;
                     if (!container) {
                         await impossible($c.lit("reviving corpse from non-existent container"));
                     } else if (mcarry && canseemon(mcarry)) {
@@ -2212,7 +2203,7 @@ export async function revive_corpse(corpse) {   // do.c:2111
                 if (is_zomb) {
                     await maketrap(mtmp.mx, mtmp.my, PIT);
                     if (cansee(mtmp.mx, mtmp.my)) {
-                        ttmp = t_at(mtmp.mx, mtmp.my);
+                        const ttmp = t_at(mtmp.mx, mtmp.my);
                         if (ttmp) {
                             ttmp.tseen = (TRUE) & 1;
                         }
@@ -2242,14 +2233,14 @@ export async function revive_corpse(corpse) {   // do.c:2111
  * @returns {Promise<void>}
  */
 export async function revive_mon(arg, timeout) {   // do.c:2251
-    let body = null, mptr = null, mtmp = null, x = Int16Array.of(0), y = Int16Array.of(0), notice_it = 0, monname = null, when = 0, action = 0;
-    body = arg.a_obj;
-    mptr = $c.relem(mons, body.corpsenm);
+    let mtmp = null, x = Int16Array.of(0), y = Int16Array.of(0), when = 0, action = 0;
+    const body = arg.a_obj;
+    const mptr = $c.relem(mons, body.corpsenm);
     /* corpse will revive somewhere else if there is a monster in the way;
        Riders get a chance to try to bump the obstacle out of their way */
     if (is_displacer(mptr) && body.where === OBJ.FLOOR && get_obj_location(body, new $c.Ptr(x, 0), new $c.Ptr(y, 0), 0) && (mtmp = svl.level.monsters[x[0]][y[0]]) !== null && svl.level.flags.stasis_until < svm.moves) {
-        notice_it = $c.i8(canseemon(mtmp));   /* before rloc() */
-        monname = await Monnam(mtmp);
+        const notice_it = $c.i8(canseemon(mtmp));   /* before rloc() */
+        const monname = await Monnam(mtmp);
         if (await rloc(mtmp, RLOC.NOMSG)) {
             if (notice_it && !canseemon(mtmp)) {
                 await pline($c.lit("%s vanishes."), monname);
@@ -2289,9 +2280,8 @@ export async function revive_mon(arg, timeout) {   // do.c:2251
  * @returns {Promise<void>}
  */
 export async function zombify_mon(arg, timeout) {   // do.c:2299
-    let body = null, zmon = 0;
-    body = arg.a_obj;
-    zmon = zombie_form($c.relem(mons, body.corpsenm));
+    const body = arg.a_obj;
+    const zmon = zombie_form($c.relem(mons, body.corpsenm));
     if (zmon !== NON_PM && !(svm.mvitals[zmon].mvflags & G_GENOD)) {
         if (has_omid(body)) {
             free_omid(body);
@@ -2310,7 +2300,7 @@ export async function zombify_mon(arg, timeout) {   // do.c:2299
  * @returns {number} boolean
  */
 function danger_uprops() {   // do.c:2319
-    return $c.i8(Stoned() || Slimed() || Strangled() || Sick() ? 1 : 0);
+    return Stoned() || Slimed() || Strangled() || Sick() ? 1 : 0;
 }
 /**
  * @param {$c.Ptr | null} ucverb const char *
@@ -2352,9 +2342,8 @@ export async function donull() {   // do.c:2351
  * @returns {Promise<number>} int
  */
 async function wipeoff() {   // do.c:2361
-    let udelta = 0, ldelta = 0;
-    udelta = u.ucreamed;
-    ldelta = BlindedTimeout();
+    let udelta = u.ucreamed;
+    let ldelta = BlindedTimeout();
     if (udelta > 4) {
         udelta = 4;
     }
@@ -2400,13 +2389,12 @@ export async function dowipe() {   // do.c:2390
  * @returns {Promise<void>}
  */
 export async function legs_in_no_shape(for_what, by_steed) {   // do.c:2408
-    let wl = 0, bp = null;
     /* jumping, kicking, riding */
     if (by_steed && u.usteed) {
         await pline($c.lit("%s is in no shape for %s."), await Monnam(u.usteed), for_what);
     } else {
-        wl = $c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES);
-        bp = await body_part(LEG);
+        const wl = $c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES);
+        let bp = await body_part(LEG);
         if (wl === BOTH_SIDES) {
             bp = await makeplural(bp);
         }
@@ -2444,7 +2432,7 @@ export async function set_wounded_legs(side, timex) {   // do.c:2426
  * @returns {Promise<void>}
  */
 export async function heal_legs(how) {   // do.c:2449
-    let legs = null, $t1;
+    let $t1;
     /* 0: ordinary, 1: dismounting steed, 2: limbs turn to stone */
     if (Wounded_legs()) {
         disp.botl = TRUE;
@@ -2456,7 +2444,7 @@ export async function heal_legs(how) {   // do.c:2449
            before the final stages and that calls us (how==2) to cure
            wounded legs, but we want to suppress the feel better message */
         if (!u.usteed && how !== 2) {
-            legs = await body_part(LEG);
+            let legs = await body_part(LEG);
             if ($c.and64(u.uprops[WOUNDED_LEGS].extrinsic, BOTH_SIDES) === BOTH_SIDES) {
                 legs = await makeplural(legs);
             }

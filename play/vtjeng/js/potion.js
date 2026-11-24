@@ -175,10 +175,10 @@ import { makemon_runtime } from './makemon_create.js';
 import {
     breathless, dmgtype, has_head, haseyes, is_human, is_silent,
     is_vampshifter, is_were, likes_fire, mon_hates_blessings, stagger, Resists_Elem,
+    eyecount,
 } from './mondata.js';
 import {
-    AD_ACID, AD_DISE, AD_PEST,
-    PM_CYCLOPS, PM_DJINNI, PM_FLOATING_EYE, PM_GHOST, PM_GREMLIN,
+    AD_ACID, AD_DISE, AD_PEST, PM_DJINNI, PM_GHOST, PM_GREMLIN,
     PM_GREEN_SLIME, PM_HEALER, PM_IRON_GOLEM, PM_LICHEN, PM_PESTILENCE,
 } from './monsters.js';
 import {
@@ -480,7 +480,7 @@ export async function djinni_from_bottle(obj, state = game, env = {}) {
                 state,
             );
         }
-        (env.removeMonster ?? mongone)(
+        await (env.removeMonster ?? mongone)(
             monster,
             { ...env, state, random },
         );
@@ -725,13 +725,8 @@ export async function make_blinded(xtime, talk, state = game, env = {}) {
         const species = state.youmonst?.data;
         let result = species && haseyes(species)
             ? body_part(EYE, state.youmonst) : 'eyes';
-        // mondata.h eyecount(): only cyclops and floating eyes have one eye;
-        // all other sighted forms have two, so pluralize their body part.
-        const count = !species || !haseyes(species) ? 0
-            : (species.pmidx === PM_CYCLOPS || species.pmidx === PM_FLOATING_EYE)
-                ? 1 : 2;
         if (result == null) result = 'eyes';
-        if (count !== 1) result = makeplural(result);
+        if (!species || eyecount(species) !== 1) result = makeplural(result);
         return result;
     };
     const strangeFeeling = async () => strange_feeling(null, null, state);
@@ -895,10 +890,8 @@ export async function make_hallucinated(
                 await strange_feeling(null, null, state);
             } else if (Blind(state.u)) {
                 let eyes = body_part(EYE, state.youmonst);
-                if (state.youmonst.data.pmidx !== PM_CYCLOPS
-                    && state.youmonst.data.pmidx !== PM_FLOATING_EYE) {
+                if (eyecount(state.youmonst.data) !== 1)
                     eyes = makeplural(eyes);
-                }
                 await message(
                     `Your ${eyes} momentarily ${vtense(eyes, 'itch')}.`,
                     state,
@@ -2352,8 +2345,8 @@ export async function impact_arti_light(obj, worsen, seeit, state = game, rawEnv
         || obj_resists(obj, 25, 75, env)) return;
 
     const potion = mksobj(POT_WATER, true, false, env);
-    if (worsen) curse(potion, env);
-    else bless(potion, env);
+    if (worsen) await curse(potion, env);
+    else await bless(potion, env);
     const objphrase = seeit ? Yobjnam2(obj, 'glow', state) : '';
     await H2Opotion_dip(potion, obj, seeit, objphrase, state, env);
     dealloc_obj(potion, env);
@@ -2742,10 +2735,8 @@ export async function potionbreathe(obj, state = game, env = {}) {
                 await message('Ulch!  That potion smells terrible!', state);
             } else if (haseyes(state.youmonst.data)) {
                 let eyes = body_part(EYE, state.youmonst);
-                const species = state.youmonst.data;
-                const eyeCount = species.pmidx === PM_CYCLOPS
-                    || species.pmidx === PM_FLOATING_EYE ? 1 : 2;
-                if (eyeCount !== 1) eyes = makeplural(eyes);
+                if (eyecount(state.youmonst.data) !== 1)
+                    eyes = makeplural(eyes);
                 await message(
                     'Your ' + eyes + ' ' + vtense(eyes, 'sting') + '!',
                     state,

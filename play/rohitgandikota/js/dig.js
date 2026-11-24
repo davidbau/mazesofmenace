@@ -839,7 +839,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
     }
     shopdoor = IS_DOOR(lev.typ) && !!in_rooms(x, y, SHOPBASE);
     oldobjs = level_objects_top(x, y);
-    ttmp = maketrap(x, y, ttyp);
+    ttmp = await maketrap(x, y, ttyp);
     if (!ttmp)
         return;
     newobjs = level_objects_top(x, y);
@@ -2145,28 +2145,37 @@ export async function wiz_debug_cmd_bury() {
 // src/dig.c:2086 unearth_objs(); move objects from buriedobjlist to
 // fobj/nexthere lists; if caller converts terrain from ice to something, it
 // should call obj_ice_effects()
-export async function unearth_objs(x, y) {
+export function unearth_objs(x, y) {
     const u = game.u;
-    let bball;
     const cc = { x, y };
+    const bball = buried_ball(cc);
+    const buried = [...(game.level.buriedobjs || [])];
 
-    bball = buried_ball(cc);
-    for (const otmp of [...(game.level.buriedobjs || [])]) {
-        if (otmp.ox === x && otmp.oy === y) {
+    function unearthFrom(index) {
+        for (let i = index; i < buried.length; i++) {
+            const otmp = buried[i];
+            if (otmp.ox !== x || otmp.oy !== y)
+                continue;
             if (bball && otmp === bball
                 && u.utrap && u.utraptype === TT_BURIEDBALL) {
-                await buried_ball_to_punishment();
-            } else {
-                obj_extract_self(otmp);
-                if (otmp.timed)
-                    stop_timer(ROT_ORGANIC, otmp);
-                place_object(otmp, x, y);
-                stackobj(otmp);
+                return buried_ball_to_punishment().then(() => unearthFrom(i + 1));
             }
+            obj_extract_self(otmp);
+            if (otmp.timed)
+                stop_timer(ROT_ORGANIC, otmp);
+            const placement = place_object(otmp, x, y);
+            if (placement) {
+                return placement.then(() => {
+                    stackobj(otmp);
+                    return unearthFrom(i + 1);
+                });
+            }
+            stackobj(otmp);
         }
+        del_engr_at(x, y);
+        newsym(x, y);
     }
-    del_engr_at(x, y);
-    newsym(x, y);
+    return unearthFrom(0);
 }
 
 // src/dig.c:2125 rot_organic(); The organic material has rotted away

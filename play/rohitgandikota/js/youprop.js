@@ -14,7 +14,7 @@
 // Nothing here draws.
 
 import { game } from './gstate.js';
-import { FROMOUTSIDE } from './const.js';
+import { FROMOUTSIDE, Is_waterlevel } from './const.js';
 import { amphibious, breathless, haseyes, is_flyer, is_swimmer,
          resists_cold, hates_silver } from './mondata.js';
 import { Upolyd } from './const.js';
@@ -191,10 +191,10 @@ export const Stunned = () => !!(game.u?.intrinsic?.HStun || game.u?.uprops?.STUN
 export const Confusion = () => !!(game.u?.intrinsic?.HConfusion || game.u?.uprops?.CONFUSION);
 export const Antimagic = () =>
     !!(game.u?.intrinsic?.HAntimagic || game.u?.uprops?.ANTIMAGIC);
-/* #define Stealth ((HStealth || EStealth) && !BStealth) — nothing that sets
-   BStealth (riding, sunk in water) is tracked yet */
+// include/youprop.h:210 Stealth
 export const Stealth = () => !!(game.u?.intrinsic?.HStealth
-                                || game.u?.uprops?.STEALTH);
+                                || game.u?.uprops?.STEALTH)
+    && !game.u?.blocked?.STEALTH;
 export const Searching = () => !!(game.u?.intrinsic?.HSearching
                                   || game.u?.uprops?.SEARCHING);
 export const Warning = () => !!(game.u?.intrinsic?.HWarning
@@ -207,7 +207,8 @@ export const Teleportation = () =>
 
 // include/youprop.h Wwalking
 export const Wwalking = () => !!(game.u?.intrinsic?.HWwalking
-                                 || game.u?.uprops?.WWALKING);
+                                 || game.u?.uprops?.WWALKING)
+    && !Is_waterlevel(game.u.uz);
 export const Swimming = () =>
     !!game.u?.intrinsic?.HSwimming
     || !!game.u?.uprops?.SWIMMING

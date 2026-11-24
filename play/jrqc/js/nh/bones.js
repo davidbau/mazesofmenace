@@ -82,7 +82,7 @@ function no_bones_level(lev) {   // bones.c:18
     /* no bones on the last or multiway branch levels
        in any dungeon (level 1 isn't multiway) */
     /* no bones in the invocation level */
-    return $c.i8((sptr = Is_special(lev)) !== null && !sptr.boneid || !svd.dungeons[lev.dnum].boneid || Is_botlevel(lev) || Is_branchlev(lev) && lev.dlevel > 1 || In_hell(lev) && lev.dlevel === (dunlevs_in_dungeon(lev) - 1 | 0) ? 1 : 0);
+    return (sptr = Is_special(lev)) !== null && !sptr.boneid || !svd.dungeons[lev.dnum].boneid || Is_botlevel(lev) || Is_branchlev(lev) && lev.dlevel > 1 || In_hell(lev) && lev.dlevel === dunlevs_in_dungeon(lev) - 1 ? 1 : 0;
 }
 /* Call this function for each fruit object saved in the bones level: it marks
  * that particular type of fruit as existing (the marker is that that type's
@@ -93,8 +93,7 @@ function no_bones_level(lev) {   // bones.c:18
  * @param {number} id int
  */
 function goodfruit(id) {   // bones.c:42
-    let f = null;
-    f = fruit_from_indx(-id | 0);
+    const f = fruit_from_indx(-id | 0);
     if (f) {
         f.fid = id;
     }
@@ -140,21 +139,21 @@ async function resetobjs(ochain, restore) {   // bones.c:51
                 }
                 /* can't use costly_spot() since its
                    result depends upon hero's location */
-                $t1 = (top.where === OBJ.FLOOR && get_obj_location(top, new $c.Ptr(ox, 0), new $c.Ptr(oy, 0), 0) && inside_shop(ox[0], oy[0]) && (p = in_rooms(ox[0], oy[0], SHOPBASE)).get(0) && tended_shop($c.relem(svr.rooms, p.get(0) - ROOMOFFSET | 0)) ? 1 : 0) >>> 0, otmp.no_charge = ($t1) & 1;
+                $t1 = top.where === OBJ.FLOOR && get_obj_location(top, new $c.Ptr(ox, 0), new $c.Ptr(oy, 0), 0) && inside_shop(ox[0], oy[0]) && (p = in_rooms(ox[0], oy[0], SHOPBASE)).get(0) && tended_shop($c.relem(svr.rooms, p.get(0) - ROOMOFFSET)) ? 1 : 0, otmp.no_charge = ($t1) & 1;
             }
         } else {
             /* saving */
             /* do not zero out o_ids for ghost levels anymore */
             if (objects[otmp.otyp].oc_uses_known) {
-                otmp.known = (0) & 1;
+                otmp.known = 0;
             }
-            $t2 = otmp.bknown = (0) & 1, otmp.dknown = ($t2) & 1;
-            otmp.rknown = (0) & 1;
-            otmp.lknown = (0) & 1;
-            otmp.cknown = (0) & 1;
-            otmp.tknown = (0) & 1;
+            $t2 = otmp.bknown = 0, otmp.dknown = ($t2) & 1;
+            otmp.rknown = 0;
+            otmp.lknown = 0;
+            otmp.cknown = 0;
+            otmp.tknown = 0;
             otmp.invlet = 0;
-            otmp.no_charge = (0) & 1;
+            otmp.no_charge = 0;
             otmp.how_lost = (LOST.NONE) & 7;
             /* strip user-supplied names */
             /* Statue and some corpse names are left intact,
@@ -204,7 +203,7 @@ async function resetobjs(ochain, restore) {   // bones.c:51
             } else if (is_mines_prize(otmp) || is_soko_prize(otmp)) {
                 /* achievement tracking; in case prize was moved off its
                    original level (which is always a no-bones level) */
-                otmp.nomerge = (0) & 1;
+                otmp.nomerge = 0;
             } else if (otmp.otyp === AMULET_OF_YENDOR) {
                 /* no longer the real Amulet */
                 otmp.otyp = FAKE_AMULET_OF_YENDOR;
@@ -237,14 +236,13 @@ async function resetobjs(ochain, restore) {   // bones.c:51
  * @param {$c.Ptr | null} namebuf char *
  */
 export function sanitize_name(namebuf) {   // bones.c:198
-    let c = 0, strip_8th_bit = 0;
-    strip_8th_bit = $c.i8(windowprocs.wp_id === wp_tty && !iflags.wc_eight_bit_input ? 1 : 0);
+    const strip_8th_bit = windowprocs.wp_id === wp_tty && !iflags.wc_eight_bit_input ? 1 : 0;
     /* it's tempting to skip this for single-user platforms, since
        only the current player could have left these bones--except
        things like "hearse" and other bones exchange schemes make
        that assumption false */
     while (namebuf.get(0)) {
-        c = namebuf.get(0) & 127;
+        const c = namebuf.get(0) & 127;
         if (c < 32 || c === 127) {
             /* non-printable or undesirable */
             namebuf.set(0, 46);
@@ -267,11 +265,11 @@ export function sanitize_name(namebuf) {   // bones.c:198
  * @returns {Promise<void>}
  */
 async function give_to_nearby_mon(otmp, x, y) {   // bones.c:226
-    let mtmp = null, selected = null, nmon = 0, xx = 0, yy = 0;
-    selected = null;
-    nmon = 0;
-    for (xx = x - 1 | 0; xx <= (x + 1 | 0); xx = xx + 1 | 0) {
-        for (yy = y - 1 | 0; yy <= (y + 1 | 0); yy = yy + 1 | 0) {
+    let mtmp = null, xx = 0, yy = 0;
+    let selected = null;
+    let nmon = 0;
+    for (xx = x - 1; xx <= x + 1; xx = xx + 1 | 0) {
+        for (yy = y - 1; yy <= y + 1; yy = yy + 1 | 0) {
             if (!isok($c.i16(xx), $c.i16(yy))) {
                 continue;
             }
@@ -358,7 +356,7 @@ export async function drop_upon_death(mtmp, cont, x, y) {   // bones.c:259
  * @returns {Promise<number>} boolean
  */
 async function fixuporacle(oracle) {   // bones.c:308
-    let cc = new $T.nhcoord(), ridx = 0, o_ridx = 0;
+    let cc = new $T.nhcoord(), ridx = 0;
     /* oracle doesn't move, but knight's joust or monk's staggering blow
        could push her onto a hole in the floor; at present, traps don't
        activate in such situation hence she won't fall to another level;
@@ -366,8 +364,8 @@ async function fixuporacle(oracle) {   // bones.c:308
     if (!((svd.dungeon_topology.d_oracle_level.dlevel || svd.dungeon_topology.d_oracle_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_oracle_level))) {
         return FALSE;
     }
-    oracle.mpeaceful = (1) & 1;   /* for behavior toward next character */
-    o_ridx = (svl.level.locations[oracle.mx][oracle.my].roomno | 0) - ROOMOFFSET | 0;
+    oracle.mpeaceful = 1;   /* for behavior toward next character */
+    let o_ridx = svl.level.locations[oracle.mx][oracle.my].roomno - ROOMOFFSET;
     if (o_ridx >= 0 && svr.rooms[o_ridx].rtype === DELPHI) {
         return TRUE;   /* no fixup needed */
     }
@@ -385,11 +383,11 @@ async function fixuporacle(oracle) {   // bones.c:308
     }
     if (o_ridx !== ridx && ridx < 82) {
         /* room found and she's not in it, so try to move her there */
-        cc.x = $c.i16($c.div32(svr.rooms[ridx].lx + svr.rooms[ridx].hx | 0, 2));
-        cc.y = $c.i16($c.div32(svr.rooms[ridx].ly + svr.rooms[ridx].hy | 0, 2));
+        cc.x = $c.i16($c.div32(svr.rooms[ridx].lx + svr.rooms[ridx].hx, 2));
+        cc.y = $c.i16($c.div32(svr.rooms[ridx].ly + svr.rooms[ridx].hy, 2));
         if (await enexto(cc, cc.x, cc.y, oracle.data)) {
             await rloc_to(oracle, cc.x, cc.y);
-            o_ridx = (svl.level.locations[oracle.mx][oracle.my].roomno | 0) - ROOMOFFSET | 0;
+            o_ridx = svl.level.locations[oracle.mx][oracle.my].roomno - ROOMOFFSET;
         }
         /* [if her room is already full, she might end up outside;
            that's ok, next hero just won't get any welcome message,
@@ -421,7 +419,7 @@ export function can_make_bones() {   // bones.c:356
     if (!Is_branchlev(u.uz)) {
         /* no bones on non-branches with portals */
         for (ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap) {
-            if ((ttmp.ttyp | 0) === MAGIC_PORTAL) {
+            if (ttmp.ttyp === MAGIC_PORTAL) {
                 return FALSE;
             }
         }
@@ -445,10 +443,9 @@ export function can_make_bones() {   // bones.c:356
  * @returns {Promise<void>}
  */
 async function remove_mon_from_bones(mtmp) {   // bones.c:390
-    let mptr = null;
-    mptr = mtmp.data;
+    const mptr = mtmp.data;
     /* mptr == &mons[VLAD_THE_IMPALER] || cham == VLAD */
-    if (mtmp.iswiz | 0 || $c.peq(mptr, $c.relem(mons, PM.MEDUSA)) || mptr.msound === MS.NEMESIS || mptr.msound === MS.LEADER || is_Vlad(mtmp) || $c.peq(mptr, $c.relem(mons, PM.ORACLE)) && !await fixuporacle(mtmp)) {
+    if (mtmp.iswiz || mptr === mons[PM.MEDUSA] || mptr.msound === MS.NEMESIS || mptr.msound === MS.LEADER || is_Vlad(mtmp) || mptr === mons[PM.ORACLE] && !await fixuporacle(mtmp)) {
         await mongone(mtmp);
     }
 }
@@ -544,7 +541,7 @@ export async function savebones(how, when, corpse) {   // bones.c:403
          * on your location
          */
         gi.in_mklev = TRUE;
-        mtmp = await makemon($c.relem(mons, PM.GHOST), u.ux, u.uy, MM.NONAME);
+        mtmp = await makemon(mons[PM.GHOST], u.ux, u.uy, MM.NONAME);
         gi.in_mklev = FALSE;
         if (!mtmp) {
             return;
@@ -558,7 +555,7 @@ export async function savebones(how, when, corpse) {   // bones.c:403
         mtmp.m_lev = $c.u8(u.ulevel ? u.ulevel : 1);
         $t1 = mtmp.mhpmax = u.uhpmax, mtmp.mhp = $t1;
         mtmp.female = (flags.female >>> 0) & 1;
-        mtmp.msleeping = (1) & 1;
+        mtmp.msleeping = 1;
         if (!has_ebones(mtmp)) {
             await newebones(mtmp);
         }
@@ -594,14 +591,14 @@ export async function savebones(how, when, corpse) {   // bones.c:403
         /* do not zero out m_ids for bones levels any more */
         mtmp.mlstmv = 0;
         if (mtmp.mtame) {
-            $t2 = $c.i8(mtmp.mpeaceful = (0) & 1), mtmp.mtame = $t2;
+            $t2 = $c.i8(mtmp.mpeaceful = 0), mtmp.mtame = $t2;
         }
         /* observations about the current hero won't apply to future game */
         mtmp.seen_resistance = M_SEEN.NOTHING;
     }
     for (ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap) {
-        ttmp.madeby_u = (0) & 1;
-        ttmp.tseen = (unhideable_trap(ttmp.ttyp) >>> 0) & 1;
+        ttmp.madeby_u = 0;
+        ttmp.tseen = (unhideable_trap(ttmp.ttyp)) & 1;
     }
     set_ghostly_objlist(svl.level.objlist);
     await resetobjs(svl.level.objlist, FALSE);
@@ -614,7 +611,7 @@ export async function savebones(how, when, corpse) {   // bones.c:403
     for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
         for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
             svl.level.locations[x][y].seenv = 0;
-            svl.level.locations[x][y].waslit = (0) & 1;
+            svl.level.locations[x][y].waslit = 0;
             svl.level.locations[x][y].glyph = GLYPH_UNEXPLORED;
             svl.lastseentyp[x][y] = 0;
         }
@@ -627,7 +624,7 @@ export async function savebones(how, when, corpse) {   // bones.c:403
     /* format name+role,&c, death reason, and date+time;
        gender and alignment reflect final values rather than what the
        character started out as, same as topten and logfile entries */
-    $c.sprintf(new $c.Ptr(newbones.who, 0), $c.lit("%s-%.3s-%.3s-%.3s-%.3s"), new $c.Ptr(svp.plname, 0), gu.urole.filecode, gu.urace.filecode, genders[flags.female].filecode, aligns[1 - u.ualign.type | 0].filecode);
+    $c.sprintf(new $c.Ptr(newbones.who, 0), $c.lit("%s-%.3s-%.3s-%.3s-%.3s"), new $c.Ptr(svp.plname, 0), gu.urole.filecode, gu.urace.filecode, genders[flags.female].filecode, aligns[1 - u.ualign.type].filecode);
     await formatkiller(new $c.Ptr(newbones.how, 0), 101, how, TRUE);
     $c.strcpy(new $c.Ptr(newbones.when, 0), yyyymmddhhmmss(when));
     /* final resting place, used to decide when bones are discovered */
@@ -641,7 +638,7 @@ export async function savebones(how, when, corpse) {   // bones.c:403
        they might already be flagged as such, even when we're playing
        in normal mode, if this level came from a previous bones file */
     if (wizard()) {
-        svl.level.flags.wizard_bones = (1) & 1;
+        svl.level.flags.wizard_bones = 1;
     }
     nhfp = await create_bonesfile(u.uz, new $c.Ptr(bonesid, 0), new $c.Ptr(whynot, 0));
     if (!nhfp) {
@@ -674,8 +671,8 @@ export async function savebones(how, when, corpse) {   // bones.c:403
  * @returns {Promise<number>} int
  */
 export async function getbones() {   // bones.c:630
-    let ok = 0, nhfp = null, c = Int8Array.of(0), bonesid = [null], oldbonesid = new Int8Array(40), ancestor_nhuuid = new Int8Array(37), save_plnmsg = 0, errbuf = new Int8Array(256), mtmp = null, save_plnmsg$2 = 0;
-    nhfp = null;
+    let ok = 0, c = Int8Array.of(0), bonesid = [null], oldbonesid = new Int8Array(40), ancestor_nhuuid = new Int8Array(37), errbuf = new Int8Array(256), mtmp = null;
+    let nhfp = null;
     c[0] = 0;
     oldbonesid.fill(0);
     oldbonesid[0] = 0;   /* was [10]; more should be safer */
@@ -731,7 +728,7 @@ export async function getbones() {   // bones.c:630
             if (wizard()) {
                 do {
                     if (debugcore($c.lit("bones.c"), TRUE)) {
-                        save_plnmsg = iflags.last_msg;
+                        const save_plnmsg = iflags.last_msg;
                         await pline($c.lit("Abandoning bones , %u > %u."), c[0] >>> 0, 40);
                         iflags.last_msg = save_plnmsg;
                     }
@@ -768,7 +765,7 @@ export async function getbones() {   // bones.c:630
                     if (wizard()) {
                         do {
                             if (debugcore($c.lit("bones.c"), TRUE)) {
-                                save_plnmsg$2 = iflags.last_msg;
+                                const save_plnmsg$2 = iflags.last_msg;
                                 await pline($c.lit("Removing defunct monster %s from bones."), mtmp.data.pmnames[NEUTRAL]);
                                 iflags.last_msg = save_plnmsg$2;
                             }
@@ -813,12 +810,12 @@ export async function getbones() {   // bones.c:630
  * @returns {number} boolean
  */
 export function bones_include_name(name) {   // bones.c:762
-    let bp = null, len = 0, buf = new Int8Array(256);
+    let bp = null, buf = new Int8Array(256);
     /* prepare buffer by appending terminal hyphen to name, to avoid partial
      * matches producing false positives */
     $c.strcpy(new $c.Ptr(buf, 0), name);
     $c.strcat(new $c.Ptr(buf, 0), $c.lit("-"));
-    len = $c.strlen(new $c.Ptr(buf, 0));
+    const len = $c.strlen(new $c.Ptr(buf, 0));
     for (bp = svl.level.bonesinfo; bp; bp = bp.next) {
         if (!$c.strncmp(new $c.Ptr(bp.who, 0), new $c.Ptr(buf, 0), len)) {
             return TRUE;
@@ -832,7 +829,7 @@ export function bones_include_name(name) {   // bones.c:762
  */
 function set_ghostly_objlist(objchain) {   // bones.c:784
     while (objchain) {
-        objchain.ghostly = (1) & 1;
+        objchain.ghostly = 1;
         objchain = objchain.nobj;
     }
 }
@@ -859,7 +856,7 @@ export async function fix_ghostly_obj(obj) {   // bones.c:796
         default:
             break;
     }
-    obj.ghostly = (0) & 1;
+    obj.ghostly = 0;
 }
 /**
  * @param {$T.monst | null} mtmp struct monst *

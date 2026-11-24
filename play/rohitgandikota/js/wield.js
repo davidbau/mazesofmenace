@@ -43,7 +43,7 @@ import { W_QUIVER, W_WEP, W_SWAPWEP, W_ARMOR, W_ACCESSORY, W_SADDLE, P_BOOMERANG
 import { You } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
-import { Blind, Glib, Stone_resistance } from './youprop.js';
+import { Blind, Glib, Hallucination, Stone_resistance } from './youprop.js';
 import { instapetrify } from './trap.js';
 import { del_light_source, new_light_source, LS_OBJECT } from './light.js';
 
@@ -212,7 +212,7 @@ export async function doquiver_core(verb) {
                     return ECMD_OK;
                 }
                 /* quivering main weapon, so no longer wielding it */
-                setuwep(null);
+                await setuwep(null);
                 await untwoweapon();
                 was_uwep = true;
             }
@@ -356,28 +356,32 @@ export function setuwep(obj) {
 
     if (obj === game.u.uwep)
         return null; /* necessary to not set gu.unweapon */
-    setworn(obj, W_WEP);
-    if (game.u.uwep === obj
-        && (is_art(game.u.uwep, ART_OGRESMASHER)
-            || is_art(olduwep, ART_OGRESMASHER)))
-        (game.disp ||= {}).botl = true;
-    let stoppedLight = null;
-    if (game.u.uwep === obj && artifact_light(olduwep) && olduwep.lamplit) {
-        end_artifact_light(olduwep);
-        stoppedLight = olduwep;
+    const pending = setworn(obj, W_WEP);
+    return pending ? pending.then(finish) : finish();
+
+    function finish() {
+        if (game.u.uwep === obj
+            && (is_art(game.u.uwep, ART_OGRESMASHER)
+                || is_art(olduwep, ART_OGRESMASHER)))
+            (game.disp ||= {}).botl = true;
+        let stoppedLight = null;
+        if (game.u.uwep === obj && artifact_light(olduwep) && olduwep.lamplit) {
+            end_artifact_light(olduwep);
+            stoppedLight = olduwep;
+        }
+        if (obj) {
+            game.unweapon = (obj.oclass === OCLASSES.WEAPON_CLASS)
+                           ? is_launcher(obj) || is_ammo(obj) || is_missile(obj)
+                             || (is_pole(obj) && !game.u.usteed)
+                           : !is_weptool(obj, game.objects) && !is_wet_towel(obj);
+        } else
+            game.unweapon = true; /* for "bare hands" message */
+        return stoppedLight;
     }
-    if (obj) {
-        game.unweapon = (obj.oclass === OCLASSES.WEAPON_CLASS)
-                       ? is_launcher(obj) || is_ammo(obj) || is_missile(obj)
-                         || (is_pole(obj) && !game.u.usteed)
-                       : !is_weptool(obj, game.objects) && !is_wet_towel(obj);
-    } else
-        game.unweapon = true; /* for "bare hands" message */
-    return stoppedLight;
 }
 
 export async function setuwep_with_feedback(obj) {
-    const stoppedLight = setuwep(obj);
+    const stoppedLight = await setuwep(obj);
     if (stoppedLight && !Blind())
         await pline(`${Tobjnam(stoppedLight, 'stop')} shining.`);
     return stoppedLight;
@@ -702,8 +706,7 @@ export async function chwepon(otmp, amount) {
                 buf = `${Yobjnam2(uwep, 'glow')} with `
                       + an(hcolor(NH_AMBER)) + ' aura.';
                 /* ok to bypass set_bknown() */
-                uwep.bknown = (game.u?.intrinsic?.HHallucination
-                               || game.u?.uprops?.HALLUC) ? 0 : 1;
+                uwep.bknown = Hallucination() ? 0 : 1;
             } else {
                 /* cursed tin opener is wielded in right hand */
                 buf = `Your right ${body_part(HAND)} tingles.`;
@@ -778,7 +781,7 @@ export async function chwepon(otmp, amount) {
         else
             await pline(`${Yobjnam2(uwep, 'evaporate')}.`);
 
-        useupall(uwep);         /* let all of them disappear */
+        await useupall(uwep);         /* let all of them disappear */
         return 1;
     }
     if (!game.u.ublind) {
@@ -1026,7 +1029,7 @@ export async function uwepgone() {
             if (!Blind())
                 await pline(`${Tobjnam(game.u.uwep, 'stop')} shining.`);
         }
-        setworn(null, W_WEP);
+        await setworn(null, W_WEP);
         game.unweapon = true;
         update_inventory();
     }

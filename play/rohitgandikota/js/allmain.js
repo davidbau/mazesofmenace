@@ -242,10 +242,7 @@ export async function newgame() {
        role initialization and the fresh Lua core draw before play resumes. */
     {
         const { dorecover } = await import('./save.js');
-        if (dorecover()) {
-            init_vision_globals();
-            vision_reset();
-            l_nhcore_init();
+        if (await dorecover()) {
             await docrt();
             /* src/allmain.c:914 welcome(FALSE) — align and gender words
                appear only when changed since chargen; neither can change
@@ -260,6 +257,7 @@ export async function newgame() {
             // src/allmain.c:927 welcome(FALSE), remind after the greeting.
             const { print_level_annotation } = await import('./dungeon.js');
             await print_level_annotation();
+            await check_special_room(false);
             return true;
         }
     }

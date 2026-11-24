@@ -43,7 +43,7 @@ import { is_pool_or_lava, is_db_wall, db_under_typ, is_ice } from './dbridge.js'
 import { is_pool, is_lava, t_at, m_at, is_pick, seemimic,
          wake_msg } from './mon.js';
 import { hliquid } from './do_name.js';
-import { Is_waterlevel, WATER, LAVAPOOL, POOL, AIR } from './const.js';
+import { Is_waterlevel, WATER, LAVAPOOL, POOL, AIR, PLNMSG_BACK_ON_GROUND } from './const.js';
 import { waterbody_name } from './pager.js';
 import { surface, recalc_mapseen, depth, get_level, Is_medusa_level } from './dungeon.js';
 import { pickup, can_reach_floor, loot_mon } from './pickup.js';
@@ -72,7 +72,7 @@ import { mdamageu } from './mhitu.js';
 import { ceiling } from './dungeon.js';
 import { Amonnam } from './do_name.js';
 import { dismount_steed } from './steed.js';
-import { grounded, sokoban_guilt } from './trap.js';
+import { grounded, sokoban_guilt, back_on_ground } from './trap.js';
 import { autopick_testobj } from './pickup.js';
 import { addtobill, subfrombill, shop_keeper, onshopbill, find_objowner } from './shk.js';
 import { paranoia_bits, boolean_option } from './options.js';
@@ -95,7 +95,7 @@ import { rehumanize } from './polyself.js';
 import { wake_nearto } from './mon.js';
 import { attacktype, attacktype_fordmg } from './mondata.js';
 import { sensemon, is_safemon, mon_visible, pline, urgent_pline, canspotmon } from './display.js';
-import { hides_under, noattacks, is_hider } from './mondata.js';
+import { hides_under, noattacks, is_hider, ceiling_hider } from './mondata.js';
 import { onscary } from './monmove.js';
 import { PMNAMES, MONSYMS, ATTKS } from './monst_data.js';
 import { rn2, rnd } from './rng.js';
@@ -393,7 +393,9 @@ export function movobj(obj, ox, oy) {
     obj_extract_self(obj); /* remove_object(obj) */
     maybe_unhide_at(obj.ox, obj.oy);
     newsym(obj.ox, obj.oy);
-    place_object(obj, ox, oy);
+    const placement = place_object(obj, ox, oy);
+    if (placement)
+        return placement.then(() => newsym(ox, oy));
     newsym(ox, oy);
 }
 
@@ -1354,12 +1356,12 @@ export async function swim_move_danger(x, y) {
     const newtyp = u_simple_floortyp(x, y);
     const liquid_wall = (newtyp === WATER || newtyp === LAVAWALL);
 
-    if (game.u.uprops?.UNDERWATER && (is_pool(x, y) || newtyp === WATER))
+    if (Underwater() && (is_pool(x, y) || newtyp === WATER))
         return false;
 
     const loc = game.level?.at(x, y);
     if ((newtyp !== u_simple_floortyp(game.u.ux, game.u.uy))
-        && !game.u.uprops?.STUNNED && !game.u.uprops?.CONFUSION
+        && !Stunned() && !Confusion()
         && loc?.seenv
         && (is_pool(x, y) || is_lava(x, y) || liquid_wall)) {
         /* Known_wwalking / Known_lwalking need identified worn gear the
@@ -1425,14 +1427,11 @@ export async function pooleffects(newspot) {
         if (!is_pool(u.ux, u.uy)) {
             if (Is_waterlevel(u.uz)) {
                 await You('pop into an air bubble.');
+                game.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
             } else if (is_lava(u.ux, u.uy)) {
                 await You(`leave the ${hliquid('water')}...`); /* oops! */
             } else {
-                /* back_on_ground(FALSE) */
-                let surf = surface(u.ux, u.uy);
-                if (surf === 'floor' || surf === 'ground')
-                    surf = 'solid ground';
-                await pline(`You're back on ${surf}.`);
+                await back_on_ground(false);
             }
         } else if (Is_waterlevel(u.uz)) {
             still_inwater = true;
@@ -1440,7 +1439,7 @@ export async function pooleffects(newspot) {
             await You(`pop out of the ${hliquid('water')} like a cork!`);
         } else if (Flying()) {
             await You(`fly out of the ${hliquid('water')}.`);
-        } else if (u.uprops?.WWALKING) {
+        } else if (Wwalking()) {
             await You('slowly rise above the surface.');
         } else {
             still_inwater = true;
@@ -1477,12 +1476,13 @@ export async function pooleffects(newspot) {
             return true;
         }
         /* not mounted */
-        /* ceiling hider check needs polyself */
+        if (Upolyd(u) && ceiling_hider(game.mons[u.umonnum]) && u.uundetected)
+            return false;
         if (is_lava(u.ux, u.uy)) {
             const { lava_effects } = await import('./trap.js');
             if (await lava_effects())
                 return true;
-        } else if ((!u.uprops?.WWALKING
+        } else if ((!Wwalking()
                     || game.level?.at(u.ux, u.uy)?.typ === WATER)
                    && (newspot || !u.uinwater
                        || !(Swimming() || Amphibious() || Breathless()))) {

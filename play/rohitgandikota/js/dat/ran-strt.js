@@ -75,14 +75,14 @@ export async function ranstrt_level() {
     /* The treasure of Orion */
     des.object('chest', 20, 10);
     /* Guards for the audience chamber */
-    des.monster('hunter', 19, 9);
-    des.monster('hunter', 20, 9);
-    des.monster('hunter', 21, 9);
-    des.monster('hunter', 19, 10);
-    des.monster('hunter', 21, 10);
-    des.monster('hunter', 19, 11);
-    des.monster('hunter', 20, 11);
-    des.monster('hunter', 21, 11);
+    await des.monster('hunter', 19, 9);
+    await des.monster('hunter', 20, 9);
+    await des.monster('hunter', 21, 9);
+    await des.monster('hunter', 19, 10);
+    await des.monster('hunter', 21, 10);
+    await des.monster('hunter', 19, 11);
+    await des.monster('hunter', 20, 11);
+    await des.monster('hunter', 21, 11);
     /* Non diggable walls */
     des.non_diggable(selection.area(0, 0, 40, 20));
     /* Traps */
@@ -93,31 +93,31 @@ export async function ranstrt_level() {
     des.trap('bear');
     des.trap('bear');
     /* Monsters on siege duty. */
-    des.monster({ id: 'minotaur', x: 33, y: 9, peaceful: 0, asleep: 1 });
-    des.monster({ id: 'forest centaur', x: 19, y: 3, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 19, y: 4, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 19, y: 5, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 21, y: 3, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 21, y: 4, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 21, y: 5, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 1, y: 9, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 2, y: 9, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 3, y: 9, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 1, y: 11, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 2, y: 11, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 3, y: 11, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 19, y: 15, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 19, y: 16, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 19, y: 17, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 21, y: 15, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 21, y: 16, peaceful: 0 });
-    des.monster({ id: 'forest centaur', x: 21, y: 17, peaceful: 0 });
-    des.monster({ id: 'plains centaur', peaceful: 0 });
-    des.monster({ id: 'plains centaur', peaceful: 0 });
-    des.monster({ id: 'plains centaur', peaceful: 0 });
-    des.monster({ id: 'plains centaur', peaceful: 0 });
-    des.monster({ id: 'plains centaur', peaceful: 0 });
-    des.monster({ id: 'plains centaur', peaceful: 0 });
-    des.monster({ id: 'scorpion', peaceful: 0 });
-    des.monster({ id: 'scorpion', peaceful: 0 });
+    await des.monster({ id: 'minotaur', x: 33, y: 9, peaceful: 0, asleep: 1 });
+    await des.monster({ id: 'forest centaur', x: 19, y: 3, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 19, y: 4, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 19, y: 5, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 21, y: 3, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 21, y: 4, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 21, y: 5, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 1, y: 9, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 2, y: 9, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 3, y: 9, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 1, y: 11, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 2, y: 11, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 3, y: 11, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 19, y: 15, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 19, y: 16, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 19, y: 17, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 21, y: 15, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 21, y: 16, peaceful: 0 });
+    await des.monster({ id: 'forest centaur', x: 21, y: 17, peaceful: 0 });
+    await des.monster({ id: 'plains centaur', peaceful: 0 });
+    await des.monster({ id: 'plains centaur', peaceful: 0 });
+    await des.monster({ id: 'plains centaur', peaceful: 0 });
+    await des.monster({ id: 'plains centaur', peaceful: 0 });
+    await des.monster({ id: 'plains centaur', peaceful: 0 });
+    await des.monster({ id: 'plains centaur', peaceful: 0 });
+    await des.monster({ id: 'scorpion', peaceful: 0 });
+    await des.monster({ id: 'scorpion', peaceful: 0 });
 }

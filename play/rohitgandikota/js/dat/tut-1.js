@@ -114,7 +114,7 @@ export async function tut1_level() {
             [locs[i - 1], locs[j]] = [locs[j], locs[i - 1]];
         }
         for (let i = 0; i < 4; i++) {
-            des.trap({ type: percent(50) ? 'sleep gas' : 'board',
+            await des.trap({ type: percent(50) ? 'sleep gas' : 'board',
                        coord: locs[i], victim: false });
         }
     }
@@ -138,7 +138,7 @@ export async function tut1_level() {
     eng(21, 14, "Wield weapons with 'w'");
     eng(22, 13, 'Hit monsters by walking into them.');
 
-    des.monster({ id: 'lichen', coord: [23, 15], waiting: true,
+    await des.monster({ id: 'lichen', coord: [23, 15], waiting: true,
                   countbirth: false });
 
     eng(24, 16, 'Now you know the very basics. You can leave the tutorial via the magic portal.');
@@ -173,14 +173,14 @@ export async function tut1_level() {
     eng(22, 3, "Drop items with 'd'");
     eng(22, 4, 'You can drop partial stacks by prefixing the item slot letter with a number');
 
-    des.monster({ id: 'yellow mold', coord: [26, 2], waiting: true,
+    await des.monster({ id: 'yellow mold', coord: [26, 2], waiting: true,
                   countbirth: false });
 
     eng(25, 5, "Throw items with 't'");
 
     des.trap({ type: 'magic portal', coord: [21, 1], seen: true });
 
-    des.monster({ id: 'wolf', coord: [29, 2], peaceful: 0, waiting: true,
+    await des.monster({ id: 'wolf', coord: [29, 2], peaceful: 0, waiting: true,
                   countbirth: false });
 
     eng(37, 4, 'Missiles, such as rocks, work better when fired from appropriate launcher');

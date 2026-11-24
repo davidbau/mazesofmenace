@@ -84,10 +84,10 @@ export async function ynNaq(query) {
     return await yn_function(query, new $c.Ptr(ynNaqchars, 0), 121, TRUE);
 }
 export function BALL_IN_MON() {
-    return u.uswallow | 0 && $G.uball && $G.uball.where === OBJ.FREE ? 1 : 0;
+    return u.uswallow && $G.uball && $G.uball.where === OBJ.FREE ? 1 : 0;
 }
 export function CHAIN_IN_MON() {
-    return u.uswallow | 0 && $G.uchain && $G.uchain.where === OBJ.FREE ? 1 : 0;
+    return u.uswallow && $G.uchain && $G.uchain.where === OBJ.FREE ? 1 : 0;
 }
 export function NODIAG(monnum) {
     return monnum === PM.GRID_BUG ? 1 : 0;
@@ -99,7 +99,7 @@ export function BZ_OFS_AD(adtyp) {
     return $c.rem32($c.abs(adtyp - AD.MAGM | 0), 10);
 }
 export function BZ_U_WAND(bztyp) {
-    return 0 + bztyp | 0;
+    return 0 + bztyp;
 }
 export function FEATURE_NOTICE_VER(major, minor, patch) {
     return $c.oru64($c.oru64($c.oru64($c.shlu64($c.u64(major), 24), $c.shlu64($c.u64(minor), 16)), $c.shlu64($c.u64(patch), 8)), 0);

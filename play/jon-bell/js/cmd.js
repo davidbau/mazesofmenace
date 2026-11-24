@@ -425,6 +425,8 @@ import { the as _the_objnam } from './objnam.js';
 import { simpleonames, simpleonames as _ia_simpleonames, cxname, cxname as _ia_cxname } from './objnam.js';
 import { stone_luck } from './attrib.js';
 import { OC_USES_KNOWN } from './mklev.js';
+import { nh_qsort } from './nhsort.js';
+import { inuse_classify } from './invent.js';
 import { wipeout_text } from './engrave.js';
 import { ordin } from './hacklib.js';
 import { Can_fall_thru } from './dungeon.js';
@@ -2252,17 +2254,21 @@ export async function inventory_menu_legacy(opts) {
     const flatInv = !opts?.queryObjlist && g.flags?.sortpack === false;
     /* C invent.c:3207 sorts the whole pack before :3266 groups entries;
      * the asymmetric :533 enchantment tier makes partition boundaries matter. */
-    const fullLoot = !opts?.queryObjlist && !opts?.invChainOrder && g.flags?.sortloot === 'f'
+    const qoSorted = opts?.queryObjlist ? query_objlist_sorted(items, useInvlet) : null;
+    const sortedItems = opts?.sortedInvent
+        ? opts.sortedInvent.filter(o => items.includes(o)) : null;
+    const fullLoot = sortedItems ? sortedItems
+        : !opts?.queryObjlist && !opts?.invChainOrder && g.flags?.sortloot === 'f'
         ? _sortloot_within_class(items, null) : null;
     if (flatInv) {
         let flat = items.slice();
         /* display_used_invlets (invent.c:3480) walks gi.invent: chain order, no sortloot */
         if (opts?.invChainOrder) {
             /* keep chain order */
-        } else if (g.flags?.sortloot === 'f') {
+        } else if (sortedItems || g.flags?.sortloot === 'f') {
             flat = fullLoot;
         } else {
-            flat.sort((a, b) =>
+            nh_qsort(flat, (a, b) =>
                 invletter_value(a.invlet | 0) - invletter_value(b.invlet | 0));
         }
         for (const obj of flat) {
@@ -2286,21 +2292,19 @@ export async function inventory_menu_legacy(opts) {
     else for (const oclass of CLASS_ORDER) {
         let group = items.filter(it => (it.oclass | 0) === oclass);
         /* invent.c:3176 — display_pickinv sorts SORTLOOT_LOOT for sortloot=full. */
-        if (!opts?.queryObjlist && !opts?.invChainOrder && g.flags?.sortloot === 'f')
+        if (sortedItems)
+            group = sortedItems.filter(o => (o.oclass | 0) === oclass);
+        else if (!opts?.queryObjlist && !opts?.invChainOrder && g.flags?.sortloot === 'f')
             group = fullLoot.filter(o => (o.oclass | 0) === oclass);
         else if (!opts?.queryObjlist && !opts?.invChainOrder)
             /* C invent.c:391-400,471-476: SORTLOOT_INVLET puts '#' after 'Z',
              * independently of the object's position in the invent chain. */
-            group.sort((a, b) => invletter_value(a.invlet | 0)
+            nh_qsort(group, (a, b) => invletter_value(a.invlet | 0)
                 - invletter_value(b.invlet | 0));
-        if (opts?.queryObjlist) {
-            // pickup.c query_objlist: USE_INVLET selects inventory-letter order,
-            // with loot ordering for full, or loot without USE_INVLET.
-            group = g.flags?.sortloot === 'f' || (!useInvlet && g.flags?.sortloot === 'l')
-                ? _sortloot_within_class(group, oclass)
-                : useInvlet ? group.sort((a, b) => invletter_value(a.invlet | 0)
-                    - invletter_value(b.invlet | 0))
-                : g.flags?.sortpack ? _sortloot_within_class(group, oclass, false) : group;
+        if (qoSorted) {
+            // pickup.c:1079-1086 query_objlist: one sortloot() of the allowed
+            // items (USE_INVLET -> SORTLOOT_INVLET unless loot/full applies).
+            group = qoSorted.filter(o => (o.oclass | 0) === oclass);
         }
         if (group.length === 0)
             continue;
@@ -3417,7 +3421,8 @@ function sortloot_invlet_chain(head) {
     const out = [];
     for (let o = head; o; o = o.nobj)
         out.push(o);
-    return out.sort((a, b) => {
+    /* C invent.c:2407 sortloot(objchn, SORTLOOT_INVLET): invlet order */
+    return nh_qsort(out, (a, b) => {
         const ka = invletValue(a.invlet | 0);
         const kb = invletValue(b.invlet | 0);
         return ka - kb;
@@ -5617,36 +5622,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
         if (morc === 45 || morc === 27 /* ESC */) return morc;
         return 0;
     }
-    if (g.flags?.sortloot !== 'i' && g.flags?.sortpack !== false && !_Blind_cmd()
-        && g.invent && g.invent.nobj) {
-        const pack = [];
-        for (let o = g.invent; o; o = o.nobj) pack.push(o);
-        if (g.flags.sortloot === 'f') {
-            _observe_in_qsort_order(pack);
-        } else {
-            // C invent.c:433-438,472-477,633: PACK|INVLET classification observes
-            // as display_pickinv does above; pivot order changes discovery order.
-            const order = g.flags.inv_order || INV_ORDER, seen = new Set();
-            const rank = o => {
-                const oc = o.oclass | 0, i = order.indexOf(oc);
-                return i >= 0 ? i : order.length + (oc !== 17 /* VENOM_CLASS */ ? 1 : 0);
-            };
-            const cmp = (a, b) => {
-                for (const o of [a, b]) if (!seen.has(o)) { seen.add(o); observe_object(o); }
-                return rank(a) - rank(b)
-                    || invletter_value(a.invlet | 0) - invletter_value(b.invlet | 0);
-            };
-            const msort = v => {
-                if (v.length < 2) return v;
-                const mid = v.length >> 1;
-                const left = msort(v.slice(0, mid)), right = msort(v.slice(mid)), out = [];
-                while (left.length && right.length)
-                    out.push(cmp(left[0], right[0]) <= 0 ? left.shift() : right.shift());
-                return out.concat(left, right);
-            };
-            msort(pack);
-        }
-    }
+    const sortedPack = g.flags?.sortloot !== 'i' ? display_pickinv_sorted() : null;
     /* getobj's putmsghistory (invent.c:1895) already retired any standing line;
      * a line pline'd while the entries are formatted is a fresh one (below). */
     const pendingAtBuild = g._pending_message;
@@ -5699,7 +5675,9 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
             || allowedLets == null);
     if (g.flags?.sortpack === false) {
         let flat = items.filter(it => !it._xtra);
-        if (g.flags?.sortloot === 'f') {
+        if (sortedPack) {
+            flat = sortedPack.filter(o => flat.includes(o));
+        } else if (g.flags?.sortloot === 'f') {
             /* invent.c:150-165 loot_classify(): !sortpack uses def_srt_order
              * for the class rank, then sortloot_cmp's LOOT subclass/disco/name
              * order within each class; still no class headings (invent.c:3289). */
@@ -5714,7 +5692,7 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
             }
             flat = out;
         } else {
-            flat.sort((a, b) =>
+            nh_qsort(flat, (a, b) =>
                 invletter_value(a.invlet | 0) - invletter_value(b.invlet | 0));
         }
         for (const obj of flat) {
@@ -5746,7 +5724,9 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
         /* C invent.c:3176 sortflags = (flags.sortloot == 'f') ? SORTLOOT_LOOT
          * : SORTLOOT_INVLET; LOOT orders within a class by loot_classify()
          * subclass, discovery and name (sortloot_cmp, invent.c:449-546). */
-        if (g.flags?.sortloot === 'f')
+        if (sortedPack)
+            group = sortedPack.filter(o => group.includes(o));
+        else if (g.flags?.sortloot === 'f')
             group = _sortloot_within_class(group, oclass);
         /* C invent.c:3291-3294 let_to_name(let, FALSE, withsym), withsym = want_reply
          * && menu_head_objsym; invbuf_sympadding 8 (invent.c:4800,4825-4833). */
@@ -6226,7 +6206,8 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
      * function, so naming it at this depth is a ReferenceError, not a constant. */
     const COIN_CLASS_GO = 12;
     const sortKey = (o) => invletValue(((o.oclass | 0) === COIN_CLASS_GO) ? 36 : (o.invlet | 0));
-    sortedInvent.sort((a, b) => sortKey(a) - sortKey(b));
+    /* C invent.c:1861 sortloot(&gi.invent, SORTLOOT_INVLET) */
+    nh_qsort(sortedInvent, (a, b) => sortKey(a) - sortKey(b));
     /* C invent.c:1884 — GETOBJ_DOWNPLAY items go into `altlets` instead:
      * selectable through the '?'/'*' menu but not listed in the prompt. */
     for (const o of sortedInvent) {
@@ -11365,10 +11346,10 @@ async function _dolook() {
             const lineItems = [null, null];
             let menuAccel = 'a'.charCodeAt(0);
             let firstMenuItem = true;
+            // C invent.c:5367 query_objlist(INVORDER_SORT) -> pickup.c:1079-1086 sortloot().
+            const sortedItems = query_objlist_sorted(items, false);
             for (const oclass of (g.flags.inv_order || PICKINV_CLASS_ORDER)) {
-                // C pickup.c:1079-1086: sortloot honors the configured loot order.
-                const group = _sortloot_within_class(items, oclass,
-                    ['f', 'l'].includes(g.flags.sortloot ?? 'l'));
+                const group = sortedItems.filter(o => (o.oclass | 0) === oclass);
                 if (!group.length) continue;
                 if (windowLines.length % 23 === 0) menuAccel = 97;
                 windowLines.push(menu_heading_text(PICKINV_CLASS_HEADER[oclass]));
@@ -11583,7 +11564,7 @@ function _sortloot_food_subclass(obj) {
  * orderclass column is not needed here: this helper is only ever called on one
  * class at a time, after _pickup_menu has already grouped by flags.inv_order. */
 function _sortloot_classify(obj) {
-    const otyp = obj.otyp | 0, oclass = obj.oclass | 0;
+    const otyp = obj.otyp | 0;
     const discovered = !!(game._oc_name_known && game._oc_name_known[otyp]);
     /* C invent.c:170-171 — `if (!Blind) observe_object(obj);` with the comment
      * "xname(obj) does this; we want it sooner".  `discovered` above is read
@@ -11591,6 +11572,10 @@ function _sortloot_classify(obj) {
      * dknown/oc_encountered, which the `seen` read below picks up. */
     if (!_uprop_active('BLINDED'))
         observe_object(obj);
+    return _sortloot_classify_core(obj, discovered);
+}
+function _sortloot_classify_core(obj, discovered) {
+    const otyp = obj.otyp | 0, oclass = obj.oclass | 0;
     const seen = !!obj.dknown;
     let k;
     switch (oclass) {
@@ -11647,164 +11632,159 @@ function _sortloot_classify(obj) {
  * flags.sortloot defaults to 'l' — options.c:7208 — and the pickup menu does
  * not pass USE_INVLET).  The orderclass term is handled by the caller's
  * inv_order grouping; SORTLOOT_INUSE and SORTLOOT_INVLET are not in this mode. */
-function _observe_in_qsort_order(objs) {
-    const g = game;
-    const classes = (g.flags?.inv_order || INV_ORDER).concat(17);
-    const ranked = [];
-    for (const oc of classes) {
-        const grp = objs.filter(o => (o.oclass | 0) === oc);
-        ranked.push(...(g.flags?.sortloot === 'f' ? _sortloot_within_class(grp, oc)
-            : grp.slice().sort((a, b) => invletter_value(a.invlet | 0) - invletter_value(b.invlet | 0))));
-    }
-    for (const o of objs) if (!ranked.includes(o)) ranked.push(o);
-    const seen = new Set();
-    const cmp = (a, b) => {
-        for (const o of [a, b]) if (!seen.has(o)) { seen.add(o); observe_object(o); }
-        return ranked.indexOf(a) - ranked.indexOf(b);
-    };
-    // glibc msort_with_tmp compares the left half before the right half.
-    // Classifying in pivot-partition order instead changes disco[].
-    const msort = (v) => {
-        if (v.length < 2) return v;
-        const mid = v.length >> 1;
-        const left = msort(v.slice(0, mid)), right = msort(v.slice(mid));
-        const out = [];
-        let i = 0, j = 0;
-        while (i < left.length && j < right.length)
-            out.push(cmp(left[i], right[j]) <= 0 ? left[i++] : right[j++]);
-        return out.concat(left.slice(i), right.slice(j));
-    };
-    msort(objs);
+/* C hack.h:1360-1364 sortloot() mode bits. */
+export const SORTLOOT_PACK = 0x01, SORTLOOT_INVLET = 0x02, SORTLOOT_LOOT = 0x04,
+             SORTLOOT_INUSE = 0x08, SORTLOOT_PETRIFY = 0x20;
+/* C invent.c:155-158 loot_classify()'s def_srt_order[] (used without sortpack). */
+const _SL_DEF_SRT_ORDER = [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16];
+const _SL_VENOM_CLASS = 17;
+/* C invent.c:149 loot_classify(sort_item, obj): fills orderclass, subclass,
+ * disco; observe_object() first unless Blind (invent.c:170). */
+function _sl_loot_classify(sli) {
+    const obj = sli.obj, otyp = obj.otyp | 0, oclass = obj.oclass | 0;
+    const discovered = !!(game._oc_name_known && game._oc_name_known[otyp]);
+    if (!_uprop_active('BLINDED'))
+        observe_object(obj);
+    const classorder = game.flags?.sortpack !== false
+        ? (game.flags?.inv_order || INV_ORDER) : _SL_DEF_SRT_ORDER;
+    /* strchr(classorder, oclass): the NUL-terminated string also "contains" 0 */
+    const p = oclass === 0 ? classorder.length : classorder.indexOf(oclass);
+    sli.orderclass = p >= 0 ? 1 + p
+        : 1 + classorder.length + (oclass !== _SL_VENOM_CLASS ? 1 : 0);
+    const c = _sortloot_classify_core(obj, discovered);
+    sli.subclass = c.subclass;
+    sli.disco = c.disco;
+    sli.inuse = 0;
 }
-
-function _c_qsort(a, cmp) {
-    const swap = (i, j) => { const t = a[i]; a[i] = a[j]; a[j] = t; };
-    const insertion = (lo, n) => {
-        for (let i = lo + 1; i < lo + n; i++)
-            for (let j = i; j > lo && cmp(a[j - 1], a[j]) > 0; j--) swap(j, j - 1);
-    };
-    const med3 = (x, y, z) => cmp(a[x], a[y]) < 0
-        ? (cmp(a[y], a[z]) < 0 ? y : (cmp(a[x], a[z]) < 0 ? z : x))
-        : (cmp(a[y], a[z]) > 0 ? y : (cmp(a[x], a[z]) < 0 ? x : z));
-    const qs = (lo, n) => {
-        for (;;) {
-            if (n < 7) { insertion(lo, n); return; }
-            let pm = lo + (n >> 1);
-            if (n > 7) {
-                let pl = lo, pn = lo + n - 1;
-                if (n > 40) {
-                    const d = n >> 3;
-                    pl = med3(pl, pl + d, pl + 2 * d);
-                    pm = med3(pm - d, pm, pm + d);
-                    pn = med3(pn - 2 * d, pn - d, pn);
-                }
-                pm = med3(pl, pm, pn);
-            }
-            swap(lo, pm);
-            let pa = lo + 1, pb = pa, pc = lo + n - 1, pd = pc, sw = false, r;
-            for (;;) {
-                while (pb <= pc && (r = cmp(a[pb], a[lo])) <= 0) {
-                    if (r === 0) { sw = true; swap(pa, pb); pa++; }
-                    pb++;
-                }
-                while (pb <= pc && (r = cmp(a[pc], a[lo])) >= 0) {
-                    if (r === 0) { sw = true; swap(pc, pd); pd--; }
-                    pc--;
-                }
-                if (pb > pc) break;
-                swap(pb, pc); sw = true; pb++; pc--;
-            }
-            if (!sw) { insertion(lo, n); return; }
-            const pe = lo + n;
-            let m = Math.min(pa - lo, pb - pa);
-            for (let i = 0; i < m; i++) swap(lo + i, pb - m + i);
-            m = Math.min(pd - pc, pe - pd - 1);
-            for (let i = 0; i < m; i++) swap(pb + i, pe - m + i);
-            if ((m = pb - pa) > 1) qs(lo, m);
-            if ((m = pd - pc) > 1) { lo = pe - m; n = m; continue; }
-            return;
+/* C invent.c:70 inuse_classify(sort_item, obj). */
+function _sl_inuse_classify(sli) {
+    const c = inuse_classify(sli.obj);
+    sli.inuse = c.inuse;
+    sli.orderclass = c.orderclass;
+    sli.subclass = 0;
+    sli.disco = 0;
+}
+/* C invent.c:403-546 sortloot_cmp(), with gs.sortlootmode passed as `mode`.
+ * Faithful including its asymmetry: the enchantment tier tests obj1's
+ * oc_uses_known / oclass only (invent.c:533-541), so cmp(a,b) and cmp(b,a)
+ * can disagree and qsort's algorithm decides the order (js/nhsort.js).
+ * Classification and loot_xname() run lazily, at most once per item, in
+ * comparison order — observe_object() order is qsort's comparison order. */
+function sortloot_cmp(sli1, sli2, mode) {
+    const obj1 = sli1.obj, obj2 = sli2.obj;
+    let val1, val2;
+    if ((mode & SORTLOOT_INUSE) !== 0) {
+        if (!sli1.orderclass) _sl_inuse_classify(sli1);
+        if (!sli2.orderclass) _sl_inuse_classify(sli2);
+        val1 = sli1.inuse; val2 = sli2.inuse;
+        if (val1 !== val2) return val2 - val1;
+        return sli1.indx - sli2.indx;
+    }
+    if ((mode & (SORTLOOT_PACK | SORTLOOT_INVLET)) !== SORTLOOT_INVLET) {
+        if (!sli1.orderclass) _sl_loot_classify(sli1);
+        if (!sli2.orderclass) _sl_loot_classify(sli2);
+        val1 = sli1.orderclass; val2 = sli2.orderclass;
+        if (val1 !== val2) return val1 - val2;
+        if ((mode & SORTLOOT_INVLET) === 0) {
+            val1 = sli1.subclass; val2 = sli2.subclass;
+            if (val1 !== val2) return val1 - val2;
+            val1 = sli1.disco; val2 = sli2.disco;
+            if (val1 !== val2) return val1 - val2;
         }
-    };
-    qs(0, a.length);
-    return a;
-}
-
-function _c_small_qsort(arr, cmp) {
-    if (arr.length >= 7) {
-        const ms = (v) => {
-            if (v.length < 2) return v;
-            const mid = v.length >> 1;
-            const l = ms(v.slice(0, mid)), r = ms(v.slice(mid));
-            const out = [];
-            let i = 0, j = 0;
-            while (i < l.length && j < r.length)
-                out.push(cmp(l[i], r[j]) <= 0 ? l[i++] : r[j++]);
-            return out.concat(l.slice(i), r.slice(j));
-        };
-        const res = ms(arr);
-        for (let k = 0; k < arr.length; k++) arr[k] = res[k];
-        return arr;
     }
-    for (let i = 1; i < arr.length; i++)
-        for (let j = i; j > 0 && cmp(arr[j - 1], arr[j]) > 0; j--)
-            [arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
-    return arr;
+    if ((mode & SORTLOOT_INVLET) !== 0) {
+        val1 = invletter_value(obj1.invlet | 0);
+        val2 = invletter_value(obj2.invlet | 0);
+        if (val1 !== val2) return val1 - val2;
+    }
+    if ((mode & SORTLOOT_LOOT) === 0)
+        return sli1.indx - sli2.indx;
+    if (sli1.str == null) sli1.str = loot_xname(obj1);
+    if (sli2.str == null) sli2.str = loot_xname(obj2);
+    /* strcmpi == strncmpi(a, b, -1): ASCII folding, signed-char compare */
+    const namcmp = strncmpi(sli1.str, sli2.str, -1);
+    if (namcmp !== 0) return namcmp;
+    const bucx = (o) => o.bknown ? (o.blessed ? 3 : !o.cursed ? 2 : 1) : 0;
+    val1 = bucx(obj1); val2 = bucx(obj2);
+    if (val1 !== val2) return val2 - val1;
+    val1 = obj1.greased | 0; val2 = obj2.greased | 0;
+    if (val1 !== val2) return val2 - val1;
+    val1 = Math.max(obj1.oeroded | 0, obj1.oeroded2 | 0);
+    val2 = Math.max(obj2.oeroded | 0, obj2.oeroded2 | 0);
+    if (val1 !== val2) return val1 - val2;
+    val1 = (obj1.rknown && obj1.oerodeproof) ? 1 : 0;
+    val2 = (obj2.rknown && obj2.oerodeproof) ? 1 : 0;
+    if (val1 !== val2) return val2 - val1;
+    if ((OC_USES_KNOWN[obj1.otyp | 0] | 0) && (obj1.oclass | 0) !== _SORTLOOT_FOOD_CLASS) {
+        val1 = obj1.known ? (obj1.spe | 0) : -1000;
+        val2 = obj2.known ? (obj2.spe | 0) : -1000;
+        if (val1 !== val2) return val2 - val1;
+    }
+    return sli1.indx - sli2.indx;
 }
+/* C invent.c:593 sortloot(olist, mode, by_nexthere, filterfunc) over a JS
+ * array already in chain order (nobj or nexthere).  Returns the Loot array
+ * (without the terminator): [{ obj, indx, orderclass, subclass, disco,
+ * inuse, str }], sorted by nh_deterministic_qsort (js/nhsort.js) when
+ * mode && n > 1 — otherwise in list order with orderclass 0 (unclassified).
+ * opts.filter(o) is filterfunc; with SORTLOOT_PETRIFY, opts.petrifies(o)
+ * keeps a cockatrice corpse the filter rejects (invent.c:617-622). */
+export function sortloot(list, mode, opts = {}) {
+    const filterfunc = opts.filter || null;
+    const augment = (mode & SORTLOOT_PETRIFY) !== 0;
+    mode &= ~SORTLOOT_PETRIFY;
+    const sli = [];
+    for (const o of list) {
+        if (filterfunc && !filterfunc(o)
+            && (!augment || (o.otyp | 0) !== _SORTLOOT_CORPSE || !(opts.petrifies && opts.petrifies(o))))
+            continue;
+        sli.push({ obj: o, indx: sli.length, orderclass: 0, subclass: 0,
+                   disco: 0, inuse: 0, str: null });
+    }
+    if (mode && sli.length > 1) {
+        nh_qsort(sli, (a, b) => sortloot_cmp(a, b, mode));
+        for (const x of sli) x.str = null;
+    }
+    return sli;
+}
+/* Objects only, for callers that do not read the Loot fields. */
+export function sortloot_objs(list, mode, opts = {}) {
+    return sortloot(list, mode, opts).map(x => x.obj);
+}
+/* C pickup.c:1079-1086 query_objlist(): sortflags from flags.sortloot,
+ * USE_INVLET and flags.sortpack, then sortloot() over the (already
+ * allow()-filtered) list in chain order.  Returns the sorted objects. */
+export function query_objlist_sorted(list, useInvlet = false) {
+    const sl = game.flags?.sortloot ?? 'l';
+    const sortflags = ((sl === 'f' || (sl === 'l' && !useInvlet)) ? SORTLOOT_LOOT
+                       : (useInvlet ? SORTLOOT_INVLET : 0))
+        | (game.flags?.sortpack !== false ? SORTLOOT_PACK : 0);
+    return sortloot_objs(list, sortflags);
+}
+/* C invent.c:3176-3178, 3207 display_pickinv(): one sortloot() over the
+ * WHOLE invent chain (filter NULL outside in-use listings), sortflags
+ * SORTLOOT_LOOT for sortloot:full else SORTLOOT_INVLET, | SORTLOOT_PACK with
+ * sortpack.  loot_classify() observes every compared object (invent.c:170),
+ * including those a `lets` restriction never lists.  Returns the sorted
+ * objects, or null when the pack has fewer than two (no qsort call). */
+export function display_pickinv_sorted() {
+    const g = game;
+    if (!g.invent || !g.invent.nobj) return null;
+    let sortflags = g.flags?.sortloot === 'f' ? SORTLOOT_LOOT : SORTLOOT_INVLET;
+    if (g.flags?.sortpack !== false) sortflags |= SORTLOOT_PACK;
+    const chain = [];
+    for (let o = g.invent; o; o = o.nobj) chain.push(o);
+    return sortloot_objs(chain, sortflags);
+}
+/* A subset sort kept for callers that sort one class (oc) or a fixed list
+ * (oc === null): C invent.c:593 sortloot() over exactly those items with
+ * SORTLOOT_LOOT (loot) | SORTLOOT_PACK.  Callers that mirror a C sortloot()
+ * of a whole list must sort that whole list instead (display_pickinv_sorted,
+ * query_objlist_sorted): with sortloot_cmp's asymmetric tier the subset
+ * sort's comparison sequence is not C's. */
 export function _sortloot_within_class(atTile, oc, loot = true) {
     const items = oc === null ? atTile.slice() : atTile.filter(o => (o.oclass | 0) === (oc | 0));
-    if (items.length < 2)
-        return items;
-    const meta = items.map((o, indx) => {
-        const c = _sortloot_classify(o);
-        return { o, indx, subclass: c.subclass, disco: c.disco, str: null };
-    });
-    const bucx = (o) => o.bknown ? (o.blessed ? 3 : !o.cursed ? 2 : 1) : 0;
-    const erosion = (o) => Math.max((o.oeroded | 0), (o.oeroded2 | 0));
-    const order = game.flags?.sortpack === false
-        ? [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16] : (game.flags?.inv_order || INV_ORDER);
-    const rank = o => { const i = order.indexOf(o.oclass | 0); return i < 0 ? order.length + ((o.oclass | 0) !== 17 ? 1 : 0) : i; };
-    /* C invent.c:637 qsort(sliarray, n, ..., sortloot_cmp).  sortloot_cmp is
-     * not transitive: its oc_uses_known tier (invent.c:533) tests obj1 only,
-     * so a !known bag of tricks sorts after a same-named bag of holding while
-     * the reverse comparison falls to the indx tiebreak.  The visible order
-     * then depends on qsort's own algorithm, not on a total order, so
-     * Array.prototype.sort (stable, binary insertion) disagrees with C.
-     * BSD/macOS qsort runs a plain insertion sort on
-     * fewer than 7 elements; mirror it there.  Larger lists use the same
-     * BSD partitioning as _observe_in_qsort_order, across the whole pack. */
-    _c_small_qsort(meta, (m1, m2) => {
-        if (oc === null && rank(m1.o) !== rank(m2.o)) return rank(m1.o) - rank(m2.o);
-        let d = m1.subclass - m2.subclass;
-        if (d) return d;
-        d = m1.disco - m2.disco;
-        if (d) return d;
-        if (!loot) return m1.indx - m2.indx;
-        // C invent.c:480-494: name only objects that reach this comparison;
-        // formatting a known tin can consume RNG via tin_variety().
-        if (m1.str === null) m1.str = loot_xname(m1.o);
-        if (m2.str === null) m2.str = loot_xname(m2.o);
-        /* invent.c:493 strcmpi == strncmpi(a, b, -1): ASCII-only folding, signed
-         * char compare, so a byte >= 0x80 sorts BEFORE every ASCII character. */
-        const namcmp = strncmpi(m1.str, m2.str, -1);
-        if (namcmp !== 0) return namcmp;
-        d = bucx(m2.o) - bucx(m1.o);          /* bigger is better */
-        if (d) return d;
-        d = (m2.o.greased | 0) - (m1.o.greased | 0);
-        if (d) return d;
-        d = erosion(m1.o) - erosion(m2.o);    /* bigger is WORSE */
-        if (d) return d;
-        d = ((m2.o.rknown && m2.o.oerodeproof) ? 1 : 0)
-            - ((m1.o.rknown && m1.o.oerodeproof) ? 1 : 0);
-        if (d) return d;
-        if ((OC_USES_KNOWN[m1.o.otyp | 0] | 0)
-            && (m1.o.oclass | 0) !== _SORTLOOT_FOOD_CLASS) {
-            const v1 = m1.o.known ? (m1.o.spe | 0) : -1000;
-            const v2 = m2.o.known ? (m2.o.spe | 0) : -1000;
-            if (v1 !== v2) return v2 - v1;    /* bigger is better */
-        }
-        return m1.indx - m2.indx;             /* C's stable tiebreak */
-    });
-    return meta.map((m) => m.o);
+    return sortloot_objs(items, (loot ? SORTLOOT_LOOT : 0) | SORTLOOT_PACK);
 }
 const _pickupMenuCounts = new WeakMap();
 function _pickup_oc_merge(obj) {
@@ -14584,7 +14564,8 @@ async function _gather_locs(gloc) {
             if ((x === ux && y === uy) || await _gather_locs_interesting(x, y, gloc))
                 arr.push({ x, y });
     const distu = (p) => Math.max(Math.abs(ux - p.x), Math.abs(uy - p.y));
-    arr.sort((a, b) => {
+    /* C getpos.c:550 qsort(*arr_p, *cnt_p, cmp_coord_distu) */
+    nh_qsort(arr, (a, b) => {
         const d1 = distu(a), d2 = distu(b);
         if (d1 === d2) return (a.y !== b.y) ? (a.y - b.y) : (a.x - b.x);
         return d1 - d2;
@@ -19274,7 +19255,7 @@ export { _HOP_FOOD_CLASS, _HOP_HORN_OF_PLENTY, _HOP_POTION_CLASS }; // relocate-
 export { could_untrap, drown, fire_damage, fire_damage_chain, rescued_from_terrain, water_damage_chain } from './trap.js'; // relocate-fns
 export { CAN_OF_GREASE, POTION_CLASS, pooleffects_Amphibious, pooleffects_Breathless, pooleffects_is_pool }; // relocate-fns
 export { wiz_where } from './wizcmds.js'; // relocate-fns
-export { PICKINV_CLASS_HEADER, TTY_MENU_ROWS, Warn_of_mon_prop, _observe_in_qsort_order, _pickinv_item_text }; // relocate-fns
+export { PICKINV_CLASS_HEADER, TTY_MENU_ROWS, Warn_of_mon_prop, _pickinv_item_text }; // relocate-fns
 export { ceiling, donamelevel, get_level, room_discovered, show_overview, surface } from './dungeon.js'; // relocate-fns
 export { _mapseen_feat, _mapseen_level, _pd_br_string, _pd_chr_u_on_lvl, _pd_depth, _pd_unreachable_level }; // relocate-fns
 export { browse_map, dosearch, dosearch0, find_trap, mfind0, trapped_chest_at, trapped_door_at, use_crystal_ball, warnreveal } from './detect.js'; // relocate-fns
@@ -19755,19 +19736,8 @@ async function handler_rebind_keys_add(keyfirst) {
             if (!key || key === 27) return true;
         }
         const prevcmd = cmdbind_get(key);
-        /* C cmd.c:2356-2380: `char cmdstr[BUFSZ];` is uninitialised and built
-         * with Strcat() unless CMD_PARAM's Snprintf() overwrites it.  In
-         * handler_rebind_keys()'s "Do what?" menu, process_menu_window() zeros
-         * count[0..127] across cmdstr[0]'s stack slot (count['d'] = 0).  With
-         * menu_overlay on (cw->offx != 0), erase_menu_or_text() takes docorner()
-         * and leaves cmdstr[0] == '\0' (df-x44617f5688 step 18); with
-         * !iflags.menu_overlay (cw->offx == 0), erase_menu_or_text() calls
-         * docrt() + flush_screen(1) -> bot(), leaving non-zero stack bytes at
-         * cmdstr[0] so Strcat() fails bind_key() (4c69103fa0 step 82). */
-        const noOverlay = game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0;
-        if (!cmdstrFormatted && noOverlay)
-            cmdstr = '\u0001' + cmdstr;
-        if (bind_key(key, cmdstr, true)) {
+        const uninitFails = !cmdstrFormatted;
+        if (!uninitFails && bind_key(key, cmdstr, true)) {
             if (prevcmd && prevcmd.cmd !== ec)
                 flushed = true, await pline(`Changed key '${key2txt(key)}' from "${prevcmd.cmd.name}" to "${cmdstr}".`);
             else if (!prevcmd)

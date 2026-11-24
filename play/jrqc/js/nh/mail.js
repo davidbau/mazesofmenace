@@ -58,14 +58,13 @@ export function free_maildata() {   // mail.c:90
  * @returns {Promise<void>}
  */
 export async function getmailstatus() {   // mail.c:97
-    let pw_name = null, save_plnmsg = 0;
     if (mailbox) {
         /* no need to repeat the setup */
     } else if ((mailbox = nh_getenv($c.lit("MAIL"))) !== null) {
         mailbox = await dupstr(mailbox);
     } else {
         /* note: 'sizeof "LITERAL"' includes +1 for terminating '\0' */
-        pw_name = $c.getpwuid($c.getuid()).pw_name;
+        const pw_name = $c.getpwuid($c.getuid()).pw_name;
         /* note: 'sizeof "LITERAL"' includes +1 for terminating '\0' */
         mailbox = $c.asArr(await alloc($c.u32($c.addu64($c.strlen(pw_name), 11))), Int8Array);
         $c.strcpy(mailbox, $c.lit("/usr/mail/"));
@@ -75,7 +74,7 @@ export async function getmailstatus() {   // mail.c:97
     }
     do {
         if (debugcore($c.lit("mail.c"), TRUE)) {
-            save_plnmsg = iflags.last_msg;
+            const save_plnmsg = iflags.last_msg;
             await pline($c.lit("mailbox=%c%s%c"), mailbox ? 34 : 60, mailbox ? mailbox : $c.lit("null"), mailbox ? 34 : 62);
             iflags.last_msg = save_plnmsg;
         }
@@ -186,17 +185,17 @@ async function md_start(startp) {   // mail.c:149
  * @returns {Promise<number>} boolean
  */
 async function md_stop(stopp, startp) {   // mail.c:248
-    let x = 0, y = 0, distance = 0, min_distance = 0;
+    let x = 0, y = 0;
     /* stopping position (we fill it in) */
     /* starting position (read only) */
-    min_distance = -1;
-    for (x = $c.i16(u.ux - 1 | 0); x <= (u.ux + 1 | 0); x = $c.i16(x + 1)) {
-        for (y = $c.i16(u.uy - 1 | 0); y <= (u.uy + 1 | 0); y = $c.i16(y + 1)) {
+    let min_distance = -1;
+    for (x = $c.i16(u.ux - 1); x <= u.ux + 1; x = $c.i16(x + 1)) {
+        for (y = $c.i16(u.uy - 1); y <= u.uy + 1; y = $c.i16(y + 1)) {
             if (!isok(x, y) || u_at(x, y)) {
                 continue;
             }
             if (accessible(x, y) && !MON_AT(x, y)) {
-                distance = $c.i16(dist2(x, y, startp.x, startp.y));
+                const distance = $c.i16(dist2(x, y, startp.x, startp.y));
                 if (min_distance < 0 || distance < min_distance || distance === min_distance && rn2(2)) {
                     stopp.x = x;
                     stopp.y = y;
@@ -206,7 +205,7 @@ async function md_stop(stopp, startp) {   // mail.c:248
         }
     }
     /* If we didn't find a good spot, try enexto(). */
-    if (min_distance < 0 && !await enexto(stopp, u.ux, u.uy, $c.relem(mons, PM.MAIL_DAEMON))) {
+    if (min_distance < 0 && !await enexto(stopp, u.ux, u.uy, mons[PM.MAIL_DAEMON])) {
         return FALSE;
     }
     return TRUE;
@@ -224,15 +223,15 @@ async function md_stop(stopp, startp) {   // mail.c:248
  * @returns {Promise<number>} boolean
  */
 async function md_rush(md, tx, ty) {   // mail.c:288
-    let mon = null, dx = 0, dy = 0, fx = 0, fy = 0, nfx = 0, nfy = 0, d1 = 0, d2 = 0;
+    let mon = null, dx = 0, dy = 0;
     /* destination of mail daemon */
     /* displaced monster */
     /* direction counters */
-    fx = md.mx;
-    fy = md.my;   /* current location */
+    let fx = md.mx;
+    let fy = md.my;   /* current location */
     /* new location */
-    nfx = fx;
-    nfy = fy;   /* shortest distances */
+    let nfx = fx;
+    let nfy = fy;   /* shortest distances */
     /*
      * It is possible that the monster at (fx,fy) is not the md when:
      * the md rushed the hero and failed, and is now starting back.
@@ -247,11 +246,11 @@ async function md_rush(md, tx, ty) {   // mail.c:288
      */
     while (1) {
         /* Find a good location next to (fx,fy) closest to (tx,ty). */
-        d1 = dist2($c.i16(fx), $c.i16(fy), $c.i16(tx), $c.i16(ty));
+        let d1 = dist2($c.i16(fx), $c.i16(fy), $c.i16(tx), $c.i16(ty));
         for (dx = -1; dx <= 1; dx = dx + 1 | 0) {
             for (dy = -1; dy <= 1; dy = dy + 1 | 0) {
                 if ((dx || dy) && isok($c.i16(fx + dx | 0), $c.i16(fy + dy | 0)) && !(svl.level.locations[fx + dx | 0][fy + dy | 0].typ <= DBWALL)) {
-                    d2 = dist2($c.i16(fx + dx | 0), $c.i16(fy + dy | 0), $c.i16(tx), $c.i16(ty));
+                    const d2 = dist2($c.i16(fx + dx | 0), $c.i16(fy + dy | 0), $c.i16(tx), $c.i16(ty));
                     if (d2 < d1) {
                         d1 = d2;
                         nfx = fx + dx | 0;
@@ -339,7 +338,7 @@ async function newmail(info) {   // mail.c:399
             break give_up$;
         }
         /* Make the daemon.  Have it rush towards the hero. */
-        if (!(md = await makemon($c.relem(mons, PM.MAIL_DAEMON), start.x, start.y, NO.MM_FLAGS))) {
+        if (!(md = await makemon(mons[PM.MAIL_DAEMON], start.x, start.y, NO.MM_FLAGS))) {
             break give_up$;
         }
         go_back$: {
@@ -401,7 +400,7 @@ async function newmail(info) {   // mail.c:399
  */
 export async function ckmailstatus() {   // mail.c:550
     ck_server_admin_msg();
-    if (!mailbox || u.uswallow | 0 || !flags.biff || svm.moves < $c.add64(laststattime, MAILCKFREQ)) {
+    if (!mailbox || u.uswallow || !flags.biff || svm.moves < $c.add64(laststattime, MAILCKFREQ)) {
         return;
     }
     laststattime = svm.moves;
@@ -430,9 +429,8 @@ export function ck_server_admin_msg() {   // mail.c:685
  * @returns {Promise<void>}
  */
 export async function readmail(otmp) {   // mail.c:704
-    let mr = null;
     /* This implies that UNIX is defined */
-    mr = null;
+    let mr = null;
     /* DEF_MAILREADER */
     /* SIMPLE_MAIL */
     /* This implies that UNIX is defined */

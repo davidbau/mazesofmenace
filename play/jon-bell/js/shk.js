@@ -2,6 +2,7 @@
 // shk.js — Shopkeeper AI and commerce.
 // C ref: nethack-c/src/shk.c
 
+import { nh_qsort } from './nhsort.js';
 import { nh_delay_output } from './animframes.js';
 import { verbalize } from './pline.js';
 import { menucolor_text } from './coloratt.js';
@@ -542,7 +543,7 @@ async function make_itemized_bill(shkp) {
     /* C: qsort(ibill, n, ...) over the populated entries only. */
     if (n > 1) {
         const head = ibill.slice(0, n);
-        head.sort(sortbill_cmp);
+        nh_qsort(head, sortbill_cmp); /* C shk.c:1661 */
         for (let i = 0; i < n; i++)
             ibill[i] = head[i];
     }

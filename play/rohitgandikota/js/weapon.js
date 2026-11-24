@@ -1026,7 +1026,7 @@ export async function possibly_unwield(mon, polyspot) {
                 mw_tmp.bypass = 1;
                 (game.context ||= {}).bypasses = true;
             }
-            place_object(mw_tmp, mon.mx, mon.my);
+            await place_object(mw_tmp, mon.mx, mon.my);
             stackobj(mw_tmp);
         }
         return;

@@ -440,6 +440,11 @@ export function set_uasmon() {
     PROPSET('HSick_resistance', (mdat.mlet === MONSYMS.S_FUNGUS
                                  || mdat === mons[PMNAMES.PM_GHOUL]));
     PROPSET('HStun', (mdat === mons[PMNAMES.PM_STALKER] || is_bat(mdat)));
+    /* Keep the compatibility alias in sync, as make_stunned() does. */
+    if (intr.HStun)
+        (u.uprops ||= {}).STUNNED = 1;
+    else if (u.uprops)
+        delete u.uprops.STUNNED;
     PROPSET('HHalluc_resistance', dmgtype(mdat, ATTKS.AD_HALU));
     PROPSET('HSee_invisible', perceives(mdat));
     PROPSET('HTelepat', telepathic(mdat));

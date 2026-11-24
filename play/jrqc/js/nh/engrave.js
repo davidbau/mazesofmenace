@@ -92,11 +92,11 @@ export async function random_engraving(outbuf, pristine_copy) {   // engrave.c:5
  * @param {number} seed unsigned int
  */
 export function wipeout_text(engr, cnt, seed) {   // engrave.c:120
-    let s = null, i = 0, j = 0, nxt = 0, use_rubout = 0, lth = 0, ln = 0, $t1;
+    let i = 0, j = 0, nxt = 0, use_rubout = 0, $t1;
     /* engraving text */
     /* number of chars to degrade */
     /* for semi-controlled randomization */
-    lth = $c.u32($c.strlen(engr));
+    let lth = $c.u32($c.strlen(engr));
     if (lth && cnt > 0) {
         while ($t1 = cnt, cnt = $t1 - 1 | 0, $t1) {
             /* pick next character */
@@ -110,9 +110,9 @@ export function wipeout_text(engr, cnt, seed) {   // engrave.c:120
                    sequence by varying any of them */
                 nxt = $c.remu32(seed, lth) | 0;
                 seed = Math.imul(seed, 31) >>> 0, seed = $c.remu32(seed, BUFSZ - 1);
-                use_rubout = (seed & 3) >>> 0 | 0;
+                use_rubout = (seed & 3) >>> 0;
             }
-            s = engr.add(nxt);
+            const s = engr.add(nxt);
             if (s.get(0) === 32) {
                 continue;
             }
@@ -126,7 +126,7 @@ export function wipeout_text(engr, cnt, seed) {   // engrave.c:120
             } else {
                 for (i = 0; i < 48; i = i + 1 | 0) {
                     if (s.get(0) === rubouts[i].wipefrom) {
-                        ln = $c.u32($c.strlen(rubouts[i].wipeto));
+                        const ln = $c.u32($c.strlen(rubouts[i].wipeto));
                         /*
                          * Pick one of the substitutes at random.
                          */
@@ -163,14 +163,14 @@ export function can_reach_floor(check_pit) {   // engrave.c:187
        has been lifted up above the floor [doesn't explain
        how hero can attack the creature holding him or her;
        that's life in nethack...] */
-    if (u.uswallow | 0 || u.ustuck && !sticks(gy.youmonst.data) && attacktype(u.ustuck.data, AT.HUGS) || Levitation() && !((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+    if (u.uswallow || u.ustuck && !sticks(gy.youmonst.data) && attacktype(u.ustuck.data, AT.HUGS) || Levitation() && !((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
         return FALSE;
     }
     /* Restricted/unskilled riders can't reach the floor */
     if (u.usteed && u.weapon_skills[P.RIDING].skill < P.BASIC) {
         return FALSE;
     }
-    if (u.uundetected | 0 && ceiling_hider(gy.youmonst.data)) {
+    if (u.uundetected && ceiling_hider(gy.youmonst.data)) {
         return FALSE;
     }
     if ((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked || gy.youmonst.data.msize >= MZ.HUGE) {
@@ -199,8 +199,7 @@ export async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {   
  * @returns {$T.engr | null} struct engr *
  */
 export function engr_at(x, y) {   // engrave.c:231
-    let ep = null;
-    ep = $G.head_engr;
+    let ep = $G.head_engr;
     while (ep) {
         if (x === ep.engr_x && y === ep.engr_y) {
             return ep;
@@ -224,8 +223,7 @@ export function engr_at(x, y) {   // engrave.c:231
  * @returns {$T.engr | null} struct engr *
  */
 export function sengr_at(s, x, y, strict) {   // engrave.c:251
-    let ep = null;
-    ep = engr_at(x, y);
+    const ep = engr_at(x, y);
     if (ep && ep.engr_type !== HEADSTONE && ep.engr_time <= svm.moves) {
         if (strict ? !strncmpi(ep.engr_txt[actual_text], s, -1) : strstri(ep.engr_txt[actual_text], s) !== null) {
             return ep;
@@ -250,23 +248,22 @@ export async function u_wipe_engr(cnt) {   // engrave.c:264
  * @returns {Promise<void>}
  */
 export async function wipe_engr_at(x, y, cnt, magical) {   // engrave.c:271
-    let ep = null, save_plnmsg = 0, save_plnmsg$2 = 0;
-    ep = engr_at(x, y);
+    const ep = engr_at(x, y);
     /* Headstones and some specially marked engravings are indelible */
     if (ep && ep.engr_type !== HEADSTONE && !ep.nowipeout) {
         do {
             if (debugcore($c.lit("engrave.c"), TRUE)) {
-                save_plnmsg = iflags.last_msg;
+                const save_plnmsg = iflags.last_msg;
                 await pline($c.lit("asked to erode %d characters"), cnt);
                 iflags.last_msg = save_plnmsg;
             }
         } while (0);
         if (ep.engr_type !== BURN || is_ice(x, y) || magical && !rn2(2)) {
             if (ep.engr_type !== DUST && ep.engr_type !== ENGR_BLOOD) {
-                cnt = $c.i16(rn2(1 + $c.div32(50, cnt + 1 | 0) | 0) ? 0 : 1);
+                cnt = rn2(1 + $c.div32(50, cnt + 1) | 0) ? 0 : 1;
                 do {
                     if (debugcore($c.lit("engrave.c"), TRUE)) {
-                        save_plnmsg$2 = iflags.last_msg;
+                        const save_plnmsg$2 = iflags.last_msg;
                         await pline($c.lit("actually eroding %d characters"), cnt);
                         iflags.last_msg = save_plnmsg$2;
                     }
@@ -291,8 +288,7 @@ export async function wipe_engr_at(x, y, cnt, magical) {   // engrave.c:271
  * @returns {number} boolean
  */
 export function engr_can_be_felt(ep) {   // engrave.c:297
-    let canfeel = 0;
-    canfeel = FALSE;
+    let canfeel = FALSE;
     switch (ep.engr_type) {
         case ENGRAVE:
         case HEADSTONE:
@@ -314,10 +310,10 @@ export function engr_can_be_felt(ep) {   // engrave.c:297
  * @returns {Promise<void>}
  */
 export async function read_engr_at(x, y) {   // engrave.c:318
-    let ep = null, eloc = null, sensed = 0, et = null, buf = new Int8Array(256), endpunct = null, maxelen = 0, elen = 0, off = 0;
-    ep = engr_at(x, y);
-    eloc = surface(x, y);
-    sensed = 0;
+    let et = null, buf = new Int8Array(256);
+    const ep = engr_at(x, y);
+    const eloc = surface(x, y);
+    let sensed = 0;
     /* Sensing an engraving does not require sight for some engraving types,
      * nor does it necessarily imply comprehension (literacy).
      */
@@ -364,9 +360,9 @@ export async function read_engr_at(x, y) {   // engrave.c:318
         }
         if (sensed) {
             /* sizeof "literal" counts terminating \0 */
-            maxelen = 232;
-            elen = $c.i32($c.strlen(ep.engr_txt[actual_text]));
-            off = $c.i32($c.pdiff(ep.engr_txt[actual_text], $c.recTail(ep)));
+            const maxelen = 232;
+            let elen = $c.i32($c.strlen(ep.engr_txt[actual_text]));
+            const off = $c.i32($c.pdiff(ep.engr_txt[actual_text], $c.recTail(ep)));
             if (elen > maxelen) {
                 $c.strncpy(new $c.Ptr(buf, 0), ep.engr_txt[actual_text], $c.u64(maxelen));
                 buf[maxelen] = 0;
@@ -375,15 +371,15 @@ export async function read_engr_at(x, y) {   // engrave.c:318
             } else {
                 et = ep.engr_txt[actual_text];
             }
-            endpunct = $c.lit("");
+            let endpunct = $c.lit("");
             /* only skip if punctuation is original, not degraded char */
             if (elen < 2 || !(ep.engr_txt[pristine_text].get((off + elen | 0) - 1 | 0) === et.get(elen - 1 | 0) && $c.strchr($c.lit(".!?"), et.get(elen - 1 | 0)))) {
                 endpunct = $c.lit(".");
             }
             await You($c.lit("%s: \"%s\"%s"), (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked ? $c.lit("feel the words") : $c.lit("read"), et, endpunct);
             $c.strcpy(ep.engr_txt[remembered_text], ep.engr_txt[actual_text]);
-            ep.eread = (1) & 1;
-            ep.erevealed = (1) & 1;
+            ep.eread = 1;
+            ep.erevealed = 1;
             if (svc.context.run > 0) {
                 nomul(0);
             }
@@ -400,11 +396,11 @@ export async function read_engr_at(x, y) {   // engrave.c:318
  * @returns {Promise<void>}
  */
 export async function make_engr_at(x, y, s, pristine_s, e_time, e_type) {   // engrave.c:408
-    let i = 0, ep = null, smem = 0, havepristine = 0, prmem = 0, $t1;
-    smem = await Strlen_(s, $c.lit("make_engr_at"), 417) + 1 >>> 0;
-    havepristine = FALSE;
+    let i = 0, ep = null, $t1;
+    let smem = await Strlen_(s, $c.lit("make_engr_at"), 417) + 1 >>> 0;
+    let havepristine = FALSE;
     if (!$c.peq(pristine_s, $c.asArr(null, Int8Array))) {
-        prmem = await Strlen_(pristine_s, $c.lit("make_engr_at"), 421) + 1 >>> 0;
+        const prmem = await Strlen_(pristine_s, $c.lit("make_engr_at"), 421) + 1 >>> 0;
         if (prmem > smem) {
             smem = prmem;
         }
@@ -433,7 +429,7 @@ export async function make_engr_at(x, y, s, pristine_s, e_time, e_type) {   // e
            an old-style Elbereth that deters monsters when any objects are
            present; otherwise (done by the player), exercises wisdom */
         if (gi.in_mklev) {
-            ep.guardobjects = (1) & 1;
+            ep.guardobjects = 1;
         } else {
             await exercise(A.WIS, TRUE);
         }
@@ -452,8 +448,7 @@ export async function make_engr_at(x, y, s, pristine_s, e_time, e_type) {   // e
  * @returns {Promise<void>}
  */
 export async function del_engr_at(x, y) {   // engrave.c:461
-    let ep = null;
-    ep = engr_at(x, y);
+    const ep = engr_at(x, y);
     if (ep) {
         await del_engr(ep);
     }
@@ -493,8 +488,7 @@ function stylus_ok(obj) {   // engrave.c:481
  * @returns {Promise<number>} boolean
  */
 async function u_can_engrave() {   // engrave.c:503
-    let levtyp = 0;
-    levtyp = svl.level.locations[u.ux][u.uy].typ === DRAWBRIDGE_UP ? db_under_typ(svl.level.locations[u.ux][u.uy].flags | 0) : svl.level.locations[u.ux][u.uy].typ;
+    const levtyp = svl.level.locations[u.ux][u.uy].typ === DRAWBRIDGE_UP ? db_under_typ(svl.level.locations[u.ux][u.uy].flags) : svl.level.locations[u.ux][u.uy].typ;
     if (u.uswallow) {
         if (is_animal(u.ustuck.data)) {
             await pline($c.lit("What would you write?  \"Jonah was here\"?"));
@@ -561,7 +555,7 @@ function doengrave_ctx_init(de) {   // engrave.c:545
     if (is_demon(gy.youmonst.data) || is_vampire(gy.youmonst.data)) {
         de.type = ENGR_BLOOD;
     }
-    de.jello = $c.i8(u.uswallow | 0 && !(is_animal(u.ustuck.data) || is_whirly(u.ustuck.data)) ? 1 : 0);
+    de.jello = u.uswallow && !(is_animal(u.ustuck.data) || is_whirly(u.ustuck.data)) ? 1 : 0;
     $t2 = is_ice(u.ux, u.uy), de.frosted = $t2;
 }
 /* special engraving effects for WAND objects */
@@ -763,7 +757,7 @@ async function doengrave_sfx_item(de) {   // engrave.c:742
              */
             if (await zappable(de.otmp)) {
                 await check_unpaid(de.otmp);
-                if (de.otmp.cursed | 0 && !rn2(WAND.BACKFIRE_CHANCE)) {
+                if (de.otmp.cursed && !rn2(WAND.BACKFIRE_CHANCE)) {
                     await wand_explode(de.otmp, 0);
                     de.ret = ECMD.TIME;
                     return FALSE;
@@ -1012,8 +1006,8 @@ export async function doengrave() {   // engrave.c:956
         }
         if (de.teleengr) {
             await rloc_engr(de.oep);
-            de.oep.eread = (0) & 1;
-            de.oep.erevealed = (0) & 1;
+            de.oep.eread = 0;
+            de.oep.erevealed = 0;
             de.disprefresh = TRUE;
             de.oep = null;
         }
@@ -1029,8 +1023,8 @@ export async function doengrave() {   // engrave.c:956
             if (!Blind()) {
                 if (tmp_ep !== null) {
                     await pline_The($c.lit("engraving now reads: \"%s\"."), new $c.Ptr(de.buf, 0));
-                    tmp_ep.eread = (1) & 1;
-                    tmp_ep.erevealed = (1) & 1;
+                    tmp_ep.eread = 1;
+                    tmp_ep.erevealed = 1;
                     de.disprefresh = TRUE;
                 }
             }
@@ -1098,7 +1092,7 @@ export async function doengrave() {   // engrave.c:956
             }
         }
         $t3 = surface(u.ux, u.uy), de.eloc = $t3;
-        de.adding = $c.i8(de.oep && !de.eow ? 1 : 0);
+        de.adding = de.oep && !de.eow ? 1 : 0;
         doengrave_ctx_verb(de);
         /* Tell adventurer what is going on */
         if (!$c.peq(de.otmp, hands_obj)) {
@@ -1190,16 +1184,16 @@ export async function doengrave() {   // engrave.c:956
  * @returns {Promise<number>} int
  */
 async function engrave() {   // engrave.c:1267
-    let oep = null, buf = new Int8Array(256), finishverb = null, stylus = null, firsttime = 0, rate = 0, truncate = 0, neweng = 0, carving = 0, dulling_wep = 0, marker = 0, endc = null, i = 0, space_left = 0, splitstack = 0, dulled = 0, ink_cost = 0, $t1;
+    let buf = new Int8Array(256), finishverb = null, stylus = null, endc = null, $t1;
     /* holds the post-this-action engr text, including
      * anything already there */
     /* "You finish [foo]." */
     /* shorthand for svc.context.engraving.stylus */
-    firsttime = $c.i8(svc.context.engraving.actionct === 0 ? 1 : 0);
-    rate = 10;   /* # characters that can be engraved in this action */
-    truncate = FALSE;
-    neweng = $c.i8(svc.context.engraving.actionct === 0 ? 1 : 0);
-    carving = $c.i8(svc.context.engraving.type === ENGRAVE || svc.context.engraving.type === HEADSTONE ? 1 : 0);
+    const firsttime = svc.context.engraving.actionct === 0 ? 1 : 0;
+    let rate = 10;   /* # characters that can be engraved in this action */
+    let truncate = FALSE;
+    const neweng = svc.context.engraving.actionct === 0 ? 1 : 0;
+    const carving = svc.context.engraving.type === ENGRAVE || svc.context.engraving.type === HEADSTONE ? 1 : 0;
     /* points at character 1 beyond the last character to engrave
      * this action */
     if (svc.context.engraving.pos.x !== u.ux || svc.context.engraving.pos.y !== u.uy) {
@@ -1223,8 +1217,8 @@ async function engrave() {   // engrave.c:1267
             return 0;
         }
     }
-    dulling_wep = $c.i8(carving && stylus && stylus.oclass === WEAPON_CLASS && (stylus.otyp !== ATHAME || stylus.cursed | 0) ? 1 : 0);
-    marker = $c.i8(stylus && stylus.otyp === MAGIC_MARKER && svc.context.engraving.type === MARK ? 1 : 0);
+    const dulling_wep = carving && stylus && stylus.oclass === WEAPON_CLASS && (stylus.otyp !== ATHAME || stylus.cursed) ? 1 : 0;
+    const marker = stylus && stylus.otyp === MAGIC_MARKER && svc.context.engraving.type === MARK ? 1 : 0;
     svc.context.engraving.actionct = svc.context.engraving.actionct + 1 | 0;
     /* sanity checks */
     if (dulling_wep && !is_blade(stylus)) {
@@ -1241,7 +1235,7 @@ async function engrave() {   // engrave.c:1267
         rate = min(rate, Math.imul(stylus.spe, 2));
     }
     /* Step 2: Compute last character that can be engraved this action. */
-    i = rate;
+    let i = rate;
     for (endc = svc.context.engraving.nextc; endc.get(0) && i > 0; endc = endc.add(1)) {
         if (endc.get(0) !== 32) {
             i = i - 1 | 0;
@@ -1249,8 +1243,8 @@ async function engrave() {   // engrave.c:1267
     }
     /* Step 3: affect stylus from engraving - it might wear out. */
     if (dulling_wep) {
-        splitstack = FALSE;
-        dulled = FALSE;
+        let splitstack = FALSE;
+        let dulled = FALSE;
         /* 'dulling_wep' guarantees that 'stylus' is a weapon which is
            not welded to the hero's hand(s) */
         if (stylus.quan > 1) {
@@ -1298,14 +1292,14 @@ async function engrave() {   // engrave.c:1267
             await obj_extract_self(stylus);
             stylus = await hold_another_object(stylus, $c.lit("You drop one %s!"), await doname(stylus), $c.asArr(null, Int8Array));
             nhUse(stylus);
-        } else if (dulled && stylus.known | 0) {
+        } else if (dulled && stylus.known) {
             /* reflect change in stylus->spe; not needed for splitstack
                since hold_another_object() does this */
             await prinv($c.asArr(null, Int8Array), stylus, 1);
             await update_inventory();
         }
     } else if (marker) {
-        ink_cost = $c.div32(rate, 2) > 1 ? $c.div32(rate, 2) : 1;   /* Prevent infinite graffiti */
+        let ink_cost = $c.div32(rate, 2) > 1 ? $c.div32(rate, 2) : 1;   /* Prevent infinite graffiti */
         if (stylus.spe < ink_cost) {
             await impossible($c.lit("overly dry marker valid for graffiti?"));
             ink_cost = stylus.spe;
@@ -1341,11 +1335,11 @@ async function engrave() {   // engrave.c:1267
     }
     /* actions that happen at the end of every engraving action go here */
     buf[0] = 0;
-    oep = engr_at(u.ux, u.uy);
+    let oep = engr_at(u.ux, u.uy);
     if (oep) {   /* add to existing engraving */
         $c.strcpy(new $c.Ptr(buf, 0), oep.engr_txt[actual_text]);
     }
-    space_left = $c.i32($c.subu64($c.subu64(256, $c.strlen(new $c.Ptr(buf, 0))), 1));
+    const space_left = $c.i32($c.subu64($c.subu64(256, $c.strlen(new $c.Ptr(buf, 0))), 1));
     if ($c.pdiff(endc, svc.context.engraving.nextc) > space_left) {
         await You($c.lit("run out of room to write."));
         endc = svc.context.engraving.nextc.add(space_left);
@@ -1365,8 +1359,8 @@ async function engrave() {   // engrave.c:1267
     await make_engr_at(u.ux, u.uy, new $c.Ptr(buf, 0), null, $c.sub64(svm.moves, gm.multi), svc.context.engraving.type);
     oep = engr_at(u.ux, u.uy);
     if (oep) {
-        oep.eread = (1) & 1;
-        oep.erevealed = (1) & 1;
+        oep.eread = 1;
+        oep.erevealed = 1;
     }
     if (endc.get(0)) {
         svc.context.engraving.nextc = endc;
@@ -1406,7 +1400,7 @@ export function sanitize_engravings() {   // engrave.c:1498
 export function forget_engravings() {   // engrave.c:1509
     let ep = null, $t1;
     for (ep = $G.head_engr; ep; ep = ep.nxt_engr) {
-        $t1 = ep.eread = (0) & 1, ep.erevealed = ($t1) & 1;
+        $t1 = ep.eread = 0, ep.erevealed = ($t1) & 1;
         /* Note: engr_txt[actual_text], engr_txt[rememberd_text], and
          * engr_txt[pristine_text] retain their original text rather
          * than get updated to reflect each engraving's current text.
@@ -1417,19 +1411,19 @@ export function forget_engravings() {   // engrave.c:1509
  * @returns {Promise<void>}
  */
 export async function engraving_sanity_check() {   // engrave.c:1524
-    let ep = null, levtyp = 0, x = 0, y = 0;
+    let ep = null;
     if ($G.head_engr && ((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
         await impossible($c.lit("engraving sanity: on plane of air/water"));
         return;
     }
     for (ep = $G.head_engr; ep; ep = ep.nxt_engr) {
-        x = ep.engr_x;
-        y = ep.engr_y;
+        const x = ep.engr_x;
+        const y = ep.engr_y;
         if (!isok(x, y)) {
             await impossible($c.lit("engraving sanity: !isok <%i,%i>"), x, y);
             continue;
         }
-        levtyp = SURFACE_AT(x, y);
+        const levtyp = SURFACE_AT(x, y);
         if (is_pool_or_lava(x, y) || IS_AIR(levtyp) || !ACCESSIBLE(levtyp)) {
             await impossible($c.lit("engraving sanity: illegal surface (%d: \"%s\")"), levtyp, surface(x, y));
             continue;
@@ -1441,13 +1435,13 @@ export async function engraving_sanity_check() {   // engrave.c:1524
  * @returns {Promise<void>}
  */
 export async function save_engravings(nhfp) {   // engrave.c:1551
-    let ep = null, ep2 = null, no_more_engr = Uint32Array.of(0), engr_alloc = Uint32Array.of(0), szeach = 0;
+    let ep = null, ep2 = null, no_more_engr = Uint32Array.of(0), engr_alloc = Uint32Array.of(0);
     no_more_engr[0] = 0;
     for (ep = $G.head_engr; ep; ep = ep2) {
         ep2 = ep.nxt_engr;
         if (ep.engr_alloc && ep.engr_txt[actual_text].get(0) && update_file(nhfp)) {
             engr_alloc[0] = ep.engr_alloc;
-            szeach = ep.engr_szeach;
+            const szeach = ep.engr_szeach;
             await sfo_unsigned(nhfp, new $c.Ptr(engr_alloc, 0), $c.lit("engraving-engr_alloc"));
             await sfo_engr(nhfp, ep, $c.lit("engraving"));
             ep.engr_txt[actual_text] = $c.recTail(ep);
@@ -1474,7 +1468,7 @@ export async function save_engravings(nhfp) {   // engrave.c:1551
  * @returns {Promise<void>}
  */
 export async function rest_engravings(nhfp) {   // engrave.c:1584
-    let ep = null, lth = Uint32Array.of(0), szeach = 0;
+    let lth = Uint32Array.of(0);
     lth[0] = 0;
     $G.head_engr = null;
     while (1) {
@@ -1482,9 +1476,9 @@ export async function rest_engravings(nhfp) {   // engrave.c:1584
         if (lth[0] === 0) {
             return;
         }
-        ep = $c.asRec(await alloc(lth[0] + 64 >>> 0), $T.engr, 64);
+        const ep = $c.asRec(await alloc(lth[0] + 64 >>> 0), $T.engr, 64);
         await sfi_engr(nhfp, ep, $c.lit("engraving"));
-        szeach = ep.engr_szeach;
+        const szeach = ep.engr_szeach;
         ep.nxt_engr = $G.head_engr;
         $G.head_engr = ep;
         ep.engr_txt[actual_text] = $c.recTail(ep);   /* Andreas Bormann */
@@ -1549,8 +1543,8 @@ export async function del_engr(ep) {   // engrave.c:1645
  * @returns {Promise<void>}
  */
 export async function rloc_engr(ep) {   // engrave.c:1667
-    let tx = 0, ty = 0, tryct = 0;
-    tryct = 200;
+    let tx = 0, ty = 0;
+    let tryct = 200;
     do {
         if ((tryct = tryct - 1 | 0) < 0) {
             return;
@@ -1596,16 +1590,15 @@ export async function make_grave(x, y, str) {   // engrave.c:1687
  * @returns {Promise<void>}
  */
 export async function disturb_grave(x, y) {   // engrave.c:1707
-    let lev = null;
-    lev = $c.relem(svl.level.locations[x], y);
+    const lev = $c.relem(svl.level.locations[x], y);
     if (!IS_GRAVE(lev.typ)) {
         await impossible($c.lit("Disturbing grave that isn't a grave? (%d)"), lev.typ);
     } else if (lev.horizontal) {
         await impossible($c.lit("Disturbing already disturbed grave?"));
     } else {
         await You($c.lit("disturb the undead!"));
-        lev.horizontal = (1) & 1;
-        await makemon($c.relem(mons, PM.GHOUL), x, y, NO.MM_FLAGS);
+        lev.horizontal = 1;
+        await makemon(mons[PM.GHOUL], x, y, NO.MM_FLAGS);
         await exercise(A.WIS, FALSE);
     }
 }
@@ -1624,8 +1617,8 @@ export async function see_engraving(ep) {   // engrave.c:1724
  */
 export async function feel_engraving(ep) {   // engrave.c:1732
     if (engr_can_be_felt(ep)) {
-        ep.eread = (1) & 1;
-        ep.erevealed = (1) & 1;
+        ep.eread = 1;
+        ep.erevealed = 1;
         await map_engraving(ep, 1);
         /* in case it's beneath something, redisplay the something */
         await newsym(ep.engr_x, ep.engr_y);

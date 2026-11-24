@@ -88,35 +88,35 @@ export async function cavstrt_level() {
     /* The treasure of Shaman Karnov */
     des.object('chest', 34, 2);
     /* neanderthal guards for the audience chamber */
-    des.monster('neanderthal', 20, 3);
-    des.monster('neanderthal', 20, 2);
-    des.monster('neanderthal', 20, 1);
-    des.monster('neanderthal', 21, 3);
-    des.monster('neanderthal', 21, 2);
-    des.monster('neanderthal', 21, 1);
-    des.monster('neanderthal', 22, 1);
-    des.monster('neanderthal', 26, 9);
+    await des.monster('neanderthal', 20, 3);
+    await des.monster('neanderthal', 20, 2);
+    await des.monster('neanderthal', 20, 1);
+    await des.monster('neanderthal', 21, 3);
+    await des.monster('neanderthal', 21, 2);
+    await des.monster('neanderthal', 21, 1);
+    await des.monster('neanderthal', 22, 1);
+    await des.monster('neanderthal', 26, 9);
     /* Non diggable walls */
     des.non_diggable(selection.area(0, 0, 75, 19));
     /* Random traps */
     des.trap('pit', 47, 11);
     des.trap('pit', 57, 10);
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     /* Monsters on siege duty (in the outer caves). */
-    des.monster({ id: 'bugbear', x: 47, y: 2, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 48, y: 3, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 49, y: 4, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 67, y: 3, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 69, y: 4, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 51, y: 13, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 53, y: 14, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 55, y: 15, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 63, y: 10, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 65, y: 9, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 67, y: 10, peaceful: 0 });
-    des.monster({ id: 'bugbear', x: 69, y: 11, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 47, y: 2, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 48, y: 3, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 49, y: 4, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 67, y: 3, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 69, y: 4, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 51, y: 13, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 53, y: 14, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 55, y: 15, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 63, y: 10, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 65, y: 9, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 67, y: 10, peaceful: 0 });
+    await des.monster({ id: 'bugbear', x: 69, y: 11, peaceful: 0 });
     des.wallify();
 }

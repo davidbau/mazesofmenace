@@ -841,16 +841,12 @@ export async function make_stunned(xtime, talk) {
 export async function make_deaf(xtime, talk) {
     const intr = (game.u.intrinsic ||= {});
     const old = intr.HDeaf | 0;
-    const timeout = Math.min(TIMEOUT, Math.max(0, xtime | 0));
-
     if (Unaware())
         talk = false;
 
-    intr.HDeaf = (old & ~TIMEOUT) | timeout;
-    if (!intr.HDeaf)
-        delete intr.HDeaf;
+    set_itimeout('HDeaf', xtime);
 
-    if (!!timeout !== !!old) {
+    if (!!xtime !== !!old) {
         (game.disp ||= {}).botl = true;
         if (talk)
             await You(old && !Deaf() ? 'can hear again.'
@@ -1700,6 +1696,7 @@ async function peffect_speed(otmp) {
     /* using a potion of speed while wounded (not on a steed) heals legs */
     if (is_speed && wounded_legs && !otmp.cursed && !game.u.usteed) {
         await heal_legs(0);
+        game.potion_unkn++;
         return;
     }
     await speed_up(rn1(10, 100 + 60 * bcsign(otmp)));
@@ -2036,8 +2033,7 @@ async function peffect_paralysis(otmp) {
 // which is what lets the hero name an object that just failed to do anything.
 export async function strange_feeling(obj, txt) {
     if (game.flags?.beginner || !txt)
-        await You(`have a ${game.u?.intrinsic?.HHallucination
-                            || game.u?.uprops?.HALLUC ? 'normal' : 'strange'}`
+        await You(`have a ${Hallucination() ? 'normal' : 'strange'}`
                   + ' feeling for a moment, then it passes.');
     else
         await pline(txt);
@@ -2188,7 +2184,7 @@ async function dip_potion_explosion(obj, damage) {
         return false;
 
     obj.in_use = true;
-    await pline(`${game.u.uprops?.DEAF ? '' : 'BOOM!  '}They explode!`);
+    await pline(`${Deaf() ? '' : 'BOOM!  '}They explode!`);
     await wake_nearto(game.u.ux, game.u.uy, (BOLT_LIM + 1) * (BOLT_LIM + 1));
     exercise(A_STR, false);
     if (!breathless(game.youmonst.data) || haseyes(game.youmonst.data))

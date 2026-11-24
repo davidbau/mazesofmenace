@@ -152,26 +152,26 @@ export async function castle_level() {
     /* Soldiers guarding the entry hall */
     for (const [x, y] of [[8,6],[9,5],[11,5],[12,6],[8,10],[9,11],[11,11],
                           [12,10]])
-        des.monster('soldier', x, y);
-    des.monster('lieutenant', 9, 8);
+        await des.monster('soldier', x, y);
+    await des.monster('lieutenant', 9, 8);
     /* Soldiers guarding the towers */
     for (const [x, y] of [[3,2],[5,2],[57,2],[59,2],[3,14],[5,14],[57,14],
                           [59,14]])
-        des.monster('soldier', x, y);
+        await des.monster('soldier', x, y);
     /* The four dragons that are guarding the storerooms */
-    des.monster('D', 47, 5);
-    des.monster('D', 47, 6);
-    des.monster('D', 47, 10);
-    des.monster('D', 47, 11);
+    await des.monster('D', 47, 5);
+    await des.monster('D', 47, 6);
+    await des.monster('D', 47, 10);
+    await des.monster('D', 47, 11);
     /* Sea monsters in the moat */
-    des.monster('giant eel', 5, 7);
-    des.monster('giant eel', 5, 9);
-    des.monster('giant eel', 57, 7);
-    des.monster('giant eel', 57, 9);
-    des.monster('shark', 5, 0);
-    des.monster('shark', 5, 16);
-    des.monster('shark', 57, 0);
-    des.monster('shark', 57, 16);
+    await des.monster('giant eel', 5, 7);
+    await des.monster('giant eel', 5, 9);
+    await des.monster('giant eel', 57, 7);
+    await des.monster('giant eel', 57, 9);
+    await des.monster('shark', 5, 0);
+    await des.monster('shark', 5, 16);
+    await des.monster('shark', 57, 0);
+    await des.monster('shark', 57, 16);
     /* The throne room and the court monsters */
     const courtSpots = [
         [9, 27, 5], [0, 30, 5], [1, 33, 5], [2, 36, 5],
@@ -183,11 +183,11 @@ export async function castle_level() {
         [2, 27, 11], [3, 30, 11], [4, 33, 11], [5, 36, 11],
     ];
     for (const [mi, x, y] of courtSpots)
-        des.monster(monster[mi], x, y);
+        await des.monster(monster[mi], x, y);
 
     /* MazeWalks */
-    des.mazewalk(0, 10, 'west');
-    des.mazewalk(62, 6, 'east');
+    await des.mazewalk(0, 10, 'west');
+    await des.mazewalk(62, 6, 'east');
     /* Non diggable walls */
     des.non_diggable(0, 0, 62, 16);
 

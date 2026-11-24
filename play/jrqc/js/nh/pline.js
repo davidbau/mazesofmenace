@@ -36,7 +36,7 @@ let use_pline_handler = 0;
  * @returns {Promise<void>}
  */
 export async function dumplogmsg(line) {   // pline.c:22
-    let indx = 0, oldest = null, $t1;
+    let $t1;
     /*
      * TODO:
      *  This essentially duplicates message history, which is
@@ -44,8 +44,8 @@ export async function dumplogmsg(line) {   // pline.c:22
      *  The core should take responsibility for that and have
      *  this share it.
      */
-    indx = gs.saved_pline_index;   /* next slot to use */
-    oldest = gs.saved_plines[indx];   /* current content of that slot */
+    const indx = gs.saved_pline_index;   /* next slot to use */
+    const oldest = gs.saved_plines[indx];   /* current content of that slot */
     if (!$c.strncmp(line, $c.lit("Unknown command"), 15)) {
         return;
     }
@@ -79,8 +79,7 @@ export function dumplogfreemessages() {   // pline.c:52
  * @returns {Promise<void>}
  */
 async function putmesg(line) {   // pline.c:65
-    let attr = 0;
-    attr = ATR.NONE;
+    let attr = ATR.NONE;
     if (iflags.debug_prevent_pline) {
         return;
     }
@@ -250,7 +249,7 @@ async function vpline(line, the_args) {   // pline.c:153
             iflags.last_msg = PLNMSG.UNKNOWN;
             break pline_done$;
         }
-        no_repeat = $c.i8((gp.pline_flags & PLINE_NOREPEAT) >>> 0 ? TRUE : FALSE);
+        no_repeat = (gp.pline_flags & PLINE_NOREPEAT) >>> 0 ? TRUE : FALSE;
         if ((gp.pline_flags & OVERRIDE_MSGTYPE) >>> 0 === 0) {
             msgtyp = msgtype_type(line, no_repeat);
             /* FIXME: we need a way to tell our caller that this message
@@ -474,10 +473,10 @@ export async function You_see(line, ...$va) {   // pline.c:455
  * @returns {Promise<void>}
  */
 export async function verbalize(line, ...$va) {   // pline.c:476
-    let the_args = null, tmp = null;
+    let the_args = null;
     the_args = new $c.VaList($va);
     gp.pline_flags = (gp.pline_flags | PLINE_VERBALIZE) >>> 0;
-    tmp = await You_buf($c.i32($c.addu64($c.u64($c.i32($c.strlen(line))), 3)));
+    const tmp = await You_buf($c.i32($c.addu64($c.u64($c.i32($c.strlen(line))), 3)));
     $c.strcpy(tmp, $c.lit("\""));
     $c.strcat(tmp, line);
     $c.strcat(tmp, $c.lit("\""));
@@ -492,9 +491,9 @@ export async function verbalize(line, ...$va) {   // pline.c:476
  * @returns {Promise<void>}
  */
 export async function gamelog_add(glflags, gltime, str) {   // pline.c:495
-    let tmp = null, lst = null, $t1;
-    lst = gg.gamelog;
-    tmp = $c.asRec(await alloc(32), $T.gamelog_line, 32);
+    let $t1;
+    let lst = gg.gamelog;
+    const tmp = $c.asRec(await alloc(32), $T.gamelog_line, 32);
     tmp.turn = gltime;
     tmp.flags = glflags;
     $t1 = await dupstr(str), tmp.text = $t1;
@@ -568,7 +567,7 @@ async function vraw_printf(line, the_args) {   // pline.c:563
  * @returns {Promise<void>}
  */
 export async function impossible(s, ...$va) {   // pline.c:584
-    let the_args = null, pbuf = new Int8Array(1280), pbuf2 = new Int8Array(256), report = 0;
+    let the_args = null, pbuf = new Int8Array(1280), pbuf2 = new Int8Array(256);
     /* will be chopped down to BUFSZ-1 if longer */
     the_args = new $c.VaList($va);
     if (program_state.in_impossible) {
@@ -600,7 +599,7 @@ export async function impossible(s, ...$va) {   // pline.c:584
         await pline($c.lit("Alternatively, contact local support: %s"), sysopt.support);
     }
     if (sysopt.crashreporturl) {
-        report = $c.i8(121 === await yn_function($c.lit("Report now?"), new $c.Ptr(ynchars, 0), 110, FALSE) ? 1 : 0);
+        const report = 121 === await yn_function($c.lit("Report now?"), new $c.Ptr(ynchars, 0), 110, FALSE) ? 1 : 0;
         await raw_print()($c.lit(""));   /* prove to the user the character was accepted */
         if (report) {
             await submit_web_report(1, $c.lit("Impossible"), new $c.Ptr(pbuf, 0));
@@ -613,11 +612,11 @@ export async function impossible(s, ...$va) {   // pline.c:584
  * @returns {Promise<void>}
  */
 async function execplinehandler(line) {   // pline.c:641
-    let f = 0, args = $c.nulls(3), status = Int32Array.of(0);
+    let args = $c.nulls(3), status = Int32Array.of(0);
     if (!use_pline_handler || !sysopt.msghandler) {
         return;
     }
-    f = $c.fork();
+    const f = $c.fork();
     if (f === 0) {
         /* child */
         args[0] = sysopt.msghandler;
@@ -646,11 +645,11 @@ async function execplinehandler(line) {   // pline.c:641
  * @returns {Promise<void>}
  */
 export async function nhassert_failed(expression, filepath, line) {   // pline.c:690
-    let filename = null, p = null;
+    let p = null;
     /* Attempt to get filename from path.
        TODO: we really need a port provided function to return a filename
        from a path. */
-    filename = filepath;
+    let filename = filepath;
     if ((p = $c.strrchr(filename, 47)) !== null) {
         filename = p.add(1);
     }

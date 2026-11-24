@@ -17,8 +17,8 @@ const obj_init = $c.recArray($T.objclass, 482);
 export const obj_descr = $c.recArray($T.objdescr, 482);
 export const objects = $c.recArray($T.objclass, 482);
 export function objects_globals_init() {   // objects.c:32
-    $c.memcpy($c.relem(obj_descr, 0), $c.relem(obj_descr_init, 0), 7712);
-    $c.memcpy($c.relem(objects, 0), $c.relem(obj_init, 0), 34704);
+    $c.memcpy(obj_descr[0], obj_descr_init[0], 7712);
+    $c.memcpy(objects[0], obj_init[0], 34704);
 }
 
 export function $init() {

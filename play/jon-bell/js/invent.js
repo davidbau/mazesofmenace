@@ -1,4 +1,5 @@
 // invent.js — C ref: invent.c.
+import { nh_qsort } from './nhsort.js';
 import { obj_extract_self_general } from './cmd.js';
 import { inv_cnt } from './hack.js';
 import { FUMBLING, MENU_TRADITIONAL, ONAME, ONAME_SKIP_INVUPD, SHRINK_GLOB, Upolyd, W_QUIVER, W_SWAPWEP, W_WEP, has_oname } from './const.js';
@@ -25,7 +26,7 @@ import { near_capacity } from './hack.js';
 import { setuqwep } from './wield.js';
 import { _pickup_burden_level, touch_artifact_youmonst } from './wizcmds.js';
 import { setnotworn, setworn } from './worn.js';
-import { _sortloot_within_class } from './cmd.js'; // relocate-fns
+import { _sortloot_within_class, display_pickinv_sorted, query_objlist_sorted } from './cmd.js'; // relocate-fns
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js'; // relocate-fns
 import { _topl_joins_committed, docorner_blank_utf8_captures, docrt, flush_screen, obj_to_glyph, status_r1_menu_docrt, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
@@ -750,10 +751,10 @@ async function _identify_objlist_menu_body(promptText) {
     /* C invent.c:447-469: full sorting compares subclass and discovery
      * before names, so armor such as cloaks precedes suits regardless of
      * inventory letter. Reuse the same comparator as other object menus. */
-    if (g.flags.sortloot === 'f') {
-        const classes = [...new Set(eligible.map(o => o.oclass | 0))];
-        eligible = classes.flatMap(oc => _sortloot_within_class(eligible, oc));
-    }
+    /* C invent.c:2670 query_objlist(..., USE_INVLET | INVORDER_SORT, ...,
+     * not_fully_identified): pickup.c:1079-1086 sortloot() of the allowed
+     * items (SORTLOOT_LOOT for sortloot:full, else SORTLOOT_INVLET). */
+    eligible = query_objlist_sorted(eligible, true);
 
     /* C pickup.c:1101 query_objlist — `pack = strcpy(packbuf, flags.inv_order)`
      * and the `do { ... pack++; } while (sorted && *pack)` loop walk the CLASS
@@ -1616,7 +1617,7 @@ export function is_inuse(obj) { return _ld_carried(obj) && (is_worn_obj(obj) || 
  * "++rating; if (test) goto assign_rating", so `rating` is this table's
  * 1-based row number and `altclass` the value ++altclass had reached by then.
  * Falling off the end sets rating 0 / altclass -1. */
-function inuse_classify(obj) {
+export function inuse_classify(obj) {
     const w_mask = (obj.owornmask | 0)
                  & ((W_AMUL_C | W_RINGL_C | W_RINGR_C | W_TOOL_C)   /* W_ACCESSORY */
                     | (W_WEP_C | W_SWAPWEP_C | W_QUIVER_C)          /* W_WEAPONS */
@@ -1688,7 +1689,9 @@ async function dispinv_inuse_menu(lets, altLabel, want_reply = true) {
         const c = inuse_classify(obj);
         return { obj, indx, inuse: c.inuse, orderclass: c.orderclass };
     });
-    classified.sort((a, b) => (b.inuse - a.inuse) || (a.indx - b.indx));
+    /* C invent.c:3207 sortloot(SORTLOOT_INUSE): sortloot_cmp's INUSE arm
+     * (invent.c:413-428), rating descending then the index tiebreak. */
+    nh_qsort(classified, (a, b) => (b.inuse - a.inuse) || (a.indx - b.indx));
     /* C invent.c:416-419 — inuse_classify() runs only inside sortloot_cmp(),
      * and qsort() never calls the comparator for a single element (invent.c:
      * 635), so a lone entry keeps orderclass 0 == prevorderclass and
@@ -1791,40 +1794,11 @@ async function _display_pickinv_window(lets, want_reply) {
         g._topl_win_stop = g._topl_win_stop_armed = false; /* wintty.c:2843 WIN_CANCELLED == WIN_STOP */
         return morc === otmp.invlet || morc === 27 ? morc : 0;
     }
-    if (g.flags.sortloot !== 'i' && g.flags.sortpack !== false && !_Blind_cmd()
-        && g.invent && g.invent.nobj) {
-        /* The sort's comparator classifies (observe_object) each object the
-         * first time it is compared (invent.c:433-438), so the discovery
-         * order follows libc qsort's comparison order: glibc msort splits
-         * n into n/2 and n-n/2, sorting the first half then the second, then
-         * merges.  Walk that order with the class-order key. */
-        const arr = [];
-        for (let o = g.invent; o; o = o.nobj) arr.push(o);
-        const order = g.flags.inv_order || INV_ORDER;
-        const done = new Set();
-        const cmp = (a, b) => {
-            for (const o of [a, b]) if (!done.has(o)) { done.add(o); observe_object(o); }
-            const k = (o) => { const i = order.indexOf(o.oclass | 0); return i < 0 ? 99 : i; };
-            return k(a) - k(b);
-        };
-        const msort = (v) => {
-            if (v.length <= 1) return v;
-            const n1 = v.length >> 1;
-            const l = msort(v.slice(0, n1)), r = msort(v.slice(n1));
-            const out = [];
-            while (l.length && r.length) out.push(cmp(l[0], r[0]) <= 0 ? l.shift() : r.shift());
-            return out.concat(l, r);
-        };
-        msort(arr);
-        /* C sorts once (invent.c:3207) and loot_xname()s each object at most
-         * once per sort (invent.c:480-497).  The msort above has already
-         * observed every object; inventory_menu_legacy's sortloot is that
-         * one naming sort.  A second ranking sort here named every
-         * same-class tin again, an extra tin_variety() rn2 (eat.c:1503). */
-    }
+    /* C invent.c:3176-3178, 3207: one sortloot() over the whole pack. */
+    const sortedInvent = g.flags.sortloot !== 'i' ? display_pickinv_sorted() : null;
     const result = g.flags.sortloot === 'i'
         ? await dispinv_inuse_menu(lets, INUSE_HEADERS[4], want_reply)
-        : await inventory_menu_legacy({displayPickinv: true, lets, filter: o => !lets || lets.includes(String.fromCharCode(o.invlet)), pickNone: !want_reply, statusStaysBlank: !!want_reply && !g.program_state?.gameover, gameover: !!g.program_state?.gameover});
+        : await inventory_menu_legacy({displayPickinv: true, sortedInvent, lets, filter: o => !lets || lets.includes(String.fromCharCode(o.invlet)), pickNone: !want_reply, statusStaysBlank: !!want_reply && !g.program_state?.gameover, gameover: !!g.program_state?.gameover});
     g._pickinv_window = result;
     /* docorner() clears from offx, then row_refresh() restores the map glyphs
      * (wintty.c:3684-3710). The later bot() covers only the status text;
@@ -1967,19 +1941,8 @@ async function invdisp_nothing(hdr, txt) {
 async function inventory_query_objects(title, items, sorted) {
     if (!items.length) return;
     const order = game.flags.inv_order || INV_ORDER;
-    const loot = game.flags.sortloot === 'f' || game.flags.sortloot === 'l';
-    let sortedItems = items;
-    if ((loot || game.flags.sortpack) && items.length > 1) {
-        // C sortloot_cmp classifies every compared object before naming rows.
-        if (!_Blind_cmd())
-            for (const obj of items) observe_object(obj);
-        const sortOrder = game.flags.sortpack ? order
-            : [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16];
-        const classes = [...sortOrder, 17];
-        for (const obj of items)
-            if (!classes.includes(obj.oclass)) classes.push(obj.oclass);
-        sortedItems = classes.flatMap(oc => _sortloot_within_class(items, oc, loot));
-    }
+    /* C pickup.c:1079-1086: sortloot() of the list, no USE_INVLET. */
+    const sortedItems = query_objlist_sorted(items, false);
     const menu = new TtyMenu();
     let first = true;
     for (const oc of sorted ? order : [null]) {
@@ -2087,18 +2050,14 @@ export async function display_minventory(mon, title) {
     const items = [];
     for (let o = mon.minvent; o; o = o.nobj)
         items.push(o);
-    // invent.c:170, pickup.c:1079: classify the whole list before naming rows.
-    const loot = ['f', 'l'].includes(game.flags.sortloot ?? 'l');
-    const sorting = loot || game.flags.sortpack;
-    if (sorting && items.length > 1 && !_Blind_cmd())
-        for (const obj of items) observe_object(obj);
+    // invent.c:5367 query_objlist(INVORDER_SORT) -> pickup.c:1079-1086 sortloot().
+    const sortedItems = query_objlist_sorted(items, false);
     const windowLines = [menu_heading_text(title), ''];
     const lineItems = [null, null];
     let menuAccel = 'a'.charCodeAt(0);
     let first = true;
     for (const oclass of (game.flags.inv_order || PICKINV_CLASS_ORDER)) {
-        const group = sorting ? _sortloot_within_class(items, oclass, loot)
-            : items.filter(obj => obj.oclass === oclass);
+        const group = sortedItems.filter(obj => obj.oclass === oclass);
         if (!group.length) continue;
         // C tty_end_menu: every 23 rows starts a new page's accelerators.
         if (windowLines.length % 23 === 0) menuAccel = 97;

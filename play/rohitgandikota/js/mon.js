@@ -1,4 +1,4 @@
-import { um_dist, m_unleash } from './apply.js';
+import { um_dist, m_unleash, leashable } from './apply.js';
 import { gazemu } from './mhitu.js';
 import { aggravate } from './wizard.js';
 import { stop_occupation } from './allmain.js';
@@ -23,7 +23,13 @@ import { unmap_object, glyph_is_invisible_at } from './display.js';
 import { is_vampshifter } from './monst.js';
 import { revive_corpse } from './do.js';
 import { placebc } from './ball.js';
-import { monsndx } from './makemon.js';
+import { monsndx, mbirth_limit, mkclass_poly } from './makemon.js';
+import { name_to_mon } from './mondata.js';
+import { name_to_monclass } from './read.js';
+import { getlin } from './cmd.js';
+import { coord_desc } from './getpos.js';
+import { mungspaces } from './hacklib.js';
+import { QBUFSZ, GPCOORDS_NONE, GPCOORDS_MAP, thats_enough_tries, MAXMONNO } from './const.js';
 import { kill_egg } from './timeout.js';
 import { Has_contents } from './obj.js';
 import { dead_species } from './mkobj.js';
@@ -105,7 +111,8 @@ import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, S
          M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL,
          XKILL_NOMSG, XKILL_NOCORPSE, MON_EXPLODE,
          PLNMSG_UNKNOWN, PLNMSG_GROWL } from './const.js';
-import { NO_MM_FLAGS } from './const.js';
+import { NO_MM_FLAGS, W_ARM } from './const.js';
+import { Is_dragon_scales, Is_dragon_mail } from './mondata.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS, MSOUND } from './monst_data.js';
 import { def_monsyms, cmap_names } from './drawing_data.js';
 import { visible_region_at } from './region.js';
@@ -190,7 +197,8 @@ import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } fr
 // include/monflag.h:180 MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MFLAGS.MZ_MEDIUM;
 
-import { COLNO, ROWNO, POOL, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL, IRONBARS,
+import { COLNO, ROWNO, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_LAVA,
+         LAVAPOOL, LAVAWALL, IRONBARS,
          D_CLOSED, D_LOCKED, D_BROKEN, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
          ALLOW_ALL, ALLOW_U, ALLOW_SSM, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS,
          ALLOW_TRAPS, ALLOW_M, ALLOW_SANCT, ALLOW_ROCK, NOTONL, OPENDOOR,
@@ -1263,7 +1271,7 @@ async function meatbox(mon, otmp) {
             await mpickobj(mon, cobj);
         } else {
             if (!(await flooreffects(cobj, x, y, '')))
-                place_object(cobj, x, y);
+                await place_object(cobj, x, y);
         }
     }
 }
@@ -1356,7 +1364,7 @@ export async function mon_to_stone(mtmp) {
 
 // src/mkobj.c delobj() — take the object off the floor and free it.
 export function delobj(obj) {
-    delobj_core(obj, false);
+    return delobj_core(obj, false);
 }
 
 // src/invent.c:1438 delobj_core() — destroy an object; `force` is for reviving
@@ -1370,15 +1378,19 @@ export function delobj_core(obj, force) {
         return;
     }
     const update_map = (obj.where === OBJ_FLOOR);
-    obj_extract_self(obj);
-    const objs = game.level?.objects;
-    if (objs) {
-        const i = objs.indexOf(obj);
-        if (i >= 0) objs.splice(i, 1);
+    const pending = obj_extract_self(obj);
+    return pending ? pending.then(finish) : finish();
+
+    function finish() {
+        const objs = game.level?.objects;
+        if (objs) {
+            const i = objs.indexOf(obj);
+            if (i >= 0) objs.splice(i, 1);
+        }
+        if (update_map)  /* floor object's coordinates are always up to date */
+            newsym(obj.ox, obj.oy);
+        return obfree(obj);
     }
-    if (update_map)  /* floor object's coordinates are always up to date */
-        newsym(obj.ox, obj.oy);
-    obfree(obj);
 }
 
 // src/mon.c:1463 meatmetal() — a rock mole or similar eats the topmost metal
@@ -1564,7 +1576,7 @@ function resists_poison(mon) {
    while this file's own callers still see a local binding. */
 import { touch_artifact, touch_artifact_mon } from './artifact.js';
 export { touch_artifact, touch_artifact_mon };
-import { pick_nasty, mon_has_amulet } from './wizard.js';
+import { pick_nasty, mon_has_amulet, mon_has_special } from './wizard.js';
 import { tt_doppel } from './topten.js';
 import { rloc_to } from './teleport.js';
 import { unique_corpstat } from './mondata.js';
@@ -1590,7 +1602,7 @@ import { There } from './pline.js';
 import { body_part } from './polyself.js';
 import { pmname } from './do_name.js';
 import { losehp } from './hack.js';
-import { is_waterwall } from './dbridge.js';
+import { is_waterwall, is_moat, is_pool_or_lava } from './dbridge.js';
 import { can_teleport } from './mondata.js';
 import { on_fire } from './mondata.js';
 import { Flying } from './youprop.js';
@@ -1928,14 +1940,23 @@ function likes_lava(ptr) {
         || ptr?.pmidx === PMNAMES.PM_SALAMANDER;
 }
 
-// include/rm.h:129-130
+// src/dbridge.c:48 is_pool()
 export function is_pool(x, y) {
-    const t = game.level?.at(x, y)?.typ;
-    return t !== undefined && t >= POOL && t <= DRAWBRIDGE_UP;
+    if (!isok(x, y))
+        return false;
+    const ltyp = game.level.at(x, y).typ;
+    // MOAT stays a pool on Juiblex's level even though is_moat is false.
+    return ltyp === POOL || ltyp === MOAT || ltyp === WATER || is_moat(x, y);
 }
+
+// src/dbridge.c:65 is_lava()
 export function is_lava(x, y) {
-    const t = game.level?.at(x, y)?.typ;
-    return t === LAVAPOOL || t === LAVAWALL;
+    if (!isok(x, y))
+        return false;
+    const lev = game.level.at(x, y);
+    return lev.typ === LAVAPOOL || lev.typ === LAVAWALL
+        || (lev.typ === DRAWBRIDGE_UP
+            && (lev.drawbridgemask & DB_UNDER) === DB_LAVA);
 }
 
 // src/mon.c:2064 mon_allowflags() — what a monster is permitted to walk into.
@@ -2297,7 +2318,9 @@ export async function mongone(mdef) {
         if (!protected_)
             continue;
         obj_extract_self(obj);
-        place_object(obj, mdef.mx, mdef.my);
+        const placement = place_object(obj, mdef.mx, mdef.my);
+        if (placement)
+            await placement;
         stackobj(obj);
     }
 
@@ -2330,7 +2353,7 @@ export async function monstone(mdef) {
             if (obj.otyp === ONAMES.BOULDER || obj_resists(obj, 0, 0)) {
                 if (await flooreffects(obj, x, y, 'fall'))
                     continue;
-                place_object(obj, x, y);
+                await place_object(obj, x, y);
             } else {
                 if (obj.lamplit)
                     end_burn(obj, true);
@@ -2351,7 +2374,7 @@ export async function monstone(mdef) {
         if (mdef.mgivenname)
             remains = oname(remains, mdef.mgivenname, ONAME_NO_FLAGS);
         for (const obj of held)
-            add_to_container(remains, obj);
+            await add_to_container(remains, obj);
         remains.owt = weight(remains);
     } else {
         remains = mksobj_at(ONAMES.ROCK, x, y, true, false);
@@ -2891,7 +2914,7 @@ export async function xkilled(mtmp, xkill_flags) /* 1: suppress mesg, 2: suppres
                                         ONAME_NO_FLAGS);
                     delobj(otmp);
                 } else if (!(await flooreffects(otmp, x, y, nomsg ? '' : 'fall'))) {
-                    place_object(otmp, x, y);
+                    await place_object(otmp, x, y);
                     stackobj(otmp);
                 }
             }
@@ -3931,41 +3954,148 @@ export async function decide_to_shapeshift(mon) {
 // src/mon.c:4941 pickvampshape()
 function pickvampshape(mon) {
     let mndx = mon.cham, wolfchance = 10;
-    const PM_VLAD = PMNAMES.PM_VLAD_THE_IMPALER,
-          PM_VLORD = PMNAMES.PM_VAMPIRE_LEADER,
-          PM_VAMP = PMNAMES.PM_VAMPIRE;
+    // Rogue levels avoid lowercase wolf and fog-cloud symbols.
+    const uppercase_only = Is_rogue_level(game.u.uz);
 
     switch (mndx) {
-    case PM_VLAD:
+    case PMNAMES.PM_VLAD_THE_IMPALER:
+        // Keep Vlad in a form which can carry the Candelabrum.
+        if (mon_has_special(mon))
+            break;
         wolfchance = 3;
         /* FALLTHRU */
-    case PM_VLORD:
-        if (!rn2(wolfchance)
-            && !is_pool_or_lava_mon(mon.mx, mon.my)) {
+    case PMNAMES.PM_VAMPIRE_LEADER:
+        if (!rn2(wolfchance) && !uppercase_only
+            // Don't choose a walking form that would drown or burn.
+            && !is_pool_or_lava(mon.mx, mon.my)) {
             mndx = PMNAMES.PM_WOLF;
             break;
         }
         /* FALLTHRU */
-    case PM_VAMP:
-        mndx = !rn2(4) ? PMNAMES.PM_FOG_CLOUD : PMNAMES.PM_VAMPIRE_BAT;
+    case PMNAMES.PM_VAMPIRE:
+        mndx = (!rn2(4) && !uppercase_only) ? PMNAMES.PM_FOG_CLOUD : PMNAMES.PM_VAMPIRE_BAT;
         break;
     }
-    /* return to base form if the target is gone, or randomly when already
-       in an alternate form */
-    if (((game.mvitals?.[mndx]?.mvflags ?? 0) & 0x02 /* G_GENOD */)
-        || (mon.mnum !== mon.cham && !rn2(4)))
-        mndx = mon.cham;
+    // Genocide short-circuits the random return from an alternate form.
+    if ((game.mvitals[mndx].mvflags & G_GENOD) !== 0
+        || (mon.data !== game.mons[mon.cham] && !rn2(4)))
+        return mon.cham;
     return mndx;
 }
 
-function is_pool_or_lava_mon(x, y) {
-    const t = game.level?.at(x, y)?.typ ?? 0;
-    return t === 16 /* POOL */ || t === 17 /* MOAT */ || t === 19 /* WATER */
-        || t === 21 /* LAVAPOOL */;
+// src/mon.c:5015 isspecmon() — nonshapechangers who warrant special
+// polymorph handling.
+function isspecmon(mon) {
+    return (mon.isshk || mon.ispriest || mon.isgd
+            || mon.m_id === game.quest_status?.leader_m_id);
 }
 
-// src/mon.c:5171 select_newcham_form() — creation-relevant arms.
-function select_newcham_form(mon) {
+// src/mon.c:5024 validspecmon()
+export function validspecmon(mon, mndx) {
+    if (mndx === NON_PM)
+        return true; /* caller wants random */
+
+    if (!accept_newcham_form(mon, mndx))
+        return false; /* geno'd or !polyok */
+
+    if (isspecmon(mon)) {
+        const ptr = game.mons[mndx];
+
+        /* reject notake because object manipulation is expected
+           and nohead because speech capability is expected */
+        if (notake(ptr) || !has_head(ptr))
+            return false;
+    }
+    return true; /* potential new form is ok */
+}
+
+// src/mon.c:5028 validvamp()
+export function validvamp(mon, mndx, monclass) {
+    if (!is_vampshifter(mon))
+        return validspecmon(mon, mndx.v);
+
+    if (mon.cham === PMNAMES.PM_VLAD_THE_IMPALER && mon_has_special(mon)) {
+        mndx.v = PMNAMES.PM_VLAD_THE_IMPALER;
+        return true;
+    }
+    if (ismnum(mndx.v) && is_shapeshifter(game.mons[mndx.v])) {
+        mndx.v = mon.cham;
+        return true;
+    }
+    if (mndx.v === PMNAMES.PM_WOLF)
+        return mon.cham !== PMNAMES.PM_VAMPIRE;
+    if (mndx.v === PMNAMES.PM_FOG_CLOUD || mndx.v === PMNAMES.PM_VAMPIRE_BAT)
+        return true;
+
+    switch (monclass) {
+    case MONSYMS.S_VAMPIRE:
+        mndx.v = mon.cham;
+        break;
+    case MONSYMS.S_BAT:
+        mndx.v = PMNAMES.PM_VAMPIRE_BAT;
+        break;
+    case MONSYMS.S_VORTEX:
+        mndx.v = PMNAMES.PM_FOG_CLOUD;
+        break;
+    case MONSYMS.S_DOG:
+        if (mon.cham !== PMNAMES.PM_VAMPIRE) {
+            mndx.v = PMNAMES.PM_WOLF;
+            break;
+        }
+        /* FALLTHROUGH */
+    default:
+        mndx.v = NON_PM;
+        break;
+    }
+    return mndx.v !== NON_PM;
+}
+
+// src/mon.c:5078 wiz_force_cham_form()
+async function wiz_force_cham_form(mon) {
+    let prompt = `Change ${noit_mon_nam(mon)}`;
+    const cmode = game.iflags.getpos_coords !== GPCOORDS_NONE
+        ? game.iflags.getpos_coords : GPCOORDS_MAP;
+    const parttwo = ` @ ${coord_desc(mon.mx, mon.my, cmode)} into what?`;
+    prompt = prompt.slice(0, QBUFSZ - 1 - parttwo.length) + parttwo;
+
+    const mndx = { v: NON_PM };
+    let monclass, tryct = 5;
+    do {
+        if (tryct === 4 && prompt.length + ' kind of monster'.length < QBUFSZ)
+            prompt = prompt.slice(0, -1) + ' kind of monster?';
+        monclass = 0;
+        const answer = mungspaces(await getlin(prompt));
+        if (answer[0] === '\x1b')
+            break;
+        if (answer === '*' || answer.toLowerCase() === 'random') {
+            mndx.v = NON_PM;
+            break;
+        }
+        mndx.v = name_to_mon(answer);
+        if (mndx.v === NON_PM) {
+            const found = name_to_monclass(answer);
+            monclass = found.monclass;
+            mndx.v = found.which;
+            if (monclass && mndx.v === NON_PM)
+                mndx.v = mkclass_poly(monclass);
+        }
+        if (ismnum(mndx.v)) {
+            if (validvamp(mon, mndx, monclass))
+                break;
+            mndx.v = NON_PM;
+        }
+        await pline("It can't become that.");
+    } while (--tryct > 0);
+
+    if (!tryct)
+        await pline(thats_enough_tries);
+    if (is_vampshifter(mon) && !validvamp(mon, mndx, monclass))
+        mndx.v = pickvampshape(mon);
+    return mndx.v;
+}
+
+// src/mon.c:5157 select_newcham_form()
+export function select_newcham_form(mon) {
     let mndx = -1;
     switch (mon.cham) {
     case PMNAMES.PM_SANDESTIN:
@@ -4004,51 +4134,32 @@ function select_newcham_form(mon) {
     case PMNAMES.PM_VAMPIRE:
         mndx = pickvampshape(mon);
         break;
-    default:
+    case NON_PM: { /* ordinary */
+        const m_armr = which_armor(mon, W_ARM);
+
+        if (m_armr && Is_dragon_scales(m_armr))
+            mndx = PMNAMES.PM_GRAY_DRAGON + m_armr.otyp - ONAMES.GRAY_DRAGON_SCALES;
+        else if (m_armr && Is_dragon_mail(m_armr))
+            mndx = PMNAMES.PM_GRAY_DRAGON + m_armr.otyp - ONAMES.GRAY_DRAGON_SCALE_MAIL;
         break;
     }
-    /* the NON_PM dragon-armor arm needs worn dragon scales */
-
-    /* src/mon.c:5213 — "if no form was specified above, pick one at random
-       now". The modulus is the whole non-special monster table; the loop
-       repeats only while the rogue-level uppercase clause holds, so off
-       that level a single draw stands even when validspecmon rejects it
-       (newcham's own accept loop re-rolls). */
-    if (mndx === -1) {
-        let tryct = 50;
-        do {
-            mndx = rn1(SPECIAL_PM_MON - 0 /* LOW_PM */, 0);
-        } while (--tryct > 0 && !validspecmon(mon, mndx)
-                 && (tryct > 40 && Is_rogue_level(game.u.uz)
-                     && !/[A-Z]/.test(def_monsyms[game.mons[mndx].mlet] ?? '')));
     }
-    return mndx;
-}
 
-// src/mon.c:5015 isspecmon() — nonshapechangers who warrant special
-// polymorph handling.
-function isspecmon(mon) {
-    return (mon.isshk || mon.ispriest || mon.isgd
-            || mon.m_id === game.quest_status?.leader_m_id);
-}
-
-// src/mon.c:5024 validspecmon()
-export function validspecmon(mon, mndx) {
-    if (mndx === NON_PM)
-        return true; /* caller wants random */
-
-    if (!accept_newcham_form(mon, mndx))
-        return false; /* geno'd or !polyok */
-
-    if (isspecmon(mon)) {
-        const ptr = game.mons[mndx];
-
-        /* reject notake because object manipulation is expected
-           and nohead because speech capability is expected */
-        if (notake(ptr) || !has_head(ptr))
-            return false;
-    }
-    return true; /* potential new form is ok */
+    const finishSelection = (mndx) => {
+        /* The Rogue uppercase clause is part of C's AND condition. */
+        if (mndx === -1) {
+            let tryct = 50;
+            do {
+                mndx = rn1(SPECIAL_PM_MON - 0 /* LOW_PM */, 0);
+            } while (--tryct > 0 && !validspecmon(mon, mndx)
+                     && (tryct > 40 && Is_rogue_level(game.u.uz)
+                         && !/[A-Z]/.test(def_monsyms[game.mons[mndx].mlet] ?? '')));
+        }
+        return mndx;
+    };
+    if (game.wizard && game.flags.monpolycontrol)
+        return wiz_force_cham_form(mon).then(finishSelection);
+    return finishSelection(mndx);
 }
 
 // src/mon.c:5228 accept_newcham_form() — mdat or null.
@@ -4256,12 +4367,27 @@ export async function usmellmon(mdat) {
     }
 }
 
-// src/mon.c:5278 newcham(). The no-message creation path remains synchronous
-// for makemon(); message and hero-release paths return a conditional promise.
+// src/mon.c:5278 newcham(). Return a number when all work finishes inline;
+// input and asynchronous effects return their completion to the caller.
 export function newcham(mtmp, mdat, ncflags) {
-    let mndx = -1;
+    const polyspot = !!(ncflags & NC_VIA_WAND_OR_SPELL);
     let msg = !!(ncflags & NC_SHOW_MSG);
     const seenorsensed = canspotmon(mtmp);
+    const olddata = mtmp.data;
+    let mndx, tryct = 20;
+
+    if (mtmp.cham === NON_PM) {
+        if (is_rider(olddata))
+            return 0;
+        if (mbirth_limit(monsndx(olddata)) < MAXMONNO)
+            return 0;
+        if (mtmp.mcan && !Protection_from_shape_changers()) {
+            mtmp.cham = pm_to_cham(monsndx(mtmp.data));
+            if (mtmp.cham !== NON_PM)
+                mtmp.mcan = 0;
+        }
+    }
+
     const oldname = msg
         ? upstart(x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE,
                            null, SUPPRESS_SADDLE, false))
@@ -4269,58 +4395,71 @@ export function newcham(mtmp, mdat, ncflags) {
     const l_oldname = x_monnam(mtmp, ARTICLE_THE, null,
                               has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
 
-    if (!mdat) {
-        let tryct = 20;
-        do {
-            mndx = select_newcham_form(mtmp);
-            mdat = accept_newcham_form(mtmp, mndx);
-            if (mdat)
-                break;
-        } while (--tryct > 0);
+    function acceptSelection(choice) {
+        mndx = choice;
+        mdat = accept_newcham_form(mtmp, mndx);
+        if (tryct > 15 && Is_rogue_level(game.u.uz)
+            && mdat && !/[A-Z]/.test(def_monsyms[mdat.mlet]))
+            mdat = null;
         if (!mdat)
-            return 0;
-    } else {
-        mndx = game.mons.indexOf(mdat);
+            --tryct;
+        return mdat;
     }
 
-    if (mdat === game.mons[mtmp.mnum])
+    function selectForm() {
+        while (tryct > 0) {
+            const choice = select_newcham_form(mtmp);
+            if (choice instanceof Promise)
+                return choice.then((mndx) => acceptSelection(mndx)
+                    ? changeForm() : selectForm());
+            if (acceptSelection(choice))
+                return changeForm();
+        }
         return 0;
+    }
 
-    mgender_from_permonst(mtmp, mdat);
+    function changeForm() {
+        if (mdat === olddata)
+            return 0;
 
-    /* hp: same fraction of max as before */
-    const hpn = mtmp.mhp, hpd = mtmp.mhpmax;
-    mon_fns_cham?.newmonhp?.(mtmp, mndx);
-    mtmp.mhp = Math.trunc((hpn * mtmp.mhp) / hpd);
-    if (mtmp.mhp < 0 || mtmp.mhp > mtmp.mhpmax)
-        mtmp.mhp = mtmp.mhpmax;
-    if (!mtmp.mhp)
-        mtmp.mhp = 1;
-
-    /* take on the new form */
-    const olddata = game.mons[mtmp.mnum];
-    set_mon_data(mtmp, mdat);
-
-    const leashNeedsRelease = mtmp.mleashed
-        && (mtmp.mnum === PMNAMES.PM_LONG_WORM
-            || unsolid(mtmp.data)
-            || (nolimbs(mtmp.data) && !has_head(mtmp.data)));
-    if (mtmp.mleashed && !leashNeedsRelease)
-        update_inventory();
-
-    const finishDisplay = () => {
-        if (mdat === game.mons[PMNAMES.PM_LONG_WORM]
-            && (mtmp.wormno = get_wormno()) !== 0) {
-            worm_wire(goodpos);
-            initworm(mtmp, rn2(5));
-            place_worm_tail_randomly(mtmp, mtmp.mx, mtmp.my);
+        mgender_from_permonst(mtmp, mdat);
+        if (In_endgame(game.u.uz) && is_mplayer(olddata) && has_mgivenname(mtmp)) {
+            const name = MGIVENNAME(mtmp), rank = name.indexOf(' the ');
+            if (rank >= 0) {
+                if (mtmp.mextra?.mgivenname)
+                    mtmp.mextra.mgivenname = name.slice(0, rank);
+                else
+                    mtmp.mgivenname = name.slice(0, rank);
+            }
         }
 
-        mtmp.meverseen = 0;
-        newsym(mtmp.mx, mtmp.my);
-    };
+        if (mtmp.wormno) {
+            const mx = mtmp.mx, my = mtmp.my;
+            wormgone(mtmp);
+            place_monster(mtmp, mx, my);
+        }
+        if (M_AP_TYPE(mtmp) && mdat.mlet !== MONSYMS.S_MIMIC)
+            seemimic(mtmp);
 
-    const finishChange = () => {
+        /* Give the new form the same proportion of HP as the old one. */
+        const hpn = mtmp.mhp, hpd = mtmp.mhpmax;
+        mon_fns_cham.newmonhp(mtmp, mndx);
+        mtmp.mhp = Math.trunc((hpn * mtmp.mhp) / hpd);
+        if (mtmp.mhp < 0 || mtmp.mhp > mtmp.mhpmax)
+            mtmp.mhp = mtmp.mhpmax;
+        if (!mtmp.mhp)
+            mtmp.mhp = 1;
+
+        set_mon_data(mtmp, mdat);
+        if (mtmp.mleashed) {
+            if (!leashable(mtmp))
+                return m_unleash(mtmp, true).then(finishChange);
+            update_inventory();
+        }
+        return finishChange();
+    }
+
+    function finishChange() {
         if (emits_light(olddata) !== emits_light(mdat)) {
             if (emits_light(olddata))
                 del_light_source(LS_MONSTER, mtmp.m_id);
@@ -4331,9 +4470,15 @@ export function newcham(mtmp, mdat, ncflags) {
         if (!mtmp.perminvis || pm_invisible(olddata))
             mtmp.perminvis = pm_invisible(mdat);
         mtmp.minvis = mtmp.invis_blkd ? 0 : mtmp.perminvis;
-        if (mtmp.mundetected)
-            hideunder(mtmp);
+        if (mtmp.mundetected) {
+            const hidden = hideunder(mtmp);
+            if (hidden instanceof Promise)
+                return hidden.then(finishRelease);
+        }
+        return finishRelease();
+    }
 
+    function finishRelease() {
         if (game.u.ustuck === mtmp) {
             return (async () => {
                 if (game.u.uswallow) {
@@ -4358,131 +4503,114 @@ export function newcham(mtmp, mdat, ncflags) {
                            || unsolid(mdat)) {
                     await unstuck(mtmp);
                 }
-                finishDisplay();
-                return await finishPostChange();
+                return finishDisplay();
             })();
         }
+        return finishDisplay();
+    }
 
-        finishDisplay();
-        return finishPostChange();
-    };
+    function finishDisplay() {
+        if (mdat === game.mons[PMNAMES.PM_LONG_WORM]
+            && (mtmp.wormno = get_wormno()) !== 0) {
+            worm_wire(goodpos);
+            initworm(mtmp, rn2(5));
+            place_worm_tail_randomly(mtmp, mtmp.mx, mtmp.my);
+        }
+        mtmp.meverseen = 0;
+        newsym(mtmp.mx, mtmp.my);
+        return msg ? showChange().then(finishEquipment) : finishEquipment();
+    }
 
-    const showChange = async () => {
+    async function showChange() {
         if (!canspotmon(mtmp)) {
             if (seenorsensed)
-                await pline(`${oldname} disappears!`);
+                await pline_mon(mtmp, `${oldname} disappears!`);
             await usmellmon(mdat);
         } else if (!seenorsensed) {
             const newname = x_monnam(
-                mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_A,
-                null, SUPPRESS_SADDLE, false);
-            await pline(`${upstart(newname)} appears!`);
+                mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_A, null, 0, false);
+            await pline_mon(mtmp, `${upstart(newname)} appears!`);
         } else {
-            const newname = noname_monnam(mtmp, ARTICLE_A);
-            await pline(`${oldname} turns into ${newname}!`);
+            await pline_mon(mtmp, `${oldname} turns into ${noname_monnam(mtmp, ARTICLE_A)}!`);
         }
-        return 1;
-    };
+    }
 
-    const finishPostChange = async () => {
-        const polyspot = !!(ncflags & NC_VIA_WAND_OR_SPELL);
-
-        if (msg)
-            await showChange();
-
-        /* when polymorph trap/wand/potion produces a vampire, turn in into
-           a full-fledged vampshifter unless shape-changing is blocked */
-        if ((mtmp.cham ?? NON_PM) === NON_PM && mdat.mlet === MONSYMS.S_VAMPIRE
+    function finishEquipment() {
+        if (mtmp.cham === NON_PM && mdat.mlet === MONSYMS.S_VAMPIRE
             && !Protection_from_shape_changers())
             mtmp.cham = pm_to_cham(mndx);
 
-        /* src/mon.c:5484 — the tail runs whether or not a message was
-           shown. makemon() calls newcham() from synchronous level
-           creation, and mon_break_armor() rolls two hallucinated pronouns
-           on entry even when nothing is worn, so that entry must not wait
-           for a microtask: possibly_unwield() only has asynchronous work
-           when something is wielded, and a monster still being created
-           wields nothing yet. */
+        /* These helpers finish inline without equipment. Their entry RNG
+           must precede makemon's remaining creation work. */
         const had_wep = !!MON_WEP(mtmp);
-        const unwield = possibly_unwield(mtmp, polyspot); /* might lose use of weapon */
-        if (had_wep)
-            await unwield;
-        /* likewise mon_break_armor() rolls its pronouns on entry and only
-           has asynchronous work (messages, m_useup, dismounting) when the
-           monster wears something or is the steed; mselftouch() does
-           nothing without a wielded weapon */
+        const unwield = possibly_unwield(mtmp, polyspot);
+        return had_wep ? unwield.then(breakArmor) : breakArmor();
+    }
+
+    function breakArmor() {
         const had_worn = !!mtmp.misc_worn_check || mtmp === game.u.usteed;
         const broke = mon_break_armor(mtmp, polyspot);
-        if (had_worn)
-            await broke;
+        return had_worn ? broke.then(selfTouch) : selfTouch();
+    }
+
+    function selfTouch() {
         if (!(mtmp.misc_worn_check & W_ARMG)) {
+            const had_wep = !!MON_WEP(mtmp);
             const touch = mselftouch(mtmp, 'No longer petrify-resistant, ',
                                      !game.context?.mon_moving);
-            if (MON_WEP(mtmp))
-                await touch;
+            if (had_wep)
+                return touch.then(finishInventory);
         }
+        return finishInventory();
+    }
+
+    function finishInventory() {
         check_gear_next_turn(mtmp);
-
-        /* former giants can't continue carrying boulders */
-        if (mtmp.minvent?.length && !throws_rocks(mdat)) {
-            /* DEADMONSTER(): it is possible for flooreffects() to kill mtmp;
-               the rest of its inventory would be dropped making otmp2 stale */
-            for (const otmp of [...mtmp.minvent]) {
-                if (DEADMONSTER(mtmp))
-                    break;
-                if (otmp.otyp === ONAMES.BOULDER) {
-                    /* this keeps otmp from being polymorphed in the
-                       same zap that the monster that held it is polymorphed */
-                    if (polyspot)
-                        bypass_obj(otmp);
-                    obj_extract_self(otmp);
-                    /* probably ought to give some "drop" message here */
-                    if (await flooreffects(otmp, mtmp.mx, mtmp.my, ''))
-                        continue;
-                    place_object(otmp, mtmp.mx, mtmp.my);
+        /* A floor effect can kill the monster and drop its other items. */
+        if (mtmp.minvent?.some(obj => obj.otyp === ONAMES.BOULDER)
+            && !throws_rocks(mdat)) {
+            return (async () => {
+                for (const otmp of [...mtmp.minvent]) {
+                    if (DEADMONSTER(mtmp))
+                        break;
+                    if (otmp.otyp === ONAMES.BOULDER) {
+                        if (polyspot)
+                            bypass_obj(otmp);
+                        obj_extract_self(otmp);
+                        if (await flooreffects(otmp, mtmp.mx, mtmp.my, ''))
+                            continue;
+                        await place_object(otmp, mtmp.mx, mtmp.my);
+                    }
                 }
-            }
+                return finishSteed();
+            })();
         }
-        if (mtmp === game.u.usteed)
-            await poly_steed(mtmp, olddata);
+        return finishSteed();
+    }
 
-        /* old form might not have been affected by Elbereth but perhaps the
-           new form is */
+    function finishSteed() {
+        return mtmp === game.u.usteed
+            ? poly_steed(mtmp, olddata).then(finishFear) : finishFear();
+    }
+
+    function finishFear() {
         if (game.context?.mon_moving) {
-            /* give 'mtmp' a new chance to pinpoint hero's location */
             if (!u_at(mtmp.mux, mtmp.muy))
                 set_apparxy_ref(mtmp);
-            /* if hero is on Elbereth or scare monster, mtmp in new form might
-               become scared */
             if (!mtmp.mpeaceful
                 && onscary(mtmp.mux, mtmp.muy, mtmp)
                 && monnear(mtmp, mtmp.mux, mtmp.muy))
-                await monflee(mtmp, rn1(9, 2), true, true); /* 2..10 turns */
+                return monflee(mtmp, rn1(9, 2), true, true).then(() => 1);
         }
         return 1;
-    };
-
-    if (leashNeedsRelease) {
-        return (async () => {
-            if (canseemon(mtmp)) {
-                const possessive = ['his', 'her', 'its', 'their'][
-                    pronoun_gender(mtmp, PRONOUN_HALLU)];
-                await pline(`${Monnam(mtmp)} pulls free of ${possessive} leash!`);
-            } else {
-                await pline('Your leash falls slack.');
-            }
-            const leash = (game.invent || []).find((obj) =>
-                obj.otyp === ONAMES.LEASH && obj.leashmon === mtmp.m_id);
-            if (leash) {
-                leash.leashmon = 0;
-                update_inventory();
-            }
-            mtmp.mleashed = 0;
-            return await finishChange();
-        })();
     }
 
-    return finishChange();
+    if (!mdat)
+        return selectForm();
+    mndx = monsndx(mdat);
+    if (game.mvitals[mndx].mvflags & G_GENOD)
+        return 0;
+    return changeForm();
 }
 
 // src/mon.c:4367 wake_nearby() / wake_nearto_core() — noise wakes monsters
@@ -4548,16 +4676,22 @@ export function hide_monst(mon) {
 
     if ((is_hider(ptr) || hider_under)
         && !(mon.mundetected || M_AP_TYPE(mon))) {
-        /* C forces the viz_array cell dark so cansee() can't block the
-           re-hide; our restrap reads cansee() live, so mask via the same
-           trick through the vision seam if present */
+        const x = mon.mx, y = mon.my;
+        const save_viz = game.viz_array[y][x];
+
+        /* override vision, forcing hero to be unable to see monster's spot */
+        game.viz_array[y][x] &= ~(IN_SIGHT | COULD_SEE);
         if (is_hider(ptr))
             restrap(mon);
         /* try again if mimic missed its 1/3 chance to hide */
         if (ptr.mlet === MONSYMS.S_MIMIC && !M_AP_TYPE(mon))
             restrap(mon);
-        if (hider_under)
-            hideunder(mon);
+        game.viz_array[y][x] = save_viz;
+        if (hider_under) {
+            const hidden = hideunder(mon);
+            if (hidden && typeof hidden.then === 'function')
+                return hidden.then(() => {});
+        }
     }
 }
 

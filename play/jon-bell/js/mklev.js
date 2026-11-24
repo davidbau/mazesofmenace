@@ -1,3 +1,4 @@
+import { nh_qsort } from './nhsort.js';
 import { xname } from './do_wear.js';
 import { nh_delay_output } from './animframes.js';
 import { WAND_CLASS } from './const.js';
@@ -3909,8 +3910,11 @@ function sort_rooms() {
     const g = game;
     const n = g.level.nroom;
     const oldToNew = new Array(n).fill(0);
-    const liveRooms = g.level.rooms.slice(0, n)
-        .sort((a, b) => (a?.lx || 0) - (b?.lx || 0));
+    /* C mklev.c:215 qsort(svr.rooms, n, mkroom_cmp): lx < -> -1, else (lx >) */
+    const liveRooms = nh_qsort(g.level.rooms.slice(0, n), (a, b) => {
+        const xl = a?.lx || 0, yl = b?.lx || 0;
+        return xl < yl ? -1 : (xl > yl ? 1 : 0);
+    });
     /* C mklev.c:210-216 qsorts only svr.rooms[0..nroom); the subroom half
      * (gs.subrooms = &svr.rooms[MAXNROFROOMS + 1], decl.c:1169) is untouched.
      * Themed rooms build their subrooms before sort_rooms runs (mklev.c:1295-1301),

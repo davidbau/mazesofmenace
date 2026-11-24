@@ -675,7 +675,7 @@ export async function tamedog(mtmp, obj, givemsg) {
             } else if (cansee(mtmp.mx, mtmp.my)) {
                 await pline(`${The(xname(obj))} stops.`);
             }
-            place_object(obj, mtmp.mx, mtmp.my);
+            await place_object(obj, mtmp.mx, mtmp.my);
             await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, false);
             return true;
         }
@@ -709,7 +709,7 @@ export async function tamedog(mtmp, obj, givemsg) {
     initedog(mtmp, !mtmp.edog);
 
     if (obj) {
-        place_object(obj, mtmp.mx, mtmp.my);
+        await place_object(obj, mtmp.mx, mtmp.my);
         if (await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, true) === 2)
             return true;
     }

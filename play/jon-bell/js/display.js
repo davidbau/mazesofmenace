@@ -1,3 +1,4 @@
+import { nh_qsort } from './nhsort.js';
 import { hcolor } from './do_name.js';
 import { decode_mixed } from './windows.js';
 import { mixed_to_utf8 } from './utf8map.js';
@@ -3394,10 +3395,10 @@ export function see_nearby_objects() {
              * encountered. */
             if (!cansee(ix, iy) || (dx * dx + dy * dy) > neardist)
                 continue;
-            /* operate on remembered generic-ness before observing */
-            const wasGeneric = _glyph_is_generic_object(obj);
             observe_object(obj);
-            if (wasGeneric)
+            /* operate on remembered glyph rather than current one */
+            const rg = game.level.at(ix, iy)?.remembered_glyph;
+            if (rg?.cls === GLYPHCLS_OBJ && rg.otyp > 0 && rg.otyp < FIRST_OBJECT - 1)
                 newsym_force(ix, iy); /* C display.c:1603 */
         }
     }
@@ -8669,7 +8670,7 @@ export async function tty_restore_menu() {
     }
     if (!saves.length) return null;
     // C files.c:1528-1530 sorts the saved character descriptions with strcmp.
-    saves.sort((a, b) => a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
+    if (saves.length > 1) nh_qsort(saves, (a, b) => a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
     const allNormal = saves.every(save => save.mode === '-');
     const menu = new TtyMenu({ overlay: true, baseWindow: true });
     for (const line of [COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B,
@@ -17093,7 +17094,8 @@ export async function display_migrating_mons(choice, nextlevel) {
         if (choice !== 'q') await pline('None.');
         return;
     }
-    selected.sort((a, b) => a.mux - b.mux || a.muy - b.muy
+    /* C wizcmds.c:1584 qsort(marray, n, migrsort_cmp) */
+    nh_qsort(selected, (a, b) => a.mux - b.mux || a.muy - b.muy
         || (a.m_id < b.m_id ? -1 : a.m_id > b.m_id ? 1 : 0));
     const destination = choice === 'c' ? 'current level'
         : choice === 'n' ? 'next level' : "'other' levels";

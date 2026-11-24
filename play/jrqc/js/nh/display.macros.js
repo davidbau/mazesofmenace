@@ -29,7 +29,7 @@ export function canspotmon(mon) {
     return canseemon(mon) || sensemon(mon) ? 1 : 0;
 }
 export function canspotself() {
-    return (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked || u.uswallow | 0 || !((u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked && !(u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.uundetected || (u.uprops[TELEPAT].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic)) ? 1 : 0;
+    return (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked || u.uswallow || !((u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked && !(u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.uundetected || (u.uprops[TELEPAT].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic)) ? 1 : 0;
 }
 export function covers_objects(xx, yy) {
     return is_pool(xx, yy) && !u.uinwater || svl.level.locations[xx][yy].typ === LAVAPOOL || svl.level.locations[xx][yy].typ === LAVAWALL ? 1 : 0;
@@ -131,7 +131,7 @@ export function glyph_is_invisible(glyph) {
     return glyph === GLYPH_INVISIBLE ? 1 : 0;
 }
 export function glyph_to_mon(glyph) {
-    return glyph >= GLYPH.MON_FEM_OFF && glyph < GLYPH.MON_FEM_OFF + NUMMONS ? glyph - GLYPH.MON_FEM_OFF | 0 : glyph >= GLYPH.MON_MALE_OFF && glyph < GLYPH.MON_MALE_OFF + NUMMONS ? glyph - GLYPH.MON_MALE_OFF | 0 : glyph >= GLYPH.PET_FEM_OFF && glyph < GLYPH.PET_FEM_OFF + NUMMONS ? glyph - GLYPH.PET_FEM_OFF | 0 : glyph >= GLYPH.PET_MALE_OFF && glyph < GLYPH.PET_MALE_OFF + NUMMONS ? glyph - GLYPH.PET_MALE_OFF | 0 : glyph >= GLYPH.DETECT_FEM_OFF && glyph < GLYPH.DETECT_FEM_OFF + NUMMONS ? glyph - GLYPH.DETECT_FEM_OFF | 0 : glyph >= GLYPH.DETECT_MALE_OFF && glyph < GLYPH.DETECT_MALE_OFF + NUMMONS ? glyph - GLYPH.DETECT_MALE_OFF | 0 : glyph >= GLYPH.RIDDEN_FEM_OFF && glyph < GLYPH.RIDDEN_FEM_OFF + NUMMONS ? glyph - GLYPH.RIDDEN_FEM_OFF | 0 : glyph >= GLYPH.RIDDEN_MALE_OFF && glyph < GLYPH.RIDDEN_MALE_OFF + NUMMONS ? glyph - GLYPH.RIDDEN_MALE_OFF | 0 : NUMMONS;
+    return glyph >= GLYPH.MON_FEM_OFF && glyph < GLYPH.MON_FEM_OFF + NUMMONS ? glyph - GLYPH.MON_FEM_OFF | 0 : glyph >= GLYPH.MON_MALE_OFF && glyph < GLYPH.MON_MALE_OFF + NUMMONS ? glyph - GLYPH.MON_MALE_OFF : glyph >= GLYPH.PET_FEM_OFF && glyph < GLYPH.PET_FEM_OFF + NUMMONS ? glyph - GLYPH.PET_FEM_OFF | 0 : glyph >= GLYPH.PET_MALE_OFF && glyph < GLYPH.PET_MALE_OFF + NUMMONS ? glyph - GLYPH.PET_MALE_OFF | 0 : glyph >= GLYPH.DETECT_FEM_OFF && glyph < GLYPH.DETECT_FEM_OFF + NUMMONS ? glyph - GLYPH.DETECT_FEM_OFF | 0 : glyph >= GLYPH.DETECT_MALE_OFF && glyph < GLYPH.DETECT_MALE_OFF + NUMMONS ? glyph - GLYPH.DETECT_MALE_OFF | 0 : glyph >= GLYPH.RIDDEN_FEM_OFF && glyph < GLYPH.RIDDEN_FEM_OFF + NUMMONS ? glyph - GLYPH.RIDDEN_FEM_OFF | 0 : glyph >= GLYPH.RIDDEN_MALE_OFF && glyph < GLYPH.RIDDEN_MALE_OFF + NUMMONS ? glyph - GLYPH.RIDDEN_MALE_OFF | 0 : NUMMONS;
 }
 export function glyph_is_body_piletop(glyph) {
     return glyph >= GLYPH.BODY_PILETOP_OFF && glyph < GLYPH.BODY_PILETOP_OFF + NUMMONS ? 1 : 0;

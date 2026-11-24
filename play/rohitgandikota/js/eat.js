@@ -1039,7 +1039,7 @@ async function touchfood(otmp) {
     }
 
     if (carried(otmp)) {
-        freeinv(otmp);
+        await freeinv(otmp);
         if (inv_cnt(false) >= invlet_basic) {
             sellobj_state(SELL_DONTSELL);
             await dropy(otmp);
@@ -1183,8 +1183,7 @@ async function rottenfood(obj) {
             where = game.u.usteed ? 'saddle' : surface(game.u.ux, game.u.uy);
         }
         await pline(`The world spins and ${what} ${where}.`);
-        const intr = (game.u.intrinsic ||= {});
-        intr.HDeaf = (intr.HDeaf | 0) + duration;
+        incr_itimeout('HDeaf', duration);
         (game.disp ||= {}).botl = true;
         nomul(-duration);
         game.multi_reason = 'unconscious from rotten food';
@@ -2262,7 +2261,7 @@ export async function done_eating(message) {
        useupf's shop-billing arm records inside useupf itself. */
     if (piece) {
         if (carried(piece))
-            useup(piece);
+            await useup(piece);
         else
             await useupf(piece, 1);
     }

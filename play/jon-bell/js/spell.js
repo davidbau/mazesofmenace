@@ -1,3 +1,4 @@
+import { nh_qsort } from './nhsort.js';
 import { unturn_dead, spell_damage_bonus } from './zap.js';
 // spell.js — Spell casting RNG path.
 // C ref: nethack-c/src/spell.c
@@ -1776,7 +1777,8 @@ function sortspells() {
         g.spl_sortmode = SORTBY_LETTER;
         return;
     }
-    const sorted = g.spl_orderindx.slice(0, n).sort(spell_cmp);
+    /* C spell.c:1969 qsort(gs.spl_orderindx, n, spell_cmp) */
+    const sorted = nh_qsort(g.spl_orderindx.slice(0, n), spell_cmp);
     for (let i = 0; i < n; i++) g.spl_orderindx[i] = sorted[i];
 }
 

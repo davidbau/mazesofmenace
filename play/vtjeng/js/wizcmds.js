@@ -4,6 +4,7 @@
 // wiz_identify(), wiz_polyself(), wiz_intrinsic(), wiz_kill(), and
 // wiz_makemap(), among the rows cmd.c dispatches here.
 
+import { cmd_from_func } from './command_bindings.js';
 import { NO_COLOR } from './terminal.js';
 import { engr_stats, engraving_sanity_check } from './engrave.js';
 import { light_sources_sanity_check, light_stats } from './light.js';
@@ -74,7 +75,7 @@ import { note_unported } from './unported.js';
 import { load_lua } from './nhlua.js';
 import { coreRandom } from './rng.js';
 import {
-    cmd_from_func, getdir, levltyp, makemap_prepost, paranoid_query, y_n,
+    getdir, levltyp, makemap_prepost, paranoid_query, y_n,
     yn_function, ynq,
 } from './cmd.js';
 import { get_feature_notice_ver } from './version.js';
@@ -1461,7 +1462,7 @@ export async function wiz_custom(state = game, env = {}) {
     wizcustom_glyphids(items, wizcustom_callback, state);
     await (env.menu ?? select_menu)(state, { title, how: PICK_NONE, items, cancelValue: null });
     if (glyphid_cache_status(state)) free_glyphid_cache(state);
-    (env.redraw ?? docrt)(state);
+    await (env.redraw ?? docrt)(state);
     return ECMD_OK;
 }
 

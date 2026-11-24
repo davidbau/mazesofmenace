@@ -1718,7 +1718,9 @@ export async function rloco(obj) {
 
         newsym(otx, oty); /* update old location */
     }
-    place_object(obj, tx, ty);
+    const placement = place_object(obj, tx, ty);
+    if (placement)
+        await placement;
     /* note: block_point() for boulder handled by place_object() */
     newsym(tx, ty);
     return true;

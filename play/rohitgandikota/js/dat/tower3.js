@@ -58,23 +58,23 @@ export async function tower3_level() {
     /* Entry door is, of course, locked */
     des.door('locked', 14, 5);
     /* Let's put a dragon behind the door, just for the fun... */
-    des.monster('D', 13, 5);
-    des.monster({ x: 12, y: 4 });
-    des.monster({ x: 12, y: 6 });
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
+    await des.monster('D', 13, 5);
+    await des.monster({ x: 12, y: 4 });
+    await des.monster({ x: 12, y: 6 });
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
     des.object('long sword', place[3]);
-    des.trap({ coord: place[3] });
+    await des.trap({ coord: place[3] });
     des.object('lock pick', place[0]);
-    des.trap({ coord: place[0] });
+    await des.trap({ coord: place[0] });
     des.object('elven cloak', place[1]);
-    des.trap({ coord: place[1] });
+    await des.trap({ coord: place[1] });
     des.object('blindfold', place[2]);
-    des.trap({ coord: place[2] });
+    await des.trap({ coord: place[2] });
     /* Walls in the tower are non diggable */
     des.non_diggable(selection.area(0, 0, 18, 12));
 }

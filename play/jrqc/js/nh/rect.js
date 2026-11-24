@@ -59,11 +59,11 @@ export function free_rect() {   // rect.c:45
  * @returns {number} int
  */
 export function get_rect_ind(r) {   // rect.c:60
-    let rectp = null, lx = 0, ly = 0, hx = 0, hy = 0, i = 0;
-    lx = r.lx;
-    ly = r.ly;
-    hx = r.hx;
-    hy = r.hy;
+    let rectp = null, i = 0;
+    const lx = r.lx;
+    const ly = r.ly;
+    const hx = r.hx;
+    const hy = r.hy;
     for (i = 0, rectp = $c.radd(rect, 0); i < rect_cnt; i = i + 1 | 0, rectp = $c.radd(rectp, 1)) {
         if (lx === rectp.lx && ly === rectp.ly && hx === rectp.hx && hy === rectp.hy) {
             return i;
@@ -79,11 +79,11 @@ export function get_rect_ind(r) {   // rect.c:60
  * @returns {$T.nhrect | null} NhRect *
  */
 export function get_rect(r) {   // rect.c:82
-    let rectp = null, lx = 0, ly = 0, hx = 0, hy = 0, i = 0;
-    lx = r.lx;
-    ly = r.ly;
-    hx = r.hx;
-    hy = r.hy;
+    let rectp = null, i = 0;
+    const lx = r.lx;
+    const ly = r.ly;
+    const hx = r.hx;
+    const hy = r.hy;
     for (i = 0, rectp = $c.radd(rect, 0); i < rect_cnt; i = i + 1 | 0, rectp = $c.radd(rectp, 1)) {
         if (lx >= rectp.lx && ly >= rectp.ly && hx <= rectp.hx && hy <= rectp.hy) {
             return rectp;
@@ -115,10 +115,10 @@ function intersect(r1, r2, r3) {   // rect.c:116
     if (r2.lx > r1.hx || r2.ly > r1.hy || r2.hx < r1.lx || r2.hy < r1.ly) {
         return FALSE;
     }
-    r3.lx = $c.i16(r2.lx > r1.lx ? r2.lx : r1.lx);
-    r3.ly = $c.i16(r2.ly > r1.ly ? r2.ly : r1.ly);
-    r3.hx = $c.i16(r2.hx > r1.hx ? r1.hx : r2.hx);
-    r3.hy = $c.i16(r2.hy > r1.hy ? r1.hy : r2.hy);
+    r3.lx = r2.lx > r1.lx ? r2.lx : r1.lx;
+    r3.ly = r2.ly > r1.ly ? r2.ly : r1.ly;
+    r3.hx = r2.hx > r1.hx ? r1.hx : r2.hx;
+    r3.hy = r2.hy > r1.hy ? r1.hy : r2.hy;
     if (r3.lx > r3.hx || r3.ly > r3.hy) {
         return FALSE;
     }
@@ -133,10 +133,10 @@ function intersect(r1, r2, r3) {   // rect.c:116
 export function rect_bounds(r1$in, r2$in, r3) {   // rect.c:134
     const r1 = r1$in;   // passed by value: the caller copies
     const r2 = r2$in;   // passed by value: the caller copies
-    r3.lx = $c.i16(min(r1.lx, r2.lx));
-    r3.ly = $c.i16(min(r1.ly, r2.ly));
-    r3.hx = $c.i16(max(r1.hx, r2.hx));
-    r3.hy = $c.i16(max(r1.hy, r2.hy));
+    r3.lx = min(r1.lx, r2.lx);
+    r3.ly = min(r1.ly, r2.ly);
+    r3.hx = max(r1.hx, r2.hx);
+    r3.hy = max(r1.hy, r2.hy);
 }
 /*
  * Remove a rectangle from the list of free NhRect.
@@ -145,8 +145,7 @@ export function rect_bounds(r1$in, r2$in, r3) {   // rect.c:134
  * @param {$T.nhrect | null} r NhRect *
  */
 export function remove_rect(r) {   // rect.c:147
-    let ind = 0;
-    ind = get_rect_ind(r);
+    const ind = get_rect_ind(r);
     if (ind >= 0) {
         $c.radd(rect, ind).$copyFrom($c.radd(rect, rect_cnt = rect_cnt - 1 | 0));
     }
@@ -191,24 +190,24 @@ export async function split_rects(r1, r2) {   // rect.c:182
             await split_rects($c.radd(rect, i), r);
         }
     }
-    if (((r2.ly - old_r.ly | 0) - 1 | 0) > ((old_r.hy < ROWNO - 1 ? 2 * YLIM : YLIM + 1) + 4 | 0)) {
+    if (r2.ly - old_r.ly - 1 > (old_r.hy < ROWNO - 1 ? 2 * YLIM : YLIM + 1) + 4) {
         r.$copyFrom(old_r);
-        r.hy = $c.i16(r2.ly - 2 | 0);
+        r.hy = $c.i16(r2.ly - 2);
         await add_rect(r);
     }
-    if (((r2.lx - old_r.lx | 0) - 1 | 0) > ((old_r.hx < COLNO - 1 ? 2 * XLIM : XLIM + 1) + 4 | 0)) {
+    if (r2.lx - old_r.lx - 1 > (old_r.hx < COLNO - 1 ? 2 * XLIM : XLIM + 1) + 4) {
         r.$copyFrom(old_r);
-        r.hx = $c.i16(r2.lx - 2 | 0);
+        r.hx = $c.i16(r2.lx - 2);
         await add_rect(r);
     }
-    if (((old_r.hy - r2.hy | 0) - 1 | 0) > ((old_r.ly > 0 ? 2 * YLIM : YLIM + 1) + 4 | 0)) {
+    if (old_r.hy - r2.hy - 1 > (old_r.ly > 0 ? 2 * YLIM : YLIM + 1) + 4) {
         r.$copyFrom(old_r);
-        r.ly = $c.i16(r2.hy + 2 | 0);
+        r.ly = $c.i16(r2.hy + 2);
         await add_rect(r);
     }
-    if (((old_r.hx - r2.hx | 0) - 1 | 0) > ((old_r.lx > 0 ? 2 * XLIM : XLIM + 1) + 4 | 0)) {
+    if (old_r.hx - r2.hx - 1 > (old_r.lx > 0 ? 2 * XLIM : XLIM + 1) + 4) {
         r.$copyFrom(old_r);
-        r.lx = $c.i16(r2.hx + 2 | 0);
+        r.lx = $c.i16(r2.hx + 2);
         await add_rect(r);
     }
 }

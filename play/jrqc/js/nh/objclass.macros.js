@@ -19,20 +19,20 @@ export function dealloc_fruit(rind) {
     $c.free(rind);
 }
 export function is_organic(otmp) {
-    return (objects[otmp.otyp].oc_material | 0) <= WOOD ? 1 : 0;
+    return objects[otmp.otyp].oc_material <= WOOD ? 1 : 0;
 }
 export function is_metallic(otmp) {
-    return (objects[otmp.otyp].oc_material | 0) >= IRON && (objects[otmp.otyp].oc_material | 0) <= MITHRIL ? 1 : 0;
+    return objects[otmp.otyp].oc_material >= IRON && objects[otmp.otyp].oc_material <= MITHRIL ? 1 : 0;
 }
 export function is_rustprone(otmp) {
-    return (objects[otmp.otyp].oc_material | 0) === IRON ? 1 : 0;
+    return objects[otmp.otyp].oc_material === IRON ? 1 : 0;
 }
 export function is_crackable(otmp) {
-    return (objects[otmp.otyp].oc_material | 0) === GLASS && otmp.oclass === ARMOR_CLASS ? 1 : 0;
+    return objects[otmp.otyp].oc_material === GLASS && otmp.oclass === ARMOR_CLASS ? 1 : 0;
 }
 export function is_corrodeable(otmp) {
-    return (objects[otmp.otyp].oc_material | 0) === COPPER || (objects[otmp.otyp].oc_material | 0) === IRON ? 1 : 0;
+    return objects[otmp.otyp].oc_material === COPPER || objects[otmp.otyp].oc_material === IRON ? 1 : 0;
 }
 export function is_damageable(otmp) {
-    return (objects[otmp.otyp].oc_material | 0) === IRON || is_flammable(otmp) || is_rottable(otmp) || ((objects[otmp.otyp].oc_material | 0) === COPPER || (objects[otmp.otyp].oc_material | 0) === IRON) || (objects[otmp.otyp].oc_material | 0) === GLASS && otmp.oclass === ARMOR_CLASS ? 1 : 0;
+    return objects[otmp.otyp].oc_material === IRON || is_flammable(otmp) || is_rottable(otmp) || (objects[otmp.otyp].oc_material === COPPER || objects[otmp.otyp].oc_material === IRON) || objects[otmp.otyp].oc_material === GLASS && otmp.oclass === ARMOR_CLASS ? 1 : 0;
 }

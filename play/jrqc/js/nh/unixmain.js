@@ -204,7 +204,7 @@ export async function main(argc$in, argv$in) {   // unixmain.c:58
             }
         }
         if (!resuming) {
-            neednewlock = $c.i8(!new $c.Ptr(svp.plname, 0).get(0) ? 1 : 0);
+            neednewlock = !new $c.Ptr(svp.plname, 0).get(0) ? 1 : 0;
             /* new game:  start by choosing role, race, etc;
                player might change the hero's name while doing that,
                in which case we try to restore under the new name
@@ -254,7 +254,7 @@ export async function main(argc$in, argv$in) {   // unixmain.c:58
  * @returns {Promise<void>}
  */
 async function process_options(argc, argv) {   // unixmain.c:330
-    let arg = null, origarg = null, i = 0, l = 0, mxplyrs = 0, mx_ok = 0;
+    let origarg = null, i = 0;
     await config_error_init(FALSE, $c.lit("command line"), FALSE);
     /*
      * Process options.
@@ -267,13 +267,13 @@ async function process_options(argc, argv) {   // unixmain.c:330
     while (argc > 1 && argv.get(1).get(0) === 45) {
         argv = argv.add(1);
         argc = argc - 1 | 0;
-        arg = origarg = argv.get(0);
+        let arg = origarg = argv.get(0);
         /* allow second dash if arg is longer than one character */
         /* "--a=b" violates the "--" ok when at least 2 chars long rule */
         if (arg.get(0) === 45 && arg.get(1) === 45 && arg.get(2) !== 0 && (arg.get(3) !== 0 && arg.get(3) !== 61 && arg.get(3) !== 58)) {
             arg = arg.add(1);
         }
-        l = $c.i32($c.strlen(arg));
+        let l = $c.i32($c.strlen(arg));
         if (l < 6 && !$c.strncmp(arg, $c.lit("-no-"), 4)) {
             l = 6;
         } else if (l < 4) {
@@ -381,8 +381,8 @@ async function process_options(argc, argv) {   // unixmain.c:330
         /* else config_error_add("Unknown option: %.60s", origarg); */
     }
     if (argc > 1) {
-        mxplyrs = $c.atoi(argv.get(1));
-        mx_ok = $c.i8(mxplyrs > 0 ? 1 : 0);
+        const mxplyrs = $c.atoi(argv.get(1));
+        const mx_ok = mxplyrs > 0 ? 1 : 0;
         await config_error_add($c.lit("%s%s%s"), mx_ok ? $c.lit("MAXPLAYERS are set in sysconf file") : $c.lit("Expected MAXPLAYERS, found \""), mx_ok ? $c.lit("") : argv.get(1), mx_ok ? $c.lit("") : $c.lit("\""));
         /* XXX This is deprecated in favor of SYSCF with MAXPLAYERS */
     }
@@ -442,7 +442,6 @@ export async function chdirx(dir, wr) {   // unixmain.c:491
  * @returns {number} boolean
  */
 export function whoami() {   // unixmain.c:558
-    let s = null;
     /*
      * Who am i? Algorithm: 1. Use name as specified in NETHACKOPTIONS
      *                      2. Use $USER or $LOGNAME    (if 1. fails)
@@ -455,7 +454,7 @@ export function whoami() {   // unixmain.c:558
      * somebody else's name.
      */
     if (!new $c.Ptr(svp.plname, 0).get(0)) {
-        s = nh_getenv($c.lit("USER"));
+        let s = nh_getenv($c.lit("USER"));
         if (!s || !s.get(0)) {
             s = nh_getenv($c.lit("LOGNAME"));
         }
@@ -524,10 +523,10 @@ export function authorize_explore_mode() {   // unixmain.c:641
  * @returns {Promise<void>}
  */
 async function wd_message() {   // unixmain.c:656
-    let tmp = null, $t1;
+    let $t1;
     if (iflags.wiz_error_flag) {
         if (sysopt.wizards && sysopt.wizards.get(0)) {
-            tmp = await build_english_list(sysopt.wizards);
+            const tmp = await build_english_list(sysopt.wizards);
             await pline($c.lit("Only user%s %s may access debug (wizard) mode."), $c.strchr(sysopt.wizards, 32) ? $c.lit("s") : $c.lit(""), tmp);
             $c.free(tmp);
         } else {
@@ -552,11 +551,10 @@ async function wd_message() {   // unixmain.c:656
  * @param {$c.Ptr | null} name char *
  */
 export function append_slash(name) {   // unixmain.c:682
-    let ptr = null;
     if (!name.get(0)) {
         return;
     }
-    ptr = name.add($c.idx($c.subu64($c.strlen(name), 1)));
+    let ptr = name.add($c.idx($c.subu64($c.strlen(name), 1)));
     if (ptr.get(0) !== 47) {
         (ptr = ptr.add(1)).set(0, 47);
         (ptr = ptr.add(1)).set(0, 0);
@@ -568,8 +566,8 @@ export function append_slash(name) {   // unixmain.c:682
  * @returns {number} boolean
  */
 export function check_user_string(optstr) {   // unixmain.c:697
-    let pw = null, pwlen = 0, eop = null, w = null, pwname = null;
-    pwname = null;
+    let pw = null;
+    let pwname = null;
     if (optstr.get(0) === 42) {
         return TRUE;   /* allow any user */
     }
@@ -581,9 +579,9 @@ export function check_user_string(optstr) {   // unixmain.c:697
     if (!pwname || !pwname.get(0)) {
         return FALSE;
     }
-    pwlen = $c.i32($c.strlen(pwname));
-    eop = eos(optstr);   /* temporarily cast away 'const' */
-    w = optstr;
+    const pwlen = $c.i32($c.strlen(pwname));
+    const eop = eos(optstr);   /* temporarily cast away 'const' */
+    let w = optstr;
     while ($c.pcmp(w.add(pwlen), eop) <= 0) {
         if (!w.get(0)) {
             break;
@@ -607,12 +605,11 @@ export function check_user_string(optstr) {   // unixmain.c:697
  * @returns {*} struct passwd *
  */
 function get_unix_pw() {   // unixmain.c:733
-    let user = null, uid = 0;
     if (get_unix_pw$pw) {
         return get_unix_pw$pw;   /* cache answer */
     }
-    uid = $c.getuid();
-    user = $c.getlogin();
+    const uid = $c.getuid();
+    let user = $c.getlogin();
     if (user) {
         get_unix_pw$pw = $c.getpwnam(user);
         if (get_unix_pw$pw && get_unix_pw$pw.pw_uid !== uid) {
@@ -637,8 +634,7 @@ function get_unix_pw() {   // unixmain.c:733
  * @returns {$c.Ptr | null} char *
  */
 export function get_login_name() {   // unixmain.c:764
-    let pw = null;
-    pw = get_unix_pw();
+    const pw = get_unix_pw();
     get_login_name$buf[0] = 0;
     if (pw) {
         $c.strcpy(new $c.Ptr(get_login_name$buf, 0), pw.pw_name);
@@ -680,20 +676,20 @@ export async function port_insert_pastebuf(buf) {   // unixmain.c:780
  * @returns {number | bigint} unsigned long
  */
 export function sys_random_seed() {   // unixmain.c:814
-    let env_seed = null, seed = 0, seed$2 = [0], pid = 0, no_seed = 0, fptr = null;
+    let seed$2 = [0];
     /* Harness comparison testing: if NETHACK_SEED is set, use it directly.
      * Leave has_strong_rngseed false so reseed_random() remains a no-op. */
     {
-        env_seed = $c.getenv($c.lit("NETHACK_SEED"));
+        const env_seed = $c.getenv($c.lit("NETHACK_SEED"));
         if (env_seed) {
-            seed = $c.strtoul(env_seed, null, 10);
+            const seed = $c.strtoul(env_seed, null, 10);
             return seed;
         }
     }
     seed$2[0] = 0;
-    pid = $c.u64($c.getpid());
-    no_seed = TRUE;
-    fptr = $c.fopen($c.lit("/dev/random"), $c.lit("r"));
+    let pid = $c.u64($c.getpid());
+    let no_seed = TRUE;
+    const fptr = $c.fopen($c.lit("/dev/random"), $c.lit("r"));
     if (fptr) {
         $c.fread(new $c.Ptr(seed$2, 0), 8, 1, fptr);
         $G.has_strong_rngseed = TRUE;   /* decl.c */

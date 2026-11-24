@@ -64,21 +64,21 @@ export async function tower1_level() {
 
     des.ladder('down', 11, 5);
     /* The lord and his court */
-    des.monster('Vlad the Impaler', 6, 5);
-    des.monster('V', niches[0]);
-    des.monster('V', niches[1]);
-    des.monster('V', niches[2]);
+    await des.monster('Vlad the Impaler', 6, 5);
+    await des.monster('V', niches[0]);
+    await des.monster('V', niches[1]);
+    await des.monster('V', niches[2]);
     /* The brides; 'waiting' forces vampire form instead of bat/fog/wolf. */
     /* nh.is_genocided("vampire") — mvitals[PM_VAMPIRE].mvflags & G_GENOD */
     const Vgenod = !!((game.mvitals?.[PMNAMES.PM_VAMPIRE]?.mvflags ?? 0)
                       & MFLAGS.G_GENOD);
     const Vnames = Vgenod ? [null, null, null]
                           : ['Madame', 'Marquise', 'Countess'];
-    des.monster({ id: 'vampire lady', coord: niches[3], name: Vnames[0],
+    await des.monster({ id: 'vampire lady', coord: niches[3], name: Vnames[0],
                   waiting: 1 });
-    des.monster({ id: 'vampire lady', coord: niches[4], name: Vnames[1],
+    await des.monster({ id: 'vampire lady', coord: niches[4], name: Vnames[1],
                   waiting: 1 });
-    des.monster({ id: 'vampire lady', coord: niches[5], name: Vnames[2],
+    await des.monster({ id: 'vampire lady', coord: niches[5], name: Vnames[2],
                   waiting: 1 });
     /* The doors */
     des.door('closed', 8, 3);

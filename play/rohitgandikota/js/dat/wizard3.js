@@ -64,8 +64,8 @@ export async function wizard3_level() {
     const bounds2 = l_selection_fillrect(bnds.lx, bnds.ly + 1,
                                          bnds.hx - 2, bnds.hy - 1);
 
-    const wiz3 = des.map({ halign: 'center', valign: 'center',
-                           map: WIZARD3_MAP, contents: (rm) => {
+    const wiz3 = await des.map({ halign: 'center', valign: 'center',
+                           map: WIZARD3_MAP, contents: async (rm) => {
         des.levregion({ type: 'stair-up', region: [1, 0, 79, 20],
                         region_islev: 1, exclude: [0, 0, 28, 12] });
         des.levregion({ type: 'stair-down', region: [1, 0, 79, 20],
@@ -76,7 +76,7 @@ export async function wizard3_level() {
                               exclude: [0, 0, 27, 12] });
         des.levregion({ region: [25, 11, 25, 11], type: 'portal',
                         name: 'fakewiz1' });
-        des.mazewalk(28, 9, 'east');
+        await des.mazewalk(28, 9, 'east');
         des.region({ region: [7, 3, 15, 11], lit: 0, type: 'morgue',
                      filled: 2 });
         des.region({ region: [17, 6, 18, 11], lit: 0, type: 'beehive',
@@ -103,20 +103,20 @@ export async function wizard3_level() {
         des.non_passwall(selection.area(16, 2, 27, 12));
         des.non_passwall(selection.area(6, 12, 16, 12));
 
-        des.monster('L', 10, 7);
-        des.monster('vampire lord', 12, 7);
+        await des.monster('L', 10, 7);
+        await des.monster('vampire lord', 12, 7);
         /* Some surrounding horrors */
-        des.monster('kraken', 8, 5);
-        des.monster('giant eel', 8, 8);
-        des.monster('kraken', 14, 5);
-        des.monster('giant eel', 14, 8);
+        await des.monster('kraken', 8, 5);
+        await des.monster('giant eel', 8, 8);
+        await des.monster('kraken', 14, 5);
+        await des.monster('giant eel', 14, 8);
         /* Other monsters */
-        des.monster('L');
-        des.monster('D');
-        des.monster('D', 26, 9);
-        des.monster('&');
-        des.monster('&');
-        des.monster('&');
+        await des.monster('L');
+        await des.monster('D');
+        await des.monster('D', 26, 9);
+        await des.monster('&');
+        await des.monster('&');
+        await des.monster('&');
         /* And to make things a little harder. */
         des.trap('board', 10, 7);
         des.trap('board', 12, 7);

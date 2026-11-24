@@ -75,5 +75,5 @@ export async function bigrm11_level() {
     for (let i = 0; i < 6; i++)
         des.trap('rolling boulder');
     for (let i = 0; i < 28; i++)
-        des.monster();
+        await des.monster();
 }

@@ -127,8 +127,8 @@ export function property_by_index(idx, propertynum) {   // timeout.c:117
  * @returns {Promise<void>}
  */
 async function stoned_dialogue() {   // timeout.c:137
-    let i = 0, buf = new Int8Array(256);
-    i = $c.and64(u.uprops[STONED].intrinsic, TIMEOUT);
+    let buf = new Int8Array(256);
+    const i = $c.and64(u.uprops[STONED].intrinsic, TIMEOUT);
     if (i > 0 && i <= 5) {
         $c.strcpy(new $c.Ptr(buf, 0), stoned_texts[$c.idx($c.sub64(5, i))]);
         if (nolimbs(gy.youmonst.data) && strstri(new $c.Ptr(buf, 0), $c.lit("limbs"))) {
@@ -188,9 +188,9 @@ async function stoned_dialogue() {   // timeout.c:137
  * @returns {Promise<void>}
  */
 async function vomiting_dialogue() {   // timeout.c:197
-    let txt = null, buf = new Int8Array(256), v = 0;
-    txt = null;
-    v = $c.and64(u.uprops[VOMITING].intrinsic, TIMEOUT);
+    let buf = new Int8Array(256);
+    let txt = null;
+    const v = $c.and64(u.uprops[VOMITING].intrinsic, TIMEOUT);
     /* note: nhtimeout() hasn't decremented timed properties for the
        current turn yet, so we use Vomiting-1 here */
     switch ($c.i32($c.sub64(v, 1))) {
@@ -264,8 +264,7 @@ async function vomiting_dialogue() {   // timeout.c:197
  * @returns {Promise<void>}
  */
 async function sleep_dialogue() {   // timeout.c:268
-    let i = 0;
-    i = $c.and64(u.uprops[SLEEPY].intrinsic, TIMEOUT);
+    const i = $c.and64(u.uprops[SLEEPY].intrinsic, TIMEOUT);
     if (i === 4) {
         await You($c.lit("yawn."));
     }
@@ -274,13 +273,12 @@ async function sleep_dialogue() {   // timeout.c:268
  * @returns {Promise<void>}
  */
 async function choke_dialogue() {   // timeout.c:295
-    let i = 0, str = null;
-    i = $c.and64(u.uprops[STRANGLED].intrinsic, TIMEOUT);
+    const i = $c.and64(u.uprops[STRANGLED].intrinsic, TIMEOUT);
     if (i > 0 && i <= 5) {
         if (u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0 || !rn2(50)) {
             await urgent_pline(choke_texts2[$c.idx($c.sub64(5, i))], await body_part(NECK));
         } else {
-            str = choke_texts[$c.idx($c.sub64(5, i))];
+            const str = choke_texts[$c.idx($c.sub64(5, i))];
             if ($c.strchr(str, 37)) {
                 await urgent_pline(str, hcolor(c_color_names.c_blue));
             } else {
@@ -295,13 +293,13 @@ async function choke_dialogue() {   // timeout.c:295
  * @returns {Promise<void>}
  */
 async function sickness_dialogue() {   // timeout.c:323
-    let j = 0, i = 0, buf = new Int8Array(256), pronounbuf = new Int8Array(40);
-    j = $c.and64(u.uprops[SICK].intrinsic, TIMEOUT);
-    i = $c.div64(j, 2);
+    let buf = new Int8Array(256), pronounbuf = new Int8Array(40);
+    const j = $c.and64(u.uprops[SICK].intrinsic, TIMEOUT);
+    const i = $c.div64(j, 2);
     if (i > 0 && i <= 3 && $c.rem64(j, 2) !== 0) {
         $c.strcpy(new $c.Ptr(buf, 0), sickness_texts[$c.idx($c.sub64(3, i))]);
         /* change the message slightly for food poisoning */
-        if (((u.usick_type | 0) & SICK_NONVOMITABLE) === 0) {
+        if ((u.usick_type & SICK_NONVOMITABLE) === 0) {
             strsubst(new $c.Ptr(buf, 0), $c.lit("illness"), $c.lit("sickness"));
         }
         if (Hallucination() && strstri(new $c.Ptr(buf, 0), $c.lit("Death's door"))) {
@@ -319,9 +317,8 @@ async function sickness_dialogue() {   // timeout.c:323
  * @returns {Promise<void>}
  */
 async function levitation_dialogue() {   // timeout.c:353
-    let i = 0, s = null, danger = 0;
     /* -1 because the last message comes via float_down() */
-    i = $c.div64($c.sub64($c.and64(u.uprops[LEVITATION].intrinsic, TIMEOUT), 1), 2);
+    const i = $c.div64($c.sub64($c.and64(u.uprops[LEVITATION].intrinsic, TIMEOUT), 1), 2);
     if (ELevitation()) {
         return;
     }
@@ -329,9 +326,9 @@ async function levitation_dialogue() {   // timeout.c:353
         return;
     }
     if ($c.rem64($c.and64(u.uprops[LEVITATION].intrinsic, TIMEOUT), 2) && i > 0 && i <= 2) {
-        s = levi_texts[$c.idx($c.sub64(2, i))];
+        const s = levi_texts[$c.idx($c.sub64(2, i))];
         if ($c.strchr(s, 37)) {
-            danger = $c.i8(is_pool_or_lava(u.ux, u.uy) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? 1 : 0);
+            const danger = is_pool_or_lava(u.ux, u.uy) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? 1 : 0;
             await urgent_pline(s, danger ? $c.lit("over") : $c.lit("in"), danger ? surface(u.ux, u.uy) : $c.lit("air"));
         } else {
             await pline1(s);
@@ -343,9 +340,9 @@ async function levitation_dialogue() {   // timeout.c:353
  * @returns {Promise<void>}
  */
 async function slime_dialogue() {   // timeout.c:389
-    let t = 0, i = 0, buf = new Int8Array(256);
-    t = $c.and64(u.uprops[SLIMED].intrinsic, TIMEOUT);
-    i = $c.div64(t, 2);
+    let buf = new Int8Array(256);
+    const t = $c.and64(u.uprops[SLIMED].intrinsic, TIMEOUT);
+    const i = $c.div64(t, 2);
     if (t === 1) {
         /* display as green slime during "You have become green slime."
            but don't worry about not being able to see self; if already
@@ -415,9 +412,9 @@ export async function burn_away_slime() {   // timeout.c:448
  * @returns {Promise<void>}
  */
 async function slimed_to_death(kptr) {   // timeout.c:457
-    let save_mvflags = 0, slimebuf = new Int8Array(256);
+    let slimebuf = new Int8Array(256);
     /* redundant: polymon() cures sliming when polying into green slime */
-    if (Upolyd() && $c.peq(gy.youmonst.data, $c.relem(mons, PM.GREEN_SLIME))) {
+    if (Upolyd() && gy.youmonst.data === mons[PM.GREEN_SLIME]) {
         await dealloc_killer(kptr);
         return;
     }
@@ -445,8 +442,8 @@ async function slimed_to_death(kptr) {   // timeout.c:457
     if (emits_light(gy.youmonst.data)) {
         await del_light_source(LS_MONSTER, monst_to_any(gy.youmonst));
     }
-    save_mvflags = svm.mvitals[PM.GREEN_SLIME].mvflags;
-    svm.mvitals[PM.GREEN_SLIME].mvflags = $c.u8(save_mvflags & ~G_GENOD);
+    const save_mvflags = svm.mvitals[PM.GREEN_SLIME].mvflags;
+    svm.mvitals[PM.GREEN_SLIME].mvflags = save_mvflags & ~G_GENOD;
     /* become a green slime; also resets youmonst.m_ap_type+.mappearance */
     await polymon(PM.GREEN_SLIME);
     svm.mvitals[PM.GREEN_SLIME].mvflags = save_mvflags;
@@ -476,8 +473,7 @@ async function slimed_to_death(kptr) {   // timeout.c:457
  * @returns {Promise<void>}
  */
 async function phaze_dialogue() {   // timeout.c:534
-    let i = 0;
-    i = $c.div64($c.and64(u.uprops[PASSES_WALLS].intrinsic, TIMEOUT), 2);
+    const i = $c.div64($c.and64(u.uprops[PASSES_WALLS].intrinsic, TIMEOUT), 2);
     if (EPasses_walls() || $c.and64(u.uprops[PASSES_WALLS].intrinsic, ~TIMEOUT)) {
         return;
     }
@@ -489,13 +485,12 @@ async function phaze_dialogue() {   // timeout.c:534
  * @returns {Promise<void>}
  */
 async function region_dialogue() {   // timeout.c:554
-    let no_need_to_breathe = 0, in_poison_gas_cloud = 0, r = 0, i = 0;
-    r = $c.and64(u.uprops[MAGICAL_BREATHING].intrinsic, TIMEOUT);
-    i = $c.div64(r, 2);
+    const r = $c.and64(u.uprops[MAGICAL_BREATHING].intrinsic, TIMEOUT);
+    const i = $c.div64(r, 2);
     /* might have poly'd into non-breather or moved out of gas cloud */
     u.uprops[MAGICAL_BREATHING].intrinsic = $c.and64(u.uprops[MAGICAL_BREATHING].intrinsic, ~TIMEOUT);
-    no_need_to_breathe = $c.i8(u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0 ? 1 : 0);
-    in_poison_gas_cloud = region_danger();
+    const no_need_to_breathe = u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0 ? 1 : 0;
+    const in_poison_gas_cloud = region_danger();
     u.uprops[MAGICAL_BREATHING].intrinsic = $c.or64(u.uprops[MAGICAL_BREATHING].intrinsic, r);
     if (no_need_to_breathe || !in_poison_gas_cloud) {
         return;
@@ -513,8 +508,7 @@ async function region_dialogue() {   // timeout.c:554
  * @returns {Promise<void>}
  */
 async function done_timeout(how, which) {   // timeout.c:575
-    let intrinsic_p = null;
-    intrinsic_p = new $c.FieldRef(u.uprops[which], "intrinsic", "i64");
+    const intrinsic_p = new $c.FieldRef(u.uprops[which], "intrinsic", "i64");
     intrinsic_p.set(0, $c.or64(intrinsic_p.get(0), I_SPECIAL));   /* affects final disclosure */
     await done(how);
     /* life-saved */
@@ -525,8 +519,8 @@ async function done_timeout(how, which) {   // timeout.c:575
  * @returns {Promise<void>}
  */
 export async function nh_timeout() {   // timeout.c:588
-    let upp = null, kptr = null, was_flying = 0, sleeptime = 0, m_idx = 0, baseluck = 0, time_luck = 0, nostone = 0, was_blind = 0, wptr = null, $t1;
-    baseluck = flags.moonphase === FULL_MOON ? 1 : 0;
+    let upp = null, m_idx = 0, $t1;
+    let baseluck = flags.moonphase === FULL_MOON ? 1 : 0;
     if (flags.friday13) {
         baseluck = baseluck - 1 | 0;
     }
@@ -536,14 +530,14 @@ export async function nh_timeout() {   // timeout.c:588
     if (gu.urole.mnum === PM.ARCHEOLOGIST && $G.uarmh && $G.uarmh.otyp === FEDORA) {
         baseluck = baseluck + 1 | 0;
     }
-    if (u.uluck !== baseluck && $c.rem64(svm.moves, u.uhave.amulet | 0 || u.ugangr ? 300 : 600) === 0) {
+    if (u.uluck !== baseluck && $c.rem64(svm.moves, u.uhave.amulet || u.ugangr ? 300 : 600) === 0) {
         /* Cursed luckstones stop bad luck from timing out; blessed luckstones
          * stop good luck from timing out; normal luckstones stop both;
          * neither is stopped if you don't have a luckstone.
          * Luck is based at 0 usually, +1 if a full moon and -1 on Friday 13th
          */
-        time_luck = stone_luck(FALSE);
-        nostone = $c.i8(!carrying(LUCKSTONE) && !stone_luck(TRUE) ? 1 : 0);
+        const time_luck = stone_luck(FALSE);
+        const nostone = !carrying(LUCKSTONE) && !stone_luck(TRUE) ? 1 : 0;
         if (u.uluck > baseluck && (nostone || time_luck < 0)) {
             u.uluck = $c.i8(u.uluck - 1);
         } else if (u.uluck < baseluck && (nostone || time_luck > 0)) {
@@ -582,7 +576,7 @@ export async function nh_timeout() {   // timeout.c:588
     }
     if (u.mtimedone && !(u.mtimedone = u.mtimedone - 1 | 0)) {
         if (Unchanging()) {
-            $t1 = rnd(Math.imul(100, gy.youmonst.data.mlevel) + 1 | 0), u.mtimedone = $t1;
+            $t1 = rnd(Math.imul(100, gy.youmonst.data.mlevel) + 1), u.mtimedone = $t1;
         } else if (is_were(gy.youmonst.data)) {
             await you_unwere(FALSE);   /* if polycontrl, asks whether to rehumanize */
         } else {
@@ -608,11 +602,11 @@ export async function nh_timeout() {   // timeout.c:588
             await pline($c.lit("%s stops galloping."), await Monnam(u.usteed));
         }
     }
-    was_flying = $c.i8((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked ? 1 : 0);
-    for (upp = $c.relem(u.uprops, 0); $c.pcmp(upp, $c.radd($c.relem(u.uprops, 0), 69)) < 0; upp = $c.radd(upp, 1)) {
+    const was_flying = (u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked ? 1 : 0;
+    for (upp = u.uprops[0]; $c.pcmp(upp, $c.radd(u.uprops[0], 69)) < 0; upp = $c.radd(upp, 1)) {
         if ($c.and64(upp.intrinsic, TIMEOUT) && !$c.and64(upp.intrinsic = $c.sub64(upp.intrinsic, 1), TIMEOUT)) {
-            kptr = find_delayed_killer($c.i32($c.rdiff(upp, $c.relem(u.uprops, 0))));
-            switch ($c.rdiff(upp, $c.relem(u.uprops, 0))) {
+            const kptr = find_delayed_killer($c.i32($c.rdiff(upp, u.uprops[0])));
+            switch ($c.rdiff(upp, u.uprops[0])) {
                 case STONED:
                     if (kptr && kptr.name[0]) {
                         svk.killer.format = kptr.format;
@@ -634,7 +628,7 @@ export async function nh_timeout() {   // timeout.c:588
                 case SICK:
                     /* hero might be able to bounce back from food poisoning,
                        but not other forms of illness */
-                    if (((u.usick_type | 0) & SICK_NONVOMITABLE) === 0 && rn2(100) < ACURR(A.CON)) {
+                    if ((u.usick_type & SICK_NONVOMITABLE) === 0 && rn2(100) < ACURR(A.CON)) {
                         await You($c.lit("have recovered from your illness."));
                         await make_sick(0, null, FALSE, SICK_ALL);
                         await exercise(A.CON, FALSE);
@@ -659,7 +653,7 @@ export async function nh_timeout() {   // timeout.c:588
                         }
                     }
                     await done_timeout(POISONING, SICK);
-                    u.usick_type = (0) & 3;
+                    u.usick_type = 0;
                     break;
                 case FAST:
                     if (!Very_fast()) {
@@ -683,7 +677,7 @@ export async function nh_timeout() {   // timeout.c:588
                     break;
                 case BLINDED:
                     {
-                        was_blind = $c.i8(!!Blind() ? 1 : 0);
+                        const was_blind = !!Blind() ? 1 : 0;
                         set_itimeout(new $c.FieldRef(u.uprops[BLINDED], "intrinsic", "i64"), 1);
                         await make_blinded(0, TRUE);
                         if (was_blind && !Blind()) {
@@ -728,7 +722,7 @@ export async function nh_timeout() {   // timeout.c:588
                         incr_itimeout(new $c.FieldRef(u.uprops[SLEEPY], "intrinsic", "i64"), rnd(100));
                     } else if (Sleepy()) {
                         await You($c.lit("fall asleep."));
-                        sleeptime = rnd(20);
+                        const sleeptime = rnd(20);
                         await fall_asleep(-sleeptime | 0, TRUE);
                         incr_itimeout(new $c.FieldRef(u.uprops[SLEEPY], "intrinsic", "i64"), sleeptime + rnd(100) | 0);
                     }
@@ -810,7 +804,7 @@ export async function nh_timeout() {   // timeout.c:588
                 case WARN_OF_MON:
                     /* timed Warn_of_mon is via #wizintrinsic only */
                     if (!Warn_of_mon()) {
-                        wptr = svc.context.warntype.species;
+                        const wptr = svc.context.warntype.species;
                         svc.context.warntype.species = null;
                         svc.context.warntype.speciesidx = NON_PM;
                         if (wptr) {
@@ -836,7 +830,7 @@ export async function nh_timeout() {   // timeout.c:588
                     break;
                 case STRANGLED:
                     svk.killer.format = KILLED.BY;
-                    $c.strcpy(new $c.Ptr(svk.killer.name, 0), u.uburied | 0 ? $c.lit("suffocation") : $c.lit("strangulation"));
+                    $c.strcpy(new $c.Ptr(svk.killer.name, 0), u.uburied ? $c.lit("suffocation") : $c.lit("strangulation"));
                     await done_timeout(DIED, STRANGLED);
                     /* must be declining to die in explore|wizard mode;
                        treat like being cured of strangulation by prayer */
@@ -965,26 +959,26 @@ export async function kill_egg(egg) {   // timeout.c:1009
  * @returns {Promise<void>}
  */
 export async function hatch_egg(arg, timeout) {   // timeout.c:1017
-    let egg = null, mon = null, mon2 = null, cc = new $T.nhcoord(), x = Int16Array.of(0), y = Int16Array.of(0), yours = 0, silent = 0, knows_egg = 0, cansee_hatchspot = 0, i = 0, mnum = 0, hatchcount = 0, monnambuf = new Int8Array(256), carriedby = new Int8Array(256), siblings = 0, redraw = 0;
-    knows_egg = FALSE;
-    cansee_hatchspot = FALSE;
-    hatchcount = 0;
-    egg = arg.a_obj;
+    let mon2 = null, cc = new $T.nhcoord(), x = Int16Array.of(0), y = Int16Array.of(0), i = 0, monnambuf = new Int8Array(256), carriedby = new Int8Array(256);
+    let knows_egg = FALSE;
+    let cansee_hatchspot = FALSE;
+    let hatchcount = 0;
+    const egg = arg.a_obj;
     /* sterilized while waiting */
     if (egg.corpsenm === NON_PM) {
         return;
     }
-    mon = mon2 = null;
-    mnum = big_to_little(egg.corpsenm);
+    let mon = mon2 = null;
+    const mnum = big_to_little(egg.corpsenm);
     /* The identity of one's father is learned, not innate */
-    yours = $c.i8(egg.spe || !flags.female && carried(egg) && !rn2(2) ? 1 : 0);
-    silent = $c.i8(timeout !== svm.moves ? 1 : 0);   /* hatched while away */
+    const yours = egg.spe || !flags.female && carried(egg) && !rn2(2) ? 1 : 0;
+    const silent = timeout !== svm.moves ? 1 : 0;   /* hatched while away */
     /* only can hatch when in INVENT, FLOOR, MINVENT;
        get_obj_location() will fail for MIGRATING, also for CONTAINED
        and BURIED when the flags for those aren't included in the call */
     if (get_obj_location(egg, new $c.Ptr(x, 0), new $c.Ptr(y, 0), 0)) {
         hatchcount = rnd($c.i32(egg.quan));
-        cansee_hatchspot = $c.i8(cansee(x[0], y[0]) && !silent ? 1 : 0);
+        cansee_hatchspot = cansee(x[0], y[0]) && !silent ? 1 : 0;
         if (!(mons[mnum].geno & G_UNIQ) && !(svm.mvitals[mnum].mvflags & (G_GENOD | G_EXTINCT))) {
             for (i = hatchcount; i > 0; i = i - 1 | 0) {
                 if (!await enexto(cc, x[0], y[0], $c.relem(mons, mnum)) || !(mon = await makemon($c.relem(mons, mnum), cc.x, cc.y, NO.MINVENT | MM.NOMSG))) {
@@ -1029,8 +1023,8 @@ export async function hatch_egg(arg, timeout) {   // timeout.c:1017
          */
     }
     if (mon) {
-        siblings = $c.i8(hatchcount > 1 ? 1 : 0);
-        redraw = FALSE;
+        const siblings = hatchcount > 1 ? 1 : 0;
+        let redraw = FALSE;
         if (cansee_hatchspot) {
             /* [bug?  m_monnam() yields accurate monster type
                regardless of hallucination] */
@@ -1127,13 +1121,12 @@ export async function learn_egg_type(mnum) {   // timeout.c:1193
  * @returns {Promise<void>}
  */
 export async function attach_fig_transform_timeout(figurine) {   // timeout.c:1204
-    let i = 0;
     /* stop previous timer, if any */
     await stop_timer(FIG_TRANSFORM, obj_to_any(figurine));
     /*
      * Decide when to transform the figurine.
      */
-    i = rnd(9000) + 200 | 0;
+    const i = rnd(9000) + 200 | 0;
     /* figurine will transform */
     await start_timer(i, TIMER.OBJECT, FIG_TRANSFORM, obj_to_any(figurine));
 }
@@ -1142,9 +1135,9 @@ export async function attach_fig_transform_timeout(figurine) {   // timeout.c:12
  * @returns {Promise<void>}
  */
 async function slip_or_trip() {   // timeout.c:1222
-    let otmp = null, otmp2 = null, saddle = null, what = null, buf = new Int8Array(256), on_foot = 0, ice_only = 0, $t1;
-    otmp = svl.level.objects[u.ux][u.uy];
-    on_foot = $c.i8(!u.usteed ? 1 : 0);
+    let otmp2 = null, saddle = null, buf = new Int8Array(256), $t1;
+    let otmp = svl.level.objects[u.ux][u.uy];
+    const on_foot = !u.usteed ? 1 : 0;
     if (otmp && on_foot && !u.uinwater && is_pool(u.ux, u.uy)) {
         otmp = null;
     }
@@ -1157,7 +1150,7 @@ async function slip_or_trip() {   // timeout.c:1222
           name; if not, look for rocks to trip over; trip over
           anonymous "something" if there aren't any rocks.
         */
-        what = iflags.last_msg === PLNMSG.ONE_ITEM_HERE ? otmp.quan === 1 ? $c.lit("it") : Hallucination() ? $c.lit("they") : $c.lit("them") : otmp.dknown | 0 || !Blind() ? await doname(otmp) : (otmp2 = sobj_at(ROCK, u.ux, u.uy)) === null ? c_common_strings.c_something : otmp2.quan === 1 ? $c.lit("a rock") : $c.lit("some rocks");
+        let what = iflags.last_msg === PLNMSG.ONE_ITEM_HERE ? otmp.quan === 1 ? $c.lit("it") : Hallucination() ? $c.lit("they") : $c.lit("them") : otmp.dknown || !Blind() ? await doname(otmp) : (otmp2 = sobj_at(ROCK, u.ux, u.uy)) === null ? c_common_strings.c_something : otmp2.quan === 1 ? $c.lit("a rock") : $c.lit("some rocks");
         if (Hallucination()) {
             what = $c.strcpy(new $c.Ptr(buf, 0), what);
             $t1 = highc(buf[0]), buf[0] = $t1;
@@ -1171,7 +1164,7 @@ async function slip_or_trip() {   // timeout.c:1222
         }
     } else if ($c.and64(u.uprops[FUMBLING].intrinsic, FROMOUTSIDE) || is_ice(u.ux, u.uy) && !rn2(3)) {
         /* is fumbling from ice alone? */
-        ice_only = $c.i8(!(EFumbling() || $c.and64(u.uprops[FUMBLING].intrinsic, ~FROMOUTSIDE)) ? 1 : 0);
+        const ice_only = !(EFumbling() || $c.and64(u.uprops[FUMBLING].intrinsic, ~FROMOUTSIDE)) ? 1 : 0;
         /* "steed": arbitrary value that will use third person verb
            regardless of what u.usteed might be named, as opposed to
            "you" (second person, which won't have final 's' added) */
@@ -1185,7 +1178,7 @@ async function slip_or_trip() {   // timeout.c:1222
         if (!on_foot && ((saddle = await which_armor(u.usteed, W.SADDLE)) === null || !saddle.cursed) && (!ice_only || !rn2(3))) {
             await You($c.lit("lose your balance."));
             await dismount_steed(DISMOUNT.FELL);
-        } else if (!rn2(10 + acurr(A.DEX) | 0)) {
+        } else if (!rn2(10 + acurr(A.DEX))) {
             /* Maybe slip in a random direction.  This takes place after
                the hero has already changed location.  If the hero is
                in grid bug form, only allow forward hurtle, otherwise a
@@ -1286,13 +1279,13 @@ async function lantern_message(obj) {   // timeout.c:1360
  * @returns {Promise<void>}
  */
 export async function burn_object(arg, timeout) {   // timeout.c:1383
-    let obj = null, canseeit = 0, many = 0, menorah = 0, need_newsym = 0, need_invupdate = 0, bytouch = 0, x = Int16Array.of(0), y = Int16Array.of(0), whose = new Int8Array(256), how_long = 0, mtmp = null, onfloor = 0, $t1, $t2;
-    obj = arg.a_obj;
-    menorah = $c.i8(obj.otyp === CANDELABRUM_OF_INVOCATION ? 1 : 0);
-    many = $c.i8(menorah ? obj.spe > 1 ? 1 : 0 : obj.quan > 1 ? 1 : 0);
+    let canseeit = 0, need_invupdate = 0, x = Int16Array.of(0), y = Int16Array.of(0), whose = new Int8Array(256), $t1, $t2;
+    let obj = arg.a_obj;
+    const menorah = obj.otyp === CANDELABRUM_OF_INVOCATION ? 1 : 0;
+    const many = menorah ? obj.spe > 1 ? 1 : 0 : obj.quan > 1 ? 1 : 0;
     /* timeout while away */
     if (timeout !== svm.moves) {
-        how_long = $c.sub64(svm.moves, timeout);
+        const how_long = $c.sub64(svm.moves, timeout);
         if (how_long >= obj.age) {
             obj.age = 0;
             await end_burn(obj, FALSE);
@@ -1300,7 +1293,7 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
                 obj.spe = 0;   /* no more candles */
                 $t1 = await weight(obj) >>> 0, obj.owt = $t1;
             } else if (Is_candle(obj) || obj.otyp === POT_OIL) {
-                mtmp = null;
+                let mtmp = null;
                 if (obj.where === OBJ.FLOOR) {
                     mtmp = svl.level.monsters[obj.ox][obj.oy];
                 }
@@ -1322,7 +1315,7 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
     }
     /* only interested in INVENT, FLOOR, and MINVENT */
     if (get_obj_location(obj, new $c.Ptr(x, 0), new $c.Ptr(y, 0), 0)) {
-        canseeit = $c.i8(!Blind() && cansee(x[0], y[0]) ? 1 : 0);
+        canseeit = !Blind() && cansee(x[0], y[0]) ? 1 : 0;
         /* set `whose[]' to be "Your " or "Fred's " or "The goblin's " */
         await Shk_Your(new $c.Ptr(whose, 0), obj);
     } else {
@@ -1332,8 +1325,8 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
        or candle so you'll be notified when it burns out even if blind at
        the time; brass lantern doesn't radiate sufficient heat for that
        (however, inventory formatting drops "(lit)" so player can tell) */
-    bytouch = $c.i8(obj.where === OBJ.INVENT && obj.otyp !== BRASS_LANTERN ? 1 : 0);
-    need_newsym = need_invupdate = FALSE;
+    const bytouch = obj.where === OBJ.INVENT && obj.otyp !== BRASS_LANTERN ? 1 : 0;
+    let need_newsym = need_invupdate = FALSE;
     /* obj->age is the age remaining at this point.  */
     switch (obj.otyp) {
         case POT_OIL:
@@ -1512,7 +1505,7 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
                         if (carried(obj)) {
                             await useupall(obj);
                         } else {
-                            onfloor = $c.i8(obj.where === OBJ.FLOOR ? 1 : 0);
+                            const onfloor = obj.where === OBJ.FLOOR ? 1 : 0;
                             /* clear migrating obj's destination code
                                so obfree won't think this item is worn */
                             if (obj.where === OBJ.MIGRATING) {
@@ -1585,16 +1578,16 @@ export async function burn_object(arg, timeout) {   // timeout.c:1383
  * @returns {Promise<void>}
  */
 export async function begin_burn(obj, already_lit) {   // timeout.c:1712
-    let radius = 0, turns = 0, do_timer = 0, x = Int16Array.of(0), y = Int16Array.of(0);
-    radius = 3;
-    turns = 0;
-    do_timer = TRUE;
+    let x = Int16Array.of(0), y = Int16Array.of(0);
+    let radius = 3;
+    let turns = 0;
+    let do_timer = TRUE;
     if (obj.age === 0 && obj.otyp !== MAGIC_LAMP && !artifact_light(obj)) {
         return;
     }
     switch (obj.otyp) {
         case MAGIC_LAMP:
-            obj.lamplit = (1) & 1;
+            obj.lamplit = 1;
             do_timer = FALSE;
             break;
         case POT_OIL:
@@ -1635,7 +1628,7 @@ export async function begin_burn(obj, already_lit) {   // timeout.c:1712
         default:
             /* [ALI] Support artifact light sources */
             if (artifact_light(obj)) {
-                obj.lamplit = (1) & 1;
+                obj.lamplit = 1;
                 do_timer = FALSE;
                 radius = arti_light_radius(obj);
             } else {
@@ -1646,20 +1639,20 @@ export async function begin_burn(obj, already_lit) {   // timeout.c:1712
     }
     if (do_timer) {
         if (await start_timer(turns, TIMER.OBJECT, BURN_OBJECT, obj_to_any(obj))) {
-            obj.lamplit = (1) & 1;
+            obj.lamplit = 1;
             obj.age = $c.sub64(obj.age, turns);
             if (carried(obj) && !already_lit) {
                 await update_inventory();
             }
         } else {
-            obj.lamplit = (0) & 1;
+            obj.lamplit = 0;
         }
     } else {
         if (carried(obj) && !already_lit) {
             await update_inventory();
         }
     }
-    if (obj.lamplit | 0 && !already_lit) {
+    if (obj.lamplit && !already_lit) {
         if (get_obj_location(obj, new $c.Ptr(x, 0), new $c.Ptr(y, 0), CONTAINED_TOO | BURIED_TOO)) {
             await new_light_source(x[0], y[0], radius, LS_OBJECT, obj_to_any(obj));
         } else {
@@ -1687,7 +1680,7 @@ export async function end_burn(obj, timer_attached) {   // timeout.c:1804
     if (!timer_attached) {
         /* [DS] Cleanup explicitly, since timer cleanup won't happen */
         await del_light_source(LS_OBJECT, obj_to_any(obj));
-        obj.lamplit = (0) & 1;
+        obj.lamplit = 0;
         if (obj.where === OBJ.INVENT) {
             await update_inventory();
         }
@@ -1704,8 +1697,7 @@ export async function end_burn(obj, timer_attached) {   // timeout.c:1804
  * @returns {Promise<void>}
  */
 async function cleanup_burn(arg, expire_time) {   // timeout.c:1828
-    let obj = null;
-    obj = arg.a_obj;
+    const obj = arg.a_obj;
     if (!obj.lamplit) {
         await impossible($c.lit("cleanup_burn: obj %s not lit"), await xname(obj));
         return;
@@ -1713,7 +1705,7 @@ async function cleanup_burn(arg, expire_time) {   // timeout.c:1828
     await del_light_source(LS_OBJECT, obj_to_any(obj));
     /* restore unused time */
     obj.age = $c.add64(obj.age, $c.sub64(expire_time, svm.moves));
-    obj.lamplit = (0) & 1;
+    obj.lamplit = 0;
     if (obj.where === OBJ.INVENT) {
         await update_inventory();
     }
@@ -1722,21 +1714,21 @@ async function cleanup_burn(arg, expire_time) {   // timeout.c:1828
  * @returns {Promise<void>}
  */
 export async function do_storms() {   // timeout.c:1847
-    let nstrike = 0, x = 0, y = 0, dirx = 0, diry = 0, count = 0;
+    let nstrike = 0, x = 0, y = 0;
     /* no lightning if not stormy level or too often, even then */
     if (!svl.level.flags.stormy || rn2(8)) {
         return;
     }
     /* the number of strikes is 8-log2(nstrike) */
     for (nstrike = rnd(64); nstrike <= 64; nstrike = Math.imul(nstrike, 2)) {
-        count = 0;
+        let count = 0;
         do {
             x = rnd(COLNO - 1);
             y = rn2(ROWNO);
         } while ((count = count + 1 | 0) < 100 && svl.level.locations[x][y].typ !== CLOUD);
         if (count < 100) {
-            dirx = rn2(3) - 1 | 0;
-            diry = rn2(3) - 1 | 0;
+            const dirx = rn2(3) - 1 | 0;
+            const diry = rn2(3) - 1 | 0;
             if (dirx !== 0 || diry !== 0) {
                 /* BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)): monster LIGHTNING spell */
                 gb.buzzer = null;   /* unspecified attacker */
@@ -1802,9 +1794,9 @@ async function print_queue(win, base) {   // timeout.c:2014
  * @returns {Promise<number>} int
  */
 export async function wiz_timeout_queue() {   // timeout.c:2041
-    let win = 0, buf = new Int8Array(256), propname = null, intrinsic = 0, i = 0, p = 0, count = 0, longestlen = 0, ln = 0, specindx = 0;
-    specindx = 0;
-    win = await create_nhwindow()(NHW.MENU);   /* corner text window */
+    let buf = new Int8Array(256), propname = null, intrinsic = 0, i = 0, p = 0, longestlen = 0, ln = 0;
+    let specindx = 0;
+    const win = await create_nhwindow()(NHW.MENU);   /* corner text window */
     if (win === WIN_ERR) {
         return ECMD.OK;
     }
@@ -1818,7 +1810,7 @@ export async function wiz_timeout_queue() {   // timeout.c:2041
      * check every one; the majority can't obtain temporary timeouts in
      * normal play but those can be forced via the #wizintrinsic command.
      */
-    count = longestlen = 0;
+    let count = longestlen = 0;
     for (i = 0; (propname = propertynames[i].prop_name) !== null; i = i + 1 | 0) {
         p = propertynames[i].prop_num;
         intrinsic = u.uprops[p].intrinsic;
@@ -1883,17 +1875,17 @@ export async function wiz_timeout_queue() {   // timeout.c:2041
  * @returns {Promise<void>}
  */
 export async function timer_sanity_check() {   // timeout.c:2130
-    let curr = null, t_id = 0, x = Int16Array.of(0), y = Int16Array.of(0), obj = null, top = null, obj_adr = null, owhere = 0, lwhere = 0;
+    let curr = null, x = Int16Array.of(0), y = Int16Array.of(0), top = null;
     for (curr = gt.timer_base; curr; curr = curr.next) {
-        t_id = curr.tid;
+        const t_id = curr.tid;
         switch (curr.kind) {
             case TIMER.OBJECT:
                 {
                     /* TODO? verify that the timer type is attached to applicable
                        object (egg for hatch, glob for shrink, and so forth) */
-                    obj = curr.arg.a_obj;
-                    obj_adr = fmt_ptr(obj);
-                    owhere = obj.where;
+                    const obj = curr.arg.a_obj;
+                    const obj_adr = fmt_ptr(obj);
+                    let owhere = obj.where;
                     if (obj.timed === 0) {
                         await impossible($c.lit("timer sanity: untimed obj %s, timer %lu"), obj_adr, t_id);
                     }
@@ -1922,7 +1914,7 @@ export async function timer_sanity_check() {   // timeout.c:2130
                 break;
             case TIMER.LEVEL:
                 {
-                    lwhere = curr.arg.a_long;
+                    const lwhere = curr.arg.a_long;
                     x[0] = $c.i16($c.and64($c.shr64(lwhere, 16), 65535));
                     y[0] = $c.i16($c.and64(lwhere, 65535));
                     if (isok(x[0], y[0])) {
@@ -1936,7 +1928,7 @@ export async function timer_sanity_check() {   // timeout.c:2130
                            be frozen moat; is_ice() only checks for that when
                            the drawbridge is closed (and terrain here would be
                            DRAWBRIGE_UP) */
-                        if (curr.func_index === MELT_ICE_AWAY && !is_ice(x[0], y[0]) && !(svl.level.locations[x[0]][y[0]].typ === DRAWBRIDGE_DOWN && ((svl.level.locations[x[0]][y[0]].flags | 0) & DB.UNDER) === DB.ICE)) {
+                        if (curr.func_index === MELT_ICE_AWAY && !is_ice(x[0], y[0]) && !(svl.level.locations[x[0]][y[0]].typ === DRAWBRIDGE_DOWN && (svl.level.locations[x[0]][y[0]].flags & DB.UNDER) === DB.ICE)) {
                             await impossible($c.lit("timer sanity: melt timer %lu on non-ice %d <%d,%d>"), t_id, svl.level.locations[x[0]][y[0]].typ, x[0], y[0]);
                         }
                     } else {
@@ -1961,14 +1953,13 @@ export async function timer_sanity_check() {   // timeout.c:2130
  * @returns {Promise<void>}
  */
 export async function run_timers() {   // timeout.c:2222
-    let curr = null;
     /*
      * Always use the first element.  Elements may be added or deleted at
      * any time.  The list is ordered; we are done when the first element
      * is in the future.
      */
     while (gt.timer_base && gt.timer_base.timeout <= svm.moves) {
-        curr = gt.timer_base;
+        const curr = gt.timer_base;
         gt.timer_base = curr.next;
         if (curr.kind === TIMER.OBJECT) {
             curr.arg.a_obj.timed = $c.i16(curr.arg.a_obj.timed - 1);
@@ -2010,7 +2001,7 @@ export async function start_timer(when, kind, func_index, arg) {   // timeout.c:
     $t2 = ($t1 = svt.timer_id, svt.timer_id = $c.addu64($t1, 1), $t1), gnu.tid = $t2;
     gnu.timeout = $c.add64(svm.moves, when);
     gnu.kind = kind;
-    gnu.needs_fixup = (0) & 1;
+    gnu.needs_fixup = 0;
     gnu.func_index = func_index;
     gnu.arg.$copyFrom(arg);
     insert_timer(gnu);
@@ -2029,10 +2020,10 @@ export async function start_timer(when, kind, func_index, arg) {   // timeout.c:
  * @returns {Promise<number | bigint>} long
  */
 export async function stop_timer(func_index, arg) {   // timeout.c:2299
-    let cleanup_func = null, doomed = null, timeout = 0;
-    doomed = remove_timer(new $c.FieldRef(gt, "timer_base", "ptr"), func_index, arg);
+    let cleanup_func = null;
+    const doomed = remove_timer(new $c.FieldRef(gt, "timer_base", "ptr"), func_index, arg);
     if (doomed) {
-        timeout = doomed.timeout;
+        const timeout = doomed.timeout;
         if (doomed.kind === TIMER.OBJECT) {
             arg.a_obj.timed = $c.i16(arg.a_obj.timed - 1);
         }
@@ -2093,8 +2084,8 @@ export async function obj_move_timers(src, dest) {   // timeout.c:2339
  * @returns {Promise<void>}
  */
 export async function obj_split_timers(src, dest) {   // timeout.c:2359
-    let curr = null, next_timer = null;
-    next_timer = null;
+    let curr = null;
+    let next_timer = null;
     for (curr = gt.timer_base; curr; curr = next_timer) {
         next_timer = curr.next;   /* things may be inserted */
         if (curr.kind === TIMER.OBJECT && $c.peq(curr.arg.a_obj, src)) {
@@ -2111,8 +2102,8 @@ export async function obj_split_timers(src, dest) {   // timeout.c:2359
  * @returns {Promise<void>}
  */
 export async function obj_stop_timers(obj) {   // timeout.c:2377
-    let cleanup_func = null, curr = null, prev = null, next_timer = null;
-    next_timer = null;
+    let cleanup_func = null, curr = null, prev = null;
+    let next_timer = null;
     for (prev = null, curr = gt.timer_base; curr; curr = next_timer) {
         next_timer = curr.next;
         if (curr.kind === TIMER.OBJECT && $c.peq(curr.arg.a_obj, obj)) {
@@ -2141,9 +2132,8 @@ export async function obj_stop_timers(obj) {   // timeout.c:2377
  * @returns {number} boolean
  */
 export function obj_has_timer(object, timer_type) {   // timeout.c:2404
-    let timeout = 0;
-    timeout = peek_timer(timer_type, obj_to_any(object));
-    return $c.i8(timeout !== 0 ? 1 : 0);
+    const timeout = peek_timer(timer_type, obj_to_any(object));
+    return timeout !== 0 ? 1 : 0;
 }
 /*
  * Stop all timers of index func_index at this spot.
@@ -2156,9 +2146,9 @@ export function obj_has_timer(object, timer_type) {   // timeout.c:2404
  * @returns {Promise<void>}
  */
 export async function spot_stop_timers(x, y, func_index) {   // timeout.c:2416
-    let cleanup_func = null, curr = null, prev = null, next_timer = null, where = 0;
-    next_timer = null;
-    where = $c.or64($c.shl64(x, 16), y);
+    let cleanup_func = null, curr = null, prev = null;
+    let next_timer = null;
+    const where = $c.or64($c.shl64(x, 16), y);
     for (prev = null, curr = gt.timer_base; curr; curr = next_timer) {
         next_timer = curr.next;
         if (curr.kind === TIMER.LEVEL && curr.func_index === func_index && curr.arg.a_long === where) {
@@ -2188,8 +2178,8 @@ export async function spot_stop_timers(x, y, func_index) {   // timeout.c:2416
  * @returns {number | bigint} long
  */
 export function spot_time_expires(x, y, func_index) {   // timeout.c:2445
-    let curr = null, where = 0;
-    where = $c.or64($c.shl64(x, 16), y);
+    let curr = null;
+    const where = $c.or64($c.shl64(x, 16), y);
     for (curr = gt.timer_base; curr; curr = curr.next) {
         if (curr.kind === TIMER.LEVEL && curr.func_index === func_index && curr.arg.a_long === where) {
             return curr.timeout;
@@ -2204,8 +2194,7 @@ export function spot_time_expires(x, y, func_index) {   // timeout.c:2445
  * @returns {number | bigint} long
  */
 export function spot_time_left(x, y, func_index) {   // timeout.c:2459
-    let expires = 0;
-    expires = spot_time_expires(x, y, func_index);
+    const expires = spot_time_expires(x, y, func_index);
     return expires > 0 ? $c.sub64(expires, svm.moves) : 0;
 }
 /* Insert timer into the global queue */
@@ -2270,10 +2259,10 @@ async function write_timer(nhfp, timer) {   // timeout.c:2505
                 arg_save.a_obj = timer.arg.a_obj;
                 timer.arg.$copyFrom(cg.zeroany);
                 timer.arg.a_uint = arg_save.a_obj.o_id;
-                timer.needs_fixup = (1) & 1;
+                timer.needs_fixup = 1;
                 await sfo_fe(nhfp, timer, $c.lit("timer"));
                 timer.arg.a_obj = arg_save.a_obj;
-                timer.needs_fixup = (0) & 1;
+                timer.needs_fixup = 0;
             }
             break;
         case TIMER.MONSTER:
@@ -2284,10 +2273,10 @@ async function write_timer(nhfp, timer) {   // timeout.c:2505
                 arg_save.a_monst = timer.arg.a_monst;
                 timer.arg.$copyFrom(cg.zeroany);
                 timer.arg.a_uint = arg_save.a_monst.m_id;
-                timer.needs_fixup = (1) & 1;
+                timer.needs_fixup = 1;
                 await sfo_fe(nhfp, timer, $c.lit("timer"));
                 timer.arg.a_monst = arg_save.a_monst;
-                timer.needs_fixup = (0) & 1;
+                timer.needs_fixup = 0;
             }
             break;
         default:
@@ -2377,8 +2366,8 @@ async function timer_is_local(timer) {   // timeout.c:2603
  * @returns {Promise<number>} int
  */
 async function maybe_write_timer(nhfp, range, write_it) {   // timeout.c:2627
-    let count = 0, curr = null;
-    count = 0;
+    let curr = null;
+    let count = 0;
     for (curr = gt.timer_base; curr; curr = curr.next) {
         if (range === RANGE.GLOBAL) {
             /* global timers */
@@ -2419,8 +2408,8 @@ async function maybe_write_timer(nhfp, range, write_it) {   // timeout.c:2627
  * @returns {Promise<void>}
  */
 export async function save_timers(nhfp, range) {   // timeout.c:2668
-    let curr = null, prev = null, next_timer = null, count = Int32Array.of(0);
-    next_timer = null;
+    let curr = null, prev = null, count = Int32Array.of(0);
+    let next_timer = null;
     if (update_file(nhfp)) {
         if (range === RANGE.GLOBAL) {
             await sfo_ulong(nhfp, new $c.FieldRef(svt, "timer_id", "u64"), $c.lit("timer-timer_id"));
@@ -2459,16 +2448,16 @@ export async function save_timers(nhfp, range) {   // timeout.c:2668
  * @returns {Promise<void>}
  */
 export async function restore_timers(nhfp, range, adjust) {   // timeout.c:2707
-    let count = Int32Array.of(0), curr = null, ghostly = 0, $t1;
+    let count = Int32Array.of(0), $t1;
     count[0] = 0;
-    ghostly = $c.i8(nhfp.ftype === NHF.BONESFILE ? 1 : 0);   /* from a ghost level */
+    const ghostly = nhfp.ftype === NHF.BONESFILE ? 1 : 0;   /* from a ghost level */
     if (range === RANGE.GLOBAL) {
         await sfi_ulong(nhfp, new $c.FieldRef(svt, "timer_id", "u64"), $c.lit("timer-timer_id"));
     }
     /* restore elements */
     await sfi_int(nhfp, new $c.Ptr(count, 0), $c.lit("timer-timer_count"));
     while (($t1 = count[0], count[0] = $t1 - 1 | 0, $t1) > 0) {
-        curr = $c.asRec(await alloc(48), $T.fe, 48);
+        const curr = $c.asRec(await alloc(48), $T.fe, 48);
         await sfi_fe(nhfp, curr, $c.lit("timer"));
         if (ghostly) {
             curr.timeout = $c.add64(curr.timeout, adjust);
@@ -2513,7 +2502,7 @@ export async function relink_timers(ghostly) {   // timeout.c:2751
                 if (!curr.arg.a_obj) {
                     await panic($c.lit("can't find o_id %d"), nid[0]);
                 }
-                curr.needs_fixup = (0) & 1;
+                curr.needs_fixup = 0;
             } else if (curr.kind === TIMER.MONSTER) {
                 await panic($c.lit("relink_timers: no monster timer implemented"));
             } else {

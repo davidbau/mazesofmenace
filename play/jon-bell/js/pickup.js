@@ -1,3 +1,4 @@
+import { nh_qsort } from './nhsort.js';
 import { set_cursor } from './read.js';
 import { body_part } from './polyself.js';
 // pickup.c — container_at, reset_justpicked, doloot, the trap.c leaves
@@ -1356,19 +1357,11 @@ function _pu_sortloot(eligible, qflags) {
         }
         return a.indx - b.indx;
     };
-    // libc's merge sort. Comparison order matters for observe_object and
-    // loot_xname (which can consume RNG for tins), even across classes.
-    const mergeSort = (v) => {
-        if (v.length < 2) return v;
-        const mid = Math.trunc(v.length / 2);
-        const left = mergeSort(v.slice(0, mid)), right = mergeSort(v.slice(mid));
-        const out = [];
-        let i = 0, j = 0;
-        while (i < left.length && j < right.length)
-            out.push(compare(left[i], right[j]) <= 0 ? left[i++] : right[j++]);
-        return out.concat(left.slice(i), right.slice(j));
-    };
-    return mergeSort(arr).map((sli) => sli.obj);
+    // C invent.c:635 qsort(sliarray, n, ..., sortloot_cmp) through the
+    // Comparison order matters for observe_object and loot_xname (which can
+    // consume RNG for tins), even across classes.
+    if (arr.length < 2) return arr.map((sli) => sli.obj);
+    return nh_qsort(arr, compare).map((sli) => sli.obj);
 }
 
 /* C pickup.c:1025-1214 query_objlist.  Arrays replace C's allocated pick

@@ -46,7 +46,7 @@ async function on_start() {   // quest.c:26
         await qt_pager($c.lit("firsttime"));
         svq.quest_status.first_start = (TRUE) & 1;
     } else if (u.uz0.dnum !== u.uz.dnum || u.uz0.dlevel < u.uz.dlevel) {
-        if ((svq.quest_status.not_ready | 0) <= 2) {
+        if (svq.quest_status.not_ready <= 2) {
             await qt_pager($c.lit("nexttime"));
         } else {
             await qt_pager($c.lit("othertime"));
@@ -57,10 +57,9 @@ async function on_start() {   // quest.c:26
  * @returns {Promise<void>}
  */
 async function on_locate() {   // quest.c:40
-    let from_above = 0;
     /* the locate messages are phrased in a manner such that they only
        make sense when arriving on the level from above */
-    from_above = $c.i8(u.uz0.dlevel < u.uz.dlevel ? 1 : 0);
+    const from_above = u.uz0.dlevel < u.uz.dlevel ? 1 : 0;
     if (svq.quest_status.killed_nemesis) {
         return;
     } else if (!svq.quest_status.first_locate) {
@@ -81,12 +80,11 @@ async function on_locate() {   // quest.c:40
  * @returns {Promise<void>}
  */
 async function on_goal() {   // quest.c:62
-    let whichobjchains = 0, qarti = null;
     if (svq.quest_status.killed_nemesis) {
         return;
     } else if (!svq.quest_status.made_goal) {
         await qt_pager($c.lit("goal_first"));
-        svq.quest_status.made_goal = (1) & 7;
+        svq.quest_status.made_goal = 1;
     } else {
         /*
          * Some QT_NEXTGOAL messages reference the quest artifact;
@@ -96,10 +94,10 @@ async function on_goal() {   // quest.c:62
          * Note: if hero is already carrying it, it is treated as
          * being absent from the level for quest message purposes.
          */
-        whichobjchains = 1 << OBJ.FLOOR | 1 << OBJ.MINVENT | 1 << OBJ.BURIED;
-        qarti = find_quest_artifact(whichobjchains);
+        const whichobjchains = 1 << OBJ.FLOOR | 1 << OBJ.MINVENT | 1 << OBJ.BURIED;
+        const qarti = find_quest_artifact(whichobjchains);
         await qt_pager(qarti ? $c.lit("goal_next") : $c.lit("goal_alt"));
-        if ((svq.quest_status.made_goal | 0) < 7) {
+        if (svq.quest_status.made_goal < 7) {
             svq.quest_status.made_goal = (svq.quest_status.made_goal + 1 >>> 0) & 7;
         }
     }
@@ -108,7 +106,7 @@ async function on_goal() {   // quest.c:62
  * @returns {Promise<void>}
  */
 export async function onquest() {   // quest.c:90
-    if (u.uevent.qcompleted | 0 || Not_firsttime()) {
+    if (u.uevent.qcompleted || Not_firsttime()) {
         return;
     }
     if (!Is_special(u.uz)) {
@@ -158,21 +156,20 @@ export async function artitouch(obj) {   // quest.c:125
  * @returns {Promise<number>} boolean
  */
 export async function ok_to_quest() {   // quest.c:140
-    return $c.i8((svq.quest_status.got_quest | 0 || svq.quest_status.got_thanks | 0) && await is_pure(FALSE) > 0 || svq.quest_status.killed_leader | 0 ? 1 : 0);
+    return (svq.quest_status.got_quest || svq.quest_status.got_thanks) && await is_pure(FALSE) > 0 || svq.quest_status.killed_leader ? 1 : 0;
 }
 /**
  * @returns {number} boolean
  */
 function not_capable() {   // quest.c:147
-    return $c.i8(u.ulevel < MIN_QUEST.LEVEL ? 1 : 0);
+    return u.ulevel < MIN_QUEST.LEVEL ? 1 : 0;
 }
 /**
  * @param {number} talk boolean
  * @returns {Promise<number>} int
  */
 async function is_pure(talk) {   // quest.c:153
-    let purity = 0, original_alignment = 0;
-    original_alignment = u.ualignbase[A.ORIGINAL];
+    const original_alignment = u.ualignbase[A.ORIGINAL];
     if (wizard() && talk) {
         if (u.ualign.type !== original_alignment) {
             await You($c.lit("are currently %s instead of %s."), align_str(u.ualign.type), align_str(original_alignment));
@@ -185,7 +182,7 @@ async function is_pure(talk) {   // quest.c:153
             }
         }
     }
-    purity = u.ualign.record >= MIN_QUEST.ALIGN && u.ualign.type === original_alignment && u.ualignbase[A.CURRENT] === original_alignment ? 1 : u.ualignbase[A.CURRENT] !== original_alignment ? -1 : 0;
+    const purity = u.ualign.record >= MIN_QUEST.ALIGN && u.ualign.type === original_alignment && u.ualignbase[A.CURRENT] === original_alignment ? 1 : u.ualignbase[A.CURRENT] !== original_alignment ? -1 : 0;
     return purity;
 }
 /*
@@ -199,10 +196,10 @@ async function is_pure(talk) {   // quest.c:153
  * @returns {Promise<void>}
  */
 async function expulsion(seal) {   // quest.c:186
-    let br = null, dest = null, t = null, portal_flag = 0, reexpelled = 0;
-    portal_flag = u.uevent.qexpelled | 0 ? UTOTYPE.NONE : UTOTYPE.PORTAL;
-    br = await dungeon_branch($c.lit("The Quest"));
-    dest = br.end1.dnum === u.uz.dnum ? br.end2 : br.end1;
+    let t = null;
+    let portal_flag = u.uevent.qexpelled ? UTOTYPE.NONE : UTOTYPE.PORTAL;
+    const br = await dungeon_branch($c.lit("The Quest"));
+    const dest = br.end1.dnum === u.uz.dnum ? br.end2 : br.end1;
     if (seal) {
         portal_flag = portal_flag | UTOTYPE.RMPORTAL;
     }
@@ -210,15 +207,15 @@ async function expulsion(seal) {   // quest.c:186
     await schedule_goto(dest, portal_flag, null, null);
     if (seal) {
         /* remove the portal to the quest - sealing it off */
-        reexpelled = u.uevent.qexpelled | 0;
-        u.uevent.qexpelled = (1) & 1;
+        const reexpelled = u.uevent.qexpelled;
+        u.uevent.qexpelled = 1;
         remdun_mapseen(svd.dungeon_topology.d_quest_dnum);
         /* Delete the near portal now; the far (main dungeon side)
            portal will be deleted as part of arrival on that level.
            If monster movement is in progress, any who haven't moved
            yet will now miss out on a chance to wander through it... */
         for (t = gf.ftrap; t; t = t.ntrap) {
-            if ((t.ttyp | 0) === MAGIC_PORTAL) {
+            if (t.ttyp === MAGIC_PORTAL) {
                 break;
             }
         }
@@ -285,7 +282,7 @@ export async function finish_quest(obj) {   // quest.c:226
     }
     svq.quest_status.got_thanks = (TRUE) & 1;
     if (obj) {
-        u.uevent.qcompleted = (1) & 1;   /* you did it! */
+        u.uevent.qcompleted = 1;   /* you did it! */
         /* behave as if leader imparts sufficient info about the
            quest artifact */
         await fully_identify_obj(obj);
@@ -297,12 +294,12 @@ export async function finish_quest(obj) {   // quest.c:226
  * @returns {Promise<void>}
  */
 async function chat_with_leader(mtmp) {   // quest.c:282
-    let otmp = null, purity = 0;
-    if (!mtmp.mpeaceful || svq.quest_status.pissed_off | 0) {
+    let otmp = null;
+    if (!mtmp.mpeaceful || svq.quest_status.pissed_off) {
         return;
     }
     /*  Rule 0: Cheater checks. */
-    if (u.uhave.questart | 0 && !svq.quest_status.met_nemesis) {
+    if (u.uhave.questart && !svq.quest_status.met_nemesis) {
         svq.quest_status.cheater = (TRUE) & 1;
     }
     /*  It is possible for you to get the amulet without completing
@@ -329,11 +326,11 @@ async function chat_with_leader(mtmp) {   // quest.c:282
         await qt_pager($c.lit("encourage"));
         /* Rule 5: You aren't yet acceptable - or are you? */
     } else {
-        purity = 0;
+        let purity = 0;
         if (!svq.quest_status.met_leader) {
             await qt_pager($c.lit("leader_first"));
             svq.quest_status.met_leader = (TRUE) & 1;
-            svq.quest_status.not_ready = (0) & 7;
+            svq.quest_status.not_ready = 0;
         } else {
             await qt_pager($c.lit("leader_next"));
         }
@@ -357,7 +354,7 @@ async function chat_with_leader(mtmp) {   // quest.c:282
             }
         } else if (purity === 0) {
             await qt_pager($c.lit("badalign"));
-            svq.quest_status.not_ready = (1) & 7;
+            svq.quest_status.not_ready = 1;
             await exercise(A.WIS, TRUE);
             await expulsion(FALSE);
         } else {
@@ -415,16 +412,16 @@ export async function nemesis_speaks() {   // quest.c:403
     if (!svq.quest_status.in_battle) {
         if (u.uhave.questart) {
             await qt_pager($c.lit("nemesis_wantsit"));
-        } else if ((svq.quest_status.made_goal | 0) === 1 || !svq.quest_status.met_nemesis) {
+        } else if (svq.quest_status.made_goal === 1 || !svq.quest_status.met_nemesis) {
             await qt_pager($c.lit("nemesis_first"));
-        } else if ((svq.quest_status.made_goal | 0) < 4) {
+        } else if (svq.quest_status.made_goal < 4) {
             await qt_pager($c.lit("nemesis_next"));
-        } else if ((svq.quest_status.made_goal | 0) < 7) {
+        } else if (svq.quest_status.made_goal < 7) {
             await qt_pager($c.lit("nemesis_other"));
         } else if (!rn2(5)) {
             await qt_pager($c.lit("discourage"));
         }
-        if ((svq.quest_status.made_goal | 0) < 7) {
+        if (svq.quest_status.made_goal < 7) {
             svq.quest_status.made_goal = (svq.quest_status.made_goal + 1 >>> 0) & 7;
         }
         svq.quest_status.met_nemesis = (TRUE) & 1;
@@ -440,8 +437,7 @@ export async function nemesis_speaks() {   // quest.c:403
  * @returns {Promise<void>}
  */
 export async function nemesis_stinks(mx, my) {   // quest.c:426
-    let save_mon_moving = 0;
-    save_mon_moving = svc.context.mon_moving;
+    const save_mon_moving = svc.context.mon_moving;
     /*
      * Some nemeses (determined by caller) release a cloud of noxious
      * gas when they die.  Don't make the hero be responsible for such
@@ -456,7 +452,7 @@ export async function nemesis_stinks(mx, my) {   // quest.c:426
  */
 async function chat_with_guardian() {   // quest.c:441
     /*  These guys/gals really don't have much to say... */
-    if (u.uhave.questart | 0 && svq.quest_status.killed_nemesis | 0) {
+    if (u.uhave.questart && svq.quest_status.killed_nemesis) {
         await qt_pager($c.lit("guardtalk_after"));
     } else {
         await qt_pager($c.lit("guardtalk_before"));
@@ -467,14 +463,14 @@ async function chat_with_guardian() {   // quest.c:441
  * @returns {Promise<void>}
  */
 async function prisoner_speaks(mtmp) {   // quest.c:451
-    if ($c.peq(mtmp.data, $c.relem(mons, PM.PRISONER)) && $c.andu64(mtmp.mstrategy, STRAT_WAITMASK)) {
+    if (mtmp.data === mons[PM.PRISONER] && $c.andu64(mtmp.mstrategy, STRAT_WAITMASK)) {
         /* Awaken the prisoner */
         if (canseemon(mtmp)) {
             await pline($c.lit("%s speaks:"), await Monnam(mtmp));
         }
         await verbalize($c.lit("I'm finally free!"));
         mtmp.mstrategy = $c.andu64(mtmp.mstrategy, 18446744072904245247n);
-        mtmp.mpeaceful = (1) & 1;
+        mtmp.mpeaceful = 1;
         /* Your god is happy... */
         adjalign(3);
         /* ...But the guards are not */
@@ -532,7 +528,7 @@ export async function quest_talk(mtmp) {   // quest.c:495
 export function quest_stat_check(mtmp) {   // quest.c:514
     let $t1;
     if (mtmp.data.msound === MS.NEMESIS) {
-        $t1 = (!helpless(mtmp) && monnear(mtmp, u.ux, u.uy) ? 1 : 0) >>> 0, svq.quest_status.in_battle = ($t1) & 1;
+        $t1 = !helpless(mtmp) && monnear(mtmp, u.ux, u.uy) ? 1 : 0, svq.quest_status.in_battle = ($t1) & 1;
     }
 }
 function Not_firsttime() {

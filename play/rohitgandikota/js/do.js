@@ -1,4 +1,5 @@
-import { find_lev_obj } from './restore.js';
+import { getlev } from './restore.js';
+import { savelev } from './save.js';
 import { assign_graphics, PRIMARYSET, ROGUESET } from './symbols.js';
 import { check_gold_symbol } from './botl.js';
 import { allow_all } from './pickup.js';
@@ -56,7 +57,6 @@ import { obfree, stackobj, useupf } from './invent.js';
 // the first draw the new level makes; the missing piece is everything above it.
 
 import { game } from './gstate.js';
-import { forget_temple_entry } from './priest.js';
 import { paranoid_ynq, reset_occupations, set_move_cmd } from './cmd.js';
 import { welded } from './wield.js';
 import { ONAMES } from './objects_data.js';
@@ -261,7 +261,7 @@ export async function revive_corpse(corpse) {
         }
         case OBJ_BURIED:
             if (is_zomb) {
-                maketrap(mtmp.mx, mtmp.my, PIT);
+                await maketrap(mtmp.mx, mtmp.my, PIT);
                 if (cansee(mtmp.mx, mtmp.my)) {
                     let ttmp;
 
@@ -432,7 +432,7 @@ export async function boulder_hits_pool(obj, x, y, pushing) {
 
         if (fillsUp && game.u.uinwater
             && game.u.ux === x && game.u.uy === y) {
-            game.u.uinwater = 0;
+            await set_uinwater(0); /* u.uinwater = 0 */
             await docrt();
             game.vision_full_recalc = 1;
             await You('find yourself on dry land again!');
@@ -1123,57 +1123,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (game.level) {
         for (const mtmp of game.level.monsters || [])
             mtmp.mlstmv = game.moves;
-        /* src/save.c:515 — svm.moves is read back into svo.omoves */
-        game.level._saved_omoves = game.moves;
-        /* src/save.c:553 save_track() — the hero's track is saved WITH
-           the level and cleared (track.c:88); getlev's rest_track()
-           restores it on a return visit. Trackers (jackals, pets) read
-           it via gettrack(), so both halves matter: leaving must blank
-           it, returning must bring the old points back. */
-        game.level._saved_track = {
-            utcnt: game.utcnt | 0,
-            utpnt: game.utpnt | 0,
-            utrack: (game.utrack || []).map(p => ({ x: p.x, y: p.y })),
-        };
-        /* The stairway chain belongs to this level. savelev() writes it
-           with the map, and getlev() restores it before arrival handling. */
-        game.level._saved_stairs = game.stairs;
-        /* src/save.c:550 save_regions() stores regions with this level and
-           clears the live list. Regions from one level must never block or
-           paint cells on the next one. */
-        game.level._saved_regions = game.regions || [];
-        game.level._saved_regions_moves = game.moves;
-        game.regions = [];
-        game.max_regions = 0; /* free_regions() */
-        /* src/save.c savelev() stores both special-level arrival regions
-           alongside the map. Restoring only the terrain made revisits use
-           the whole level instead of the scripted destination area. */
-        game.level._saved_updest = { ...(game.updest || {}) };
-        game.level._saved_dndest = { ...(game.dndest || {}) };
-        /* save.c:552 save_exclusions() */
-        game.level._saved_exclusion_zones = game.exclusion_zones || [];
-        const { save_engravings } = await import('./engrave.js');
-        game.level._saved_engravings = save_engravings();
-        // src/save.c savelev(), local timers and lights remain on this level.
-        {
-            const { save_timers } = await import('./timeout.js');
-            const { save_light_sources } = await import('./light.js');
-            const { RANGE_LEVEL } = await import('./const.js');
-            game.level._saved_timers = save_timers(RANGE_LEVEL, true);
-            game.level._saved_lights = save_light_sources(RANGE_LEVEL, true);
-        }
-        /* src/save.c:893 savemonchn(): a priest forgets its temple entry
-           timers when its level is saved */
-        for (const mtmp of game.level.monsters || [])
-            if (mtmp.ispriest)
-                forget_temple_entry(mtmp);
         /* src/do.c:1640 — an outgoing level that can't be reached any more
            is freed rather than saved: entering the endgame from another
            dungeon, or leaving the tutorial */
         const cant_go_back = (newdungeon && In_endgame(newlevel)) || leaving_tutorial;
         (game.saved_levels ||= new Map());
+        const record = savelev(ledger_no(game.u.uz), true);
         if (!cant_go_back)
-            game.saved_levels.set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, game.level);
+            game.saved_levels.set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, record);
         (game.visited_ledgers ||= new Set())
             .add(`${game.u.uz.dnum}:${game.u.uz.dlevel}`);
         if (cant_go_back) {
@@ -1192,17 +1149,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             const { discard_migrations } = await import('./dog.js');
             discard_migrations();
         }
-        /* src/save.c savelev() — leaving a Plane of Water/Air parks the
-           bubble/cloud list with the level (and frees the live copy) */
-        {
-            const { Is_waterlevel, Is_airlevel } = await import('./const.js');
-            if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz)) {
-                const { save_waterlevel } = await import('./mkmaze.js');
-                save_waterlevel();
-            }
-        }
-        const { initrack } = await import('./track.js');
-        initrack();
     }
 
     if (Is_rogue_level(newlevel) || Is_rogue_level(game.u.uz))
@@ -1252,78 +1198,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
        map is that file store. (visited_ledgers alone is wrong for the
        FIRST level, which newgame's mklev creates without registering.) */
     if (game.saved_levels?.has(ledger)) {
-        /* src/do.c:1706 — returning to a previously visited level: C
-           getlev()s it back from its level file. The in-memory swap is
-           the same state; the visible cost is restore.c:1190's monster
-           catchup against the time spent away. */
-        game.level = game.saved_levels.get(ledger);
-        find_lev_obj();
-        game.stairs = game.level._saved_stairs || null;
-        /* src/region.c rest_regions() subtracts the turns spent away and
-           silently drops expired regions before the restored map is shown. */
-        {
-            const elapsed = Math.max(
-                0, game.moves - (game.level._saved_regions_moves ?? game.moves));
-            game.regions = (game.level._saved_regions || []).filter(reg => {
-                if (reg.ttl >= 0)
-                    reg.ttl = reg.ttl > elapsed ? reg.ttl - elapsed : 0;
-                return reg.ttl !== 0 && reg.ttl !== -2;
-            });
-        }
-        game.updest = { ...(game.level._saved_updest || game.updest) };
-        game.dndest = { ...(game.level._saved_dndest || game.dndest) };
-        /* restore.c:1227 load_exclusions() */
-        game.exclusion_zones = game.level._saved_exclusion_zones || [];
-        const { rest_engravings } = await import('./engrave.js');
-        rest_engravings(game.level._saved_engravings);
-        {
-            const { restore_timers, relink_timers } = await import('./timeout.js');
-            const { restore_light_sources, relink_light_sources } = await import('./light.js');
-            const { RANGE_LEVEL } = await import('./const.js');
-            restore_timers(game.level._saved_timers, RANGE_LEVEL);
-            restore_light_sources(game.level._saved_lights);
-            relink_timers(false);
-            relink_light_sources(false);
-        }
+        // src/do.c:1706 getlev(), then oinit() for the restored depth.
+        await getlev(game.saved_levels.get(ledger));
         const { oinit } = await import('./o_init.js');
         oinit();
-        const { DEADMONSTER } = await import('./monst.js');
-        const { mon_catchup_elapsed_time } = await import('./dog.js');
-        const { restore_cham, hide_monst } = await import('./mon.js');
-        /* src/restore.c:1111 elapsed = (svm.moves - svo.omoves) */
-        const elapsed = game.moves - (game.level._saved_omoves ?? game.moves);
-        for (const mtmp of game.level.monsters || []) {
-            if (DEADMONSTER(mtmp))
-                continue;
-            /* ghostly (bones) monsters go through the peacefulness reset
-               instead; a reloaded live level takes the elapsed arm */
-            if (elapsed > 0)
-                await mon_catchup_elapsed_time(mtmp, elapsed);
-            /* update shape-changers in case protection against them is
-               different now than when the level was saved */
-            await restore_cham(mtmp);
-            /* give hiders a chance to hide before their next move */
-            if (elapsed > 0 && elapsed > rnd(10))
-                hide_monst(mtmp);
-        }
-        /* restore.c:1228 rest_track() — bring back the track saved with
-           this level */
-        const st = game.level._saved_track;
-        if (st) {
-            game.utcnt = st.utcnt;
-            game.utpnt = st.utpnt;
-            game.utrack = st.utrack.map(p => ({ x: p.x, y: p.y }));
-        }
-        /* src/restore.c getlev() — a returned-to Plane of Water/Air
-           rebuilds its bubbles (mv_bubble(...,TRUE) per bubble, which on
-           the Air plane draws the rn2(6) cloud-speed gate like C) */
-        {
-            const { Is_waterlevel, Is_airlevel } = await import('./const.js');
-            if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz)) {
-                const { restore_waterlevel } = await import('./mkmaze.js');
-                await restore_waterlevel();
-            }
-        }
     } else {
         familiar_level = false;         /* src/do.c "new" is the inverse */
         /* entering this level for the first time; make it now */
@@ -1916,7 +1794,7 @@ export async function dropz(obj, with_impact) {
     } else {
         if (await flooreffects(obj, game.u.ux, game.u.uy, 'drop'))
             return;
-        place_object(obj, game.u.ux, game.u.uy);
+        await place_object(obj, game.u.ux, game.u.uy);
         if (with_impact)
             await container_impact_dmg(obj, game.u.ux, game.u.uy);
         impact_disturbs_zombies(obj, with_impact);
@@ -2238,7 +2116,7 @@ async function dosinkring(obj) {
 // nothing reaches the floor there; doaltarobj sets bknown when it lands on
 // an altar.
 export async function dropx(obj) {
-    freeinv(obj);
+    await freeinv(obj);
     if (!game.u.uswallow) {
         /* src/do.c:298 — ship_object() sends the object down a hole or
            stairs and returns TRUE when it did, in which case dropy() must
@@ -2316,7 +2194,7 @@ export async function drop(obj) {
                 (game.u.uprops ||= {}).LEVITATION = W_ART;
             if (game.flags.verbose)
                 await You(`drop ${doname(obj)}.`);
-            freeinv(obj);
+            await freeinv(obj);
             await hitfloor(obj, true);
             if (levhack)
                 await float_down(I_SPECIAL | TIMEOUT, W_ARTI | W_ART);
@@ -2356,30 +2234,44 @@ export async function dodrop() {
 }
 
 // src/do.c:893 obj_no_longer_held()
-export async function obj_no_longer_held(obj) {
-    if (!obj) {
+export function obj_no_longer_held(obj) {
+    if (!obj)
         return;
-    } else if (Has_contents(obj)) {
-        for (const contents of obj.cobj || [])
-            await obj_no_longer_held(contents);
-    }
-    switch (obj.otyp) {
-    case ONAMES.CRYSKNIFE:
-        /* Normal crysknife reverts to worm tooth when not held by hero
-         * or monster; fixed crysknife has only 10% chance of reverting.
-         * When a stack of the latter is involved, it could be worthwhile
-         * to give each individual crysknife its own separate 10% chance,
-         * but we aren't in any position to handle stack splitting here.
-         */
-        if (!obj.oerodeproof || !rn2(10)) {
-            /* if monsters aren't moving, assume player is responsible */
-            if (!game.context?.mon_moving && !game.program_state_gameover)
-                await costly_alteration(obj, COST_DEGRD);
-            obj.otyp = ONAMES.WORM_TOOTH;
-            obj.oerodeproof = 0;
+
+    // C finishes each child before the next child and then the container.
+    function releaseContents(index) {
+        if (Has_contents(obj)) {
+            for (let i = index; i < obj.cobj.length; i++) {
+                const pending = obj_no_longer_held(obj.cobj[i]);
+                if (pending)
+                    return pending.then(() => releaseContents(i + 1));
+            }
         }
-        break;
+        switch (obj.otyp) {
+        case ONAMES.CRYSKNIFE:
+            /* Normal crysknife reverts to worm tooth when not held by hero
+             * or monster; fixed crysknife has only 10% chance of reverting.
+             * When a stack of the latter is involved, it could be worthwhile
+             * to give each individual crysknife its own separate 10% chance,
+             * but we aren't in any position to handle stack splitting here.
+             */
+            if (!obj.oerodeproof || !rn2(10)) {
+                /* if monsters aren't moving, assume player is responsible */
+                const revert = () => {
+                    obj.otyp = ONAMES.WORM_TOOTH;
+                    obj.oerodeproof = 0;
+                };
+                if (!game.context?.mon_moving && !game.program_state_gameover) {
+                    const billing = costly_alteration(obj, COST_DEGRD);
+                    if (billing)
+                        return billing.then(revert);
+                }
+                revert();
+            }
+            break;
+        }
     }
+    return releaseContents(0);
 }
 
 // src/do.c:924 doddrop() and :980 menu_drop(), the 'D' command.
@@ -2682,9 +2574,10 @@ export async function heal_legs(how) {
             game.u.atemp.a[A_DEX]++;
 
         if (!game.u.usteed && how !== 2) {
-            const both = (game.u.EWounded_legs & BOTH_SIDES) === BOTH_SIDES;
-            const legs = both ? 'legs' : 'leg';
-            await Your(`${legs} ${both ? 'feel' : 'feels'} better.`);
+            let legs = body_part(LEG);
+            if ((game.u.EWounded_legs & BOTH_SIDES) === BOTH_SIDES)
+                legs = makeplural(legs);
+            await Your(`${legs} ${vtense(legs, 'feel')} better.`);
         }
 
         intr.HWounded_legs = 0;

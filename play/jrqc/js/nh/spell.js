@@ -35,7 +35,7 @@ import { getpos, getpos_sethilite } from './getpos.js';
 import { FALSE, LL, TRUE } from './global.h.js';
 import { check_capacity, invocation_pos, losehp, nomul } from './hack.js';
 import { CMDQ, CQ_REPEAT, ECMD, EYE, FACE, HEAD, KILLED, NO, NO_KILLER_PREFIX, N_DIRS, SPINE, XKILL } from './hack.h.js';
-import { DIR_LEFT, DIR_RIGHT2, Maybe_Half_Phys, makeknown, y_n } from './hack.macros.js';
+import { Maybe_Half_Phys, makeknown, y_n } from './hack.macros.js';
 import { dist2, distmin, eos, isqrt, nh_snprintf, sgn, strncmpi } from './hacklib.js';
 import { record_achievement } from './insight.js';
 import { update_inventory, useup } from './invent.js';
@@ -174,12 +174,11 @@ const spl_sortchoices = $c.nulls(9);
  * @returns {number} int
  */
 function spell_let_to_idx(ilet) {   // spell.c:115
-    let indx = 0;
-    indx = ilet - 97 | 0;
+    let indx = ilet - 97;
     if (indx >= 0 && indx < 26) {
         return indx;
     }
-    indx = ilet - 65 | 0;
+    indx = ilet - 65;
     if (indx >= 0 && indx < 26) {
         return indx + 26 | 0;
     }
@@ -191,9 +190,9 @@ function spell_let_to_idx(ilet) {   // spell.c:115
  * @returns {Promise<number>} boolean
  */
 async function cursed_book(bp) {   // spell.c:130
-    let was_in_use = 0, lev = 0, dmg = 0;
-    lev = objects[bp.otyp].oc_oc2;
-    dmg = 0;
+    let was_in_use = 0;
+    const lev = objects[bp.otyp].oc_oc2;
+    let dmg = 0;
     switch (rn2(lev)) {
         case 0:
             await You_feel($c.lit("a wrenching sensation."));
@@ -220,7 +219,7 @@ async function cursed_book(bp) {   // spell.c:130
                 break;
             }
             /* temp disable in_use; death should not destroy the book */
-            was_in_use = $c.i8(bp.in_use);
+            was_in_use = bp.in_use;
             bp.in_use = (FALSE) & 1;
             await poison_strdmg(Poison_resistance() ? rn2(2) + 1 | 0 : rn2(4) + 3 | 0, rnd(u.uprops[POISON_RES].intrinsic || u.uprops[POISON_RES].extrinsic ? 6 : 10), $c.lit("contact-poisoned spellbook"), KILLED.BY_AN);
             bp.in_use = (was_in_use >>> 0) & 1;
@@ -247,8 +246,7 @@ async function cursed_book(bp) {   // spell.c:130
  * @returns {Promise<number>} boolean
  */
 async function confused_book(spellbook) {   // spell.c:189
-    let gone = 0;
-    gone = FALSE;
+    let gone = FALSE;
     if (!rn2(3) && spellbook.otyp !== SPE_BOOK_OF_THE_DEAD) {
         spellbook.in_use = (TRUE) & 1;   /* in case called from learn() */
         await pline($c.lit("Being confused you have difficulties in controlling your actions."));
@@ -298,7 +296,7 @@ async function deadbook(book2) {   // spell.c:231
             await discover_object(SPE_BOOK_OF_THE_DEAD, TRUE, TRUE, TRUE);
             await observe_object(book2);   /* in case blind now and hasn't been seen yet */
             /* KMH -- Need ->known to avoid "_a_ Book of the Dead" */
-            book2.known = (1) & 1;
+            book2.known = 1;
             if (invocation_pos(u.ux, u.uy) && !On_stairs(u.ux, u.uy)) {
                 arti1_primed = FALSE;
                 arti2_primed = FALSE;
@@ -318,7 +316,7 @@ async function deadbook(book2) {   // spell.c:231
                     return;
                 }
                 for (otmp = gi.invent; otmp; otmp = otmp.nobj) {
-                    if (otmp.otyp === CANDELABRUM_OF_INVOCATION && otmp.spe === 7 && otmp.lamplit | 0) {
+                    if (otmp.otyp === CANDELABRUM_OF_INVOCATION && otmp.spe === 7 && otmp.lamplit) {
                         if (!otmp.cursed) {
                             arti1_primed = TRUE;
                         } else {
@@ -343,11 +341,11 @@ async function deadbook(book2) {   // spell.c:231
                     soon = d(2, 6) >>> 0;   /* time til next intervene() */
                     /* successful invocation */
                     await mkinvokearea();
-                    u.uevent.invoked = (1) & 1;
+                    u.uevent.invoked = 1;
                     await record_achievement(ACH.INVK);
                     /* in case you haven't killed the Wizard yet, behave as if
                        you just did */
-                    u.uevent.udemigod = (1) & 1;   /* wizdeadorgone() */
+                    u.uevent.udemigod = 1;   /* wizdeadorgone() */
                     if (!u.udg_cnt || u.udg_cnt > soon) {
                         u.udg_cnt = soon;
                     }
@@ -364,8 +362,8 @@ async function deadbook(book2) {   // spell.c:231
                 $goto = null;   // raise_dead:
                 await You($c.lit("raised the dead!"));
                 /* first maybe place a dangerous adversary */
-                if (!rn2(3) && ((mtmp = await makemon($c.relem(mons, PM.MASTER_LICH), u.ux, u.uy, NO.MINVENT)) !== null || (mtmp = await makemon($c.relem(mons, PM.NALFESHNEE), u.ux, u.uy, NO.MINVENT)) !== null)) {
-                    mtmp.mpeaceful = (0) & 1;
+                if (!rn2(3) && ((mtmp = await makemon(mons[PM.MASTER_LICH], u.ux, u.uy, NO.MINVENT)) !== null || (mtmp = await makemon(mons[PM.NALFESHNEE], u.ux, u.uy, NO.MINVENT)) !== null)) {
+                    mtmp.mpeaceful = 0;
                     set_malign(mtmp);
                 }
                 /* next handle the affect on things you're carrying */
@@ -399,7 +397,7 @@ async function deadbook(book2) {   // spell.c:231
  * @returns {Promise<void>}
  */
 export async function book_cursed(book) {   // spell.c:343
-    if (book.cursed | 0 && gm.multi >= 0 && go.occupation === learn && $c.peq(svc.context.spbook.book, book)) {
+    if (book.cursed && gm.multi >= 0 && go.occupation === learn && $c.peq(svc.context.spbook.book, book)) {
         await pline($c.lit("%s shut!"), await Tobjnam(book, $c.lit("slam")));
         await set_bknown(book, 1);
         await stop_occupation();
@@ -409,10 +407,10 @@ export async function book_cursed(book) {   // spell.c:343
  * @returns {Promise<number>} int
  */
 async function learn() {   // spell.c:356
-    let i = 0, booktype = 0, splname = new Int8Array(256), costly = 0, faded_to_blank = 0, book = null, $t1, $t2, $t3, $t4;
-    costly = TRUE;
-    faded_to_blank = FALSE;
-    book = svc.context.spbook.book;
+    let i = 0, splname = new Int8Array(256), $t1, $t2, $t3, $t4;
+    const costly = TRUE;
+    let faded_to_blank = FALSE;
+    const book = svc.context.spbook.book;
     /* JDS: lenses give 50% faster reading; 33% smaller read time */
     if (svc.context.spbook.delay && $G.ublindf && $G.ublindf.otyp === LENSES && rn2(2)) {
         svc.context.spbook.delay = $c.i8(svc.context.spbook.delay + 1);
@@ -434,12 +432,12 @@ async function learn() {   // spell.c:356
         return 1;   /* still busy */
     }
     await exercise(A.WIS, TRUE);   /* you're studying. */
-    booktype = book.otyp;
+    let booktype = book.otyp;
     if (booktype === SPE_BOOK_OF_THE_DEAD) {
         await deadbook(book);
         return 0;
     }
-    $c.sprintf(new $c.Ptr(splname, 0), objects[booktype].oc_name_known | 0 ? $c.lit("\"%s\"") : $c.lit("the \"%s\" spell"), obj_descr[objects[booktype].oc_name_idx].oc_name);
+    $c.sprintf(new $c.Ptr(splname, 0), objects[booktype].oc_name_known ? $c.lit("\"%s\"") : $c.lit("the \"%s\" spell"), obj_descr[objects[booktype].oc_name_idx].oc_name);
     for (i = 0; i < MAXSPELL; i = i + 1 | 0) {
         if (svs.spl_book[i].sp_id === booktype || svs.spl_book[i].sp_id === NO_SPELL) {
             break;
@@ -475,7 +473,7 @@ async function learn() {   // spell.c:356
             $t4 = rn2(book.usecount), book.usecount = $t4;
         } else {
             svs.spl_book[i].sp_id = booktype;
-            svs.spl_book[i].sp_lev = $c.i16(objects[booktype].oc_oc2);
+            svs.spl_book[i].sp_lev = objects[booktype].oc_oc2;
             svs.spl_book[i].sp_know = KEEN + 1;
             book.usecount = book.usecount + 1 | 0;
             if (!i) {   /* first is always 'a', so no need to mention the letter */
@@ -518,19 +516,19 @@ async function learn() {   // spell.c:356
  * @returns {Promise<number>} int
  */
 export async function study_book(spellbook) {   // spell.c:468
-    let booktype = 0, i = 0, confused = 0, too_hard = 0, eyes = null, dullbook = 0, tribtitle = null, read_ability = 0, qbuf = new Int8Array(128), gone = 0, $t1;
-    booktype = spellbook.otyp;
-    confused = $c.i8(u.uprops[CONFUSION].intrinsic !== 0 ? 1 : 0);
-    too_hard = FALSE;
+    let i = 0, qbuf = new Int8Array(128), $t1;
+    const booktype = spellbook.otyp;
+    const confused = u.uprops[CONFUSION].intrinsic !== 0 ? 1 : 0;
+    let too_hard = FALSE;
     /* attempting to read dull book may make hero fall asleep */
     if (!confused && !Sleep_resistance() && await objdescr_is(spellbook, $c.lit("dull"))) {
-        dullbook = rnd(25) - ACURR(A.WIS) | 0;
+        let dullbook = rnd(25) - ACURR(A.WIS) | 0;
         /* adjust chance if hero stayed awake, got interrupted, retries */
         if (svc.context.spbook.delay && $c.peq(spellbook, svc.context.spbook.book)) {
             dullbook = dullbook - rnd(objects[booktype].oc_oc2) | 0;
         }
         if (dullbook > 0) {
-            eyes = await body_part(EYE);
+            let eyes = await body_part(EYE);
             if (eyecount(gy.youmonst.data) > 1) {
                 eyes = await makeplural(eyes);
             }
@@ -554,7 +552,7 @@ export async function study_book(spellbook) {   // spell.c:468
         /* 3.6 tribute */
         if (booktype === SPE_NOVEL) {
             /* Obtain current Terry Pratchett book title */
-            tribtitle = noveltitle(new $c.FieldRef(spellbook, "corpsenm", "i32"));
+            const tribtitle = noveltitle(new $c.FieldRef(spellbook, "corpsenm", "i32"));
             if (await read_tribute($c.lit("books"), tribtitle, 0, null, 0, spellbook.o_id)) {
                 if (!($t1 = u.uconduct.literate, u.uconduct.literate = $c.add64($t1, 1), $t1)) {
                     await livelog_printf(LL.CONDUCT, $c.lit("became literate by reading %s"), tribtitle);
@@ -566,7 +564,7 @@ export async function study_book(spellbook) {   // spell.c:468
                     /* give bonus of 20 xp and 4*20+0 pts */
                     await more_experienced(20, 0);
                     await newexplevel();
-                    u.uevent.read_tribute = (1) & 1;   /* only once */
+                    u.uevent.read_tribute = 1;   /* only once */
                 }
             }
             return 1;
@@ -578,7 +576,7 @@ export async function study_book(spellbook) {   // spell.c:468
                 break;
             case 3:
             case 4:
-                svc.context.spbook.delay = $c.i8(Math.imul(-(objects[booktype].oc_oc2 - 1 | 0) | 0, objects[booktype].oc_delay));
+                svc.context.spbook.delay = $c.i8(Math.imul(-(objects[booktype].oc_oc2 - 1) | 0, objects[booktype].oc_delay));
                 break;
             case 5:
             case 6:
@@ -613,7 +611,7 @@ export async function study_book(spellbook) {   // spell.c:468
                 too_hard = TRUE;
             } else {
                 /* uncursed - chance to fail */
-                read_ability = (((ACURR(A.INT) + 4 | 0) + $c.div32(u.ulevel, 2) | 0) - Math.imul(2, objects[booktype].oc_oc2) | 0) + ($G.ublindf && $G.ublindf.otyp === LENSES ? 2 : 0) | 0;
+                const read_ability = ((ACURR(A.INT) + 4 + $c.div32(u.ulevel, 2) | 0) - Math.imul(2, objects[booktype].oc_oc2) | 0) + ($G.ublindf && $G.ublindf.otyp === LENSES ? 2 : 0) | 0;
                 /* only wizards know if a spell is too difficult */
                 if (gu.urole.mnum === PM.WIZARD && read_ability < 20 && !confused) {
                     $c.sprintf(new $c.Ptr(qbuf, 0), $c.lit("This spellbook is %sdifficult to comprehend.  Continue?"), read_ability < 12 ? $c.lit("very ") : $c.lit(""));
@@ -629,7 +627,7 @@ export async function study_book(spellbook) {   // spell.c:468
             }
         }
         if (too_hard) {
-            gone = await cursed_book(spellbook);
+            const gone = await cursed_book(spellbook);
             nomul(svc.context.spbook.delay);   /* study time */
             gm.multi_reason = $c.lit("reading a book");
             gn.nomovemsg = null;
@@ -741,8 +739,8 @@ async function rejectcasting() {   // spell.c:687
  * @returns {Promise<number>} boolean
  */
 async function getspell(spell_no) {   // spell.c:715
-    let nspells = 0, idx = 0, retry_limit = 0, ilet = 0, lets = new Int8Array(256), qbuf = new Int8Array(128), cq = new $T._cmd_queue(), cmdq = null;
-    nspells = num_spells();
+    let idx = 0, retry_limit = 0, lets = new Int8Array(256), qbuf = new Int8Array(128), cq = new $T._cmd_queue(), cmdq = null;
+    const nspells = num_spells();
     if (!nspells) {
         await You($c.lit("don't know any spells right now."));
         return FALSE;
@@ -785,7 +783,7 @@ async function getspell(spell_no) {   // spell.c:715
                 await pline($c.lit("That's enough tries."));
                 return FALSE;
             }
-            ilet = await yn_function(new $c.Ptr(qbuf, 0), null, 0, TRUE);
+            const ilet = await yn_function(new $c.Ptr(qbuf, 0), null, 0, TRUE);
             if (ilet === 42 || ilet === 63) {
                 break;   /* use menu mode */
             }
@@ -809,8 +807,8 @@ async function getspell(spell_no) {   // spell.c:715
  * @returns {Promise<number>} int
  */
 export async function dowizcast() {   // spell.c:787
-    let win = 0, selected = [null], any = new $T.any(), i = 0, n = 0;
-    win = await create_nhwindow()(NHW.MENU);
+    let selected = [null], any = new $T.any(), i = 0, n = 0;
+    const win = await create_nhwindow()(NHW.MENU);
     await start_menu()(win, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);
     for (i = 0; i < MAXSPELL; i = i + 1 | 0) {
@@ -881,13 +879,13 @@ export function spell_skilltype(booktype) {   // spell.c:856
  * @returns {Promise<void>}
  */
 export async function skill_based_spellbook_id() {   // spell.c:864
-    let booktype = 0, spbook_class = 0, known_up_to_level = 0, skill = 0;
+    let booktype = 0, known_up_to_level = 0;
     if (!(gu.urole.mnum === PM.WIZARD)) {
         return;
     }
-    spbook_class = SPBOOK_CLASS;
-    for (booktype = svb.bases[spbook_class]; booktype < svb.bases[spbook_class + 1 | 0]; booktype = booktype + 1 | 0) {
-        skill = spell_skilltype(booktype);
+    const spbook_class = SPBOOK_CLASS;
+    for (booktype = svb.bases[spbook_class]; booktype < svb.bases[spbook_class + 1]; booktype = booktype + 1 | 0) {
+        const skill = spell_skilltype(booktype);
         if (skill === P.NONE) {
             continue;
         }
@@ -930,17 +928,17 @@ export async function skill_based_spellbook_id() {   // spell.c:864
  */
 async function propagate_chain_lightning(clq, zap$in) {   // spell.c:952
     const zap = zap$in;   // passed by value: the caller copies
-    let mon = null, i = 0, $t1;
+    let i = 0, $t1;
     zap.x = $c.i16(zap.x + xdir[zap.dir] | 0);
     zap.y = $c.i16(zap.y + ydir[zap.dir] | 0);
     if (clq.tail >= CHAIN_LIGHTNING_LIMIT) {
         return;   /* zap has covered too many squares */
     }
-    if (!(isok(zap.x, zap.y) && (svl.level.locations[zap.x][zap.y].typ > DOOR || svl.level.locations[zap.x][zap.y].typ === POOL || svl.level.locations[zap.x][zap.y].typ === MOAT || svl.level.locations[zap.x][zap.y].typ === DRAWBRIDGE_UP || svl.level.locations[zap.x][zap.y].typ === LAVAPOOL || svl.level.locations[zap.x][zap.y].typ === DOOR && !((svl.level.locations[zap.x][zap.y].flags | 0) & (D.CLOSED | D.LOCKED))))) {
+    if (!(isok(zap.x, zap.y) && (svl.level.locations[zap.x][zap.y].typ > DOOR || svl.level.locations[zap.x][zap.y].typ === POOL || svl.level.locations[zap.x][zap.y].typ === MOAT || svl.level.locations[zap.x][zap.y].typ === DRAWBRIDGE_UP || svl.level.locations[zap.x][zap.y].typ === LAVAPOOL || svl.level.locations[zap.x][zap.y].typ === DOOR && !(svl.level.locations[zap.x][zap.y].flags & (D.CLOSED | D.LOCKED))))) {
         return;   /* zap can't go to this square */
     }
-    mon = svl.level.monsters[zap.x][zap.y];
-    if (mon && mon.mpeaceful | 0) {
+    const mon = svl.level.monsters[zap.x][zap.y];
+    if (mon && mon.mpeaceful) {
         return;   /* chain lightning avoids peaceful and tame monsters */
     }
     /* When hitting a monster that isn't electricity-resistant, a
@@ -976,7 +974,7 @@ async function propagate_chain_lightning(clq, zap$in) {   // spell.c:952
  * @returns {Promise<void>}
  */
 async function cast_chain_lightning() {   // spell.c:1003
-    let clq = new $T.chain_lightning_queue(), dir = 0, zap = new $T.chain_lightning_zap(), delay_tail = 0, zap$2 = new $T.chain_lightning_zap(), mon = null, unused = [null], dmg = 0, $t1;
+    let clq = new $T.chain_lightning_queue(), dir = 0, zap = new $T.chain_lightning_zap(), zap$2 = new $T.chain_lightning_zap(), unused = [null], $t1;
     clq.$copyFrom(new $T.chain_lightning_queue());
     clq.q[0].dir = 0;
     clq.head = 0;
@@ -1001,15 +999,15 @@ async function cast_chain_lightning() {   // spell.c:1003
     }
     await nh_delay_output()();
     while (clq.head < clq.tail) {
-        delay_tail = clq.tail;
+        const delay_tail = clq.tail;
         while (clq.head < delay_tail) {
             zap$2.$copyFrom(clq.q[($t1 = clq.head, clq.head = $t1 + 1 | 0, $t1)]);
             /* damage any monster that was hit */
-            mon = svl.level.monsters[zap$2.x][zap$2.y];
+            const mon = svl.level.monsters[zap$2.x][zap$2.y];
             if (mon) {
                 unused[0] = null;   /* AD_ELEC can't destroy armor */
-                gn.notonhead = $c.i8(mon.mx !== gb.bhitpos.x || mon.my !== gb.bhitpos.y ? 1 : 0);
-                dmg = await zhitm(mon, 10 + (AD.ELEC - 1), 2, new $c.Ptr(unused, 0));
+                gn.notonhead = mon.mx !== gb.bhitpos.x || mon.my !== gb.bhitpos.y ? 1 : 0;
+                const dmg = await zhitm(mon, 10 + (AD.ELEC - 1), 2, new $c.Ptr(unused, 0));
                 if (dmg) {
                     /* mon has been damaged, but we haven't yet printed the
                        messages or given kill credit; assume the hero can
@@ -1055,9 +1053,9 @@ async function cast_chain_lightning() {   // spell.c:1003
             } else if (u.uen > 0) {
                 u.uen = u.uen - 1 | 0;   /* propagating past mons increases Pw cost a bit */
             }
-            zap$2.dir = $c.u8(DIR_LEFT(zap$2.dir));
+            zap$2.dir = $c.u8($c.rem32(zap$2.dir + 7, N_DIRS));
             await propagate_chain_lightning(clq, zap$2.$clone());
-            zap$2.dir = $c.u8(DIR_RIGHT2(zap$2.dir));
+            zap$2.dir = $c.u8($c.rem32(zap$2.dir + 2, N_DIRS));
             await propagate_chain_lightning(clq, zap$2.$clone());
         }
         await nh_delay_output()();
@@ -1070,10 +1068,10 @@ async function cast_chain_lightning() {   // spell.c:1003
  * @returns {Promise<void>}
  */
 async function cast_protection() {   // spell.c:1104
-    let l = 0, loglev = 0, gain = 0, natac = 0, rmtyp = 0, hgolden = null, atmosphere = null, pm = null, $t1;
-    l = u.ulevel;
-    loglev = 0;
-    natac = u.uac + u.uspellprot | 0;
+    let $t1;
+    let l = u.ulevel;
+    let loglev = 0;
+    let natac = u.uac + u.uspellprot;
     /* note: u.uspellprot is subtracted when find_ac() factors it into u.uac,
        so adding here factors it back out
        (versions prior to 3.6 had this backwards) */
@@ -1104,21 +1102,21 @@ async function cast_protection() {   // spell.c:1104
      *     16-30 -10    0,  5,  8,  9, 10
      */
     natac = $c.div32(10 - natac | 0, 10);   /* convert to positive and scale down */
-    gain = loglev - $c.div32(u.uspellprot, 4 - (3 < natac ? 3 : natac) | 0) | 0;
+    const gain = loglev - $c.div32(u.uspellprot, 4 - (3 < natac ? 3 : natac) | 0) | 0;
     if (gain > 0) {
         if (!Blind()) {
-            hgolden = hcolor(c_color_names.c_golden);
+            const hgolden = hcolor(c_color_names.c_golden);
             if (u.uspellprot) {
                 await pline_The($c.lit("%s haze around you becomes more dense."), hgolden);
             } else {
-                pm = u.ustuck ? u.ustuck.data : null;
-                rmtyp = svl.level.locations[u.ux][u.uy].typ;
-                atmosphere = pm && u.uswallow | 0 ? $c.peq(pm, $c.relem(mons, PM.FOG_CLOUD)) ? $c.lit("mist") : is_whirly(pm) ? $c.lit("maelstrom") : enfolds(pm) ? $c.lit("folds") : is_animal(pm) ? $c.lit("maw") : $c.lit("ooze") : u.uinwater | 0 ? hliquid($c.lit("water")) : rmtyp === CLOUD ? $c.lit("cloud") : IS_TREE(rmtyp) ? $c.lit("vegetation") : IS_STWALL(rmtyp) ? $c.lit("stone") : $c.lit("air");
+                const pm = u.ustuck ? u.ustuck.data : null;
+                const rmtyp = svl.level.locations[u.ux][u.uy].typ;
+                const atmosphere = pm && u.uswallow ? pm === mons[PM.FOG_CLOUD] ? $c.lit("mist") : is_whirly(pm) ? $c.lit("maelstrom") : enfolds(pm) ? $c.lit("folds") : is_animal(pm) ? $c.lit("maw") : $c.lit("ooze") : u.uinwater ? hliquid($c.lit("water")) : rmtyp === CLOUD ? $c.lit("cloud") : IS_TREE(rmtyp) ? $c.lit("vegetation") : IS_STWALL(rmtyp) ? $c.lit("stone") : $c.lit("air");
                 await pline_The($c.lit("%s around you begins to shimmer with %s haze."), atmosphere, await an(hgolden));
             }
         }
         u.uspellprot = $c.u8(u.uspellprot + gain | 0);
-        $t1 = $c.u8(u.weapon_skills[spell_skilltype(SPE_PROTECTION)].skill === P.EXPERT ? 20 : 10), u.uspmtime = $t1;
+        $t1 = u.weapon_skills[spell_skilltype(SPE_PROTECTION)].skill === P.EXPERT ? 20 : 10, u.uspmtime = $t1;
         if (!u.usptime) {
             u.usptime = u.uspmtime;
         }
@@ -1133,11 +1131,10 @@ async function cast_protection() {   // spell.c:1104
  * @returns {Promise<void>}
  */
 async function spell_backfire(spell) {   // spell.c:1181
-    let duration = 0, old_stun = 0, old_conf = 0;
     /* 6..24 */
-    duration = Math.imul(svs.spl_book[spell].sp_lev + 1 | 0, 3);
-    old_stun = $c.and64(u.uprops[STUNNED].intrinsic, TIMEOUT);
-    old_conf = $c.and64(u.uprops[CONFUSION].intrinsic, TIMEOUT);
+    const duration = Math.imul(svs.spl_book[spell].sp_lev + 1, 3);
+    const old_stun = $c.and64(u.uprops[STUNNED].intrinsic, TIMEOUT);
+    const old_conf = $c.and64(u.uprops[CONFUSION].intrinsic, TIMEOUT);
     /* Prior to 3.4.1, only effect was confusion; it still predominates.
      *
      * 3.6.0: this used to override pre-existing confusion duration
@@ -1177,8 +1174,8 @@ async function spell_backfire(spell) {   // spell.c:1181
  * @returns {Promise<number>} boolean
  */
 async function spelleffects_check(spell, res, energy) {   // spell.c:1220
-    let chance = 0, confused = 0, hungr = 0, intell = 0, $t1, $t2;
-    confused = $c.i8(u.uprops[CONFUSION].intrinsic !== 0 ? 1 : 0);
+    let $t1, $t2;
+    const confused = u.uprops[CONFUSION].intrinsic !== 0 ? 1 : 0;
     energy.set(0, 0);
     /*
      * Reject attempting to cast while stunned or with no free hands.
@@ -1243,7 +1240,7 @@ async function spelleffects_check(spell, res, energy) {   // spell.c:1220
        in and no turn will be consumed; however, when it does kick in,
        the attempt may fail due to lack of energy after the draining, in
        which case a turn will be used up in addition to the energy loss */
-    if (u.uhave.amulet | 0 && u.uen >= energy.get(0)) {
+    if (u.uhave.amulet && u.uen >= energy.get(0)) {
         await You_feel($c.lit("the amulet draining your energy away."));
         /* this used to be 'energy += rnd(2 * energy)' (without 'res'),
            so if amulet-induced cost was more than u.uen, nothing
@@ -1274,7 +1271,7 @@ async function spelleffects_check(spell, res, energy) {   // spell.c:1220
         return TRUE;
     } else {
         if (svs.spl_book[spell].sp_id !== SPE_DETECT_FOOD) {
-            hungr = Math.imul(energy.get(0), 2);
+            let hungr = Math.imul(energy.get(0), 2);
             /* If hero is a wizard, their current intelligence
              * (bonuses + temporary + current)
              * affects hunger reduction in casting a spell.
@@ -1288,7 +1285,7 @@ async function spelleffects_check(spell, res, energy) {   // spell.c:1220
              * b) Wizards have spent their life at magic and
              * understand quite well how to cast spells.
              */
-            intell = acurr(A.INT);
+            let intell = acurr(A.INT);
             if (!(gu.urole.mnum === PM.WIZARD)) {
                 intell = 10;
             }
@@ -1323,7 +1320,7 @@ async function spelleffects_check(spell, res, energy) {   // spell.c:1220
             await morehungry(hungr);
         }
     }
-    chance = await percent_success(spell);
+    const chance = await percent_success(spell);
     if (confused || rnd(100) > chance) {
         await You($c.lit("fail to cast the spell correctly."));
         u.uen = u.uen - $c.div32(energy.get(0), 2) | 0;
@@ -1342,11 +1339,11 @@ async function spelleffects_check(spell, res, energy) {   // spell.c:1220
  * @returns {Promise<number>} int
  */
 export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
-    let spell = 0, energy = Int32Array.of(0), damage = 0, n = 0, otyp = 0, skill = 0, role_skill = 0, res = Int32Array.of(0), physical_damage = 0, pseudo = null, cc = new $T.nhcoord(), buf = new Int8Array(256), buf$2 = new Int8Array(256), was_sick = 0, was_slimed = 0, $t1, $t2, $t3, $t4, $t5, $t6;
-    spell = force ? spell_otyp : spell_idx($c.i16(spell_otyp));
+    let energy = Int32Array.of(0), damage = 0, res = Int32Array.of(0), cc = new $T.nhcoord(), buf = new Int8Array(256), buf$2 = new Int8Array(256), $t1, $t2, $t3, $t4, $t5, $t6;
+    const spell = force ? spell_otyp : spell_idx($c.i16(spell_otyp));
     energy[0] = 0;
     res[0] = ECMD.OK;
-    physical_damage = FALSE;
+    let physical_damage = FALSE;
     if (!force && await spelleffects_check(spell, new $c.Ptr(res, 0), new $c.Ptr(energy, 0))) {
         return res[0];
     }
@@ -1354,16 +1351,16 @@ export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
     disp.botl = TRUE;
     await exercise(A.WIS, TRUE);
     /* pseudo is a temporary "false" object containing the spell stats */
-    pseudo = await mksobj(force ? spell : svs.spl_book[spell].sp_id, FALSE, FALSE);
-    $t1 = pseudo.cursed = (0) & 1, pseudo.blessed = ($t1) & 1;
+    const pseudo = await mksobj(force ? spell : svs.spl_book[spell].sp_id, FALSE, FALSE);
+    $t1 = pseudo.cursed = 0, pseudo.blessed = ($t1) & 1;
     pseudo.quan = 20;   /* do not let useup get it */
     /*
      * Find the skill the hero has in a spell type category.
      * See spell_skilltype for categories.
      */
-    otyp = pseudo.otyp;
-    skill = spell_skilltype(otyp);
-    role_skill = u.weapon_skills[skill].skill;
+    const otyp = pseudo.otyp;
+    const skill = spell_skilltype(otyp);
+    const role_skill = u.weapon_skills[skill].skill;
     switch (otyp) {
         case SPE_FIREBALL:
         case SPE_CONE_OF_COLD:
@@ -1377,7 +1374,7 @@ export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
                 if (await throwspell()) {
                     cc.x = $c.i16(u.dx);
                     cc.y = $c.i16(u.dy);
-                    n = rnd(8) + 1 | 0;
+                    let n = rnd(8) + 1 | 0;
                     while ($t2 = n, n = $t2 - 1 | 0, $t2) {
                         if (!u.dx && !u.dy && !u.dz) {
                             if ((damage = await zapyourself(pseudo, TRUE)) !== 0) {
@@ -1389,7 +1386,7 @@ export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
                         }
                         $t3 = (cc.x + rnd(3) | 0) - 2 | 0, u.dx = $t3;
                         $t4 = (cc.y + rnd(3) | 0) - 2 | 0, u.dy = $t4;
-                        if (!isok($c.i16(u.dx), $c.i16(u.dy)) || !cansee(u.dx, u.dy) || svl.level.locations[u.dx][u.dy].typ <= DBWALL || u.uswallow | 0) {
+                        if (!isok($c.i16(u.dx), $c.i16(u.dy)) || !cansee(u.dx, u.dy) || svl.level.locations[u.dx][u.dy].typ <= DBWALL || u.uswallow) {
                             /* Spell is reflected back to center */
                             u.dx = cc.x;
                             u.dy = cc.y;
@@ -1420,12 +1417,12 @@ export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
         case SPE_DRAIN_LIFE:
         case SPE_STONE_TO_FLESH:
             /*FALLTHRU*/
-            if ((objects[otyp].oc_dir | 0) !== NODIR) {
+            if (objects[otyp].oc_dir !== NODIR) {
                 if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING) {
                     /* healing and extra healing are actually potion effects,
                        but they've been extended to take a direction like wands */
                     if (role_skill >= P.SKILLED) {
-                        pseudo.blessed = (1) & 1;
+                        pseudo.blessed = 1;
                     }
                 }
                 if (atme) {
@@ -1467,7 +1464,7 @@ export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
             /* these are all duplicates of scroll effects */
             /* high skill yields effect equivalent to blessed scroll */
             if (role_skill >= P.SKILLED) {
-                pseudo.blessed = (1) & 1;
+                pseudo.blessed = 1;
             }
         case SPE_MAGIC_MAPPING:
         case SPE_CREATE_MONSTER:
@@ -1482,7 +1479,7 @@ export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
             /* these are all duplicates of potion effects */
             /* high skill yields effect equivalent to blessed potion */
             if (role_skill >= P.SKILLED) {
-                pseudo.blessed = (1) & 1;
+                pseudo.blessed = 1;
             }
         case SPE_INVISIBILITY:
             /*FALLTHRU*/
@@ -1494,8 +1491,8 @@ export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
             break;
         case SPE_CURE_SICKNESS:
             {
-                was_sick = $c.i8(!!Sick() ? 1 : 0);
-                was_slimed = $c.i8(!!Slimed() ? 1 : 0);
+                const was_sick = !!Sick() ? 1 : 0;
+                const was_slimed = !!Slimed() ? 1 : 0;
                 /* cure conditions (which updates status) before feedback */
                 await healup(0, 0, TRUE, FALSE);
                 /*
@@ -1518,7 +1515,7 @@ export async function spelleffects(spell_otyp, atme, force) {   // spell.c:1385
         case SPE_CLAIRVOYANCE:
             if (!BClairvoyant()) {
                 if (role_skill >= P.SKILLED) {
-                    pseudo.blessed = (1) & 1;   /* detect monsters as well as map */
+                    pseudo.blessed = 1;   /* detect monsters as well as map */
                 }
                 await do_vicinity_map(pseudo);
                 /* at present, only one thing blocks clairvoyance */
@@ -1560,7 +1557,7 @@ function spell_aim_step(arg, x, y) {   // spell.c:1607
     if (!isok(x, y)) {
         return FALSE;
     }
-    if (!(svl.level.locations[x][y].typ >= POOL) && !(svl.level.locations[x][y].typ === DOOR && (svl.level.locations[x][y].flags | 0) & D.ISOPEN)) {
+    if (!(svl.level.locations[x][y].typ >= POOL) && !(svl.level.locations[x][y].typ === DOOR && svl.level.locations[x][y].flags & D.ISOPEN)) {
         return FALSE;
     }
     return TRUE;
@@ -1575,22 +1572,22 @@ function can_center_spell_location(x, y) {   // spell.c:1619
     if (distmin(u.ux, u.uy, x, y) > 10) {
         return FALSE;
     }
-    return $c.i8(isok(x, y) && cansee(x, y) && !(svl.level.locations[x][y].typ <= DBWALL) ? 1 : 0);
+    return isok(x, y) && cansee(x, y) && !(svl.level.locations[x][y].typ <= DBWALL) ? 1 : 0;
 }
 /**
  * @param {number} on_off boolean
  * @returns {Promise<void>}
  */
 async function display_spell_target_positions(on_off) {   // spell.c:1627
-    let x = 0, y = 0, dx = 0, dy = 0, dist = 0;
-    dist = 10;
+    let dx = 0, dy = 0;
+    const dist = 10;
     if (on_off) {
         /* on */
         await tmp_at(DISP_BEAM, 4092);
         for (dx = $c.i16(-dist | 0); dx <= dist; dx = $c.i16(dx + 1)) {
             for (dy = $c.i16(-dist | 0); dy <= dist; dy = $c.i16(dy + 1)) {
-                x = $c.i16(u.ux + dx | 0);
-                y = $c.i16(u.uy + dy | 0);
+                const x = $c.i16(u.ux + dx);
+                const y = $c.i16(u.uy + dy);
                 /* hero's location is allowed but highlighting the hero's
                    spot makes map harder to read (if using '$' rather than
                    by changing background color) */
@@ -1677,7 +1674,7 @@ export async function tport_spell(what) {   // spell.c:1707
             tport_spell$save_tport.savespell.$copyFrom(svs.spl_book[i]);
             tport_spell$save_tport.tport_indx = i;
             svs.spl_book[i].sp_id = SPE_TELEPORT_AWAY;
-            svs.spl_book[i].sp_lev = $c.i16(objects[SPE_TELEPORT_AWAY].oc_oc2);
+            svs.spl_book[i].sp_lev = objects[SPE_TELEPORT_AWAY].oc_oc2;
             svs.spl_book[i].sp_know = KEEN;
             return REMOVESPELL;   /* operation needed to reverse */
         }
@@ -1705,7 +1702,7 @@ export async function tport_spell(what) {   // spell.c:1707
  * @returns {Promise<void>}
  */
 export async function losespells() {   // spell.c:1763
-    let n = 0, nzap = 0, i = 0;
+    let n = 0, i = 0;
     /* in case reading has been interrupted earlier, discard context */
     svc.context.spbook.book = null;
     svc.context.spbook.o_id = 0;
@@ -1717,7 +1714,7 @@ export async function losespells() {   // spell.c:1763
     }
     /* lose anywhere from zero to all known spells;
        if confused, use the worse of two die rolls */
-    nzap = rn2(n + 1 | 0);
+    let nzap = rn2(n + 1 | 0);
     if (u.uprops[CONFUSION].intrinsic) {
         i = rn2(n + 1 | 0);
         if (i > nzap) {
@@ -1773,7 +1770,6 @@ export async function losespells() {   // spell.c:1763
  * @returns {number} int
  */
 function spell_cmp(vptr1, vptr2) {   // spell.c:1870
-    let indx1 = 0, indx2 = 0, otyp1 = 0, otyp2 = 0, levl1 = 0, levl2 = 0, skil1 = 0, skil2 = 0;
     /*
      * gather up all of the possible parameters except spell name
      * in advance, even though some might not be needed:
@@ -1782,14 +1778,14 @@ function spell_cmp(vptr1, vptr2) {   // spell.c:1870
      *  levl. = spell level;
      *  skil. = skill group aka spell class.
      */
-    indx1 = $c.asArr(vptr1, Int32Array).get(0);
-    indx2 = $c.asArr(vptr2, Int32Array).get(0);
-    otyp1 = svs.spl_book[indx1].sp_id;
-    otyp2 = svs.spl_book[indx2].sp_id;
-    levl1 = objects[otyp1].oc_oc2;
-    levl2 = objects[otyp2].oc_oc2;
-    skil1 = objects[otyp1].oc_subtyp;
-    skil2 = objects[otyp2].oc_subtyp;
+    const indx1 = $c.asArr(vptr1, Int32Array).get(0);
+    const indx2 = $c.asArr(vptr2, Int32Array).get(0);
+    const otyp1 = svs.spl_book[indx1].sp_id;
+    const otyp2 = svs.spl_book[indx2].sp_id;
+    const levl1 = objects[otyp1].oc_oc2;
+    const levl2 = objects[otyp2].oc_oc2;
+    const skil1 = objects[otyp1].oc_subtyp;
+    const skil2 = objects[otyp2].oc_subtyp;
     switch (gs.spl_sortmode) {
         case SORTBY.LETTER:
             return indx1 - indx2 | 0;
@@ -1884,9 +1880,9 @@ async function sortspells() {   // spell.c:1927
  * @returns {Promise<number>} boolean
  */
 async function spellsortmenu() {   // spell.c:1976
-    let tmpwin = 0, selected = [null], any = new $T.any(), let_ = 0, i = 0, n = 0, choice = 0, clr = 0;
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    let selected = [null], any = new $T.any(), let_ = 0, i = 0;
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);   /* zero out all bits */
     for (i = 0; i < 9; i = i + 1 | 0) {
@@ -1901,10 +1897,10 @@ async function spellsortmenu() {   // spell.c:1976
         await add_menu(tmpwin, nul_glyphinfo, any, let_, 0, ATR.NONE, clr, spl_sortchoices[i], i === gs.spl_sortmode ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
     await end_menu()(tmpwin, $c.lit("View known spells list sorted"));
-    n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
+    const n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
     await destroy_nhwindow()(tmpwin);
     if (n > 0) {
-        choice = $c.radd(selected[0], 0).item.a_int - 1 | 0;
+        let choice = $c.radd(selected[0], 0).item.a_int - 1 | 0;
         /* skip preselected entry if we have more than one item chosen */
         if (n > 1 && choice === gs.spl_sortmode) {
             choice = $c.radd(selected[0], 1).item.a_int - 1 | 0;
@@ -1972,11 +1968,11 @@ export async function show_spells() {   // spell.c:2059
  * @returns {Promise<number>} boolean
  */
 async function dospellmenu(prompt, splaction, spell_no) {   // spell.c:2075
-    let tmpwin = 0, i = 0, n = 0, how = 0, splnum = 0, buf = new Int8Array(256), retentionbuf = new Int8Array(24), sep = 0, fmt = null, selected = [null], any = new $T.any(), clr = 0;
+    let i = 0, buf = new Int8Array(256), retentionbuf = new Int8Array(24), sep = 0, fmt = null, selected = [null], any = new $T.any();
     /* SPELLMENU_CAST, SPELLMENU_VIEW, SPELLMENU_DUMP or
      * svs.spl_book[] index */
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);   /* zero out all bits */
     /*
@@ -2002,7 +1998,7 @@ async function dospellmenu(prompt, splaction, spell_no) {   // spell.c:2075
     }
     await add_menu_heading(tmpwin, new $c.Ptr(buf, 0));
     for (i = 0; i < MAXSPELL && svs.spl_book[i].sp_id !== NO_SPELL; i = i + 1 | 0) {
-        splnum = !gs.spl_orderindx ? i : gs.spl_orderindx.get(i);
+        const splnum = !gs.spl_orderindx ? i : gs.spl_orderindx.get(i);
         $c.sprintf(new $c.Ptr(buf, 0), fmt, obj_descr[objects[svs.spl_book[splnum].sp_id].oc_name_idx].oc_name, svs.spl_book[splnum].sp_lev, await spelltypemnemonic(spell_skilltype(svs.spl_book[splnum].sp_id)), 100 - await percent_success(splnum) | 0, spellretention(splnum, new $c.Ptr(retentionbuf, 0)));
         if (wizard()) {
             $c.sprintf(eos(new $c.Ptr(buf, 0)), $c.lit("%c%6d"), sep, svs.spl_book[i].sp_know);
@@ -2010,7 +2006,7 @@ async function dospellmenu(prompt, splaction, spell_no) {   // spell.c:2075
         any.a_int = splnum + 1 | 0;   /* must be non-zero */
         await add_menu(tmpwin, nul_glyphinfo, any, spellet(splnum), 0, ATR.NONE, clr, new $c.Ptr(buf, 0), splnum === splaction ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
     }
-    how = PICK.ONE;
+    let how = PICK.ONE;
     if (splaction === SPELLMENU_VIEW) {
         if (svs.spl_book[1].sp_id === NO_SPELL) {
             /* only one spell => nothing to swap with */
@@ -2022,7 +2018,7 @@ async function dospellmenu(prompt, splaction, spell_no) {   // spell.c:2075
         }
     }
     await end_menu()(tmpwin, prompt);
-    n = await select_menu(tmpwin, how, new $c.Ptr(selected, 0));
+    const n = await select_menu(tmpwin, how, new $c.Ptr(selected, 0));
     await destroy_nhwindow()(tmpwin);
     if (n > 0) {
         spell_no.set(0, $c.radd(selected[0], 0).item.a_int - 1 | 0);
@@ -2051,17 +2047,16 @@ async function dospellmenu(prompt, splaction, spell_no) {   // spell.c:2075
  * @returns {Promise<number>} int
  */
 async function percent_success(spell) {   // spell.c:2173
-    let chance = 0, splcaster = 0, special = 0, statused = 0, difficulty = 0, skill = 0, skilltype = 0, paladin_bonus = 0, learning = 0;
     /* Intrinsic and learned ability are combined to calculate
      * the probability of player's success at casting a given spell.
      */
-    skilltype = spell_skilltype(svs.spl_book[spell].sp_id);
+    const skilltype = spell_skilltype(svs.spl_book[spell].sp_id);
     /* Knights don't get metal armor penalty for clerical spells */
-    paladin_bonus = $c.i8(gu.urole.mnum === PM.KNIGHT && skilltype === P.CLERIC_SPELL ? 1 : 0);
+    const paladin_bonus = gu.urole.mnum === PM.KNIGHT && skilltype === P.CLERIC_SPELL ? 1 : 0;
     /* Calculate intrinsic ability (splcaster) */
-    splcaster = gu.urole.spelbase;
-    special = gu.urole.spelheal;
-    statused = acurr(gu.urole.spelstat);
+    let splcaster = gu.urole.spelbase;
+    const special = gu.urole.spelheal;
+    const statused = acurr(gu.urole.spelstat);
     if ($G.uarm && is_metallic($G.uarm) && !paladin_bonus) {
         splcaster = splcaster + ($G.uarmc && $G.uarmc.otyp === ROBE ? $c.div32(gu.urole.spelarmr, 2) : gu.urole.spelarmr) | 0;
     } else if ($G.uarmc && $G.uarmc.otyp === ROBE) {
@@ -2098,15 +2093,15 @@ async function percent_success(spell) {   // spell.c:2173
     /* The player's basic likelihood of being able to cast any spell
      * is based of their `magic' statistic. (Int or Wis)
      */
-    chance = $c.div32(Math.imul(11, statused), 2);
+    let chance = $c.div32(Math.imul(11, statused), 2);
     /*
      * High-level spells are harder.  Easier for higher-level casters.
      * The difficulty is based on the hero's level and their skill level
      * in that spell type.
      */
-    skill = u.weapon_skills[skilltype].skill;
+    let skill = u.weapon_skills[skilltype].skill;
     skill = (skill > P.UNSKILLED ? skill : P.UNSKILLED) - 1 | 0;   /* unskilled => 0 */
-    difficulty = Math.imul(svs.spl_book[spell].sp_lev - 1 | 0, 4) - ((Math.imul(skill, 6) + $c.div32(u.ulevel, 3) | 0) + 1 | 0) | 0;
+    const difficulty = Math.imul(svs.spl_book[spell].sp_lev - 1, 4) - ((Math.imul(skill, 6) + $c.div32(u.ulevel, 3) | 0) + 1 | 0) | 0;
     if (difficulty > 0) {
         /* Player is too low level or unskilled. */
         chance = chance - isqrt(Math.imul(900, difficulty) + 2000 | 0) | 0;
@@ -2116,7 +2111,7 @@ async function percent_success(spell) {   // spell.c:2173
          * low-level spells.  That is, a player quickly gains
          * no advantage for raising level.
          */
-        learning = $c.div32(Math.imul(15, -difficulty | 0), svs.spl_book[spell].sp_lev);
+        const learning = $c.div32(Math.imul(15, -difficulty | 0), svs.spl_book[spell].sp_lev);
         chance = chance + (learning > 20 ? 20 : learning) | 0;
     }
     /* Clamp the chance: >18 stat and advanced learning only help
@@ -2163,10 +2158,9 @@ async function percent_success(spell) {   // spell.c:2173
  * @returns {$c.Ptr | null} char *
  */
 function spellretention(idx, outbuf) {   // spell.c:2295
-    let turnsleft = 0, percent = 0, accuracy = 0, skill = 0;
-    skill = u.weapon_skills[spell_skilltype(svs.spl_book[idx].sp_id)].skill;
+    let skill = u.weapon_skills[spell_skilltype(svs.spl_book[idx].sp_id)].skill;
     skill = skill > P.UNSKILLED ? skill : P.UNSKILLED;   /* restricted same as unskilled */
-    turnsleft = svs.spl_book[idx].sp_know;
+    const turnsleft = svs.spl_book[idx].sp_know;
     outbuf.set(0, 0);   /* lint suppression */
     if (turnsleft < 1) {
         /* spell has expired; hero can't successfully cast it anymore */
@@ -2189,8 +2183,8 @@ function spellretention(idx, outbuf) {   // spell.c:2295
          * (N-1)%+1 through N%; so 1% is "greater than 0, at most 200".
          * KEEN is a multiple of 100; KEEN/100 loses no precision.
          */
-        percent = $c.add64($c.div64($c.sub64(turnsleft, 1), 200), 1);
-        accuracy = skill === P.EXPERT ? 2 : skill === P.SKILLED ? 5 : skill === P.BASIC ? 10 : 25;
+        let percent = $c.add64($c.div64($c.sub64(turnsleft, 1), 200), 1);
+        const accuracy = skill === P.EXPERT ? 2 : skill === P.SKILLED ? 5 : skill === P.BASIC ? 10 : 25;
         /* round up to the high end of this range */
         percent = $c.mul64(accuracy, $c.add64($c.div64($c.sub64(percent, 1), accuracy), 1));
         $c.sprintf(outbuf, $c.lit("%ld%%-%ld%%"), $c.add64($c.sub64(percent, accuracy), 1), percent);
@@ -2203,8 +2197,8 @@ function spellretention(idx, outbuf) {   // spell.c:2295
  * @returns {Promise<void>}
  */
 export async function initialspell(obj) {   // spell.c:2340
-    let i = 0, otyp = 0;
-    otyp = obj.otyp;
+    let i = 0;
+    const otyp = obj.otyp;
     for (i = 0; i < MAXSPELL; i = i + 1 | 0) {
         if (svs.spl_book[i].sp_id === NO_SPELL || svs.spl_book[i].sp_id === otyp) {
             break;
@@ -2217,7 +2211,7 @@ export async function initialspell(obj) {   // spell.c:2340
         await impossible($c.lit("Spell %s already known."), obj_descr[objects[otyp].oc_name_idx].oc_name);
     } else {
         svs.spl_book[i].sp_id = $c.i16(otyp);
-        svs.spl_book[i].sp_lev = $c.i16(objects[otyp].oc_oc2);
+        svs.spl_book[i].sp_lev = objects[otyp].oc_oc2;
         svs.spl_book[i].sp_know = KEEN + 0;
     }
     return;
@@ -2228,10 +2222,10 @@ export async function initialspell(obj) {   // spell.c:2340
  * @returns {number} int
  */
 export function known_spell(otyp) {   // spell.c:2363
-    let i = 0, k = 0;
+    let i = 0;
     for (i = 0; i < MAXSPELL && svs.spl_book[i].sp_id !== NO_SPELL; i = i + 1 | 0) {
         if (svs.spl_book[i].sp_id === otyp) {
-            k = svs.spl_book[i].sp_know;
+            const k = svs.spl_book[i].sp_know;
             return k > 2000 ? spe_Fresh : k > 0 ? spe_GoingStale : spe_Forgotten;
         }
     }
@@ -2273,7 +2267,7 @@ export async function force_learn_spell(otyp) {   // spell.c:2391
     /* for a going-stale or forgotten spell the sp_id and sp_lev assignments
        are redundant but harmless; for an unknown spell, they're essential */
     svs.spl_book[i].sp_id = otyp;
-    svs.spl_book[i].sp_lev = $c.i16(objects[otyp].oc_oc2);
+    svs.spl_book[i].sp_lev = objects[otyp].oc_oc2;
     svs.spl_book[i].sp_know = KEEN + 0;
     /* set spl_book[i].sp_know to KEEN; unlike when learning
      * a spell by reading its book, we don't need to add 1 */

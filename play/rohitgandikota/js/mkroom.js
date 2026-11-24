@@ -124,7 +124,7 @@ export function do_mkroom(roomtype) {
         case BEEHIVE:   mkzoo(BEEHIVE);   break;
         case MORGUE:    mkzoo(MORGUE);    break;
         case BARRACKS:  mkzoo(BARRACKS);  break;
-        case SWAMP:     mkswamp();        break;
+        case SWAMP:     return mkswamp();
         case TEMPLE:    mktemple();       break;
         case LEPREHALL: mkzoo(LEPREHALL); break;
         case COCKNEST:  mkzoo(COCKNEST);  break;
@@ -248,7 +248,7 @@ function mkzoo(type) {
 // The draw volume is per-square: one makemon for every eligible square, plus a
 // per-type tail. A MORGUE spends four rn2 per square on top of its makemon, so
 // the tail order is load-bearing.
-export function fill_zoo(sroom) {
+export async function fill_zoo(sroom) {
     let sx, sy, i;
     let goldlim = 0;
     const type = sroom.rtype;
@@ -334,7 +334,7 @@ export function fill_zoo(sroom) {
             /* src/mkroom.c:383 — the makemon call is UNCONDITIONAL: a null
                permonst (the ZOO arm) asks for a random monster. Guarding on
                ptr left zoos empty. */
-            const mon = makemon(ptr, sx, sy, MM_ASLEEP | MM_NOGRP);
+            const mon = await makemon(ptr, sx, sy, MM_ASLEEP | MM_NOGRP);
             if (mon) {
                 mon.msleeping = 1;
                 if (type === COURT && mon.mpeaceful) {
@@ -567,7 +567,7 @@ function mktemple() {
 // and a "cleaner" loop that draws only for eligible rooms would desync.
 //
 // Only fires at u_depth > 15, so it is rare in the public sessions.
-function mkswamp() {
+async function mkswamp() {
     let eelct = 0;
 
     for (let i = 0; i < 5; i++) {       /* turn up to 5 rooms swampy */
@@ -593,7 +593,7 @@ function mkswamp() {
                         lev.typ = POOL;
                         if (!eelct || !rn2(4)) {
                             /* mkclass() won't do, as we might get kraken */
-                            makemon(game.mons[rn2(5)
+                            await makemon(game.mons[rn2(5)
                                         ? PMNAMES.PM_GIANT_EEL
                                         : rn2(2)
                                             ? PMNAMES.PM_PIRANHA
@@ -602,7 +602,7 @@ function mkswamp() {
                             eelct++;
                         }
                     } else if (!rn2(4)) {   /* swamps tend to be moldy */
-                        makemon(mkclass(MONSYMS.S_FUNGUS, 0), sx, sy,
+                        await makemon(mkclass(MONSYMS.S_FUNGUS, 0), sx, sy,
                                 NO_MM_FLAGS);
                     }
                 }

@@ -64,8 +64,8 @@ export async function wizard1_level() {
     const bounds2 = l_selection_fillrect(bnds.lx, bnds.ly + 1,
                                          bnds.hx - 2, bnds.hy - 1);
 
-    const wiz1 = des.map({ halign: 'center', valign: 'center',
-                           map: WIZARD1_MAP, contents: (rm) => {
+    const wiz1 = await des.map({ halign: 'center', valign: 'center',
+                           map: WIZARD1_MAP, contents: async (rm) => {
         des.levregion({ type: 'stair-up', region: [1, 0, 79, 20],
                         region_islev: 1, exclude: [0, 0, 28, 12] });
         des.levregion({ type: 'stair-down', region: [1, 0, 79, 20],
@@ -84,7 +84,7 @@ export async function wizard1_level() {
         /* another region to constrain monster arrival */
         des.region({ region: [1, 1, 10, 11], lit: 0, type: 'ordinary',
                      arrival_room: true });
-        des.mazewalk(28, 5, 'east');
+        await des.mazewalk(28, 5, 'east');
         des.ladder('down', 6, 5);
         /* Non diggable walls
            Walls inside the moat stay diggable */
@@ -99,28 +99,28 @@ export async function wizard1_level() {
         des.non_passwall(selection.area(21, 0, 27, 10));
         /* The wizard and his guards */
         des.monster({ id: 'Wizard of Yendor', x: 16, y: 5, asleep: 1 });
-        des.monster('hell hound', 15, 5);
-        des.monster('vampire lord', 17, 5);
+        await des.monster('hell hound', 15, 5);
+        await des.monster('vampire lord', 17, 5);
         /* The local treasure */
         des.object('Book of the Dead', 16, 5);
         /* Surrounding terror */
-        des.monster('kraken', 14, 2);
-        des.monster('giant eel', 17, 2);
-        des.monster('kraken', 13, 4);
-        des.monster('giant eel', 13, 6);
-        des.monster('kraken', 19, 4);
-        des.monster('giant eel', 19, 6);
-        des.monster('kraken', 15, 8);
-        des.monster('giant eel', 17, 8);
-        des.monster('piranha', 15, 2);
-        des.monster('piranha', 19, 8);
+        await des.monster('kraken', 14, 2);
+        await des.monster('giant eel', 17, 2);
+        await des.monster('kraken', 13, 4);
+        await des.monster('giant eel', 13, 6);
+        await des.monster('kraken', 19, 4);
+        await des.monster('giant eel', 19, 6);
+        await des.monster('kraken', 15, 8);
+        await des.monster('giant eel', 17, 8);
+        await des.monster('piranha', 15, 2);
+        await des.monster('piranha', 19, 8);
         /* Random monsters */
-        des.monster('D');
-        des.monster('H');
-        des.monster('&');
-        des.monster('&');
-        des.monster('&');
-        des.monster('&');
+        await des.monster('D');
+        await des.monster('H');
+        await des.monster('&');
+        await des.monster('&');
+        await des.monster('&');
+        await des.monster('&');
         /* And to make things a little harder. */
         des.trap('board', 16, 4);
         des.trap('board', 16, 6);

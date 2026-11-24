@@ -13,10 +13,10 @@ export function ALIGNLIM() {
     return $c.add64(10, $c.div64(svm.moves, 200));
 }
 export function Amask2align(x) {
-    return $c.i8((x & AM.MASK) >>> 0 === 0 ? A.NONE : (x & AM.MASK) >>> 0 === AM.LAWFUL ? A.LAWFUL : ((x & AM.MASK) >>> 0 | 0) - 2 | 0);
+    return (x & AM.MASK) >>> 0 === 0 ? A.NONE : (x & AM.MASK) >>> 0 === AM.LAWFUL ? A.LAWFUL : ((x & AM.MASK) >>> 0) - 2;
 }
 export function Align2amask(x) {
-    return (x === A.NONE ? AM.NONE : x === A.LAWFUL ? AM.LAWFUL : x + 2 | 0) >>> 0;
+    return (x === A.NONE ? AM.NONE : x === A.LAWFUL ? AM.LAWFUL : x + 2) >>> 0;
 }
 export function Amask2msa(x) {
     return (x & AM.MASK) >>> 0 === 4 ? 3 : (x & AM.MASK) >>> 0;

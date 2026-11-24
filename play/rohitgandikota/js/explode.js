@@ -772,11 +772,11 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                     await You_hear('stone breaking.');
                 }
                 await fracture_rock(otmp);
-                place_object(otmp, sx, sy);
+                await place_object(otmp, sx, sy);
                 if ((otmp = sobj_at(ONAMES.BOULDER, sx, sy)) != null) {
                     /* another boulder here, restack it to the top */
                     obj_extract_self(otmp);
-                    place_object(otmp, sx, sy);
+                    await place_object(otmp, sx, sy);
                 }
             } else {
                 let trap;
@@ -789,7 +789,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                     await You_hear('stone crumbling.');
                 }
                 await break_statue(otmp);
-                place_object(otmp, sx, sy); /* put fragments on floor */
+                await place_object(otmp, sx, sy); /* put fragments on floor */
             }
             newsym(sx, sy); /* in case it's beyond radius of 'farthest' */
             used_up = true;
@@ -910,7 +910,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                         lostgoods = true;
                     }
                 }
-                place_object(stmp.obj, x, y);
+                await place_object(stmp.obj, x, y);
                 stackobj(stmp.obj);
             }
         }

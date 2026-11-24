@@ -13,7 +13,7 @@ export function strcmpi(a, b) {
     return strncmpi(a, b, -1);
 }
 export function M(c) {
-    return c - 128 | 0;
+    return c - 128;
 }
 export function C(c) {
     return 31 & c;

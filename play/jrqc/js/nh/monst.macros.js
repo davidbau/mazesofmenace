@@ -57,10 +57,10 @@ export function is_vampshifter(mon) {
     return mon.cham === PM.VAMPIRE || mon.cham === PM.VAMPIRE_LEADER || mon.cham === PM.VLAD_THE_IMPALER ? 1 : 0;
 }
 export function is_Vlad(m) {
-    return $c.peq(m.data, $c.relem(mons, PM.VLAD_THE_IMPALER)) || m.cham === PM.VLAD_THE_IMPALER ? 1 : 0;
+    return m.data === mons[PM.VLAD_THE_IMPALER] || m.cham === PM.VLAD_THE_IMPALER ? 1 : 0;
 }
 export function mundisplaceable(mon) {
-    return mon.ispriest | 0 || mon.isshk | 0 || mon.isgd | 0 || $c.peq(mon.data, $c.relem(mons, PM.ORACLE)) || mon.m_id === svq.quest_status.leader_m_id ? 1 : 0;
+    return mon.ispriest || mon.isshk || mon.isgd || mon.data === mons[PM.ORACLE] || mon.m_id === svq.quest_status.leader_m_id ? 1 : 0;
 }
 export function is_door_mappear(mon) {
     return (mon.m_ap_type & M_AP.TYPMASK) === M_AP.FURNITURE && (mon.mappearance === S.hcdoor || mon.mappearance === S.vcdoor) ? 1 : 0;
@@ -72,10 +72,10 @@ export function troll_baned(m, o) {
     return m.data.mlet === S.TROLL && o && o.oartifact === ART.TROLLSBANE ? 1 : 0;
 }
 export function engulfing_u(mon) {
-    return u.uswallow | 0 && $c.peq(u.ustuck, mon) ? 1 : 0;
+    return u.uswallow && $c.peq(u.ustuck, mon) ? 1 : 0;
 }
 export function helpless(mon) {
-    return mon.msleeping | 0 || !mon.mcanmove ? 1 : 0;
+    return mon.msleeping || !mon.mcanmove ? 1 : 0;
 }
 export function mon_perma_blind(mon) {
     return !mon.mcansee && !mon.mblinded ? 1 : 0;

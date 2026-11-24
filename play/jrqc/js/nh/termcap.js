@@ -172,8 +172,8 @@ const nulstr = new Int8Array(1);
  * @returns {Promise<void>}
  */
 export async function term_startup(wid, hgt) {   // termcap.c:82
-    let term = null, tptr = null, tbufptr = [null], pc = null, i = 0, buf = new Int8Array(256), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12;
-    term = $c.getenv($c.lit("TERM"));
+    let tbufptr = [null], pc = null, i = 0, buf = new Int8Array(256), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12;
+    const term = $c.getenv($c.lit("TERM"));
     /* library has a default */
     /* TERMLIB */
     if (!term) {
@@ -198,7 +198,7 @@ export async function term_startup(wid, hgt) {   // termcap.c:82
     /* last thing set */
     /* TOS */
     /* ANSI_DEFAULT */
-    tptr = $c.asArr(await alloc(1024), Int8Array);
+    const tptr = $c.asArr(await alloc(1024), Int8Array);
     tbufptr[0] = new $c.Ptr(tbuf, 0);
     if (!$c.strncmp(term, $c.lit("5620"), 4)) {
         flags.null = 0;   /* this should be a termcap flag */
@@ -375,7 +375,6 @@ export function tty_number_pad(state) {   // termcap.c:359
    so this is a convenient hook.
  */
 function tty_decgraphics_termcap_fixup() {   // termcap.c:388
-    let ae = null;
     /* these values are missing from some termcaps */
     if (!AS()) {
         gt.tc_gbl_data.tc_AS = new $c.Ptr(tty_decgraphics_termcap_fixup$ctrlN, 0);   /* ^N (shift-out [graphics font]) */
@@ -412,7 +411,7 @@ function tty_decgraphics_termcap_fixup() {   // termcap.c:388
     /* if AE is still present in HE, set a flag so that glyph writing
        code will know that AS needs to be refreshed for consecutive
        line drawing characters */
-    ae = gt.tc_gbl_data.tc_AE;
+    let ae = gt.tc_gbl_data.tc_AE;
     if (digit(ae.get(0))) {
         /* skip over delay prefix, if any */
         do {
@@ -597,9 +596,8 @@ export function xputc(c) {   // termcap.c:617
  * @returns {number} int
  */
 function nomux_markers_enabled() {   // termcap.c:665
-    let ev = null;
     if (nomux_markers_enabled$cached < 0) {
-        ev = $c.getenv($c.lit("NOMUX_MARKERS"));
+        const ev = $c.getenv($c.lit("NOMUX_MARKERS"));
         nomux_markers_enabled$cached = ev && ev.get(0) && ev.get(0) !== 48 ? 1 : 0;
     }
     return nomux_markers_enabled$cached;
@@ -610,13 +608,13 @@ function nomux_markers_enabled() {   // termcap.c:665
  * @param {$c.Ptr | null} kind const char *
  */
 function nomux_emit_marker(kind) {   // termcap.c:681
-    let scr = null, cx = Int32Array.of(0), cy = Int32Array.of(0), scr_len = 0;
+    let cx = Int32Array.of(0), cy = Int32Array.of(0);
     if (!nomux_markers_enabled()) {
         return;
     }
     {
-        scr = nomux_capture_screen();
-        scr_len = scr ? $c.strlen(scr) : 0;
+        const scr = nomux_capture_screen();
+        const scr_len = scr ? $c.strlen(scr) : 0;
         nomux_get_cursor(new $c.Ptr(cx, 0), new $c.Ptr(cy, 0));
         $c.fprintf($c.__stdoutp, $c.lit("\x1b]7777;KIND=%s;SEQ=%d;ANIM=%d;CX=%d;CY=%d;LEN=%zu\x07"), kind, nomux_seq, $G.nomux_anim_id, cx[0], cy[0], scr_len);
         if (scr_len > 0) {
@@ -679,12 +677,11 @@ export function nomux_clear_to_eol(row, col) {   // termcap.c:735
  * @param {number} ch int
  */
 export function nomux_putch(ch) {   // termcap.c:755
-    let row = 0, col = 0;
     if (!$G.ttyDisplay || ch < 32) {
         return;
     }
-    row = $G.ttyDisplay.cury;
-    col = $G.ttyDisplay.curx;
+    const row = $G.ttyDisplay.cury;
+    const col = $G.ttyDisplay.curx;
     if (row >= 0 && row < 24 && col >= 0 && col < 80) {
         nomux_buf[row][col].ch = $c.i8(ch);
         nomux_buf[row][col].fg = nomux_fg_cur;
@@ -724,7 +721,7 @@ export function nomux_set_fg(color) {   // termcap.c:776
     if (color === CLR.BLACK && iflags.wc2_darkgray) {
         color = 8;   /* index 8 -> ANSI 90m (bright black / dark gray) */
     }
-    nomux_fg_cur = $c.u8(color < 0 || color >= 16 ? 7 : $c.u8(color));
+    nomux_fg_cur = color < 0 || color >= 16 ? 7 : $c.u8(color);
 }
 export function nomux_end_fg() {   // termcap.c:787
     nomux_fg_cur = 7;
@@ -746,8 +743,8 @@ function nomux_sgr_fg(fg) {   // termcap.c:789
  * @returns {$c.Ptr | null} char *
  */
 export function nomux_capture_screen() {   // termcap.c:796
-    let p = null, row = 0, col = 0, end = 0, cur_fg = 0, cur_attr = 0, in_dec = 0, c = null, ch = 0, fg = 0, at = 0, $t1, $t2, $t3, $t4, $t5;
-    p = new $c.Ptr(nomux_out, 0);
+    let row = 0, col = 0, $t1, $t2, $t3, $t4, $t5;
+    let p = new $c.Ptr(nomux_out, 0);
     /* tmux capture-pane -e format:
      * - Color start: \033[97m (just the code, no 0; prefix)
      * - Color end (to default): \033[39m (fg reset only)
@@ -756,18 +753,18 @@ export function nomux_capture_screen() {   // termcap.c:796
      * - Full reset: \033[0m only at end-of-line or when both attr+color reset
      * Incremental: only emit what changes between cells. */
     for (row = 0; row < 24; row = row + 1 | 0) {
-        cur_fg = 7;
-        cur_attr = 0;
-        end = 79;
+        let cur_fg = 7;
+        let cur_attr = 0;
+        let end = 79;
         while (end >= 0 && (nomux_buf[row][end].ch === 32 || nomux_buf[row][end].ch === 0) && nomux_buf[row][end].attr === 0 && (nomux_buf[row][end].fg === 7 || nomux_buf[row][end].fg === 0)) {
             end = end - 1 | 0;
         }
-        in_dec = 0;
+        let in_dec = 0;
         for (col = 0; col <= end; col = col + 1 | 0) {
-            c = $c.relem(nomux_buf[row], col);
-            ch = $c.i8(c.ch ? c.ch : 32);
-            fg = c.fg ? c.fg : 7;
-            at = c.attr;
+            const c = $c.relem(nomux_buf[row], col);
+            const ch = c.ch ? c.ch : 32;
+            const fg = c.fg ? c.fg : 7;
+            const at = c.attr;
             /* Emit incremental SGR changes */
             if (at !== cur_attr) {
                 /* Handle attr changes individually */
@@ -943,20 +940,19 @@ export function xputs(s) {   // termcap.c:964
  * @returns {Promise<void>}
  */
 export async function cl_end() {   // termcap.c:974
-    let cx = 0;
     if (CE) {
         xputs(CE);
         nomux_clear_to_eol($G.ttyDisplay.cury, $G.ttyDisplay.curx);
     } else {
         /* no-CE fix - free after Harold Rynes */
-        cx = $G.ttyDisplay.curx + 1 | 0;
+        let cx = $G.ttyDisplay.curx + 1;
         /* this looks terrible, especially on a slow terminal
            but is better than nothing */
         while (cx < gt.tc_gbl_data.tc_CO) {
             xputc(32);
             cx = cx + 1 | 0;
         }
-        await tty_curs($G.BASE_WINDOW, $G.ttyDisplay.curx + 1 | 0, $G.ttyDisplay.cury);
+        await tty_curs($G.BASE_WINDOW, $G.ttyDisplay.curx + 1, $G.ttyDisplay.cury);
     }
 }
 /**
@@ -1028,9 +1024,8 @@ export function graph_off() {   // termcap.c:1103
  * @returns {Promise<void>}
  */
 export async function tty_delay_output() {   // termcap.c:1129
-    let no_delay_env = null, cmlen = 0, i = 0;
     if (tty_delay_output$no_delay < 0) {
-        no_delay_env = $c.getenv($c.lit("NETHACK_NO_DELAY"));
+        let no_delay_env = $c.getenv($c.lit("NETHACK_NO_DELAY"));
         if (!no_delay_env || !no_delay_env.get(0)) {
             no_delay_env = $c.getenv($c.lit("WEBHACK_NO_DELAY"));
         }
@@ -1057,8 +1052,8 @@ export async function tty_delay_output() {   // termcap.c:1129
         $c.tputs($c.lit("$<50>"), 1, xputc);
     } else if ($c.$libc.ospeed > 0 && $c.$libc.ospeed < 15 && nh_CM()) {
         /* delay by sending cm(here) an appropriate number of times */
-        cmlen = $c.i32($c.strlen($c.tgoto(tc_lcl_data.tc_CM, $G.ttyDisplay.curx, $G.ttyDisplay.cury)));
-        i = 500 + $c.div32(tmspc10[$c.$libc.ospeed], 2) | 0;
+        const cmlen = $c.i32($c.strlen($c.tgoto(tc_lcl_data.tc_CM, $G.ttyDisplay.curx, $G.ttyDisplay.cury)));
+        let i = 500 + $c.div32(tmspc10[$c.$libc.ospeed], 2) | 0;
         while (i > 0) {
             cmov($G.ttyDisplay.curx, $G.ttyDisplay.cury);
             i = i - Math.imul(cmlen, tmspc10[$c.$libc.ospeed]) | 0;
@@ -1071,35 +1066,35 @@ export async function tty_delay_output() {   // termcap.c:1129
  * @returns {Promise<void>}
  */
 export async function cl_eos() {   // termcap.c:1198
-    let r = 0, cy = 0;
+    let r = 0;
     /* free after Robert Viduya */
     if (nh_CD()) {
         xputs(tc_lcl_data.tc_CD);
         {
             nomux_clear_to_eol($G.ttyDisplay.cury, $G.ttyDisplay.curx);
-            for (r = $G.ttyDisplay.cury + 1 | 0; r < 24; r = r + 1 | 0) {
+            for (r = $G.ttyDisplay.cury + 1; r < 24; r = r + 1 | 0) {
                 nomux_clear_to_eol(r, 0);
             }
         }
     } else {
-        cy = $G.ttyDisplay.cury + 1 | 0;
+        let cy = $G.ttyDisplay.cury + 1;
         while (cy <= (gt.tc_gbl_data.tc_LI - 2 | 0)) {
             await cl_end();
             xputc(10);
             cy = cy + 1 | 0;
         }
         await cl_end();
-        await tty_curs($G.BASE_WINDOW, $G.ttyDisplay.curx + 1 | 0, $G.ttyDisplay.cury);
+        await tty_curs($G.BASE_WINDOW, $G.ttyDisplay.curx + 1, $G.ttyDisplay.cury);
     }
 }
 /**
  * @returns {Promise<void>}
  */
 async function init_hilite() {   // termcap.c:1300
-    let c = 0, colors = 0, setf = null, scratch = null, md_len = 0, work = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
-    colors = $c.tgetnum(nhStr($c.lit("Co")));
+    let c = 0, setf = null, scratch = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
+    const colors = $c.tgetnum(nhStr($c.lit("Co")));
     iflags.colorcount = colors >>> 0;
-    md_len = 0;
+    let md_len = 0;
     if (colors < 8 || !MD || !MD.get(0) || (setf = $c.tgetstr(nhStr($c.lit("AF")), null)) === null && (setf = $c.tgetstr(nhStr($c.lit("Sf")), null)) === null) {
         /* Fallback when colors not available
          * It's arbitrary to collapse all colors except gray
@@ -1138,7 +1133,7 @@ async function init_hilite() {   // termcap.c:1300
         c = 6;
         while ($t3 = c, c = $t3 - 1 | 0, $t3) {
             scratch = $c.tparm(setf, ti_map[c].ti_color);
-            work = $c.asArr(await alloc($c.u32($c.addu64($c.addu64($c.strlen(scratch), $c.u64(md_len)), 1))), Int8Array);
+            let work = $c.asArr(await alloc($c.u32($c.addu64($c.addu64($c.strlen(scratch), $c.u64(md_len)), 1))), Int8Array);
             $c.strcpy(work, MD);
             hilites[ti_map[c].nh_bright_color] = work;
             work = work.add(md_len);
@@ -1351,10 +1346,9 @@ export function term_attr_fixup(msk) {   // termcap.c:1773
  * @param {number} attr int
  */
 export function term_start_attr(attr) {   // termcap.c:1793
-    let astr = null;
     if (attr) {
         nomux_set_attr(attr);
-        astr = s_atr2str(attr);
+        const astr = s_atr2str(attr);
         if (astr && astr.get(0)) {
             xputs(astr);
         }
@@ -1364,10 +1358,9 @@ export function term_start_attr(attr) {   // termcap.c:1793
  * @param {number} attr int
  */
 export function term_end_attr(attr) {   // termcap.c:1807
-    let astr = null;
     if (attr) {
         nomux_end_attr();
-        astr = e_atr2str(attr);
+        const astr = e_atr2str(attr);
         if (astr && astr.get(0)) {
             xputs(astr);
         }
@@ -1376,16 +1369,14 @@ export function term_end_attr(attr) {   // termcap.c:1807
 /* this is called 'start bold' but HI is derived from SO (standout) rather
    than from MD (start bold attribute) */
 export function term_start_raw_bold() {   // termcap.c:1823
-    let soOn = null;
-    soOn = nh_HI() ? tc_lcl_data.tc_HI : new $c.Ptr(tty_standout_on, 0);
+    const soOn = nh_HI() ? tc_lcl_data.tc_HI : new $c.Ptr(tty_standout_on, 0);
     if (soOn.get(0)) {
         xputs(soOn);
     }
 }
 /* this is called 'end bold' but HE is derived from ME (end all attributes) */
 export function term_end_raw_bold() {   // termcap.c:1833
-    let soOff = null;
-    soOff = nh_HE() ? tc_lcl_data.tc_HE : new $c.Ptr(tty_standout_off, 0);
+    const soOff = nh_HE() ? tc_lcl_data.tc_HE : new $c.Ptr(tty_standout_off, 0);
     if (soOff.get(0)) {
         xputs(soOff);
     }
@@ -1451,9 +1442,8 @@ function emit256(color256idx) {   // termcap.c:1952
  * @param {number} color256idx uint16
  */
 export function term_start_extracolor(customcolor, color256idx) {   // termcap.c:1962
-    let mcolor = 0;
     /* color 0 has bit 0x1000000 set */
-    mcolor = (customcolor & 16777215) >>> 0;
+    const mcolor = (customcolor & 16777215) >>> 0;
     if (iflags.colorcount === 256) {
         emit256(color256idx);
     } else {

@@ -483,6 +483,8 @@ function wiz_intrinsic_timeout(key) {
         return (game.u.intrinsic?.HBlinded | 0) & TIMEOUT;
     if (key === 'DEAF')
         return (game.u.intrinsic?.HDeaf | 0) & TIMEOUT;
+    if (key === 'WOUNDED_LEGS')
+        return (game.u.intrinsic?.HWounded_legs || 0) & TIMEOUT;
     if (key === 'GLIB')
         return (game.u.intrinsic?.HGlib | 0) & TIMEOUT;
     if (key === 'SEE_INVIS')
@@ -587,6 +589,12 @@ export async function wiz_intrinsic() {
                (timeout.js, botl.js) */
             const { incr_itimeout } = await import('./potion.js');
             incr_itimeout('HStrangled', amount);
+            (game.disp ||= {}).botl = true;
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} ${amount}.`);
+        } else if (key === 'WOUNDED_LEGS') {
+            const { incr_itimeout } = await import('./potion.js');
+            incr_itimeout('HWounded_legs', amount);
             (game.disp ||= {}).botl = true;
             await pline(`Timeout for ${name} ${oldtimeout
                 ? 'increased by' : 'set to'} ${amount}.`);
@@ -1842,7 +1850,7 @@ export async function wiz_migrate_mons() {
         while (mcount > 0) {
             if (use_random_mon) {
                 ptr = rndmonst();
-                mtmp = makemon(ptr, 0, 0, MM_NOMSG);
+                mtmp = await makemon(ptr, 0, 0, MM_NOMSG);
             } else {
                 mtmp = (game.level.monsters || [])[0] || null; /* fmon */
             }

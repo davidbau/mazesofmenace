@@ -137,8 +137,7 @@ let status_hilite_str_id = 0;
  * @returns {$c.Ptr | null} char *
  */
 export function get_strength_str() {   // botl.c:21
-    let st = 0;
-    st = ACURR(A.STR);
+    const st = ACURR(A.STR);
     if (st > 18) {
         if (st > 118) {
             $c.sprintf(new $c.Ptr(get_strength_str$buf, 0), $c.lit("%2d"), st - 100 | 0);
@@ -153,15 +152,14 @@ export function get_strength_str() {   // botl.c:21
     return new $c.Ptr(get_strength_str$buf, 0);
 }
 export function check_gold_symbol() {   // botl.c:40
-    let goldch = 0;
-    goldch = gs.showsyms[COIN_CLASS + SYM_OFF_O];
-    iflags.invis_goldsym = $c.i8(goldch <= 32 ? 1 : 0);
+    const goldch = gs.showsyms[COIN_CLASS + SYM_OFF_O];
+    iflags.invis_goldsym = goldch <= 32 ? 1 : 0;
 }
 /**
  * @returns {$c.Ptr | null} char *
  */
 export function do_statusline1() {   // botl.c:48
-    let nb = null, i = 0, j = 0, mbot = new Int8Array(256), k = 0;
+    let nb = null, mbot = new Int8Array(256);
     if (suppress_map_output()) {
         return $c.strcpy(new $c.Ptr(do_statusline1$newbot1, 0), $c.lit(""));
     }
@@ -172,8 +170,8 @@ export function do_statusline1() {   // botl.c:48
     do_statusline1$newbot1[BOTL_NSIZ] = 0;
     $c.sprintf(nb = eos(new $c.Ptr(do_statusline1$newbot1, 0)), $c.lit(" the "));
     if (Upolyd()) {
-        k = 0;
-        $c.strcpy(new $c.Ptr(mbot, 0), pmname($c.relem(mons, u.umonnum), (u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0));
+        let k = 0;
+        $c.strcpy(new $c.Ptr(mbot, 0), pmname($c.relem(mons, u.umonnum), (u.umonnum !== u.umonster ? u.mfemale : flags.female) ? 1 : 0));
         while (mbot[k] !== 0) {
             if ((k === 0 || k > 0 && mbot[k - 1 | 0] === 32) && 97 <= mbot[k] && mbot[k] <= 122) {
                 mbot[k] = $c.i8(mbot[k] + -32 | 0);
@@ -185,8 +183,8 @@ export function do_statusline1() {   // botl.c:48
         $c.strcpy(nb = eos(nb), rank());
     }
     $c.sprintf(nb = eos(nb), $c.lit("  "));
-    i = gm.mrank_sz + 15 | 0;
-    j = $c.i32($c.pdiff(nb.add(2), new $c.Ptr(do_statusline1$newbot1, 0)));   /* strlen(newbot1) but less computation */
+    const i = gm.mrank_sz + 15 | 0;
+    const j = $c.i32($c.pdiff(nb.add(2), new $c.Ptr(do_statusline1$newbot1, 0)));   /* strlen(newbot1) but less computation */
     if ((i - j | 0) > 0) {
         $c.sprintf(nb = eos(nb), $c.lit("%*s"), i - j | 0, $c.lit(" "));   /* pad with spaces */
     }
@@ -198,7 +196,7 @@ export function do_statusline1() {   // botl.c:48
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function do_statusline2() {   // botl.c:101
-    let nb = null, dln = 0, dx = 0, hln = 0, xln = 0, tln = 0, cln = 0, vrn = 0, hp = 0, hpmax = 0, cap = 0, money = 0;
+    let cap = 0, money = 0;
     /* MAXCO: botl.h */
     /* dungeon location (and gold), hero health (HP, PW, AC),
        experience (HD if poly'd, else Exp level and maybe Exp points),
@@ -221,17 +219,17 @@ export async function do_statusline2() {   // botl.c:101
     }
     $c.sprintf(eos(new $c.Ptr(do_statusline2$dloc, 0)), $c.lit("%s:%-2ld"), iflags.in_dumplog || iflags.invis_goldsym ? $c.lit("$") : encglyph(GOLD_PIECE + GLYPH.OBJ_OFF), money < 999999 ? money : 999999);
     /* strongest hero can lift ~300000 gold */
-    dln = $c.strlen(new $c.Ptr(do_statusline2$dloc, 0));
+    const dln = $c.strlen(new $c.Ptr(do_statusline2$dloc, 0));
     /* '$' encoded as \GXXXXNNNN is 9 chars longer than display will need */
-    dx = $c.u64(strstri(new $c.Ptr(do_statusline2$dloc, 0), $c.lit("\\G")) ? 9 : 0);
+    const dx = $c.u64(strstri(new $c.Ptr(do_statusline2$dloc, 0), $c.lit("\\G")) ? 9 : 0);
     /* health and armor class (has trailing space for AC 0..9) */
-    hp = Upolyd() ? u.mh : u.uhp;
-    hpmax = Upolyd() ? u.mhmax : u.uhpmax;
+    let hp = Upolyd() ? u.mh : u.uhp;
+    const hpmax = Upolyd() ? u.mhmax : u.uhpmax;
     if (hp < 0) {
         hp = 0;
     }
     $c.sprintf(new $c.Ptr(do_statusline2$hlth, 0), $c.lit("HP:%d(%d) Pw:%d(%d) AC:%-2d"), hp < 9999 ? hp : 9999, hpmax < 9999 ? hpmax : 9999, u.uen < 9999 ? u.uen : 9999, u.uenmax < 9999 ? u.uenmax : 9999, u.uac);
-    hln = $c.strlen(new $c.Ptr(do_statusline2$hlth, 0));
+    const hln = $c.strlen(new $c.Ptr(do_statusline2$hlth, 0));
     /* experience */
     if (Upolyd()) {
         $c.sprintf(new $c.Ptr(do_statusline2$expr, 0), $c.lit("HD:%d"), mons[u.umonnum].mlevel);
@@ -240,17 +238,17 @@ export async function do_statusline2() {   // botl.c:101
     } else {
         $c.sprintf(new $c.Ptr(do_statusline2$expr, 0), $c.lit("Xp:%d"), u.ulevel);
     }
-    xln = $c.strlen(new $c.Ptr(do_statusline2$expr, 0));
+    const xln = $c.strlen(new $c.Ptr(do_statusline2$expr, 0));
     /* time/move counter */
     if (flags.time) {
         $c.sprintf(new $c.Ptr(do_statusline2$tmmv, 0), $c.lit("T:%ld"), svm.moves);
     } else {
         do_statusline2$tmmv[0] = 0;
     }
-    tln = $c.strlen(new $c.Ptr(do_statusline2$tmmv, 0));
+    const tln = $c.strlen(new $c.Ptr(do_statusline2$tmmv, 0));
     /* status conditions; worst ones first */
     do_statusline2$cond[0] = 0;   /* once non-empty, cond will have a leading space */
-    nb = new $c.Ptr(do_statusline2$cond, 0);
+    let nb = new $c.Ptr(do_statusline2$cond, 0);
     /*
      * Stoned, Slimed, Strangled, and both types of Sick are all fatal
      * unless remedied before timeout expires.  Should we order them by
@@ -267,10 +265,10 @@ export async function do_statusline2() {   // botl.c:101
         $c.strcpy(nb = eos(nb), $c.lit(" Strngl"));
     }
     if (Sick()) {
-        if ((u.usick_type | 0) & SICK_VOMITABLE) {
+        if (u.usick_type & SICK_VOMITABLE) {
             $c.strcpy(nb = eos(nb), $c.lit(" FoodPois"));
         }
-        if ((u.usick_type | 0) & SICK_NONVOMITABLE) {
+        if (u.usick_type & SICK_NONVOMITABLE) {
             $c.strcpy(nb = eos(nb), $c.lit(" TermIll"));
         }
     }
@@ -305,14 +303,14 @@ export async function do_statusline2() {   // botl.c:101
     if (u.usteed) {
         $c.strcpy(nb = eos(nb), $c.lit(" Ride"));
     }
-    cln = $c.strlen(new $c.Ptr(do_statusline2$cond, 0));
+    const cln = $c.strlen(new $c.Ptr(do_statusline2$cond, 0));
     /* version on status line, with leading space */
     if (flags.showvers) {
         status_version(new $c.Ptr(do_statusline2$vers, 0), 128, TRUE);
     } else {
         do_statusline2$vers[0] = 0;
     }
-    vrn = $c.strlen(new $c.Ptr(do_statusline2$vers, 0));
+    const vrn = $c.strlen(new $c.Ptr(do_statusline2$vers, 0));
     /*
      * Put the pieces together.  If they all fit, keep the traditional
      * sequence.  Otherwise, move least important parts to the end in
@@ -502,8 +500,8 @@ export async function title_to_mon(str, rank_indx, title_length) {   // botl.c:3
     return NON_PM;
 }
 export function max_rank_sz() {   // botl.c:402
-    let i = 0, r = 0, maxr = 0;
-    maxr = 0;
+    let i = 0, r = 0;
+    let maxr = 0;
     for (i = 0; i < 9; i = i + 1 | 0) {
         if (gu.urole.rank[i].m && (r = $c.strlen(gu.urole.rank[i].m)) > maxr) {
             maxr = r;
@@ -527,13 +525,12 @@ export function max_rank_sz() {   // botl.c:402
  * @returns {number} int
  */
 export function describe_level(buf, dflgs) {   // botl.c:441
-    let addspace = 0, addbranch = 0, ret = 0;
     /* output buffer */
     /* 1: append trailing space; 2: include dungeon branch name */
     /* (used to be unconditional) */
-    addspace = $c.i8((dflgs & 1) !== 0 ? 1 : 0);
-    addbranch = $c.i8((dflgs & 2) !== 0 ? 1 : 0);   /* False: status, True: livelog */
-    ret = 1;
+    const addspace = (dflgs & 1) !== 0 ? 1 : 0;
+    let addbranch = (dflgs & 2) !== 0 ? 1 : 0;   /* False: status, True: livelog */
+    let ret = 1;
     if ((svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level)) {
         $c.sprintf(buf, $c.lit("%s"), new $c.Ptr(svd.dungeons[u.uz.dnum].dname, 0));
         addbranch = FALSE;
@@ -572,8 +569,8 @@ export function describe_level(buf, dflgs) {   // botl.c:441
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function weapon_status(outbuf) {   // botl.c:481
-    let res = null, p = null, skill = 0, $t1;
-    res = null;
+    let p = null, $t1;
+    let res = null;
     outbuf.set(0, 0);   /* lint suppression */
     if (!$G.uwep) {
         /* no weapon; gloves imply hands; humanoid also implies hands;
@@ -593,7 +590,7 @@ export async function weapon_status(outbuf) {   // botl.c:481
         /* report most weapons by their skill class (so a katana will be
            described as a long sword, for instance; mattock and hook are
            exceptions), or wielded non-weapon item by its object class */
-        skill = weapon_type($G.uwep);
+        const skill = weapon_type($G.uwep);
         if (u.usteed && skill === P.LANCE) {
             /* lance behaves specially when hero is mounted */
             res = $c.lit("joust");
@@ -648,8 +645,8 @@ export async function weapon_status(outbuf) {   // botl.c:481
  * @returns {$c.Ptr | null} char *
  */
 export function armor_status(armbuf) {   // botl.c:559
-    let n = 0, p = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
-    n = ((((((!!$G.uarmg ? 1 : 0) + (!!$G.uarmc ? 1 : 0) | 0) + (!!$G.uarm ? 1 : 0) | 0) + (!!$G.uarmu ? 1 : 0) | 0) + (!!$G.uarmh ? 1 : 0) | 0) + (!!$G.uarmf ? 1 : 0) | 0) + (!!$G.uarms ? 1 : 0) | 0;
+    let $t1, $t2, $t3, $t4, $t5, $t6, $t7;
+    const n = (!!$G.uarmg ? 1 : 0) + (!!$G.uarmc ? 1 : 0) + (!!$G.uarm ? 1 : 0) + (!!$G.uarmu ? 1 : 0) + (!!$G.uarmh ? 1 : 0) + (!!$G.uarmf ? 1 : 0) + (!!$G.uarms ? 1 : 0);
     /*
      * FIXME: ^X needs to provide non-abbreviated version of this info.
      * At present it just reports the "no armor" case.
@@ -664,7 +661,7 @@ export function armor_status(armbuf) {   // botl.c:559
         /* not possible */
     } else {
         /* more than one piece */
-        p = armbuf;
+        let p = armbuf;
         /* gloves first since this is expected to follow weapon_status();
            cloak next since it tends to provide the most protection
            aside from raw AC */
@@ -713,12 +710,12 @@ export function armor_status(armbuf) {   // botl.c:559
  * @returns {Promise<void>}
  */
 async function bot_via_windowport() {   // botl.c:962
-    let buf = new Int8Array(256), titl = null, nb = null, i = 0, idx = 0, cap = 0, money = 0, clear_cache = 0, refresh_cache = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20;
+    let buf = new Int8Array(256), nb = null, money = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20;
     if (!gb.blinit) {
         await panic($c.lit("bot before init."));
     }
     /* toggle from previous iteration */
-    idx = 1 - gn.now_or_before_idx | 0;   /* 0 -> 1, 1 -> 0 */
+    const idx = 1 - gn.now_or_before_idx | 0;   /* 0 -> 1, 1 -> 0 */
     gn.now_or_before_idx = idx;
     /* clear the "value set" indicators */
     $c.memset(new $c.Ptr(gv.valset, 0), 0, 27);
@@ -732,8 +729,8 @@ async function bot_via_windowport() {   // botl.c:962
      */
     $c.strcpy(nb = new $c.Ptr(buf, 0), new $c.Ptr(svp.plname, 0));
     $t1 = highc(nb.get(0)), nb.set(0, $t1);
-    titl = !Upolyd() ? rank() : pmname($c.relem(mons, u.umonnum), Ugender());
-    i = $c.i32($c.subu64($c.addu64($c.addu64($c.strlen(new $c.Ptr(buf, 0)), 6), $c.strlen(titl)), 1));
+    const titl = !Upolyd() ? rank() : pmname($c.relem(mons, u.umonnum), Ugender());
+    let i = $c.i32($c.subu64($c.addu64($c.addu64($c.strlen(new $c.Ptr(buf, 0)), 6), $c.strlen(titl)), 1));
     /* if "Name the Rank/monster" is too long, we truncate the name but
        always keep at least BOTL_NSIZ characters of it; when hitpointbar is
        enabled, anything beyond 30 (long monster name) will be truncated */
@@ -826,7 +823,7 @@ async function bot_via_windowport() {   // botl.c:962
     $c.strcpy(gb.blstats[idx][BL.HUNGER].val, u.uhs !== NOT_HUNGRY ? hu_stat[u.uhs] : $c.lit(""));
     gv.valset[BL.HUNGER] = TRUE;
     /* Carrying capacity */
-    cap = near_capacity();
+    const cap = near_capacity();
     gb.blstats[idx][BL.CAP].a.a_int = cap;
     $c.strcpy(gb.blstats[idx][BL.CAP].val, cap > UNENCUMBERED ? enc_stat[cap] : $c.lit(""));
     gv.valset[BL.CAP] = TRUE;
@@ -863,24 +860,24 @@ async function bot_via_windowport() {   // botl.c:962
     $t9 = condtests[bl_termill].test = FALSE, condtests[bl_foodpois].test = $t9;
     if (Sick()) {
         if (condtests[bl_foodpois].enabled) {
-            condtests[bl_foodpois].test = $c.i8(((u.usick_type | 0) & SICK_VOMITABLE) !== 0 ? 1 : 0);
+            condtests[bl_foodpois].test = (u.usick_type & SICK_VOMITABLE) !== 0 ? 1 : 0;
         }
         if (condtests[bl_termill].enabled) {
-            condtests[bl_termill].test = $c.i8(((u.usick_type | 0) & SICK_NONVOMITABLE) !== 0 ? 1 : 0);
+            condtests[bl_termill].test = (u.usick_type & SICK_NONVOMITABLE) !== 0 ? 1 : 0;
         }
     }
     $t11 = ($t10 = condtests[bl_trapped].test = FALSE, condtests[bl_tethered].test = $t10), condtests[bl_inlava].test = $t11;
     if (u.utrap) {
         if (condtests[bl_inlava].enabled) {
-            condtests[bl_inlava].test = $c.i8(u.utraptype === TT.LAVA ? 1 : 0);
+            condtests[bl_inlava].test = u.utraptype === TT.LAVA ? 1 : 0;
         }
         if (condtests[bl_tethered].enabled) {
-            condtests[bl_tethered].test = $c.i8(u.utraptype === TT.BURIEDBALL ? 1 : 0);
+            condtests[bl_tethered].test = u.utraptype === TT.BURIEDBALL ? 1 : 0;
         }
         /* if in-lava or tethered is disabled and the condition applies,
            lump it in with trapped */
         if (condtests[bl_trapped].enabled) {
-            condtests[bl_trapped].test = $c.i8(!condtests[bl_inlava].test && !condtests[bl_tethered].test ? 1 : 0);
+            condtests[bl_trapped].test = !condtests[bl_inlava].test && !condtests[bl_tethered].test ? 1 : 0;
         }
     }
     $t13 = ($t12 = condtests[bl_holding].test = FALSE, condtests[bl_held].test = $t12), condtests[bl_grab].test = $t13;
@@ -903,45 +900,45 @@ async function bot_via_windowport() {   // botl.c:962
             /* grab == hero is held by sea monster and about to be drowned;
                held == hero is held by something else and can't move away */
             if (condtests[bl_grab].enabled) {
-                condtests[bl_grab].test = $c.i8(u.ustuck.data.mlet === S.EEL ? 1 : 0);
+                condtests[bl_grab].test = u.ustuck.data.mlet === S.EEL ? 1 : 0;
             }
             if (condtests[bl_held].enabled) {
-                condtests[bl_held].test = $c.i8(!condtests[bl_grab].test ? 1 : 0);
+                condtests[bl_held].test = !condtests[bl_grab].test ? 1 : 0;
             }
         }
     }
-    condtests[bl_blind].test = $c.i8((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked ? TRUE : FALSE);
-    condtests[bl_conf].test = $c.i8(u.uprops[CONFUSION].intrinsic ? TRUE : FALSE);
-    condtests[bl_deaf].test = $c.i8(u.uprops[DEAF].intrinsic || u.uprops[DEAF].extrinsic || u.uroleplay.deaf ? TRUE : FALSE);
-    condtests[bl_fly].test = $c.i8((u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked ? TRUE : FALSE);
-    condtests[bl_glowhands].test = $c.i8(u.umconf ? TRUE : FALSE);
-    condtests[bl_hallu].test = $c.i8(u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? TRUE : FALSE);
-    condtests[bl_lev].test = $c.i8((u.uprops[LEVITATION].intrinsic || u.uprops[LEVITATION].extrinsic) && !u.uprops[LEVITATION].blocked ? TRUE : FALSE);
-    condtests[bl_ride].test = $c.i8(u.usteed ? TRUE : FALSE);
-    condtests[bl_slime].test = $c.i8(u.uprops[SLIMED].intrinsic ? TRUE : FALSE);
-    condtests[bl_stone].test = $c.i8(u.uprops[STONED].intrinsic ? TRUE : FALSE);
-    condtests[bl_strngl].test = $c.i8(u.uprops[STRANGLED].intrinsic ? TRUE : FALSE);
-    condtests[bl_stun].test = $c.i8(u.uprops[STUNNED].intrinsic ? TRUE : FALSE);
-    condtests[bl_submerged].test = $c.i8(u.uinwater | 0 ? TRUE : FALSE);
+    condtests[bl_blind].test = (u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked ? TRUE : FALSE;
+    condtests[bl_conf].test = u.uprops[CONFUSION].intrinsic ? TRUE : FALSE;
+    condtests[bl_deaf].test = u.uprops[DEAF].intrinsic || u.uprops[DEAF].extrinsic || u.uroleplay.deaf ? TRUE : FALSE;
+    condtests[bl_fly].test = (u.uprops[FLYING].intrinsic || u.uprops[FLYING].extrinsic || u.usteed && $c.andu64(u.usteed.data.mflags1, M1.FLY) !== 0) && !u.uprops[FLYING].blocked ? TRUE : FALSE;
+    condtests[bl_glowhands].test = u.umconf ? TRUE : FALSE;
+    condtests[bl_hallu].test = u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? TRUE : FALSE;
+    condtests[bl_lev].test = (u.uprops[LEVITATION].intrinsic || u.uprops[LEVITATION].extrinsic) && !u.uprops[LEVITATION].blocked ? TRUE : FALSE;
+    condtests[bl_ride].test = u.usteed ? TRUE : FALSE;
+    condtests[bl_slime].test = u.uprops[SLIMED].intrinsic ? TRUE : FALSE;
+    condtests[bl_stone].test = u.uprops[STONED].intrinsic ? TRUE : FALSE;
+    condtests[bl_strngl].test = u.uprops[STRANGLED].intrinsic ? TRUE : FALSE;
+    condtests[bl_stun].test = u.uprops[STUNNED].intrinsic ? TRUE : FALSE;
+    condtests[bl_submerged].test = u.uinwater ? TRUE : FALSE;
     if (condtests[bl_elf_iron].enabled) {
         condtests[bl_elf_iron].test = FALSE;
     }
     if (condtests[bl_bareh].enabled) {
-        condtests[bl_bareh].test = $c.i8(!$G.uarmg && !$G.uwep ? 1 : 0);
+        condtests[bl_bareh].test = !$G.uarmg && !$G.uwep ? 1 : 0;
     }
     if (condtests[bl_icy].enabled) {
-        condtests[bl_icy].test = $c.i8(svl.level.locations[u.ux][u.uy].typ === ICE ? 1 : 0);
+        condtests[bl_icy].test = svl.level.locations[u.ux][u.uy].typ === ICE ? 1 : 0;
     }
     if (condtests[bl_slippery].enabled) {
-        condtests[bl_slippery].test = $c.i8(u.uprops[GLIB].intrinsic ? TRUE : FALSE);
+        condtests[bl_slippery].test = u.uprops[GLIB].intrinsic ? TRUE : FALSE;
     }
     if (condtests[bl_woundedl].enabled) {
-        condtests[bl_woundedl].test = $c.i8(u.uprops[WOUNDED_LEGS].intrinsic || u.uprops[WOUNDED_LEGS].extrinsic ? TRUE : FALSE);
+        condtests[bl_woundedl].test = u.uprops[WOUNDED_LEGS].intrinsic || u.uprops[WOUNDED_LEGS].extrinsic ? TRUE : FALSE;
     }
     if (gm.multi < 0) {
         do {
-            clear_cache = FALSE;
-            refresh_cache = FALSE;
+            let clear_cache = FALSE;
+            let refresh_cache = FALSE;
             if (gm.multi < 0) {
                 if (gn.nomovemsg || gm.multi_reason) {
                     if (!$c.peq(cache_nomovemsg, gn.nomovemsg)) {
@@ -970,11 +967,11 @@ async function bot_via_windowport() {   // botl.c:962
             }
         } while (0);
         if (condtests[bl_unconsc].enabled && cache_nomovemsg && !cache_avail[0]) {
-            $t16 = $c.i8(!u.usleep && unconscious() ? 1 : 0), cache_reslt[0] = $t16;
+            $t16 = !u.usleep && unconscious() ? 1 : 0, cache_reslt[0] = $t16;
             cache_avail[0] = TRUE;
         }
         if (condtests[bl_parlyz].enabled && cache_multi_reason && !cache_avail[1]) {
-            $t17 = $c.i8(!$c.strncmp(cache_multi_reason, $c.lit("paralyzed"), 9) || !$c.strncmp(cache_multi_reason, $c.lit("frozen"), 6) ? 1 : 0), cache_reslt[1] = $t17;
+            $t17 = !$c.strncmp(cache_multi_reason, $c.lit("paralyzed"), 9) || !$c.strncmp(cache_multi_reason, $c.lit("frozen"), 6) ? 1 : 0, cache_reslt[1] = $t17;
             cache_avail[1] = TRUE;
         }
         if (cache_avail[0] && cache_reslt[0]) {
@@ -1032,9 +1029,8 @@ async function bot_via_windowport() {   // botl.c:962
  * @returns {Promise<void>}
  */
 async function stat_update_time() {   // botl.c:1285
-    let idx = 0, fld = 0;
-    idx = gn.now_or_before_idx;   /* no 0/1 toggle */
-    fld = BL.TIME;
+    const idx = gn.now_or_before_idx;   /* no 0/1 toggle */
+    const fld = BL.TIME;
     /* Time (moves) */
     gb.blstats[idx][fld].a.a_long = svm.moves;
     gv.valset[fld] = FALSE;
@@ -1068,7 +1064,7 @@ export async function condopt(idx, addr, negated) {   // botl.c:1303
         $c.nh_deterministic_qsort(new $c.Ptr(cond_idx, 0), CONDITION_COUNT, 4, cond_cmp);
     } else {
         /* (addr == &condtests[idx].choice) */
-        condtests[idx].enabled = $c.i8(negated ? FALSE : TRUE);
+        condtests[idx].enabled = negated ? FALSE : TRUE;
         condtests[idx].choice = condtests[idx].enabled;
         /* avoid lingering false positives if test is no longer run */
         condtests[idx].test = FALSE;
@@ -1081,11 +1077,10 @@ export async function condopt(idx, addr, negated) {   // botl.c:1303
  * @returns {number} int
  */
 function cond_cmp(vptr1, vptr2) {   // botl.c:1333
-    let indx1 = 0, indx2 = 0, c1 = 0, c2 = 0;
-    indx1 = $c.asArr(vptr1, Int32Array).get(0);
-    indx2 = $c.asArr(vptr2, Int32Array).get(0);
-    c1 = conditions[indx1].ranking;
-    c2 = conditions[indx2].ranking;
+    const indx1 = $c.asArr(vptr1, Int32Array).get(0);
+    const indx2 = $c.asArr(vptr2, Int32Array).get(0);
+    const c1 = conditions[indx1].ranking;
+    const c2 = conditions[indx2].ranking;
     if (c1 !== c2) {
         return c1 - c2 | 0;
     }
@@ -1099,9 +1094,8 @@ function cond_cmp(vptr1, vptr2) {   // botl.c:1333
  * @returns {number} int
  */
 function menualpha_cmp(vptr1, vptr2) {   // botl.c:1346
-    let indx1 = 0, indx2 = 0;
-    indx1 = $c.asArr(vptr1, Int32Array).get(0);
-    indx2 = $c.asArr(vptr2, Int32Array).get(0);
+    const indx1 = $c.asArr(vptr1, Int32Array).get(0);
+    const indx2 = $c.asArr(vptr2, Int32Array).get(0);
     return strncmpi(condtests[indx1].useroption, condtests[indx2].useroption, -1);
 }
 /**
@@ -1110,16 +1104,16 @@ function menualpha_cmp(vptr1, vptr2) {   // botl.c:1346
  * @returns {Promise<number>} int
  */
 export async function parse_cond_option(negated, opts) {   // botl.c:1354
-    let i = 0, sl = 0, compareto = null, uniqpart = null, prefix = new Int8Array(6);
+    let i = 0, prefix = new Int8Array(6);
     prefix.fill(0);
     prefix.set([99, 111, 110, 100, 95]);   // "cond_"
     if (!opts || $c.strlen(opts) <= 5) {
         return 2;
     }
-    uniqpart = opts.add($c.idx(5));
+    const uniqpart = opts.add($c.idx(5));
     for (i = 0; i < CONDITION_COUNT; i = i + 1 | 0) {
-        compareto = condtests[i].useroption;
-        sl = await Strlen_(compareto, $c.lit("parse_cond_option"), 1364) | 0;
+        const compareto = condtests[i].useroption;
+        const sl = await Strlen_(compareto, $c.lit("parse_cond_option"), 1364) | 0;
         if (match_optname(uniqpart, compareto, sl >= 4 ? 4 : sl, FALSE)) {
             await condopt(i, new $c.FieldRef(condtests[i], "choice", "i8"), negated);
             return 0;
@@ -1133,18 +1127,18 @@ export async function parse_cond_option(negated, opts) {   // botl.c:1354
  * @returns {Promise<number>} boolean
  */
 export async function cond_menu() {   // botl.c:1376
-    let i = 0, res = 0, idx = 0, sequence = new Int32Array(30), tmpwin = 0, any = new $T.any(), picks = [null], mbuf = new Int8Array(128), showmenu = 0, clr = 0, changed = 0, $t1;
-    idx = 0;
+    let i = 0, res = 0, sequence = new Int32Array(30), any = new $T.any(), picks = [null], mbuf = new Int8Array(128), $t1;
+    let idx = 0;
     picks[0] = null;
-    showmenu = TRUE;
-    clr = NO_COLOR;
-    changed = FALSE;
+    let showmenu = TRUE;
+    const clr = NO_COLOR;
+    let changed = FALSE;
     do {
         for (i = 0; i < CONDITION_COUNT; i = i + 1 | 0) {
             sequence[i] = i;
         }
         await $c.nh_deterministic_qsort$async(new $c.Ptr(sequence, 0), CONDITION_COUNT, 4, gc.condmenu_sortorder ? cond_cmp : menualpha_cmp);
-        tmpwin = await create_nhwindow()(NHW.MENU);
+        const tmpwin = await create_nhwindow()(NHW.MENU);
         await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
         any.$copyFrom(cg.zeroany);
         any.a_int = 1;
@@ -1234,17 +1228,17 @@ export function opt_next_cond(indx, outbuf) {   // botl.c:1460
  * @returns {Promise<number>} boolean
  */
 async function eval_notify_windowport_field(fld, valsetlist, idx) {   // botl.c:1493
-    let pc = 0, chg = 0, color = Int32Array.of(0), anytype = 0, updated = 0, reset = 0, curr = null, prev = null, fldmax = 0, $t1, $t2, $t3, $t4;
+    let pc = 0, color = Int32Array.of(0), $t1, $t2, $t3, $t4;
     color[0] = NO_COLOR;
-    updated = FALSE;
+    let updated = FALSE;
     /*
      *  Now pass the changed values to window port.
      */
-    anytype = gb.blstats[idx][fld].anytype;
-    curr = $c.relem(gb.blstats[idx], fld);
-    prev = $c.relem(gb.blstats[1 - idx | 0], fld);
+    const anytype = gb.blstats[idx][fld].anytype;
+    const curr = $c.relem(gb.blstats[idx], fld);
+    const prev = $c.relem(gb.blstats[1 - idx | 0], fld);
     color[0] = NO_COLOR;
-    chg = gu.update_all ? 0 : await compare_blstats(prev, curr);
+    let chg = gu.update_all ? 0 : await compare_blstats(prev, curr);
     /*
      * TODO:
      *  Dynamically update 'percent_matters' as rules are added or
@@ -1258,7 +1252,7 @@ async function eval_notify_windowport_field(fld, valsetlist, idx) {   // botl.c:
        has changed when HP hasn't, where we ordinarily wouldn't
        update HP so would miss an update of the hitpoint bar) */
     if ((chg || gu.update_all || fld === BL.XP) && curr.percent_matters && curr.thresholds || fld === BL.HP && iflags.wc2_hitpointbar) {
-        fldmax = curr.idxmax;
+        const fldmax = curr.idxmax;
         pc = fldmax === BL.EXP ? await exp_percentage() : fldmax >= 0 && fldmax < MAXBLSTATS ? await percentage(curr, $c.relem(gb.blstats[idx], fldmax)) : 0;   /* bullet proofing; can't get here */
         if (pc !== prev.percent_value) {
             chg = pc < prev.percent_value ? -1 : 1;
@@ -1290,7 +1284,7 @@ async function eval_notify_windowport_field(fld, valsetlist, idx) {   // botl.c:
         eval_notify_windowport_field$oldrndencode = svc.context.rndencode;
         eval_notify_windowport_field$oldgoldsym = gs.showsyms[COIN_CLASS + SYM_OFF_O];
     }
-    reset = FALSE;
+    let reset = FALSE;
     if (gu.update_all) {
         chg = 0;
         $t1 = prev.time = 0, curr.time = $t1;
@@ -1336,13 +1330,13 @@ async function eval_notify_windowport_field(fld, valsetlist, idx) {   // botl.c:
  * @returns {Promise<void>}
  */
 async function evaluate_and_notify_windowport(valsetlist, idx) {   // botl.c:1621
-    let i = 0, fld = 0, updated = 0, $t1, $t2;
-    updated = 0;
+    let i = 0, $t1, $t2;
+    let updated = 0;
     /*
      *  Now pass the changed values to window port.
      */
     for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
-        fld = initblstats[i].fld;
+        const fld = initblstats[i].fld;
         if (fld === BL.SCORE && !flags.showscore || fld === BL.EXP && !flags.showexp || fld === BL.TIME && !flags.time || fld === BL.HD && !Upolyd() || (fld === BL.XP || fld === BL.EXP) && Upolyd() || fld === BL.VERS && !flags.showvers || fld === BL.TERRAIN && !flags.terrainstatus || fld === BL.WEAPON && !flags.weaponstatus || fld === BL.ARMOR && !flags.armorstatus) {
             continue;
         }
@@ -1386,7 +1380,7 @@ async function evaluate_and_notify_windowport(valsetlist, idx) {   // botl.c:162
  * @returns {Promise<void>}
  */
 export async function status_initialize(reassessment) {   // botl.c:1683
-    let fld = 0, fldenabl = 0, i = 0, fieldfmt = null, fieldname = null;
+    let i = 0;
     /* True: just recheck fields without other init */
     if (!reassessment) {
         if (gb.blinit) {
@@ -1399,10 +1393,10 @@ export async function status_initialize(reassessment) {   // botl.c:1683
         await panic($c.lit("status 'reassess' before init"));
     }
     for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
-        fld = initblstats[i].fld;
-        fldenabl = $c.i8(fld === BL.SCORE ? flags.showscore : fld === BL.TIME ? flags.time : fld === BL.EXP ? $c.i8(flags.showexp && !Upolyd() ? 1 : 0) : fld === BL.XP ? $c.i8(!Upolyd() ? 1 : 0) : fld === BL.HD ? $c.i8(Upolyd()) : fld === BL.VERS ? flags.showvers : fld === BL.WEAPON ? flags.weaponstatus : fld === BL.ARMOR ? flags.armorstatus : fld === BL.TERRAIN ? flags.terrainstatus : TRUE);
-        fieldname = initblstats[i].fldname;
-        fieldfmt = fld === BL.TITLE && iflags.wc2_hitpointbar ? $c.lit("%-30.30s") : initblstats[i].fldfmt;
+        const fld = initblstats[i].fld;
+        const fldenabl = fld === BL.SCORE ? flags.showscore : fld === BL.TIME ? flags.time : fld === BL.EXP ? flags.showexp && !Upolyd() ? 1 : 0 : fld === BL.XP ? !Upolyd() ? 1 : 0 : fld === BL.HD ? Upolyd() : fld === BL.VERS ? flags.showvers : fld === BL.WEAPON ? flags.weaponstatus : fld === BL.ARMOR ? flags.armorstatus : fld === BL.TERRAIN ? flags.terrainstatus : TRUE;
+        const fieldname = initblstats[i].fldname;
+        const fieldfmt = fld === BL.TITLE && iflags.wc2_hitpointbar ? $c.lit("%-30.30s") : initblstats[i].fldfmt;
         status_enablefield()(fld, fieldname, fieldfmt, fldenabl);
     }
     gu.update_all = TRUE;
@@ -1442,14 +1436,14 @@ export async function status_finish() {   // botl.c:1723
  * @returns {Promise<void>}
  */
 async function init_blstats() {   // botl.c:1759
-    let i = 0, j = 0, keep_hilite_chain = null, $t1;
+    let i = 0, j = 0, $t1;
     if (init_blstats$initalready) {
         await impossible($c.lit("init_blstats called more than once."));
         return;
     }
     for (i = 0; i <= 1; i = i + 1 | 0) {
         for (j = 0; j < MAXBLSTATS; j = j + 1 | 0) {
-            keep_hilite_chain = gb.blstats[i][j].thresholds;
+            const keep_hilite_chain = gb.blstats[i][j].thresholds;
             gb.blstats[i][j].$copyFrom(initblstats[j]);
             gb.blstats[i][j].a.$copyFrom(cg.zeroany);
             if (gb.blstats[i][j].valwidth) {
@@ -1487,12 +1481,11 @@ async function init_blstats() {   // botl.c:1759
  * @returns {Promise<number>} int
  */
 async function compare_blstats(bl1, bl2) {   // botl.c:1809
-    let a1 = null, a2 = null, use_rawval = 0, anytype = 0, fld = 0, result = 0;
-    result = 0;
+    let result = 0;
     if (!bl1 || !bl2) {
         await panic($c.lit("compare_blstat: bad istat pointer %s, %s"), fmt_ptr(bl1), fmt_ptr(bl2));
     }
-    anytype = bl1.anytype | 0;
+    let anytype = bl1.anytype | 0;
     if ((!bl1.a.a_void || !bl2.a.a_void) && (anytype === ANY.IPTR || anytype === ANY.UPTR || anytype === ANY.LPTR || anytype === ANY.ULPTR)) {
         await panic($c.lit("compare_blstat: invalid pointer %s, %s"), fmt_ptr(bl1.a.a_void), fmt_ptr(bl2.a.a_void));
     }
@@ -1501,10 +1494,10 @@ async function compare_blstats(bl1, bl2) {   // botl.c:1809
     if (bl1.fld === BL.TERRAIN) {
         anytype = ANY.INT;
     }
-    fld = bl1.fld;
-    use_rawval = $c.i8(fld === BL.HP || fld === BL.HPMAX || fld === BL.ENE || fld === BL.ENEMAX || fld === BL.GOLD ? 1 : 0);
-    a1 = use_rawval ? bl1.rawval : bl1.a;
-    a2 = use_rawval ? bl2.rawval : bl2.a;
+    const fld = bl1.fld;
+    const use_rawval = fld === BL.HP || fld === BL.HPMAX || fld === BL.ENE || fld === BL.ENEMAX || fld === BL.GOLD ? 1 : 0;
+    const a1 = use_rawval ? bl1.rawval : bl1.a;
+    const a2 = use_rawval ? bl2.rawval : bl2.a;
     switch (anytype) {
         case ANY.INT:
             result = a1.a_int < a2.a_int ? 1 : a1.a_int > a2.a_int ? -1 : 0;
@@ -1647,16 +1640,16 @@ function s_to_anything(a, buf, anytype) {   // botl.c:1930
  * @returns {Promise<number>} int
  */
 async function percentage(bl, maxbl) {   // botl.c:1977
-    let result = 0, anytype = 0, ival = 0, mval = 0, lval = 0, uval = 0, ulval = 0, fld = 0, use_rawval = 0;
-    result = 0;
+    let ival = 0, mval = 0, lval = 0, uval = 0, ulval = 0;
+    let result = 0;
     if (!bl || !maxbl) {
         await impossible($c.lit("percentage: bad istat pointer %s, %s"), fmt_ptr(bl), fmt_ptr(maxbl));
         return 0;
     }
-    fld = bl.fld;
-    use_rawval = $c.i8(fld === BL.HP || fld === BL.ENE ? 1 : 0);
+    const fld = bl.fld;
+    const use_rawval = fld === BL.HP || fld === BL.ENE ? 1 : 0;
     ival = 0, lval = 0, uval = 0, ulval = 0;
-    anytype = bl.anytype | 0;
+    const anytype = bl.anytype | 0;
     if (maxbl.a.a_void) {
         switch (anytype) {
             case ANY.INT:
@@ -1712,12 +1705,12 @@ async function percentage(bl, maxbl) {   // botl.c:1977
  * @returns {Promise<number>} int
  */
 async function exp_percentage() {   // botl.c:2052
-    let res = 0, exp_val = 0, nxt_exp_val = 0, curlvlstart = 0, curval = new $T.istat_s(), maxval = new $T.istat_s(), $t1, $t2;
-    res = 0;
+    let curval = new $T.istat_s(), maxval = new $T.istat_s(), $t1, $t2;
+    let res = 0;
     if (u.ulevel < 30) {
-        curlvlstart = newuexp(u.ulevel - 1 | 0);
-        exp_val = $c.sub64(u.uexp, curlvlstart);
-        nxt_exp_val = $c.sub64(newuexp(u.ulevel), curlvlstart);
+        const curlvlstart = newuexp(u.ulevel - 1 | 0);
+        const exp_val = $c.sub64(u.uexp, curlvlstart);
+        const nxt_exp_val = $c.sub64(newuexp(u.ulevel), curlvlstart);
         if (exp_val === $c.sub64(nxt_exp_val, 1)) {
             /*
              * Full 100% is unattainable since hero gains a level
@@ -1746,20 +1739,20 @@ async function exp_percentage() {   // botl.c:2052
  * @returns {Promise<number>} boolean
  */
 export async function exp_percent_changing() {   // botl.c:2090
-    let pc = 0, a = new $T.any(), color_dummy = Int32Array.of(0), rule = null, curr = null;
+    let pc = 0, a = new $T.any(), color_dummy = Int32Array.of(0);
     /* if status update is already requested, skip this processing */
     if (!disp.botl) {
         /*
          * Status update is warranted iff percent integer changes and the new
          * percentage results in a different highlighting rule being selected.
          */
-        curr = $c.relem(gb.blstats[gn.now_or_before_idx], BL.XP);
+        const curr = gb.blstats[gn.now_or_before_idx][BL.XP];
         /* TODO: [see eval_notify_windowport_field() about percent_matters
            and the check against 'thresholds'] */
         if (curr.percent_matters && curr.thresholds && (pc = await exp_percentage()) !== curr.percent_value) {
             a.$copyFrom(cg.zeroany);
             a.a_int = u.ulevel;
-            rule = get_hilite(gn.now_or_before_idx, BL.XP, a, 0, pc, new $c.Ptr(color_dummy, 0));
+            const rule = get_hilite(gn.now_or_before_idx, BL.XP, a, 0, pc, new $c.Ptr(color_dummy, 0));
             if (!$c.peq(rule, curr.hilite_rule)) {
                 return TRUE;   /* caller should set 'disp.botl' to True */
             }
@@ -1774,8 +1767,7 @@ export async function exp_percent_changing() {   // botl.c:2090
  * @returns {number} int
  */
 export function stat_cap_indx() {   // botl.c:2131
-    let cap = 0;
-    cap = gb.blstats[gn.now_or_before_idx][BL.CAP].a.a_int;
+    const cap = gb.blstats[gn.now_or_before_idx][BL.CAP].a.a_int;
     return cap;
 }
 /* callback so that interface can get hunger index rather than trying to
@@ -1784,8 +1776,7 @@ export function stat_cap_indx() {   // botl.c:2131
  * @returns {number} int
  */
 export function stat_hunger_indx() {   // botl.c:2146
-    let uhs = 0;
-    uhs = gb.blstats[gn.now_or_before_idx][BL.HUNGER].a.a_int;
+    const uhs = gb.blstats[gn.now_or_before_idx][BL.HUNGER].a.a_int;
     return uhs;
 }
 /* used by X11 for "tty status" even when STATUS_HILITES is disabled */
@@ -1805,8 +1796,7 @@ export function bl_idx_to_fldname(idx) {   // botl.c:2160
  * @param {$c.Ptr | null} inoutbuf char *
  */
 export function repad_with_dashes(inoutbuf) {   // botl.c:2170
-    let p = null;
-    p = eos(inoutbuf);
+    let p = eos(inoutbuf);
     while ($c.pcmp(p, inoutbuf.add(2)) >= 0 && p.get(-1) === 32 && p.get(-2) === 32) {
         p.set(-1, 45);
         p = p.add(-2);
@@ -1818,9 +1808,9 @@ export function repad_with_dashes(inoutbuf) {   // botl.c:2170
  * @returns {number} enum statusfields
  */
 function fldname_to_bl_indx(name) {   // botl.c:2221
-    let i = 0, nmatches = 0, fld = 0, len = 0;
-    nmatches = 0;
-    fld = 0;
+    let i = 0;
+    let nmatches = 0;
+    let fld = 0;
     if (name && name.get(0)) {
         /* check matches to canonical names */
         for (i = 0; i < 27; i = i + 1 | 0) {
@@ -1840,7 +1830,7 @@ function fldname_to_bl_indx(name) {   // botl.c:2221
         }
         if (!nmatches) {
             /* check partial matches to canonical names */
-            len = $c.i32($c.strlen(name));
+            const len = $c.i32($c.strlen(name));
             for (i = 0; i < 27; i = i + 1 | 0) {
                 if (!strncmpi(name, initblstats[i].fldname, len)) {
                     fld = initblstats[i].fld;
@@ -1875,17 +1865,17 @@ function hilite_reset_needed(bl_p, augmented_time) {   // botl.c:2257
 }
 /* called from moveloop(); sets context.botl if temp hilites have timed out */
 export function status_eval_next_unhilite() {   // botl.c:2279
-    let i = 0, curr = null, next_unhilite = 0, this_unhilite = 0, prev = null, $t1;
+    let i = 0, $t1;
     gb.bl_hilite_moves = svm.moves;
     /* simplified; at one point we used to
      * try to encode fractional amounts for
      * multiple moves within same turn */
     /* figure out whether an unhilight needs to be performed now */
-    next_unhilite = 0;
+    let next_unhilite = 0;
     for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
-        curr = $c.relem(gb.blstats[0], i);   /* blstats[0][*].time==blstats[1][*].time */
+        const curr = $c.relem(gb.blstats[0], i);   /* blstats[0][*].time==blstats[1][*].time */
         if (curr.chg) {
-            prev = $c.relem(gb.blstats[1], i);
+            const prev = $c.relem(gb.blstats[1], i);
             if (Is_Temp_Hilite(curr.hilite_rule)) {
                 curr.time = $c.add64(gb.bl_hilite_moves, iflags.hilite_delta);
             } else {
@@ -1898,7 +1888,7 @@ export function status_eval_next_unhilite() {   // botl.c:2279
         if (disp.botl) {
             continue;   /* just process other gb.blstats[][].time and .chg */
         }
-        this_unhilite = curr.time;
+        const this_unhilite = curr.time;
         if (this_unhilite > 0 && (next_unhilite === 0 || this_unhilite < next_unhilite) && hilite_reset_needed(curr, $c.add64(this_unhilite, 1))) {
             next_unhilite = this_unhilite;
             if (next_unhilite < gb.bl_hilite_moves) {
@@ -1957,32 +1947,32 @@ function noneoftheabove(hl_text) {   // botl.c:2336
  * @returns {$T.hilite_s | null} struct hilite_s *
  */
 function get_hilite(idx, fldidx, vp, chg, pc, colorptr) {   // botl.c:2364
-    let hl = null, rule = null, value = null, txtstr = null, dt = 0, max_pc = 0, min_pc = 0, max_ival = 0, min_ival = 0, max_lval = 0, min_lval = 0, exactmatch = 0, updown = 0, changed = 0, perc_or_abs = 0, crit_hp = 0;
-    rule = null;
-    value = $c.asRec(vp, $T.any, 8);
+    let hl = null, txtstr = null;
+    let rule = null;
+    const value = $c.asRec(vp, $T.any, 8);
     if (fldidx < 0 || fldidx >= MAXBLSTATS) {
         return null;
     }
     if (has_hilite(fldidx)) {
         /* there are hilites set here */
-        max_pc = -1;
-        min_pc = 101;
+        let max_pc = -1;
+        let min_pc = 101;
         /* LARGEST_INT isn't INT_MAX; it fits within 16 bits, but that
            value is big enough to handle all 'int' status fields */
-        max_ival = -LARGEST_INT;
-        min_ival = LARGEST_INT;
+        let max_ival = -LARGEST_INT;
+        let min_ival = LARGEST_INT;
         /* LONG_MAX comes from <limits.h> which might not be available for
            ancient configurations; we don't need LONG_MIN */
-        max_lval = -9223372036854775807n;
-        min_lval = 9223372036854775807n;
-        exactmatch = FALSE;
-        updown = FALSE;
-        changed = FALSE;
-        perc_or_abs = FALSE;
-        crit_hp = FALSE;
+        let max_lval = -9223372036854775807n;
+        let min_lval = 9223372036854775807n;
+        let exactmatch = FALSE;
+        let updown = FALSE;
+        let changed = FALSE;
+        let perc_or_abs = FALSE;
+        let crit_hp = FALSE;
         /* min_/max_ are used to track best fit */
         for (hl = gb.blstats[0][fldidx].thresholds; hl; hl = hl.next) {
-            dt = initblstats[fldidx].anytype | 0;   /* only needed for 'absolute' */
+            const dt = initblstats[fldidx].anytype | 0;   /* only needed for 'absolute' */
             /* for HP, if we already have a critical-hp rule then we ignore
                other HP rules unless we hit another critical-hp one (last
                one found wins); critical-hp takes precedence over temporary
@@ -2168,15 +2158,15 @@ function split_clridx(idx, coloridx, attrib) {   // botl.c:2576
  * @returns {Promise<number>} boolean
  */
 export async function parse_status_hl1(op, from_configfile) {   // botl.c:2593
-    let hsbuf = $c.matrix(Int8Array, [21, 128]), rslt = 0, badopt = 0, i = 0, fldnum = 0, ccount = 0, c = 0, $t1, $t2;
-    badopt = FALSE;
-    ccount = 0;
-    fldnum = 0;
+    let hsbuf = $c.matrix(Int8Array, [21, 128]), rslt = 0, i = 0, $t1, $t2;
+    let badopt = FALSE;
+    let ccount = 0;
+    let fldnum = 0;
     for (i = 0; i < MAX_THRESH; i = i + 1 | 0) {
         hsbuf[i][0] = 0;
     }
     while (op.get(0) && fldnum < MAX_THRESH && ccount < QBUFSZ - 2) {
-        c = lowc(op.get(0));
+        const c = lowc(op.get(0));
         if (c === 32) {
             if (fldnum >= 1) {
                 if (fldnum === 1 && strncmpi(new $c.Ptr(hsbuf[0], 0), $c.lit("title"), -1) === 0) {
@@ -2227,8 +2217,7 @@ export async function parse_status_hl1(op, from_configfile) {   // botl.c:2593
  * @returns {number} boolean
  */
 function is_ltgt_percentnumber(str) {   // botl.c:2652
-    let s = null;
-    s = str;
+    let s = str;
     if (s.get(0) === 60 || s.get(0) === 62) {
         s = s.add(1);
     }
@@ -2247,7 +2236,7 @@ function is_ltgt_percentnumber(str) {   // botl.c:2652
     if (s.get(0) === 37) {
         s = s.add(1);
     }
-    return $c.i8(s.get(0) === 0 ? 1 : 0);
+    return s.get(0) === 0 ? 1 : 0;
 }
 /* does str only contain "<>=-+0-9%" chars */
 /**
@@ -2255,8 +2244,7 @@ function is_ltgt_percentnumber(str) {   // botl.c:2652
  * @returns {number} boolean
  */
 function has_ltgt_percentnumber(str) {   // botl.c:2673
-    let s = null;
-    s = str;
+    let s = str;
     while (s.get(0)) {
         if (!$c.strchr($c.lit("<>=-+0123456789%"), s.get(0))) {
             return FALSE;
@@ -2274,9 +2262,9 @@ function has_ltgt_percentnumber(str) {   // botl.c:2673
  * @returns {number} int
  */
 function splitsubfields(str, sfarr, maxsf) {   // botl.c:2688
-    let st = null, sf = 0, c = null, $t1;
-    st = null;
-    sf = 0;
+    let $t1;
+    let st = null;
+    let sf = 0;
     if (!str) {
         return 0;
     }
@@ -2285,7 +2273,7 @@ function splitsubfields(str, sfarr, maxsf) {   // botl.c:2688
     }
     maxsf = maxsf === 0 ? MAX_SUBFIELDS : maxsf < MAX_SUBFIELDS ? maxsf : MAX_SUBFIELDS;
     if ($c.strchr(str, 43) || $c.strchr(str, 38)) {
-        c = str;
+        let c = str;
         sf = 0;
         st = c;
         while (c.get(0) && sf < maxsf) {
@@ -2336,12 +2324,12 @@ function is_fld_arrayvalues(str, arr, arrmin, arrmax, retidx) {   // botl.c:2730
  * @returns {Promise<number>} int
  */
 async function query_arrayvalue(querystr, arr, arrmin, arrmax) {   // botl.c:2747
-    let i = 0, res = 0, ret = 0, tmpwin = 0, any = new $T.any(), picks = [null], adj = 0, clr = 0;
-    ret = arrmin - 1 | 0;
+    let i = 0, any = new $T.any(), picks = [null];
+    let ret = arrmin - 1 | 0;
     picks[0] = null;
-    adj = arrmin > 0 ? 1 : arrmax;
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const adj = arrmin > 0 ? 1 : arrmax;
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     for (i = arrmin; i < arrmax; i = i + 1 | 0) {
         if (!arr.get(i)) {   /* the array of hunger status values has a gap ...*/
@@ -2352,7 +2340,7 @@ async function query_arrayvalue(querystr, arr, arrmin, arrmax) {   // botl.c:274
         await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, arr.get(i), MENU.ITEMFLAGS_NONE);
     }
     await end_menu()(tmpwin, querystr);
-    res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
+    const res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
     await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         ret = picks[0].item.a_int - adj | 0;
@@ -2366,12 +2354,12 @@ async function query_arrayvalue(querystr, arr, arrmin, arrmax) {   // botl.c:274
  * @returns {Promise<void>}
  */
 async function status_hilite_add_threshold(fld, hilite) {   // botl.c:2784
-    let new_hilite = null, old_hilite = null;
+    let old_hilite = null;
     if (!hilite) {
         return;
     }
     /* alloc and initialize a new hilite_s struct */
-    new_hilite = $c.asRec(await alloc(128), $T.hilite_s, 128);
+    const new_hilite = $c.asRec(await alloc(128), $T.hilite_s, 128);
     new_hilite.$copyFrom(hilite);   /* copy struct */
     new_hilite.set = TRUE;
     new_hilite.fld = fld;
@@ -2395,16 +2383,16 @@ async function status_hilite_add_threshold(fld, hilite) {   // botl.c:2784
  * @returns {Promise<number>} boolean
  */
 async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
-    let tmp = null, how = null, sidx = 0, i = 0, dt = 0, coloridx = 0, successes = 0, disp_attrib = 0, percent = 0, changed = 0, numeric = 0, down = 0, up = 0, grt = 0, lt = 0, gte = 0, le = 0, eq = 0, txtval = 0, always = 0, criticalhp = 0, txt = null, fld = 0, hilite = new $T.hilite_s(), tmpbuf = new Int8Array(256), res = 0, buf = new Int8Array(256), subfields = [null], sf = 0, kidx = Int32Array.of(0), op = null, a = 0, c = 0;
+    let changed = 0, numeric = 0, up = 0, lt = 0, gte = 0, le = 0, eq = 0, txtval = 0, always = 0, hilite = new $T.hilite_s(), tmpbuf = new Int8Array(256), buf = new Int8Array(256), subfields = [null], kidx = Int32Array.of(0);
     /* hu_stat[] from eat.c has trailing spaces which foul up comparisons;
        for the "not hungry" case, there's no text hence no way to highlight */
-    sidx = 0;
-    i = -1;
-    dt = ANY.INVALID;
-    coloridx = -1;
-    successes = 0;
-    disp_attrib = 0;
-    fld = BL.FLUSH;
+    let sidx = 0;
+    let i = -1;
+    let dt = ANY.INVALID;
+    let coloridx = -1;
+    let successes = 0;
+    let disp_attrib = 0;
+    let fld = BL.FLUSH;
     /* Examples:
         3.6.1:
       OPTION=hilite_status: hitpoints/<10%/red
@@ -2417,7 +2405,7 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
     /* field name to statusfield */
     fld = fldname_to_bl_indx(new $c.Ptr(s.get(sidx), 0));
     if (fld === BL.CHARACTERISTICS) {
-        res = FALSE;
+        let res = FALSE;
         /* recursively set each of strength, dexterity, constitution, &c */
         for (fld = BL.STR; fld <= BL.CH; fld = fld + 1 | 0) {
             $c.strcpy(new $c.Ptr(s.get(sidx), 0), initblstats[fld].fldname);
@@ -2437,12 +2425,12 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
     }
     sidx = sidx + 1 | 0;
     while (s.get(sidx)[0]) {
-        sf = 0;   /* subfield count */
-        txt = null;
-        percent = numeric = always = FALSE;
-        down = up = changed = FALSE;
-        criticalhp = FALSE;
-        grt = gte = eq = le = lt = txtval = FALSE;
+        let sf = 0;   /* subfield count */
+        let txt = null;
+        let percent = numeric = always = FALSE;
+        let down = up = changed = FALSE;
+        let criticalhp = FALSE;
+        let grt = gte = eq = le = lt = txtval = FALSE;
         /* threshold value - return on empty string */
         $c.memset(hilite, 0, 128);
         hilite.set = FALSE;   /* mark it "unset" */
@@ -2479,7 +2467,7 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
         } else if (fld === BL.HP && !strncmpi(new $c.Ptr(s.get(sidx), 0), $c.lit("criticalhp"), -1)) {
             criticalhp = TRUE;
         } else if (is_ltgt_percentnumber(new $c.Ptr(s.get(sidx), 0))) {
-            tmp = new $c.Ptr(s.get(sidx), 0);   /* is_ltgt_() guarantees [<>]?=?[-+]?[0-9]+%? */
+            let tmp = new $c.Ptr(s.get(sidx), 0);   /* is_ltgt_() guarantees [<>]?=?[-+]?[0-9]+%? */
             if ($c.strchr(tmp, 37)) {
                 percent = TRUE;
             }
@@ -2503,7 +2491,7 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
             numeric = TRUE;
             dt = (percent ? ANY.INT : initblstats[fld].anytype) | 0;
             s_to_anything(hilite.value, tmp, dt);
-            op = grt ? $c.lit(">") : gte ? $c.lit(">=") : lt ? $c.lit("<") : le ? $c.lit("<=") : $c.lit("=");
+            const op = grt ? $c.lit(">") : gte ? $c.lit(">=") : lt ? $c.lit("<") : le ? $c.lit("<=") : $c.lit("=");
             /* AC is the only field where negative values make sense but
                accept >-1 for other fields; reject <0 for non-AC */
             /* percentages have another more comprehensive check below */
@@ -2552,7 +2540,7 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
         }
         /* actions */
         sidx = sidx + 1 | 0;
-        how = new $c.Ptr(s.get(sidx), 0);
+        const how = new $c.Ptr(s.get(sidx), 0);
         if (!how) {
             if (!successes) {
                 return FALSE;
@@ -2566,7 +2554,7 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
         }
         disp_attrib = HL.UNDEF;
         for (i = 0; i < sf; i = i + 1 | 0) {
-            a = await match_str2attr(subfields[0].get(i), FALSE);
+            const a = await match_str2attr(subfields[0].get(i), FALSE);
             if (a === ATR.BOLD) {
                 disp_attrib = disp_attrib | HL.BOLD;
             } else if (a === ATR.DIM) {
@@ -2582,7 +2570,7 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
             } else if (a === ATR.NONE) {
                 disp_attrib = HL.NONE;
             } else {
-                c = await match_str2clr(subfields[0].get(i), FALSE);
+                const c = await match_str2clr(subfields[0].get(i), FALSE);
                 if (c >= CLR.MAX || coloridx !== -1) {
                     await config_error_add($c.lit("bad color '%d %d'"), c, coloridx);
                     return FALSE;
@@ -2622,17 +2610,17 @@ async function parse_status_hl2(s, from_configfile) {   // botl.c:2814
         successes = successes + 1 | 0;
         sidx = sidx + 1 | 0;
     }
-    return $c.i8(successes > 0 ? 1 : 0);
+    return successes > 0 ? 1 : 0;
 }
 /**
  * @returns {Promise<number | bigint>} unsigned long
  */
 async function query_conditions() {   // botl.c:3109
-    let i = 0, res = 0, ret = 0, tmpwin = 0, any = new $T.any(), picks = [null], clr = 0;
-    ret = 0;
+    let i = 0, any = new $T.any(), picks = [null];
+    let ret = 0;
     picks[0] = null;
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     for (i = 0; i < 30; i = i + 1 | 0) {
         any.$copyFrom(cg.zeroany);
@@ -2640,7 +2628,7 @@ async function query_conditions() {   // botl.c:3109
         await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, conditions[i].text[0], MENU.ITEMFLAGS_NONE);
     }
     await end_menu()(tmpwin, $c.lit("Choose status conditions"));
-    res = await select_menu(tmpwin, PICK.ANY, new $c.Ptr(picks, 0));
+    const res = await select_menu(tmpwin, PICK.ANY, new $c.Ptr(picks, 0));
     await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         for (i = 0; i < res; i = i + 1 | 0) {
@@ -2655,9 +2643,9 @@ async function query_conditions() {   // botl.c:3109
  * @returns {$c.Ptr | null} char *
  */
 function conditionbitmask2str(ul) {   // botl.c:3141
-    let i = 0, first = 0, alias = null;
-    first = TRUE;
-    alias = null;
+    let i = 0;
+    let first = TRUE;
+    let alias = null;
     conditionbitmask2str$buf[0] = 0;
     if (!ul) {
         return new $c.Ptr(conditionbitmask2str$buf, 0);
@@ -2683,9 +2671,9 @@ function conditionbitmask2str(ul) {   // botl.c:3141
  * @returns {number | bigint} unsigned long
  */
 function match_str2conditionbitmask(str) {   // botl.c:3171
-    let i = 0, nmatches = 0, mask = 0, len = 0;
-    nmatches = 0;
-    mask = 0;
+    let i = 0;
+    let nmatches = 0;
+    let mask = 0;
     if (str && str.get(0)) {
         /* check matches to canonical names */
         for (i = 0; i < 30; i = i + 1 | 0) {
@@ -2705,7 +2693,7 @@ function match_str2conditionbitmask(str) {   // botl.c:3171
         }
         if (!nmatches) {
             /* check partial matches to aliases */
-            len = $c.i32($c.strlen(str));
+            const len = $c.i32($c.strlen(str));
             for (i = 0; i < 6; i = i + 1 | 0) {
                 if (!strncmpi(str, condition_aliases[i].id, len)) {
                     mask = $c.oru64(mask, condition_aliases[i].bitmask);
@@ -2721,14 +2709,14 @@ function match_str2conditionbitmask(str) {   // botl.c:3171
  * @returns {Promise<number | bigint>} unsigned long
  */
 async function str2conditionbitmask(str) {   // botl.c:3209
-    let conditions_bitmask = 0, subfields = [null], i = 0, sf = 0, bm = 0;
-    conditions_bitmask = 0;
-    sf = splitsubfields(str, new $c.Ptr(subfields, 0), 30);
+    let subfields = [null], i = 0;
+    let conditions_bitmask = 0;
+    const sf = splitsubfields(str, new $c.Ptr(subfields, 0), 30);
     if (sf < 1) {
         return 0;
     }
     for (i = 0; i < sf; i = i + 1 | 0) {
-        bm = match_str2conditionbitmask(subfields[0].get(i));
+        const bm = match_str2conditionbitmask(subfields[0].get(i));
         if (!bm) {
             await config_error_add($c.lit("Unknown condition '%s'"), subfields[0].get(i));
             return 0;
@@ -2743,10 +2731,10 @@ async function str2conditionbitmask(str) {   // botl.c:3209
  * @returns {Promise<number>} boolean
  */
 async function parse_condition(s, sidx) {   // botl.c:3233
-    let i = 0, coloridx = 0, tmp = null, how = null, conditions_bitmask = 0, result = 0, sf = 0, buf = new Int8Array(256), subfields = [null], a = 0, k = 0;
-    coloridx = NO_COLOR;
-    conditions_bitmask = 0;
-    result = FALSE;
+    let i = 0, buf = new Int8Array(256), subfields = [null];
+    let coloridx = NO_COLOR;
+    let conditions_bitmask = 0;
+    let result = FALSE;
     if (!s) {
         return FALSE;
     }
@@ -2766,8 +2754,8 @@ async function parse_condition(s, sidx) {   // botl.c:3233
         return FALSE;
     }
     while (s.get(sidx)[0]) {
-        sf = 0;   /* subfield count */
-        tmp = new $c.Ptr(s.get(sidx), 0);
+        let sf = 0;   /* subfield count */
+        const tmp = new $c.Ptr(s.get(sidx), 0);
         $c.strcpy(new $c.Ptr(buf, 0), tmp);
         conditions_bitmask = await str2conditionbitmask(new $c.Ptr(buf, 0));
         if (!conditions_bitmask) {
@@ -2785,7 +2773,7 @@ async function parse_condition(s, sidx) {   // botl.c:3233
          */
         /* actions */
         sidx = sidx + 1 | 0;
-        how = new $c.Ptr(s.get(sidx), 0);
+        const how = new $c.Ptr(s.get(sidx), 0);
         if (!how || !how.get(0)) {
             await config_error_add($c.lit("Missing color+attribute"));
             return FALSE;
@@ -2806,7 +2794,7 @@ async function parse_condition(s, sidx) {   // botl.c:3233
          *
          */
         for (i = 0; i < sf; i = i + 1 | 0) {
-            a = await match_str2attr(subfields[0].get(i), FALSE);
+            const a = await match_str2attr(subfields[0].get(i), FALSE);
             if (a === ATR.BOLD) {
                 gc.cond_hilites[CLR.MAX + 2] = $c.oru64(gc.cond_hilites[CLR.MAX + 2], conditions_bitmask);
             } else if (a === ATR.DIM) {
@@ -2827,7 +2815,7 @@ async function parse_condition(s, sidx) {   // botl.c:3233
                 gc.cond_hilites[CLR.MAX + 6] = $c.andu64(gc.cond_hilites[CLR.MAX + 6], $c.notu64(conditions_bitmask));
                 gc.cond_hilites[CLR.MAX + 7] = $c.andu64(gc.cond_hilites[CLR.MAX + 7], $c.notu64(conditions_bitmask));
             } else {
-                k = await match_str2clr(subfields[0].get(i), FALSE);
+                const k = await match_str2clr(subfields[0].get(i), FALSE);
                 if (k >= CLR.MAX) {
                     await config_error_add($c.lit("bad color %d"), k);
                     return FALSE;
@@ -2862,9 +2850,9 @@ export function clear_status_hilites() {   // botl.c:3351
  * @returns {$c.Ptr | null} char *
  */
 function hlattr2attrname(attrib, buf, bufsz) {   // botl.c:3369
-    let attbuf = new Int8Array(256), first = 0, k = 0, $t1, $t2, $t3, $t4, $t5, $t6;
+    let attbuf = new Int8Array(256), $t1, $t2, $t3, $t4, $t5, $t6;
     if (attrib && buf) {
-        first = 0;
+        let first = 0;
         attbuf[0] = 0;
         if (attrib === HL.NONE) {
             $c.strcpy(buf, $c.lit("normal"));
@@ -2888,7 +2876,7 @@ function hlattr2attrname(attrib, buf, bufsz) {   // botl.c:3369
         if (attrib & HL.INVERSE) {
             $c.strcat(new $c.Ptr(attbuf, 0), ($t6 = first, first = $t6 + 1 | 0, $t6) ? $c.lit("+inverse") : $c.lit("inverse"));
         }
-        k = $c.strlen(new $c.Ptr(attbuf, 0));
+        const k = $c.strlen(new $c.Ptr(attbuf, 0));
         if (k < $c.subu64(bufsz, 1)) {
             $c.strcpy(buf, new $c.Ptr(attbuf, 0));
         }
@@ -2927,10 +2915,9 @@ async function status_hilite_linestr_add(fld, hl, mask, str) {   // botl.c:3417
     }
 }
 function status_hilite_linestr_done() {   // botl.c:3448
-    let nxt = null, tmp = null;
-    tmp = status_hilite_str;
+    let tmp = status_hilite_str;
     while (tmp) {
-        nxt = tmp.next;
+        const nxt = tmp.next;
         $c.free(tmp);
         tmp = nxt;
     }
@@ -2942,9 +2929,9 @@ function status_hilite_linestr_done() {   // botl.c:3448
  * @returns {number} int
  */
 function status_hilite_linestr_countfield(fld) {   // botl.c:3462
-    let tmp = null, countall = 0, count = 0;
-    countall = $c.i8(fld === BL.FLUSH ? 1 : 0);
-    count = 0;
+    let tmp = null;
+    const countall = fld === BL.FLUSH ? 1 : 0;
+    let count = 0;
     for (tmp = status_hilite_str; tmp; tmp = tmp.next) {
         if (countall || tmp.fld === fld) {
             count = count + 1 | 0;
@@ -2957,9 +2944,8 @@ function status_hilite_linestr_countfield(fld) {   // botl.c:3462
  * @returns {Promise<number>} int
  */
 export async function count_status_hilites() {   // botl.c:3477
-    let count = 0;
     await status_hilite_linestr_gather();
-    count = status_hilite_linestr_countfield(BL.FLUSH);
+    const count = status_hilite_linestr_countfield(BL.FLUSH);
     status_hilite_linestr_done();
     return count;
 }
@@ -2967,11 +2953,11 @@ export async function count_status_hilites() {   // botl.c:3477
  * @returns {Promise<void>}
  */
 async function status_hilite_linestr_gather_conditions() {   // botl.c:3488
-    let i = 0, cond_maps = $c.recArray($T._cond_map, 30), clr = 0, atr = 0, j = 0, ca = 0, added_condmap = 0, clr$2 = Int32Array.of(0), atr$2 = Int32Array.of(0), clrbuf = new Int8Array(256), attrbuf = new Int8Array(256), condbuf = new Int8Array(256), tmpattr = null;
-    $c.memset($c.relem(cond_maps, 0), 0, 480);
+    let i = 0, cond_maps = $c.recArray($T._cond_map, 30), j = 0, clr$2 = Int32Array.of(0), atr$2 = Int32Array.of(0), clrbuf = new Int8Array(256), attrbuf = new Int8Array(256), condbuf = new Int8Array(256);
+    $c.memset(cond_maps[0], 0, 480);
     for (i = 0; i < 30; i = i + 1 | 0) {
-        clr = NO_COLOR;
-        atr = HL.NONE;
+        let clr = NO_COLOR;
+        let atr = HL.NONE;
         for (j = 0; j < CLR.MAX; j = j + 1 | 0) {
             if ($c.andu64(gc.cond_hilites[j], $c.u64(conditions[i].mask))) {
                 clr = j;
@@ -3000,8 +2986,8 @@ async function status_hilite_linestr_gather_conditions() {   // botl.c:3488
             atr = atr & ~HL.NONE;
         }
         if (clr !== NO_COLOR || atr !== HL.NONE) {
-            ca = (clr | atr << 8) >>> 0;
-            added_condmap = FALSE;
+            const ca = (clr | atr << 8) >>> 0;
+            let added_condmap = FALSE;
             for (j = 0; j < 30; j = j + 1 | 0) {
                 if (cond_maps[j].clratr === ca) {
                     cond_maps[j].bm = $c.oru64(cond_maps[j].bm, $c.u64(conditions[i].mask));
@@ -3027,7 +3013,7 @@ async function status_hilite_linestr_gather_conditions() {   // botl.c:3488
             split_clridx(cond_maps[i].clratr | 0, new $c.Ptr(clr$2, 0), new $c.Ptr(atr$2, 0));
             if (clr$2[0] !== NO_COLOR || atr$2[0] !== HL.NONE) {
                 strNsubst($c.strcpy(new $c.Ptr(clrbuf, 0), clr2colorname(clr$2[0])), $c.lit(" "), $c.lit("-"), 0);
-                tmpattr = hlattr2attrname(atr$2[0], new $c.Ptr(attrbuf, 0), BUFSZ);
+                const tmpattr = hlattr2attrname(atr$2[0], new $c.Ptr(attrbuf, 0), BUFSZ);
                 if (tmpattr) {
                     $c.sprintf(eos(new $c.Ptr(clrbuf, 0)), $c.lit("&%s"), tmpattr);
                 }
@@ -3041,10 +3027,10 @@ async function status_hilite_linestr_gather_conditions() {   // botl.c:3488
  * @returns {Promise<void>}
  */
 async function status_hilite_linestr_gather() {   // botl.c:3570
-    let i = 0, hl = null;
+    let i = 0;
     status_hilite_linestr_done();
     for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
-        hl = gb.blstats[0][i].thresholds;
+        let hl = gb.blstats[0][i].thresholds;
         while (hl) {
             await status_hilite_linestr_add(i, hl, 0, await status_hilite2str(hl));
             hl = hl.next;
@@ -3057,7 +3043,7 @@ async function status_hilite_linestr_gather() {   // botl.c:3570
  * @returns {Promise<$c.Ptr | null>} char *
  */
 async function status_hilite2str(hl) {   // botl.c:3590
-    let clr = Int32Array.of(0), attr = Int32Array.of(0), behavebuf = new Int8Array(256), clrbuf = new Int8Array(256), attrbuf = new Int8Array(256), tmpattr = null, op = null;
+    let clr = Int32Array.of(0), attr = Int32Array.of(0), behavebuf = new Int8Array(256), clrbuf = new Int8Array(256), attrbuf = new Int8Array(256), tmpattr = null;
     clr[0] = NO_COLOR;
     attr[0] = ATR.NONE;
     if (!hl) {
@@ -3065,7 +3051,7 @@ async function status_hilite2str(hl) {   // botl.c:3590
     }
     behavebuf[0] = 0;
     clrbuf[0] = 0;
-    op = hl.rel === LT_VALUE ? $c.lit("<") : hl.rel === LE_VALUE ? $c.lit("<=") : hl.rel === GT_VALUE ? $c.lit(">") : hl.rel === GE_VALUE ? $c.lit(">=") : hl.rel === EQ_VALUE ? $c.lit("=") : null;
+    const op = hl.rel === LT_VALUE ? $c.lit("<") : hl.rel === LE_VALUE ? $c.lit("<=") : hl.rel === GT_VALUE ? $c.lit(">") : hl.rel === GE_VALUE ? $c.lit(">=") : hl.rel === EQ_VALUE ? $c.lit("=") : null;
     switch (hl.behavior) {
         case BL_TH.VAL_PERCENTAGE:
             if (op) {
@@ -3131,11 +3117,11 @@ async function status_hilite2str(hl) {   // botl.c:3590
  * @returns {Promise<number>} int
  */
 async function status_hilite_menu_choose_field() {   // botl.c:3672
-    let tmpwin = 0, i = 0, res = 0, fld = 0, any = new $T.any(), picks = [null], clr = 0;
-    fld = BL.FLUSH;
+    let i = 0, any = new $T.any(), picks = [null];
+    let fld = BL.FLUSH;
     picks[0] = null;
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         if (initblstats[i].fld === BL.SCORE && !gb.blstats[0][BL.SCORE].thresholds) {
@@ -3146,7 +3132,7 @@ async function status_hilite_menu_choose_field() {   // botl.c:3672
         await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, initblstats[i].fldname, MENU.ITEMFLAGS_NONE);
     }
     await end_menu()(tmpwin, $c.lit("Select a hilite field:"));
-    res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
+    const res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
     await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         fld = picks[0].item.a_int - 1 | 0;
@@ -3159,18 +3145,18 @@ async function status_hilite_menu_choose_field() {   // botl.c:3672
  * @returns {Promise<number>} int
  */
 async function status_hilite_menu_choose_behavior(fld) {   // botl.c:3707
-    let tmpwin = 0, res = 0, beh = 0, any = new $T.any(), picks = [null], buf = new Int8Array(256), at = 0, onlybeh = 0, nopts = 0, clr = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
-    res = 0;
-    beh = BL_TH.NONE - 1;
+    let any = new $T.any(), picks = [null], buf = new Int8Array(256), $t1, $t2, $t3, $t4, $t5, $t6, $t7;
+    let res = 0;
+    let beh = BL_TH.NONE - 1;
     picks[0] = null;
-    onlybeh = BL_TH.NONE;
-    nopts = 0;
-    clr = NO_COLOR;
+    let onlybeh = BL_TH.NONE;
+    let nopts = 0;
+    const clr = NO_COLOR;
     if (fld < 0 || fld >= MAXBLSTATS) {
         return BL_TH.NONE;
     }
-    at = initblstats[fld].anytype | 0;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const at = initblstats[fld].anytype | 0;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     if (fld !== BL.CONDITION) {
         any.$copyFrom(cg.zeroany);
@@ -3245,11 +3231,11 @@ async function status_hilite_menu_choose_behavior(fld) {   // botl.c:3707
  * @returns {Promise<number>} int
  */
 async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok) {   // botl.c:3811
-    let res = 0, ret = 0, tmpwin = 0, buf = new Int8Array(256), any = new $T.any(), picks = [null], clr = 0;
-    ret = NO_LTEQGT;
+    let buf = new Int8Array(256), any = new $T.any(), picks = [null];
+    let ret = NO_LTEQGT;
     picks[0] = null;
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     if (ltok) {
         if (str) {
@@ -3293,7 +3279,7 @@ async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok) {   //
     }
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Select field %s value:"), initblstats[fld].fldname);
     await end_menu()(tmpwin, new $c.Ptr(buf, 0));
-    res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
+    const res = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(picks, 0));
     await destroy_nhwindow()(tmpwin);
     if (res > 0) {
         ret = picks[0].item.a_int - 10 | 0;
@@ -3353,7 +3339,7 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
             }
             if (behavior === BL_TH.VAL_PERCENTAGE || behavior === BL_TH.VAL_ABSOLUTE) {
                 gotnum = FALSE;
-                percent = $c.i8(behavior === BL_TH.VAL_PERCENTAGE ? 1 : 0);
+                percent = behavior === BL_TH.VAL_PERCENTAGE ? 1 : 0;
                 lt_gt_eq = NO_LTEQGT;   /* not set up yet */
                 inbuf[0] = 0;
                 $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Enter %svalue for %s threshold:"), percent ? $c.lit("percentage ") : $c.lit(""), initblstats[fld].fldname);
@@ -3434,8 +3420,8 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
                     $goto = "choose_value"; continue D1;
                 }
                 if (lt_gt_eq === NO_LTEQGT) {
-                    ltok = $c.i8(dt === ANY.INT ? aval.a_int > 0 || fld === BL.AC ? 1 : 0 : aval.a_long > 0 ? 1 : 0);
-                    gtok = $c.i8(!percent || aval.a_long < 100 ? 1 : 0);
+                    ltok = dt === ANY.INT ? aval.a_int > 0 || fld === BL.AC ? 1 : 0 : aval.a_long > 0 ? 1 : 0;
+                    gtok = !percent || aval.a_long < 100 ? 1 : 0;
                     lt_gt_eq = await status_hilite_menu_choose_updownboth(fld, new $c.Ptr(inbuf, 0), ltok, gtok);
                     if (lt_gt_eq === NO_LTEQGT) {
                         $goto = "choose_value"; continue D1;
@@ -3447,7 +3433,7 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
                 hilite.value.$copyFrom(aval);
             } else if (behavior === BL_TH.UPDOWN) {
                 if (initblstats[fld].anytype !== ANY.STR) {
-                    ltok$2 = $c.i8(fld !== BL.TIME ? 1 : 0);
+                    ltok$2 = fld !== BL.TIME ? 1 : 0;
                     gtok$2 = TRUE;
                     lt_gt_eq = await status_hilite_menu_choose_updownboth(fld, null, ltok$2, gtok$2);
                     if (lt_gt_eq === NO_LTEQGT) {
@@ -3637,8 +3623,8 @@ async function status_hilite_menu_add(origfld) {   // botl.c:3890
  * @returns {number} boolean
  */
 function status_hilite_remove(id) {   // botl.c:4305
-    let hlstr = null, i = 0, fld = 0, hl = null, hlprev = null, $t1, $t2;
-    hlstr = status_hilite_str;
+    let i = 0, hl = null, $t1, $t2;
+    let hlstr = status_hilite_str;
     while (hlstr && hlstr.id !== id) {
         hlstr = hlstr.next;
     }
@@ -3657,8 +3643,8 @@ function status_hilite_remove(id) {   // botl.c:4305
         gc.cond_hilites[CLR.MAX + 7] = $c.andu64(gc.cond_hilites[CLR.MAX + 7], $c.notu64(hlstr.mask));
         return TRUE;
     } else {
-        fld = hlstr.fld;
-        hlprev = null;
+        const fld = hlstr.fld;
+        let hlprev = null;
         for (hl = gb.blstats[0][fld].thresholds; hl; hl = hl.next) {
             if ($c.peq(hlstr.hl, hl)) {
                 if (hlprev) {
@@ -3684,10 +3670,10 @@ function status_hilite_remove(id) {   // botl.c:4305
  * @returns {Promise<number>} boolean
  */
 async function status_hilite_menu_fld(fld) {   // botl.c:4357
-    let tmpwin = 0, i = 0, res = 0, picks = [null], any = new $T.any(), count = 0, hlstr = null, buf = new Int8Array(256), acted = 0, clr = 0, idx = 0, mode = 0;
+    let i = 0, res = 0, picks = [null], any = new $T.any(), buf = new Int8Array(256), idx = 0;
     picks[0] = null;
-    count = status_hilite_linestr_countfield(fld);
-    clr = NO_COLOR;
+    let count = status_hilite_linestr_countfield(fld);
+    const clr = NO_COLOR;
     if (!count) {
         if (await status_hilite_menu_add(fld)) {
             status_hilite_linestr_done();
@@ -3697,10 +3683,10 @@ async function status_hilite_menu_fld(fld) {   // botl.c:4357
             return FALSE;
         }
     }
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     if (count) {
-        hlstr = status_hilite_str;
+        let hlstr = status_hilite_str;
         while (hlstr) {
             if (hlstr.fld === fld) {
                 any.$copyFrom(cg.zeroany);
@@ -3732,9 +3718,9 @@ async function status_hilite_menu_fld(fld) {   // botl.c:4357
     }
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Current %s hilites:"), initblstats[fld].fldname);
     await end_menu()(tmpwin, new $c.Ptr(buf, 0));
-    acted = FALSE;
+    let acted = FALSE;
     if ((res = await select_menu(tmpwin, PICK.ANY, new $c.Ptr(picks, 0))) > 0) {
-        mode = 0;
+        let mode = 0;
         for (i = 0; i < res; i = i + 1 | 0) {
             idx = $c.radd(picks[0], i).item.a_int;
             if (idx === -1) {
@@ -3767,9 +3753,9 @@ async function status_hilite_menu_fld(fld) {   // botl.c:4357
  * @returns {Promise<void>}
  */
 async function status_hilites_viewall() {   // botl.c:4456
-    let datawin = 0, hlstr = null, buf = new Int8Array(256);
-    hlstr = status_hilite_str;
-    datawin = await create_nhwindow()(NHW.TEXT);
+    let buf = new Int8Array(256);
+    let hlstr = status_hilite_str;
+    const datawin = await create_nhwindow()(NHW.TEXT);
     while (hlstr) {
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("OPTIONS=hilite_status: %.*s"), 231, new $c.Ptr(hlstr.str, 0));
         await putstr()(datawin, 0, new $c.Ptr(buf, 0));
@@ -3783,10 +3769,10 @@ async function status_hilites_viewall() {   // botl.c:4456
  * @returns {Promise<void>}
  */
 export async function all_options_statushilites(sbuf) {   // botl.c:4477
-    let hlstr = null, buf = new Int8Array(256);
+    let buf = new Int8Array(256);
     status_hilite_linestr_done();
     await status_hilite_linestr_gather();
-    hlstr = status_hilite_str;
+    let hlstr = status_hilite_str;
     while (hlstr) {
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("OPTIONS=hilite_status: %.*s\n"), 230, new $c.Ptr(hlstr.str, 0));
         await strbuf_append(sbuf, new $c.Ptr(buf, 0));

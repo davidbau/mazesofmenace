@@ -97,7 +97,7 @@ xL|.......|Lx
 xL---------Lx
 xLLLLLLLLLLLx
 xxxxxx.xxxxxx`,
-        contents: () => {
+        contents: async () => {
             lspo_non_diggable(2, 2, 10, 8);
             lspo_region_full({ area: [4, 4, 8, 6], lit: 1 });
             lspo_exclusion({ type: 'teleport', region: [2, 2, 10, 8] });
@@ -118,7 +118,7 @@ xxxxxx.xxxxxx`,
             const mons = ['H', 'T', '@'];
             shuffle(mons);
             for (let i = 0, n = 3 + mathrandom(5); i < n; ++i)
-                lspo_monster(mons[0], 6, 5);
+                await lspo_monster(mons[0], 6, 5);
         },
     }),
     {
@@ -179,10 +179,10 @@ BBBBBBB`,
 ..........
 ..........
 ..........`,
-        contents: () => {
+        contents: async () => {
             lspo_exclusion({ type: 'teleport', region: [4, 4, 5, 5] });
             const mons = ['Angel', 'D', 'H', 'L'];
-            lspo_monster(mons[mathrandom(mons.length) - 1], 4, 4);
+            await lspo_monster(mons[mathrandom(mons.length) - 1], 4, 4);
         },
     }),
     () => placeMap({
@@ -197,9 +197,9 @@ BBBBBBB`,
 .}}---}}.
 .}}}}}}}.
 .........`,
-        contents: () => {
+        contents: async () => {
             lspo_exclusion({ type: 'teleport', region: [3, 3, 5, 5] });
-            lspo_monster('L', 4, 4);
+            await lspo_monster('L', 4, 4);
         },
     }),
     () => {
@@ -250,23 +250,23 @@ BBBBBBB`,
     },
 ];
 
-function rnd_hell_prefab(coldhell) {
+async function rnd_hell_prefab(coldhell) {
     let dorepeat = true;
     let nloops = 0;
     do {
         ++nloops;
         const fab = hellPrefabs[rn2(hellPrefabs.length)];
         if (typeof fab === 'function') {
-            fab(coldhell);
+            await fab(coldhell);
             dorepeat = false;
         } else {
-            fab.contents(coldhell);
+            await fab.contents(coldhell);
             dorepeat = !(fab.repeatable && rn2(nloops * 2 + 1) === 0);
         }
     } while (dorepeat && nloops <= 5);
 }
 
-function populate_maze() {
+async function populate_maze() {
     for (let i = 1, n = mathrandom(8) + 11; i <= n; ++i)
         lspo_object(percent(50) ? '*' : undefined);
 
@@ -274,19 +274,19 @@ function populate_maze() {
         lspo_object('`');
 
     for (let i = 1, n = mathrandom(3); i <= n; ++i)
-        lspo_monster({ id: 'minotaur', peaceful: 0 });
+        await lspo_monster({ id: 'minotaur', peaceful: 0 });
 
     for (let i = 1, n = mathrandom(5) + 7; i <= n; ++i)
-        lspo_monster({ peaceful: 0 });
+        await lspo_monster({ peaceful: 0 });
 
     for (let i = 1, n = mathrandom(6) + 7; i <= n; ++i)
         lspo_gold({});
 
     for (let i = 1, n = mathrandom(6) + 7; i <= n; ++i)
-        lspo_trap();
+        await lspo_trap();
 }
 
-function init_hell_style(style) {
+async function init_hell_style(style) {
     let cwid, outsideWalls, wwid;
 
     switch (style) {
@@ -312,7 +312,7 @@ function init_hell_style(style) {
             bounds.lx, bounds.ly + 1, bounds.hx - 2, bounds.hy - 1);
         hell_tweaks(l_selection_negate(protectedArea));
         if (percent(25))
-            rnd_hell_prefab(false);
+            await rnd_hell_prefab(false);
         break;
     }
 
@@ -337,7 +337,7 @@ function init_hell_style(style) {
                 lspo_replace_terrain({ mapfragment: '.\nF\n.', toterrain: '.',
                                        chance: 25 * mathrandom(4) });
             } else if (percent(25)) {
-                rnd_hell_prefab(false);
+                await rnd_hell_prefab(false);
             }
         }
         lspo_terrain(outsideWalls, ' ');
@@ -378,7 +378,7 @@ function init_hell_style(style) {
         if (percent(25))
             lspo_terrain(l_selection_match('w'), 'W');
         if (cwid === 1 && percent(25))
-            rnd_hell_prefab(true);
+            await rnd_hell_prefab(true);
         lspo_terrain(outsideWalls, ' ');
         break;
     }
@@ -400,7 +400,7 @@ function init_hell_style(style) {
 }
 
 export async function hellfill_level() {
-    init_hell_style(mathrandom(7));
+    await init_hell_style(mathrandom(7));
 
     lspo_stair('up');
     if (Invocation_lev(game.u.uz))
@@ -408,5 +408,5 @@ export async function hellfill_level() {
     else
         lspo_stair('down');
 
-    populate_maze();
+    await populate_maze();
 }

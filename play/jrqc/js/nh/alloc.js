@@ -26,13 +26,12 @@ let ptrbufidx = 0;
  * @returns {Promise<*>} long *
  */
 export async function alloc(lth) {   // alloc.c:68
-    let ptr = null;
     do {
         if (!lth || $c.remu64(lth, 8) !== 0) {
             lth = $c.u32($c.addu64(lth, $c.subu64(8, $c.remu64(lth, 8))));
         }
     } while (0);
-    ptr = $c.malloc(lth);
+    const ptr = $c.malloc(lth);
     if (!ptr) {
         await panic($c.lit("Memory allocation failure; cannot get %u bytes"), lth);
     }
@@ -46,13 +45,12 @@ export async function alloc(lth) {   // alloc.c:68
  * @returns {Promise<*>} long *
  */
 export async function re_alloc(oldptr, newlth) {   // alloc.c:85
-    let newptr = null;
     do {
         if (!newlth || $c.remu64(newlth, 8) !== 0) {
             newlth = $c.u32($c.addu64(newlth, $c.subu64(8, $c.remu64(newlth, 8))));
         }
     } while (0);
-    newptr = $c.realloc(oldptr, newlth);
+    const newptr = $c.realloc(oldptr, newlth);
     /* "extend to":  assume it won't ever fail if asked to shrink */
     if (newlth && !newptr) {
         await panic($c.lit("Memory allocation failure; cannot extend to %u bytes"), newlth);
@@ -66,8 +64,7 @@ export async function re_alloc(oldptr, newlth) {   // alloc.c:85
  * @returns {$c.Ptr | null} char *
  */
 export function fmt_ptr(ptr) {   // alloc.c:125
-    let buf = null;
-    buf = new $c.Ptr(ptrbuf[ptrbufidx], 0);
+    const buf = new $c.Ptr(ptrbuf[ptrbufidx], 0);
     if ((ptrbufidx = ptrbufidx + 1 | 0) >= PTRBUFCNT) {
         ptrbufidx = 0;
     }
@@ -98,8 +95,7 @@ export function fmt_ptr(ptr) {   // alloc.c:125
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function dupstr(string) {   // alloc.c:238
-    let len = 0;
-    len = $c.strlen(string);
+    const len = $c.strlen(string);
     /* make sure len+1 doesn't overflow plain unsigned (for alloc()) */
     if (len > 4294967294) {
         await panic($c.lit("dupstr: string length overflow"));
@@ -116,8 +112,7 @@ export async function dupstr(string) {   // alloc.c:238
  * @returns {Promise<number>} int
  */
 export async function FITSint_(i, file, line) {   // alloc.c:266
-    let iret = 0;
-    iret = $c.i32(i);
+    const iret = $c.i32(i);
     if (iret !== i) {
         await panic($c.lit("Overflow at %s:%d"), file, line);
     }
@@ -130,8 +125,7 @@ export async function FITSint_(i, file, line) {   // alloc.c:266
  * @returns {Promise<number>} unsigned int
  */
 export async function FITSuint_(ull, file, line) {   // alloc.c:276
-    let uret = 0;
-    uret = $c.u32(ull);
+    const uret = $c.u32(ull);
     if (uret !== ull) {
         await panic($c.lit("Overflow at %s:%d"), file, line);
     }

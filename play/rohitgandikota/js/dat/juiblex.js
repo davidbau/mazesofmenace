@@ -112,25 +112,25 @@ export async function juiblex_level() {
     }
     {
         const c = selection_rndcoord(place, 1);
-        des.monster({ id: 'giant mimic', coord: [c.x, c.y],
+        await des.monster({ id: 'giant mimic', coord: [c.x, c.y],
                       appear_as: 'ter:fountain' });
     }
     {
         const c = selection_rndcoord(place, 1);
-        des.monster({ id: 'giant mimic', coord: [c.x, c.y],
+        await des.monster({ id: 'giant mimic', coord: [c.x, c.y],
                       appear_as: 'ter:fountain' });
     }
     {
         const c = selection_rndcoord(place, 1);
-        des.monster({ id: 'giant mimic', coord: [c.x, c.y],
+        await des.monster({ id: 'giant mimic', coord: [c.x, c.y],
                       appear_as: 'ter:fountain' });
     }
     /* The demon of the swamp */
     des.monster('Juiblex', 25, 8);
     /* And a couple demons */
-    des.monster('lemure', 43, 8);
-    des.monster('lemure', 44, 8);
-    des.monster('lemure', 45, 8);
+    await des.monster('lemure', 43, 8);
+    await des.monster('lemure', 44, 8);
+    await des.monster('lemure', 45, 8);
     /* Some liquids and gems */
     des.object('*', 43, 6);
     des.object('*', 45, 6);
@@ -138,32 +138,32 @@ export async function juiblex_level() {
     des.object('!', 44, 9);
     des.object('!', 45, 9);
     /* And lots of blobby monsters */
-    des.monster(monster[3], 25, 6);
-    des.monster(monster[0], 24, 7);
-    des.monster(monster[1], 26, 7);
-    des.monster(monster[2], 23, 8);
-    des.monster(monster[2], 27, 8);
-    des.monster(monster[1], 24, 9);
-    des.monster(monster[0], 26, 9);
-    des.monster(monster[3], 25, 10);
-    des.monster('j');
-    des.monster('j');
-    des.monster('j');
-    des.monster('j');
-    des.monster('P');
-    des.monster('P');
-    des.monster('P');
-    des.monster('P');
-    des.monster('b');
-    des.monster('b');
-    des.monster('b');
-    des.monster('F');
-    des.monster('F');
-    des.monster('F');
-    des.monster('m');
-    des.monster('m');
-    des.monster('jellyfish');
-    des.monster('jellyfish');
+    await des.monster(monster[3], 25, 6);
+    await des.monster(monster[0], 24, 7);
+    await des.monster(monster[1], 26, 7);
+    await des.monster(monster[2], 23, 8);
+    await des.monster(monster[2], 27, 8);
+    await des.monster(monster[1], 24, 9);
+    await des.monster(monster[0], 26, 9);
+    await des.monster(monster[3], 25, 10);
+    await des.monster('j');
+    await des.monster('j');
+    await des.monster('j');
+    await des.monster('j');
+    await des.monster('P');
+    await des.monster('P');
+    await des.monster('P');
+    await des.monster('P');
+    await des.monster('b');
+    await des.monster('b');
+    await des.monster('b');
+    await des.monster('F');
+    await des.monster('F');
+    await des.monster('F');
+    await des.monster('m');
+    await des.monster('m');
+    await des.monster('jellyfish');
+    await des.monster('jellyfish');
     /* Some random objects */
     des.object('!');
     des.object('!');

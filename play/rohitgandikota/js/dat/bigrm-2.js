@@ -94,8 +94,8 @@ export async function bigrm2_level() {
         des.object();
     /* Random traps */
     for (let i = 0; i < 6; i++)
-        des.trap();
+        await des.trap();
     /* Random monsters. */
     for (let i = 0; i < 28; i++)
-        des.monster();
+        await des.monster();
 }

@@ -47,12 +47,12 @@ import { Upolyd, WARNCOUNT, IS_OBSTRUCTED, IS_ROOM, IS_POOL,
 
 import { cansee, couldsee, vision_recalc } from './vision.js';
 
-import { Blind, Infravision, Hallucination, Invis, See_invisible,
+import { Blind, Infravision, Hallucination, Confusion, Stunned, Invis, See_invisible,
          Underwater, Detect_monsters, Warn_of_mon, Protection_from_shape_changers } from './youprop.js';
 
 import { observe_object } from './o_init.js';
 
-import { distu } from './hacklib.js';
+import { distu, next2u } from './hacklib.js';
 
 import { m_at, t_at } from './mon.js';
 
@@ -1642,7 +1642,7 @@ export function newsym(x, y) {
        cansee() test against the PREVIOUS level's vision array and write
        itself into the new level's map memory: seed0373's sokoban arrival
        remembered a spellbook in a dark room the hero had never seen. */
-    if (game.in_mklev)
+    if (suppress_map_output())
         return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
@@ -1655,6 +1655,11 @@ export function newsym(x, y) {
         }
         return;
     }
+
+    /* src/display.c:944: underwater updates are adjacent liquid or ice. */
+    if (Underwater() && !Is_waterlevel(game.u.uz)
+        && (!(is_pool_or_lava(x, y) || is_ice(x, y)) || !next2u(x, y)))
+        return;
 
     /* src/display.c:967 — `lev->waslit = (lev->lit != 0)`, inside newsym's
        cansee() branch and BEFORE the hero-specific handling, so the hero's own
@@ -2967,8 +2972,7 @@ export function unmap_invisible(x, y) {
 // See NOTES, "Default-On options: read them defensively".
 export function is_safemon(mon) {
     return !!(game.flags?.safe_dog !== false && mon.mpeaceful && canspotmon(mon)
-              && !game.u.uprops?.CONFUSION && !game.u.uprops?.HALLUC
-              && !game.u.uprops?.STUNNED);
+              && !Confusion() && !Hallucination() && !Stunned());
 }
 
 // src/display.c:258 map_background() — remember and (optionally) show the

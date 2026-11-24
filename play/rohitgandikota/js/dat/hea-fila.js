@@ -36,22 +36,22 @@ export async function heafila_level() {
     des.object();
     des.object();
 
-    des.monster('rabid rat');
-    des.monster({ class: 'r', peaceful: 0 });
-    des.monster({ class: 'r', peaceful: 0 });
-    des.monster('giant eel');
-    des.monster('giant eel');
-    des.monster('electric eel');
-    des.monster({ class: 'D', peaceful: 0 });
-    des.monster({ class: 'D', peaceful: 0 });
-    des.monster({ class: 'D', peaceful: 0 });
-    des.monster({ class: 'D', peaceful: 0 });
-    des.monster({ class: 'S', peaceful: 0 });
-    des.monster({ class: 'S', peaceful: 0 });
-    des.monster({ class: 'S', peaceful: 0 });
+    await des.monster('rabid rat');
+    await des.monster({ class: 'r', peaceful: 0 });
+    await des.monster({ class: 'r', peaceful: 0 });
+    await des.monster('giant eel');
+    await des.monster('giant eel');
+    await des.monster('electric eel');
+    await des.monster({ class: 'D', peaceful: 0 });
+    await des.monster({ class: 'D', peaceful: 0 });
+    await des.monster({ class: 'D', peaceful: 0 });
+    await des.monster({ class: 'D', peaceful: 0 });
+    await des.monster({ class: 'S', peaceful: 0 });
+    await des.monster({ class: 'S', peaceful: 0 });
+    await des.monster({ class: 'S', peaceful: 0 });
 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 }

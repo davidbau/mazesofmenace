@@ -90,29 +90,29 @@ export async function toustrt_level() {
     des.door('locked', 35, 7);
     des.door('locked', 36, 7);
     /* Monsters on siege duty. */
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('s');
-    des.monster('s');
-    des.monster('forest centaur');
-    des.monster('forest centaur');
-    des.monster('forest centaur');
-    des.monster('forest centaur');
-    des.monster('forest centaur');
-    des.monster('forest centaur');
-    des.monster('forest centaur');
-    des.monster('forest centaur');
-    des.monster('C');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('s');
+    await des.monster('s');
+    await des.monster('forest centaur');
+    await des.monster('forest centaur');
+    await des.monster('forest centaur');
+    await des.monster('forest centaur');
+    await des.monster('forest centaur');
+    await des.monster('forest centaur');
+    await des.monster('forest centaur');
+    await des.monster('forest centaur');
+    await des.monster('C');
     /* Twoflower */
     des.monster({ id: 'Twoflower', coord: [64, 3], inventory: () => {
         des.object({ id: 'walking shoes', spe: 3 });
@@ -121,34 +121,34 @@ export async function toustrt_level() {
     /* The treasure of Twoflower */
     des.object('chest', 64, 3);
     /* guides for the audience chamber */
-    des.monster('guide', 29, 3);
-    des.monster('guide', 32, 4);
-    des.monster('guide', 35, 2);
-    des.monster('guide', 38, 3);
-    des.monster('guide', 45, 3);
-    des.monster('guide', 48, 2);
-    des.monster('guide', 49, 4);
-    des.monster('guide', 51, 3);
-    des.monster('guide', 57, 3);
-    des.monster('guide', 62, 4);
-    des.monster('guide', 66, 4);
+    await des.monster('guide', 29, 3);
+    await des.monster('guide', 32, 4);
+    await des.monster('guide', 35, 2);
+    await des.monster('guide', 38, 3);
+    await des.monster('guide', 45, 3);
+    await des.monster('guide', 48, 2);
+    await des.monster('guide', 49, 4);
+    await des.monster('guide', 51, 3);
+    await des.monster('guide', 57, 3);
+    await des.monster('guide', 62, 4);
+    await des.monster('guide', 66, 4);
     /* path guards */
-    des.monster('watchman', 35, 8);
-    des.monster('watchman', 36, 8);
+    await des.monster('watchman', 35, 8);
+    await des.monster('watchman', 36, 8);
     /* river monsters */
-    des.monster('giant eel', 62, 12);
-    des.monster('piranha', 47, 10);
-    des.monster('piranha', 29, 11);
-    des.monster('kraken', 34, 9);
-    des.monster('kraken', 37, 9);
+    await des.monster('giant eel', 62, 12);
+    await des.monster('piranha', 47, 10);
+    await des.monster('piranha', 29, 11);
+    await des.monster('kraken', 34, 9);
+    await des.monster('kraken', 37, 9);
     /* Random traps */
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 }

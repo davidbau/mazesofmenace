@@ -341,7 +341,7 @@ export async function show_transient_light(obj, x, y) {
         ]);
 
     if (obj) /* put lit candle or lamp temporarily on the map */
-        place_object(obj, game.bhitpos?.x ?? x, game.bhitpos?.y ?? y);
+        await place_object(obj, game.bhitpos?.x ?? x, game.bhitpos?.y ?? y);
     else /* camera flash:  no object; directly set light source's location */
         source.x = x, source.y = y;
 

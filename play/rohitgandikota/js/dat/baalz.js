@@ -62,7 +62,7 @@ export async function baalz_level() {
                           exclude: [15, 1, 70, 16], exclude_islev: 1 });
     /* this actually leaves the farthest right column diggable */
     des.non_diggable(selection.area(0, 0, 47, 12));
-    des.mazewalk(0, 6, 'west');
+    await des.mazewalk(0, 6, 'west');
     des.stair('down', 44, 6);
     des.door('locked', 0, 6);
     /* The fellow in residence */
@@ -87,12 +87,12 @@ export async function baalz_level() {
     des.trap('magic');
     des.trap('magic');
     /* Random monsters. */
-    des.monster('ghost', 37, 7);
-    des.monster('horned devil', 32, 5);
-    des.monster('barbed devil', 38, 7);
-    des.monster('L');
+    await des.monster('ghost', 37, 7);
+    await des.monster('horned devil', 32, 5);
+    await des.monster('barbed devil', 38, 7);
+    await des.monster('L');
     /* Some Vampires for good measure */
-    des.monster('V');
-    des.monster('V');
-    des.monster('V');
+    await des.monster('V');
+    await des.monster('V');
+    await des.monster('V');
 }

@@ -24,7 +24,7 @@ export function bigmonst(ptr) {
     return ptr.msize >= MZ.LARGE ? 1 : 0;
 }
 export function immune_poisongas(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.HEZROU)) || $c.peq(ptr, $c.relem(mons, PM.VROCK)) ? 1 : 0;
+    return ptr === mons[PM.HEZROU] || ptr === mons[PM.VROCK] ? 1 : 0;
 }
 export function is_flyer(ptr) {
     return $c.andu64(ptr.mflags1, M1.FLY) !== 0 ? 1 : 0;
@@ -78,7 +78,7 @@ export function haseyes(ptr) {
     return $c.andu64(ptr.mflags1, M1.NOEYES) === 0 ? 1 : 0;
 }
 export function eyecount(ptr) {
-    return !($c.andu64(ptr.mflags1, M1.NOEYES) === 0) ? 0 : $c.peq(ptr, $c.relem(mons, PM.CYCLOPS)) || $c.peq(ptr, $c.relem(mons, PM.FLOATING_EYE)) ? 1 : 2;
+    return !($c.andu64(ptr.mflags1, M1.NOEYES) === 0) ? 0 : ptr === mons[PM.CYCLOPS] || ptr === mons[PM.FLOATING_EYE] ? 1 : 2;
 }
 export function nohands(ptr) {
     return $c.andu64(ptr.mflags1, M1.NOHANDS) !== 0 ? 1 : 0;
@@ -96,10 +96,10 @@ export function has_horns(ptr) {
     return num_horns(ptr) > 0 ? 1 : 0;
 }
 export function is_whirly(ptr) {
-    return ptr.mlet === S.VORTEX || $c.peq(ptr, $c.relem(mons, PM.AIR_ELEMENTAL)) ? 1 : 0;
+    return ptr.mlet === S.VORTEX || ptr === mons[PM.AIR_ELEMENTAL] ? 1 : 0;
 }
 export function flaming(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.FIRE_VORTEX)) || $c.peq(ptr, $c.relem(mons, PM.FLAMING_SPHERE)) || $c.peq(ptr, $c.relem(mons, PM.FIRE_ELEMENTAL)) || $c.peq(ptr, $c.relem(mons, PM.SALAMANDER)) ? 1 : 0;
+    return ptr === mons[PM.FIRE_VORTEX] || ptr === mons[PM.FLAMING_SPHERE] || ptr === mons[PM.FIRE_ELEMENTAL] || ptr === mons[PM.SALAMANDER] ? 1 : 0;
 }
 export function is_silent(ptr) {
     return ptr.msound === MS.SILENT ? 1 : 0;
@@ -120,13 +120,13 @@ export function slithy(ptr) {
     return $c.andu64(ptr.mflags1, M1.SLITHY) !== 0 ? 1 : 0;
 }
 export function is_wooden(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.WOOD_GOLEM)) ? 1 : 0;
+    return ptr === mons[PM.WOOD_GOLEM] ? 1 : 0;
 }
 export function thick_skinned(ptr) {
     return $c.andu64(ptr.mflags1, M1.THICK_HIDE) !== 0 ? 1 : 0;
 }
 export function hug_throttles(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.ROPE_GOLEM)) ? 1 : 0;
+    return ptr === mons[PM.ROPE_GOLEM] ? 1 : 0;
 }
 export function digests(ptr) {
     return dmgtype_fromattack(ptr, AD.DGST, AT.ENGL) !== null ? 1 : 0;
@@ -135,7 +135,7 @@ export function enfolds(ptr) {
     return dmgtype_fromattack(ptr, AD.WRAP, AT.ENGL) !== null ? 1 : 0;
 }
 export function slimeproof(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.GREEN_SLIME)) || ($c.peq(ptr, $c.relem(mons, PM.FIRE_VORTEX)) || $c.peq(ptr, $c.relem(mons, PM.FLAMING_SPHERE)) || $c.peq(ptr, $c.relem(mons, PM.FIRE_ELEMENTAL)) || $c.peq(ptr, $c.relem(mons, PM.SALAMANDER))) || ptr.mlet === S.GHOST ? 1 : 0;
+    return ptr === mons[PM.GREEN_SLIME] || (ptr === mons[PM.FIRE_VORTEX] || ptr === mons[PM.FLAMING_SPHERE] || ptr === mons[PM.FIRE_ELEMENTAL] || ptr === mons[PM.SALAMANDER]) || ptr.mlet === S.GHOST ? 1 : 0;
 }
 export function lays_eggs(ptr) {
     return $c.andu64(ptr.mflags1, M1.OVIPAROUS) !== 0 ? 1 : 0;
@@ -156,7 +156,7 @@ export function control_teleport(ptr) {
     return $c.andu64(ptr.mflags1, M1.TPORT_CNTRL) !== 0 ? 1 : 0;
 }
 export function telepathic(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.FLOATING_EYE)) || $c.peq(ptr, $c.relem(mons, PM.MIND_FLAYER)) || $c.peq(ptr, $c.relem(mons, PM.MASTER_MIND_FLAYER)) ? 1 : 0;
+    return ptr === mons[PM.FLOATING_EYE] || ptr === mons[PM.MIND_FLAYER] || ptr === mons[PM.MASTER_MIND_FLAYER] ? 1 : 0;
 }
 export function is_armed(ptr) {
     return attacktype(ptr, AT.WEAP);
@@ -207,7 +207,7 @@ export function your_race(ptr) {
     return $c.andu64(ptr.mflags2, $c.u64(gu.urace.selfmask)) !== 0 ? 1 : 0;
 }
 export function is_bat(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.BAT)) || $c.peq(ptr, $c.relem(mons, PM.GIANT_BAT)) || $c.peq(ptr, $c.relem(mons, PM.VAMPIRE_BAT)) ? 1 : 0;
+    return ptr === mons[PM.BAT] || ptr === mons[PM.GIANT_BAT] || ptr === mons[PM.VAMPIRE_BAT] ? 1 : 0;
 }
 export function is_giant(ptr) {
     return $c.andu64(ptr.mflags2, M2.GIANT) !== 0 ? 1 : 0;
@@ -261,7 +261,7 @@ export function cantwield(ptr) {
     return $c.andu64(ptr.mflags1, M1.NOHANDS) !== 0 || ptr.msize < MZ.SMALL ? 1 : 0;
 }
 export function could_twoweap(ptr) {
-    return (((ptr.mattk[0].aatyp === AT.WEAP ? 1 : 0) + (ptr.mattk[1].aatyp === AT.WEAP ? 1 : 0) | 0) + (ptr.mattk[2].aatyp === AT.WEAP ? 1 : 0) | 0) > 1 ? 1 : 0;
+    return (ptr.mattk[0].aatyp === AT.WEAP ? 1 : 0) + (ptr.mattk[1].aatyp === AT.WEAP ? 1 : 0) + (ptr.mattk[2].aatyp === AT.WEAP ? 1 : 0) > 1 ? 1 : 0;
 }
 export function throws_rocks(ptr) {
     return $c.andu64(ptr.mflags2, M2.ROCKTHROW) !== 0 ? 1 : 0;
@@ -297,13 +297,13 @@ export function likes_magic(ptr) {
     return $c.andu64(ptr.mflags2, 2147483648) !== 0 ? 1 : 0;
 }
 export function webmaker(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.CAVE_SPIDER)) || $c.peq(ptr, $c.relem(mons, PM.GIANT_SPIDER)) ? 1 : 0;
+    return ptr === mons[PM.CAVE_SPIDER] || ptr === mons[PM.GIANT_SPIDER] ? 1 : 0;
 }
 export function is_unicorn(ptr) {
     return ptr.mlet === S.UNICORN && $c.andu64(ptr.mflags2, M2.JEWELS) !== 0 ? 1 : 0;
 }
 export function is_longworm(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.BABY_LONG_WORM)) || $c.peq(ptr, $c.relem(mons, PM.LONG_WORM)) || $c.peq(ptr, $c.relem(mons, PM.LONG_WORM_TAIL)) ? 1 : 0;
+    return ptr === mons[PM.BABY_LONG_WORM] || ptr === mons[PM.LONG_WORM] || ptr === mons[PM.LONG_WORM_TAIL] ? 1 : 0;
 }
 export function is_covetous(ptr) {
     return ptr.mflags3 & M3.COVETOUS;
@@ -312,77 +312,77 @@ export function is_displacer(ptr) {
     return (ptr.mflags3 & M3.DISPLACES) !== 0 ? 1 : 0;
 }
 export function is_mplayer(ptr) {
-    return $c.pcmp(ptr, $c.relem(mons, PM.ARCHEOLOGIST)) >= 0 && $c.pcmp(ptr, $c.relem(mons, PM.WIZARD)) <= 0 ? 1 : 0;
+    return $c.pcmp(ptr, mons[PM.ARCHEOLOGIST]) >= 0 && $c.pcmp(ptr, mons[PM.WIZARD]) <= 0 ? 1 : 0;
 }
 export function is_watch(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.WATCHMAN)) || $c.peq(ptr, $c.relem(mons, PM.WATCH_CAPTAIN)) ? 1 : 0;
+    return ptr === mons[PM.WATCHMAN] || ptr === mons[PM.WATCH_CAPTAIN] ? 1 : 0;
 }
 export function is_rider(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.DEATH)) || $c.peq(ptr, $c.relem(mons, PM.FAMINE)) || $c.peq(ptr, $c.relem(mons, PM.PESTILENCE)) ? 1 : 0;
+    return ptr === mons[PM.DEATH] || ptr === mons[PM.FAMINE] || ptr === mons[PM.PESTILENCE] ? 1 : 0;
 }
 export function is_placeholder(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.ORC)) || $c.peq(ptr, $c.relem(mons, PM.GIANT)) || $c.peq(ptr, $c.relem(mons, PM.ELF)) || $c.peq(ptr, $c.relem(mons, PM.HUMAN)) ? 1 : 0;
+    return ptr === mons[PM.ORC] || ptr === mons[PM.GIANT] || ptr === mons[PM.ELF] || ptr === mons[PM.HUMAN] ? 1 : 0;
 }
 export function is_reviver(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.DEATH)) || $c.peq(ptr, $c.relem(mons, PM.FAMINE)) || $c.peq(ptr, $c.relem(mons, PM.PESTILENCE)) || ptr.mlet === S.TROLL ? 1 : 0;
+    return ptr === mons[PM.DEATH] || ptr === mons[PM.FAMINE] || ptr === mons[PM.PESTILENCE] || ptr.mlet === S.TROLL ? 1 : 0;
 }
 export function unique_corpstat(ptr) {
     return (ptr.geno & G_UNIQ) !== 0 ? 1 : 0;
 }
 export function emits_light(ptr) {
-    return ptr.mlet === S.LIGHT || $c.peq(ptr, $c.relem(mons, PM.FLAMING_SPHERE)) || $c.peq(ptr, $c.relem(mons, PM.SHOCKING_SPHERE)) || $c.peq(ptr, $c.relem(mons, PM.BABY_GOLD_DRAGON)) || $c.peq(ptr, $c.relem(mons, PM.FIRE_VORTEX)) ? 1 : $c.peq(ptr, $c.relem(mons, PM.FIRE_ELEMENTAL)) || $c.peq(ptr, $c.relem(mons, PM.GOLD_DRAGON)) ? 1 : 0;
+    return ptr.mlet === S.LIGHT || ptr === mons[PM.FLAMING_SPHERE] || ptr === mons[PM.SHOCKING_SPHERE] || ptr === mons[PM.BABY_GOLD_DRAGON] || ptr === mons[PM.FIRE_VORTEX] ? 1 : ptr === mons[PM.FIRE_ELEMENTAL] || ptr === mons[PM.GOLD_DRAGON] ? 1 : 0;
 }
 export function likes_lava(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.FIRE_ELEMENTAL)) || $c.peq(ptr, $c.relem(mons, PM.SALAMANDER)) ? 1 : 0;
+    return ptr === mons[PM.FIRE_ELEMENTAL] || ptr === mons[PM.SALAMANDER] ? 1 : 0;
 }
 export function pm_invisible(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.STALKER)) || $c.peq(ptr, $c.relem(mons, PM.BLACK_LIGHT)) ? 1 : 0;
+    return ptr === mons[PM.STALKER] || ptr === mons[PM.BLACK_LIGHT] ? 1 : 0;
 }
 export function likes_fire(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.FIRE_VORTEX)) || $c.peq(ptr, $c.relem(mons, PM.FLAMING_SPHERE)) || ($c.peq(ptr, $c.relem(mons, PM.FIRE_ELEMENTAL)) || $c.peq(ptr, $c.relem(mons, PM.SALAMANDER))) ? 1 : 0;
+    return ptr === mons[PM.FIRE_VORTEX] || ptr === mons[PM.FLAMING_SPHERE] || (ptr === mons[PM.FIRE_ELEMENTAL] || ptr === mons[PM.SALAMANDER]) ? 1 : 0;
 }
 export function touch_petrifies(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.COCKATRICE)) || $c.peq(ptr, $c.relem(mons, PM.CHICKATRICE)) ? 1 : 0;
+    return ptr === mons[PM.COCKATRICE] || ptr === mons[PM.CHICKATRICE] ? 1 : 0;
 }
 export function flesh_petrifies(pm) {
-    return $c.peq(pm, $c.relem(mons, PM.COCKATRICE)) || $c.peq(pm, $c.relem(mons, PM.CHICKATRICE)) || $c.peq(pm, $c.relem(mons, PM.MEDUSA)) ? 1 : 0;
+    return pm === mons[PM.COCKATRICE] || pm === mons[PM.CHICKATRICE] || pm === mons[PM.MEDUSA] ? 1 : 0;
 }
 export function passes_rocks(ptr) {
     return $c.andu64(ptr.mflags1, M1.WALLWALK) !== 0 && !($c.andu64(ptr.mflags1, M1.UNSOLID) !== 0) ? 1 : 0;
 }
 export function is_mind_flayer(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.MIND_FLAYER)) || $c.peq(ptr, $c.relem(mons, PM.MASTER_MIND_FLAYER)) ? 1 : 0;
+    return ptr === mons[PM.MIND_FLAYER] || ptr === mons[PM.MASTER_MIND_FLAYER] ? 1 : 0;
 }
 export function is_vampire(ptr) {
     return ptr.mlet === S.VAMPIRE ? 1 : 0;
 }
 export function hates_light(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.GREMLIN)) ? 1 : 0;
+    return ptr === mons[PM.GREMLIN] ? 1 : 0;
 }
 export function weirdnonliving(ptr) {
     return ptr.mlet === S.GOLEM || ptr.mlet === S.VORTEX ? 1 : 0;
 }
 export function nonliving(ptr) {
-    return $c.andu64(ptr.mflags2, M2.UNDEAD) !== 0 || $c.peq(ptr, $c.relem(mons, PM.MANES)) || (ptr.mlet === S.GOLEM || ptr.mlet === S.VORTEX) ? 1 : 0;
+    return $c.andu64(ptr.mflags2, M2.UNDEAD) !== 0 || ptr === mons[PM.MANES] || (ptr.mlet === S.GOLEM || ptr.mlet === S.VORTEX) ? 1 : 0;
 }
 export function completelyburns(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.PAPER_GOLEM)) || $c.peq(ptr, $c.relem(mons, PM.STRAW_GOLEM)) ? 1 : 0;
+    return ptr === mons[PM.PAPER_GOLEM] || ptr === mons[PM.STRAW_GOLEM] ? 1 : 0;
 }
 export function completelyrots(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.WOOD_GOLEM)) || $c.peq(ptr, $c.relem(mons, PM.LEATHER_GOLEM)) ? 1 : 0;
+    return ptr === mons[PM.WOOD_GOLEM] || ptr === mons[PM.LEATHER_GOLEM] ? 1 : 0;
 }
 export function completelyrusts(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.IRON_GOLEM)) ? 1 : 0;
+    return ptr === mons[PM.IRON_GOLEM] ? 1 : 0;
 }
 export function vegan(ptr) {
-    return ptr.mlet === S.BLOB || ptr.mlet === S.JELLY || ptr.mlet === S.FUNGUS || ptr.mlet === S.VORTEX || ptr.mlet === S.LIGHT || ptr.mlet === S.ELEMENTAL && !$c.peq(ptr, $c.relem(mons, PM.STALKER)) || ptr.mlet === S.GOLEM && !$c.peq(ptr, $c.relem(mons, PM.FLESH_GOLEM)) && !$c.peq(ptr, $c.relem(mons, PM.LEATHER_GOLEM)) || ptr.mlet === S.GHOST ? 1 : 0;
+    return ptr.mlet === S.BLOB || ptr.mlet === S.JELLY || ptr.mlet === S.FUNGUS || ptr.mlet === S.VORTEX || ptr.mlet === S.LIGHT || ptr.mlet === S.ELEMENTAL && ptr !== mons[PM.STALKER] || ptr.mlet === S.GOLEM && ptr !== mons[PM.FLESH_GOLEM] && ptr !== mons[PM.LEATHER_GOLEM] || ptr.mlet === S.GHOST ? 1 : 0;
 }
 export function vegetarian(ptr) {
-    return ptr.mlet === S.BLOB || ptr.mlet === S.JELLY || ptr.mlet === S.FUNGUS || ptr.mlet === S.VORTEX || ptr.mlet === S.LIGHT || ptr.mlet === S.ELEMENTAL && !$c.peq(ptr, $c.relem(mons, PM.STALKER)) || ptr.mlet === S.GOLEM && !$c.peq(ptr, $c.relem(mons, PM.FLESH_GOLEM)) && !$c.peq(ptr, $c.relem(mons, PM.LEATHER_GOLEM)) || ptr.mlet === S.GHOST || ptr.mlet === S.PUDDING && !$c.peq(ptr, $c.relem(mons, PM.BLACK_PUDDING)) ? 1 : 0;
+    return ptr.mlet === S.BLOB || ptr.mlet === S.JELLY || ptr.mlet === S.FUNGUS || ptr.mlet === S.VORTEX || ptr.mlet === S.LIGHT || ptr.mlet === S.ELEMENTAL && ptr !== mons[PM.STALKER] || ptr.mlet === S.GOLEM && ptr !== mons[PM.FLESH_GOLEM] && ptr !== mons[PM.LEATHER_GOLEM] || ptr.mlet === S.GHOST || ptr.mlet === S.PUDDING && ptr !== mons[PM.BLACK_PUDDING] ? 1 : 0;
 }
 export function corpse_eater(ptr) {
-    return $c.peq(ptr, $c.relem(mons, PM.PURPLE_WORM)) || $c.peq(ptr, $c.relem(mons, PM.BABY_PURPLE_WORM)) || $c.peq(ptr, $c.relem(mons, PM.GHOUL)) || $c.peq(ptr, $c.relem(mons, PM.PIRANHA)) ? 1 : 0;
+    return ptr === mons[PM.PURPLE_WORM] || ptr === mons[PM.BABY_PURPLE_WORM] || ptr === mons[PM.GHOUL] || ptr === mons[PM.PIRANHA] ? 1 : 0;
 }
 export function befriend_with_obj(ptr, obj) {
-    return $c.peq(ptr, $c.relem(mons, PM.MONKEY)) || $c.peq(ptr, $c.relem(mons, PM.APE)) ? obj.otyp === BANANA ? 1 : 0 : $c.andu64(ptr.mflags2, M2.DOMESTIC) !== 0 && obj.oclass === FOOD_CLASS && (ptr.mlet !== S.UNICORN || (objects[obj.otyp].oc_material | 0) === VEGGY || obj.otyp === CORPSE && obj.corpsenm === PM.LICHEN) ? 1 : 0;
+    return ptr === mons[PM.MONKEY] || ptr === mons[PM.APE] ? obj.otyp === BANANA ? 1 : 0 : $c.andu64(ptr.mflags2, M2.DOMESTIC) !== 0 && obj.oclass === FOOD_CLASS && (ptr.mlet !== S.UNICORN || objects[obj.otyp].oc_material === VEGGY || obj.otyp === CORPSE && obj.corpsenm === PM.LICHEN) ? 1 : 0;
 }

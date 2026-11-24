@@ -22,7 +22,7 @@ import { COLNO, ROWNO, ROOM, CORR, AIR, STONE, HWALL, IS_DOOR,
 import { isok, distu, sgn } from './hacklib.js';
 import { occupied, somex, somey } from './mklev.js';
 import { deltrap } from './trap.js';
-import { t_at, m_at, mnexto, mnearto, elemental_clog, m_into_limbo }
+import { t_at, m_at, mnexto, mnearto, elemental_clog, m_into_limbo, is_pool }
     from './mon.js';
 import { goodpos, rndmonnum, remove_monster, makemon, set_malign,
          mpickobj, MM_NONAME } from './makemon.js';
@@ -50,17 +50,16 @@ import { STAIRS } from './const.js';
 import { MAX_TYPE } from './const.js';
 import { SDOOR } from './const.js';
 import { ICE } from './const.js';
-import { MELT_ICE_AWAY } from './const.js';
 import { IS_LAVA } from './const.js';
 import { IS_FOUNTAIN } from './const.js';
 import { IS_SINK } from './const.js';
 import { is_ice } from './dbridge.js';
 import { obj_ice_effects } from './mkobj.js';
-import { spot_stop_timers } from './timeout.js';
+import { spot_stop_timers, MELT_ICE_AWAY } from './timeout.js';
 import { count_level_features } from './mklev.js';
 import { impossible } from './pline.js';
 import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
-import { Punished } from './youprop.js';
+import { Punished, Swimming } from './youprop.js';
 
 
 
@@ -154,7 +153,7 @@ export async function makemaz(s) {
     }
 
     mkmaze_mklev_fns?.place_branch?.(Is_branchlev_here(), 0, 0);
-    populate_maze();
+    await populate_maze();
     return true;
 }
 
@@ -762,7 +761,7 @@ export function mazexy(cc) {
 }
 
 // src/mkmaze.c:1092 populate_maze(); stock a generated random maze.
-function populate_maze() {
+async function populate_maze() {
     const mm = { x: 0, y: 0 };
     let i;
 
@@ -777,18 +776,18 @@ function populate_maze() {
     }
     for (i = rn2(3); i; i--) {
         mazexy(mm);
-        makemon(game.mons[PMNAMES.PM_MINOTAUR], mm.x, mm.y, NO_MM_FLAGS);
+        await makemon(game.mons[PMNAMES.PM_MINOTAUR], mm.x, mm.y, NO_MM_FLAGS);
     }
     for (i = rn1(5, 7); i; i--) {
         mazexy(mm);
-        makemon(null, mm.x, mm.y, NO_MM_FLAGS);
+        await makemon(null, mm.x, mm.y, NO_MM_FLAGS);
     }
     for (i = rn1(6, 7); i; i--) {
         mazexy(mm);
         mkgold(0, mm.x, mm.y);
     }
     for (i = rn1(6, 7); i; i--)
-        mkmaze_mklev_fns?.mktrap?.(0, MKTRAP_MAZEFLAG, null, null);
+        await mkmaze_mklev_fns?.mktrap?.(0, MKTRAP_MAZEFLAG, null, null);
 }
 
 // src/mkmaze.c:892 maze_inbounds()
@@ -1207,8 +1206,7 @@ export async function water_friction() {
     const g = game;
     let eff = false;
 
-    /* Swimming — no session hero has intrinsic swimming yet */
-    if (g.u.uprops?.SWIMMING && rn2(4))
+    if (Swimming() && rn2(4))
         return; /* natural swimmers have advantage */
 
     if (g.u.dx && !rn2(!g.u.dy ? 3 : 6)) { /* 1/3 chance or half that */
@@ -1218,7 +1216,7 @@ export async function water_friction() {
         do {
             dy = rn2(3) - 1; /* -1, 0, 1 */
             y = g.u.uy + dy;
-        } while (dy && (!isok(x, y) || !mklev_is_pool(x, y)));
+        } while (dy && (!isok(x, y) || !is_pool(x, y)));
         g.u.dx = 0;
         g.u.dy = dy;
         eff = true;
@@ -1229,7 +1227,7 @@ export async function water_friction() {
         do {
             dx = rn2(3) - 1; /* -1 .. 1 */
             x = g.u.ux + dx;
-        } while (dx && (!isok(x, y) || !mklev_is_pool(x, y)));
+        } while (dx && (!isok(x, y) || !is_pool(x, y)));
         g.u.dy = 0;
         g.u.dx = dx;
         eff = true;
@@ -1238,20 +1236,13 @@ export async function water_friction() {
         await pline('Water turbulence affects your movements.');
 }
 
-/* is_pool() lives in js/mon.js's wire set; reach it through the same
-   mon_fns-style seam sp_lev.js uses, but locally: dynamic would be per
-   call, so resolve through the sp_lev wire helper below. */
-function mklev_is_pool(x, y) {
-    const typ = game.level.at(x, y)?.typ;
-    /* include/rm.h is_pool(): POOL, MOAT, WATER */
-    return typ === POOL || typ === MOAT || typ === WATER;
-}
-
 // src/mkmaze.c:1724 save_waterlevel() — the bubble list is written with the
 // level (here: parked on the in-memory saved level) and then freed.
-export function save_waterlevel() {
-    if (!bbubbles)
+export function save_waterlevel(release = true) {
+    if (!bbubbles) {
+        delete game.level._waterlevel;
         return;
+    }
 
     const blist = [];
     for (let b = bbubbles; b; b = b.next)
@@ -1260,7 +1251,23 @@ export function save_waterlevel() {
     game.level._waterlevel = { bubbles: blist, xmin: wlev_xmin,
                                ymin: wlev_ymin, xmax: wlev_xmax,
                                ymax: wlev_ymax };
-    unsetup_waterlevel();       /* release_data() arm */
+    if (release)
+        unsetup_waterlevel();
+}
+
+// JSON storage rollback: freeing drops these headers without mutating the
+// original nodes. Restore them directly, without rebuilding clouds or RNG.
+export function checkpoint_waterlevel() {
+    const bounds = [wlev_xmin, wlev_ymin, wlev_xmax, wlev_ymax];
+    const first = bbubbles, last = ebubbles, hero = hero_bubble;
+    const up = movebubbles_up;
+    return () => {
+        [wlev_xmin, wlev_ymin, wlev_xmax, wlev_ymax] = bounds;
+        bbubbles = first;
+        ebubbles = last;
+        hero_bubble = hero;
+        movebubbles_up = up;
+    };
 }
 
 // src/mkmaze.c:1751 restore_waterlevel() — restoring air bubbles on the
@@ -1269,6 +1276,7 @@ export function save_waterlevel() {
 // rn2(6) cloud-speed gate per bubble, exactly as C's restore does).
 export async function restore_waterlevel() {
     const saved = game.level._waterlevel;
+    unsetup_waterlevel();
     if (!saved)
         return;
 
@@ -1509,7 +1517,7 @@ async function mv_bubble(b, dx, dy, ini) {
                 /* C walks its reversed chain, prepending each; iterating
                    the head-first array in reverse restores pile order */
                 for (let k = cons.list.length - 1; k >= 0; k--) {
-                    place_object(cons.list[k], cons.x, cons.y);
+                    await place_object(cons.list[k], cons.x, cons.y);
                     stackobj(cons.list[k]);
                 }
                 break;

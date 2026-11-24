@@ -61,8 +61,7 @@ export async function quest_info(typ) {   // questpgr.c:31
  * @returns {$c.Ptr | null} const char *
  */
 export function ldrname() {   // questpgr.c:50
-    let i = 0;
-    i = gu.urole.ldrnum;
+    const i = gu.urole.ldrnum;
     $c.sprintf(new $c.Ptr(gn.nambuf, 0), $c.lit("%s%s"), $c.andu64($c.relem(mons, i).mflags2, M2.PNAME) !== 0 ? $c.lit("") : $c.lit("the "), mons[i].pmnames[NEUTRAL]);
     return new $c.Ptr(gn.nambuf, 0);
 }
@@ -78,7 +77,7 @@ function intermed() {   // questpgr.c:61
  * @returns {number} boolean
  */
 export function is_quest_artifact(otmp) {   // questpgr.c:67
-    return $c.i8(otmp.oartifact === gu.urole.questarti ? 1 : 0);
+    return otmp.oartifact === gu.urole.questarti ? 1 : 0;
 }
 /**
  * @param {$T.obj | null} ochain struct obj *
@@ -103,8 +102,8 @@ function find_qarti(ochain) {   // questpgr.c:73
  * @returns {$T.obj | null} struct obj *
  */
 export function find_quest_artifact(whichchains) {   // questpgr.c:89
-    let mtmp = null, qarti = null;
-    qarti = null;
+    let mtmp = null;
+    let qarti = null;
     if ((whichchains & 1 << OBJ.INVENT) >>> 0 !== 0) {
         qarti = find_qarti(gi.invent);
     }
@@ -145,8 +144,7 @@ export function find_quest_artifact(whichchains) {   // questpgr.c:89
  * @returns {$c.Ptr | null} const char *
  */
 function neminame() {   // questpgr.c:124
-    let i = 0;
-    i = gu.urole.neminum;
+    const i = gu.urole.neminum;
     $c.sprintf(new $c.Ptr(gn.nambuf, 0), $c.lit("%s%s"), $c.andu64($c.relem(mons, i).mflags2, M2.PNAME) !== 0 ? $c.lit("") : $c.lit("the "), mons[i].pmnames[NEUTRAL]);
     return new $c.Ptr(gn.nambuf, 0);
 }
@@ -154,9 +152,8 @@ function neminame() {   // questpgr.c:124
  * @returns {$c.Ptr | null} const char *
  */
 function guardname() {   // questpgr.c:134
-    let i = 0;
     /* return your role leader's guard monster name */
-    i = gu.urole.guardnum;
+    const i = gu.urole.guardnum;
     return mons[i].pmnames[NEUTRAL];
 }
 /**
@@ -173,9 +170,9 @@ function homebase() {   // questpgr.c:142
  * @returns {Promise<number>} int
  */
 export async function stinky_nemesis(mon) {   // questpgr.c:150
-    let mesg = [null], res = 0, p = null;
+    let mesg = [null], p = null;
     mesg[0] = null;
-    res = 0;
+    let res = 0;
     /* get the quest text for dying nemesis; don't assume that mon is
        hero's own role's nemesis (overkill since m_detach() and nemdead()
        both make that assumption--valid for normal play but not necessarily
@@ -207,10 +204,10 @@ export async function stinky_nemesis(mon) {   // questpgr.c:150
  * @returns {Promise<void>}
  */
 async function qtext_pronoun(who, which) {   // questpgr.c:199
-    let pnoun = null, godgend = 0, lwhich = 0, $t1;
+    let pnoun = null, $t1;
     /* 'd' => deity, 'l' => leader, 'n' => nemesis, 'o' => arti */
     /* 'h'|'H'|'i'|'I'|'j'|'J' */
-    lwhich = lowc(which);   /* H,I,J -> h,i,j */
+    const lwhich = lowc(which);   /* H,I,J -> h,i,j */
     /*
      * Invalid subject (not d,l,n,o) yields neuter, singular result.
      *
@@ -220,7 +217,7 @@ async function qtext_pronoun(who, which) {   // questpgr.c:199
     if (who === 111 && (strstri(new $c.Ptr(gc.cvt_buf, 0), $c.lit("Eyes ")) || strncmpi(new $c.Ptr(gc.cvt_buf, 0), await makesingular(new $c.Ptr(gc.cvt_buf, 0)), -1))) {
         pnoun = lwhich === 104 ? $c.lit("they") : lwhich === 105 ? $c.lit("them") : lwhich === 106 ? $c.lit("their") : $c.lit("?");
     } else {
-        godgend = who === 100 ? svq.quest_status.godgend | 0 : who === 108 ? svq.quest_status.ldrgend | 0 : who === 110 ? svq.quest_status.nemgend | 0 : 2;   /* default to neuter */
+        const godgend = who === 100 ? svq.quest_status.godgend : who === 108 ? svq.quest_status.ldrgend : who === 110 ? svq.quest_status.nemgend : 2;   /* default to neuter */
         pnoun = lwhich === 104 ? genders[godgend].he : lwhich === 105 ? genders[godgend].him : lwhich === 106 ? genders[godgend].his : $c.lit("?");
     }
     $c.strcpy(new $c.Ptr(gc.cvt_buf, 0), pnoun);
@@ -235,7 +232,7 @@ async function qtext_pronoun(who, which) {   // questpgr.c:199
  * @returns {Promise<void>}
  */
 async function convert_arg(c) {   // questpgr.c:236
-    let str = null, p = null;
+    let str = null;
     switch (c) {
         case 112:
             str = new $c.Ptr(svp.plname, 0);
@@ -267,7 +264,7 @@ async function convert_arg(c) {   // questpgr.c:236
             if (c === 79) {
                 /* shorten "the Foo of Bar" to "the Foo"
                    (buffer returned by the() is modifiable) */
-                p = strstri(str, $c.lit(" of "));
+                const p = strstri(str, $c.lit(" of "));
                 if (p) {
                     p.set(0, 0);
                 }
@@ -327,8 +324,8 @@ async function convert_arg(c) {   // questpgr.c:236
  * @returns {Promise<void>}
  */
 async function convert_line(in_line, out_line) {   // questpgr.c:328
-    let c = null, cc = null, $t1, $t2, $t3, $t4;
-    cc = out_line;
+    let c = null, $t1, $t2, $t3, $t4;
+    let cc = out_line;
     L1: for (c = in_line; c.get(0); c = c.add(1)) {
         cc.set(0, 0);
         switch (c.get(0)) {
@@ -418,9 +415,9 @@ async function convert_line(in_line, out_line) {   // questpgr.c:328
  * @returns {Promise<void>}
  */
 async function deliver_by_pline(str) {   // questpgr.c:423
-    let in_line = new Int8Array(256), out_line = new Int8Array(256), msgp = null, msgend = null;
-    msgp = str;
-    msgend = eos(str);
+    let in_line = new Int8Array(256), out_line = new Int8Array(256);
+    let msgp = str;
+    const msgend = eos(str);
     while ($c.pcmp(msgp, msgend) < 0) {
         /* copynchars() will stop at newline if it finds one */
         copynchars(new $c.Ptr(in_line, 0), msgp, 255);
@@ -435,10 +432,10 @@ async function deliver_by_pline(str) {   // questpgr.c:423
  * @returns {Promise<void>}
  */
 async function deliver_by_window(msg, how) {   // questpgr.c:439
-    let in_line = new Int8Array(256), out_line = new Int8Array(256), msgp = null, msgend = null, datawin = 0;
-    msgp = msg;
-    msgend = eos(msg);
-    datawin = await create_nhwindow()(how);
+    let in_line = new Int8Array(256), out_line = new Int8Array(256);
+    let msgp = msg;
+    const msgend = eos(msg);
+    const datawin = await create_nhwindow()(how);
     while ($c.pcmp(msgp, msgend) < 0) {
         /* copynchars() will stop at newline if it finds one */
         copynchars(new $c.Ptr(in_line, 0), msgp, 255);

@@ -31,10 +31,9 @@ const dm = $c.recArray($T.datamodel_information, 5);
  * @returns {Promise<number>} int
  */
 async function nh_qsort_idx_cmp(va, vb) {   // hacklib.c:19
-    let a = null, b = null, c = 0;
-    a = $c.asRec(va, $T.nh_qsort_index, 8);
-    b = $c.asRec(vb, $T.nh_qsort_index, 8);
-    c = await nh_qsort_cmp_fn(nh_qsort_base.add($c.idx($c.mulu64(a.idx, nh_qsort_size))), nh_qsort_base.add($c.idx($c.mulu64(b.idx, nh_qsort_size))));
+    const a = $c.asRec(va, $T.nh_qsort_index, 8);
+    const b = $c.asRec(vb, $T.nh_qsort_index, 8);
+    const c = await nh_qsort_cmp_fn(nh_qsort_base.add($c.idx($c.mulu64(a.idx, nh_qsort_size))), nh_qsort_base.add($c.idx($c.mulu64(b.idx, nh_qsort_size))));
     if (c) {
         return c;
     }
@@ -99,7 +98,7 @@ async function nh_qsort_idx_cmp(va, vb) {   // hacklib.c:19
  * @returns {number} boolean
  */
 export function digit(c) {   // hacklib.c:126
-    return $c.i8(48 <= c && c <= 57 ? 1 : 0);
+    return 48 <= c && c <= 57 ? 1 : 0;
 }
 /* is 'c' a letter?  note: '@' classed as letter */
 /**
@@ -107,7 +106,7 @@ export function digit(c) {   // hacklib.c:126
  * @returns {number} boolean
  */
 export function letter(c) {   // hacklib.c:133
-    return $c.i8($c.i8(64 <= c && c <= 90 ? 1 : 0) || 97 <= c && c <= 122 ? 1 : 0);
+    return (64 <= c && c <= 90 ? 1 : 0) || 97 <= c && c <= 122 ? 1 : 0;
 }
 /* force 'c' into uppercase */
 /**
@@ -171,8 +170,8 @@ export function upstart(s) {   // hacklib.c:178
  * @returns {$c.Ptr | null} char *
  */
 export function upwords(s) {   // hacklib.c:187
-    let p = null, space = 0, $t1;
-    space = TRUE;
+    let p = null, $t1;
+    let space = TRUE;
     for (p = s; p.get(0); p = p.add(1)) {
         if (p.get(0) === 32) {
             space = TRUE;
@@ -191,8 +190,8 @@ export function upwords(s) {   // hacklib.c:187
  * @returns {$c.Ptr | null} char *
  */
 export function mungspaces(bp) {   // hacklib.c:206
-    let c = 0, p = null, p2 = null, was_space = 0, $t1;
-    was_space = TRUE;
+    let c = 0, p = null, p2 = null, $t1;
+    let was_space = TRUE;
     for (p = p2 = bp; (c = p.get(0)) !== 0; p = p.add(1)) {
         if (c === 10) {
             break;   /* treat newline the same as end-of-string */
@@ -203,7 +202,7 @@ export function mungspaces(bp) {   // hacklib.c:206
         if (c !== 32 || !was_space) {
             ($t1 = p2, p2 = $t1.add(1), $t1).set(0, c);
         }
-        was_space = $c.i8(c === 32 ? 1 : 0);
+        was_space = c === 32 ? 1 : 0;
     }
     if (was_space && $c.pcmp(p2, bp) > 0) {
         p2 = p2.add(-1);
@@ -217,12 +216,11 @@ export function mungspaces(bp) {   // hacklib.c:206
  * @returns {$c.Ptr | null} char *
  */
 export function trimspaces(txt) {   // hacklib.c:228
-    let end = null;
     /* leading whitespace will remain in the buffer */
     while (txt.get(0) === 32 || txt.get(0) === 9) {
         txt = txt.add(1);
     }
-    end = eos(txt);
+    let end = eos(txt);
     while ($c.pcmp(end = end.add(-1), txt) >= 0 && (end.get(0) === 32 || end.get(0) === 9)) {
         end.set(0, 0);
     }
@@ -234,8 +232,7 @@ export function trimspaces(txt) {   // hacklib.c:228
  * @returns {$c.Ptr | null} char *
  */
 export function strip_newline(str) {   // hacklib.c:244
-    let p = null;
-    p = $c.strrchr(str, 10);
+    let p = $c.strrchr(str, 10);
     if (p) {
         if ($c.pcmp(p, str) > 0 && p.add(-1).get(0) === 13) {
             p = p.add(-1);
@@ -275,16 +272,15 @@ export function c_eos(s) {   // hacklib.c:267
  * @returns {number} boolean
  */
 export function str_start_is(str, chkstr, caseblind) {   // hacklib.c:277
-    let t1 = 0, t2 = 0, n = 0;
-    n = LARGEST_INT;
+    let n = LARGEST_INT;
     while (n = n - 1 | 0) {
         if (!str.get(0)) {
-            return $c.i8(chkstr.get(0) === 0 ? 1 : 0);   /* chkstr >= str */
+            return chkstr.get(0) === 0 ? 1 : 0;   /* chkstr >= str */
         } else if (!chkstr.get(0)) {
             return TRUE;   /* chkstr < str */
         }
-        t1 = $c.i8(caseblind ? lowc(str.get(0)) : str.get(0));
-        t2 = $c.i8(caseblind ? lowc(chkstr.get(0)) : chkstr.get(0));
+        const t1 = caseblind ? lowc(str.get(0)) : str.get(0);
+        const t2 = caseblind ? lowc(chkstr.get(0)) : chkstr.get(0);
         str = str.add(1), chkstr = chkstr.add(1);
         if (t1 !== t2) {
             return FALSE;
@@ -299,10 +295,9 @@ export function str_start_is(str, chkstr, caseblind) {   // hacklib.c:277
  * @returns {number} boolean
  */
 export function str_end_is(str, chkstr) {   // hacklib.c:305
-    let clen = 0;
-    clen = $c.i32($c.strlen(chkstr));
+    const clen = $c.i32($c.strlen(chkstr));
     if ($c.i32($c.strlen(str)) >= clen) {
-        return $c.i8(!$c.strncmp(eos(str).add(-clen), chkstr, $c.u64(clen)) ? 1 : 0);
+        return !$c.strncmp(eos(str).add(-clen), chkstr, $c.u64(clen)) ? 1 : 0;
     }
     return FALSE;
 }
@@ -312,11 +307,11 @@ export function str_end_is(str, chkstr) {   // hacklib.c:305
  * @returns {number} int
  */
 export function str_lines_maxlen(str) {   // hacklib.c:316
-    let s1 = null, s2 = null, len = 0, max_len = 0;
-    max_len = 0;
-    s1 = str;
+    let len = 0;
+    let max_len = 0;
+    let s1 = str;
     while (s1 && s1.get(0)) {
-        s2 = $c.strchr(s1, 10);
+        const s2 = $c.strchr(s1, 10);
         if (s2) {
             len = $c.i32($c.pdiff(s2, s1));
             s1 = s2.add(1);
@@ -337,8 +332,8 @@ export function str_lines_maxlen(str) {   // hacklib.c:316
  * @returns {$c.Ptr | null} char *
  */
 export function strkitten(s, c) {   // hacklib.c:340
-    let p = null, $t1;
-    p = eos(s);
+    let $t1;
+    let p = eos(s);
     ($t1 = p, p = $t1.add(1), $t1).set(0, c);
     p.set(0, 0);
     return s;
@@ -390,9 +385,9 @@ export function chrcasecpy(oc, nc) {   // hacklib.c:365
  * @returns {$c.Ptr | null} char *
  */
 export function strcasecpy(dst, src) {   // hacklib.c:387
-    let result = null, ic = 0, oc = 0, dst_exhausted = 0, $t1, $t2, $t3, $t4;
-    result = dst;
-    dst_exhausted = 0;
+    let ic = 0, $t1, $t2, $t3, $t4;
+    const result = dst;
+    let dst_exhausted = 0;
     /* while dst has characters, replace each one with corresponding
        character from src, converting case in the process if they differ;
        once dst runs out, propagate the case of its last character to any
@@ -402,7 +397,7 @@ export function strcasecpy(dst, src) {   // hacklib.c:387
         if (!dst_exhausted && !dst.get(0)) {
             dst_exhausted = 1;
         }
-        oc = dst.add(-dst_exhausted).get(0);
+        const oc = dst.add(-dst_exhausted).get(0);
         $t3 = chrcasecpy(oc, ic), $t4 = ($t2 = dst, dst = $t2.add(1), $t2), $t4.set(0, $t3);
     }
     dst.set(0, 0);
@@ -433,9 +428,9 @@ export function s_suffix(s) {   // hacklib.c:409
  * @returns {$c.Ptr | null} char *
  */
 export function ing_suffix(s) {   // hacklib.c:427
-    let onoff = new Int8Array(10), p = null, $t1, $t2;
+    let onoff = new Int8Array(10), $t1, $t2;
     $c.strcpy(new $c.Ptr(ing_suffix$buf, 0), s);
-    p = eos(new $c.Ptr(ing_suffix$buf, 0));
+    let p = eos(new $c.Ptr(ing_suffix$buf, 0));
     $t2 = ($t1 = p.add(1).set(0, 0), p.set(0, $t1)), onoff[0] = $t2;
     if ($c.pcmp(p, new $c.Ptr(ing_suffix$buf, 3)) >= 0 && !strncmpi(p.add(-3), $c.lit(" on"), -1) || $c.pcmp(p, new $c.Ptr(ing_suffix$buf, 4)) >= 0 && !strncmpi(p.add(-4), $c.lit(" off"), -1) || $c.pcmp(p, new $c.Ptr(ing_suffix$buf, 5)) >= 0 && !strncmpi(p.add(-5), $c.lit(" with"), -1)) {
         p = $c.strrchr(new $c.Ptr(ing_suffix$buf, 0), 32);
@@ -501,11 +496,11 @@ export function onlyspace(s) {   // hacklib.c:483
  * @returns {$c.Ptr | null} char *
  */
 export function tabexpand(sbuf) {   // hacklib.c:493
-    let buf = new Int8Array(266), bp = null, s = null, idx = 0, $t1, $t2;
+    let buf = new Int8Array(266), bp = null, idx = 0, $t1, $t2;
     /* assumed to be [BUFSZ] but can be smaller provided that
      * expanded string fits; expansion bigger than BUFSZ-1
      * will be truncated */
-    s = sbuf;
+    let s = sbuf;
     if (!s.get(0)) {
         return sbuf;
     }
@@ -540,9 +535,9 @@ export function tabexpand(sbuf) {   // hacklib.c:493
  * @returns {$c.Ptr | null} char *
  */
 export function visctrl(c) {   // hacklib.c:533
-    let i = 0, ccc = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
-    i = 0;
-    ccc = new $c.Ptr(visctrl$visctrl_bufs[visctrl$nbuf], 0);
+    let $t1, $t2, $t3, $t4, $t5, $t6, $t7;
+    let i = 0;
+    const ccc = new $c.Ptr(visctrl$visctrl_bufs[visctrl$nbuf], 0);
     visctrl$nbuf = $c.rem32(visctrl$nbuf + 1 | 0, VISCTRL_NBUF);
     if ($c.u8(c) & 128) {
         ccc.set(($t1 = i, i = $t1 + 1 | 0, $t1), 77);
@@ -571,9 +566,9 @@ export function visctrl(c) {   // hacklib.c:533
  * @returns {$c.Ptr | null} char *
  */
 export function stripchars(bp, stuff_to_strip, orig) {   // hacklib.c:563
-    let i = 0, s = null, $t1;
-    i = 0;
-    s = bp;
+    let $t1;
+    let i = 0;
+    let s = bp;
     while (orig.get(0) && i < BUFSZ - 1) {
         if (!$c.strchr(stuff_to_strip, orig.get(0))) {
             ($t1 = s, s = $t1.add(1), $t1).set(0, orig.get(0));
@@ -608,9 +603,9 @@ export function stripdigits(s) {   // hacklib.c:585
  * @returns {$c.Ptr | null} char *
  */
 export function strsubst(bp, orig, replacement) {   // hacklib.c:600
-    let found = null, buf = new Int8Array(256);
+    let buf = new Int8Array(256);
     /* [this could be replaced by strNsubst(bp, orig, replacement, 1)] */
-    found = $c.strstr(bp, orig);
+    const found = $c.strstr(bp, orig);
     if (found) {
         $c.strcpy(new $c.Ptr(buf, 0), found.add($c.idx($c.strlen(orig))));
         $c.strcpy(found, replacement);
@@ -629,15 +624,15 @@ export function strsubst(bp, orig, replacement) {   // hacklib.c:600
  * @returns {number} int
  */
 export function strNsubst(inoutbuf, orig, replacement, n) {   // hacklib.c:621
-    let bp = null, op = null, workbuf = new Int8Array(256), rp = null, len = 0, ocount = 0, rcount = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12;
+    let bp = null, op = null, workbuf = new Int8Array(256), rp = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12;
     /* current string, and result buffer */
     /* old substring; if "", insert in front of Nth char */
     /* new substring; if "", delete old substring */
     /* which occurrence to replace; 0 => all */
-    len = $c.u32($c.strlen(orig));
+    const len = $c.u32($c.strlen(orig));
     /* number of times 'orig' has been matched */
-    ocount = 0;
-    rcount = 0;   /* number of substitutions made */
+    let ocount = 0;
+    let rcount = 0;   /* number of substitutions made */
     for (bp = inoutbuf, op = new $c.Ptr(workbuf, 0); bp.get(0) && $c.pcmp(op, new $c.Ptr(workbuf, BUFSZ - 1)) < 0; ) {
         if ((!len || !$c.strncmp(bp, orig, len)) && ((ocount = ocount + 1 | 0) === n || n === 0)) {
             /* Nth match found */
@@ -678,12 +673,11 @@ export function strNsubst(inoutbuf, orig, replacement, n) {   // hacklib.c:621
  * @returns {$c.Ptr | null} const char *
  */
 export function findword(list, word, wordlen, ignorecase) {   // hacklib.c:665
-    let p = null;
     /* string of space-separated words */
     /* word to try to find */
     /* so that it isn't required to be \0 terminated */
     /* T: case-blind, F: case-sensitive */
-    p = list;
+    let p = list;
     while (p) {
         while (p.get(0) === 32) {
             p = p.add(1);
@@ -704,9 +698,8 @@ export function findword(list, word, wordlen, ignorecase) {   // hacklib.c:665
  * @returns {$c.Ptr | null} const char *
  */
 export function ordin(n) {   // hacklib.c:689
-    let dd = 0;
     /* note: should be non-negative */
-    dd = $c.rem32(n, 10);
+    const dd = $c.rem32(n, 10);
     return dd === 0 || dd > 3 || $c.div32($c.rem32(n, 100), 10) === 1 ? $c.lit("th") : dd === 1 ? $c.lit("st") : dd === 2 ? $c.lit("nd") : $c.lit("rd");
 }
 /* one compiler complains about
@@ -737,9 +730,8 @@ export function sgn(n) {   // hacklib.c:714
  * @returns {number} int
  */
 export function distmin(x0, y0, x1, y1) {   // hacklib.c:721
-    let dx = 0, dy = 0;
-    dx = $c.i16(x0 - x1 | 0);
-    dy = $c.i16(y0 - y1 | 0);
+    let dx = $c.i16(x0 - x1);
+    let dy = $c.i16(y0 - y1);
     if (dx < 0) {
         dx = $c.i16(-dx | 0);
     }
@@ -760,9 +752,8 @@ export function distmin(x0, y0, x1, y1) {   // hacklib.c:721
  * @returns {number} int
  */
 export function dist2(x0, y0, x1, y1) {   // hacklib.c:737
-    let dx = 0, dy = 0;
-    dx = $c.i16(x0 - x1 | 0);
-    dy = $c.i16(y0 - y1 | 0);
+    const dx = $c.i16(x0 - x1);
+    const dy = $c.i16(y0 - y1);
     return Math.imul(dx, dx) + Math.imul(dy, dy) | 0;
 }
 /* integer square root function without using floating point */
@@ -771,9 +762,8 @@ export function dist2(x0, y0, x1, y1) {   // hacklib.c:737
  * @returns {number} int
  */
 export function isqrt(val) {   // hacklib.c:746
-    let rt = 0, odd = 0;
-    rt = 0;
-    odd = 1;
+    let rt = 0;
+    let odd = 1;
     /*
      * This could be replaced by a faster algorithm, but has not been because:
      * + the simple algorithm is easy to read;
@@ -798,13 +788,12 @@ export function isqrt(val) {   // hacklib.c:746
  * @returns {number} boolean
  */
 export function online2(x0, y0, x1, y1) {   // hacklib.c:768
-    let dx = 0, dy = 0;
-    dx = x0 - x1 | 0;
-    dy = y0 - y1 | 0;
+    const dx = x0 - x1;
+    const dy = y0 - y1;
     /*  If either delta is zero then they're on an orthogonal line,
      *  else if the deltas are equal (signs ignored) they're on a diagonal.
      */
-    return $c.i8(!dy || !dx || dy === dx || dy === (-dx | 0) ? 1 : 0);
+    return !dy || !dx || dy === dx || dy === (-dx | 0) ? 1 : 0;
 }
 /* case-insensitive counted string comparison */
 /*{ aka strncasecmp }*/
@@ -815,7 +804,7 @@ export function online2(x0, y0, x1, y1) {   // hacklib.c:768
  * @returns {number} int
  */
 export function strncmpi(s1, s2, n) {   // hacklib.c:781
-    let t1 = 0, t2 = 0, $t1, $t2, $t3;
+    let $t1, $t2, $t3;
     /*(should probably be size_t, which is unsigned)*/
     while ($t1 = n, n = $t1 - 1 | 0, $t1) {
         if (!s2.get(0)) {
@@ -823,8 +812,8 @@ export function strncmpi(s1, s2, n) {   // hacklib.c:781
         } else if (!s1.get(0)) {
             return -1;   /* s1  < s2 */
         }
-        t1 = lowc(($t2 = s1, s1 = $t2.add(1), $t2).get(0));
-        t2 = lowc(($t3 = s2, s2 = $t3.add(1), $t3).get(0));
+        const t1 = lowc(($t2 = s1, s1 = $t2.add(1), $t2).get(0));
+        const t2 = lowc(($t3 = s2, s2 = $t3.add(1), $t3).get(0));
         if (t1 !== t2) {
             return t1 > t2 ? 1 : -1;
         }
@@ -907,7 +896,7 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {   // hacklib.c:849
         }
     } while (c1 === c2);
     /* match occurs only when the end of both strings has been reached */
-    return $c.i8(!c1 && !c2 ? 1 : 0);
+    return !c1 && !c2 ? 1 : 0;
 }
 /*
  * Time routines
@@ -929,8 +918,7 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {   // hacklib.c:849
  * @returns {number} int
  */
 export function swapbits(val, bita, bitb) {   // hacklib.c:896
-    let tmp = 0;
-    tmp = val >> bita & 1 ^ val >> bitb & 1;
+    const tmp = val >> bita & 1 ^ val >> bitb & 1;
     return val ^ (tmp << bita | tmp << bitb);
 }
 /*
@@ -954,9 +942,9 @@ export function swapbits(val, bita, bitb) {   // hacklib.c:896
  * @param {...*} $va the C variable arguments (...)
  */
 export function nh_snprintf(func, line, str, size, fmt, ...$va) {   // hacklib.c:918
-    let ap = null, n = 0;
+    let ap = null;
     ap = new $c.VaList($va);
-    n = $c.vsnprintf(str, size, fmt, ap);
+    const n = $c.vsnprintf(str, size, fmt, ap);
     void 0;
     if (n < 0 || $c.u64(n) >= size) {
         /* is there a problem? */
@@ -971,9 +959,9 @@ export function nh_snprintf(func, line, str, size, fmt, ...$va) {   // hacklib.c
  * @returns {number} int
  */
 export function unicodeval_to_utf8str(uval, buffer, bufsz) {   // hacklib.c:946
-    let b = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10;
+    let $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10;
     //    static uint8 buffer[7];
-    b = buffer;
+    let b = buffer;
     if (bufsz < 5) {
         return 0;
     }
@@ -1028,7 +1016,7 @@ export function case_insensitive_comp(s1, s2) {   // hacklib.c:986
             break;
         }
     }
-    return u1 - u2 | 0;
+    return u1 - u2;
 }
 /**
  * @param {number} ifd int
@@ -1036,9 +1024,9 @@ export function case_insensitive_comp(s1, s2) {   // hacklib.c:986
  * @returns {number} boolean
  */
 export function copy_bytes(ifd, ofd) {   // hacklib.c:1010
-    let buf = new Int8Array(1024), nfrom = 0, nto = 0;
+    let buf = new Int8Array(1024), nfrom = 0;
     do {
-        nto = 0;
+        let nto = 0;
         nfrom = $c.read(ifd, new $c.Ptr(buf, 0), 1024);
         /* read can return -1 */
         if (nfrom >= 0 && nfrom <= 1024) {
@@ -1055,9 +1043,9 @@ export function copy_bytes(ifd, ofd) {   // hacklib.c:1010
  * @returns {$c.Ptr | null} const char *
  */
 export function datamodel(retidx) {   // hacklib.c:1046
-    let i = 0, j = 0, matchcount = 0;
+    let i = 0, j = 0;
     for (i = 1; i < 5; i = i + 1 | 0) {
-        matchcount = 0;
+        let matchcount = 0;
         for (j = 0; j < MAX_D; j = j + 1 | 0) {
             if (dm[0].sz[j] === dm[i].sz[j]) {
                 matchcount = matchcount + 1 | 0;

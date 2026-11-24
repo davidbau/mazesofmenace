@@ -327,9 +327,7 @@ export function waterbody_name(x, y) {
 }
 
 function waterbody_name_typ(ltyp, x, y) {
-    const hallucinate = !!((game.u?.intrinsic?.HHallucination
-                            || game.u?.uprops?.HALLUC)
-                           && !game.program_state_gameover);
+    const hallucinate = Hallucination() && !game.program_state_gameover;
     if (ltyp === LAVAPOOL) return `molten ${hliquid('lava')}`;
     if (ltyp === ICE)
         return hallucinate ? `frozen ${hliquid('water')}` : 'ice';

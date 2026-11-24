@@ -13,7 +13,8 @@ import { safe_qbuf } from './objnam.js';
 import { ansimpleoname } from './objnam.js';
 import { docrt } from './display.js';
 import { add_menu_heading, hide_unhide_msgtypes } from './options.js';
-import { QBUFSZ, MSGTYP_MASK_REP_SHOW } from './const.js';
+import { QBUFSZ, MSGTYP_MASK_REP_SHOW, PLNMSG_ONE_ITEM_HERE,
+         Is_airlevel, Is_waterlevel, is_pit } from './const.js';
 import { BUFSZ, CONTAINED_SYM } from './const.js';
 import { def_oc_syms } from './drawing_data.js';
 import { MINV_PICKMASK } from './const.js';
@@ -52,7 +53,7 @@ import { addtobill, costly_spot, doname_with_price, obfree_bill, same_price,
          shop_keeper, inside_shop, inhishop, unpaid_cost, doinvbill } from './shk.js';
 import { ONAME, has_oname, ONAME_SKIP_INVUPD } from './const.js';
 import { u_at, CMDQ_KEY, CMDQ_INT, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
-         ICE, DRAWBRIDGE_DOWN, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN,
+         ICE, DRAWBRIDGE_DOWN, DBWALL, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN,
          AM_SANCTUM, AM_SHRINE, Amask2align, A_NONE, A_LAWFUL,
          A_NEUTRAL, A_CHAOTIC, OBJ_DELETED } from './const.js';
 import { hides_under, touch_petrifies, poly_when_stoned } from './mondata.js';
@@ -63,9 +64,9 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
          W_RINGL, W_RINGR, W_AMUL, W_ART, W_TOOL, W_ACCESSORY, W_SADDLE }
     from './const.js';
 import { Blind as heroBlind, Hallucination,
-         Stone_resistance } from './youprop.js';
+         Stone_resistance, Underwater } from './youprop.js';
 import { doname, an, corpse_xname, makeplural, obj_typename, CXN_PFX_THE,
-         CXN_ARTICLE, yname, xname, distant_name } from './objnam.js';
+         CXN_ARTICLE, yname, xname, distant_name, vtense } from './objnam.js';
 import { OCLASSES, ONAMES, MATERIALS, SKILLS } from './objects_data.js';
 import { is_pole } from './u_init.js';
 import { throwing_weapon } from './dothrow.js';
@@ -75,12 +76,12 @@ import { MONSYMS, NUMMONS, PMNAMES } from './monst_data.js';
 import { erosion_matters, curse, splitobj, clear_splitobjs, extract_nobj,
          start_glob_timeout, dead_species, unsplitobj, unknwn_contnr_contents } from './mkobj.js';
 import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, Is_container, Is_candle, Is_pudding } from './obj.js';
-import { setworn, setnotworn, recalc_telepat_range, bypass_objlist,
+import { setworn, setnotworn, bypass_objlist,
          nxt_unbypassed_loot, clear_bypasses } from './worn.js';
 import { is_rider, hideunder } from './makemon.js';
 import { Fumbling } from './youprop.js';
 import { st_all, MOD_ENCUMBER, invlet_basic, Upolyd } from './const.js';
-import { u_safe_from_fatal_corpse, can_reach_floor } from './pickup.js';
+import { u_safe_from_fatal_corpse, can_reach_floor, force_decor } from './pickup.js';
 import { near_capacity, encumber_msg } from './attrib.js';
 import { in_rooms, inv_cnt, notice_all_mons_flush } from './hack.js';
 import { place_object, remove_object } from './mkobj.js';
@@ -92,14 +93,13 @@ import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr,
          tty_add_menu, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { xwaitforspace } from './tty/getline.js';
-import { pline, tty_clear_nhwindow_message, display_nhwindow_message, temporary_object_glyph,
-         see_monsters } from './display.js';
+import { pline, tty_clear_nhwindow_message, display_nhwindow_message, temporary_object_glyph } from './display.js';
 import { makeknown, observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
 import { You, You_hear, You_see, Your, impossible } from './pline.js';
 import { cansee } from './vision.js';
 import { surface } from './dungeon.js';
-import { is_ice } from './dbridge.js';
+import { is_ice, is_drawbridge_wall } from './dbridge.js';
 import { ice_descr } from './pager.js';
 import { discover_artifact, set_artifact_intrinsic,
          artifact_confers_luck } from './artifact.js';
@@ -540,8 +540,6 @@ export function addinv_core1(obj) {
             await artitouch(obj);
         }
         set_artifact_intrinsic(obj, true, W_ART);
-        recalc_telepat_range();
-        see_monsters();
         release_prize();
     })();
 }
@@ -779,7 +777,8 @@ export function dfeature_at(x, y) {
         case D_BROKEN: dfeature = 'broken door'; break;
         default:       dfeature = 'closed door'; break;
         }
-        /* open-drawbridge portcullis override needs drawbridge walls */
+        if (is_drawbridge_wall(x, y) >= 0)
+            dfeature = 'open drawbridge portcullis';
     } else if (ltyp === FOUNTAIN) {
         dfeature = 'fountain';
     } else if (ltyp === THRONE) {
@@ -808,6 +807,8 @@ export function dfeature_at(x, y) {
         dfeature = stairs_description(stway, true);
     } else if (ltyp === DRAWBRIDGE_DOWN) {
         dfeature = 'lowered drawbridge';
+    } else if (ltyp === DBWALL) {
+        dfeature = 'raised drawbridge';
     } else if (ltyp === GRAVE) {
         dfeature = 'grave';
     } else if (ltyp === TREE) {
@@ -818,20 +819,12 @@ export function dfeature_at(x, y) {
     return dfeature;
 }
 
-function dfeature_with_article(dfeature) {
-    if (dfeature === 'molten lava' || dfeature === 'ice'
-        || dfeature.startsWith('frozen ') || / ice$/i.test(dfeature))
-        return dfeature;
-    return an(dfeature);
-}
-
 // src/invent.c:4104 look_here()
 //
 // Includes engulfer contents, visible regions, blind floor reach and
 // floor-pile cockatrice contact.
 export async function look_here(obj_cnt, lhflags) {
-    const Blind = heroBlind();
-    const verb = Blind ? 'feel' : 'see';
+    const verb = heroBlind() ? 'feel' : 'see';
     const picked_some = (lhflags & LOOKHERE_PICKED_SOME) !== 0;
     let skip_dfeature = (lhflags & LOOKHERE_SKIP_DFEATURE) !== 0;
 
@@ -842,19 +835,19 @@ export async function look_here(obj_cnt, lhflags) {
     if (game.u?.uswallow) {
         const mtmp = game.u.ustuck;
         let fbuf = `Contents of ${s_suffix(mon_nam(mtmp))} ${mbodypart(mtmp, STOMACH)}`;
-        await You(`${Blind ? 'try' : 'look around'} to ${verb} what is lying in ${fbuf.slice(12)}.`);
+        await You(`${heroBlind() ? 'try' : 'look around'} to ${verb} what is lying in ${fbuf.slice(12)}.`);
         if (mtmp.minvent?.length) {
             for (const otmp of mtmp.minvent) {
                 if (otmp.otyp === ONAMES.CORPSE)
                     await feel_cockatrice(otmp, false);
             }
-            if (Blind)
+            if (heroBlind())
                 fbuf = 'You feel';
             await display_minventory(mtmp, MINV_ALL | PICK_NONE, `${fbuf}:`);
         } else {
             await You(`${verb} no objects here.`);
         }
-        return Blind ? ECMD_TIME : ECMD_OK;
+        return heroBlind() ? ECMD_TIME : ECMD_OK;
     }
 
     if (!skip_objects) {
@@ -870,28 +863,43 @@ export async function look_here(obj_cnt, lhflags) {
         }
     }
 
-    const dfeature = dfeature_at(game.u.ux, game.u.uy);
+    let dfeature = dfeature_at(game.u.ux, game.u.uy);
+    if (dfeature === 'pool of water' && Underwater())
+        dfeature = null;
 
-    /* src/invent.c:4185-4217: a blind hero describes reaching toward the
-       surface before inspecting the object pile.  A following menu flushes
-       this message through its own --More-- boundary. */
-    if (Blind) {
-        const loc = game.level?.at(game.u.ux, game.u.uy);
-        if (loc?.typ === ICE) {
+    /* src/invent.c:4185-4217: describe reaching before inspecting the pile. */
+    if (heroBlind()) {
+        const drift = Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz);
+        if (dfeature && dfeature.startsWith('altar ')) {
+            await You('try to feel what is here.');
+        } else if (is_ice(game.u.ux, game.u.uy)) {
+            if (!game.flags.mention_decor || game.iflags.prev_decor === ICE)
+                await force_decor(false);
             await You('try to feel what is on it.');
             skip_dfeature = true;
         } else {
-            const can_reach = can_reach_floor(true);
-            const floor = surface(game.u.ux, game.u.uy);
-            await You(`try to feel what is ${can_reach
-                ? `lying here on the ${floor}` : 'lying beneath you'}.`);
-            if (dfeature === floor)
+            const cant_reach = !can_reach_floor(true);
+            const surf = surface(game.u.ux, game.u.uy);
+            await You(`try to feel what is ${drift ? 'floating here'
+                : cant_reach ? 'lying beneath you' : `lying here on the ${surf}`}.`);
+            if (dfeature && !drift && dfeature === surf)
                 skip_dfeature = true;
         }
-        if (!can_reach_floor(true)) {
+        const trap = t_at(game.u.ux, game.u.uy);
+        if (!can_reach_floor(trap && is_pit(trap.ttyp))) {
             await pline("But you can't reach it!");
             return ECMD_OK;
         }
+    }
+
+    let fbuf;
+    if (dfeature && !skip_dfeature) {
+        const p = dfeature.indexOf(' ');
+        if (dfeature !== 'molten lava' && dfeature !== 'iron bars'
+            && dfeature !== 'ice' && !dfeature.startsWith('frozen ')
+            && !(p >= 0 && dfeature.slice(p).toLowerCase() === ' ice'))
+            dfeature = an(dfeature);
+        fbuf = `There ${vtense(dfeature, 'are')} ${dfeature} here.`;
     }
 
     /* src/invent.c:4299, display the retained local nexthere order. */
@@ -903,17 +911,17 @@ export async function look_here(obj_cnt, lhflags) {
            "There is <an feature> here." and SUPPRESS the no-objects line
            unless blind */
         if (dfeature && !skip_dfeature)
-            await pline(`There is ${dfeature_with_article(dfeature)} here.`);
+            await pline(fbuf);
         await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
-        if (!skip_objects && (Blind || !dfeature))
+        if (!skip_objects && (heroBlind() || !dfeature))
             await You(`${verb} no objects here.`);
-        return Blind ? ECMD_TIME : ECMD_OK;
+        return heroBlind() ? ECMD_TIME : ECMD_OK;
     }
     /* we know there is something here */
 
     if (skip_objects) {
         if (dfeature && !skip_dfeature)
-            await pline(`There is ${dfeature_with_article(dfeature)} here.`);
+            await pline(fbuf);
         await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
         if (obj_cnt === 1 && pile[0].quan === 1)
             await pline(`There is ${picked_some ? 'another' : 'an'} object here.`);
@@ -939,9 +947,10 @@ export async function look_here(obj_cnt, lhflags) {
         /* only one object */
         const otmp = pile[0];
         if (dfeature && !skip_dfeature)
-            await pline(`There is ${dfeature_with_article(dfeature)} here.`);
+            await pline(fbuf);
         await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
         await You(`${verb} here ${doname_with_price(otmp)}.`);
+        game.iflags.last_msg = PLNMSG_ONE_ITEM_HERE;
         if (otmp.otyp === ONAMES.CORPSE)
             await feel_cockatrice(otmp, false);
     } else {
@@ -953,12 +962,11 @@ export async function look_here(obj_cnt, lhflags) {
         await display_nhwindow_message();
         const tmpwin = tty_create_nhwindow(NHW_MENU);
         if (dfeature && !skip_dfeature) {
-            tty_putstr(tmpwin, 0,
-                       `There is ${dfeature_with_article(dfeature)} here.`);
+            tty_putstr(tmpwin, 0, fbuf);
             tty_putstr(tmpwin, 0, '');
         }
         tty_putstr(tmpwin, 0, `${picked_some ? 'Other things' : 'Things'} that ${
-            Blind ? 'you feel' : 'are'} here:`);
+            heroBlind() ? 'you feel' : 'are'} here:`);
         for (const otmp of pile) {
             if (will_feel_cockatrice(otmp, false)) {
                 felt_cockatrice = otmp;
@@ -980,7 +988,7 @@ export async function look_here(obj_cnt, lhflags) {
         await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
     }
 
-    return Blind ? ECMD_TIME : ECMD_OK;
+    return heroBlind() ? ECMD_TIME : ECMD_OK;
 }
 
 // src/invent.c:4319 dolook()
@@ -2487,8 +2495,7 @@ export function obj_extract_self(obj) {
         break;
     }
     case OBJ_INVENT:
-        freeinv(obj);       /* src/mkobj.c:2573 -- ported at invent.js:622 */
-        break;
+        return freeinv(obj); /* freeinv sets OBJ_FREE before removing effects */
     case OBJ_BURIED: {
         const objs = game.level?.buriedobjs;
         if (objs) {
@@ -2656,6 +2663,7 @@ export function set_moreluck() {
 }
 
 export function freeinv_core(obj) {
+    let pending;
     if (obj.oclass === OCLASSES.COIN_CLASS) {
         /* src/invent.c freeinv_core() — this arm is exactly two statements in
            5.0. The 'money2mon' gap recorded here before did not correspond to
@@ -2675,22 +2683,24 @@ export function freeinv_core(obj) {
     } else if (obj.oartifact) {
         if (obj.oartifact === game.urole?.questarti)
             (game.u.uhave ||= {}).questart = 0;
-        set_artifact_intrinsic(obj, false, W_ART);
-        recalc_telepat_range();
-        see_monsters();
+        pending = set_artifact_intrinsic(obj, false, W_ART);
     }
 
-    if (obj.otyp === ONAMES.LOADSTONE)
-        curse(obj);
-    else if (confers_luck(obj)) {
-        set_moreluck();
-        (game.disp ||= {}).botl = true;
-    } else if (obj.otyp === ONAMES.FIGURINE && obj.timed)
-        stop_timer(FIG_TRANSFORM, obj);
+    return pending ? pending.then(finish) : finish();
 
-    if (obj === game.context?.tin?.tin) {
-        game.context.tin.tin = null;
-        game.context.tin.o_id = 0;
+    function finish() {
+        if (obj.otyp === ONAMES.LOADSTONE)
+            curse(obj);
+        else if (confers_luck(obj)) {
+            set_moreluck();
+            (game.disp ||= {}).botl = true;
+        } else if (obj.otyp === ONAMES.FIGURINE && obj.timed)
+            stop_timer(FIG_TRANSFORM, obj);
+
+        if (obj === game.context?.tin?.tin) {
+            game.context.tin.tin = null;
+            game.context.tin.o_id = 0;
+        }
     }
 }
 
@@ -2706,8 +2716,8 @@ export function freeinv(obj) {
         inv.splice(i, 1);           /* extract_nobj(obj, &gi.invent) */
     obj.where = OBJ_FREE;
     obj.pickup_prev = 0;
-    freeinv_core(obj);
-    update_inventory();
+    const pending = freeinv_core(obj);
+    return pending ? pending.then(update_inventory) : update_inventory();
 }
 
 // src/invent.c:1187 carry_obj_effects()
@@ -2736,7 +2746,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         const wasUpolyd = Upolyd(game.u);
 
         /* in case touching this object turns out to be fatal */
-        place_object(obj, game.u.ux, game.u.uy);
+        await place_object(obj, game.u.ux, game.u.uy);
 
         if (!await touch_artifact(obj, game.youmonst)) {
             obj_extract_self(obj); /* remove it from the floor */
@@ -2808,16 +2818,16 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     if (can_reach_floor(true) || game.u.uswallow) {
         await dropx(obj);
     } else {
-        freeinv(obj);
+        await freeinv(obj);
         const { hitfloor } = await import('./do.js');
         await hitfloor(obj, false);
     }
     return null; /* might be gone */
 }
 
-// src/shk.c:1187 obfree(). This is synchronous in C and must remain so here:
-// many useup() callers inspect the consumed object before the current command
-// returns. Objects on a shop bill are retained there; every other object is
+// src/shk.c:1187 obfree(). Ordinary disposal remains synchronous; removing
+// a worn artifact waits for its property transition before deletion.
+// Objects on a shop bill are retained there; every other object is
 // marked deleted after its timers, light source, and transient references are
 // cleared.
 export function obfree(obj, merge = null) {
@@ -2860,40 +2870,47 @@ export function obfree(obj, merge = null) {
     if (obfree_bill(obj, merge))
         return;
 
-    if (obj.owornmask)
-        setnotworn(obj);
-    if (obj.timed)
-        obj_stop_timers(obj);
-    if (obj.lamplit) {
-        const sources = (game.light_sources ||= []);
-        const index = sources.findIndex(source => source.type === 1
-                                      && source.id === obj.o_id);
-        if (index >= 0)
-            sources.splice(index, 1);
-        obj.lamplit = 0;
+    const pending = obj.owornmask ? setnotworn(obj) : null;
+    return pending ? pending.then(finish) : finish();
+
+    function finish() {
+        if (obj.timed)
+            obj_stop_timers(obj);
+        if (obj.lamplit) {
+            const sources = (game.light_sources ||= []);
+            const index = sources.findIndex(source => source.type === 1
+                                          && source.id === obj.o_id);
+            if (index >= 0)
+                sources.splice(index, 1);
+            obj.lamplit = 0;
+        }
+        if (obj === game.thrownobj)
+            game.thrownobj = null;
+        if (obj === game.kickedobj)
+            game.kickedobj = null;
+        if (obj === game.context?.tin?.tin) {
+            game.context.tin.tin = null;
+            game.context.tin.o_id = 0;
+        }
+        const split = game.context?.objsplit;
+        if (split && (obj.o_id === split.parent_oid
+                      || obj.o_id === split.child_oid)) {
+            split.parent_oid = split.child_oid = 0;
+        }
+        obj.where = OBJ_DELETED;
     }
-    if (obj === game.thrownobj)
-        game.thrownobj = null;
-    if (obj === game.kickedobj)
-        game.kickedobj = null;
-    if (obj === game.context?.tin?.tin) {
-        game.context.tin.tin = null;
-        game.context.tin.o_id = 0;
-    }
-    const split = game.context?.objsplit;
-    if (split && (obj.o_id === split.parent_oid
-                  || obj.o_id === split.child_oid)) {
-        split.parent_oid = split.child_oid = 0;
-    }
-    obj.where = OBJ_DELETED;
 }
 
 // src/invent.c useupall(): the whole stack goes. A worn item stops being
 // worn before it leaves inventory, then obfree() owns the remaining cleanup.
 export function useupall(obj) {
-    setnotworn(obj);
-    freeinv(obj);
-    obfree(obj);
+    const pending = setnotworn(obj);
+    return pending ? pending.then(finish) : finish();
+
+    function finish() {
+        const removed = freeinv(obj);
+        return removed ? removed.then(() => obfree(obj)) : obfree(obj);
+    }
 }
 
 // src/invent.c useup() — consume ONE of a stack, or all of it.
@@ -2910,7 +2927,7 @@ export function useup(obj) {
         obj.owt = weight(obj);
         update_inventory();
     } else {
-        useupall(obj);
+        return useupall(obj);
     }
 }
 

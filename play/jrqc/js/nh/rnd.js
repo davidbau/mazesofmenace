@@ -45,22 +45,21 @@ let rng_caller_line = 0;
 let rng_caller_func = null;
 const rnglist = $c.recArray($T.rnglist_t, 2);
 export function rng_log_init() {   // rnd.c:38
-    let logpath = null, disp = null;
-    logpath = $c.getenv($c.lit("NETHACK_RNGLOG"));
-    disp = $c.getenv($c.lit("NETHACK_RNGLOG_DISP"));
+    const logpath = $c.getenv($c.lit("NETHACK_RNGLOG"));
+    const disp = $c.getenv($c.lit("NETHACK_RNGLOG_DISP"));
     if (logpath && logpath.get(0)) {
         rng_logfile = $c.fopen(logpath, $c.lit("w"));
         if (rng_logfile) {
             $c.setvbuf(rng_logfile, null, 1, 0);   /* line-buffered */
         }
     }
-    rng_log_disp = $c.i8(disp && disp.get(0) && disp.get(0) !== 48 ? TRUE : FALSE);
+    rng_log_disp = disp && disp.get(0) && disp.get(0) !== 48 ? TRUE : FALSE;
 }
 /**
  * @returns {number} boolean
  */
 export function rng_log_enabled() {   // rnd.c:52
-    return $c.i8(rng_logfile ? TRUE : FALSE);
+    return rng_logfile ? TRUE : FALSE;
 }
 /**
  * @param {$c.Ptr | null} file const char *
@@ -119,8 +118,8 @@ function whichrng(fn) {   // rnd.c:120
  * @returns {Promise<void>}
  */
 export async function init_isaac64(seed, fn) {   // rnd.c:131
-    let new_rng_state = new Uint8Array(8), i = 0, rngindx = 0;
-    rngindx = whichrng(fn);
+    let new_rng_state = new Uint8Array(8), i = 0;
+    const rngindx = whichrng(fn);
     if (rngindx < 0) {
         await panic($c.lit("Bad rng function passed to init_isaac64()."));
     }
@@ -145,8 +144,7 @@ function RND(x) {   // rnd.c:149
  * @returns {number} int
  */
 export function rn2_on_display_rng(x) {   // rnd.c:158
-    let result = 0;
-    result = $c.i32($c.remu64($c.isaac64_next_uint64(rnglist[DISP].rng_state), $c.u64(x)));
+    const result = $c.i32($c.remu64($c.isaac64_next_uint64(rnglist[DISP].rng_state), $c.u64(x)));
     if (rng_logfile && rng_log_disp) {
         rng_call_count = rng_call_count + 1 | 0;
         $c.fprintf(rng_logfile, $c.lit("%d ~drn2(%d) = %d"), rng_call_count, x, result);
@@ -171,8 +169,8 @@ export function rn2_on_display_rng(x) {   // rnd.c:158
  * @returns {number} int
  */
 export function rn2(x) {   // rnd.c:199
-    let result = 0, buf = new Int8Array(32);
-    result = RND(x);
+    let buf = new Int8Array(32);
+    const result = RND(x);
     if (rng_logfile) {
         $c.snprintf(new $c.Ptr(buf, 0), 32, $c.lit("%d"), x);
         rng_log_write($c.lit("rn2"), new $c.Ptr(buf, 0), result);
@@ -186,10 +184,10 @@ export function rn2(x) {   // rnd.c:199
  * @returns {number} int
  */
 export function rnl(x) {   // rnd.c:220
-    let i = 0, adjustment = 0, buf = new Int8Array(32);
+    let buf = new Int8Array(32);
     /* Internal rn2 call inherits caller context from the rnl macro --
        no save/clear needed. */
-    adjustment = Luck();
+    let adjustment = Luck();
     if (x <= 15) {
         /* for small ranges, use Luck/3 (rounded away from 0);
            also guard against architecture-specific differences
@@ -207,7 +205,7 @@ export function rnl(x) {   // rnd.c:220
          *      -13..-11-> -4
          */
     }
-    i = RND(x);
+    let i = RND(x);
     if (adjustment && rn2(37 + $c.abs(adjustment) | 0)) {
         i = i - adjustment | 0;
         if (i < 0) {
@@ -228,8 +226,8 @@ export function rnl(x) {   // rnd.c:220
  * @returns {number} int
  */
 export function rnd(x) {   // rnd.c:270
-    let result = 0, buf = new Int8Array(32);
-    result = RND(x) + 1 | 0;
+    let buf = new Int8Array(32);
+    const result = RND(x) + 1 | 0;
     if (rng_logfile) {
         $c.snprintf(new $c.Ptr(buf, 0), 32, $c.lit("%d"), x);
         rng_log_write($c.lit("rnd"), new $c.Ptr(buf, 0), result);
@@ -250,9 +248,9 @@ export function rnd_on_display_rng(x) {   // rnd.c:289
  * @returns {number} int
  */
 export function d(n, x) {   // rnd.c:296
-    let tmp = 0, orig_n = 0, buf = new Int8Array(64), $t1;
-    tmp = n;
-    orig_n = n;
+    let buf = new Int8Array(64), $t1;
+    let tmp = n;
+    const orig_n = n;
     while ($t1 = n, n = $t1 - 1 | 0, $t1) {
         tmp = tmp + RND(x) | 0;
     }
@@ -268,11 +266,11 @@ export function d(n, x) {   // rnd.c:296
  * @returns {number} int
  */
 export function rne(x) {   // rnd.c:319
-    let tmp = 0, utmp = 0, buf = new Int8Array(32);
+    let buf = new Int8Array(32);
     /* Internal rn2 calls inherit caller context from the rne macro --
        no save/clear needed. */
-    utmp = u.ulevel < 15 ? 5 : $c.div32(u.ulevel, 3);
-    tmp = 1;
+    const utmp = u.ulevel < 15 ? 5 : $c.div32(u.ulevel, 3);
+    let tmp = 1;
     while (tmp < utmp && !rn2(x)) {
         tmp = tmp + 1 | 0;
     }
@@ -296,9 +294,9 @@ export function rne(x) {   // rnd.c:319
  * @returns {number} int
  */
 export function rnz(i) {   // rnd.c:348
-    let x = 0, tmp = 0, buf = new Int8Array(32);
-    x = i;
-    tmp = 1000;
+    let buf = new Int8Array(32);
+    let x = i;
+    let tmp = 1000;
     /* Internal rn2/rne calls inherit caller context from the rnz macro --
        no save/clear needed. */
     tmp = $c.add64(tmp, rn2(1000));
@@ -354,12 +352,12 @@ export async function reseed_random(fn) {   // rnd.c:430
  * @param {number} count int
  */
 export function shuffle_int_array(indices, count) {   // rnd.c:440
-    let i = 0, iswap = 0, temp = 0;
+    let i = 0, iswap = 0;
     for (i = count - 1 | 0; i > 0; i = i - 1 | 0) {
         if ((iswap = rn2(i + 1 | 0)) === i) {
             continue;
         }
-        temp = indices.get(i);
+        const temp = indices.get(i);
         indices.set(i, indices.get(iswap));
         indices.set(iswap, temp);
     }

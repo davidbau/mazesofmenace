@@ -169,24 +169,24 @@ export async function touloca_level() {
                                  l_selection_or(selarea(15, 3, 20, 5),
                                                 selarea(62, 3, 71, 4)));
     for (let i = 1; i <= 9; i++)
-        des.trap(selection_rndcoord(validtraps, 1));
+        await des.trap(selection_rndcoord(validtraps, 1));
     /* Random monsters. */
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('giant spider');
-    des.monster('s');
-    des.monster('s');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('giant spider');
+    await des.monster('s');
+    await des.monster('s');
 }

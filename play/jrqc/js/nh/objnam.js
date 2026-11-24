@@ -68,7 +68,8 @@ import { Strlen_ } from './strutil.js';
 import { begin_burn, peek_timer, spot_stop_timers, start_timer } from './timeout.js';
 import { BURN_OBJECT, MELT_ICE_AWAY, TIMER, ZOMBIFY_MON } from './timeout.h.js';
 import { deltrap, fire_damage_chain, maketrap, reset_utrap, t_at, trapname, water_damage_chain } from './trap.js';
-import { BEAR_TRAP, HOLE, LANDMINE, MAGIC_PORTAL, NO_TRAP, ROCKTRAP, TRAPDOOR, TRAPNUM } from './trap.h.js';
+import { BEAR_TRAP, LANDMINE, MAGIC_PORTAL, NO_TRAP, ROCKTRAP, TRAPNUM } from './trap.h.js';
+import { is_hole } from './trap.macros.js';
 import { recalc_block_point } from './vision.js';
 import { cansee } from './vision.macros.js';
 import { WT } from './weight.h.js';
@@ -132,9 +133,8 @@ const spellings = $c.recArray($T.alt_spellings, 47);
  * @returns {Promise<$c.Ptr | null>} char *
  */
 async function strprepend(s, pref) {   // objnam.c:123
-    let star_s = 0, i = 0;
-    star_s = s.get(0);
-    i = $c.i32($c.strlen(pref));
+    const star_s = s.get(0);
+    const i = $c.i32($c.strlen(pref));
     if (i > PREFIX) {
         await impossible($c.lit("PREFIX too short (for %d)."), i);
         return s;
@@ -206,13 +206,12 @@ export function maybereleaseobuf(obuffer) {   // objnam.c:167
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function obj_typename(otyp) {   // objnam.c:201
-    let buf = null, ocl = null, actualn = null, dn = null, un = null, nn = 0;
-    buf = nextobuf();
-    ocl = $c.relem(objects, otyp);
-    actualn = obj_descr[ocl.oc_name_idx].oc_name;
-    dn = obj_descr[ocl.oc_descr_idx].oc_descr;
-    un = ocl.oc_uname;
-    nn = ocl.oc_name_known | 0;
+    const buf = nextobuf();
+    const ocl = $c.relem(objects, otyp);
+    let actualn = obj_descr[ocl.oc_name_idx].oc_name;
+    let dn = obj_descr[ocl.oc_descr_idx].oc_descr;
+    const un = ocl.oc_uname;
+    let nn = ocl.oc_name_known;
     if (gu.urole.mnum === PM.SAMURAI) {
         actualn = Japanese_item_name(otyp, actualn);
         if (otyp === WOODEN_HARP || otyp === MAGIC_HARP) {
@@ -283,7 +282,7 @@ export async function obj_typename(otyp) {   // objnam.c:201
             } else {
                 $c.strcat(buf, dn ? dn : actualn);
                 if (ocl.oc_class === GEM_CLASS) {
-                    $c.strcat(buf, (ocl.oc_material | 0) === MINERAL ? $c.lit(" stone") : $c.lit(" gem"));
+                    $c.strcat(buf, ocl.oc_material === MINERAL ? $c.lit(" stone") : $c.lit(" gem"));
                 }
                 if (un) {
                     await xcalled(buf, BUFSZ, $c.lit(""), un);
@@ -314,10 +313,10 @@ export async function obj_typename(otyp) {   // objnam.c:201
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function simple_typename(otyp) {   // objnam.c:298
-    let bufp = null, pp = null, save_uname = null;
-    save_uname = objects[otyp].oc_uname;
+    let pp = null;
+    const save_uname = objects[otyp].oc_uname;
     objects[otyp].oc_uname = null;   /* suppress any name given by user */
-    bufp = await obj_typename(otyp);
+    const bufp = await obj_typename(otyp);
     objects[otyp].oc_uname = save_uname;
     if ((pp = strstri(bufp, $c.lit(" ("))) !== null) {
         pp.set(0, 0);   /* strip the appended description */
@@ -330,16 +329,15 @@ export async function simple_typename(otyp) {   // objnam.c:298
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function safe_typename(otyp) {   // objnam.c:312
-    let save_nameknown = 0, res = null;
-    res = null;
+    let res = null;
     if (otyp < STRANGE_OBJECT || otyp >= NUM_OBJECTS || !obj_descr[objects[otyp].oc_name_idx].oc_name) {
         res = nextobuf();
         $c.sprintf(res, $c.lit("glorkum[%d]"), otyp);
         await impossible($c.lit("safe_typename: %s"), res);
     } else {
         /* force it to be treated as fully discovered */
-        save_nameknown = objects[otyp].oc_name_known;
-        objects[otyp].oc_name_known = (1) & 1;
+        const save_nameknown = objects[otyp].oc_name_known;
+        objects[otyp].oc_name_known = 1;
         res = await simple_typename(otyp);
         objects[otyp].oc_name_known = (save_nameknown) & 1;
     }
@@ -368,7 +366,7 @@ export function obj_is_pname(obj) {   // objnam.c:333
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function distant_name(obj, func) {   // objnam.c:347
-    let str = null, save_oid = 0, ox = Int16Array.of(0), oy = Int16Array.of(0), r = 0, neardist = 0;
+    let str = null, ox = Int16Array.of(0), oy = Int16Array.of(0);
     /* object to be formatted */
     /* formatting routine (usually xname or doname) */
     ox[0] = 0;
@@ -389,8 +387,8 @@ export async function distant_name(obj, func) {   // objnam.c:347
      * r==2 yields 6, functionally equivalent to 5, a knight's jump,
      * r==3, the xray range of the Eyes of the Overworld, yields 15.
      */
-    r = u.xray_range > 2 ? u.xray_range : 2;
-    neardist = Math.imul(Math.imul(r, r), 2) - r | 0;   /* same as r*r + r*(r-1) */
+    const r = u.xray_range > 2 ? u.xray_range : 2;
+    const neardist = Math.imul(Math.imul(r, r), 2) - r | 0;   /* same as r*r + r*(r-1) */
     /* setting o_id to 0 prevents xname() from adding T-shirt or apron
        slogan, Hawaiian shirt motif, or candy wrapper label when called
        with 'program_state.gameover' set; we want this suppression for
@@ -400,7 +398,7 @@ export async function distant_name(obj, func) {   // objnam.c:347
        disclosure] that propagates o_id rather than leave it 0, and
        against a potential extra chance to browse the map with getpos()
        during final disclosure (not currently implemented, nor planned) */
-    save_oid = obj.o_id;
+    const save_oid = obj.o_id;
     if (program_state.gameover) {
         obj.o_id = 0;
     }
@@ -432,10 +430,9 @@ export async function distant_name(obj, func) {   // objnam.c:347
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function fruitname(juice) {   // objnam.c:414
-    let buf = null, fruit_nam = null;
     /* whether or not to append " juice" to the name */
-    buf = nextobuf();
-    fruit_nam = strstri(new $c.Ptr(svp.pl_fruit, 0), $c.lit(" of "));
+    const buf = nextobuf();
+    let fruit_nam = strstri(new $c.Ptr(svp.pl_fruit, 0), $c.lit(" of "));
     if (fruit_nam) {
         fruit_nam = fruit_nam.add(4);   /* skip past " of " */
     } else {
@@ -466,7 +463,7 @@ export function fruit_from_indx(indx) {   // objnam.c:431
  * @returns {Promise<$T.fruit | null>} struct fruit *
  */
 export async function fruit_from_name(fname, exact, highest_fid) {   // objnam.c:443
-    let f = null, tentativef = null, altfname = null, k = 0, fnamebuf = new Int8Array(256), p = null, fname_k = 0;
+    let f = null, tentativef = null, altfname = null, k = 0, fnamebuf = new Int8Array(256), p = null;
     /* False: prefix or exact match, True: exact match only */
     /* optional output; only valid if 'fname' isn't found */
     /*
@@ -508,7 +505,7 @@ export async function fruit_from_name(fname, exact, highest_fid) {   // objnam.c
         releaseobuf(altfname);
     }
     if (!f && !exact) {
-        fname_k = await Strlen_(fname, $c.lit("fruit_from_name"), 490);   /* length of assumed plural fname */
+        const fname_k = await Strlen_(fname, $c.lit("fruit_from_name"), 490);   /* length of assumed plural fname */
         tentativef = null;
         for (f = gf.ffruit; f; f = f.nextf) {
             k = await Strlen_(new $c.Ptr(f.fname, 0), $c.lit("fruit_from_name"), 494);
@@ -543,8 +540,8 @@ export async function fruit_from_name(fname, exact, highest_fid) {   // objnam.c
  * @returns {Promise<void>}
  */
 export async function reorder_fruit(forward) {   // objnam.c:523
-    let f = null, allfr = $c.nulls(128), i = 0, j = 0, k = 0;
-    k = 128;
+    let f = null, allfr = $c.nulls(128), i = 0, j = 0;
+    const k = 128;
     for (i = 0; i < k; i = i + 1 | 0) {
         allfr[i] = null;
     }
@@ -582,13 +579,12 @@ export async function reorder_fruit(forward) {   // objnam.c:523
  * @returns {Promise<void>}
  */
 async function xcalled(buf, siz, pfx, sfx) {   // objnam.c:558
-    let bufsiz = 0, pfxlen = 0;
     /* eos(obuf) or eos(&obuf[PREFIX]) */
     /* BUFSZ or BUFSZ-PREFIX */
     /* usually class string, sometimes more specific */
     /* user assigned type name */
-    bufsiz = (siz - 1 | 0) - $c.i32($c.strlen(buf)) | 0;
-    pfxlen = $c.i32($c.subu64($c.addu64($c.strlen(pfx), 9), 1));
+    const bufsiz = (siz - 1 | 0) - $c.i32($c.strlen(buf)) | 0;
+    const pfxlen = $c.i32($c.subu64($c.addu64($c.strlen(pfx), 9), 1));
     if (pfxlen > bufsiz) {
         await panic($c.lit("xcalled: not enough room for prefix (%d > %d)"), pfxlen, bufsiz);
     }
@@ -614,12 +610,12 @@ async function xname_flags(obj, cxn_flags) {   // objnam.c:581
             /* bitmask of CXN_xxx values */
             typ = obj.otyp;
             ocl = $c.relem(objects, typ);
-            nn = ocl.oc_name_known | 0;
+            nn = ocl.oc_name_known;
             omndx = obj.corpsenm;
             actualn = obj_descr[ocl.oc_name_idx].oc_name;
             dn = obj_descr[ocl.oc_descr_idx].oc_descr;
             un = ocl.oc_uname;
-            pluralize = $c.i8(obj.quan !== 1 && !((cxn_flags & CXN.SINGULAR) >>> 0) ? 1 : 0);
+            pluralize = obj.quan !== 1 && !((cxn_flags & CXN.SINGULAR) >>> 0) ? 1 : 0;
             $t1 = nextobuf(), gx.xnamep = $t1;
             /* set up primary work buffer; the first 'PREFIX' bytes are set
                aside for use by doname() */
@@ -649,22 +645,22 @@ async function xname_flags(obj, cxn_flags) {   // objnam.c:581
              * printed for the object is tied to the combination of the two
              * and printing the wrong article gives away information.
              */
-            if (!nn && ocl.oc_uses_known | 0 && ocl.oc_unique | 0) {
-                obj.known = (0) & 1;
+            if (!nn && ocl.oc_uses_known && ocl.oc_unique) {
+                obj.known = 0;
             }
             if (!Blind() && !gd.distantname) {
                 await observe_object(obj);
             }
             if (gu.urole.mnum === PM.CLERIC) {
-                obj.bknown = (1) & 1;   /* avoid set_bknown() to bypass update_inventory() */
+                obj.bknown = 1;   /* avoid set_bknown() to bypass update_inventory() */
             }
             if (iflags.override_ID) {
                 known = dknown = bknown = TRUE;
                 nn = 1;
             } else {
-                known = $c.i8(obj.known);
-                dknown = $c.i8(obj.dknown);
-                bknown = $c.i8(obj.bknown);
+                known = obj.known;
+                dknown = obj.dknown;
+                bknown = obj.bknown;
             }
             /*
              * Maybe find a previously unseen artifact.
@@ -685,7 +681,7 @@ async function xname_flags(obj, cxn_flags) {   // objnam.c:581
              * so that wizard-mode ^I doesn't cause a not-yet-seen artifact in
              * inventory (picked up while blind, still blind) to become found.
              */
-            if (obj.oartifact && obj.dknown | 0) {
+            if (obj.oartifact && obj.dknown) {
                 await find_artifact(obj);
             }
             if (obj_is_pname(obj)) {
@@ -711,7 +707,7 @@ async function xname_flags(obj, cxn_flags) {   // objnam.c:581
                     }
                     break;
                 case WEAPON_CLASS:
-                    if (is_poisonable(obj) && obj.otrapped | 0) {
+                    if (is_poisonable(obj) && obj.otrapped) {
                         $c.strcpy(buf, $c.lit("poisoned "));
                     }
                 case VENOM_CLASS:
@@ -863,7 +859,7 @@ async function xname_flags(obj, cxn_flags) {   // objnam.c:581
                     $c.sprintf(buf, $c.lit("%sheavy iron ball"), obj.owt > ocl.oc_weight ? $c.lit("very ") : $c.lit(""));
                     break;
                 case POTION_CLASS:
-                    if (dknown && obj.oeroded | 0) {
+                    if (dknown && obj.oeroded) {
                         $c.strcpy(buf, $c.lit("diluted "));
                     }
                     if (nn || un || !dknown) {
@@ -873,8 +869,8 @@ async function xname_flags(obj, cxn_flags) {   // objnam.c:581
                         }
                         if (nn) {
                             $c.strcat(buf, $c.lit(" of "));
-                            if (typ === POT_WATER && bknown && (obj.blessed | 0 || obj.cursed | 0)) {
-                                $c.strcat(buf, obj.blessed | 0 ? $c.lit("holy ") : $c.lit("unholy "));
+                            if (typ === POT_WATER && bknown && (obj.blessed || obj.cursed)) {
+                                $c.strcat(buf, obj.blessed ? $c.lit("holy ") : $c.lit("unholy "));
                             }
                             $c.strcat(buf, actualn);
                         } else {
@@ -954,7 +950,7 @@ async function xname_flags(obj, cxn_flags) {   // objnam.c:581
                     break;
                 case GEM_CLASS:
                     {
-                        rock = (ocl.oc_material | 0) === MINERAL ? $c.lit("stone") : $c.lit("gem");
+                        rock = ocl.oc_material === MINERAL ? $c.lit("stone") : $c.lit("gem");
                         if (!dknown) {
                             $c.strcpy(buf, rock);
                         } else if (!nn) {
@@ -1098,17 +1094,17 @@ async function xname_flags(obj, cxn_flags) {   // objnam.c:581
  * @returns {Promise<$c.Ptr | null>} char *
  */
 async function minimal_xname(obj) {   // objnam.c:1038
-    let bufp = null, bareobj = new $T.obj(), saveobcls = new $T.objclass(), otyp = 0;
-    otyp = obj.otyp;
+    let bareobj = new $T.obj(), saveobcls = new $T.objclass();
+    const otyp = obj.otyp;
     /* suppress user-supplied name */
     saveobcls.oc_uname = objects[otyp].oc_uname;
     objects[otyp].oc_uname = null;
     /* suppress actual name if object's description is unknown */
     saveobcls.oc_name_known = (objects[otyp].oc_name_known) & 1;
     if (iflags.override_ID) {
-        objects[otyp].oc_name_known = (1) & 1;
+        objects[otyp].oc_name_known = 1;
     } else if (!obj.dknown) {
-        objects[otyp].oc_name_known = (0) & 1;
+        objects[otyp].oc_name_known = 0;
     }
     /* caveat: this makes a lot of assumptions about which fields
        are required in order for xname() to yield a sensible result */
@@ -1117,10 +1113,10 @@ async function minimal_xname(obj) {   // objnam.c:1038
     bareobj.oclass = obj.oclass;
     /* not observe_object, either the hero observed the object already or this
        is overriding ID and shouldn't discover the object */
-    bareobj.dknown = ((obj.dknown | 0 || iflags.override_ID ? 1 : 0) >>> 0) & 1;
+    bareobj.dknown = (obj.dknown || iflags.override_ID ? 1 : 0) & 1;
     /* suppress known except for amulets (needed for fakes and real A-of-Y) */
     /* default is "on" for types which don't use it */
-    bareobj.known = ((obj.oclass === AMULET_CLASS ? obj.known | 0 : !objects[otyp].oc_uses_known ? 1 : 0) >>> 0) & 1;
+    bareobj.known = (obj.oclass === AMULET_CLASS ? obj.known : !objects[otyp].oc_uses_known ? 1 : 0) & 1;
     bareobj.quan = 1;   /* don't want plural */
     /* for a boulder, leave corpsenm as 0; non-zero produces "next boulder" */
     if (otyp !== BOULDER) {
@@ -1131,7 +1127,7 @@ async function minimal_xname(obj) {   // objnam.c:1038
     if (obj.otyp === SLIME_MOLD) {
         bareobj.spe = obj.spe;
     }
-    bufp = await distant_name(bareobj, xname);
+    let bufp = await distant_name(bareobj, xname);
     /* undo forced setting of bareobj.blessed for cleric (priest[ess]);
        bufp is an obuf[] so a pointer into the middle of that is viable */
     if (!$c.strncmp(bufp, $c.lit("uncursed "), 9)) {
@@ -1147,8 +1143,8 @@ async function minimal_xname(obj) {   // objnam.c:1038
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function mshot_xname(obj) {   // objnam.c:1090
-    let tmpbuf = new Int8Array(256), onm = null;
-    onm = await xname(obj);
+    let tmpbuf = new Int8Array(256);
+    let onm = await xname(obj);
     if (gm.m_shot.n > 1 && gm.m_shot.o === obj.otyp) {
         /* "the Nth arrow"; value will eventually be passed to an() or
            The(), both of which correctly handle this "the " prefix */
@@ -1163,14 +1159,13 @@ export async function mshot_xname(obj) {   // objnam.c:1090
  * @returns {number} boolean
  */
 export function the_unique_obj(obj) {   // objnam.c:1106
-    let known = 0;
-    known = $c.i8(obj.known | 0 || iflags.override_ID ? 1 : 0);
+    const known = obj.known || iflags.override_ID ? 1 : 0;
     if (!obj.dknown && !iflags.override_ID) {
         return FALSE;
     } else if (obj.otyp === FAKE_AMULET_OF_YENDOR && !known) {
         return TRUE;   /* lie */
     } else {
-        return $c.i8(objects[obj.otyp].oc_unique | 0 && (known || obj.otyp === AMULET_OF_YENDOR) ? 1 : 0);
+        return objects[obj.otyp].oc_unique && (known || obj.otyp === AMULET_OF_YENDOR) ? 1 : 0;
     }
 }
 /* should monster type be prefixed with "the"? (mostly used for corpses) */
@@ -1179,21 +1174,20 @@ export function the_unique_obj(obj) {   // objnam.c:1106
  * @returns {number} boolean
  */
 export function the_unique_pm(ptr) {   // objnam.c:1121
-    let uniq = 0;
     /* even though monsters with personal names are unique, we want to
        describe them as "Name" rather than "the Name" */
     if (type_is_pname(ptr)) {
         return FALSE;
     }
-    uniq = $c.i8(ptr.geno & G_UNIQ ? TRUE : FALSE);
+    let uniq = ptr.geno & G_UNIQ ? TRUE : FALSE;
     /* high priest is unique if it includes "of <deity>", otherwise not
        (caller needs to handle the 1st possibility; we assume the 2nd);
        worm tail should be irrelevant but is included for completeness */
-    if ($c.peq(ptr, $c.relem(mons, PM.HIGH_CLERIC)) || $c.peq(ptr, $c.relem(mons, PM.LONG_WORM_TAIL))) {
+    if (ptr === mons[PM.HIGH_CLERIC] || ptr === mons[PM.LONG_WORM_TAIL]) {
         uniq = FALSE;
     }
     /* Wizard no longer needs this; he's flagged as unique these days */
-    if ($c.peq(ptr, $c.relem(mons, PM.WIZARD_OF_YENDOR))) {
+    if (ptr === mons[PM.WIZARD_OF_YENDOR]) {
         uniq = TRUE;
     }
     return uniq;
@@ -1203,17 +1197,16 @@ export function the_unique_pm(ptr) {   // objnam.c:1121
  * @param {$c.Ptr | null} prefix char *
  */
 function add_erosion_words(obj, prefix) {   // objnam.c:1143
-    let iscrys = 0, rknown = 0;
-    iscrys = $c.i8(obj.otyp === CRYSKNIFE ? 1 : 0);
-    rknown = $c.i8(iflags.override_ID === 0 ? obj.rknown | 0 : TRUE);
+    const iscrys = obj.otyp === CRYSKNIFE ? 1 : 0;
+    const rknown = iflags.override_ID === 0 ? obj.rknown : TRUE;
     if (!is_damageable(obj) && !iscrys) {
         return;
     }
     /* The only cases where any of these bits do double duty are for
      * rotted food and diluted potions, which are all not is_damageable().
      */
-    if (obj.oeroded | 0 && !iscrys) {
-        switch (obj.oeroded | 0) {
+    if (obj.oeroded && !iscrys) {
+        switch (obj.oeroded) {
             case 2:
                 $c.strcat(prefix, $c.lit("very "));
                 break;
@@ -1221,10 +1214,10 @@ function add_erosion_words(obj, prefix) {   // objnam.c:1143
                 $c.strcat(prefix, $c.lit("thoroughly "));
                 break;
         }
-        $c.strcat(prefix, (objects[obj.otyp].oc_material | 0) === IRON ? $c.lit("rusty ") : (objects[obj.otyp].oc_material | 0) === GLASS && obj.oclass === ARMOR_CLASS ? $c.lit("cracked ") : $c.lit("burnt "));
+        $c.strcat(prefix, objects[obj.otyp].oc_material === IRON ? $c.lit("rusty ") : objects[obj.otyp].oc_material === GLASS && obj.oclass === ARMOR_CLASS ? $c.lit("cracked ") : $c.lit("burnt "));
     }
-    if (obj.oeroded2 | 0 && !iscrys) {
-        switch (obj.oeroded2 | 0) {
+    if (obj.oeroded2 && !iscrys) {
+        switch (obj.oeroded2) {
             case 2:
                 $c.strcat(prefix, $c.lit("very "));
                 break;
@@ -1232,13 +1225,13 @@ function add_erosion_words(obj, prefix) {   // objnam.c:1143
                 $c.strcat(prefix, $c.lit("thoroughly "));
                 break;
         }
-        $c.strcat(prefix, (objects[obj.otyp].oc_material | 0) === COPPER || (objects[obj.otyp].oc_material | 0) === IRON ? $c.lit("corroded ") : $c.lit("rotted "));
+        $c.strcat(prefix, objects[obj.otyp].oc_material === COPPER || objects[obj.otyp].oc_material === IRON ? $c.lit("corroded ") : $c.lit("rotted "));
     }
     /* note: it is possible for an item to be both eroded and erodeproof
        (cursed scroll of destroy armor read while confused erodeproofs an
        item of armor without repairing existing erosion) */
-    if (rknown && obj.oerodeproof | 0) {
-        $c.strcat(prefix, iscrys ? $c.lit("fixed ") : (objects[obj.otyp].oc_material | 0) === IRON ? $c.lit("rustproof ") : (objects[obj.otyp].oc_material | 0) === COPPER || (objects[obj.otyp].oc_material | 0) === IRON ? $c.lit("corrodeproof ") : is_flammable(obj) ? $c.lit("fireproof ") : (objects[obj.otyp].oc_material | 0) === GLASS && obj.oclass === ARMOR_CLASS ? $c.lit("tempered ") : is_rottable(obj) ? $c.lit("rotproof ") : $c.lit(""));
+    if (rknown && obj.oerodeproof) {
+        $c.strcat(prefix, iscrys ? $c.lit("fixed ") : objects[obj.otyp].oc_material === IRON ? $c.lit("rustproof ") : objects[obj.otyp].oc_material === COPPER || objects[obj.otyp].oc_material === IRON ? $c.lit("corrodeproof ") : is_flammable(obj) ? $c.lit("fireproof ") : objects[obj.otyp].oc_material === GLASS && obj.oclass === ARMOR_CLASS ? $c.lit("tempered ") : is_rottable(obj) ? $c.lit("rotproof ") : $c.lit(""));
     }
     /* hardened */
 }
@@ -1256,7 +1249,7 @@ export function erosion_matters(obj) {   // objnam.c:1195
                non-iron tool, in which case rust also implicitly goes away,
                so there's no particular reason to try to handle the first
                instance differently [this comment belongs in poly_obj()...] */
-            return $c.i8(is_weptool(obj) ? TRUE : FALSE);
+            return is_weptool(obj) ? TRUE : FALSE;
         case WEAPON_CLASS:
         case ARMOR_CLASS:
         case BALL_CLASS:
@@ -1279,9 +1272,9 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
     /* object to format */
     /* special case requests */
     ispoisoned = FALSE;
-    with_price = $c.i8((doname_flags & DONAME_WITH_PRICE) >>> 0 !== 0 ? 1 : 0);
-    vague_quan = $c.i8((doname_flags & DONAME_VAGUE_QUAN) >>> 0 !== 0 ? 1 : 0);
-    for_menu = $c.i8((doname_flags & DONAME_FOR_MENU) >>> 0 !== 0 ? 1 : 0);
+    with_price = (doname_flags & DONAME_WITH_PRICE) >>> 0 !== 0 ? 1 : 0;
+    vague_quan = (doname_flags & DONAME_VAGUE_QUAN) >>> 0 !== 0 ? 1 : 0;
+    for_menu = (doname_flags & DONAME_FOR_MENU) >>> 0 !== 0 ? 1 : 0;
     /* for when we have to add something at
      * the start of prefix instead of the
      * end (Strcat is used on the end) */
@@ -1300,11 +1293,11 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
     if (iflags.override_ID) {
         known = dknown = cknown = bknown = lknown = TRUE;
     } else {
-        known = $c.i8(obj.known);
-        dknown = $c.i8(obj.dknown);
-        cknown = $c.i8(obj.cknown);
-        bknown = $c.i8(obj.bknown);
-        lknown = $c.i8(obj.lknown);
+        known = obj.known;
+        dknown = obj.dknown;
+        cknown = obj.cknown;
+        bknown = obj.bknown;
+        lknown = obj.lknown;
     }
     /* When using xname, we want "poisoned arrow", and when using
      * doname, we want "poisoned +0 arrow".  This kludge is about the only
@@ -1312,15 +1305,15 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
      * combining both into one function taking a parameter.
      */
     /* must check opoisoned--someone can have a weirdly-named fruit */
-    if (!$c.strncmp(bp, $c.lit("poisoned "), 9) && obj.otrapped | 0) {
+    if (!$c.strncmp(bp, $c.lit("poisoned "), 9) && obj.otrapped) {
         bp = bp.add(9);   /* doesn't affect bp_eos or bpspaceleft */
         ispoisoned = TRUE;
     }
     /* fruits are allowed to be given artifact names; when that happens,
        format the name like the corresponding artifact, which may or may not
        want "the" prefix and when it doesn't, avoid "a"/"an" prefix too */
-    fake_arti = $c.i8(obj.otyp === SLIME_MOLD && (aname = artifact_name(bp, null, FALSE)) !== null ? 1 : 0);
-    force_the = $c.i8(fake_arti && !strncmpi(aname, $c.lit("the "), 4) ? 1 : 0);
+    fake_arti = obj.otyp === SLIME_MOLD && (aname = artifact_name(bp, null, FALSE)) !== null ? 1 : 0;
+    force_the = fake_arti && !strncmpi(aname, $c.lit("the "), 4) ? 1 : 0;
     prefix[0] = 0;
     if (obj.quan !== 1) {
         if (dknown || !vague_quan) {
@@ -1380,7 +1373,7 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
        yield "a non-trapped large box"? (not "an untrapped large box");
        TODO: this should be ``(Is_box(obj) || obj->otyp == TIN) && ...''
        but at present there's no way to set obj->tknown for tins */
-    if (Is_box(obj) && obj.otrapped | 0 && obj.tknown | 0 && obj.dknown | 0) {
+    if (Is_box(obj) && obj.otrapped && obj.tknown && obj.dknown) {
         $c.strcat(new $c.Ptr(prefix, 0), $c.lit("trapped "));
     }
     if (lknown && Is_box(obj)) {
@@ -1447,7 +1440,7 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
                         /* there could be light-emitting artifact gloves someday,
                            so add 'lit' separately from 'slippery' rather than via
                            'else if' after uarmg+Glib */
-                        if (!Blind() && obj.lamplit | 0 && artifact_light(obj)) {
+                        if (!Blind() && obj.lamplit && artifact_light(obj)) {
                             do {
                                 nh_snprintf($c.lit("doname_base"), 1413, bp_eos[0].add(-1), $c.addu64(bpspaceleft, 1), $c.lit(", %s lit)"), arti_light_description(obj));
                                 bp_eos[0] = eos(bp), bpspaceleft = $c.u64($c.pdiff(bp_end, bp_eos[0]));
@@ -1536,13 +1529,13 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
                 $goto = null;   // charges:
                 if (known) {
                     do {
-                        nh_snprintf($c.lit("doname_base"), 1486, bp_eos[0].add(-0), $c.addu64(bpspaceleft, 0), $c.lit(" (%d:%d)"), obj.recharged | 0, obj.spe);
+                        nh_snprintf($c.lit("doname_base"), 1486, bp_eos[0].add(-0), $c.addu64(bpspaceleft, 0), $c.lit(" (%d:%d)"), obj.recharged, obj.spe);
                         bp_eos[0] = eos(bp), bpspaceleft = $c.u64($c.pdiff(bp_end, bp_eos[0]));
                     } while (0);
                 }
                 break;
             case POTION_CLASS:
-                if (obj.otyp === POT_OIL && obj.lamplit | 0) {
+                if (obj.otyp === POT_OIL && obj.lamplit) {
                     do {
                         $c.strncat(bp_eos[0].add(-0), $c.lit(" (lit)"), $c.addu64(bpspaceleft, 0));
                         bp_eos[0] = eos(bp), bpspaceleft = $c.u64($c.pdiff(bp_end, bp_eos[0]));
@@ -1571,7 +1564,7 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
                         bp_eos[0] = eos(bp), bpspaceleft = $c.u64($c.pdiff(bp_end, bp_eos[0]));
                     } while (0);
                 }
-                if (known && objects[obj.otyp].oc_charged | 0) {
+                if (known && objects[obj.otyp].oc_charged) {
                     $c.sprintf(eos(new $c.Ptr(prefix, 0)), $c.lit("%+d "), obj.spe);   /* sitoa(obj->spe)+" " */
                 }
                 break;
@@ -1583,7 +1576,7 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
                     /* (quan == 1) => want corpse_xname() to supply article,
                        (quan != 1) => already have count or "some" as prefix;
                        "corpse" is already in the buffer returned by xname() */
-                    cxarg = ((obj.quan !== 1 ? 0 : CXN.ARTICLE) | CXN.NOCORPSE) >>> 0;
+                    cxarg = (obj.quan !== 1 ? 0 : CXN.ARTICLE) | CXN.NOCORPSE;
                     /* corpse_xname() sets xnamep; callers other than doname_base()
                        itself shouldn't care about xnamep (pointer to start of
                        current obuf[]) but keep it accurate anyway */
@@ -1631,8 +1624,8 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
         } while (0);
     }
     if ($c.and64(obj.owornmask, W.WEP) && !gm.mrg_to_wielded) {
-        twoweap_primary = $c.i8($c.peq(obj, $G.uwep) && u.twoweap ? 1 : 0);
-        tethered = $c.i8(obj.otyp === AKLYS ? 1 : 0);
+        twoweap_primary = $c.peq(obj, $G.uwep) && u.twoweap ? 1 : 0;
+        tethered = obj.otyp === AKLYS ? 1 : 0;
         /* use alternate phrasing for non-weapons and for wielded ammo
            (arrows, bolts), or missiles (darts, shuriken, boomerangs)
            except when those are being actively dual-wielded where the
@@ -1651,7 +1644,7 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
                 releaseobuf(obufp);
             } else {
                 /* "right hand" or "left hand" */
-                $c.sprintf(new $c.Ptr(handsbuf, 0), $c.lit("%s %s"), (u.uhandedness | 0) === RIGHT_HANDED ? $c.lit("right") : $c.lit("left"), hand_s);
+                $c.sprintf(new $c.Ptr(handsbuf, 0), $c.lit("%s %s"), u.uhandedness === RIGHT_HANDED ? $c.lit("right") : $c.lit("left"), hand_s);
                 hand_s = new $c.Ptr(handsbuf, 0);
             }
             /* note: Sting's glow message, if added, will insert text
@@ -1668,7 +1661,7 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
                         nh_snprintf($c.lit("doname_base"), 1605, bp_eos[0].add(-1), $c.addu64(bpspaceleft, 1), $c.lit(", %s %s)"), glow_verb(gw.warn_obj_cnt, TRUE), glow_color(obj.oartifact));
                         bp_eos[0] = eos(bp), bpspaceleft = $c.u64($c.pdiff(bp_end, bp_eos[0]));
                     } while (0);
-                } else if (obj.lamplit | 0 && artifact_light(obj)) {   /* as above, overwrite known closing paren */
+                } else if (obj.lamplit && artifact_light(obj)) {   /* as above, overwrite known closing paren */
                     do {
                         nh_snprintf($c.lit("doname_base"), 1609, bp_eos[0].add(-1), $c.addu64(bpspaceleft, 1), $c.lit(", %s lit)"), arti_light_description(obj));
                         bp_eos[0] = eos(bp), bpspaceleft = $c.u64($c.pdiff(bp_end, bp_eos[0]));
@@ -1680,7 +1673,7 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
     if ($c.and64(obj.owornmask, W.SWAPWEP)) {
         if (u.twoweap) {
             do {
-                nh_snprintf($c.lit("doname_base"), 1616, bp_eos[0].add(-0), $c.addu64(bpspaceleft, 0), $c.lit(" (wielded in %s %s)"), (u.uhandedness | 0) === RIGHT_HANDED ? $c.lit("left") : $c.lit("right"), await body_part(HAND));
+                nh_snprintf($c.lit("doname_base"), 1616, bp_eos[0].add(-0), $c.addu64(bpspaceleft, 0), $c.lit(" (wielded in %s %s)"), u.uhandedness === RIGHT_HANDED ? $c.lit("left") : $c.lit("right"), await body_part(HAND));
                 bp_eos[0] = eos(bp), bpspaceleft = $c.u64($c.pdiff(bp_end, bp_eos[0]));
             } while (0);
         } else {
@@ -1727,7 +1720,7 @@ async function doname_base(obj, doname_flags) {   // objnam.c:1223
         /* separately formatted suffix avoids need for ConcatF3() */
         $c.sprintf(new $c.Ptr(pricebuf, 0), $c.lit("%ld %s"), quotedprice, await currency(quotedprice));
         do {
-            nh_snprintf($c.lit("doname_base"), 1661, bp_eos[0].add(-0), $c.addu64(bpspaceleft, 0), $c.lit(" (%s, %s)"), obj.unpaid | 0 ? $c.lit("unpaid") : $c.lit("contents"), new $c.Ptr(pricebuf, 0));
+            nh_snprintf($c.lit("doname_base"), 1661, bp_eos[0].add(-0), $c.addu64(bpspaceleft, 0), $c.lit(" (%s, %s)"), obj.unpaid ? $c.lit("unpaid") : $c.lit("contents"), new $c.Ptr(pricebuf, 0));
             bp_eos[0] = eos(bp), bpspaceleft = $c.u64($c.pdiff(bp_end, bp_eos[0]));
         } while (0);
         record_price_quote(obj.otyp, $c.u64($c.div64(quotedprice, obj.quan)), TRUE);
@@ -1872,7 +1865,7 @@ export function not_fully_identified(otmp) {   // objnam.c:1787
     if (!otmp.cknown && (Is_container(otmp) || otmp.otyp === STATUE) || !otmp.lknown && Is_box(otmp)) {
         return TRUE;
     }
-    if (otmp.oartifact && undiscovered_artifact($c.i16(otmp.oartifact))) {
+    if (otmp.oartifact && undiscovered_artifact(otmp.oartifact)) {
         return TRUE;
     }
     /* otmp->rknown is the only item of interest if we reach here */
@@ -1882,11 +1875,11 @@ export function not_fully_identified(otmp) {   // objnam.c:1787
      *  `rknown' ID only matters if xname() will provide the info about it.
      */
     /* (redundant) */
-    if (otmp.rknown | 0 || otmp.oclass !== ARMOR_CLASS && otmp.oclass !== WEAPON_CLASS && !is_weptool(otmp) && otmp.oclass !== BALL_CLASS) {   /* (useless) */
+    if (otmp.rknown || otmp.oclass !== ARMOR_CLASS && otmp.oclass !== WEAPON_CLASS && !is_weptool(otmp) && otmp.oclass !== BALL_CLASS) {   /* (useless) */
         return FALSE;
     } else {
         /* lack of `rknown' only matters for vulnerable objects */
-        return $c.i8(is_damageable(otmp));
+        return is_damageable(otmp);
     }
 }
 /* format a corpse name (xname() omits monster type; doname() calls us);
@@ -1898,23 +1891,23 @@ export function not_fully_identified(otmp) {   // objnam.c:1787
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function corpse_xname(otmp, adjective, cxn_flags) {   // objnam.c:1824
-    let nambuf = null, omndx = 0, ignore_quan = 0, no_prefix = 0, the_prefix = 0, any_prefix = 0, omit_corpse = 0, possessive = 0, glob = 0, mnam = null, obufp = null, $t1;
+    let mnam = null, obufp = null, $t1;
     /* bitmask of CXN_xxx values */
-    omndx = otmp.corpsenm;
+    const omndx = otmp.corpsenm;
     /* suppress "the" from "the unique monster corpse" */
     /* include "the" for "the woodchuck corpse */
     /* include "an" for "an ogre corpse */
     /* leave off suffix (do_name() appends "corpse" itself) */
-    ignore_quan = $c.i8((cxn_flags & CXN.SINGULAR) >>> 0 !== 0 ? 1 : 0);
-    no_prefix = $c.i8((cxn_flags & CXN.NO_PFX) >>> 0 !== 0 ? 1 : 0);
-    the_prefix = $c.i8((cxn_flags & CXN.PFX_THE) >>> 0 !== 0 ? 1 : 0);
-    any_prefix = $c.i8((cxn_flags & CXN.ARTICLE) >>> 0 !== 0 ? 1 : 0);
-    omit_corpse = $c.i8((cxn_flags & CXN.NOCORPSE) >>> 0 !== 0 ? 1 : 0);
-    possessive = FALSE;
-    glob = $c.i8(otmp.otyp !== CORPSE && otmp.globby | 0 ? 1 : 0);
+    const ignore_quan = (cxn_flags & CXN.SINGULAR) >>> 0 !== 0 ? 1 : 0;
+    let no_prefix = (cxn_flags & CXN.NO_PFX) >>> 0 !== 0 ? 1 : 0;
+    let the_prefix = (cxn_flags & CXN.PFX_THE) >>> 0 !== 0 ? 1 : 0;
+    let any_prefix = (cxn_flags & CXN.ARTICLE) >>> 0 !== 0 ? 1 : 0;
+    const omit_corpse = (cxn_flags & CXN.NOCORPSE) >>> 0 !== 0 ? 1 : 0;
+    let possessive = FALSE;
+    const glob = otmp.otyp !== CORPSE && otmp.globby ? 1 : 0;
     /* some callers [aobjnam()] rely on prefix area that xname() sets aside */
     $t1 = nextobuf(), gx.xnamep = $t1;
-    nambuf = gx.xnamep.add(PREFIX);
+    const nambuf = gx.xnamep.add(PREFIX);
     if (glob) {
         mnam = obj_descr[objects[otmp.otyp].oc_name_idx].oc_name;   /* "glob of <monster>" */
     } else if (omndx === NON_PM) {
@@ -2017,8 +2010,8 @@ export async function cxname_singular(obj) {   // objnam.c:1933
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function killer_xname(obj) {   // objnam.c:1942
-    let save_obj = new $T.obj(), save_ocknown = 0, buf = null, save_ocuname = null, save_oname = null, $t1, $t2, $t3, $t4;
-    save_oname = null;
+    let save_obj = new $T.obj(), buf = null, $t1, $t2, $t3, $t4;
+    let save_oname = null;
     /* bypass object twiddling for artifacts */
     if (obj.oartifact) {
         return await bare_artifactname(obj);
@@ -2033,26 +2026,26 @@ export async function killer_xname(obj) {   // objnam.c:1942
     /* killer name should be more specific than general xname; however, exact
        info like blessed/cursed and rustproof makes things be too verbose; set
        dknown (not observe_object) because dead characters don't observe */
-    $t1 = obj.dknown = (1) & 1, obj.known = ($t1) & 1;
-    $t3 = ($t2 = obj.greased = (0) & 1, obj.rknown = ($t2) & 1), obj.bknown = ($t3) & 1;
+    $t1 = obj.dknown = 1, obj.known = ($t1) & 1;
+    $t3 = ($t2 = obj.greased = 0, obj.rknown = ($t2) & 1), obj.bknown = ($t3) & 1;
     /* if character is a priest[ess], bknown will get toggled back on */
     if (obj.otyp !== POT_WATER) {
-        $t4 = obj.cursed = (0) & 1, obj.blessed = ($t4) & 1;
+        $t4 = obj.cursed = 0, obj.blessed = ($t4) & 1;
     } else {
-        obj.bknown = (1) & 1;   /* describe holy/unholy water as such */
+        obj.bknown = 1;   /* describe holy/unholy water as such */
     }
     /* "killed by poisoned <obj>" would be misleading when poison is
        not the cause of death and "poisoned by poisoned <obj>" would
        be redundant when it is, so suppress "poisoned" prefix */
-    obj.otrapped = (0) & 1;
+    obj.otrapped = 0;
     /* strip user-supplied name; artifacts keep theirs */
     if (!obj.oartifact && save_oname) {
         obj.oextra.oname = null;
     }
     /* temporarily identify the type of object */
-    save_ocknown = objects[obj.otyp].oc_name_known;
-    objects[obj.otyp].oc_name_known = (1) & 1;
-    save_ocuname = objects[obj.otyp].oc_uname;
+    const save_ocknown = objects[obj.otyp].oc_name_known;
+    objects[obj.otyp].oc_name_known = 1;
+    const save_ocuname = objects[obj.otyp].oc_uname;
     objects[obj.otyp].oc_uname = null;   /* avoid "foo called bar" */
     /* format the object */
     if (obj.otyp === CORPSE) {
@@ -2087,15 +2080,15 @@ export async function killer_xname(obj) {   // objnam.c:1942
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function short_oname(obj, func, altfunc, lenlimit) {   // objnam.c:2009
-    let save_obj = new $T.obj(), unamebuf = new Int8Array(12), onamebuf = new Int8Array(12), save_oname = null, save_uname = null, outbuf = null, $t1, $t2, $t3;
+    let save_obj = new $T.obj(), unamebuf = new Int8Array(12), onamebuf = new Int8Array(12), $t1, $t2, $t3;
     /* main formatting routine */
     /* alternate for shortest result */
-    outbuf = await func(obj);
+    let outbuf = await func(obj);
     if ($c.u32($c.strlen(outbuf)) <= lenlimit) {
         return outbuf;
     }
     /* shorten called string to fairly small amount */
-    save_uname = objects[obj.otyp].oc_uname;
+    const save_uname = objects[obj.otyp].oc_uname;
     if (save_uname && $c.strlen(save_uname) >= 12) {
         $c.strncpy(new $c.Ptr(unamebuf, 0), save_uname, 8);
         $c.strcpy(new $c.Ptr(unamebuf, 0).add($c.idx(12)).add(-4), $c.lit("..."));
@@ -2108,7 +2101,7 @@ export async function short_oname(obj, func, altfunc, lenlimit) {   // objnam.c:
         }
     }
     /* shorten named string to fairly small amount */
-    save_oname = has_oname(obj) ? obj.oextra.oname : null;
+    const save_oname = has_oname(obj) ? obj.oextra.oname : null;
     if (save_oname && $c.strlen(save_oname) >= 12) {
         $c.strncpy(new $c.Ptr(onamebuf, 0), save_oname, 8);
         $c.strcpy(new $c.Ptr(onamebuf, 0).add($c.idx(12)).add(-4), $c.lit("..."));
@@ -2136,8 +2129,8 @@ export async function short_oname(obj, func, altfunc, lenlimit) {   // objnam.c:
     /* still long; strip several name-lengthening attributes;
        called and named strings are still in truncated form */
     save_obj.$copyFrom(obj);
-    $t2 = ($t1 = obj.greased = (0) & 1, obj.rknown = ($t1) & 1), obj.bknown = ($t2) & 1;
-    $t3 = obj.oeroded2 = (0) & 3, obj.oeroded = ($t3) & 3;
+    $t2 = ($t1 = obj.greased = 0, obj.rknown = ($t1) & 1), obj.bknown = ($t2) & 1;
+    $t3 = obj.oeroded2 = 0, obj.oeroded = ($t3) & 3;
     releaseobuf(outbuf);
     outbuf = await func(obj);
     if (altfunc && $c.u32($c.strlen(outbuf)) > lenlimit) {
@@ -2166,14 +2159,13 @@ export async function short_oname(obj, func, altfunc, lenlimit) {   // objnam.c:
  * @returns {Promise<$c.Ptr | null>} const char *
  */
 export async function singular(otmp, func) {   // objnam.c:2091
-    let savequan = 0, nam = null;
     /* using xname for corpses does not give the monster type */
     if (otmp.otyp === CORPSE && func === xname) {
         func = cxname;
     }
-    savequan = otmp.quan;
+    const savequan = otmp.quan;
     otmp.quan = 1;
-    nam = await func(otmp);
+    const nam = await func(otmp);
     otmp.quan = savequan;
     return nam;
 }
@@ -2184,9 +2176,8 @@ export async function singular(otmp, func) {   // objnam.c:2091
  * @returns {$c.Ptr | null} char *
  */
 export function just_an(outbuf, str) {   // objnam.c:2109
-    let c0 = 0;
     outbuf.set(0, 0);
-    c0 = lowc(str.get(0));
+    const c0 = lowc(str.get(0));
     if (!str.get(1) || str.get(1) === 32) {
         /* single letter; might be used for named fruit or a musical note */
         $c.strcpy(outbuf, $c.strchr($c.lit("aefhilmnosx"), c0) ? $c.lit("an ") : $c.lit("a "));
@@ -2214,8 +2205,7 @@ export function just_an(outbuf, str) {   // objnam.c:2109
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function an(str) {   // objnam.c:2145
-    let buf = null;
-    buf = nextobuf();
+    const buf = nextobuf();
     if (!str || !str.get(0)) {
         await impossible($c.lit("Alphabet soup: 'an(%s)'."), str ? $c.lit("\"\"") : $c.lit("<null>"));
         return $c.strcpy(buf, $c.lit("an []"));
@@ -2228,8 +2218,8 @@ export async function an(str) {   // objnam.c:2145
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function An(str) {   // objnam.c:2158
-    let tmp = null, $t1;
-    tmp = await an(str);
+    let $t1;
+    const tmp = await an(str);
     $t1 = highc(tmp.get(0)), tmp.set(0, $t1);
     return tmp;
 }
@@ -2242,9 +2232,9 @@ export async function An(str) {   // objnam.c:2158
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function the(str) {   // objnam.c:2171
-    let aname = null, buf = null, insert_the = 0, named = null, called = null, tmp = null, l = 0, $t1;
-    buf = nextobuf();
-    insert_the = FALSE;
+    let aname = null, tmp = null, l = 0, $t1;
+    const buf = nextobuf();
+    let insert_the = FALSE;
     if (!str || !str.get(0)) {
         await impossible($c.lit("Alphabet soup: 'the(%s)'."), str ? $c.lit("\"\"") : $c.lit("<null>"));
         return $c.strcpy(buf, $c.lit("the []"));
@@ -2267,13 +2257,13 @@ export async function the(str) {   // objnam.c:2171
             /* insert "the" unless we have an apostrophe (where we assume
                we're dealing with "Unique's corpse" when "Unique" wasn't
                caught by CapitalMon() above) */
-            insert_the = $c.i8(!$c.strchr(str, 39) ? 1 : 0);
+            insert_the = !$c.strchr(str, 39) ? 1 : 0;
         } else if (tmp && $c.pcmp($c.strchr(str, 32), tmp) < 0) {
             /* has spaces */
             /* it needs an article if the name contains "of" */
             tmp = strstri(str, $c.lit(" of "));
-            named = strstri(str, $c.lit(" named "));
-            called = strstri(str, $c.lit(" called "));
+            let named = strstri(str, $c.lit(" named "));
+            const called = strstri(str, $c.lit(" called "));
             if (called && (!named || $c.pcmp(called, named) < 0)) {
                 named = called;
             }
@@ -2297,8 +2287,8 @@ export async function the(str) {   // objnam.c:2171
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function The(str) {   // objnam.c:2234
-    let tmp = null, $t1;
-    tmp = await the(str);
+    let $t1;
+    const tmp = await the(str);
     $t1 = highc(tmp.get(0)), tmp.set(0, $t1);
     return tmp;
 }
@@ -2309,8 +2299,8 @@ export async function The(str) {   // objnam.c:2234
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function aobjnam(otmp, verb) {   // objnam.c:2244
-    let prefix = new Int8Array(80), bp = null;
-    bp = await cxname(otmp);
+    let prefix = new Int8Array(80);
+    let bp = await cxname(otmp);
     if (otmp.quan !== 1) {
         $c.sprintf(new $c.Ptr(prefix, 0), $c.lit("%ld "), otmp.quan);
         bp = await strprepend(bp, new $c.Ptr(prefix, 0));
@@ -2328,13 +2318,12 @@ export async function aobjnam(otmp, verb) {   // objnam.c:2244
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function yobjnam(obj, verb) {   // objnam.c:2262
-    let s = null, outbuf = null, space_left = 0;
-    s = await aobjnam(obj, verb);
+    let s = await aobjnam(obj, verb);
     /* leave off "your" for most of your artifacts, but prepend
      * "your" for unique objects and "foo of bar" quest artifacts */
     if (!carried(obj) || !obj_is_pname(obj) || obj.oartifact >= ART.ORB_OF_DETECTION) {
-        outbuf = await shk_your(nextobuf(), obj);
-        space_left = BUFSZ - 1 - await Strlen_(outbuf, $c.lit("yobjnam"), 2271) >>> 0 | 0;
+        const outbuf = await shk_your(nextobuf(), obj);
+        const space_left = BUFSZ - 1 - await Strlen_(outbuf, $c.lit("yobjnam"), 2271) >>> 0 | 0;
         s = $c.strncat(outbuf, s, $c.u64(space_left));
     }
     return s;
@@ -2346,8 +2335,8 @@ export async function yobjnam(obj, verb) {   // objnam.c:2262
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function Yobjnam2(obj, verb) {   // objnam.c:2280
-    let s = null, $t1;
-    s = await yobjnam(obj, verb);
+    let $t1;
+    const s = await yobjnam(obj, verb);
     $t1 = highc(s.get(0)), s.set(0, $t1);
     return s;
 }
@@ -2358,8 +2347,7 @@ export async function Yobjnam2(obj, verb) {   // objnam.c:2280
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function Tobjnam(otmp, verb) {   // objnam.c:2290
-    let bp = null;
-    bp = await The(await xname(otmp));
+    const bp = await The(await xname(otmp));
     if (verb) {
         $c.strcat(bp, $c.lit(" "));
         $c.strcat(bp, await otense(otmp, verb));
@@ -2372,8 +2360,8 @@ export async function Tobjnam(otmp, verb) {   // objnam.c:2290
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function Doname2(obj) {   // objnam.c:2303
-    let s = null, $t1;
-    s = await doname(obj);
+    let $t1;
+    const s = await doname(obj);
     $t1 = highc(s.get(0)), s.set(0, $t1);
     return s;
 }
@@ -2383,17 +2371,16 @@ export async function Doname2(obj) {   // objnam.c:2303
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function paydoname(obj) {   // objnam.c:2313
-    let p = null, save_cknown = 0, save_wizweight = 0;
-    save_cknown = obj.cknown;
-    save_wizweight = iflags.wizweight;
+    const save_cknown = obj.cknown;
+    const save_wizweight = iflags.wizweight;
     if (Has_contents(obj)) {
-        obj.cknown = (0) & 1;
+        obj.cknown = 0;
     }
     /* avoid showing item weights to unclutter billing's pay-menu a bit */
     iflags.wizweight = FALSE;
     /* suppress invent-style price; caller will add billing-style price */
     iflags.suppress_price = iflags.suppress_price + 1 | 0;
-    p = await doname_base(obj, 0);
+    let p = await doname_base(obj, 0);
     iflags.suppress_price = iflags.suppress_price - 1 | 0;
     iflags.wizweight = save_wizweight;
     if (Has_contents(obj)) {
@@ -2407,7 +2394,7 @@ export async function paydoname(obj) {   // objnam.c:2313
             } else if (!$c.strncmp(p, $c.lit("an "), 3)) {
                 p = p.add(3);
             }
-            p = await strprepend(p, obj.unpaid | 0 ? $c.lit("an unpaid ") : $c.lit("your "));
+            p = await strprepend(p, obj.unpaid ? $c.lit("an unpaid ") : $c.lit("your "));
         }
         if (!obj.cknown) {
             if (obj.unpaid) {
@@ -2428,13 +2415,12 @@ export async function paydoname(obj) {   // objnam.c:2313
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function yname(obj) {   // objnam.c:2359
-    let s = null, outbuf = null, space_left = 0;
-    s = await cxname(obj);
+    let s = await cxname(obj);
     /* leave off "your" for most of your artifacts, but prepend
      * "your" for unique objects and "foo of bar" quest artifacts */
     if (!carried(obj) || !obj_is_pname(obj) || obj.oartifact >= ART.ORB_OF_DETECTION) {
-        outbuf = await shk_your(nextobuf(), obj);
-        space_left = BUFSZ - 1 - await Strlen_(outbuf, $c.lit("yname"), 2368) >>> 0 | 0;
+        const outbuf = await shk_your(nextobuf(), obj);
+        const space_left = BUFSZ - 1 - await Strlen_(outbuf, $c.lit("yname"), 2368) >>> 0 | 0;
         s = $c.strncat(outbuf, s, $c.u64(space_left));
     }
     return s;
@@ -2445,8 +2431,8 @@ export async function yname(obj) {   // objnam.c:2359
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function Yname2(obj) {   // objnam.c:2378
-    let s = null, $t1;
-    s = await yname(obj);
+    let $t1;
+    const s = await yname(obj);
     $t1 = highc(s.get(0)), s.set(0, $t1);
     return s;
 }
@@ -2459,10 +2445,9 @@ export async function Yname2(obj) {   // objnam.c:2378
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function ysimple_name(obj) {   // objnam.c:2391
-    let outbuf = null, s = null, space_left = 0;
-    outbuf = nextobuf();
-    s = await shk_your(outbuf, obj);   /* assert( s == outbuf ); */
-    space_left = BUFSZ - 1 - await Strlen_(s, $c.lit("ysimple_name"), 2395) >>> 0 | 0;
+    const outbuf = nextobuf();
+    const s = await shk_your(outbuf, obj);   /* assert( s == outbuf ); */
+    const space_left = BUFSZ - 1 - await Strlen_(s, $c.lit("ysimple_name"), 2395) >>> 0 | 0;
     return $c.strncat(s, await minimal_xname(obj), $c.u64(space_left));
 }
 /* capitalized variant of ysimple_name() */
@@ -2471,8 +2456,8 @@ export async function ysimple_name(obj) {   // objnam.c:2391
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function Ysimple_name2(obj) {   // objnam.c:2402
-    let s = null, $t1;
-    s = await ysimple_name(obj);
+    let $t1;
+    const s = await ysimple_name(obj);
     $t1 = highc(s.get(0)), s.set(0, $t1);
     return s;
 }
@@ -2497,8 +2482,8 @@ export async function Ysimple_name2(obj) {   // objnam.c:2402
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function simpleonames(obj) {   // objnam.c:2428
-    let obufp = null, simpleoname = null;
-    simpleoname = await minimal_xname(obj);
+    let obufp = null;
+    const simpleoname = await minimal_xname(obj);
     if (obj.quan !== 1) {
         /* 'simpleoname' points to an obuf; makeplural() will allocate
            another one and only that one can be explicitly released for
@@ -2516,16 +2501,16 @@ export async function simpleonames(obj) {   // objnam.c:2428
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function ansimpleoname(obj) {   // objnam.c:2446
-    let obufp = null, simpleoname = null, otyp = 0;
-    simpleoname = await simpleonames(obj);
-    otyp = obj.otyp;
+    let obufp = null;
+    const simpleoname = await simpleonames(obj);
+    let otyp = obj.otyp;
     /* prefix with "the" if a unique item, or a fake one imitating same,
        has been formatted with its actual name (we let minimal_xname() handle
        any `known' and `dknown' checking necessary) */
     if (otyp === FAKE_AMULET_OF_YENDOR) {
         otyp = AMULET_OF_YENDOR;
     }
-    if (objects[otyp].oc_unique | 0 && obj_descr[objects[otyp].oc_name_idx].oc_name && !$c.strcmp(simpleoname, obj_descr[objects[otyp].oc_name_idx].oc_name)) {
+    if (objects[otyp].oc_unique && obj_descr[objects[otyp].oc_name_idx].oc_name && !$c.strcmp(simpleoname, obj_descr[objects[otyp].oc_name_idx].oc_name)) {
         /* the() will allocate another obuf[]; we want to avoid using two */
         obufp = await the(simpleoname);
         $c.strcpy(simpleoname, obufp);
@@ -2545,10 +2530,9 @@ export async function ansimpleoname(obj) {   // objnam.c:2446
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function thesimpleoname(obj) {   // objnam.c:2474
-    let obufp = null, simpleoname = null;
-    simpleoname = await simpleonames(obj);
+    const simpleoname = await simpleonames(obj);
     /* the() will allocate another obuf[]; we want to avoid using two */
-    obufp = await the(simpleoname);
+    const obufp = await the(simpleoname);
     $c.strcpy(simpleoname, obufp);
     releaseobuf(obufp);
     return simpleoname;
@@ -2562,9 +2546,8 @@ export async function thesimpleoname(obj) {   // objnam.c:2474
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function actualoname(obj) {   // objnam.c:2490
-    let res = null;
     iflags.override_ID = TRUE;
-    res = await minimal_xname(obj);
+    const res = await minimal_xname(obj);
     iflags.override_ID = FALSE;
     return res;
 }
@@ -2593,7 +2576,6 @@ export async function bare_artifactname(obj) {   // objnam.c:2502
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function otense(otmp, verb) {   // objnam.c:2531
-    let buf = null;
     /*
      * verb is given in plural (without trailing s).  Return as input
      * if the result of xname(otmp) would be plural.  Don't bother
@@ -2602,7 +2584,7 @@ export async function otense(otmp, verb) {   // objnam.c:2531
     if (!is_plural(otmp)) {
         return await vtense(null, verb);
     }
-    buf = nextobuf();
+    const buf = nextobuf();
     $c.strcpy(buf, verb);
     return buf;
 }
@@ -2699,11 +2681,11 @@ export async function vtense(subj, verb) {   // objnam.c:2563
  * @returns {Promise<number>} boolean
  */
 async function singplur_lookup(basestr, endstring, to_plural, alt_as_is) {   // objnam.c:2708
-    let sp = null, same = null, other = null, as = null, al = 0, baselen = 0;
+    let sp = null, as = null, al = 0;
     /* base string, pointer to eos(string) */
     /* true => makeplural, false => makesingular */
     /* another set like as_is[] */
-    baselen = await Strlen_(basestr, $c.lit("singplur_lookup"), 2716) | 0;
+    const baselen = await Strlen_(basestr, $c.lit("singplur_lookup"), 2716) | 0;
     for (as = new $c.Ptr(as_is, 0); as.get(0); as = as.add(1)) {
         al = $c.i32($c.strlen(as.get(0)));
         if (!($c.pcmp(endstring.add(-al), basestr) < 0 || strncmpi(endstring.add(-al), as.get(0), -1))) {
@@ -2750,15 +2732,15 @@ async function singplur_lookup(basestr, endstring, to_plural, alt_as_is) {   // 
             return TRUE;
         }
     }
-    for (sp = $c.relem(one_off, 0); sp.sing; sp = $c.radd(sp, 1)) {
+    for (sp = one_off[0]; sp.sing; sp = $c.radd(sp, 1)) {
         /* check whether endstring already matches */
-        same = to_plural ? sp.plur : sp.sing;
+        const same = to_plural ? sp.plur : sp.sing;
         al = $c.i32($c.strlen(same));
         if (!($c.pcmp(endstring.add(-al), basestr) < 0 || strncmpi(endstring.add(-al), same, -1))) {
             return TRUE;   /* use as-is */
         }
         /* check whether it matches the inverse; if so, transform it */
-        other = to_plural ? sp.sing : sp.plur;
+        const other = to_plural ? sp.sing : sp.plur;
         al = $c.i32($c.strlen(other));
         if (!($c.pcmp(endstring.add(-al), basestr) < 0 || strncmpi(endstring.add(-al), other, -1))) {
             strcasecpy(endstring.add(-al), same);
@@ -3109,15 +3091,15 @@ export async function makesingular(oldstr) {   // objnam.c:3037
  * @returns {number} boolean
  */
 function ch_ksound(basestr) {   // objnam.c:3168
-    let i = 0, al = 0, endstr = null;
+    let i = 0;
     /* these are some *ch words/suffixes that make a k-sound. They pluralize by
        adding 's' rather than 'es' */
     if (!basestr || $c.strlen(basestr) < 4) {
         return FALSE;
     }
-    endstr = eos(basestr);
+    const endstr = eos(basestr);
     for (i = 0; i < 19; i = i + 1 | 0) {
-        al = $c.i32($c.strlen(ch_ksound$ch_k[i]));
+        const al = $c.i32($c.strlen(ch_ksound$ch_k[i]));
         if (!($c.pcmp(endstr.add(-al), basestr) < 0 || strncmpi(endstr.add(-al), ch_ksound$ch_k[i], -1))) {
             return TRUE;
         }
@@ -3130,14 +3112,14 @@ function ch_ksound(basestr) {   // objnam.c:3168
  * @returns {number} boolean
  */
 function badman(basestr, to_plural) {   // objnam.c:3194
-    let i = 0, al = 0, endstr = null, spot = null;
+    let i = 0, al = 0, spot = null;
     /* True: makeplural, False: makesingular */
     /* these are all the prefixes for *man that don't have a *men plural */
     /* these are all the prefixes for *men that don't have a *man singular */
     if (!basestr || $c.strlen(basestr) < 4) {
         return FALSE;
     }
-    endstr = eos(basestr);
+    const endstr = eos(basestr);
     if (to_plural) {
         for (i = 0; i < 36; i = i + 1 | 0) {
             al = $c.i32($c.strlen(badman$no_men[i]));
@@ -3165,7 +3147,7 @@ function badman(basestr, to_plural) {   // objnam.c:3194
  * @returns {Promise<number>} boolean
  */
 async function wishymatch(u_str, o_str, retry_inverted) {   // objnam.c:3243
-    let p = null, buf = new Int8Array(256), u_of = null, o_of = null;
+    let p = null, buf = new Int8Array(256);
     /* from user, so might be variant spelling */
     /* from objects[], so is in canonical form */
     /* optional extra "of" handling */
@@ -3176,8 +3158,8 @@ async function wishymatch(u_str, o_str, retry_inverted) {   // objnam.c:3243
     if (retry_inverted) {
         /* when just one of the strings is in the form "foo of bar",
            convert it into "bar foo" and perform another comparison */
-        u_of = strstri(u_str, $c.lit(" of "));
-        o_of = strstri(o_str, $c.lit(" of "));
+        const u_of = strstri(u_str, $c.lit(" of "));
+        const o_of = strstri(o_str, $c.lit(" of "));
         if (u_of && !o_of) {
             $c.strcpy(new $c.Ptr(buf, 0), u_of.add(4));
             copynchars(eos($c.strcat(new $c.Ptr(buf, 0), $c.lit(" "))), u_str, $c.i32($c.pdiff(u_of, u_str)));
@@ -3261,9 +3243,9 @@ async function wishymatch(u_str, o_str, retry_inverted) {   // objnam.c:3243
  * @returns {number} short
  */
 function rnd_otyp_by_wpnskill(skill) {   // objnam.c:3432
-    let i = 0, n = 0, otyp = 0;
-    n = 0;
-    otyp = STRANGE_OBJECT;
+    let i = 0;
+    let n = 0;
+    let otyp = STRANGE_OBJECT;
     for (i = svb.bases[WEAPON_CLASS]; i < NUM_OBJECTS && objects[i].oc_class === WEAPON_CLASS; i = i + 1 | 0) {
         if (objects[i].oc_subtyp === skill) {
             n = n + 1 | 0;
@@ -3289,22 +3271,22 @@ function rnd_otyp_by_wpnskill(skill) {   // objnam.c:3432
  * @returns {Promise<number>} short
  */
 async function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {   // objnam.c:3455
-    let i = 0, n = 0, validobjs = new Int16Array(481), zn = null, of = null, check_of = 0, lo = 0, hi = 0, minglob = 0, maxglob = 0, prob = 0, maxprob = 0, $t1;
+    let i = 0, validobjs = new Int16Array(481), zn = null, of = null, lo = 0, hi = 0, $t1;
     /* add to item's chance of being chosen; non-zero causes
      * 0% random generation items to also be considered */
-    n = 0;
-    maxprob = 0;
+    let n = 0;
+    let maxprob = 0;
     if (!name || !name.get(0)) {
         return STRANGE_OBJECT;
     }
     /* only skip "foo of" for "foo of bar" if target doesn't contain " of " */
-    check_of = $c.i8(strstri(name, $c.lit(" of ")) === null ? 1 : 0);
-    minglob = GLOB_OF_GRAY_OOZE;
-    maxglob = GLOB_OF_BLACK_PUDDING;
+    const check_of = strstri(name, $c.lit(" of ")) === null ? 1 : 0;
+    const minglob = GLOB_OF_GRAY_OOZE;
+    const maxglob = GLOB_OF_BLACK_PUDDING;
     $c.memset(new $c.Ptr(validobjs, 0), 0, 962);
     if (oclass) {
         lo = svb.bases[$c.u8(oclass)];
-        hi = svb.bases[$c.u8(oclass) + 1 | 0] - 1 | 0;
+        hi = svb.bases[$c.u8(oclass) + 1] - 1 | 0;
     } else {
         lo = MAXOCLASSES;   /* STRANGE_OBJECT + 1; */
         hi = NUM_OBJECTS - 1;
@@ -3341,7 +3323,7 @@ async function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {   // objnam.c:345
         }
     }
     if (n > 0 && maxprob) {
-        prob = rn2(maxprob);
+        let prob = rn2(maxprob);
         for (i = 0; i < (n - 1 | 0); i = i + 1 | 0) {
             if ((prob = prob - (objects[validobjs[i]].oc_prob + xtra_prob | 0) | 0) < 0) {
                 break;
@@ -3364,7 +3346,6 @@ export async function shiny_obj(oclass) {   // objnam.c:3532
  */
 function set_wallprop_from_str(bp) {   // objnam.c:3539
     let wall_prop = 0;
-    wall_prop = 0;
     if ($c.strstr(bp, $c.lit("undiggable ")) || $c.strstr(bp, $c.lit("nondiggable "))) {
         wall_prop = wall_prop | W.NONDIGGABLE;
     }
@@ -3382,23 +3363,23 @@ function set_wallprop_from_str(bp) {   // objnam.c:3539
  * @returns {Promise<$T.obj | null>} struct obj *
  */
 async function wizterrainwish(d) {   // objnam.c:3554
-    let lev = null, madeterrain = 0, badterrain = 0, is_dbridge = 0, trap = 0, oldtyp = 0, ltyp = 0, x = 0, y = 0, bp = null, p = null, t = null, tname = null, save_prop = 0, new_water = null, icebuf = new Int8Array(40), al = 0, dbuf = new Int8Array(40), old_wall_info = 0, secret = 0, wall = 0, t$2 = null, $t1, $t2, $t3, $t4;
-    madeterrain = FALSE;
-    badterrain = FALSE;
-    x = u.ux;
-    y = u.uy;
-    bp = d.bp;
+    let trap = 0, ltyp = 0, t = null, icebuf = new Int8Array(40), al = 0, dbuf = new Int8Array(40), t$2 = null, $t1, $t2, $t3, $t4;
+    let madeterrain = FALSE;
+    let badterrain = FALSE;
+    const x = u.ux;
+    const y = u.uy;
+    const bp = d.bp;
     for (trap = NO_TRAP + 1; trap < TRAPNUM; trap = trap + 1 | 0) {
-        tname = trapname(trap, TRUE);
+        let tname = trapname(trap, TRUE);
         if (!str_start_is(bp, tname, TRUE)) {
             continue;
         }
         /* found it; avoid stupid mistakes */
-        if ((trap === HOLE || trap === TRAPDOOR) && !Can_fall_thru(u.uz)) {
+        if (is_hole(trap) && !Can_fall_thru(u.uz)) {
             trap = ROCKTRAP;
         }
         if ((t = await maketrap(x, y, trap)) !== null) {
-            trap = t.ttyp | 0;
+            trap = t.ttyp;
             tname = trapname(trap, TRUE);
             await pline($c.lit("%s%s."), await An(tname), trap !== MAGIC_PORTAL ? $c.lit("") : $c.lit(" to nowhere"));
         } else {
@@ -3408,22 +3389,22 @@ async function wizterrainwish(d) {   // objnam.c:3554
     }
     /* furniture and terrain (use at your own risk; can clobber stairs
        or place furniture on existing traps which shouldn't be allowed) */
-    lev = $c.relem(svl.level.locations[x], y);
-    oldtyp = lev.typ >>> 0;
-    is_dbridge = $c.i8(oldtyp === DRAWBRIDGE_DOWN || oldtyp === DRAWBRIDGE_UP ? 1 : 0);
-    p = eos(bp);
+    const lev = $c.relem(svl.level.locations[x], y);
+    const oldtyp = lev.typ >>> 0;
+    const is_dbridge = oldtyp === DRAWBRIDGE_DOWN || oldtyp === DRAWBRIDGE_UP ? 1 : 0;
+    const p = eos(bp);
     if (!($c.pcmp(p.add(-8), bp) < 0 || strncmpi(p.add(-8), $c.lit("fountain"), -1))) {
         lev.typ = FOUNTAIN;
         if (oldtyp !== FOUNTAIN) {
             svl.level.flags.nfountains = $c.u8(svl.level.flags.nfountains + 1);
         }
-        lev.flags = ((d.flags ? F_LOOTED : 0) >>> 0) & 31;   /* overlays 'flags' */
-        $t1 = (d.blessed || !strncmpi(bp, $c.lit("magic "), 6) ? 1 : 0) >>> 0, lev.horizontal = ($t1) & 1;
-        await pline($c.lit("A %sfountain."), lev.horizontal | 0 ? $c.lit("magic ") : $c.lit(""));
+        lev.flags = (d.flags ? F_LOOTED : 0) & 31;   /* overlays 'flags' */
+        $t1 = d.blessed || !strncmpi(bp, $c.lit("magic "), 6) ? 1 : 0, lev.horizontal = ($t1) & 1;
+        await pline($c.lit("A %sfountain."), lev.horizontal ? $c.lit("magic ") : $c.lit(""));
         madeterrain = TRUE;
     } else if (!($c.pcmp(p.add(-6), bp) < 0 || strncmpi(p.add(-6), $c.lit("throne"), -1))) {
         lev.typ = THRONE;
-        lev.flags = ((d.flags ? T_LOOTED : 0) >>> 0) & 31;   /* overlays 'flags' */
+        lev.flags = (d.flags ? T_LOOTED : 0) & 31;   /* overlays 'flags' */
         await pline($c.lit("A throne."));
         madeterrain = TRUE;
     } else if (!($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("sink"), -1))) {
@@ -3431,15 +3412,15 @@ async function wizterrainwish(d) {   // objnam.c:3554
         if (oldtyp !== SINK) {
             svl.level.flags.nsinks = $c.u8(svl.level.flags.nsinks + 1);
         }
-        lev.flags = ((d.flags ? S.LPUDDING | S.LDWASHER | S.LRING : 0) >>> 0) & 31;
+        lev.flags = (d.flags ? S.LPUDDING | S.LDWASHER | S.LRING : 0) & 31;
         await pline($c.lit("A sink."));
         madeterrain = TRUE;
         /* ("water" matches "potion of water" rather than terrain) */
     } else if (!($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("pool"), -1)) || !($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("moat"), -1)) || !($c.pcmp(p.add(-13), bp) < 0 || strncmpi(p.add(-13), $c.lit("wall of water"), -1))) {
-        ltyp = (!($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("pool"), -1)) ? POOL : !($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("moat"), -1)) ? MOAT : WATER) >>> 0;
+        ltyp = !($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("pool"), -1)) ? POOL : !($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("moat"), -1)) ? MOAT : WATER;
         if (!is_dbridge) {
             lev.typ = $c.i8(ltyp);
-            lev.flags = (0) & 31;
+            lev.flags = 0;
         } else {
             /* drawbridgemask overloads flags */
             lev.flags = (((lev.flags | 0) & ~DB.UNDER) >>> 0) & 31;
@@ -3447,9 +3428,9 @@ async function wizterrainwish(d) {   // objnam.c:3554
         }
         await del_engr_at(x, y);
         if (!is_dbridge) {
-            save_prop = u.uprops[HALLUC_RES].extrinsic;
+            const save_prop = u.uprops[HALLUC_RES].extrinsic;
             u.uprops[HALLUC_RES].extrinsic = 1;
-            new_water = waterbody_name(x, y);
+            const new_water = waterbody_name(x, y);
             u.uprops[HALLUC_RES].extrinsic = save_prop;
             await pline($c.lit("%s."), await An(new_water));
             /* Must manually make kelp! */
@@ -3460,10 +3441,10 @@ async function wizterrainwish(d) {   // objnam.c:3554
         madeterrain = TRUE;
         /* also matches "molten lava" */
     } else if (!($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("lava"), -1)) || !($c.pcmp(p.add(-12), bp) < 0 || strncmpi(p.add(-12), $c.lit("wall of lava"), -1))) {
-        ltyp = (!($c.pcmp(p.add(-12), bp) < 0 || strncmpi(p.add(-12), $c.lit("wall of lava"), -1)) ? LAVAWALL : LAVAPOOL) >>> 0;
+        ltyp = !($c.pcmp(p.add(-12), bp) < 0 || strncmpi(p.add(-12), $c.lit("wall of lava"), -1)) ? LAVAWALL : LAVAPOOL;
         if (!is_dbridge) {
             lev.typ = $c.i8(ltyp);
-            lev.flags = (0) & 31;
+            lev.flags = 0;
         } else {
             /* drawbridgemask overloads flags */
             lev.flags = (((lev.flags | 0) & ~DB.UNDER) >>> 0) & 31;
@@ -3484,7 +3465,7 @@ async function wizterrainwish(d) {   // objnam.c:3554
         if (!is_dbridge) {
             lev.typ = ICE;
             /* icedpool overloads flags; specifies what ice will melt into */
-            lev.flags = ((oldtyp === ROOM ? ICED.POOL : ICED.MOAT) >>> 0) & 31;
+            lev.flags = (oldtyp === ROOM ? ICED.POOL : ICED.MOAT) & 31;
         } else {
             /* drawbridgemask overloads flags */
             lev.flags = (((lev.flags | 0) & ~DB.UNDER) >>> 0) & 31;
@@ -3520,9 +3501,9 @@ async function wizterrainwish(d) {   // objnam.c:3554
     } else if (!($c.pcmp(p.add(-5), bp) < 0 || strncmpi(p.add(-5), $c.lit("grave"), -1)) || !($c.pcmp(p.add(-9), bp) < 0 || strncmpi(p.add(-9), $c.lit("headstone"), -1))) {
         await make_grave(x, y, null);
         if (IS_GRAVE(lev.typ)) {
-            lev.flags = (0) & 31;   /* overlays 'flags' */
-            lev.horizontal = ((d.flags ? 1 : 0) >>> 0) & 1;
-            await pline($c.lit("A %sgrave."), lev.horizontal | 0 ? $c.lit("disturbed ") : $c.lit(""));
+            lev.flags = 0;   /* overlays 'flags' */
+            lev.horizontal = (d.flags ? 1 : 0) & 1;
+            await pline($c.lit("A %sgrave."), lev.horizontal ? $c.lit("disturbed ") : $c.lit(""));
             madeterrain = TRUE;
         } else {
             await pline($c.lit("Can't place a grave here."));
@@ -3530,13 +3511,13 @@ async function wizterrainwish(d) {   // objnam.c:3554
         }
     } else if (!($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("tree"), -1))) {
         lev.typ = TREE;
-        lev.flags = ((d.flags ? TREE_LOOTED | TREE_SWARM : 0) >>> 0) & 31;
+        lev.flags = (d.flags ? TREE_LOOTED | TREE_SWARM : 0) & 31;
         set_wallprop_from_str(bp);
         await pline($c.lit("A tree."));
         madeterrain = TRUE;
     } else if (!($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("bars"), -1))) {
         lev.typ = IRONBARS;
-        lev.flags = (0) & 31;
+        lev.flags = 0;
         set_wallprop_from_str(bp);
         /* [FIXME: if this isn't a wall or door location where 'horizontal'
             is already set up, that should be calculated for this spot.
@@ -3546,12 +3527,12 @@ async function wizterrainwish(d) {   // objnam.c:3554
         madeterrain = TRUE;
     } else if (!($c.pcmp(p.add(-5), bp) < 0 || strncmpi(p.add(-5), $c.lit("cloud"), -1))) {
         lev.typ = CLOUD;
-        lev.flags = (0) & 31;
+        lev.flags = 0;
         await pline($c.lit("A cloud."));
         await del_engr_at(x, y);
         madeterrain = TRUE;
     } else if (!($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("door"), -1)) || d.doorless && !($c.pcmp(p.add(-7), bp) < 0 || strncmpi(p.add(-7), $c.lit("doorway"), -1))) {
-        secret = $c.i8(!($c.pcmp(p.add(-11), bp) < 0 || strncmpi(p.add(-11), $c.lit("secret door"), -1)) ? 1 : 0);
+        const secret = !($c.pcmp(p.add(-11), bp) < 0 || strncmpi(p.add(-11), $c.lit("secret door"), -1)) ? 1 : 0;
         /* require door or wall so that the 'horizontal' flag will
            already have the correct value; player might choose to put
            DOOR on top of existing DOOR or SDOOR on top of existing SDOOR
@@ -3560,10 +3541,10 @@ async function wizterrainwish(d) {   // objnam.c:3554
            doorless doorway so will be acceptable here */
         if (lev.typ === DOOR || lev.typ === SDOOR || IS_WALL(lev.typ) && lev.typ !== DBWALL || lev.typ === IRONBARS) {
             /* remember previous wall info [is this right for iron bars?] */
-            old_wall_info = (lev.typ !== DOOR ? lev.flags | 0 : 0) >>> 0;
+            const old_wall_info = lev.typ !== DOOR ? lev.flags : 0;
             /* set the new terrain type */
-            lev.typ = $c.i8(secret ? SDOOR : DOOR);
-            lev.flags = (0) & 31;   /* overlays 'flags' */
+            lev.typ = secret ? SDOOR : DOOR;
+            lev.flags = 0;   /* overlays 'flags' */
             /* lev->horizontal stays as-is */
             if ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level)) {
                 /* all doors on the rogue level are doorless; locking magic
@@ -3576,7 +3557,7 @@ async function wizterrainwish(d) {   // objnam.c:3554
                doormask and wall_info which both overload rm[x][y].flags
                (CLOSED overlaps wall_info bits, LOCKED and TRAPPED don't);
                conversion from SDOOR to DOOR changes NODOOR to CLOSED */
-            lev.flags = ((d.locked ? D.LOCKED : d.doorless || secret ? D.NODOOR : d.open ? D.ISOPEN : d.broken ? D.BROKEN : D.CLOSED) >>> 0) & 31;
+            lev.flags = (d.locked ? D.LOCKED : d.doorless || secret ? D.NODOOR : d.open ? D.ISOPEN : d.broken ? D.BROKEN : D.CLOSED) & 31;
             /* SDOOR uses wall_info, restore relevant bits.
              * FIXME? if we're changing a regular door into a secret door,
              * old_wall_info bits will be 0 instead of being set properly.
@@ -3589,7 +3570,7 @@ async function wizterrainwish(d) {   // objnam.c:3554
             /* set up trapped flag; open door states aren't eligible */
             /* 2: wish includes explicit "untrapped" */
             /* D_CLOSED is implicit for secret doors */
-            if (d.trapped === 2 || ((lev.flags | 0) & (D.LOCKED | D.CLOSED)) === 0 && !secret) {
+            if (d.trapped === 2 || (lev.flags & (D.LOCKED | D.CLOSED)) === 0 && !secret) {
                 d.trapped = 0;
             }
             if (d.trapped) {
@@ -3597,10 +3578,10 @@ async function wizterrainwish(d) {   // objnam.c:3554
             }
             /* feedback */
             dbuf[0] = 0;
-            if ((lev.flags | 0) & D.TRAPPED) {
+            if (lev.flags & D.TRAPPED) {
                 $c.strcat(new $c.Ptr(dbuf, 0), $c.lit("trapped "));
             }
-            if ((lev.flags | 0) & D.LOCKED) {
+            if (lev.flags & D.LOCKED) {
                 $c.strcat(new $c.Ptr(dbuf, 0), $c.lit("locked "));
             }
             if (lev.typ === SDOOR) {
@@ -3608,16 +3589,16 @@ async function wizterrainwish(d) {   // objnam.c:3554
             } else {
                 /* these should be mutually exclusive but we describe them
                    as if they're independent to maybe catch future bugs... */
-                if ((lev.flags | 0) & D.CLOSED) {
+                if (lev.flags & D.CLOSED) {
                     $c.strcat(new $c.Ptr(dbuf, 0), $c.lit("closed "));
                 }
-                if ((lev.flags | 0) & D.ISOPEN) {
+                if (lev.flags & D.ISOPEN) {
                     $c.strcat(new $c.Ptr(dbuf, 0), $c.lit("open "));
                 }
-                if ((lev.flags | 0) & D.BROKEN) {
+                if (lev.flags & D.BROKEN) {
                     $c.strcat(new $c.Ptr(dbuf, 0), $c.lit("broken "));
                 }
-                if (((lev.flags | 0) & ~D.TRAPPED) === D.NODOOR) {
+                if ((lev.flags & ~D.TRAPPED) === D.NODOOR) {
                     $c.strcat(new $c.Ptr(dbuf, 0), $c.lit("doorless doorway"));
                 } else {
                     $c.strcat(new $c.Ptr(dbuf, 0), $c.lit("door"));
@@ -3631,15 +3612,15 @@ async function wizterrainwish(d) {   // objnam.c:3554
             badterrain = TRUE;
         }
     } else if (!($c.pcmp(p.add(-4), bp) < 0 || strncmpi(p.add(-4), $c.lit("wall"), -1)) && ($c.peq(bp, p.add(-4)) || p.get(-5) === 32)) {
-        wall = HWALL;
-        if (isok(u.ux, $c.i16(u.uy - 1 | 0)) && (svl.level.locations[u.ux][u.uy - 1 | 0].typ && svl.level.locations[u.ux][u.uy - 1 | 0].typ <= DBWALL) || isok(u.ux, $c.i16(u.uy + 1 | 0)) && (svl.level.locations[u.ux][u.uy + 1 | 0].typ && svl.level.locations[u.ux][u.uy + 1 | 0].typ <= DBWALL)) {
+        let wall = HWALL;
+        if (isok(u.ux, $c.i16(u.uy - 1)) && (svl.level.locations[u.ux][u.uy - 1].typ && svl.level.locations[u.ux][u.uy - 1].typ <= DBWALL) || isok(u.ux, $c.i16(u.uy + 1)) && (svl.level.locations[u.ux][u.uy + 1].typ && svl.level.locations[u.ux][u.uy + 1].typ <= DBWALL)) {
             wall = VWALL;
         }
         madeterrain = TRUE;
         lev.typ = wall;
-        lev.flags = (0) & 31;
+        lev.flags = 0;
         set_wallprop_from_str(bp);
-        await fix_wall_spines($c.i16(0 > (u.ux - 1 | 0) ? 0 : u.ux - 1 | 0), $c.i16(0 > (u.uy - 1 | 0) ? 0 : u.uy - 1 | 0), $c.i16(COLNO < (u.ux + 1 | 0) ? COLNO : u.ux + 1 | 0), $c.i16(ROWNO < (u.uy + 1 | 0) ? ROWNO : u.uy + 1 | 0));
+        await fix_wall_spines($c.i16(0 > u.ux - 1 ? 0 : u.ux - 1), $c.i16(0 > u.uy - 1 ? 0 : u.uy - 1), $c.i16(COLNO < u.ux + 1 ? COLNO : u.ux + 1), $c.i16(ROWNO < u.uy + 1 ? ROWNO : u.uy + 1));
         await pline($c.lit("A wall."));
     } else if (!($c.pcmp(p.add(-15), bp) < 0 || strncmpi(p.add(-15), $c.lit("secret corridor"), -1))) {
         if (lev.typ === CORR) {
@@ -3658,7 +3639,7 @@ async function wizterrainwish(d) {   // objnam.c:3554
             if (IS_FURNITURE(oldtyp)) {
                 count_level_features();
             }
-            if ((t$2 = t_at(x, y)) !== null && (t$2.ttyp | 0) !== MAGIC_PORTAL) {
+            if ((t$2 = t_at(x, y)) !== null && t$2.ttyp !== MAGIC_PORTAL) {
                 await deltrap(t$2);
             }
             madeterrain = TRUE;
@@ -3676,7 +3657,7 @@ async function wizterrainwish(d) {   // objnam.c:3554
         await feel_newsym(x, y);   /* map the spot where the wish occurred */
         /* hero started at <x,y> but might not be there anymore (create
            lava, decline to die, and get teleported away to safety) */
-        if (u.uinwater | 0 && !is_pool(u.ux, u.uy)) {
+        if (u.uinwater && !is_pool(u.ux, u.uy)) {
             await set_uinwater(0);   /* u.uinwater = 0; leave the water */
             await docrt();
             /* [block/unblock_point handled by docrt -> vision_recalc] */
@@ -3700,7 +3681,7 @@ async function wizterrainwish(d) {   // objnam.c:3554
                door, the old type was a wall or a door and we retain the
                'horizontal' value from those */
             if (!IS_FOUNTAIN(lev.typ) && !IS_GRAVE(lev.typ) && !IS_DOOR(lev.typ) && lev.typ !== SDOOR) {
-                lev.horizontal = (0) & 1;   /* also clears blessedftn, disturbed */
+                lev.horizontal = 0;   /* also clears blessedftn, disturbed */
             }
         }
         /* note: lev->lit and lev->nondiggable retain their values even
@@ -3761,10 +3742,10 @@ function readobjnam_init(bp, d) {   // objnam.c:3933
  * @returns {number} int
  */
 function readobjnam_preparse(d) {   // objnam.c:3966
-    let save_bp = null, more_l = 0, res = 0, l = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20, $t21, $t22, $t23, $t24, $t25, $t26, $t27, $t28, $t29, $t30, $t31;
-    save_bp = null;
-    more_l = 0;
-    res = 1;
+    let l = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20, $t21, $t22, $t23, $t24, $t25, $t26, $t27, $t28, $t29, $t30, $t31;
+    let save_bp = null;
+    let more_l = 0;
+    let res = 1;
     for (; ; ) {
         if (!d.bp || !d.bp.get(0)) {
             break;
@@ -3949,10 +3930,10 @@ function readobjnam_preparse(d) {   // objnam.c:3966
  * @param {$T._readobjnam_data | null} d struct _readobjnam_data *
  */
 function readobjnam_parse_charges(d) {   // objnam.c:4178
-    let keeptrailingchars = 0, idx = 0, pp = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8;
+    let $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8;
     if ($c.strlen(d.bp) > 1 && ($t1 = $c.strrchr(d.bp, 40), d.p = $t1) !== null) {
-        keeptrailingchars = TRUE;
-        idx = 0;
+        let keeptrailingchars = TRUE;
+        let idx = 0;
         if ($c.pcmp(d.p, d.bp) > 0 && d.p.get(-1) === 32) {
             idx = -1;
         }
@@ -3986,7 +3967,7 @@ function readobjnam_parse_charges(d) {   // objnam.c:4178
             }
         }
         if (keeptrailingchars) {
-            pp = eos(d.bp);
+            let pp = eos(d.bp);
             /* 'pp' points at 'pb's terminating '\0',
                'p' points at ')' and will be incremented past it */
             do {
@@ -4016,7 +3997,7 @@ function readobjnam_parse_charges(d) {   // objnam.c:4178
  * @returns {Promise<number>} int
  */
 async function readobjnam_postparse1(d) {   // objnam.c:4240
-    let i = 0, s = null, rest = [null], obp = null, sng = null, as = null, dbp = null, j = 0, k = 0, l = 0, amubuf = new Int8Array(256), beartrap = 0, zp = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20, $t21, $t22, $t23;
+    let i = 0, rest = [null], amubuf = new Int8Array(256), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16, $t17, $t18, $t19, $t20, $t21, $t22, $t23;
     /* now we have the actual name, as delivered by xname, say
      *  green potions called whisky
      *  scrolls labeled "QWERTY"
@@ -4059,7 +4040,7 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
     /* real vs fake is only useful for wizard mode but we'll accept its
        parsing in normal play (result is never real Amulet for that case) */
     if (($t6 = strstri(d.bp, obj_descr[objects[AMULET_OF_YENDOR].oc_descr_idx].oc_descr), d.p = $t6) !== null && ($c.peq(d.p, d.bp) || d.p.get(-1) === 32)) {
-        s = d.bp;
+        let s = d.bp;
         /* "Amulet of Yendor" matches two items, name of real Amulet
            and description of fake one; player can explicitly specify
            "real" to disambiguate, but not specifying "fake" achieves
@@ -4176,7 +4157,7 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
         /* not the "mage" rank */
         rest[0] = null;
         if (d.mntmp < LOW_PM && $c.strlen(d.bp) > 2 && ($t16 = await name_to_monplus(d.bp, new $c.Ptr(rest, 0), new $c.FieldRef(d, "mgend", "i32")), d.mntmp = $t16) >= LOW_PM) {
-            obp = d.bp;
+            const obp = d.bp;
             /* 'rest' is a pointer past the matching portion; if that was
                an alternate name or a rank title rather than the canonical
                monster name we wouldn't otherwise know how much to skip */
@@ -4204,7 +4185,7 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
        "cloth" because it might yield a "cloth spellbook" rather than
        a "piece of cloth" cloak [maybe we should give random armor?] */
     if (d.bp.get(0) && strncmpi(d.bp, $c.lit("tricks"), -1) && strncmpi(d.bp, $c.lit("clothes"), -1)) {
-        sng = await makesingular(d.bp);
+        const sng = await makesingular(d.bp);
         if ($c.strcmp(d.bp, sng)) {
             if (d.cnt === 1) {
                 d.cnt = 2;
@@ -4214,7 +4195,7 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
     }
     /* Alternate spellings (pick-ax, silver sabre, &c) */
     {
-        as = $c.relem(spellings, 0);
+        let as = spellings[0];
         while (as.sp) {
             if (await wishymatch(d.bp, as.sp, TRUE)) {
                 d.typ = as.ob;
@@ -4257,7 +4238,7 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
     }
     /* accept "paperback" or "paperback book", reject "paperback spellbook" */
     if (!strncmpi(d.bp, $c.lit("paperback"), 9)) {
-        dbp = d.bp.add(9);   /* just past "paperback" */
+        const dbp = d.bp.add(9);   /* just past "paperback" */
         if (!dbp.get(0) || !strncmpi(dbp, $c.lit(" book"), 5)) {
             d.typ = SPE_NOVEL;
             return 2;   /*goto typfnd;*/
@@ -4306,7 +4287,7 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
        Avoid false hits on, e.g., rings for "ring mail". */
     if (strncmpi(d.bp, $c.lit("enchant "), 8) && strncmpi(d.bp, $c.lit("destroy "), 8) && strncmpi(d.bp, $c.lit("detect food"), 11) && strncmpi(d.bp, $c.lit("food detection"), 14) && strncmpi(d.bp, $c.lit("ring mail"), 9) && strncmpi(d.bp, $c.lit("studded leather armor"), 21) && strncmpi(d.bp, $c.lit("leather armor"), 13) && strncmpi(d.bp, $c.lit("tooled horn"), 11) && strncmpi(d.bp, $c.lit("food ration"), 11) && strncmpi(d.bp, $c.lit("meat ring"), 9)) {
         for (i = 0; i < 13; i = i + 1 | 0) {
-            j = await Strlen_(wrp[i], $c.lit("readobjnam_postparse1"), 4568) | 0;
+            const j = await Strlen_(wrp[i], $c.lit("readobjnam_postparse1"), 4568) | 0;
             /* check for "<class> [ of ] something" */
             if (!strncmpi(d.bp, wrp[i], j)) {
                 d.oclass = wrpsym[i];
@@ -4344,12 +4325,12 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
                     }
                     /* check for "<shape> amulet"; strip off trailing
                        " amulet" for that w/o changing contents of d->bp */
-                    l = $c.i32($c.strlen(d.bp)) - j | 0;
+                    let l = $c.i32($c.strlen(d.bp)) - j | 0;
                     if (l > 0 && d.bp.get(l - 1 | 0) === 32) {
                         l = l - 1 | 0;
                     }
                     copynchars(new $c.Ptr(amubuf, 0), d.bp, l < 255 ? l : 255);
-                    k = await rnd_otyp_by_namedesc(new $c.Ptr(amubuf, 0), AMULET_CLASS, 0);
+                    const k = await rnd_otyp_by_namedesc(new $c.Ptr(amubuf, 0), AMULET_CLASS, 0);
                     if (k !== STRANGE_OBJECT) {
                         d.typ = k;
                         return 2;   /*goto typfnd;*/
@@ -4377,8 +4358,8 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
      * name or the object name.
      */
     if (wizard() && (!strncmpi(d.bp, $c.lit("bear"), 4) || !strncmpi(d.bp, $c.lit("land"), 4))) {
-        beartrap = $c.i8(lowc(d.bp.get(0)) === 98 ? 1 : 0);
-        zp = d.bp.add(4);   /* skip "bear"/"land" */
+        const beartrap = lowc(d.bp.get(0)) === 98 ? 1 : 0;
+        let zp = d.bp.add(4);   /* skip "bear"/"land" */
         if (zp.get(0) === 32) {
             zp = zp.add(1);   /* embedded space is optional */
         }
@@ -4405,7 +4386,7 @@ async function readobjnam_postparse1(d) {   // objnam.c:4240
  * @returns {number} int
  */
 function readobjnam_postparse2(d) {   // objnam.c:4666
-    let i = 0, s = null, tbuf = new Int8Array(256), $t1, $t2, $t3;
+    let i = 0, tbuf = new Int8Array(256), $t1, $t2, $t3;
     /* "grey stone" check must be before general "stone" */
     for (i = 0; i < 19; i = i + 1 | 0) {
         if (!strncmpi(d.bp, o_ranges[i].name, -1)) {
@@ -4421,7 +4402,7 @@ function readobjnam_postparse2(d) {   // objnam.c:4666
     } else if (!strncmpi(d.bp, $c.lit("looking glass"), -1)) {
         /* avoid false hit on "* glass" */
     } else if (!($c.pcmp(d.p.add(-6), d.bp) < 0 || strncmpi(d.p.add(-6), $c.lit(" glass"), -1)) || !strncmpi(d.bp, $c.lit("glass"), -1)) {
-        s = d.bp;
+        let s = d.bp;
         /* treat "broken glass" as a non-existent item; since "broken" is
            also a chest/box prefix it might have been stripped off above */
         if (d.broken || strstri(s, $c.lit("broken"))) {
@@ -4466,7 +4447,7 @@ function readobjnam_postparse2(d) {   // objnam.c:4666
  * @returns {Promise<number>} int
  */
 async function readobjnam_postparse3(d) {   // objnam.c:4727
-    let i = 0, zn = null, j = null, fp = null, l = 0, cntf = 0, blessedf = 0, iscursedf = 0, uncursedf = 0, halfeatenf = 0, f = null, ftyp = 0, objtyp = Int16Array.of(0), as = null, $t1, $t2, $t3, $t4, $t5;
+    let i = 0, zn = null, l = 0, iscursedf = 0, uncursedf = 0, halfeatenf = 0, f = null, objtyp = Int16Array.of(0), $t1, $t2, $t3, $t4, $t5;
     /* check real names of gems first */
     if (!d.oclass && d.actualn) {
         for (i = svb.bases[GEM_CLASS]; i <= LAST_REAL_GEM; i = i + 1 | 0) {
@@ -4487,7 +4468,7 @@ async function readobjnam_postparse3(d) {   // objnam.c:4727
     }
     d.typ = 0;
     if (d.actualn) {
-        j = $c.relem(Japanese_items, 0);
+        let j = Japanese_items[0];
         while (j.item) {
             if (!strncmpi(d.actualn, j.name, -1)) {
                 d.typ = j.item;
@@ -4529,9 +4510,9 @@ async function readobjnam_postparse3(d) {   // objnam.c:4727
        that resulted in "grapefruit" matching "grape" if the latter came
        earlier than the former in the fruit list. */
     {
-        blessedf = iscursedf = uncursedf = halfeatenf = 0;
-        cntf = 0;
-        fp = new $c.Ptr(d.fruitbuf, 0);
+        let blessedf = iscursedf = uncursedf = halfeatenf = 0;
+        let cntf = 0;
+        let fp = new $c.Ptr(d.fruitbuf, 0);
         for (; ; ) {
             if (!fp || !fp.get(0)) {
                 break;
@@ -4562,7 +4543,7 @@ async function readobjnam_postparse3(d) {   // objnam.c:4727
         }
         for (f = gf.ffruit; f; f = f.nextf) {
             /* match type: 0=none, 1=exact, 2=singular, 3=plural */
-            ftyp = 0;
+            let ftyp = 0;
             if (!$c.strcmp(fp, new $c.Ptr(f.fname, 0))) {
                 ftyp = 1;
             } else if (!$c.strcmp(fp, await makesingular(new $c.Ptr(f.fname, 0)))) {
@@ -4602,7 +4583,7 @@ async function readobjnam_postparse3(d) {   // objnam.c:4727
     /* got a class, but not specific type;
        check alternate spellings of items with matching classes */
     if (d.oclass && !d.typ) {
-        as = $c.relem(spellings, 0);
+        let as = spellings[0];
         while (as.sp) {
             if (objects[as.ob].oc_class === d.oclass && await wishymatch(d.bp, as.sp, TRUE)) {
                 d.typ = as.ob;
@@ -4810,7 +4791,7 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
                    fail the 'cnt < rnd(6)' test and could produce more
                    than 1 if mksobj() creates the item that way */
                 /* WEAPON_CLASS test excludes gems, gray stones */
-                if (objects[d.typ].oc_merge | 0 && (wizard() || d.cnt < rnd(6) || d.cnt <= 7 && Is_candle(d.otmp) || d.cnt <= 20 && (d.typ === ROCK || d.typ === FLINT || is_missile(d.otmp) || d.oclass === WEAPON_CLASS && is_ammo(d.otmp)))) {
+                if (objects[d.typ].oc_merge && (wizard() || d.cnt < rnd(6) || d.cnt <= 7 && Is_candle(d.otmp) || d.cnt <= 20 && (d.typ === ROCK || d.typ === FLINT || is_missile(d.otmp) || d.oclass === WEAPON_CLASS && is_ammo(d.otmp)))) {
                     d.otmp.quan = d.cnt;
                 }
             }
@@ -4824,7 +4805,7 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
                 d.spe = d.otmp.spe;
             } else if (wizard()) {
                 /* no restrictions except SPE_LIM */
-            } else if (d.oclass === ARMOR_CLASS || d.oclass === WEAPON_CLASS || is_weptool(d.otmp) || d.oclass === RING_CLASS && objects[d.typ].oc_charged | 0) {
+            } else if (d.oclass === ARMOR_CLASS || d.oclass === WEAPON_CLASS || is_weptool(d.otmp) || d.oclass === RING_CLASS && objects[d.typ].oc_charged) {
                 if (d.spe > rnd(5) && d.spe > d.otmp.spe) {
                     d.spe = 0;
                 }
@@ -4883,9 +4864,9 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
                         /* if neuter, force neuter regardless of wish request */
                         /* not neuter, honor wish unless it conflicts */
                         /* unspecified or wish conflicts */
-                        d.otmp.spe = $c.i8(!P$ ? CORPSTAT.RANDOM : is_neuter(P$) ? CORPSTAT.NEUTER : d.mgend === FEMALE && !is_male(P$) ? CORPSTAT.FEMALE : d.mgend === MALE && !is_female(P$) ? CORPSTAT.MALE : CORPSTAT.RANDOM);
+                        d.otmp.spe = !P$ ? CORPSTAT.RANDOM : is_neuter(P$) ? CORPSTAT.NEUTER : d.mgend === FEMALE && !is_male(P$) ? CORPSTAT.FEMALE : d.mgend === MALE && !is_female(P$) ? CORPSTAT.MALE : CORPSTAT.RANDOM;
                         if (P$ && d.otmp.spe === CORPSTAT.RANDOM) {
-                            $t8 = $c.i8(is_male(P$) ? CORPSTAT.MALE : is_female(P$) ? CORPSTAT.FEMALE : rn2(2) ? CORPSTAT.MALE : CORPSTAT.FEMALE), d.otmp.spe = $t8;
+                            $t8 = is_male(P$) ? CORPSTAT.MALE : is_female(P$) ? CORPSTAT.FEMALE : rn2(2) ? CORPSTAT.MALE : CORPSTAT.FEMALE, d.otmp.spe = $t8;
                         }
                         if (d.ishistoric && d.typ === STATUE) {
                             d.otmp.spe = $c.i8(d.otmp.spe | CORPSTAT.HISTORIC);
@@ -4904,7 +4885,7 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
                     break;
                 case WAN_WISHING:
                     if (!wizard()) {
-                        $t9 = $c.i8(rn2(10) ? -1 : 0), d.otmp.spe = $t9;
+                        $t9 = rn2(10) ? -1 : 0, d.otmp.spe = $t9;
                         break;
                     }
                 default:
@@ -4971,18 +4952,18 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
             if (d.iscursed) {
                 await curse(d.otmp);
             } else if (d.uncursed) {
-                d.otmp.blessed = (0) & 1;
-                d.otmp.cursed = ((Luck() < 0 && !wizard() ? 1 : 0) >>> 0) & 1;
+                d.otmp.blessed = 0;
+                d.otmp.cursed = (Luck() < 0 && !wizard() ? 1 : 0) & 1;
             } else if (d.blessed) {
-                d.otmp.blessed = ((Luck() >= 0 || wizard() ? 1 : 0) >>> 0) & 1;
-                d.otmp.cursed = ((Luck() < 0 && !wizard() ? 1 : 0) >>> 0) & 1;
+                d.otmp.blessed = (Luck() >= 0 || wizard() ? 1 : 0) & 1;
+                d.otmp.cursed = (Luck() < 0 && !wizard() ? 1 : 0) & 1;
             } else if (d.spesgn < 0) {
                 await curse(d.otmp);
             }
             /* set eroded and erodeproof */
             if (erosion_matters(d.otmp)) {
                 /* wished-for item shouldn't be eroded unless specified */
-                $t12 = d.otmp.oeroded2 = (0) & 3, d.otmp.oeroded = ($t12) & 3;
+                $t12 = d.otmp.oeroded2 = 0, d.otmp.oeroded = ($t12) & 3;
                 if (d.eroded && (is_flammable(d.otmp) || is_rustprone(d.otmp) || is_crackable(d.otmp))) {
                     d.otmp.oeroded = (d.eroded >>> 0) & 3;
                 }
@@ -4995,8 +4976,8 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
                  * armor modified by confused reading of cursed destroy armor)
                  * so don't prevent player from wishing for such a combination.
                  */
-                if (d.erodeproof && ((objects[d.otmp.otyp].oc_material | 0) === IRON || is_flammable(d.otmp) || is_rottable(d.otmp) || ((objects[d.otmp.otyp].oc_material | 0) === COPPER || (objects[d.otmp.otyp].oc_material | 0) === IRON) || (objects[d.otmp.otyp].oc_material | 0) === GLASS && d.otmp.oclass === ARMOR_CLASS || d.otmp.otyp === CRYSKNIFE)) {
-                    d.otmp.oerodeproof = ((Luck() >= 0 || wizard() ? 1 : 0) >>> 0) & 1;
+                if (d.erodeproof && (objects[d.otmp.otyp].oc_material === IRON || is_flammable(d.otmp) || is_rottable(d.otmp) || (objects[d.otmp.otyp].oc_material === COPPER || objects[d.otmp.otyp].oc_material === IRON) || objects[d.otmp.otyp].oc_material === GLASS && d.otmp.oclass === ARMOR_CLASS || d.otmp.otyp === CRYSKNIFE)) {
+                    d.otmp.oerodeproof = (Luck() >= 0 || wizard() ? 1 : 0) & 1;
                 }
             }
             /* set otmp->recharged */
@@ -5010,7 +4991,7 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
             /* set poisoned */
             if (d.ispoisoned) {
                 if (d.otmp.oclass === WEAPON_CLASS && objects[d.otmp.otyp].oc_subtyp >= -P.SHURIKEN && objects[d.otmp.otyp].oc_subtyp <= -P.BOW || permapoisoned(d.otmp)) {
-                    d.otmp.otrapped = ((Luck() >= 0 ? 1 : 0) >>> 0) & 1;
+                    d.otmp.otrapped = (Luck() >= 0 ? 1 : 0) & 1;
                 } else if (d.oclass === FOOD_CLASS) {   /* try to taint by making it as old as possible */
                     d.otmp.age = 1;
                 }
@@ -5018,7 +4999,7 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
             /* and [un]trapped */
             if (d.trapped) {
                 if (Is_box(d.otmp) || d.typ === TIN) {
-                    d.otmp.otrapped = ((d.trapped === 1 ? 1 : 0) >>> 0) & 1;
+                    d.otmp.otrapped = (d.trapped === 1 ? 1 : 0) & 1;
                 }
             }
             /* empty for containers rather than for tins */
@@ -5037,21 +5018,21 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
             /* set locked/unlocked/broken */
             if (Is_box(d.otmp)) {
                 if (d.locked) {
-                    d.otmp.olocked = (1) & 1, d.otmp.obroken = (0) & 1;
+                    d.otmp.olocked = 1, d.otmp.obroken = 0;
                 } else if (d.unlocked) {
-                    d.otmp.olocked = (0) & 1, d.otmp.obroken = (0) & 1;
+                    d.otmp.olocked = 0, d.otmp.obroken = 0;
                 } else if (d.broken) {
-                    d.otmp.olocked = (0) & 1, d.otmp.obroken = (1) & 1;
+                    d.otmp.olocked = 0, d.otmp.obroken = 1;
                 }
                 if (d.otmp.obroken) {
-                    d.otmp.otrapped = (0) & 1;
+                    d.otmp.otrapped = 0;
                 }
             }
             if (d.isgreased) {
-                d.otmp.greased = (1) & 1;
+                d.otmp.greased = 1;
             }
             if (d.isdiluted && d.otmp.oclass === POTION_CLASS) {
-                d.otmp.oeroded = ((d.otmp.otyp !== POT_WATER ? 1 : 0) >>> 0) & 3;
+                d.otmp.oeroded = (d.otmp.otyp !== POT_WATER ? 1 : 0) & 3;
             }
             /* set tin variety */
             if (d.otmp.otyp === TIN && d.tvariety >= 0 && (rn2(4) || wizard())) {
@@ -5075,7 +5056,7 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
                 }
             }
             if (permapoisoned(d.otmp)) {
-                d.otmp.otrapped = (1) & 1;
+                d.otmp.otrapped = 1;
             }
             /* more wishing abuse: don't allow wishing for certain artifacts */
             /* and make them pay; charge them for the wish anyway! */
@@ -5112,8 +5093,8 @@ export async function readobjnam(bp, no_wish) {   // objnam.c:4910
  * @returns {number} int
  */
 export function rnd_class(first, last) {   // objnam.c:5403
-    let i = 0, x = 0, sum = 0;
-    sum = 0;
+    let i = 0;
+    let sum = 0;
     if (last > first) {
         for (i = first; i <= last; i = i + 1 | 0) {
             sum = sum + objects[i].oc_prob | 0;
@@ -5121,7 +5102,7 @@ export function rnd_class(first, last) {   // objnam.c:5403
         if (!sum) {   /* all zero, so equal probability */
             return rn2((last - first | 0) + 1 | 0) + first | 0;
         }
-        x = rnd(sum);
+        let x = rnd(sum);
         for (i = first; i <= last; i = i + 1 | 0) {
             if ((x = x - objects[i].oc_prob | 0) <= 0) {
                 return i;
@@ -5136,8 +5117,7 @@ export function rnd_class(first, last) {   // objnam.c:5403
  * @returns {$c.Ptr | null} const char *
  */
 export function Japanese_item_name(i, ordinaryname) {   // objnam.c:5422
-    let j = null;
-    j = $c.relem(Japanese_items, 0);
+    let j = Japanese_items[0];
     while (j.item) {
         if (i === j.item) {
             return j.name;
@@ -5151,9 +5131,8 @@ export function Japanese_item_name(i, ordinaryname) {   // objnam.c:5422
  * @returns {Promise<$c.Ptr | null>} const char *
  */
 export async function armor_simple_name(armor) {   // objnam.c:5435
-    let result = null, armcat = 0;
-    result = null;
-    armcat = objects[armor.otyp].oc_subtyp >>> 0;
+    let result = null;
+    const armcat = objects[armor.otyp].oc_subtyp >>> 0;
     switch (armcat) {
         case ARM_SUIT:
             result = suit_simple_name(armor);
@@ -5188,15 +5167,14 @@ export async function armor_simple_name(armor) {   // objnam.c:5435
  * @returns {$c.Ptr | null} const char *
  */
 export function suit_simple_name(suit) {   // objnam.c:5471
-    let suitnm = null, esuitp = null;
     if (suit) {
         if (Is_dragon_mail(suit)) {
             return $c.lit("dragon mail");   /* <color> dragon scale mail */
         } else if (Is_dragon_scales(suit)) {
             return $c.lit("dragon scales");
         }
-        suitnm = obj_descr[objects[suit.otyp].oc_name_idx].oc_name;
-        esuitp = eos(suitnm);
+        const suitnm = obj_descr[objects[suit.otyp].oc_name_idx].oc_name;
+        const esuitp = eos(suitnm);
         if ($c.strlen(suitnm) > 5 && !$c.strcmp(esuitp.add(-5), $c.lit(" mail"))) {
             return $c.lit("mail");   /* most suits fall into this category */
         } else if ($c.strlen(suitnm) > 7 && !$c.strcmp(esuitp.add(-7), $c.lit(" jacket"))) {
@@ -5218,7 +5196,7 @@ export function cloak_simple_name(cloak) {   // objnam.c:5492
             case MUMMY_WRAPPING:
                 return $c.lit("wrapping");
             case ALCHEMY_SMOCK:
-                return objects[cloak.otyp].oc_name_known | 0 && cloak.dknown | 0 ? $c.lit("smock") : $c.lit("apron");
+                return objects[cloak.otyp].oc_name_known && cloak.dknown ? $c.lit("smock") : $c.lit("apron");
             default:
                 break;
         }
@@ -5251,13 +5229,12 @@ export function helm_simple_name(helmet) {   // objnam.c:5513
  * @returns {$c.Ptr | null} const char *
  */
 export function gloves_simple_name(gloves) {   // objnam.c:5532
-    let otyp = 0, ocl = null, actualn = null, descrpn = null;
-    if (gloves && gloves.dknown | 0) {
-        otyp = gloves.otyp;
-        ocl = $c.relem(objects, otyp);
-        actualn = obj_descr[ocl.oc_name_idx].oc_name;
-        descrpn = obj_descr[ocl.oc_descr_idx].oc_descr;
-        if (strstri(objects[otyp].oc_name_known | 0 ? actualn : descrpn, new $c.Ptr(gloves_simple_name$gauntlets, 0))) {
+    if (gloves && gloves.dknown) {
+        const otyp = gloves.otyp;
+        const ocl = $c.relem(objects, otyp);
+        const actualn = obj_descr[ocl.oc_name_idx].oc_name;
+        const descrpn = obj_descr[ocl.oc_descr_idx].oc_descr;
+        if (strstri(objects[otyp].oc_name_known ? actualn : descrpn, new $c.Ptr(gloves_simple_name$gauntlets, 0))) {
             return new $c.Ptr(gloves_simple_name$gauntlets, 0);
         }
     }
@@ -5269,13 +5246,12 @@ export function gloves_simple_name(gloves) {   // objnam.c:5532
  * @returns {$c.Ptr | null} const char *
  */
 export function boots_simple_name(boots) {   // objnam.c:5551
-    let otyp = 0, ocl = null, actualn = null, descrpn = null;
-    if (boots && boots.dknown | 0) {
-        otyp = boots.otyp;
-        ocl = $c.relem(objects, otyp);
-        actualn = obj_descr[ocl.oc_name_idx].oc_name;
-        descrpn = obj_descr[ocl.oc_descr_idx].oc_descr;
-        if (strstri(descrpn, new $c.Ptr(boots_simple_name$shoes, 0)) || objects[otyp].oc_name_known | 0 && strstri(actualn, new $c.Ptr(boots_simple_name$shoes, 0))) {
+    if (boots && boots.dknown) {
+        const otyp = boots.otyp;
+        const ocl = $c.relem(objects, otyp);
+        const actualn = obj_descr[ocl.oc_name_idx].oc_name;
+        const descrpn = obj_descr[ocl.oc_descr_idx].oc_descr;
+        if (strstri(descrpn, new $c.Ptr(boots_simple_name$shoes, 0)) || objects[otyp].oc_name_known && strstri(actualn, new $c.Ptr(boots_simple_name$shoes, 0))) {
             return new $c.Ptr(boots_simple_name$shoes, 0);
         }
     }
@@ -5290,7 +5266,7 @@ export function shield_simple_name(shield) {   // objnam.c:5570
     if (shield) {
         /* xname() describes unknown (unseen) reflection as smooth */
         if (shield.otyp === SHIELD_OF_REFLECTION) {
-            return shield.dknown | 0 ? $c.lit("silver shield") : $c.lit("smooth shield");
+            return shield.dknown ? $c.lit("silver shield") : $c.lit("smooth shield");
         }
         /*
          * We might distinguish between wooden vs metallic or
@@ -5348,14 +5324,13 @@ export async function mimic_obj_name(mtmp) {   // objnam.c:5606
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc, lastR) {   // objnam.c:5624
-    let bufp = null, endp = null, len = 0, lenlimit = 0, len_qpfx = 0, len_qsfx = 0, len_lastR = 0;
     /* output buffer */
     /* convert size_t (or int for ancient systems) to ordinary unsigned */
-    len_qpfx = $c.u32(qprefix ? $c.strlen(qprefix) : 0);
-    len_qsfx = $c.u32(qsuffix ? $c.strlen(qsuffix) : 0);
-    len_lastR = $c.u32($c.strlen(lastR));
-    lenlimit = QBUFSZ - 1;
-    endp = qbuf.add(lenlimit);
+    const len_qpfx = $c.u32(qprefix ? $c.strlen(qprefix) : 0);
+    const len_qsfx = $c.u32(qsuffix ? $c.strlen(qsuffix) : 0);
+    const len_lastR = $c.u32($c.strlen(lastR));
+    const lenlimit = QBUFSZ - 1;
+    const endp = qbuf.add(lenlimit);
     (!!$c.peq(endp, $c.asArr(null, Int8Array)) ? 1 : 0) ? $c.__assert_rtn($c.lit("safe_qbuf"), $c.lit("objnam.c"), 5642, $c.lit("endp != NULL")) : 0;   /* workaround for static analyzer issue */
     /* sanity check, aimed mainly at paniclog (it's conceivable for
        the result of short_oname() to be shorter than the length of
@@ -5380,7 +5355,7 @@ export async function safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc, last
         /* no prefix; output buffer starts out empty */
         qbuf.set(0, 0);
     }
-    len = $c.u32($c.strlen(qbuf));
+    let len = $c.u32($c.strlen(qbuf));
     if ((len + len_lastR >>> 0) + len_qsfx >>> 0 > lenlimit) {
         /* too long; skip formatting, last resort output is truncated */
         if (len < lenlimit) {
@@ -5397,7 +5372,7 @@ export async function safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc, last
         /* suffix and last resort are guaranteed to fit */
         len = len + len_qsfx >>> 0;   /* include the pending suffix */
         /* format the object */
-        bufp = await short_oname(obj, func, altfunc, lenlimit - len >>> 0);
+        const bufp = await short_oname(obj, func, altfunc, lenlimit - len >>> 0);
         if ($c.addu64(len, $c.strlen(bufp)) <= lenlimit) {
             $c.strcat(qbuf, bufp);   /* formatted name fits */
         } else {
@@ -5412,7 +5387,7 @@ export async function safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc, last
     return qbuf;
 }
 function GemStone(typ) {
-    return typ === FLINT || (objects[typ].oc_material | 0) === GEMSTONE && (typ !== DILITHIUM_CRYSTAL && typ !== RUBY && typ !== DIAMOND && typ !== SAPPHIRE && typ !== BLACK_OPAL && typ !== EMERALD && typ !== OPAL) ? 1 : 0;
+    return typ === FLINT || objects[typ].oc_material === GEMSTONE && (typ !== DILITHIUM_CRYSTAL && typ !== RUBY && typ !== DIAMOND && typ !== SAPPHIRE && typ !== BLACK_OPAL && typ !== EMERALD && typ !== OPAL) ? 1 : 0;
 }
 
 export function $init() {

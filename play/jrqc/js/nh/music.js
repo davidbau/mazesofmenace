@@ -108,9 +108,9 @@ const beats = $c.nulls(8);
  * @returns {Promise<void>}
  */
 async function awaken_scare(mtmp, scary) {   // music.c:45
-    mtmp.msleeping = (0) & 1;
-    mtmp.mcanmove = (1) & 1;
-    mtmp.mfrozen = (0) & 127;
+    mtmp.msleeping = 0;
+    mtmp.mcanmove = 1;
+    mtmp.mfrozen = 0;
     /* may scare some monsters -- waiting monsters excluded */
     if (!unique_corpstat(mtmp.data) && $c.andu64(mtmp.mstrategy, STRAT_WAITMASK) !== 0) {
         mtmp.mstrategy = $c.andu64(mtmp.mstrategy, 18446744072904245247n);
@@ -133,7 +133,7 @@ async function awaken_monsters(distance) {   // music.c:67
             continue;
         }
         if ((distm = dist2(mtmp.mx, mtmp.my, u.ux, u.uy)) < distance) {
-            await awaken_scare(mtmp, $c.i8(distm < $c.div32(distance, 3) ? 1 : 0));
+            await awaken_scare(mtmp, distm < $c.div32(distance, 3) ? 1 : 0);
         }
     }
 }
@@ -151,7 +151,7 @@ async function put_monsters_to_sleep(distance) {   // music.c:85
             continue;
         }
         if (dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < distance && await sleep_monst(mtmp, d(10, 10), TOOL_CLASS)) {
-            mtmp.msleeping = (1) & 1;   /* 10d10 turns + wake_nearby to rouse */
+            mtmp.msleeping = 1;   /* 10d10 turns + wake_nearby to rouse */
             await slept_monst(mtmp);
         }
     }
@@ -164,18 +164,18 @@ async function put_monsters_to_sleep(distance) {   // music.c:85
  * @returns {Promise<void>}
  */
 async function charm_snakes(distance) {   // music.c:105
-    let mtmp = null, could_see_mon = 0, was_peaceful = 0;
+    let mtmp = null;
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
         if (DEADMONSTER(mtmp)) {
             continue;
         }
-        if (mtmp.data.mlet === S.SNAKE && mtmp.mcanmove | 0 && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < distance) {
-            was_peaceful = mtmp.mpeaceful | 0;
-            mtmp.mpeaceful = (1) & 1;
-            mtmp.mavenge = (0) & 1;
+        if (mtmp.data.mlet === S.SNAKE && mtmp.mcanmove && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < distance) {
+            const was_peaceful = mtmp.mpeaceful;
+            mtmp.mpeaceful = 1;
+            mtmp.mavenge = 0;
             mtmp.mstrategy = $c.andu64(mtmp.mstrategy, 18446744072904245247n);
-            could_see_mon = canseemon(mtmp);
-            mtmp.mundetected = (0) & 1;
+            const could_see_mon = canseemon(mtmp);
+            mtmp.mundetected = 0;
             await newsym(mtmp.mx, mtmp.my);
             if (canseemon(mtmp)) {
                 if (!could_see_mon) {
@@ -200,10 +200,10 @@ async function calm_nymphs(distance) {   // music.c:139
         if (DEADMONSTER(mtmp)) {
             continue;
         }
-        if (mtmp.data.mlet === S.NYMPH && mtmp.mcanmove | 0 && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < distance) {
-            mtmp.msleeping = (0) & 1;
-            mtmp.mpeaceful = (1) & 1;
-            mtmp.mavenge = (0) & 1;
+        if (mtmp.data.mlet === S.NYMPH && mtmp.mcanmove && dist2(mtmp.mx, mtmp.my, u.ux, u.uy) < distance) {
+            mtmp.msleeping = 0;
+            mtmp.mpeaceful = 1;
+            mtmp.mavenge = 0;
             mtmp.mstrategy = $c.andu64(mtmp.mstrategy, 18446744072904245247n);
             if (canseemon(mtmp)) {
                 await pline($c.lit("%s listens cheerfully to the music, then seems quieter."), await Monnam(mtmp));
@@ -217,20 +217,20 @@ async function calm_nymphs(distance) {   // music.c:139
  * @returns {Promise<void>}
  */
 export async function awaken_soldiers(bugler) {   // music.c:162
-    let mtmp = null, distance = 0, distm = 0, $t1;
+    let mtmp = null, distm = 0, $t1;
     /* monster that played instrument */
     /* distance of affected non-soldier monsters to bugler */
-    distance = Math.imul($c.peq(bugler, gy.youmonst) ? u.ulevel : bugler.data.mlevel, 30);
+    const distance = Math.imul($c.peq(bugler, gy.youmonst) ? u.ulevel : bugler.data.mlevel, 30);
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
         if (DEADMONSTER(mtmp)) {
             continue;
         }
-        if (is_mercenary(mtmp.data) && !$c.peq(mtmp.data, $c.relem(mons, PM.GUARD))) {
+        if (is_mercenary(mtmp.data) && mtmp.data !== mons[PM.GUARD]) {
             if (!mtmp.mtame) {
-                mtmp.mpeaceful = (0) & 1;
+                mtmp.mpeaceful = 0;
             }
-            $t1 = mtmp.mfrozen = (0) & 127, mtmp.msleeping = ($t1) & 1;
-            mtmp.mcanmove = (1) & 1;
+            $t1 = mtmp.mfrozen = 0, mtmp.msleeping = ($t1) & 1;
+            mtmp.mcanmove = 1;
             mtmp.mstrategy = $c.andu64(mtmp.mstrategy, 18446744072904245247n);
             if (canseemon(mtmp)) {
                 await pline($c.lit("%s is now ready for battle!"), await Monnam(mtmp));
@@ -238,7 +238,7 @@ export async function awaken_soldiers(bugler) {   // music.c:162
                 await Norep($c.lit("%s the rattle of battle gear being readied."), $c.lit("You hear"));   /* Deaf-aware */
             }
         } else if ((distm = $c.peq(bugler, gy.youmonst) ? dist2(mtmp.mx, mtmp.my, u.ux, u.uy) : dist2(bugler.mx, bugler.my, mtmp.mx, mtmp.my)) < distance) {
-            await awaken_scare(mtmp, $c.i8(distm < $c.div32(distance, 3) ? 1 : 0));
+            await awaken_scare(mtmp, distm < $c.div32(distance, 3) ? 1 : 0);
         }
     }
 }
@@ -263,7 +263,7 @@ async function charm_monsters(distance) {   // music.c:196
             /* a shopkeeper can't be tamed but tamedog() pacifies an angry
                one; do that even if mtmp resists in order to behave the same
                as a non-cursed scroll of taming or spell of charm monster */
-            if (!await resist(mtmp, TOOL_CLASS, 0, NOTELL) || mtmp.isshk | 0) {
+            if (!await resist(mtmp, TOOL_CLASS, 0, NOTELL) || mtmp.isshk) {
                 await tamedog(mtmp, null, TRUE);
             }
         }
@@ -277,19 +277,19 @@ async function charm_monsters(distance) {   // music.c:196
  * @returns {Promise<void>}
  */
 async function do_pit(x, y, tu_pit) {   // music.c:221
-    let mtmp = null, otmp = null, chasm = null, filltype = 0, m_already_trapped = 0, keepfooting = 0, $t1;
-    chasm = await maketrap(x, y, PIT);
+    let otmp = null, $t1;
+    let chasm = await maketrap(x, y, PIT);
     if (!chasm) {
         return;   /* no pit if portal at that location */
     }
-    chasm.tseen = (1) & 1;
-    mtmp = svl.level.monsters[x][y];   /* (redundant?) */
+    chasm.tseen = 1;
+    const mtmp = svl.level.monsters[x][y];   /* (redundant?) */
     if ((otmp = sobj_at(BOULDER, x, y)) !== null) {
         if (cansee(x, y)) {
             await pline($c.lit("KADOOM!  The boulder falls into a chasm%s!"), u_at(x, y) ? $c.lit(" below you") : $c.lit(""));
         }
         if (mtmp) {
-            mtmp.mtrapped = (0) & 1;
+            mtmp.mtrapped = 0;
         }
         await obj_extract_self(otmp);
         await flooreffects(otmp, x, y, $c.lit(""));
@@ -298,7 +298,7 @@ async function do_pit(x, y, tu_pit) {   // music.c:221
     /* Let liquid flow into the newly created chasm.
        Adjust corresponding code in apply.c for exploding
        wand of digging if you alter this sequence. */
-    filltype = fillholetyp(x, y, FALSE);
+    const filltype = fillholetyp(x, y, FALSE);
     if (filltype !== ROOM) {
         await set_levltyp(x, y, filltype);   /* levl[x][y] = filltype; */
         await liquid_flow(x, y, filltype, chasm, null);
@@ -311,8 +311,8 @@ async function do_pit(x, y, tu_pit) {   // music.c:221
        new pit....  Note: if we get here, chasm is non-Null. */
     if (mtmp) {
         if (!is_flyer(mtmp.data) && !is_clinger(mtmp.data)) {
-            m_already_trapped = $c.i8(mtmp.mtrapped);
-            mtmp.mtrapped = (1) & 1;
+            const m_already_trapped = mtmp.mtrapped;
+            mtmp.mtrapped = 1;
             if (!m_already_trapped) {
                 /* suppress messages */
                 if (cansee(x, y)) {
@@ -361,7 +361,7 @@ async function do_pit(x, y, tu_pit) {   // music.c:221
             await losehp(u.uprops[HALF_PHDAM].intrinsic || u.uprops[HALF_PHDAM].extrinsic ? $c.div32(rnd(6) + 1 | 0, 2) : rnd(6), $c.lit("fell into a chasm"), NO_KILLER_PREFIX);
             await selftouch($c.lit("Falling, you"));
         } else if (u.utrap && u.utraptype === TT.PIT) {
-            keepfooting = $c.i8(!(Fumbling() && rn2(5)) && (!rnl(gu.urole.mnum === PM.ARCHEOLOGIST ? 3 : 9) || ACURR(A.DEX) > 7 && rn2(5)) ? 1 : 0);
+            const keepfooting = !(Fumbling() && rn2(5)) && (!rnl(gu.urole.mnum === PM.ARCHEOLOGIST ? 3 : 9) || ACURR(A.DEX) > 7 && rn2(5)) ? 1 : 0;
             await You($c.lit("are jostled around violently!"));
             set_utrap((rn2(6) + 2 | 0) >>> 0, TT.PIT);
             await losehp(u.uprops[HALF_PHDAM].intrinsic || u.uprops[HALF_PHDAM].extrinsic ? $c.div32(rnd(keepfooting ? 2 : 4) + 1 | 0, 2) : rnd(keepfooting ? 2 : 4), $c.lit("hurt in a chasm"), NO_KILLER_PREFIX);
@@ -383,19 +383,19 @@ async function do_pit(x, y, tu_pit) {   // music.c:221
  * @returns {Promise<void>}
  */
 async function do_earthquake(force) {   // music.c:344
-    let x = 0, y = 0, mtmp = null, trap_at_u = null, start_x = 0, start_y = 0, end_x = 0, end_y = 0, amsk = 0, algn = 0, tu_pit = 0;
-    trap_at_u = t_at(u.ux, u.uy);
-    tu_pit = 0;
+    let x = 0, y = 0, mtmp = null, amsk = 0, algn = 0;
+    const trap_at_u = t_at(u.ux, u.uy);
+    let tu_pit = 0;
     if (trap_at_u) {
-        tu_pit = is_pit(trap_at_u.ttyp) >>> 0;
+        tu_pit = is_pit(trap_at_u.ttyp);
     }
     if (force > 13) {   /* sanity precaution; maximum used is actually 10 */
         force = 13;
     }
-    start_x = u.ux - Math.imul(force, 2) | 0;
-    start_y = u.uy - Math.imul(force, 2) | 0;
-    end_x = u.ux + Math.imul(force, 2) | 0;
-    end_y = u.uy + Math.imul(force, 2) | 0;
+    let start_x = u.ux - Math.imul(force, 2) | 0;
+    let start_y = u.uy - Math.imul(force, 2) | 0;
+    let end_x = u.ux + Math.imul(force, 2) | 0;
+    let end_y = u.uy + Math.imul(force, 2) | 0;
     start_x = start_x > 1 ? start_x : 1;
     start_y = start_y > 0 ? start_y : 0;
     end_x = end_x < COLNO - 1 ? end_x : COLNO - 1;
@@ -405,7 +405,7 @@ async function do_earthquake(force) {   // music.c:344
             if ((mtmp = svl.level.monsters[x][y]) !== null) {
                 await wakeup(mtmp, TRUE);   /* peaceful monster will become hostile */
                 if (mtmp.mundetected) {
-                    mtmp.mundetected = (0) & 1;
+                    mtmp.mundetected = 0;
                     await newsym(x, y);
                     if (ceiling_hider(mtmp.data)) {
                         if (cansee(x, y)) {
@@ -459,7 +459,7 @@ async function do_earthquake(force) {   // music.c:344
                     if ((amsk & AM.SANCTUM) !== 0) {
                         break;
                     }
-                    algn = $c.i8((amsk & AM.MASK & AM.MASK) === 0 ? A.NONE : (amsk & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : (amsk & AM.MASK & AM.MASK) - 2 | 0);
+                    algn = (amsk & AM.MASK & AM.MASK) === 0 ? A.NONE : (amsk & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : (amsk & AM.MASK & AM.MASK) - 2;
                     if (cansee(x, y)) {
                         await pline_The($c.lit("%s altar falls%s."), align_str(algn), new $c.Ptr(do_earthquake$into_a_chasm, 0));
                     }
@@ -498,7 +498,7 @@ async function do_earthquake(force) {   // music.c:344
                     /*FALLTHRU*/
                     /* make the door collapse */
                     /* if already doorless, treat like room or corridor */
-                    if ((svl.level.locations[x][y].flags | 0) === D.NODOOR) {
+                    if (svl.level.locations[x][y].flags === D.NODOOR) {
                         await do_pit(x, y, tu_pit);
                         break;
                     }
@@ -543,9 +543,9 @@ function generic_lvl_desc() {   // music.c:478
  * @returns {Promise<number>} int
  */
 async function do_improvisation(instr) {   // music.c:503
-    let damage = 0, mode = 0, do_spec = 0, itmp = new $T.obj(), mundane = 0, same_old_song = Int8Array.of(0), buf = new Int8Array(256), type = 0;
-    do_spec = !(u.uprops[STUNNED].intrinsic || u.uprops[CONFUSION].intrinsic) ? 1 : 0;
-    mundane = FALSE;
+    let damage = 0, itmp = new $T.obj(), same_old_song = Int8Array.of(0), buf = new Int8Array(256);
+    let do_spec = !(u.uprops[STUNNED].intrinsic || u.uprops[CONFUSION].intrinsic) ? 1 : 0;
+    let mundane = FALSE;
     same_old_song[0] = FALSE;
     itmp.$copyFrom(instr);
     itmp.oextra = null;
@@ -559,7 +559,7 @@ async function do_improvisation(instr) {   // music.c:503
             mundane = TRUE;
         }
     }
-    mode = PLAY_NORMAL;
+    let mode = PLAY_NORMAL;
     if (u.uprops[STUNNED].intrinsic) {
         mode = mode | PLAY_STUNNED;
     }
@@ -655,7 +655,7 @@ async function do_improvisation(instr) {   // music.c:503
                     await losehp(damage, new $c.Ptr(buf, 0), KILLED.BY);   /* fire or frost damage */
                 }
             } else {
-                type = $c.rem32($c.abs((instr.otyp === FROST_HORN ? AD.COLD : AD.FIRE) - AD.MAGM | 0), 10);
+                const type = $c.rem32($c.abs((instr.otyp === FROST_HORN ? AD.COLD : AD.FIRE) - AD.MAGM), 10);
                 if (!Blind()) {
                     await pline($c.lit("A %s blasts out of the horn!"), flash_str(type, FALSE));
                 }
@@ -752,13 +752,13 @@ async function do_improvisation(instr) {   // music.c:503
  * @returns {$c.Ptr | null} char *
  */
 function improvised_notes(same_as_last_time) {   // music.c:733
-    let i = 0, notecount = 0, $t1;
+    let i = 0, $t1;
     /* target buffer has to be in svc.context, otherwise saving game
      * between improvised recitals would not be able to maintain
      * the same_as_last_time context. */
     /* You can change your tune, usually */
     if (!(Unchanging() && svc.context.jingle[0] !== 0)) {
-        notecount = rnd(5);   /* 1 - 5 */
+        const notecount = rnd(5);   /* 1 - 5 */
         for (i = 0; i < notecount; i = i + 1 | 0) {
             $t1 = improvised_notes$notes[rn2(7)], svc.context.jingle[i] = $t1;
         }
@@ -798,7 +798,7 @@ export async function do_play_instrument(instr) {   // music.c:759
         if (c !== 110) {
             return await do_improvisation(instr) ? ECMD.TIME : ECMD.OK;
         }
-        if ((u.uevent.uheard_tune | 0) === 2) {
+        if (u.uevent.uheard_tune === 2) {
             c = await yn_function($c.lit("Play the passtune?"), new $c.Ptr(ynqchars, 0), 113, TRUE);
         }
         if (c === 113) {
@@ -827,14 +827,14 @@ export async function do_play_instrument(instr) {   // music.c:759
             await exercise(A.WIS, TRUE);   /* just for trying */
             if (!$c.strcmp(new $c.Ptr(buf, 0), new $c.Ptr(svt.tune, 0))) {
                 /* Search for the drawbridge */
-                for (y[0] = $c.i16(u.uy - 1 | 0); y[0] <= (u.uy + 1 | 0); y[0] = $c.i16(y[0] + 1)) {
-                    for (x[0] = $c.i16(u.ux - 1 | 0); x[0] <= (u.ux + 1 | 0); x[0] = $c.i16(x[0] + 1)) {
+                for (y[0] = $c.i16(u.uy - 1); y[0] <= u.uy + 1; y[0] = $c.i16(y[0] + 1)) {
+                    for (x[0] = $c.i16(u.ux - 1); x[0] <= u.ux + 1; x[0] = $c.i16(x[0] + 1)) {
                         if (!isok(x[0], y[0])) {
                             continue;
                         }
                         if (find_drawbridge(new $c.Ptr(x, 0), new $c.Ptr(y, 0))) {
                             /* tune now fully known */
-                            u.uevent.uheard_tune = (2) & 3;
+                            u.uevent.uheard_tune = 2;
                             await record_achievement(ACH.TUNE);
                             if (svl.level.locations[x[0]][y[0]].typ === DRAWBRIDGE_DOWN) {
                                 await close_drawbridge(x[0], y[0]);
@@ -846,15 +846,15 @@ export async function do_play_instrument(instr) {   // music.c:759
                     }
                 }
             } else if (!Deaf()) {
-                if ((u.uevent.uheard_tune | 0) < 1) {
-                    u.uevent.uheard_tune = (1) & 3;
+                if (u.uevent.uheard_tune < 1) {
+                    u.uevent.uheard_tune = 1;
                 }
                 /* Okay, it wasn't the right tune, but perhaps
                  * we can give the player some hints like in the
                  * Mastermind game */
                 ok = FALSE;
-                for (y[0] = $c.i16(u.uy - 1 | 0); y[0] <= (u.uy + 1 | 0) && !ok; y[0] = $c.i16(y[0] + 1)) {
-                    for (x[0] = $c.i16(u.ux - 1 | 0); x[0] <= (u.ux + 1 | 0) && !ok; x[0] = $c.i16(x[0] + 1)) {
+                for (y[0] = $c.i16(u.uy - 1); y[0] <= u.uy + 1 && !ok; y[0] = $c.i16(y[0] + 1)) {
+                    for (x[0] = $c.i16(u.ux - 1); x[0] <= u.ux + 1 && !ok; x[0] = $c.i16(x[0] + 1)) {
                         if (isok(x[0], y[0])) {
                             if (svl.level.locations[x[0]][y[0]].typ === DRAWBRIDGE_UP || svl.level.locations[x[0]][y[0]].typ === DRAWBRIDGE_DOWN || is_drawbridge_wall(x[0], y[0]) >= 0) {
                                 ok = TRUE;
@@ -896,7 +896,7 @@ export async function do_play_instrument(instr) {   // music.c:759
                            correct notes followed by excess; otherwise,
                            tune would have matched above */
                         if (gears === 5) {
-                            u.uevent.uheard_tune = (2) & 3;
+                            u.uevent.uheard_tune = 2;
                             await record_achievement(ACH.TUNE);
                         }
                     }
@@ -913,8 +913,7 @@ export async function do_play_instrument(instr) {   // music.c:759
  * @returns {number} enum instruments
  */
 export function obj_to_instr(obj) {   // music.c:902
-    let ret_instr = 0;
-    ret_instr = ins_no_instrument;
+    const ret_instr = ins_no_instrument;
     return ret_instr;
 }
 

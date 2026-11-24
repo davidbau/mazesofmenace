@@ -186,7 +186,7 @@ import {
     stairway_find, stairway_find_dir, stairway_find_from,
 } from './stairs.js';
 import {
-    Aggravate_monster, BBlinded, Blind_telepat, Conflict, EBlinded, HBlinded,
+    Aggravate_monster, Blind, Blind_telepat, Conflict,
     Hallucination,
 } from './youprop.js';
 import { sync_impossible } from './source_steps.js';
@@ -639,8 +639,7 @@ export async function see_monster_closeup(monster, photo = false, env = {}) {
     const { state } = dogEnv(env);
     const hero = state.u;
     const hallucinating = Hallucination(hero);
-    const blind = Boolean(HBlinded(hero) || EBlinded(hero))
-        && !Boolean(BBlinded(hero));
+    const blind = Blind(hero);
     const blindTelepathy = Blind_telepat(hero);
     if (hallucinating || (blind && !blindTelepathy)) return false;
 
@@ -714,8 +713,7 @@ export async function see_monster_closeup(monster, photo = false, env = {}) {
 export async function see_nearby_monsters(state = game, env = {}) {
     const hero = state.u;
     const hallucinating = Hallucination(hero);
-    const blind = Boolean(HBlinded(hero) || EBlinded(hero))
-        && !Boolean(BBlinded(hero));
+    const blind = Blind(hero);
     if (hallucinating || (blind && !Blind_telepat(hero))) return 0;
 
     let seen = 0;
@@ -976,7 +974,7 @@ export async function keepdogs(pets_only, rawEnv = {}) {
                     await message(
                         `${pronoun} leash suddenly comes loose.`, state, env,
                     );
-                    m_unleash(mtmp, false, { ...env, state });
+                    await m_unleash(mtmp, false, { ...env, state });
                 }
                 if (mtmp === u.usteed) {
                     await impossible('steed left behind?', state, env);
@@ -1010,7 +1008,7 @@ export async function keepdogs(pets_only, rawEnv = {}) {
                 state,
                 env,
             );
-            m_unleash(mtmp, false, { ...env, state });
+            await m_unleash(mtmp, false, { ...env, state });
         }
     }
 }
@@ -1476,7 +1474,7 @@ export async function discard_migrations(state = game, rawEnv = {}) {
             if (previousMonster) previousMonster.nmon = next;
             else state.gm.migrating_mons = next;
             monster.nmon = null;
-            discard_minvent(monster, false, env);
+            await discard_minvent(monster, false, env);
             if (emits_light(monster.data))
                 await del_light_source_async(LS_MONSTER, monster, state);
             dealloc_monst(monster);

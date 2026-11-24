@@ -87,10 +87,9 @@ function def_wait_synch() {   // windows.c:215
  * @returns {number} boolean
  */
 export function check_tty_wincap(wincap) {   // windows.c:231
-    let wc = null;
-    wc = win_choices_find($c.lit("tty"));
+    const wc = win_choices_find($c.lit("tty"));
     if (wc) {
-        return $c.i8($c.andu64(wc.procs.wincap, wincap) === wincap ? 1 : 0);
+        return $c.andu64(wc.procs.wincap, wincap) === wincap ? 1 : 0;
     }
     return 0;
 }
@@ -99,10 +98,9 @@ export function check_tty_wincap(wincap) {   // windows.c:231
  * @returns {number} boolean
  */
 export function check_tty_wincap2(wincap2) {   // windows.c:241
-    let wc = null;
-    wc = win_choices_find($c.lit("tty"));
+    const wc = win_choices_find($c.lit("tty"));
     if (wc) {
-        return $c.i8($c.andu64(wc.procs.wincap2, wincap2) === wincap2 ? 1 : 0);
+        return $c.andu64(wc.procs.wincap2, wincap2) === wincap2 ? 1 : 0;
     }
     return 0;
 }
@@ -124,8 +122,8 @@ function win_choices_find(s) {   // windows.c:253
  * @returns {Promise<void>}
  */
 export async function choose_windows(s) {   // windows.c:267
-    let i = 0, tmps = null, buf = new Int8Array(256), first = 0;
-    tmps = null;
+    let i = 0, buf = new Int8Array(256);
+    let tmps = null;
     for (i = 0; winchoices[i].procs; i = i + 1 | 0) {
         if (43 === winchoices[i].procs.name.get(0)) {
             continue;
@@ -168,7 +166,7 @@ export async function choose_windows(s) {   // windows.c:267
     if (!winchoices[1].procs) {
         await config_error_add($c.lit("Window type %s not recognized.  The only choice is: %s"), s, winchoices[0].procs.name);
     } else {
-        first = 1;
+        let first = 1;
         buf[0] = 0;
         for (i = 0; winchoices[i].procs; i = i + 1 | 0) {
             if (43 === winchoices[i].procs.name.get(0)) {
@@ -279,7 +277,6 @@ export async function genl_putmsghistory(msg, is_restoring) {   // windows.c:489
 /* hangup has occurred; switch to no-op user interface */
 export function nhwindows_hangup() {   // windows.c:615
     let previnterface_getmsghistory = null;
-    previnterface_getmsghistory = null;
     /* command processor shouldn't look for 2nd char after seeing ESC */
     iflags.altmeta = 0;
     /* don't call exit_nhwindows() directly here; if a hangup occurs
@@ -576,9 +573,9 @@ export function genl_status_enablefield(fieldidx, nm, fmt, enable) {   // window
  * @returns {Promise<void>}
  */
 export async function genl_status_update(idx, ptr, chg, percent, color, colormasks) {   // windows.c:937
-    let newbot1 = new Int8Array(200), newbot2 = new Int8Array(200), cond = 0, condptr = null, i = 0, pass = 0, lndelta = 0, idx1 = 0, idx2 = 0, fieldlist = null, nb = null, text = null, val = null;
-    condptr = ptr;
-    text = $c.asArr(ptr, Int8Array);
+    let newbot1 = new Int8Array(200), newbot2 = new Int8Array(200), cond = 0, i = 0, pass = 0, idx1 = 0, idx2 = 0, nb = null;
+    const condptr = ptr;
+    const text = $c.asArr(ptr, Int8Array);
     /* line one */
     /* in case interface is using genl_status_update() but has not
        specified WC2_FLUSH_STATUS (status_update() for field values
@@ -657,18 +654,18 @@ export async function genl_status_update(idx, ptr, chg, percent, color, colormas
     }
     /* if '$' is encoded, buffer length of \GXXXXNNNN is 9 greater than
        single char; we want to subtract that 9 when checking display length */
-    lndelta = (status_activefields[BL.GOLD] && $c.strstr(status_vals[BL.GOLD], $c.lit("\\G")) ? 9 : 0) >>> 0;
+    const lndelta = status_activefields[BL.GOLD] && $c.strstr(status_vals[BL.GOLD], $c.lit("\\G")) ? 9 : 0;
     /* basic bot2 formats groups of second line fields into five buffers,
        then decides how to order those buffers based on comparing lengths
        of [sub]sets of them to the width of the map; we have more control
        here but currently emulate that behavior */
     for (pass = 1; pass <= 4; pass = pass + 1 >>> 0) {
-        fieldlist = new $c.Ptr(genl_status_update$fieldorder[pass], 0);
+        const fieldlist = new $c.Ptr(genl_status_update$fieldorder[pass], 0);
         nb = new $c.Ptr(newbot2, 0);
         nb.set(0, 0);
         for (i = 0; (idx2 = fieldlist.get(i)) !== BL.FLUSH; i = i + 1 | 0) {
             if (status_activefields[idx2]) {
-                val = status_vals[idx2];
+                let val = status_vals[idx2];
                 switch (idx2) {
                     case BL.HP:
                     case BL.XP:
@@ -945,10 +942,10 @@ export function encglyph(glyph) {   // windows.c:1428
  * @returns {number} int
  */
 export function decode_glyph(str, glyph_ptr) {   // windows.c:1439
-    let rndchk = 0, dcount = 0, retval = 0, dp = null, $t1;
-    rndchk = 0;
-    dcount = 0;
-    retval = 0;
+    let dp = null, $t1;
+    let rndchk = 0;
+    let dcount = 0;
+    let retval = 0;
     for (; str.get(0) && (dcount = dcount + 1 | 0) <= 4; str = str.add(1)) {
         if ((dp = $c.strchr(new $c.Ptr(hexdd, 0), str.get(0))) !== null) {
             retval = retval + 1 | 0;
@@ -977,22 +974,22 @@ export function decode_glyph(str, glyph_ptr) {   // windows.c:1439
  * @returns {$c.Ptr | null} char *
  */
 export function decode_mixed(buf, str) {   // windows.c:1466
-    let put = null, glyphinfo = new $T.glyphinfo(), dcount = 0, so = 0, ggv = Int32Array.of(0), save_str = null, $t1, $t2, $t3, $t4, $t5, $t6;
-    put = buf;
+    let glyphinfo = new $T.glyphinfo(), dcount = 0, ggv = Int32Array.of(0), $t1, $t2, $t3, $t4, $t5, $t6;
+    let put = buf;
     glyphinfo.$copyFrom(nul_glyphinfo);
     if (!str) {
         return $c.strcpy(buf, $c.lit(""));
     }
     L1: while (str.get(0)) {
         if (str.get(0) === 92) {
-            save_str = ($t1 = str, str = $t1.add(1), $t1);
+            const save_str = ($t1 = str, str = $t1.add(1), $t1);
             switch (str.get(0)) {
                 case 71:
                     /* glyph value \GXXXXNNNN*/
                     if (dcount = decode_glyph(str.add(1), new $c.Ptr(ggv, 0))) {
                         str = str.add(dcount + 1 | 0);
                         map_glyphinfo(0, 0, ggv[0], 0, glyphinfo);
-                        so = glyphinfo.gm.sym.symidx;
+                        const so = glyphinfo.gm.sym.symidx;
                         ($t2 = put, put = $t2.add(1), $t2).set(0, $c.i8(gs.showsyms[so]));
                         /* 'str' is ready for the next loop iteration and '*str'
                            should not be copied at the end of this iteration */
@@ -1049,8 +1046,8 @@ export async function genl_putmixed(window, attr, str) {   // windows.c:1528
  * @param {number} complain boolean
  */
 export function genl_display_file(fname, complain) {   // windows.c:1539
-    let buf = new Int8Array(256), f = null;
-    f = $c.fopen(fname, $c.lit("r"));
+    let buf = new Int8Array(256);
+    const f = $c.fopen(fname, $c.lit("r"));
     if (!f) {
         if (complain) {   /* send complaint to stdout rather than to stderr */
             $c.fprintf($c.__stdoutp, $c.lit("\nCannot open \"%s\".\n"), fname);
@@ -1076,11 +1073,10 @@ export function genl_display_file(fname, complain) {   // windows.c:1539
  * @returns {number} boolean
  */
 export function menuitem_invert_test(mode, itemflags, is_selected) {   // windows.c:1562
-    let skipinvert = 0;
     /* 0: invert; 1: select; 2: deselect */
     /* itemflags for the item */
     /* current selection status of the item */
-    skipinvert = $c.i8((itemflags & MENU.ITEMFLAGS_SKIPINVERT) >>> 0 !== 0 ? 1 : 0);
+    const skipinvert = (itemflags & MENU.ITEMFLAGS_SKIPINVERT) >>> 0 !== 0 ? 1 : 0;
     if (!skipinvert) {   /* if not flagged SKIPINVERT, always pass test */
         return 1;
     }
@@ -1099,7 +1095,7 @@ export function menuitem_invert_test(mode, itemflags, is_selected) {   // window
     if (iflags.menuinvertmode === 2) {
         return 0;
     } else if (iflags.menuinvertmode === 1) {
-        return $c.i8(is_selected ? 1 : 0);
+        return is_selected ? 1 : 0;
     }
     return 1;
 }
@@ -1165,20 +1161,20 @@ export function mixed_to_glyphinfo(str, gip) {   // windows.c:1600
  * @returns {Promise<number>} int
  */
 export async function choose_classes_menu(prompt, category, way, class_list, class_select) {   // windows.c:1644
-    let pick_list = [null], win = 0, any = new $T.any(), buf = new Int8Array(256), text = null, selected = 0, ret = 0, i = 0, n = 0, next_accelerator = 0, accelerator = 0, clr = 0, idx = 0, $t1;
+    let pick_list = [null], any = new $T.any(), buf = new Int8Array(256), ret = 0, i = 0, idx = 0, $t1;
     pick_list[0] = null;
-    text = null;
-    accelerator = 0;
-    clr = NO_COLOR;
+    let text = null;
+    let accelerator = 0;
+    const clr = NO_COLOR;
     if (!class_list || !class_select) {
         return 0;
     }
-    next_accelerator = 97;
+    let next_accelerator = 97;
     any.$copyFrom(cg.zeroany);
-    win = await create_nhwindow()(NHW.MENU);
+    const win = await create_nhwindow()(NHW.MENU);
     await start_menu()(win, MENU.BEHAVE_STANDARD);
     while (class_list.get(0)) {
-        selected = 0;
+        let selected = 0;
         switch (category) {
             case 0:
                 idx = def_char_to_monclass(class_list.get(0));
@@ -1211,7 +1207,7 @@ export async function choose_classes_menu(prompt, category, way, class_list, cla
             }
         }
         any.a_int = class_list.get(0);
-        await add_menu(win, nul_glyphinfo, any, $c.i8(accelerator), $c.i8(category ? class_list.get(0) : 0), ATR.NONE, clr, new $c.Ptr(buf, 0), selected ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
+        await add_menu(win, nul_glyphinfo, any, $c.i8(accelerator), category ? class_list.get(0) : 0, ATR.NONE, clr, new $c.Ptr(buf, 0), selected ? MENU.ITEMFLAGS_SELECTED : MENU.ITEMFLAGS_NONE);
         if (category > 0) {
             if (next_accelerator === 90) {
                 break;
@@ -1241,7 +1237,7 @@ export async function choose_classes_menu(prompt, category, way, class_list, cla
         }
     }
     await end_menu()(win, prompt);
-    n = await select_menu(win, way ? PICK.ANY : PICK.ONE, new $c.Ptr(pick_list, 0));
+    let n = await select_menu(win, way ? PICK.ANY : PICK.ONE, new $c.Ptr(pick_list, 0));
     await destroy_nhwindow()(win);
     if (n > 0) {
         if (category === 1) {
@@ -1301,7 +1297,6 @@ export function adjust_menu_promptstyle(window, style) {   // windows.c:1769
 export async function add_menu(window, glyphinfo, identifier, ch, gch, attr$in, color$in, str, itemflags) {   // windows.c:1785
     const attr = Int32Array.of(attr$in);
     const color = Int32Array.of(color$in);
-    let save_plnmsg = 0;
     /* window to use, must be of type NHW_MENU */
     /* glyph info with glyph to
      * display with item */
@@ -1316,7 +1311,7 @@ export async function add_menu(window, glyphinfo, identifier, ch, gch, attr$in, 
         /* if 'str' is Null, just return without adding any menu entry */
         do {
             if (debugcore($c.lit("windows.c"), 1)) {
-                save_plnmsg = iflags.last_msg;
+                const save_plnmsg = iflags.last_msg;
                 await pline($c.lit("add_menu(Null)"));
                 iflags.last_msg = save_plnmsg;
             }
@@ -1339,10 +1334,10 @@ export async function add_menu(window, glyphinfo, identifier, ch, gch, attr$in, 
  * @returns {Promise<void>}
  */
 export async function add_menu_heading(tmpwin, buf) {   // windows.c:1816
-    let any = new $T.any(), attr = 0, color = 0;
+    let any = new $T.any();
     any.$copyFrom(cg.zeroany);
-    attr = iflags.menu_headings.attr;
-    color = iflags.menu_headings.color;
+    let attr = iflags.menu_headings.attr;
+    let color = iflags.menu_headings.color;
     /* suppress highlighting during end-of-game disclosure */
     if (program_state.gameover) {
         attr = ATR.NONE, color = NO_COLOR;
@@ -1386,10 +1381,9 @@ function get_menu_coloring(str, color, attr) {   // windows.c:1841
  * @returns {Promise<number>} int
  */
 export async function select_menu(window, how, menu_list) {   // windows.c:1856
-    let reslt = 0, old_bot_disabled = 0;
-    old_bot_disabled = gb.bot_disabled;
+    const old_bot_disabled = gb.bot_disabled;
     gb.bot_disabled = 1;
-    reslt = await windowprocs.win_select_menu(window, how, menu_list);
+    const reslt = await windowprocs.win_select_menu(window, how, menu_list);
     gb.bot_disabled = old_bot_disabled;
     return reslt;
 }
@@ -1399,15 +1393,14 @@ export async function select_menu(window, how, menu_list) {   // windows.c:1856
  * @returns {Promise<void>}
  */
 export async function getlin(query, bufp) {   // windows.c:1868
-    let old_bot_disabled = 0, obufp = null, got_cmdq = 0, cmdq = null;
-    old_bot_disabled = gb.bot_disabled;
-    obufp = bufp;
-    got_cmdq = 0;
-    cmdq = null;
+    const old_bot_disabled = gb.bot_disabled;
+    const obufp = bufp;
+    let got_cmdq = 0;
+    let cmdq = null;
     while ((cmdq = cmdq_pop()) !== null) {
         if (cmdq.typ === CMDQ.KEY) {
             got_cmdq = 1;
-            bufp.set(0, $c.i8(cmdq.key !== 10 ? cmdq.key : 0));
+            bufp.set(0, cmdq.key !== 10 ? cmdq.key : 0);
             bufp = bufp.add(1);
             if (cmdq.key === 10) {
                 break;

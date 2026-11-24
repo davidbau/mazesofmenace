@@ -1,4 +1,5 @@
 // hack.js — C ref: hack.c.
+import { nh_qsort } from './nhsort.js';
 import './allmain.js';
 import { pooleffects_is_flyer } from './cmd.js';
 import { set_msg_xy } from './pline.js';
@@ -101,7 +102,7 @@ import { attacks } from './artifact.js'; // relocate-fns
 import { adjalign } from './attrib.js'; // relocate-fns
 import { drag_ball, move_bc } from './ball.js'; // relocate-fns
 import { midnight } from './calendar.js'; // relocate-fns
-import { AD_FIRE_ART, BOULDER_OTYP, OCLASS_COIN, SET_BOTL, STATUE_OTYP, S_GHOST, S_VORTEX, SetVoice, TIP_GETPOS, TRAP_EXPLANATIONS, TTY_MENU_ROWS, Underwater, WEB_TTYP, _Blind_cmd, _Breathless, _Cold_resistance, _Flying, _Levitation, _Underwater, _ansimpleoname, _bldr_Sokoban, _bldr_revive_nasty, _cmd_Hallucination, _digests, _dolook, _flush_travel_unsure, _glyph_at, _hero_Deaf, _hero_notake, _hero_youmonst, _hidesUnder_useupf, _hliquid, _is_hider_mndx, _is_lava, _is_pool, _levlAt, _likes_lava, _mh_a_monnam, _next2u, _norep, _objdescr_is, _pe_is_clinger, _pickupMenuCounts, _pickup_lift_list, _plineVFmt, _sortloot_within_class, _st_Punished, _st_Stealth, _st_is_floater, _the_str, _u_on_newpos_nearby, _uprop_active, bhp_bury_objs, bigmonst_cmd, cmd_from_func, cmdq_peek, confdir, do_reqmenu, flooreffects_is_lava, flooreffects_is_whirly, flooreffects_throws_rocks, hit_bars_hero, impossible_cmd, is_blade, is_flimsy, nh_delay_output, paranoid_query, pooleffects_Amphibious, pooleffects_Breathless, pooleffects_Flying, pooleffects_Levitation, pooleffects_Swimming, pooleffects_Wwalking, pooleffects_back_on_ground, pooleffects_ceiling_hider, pooleffects_dismount_steed, pooleffects_drown, pooleffects_grounded, pooleffects_hliquid, pooleffects_is_lava, pooleffects_is_pool, pooleffects_lava_effects, reset_occupations, stolen_value, type_is_pname, u_on_newpos_cmd, u_wield_art, verysmall_cmd } from './cmd.js'; // relocate-fns
+import { AD_FIRE_ART, BOULDER_OTYP, OCLASS_COIN, SET_BOTL, STATUE_OTYP, S_GHOST, S_VORTEX, SetVoice, TIP_GETPOS, TRAP_EXPLANATIONS, TTY_MENU_ROWS, Underwater, WEB_TTYP, _Blind_cmd, _Breathless, _Cold_resistance, _Flying, _Levitation, _Underwater, _ansimpleoname, _bldr_Sokoban, _bldr_revive_nasty, _cmd_Hallucination, _digests, _dolook, _flush_travel_unsure, _glyph_at, _hero_Deaf, _hero_notake, _hero_youmonst, _hidesUnder_useupf, _hliquid, _is_hider_mndx, _is_lava, _is_pool, _levlAt, _likes_lava, _mh_a_monnam, _next2u, _norep, _objdescr_is, _pe_is_clinger, _pickupMenuCounts, _pickup_lift_list, _plineVFmt, _sortloot_within_class, query_objlist_sorted, _st_Punished, _st_Stealth, _st_is_floater, _the_str, _u_on_newpos_nearby, _uprop_active, bhp_bury_objs, bigmonst_cmd, cmd_from_func, cmdq_peek, confdir, do_reqmenu, flooreffects_is_lava, flooreffects_is_whirly, flooreffects_throws_rocks, hit_bars_hero, impossible_cmd, is_blade, is_flimsy, nh_delay_output, paranoid_query, pooleffects_Amphibious, pooleffects_Breathless, pooleffects_Flying, pooleffects_Levitation, pooleffects_Swimming, pooleffects_Wwalking, pooleffects_back_on_ground, pooleffects_ceiling_hider, pooleffects_dismount_steed, pooleffects_drown, pooleffects_grounded, pooleffects_hliquid, pooleffects_is_lava, pooleffects_is_pool, pooleffects_lava_effects, reset_occupations, stolen_value, type_is_pname, u_on_newpos_cmd, u_wield_art, verysmall_cmd } from './cmd.js'; // relocate-fns
 import { menucolor_text } from './coloratt.js'; // relocate-fns
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js'; // relocate-fns
 import { ACH_TOWN, AIR, ALTAR, ANTHOLE, ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, A_STR, BARRACKS, BEEHIVE, BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, CMDQ_EXTCMD, COCKNEST, CONFLICT, CONFUSION, COURT, DBWALL, DB_ICE, DB_LAVA, DB_MOAT, DB_UNDER, DELPHI, DISMOUNT_FELL, DISMOUNT_GENERIC, DOMOVE_RUSH, DOMOVE_WALK, DO_MOVE, DRAWBRIDGE_UP, D_CLOSED, D_ISOPEN, D_LOCKED, ECMD_OK, ECMD_TIME, ESHK, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, FOUNTAIN, GP_ALLOW_U, GRAVE, HEADSTONE, HOLE, IS_FURNITURE, In_mines, In_sokoban, Is_waterlevel, LADDER, LAVAPOOL, LEPREHALL, MENU_TRADITIONAL, MOAT, MOD_ENCUMBER, MORGUE, M_AP_NOTHING, N_DIRS, OROOM, PARANOID_CONFIRM, PARANOID_SWIM, PLNMSG_BACK_ON_GROUND, POOL, PROT_FROM_SHAPE_CHANGERS, P_BASIC, P_RIDING, P_UNSKILLED, RUN_CRAWL, RUN_LEAP, RUN_TPORT, SCORR, SINK, SLT_ENCUMBER, STAIRS, STUNNED, SUPPRESS_SADDLE, SWAMP, TEMPLE, TEST_MOVE, TEST_TRAP, TEST_TRAV, THRONE, TRAPDOOR, TRAPNUM, TRAP_CLEARLY_IMMUNE, TRAVP_GUESS, TRAVP_TRAVEL, TRAVP_VALID, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, WATER, WT_ELF, WT_TOOMUCH_DIAGONAL, W_NONPASSWALL, ZOO, has_mgivenname, xdir, ydir } from './const.js'; // relocate-fns
@@ -1955,6 +1956,10 @@ async function _pickup_menu(atTile, count = 0) {
     /* C pickup.c:1111-1117 (FEEL_COCKATRICE, set only for the uncounted
      * "Pick up what?" query, :774): a corpse the hero will feel stops the menu
      * before anything is painted and falls back to look_here(0, NOFLAGS). */
+    /* C pickup.c:1085 sortloot() runs before the menu loop below meets a
+     * felt cockatrice corpse, so its loot_classify() observe_object() calls
+     * happen either way (invent.c:170). */
+    const sortedTile = query_objlist_sorted(atTile, false);
     if (!count && atTile.some(o => (o.otyp | 0) === 265 /* CORPSE */
                                    && will_feel_cockatrice(o, false))) {
         await _dolook();
@@ -1981,21 +1986,9 @@ async function _pickup_menu(atTile, count = 0) {
      * run in sortloot() order: SORTLOOT_LOOT (def_srt_order class rank, then
      * subclass/name) when sortloot is f/l, else the nexthere chain order. */
     const flatMenu = g.flags.sortpack === false;
-    const DEF_SRT = [12, 5, 4, 11, 8, 9, 10, 13, 7, 6, 2, 3, 14, 15, 16];
     const menuGroups = flatMenu
-        ? [{ oc: null, list: loot
-            ? (() => {
-                const rank = (o) => { const i = DEF_SRT.indexOf(o.oclass | 0);
-                    return i < 0 ? DEF_SRT.length + 1 : i; };
-                const out = [];
-                for (const r of [...new Set(atTile.map(rank))].sort((x, y) => x - y)) {
-                    const cls = atTile.filter(o => rank(o) === r);
-                    out.push(..._sortloot_within_class(cls, cls[0].oclass | 0, loot));
-                }
-                return out;
-            })()
-            : atTile.slice() }]
-        : classOrder.map(oc => ({ oc, list: _sortloot_within_class(atTile, oc, loot) }));
+        ? [{ oc: null, list: sortedTile }]
+        : classOrder.map(oc => ({ oc, list: sortedTile.filter(o => (o.oclass | 0) === oc) }));
     for (const { oc, list } of menuGroups) {
         if (!flatMenu) {
         if (mrow % 23 === 0) letterCode = 97;
@@ -4861,7 +4854,7 @@ export async function notice_all_mons(reset) {
         if (i) {
             /* C hack.c:1735 notice_mons_cmp: distu is squared Euclidean distance. */
             const u = g.u;
-            arr.sort(function(a, b) {
+            nh_qsort(arr, function(a, b) { /* C hack.c:1774 qsort(arr, i, notice_mons_cmp) */
                 const da = dist2(a.mx, a.my, u.ux, u.uy);
                 const db = dist2(b.mx, b.my, u.ux, u.uy);
                 return da - db;

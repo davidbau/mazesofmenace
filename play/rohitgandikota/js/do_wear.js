@@ -30,7 +30,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          INTRINSIC, HEAD, HAND, FINGER, CQ_CANNED, st_corpse,
          st_petrifies, MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
          ALL_TYPES_SELECTED, ALL_FINISHED, SIGNAL_NOMENU, USE_INVLET, INVORDER_SORT, PICK_ANY,
-         FROMOUTSIDE } from './const.js';
+         FROMOUTSIDE, ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './const.js';
 import { setworn } from './worn.js';
 import { welded, is_sword, setuwep, setuswapwep, setuqwep, empty_handed }
     from './wield.js';
@@ -55,7 +55,7 @@ import { an, xname, doname, the, Tobjnam, gloves_simple_name,
          ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS,
          ARM_CLOAK, ARM_SHIRT } from './objnam.js';
 import { makeknown, observe_object } from './o_init.js';
-import { hcolor } from './do_name.js';
+import { hcolor, x_monnam } from './do_name.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
 import { cmdq_pop } from './cmd.js';
 import { CMDQ_KEY, ECMD_FAIL } from './const.js';
@@ -219,7 +219,7 @@ export async function glibr() {
                     + `${xfl ? 'also ' : ''}${otense(obj, 'slip')} `
                     + `from your ${which}${hand}.`);
         obj.quan = savequan;
-        setuwep(null);
+        await setuwep(null);
         cmdq_clear(CQ_CANNED);
         if (canletgo(obj, ''))
             await dropx(obj);
@@ -1401,9 +1401,7 @@ function adjust_ring_attribute(ring, which, amount) {
     (game.disp ||= {}).botl = true;
 }
 
-// src/do_wear.c toggle_stealth().  A visible change in stealth identifies
-// the ring or boots and gives immediate feedback.  The blocked term is
-// tracked separately from the worn-property mask, as in C's BStealth.
+// src/do_wear.c:107 toggle_stealth()
 async function toggle_stealth(obj, oldprop, on) {
     if (on ? game.initial_don : game.context_takeoff?.cancelled_don)
         return;
@@ -1413,11 +1411,19 @@ async function toggle_stealth(obj, oldprop, on) {
             learnring(obj, true);
         else
             makeknown(obj.otyp);
-        if (on && obj.otyp === ONAMES.ELVEN_BOOTS) {
-            await You(Levitation() || Flying()
-                ? 'float imperceptibly.' : 'walk very quietly.');
+        if (on) {
+            if (!is_boots(obj))
+                await You('move very quietly.');
+            else if (Levitation() || Flying())
+                await You('float imperceptibly.');
+            else
+                await You('walk very quietly.');
+        } else if (game.u.usteed) {
+            const steed = x_monnam(game.u.usteed, ARTICLE_YOUR, null,
+                SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION, false);
+            await You(`and ${steed} are noisy.`);
         } else {
-            await You(on ? 'move very quietly.' : 'sure are noisy.');
+            await You('sure are noisy.');
         }
     }
 }
@@ -2166,7 +2172,7 @@ async function do_takeoff() {
         if (doff.what === W_WEP) {
             const uwep = worn(W_WEP);
             if (uwep && !await cursed(uwep)) {
-                setuwep(null);
+                await setuwep(null);
                 await You(was_twoweap
                     ? 'are no longer wielding either weapon.'
                     : `are ${empty_handed()}.`);

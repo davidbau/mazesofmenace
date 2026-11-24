@@ -5,6 +5,7 @@
 //        oinit(369-372), init_objects preamble.
 //
 // Object type ordinals: from nethack-c/include/objects.h enum (post-SCR_MAIL fix).
+import { nh_qsort } from './nhsort.js';
 import { strncmpi } from './hacklib.js';
 import { game, wizard } from './gstate.js';
 import { yn_function } from './cmd.js';
@@ -681,7 +682,8 @@ export function discovery_line(dis, buf = game._oc_encountered?.[dis] ? '  ' : '
 // the owned sorted_lines vector; draining it models the C free/reset loop.
 // lootsort strips the 6-char sortloot key: p[6] = p[0]; p += 6.
 export function disco_output_sorted(lines, sorted_lines, lootsort) {
-    sorted_lines.sort(discovered_cmp);
+    /* C o_init.c:749 / :1108 qsort(sorted_lines, sorted_ct, discovered_cmp) */
+    nh_qsort(sorted_lines, discovered_cmp);
     for (const line of sorted_lines) {
         lines.push(lootsort ? line[0] + line.slice(7) : line);
     }

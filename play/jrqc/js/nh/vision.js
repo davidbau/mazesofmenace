@@ -30,7 +30,7 @@ import { COULD_SEE, IN_SIGHT, MAX_RADIUS, MONSEEN, TEMP_LIT } from './vision.h.j
 import { cansee, circle_ptr, couldsee } from './vision.macros.js';
 import { worm_known } from './worm.js';
 import { TT } from './you.h.js';
-import { Blind, Detect_monsters, See_invisible } from './youprop.macros.js';
+import { Blind, Detect_monsters, See_invisible, Underwater } from './youprop.macros.js';
 
 const vision_recalc$colbump = new Int16Array(81);   // static in vision_recalc()
 /* Circles
@@ -149,11 +149,11 @@ export function does_block(x, y, lev) {   // vision.c:153
         $t1 = wizard() && debugcore($c.lit("seethru"), FALSE) ? 1 : -1, gs.seethru = $t1;
     }
     /* Features that block . . */
-    if (IS_OBSTRUCTED(lev.typ) || lev.typ === TREE || IS_DOOR(lev.typ) && (lev.flags | 0) & (D.CLOSED | D.LOCKED | D.TRAPPED)) {
+    if (IS_OBSTRUCTED(lev.typ) || lev.typ === TREE || IS_DOOR(lev.typ) && lev.flags & (D.CLOSED | D.LOCKED | D.TRAPPED)) {
         return 1;
     }
     if (gs.seethru !== 1) {
-        if (lev.typ === CLOUD || IS_WATERWALL(lev.typ) || lev.typ === LAVAWALL || (u.uinwater | 0) && is_moat($c.i16(x), $c.i16(y))) {
+        if (lev.typ === CLOUD || IS_WATERWALL(lev.typ) || lev.typ === LAVAWALL || Underwater() && is_moat($c.i16(x), $c.i16(y))) {
             return 1;
         }
     }   /* gs.seethru */
@@ -182,7 +182,7 @@ export function does_block(x, y, lev) {   // vision.c:153
  * level and the level monsters and objects are in place.
  */
 export function vision_reset() {   // vision.c:211
-    let y = 0, x = 0, i = 0, dig_left = 0, block = 0, lev = null;
+    let y = 0, x = 0, i = 0;
     /* Start out with cs0 as our current array */
     gv.viz_array = new $c.Ptr(cs_rows0, 0);
     gv.viz_rmin = new $c.Ptr(cs_rmin0, 0);
@@ -192,9 +192,9 @@ export function vision_reset() {   // vision.c:211
     $c.memset(new $c.Ptr(viz_clear, 0), 0, 1680);
     /* Dig the level */
     for (y = 0; y < ROWNO; y = y + 1 | 0) {
-        dig_left = 0;
-        block = TRUE;   /* location (0,y) is always stone; it's !isok() */
-        lev = $c.relem(svl.level.locations[1], y);
+        let dig_left = 0;
+        let block = TRUE;   /* location (0,y) is always stone; it's !isok() */
+        let lev = $c.relem(svl.level.locations[1], y);
         for (x = 1; x < COLNO; x = x + 1 | 0, lev = $c.radd(lev, ROWNO)) {
             if (block !== (IS_OBSTRUCTED(lev.typ) || does_block(x, y, lev) ? 1 : 0)) {
                 if (block) {
@@ -225,7 +225,7 @@ export function vision_reset() {   // vision.c:211
         for (; i < COLNO; i = i + 1 | 0) {
             left_ptrs[y][i] = $c.i16(dig_left);
             right_ptrs[y][i] = COLNO - 1;
-            viz_clear[y][i] = $c.i8(!block ? 1 : 0);
+            viz_clear[y][i] = !block ? 1 : 0;
         }
     }
     iflags.vision_inited = TRUE;   /* vision is ready */
@@ -243,7 +243,7 @@ export function vision_reset() {   // vision.c:211
  * @param {*} rmax coordxy **
  */
 function get_unused_cs(rows, rmin, rmax) {   // vision.c:274
-    let row = 0, nrmin = null, nrmax = null, $t1, $t2;
+    let row = 0, $t1, $t2;
     if ($c.peq(gv.viz_array, new $c.Ptr(cs_rows0, 0))) {
         rows.set(0, new $c.Ptr(cs_rows1, 0));
         rmin.set(0, new $c.Ptr(cs_rmin1, 0));
@@ -254,8 +254,8 @@ function get_unused_cs(rows, rmin, rmax) {   // vision.c:274
         rmax.set(0, new $c.Ptr(cs_rmax0, 0));
     }
     /* return an initialized, unused work area */
-    nrmin = rmin.get(0);
-    nrmax = rmax.get(0);
+    let nrmin = rmin.get(0);
+    let nrmax = rmax.get(0);
     $c.memset(rows.get(0).get(0), 0, 1680);
     /* see nothing */
     for (row = 0; row < ROWNO; row = row + 1 | 0) {
@@ -283,14 +283,14 @@ function get_unused_cs(rows, rmin, rmax) {   // vision.c:274
  * @returns {Promise<void>}
  */
 async function rogue_vision(next, rmin, rmax) {   // vision.c:314
-    let rnum = 0, start = 0, stop = 0, in_door = 0, xhi = 0, xlo = 0, yhi = 0, ylo = 0, zx = 0, zy = 0, $t1, $t2;
-    rnum = (svl.level.locations[u.ux][u.uy].roomno | 0) - ROOMOFFSET | 0;   /* no SHARED... */
+    let start = 0, stop = 0, zx = 0, zy = 0, $t1, $t2;
+    const rnum = svl.level.locations[u.ux][u.uy].roomno - ROOMOFFSET;   /* no SHARED... */
     /* If in a lit room, we are able to see to its boundaries. */
     /* If dark, set COULD_SEE so various spells work -dlc */
     if (rnum >= 0) {
-        for (zy = svr.rooms[rnum].ly - 1 | 0; zy <= (svr.rooms[rnum].hy + 1 | 0); zy = zy + 1 | 0) {
-            $t1 = $c.i16(start = svr.rooms[rnum].lx - 1 | 0), rmin.set(zy, $t1);
-            $t2 = $c.i16(stop = svr.rooms[rnum].hx + 1 | 0), rmax.set(zy, $t2);
+        for (zy = svr.rooms[rnum].ly - 1; zy <= svr.rooms[rnum].hy + 1; zy = zy + 1 | 0) {
+            $t1 = $c.i16(start = svr.rooms[rnum].lx - 1), rmin.set(zy, $t1);
+            $t2 = $c.i16(stop = svr.rooms[rnum].hx + 1), rmax.set(zy, $t2);
             for (zx = start; zx <= stop; zx = zx + 1 | 0) {
                 if (svr.rooms[rnum].rlit) {
                     next.get(zy).set(zx, COULD_SEE | IN_SIGHT);
@@ -301,12 +301,12 @@ async function rogue_vision(next, rmin, rmax) {   // vision.c:314
             }
         }
     }
-    in_door = svl.level.locations[u.ux][u.uy].typ === DOOR ? 1 : 0;
+    const in_door = svl.level.locations[u.ux][u.uy].typ === DOOR ? 1 : 0;
     /* Can always see adjacent. */
-    ylo = (u.uy - 1 | 0) > 0 ? u.uy - 1 | 0 : 0;
-    yhi = (u.uy + 1 | 0) < ROWNO - 1 ? u.uy + 1 | 0 : ROWNO - 1;
-    xlo = (u.ux - 1 | 0) > 1 ? u.ux - 1 | 0 : 1;
-    xhi = (u.ux + 1 | 0) < COLNO - 1 ? u.ux + 1 | 0 : COLNO - 1;
+    const ylo = u.uy - 1 > 0 ? u.uy - 1 : 0;
+    const yhi = u.uy + 1 < ROWNO - 1 ? u.uy + 1 : ROWNO - 1;
+    const xlo = u.ux - 1 > 1 ? u.ux - 1 : 1;
+    const xhi = u.ux + 1 < COLNO - 1 ? u.ux + 1 : COLNO - 1;
     for (zy = ylo; zy <= yhi; zy = zy + 1 | 0) {
         if (xlo < rmin.get(zy)) {
             rmin.set(zy, $c.i16(xlo));
@@ -467,7 +467,7 @@ export async function vision_recalc(control) {   // vision.c:512
     get_unused_cs(new $c.Ptr(next_array, 0), new $c.Ptr(next_rmin, 0), new $c.Ptr(next_rmax, 0));
     skip$: {
         /* You see nothing, nothing can see you --- if swallowed or refreshing. */
-        if (u.uswallow | 0 || control === 2) {
+        if (u.uswallow || control === 2) {
             /* do nothing -- get_unused_cs() nulls out the new work area */
         } else if (Blind()) {
             /*
@@ -504,16 +504,16 @@ export async function vision_recalc(control) {   // vision.c:512
             await rogue_vision(next_array[0], next_rmin[0], next_rmax[0]);
         } else {
             has_night_vision = 1;   /* hero has night vision */
-            if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+            if (Underwater() && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
                 /*
                  * The hero is underwater.  Only see surrounding locations if
                  * they are also underwater.  This overrides night vision but
                  * does not override x-ray vision.
                  */
                 has_night_vision = 0;
-                lo_col = (u.ux - 1 | 0) > 1 ? u.ux - 1 | 0 : 1;
-                for (row = u.uy - 1 | 0; row <= (u.uy + 1 | 0); row = row + 1 | 0) {
-                    for (col = lo_col; col <= (u.ux + 1 | 0); col = col + 1 | 0) {
+                lo_col = u.ux - 1 > 1 ? u.ux - 1 : 1;
+                for (row = u.uy - 1; row <= u.uy + 1; row = row + 1 | 0) {
+                    for (col = lo_col; col <= u.ux + 1; col = col + 1 | 0) {
                         if (!isok($c.i16(col), $c.i16(row)) || !is_pool($c.i16(col), $c.i16(row))) {
                             continue;
                         }
@@ -524,15 +524,15 @@ export async function vision_recalc(control) {   // vision.c:512
                 }
                 /* if in a pit, just update for immediate locations */
             } else if (u.utrap && u.utraptype === TT.PIT) {
-                for (row = u.uy - 1 | 0; row <= (u.uy + 1 | 0); row = row + 1 | 0) {
+                for (row = u.uy - 1; row <= u.uy + 1; row = row + 1 | 0) {
                     if (row < 0) {
                         continue;
                     }
                     if (row >= ROWNO) {
                         break;
                     }
-                    next_rmin[0].set(row, $c.i16(1 > (u.ux - 1 | 0) ? 1 : u.ux - 1 | 0));
-                    next_rmax[0].set(row, $c.i16(COLNO - 1 < (u.ux + 1 | 0) ? COLNO - 1 : u.ux + 1 | 0));
+                    next_rmin[0].set(row, $c.i16(1 > u.ux - 1 ? 1 : u.ux - 1));
+                    next_rmax[0].set(row, $c.i16(COLNO - 1 < u.ux + 1 ? COLNO - 1 : u.ux + 1));
                     next_row = next_array[0].get(row);
                     for (col = next_rmin[0].get(row); col <= next_rmax[0].get(row); col = col + 1 | 0) {
                         next_row.set(col, IN_SIGHT | COULD_SEE);
@@ -556,8 +556,8 @@ export async function vision_recalc(control) {   // vision.c:512
                         }
                         dy = v_abs(u.uy - row | 0);
                         next_row = next_array[0].get(row);
-                        start = 1 > (u.ux - ranges.get(dy) | 0) ? 1 : u.ux - ranges.get(dy) | 0;
-                        stop = COLNO - 1 < (u.ux + ranges.get(dy) | 0) ? COLNO - 1 : u.ux + ranges.get(dy) | 0;
+                        start = 1 > u.ux - ranges.get(dy) ? 1 : u.ux - ranges.get(dy);
+                        stop = COLNO - 1 < u.ux + ranges.get(dy) ? COLNO - 1 : u.ux + ranges.get(dy);
                         for (col = start; col <= stop; col = col + 1 | 0) {
                             old_row_val = $c.i8(next_row.get(col));
                             next_row.set(col, $c.u8(next_row.get(col) | IN_SIGHT));
@@ -575,8 +575,8 @@ export async function vision_recalc(control) {   // vision.c:512
                     /* range is 0 */
                     next_array[0].get(u.uy).set(u.ux, $c.u8(next_array[0].get(u.uy).get(u.ux) | IN_SIGHT));
                     svl.level.locations[u.ux][u.uy].seenv = SVALL;
-                    next_rmin[0].set(u.uy, $c.i16(min(u.ux, next_rmin[0].get(u.uy))));
-                    next_rmax[0].set(u.uy, $c.i16(max(u.ux, next_rmax[0].get(u.uy))));
+                    next_rmin[0].set(u.uy, min(u.ux, next_rmin[0].get(u.uy)));
+                    next_rmax[0].set(u.uy, max(u.ux, next_rmax[0].get(u.uy)));
                 }
             }
             if (has_night_vision && u.xray_range < u.nv_range) {
@@ -584,8 +584,8 @@ export async function vision_recalc(control) {   // vision.c:512
                     /* range is 0 */
                     next_array[0].get(u.uy).set(u.ux, $c.u8(next_array[0].get(u.uy).get(u.ux) | IN_SIGHT));
                     svl.level.locations[u.ux][u.uy].seenv = SVALL;
-                    next_rmin[0].set(u.uy, $c.i16(min(u.ux, next_rmin[0].get(u.uy))));
-                    next_rmax[0].set(u.uy, $c.i16(max(u.ux, next_rmax[0].get(u.uy))));
+                    next_rmin[0].set(u.uy, min(u.ux, next_rmin[0].get(u.uy)));
+                    next_rmax[0].set(u.uy, max(u.ux, next_rmax[0].get(u.uy)));
                 } else if (u.nv_range > 0) {
                     ranges = circle_ptr(u.nv_range);
                     for (row = u.uy - u.nv_range | 0; row <= (u.uy + u.nv_range | 0); row = row + 1 | 0) {
@@ -597,8 +597,8 @@ export async function vision_recalc(control) {   // vision.c:512
                         }
                         dy = v_abs(u.uy - row | 0);
                         next_row = next_array[0].get(row);
-                        start = 1 > (u.ux - ranges.get(dy) | 0) ? 1 : u.ux - ranges.get(dy) | 0;
-                        stop = COLNO - 1 < (u.ux + ranges.get(dy) | 0) ? COLNO - 1 : u.ux + ranges.get(dy) | 0;
+                        start = 1 > u.ux - ranges.get(dy) ? 1 : u.ux - ranges.get(dy);
+                        stop = COLNO - 1 < u.ux + ranges.get(dy) ? COLNO - 1 : u.ux + ranges.get(dy);
                         for (col = start; col <= stop; col = col + 1 | 0) {
                             if (next_row.get(col)) {
                                 next_row.set(col, $c.u8(next_row.get(col) | IN_SIGHT));
@@ -633,7 +633,7 @@ export async function vision_recalc(control) {   // vision.c:512
          *      Even so, that is not entirely correct.  But it seems close
          *      enough for now.
          */
-        $t1 = vision_recalc$colbump[u.ux + 1 | 0] = 1, vision_recalc$colbump[u.ux] = $t1;
+        $t1 = vision_recalc$colbump[u.ux + 1] = 1, vision_recalc$colbump[u.ux] = $t1;
         for (row = 0; row < ROWNO; row = row + 1 | 0) {
             dy = u.uy - row | 0;
             dy = (dy < 0 ? -1 : dy ? 1 : 0);
@@ -658,7 +658,7 @@ export async function vision_recalc(control) {   // vision.c:512
                             if (!(old_row.get(col) & IN_SIGHT) || oldseenv !== lev.seenv) {
                                 await newsym($c.i16(col), $c.i16(row));
                             }
-                        } else if ($goto !== "not_in_sight" && (next_row.get(col) & COULD_SEE && (lev.lit | 0 || next_row.get(col) & TEMP_LIT))) {
+                        } else if ($goto !== "not_in_sight" && (next_row.get(col) & COULD_SEE && (lev.lit || next_row.get(col) & TEMP_LIT))) {
                             /*
                              * We see this position because it is lit.
                              */
@@ -672,7 +672,7 @@ export async function vision_recalc(control) {   // vision.c:512
                                 dx = u.ux - col | 0;
                                 dx = (dx < 0 ? -1 : dx ? 1 : 0);
                                 flev = $c.relem(svl.level.locations[col + dx | 0], row + dy | 0);
-                                if (flev.lit | 0 || next_array[0].get(row + dy | 0).get(col + dx | 0) & TEMP_LIT) {
+                                if (flev.lit || next_array[0].get(row + dy | 0).get(col + dx | 0) & TEMP_LIT) {
                                     next_row.set(col, $c.u8(next_row.get(col) | IN_SIGHT));   /* we see it */
                                     oldseenv = lev.seenv;
                                     lev.seenv = $c.u8(lev.seenv | sv.get(0));
@@ -693,7 +693,7 @@ export async function vision_recalc(control) {   // vision.c:512
                                     await newsym($c.i16(col), $c.i16(row));
                                 }
                             }
-                        } else if ($goto !== "not_in_sight" && (next_row.get(col) & COULD_SEE && lev.waslit | 0)) {
+                        } else if ($goto !== "not_in_sight" && (next_row.get(col) & COULD_SEE && lev.waslit)) {
                             /*
                              * If we make it here, the hero _could see_ the location,
                              * but doesn't see it (location is not lit).
@@ -701,7 +701,7 @@ export async function vision_recalc(control) {   // vision.c:512
                              * The hero can now see that it is not lit, so change waslit
                              * and update the location.
                              */
-                            lev.waslit = (0) & 1;   /* remember lit condition */
+                            lev.waslit = 0;   /* remember lit condition */
                             await newsym($c.i16(col), $c.i16(row));
                             /*
                              * At this point we know that the row position is *not* in normal
@@ -737,7 +737,7 @@ export async function vision_recalc(control) {   // vision.c:512
                 }
             }   /* end for col . . */
         }   /* end for row . .  */
-        $t2 = vision_recalc$colbump[u.ux + 1 | 0] = 0, vision_recalc$colbump[u.ux] = $t2;
+        $t2 = vision_recalc$colbump[u.ux + 1] = 0, vision_recalc$colbump[u.ux] = $t2;
     }
     /* This newsym() caused a crash delivering msg about failure to open
      * dungeon file init_dungeons() -> panic() -> done(11) ->
@@ -980,7 +980,7 @@ function fill_point(row, col) {   // vision.c:1051
          */
     } else if (viz_clear[row][col - 1 | 0] && viz_clear[row][col + 1 | 0]) {
         /* Both sides clear */
-        for (i = left_ptrs[row][col - 1 | 0] + 1 | 0; i <= col; i = i + 1 | 0) {
+        for (i = left_ptrs[row][col - 1 | 0] + 1; i <= col; i = i + 1 | 0) {
             right_ptrs[row][i] = $c.i16(col);
         }
         if (!left_ptrs[row][col - 1 | 0]) {   /* catch the end case */
@@ -997,7 +997,7 @@ function fill_point(row, col) {   // vision.c:1051
         for (i = col; i <= right_ptrs[row][col + 1 | 0]; i = i + 1 | 0) {
             left_ptrs[row][i] = $c.i16(col);
         }
-        for (i = left_ptrs[row][col - 1 | 0] + 1 | 0; i < col; i = i + 1 | 0) {
+        for (i = left_ptrs[row][col - 1 | 0] + 1; i < col; i = i + 1 | 0) {
             right_ptrs[row][i] = $c.i16(col);
         }
         if (!left_ptrs[row][col - 1 | 0]) {   /* catch the end case */
@@ -2033,7 +2033,7 @@ async function left_side(row, left_mark, right, limits) {   // vision.c:1858
  * @returns {Promise<void>}
  */
 async function view_from(srow, scol, loc_cs_rows, left_most, right_most, range, func, arg) {   // vision.c:2002
-    let i = 0, rowp = null, nrow = 0, left = 0, right = 0, limits = null;
+    let i = 0, nrow = 0, left = 0, right = 0, limits = null;
     /* loop counter */
     /* optimization for setting could_see */
     /* the next row */
@@ -2059,8 +2059,8 @@ async function view_from(srow, scol, loc_cs_rows, left_most, right_most, range, 
          * When in stone, you can only see your adjacent squares, unless
          * you are on an array boundary or a stone/clear boundary.
          */
-        left = !scol ? 0 : is_clear(srow, scol - 1 | 0) ? left_ptrs[srow][scol - 1 | 0] : scol - 1 | 0;
-        right = scol === COLNO - 1 ? COLNO - 1 : is_clear(srow, scol + 1 | 0) ? right_ptrs[srow][scol + 1 | 0] : scol + 1 | 0;
+        left = !scol ? 0 : is_clear(srow, scol - 1) ? left_ptrs[srow][scol - 1] : scol - 1;
+        right = scol === COLNO - 1 ? COLNO - 1 : is_clear(srow, scol + 1) ? right_ptrs[srow][scol + 1] : scol + 1;
     }
     if (range) {
         if (range > MAX_RADIUS || range < 1) {
@@ -2082,7 +2082,7 @@ async function view_from(srow, scol, loc_cs_rows, left_most, right_most, range, 
         }
     } else {
         /* Row pointer optimization. */
-        rowp = cs_rows.get(srow);
+        const rowp = cs_rows.get(srow);
         /* We know that we can see our row. */
         for (i = left; i <= right; i = i + 1 | 0) {
             do {
@@ -2098,7 +2098,7 @@ async function view_from(srow, scol, loc_cs_rows, left_most, right_most, range, 
      * rows here, since we don't do it in the routines right_side() and
      * left_side() [ugliness to remove extra routine calls].
      */
-    if ((nrow = srow + 1 | 0) < ROWNO) {
+    if ((nrow = srow + 1) < ROWNO) {
         /* move down */
         step = 1;
         if (scol < COLNO - 1) {
@@ -2108,7 +2108,7 @@ async function view_from(srow, scol, loc_cs_rows, left_most, right_most, range, 
             await left_side(nrow, left, scol, limits);
         }
     }
-    if ((nrow = srow - 1 | 0) >= 0) {
+    if ((nrow = srow - 1) >= 0) {
         /* move up */
         step = -1;
         if (scol < COLNO - 1) {
@@ -2140,21 +2140,21 @@ async function view_from(srow, scol, loc_cs_rows, left_most, right_most, range, 
  * @returns {Promise<void>}
  */
 export async function do_clear_area(scol, srow, range, func, arg) {   // vision.c:2107
-    let x = 0, y = 0, min_x = 0, max_x = 0, max_y = 0, offset = 0, limits = null, override_vision = 0;
+    let x = 0, y = 0, min_x = 0, max_x = 0, max_y = 0;
     /* If not centered on hero, do the hard work of figuring the area */
     if (scol !== u.ux || srow !== u.uy) {
         await view_from(srow, scol, null, null, null, range, func, arg);
     } else {
         /* vision doesn't pass through water or clouds, detection should
            [this probably ought to be an arg supplied by our caller...] */
-        override_vision = $c.i8(detecting(func) && ((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) || (svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) ? 1 : 0);
+        const override_vision = detecting(func) && ((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) || (svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) ? 1 : 0;
         if (range > MAX_RADIUS || range < 1) {
             await panic($c.lit("do_clear_area:  illegal range %d"), range);
         }
         if (gv.vision_full_recalc) {
             await vision_recalc(0);   /* recalc vision if dirty */
         }
-        limits = circle_ptr(range);
+        const limits = circle_ptr(range);
         if ((max_y = srow + range | 0) >= ROWNO) {
             max_y = ROWNO - 1;
         }
@@ -2162,7 +2162,7 @@ export async function do_clear_area(scol, srow, range, func, arg) {   // vision.
             y = 0;
         }
         for (; y <= max_y; y = y + 1 | 0) {
-            offset = limits.get(v_abs(y - srow | 0));
+            const offset = limits.get(v_abs(y - srow | 0));
             if ((min_x = scol - offset | 0) < 1) {
                 min_x = 1;
             }
@@ -2183,19 +2183,18 @@ export async function do_clear_area(scol, srow, range, func, arg) {   // vision.
  * @returns {number} unsigned int
  */
 export function howmonseen(mon) {   // vision.c:2152
-    let useemon = 0, xraydist = 0, how_seen = 0;
-    useemon = $c.i8(canseemon(mon));
-    xraydist = u.xray_range < 0 ? -1 : Math.imul(u.xray_range, u.xray_range);
-    how_seen = 0;   /* result */
+    const useemon = $c.i8(canseemon(mon));
+    const xraydist = u.xray_range < 0 ? -1 : Math.imul(u.xray_range, u.xray_range);
+    let how_seen = 0;   /* result */
     /* assert(mon != NULL) */
     /* normal vision;
        cansee is true for both normal and astral vision,
        but couldsee it not true for astral vision */
-    if ((mon.wormno | 0 ? worm_known(mon) : cansee(mon.mx, mon.my) && couldsee(mon.mx, mon.my)) && mon_visible(mon) && !mon.minvis) {
+    if ((mon.wormno ? worm_known(mon) : cansee(mon.mx, mon.my) && couldsee(mon.mx, mon.my)) && mon_visible(mon) && !mon.minvis) {
         how_seen = (how_seen | MONSEEN.NORMAL) >>> 0;
     }
     /* see invisible */
-    if (useemon && mon.minvis | 0) {
+    if (useemon && mon.minvis) {
         how_seen = (how_seen | MONSEEN.SEEINVIS) >>> 0;
     }
     /* infravision */

@@ -126,14 +126,14 @@ export function fill_trap_room(rm) {
 //
 // Lua evaluates each loop bound ONCE, so d(5,5)'s five draws all happen before
 // any statue is placed, and d(3)'s single draw after the last one.
-export function fill_statuary(rm) {
+export async function fill_statuary(rm) {
     const nstatues = lua_d(5, 5);
     for (let i = 1; i <= nstatues; i++)
         lspo_object('statue');          /* no coord: random in the room */
 
     const ntraps = lua_d(3);
     for (let i = 1; i <= ntraps; i++)
-        lspo_trap(get_traptype_byname('statue'));   /* no coord: random */
+        await lspo_trap(get_traptype_byname('statue'));   /* no coord: random */
 }
 
 // dat/themerms.lua:157 "Massacre"
@@ -212,14 +212,14 @@ export function fill_spider_nest(rm) {
 //        if (percent(25)) then des.object("chest");
 //        else des.monster({ class = "m", appear_as = "obj:chest" }); end
 //     end);
-export function fill_storeroom(rm) {
+export async function fill_storeroom(rm) {
     const locs = selection_filter_percent(selection_from_mkroom(rm._mkroom || rm), 30);
 
-    l_selection_iterate(locs, (x, y) => {
+    await l_selection_iterate(locs, async (x, y) => {
         if (percent(25))
             lspo_object('chest');
         else
-            lspo_monster(null, undefined, undefined,
+            await lspo_monster(null, undefined, undefined,
                          { class: 'm', appear_as: 'obj:chest' });
     });
 }
@@ -235,12 +235,12 @@ export function fill_storeroom(rm) {
 // Lua's numeric for with a fractional limit runs while i <= limit, so a room of
 // 14 squares gives 3.5 and three iterations. No draws here; the monsters and
 // the gas cloud are what record.
-export function fill_cloud_room(rm) {
+export async function fill_cloud_room(rm) {
     const fog = selection_from_mkroom(rm._mkroom || rm);
     const limit = selection_numpoints(fog) / 4;
 
     for (let i = 1; i <= limit; i++)
-        lspo_monster('fog cloud', undefined, undefined, { asleep: true });
+        await lspo_monster('fog cloud', undefined, undefined, { asleep: true });
 
     create_gas_cloud_selection(fog, 0);
 }
@@ -250,10 +250,10 @@ export function fill_cloud_room(rm) {
 // One rndcoord, then SIX percent() gates in a fixed order: 65, 55, 45, 65, 20,
 // 20. Every one is evaluated regardless of what the earlier ones returned, so
 // this fill always spends exactly seven draws.
-export function fill_ghost_of_an_adventurer(rm) {
+export async function fill_ghost_of_an_adventurer(rm) {
     const loc = selection_rndcoord(selection_from_mkroom(rm._mkroom || rm), 0);
 
-    lspo_monster('ghost', loc.x, loc.y, { asleep: true, waiting: true });
+    await lspo_monster('ghost', loc.x, loc.y, { asleep: true, waiting: true });
 
     const nb = { coord: loc, buc: 'not-blessed' };
     if (percent(65)) lspo_object('dagger', undefined, undefined, nb);
@@ -325,12 +325,12 @@ export function fill_buried_zombies(rm) {
 //
 // One percent(30) per nymph. The postprocess entry runs after the whole level
 // is built, not here.
-export function fill_garden(rm) {
+export async function fill_garden(rm) {
     const s = selection_from_mkroom(rm._mkroom || rm);
     const npts = selection_numpoints(s) / 6;
 
     for (let i = 1; i <= npts; i++) {
-        lspo_monster('wood nymph', undefined, undefined, { asleep: true });
+        await lspo_monster('wood nymph', undefined, undefined, { asleep: true });
         if (percent(30))
             lspo_feature('fountain');
     }

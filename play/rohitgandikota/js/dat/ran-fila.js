@@ -36,16 +36,16 @@ export async function ranfila_level() {
     des.object();
     des.object();
 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 
-    des.monster({ id: 'mountain centaur', peaceful: 0 });
-    des.monster({ id: 'mountain centaur', peaceful: 0 });
-    des.monster({ id: 'forest centaur', peaceful: 0 });
-    des.monster({ id: 'forest centaur', peaceful: 0 });
-    des.monster({ id: 'forest centaur', peaceful: 0 });
-    des.monster({ class: 'C', peaceful: 0 });
-    des.monster({ id: 'scorpion', peaceful: 0 });
+    await des.monster({ id: 'mountain centaur', peaceful: 0 });
+    await des.monster({ id: 'mountain centaur', peaceful: 0 });
+    await des.monster({ id: 'forest centaur', peaceful: 0 });
+    await des.monster({ id: 'forest centaur', peaceful: 0 });
+    await des.monster({ id: 'forest centaur', peaceful: 0 });
+    await des.monster({ class: 'C', peaceful: 0 });
+    await des.monster({ id: 'scorpion', peaceful: 0 });
 }

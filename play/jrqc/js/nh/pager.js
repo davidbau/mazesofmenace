@@ -73,7 +73,8 @@ import { sysopt } from './sys.js';
 import { obj_stop_timers, spot_time_left } from './timeout.js';
 import { MELT_ICE_AWAY } from './timeout.h.js';
 import { t_at, trapname } from './trap.js';
-import { BEAR_TRAP, HOLE, NO_TRAP, PIT, ROCKTRAP, SPIKED_PIT, TRAPDOOR, TRAPPED_CHEST, TRAPPED_DOOR, VIBRATING_SQUARE, WEB } from './trap.h.js';
+import { BEAR_TRAP, HOLE, NO_TRAP, PIT, ROCKTRAP, TRAPPED_CHEST, TRAPPED_DOOR, VIBRATING_SQUARE, WEB } from './trap.h.js';
+import { is_hole, is_pit } from './trap.macros.js';
 import { introff, intron } from './unixtty.js';
 import { doextversion } from './version.js';
 import { howmonseen } from './vision.js';
@@ -83,7 +84,7 @@ import { add_menu, add_menu_str, decode_mixed, encglyph, getlin, select_menu } f
 import { create_nhwindow, destroy_nhwindow, display_file, display_nhwindow, end_menu, putmixed, putstr, start_menu } from './winprocs.macros.js';
 import { ATR, MENU, NHW, PICK, WIN_ERR } from './wintype.h.js';
 import { Upolyd, u_at } from './you.macros.js';
-import { Blind, Detect_monsters, Hallucination, Infravision, Invisible, Levitation, Punished, Unblind_telepat } from './youprop.macros.js';
+import { Blind, Detect_monsters, Hallucination, Infravision, Invisible, Levitation, Punished, Unblind_telepat, Underwater } from './youprop.macros.js';
 
 const chkfilNone = 0;
 const chkfilUsrTyped = 1;
@@ -128,11 +129,10 @@ function is_swallow_sym(c) {   // pager.c:68
  * @returns {Promise<number>} int
  */
 async function append_str(buf, new_str) {   // pager.c:82
-    let oldlen = 0, space_left = 0;
     if (strstri(buf, new_str)) {
         return 0;   /* already present */
     }
-    oldlen = $c.strlen(buf);
+    const oldlen = $c.strlen(buf);
     if (oldlen >= BUFSZ - 1) {
         if (oldlen > BUFSZ - 1) {
             await impossible($c.lit("append_str: 'buf' contains %lu characters."), oldlen);
@@ -140,7 +140,7 @@ async function append_str(buf, new_str) {   // pager.c:82
         return 0;   /* no space available */
     }
     /* some space available, but not necessarily enough for full append */
-    space_left = $c.subu64(BUFSZ - 1, oldlen);   /* space remaining in buf */
+    const space_left = $c.subu64(BUFSZ - 1, oldlen);   /* space remaining in buf */
     $c.strncat(buf, new $c.Ptr(append_str$sep, 0), space_left);
     if (space_left > 4) {
         $c.strncat(buf, new_str, $c.subu64(space_left, 4));
@@ -159,12 +159,12 @@ export async function self_lookat(outbuf) {   // pager.c:108
     if (!Upolyd()) {
         $c.sprintf(new $c.Ptr(race, 0), $c.lit("%s "), gu.urace.adj);
     }
-    $c.sprintf(outbuf, $c.lit("%s%s%s called %s"), (u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked && (u.uprops[TELEPAT].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic) || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked)) ? $c.lit("invisible ") : $c.lit(""), new $c.Ptr(race, 0), pmname($c.relem(mons, u.umonnum), (u.umonnum !== u.umonster ? u.mfemale | 0 : flags.female) ? 1 : 0), new $c.Ptr(svp.plname, 0));
+    $c.sprintf(outbuf, $c.lit("%s%s%s called %s"), (u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked && (u.uprops[TELEPAT].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic) || !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked)) ? $c.lit("invisible ") : $c.lit(""), new $c.Ptr(race, 0), pmname($c.relem(mons, u.umonnum), (u.umonnum !== u.umonster ? u.mfemale : flags.female) ? 1 : 0), new $c.Ptr(svp.plname, 0));
     /* being blinded may hide invisibility from self */
     if (u.usteed) {
         $c.sprintf(eos(outbuf), $c.lit(", mounted on %s"), await y_monnam(u.usteed));
     }
-    if (u.uundetected | 0 || Upolyd() && U_AP_TYPE() || visible_region_at(u.ux, u.uy)) {
+    if (u.uundetected || Upolyd() && U_AP_TYPE() || visible_region_at(u.ux, u.uy)) {
         await mhidden_description(gy.youmonst, MHID.PREFIX | MHID.ARTICLE | MHID.REGION, eos(outbuf));
     }
     if (Punished()) {
@@ -229,14 +229,14 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
             /* hidden monster to describe */
             /* controls optional aspects of description */
             /* output buffer */
-            incl_prefix = $c.i8((mhid_flags & MHID.PREFIX) >>> 0 !== 0 ? 1 : 0);
-            incl_article = $c.i8((mhid_flags & MHID.ARTICLE) >>> 0 !== 0 ? 1 : 0);
-            show_altmon = $c.i8((mhid_flags & MHID.ALTMON) >>> 0 !== 0 ? 1 : 0);
-            force_region = $c.i8((mhid_flags & MHID.REGION) >>> 0 !== 0 ? 1 : 0);
-            isyou = $c.i8($c.peq(mon, gy.youmonst) ? 1 : 0);
-            x = $c.i16(isyou ? u.ux : mon.mx);
-            y = $c.i16(isyou ? u.uy : mon.my);
-            glyph = svl.level.flags.hero_memory | 0 && !isyou ? svl.level.locations[x][y].glyph : glyph_at(x, y);
+            incl_prefix = (mhid_flags & MHID.PREFIX) >>> 0 !== 0 ? 1 : 0;
+            incl_article = (mhid_flags & MHID.ARTICLE) >>> 0 !== 0 ? 1 : 0;
+            show_altmon = (mhid_flags & MHID.ALTMON) >>> 0 !== 0 ? 1 : 0;
+            force_region = (mhid_flags & MHID.REGION) >>> 0 !== 0 ? 1 : 0;
+            isyou = $c.peq(mon, gy.youmonst) ? 1 : 0;
+            x = isyou ? u.ux : mon.mx;
+            y = isyou ? u.uy : mon.my;
+            glyph = svl.level.flags.hero_memory && !isyou ? svl.level.locations[x][y].glyph : glyph_at(x, y);
             outbuf.set(0, 0);
         case "objfrommap":
             if ($goto === "objfrommap" || (M_AP_TYPE(mon) === M_AP.FURNITURE || M_AP_TYPE(mon) === M_AP.OBJECT)) {
@@ -284,7 +284,7 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
                     }
                     $c.strcat(outbuf, what);
                 }
-            } else if (isyou ? u.uundetected | 0 : mon.mundetected | 0) {
+            } else if (isyou ? u.uundetected : mon.mundetected) {
                 $c.strcpy(outbuf, $c.lit(", hiding"));
                 if (hides_under(mon.data)) {
                     $c.strcat(outbuf, $c.lit(" under "));
@@ -312,7 +312,7 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
                    additional vision bit for "hero's side of edge of gas cloud"?] */
                 if (distu(x, y) <= Math.imul(r, r + 1 | 0) || force_region) {
                     rglyph = reg.glyph;
-                    poison_gas = $c.i8(glyph_is_cmap(rglyph) && glyph_to_cmap(rglyph) === S.poisoncloud ? 1 : 0);
+                    poison_gas = glyph_is_cmap(rglyph) && glyph_to_cmap(rglyph) === S.poisoncloud ? 1 : 0;
                     nh_snprintf($c.lit("mhidden_description"), 277, eos(outbuf), $c.subu64(BUFSZ, buflen), $c.lit(", in a cloud of %s"), poison_gas ? $c.lit("poison gas") : $c.lit("vapor"));
                 }
             }
@@ -329,12 +329,12 @@ export async function mhidden_description(mon, mhid_flags, outbuf) {   // pager.
  * @returns {Promise<number>} boolean
  */
 export async function object_from_map(glyph, x, y, obj_p) {   // pager.c:284
-    let fakeobj = 0, mimic_obj = 0, mtmp = null, otmp = null, glyphotyp = 0, $t1;
-    fakeobj = FALSE;
-    mimic_obj = FALSE;
+    let otmp = null, $t1;
+    let fakeobj = FALSE;
+    let mimic_obj = FALSE;
     /* if not an object, probably a detected chest trap */
     /* assume trapped chest|door */
-    glyphotyp = glyph_is_object(glyph) ? glyph_to_obj(glyph) : glyph_is_cmap(glyph) ? sobj_at(CHEST, x, y) ? CHEST : LARGE_BOX : STRANGE_OBJECT;
+    const glyphotyp = glyph_is_object(glyph) ? glyph_to_obj(glyph) : glyph_is_cmap(glyph) ? sobj_at(CHEST, x, y) ? CHEST : LARGE_BOX : STRANGE_OBJECT;
     obj_p.set(0, null);
     /* TODO: check inside containers in case glyph came from detection */
     if ((otmp = sobj_at(glyphotyp, x, y)) === null) {
@@ -345,7 +345,7 @@ export async function object_from_map(glyph, x, y, obj_p) {   // pager.c:284
         }
     }
     /* there might be a mimic here posing as an object */
-    mtmp = svl.level.monsters[x][y];
+    let mtmp = svl.level.monsters[x][y];
     if (mtmp && is_obj_mappear(mtmp, glyphotyp >>> 0)) {
         otmp = null;
         mimic_obj = TRUE;
@@ -400,7 +400,7 @@ export async function object_from_map(glyph, x, y, obj_p) {   // pager.c:284
         /* extra fields needed for shop price with doname() formatting */
         otmp.where = OBJ.FLOOR;
         otmp.ox = x, otmp.oy = y;
-        $t1 = (otmp.otyp === STRANGE_OBJECT && await costly_spot(x, y) ? 1 : 0) >>> 0, otmp.no_charge = ($t1) & 1;
+        $t1 = otmp.otyp === STRANGE_OBJECT && await costly_spot(x, y) ? 1 : 0, otmp.no_charge = ($t1) & 1;
     }
     /* if located at adjacent spot, mark it as having been seen up close
        (corpse type will be known even if dknown is 0, so we don't need a
@@ -414,7 +414,7 @@ export async function object_from_map(glyph, x, y, obj_p) {   // pager.c:284
     if (otmp && dist2(x, y, u.ux, u.uy) <= 2 && !Blind() && !Hallucination() && (fakeobj || otmp.where === OBJ.FLOOR) && !iflags.terrainmode) {   /* so don't set dknown when in terrain mode */
         await observe_object(otmp);   /* if a pile, clearly see the top item only */
     }
-    if (fakeobj && mtmp && mimic_obj && (otmp.dknown | 0 || M_AP_FLAG(mtmp) & M_AP.F_DKNOWN)) {
+    if (fakeobj && mtmp && mimic_obj && (otmp.dknown || M_AP_FLAG(mtmp) & M_AP.F_DKNOWN)) {
         mtmp.m_ap_type = $c.u8(mtmp.m_ap_type | M_AP.F_DKNOWN);
         await observe_object(otmp);
     }
@@ -429,12 +429,12 @@ export async function object_from_map(glyph, x, y, obj_p) {   // pager.c:284
  * @returns {Promise<void>}
  */
 async function look_at_object(buf, x, y, glyph) {   // pager.c:380
-    let otmp = [null], fakeobj = 0;
+    let otmp = [null];
     /* output buffer */
     otmp[0] = null;
-    fakeobj = await object_from_map(glyph, x, y, new $c.Ptr(otmp, 0));
+    const fakeobj = await object_from_map(glyph, x, y, new $c.Ptr(otmp, 0));
     if (otmp[0]) {
-        $c.strcpy(buf, otmp[0].otyp !== STRANGE_OBJECT ? await distant_name(otmp[0], otmp[0].dknown | 0 ? doname_with_price : doname_vague_quan) : obj_descr[STRANGE_OBJECT].oc_name);
+        $c.strcpy(buf, otmp[0].otyp !== STRANGE_OBJECT ? await distant_name(otmp[0], otmp[0].dknown ? doname_with_price : doname_vague_quan) : obj_descr[STRANGE_OBJECT].oc_name);
         if (fakeobj) {
             otmp[0].where = OBJ.FREE;   /* object_from_map set it to OBJ_FLOOR */
             await dealloc_obj(otmp[0]), otmp[0] = null;   /* has no contents */
@@ -444,7 +444,7 @@ async function look_at_object(buf, x, y, glyph) {   // pager.c:380
     }
     if (otmp[0] && otmp[0].where === OBJ.BURIED) {
         $c.strcat(buf, $c.lit(" (buried)"));
-    } else if (svl.level.locations[x][y].typ === TREE || svl.level.flags.arboreal | 0 && svl.level.locations[x][y].typ === STONE) {   /* "dangling": "hanging" could imply that it's growing on this tree */
+    } else if (svl.level.locations[x][y].typ === TREE || svl.level.flags.arboreal && svl.level.locations[x][y].typ === STONE) {   /* "dangling": "hanging" could imply that it's growing on this tree */
         /* check TREE before STONE due to level.flags.arboreal */
         nh_snprintf($c.lit("look_at_object"), 407, eos(buf), $c.subu64(BUFSZ, $c.strlen(buf)), $c.lit(" %s in a tree"), otmp[0] && is_treefruit(otmp[0]) ? $c.lit("dangling") : $c.lit("stuck"));
     } else if (svl.level.locations[x][y].typ === STONE || svl.level.locations[x][y].typ === SCORR) {
@@ -469,13 +469,13 @@ async function look_at_object(buf, x, y, glyph) {   // pager.c:380
  * @returns {Promise<void>}
  */
 async function look_at_monster(buf, monbuf, mtmp, x, y) {   // pager.c:422
-    let name = null, monnambuf = new Int8Array(256), healthbuf = new Int8Array(256), accurate = 0, t = null, tt = 0, how_seen = 0, mW = 0, m2 = 0, whom = null;
+    let monnambuf = new Int8Array(256), healthbuf = new Int8Array(256);
     /* buf: output, monbuf: optional output */
-    accurate = $c.i8(!Hallucination() ? 1 : 0);
-    name = $c.peq(mtmp.data, $c.relem(mons, PM.COYOTE)) && accurate ? await coyotename(mtmp, new $c.Ptr(monnambuf, 0)) : await distant_monnam(mtmp, ARTICLE.NONE, new $c.Ptr(monnambuf, 0));
-    $c.sprintf(buf, $c.lit("%s%s%s%s"), mtmp.mx !== x || mtmp.my !== y ? mtmp.isshk | 0 && accurate ? $c.lit("tail of ") : $c.lit("tail of a ") : $c.lit(""), accurate ? monhealthdescr(mtmp, TRUE, new $c.Ptr(healthbuf, 0)) : $c.lit(""), mtmp.mtame && accurate ? $c.lit("tame ") : mtmp.mpeaceful | 0 && accurate ? $c.lit("peaceful ") : $c.lit(""), name);
+    const accurate = !Hallucination() ? 1 : 0;
+    const name = mtmp.data === mons[PM.COYOTE] && accurate ? await coyotename(mtmp, new $c.Ptr(monnambuf, 0)) : await distant_monnam(mtmp, ARTICLE.NONE, new $c.Ptr(monnambuf, 0));
+    $c.sprintf(buf, $c.lit("%s%s%s%s"), mtmp.mx !== x || mtmp.my !== y ? mtmp.isshk && accurate ? $c.lit("tail of ") : $c.lit("tail of a ") : $c.lit(""), accurate ? monhealthdescr(mtmp, TRUE, new $c.Ptr(healthbuf, 0)) : $c.lit(""), mtmp.mtame && accurate ? $c.lit("tame ") : mtmp.mpeaceful && accurate ? $c.lit("peaceful ") : $c.lit(""), name);
     if ($c.peq(u.ustuck, mtmp)) {
-        if (u.uswallow | 0 || iflags.save_uswallow | 0) {   /* monster detection */
+        if (u.uswallow || iflags.save_uswallow) {   /* monster detection */
             $c.strcat(buf, dmgtype_fromattack(mtmp.data, AD.DGST, AT.ENGL) !== null ? $c.lit(", swallowing you") : $c.lit(", engulfing you"));
         } else {
             $c.strcat(buf, u.umonnum !== u.umonster && sticks(gy.youmonst.data) ? $c.lit(", being held") : $c.lit(", holding you"));
@@ -496,22 +496,22 @@ async function look_at_monster(buf, monbuf, mtmp, x, y) {   // pager.c:422
     if (mtmp.mleashed) {
         $c.strcat(buf, $c.lit(", leashed to you"));
     }
-    if (mtmp.mtrapped | 0 && cansee(mtmp.mx, mtmp.my)) {
-        t = t_at(mtmp.mx, mtmp.my);
-        tt = t ? t.ttyp | 0 : NO_TRAP;
+    if (mtmp.mtrapped && cansee(mtmp.mx, mtmp.my)) {
+        const t = t_at(mtmp.mx, mtmp.my);
+        const tt = t ? t.ttyp : NO_TRAP;
         /* newsym lets you know of the trap, so mention it here */
-        if (tt === BEAR_TRAP || (tt === PIT || tt === SPIKED_PIT) || tt === WEB) {
+        if (tt === BEAR_TRAP || is_pit(tt) || tt === WEB) {
             $c.sprintf(eos(buf), $c.lit(", trapped in %s"), await an(trapname(tt, FALSE)));
-            t.tseen = (1) & 1;
+            t.tseen = 1;
         }
     }
     /* we know the hero sees a monster at this location, but if it's shown
        due to persistent monster detection he might remember something else */
-    if (mtmp.mundetected | 0 || M_AP_TYPE(mtmp) || visible_region_at(x, y)) {
+    if (mtmp.mundetected || M_AP_TYPE(mtmp) || visible_region_at(x, y)) {
         await mhidden_description(mtmp, MHID.PREFIX | MHID.ARTICLE | MHID.REGION, eos(buf));
     }
     if (monbuf) {
-        how_seen = howmonseen(mtmp);
+        let how_seen = howmonseen(mtmp);
         monbuf.set(0, 0);
         if (how_seen !== 0 && how_seen !== MONSEEN.NORMAL) {
             if ((how_seen & MONSEEN.NORMAL) >>> 0) {
@@ -562,9 +562,9 @@ async function look_at_monster(buf, monbuf, mtmp, x, y) {   // pager.c:422
                 if (Hallucination()) {
                     $c.strcat(monbuf, $c.lit("paranoid delusion"));
                 } else {
-                    mW = $c.oru64(svc.context.warntype.obj, svc.context.warntype.polyd);
-                    m2 = mtmp.data.mflags2;
-                    whom = $c.andu64($c.andu64(mW, M2.HUMAN), m2) ? $c.lit("human") : $c.andu64($c.andu64(mW, M2.ELF), m2) ? $c.lit("elf") : $c.andu64($c.andu64(mW, M2.ORC), m2) ? $c.lit("orc") : $c.andu64($c.andu64(mW, M2.DEMON), m2) ? $c.lit("demon") : pmname(mtmp.data, Mgender(mtmp));
+                    const mW = $c.oru64(svc.context.warntype.obj, svc.context.warntype.polyd);
+                    const m2 = mtmp.data.mflags2;
+                    const whom = $c.andu64($c.andu64(mW, M2.HUMAN), m2) ? $c.lit("human") : $c.andu64($c.andu64(mW, M2.ELF), m2) ? $c.lit("elf") : $c.andu64($c.andu64(mW, M2.ORC), m2) ? $c.lit("orc") : $c.andu64($c.andu64(mW, M2.DEMON), m2) ? $c.lit("demon") : pmname(mtmp.data, Mgender(mtmp));
                     $c.sprintf(eos(monbuf), $c.lit("warned of %s"), await makeplural(whom));
                 }
                 how_seen = (how_seen & 4294967231) >>> 0;
@@ -589,12 +589,11 @@ async function look_at_monster(buf, monbuf, mtmp, x, y) {   // pager.c:422
  * @returns {$c.Ptr | null} const char *
  */
 export function waterbody_name(x, y) {   // pager.c:561
-    let ltyp = 0, hallucinate = 0;
-    hallucinate = $c.i8(Hallucination() && !program_state.gameover ? 1 : 0);
+    const hallucinate = Hallucination() && !program_state.gameover ? 1 : 0;
     if (!isok(x, y)) {
         return $c.lit("drink");   /* should never happen */
     }
-    ltyp = $c.i8(SURFACE_AT(x, y));
+    const ltyp = SURFACE_AT(x, y);
     if (ltyp === LAVAPOOL) {
         nh_snprintf($c.lit("waterbody_name"), 572, new $c.Ptr(waterbody_name$pooltype, 0), 40, $c.lit("molten %s"), hliquid($c.lit("lava")));
         return new $c.Ptr(waterbody_name$pooltype, 0);
@@ -645,10 +644,9 @@ export function waterbody_name(x, y) {   // pager.c:561
  * @returns {$c.Ptr | null} char *
  */
 export function ice_descr(x, y, outbuf) {   // pager.c:614
-    let r = 0, neardist = 0, time_left = 0;
     /* same formula as is used in distant_name() for objects */
-    r = u.xray_range > 2 ? u.xray_range : 2;
-    neardist = Math.imul(Math.imul(r, r), 2) - r | 0;   /* same as r*r + r*(r-1) */
+    const r = u.xray_range > 2 ? u.xray_range : 2;
+    const neardist = Math.imul(Math.imul(r, r), 2) - r | 0;   /* same as r*r + r*(r-1) */
     iflags.ice_rating = -1;   /* secondary output, for 'mention_decor' */
     if (SURFACE_AT(x, y) !== ICE) {
         $c.sprintf(outbuf, $c.lit("[ice:%d?]"), svl.level.locations[x][y].typ);
@@ -656,7 +654,7 @@ export function ice_descr(x, y, outbuf) {   // pager.c:614
         /* probe_decor(pickup.c) */
         $c.strcpy(outbuf, waterbody_name(x, y));   /* "ice" or "frozen <liquid>" */
     } else {
-        time_left = spot_time_left(x, y, MELT_ICE_AWAY);
+        const time_left = spot_time_left(x, y, MELT_ICE_AWAY);
         /* other, real ice thickness/strength terminology exists but seems
            to be too unfamiliar for nethack's use */
         /* solid */
@@ -664,7 +662,7 @@ export function ice_descr(x, y, outbuf) {   // pager.c:614
         /* steady */
         /* unsteady */
         /* thin */
-        iflags.ice_rating = $c.i8(!time_left ? 0 : time_left > 1000 ? 1 : time_left > 100 ? 2 : time_left > 50 ? 3 : time_left > 14 ? 4 : 5);   /* slushy */
+        iflags.ice_rating = !time_left ? 0 : time_left > 1000 ? 1 : time_left > 100 ? 2 : time_left > 50 ? 3 : time_left > 14 ? 4 : 5;   /* slushy */
         $c.sprintf(outbuf, $c.lit("%s %s"), ice_descr$icetyp[iflags.ice_rating], waterbody_name(x, y));
     }
     return outbuf;
@@ -681,26 +679,26 @@ export function ice_descr(x, y, outbuf) {   // pager.c:614
  * @returns {Promise<$T.permonst | null>} struct permonst *
  */
 async function lookat(x, y, buf, monbuf) {   // pager.c:657
-    let mtmp = null, pm = null, glyph = 0, how = 0, tnum = 0, warnindx = 0, amsk = 0, algn = 0, symidx = 0, $t1;
-    mtmp = null;
-    pm = null;
+    let amsk = 0, algn = 0, $t1;
+    let mtmp = null;
+    let pm = null;
     $t1 = monbuf.set(0, 0), buf.set(0, $t1);
-    glyph = glyph_at(x, y);
-    if (u_at(x, y) && canspotself() && !(iflags.save_uswallow | 0 && glyph === ((u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.ustuck.data.pmidx) + ((u.ustuck.female | 0) === 0 ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0)) && (!iflags.terrainmode || (iflags.terrainmode & TER.MON) >>> 0 !== 0)) {
+    const glyph = glyph_at(x, y);
+    if (u_at(x, y) && canspotself() && !(iflags.save_uswallow && glyph === ((u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : u.ustuck.data.pmidx) + (u.ustuck.female === 0 ? GLYPH.MON_MALE_OFF : GLYPH.MON_FEM_OFF) | 0)) && (!iflags.terrainmode || (iflags.terrainmode & TER.MON) >>> 0 !== 0)) {
         /* fill in buf[] */
         await self_lookat(buf);
         /* file lookup can't distinguish between "gnomish wizard" monster
            and correspondingly named player character, always picking the
            former; force it to find the general "wizard" entry instead */
         if (gu.urole.mnum === PM.WIZARD && gu.urace.mnum === PM.GNOME && !Upolyd()) {
-            pm = $c.relem(mons, PM.WIZARD);
+            pm = mons[PM.WIZARD];
         }
         /* When you see yourself normally, no explanation is appended
            (even if you could also see yourself via other means).
            Sensing self while blind or swallowed is treated as if it
            were by normal vision (cf canseeself()). */
-        if ((Invisible() || u.uundetected | 0) && !Blind() && !(u.uswallow | 0 || iflags.save_uswallow | 0)) {
-            how = 0;
+        if ((Invisible() || u.uundetected) && !Blind() && !(u.uswallow || iflags.save_uswallow)) {
+            let how = 0;
             if (Infravision()) {
                 how = (how | 1) >>> 0;
             }
@@ -732,17 +730,17 @@ async function lookat(x, y, buf, monbuf) {   // pager.c:657
     } else if (glyph_is_object(glyph)) {
         await look_at_object(buf, x, y, glyph);   /* fill in buf[] */
     } else if (glyph_is_trap(glyph)) {
-        tnum = glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH;
+        const tnum = glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH;
         trap_description(buf, tnum, x, y);
     } else if (glyph_is_warning(glyph)) {
-        warnindx = glyph_to_warning(glyph);
+        const warnindx = glyph_to_warning(glyph);
         $c.strcpy(buf, def_warnsyms[warnindx].explanation);
     } else if (glyph_is_invisible(glyph)) {
         $c.strcpy(buf, new $c.Ptr(invisexplain, 0));   /* redundant; handled by caller */
     } else if (glyph_is_nothing(glyph)) {
         $c.strcpy(buf, $c.lit("dark part of a room"));
     } else if (glyph_is_unexplored(glyph)) {
-        if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+        if (Underwater() && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
             /* "unknown" == previously mapped but not visible when
                submerged; better terminology appreciated... */
             $c.strcpy(buf, dist2(x, y, u.ux, u.uy) <= 2 ? $c.lit("land") : $c.lit("unknown"));
@@ -750,11 +748,11 @@ async function lookat(x, y, buf, monbuf) {   // pager.c:657
             $c.strcpy(buf, $c.lit("unexplored area"));
         }
     } else if (glyph_is_cmap(glyph)) {
-        symidx = $c.i16(glyph_to_cmap(glyph));
+        const symidx = $c.i16(glyph_to_cmap(glyph));
         switch (symidx) {
             case S.altar:
                 amsk = altarmask_at(x, y);
-                algn = $c.i8((amsk & AM.MASK & AM.MASK) === 0 ? A.NONE : (amsk & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : (amsk & AM.MASK & AM.MASK) - 2 | 0);
+                algn = (amsk & AM.MASK & AM.MASK) === 0 ? A.NONE : (amsk & AM.MASK & AM.MASK) === AM.LAWFUL ? A.LAWFUL : (amsk & AM.MASK & AM.MASK) - 2;
                 $c.sprintf(buf, $c.lit("%s %saltar"), (svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level) && !(dist2(x, y, u.ux, u.uy) <= 2) && amsk & AM.SANCTUM ? $c.lit("aligned") : align_str(algn), amsk & AM.SANCTUM ? $c.lit("high ") : $c.lit(""));
                 /* like endgame high priests, endgame high altars
                    are only recognizable when immediately adjacent */
@@ -762,7 +760,7 @@ async function lookat(x, y, buf, monbuf) {   // pager.c:657
             case S.ndoor:
                 if (is_drawbridge_wall(x, y) >= 0) {
                     $c.strcpy(buf, $c.lit("open drawbridge portcullis"));
-                } else if (((svl.level.locations[x][y].flags | 0) & ~D.TRAPPED) === D.BROKEN) {
+                } else if ((svl.level.locations[x][y].flags & ~D.TRAPPED) === D.BROKEN) {
                     $c.strcpy(buf, $c.lit("broken door"));
                 } else {
                     $c.strcpy(buf, $c.lit("doorway"));
@@ -788,7 +786,7 @@ async function lookat(x, y, buf, monbuf) {   // pager.c:657
                 if (!svl.level.locations[x][y].seenv) {
                     $c.strcpy(buf, $c.lit("unexplored"));
                     break;
-                } else if ((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
+                } else if (Underwater() && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level))) {
                     /* "unknown" == previously mapped but not visible when
                        submerged; better terminology appreciated... */
                     $c.strcpy(buf, dist2(x, y, u.ux, u.uy) <= 2 ? $c.lit("land") : $c.lit("unknown"));
@@ -843,9 +841,9 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
     let fp = null, buf = new Int8Array(256), newstr = new Int8Array(256), givenname = new Int8Array(256), ep = null, dbase_str = null, user_typed_name = 0, without_asking = 0, ia_checking = 0, txt_offset = [0], datawin = 0, res = 0, pass1offset = 0, chk_skip = 0, pass = 0, yes_to_moreinfo = 0, found_in_file = 0, pass1found_in_file = 0, skipping_entry = 0, sp = null, ap = null, alt = null, entry_offset = [0], fseekoffset = 0, entry_count = Int32Array.of(0), i = 0, entrytext = null, question = new Int8Array(128), tabbuf = new Int8Array(264), tp = null;
     /* string to look up */
     /* monster type to look up (overrides 'inp') */
-    user_typed_name = $c.i8((chkflags & chkfilUsrTyped) >>> 0 !== 0 ? 1 : 0);
-    without_asking = $c.i8((chkflags & chkfilDontAsk) >>> 0 !== 0 ? 1 : 0);
-    ia_checking = $c.i8((chkflags & chkfilIaCheck) >>> 0 !== 0 ? 1 : 0);
+    user_typed_name = (chkflags & chkfilUsrTyped) >>> 0 !== 0 ? 1 : 0;
+    without_asking = (chkflags & chkfilDontAsk) >>> 0 !== 0 ? 1 : 0;
+    ia_checking = (chkflags & chkfilIaCheck) >>> 0 !== 0 ? 1 : 0;
     txt_offset[0] = 0;
     datawin = WIN_ERR;
     res = FALSE;
@@ -1159,7 +1157,7 @@ async function checkfile(inp, pm, chkflags, supplemental_name) {   // pager.c:83
  */
 async function add_cmap_descr(found, idx, glyph, article, cc$in, x_str, prefix, hit_trap, firstmatch, out_str) {   // pager.c:1133
     const cc = cc$in;   // passed by value: the caller copies
-    let mbuf = null, p = null, absidx = 0, save_ltyp = 0, save_prop = 0;
+    let p = null;
     /* number of matching descriptions so far */
     /* cmap index into defsyms[] */
     /* map glyph of screen symbol being described;
@@ -1171,8 +1169,8 @@ async function add_cmap_descr(found, idx, glyph, article, cc$in, x_str, prefix, 
     /* input/output: True if a trap has been described */
     /* output: pointer to 1st matching description */
     /* input/output: current description gets appended */
-    mbuf = null;
-    absidx = $c.abs(idx);
+    let mbuf = null;
+    const absidx = $c.abs(idx);
     if (glyph === NO_GLYPH) {
         /* use x_str [almost] as-is */
         if (!$c.strcmp(x_str, $c.lit("water"))) {
@@ -1188,20 +1186,20 @@ async function add_cmap_descr(found, idx, glyph, article, cc$in, x_str, prefix, 
         }
     } else if (absidx === S.pool || idx === S.water || idx === S.lava || idx === S.lavawall || idx === S.ice) {
         /* replace some descriptions (x_str) with waterbody_name() */
-        save_ltyp = svl.level.locations[cc.x][cc.y].typ;
-        save_prop = u.uprops[HALLUC_RES].extrinsic;
+        const save_ltyp = svl.level.locations[cc.x][cc.y].typ;
+        const save_prop = u.uprops[HALLUC_RES].extrinsic;
         /* grab a scratch buffer we can safely return (via *firstmatch
            when applicable) */
         mbuf = await mon_nam(gy.youmonst);
         if (absidx === S.pool) {
-            svl.level.locations[cc.x][cc.y].typ = $c.i8(idx === S.pool ? POOL : MOAT);
+            svl.level.locations[cc.x][cc.y].typ = idx === S.pool ? POOL : MOAT;
             idx = S.pool;   /* force fake negative moat value to be positive */
         } else {
             /* we might be examining a pool location but trying to match
                water or lava; override the terrain with what we're matching
                because that's what waterbody_name() bases its result on;
                it's not pool so must be one of water/lava/ice to get here */
-            svl.level.locations[cc.x][cc.y].typ = $c.i8(idx === S.water ? WATER : idx === S.lava ? LAVAPOOL : idx === S.lavawall ? LAVAWALL : ICE);
+            svl.level.locations[cc.x][cc.y].typ = idx === S.water ? WATER : idx === S.lava ? LAVAPOOL : idx === S.lavawall ? LAVAWALL : ICE;
         }
         u.uprops[HALLUC_RES].extrinsic = 1;
         $c.strcpy(mbuf, waterbody_name(cc.x, cc.y));
@@ -1258,8 +1256,8 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
     skipped_venom = 0;
     found = 0;   /* count of matching syms found */
     need_to_look = FALSE;
-    submerged = $c.i8((u.uinwater | 0) && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? 1 : 0);
-    hallucinate = $c.i8(Hallucination() && !program_state.gameover ? 1 : 0);
+    submerged = Underwater() && !((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) ? 1 : 0;
+    hallucinate = Hallucination() && !program_state.gameover ? 1 : 0;
     glyphinfo.$copyFrom(nul_glyphinfo);
     if (looked) {
         glyph = glyph_at(cc.x, cc.y);
@@ -1293,7 +1291,7 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
     x_str = null;
     if (!looked) {
         /* skip special handling */
-    } else if ((u.uswallow | 0 || submerged) && !(dist2(cc.x, cc.y, u.ux, u.uy) <= 2) || (iflags.terrainmode & (TER.DETECT | TER.MAP)) >>> 0 === TER.DETECT && glyph === 3929) {
+    } else if ((u.uswallow || submerged) && !(dist2(cc.x, cc.y, u.ux, u.uy) <= 2) || (iflags.terrainmode & (TER.DETECT | TER.MAP)) >>> 0 === TER.DETECT && glyph === 3929) {
         /* detection showing some category, so mostly background */
         x_str = new $c.Ptr(do_screen_description$unreconnoitered, 0);
         need_to_look = FALSE;
@@ -1347,7 +1345,7 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
             /* Now check for objects */
             if (!iflags.terrainmode || (iflags.terrainmode & TER.OBJ) >>> 0 !== 0) {
                 j = SYM.BOULDER + SYM_OFF_X;
-                bouldersym = $c.u8((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? go.ov_rogue_syms[j] : go.ov_primary_syms[j]);
+                bouldersym = (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? go.ov_rogue_syms[j] : go.ov_primary_syms[j];
                 if (!bouldersym) {
                     bouldersym = $c.u8(def_oc_syms[ROCK_CLASS].sym);
                 }
@@ -1389,7 +1387,7 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
             }
             if (sym === DEF.INVISIBLE) {
                 /* for active clairvoyance, use alternate "unseen creature" */
-                usealt = $c.i8($c.and64(u.uprops[DETECT_MONSTERS].extrinsic, I_SPECIAL) !== 0 ? 1 : 0);
+                usealt = $c.and64(u.uprops[DETECT_MONSTERS].extrinsic, I_SPECIAL) !== 0 ? 1 : 0;
                 unseen_explain = usealt || Blind() ? new $c.Ptr(altinvisexplain, 0) : new $c.Ptr(invisexplain, 0);
                 if (!found) {
                     $c.sprintf(out_str, $c.lit("%s%s"), new $c.Ptr(prefix, 0), await an(unseen_explain));
@@ -1509,7 +1507,7 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
                 if (j === SYM.INVISIBLE + SYM_OFF_X || j === SYM.BOULDER + SYM_OFF_X) {
                     continue;   /* already handled above */
                 }
-                tmpsym = $c.u8((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? go.ov_rogue_syms[j] : go.ov_primary_syms[j]);
+                tmpsym = (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? go.ov_rogue_syms[j] : go.ov_primary_syms[j];
                 if (tmpsym && sym === tmpsym) {
                     switch (j) {
                         case SYM.PET_OVERRIDE + SYM_OFF_X:
@@ -1579,11 +1577,11 @@ export async function do_screen_description(cc$in, looked, sym, out_str, firstma
  * @returns {number} boolean
  */
 function add_quoted_engraving(x, y, buf, force) {   // pager.c:1631
-    let temp_buf = new Int8Array(256), ep = null, floorengr = 0, headstone = 0;
+    let temp_buf = new Int8Array(256);
     /* True: '/e' or '/E', False: '//' or ';' */
-    ep = engr_at(x, y);
-    floorengr = $c.i8(!$c.strcmp(buf, $c.lit(" (engraving")) ? 1 : 0);
-    headstone = $c.i8(!$c.strcmp(buf, $c.lit(" (grave")) ? 1 : 0);
+    const ep = engr_at(x, y);
+    const floorengr = !$c.strcmp(buf, $c.lit(" (engraving")) ? 1 : 0;
+    const headstone = !$c.strcmp(buf, $c.lit(" (grave")) ? 1 : 0;
     /*
      * If there is no engraving here, there's nothing to do; just return.
      *
@@ -1618,8 +1616,8 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
     D1: for (;;) {
         switch ($goto) {
         case null:
-            quick = $c.i8(mode === 1 ? 1 : 0);   /* use cursor; don't search for "more info" */
-            clicklook = $c.i8(mode === 2 ? 1 : 0);   /* right mouse-click method */
+            quick = mode === 1 ? 1 : 0;   /* use cursor; don't search for "more info" */
+            clicklook = mode === 2 ? 1 : 0;   /* right mouse-click method */
             out_str.fill(0);
             out_str[0] = 0;
             firstmatch[0] = null;
@@ -1674,13 +1672,13 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                              * favor of newer '/' and '?' compatibility instead.
                              */
                             any.a_char = 47;
-                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 47 : 121), ATR.NONE, clr, $c.lit("something on the map"), MENU.ITEMFLAGS_NONE);
+                            await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? 47 : 121, ATR.NONE, clr, $c.lit("something on the map"), MENU.ITEMFLAGS_NONE);
                             any.a_char = 105;
                             /* [don't use 'i' as lootabc group accelerator because
                                it will make the regular 'i' choice inaccessible] */
-                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), 0, ATR.NONE, clr, $c.lit("something you're carrying"), MENU.ITEMFLAGS_NONE);
+                            await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, 0, ATR.NONE, clr, $c.lit("something you're carrying"), MENU.ITEMFLAGS_NONE);
                             any.a_char = 63;
-                            await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 63 : 110), ATR.NONE, clr, $c.lit("something else (by symbol or name)"), MENU.ITEMFLAGS_NONE);
+                            await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? 63 : 110, ATR.NONE, clr, $c.lit("something else (by symbol or name)"), MENU.ITEMFLAGS_NONE);
                             if (!u.uswallow && !Hallucination()) {
                                 any.$copyFrom(cg.zeroany);
                                 await add_menu_str(win, $c.lit(""));
@@ -1691,22 +1689,22 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                                    symbol/monster class letter doesn't match up with
                                    bogus monster type, so suppress when hallucinating */
                                 any.a_char = 109;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), ATR.NONE, clr, $c.lit("nearby monsters"), MENU.ITEMFLAGS_NONE);
+                                await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? any.a_char : 0, ATR.NONE, clr, $c.lit("nearby monsters"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 77;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), ATR.NONE, clr, $c.lit("all monsters shown on map"), MENU.ITEMFLAGS_NONE);
+                                await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? any.a_char : 0, ATR.NONE, clr, $c.lit("all monsters shown on map"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 111;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), ATR.NONE, clr, $c.lit("nearby objects"), MENU.ITEMFLAGS_NONE);
+                                await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? any.a_char : 0, ATR.NONE, clr, $c.lit("nearby objects"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 79;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 0), ATR.NONE, clr, $c.lit("all objects shown on map"), MENU.ITEMFLAGS_NONE);
+                                await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? any.a_char : 0, ATR.NONE, clr, $c.lit("all objects shown on map"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 116;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 94), ATR.NONE, clr, $c.lit("nearby traps"), MENU.ITEMFLAGS_NONE);
+                                await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? any.a_char : 94, ATR.NONE, clr, $c.lit("nearby traps"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 84;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 34), ATR.NONE, clr, $c.lit("all seen or remembered traps"), MENU.ITEMFLAGS_NONE);
+                                await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? any.a_char : 34, ATR.NONE, clr, $c.lit("all seen or remembered traps"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 101;
                                 /* [don't use 'e' as lootabc group accelerator] */
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? 0 : 96), ATR.NONE, clr, $c.lit("nearby engravings"), MENU.ITEMFLAGS_NONE);
+                                await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? 0 : 96, ATR.NONE, clr, $c.lit("nearby engravings"), MENU.ITEMFLAGS_NONE);
                                 any.a_char = 69;
-                                await add_menu(win, nul_glyphinfo, any, $c.i8(flags.lootabc ? 0 : any.a_char), $c.i8(flags.lootabc ? any.a_char : 124), ATR.NONE, clr, $c.lit("all seen or remembered engravings"), MENU.ITEMFLAGS_NONE);
+                                await add_menu(win, nul_glyphinfo, any, flags.lootabc ? 0 : any.a_char, flags.lootabc ? any.a_char : 124, ATR.NONE, clr, $c.lit("all seen or remembered engravings"), MENU.ITEMFLAGS_NONE);
                             }
                             await end_menu()(win, $c.lit("What do you want to look at:"));
                             if (await select_menu(win, PICK.ONE, new $c.Ptr(pick_list, 0)) > 0) {
@@ -1802,7 +1800,7 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
             }
             /* Save the verbose flag, we change it later. */
             save_verbose = flags.verbose;
-            flags.verbose = $c.i8(flags.verbose && !quick ? 1 : 0);
+            flags.verbose = flags.verbose && !quick ? 1 : 0;
             /*
              * The user typed one letter, or we're identifying from the screen.
              */
@@ -1824,7 +1822,7 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                         flags.verbose = FALSE;   /* only print long question once */
                     }
                 }
-                found = await do_screen_description(cc.$clone(), $c.i8(from_screen || clicklook ? 1 : 0), sym, new $c.Ptr(out_str, 0), new $c.Ptr(firstmatch, 0), new $c.Ptr(supplemental_pm, 0));
+                found = await do_screen_description(cc.$clone(), from_screen || clicklook ? 1 : 0, sym, new $c.Ptr(out_str, 0), new $c.Ptr(firstmatch, 0), new $c.Ptr(supplemental_pm, 0));
                 /* Finally, print out our explanation. */
                 if (found) {
                     /* use putmixed() because there may be an encoded glyph present */
@@ -1845,9 +1843,9 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
                     if (found === 1 && ans !== LOOK.QUICK && ans !== LOOK.ONCE && (ans === LOOK.VERBOSE || flags.help && !quick) && !clicklook) {
                         supplemental_name[0] = 0;
                         $c.strcpy(new $c.Ptr(temp_buf, 0), firstmatch[0]);
-                        await checkfile(new $c.Ptr(temp_buf, 0), pm, (ans === LOOK.VERBOSE ? chkfilDontAsk : chkfilNone) >>> 0, new $c.Ptr(supplemental_name, 0));
+                        await checkfile(new $c.Ptr(temp_buf, 0), pm, ans === LOOK.VERBOSE ? chkfilDontAsk : chkfilNone, new $c.Ptr(supplemental_name, 0));
                         if (supplemental_pm[0]) {
-                            await do_supplemental_info(new $c.Ptr(supplemental_name, 0), supplemental_pm[0], $c.i8(ans === LOOK.VERBOSE ? 1 : 0));
+                            await do_supplemental_info(new $c.Ptr(supplemental_name, 0), supplemental_pm[0], ans === LOOK.VERBOSE ? 1 : 0);
                         }
                     }
                 } else {
@@ -1868,10 +1866,10 @@ export async function do_look(mode, click_cc) {   // pager.c:1673
  * @param {number} nearby boolean
  */
 function look_region_nearby(lo_x, lo_y, hi_x, hi_y, nearby) {   // pager.c:1966
-    lo_y.set(0, $c.i16(nearby ? (u.uy - BOLT_LIM | 0) > 0 ? u.uy - BOLT_LIM | 0 : 0 : 0));
-    lo_x.set(0, $c.i16(nearby ? (u.ux - BOLT_LIM | 0) > 1 ? u.ux - BOLT_LIM | 0 : 1 : 1));
-    hi_y.set(0, $c.i16(nearby ? (u.uy + BOLT_LIM | 0) < ROWNO - 1 ? u.uy + BOLT_LIM | 0 : ROWNO - 1 : ROWNO - 1));
-    hi_x.set(0, $c.i16(nearby ? (u.ux + BOLT_LIM | 0) < COLNO - 1 ? u.ux + BOLT_LIM | 0 : COLNO - 1 : COLNO - 1));
+    lo_y.set(0, $c.i16(nearby ? u.uy - BOLT_LIM > 0 ? u.uy - BOLT_LIM : 0 : 0));
+    lo_x.set(0, $c.i16(nearby ? u.ux - BOLT_LIM > 1 ? u.ux - BOLT_LIM : 1 : 1));
+    hi_y.set(0, $c.i16(nearby ? u.uy + BOLT_LIM < ROWNO - 1 ? u.uy + BOLT_LIM : ROWNO - 1 : ROWNO - 1));
+    hi_x.set(0, $c.i16(nearby ? u.ux + BOLT_LIM < COLNO - 1 ? u.ux + BOLT_LIM : COLNO - 1 : COLNO - 1));
 }
 /* RESTORE is after do_supplemental_info() */
 /**
@@ -1880,16 +1878,16 @@ function look_region_nearby(lo_x, lo_y, hi_x, hi_y, nearby) {   // pager.c:1966
  * @returns {Promise<void>}
  */
 async function look_all(nearby, do_mons) {   // pager.c:1979
-    let win = 0, glyph = 0, count = 0, x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), lookbuf = new Int8Array(256), outbuf = new Int8Array(256), mtmp = null, warnindx = 0, coordbuf = new Int8Array(20), which = new Int8Array(12), cmode = 0;
+    let x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), lookbuf = new Int8Array(256), outbuf = new Int8Array(256), mtmp = null, coordbuf = new Int8Array(20), which = new Int8Array(12);
     /* True => within BOLTLIM, False => entire map */
     /* True => monsters, False => objects */
-    count = 0;
-    win = await create_nhwindow()(NHW.TEXT);
+    let count = 0;
+    const win = await create_nhwindow()(NHW.TEXT);
     look_region_nearby(new $c.Ptr(lo_x, 0), new $c.Ptr(lo_y, 0), new $c.Ptr(hi_x, 0), new $c.Ptr(hi_y, 0), nearby);
     for (y = lo_y[0]; y <= hi_y[0]; y = $c.i16(y + 1)) {
         for (x = lo_x[0]; x <= hi_x[0]; x = $c.i16(x + 1)) {
             lookbuf[0] = 0;
-            glyph = glyph_at(x, y);
+            const glyph = glyph_at(x, y);
             if (do_mons) {
                 if (glyph_is_monster(glyph)) {
                     if (u_at(x, y) && canspotself()) {
@@ -1904,7 +1902,7 @@ async function look_all(nearby, do_mons) {   // pager.c:1979
                     $c.strcpy(new $c.Ptr(lookbuf, 0), new $c.Ptr(invisexplain, 0));
                     count = count + 1 | 0;
                 } else if (glyph_is_warning(glyph)) {
-                    warnindx = glyph_to_warning(glyph);
+                    const warnindx = glyph_to_warning(glyph);
                     $c.strcpy(new $c.Ptr(lookbuf, 0), def_warnsyms[warnindx].explanation);
                     count = count + 1 | 0;
                 }
@@ -1916,11 +1914,11 @@ async function look_all(nearby, do_mons) {   // pager.c:1979
                 }
             }
             if (new $c.Ptr(lookbuf, 0).get(0)) {
-                cmode = $c.i8(iflags.getpos_coords !== 110 ? iflags.getpos_coords : 109);
+                const cmode = $c.i8(iflags.getpos_coords !== 110 ? iflags.getpos_coords : 109);
                 if (count === 1) {
                     $c.strcpy(new $c.Ptr(which, 0), do_mons ? $c.lit("monsters") : $c.lit("objects"));
                     if (nearby) {
-                        $c.sprintf(new $c.Ptr(outbuf, 0), $c.lit("%s currently shown near %s:"), upstart(new $c.Ptr(which, 0)), cmode !== 99 ? coord_desc(u.ux, u.uy, new $c.Ptr(coordbuf, 0), cmode) : !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked || u.uswallow | 0 || !((u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked && !(u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.uundetected || (u.uprops[TELEPAT].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic))) ? $c.lit("your position") : $c.lit("you"));
+                        $c.sprintf(new $c.Ptr(outbuf, 0), $c.lit("%s currently shown near %s:"), upstart(new $c.Ptr(which, 0)), cmode !== 99 ? coord_desc(u.ux, u.uy, new $c.Ptr(coordbuf, 0), cmode) : !((u.uprops[BLINDED].intrinsic || u.uprops[BLINDED].extrinsic) && !u.uprops[BLINDED].blocked || u.uswallow || !((u.uprops[INVIS].intrinsic || u.uprops[INVIS].extrinsic) && !u.uprops[INVIS].blocked && !(u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic)) && !u.uundetected || (u.uprops[TELEPAT].extrinsic || (u.uprops[DETECT_MONSTERS].intrinsic || u.uprops[DETECT_MONSTERS].extrinsic))) ? $c.lit("your position") : $c.lit("you"));
                     } else {
                         $c.sprintf(new $c.Ptr(outbuf, 0), $c.lit("All %s currently shown on the map:"), new $c.Ptr(which, 0));
                     }
@@ -1965,28 +1963,28 @@ async function look_all(nearby, do_mons) {   // pager.c:1979
  * @returns {Promise<void>}
  */
 async function look_traps(nearby) {   // pager.c:2078
-    let win = 0, t = null, glyph = 0, tnum = 0, count = 0, x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), lookbuf = new Int8Array(256), outbuf = new Int8Array(256), coordbuf = new Int8Array(20), cmode = 0;
-    count = 0;
-    win = await create_nhwindow()(NHW.TEXT);
+    let t = null, x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), lookbuf = new Int8Array(256), outbuf = new Int8Array(256), coordbuf = new Int8Array(20);
+    let count = 0;
+    const win = await create_nhwindow()(NHW.TEXT);
     look_region_nearby(new $c.Ptr(lo_x, 0), new $c.Ptr(lo_y, 0), new $c.Ptr(hi_x, 0), new $c.Ptr(hi_y, 0), nearby);
     for (y = lo_y[0]; y <= hi_y[0]; y = $c.i16(y + 1)) {
         for (x = lo_x[0]; x <= hi_x[0]; x = $c.i16(x + 1)) {
             lookbuf[0] = 0;
-            glyph = glyph_at(x, y);
+            let glyph = glyph_at(x, y);
             if (glyph_is_trap(glyph)) {
-                tnum = glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH;
+                const tnum = glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH;
                 trap_description(new $c.Ptr(lookbuf, 0), tnum, x, y);
                 count = count + 1 | 0;
-            } else if ((t = t_at(x, y)) !== null && t.tseen | 0 && (!((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && !((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) || couldsee(x, y))) {
+            } else if ((t = t_at(x, y)) !== null && t.tseen && (!((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) && !((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level)) || couldsee(x, y))) {
                 /* can't use /" to track traps moved by bubbles or
                    clouds except when hero has direct line of sight */
-                $c.strcpy(new $c.Ptr(lookbuf, 0), trapname(t.ttyp | 0, FALSE));
+                $c.strcpy(new $c.Ptr(lookbuf, 0), trapname(t.ttyp, FALSE));
                 $c.sprintf(eos(new $c.Ptr(lookbuf, 0)), $c.lit(", obscured by %s"), encglyph(glyph));
-                glyph = ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) === S.stone ? GLYPH.CMAP_STONE_OFF : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) <= S.trwall ? (((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) < S.altar ? (((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) === S.altar ? 4008 : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) < S.arrow_trap + MAXTCHARS ? (((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : ((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) <= S.goodpos ? (((S.arrow_trap + (t.ttyp | 0) | 0) - 1 | 0) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
+                glyph = S.arrow_trap + t.ttyp - 1 === S.stone ? GLYPH.CMAP_STONE_OFF : S.arrow_trap + t.ttyp - 1 <= S.trwall ? S.arrow_trap + t.ttyp - 1 - S.vwall + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) : S.arrow_trap + t.ttyp - 1 < S.altar ? S.arrow_trap + t.ttyp - 1 - S.ndoor + GLYPH.CMAP_A_OFF : S.arrow_trap + t.ttyp - 1 === S.altar ? 4008 : S.arrow_trap + t.ttyp - 1 < S.arrow_trap + MAXTCHARS ? S.arrow_trap + t.ttyp - 1 - S.grave + GLYPH.CMAP_B_OFF : S.arrow_trap + t.ttyp - 1 <= S.goodpos ? S.arrow_trap + t.ttyp - 1 - S.digbeam + GLYPH.CMAP_C_OFF : NO_GLYPH;
                 count = count + 1 | 0;
             }
             if (new $c.Ptr(lookbuf, 0).get(0)) {
-                cmode = $c.i8(iflags.getpos_coords !== 110 ? iflags.getpos_coords : 109);
+                const cmode = $c.i8(iflags.getpos_coords !== 110 ? iflags.getpos_coords : 109);
                 if (count === 1) {
                     $c.sprintf(new $c.Ptr(outbuf, 0), $c.lit("%sseen or remembered traps%s:"), nearby ? $c.lit("nearby ") : $c.lit(""), nearby ? $c.lit("") : $c.lit(" on this level"));
                     await putstr()(win, 0, upstart(new $c.Ptr(outbuf, 0)));
@@ -2019,9 +2017,9 @@ async function look_traps(nearby) {   // pager.c:2078
  * @returns {Promise<void>}
  */
 async function look_engrs(nearby) {   // pager.c:2144
-    let win = 0, e = null, lookbuf = new Int8Array(256), outbuf = new Int8Array(256), x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), is_headstone = 0, sym = 0, glyph = 0, count = 0, coordbuf = new Int8Array(20), cmode = 0;
-    count = 0;
-    win = await create_nhwindow()(NHW.TEXT);
+    let lookbuf = new Int8Array(256), outbuf = new Int8Array(256), x = 0, y = 0, lo_x = Int16Array.of(0), lo_y = Int16Array.of(0), hi_x = Int16Array.of(0), hi_y = Int16Array.of(0), coordbuf = new Int8Array(20);
+    let count = 0;
+    const win = await create_nhwindow()(NHW.TEXT);
     look_region_nearby(new $c.Ptr(lo_x, 0), new $c.Ptr(lo_y, 0), new $c.Ptr(hi_x, 0), new $c.Ptr(hi_y, 0), nearby);
     /*assert(lo_x >= 1 && lo_y >= 0 && hi_x < MAXCO && hi_y < MAXLI);*/
     for (y = lo_y[0]; y <= hi_y[0]; y = $c.i16(y + 1)) {
@@ -2034,11 +2032,11 @@ async function look_engrs(nearby) {   // pager.c:2144
                anymore (in case the hero is unaware that they're gone;
                scuffed away by monster movement or deleted during shop
                or vault wall repair); not sure what to do about that */
-            e = engr_at(x, y);
+            const e = engr_at(x, y);
             if (!e) {
                 continue;
             }
-            is_headstone = $c.i8(IS_GRAVE(svl.lastseentyp[x][y]));
+            const is_headstone = IS_GRAVE(svl.lastseentyp[x][y]);
             $c.sprintf(new $c.Ptr(lookbuf, 0), $c.lit(" (%s"), is_headstone ? $c.lit("grave") : $c.lit("engraving"));
             add_quoted_engraving(x, y, new $c.Ptr(lookbuf, 0), TRUE);
             /* the paren is used by farlook and add_quoted_engraving()
@@ -2050,20 +2048,20 @@ async function look_engrs(nearby) {   // pager.c:2144
                 strsubst(new $c.Ptr(lookbuf, 0), $c.lit("(engraving with "), $c.lit(""));
                 strsubst(new $c.Ptr(lookbuf, 0), $c.lit("(engraving "), $c.lit("engraving "));
             }
-            glyph = glyph_at(x, y);
-            sym = $c.u8(glyph_is_cmap(glyph) ? glyph_to_cmap(glyph) : SYM.NOTHING);
+            let glyph = glyph_at(x, y);
+            const sym = $c.u8(glyph_is_cmap(glyph) ? glyph_to_cmap(glyph) : SYM.NOTHING);
             if (is_cmap_engraving(sym) || sym === S.grave) {
                 /* engraving or grave+headstone shown on the map */
                 count = count + 1 | 0;
             } else {
                 /* engraving or grave covered by object(s) */
                 nh_snprintf($c.lit("look_engrs"), 2190, eos(new $c.Ptr(lookbuf, 0)), $c.subu64(256, $c.strlen(new $c.Ptr(lookbuf, 0))), $c.lit(", obscured by %s"), encglyph(glyph));
-                glyph = is_headstone ? 4011 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) === S.stone ? GLYPH.CMAP_STONE_OFF : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) <= S.trwall ? ((svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) < S.altar ? ((svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) === S.altar ? 4008 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) < S.arrow_trap + MAXTCHARS ? ((svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) <= S.goodpos ? ((svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH;
+                glyph = is_headstone ? 4011 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) === S.stone ? GLYPH.CMAP_STONE_OFF : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) <= S.trwall ? (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.vwall + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) < S.altar ? (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.ndoor + GLYPH.CMAP_A_OFF : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) === S.altar ? 4008 : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) < S.arrow_trap + MAXTCHARS ? (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.grave + GLYPH.CMAP_B_OFF : (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) <= S.goodpos ? (svl.level.locations[e.engr_x][e.engr_y].typ === CORR ? S.engrcorr : S.engroom) - S.digbeam + GLYPH.CMAP_C_OFF : NO_GLYPH;
                 count = count + 1 | 0;
             }
             if (new $c.Ptr(lookbuf, 0).get(0)) {
                 /* (redundant) */
-                cmode = $c.i8(iflags.getpos_coords !== 110 ? iflags.getpos_coords : 109);
+                const cmode = $c.i8(iflags.getpos_coords !== 110 ? iflags.getpos_coords : 109);
                 if (count === 1) {
                     $c.sprintf(new $c.Ptr(outbuf, 0), $c.lit("%sseen or remembered engravings%s:"), nearby ? $c.lit("nearby ") : $c.lit(""), nearby ? $c.lit("") : $c.lit(" on this level"));
                     await putstr()(win, 0, upstart(new $c.Ptr(outbuf, 0)));
@@ -2096,13 +2094,13 @@ async function look_engrs(nearby) {   // pager.c:2144
  * @returns {Promise<void>}
  */
 async function do_supplemental_info(name, pm, without_asking) {   // pager.c:2253
-    let textp = null, datawin = 0, entrytext = null, bp = null, bp2 = null, question = new Int8Array(128), yes_to_moreinfo = 0, is_marauder = 0, fullname = new Int8Array(256), i = 0, subs = 0, gang = null, buf = new Int8Array(256), txt = null, $t1;
-    datawin = WIN_ERR;
-    entrytext = name;
-    bp = null;
-    bp2 = null;
-    yes_to_moreinfo = FALSE;
-    is_marauder = $c.i8(is_orc(pm));
+    let textp = null, question = new Int8Array(128), fullname = new Int8Array(256), i = 0, buf = new Int8Array(256), txt = null, $t1;
+    let datawin = WIN_ERR;
+    const entrytext = name;
+    let bp = null;
+    let bp2 = null;
+    let yes_to_moreinfo = FALSE;
+    const is_marauder = is_orc(pm);
     /*
      * Provide some info on some specific things
      * meant to support in-game mythology, and not
@@ -2123,8 +2121,8 @@ async function do_supplemental_info(name, pm, without_asking) {   // pager.c:225
                 }
             }
             if (yes_to_moreinfo) {
-                subs = 0;
-                gang = null;
+                let subs = 0;
+                let gang = null;
                 if (bp) {
                     textp = new $c.Ptr(suptext1, 0);
                     gang = bp.add(4);
@@ -2168,19 +2166,19 @@ export async function doquickwhatis() {   // pager.c:2329
  * @returns {Promise<number>} int
  */
 export async function doidtrap() {   // pager.c:2336
-    let trap = null, tt = 0, glyph = 0, x = 0, y = 0, chesttrap = 0;
+    let trap = null, tt = 0;
     if (!await getdir($c.lit("^"))) {
         return ECMD.CANCEL;
     }
-    x = $c.i16(u.ux + u.dx | 0);
-    y = $c.i16(u.uy + u.dy | 0);
+    const x = $c.i16(u.ux + u.dx | 0);
+    const y = $c.i16(u.uy + u.dy | 0);
     /* trapped doors and chests used to be shown as fake bear traps;
        they have their own trap types now but aren't part of the ftrap
        chain; usually they revert to normal door or chest when the hero
        sees them but player might be using '^' while the hero is blind */
-    glyph = glyph_at(x, y);
+    const glyph = glyph_at(x, y);
     if (glyph_is_trap(glyph) && ((tt = glyph >= GLYPH_TRAP_OFF && glyph < GLYPH_TRAP_OFF + MAXTCHARS ? (((glyph - GLYPH_TRAP_OFF | 0) + S.arrow_trap | 0) - S.arrow_trap | 0) + 1 | 0 : NO_GLYPH) === BEAR_TRAP || tt === TRAPPED_DOOR || tt === TRAPPED_CHEST)) {
-        chesttrap = trapped_chest_at(tt, x, y);
+        const chesttrap = trapped_chest_at(tt, x, y);
         if (chesttrap || trapped_door_at(tt, x, y)) {
             await pline($c.lit("That is a trapped %s."), chesttrap ? $c.lit("chest") : $c.lit("door"));
             return ECMD.OK;   /* trap ID'd, but no time elapses */
@@ -2191,9 +2189,9 @@ export async function doidtrap() {   // pager.c:2336
             if (!trap.tseen) {
                 break;
             }
-            tt = trap.ttyp | 0;
+            tt = trap.ttyp;
             if (u.dz) {
-                if (u.dz < 0 ? (tt === HOLE || tt === TRAPDOOR) : tt === ROCKTRAP) {
+                if (u.dz < 0 ? is_hole(tt) : tt === ROCKTRAP) {
                     break;
                 }
             }
@@ -2239,14 +2237,14 @@ export async function doidtrap() {   // pager.c:2336
  * @returns {Promise<void>}
  */
 async function whatdoes_help() {   // pager.c:2421
-    let fp = null, p = null, buf = new Int8Array(256), tmpwin = 0;
-    fp = $c.fopen($c.lit("keyhelp"), $c.lit("r"));
+    let p = null, buf = new Int8Array(256);
+    const fp = $c.fopen($c.lit("keyhelp"), $c.lit("r"));
     if (!fp) {
         await pline($c.lit("Cannot open \"%s\" data file!"), $c.lit("keyhelp"));
         await display_nhwindow()($G.WIN_MESSAGE, TRUE);
         return;
     }
-    tmpwin = await create_nhwindow()(NHW.TEXT);
+    const tmpwin = await create_nhwindow()(NHW.TEXT);
     while ($c.fgets(new $c.Ptr(buf, 0), 256, fp)) {
         if (new $c.Ptr(buf, 0).get(0) === 35) {
             continue;
@@ -2306,13 +2304,13 @@ export function dowhatdoes_core(q, cbuf) {   // pager.c:2577
  * @returns {Promise<number>} int
  */
 export async function dowhatdoes() {   // pager.c:2659
-    let bufr = new Int8Array(256), q = 0, reslt = null, p = null;
+    let bufr = new Int8Array(256);
     if (!dowhatdoes$once) {
         await pline($c.lit("Ask about '&' or '?' to get more info.%s"), iflags.altmeta ? $c.lit("  (For ESC, type it twice.)") : $c.lit(""));
         dowhatdoes$once = TRUE;
     }
     introff();   /* disables ^C but not ^\ */
-    q = await yn_function($c.lit("What command?"), null, 0, TRUE);
+    let q = await yn_function($c.lit("What command?"), null, 0, TRUE);
     if (q === 27 && iflags.altmeta) {
         /* in an ideal world, we would know whether another keystroke
            was already pending, but this is not an ideal world...
@@ -2325,9 +2323,9 @@ export async function dowhatdoes() {   // pager.c:2659
     }
     /*ALTMETA*/
     intron();   /* reenables ^C */
-    reslt = dowhatdoes_core(q, new $c.Ptr(bufr, 0));
+    const reslt = dowhatdoes_core(q, new $c.Ptr(bufr, 0));
     if (reslt) {
-        p = $c.strchr(reslt, 10);   /* 'm' prefix has two lines of output */
+        const p = $c.strchr(reslt, 10);   /* 'm' prefix has two lines of output */
         if (q === 38 || q === 63) {
             await whatdoes_help();
         }
@@ -2353,8 +2351,8 @@ export async function dowhatdoes() {   // pager.c:2659
  * @returns {Promise<void>}
  */
 async function docontact() {   // pager.c:2718
-    let cwin = 0, buf = new Int8Array(256);
-    cwin = await create_nhwindow()(NHW.TEXT);
+    let buf = new Int8Array(256);
+    const cwin = await create_nhwindow()(NHW.TEXT);
     if (sysopt.support) {
         /*XXX overflow possibilities*/
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("To contact local support, %s"), sysopt.support);
@@ -2453,8 +2451,7 @@ async function hmenu_doextlist() {   // pager.c:2814
  * @returns {Promise<void>}
  */
 async function domenucontrols() {   // pager.c:2820
-    let cwin = 0;
-    cwin = await create_nhwindow()(NHW.TEXT);
+    const cwin = await create_nhwindow()(NHW.TEXT);
     await show_menu_controls(cwin, FALSE);
     await display_nhwindow()(cwin, FALSE);
     await destroy_nhwindow()(cwin);
@@ -2464,9 +2461,9 @@ async function domenucontrols() {   // pager.c:2820
  * @returns {Promise<number>} int
  */
 export async function dohelp() {   // pager.c:2860
-    let tmpwin = 0, helpbuf = new Int8Array(128), tmpbuf = new Int8Array(128), i = 0, n = 0, selected = [null], any = new $T.any(), sel = 0, clr = 0;
-    tmpwin = await create_nhwindow()(NHW.MENU);
-    clr = NO_COLOR;
+    let helpbuf = new Int8Array(128), tmpbuf = new Int8Array(128), i = 0, selected = [null], any = new $T.any();
+    const tmpwin = await create_nhwindow()(NHW.MENU);
+    const clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);   /* zero all bits */
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     for (i = 0; help_menu_items[i].text; i = i + 1 | 0) {
@@ -2487,10 +2484,10 @@ export async function dohelp() {   // pager.c:2860
         await add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR.NONE, clr, new $c.Ptr(helpbuf, 0), MENU.ITEMFLAGS_NONE);
     }
     await end_menu()(tmpwin, $c.lit("Select one item:"));
-    n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
+    const n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
     await destroy_nhwindow()(tmpwin);
     if (n > 0) {
-        sel = $c.radd(selected[0], 0).item.a_int - 1 | 0;
+        const sel = $c.radd(selected[0], 0).item.a_int - 1 | 0;
         $c.free(selected[0]);
         await help_menu_items[sel].f();
     }
@@ -2505,15 +2502,15 @@ export async function dohelp() {   // pager.c:2860
  * @returns {Promise<$c.Ptr | null>} char *
  */
 async function setopt_cmd(outbuf) {   // pager.c:2908
-    let cmdbuf = new Int8Array(128), cmdnm = null, key = 0;
+    let cmdbuf = new Int8Array(128);
     $c.strcpy(outbuf, $c.lit("'"));
     /* #optionsfull */
-    key = cmd_from_func(doset);
+    let key = cmd_from_func(doset);
     if (key) {
         $c.strcat(outbuf, visctrl(key));
     } else {
         /* extended command name, with leading "#" */
-        cmdnm = await cmdname_from_func(doset, new $c.Ptr(cmdbuf, 0), TRUE);
+        let cmdnm = await cmdname_from_func(doset, new $c.Ptr(cmdbuf, 0), TRUE);
         if (!cmdnm) {   /* paranoia */
             cmdnm = $c.lit("optionsfull");
         }

@@ -20,8 +20,7 @@ import { eos, strsubst } from './hacklib.js';
  * @returns {Promise<void>}
  */
 export async function stairway_add(x, y, up, isladder, dest) {   // stairs.c:8
-    let tmp = null;
-    tmp = $c.asRec(await alloc(24), $T.stairway, 24);
+    const tmp = $c.asRec(await alloc(24), $T.stairway, 24);
     $c.memset(tmp, 0, 24);
     tmp.sx = x;
     tmp.sy = y;
@@ -33,10 +32,9 @@ export async function stairway_add(x, y, up, isladder, dest) {   // stairs.c:8
     gs.stairs = tmp;
 }
 export function stairway_free_all() {   // stairs.c:27
-    let tmp = null, tmp2 = null;
-    tmp = gs.stairs;
+    let tmp = gs.stairs;
     while (tmp) {
-        tmp2 = tmp.next;
+        const tmp2 = tmp.next;
         $c.free(tmp);
         tmp = tmp2;
     }
@@ -48,8 +46,7 @@ export function stairway_free_all() {   // stairs.c:27
  * @returns {$T.stairway | null} stairway *
  */
 export function stairway_at(x, y) {   // stairs.c:40
-    let tmp = null;
-    tmp = gs.stairs;
+    let tmp = gs.stairs;
     while (tmp && !(tmp.sx === x && tmp.sy === y)) {
         tmp = tmp.next;
     }
@@ -60,8 +57,7 @@ export function stairway_at(x, y) {   // stairs.c:40
  * @returns {$T.stairway | null} stairway *
  */
 export function stairway_find(fromdlev) {   // stairs.c:50
-    let tmp = null;
-    tmp = gs.stairs;
+    let tmp = gs.stairs;
     while (tmp) {
         if (tmp.tolev.dnum === fromdlev.dnum && tmp.tolev.dlevel === fromdlev.dlevel) {
             break;   /* return */
@@ -76,8 +72,7 @@ export function stairway_find(fromdlev) {   // stairs.c:50
  * @returns {$T.stairway | null} stairway *
  */
 export function stairway_find_from(fromdlev, isladder) {   // stairs.c:64
-    let tmp = null;
-    tmp = gs.stairs;
+    let tmp = gs.stairs;
     while (tmp) {
         if (tmp.tolev.dnum === fromdlev.dnum && tmp.tolev.dlevel === fromdlev.dlevel && tmp.isladder === isladder) {
             break;   /* return */
@@ -91,8 +86,7 @@ export function stairway_find_from(fromdlev, isladder) {   // stairs.c:64
  * @returns {$T.stairway | null} stairway *
  */
 export function stairway_find_dir(up) {   // stairs.c:79
-    let tmp = null;
-    tmp = gs.stairs;
+    let tmp = gs.stairs;
     while (tmp && !(tmp.up === up)) {
         tmp = tmp.next;
     }
@@ -104,8 +98,7 @@ export function stairway_find_dir(up) {   // stairs.c:79
  * @returns {$T.stairway | null} stairway *
  */
 export function stairway_find_type_dir(isladder, up) {   // stairs.c:89
-    let tmp = null;
-    tmp = gs.stairs;
+    let tmp = gs.stairs;
     while (tmp && !(tmp.isladder === isladder && tmp.up === up)) {
         tmp = tmp.next;
     }
@@ -116,8 +109,7 @@ export function stairway_find_type_dir(isladder, up) {   // stairs.c:89
  * @returns {$T.stairway | null} stairway *
  */
 export function stairway_find_special_dir(up) {   // stairs.c:99
-    let tmp = null;
-    tmp = gs.stairs;
+    let tmp = gs.stairs;
     while (tmp) {
         if (tmp.tolev.dnum !== u.uz.dnum && tmp.up !== up) {
             return tmp;
@@ -132,8 +124,7 @@ export function stairway_find_special_dir(up) {   // stairs.c:99
  * @returns {Promise<void>}
  */
 export async function u_on_sstairs(upflag) {   // stairs.c:113
-    let stway = null;
-    stway = stairway_find_special_dir($c.i8(upflag));
+    const stway = stairway_find_special_dir($c.i8(upflag));
     if (stway) {
         await u_on_newpos(stway.sx, stway.sy);
     } else {
@@ -145,8 +136,7 @@ export async function u_on_sstairs(upflag) {   // stairs.c:113
  * @returns {Promise<void>}
  */
 export async function u_on_upstairs() {   // stairs.c:125
-    let stway = null;
-    stway = stairway_find_dir(TRUE);
+    const stway = stairway_find_dir(TRUE);
     if (stway) {
         await u_on_newpos(stway.sx, stway.sy);
     } else {
@@ -158,8 +148,7 @@ export async function u_on_upstairs() {   // stairs.c:125
  * @returns {Promise<void>}
  */
 export async function u_on_dnstairs() {   // stairs.c:137
-    let stway = null;
-    stway = stairway_find_dir(FALSE);
+    const stway = stairway_find_dir(FALSE);
     if (stway) {
         await u_on_newpos(stway.sx, stway.sy);
     } else {
@@ -172,7 +161,7 @@ export async function u_on_dnstairs() {   // stairs.c:137
  * @returns {number} boolean
  */
 export function On_stairs(x, y) {   // stairs.c:148
-    return $c.i8(!$c.peq(stairway_at(x, y), $c.asRec(null, $T.stairway, 24)) ? 1 : 0);
+    return !$c.peq(stairway_at(x, y), $c.asRec(null, $T.stairway, 24)) ? 1 : 0;
 }
 /**
  * @param {number} x coordxy
@@ -180,9 +169,8 @@ export function On_stairs(x, y) {   // stairs.c:148
  * @returns {number} boolean
  */
 export function On_ladder(x, y) {   // stairs.c:154
-    let stway = null;
-    stway = stairway_at(x, y);
-    return $c.i8(stway && stway.isladder ? 1 : 0);
+    const stway = stairway_at(x, y);
+    return stway && stway.isladder ? 1 : 0;
 }
 /**
  * @param {number} x coordxy
@@ -190,9 +178,8 @@ export function On_ladder(x, y) {   // stairs.c:154
  * @returns {number} boolean
  */
 export function On_stairs_up(x, y) {   // stairs.c:162
-    let stway = null;
-    stway = stairway_at(x, y);
-    return $c.i8(stway && stway.up ? 1 : 0);
+    const stway = stairway_at(x, y);
+    return stway && stway.up ? 1 : 0;
 }
 /**
  * @param {number} x coordxy
@@ -200,9 +187,8 @@ export function On_stairs_up(x, y) {   // stairs.c:162
  * @returns {number} boolean
  */
 export function On_stairs_dn(x, y) {   // stairs.c:170
-    let stway = null;
-    stway = stairway_at(x, y);
-    return $c.i8(stway && !stway.up ? 1 : 0);
+    const stway = stairway_at(x, y);
+    return stway && !stway.up ? 1 : 0;
 }
 /* return True if 'sway' is a branch staircase and hero has used these stairs
    to visit the branch */
@@ -211,7 +197,7 @@ export function On_stairs_dn(x, y) {   // stairs.c:170
  * @returns {number} boolean
  */
 export function known_branch_stairs(sway) {   // stairs.c:180
-    return $c.i8(sway && sway.tolev.dnum !== u.uz.dnum && sway.u_traversed ? 1 : 0);
+    return sway && sway.tolev.dnum !== u.uz.dnum && sway.u_traversed ? 1 : 0;
 }
 /* describe staircase 'sway' based on whether hero knows the destination */
 /**
@@ -221,21 +207,21 @@ export function known_branch_stairs(sway) {   // stairs.c:180
  * @returns {$c.Ptr | null} char *
  */
 export function stairs_description(sway, outbuf, stcase) {   // stairs.c:187
-    let tolev = new $T.d_level(), stairs = null, updown = null, specialdepth = 0, to_dlev = 0;
+    let tolev = new $T.d_level();
     /* stairs/ladder to describe */
     /* result buffer */
     /* True: "staircase" or "ladder", always singular;
      * False: "stairs" or "ladder"; caller needs to deal
      * with singular vs plural when forming a sentence */
     tolev.$copyFrom(sway.tolev);
-    stairs = sway.isladder ? $c.lit("ladder") : stcase ? $c.lit("staircase") : $c.lit("stairs");
-    updown = sway.up ? $c.lit("up") : $c.lit("down");
+    const stairs = sway.isladder ? $c.lit("ladder") : stcase ? $c.lit("staircase") : $c.lit("stairs");
+    const updown = sway.up ? $c.lit("up") : $c.lit("down");
     if (!known_branch_stairs(sway)) {
         /* ordinary stairs or branch stairs to not-yet-visited branch */
         $c.sprintf(outbuf, $c.lit("%s %s"), stairs, updown);
         if (sway.u_traversed) {
-            specialdepth = $c.i8(tolev.dnum === svd.dungeon_topology.d_quest_dnum || single_level_branch(tolev) ? 1 : 0);   /* knox */
-            to_dlev = specialdepth ? dunlev(tolev) : depth(tolev);
+            const specialdepth = tolev.dnum === svd.dungeon_topology.d_quest_dnum || single_level_branch(tolev) ? 1 : 0;   /* knox */
+            const to_dlev = specialdepth ? dunlev(tolev) : depth(tolev);
             $c.sprintf(eos(outbuf), $c.lit(" to level %d"), to_dlev);
         }
     } else if (u.uz.dnum === 0 && u.uz.dlevel === 1 && sway.up) {

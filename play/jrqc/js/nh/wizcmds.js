@@ -107,10 +107,9 @@ const stats_sep = new Int8Array(43);
  * @returns {Promise<number>} int
  */
 export async function wiz_wish() {   // wizcmds.c:32
-    let save_verbose = 0;
     /* Unlimited wishes for debug mode by Paul Polderman */
     if (wizard()) {
-        save_verbose = flags.verbose;
+        const save_verbose = flags.verbose;
         flags.verbose = FALSE;
         await makewish();
         flags.verbose = save_verbose;
@@ -151,8 +150,7 @@ export async function wiz_identify() {   // wizcmds.c:50
  * @returns {Promise<void>}
  */
 async function makemap_unmakemon(mtmp, migratory) {   // wizcmds.c:73
-    let ndx = 0;
-    ndx = mtmp.data.pmidx;
+    const ndx = mtmp.data.pmidx;
     /* uncreate any unique monster so that it is eligible to be remade
        on the new incarnation of the level; ignores DEADMONSTER() [why?] */
     if (mtmp.data.geno & G_UNIQ) {
@@ -165,10 +163,10 @@ async function makemap_unmakemon(mtmp, migratory) {   // wizcmds.c:73
        be parked at <0,0>; for the latter, might already be flagged as
        dead but is being kept around because of the 'isgd' flag */
     if (mtmp.isgd) {
-        mtmp.isgd = (0) & 1;   /* after this, fall through to mongone() */
+        mtmp.isgd = 0;   /* after this, fall through to mongone() */
     } else if (DEADMONSTER(mtmp)) {
         return;   /* already set to be discarded */
-    } else if (mtmp.isshk | 0 && on_level(u.uz, mtmp.mextra.eshk.shoplevel)) {
+    } else if (mtmp.isshk && on_level(u.uz, mtmp.mextra.eshk.shoplevel)) {
         await setpaid(mtmp);
     }
     if (migratory) {
@@ -211,7 +209,7 @@ export async function makemap_remove_mons() {   // wizcmds.c:110
        present location instead of being saved with whatever level they
        happen to be on; see keepdogs() and keep_mon_accessible(dog.c)] */
     for (mprev = new $c.FieldRef(gm, "migrating_mons", "ptr"); (mtmp = mprev.get(0)) !== null; ) {
-        if (mtmp.mextra && (mtmp.isshk | 0 && on_level(u.uz, mtmp.mextra.eshk.shoplevel) || mtmp.ispriest | 0 && on_level(u.uz, mtmp.mextra.epri.shrlevel) || mtmp.isgd | 0 && on_level(u.uz, mtmp.mextra.egd.gdlevel))) {
+        if (mtmp.mextra && (mtmp.isshk && on_level(u.uz, mtmp.mextra.eshk.shoplevel) || mtmp.ispriest && on_level(u.uz, mtmp.mextra.epri.shrlevel) || mtmp.isgd && on_level(u.uz, mtmp.mextra.egd.gdlevel))) {
             mprev.set(0, mtmp.nmon);
             await makemap_unmakemon(mtmp, TRUE);
         } else {
@@ -230,9 +228,8 @@ export async function makemap_remove_mons() {   // wizcmds.c:110
  * @returns {Promise<number>} int
  */
 export async function wiz_makemap() {   // wizcmds.c:156
-    let was_in_W_tower = 0;
     if (wizard()) {
-        was_in_W_tower = await In_W_tower(u.ux, u.uy, u.uz);
+        const was_in_W_tower = await In_W_tower(u.ux, u.uy, u.uz);
         await makemap_prepost(TRUE, was_in_W_tower);
         /* create a new level; various things like bestowing a guardian
            angel on Astral or setting off alarm on Ft.Ludios are handled
@@ -250,16 +247,16 @@ export async function wiz_makemap() {   // wizcmds.c:156
  * @returns {Promise<number>} int
  */
 export async function wiz_map() {   // wizcmds.c:176
-    let t = null, ep = null, save_Hconf = 0, save_Hhallu = 0, $t1;
+    let t = null, ep = null, $t1;
     if (wizard()) {
-        save_Hconf = u.uprops[CONFUSION].intrinsic;
-        save_Hhallu = u.uprops[HALLUC].intrinsic;
+        const save_Hconf = u.uprops[CONFUSION].intrinsic;
+        const save_Hhallu = u.uprops[HALLUC].intrinsic;
         do {
             a11y.mon_notices_blocked = a11y.mon_notices_blocked + 1 | 0;
         } while (0);
         $t1 = u.uprops[HALLUC].intrinsic = 0, u.uprops[CONFUSION].intrinsic = $t1;
         for (t = gf.ftrap; t !== null; t = t.ntrap) {
-            t.tseen = (1) & 1;
+            t.tseen = 1;
             await map_trap(t, TRUE);
         }
         for (ep = $G.head_engr; ep !== null; ep = ep.nxt_engr) {
@@ -284,9 +281,8 @@ export async function wiz_map() {   // wizcmds.c:176
  * @returns {Promise<number>} int
  */
 export async function wiz_genesis() {   // wizcmds.c:203
-    let mongen_saved = 0;
     if (wizard()) {
-        mongen_saved = iflags.debug_mongen;
+        const mongen_saved = iflags.debug_mongen;
         iflags.debug_mongen = FALSE;
         await create_particular();
         iflags.debug_mongen = mongen_saved;
@@ -325,10 +321,10 @@ export async function wiz_detect() {   // wizcmds.c:229
  * @returns {Promise<number>} int
  */
 export async function wiz_kill() {   // wizcmds.c:243
-    let mtmp = null, cc = new $T.nhcoord(), ans = 0, c = 0, qbuf = new Int8Array(128), prompt = null, save_verbose = 0, save_autodescribe = 0, uarehere = new $T.d_level(), tame = 0, seen = 0, flgs = 0, articl = 0, adjs = null, Mn = null;
-    prompt = $c.lit("Pick first monster to slay");
-    save_verbose = flags.verbose;
-    save_autodescribe = iflags.autodescribe;
+    let cc = new $T.nhcoord(), c = 0, qbuf = new Int8Array(128), uarehere = new $T.d_level();
+    let prompt = $c.lit("Pick first monster to slay");
+    const save_verbose = flags.verbose;
+    const save_autodescribe = iflags.autodescribe;
     uarehere.$copyFrom(u.uz);
     cc.x = u.ux, cc.y = u.uy;
     for (; ; ) {
@@ -336,13 +332,13 @@ export async function wiz_kill() {   // wizcmds.c:243
         prompt = $c.lit("Next monster");
         flags.verbose = FALSE;
         iflags.autodescribe = TRUE;
-        ans = await getpos(cc, TRUE, $c.lit("a monster"));
+        const ans = await getpos(cc, TRUE, $c.lit("a monster"));
         flags.verbose = save_verbose;
         iflags.autodescribe = save_autodescribe;
         if (ans < 0 || cc.x < 1) {
             break;
         }
-        mtmp = null;
+        let mtmp = null;
         if (cc.x === u.ux && cc.y === u.uy) {
             if (u.usteed) {
                 $c.sprintf(new $c.Ptr(qbuf, 0), $c.lit("Kill %.110s?"), await mon_nam(u.usteed));
@@ -376,12 +372,12 @@ export async function wiz_kill() {   // wizcmds.c:243
                we issue our own message in order to name it in case it
                isn't; note that if it triggers other kills, those might
                be referred to as "it" */
-            tame = !!mtmp.mtame ? 1 : 0;
-            seen = canspotmon(mtmp) || u.uswallow | 0 && $c.peq(mtmp, u.ustuck) ? 1 : 0;
-            flgs = SUPPRESS.IT | SUPPRESS.HALLUCINATION | (tame && has_mgivenname(mtmp) ? SUPPRESS.SADDLE : 0);
-            articl = tame ? ARTICLE.YOUR : seen ? ARTICLE.THE : ARTICLE.A;
-            adjs = tame ? !seen ? $c.lit("poor, unseen") : $c.lit("poor") : !seen ? $c.lit("unseen") : null;
-            Mn = await x_monnam(mtmp, articl, adjs, flgs, FALSE);
+            const tame = !!mtmp.mtame ? 1 : 0;
+            const seen = canspotmon(mtmp) || u.uswallow && $c.peq(mtmp, u.ustuck) ? 1 : 0;
+            const flgs = SUPPRESS.IT | SUPPRESS.HALLUCINATION | (tame && has_mgivenname(mtmp) ? SUPPRESS.SADDLE : 0);
+            const articl = tame ? ARTICLE.YOUR : seen ? ARTICLE.THE : ARTICLE.A;
+            const adjs = tame ? !seen ? $c.lit("poor, unseen") : $c.lit("poor") : !seen ? $c.lit("unseen") : null;
+            const Mn = await x_monnam(mtmp, articl, adjs, flgs, FALSE);
             if (!iflags.menu_requested) {
                 /* normal case: hero is credited/blamed */
                 await You($c.lit("%s %s!"), nonliving(mtmp.data) ? $c.lit("destroy") : $c.lit("kill"), Mn);
@@ -487,7 +483,6 @@ export async function wiz_level_tele() {   // wizcmds.c:399
  * @returns {Promise<number>} int
  */
 export async function wiz_flip_level() {   // wizcmds.c:412
-    let c = 0;
     /*
      * Does not handle
      *   levregions,
@@ -497,7 +492,7 @@ export async function wiz_flip_level() {   // wizcmds.c:412
      * as flipping is normally done only during level creation.
      */
     if (wizard()) {
-        c = await yn_function(new $c.Ptr(wiz_flip_level$prmpt, 0), new $c.Ptr(wiz_flip_level$choices, 0), 0, TRUE);
+        let c = await yn_function(new $c.Ptr(wiz_flip_level$prmpt, 0), new $c.Ptr(wiz_flip_level$choices, 0), 0, TRUE);
         if (c && $c.strchr(new $c.Ptr(wiz_flip_level$choices, 0), c)) {
             c = $c.i8(c - 48 | 0);
             if (!c) {
@@ -566,9 +561,9 @@ export async function wiz_level_change() {   // wizcmds.c:446
  * @returns {Promise<number>} int
  */
 export async function wiz_telekinesis() {   // wizcmds.c:494
-    let ans = 0, cc = new $T.nhcoord(), mtmp = null;
-    ans = 0;
-    mtmp = null;
+    let cc = new $T.nhcoord();
+    let ans = 0;
+    let mtmp = null;
     cc.x = u.ux;
     cc.y = u.uy;
     await pline($c.lit("Pick a monster to hurtle."));
@@ -643,38 +638,38 @@ export async function wiz_polyself() {   // wizcmds.c:568
  * @returns {Promise<number>} int
  */
 export async function wiz_show_seenv() {   // wizcmds.c:576
-    let win = 0, x = 0, y = 0, startx = 0, stopx = 0, curx = 0, v = 0, row = new Int8Array(81), $t1, $t2;
-    win = await create_nhwindow()(NHW.TEXT);
+    let x = 0, y = 0, curx = 0, row = new Int8Array(81), $t1, $t2;
+    const win = await create_nhwindow()(NHW.TEXT);
     /*
      * Each seenv description takes up 2 characters, so center
      * the seenv display around the hero.
      */
-    startx = $c.i16(1 > (u.ux - 20 | 0) ? 1 : u.ux - 20 | 0);
-    stopx = $c.i16((startx + 40 | 0) < COLNO ? startx + 40 | 0 : COLNO);
+    let startx = $c.i16(1 > u.ux - 20 ? 1 : u.ux - 20);
+    const stopx = $c.i16(startx + 40 < COLNO ? startx + 40 : COLNO);
     /* can't have a line exactly 80 chars long */
-    if ((stopx - startx | 0) === 40) {
+    if (stopx - startx === 40) {
         startx = $c.i16(startx + 1);
     }
     for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
         for (x = startx, curx = 0; x < stopx; x = $c.i16(x + 1), curx = $c.i16(curx + 2 | 0)) {
             if (u_at(x, y)) {
-                $t1 = row[curx + 1 | 0] = 64, row[curx] = $t1;
+                $t1 = row[curx + 1] = 64, row[curx] = $t1;
             } else {
-                v = svl.level.locations[x][y].seenv & 255;
+                const v = svl.level.locations[x][y].seenv & 255;
                 if (v === 0) {
-                    $t2 = row[curx + 1 | 0] = 32, row[curx] = $t2;
+                    $t2 = row[curx + 1] = 32, row[curx] = $t2;
                 } else {
                     $c.sprintf(new $c.Ptr(row, curx), $c.lit("%02x"), v);
                 }
             }
         }
         /* remove trailing spaces */
-        for (x = $c.i16(curx - 1 | 0); x >= 0; x = $c.i16(x - 1)) {
+        for (x = $c.i16(curx - 1); x >= 0; x = $c.i16(x - 1)) {
             if (row[x] !== 32) {
                 break;
             }
         }
-        row[x + 1 | 0] = 0;
+        row[x + 1] = 0;
         await putstr()(win, 0, new $c.Ptr(row, 0));
     }
     await display_nhwindow()(win, TRUE);
@@ -686,8 +681,8 @@ export async function wiz_show_seenv() {   // wizcmds.c:576
  * @returns {Promise<number>} int
  */
 export async function wiz_show_vision() {   // wizcmds.c:621
-    let win = 0, x = 0, y = 0, v = 0, row = new Int8Array(81);
-    win = await create_nhwindow()(NHW.TEXT);
+    let x = 0, y = 0, row = new Int8Array(81);
+    const win = await create_nhwindow()(NHW.TEXT);
     $c.sprintf(new $c.Ptr(row, 0), $c.lit("Flags: 0x%x could see, 0x%x in sight, 0x%x temp lit"), COULD_SEE, IN_SIGHT, TEMP_LIT);
     await putstr()(win, 0, new $c.Ptr(row, 0));
     await putstr()(win, 0, $c.lit(""));
@@ -696,7 +691,7 @@ export async function wiz_show_vision() {   // wizcmds.c:621
             if (u_at(x, y)) {
                 row[x] = 64;
             } else {
-                v = gv.viz_array.get(y).get(x);   /* data access should be hidden */
+                const v = gv.viz_array.get(y).get(x);   /* data access should be hidden */
                 row[x] = $c.i8(v === 0 ? 32 : 48 + v | 0);
             }
         }
@@ -706,7 +701,7 @@ export async function wiz_show_vision() {   // wizcmds.c:621
                 break;
             }
         }
-        row[x + 1 | 0] = 0;
+        row[x + 1] = 0;
         await putstr()(win, 0, new $c.Ptr(row, 1));
     }
     await display_nhwindow()(win, TRUE);
@@ -718,19 +713,19 @@ export async function wiz_show_vision() {   // wizcmds.c:621
  * @returns {Promise<number>} int
  */
 export async function wiz_show_wmodes() {   // wizcmds.c:657
-    let win = 0, x = 0, y = 0, row = new Int8Array(81), lev = null, istty = 0;
-    istty = $c.i8(windowprocs.wp_id === wp_tty ? 1 : 0);
-    win = await create_nhwindow()(NHW.TEXT);
+    let x = 0, y = 0, row = new Int8Array(81);
+    const istty = windowprocs.wp_id === wp_tty ? 1 : 0;
+    const win = await create_nhwindow()(NHW.TEXT);
     if (istty) {
         await putstr()(win, 0, $c.lit(""));   /* tty only: blank top line */
     }
     for (y = 0; y < ROWNO; y = $c.i16(y + 1)) {
         for (x = 0; x < COLNO; x = $c.i16(x + 1)) {
-            lev = $c.relem(svl.level.locations[x], y);
+            const lev = $c.relem(svl.level.locations[x], y);
             if (u_at(x, y)) {
                 row[x] = 64;
             } else if (IS_WALL(lev.typ) || lev.typ === SDOOR) {
-                row[x] = $c.i8(48 + ((lev.flags | 0) & WM_MASK) | 0);
+                row[x] = 48 + (lev.flags & WM_MASK);
             } else if (lev.typ === CORR) {
                 row[x] = 35;
             } else if (IS_ROOM(lev.typ) || IS_DOOR(lev.typ)) {
@@ -752,9 +747,9 @@ export async function wiz_show_wmodes() {   // wizcmds.c:657
  * @returns {Promise<void>}
  */
 export async function wiz_map_levltyp() {   // wizcmds.c:693
-    let win = 0, x = 0, y = 0, terrain = 0, row = new Int8Array(81), istty = 0, dsc = new Int8Array(256), slev = null, brname = null, $t1, $t2;
-    istty = $c.i8(!$c.strcmp(windowprocs.name, $c.lit("tty")) ? 1 : 0);
-    win = await create_nhwindow()(NHW.TEXT);
+    let x = 0, y = 0, row = new Int8Array(81), dsc = new Int8Array(256), $t1, $t2;
+    const istty = !$c.strcmp(windowprocs.name, $c.lit("tty")) ? 1 : 0;
+    const win = await create_nhwindow()(NHW.TEXT);
     /* map row 0, levl[][0], is drawn on the second line of tty screen */
     if (istty) {
         await putstr()(win, 0, $c.lit(""));   /* tty only: blank top line */
@@ -763,9 +758,9 @@ export async function wiz_map_levltyp() {   // wizcmds.c:693
         /* map column 0, levl[0][], is off the left edge of the screen;
            it should always have terrain type "undiggable stone" */
         for (x = 1; x < COLNO; x = $c.i16(x + 1)) {
-            terrain = svl.level.locations[x][y].typ;
+            const terrain = svl.level.locations[x][y].typ;
             /* assumes there aren't more than 10+26+26 terrain types */
-            $t1 = $c.i8(terrain === STONE && !may_dig(x, y) ? 42 : terrain < 10 ? 48 + terrain | 0 : terrain < 36 ? (97 + terrain | 0) - 10 | 0 : (65 + terrain | 0) - 36 | 0), row[x - 1 | 0] = $t1;
+            $t1 = $c.i8(terrain === STONE && !may_dig(x, y) ? 42 : terrain < 10 ? 48 + terrain | 0 : terrain < 36 ? (97 + terrain | 0) - 10 | 0 : (65 + terrain | 0) - 36 | 0), row[x - 1] = $t1;
         }
         x = $c.i16(x - 1);
         if (svl.level.locations[0][y].typ !== STONE || may_dig(0, y)) {
@@ -775,7 +770,7 @@ export async function wiz_map_levltyp() {   // wizcmds.c:693
         await putstr()(win, 0, new $c.Ptr(row, 0));
     }
     {
-        slev = Is_special(u.uz);
+        const slev = Is_special(u.uz);
         $c.sprintf(new $c.Ptr(dsc, 0), $c.lit("D:%d,L:%d"), u.uz.dnum, u.uz.dlevel);
         /* [dungeon branch features currently omitted] */
         /* special level features */
@@ -889,7 +884,7 @@ export async function wiz_map_levltyp() {   // wizcmds.c:693
             $c.strcat(new $c.Ptr(dsc, 0), $c.lit(" endgame"));
         } else {
             /* somebody's added a dungeon branch we're not expecting */
-            brname = new $c.Ptr(svd.dungeons[u.uz.dnum].dname, 0);
+            let brname = new $c.Ptr(svd.dungeons[u.uz.dnum].dname, 0);
             if (!brname || !brname.get(0)) {
                 brname = $c.lit("unknown");
             }
@@ -913,23 +908,23 @@ export async function wiz_map_levltyp() {   // wizcmds.c:693
  * @returns {Promise<void>}
  */
 export async function wiz_levltyp_legend() {   // wizcmds.c:841
-    let win = 0, i = 0, j = 0, last = 0, c = 0, dsc = null, fmt = null, buf = new Int8Array(256);
-    win = await create_nhwindow()(NHW.TEXT);
+    let i = 0, j = 0, buf = new Int8Array(256);
+    const win = await create_nhwindow()(NHW.TEXT);
     await putstr()(win, 0, $c.lit("#terrain encodings:"));
     await putstr()(win, 0, $c.lit(""));
-    fmt = $c.lit(" %c - %-28s");   /* TODO: include tab-separated variant for win32 */
+    const fmt = $c.lit(" %c - %-28s");   /* TODO: include tab-separated variant for win32 */
     new $c.Ptr(buf, 0).set(0, 0);
     /* output in pairs, left hand column holds [0],[1],...,[N/2-1]
        and right hand column holds [N/2],[N/2+1],...,[N-1];
        N ('last') will always be even, and may or may not include
        the empty string entry to pad out the final pair, depending
        upon how many other entries are present in levltyp[] */
-    last = 38;
+    const last = 38;
     for (i = 0; i < $c.div32(last, 2); i = i + 1 | 0) {
         for (j = i; j < last; j = j + $c.div32(last, 2) | 0) {
-            dsc = levltyp[j];
+            const dsc = levltyp[j];
             /* same int-to-char conversion as wiz_map_levltyp() */
-            c = !dsc.get(0) ? 32 : !$c.strncmp(dsc, $c.lit("unreachable"), 11) ? 42 : j < 10 ? 48 + j | 0 : j < 36 ? (97 + j | 0) - 10 | 0 : (65 + j | 0) - 36 | 0;
+            const c = !dsc.get(0) ? 32 : !$c.strncmp(dsc, $c.lit("unreachable"), 11) ? 42 : j < 10 ? 48 + j | 0 : j < 36 ? (97 + j | 0) - 10 | 0 : (65 + j | 0) - 36 | 0;
             $c.sprintf(eos(new $c.Ptr(buf, 0)), fmt, c, dsc);
             if (j > i) {
                 await putstr()(win, 0, new $c.Ptr(buf, 0));
@@ -946,7 +941,7 @@ export async function wiz_levltyp_legend() {   // wizcmds.c:841
  * @returns {Promise<number>} int
  */
 export async function wiz_smell() {   // wizcmds.c:885
-    let mtmp = null, mptr = null, ans = 0, glyph = 0, cc = new $T.nhcoord(), is_you = 0;
+    let mtmp = null, mptr = null, cc = new $T.nhcoord();
     /* monster being smelled */
     /* screen pos to sniff */
     cc.x = u.ux;
@@ -958,11 +953,11 @@ export async function wiz_smell() {   // wizcmds.c:885
     await You($c.lit("can move the cursor to a monster that you want to smell."));
     do {
         await pline($c.lit("Pick a monster to smell."));
-        ans = await getpos(cc, TRUE, $c.lit("a monster"));
+        const ans = await getpos(cc, TRUE, $c.lit("a monster"));
         if (ans < 0 || cc.x < 0) {
             return ECMD.CANCEL;   /* done */
         }
-        is_you = FALSE;
+        let is_you = FALSE;
         if (cc.x === u.ux && cc.y === u.uy) {
             if (u.usteed) {
                 mptr = u.usteed.data;
@@ -977,7 +972,7 @@ export async function wiz_smell() {   // wizcmds.c:885
         }
         /* Buglet: mapping or unmapping "remembered, unseen monster" should
            cause time to elapse; since we're in wizmode, don't bother */
-        glyph = glyph_at(cc.x, cc.y);
+        const glyph = glyph_at(cc.x, cc.y);
         /* Is it a monster? */
         if (mptr) {
             if (is_you) {
@@ -1152,8 +1147,7 @@ export async function wiz_rumor_check() {   // wizcmds.c:1102
  * @returns {number} int
  */
 function size_obj(otmp) {   // wizcmds.c:1117
-    let sz = 0;
-    sz = 112;
+    let sz = 112;
     if (otmp.oextra) {
         sz = sz + 32 | 0;
         if (ONAME(otmp)) {
@@ -1270,9 +1264,8 @@ async function contained_stats(win, src, total_count, total_size) {   // wizcmds
  * @returns {number} int
  */
 function size_monst(mtmp, incl_wsegs) {   // wizcmds.c:1228
-    let sz = 0;
-    sz = 192;
-    if (mtmp.wormno | 0 && incl_wsegs) {
+    let sz = 192;
+    if (mtmp.wormno && incl_wsegs) {
         sz = sz + size_wseg(mtmp) | 0;
     }
     if (mtmp.mextra) {
@@ -1312,10 +1305,10 @@ function size_monst(mtmp, incl_wsegs) {   // wizcmds.c:1228
  * @returns {Promise<void>}
  */
 async function mon_chain(win, src, chain, force, total_count, total_size) {   // wizcmds.c:1257
-    let buf = new Int8Array(256), count = 0, size = 0, mon = null, incl_wsegs = 0;
+    let buf = new Int8Array(256), size = 0, mon = null;
     /* mon->wormno means something different for migrating_mons and mydogs */
-    incl_wsegs = $c.i8(!strncmpi(src, $c.lit("fmon"), -1) ? 1 : 0);
-    count = size = 0;
+    const incl_wsegs = !strncmpi(src, $c.lit("fmon"), -1) ? 1 : 0;
+    let count = size = 0;
     for (mon = chain; mon; mon = mon.nmon) {
         count = $c.add64(count, 1);
         size = $c.add64(size, size_monst(mon, incl_wsegs));
@@ -1437,12 +1430,12 @@ async function misc_stats(win, total_count, total_size) {   // wizcmds.c:1284
  */
 async function you_sanity_check() {   // wizcmds.c:1402
     let mtmp = null;
-    if (u.uswallow | 0 && !u.ustuck) {
+    if (u.uswallow && !u.ustuck) {
         /* this probably ought to be panic() */
         await impossible($c.lit("sanity_check: swallowed by nothing?"));
         await display_nhwindow()($G.WIN_MESSAGE, TRUE);
         /* try to recover from whatever the problem is */
-        u.uswallow = (0) & 1;
+        u.uswallow = 0;
         u.uswldtim = 0;
         await docrt();
     }
@@ -1516,13 +1509,12 @@ export async function sanity_check() {   // wizcmds.c:1460
  * @returns {number} int
  */
 function migrsort_cmp(vptr1, vptr2) {   // wizcmds.c:1485
-    let m1 = null, m2 = null, d1 = 0, l1 = 0, d2 = 0, l2 = 0;
-    m1 = $c.asArr(vptr1, 'ptr').get(0);
-    m2 = $c.asArr(vptr2, 'ptr').get(0);
-    d1 = m1.mux;
-    l1 = m1.muy;
-    d2 = m2.mux;
-    l2 = m2.muy;
+    const m1 = $c.asArr(vptr1, 'ptr').get(0);
+    const m2 = $c.asArr(vptr2, 'ptr').get(0);
+    const d1 = m1.mux;
+    const l1 = m1.muy;
+    const d2 = m2.mux;
+    const l2 = m2.muy;
     /* if different branches, sort by dungeon number */
     if (d1 !== d2) {
         return d1 - d2 | 0;
@@ -1542,13 +1534,13 @@ function migrsort_cmp(vptr1, vptr2) {   // wizcmds.c:1485
  * @returns {Promise<void>}
  */
 async function list_migrating_mons(nextlevl) {   // wizcmds.c:1506
-    let win = 0, showit = 0, n = 0, xyloc = 0, x = 0, y = 0, c = 0, prmpt = new Int8Array(10), xtra = new Int8Array(10), buf = new Int8Array(256), mtmp = null, marray = null, here = 0, nxtlv = 0, other = 0, $t1, $t2;
+    let prmpt = new Int8Array(10), xtra = new Int8Array(10), buf = new Int8Array(256), mtmp = null, marray = null, $t1, $t2;
     /* default destination for wiz_migrate_mons() */
-    win = WIN_ERR;
-    showit = FALSE;
-    here = 0;
-    nxtlv = 0;
-    other = 0;
+    let win = WIN_ERR;
+    let showit = FALSE;
+    let here = 0;
+    let nxtlv = 0;
+    let other = 0;
     for (mtmp = gm.migrating_mons; mtmp; mtmp = mtmp.nmon) {
         if (mtmp.mux === u.uz.dnum && mtmp.muy === u.uz.dlevel) {
             here = here + 1 | 0;
@@ -1570,8 +1562,8 @@ async function list_migrating_mons(nextlevl) {   // wizcmds.c:1506
         if (new $c.Ptr(xtra, 0).get(0)) {
             $c.sprintf(eos(new $c.Ptr(prmpt, 0)), $c.lit("%c%s"), 27, new $c.Ptr(xtra, 0));
         }
-        c = await yn_function($c.lit("List which?"), new $c.Ptr(prmpt, 0), 113, TRUE);
-        n = (c === 99 ? here : c === 110 ? nxtlv : c === 111 ? other : c === 97 ? (here + nxtlv | 0) + other | 0 : 0) >>> 0;
+        const c = await yn_function($c.lit("List which?"), new $c.Ptr(prmpt, 0), 113, TRUE);
+        let n = (c === 99 ? here : c === 110 ? nxtlv : c === 111 ? other : c === 97 ? (here + nxtlv | 0) + other | 0 : 0) >>> 0;
         if (n > 0) {
             win = await create_nhwindow()(NHW.TEXT);
             switch (c) {
@@ -1596,11 +1588,11 @@ async function list_migrating_mons(nextlevl) {   // wizcmds.c:1506
                 if (c === 97) {
                     showit = TRUE;
                 } else if (mtmp.mux === u.uz.dnum && mtmp.muy === u.uz.dlevel) {
-                    showit = $c.i8(c === 99 ? 1 : 0);
+                    showit = c === 99 ? 1 : 0;
                 } else if (mtmp.mux === nextlevl.dnum && mtmp.muy === nextlevl.dlevel) {
-                    showit = $c.i8(c === 110 ? 1 : 0);
+                    showit = c === 110 ? 1 : 0;
                 } else {
-                    showit = $c.i8(c === 111 ? 1 : 0);
+                    showit = c === 111 ? 1 : 0;
                 }
                 if (showit) {
                     marray.set(($t2 = n, n = $t2 + 1 >>> 0, $t2), mtmp);
@@ -1621,10 +1613,10 @@ async function list_migrating_mons(nextlevl) {   // wizcmds.c:1506
                 if (c === 111 || c === 97) {
                     $c.sprintf(eos(new $c.Ptr(buf, 0)), $c.lit(" to %d:%d"), mtmp.mux, mtmp.muy);
                 }
-                xyloc = mtmp.mtrack[0].x;   /* (for legibility) */
+                const xyloc = mtmp.mtrack[0].x;   /* (for legibility) */
                 if (xyloc === MIGR.EXACT_XY) {
-                    x = mtmp.mtrack[1].x;
-                    y = mtmp.mtrack[1].y;
+                    const x = mtmp.mtrack[1].x;
+                    const y = mtmp.mtrack[1].y;
                     $c.sprintf(eos(new $c.Ptr(buf, 0)), $c.lit(" at <%d,%d>"), x, y);
                 }
                 await putstr()(win, 0, new $c.Ptr(buf, 0));
@@ -1644,8 +1636,8 @@ async function list_migrating_mons(nextlevl) {   // wizcmds.c:1506
  * @returns {Promise<number>} int
  */
 export async function wiz_show_stats() {   // wizcmds.c:1616
-    let buf = new Int8Array(256), win = 0, total_obj_size = [0], total_obj_count = [0], total_mon_size = [0], total_mon_count = [0], total_ovr_size = [0], total_ovr_count = [0], total_misc_size = [0], total_misc_count = [0];
-    win = await create_nhwindow()(NHW.TEXT);
+    let buf = new Int8Array(256), total_obj_size = [0], total_obj_count = [0], total_mon_size = [0], total_mon_count = [0], total_ovr_size = [0], total_ovr_count = [0], total_misc_size = [0], total_misc_count = [0];
+    const win = await create_nhwindow()(NHW.TEXT);
     await putstr()(win, 0, $c.lit("Current memory statistics:"));
     total_obj_count[0] = total_obj_size[0] = 0;
     await putstr()(win, 0, new $c.Ptr(stats_hdr, 0));
@@ -1704,11 +1696,11 @@ export async function wiz_show_stats() {   // wizcmds.c:1616
  * @returns {Promise<number>} int
  */
 export async function wiz_display_macros() {   // wizcmds.c:1705
-    let buf = new Int8Array(256), win = 0, glyph = 0, test = 0, trouble = 0, no_glyph = 0, max_glyph = 0, $t1, $t2, $t3, $t4, $t5;
-    trouble = 0;
-    no_glyph = NO_GLYPH;
-    max_glyph = MAX_GLYPH;
-    win = await create_nhwindow()(NHW.TEXT);
+    let buf = new Int8Array(256), glyph = 0, test = 0, $t1, $t2, $t3, $t4, $t5;
+    let trouble = 0;
+    const no_glyph = NO_GLYPH;
+    const max_glyph = MAX_GLYPH;
+    const win = await create_nhwindow()(NHW.TEXT);
     for (glyph = 0; glyph < MAX_GLYPH; glyph = glyph + 1 | 0) {
         /* glyph_is_cmap / glyph_to_cmap() */
         if (glyph_is_cmap(glyph)) {
@@ -1782,18 +1774,18 @@ export async function wiz_show_nhuuid() {   // wizcmds.c:1782
  * @returns {Promise<number>} int
  */
 export async function wiz_mon_diff() {   // wizcmds.c:1790
-    let buf = new Int8Array(256), win = 0, mhardcoded = 0, mcalculated = 0, trouble = 0, cnt = 0, mdiff = 0, mlev = 0, ptr = null, $t1;
-    mhardcoded = 0;
-    mcalculated = 0;
-    trouble = 0;
-    cnt = 0;
-    mdiff = 0;
+    let buf = new Int8Array(256), ptr = null, $t1;
+    let mhardcoded = 0;
+    let mcalculated = 0;
+    let trouble = 0;
+    let cnt = 0;
+    let mdiff = 0;
     /*
      * Possible extension:  choose between showing discrepancies,
      * showing all monsters, or monsters within a particular class.
      */
-    win = await create_nhwindow()(NHW.TEXT);
-    for (ptr = $c.relem(mons, 0); ptr.mlet; ptr = $c.radd(ptr, 1), cnt = cnt + 1 | 0) {
+    const win = await create_nhwindow()(NHW.TEXT);
+    for (ptr = mons[0]; ptr.mlet; ptr = $c.radd(ptr, 1), cnt = cnt + 1 | 0) {
         mcalculated = mstrength(ptr);
         mhardcoded = ptr.difficulty;
         mdiff = mhardcoded - mcalculated | 0;
@@ -1801,7 +1793,7 @@ export async function wiz_mon_diff() {   // wizcmds.c:1790
             if (!($t1 = trouble, trouble = $t1 + 1 | 0, $t1)) {
                 await putstr()(win, 0, new $c.Ptr(wiz_mon_diff$window_title, 0));
             }
-            mlev = ptr.mlevel;
+            let mlev = ptr.mlevel;
             if (mlev > 50) {   /* hack for named demons */
                 mlev = 50;
             }
@@ -1821,13 +1813,13 @@ export async function wiz_mon_diff() {   // wizcmds.c:1790
  * @returns {Promise<number>} int
  */
 export async function wiz_objprobs() {   // wizcmds.c:1832
-    let win = 0, buf = new Int8Array(256), probsum = new Int32Array(18), otyp = 0, oclass = 0;
-    oclass = objects[FIRST_OBJECT].oc_class;
+    let buf = new Int8Array(256), probsum = new Int32Array(18), otyp = 0;
+    let oclass = objects[FIRST_OBJECT].oc_class;
     $c.memset(new $c.Ptr(probsum, 0), 0, 72);
     for (otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp = otyp + 1 | 0) {
         probsum[objects[otyp].oc_class] = probsum[objects[otyp].oc_class] + objects[otyp].oc_prob | 0;
     }
-    win = await create_nhwindow()(NHW.TEXT);
+    const win = await create_nhwindow()(NHW.TEXT);
     for (otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp = otyp + 1 | 0) {
         /* placeholders for extra descriptions aren't generatable objects */
         if (!obj_descr[objects[otyp].oc_name_idx].oc_name) {
@@ -1850,13 +1842,13 @@ export async function wiz_objprobs() {   // wizcmds.c:1832
  * @returns {Promise<number>} int
  */
 export async function wiz_migrate_mons() {   // wizcmds.c:1873
-    let mcount = 0, inbuf = new Int8Array(256), ptr = null, mtmp = null, use_random_mon = 0, mongen_saved = 0, tolevel = new $T.d_level(), $t1;
-    use_random_mon = TRUE;
-    mongen_saved = iflags.debug_mongen;
+    let inbuf = new Int8Array(256), mtmp = null, tolevel = new $T.d_level(), $t1;
+    let use_random_mon = TRUE;
+    const mongen_saved = iflags.debug_mongen;
     if ((svd.dungeon_topology.d_stronghold_level.dlevel || svd.dungeon_topology.d_stronghold_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_stronghold_level)) {
         assign_level(tolevel, svd.dungeon_topology.d_valley_level);
     } else if (!Is_botlevel(u.uz)) {
-        await get_level(tolevel, depth(u.uz) + 1 | 0);
+        await get_level(tolevel, depth(u.uz) + 1);
     } else {
         tolevel.dnum = 0, tolevel.dlevel = 0;
     }
@@ -1870,7 +1862,7 @@ export async function wiz_migrate_mons() {   // wizcmds.c:1873
     if (new $c.Ptr(inbuf, 0).get(0) === 27 || new $c.Ptr(inbuf, 0).get(0) === 0) {
         return ECMD.OK;
     }
-    mcount = $c.atoi(new $c.Ptr(inbuf, 0));
+    let mcount = $c.atoi(new $c.Ptr(inbuf, 0));
     if (mcount < 0) {
         use_random_mon = FALSE;
         mcount = Math.imul(mcount, -1);
@@ -1883,7 +1875,7 @@ export async function wiz_migrate_mons() {   // wizcmds.c:1873
     iflags.debug_mongen = FALSE;
     while (mcount > 0) {
         if (use_random_mon) {
-            ptr = await rndmonst();
+            const ptr = await rndmonst();
             mtmp = await makemon(ptr, 0, 0, MM.NOMSG);
         } else {
             mtmp = svl.level.monlist;
@@ -1902,14 +1894,14 @@ export async function wiz_migrate_mons() {   // wizcmds.c:1873
  * @returns {Promise<number>} int
  */
 export async function wiz_custom() {   // wizcmds.c:1934
-    let win = 0, buf = new Int8Array(256), bufa = new Int8Array(256), n = 0, pick_list = [null];
+    let buf = new Int8Array(256), bufa = new Int8Array(256), pick_list = [null];
     /* symbols.c */
     if (wizard()) {
         pick_list[0] = null;
         if (!glyphid_cache_status()) {
             await fill_glyphid_cache();
         }
-        win = await create_nhwindow()(NHW.MENU);
+        const win = await create_nhwindow()(NHW.MENU);
         await start_menu()(win, MENU.BEHAVE_STANDARD);
         await add_menu_heading(win, $c.lit("    glyph  glyph identifier                             sym   clr customcolor unicode utf8"));
         $c.sprintf(new $c.Ptr(bufa, 0), $c.lit("%s: colorcount=%ld %s"), new $c.Ptr(wiz_custom$wizcustom, 0), iflags.colorcount, gs.symset[PRIMARYSET].name ? gs.symset[PRIMARYSET].name : $c.lit("default"));
@@ -1922,7 +1914,7 @@ export async function wiz_custom() {   // wizcmds.c:1934
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s"), new $c.Ptr(bufa, 0));
         await wizcustom_glyphids(win);
         await end_menu()(win, new $c.Ptr(bufa, 0));
-        n = await select_menu(win, PICK.NONE, new $c.Ptr(pick_list, 0));
+        const n = await select_menu(win, PICK.NONE, new $c.Ptr(pick_list, 0));
         await destroy_nhwindow()(win);
         /* -1: reverse +1 above */
         if (n >= 1) {
@@ -1944,10 +1936,10 @@ export async function wiz_custom() {   // wizcmds.c:1934
  * @returns {Promise<void>}
  */
 export async function wizcustom_callback(win, glyphnum, id) {   // wizcmds.c:1987
-    let cgm = null, clr = 0, buf = new Int8Array(256), bufa = new Int8Array(256), bufb = new Int8Array(256), bufc = new Int8Array(256), bufd = new Int8Array(256), bufu = new Int8Array(256), any = new $T.any(), cp = null;
-    clr = NO_COLOR;
+    let buf = new Int8Array(256), bufa = new Int8Array(256), bufb = new Int8Array(256), bufc = new Int8Array(256), bufd = new Int8Array(256), bufu = new Int8Array(256), any = new $T.any();
+    const clr = NO_COLOR;
     if (win && id) {
-        cgm = $c.relem(glyphmap, glyphnum);
+        const cgm = $c.relem(glyphmap, glyphnum);
         if (cgm.u || cgm.customcolor !== 0) {
             $c.sprintf(new $c.Ptr(bufa, 0), $c.lit("[%04d] %-44s"), glyphnum, id);
             $c.sprintf(new $c.Ptr(bufb, 0), $c.lit("'\\%03d' %02d"), gs.showsyms[cgm.sym.symidx], cgm.sym.color);
@@ -1955,7 +1947,7 @@ export async function wizcustom_callback(win, glyphnum, id) {   // wizcmds.c:198
             bufu[0] = 0;
             if (cgm.u && cgm.u.utf8str) {
                 $c.sprintf(new $c.Ptr(bufu, 0), $c.lit("U+%04lx"), cgm.u.utf32ch);
-                cp = cgm.u.utf8str;
+                let cp = cgm.u.utf8str;
                 while (cp.get(0)) {
                     $c.sprintf(new $c.Ptr(bufd, 0), $c.lit(" <%d>"), cp.get(0));
                     $c.strcat(new $c.Ptr(bufu, 0), new $c.Ptr(bufd, 0));

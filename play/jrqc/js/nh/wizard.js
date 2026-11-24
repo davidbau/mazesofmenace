@@ -74,12 +74,12 @@ const random_malediction = $c.nulls(11);
  * @returns {Promise<void>}
  */
 export async function amulet() {   // wizard.c:61
-    let mtmp = null, ttmp = null, amu = null, du = 0;
+    let mtmp = null, ttmp = null, amu = null;
     /* caller takes care of this check */
     if (((amu = $G.uamul) !== null && amu.otyp === AMULET_OF_YENDOR || (amu = $G.uwep) !== null && amu.otyp === AMULET_OF_YENDOR) && !rn2(15)) {
         for (ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap) {
-            if ((ttmp.ttyp | 0) === MAGIC_PORTAL) {
-                du = dist2(ttmp.tx, ttmp.ty, u.ux, u.uy);
+            if (ttmp.ttyp === MAGIC_PORTAL) {
+                const du = dist2(ttmp.tx, ttmp.ty, u.ux, u.uy);
                 if (du <= 9) {
                     await pline($c.lit("%s hot!"), await Tobjnam(amu, $c.lit("feel")));
                 } else if (du <= 64) {
@@ -100,8 +100,8 @@ export async function amulet() {   // wizard.c:61
         if (DEADMONSTER(mtmp)) {
             continue;
         }
-        if (mtmp.iswiz | 0 && mtmp.msleeping | 0 && !rn2(40)) {
-            mtmp.msleeping = (0) & 1;
+        if (mtmp.iswiz && mtmp.msleeping && !rn2(40)) {
+            mtmp.msleeping = 0;
             if (!(dist2(mtmp.mx, mtmp.my, u.ux, u.uy) <= 2)) {
                 await You($c.lit("get the creepy feeling that somebody noticed your taking the Amulet."));
             }
@@ -232,15 +232,15 @@ function on_ground(otyp) {   // wizard.c:202
 function you_have(mask) {   // wizard.c:216
     switch (mask) {
         case M3.WANTSAMUL:
-            return $c.i8(u.uhave.amulet);
+            return u.uhave.amulet;
         case M3.WANTSBELL:
-            return $c.i8(u.uhave.bell);
+            return u.uhave.bell;
         case M3.WANTSCAND:
-            return $c.i8(u.uhave.menorah);
+            return u.uhave.menorah;
         case M3.WANTSBOOK:
-            return $c.i8(u.uhave.book);
+            return u.uhave.book;
         case M3.WANTSARTI:
-            return $c.i8(u.uhave.questart);
+            return u.uhave.questart;
         default:
             break;
     }
@@ -252,11 +252,11 @@ function you_have(mask) {   // wizard.c:216
  * @returns {number | bigint} unsigned long
  */
 function target_on(mask, mtmp) {   // wizard.c:236
-    let otyp = 0, otmp = null, mtmp2 = null, $t1;
+    let otmp = null, mtmp2 = null, $t1;
     if (!(mtmp.data.mflags3 & mask)) {
         return STRAT.NONE;
     }
-    otyp = which_arti(mask);
+    const otyp = which_arti(mask);
     if (!mon_has_arti(mtmp, otyp)) {
         if (you_have(mask)) {
             mtmp.mgoal.x = u.ux;
@@ -287,7 +287,7 @@ function strategy(mtmp) {   // wizard.c:270
        lich; we don't want it teleporting to the stairs to heal
        because that will leave its shop untended */
     /* likewise for temple priests */
-    if (!is_covetous(mtmp.data) || mtmp.isshk | 0 && inhishop(mtmp) || mtmp.ispriest | 0 && inhistemple(mtmp)) {
+    if (!is_covetous(mtmp.data) || mtmp.isshk && inhishop(mtmp) || mtmp.ispriest && inhistemple(mtmp)) {
         return STRAT.NONE;
     }
     switch ($c.div32(Math.imul(mtmp.mhp, 3), mtmp.mhpmax)) {
@@ -298,7 +298,7 @@ function strategy(mtmp) {   // wizard.c:270
             return STRAT.HEAL;
         case 1:
             /* the wiz is less cautious */
-            if (!$c.peq(mtmp.data, $c.relem(mons, PM.WIZARD_OF_YENDOR))) {
+            if (mtmp.data !== mons[PM.WIZARD_OF_YENDOR]) {
                 return STRAT.HEAL;
             }
         case 2:
@@ -353,12 +353,11 @@ function strategy(mtmp) {   // wizard.c:270
  * @returns {Promise<void>}
  */
 export async function choose_stairs(sx, sy, dir) {   // wizard.c:332
-    let stway = null, stdir = 0;
     /* output; left as-is if no spot found */
     /* True: forward, False: backtrack (usually up) */
-    stdir = $c.i8(await builds_up(u.uz) ? dir : !dir ? 1 : 0);
+    const stdir = await builds_up(u.uz) ? dir : !dir ? 1 : 0;
     /* look for stairs in direction 'stdir' (True: up, False: down) */
-    stway = stairway_find_type_dir(FALSE, stdir);
+    let stway = stairway_find_type_dir(FALSE, stdir);
     if (!stway) {
         /* no stairs; look for ladder it that direction */
         stway = stairway_find_type_dir(TRUE, stdir);
@@ -373,9 +372,9 @@ export async function choose_stairs(sx, sy, dir) {   // wizard.c:332
             /* if no branch stairs/ladder, check for regular stairs in
                opposite direction, then for regular ladder if necessary */
             if (!stway) {
-                stway = stairway_find_type_dir(FALSE, $c.i8(!stdir ? 1 : 0));
+                stway = stairway_find_type_dir(FALSE, !stdir ? 1 : 0);
                 if (!stway) {
-                    stway = stairway_find_type_dir(TRUE, $c.i8(!stdir ? 1 : 0));
+                    stway = stairway_find_type_dir(TRUE, !stdir ? 1 : 0);
                 }
             }
         }
@@ -391,8 +390,8 @@ export async function choose_stairs(sx, sy, dir) {   // wizard.c:332
  * @returns {Promise<number>} int
  */
 export async function tactics(mtmp) {   // wizard.c:369
-    let strat = 0, sx = Int16Array.of(0), sy = Int16Array.of(0), mx = 0, my = 0, where = 0, tx = 0, ty = 0, targ = 0, otmp = null;
-    strat = strategy(mtmp);
+    let sx = Int16Array.of(0), sy = Int16Array.of(0), mx = 0, my = 0, otmp = null;
+    const strat = strategy(mtmp);
     sx[0] = 0;
     sy[0] = 0;
     mtmp.mstrategy = $c.oru64($c.andu64(mtmp.mstrategy, 2952790016), strat);
@@ -400,13 +399,13 @@ export async function tactics(mtmp) {   // wizard.c:369
         case STRAT.HEAL:
             /* hide and recover */
             mx = mtmp.mx, my = mtmp.my;
-            if (u.uswallow | 0 && $c.peq(u.ustuck, mtmp)) {
+            if (u.uswallow && $c.peq(u.ustuck, mtmp)) {
                 await expels(mtmp, mtmp.data, TRUE);
             }
             /* if wounded, hole up on or near the stairs (to block them) */
             await choose_stairs(new $c.Ptr(sx, 0), new $c.Ptr(sy, 0), $c.i8($c.remu32(mtmp.m_id, 2)));
-            mtmp.mavenge = (1) & 1;   /* covetous monsters attack while fleeing */
-            if (await In_W_tower(mx, my, u.uz) || mtmp.iswiz | 0 && !sx[0] && !mon_has_amulet(mtmp)) {
+            mtmp.mavenge = 1;   /* covetous monsters attack while fleeing */
+            if (await In_W_tower(mx, my, u.uz) || mtmp.iswiz && !sx[0] && !mon_has_amulet(mtmp)) {
                 if (!await noteleport_level(mtmp) && !rn2(3 + $c.div32(mtmp.mhp, 10) | 0)) {
                     await rloc(mtmp, RLOC.MSG);
                 }
@@ -437,10 +436,10 @@ export async function tactics(mtmp) {   // wizard.c:369
         default:
             /* kill, maim, pillage! */
             {
-                where = $c.i64($c.andu64(strat, STRAT.STRATMASK));
-                tx = mtmp.mgoal.x;
-                ty = mtmp.mgoal.y;
-                targ = $c.i32($c.andu64(strat, STRAT.GOAL));
+                const where = $c.i64($c.andu64(strat, STRAT.STRATMASK));
+                const tx = mtmp.mgoal.x;
+                const ty = mtmp.mgoal.y;
+                const targ = $c.i32($c.andu64(strat, STRAT.GOAL));
                 if (!targ || !isok(tx, ty)) {
                     /* simply wants you to close */
                     return 0;
@@ -496,8 +495,8 @@ export async function tactics(mtmp) {   // wizard.c:369
  * @returns {Promise<number>} boolean
  */
 export async function has_aggravatables(mon) {   // wizard.c:474
-    let mtmp = null, in_w_tower = 0;
-    in_w_tower = await In_W_tower(mon.mx, mon.my, u.uz);
+    let mtmp = null;
+    const in_w_tower = await In_W_tower(mon.mx, mon.my, u.uz);
     if (in_w_tower !== await In_W_tower(u.ux, u.uy, u.uz)) {
         return FALSE;
     }
@@ -518,8 +517,8 @@ export async function has_aggravatables(mon) {   // wizard.c:474
  * @returns {Promise<void>}
  */
 export async function aggravate() {   // wizard.c:494
-    let mtmp = null, in_w_tower = 0;
-    in_w_tower = await In_W_tower(u.ux, u.uy, u.uz);
+    let mtmp = null;
+    const in_w_tower = await In_W_tower(u.ux, u.uy, u.uz);
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
         if (DEADMONSTER(mtmp)) {
             continue;
@@ -528,10 +527,10 @@ export async function aggravate() {   // wizard.c:494
             continue;
         }
         mtmp.mstrategy = $c.andu64(mtmp.mstrategy, 18446744071025197055n);
-        mtmp.msleeping = (0) & 1;
+        mtmp.msleeping = 0;
         if (!mtmp.mcanmove && !rn2(5)) {
-            mtmp.mfrozen = (0) & 127;
-            mtmp.mcanmove = (1) & 1;
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
         }
     }
 }
@@ -543,8 +542,8 @@ export async function aggravate() {   // wizard.c:494
  */
 export async function clonewiz() {   // wizard.c:517
     let mtmp2 = null, $t1, $t2, $t3;
-    if ((mtmp2 = await makemon($c.relem(mons, PM.WIZARD_OF_YENDOR), u.ux, u.uy, MM.NOWAIT)) !== null) {
-        $t2 = ($t1 = $c.i8(mtmp2.mpeaceful = (0) & 1), mtmp2.mtame = $t1) >>> 0, mtmp2.msleeping = ($t2) & 1;
+    if ((mtmp2 = await makemon(mons[PM.WIZARD_OF_YENDOR], u.ux, u.uy, MM.NOWAIT)) !== null) {
+        $t2 = ($t1 = $c.i8(mtmp2.mpeaceful = 0), mtmp2.mtame = $t1) >>> 0, mtmp2.msleeping = ($t2) & 1;
         if (!u.uhave.amulet && rn2(2)) {
             /* give clone a fake */
             await add_to_minv(mtmp2, await mksobj(FAKE_AMULET_OF_YENDOR, TRUE, FALSE));
@@ -562,9 +561,8 @@ export async function clonewiz() {   // wizard.c:517
  * @returns {number} int
  */
 export function pick_nasty(difcap) {   // wizard.c:538
-    let alt = 0, res = 0, mnam = null, lastspace = null;
     /* if non-zero, try to make difficulty be lower than this */
-    res = nasties[rn2(44)];
+    let res = nasties[rn2(44)];
     /* To do?  Possibly should filter for appropriate forms when
      * in the elemental planes or surrounded by water or lava.
      *
@@ -579,7 +577,7 @@ export function pick_nasty(difcap) {   // wizard.c:538
            arch-lich -> master lich,
            master mind flayer -> mind flayer,
        but the substitutes are likely to be genocided too */
-    alt = res;
+    let alt = res;
     /* note: nasty() -> makemon() ignores G_HELL|G_NOHELL;
        arch-lich and master lich are both flagged as hell-only;
        this filtering demotes arch-lich to master lich when
@@ -588,8 +586,8 @@ export function pick_nasty(difcap) {   // wizard.c:538
         alt = big_to_little(res);
     }
     if (alt !== res && (svm.mvitals[alt].mvflags & G_GENOD) === 0) {
-        mnam = mons[alt].pmnames[NEUTRAL];
-        lastspace = $c.strrchr(mnam, 32);
+        const mnam = mons[alt].pmnames[NEUTRAL];
+        const lastspace = $c.strrchr(mnam, 32);
         /* only non-juveniles can become alternate choice */
         if ($c.strncmp(mnam, $c.lit("baby "), 5) && (!lastspace || $c.strcmp(lastspace, $c.lit(" hatchling")) && $c.strcmp(lastspace, $c.lit(" pup")) && $c.strcmp(lastspace, $c.lit(" cub")))) {
             res = alt;
@@ -691,7 +689,7 @@ export async function nasty(summoner) {   // wizard.c:591
                            substitues for geno victims will usually be less
                            (note: Archon is not in nasties[] but could be chosen
                            as random replacement for a genocided selection) */
-                        if ($c.peq(mtmp.data, $c.relem(mons, PM.ARCH_LICH)) || $c.peq(mtmp.data, $c.relem(mons, PM.ARCHON))) {
+                        if (mtmp.data === mons[PM.ARCH_LICH] || mtmp.data === mons[PM.ARCHON]) {
                             tmp = min(mons[PM.ARCHON].difficulty, mons[PM.ARCH_LICH].difficulty);   /* A:26 */
                             /* L:31 */
                             if (!difcap || difcap > tmp) {
@@ -719,33 +717,33 @@ export async function nasty(summoner) {   // wizard.c:591
  * @returns {Promise<void>}
  */
 export async function resurrect() {   // wizard.c:715
-    let mtmp = null, mmtmp = null, elapsed = 0, verb = null;
+    let mtmp = null, elapsed = 0, verb = null;
     if (!svc.context.no_of_wizards) {
         /* make a new Wizard */
         verb = $c.lit("kill");
-        mtmp = await makemon($c.relem(mons, PM.WIZARD_OF_YENDOR), u.ux, u.uy, MM.NOWAIT);
+        mtmp = await makemon(mons[PM.WIZARD_OF_YENDOR], u.ux, u.uy, MM.NOWAIT);
         /* affects experience; he's not coming back from a corpse
            but is subject to repeated killing like a revived corpse */
         if (mtmp) {
-            mtmp.mrevived = (1) & 1;
+            mtmp.mrevived = 1;
         }
     } else {
         /* look for a migrating Wizard */
         verb = $c.lit("elude");
-        mmtmp = new $c.FieldRef(gm, "migrating_mons", "ptr");
+        let mmtmp = new $c.FieldRef(gm, "migrating_mons", "ptr");
         while ((mtmp = mmtmp.get(0)) !== null) {
             /* if he has the Amulet, he won't bring it to you */
-            if (mtmp.iswiz | 0 && !mon_has_amulet(mtmp) && (elapsed = $c.sub64(svm.moves, mtmp.mlstmv)) > 0) {
+            if (mtmp.iswiz && !mon_has_amulet(mtmp) && (elapsed = $c.sub64(svm.moves, mtmp.mlstmv)) > 0) {
                 await mon_catchup_elapsed_time(mtmp, elapsed);
                 if (elapsed >= LARGEST_INT) {
                     elapsed = LARGEST_INT - 1;
                 }
                 elapsed = $c.div64(elapsed, 50);
-                if (mtmp.msleeping | 0 && rn2($c.i32(elapsed) + 1 | 0)) {
-                    mtmp.msleeping = (0) & 1;
+                if (mtmp.msleeping && rn2($c.i32(elapsed) + 1 | 0)) {
+                    mtmp.msleeping = 0;
                 }
-                if ((mtmp.mfrozen | 0) === 1) {   /* would unfreeze on next move */
-                    mtmp.mfrozen = (0) & 127, mtmp.mcanmove = (1) & 1;
+                if (mtmp.mfrozen === 1) {   /* would unfreeze on next move */
+                    mtmp.mfrozen = 0, mtmp.mcanmove = 1;
                 }
                 if (!helpless(mtmp)) {
                     mmtmp.set(0, mtmp.nmon);
@@ -772,7 +770,7 @@ export async function resurrect() {   // wizard.c:715
            he just sits wherever he is, "meditating", contradicting the
            threatening message below */
         mtmp.mstrategy = $c.andu64(mtmp.mstrategy, 18446744072904245247n);
-        mtmp.mtame = 0, mtmp.mpeaceful = (0) & 1;   /* paranoia */
+        mtmp.mtame = 0, mtmp.mpeaceful = 0;   /* paranoia */
         set_malign(mtmp);
         if (!Deaf()) {
             await pline($c.lit("A voice booms out..."));
@@ -786,8 +784,7 @@ export async function resurrect() {   // wizard.c:715
  * @returns {Promise<void>}
  */
 export async function intervene() {   // wizard.c:785
-    let which = 0;
-    which = (svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level) ? rnd(4) : rn2(6);
+    const which = (svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level) ? rnd(4) : rn2(6);
     /* cases 0 and 5 don't apply on the Astral level */
     switch (which) {
         case 0:
@@ -834,7 +831,7 @@ export async function cuss(mtmp) {   // wizard.c:846
         if (!rn2(5)) {
             /* typical bad guy action */
             await pline($c.lit("%s laughs fiendishly."), await Monnam(mtmp));
-        } else if (u.uhave.amulet | 0 && !rn2(28)) {
+        } else if (u.uhave.amulet && !rn2(28)) {
             await verbalize($c.lit("Relinquish the amulet, %s!"), random_insult[rn2(28)]);
         } else if (u.uhp < 5 && !rn2(2)) {
             /* Panic */
@@ -845,7 +842,7 @@ export async function cuss(mtmp) {   // wizard.c:846
         } else {
             await verbalize($c.lit("%s %s!"), random_malediction[rn2(11)], random_insult[rn2(28)]);
         }
-    } else if ($c.andu64(mtmp.data.mflags2, M2.MINION) !== 0 && mon_aligntyp(mtmp) === A.LAWFUL && !(mtmp.isminion | 0 && mtmp.mextra.emin.renegade)) {
+    } else if ($c.andu64(mtmp.data.mflags2, M2.MINION) !== 0 && mon_aligntyp(mtmp) === A.LAWFUL && !(mtmp.isminion && mtmp.mextra.emin.renegade)) {
         await com_pager($c.lit("angel_cuss"));   /* TODO: the Hallucination msg */
         /*com_pager(rn2(QTN_ANGELIC - 1 + (Hallucination ? 1 : 0))
           + QT_ANGELIC);*/

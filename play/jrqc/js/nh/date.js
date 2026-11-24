@@ -17,7 +17,7 @@ export const nomakedefs = new $T.nomakedefs_s();
  * @returns {Promise<void>}
  */
 export async function populate_nomakedefs(version) {   // date.c:52
-    let i = 0, tmpbuf1 = new Int8Array(256), tmpbuf2 = new Int8Array(256), strp = null, mth = $c.nulls(12), t = new $T.tm(), timeresult = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10;
+    let i = 0, tmpbuf1 = new Int8Array(256), tmpbuf2 = new Int8Array(256), mth = $c.nulls(12), t = new $T.tm(), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10;
     mth.fill(null);
     mth[0] = $c.lit("Jan");
     mth[1] = $c.lit("Feb");
@@ -72,7 +72,7 @@ export async function populate_nomakedefs(version) {   // date.c:52
         $t1 = $c.atoi(new $c.Ptr(tmpbuf2, 0)) - 1900 | 0, t.tm_year = $t1;
         do {
             for (i = 0; i < 3; i = i + 1 | 0) {
-                tmpbuf2[i] = tmpbuf1[i + 0 | 0];   /* mon */
+                tmpbuf2[i] = tmpbuf1[i + 0];   /* mon */
             }
             tmpbuf2[i] = 0;
         } while (0);
@@ -88,7 +88,7 @@ export async function populate_nomakedefs(version) {   // date.c:52
             }
             tmpbuf2[i] = 0;
         } while (0);
-        strp = new $c.Ptr(tmpbuf2, 0);
+        let strp = new $c.Ptr(tmpbuf2, 0);
         if (strp.get(0) === 32) {
             strp = strp.add(1);
         }
@@ -114,7 +114,7 @@ export async function populate_nomakedefs(version) {   // date.c:52
             tmpbuf2[i] = 0;
         } while (0);
         $t5 = $c.atoi(new $c.Ptr(tmpbuf2, 0)), t.tm_sec = $t5;
-        timeresult = $c.mktime(t);
+        const timeresult = $c.mktime(t);
         nomakedefs.build_time = $c.u64(timeresult);
         $t6 = await dupstr(new $c.Ptr(tmpbuf1, 0)), nomakedefs.build_date = $t6;
     }

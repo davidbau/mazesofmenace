@@ -18,11 +18,11 @@ export async function prifilb_level() {
         random_corridors: lspo_random_corridors,
     };
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.stair('up');
         des.object();
-        des.monster('human zombie');
-        des.monster('wraith');
+        await des.monster('human zombie');
+        await des.monster('wraith');
     } });
 
     des.room({ type: 'morgue', contents: () => {
@@ -31,32 +31,32 @@ export async function prifilb_level() {
         des.object();
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
-        des.trap();
+        await des.trap();
         des.object();
-        des.monster('human zombie');
-        des.monster('wraith');
+        await des.monster('human zombie');
+        await des.monster('wraith');
     } });
 
-    des.room({ type: 'morgue', contents: () => {
+    await des.room({ type: 'morgue', contents: async () => {
         des.stair('down');
         des.object();
         des.object();
-        des.trap();
+        await des.trap();
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
         des.object();
-        des.trap();
-        des.monster('human zombie');
-        des.monster('wraith');
+        await des.trap();
+        await des.monster('human zombie');
+        await des.monster('wraith');
     } });
 
-    des.room({ type: 'morgue', contents: () => {
+    await des.room({ type: 'morgue', contents: async () => {
         des.object();
-        des.trap();
+        await des.trap();
     } });
 
     des.random_corridors();

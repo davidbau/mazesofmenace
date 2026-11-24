@@ -65,10 +65,10 @@ const worn = $c.recArray($T.worn, 17);
    has no significant effect on their use of w_blocks() */
 /* calc the range of hero's unblind telepathy */
 export function recalc_telepat_range() {   // worn.c:50
-    let wp = null, nobjs = 0, oobj = null;
-    nobjs = 0;
-    for (wp = $c.relem(worn, 0); wp.w_mask; wp = $c.radd(wp, 1)) {
-        oobj = wp.w_obj.get(0);
+    let wp = null;
+    let nobjs = 0;
+    for (wp = worn[0]; wp.w_mask; wp = $c.radd(wp, 1)) {
+        const oobj = wp.w_obj.get(0);
         if (oobj && objects[oobj.otyp].oc_oprop === TELEPAT) {
             nobjs = nobjs + 1 | 0;
         }
@@ -90,15 +90,15 @@ export function recalc_telepat_range() {   // worn.c:50
  * @returns {Promise<void>}
  */
 export async function setworn(obj, mask) {   // worn.c:73
-    let wp = null, oobj = null, p = 0;
+    let wp = null, p = 0;
     if ($c.and64(mask, W.ARM | I_SPECIAL) === (W.ARM | I_SPECIAL)) {
         /* restoring saved game; no properties are conferred via skin */
         $G.uskin = obj;
         /* assert( !uarm ); */
     } else {
-        for (wp = $c.relem(worn, 0); wp.w_mask; wp = $c.radd(wp, 1)) {
+        for (wp = worn[0]; wp.w_mask; wp = $c.radd(wp, 1)) {
             if ($c.and64(wp.w_mask, mask)) {
-                oobj = wp.w_obj.get(0);
+                const oobj = wp.w_obj.get(0);
                 if (oobj && !$c.and64(oobj.owornmask, wp.w_mask)) {
                     await impossible($c.lit("Setworn: mask=0x%08lx."), wp.w_mask);
                 }
@@ -154,7 +154,7 @@ export async function setworn(obj, mask) {   // worn.c:73
             u.uroleplay.nudist = FALSE;
         }
         /* tux -> tuxedo -> "monkey suit" -> monk's suit */
-        iflags.tux_penalty = $c.i8($G.uarm && gu.urole.mnum === PM.MONK && gu.urole.spelarmr ? 1 : 0);
+        iflags.tux_penalty = $G.uarm && gu.urole.mnum === PM.MONK && gu.urole.spelarmr ? 1 : 0;
     }
     if (flags.weaponstatus && $c.and64(mask, W.WEP) !== 0 || flags.armorstatus && $c.and64(mask, W_ARMOR) !== 0) {
         disp.botl = TRUE;
@@ -169,22 +169,22 @@ export async function setworn(obj, mask) {   // worn.c:73
  * @returns {Promise<void>}
  */
 export async function setnotworn(obj) {   // worn.c:150
-    let wp = null, p = 0, unworn = 0;
-    unworn = 0;
+    let wp = null;
+    let unworn = 0;
     if (!obj) {
         return;
     }
     if (u.twoweap && ($c.peq(obj, $G.uwep) || $c.peq(obj, $G.uswapwep))) {
         set_twoweap(FALSE);   /* u.twoweap = FALSE */
     }
-    for (wp = $c.relem(worn, 0); wp.w_mask; wp = $c.radd(wp, 1)) {
+    for (wp = worn[0]; wp.w_mask; wp = $c.radd(wp, 1)) {
         if ($c.peq(obj, wp.w_obj.get(0))) {
             /* in case wearing or removal is in progress or removal
                is pending (via 'A' command for multiple items) */
             cancel_doff(obj, wp.w_mask);
             wp.w_obj.set(0, null);
             unworn = $c.or64(unworn, wp.w_mask);
-            p = objects[obj.otyp].oc_oprop;
+            let p = objects[obj.otyp].oc_oprop;
             u.uprops[p].extrinsic = $c.and64(u.uprops[p].extrinsic, $c.not64(wp.w_mask));
             monstunseesu_prop($c.u8(p));   /* remove this extrinsic from seenres */
             obj.owornmask = $c.and64(obj.owornmask, $c.not64(wp.w_mask));
@@ -213,7 +213,7 @@ export function allunworn() {   // worn.c:188
        (without first being unworn) while saving invent during game save;
        note: uball and uchain might not be freed yet but we clear them
        here anyway (savegamestate() and its callers deal with them) */
-    for (wp = $c.relem(worn, 0); wp.w_mask; wp = $c.radd(wp, 1)) {
+    for (wp = worn[0]; wp.w_mask; wp = $c.radd(wp, 1)) {
         /* object is already gone so we don't/can't update is owornmask */
         wp.w_obj.set(0, null);
     }
@@ -225,7 +225,7 @@ export function allunworn() {   // worn.c:188
  */
 export function wearmask_to_obj(wornmask) {   // worn.c:206
     let wp = null;
-    for (wp = $c.relem(worn, 0); wp.w_mask; wp = $c.radd(wp, 1)) {
+    for (wp = worn[0]; wp.w_mask; wp = $c.radd(wp, 1)) {
         if ($c.and64(wp.w_mask, wornmask)) {
             return wp.w_obj.get(0);
         }
@@ -239,7 +239,6 @@ export function wearmask_to_obj(wornmask) {   // worn.c:206
  */
 export function wornmask_to_armcat(mask) {   // worn.c:218
     let cat = 0;
-    cat = 0;
     switch ($c.and64(mask, W_ARMOR)) {
         case W.ARM:
             cat = ARM_SUIT;
@@ -272,7 +271,6 @@ export function wornmask_to_armcat(mask) {   // worn.c:218
  */
 export function armcat_to_wornmask(cat) {   // worn.c:250
     let mask = 0;
-    mask = 0;
     switch (cat) {
         case ARM_SUIT:
             mask = W.ARM;
@@ -304,11 +302,10 @@ export function armcat_to_wornmask(cat) {   // worn.c:250
  * @returns {number | bigint} long
  */
 export function wearslot(obj) {   // worn.c:282
-    let otyp = 0, res = 0;
-    otyp = obj.otyp;
+    const otyp = obj.otyp;
     /* practically any item can be wielded or quivered; it's up to
        our caller to handle such things--we assume "normal" usage */
-    res = 0;   /* default: can't be worn anywhere */
+    let res = 0;   /* default: can't be worn anywhere */
     switch (obj.oclass) {
         case AMULET_CLASS:
             res = W.AMUL;   /* WORN_AMUL */
@@ -380,10 +377,10 @@ export function wearslot(obj) {   // worn.c:282
  * @returns {Promise<void>}
  */
 export async function check_wornmask_slots() {   // worn.c:355
-    let whybuf = new Int8Array(256), wp = null, o = null, otmp = null, m = 0;
+    let whybuf = new Int8Array(256), wp = null, o = null, otmp = null;
     /* we'll skip ball and chain here--they warrant separate sanity check */
-    for (wp = $c.relem(worn, 0); wp.w_mask; wp = $c.radd(wp, 1)) {
-        m = wp.w_mask;
+    for (wp = worn[0]; wp.w_mask; wp = $c.radd(wp, 1)) {
+        const m = wp.w_mask;
         if ($c.and64(m, IGNORE_SLOTS) !== 0 && $c.and64(m, ~IGNORE_SLOTS) === 0) {
             continue;
         }
@@ -433,7 +430,7 @@ export async function check_wornmask_slots() {   // worn.c:355
  * @returns {Promise<void>}
  */
 export async function mon_set_minvis(mon, cursed_potion) {   // worn.c:474
-    mon.perminvis = ((!cursed_potion ? 1 : 0) >>> 0) & 1;
+    mon.perminvis = (!cursed_potion ? 1 : 0) & 1;
     if (!mon.invis_blkd) {
         mon.minvis = (mon.perminvis) & 1;
         await newsym(mon.mx, mon.my);   /* make it disappear */
@@ -449,20 +446,20 @@ export async function mon_set_minvis(mon, cursed_potion) {   // worn.c:474
  * @returns {Promise<void>}
  */
 export async function mon_adjust_speed(mon, adjust, obj) {   // worn.c:488
-    let otmp = null, give_msg = 0, petrify = 0, oldspeed = 0, howmuch = null;
+    let otmp = null;
     /* positive => increase speed, negative => decrease */
     /* item to make known if effect can be seen */
-    give_msg = $c.i8(!gi.in_mklev ? 1 : 0);
-    petrify = FALSE;
-    oldspeed = mon.mspeed;
+    let give_msg = !gi.in_mklev ? 1 : 0;
+    let petrify = FALSE;
+    const oldspeed = mon.mspeed;
     switch (adjust) {
         case 2:
             mon.permspeed = (MFAST) & 3;
             give_msg = FALSE;   /* special-case monster creation */
             break;
         case 1:
-            if ((mon.permspeed | 0) === MSLOW) {
-                mon.permspeed = (0) & 3;
+            if (mon.permspeed === MSLOW) {
+                mon.permspeed = 0;
             } else {
                 mon.permspeed = (MFAST) & 3;
             }
@@ -471,8 +468,8 @@ export async function mon_adjust_speed(mon, adjust, obj) {   // worn.c:488
             /* just check for worn speed boots */
             break;
         case -1:
-            if ((mon.permspeed | 0) === MFAST) {
-                mon.permspeed = (0) & 3;
+            if (mon.permspeed === MFAST) {
+                mon.permspeed = 0;
             } else {
                 mon.permspeed = (MSLOW) & 3;
             }
@@ -484,15 +481,15 @@ export async function mon_adjust_speed(mon, adjust, obj) {   // worn.c:488
         case -3:
             /* petrification */
             /* take away intrinsic speed but don't reduce normal speed */
-            if ((mon.permspeed | 0) === MFAST) {
-                mon.permspeed = (0) & 3;
+            if (mon.permspeed === MFAST) {
+                mon.permspeed = 0;
             }
             petrify = TRUE;
             break;
         case -4:
             /* green slime */
-            if ((mon.permspeed | 0) === MFAST) {
-                mon.permspeed = (0) & 3;
+            if (mon.permspeed === MFAST) {
+                mon.permspeed = 0;
             }
             give_msg = FALSE;
             break;
@@ -508,16 +505,16 @@ export async function mon_adjust_speed(mon, adjust, obj) {   // worn.c:488
         mon.mspeed = (mon.permspeed) & 3;
     }
     /* no message if monster is immobile (temp or perm) or unseen */
-    if (give_msg && (mon.mspeed !== oldspeed || petrify) && mon.data.mmove && !(mon.mfrozen | 0 || mon.msleeping | 0) && canseemon(mon)) {
+    if (give_msg && (mon.mspeed !== oldspeed || petrify) && mon.data.mmove && !(mon.mfrozen || mon.msleeping) && canseemon(mon)) {
         /* fast to slow (skipping intermediate state) or vice versa */
-        howmuch = mon.mspeed + oldspeed >>> 0 === MFAST + MSLOW ? $c.lit("much ") : $c.lit("");
+        const howmuch = mon.mspeed + oldspeed >>> 0 === MFAST + MSLOW ? $c.lit("much ") : $c.lit("");
         if (petrify) {
             /* mimic the player's petrification countdown; "slowing down"
                even if fast movement rate retained via worn speed boots */
             if (flags.verbose) {
                 await pline_mon(mon, $c.lit("%s is slowing down."), await Monnam(mon));
             }
-        } else if (adjust > 0 || (mon.mspeed | 0) === MFAST) {
+        } else if (adjust > 0 || mon.mspeed === MFAST) {
             await pline_mon(mon, $c.lit("%s is suddenly moving %sfaster."), await Monnam(mon), howmuch);
         } else {
             await pline_mon(mon, $c.lit("%s seems to be moving %sslower."), await Monnam(mon), howmuch);
@@ -556,7 +553,7 @@ export async function update_mon_extrinsics(mon, obj, on, silently) {   // worn.
             if (on) {
                 switch (which) {
                     case INVIS:
-                        mon.minvis = ((!mon.invis_blkd ? 1 : 0) >>> 0) & 1;
+                        mon.minvis = (!mon.invis_blkd ? 1 : 0) & 1;
                         break;
                     case FAST:
                         {
@@ -589,7 +586,7 @@ export async function update_mon_extrinsics(mon, obj, on, silently) {   // worn.
                         /* properties which maybe should have an effect but don't */
                         break;
                     default:
-                        mon.mextrinsics = $c.u16(mon.mextrinsics | $c.u16(res_to_mr(which)));
+                        mon.mextrinsics = $c.u16(mon.mextrinsics | res_to_mr(which));
                         break;
                 }
             } else {
@@ -629,7 +626,7 @@ export async function update_mon_extrinsics(mon, obj, on, silently) {   // worn.
                          * only one pass but a worn alchemy smock will be an
                          * alternate source for either of those two resistances.
                          */
-                        mask = $c.u8(res_to_mr(which));
+                        mask = res_to_mr(which);
                         for (otmp = mon.minvent; otmp; otmp = otmp.nobj) {
                             if ($c.peq(otmp, obj) || !otmp.owornmask) {
                                 continue;
@@ -644,7 +641,7 @@ export async function update_mon_extrinsics(mon, obj, on, silently) {   // worn.
                             }
                         }
                         if (!otmp) {
-                            mon.mextrinsics = $c.u16(mon.mextrinsics & ~$c.u16(mask));
+                            mon.mextrinsics = $c.u16(mon.mextrinsics & ~mask);
                         }
                         break;
                     default:
@@ -665,8 +662,8 @@ export async function update_mon_extrinsics(mon, obj, on, silently) {   // worn.
        against that and can get away with a blanket worn-mask value. */
     switch (obj.otyp === MUMMY_WRAPPING && 1 ? INVIS : obj.otyp === CORNUTHAUM && 1 && !(gu.urole.mnum === PM.WIZARD) ? CLAIRVOYANT : is_art(obj, ART.EYES_OF_THE_OVERWORLD) && 1 ? BLINDED : 0) {
         case INVIS:
-            mon.invis_blkd = ((on ? 1 : 0) >>> 0) & 1;
-            mon.minvis = ((on ? 0 : mon.perminvis | 0) >>> 0) & 1;
+            mon.invis_blkd = (on ? 1 : 0) & 1;
+            mon.minvis = (on ? 0 : mon.perminvis) & 1;
             break;
         default:
             break;
@@ -684,15 +681,15 @@ export async function update_mon_extrinsics(mon, obj, on, silently) {   // worn.
  * @returns {number} int
  */
 export function find_mac(mon) {   // worn.c:717
-    let obj = null, base = 0, mwflags = 0;
-    base = mon.data.ac;
-    mwflags = mon.misc_worn_check;
+    let obj = null;
+    let base = mon.data.ac;
+    const mwflags = mon.misc_worn_check;
     for (obj = mon.minvent; obj; obj = obj.nobj) {
         if ($c.and64(obj.owornmask, mwflags)) {
             if (obj.otyp === AMULET_OF_GUARDING) {
                 base = base - 2 | 0;   /* fixed amount, not impacted by erosion */
             } else {
-                base = base - ((objects[obj.otyp].oc_oc1 + obj.spe | 0) - (((obj.oeroded | 0) > (obj.oeroded2 | 0) ? obj.oeroded | 0 : obj.oeroded2 | 0) < objects[obj.otyp].oc_oc1 ? (obj.oeroded | 0) > (obj.oeroded2 | 0) ? obj.oeroded | 0 : obj.oeroded2 | 0 : objects[obj.otyp].oc_oc1) | 0) | 0;
+                base = base - (objects[obj.otyp].oc_oc1 + obj.spe - ((obj.oeroded > obj.oeroded2 ? obj.oeroded : obj.oeroded2) < objects[obj.otyp].oc_oc1 ? obj.oeroded > obj.oeroded2 ? obj.oeroded : obj.oeroded2 : objects[obj.otyp].oc_oc1)) | 0;
             }
             /* since ARM_BONUS is positive, subtracting it increases AC */
         }
@@ -726,7 +723,6 @@ export function find_mac(mon) {   // worn.c:717
  * @returns {Promise<void>}
  */
 export async function m_dowear(mon, creation) {   // worn.c:757
-    let can_wear_armor = 0;
     /* Note the restrictions here are the same as in dowear in do_wear.c
      * except for the additional restriction on intelligence.  (Players
      * are always intelligent, even if polymorphed).
@@ -736,11 +732,11 @@ export async function m_dowear(mon, creation) {   // worn.c:757
     }
     /* give mummies a chance to wear their wrappings
      * and let skeletons wear their initial armor */
-    if (mindless(mon.data) && (!creation || mon.data.mlet !== S.MUMMY && !$c.peq(mon.data, $c.relem(mons, PM.SKELETON)))) {
+    if (mindless(mon.data) && (!creation || mon.data.mlet !== S.MUMMY && mon.data !== mons[PM.SKELETON])) {
         return;
     }
     await m_dowear_type(mon, W.AMUL, creation, FALSE);
-    can_wear_armor = $c.i8(!(breakarm(mon.data) || sliparm(mon.data)) ? 1 : 0);   /* for suit, cloak, shirt */
+    const can_wear_armor = !(breakarm(mon.data) || sliparm(mon.data)) ? 1 : 0;   /* for suit, cloak, shirt */
     /* can't put on shirt if already wearing suit */
     if (can_wear_armor && !$c.and64(mon.misc_worn_check, W.ARM)) {
         await m_dowear_type(mon, W.ARMU, creation, FALSE);
@@ -753,7 +749,7 @@ export async function m_dowear(mon, creation) {   // worn.c:757
         await m_dowear_type(mon, W.ARMC, creation, FALSE);
     }
     await m_dowear_type(mon, W.ARMH, creation, FALSE);
-    if (!MON_WEP(mon) || !((mon.mw.oclass === WEAPON_CLASS || mon.mw.oclass === TOOL_CLASS) && objects[mon.mw.otyp].oc_big | 0)) {
+    if (!MON_WEP(mon) || !((mon.mw.oclass === WEAPON_CLASS || mon.mw.oclass === TOOL_CLASS) && objects[mon.mw.otyp].oc_big)) {
         await m_dowear_type(mon, W.ARMS, creation, FALSE);
     }
     await m_dowear_type(mon, W.ARMG, creation, FALSE);
@@ -789,7 +785,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {   // worn.c
     /* Get a copy of monster's name before altering its visibility */
     $c.strcpy(new $c.Ptr(nambuf, 0), u.uprops[SEE_INVIS].intrinsic || u.uprops[SEE_INVIS].extrinsic ? await Monnam(mon) : await mon_nam(mon));
     old = await which_armor(mon, flag);
-    if (old && old.cursed | 0) {
+    if (old && old.cursed) {
         return;
     }
     if (old && flag === W.AMUL && old.otyp !== AMULET_OF_GUARDING) {
@@ -828,7 +824,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {   // worn.c
                     }
                     /* avoid mummy wrapping if it will allow hero to see mon (unless
                        this is a new mummy; an invisible one is feasible via ^G) */
-                    if (mon.minvis | 0 && (obj.otyp === MUMMY_WRAPPING && 1 ? INVIS : obj.otyp === CORNUTHAUM && 0 && !(gu.urole.mnum === PM.WIZARD) ? CLAIRVOYANT : is_art(obj, ART.EYES_OF_THE_OVERWORLD) && 0 ? BLINDED : 0) === INVIS && !See_invisible() && !creation) {
+                    if (mon.minvis && (obj.otyp === MUMMY_WRAPPING && 1 ? INVIS : obj.otyp === CORNUTHAUM && 0 && !(gu.urole.mnum === PM.WIZARD) ? CLAIRVOYANT : is_art(obj, ART.EYES_OF_THE_OVERWORLD) && 0 ? BLINDED : 0) === INVIS && !See_invisible() && !creation) {
                         continue L1;
                     }
                     break;
@@ -839,7 +835,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {   // worn.c
                     /* changing alignment is not implemented for monsters;
                        priests and minions could change alignment but wouldn't
                        want to, so they reject helms of opposite alignment */
-                    if (obj.otyp === HELM_OF_OPPOSITE_ALIGNMENT && (mon.ispriest | 0 || mon.isminion | 0)) {
+                    if (obj.otyp === HELM_OF_OPPOSITE_ALIGNMENT && (mon.ispriest || mon.isminion)) {
                         continue L1;
                     }
                     /* (flimsy exception matches polyself handling) */
@@ -880,7 +876,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {   // worn.c
              * it would forget spe and once again think the object is better
              * than what it already has.
              */
-            if (best && (((objects[best.otyp].oc_oc1 + best.spe | 0) - (((best.oeroded | 0) > (best.oeroded2 | 0) ? best.oeroded | 0 : best.oeroded2 | 0) < objects[best.otyp].oc_oc1 ? (best.oeroded | 0) > (best.oeroded2 | 0) ? best.oeroded | 0 : best.oeroded2 | 0 : objects[best.otyp].oc_oc1) | 0) + extra_pref(mon, best) | 0) >= (((objects[obj.otyp].oc_oc1 + obj.spe | 0) - (((obj.oeroded | 0) > (obj.oeroded2 | 0) ? obj.oeroded | 0 : obj.oeroded2 | 0) < objects[obj.otyp].oc_oc1 ? (obj.oeroded | 0) > (obj.oeroded2 | 0) ? obj.oeroded | 0 : obj.oeroded2 | 0 : objects[obj.otyp].oc_oc1) | 0) + extra_pref(mon, obj) | 0)) {
+            if (best && (objects[best.otyp].oc_oc1 + best.spe - ((best.oeroded > best.oeroded2 ? best.oeroded : best.oeroded2) < objects[best.otyp].oc_oc1 ? best.oeroded > best.oeroded2 ? best.oeroded : best.oeroded2 : objects[best.otyp].oc_oc1) + extra_pref(mon, best) | 0) >= (objects[obj.otyp].oc_oc1 + obj.spe - ((obj.oeroded > obj.oeroded2 ? obj.oeroded : obj.oeroded2) < objects[obj.otyp].oc_oc1 ? obj.oeroded > obj.oeroded2 ? obj.oeroded : obj.oeroded2 : objects[obj.otyp].oc_oc1) + extra_pref(mon, obj) | 0)) {
                 continue;
             }
             best = obj;
@@ -890,7 +886,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {   // worn.c
         return;
     }
     /* same auto-cursing behavior as for hero */
-    autocurse = $c.i8((best.otyp === HELM_OF_OPPOSITE_ALIGNMENT || best.otyp === DUNCE_CAP) && !best.cursed ? 1 : 0);
+    autocurse = (best.otyp === HELM_OF_OPPOSITE_ALIGNMENT || best.otyp === DUNCE_CAP) && !best.cursed ? 1 : 0;
     /* if wearing a cloak, account for the time spent removing
        and re-wearing it when putting on a suit or shirt */
     if ((flag === W.ARM || flag === W.ARMU) && $c.and64(mon.misc_worn_check, W.ARMC)) {
@@ -936,14 +932,14 @@ async function m_dowear_type(mon, flag, creation, racialexception) {   // worn.c
         m_delay = m_delay + objects[best.otyp].oc_delay | 0;
         mon.mfrozen = (m_delay >>> 0) & 127;
         if (mon.mfrozen) {
-            mon.mcanmove = (0) & 1;
+            mon.mcanmove = 0;
         }
     }
     if (old) {
         await update_mon_extrinsics(mon, old, FALSE, creation);
         /* owornmask was cleared above but artifact_light() expects it */
         old.owornmask = oldmask;
-        if (old.lamplit | 0 && artifact_light(old)) {
+        if (old.lamplit && artifact_light(old)) {
             await end_burn(old, FALSE);
         }
         old.owornmask = 0;
@@ -956,7 +952,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {   // worn.c
     if (artifact_light(best) && !best.lamplit) {
         await begin_burn(best, FALSE);
         await vision_recalc(1);
-        if (!creation && best.lamplit | 0 && cansee(mon.mx, mon.my)) {
+        if (!creation && best.lamplit && cansee(mon.mx, mon.my)) {
             adesc = arti_light_description(best);
             if (sawmon) {   /* could already see monster */
                 await pline($c.lit("%s %s to shine %s."), await Yname2(best), await otense(best, $c.lit("begin")), adesc);
@@ -973,7 +969,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {   // worn.c
     await update_mon_extrinsics(mon, best, TRUE, creation);
     /* if couldn't see it but now can, or vice versa */
     if (!creation && sawmon ^ canseemon(mon)) {
-        if (mon.minvis | 0 && !See_invisible()) {
+        if (mon.minvis && !See_invisible()) {
             await pline($c.lit("Suddenly you cannot see %s."), new $c.Ptr(nambuf, 0));
             await discover_object(best.otyp, TRUE, TRUE, TRUE);
             /* } else if (!mon->minvis) {
@@ -1040,7 +1036,7 @@ async function m_lose_armor(mon, obj, polyspot) {   // worn.c:1040
 function clear_bypass(objchn) {   // worn.c:1055
     let o = null;
     for (o = objchn; o; o = o.nobj) {
-        o.bypass = (0) & 1;
+        o.bypass = 0;
         if (Has_contents(o)) {
             clear_bypass(o.cobj);
         }
@@ -1073,7 +1069,7 @@ export function clear_bypasses() {   // worn.c:1070
            polymorph (so polymorph zap won't hit monster to transform it
            into a long worm, then hit that worm's tail and transform it
            again on same zap); clearing mcorpsenm reverts worm to normal */
-        if ($c.peq(mtmp.data, $c.relem(mons, PM.LONG_WORM)) && has_mcorpsenm(mtmp)) {
+        if (mtmp.data === mons[PM.LONG_WORM] && has_mcorpsenm(mtmp)) {
             mtmp.mextra.mcorpsenm = NON_PM;
         }
     }
@@ -1090,10 +1086,10 @@ export function clear_bypasses() {   // worn.c:1070
     /* ball and chain can be "floating", not on any object chain (when
        hero is swallowed by an engulfing monster, for instance) */
     if ($G.uball) {
-        $G.uball.bypass = (0) & 1;
+        $G.uball.bypass = 0;
     }
     if ($G.uchain) {
-        $G.uchain.bypass = (0) & 1;
+        $G.uchain.bypass = 0;
     }
     svc.context.bypasses = FALSE;
 }
@@ -1101,7 +1097,7 @@ export function clear_bypasses() {   // worn.c:1070
  * @param {$T.obj | null} obj struct obj *
  */
 export function bypass_obj(obj) {   // worn.c:1119
-    obj.bypass = (1) & 1;
+    obj.bypass = 1;
     svc.context.bypasses = TRUE;
 }
 /* set or clear the bypass bit in a list of objects */
@@ -1115,7 +1111,7 @@ export function bypass_objlist(objchain, on) {   // worn.c:1127
         svc.context.bypasses = TRUE;
     }
     while (objchain) {
-        objchain.bypass = ((on ? 1 : 0) >>> 0) & 1;
+        objchain.bypass = (on ? 1 : 0) & 1;
         objchain = objchain.nobj;
     }
 }
@@ -1166,13 +1162,13 @@ export function nxt_unbypassed_loot(lootarray, listhead) {   // worn.c:1159
  * @returns {Promise<void>}
  */
 export async function mon_break_armor(mon, polyspot) {   // worn.c:1177
-    let otmp = null, mdat = null, vis = 0, handless_or_tiny = 0, noride = 0, pronoun = null, ppronoun = null, passes_thru_clothes = 0, buf = new Int8Array(256);
-    mdat = mon.data;
-    vis = $c.i8(cansee(mon.mx, mon.my));
-    handless_or_tiny = $c.i8(nohands(mdat) || verysmall(mdat) ? 1 : 0);
-    noride = FALSE;
-    pronoun = genders[pronoun_gender(mon, PRONOUN.HALLU)].him;
-    ppronoun = genders[pronoun_gender(mon, PRONOUN.HALLU)].his;
+    let otmp = null, buf = new Int8Array(256);
+    const mdat = mon.data;
+    const vis = cansee(mon.mx, mon.my);
+    const handless_or_tiny = nohands(mdat) || verysmall(mdat) ? 1 : 0;
+    let noride = FALSE;
+    const pronoun = genders[pronoun_gender(mon, PRONOUN.HALLU)].him;
+    const ppronoun = genders[pronoun_gender(mon, PRONOUN.HALLU)].his;
     if (breakarm(mdat)) {
         if ((otmp = await which_armor(mon, W.ARM)) !== null) {
             if (Is_dragon_scales(otmp) && $c.peq(mdat, Dragon_scales_to_pm(otmp)) || Is_dragon_mail(otmp) && $c.peq(mdat, Dragon_mail_to_pm(otmp))) {
@@ -1214,7 +1210,7 @@ export async function mon_break_armor(mon, polyspot) {   // worn.c:1177
         }
     } else if (sliparm(mdat)) {
         /* sliparm checks whirly, noncorporeal, and small or under */
-        passes_thru_clothes = $c.i8(!(mdat.msize <= MZ.SMALL) ? 1 : 0);
+        const passes_thru_clothes = !(mdat.msize <= MZ.SMALL) ? 1 : 0;
         if ((otmp = await which_armor(mon, W.ARM)) !== null) {
             if (vis) {
                 await pline_mon(mon, $c.lit("%s armor falls around %s!"), s_suffix(await Monnam(mon)), pronoun);
@@ -1318,7 +1314,7 @@ function extra_pref(mon, obj) {   // worn.c:1339
      * get to use more armor abilities
      */
     if (obj) {
-        if (obj.otyp === SPEED_BOOTS && (mon.permspeed | 0) !== MFAST) {
+        if (obj.otyp === SPEED_BOOTS && mon.permspeed !== MFAST) {
             return 20;
         }
     }
@@ -1338,11 +1334,10 @@ function extra_pref(mon, obj) {   // worn.c:1339
  * @returns {number} int
  */
 export function racial_exception(mon, obj) {   // worn.c:1360
-    let ptr = null;
-    ptr = raceptr(mon);
+    const ptr = raceptr(mon);
     /* Acceptable Exceptions: */
     /* Allow hobbits to wear elven armor - LoTR */
-    if ($c.peq(ptr, $c.relem(mons, PM.HOBBIT)) && is_elven_armor(obj)) {
+    if ($c.peq(ptr, mons[PM.HOBBIT]) && is_elven_armor(obj)) {
         return 1;
     }
     /* Unacceptable Exceptions: */
@@ -1359,11 +1354,10 @@ export function racial_exception(mon, obj) {   // worn.c:1360
  * @returns {Promise<void>}
  */
 export async function extract_from_minvent(mon, obj, do_extrinsics, silently) {   // worn.c:1377
-    let unwornmask = 0;
     /* whether to call update_mon_extrinsics */
     /* doesn't affect all possible messages,
      * just update_mon_extrinsics's */
-    unwornmask = obj.owornmask;
+    const unwornmask = obj.owornmask;
     /*
      * At its core this is just obj_extract_self(), but it also handles
      * any updates that need to happen if the gear is equipped or in
@@ -1376,7 +1370,7 @@ export async function extract_from_minvent(mon, obj, do_extrinsics, silently) { 
     }
     /* handle gold dragon scales/scale-mail (lit when worn) before clearing
        obj->owornmask because artifact_light() expects that to be W_ARM */
-    if ($c.and64(unwornmask, W.ARM) !== 0 && obj.lamplit | 0 && artifact_light(obj)) {
+    if ($c.and64(unwornmask, W.ARM) !== 0 && obj.lamplit && artifact_light(obj)) {
         await end_burn(obj, FALSE);
     }
     await obj_extract_self(obj);
@@ -1396,7 +1390,7 @@ export async function extract_from_minvent(mon, obj, do_extrinsics, silently) { 
     }
 }
 function altprop(o) {
-    return o.otyp === ALCHEMY_SMOCK ? POISON_RES + ACID_RES - objects[o.otyp].oc_oprop | 0 : 0;
+    return o.otyp === ALCHEMY_SMOCK ? POISON_RES + ACID_RES - objects[o.otyp].oc_oprop : 0;
 }
 
 export function $init() {

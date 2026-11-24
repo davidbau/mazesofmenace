@@ -116,22 +116,22 @@ export async function minetn5_level() {
     des.region(selection.area(36, 14, 40, 17), 'lit');
     des.region(selection.area(59, 2, 72, 10), 'lit');
 
-    des.monster({ id: 'watchman', peaceful: 1 });
-    des.monster({ id: 'watchman', peaceful: 1 });
-    des.monster({ id: 'watchman', peaceful: 1 });
-    des.monster({ id: 'watchman', peaceful: 1 });
-    des.monster({ id: 'watch captain', peaceful: 1 });
-    des.monster('gnome');
-    des.monster('gnome');
-    des.monster('gnome');
-    des.monster('gnome');
-    des.monster('gnome');
-    des.monster('gnome');
-    des.monster('gnome lord');
-    des.monster('gnome lord');
-    des.monster('dwarf');
-    des.monster('dwarf');
-    des.monster('dwarf');
+    await des.monster({ id: 'watchman', peaceful: 1 });
+    await des.monster({ id: 'watchman', peaceful: 1 });
+    await des.monster({ id: 'watchman', peaceful: 1 });
+    await des.monster({ id: 'watchman', peaceful: 1 });
+    await des.monster({ id: 'watch captain', peaceful: 1 });
+    await des.monster('gnome');
+    await des.monster('gnome');
+    await des.monster('gnome');
+    await des.monster('gnome');
+    await des.monster('gnome');
+    await des.monster('gnome');
+    await des.monster('gnome lord');
+    await des.monster('gnome lord');
+    await des.monster('dwarf');
+    await des.monster('dwarf');
+    await des.monster('dwarf');
 
     /* The shops */
     des.region({ region: [25, 17, 28, 19], lit: 1, type: 'candle shop',
@@ -148,14 +148,14 @@ export async function minetn5_level() {
     /* Gnome homes */
     des.door('closed', 4, 14);
     des.door('locked', 1, 17);
-    des.monster('gnomish wizard', 2, 19);
+    await des.monster('gnomish wizard', 2, 19);
     des.door('locked', 20, 16);
-    des.monster('G', 20, 18);
+    await des.monster('G', 20, 18);
     des.door('random', 21, 14);
     des.door('random', 25, 14);
     des.door('random', 42, 8);
     des.door('locked', 40, 5);
-    des.monster('G', 38, 7);
+    await des.monster('G', 38, 7);
     des.door('random', 59, 3);
     des.door('random', 58, 6);
     des.door('random', 63, 3);
@@ -164,10 +164,10 @@ export async function minetn5_level() {
     des.door('locked', 71, 6);
     des.door('closed', 69, 4);
     des.door('closed', 67, 16);
-    des.monster('gnomish wizard', 67, 14);
+    await des.monster('gnomish wizard', 67, 14);
     des.object('=', 70, 14);
     des.door('locked', 69, 18);
-    des.monster('gnome lord', 71, 19);
+    await des.monster('gnome lord', 71, 19);
     des.door('locked', 73, 18);
     des.object('chest', 73, 19);
     des.door('locked', 50, 6);

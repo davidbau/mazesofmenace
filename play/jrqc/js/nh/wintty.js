@@ -176,9 +176,9 @@ async function winch_handler(sig_unused) {   // wintty.c:361
  * @returns {Promise<void>}
  */
 async function resize_tty() {   // wintty.c:392
-    let oldLI = 0, oldCO = 0, mapx = 0, mapy = 0, oldtoplin = 0, i = 0, map_active = 0, cw = null;
-    oldLI = gt.tc_gbl_data.tc_LI;
-    oldCO = gt.tc_gbl_data.tc_CO;
+    let mapx = 0, mapy = 0, i = 0;
+    const oldLI = gt.tc_gbl_data.tc_LI;
+    const oldCO = gt.tc_gbl_data.tc_CO;
     /* reset to 0 rather than just decrement */
     program_state.resize_pending = 0;
     resize_mesg = 0;
@@ -188,7 +188,7 @@ async function resize_tty() {   // wintty.c:392
     }
     $G.ttyDisplay.rows = $c.i16(gt.tc_gbl_data.tc_LI);
     $G.ttyDisplay.cols = $c.i16(gt.tc_gbl_data.tc_CO);
-    cw = wins[$G.BASE_WINDOW];
+    let cw = wins[$G.BASE_WINDOW];
     cw.rows = $G.ttyDisplay.rows;
     cw.cols = $G.ttyDisplay.cols;
     if (!iflags.window_inited) {
@@ -196,7 +196,7 @@ async function resize_tty() {   // wintty.c:392
     }
     /* try to figure out where we'll want to leave the cursor */
     cw = $G.WIN_MAP !== WIN_ERR ? wins[$G.WIN_MAP] : null;
-    map_active = $c.i8(cw && cw.active ? 1 : 0);
+    const map_active = cw && cw.active ? 1 : 0;
     if (!map_active) {
         mapx = 1, mapy = 0;
     } else if (gg.getposx < 1) {
@@ -204,7 +204,7 @@ async function resize_tty() {   // wintty.c:392
     } else {
         mapx = gg.getposx, mapy = gg.getposy;
     }
-    oldtoplin = $G.ttyDisplay.toplin;
+    let oldtoplin = $G.ttyDisplay.toplin;
     $G.ttyDisplay.toplin = TOPLINE.EMPTY;   /* (before term_clear_screen()) */
     /* whatever used to be on the screen has become suspect;
        blank it all out, then redo the display */
@@ -355,8 +355,7 @@ export async function tty_init_nhwindows(argcp, argv) {   // wintty.c:511
  * @returns {Promise<void>}
  */
 export async function tty_preference_update(pref) {   // wintty.c:596
-    let newstatuslines = 0;
-    newstatuslines = $c.i8(!$c.strcmp(pref, $c.lit("statuslines")) && iflags.window_inited ? 1 : 0);
+    const newstatuslines = !$c.strcmp(pref, $c.lit("statuslines")) && iflags.window_inited ? 1 : 0;
     if (newstatuslines) {
         await new_status_window();
         await newclipping(u.ux, u.uy);
@@ -394,8 +393,8 @@ export async function tty_player_selection() {   // wintty.c:634
  * @returns {Promise<void>}
  */
 export async function tty_askname() {   // wintty.c:651
-    let c = 0, ct = 0, tryct = 0, $t1;
-    tryct = 0;
+    let c = 0, ct = 0, $t1;
+    let tryct = 0;
     if (iflags.wc2_selectsaved && !iflags.renameinprogress) {
         switch (await restore_menu($G.BASE_WINDOW)) {
             case -1:
@@ -571,7 +570,7 @@ export async function tty_exit_nhwindows(str) {   // wintty.c:834
  * @returns {Promise<number>} winid
  */
 export async function tty_create_nhwindow(type) {   // wintty.c:874
-    let newwin = null, i = 0, rowoffset = 0, newid = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16;
+    let i = 0, rowoffset = 0, newid = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13, $t14, $t15, $t16;
     for (newid = 0; newid < MAXWIN; newid = newid + 1 | 0) {
         if (wins[newid] === null) {
             break;
@@ -582,7 +581,7 @@ export async function tty_create_nhwindow(type) {   // wintty.c:874
         /*NOTREACHED*/
         return WIN_ERR;
     }
-    newwin = $c.asRec(await alloc(144), $T.WinDesc, 144);
+    const newwin = $c.asRec(await alloc(144), $T.WinDesc, 144);
     wins[newid] = newwin;
     newwin.type = $c.i16(type);
     newwin.flags = 0;
@@ -744,8 +743,8 @@ function free_window_info(cw, free_data) {   // wintty.c:1011
  * @returns {Promise<void>}
  */
 export async function tty_clear_nhwindow(window) {   // wintty.c:1058
-    let i = 0, j = 0, m = 0, n = 0, cw = null, $t1, $t2;
-    cw = null;
+    let i = 0, j = 0, m = 0, n = 0, $t1, $t2;
+    let cw = null;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -868,10 +867,10 @@ async function toggle_menu_curr(window, curr, lineno, in_view, counting, count) 
  * @returns {Promise<void>}
  */
 async function dmore(cw, s) {   // wintty.c:1178
-    let prompt = null, offset = 0, save_cx = 0, np = null, $t1;
+    let np = null, $t1;
     /* valid responses */
-    prompt = cw.morestr ? cw.morestr : new $c.Ptr(defmorestr, 0);
-    offset = cw.type === NHW.TEXT ? 1 : 2;
+    const prompt = cw.morestr ? cw.morestr : new $c.Ptr(defmorestr, 0);
+    const offset = cw.type === NHW.TEXT ? 1 : 2;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -884,7 +883,7 @@ async function dmore(cw, s) {   // wintty.c:1178
     }
     xputs(prompt);
     {
-        save_cx = $G.ttyDisplay.curx;
+        const save_cx = $G.ttyDisplay.curx;
         for (np = prompt; np.get(0); np = np.add(1)) {
             nomux_putch(np.get(0));
             $G.ttyDisplay.curx = $c.i16($G.ttyDisplay.curx + 1);
@@ -906,8 +905,7 @@ async function dmore(cw, s) {   // wintty.c:1178
  * @returns {Promise<void>}
  */
 async function set_item_state(window, lineno, item) {   // wintty.c:1204
-    let ch = 0;
-    ch = $c.i8(item.selected ? item.count === -1 ? 43 : 35 : 45);
+    const ch = item.selected ? item.count === -1 ? 43 : 35 : 45;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -1008,10 +1006,10 @@ async function invert_all_on_page(window, page_start, page_end, acc, count) {   
  * @returns {Promise<void>}
  */
 async function invert_all(window, page_start, page_end, acc, count) {   // wintty.c:1300
-    let curr = null, on_curr_page = 0, cw = null;
+    let curr = null, on_curr_page = 0;
     /* group accelerator, 0 => all */
     /* pending count; -1L for non-group toggling */
-    cw = wins[window];
+    const cw = wins[window];
     /* handle current page separately (it will need screen updating) */
     await invert_all_on_page(window, page_start, page_end, acc, count);
     /* invert the rest (no screen updating for them) */
@@ -1067,7 +1065,7 @@ function toggle_menu_attr(on, color, attr) {   // wintty.c:1345
  */
 async function process_menu_window(window, cw) {   // wintty.c:1359
     let page_start = null, page_end = null, curr = null, count = 0, n = 0, attr_n = 0, curr_page = 0, page_lines = 0, resp_len = 0, previous_page_lines = 0, finished = 0, counting = 0, reset_count = 0, show_obj_syms = 0, only_if_no_headers = 0, cp = null, rp = null, resp = new Int8Array(128), gacc = new Int8Array(128), msave = null, morestr = null, really_morc = 0, i = 0, gcnt = new Int32Array(128), attr = 0, color = 0, c = 0, svx = 0, gcolor = 0, svx$2 = 0, svx$3 = 0, row_startoffset = 0, dgt = 0, searchbuf = new Int8Array(258), tmpbuf = new Int8Array(256), on_curr_page = 0, lineno = 0, $goto = null, $t1, $t2, $t3;
-    only_if_no_headers = $c.i8((iflags.menuobjsyms & 4) !== 0 ? 1 : 0);
+    only_if_no_headers = (iflags.menuobjsyms & 4) !== 0 ? 1 : 0;
     /* pseudo menu manipulation char */
     curr_page = page_lines = 0;
     page_start = page_end = null;
@@ -1183,7 +1181,7 @@ async function process_menu_window(window, cw) {   // wintty.c:1359
                             toggle_menu_attr(1, color, attr);
                         }
                         if (n === 2 && curr.identifier.a_void !== null && curr.selected) {
-                            c = $c.i8(curr.count === -1 ? 42 : 35);
+                            c = curr.count === -1 ? 42 : 35;
                             {
                                 svx = $G.ttyDisplay.curx;
                                 $G.ttyDisplay.curx = $c.i16($G.ttyDisplay.curx - 1);
@@ -1306,7 +1304,7 @@ async function process_menu_window(window, cw) {   // wintty.c:1359
                         $goto = "group_accel"; continue S1;
                     }
                     {
-                        dgt = $G.morc - 48 | 0;
+                        dgt = $G.morc - 48;
                         /* count = (10 * count) + (morc - '0'); */
                         count = AppendLongDigit(count, dgt);
                         if (count < 0) {   /* overflow */
@@ -1509,7 +1507,7 @@ async function process_menu_window(window, cw) {   // wintty.c:1359
  * @returns {Promise<void>}
  */
 async function process_text_window(window, cw) {   // wintty.c:1810
-    let i = 0, n = 0, attr = 0, linestart = 0, cp = null, svx = 0, svx$2 = 0, $t1;
+    let i = 0, n = 0, linestart = 0, cp = null, $t1;
     for (n = 0, i = 0; i < cw.maxrow; i = i + 1 | 0) {
         do {
             if (program_state.done_hup) {
@@ -1517,7 +1515,7 @@ async function process_text_window(window, cw) {   // wintty.c:1810
                 return;
             }
         } while (0);
-        if (!cw.offx && (n + cw.offy | 0) === ($G.ttyDisplay.rows - 1 | 0)) {
+        if (!cw.offx && (n + cw.offy | 0) === $G.ttyDisplay.rows - 1) {
             await tty_curs(window, 1, n);
             await cl_end();
             await dmore(cw, new $c.Ptr(quitchars, 0));
@@ -1536,7 +1534,7 @@ async function process_text_window(window, cw) {   // wintty.c:1810
         await tty_curs(window, 1, ($t1 = n, n = $t1 + 1 | 0, $t1));
         await cl_end();
         if (cw.data.get(i)) {
-            attr = cw.data.get(i).get(0) - 1 | 0;
+            const attr = cw.data.get(i).get(0) - 1;
             if (cw.offx) {
                 $c.putchar(32);
                 nomux_putch(32);
@@ -1556,7 +1554,7 @@ async function process_text_window(window, cw) {   // wintty.c:1810
                     } else {
                         $c.putchar(cp.get(0));
                         {
-                            svx = $G.ttyDisplay.curx;
+                            const svx = $G.ttyDisplay.curx;
                             $G.ttyDisplay.curx = $c.i16($G.ttyDisplay.curx - 1);
                             nomux_putch(cp.get(0));
                             $G.ttyDisplay.curx = $c.i16(svx);
@@ -1566,7 +1564,7 @@ async function process_text_window(window, cw) {   // wintty.c:1810
                 } else {
                     $c.putchar(cp.get(0));
                     {
-                        svx$2 = $G.ttyDisplay.curx;
+                        const svx$2 = $G.ttyDisplay.curx;
                         $G.ttyDisplay.curx = $c.i16($G.ttyDisplay.curx - 1);
                         nomux_putch(cp.get(0));
                         $G.ttyDisplay.curx = $c.i16(svx$2);
@@ -1578,10 +1576,10 @@ async function process_text_window(window, cw) {   // wintty.c:1810
     }
     if (i === cw.maxrow) {
         if (cw.type === NHW.TEXT) {
-            await tty_curs($G.BASE_WINDOW, 1, $G.ttyDisplay.cury + 1 | 0);
+            await tty_curs($G.BASE_WINDOW, 1, $G.ttyDisplay.cury + 1);
             await cl_eos();
         }
-        await tty_curs($G.BASE_WINDOW, cw.offx + 1 | 0, cw.type === NHW.TEXT ? $G.ttyDisplay.rows - 1 | 0 : n);
+        await tty_curs($G.BASE_WINDOW, cw.offx + 1, cw.type === NHW.TEXT ? $G.ttyDisplay.rows - 1 : n);
         await cl_end();
         await dmore(cw, new $c.Ptr(quitchars, 0));
         if ($G.morc === 27) {
@@ -1596,9 +1594,9 @@ async function process_text_window(window, cw) {   // wintty.c:1810
  * @returns {Promise<void>}
  */
 export async function tty_display_nhwindow(window, blocking) {   // wintty.c:1903
-    let cw = null, s_maxcol = 0, $t1;
+    let s_maxcol = 0, $t1;
     /* with ttys, all windows are blocking */
-    cw = null;
+    let cw = null;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -1649,7 +1647,7 @@ export async function tty_display_nhwindow(window, blocking) {   // wintty.c:190
             /* cw->maxcol is a long, but its value is constrained to
                be <= ttyDisplay->cols, so is sure to fit within a short */
             s_maxcol = $c.i16(cw.maxcol);
-            cw.offx = $c.i16(cw.type === NHW.TEXT ? 0 : (82 < $c.div32($G.ttyDisplay.cols, 2) ? 82 : $c.div32($G.ttyDisplay.cols, 2)) < (($G.ttyDisplay.cols - s_maxcol | 0) - 1 | 0) ? 82 < $c.div32($G.ttyDisplay.cols, 2) ? 82 : $c.div32($G.ttyDisplay.cols, 2) : ($G.ttyDisplay.cols - s_maxcol | 0) - 1 | 0);
+            cw.offx = $c.i16(cw.type === NHW.TEXT ? 0 : (82 < $c.div32($G.ttyDisplay.cols, 2) ? 82 : $c.div32($G.ttyDisplay.cols, 2)) < $G.ttyDisplay.cols - s_maxcol - 1 ? 82 < $c.div32($G.ttyDisplay.cols, 2) ? 82 : $c.div32($G.ttyDisplay.cols, 2) : $G.ttyDisplay.cols - s_maxcol - 1);
             /* avoid converting to uchar before calculations are finished */
             if (cw.offx < 0) {
                 cw.offx = 0;
@@ -1688,8 +1686,7 @@ export async function tty_display_nhwindow(window, blocking) {   // wintty.c:190
  * @returns {Promise<void>}
  */
 export async function tty_dismiss_nhwindow(window) {   // wintty.c:2001
-    let cw = null, clearscreen = 0;
-    cw = null;
+    let cw = null;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -1713,7 +1710,7 @@ export async function tty_dismiss_nhwindow(window) {   // wintty.c:2001
              * these should only get dismissed when the game is going away
              * or suspending
              */
-            await tty_curs($G.BASE_WINDOW, 1, $G.ttyDisplay.rows - 1 | 0);
+            await tty_curs($G.BASE_WINDOW, 1, $G.ttyDisplay.rows - 1);
             cw.active = 0;
             break;
         case NHW.MENU:
@@ -1725,7 +1722,7 @@ export async function tty_dismiss_nhwindow(window) {   // wintty.c:2001
                    the contents of that window should remain shown even when
                    the window itself has gone away */
                 if (iflags.window_inited && !erasing_tty_screen) {
-                    clearscreen = 0;   /* just erase the menu */
+                    let clearscreen = 0;   /* just erase the menu */
                     /* during role/race/&c selection, menus are put up on top
                        of the base window; we don't track what was there so
                        can't refresh--force the screen to be cleared instead
@@ -1748,7 +1745,6 @@ export async function tty_dismiss_nhwindow(window) {   // wintty.c:2001
  */
 export async function tty_destroy_nhwindow(window) {   // wintty.c:2057
     let cw = null;
-    cw = null;
     if (window === WIN_ERR || (cw = wins[window]) === null) {
         if (window === $G.WIN_INVEN) {   /* Null wins[WIN_INVEN] is tolerated */
             return;
@@ -1773,7 +1769,7 @@ export async function tty_destroy_nhwindow(window) {   // wintty.c:2057
  * @returns {Promise<void>}
  */
 export async function erase_tty_screen() {   // wintty.c:2084
-    let cw = null, i = 0, $t1;
+    let i = 0, $t1;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -1787,7 +1783,7 @@ export async function erase_tty_screen() {   // wintty.c:2084
     /* erase the screen */
     /* update window data to reflect that each active window is all blanks */
     for (i = 0; i < MAXWIN; i = i + 1 | 0) {
-        cw = wins[i];
+        const cw = wins[i];
         if (cw && cw.active) {
             await tty_clear_nhwindow(i);
         }
@@ -1802,11 +1798,11 @@ export async function erase_tty_screen() {   // wintty.c:2084
  * @returns {Promise<void>}
  */
 export async function tty_curs(window, x, y) {   // wintty.c:2106
-    let cw = null, cx = 0, cy = 0, s = null, save_plnmsg = 0, $t1;
+    let $t1;
     /* coordinates (and curx-x) must be signed */
-    cw = null;
-    cx = $G.ttyDisplay.curx;
-    cy = $G.ttyDisplay.cury;
+    let cw = null;
+    let cx = $G.ttyDisplay.curx;
+    let cy = $G.ttyDisplay.cury;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -1818,7 +1814,7 @@ export async function tty_curs(window, x, y) {   // wintty.c:2106
     }
     $G.ttyDisplay.lastwin = window;
     if (x < 1 || y < 0 || y >= cw.rows || x > cw.cols) {
-        s = $c.lit("[unknown type]");
+        let s = $c.lit("[unknown type]");
         switch (cw.type) {
             case NHW.MESSAGE:
                 s = $c.lit("[topl window]");
@@ -1846,7 +1842,7 @@ export async function tty_curs(window, x, y) {   // wintty.c:2106
         if (cw.type !== NHW.MESSAGE) {
             do {
                 if (debugcore($c.lit("../win/tty/wintty.c"), 1)) {
-                    save_plnmsg = iflags.last_msg;
+                    const save_plnmsg = iflags.last_msg;
                     await pline($c.lit("tty_curs: bad positioning win %d %s <%d,%d>"), window, s, x, y);
                     iflags.last_msg = save_plnmsg;
                 }
@@ -1901,15 +1897,15 @@ export async function tty_curs(window, x, y) {   // wintty.c:2106
  * @returns {$c.Ptr | null} const char *
  */
 function compress_str(str) {   // wintty.c:2247
-    let in_str = null, c = 0, outstr = null, outend = null, was_space = 0, $t1, $t2;
+    let c = 0, $t1, $t2;
     /* compress out consecutive spaces if line is too long;
        topline wrapping converts space at wrap point into newline,
        we reverse that here */
     if ($c.i32($c.strlen(str)) >= gt.tc_gbl_data.tc_CO || $c.strchr(str, 10)) {
-        in_str = str;
-        outstr = new $c.Ptr(compress_str$cbuf, 0);
-        outend = new $c.Ptr(compress_str$cbuf, $c.idx(255));
-        was_space = 1;
+        let in_str = str;
+        let outstr = new $c.Ptr(compress_str$cbuf, 0);
+        const outend = new $c.Ptr(compress_str$cbuf, $c.idx(255));
+        let was_space = 1;
         /* True discards all leading spaces;
            False would retain one if present */
         while ((c = ($t1 = in_str, in_str = $t1.add(1), $t1).get(0)) !== 0 && $c.pcmp(outstr, outend) < 0) {
@@ -1920,7 +1916,7 @@ function compress_str(str) {   // wintty.c:2247
                 continue;
             }
             ($t2 = outstr, outstr = $t2.add(1), $t2).set(0, c);
-            was_space = $c.i8(c === 32 ? 1 : 0);
+            was_space = c === 32 ? 1 : 0;
         }
         if (was_space && $c.pcmp(outstr, new $c.Ptr(compress_str$cbuf, 0)) > 0 || $c.peq(outstr, outend)) {
             outstr = outstr.add(-1);   /* remove trailing space or make room for terminator */
@@ -1937,8 +1933,8 @@ function compress_str(str) {   // wintty.c:2247
  * @returns {Promise<void>}
  */
 export async function tty_putstr(window, attr, str) {   // wintty.c:2277
-    let cw = null, ob = null, i = 0, n0 = 0, suppress_history = 0, urgent_message = 0, tmp = null, $t1, $t2, $t3;
-    cw = null;
+    let ob = null, i = 0, n0 = 0, $t1, $t2, $t3;
+    let cw = null;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -1962,8 +1958,8 @@ export async function tty_putstr(window, attr, str) {   // wintty.c:2277
     switch (cw.type) {
         case NHW.MESSAGE:
             {
-                suppress_history = attr & ATR.NOHISTORY;
-                urgent_message = attr & ATR.URGENT;
+                const suppress_history = attr & ATR.NOHISTORY;
+                const urgent_message = attr & ATR.URGENT;
                 /* if ^C occurs, player is prompted with "Really quit?" and that
                    prompt is issued via tty_putstr(WIN_MESSAGE); if ^C happens
                    while writing DECgraphics chars, the prompt text would be
@@ -2005,7 +2001,7 @@ export async function tty_putstr(window, attr, str) {   // wintty.c:2277
             /* STATUS_HILITES */
             await tty_curs(window, $c.i32($c.add64(cw.curx, 1)), $c.i32(cw.cury));
             term_start_attr(attr);
-            while (str.get(0) && $G.ttyDisplay.curx < ($G.ttyDisplay.cols - 1 | 0)) {
+            while (str.get(0) && $G.ttyDisplay.curx < $G.ttyDisplay.cols - 1) {
                 $c.putchar(str.get(0));
                 nomux_putch(str.get(0));
                 str = str.add(1);
@@ -2019,7 +2015,7 @@ export async function tty_putstr(window, attr, str) {   // wintty.c:2277
             await tty_curs(window, $c.i32($c.add64(cw.curx, 1)), $c.i32(cw.cury));
             term_start_attr(attr);
             while (str.get(0)) {
-                if ($G.ttyDisplay.curx >= ($G.ttyDisplay.cols - 1 | 0)) {
+                if ($G.ttyDisplay.curx >= $G.ttyDisplay.cols - 1) {
                     cw.curx = 0;
                     cw.cury = $c.add64(cw.cury, 1);
                     await tty_curs(window, $c.i32($c.add64(cw.curx, 1)), $c.i32(cw.cury));
@@ -2035,7 +2031,7 @@ export async function tty_putstr(window, attr, str) {   // wintty.c:2277
             break;
         case NHW.MENU:
         case NHW.TEXT:
-            if (cw.type === NHW.TEXT && $c.add64(cw.cury, cw.offy) === ($G.ttyDisplay.rows - 1 | 0)) {
+            if (cw.type === NHW.TEXT && $c.add64(cw.cury, cw.offy) === $G.ttyDisplay.rows - 1) {
                 /* not a menu, so save memory and output 1 page at a time */
                 cw.maxcol = $G.ttyDisplay.cols;   /* force full-screen mode */
                 await tty_display_nhwindow(window, 1);
@@ -2050,7 +2046,7 @@ export async function tty_putstr(window, attr, str) {   // wintty.c:2277
             /* always grows one at a time, but alloc 12 at a time */
             if (cw.cury >= cw.rows) {
                 cw.rows = $c.add64(cw.rows, 12);
-                tmp = $c.asArr(await alloc($c.u32($c.mulu64(8, $c.u32(cw.rows)))), 'ptr');
+                const tmp = $c.asArr(await alloc($c.u32($c.mulu64(8, $c.u32(cw.rows)))), 'ptr');
                 for (i = 0; i < cw.maxrow; i = $c.add64(i, 1)) {
                     tmp.set($c.idx(i), cw.data.get($c.idx(i)));
                 }
@@ -2095,7 +2091,7 @@ export async function tty_putstr(window, attr, str) {   // wintty.c:2277
  * @returns {Promise<void>}
  */
 export async function tty_display_file(fname, complain) {   // wintty.c:2482
-    let f = null, buf = new Int8Array(256), cr = null, datawin = 0, empty = 0;
+    let buf = new Int8Array(256), cr = null;
     /* name of file to display */
     /* whether to report problem if file can't be opened */
     /* this implies that UNIX is defined */
@@ -2109,7 +2105,7 @@ export async function tty_display_file(fname, complain) {   // wintty.c:2482
     /* DEF_PAGER */
     {
         await tty_clear_nhwindow($G.WIN_MESSAGE);
-        f = $c.fopen(fname, $c.lit("r"));
+        const f = $c.fopen(fname, $c.lit("r"));
         if (!f) {
             if (complain) {
                 await home();
@@ -2123,12 +2119,12 @@ export async function tty_display_file(fname, complain) {   // wintty.c:2482
                 await pline($c.lit("Cannot open \"%s\"."), fname);
             }
         } else {
-            datawin = await tty_create_nhwindow(NHW.TEXT);
-            empty = 1;
+            const datawin = await tty_create_nhwindow(NHW.TEXT);
+            let empty = 1;
             if (complain && nh_CD()) {
                 /* attempt to scroll text below map window if there's room */
-                wins[datawin].offy = $c.i16(wins[$G.WIN_STATUS].offy + StatusRows() | 0);
-                if ((wins[datawin].offy + 12 | 0) > $G.ttyDisplay.rows) {
+                wins[datawin].offy = $c.i16(wins[$G.WIN_STATUS].offy + StatusRows());
+                if (wins[datawin].offy + 12 > $G.ttyDisplay.rows) {
                     wins[datawin].offy = 0;
                 }
             }
@@ -2162,7 +2158,6 @@ export async function tty_display_file(fname, complain) {   // wintty.c:2482
  */
 export async function tty_start_menu(window, mbehavior) {   // wintty.c:2576
     let cw = null;
-    cw = null;
     if (window === WIN_ERR || (cw = wins[window]) === null) {
         await panic(new $c.Ptr(winpanicstr, 0), window, $c.lit("tty_start_menu"));
     }
@@ -2190,7 +2185,7 @@ export async function tty_start_menu(window, mbehavior) {   // wintty.c:2576
  * @returns {Promise<void>}
  */
 export async function tty_add_menu(window, glyphinfo, identifier, ch, gch, attr, clr, str, itemflags) {   // wintty.c:2616
-    let preselected = 0, cw = null, item = null, newstr = null, buf = new Int8Array(260), len = 0, $t1;
+    let item = null, newstr = null, buf = new Int8Array(260), $t1;
     /* window to use, must be of type NHW_MENU */
     /* glyph info with glyph to
      * display with item */
@@ -2201,8 +2196,8 @@ export async function tty_add_menu(window, glyphinfo, identifier, ch, gch, attr,
     /* color for string */
     /* menu string */
     /* itemflags such as MENU_ITEMFLAGS_SELECTED */
-    preselected = $c.i8((itemflags & MENU.ITEMFLAGS_SELECTED) >>> 0 !== 0 ? 1 : 0);
-    cw = null;
+    const preselected = (itemflags & MENU.ITEMFLAGS_SELECTED) >>> 0 !== 0 ? 1 : 0;
+    let cw = null;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -2217,7 +2212,7 @@ export async function tty_add_menu(window, glyphinfo, identifier, ch, gch, attr,
     }
     cw.nitems = $c.add64(cw.nitems, 1);
     if (identifier.a_void) {
-        len = $c.i32($c.strlen(str));
+        let len = $c.i32($c.strlen(str));
         if (len >= BUFSZ) {
             /* We *think* everything's coming in off at most BUFSZ bufs... */
             await impossible($c.lit("Menu item too long (%d)."), len);
@@ -2250,10 +2245,9 @@ export async function tty_add_menu(window, glyphinfo, identifier, ch, gch, attr,
  * @returns {$T.tty_mi | null} tty_menu_item *
  */
 function reverse(curr) {   // wintty.c:2684
-    let next = null, head = null;
-    head = null;
+    let head = null;
     while (curr) {
-        next = curr.next;
+        const next = curr.next;
         curr.next = head;
         head = curr;
         curr = next;
@@ -2272,11 +2266,11 @@ function reverse(curr) {   // wintty.c:2684
  * @returns {Promise<void>}
  */
 export async function tty_end_menu(window, prompt) {   // wintty.c:2706
-    let cw = null, curr = null, len = 0, lmax = 0, n = 0, menu_ch = 0, clr = 0, any = new $T.any(), buf = new Int8Array(128), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8;
+    let curr = null, len = 0, n = 0, any = new $T.any(), buf = new Int8Array(128), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8;
     /* menu to use */
     /* prompt to for menu */
-    cw = null;
-    clr = NO_COLOR;
+    let cw = null;
+    const clr = NO_COLOR;
     if (window === WIN_ERR || (cw = wins[window]) === null || cw.type !== NHW.MENU) {
         /* this can happen if start_menu failed due to size requirements
            for the tty perm inventory window. It isn't a situation that
@@ -2296,7 +2290,7 @@ export async function tty_end_menu(window, prompt) {   // wintty.c:2706
         await tty_add_menu(window, nul_glyphinfo, any, 0, 0, tty_menu_promptstyle.attr, tty_menu_promptstyle.color, prompt, MENU.ITEMFLAGS_NONE);
     }
     /* 52: 'a'..'z' and 'A'..'Z'; avoids selector duplication within a page */
-    lmax = 52 < ($G.ttyDisplay.rows - 1 | 0) ? 52 : $G.ttyDisplay.rows - 1 | 0;   /* # lines per page */
+    const lmax = 52 < $G.ttyDisplay.rows - 1 ? 52 : $G.ttyDisplay.rows - 1;   /* # lines per page */
     cw.npages = $c.div64($c.add64(cw.nitems, lmax - 1 | 0), lmax);   /* # of pages */
     /*
      * TODO?
@@ -2317,7 +2311,7 @@ export async function tty_end_menu(window, prompt) {   // wintty.c:2706
         $t2 = $c.asArr(await alloc($c.u32($c.mulu64($c.u64(cw.plist_size), 8))), 'ptr'), cw.plist = $t2;
     }
     cw.cols = 0;   /* cols is set when the win is initialized... (why?) */
-    menu_ch = 63;   /* lint suppression */
+    let menu_ch = 63;   /* lint suppression */
     for (n = 0, curr = cw.mlist; curr; n = n + 1 | 0, curr = curr.next) {
         /* set page boundaries and character accelerators */
         if ($c.rem32(n, lmax) === 0) {
@@ -2333,7 +2327,7 @@ export async function tty_end_menu(window, prompt) {   // wintty.c:2706
         /* cut off any lines that are too long */
         len = $c.i16($c.addu64($c.strlen(curr.str), 2));   /* extra space at beg & end */
         if (len > $G.ttyDisplay.cols) {
-            curr.str.set($G.ttyDisplay.cols - 2 | 0, 0);
+            curr.str.set($G.ttyDisplay.cols - 2, 0);
             len = $G.ttyDisplay.cols;
         }
         if (len > cw.cols) {
@@ -2381,8 +2375,8 @@ export async function tty_end_menu(window, prompt) {   // wintty.c:2706
  * @returns {Promise<number>} int
  */
 export async function tty_select_menu(window, how, menu_list) {   // wintty.c:2832
-    let cw = null, curr = null, mi = null, n = 0, cancelled = 0, $t1;
-    cw = null;
+    let curr = null, mi = null, n = 0, $t1;
+    let cw = null;
     if (window === WIN_ERR || (cw = wins[window]) === null || cw.type !== NHW.MENU) {
         await panic(new $c.Ptr(winpanicstr, 0), window, $c.lit("tty_select_menu"));
     }
@@ -2393,7 +2387,7 @@ export async function tty_select_menu(window, how, menu_list) {   // wintty.c:28
     cw.how = $c.i16(how);
     $G.morc = 0;
     await tty_display_nhwindow(window, 1);
-    cancelled = !!(cw.flags & WIN.CANCELLED) ? 1 : 0;
+    const cancelled = !!(cw.flags & WIN.CANCELLED) ? 1 : 0;
     await tty_dismiss_nhwindow(window);   /* does not destroy window data */
     if (cancelled) {
         n = -1;
@@ -2451,7 +2445,7 @@ export async function tty_message_menu(let_, how, mesg) {   // wintty.c:2876
        continue to be output normally */
     wins[$G.WIN_MESSAGE].flags = wins[$G.WIN_MESSAGE].flags & ~WIN.CANCELLED;
     $G.ttyDisplay.dismiss_more = 0;
-    return $c.i8(how === PICK.ONE && $G.morc === let_ || $G.morc === 27 ? $G.morc : 0);
+    return how === PICK.ONE && $G.morc === let_ || $G.morc === 27 ? $G.morc : 0;
 }
 /**
  * @param {number} window winid
@@ -2711,9 +2705,9 @@ export async function tty_wait_synch() {   // wintty.c:3681
  * @returns {Promise<void>}
  */
 export async function docorner(xmin, ymax, ystart_between_menu_pages) {   // wintty.c:3707
-    let y = 0, cw = null, ystart = 0;
-    cw = wins[$G.WIN_MAP];
-    ystart = 0;
+    let y = 0;
+    const cw = wins[$G.WIN_MAP];
+    let ystart = 0;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -2773,8 +2767,7 @@ export function end_glyphout() {   // wintty.c:3781
  * @param {number} in_ch int
  */
 export function g_putch(in_ch) {   // wintty.c:3797
-    let ch = 0;
-    ch = $c.i8(in_ch);
+    const ch = $c.i8(in_ch);
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -2845,9 +2838,8 @@ export function setclipped() {   // wintty.c:3870
  * @returns {Promise<void>}
  */
 export async function tty_cliparound(x, y) {   // wintty.c:3879
-    let oldx = 0, oldy = 0;
-    oldx = clipx;
-    oldy = clipy;
+    const oldx = clipx;
+    const oldy = clipy;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -2893,11 +2885,11 @@ export async function tty_cliparound(x, y) {   // wintty.c:3879
  * @returns {Promise<void>}
  */
 export async function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {   // wintty.c:3916
-    let inverse_on = 0, colordone = 0, glyphdone = 0, petattr = 0, ch = 0, color = 0, special = 0, $t1;
-    inverse_on = 0;
-    colordone = 0;
-    glyphdone = 0;
-    petattr = 0;
+    let $t1;
+    let inverse_on = 0;
+    let colordone = 0;
+    let glyphdone = 0;
+    let petattr = 0;
     do {
         if (program_state.done_hup) {
             $G.morc = 27;
@@ -2910,9 +2902,9 @@ export async function tty_print_glyph(window, x, y, glyphinfo, bkglyphinfo) {   
         }
     }
     /* get glyph ttychar, color, and special flags */
-    ch = glyphinfo.ttychar;
-    color = glyphinfo.gm.sym.color >>> 0;
-    special = glyphinfo.gm.glyphflags;
+    const ch = glyphinfo.ttychar;
+    let color = glyphinfo.gm.sym.color >>> 0;
+    const special = glyphinfo.gm.glyphflags;
     /* Move the cursor. */
     await tty_curs(window, x, y);
     if (ul_hack() && ch === 95) {
@@ -3101,7 +3093,6 @@ export async function tty_nhgetch() {   // wintty.c:4112
  * @returns {Promise<number>} int
  */
 export async function tty_nh_poskey(x, y, mod) {   // wintty.c:4194
-    let i = 0;
     do {
         if (program_state.done_hup) {
             return 27;
@@ -3115,7 +3106,7 @@ export async function tty_nh_poskey(x, y, mod) {   // wintty.c:4194
     /* map NUL or EOF to ESC, nethack doesn't expect either */
     /* topline has been seen - we can clear the need for --More-- */
     /* !WIN32CON */
-    i = await tty_nhgetch();
+    const i = await tty_nhgetch();
     /* ?WIN32CON */
     return i;
 }
@@ -3166,8 +3157,8 @@ export async function tty_putmixed(window, attr, str) {   // wintty.c:4243
  * @returns {Promise<void>}
  */
 export async function tty_status_init() {   // wintty.c:4409
-    let i = 0, num_rows = 0, $t1;
-    num_rows = StatusRows();   /* 2 or 3 */
+    let i = 0, $t1;
+    const num_rows = StatusRows();   /* 2 or 3 */
     fieldorder = num_rows !== 3 ? new $c.Ptr(twolineorder, 0) : new $c.Ptr(threelineorder, 0);
     for (i = 0; i < MAXBLSTATS; i = i + 1 | 0) {
         tty_status[NOW][i].idx = BL.FLUSH;
@@ -3280,10 +3271,10 @@ export function tty_status_enablefield(fieldidx, nm, fmt, enable) {   // wintty.
  * @returns {Promise<void>}
  */
 export async function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) {   // wintty.c:4527
-    let attrmask = 0, condptr = null, text = null, goldbuf = new Int8Array(40), lastchar = null, p = null, fmt = null, reset_state = 0, $t1, $t2, $t3;
-    condptr = ptr;
-    text = $c.asArr(ptr, Int8Array);
-    reset_state = 0;
+    let attrmask = 0, goldbuf = new Int8Array(40), lastchar = null, p = null, fmt = null, $t1, $t2, $t3;
+    const condptr = ptr;
+    let text = $c.asArr(ptr, Int8Array);
+    let reset_state = 0;
     if (fldidx < BL.RESET || fldidx >= MAXBLSTATS) {
         return;
     }
@@ -3392,11 +3383,11 @@ export async function tty_status_update(fldidx, ptr, chg, percent, color, colorm
  * @returns {Promise<number>} int
  */
 async function make_things_fit(force_update) {   // wintty.c:4657
-    let trycnt = 0, fitting = 0, requirement = 0, rowsz = new Int32Array(3), num_rows = 0, condrow = 0, otheroptions = 0;
-    fitting = 0;
-    otheroptions = 0;
-    num_rows = StatusRows();
-    condrow = num_rows - 1 | 0;   /* always last row, 1 for 0..1 or 2 for 0..2 */
+    let trycnt = 0, rowsz = new Int32Array(3);
+    let fitting = 0;
+    let otheroptions = 0;
+    const num_rows = StatusRows();
+    const condrow = num_rows - 1 | 0;   /* always last row, 1 for 0..1 or 2 for 0..2 */
     cond_shrinklvl = 0;
     if (enc_shrinklvl > 0 && num_rows === 2) {
         shrink_enc(0);
@@ -3413,7 +3404,7 @@ async function make_things_fit(force_update) {   // wintty.c:4657
             fitting = 0;
             break;
         }
-        requirement = rowsz[condrow] - 1 | 0;
+        const requirement = rowsz[condrow] - 1 | 0;
         if (requirement <= $c.sub64(wins[$G.WIN_STATUS].cols, 1)) {
             fitting = requirement;
             break;   /* we're good */
@@ -3459,16 +3450,16 @@ async function make_things_fit(force_update) {   // wintty.c:4657
  * @returns {Promise<number>} boolean
  */
 async function check_fields(forcefields, sz) {   // wintty.c:4720
-    let c = 0, i = 0, row = 0, col = 0, num_rows = 0, idx = 0, valid = 0, matchprev = 0, update_right = 0, ob = null, nb = null, cw = null;
-    valid = 1;
+    let i = 0, row = 0, idx = 0;
+    let valid = 1;
     if (!windowdata_init && !await check_windowdata()) {
         return 0;
     }
-    num_rows = StatusRows();   /* 2 or 3 */
+    const num_rows = StatusRows();   /* 2 or 3 */
     for (row = 0; row < num_rows; row = row + 1 | 0) {
         sz.set(row, 0);
-        col = 1;
-        update_right = 0;
+        let col = 1;
+        let update_right = 0;
         for (i = 0; (idx = fieldorder.get(row)[i]) !== BL.FLUSH; i = i + 1 | 0) {
             if (!status_activefields[idx]) {
                 continue;
@@ -3493,7 +3484,7 @@ async function check_fields(forcefields, sz) {   // wintty.c:4720
                 /* in case update_right is set, we're back in sync now */
                 update_right = 0;
             }
-            matchprev = 0;   /* assume failure */
+            let matchprev = 0;   /* assume failure */
             if (valid && !update_right && !forcefields && !tty_status[NOW][idx].redraw) {
                 /*
                  * Check values against those already on the display.
@@ -3507,10 +3498,10 @@ async function check_fields(forcefields, sz) {   // wintty.c:4720
                     if (tty_status[NOW][idx].dirty) {
                         /* compare values */
                         /* old byte, new byte */
-                        cw = wins[$G.WIN_STATUS];
-                        c = col - 1 | 0;
-                        ob = cw.data.get(row).add(c);
-                        nb = status_vals[idx];
+                        const cw = wins[$G.WIN_STATUS];
+                        let c = col - 1 | 0;
+                        let ob = cw.data.get(row).add(c);
+                        let nb = status_vals[idx];
                         while (nb.get(0) && c < cw.cols) {
                             if (nb.get(0) !== ob.get(0)) {
                                 break;
@@ -3576,21 +3567,21 @@ async function check_fields(forcefields, sz) {   // wintty.c:4720
  * @returns {Promise<void>}
  */
 async function tty_putstatusfield(text, x, y) {   // wintty.c:4876
-    let i = 0, n = 0, ncols = 0, nrows = 0, lth = 0, cw = null;
-    lth = 0;
-    cw = null;
+    let i = 0;
+    let lth = 0;
+    let cw = null;
     if ($G.WIN_STATUS === WIN_ERR || (cw = wins[$G.WIN_STATUS]) === null) {
         await panic($c.lit("tty_putstatusfield: Invalid WinDesc\n"));
     }
-    ncols = $c.i32(cw.cols);
-    nrows = $c.i32(cw.maxrow);
+    const ncols = $c.i32(cw.cols);
+    const nrows = $c.i32(cw.maxrow);
     lth = $c.i32($c.strlen(text));
     if (x < ncols && y < nrows) {
         if (x !== cw.curx || y !== cw.cury) {
             await tty_curs(NHW.STATUS, x, y);
         }
         for (i = 0; i < lth; i = i + 1 | 0) {
-            n = i + x | 0;
+            const n = i + x | 0;
             if (n < ncols && text.get(0)) {
                 $c.putchar(text.get(0));
                 nomux_putch(text.get(0));
@@ -3606,11 +3597,11 @@ async function tty_putstatusfield(text, x, y) {   // wintty.c:4876
 }
 /* caller must set cond_shrinklvl (0..2) before calling us */
 function set_condition_length() {   // wintty.c:4920
-    let mask = 0, c = 0, lth = 0;
-    lth = 0;
+    let c = 0;
+    let lth = 0;
     if (tty_condition_bits) {
         for (c = 0; c < 30; c = c + 1 | 0) {
-            mask = conditions[c].mask;
+            const mask = conditions[c].mask;
             if ($c.and64(tty_condition_bits, mask) === mask) {
                 lth = lth + (1 + $c.i32($c.strlen(conditions[c].text[cond_shrinklvl])) | 0) | 0;
             }
@@ -3634,9 +3625,9 @@ function shrink_enc(lvl) {   // wintty.c:4936
  * @param {number} lvl int
  */
 function shrink_dlvl(lvl) {   // wintty.c:4947
-    let buf = new Int8Array(256), levval = null, $t1;
+    let buf = new Int8Array(256), $t1;
     /* try changing Dlvl: to Dl: */
-    levval = $c.strchr(status_vals[BL.LEVELDESC], 58);
+    const levval = $c.strchr(status_vals[BL.LEVELDESC], 58);
     if (levval) {
         dlvl_shrinklvl = lvl;
         $c.strcpy(new $c.Ptr(buf, 0), lvl === 0 ? $c.lit("Dlvl") : $c.lit("Dl"));
@@ -3688,8 +3679,8 @@ function condcolor(bm, bmarray) {   // wintty.c:4984
  * @returns {number} int
  */
 function condattr(bm, bmarray) {   // wintty.c:4997
-    let attr = 0, i = 0;
-    attr = 0;
+    let i = 0;
+    let attr = 0;
     if (bm && bmarray) {
         for (i = CLR.MAX + 2; i < CLR.MAX + 8; i = i + 1 | 0) {
             if ($c.andu64($c.u64(bm), bmarray.get(i)) !== 0) {
@@ -3722,15 +3713,15 @@ function condattr(bm, bmarray) {   // wintty.c:4997
  * @returns {Promise<void>}
  */
 async function render_status() {   // wintty.c:5068
-    let mask = 0, bits = 0, i = 0, x = 0, y = 0, idx = 0, c = 0, ci = 0, row = 0, tlth = 0, num_rows = 0, coloridx = 0, attrmask = 0, text = null, cw = null, hitpointbar = 0, cstart = 0, last_col = 0, dat = null, condtext = null, bar_len = 0, bar_pos = 0, bar = new Int8Array(31), bar2 = null, savedch = 0, twoparts = 0, vstart = 0, dat$2 = null, vx = 0, $t1, $t2, $t3, $t4, $t5, $t6;
-    coloridx = 0;
-    attrmask = 0;
-    cw = null;
+    let i = 0, x = 0, idx = 0, c = 0, row = 0, cstart = 0, bar = new Int8Array(31), $t1, $t2, $t3, $t4, $t5, $t6;
+    let coloridx = 0;
+    let attrmask = 0;
+    let cw = null;
     if ($G.WIN_STATUS === WIN_ERR || (cw = wins[$G.WIN_STATUS]) === null) {
         paniclog($c.lit("render_status"), $c.lit("WIN_ERR on status window."));
         return;
     }
-    num_rows = StatusRows();   /* 2 or 3 */
+    const num_rows = StatusRows();   /* 2 or 3 */
     for (row = 0; row < num_rows; row = row + 1 | 0) {
         do {
             if (program_state.done_hup) {
@@ -3738,24 +3729,24 @@ async function render_status() {   // wintty.c:5068
                 return;
             }
         } while (0);
-        y = row;
+        const y = row;
         await tty_curs($G.WIN_STATUS, 1, y);
         for (i = 0; (idx = fieldorder.get(row)[i]) !== BL.FLUSH; i = i + 1 | 0) {
             if (!status_activefields[idx]) {
                 continue;
             }
             x = tty_status[NOW][idx].x;
-            text = status_vals[idx];   /* always "" for BL_CONDITION */
-            tlth = $c.i32(tty_status[NOW][idx].lth);   /* valid for BL_CONDITION */
+            let text = status_vals[idx];   /* always "" for BL_CONDITION */
+            const tlth = $c.i32(tty_status[NOW][idx].lth);   /* valid for BL_CONDITION */
             if (tty_status[NOW][idx].redraw || !do_field_opt) {
-                hitpointbar = $c.i8(idx === BL.TITLE && iflags.wc2_hitpointbar ? 1 : 0);
+                const hitpointbar = idx === BL.TITLE && iflags.wc2_hitpointbar ? 1 : 0;
                 if (idx === BL.CONDITION) {
                     /*
                      * +-----------------+
                      * | Condition Codes |
                      * +-----------------+
                      */
-                    bits = tty_condition_bits;
+                    let bits = tty_condition_bits;
                     /*
                      * If no bits are set, we can fall through condition
                      * rendering code to finalx[] handling (and subsequent
@@ -3765,8 +3756,8 @@ async function render_status() {   // wintty.c:5068
                      * be indented to line up with a position on 2nd row.
                      */
                     if (row === MAX_STATUS_ROWS - 1 && bits !== 0) {
-                        last_col = $c.i32(cw.cols);
-                        dat = cw.data.get(y).add(0);
+                        let last_col = $c.i32(cw.cols);
+                        const dat = cw.data.get(y).add(0);
                         /* 'version' might follow conditions; if so, adjust
                            expectations for where conditions should end;
                            only matters when conditions are being indented */
@@ -3799,8 +3790,8 @@ async function render_status() {   // wintty.c:5068
                     }
                     /* actually draw condition words */
                     for (c = 0; c < 30 && bits !== 0; c = c + 1 | 0) {
-                        ci = cond_idx[c];
-                        mask = conditions[ci].mask;
+                        const ci = cond_idx[c];
+                        const mask = conditions[ci].mask;
                         if ($c.and64(bits, mask)) {
                             await tty_putstatusfield($c.lit(" "), ($t1 = x, x = $t1 + 1 | 0, $t1), y);
                             if (iflags.hilite_delta) {
@@ -3832,7 +3823,7 @@ async function render_status() {   // wintty.c:5068
                                     term_start_color(coloridx);
                                 }
                             }
-                            condtext = conditions[ci].text[cond_shrinklvl];
+                            let condtext = conditions[ci].text[cond_shrinklvl];
                             if (x >= cw.cols && !truncation_expected) {
                                 await impossible($c.lit("Unexpected condition placement overflow for \"%s\""), condtext);
                                 condtext = $c.lit("");
@@ -3887,10 +3878,10 @@ async function render_status() {   // wintty.c:5068
                      * +-------------------------+
                      */
                     /* hitpointbar using hp percent calculation */
-                    bar_pos = 0;
-                    bar2 = null;
-                    savedch = 0;
-                    twoparts = $c.i8(hpbar_percent < 100 ? 1 : 0);
+                    let bar_pos = 0;
+                    let bar2 = null;
+                    let savedch = 0;
+                    const twoparts = hpbar_percent < 100 ? 1 : 0;
                     /* force exactly 30 characters, padded with spaces
                        if shorter or truncated if longer */
                     if ($c.strlen(text) !== 30) {
@@ -3902,7 +3893,7 @@ async function render_status() {   // wintty.c:5068
                     if (hpbar_crit_hp) {
                         repad_with_dashes(new $c.Ptr(bar, 0));
                     }
-                    bar_len = $c.i32($c.strlen(new $c.Ptr(bar, 0)));   /* always 30 */
+                    const bar_len = $c.i32($c.strlen(new $c.Ptr(bar, 0)));   /* always 30 */
                     /*tlth = bar_len + 2; // not needed within this 'if'*/
                     attrmask = 0;   /* for the second part only case: dead */
                     /* when at full HP, the whole title will be highlighted;
@@ -4001,18 +3992,18 @@ async function render_status() {   // wintty.c:5068
                     /* if 'version' is the last field in its row, right
                        justify it (otherwise just treat it as ordinary) */
                     if (idx === BL.VERS && fieldorder.get(row)[i + 1 | 0] === BL.FLUSH) {
-                        dat$2 = cw.data.get(y).add(0);
+                        const dat$2 = cw.data.get(y).add(0);
                         /* FIXME:  there's something fishy going on here;
                            'x' ends up out of synch when conditions have
                            3rd row indentation and the indenting of version
                            overwrites them with spaces; this hides that */
-                        vx = $c.i32($c.addu64($c.u64(tty_status[BEFORE][BL.CONDITION].x), tty_status[BEFORE][BL.CONDITION].lth));
+                        const vx = $c.i32($c.addu64($c.u64(tty_status[BEFORE][BL.CONDITION].x), tty_status[BEFORE][BL.CONDITION].lth));
                         if (i > 0 && fieldorder.get(row)[i - 1 | 0] === BL.CONDITION && x !== vx) {
                             x = vx;
                             await tty_curs($G.WIN_STATUS, x, y);
                         }
                         /* indent version to right justify it */
-                        vstart = $c.i32($c.sub64(cw.cols, $c.i32(tty_status[NOW][idx].lth)));
+                        const vstart = $c.i32($c.sub64(cw.cols, $c.i32(tty_status[NOW][idx].lth)));
                         if (x < vstart) {
                             do {
                                 if (dat$2.get(x - 1 | 0) !== 32) {

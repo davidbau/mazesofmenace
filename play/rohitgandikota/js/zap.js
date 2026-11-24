@@ -321,7 +321,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
 import { OCLASSES } from './objects_data.js';
 import { DEADMONSTER, is_vampshifter } from './monst.js';
 import { killed, monkilled, seemimic, shieldeff_mon, wakeup,
-         wake_nearto, healmon, newcham, validspecmon, xkilled,
+         wake_nearto, healmon, newcham, xkilled,
          set_ustuck, unstuck } from './mon.js';
 import { ONAMES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
@@ -349,7 +349,7 @@ import { livelog_add, Norep, pline_The, You, Your, You_feel,
 import { pline } from './display.js';
 import { An, The, distant_name, vtense, xname, Yname2, yname, makeplural,
          Tobjnam, Yobjnam2, otense } from './objnam.js';
-import { Monnam, mon_nam, noit_mon_nam, hliquid } from './do_name.js';
+import { Monnam, mon_nam, hliquid } from './do_name.js';
 import { canseemon, canspotmon } from './display.js';
 import { engulfing_u } from './const.js';
 import { nothing_happens, ECMD_OK, ECMD_TIME, ECMD_CANCEL, NODIR, IMMEDIATE,
@@ -385,7 +385,6 @@ import { create_gas_cloud } from './region.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { boolean_option } from './options.js';
 import { finish_meating } from './dogmove.js';
-import { name_to_monplus } from './mondata.js';
 import { del_engr, engr_at, make_engr_at, random_engraving, rloc_engr,
          wipe_engr_at } from './engrave.js';
 import { ceiling, surface } from './dungeon.js';
@@ -2384,7 +2383,7 @@ export async function poly_obj(obj, id) {
          * equivalent to calling freeinv() on obj and addinv_nomerge()
          * on otmp, while doing an in-place swap of the actual objects.
          */
-        freeinv_core(obj);
+        await freeinv_core(obj);
         await addinv_core1(otmp);
         await addinv_core2(otmp);
         /*
@@ -2407,7 +2406,7 @@ export async function poly_obj(obj, id) {
             /* if the new form can be worn in the same slot, make it so */
             if ((new_wornmask & W_WEP) !== 0) {
                 if (was_twohanded || !bimanual(otmp) || !game.u.uarms)
-                    setuwep(otmp);
+                    await setuwep(otmp);
                 if (was_twoweap && game.u.uwep && !bimanual(game.u.uwep))
                     set_twoweap(true); /* u.twoweap = TRUE */
             } else if ((new_wornmask & W_SWAPWEP) !== 0) {
@@ -2666,7 +2665,7 @@ async function stone_to_flesh_obj(obj) /* nonnull */
                 while ((item = (obj.cobj && obj.cobj[0])) != null) {
                     bypass_obj(item); /* make stone-to-flesh miss it */
                     obj_extract_self(item);
-                    place_object(item, oox, ooy);
+                    await place_object(item, oox, ooy);
                 }
                 obj = await poly_obj(obj, ONAMES.CORPSE);
             }
@@ -3031,7 +3030,7 @@ export async function bhitpile(obj, fhito, tx, ty, zz) {
     let prevotyp = ONAMES.BOULDER;
     for (let otmp = game.level.objectAt(tx, ty); otmp; otmp = otmp.nexthere) {
         if (otmp.otyp === ONAMES.BOULDER && prevotyp !== ONAMES.BOULDER) {
-            recreate_pile_at(tx, ty);
+            await recreate_pile_at(tx, ty);
             break;
         }
         prevotyp = otmp.otyp;
@@ -3051,36 +3050,6 @@ export async function zapwrapup() {
     if (obj_zapped)
         await You_feel('shuddering vibrations.');
     obj_zapped = false;
-}
-
-// src/mon.c:5077 wiz_force_cham_form(), the debug-only monster polymorph
-// selector. The ordinary path remains random. A named form is checked with
-// the same special-monster rules before newcham receives it.
-async function controlled_newcham(mtmp, ncflags) {
-    if (!(game.wizard && game.flags?.monpolycontrol))
-        return await newcham(mtmp, null, ncflags);
-
-    let prompt = `Change ${noit_mon_nam(mtmp)} @ <${mtmp.mx},${mtmp.my}> into what?`;
-    let tryct = 5;
-    do {
-        if (tryct === 4)
-            prompt = prompt.replace(/ into what\?$/, ' into what kind of monster?');
-
-        const answer = mungspaces(await getlin(prompt));
-        if (answer[0] === '\x1b' || answer === '*'
-            || answer.toLowerCase() === 'random')
-            break;
-
-        const mndx = name_to_monplus(answer, null, null);
-        if (mndx !== NON_PM && validspecmon(mtmp, mndx))
-            return await newcham(mtmp, game.mons[mndx], ncflags);
-
-        await pline("It can't become that.");
-    } while (--tryct > 0);
-
-    if (!tryct)
-        await pline("That's enough tries!");
-    return await newcham(mtmp, null, ncflags);
 }
 
 // src/zap.c:160 bhitm(); immediate wand or spell effect on a monster
@@ -3229,7 +3198,7 @@ export async function bhitm(mtmp, otmp) {
                     ncflags |= NC_VIA_WAND_OR_SPELL;
                 if (give_msg)
                     ncflags |= NC_SHOW_MSG;
-                if ((await controlled_newcham(mtmp, ncflags)) !== 0
+                if ((await newcham(mtmp, null, ncflags)) !== 0
                            /* if shapechange failed because there aren't
                               enough eligible candidates (most likely for
                               vampshifter), try reverting to original form */
@@ -4594,7 +4563,7 @@ export async function melt_ice(x, y, msg = null) {
             obj.quan = 1;
             obj.owt = weight(obj);
             obj.opoisoned = 0;
-            place_object(obj, x, y);
+            await place_object(obj, x, y);
             stackobj(obj);
             deltrap(trap);
         } else if (trap.ttyp !== MAGIC_PORTAL
@@ -4717,7 +4686,7 @@ export async function zap_over_floor(
                 rangemod -= 3;
                 lev.typ = ROOM, lev.flags = 0;
                 const { maketrap } = await import('./mklev.js');
-                t = maketrap(x, y, PIT);
+                t = await maketrap(x, y, PIT);
                 /*if (t) -- this was before the vapor cloud was added --
                       t->tseen = 1;*/
                 if (see_it)
@@ -6397,7 +6366,7 @@ export async function fracture_rock(obj) /* no texts here! */
 
     if (obj.where === OBJ_FLOOR) {
         obj_extract_self(obj); /* move rocks back on top */
-        place_object(obj, obj.ox, obj.oy);
+        await place_object(obj, obj.ox, obj.oy);
         if (!does_block(obj.ox, obj.oy, game.level.at(obj.ox, obj.oy))) {
             unblock_point(obj.ox, obj.oy);
             /* immediately update the display, in case this fracturing was
@@ -6423,11 +6392,7 @@ export async function break_statue(obj) {
     /* drop any objects contained inside the statue */
     while ((item = (obj.cobj || [])[0]) != null) {
         obj_extract_self(item);
-        // C place_object applies this to each released object. The shared
-        // JS placement helper currently only updates the floor chain.
-        const { obj_no_longer_held } = await import('./do.js');
-        await obj_no_longer_held(item);
-        place_object(item, obj.ox, obj.oy);
+        await place_object(item, obj.ox, obj.oy);
     }
     if (by_you && Role_if(PMNAMES.PM_ARCHEOLOGIST)
         && (obj.spe & CORPSTAT_HISTORIC)) {

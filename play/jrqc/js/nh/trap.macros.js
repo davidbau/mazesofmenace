@@ -18,23 +18,23 @@ export function dealloc_trap(trap) {
     $c.free(trap);
 }
 export function is_pit(ttyp) {
-    return (ttyp | 0) === PIT || (ttyp | 0) === SPIKED_PIT ? 1 : 0;
+    return ttyp === PIT || ttyp === SPIKED_PIT ? 1 : 0;
 }
 export function is_hole(ttyp) {
-    return (ttyp | 0) === HOLE || (ttyp | 0) === TRAPDOOR ? 1 : 0;
+    return ttyp === HOLE || ttyp === TRAPDOOR ? 1 : 0;
 }
 export function unhideable_trap(ttyp) {
-    return (ttyp | 0) === HOLE ? 1 : 0;
+    return ttyp === HOLE ? 1 : 0;
 }
 export function undestroyable_trap(ttyp) {
-    return (ttyp | 0) === MAGIC_PORTAL || (ttyp | 0) === VIBRATING_SQUARE ? 1 : 0;
+    return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE ? 1 : 0;
 }
 export function is_magical_trap(ttyp) {
-    return (ttyp | 0) === TELEP_TRAP || (ttyp | 0) === LEVEL_TELEP || (ttyp | 0) === MAGIC_TRAP || (ttyp | 0) === ANTI_MAGIC || (ttyp | 0) === POLY_TRAP ? 1 : 0;
+    return ttyp === TELEP_TRAP || ttyp === LEVEL_TELEP || ttyp === MAGIC_TRAP || ttyp === ANTI_MAGIC || ttyp === POLY_TRAP ? 1 : 0;
 }
 export function is_xport(ttyp) {
-    return (ttyp | 0) >= TELEP_TRAP && (ttyp | 0) <= MAGIC_PORTAL ? 1 : 0;
+    return ttyp >= TELEP_TRAP && ttyp <= MAGIC_PORTAL ? 1 : 0;
 }
 export function fixed_tele_trap(t) {
-    return (t.ttyp | 0) === TELEP_TRAP && isok(t.launch.x, t.launch.y) ? 1 : 0;
+    return t.ttyp === TELEP_TRAP && isok(t.launch.x, t.launch.y) ? 1 : 0;
 }

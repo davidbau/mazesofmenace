@@ -858,8 +858,7 @@ export async function attack_checks(mtmp, wep) {
     }
 
     if (game.flags?.confirm !== false && mtmp.mpeaceful
-        && !game.u.uprops?.CONFUSION && !game.u.uprops?.HALLUC
-        && !game.u.uprops?.STUNNED) {
+        && !Confusion() && !Hallucination() && !Stunned()) {
         /* Intelligent chaotic weapons (Stormbringer) want blood */
         if (is_art(wep, ART_STORMBRINGER)) {
             game.override_confirmation = true;

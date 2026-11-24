@@ -290,12 +290,11 @@ import { watch_dig } from './dig.js';
 import { fillholetyp } from './dig.js';
 import { liquid_flow } from './dig.js';
 import { digactualhole } from './dig.js';
-import { spot_stop_timers } from './timeout.js';
+import { spot_stop_timers, MELT_ICE_AWAY } from './timeout.js';
 import { Can_dig_down } from './dungeon.js';
 import { DIGCHECK_FAILED } from './const.js';
 import { DIGCHECK_FAIL_BOULDER } from './const.js';
 import { IS_WALL } from './const.js';
-import { MELT_ICE_AWAY } from './const.js';
 import { ROOM } from './const.js';
 import { PIT } from './const.js';
 import { HOLE } from './const.js';
@@ -963,7 +962,7 @@ export async function use_whip(obj) {
                 case 2:
                     /* to floor near you */
                     await You(`yank ${yname(otmp)} to the ${surface(game.u.ux, game.u.uy)}!`);
-                    place_object(otmp, game.u.ux, game.u.uy);
+                    await place_object(otmp, game.u.ux, game.u.uy);
                     stackobj(otmp);
                     break;
                 case 3:
@@ -981,7 +980,7 @@ export async function use_whip(obj) {
                            OBJ_FREE; end of game cleanup will panic if
                            it isn't part of current level; plus it would
                            be missing from bones, so put it on the floor */
-                        place_object(otmp, game.u.ux, game.u.uy); /* but don't stack */
+                        await place_object(otmp, game.u.ux, game.u.uy); /* but don't stack */
 
                         await instapetrify(kbuf);
                         /* life-saved; free the corpse again */
@@ -995,7 +994,7 @@ export async function use_whip(obj) {
                     await You(`yank ${the(onambuf)} from ${
                         s_suffix(mon_nam(mtmp))} ${mon_hand}!`);
                     await obj_no_longer_held(otmp);
-                    place_object(otmp, mtmp.mx, mtmp.my);
+                    await place_object(otmp, mtmp.mx, mtmp.my);
                     stackobj(otmp);
                     break;
                 }
@@ -2391,7 +2390,7 @@ export function unfixable_trouble_count(is_horn) {
        so don't count it as a trouble which can't be fixed */
     if (props.SICK && (!is_horn || ((props.SICK | 0) & ~TIMEOUT) !== 0))
         unfixable_trbl++;
-    if (props.STUNNED && (!is_horn || ((intr.HStun | 0) & ~TIMEOUT) !== 0))
+    if (Stunned() && (!is_horn || ((intr.HStun | 0) & ~TIMEOUT) !== 0))
         unfixable_trbl++;
     if (props.CONFUSION
         && (!is_horn || ((intr.HConfusion | 0) & ~TIMEOUT) !== 0))

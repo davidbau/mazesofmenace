@@ -24,9 +24,9 @@ export async function minetn4_level() {
     /* dat/nhlib.lua:24 align — shuffled by load_special; Lua is 1-indexed */
     const align = (n) => game.nhlib_align[n - 1];
 
-    des.room({ type: 'ordinary', lit: 1, x: 3, y: 3,
+    await des.room({ type: 'ordinary', lit: 1, x: 3, y: 3,
                xalign: 'center', yalign: 'center', w: 30, h: 15,
-               contents: () => {
+               contents: async () => {
                    des.feature('fountain', 8, 7);
                    des.feature('fountain', 18, 7);
 
@@ -43,22 +43,22 @@ export async function minetn4_level() {
                                              wall: 'south' });
                               } });
 
-                   des.room({ type: 'temple', lit: 1, x: 11, y: 3,
+                   await des.room({ type: 'temple', lit: 1, x: 11, y: 3,
                               w: 5, h: 4,
-                              contents: () => {
+                              contents: async () => {
                                   des.door({ state: 'closed',
                                              wall: 'south' });
                                   des.altar({ x: 2, y: 1, align: align(1),
                                               type: 'shrine' });
-                                  des.monster('gnomish wizard');
-                                  des.monster('gnomish wizard');
+                                  await des.monster('gnomish wizard');
+                                  await des.monster('gnomish wizard');
                               } });
 
-                   des.room({ type: 'ordinary', x: 19, y: 2, w: 2, h: 2,
-                              contents: () => {
+                   await des.room({ type: 'ordinary', x: 19, y: 2, w: 2, h: 2,
+                              contents: async () => {
                                   des.door({ state: 'closed',
                                              wall: 'south' });
-                                  des.monster('G');
+                                  await des.monster('G');
                               } });
 
                    des.room({ type: 'candle shop', lit: 1, x: 22, y: 2,
@@ -68,11 +68,11 @@ export async function minetn4_level() {
                                              wall: 'south' });
                               } });
 
-                   des.room({ type: 'ordinary', x: 26, y: 2, w: 2, h: 2,
-                              contents: () => {
+                   await des.room({ type: 'ordinary', x: 26, y: 2, w: 2, h: 2,
+                              contents: async () => {
                                   des.door({ state: 'locked',
                                              wall: 'east' });
-                                  des.monster('G');
+                                  await des.monster('G');
                               } });
 
                    des.room({ type: 'tool shop', chance: 90, lit: 1,
@@ -82,14 +82,14 @@ export async function minetn4_level() {
                                              wall: 'north' });
                               } });
 
-                   des.room({ type: 'ordinary', x: 8, y: 11, w: 2, h: 2,
-                              contents: () => {
+                   await des.room({ type: 'ordinary', x: 8, y: 11, w: 2, h: 2,
+                              contents: async () => {
                                   des.door({ state: 'locked',
                                              wall: 'south' });
-                                  des.monster('kobold shaman');
-                                  des.monster('kobold shaman');
-                                  des.monster('kitten');
-                                  des.monster('f');
+                                  await des.monster('kobold shaman');
+                                  await des.monster('kobold shaman');
+                                  await des.monster('kitten');
+                                  await des.monster('f');
                               } });
 
                    des.room({ type: monkfoodshop(), chance: 90, lit: 1,
@@ -105,11 +105,11 @@ export async function minetn4_level() {
                                              wall: 'west' });
                               } });
 
-                   des.room({ type: 'ordinary', x: 20, y: 10, w: 2, h: 2,
-                              contents: () => {
+                   await des.room({ type: 'ordinary', x: 20, y: 10, w: 2, h: 2,
+                              contents: async () => {
                                   des.door({ state: 'locked',
                                              wall: 'north' });
-                                  des.monster('G');
+                                  await des.monster('G');
                               } });
 
                    des.room({ type: 'shop', chance: 90, lit: 1, x: 23, y: 10,
@@ -119,31 +119,31 @@ export async function minetn4_level() {
                                              wall: 'north' });
                               } });
 
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watch captain', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watch captain', peaceful: 1 });
                } });
 
     des.room({ type: 'ordinary', contents: () => {
         des.stair('up');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.stair('down');
-        des.trap();
-        des.monster('gnome');
-        des.monster('gnome');
+        await des.trap();
+        await des.monster('gnome');
+        await des.monster('gnome');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
-        des.monster('dwarf');
+    await des.room({ type: 'ordinary', contents: async () => {
+        await des.monster('dwarf');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
-        des.trap();
-        des.monster('gnome');
+    await des.room({ type: 'ordinary', contents: async () => {
+        await des.trap();
+        await des.monster('gnome');
     } });
 
     des.random_corridors();

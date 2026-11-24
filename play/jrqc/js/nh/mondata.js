@@ -67,14 +67,13 @@ const crawl = $c.nulls(4);
  * @param {$T.permonst | null} ptr struct permonst *
  */
 export function set_mon_data(mon, ptr) {   // mondata.c:13
-    let new_speed = 0, old_speed = 0, movement_p = null;
-    old_speed = mon.data ? mon.data.mmove : 0;
-    movement_p = $c.peq(mon, gy.youmonst) ? new $c.FieldRef(u, "umovement", "i16") : new $c.FieldRef(mon, "movement", "i16");
+    const old_speed = mon.data ? mon.data.mmove : 0;
+    const movement_p = $c.peq(mon, gy.youmonst) ? new $c.FieldRef(u, "umovement", "i16") : new $c.FieldRef(mon, "movement", "i16");
     mon.data = ptr;
     mon.mnum = $c.i16(ptr.pmidx);
     if (movement_p.get(0)) {
         /* used to adjust poly'd hero as well as monsters */
-        new_speed = ptr.mmove;
+        const new_speed = ptr.mmove;
         /* prorate unused movement if new form is slower so that
            it doesn't get extra moves leftover from previous form;
            if new form is faster, leave unused movement as is */
@@ -101,7 +100,7 @@ export function set_mon_data(mon, ptr) {   // mondata.c:13
  */
 export function attacktype_fordmg(ptr, atyp, dtyp) {   // mondata.c:42
     let a = null;
-    for (a = $c.relem(ptr.mattk, 0); $c.pcmp(a, $c.relem(ptr.mattk, NATTK)) < 0; a = $c.radd(a, 1)) {
+    for (a = ptr.mattk[0]; $c.pcmp(a, $c.relem(ptr.mattk, NATTK)) < 0; a = $c.radd(a, 1)) {
         if (a.aatyp === atyp && (dtyp === AD.ANY || a.adtyp === dtyp)) {
             return a;
         }
@@ -115,7 +114,7 @@ export function attacktype_fordmg(ptr, atyp, dtyp) {   // mondata.c:42
  * @returns {number} boolean
  */
 export function attacktype(ptr, atyp) {   // mondata.c:54
-    return $c.i8(attacktype_fordmg(ptr, atyp, AD.ANY) ? TRUE : FALSE);
+    return attacktype_fordmg(ptr, atyp, AD.ANY) ? TRUE : FALSE;
 }
 /* returns True if monster doesn't attack, False if it does */
 /**
@@ -123,8 +122,8 @@ export function attacktype(ptr, atyp) {   // mondata.c:54
  * @returns {number} boolean
  */
 export function noattacks(ptr) {   // mondata.c:61
-    let i = 0, mattk = null;
-    mattk = $c.relem(ptr.mattk, 0);
+    let i = 0;
+    const mattk = ptr.mattk[0];
     for (i = 0; i < NATTK; i = i + 1 | 0) {
         /* AT_BOOM "passive attack" (gas spore's explosion upon death)
            isn't an attack as far as our callers are concerned */
@@ -144,7 +143,7 @@ export function noattacks(ptr) {   // mondata.c:61
  */
 export function poly_when_stoned(ptr) {   // mondata.c:80
     /* non-stone golems turn into stone golems unless latter is genocided */
-    return $c.i8(is_golem(ptr) && !$c.peq(ptr, $c.relem(mons, PM.STONE_GOLEM)) && !(svm.mvitals[PM.STONE_GOLEM].mvflags & G_GENOD) ? 1 : 0);
+    return is_golem(ptr) && ptr !== mons[PM.STONE_GOLEM] && !(svm.mvitals[PM.STONE_GOLEM].mvflags & G_GENOD) ? 1 : 0;
     /* allow G_EXTINCT */
 }
 /* is 'mon' (possibly youmonst) protected against damage type 'adtype' via
@@ -155,16 +154,16 @@ export function poly_when_stoned(ptr) {   // mondata.c:80
  * @returns {Promise<number>} boolean
  */
 export async function defended(mon, adtyp) {   // mondata.c:91
-    let o = null, otemp = new $T.obj(), mndx = 0, is_you = 0;
-    is_you = $c.i8($c.peq(mon, gy.youmonst) ? 1 : 0);
+    let otemp = new $T.obj();
+    const is_you = $c.peq(mon, gy.youmonst) ? 1 : 0;
     /* is 'mon' wielding an artifact that protects against 'adtyp'? */
-    o = is_you ? $G.uwep : mon.mw;
+    let o = is_you ? $G.uwep : mon.mw;
     if (o && o.oartifact && defends(adtyp, o)) {
         return TRUE;
     }
     /* if 'mon' is an adult dragon, treat it as if it was wearing scales
        so that it has the same benefit as a hero wearing dragon scales */
-    mndx = mon.data.pmidx;
+    const mndx = mon.data.pmidx;
     if (mndx >= PM.GRAY_DRAGON && mndx <= PM.YELLOW_DRAGON) {
         /* a dragon is its own suit...  if mon is poly'd hero, we don't
            care about embedded scales (uskin) because being a dragon with
@@ -193,11 +192,10 @@ export async function defended(mon, adtyp) {   // mondata.c:91
  * @returns {Promise<number>} boolean
  */
 export async function Resists_Elem(mon, propindx) {   // mondata.c:129
-    let o = null, slotmask = 0, is_you = 0, u_resist = 0, damgtype = 0, rsstmask = 0;
-    is_you = $c.i8($c.peq(mon, gy.youmonst) ? 1 : 0);
-    u_resist = 0;
-    damgtype = 0;
-    rsstmask = 0;
+    const is_you = $c.peq(mon, gy.youmonst) ? 1 : 0;
+    let u_resist = 0;
+    let damgtype = 0;
+    let rsstmask = 0;
     /*
      * Main damage/resistance types, mostly matching dragon breath values.
      *  propindx = property index, fire (1), cold, (2) through stone (8);
@@ -240,13 +238,13 @@ export async function Resists_Elem(mon, propindx) {   // mondata.c:129
         return TRUE;
     }
     /* check for resistance granted by wielded weapon */
-    o = is_you ? $G.uwep : mon.mw;
+    let o = is_you ? $G.uwep : mon.mw;
     if (o && o.oartifact && defends(damgtype, o)) {
         return TRUE;
     }
     /* check for resistance granted by worn or carried items */
     o = is_you ? gi.invent : mon.minvent;
-    slotmask = W_ARMOR | W_ACCESSORY;
+    let slotmask = W_ARMOR | W_ACCESSORY;
     /* assumes monsters don't wield non-weapons */
     if (!is_you || $G.uwep && ($G.uwep.oclass === WEAPON_CLASS || is_weptool($G.uwep))) {
         slotmask = $c.or64(slotmask, W.WEP);
@@ -270,10 +268,9 @@ export async function Resists_Elem(mon, propindx) {   // mondata.c:129
  * @returns {Promise<number>} boolean
  */
 export async function resists_drli(mon) {   // mondata.c:201
-    let ptr = null;
-    ptr = mon.data;
+    const ptr = mon.data;
     /* is_were() doesn't handle hero in human form */
-    if (is_undead(ptr) || is_demon(ptr) || is_were(ptr) || $c.peq(mon, gy.youmonst) && u.ulycn >= LOW_PM || $c.peq(ptr, $c.relem(mons, PM.DEATH)) || is_vampshifter(mon)) {
+    if (is_undead(ptr) || is_demon(ptr) || is_were(ptr) || $c.peq(mon, gy.youmonst) && u.ulycn >= LOW_PM || ptr === mons[PM.DEATH] || is_vampshifter(mon)) {
         return TRUE;
     }
     return await defended(mon, AD.DRLI);
@@ -284,21 +281,20 @@ export async function resists_drli(mon) {   // mondata.c:201
  * @returns {number} boolean
  */
 export function resists_magm(mon) {   // mondata.c:215
-    let ptr = null, is_you = 0, slotmask = 0, o = null;
-    ptr = mon.data;
-    is_you = $c.i8($c.peq(mon, gy.youmonst) ? 1 : 0);
+    const ptr = mon.data;
+    const is_you = $c.peq(mon, gy.youmonst) ? 1 : 0;
     /* as of 3.2.0:  gray dragons, Angels, Oracle, Yeenoghu */
-    if (dmgtype(ptr, AD.MAGM) || $c.peq(ptr, $c.relem(mons, PM.BABY_GRAY_DRAGON)) || dmgtype(ptr, AD.RBRE)) {   /* Chromatic Dragon */
+    if (dmgtype(ptr, AD.MAGM) || ptr === mons[PM.BABY_GRAY_DRAGON] || dmgtype(ptr, AD.RBRE)) {   /* Chromatic Dragon */
         return TRUE;
     }
     /* check for magic resistance granted by wielded weapon */
-    o = is_you ? $G.uwep : mon.mw;
+    let o = is_you ? $G.uwep : mon.mw;
     if (o && o.oartifact && defends(AD.MAGM, o)) {
         return TRUE;
     }
     /* check for magic resistance granted by worn or carried items */
     o = is_you ? gi.invent : mon.minvent;
-    slotmask = W_ARMOR | W_ACCESSORY;
+    let slotmask = W_ARMOR | W_ACCESSORY;
     /* assumes monsters don't wield non-weapons */
     if (!is_you || $G.uwep && ($G.uwep.oclass === WEAPON_CLASS || is_weptool($G.uwep))) {
         slotmask = $c.or64(slotmask, W.WEP);
@@ -319,12 +315,11 @@ export function resists_magm(mon) {   // mondata.c:215
  * @returns {Promise<number>} boolean
  */
 export async function resists_blnd(mon) {   // mondata.c:248
-    let ptr = null, is_you = 0;
-    ptr = mon.data;
-    is_you = $c.i8($c.peq(mon, gy.youmonst) ? 1 : 0);
+    const ptr = mon.data;
+    const is_you = $c.peq(mon, gy.youmonst) ? 1 : 0;
     /* BUG: temporary sleep sets mfrozen, but since
             paralysis does too, we can't check it */
-    if (is_you ? Blind() || Unaware() : mon.mblinded | 0 || !mon.mcansee || !haseyes(ptr) || mon.msleeping | 0) {
+    if (is_you ? Blind() || Unaware() : mon.mblinded || !mon.mcansee || !haseyes(ptr) || mon.msleeping) {
         return TRUE;
     }
     /* yellow light, Archon; !dust vortex, !cobra, !raven */
@@ -350,9 +345,8 @@ export async function resists_blnd(mon) {   // mondata.c:248
  * @returns {number} boolean
  */
 export function resists_blnd_by_arti(mon) {   // mondata.c:278
-    let o = null, is_you = 0;
-    is_you = $c.i8($c.peq(mon, gy.youmonst) ? 1 : 0);
-    o = is_you ? $G.uwep : mon.mw;
+    const is_you = $c.peq(mon, gy.youmonst) ? 1 : 0;
+    let o = is_you ? $G.uwep : mon.mw;
     if (o && o.oartifact && defends(AD.BLND, o)) {
         return TRUE;
     }
@@ -381,11 +375,10 @@ export function resists_blnd_by_arti(mon) {   // mondata.c:278
  * @returns {Promise<number>} boolean
  */
 export async function can_blnd(magr, mdef, aatyp, obj) {   // mondata.c:305
-    let is_you = 0, check_visor = 0, o = null;
     /* NULL == no specific aggressor */
     /* aatyp == AT_WEAP, AT_SPIT */
-    is_you = $c.i8($c.peq(mdef, gy.youmonst) ? 1 : 0);
-    check_visor = FALSE;
+    const is_you = $c.peq(mdef, gy.youmonst) ? 1 : 0;
+    let check_visor = FALSE;
     /* no eyes protect against all attacks for now */
     if (!haseyes(mdef.data)) {
         return FALSE;
@@ -398,7 +391,7 @@ export async function can_blnd(magr, mdef, aatyp, obj) {   // mondata.c:305
        a saying expressed in Latin rather than a zoological observation:
        "a crow will not pluck out the eye of another crow"
        so prevent ravens from blinding each other */
-    if (magr && $c.peq(magr.data, $c.relem(mons, PM.RAVEN)) && $c.peq(mdef.data, $c.relem(mons, PM.RAVEN))) {
+    if (magr && magr.data === mons[PM.RAVEN] && mdef.data === mons[PM.RAVEN]) {
         return FALSE;
     }
     switch (aatyp) {
@@ -409,10 +402,10 @@ export async function can_blnd(magr, mdef, aatyp, obj) {   // mondata.c:305
         case AT.BREA:
             /* assumed to be lightning */
             /* light-based attacks may be cancelled or resisted */
-            if (magr && magr.mcan | 0) {
+            if (magr && magr.mcan) {
                 return FALSE;
             }
-            return $c.i8(!await resists_blnd(mdef) ? 1 : 0);
+            return !await resists_blnd(mdef) ? 1 : 0;
         case AT.WEAP:
         case AT.SPIT:
         case AT.NONE:
@@ -432,7 +425,7 @@ export async function can_blnd(magr, mdef, aatyp, obj) {   // mondata.c:305
             } else {
                 return FALSE;   /* other objects cannot cause blindness yet */
             }
-            if ($c.peq(magr, gy.youmonst) && u.uswallow | 0) {
+            if ($c.peq(magr, gy.youmonst) && u.uswallow) {
                 return FALSE;   /* can't affect eyes while inside monster */
             }
             break;
@@ -440,7 +433,7 @@ export async function can_blnd(magr, mdef, aatyp, obj) {   // mondata.c:305
             if (is_you && (u.uprops[BLINDED].extrinsic || Unaware() || u.ucreamed)) {
                 return FALSE;
             }
-            if (!is_you && mdef.msleeping | 0) {
+            if (!is_you && mdef.msleeping) {
                 return FALSE;
             }
             break;
@@ -449,7 +442,7 @@ export async function can_blnd(magr, mdef, aatyp, obj) {   // mondata.c:305
             if (is_you && $G.ublindf) {
                 return FALSE;
             }
-            if ($c.peq(magr, gy.youmonst) && u.uswallow | 0) {
+            if ($c.peq(magr, gy.youmonst) && u.uswallow) {
                 return FALSE;   /* can't affect eyes while inside monster */
             }
             check_visor = TRUE;
@@ -457,7 +450,7 @@ export async function can_blnd(magr, mdef, aatyp, obj) {   // mondata.c:305
         case AT.TUCH:
         case AT.STNG:
             /* some physical, blind-inducing attacks can be cancelled */
-            if (magr && magr.mcan | 0) {
+            if (magr && magr.mcan) {
                 return FALSE;
             }
             break;
@@ -466,7 +459,7 @@ export async function can_blnd(magr, mdef, aatyp, obj) {   // mondata.c:305
     }
     /* check if wearing a visor (only checked if visor might help) */
     if (check_visor) {
-        o = $c.peq(mdef, gy.youmonst) ? gi.invent : mdef.minvent;
+        let o = $c.peq(mdef, gy.youmonst) ? gi.invent : mdef.minvent;
         for (; o; o = o.nobj) {
             if ($c.and64(o.owornmask, W.ARMH) && await objdescr_is(o, $c.lit("visored helmet"))) {
                 return FALSE;
@@ -497,13 +490,13 @@ export function ranged_attk(ptr) {   // mondata.c:402
  * @returns {number} int
  */
 export function mstrength(ptr) {   // mondata.c:428
-    let i = 0, tmp2 = 0, n = 0, tmp = 0, tmp3 = 0;
-    tmp = ptr.mlevel;
+    let i = 0, tmp2 = 0;
+    let tmp = ptr.mlevel;
     if (tmp > 49) {   /* special fixed hp monster */
         tmp = $c.div32(Math.imul(2, tmp - 6 | 0), 4);
     }
     /* for creation in groups */
-    n = !!(ptr.geno & G_SGROUP) ? 1 : 0;
+    let n = !!(ptr.geno & G_SGROUP) ? 1 : 0;
     n = n + ((!!(ptr.geno & G_LGROUP) ? 1 : 0) << 1) | 0;
     /* for ranged attacks */
     if (mstrength_ranged_attk(ptr)) {
@@ -521,7 +514,7 @@ export function mstrength(ptr) {   // mondata.c:428
         n = n + (tmp2 === AT.MAGC ? 1 : 0) | 0;
         n = n + (tmp2 === AT.WEAP && $c.andu64(ptr.mflags2, M2.STRONG) ? 1 : 0) | 0;
         if (tmp2 === AT.EXPL) {
-            tmp3 = ptr.mattk[i].adtyp;
+            const tmp3 = ptr.mattk[i].adtyp;
             /* {freezing,flaming,shocking} spheres are fairly weak but
                can destroy equipment; {yellow,black} lights can't */
             n = n + (tmp3 === AD.COLD || tmp3 === AD.FIRE ? 3 : tmp3 === AD.ELEC ? 5 : 0) | 0;
@@ -535,7 +528,7 @@ export function mstrength(ptr) {   // mondata.c:428
         } else if ($c.strcmp(ptr.pmnames[NEUTRAL], $c.lit("grid bug"))) {
             n = n + (tmp2 !== AD.PHYS ? 1 : 0) | 0;
         }
-        n = n + (Math.imul(ptr.mattk[i].damd, ptr.mattk[i].damn) > 23 ? 1 : 0) | 0;
+        n = n + (ptr.mattk[i].damd * ptr.mattk[i].damn > 23 ? 1 : 0) | 0;
     }
     /* Leprechauns are a special case.  They have many hit dice so they can
        hit and are hard to kill, but they don't really do much damage. */
@@ -563,8 +556,8 @@ export function mstrength(ptr) {   // mondata.c:428
  * @returns {number} boolean
  */
 function mstrength_ranged_attk(ptr) {   // mondata.c:501
-    let i = 0, j = 0, atk_mask = 0;
-    atk_mask = 1 << AT.BREA | 1 << AT.SPIT | 1 << AT.GAZE;
+    let i = 0, j = 0;
+    const atk_mask = 1 << AT.BREA | 1 << AT.SPIT | 1 << AT.GAZE;
     for (i = 0; i < NATTK; i = i + 1 | 0) {
         if ((j = ptr.mattk[i].aatyp) >= AT.WEAP || j < 32 && (atk_mask & 1 << j) !== 0) {
             return TRUE;
@@ -579,7 +572,7 @@ function mstrength_ranged_attk(ptr) {   // mondata.c:501
  * @returns {number} boolean
  */
 export function mon_hates_silver(mon) {   // mondata.c:517
-    return $c.i8(is_vampshifter(mon) || hates_silver(mon.data) ? 1 : 0);
+    return is_vampshifter(mon) || hates_silver(mon.data) ? 1 : 0;
 }
 /* True if monster-type is especially affected by silver weapons */
 /**
@@ -587,7 +580,7 @@ export function mon_hates_silver(mon) {   // mondata.c:517
  * @returns {number} boolean
  */
 export function hates_silver(ptr) {   // mondata.c:524
-    return $c.i8(is_were(ptr) || ptr.mlet === S.VAMPIRE || is_demon(ptr) || $c.peq(ptr, $c.relem(mons, PM.SHADE)) || ptr.mlet === S.IMP && !$c.peq(ptr, $c.relem(mons, PM.TENGU)) ? 1 : 0);
+    return is_were(ptr) || ptr.mlet === S.VAMPIRE || is_demon(ptr) || ptr === mons[PM.SHADE] || ptr.mlet === S.IMP && ptr !== mons[PM.TENGU] ? 1 : 0;
 }
 /* True if specific monster is especially affected by blessed objects */
 /**
@@ -595,7 +588,7 @@ export function hates_silver(ptr) {   // mondata.c:524
  * @returns {number} boolean
  */
 export function mon_hates_blessings(mon) {   // mondata.c:533
-    return $c.i8(is_vampshifter(mon) || hates_blessings(mon.data) ? 1 : 0);
+    return is_vampshifter(mon) || hates_blessings(mon.data) ? 1 : 0;
 }
 /* True if monster-type is especially affected by blessed objects */
 /**
@@ -603,7 +596,7 @@ export function mon_hates_blessings(mon) {   // mondata.c:533
  * @returns {number} boolean
  */
 export function hates_blessings(ptr) {   // mondata.c:540
-    return $c.i8(is_undead(ptr) || is_demon(ptr) ? 1 : 0);
+    return is_undead(ptr) || is_demon(ptr) ? 1 : 0;
 }
 /* True if specific monster is especially affected by light-emitting weapons */
 /**
@@ -611,7 +604,7 @@ export function hates_blessings(ptr) {   // mondata.c:540
  * @returns {number} boolean
  */
 export function mon_hates_light(mon) {   // mondata.c:547
-    return $c.i8(hates_light(mon.data));
+    return hates_light(mon.data);
 }
 /* True iff the type of monster pass through iron bars */
 /**
@@ -621,7 +614,7 @@ export function mon_hates_light(mon) {   // mondata.c:547
 export function passes_bars(mptr) {   // mondata.c:554
     /* rust monsters and some puddings can destroy bars */
     /* rock moles can eat bars */
-    return $c.i8(passes_walls(mptr) || amorphous(mptr) || unsolid(mptr) || is_whirly(mptr) || verysmall(mptr) || dmgtype(mptr, AD.RUST) || dmgtype(mptr, AD.CORR) || metallivorous(mptr) || slithy(mptr) && !bigmonst(mptr) ? 1 : 0);
+    return passes_walls(mptr) || amorphous(mptr) || unsolid(mptr) || is_whirly(mptr) || verysmall(mptr) || dmgtype(mptr, AD.RUST) || dmgtype(mptr, AD.CORR) || metallivorous(mptr) || slithy(mptr) && !bigmonst(mptr) ? 1 : 0;
 }
 /* returns True if monster can blow (whistle, etc) */
 /**
@@ -668,15 +661,15 @@ export async function can_be_strangled(mon) {   // mondata.c:591
     if ($c.peq(mon, gy.youmonst)) {
         /* hero can't be mindless but poly'ing into mindless form can
            confer strangulation protection */
-        nobrainer = $c.i8(mindless(gy.youmonst.data));
-        nonbreathing = $c.i8(u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0 ? 1 : 0);
+        nobrainer = mindless(gy.youmonst.data);
+        nonbreathing = u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.BREATHLESS) !== 0 ? 1 : 0;
     } else {
-        nobrainer = $c.i8(mindless(mon.data));
+        nobrainer = mindless(mon.data);
         /* monsters don't wear amulets of magical breathing,
            so second part doesn't achieve anything useful... */
-        nonbreathing = $c.i8(breathless(mon.data) || (mamul = await which_armor(mon, W.AMUL)) !== null && mamul.otyp === AMULET_OF_MAGICAL_BREATHING ? 1 : 0);
+        nonbreathing = breathless(mon.data) || (mamul = await which_armor(mon, W.AMUL)) !== null && mamul.otyp === AMULET_OF_MAGICAL_BREATHING ? 1 : 0;
     }
-    return $c.i8(!nobrainer || !nonbreathing ? 1 : 0);
+    return !nobrainer || !nonbreathing ? 1 : 0;
 }
 /* returns True if monster can track well */
 /**
@@ -687,7 +680,7 @@ export function can_track(ptr) {   // mondata.c:623
     if (u_wield_art(ART.EXCALIBUR)) {
         return TRUE;
     }
-    return $c.i8(haseyes(ptr));
+    return haseyes(ptr);
 }
 /* creature will slide out of armor */
 /**
@@ -695,7 +688,7 @@ export function can_track(ptr) {   // mondata.c:623
  * @returns {number} boolean
  */
 export function sliparm(ptr) {   // mondata.c:632
-    return $c.i8(is_whirly(ptr) || ptr.msize <= MZ.SMALL || noncorporeal(ptr) ? 1 : 0);
+    return is_whirly(ptr) || ptr.msize <= MZ.SMALL || noncorporeal(ptr) ? 1 : 0;
 }
 /* creature will break out of armor */
 /**
@@ -707,7 +700,7 @@ export function breakarm(ptr) {   // mondata.c:640
         return FALSE;
     }
     /* special cases of humanoids that cannot wear suits */
-    return $c.i8(bigmonst(ptr) || ptr.msize > MZ.SMALL && !humanoid(ptr) || $c.peq(ptr, $c.relem(mons, PM.MARILITH)) || $c.peq(ptr, $c.relem(mons, PM.WINGED_GARGOYLE)) ? 1 : 0);
+    return bigmonst(ptr) || ptr.msize > MZ.SMALL && !humanoid(ptr) || ptr === mons[PM.MARILITH] || ptr === mons[PM.WINGED_GARGOYLE] ? 1 : 0;
 }
 /* creature sticks other creatures it hits */
 /**
@@ -715,7 +708,7 @@ export function breakarm(ptr) {   // mondata.c:640
  * @returns {number} boolean
  */
 export function sticks(ptr) {   // mondata.c:654
-    return $c.i8(dmgtype(ptr, AD.STCK) || dmgtype(ptr, AD.WRAP) && !attacktype(ptr, AT.ENGL) || attacktype(ptr, AT.HUGS) ? 1 : 0);
+    return dmgtype(ptr, AD.STCK) || dmgtype(ptr, AD.WRAP) && !attacktype(ptr, AT.ENGL) || attacktype(ptr, AT.HUGS) ? 1 : 0;
 }
 /* some monster-types can't vomit */
 /**
@@ -725,10 +718,10 @@ export function sticks(ptr) {   // mondata.c:654
 export function cantvomit(ptr) {   // mondata.c:663
     /* rats and mice are incapable of vomiting; likewise with horses;
        which other creatures have the same limitation? */
-    if (ptr.mlet === S.RODENT && !$c.peq(ptr, $c.relem(mons, PM.ROCK_MOLE)) && !$c.peq(ptr, $c.relem(mons, PM.WOODCHUCK))) {
+    if (ptr.mlet === S.RODENT && ptr !== mons[PM.ROCK_MOLE] && ptr !== mons[PM.WOODCHUCK]) {
         return TRUE;
     }
-    if ($c.peq(ptr, $c.relem(mons, PM.WARHORSE)) || $c.peq(ptr, $c.relem(mons, PM.HORSE)) || $c.peq(ptr, $c.relem(mons, PM.PONY))) {
+    if (ptr === mons[PM.WARHORSE] || ptr === mons[PM.HORSE] || ptr === mons[PM.PONY]) {
         return TRUE;
     }
     return FALSE;
@@ -766,7 +759,7 @@ export function num_horns(ptr) {   // mondata.c:678
  */
 export function dmgtype_fromattack(ptr, dtyp, atyp) {   // mondata.c:700
     let a = null;
-    for (a = $c.relem(ptr.mattk, 0); $c.pcmp(a, $c.relem(ptr.mattk, NATTK)) < 0; a = $c.radd(a, 1)) {
+    for (a = ptr.mattk[0]; $c.pcmp(a, $c.relem(ptr.mattk, NATTK)) < 0; a = $c.radd(a, 1)) {
         if (a.adtyp === dtyp && (atyp === AT.ANY || a.aatyp === atyp)) {
             return a;
         }
@@ -780,7 +773,7 @@ export function dmgtype_fromattack(ptr, dtyp, atyp) {   // mondata.c:700
  * @returns {number} boolean
  */
 export function dmgtype(ptr, dtyp) {   // mondata.c:712
-    return $c.i8(dmgtype_fromattack(ptr, dtyp, AT.ANY) ? TRUE : FALSE);
+    return dmgtype_fromattack(ptr, dtyp, AT.ANY) ? TRUE : FALSE;
 }
 /* returns the maximum damage a defender can do to the attacker via
    a passive defense */
@@ -790,8 +783,8 @@ export function dmgtype(ptr, dtyp) {   // mondata.c:712
  * @returns {Promise<number>} int
  */
 export async function max_passive_dmg(mdef, magr) {   // mondata.c:720
-    let i = 0, dmg = 0, multi2 = 0, adtyp = 0;
-    multi2 = 0;
+    let i = 0;
+    let multi2 = 0;
     /* each attack by magr can result in passive damage */
     for (i = 0; i < NATTK; i = i + 1 | 0) {
         switch (magr.data.mattk[i].aatyp) {
@@ -811,16 +804,16 @@ export async function max_passive_dmg(mdef, magr) {   // mondata.c:720
                 break;
         }
     }
-    dmg = 0;
+    let dmg = 0;
     for (i = 0; i < NATTK; i = i + 1 | 0) {
         if (mdef.data.mattk[i].aatyp === AT.NONE || mdef.data.mattk[i].aatyp === AT.BOOM) {
-            adtyp = mdef.data.mattk[i].adtyp;
+            const adtyp = mdef.data.mattk[i].adtyp;
             if (adtyp === AD.FIRE && completelyburns(magr.data) || adtyp === AD.DCAY && completelyrots(magr.data) || adtyp === AD.RUST && completelyrusts(magr.data)) {
                 dmg = magr.mhp;
             } else if (adtyp === AD.ACID && !await resists_acid(magr) || adtyp === AD.COLD && !await resists_cold(magr) || adtyp === AD.FIRE && !await resists_fire(magr) || adtyp === AD.ELEC && !await resists_elec(magr) || adtyp === AD.PHYS) {
                 dmg = mdef.data.mattk[i].damn;
                 if (!dmg) {
-                    dmg = mdef.data.mlevel + 1 | 0;
+                    dmg = mdef.data.mlevel + 1;
                 }
                 dmg = Math.imul(dmg, mdef.data.mattk[i].damd);
             }
@@ -837,105 +830,105 @@ export async function max_passive_dmg(mdef, magr) {   // mondata.c:720
  * @returns {number} boolean
  */
 export function same_race(pm1, pm2) {   // mondata.c:771
-    let let1 = 0, let2 = 0, m1 = 0, m2 = 0, prv = 0, nxt = 0;
-    let1 = pm1.mlet;
-    let2 = pm2.mlet;
+    let prv = 0, nxt = 0;
+    const let1 = pm1.mlet;
+    const let2 = pm2.mlet;
     if ($c.peq(pm1, pm2)) {
         return TRUE;   /* exact match */
     }
     /* player races have their own predicates */
     if (is_human(pm1)) {
-        return $c.i8(is_human(pm2));
+        return is_human(pm2);
     }
     if (is_elf(pm1)) {
-        return $c.i8(is_elf(pm2));
+        return is_elf(pm2);
     }
     if (is_dwarf(pm1)) {
-        return $c.i8(is_dwarf(pm2));
+        return is_dwarf(pm2);
     }
     if (is_gnome(pm1)) {
-        return $c.i8(is_gnome(pm2));
+        return is_gnome(pm2);
     }
     if (is_orc(pm1)) {
-        return $c.i8(is_orc(pm2));
+        return is_orc(pm2);
     }
     /* other creatures are less precise */
     if (is_giant(pm1)) {
-        return $c.i8(is_giant(pm2));   /* open to quibbling here */
+        return is_giant(pm2);   /* open to quibbling here */
     }
     if (is_golem(pm1)) {
-        return $c.i8(is_golem(pm2));   /* even moreso... */
+        return is_golem(pm2);   /* even moreso... */
     }
     if (is_mind_flayer(pm1)) {
-        return $c.i8(is_mind_flayer(pm2));
+        return is_mind_flayer(pm2);
     }
-    if (let1 === S.KOBOLD || $c.peq(pm1, $c.relem(mons, PM.KOBOLD_ZOMBIE)) || $c.peq(pm1, $c.relem(mons, PM.KOBOLD_MUMMY))) {
-        return $c.i8(let2 === S.KOBOLD || $c.peq(pm2, $c.relem(mons, PM.KOBOLD_ZOMBIE)) || $c.peq(pm2, $c.relem(mons, PM.KOBOLD_MUMMY)) ? 1 : 0);
+    if (let1 === S.KOBOLD || pm1 === mons[PM.KOBOLD_ZOMBIE] || pm1 === mons[PM.KOBOLD_MUMMY]) {
+        return let2 === S.KOBOLD || pm2 === mons[PM.KOBOLD_ZOMBIE] || pm2 === mons[PM.KOBOLD_MUMMY] ? 1 : 0;
     }
     if (let1 === S.OGRE) {
-        return $c.i8(let2 === S.OGRE ? 1 : 0);
+        return let2 === S.OGRE ? 1 : 0;
     }
     if (let1 === S.NYMPH) {
-        return $c.i8(let2 === S.NYMPH ? 1 : 0);
+        return let2 === S.NYMPH ? 1 : 0;
     }
     if (let1 === S.CENTAUR) {
-        return $c.i8(let2 === S.CENTAUR ? 1 : 0);
+        return let2 === S.CENTAUR ? 1 : 0;
     }
     if (is_unicorn(pm1)) {
-        return $c.i8(is_unicorn(pm2));
+        return is_unicorn(pm2);
     }
     if (let1 === S.DRAGON) {
-        return $c.i8(let2 === S.DRAGON ? 1 : 0);
+        return let2 === S.DRAGON ? 1 : 0;
     }
     if (let1 === S.NAGA) {
-        return $c.i8(let2 === S.NAGA ? 1 : 0);
+        return let2 === S.NAGA ? 1 : 0;
     }
     /* other critters get steadily messier */
     if (is_rider(pm1)) {
-        return $c.i8(is_rider(pm2));   /* debatable */
+        return is_rider(pm2);   /* debatable */
     }
     if (is_minion(pm1)) {
-        return $c.i8(is_minion(pm2));   /* [needs work?] */
+        return is_minion(pm2);   /* [needs work?] */
     }
     /* tengu don't match imps (first test handled case of both being tengu) */
-    if ($c.peq(pm1, $c.relem(mons, PM.TENGU)) || $c.peq(pm2, $c.relem(mons, PM.TENGU))) {
+    if (pm1 === mons[PM.TENGU] || pm2 === mons[PM.TENGU]) {
         return FALSE;
     }
     if (let1 === S.IMP) {
-        return $c.i8(let2 === S.IMP ? 1 : 0);
+        return let2 === S.IMP ? 1 : 0;
     } else if (let2 === S.IMP) {
         /* and minor demons (imps) don't match major demons */
         return FALSE;
     }
     if (is_demon(pm1)) {
-        return $c.i8(is_demon(pm2));
+        return is_demon(pm2);
     }
     if (is_undead(pm1)) {
         if (let1 === S.ZOMBIE) {
-            return $c.i8(let2 === S.ZOMBIE ? 1 : 0);
+            return let2 === S.ZOMBIE ? 1 : 0;
         }
         if (let1 === S.MUMMY) {
-            return $c.i8(let2 === S.MUMMY ? 1 : 0);
+            return let2 === S.MUMMY ? 1 : 0;
         }
         if (let1 === S.VAMPIRE) {
-            return $c.i8(let2 === S.VAMPIRE ? 1 : 0);
+            return let2 === S.VAMPIRE ? 1 : 0;
         }
         if (let1 === S.LICH) {
-            return $c.i8(let2 === S.LICH ? 1 : 0);
+            return let2 === S.LICH ? 1 : 0;
         }
         if (let1 === S.WRAITH) {
-            return $c.i8(let2 === S.WRAITH ? 1 : 0);
+            return let2 === S.WRAITH ? 1 : 0;
         }
         if (let1 === S.GHOST) {
-            return $c.i8(let2 === S.GHOST ? 1 : 0);
+            return let2 === S.GHOST ? 1 : 0;
         }
     } else if (is_undead(pm2)) {
         return FALSE;
     }
     /* check for monsters which grow into more mature forms */
     if (let1 === let2) {
-        m1 = pm1.pmidx;
-        m2 = pm2.pmidx;
+        const m1 = pm1.pmidx;
+        const m2 = pm2.pmidx;
         /* we know m1 != m2 (very first check above); test all smaller
            forms of m1 against m2, then all larger ones; don't need to
            make the corresponding tests for variants of m2 against m1 */
@@ -951,14 +944,14 @@ export function same_race(pm1, pm2) {   // mondata.c:771
         }
     }
     /* not caught by little/big handling */
-    if ($c.peq(pm1, $c.relem(mons, PM.GARGOYLE)) || $c.peq(pm1, $c.relem(mons, PM.WINGED_GARGOYLE))) {
-        return $c.i8($c.peq(pm2, $c.relem(mons, PM.GARGOYLE)) || $c.peq(pm2, $c.relem(mons, PM.WINGED_GARGOYLE)) ? 1 : 0);
+    if (pm1 === mons[PM.GARGOYLE] || pm1 === mons[PM.WINGED_GARGOYLE]) {
+        return pm2 === mons[PM.GARGOYLE] || pm2 === mons[PM.WINGED_GARGOYLE] ? 1 : 0;
     }
-    if ($c.peq(pm1, $c.relem(mons, PM.KILLER_BEE)) || $c.peq(pm1, $c.relem(mons, PM.QUEEN_BEE))) {
-        return $c.i8($c.peq(pm2, $c.relem(mons, PM.KILLER_BEE)) || $c.peq(pm2, $c.relem(mons, PM.QUEEN_BEE)) ? 1 : 0);
+    if (pm1 === mons[PM.KILLER_BEE] || pm1 === mons[PM.QUEEN_BEE]) {
+        return pm2 === mons[PM.KILLER_BEE] || pm2 === mons[PM.QUEEN_BEE] ? 1 : 0;
     }
     if (is_longworm(pm1)) {
-        return $c.i8(is_longworm(pm2));   /* handles tail */
+        return is_longworm(pm2);   /* handles tail */
     }
     /* [currently there's no reason to bother matching up
         assorted bugs and blobs with their closest variants] */
@@ -986,7 +979,7 @@ export async function name_to_mon(in_str, gender_name_var) {   // mondata.c:883
  * @returns {Promise<number>} int
  */
 export async function name_to_monplus(in_str, remainder_p, gender_name_var) {   // mondata.c:893
-    let i = 0, mntmp = 0, s = null, str = null, term = null, buf = new Int8Array(256), len = Int32Array.of(0), mgend = 0, matchgend = 0, slen = 0, exact_match = 0, namep = null, m_i_len = 0;
+    let i = 0, s = null, buf = new Int8Array(256), len = Int32Array.of(0), mgend = 0, namep = null;
     /* Be careful.  We must check the entire string in case it was
      * something such as "ettin zombie corpse".  The calling routine
      * doesn't know about the "corpse" until the monster name has
@@ -999,13 +992,13 @@ export async function name_to_monplus(in_str, remainder_p, gender_name_var) {   
      * This also permits plurals created by adding suffixes such as 's'
      * or 'es'.  Other plurals must still be handled explicitly.
      */
-    mntmp = NON_PM;
-    matchgend = -1;
-    exact_match = FALSE;
+    let mntmp = NON_PM;
+    let matchgend = -1;
+    let exact_match = FALSE;
     if (remainder_p) {
         remainder_p.set(0, null);
     }
-    str = $c.strcpy(new $c.Ptr(buf, 0), in_str);
+    let str = $c.strcpy(new $c.Ptr(buf, 0), in_str);
     if (!$c.strncmp(str, $c.lit("a "), 2)) {
         str = str.add(2);
     } else if (!$c.strncmp(str, $c.lit("an "), 3)) {
@@ -1013,8 +1006,8 @@ export async function name_to_monplus(in_str, remainder_p, gender_name_var) {   
     } else if (!$c.strncmp(str, $c.lit("the "), 4)) {
         str = str.add(4);
     }
-    slen = $c.strlen(str);
-    term = str.add($c.idx(slen));
+    let slen = $c.strlen(str);
+    const term = str.add($c.idx(slen));
     if ((s = strstri(str, $c.lit("vortices"))) !== null) {
         $c.strcpy(s.add(4), $c.lit("ex"));
     } else if (slen > 3 && !strncmpi(term.add(-3), $c.lit("ies"), -1) && (slen < 7 || strncmpi(term.add(-7), $c.lit("zombies"), -1))) {
@@ -1027,7 +1020,7 @@ export async function name_to_monplus(in_str, remainder_p, gender_name_var) {   
     slen = $c.strlen(str);   /* length possibly needs recomputing */
     {
         /* Alternate spellings */
-        for (namep = $c.relem(name_to_monplus$names, 0); namep.name; namep = $c.radd(namep, 1)) {
+        for (namep = name_to_monplus$names[0]; namep.name; namep = $c.radd(namep, 1)) {
             len[0] = $c.i32($c.strlen(namep.name));
             /* force full word (which could conceivably be possessive) */
             if (!strncmpi(str, namep.name, len[0]) && (!str.get(len[0]) || str.get(len[0]) === 32 || str.get(len[0]) === 39)) {
@@ -1046,7 +1039,7 @@ export async function name_to_monplus(in_str, remainder_p, gender_name_var) {   
             if (!mons[i].pmnames[mgend]) {
                 continue;
             }
-            m_i_len = $c.strlen(mons[i].pmnames[mgend]);
+            const m_i_len = $c.strlen(mons[i].pmnames[mgend]);
             if (m_i_len > $c.u64(len[0]) && !strncmpi(mons[i].pmnames[mgend], str, $c.i32(m_i_len))) {
                 if (m_i_len === slen) {
                     mntmp = i;
@@ -1089,7 +1082,7 @@ export async function name_to_monplus(in_str, remainder_p, gender_name_var) {   
  * @returns {Promise<number>} int
  */
 export async function name_to_monclass(in_str, mndx_p) {   // mondata.c:1090
-    let p = null, x = null, i = 0, len = 0;
+    let p = null, i = 0;
     /* Single letters are matched against def_monsyms[].sym; words
        or phrases are first matched against def_monsyms[].explain
        to check class description; if not found there, then against
@@ -1149,9 +1142,9 @@ export async function name_to_monclass(in_str, mndx_p) {   // mondata.c:1090
             }
         }
         /* check monster class descriptions */
-        len = $c.i32($c.strlen(in_str));
+        const len = $c.i32($c.strlen(in_str));
         for (i = 1; i < MAXMCLASSES; i = i + 1 | 0) {
-            x = def_monsyms[i].explain;
+            const x = def_monsyms[i].explain;
             if ((p = strstri(x, in_str)) !== null && ($c.peq(p, x) || p.add(-1).get(0) === 32) && ($c.i32($c.strlen(p)) >= len && (p.get(len) === 0 || p.get(len) === 32))) {
                 return i;
             }
@@ -1176,7 +1169,7 @@ export function gender(mtmp) {   // mondata.c:1180
     if (is_neuter(mtmp.data)) {
         return 2;
     }
-    return mtmp.female | 0;
+    return mtmp.female;
 }
 /* Like gender(), but unseen humanoids are "it" rather than "he" or "she"
    and lower animals and such are "it" even when seen; hallucination might
@@ -1187,11 +1180,10 @@ export function gender(mtmp) {   // mondata.c:1180
  * @returns {number} int
  */
 export function pronoun_gender(mtmp, pg_flags) {   // mondata.c:1191
-    let override_vis = 0, hallu_rand = 0;
     /* flags&1: 'no it' unless neuter,
      * flags&2: random if hallucinating */
-    override_vis = $c.i8((pg_flags & PRONOUN.NO_IT) >>> 0 ? TRUE : FALSE);
-    hallu_rand = $c.i8((pg_flags & PRONOUN.HALLU) >>> 0 ? TRUE : FALSE);
+    const override_vis = (pg_flags & PRONOUN.NO_IT) >>> 0 ? TRUE : FALSE;
+    const hallu_rand = (pg_flags & PRONOUN.HALLU) >>> 0 ? TRUE : FALSE;
     if (hallu_rand && Hallucination()) {
         return rn2(4);   /* 0..3 */
     }
@@ -1201,7 +1193,7 @@ export function pronoun_gender(mtmp, pg_flags) {   // mondata.c:1191
     if (is_neuter(mtmp.data)) {
         return 2;
     }
-    return humanoid(mtmp.data) || mtmp.data.geno & G_UNIQ || type_is_pname(mtmp.data) ? mtmp.female | 0 : 2;
+    return humanoid(mtmp.data) || mtmp.data.geno & G_UNIQ || type_is_pname(mtmp.data) ? mtmp.female : 2;
 }
 /* used for nearby monsters when you go to another level */
 /**
@@ -1213,16 +1205,16 @@ export function levl_follower(mtmp) {   // mondata.c:1211
         return TRUE;
     }
     /* Wizard with Amulet won't bother trying to follow across levels */
-    if (mtmp.iswiz | 0 && mon_has_amulet(mtmp)) {
+    if (mtmp.iswiz && mon_has_amulet(mtmp)) {
         return FALSE;
     }
     /* some monsters will follow even while intending to flee from you */
-    if (mtmp.mtame || mtmp.iswiz | 0 || is_fshk(mtmp)) {
+    if (mtmp.mtame || mtmp.iswiz || is_fshk(mtmp)) {
         return TRUE;
     }
     /* stalking types follow, but won't when fleeing unless you hold
        the Amulet */
-    return $c.i8($c.andu64(mtmp.data.mflags2, M2.STALK) && (!mtmp.mflee || u.uhave.amulet | 0) ? 1 : 0);
+    return $c.andu64(mtmp.data.mflags2, M2.STALK) && (!mtmp.mflee || u.uhave.amulet) ? 1 : 0;
 }
 /**
  * @param {number} montype int
@@ -1305,8 +1297,7 @@ export function raceptr(mtmp) {   // mondata.c:1359
  * @returns {$c.Ptr | null} const char *
  */
 export function locomotion(ptr, def) {   // mondata.c:1380
-    let locoindx = 0;
-    locoindx = def.get(0) !== highc(def.get(0)) ? 0 : 1;
+    const locoindx = def.get(0) !== highc(def.get(0)) ? 0 : 1;
     return is_floater(ptr) ? levitate[locoindx] : is_flyer(ptr) && ptr.msize <= MZ.SMALL ? flys[locoindx] : is_flyer(ptr) && ptr.msize > MZ.SMALL ? flyl[locoindx] : slithy(ptr) ? slither[locoindx] : amorphous(ptr) ? ooze[locoindx] : !ptr.mmove ? immobile[locoindx] : nolimbs(ptr) ? crawl[locoindx] : def;
 }
 /**
@@ -1315,8 +1306,7 @@ export function locomotion(ptr, def) {   // mondata.c:1380
  * @returns {$c.Ptr | null} const char *
  */
 export function stagger(ptr, def) {   // mondata.c:1395
-    let locoindx = 0;
-    locoindx = def.get(0) !== highc(def.get(0)) ? 2 : 3;
+    const locoindx = def.get(0) !== highc(def.get(0)) ? 2 : 3;
     return is_floater(ptr) ? levitate[locoindx] : is_flyer(ptr) && ptr.msize <= MZ.SMALL ? flys[locoindx] : is_flyer(ptr) && ptr.msize > MZ.SMALL ? flyl[locoindx] : slithy(ptr) ? slither[locoindx] : amorphous(ptr) ? ooze[locoindx] : !ptr.mmove ? immobile[locoindx] : nolimbs(ptr) ? crawl[locoindx] : def;
 }
 /* return phrase describing the effect of fire attack on a type of monster */
@@ -1365,8 +1355,8 @@ export function on_fire(mptr, mattk) {   // mondata.c:1411
  * @returns {$c.Ptr | null} const char *
  */
 export function msummon_environ(mptr, cloud) {   // mondata.c:1449
-    let what = null, mndx = 0;
-    mndx = mptr.mlet === S.ANGEL ? PM.ANGEL : mptr.mlet === S.LIGHT ? PM.YELLOW_LIGHT : mptr.pmidx;
+    let what = null;
+    const mndx = mptr.mlet === S.ANGEL ? PM.ANGEL : mptr.mlet === S.LIGHT ? PM.YELLOW_LIGHT : mptr.pmidx;
     cloud.set(0, $c.lit("cloud"));   /* default is "cloud of <something>" */
     switch (mndx) {
         case PM.WATER_DEMON:
@@ -1493,7 +1483,7 @@ export function cvt_prop_to_mseenres(prop) {   // mondata.c:1540
  */
 export function monstseesu(seenres) {   // mondata.c:1558
     let mtmp = null;
-    if (seenres === M_SEEN.NOTHING || u.uswallow | 0) {
+    if (seenres === M_SEEN.NOTHING || u.uswallow) {
         return;
     }
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
@@ -1508,7 +1498,7 @@ export function monstseesu(seenres) {   // mondata.c:1558
  */
 export function monstunseesu(seenres) {   // mondata.c:1572
     let mtmp = null;
-    if (seenres === M_SEEN.NOTHING || u.uswallow | 0) {
+    if (seenres === M_SEEN.NOTHING || u.uswallow) {
         return;
     }
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
@@ -1528,7 +1518,7 @@ export function give_u_to_m_resistances(mtmp) {   // mondata.c:1586
        add each to the mintrinsics field for the given monster */
     for (intr = FIRE_RES; intr <= STONE_RES; intr = intr + 1 | 0) {
         if ($c.and64(u.uprops[intr].intrinsic, INTRINSIC) !== 0) {
-            mtmp.mintrinsics = $c.u16(mtmp.mintrinsics | $c.u16(res_to_mr(intr)));
+            mtmp.mintrinsics = $c.u16(mtmp.mintrinsics | res_to_mr(intr));
         }
     }
 }
@@ -1543,10 +1533,9 @@ export function give_u_to_m_resistances(mtmp) {   // mondata.c:1586
  * @returns {number} boolean
  */
 export function resist_conflict(mtmp) {   // mondata.c:1607
-    let resist_chance = 0;
     /* always a small chance at 19 */
-    resist_chance = 19 < ((acurr(A.CHA) - mtmp.m_lev | 0) + u.ulevel | 0) ? 19 : (acurr(A.CHA) - mtmp.m_lev | 0) + u.ulevel | 0;
-    return $c.i8(rnd(20) > resist_chance ? 1 : 0);
+    const resist_chance = 19 < (acurr(A.CHA) - mtmp.m_lev + u.ulevel | 0) ? 19 : acurr(A.CHA) - mtmp.m_lev + u.ulevel | 0;
+    return rnd(20) > resist_chance ? 1 : 0;
 }
 /* does monster mtmp know traps of type ttyp */
 /**
@@ -1558,9 +1547,9 @@ export function mon_knows_traps(mtmp, ttyp) {   // mondata.c:1617
     if (ttyp === ALL_TRAPS) {
         return $c.i8(mtmp.mtrapseen);
     } else if (ttyp === NO_TRAP) {
-        return $c.i8(!$c.i8(mtmp.mtrapseen) ? 1 : 0);
+        return !$c.i8(mtmp.mtrapseen) ? 1 : 0;
     } else {
-        return $c.i8($c.and64(mtmp.mtrapseen, $c.shl64(1, ttyp - 1 | 0)) !== 0 ? 1 : 0);
+        return $c.and64(mtmp.mtrapseen, $c.shl64(1, ttyp - 1 | 0)) !== 0 ? 1 : 0;
     }
 }
 /* monster mtmp learns all traps of type ttyp */
@@ -1582,10 +1571,10 @@ export function mon_learns_traps(mtmp, ttyp) {   // mondata.c:1629
  * @param {$T.trap | null} ttmp struct trap *
  */
 export function mons_see_trap(ttmp) {   // mondata.c:1641
-    let mtmp = null, tx = 0, ty = 0, maxdist = 0;
-    tx = ttmp.tx;
-    ty = ttmp.ty;
-    maxdist = svl.level.locations[tx][ty].lit | 0 ? 49 : 2;
+    let mtmp = null;
+    const tx = ttmp.tx;
+    const ty = ttmp.ty;
+    const maxdist = svl.level.locations[tx][ty].lit ? 49 : 2;
     for (mtmp = svl.level.monlist; mtmp; mtmp = mtmp.nmon) {
         if (is_animal(mtmp.data) || mindless(mtmp.data) || !haseyes(mtmp.data) || !mtmp.mcansee) {
             continue;
@@ -1596,7 +1585,7 @@ export function mons_see_trap(ttmp) {   // mondata.c:1641
         if (!m_cansee(mtmp, tx, ty)) {
             continue;
         }
-        mon_learns_traps(mtmp, ttmp.ttyp | 0);
+        mon_learns_traps(mtmp, ttmp.ttyp);
     }
 }
 /**

@@ -45,18 +45,18 @@ export async function minefill_level() {
     }
 
     for (let i = 1, n = mathrandom(6, 8); i <= n; i++)
-        des.monster('gnome');
-    des.monster('gnome lord');
-    des.monster('dwarf');
-    des.monster('dwarf');
-    des.monster('G');
-    des.monster('G');
-    des.monster(percent(50) ? 'h' : 'G');
+        await des.monster('gnome');
+    await des.monster('gnome lord');
+    await des.monster('dwarf');
+    await des.monster('dwarf');
+    await des.monster('G');
+    await des.monster('G');
+    await des.monster(percent(50) ? 'h' : 'G');
 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 }

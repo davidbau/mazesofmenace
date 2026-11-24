@@ -71,9 +71,9 @@ export async function orcus_level() {
                                        bnds.hx - 2, bnds.hy - 1);
 
     /* A ghost town */
-    const orcus1 = des.map({ halign: 'right', valign: 'center',
-                             map: ORCUS_MAP, contents: (rm) => {
-        des.mazewalk(0, 6, 'west');
+    const orcus1 = await des.map({ halign: 'right', valign: 'center',
+                             map: ORCUS_MAP, contents: async (rm) => {
+        await des.mazewalk(0, 6, 'west');
         /* Entire main area */
         des.region(selection.area(1, 0, 44, 16), 'unlit');
         des.stair('down', 33, 15);
@@ -158,43 +158,43 @@ export async function orcus_level() {
         /* The resident nasty */
         des.monster('Orcus', 33, 15);
         /* And its preferred companions */
-        des.monster('human zombie', 32, 15);
-        des.monster('shade', 32, 14);
-        des.monster('shade', 32, 16);
-        des.monster('vampire', 35, 16);
-        des.monster('vampire', 35, 14);
-        des.monster('vampire lord', 36, 14);
-        des.monster('vampire lord', 36, 15);
+        await des.monster('human zombie', 32, 15);
+        await des.monster('shade', 32, 14);
+        await des.monster('shade', 32, 16);
+        await des.monster('vampire', 35, 16);
+        await des.monster('vampire', 35, 14);
+        await des.monster('vampire lord', 36, 14);
+        await des.monster('vampire lord', 36, 15);
         /* Randomly placed companions */
-        des.monster('skeleton');
-        des.monster('skeleton');
-        des.monster('skeleton');
-        des.monster('skeleton');
-        des.monster('skeleton');
-        des.monster('shade');
-        des.monster('shade');
-        des.monster('shade');
-        des.monster('shade');
-        des.monster('giant zombie');
-        des.monster('giant zombie');
-        des.monster('giant zombie');
-        des.monster('ettin zombie');
-        des.monster('ettin zombie');
-        des.monster('ettin zombie');
-        des.monster('human zombie');
-        des.monster('human zombie');
-        des.monster('human zombie');
-        des.monster('vampire');
-        des.monster('vampire');
-        des.monster('vampire');
-        des.monster('vampire lord');
-        des.monster('vampire lord');
+        await des.monster('skeleton');
+        await des.monster('skeleton');
+        await des.monster('skeleton');
+        await des.monster('skeleton');
+        await des.monster('skeleton');
+        await des.monster('shade');
+        await des.monster('shade');
+        await des.monster('shade');
+        await des.monster('shade');
+        await des.monster('giant zombie');
+        await des.monster('giant zombie');
+        await des.monster('giant zombie');
+        await des.monster('ettin zombie');
+        await des.monster('ettin zombie');
+        await des.monster('ettin zombie');
+        await des.monster('human zombie');
+        await des.monster('human zombie');
+        await des.monster('human zombie');
+        await des.monster('vampire');
+        await des.monster('vampire');
+        await des.monster('vampire');
+        await des.monster('vampire lord');
+        await des.monster('vampire lord');
         /* A few more for the party */
-        des.monster();
-        des.monster();
-        des.monster();
-        des.monster();
-        des.monster();
+        await des.monster();
+        await des.monster();
+        await des.monster();
+        await des.monster();
+        await des.monster();
     } });
 
     des.levregion({ region: [1, 0, 12, 20], region_islev: 1,

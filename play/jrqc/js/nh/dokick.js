@@ -99,10 +99,9 @@ const kick_passes_thru = new Int8Array(31);
  * @returns {Promise<void>}
  */
 async function kickdmg(mon, clumsy) {   // dokick.c:34
-    let mdx = 0, mdy = 0, dmg = 0, specialdmg = 0, kick_skill = 0, trapkilled = 0;
-    dmg = $c.div32((ACURRSTR() + ACURR(A.DEX) | 0) + ACURR(A.CON) | 0, 15);
-    kick_skill = P.NONE;
-    trapkilled = FALSE;
+    let dmg = $c.div32(ACURRSTR() + ACURR(A.DEX) + ACURR(A.CON), 15);
+    let kick_skill = P.NONE;
+    let trapkilled = FALSE;
     if ($G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
         dmg = dmg + 5 | 0;
     }
@@ -115,11 +114,11 @@ async function kickdmg(mon, clumsy) {   // dokick.c:34
         dmg = 0;
     }
     /* attacking a shade is normally useless */
-    if ($c.peq(mon.data, $c.relem(mons, PM.SHADE))) {
+    if (mon.data === mons[PM.SHADE]) {
         dmg = 0;
     }
-    specialdmg = await special_dmgval(gy.youmonst, mon, W.ARMF, null);
-    if ($c.peq(mon.data, $c.relem(mons, PM.SHADE)) && !specialdmg) {
+    const specialdmg = await special_dmgval(gy.youmonst, mon, W.ARMF, null);
+    if (mon.data === mons[PM.SHADE] && !specialdmg) {
         await pline_The($c.lit("%s."), new $c.Ptr(kick_passes_thru, 0));
         /* doesn't exercise skill or abuse alignment or frighten pet,
            and shades have no passive counterattack */
@@ -135,13 +134,13 @@ async function kickdmg(mon, clumsy) {   // dokick.c:34
         if (mon.mtame) {
             await monflee(mon, dmg ? rnd(dmg) : 1, FALSE, FALSE);
         } else {
-            mon.mflee = (0) & 1;
+            mon.mflee = 0;
         }
     }
     if (dmg > 0) {
         /* convert potential damage to actual damage */
         dmg = rnd(dmg);
-        if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
+        if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
             if (dmg > 1) {
                 kick_skill = P_MARTIAL_ARTS;
             }
@@ -158,10 +157,10 @@ async function kickdmg(mon, clumsy) {   // dokick.c:34
     if (dmg > 0) {
         mon.mhp = mon.mhp - dmg | 0;
     }
-    if (!DEADMONSTER(mon) && (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !bigmonst(mon.data) && !rn2(3) && mon.mcanmove | 0 && !$c.peq(mon, u.ustuck) && !mon.mtrapped) {
+    if (!DEADMONSTER(mon) && (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !bigmonst(mon.data) && !rn2(3) && mon.mcanmove && !$c.peq(mon, u.ustuck) && !mon.mtrapped) {
         /* see if the monster has a place to move into */
-        mdx = mon.mx + u.dx | 0;
-        mdy = mon.my + u.dy | 0;
+        const mdx = mon.mx + u.dx | 0;
+        const mdy = mon.my + u.dy | 0;
         /* TODO: replace with mhurtle? */
         if (goodpos($c.i16(mdx), $c.i16(mdy), mon, 0)) {
             await pline($c.lit("%s reels from the blow."), await Monnam(mon));
@@ -177,7 +176,7 @@ async function kickdmg(mon, clumsy) {   // dokick.c:34
             }
         }
     }
-    await passive(mon, $G.uarmf, TRUE, $c.i8(!DEADMONSTER(mon) ? 1 : 0), AT.KICK, FALSE);
+    await passive(mon, $G.uarmf, TRUE, !DEADMONSTER(mon) ? 1 : 0, AT.KICK, FALSE);
     if (DEADMONSTER(mon) && !trapkilled) {
         await killed(mon);
     }
@@ -193,9 +192,8 @@ async function kickdmg(mon, clumsy) {   // dokick.c:34
  * @returns {Promise<number>} boolean
  */
 async function maybe_kick_monster(mon, x, y) {   // dokick.c:126
-    let save_forcefight = 0;
     if (mon) {
-        save_forcefight = svc.context.forcefight;
+        const save_forcefight = svc.context.forcefight;
         gb.bhitpos.x = x;
         gb.bhitpos.y = y;
         if (!mon.mpeaceful || !canspotmon(mon)) {
@@ -209,7 +207,7 @@ async function maybe_kick_monster(mon, x, y) {   // dokick.c:126
         }
         svc.context.forcefight = save_forcefight;
     }
-    return $c.i8(mon !== null ? 1 : 0);
+    return mon !== null ? 1 : 0;
 }
 /**
  * @param {$T.monst | null} mon struct monst *
@@ -230,11 +228,11 @@ async function kick_monster(mon, x, y) {   // dokick.c:146
     }
     /* reveal hidden target even if kick ends up missing (note: being
        hidden doesn't affect chance to hit so neither does this reveal) */
-    if (mon.mundetected | 0 || M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP.MONSTER) {
+    if (mon.mundetected || M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP.MONSTER) {
         if (M_AP_TYPE(mon)) {
             await seemimic(mon);
         }
-        mon.mundetected = (0) & 1;
+        mon.mundetected = 0;
         if (!canspotmon(mon)) {
             await map_invisible(x, y);
         } else {
@@ -265,7 +263,7 @@ async function kick_monster(mon, x, y) {   // dokick.c:146
             }
             kickdieroll = rnd(20);
             specialdmg = await special_dmgval(gy.youmonst, mon, W.ARMF, null);
-            if ($c.peq(mon.data, $c.relem(mons, PM.SHADE)) && !specialdmg) {
+            if (mon.data === mons[PM.SHADE] && !specialdmg) {
                 /* doesn't matter whether it would have hit or missed,
                    and shades have no passive counterattack */
                 await Your($c.lit("%s %s."), new $c.Ptr(kick_passes_thru, 0), await mon_nam(mon));
@@ -273,12 +271,12 @@ async function kick_monster(mon, x, y) {   // dokick.c:146
             } else if (tmp > kickdieroll) {
                 await You($c.lit("kick %s."), await mon_nam(mon));
                 sum = await damageum(mon, uattk, specialdmg);
-                await passive(mon, $G.uarmf, $c.i8(sum !== M_ATTK.MISS ? 1 : 0), $c.i8(!(sum & M_ATTK.DEF_DIED) ? 1 : 0), AT.KICK, FALSE);
+                await passive(mon, $G.uarmf, sum !== M_ATTK.MISS ? 1 : 0, !(sum & M_ATTK.DEF_DIED) ? 1 : 0, AT.KICK, FALSE);
                 if (sum & M_ATTK.DEF_DIED) {
                     break;   /* Defender died */
                 }
             } else {
-                await missum(mon, uattk, $c.i8((tmp + armorpenalty[0] | 0) > kickdieroll ? 1 : 0));
+                await missum(mon, uattk, (tmp + armorpenalty[0] | 0) > kickdieroll ? 1 : 0);
                 await passive(mon, $G.uarmf, FALSE, 1, AT.KICK, FALSE);
             }
         }
@@ -297,7 +295,7 @@ async function kick_monster(mon, x, y) {   // dokick.c:146
          */
         if (i < $c.div32(Math.imul(j, 3), 10)) {
             if (!rn2(i < $c.div32(j, 10) ? 2 : i < $c.div32(j, 5) ? 3 : 4)) {
-                if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
+                if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
                     break doit$;
                 }
                 await Your($c.lit("clumsy kick does no damage."));
@@ -312,13 +310,13 @@ async function kick_monster(mon, x, y) {   // dokick.c:146
         }
         if (Fumbling()) {
             clumsy = TRUE;
-        } else if ($G.uarm && objects[$G.uarm.otyp].oc_big | 0 && ACURR(A.DEX) < rnd(25)) {
+        } else if ($G.uarm && objects[$G.uarm.otyp].oc_big && ACURR(A.DEX) < rnd(25)) {
             clumsy = TRUE;
         }
     }
     await You($c.lit("kick %s."), await mon_nam(mon));
-    if (!rn2(clumsy ? 3 : 4) && (clumsy || !bigmonst(mon.data)) && mon.mcansee | 0 && !mon.mtrapped && !thick_skinned(mon.data) && mon.data.mlet !== S.EEL && haseyes(mon.data) && mon.mcanmove | 0 && !mon.mstun && !mon.mconf && !mon.msleeping && mon.data.mmove >= 12) {
-        if (!nohands(mon.data) && !rn2(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS ? 5 : 3)) {
+    if (!rn2(clumsy ? 3 : 4) && (clumsy || !bigmonst(mon.data)) && mon.mcansee && !mon.mtrapped && !thick_skinned(mon.data) && mon.data.mlet !== S.EEL && haseyes(mon.data) && mon.mcanmove && !mon.mstun && !mon.mconf && !mon.msleeping && mon.data.mmove >= 12) {
+        if (!nohands(mon.data) && !rn2(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS ? 5 : 3)) {
             await pline($c.lit("%s blocks your %skick."), await Monnam(mon), clumsy ? $c.lit("clumsy ") : $c.lit(""));
             await passive(mon, $G.uarmf, FALSE, 1, AT.KICK, FALSE);
             return;
@@ -344,8 +342,8 @@ async function kick_monster(mon, x, y) {   // dokick.c:146
  * @returns {Promise<number>} boolean
  */
 export async function ghitm(mtmp, gold) {   // dokick.c:295
-    let msg_given = 0, was_sleeping = 0, umoney = 0, value = 0, robbed = 0, was_angry = 0, goldreqd = 0;
-    msg_given = FALSE;
+    let umoney = 0;
+    let msg_given = FALSE;
     if (!likes_gold(mtmp.data) && !mtmp.isshk && !mtmp.ispriest && !mtmp.isgd && !is_mercenary(mtmp.data)) {
         await wakeup(mtmp, TRUE);
     } else if (!mtmp.mcanmove) {
@@ -355,9 +353,9 @@ export async function ghitm(mtmp, gold) {   // dokick.c:295
             msg_given = TRUE;
         }
     } else {
-        was_sleeping = mtmp.msleeping;
-        value = $c.mul64(gold.quan, objects[gold.otyp].oc_cost);
-        mtmp.msleeping = (0) & 1;
+        const was_sleeping = mtmp.msleeping;
+        const value = $c.mul64(gold.quan, objects[gold.otyp].oc_cost);
+        mtmp.msleeping = 0;
         /* end indeterminate sleep (won't get here
          * for temporary--counted--sleep since that
          * uses mfrozen and mfrozen implies !mcanmove) */
@@ -372,7 +370,7 @@ export async function ghitm(mtmp, gold) {   // dokick.c:295
         await mpickobj(mtmp, gold);
         gold = null;   /* obj has been freed */
         if (mtmp.isshk) {
-            robbed = mtmp.mextra.eshk.robbed;
+            let robbed = mtmp.mextra.eshk.robbed;
             if (robbed) {
                 robbed = $c.sub64(robbed, value);
                 if (robbed < 0) {
@@ -404,17 +402,17 @@ export async function ghitm(mtmp, gold) {   // dokick.c:295
                out of the vault.  If he did do that, player
                could try fighting, then weasel out of being
                killed by throwing his/her gold when losing. */
-            await verbalize(umoney ? $c.lit("Drop the rest and follow me.") : hidden_gold(TRUE) ? $c.lit("You still have hidden gold.  Drop it now.") : mtmp.mpeaceful | 0 ? $c.lit("I'll take care of that; please move along.") : $c.lit("I'll take that; now get moving."));
+            await verbalize(umoney ? $c.lit("Drop the rest and follow me.") : hidden_gold(TRUE) ? $c.lit("You still have hidden gold.  Drop it now.") : mtmp.mpeaceful ? $c.lit("I'll take care of that; please move along.") : $c.lit("I'll take that; now get moving."));
         } else if (is_mercenary(mtmp.data)) {
-            was_angry = $c.i8(!mtmp.mpeaceful ? 1 : 0);
-            goldreqd = 0;
-            if ($c.peq(mtmp.data, $c.relem(mons, PM.SOLDIER))) {
+            const was_angry = !mtmp.mpeaceful ? 1 : 0;
+            let goldreqd = 0;
+            if (mtmp.data === mons[PM.SOLDIER]) {
                 goldreqd = 100;
-            } else if ($c.peq(mtmp.data, $c.relem(mons, PM.SERGEANT))) {
+            } else if (mtmp.data === mons[PM.SERGEANT]) {
                 goldreqd = 250;
-            } else if ($c.peq(mtmp.data, $c.relem(mons, PM.LIEUTENANT))) {
+            } else if (mtmp.data === mons[PM.LIEUTENANT]) {
                 goldreqd = 500;
-            } else if ($c.peq(mtmp.data, $c.relem(mons, PM.CAPTAIN))) {
+            } else if (mtmp.data === mons[PM.CAPTAIN]) {
                 goldreqd = 750;
             }
             if (goldreqd && rn2(3)) {
@@ -453,23 +451,23 @@ export async function ghitm(mtmp, gold) {   // dokick.c:295
  * @returns {Promise<void>}
  */
 export async function container_impact_dmg(obj, x, y) {   // dokick.c:412
-    let shkp = null, otmp = null, otmp2 = null, loss = 0, costly = 0, insider = 0, frominv = 0, wchange = 0, result = null, $t1;
+    let shkp = null, otmp = null, otmp2 = null, $t1;
     /* coordinates where object was */
     /* before the impact, not after */
-    loss = 0;
-    wchange = FALSE;
+    let loss = 0;
+    let wchange = FALSE;
     /* only consider normal containers */
     if (!Is_container(obj) || !Has_contents(obj) || Is_mbag(obj)) {
         return;
     }
-    costly = $c.i8((shkp = await shop_keeper(in_rooms(x, y, SHOPBASE).get(0))) && await costly_spot(x, y) ? 1 : 0);
-    insider = $c.i8(new $c.Ptr(u.ushops, 0).get(0) && inside_shop(u.ux, u.uy) && in_rooms(x, y, SHOPBASE).get(0) === new $c.Ptr(u.ushops, 0).get(0) ? 1 : 0);
+    const costly = (shkp = await shop_keeper(in_rooms(x, y, SHOPBASE).get(0))) && await costly_spot(x, y) ? 1 : 0;
+    const insider = new $c.Ptr(u.ushops, 0).get(0) && inside_shop(u.ux, u.uy) && in_rooms(x, y, SHOPBASE).get(0) === new $c.Ptr(u.ushops, 0).get(0) ? 1 : 0;
     /* if dropped or thrown, shop ownership flags are set on this obj */
-    frominv = $c.i8(!$c.peq(obj, gk.kickedobj) ? 1 : 0);
+    const frominv = !$c.peq(obj, gk.kickedobj) ? 1 : 0;
     for (otmp = obj.cobj; otmp; otmp = otmp2) {
-        result = null;
+        let result = null;
         otmp2 = otmp.nobj;
-        if ((objects[otmp.otyp].oc_material | 0) === GLASS && otmp.oclass !== GEM_CLASS && !obj_resists(otmp, 33, 100)) {
+        if (objects[otmp.otyp].oc_material === GLASS && otmp.oclass !== GEM_CLASS && !obj_resists(otmp, 33, 100)) {
             result = $c.lit("shatter");
         } else if (otmp.otyp === EGG && !rn2(3)) {
             result = $c.lit("cracking");
@@ -489,9 +487,9 @@ export async function container_impact_dmg(obj, x, y) {   // dokick.c:412
             await You_hear($c.lit("a muffled %s."), result);
             if (costly) {
                 if (frominv && !otmp.unpaid) {
-                    otmp.no_charge = (1) & 1;
+                    otmp.no_charge = 1;
                 }
-                loss = $c.add64(loss, await stolen_value(otmp, x, y, $c.i8(shkp.mpeaceful), TRUE));
+                loss = $c.add64(loss, await stolen_value(otmp, x, y, shkp.mpeaceful, TRUE));
             }
             if (otmp.quan > 1) {
                 await useup(otmp);
@@ -500,7 +498,7 @@ export async function container_impact_dmg(obj, x, y) {   // dokick.c:412
                 await obfree(otmp, null);
             }
             /* contents of this container are no longer known */
-            obj.cknown = (0) & 1;
+            obj.cknown = 0;
             wchange = TRUE;
         }
     }
@@ -525,7 +523,6 @@ export async function container_impact_dmg(obj, x, y) {   // dokick.c:412
  */
 async function kick_object(x, y, kickobjnam) {   // dokick.c:489
     let res = 0;
-    res = 0;
     kickobjnam.set(0, 0);
     /* if a pile, the "top" object gets kicked */
     gk.kickedobj = svl.level.objects[x][y];
@@ -545,22 +542,22 @@ async function kick_object(x, y, kickobjnam) {   // dokick.c:489
  * @returns {Promise<number>} int
  */
 async function really_kick_object(x, y) {   // dokick.c:508
-    let range = 0, mon = null, shkp = null, trap = null, bhitroom = 0, costly = 0, isgold = 0, slide = 0, k_owt = 0, save_quan = 0, otrp = 0, gtg = 0, $t1;
-    shkp = null;
-    slide = FALSE;
+    let range = 0, trap = null, $t1;
+    let shkp = null;
+    let slide = FALSE;
     /* gk.kickedobj should always be set due to conditions of call */
     if (!gk.kickedobj || gk.kickedobj.otyp === BOULDER || $c.peq(gk.kickedobj, $G.uball) || $c.peq(gk.kickedobj, $G.uchain)) {
         return 0;
     }
     if ((trap = t_at(x, y)) !== null) {
-        if (is_pit(trap.ttyp) && !Passes_walls() || (trap.ttyp | 0) === WEB) {
+        if (is_pit(trap.ttyp) && !Passes_walls() || trap.ttyp === WEB) {
             if (!trap.tseen) {
                 await find_trap(trap);
             }
-            await You_cant($c.lit("kick %s that's in a %s!"), c_common_strings.c_something, Hallucination() ? $c.lit("tizzy") : (trap.ttyp | 0) === WEB ? $c.lit("web") : $c.lit("pit"));
+            await You_cant($c.lit("kick %s that's in a %s!"), c_common_strings.c_something, Hallucination() ? $c.lit("tizzy") : trap.ttyp === WEB ? $c.lit("web") : $c.lit("pit"));
             return 1;
         }
-        if ((trap.ttyp | 0) === STATUE_TRAP) {
+        if (trap.ttyp === STATUE_TRAP) {
             await activate_statue_trap(trap, x, y, FALSE);
             return 1;
         }
@@ -579,14 +576,14 @@ async function really_kick_object(x, y) {   // dokick.c:508
             await instapetrify(new $c.Ptr(svk.killer.name, 0));
         }
     }
-    isgold = $c.i8(gk.kickedobj.oclass === COIN_CLASS ? 1 : 0);
+    const isgold = gk.kickedobj.oclass === COIN_CLASS ? 1 : 0;
     {
-        k_owt = gk.kickedobj.owt | 0;
+        let k_owt = gk.kickedobj.owt | 0;
         /* for non-gold stack, 1 item will be split off below (unless an
            early return occurs, so we aren't moving the split to here);
            calculate the range for that 1 rather than for the whole stack */
         if (gk.kickedobj.quan > 1 && !isgold) {
-            save_quan = gk.kickedobj.quan;
+            const save_quan = gk.kickedobj.quan;
             gk.kickedobj.quan = 1;
             k_owt = await weight(gk.kickedobj);
             gk.kickedobj.quan = save_quan;
@@ -595,7 +592,7 @@ async function really_kick_object(x, y) {   // dokick.c:508
            (maybe dexterity should also figure here) */
         range = $c.div32(ACURRSTR(), 2) - $c.div32(k_owt, 40) | 0;
     }
-    if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
+    if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
         range = range + rnd(3) | 0;
     }
     if (is_pool(x, y)) {
@@ -624,18 +621,18 @@ async function really_kick_object(x, y) {   // dokick.c:508
        was set but that optimization could result in no_charge staying set
        for objects kicked out of the shop */
     shkp = await find_objowner(gk.kickedobj, x, y);
-    costly = $c.i8(shkp && (await costly_spot(x, y) || costly_adjacent(shkp, x, y) && gk.kickedobj.unpaid | 0) ? 1 : 0);
+    let costly = shkp && (await costly_spot(x, y) || costly_adjacent(shkp, x, y) && gk.kickedobj.unpaid) ? 1 : 0;
     /* 5.0: give feedback about the item being kicked; some follow-on
        messages refer to "it" */
     await Norep($c.lit("You kick %s."), !isgold ? await singular(gk.kickedobj, doname) : await doname(gk.kickedobj));
     if (svl.level.locations[x][y].typ < POOL || closed_door(x, y)) {
-        if (!(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && rn2(20) > ACURR(A.DEX) || svl.level.locations[u.ux][u.uy].typ < POOL || closed_door(u.ux, u.uy)) {
+        if (!(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && rn2(20) > ACURR(A.DEX) || svl.level.locations[u.ux][u.uy].typ < POOL || closed_door(u.ux, u.uy)) {
             if (Blind()) {
                 await pline($c.lit("It doesn't come loose."));
             } else {
                 await pline($c.lit("%s %sn't come loose."), await The(await distant_name(gk.kickedobj, xname)), await otense(gk.kickedobj, $c.lit("do")));
             }
-            return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
+            return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
         }
         if (Blind()) {
             await pline($c.lit("It comes loose."));
@@ -649,7 +646,7 @@ async function really_kick_object(x, y) {   // dokick.c:508
                 await addtobill(gk.kickedobj, FALSE, FALSE, FALSE);
             } else {
                 /* don't leave no_charge set when outside shop */
-                gk.kickedobj.no_charge = (0) & 1;
+                gk.kickedobj.no_charge = 0;
             }
         }
         if (!await flooreffects(gk.kickedobj, u.ux, u.uy, $c.lit("fall"))) {
@@ -662,13 +659,13 @@ async function really_kick_object(x, y) {   // dokick.c:508
     }
     /* a box gets a chance of breaking open here */
     if (Is_box(gk.kickedobj)) {
-        otrp = $c.i8(gk.kickedobj.otrapped);
+        const otrp = gk.kickedobj.otrapped;
         if (range < 2) {
             await pline($c.lit("THUD!"));
         }
         await container_impact_dmg(gk.kickedobj, x, y);
         if (gk.kickedobj.olocked) {
-            if (!rn2(5) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !rn2(2)) {
+            if (!rn2(5) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !rn2(2)) {
                 await You($c.lit("break open the lock!"));
                 await breakchestlock(gk.kickedobj, FALSE);
                 if (otrp) {
@@ -677,9 +674,9 @@ async function really_kick_object(x, y) {   // dokick.c:508
                 return 1;
             }
         } else {
-            if (!rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !rn2(2)) {
+            if (!rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) && !rn2(2)) {
                 await pline_The($c.lit("lid slams open, then falls shut."));
-                gk.kickedobj.lknown = (1) & 1;
+                gk.kickedobj.lknown = 1;
                 if (otrp) {
                     await chest_trap(gk.kickedobj, LEG, FALSE);
                 }
@@ -703,7 +700,7 @@ async function really_kick_object(x, y) {   // dokick.c:508
         if (!Is_box(gk.kickedobj)) {
             await pline($c.lit("Thump!"));
         }
-        return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
+        return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
     }
     if (gk.kickedobj.quan > 1) {
         if (!isgold) {
@@ -720,7 +717,7 @@ async function really_kick_object(x, y) {   // dokick.c:508
             }
             if (gk.kickedobj.quan > 300) {
                 await pline($c.lit("Thump!"));
-                return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
+                return !rn2(3) || (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 1 : 0;
             }
         }
     }
@@ -739,15 +736,15 @@ async function really_kick_object(x, y) {   // dokick.c:508
     await obj_extract_self(gk.kickedobj);
     await snuff_candle(gk.kickedobj);
     await newsym(x, y);
-    mon = await bhit(u.dx, u.dy, range, KICKED_WEAPON, null, null, new $c.FieldRef(gk, "kickedobj", "ptr"));
+    const mon = await bhit(u.dx, u.dy, range, KICKED_WEAPON, null, null, new $c.FieldRef(gk, "kickedobj", "ptr"));
     if (!gk.kickedobj) {
         return 1;   /* object broken */
     }
     if (mon) {
-        if (mon.isshk | 0 && gk.kickedobj.where === OBJ.MINVENT && $c.peq(gk.kickedobj.v.v_ocarry, mon)) {
+        if (mon.isshk && gk.kickedobj.where === OBJ.MINVENT && $c.peq(gk.kickedobj.v.v_ocarry, mon)) {
             return 1;   /* alert shk caught it */
         }
-        gn.notonhead = $c.i8(mon.mx !== gb.bhitpos.x || mon.my !== gb.bhitpos.y ? 1 : 0);
+        gn.notonhead = mon.mx !== gb.bhitpos.x || mon.my !== gb.bhitpos.y ? 1 : 0;
         /* caught? */
         if (isgold ? await ghitm(mon, gk.kickedobj) : await thitmonst(mon, gk.kickedobj)) {   /* hit && used up? */
             return 1;
@@ -758,7 +755,7 @@ async function really_kick_object(x, y) {   // dokick.c:508
     if (gk.kickedobj.where === OBJ.MIGRATING) {
         return 1;
     }
-    bhitroom = in_rooms(gb.bhitpos.x, gb.bhitpos.y, SHOPBASE).get(0);
+    const bhitroom = in_rooms(gb.bhitpos.x, gb.bhitpos.y, SHOPBASE).get(0);
     /* if obj is marked no_charge, stolen_value() won't blame hero for
        theft but will clear that flag */
     if (costly && (!await costly_spot(gb.bhitpos.x, gb.bhitpos.y) || in_rooms(x, y, SHOPBASE).get(0) !== bhitroom)) {
@@ -766,7 +763,7 @@ async function really_kick_object(x, y) {   // dokick.c:508
         if (isgold) {
             await costly_gold(x, y, gk.kickedobj.quan, FALSE);
         } else {
-            await stolen_value(gk.kickedobj, x, y, $c.i8(shkp.mpeaceful), FALSE);
+            await stolen_value(gk.kickedobj, x, y, shkp.mpeaceful, FALSE);
         }
         costly = FALSE;   /* already billed */
     }
@@ -774,7 +771,7 @@ async function really_kick_object(x, y) {   // dokick.c:508
         return 1;
     }
     if (costly) {
-        gtg = 0;
+        let gtg = 0;
         /* costly + landed outside shop handled above; must be inside shop */
         if (gk.kickedobj.unpaid) {
             await subfrombill(gk.kickedobj, shkp);
@@ -838,7 +835,7 @@ function kickstr(buf, kickobjnam) {   // dokick.c:794
  * @returns {Promise<number>} boolean
  */
 async function watchman_thief_arrest(mtmp) {   // dokick.c:834
-    if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful | 0) {
+    if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful) {
         await mon_yells(mtmp, $c.lit("Halt, thief!  You're under arrest!"));
         await angry_guards(FALSE);
         return TRUE;
@@ -852,8 +849,8 @@ async function watchman_thief_arrest(mtmp) {   // dokick.c:834
  * @returns {Promise<number>} boolean
  */
 async function watchman_door_damage(mtmp, x, y) {   // dokick.c:846
-    if (is_watch(mtmp.data) && mtmp.mpeaceful | 0 && couldsee(mtmp.mx, mtmp.my)) {
-        if ((svl.level.locations[x][y].flags | 0) & D_WARNED) {
+    if (is_watch(mtmp.data) && mtmp.mpeaceful && couldsee(mtmp.mx, mtmp.my)) {
+        if (svl.level.locations[x][y].flags & D_WARNED) {
             await mon_yells(mtmp, $c.lit("Halt, vandal!  You're under arrest!"));
             await angry_guards(FALSE);
         } else {
@@ -871,7 +868,7 @@ async function watchman_door_damage(mtmp, x, y) {   // dokick.c:846
  */
 async function kick_dumb(x, y) {   // dokick.c:864
     await exercise(A.DEX, FALSE);
-    if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS || ACURR(A.DEX) >= 16 || rn2(3)) {
+    if (gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS || ACURR(A.DEX) >= 16 || rn2(3)) {
         await You($c.lit("kick at empty space."));
         if (Blind()) {
             await feel_location(x, y);
@@ -894,7 +891,7 @@ async function kick_dumb(x, y) {   // dokick.c:864
 async function kick_ouch(x$in, y$in, kickobjnam) {   // dokick.c:881
     const x = Int16Array.of(x$in);
     const y = Int16Array.of(y$in);
-    let dmg = 0, buf = new Int8Array(256);
+    let buf = new Int8Array(256);
     await pline($c.lit("Ouch!  That hurts!"));
     await exercise(A.DEX, FALSE);
     await exercise(A.STR, FALSE);
@@ -913,7 +910,7 @@ async function kick_ouch(x$in, y$in, kickobjnam) {   // dokick.c:881
     if (!rn2(3)) {
         await set_wounded_legs(W.RINGR, 5 + rnd(5) | 0);
     }
-    dmg = rnd(acurr(A.CON) > 15 ? 3 : 5);
+    const dmg = rnd(acurr(A.CON) > 15 ? 3 : 5);
     await losehp(Maybe_Half_Phys(dmg), kickstr(new $c.Ptr(buf, 0), kickobjnam), KILLED.BY);
     if ((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || Levitation()) {
         await hurtle(-u.dx | 0, -u.dy | 0, rn2(2) + 4 | 0, TRUE);   /* assume it's heavy */
@@ -927,8 +924,7 @@ async function kick_ouch(x$in, y$in, kickobjnam) {   // dokick.c:881
  * @returns {Promise<void>}
  */
 async function kick_door(x, y, avrg_attrib) {   // dokick.c:910
-    let doorbuster = 0, shopdoor = 0;
-    if ((gm.maploc.flags | 0) === D.ISOPEN || (gm.maploc.flags | 0) === D.BROKEN || (gm.maploc.flags | 0) === D.NODOOR) {
+    if (gm.maploc.flags === D.ISOPEN || gm.maploc.flags === D.BROKEN || gm.maploc.flags === D.NODOOR) {
         await kick_dumb(x, y);
         return;   /* uses a turn */
     }
@@ -938,12 +934,12 @@ async function kick_door(x, y, avrg_attrib) {   // dokick.c:910
         return;
     }
     await exercise(A.DEX, TRUE);
-    doorbuster = $c.i8(Upolyd() && is_giant(gy.youmonst.data) ? 1 : 0);
+    const doorbuster = Upolyd() && is_giant(gy.youmonst.data) ? 1 : 0;
     /* door is known to be CLOSED or LOCKED */
-    if (doorbuster || rnl(35) < (avrg_attrib + (!(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || $c.peq(gy.youmonst.data, $c.relem(mons, PM.SASQUATCH)) || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 0 : ACURR(A.DEX)) | 0)) {
-        shopdoor = $c.i8(in_rooms(x, y, SHOPBASE).get(0) ? TRUE : FALSE);
+    if (doorbuster || rnl(35) < (avrg_attrib + (!(gu.urole.mnum === PM.SAMURAI || gu.urole.mnum === PM.MONK || gy.youmonst.data === mons[PM.SASQUATCH] || $G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) ? 0 : ACURR(A.DEX)) | 0)) {
+        const shopdoor = in_rooms(x, y, SHOPBASE).get(0) ? TRUE : FALSE;
         /* break the door */
-        if ((gm.maploc.flags | 0) & D.TRAPPED) {
+        if (gm.maploc.flags & D.TRAPPED) {
             if (flags.verbose) {
                 await You($c.lit("kick the door."));
             }
@@ -990,22 +986,22 @@ async function kick_door(x, y, avrg_attrib) {   // dokick.c:910
  * @returns {Promise<number>} int
  */
 async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
-    let i = 0, treefruit = null, nfruit = 0, nfall = 0, frtype = 0, cnt = 0, made = 0, mm = new $T.nhcoord(), gend = 0, $t1, $t2, $t3;
+    let treefruit = null, mm = new $T.nhcoord(), $t1, $t2, $t3;
     if (gm.maploc.typ === SDOOR) {
         if (!Levitation() && rn2(30) < avrg_attrib) {
             cvt_sdoor_to_door(gm.maploc);   /* ->typ = DOOR */
             /* don't "kick open" when it's locked
                unless it also happens to be trapped */
-            await pline($c.lit("Crash!  %s a secret door!"), ((gm.maploc.flags | 0) & (D.LOCKED | D.TRAPPED)) === D.LOCKED ? $c.lit("Your kick uncovers") : $c.lit("You kick open"));
+            await pline($c.lit("Crash!  %s a secret door!"), (gm.maploc.flags & (D.LOCKED | D.TRAPPED)) === D.LOCKED ? $c.lit("Your kick uncovers") : $c.lit("You kick open"));
             await exercise(A.DEX, TRUE);
-            if ((gm.maploc.flags | 0) & D.TRAPPED) {
+            if (gm.maploc.flags & D.TRAPPED) {
                 gm.maploc.flags = (D.NODOOR) & 31;
                 await b_trapped($c.lit("door"), FOOT);
-            } else if ((gm.maploc.flags | 0) !== D.NODOOR && !((gm.maploc.flags | 0) & D.LOCKED)) {
+            } else if (gm.maploc.flags !== D.NODOOR && !(gm.maploc.flags & D.LOCKED)) {
                 gm.maploc.flags = (D.ISOPEN) & 31;
             }
             await feel_newsym(x, y);   /* we know it's gone */
-            if ((gm.maploc.flags | 0) === D.ISOPEN || (gm.maploc.flags | 0) === D.NODOOR) {
+            if (gm.maploc.flags === D.ISOPEN || gm.maploc.flags === D.NODOOR) {
                 unblock_point(x, y);   /* vision */
             }
             return ECMD.TIME;
@@ -1032,8 +1028,8 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
             await kick_dumb(x, y);
             return ECMD.TIME;
         }
-        if ((Luck() < 0 || gm.maploc.flags | 0) && !rn2(3)) {
-            gm.maploc.flags = (0) & 31;   /* don't leave loose ends.. */
+        if ((Luck() < 0 || gm.maploc.flags) && !rn2(3)) {
+            gm.maploc.flags = 0;   /* don't leave loose ends.. */
             gm.maploc.typ = ROOM;
             await mkgold(rnd(200), x, y);
             if (Blind()) {
@@ -1046,7 +1042,7 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
             return ECMD.TIME;
         } else if (Luck() > 0 && !rn2(3) && !gm.maploc.flags) {
             await mkgold(rn2(201) + 300 | 0, x, y);
-            i = Luck() + 1 | 0;
+            let i = Luck() + 1;
             if (i > 6) {
                 i = 6;
             }
@@ -1127,8 +1123,8 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
                 adjalign(-sgn(u.ualign.type) | 0);
             }
             gm.maploc.typ = ROOM;
-            gm.maploc.flags = (0) & 31;   /* clear 'flags' */
-            gm.maploc.horizontal = (0) & 1;   /* clear 'horizontal' */
+            gm.maploc.flags = 0;   /* clear 'flags' */
+            gm.maploc.horizontal = 0;   /* clear 'horizontal' */
             await mksobj_at(ROCK, x, y, TRUE, FALSE);
             await del_engr_at(x, y);
             if (Blind()) {
@@ -1154,9 +1150,9 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
             await kick_ouch(x, y, $c.lit(""));
             return ECMD.TIME;
         }
-        if (rn2(15) && !((gm.maploc.flags | 0) & TREE_LOOTED) && (treefruit = await rnd_treefruit_at(x, y))) {
-            nfruit = $c.sub64(8, rnl(7));
-            frtype = treefruit.otyp;
+        if (rn2(15) && !(gm.maploc.flags & TREE_LOOTED) && (treefruit = await rnd_treefruit_at(x, y))) {
+            const nfruit = $c.sub64(8, rnl(7));
+            const frtype = treefruit.otyp;
             treefruit.quan = nfruit;
             $t2 = await weight(treefruit) >>> 0, treefruit.owt = $t2;
             if (is_plural(treefruit)) {
@@ -1164,7 +1160,7 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
             } else {
                 await pline($c.lit("%s falls from the tree!"), await An(await xname(treefruit)));
             }
-            nfall = await scatter(x, y, 2, MAY_HIT, treefruit);
+            const nfall = await scatter(x, y, 2, MAY_HIT, treefruit);
             if (nfall !== nfruit) {
                 /* scatter left some in the tree, but treefruit
                  * may not refer to the correct object */
@@ -1178,13 +1174,13 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
             await newsym(x, y);
             gm.maploc.flags = ((gm.maploc.flags | 0 | TREE_LOOTED) >>> 0) & 31;
             return ECMD.TIME;
-        } else if (!((gm.maploc.flags | 0) & TREE_SWARM)) {
-            cnt = rnl(4) + 2 | 0;
-            made = 0;
+        } else if (!(gm.maploc.flags & TREE_SWARM)) {
+            let cnt = rnl(4) + 2 | 0;
+            let made = 0;
             mm.x = x;
             mm.y = y;
             while ($t3 = cnt, cnt = $t3 - 1 | 0, $t3) {
-                if (await enexto(mm, mm.x, mm.y, $c.relem(mons, PM.KILLER_BEE)) && await makemon($c.relem(mons, PM.KILLER_BEE), mm.x, mm.y, MM.ANGRY | MM.NOMSG)) {
+                if (await enexto(mm, mm.x, mm.y, mons[PM.KILLER_BEE]) && await makemon(mons[PM.KILLER_BEE], mm.x, mm.y, MM.ANGRY | MM.NOMSG)) {
                     made = made + 1 | 0;
                 }
             }
@@ -1200,7 +1196,7 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
         return ECMD.TIME;
     }
     if (IS_SINK(gm.maploc.typ)) {
-        gend = poly_gender();
+        const gend = poly_gender();
         if (Levitation()) {
             await kick_dumb(x, y);
             return ECMD.TIME;
@@ -1213,7 +1209,7 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
             }
             await exercise(A.DEX, TRUE);
             return ECMD.TIME;
-        } else if (!((gm.maploc.flags | 0) & S.LPUDDING) && !rn2(3) && !(svm.mvitals[PM.BLACK_PUDDING].mvflags & G_GONE)) {
+        } else if (!(gm.maploc.flags & S.LPUDDING) && !rn2(3) && !(svm.mvitals[PM.BLACK_PUDDING].mvflags & G_GONE)) {
             if (Blind()) {
                 if (!Deaf()) {
                     await You_hear($c.lit("a gushing sound."));
@@ -1221,15 +1217,15 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
             } else {
                 await pline($c.lit("A %s ooze gushes up from the drain!"), hcolor(c_color_names.c_black));
             }
-            await makemon($c.relem(mons, PM.BLACK_PUDDING), x, y, MM.NOMSG);
+            await makemon(mons[PM.BLACK_PUDDING], x, y, MM.NOMSG);
             await exercise(A.DEX, TRUE);
             await newsym(x, y);
             gm.maploc.flags = ((gm.maploc.flags | 0 | S.LPUDDING) >>> 0) & 31;
             return ECMD.TIME;
-        } else if (!((gm.maploc.flags | 0) & S.LDWASHER) && !rn2(3) && !(svm.mvitals[PM.AMOROUS_DEMON].mvflags & G_GONE)) {
+        } else if (!(gm.maploc.flags & S.LDWASHER) && !rn2(3) && !(svm.mvitals[PM.AMOROUS_DEMON].mvflags & G_GONE)) {
             /* can't resist... */
             await pline($c.lit("%s returns!"), Blind() ? c_common_strings.c_Something : $c.lit("The dish washer"));
-            if (await makemon($c.relem(mons, PM.AMOROUS_DEMON), x, y, $c.u32($c.or64(MM.NOMSG, gend === 1 || gend === 2 && rn2(2) ? MM.MALE : MM.FEMALE)))) {
+            if (await makemon(mons[PM.AMOROUS_DEMON], x, y, $c.u32($c.or64(MM.NOMSG, gend === 1 || gend === 2 && rn2(2) ? MM.MALE : MM.FEMALE)))) {
                 await newsym(x, y);
             }
             gm.maploc.flags = ((gm.maploc.flags | 0 | S.LDWASHER) >>> 0) & 31;
@@ -1243,7 +1239,7 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
         return ECMD.TIME;
     }
     if (gm.maploc.typ === STAIRS || gm.maploc.typ === LADDER || IS_STWALL(gm.maploc.typ)) {
-        if (!IS_STWALL(gm.maploc.typ) && (gm.maploc.flags | 0) === LA.DOWN) {
+        if (!IS_STWALL(gm.maploc.typ) && gm.maploc.flags === LA.DOWN) {
             await kick_dumb(x, y);
             return ECMD.TIME;
         }
@@ -1258,9 +1254,9 @@ async function kick_nondoor(x, y, avrg_attrib) {   // dokick.c:974
  * @returns {Promise<number>} int
  */
 export async function dokick() {   // dokick.c:1257
-    let x = 0, y = 0, avrg_attrib = 0, glyph = 0, oldglyph = 0, mtmp = null, no_kick = 0, xx = 0, yy = 0, mdat = null, range = 0, kickobjnam = new Int8Array(256);
-    oldglyph = -1;
-    no_kick = FALSE;
+    let avrg_attrib = 0, kickobjnam = new Int8Array(256);
+    let oldglyph = -1;
+    let no_kick = FALSE;
     if (nolimbs(gy.youmonst.data) || slithy(gy.youmonst.data)) {
         await You($c.lit("have no legs to kick with."));
         no_kick = TRUE;
@@ -1284,7 +1280,7 @@ export async function dokick() {   // dokick.c:1257
     } else if (gy.youmonst.data.mlet === S.LIZARD) {
         await Your($c.lit("legs cannot kick effectively."));
         no_kick = TRUE;
-    } else if (u.uinwater | 0 && !rn2(2)) {
+    } else if (u.uinwater && !rn2(2)) {
         await Your($c.lit("slow motion kick doesn't hit anything."));
         no_kick = TRUE;
     } else if (u.utrap) {
@@ -1319,14 +1315,14 @@ export async function dokick() {   // dokick.c:1257
     if (!u.dx && !u.dy) {
         return ECMD.CANCEL;
     }
-    x = $c.i16(u.ux + u.dx | 0);
-    y = $c.i16(u.uy + u.dy | 0);
+    const x = $c.i16(u.ux + u.dx | 0);
+    const y = $c.i16(u.uy + u.dy | 0);
     gk.kickedloc.x = x, gk.kickedloc.y = y;
     /* KMH -- Kicking boots always succeed */
     if ($G.uarmf && $G.uarmf.otyp === KICKING_BOOTS) {
         avrg_attrib = 99;
     } else {
-        avrg_attrib = $c.div32((ACURRSTR() + ACURR(A.DEX) | 0) + ACURR(A.CON) | 0, 3);
+        avrg_attrib = $c.div32(ACURRSTR() + ACURR(A.DEX) + ACURR(A.CON), 3);
     }
     if (u.uswallow) {
         switch (rn2(3)) {
@@ -1350,8 +1346,8 @@ export async function dokick() {   // dokick.c:1257
         return ECMD.TIME;
     }
     if (Levitation()) {
-        xx = $c.i16(u.ux - u.dx | 0);
-        yy = $c.i16(u.uy - u.dy | 0);
+        const xx = $c.i16(u.ux - u.dx | 0);
+        const yy = $c.i16(u.uy - u.dy | 0);
         /* doors can be opened while levitating, so they must be
          * reachable for bracing purposes
          * Possible extension: allow bracing against stuff on the side?
@@ -1361,7 +1357,7 @@ export async function dokick() {   // dokick.c:1257
             return ECMD.OK;
         }
     }
-    mtmp = isok(x, y) ? svl.level.monsters[x][y] : null;
+    const mtmp = isok(x, y) ? svl.level.monsters[x][y] : null;
     /* might not kick monster if it is hidden and becomes revealed,
        if it is peaceful and player declines to attack, or if the
        hero passes out due to encumbrance with low hp; svc.context.move
@@ -1394,9 +1390,9 @@ export async function dokick() {   // dokick.c:1257
      */
     if (mtmp) {
         /* save mtmp->data (for recoil) in case mtmp gets killed */
-        mdat = mtmp.data;
+        const mdat = mtmp.data;
         await kick_monster(mtmp, x, y);
-        glyph = glyph_at(x, y);
+        const glyph = glyph_at(x, y);
         /* see comment in attack_checks() */
         if (DEADMONSTER(mtmp)) {
             /* DEADMONSTER() */
@@ -1413,7 +1409,7 @@ export async function dokick() {   // dokick.c:1257
         }
         /* recoil if floating */
         if (((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) || Levitation()) && svc.context.move) {
-            range = (gy.youmonst.data.cwt | 0) + (weight_cap() + inv_weight() | 0) | 0;
+            let range = (gy.youmonst.data.cwt | 0) + (weight_cap() + inv_weight() | 0) | 0;
             if (range < 1) {
                 range = 1;   /* divide by zero avoidance */
             }
@@ -1456,8 +1452,8 @@ export async function dokick() {   // dokick.c:1257
  * @param {number} y coordxy
  */
 function drop_to(cc, loc, x, y) {   // dokick.c:1473
-    let stway = null, $t1, $t2;
-    stway = stairway_at(x, y);
+    let $t1, $t2;
+    const stway = stairway_at(x, y);
     /* cover all the MIGR_xxx choices generated by down_gate() */
     switch (loc) {
         case MIGR.RANDOM:
@@ -1479,7 +1475,7 @@ function drop_to(cc, loc, x, y) {   // dokick.c:1473
                 cc.y = stway.tolev.dlevel;
             } else {
                 cc.x = u.uz.dnum;
-                cc.y = $c.i16(u.uz.dlevel + 1 | 0);
+                cc.y = $c.i16(u.uz.dlevel + 1);
             }
             break;
         default:
@@ -1498,14 +1494,14 @@ function drop_to(cc, loc, x, y) {   // dokick.c:1473
  * @returns {Promise<void>}
  */
 export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
-    let toloc = 0, obj = null, obj2 = null, shkp = null, oct = 0, dct = 0, price = 0, debit = 0, robbed = 0, angry = 0, costly = 0, isrock = 0, cc = new $T.nhcoord(), what = null, amt = 0;
+    let obj = null, obj2 = null, dct = 0, debit = 0, robbed = 0, cc = new $T.nhcoord();
     /* caused impact, won't drop itself */
     /* location affected */
     /* if !0 send to dlev near player */
     if (!OBJ_AT(x, y)) {
         return;
     }
-    toloc = await down_gate(x, y);
+    let toloc = await down_gate(x, y);
     drop_to(cc, toloc, x, y);
     if (!cc.y) {
         return;
@@ -1517,10 +1513,10 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
         toloc = MIGR.WITH_HERO;
         cc.y = dlev;
     }
-    costly = await costly_spot(x, y);
-    price = debit = robbed = 0;
-    angry = FALSE;
-    shkp = null;
+    const costly = await costly_spot(x, y);
+    let price = debit = robbed = 0;
+    let angry = FALSE;
+    let shkp = null;
     /* if 'costly', we must keep a record of ESHK(shkp) before
      * it undergoes changes through the calls to stolen_value.
      * the angry bit must be reset, if needed, in this fn, since
@@ -1531,11 +1527,11 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
         if ((shkp = await shop_keeper(in_rooms(x, y, SHOPBASE).get(0))) !== null) {
             debit = shkp.mextra.eshk.debit;
             robbed = shkp.mextra.eshk.robbed;
-            angry = $c.i8(!shkp.mpeaceful ? 1 : 0);
+            angry = !shkp.mpeaceful ? 1 : 0;
         }
     }
-    isrock = $c.i8(missile && missile.otyp === ROCK ? 1 : 0);
-    oct = dct = 0;
+    const isrock = missile && missile.otyp === ROCK ? 1 : 0;
+    let oct = dct = 0;
     for (obj = svl.level.objects[x][y]; obj; obj = obj2) {
         obj2 = obj.v.v_nexthere;
         if ($c.peq(obj, missile)) {
@@ -1552,13 +1548,13 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
         }
         await obj_extract_self(obj);
         if (costly) {
-            price = $c.add64(price, await stolen_value(obj, x, y, $c.i8(await costly_spot(u.ux, u.uy) && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(x, y, SHOPBASE).get(0)) ? 1 : 0), TRUE));
+            price = $c.add64(price, await stolen_value(obj, x, y, await costly_spot(u.ux, u.uy) && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(x, y, SHOPBASE).get(0)) ? 1 : 0, TRUE));
             /* set obj->no_charge to 0 */
             if (Has_contents(obj)) {
                 picked_container(obj);   /* does the right thing */
             }
             if (obj.oclass !== COIN_CLASS) {
-                obj.no_charge = (0) & 1;
+                obj.no_charge = 0;
             }
         }
         await add_to_migration(obj);
@@ -1570,7 +1566,7 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
     }
     if (dct && cansee(x, y)) {
         /* at least one object fell */
-        what = dct === 1 ? $c.lit("object falls") : $c.lit("objects fall");
+        const what = dct === 1 ? $c.lit("object falls") : $c.lit("objects fall");
         if (missile) {
             await pline($c.lit("From the impact, %sother %s."), dct === oct ? $c.lit("the ") : dct === 1 ? $c.lit("an") : $c.lit(""), what);
         } else if (oct === dct) {
@@ -1599,7 +1595,7 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
             return;
         }
         if (shkp.mextra.eshk.debit > debit) {
-            amt = $c.sub64(shkp.mextra.eshk.debit, debit);
+            const amt = $c.sub64(shkp.mextra.eshk.debit, debit);
             await You($c.lit("owe %s %ld %s for goods lost."), await shkname(shkp), amt, await currency(amt));
         }
     }
@@ -1616,10 +1612,10 @@ export async function impact_drop(missile, x, y, dlev) {   // dokick.c:1511
  * @returns {Promise<number>} boolean
  */
 export async function ship_object(otmp, x, y, shop_floor_obj) {   // dokick.c:1639
-    let toloc = 0, ox = 0, oy = 0, cc = new $T.nhcoord(), obj = null, t = null, nodrop = 0, unpaid = 0, container = 0, impact = 0, chainthere = 0, n = 0, result = null;
-    impact = FALSE;
-    chainthere = FALSE;
-    n = 0;
+    let toloc = 0, cc = new $T.nhcoord(), obj = null, t = null, result = null;
+    let impact = FALSE;
+    let chainthere = FALSE;
+    let n = 0;
     if (!otmp) {
         return FALSE;
     }
@@ -1632,9 +1628,9 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {   // dokick.c:16
     }
     /* objects other than attached iron ball always fall down ladder,
        but have a chance of staying otherwise */
-    nodrop = $c.i8($c.peq(otmp, $G.uball) || $c.peq(otmp, $G.uchain) || toloc !== MIGR.LADDER_UP && rn2(3) ? 1 : 0);
-    container = $c.i8(Has_contents(otmp));
-    unpaid = is_unpaid(otmp);
+    const nodrop = $c.peq(otmp, $G.uball) || $c.peq(otmp, $G.uchain) || toloc !== MIGR.LADDER_UP && rn2(3) ? 1 : 0;
+    const container = Has_contents(otmp);
+    const unpaid = is_unpaid(otmp);
     if (OBJ_AT(x, y)) {
         for (obj = svl.level.objects[x][y]; obj; obj = obj.v.v_nexthere) {
             if ($c.peq(obj, $G.uchain)) {
@@ -1669,16 +1665,16 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {   // dokick.c:16
         if (unpaid) {
             await stolen_value(otmp, u.ux, u.uy, TRUE, FALSE);
         } else {
-            ox = otmp.ox;
-            oy = otmp.oy;
-            await stolen_value(otmp, ox, oy, $c.i8(await costly_spot(u.ux, u.uy) && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(ox, oy, SHOPBASE).get(0)) ? 1 : 0), FALSE);
+            const ox = otmp.ox;
+            const oy = otmp.oy;
+            await stolen_value(otmp, ox, oy, await costly_spot(u.ux, u.uy) && $c.strchr(new $c.Ptr(u.urooms, 0), in_rooms(ox, oy, SHOPBASE).get(0)) ? 1 : 0, FALSE);
         }
         /* set otmp->no_charge to 0 */
         if (container) {
             picked_container(otmp);   /* happens to do the right thing */
         }
         if (otmp.oclass !== COIN_CLASS) {
-            otmp.no_charge = (0) & 1;
+            otmp.no_charge = 0;
         }
     }
     if (otmp.owornmask) {
@@ -1686,7 +1682,7 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {   // dokick.c:16
     }
     /* some things break rather than ship */
     if (breaktest(otmp)) {
-        if ((objects[otmp.otyp].oc_material | 0) === GLASS || otmp.otyp === EXPENSIVE_CAMERA) {
+        if (objects[otmp.otyp].oc_material === GLASS || otmp.otyp === EXPENSIVE_CAMERA) {
             if (otmp.otyp === MIRROR) {
                 change_luck(-2);
             }
@@ -1712,7 +1708,7 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {   // dokick.c:16
     otmp.owornmask = toloc;
     /* boulder from rolling boulder trap, no longer part of the trap */
     if (otmp.otyp === BOULDER) {
-        otmp.otrapped = (0) & 1;
+        otmp.otrapped = 0;
     }
     if (impact) {
         /* the objs impacted may be in a shop other than
@@ -1734,20 +1730,20 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {   // dokick.c:16
  * @returns {Promise<void>}
  */
 export async function obj_delivery(near_hero) {   // dokick.c:1769
-    let otmp = null, otmp2 = null, nx = 0, ny = 0, where = 0, nobreak = 0, noscatter = 0, stway = null, fromdlev = new $T.d_level(), isladder = 0, $t1;
-    nx = 0;
-    ny = 0;
+    let otmp = null, otmp2 = null, stway = null, fromdlev = new $T.d_level(), $t1;
+    let nx = 0;
+    let ny = 0;
     for (otmp = gm.migrating_objs; otmp; otmp = otmp2) {
         otmp2 = otmp.nobj;
         if (otmp.ox !== u.uz.dnum || otmp.oy !== u.uz.dlevel) {
             continue;
         }
-        where = $c.i32($c.and64(otmp.owornmask, 32767));   /* destination code */
+        let where = $c.i32($c.and64(otmp.owornmask, 32767));   /* destination code */
         if ((where & MIGR.TO_SPECIES) !== 0) {
             continue;
         }
-        nobreak = $c.i8((where & MIGR.NOBREAK) !== 0 ? 1 : 0);
-        noscatter = $c.i8((where & MIGR.WITH_HERO) !== 0 ? 1 : 0);
+        const nobreak = (where & MIGR.NOBREAK) !== 0 ? 1 : 0;
+        const noscatter = (where & MIGR.WITH_HERO) !== 0 ? 1 : 0;
         where = where & ~(MIGR.NOBREAK | MIGR.NOSCATTER);
         if ((!near_hero ? 1 : 0) ^ (where === MIGR.WITH_HERO ? 1 : 0)) {
             continue;
@@ -1756,7 +1752,7 @@ export async function obj_delivery(near_hero) {   // dokick.c:1769
         otmp.owornmask = 0;
         fromdlev.dnum = otmp.omigr_from_dnum;
         fromdlev.dlevel = otmp.omigr_from_dlevel;
-        isladder = FALSE;
+        let isladder = FALSE;
         switch (where) {
             case MIGR.LADDER_UP:
                 isladder = TRUE;
@@ -1816,9 +1812,9 @@ export async function obj_delivery(near_hero) {   // dokick.c:1769
  * @returns {Promise<void>}
  */
 export async function deliver_obj_to_mon(mtmp, cnt, deliverflags) {   // dokick.c:1854
-    let otmp = null, otmp2 = null, where = 0, maxobj = 0, at_crime_scene = 0, $t1;
-    maxobj = 1;
-    at_crime_scene = In_mines(u.uz);
+    let otmp = null, otmp2 = null, $t1;
+    let maxobj = 1;
+    const at_crime_scene = In_mines(u.uz);
     if ($c.andu64(deliverflags, DF.RANDOM) && cnt > 1) {
         maxobj = rnd(cnt);
     } else if ($c.andu64(deliverflags, DF.ALL)) {
@@ -1829,7 +1825,7 @@ export async function deliver_obj_to_mon(mtmp, cnt, deliverflags) {   // dokick.
     cnt = 0;
     for (otmp = gm.migrating_objs; otmp; otmp = otmp2) {
         otmp2 = otmp.nobj;
-        where = $c.i32($c.and64(otmp.owornmask, 32767));   /* destination code */
+        const where = $c.i32($c.and64(otmp.owornmask, 32767));   /* destination code */
         if ((where & MIGR.TO_SPECIES) === 0) {
             continue;
         }
@@ -1867,8 +1863,8 @@ export async function deliver_obj_to_mon(mtmp, cnt, deliverflags) {   // dokick.
  * @returns {Promise<void>}
  */
 async function otransit_msg(otmp, nodrop, chainthere, num) {   // dokick.c:1909
-    let optr = null, obuf = new Int8Array(256), xbuf = new Int8Array(256);
-    optr = null;
+    let obuf = new Int8Array(256), xbuf = new Int8Array(256);
+    let optr = null;
     if (otmp.otyp === CORPSE) {
         /* Tobjnam() calls xname() and would yield "The corpse";
            we want more specific "The newt corpse" or "Medusa's corpse" */
@@ -1904,8 +1900,8 @@ async function otransit_msg(otmp, nodrop, chainthere, num) {   // dokick.c:1909
  * @returns {Promise<number>} schar
  */
 export async function down_gate(x, y) {   // dokick.c:1943
-    let ttmp = null, stway = null;
-    stway = stairway_at(x, y);
+    let ttmp = null;
+    const stway = stairway_at(x, y);
     gg.gate_str = null;
     /* this matches the player restriction in goto_level() */
     if (on_level(u.uz, svd.dungeon_topology.d_qstart_level) && !await ok_to_quest()) {
@@ -1913,15 +1909,15 @@ export async function down_gate(x, y) {   // dokick.c:1943
     }
     if (stway && !stway.up && !stway.isladder) {
         gg.gate_str = $c.lit("down the stairs");
-        return $c.i8(stway.tolev.dnum === u.uz.dnum ? MIGR.STAIRS_UP : MIGR.SSTAIRS);
+        return stway.tolev.dnum === u.uz.dnum ? MIGR.STAIRS_UP : MIGR.SSTAIRS;
     }
     if (stway && !stway.up && stway.isladder) {
         gg.gate_str = $c.lit("down the ladder");
         return MIGR.LADDER_UP;
     }
     /* hole will always be flagged as seen; trap drop might or might not */
-    if ((ttmp = t_at(x, y)) !== null && ttmp.tseen | 0 && is_hole(ttmp.ttyp)) {
-        gg.gate_str = (ttmp.ttyp | 0) === TRAPDOOR ? $c.lit("through the trap door") : $c.lit("through the hole");
+    if ((ttmp = t_at(x, y)) !== null && ttmp.tseen && is_hole(ttmp.ttyp)) {
+        gg.gate_str = ttmp.ttyp === TRAPDOOR ? $c.lit("through the trap door") : $c.lit("through the hole");
         return MIGR.RANDOM;
     }
     return MIGR.NOWHERE;

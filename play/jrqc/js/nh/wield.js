@@ -76,8 +76,8 @@ const can_no_longer_twoweap = new Int8Array(40);
  * @returns {Promise<void>}
  */
 export async function setuwep(obj) {   // wield.c:100
-    let olduwep = null, $t1;
-    olduwep = $G.uwep;
+    let $t1;
+    const olduwep = $G.uwep;
     if ($c.peq(obj, $G.uwep)) {
         return;   /* necessary to not set gu.unweapon */
     }
@@ -89,7 +89,7 @@ export async function setuwep(obj) {   // wield.c:100
     }
     /* This message isn't printed in the caller because it happens
      * *whenever* Sunsword is unwielded, from whatever cause. */
-    if ($c.peq($G.uwep, obj) && artifact_light(olduwep) && olduwep.lamplit | 0) {
+    if ($c.peq($G.uwep, obj) && artifact_light(olduwep) && olduwep.lamplit) {
         await end_burn(olduwep, FALSE);
         if (!Blind()) {
             await pline($c.lit("%s shining."), await Tobjnam(olduwep, $c.lit("stop")));
@@ -103,7 +103,7 @@ export async function setuwep(obj) {   // wield.c:100
      * 3.2.2:  Wielding arbitrary objects will give bashing message too.
      */
     if (obj) {
-        $t1 = $c.i8(obj.oclass === WEAPON_CLASS ? is_launcher(obj) || is_ammo(obj) || is_missile(obj) || is_pole(obj) && !u.usteed && !is_art(obj, ART.SNICKERSNEE) ? 1 : 0 : !is_weptool(obj) && !is_wet_towel(obj) ? 1 : 0), gu.unweapon = $t1;
+        $t1 = obj.oclass === WEAPON_CLASS ? is_launcher(obj) || is_ammo(obj) || is_missile(obj) || is_pole(obj) && !u.usteed && !is_art(obj, ART.SNICKERSNEE) ? 1 : 0 : !is_weptool(obj) && !is_wet_towel(obj) ? 1 : 0, gu.unweapon = $t1;
     } else {
         gu.unweapon = TRUE;   /* for "bare hands" message */
     }
@@ -140,11 +140,11 @@ export function empty_handed() {   // wield.c:158
  */
 async function ready_weapon(wep$in) {   // wield.c:169
     const wep = [wep$in];
-    let res = 0, was_twoweap = 0, had_wep = 0, tmp = null, thestr = null, dummy = 0, this_shkp = null;
+    let this_shkp = null;
     /* Separated function so swapping works easily */
-    res = ECMD.OK;
-    was_twoweap = u.twoweap;
-    had_wep = $c.i8($G.uwep !== null ? 1 : 0);
+    let res = ECMD.OK;
+    const was_twoweap = u.twoweap;
+    const had_wep = $G.uwep !== null ? 1 : 0;
     if (!wep[0]) {
         /* No weapon */
         if ($G.uwep) {
@@ -166,8 +166,8 @@ async function ready_weapon(wep$in) {   // wield.c:169
         /* Weapon WILL be wielded after this point */
         res = ECMD.TIME;
         if (will_weld(wep[0])) {
-            tmp = await xname(wep[0]);
-            thestr = $c.lit("The ");
+            let tmp = await xname(wep[0]);
+            const thestr = $c.lit("The ");
             if ($c.strncmp(tmp, thestr, 4) && !$c.strncmp(await The(tmp), thestr, 4)) {
                 tmp = thestr;
             } else {
@@ -187,7 +187,7 @@ async function ready_weapon(wep$in) {   // wield.c:169
              * to death in Hell due to loss of fire resistance.
              * "Lifesaved re-wielding or re-wearing" is ancient history.]
              */
-            dummy = wep[0].owornmask;
+            const dummy = wep[0].owornmask;
             wep[0].owornmask = $c.or64(wep[0].owornmask, W.WEP);
             if (wep[0].otyp === AKLYS && $c.and64(wep[0].owornmask, W.WEP) !== 0) {
                 await You($c.lit("secure the tether."));
@@ -376,7 +376,7 @@ export async function dowield() {   // wield.c:355
                     }
                     $c.strcpy(new $c.Ptr(qbuf, 0), $c.lit("Wield all of them instead?"));
                 } else {
-                    use_plural = $c.i8($G.uquiver.quan !== 1 || $G.uquiver.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) || pair_of($G.uquiver) ? 1 : 0);
+                    use_plural = $G.uquiver.quan !== 1 || $G.uquiver.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) || pair_of($G.uquiver) ? 1 : 0;
                     $c.sprintf(new $c.Ptr(qbuf, 0), $c.lit("You have %s readied.  Wield %s instead?"), !use_plural ? $c.lit("that") : $c.lit("those"), !use_plural ? $c.lit("it") : $c.lit("them"));
                 }
                 /* require confirmation to wield the quivered weapon */
@@ -410,8 +410,7 @@ export async function dowield() {   // wield.c:355
  * @returns {Promise<number>} int
  */
 export async function doswapweapon() {   // wield.c:461
-    let oldwep = null, oldswap = null, result = 0;
-    result = 0;
+    let result = 0;
     /* May we attempt this? */
     gm.multi = 0;
     if (cantwield(gy.youmonst.data)) {
@@ -423,8 +422,8 @@ export async function doswapweapon() {   // wield.c:461
         return ECMD.FAIL;
     }
     /* Unwield your current secondary weapon */
-    oldwep = $G.uwep;
-    oldswap = $G.uswapwep;
+    const oldwep = $G.uwep;
+    const oldswap = $G.uswapwep;
     await setuswapwep(null);
     /* Set your new primary weapon */
     result = await ready_weapon(oldswap);
@@ -537,7 +536,7 @@ export async function doquiver_core(verb) {   // wield.c:512
                     }
                     $c.strcpy(new $c.Ptr(qbuf, 0), $c.lit("Ready all of them instead?"));
                 } else {
-                    use_plural = $c.i8($G.uwep.quan !== 1 || $G.uwep.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) || pair_of($G.uwep) ? 1 : 0);
+                    use_plural = $G.uwep.quan !== 1 || $G.uwep.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) || pair_of($G.uwep) ? 1 : 0;
                     $c.sprintf(new $c.Ptr(qbuf, 0), $c.lit("You are wielding %s.  Ready %s instead?"), !use_plural ? $c.lit("that") : $c.lit("those"), !use_plural ? $c.lit("it") : $c.lit("them"));
                 }
                 /* require confirmation to ready the main weapon */
@@ -566,7 +565,7 @@ export async function doquiver_core(verb) {   // wield.c:512
                     }
                     $c.strcpy(new $c.Ptr(qbuf, 0), $c.lit("Ready all of them instead?"));
                 } else {
-                    use_plural$2 = $c.i8($G.uswapwep.quan !== 1 || $G.uswapwep.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) || pair_of($G.uswapwep) ? 1 : 0);
+                    use_plural$2 = $G.uswapwep.quan !== 1 || $G.uswapwep.oartifact === ART.EYES_OF_THE_OVERWORLD && !undiscovered_artifact(ART.EYES_OF_THE_OVERWORLD) || pair_of($G.uswapwep) ? 1 : 0;
                     $c.sprintf(new $c.Ptr(qbuf, 0), $c.lit("%s your %s weapon.  Ready %s instead?"), !use_plural$2 ? $c.lit("That is") : $c.lit("Those are"), u.twoweap ? $c.lit("second") : $c.lit("alternate"), !use_plural$2 ? $c.lit("it") : $c.lit("them"));
                 }
                 /* require confirmation to ready the alternate weapon */
@@ -618,7 +617,6 @@ export async function doquiver_core(verb) {   // wield.c:512
  * @returns {Promise<number>} boolean
  */
 export async function wield_tool(obj, verb) {   // wield.c:683
-    let what = null, more_than_1 = 0, hand = null, oldwep = null;
     /* "rub",&c */
     if ($G.uwep && $c.peq(obj, $G.uwep)) {
         return TRUE;   /* nothing to do if already wielding it */
@@ -626,15 +624,15 @@ export async function wield_tool(obj, verb) {   // wield.c:683
     if (!verb) {
         verb = $c.lit("wield");
     }
-    what = await xname(obj);
-    more_than_1 = $c.i8(obj.quan > 1 || strstri(what, $c.lit("pair of ")) !== null || strstri(what, $c.lit("s of ")) !== null ? 1 : 0);
+    const what = await xname(obj);
+    let more_than_1 = obj.quan > 1 || strstri(what, $c.lit("pair of ")) !== null || strstri(what, $c.lit("s of ")) !== null ? 1 : 0;
     if ($c.and64(obj.owornmask, W_ARMOR | W_ACCESSORY)) {
         await You_cant($c.lit("%s %s while wearing %s."), verb, await yname(obj), more_than_1 ? $c.lit("them") : $c.lit("it"));
         return FALSE;
     }
     if ($G.uwep && await welded($G.uwep)) {
         if (flags.verbose) {
-            hand = await body_part(HAND);
+            let hand = await body_part(HAND);
             if (bimanual($G.uwep)) {
                 hand = await makeplural(hand);
             }
@@ -666,7 +664,7 @@ export async function wield_tool(obj, verb) {   // wield.c:683
             return FALSE;
         }
     } else {
-        oldwep = $G.uwep;
+        const oldwep = $G.uwep;
         if (will_weld(obj)) {
             /* hope none of ready_weapon()'s early returns apply here... */
             await ready_weapon(obj);
@@ -694,7 +692,7 @@ export async function wield_tool(obj, verb) {   // wield.c:683
  * @returns {Promise<number>} int
  */
 export async function can_twoweapon() {   // wield.c:761
-    let otmp = null, hand_s = null;
+    let otmp = null;
     if (!could_twoweap(gy.youmonst.data)) {
         if (Upolyd()) {
             await You_cant($c.lit("use two weapons in your current form."));
@@ -702,7 +700,7 @@ export async function can_twoweapon() {   // wield.c:761
             await pline($c.lit("%s aren't able to use two weapons at once."), await makeplural(flags.female && gu.urole.name.f ? gu.urole.name.f : gu.urole.name.m));
         }
     } else if (!$G.uwep || !$G.uswapwep) {
-        hand_s = await body_part(HAND);
+        let hand_s = await body_part(HAND);
         if (!$G.uwep && !$G.uswapwep) {
             hand_s = await makeplural(hand_s);
         }
@@ -721,7 +719,7 @@ export async function can_twoweapon() {   // wield.c:761
     } else if ($G.uswapwep.otyp === CORPSE && await cant_wield_corpse($G.uswapwep)) {
         /* [Note: !TWOWEAPOK() check prevents ever getting here...] */
         /* must be life-saved to reach here; return FALSE */
-    } else if (Glib() || $G.uswapwep.cursed | 0) {
+    } else if (Glib() || $G.uswapwep.cursed) {
         if (!Glib()) {
             await set_bknown($G.uswapwep, 1);
         }
@@ -737,8 +735,8 @@ export async function can_twoweapon() {   // wield.c:761
  * @returns {Promise<void>}
  */
 export async function drop_uswapwep() {   // wield.c:809
-    let left_hand = new Int8Array(128), obj = null;
-    obj = $G.uswapwep;
+    let left_hand = new Int8Array(128);
+    const obj = $G.uswapwep;
     /* this used to use makeplural(body_part(HAND)) but in order to be
        dual-wielded, or to get this far attempting to achieve that,
        uswapwep must be one-handed; since it's secondary, the hand must
@@ -799,7 +797,7 @@ export async function dotwoweapon() {   // wield.c:845
  */
 export async function uwepgone() {   // wield.c:873
     if ($G.uwep) {
-        if (artifact_light($G.uwep) && $G.uwep.lamplit | 0) {
+        if (artifact_light($G.uwep) && $G.uwep.lamplit) {
             await end_burn($G.uwep, FALSE);
             if (!Blind()) {
                 await pline($c.lit("%s shining."), await Tobjnam($G.uwep, $c.lit("stop")));
@@ -846,16 +844,16 @@ export async function untwoweapon() {   // wield.c:906
  * @returns {Promise<number>} int
  */
 export async function chwepon(otmp, amount) {   // wield.c:918
-    let color = null, xtime = null, wepname = null, multiple = 0, otyp = 0, buf = new Int8Array(256), $t1, $t2;
-    color = hcolor(amount < 0 ? c_color_names.c_black : c_color_names.c_blue);
-    wepname = $c.lit("");
-    otyp = STRANGE_OBJECT;
+    let multiple = 0, buf = new Int8Array(256), $t1, $t2;
+    const color = hcolor(amount < 0 ? c_color_names.c_black : c_color_names.c_blue);
+    let wepname = $c.lit("");
+    let otyp = STRANGE_OBJECT;
     if (!$G.uwep || $G.uwep.oclass !== WEAPON_CLASS && !is_weptool($G.uwep)) {
         if (amount >= 0 && $G.uwep && will_weld($G.uwep)) {
             /* cursed tin opener */
             if (!Blind()) {
                 $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s with %s aura."), await Yobjnam2($G.uwep, $c.lit("glow")), await an(hcolor(c_color_names.c_amber)));
-                $G.uwep.bknown = ((!Hallucination() ? 1 : 0) >>> 0) & 1;   /* ok to bypass set_bknown() */
+                $G.uwep.bknown = (!Hallucination() ? 1 : 0) & 1;   /* ok to bypass set_bknown() */
             } else {
                 /* cursed tin opener is wielded in right hand */
                 $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Your right %s tingles."), await body_part(HAND));
@@ -866,18 +864,18 @@ export async function chwepon(otmp, amount) {   // wield.c:918
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Your %s %s."), await makeplural(await body_part(HAND)), amount >= 0 ? $c.lit("twitch") : $c.lit("itch"));
         }
         await strange_feeling(otmp, new $c.Ptr(buf, 0));   /* pline()+docall()+useup() */
-        await exercise(A.DEX, $c.i8(amount >= 0 ? 1 : 0));
+        await exercise(A.DEX, amount >= 0 ? 1 : 0);
         return 0;
     }
     if (otmp && otmp.oclass === SCROLL_CLASS) {
         otyp = otmp.otyp;
     }
     if ($G.uwep.otyp === WORM_TOOTH && amount >= 0) {
-        multiple = $c.i8($G.uwep.quan > 1 ? 1 : 0);
+        multiple = $G.uwep.quan > 1 ? 1 : 0;
         /* order: message, transformation, shop handling */
         await Your($c.lit("%s %s much sharper now."), await simpleonames($G.uwep), multiple ? $c.lit("fuse, and become") : $c.lit("is"));
         $G.uwep.otyp = CRYSKNIFE;
-        $G.uwep.oerodeproof = (0) & 1;
+        $G.uwep.oerodeproof = 0;
         if (multiple) {
             $G.uwep.quan = 1;
             $t1 = await weight($G.uwep) >>> 0, $G.uwep.owt = $t1;
@@ -897,17 +895,17 @@ export async function chwepon(otmp, amount) {   // wield.c:918
         }
         return 1;
     } else if ($G.uwep.otyp === CRYSKNIFE && amount < 0) {
-        multiple = $c.i8($G.uwep.quan > 1 ? 1 : 0);
+        multiple = $G.uwep.quan > 1 ? 1 : 0;
         /* order matters: message, shop handling, transformation */
         await Your($c.lit("%s %s much duller now."), await simpleonames($G.uwep), multiple ? $c.lit("fuse, and become") : $c.lit("is"));
         await costly_alteration($G.uwep, COST.DEGRD);   /* DECHNT? other? */
         $G.uwep.otyp = WORM_TOOTH;
-        $G.uwep.oerodeproof = (0) & 1;
+        $G.uwep.oerodeproof = 0;
         if (multiple) {
             $G.uwep.quan = 1;
             $t2 = await weight($G.uwep) >>> 0, $G.uwep.owt = $t2;
         }
-        if (otyp !== STRANGE_OBJECT && otmp.bknown | 0) {
+        if (otyp !== STRANGE_OBJECT && otmp.bknown) {
             await makeknown(otyp);
         }
         if (multiple) {
@@ -935,9 +933,9 @@ export async function chwepon(otmp, amount) {   // wield.c:918
         return 1;
     }
     if (!Blind()) {
-        xtime = Math.imul(amount, amount) === 1 ? $c.lit("moment") : $c.lit("while");
+        const xtime = Math.imul(amount, amount) === 1 ? $c.lit("moment") : $c.lit("while");
         await pline($c.lit("%s %s for a %s."), await Yobjnam2($G.uwep, amount === 0 ? $c.lit("violently glow") : $c.lit("glow")), color, xtime);
-        if (otyp !== STRANGE_OBJECT && $G.uwep.known | 0 && (amount > 0 || amount < 0 && otmp.bknown | 0)) {
+        if (otyp !== STRANGE_OBJECT && $G.uwep.known && (amount > 0 || amount < 0 && otmp.bknown)) {
             await makeknown(otyp);
         }
     }
@@ -985,12 +983,11 @@ export async function welded(obj) {   // wield.c:1051
  * @returns {Promise<void>}
  */
 export async function weldmsg(obj) {   // wield.c:1061
-    let savewornmask = 0, hand = null;
-    hand = await body_part(HAND);
+    let hand = await body_part(HAND);
     if (bimanual(obj)) {
         hand = await makeplural(hand);
     }
-    savewornmask = obj.owornmask;
+    const savewornmask = obj.owornmask;
     obj.owornmask = 0;
     /* suppress doname()'s "(weapon in hand)";
      * Yobjnam2() doesn't actually need this because
@@ -1011,7 +1008,7 @@ export function mwelded(obj) {   // wield.c:1078
     return FALSE;
 }
 function will_weld(optr) {
-    return optr.cursed | 0 && (optr.oclass === WEAPON_CLASS || optr.oclass === TOOL_CLASS && objects[optr.otyp].oc_subtyp !== P.NONE || optr.otyp === HEAVY_IRON_BALL || optr.otyp === IRON_CHAIN || optr.otyp === TIN_OPENER) ? 1 : 0;
+    return optr.cursed && (optr.oclass === WEAPON_CLASS || optr.oclass === TOOL_CLASS && objects[optr.otyp].oc_subtyp !== P.NONE || optr.otyp === HEAVY_IRON_BALL || optr.otyp === IRON_CHAIN || optr.otyp === TIN_OPENER) ? 1 : 0;
 }
 function TWOWEAPOK(obj) {
     return obj.oclass === WEAPON_CLASS ? !(obj.oclass === WEAPON_CLASS && objects[obj.otyp].oc_subtyp >= P.BOW && objects[obj.otyp].oc_subtyp <= P.CROSSBOW || (obj.oclass === WEAPON_CLASS || obj.oclass === GEM_CLASS) && objects[obj.otyp].oc_subtyp >= -P.CROSSBOW && objects[obj.otyp].oc_subtyp <= -P.BOW || (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) && objects[obj.otyp].oc_subtyp >= -P.BOOMERANG && objects[obj.otyp].oc_subtyp <= -P.DART) ? 1 : 0 : obj.oclass === TOOL_CLASS && objects[obj.otyp].oc_subtyp !== P.NONE ? 1 : 0;

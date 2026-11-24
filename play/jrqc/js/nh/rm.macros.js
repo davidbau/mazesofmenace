@@ -27,7 +27,7 @@ export function IS_DOOR(typ) {
     return typ === DOOR ? 1 : 0;
 }
 export function IS_TREE(typ) {
-    return typ === TREE || svl.level.flags.arboreal | 0 && typ === STONE ? 1 : 0;
+    return typ === TREE || svl.level.flags.arboreal && typ === STONE ? 1 : 0;
 }
 export function ACCESSIBLE(typ) {
     return typ >= DOOR ? 1 : 0;
@@ -75,13 +75,13 @@ export function IS_WATERWALL(typ) {
     return typ === WATER ? 1 : 0;
 }
 export function SURFACE_AT(x, y) {
-    return svl.level.locations[x][y].typ === DRAWBRIDGE_UP ? db_under_typ(svl.level.locations[x][y].flags | 0) : svl.level.locations[x][y].typ;
+    return svl.level.locations[x][y].typ === DRAWBRIDGE_UP ? db_under_typ(svl.level.locations[x][y].flags) : svl.level.locations[x][y].typ;
 }
 export function FOUNTAIN_IS_WARNED(x, y) {
-    return (svl.level.locations[x][y].flags | 0) & F_WARNED;
+    return svl.level.locations[x][y].flags & F_WARNED;
 }
 export function FOUNTAIN_IS_LOOTED(x, y) {
-    return (svl.level.locations[x][y].flags | 0) & F_LOOTED;
+    return svl.level.locations[x][y].flags & F_LOOTED;
 }
 export function CAN_OVERWRITE_TERRAIN(ttyp) {
     return iflags.debug_overwrite_stairs || !(ttyp === LADDER || ttyp === STAIRS) ? 1 : 0;

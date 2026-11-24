@@ -43,8 +43,9 @@ import { Is_container, Has_contents, carried, SchroedingersBox,
 import { AUTOUNLOCK_UNTRAP, AUTOUNLOCK_APPLY_KEY,
          AUTOUNLOCK_FORCE } from './const.js';
 import { check_capacity, in_rooms, losehp, notice_all_mons_flush } from './hack.js';
-import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, IS_FURNITURE, ICE, POOL, MOAT, WATER,
-         LAVAPOOL, nothing_happens, nothing_seems_to_happen } from './const.js';
+import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, IS_FURNITURE, IS_POOL, IS_LAVA,
+         ICE, DRAWBRIDGE_UP, TIMEOUT, nothing_happens, nothing_seems_to_happen } from './const.js';
+import { db_under_typ } from './dbridge.js';
 import { upstart, trycall } from './do_name.js';
 
 /* src/hacklib.c The() — the() with the first letter capitalised. */
@@ -334,6 +335,76 @@ export async function rider_corpse_revival(obj, remotely) {
     return true;
 }
 
+// src/pickup.c:317 force_decor().
+export async function force_decor(via_probing = false) {
+    game.decor_fumble_override = true;
+    game.decor_levitate_override = via_probing;
+    game.iflags.prev_decor = STONE;
+    await describe_decor();
+    game.decor_fumble_override = game.decor_levitate_override = false;
+    const loc = game.level.at(game.u.ux, game.u.uy);
+    loc.lastseentyp = loc.typ;
+}
+
+// src/pickup.c:337 deferred_decor().
+export async function deferred_decor(setup) {
+    if (!game.flags.mention_decor) {
+        game.iflags.defer_decor = false;
+    } else if (setup) {
+        game.iflags.defer_decor = true;
+    } else {
+        await describe_decor();
+        game.iflags.defer_decor = false;
+    }
+}
+
+// src/pickup.c:353 describe_decor().
+export async function describe_decor() {
+    if (((game.u.intrinsic?.HFumbling ?? 0) & TIMEOUT) === 1
+        && !game.iflags.defer_decor && !game.decor_fumble_override) {
+        await deferred_decor(true);
+        return false;
+    }
+
+    const { dfeature_at } = await import('./invent.js');
+    const loc = game.level.at(game.u.ux, game.u.uy);
+    const ltyp = loc.typ === DRAWBRIDGE_UP ? db_under_typ(loc.drawbridgemask) : loc.typ;
+    let dfeature = dfeature_at(game.u.ux, game.u.uy);
+    let res = true;
+    const prev = game.iflags.prev_decor ?? STONE;
+
+    const doorhere = dfeature && (dfeature === 'open door'
+                                  || dfeature === 'doorway');
+    const waterhere = dfeature && dfeature === 'pool of water';
+    if (doorhere || Underwater() || (ltyp === ICE && IS_POOL(prev)))
+        dfeature = null;
+
+    if (ltyp === prev && !IS_FURNITURE(ltyp)) {
+        res = false;
+    } else if (dfeature) {
+        if (waterhere) {
+            const { waterbody_name } = await import('./pager.js');
+            dfeature = waterbody_name(game.u.ux, game.u.uy);
+        }
+        if (dfeature !== 'swamp' && ltyp !== ICE)
+            dfeature = an(dfeature);
+
+        const outbuf = game.flags.verbose ? `There is ${dfeature} here.`
+                                         : `${upstart(dfeature)}.`;
+        if (ltyp === ICE && game.flags.mention_decor)
+            await Norep(outbuf);
+        else
+            await pline(outbuf);
+    } else if (!Underwater()) {
+        if (IS_POOL(prev) || IS_LAVA(prev) || prev === ICE) {
+            if (game.iflags.last_msg !== PLNMSG_BACK_ON_GROUND)
+                await back_on_ground(false);
+        }
+    }
+    game.iflags.prev_decor = game.flags.mention_decor ? ltyp : STONE;
+    return res;
+}
+
 // src/pickup.c:430 check_here() — look at the objects at our location.
 export async function check_here(picked_some) {
     let ct = 0;
@@ -361,75 +432,6 @@ export async function check_here(picked_some) {
         await read_engr_at(game.u.ux, game.u.uy);
     }
 }
-
-// src/pickup.c:475 pickup() — main pickup routine.
-//
-// `what` > 0 means autopickup is in progress; < 0 means "pick N"; 0 is the
-// explicit ',' command. With flags.pickup off (the recorded rc default —
-// optlist.h initval is Off in 5.0), an autopickup call lands in the
-// check_here() arm and only looks. The true picking flows are recorded.
-/* iflags.prev_decor — terrain type of the previous decor mention */
-// src/pickup.c:353 describe_decor() — 'mention_decor' feedback when walking
-// onto a dungeon feature. Ordinary open doors and doorways are skipped;
-// broken (and closed, via Passes_walls) doors are mentioned. Returns true
-// when it printed, so check_here can skip look_here's duplicate line.
-export async function describe_decor() {
-    /* the fumbling deferral needs the Fumbling timeout; recorded */
-    const { dfeature_at } = await import('./invent.js');
-    const loc = game.level?.at(game.u.ux, game.u.uy);
-    const ltyp = loc?.typ ?? 0;
-    let dfeature = dfeature_at(game.u.ux, game.u.uy);
-    let res = true;
-
-    const doorhere = dfeature && (dfeature === 'open door'
-                                  || dfeature === 'doorway');
-    const waterhere = dfeature && dfeature === 'pool of water';
-    if (doorhere || game.u.uprops?.UNDERWATER)
-        dfeature = null;
-
-    const prev = game.iflags.prev_decor ?? 0 /* STONE */;
-    if (ltyp === prev && !IS_FURNITURE(ltyp)) {
-        res = false;
-    } else if (dfeature) {
-        if (waterhere) {
-            const { waterbody_name } = await import('./pager.js');
-            dfeature = waterbody_name(game.u.ux, game.u.uy);
-        }
-        if (dfeature !== 'swamp' && ltyp !== ICE)
-            dfeature = an(dfeature);
-
-        if (game.flags?.verbose !== false) {
-            await pline(`There is ${dfeature} here.`);
-        } else {
-            await pline(`${dfeature[0].toUpperCase()}${dfeature.slice(1)}.`);
-        }
-    } else if (!game.u.uprops?.UNDERWATER) {
-        if (is_pool_typ(prev) || prev === LAVAPOOL_TYP || prev === ICE) {
-            if (game.iflags?.last_msg !== PLNMSG_BACK_ON_GROUND) {
-                await back_on_ground(false);
-            }
-        }
-    }
-    /* only adapt the next describe_decor() when the option is On */
-    game.iflags.prev_decor = game.flags?.mention_decor ? ltyp : 0;
-    return res;
-}
-
-// src/pickup.c:317 force_decor() makes probing describe the current ice or
-// furniture even when mention_decor is disabled or the same terrain was just
-// described. The override flags in C only bypass deferred flavor checks that
-// this port does not model yet.
-export async function force_decor(via_probing = false) {
-    game.iflags ||= {};
-    game.iflags.prev_decor = 0; /* STONE */
-    const described = await describe_decor();
-    game.iflags.prev_decor = game.level?.at(game.u.ux, game.u.uy)?.typ ?? 0;
-    void via_probing;
-    return described;
-}
-
-const is_pool_typ = (t) => t === POOL || t === MOAT || t === WATER;
-const LAVAPOOL_TYP = LAVAPOOL;
 
 // src/pickup.c:616 reset_justpicked().
 export function reset_justpicked(olist) {
@@ -1327,7 +1329,7 @@ export async function reverse_loot() {
         if (coffers) {
             await verbalize('Thank you for your contribution to reduce the debt.');
             freeinv(goldob);
-            add_to_container(coffers, goldob);
+            await add_to_container(coffers, goldob);
             coffers.owt = weight(coffers);
             coffers.cknown = 0;
             if (!coffers.olocked)
@@ -1536,7 +1538,7 @@ export async function tipcontainer(box) {
                 stop = true;
                 await losehp(d(6, 6), 'magical explosion', KILLED_BY_AN);
             } else {
-                add_to_container(targetbox, otmp);
+                await add_to_container(targetbox, otmp);
             }
         } else if (highdrop) {
             otmp.how_lost = LOST_DROPPED;
@@ -2027,7 +2029,7 @@ export async function in_container(obj) {
         await You(`cannot fit ${buf} into ${the(xname(game.current_container))}.`);
         return 0;
     }
-    freeinv(obj);
+    await freeinv(obj);
     if (obj_is_burning(obj)) {
         const { snuff_lit } = await import('./apply.js');
         await snuff_lit(obj);
@@ -2080,7 +2082,7 @@ export async function in_container(obj) {
         await You(`put ${doname(obj)} into ${buf}.`);
         if (floor_container && obj.oclass === OCLASSES.COIN_CLASS)
             await sellobj(obj, game.current_container.ox, game.current_container.oy);
-        add_to_container(game.current_container, obj);
+        await add_to_container(game.current_container, obj);
         game.current_container.owt = weight(game.current_container);
     }
     await bot();

@@ -56,14 +56,13 @@ export const zerosfiflprocs = new $T.sf_fieldlevel_procs();
  * @returns {Promise<void>}
  */
 export async function sfo_arti_info(nhfp, d_arti_info, myname) {   // sfmacros.h:9
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, complex_dump(d_arti_info));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_arti_info(nhfp, d_arti_info, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_arti_info(nhfp, d_arti_info, myname);
         nhfp.fplog = save_fplog;
@@ -76,11 +75,10 @@ export async function sfo_arti_info(nhfp, d_arti_info, myname) {   // sfmacros.h
  * @returns {Promise<void>}
  */
 export async function sfi_arti_info(nhfp, d_arti_info, myname) {   // sfmacros.h:9
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_arti_info(nhfp, d_arti_info, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_arti_info(nhfp, d_arti_info, myname);
@@ -102,14 +100,13 @@ export async function sfi_arti_info(nhfp, d_arti_info, myname) {   // sfmacros.h
  * @returns {Promise<void>}
  */
 export async function sfo_nhrect(nhfp, d_nhrect, myname) {   // sfmacros.h:10
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, complex_dump(d_nhrect));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_nhrect(nhfp, d_nhrect, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_nhrect(nhfp, d_nhrect, myname);
         nhfp.fplog = save_fplog;
@@ -122,11 +119,10 @@ export async function sfo_nhrect(nhfp, d_nhrect, myname) {   // sfmacros.h:10
  * @returns {Promise<void>}
  */
 export async function sfi_nhrect(nhfp, d_nhrect, myname) {   // sfmacros.h:10
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_nhrect(nhfp, d_nhrect, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_nhrect(nhfp, d_nhrect, myname);
@@ -148,14 +144,13 @@ export async function sfi_nhrect(nhfp, d_nhrect, myname) {   // sfmacros.h:10
  * @returns {Promise<void>}
  */
 export async function sfo_branch(nhfp, d_branch, myname) {   // sfmacros.h:11
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 32, 1, complex_dump(d_branch));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_branch(nhfp, d_branch, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_branch(nhfp, d_branch, myname);
         nhfp.fplog = save_fplog;
@@ -168,11 +163,10 @@ export async function sfo_branch(nhfp, d_branch, myname) {   // sfmacros.h:11
  * @returns {Promise<void>}
  */
 export async function sfi_branch(nhfp, d_branch, myname) {   // sfmacros.h:11
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_branch(nhfp, d_branch, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_branch(nhfp, d_branch, myname);
@@ -194,14 +188,13 @@ export async function sfi_branch(nhfp, d_branch, myname) {   // sfmacros.h:11
  * @returns {Promise<void>}
  */
 export async function sfo_bubble(nhfp, d_bubble, myname) {   // sfmacros.h:12
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 40, 1, complex_dump(d_bubble));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_bubble(nhfp, d_bubble, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_bubble(nhfp, d_bubble, myname);
         nhfp.fplog = save_fplog;
@@ -214,11 +207,10 @@ export async function sfo_bubble(nhfp, d_bubble, myname) {   // sfmacros.h:12
  * @returns {Promise<void>}
  */
 export async function sfi_bubble(nhfp, d_bubble, myname) {   // sfmacros.h:12
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_bubble(nhfp, d_bubble, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_bubble(nhfp, d_bubble, myname);
@@ -240,14 +232,13 @@ export async function sfi_bubble(nhfp, d_bubble, myname) {   // sfmacros.h:12
  * @returns {Promise<void>}
  */
 export async function sfo_cemetery(nhfp, d_cemetery, myname) {   // sfmacros.h:13
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 184, 1, complex_dump(d_cemetery));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_cemetery(nhfp, d_cemetery, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_cemetery(nhfp, d_cemetery, myname);
         nhfp.fplog = save_fplog;
@@ -260,11 +251,10 @@ export async function sfo_cemetery(nhfp, d_cemetery, myname) {   // sfmacros.h:1
  * @returns {Promise<void>}
  */
 export async function sfi_cemetery(nhfp, d_cemetery, myname) {   // sfmacros.h:13
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_cemetery(nhfp, d_cemetery, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_cemetery(nhfp, d_cemetery, myname);
@@ -286,14 +276,13 @@ export async function sfi_cemetery(nhfp, d_cemetery, myname) {   // sfmacros.h:1
  * @returns {Promise<void>}
  */
 export async function sfo_context_info(nhfp, d_context_info, myname) {   // sfmacros.h:14
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 704, 1, complex_dump(d_context_info));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_context_info(nhfp, d_context_info, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_context_info(nhfp, d_context_info, myname);
         nhfp.fplog = save_fplog;
@@ -306,11 +295,10 @@ export async function sfo_context_info(nhfp, d_context_info, myname) {   // sfma
  * @returns {Promise<void>}
  */
 export async function sfi_context_info(nhfp, d_context_info, myname) {   // sfmacros.h:14
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_context_info(nhfp, d_context_info, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_context_info(nhfp, d_context_info, myname);
@@ -332,14 +320,13 @@ export async function sfi_context_info(nhfp, d_context_info, myname) {   // sfma
  * @returns {Promise<void>}
  */
 export async function sfo_nhcoord(nhfp, d_nhcoord, myname) {   // sfmacros.h:15
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, complex_dump(d_nhcoord));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_nhcoord(nhfp, d_nhcoord, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_nhcoord(nhfp, d_nhcoord, myname);
         nhfp.fplog = save_fplog;
@@ -352,11 +339,10 @@ export async function sfo_nhcoord(nhfp, d_nhcoord, myname) {   // sfmacros.h:15
  * @returns {Promise<void>}
  */
 export async function sfi_nhcoord(nhfp, d_nhcoord, myname) {   // sfmacros.h:15
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_nhcoord(nhfp, d_nhcoord, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_nhcoord(nhfp, d_nhcoord, myname);
@@ -378,14 +364,13 @@ export async function sfi_nhcoord(nhfp, d_nhcoord, myname) {   // sfmacros.h:15
  * @returns {Promise<void>}
  */
 export async function sfo_damage(nhfp, d_damage, myname) {   // sfmacros.h:16
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 32, 1, complex_dump(d_damage));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_damage(nhfp, d_damage, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_damage(nhfp, d_damage, myname);
         nhfp.fplog = save_fplog;
@@ -398,11 +383,10 @@ export async function sfo_damage(nhfp, d_damage, myname) {   // sfmacros.h:16
  * @returns {Promise<void>}
  */
 export async function sfi_damage(nhfp, d_damage, myname) {   // sfmacros.h:16
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_damage(nhfp, d_damage, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_damage(nhfp, d_damage, myname);
@@ -424,14 +408,13 @@ export async function sfi_damage(nhfp, d_damage, myname) {   // sfmacros.h:16
  * @returns {Promise<void>}
  */
 export async function sfo_dest_area(nhfp, d_dest_area, myname) {   // sfmacros.h:17
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 16, 1, complex_dump(d_dest_area));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_dest_area(nhfp, d_dest_area, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_dest_area(nhfp, d_dest_area, myname);
         nhfp.fplog = save_fplog;
@@ -444,11 +427,10 @@ export async function sfo_dest_area(nhfp, d_dest_area, myname) {   // sfmacros.h
  * @returns {Promise<void>}
  */
 export async function sfi_dest_area(nhfp, d_dest_area, myname) {   // sfmacros.h:17
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_dest_area(nhfp, d_dest_area, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_dest_area(nhfp, d_dest_area, myname);
@@ -470,14 +452,13 @@ export async function sfi_dest_area(nhfp, d_dest_area, myname) {   // sfmacros.h
  * @returns {Promise<void>}
  */
 export async function sfo_dgn_topology(nhfp, d_dgn_topology, myname) {   // sfmacros.h:18
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 114, 1, complex_dump(d_dgn_topology));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_dgn_topology(nhfp, d_dgn_topology, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_dgn_topology(nhfp, d_dgn_topology, myname);
         nhfp.fplog = save_fplog;
@@ -490,11 +471,10 @@ export async function sfo_dgn_topology(nhfp, d_dgn_topology, myname) {   // sfma
  * @returns {Promise<void>}
  */
 export async function sfi_dgn_topology(nhfp, d_dgn_topology, myname) {   // sfmacros.h:18
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_dgn_topology(nhfp, d_dgn_topology, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_dgn_topology(nhfp, d_dgn_topology, myname);
@@ -516,14 +496,13 @@ export async function sfi_dgn_topology(nhfp, d_dgn_topology, myname) {   // sfma
  * @returns {Promise<void>}
  */
 export async function sfo_dungeon(nhfp, d_dungeon, myname) {   // sfmacros.h:19
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 92, 1, complex_dump(d_dungeon));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_dungeon(nhfp, d_dungeon, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_dungeon(nhfp, d_dungeon, myname);
         nhfp.fplog = save_fplog;
@@ -536,11 +515,10 @@ export async function sfo_dungeon(nhfp, d_dungeon, myname) {   // sfmacros.h:19
  * @returns {Promise<void>}
  */
 export async function sfi_dungeon(nhfp, d_dungeon, myname) {   // sfmacros.h:19
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_dungeon(nhfp, d_dungeon, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_dungeon(nhfp, d_dungeon, myname);
@@ -562,14 +540,13 @@ export async function sfi_dungeon(nhfp, d_dungeon, myname) {   // sfmacros.h:19
  * @returns {Promise<void>}
  */
 export async function sfo_d_level(nhfp, d_d_level, myname) {   // sfmacros.h:20
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, complex_dump(d_d_level));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_d_level(nhfp, d_d_level, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_d_level(nhfp, d_d_level, myname);
         nhfp.fplog = save_fplog;
@@ -582,11 +559,10 @@ export async function sfo_d_level(nhfp, d_d_level, myname) {   // sfmacros.h:20
  * @returns {Promise<void>}
  */
 export async function sfi_d_level(nhfp, d_d_level, myname) {   // sfmacros.h:20
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_d_level(nhfp, d_d_level, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_d_level(nhfp, d_d_level, myname);
@@ -608,14 +584,13 @@ export async function sfi_d_level(nhfp, d_d_level, myname) {   // sfmacros.h:20
  * @returns {Promise<void>}
  */
 export async function sfo_ebones(nhfp, d_ebones, myname) {   // sfmacros.h:21
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 28, 1, complex_dump(d_ebones));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_ebones(nhfp, d_ebones, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_ebones(nhfp, d_ebones, myname);
         nhfp.fplog = save_fplog;
@@ -628,11 +603,10 @@ export async function sfo_ebones(nhfp, d_ebones, myname) {   // sfmacros.h:21
  * @returns {Promise<void>}
  */
 export async function sfi_ebones(nhfp, d_ebones, myname) {   // sfmacros.h:21
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_ebones(nhfp, d_ebones, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_ebones(nhfp, d_ebones, myname);
@@ -654,14 +628,13 @@ export async function sfi_ebones(nhfp, d_ebones, myname) {   // sfmacros.h:21
  * @returns {Promise<void>}
  */
 export async function sfo_edog(nhfp, d_edog, myname) {   // sfmacros.h:22
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 64, 1, complex_dump(d_edog));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_edog(nhfp, d_edog, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_edog(nhfp, d_edog, myname);
         nhfp.fplog = save_fplog;
@@ -674,11 +647,10 @@ export async function sfo_edog(nhfp, d_edog, myname) {   // sfmacros.h:22
  * @returns {Promise<void>}
  */
 export async function sfi_edog(nhfp, d_edog, myname) {   // sfmacros.h:22
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_edog(nhfp, d_edog, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_edog(nhfp, d_edog, myname);
@@ -700,14 +672,13 @@ export async function sfi_edog(nhfp, d_edog, myname) {   // sfmacros.h:22
  * @returns {Promise<void>}
  */
 export async function sfo_egd(nhfp, d_egd, myname) {   // sfmacros.h:23
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 640, 1, complex_dump(d_egd));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_egd(nhfp, d_egd, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_egd(nhfp, d_egd, myname);
         nhfp.fplog = save_fplog;
@@ -720,11 +691,10 @@ export async function sfo_egd(nhfp, d_egd, myname) {   // sfmacros.h:23
  * @returns {Promise<void>}
  */
 export async function sfi_egd(nhfp, d_egd, myname) {   // sfmacros.h:23
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_egd(nhfp, d_egd, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_egd(nhfp, d_egd, myname);
@@ -746,14 +716,13 @@ export async function sfi_egd(nhfp, d_egd, myname) {   // sfmacros.h:23
  * @returns {Promise<void>}
  */
 export async function sfo_emin(nhfp, d_emin, myname) {   // sfmacros.h:24
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, complex_dump(d_emin));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_emin(nhfp, d_emin, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_emin(nhfp, d_emin, myname);
         nhfp.fplog = save_fplog;
@@ -766,11 +735,10 @@ export async function sfo_emin(nhfp, d_emin, myname) {   // sfmacros.h:24
  * @returns {Promise<void>}
  */
 export async function sfi_emin(nhfp, d_emin, myname) {   // sfmacros.h:24
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_emin(nhfp, d_emin, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_emin(nhfp, d_emin, myname);
@@ -792,14 +760,13 @@ export async function sfi_emin(nhfp, d_emin, myname) {   // sfmacros.h:24
  * @returns {Promise<void>}
  */
 export async function sfo_engr(nhfp, d_engr, myname) {   // sfmacros.h:25
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 64, 1, complex_dump(d_engr));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_engr(nhfp, d_engr, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_engr(nhfp, d_engr, myname);
         nhfp.fplog = save_fplog;
@@ -812,11 +779,10 @@ export async function sfo_engr(nhfp, d_engr, myname) {   // sfmacros.h:25
  * @returns {Promise<void>}
  */
 export async function sfi_engr(nhfp, d_engr, myname) {   // sfmacros.h:25
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_engr(nhfp, d_engr, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_engr(nhfp, d_engr, myname);
@@ -838,14 +804,13 @@ export async function sfi_engr(nhfp, d_engr, myname) {   // sfmacros.h:25
  * @returns {Promise<void>}
  */
 export async function sfo_epri(nhfp, d_epri, myname) {   // sfmacros.h:26
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 56, 1, complex_dump(d_epri));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_epri(nhfp, d_epri, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_epri(nhfp, d_epri, myname);
         nhfp.fplog = save_fplog;
@@ -858,11 +823,10 @@ export async function sfo_epri(nhfp, d_epri, myname) {   // sfmacros.h:26
  * @returns {Promise<void>}
  */
 export async function sfi_epri(nhfp, d_epri, myname) {   // sfmacros.h:26
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_epri(nhfp, d_epri, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_epri(nhfp, d_epri, myname);
@@ -884,14 +848,13 @@ export async function sfi_epri(nhfp, d_epri, myname) {   // sfmacros.h:26
  * @returns {Promise<void>}
  */
 export async function sfo_eshk(nhfp, d_eshk, myname) {   // sfmacros.h:27
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4960, 1, complex_dump(d_eshk));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_eshk(nhfp, d_eshk, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_eshk(nhfp, d_eshk, myname);
         nhfp.fplog = save_fplog;
@@ -904,11 +867,10 @@ export async function sfo_eshk(nhfp, d_eshk, myname) {   // sfmacros.h:27
  * @returns {Promise<void>}
  */
 export async function sfi_eshk(nhfp, d_eshk, myname) {   // sfmacros.h:27
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_eshk(nhfp, d_eshk, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_eshk(nhfp, d_eshk, myname);
@@ -930,14 +892,13 @@ export async function sfi_eshk(nhfp, d_eshk, myname) {   // sfmacros.h:27
  * @returns {Promise<void>}
  */
 export async function sfo_fe(nhfp, d_fe, myname) {   // sfmacros.h:28
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 48, 1, complex_dump(d_fe));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_fe(nhfp, d_fe, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_fe(nhfp, d_fe, myname);
         nhfp.fplog = save_fplog;
@@ -950,11 +911,10 @@ export async function sfo_fe(nhfp, d_fe, myname) {   // sfmacros.h:28
  * @returns {Promise<void>}
  */
 export async function sfi_fe(nhfp, d_fe, myname) {   // sfmacros.h:28
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_fe(nhfp, d_fe, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_fe(nhfp, d_fe, myname);
@@ -976,14 +936,13 @@ export async function sfi_fe(nhfp, d_fe, myname) {   // sfmacros.h:28
  * @returns {Promise<void>}
  */
 export async function sfo_flag(nhfp, d_flag, myname) {   // sfmacros.h:29
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 208, 1, complex_dump(d_flag));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_flag(nhfp, d_flag, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_flag(nhfp, d_flag, myname);
         nhfp.fplog = save_fplog;
@@ -996,11 +955,10 @@ export async function sfo_flag(nhfp, d_flag, myname) {   // sfmacros.h:29
  * @returns {Promise<void>}
  */
 export async function sfi_flag(nhfp, d_flag, myname) {   // sfmacros.h:29
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_flag(nhfp, d_flag, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_flag(nhfp, d_flag, myname);
@@ -1022,14 +980,13 @@ export async function sfi_flag(nhfp, d_flag, myname) {   // sfmacros.h:29
  * @returns {Promise<void>}
  */
 export async function sfo_fruit(nhfp, d_fruit, myname) {   // sfmacros.h:30
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 48, 1, complex_dump(d_fruit));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_fruit(nhfp, d_fruit, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_fruit(nhfp, d_fruit, myname);
         nhfp.fplog = save_fplog;
@@ -1042,11 +999,10 @@ export async function sfo_fruit(nhfp, d_fruit, myname) {   // sfmacros.h:30
  * @returns {Promise<void>}
  */
 export async function sfi_fruit(nhfp, d_fruit, myname) {   // sfmacros.h:30
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_fruit(nhfp, d_fruit, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_fruit(nhfp, d_fruit, myname);
@@ -1068,14 +1024,13 @@ export async function sfi_fruit(nhfp, d_fruit, myname) {   // sfmacros.h:30
  * @returns {Promise<void>}
  */
 export async function sfo_gamelog_line(nhfp, d_gamelog_line, myname) {   // sfmacros.h:31
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 32, 1, complex_dump(d_gamelog_line));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_gamelog_line(nhfp, d_gamelog_line, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_gamelog_line(nhfp, d_gamelog_line, myname);
         nhfp.fplog = save_fplog;
@@ -1088,11 +1043,10 @@ export async function sfo_gamelog_line(nhfp, d_gamelog_line, myname) {   // sfma
  * @returns {Promise<void>}
  */
 export async function sfi_gamelog_line(nhfp, d_gamelog_line, myname) {   // sfmacros.h:31
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_gamelog_line(nhfp, d_gamelog_line, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_gamelog_line(nhfp, d_gamelog_line, myname);
@@ -1114,14 +1068,13 @@ export async function sfi_gamelog_line(nhfp, d_gamelog_line, myname) {   // sfma
  * @returns {Promise<void>}
  */
 export async function sfo_kinfo(nhfp, d_kinfo, myname) {   // sfmacros.h:32
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 272, 1, complex_dump(d_kinfo));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_kinfo(nhfp, d_kinfo, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_kinfo(nhfp, d_kinfo, myname);
         nhfp.fplog = save_fplog;
@@ -1134,11 +1087,10 @@ export async function sfo_kinfo(nhfp, d_kinfo, myname) {   // sfmacros.h:32
  * @returns {Promise<void>}
  */
 export async function sfi_kinfo(nhfp, d_kinfo, myname) {   // sfmacros.h:32
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_kinfo(nhfp, d_kinfo, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_kinfo(nhfp, d_kinfo, myname);
@@ -1160,14 +1112,13 @@ export async function sfi_kinfo(nhfp, d_kinfo, myname) {   // sfmacros.h:32
  * @returns {Promise<void>}
  */
 export async function sfo_levelflags(nhfp, d_levelflags, myname) {   // sfmacros.h:33
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 16, 1, complex_dump(d_levelflags));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_levelflags(nhfp, d_levelflags, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_levelflags(nhfp, d_levelflags, myname);
         nhfp.fplog = save_fplog;
@@ -1180,11 +1131,10 @@ export async function sfo_levelflags(nhfp, d_levelflags, myname) {   // sfmacros
  * @returns {Promise<void>}
  */
 export async function sfi_levelflags(nhfp, d_levelflags, myname) {   // sfmacros.h:33
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_levelflags(nhfp, d_levelflags, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_levelflags(nhfp, d_levelflags, myname);
@@ -1206,14 +1156,13 @@ export async function sfi_levelflags(nhfp, d_levelflags, myname) {   // sfmacros
  * @returns {Promise<void>}
  */
 export async function sfo_ls_t(nhfp, d_ls_t, myname) {   // sfmacros.h:34
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 32, 1, complex_dump(d_ls_t));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_ls_t(nhfp, d_ls_t, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_ls_t(nhfp, d_ls_t, myname);
         nhfp.fplog = save_fplog;
@@ -1226,11 +1175,10 @@ export async function sfo_ls_t(nhfp, d_ls_t, myname) {   // sfmacros.h:34
  * @returns {Promise<void>}
  */
 export async function sfi_ls_t(nhfp, d_ls_t, myname) {   // sfmacros.h:34
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_ls_t(nhfp, d_ls_t, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_ls_t(nhfp, d_ls_t, myname);
@@ -1252,14 +1200,13 @@ export async function sfi_ls_t(nhfp, d_ls_t, myname) {   // sfmacros.h:34
  * @returns {Promise<void>}
  */
 export async function sfo_linfo(nhfp, d_linfo, myname) {   // sfmacros.h:35
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 1, 1, complex_dump(d_linfo));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_linfo(nhfp, d_linfo, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_linfo(nhfp, d_linfo, myname);
         nhfp.fplog = save_fplog;
@@ -1272,11 +1219,10 @@ export async function sfo_linfo(nhfp, d_linfo, myname) {   // sfmacros.h:35
  * @returns {Promise<void>}
  */
 export async function sfi_linfo(nhfp, d_linfo, myname) {   // sfmacros.h:35
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_linfo(nhfp, d_linfo, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_linfo(nhfp, d_linfo, myname);
@@ -1298,14 +1244,13 @@ export async function sfi_linfo(nhfp, d_linfo, myname) {   // sfmacros.h:35
  * @returns {Promise<void>}
  */
 export async function sfo_mapseen_feat(nhfp, d_mapseen_feat, myname) {   // sfmacros.h:36
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, complex_dump(d_mapseen_feat));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
         nhfp.fplog = save_fplog;
@@ -1318,11 +1263,10 @@ export async function sfo_mapseen_feat(nhfp, d_mapseen_feat, myname) {   // sfma
  * @returns {Promise<void>}
  */
 export async function sfi_mapseen_feat(nhfp, d_mapseen_feat, myname) {   // sfmacros.h:36
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_feat(nhfp, d_mapseen_feat, myname);
@@ -1344,14 +1288,13 @@ export async function sfi_mapseen_feat(nhfp, d_mapseen_feat, myname) {   // sfma
  * @returns {Promise<void>}
  */
 export async function sfo_mapseen_flags(nhfp, d_mapseen_flags, myname) {   // sfmacros.h:37
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, complex_dump(d_mapseen_flags));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
         nhfp.fplog = save_fplog;
@@ -1364,11 +1307,10 @@ export async function sfo_mapseen_flags(nhfp, d_mapseen_flags, myname) {   // sf
  * @returns {Promise<void>}
  */
 export async function sfi_mapseen_flags(nhfp, d_mapseen_flags, myname) {   // sfmacros.h:37
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_flags(nhfp, d_mapseen_flags, myname);
@@ -1390,14 +1332,13 @@ export async function sfi_mapseen_flags(nhfp, d_mapseen_flags, myname) {   // sf
  * @returns {Promise<void>}
  */
 export async function sfo_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {   // sfmacros.h:38
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, complex_dump(d_mapseen_rooms));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
         nhfp.fplog = save_fplog;
@@ -1410,11 +1351,10 @@ export async function sfo_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {   // sf
  * @returns {Promise<void>}
  */
 export async function sfi_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {   // sfmacros.h:38
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mapseen_rooms(nhfp, d_mapseen_rooms, myname);
@@ -1436,14 +1376,13 @@ export async function sfi_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {   // sf
  * @returns {Promise<void>}
  */
 export async function sfo_mkroom(nhfp, d_mkroom, myname) {   // sfmacros.h:39
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 224, 1, complex_dump(d_mkroom));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_mkroom(nhfp, d_mkroom, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_mkroom(nhfp, d_mkroom, myname);
         nhfp.fplog = save_fplog;
@@ -1456,11 +1395,10 @@ export async function sfo_mkroom(nhfp, d_mkroom, myname) {   // sfmacros.h:39
  * @returns {Promise<void>}
  */
 export async function sfi_mkroom(nhfp, d_mkroom, myname) {   // sfmacros.h:39
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_mkroom(nhfp, d_mkroom, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mkroom(nhfp, d_mkroom, myname);
@@ -1482,14 +1420,13 @@ export async function sfi_mkroom(nhfp, d_mkroom, myname) {   // sfmacros.h:39
  * @returns {Promise<void>}
  */
 export async function sfo_monst(nhfp, d_monst, myname) {   // sfmacros.h:40
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 192, 1, complex_dump(d_monst));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_monst(nhfp, d_monst, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_monst(nhfp, d_monst, myname);
         nhfp.fplog = save_fplog;
@@ -1502,11 +1439,10 @@ export async function sfo_monst(nhfp, d_monst, myname) {   // sfmacros.h:40
  * @returns {Promise<void>}
  */
 export async function sfi_monst(nhfp, d_monst, myname) {   // sfmacros.h:40
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_monst(nhfp, d_monst, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_monst(nhfp, d_monst, myname);
@@ -1528,14 +1464,13 @@ export async function sfi_monst(nhfp, d_monst, myname) {   // sfmacros.h:40
  * @returns {Promise<void>}
  */
 export async function sfo_mvitals(nhfp, d_mvitals, myname) {   // sfmacros.h:41
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, complex_dump(d_mvitals));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_mvitals(nhfp, d_mvitals, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_mvitals(nhfp, d_mvitals, myname);
         nhfp.fplog = save_fplog;
@@ -1548,11 +1483,10 @@ export async function sfo_mvitals(nhfp, d_mvitals, myname) {   // sfmacros.h:41
  * @returns {Promise<void>}
  */
 export async function sfi_mvitals(nhfp, d_mvitals, myname) {   // sfmacros.h:41
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_mvitals(nhfp, d_mvitals, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_mvitals(nhfp, d_mvitals, myname);
@@ -1574,14 +1508,13 @@ export async function sfi_mvitals(nhfp, d_mvitals, myname) {   // sfmacros.h:41
  * @returns {Promise<void>}
  */
 export async function sfo_obj(nhfp, d_obj, myname) {   // sfmacros.h:42
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 112, 1, complex_dump(d_obj));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_obj(nhfp, d_obj, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_obj(nhfp, d_obj, myname);
         nhfp.fplog = save_fplog;
@@ -1594,11 +1527,10 @@ export async function sfo_obj(nhfp, d_obj, myname) {   // sfmacros.h:42
  * @returns {Promise<void>}
  */
 export async function sfi_obj(nhfp, d_obj, myname) {   // sfmacros.h:42
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_obj(nhfp, d_obj, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_obj(nhfp, d_obj, myname);
@@ -1620,14 +1552,13 @@ export async function sfi_obj(nhfp, d_obj, myname) {   // sfmacros.h:42
  * @returns {Promise<void>}
  */
 export async function sfo_objclass(nhfp, d_objclass, myname) {   // sfmacros.h:43
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 72, 1, complex_dump(d_objclass));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_objclass(nhfp, d_objclass, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_objclass(nhfp, d_objclass, myname);
         nhfp.fplog = save_fplog;
@@ -1640,11 +1571,10 @@ export async function sfo_objclass(nhfp, d_objclass, myname) {   // sfmacros.h:4
  * @returns {Promise<void>}
  */
 export async function sfi_objclass(nhfp, d_objclass, myname) {   // sfmacros.h:43
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_objclass(nhfp, d_objclass, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_objclass(nhfp, d_objclass, myname);
@@ -1666,14 +1596,13 @@ export async function sfi_objclass(nhfp, d_objclass, myname) {   // sfmacros.h:4
  * @returns {Promise<void>}
  */
 export async function sfo_q_score(nhfp, d_q_score, myname) {   // sfmacros.h:44
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, complex_dump(d_q_score));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_q_score(nhfp, d_q_score, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_q_score(nhfp, d_q_score, myname);
         nhfp.fplog = save_fplog;
@@ -1686,11 +1615,10 @@ export async function sfo_q_score(nhfp, d_q_score, myname) {   // sfmacros.h:44
  * @returns {Promise<void>}
  */
 export async function sfi_q_score(nhfp, d_q_score, myname) {   // sfmacros.h:44
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_q_score(nhfp, d_q_score, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_q_score(nhfp, d_q_score, myname);
@@ -1712,14 +1640,13 @@ export async function sfi_q_score(nhfp, d_q_score, myname) {   // sfmacros.h:44
  * @returns {Promise<void>}
  */
 export async function sfo_rm(nhfp, d_rm, myname) {   // sfmacros.h:45
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, complex_dump(d_rm));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_rm(nhfp, d_rm, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_rm(nhfp, d_rm, myname);
         nhfp.fplog = save_fplog;
@@ -1732,11 +1659,10 @@ export async function sfo_rm(nhfp, d_rm, myname) {   // sfmacros.h:45
  * @returns {Promise<void>}
  */
 export async function sfi_rm(nhfp, d_rm, myname) {   // sfmacros.h:45
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_rm(nhfp, d_rm, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_rm(nhfp, d_rm, myname);
@@ -1758,14 +1684,13 @@ export async function sfi_rm(nhfp, d_rm, myname) {   // sfmacros.h:45
  * @returns {Promise<void>}
  */
 export async function sfo_spell(nhfp, d_spell, myname) {   // sfmacros.h:46
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, complex_dump(d_spell));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_spell(nhfp, d_spell, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_spell(nhfp, d_spell, myname);
         nhfp.fplog = save_fplog;
@@ -1778,11 +1703,10 @@ export async function sfo_spell(nhfp, d_spell, myname) {   // sfmacros.h:46
  * @returns {Promise<void>}
  */
 export async function sfi_spell(nhfp, d_spell, myname) {   // sfmacros.h:46
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_spell(nhfp, d_spell, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_spell(nhfp, d_spell, myname);
@@ -1804,14 +1728,13 @@ export async function sfi_spell(nhfp, d_spell, myname) {   // sfmacros.h:46
  * @returns {Promise<void>}
  */
 export async function sfo_stairway(nhfp, d_stairway, myname) {   // sfmacros.h:47
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 24, 1, complex_dump(d_stairway));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_stairway(nhfp, d_stairway, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_stairway(nhfp, d_stairway, myname);
         nhfp.fplog = save_fplog;
@@ -1824,11 +1747,10 @@ export async function sfo_stairway(nhfp, d_stairway, myname) {   // sfmacros.h:4
  * @returns {Promise<void>}
  */
 export async function sfi_stairway(nhfp, d_stairway, myname) {   // sfmacros.h:47
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_stairway(nhfp, d_stairway, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_stairway(nhfp, d_stairway, myname);
@@ -1850,14 +1772,13 @@ export async function sfi_stairway(nhfp, d_stairway, myname) {   // sfmacros.h:4
  * @returns {Promise<void>}
  */
 export async function sfo_s_level(nhfp, d_s_level, myname) {   // sfmacros.h:48
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 40, 1, complex_dump(d_s_level));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_s_level(nhfp, d_s_level, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_s_level(nhfp, d_s_level, myname);
         nhfp.fplog = save_fplog;
@@ -1870,11 +1791,10 @@ export async function sfo_s_level(nhfp, d_s_level, myname) {   // sfmacros.h:48
  * @returns {Promise<void>}
  */
 export async function sfi_s_level(nhfp, d_s_level, myname) {   // sfmacros.h:48
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_s_level(nhfp, d_s_level, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_s_level(nhfp, d_s_level, myname);
@@ -1896,14 +1816,13 @@ export async function sfi_s_level(nhfp, d_s_level, myname) {   // sfmacros.h:48
  * @returns {Promise<void>}
  */
 export async function sfo_trap(nhfp, d_trap, myname) {   // sfmacros.h:49
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 32, 1, complex_dump(d_trap));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_trap(nhfp, d_trap, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_trap(nhfp, d_trap, myname);
         nhfp.fplog = save_fplog;
@@ -1916,11 +1835,10 @@ export async function sfo_trap(nhfp, d_trap, myname) {   // sfmacros.h:49
  * @returns {Promise<void>}
  */
 export async function sfi_trap(nhfp, d_trap, myname) {   // sfmacros.h:49
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_trap(nhfp, d_trap, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_trap(nhfp, d_trap, myname);
@@ -1942,14 +1860,13 @@ export async function sfi_trap(nhfp, d_trap, myname) {   // sfmacros.h:49
  * @returns {Promise<void>}
  */
 export async function sfo_you(nhfp, d_you, myname) {   // sfmacros.h:50
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 2760, 1, complex_dump(d_you));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_you(nhfp, d_you, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_you(nhfp, d_you, myname);
         nhfp.fplog = save_fplog;
@@ -1962,11 +1879,10 @@ export async function sfo_you(nhfp, d_you, myname) {   // sfmacros.h:50
  * @returns {Promise<void>}
  */
 export async function sfi_you(nhfp, d_you, myname) {   // sfmacros.h:50
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_you(nhfp, d_you, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_you(nhfp, d_you, myname);
@@ -1988,14 +1904,13 @@ export async function sfi_you(nhfp, d_you, myname) {   // sfmacros.h:50
  * @returns {Promise<void>}
  */
 export async function sfo_any(nhfp, d_any, myname) {   // sfmacros.h:51
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, complex_dump(d_any));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_any(nhfp, d_any, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_any(nhfp, d_any, myname);
         nhfp.fplog = save_fplog;
@@ -2008,11 +1923,10 @@ export async function sfo_any(nhfp, d_any, myname) {   // sfmacros.h:51
  * @returns {Promise<void>}
  */
 export async function sfi_any(nhfp, d_any, myname) {   // sfmacros.h:51
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_any(nhfp, d_any, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_any(nhfp, d_any, myname);
@@ -2034,14 +1948,13 @@ export async function sfi_any(nhfp, d_any, myname) {   // sfmacros.h:51
  * @returns {Promise<void>}
  */
 export async function sfo_aligntyp(nhfp, d_aligntyp, myname) {   // sfmacros.h:53
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 1, 1, sfvalue_aligntyp(d_aligntyp));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_aligntyp(nhfp, d_aligntyp, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_aligntyp(nhfp, d_aligntyp, myname);
         nhfp.fplog = save_fplog;
@@ -2054,11 +1967,10 @@ export async function sfo_aligntyp(nhfp, d_aligntyp, myname) {   // sfmacros.h:5
  * @returns {Promise<void>}
  */
 export async function sfi_aligntyp(nhfp, d_aligntyp, myname) {   // sfmacros.h:53
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_aligntyp(nhfp, d_aligntyp, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_aligntyp(nhfp, d_aligntyp, myname);
@@ -2080,14 +1992,13 @@ export async function sfi_aligntyp(nhfp, d_aligntyp, myname) {   // sfmacros.h:5
  * @returns {Promise<void>}
  */
 export async function sfo_boolean(nhfp, d_boolean, myname) {   // sfmacros.h:54
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 1, 1, sfvalue_boolean(d_boolean));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_boolean(nhfp, d_boolean, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_boolean(nhfp, d_boolean, myname);
         nhfp.fplog = save_fplog;
@@ -2100,11 +2011,10 @@ export async function sfo_boolean(nhfp, d_boolean, myname) {   // sfmacros.h:54
  * @returns {Promise<void>}
  */
 export async function sfi_boolean(nhfp, d_boolean, myname) {   // sfmacros.h:54
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_boolean(nhfp, d_boolean, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_boolean(nhfp, d_boolean, myname);
@@ -2126,14 +2036,13 @@ export async function sfi_boolean(nhfp, d_boolean, myname) {   // sfmacros.h:54
  * @returns {Promise<void>}
  */
 export async function sfo_coordxy(nhfp, d_coordxy, myname) {   // sfmacros.h:55
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 2, 1, sfvalue_int16(d_coordxy));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_coordxy(nhfp, d_coordxy, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_coordxy(nhfp, d_coordxy, myname);
         nhfp.fplog = save_fplog;
@@ -2146,11 +2055,10 @@ export async function sfo_coordxy(nhfp, d_coordxy, myname) {   // sfmacros.h:55
  * @returns {Promise<void>}
  */
 export async function sfi_coordxy(nhfp, d_coordxy, myname) {   // sfmacros.h:55
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_coordxy(nhfp, d_coordxy, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_coordxy(nhfp, d_coordxy, myname);
@@ -2172,14 +2080,13 @@ export async function sfi_coordxy(nhfp, d_coordxy, myname) {   // sfmacros.h:55
  * @returns {Promise<void>}
  */
 export async function sfo_int(nhfp, d_int, myname) {   // sfmacros.h:57
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, sfvalue_int(d_int));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_int(nhfp, d_int, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_int(nhfp, d_int, myname);
         nhfp.fplog = save_fplog;
@@ -2192,11 +2099,10 @@ export async function sfo_int(nhfp, d_int, myname) {   // sfmacros.h:57
  * @returns {Promise<void>}
  */
 export async function sfi_int(nhfp, d_int, myname) {   // sfmacros.h:57
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_int(nhfp, d_int, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_int(nhfp, d_int, myname);
@@ -2218,14 +2124,13 @@ export async function sfi_int(nhfp, d_int, myname) {   // sfmacros.h:57
  * @returns {Promise<void>}
  */
 export async function sfo_int16(nhfp, d_int16, myname) {   // sfmacros.h:58
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 2, 1, sfvalue_int16(d_int16));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_int16(nhfp, d_int16, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_int16(nhfp, d_int16, myname);
         nhfp.fplog = save_fplog;
@@ -2238,11 +2143,10 @@ export async function sfo_int16(nhfp, d_int16, myname) {   // sfmacros.h:58
  * @returns {Promise<void>}
  */
 export async function sfi_int16(nhfp, d_int16, myname) {   // sfmacros.h:58
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_int16(nhfp, d_int16, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_int16(nhfp, d_int16, myname);
@@ -2264,14 +2168,13 @@ export async function sfi_int16(nhfp, d_int16, myname) {   // sfmacros.h:58
  * @returns {Promise<void>}
  */
 export async function sfo_int32(nhfp, d_int32, myname) {   // sfmacros.h:59
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, sfvalue_int32(d_int32));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_int32(nhfp, d_int32, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_int32(nhfp, d_int32, myname);
         nhfp.fplog = save_fplog;
@@ -2284,11 +2187,10 @@ export async function sfo_int32(nhfp, d_int32, myname) {   // sfmacros.h:59
  * @returns {Promise<void>}
  */
 export async function sfi_int32(nhfp, d_int32, myname) {   // sfmacros.h:59
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_int32(nhfp, d_int32, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_int32(nhfp, d_int32, myname);
@@ -2310,14 +2212,13 @@ export async function sfi_int32(nhfp, d_int32, myname) {   // sfmacros.h:59
  * @returns {Promise<void>}
  */
 export async function sfo_int64(nhfp, d_int64, myname) {   // sfmacros.h:60
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, sfvalue_int64(d_int64));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_int64(nhfp, d_int64, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_int64(nhfp, d_int64, myname);
         nhfp.fplog = save_fplog;
@@ -2330,11 +2231,10 @@ export async function sfo_int64(nhfp, d_int64, myname) {   // sfmacros.h:60
  * @returns {Promise<void>}
  */
 export async function sfi_int64(nhfp, d_int64, myname) {   // sfmacros.h:60
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_int64(nhfp, d_int64, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_int64(nhfp, d_int64, myname);
@@ -2356,14 +2256,13 @@ export async function sfi_int64(nhfp, d_int64, myname) {   // sfmacros.h:60
  * @returns {Promise<void>}
  */
 export async function sfo_long(nhfp, d_long, myname) {   // sfmacros.h:61
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, sfvalue_long(d_long));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_long(nhfp, d_long, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_long(nhfp, d_long, myname);
         nhfp.fplog = save_fplog;
@@ -2376,11 +2275,10 @@ export async function sfo_long(nhfp, d_long, myname) {   // sfmacros.h:61
  * @returns {Promise<void>}
  */
 export async function sfi_long(nhfp, d_long, myname) {   // sfmacros.h:61
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_long(nhfp, d_long, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_long(nhfp, d_long, myname);
@@ -2402,14 +2300,13 @@ export async function sfi_long(nhfp, d_long, myname) {   // sfmacros.h:61
  * @returns {Promise<void>}
  */
 export async function sfo_schar(nhfp, d_schar, myname) {   // sfmacros.h:62
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 1, 1, sfvalue_schar(d_schar));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_schar(nhfp, d_schar, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_schar(nhfp, d_schar, myname);
         nhfp.fplog = save_fplog;
@@ -2422,11 +2319,10 @@ export async function sfo_schar(nhfp, d_schar, myname) {   // sfmacros.h:62
  * @returns {Promise<void>}
  */
 export async function sfi_schar(nhfp, d_schar, myname) {   // sfmacros.h:62
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_schar(nhfp, d_schar, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_schar(nhfp, d_schar, myname);
@@ -2448,14 +2344,13 @@ export async function sfi_schar(nhfp, d_schar, myname) {   // sfmacros.h:62
  * @returns {Promise<void>}
  */
 export async function sfo_short(nhfp, d_short, myname) {   // sfmacros.h:63
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 2, 1, sfvalue_short(d_short));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_short(nhfp, d_short, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_short(nhfp, d_short, myname);
         nhfp.fplog = save_fplog;
@@ -2468,11 +2363,10 @@ export async function sfo_short(nhfp, d_short, myname) {   // sfmacros.h:63
  * @returns {Promise<void>}
  */
 export async function sfi_short(nhfp, d_short, myname) {   // sfmacros.h:63
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_short(nhfp, d_short, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_short(nhfp, d_short, myname);
@@ -2494,14 +2388,13 @@ export async function sfi_short(nhfp, d_short, myname) {   // sfmacros.h:63
  * @returns {Promise<void>}
  */
 export async function sfo_size_t(nhfp, d_size_t, myname) {   // sfmacros.h:64
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, sfvalue_size_t(d_size_t));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_size_t(nhfp, d_size_t, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_size_t(nhfp, d_size_t, myname);
         nhfp.fplog = save_fplog;
@@ -2514,11 +2407,10 @@ export async function sfo_size_t(nhfp, d_size_t, myname) {   // sfmacros.h:64
  * @returns {Promise<void>}
  */
 export async function sfi_size_t(nhfp, d_size_t, myname) {   // sfmacros.h:64
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_size_t(nhfp, d_size_t, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_size_t(nhfp, d_size_t, myname);
@@ -2540,14 +2432,13 @@ export async function sfi_size_t(nhfp, d_size_t, myname) {   // sfmacros.h:64
  * @returns {Promise<void>}
  */
 export async function sfo_time_t(nhfp, d_time_t, myname) {   // sfmacros.h:65
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, sfvalue_time_t(d_time_t));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_time_t(nhfp, d_time_t, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_time_t(nhfp, d_time_t, myname);
         nhfp.fplog = save_fplog;
@@ -2560,11 +2451,10 @@ export async function sfo_time_t(nhfp, d_time_t, myname) {   // sfmacros.h:65
  * @returns {Promise<void>}
  */
 export async function sfi_time_t(nhfp, d_time_t, myname) {   // sfmacros.h:65
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_time_t(nhfp, d_time_t, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_time_t(nhfp, d_time_t, myname);
@@ -2586,14 +2476,13 @@ export async function sfi_time_t(nhfp, d_time_t, myname) {   // sfmacros.h:65
  * @returns {Promise<void>}
  */
 export async function sfo_uchar(nhfp, d_uchar, myname) {   // sfmacros.h:66
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 1, 1, sfvalue_uchar(d_uchar));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_uchar(nhfp, d_uchar, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_uchar(nhfp, d_uchar, myname);
         nhfp.fplog = save_fplog;
@@ -2606,11 +2495,10 @@ export async function sfo_uchar(nhfp, d_uchar, myname) {   // sfmacros.h:66
  * @returns {Promise<void>}
  */
 export async function sfi_uchar(nhfp, d_uchar, myname) {   // sfmacros.h:66
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_uchar(nhfp, d_uchar, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_uchar(nhfp, d_uchar, myname);
@@ -2632,14 +2520,13 @@ export async function sfi_uchar(nhfp, d_uchar, myname) {   // sfmacros.h:66
  * @returns {Promise<void>}
  */
 export async function sfo_uint16(nhfp, d_uint16, myname) {   // sfmacros.h:67
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 2, 1, sfvalue_uint16(d_uint16));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_uint16(nhfp, d_uint16, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_uint16(nhfp, d_uint16, myname);
         nhfp.fplog = save_fplog;
@@ -2652,11 +2539,10 @@ export async function sfo_uint16(nhfp, d_uint16, myname) {   // sfmacros.h:67
  * @returns {Promise<void>}
  */
 export async function sfi_uint16(nhfp, d_uint16, myname) {   // sfmacros.h:67
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_uint16(nhfp, d_uint16, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_uint16(nhfp, d_uint16, myname);
@@ -2678,14 +2564,13 @@ export async function sfi_uint16(nhfp, d_uint16, myname) {   // sfmacros.h:67
  * @returns {Promise<void>}
  */
 export async function sfo_uint32(nhfp, d_uint32, myname) {   // sfmacros.h:68
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, sfvalue_uint32(d_uint32));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_uint32(nhfp, d_uint32, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_uint32(nhfp, d_uint32, myname);
         nhfp.fplog = save_fplog;
@@ -2698,11 +2583,10 @@ export async function sfo_uint32(nhfp, d_uint32, myname) {   // sfmacros.h:68
  * @returns {Promise<void>}
  */
 export async function sfi_uint32(nhfp, d_uint32, myname) {   // sfmacros.h:68
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_uint32(nhfp, d_uint32, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_uint32(nhfp, d_uint32, myname);
@@ -2724,14 +2608,13 @@ export async function sfi_uint32(nhfp, d_uint32, myname) {   // sfmacros.h:68
  * @returns {Promise<void>}
  */
 export async function sfo_uint64(nhfp, d_uint64, myname) {   // sfmacros.h:69
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, sfvalue_uint64(d_uint64));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_uint64(nhfp, d_uint64, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_uint64(nhfp, d_uint64, myname);
         nhfp.fplog = save_fplog;
@@ -2744,11 +2627,10 @@ export async function sfo_uint64(nhfp, d_uint64, myname) {   // sfmacros.h:69
  * @returns {Promise<void>}
  */
 export async function sfi_uint64(nhfp, d_uint64, myname) {   // sfmacros.h:69
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_uint64(nhfp, d_uint64, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_uint64(nhfp, d_uint64, myname);
@@ -2770,14 +2652,13 @@ export async function sfi_uint64(nhfp, d_uint64, myname) {   // sfmacros.h:69
  * @returns {Promise<void>}
  */
 export async function sfo_ulong(nhfp, d_ulong, myname) {   // sfmacros.h:70
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, sfvalue_ulong(d_ulong));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_ulong(nhfp, d_ulong, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_ulong(nhfp, d_ulong, myname);
         nhfp.fplog = save_fplog;
@@ -2790,11 +2671,10 @@ export async function sfo_ulong(nhfp, d_ulong, myname) {   // sfmacros.h:70
  * @returns {Promise<void>}
  */
 export async function sfi_ulong(nhfp, d_ulong, myname) {   // sfmacros.h:70
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_ulong(nhfp, d_ulong, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_ulong(nhfp, d_ulong, myname);
@@ -2816,14 +2696,13 @@ export async function sfi_ulong(nhfp, d_ulong, myname) {   // sfmacros.h:70
  * @returns {Promise<void>}
  */
 export async function sfo_unsigned(nhfp, d_unsigned, myname) {   // sfmacros.h:71
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 4, 1, sfvalue_unsigned(d_unsigned));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_unsigned(nhfp, d_unsigned, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_unsigned(nhfp, d_unsigned, myname);
         nhfp.fplog = save_fplog;
@@ -2836,11 +2715,10 @@ export async function sfo_unsigned(nhfp, d_unsigned, myname) {   // sfmacros.h:7
  * @returns {Promise<void>}
  */
 export async function sfi_unsigned(nhfp, d_unsigned, myname) {   // sfmacros.h:71
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_unsigned(nhfp, d_unsigned, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_unsigned(nhfp, d_unsigned, myname);
@@ -2862,14 +2740,13 @@ export async function sfi_unsigned(nhfp, d_unsigned, myname) {   // sfmacros.h:7
  * @returns {Promise<void>}
  */
 export async function sfo_ushort(nhfp, d_ushort, myname) {   // sfmacros.h:72
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 2, 1, sfvalue_ushort(d_ushort));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_ushort(nhfp, d_ushort, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_ushort(nhfp, d_ushort, myname);
         nhfp.fplog = save_fplog;
@@ -2882,11 +2759,10 @@ export async function sfo_ushort(nhfp, d_ushort, myname) {   // sfmacros.h:72
  * @returns {Promise<void>}
  */
 export async function sfi_ushort(nhfp, d_ushort, myname) {   // sfmacros.h:72
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_ushort(nhfp, d_ushort, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_ushort(nhfp, d_ushort, myname);
@@ -2908,14 +2784,13 @@ export async function sfi_ushort(nhfp, d_ushort, myname) {   // sfmacros.h:72
  * @returns {Promise<void>}
  */
 export async function sfo_xint16(nhfp, d_xint16, myname) {   // sfmacros.h:73
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 2, 1, sfvalue_xint16(d_xint16));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_xint16(nhfp, d_xint16, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_xint16(nhfp, d_xint16, myname);
         nhfp.fplog = save_fplog;
@@ -2928,11 +2803,10 @@ export async function sfo_xint16(nhfp, d_xint16, myname) {   // sfmacros.h:73
  * @returns {Promise<void>}
  */
 export async function sfi_xint16(nhfp, d_xint16, myname) {   // sfmacros.h:73
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_xint16(nhfp, d_xint16, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_xint16(nhfp, d_xint16, myname);
@@ -2954,14 +2828,13 @@ export async function sfi_xint16(nhfp, d_xint16, myname) {   // sfmacros.h:73
  * @returns {Promise<void>}
  */
 export async function sfo_xint8(nhfp, d_xint8, myname) {   // sfmacros.h:74
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 1, 1, sfvalue_xint8(d_xint8));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_xint8(nhfp, d_xint8, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_xint8(nhfp, d_xint8, myname);
         nhfp.fplog = save_fplog;
@@ -2974,11 +2847,10 @@ export async function sfo_xint8(nhfp, d_xint8, myname) {   // sfmacros.h:74
  * @returns {Promise<void>}
  */
 export async function sfi_xint8(nhfp, d_xint8, myname) {   // sfmacros.h:74
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_xint8(nhfp, d_xint8, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_xint8(nhfp, d_xint8, myname);
@@ -3002,14 +2874,13 @@ export async function sfi_xint8(nhfp, d_xint8, myname) {   // sfmacros.h:74
  * @returns {Promise<void>}
  */
 export async function sfo_bitfield(nhfp, d_bitfield, myname, bfsz) {   // sfbase.c:246
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 1, 1, sfvalue_bitfield(d_bitfield));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_bitfield(nhfp, d_bitfield, myname, bfsz);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_bitfield(nhfp, d_bitfield, myname, bfsz);
         nhfp.fplog = save_fplog;
@@ -3026,11 +2897,10 @@ export async function sfo_bitfield(nhfp, d_bitfield, myname, bfsz) {   // sfbase
  * @returns {Promise<void>}
  */
 export async function sfi_bitfield(nhfp, d_bitfield, myname, bfsz) {   // sfbase.c:246
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_bitfield(nhfp, d_bitfield, myname, bfsz);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_bitfield(nhfp, d_bitfield, myname, bfsz);
@@ -3053,14 +2923,13 @@ export async function sfi_bitfield(nhfp, d_bitfield, myname, bfsz) {   // sfbase
  * @returns {Promise<void>}
  */
 export async function sfo_char(nhfp, d_char, myname, cnt) {   // sfbase.c:249
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 1, cnt, Sfvalue_char(d_char, cnt));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_char(nhfp, d_char, myname, cnt);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_char(nhfp, d_char, myname, cnt);
         nhfp.fplog = save_fplog;
@@ -3074,11 +2943,10 @@ export async function sfo_char(nhfp, d_char, myname, cnt) {   // sfbase.c:249
  * @returns {Promise<void>}
  */
 export async function sfi_char(nhfp, d_char, myname, cnt) {   // sfbase.c:265
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_char(nhfp, d_char, myname, cnt);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_char(nhfp, d_char, myname, cnt);
@@ -3100,14 +2968,13 @@ export async function sfi_char(nhfp, d_char, myname, cnt) {   // sfbase.c:265
  * @returns {Promise<void>}
  */
 export async function sfo_genericptr(nhfp, d_genericptr, myname) {   // sfbase.c:290
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 8, 1, Sfvalue_genericptr(d_genericptr));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_genericptr(nhfp, d_genericptr, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_genericptr(nhfp, d_genericptr, myname);
         nhfp.fplog = save_fplog;
@@ -3120,11 +2987,10 @@ export async function sfo_genericptr(nhfp, d_genericptr, myname) {   // sfbase.c
  * @returns {Promise<void>}
  */
 export async function sfi_genericptr(nhfp, d_genericptr, myname) {   // sfbase.c:306
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_genericptr(nhfp, d_genericptr, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_genericptr(nhfp, d_genericptr, myname);
@@ -3146,14 +3012,13 @@ export async function sfi_genericptr(nhfp, d_genericptr, myname) {   // sfbase.c
  * @returns {Promise<void>}
  */
 export async function sfo_version_info(nhfp, d_version_info, myname) {   // sfbase.c:330
-    let save_fplog = null;
     if (nhfp.fplog) {
         sf_log(nhfp, myname, 24, 1, complex_dump(d_version_info));
     }
     if (nhfp.structlevel) {
         await sfoprocs[nhfp.fnidx].fn.sf_version_info(nhfp, d_version_info, myname);
     } else {
-        save_fplog = nhfp.fplog;
+        const save_fplog = nhfp.fplog;
         nhfp.fplog = null;
         await sfoflprocs[nhfp.fnidx].fn_x.sf_version_info(nhfp, d_version_info, myname);
         nhfp.fplog = save_fplog;
@@ -3166,11 +3031,10 @@ export async function sfo_version_info(nhfp, d_version_info, myname) {   // sfba
  * @returns {Promise<void>}
  */
 export async function sfi_version_info(nhfp, d_version_info, myname) {   // sfbase.c:348
-    let save_mode = 0;
     if (nhfp.structlevel) {
         await sfiprocs[nhfp.fnidx].fn.sf_version_info(nhfp, d_version_info, myname);
     } else {
-        save_mode = nhfp.mode;
+        const save_mode = nhfp.mode;
         nhfp.mode = nhfp.mode & ~(CONVERTING | UNCONVERTING);
         nhfp.mode = nhfp.mode | TURN_OFF_LOGGING;
         await sfiflprocs[nhfp.fnidx].fn_x.sf_version_info(nhfp, d_version_info, myname);
@@ -3195,11 +3059,10 @@ export async function sfi_version_info(nhfp, d_version_info, myname) {   // sfba
  * @param {$c.Ptr | null} txtvalue char *
  */
 export function sf_log(nhfp, t1, sz, cnt, txtvalue) {   // sfbase.c:377
-    let fp = null, iocount = null, dolog = 0;
-    fp = nhfp.fplog;
-    dolog = $c.i8((nhfp.mode & TURN_OFF_LOGGING) === 0 ? 1 : 0);
+    const fp = nhfp.fplog;
+    const dolog = (nhfp.mode & TURN_OFF_LOGGING) === 0 ? 1 : 0;
     if (fp && dolog) {
-        iocount = (nhfp.mode & WRITING) === 0 ? new $c.FieldRef(nhfp, "rcount", "i64") : new $c.FieldRef(nhfp, "wcount", "i64");
+        const iocount = (nhfp.mode & WRITING) === 0 ? new $c.FieldRef(nhfp, "rcount", "i64") : new $c.FieldRef(nhfp, "wcount", "i64");
         $c.fprintf(fp, $c.lit("%08ld %s sz=%zu cnt=%d |%s|\n"), iocount.get(0), t1, sz, cnt, txtvalue);
         //        (*iocount)++;
         //        if (*iocount == 87)
@@ -3213,8 +3076,8 @@ export function sf_log(nhfp, t1, sz, cnt, txtvalue) {   // sfbase.c:377
  * @returns {$c.Ptr | null} char *
  */
 export function sfvalue_char(a, n) {   // sfbase.c:406
-    let i = 0, cp = null;
-    cp = new $c.Ptr(sfvalue_char$buf, 0);
+    let i = 0;
+    let cp = new $c.Ptr(sfvalue_char$buf, 0);
     if (n < 119) {
         sfvalue_char$buf[n] = 0;
     } else {
@@ -3295,8 +3158,7 @@ export function sfvalue_int64(a) {   // sfbase.c:485
  * @returns {$c.Ptr | null} char *
  */
 export function sfvalue_uchar(a) {   // sfbase.c:492
-    let x = 0;
-    x = a.get(0);
+    const x = a.get(0);
     nh_snprintf($c.lit("sfvalue_uchar"), 498, new $c.Ptr(sfvalue_uchar$buf, 0), 20, $c.lit("%03u"), x);
     return new $c.Ptr(sfvalue_uchar$buf, 0);
 }
@@ -3425,8 +3287,8 @@ export function bitfield_dump(a) {   // sfbase.c:617
  * @returns {$c.Ptr | null} char *
  */
 export function complex_dump(a) {   // sfbase.c:625
-    let i = 0, uc = null, x = new Uint32Array(10), $t1, $t2;
-    uc = a;
+    let i = 0, x = new Uint32Array(10), $t1, $t2;
+    let uc = a;
     for (i = 0; i < 10; i = i + 1 | 0) {
         $t2 = ($t1 = uc, uc = $t1.add(1), $t1).get(0), x[i] = $t2;
     }

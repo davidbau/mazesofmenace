@@ -72,10 +72,10 @@ function enermod(en) {   // exper.c:26
  * @returns {number} int
  */
 export function newpw() {   // exper.c:45
-    let en = 0, enrnd = 0, enfix = 0, lim = 0;
-    en = 0;
+    let enfix = 0;
+    let en = 0;
     if (u.ulevel === 0) {
-        en = gu.urole.enadv.infix + gu.urace.enadv.infix | 0;
+        en = gu.urole.enadv.infix + gu.urace.enadv.infix;
         if (gu.urole.enadv.inrnd > 0) {
             en = en + rnd(gu.urole.enadv.inrnd) | 0;
         }
@@ -83,13 +83,13 @@ export function newpw() {   // exper.c:45
             en = en + rnd(gu.urace.enadv.inrnd) | 0;
         }
     } else {
-        enrnd = $c.div32(ACURR(A.WIS), 2);
+        let enrnd = $c.div32(ACURR(A.WIS), 2);
         if (u.ulevel < gu.urole.xlev) {
-            enrnd = enrnd + (gu.urole.enadv.lornd + gu.urace.enadv.lornd | 0) | 0;
-            enfix = gu.urole.enadv.lofix + gu.urace.enadv.lofix | 0;
+            enrnd = enrnd + (gu.urole.enadv.lornd + gu.urace.enadv.lornd) | 0;
+            enfix = gu.urole.enadv.lofix + gu.urace.enadv.lofix;
         } else {
-            enrnd = enrnd + (gu.urole.enadv.hirnd + gu.urace.enadv.hirnd | 0) | 0;
-            enfix = gu.urole.enadv.hifix + gu.urace.enadv.hifix | 0;
+            enrnd = enrnd + (gu.urole.enadv.hirnd + gu.urace.enadv.hirnd) | 0;
+            enfix = gu.urole.enadv.hifix + gu.urace.enadv.hifix;
         }
         en = enermod(rn2(enrnd) + enfix | 0);
     }
@@ -102,8 +102,8 @@ export function newpw() {   // exper.c:45
     } else {
         /* after level 30, throttle energy gains from extra experience;
            once max reaches 600, further increments will be just 1 more */
-        lim = $c.i8(4 - $c.div32(u.uenmax, 200) | 0);
-        lim = $c.i8(lim > 1 ? lim : 1);
+        let lim = $c.i8(4 - $c.div32(u.uenmax, 200) | 0);
+        lim = lim > 1 ? lim : 1;
         if (en > lim) {
             en = lim;
         }
@@ -117,9 +117,9 @@ export function newpw() {   // exper.c:45
  * @returns {number} int
  */
 export function experience(mtmp, nk) {   // exper.c:85
-    let ptr = null, i = 0, tmp = 0, tmp2 = 0;
-    ptr = mtmp.data;
-    tmp = 1 + Math.imul(mtmp.m_lev, mtmp.m_lev) | 0;
+    let i = 0, tmp2 = 0;
+    const ptr = mtmp.data;
+    let tmp = 1 + mtmp.m_lev * mtmp.m_lev;
     /*  For higher ac values, give extra experience */
     if ((i = find_mac(mtmp)) < 3) {
         tmp = tmp + Math.imul(7 - i | 0, i < 0 ? 2 : 1) | 0;
@@ -145,14 +145,14 @@ export function experience(mtmp, nk) {   // exper.c:85
     for (i = 0; i < NATTK; i = i + 1 | 0) {
         tmp2 = ptr.mattk[i].adtyp;
         if (tmp2 > AD.PHYS && tmp2 < AD.BLND) {
-            tmp = tmp + Math.imul(2, mtmp.m_lev) | 0;
+            tmp = tmp + 2 * mtmp.m_lev | 0;
         } else if (tmp2 === AD.DRLI || tmp2 === AD.STON || tmp2 === AD.SLIM) {
             tmp = tmp + 50 | 0;
         } else if (tmp2 !== AD.PHYS) {
             tmp = tmp + mtmp.m_lev | 0;
         }
         /* extra heavy damage bonus */
-        if (Math.imul(ptr.mattk[i].damd, ptr.mattk[i].damn) > 23) {
+        if (ptr.mattk[i].damd * ptr.mattk[i].damn > 23) {
             tmp = tmp + mtmp.m_lev | 0;
         }
         if (tmp2 === AD.WRAP && ptr.mlet === S.EEL && !(u.uprops[MAGICAL_BREATHING].intrinsic || u.uprops[MAGICAL_BREATHING].extrinsic || $c.andu64(gy.youmonst.data.mflags1, M1.AMPHIBIOUS) !== 0)) {
@@ -161,17 +161,17 @@ export function experience(mtmp, nk) {   // exper.c:85
     }
     /*  For certain "extra nasty" monsters, give even more */
     if (extra_nasty(ptr)) {
-        tmp = tmp + Math.imul(7, mtmp.m_lev) | 0;
+        tmp = tmp + 7 * mtmp.m_lev | 0;
     }
     /*  For higher level monsters, an additional bonus is given */
     if (mtmp.m_lev > 8) {
         tmp = tmp + 50 | 0;
     }
     /* Mail daemons put up no fight. */
-    if ($c.peq(mtmp.data, $c.relem(mons, PM.MAIL_DAEMON))) {
+    if (mtmp.data === mons[PM.MAIL_DAEMON]) {
         tmp = 1;
     }
-    if (mtmp.mrevived | 0 || mtmp.mcloned | 0) {
+    if (mtmp.mrevived || mtmp.mcloned) {
         /*
          *      Reduce experience awarded for repeated killings of
          *      "the same monster".  Kill count includes all of this
@@ -201,12 +201,11 @@ export function experience(mtmp, nk) {   // exper.c:85
  * @returns {Promise<void>}
  */
 export async function more_experienced(exper, rexp) {   // exper.c:169
-    let oldexp = 0, oldrexp = 0, newexp = 0, rexpincr = 0, newrexp = 0;
-    oldexp = u.uexp;
-    oldrexp = u.urexp;
-    newexp = $c.add64(oldexp, exper);
-    rexpincr = Math.imul(4, exper) + rexp | 0;
-    newrexp = $c.add64(oldrexp, rexpincr);
+    const oldexp = u.uexp;
+    const oldrexp = u.urexp;
+    let newexp = $c.add64(oldexp, exper);
+    const rexpincr = Math.imul(4, exper) + rexp | 0;
+    let newrexp = $c.add64(oldrexp, rexpincr);
     /* cap experience and score on wraparound */
     if (newexp < 0 && exper > 0) {
         newexp = 9223372036854775807n;
@@ -240,7 +239,7 @@ export async function more_experienced(exper, rexp) {   // exper.c:169
  * @returns {Promise<void>}
  */
 export async function losexp(drainer) {   // exper.c:207
-    let num = 0, uhpmin = 0, olduhpmax = 0, $t1;
+    let $t1;
     /* cause of death, if drain should be fatal */
     /* override life-drain resistance when handling an explicit
        wizard mode request to reduce level; never fatal though */
@@ -280,9 +279,9 @@ export async function losexp(drainer) {   // exper.c:207
         await livelog_printf(LL.MINORAC, $c.lit("lost all experience"));
     }
     (!(u.ulevel >= 0 && u.ulevel < MAXULEV) ? 1 : 0) ? $c.__assert_rtn($c.lit("losexp"), $c.lit("exper.c"), 247, $c.lit("u.ulevel >= 0 && u.ulevel < MAXULEV")) : 0;   /* valid array index */
-    olduhpmax = u.uhpmax;
-    uhpmin = minuhpmax(10);   /* same minimum as is used by life-saving */
-    num = u.uhpinc[u.ulevel];
+    const olduhpmax = u.uhpmax;
+    const uhpmin = minuhpmax(10);   /* same minimum as is used by life-saving */
+    let num = u.uhpinc[u.ulevel];
     u.uhpmax = u.uhpmax - num | 0;
     if (u.uhpmax < uhpmin) {
         setuhpmax(uhpmin, TRUE);
@@ -344,7 +343,7 @@ export async function newexplevel() {   // exper.c:300
  * @returns {Promise<void>}
  */
 export async function pluslvl(incr) {   // exper.c:307
-    let hpinc = 0, eninc = 0, old_ach_cnt = 0, newrank = 0, oldrank = 0, tmp = 0, $t1;
+    let hpinc = 0, $t1;
     /* True: incremental experience growth;
      * False: potion of gain level or wraith corpse
      *        or wizard mode #levelchange */
@@ -364,7 +363,7 @@ export async function pluslvl(incr) {   // exper.c:307
     /* will lower u.uhp if it exceeds
      * u.uhpmax */
     /* increase spell power/energy points */
-    eninc = newpw();
+    const eninc = newpw();
     u.uenmax = u.uenmax + eninc | 0;
     if (u.uenmax > u.uenpeak) {
         u.uenpeak = u.uenmax;
@@ -372,10 +371,10 @@ export async function pluslvl(incr) {   // exper.c:307
     u.uen = u.uen + eninc | 0;
     /* increase level (unless already maxxed) */
     if (u.ulevel < MAXULEV) {
-        oldrank = xlev_to_rank(u.ulevel);
+        const oldrank = xlev_to_rank(u.ulevel);
         /* increase experience points to reflect new level */
         if (incr) {
-            tmp = newuexp(u.ulevel + 1 | 0);
+            const tmp = newuexp(u.ulevel + 1 | 0);
             if (u.uexp >= tmp) {
                 u.uexp = $c.sub64(tmp, 1);
             }
@@ -388,8 +387,8 @@ export async function pluslvl(incr) {   // exper.c:307
             u.ulevelmax = u.ulevel;
         }
         await adjabil(u.ulevel - 1 | 0, u.ulevel);   /* give new intrinsics */
-        old_ach_cnt = count_achievements();
-        newrank = xlev_to_rank(u.ulevel);
+        const old_ach_cnt = count_achievements();
+        const newrank = xlev_to_rank(u.ulevel);
         if (newrank > oldrank) {
             await record_achievement(achieve_rank(newrank));
         }
@@ -414,16 +413,16 @@ export async function pluslvl(incr) {   // exper.c:307
  * @returns {number | bigint} long
  */
 export function rndexp(gaining) {   // exper.c:378
-    let minexp = 0, maxexp = 0, diff = 0, factor = 0, result = 0;
+    let diff = 0, factor = 0;
     /* gaining XP via potion vs setting XP for polyself */
-    minexp = u.ulevel === 1 ? 0 : newuexp(u.ulevel - 1 | 0);
-    maxexp = newuexp(u.ulevel);
+    const minexp = u.ulevel === 1 ? 0 : newuexp(u.ulevel - 1 | 0);
+    const maxexp = newuexp(u.ulevel);
     diff = $c.sub64(maxexp, minexp), factor = 1;
     /* make sure that `diff' is an argument which rn2() can handle */
     while (diff >= LARGEST_INT) {
         diff = $c.div64(diff, 2), factor = $c.mul64(factor, 2);
     }
-    result = $c.add64(minexp, $c.mul64(factor, rn2($c.i32(diff))));
+    let result = $c.add64(minexp, $c.mul64(factor, rn2($c.i32(diff))));
     /* 3.4.1:  if already at level 30, add to current experience
        points rather than to threshold needed to reach the current
        level; otherwise blessed potions of gain level can result

@@ -72,14 +72,14 @@ const disco_orders_descr = $c.nulls(5);
  * @returns {Promise<void>}
  */
 async function setgemprobs(dlev) {   // o_init.c:54
-    let j = 0, first = 0, lev = 0, sum = 0;
-    sum = 0;
+    let j = 0, lev = 0;
+    let sum = 0;
     if (dlev) {
         lev = ledger_no(dlev) > maxledgerno() ? maxledgerno() : ledger_no(dlev);
     } else {
         lev = 0;
     }
-    first = svb.bases[GEM_CLASS];
+    let first = svb.bases[GEM_CLASS];
     for (j = 0; j < (9 - $c.div32(lev, 3) | 0); j = j + 1 | 0) {
         objects[first + j | 0].oc_prob = 0;
     }
@@ -132,7 +132,7 @@ function randomize_gem_colors() {   // o_init.c:85
  * @param {number} domaterial boolean
  */
 function shuffle(o_low, o_high, domaterial) {   // o_init.c:113
-    let i = 0, j = 0, num_to_shuffle = 0, sw = 0, color = 0;
+    let i = 0, j = 0, num_to_shuffle = 0;
     for (num_to_shuffle = 0, j = o_low; j <= o_high; j = j + 1 | 0) {
         if (!objects[j].oc_name_known) {
             num_to_shuffle = num_to_shuffle + 1 | 0;
@@ -148,18 +148,18 @@ function shuffle(o_low, o_high, domaterial) {   // o_init.c:113
         do {
             i = j + rn2((o_high - j | 0) + 1 | 0) | 0;
         } while (objects[i].oc_name_known);
-        sw = objects[j].oc_descr_idx;
+        let sw = objects[j].oc_descr_idx;
         objects[j].oc_descr_idx = objects[i].oc_descr_idx;
         objects[i].oc_descr_idx = sw;
-        sw = $c.i16(objects[j].oc_tough);
+        sw = objects[j].oc_tough;
         objects[j].oc_tough = (objects[i].oc_tough) & 1;
         objects[i].oc_tough = (sw >>> 0) & 1;
-        color = objects[j].oc_color;
+        const color = objects[j].oc_color;
         objects[j].oc_color = objects[i].oc_color;
         objects[i].oc_color = $c.u8(color);
         /* shuffle material */
         if (domaterial) {
-            sw = $c.i16(objects[j].oc_material);
+            sw = objects[j].oc_material;
             objects[j].oc_material = (objects[i].oc_material) & 31;
             objects[i].oc_material = (sw >>> 0) & 31;
         }
@@ -169,7 +169,7 @@ function shuffle(o_low, o_high, domaterial) {   // o_init.c:113
  * @returns {Promise<void>}
  */
 export async function init_objects() {   // o_init.c:151
-    let i = 0, first = 0, last = 0, prevoclass = 0, oclass = 0, nmkn = 0, $t1, $t2, $t3;
+    let i = 0, last = 0, $t1, $t2, $t3;
     for (i = 0; i <= MAXOCLASSES; i = i + 1 | 0) {
         svb.bases[i] = 0;
         if (i > 0 && i < MAXOCLASSES && objects[i].oc_class !== i) {
@@ -182,10 +182,10 @@ export async function init_objects() {   // o_init.c:151
     }
     /* init base; if probs given check that they add up to 1000,
        otherwise compute probs */
-    first = MAXOCLASSES;
-    prevoclass = -1;
+    let first = MAXOCLASSES;
+    let prevoclass = -1;
     while (first < NUM_OBJECTS) {
-        oclass = objects[first].oc_class;
+        const oclass = objects[first].oc_class;
         /*
          * objects[] sanity check:  must be in ascending oc_class order to
          * be able to use bases[class+1]-1 for the end of a class's range.
@@ -227,20 +227,20 @@ export async function init_objects() {   // o_init.c:151
     }
     /* check objects[].oc_name_known */
     for (i = MAXOCLASSES; i < NUM_OBJECTS; i = i + 1 | 0) {
-        nmkn = (objects[i].oc_name_known | 0) !== 0 ? 1 : 0;
+        const nmkn = objects[i].oc_name_known !== 0 ? 1 : 0;
         if ((!obj_descr[objects[i].oc_descr_idx].oc_descr ? 1 : 0) ^ nmkn) {
             if (iflags.sanity_check) {
                 await impossible($c.lit("obj #%d (%s) name is %s despite%s alternate description"), i, obj_descr[objects[i].oc_name_idx].oc_name, nmkn ? $c.lit("pre-known") : $c.lit("not known"), nmkn ? $c.lit("") : $c.lit(" no"));
             }
             /* repair the mistake and keep going */
-            objects[i].oc_name_known = ((nmkn ? 0 : 1) >>> 0) & 1;
+            objects[i].oc_name_known = (nmkn ? 0 : 1) & 1;
         }
     }
     /* compute oclass_prob_totals */
     await init_oclass_probs();
     /* shuffle descriptions */
     shuffle_all();
-    $t3 = (rn2(2) ? NODIR : IMMEDIATE) >>> 0, objects[WAN_NOTHING].oc_dir = ($t3) & 7;
+    $t3 = rn2(2) ? NODIR : IMMEDIATE, objects[WAN_NOTHING].oc_dir = ($t3) & 7;
 }
 /* Compute the total probability of each object class.
  * Assumes svb.bases[] has already been set. */
@@ -248,9 +248,9 @@ export async function init_objects() {   // o_init.c:151
  * @returns {Promise<void>}
  */
 export async function init_oclass_probs() {   // o_init.c:240
-    let i = 0, sum = 0, oclass = 0;
+    let i = 0, oclass = 0;
     for (oclass = 0; oclass < MAXOCLASSES; oclass = oclass + 1 | 0) {
-        sum = 0;
+        let sum = 0;
         /* note: for ILLOBJ_CLASS, bases[oclass+1]-1 isn't the last item
            in the class; but all the generic items have probability 0 so
            adding them to 'sum' has no impact */
@@ -275,10 +275,10 @@ export async function init_oclass_probs() {   // o_init.c:240
  * @param {*} hi_p int *
  */
 export function obj_shuffle_range(otyp, lo_p, hi_p) {   // o_init.c:269
-    let i = 0, ocls = 0, $t1, $t2;
+    let i = 0, $t1, $t2;
     /* input: representative item */
     /* output: range that item belongs among */
-    ocls = objects[otyp].oc_class;
+    const ocls = objects[otyp].oc_class;
     /* default is just the object itself */
     $t1 = hi_p.set(0, otyp), lo_p.set(0, $t1);
     switch (ocls) {
@@ -304,7 +304,7 @@ export function obj_shuffle_range(otyp, lo_p, hi_p) {   // o_init.c:269
             /* exclude non-magic types and also unique ones */
             lo_p.set(0, svb.bases[ocls]);
             for (i = lo_p.get(0); objects[i].oc_class === ocls; i = i + 1 | 0) {
-                if (objects[i].oc_unique | 0 || !objects[i].oc_magic) {
+                if (objects[i].oc_unique || !objects[i].oc_magic) {
                     break;
                 }
             }
@@ -350,16 +350,15 @@ function shuffle_all() {   // o_init.c:322
  * @returns {Promise<number>} boolean
  */
 export async function objdescr_is(obj, descr) {   // o_init.c:352
-    let objdescr = null;
     if (!obj) {
         await impossible($c.lit("objdescr_is: null obj"));
         return FALSE;
     }
-    objdescr = obj_descr[objects[obj.otyp].oc_descr_idx].oc_descr;
+    const objdescr = obj_descr[objects[obj.otyp].oc_descr_idx].oc_descr;
     if (!objdescr) {
         return FALSE;   /* no obj description, no match */
     }
-    return $c.i8(!$c.strcmp(objdescr, descr) ? 1 : 0);
+    return !$c.strcmp(objdescr, descr) ? 1 : 0;
 }
 /* level dependent initialization */
 /**
@@ -433,11 +432,10 @@ export async function restnames(nhfp) {   // o_init.c:411
  * @returns {Promise<void>}
  */
 export async function observe_object(obj) {   // o_init.c:442
-    let oindx = 0;
-    oindx = obj.otyp;
+    const oindx = obj.otyp;
     /* skip for generic objects and for STRANGE_OBJECT */
     if (oindx >= FIRST_OBJECT && !Hallucination()) {
-        obj.dknown = (1) & 1;
+        obj.dknown = 1;
         await discover_object(oindx, FALSE, TRUE, FALSE);
     }
 }
@@ -449,7 +447,7 @@ export async function observe_object(obj) {   // o_init.c:442
  * @returns {Promise<void>}
  */
 export async function discover_object(oindx, mark_as_known, mark_as_encountered, credit_hero) {   // o_init.c:454
-    let dindx = 0, acls = 0;
+    let dindx = 0;
     /* type of object */
     /* discover the type */
     /* mark the type as having been seen/felt */
@@ -458,7 +456,7 @@ export async function discover_object(oindx, mark_as_known, mark_as_encountered,
         return;
     }
     if (!objects[oindx].oc_name_known && mark_as_known || !objects[oindx].oc_encountered && mark_as_encountered || gu.urole.mnum === PM.SAMURAI && Japanese_item_name(oindx, null)) {
-        acls = objects[oindx].oc_class;
+        const acls = objects[oindx].oc_class;
         /* Loop thru disco[] 'til we find the target (which may have been
            uname'd) or the next open slot; one or the other will be found
            before we reach the next class... */
@@ -469,10 +467,10 @@ export async function discover_object(oindx, mark_as_known, mark_as_encountered,
         }
         svd.disco[dindx] = $c.i16(oindx);
         if (mark_as_encountered) {
-            objects[oindx].oc_encountered = (1) & 1;
+            objects[oindx].oc_encountered = 1;
         }
         if (!objects[oindx].oc_name_known && mark_as_known) {
-            objects[oindx].oc_name_known = (1) & 1;
+            objects[oindx].oc_name_known = 1;
             if (credit_hero) {
                 await exercise(A.WIS, TRUE);
             }
@@ -493,10 +491,10 @@ export async function discover_object(oindx, mark_as_known, mark_as_encountered,
  * @returns {Promise<void>}
  */
 export async function undiscover_object(oindx) {   // o_init.c:498
-    let dindx = 0, acls = 0, found = 0;
+    let dindx = 0;
     if (!objects[oindx].oc_name_known && !objects[oindx].oc_encountered) {
-        acls = objects[oindx].oc_class;
-        found = FALSE;
+        const acls = objects[oindx].oc_class;
+        let found = FALSE;
         /* find the object; shift those behind it forward one slot */
         for (dindx = svb.bases[acls]; dindx < NUM_OBJECTS && svd.disco[dindx] !== 0 && objects[dindx].oc_class === acls; dindx = dindx + 1 | 0) {
             if (found) {
@@ -529,7 +527,7 @@ export function interesting_to_discover(i) {   // o_init.c:526
     }
     /* Objects that were discovered without encountering them are now printed
        with a '*' */
-    return $c.i8(objects[i].oc_uname !== null || (objects[i].oc_name_known | 0 || objects[i].oc_encountered | 0) && obj_descr[objects[i].oc_descr_idx].oc_descr !== null ? 1 : 0);
+    return objects[i].oc_uname !== null || (objects[i].oc_name_known || objects[i].oc_encountered) && obj_descr[objects[i].oc_descr_idx].oc_descr !== null ? 1 : 0;
 }
 /* discoveries qsort comparison function */
 /**
@@ -538,11 +536,10 @@ export function interesting_to_discover(i) {   // o_init.c:526
  * @returns {number} int
  */
 function discovered_cmp(v1, v2) {   // o_init.c:553
-    let s1 = null, s2 = null, res = 0;
-    s1 = $c.asArr(v1, 'ptr').get(0);
-    s2 = $c.asArr(v2, 'ptr').get(0);
+    const s1 = $c.asArr(v1, 'ptr').get(0);
+    const s2 = $c.asArr(v2, 'ptr').get(0);
     /* each element starts with "* " or "  " but we don't sort by those */
-    res = strncmpi(s1.add(2), s2.add(2), -1);
+    const res = strncmpi(s1.add(2), s2.add(2), -1);
     if (res === 0) {
         /* no tie-breaker needed */
     }
@@ -558,8 +555,8 @@ async function sortloot_descr(otyp, outbuf) {   // o_init.c:567
     o.$copyFrom(cg.zeroobj);
     o.otyp = $c.i16(otyp);
     o.oclass = objects[otyp].oc_class;
-    o.dknown = (1) & 1;   /* not observe_object, this isn't a real object */
-    o.known = ((objects[otyp].oc_name_known | 0 || !objects[otyp].oc_uses_known ? 1 : 0) >>> 0) & 1;
+    o.dknown = 1;   /* not observe_object, this isn't a real object */
+    o.known = (objects[otyp].oc_name_known || !objects[otyp].oc_uses_known ? 1 : 0) & 1;
     o.corpsenm = NON_PM;   /* suppress statue and figurine details */
     /* but suppressing fruit details leads to "bad fruit #0" */
     if (otyp === SLIME_MOLD) {
@@ -577,10 +574,10 @@ async function sortloot_descr(otyp, outbuf) {   // o_init.c:567
  * @returns {Promise<number>} int
  */
 export async function choose_disco_sort(mode) {   // o_init.c:611
-    let tmpwin = 0, selected = [null], any = new $T.any(), i = 0, n = 0, choice = 0, clr = 0;
+    let selected = [null], any = new $T.any(), i = 0;
     /* 0 => 'O' cmd, 1 => full discoveries; 2 => class disco */
-    clr = NO_COLOR;
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const clr = NO_COLOR;
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     any.$copyFrom(cg.zeroany);   /* zero out all bits */
     for (i = 0; disco_orders_descr[i]; i = i + 1 | 0) {
@@ -597,10 +594,10 @@ export async function choose_disco_sort(mode) {   // o_init.c:611
         await add_menu_str(tmpwin, $c.lit("      will matter for future use of total discoveries."));
     }
     await end_menu()(tmpwin, $c.lit("Ordering of discoveries"));
-    n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
+    const n = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
     await destroy_nhwindow()(tmpwin);
     if (n > 0) {
-        choice = $c.radd(selected[0], 0).item.a_int;
+        let choice = $c.radd(selected[0], 0).item.a_int;
         /* skip preselected entry if we have more than one item chosen */
         if (n > 1 && choice === flags.discosort) {
             choice = $c.radd(selected[0], 1).item.a_int;
@@ -616,14 +613,14 @@ export async function choose_disco_sort(mode) {   // o_init.c:611
  * @returns {Promise<$c.Ptr | null>} char *
  */
 async function disco_typename(otyp) {   // o_init.c:661
-    let result = null, buf = new Int8Array(256), actualn = null;
-    result = await obj_typename(otyp);
+    let buf = new Int8Array(256);
+    const result = await obj_typename(otyp);
     if (gu.urole.mnum === PM.SAMURAI && Japanese_item_name(otyp, null)) {
         /* undiscovered harp (since wooden harp is
            non-magic so pre-discovered, only applies
            to magic harp and will only be seen if
            magic harp has been 'called' something) */
-        actualn = otyp !== MAGIC_HARP && otyp !== WOODEN_HARP || objects[otyp].oc_name_known | 0 ? obj_descr[objects[otyp].oc_name_idx].oc_name : $c.lit("harp");
+        const actualn = otyp !== MAGIC_HARP && otyp !== WOODEN_HARP || objects[otyp].oc_name_known ? obj_descr[objects[otyp].oc_name_idx].oc_name : $c.lit("harp");
         if (!actualn) {
             /* won't happen; used to pacify static analyzer */
         } else if (strstri(result, $c.lit(" called"))) {
@@ -646,10 +643,10 @@ async function disco_typename(otyp) {   // o_init.c:661
  * @returns {Promise<void>}
  */
 async function disco_append_typename(buf, dis) {   // o_init.c:694
-    let len = 0, p = null, typnm = null, typnm_len = 0, eos = [null];
-    len = $c.strlen(buf);
-    typnm = await disco_typename(dis);
-    typnm_len = $c.strlen(typnm);
+    let p = null, eos = [null];
+    const len = $c.strlen(buf);
+    const typnm = await disco_typename(dis);
+    const typnm_len = $c.strlen(typnm);
     if ($c.addu64(len, typnm_len) < BUFSZ) {
         /* ordinary */
         $c.strcat(buf, typnm);
@@ -675,7 +672,7 @@ async function disco_append_typename(buf, dis) {   // o_init.c:694
  * @param {$c.Ptr | null} outbuf char *
  */
 function disco_fmt_uniq(uidx, outbuf) {   // o_init.c:725
-    $c.sprintf(outbuf, $c.lit("  %s"), objects[uidx].oc_name_known | 0 ? obj_descr[objects[uidx].oc_name_idx].oc_name : obj_descr[objects[uidx].oc_descr_idx].oc_descr);
+    $c.sprintf(outbuf, $c.lit("  %s"), objects[uidx].oc_name_known ? obj_descr[objects[uidx].oc_name_idx].oc_name : obj_descr[objects[uidx].oc_descr_idx].oc_descr);
     /* in the spellbooks section of main discoveries list, encountered
        but not fully discovered Book of the Dead is shown as
        "spellbook (papyrus)" like other encountered but not discovered books;
@@ -693,10 +690,10 @@ function disco_fmt_uniq(uidx, outbuf) {   // o_init.c:725
  * @returns {Promise<void>}
  */
 async function disco_output_sorted(tmpwin, sorted_lines, sorted_ct, lootsort) {   // o_init.c:741
-    let p = null, j = 0;
+    let j = 0;
     $c.nh_deterministic_qsort(sorted_lines, $c.u64(sorted_ct), 8, discovered_cmp);
     for (j = 0; j < sorted_ct; j = j + 1 | 0) {
-        p = sorted_lines.get(j);
+        let p = sorted_lines.get(j);
         (!!$c.peq(p, $c.asArr(null, Int8Array)) ? 1 : 0) ? $c.__assert_rtn($c.lit("disco_output_sorted"), $c.lit("o_init.c"), 752, $c.lit("p != NULL")) : 0;   /* pacify static analyzer */
         if (lootsort) {
             p.set(6, p.get(0));   /* '*' or ' ' */
@@ -711,7 +708,7 @@ async function disco_output_sorted(tmpwin, sorted_lines, sorted_ct, lootsort) { 
  * @returns {Promise<number>} int
  */
 export async function dodiscovered() {   // o_init.c:764
-    let tmpwin = 0, s = null, oclass = 0, prev_class = 0, classes = new Int8Array(18), buf = new Int8Array(256), sorted_lines = $c.nulls(481), p = null, i = 0, dis = 0, ct = 0, uniq_ct = 0, arti_ct = 0, sorted_ct = 0, uidx = 0, sortindx = 0, alphabetized = 0, alphabyclass = 0, lootsort = 0, $t1, $t2, $t3, $t4;
+    let s = null, classes = new Int8Array(18), buf = new Int8Array(256), sorted_lines = $c.nulls(481), p = null, i = 0, dis = 0, $t1, $t2, $t3, $t4;
     /* free after Robert Viduya */
     /* overkill */
     // should be ptrdiff_t, but we don't require that exists
@@ -723,11 +720,11 @@ export async function dodiscovered() {   // o_init.c:764
             return ECMD.OK;
         }
     }
-    alphabyclass = $c.i8(flags.discosort === 99 ? 1 : 0);
-    alphabetized = $c.i8(flags.discosort === 97 || alphabyclass ? 1 : 0);
-    lootsort = $c.i8(flags.discosort === 115 ? 1 : 0);
-    sortindx = $c.pdiff($c.strchr(new $c.Ptr(disco_order_let, 0), flags.discosort), new $c.Ptr(disco_order_let, 0));
-    tmpwin = await create_nhwindow()(NHW.TEXT);
+    const alphabyclass = flags.discosort === 99 ? 1 : 0;
+    const alphabetized = flags.discosort === 97 || alphabyclass ? 1 : 0;
+    const lootsort = flags.discosort === 115 ? 1 : 0;
+    const sortindx = $c.pdiff($c.strchr(new $c.Ptr(disco_order_let, 0), flags.discosort), new $c.Ptr(disco_order_let, 0));
+    const tmpwin = await create_nhwindow()(NHW.TEXT);
     $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Discoveries, %s"), disco_orders_descr[$c.idx(sortindx)]);
     await putstr()(tmpwin, 0, new $c.Ptr(buf, 0));
     await putstr()(tmpwin, 0, $c.lit(""));
@@ -738,10 +735,10 @@ export async function dodiscovered() {   // o_init.c:764
      */
     /* gather "unique objects", also called "relics", into a pseudo-class;
        they'll also be displayed individually within their regular class */
-    uniq_ct = 0;
+    let uniq_ct = 0;
     for (i = dis = 0; i < 4; i = i + 1 | 0) {
-        uidx = uniq_objs[i];
-        if (objects[uidx].oc_name_known | 0 || objects[uidx].oc_encountered | 0 && uidx !== AMULET_OF_YENDOR) {
+        const uidx = uniq_objs[i];
+        if (objects[uidx].oc_name_known || objects[uidx].oc_encountered && uidx !== AMULET_OF_YENDOR) {
             if (!($t1 = dis, dis = $t1 + 1 | 0, $t1)) {
                 await putstr()(tmpwin, iflags.menu_headings.attr, $c.lit("Unique items or Relics"));
             }
@@ -751,17 +748,17 @@ export async function dodiscovered() {   // o_init.c:764
         }
     }
     /* display any known artifacts as another pseudo-class */
-    arti_ct = await disp_artifact_discoveries(tmpwin);
+    const arti_ct = await disp_artifact_discoveries(tmpwin);
     /* several classes are omitted from packorder; one is of interest here */
     $c.strcpy(new $c.Ptr(classes, 0), new $c.Ptr(flags.inv_order, 0));
     if (!$c.strchr(new $c.Ptr(classes, 0), VENOM_CLASS)) {
         strkitten(new $c.Ptr(classes, 0), VENOM_CLASS);   /* append char to string */
     }
-    ct = uniq_ct + arti_ct | 0;
-    sorted_ct = 0;
+    let ct = uniq_ct + arti_ct | 0;
+    let sorted_ct = 0;
     for (s = new $c.Ptr(classes, 0); s.get(0); s = s.add(1)) {
-        oclass = s.get(0);
-        prev_class = $c.i8(oclass + 1 | 0);   /* forced different from oclass */
+        const oclass = s.get(0);
+        let prev_class = $c.i8(oclass + 1);   /* forced different from oclass */
         for (i = svb.bases[oclass]; i < NUM_OBJECTS && objects[i].oc_class === oclass; i = i + 1 | 0) {
             if ((dis = svd.disco[i]) !== 0 && interesting_to_discover(dis)) {
                 ct = ct + 1 | 0;
@@ -777,7 +774,7 @@ export async function dodiscovered() {   // o_init.c:764
                         prev_class = oclass;
                     }
                 }
-                $c.strcpy(new $c.Ptr(buf, 0), objects[dis].oc_encountered | 0 ? $c.lit("  ") : $c.lit("* "));
+                $c.strcpy(new $c.Ptr(buf, 0), objects[dis].oc_encountered ? $c.lit("  ") : $c.lit("* "));
                 if (lootsort) {
                     await sortloot_descr(dis, new $c.Ptr(buf, 2));
                 }
@@ -829,11 +826,11 @@ async function oclass_to_name(oclass, buf) {   // o_init.c:877
  * @returns {Promise<number>} int
  */
 export async function doclassdisco() {   // o_init.c:891
-    let tmpwin = 0, pick_list = [null], any = new $T.any(), s = null, c = 0, oclass = 0, menulet = 0, allclasses = new Int8Array(18), discosyms = new Int8Array(22), buf = new Int8Array(256), sorted_lines = $c.nulls(481), p = null, i = 0, ct = 0, dis = 0, xtras = 0, sorted_ct = 0, uidx = 0, traditional = 0, alphabetized = 0, lootsort = 0, clr = 0, allclasses_plustwo = new Int8Array(21), sl = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7;
-    tmpwin = WIN_ERR;
+    let pick_list = [null], any = new $T.any(), s = null, c = 0, oclass = 0, allclasses = new Int8Array(18), discosyms = new Int8Array(22), buf = new Int8Array(256), sorted_lines = $c.nulls(481), p = null, i = 0, dis = 0, xtras = 0, sorted_ct = 0, uidx = 0, allclasses_plustwo = new Int8Array(21), $t1, $t2, $t3, $t4, $t5, $t6, $t7;
+    let tmpwin = WIN_ERR;
     pick_list[0] = null;
     /* overkill */
-    clr = NO_COLOR;
+    const clr = NO_COLOR;
     if (!flags.discosort || !(p = $c.strchr(new $c.Ptr(disco_order_let, 0), flags.discosort))) {
         flags.discosort = 111;
     }
@@ -842,16 +839,16 @@ export async function doclassdisco() {   // o_init.c:891
             return ECMD.OK;
         }
     }
-    alphabetized = $c.i8(flags.discosort === 97 || flags.discosort === 99 ? 1 : 0);
-    lootsort = $c.i8(flags.discosort === 115 ? 1 : 0);
+    const alphabetized = flags.discosort === 97 || flags.discosort === 99 ? 1 : 0;
+    const lootsort = flags.discosort === 115 ? 1 : 0;
     discosyms[0] = 0;
-    traditional = $c.i8(flags.menu_style === MENU.TRADITIONAL || flags.menu_style === MENU.COMBINATION ? 1 : 0);
+    const traditional = flags.menu_style === MENU.TRADITIONAL || flags.menu_style === MENU.COMBINATION ? 1 : 0;
     if (!traditional) {
         tmpwin = await create_nhwindow()(NHW.MENU);
         await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     }
     any.$copyFrom(cg.zeroany);
-    menulet = 97;
+    let menulet = 97;
     /*
      * FIXME?
      *  relics and artifacts don't obey player's sort order even though
@@ -863,7 +860,7 @@ export async function doclassdisco() {   // o_init.c:891
        from 'u' to 'r') */
     for (i = 0; i < 4; i = i + 1 | 0) {
         uidx = uniq_objs[i];
-        if (objects[uidx].oc_name_known | 0 || objects[uidx].oc_encountered | 0 && uidx !== AMULET_OF_YENDOR) {
+        if (objects[uidx].oc_name_known || objects[uidx].oc_encountered && uidx !== AMULET_OF_YENDOR) {
             $c.strcat(new $c.Ptr(discosyms, 0), $c.lit("u"));
             if (!traditional) {
                 any.a_int = 117;
@@ -921,7 +918,7 @@ export async function doclassdisco() {   // o_init.c:891
            for discoveries of any class whether it has discoveries or not */
         $c.sprintf(new $c.Ptr(allclasses_plustwo, 0), $c.lit("%s%c%c%c"), new $c.Ptr(allclasses, 0), 97, 117, 114);
         for (s = new $c.Ptr(allclasses_plustwo, 0), xtras = 0; s.get(0); s = s.add(1)) {
-            c = $c.i8($c.strchr($c.lit("aur"), s.get(0)) ? s.get(0) : def_oc_syms[s.get(0)].sym);
+            c = $c.strchr($c.lit("aur"), s.get(0)) ? s.get(0) : def_oc_syms[s.get(0)].sym;
             if (!$c.strchr(new $c.Ptr(discosyms, 0), c)) {
                 if (!($t4 = xtras, xtras = $t4 + 1 | 0, $t4)) {
                     strkitten(new $c.Ptr(discosyms, 0), 27);
@@ -959,14 +956,14 @@ export async function doclassdisco() {   // o_init.c:891
      * show discoveries for object class c
      */
     tmpwin = await create_nhwindow()(NHW.TEXT);
-    ct = 0;
+    let ct = 0;
     switch (c) {
         case 117:
         case 114:
             await putstr()(tmpwin, iflags.menu_headings.attr, upstart($c.strcpy(new $c.Ptr(buf, 0), new $c.Ptr(doclassdisco$unique_items, 0))));
             for (i = 0; i < 4; i = i + 1 | 0) {
                 uidx = uniq_objs[i];
-                if (objects[uidx].oc_name_known | 0 || objects[uidx].oc_encountered | 0 && uidx !== AMULET_OF_YENDOR) {
+                if (objects[uidx].oc_name_known || objects[uidx].oc_encountered && uidx !== AMULET_OF_YENDOR) {
                     ct = ct + 1 | 0;
                     disco_fmt_uniq(uidx, new $c.Ptr(buf, 0));
                     await putstr()(tmpwin, 0, new $c.Ptr(buf, 0));
@@ -1001,10 +998,10 @@ export async function doclassdisco() {   // o_init.c:891
             $c.sprintf(new $c.Ptr(buf, 0), $c.lit("Discovered %s in %s"), await let_to_name(oclass, FALSE, FALSE), flags.discosort === 111 ? $c.lit("order of discovery") : flags.discosort === 115 ? $c.lit("'sortloot' order") : $c.lit("alphabetical order"));
             await putstr()(tmpwin, 0, new $c.Ptr(buf, 0));   /* skip iflags.menu_headings */
             sorted_ct = 0;
-            for (i = svb.bases[oclass]; i <= (svb.bases[oclass + 1 | 0] - 1 | 0); i = i + 1 | 0) {
+            for (i = svb.bases[oclass]; i <= (svb.bases[oclass + 1] - 1 | 0); i = i + 1 | 0) {
                 if ((dis = svd.disco[i]) !== 0 && interesting_to_discover(dis)) {
                     ct = ct + 1 | 0;
-                    $c.strcpy(new $c.Ptr(buf, 0), objects[dis].oc_encountered | 0 ? $c.lit("  ") : $c.lit("* "));
+                    $c.strcpy(new $c.Ptr(buf, 0), objects[dis].oc_encountered ? $c.lit("  ") : $c.lit("* "));
                     if (lootsort) {
                         await sortloot_descr(dis, new $c.Ptr(buf, 2));
                     }
@@ -1021,7 +1018,7 @@ export async function doclassdisco() {   // o_init.c:891
             } else if (sorted_ct) {
                 $c.nh_deterministic_qsort(new $c.Ptr(sorted_lines, 0), $c.u64(sorted_ct), 8, discovered_cmp);
                 for (i = 0; i < sorted_ct; i = i + 1 | 0) {
-                    sl = sorted_lines[i];
+                    let sl = sorted_lines[i];
                     if (lootsort) {
                         sl.set(6, sl.get(0));   /* '*' or ' ' */
                         sl = sl.add(6);
@@ -1043,13 +1040,13 @@ export async function doclassdisco() {   // o_init.c:891
  * @returns {Promise<void>}
  */
 export async function rename_disco() {   // o_init.c:1131
-    let i = 0, dis = 0, ct = 0, mn = 0, sl = 0, s = null, oclass = 0, prev_class = 0, tmpwin = 0, any = new $T.any(), selected = [null], clr = 0, buf = new Int8Array(256), odummy = new $T.obj();
-    ct = 0;
-    mn = 0;
+    let i = 0, dis = 0, s = null, any = new $T.any(), selected = [null], buf = new Int8Array(256), odummy = new $T.obj();
+    let ct = 0;
+    let mn = 0;
     selected[0] = null;
-    clr = NO_COLOR;
+    const clr = NO_COLOR;
     any.$copyFrom(cg.zeroany);
-    tmpwin = await create_nhwindow()(NHW.MENU);
+    const tmpwin = await create_nhwindow()(NHW.MENU);
     await start_menu()(tmpwin, MENU.BEHAVE_STANDARD);
     /*
      * Skip the "unique objects" section (each will appear within its
@@ -1059,8 +1056,8 @@ export async function rename_disco() {   // o_init.c:1131
      */
     /* for each class, show discoveries in that class */
     for (s = new $c.Ptr(flags.inv_order, 0); s.get(0); s = s.add(1)) {
-        oclass = s.get(0);
-        prev_class = $c.i8(oclass + 1 | 0);   /* forced different from oclass */
+        const oclass = s.get(0);
+        let prev_class = $c.i8(oclass + 1);   /* forced different from oclass */
         for (i = svb.bases[oclass]; i < NUM_OBJECTS && objects[i].oc_class === oclass; i = i + 1 | 0) {
             dis = svd.disco[i];
             if (!dis || !interesting_to_discover(dis)) {
@@ -1089,7 +1086,7 @@ export async function rename_disco() {   // o_init.c:1131
     } else {
         await end_menu()(tmpwin, $c.lit("Pick an object type to name"));
         dis = STRANGE_OBJECT;
-        sl = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
+        const sl = await select_menu(tmpwin, PICK.ONE, new $c.Ptr(selected, 0));
         if (sl > 0) {
             dis = $c.radd(selected[0], 0).item.a_int;
             $c.free(selected[0]);
@@ -1099,8 +1096,8 @@ export async function rename_disco() {   // o_init.c:1131
             odummy.otyp = $c.i16(dis);
             odummy.oclass = objects[dis].oc_class;
             odummy.quan = 1;
-            odummy.known = ((!objects[dis].oc_uses_known ? 1 : 0) >>> 0) & 1;
-            odummy.dknown = (1) & 1;   /* not observe_object: it isn't real */
+            odummy.known = (!objects[dis].oc_uses_known ? 1 : 0) & 1;
+            odummy.dknown = 1;   /* not observe_object: it isn't real */
             await docall(odummy);
         }
     }
@@ -1113,8 +1110,7 @@ export async function rename_disco() {   // o_init.c:1131
  * @param {number} cnf boolean
  */
 export function get_sortdisco(opts, cnf) {   // o_init.c:1210
-    let p = null;
-    p = $c.strchr(new $c.Ptr(disco_order_let, 0), flags.discosort);
+    let p = $c.strchr(new $c.Ptr(disco_order_let, 0), flags.discosort);
     if (!p) {
         flags.discosort = 111, p = new $c.Ptr(disco_order_let, 0);
     }

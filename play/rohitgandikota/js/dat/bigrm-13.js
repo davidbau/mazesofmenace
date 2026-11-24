@@ -104,7 +104,7 @@ export async function bigrm13_level() {
     for (let i = 0; i < 15; i++)
         des.object();
     for (let i = 0; i < 6; i++)
-        des.trap();
+        await des.trap();
     for (let i = 0; i < 28; i++)
-        des.monster();
+        await des.monster();
 }

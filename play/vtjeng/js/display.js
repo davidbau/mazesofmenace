@@ -34,7 +34,7 @@ import { select_menu, getlin, ttyMenuColorAttribute } from './windows.js';
 import { query_color, query_attr, clr2colorname } from './coloratt.js';
 import { STATUS_FIELDS, STATUS_CONDITIONS, STATUS_CONDITION_ALIASES } from './status_field_data.js';
 import {
-    erase_status_rows,
+    tty_clear_map_window,
     tty_status_cl_end_screen_row,
     tty_status_flush,
     tty_status_paint,
@@ -132,6 +132,7 @@ import { monsndx, sticks } from './mondata.js';
 import { m_at } from './monst.js';
 import {
     dist2,
+    bytesText,
     textBytes,
     mungspaces,
     sgn, lcase, ucase, upstart, strcmpi, atol,
@@ -3703,9 +3704,7 @@ export function* map_location_steps(x, y, show, state) {
     } else {
         yield* map_background_steps(x, y, show, state);
     }
-    update_lastseentyp(x, y, state, {
-        canSeeMonster: (subject) => canseemon(subject, state),
-    });
+    update_lastseentyp(x, y, state);
     if (show && !Blind(state.u)) {
         const region = visible_region_at(x, y, state);
         if (region) show_region(region, x, y, state);
@@ -3983,9 +3982,7 @@ export function* magic_map_background_steps(x, y, show, state = game) {
         location.remembered_glyph = remembered_glyph_from_presentation(glyph);
     }
     if (show) show_glyph_cell(x, y, glyph);
-    update_lastseentyp(x, y, state, {
-        canSeeMonster: (subject) => canseemon(subject, state),
-    });
+    update_lastseentyp(x, y, state);
 }
 
 // magic_map_background() for a caller that cannot wait.
@@ -4307,9 +4304,7 @@ export function* newsym_steps(x, y) {
     // seen under a gas cloud or an 'I' keeps its last seen type, which
     // #terrain shows (detect.c reveal_terrain_getglyph()).
     if (visible) {
-        update_lastseentyp(x, y, game, {
-            canSeeMonster: (subject) => mon_visible(subject, game),
-        });
+        update_lastseentyp(x, y, game);
     }
 
     const covered = floorLayersCovered(loc, game);
@@ -4701,7 +4696,7 @@ export async function docrt(options = {}) {
             await under_water(1);
         } else {
             if (options.suspendVision) options.suspendVision();
-            else vision_recalc(2);
+            else await vision_recalc(2);
             await cls();
             const unexplored = unexploredGlyphInfo(game);
             // display.c docrt_flags() first paints remembered map glyphs,
@@ -5236,12 +5231,11 @@ function _statusPlayerName() {
             Math.max(30 - 5 - roleBytes.length, BOTL_NSIZ),
         );
     }
-    // wintty.c:tty_putstatusfield() advances once per byte. Use NUL as an
-    // internal skipped-cell marker for high-bit bytes; _newStatusRow() turns
-    // each marker into an unowned blank, matching patch 006 nomux_putch().
-    return nameBytes.map((byte) => (
-        byte < 0x80 ? String.fromCharCode(byte) : '\0'
-    )).join('');
+    // The title holds the name's bytes as botl.c stores them, one character
+    // a byte. wintty.c tty_putstatusfield() advances once per byte, and the
+    // recorder's capture rule decides which of them reach a cell where the
+    // row is printed (_statusCellSkipped()).
+    return bytesText(nameBytes);
 }
 
 function _statusTitle() {
@@ -5760,7 +5754,8 @@ function _statusVitals(u) {
 // sequence. The concrete object shares its class slot, so this does not
 // require the full object catalog during early status-layout tests.
 // tty_putstatusfield() prints that byte through putchar(); a byte
-// nomux_putch() ignores becomes the NUL marker _newStatusRow() leaves blank.
+// nomux_putch() ignores leaves its cell blank where the row is printed
+// (_statusCellSkipped()).
 // The tty shows the prefix it was last sent (see _deliverStatusGold()).
 function _statusGoldSymbol() {
     return game._statusGoldShown ?? _currentStatusGoldSymbol();
@@ -5768,9 +5763,7 @@ function _statusGoldSymbol() {
 
 function _currentStatusGoldSymbol() {
     if (game.iflags?.invis_goldsym) return '$';
-    const byte = symbol_at(SYM_OFF_O + COIN_CLASS, game).ttychar;
-    const stored = nomux_putch_byte(byte);
-    return stored === null ? '\0' : String.fromCharCode(stored);
+    return String.fromCharCode(symbol_at(SYM_OFF_O + COIN_CLASS, game).ttychar);
 }
 
 // C ref: botl.c initblstats[]'s BL_TIME entry, whose "%ld" is filled from
@@ -5864,6 +5857,15 @@ function _statusLine3DetailsConfiguration() {
     return { conditionLevel, shortLevel, time, version };
 }
 
+// Whether patch 006's nomux_putch() ignores this status character, one byte
+// as a one-character string: wintty.c tty_putstatusfield() prints each byte
+// through putchar(), whose capture hook drops a control byte and, the char
+// being signed, a byte above 0x7F (js/termcap.js nomux_putch_byte()). The
+// cursor still advances, so the cell stays as the cleared row left it.
+function _statusCellSkipped(ch) {
+    return nomux_putch_byte(ch.charCodeAt(0)) === null;
+}
+
 function _newStatusRow() {
     const chars = new Array(TTY_STATUS_WIDTH).fill(' ');
     const owners = new Array(TTY_STATUS_WIDTH).fill(null);
@@ -5872,7 +5874,7 @@ function _newStatusRow() {
         for (let index = 0; index < text.length; ++index) {
             const column = start + index;
             if (column >= 0 && column < TTY_STATUS_WIDTH) {
-                const skippedByte = text[index] === '\0';
+                const skippedByte = _statusCellSkipped(text[index]);
                 chars[column] = skippedByte ? ' ' : text[index];
                 owners[column] = skippedByte ? null : owner;
             }
@@ -6357,14 +6359,15 @@ function _recordRenderedStatus(layouts) {
     layouts.forEach((layout, row) => {
         const cells = tty.screen[row];
         let length = cells.length;
-        const blank = (cell) => !cell || cell.ch === ' ' || cell.ch === '\0';
+        const blank = (cell) => !cell || cell.ch === ' '
+            || _statusCellSkipped(cell.ch);
         while (length > 0 && blank(cells[length - 1])) --length;
         const shown = cells.slice(0, length);
         rendered.push({
-            // A byte nomux_putch() ignores (the NUL marker) leaves a blank.
-            text: shown.map((cell) => (cell && cell.ch !== '\0'
+            // A byte nomux_putch() ignores leaves a blank.
+            text: shown.map((cell) => (cell && !_statusCellSkipped(cell.ch)
                 ? cell.ch : ' ')).join(''),
-            owners: shown.map((cell) => (cell && cell.ch !== '\0'
+            owners: shown.map((cell) => (cell && !_statusCellSkipped(cell.ch)
                 ? cell.owner : null)),
             fields: layout.fields,
             hungerX: layout.hungerX,
@@ -7411,7 +7414,7 @@ function clipProjectedMessage(column, ymax, state) {
 // display.c row_refresh(). More can overwrite the top map rows with its
 // wrapped prompt. Once it is dismissed, C clears each physical row and
 // redraws from gg.gbuf, skipping GLYPH_UNEXPLORED unless a background frame
-// colour is active.
+// colour is active. A repair that reaches the status window ends in bot().
 export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
     const display = state.nhDisplay;
     if (!display?.grid || ystartBetweenMenuPages) return;
@@ -7516,6 +7519,15 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
                 recordScreenOverlay(x - 1, screenRow, ch, color, attr);
             }
         }
+    }
+    // wintty.c:3716-3721: "we have wrecked the bottom line". ymax is tested
+    // after the clamp to the terminal's rows, and reaching the status
+    // window's first row is enough, although the loop stops one row short
+    // of it. bot() honours gb.bot_disabled itself.
+    if (lastRow >= firstStatusRow) {
+        state.disp ??= {};
+        state.disp.botlx = true;
+        bot_now();
     }
 }
 
@@ -7987,8 +7999,8 @@ export async function cls() {
         }
         game.disp ??= {};
         game.disp.botlx = true;
-        if (display?.clearScreen) display.clearScreen();
-        erase_status_rows(game);
+        // clear_nhwindow(WIN_MAP).
+        tty_clear_map_window(game);
         // C's cls() clears both the physical terminal and its pending glyph
         // buffer.  disp_* is the JS glyph-buffer owner; leaving it populated lets
         // the next flush reconstruct dungeon cells which were meant to stay

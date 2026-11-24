@@ -1,3 +1,4 @@
+import { nh_qsort } from './nhsort.js';
 import { S_HUMAN_MLET } from './const.js';
 import { _UNICORN_HORN, WAN_DIGGING_OTYP, SCR_TELEPORTATION_OTYP, WAN_CREATE_MONSTER_OTYP, SCR_CREATE_MONSTER_OTYP, POT_FULL_HEALING_OTYP, POT_EXTRA_HEALING_OTYP, POT_HEALING_OTYP, POT_SICKNESS_OTYP } from './const.js';
 import { WAN_MAGIC_MISSILE, WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING } from './muse.js';
@@ -356,7 +357,8 @@ function initMongenOrder() {
        Sorting all NUMMONS together inserts player-monster entries (index >=
        SPECIAL_PM) into the regular range, breaking MONSi() for every class
        after the first out-of-range entry (mlet=19, idx=364 at position 98). */
-    const firstPart = order.slice(0, SPECIAL_PM).sort((i1, i2) => {
+    /* C makemon.c:1824 qsort(mongen_order, SPECIAL_PM, cmp_init_mongen_order) */
+    const firstPart = nh_qsort(order.slice(0, SPECIAL_PM), (i1, i2) => {
         const d1 = (MONS[i1][2] | 0) | (MONS[i1][0] << 8);
         const d2 = (MONS[i2][2] | 0) | (MONS[i2][0] << 8);
         return d1 - d2;

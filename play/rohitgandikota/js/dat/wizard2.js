@@ -57,8 +57,8 @@ export async function wizard2_level() {
     const bounds2 = l_selection_fillrect(bnds.lx, bnds.ly + 1,
                                          bnds.hx - 2, bnds.hy - 1);
 
-    const wiz2 = des.map({ halign: 'center', valign: 'center',
-                           map: WIZARD2_MAP, contents: (rm) => {
+    const wiz2 = await des.map({ halign: 'center', valign: 'center',
+                           map: WIZARD2_MAP, contents: async (rm) => {
         des.levregion({ type: 'stair-up', region: [1, 0, 79, 20],
                         region_islev: 1, exclude: [0, 0, 28, 12] });
         des.levregion({ type: 'stair-down', region: [1, 0, 79, 20],
@@ -74,7 +74,7 @@ export async function wizard2_level() {
                      filled: 1 });
         des.door('closed', 15, 2);
         des.door('closed', 11, 10);
-        des.mazewalk(28, 5, 'east');
+        await des.mazewalk(28, 5, 'east');
         des.ladder('up', 12, 1);
         des.ladder('down', 14, 11);
         /* Non diggable walls everywhere */

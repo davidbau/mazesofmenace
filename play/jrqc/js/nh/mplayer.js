@@ -49,9 +49,9 @@ const developers = $c.nulls(58);
  * @returns {$c.Ptr | null} const char *
  */
 function dev_name() {   // mplayer.c:44
-    let i = 0, m = 0, n = 0, mtmp = null, match = 0;
-    m = 0;
-    n = 58;
+    let i = 0, mtmp = null, match = 0;
+    let m = 0;
+    const n = 58;
     do {
         match = FALSE;
         i = rn2(n);
@@ -76,9 +76,8 @@ function dev_name() {   // mplayer.c:44
  * @param {$c.Ptr | null} nam char *
  */
 function get_mplname(mtmp, nam) {   // mplayer.c:72
-    let fmlkind = 0, devnam = null;
-    fmlkind = $c.i8(is_female(mtmp.data));
-    devnam = dev_name();
+    const fmlkind = is_female(mtmp.data);
+    const devnam = dev_name();
     if (!devnam) {
         $c.strcpy(nam, fmlkind ? $c.lit("Eve") : $c.lit("Adam"));
     } else if (fmlkind && !!$c.strcmp(devnam, $c.lit("Janet"))) {
@@ -87,12 +86,12 @@ function get_mplname(mtmp, nam) {   // mplayer.c:72
         $c.strcpy(nam, devnam);
     }
     if (fmlkind || !$c.strcmp(nam, $c.lit("Janet"))) {
-        mtmp.female = (1) & 1;
+        mtmp.female = 1;
     } else {
-        mtmp.female = (0) & 1;
+        mtmp.female = 0;
     }
     $c.strcat(nam, $c.lit(" the "));
-    $c.strcat(nam, rank_of(mtmp.m_lev, $c.i16(mtmp.data.pmidx), $c.i8(mtmp.female)));
+    $c.strcat(nam, rank_of(mtmp.m_lev, $c.i16(mtmp.data.pmidx), mtmp.female));
 }
 /**
  * @param {$T.monst | null} mon struct monst *
@@ -100,14 +99,14 @@ function get_mplname(mtmp, nam) {   // mplayer.c:72
  * @returns {Promise<void>}
  */
 async function mk_mplayer_armor(mon, typ) {   // mplayer.c:95
-    let obj = null, $t1, $t2;
+    let $t1, $t2;
     if (typ === STRANGE_OBJECT) {
         return;
     }
-    obj = await mksobj(typ, FALSE, FALSE);
-    $t1 = obj.oeroded2 = (0) & 3, obj.oeroded = ($t1) & 3;
+    const obj = await mksobj(typ, FALSE, FALSE);
+    $t1 = obj.oeroded2 = 0, obj.oeroded = ($t1) & 3;
     if (!rn2(3)) {
-        obj.oerodeproof = (1) & 1;
+        obj.oerodeproof = 1;
     }
     if (!rn2(3)) {
         await curse(obj);
@@ -130,7 +129,7 @@ async function mk_mplayer_armor(mon, typ) {   // mplayer.c:95
  * @returns {Promise<$T.monst | null>} struct monst *
  */
 export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
-    let mtmp = null, nam = new Int8Array(32), weapon = 0, armor = 0, cloak = 0, helm = 0, shield = 0, quan = 0, otmp = null, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13;
+    let mtmp = null, nam = new Int8Array(32), quan = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13;
     if (!is_mplayer(ptr)) {
         return null;
     }
@@ -149,14 +148,14 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
             /* that's why they are "stuck" in the endgame :-) */
             await mongets(mtmp, FAKE_AMULET_OF_YENDOR);
         }
-        mtmp.mpeaceful = (0) & 1;
+        mtmp.mpeaceful = 0;
         set_malign(mtmp);   /* peaceful may have changed again */
         /* default equipment; much of it will be overridden below */
-        weapon = $c.i16(!rn2(2) ? LONG_SWORD : rnd_class(SPEAR, BULLWHIP));
-        armor = $c.i16(rnd_class(GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL));
-        cloak = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(OILSKIN_CLOAK, CLOAK_OF_DISPLACEMENT));
-        helm = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(ELVEN_LEATHER_HELM, HELM_OF_TELEPATHY));
-        shield = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(ELVEN_SHIELD, SHIELD_OF_REFLECTION));
+        let weapon = $c.i16(!rn2(2) ? LONG_SWORD : rnd_class(SPEAR, BULLWHIP));
+        let armor = $c.i16(rnd_class(GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL));
+        let cloak = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(OILSKIN_CLOAK, CLOAK_OF_DISPLACEMENT));
+        let helm = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(ELVEN_LEATHER_HELM, HELM_OF_TELEPATHY));
+        let shield = $c.i16(!rn2(8) ? STRANGE_OBJECT : rnd_class(ELVEN_SHIELD, SHIELD_OF_REFLECTION));
         switch (ptr.pmidx) {
             case PM.ARCHEOLOGIST:
                 if (rn2(2)) {
@@ -165,7 +164,7 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
                 break;
             case PM.BARBARIAN:
                 if (rn2(2)) {
-                    weapon = $c.i16(rn2(2) ? TWO_HANDED_SWORD : BATTLE_AXE);
+                    weapon = rn2(2) ? TWO_HANDED_SWORD : BATTLE_AXE;
                     shield = STRANGE_OBJECT;
                 }
                 if (rn2(2)) {
@@ -189,10 +188,10 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
                 if (rn2(4)) {
                     weapon = QUARTERSTAFF;
                 } else if (rn2(2)) {
-                    weapon = $c.i16(rn2(2) ? UNICORN_HORN : SCALPEL);
+                    weapon = rn2(2) ? UNICORN_HORN : SCALPEL;
                 }
                 if (rn2(4)) {
-                    helm = $c.i16(rn2(2) ? HELM_OF_BRILLIANCE : HELM_OF_TELEPATHY);
+                    helm = rn2(2) ? HELM_OF_BRILLIANCE : HELM_OF_TELEPATHY;
                 }
                 if (rn2(2)) {
                     shield = STRANGE_OBJECT;
@@ -207,7 +206,7 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
                 }
                 break;
             case PM.MONK:
-                weapon = $c.i16(!rn2(3) ? SHURIKEN : STRANGE_OBJECT);
+                weapon = !rn2(3) ? SHURIKEN : STRANGE_OBJECT;
                 armor = STRANGE_OBJECT;
                 cloak = ROBE;
                 if (rn2(2)) {
@@ -225,7 +224,7 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
                     cloak = ROBE;
                 }
                 if (rn2(4)) {
-                    helm = $c.i16(rn2(2) ? HELM_OF_BRILLIANCE : HELM_OF_TELEPATHY);
+                    helm = rn2(2) ? HELM_OF_BRILLIANCE : HELM_OF_TELEPATHY;
                 }
                 if (rn2(2)) {
                     shield = STRANGE_OBJECT;
@@ -238,7 +237,7 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
                 break;
             case PM.ROGUE:
                 if (rn2(2)) {
-                    weapon = $c.i16(rn2(2) ? SHORT_SWORD : ORCISH_DAGGER);
+                    weapon = rn2(2) ? SHORT_SWORD : ORCISH_DAGGER;
                 }
                 break;
             case PM.SAMURAI:
@@ -259,10 +258,10 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
                 break;
             case PM.WIZARD:
                 if (rn2(4)) {
-                    weapon = $c.i16(rn2(2) ? QUARTERSTAFF : ATHAME);
+                    weapon = rn2(2) ? QUARTERSTAFF : ATHAME;
                 }
                 if (rn2(2)) {
-                    armor = $c.i16(rn2(2) ? BLACK_DRAGON_SCALE_MAIL : SILVER_DRAGON_SCALE_MAIL);
+                    armor = rn2(2) ? BLACK_DRAGON_SCALE_MAIL : SILVER_DRAGON_SCALE_MAIL;
                     cloak = CLOAK_OF_MAGIC_RESISTANCE;
                 }
                 if (rn2(4)) {
@@ -276,20 +275,20 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
                 break;
         }
         if (weapon !== STRANGE_OBJECT) {
-            otmp = await mksobj(weapon, TRUE, FALSE);
-            $t4 = otmp.oeroded2 = (0) & 3, otmp.oeroded = ($t4) & 3;
+            let otmp = await mksobj(weapon, TRUE, FALSE);
+            $t4 = otmp.oeroded2 = 0, otmp.oeroded = ($t4) & 3;
             $t5 = $c.i8(special ? rn2(5) + 4 | 0 : rn2(4)), otmp.spe = $t5;
             if (!rn2(3)) {
-                otmp.oerodeproof = (1) & 1;
+                otmp.oerodeproof = 1;
             } else if (!rn2(2)) {
-                otmp.greased = (1) & 1;
+                otmp.greased = 1;
             }
             /* mk_artifact() with otmp and A_NONE will never return NULL */
             if (special && rn2(2)) {
                 otmp = await mk_artifact(otmp, A.NONE, 99, FALSE);
             }
             /* usually increase stack size if stackable weapon */
-            if (objects[otmp.otyp].oc_merge | 0 && !otmp.oartifact && monmightthrowwep(otmp)) {
+            if (objects[otmp.otyp].oc_merge && !otmp.oartifact && monmightthrowwep(otmp)) {
                 $t6 = rn2(otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_subtyp === P.SPEAR ? 4 : 8), otmp.quan = $c.add64(otmp.quan, $t6);
             }
             $t7 = await weight(otmp) >>> 0, otmp.owt = $t7;
@@ -356,12 +355,12 @@ export async function mk_mplayer(ptr, x, y, special) {   // mplayer.c:118
  * @returns {Promise<void>}
  */
 export async function create_mplayers(num, special) {   // mplayer.c:327
-    let pm = 0, x = 0, y = 0, fakemon = new $T.monst(), tryct = 0, $t1;
+    let x = 0, y = 0, fakemon = new $T.monst(), $t1;
     fakemon.$copyFrom(cg.zeromonst);
     while (num) {
-        tryct = 0;
+        let tryct = 0;
         /* roll for character class */
-        pm = rn2(PM.WIZARD - PM.ARCHEOLOGIST + 1) + PM.ARCHEOLOGIST | 0;
+        const pm = rn2(PM.WIZARD - PM.ARCHEOLOGIST + 1) + PM.ARCHEOLOGIST | 0;
         set_mon_data(fakemon, $c.relem(mons, pm));
         /* roll for an available location */
         do {

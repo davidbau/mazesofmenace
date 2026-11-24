@@ -69,8 +69,8 @@ export async function asmodeus_level() {
                                          bnds.hx - 2, bnds.hy - 1);
 
     /* First part */
-    const asmo1 = des.map({ halign: 'half-left', valign: 'center',
-                            map: ASMO1_MAP, contents: (rm) => {
+    const asmo1 = await des.map({ halign: 'half-left', valign: 'center',
+                            map: ASMO1_MAP, contents: async (rm) => {
         /* Doors */
         des.door('closed', 4, 3);
         des.door('locked', 18, 4);
@@ -103,13 +103,13 @@ export async function asmodeus_level() {
         des.trap('magic');
         des.trap('magic');
         /* Random monsters. */
-        des.monster('ghost', 11, 7);
-        des.monster('horned devil', 10, 5);
-        des.monster('L');
+        await des.monster('ghost', 11, 7);
+        await des.monster('horned devil', 10, 5);
+        await des.monster('L');
         /* Some Vampires for good measure */
-        des.monster('V');
-        des.monster('V');
-        des.monster('V');
+        await des.monster('V');
+        await des.monster('V');
+        await des.monster('V');
     } });
 
     des.levregion({ region: [1, 0, 6, 20], region_islev: 1,
@@ -123,15 +123,15 @@ export async function asmodeus_level() {
                           exclude: [6, 1, 70, 16], exclude_islev: 1 });
 
     /* Second part */
-    const asmo2 = des.map({ halign: 'half-right', valign: 'center',
-                            map: ASMO2_MAP, contents: (rm) => {
-        des.mazewalk(32, 2, 'east');
+    const asmo2 = await des.map({ halign: 'half-right', valign: 'center',
+                            map: ASMO2_MAP, contents: async (rm) => {
+        await des.mazewalk(32, 2, 'east');
         /* Non diggable walls */
         des.non_diggable(rect(0, 0, 32, 4));
         des.door('closed', 32, 2);
-        des.monster('&');
-        des.monster('&');
-        des.monster('&');
+        await des.monster('&');
+        await des.monster('&');
+        await des.monster('&');
         des.trap('anti magic');
         des.trap('fire');
         des.trap('magic');

@@ -75,8 +75,8 @@ export async function cavgoal_level() {
     des.object();
     /* monsters. */
     des.monster({ id: 'Chromatic Dragon', x: 23, y: 10, asleep: 1 });
-    des.monster('shrieker', 26, 13);
-    des.monster('shrieker', 25, 8);
-    des.monster('shrieker', 45, 11);
+    await des.monster('shrieker', 26, 13);
+    await des.monster('shrieker', 25, 8);
+    await des.monster('shrieker', 45, 11);
     des.wallify();
 }

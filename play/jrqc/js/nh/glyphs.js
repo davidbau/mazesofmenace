@@ -59,8 +59,8 @@ let nonzero_black = 0;
  * @returns {Promise<void>}
  */
 async function to_custom_symset_entry_callback(glyph, findwhat) {   // glyphs.c:53
-    let idx = 0, utf8str = new Uint8Array(6), uval = 0, $t1, $t2;
-    idx = gs.symset_which_set;
+    let utf8str = new Uint8Array(6), $t1, $t2;
+    const idx = gs.symset_which_set;
     utf8str.fill(0);
     utf8str[0] = 0;
     utf8str[1] = 0;
@@ -68,7 +68,7 @@ async function to_custom_symset_entry_callback(glyph, findwhat) {   // glyphs.c:
     utf8str[3] = 0;
     utf8str[4] = 0;
     utf8str[5] = 0;
-    uval = 0;
+    let uval = 0;
     if (findwhat.extraval) {
         findwhat.extraval.set(0, glyph);
     }
@@ -115,19 +115,19 @@ async function to_custom_symset_entry_callback(glyph, findwhat) {   // glyphs.c:
  * @returns {Promise<number>} int
  */
 export async function glyphrep_to_custom_map_entries(op, glyphptr) {   // glyphs.c:112
-    let buf = new Int8Array(256), c_glyphid = null, c_unicode = null, c_colorval = null, cp = null, reslt = 0, rgb = 0, slash = 0, colon = 0;
+    let buf = new Int8Array(256), c_colorval = null, cp = null;
     to_custom_symbol_find.$copyFrom(zero_find);
-    reslt = 0;
-    rgb = 0;
-    slash = FALSE;
-    colon = FALSE;
+    let reslt = 0;
+    let rgb = 0;
+    let slash = FALSE;
+    let colon = FALSE;
     if (!glyphid_cache) {
         reslt = 1;   /* for debugger use only; no cache available */
     }
     nhUse(reslt);
     nh_snprintf($c.lit("glyphrep_to_custom_map_entries"), 126, new $c.Ptr(buf, 0), 256, $c.lit("%s"), op);
-    c_unicode = c_colorval = null;
-    c_glyphid = cp = new $c.Ptr(buf, 0);
+    let c_unicode = c_colorval = null;
+    let c_glyphid = cp = new $c.Ptr(buf, 0);
     while (cp.get(0)) {
         if (cp.get(0) === 58 || cp.get(0) === 47) {
             if (cp.get(0) === 58) {
@@ -225,7 +225,7 @@ export function glyph_to_cmap(glyph) {   // glyphs.c:200
     } else if (glyph_is_cmap_zap(glyph)) {
         return $c.rem32(glyph - GLYPH.ZAP_OFF | 0, 4) + S.vbeam | 0;
     } else if (glyph_is_swallow(glyph)) {
-        return glyph_to_swallow(glyph) + S.sw_tl | 0;
+        return glyph_to_swallow(glyph) + S.sw_tl;
     } else if (glyph_is_explosion(glyph)) {
         return glyph_to_explosion(glyph) + S.expl_tl | 0;
     } else {
@@ -240,14 +240,14 @@ export function glyph_to_cmap(glyph) {   // glyphs.c:200
  * @returns {Promise<number>} int
  */
 async function glyph_find_core(id, findwhat) {   // glyphs.c:234
-    let glyph = 0, do_callback = 0, end_find = 0;
-    end_find = FALSE;
+    let glyph = 0;
+    let end_find = FALSE;
     if (await parse_id(id, findwhat)) {
         if (findwhat.findtype === find_glyph) {
             await findwhat.callback(findwhat.val, findwhat);
         } else {
             for (glyph = 0; glyph < MAX_GLYPH; glyph = glyph + 1 | 0) {
-                do_callback = FALSE;
+                let do_callback = FALSE;
                 switch (findwhat.findtype) {
                     case find_cmap:
                         if (glyph_to_cmap(glyph) === findwhat.val) {
@@ -307,7 +307,6 @@ async function glyph_find_core(id, findwhat) {   // glyphs.c:234
  */
 export async function fill_glyphid_cache() {   // glyphs.c:303
     let reslt = 0;
-    reslt = 0;
     if (!glyphid_cache) {
         await init_glyph_cache();
     }
@@ -370,11 +369,11 @@ export function free_glyphid_cache() {   // glyphs.c:355
  * @returns {Promise<void>}
  */
 async function add_glyph_to_cache(glyphnum, id) {   // glyphs.c:372
-    let hash = 0, hash1 = 0, hash2 = 0, i = 0, $t1;
-    hash = glyph_hash(id);
-    hash1 = $c.andu64(hash, $c.subu64(glyphid_cache_size, 1));
-    hash2 = $c.oru64($c.andu64(hash >>> glyphid_cache_lsize, $c.subu64(glyphid_cache_size, 1)), 1);
-    i = hash1;
+    let $t1;
+    const hash = glyph_hash(id);
+    const hash1 = $c.andu64(hash, $c.subu64(glyphid_cache_size, 1));
+    const hash2 = $c.oru64($c.andu64(hash >>> glyphid_cache_lsize, $c.subu64(glyphid_cache_size, 1)), 1);
+    let i = hash1;
     do {
         if ($c.peq($c.radd(glyphid_cache, $c.idx(i)).id, $c.asArr(null, Int8Array))) {
             /* Empty bucket found */
@@ -393,11 +392,10 @@ async function add_glyph_to_cache(glyphnum, id) {   // glyphs.c:372
  * @returns {number} int
  */
 function find_glyph_in_cache(id) {   // glyphs.c:395
-    let hash = 0, hash1 = 0, hash2 = 0, i = 0;
-    hash = glyph_hash(id);
-    hash1 = $c.andu64(hash, $c.subu64(glyphid_cache_size, 1));
-    hash2 = $c.oru64($c.andu64(hash >>> glyphid_cache_lsize, $c.subu64(glyphid_cache_size, 1)), 1);
-    i = hash1;
+    const hash = glyph_hash(id);
+    const hash1 = $c.andu64(hash, $c.subu64(glyphid_cache_size, 1));
+    const hash2 = $c.oru64($c.andu64(hash >>> glyphid_cache_lsize, $c.subu64(glyphid_cache_size, 1)), 1);
+    let i = hash1;
     do {
         if ($c.peq($c.radd(glyphid_cache, $c.idx(i)).id, $c.asArr(null, Int8Array))) {
             /* Empty bucket found */
@@ -433,10 +431,10 @@ function find_glyphid_in_cache_by_glyphnum(glyphnum) {   // glyphs.c:418
  * @returns {number} uint32
  */
 function glyph_hash(id) {   // glyphs.c:435
-    let hash = 0, i = 0, ch = 0;
-    hash = 0;
+    let i = 0;
+    let hash = 0;
     for (i = 0; id.get($c.idx(i)) !== 0; i = $c.addu64(i, 1)) {
-        ch = id.get($c.idx(i));
+        let ch = id.get($c.idx(i));
         if (65 <= ch && ch <= 90) {
             ch = $c.i8(ch + 32 | 0);
         }
@@ -449,7 +447,7 @@ function glyph_hash(id) {   // glyphs.c:435
  * @returns {number} boolean
  */
 export function glyphid_cache_status() {   // glyphs.c:452
-    return $c.i8(glyphid_cache !== null ? 1 : 0);
+    return glyphid_cache !== null ? 1 : 0;
 }
 /**
  * @param {$c.Ptr | null} buf char *
@@ -468,8 +466,8 @@ export async function match_glyph(buf) {   // glyphs.c:458
  * @returns {Promise<number>} int
  */
 export async function glyphrep(op) {   // glyphs.c:470
-    let reslt = 0, glyph = Int32Array.of(0);
-    reslt = 0;
+    let glyph = Int32Array.of(0);
+    let reslt = 0;
     glyph[0] = NO_GLYPH;
     if (!glyphid_cache) {
         reslt = 1;   /* for debugger use only; no cache available */
@@ -489,16 +487,16 @@ export async function glyphrep(op) {   // glyphs.c:470
  * @returns {Promise<number>} int
  */
 export async function add_custom_nhcolor_entry(customization_name, glyphidx, nhcolor, which_set) {   // glyphs.c:484
-    let gdc = null, details = null, newdetails = null, $t1;
-    gdc = $c.relem(gs.sym_customizations[which_set], custom_nhcolor);
-    newdetails = null;
+    let $t1;
+    const gdc = gs.sym_customizations[which_set][custom_nhcolor];
+    let newdetails = null;
     if (!gdc.details) {
         $t1 = await dupstr(customization_name), gdc.customization_name = $t1;
         gdc.custtype = custom_nhcolor;
         gdc.details = null;
         gdc.details_end = null;
     }
-    details = find_matching_customization(customization_name, custom_nhcolor, which_set);
+    let details = find_matching_customization(customization_name, custom_nhcolor, which_set);
     if (details) {
         while (details) {
             if (details.content.ccolor.glyphidx === glyphidx) {
@@ -528,17 +526,17 @@ export async function add_custom_nhcolor_entry(customization_name, glyphidx, nhc
  * @returns {Promise<void>}
  */
 export async function apply_customizations(which_set, docustomize) {   // glyphs.c:531
-    let gmap = null, details = null, sc = null, at_least_one = 0, do_colors = 0, do_symbols = 0, custs = 0;
-    at_least_one = FALSE;
-    do_colors = $c.i8((docustomize & do_custom_colors) >>> 0 !== 0 ? 1 : 0);
-    do_symbols = $c.i8((docustomize & do_custom_symbols) >>> 0 !== 0 ? 1 : 0);
+    let gmap = null, custs = 0;
+    let at_least_one = FALSE;
+    const do_colors = (docustomize & do_custom_colors) >>> 0 !== 0 ? 1 : 0;
+    const do_symbols = (docustomize & do_custom_symbols) >>> 0 !== 0 ? 1 : 0;
     for (custs = 0; custs < custom_count; custs = custs + 1 | 0) {
-        sc = $c.relem(gs.sym_customizations[which_set], custs);
+        const sc = $c.relem(gs.sym_customizations[which_set], custs);
         if (sc.count && sc.details) {
             at_least_one = TRUE;
             /* These glyph customizations get applied to the glyphmap array,
                not to symset entries */
-            details = sc.details;
+            let details = sc.details;
             while (details) {
                 if (iflags.customsymbols && do_symbols) {
                     if (sc.custtype === custom_ureps) {
@@ -583,9 +581,9 @@ export async function maybe_shuffle_customizations() {   // glyphs.c:581
  * @returns {Promise<void>}
  */
 async function shuffle_customizations() {   // glyphs.c:646
-    let j = 0, obj_glyphs = null, i = 0, tmp_u = $c.nulls(481), tmp_customcolor = new Uint32Array(481), tmp_color256idx = new Uint16Array(481), duplicate = new Int32Array(481), idx = 0, other = null, other_customcolor = 0, other_color256idx = 0, $t1, $t2;
+    let j = 0, i = 0, tmp_u = $c.nulls(481), tmp_customcolor = new Uint32Array(481), tmp_color256idx = new Uint16Array(481), duplicate = new Int32Array(481), $t1, $t2;
     for (j = 0; j < 2; j = j + 1 | 0) {
-        obj_glyphs = $c.radd($c.relem(glyphmap, 0), shuffle_customizations$offsets[j]);
+        const obj_glyphs = $c.radd(glyphmap[0], shuffle_customizations$offsets[j]);
         for (i = 0; i < NUM_OBJECTS; i = i + 1 | 0) {
             duplicate[i] = -1;
             tmp_u[i] = null;
@@ -593,7 +591,7 @@ async function shuffle_customizations() {   // glyphs.c:646
             tmp_color256idx[i] = 0;
         }
         for (i = 0; i < NUM_OBJECTS; i = i + 1 | 0) {
-            idx = objects[i].oc_descr_idx;
+            const idx = objects[i].oc_descr_idx;
             /*
              * Shuffling gem appearances can cause the same oc_descr_idx to
              * appear more than once. Detect this condition and ensure that
@@ -601,9 +599,9 @@ async function shuffle_customizations() {   // glyphs.c:646
              */
             if (duplicate[idx] >= 0) {
                 /* Current structure already appears in tmp_u */
-                other = tmp_u[duplicate[idx]];
-                other_customcolor = tmp_customcolor[duplicate[idx]];
-                other_color256idx = tmp_color256idx[duplicate[idx]];
+                const other = tmp_u[duplicate[idx]];
+                const other_customcolor = tmp_customcolor[duplicate[idx]];
+                const other_color256idx = tmp_color256idx[duplicate[idx]];
                 tmp_customcolor[i] = other_customcolor;
                 tmp_color256idx[i] = other_color256idx;
                 if (other) {
@@ -644,8 +642,7 @@ async function shuffle_customizations() {   // glyphs.c:646
  * @returns {$T.customization_detail | null} struct customization_detail *
  */
 export function find_matching_customization(customization_name, custtype, which_set) {   // glyphs.c:736
-    let gdc = null;
-    gdc = $c.relem(gs.sym_customizations[which_set], custtype);
+    const gdc = $c.relem(gs.sym_customizations[which_set], custtype);
     if (gdc.custtype === custtype && gdc.customization_name && $c.strcmp(customization_name, gdc.customization_name) === 0) {
         return gdc.details;
     }
@@ -661,12 +658,12 @@ export function purge_all_custom_entries() {   // glyphs.c:751
  * @param {number} which_set enum graphics_sets
  */
 export function purge_custom_entries(which_set) {   // glyphs.c:761
-    let custtype = 0, gdc = null, details = null, next = null;
+    let custtype = 0;
     for (custtype = custom_none; custtype < custom_count; custtype = custtype + 1 >>> 0) {
-        gdc = $c.relem(gs.sym_customizations[which_set], custtype);
-        details = gdc.details;
+        const gdc = $c.relem(gs.sym_customizations[which_set], custtype);
+        let details = gdc.details;
         while (details) {
-            next = details.next;
+            const next = details.next;
             if (gdc.custtype === custom_ureps) {
                 if (details.content.urep.u.utf8str) {
                     $c.free(details.content.urep.u.utf8str);
@@ -708,12 +705,12 @@ export async function dump_all_glyphids(fp) {   // glyphs.c:797
  * @returns {Promise<void>}
  */
 export async function wizcustom_glyphids(win) {   // glyphs.c:808
-    let glyphnum = 0, id = null;
+    let glyphnum = 0;
     if (!glyphid_cache) {
         return;
     }
     for (glyphnum = 0; glyphnum < MAX_GLYPH; glyphnum = glyphnum + 1 | 0) {
-        id = find_glyphid_in_cache_by_glyphnum(glyphnum);
+        const id = find_glyphid_in_cache_by_glyphnum(glyphnum);
         if (id) {
             await wizcustom_callback(win, glyphnum, id);
         }
@@ -725,21 +722,21 @@ export async function wizcustom_glyphids(win) {   // glyphs.c:808
  * @returns {Promise<number>} int
  */
 async function parse_id(id, findwhat) {   // glyphs.c:824
-    let fp = null, i = 0, j = 0, mnum = 0, glyph = 0, pm_offset = 0, oc_offset = 0, cmap_offset = 0, pm_count = 0, oc_count = 0, cmap_count = 0, skip_base = 0, skip_this_one = 0, dump_ids = 0, filling_cache = 0, is_S = 0, is_G = 0, buf = $c.matrix(Int8Array, [4, 128]), val = 0, buf2 = null, buf3 = null, buf4 = null, cmap = 0, expl = 0, $t1, $t2, $t3;
-    fp = null;
-    i = 0;
-    pm_offset = 0;
-    oc_offset = 0;
-    cmap_offset = 0;
-    pm_count = 0;
-    oc_count = 0;
-    cmap_count = 0;
-    skip_base = FALSE;
-    skip_this_one = FALSE;
-    dump_ids = FALSE;
-    filling_cache = FALSE;
-    is_S = FALSE;
-    is_G = FALSE;
+    let j = 0, glyph = 0, buf = $c.matrix(Int8Array, [4, 128]), buf2 = null, buf3 = null, $t1, $t2, $t3;
+    let fp = null;
+    let i = 0;
+    let pm_offset = 0;
+    let oc_offset = 0;
+    let cmap_offset = 0;
+    let pm_count = 0;
+    let oc_count = 0;
+    let cmap_count = 0;
+    let skip_base = FALSE;
+    let skip_this_one = FALSE;
+    let dump_ids = FALSE;
+    let filling_cache = FALSE;
+    let is_S = FALSE;
+    let is_G = FALSE;
     if (findwhat.findtype === find_nothing && findwhat.restype) {
         if (findwhat.restype === res_dump_glyphids) {
             if (findwhat.reserved) {
@@ -757,8 +754,8 @@ async function parse_id(id, findwhat) {   // glyphs.c:824
             }
         }
     }
-    is_G = $c.i8(id && id.get(0) === 71 && id.get(1) === 95 ? 1 : 0);
-    is_S = $c.i8(id && id.get(0) === 83 && id.get(1) === 95 ? 1 : 0);
+    is_G = id && id.get(0) === 71 && id.get(1) === 95 ? 1 : 0;
+    is_S = id && id.get(0) === 83 && id.get(1) === 95 ? 1 : 0;
     if (is_G && !glyphid_cache || filling_cache || dump_ids || is_S) {
         while (loadsyms[i].range) {
             if (!pm_offset && loadsyms[i].range === SYM.MON) {
@@ -784,7 +781,7 @@ async function parse_id(id, findwhat) {   // glyphs.c:824
     }
     if (is_G || filling_cache || dump_ids) {
         if (!filling_cache && id && glyphid_cache) {
-            val = find_glyph_in_cache(id);
+            const val = find_glyph_in_cache(id);
             if (val >= 0) {
                 findwhat.findtype = find_glyph;
                 findwhat.val = val;
@@ -872,13 +869,13 @@ async function parse_id(id, findwhat) {   // glyphs.c:824
                         $c.strcat(new $c.Ptr(buf[0], 0), buf3);
                     }
                 } else if (glyph_is_cmap(glyph) || glyph_is_cmap_zap(glyph) || glyph_is_swallow(glyph) || glyph_is_explosion(glyph)) {
-                    cmap = -1;
+                    let cmap = -1;
                     /* buf2 will hold the distinguishing prefix */
                     /* buf3 will hold the base name */
                     /* buf4 will hold the distinguishing suffix */
                     buf2 = $c.lit("");
                     buf3 = $c.lit("");
-                    buf4 = $c.lit("");
+                    let buf4 = $c.lit("");
                     if (glyph === GLYPH.CMAP_OFF) {
                         cmap = S.stone;
                         buf3 = $c.lit("stone substrate");
@@ -925,7 +922,7 @@ async function parse_id(id, findwhat) {   // glyphs.c:824
                     } else if (glyph_is_swallow(glyph)) {
                         j = glyph - GLYPH.SWALLOW_OFF | 0;
                         cmap = glyph_to_swallow(glyph);
-                        mnum = $c.div32(j, S.sw_br - S.sw_tl + 1);
+                        const mnum = $c.div32(j, S.sw_br - S.sw_tl + 1);
                         $c.strcpy(new $c.Ptr(buf[3], 0), $c.lit("swallow "));
                         $c.strcat(new $c.Ptr(buf[3], 0), monsdump[mnum].nm);
                         $c.strcat(new $c.Ptr(buf[3], 0), $c.lit(" "));
@@ -934,7 +931,7 @@ async function parse_id(id, findwhat) {   // glyphs.c:824
                         skip_base = TRUE;
                     } else if (glyph_is_explosion(glyph)) {
                         j = glyph - GLYPH.EXPLODE_OFF | 0;
-                        expl = $c.div32(j, S.expl_br - S.expl_tl + 1);
+                        const expl = $c.div32(j, S.expl_br - S.expl_tl + 1);
                         cmap = glyph_to_explosion(glyph) + S.expl_tl | 0;
                         i = cmap - S.expl_tl | 0;
                         nh_snprintf($c.lit("parse_id"), 1082, new $c.Ptr(buf[2], 0), 128, $c.lit("%s "), parse_id$expl_type_texts[expl]);

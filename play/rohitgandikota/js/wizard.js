@@ -21,6 +21,7 @@ import { Is_rogue_level, MAGIC_PORTAL, BOLT_LIM, RLOC_MSG,
          STRAT_GOAL, In_endgame, A_LAWFUL } from './const.js';
 import { distu, isok, sgn } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
+import { any_quest_artifact } from './questpgr.js';
 import { attacktype, is_covetous } from './mondata.js';
 import { inhishop, inhistemple } from './monmove.js';
 import { builds_up } from './dungeon.js';
@@ -77,6 +78,18 @@ export async function amulet() {
 export function mon_has_amulet(mtmp) {
     for (const otmp of (mtmp.minvent || []))
         if (otmp.otyp === ONAMES.AMULET_OF_YENDOR)
+            return 1;
+    return 0;
+}
+
+// src/wizard.c:117 mon_has_special()
+export function mon_has_special(mtmp) {
+    for (const otmp of (mtmp.minvent || []))
+        if (otmp.otyp === ONAMES.AMULET_OF_YENDOR
+            || any_quest_artifact(otmp)
+            || otmp.otyp === ONAMES.BELL_OF_OPENING
+            || otmp.otyp === ONAMES.CANDELABRUM_OF_INVOCATION
+            || otmp.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD)
             return 1;
     return 0;
 }

@@ -95,43 +95,43 @@ export async function knistrt_level() {
     /* The treasure of King Arthur */
     des.object('chest', 9, 7);
     /* knight guards for the watchrooms */
-    des.monster({ id: 'knight', x: 4, y: 2, peaceful: 1 });
-    des.monster({ id: 'knight', x: 4, y: 13, peaceful: 1 });
-    des.monster({ id: 'knight', x: 45, y: 2, peaceful: 1 });
-    des.monster({ id: 'knight', x: 45, y: 13, peaceful: 1 });
+    await des.monster({ id: 'knight', x: 4, y: 2, peaceful: 1 });
+    await des.monster({ id: 'knight', x: 4, y: 13, peaceful: 1 });
+    await des.monster({ id: 'knight', x: 45, y: 2, peaceful: 1 });
+    await des.monster({ id: 'knight', x: 45, y: 13, peaceful: 1 });
     /* page guards for the audience chamber */
-    des.monster('page', 16, 6);
-    des.monster('page', 18, 6);
-    des.monster('page', 20, 6);
-    des.monster('page', 16, 9);
-    des.monster('page', 18, 9);
-    des.monster('page', 20, 9);
+    await des.monster('page', 16, 6);
+    await des.monster('page', 18, 6);
+    await des.monster('page', 20, 6);
+    await des.monster('page', 16, 9);
+    await des.monster('page', 18, 9);
+    await des.monster('page', 20, 9);
     /* Non diggable walls */
     des.non_diggable(selection.area(0, 0, 49, 15));
     /* Random traps */
     des.trap('sleep gas', 24, 4);
     des.trap('sleep gas', 25, 4);
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     /* Monsters on siege duty. */
-    des.monster({ id: 'quasit', x: 14, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 16, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 18, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 20, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 22, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 24, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 26, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 28, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 30, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 32, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 34, y: 0, peaceful: 0 });
-    des.monster({ id: 'quasit', x: 36, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 14, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 16, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 18, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 20, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 22, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 24, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 26, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 28, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 30, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 32, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 34, y: 0, peaceful: 0 });
+    await des.monster({ id: 'quasit', x: 36, y: 0, peaceful: 0 });
 
     /* Some warhorses */
     for (let i = 1, n = 2 + rn2(3); i <= n; i++)
-        des.monster({ id: 'warhorse', peaceful: 1, inventory: () => {
+        await des.monster({ id: 'warhorse', peaceful: 1, inventory: () => {
             if (percent(50))
                 des.object('saddle');
         } });

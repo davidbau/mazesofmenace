@@ -75,7 +75,7 @@ import { losexp, more_experienced, newexplevel } from './exper.js';
 import { getlin, select_menu } from './windows.js';
 import { displayTtyTextWindow } from './tty_menu.js';
 import { game } from './gstate.js';
-import { ENGRAVE, FACE, FOOT, HEAD, HOLE, TRAPDOOR } from './const.js';
+import { ENGRAVE, EYE, FACE, FOOT, HEAD, HOLE, TRAPDOOR } from './const.js';
 import { hard_helmet, setwornEnv } from './do_wear.js';
 import { makeplural } from './fruit.js';
 import { ok_to_quest } from './quest.js';
@@ -115,7 +115,7 @@ import { create_critters, monhp_per_lvl, newmcorpsenm } from './makemon.js';
 import {
     makemon_revival, makemon_runtime, newcham_revival, neweshk, } from './makemon_create.js';
 import {
-    can_be_hatched, completelyburns, defended, dead_species, dmgtype, is_demon, perceives, hides_under, is_whirly, mindless, is_mplayer, is_rider, is_reviver, is_vampshifter, resists_drli, is_swimmer, amphibious, breathless, Resists_Elem, resists_magm, resists_blnd_steps, resists_blnd_by_arti, monstseesu, monstunseesu, nonliving, is_golem, carnivorous, nohands, is_undead, sticks, type_is_pname, unique_corpstat, } from './mondata.js';
+    can_be_hatched, completelyburns, eyecount, defended, dead_species, dmgtype, is_demon, perceives, hides_under, is_whirly, mindless, is_mplayer, is_rider, is_reviver, is_vampshifter, resists_drli, is_swimmer, amphibious, breathless, Resists_Elem, resists_magm, resists_blnd_steps, resists_blnd_by_arti, monstseesu, monstunseesu, nonliving, is_golem, carnivorous, nohands, is_undead, sticks, type_is_pname, unique_corpstat, } from './mondata.js';
 import {
     AD_ACID, AD_COLD, AD_DGST, AD_DISN, AD_DRLI, AD_ELEC, AD_FIRE, AD_DRST, AD_MAGM, AD_RBRE, AD_SEDU, AD_SPEL, AD_SSEX, AT_ENGL, PM_CLAY_GOLEM, PM_CROCODILE, PM_FLESH_GOLEM, PM_GLASS_GOLEM, PM_GOLD_GOLEM, PM_IRON_GOLEM, PM_LEATHER_GOLEM, PM_PAPER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_STONE_GOLEM, PM_STRAW_GOLEM, PM_WOOD_GOLEM, PM_DEATH, PM_DOPPELGANGER, PM_MONK, PM_KNIGHT, PM_HEALER, PM_GHOST, PM_PESTILENCE, PM_GREMLIN, PM_LONG_WORM, PM_ARCHEOLOGIST, G_NOCORPSE, G_UNIQ, NUMMONS, S_EEL, S_GOLEM, S_MIMIC, S_ZOMBIE, MZ_MEDIUM, } from './monsters.js';
 import { discover_object, observe_object } from './o_init.js';
@@ -2554,11 +2554,11 @@ export async function poly_obj(obj, id, state = game,
                     set_twoweap(true, state);
             } else if (newWornMask & W_SWAPWEP) {
                 if (wasTwoHanded || !bimanual(replacement, state))
-                    setuswapwep(replacement, env);
+                    await setuswapwep(replacement, env);
                 if (wasTwoweap && state.uswapwep)
                     set_twoweap(true, state);
             } else if (newWornMask & W_QUIVER) {
-                setuqwep(replacement, env);
+                await setuqwep(replacement, env);
             } else if (newWornMask) {
                 await setworn(replacement, newWornMask, env);
                 await set_wear(state, replacement, { ...rawEnv, random });
@@ -3136,7 +3136,7 @@ export async function bhito(obj, wand, state = game,
                     && hides_under(state.youmonst?.data);
                 learn_it = cansee(obj.ox, obj.oy, state);
                 await do_osshock(obj, state, random, rawEnv);
-                if (cover) hideunder(state.youmonst, { ...rawEnv, state });
+                if (cover) await hideunder(state.youmonst, { ...rawEnv, state });
             } else {
                 const replacement = await poly_obj(
                     obj, STRANGE_OBJECT, state, random, rawEnv,
@@ -5671,9 +5671,11 @@ async function buzzmonst(
             await hit(flash_str(fltyp, false, state, random), mon,
                 exclam(0), state, env);
             await message(`${Monnam(mon, state)} disintegrates.`, state, env);
+            const eye = body_part(EYE, state.youmonst);
             await message(
                 `${s_suffix(Monnam(mon, state))} body reintegrates `
-                + `before your eyes!`, state, env,
+                + `before your ${eyecount(state.youmonst.data) === 1
+                    ? eye : makeplural(eye)}!`, state, env,
             );
             await message(`${Monnam(mon, state)} resurrects!`, state, env);
         }
@@ -5729,7 +5731,7 @@ async function buzzmonst(
                     `${s_suffix(Monnam(mon, state, {
                         displayRandom: env.displayRandom,
                     }))} `
-                    + `${xnameFresh(otmp, state)} is disintegrated!`,
+                    + `${distant_name(otmp, xname, state)} is disintegrated!`,
                     state, env,
                 );
             }
@@ -6473,7 +6475,7 @@ export async function zap_updown(obj, state = game,
                && hides_under(state.youmonst?.data)) {
         const top = state.level?.objects?.[x]?.[y];
         if (top && await bhito(top, obj, state, random, rawEnv)) {
-            hideunder(state.youmonst, { ...rawEnv, state });
+            await hideunder(state.youmonst, { ...rawEnv, state });
             disclose = true;
         }
     }

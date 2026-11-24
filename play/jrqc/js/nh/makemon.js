@@ -7,7 +7,6 @@ import * as $c from '../crt/index.js';
 import * as $T from './types.js';
 import { $G } from './globals.js';
 import { AM } from './align.h.js';
-import { Align2amask } from './align.macros.js';
 import { alloc } from './alloc.js';
 import { ART } from './artilist.h.js';
 import { A } from './attrib.h.js';
@@ -104,13 +103,13 @@ export function is_home_elemental(ptr) {   // makemon.c:33
     if (ptr.mlet === S.ELEMENTAL) {
         switch (ptr.pmidx) {
             case PM.AIR_ELEMENTAL:
-                return $c.i8((svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) ? 1 : 0);
+                return (svd.dungeon_topology.d_air_level.dlevel || svd.dungeon_topology.d_air_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_air_level) ? 1 : 0;
             case PM.FIRE_ELEMENTAL:
-                return $c.i8((svd.dungeon_topology.d_fire_level.dlevel || svd.dungeon_topology.d_fire_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_fire_level) ? 1 : 0);
+                return (svd.dungeon_topology.d_fire_level.dlevel || svd.dungeon_topology.d_fire_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_fire_level) ? 1 : 0;
             case PM.EARTH_ELEMENTAL:
-                return $c.i8((svd.dungeon_topology.d_earth_level.dlevel || svd.dungeon_topology.d_earth_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_earth_level) ? 1 : 0);
+                return (svd.dungeon_topology.d_earth_level.dlevel || svd.dungeon_topology.d_earth_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_earth_level) ? 1 : 0;
             case PM.WATER_ELEMENTAL:
-                return $c.i8((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) ? 1 : 0);
+                return (svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level) ? 1 : 0;
             default:
                 break;
         }
@@ -126,7 +125,7 @@ export function is_home_elemental(ptr) {   // makemon.c:33
  */
 function wrong_elem_type(ptr) {   // makemon.c:56
     if (ptr.mlet === S.ELEMENTAL) {
-        return $c.i8(!is_home_elemental(ptr) ? 1 : 0);
+        return !is_home_elemental(ptr) ? 1 : 0;
     } else if ((svd.dungeon_topology.d_earth_level.dlevel || svd.dungeon_topology.d_earth_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_earth_level)) {
         /* no restrictions? */
     } else if ((svd.dungeon_topology.d_water_level.dlevel || svd.dungeon_topology.d_water_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_water_level)) {
@@ -155,8 +154,8 @@ function wrong_elem_type(ptr) {   // makemon.c:56
  * @returns {Promise<void>}
  */
 async function m_initgrp(mtmp, x, y, n, mmflags) {   // makemon.c:79
-    let mm = new $T.nhcoord(), cnt = 0, mon = null, $t1;
-    cnt = rnd(n);
+    let mm = new $T.nhcoord(), $t1;
+    let cnt = rnd(n);
     /* There is an unresolved problem with several people finding that
      * the game hangs eating CPU; if interrupted and restored, the level
      * will be filled with monsters.  Of those reports giving system type,
@@ -185,10 +184,10 @@ async function m_initgrp(mtmp, x, y, n, mmflags) {   // makemon.c:79
          * smaller group.
          */
         if (await enexto_gpflags(mm, mm.x, mm.y, mtmp.data, mmflags)) {
-            mon = await makemon(mtmp.data, mm.x, mm.y, $c.u32($c.or64(mmflags, MM.NOGRP)));
+            const mon = await makemon(mtmp.data, mm.x, mm.y, $c.u32($c.or64(mmflags, MM.NOGRP)));
             if (mon) {
                 mon.mpeaceful = (FALSE) & 1;
-                mon.mavenge = (0) & 1;
+                mon.mavenge = 0;
                 set_malign(mon);
                 /* Undo the second peace_minded() check in makemon(); if the
                  * monster turned out to be peaceful the first time we
@@ -205,8 +204,8 @@ async function m_initgrp(mtmp, x, y, n, mmflags) {   // makemon.c:79
  * @returns {Promise<void>}
  */
 async function m_initthrow(mtmp, otyp, oquan) {   // makemon.c:148
-    let otmp = null, $t1, $t2;
-    otmp = await mksobj(otyp, TRUE, FALSE);
+    let $t1, $t2;
+    const otmp = await mksobj(otyp, TRUE, FALSE);
     $t1 = rn2(oquan) + 3 | 0, otmp.quan = $t1;
     $t2 = await weight(otmp) >>> 0, otmp.owt = $t2;
     if (otyp === ORCISH_ARROW) {
@@ -219,9 +218,9 @@ async function m_initthrow(mtmp, otyp, oquan) {   // makemon.c:148
  * @returns {Promise<void>}
  */
 async function m_initweap(mtmp) {   // makemon.c:161
-    let ptr = null, mm = 0, otmp = null, bias = 0, w1 = 0, w2 = 0, typ = 0, nam = null, $t1, $t2;
-    ptr = mtmp.data;
-    mm = ptr.pmidx;
+    let otmp = null, bias = 0, w2 = 0, $t1, $t2;
+    const ptr = mtmp.data;
+    const mm = ptr.pmidx;
     if ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level)) {
         return;
     }
@@ -245,7 +244,7 @@ async function m_initweap(mtmp) {   // makemon.c:161
             break;
         case S.HUMAN:
             if (is_mercenary(ptr)) {
-                w1 = w2 = 0;
+                let w1 = w2 = 0;
                 switch (mm) {
                     case PM.WATCHMAN:
                     case PM.SOLDIER:
@@ -409,11 +408,11 @@ async function m_initweap(mtmp) {   // makemon.c:161
         case S.ANGEL:
             if (humanoid(ptr)) {
                 /* create minion stuff; bypass mongets */
-                typ = rn2(3) ? LONG_SWORD : SILVER_MACE;
-                nam = typ === LONG_SWORD ? $c.lit("Sunsword") : $c.lit("Demonbane");
+                const typ = rn2(3) ? LONG_SWORD : SILVER_MACE;
+                const nam = typ === LONG_SWORD ? $c.lit("Sunsword") : $c.lit("Demonbane");
                 otmp = await mksobj(typ, FALSE, FALSE);
                 /* maybe promote weapon to an artifact */
-                if ((!rn2(20) || is_lord(ptr)) && sgn(mtmp.isminion | 0 ? mtmp.mextra.emin.min_align : ptr.maligntyp) === A.LAWFUL) {
+                if ((!rn2(20) || is_lord(ptr)) && sgn(mtmp.isminion ? mtmp.mextra.emin.min_align : ptr.maligntyp) === A.LAWFUL) {
                     otmp = await oname(otmp, nam, ONAME_RANDOM);   /* randomly created */
                 }
                 /* enhance the weapon */
@@ -563,7 +562,7 @@ async function m_initweap(mtmp) {   // makemon.c:161
             break;
         case S.CENTAUR:
             if (rn2(2)) {
-                if ($c.peq(ptr, $c.relem(mons, PM.FOREST_CENTAUR))) {
+                if (ptr === mons[PM.FOREST_CENTAUR]) {
                     await mongets(mtmp, BOW);
                     await m_initthrow(mtmp, ARROW, 12);
                 } else {
@@ -621,7 +620,7 @@ async function m_initweap(mtmp) {   // makemon.c:161
              * of weapon for "normal" monsters.  Certain special types
              * of monsters will get a bonus chance or different selections.
              */
-            bias = (is_lord(ptr) + Math.imul(is_prince(ptr), 2) | 0) + extra_nasty(ptr) | 0;
+            bias = is_lord(ptr) + is_prince(ptr) * 2 + extra_nasty(ptr);
             switch (rnd(14 - Math.imul(2, bias) | 0)) {
                 case 1:
                     if (strongmonst(ptr)) {
@@ -672,10 +671,10 @@ async function m_initweap(mtmp) {   // makemon.c:161
  * @returns {Promise<void>}
  */
 export async function mkmonmoney(mtmp, amount) {   // makemon.c:576
-    let gold = null, $t1;
+    let $t1;
     /* mk_mplayer() passes rn2(1000) so the amount might be 0 */
     if (amount > 0) {
-        gold = await mksobj(GOLD_PIECE, FALSE, FALSE);
+        const gold = await mksobj(GOLD_PIECE, FALSE, FALSE);
         gold.quan = amount;
         $t1 = await weight(gold) >>> 0, gold.owt = $t1;
         await add_to_minv(mtmp, gold);
@@ -686,8 +685,8 @@ export async function mkmonmoney(mtmp, amount) {   // makemon.c:576
  * @returns {Promise<void>}
  */
 async function m_initinv(mtmp) {   // makemon.c:589
-    let cnt = 0, otmp = null, ptr = null, mac = 0, catcorpse = null, $t1, $t2, $t3, $t4, $t5;
-    ptr = mtmp.data;
+    let cnt = 0, otmp = null, mac = 0, catcorpse = null, $t1, $t2, $t3, $t4, $t5;
+    const ptr = mtmp.data;
     if ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level)) {
         return;
     }
@@ -736,7 +735,7 @@ async function m_initinv(mtmp) {   // makemon.c:589
                     otmp = await mongets(mtmp, LEATHER_ARMOR);
                 }
                 if (otmp) {
-                    mac = mac + ((objects[otmp.otyp].oc_oc1 + otmp.spe | 0) - (((otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0) < objects[otmp.otyp].oc_oc1 ? (otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0 : objects[otmp.otyp].oc_oc1) | 0) | 0;
+                    mac = mac + (objects[otmp.otyp].oc_oc1 + otmp.spe - ((otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2) < objects[otmp.otyp].oc_oc1 ? otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2 : objects[otmp.otyp].oc_oc1)) | 0;
                 }
                 otmp = null;
                 /* round 2: helmets */
@@ -746,7 +745,7 @@ async function m_initinv(mtmp) {   // makemon.c:589
                     otmp = await mongets(mtmp, DENTED_POT);
                 }
                 if (otmp) {
-                    mac = mac + ((objects[otmp.otyp].oc_oc1 + otmp.spe | 0) - (((otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0) < objects[otmp.otyp].oc_oc1 ? (otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0 : objects[otmp.otyp].oc_oc1) | 0) | 0;
+                    mac = mac + (objects[otmp.otyp].oc_oc1 + otmp.spe - ((otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2) < objects[otmp.otyp].oc_oc1 ? otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2 : objects[otmp.otyp].oc_oc1)) | 0;
                 }
                 otmp = null;
                 /* round 3: shields */
@@ -756,7 +755,7 @@ async function m_initinv(mtmp) {   // makemon.c:589
                     otmp = await mongets(mtmp, LARGE_SHIELD);
                 }
                 if (otmp) {
-                    mac = mac + ((objects[otmp.otyp].oc_oc1 + otmp.spe | 0) - (((otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0) < objects[otmp.otyp].oc_oc1 ? (otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0 : objects[otmp.otyp].oc_oc1) | 0) | 0;
+                    mac = mac + (objects[otmp.otyp].oc_oc1 + otmp.spe - ((otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2) < objects[otmp.otyp].oc_oc1 ? otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2 : objects[otmp.otyp].oc_oc1)) | 0;
                 }
                 otmp = null;
                 /* round 4: boots */
@@ -766,7 +765,7 @@ async function m_initinv(mtmp) {   // makemon.c:589
                     otmp = await mongets(mtmp, HIGH_BOOTS);
                 }
                 if (otmp) {
-                    mac = mac + ((objects[otmp.otyp].oc_oc1 + otmp.spe | 0) - (((otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0) < objects[otmp.otyp].oc_oc1 ? (otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0 : objects[otmp.otyp].oc_oc1) | 0) | 0;
+                    mac = mac + (objects[otmp.otyp].oc_oc1 + otmp.spe - ((otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2) < objects[otmp.otyp].oc_oc1 ? otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2 : objects[otmp.otyp].oc_oc1)) | 0;
                 }
                 otmp = null;
                 /* round 5: gloves + cloak */
@@ -776,17 +775,17 @@ async function m_initinv(mtmp) {   // makemon.c:589
                     otmp = await mongets(mtmp, LEATHER_CLOAK);
                 }
                 if (otmp) {
-                    mac = mac + ((objects[otmp.otyp].oc_oc1 + otmp.spe | 0) - (((otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0) < objects[otmp.otyp].oc_oc1 ? (otmp.oeroded | 0) > (otmp.oeroded2 | 0) ? otmp.oeroded | 0 : otmp.oeroded2 | 0 : objects[otmp.otyp].oc_oc1) | 0) | 0;   /* not technically needed */
+                    mac = mac + (objects[otmp.otyp].oc_oc1 + otmp.spe - ((otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2) < objects[otmp.otyp].oc_oc1 ? otmp.oeroded > otmp.oeroded2 ? otmp.oeroded : otmp.oeroded2 : objects[otmp.otyp].oc_oc1)) | 0;   /* not technically needed */
                 }
                 otmp = null;
                 nhUse(mac);   /* suppress 'dead increment' from static analyzer */
-                if ($c.peq(ptr, $c.relem(mons, PM.WATCH_CAPTAIN))) {
+                if (ptr === mons[PM.WATCH_CAPTAIN]) {
                     /* better weapon rather than extra gear here */
-                } else if ($c.peq(ptr, $c.relem(mons, PM.WATCHMAN))) {
+                } else if (ptr === mons[PM.WATCHMAN]) {
                     if (rn2(3)) {   /* most watchmen carry a whistle */
                         await mongets(mtmp, TIN_WHISTLE);
                     }
-                } else if ($c.peq(ptr, $c.relem(mons, PM.GUARD))) {
+                } else if (ptr === mons[PM.GUARD]) {
                     /* if hero teleports out of a vault while being confronted
                        by the vault's guard, there is a shrill whistling sound,
                        so guard evidently carries a cursed whistle */
@@ -801,11 +800,11 @@ async function m_initinv(mtmp) {   // makemon.c:589
                     if (!rn2(2)) {
                         await mongets(mtmp, C_RATION);
                     }
-                    if (!$c.peq(ptr, $c.relem(mons, PM.SOLDIER)) && !rn2(3)) {
+                    if (ptr !== mons[PM.SOLDIER] && !rn2(3)) {
                         await mongets(mtmp, BUGLE);
                     }
                 }
-            } else if ($c.peq(ptr, $c.relem(mons, PM.SHOPKEEPER))) {
+            } else if (ptr === mons[PM.SHOPKEEPER]) {
                 await mongets(mtmp, SKELETON_KEY);
                 switch (rn2(4)) {
                     case 0:
@@ -838,7 +837,7 @@ async function m_initinv(mtmp) {   // makemon.c:589
             }
             break;
         case S.GIANT:
-            if ($c.peq(ptr, $c.relem(mons, PM.MINOTAUR))) {
+            if (ptr === mons[PM.MINOTAUR]) {
                 if (!rn2(8) || gi.in_mklev && ((svd.dungeon_topology.d_earth_level.dlevel || svd.dungeon_topology.d_earth_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_earth_level))) {
                     await mongets(mtmp, WAN_DIGGING);
                 }
@@ -852,22 +851,22 @@ async function m_initinv(mtmp) {   // makemon.c:589
             }
             break;
         case S.WRAITH:
-            if ($c.peq(ptr, $c.relem(mons, PM.NAZGUL))) {
+            if (ptr === mons[PM.NAZGUL]) {
                 otmp = await mksobj(RIN_INVISIBILITY, FALSE, FALSE);
                 await curse(otmp);
                 await mpickobj(mtmp, otmp);
             }
             break;
         case S.LICH:
-            if ($c.peq(ptr, $c.relem(mons, PM.MASTER_LICH)) && !rn2(13)) {
+            if (ptr === mons[PM.MASTER_LICH] && !rn2(13)) {
                 await mongets(mtmp, rn2(7) ? ATHAME : WAN_NOTHING);
-            } else if ($c.peq(ptr, $c.relem(mons, PM.ARCH_LICH)) && !rn2(3)) {
-                otmp = await mksobj(rn2(3) ? ATHAME : QUARTERSTAFF, TRUE, $c.i8(rn2(13) ? FALSE : TRUE));
+            } else if (ptr === mons[PM.ARCH_LICH] && !rn2(3)) {
+                otmp = await mksobj(rn2(3) ? ATHAME : QUARTERSTAFF, TRUE, rn2(13) ? FALSE : TRUE);
                 if (otmp.spe < 2) {
                     $t3 = $c.i8(rnd(3)), otmp.spe = $t3;
                 }
                 if (!rn2(4)) {
-                    otmp.oerodeproof = (1) & 1;
+                    otmp.oerodeproof = 1;
                 }
                 await mpickobj(mtmp, otmp);
             }
@@ -878,7 +877,7 @@ async function m_initinv(mtmp) {   // makemon.c:589
             }
             break;
         case S.QUANTMECH:
-            if (!rn2(20) && $c.peq(ptr, $c.relem(mons, PM.QUANTUM_MECHANIC))) {
+            if (!rn2(20) && ptr === mons[PM.QUANTUM_MECHANIC]) {
                 otmp = await mksobj(LARGE_BOX, FALSE, FALSE);
                 /* we used to just set the flag, which resulted in weight()
                    treating the box as being heavier by the weight of a cat;
@@ -901,9 +900,9 @@ async function m_initinv(mtmp) {   // makemon.c:589
         case S.DEMON:
             /* moved here from m_initweap() because these don't
                have AT_WEAP so m_initweap() is not called for them */
-            if ($c.peq(ptr, $c.relem(mons, PM.ICE_DEVIL)) && !rn2(4)) {
+            if (ptr === mons[PM.ICE_DEVIL] && !rn2(4)) {
                 await mongets(mtmp, SPEAR);
-            } else if ($c.peq(ptr, $c.relem(mons, PM.ASMODEUS))) {
+            } else if (ptr === mons[PM.ASMODEUS]) {
                 await mongets(mtmp, WAN_COLD);
                 await mongets(mtmp, WAN_FIRE);
             }
@@ -922,7 +921,7 @@ async function m_initinv(mtmp) {   // makemon.c:589
             break;
     }
     /* ordinary soldiers rarely have access to magic (or gold :-) */
-    if ($c.peq(ptr, $c.relem(mons, PM.SOLDIER)) && rn2(13)) {
+    if (ptr === mons[PM.SOLDIER] && rn2(13)) {
         return;
     }
     if (mtmp.m_lev > rn2(50)) {
@@ -943,7 +942,7 @@ async function m_initinv(mtmp) {   // makemon.c:589
  * @returns {Promise<$T.monst | null>} struct monst *
  */
 export async function clone_mon(mon, x, y) {   // makemon.c:837
-    let mm = new $T.nhcoord(), m2 = null, atyp = 0, $t1, $t2, $t3;
+    let mm = new $T.nhcoord(), $t1, $t2, $t3;
     /* clone's preferred location or 0 (near mon) */
     /* may be too weak or have been extinguished for population control */
     if (mon.mhp <= 1 || (svm.mvitals[mon.data.pmidx].mvflags & G_EXTINCT) !== 0) {
@@ -967,7 +966,7 @@ export async function clone_mon(mon, x, y) {   // makemon.c:837
             return null;
         }
     }
-    m2 = await newmonst();
+    let m2 = await newmonst();
     m2.$copyFrom(mon);   /* copy condition of old monster */
     m2.mextra = null;
     m2.nmon = svl.level.monlist;
@@ -975,11 +974,11 @@ export async function clone_mon(mon, x, y) {   // makemon.c:837
     $t1 = next_ident(), m2.m_id = $t1;
     m2.mx = mm.x;
     m2.my = mm.y;
-    m2.mundetected = (0) & 1;
-    m2.mtrapped = (0) & 1;
-    m2.mcloned = (1) & 1;
+    m2.mundetected = 0;
+    m2.mtrapped = 0;
+    m2.mcloned = 1;
     m2.minvent = null;   /* objects don't clone */
-    m2.mleashed = (0) & 1;
+    m2.mleashed = 0;
     /* Max HP the same, but current HP halved for both.  The caller
      * might want to override this by halving the max HP also.
      * When current HP is odd, the original keeps the extra point.
@@ -989,9 +988,9 @@ export async function clone_mon(mon, x, y) {   // makemon.c:837
     m2.mhp = $c.div32(mon.mhp, 2);
     mon.mhp = mon.mhp - m2.mhp | 0;
     /* clone doesn't have mextra so mustn't retain special monster flags */
-    m2.isshk = (0) & 1;
-    m2.isgd = (0) & 1;
-    m2.ispriest = (0) & 1;
+    m2.isshk = 0;
+    m2.isgd = 0;
+    m2.ispriest = 0;
     /* ms->isminion handled below */
     /* clone shouldn't be reluctant to move on spots 'parent' just moved on */
     mon_track_clear(m2);
@@ -1006,11 +1005,11 @@ export async function clone_mon(mon, x, y) {   // makemon.c:837
         m2 = await christen_monst(m2, await shkname(mon));
     }
     /* not all clones caused by player are tame or peaceful */
-    if (!svc.context.mon_moving && mon.mpeaceful | 0) {
+    if (!svc.context.mon_moving && mon.mpeaceful) {
         if (mon.mtame) {
-            $t2 = $c.i8(rn2((2 + u.uluck | 0) > 2 ? 2 + u.uluck | 0 : 2) ? mon.mtame : 0), m2.mtame = $t2;
+            $t2 = rn2(2 + u.uluck > 2 ? 2 + u.uluck : 2) ? mon.mtame : 0, m2.mtame = $t2;
         } else if (mon.mpeaceful) {
-            $t3 = (rn2((2 + u.uluck | 0) > 2 ? 2 + u.uluck | 0 : 2) ? 1 : 0) >>> 0, m2.mpeaceful = ($t3) & 1;
+            $t3 = rn2(2 + u.uluck > 2 ? 2 + u.uluck : 2) ? 1 : 0, m2.mpeaceful = ($t3) & 1;
         }
     }
     /* if guardian angel could be cloned (maybe after polymorph?),
@@ -1021,8 +1020,8 @@ export async function clone_mon(mon, x, y) {   // makemon.c:837
         m2.mextra.emin.$copyFrom(mon.mextra.emin);
         /* renegade when same alignment as hero but not peaceful or
            when peaceful while being different alignment from hero */
-        atyp = m2.mextra.emin.min_align;
-        m2.mextra.emin.renegade = $c.i8((atyp !== u.ualign.type ? 1 : 0) ^ (!m2.mpeaceful ? 1 : 0));
+        const atyp = m2.mextra.emin.min_align;
+        m2.mextra.emin.renegade = (atyp !== u.ualign.type ? 1 : 0) ^ (!m2.mpeaceful ? 1 : 0);
     } else if (m2.mtame) {
         /* Because m2 is a copy of mon it is tame but not init'ed.
            However, tamedog() will not re-tame a tame dog, so m2
@@ -1057,10 +1056,9 @@ export async function clone_mon(mon, x, y) {   // makemon.c:837
  * @returns {Promise<number>} boolean
  */
 export async function propagate(mndx, tally, ghostly) {   // makemon.c:958
-    let gone = 0, result = 0, lim = 0, save_plnmsg = 0;
-    lim = mbirth_limit(mndx);
-    gone = $c.i8((svm.mvitals[mndx].mvflags & G_GONE) !== 0 ? 1 : 0);   /* geno'd|extinct */
-    result = $c.i8(svm.mvitals[mndx].born < lim && !gone ? TRUE : FALSE);
+    const lim = mbirth_limit(mndx);
+    const gone = (svm.mvitals[mndx].mvflags & G_GONE) !== 0 ? 1 : 0;   /* geno'd|extinct */
+    const result = svm.mvitals[mndx].born < lim && !gone ? TRUE : FALSE;
     /* if it's unique, don't ever make it again */
     if ((mons[mndx].geno & G_UNIQ) !== 0 && mndx !== PM.HIGH_CLERIC) {
         svm.mvitals[mndx].mvflags = $c.u8(svm.mvitals[mndx].mvflags | G_EXTINCT);
@@ -1072,7 +1070,7 @@ export async function propagate(mndx, tally, ghostly) {   // makemon.c:958
         if (wizard()) {
             do {
                 if (debugcore($c.lit("makemon.c"), TRUE)) {
-                    save_plnmsg = iflags.last_msg;
+                    const save_plnmsg = iflags.last_msg;
                     await pline($c.lit("Automatically extinguished %s."), await makeplural(mons[mndx].pmnames[NEUTRAL]));
                     iflags.last_msg = save_plnmsg;
                 }
@@ -1088,9 +1086,8 @@ export async function propagate(mndx, tally, ghostly) {   // makemon.c:958
  * @returns {number} int
  */
 export function monhp_per_lvl(mon) {   // makemon.c:986
-    let ptr = null, hp = 0;
-    ptr = mon.data;
-    hp = rnd(8);   /* default is d8 */
+    const ptr = mon.data;
+    let hp = rnd(8);   /* default is d8 */
     /* like newmonhp, but home elementals are ignored, riders use normal d8 */
     if (is_golem(ptr)) {
         /* draining usually won't be applicable for these critters */
@@ -1116,9 +1113,9 @@ export function monhp_per_lvl(mon) {   // makemon.c:986
  * @returns {Promise<void>}
  */
 export async function newmonhp(mon, mndx) {   // makemon.c:1012
-    let ptr = null, basehp = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13;
-    ptr = $c.relem(mons, mndx);
-    basehp = 0;
+    let $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11, $t12, $t13;
+    const ptr = $c.relem(mons, mndx);
+    let basehp = 0;
     $t1 = $c.u8(await adj_lev(ptr)), mon.m_lev = $t1;
     if (is_golem(ptr)) {
         /* golems have a fixed amount of HP, varying by golem type */
@@ -1132,7 +1129,7 @@ export async function newmonhp(mon, mndx) {   // makemon.c:1012
          * the hit points are encoded in the mlevel in a somewhat strange
          * way to fit in the 50..127 positive range of a signed character
          * above the 1..49 that indicate "normal" monster levels */
-        $t6 = mon.mhp = Math.imul(2, ptr.mlevel - 6 | 0), mon.mhpmax = $t6;
+        $t6 = mon.mhp = Math.imul(2, ptr.mlevel - 6), mon.mhpmax = $t6;
         mon.m_lev = $c.u8($c.div32(mon.mhp, 4));   /* approximation */
     } else if (ptr.mlet === S.DRAGON && mndx >= PM.GRAY_DRAGON) {
         /* adult dragons; N*(4+rnd(4)) before endgame, N*8 once there */
@@ -1167,8 +1164,7 @@ function init_mextra(mex) {   // makemon.c:1059
  * @returns {Promise<$T.mextra | null>} struct mextra *
  */
 export async function newmextra() {   // makemon.c:1066
-    let mextra = null;
-    mextra = $c.asRec(await alloc(64), $T.mextra, 64);
+    const mextra = $c.asRec(await alloc(64), $T.mextra, 64);
     init_mextra(mextra);
     return mextra;
 }
@@ -1189,7 +1185,7 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {   // makemon.c:1076
             do {
                 nx = $c.i16(rn2(COLNO - 3) + 2 | 0);
                 ny = $c.i16(rn2(ROWNO));
-                good = $c.i8(!gi.in_mklev && cansee(nx, ny) ? FALSE : goodpos(nx, ny, mon, gpflags));
+                good = !gi.in_mklev && cansee(nx, ny) ? FALSE : goodpos(nx, ny, mon, gpflags);
             } while ((tryct = tryct + 1 | 0) < 50 && !good);
         case "gotgood":
             if ($goto !== "gotgood" && !good) {
@@ -1205,8 +1201,8 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {   // makemon.c:1076
                     }
                     for (dx = 0; dx < COLNO; dx = $c.i16(dx + 1)) {
                         for (dy = 0; dy < ROWNO; dy = $c.i16(dy + 1)) {
-                            nx = $c.i16($c.rem32(dx + xofs | 0, COLNO - 1) + 1 | 0);
-                            ny = $c.i16($c.rem32(dy + yofs | 0, ROWNO - 1) + 1 | 0);
+                            nx = $c.i16($c.rem32(dx + xofs, COLNO - 1) + 1 | 0);
+                            ny = $c.i16($c.rem32(dy + yofs, ROWNO - 1) + 1 | 0);
                             if (bl === 0 && cansee(nx, ny)) {
                                 continue;
                             }
@@ -1258,13 +1254,13 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {   // makemon.c:1076
  * @returns {Promise<$T.monst | null>} struct monst *
  */
 export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
-    let mtmp = null, fakemon = new $T.monst(), cc = new $T.nhcoord(), mndx = 0, mcham = 0, ct = 0, mitem = 0, femaleok = 0, maleok = 0, anymon = 0, byyou = 0, allow_minvent = 0, countbirth = 0, allowtail = 0, gpflags = 0, save_plnmsg = 0, tryct = 0, save_plnmsg$2 = 0, eminp = null, mbuf = new Int8Array(256), what = null, exclaim = 0, $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11;
-    anymon = $c.i8(!ptr ? 1 : 0);
-    byyou = $c.i8(u_at(x, y));
-    allow_minvent = $c.i8($c.and64(mmflags, NO.MINVENT) === 0 ? 1 : 0);
-    countbirth = $c.i8($c.and64(mmflags, MM.NOCOUNTBIRTH) === 0 ? 1 : 0);
-    allowtail = $c.i8($c.and64(mmflags, MM.NOTAIL) === 0 ? 1 : 0);
-    gpflags = $c.u32($c.or64($c.or64($c.and64(mmflags, MM.IGNOREWATER) ? MM.IGNOREWATER : 0, GP.CHECKSCARY), GP.AVOID_MONPOS));
+    let fakemon = new $T.monst(), cc = new $T.nhcoord(), mndx = 0, mcham = 0, ct = 0, mbuf = new Int8Array(256), $t1, $t2, $t3, $t4, $t5, $t6, $t7, $t8, $t9, $t10, $t11;
+    const anymon = !ptr ? 1 : 0;
+    const byyou = u_at(x, y);
+    let allow_minvent = $c.and64(mmflags, NO.MINVENT) === 0 ? 1 : 0;
+    const countbirth = $c.and64(mmflags, MM.NOCOUNTBIRTH) === 0 ? 1 : 0;
+    const allowtail = $c.and64(mmflags, MM.NOTAIL) === 0 ? 1 : 0;
+    const gpflags = $c.u32($c.or64($c.or64($c.and64(mmflags, MM.IGNOREWATER) ? MM.IGNOREWATER : 0, GP.CHECKSCARY), GP.AVOID_MONPOS));
     fakemon.$copyFrom(cg.zeromonst);
     $t1 = cc.y = 0, cc.x = $t1;
     if (iflags.debug_mongen || !svl.level.flags.rndmongen && !ptr) {
@@ -1308,7 +1304,7 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
         if (wizard() && svm.mvitals[mndx].mvflags & G_EXTINCT) {
             do {
                 if (debugcore($c.lit("makemon.c"), TRUE)) {
-                    save_plnmsg = iflags.last_msg;
+                    const save_plnmsg = iflags.last_msg;
                     await pline($c.lit("Explicitly creating extinct monster %s."), mons[mndx].pmnames[NEUTRAL]);
                     iflags.last_msg = save_plnmsg;
                 }
@@ -1320,12 +1316,12 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
          * positions, causing mass drowning on the medusa level,
          * for instance.)
          */
-        tryct = 0;   /* maybe there are no good choices */
+        let tryct = 0;   /* maybe there are no good choices */
         do {
             if (!(ptr = await rndmonst())) {
                 do {
                     if (debugcore($c.lit("makemon.c"), TRUE)) {
-                        save_plnmsg$2 = iflags.last_msg;
+                        const save_plnmsg$2 = iflags.last_msg;
                         await pline($c.lit("Warning: no monster."));
                         iflags.last_msg = save_plnmsg$2;
                     }
@@ -1339,7 +1335,7 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
         mndx = ptr.pmidx;
     }
     await propagate(mndx, countbirth, FALSE);
-    mtmp = await newmonst();
+    let mtmp = await newmonst();
     mtmp.$copyFrom(cg.zeromonst);   /* clear all entries in structure */
     if ($c.and64(mmflags, MM.EGD)) {
         await newegd(mtmp);
@@ -1357,7 +1353,7 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
         await newedog(mtmp);
     }
     if ($c.and64(mmflags, MM.ASLEEP)) {
-        mtmp.msleeping = (1) & 1;
+        mtmp.msleeping = 1;
     }
     mtmp.nmon = svl.level.monlist;
     svl.level.monlist = mtmp;
@@ -1369,12 +1365,12 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
     mtmp.mnum = $c.i16(mndx);
     /* set up level and hit points */
     await newmonhp(mtmp, mndx);
-    femaleok = $c.i8(!is_male(ptr) && !is_neuter(ptr) ? 1 : 0);
-    maleok = $c.i8(!is_female(ptr) && !is_neuter(ptr) ? 1 : 0);
+    const femaleok = !is_male(ptr) && !is_neuter(ptr) ? 1 : 0;
+    const maleok = !is_female(ptr) && !is_neuter(ptr) ? 1 : 0;
     if (is_female(ptr) || $c.and64(mmflags, MM.FEMALE) !== 0 && femaleok) {
-        mtmp.female = (1) & 1;
+        mtmp.female = 1;
     } else if (is_male(ptr) || $c.and64(mmflags, MM.MALE) !== 0 && maleok) {
-        mtmp.female = (0) & 1;
+        mtmp.female = 0;
     } else if (ptr.msound === MS.LEADER && await quest_info(MS.LEADER) === mndx) {
         /* leader and nemesis gender is usually hardcoded in mons[],
            but for ones which can be random, it has already been chosen
@@ -1438,12 +1434,12 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
             }
             break;
         case S.LEPRECHAUN:
-            mtmp.msleeping = (1) & 1;
+            mtmp.msleeping = 1;
             break;
         case S.JABBERWOCK:
         case S.NYMPH:
             if (rn2(5) && !u.uhave.amulet) {
-                mtmp.msleeping = (1) & 1;
+                mtmp.msleeping = 1;
             }
             break;
         case S.ORC:
@@ -1465,7 +1461,7 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
     if ((ct = emits_light(mtmp.data)) > 0) {
         await new_light_source(mtmp.mx, mtmp.my, ct, LS_MONSTER, monst_to_any(mtmp));
     }
-    mitem = STRANGE_OBJECT;   /* extra inventory item for this monster */
+    let mitem = STRANGE_OBJECT;   /* extra inventory item for this monster */
     if (mndx === PM.VLAD_THE_IMPALER) {
         mitem = CANDELABRUM_OF_INVOCATION;
     }
@@ -1511,8 +1507,8 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
         }
     }
     if (is_dprince(ptr) && ptr.msound === MS.BRIBE) {
-        $t7 = ($t6 = mtmp.perminvis = (1) & 1, mtmp.minvis = ($t6) & 1), mtmp.mpeaceful = ($t7) & 1;
-        mtmp.mavenge = (0) & 1;
+        $t7 = ($t6 = mtmp.perminvis = 1, mtmp.minvis = ($t6) & 1), mtmp.mpeaceful = ($t7) & 1;
+        mtmp.mavenge = 0;
         if (u_wield_art(ART.EXCALIBUR) || u_wield_art(ART.DEMONBANE)) {
             $t8 = (mtmp.mtame = FALSE) >>> 0, mtmp.mpeaceful = ($t8) & 1;
         }
@@ -1532,10 +1528,10 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
        (when they're specified, caller intends to handle this itself) */
     if (mndx === PM.ALIGNED_CLERIC || mndx === PM.HIGH_CLERIC ? !$c.and64(mmflags, MM.EPRI | MM.EMIN) : mndx === PM.ANGEL && !$c.and64(mmflags, MM.EMIN) && !rn2(3)) {
         await newemin(mtmp);
-        eminp = mtmp.mextra.emin;
-        mtmp.isminion = (1) & 1;   /* make priest be a roamer */
+        const eminp = mtmp.mextra.emin;
+        mtmp.isminion = 1;   /* make priest be a roamer */
         $t10 = $c.i8(rn2(3) - 1 | 0), eminp.min_align = $t10;   /* no A_NONE */
-        $t11 = $c.i8($c.and64(mmflags, MM.ANGRY) ? 1 : !rn2(3) ? 1 : 0), eminp.renegade = $t11;
+        $t11 = $c.and64(mmflags, MM.ANGRY) ? 1 : !rn2(3) ? 1 : 0, eminp.renegade = $t11;
         mtmp.mpeaceful = ((eminp.min_align === u.ualign.type ? !eminp.renegade ? 1 : 0 : eminp.renegade) >>> 0) & 1;
     }
     set_malign(mtmp);   /* having finished peaceful changes */
@@ -1585,9 +1581,9 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
     if (!gi.in_mklev) {
         await newsym(mtmp.mx, mtmp.my);   /* make sure the mon shows up */
         if (!$c.and64(mmflags, MM.NOMSG)) {
-            what = null;
+            let what = null;
             /* MM_NOEXCLAM is used for #wizgenesis (^G) */
-            exclaim = $c.i8(!$c.and64(mmflags, MM_NOEXCLAM) ? 1 : 0);
+            let exclaim = !$c.and64(mmflags, MM_NOEXCLAM) ? 1 : 0;
             if (canseemon(mtmp) && (M_AP_TYPE(mtmp) === M_AP.NOTHING || M_AP_TYPE(mtmp) === M_AP.MONSTER) || sensemon(mtmp)) {
                 what = await Amonnam(mtmp);
                 if (M_AP_TYPE(mtmp) === M_AP.MONSTER) {
@@ -1619,9 +1615,8 @@ export async function makemon(ptr, x, y, mmflags) {   // makemon.c:1147
  * @returns {Promise<$T.monst | null>} struct monst *
  */
 export async function unmakemon(mon, mmflags) {   // makemon.c:1514
-    let countbirth = 0, mndx = 0;
-    countbirth = $c.i8($c.and64(mmflags, MM.NOCOUNTBIRTH) === 0 ? 1 : 0);
-    mndx = mon.data.pmidx;
+    const countbirth = $c.and64(mmflags, MM.NOCOUNTBIRTH) === 0 ? 1 : 0;
+    const mndx = mon.data.pmidx;
     /* if count has reached the limit of 255, we don't know whether
        that just happened when creating this monster or the threshold
        had already been reached and further increments were suppressed;
@@ -1661,10 +1656,10 @@ export function mbirth_limit(mndx) {   // makemon.c:1542
  * @returns {Promise<number>} boolean
  */
 export async function create_critters(cnt, mptr, neverask) {   // makemon.c:1556
-    let c = new $T.nhcoord(), x = 0, y = 0, mon = null, known = 0, ask = 0, $t1;
+    let c = new $T.nhcoord(), x = 0, y = 0, mon = null, $t1;
     /* usually null; used for confused reading */
-    known = FALSE;
-    ask = $c.i8(wizard() && !neverask ? 1 : 0);
+    let known = FALSE;
+    let ask = wizard() && !neverask ? 1 : 0;
     while ($t1 = cnt, cnt = $t1 - 1 | 0, $t1) {
         if (ask) {
             if (await create_particular()) {
@@ -1677,7 +1672,7 @@ export async function create_critters(cnt, mptr, neverask) {   // makemon.c:1556
         x = u.ux, y = u.uy;
         /* if in water, try to encourage an aquatic monster
            by finding and then specifying another wet location */
-        if (!mptr && u.uinwater | 0 && await enexto(c, x, y, $c.relem(mons, PM.GIANT_EEL))) {
+        if (!mptr && u.uinwater && await enexto(c, x, y, mons[PM.GIANT_EEL])) {
             x = c.x, y = c.y;
         }
         if ((mon = await makemon(mptr, x, y, NO.MM_FLAGS)) === null) {
@@ -1701,9 +1696,9 @@ function uncommon(mndx) {   // makemon.c:1593
         return TRUE;
     }
     if (Inhell()) {
-        return $c.i8(mons[mndx].maligntyp > A.NEUTRAL ? 1 : 0);
+        return mons[mndx].maligntyp > A.NEUTRAL ? 1 : 0;
     } else {
-        return $c.i8((mons[mndx].geno & G_HELL) !== 0 ? 1 : 0);
+        return (mons[mndx].geno & G_HELL) !== 0 ? 1 : 0;
     }
 }
 /*
@@ -1722,20 +1717,20 @@ function align_shift(ptr) {   // makemon.c:1611
         align_shift$lev = Is_special(u.uz);
         align_shift$oldmoves = svm.moves;
     }
-    switch (align_shift$lev ? align_shift$lev.flags.align | 0 : svd.dungeons[u.uz.dnum].flags.align | 0) {
+    switch (align_shift$lev ? align_shift$lev.flags.align : svd.dungeons[u.uz.dnum].flags.align) {
         default:
         case AM.NONE:
             /* just in case */
             alshift = 0;
             break;
         case AM.LAWFUL:
-            alshift = $c.div32(ptr.maligntyp + 20 | 0, 2 * ALIGNWEIGHT);
+            alshift = $c.div32(ptr.maligntyp + 20, 2 * ALIGNWEIGHT);
             break;
         case AM.NEUTRAL:
             alshift = $c.div32(20 - $c.abs(ptr.maligntyp) | 0, ALIGNWEIGHT);
             break;
         case AM.CHAOTIC:
-            alshift = $c.div32(-(ptr.maligntyp - 20 | 0) | 0, 2 * ALIGNWEIGHT);
+            alshift = $c.div32(-(ptr.maligntyp - 20) | 0, 2 * ALIGNWEIGHT);
             break;
     }
     return alshift;
@@ -1765,18 +1760,18 @@ export async function rndmonst() {   // makemon.c:1652
  * @returns {Promise<$T.permonst | null>} struct permonst *
  */
 export async function rndmonst_adj(minadj, maxadj) {   // makemon.c:1659
-    let ptr = null, mndx = 0, weight = 0, totalweight = 0, selected_mndx = 0, zlevel = 0, minmlev = 0, maxmlev = 0, elemlevel = 0, upper = 0, save_plnmsg = 0;
+    let ptr = null, mndx = 0;
     if (u.uz.dnum === svd.dungeon_topology.d_quest_dnum && rn2(7) && (ptr = await qt_montype()) !== null) {
         return ptr;
     }
-    zlevel = await level_difficulty();
-    minmlev = monmin_difficulty(zlevel) + minadj | 0;
-    maxmlev = monmax_difficulty(zlevel) + maxadj | 0;
-    upper = $c.i8((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 1 : 0);   /* prefer uppercase only on rogue level */
-    elemlevel = $c.i8(In_endgame(u.uz) && !((svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level)) ? 1 : 0);   /* elmntl plane */
+    const zlevel = await level_difficulty();
+    const minmlev = monmin_difficulty(zlevel) + minadj | 0;
+    const maxmlev = monmax_difficulty(zlevel) + maxadj | 0;
+    const upper = (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? 1 : 0;   /* prefer uppercase only on rogue level */
+    const elemlevel = In_endgame(u.uz) && !((svd.dungeon_topology.d_astral_level.dlevel || svd.dungeon_topology.d_astral_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_astral_level)) ? 1 : 0;   /* elmntl plane */
     /* amount processed so far */
-    totalweight = 0;
-    selected_mndx = NON_PM;
+    let totalweight = 0;
+    let selected_mndx = NON_PM;
     for (mndx = LOW_PM; mndx < SPECIAL_PM; mndx = mndx + 1 | 0) {
         ptr = $c.relem(mons, mndx);
         if (montooweak(mndx, minmlev) || montoostrong(mndx, maxmlev)) {
@@ -1807,7 +1802,7 @@ export async function rndmonst_adj(minadj, maxadj) {   // makemon.c:1659
          * earlier are exactly canceled out by having more monsters to
          * potentially steal its spot.
          */
-        weight = (ptr.geno & G_FREQ) + align_shift(ptr) | 0;
+        let weight = (ptr.geno & G_FREQ) + align_shift(ptr) | 0;
         weight = weight + temperature_shift(ptr) | 0;
         if (weight < 0 || weight > 127) {
             await impossible($c.lit("bad weight in rndmonst for mndx %d"), mndx);
@@ -1831,7 +1826,7 @@ export async function rndmonst_adj(minadj, maxadj) {   // makemon.c:1659
         if (selected_mndx !== NON_PM) {
             do {
                 if (debugcore($c.lit("makemon.c"), TRUE)) {
-                    save_plnmsg = iflags.last_msg;
+                    const save_plnmsg = iflags.last_msg;
                     await pline($c.lit("rndmonst returning Null [uncommon 'mndx'=#%d]"), selected_mndx);
                     iflags.last_msg = save_plnmsg;
                 }
@@ -1849,8 +1844,7 @@ export async function rndmonst_adj(minadj, maxadj) {   // makemon.c:1659
  * @returns {number} boolean
  */
 function mk_gen_ok(mndx, mvflagsmask, genomask) {   // makemon.c:1736
-    let ptr = null;
-    ptr = $c.relem(mons, mndx);
+    const ptr = $c.relem(mons, mndx);
     if ((svm.mvitals[mndx].mvflags & mvflagsmask) >>> 0) {
         return FALSE;
     }
@@ -1861,7 +1855,7 @@ function mk_gen_ok(mndx, mvflagsmask, genomask) {   // makemon.c:1736
         return FALSE;
     }
     /* special levels might ask for random demon type; reject this one */
-    if ($c.peq(ptr, $c.relem(mons, PM.MAIL_DAEMON))) {
+    if (ptr === mons[PM.MAIL_DAEMON]) {
         return FALSE;
     }
     return TRUE;
@@ -1872,15 +1866,14 @@ function mk_gen_ok(mndx, mvflagsmask, genomask) {   // makemon.c:1736
  * @returns {number} int
  */
 function cmp_init_mongen_order(p1, p2) {   // makemon.c:1760
-    let i1 = 0, i2 = 0, offset1 = 0, offset2 = 0, difficulty1 = 0, difficulty2 = 0;
-    i1 = $c.asArr(p1, Int32Array).get(0);
-    i2 = $c.asArr(p2, Int32Array).get(0);
+    const i1 = $c.asArr(p1, Int32Array).get(0);
+    const i2 = $c.asArr(p2, Int32Array).get(0);
     /* This will cause these to be moved last in the mlet sort order */
-    offset1 = 0;
-    offset2 = 0;
+    const offset1 = 0;
+    const offset2 = 0;
     /* incorporate the mlet into the sort values for comparison */
-    difficulty1 = mons[i1].difficulty + offset1 | 0 | mons[i1].mlet << 8;
-    difficulty2 = mons[i2].difficulty + offset2 | 0 | mons[i2].mlet << 8;
+    const difficulty1 = mons[i1].difficulty + offset1 | 0 | mons[i1].mlet << 8;
+    const difficulty2 = mons[i2].difficulty + offset2 | 0 | mons[i2].mlet << 8;
     return difficulty1 - difficulty2 | 0;
 }
 /* check that monsters are in correct difficulty order for mkclass() */
@@ -1889,16 +1882,16 @@ function cmp_init_mongen_order(p1, p2) {   // makemon.c:1760
  * @returns {Promise<void>}
  */
 async function init_mongen_order() {   // makemon.c:1807
-    let i = 0, mlet = 0;
+    let i = 0;
     if (mongen_order_init) {
         return;
     }
     mongen_order_init = TRUE;
     for (i = LOW_PM; i < NUMMONS; i = i + 1 | 0) {
         mongen_order[i] = i;
-        mlet = mons[i].mlet;
-        if ($c.i8(mons[i].geno & G_FREQ) > mclass_maxf[mlet]) {
-            mclass_maxf[mlet] = $c.i8(mons[i].geno & G_FREQ);
+        const mlet = mons[i].mlet;
+        if ((mons[i].geno & G_FREQ) > mclass_maxf[mlet]) {
+            mclass_maxf[mlet] = mons[i].geno & G_FREQ;
         }
     }
     $c.nh_deterministic_qsort(new $c.Ptr(mongen_order, 0), SPECIAL_PM, 4, cmp_init_mongen_order);
@@ -1908,15 +1901,15 @@ async function init_mongen_order() {   // makemon.c:1807
  * @returns {Promise<void>}
  */
 export async function dump_mongen() {   // makemon.c:1835
-    let mlet = 0, prev_mlet = 0, i = 0, nmwidth = 0, special = 0, nmbuf = new Int8Array(80);
-    prev_mlet = 0;
-    nmwidth = 27;
+    let i = 0, nmbuf = new Int8Array(80);
+    let prev_mlet = 0;
+    const nmwidth = 27;
     monst_globals_init();
     await init_mongen_order();
     await raw_printf($c.lit("int mongen_order[] = {"));
     for (i = LOW_PM; i < SPECIAL_PM; i = i + 1 | 0) {
-        special = mons[mongen_order[i]].geno & (G_NOGEN | G_UNIQ);
-        mlet = def_monsyms[mons[mongen_order[i]].mlet].sym;
+        const special = mons[mongen_order[i]].geno & (G_NOGEN | G_UNIQ);
+        const mlet = def_monsyms[mons[mongen_order[i]].mlet].sym;
         if (prev_mlet && prev_mlet !== mlet) {
             await raw_print()($c.lit(""));
         }
@@ -1948,20 +1941,20 @@ export async function mkclass(class_, spc) {   // makemon.c:1873
  * @returns {Promise<$T.permonst | null>} struct permonst *
  */
 export async function mkclass_aligned(class_, spc, atyp) {   // makemon.c:1880
-    let first = 0, last = 0, num = 0, k = 0, nums = new Int32Array(331), maxmlev = 0, gehennom = 0, mv_mask = 0, gn_mask = 0, zero_freq_for_entire_class = 0, $t1;
+    let first = 0, last = 0, k = 0, nums = new Int32Array(331), $t1;
     /* special mons[].geno handling */
-    num = 0;
+    let num = 0;
     /* +1: insurance for final return value */
-    gehennom = Inhell() !== 0 ? 1 : 0;
+    const gehennom = Inhell() !== 0 ? 1 : 0;
     $c.memset(new $c.Ptr(nums, 0), 0, 1324);
-    maxmlev = await level_difficulty() >> 1;
+    const maxmlev = await level_difficulty() >> 1;
     if (class_ < 1 || class_ >= MAXMCLASSES) {
         await impossible($c.lit("mkclass called with bad class!"));
         return null;
     }
     await init_mongen_order();
     /* the following must come after init_mongen_order() */
-    zero_freq_for_entire_class = $c.i8(mclass_maxf[class_] === 0 ? 1 : 0);
+    const zero_freq_for_entire_class = mclass_maxf[class_] === 0 ? 1 : 0;
     /*  Assumption #1:  monsters of a given class are contiguous in the
      *                  mons[] array.  Player monsters and quest denizens
      *                  are an exception; mkclass() won't pick them.
@@ -1977,7 +1970,7 @@ export async function mkclass_aligned(class_, spc, atyp) {   // makemon.c:1880
         await impossible($c.lit("mkclass found no class %d monsters"), class_);
         return null;
     }
-    mv_mask = G_GONE;   /* G_GENOD | G_EXTINCT */
+    let mv_mask = G_GONE;   /* G_GENOD | G_EXTINCT */
     if ((spc & G_IGNORE) !== 0) {
         mv_mask = 0;   /* mv_mask &= ~G_GONE; */
         /* G_IGNORE is not a mons[].geno mask so get rid of it now */
@@ -1995,9 +1988,9 @@ export async function mkclass_aligned(class_, spc, atyp) {   // makemon.c:1880
            the majority of major demons aren't constrained to Gehennom;
            arch- and master liches are always so constrained (for creation;
            lesser liches might grow up into them elsewhere) */
-        gn_mask = G_NOGEN | G_UNIQ;
+        let gn_mask = G_NOGEN | G_UNIQ;
         if (rn2(9) || class_ === S.LICH) {
-            gn_mask = (gn_mask | (gehennom ? G_NOHELL : G_HELL) >>> 0) >>> 0;
+            gn_mask = (gn_mask | (gehennom ? G_NOHELL : G_HELL)) >>> 0;
         }
         gn_mask = (gn_mask & ~spc >>> 0) >>> 0;
         if (mk_gen_ok(mongen_order[last], mv_mask, gn_mask)) {
@@ -2045,8 +2038,8 @@ export async function mkclass_aligned(class_, spc, atyp) {   // makemon.c:1880
  * @returns {number} int
  */
 export function mkclass_poly(class_) {   // makemon.c:1983
-    let first = 0, last = 0, num = 0, gmask = 0;
-    num = 0;
+    let first = 0, last = 0;
+    let num = 0;
     for (first = LOW_PM; first < SPECIAL_PM; first = first + 1 | 0) {
         if (mons[first].mlet === class_) {
             break;
@@ -2055,11 +2048,11 @@ export function mkclass_poly(class_) {   // makemon.c:1983
     if (first === SPECIAL_PM) {
         return NON_PM;
     }
-    gmask = G_NOGEN | G_UNIQ;
+    let gmask = G_NOGEN | G_UNIQ;
     /* mkclass() does this on a per monster type basis, but doing that here
        would make the two loops inconsistent with each other for non L */
     if (rn2(9) || class_ === S.LICH) {
-        gmask = (gmask | (Inhell() ? G_NOHELL : G_HELL) >>> 0) >>> 0;
+        gmask = (gmask | (Inhell() ? G_NOHELL : G_HELL)) >>> 0;
     }
     for (last = first; last < SPECIAL_PM && mons[last].mlet === class_; last = last + 1 | 0) {
         if (mk_gen_ok(last, G_GENOD, gmask)) {
@@ -2083,12 +2076,12 @@ export function mkclass_poly(class_) {   // makemon.c:1983
  * @returns {Promise<number>} int
  */
 export async function adj_lev(ptr) {   // makemon.c:2016
-    let tmp = 0, tmp2 = 0;
-    if ($c.peq(ptr, $c.relem(mons, PM.WIZARD_OF_YENDOR))) {
+    let tmp = 0;
+    if (ptr === mons[PM.WIZARD_OF_YENDOR]) {
         /* does not depend on other strengths, but does get stronger
          * every time he is killed
          */
-        tmp = ptr.mlevel + svm.mvitals[PM.WIZARD_OF_YENDOR].died | 0;
+        tmp = ptr.mlevel + svm.mvitals[PM.WIZARD_OF_YENDOR].died;
         if (tmp > 49) {
             tmp = 49;
         }
@@ -2097,7 +2090,7 @@ export async function adj_lev(ptr) {   // makemon.c:2016
     if ((tmp = ptr.mlevel) > 49) {
         return 50;   /* "special" demons/devils */
     }
-    tmp2 = await level_difficulty() - tmp | 0;
+    let tmp2 = await level_difficulty() - tmp | 0;
     if (tmp2 < 0) {
         tmp = tmp - 1 | 0;   /* if mlevel > u.uz decrement tmp */
     } else {
@@ -2121,8 +2114,8 @@ export async function adj_lev(ptr) {   // makemon.c:2016
  * @returns {Promise<$T.permonst | null>} struct permonst *
  */
 export async function grow_up(mtmp, victim) {   // makemon.c:2051
-    let oldtype = 0, newtype = 0, max_increase = 0, cur_increase = 0, lev_limit = 0, hp_threshold = 0, fem = 0, ptr = null, buf = new Int8Array(256);
-    ptr = mtmp.data;
+    let max_increase = 0, cur_increase = 0, lev_limit = 0, hp_threshold = 0, buf = new Int8Array(256);
+    let ptr = mtmp.data;
     /* monster died after killing enemy but before calling this function */
     /* currently possible if killing a gas spore */
     if (DEADMONSTER(mtmp)) {
@@ -2131,8 +2124,8 @@ export async function grow_up(mtmp, victim) {   // makemon.c:2051
     /* note:  none of the monsters with special hit point calculations
        have both little and big forms (killer bee can't grow into queen
        bee by just killing things, so isn't in the little_to_big list) */
-    oldtype = ptr.pmidx;
-    newtype = oldtype === PM.KILLER_BEE && !victim ? PM.QUEEN_BEE : little_to_big(oldtype);
+    const oldtype = ptr.pmidx;
+    const newtype = oldtype === PM.KILLER_BEE && !victim ? PM.QUEEN_BEE : little_to_big(oldtype);
     /* gender-neutral PM_CLERIC now */
     /* growth limits differ depending on method of advancement */
     if (victim) {
@@ -2143,7 +2136,7 @@ export async function grow_up(mtmp, victim) {   // makemon.c:2051
          * Possible bug: if somehow the hit points are already higher
          * than that, monster will gain a level without any increase in HP.
          */
-        hp_threshold = Math.imul(mtmp.m_lev, 8);   /* normal limit */
+        hp_threshold = mtmp.m_lev * 8;   /* normal limit */
         if (!mtmp.m_lev) {
             hp_threshold = 4;
         } else if (is_golem(ptr)) {   /* strange creatures */
@@ -2158,7 +2151,7 @@ export async function grow_up(mtmp, victim) {   // makemon.c:2051
         }
         /* number of hit points to gain; unlike for the player, we put
            the limit at the bottom of the next level rather than the top */
-        max_increase = rnd(victim.m_lev + 1 | 0);
+        max_increase = rnd(victim.m_lev + 1);
         if ((mtmp.mhpmax + max_increase | 0) > (hp_threshold + 1 | 0)) {
             max_increase = ((hp_threshold + 1 | 0) - mtmp.mhpmax | 0) > 0 ? (hp_threshold + 1 | 0) - mtmp.mhpmax | 0 : 0;
         }
@@ -2186,7 +2179,7 @@ export async function grow_up(mtmp, victim) {   // makemon.c:2051
     if ((mtmp.m_lev = $c.u8(mtmp.m_lev + 1)) >= mons[newtype].mlevel && newtype !== oldtype) {
         ptr = $c.relem(mons, newtype);
         /* new form might force gender change */
-        fem = (is_male(ptr) ? 0 : is_female(ptr) ? 1 : mtmp.female | 0) >>> 0;
+        const fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : mtmp.female;
         if (svm.mvitals[newtype].mvflags & G_GENOD) {
             /* allow G_EXTINCT */
             if (canspotmon(mtmp)) {
@@ -2199,7 +2192,7 @@ export async function grow_up(mtmp, victim) {   // makemon.c:2051
             /* 3.6.1:
              * Temporary (?) hack to fix growing into opposite gender.
              */
-            $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s%s"), mtmp.female | 0 && !fem ? $c.lit("male ") : fem && !mtmp.female ? $c.lit("female ") : $c.lit(""), pmname(ptr, fem | 0));
+            $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%s%s"), mtmp.female && !fem ? $c.lit("male ") : fem && !mtmp.female ? $c.lit("female ") : $c.lit(""), pmname(ptr, fem | 0));
             /* deal with female gnome becoming a gnome lord */
             /* or a male gnome becoming a gnome lady
                (can't happen with 3.6.0 mons[], but perhaps
@@ -2240,11 +2233,11 @@ export async function grow_up(mtmp, victim) {   // makemon.c:2051
  * @returns {Promise<$T.obj | null>} struct obj *
  */
 export async function mongets(mtmp, otyp) {   // makemon.c:2181
-    let otmp = null, $t1, $t2, $t3, $t4;
+    let $t1, $t2, $t3, $t4;
     if (!otyp) {
         return null;
     }
-    otmp = await mksobj(otyp, TRUE, FALSE);
+    let otmp = await mksobj(otyp, TRUE, FALSE);
     if (otmp) {
         if (mtmp.data.mlet === S.DEMON) {
             /* demons never get blessed objects */
@@ -2257,8 +2250,8 @@ export async function mongets(mtmp, otyp) {   // makemon.c:2181
             if (otmp.spe < 0) {
                 otmp.spe = 0;
             }
-            otmp.oerodeproof = (1) & 1;
-            $t1 = otmp.oeroded2 = (0) & 3, otmp.oeroded = ($t1) & 3;
+            otmp.oerodeproof = 1;
+            $t1 = otmp.oeroded2 = 0, otmp.oeroded = ($t1) & 3;
         } else if (is_mplayer(mtmp.data) && is_sword(otmp)) {
             $t2 = $c.i8(3 + rn2(4) | 0), otmp.spe = $t2;
         }
@@ -2329,9 +2322,8 @@ export function golemhp(type) {   // makemon.c:2233
  * @returns {number} boolean
  */
 export function peace_minded(ptr) {   // makemon.c:2268
-    let mal = 0, ual = 0;
-    mal = ptr.maligntyp;
-    ual = u.ualign.type;
+    const mal = ptr.maligntyp;
+    const ual = u.ualign.type;
     if (always_peaceful(ptr)) {
         return TRUE;
     }
@@ -2344,8 +2336,8 @@ export function peace_minded(ptr) {   // makemon.c:2268
     if (ptr.msound === MS.NEMESIS) {
         return FALSE;
     }
-    if ($c.peq(ptr, $c.relem(mons, PM.ERINYS))) {
-        return $c.i8(!u.ualign.abuse ? 1 : 0);
+    if (ptr === mons[PM.ERINYS]) {
+        return !u.ualign.abuse ? 1 : 0;
     }
     if (race_peaceful(ptr)) {
         return TRUE;
@@ -2359,18 +2351,18 @@ export function peace_minded(ptr) {   // makemon.c:2268
         return FALSE;
     }
     /* Negative monster hostile to player with Amulet. */
-    if (mal < A.NEUTRAL && u.uhave.amulet | 0) {
+    if (mal < A.NEUTRAL && u.uhave.amulet) {
         return FALSE;
     }
     /* minions are hostile to players that have strayed at all */
     if (is_minion(ptr)) {
-        return $c.i8(u.ualign.record >= 0 ? 1 : 0);
+        return u.ualign.record >= 0 ? 1 : 0;
     }
     /* Last case:  a chance of a co-aligned monster being
      * hostile.  This chance is greater if the player has strayed
      * (u.ualign.record negative) or the monster is not strongly aligned.
      */
-    return $c.i8(!!rn2(16 + (u.ualign.record < -15 ? -15 : u.ualign.record) | 0) && !!rn2(2 + $c.abs(mal) | 0) ? 1 : 0);
+    return !!rn2(16 + (u.ualign.record < -15 ? -15 : u.ualign.record) | 0) && !!rn2(2 + $c.abs(mal) | 0) ? 1 : 0;
 }
 /* Set malign to have the proper effect on player alignment if monster is
  * killed.  Negative numbers mean it's bad to kill this monster; positive
@@ -2386,13 +2378,13 @@ export function peace_minded(ptr) {   // makemon.c:2268
  * @param {$T.monst | null} mtmp struct monst *
  */
 export function set_malign(mtmp) {   // makemon.c:2321
-    let mal = 0, coaligned = 0, absmal = 0, absmal$2 = 0, absmal$3 = 0, $t1;
-    mal = mtmp.data.maligntyp;
-    if (mtmp.ispriest | 0 || mtmp.isminion | 0) {
+    let $t1;
+    let mal = mtmp.data.maligntyp;
+    if (mtmp.ispriest || mtmp.isminion) {
         /* some monsters have individual alignments; check them */
-        if (mtmp.ispriest | 0 && EPRI(mtmp)) {
+        if (mtmp.ispriest && EPRI(mtmp)) {
             mal = mtmp.mextra.epri.shralign;
-        } else if (mtmp.isminion | 0 && EMIN(mtmp)) {
+        } else if (mtmp.isminion && EMIN(mtmp)) {
             mal = mtmp.mextra.emin.min_align;
         }
         /* unless alignment is none, set mal to -5,0,5 */
@@ -2401,7 +2393,7 @@ export function set_malign(mtmp) {   // makemon.c:2321
             mal = $c.i8(Math.imul(mal, 5));
         }
     }
-    coaligned = $c.i8(sgn(mal) === sgn(u.ualign.type) ? 1 : 0);
+    const coaligned = sgn(mal) === sgn(u.ualign.type) ? 1 : 0;
     if (mtmp.data.msound === MS.LEADER) {
         mtmp.malign = -20;
     } else if (mal === A.NONE) {
@@ -2411,21 +2403,21 @@ export function set_malign(mtmp) {   // makemon.c:2321
             mtmp.malign = 20;   /* really hostile */
         }
     } else if (always_peaceful(mtmp.data)) {
-        absmal = $c.abs(mal);
+        const absmal = $c.abs(mal);
         if (mtmp.mpeaceful) {
             mtmp.malign = $c.i8(Math.imul(-3, 5 > absmal ? 5 : absmal));
         } else {
             mtmp.malign = $c.i8(Math.imul(3, 5 > absmal ? 5 : absmal));   /* renegade */
         }
     } else if (always_hostile(mtmp.data)) {
-        absmal$2 = $c.abs(mal);
+        const absmal$2 = $c.abs(mal);
         if (coaligned) {
             mtmp.malign = 0;
         } else {
             mtmp.malign = $c.i8(5 > absmal$2 ? 5 : absmal$2);
         }
     } else if (coaligned) {
-        absmal$3 = $c.abs(mal);
+        const absmal$3 = $c.abs(mal);
         if (mtmp.mpeaceful) {
             mtmp.malign = $c.i8(Math.imul(-3, 3 > absmal$3 ? 3 : absmal$3));
         } else {
@@ -2474,7 +2466,7 @@ export async function set_mimic_sym(mtmp) {   // makemon.c:2393
             my = mtmp.my;
             typ = svl.level.locations[mx][my].typ;
             /* only valid for INSIDE of room */
-            roomno = (svl.level.locations[mx][my].roomno | 0) - ROOMOFFSET | 0;
+            roomno = svl.level.locations[mx][my].roomno - ROOMOFFSET;
             if (roomno >= 0) {
                 rt = svr.rooms[roomno].rtype;
             } else {
@@ -2494,11 +2486,11 @@ export async function set_mimic_sym(mtmp) {   // makemon.c:2393
                  *  (yes, mimics can end up on this level by various means).
                  */
                 if (mx !== 0 && (svl.level.locations[mx - 1 | 0][my].typ === HWALL || svl.level.locations[mx - 1 | 0][my].typ === TLCORNER || svl.level.locations[mx - 1 | 0][my].typ === TRWALL || svl.level.locations[mx - 1 | 0][my].typ === BLCORNER || svl.level.locations[mx - 1 | 0][my].typ === TDWALL || svl.level.locations[mx - 1 | 0][my].typ === CROSSWALL || svl.level.locations[mx - 1 | 0][my].typ === TUWALL)) {
-                    appear = ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.hwall : S.hcdoor) >>> 0;
+                    appear = (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.hwall : S.hcdoor;
                 } else {
-                    appear = ((svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.vwall : S.vcdoor) >>> 0;
+                    appear = (svd.dungeon_topology.d_rogue_level.dlevel || svd.dungeon_topology.d_rogue_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_rogue_level) ? S.vwall : S.vcdoor;
                 }
-            } else if ($goto !== "assign_sym" && (svl.level.flags.is_maze_lev | 0 && !(In_mines(u.uz) && in_town(u.ux, u.uy)) && !In_sokoban(u.uz) && rn2(2))) {
+            } else if ($goto !== "assign_sym" && (svl.level.flags.is_maze_lev && !(In_mines(u.uz) && in_town(u.ux, u.uy)) && !In_sokoban(u.uz) && rn2(2))) {
                 ap_type = M_AP.OBJECT;
                 appear = STATUE;
             } else if ($goto !== "assign_sym" && (roomno < 0 && !t_at($c.i16(mx), $c.i16(my)))) {
@@ -2536,7 +2528,7 @@ export async function set_mimic_sym(mtmp) {   // makemon.c:2393
                        VEGETARIAN_CLASS which is MAXOCLASSES+1; we don't bother
                        trying to select among all possible vegetarian food items */
                     ap_type = M_AP.OBJECT;
-                    appear = (rn2(2) ? LUMP_OF_ROYAL_JELLY : SLIME_MOLD) >>> 0;
+                    appear = rn2(2) ? LUMP_OF_ROYAL_JELLY : SLIME_MOLD;
                 } else {
                     if (s_sym === RANDOM_CLASS || s_sym >= MAXOCLASSES) {
                         s_sym = syms[rn2(15) + 2 | 0];
@@ -2595,7 +2587,7 @@ export async function set_mimic_sym(mtmp) {   // makemon.c:2393
             } else if (ap_type === M_AP.FURNITURE && appear === S.altar) {
                 algn = rn2(3) - 1 | 0;   /* -1 (A_Cha) or 0 (A_Neu) or +1 (A_Law) */
                 await newmcorpsenm(mtmp);
-                $t1 = (Inhell() && rn2(3) ? AM.NONE : Align2amask(algn)) | 0, mtmp.mextra.mcorpsenm = $t1;
+                $t1 = (Inhell() && rn2(3) ? AM.NONE : ((algn === A.NONE ? AM.NONE : algn === A.LAWFUL ? AM.LAWFUL : algn + 2 | 0) >>> 0)) | 0, mtmp.mextra.mcorpsenm = $t1;
             } else if (has_mcorpsenm(mtmp)) {
                 /* don't retain stale value from a previously mimicked shape */
                 mtmp.mextra.mcorpsenm = NON_PM;
@@ -2615,29 +2607,28 @@ export async function set_mimic_sym(mtmp) {   // makemon.c:2393
  * @returns {Promise<number>} int
  */
 export async function bagotricks(bag, tipping, seencount) {   // makemon.c:2554
-    let moncount = 0, mtmp = null, creatcnt = 0, seecount = 0;
     /* caller emptying entirely; affects shop handling */
     /* secondary output */
-    moncount = 0;
+    let moncount = 0;
     if (!bag || bag.otyp !== BAG_OF_TRICKS) {
         await impossible($c.lit("bad bag o' tricks"));
     } else if (bag.spe < 1) {
         /* if tipping known empty bag, give normal empty container message */
-        await pline($c.lit("%s"), tipping && bag.cknown | 0 ? $c.lit("It's empty.") : c_common_strings.c_nothing_happens);
+        await pline($c.lit("%s"), tipping && bag.cknown ? $c.lit("It's empty.") : c_common_strings.c_nothing_happens);
         /* now known to be empty if sufficiently discovered */
-        if (bag.dknown | 0 && objects[bag.otyp].oc_name_known | 0) {
-            bag.cknown = (1) & 1;
+        if (bag.dknown && objects[bag.otyp].oc_name_known) {
+            bag.cknown = 1;
             await update_inventory();   /* for perm_invent */
         }
     } else {
-        creatcnt = 1;
-        seecount = 0;
-        await consume_obj_charge(bag, $c.i8(!tipping ? 1 : 0));
+        let creatcnt = 1;
+        let seecount = 0;
+        await consume_obj_charge(bag, !tipping ? 1 : 0);
         if (!rn2(23)) {
             creatcnt = creatcnt + rnd(7) | 0;
         }
         do {
-            mtmp = await makemon(null, u.ux, u.uy, NO.MM_FLAGS);
+            const mtmp = await makemon(null, u.ux, u.uy, NO.MM_FLAGS);
             if (mtmp) {
                 moncount = moncount + 1 | 0;
                 if (canseemon(mtmp) && (M_AP_TYPE(mtmp) === M_AP.NOTHING || M_AP_TYPE(mtmp) === M_AP.MONSTER) || sensemon(mtmp)) {
@@ -2665,11 +2656,10 @@ export async function bagotricks(bag, tipping, seencount) {   // makemon.c:2554
  * @returns {Promise<void>}
  */
 export async function summon_furies(limit) {   // makemon.c:2605
-    let i = 0;
     /* number to create, or 0 to create until extinct */
-    i = 0;
+    let i = 0;
     while (mk_gen_ok(PM.ERINYS, G_GONE, 0) && (i < limit || !limit)) {
-        await makemon($c.relem(mons, PM.ERINYS), u.ux, u.uy, MM.ADJACENTOK | MM.NOWAIT);
+        await makemon(mons[PM.ERINYS], u.ux, u.uy, MM.ADJACENTOK | MM.NOWAIT);
         i = i + 1 | 0;
     }
 }

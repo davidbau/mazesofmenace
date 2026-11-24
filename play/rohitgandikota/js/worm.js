@@ -407,6 +407,20 @@ export function worm_nomove(worm) {
     }
 }
 
+// src/worm.c:528 save_worm(). Keep tail/head aliases within each level.
+export function save_worm(release = false) {
+    const saved = structuredClone(wstate());
+    if (release)
+        game.worms = { wheads: {}, wtails: {}, wgrowtime: {} };
+    return saved;
+}
+
+// src/worm.c:577 rest_worm(). Old JSON levels may have no worm records.
+export function rest_worm(saved) {
+    game.worms = saved ? structuredClone(saved)
+        : { wheads: {}, wtails: {}, wgrowtime: {} };
+}
+
 // src/worm.c place_wsegs()
 export function place_wsegs(worm, oldworm) {
     const w = wstate();

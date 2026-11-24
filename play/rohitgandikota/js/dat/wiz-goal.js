@@ -115,51 +115,51 @@ export async function wizgoal_level() {
     des.object();
     des.object();
     /* Random traps */
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     /* Random monsters. */
     des.monster('Dark One', 16, 11);
     /* the Lua tables carry a bare `random` (a nil global), so the entry
        contributes nothing — class plus peaceful is the whole spec */
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'B', peaceful: 0 });
-    des.monster({ class: 'i', peaceful: 0 });
-    des.monster({ class: 'i', peaceful: 0 });
-    des.monster({ class: 'i', peaceful: 0 });
-    des.monster({ class: 'i', peaceful: 0 });
-    des.monster({ class: 'i', peaceful: 0 });
-    des.monster({ class: 'i', peaceful: 0 });
-    des.monster({ class: 'i', peaceful: 0 });
-    des.monster('vampire bat');
-    des.monster('vampire bat');
-    des.monster('vampire bat');
-    des.monster('vampire bat');
-    des.monster('vampire bat');
-    des.monster('vampire bat');
-    des.monster('vampire bat');
-    des.monster('vampire bat');
-    des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'B', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster({ class: 'i', peaceful: 0 });
+    await des.monster('vampire bat');
+    await des.monster('vampire bat');
+    await des.monster('vampire bat');
+    await des.monster('vampire bat');
+    await des.monster('vampire bat');
+    await des.monster('vampire bat');
+    await des.monster('vampire bat');
+    await des.monster('vampire bat');
+    await des.monster({ class: 'i', peaceful: 0 });
     /* Captive Monsters in the dungeon */
-    des.monster({ id: 'rogue', x: 35, y: 6, peaceful: 1, name: 'Pug' });
-    des.monster({ id: 'owlbear', x: 47, y: 6, peaceful: 1, asleep: 1 });
-    des.monster({ id: 'wizard', x: 32, y: 11, peaceful: 1, asleep: 1,
+    await des.monster({ id: 'rogue', x: 35, y: 6, peaceful: 1, name: 'Pug' });
+    await des.monster({ id: 'owlbear', x: 47, y: 6, peaceful: 1, asleep: 1 });
+    await des.monster({ id: 'wizard', x: 32, y: 11, peaceful: 1, asleep: 1,
                   name: 'Newt' });
-    des.monster({ id: 'Grey-elf', x: 44, y: 11, peaceful: 1 });
-    des.monster({ id: 'hill giant', x: 47, y: 11, peaceful: 1, asleep: 1 });
-    des.monster({ id: 'gnomish wizard', x: 38, y: 6, peaceful: 1 });
-    des.monster({ id: 'prisoner', x: 35, y: 11, peaceful: 1 });
-    des.monster({ id: 'prisoner', x: 41, y: 11, peaceful: 1, asleep: 1 });
+    await des.monster({ id: 'Grey-elf', x: 44, y: 11, peaceful: 1 });
+    await des.monster({ id: 'hill giant', x: 47, y: 11, peaceful: 1, asleep: 1 });
+    await des.monster({ id: 'gnomish wizard', x: 38, y: 6, peaceful: 1 });
+    await des.monster({ id: 'prisoner', x: 35, y: 11, peaceful: 1 });
+    await des.monster({ id: 'prisoner', x: 41, y: 11, peaceful: 1, asleep: 1 });
 }

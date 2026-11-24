@@ -262,7 +262,6 @@ import { SHOP_HOLE_COST } from './const.js';
 import { DB_UNDER } from './const.js';
 import { DB_ICE } from './const.js';
 import { DB_FLOOR } from './const.js';
-import { MELT_ICE_AWAY } from './const.js';
 import { is_lava } from './mon.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { single_level_branch } from './dungeon.js';
@@ -270,7 +269,7 @@ import { reset_utrap } from './trap.js';
 import { maybe_finish_sokoban } from './trap.js';
 import { add_damage } from './shk.js';
 import { obj_ice_effects } from './mkobj.js';
-import { spot_stop_timers } from './timeout.js';
+import { spot_stop_timers, MELT_ICE_AWAY } from './timeout.js';
 import { set_levltyp } from './mkmaze.js';
 import { recalc_block_point } from './vision.js';
 import { begin_burn } from './timeout.js';
@@ -456,19 +455,23 @@ function mk_trap_statue(x, y) {
                               CORPSTAT_NONE);
     const mtmp = makemon(game.mons[statue.corpsenm], 0, 0,
                          MM_NOCOUNTBIRTH | MM_NOMSG);
-    if (!mtmp)
-        return;             /* should never happen */
+    return mtmp instanceof Promise ? mtmp.then(finishStatue) : finishStatue(mtmp);
 
-    /* the monster's whole pack moves into the statue */
-    while (mtmp.minvent && mtmp.minvent.length) {
-        const otmp = mtmp.minvent[0];
-        otmp.owornmask = 0;
-        obj_extract_self(otmp);
-        add_to_container(statue, otmp);
+    function finishStatue(mtmp) {
+        if (!mtmp)
+            return;             /* should never happen */
+
+        /* the monster's whole pack moves into the statue */
+        while (mtmp.minvent && mtmp.minvent.length) {
+            const otmp = mtmp.minvent[0];
+            otmp.owornmask = 0;
+            obj_extract_self(otmp);
+            add_to_container(statue, otmp);
+        }
+        statue.owt = weight(statue);
+
+        return mongone(mtmp);
     }
-    statue.owt = weight(statue);
-
-    mongone(mtmp);
 }
 
 // include/mondata.h:149 is_unicorn()
@@ -495,10 +498,8 @@ function choose_trapnote(ttmp) {
 export { bury_objs, unearth_objs } from './dig.js';
 
 // src/trap.c:490 maketrap()
-// NOTE: not async. C's maketrap() is an ordinary function and this one has no
-// awaits in it; the async marker was invented here and it forced every caller
-// up to lspo_region() to be async too, which is what blocked the themeroom
-// fills from calling des.trap at all.
+// Fresh level generation completes synchronously. Unearthing a live
+// unpaid object can defer completion until its billing message finishes.
 /* include/trap.h:115 unhideable_trap(); include/rm.h:320 CAN_OVERWRITE_TERRAIN();
    include/dungeon.h Sokoban */
 const unhideable_trap = (ttyp) => ((ttyp) === HOLE); /* visible traps */
@@ -557,9 +558,12 @@ export function maketrap(x, y, typ) {
     case SQKY_BOARD:
         ttmp.tnote = choose_trapnote(ttmp);
         break;
-    case STATUE_TRAP: /* create a "living" statue */
-        mk_trap_statue(x, y);
+    case STATUE_TRAP: { /* create a "living" statue */
+        const statue = mk_trap_statue(x, y);
+        if (statue instanceof Promise)
+            return statue.then(finishTrap);
         break;
+    }
     case ROLLING_BOULDER_TRAP: /* boulder will roll towards trigger */
         mkroll_launch(ttmp, x, y, ONAMES.BOULDER, 1);
         break;
@@ -614,7 +618,15 @@ export function maketrap(x, y, typ) {
             lev.looted = 0;
         }
 
-        unearth_objs(x, y);
+        {
+            const unearthed = unearth_objs(x, y);
+            if (unearthed) {
+                return unearthed.then(() => {
+                    recalc_block_point(x, y);
+                    return finishTrap();
+                });
+            }
+        }
         recalc_block_point(x, y);
         break;
     case TELEP_TRAP:
@@ -628,17 +640,21 @@ export function maketrap(x, y, typ) {
         break;
     }
 
-    if (!oldplace) {
-        if (!game.level.traps) game.level.traps = [];
-        game.level.traps.push(ttmp); /* ttmp->ntrap = gf.ftrap; gf.ftrap = ttmp */
-    } else {
-        /* oldplace;
-           it shouldn't be possible to override a sokoban pit or hole
-           with some other trap, but we'll check just to be safe */
-        if (Sokoban())
-            maybe_finish_sokoban();
+    return finishTrap();
+
+    function finishTrap() {
+        if (!oldplace) {
+            if (!game.level.traps) game.level.traps = [];
+            game.level.traps.push(ttmp); /* ttmp->ntrap = gf.ftrap; gf.ftrap = ttmp */
+        } else {
+            /* oldplace;
+               it shouldn't be possible to override a sokoban pit or hole
+               with some other trap, but we'll check just to be safe */
+            if (Sokoban())
+                maybe_finish_sokoban();
+        }
+        return ttmp;
     }
-    return ttmp;
 }
 
 // engrave stubs
@@ -953,7 +969,7 @@ async function makelevel() {
                  && !(g.mvitals?.[PMNAMES.PM_SOLDIER]?.mvflags & G_GONE))
             do_mkroom(BARRACKS);
         else if (u_depth > 15 && !rn2(6))
-            do_mkroom(SWAMP);
+            await do_mkroom(SWAMP);
         else if (u_depth > 16 && !rn2(8)
                  && !(g.mvitals?.[PMNAMES.PM_COCKATRICE]?.mvflags & G_GONE))
             do_mkroom(COCKNEST);
@@ -1133,7 +1149,7 @@ async function themerooms_generate(difficulty) {
     /* A room with a des.map is a SHAPE: lspo_map places and stamps it, then its
        own contents run. Everything else falls through to the `default` room. */
     const mf = pick.maps && pick.maps[0];
-    if (mf && themeroom_contents(pick, mf))
+    if (mf && await themeroom_contents(pick, mf))
         return !game.themeroom_failed;
 
     let rtype = OROOM, rlit = -1, contents = null;
@@ -1180,19 +1196,19 @@ async function themerooms_generate(difficulty) {
         roomH = 5 + rn2(3) * 2;
         rtype = THEMEROOM;
         needfill = FILL_NONE;
-        contents = (rm) => {
-            lspo_room({
+        contents = async (rm) => {
+            await lspo_room({
                 type: 'themed',
                 x: (rm.width - 1) / 2,
                 y: (rm.height - 1) / 2,
                 w: 1,
                 h: 1,
                 joined: false,
-                contents: () => {
+                contents: async () => {
                     if (percent(50)) {
                         const monsterClasses = ['M', 'V', 'L', 'Z'];
                         lua_shuffle(monsterClasses);
-                        lspo_monster({ class: monsterClasses[0], x: 0, y: 0,
+                        await lspo_monster({ class: monsterClasses[0], x: 0, y: 0,
                                       waiting: true });
                     } else {
                         lspo_object({ id: 'corpse', montype: '@',
@@ -1354,7 +1370,7 @@ async function themerooms_generate(difficulty) {
                 spo_push_room(aroom);
                 /* the closure gets the Lua-style room table, same as
                    lspo_room's own contents call (sp_lev.c:4095) */
-                contents(mkroom_table(aroom));
+                await contents(mkroom_table(aroom));
                 spo_endroom();
             }
             add_doors_to_room(aroom);
@@ -1378,7 +1394,7 @@ function filler_region(x, y) {
         rmtyp = THEMEROOM;
         func = themeroom_fill;
     }
-    lspo_region(x, y, rmtyp, true, FILL_NORMAL, func);
+    return lspo_region(x, y, rmtyp, true, FILL_NORMAL, func);
 }
 
 // dat/themerms.lua:890 is_eligible(room, mkrm) — for a FILL the room is passed
@@ -1419,7 +1435,7 @@ function themeroom_fill(rm) {
        transcribed in js/themerms.js. */
     const contents = themeroom_fill_contents[pick.name];
     if (contents)
-        contents(rm);                   /* sp_lev.c:5704, already a Lua table */
+        return contents(rm);            /* sp_lev.c:5704, already a Lua table */
     else
         impossible(`themeroom_fill ${pick.name} is not transcribed`);
 }
@@ -1445,11 +1461,11 @@ function themeroom_obj_new(otyp) {
 // from the generated table; the two that are not are spelled out here.
 // Returns false for a room whose contents are not ported, so the caller can
 // fall back rather than emit a wrong stream.
-function themeroom_contents(pick, mf) {
+async function themeroom_contents(pick, mf) {
     if (pick.name === 'Blocked center') {
         // themerms.lua:535 — this room has its own gate BEFORE filler_region,
         // and shuffle() adds an rn2(2) whenever the gate passes.
-        lspo_map(mf, () => {
+        await lspo_map(mf, async () => {
             if (percent(30)) {
                 const terr = ['-', 'P'];
                 lua_shuffle(terr);
@@ -1459,14 +1475,14 @@ function themeroom_contents(pick, mf) {
                     toterrain: terr[0],
                 });
             }
-            filler_region(1, 1);
+            await filler_region(1, 1);
         });
         return true;
     }
     if (pick.name === 'Water-surrounded vault') {
         // dat/themerms.lua:765. Keep the Lua statement order because object
         // initialization and both shuffles all draw from the game PRNG.
-        lspo_map(mf, () => {
+        await lspo_map(mf, async () => {
             lspo_region(3, 3, THEMEROOM, true, FILL_NONE, null, false);
 
             const nasty_undead = [
@@ -1497,14 +1513,14 @@ function themeroom_contents(pick, mf) {
             }
 
             lua_shuffle(nasty_undead);
-            lspo_monster(nasty_undead[0], 2, 2);
+            await lspo_monster(nasty_undead[0], 2, 2);
             lspo_exclusion({ type: 'teleport', region: [2, 2, 3, 3] });
         });
         return true;
     }
     if (mf.filler) {
         const [fx, fy] = mf.filler;
-        lspo_map(mf, () => filler_region(fx, fy));
+        await lspo_map(mf, () => filler_region(fx, fy));
         return true;
     }
     return false;
@@ -3244,33 +3260,39 @@ export function mktrap(num, mktrapflags, croom, tm) {
     }
 
     const trap = maketrap(m.x, m.y, kind);
-    /* we should always get the type we asked for, but be paranoid */
-    kind = trap ? trap.ttyp : NO_TRAP;
+    if (trap?.then)
+        return trap.then(finishTrap);
+    return finishTrap(trap);
 
-    if (kind === WEB && !(mktrapflags & MKTRAP_NOSPIDERONWEB))
-        makemon(game.mons[PMNAMES.PM_GIANT_SPIDER], m.x, m.y, NO_MM_FLAGS);
-    if (trap && (mktrapflags & MKTRAP_SEEN))
-        trap.tseen = true;
-    /* src/mklev.c:2108 — a magic portal made while the hero came from
-       somewhere (the tutorial) leads back there */
-    if (kind === MAGIC_PORTAL
-        && (game.u.ucamefrom?.dnum || game.u.ucamefrom?.dlevel)) {
-        trap.dst = { dnum: game.u.ucamefrom.dnum,
-                     dlevel: game.u.ucamefrom.dlevel };
-    }
+    function finishTrap(trap) {
+        /* we should always get the type we asked for, but be paranoid */
+        kind = trap ? trap.ttyp : NO_TRAP;
 
-    if (game.in_mklev && kind !== NO_TRAP && !(mktrapflags & MKTRAP_NOVICTIM)
-        && lvl <= rnd(4)
-        && kind !== SQKY_BOARD && kind !== RUST_TRAP
-        && !(kind === ROLLING_BOULDER_TRAP
-             && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
-        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
-        if (kind === LANDMINE) {
-            /* treat as exploded: an unconcealed pit, no scattered objects */
-            trap.ttyp = PIT;
+        if (kind === WEB && !(mktrapflags & MKTRAP_NOSPIDERONWEB))
+            makemon(game.mons[PMNAMES.PM_GIANT_SPIDER], m.x, m.y, NO_MM_FLAGS);
+        if (trap && (mktrapflags & MKTRAP_SEEN))
             trap.tseen = true;
+        /* src/mklev.c:2108 — a magic portal made while the hero came from
+           somewhere (the tutorial) leads back there */
+        if (kind === MAGIC_PORTAL
+            && (game.u.ucamefrom?.dnum || game.u.ucamefrom?.dlevel)) {
+            trap.dst = { dnum: game.u.ucamefrom.dnum,
+                         dlevel: game.u.ucamefrom.dlevel };
         }
-        mktrap_victim(trap);
+
+        if (game.in_mklev && kind !== NO_TRAP && !(mktrapflags & MKTRAP_NOVICTIM)
+            && lvl <= rnd(4)
+            && kind !== SQKY_BOARD && kind !== RUST_TRAP
+            && !(kind === ROLLING_BOULDER_TRAP
+                 && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+            && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+            if (kind === LANDMINE) {
+                /* treat as exploded: an unconcealed pit, no scattered objects */
+                trap.ttyp = PIT;
+                trap.tseen = true;
+            }
+            mktrap_victim(trap);
+        }
     }
 }
 
@@ -3404,7 +3426,7 @@ async function fill_ordinary_room(croom, bonus_items) {
     if (x <= 1) x = 2;
     let trycnt = 0;
     while (!rn2(x) && ++trycnt < 1000) {
-        mktrap(0, MKTRAP_NOFLAGS, croom, null);
+        await mktrap(0, MKTRAP_NOFLAGS, croom, null);
     }
     // Gold
     if (!rn2(3) && somexyspace(croom, pos)) {
@@ -3459,7 +3481,7 @@ async function fill_ordinary_room(croom, bonus_items) {
                         otmp.owt = weight(otmp);
                     }
                     cursed_item = otmp?.cursed ?? false;
-                    add_to_container(supply_chest, otmp);
+                    await add_to_container(supply_chest, otmp);
                     if (++tryct2 >= 50) break;
                 } while (cursed_item || !rn2(5));
                 if (rn2(3)) {
@@ -3490,7 +3512,7 @@ async function fill_ordinary_room(croom, bonus_items) {
                             }
                         }
                     }
-                    add_to_container(supply_chest, otmp);
+                    await add_to_container(supply_chest, otmp);
                 }
                 supply_chest.owt = weight(supply_chest);
             }

@@ -95,41 +95,41 @@ export async function arcstrt_level() {
     /* The treasure of Lord Carnarvon */
     des.object('chest', 25, 10);
     /* student guards for the audience chamber */
-    des.monster('student', 26, 9);
-    des.monster('student', 27, 9);
-    des.monster('student', 28, 9);
-    des.monster('student', 26, 10);
-    des.monster('student', 28, 10);
-    des.monster('student', 26, 11);
-    des.monster('student', 27, 11);
-    des.monster('student', 28, 11);
+    await des.monster('student', 26, 9);
+    await des.monster('student', 27, 9);
+    await des.monster('student', 28, 9);
+    await des.monster('student', 26, 10);
+    await des.monster('student', 28, 10);
+    await des.monster('student', 26, 11);
+    await des.monster('student', 27, 11);
+    await des.monster('student', 28, 11);
     /* city watch guards in the antechambers */
-    des.monster('watchman', 50, 6);
-    des.monster('watchman', 50, 14);
+    await des.monster('watchman', 50, 6);
+    await des.monster('watchman', 50, 14);
     /* Eels in the moat */
-    des.monster('giant eel', 20, 10);
-    des.monster('giant eel', 45, 4);
-    des.monster('giant eel', 33, 16);
+    await des.monster('giant eel', 20, 10);
+    await des.monster('giant eel', 45, 4);
+    await des.monster('giant eel', 33, 16);
     /* Non diggable walls */
     des.non_diggable(selection.area(0, 0, 75, 19));
     /* Random traps */
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     /* Monsters on siege duty. */
-    des.monster('S', 60, 9);
-    des.monster('M', 60, 10);
-    des.monster('S', 60, 11);
-    des.monster('S', 60, 12);
-    des.monster('M', 60, 13);
-    des.monster('S', 61, 10);
-    des.monster('S', 61, 11);
-    des.monster('S', 61, 12);
-    des.monster('S', 30, 3);
-    des.monster('M', 20, 17);
-    des.monster('S', 67, 2);
-    des.monster('S', 10, 19);
+    await des.monster('S', 60, 9);
+    await des.monster('M', 60, 10);
+    await des.monster('S', 60, 11);
+    await des.monster('S', 60, 12);
+    await des.monster('M', 60, 13);
+    await des.monster('S', 61, 10);
+    await des.monster('S', 61, 11);
+    await des.monster('S', 61, 12);
+    await des.monster('S', 30, 3);
+    await des.monster('M', 20, 17);
+    await des.monster('S', 67, 2);
+    await des.monster('S', 10, 19);
 }

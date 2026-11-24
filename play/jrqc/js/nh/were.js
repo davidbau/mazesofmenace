@@ -127,14 +127,13 @@ export function were_beastie(pm) {   // were.c:70
  * @returns {Promise<void>}
  */
 export async function new_were(mon) {   // were.c:96
-    let pm = 0;
     /* neither hero nor werecreature can change from human form to
        critter form if hero has Protection_from_shape_changers extrinsic;
        if already in critter form, always change to human form for that */
     if (Protection_from_shape_changers() && is_human(mon.data)) {
         return;
     }
-    pm = counter_were(mon.data.pmidx);
+    const pm = counter_were(mon.data.pmidx);
     if (pm < LOW_PM) {
         await impossible($c.lit("unknown lycanthrope %s."), mon.data.pmnames[NEUTRAL]);
         return;
@@ -146,9 +145,9 @@ export async function new_were(mon) {   // were.c:96
     set_mon_data(mon, $c.relem(mons, pm));
     if (helpless(mon)) {
         /* transformation wakens and/or revitalizes */
-        mon.msleeping = (0) & 1;
-        mon.mfrozen = (0) & 127;   /* not asleep or paralyzed */
-        mon.mcanmove = (1) & 1;
+        mon.msleeping = 0;
+        mon.mfrozen = 0;   /* not asleep or paralyzed */
+        mon.mcanmove = 1;
     }
     /* regenerate by 1/4 of the lost hit points */
     await healmon(mon, $c.div32(mon.mhpmax - mon.mhp | 0, 4), 0);
@@ -170,10 +169,10 @@ export async function new_were(mon) {   // were.c:96
  * @returns {Promise<number>} int
  */
 export async function were_summon(ptr, yours, visible, genbuf) {   // were.c:142
-    let i = 0, typ = 0, pm = 0, mtmp = null, total = 0;
+    let i = 0, typ = 0;
     /* number of visible helpers created */
-    pm = ptr.pmidx;
-    total = 0;
+    const pm = ptr.pmidx;
+    let total = 0;
     visible.set(0, 0);
     if (Protection_from_shape_changers() && !yours) {
         return 0;
@@ -204,7 +203,7 @@ export async function were_summon(ptr, yours, visible, genbuf) {   // were.c:142
             default:
                 continue L1;
         }
-        mtmp = await makemon($c.relem(mons, typ), u.ux, u.uy, NO.MM_FLAGS);
+        const mtmp = await makemon($c.relem(mons, typ), u.ux, u.uy, NO.MM_FLAGS);
         if (mtmp) {
             total = total + 1 | 0;
             if (canseemon(mtmp)) {
@@ -221,15 +220,15 @@ export async function were_summon(ptr, yours, visible, genbuf) {   // were.c:142
  * @returns {Promise<void>}
  */
 export async function you_were() {   // were.c:192
-    let qbuf = new Int8Array(128), controllable_poly = 0;
-    controllable_poly = $c.i8(Polymorph_control() && !(u.uprops[STUNNED].intrinsic || Unaware()) ? 1 : 0);
+    let qbuf = new Int8Array(128);
+    const controllable_poly = Polymorph_control() && !(u.uprops[STUNNED].intrinsic || Unaware()) ? 1 : 0;
     if (Unchanging() || u.umonnum === u.ulycn) {
         return;
     }
     if (controllable_poly) {
         /* `+4' => skip "were" prefix to get name of beast */
         $c.sprintf(new $c.Ptr(qbuf, 0), $c.lit("Do you want to change into %s?"), await an(mons[u.ulycn].pmnames[NEUTRAL].add(4)));
-        if (!await paranoid_query($c.i8(ParanoidWerechange()), new $c.Ptr(qbuf, 0))) {
+        if (!await paranoid_query(ParanoidWerechange(), new $c.Ptr(qbuf, 0))) {
             return;
         }
     } else if (monster_nearby()) {
@@ -243,13 +242,13 @@ export async function you_were() {   // were.c:192
  * @returns {Promise<void>}
  */
 export async function you_unwere(purify) {   // were.c:213
-    let controllable_poly = 0, $t1;
-    controllable_poly = $c.i8(Polymorph_control() && !(u.uprops[STUNNED].intrinsic || Unaware()) ? 1 : 0);
+    let $t1;
+    const controllable_poly = Polymorph_control() && !(u.uprops[STUNNED].intrinsic || Unaware()) ? 1 : 0;
     if (purify) {
         await You_feel($c.lit("purified."));
         await set_ulycn(NON_PM);   /* cure lycanthropy */
     }
-    if (!Unchanging() && is_were(gy.youmonst.data) && !monster_nearby() && (!controllable_poly || !await paranoid_query($c.i8(ParanoidWerechange()), $c.lit("Remain in beast form?")))) {
+    if (!Unchanging() && is_were(gy.youmonst.data) && !monster_nearby() && (!controllable_poly || !await paranoid_query(ParanoidWerechange(), $c.lit("Remain in beast form?")))) {
         await rehumanize();
     } else if (is_were(gy.youmonst.data) && !u.mtimedone) {
         $t1 = rn2(200) + 200 | 0, u.mtimedone = $t1;   /* 40% of initial were change */

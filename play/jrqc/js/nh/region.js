@@ -63,7 +63,7 @@ const callbacks = $c.nulls(2);
  * @returns {number} boolean
  */
 export function inside_rect(r, x, y) {   // region.c:54
-    return $c.i8(x >= r.lx && x <= r.hx && y >= r.ly && y <= r.hy ? 1 : 0);
+    return x >= r.lx && x <= r.hx && y >= r.ly && y <= r.hy ? 1 : 0;
 }
 /*
  * Check if a point is inside a region.
@@ -95,8 +95,8 @@ export function inside_region(reg, x, y) {   // region.c:63
  * @returns {Promise<$T.NhRegion | null>} NhRegion *
  */
 export async function create_region(rects, nrect) {   // region.c:79
-    let i = 0, reg = null, $t1;
-    reg = $c.asRec(await alloc(96), $T.NhRegion, 96);
+    let i = 0, $t1;
+    const reg = $c.asRec(await alloc(96), $T.NhRegion, 96);
     $c.memset(reg, 0, 96);
     /* Determines bounding box */
     if (nrect > 0) {
@@ -153,8 +153,7 @@ export async function create_region(rects, nrect) {   // region.c:79
  * @returns {Promise<void>}
  */
 export async function add_rect_to_reg(reg, rect) {   // region.c:133
-    let tmp_rect = null;
-    tmp_rect = $c.asRec(await alloc($c.u32($c.mulu64($c.u64(reg.nrects + 1 | 0), 8))), $T.nhrect, 8);
+    const tmp_rect = $c.asRec(await alloc($c.u32($c.mulu64($c.u64(reg.nrects + 1), 8))), $T.nhrect, 8);
     if (reg.nrects > 0) {
         $c.memcpy(tmp_rect, reg.rects, $c.mulu64($c.u64(reg.nrects), 8));
         $c.free(reg.rects);
@@ -185,17 +184,17 @@ export async function add_rect_to_reg(reg, rect) {   // region.c:133
  * @returns {Promise<void>}
  */
 export async function add_mon_to_reg(reg, mon) {   // region.c:161
-    let i = 0, tmp_m = null, $t1;
+    let i = 0, $t1;
     /* if this is a long worm, it might already be present in the region;
        only include it once no matter how segments the region contains */
     if (mon_in_region(reg, mon)) {
-        if (!$c.peq(mon.data, $c.relem(mons, PM.LONG_WORM))) {
+        if (mon.data !== mons[PM.LONG_WORM]) {
             await impossible($c.lit("add_mon_to_reg: %s [#%u] already in region."), await m_monnam(mon), mon.m_id);
         }
         return;
     }
     if (reg.max_monst <= reg.n_monst) {
-        tmp_m = $c.asArr(await alloc($c.u32($c.mulu64(4, $c.u64(reg.max_monst + MONST_INC | 0)))), Uint32Array);
+        const tmp_m = $c.asArr(await alloc($c.u32($c.mulu64(4, $c.u64(reg.max_monst + MONST_INC)))), Uint32Array);
         if (reg.max_monst > 0) {
             for (i = 0; i < reg.max_monst; i = i + 1 | 0) {
                 tmp_m.set(i, reg.monsters.get(i));
@@ -283,9 +282,9 @@ export function free_region(reg) {   // region.c:263
  * @returns {Promise<void>}
  */
 export async function add_region(reg) {   // region.c:284
-    let tmp_reg = null, i = 0, j = 0, mtmp = null, is_inside = 0, $t1;
+    let i = 0, j = 0, mtmp = null, $t1;
     if (gm.max_regions <= svn.n_regions) {
-        tmp_reg = gr.regions;
+        const tmp_reg = gr.regions;
         $t1 = $c.asArr(await alloc($c.u32($c.mulu64($c.u64(gm.max_regions + 10 | 0), 8))), 'ptr'), gr.regions = $t1;
         if (gm.max_regions > 0) {
             $c.memcpy(gr.regions, tmp_reg, $c.mulu64($c.u64(gm.max_regions), 8));
@@ -298,7 +297,7 @@ export async function add_region(reg) {   // region.c:284
     /* Check for monsters inside the region */
     for (i = reg.bounding_box.lx; i <= reg.bounding_box.hx; i = i + 1 | 0) {
         for (j = reg.bounding_box.ly; j <= reg.bounding_box.hy; j = j + 1 | 0) {
-            is_inside = FALSE;
+            let is_inside = FALSE;
             /* Some regions can cross the level boundaries */
             if (!isok($c.i16(i), $c.i16(j))) {
                 continue;
@@ -339,7 +338,7 @@ export async function add_region(reg) {   // region.c:284
  * @returns {Promise<void>}
  */
 export async function remove_region(reg) {   // region.c:344
-    let i = 0, x = 0, y = 0, pass = 0, tmp_uinwater = 0;
+    let i = 0, x = 0, y = 0, pass = 0;
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
         if ($c.peq(gr.regions.get(i), reg)) {
             break;
@@ -356,7 +355,7 @@ export async function remove_region(reg) {   // region.c:344
     /* Update screen if necessary */
     reg.ttl = -2;   /* for visible_region_at */
     if (reg.visible) {
-        tmp_uinwater = $c.i8(u.uinwater);
+        const tmp_uinwater = u.uinwater;
         /* need to process the region's spots twice, first unblocking all
            locations which no longer block line-of-sight, then redrawing
            spots within revised line-of-sight; skip second pass if blind */
@@ -409,7 +408,7 @@ export function clear_regions() {   // region.c:394
  * @returns {Promise<void>}
  */
 export async function run_regions() {   // region.c:414
-    let i = 0, j = 0, k = 0, f_indx = 0, mtmp = null;
+    let i = 0, j = 0, f_indx = 0;
     /* reset some messaging variables */
     gg.gas_cloud_diss_within = FALSE;
     gg.gas_cloud_diss_seen = 0;
@@ -436,10 +435,10 @@ export async function run_regions() {   // region.c:414
         /* Check if any monster is inside region */
         if (f_indx !== NO_CALLBACK) {
             for (j = 0; j < gr.regions.get(i).n_monst; j = j + 1 | 0) {
-                mtmp = find_mid(gr.regions.get(i).monsters.get(j), FM.FMON);
+                const mtmp = find_mid(gr.regions.get(i).monsters.get(j), FM.FMON);
                 if (!mtmp || DEADMONSTER(mtmp) || await callbacks[f_indx](gr.regions.get(i), mtmp)) {
                     /* The monster died, remove it from list */
-                    k = gr.regions.get(i).n_monst = $c.i16(gr.regions.get(i).n_monst - 1 | 0);
+                    const k = gr.regions.get(i).n_monst = $c.i16(gr.regions.get(i).n_monst - 1 | 0);
                     gr.regions.get(i).monsters.set(j, gr.regions.get(i).monsters.get(k));
                     gr.regions.get(i).monsters.set(k, 0);
                     j = j - 1 | 0;   /* current slot has been reused; recheck it next */
@@ -470,8 +469,8 @@ export async function run_regions() {   // region.c:414
  * @returns {Promise<number>} boolean
  */
 export async function in_out_region(x, y) {   // region.c:480
-    let i = 0, f_indx = 0;
-    f_indx = 0;
+    let i = 0;
+    let f_indx = 0;
     /* First check if hero can do the move */
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
         if (gr.regions.get(i).attach_2_u) {
@@ -525,8 +524,8 @@ export async function in_out_region(x, y) {   // region.c:480
  * @returns {Promise<number>} boolean
  */
 export async function m_in_out_region(mon, x, y) {   // region.c:533
-    let i = 0, f_indx = 0;
-    f_indx = 0;
+    let i = 0;
+    let f_indx = 0;
     /* First check if mon can do the move */
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
         if (gr.regions.get(i).attach_2_m === mon.m_id) {
@@ -614,8 +613,7 @@ export async function update_monster_region(mon) {   // region.c:598
  * @returns {number} int
  */
 export function reg_damg(reg) {   // region.c:651
-    let damg = 0;
-    damg = !reg.visible || reg.ttl === -2 ? 0 : reg.arg.a_int;
+    const damg = !reg.visible || reg.ttl === -2 ? 0 : reg.arg.a_int;
     return damg;
 }
 /* check whether current level has any visible regions */
@@ -638,11 +636,11 @@ export function any_visible_region() {   // region.c:660
  * @returns {Promise<void>}
  */
 export async function visible_region_summary(win) {   // region.c:674
-    let reg = null, buf = new Int8Array(256), typbuf = new Int8Array(128), i = 0, damg = 0, hdr_done = 0, fldsep = null, $t1;
-    hdr_done = 0;
-    fldsep = iflags.menu_tab_sep ? $c.lit("\t") : $c.lit("  ");
+    let buf = new Int8Array(256), typbuf = new Int8Array(128), i = 0, $t1;
+    let hdr_done = 0;
+    const fldsep = iflags.menu_tab_sep ? $c.lit("\t") : $c.lit("  ");
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
-        reg = gr.regions.get(i);
+        const reg = gr.regions.get(i);
         if (!reg.visible || reg.ttl === -2) {
             continue;
         }
@@ -659,7 +657,7 @@ export async function visible_region_summary(win) {   // region.c:674
            which are due to timeout on the next turn have ttl==0;
            adding 1 is intended to make the display be less confusing */
         $c.sprintf(new $c.Ptr(buf, 0), $c.lit("%5ld"), $c.add64(reg.ttl, 1));
-        damg = reg.arg.a_int;
+        const damg = reg.arg.a_int;
         if (damg) {
             $c.sprintf(new $c.Ptr(typbuf, 0), $c.lit("poison gas (%d)"), damg);
         } else {
@@ -763,10 +761,10 @@ export async function save_regions(nhfp) {   // region.c:741
  * @returns {Promise<void>}
  */
 export async function rest_regions(nhfp) {   // region.c:799
-    let r = null, i = 0, j = 0, n = Uint32Array.of(0), tmstamp = [0], msg_buf = null, ghostly = 0, $t1, $t2, $t3, $t4;
+    let r = null, i = 0, j = 0, n = Uint32Array.of(0), tmstamp = [0], msg_buf = null, $t1, $t2, $t3, $t4;
     n[0] = 0;
     tmstamp[0] = 0;
-    ghostly = $c.i8(nhfp.ftype === NHF.BONESFILE ? 1 : 0);
+    const ghostly = nhfp.ftype === NHF.BONESFILE ? 1 : 0;
     clear_regions();   /* Just for security */
     await sfi_long(nhfp, new $c.Ptr(tmstamp, 0), $c.lit("region-tmstamp"));
     if (ghostly) {
@@ -863,13 +861,13 @@ export async function rest_regions(nhfp) {   // region.c:799
  * @param {*} size long *
  */
 export function region_stats(hdrfmt, hdrbuf, count, size) {   // region.c:899
-    let rg = null, i = 0, $t1, $t2;
+    let i = 0, $t1, $t2;
     /* other stats formats take one parameter; this takes two */
     $c.sprintf(hdrbuf, hdrfmt, 96, 8);
     count.set(0, svn.n_regions);   /* might be 0 even tho max_regions isn't */
     size.set(0, $c.mul64(gm.max_regions, 96));
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
-        rg = gr.regions.get(i);
+        const rg = gr.regions.get(i);
         size.set(0, $c.add64(size.get(0), $c.mul64(rg.nrects, 8)));
         if (rg.enter_msg) {
             $t1 = $c.i64($c.addu64($c.strlen(rg.enter_msg), 1)), size.set(0, $c.add64(size.get(0), $t1));
@@ -886,10 +884,10 @@ export function region_stats(hdrfmt, hdrbuf, count, size) {   // region.c:899
  * @param {$T.NhRegion | null} reg NhRegion *
  */
 function reset_region_mids(reg) {   // region.c:928
-    let i = 0, n = 0, mid_list = null, $t1;
-    i = 0;
-    n = reg.n_monst;
-    mid_list = reg.monsters;
+    let $t1;
+    let i = 0;
+    let n = reg.n_monst;
+    const mid_list = reg.monsters;
     while (i < n) {
         if (!lookup_id_mapping(mid_list.get(i), mid_list.add(i))) {
             /* shrink list to remove missing monster; order doesn't matter */
@@ -934,9 +932,9 @@ function reset_region_mids(reg) {   // region.c:928
  * @returns {number} boolean
  */
 export function expire_gas_cloud(p1, p2) {   // region.c:1046
-    let reg = null, damage = 0, pass = 0, x = 0, y = 0;
-    reg = $c.asRec(p1, $T.NhRegion, 96);
-    damage = reg.arg.a_int;
+    let pass = 0, x = 0, y = 0;
+    const reg = $c.asRec(p1, $T.NhRegion, 96);
+    let damage = reg.arg.a_int;
     /* If it was a thick cloud, it dissipates a little first */
     if (damage >= 5) {
         damage = $c.div32(damage, 2);   /* It dissipates, let's do less damage */
@@ -978,17 +976,17 @@ export function expire_gas_cloud(p1, p2) {   // region.c:1046
  * @returns {Promise<number>} boolean
  */
 export async function inside_gas_cloud(p1, p2) {   // region.c:1091
-    let reg = null, mtmp = null, umon = null, dam = 0, $t1;
-    reg = $c.asRec(p1, $T.NhRegion, 96);
-    mtmp = $c.asRec(p2, $T.monst, 192);
-    umon = mtmp ? mtmp : gy.youmonst;
-    dam = reg.arg.a_int;
+    let $t1;
+    const reg = $c.asRec(p1, $T.NhRegion, 96);
+    let mtmp = $c.asRec(p2, $T.monst, 192);
+    const umon = mtmp ? mtmp : gy.youmonst;
+    let dam = reg.arg.a_int;
     /*
      * Gas clouds can't be targeted at water locations, but they can
      * start next to water and spread over it.
      */
     /* fog clouds maintain gas clouds, even poisonous ones */
-    if (reg.ttl < 20 && umon && $c.peq(umon.data, $c.relem(mons, PM.FOG_CLOUD))) {
+    if (reg.ttl < 20 && umon && umon.data === mons[PM.FOG_CLOUD]) {
         reg.ttl = $c.add64(reg.ttl, 5);
     }
     if (dam < 1) {
@@ -1033,9 +1031,9 @@ export async function inside_gas_cloud(p1, p2) {   // region.c:1091
             if (heros_fault(reg)) {
                 await setmangry(mtmp, TRUE);
             }
-            if (haseyes(mtmp.data) && mtmp.mcansee | 0) {
-                mtmp.mblinded = (1) & 127;
-                mtmp.mcansee = (0) & 1;
+            if (haseyes(mtmp.data) && mtmp.mcansee) {
+                mtmp.mblinded = 1;
+                mtmp.mcansee = 0;
             }
             if (await resists_poison(mtmp)) {
                 return FALSE;
@@ -1086,7 +1084,7 @@ async function make_gas_cloud(cloud, damage, inside_cloud) {   // region.c:1182
     cloud.arg.$copyFrom(cg.zeroany);
     cloud.arg.a_int = damage;
     cloud.visible = TRUE;
-    $t1 = (damage ? S.poisoncloud : S.cloud) === S.stone ? GLYPH.CMAP_STONE_OFF : (damage ? S.poisoncloud : S.cloud) <= S.trwall ? ((damage ? S.poisoncloud : S.cloud) - S.vwall | 0) + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) | 0 : (damage ? S.poisoncloud : S.cloud) < S.altar ? ((damage ? S.poisoncloud : S.cloud) - S.ndoor | 0) + GLYPH.CMAP_A_OFF | 0 : (damage ? S.poisoncloud : S.cloud) === S.altar ? 4008 : (damage ? S.poisoncloud : S.cloud) < S.arrow_trap + MAXTCHARS ? ((damage ? S.poisoncloud : S.cloud) - S.grave | 0) + GLYPH.CMAP_B_OFF | 0 : (damage ? S.poisoncloud : S.cloud) <= S.goodpos ? ((damage ? S.poisoncloud : S.cloud) - S.digbeam | 0) + GLYPH.CMAP_C_OFF | 0 : NO_GLYPH, cloud.glyph = $t1;
+    $t1 = (damage ? S.poisoncloud : S.cloud) === S.stone ? GLYPH.CMAP_STONE_OFF : (damage ? S.poisoncloud : S.cloud) <= S.trwall ? (damage ? S.poisoncloud : S.cloud) - S.vwall + (In_mines(u.uz) ? GLYPH.CMAP_MINES_OFF : In_hell(u.uz) ? GLYPH.CMAP_GEH_OFF : (svd.dungeon_topology.d_knox_level.dlevel || svd.dungeon_topology.d_knox_level.dnum) && on_level(u.uz, svd.dungeon_topology.d_knox_level) ? GLYPH.CMAP_KNOX_OFF : u.uz.dnum === svd.dungeon_topology.d_sokoban_dnum ? GLYPH.CMAP_SOKO_OFF : GLYPH.CMAP_MAIN_OFF) : (damage ? S.poisoncloud : S.cloud) < S.altar ? (damage ? S.poisoncloud : S.cloud) - S.ndoor + GLYPH.CMAP_A_OFF : (damage ? S.poisoncloud : S.cloud) === S.altar ? 4008 : (damage ? S.poisoncloud : S.cloud) < S.arrow_trap + MAXTCHARS ? (damage ? S.poisoncloud : S.cloud) - S.grave + GLYPH.CMAP_B_OFF : (damage ? S.poisoncloud : S.cloud) <= S.goodpos ? (damage ? S.poisoncloud : S.cloud) - S.digbeam + GLYPH.CMAP_C_OFF : NO_GLYPH, cloud.glyph = $t1;
     await add_region(cloud);
     if (!gi.in_mklev && !inside_cloud && is_hero_inside_gas_cloud()) {
         /* FIXME: "steam" is wrong if this cloud is just the trail of
@@ -1108,12 +1106,12 @@ async function make_gas_cloud(cloud, damage, inside_cloud) {   // region.c:1182
  * @returns {Promise<$T.NhRegion | null>} NhRegion *
  */
 export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:1213
-    let cloud = null, i = 0, j = 0, tmprect = new $T.nhrect(), xcoords = new Int16Array(150), ycoords = new Int16Array(150), curridx = 0, newidx = 0, inside_cloud = 0, xx = 0, yy = 0, dirs = $c.recArray($T.nhcoord, 4), swapidx = 0, tmp = new $T.nhcoord(), nvalid = 0, dx = 0, dy = 0, isunpicked = 0, $t1, $t2, $t3;
+    let i = 0, j = 0, tmprect = new $T.nhrect(), xcoords = new Int16Array(150), ycoords = new Int16Array(150), curridx = 0, dirs = $c.recArray($T.nhcoord, 4), tmp = new $T.nhcoord(), $t1, $t2, $t3;
     /* store visited coords */
     xcoords[0] = x;
     ycoords[0] = y;
-    newidx = 1;   /* initial spot is already taken */
-    inside_cloud = is_hero_inside_gas_cloud();
+    let newidx = 1;   /* initial spot is already taken */
+    let inside_cloud = is_hero_inside_gas_cloud();
     /* a single-point cloud on hero and it deals no damage.
        probably a natural cause of being polyed. don't message about it */
     if (!svc.context.mon_moving && u_at(x, y) && cloudsize === 1 && (!damage || damage && await m_poisongas_ok(gy.youmonst) === M_POISONGAS.OK)) {
@@ -1127,8 +1125,8 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:
         if (newidx >= cloudsize) {
             break;
         }
-        xx = xcoords[curridx];
-        yy = ycoords[curridx];
+        const xx = xcoords[curridx];
+        const yy = ycoords[curridx];
         /* Do NOT check for if there is already a gas cloud created at some
          * other time at this position. They can overlap. */
         /* Primitive Fisher-Yates-Knuth shuffle to randomize the order of
@@ -1145,17 +1143,17 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:
         dirs[3].x = 1;
         dirs[3].y = 0;
         for (i = 4; i > 0; i = i - 1 | 0) {
-            swapidx = $c.i16(rn2(i));
+            const swapidx = $c.i16(rn2(i));
             tmp.$copyFrom(dirs[swapidx]);
             dirs[swapidx].$copyFrom(dirs[i - 1 | 0]);
             dirs[i - 1 | 0].$copyFrom(tmp);
         }
-        nvalid = 0;   /* # of valid adjacent spots */
+        let nvalid = 0;   /* # of valid adjacent spots */
         for (i = 0; i < 4; i = i + 1 | 0) {
             /* try all 4 cardinal directions */
-            dx = dirs[i].x;
-            dy = dirs[i].y;
-            isunpicked = TRUE;
+            const dx = dirs[i].x;
+            const dy = dirs[i].y;
+            let isunpicked = TRUE;
             if (valid_cloud_pos($c.i16(xx + dx | 0), $c.i16(yy + dy | 0))) {
                 nvalid = nvalid + 1 | 0;
                 /* don't pick a location we've already picked */
@@ -1186,7 +1184,7 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:
     /* We have now either filled up xcoord and ycoord entirely or run out
        of space.  In either case, newidx is the correct total number of
        coordinates inserted. */
-    cloud = await create_region(null, 0);
+    const cloud = await create_region(null, 0);
     for (i = 0; i < newidx; i = i + 1 | 0) {
         $t1 = tmprect.hx = xcoords[i], tmprect.lx = $t1;
         $t2 = tmprect.hy = ycoords[i], tmprect.ly = $t2;
@@ -1205,11 +1203,11 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {   // region.c:
  * @returns {Promise<$T.NhRegion | null>} NhRegion *
  */
 export async function create_gas_cloud_selection(sel, damage) {   // region.c:1313
-    let cloud = null, tmprect = new $T.nhrect(), x = 0, y = 0, r = new $T.nhrect(), inside_cloud = 0, $t1, $t2;
+    let tmprect = new $T.nhrect(), x = 0, y = 0, r = new $T.nhrect(), $t1, $t2;
     r.$copyFrom(cg.zeroNhRect);
-    inside_cloud = is_hero_inside_gas_cloud();
+    const inside_cloud = is_hero_inside_gas_cloud();
     selection_getbounds(sel, r);
-    cloud = await create_region(null, 0);
+    const cloud = await create_region(null, 0);
     for (x = r.lx; x <= r.hx; x = $c.i16(x + 1)) {
         for (y = r.ly; y <= r.hy; y = $c.i16(y + 1)) {
             if (selection_getpoint(x, y, sel)) {
@@ -1227,14 +1225,14 @@ export async function create_gas_cloud_selection(sel, damage) {   // region.c:13
  * @returns {number} boolean
  */
 export function region_danger() {   // region.c:1341
-    let i = 0, f_indx = 0, n = 0;
-    n = 0;
+    let i = 0;
+    let n = 0;
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
         /* only care about regions that hero is in */
         if (!hero_inside(gr.regions.get(i))) {
             continue;
         }
-        f_indx = gr.regions.get(i).inside_f;
+        const f_indx = gr.regions.get(i).inside_f;
         /* the only type of region we understand is gas_cloud */
         if (f_indx === INSIDE_GAS_CLOUD) {
             /* completely harmless if you don't need to breathe */
@@ -1249,7 +1247,7 @@ export function region_danger() {   // region.c:1341
             n = n + 1 | 0;
         }
     }
-    return $c.i8(n ? TRUE : FALSE);
+    return n ? TRUE : FALSE;
 }
 /* for fixing trouble at end of prayer;
    danger detected at start of prayer might have expired by now */
@@ -1257,15 +1255,15 @@ export function region_danger() {   // region.c:1341
  * @returns {Promise<void>}
  */
 export async function region_safety() {   // region.c:1368
-    let r = null, i = 0, f_indx = 0, n = 0, $t1;
-    r = null;
-    n = 0;
+    let i = 0, $t1;
+    let r = null;
+    let n = 0;
     for (i = 0; i < svn.n_regions; i = i + 1 | 0) {
         /* only care about regions that hero is in */
         if (!hero_inside(gr.regions.get(i))) {
             continue;
         }
-        f_indx = gr.regions.get(i).inside_f;
+        const f_indx = gr.regions.get(i).inside_f;
         /* the only type of region we understand is gas_cloud */
         if (f_indx === INSIDE_GAS_CLOUD) {
             if (!($t1 = n, n = $t1 + 1 | 0, $t1) && gr.regions.get(i).ttl >= 0) {

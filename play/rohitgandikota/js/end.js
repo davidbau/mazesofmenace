@@ -19,7 +19,7 @@ import { depth, dunlevs_in_dungeon, single_level_branch } from './dungeon.js';
 import { G_GENOD, G_UNIQ, In_endgame, In_quest, Is_astralevel,
          KILLED_BY_AN, KILLED_BY, A_CURRENT, A_ORIGINAL,
          LOW_PM, M_AP_MONSTER, M_AP_TYPE, MGIVENNAME, NHW_TEXT, NHW_MENU,
-         OBJ_FREE, BUFSZ,
+         OBJ_FREE, BUFSZ, override_restriction,
          NON_PM, LEAVESTATUE, A_CON, has_mgivenname, Upolyd } from './const.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
@@ -62,6 +62,8 @@ import { tty_next_page } from './tty/wintty.js';
 import { xwaitforspace } from './tty/getline.js';
 import { docrt, display_nhwindow_message } from './display.js';
 import { keepdogs } from './dog.js';
+import { inven_inuse } from './restore.js';
+import { lift_covet_and_placebc } from './ball.js';
 
 function note_unported_end(what) {
     (game.unported ||= new Set()).add('end:' + what);
@@ -564,10 +566,9 @@ export async function done(how) {
     await really_done(how);
 }
 
-// src/end.c:851 done_object_cleanup() -- a fatal hit can interrupt an object
-// while it is OBJ_FREE in flight. Put that projectile back on the map before
-// disclosure and bones saving so it is not lost from the level snapshot.
-async function done_object_cleanup() {
+// src/end.c:852 done_object_cleanup(), settle objects before saving or ending.
+export async function done_object_cleanup() {
+    await inven_inuse(true);
     const u = game.u;
     const { isok } = await import('./hacklib.js');
     const { accessible } = await import('./monmove.js');
@@ -581,12 +582,19 @@ async function done_object_cleanup() {
     }
     for (const field of ['thrownobj', 'kickedobj']) {
         const obj = game[field];
-        if (obj && (obj.where ?? OBJ_FREE) === OBJ_FREE) {
-            place_object(obj, ox, oy);
+        if (obj && obj.where === OBJ_FREE) {
+            await place_object(obj, ox, oy);
             stackobj(obj);
             game[field] = null;
         }
     }
+    if (u.uchain && u.uchain.where === OBJ_FREE)
+        await lift_covet_and_placebc(override_restriction);
+
+    // TTY_PERM_INVENT is disabled in the reference build and this windowport.
+    // There is no persistent inventory window for perm_invent_toggled to close.
+    if (game.iflags?.perm_invent)
+        game.iflags.perm_invent = false;
 }
 
 // src/dungeon.c deepest_lev_reached() — deepest ledger depth the hero saw.

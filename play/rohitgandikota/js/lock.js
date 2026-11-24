@@ -991,7 +991,7 @@ export async function breakchestlock(box, destroyit) {
                 otmp.age = game.moves - otmp.age; /* actual age */
                 start_corpse_timeout(otmp);
             }
-            place_object(otmp, game.u.ux, game.u.uy);
+            await place_object(otmp, game.u.ux, game.u.uy);
             stackobj(otmp);
         }
         if (costly)
@@ -1027,7 +1027,7 @@ export async function forcelock() {
              */
             await pline(`${uwep.quan > 1 ? 'One of y' : 'Y'}our ${
                 xname(uwep)} broke!`);
-            useup(uwep);
+            await useup(uwep);
             await You('give up your attempt to force the lock.');
             exercise(A_DEX, true);
             return (xl.usedtime = 0);

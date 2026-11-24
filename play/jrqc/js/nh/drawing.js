@@ -80,11 +80,11 @@ export function def_char_to_monclass(ch) {   // drawing.c:108
  * @returns {number} int
  */
 export function def_char_is_furniture(ch) {   // drawing.c:120
-    let i = 0, furniture = 0;
+    let i = 0;
     /* note: these refer to defsyms[] order which is much different from
        levl[][].typ order but both keep furniture in a contiguous block */
     /* "staircase up" */
-    furniture = FALSE;
+    let furniture = FALSE;
     for (i = 0; i < MAXPCHARS; i = i + 1 | 0) {
         if (!furniture) {
             if (!$c.strncmp(defsyms[i].explanation, new $c.Ptr(def_char_is_furniture$first_furniture, 0), 5)) {

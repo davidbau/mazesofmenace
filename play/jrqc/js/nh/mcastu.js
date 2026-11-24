@@ -72,7 +72,7 @@ async function cursetxt(mtmp, undirected) {   // mcastu.c:63
         /* spellcasting monsters are impolite */
         if (undirected) {
             point_msg = $c.lit("all around, then curses");
-        } else if (Invis() && !perceives(mtmp.data) && (mtmp.mux !== u.ux || mtmp.muy !== u.uy) || (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT && gy.youmonst.mappearance === STRANGE_OBJECT || u.uundetected | 0) {
+        } else if (Invis() && !perceives(mtmp.data) && (mtmp.mux !== u.ux || mtmp.muy !== u.uy) || (gy.youmonst.m_ap_type & M_AP.TYPMASK) === M_AP.OBJECT && gy.youmonst.mappearance === STRANGE_OBJECT || u.uundetected) {
             point_msg = $c.lit("and curses in your general direction");
         } else if (Displaced() && (mtmp.mux !== u.ux || mtmp.muy !== u.uy)) {
             point_msg = $c.lit("and curses at your displaced image");
@@ -93,9 +93,9 @@ async function cursetxt(mtmp, undirected) {   // mcastu.c:63
  * @returns {Promise<number>} int
  */
 async function choose_monster_spell(mtmp, adtyp) {   // mcastu.c:89
-    let list = null, i = 0, spellval = 0, len = 0, maxlev = 0;
-    list = null;
-    len = 0;
+    let i = 0;
+    let list = null;
+    let len = 0;
     /* which spell list to use? */
     if (adtyp === AD.SPEL) {
         list = new $c.Ptr(mon_wizard_spells, 0);
@@ -108,9 +108,9 @@ async function choose_monster_spell(mtmp, adtyp) {   // mcastu.c:89
         return MCAST.PSI_BOLT;
     }
     /* max spell level in this monster spell list */
-    maxlev = mcast_data[list.get(len - 1 | 0)].level;
+    const maxlev = mcast_data[list.get(len - 1 | 0)].level;
     /* which level spell to cast? */
-    spellval = rn2(mtmp.m_lev);
+    let spellval = rn2(mtmp.m_lev);
     if (spellval > maxlev && rn2(maxlev)) {
         spellval = rn2(maxlev);
     }
@@ -135,13 +135,13 @@ async function choose_monster_spell(mtmp, adtyp) {   // mcastu.c:89
  * @returns {Promise<number>} int
  */
 export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {   // mcastu.c:130
-    let dmg = 0, ml = 0, ret = 0, spellnum = 0, cnt = 0, save_plnmsg = 0;
+    let dmg = 0;
     /* caster */
     /* caster's current attack */
     /* might be mistaken if displaced */
     /* knows hero's precise location */
-    ml = mtmp.m_lev;
-    spellnum = 0;
+    const ml = mtmp.m_lev;
+    let spellnum = 0;
     /* Three cases:
      * -- monster is attacking you.  Search for a useful spell.
      * -- monster thinks it's attacking you.  Search for a useful spell,
@@ -155,7 +155,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {   // m
      * attacking monster does.
      */
     if ((mattk.adtyp === AD.SPEL || mattk.adtyp === AD.CLRC) && ml) {
-        cnt = 40;
+        let cnt = 40;
         do {
             spellnum = await choose_monster_spell(mtmp, mattk.adtyp);
             /* not trying to attack?  don't allow directed spells */
@@ -174,20 +174,20 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {   // m
         }
     }
     /* monster unable to cast spells? */
-    if (mtmp.mcan | 0 || mtmp.mspec_used || !ml || $c.andu64(mtmp.seen_resistance, cvt_adtyp_to_mseenres(mattk.adtyp))) {
+    if (mtmp.mcan || mtmp.mspec_used || !ml || $c.andu64(mtmp.seen_resistance, cvt_adtyp_to_mseenres(mattk.adtyp))) {
         await cursetxt(mtmp, is_undirected_spell(spellnum));
         return M_ATTK.MISS;
     }
     do {
         if (debugcore($c.lit("mcastu.c"), TRUE)) {
-            save_plnmsg = iflags.last_msg;
+            const save_plnmsg = iflags.last_msg;
             await pline($c.lit("castmu:%s,lvl:%i,spell:%i"), await noit_Monnam(mtmp), ml, spellnum);
             iflags.last_msg = save_plnmsg;
         }
     } while (0);
     if (mattk.adtyp === AD.SPEL || mattk.adtyp === AD.CLRC) {
         /* monst->m_lev is unsigned (uchar), monst->mspec_used is int */
-        mtmp.mspec_used = mtmp.m_lev < 8 ? 10 - mtmp.m_lev | 0 : 2;
+        mtmp.mspec_used = mtmp.m_lev < 8 ? 10 - mtmp.m_lev : 2;
     }
     /* Monster can cast spells, but is casting a directed spell at the
      * wrong place?  If so, give a message, and return.
@@ -204,7 +204,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {   // m
         return M_ATTK.MISS;
     }
     nomul(0);
-    if (rn2(Math.imul(ml, 10)) < (mtmp.mconf | 0 ? 100 : 20)) {
+    if (rn2(Math.imul(ml, 10)) < (mtmp.mconf ? 100 : 20)) {
         /* fumbled attack */
         if (canseemon(mtmp) && !Deaf()) {
             set_msg_xy(mtmp.mx, mtmp.my);
@@ -233,7 +233,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {   // m
     if (Half_spell_damage()) {
         dmg = $c.div32(dmg + 1 | 0, 2);
     }
-    ret = M_ATTK.HIT;
+    const ret = M_ATTK.HIT;
     /*
      * FIXME: none of these hit the steed when hero is riding, nor do
      *  they inflict damage on carried items.
@@ -318,9 +318,9 @@ async function m_cure_self(mtmp, dmg) {   // mcastu.c:308
  * @returns {Promise<void>}
  */
 export async function touch_of_death(mtmp) {   // mcastu.c:323
-    let kbuf = new Int8Array(256), dmg = 0, drain = 0, olduhp = 0, uhpmin = 0, newuhpmax = 0;
-    dmg = 50 + d(8, 6) | 0;
-    drain = $c.div32(dmg, 2);
+    let kbuf = new Int8Array(256);
+    let dmg = 50 + d(8, 6) | 0;
+    const drain = $c.div32(dmg, 2);
     /* if we get here, we know that hero isn't magic resistant and isn't
        poly'd into an undead or demon */
     await You_feel($c.lit("drained..."));
@@ -334,9 +334,9 @@ export async function touch_of_death(mtmp) {   // mcastu.c:323
         await done(DIED);
     } else {
         /* HP manipulation similar to poisoned(attrib.c) */
-        olduhp = u.uhp;
-        uhpmin = minuhpmax(3);
-        newuhpmax = u.uhpmax - drain | 0;
+        const olduhp = u.uhp;
+        const uhpmin = minuhpmax(3);
+        const newuhpmax = u.uhpmax - drain | 0;
         setuhpmax(max(newuhpmax, uhpmin), FALSE);
         dmg = adjuhploss(dmg, olduhp);
         /* reduce pending damage if uhp has
@@ -354,16 +354,15 @@ export async function touch_of_death(mtmp) {   // mcastu.c:323
  * @returns {Promise<$c.Ptr | null>} char *
  */
 export async function death_inflicted_by(outbuf, deathreason, mtmp) {   // mcastu.c:358
-    let mptr = null, champtr = null, realnm = null, fakenm = null;
     /* assumed big enough; pm_names are short */
     /* cause of death */
     /* monster who caused it */
     $c.strcpy(outbuf, deathreason);
     if (mtmp) {
-        mptr = mtmp.data;
-        champtr = ismnum(mtmp.cham) ? $c.relem(mons, mtmp.cham) : mptr;
-        realnm = pmname(champtr, Mgender(mtmp));
-        fakenm = pmname(mptr, Mgender(mtmp));
+        const mptr = mtmp.data;
+        const champtr = ismnum(mtmp.cham) ? $c.relem(mons, mtmp.cham) : mptr;
+        let realnm = pmname(champtr, Mgender(mtmp));
+        const fakenm = pmname(mptr, Mgender(mtmp));
         /* greatly simplified extract from done_in_by(), primarily for
            reason for death due to 'touch of death' spell; if mtmp is
            shape changed, it won't be a vampshifter or mimic since they
@@ -409,7 +408,7 @@ async function mcast_death_touch(mtmp) {   // mcastu.c:389
  * @returns {Promise<void>}
  */
 async function mcast_clone_wiz(mtmp) {   // mcastu.c:411
-    if (mtmp.iswiz | 0 && svc.context.no_of_wizards === 1) {
+    if (mtmp.iswiz && svc.context.no_of_wizards === 1) {
         await pline($c.lit("Double Trouble..."));
         await clonewiz();
     } else {
@@ -421,15 +420,14 @@ async function mcast_clone_wiz(mtmp) {   // mcastu.c:411
  * @returns {Promise<void>}
  */
 async function mcast_summon_mons(mtmp) {   // mcastu.c:421
-    let count = 0, one = 0, mappear = null;
-    count = await nasty(mtmp);
+    const count = await nasty(mtmp);
     if (!count) {
         /* nothing was created? */
     } else if (mtmp.iswiz) {
         await verbalize($c.lit("Destroy the thief, my pet%s!"), plur(count));
     } else {
-        one = $c.i8(count === 1 ? 1 : 0);
-        mappear = one ? $c.lit("A monster appears") : $c.lit("Monsters appear");
+        const one = count === 1 ? 1 : 0;
+        const mappear = one ? $c.lit("A monster appears") : $c.lit("Monsters appear");
         /* messages not quite right if plural monsters created but
            only a single monster is seen */
         if (Invis() && !perceives(mtmp.data) && (mtmp.mux !== u.ux || mtmp.muy !== u.uy)) {
@@ -470,7 +468,7 @@ async function mcast_weaken_you(mtmp, dmg) {   // mcastu.c:466
         await You_feel($c.lit("momentarily weakened."));
     } else {
         await You($c.lit("suddenly feel weaker!"));
-        dmg = mtmp.m_lev - 6 | 0;
+        dmg = mtmp.m_lev - 6;
         if (dmg < 1) {   /* paranoia since only chosen when m_lev is high */
             dmg = 1;
         }
@@ -544,9 +542,8 @@ async function mcast_geyser(dmg) {   // mcastu.c:523
  * @returns {Promise<number>} int
  */
 async function mcast_fire_pillar(mtmp, dmg) {   // mcastu.c:540
-    let orig_dmg = 0;
     await pline($c.lit("A pillar of fire strikes all around you!"));
-    orig_dmg = dmg = d(8, 6);
+    const orig_dmg = dmg = d(8, 6);
     if (Fire_resistance()) {
         await shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN.FIRE);
@@ -572,10 +569,9 @@ async function mcast_fire_pillar(mtmp, dmg) {   // mcastu.c:540
  * @returns {Promise<number>} int
  */
 async function mcast_lightning(mtmp, dmg) {   // mcastu.c:566
-    let orig_dmg = 0, reflects = 0;
     await pline($c.lit("A bolt of lightning strikes down at you from above!"));
-    reflects = await ureflects($c.lit("It bounces off your %s%s."), $c.lit(""));
-    orig_dmg = dmg = d(8, 6);
+    const reflects = await ureflects($c.lit("It bounces off your %s%s."), $c.lit(""));
+    const orig_dmg = dmg = d(8, 6);
     if (reflects || Shock_resistance()) {
         await shieldeff(u.ux, u.uy);
         dmg = 0;
@@ -654,15 +650,15 @@ async function mcast_open_wounds(dmg) {   // mcastu.c:624
  * @returns {Promise<void>}
  */
 async function mcast_insects(mtmp) {   // mcastu.c:645
-    let pm = null, mtmp2 = null, whatbuf = new Int8Array(128), let_ = 0, success = 0, seecaster = 0, i = 0, quan = 0, oldseen = 0, newseen = 0, bypos = new $T.nhcoord(), fmt = null, what = null, arg = null, $t1, $t2;
+    let whatbuf = new Int8Array(128), i = 0, bypos = new $T.nhcoord(), $t1, $t2;
     /* Try for insects, and if there are none
        left, go for (sticks to) snakes.  -3. */
-    pm = await mkclass(S.ANT, 0);
-    mtmp2 = null;
-    let_ = $c.i8(pm ? S.ANT : S.SNAKE);
-    success = FALSE;
-    oldseen = monster_census(TRUE);
-    quan = mtmp.m_lev < 2 ? 1 : rnd($c.div32(mtmp.m_lev, 2));
+    let pm = await mkclass(S.ANT, 0);
+    let mtmp2 = null;
+    const let_ = pm ? S.ANT : S.SNAKE;
+    let success = FALSE;
+    const oldseen = monster_census(TRUE);
+    let quan = mtmp.m_lev < 2 ? 1 : rnd($c.div32(mtmp.m_lev, 2));
     if (quan < 3) {
         quan = 3;
     }
@@ -676,14 +672,14 @@ async function mcast_insects(mtmp) {   // mcastu.c:645
             set_malign(mtmp2);
         }
     }
-    newseen = monster_census(TRUE);
+    const newseen = monster_census(TRUE);
     /* not canspotmon() which includes unseen things sensed via warning */
-    seecaster = $c.i8(canseemon(mtmp) || tp_sensemon(mtmp) || Detect_monsters() ? 1 : 0);
-    what = let_ === S.SNAKE ? $c.lit("snakes") : $c.lit("insects");
+    const seecaster = canseemon(mtmp) || tp_sensemon(mtmp) || Detect_monsters() ? 1 : 0;
+    let what = let_ === S.SNAKE ? $c.lit("snakes") : $c.lit("insects");
     if (Hallucination()) {
         what = await makeplural(await bogusmon(new $c.Ptr(whatbuf, 0), null));
     }
-    fmt = null;
+    let fmt = null;
     if (!seecaster) {
         if (newseen <= oldseen || Unaware()) {
             /* unseen caster fails or summons unseen critters,
@@ -694,7 +690,7 @@ async function mcast_insects(mtmp) {   // mcastu.c:645
                 what = $c.strcpy(new $c.Ptr(whatbuf, 0), what);
             }
             /* unseen caster summoned seen critter(s) */
-            arg = newseen === (oldseen + 1 | 0) ? await an(await makesingular(what)) : new $c.Ptr(whatbuf, 0);
+            const arg = newseen === (oldseen + 1 | 0) ? await an(await makesingular(what)) : new $c.Ptr(whatbuf, 0);
             if (!Deaf()) {
                 await You_hear($c.lit("someone summoning something, and %s %s."), arg, await vtense(arg, $c.lit("appear")));
             } else {
@@ -726,10 +722,9 @@ async function mcast_insects(mtmp) {   // mcastu.c:645
  * @returns {Promise<void>}
  */
 async function mcast_blind_you() {   // mcastu.c:729
-    let num_eyes = 0;
     /* note: resists_blnd() doesn't apply here */
     if (!Blinded()) {
-        num_eyes = eyecount(gy.youmonst.data);
+        const num_eyes = eyecount(gy.youmonst.data);
         await pline($c.lit("Scales cover your %s!"), num_eyes === 1 ? await body_part(EYE) : await makeplural(await body_part(EYE)));
         await make_blinded(Half_spell_damage() ? 100 : 200, FALSE);
         if (!Blind()) {
@@ -745,7 +740,6 @@ async function mcast_blind_you() {   // mcastu.c:729
  */
 async function mcast_paralyze(mtmp) {   // mcastu.c:746
     let dmg = 0;
-    dmg = 0;
     if (Antimagic() || Free_action()) {
         await shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN.MAGR);
@@ -757,7 +751,7 @@ async function mcast_paralyze(mtmp) {   // mcastu.c:746
         if (gm.multi >= 0) {
             await You($c.lit("are frozen in place!"));
         }
-        dmg = 4 + mtmp.m_lev | 0;
+        dmg = 4 + mtmp.m_lev;
         if (Half_spell_damage()) {
             dmg = $c.div32(dmg + 1 | 0, 2);
         }
@@ -773,14 +767,13 @@ async function mcast_paralyze(mtmp) {   // mcastu.c:746
  * @returns {Promise<void>}
  */
 async function mcast_confuse_you(mtmp) {   // mcastu.c:771
-    let oldprop = 0, dmg = 0;
     if (Antimagic()) {
         await shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN.MAGR);
         await You_feel($c.lit("momentarily dizzy."));
     } else {
-        oldprop = $c.i8(!!u.uprops[CONFUSION].intrinsic ? 1 : 0);
-        dmg = mtmp.m_lev;
+        const oldprop = !!u.uprops[CONFUSION].intrinsic ? 1 : 0;
+        let dmg = mtmp.m_lev;
         if (Half_spell_damage()) {
             dmg = $c.div32(dmg + 1 | 0, 2);
         }
@@ -920,7 +913,6 @@ function is_undirected_spell(spellnum) {   // mcastu.c:900
  * @returns {Promise<number>} boolean
  */
 async function spell_would_be_useless(mtmp, spellnum) {   // mcastu.c:909
-    let mcouldseeu = 0;
     /* Some spells don't require the player to really be there and can be cast
      * by the monster when you're invisible, yet still shouldn't be cast when
      * the monster doesn't even think you're there.
@@ -935,7 +927,7 @@ async function spell_would_be_useless(mtmp, spellnum) {   // mcastu.c:909
     }
     /* spell needs the monster to see hero */
     if ((mcast_data[spellnum].flags & MCF.SIGHT) !== 0) {
-        mcouldseeu = $c.i8(couldsee(mtmp.mx, mtmp.my));
+        const mcouldseeu = couldsee(mtmp.mx, mtmp.my);
         if (!mcouldseeu) {
             return TRUE;
         }
@@ -964,18 +956,18 @@ async function spell_would_be_useless(mtmp, spellnum) {   // mcastu.c:909
                must be very small otherwise caller's many retry attempts
                will eventually end up picking it too often] */
             if (!await has_aggravatables(mtmp)) {
-                return $c.i8(rn2(100) ? TRUE : FALSE);
+                return rn2(100) ? TRUE : FALSE;
             }
             break;
         case MCAST.HASTE_SELF:
             /* haste self when already fast */
-            if ((mtmp.permspeed | 0) === MFAST) {
+            if (mtmp.permspeed === MFAST) {
                 return TRUE;
             }
             break;
         case MCAST.DISAPPEAR:
             /* invisibility when already invisible */
-            if (mtmp.minvis | 0 || mtmp.invis_blkd | 0) {
+            if (mtmp.minvis || mtmp.invis_blkd) {
                 return TRUE;
             }
             /* peaceful monster won't cast invisibility if you can't see
@@ -983,7 +975,7 @@ async function spell_would_be_useless(mtmp, spellnum) {   // mcastu.c:909
                same as when monsters drink potions of invisibility.  This doesn't
                really make a lot of sense, but lets the player avoid hitting
                peaceful monsters by mistake */
-            if (mtmp.mpeaceful | 0 && !See_invisible()) {
+            if (mtmp.mpeaceful && !See_invisible()) {
                 return TRUE;
             }
             break;
@@ -1015,17 +1007,17 @@ export async function buzzmu(mtmp, mattk) {   // mcastu.c:989
     if (!BZ_VALID_ADTYP(mattk.adtyp)) {
         return M_ATTK.MISS;
     }
-    if (mtmp.mcan | 0 || $c.andu64(mtmp.seen_resistance, cvt_adtyp_to_mseenres(mattk.adtyp))) {
+    if (mtmp.mcan || $c.andu64(mtmp.seen_resistance, cvt_adtyp_to_mseenres(mattk.adtyp))) {
         await cursetxt(mtmp, FALSE);
         return M_ATTK.MISS;
     }
     if (lined_up(mtmp) && rn2(3)) {
         nomul(0);
         if (canseemon(mtmp)) {
-            await pline_mon(mtmp, $c.lit("%s zaps you with a %s!"), await Monnam(mtmp), flash_str($c.rem32($c.abs(mattk.adtyp - AD.MAGM | 0), 10), FALSE));
+            await pline_mon(mtmp, $c.lit("%s zaps you with a %s!"), await Monnam(mtmp), flash_str($c.rem32($c.abs(mattk.adtyp - AD.MAGM), 10), FALSE));
         }
         gb.buzzer = mtmp;
-        await buzz(-10 - $c.rem32($c.abs(mattk.adtyp - AD.MAGM | 0), 10) | 0, mattk.damn, mtmp.mx, mtmp.my, sgn(gt.tbx), sgn(gt.tby));
+        await buzz(-10 - $c.rem32($c.abs(mattk.adtyp - AD.MAGM), 10) | 0, mattk.damn, mtmp.mx, mtmp.my, sgn(gt.tbx), sgn(gt.tby));
         gb.buzzer = null;
         return M_ATTK.HIT;
     }

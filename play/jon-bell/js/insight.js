@@ -1,4 +1,5 @@
 // insight.js — C ref: insight.c.
+import { nh_qsort } from './nhsort.js';
 import { youhiding_enlightenment } from './cmd.js';
 import { ceiling, surface } from './dungeon.js';
 import { waterbody_name } from './pager.js';
@@ -977,7 +978,7 @@ export async function list_vanquished(defquery, ask) {
                 putstr(klwin, 0, '');
 
             if (ntypes > 1)
-                mindx.sort(list_vanquished_vanqsort_cmp);
+                nh_qsort(mindx, list_vanquished_vanqsort_cmp); /* C insight.c:2867 */
 
             for (let ni = 0; ni < ntypes; ni++) {
                 const i = mindx[ni];
@@ -1159,7 +1160,7 @@ export async function list_genocided(defquery, ask) {
                 if (g.flags.vanq_sortmode === VANQ_COUNT_H_L
                     || g.flags.vanq_sortmode === VANQ_COUNT_L_H)
                     g.flags.vanq_sortmode = VANQ_ALPHA_MIX;
-                mindx.sort(list_genocided_vanqsort_cmp);
+                nh_qsort(mindx, list_genocided_vanqsort_cmp); /* C insight.c:3065 */
                 class_header = (g.flags.vanq_sortmode === VANQ_MCLS_LTOH
                                 || g.flags.vanq_sortmode === VANQ_MCLS_HTOL);
                 g.flags.vanq_sortmode = save_sortmode;

@@ -103,8 +103,7 @@ const wgrowtime = $c.zeros(32);
  * @returns {number} int
  */
 export function get_wormno() {   // worm.c:96
-    let new_wormno = 0;
-    new_wormno = 1;
+    let new_wormno = 1;
     while (new_wormno < MAX_NUM_WORMS) {
         if (!wheads[new_wormno]) {
             return new_wormno;   /* found empty wtails[] slot at new_wormno */
@@ -130,9 +129,9 @@ export function get_wormno() {   // worm.c:96
  * @returns {Promise<void>}
  */
 export async function initworm(worm, wseg_count) {   // worm.c:120
-    let seg = null, new_tail = null, wnum = 0, $t1, $t2;
-    new_tail = await create_worm_tail(wseg_count);
-    wnum = worm.wormno | 0;
+    let seg = null, $t1, $t2;
+    const new_tail = await create_worm_tail(wseg_count);
+    const wnum = worm.wormno;
     if (new_tail) {
         wtails[wnum] = new_tail;
         for (seg = new_tail; seg.nseg; seg = seg.nseg) {
@@ -159,9 +158,8 @@ export async function initworm(worm, wseg_count) {   // worm.c:120
  * @returns {Promise<void>}
  */
 async function toss_wsegs(curr, display_update) {   // worm.c:146
-    let nxtseg = null;
     while (curr) {
-        nxtseg = curr.nseg;
+        const nxtseg = curr.nseg;
         /* remove from level.monsters[][];
            need to check curr->wx for genocided while migrating_mon */
         if (curr.wx) {
@@ -186,12 +184,11 @@ async function toss_wsegs(curr, display_update) {   // worm.c:146
  * @returns {Promise<void>}
  */
 async function shrink_worm(wnum) {   // worm.c:175
-    let seg = null;
     /* worm number */
     if ($c.peq(wtails[wnum], wheads[wnum])) {
         return;   /* no tail */
     }
-    seg = wtails[wnum];
+    const seg = wtails[wnum];
     wtails[wnum] = seg.nseg;
     seg.nseg = null;
     await toss_wsegs(seg, TRUE);
@@ -208,26 +205,26 @@ async function shrink_worm(wnum) {   // worm.c:175
  * @returns {Promise<void>}
  */
 export async function worm_move(worm) {   // worm.c:196
-    let seg = null, new_seg = null, wnum = 0, whplimit = 0, whpcap = 0, prev_mhp = 0, wsegs = 0, mmove = 0, incr = 0, $t1, $t2;
+    let $t1, $t2;
     /* new segment */
-    wnum = worm.wormno | 0;   /* worm number */
+    const wnum = worm.wormno;   /* worm number */
     /*
      *  Place a segment at the old worm head.  The head has already moved.
      */
-    seg = wheads[wnum];
+    const seg = wheads[wnum];
     svl.level.monsters[seg.wx][seg.wy] = worm;
     await newsym(seg.wx, seg.wy);   /* display the new segment */
     /*
      *  Create a new dummy segment head and place it at the end of the list.
      */
-    new_seg = await newseg();
+    const new_seg = await newseg();
     new_seg.wx = worm.mx;
     new_seg.wy = worm.my;
     new_seg.nseg = null;
     seg.nseg = new_seg;   /* attach it to the end of the list */
     wheads[wnum] = new_seg;   /* move the end pointer */
     if (wgrowtime[wnum] <= svm.moves) {
-        wsegs = count_wsegs(worm);
+        let wsegs = count_wsegs(worm);
         /* first set up for the next time to grow */
         if (!wgrowtime[wnum]) {
             /* new worm; usually grow a tail segment on its next turn */
@@ -239,8 +236,8 @@ export async function worm_move(worm) {   // worm.c:196
                'wgrowtime += incr', so often 'wgrowtime' would be
                exceeded by 'moves' on consecutive turns for the worm,
                resulting in an excessively rapid growth cycle */
-            mmove = mcalcmove(worm, FALSE);
-            incr = rn2(10) + 2 | 0;
+            const mmove = mcalcmove(worm, FALSE);
+            let incr = rn2(10) + 2 | 0;
             /* 2..12; after adjusting for long worn
              * speed of 3, effective value is 8..48 */
             incr = $c.div32(Math.imul(incr, NORMAL_SPEED), mmove > 1 ? mmove : 1);
@@ -250,7 +247,7 @@ export async function worm_move(worm) {   // worm.c:196
            won't gain new HP until regaining previous peak segment count;
            when wounded (whether from damage or from shrinking), the HP
            which might have been 'new' will heal */
-        whplimit = !worm.m_lev ? 4 : Math.imul(8, worm.m_lev);
+        let whplimit = !worm.m_lev ? 4 : 8 * worm.m_lev;
         /* note: wsegs includes the hidden segment co-located with the head */
         if (wsegs > 33) {
             whplimit = whplimit + Math.imul(2, wsegs - 33 | 0) | 0, wsegs = 33;
@@ -265,9 +262,9 @@ export async function worm_move(worm) {   // worm.c:196
         if (whplimit > MHPMAX) {
             whplimit = MHPMAX;
         }
-        prev_mhp = worm.mhp;
+        const prev_mhp = worm.mhp;
         $t2 = d(2, 2), worm.mhp = worm.mhp + $t2 | 0;   /* 2..4, average 3 */
-        whpcap = max(whplimit, worm.mhpmax);
+        const whpcap = max(whplimit, worm.mhpmax);
         if (worm.mhp < whpcap) {
             /* can't exceed segment-derived limit unless level increase after
                peak tail growth has already done so; when that isn't the case,
@@ -304,7 +301,7 @@ export async function worm_move(worm) {   // worm.c:196
  */
 export async function worm_nomove(worm) {   // worm.c:288
     let $t1;
-    await shrink_worm(worm.wormno | 0);   /* shrink */
+    await shrink_worm(worm.wormno);   /* shrink */
     if (worm.mhp > count_wsegs(worm)) {
         $t1 = d(2, 2), worm.mhp = worm.mhp - $t1 | 0;   /* 2..4, average 3; note: mhpmax not changed! */
         if (worm.mhp < 1) {
@@ -325,12 +322,12 @@ export async function worm_nomove(worm) {   // worm.c:288
  * @returns {Promise<void>}
  */
 export async function wormgone(worm) {   // worm.c:308
-    let wnum = 0, $t1;
-    wnum = worm.wormno | 0;
+    let $t1;
+    const wnum = worm.wormno;
     if (!wnum) {   /* note: continuing with wnum==0 runs to completion */
         await impossible($c.lit("wormgone: wormno is 0"));
     }
-    worm.wormno = (0) & 31;   /* still a long worm but doesn't grow/shrink anymore */
+    worm.wormno = 0;   /* still a long worm but doesn't grow/shrink anymore */
     /*
      *  This will also remove the real monster (ie 'w') from the its
      *  position in level.monsters[][].  (That happens when removing
@@ -343,7 +340,7 @@ export async function wormgone(worm) {   // worm.c:308
        when a long worm gets created by a polymorph zap, it gets flagged
        with MCORPSENM()==PM_LONG_WORM so that the same zap won't trigger
        another polymorph if it hits the new tail */
-    if ($c.peq(worm.data, $c.relem(mons, PM.LONG_WORM)) && has_mcorpsenm(worm)) {
+    if (worm.data === mons[PM.LONG_WORM] && has_mcorpsenm(worm)) {
         worm.mextra.mcorpsenm = NON_PM;   /* no longer polymorph-proof */
     }
 }
@@ -361,8 +358,8 @@ export async function wormgone(worm) {   // worm.c:308
  * @returns {Promise<number>} int
  */
 export async function wormhitu(worm) {   // worm.c:344
-    let wnum = 0, seg = null;
-    wnum = worm.wormno | 0;
+    let seg = null;
+    const wnum = worm.wormno;
     /*  This does not work right now because mattacku() thinks that the head
      *  is out of range of the player.  We might try to kludge, and bring
      *  the head within range for a tiny moment, but this needs a bit more
@@ -396,9 +393,9 @@ export async function wormhitu(worm) {   // worm.c:344
  * @returns {Promise<void>}
  */
 export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
-    let curr = null, new_tail = null, new_worm = null, wnum = 0, cut_chance = 0, new_wnum = 0, $t1, $t2, $t3;
+    let $t1, $t2, $t3;
     /* hit is by wielded blade or axe or by thrown axe */
-    wnum = worm.wormno | 0;
+    const wnum = worm.wormno;
     if (!wnum) {
         return;   /* bullet-proofing */
     }
@@ -406,7 +403,7 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
         return;   /* hit on head */
     }
     /* cutting goes best with a cuttier weapon */
-    cut_chance = rnd(20);   /* Normally     1-16 does not cut, 17-20 does, */
+    let cut_chance = rnd(20);   /* Normally     1-16 does not cut, 17-20 does, */
     if (cuttier) {
         cut_chance = cut_chance + 10 | 0;   /* with a blade 1- 6 does not cut,  7-20 does. */
     }
@@ -414,7 +411,7 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
         return;   /* not good enough */
     }
     /* Find the segment that was attacked. */
-    curr = wtails[wnum];
+    let curr = wtails[wnum];
     while (curr.wx !== x || curr.wy !== y) {
         curr = curr.nseg;
         if (!curr) {
@@ -432,7 +429,7 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
      *  The tail for the old worm is the segment that follows "curr",
      *  and "curr" becomes the dummy segment under the new head.
      */
-    new_tail = wtails[wnum];
+    const new_tail = wtails[wnum];
     wtails[wnum] = curr.nseg;
     curr.nseg = null;   /* split the worm */
     /*
@@ -440,8 +437,8 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
      *  its head at "curr" and its tail at "new_tail".  The old worm
      *  must be at least level 3 in order to produce a new worm.
      */
-    new_worm = null;
-    new_wnum = worm.m_lev >= 3 && !rn2(3) ? get_wormno() : 0;
+    let new_worm = null;
+    const new_wnum = worm.m_lev >= 3 && !rn2(3) ? get_wormno() : 0;
     if (new_wnum) {
         remove_monster(x, y);   /* clone_mon puts new head here */
         /* clone_mon() will fail if enough long worms have been
@@ -466,7 +463,7 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
         return;
     }
     new_worm.wormno = (new_wnum >>> 0) & 31;   /* affix new worm number */
-    new_worm.mcloned = (0) & 1;   /* treat second worm as a normal monster */
+    new_worm.mcloned = 0;   /* treat second worm as a normal monster */
     /* Devalue the monster level of both halves of the worm.
        Note: m_lev is always at least 3 in order to get this far. */
     worm.m_lev = $c.u8(worm.m_lev - 2 >>> 0 > 3 ? worm.m_lev - 2 >>> 0 : 3);
@@ -501,8 +498,7 @@ export async function cutworm(worm, x, y, cuttier) {   // worm.c:373
  * @returns {Promise<void>}
  */
 export async function see_wsegs(worm) {   // worm.c:487
-    let curr = null;
-    curr = wtails[worm.wormno];
+    let curr = wtails[worm.wormno];
     while (!$c.peq(curr, wheads[worm.wormno])) {
         await newsym(curr.wx, curr.wy);
         curr = curr.nseg;
@@ -519,11 +515,10 @@ export async function see_wsegs(worm) {   // worm.c:487
  * @returns {Promise<void>}
  */
 export async function detect_wsegs(worm, use_detection_glyph) {   // worm.c:503
-    let num = 0, curr = null, what_tail = 0;
-    curr = wtails[worm.wormno];
-    what_tail = u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : PM.LONG_WORM_TAIL;
+    let curr = wtails[worm.wormno];
+    const what_tail = u.uprops[HALLUC].intrinsic && !(u.uprops[HALLUC_RES].intrinsic || u.uprops[HALLUC_RES].extrinsic) ? await rn2_on_display_rng(NUMMONS) : PM.LONG_WORM_TAIL;
     while (!$c.peq(curr, wheads[worm.wormno])) {
-        num = use_detection_glyph ? detected_monnum_to_glyph(what_tail, worm.female | 0 ? FEMALE : MALE) : worm.mtame ? petnum_to_glyph(what_tail, worm.female | 0 ? FEMALE : MALE) : monnum_to_glyph(what_tail, worm.female | 0 ? FEMALE : MALE);
+        const num = use_detection_glyph ? detected_monnum_to_glyph(what_tail, worm.female ? FEMALE : MALE) : worm.mtame ? petnum_to_glyph(what_tail, worm.female ? FEMALE : MALE) : monnum_to_glyph(what_tail, worm.female ? FEMALE : MALE);
         await show_glyph(curr.wx, curr.wy, num);
         curr = curr.nseg;
     }
@@ -539,7 +534,7 @@ export async function detect_wsegs(worm, use_detection_glyph) {   // worm.c:503
  * @returns {Promise<void>}
  */
 export async function save_worm(nhfp) {   // worm.c:528
-    let i = 0, count = Int32Array.of(0), curr = null, temp = null, $t1;
+    let i = 0, count = Int32Array.of(0), curr = null, $t1;
     if (update_file(nhfp)) {
         for (i = 1; i < MAX_NUM_WORMS; i = i + 1 | 0) {
             for (count[0] = 0, curr = wtails[i]; curr; curr = curr.nseg) {
@@ -567,7 +562,7 @@ export async function save_worm(nhfp) {   // worm.c:528
                 continue;
             }
             while (curr) {
-                temp = curr.nseg;
+                const temp = curr.nseg;
                 dealloc_seg(curr);   /* free the segment */
                 curr = temp;
             }
@@ -587,13 +582,13 @@ export async function save_worm(nhfp) {   // worm.c:528
  * @returns {Promise<void>}
  */
 export async function rest_worm(nhfp) {   // worm.c:577
-    let i = 0, j = 0, count = Int32Array.of(0), curr = null, temp = null;
+    let i = 0, j = 0, count = Int32Array.of(0), curr = null;
     count[0] = 0;
     for (i = 1; i < MAX_NUM_WORMS; i = i + 1 | 0) {
         await sfi_int(nhfp, new $c.Ptr(count, 0), $c.lit("worm-segment_count"));
         /* Get the segments. */
         for (curr = null, j = 0; j < count[0]; j = j + 1 | 0) {
-            temp = await newseg();
+            const temp = await newseg();
             temp.nseg = null;
             await sfi_int16(nhfp, new $c.FieldRef(temp, "wx", "i16"), $c.lit("worm-wx"));
             await sfi_int16(nhfp, new $c.FieldRef(temp, "wy", "i16"), $c.lit("worm-wy"));
@@ -624,12 +619,11 @@ export async function rest_worm(nhfp) {   // worm.c:577
  * @returns {Promise<void>}
  */
 export async function place_wsegs(worm, oldworm) {   // worm.c:615
-    let curr = null, x = 0, y = 0, mtmp = null;
-    curr = wtails[worm.wormno];
+    let curr = wtails[worm.wormno];
     while (!$c.peq(curr, wheads[worm.wormno])) {
-        x = curr.wx;
-        y = curr.wy;
-        mtmp = svl.level.monsters[x][y];
+        const x = curr.wx;
+        const y = curr.wy;
+        const mtmp = svl.level.monsters[x][y];
         if (oldworm && $c.peq(mtmp, oldworm)) {
             remove_monster(x, y);
         } else if (mtmp) {
@@ -649,7 +643,7 @@ export async function place_wsegs(worm, oldworm) {   // worm.c:615
  * @returns {Promise<void>}
  */
 export async function sanity_check_worm(worm) {   // worm.c:639
-    let curr = null, wnum = 0, x = 0, y = 0;
+    let x = 0, y = 0;
     if (!worm) {
         await impossible($c.lit("worm_sanity: null monster!"));
         return;
@@ -662,7 +656,7 @@ export async function sanity_check_worm(worm) {   // worm.c:639
         await impossible($c.lit("worm_sanity: not a worm!"));
         return;
     }
-    wnum = worm.wormno | 0;
+    const wnum = worm.wormno;
     if (!wtails[wnum] || !wheads[wnum]) {
         await impossible($c.lit("wormno %d is set without proper tail"), wnum);
         return;
@@ -671,7 +665,7 @@ export async function sanity_check_worm(worm) {   // worm.c:639
     if (!worm.mx) {
         return;
     }
-    curr = wtails[wnum];
+    let curr = wtails[wnum];
     while (!$c.peq(curr, wheads[wnum])) {
         x = curr.wx, y = curr.wy;
         if (!isok($c.i16(x), $c.i16(y))) {
@@ -703,8 +697,7 @@ export function wormno_sanity_check() {   // worm.c:682
  * @returns {Promise<void>}
  */
 export async function remove_worm(worm) {   // worm.c:714
-    let curr = null;
-    curr = wtails[worm.wormno];
+    let curr = wtails[worm.wormno];
     while (curr) {
         if (curr.wx) {
             svl.level.monsters[curr.wx][curr.wy] = null;
@@ -730,11 +723,11 @@ export async function remove_worm(worm) {   // worm.c:714
  * @returns {Promise<void>}
  */
 export async function place_worm_tail_randomly(worm, x, y) {   // worm.c:738
-    let wnum = 0, curr = null, new_tail = null, ox = 0, oy = 0, nx = Int16Array.of(0), ny = Int16Array.of(0), $t1, $t2, $t3, $t4;
-    wnum = worm.wormno | 0;
-    curr = wtails[wnum];
-    ox = x;
-    oy = y;
+    let new_tail = null, nx = Int16Array.of(0), ny = Int16Array.of(0), $t1, $t2, $t3, $t4;
+    const wnum = worm.wormno;
+    let curr = wtails[wnum];
+    let ox = x;
+    let oy = y;
     if (wnum && (!wtails[wnum] || !wheads[wnum])) {
         await impossible($c.lit("place_worm_tail_randomly: wormno is set without a tail!"));
         return;
@@ -814,8 +807,8 @@ export function size_wseg(worm) {   // worm.c:827
  * @returns {number} int
  */
 export function count_wsegs(mtmp) {   // worm.c:836
-    let i = 0, curr = null;
-    i = 0;
+    let curr = null;
+    let i = 0;
     if (mtmp.wormno) {
         for (curr = wtails[mtmp.wormno].nseg; curr; curr = curr.nseg) {
             i = i + 1 | 0;
@@ -831,12 +824,12 @@ export function count_wsegs(mtmp) {   // worm.c:836
  * @returns {Promise<$T.wseg | null>} struct wseg *
  */
 async function create_worm_tail(num_segs) {   // worm.c:852
-    let i = 0, new_tail = null, curr = null, $t1;
-    i = 0;
+    let curr = null, $t1;
+    let i = 0;
     if (!num_segs) {
         return null;
     }
-    new_tail = curr = await newseg();
+    const new_tail = curr = await newseg();
     curr.nseg = null;
     curr.wx = 0;
     curr.wy = 0;
@@ -860,8 +853,7 @@ async function create_worm_tail(num_segs) {   // worm.c:852
  * @returns {number} boolean
  */
 export function worm_known(worm) {   // worm.c:883
-    let curr = null;
-    curr = wtails[worm.wormno];
+    let curr = wtails[worm.wormno];
     while (curr) {
         if (cansee(curr.wx, curr.wy)) {
             return TRUE;
@@ -880,7 +872,7 @@ export function worm_known(worm) {   // worm.c:883
  * @returns {Promise<number>} boolean
  */
 export async function worm_cross(x1, y1, x2, y2) {   // worm.c:898
-    let worm = null, curr = null, wnxt = null;
+    let curr = null, wnxt = null;
     /*
      * With digits representing relative sequence number of the segments,
      * returns true when testing between @ and ? (passes through worm's
@@ -899,7 +891,7 @@ export async function worm_cross(x1, y1, x2, y2) {   // worm.c:898
         return FALSE;
     }
     /* is the same monster at <x1,y2> and at <x2,y1>? */
-    worm = svl.level.monsters[x1][y2];
+    const worm = svl.level.monsters[x1][y2];
     if (!worm || !$c.peq(svl.level.monsters[x2][y1], worm)) {
         return FALSE;
     }
@@ -913,10 +905,10 @@ export async function worm_cross(x1, y1, x2, y2) {   // worm.c:898
         /* we don't know which of <x1,y2> or <x2,y1> we'll hit first, but
            whichever it is, they're consecutive iff next seg is the other */
         if (curr.wx === x1 && curr.wy === y2) {
-            return $c.i8(wnxt.wx === x2 && wnxt.wy === y1 ? 1 : 0);
+            return wnxt.wx === x2 && wnxt.wy === y1 ? 1 : 0;
         }
         if (curr.wx === x2 && curr.wy === y1) {
-            return $c.i8(wnxt.wx === x1 && wnxt.wy === y2 ? 1 : 0);
+            return wnxt.wx === x1 && wnxt.wy === y2 ? 1 : 0;
         }
     }
     /* should never reach here... */
@@ -930,11 +922,11 @@ export async function worm_cross(x1, y1, x2, y2) {   // worm.c:898
  * @returns {number} int
  */
 export function wseg_at(worm, x, y) {   // worm.c:946
-    let res = 0, curr = null, i = 0, n = 0, wx = 0, wy = 0;
-    res = 0;
-    if (worm && worm.wormno | 0 && $c.peq(svl.level.monsters[x][y], worm)) {
-        wx = $c.i16(x);
-        wy = $c.i16(y);
+    let curr = null, i = 0, n = 0;
+    let res = 0;
+    if (worm && worm.wormno && $c.peq(svl.level.monsters[x][y], worm)) {
+        const wx = $c.i16(x);
+        const wy = $c.i16(y);
         for (i = 0, curr = wtails[worm.wormno]; curr; curr = curr.nseg) {
             if (curr.wx === wx && curr.wy === wy) {
                 break;
@@ -954,8 +946,7 @@ export function wseg_at(worm, x, y) {   // worm.c:946
  * @param {number} maxy int
  */
 export function flip_worm_segs_vertical(worm, miny, maxy) {   // worm.c:968
-    let curr = null;
-    curr = wtails[worm.wormno];
+    let curr = wtails[worm.wormno];
     while (curr) {
         curr.wy = $c.i16((maxy - curr.wy | 0) + miny | 0);
         curr = curr.nseg;
@@ -967,8 +958,7 @@ export function flip_worm_segs_vertical(worm, miny, maxy) {   // worm.c:968
  * @param {number} maxx int
  */
 export function flip_worm_segs_horizontal(worm, minx, maxx) {   // worm.c:979
-    let curr = null;
-    curr = wtails[worm.wormno];
+    let curr = wtails[worm.wormno];
     while (curr) {
         curr.wx = $c.i16((maxx - curr.wx | 0) + minx | 0);
         curr = curr.nseg;
@@ -979,8 +969,7 @@ export function flip_worm_segs_horizontal(worm, minx, maxx) {   // worm.c:979
  * @returns {Promise<void>}
  */
 export async function redraw_worm(worm) {   // worm.c:990
-    let curr = null;
-    curr = wtails[worm.wormno];
+    let curr = wtails[worm.wormno];
     while (curr) {
         await newsym(curr.wx, curr.wy);
         curr = curr.nseg;

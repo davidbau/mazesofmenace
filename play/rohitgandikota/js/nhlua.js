@@ -78,6 +78,13 @@ export async function load_lua(name) {
 // src/nhlua.c l_nhcore_init() — the core state, created once in newgame().
 export function l_nhcore_init() {
     game.splev_align = nhl_init();
+    game.luacore = true;
+}
+
+// src/nhlua.c:1499 restore_luadata(). Hand-ported Lua data is in game state.
+export function restore_luadata() {
+    if (!game.luacore)
+        l_nhcore_init();
 }
 
 // dat/nhcore.lua:108 show_getpos_tip() — the NHCORE_GETPOS_TIP callback,
@@ -235,7 +242,7 @@ export async function tutorial(entering) {
         avail.enter_tutorial = avail.leave_tutorial = false;
     }
     if (entering) {
-        nhl_gamestate_save();
+        await nhl_gamestate_save();
         /* dat/nhlib.lua:194 tutorial_enter(): add the tutorial branch
            callbacks */
         nh_callback('cmd_before', 'tutorial_cmd_before');
@@ -258,28 +265,44 @@ function nhl_gamestate_save() {
     if (g.gmst_stored)
         return; /* impossible() */
     const invent = [];
-    while ((g.invent || []).length) {
-        const otmp = g.invent[0];
-        const wornmask = otmp.owornmask;
-        setnotworn(otmp);
-        freeinv(otmp);
-        otmp.owornmask = wornmask; /* flag for later restore */
-        invent.push(otmp);
+    const pending = store_inventory();
+    return pending ? pending.then(finish) : finish();
+
+    function store_inventory() {
+        while ((g.invent || []).length) {
+            const otmp = g.invent[0];
+            const wornmask = otmp.owornmask;
+            const removed = setnotworn(otmp);
+            const store = () => {
+                const freed = freeinv(otmp);
+                const remember = () => {
+                    otmp.owornmask = wornmask; /* flag for later restore */
+                    invent.push(otmp);
+                };
+                return freed ? freed.then(remember) : remember();
+            };
+            const stored = removed ? removed.then(store) : store();
+            if (stored)
+                return stored.then(store_inventory);
+        }
     }
-    g.gmst = {
-        moves: g.moves,
-        invent,
-        ubak: clone_tutorial_u(g.u),
-        disco: JSON.parse(JSON.stringify(g.disco ?? [])),
-        mvitals: JSON.parse(JSON.stringify(g.mvitals ?? {})),
-        /* svs.spl_book: the port keeps it as game.spl_book (spell.js) */
-        spl_book: JSON.parse(JSON.stringify(g.spl_book ?? [])),
-    };
-    g.lastinvnr = 51; /* next inventory letter will be 'a' */
-    /* memset(svs.spl_book, 0, ...) */
-    g.spl_book = [];
-    g.gmst_stored = true;
-    update_inventory();
+
+    function finish() {
+        g.gmst = {
+            moves: g.moves,
+            invent,
+            ubak: clone_tutorial_u(g.u),
+            disco: JSON.parse(JSON.stringify(g.disco ?? [])),
+            mvitals: JSON.parse(JSON.stringify(g.mvitals ?? {})),
+            /* svs.spl_book: the port keeps it as game.spl_book (spell.js) */
+            spl_book: JSON.parse(JSON.stringify(g.spl_book ?? [])),
+        };
+        g.lastinvnr = 51; /* next inventory letter will be 'a' */
+        /* memset(svs.spl_book, 0, ...) */
+        g.spl_book = [];
+        g.gmst_stored = true;
+        update_inventory();
+    }
 }
 
 // the restore arm: put everything back, reset time, re-init hunger.
@@ -295,13 +318,13 @@ async function nhl_gamestate_restore() {
 
     g.lastinvnr = 51;
     while ((g.invent || []).length)
-        useupall(g.invent[0]);
+        await useupall(g.invent[0]);
     for (const otmp of g.gmst.invent) {
         const wornmask = otmp.owornmask;
         otmp.owornmask = 0;
         addinv_nomerge(otmp);
         if (wornmask)
-            setworn(otmp, wornmask);
+            await setworn(otmp, wornmask);
     }
     Object.assign(g.u, g.gmst.ubak);
     g.disco = g.gmst.disco;

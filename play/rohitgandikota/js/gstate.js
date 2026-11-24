@@ -4,6 +4,7 @@
 export let game = {};
 
 export function resetGame() {
-    game = {};
+    // src/decl.c:458,1096: inventory letter allocation starts fresh per process.
+    game = { lastinvnr: 51 };
     return game;
 }

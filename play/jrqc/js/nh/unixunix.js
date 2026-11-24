@@ -203,7 +203,6 @@ export async function getlock() {   // unixunix.c:103
  */
 export async function ask_about_panic_save() {   // unixunix.c:263
     let c = 0;
-    c = 0;
     await pline($c.lit("There is no regular save file but there is a panic one."));
     await pline($c.lit("It might be recoverable with demi-divine intervention."));
     if (iflags.window_inited) {

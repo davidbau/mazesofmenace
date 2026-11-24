@@ -9,5 +9,5 @@ import { $G } from './globals.js';
 import { svr } from './decl.js';
 
 export function ROOM_INDEX(x) {
-    return $c.rdiff(x, $c.relem(svr.rooms, 0));
+    return $c.rdiff(x, svr.rooms[0]);
 }

@@ -24,9 +24,9 @@ export async function minetn3_level() {
     /* dat/nhlib.lua:24 align — shuffled by load_special; Lua is 1-indexed */
     const align = (n) => game.nhlib_align[n - 1];
 
-    des.room({ type: 'ordinary', lit: 1, x: 3, y: 3,
+    await des.room({ type: 'ordinary', lit: 1, x: 3, y: 3,
                xalign: 'center', yalign: 'center', w: 31, h: 15,
-               contents: () => {
+               contents: async () => {
                    des.feature('fountain', 1, 6);
                    des.feature('fountain', 29, 13);
 
@@ -43,11 +43,11 @@ export async function minetn3_level() {
                                              wall: 'south' });
                               } });
 
-                   des.room({ type: 'ordinary', x: 2, y: 10, w: 2, h: 3,
-                              contents: () => {
+                   await des.room({ type: 'ordinary', x: 2, y: 10, w: 2, h: 3,
+                              contents: async () => {
                                   des.door({ state: 'locked',
                                              wall: 'north' });
-                                  des.monster('G');
+                                  await des.monster('G');
                               } });
 
                    des.room({ type: 'ordinary', x: 5, y: 9, w: 2, h: 2,
@@ -56,15 +56,15 @@ export async function minetn3_level() {
                                              wall: 'north' });
                               } });
 
-                   des.room({ type: 'temple', lit: 1, x: 10, y: 2,
+                   await des.room({ type: 'temple', lit: 1, x: 10, y: 2,
                               w: 3, h: 4,
-                              contents: () => {
+                              contents: async () => {
                                   des.door({ state: 'closed',
                                              wall: 'east' });
                                   des.altar({ x: 1, y: 1, align: align(1),
                                               type: 'shrine' });
-                                  des.monster('gnomish wizard');
-                                  des.monster('gnomish wizard');
+                                  await des.monster('gnomish wizard');
+                                  await des.monster('gnomish wizard');
                               } });
 
                    des.room({ type: 'ordinary', x: 11, y: 7, w: 2, h: 2,
@@ -82,11 +82,11 @@ export async function minetn3_level() {
 
                    /* the bare `random` in these tables is a nil global in
                       the Lua; it adds nothing */
-                   des.room({ type: 'ordinary', x: 14, y: 8, w: 2, h: 2,
-                              contents: () => {
+                   await des.room({ type: 'ordinary', x: 14, y: 8, w: 2, h: 2,
+                              contents: async () => {
                                   des.door({ state: 'locked',
                                              wall: 'north' });
-                                  des.monster('G');
+                                  await des.monster('G');
                               } });
 
                    des.room({ type: 'ordinary', x: 14, y: 11, w: 2, h: 2,
@@ -102,11 +102,11 @@ export async function minetn3_level() {
                                              wall: 'north' });
                               } });
 
-                   des.room({ type: 'ordinary', x: 21, y: 11, w: 2, h: 2,
-                              contents: () => {
+                   await des.room({ type: 'ordinary', x: 21, y: 11, w: 2, h: 2,
+                              contents: async () => {
                                   des.door({ state: 'locked',
                                              wall: 'east' });
-                                  des.monster('G');
+                                  await des.monster('G');
                               } });
 
                    des.room({ type: monkfoodshop(), chance: 90, lit: 1,
@@ -142,31 +142,31 @@ export async function minetn3_level() {
                                              wall: 'south' });
                               } });
 
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watch captain', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watch captain', peaceful: 1 });
                } });
 
     des.room({ type: 'ordinary', contents: () => {
         des.stair('up');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.stair('down');
-        des.trap();
-        des.monster('gnome');
-        des.monster('gnome');
+        await des.trap();
+        await des.monster('gnome');
+        await des.monster('gnome');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
-        des.monster('dwarf');
+    await des.room({ type: 'ordinary', contents: async () => {
+        await des.monster('dwarf');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
-        des.trap();
-        des.monster('gnome');
+    await des.room({ type: 'ordinary', contents: async () => {
+        await des.trap();
+        await des.monster('gnome');
     } });
 
     des.random_corridors();

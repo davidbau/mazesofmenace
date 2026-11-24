@@ -28,9 +28,9 @@ export async function minetn7_level() {
     /* dat/nhlib.lua:24 align — shuffled by load_special; Lua is 1-indexed */
     const align = (n) => game.nhlib_align[n - 1];
 
-    des.room({ type: 'ordinary', lit: 1, x: 3, y: 3,
+    await des.room({ type: 'ordinary', lit: 1, x: 3, y: 3,
                xalign: 'center', yalign: 'center', w: 30, h: 15,
-               contents: () => {
+               contents: async () => {
                    des.feature('fountain', 12, 7);
                    des.feature('fountain', 11, 13);
 
@@ -59,24 +59,24 @@ export async function minetn7_level() {
                    }
 
                    if (percent(75)) {
-                       des.room({ type: 'ordinary', lit: 1, x: 10, y: 2,
+                       await des.room({ type: 'ordinary', lit: 1, x: 10, y: 2,
                                   w: 3, h: 4,
-                                  contents: () => {
-                                      des.monster('gnome');
-                                      des.monster('monkey');
-                                      des.monster('monkey');
-                                      des.monster('monkey');
+                                  contents: async () => {
+                                      await des.monster('gnome');
+                                      await des.monster('monkey');
+                                      await des.monster('monkey');
+                                      await des.monster('monkey');
                                       des.door({ state: 'closed',
                                                  wall: 'south' });
                                   } });
                    }
 
                    if (percent(75)) {
-                       des.room({ type: 'ordinary', x: 14, y: 2, w: 4, h: 2,
-                                  contents: () => {
+                       await des.room({ type: 'ordinary', x: 14, y: 2, w: 4, h: 2,
+                                  contents: async () => {
                                       des.door({ state: 'closed',
                                                  wall: 'south', pos: 0 });
-                                      des.monster('n');
+                                      await des.monster('n');
                                   } });
                    }
 
@@ -89,12 +89,12 @@ export async function minetn7_level() {
                    }
 
                    if (percent(75)) {
-                       des.room({ type: 'ordinary', lit: 0, x: 19, y: 2,
+                       await des.room({ type: 'ordinary', lit: 0, x: 19, y: 2,
                                   w: 2, h: 2,
-                                  contents: () => {
+                                  contents: async () => {
                                       des.door({ state: 'locked',
                                                  wall: 'east' });
-                                      des.monster('gnome king');
+                                      await des.monster('gnome king');
                                   } });
                    }
 
@@ -128,11 +128,11 @@ export async function minetn7_level() {
                               } });
 
                    if (percent(75)) {
-                       des.room({ type: 'ordinary', x: 11, y: 10, w: 2, h: 2,
-                                  contents: () => {
+                       await des.room({ type: 'ordinary', x: 11, y: 10, w: 2, h: 2,
+                                  contents: async () => {
                                       des.door({ state: 'locked',
                                                  wall: 'west' });
-                                      des.monster('G');
+                                      await des.monster('G');
                                   } });
                    }
 
@@ -174,48 +174,48 @@ export async function minetn7_level() {
                                              wall: 'west' });
                               } });
 
-                   des.room({ type: 'temple', lit: 1, x: 24, y: 6,
+                   await des.room({ type: 'temple', lit: 1, x: 24, y: 6,
                               w: 4, h: 4,
-                              contents: () => {
+                              contents: async () => {
                                   des.door({ state: 'closed',
                                              wall: 'west' });
                                   des.altar({ x: 2, y: 1, align: align(1),
                                               type: 'shrine' });
-                                  des.monster('gnomish wizard');
-                                  des.monster('gnomish wizard');
+                                  await des.monster('gnomish wizard');
+                                  await des.monster('gnomish wizard');
                               } });
 
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watchman', peaceful: 1 });
-                   des.monster({ id: 'watch captain', peaceful: 1 });
-                   des.monster('gnome');
-                   des.monster('gnome');
-                   des.monster('gnome');
-                   des.monster('gnome lord');
-                   des.monster('monkey');
-                   des.monster('monkey');
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watchman', peaceful: 1 });
+                   await des.monster({ id: 'watch captain', peaceful: 1 });
+                   await des.monster('gnome');
+                   await des.monster('gnome');
+                   await des.monster('gnome');
+                   await des.monster('gnome lord');
+                   await des.monster('monkey');
+                   await des.monster('monkey');
                } });
 
     des.room({ type: 'ordinary', contents: () => {
         des.stair('up');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.stair('down');
-        des.trap();
-        des.monster('gnome');
-        des.monster('gnome');
+        await des.trap();
+        await des.monster('gnome');
+        await des.monster('gnome');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
-        des.monster('dwarf');
+    await des.room({ type: 'ordinary', contents: async () => {
+        await des.monster('dwarf');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
-        des.trap();
-        des.monster('gnome');
+    await des.room({ type: 'ordinary', contents: async () => {
+        await des.trap();
+        await des.monster('gnome');
     } });
 
     des.random_corridors();

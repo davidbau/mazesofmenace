@@ -1036,7 +1036,7 @@ import { impossible } from './pline.js'; // relocate-fns
 import { check_wornmask_slots } from './worn.js';
 import { check_invent_gold } from './invent.js';
 import { does_block, get_viz_clear } from './vision.js'; // relocate-fns
-import { INV_ORDER, MAGIC_PORTAL, PICKINV_CLASS_HEADER, TTY_MENU_ROWS, Warn_of_mon_prop, _Blind_cmd, _invlet_constant, _observe_in_qsort_order, _on_W_tower_level, _pd_br_string, _pd_chr_u_on_lvl, _pd_depth, _pickinv_item_text, _sortloot_within_class, create_nhwindow, destroy_nhwindow, display_nhwindow, incr_itimeout_prop, putstr, set_cursor } from './cmd.js';
+import { INV_ORDER, MAGIC_PORTAL, PICKINV_CLASS_HEADER, TTY_MENU_ROWS, Warn_of_mon_prop, _Blind_cmd, _invlet_constant, display_pickinv_sorted, _on_W_tower_level, _pd_br_string, _pd_chr_u_on_lvl, _pd_depth, _pickinv_item_text, _sortloot_within_class, create_nhwindow, destroy_nhwindow, display_nhwindow, incr_itimeout_prop, putstr, set_cursor } from './cmd.js';
 import { pooleffects } from './hack.js';
 import { fully_identify_obj, invletter_value, prinv } from './invent.js';
 import { level_tele } from './teleport.js'; // relocate-fns
@@ -1563,15 +1563,9 @@ export async function wiz_identify() {
      * (invent.c:170) on every compared object, setting dknown (e.g. on water
      * whose otyp trap.c:4832 just reset it) before the filter looks. */
     // Full sorting below performs classification and naming once (invent.c:3207).
-    if (g.flags.sortloot !== 'i' && g.flags.sortloot !== 'f' && g.flags.sortpack !== false
-        && !_Blind_cmd() && items.length > 1) {
-        _observe_in_qsort_order(items);
-    }
-    /* C invent.c:3176-3207: full sorting uses SORTLOOT_LOOT even without
-     * sortpack, and sorts the whole inventory before the wizid filter. */
-    let sortedItems = items;
-    if (g.flags.sortloot === 'f')
-        sortedItems = _sortloot_within_class(items, null);
+    /* C invent.c:3176-3207: one sortloot() over the whole pack before the
+     * wizid filter (js/cmd.js display_pickinv_sorted). */
+    const sortedItems = (g.flags.sortloot !== 'i' ? display_pickinv_sorted() : null) || items;
     const unid = sortedItems.filter((o) => not_fully_identified(o));
     if (unid.length) {
         const PLUR = unid.length > 1 ? 's' : '';
@@ -1599,8 +1593,7 @@ export async function wiz_identify() {
         const wizClasses = flatWiz ? [-1] : (g.flags?.inv_order || INV_ORDER).concat(17);
         for (const oclass of wizClasses) {
             const group = flatWiz
-                ? (g.flags.sortloot === 'f' ? unid : unid.slice().sort((x, y) =>
-                    invletter_value(x.invlet | 0) - invletter_value(y.invlet | 0)))
+                ? unid
                 : unid.filter((it) => (it.oclass | 0) === oclass);
             if (!group.length) continue;
             if (!flatWiz)

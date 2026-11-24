@@ -1517,8 +1517,8 @@ async function hitmu(mtmp, mattk, indx) {
         await hitmsg(mtmp, mattk, indx);
         if (!mtmp.mcan && !rn2(4)) {
             const { make_stunned } = await import('./potion.js');
-            await make_stunned((game.u.intrinsic?.HStun || 0) + mhm.damage,
-                               true);
+            await make_stunned(((game.u.intrinsic?.HStun || 0) & TIMEOUT)
+                               + mhm.damage, true);
             mhm.damage = Math.trunc(mhm.damage / 2);
         }
     } else if (mattk[1] === A.AD_LEGS) {

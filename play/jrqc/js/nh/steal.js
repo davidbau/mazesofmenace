@@ -67,8 +67,7 @@ const steal$how = $c.nulls(4);   // static in steal()
  * @returns {number | bigint} long
  */
 export function somegold(lmoney) {   // steal.c:14
-    let igold = 0;
-    igold = lmoney >= LARGEST_INT ? LARGEST_INT : $c.i32(lmoney);
+    let igold = lmoney >= LARGEST_INT ? LARGEST_INT : $c.i32(lmoney);
     if (igold < 50) {
         /* all gold */
     } else if (igold < 100) {
@@ -99,8 +98,7 @@ export function somegold(lmoney) {   // steal.c:14
  * @returns {$T.obj | null} struct obj *
  */
 export function findgold(argchain) {   // steal.c:45
-    let chain = null;
-    chain = argchain;   /* allow arg to be nonnull */
+    let chain = argchain;   /* allow arg to be nonnull */
     while (chain && chain.otyp !== GOLD_PIECE) {
         chain = chain.nobj;
     }
@@ -114,14 +112,14 @@ export function findgold(argchain) {   // steal.c:45
  * @returns {Promise<void>}
  */
 export async function stealgold(mtmp) {   // steal.c:58
-    let fgold = null, ygold = null, tmp = 0, who = null, whose = null, what = null, gold_price = 0;
-    fgold = g_at(u.ux, u.uy);
+    let who = null, whose = null, what = null;
+    let fgold = g_at(u.ux, u.uy);
     /* skip lesser coins on the floor */
     while (fgold && fgold.otyp !== GOLD_PIECE) {
         fgold = fgold.v.v_nexthere;
     }
     /* Do you have real gold? */
-    ygold = findgold(gi.invent);
+    let ygold = findgold(gi.invent);
     if (fgold && (!ygold || fgold.quan > ygold.quan || !rn2(5))) {
         await obj_extract_self(fgold);
         await add_to_minv(mtmp, fgold);
@@ -151,8 +149,8 @@ export async function stealgold(mtmp) {   // steal.c:58
             await monflee(mtmp, 0, FALSE, FALSE);
         }
     } else if (ygold) {
-        gold_price = objects[GOLD_PIECE].oc_cost;
-        tmp = $c.div64($c.sub64($c.add64(somegold(money_cnt(gi.invent)), gold_price), 1), gold_price);
+        const gold_price = objects[GOLD_PIECE].oc_cost;
+        let tmp = $c.div64($c.sub64($c.add64(somegold(money_cnt(gi.invent)), gold_price), 1), gold_price);
         tmp = min(tmp, ygold.quan);
         if (tmp < ygold.quan) {
             ygold = await splitobj(ygold, tmp);
@@ -187,7 +185,7 @@ export function unresponsive() {   // steal.c:133
     if (gm.multi >= 0) {
         return FALSE;
     }
-    return $c.i8(unconscious() || is_fainted() || gm.multi_reason && (!$c.strncmp(gm.multi_reason, $c.lit("frozen"), 6) || !$c.strncmp(gm.multi_reason, $c.lit("paralyzed"), 9)) ? 1 : 0);
+    return unconscious() || is_fainted() || gm.multi_reason && (!$c.strncmp(gm.multi_reason, $c.lit("frozen"), 6) || !$c.strncmp(gm.multi_reason, $c.lit("paralyzed"), 9)) ? 1 : 0;
 }
 /* called via (*ga.afternmv)() when hero finishes taking off armor that
    was slated to be stolen but the thief died in the interim */
@@ -265,7 +263,6 @@ async function stealarm() {   // steal.c:165
  * @returns {Promise<void>}
  */
 export async function remove_worn_item(obj, unchain_ball) {   // steal.c:213
-    let oldinuse = 0, save_plnmsg = 0;
     /* whether to unpunish or just unwield */
     if (donning(obj)) {
         cancel_don();
@@ -288,8 +285,8 @@ export async function remove_worn_item(obj, unchain_ball) {   // steal.c:213
      * and defending the game against deliberate hangup when player sees a
      * message about something undesirable followed by --More--.
      */
-    oldinuse = obj.in_use;
-    obj.in_use = (1) & 1;
+    const oldinuse = obj.in_use;
+    obj.in_use = 1;
     if ($c.and64(obj.owornmask, W_ARMOR)) {
         if ($c.peq(obj, $G.uskin)) {
             await impossible($c.lit("Removing embedded scales?"));
@@ -341,7 +338,7 @@ export async function remove_worn_item(obj, unchain_ball) {   // steal.c:213
     if (obj.where === OBJ.DELETED) {
         do {
             if (debugcore($c.lit("steal.c"), TRUE)) {
-                save_plnmsg = iflags.last_msg;
+                const save_plnmsg = iflags.last_msg;
                 await pline($c.lit("remove_worn_item() \"%s\" deleted!"), await simpleonames(obj));
                 iflags.last_msg = save_plnmsg;
             }
@@ -356,10 +353,10 @@ export async function remove_worn_item(obj, unchain_ball) {   // steal.c:213
  * @returns {Promise<void>}
  */
 async function worn_item_removal(mon, obj) {   // steal.c:294
-    let objbuf = new Int8Array(256), article = new Int8Array(20), p = null, verb = null, strip_art = 0;
+    let objbuf = new Int8Array(256), article = new Int8Array(20), p = null;
     $c.strcpy(new $c.Ptr(objbuf, 0), await doname(obj));
     /* massage the object description */
-    strip_art = !$c.strncmp(new $c.Ptr(objbuf, 0), $c.lit("the "), 4) ? 4 : !$c.strncmp(new $c.Ptr(objbuf, 0), $c.lit("an "), 3) ? 3 : !$c.strncmp(new $c.Ptr(objbuf, 0), $c.lit("a "), 2) ? 2 : 0;
+    const strip_art = !$c.strncmp(new $c.Ptr(objbuf, 0), $c.lit("the "), 4) ? 4 : !$c.strncmp(new $c.Ptr(objbuf, 0), $c.lit("an "), 3) ? 3 : !$c.strncmp(new $c.Ptr(objbuf, 0), $c.lit("a "), 2) ? 2 : 0;
     if (strip_art) {
         /* convert "a/an/the <object>" to "your object" */
         copynchars(new $c.Ptr(article, 0), new $c.Ptr(objbuf, 0), strip_art);
@@ -378,7 +375,7 @@ async function worn_item_removal(mon, obj) {   // steal.c:294
     /* slightly iffy for alternate weapon that isn't actively dual-wielded,
        but it's better to alert the player to the change in equipment than
        to suppress the message for that case */
-    verb = $c.and64(obj.owornmask, W_WEAPONS) !== 0 ? $c.lit("disarms") : $c.and64(obj.owornmask, W_ACCESSORY) !== 0 ? $c.lit("removes") : $c.lit("takes off");
+    const verb = $c.and64(obj.owornmask, W_WEAPONS) !== 0 ? $c.lit("disarms") : $c.and64(obj.owornmask, W_ACCESSORY) !== 0 ? $c.lit("removes") : $c.lit("takes off");
     await pline($c.lit("%s %s %s."), await Some_Monnam(mon), verb, new $c.Ptr(objbuf, 0));
     iflags.last_msg = PLNMSG.MON_TAKES_OFF_ITEM;
     /* removal might trigger more messages (due to loss of Lev|Fly;
@@ -403,9 +400,9 @@ export async function steal(mtmp, objnambuf) {   // steal.c:343
         case null:
             named = 0;
             retrycnt = 0;
-            monkey_business = $c.i8(is_animal(mtmp.data));
-            seen = $c.i8(canspotmon(mtmp));
-            was_punished = $c.i8(Punished());
+            monkey_business = is_animal(mtmp.data);
+            seen = canspotmon(mtmp);
+            was_punished = Punished();
             if (objnambuf) {
                 objnambuf.set(0, 0);
             }
@@ -526,7 +523,7 @@ export async function steal(mtmp, objnambuf) {   // steal.c:343
                         } else {
                             /* nymphs can steal rings from under
                                cursed weapon but animals can't */
-                            ostuck = $c.i8(otmp.cursed | 0 && otmp.owornmask || $c.peq(otmp, RING_ON_PRIMARY()) && await welded($G.uwep) || $c.peq(otmp, RING_ON_SECONDARY()) && await welded($G.uwep) && bimanual($G.uwep) ? 1 : 0);
+                            ostuck = otmp.cursed && otmp.owornmask || $c.peq(otmp, RING_ON_PRIMARY()) && await welded($G.uwep) || $c.peq(otmp, RING_ON_SECONDARY()) && await welded($G.uwep) && bimanual($G.uwep) ? 1 : 0;
                         }
                     case "cant_take":
                         if ($goto === "cant_take" || (ostuck || await can_carry(mtmp, otmp) === 0)) {
@@ -549,7 +546,7 @@ export async function steal(mtmp, objnambuf) {   // steal.c:343
                 }
             }
             if (otmp.otyp === LEASH && otmp.corpsenm) {
-                if (monkey_business && otmp.cursed | 0) {
+                if (monkey_business && otmp.cursed) {
                     $goto = "cant_take"; continue D1;
                 }
                 await o_unleash(otmp);
@@ -584,8 +581,8 @@ export async function steal(mtmp, objnambuf) {   // steal.c:343
                             await worn_item_removal(mtmp, otmp);
                             break;
                         } else {
-                            curssv = otmp.cursed | 0;
-                            otmp.cursed = (0) & 1;
+                            curssv = otmp.cursed;
+                            otmp.cursed = 0;
                             slowly = armordelay >= 1 || gm.multi < 0 ? 1 : 0;
                             if (flags.female) {
                                 await urgent_pline($c.lit("%s charms you.  You gladly %s your %s."), !seen ? $c.lit("She") : new $c.Ptr(Monnambuf, 0), curssv ? $c.lit("let her take") : !slowly ? $c.lit("hand over") : was_doffing ? $c.lit("continue removing") : $c.lit("start removing"), await armor_simple_name(otmp));
@@ -639,7 +636,7 @@ export async function steal(mtmp, objnambuf) {   // steal.c:343
             /* usually set mavenge bit so knights won't suffer an alignment penalty
                during retaliation; not applicable for removing attached iron ball */
             if (!Conflict() && !(was_punished && !Punished())) {
-                mtmp.mavenge = (1) & 1;
+                mtmp.mavenge = 1;
             }
             if (otmp.unpaid) {
                 await subfrombill(otmp, await shop_keeper(new $c.Ptr(u.ushops, 0).get(0)));
@@ -671,8 +668,7 @@ export async function steal(mtmp, objnambuf) {   // steal.c:343
  * @returns {Promise<number>} int
  */
 export async function mpickobj(mtmp, otmp) {   // steal.c:618
-    let freed_otmp = 0, snuff_otmp = 0;
-    snuff_otmp = FALSE;
+    let snuff_otmp = FALSE;
     if (!otmp) {
         await impossible($c.lit("monster (%s) taking or picking up nothing?"), pmname(mtmp.data, Mgender(mtmp)));
         return 1;
@@ -689,7 +685,7 @@ export async function mpickobj(mtmp, otmp) {   // steal.c:618
     }
     /* an unpaid item can be on the floor; if a monster picks it up, take
        it off the shop bill */
-    if (otmp.unpaid | 0 || Has_contents(otmp) && count_unpaid(otmp.cobj)) {
+    if (otmp.unpaid || Has_contents(otmp) && count_unpaid(otmp.cobj)) {
         await subfrombill(otmp, await find_objowner(otmp, otmp.ox, otmp.oy));
     }
     /* don't want hidden light source inside the monster; assumes that
@@ -704,7 +700,7 @@ export async function mpickobj(mtmp, otmp) {   // steal.c:618
     }
     /* for hero owned object on shop floor, mtmp is taking possession
        and if it's eventually dropped in a shop, shk will claim it */
-    otmp.no_charge = (0) & 1;
+    otmp.no_charge = 0;
     /* some object handling is only done if mtmp isn't a pet */
     if (!mtmp.mtame) {
         /* if monst is unseen, some info hero knows about this object becomes
@@ -721,9 +717,9 @@ export async function mpickobj(mtmp, otmp) {   // steal.c:618
            rather than 'pickup_thrown'; if previously stolen, stays stolen;
            if previously dropped, now forgotten and autopickup will operate
            normally regardless of the setting for 'dropped_nopick' */
-        if ((otmp.how_lost | 0) === LOST.THROWN) {
+        if (otmp.how_lost === LOST.THROWN) {
             otmp.how_lost = (LOST.STOLEN) & 7;
-        } else if ((otmp.how_lost | 0) === LOST.DROPPED) {
+        } else if (otmp.how_lost === LOST.DROPPED) {
             otmp.how_lost = (LOST.NONE) & 7;
         }
     }
@@ -731,7 +727,7 @@ export async function mpickobj(mtmp, otmp) {   // steal.c:618
     await carry_obj_effects(otmp);
     /* add_to_minv() might free otmp [if merged with something else],
        so we have to call it after doing the object checks */
-    freed_otmp = await add_to_minv(mtmp, otmp);
+    const freed_otmp = await add_to_minv(mtmp, otmp);
     /* and we had to defer this until object is in mtmp's inventory */
     if (snuff_otmp) {
         await snuff_light_source(mtmp.mx, mtmp.my);
@@ -744,11 +740,11 @@ export async function mpickobj(mtmp, otmp) {   // steal.c:618
  * @returns {Promise<void>}
  */
 export async function stealamulet(mtmp) {   // steal.c:689
-    let buf = new Int8Array(256), otmp = null, obj = null, real = 0, fake = 0, n = 0;
-    otmp = null;
-    obj = null;
-    real = 0;
-    fake = 0;
+    let buf = new Int8Array(256), n = 0;
+    let otmp = null;
+    let obj = null;
+    let real = 0;
+    let fake = 0;
     /* target every quest artifact, not just current role's;
        if hero has more than one, choose randomly so that player
        can't use inventory ordering to influence the theft */
@@ -842,7 +838,6 @@ export async function stealamulet(mtmp) {   // steal.c:689
  * @returns {Promise<void>}
  */
 export async function maybe_absorb_item(mon, obj, ochance, achance) {   // steal.c:772
-    let hand_s = null;
     /* percent chance for ordinary item, artifact */
     if ($c.peq(obj, $G.uball) || $c.peq(obj, $G.uchain) || obj.oclass === ROCK_CLASS || obj_resists(obj, 100 - ochance | 0, 100 - achance | 0) || !await touch_artifact(obj, mon)) {
         return;
@@ -860,7 +855,7 @@ export async function maybe_absorb_item(mon, obj, ochance, achance) {   // steal
             /* Monnam() or "Something" */
             await pline($c.lit("%s pulls %s away from you and absorbs %s!"), await Some_Monnam(mon), await yname(obj), obj.quan > 1 ? $c.lit("them") : $c.lit("it"));
         } else {
-            hand_s = await body_part(HAND);
+            let hand_s = await body_part(HAND);
             if (bimanual(obj)) {
                 hand_s = await makeplural(hand_s);
             }
@@ -885,19 +880,18 @@ export async function maybe_absorb_item(mon, obj, ochance, achance) {   // steal
  * @returns {Promise<void>}
  */
 export async function mdrop_obj(mon, obj, verbosely) {   // steal.c:814
-    let omx = 0, omy = 0, unwornmask = 0, obj_name = null;
-    omx = mon.mx;
-    omy = mon.my;
-    unwornmask = obj.owornmask;
+    const omx = mon.mx;
+    const omy = mon.my;
+    const unwornmask = obj.owornmask;
     /* call distant_name() for its possible side-effects even if the result
        might not be printed, and do it before extracting obj from minvent */
-    obj_name = await distant_name(obj, doname);
+    const obj_name = await distant_name(obj, doname);
     await extract_from_minvent(mon, obj, FALSE, TRUE);
     /* don't charge for an owned saddle on dead steed (provided
         that the hero is within the same shop at the time) */
     /* being at costly_spot guarantees lev->roomno is not 0 */
-    if (unwornmask && mon.mtame && $c.and64(unwornmask, W.SADDLE) !== 0 && !obj.unpaid && await costly_spot(omx, omy) && $c.strchr(in_rooms(u.ux, u.uy, SHOPBASE), svl.level.locations[omx][omy].roomno | 0)) {
-        obj.no_charge = (1) & 1;
+    if (unwornmask && mon.mtame && $c.and64(unwornmask, W.SADDLE) !== 0 && !obj.unpaid && await costly_spot(omx, omy) && $c.strchr(in_rooms(u.ux, u.uy, SHOPBASE), svl.level.locations[omx][omy].roomno)) {
+        obj.no_charge = 1;
     }
     /* obj_no_longer_held(obj); -- done by place_object */
     if (verbosely && cansee(omx, omy)) {
@@ -948,12 +942,12 @@ export async function mdrop_special_objs(mon) {   // steal.c:852
  * @returns {Promise<void>}
  */
 export async function relobj(mtmp, show, is_pet) {   // steal.c:875
-    let otmp = null, omx = 0, omy = 0;
+    let otmp = null;
     /* If true, pet should keep wielded/worn items */
-    omx = mtmp.mx;
-    omy = mtmp.my;
+    const omx = mtmp.mx;
+    const omy = mtmp.my;
     /* vault guard's gold goes away rather than be dropped... */
-    if (mtmp.isgd | 0 && (otmp = findgold(mtmp.minvent)) !== null) {
+    if (mtmp.isgd && (otmp = findgold(mtmp.minvent)) !== null) {
         if (canspotmon(mtmp)) {
             await pline($c.lit("%s gold %s."), s_suffix(await Monnam(mtmp)), canseemon(mtmp) ? $c.lit("vanishes") : $c.lit("seems to vanish"));
         }
@@ -961,7 +955,7 @@ export async function relobj(mtmp, show, is_pet) {   // steal.c:875
         await obfree(otmp, null);
     }   /* isgd && has gold */
     while ((otmp = is_pet ? await droppables(mtmp) : mtmp.minvent) !== null) {
-        await mdrop_obj(mtmp, otmp, $c.i8(is_pet && flags.verbose ? 1 : 0));
+        await mdrop_obj(mtmp, otmp, is_pet && flags.verbose ? 1 : 0);
     }
     if (show && cansee(omx, omy)) {
         await newsym($c.i16(omx), $c.i16(omy));

@@ -18,44 +18,44 @@ export async function monfilb_level() {
         random_corridors: lspo_random_corridors,
     };
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.stair('up');
         des.object();
-        des.monster({ class: 'X', peaceful: 0 });
+        await des.monster({ class: 'X', peaceful: 0 });
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
         des.object();
-        des.monster({ class: 'X', peaceful: 0 });
+        await des.monster({ class: 'X', peaceful: 0 });
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
-        des.trap();
+        await des.trap();
         des.object();
-        des.monster({ class: 'E', peaceful: 0 });
+        await des.monster({ class: 'E', peaceful: 0 });
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.stair('down');
         des.object();
-        des.trap();
-        des.monster({ class: 'E', peaceful: 0 });
-        des.monster('earth elemental');
+        await des.trap();
+        await des.monster({ class: 'E', peaceful: 0 });
+        await des.monster('earth elemental');
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
         des.object();
-        des.trap();
-        des.monster({ class: 'X', peaceful: 0 });
+        await des.trap();
+        await des.monster({ class: 'X', peaceful: 0 });
     } });
 
-    des.room({ type: 'ordinary', contents: () => {
+    await des.room({ type: 'ordinary', contents: async () => {
         des.object();
-        des.trap();
-        des.monster('earth elemental');
+        await des.trap();
+        await des.monster('earth elemental');
     } });
 
     des.random_corridors();

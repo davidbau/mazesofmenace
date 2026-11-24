@@ -3907,7 +3907,7 @@ async function litter_scatter(litter, x, y, shkp) {
                 }
 
                 obj_extract_self(otmp); /* remove_object(otmp) */
-                place_object(otmp, ix, iy);
+                await place_object(otmp, ix, iy);
                 litter[i] |= LITTER_UPDATE;
             }
         } /* while level.objects[x][y] != 0 */
@@ -4647,8 +4647,8 @@ export async function shopdig(fall) {
                 continue;
             if (obj === game.current_wand)
                 continue;
-            setnotworn(obj);
-            freeinv(obj);
+            await setnotworn(obj);
+            await freeinv(obj);
             subfrombill(obj, shkp);
             add_to_minv(shkp, obj); /* may free obj */
         }

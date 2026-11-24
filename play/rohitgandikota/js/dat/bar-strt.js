@@ -112,26 +112,26 @@ export async function barstrt_level() {
     /* The treasure of Pelias */
     des.object('chest', 9, 5);
     /* chieftain guards for the audience chamber */
-    des.monster('chieftain', 10, 5);
-    des.monster('chieftain', 10, 9);
-    des.monster('chieftain', 11, 5);
-    des.monster('chieftain', 11, 9);
-    des.monster('chieftain', 14, 5);
-    des.monster('chieftain', 14, 9);
-    des.monster('chieftain', 16, 5);
-    des.monster('chieftain', 16, 9);
+    await des.monster('chieftain', 10, 5);
+    await des.monster('chieftain', 10, 9);
+    await des.monster('chieftain', 11, 5);
+    await des.monster('chieftain', 11, 9);
+    await des.monster('chieftain', 14, 5);
+    await des.monster('chieftain', 14, 9);
+    await des.monster('chieftain', 16, 5);
+    await des.monster('chieftain', 16, 9);
     /* Non diggable walls */
     des.non_diggable(0, 0, 75, 19);
     /* One trap to keep the ogres at bay. */
     des.trap('spiked pit', 37, 7);
     /* Eels in the river */
-    des.monster('giant eel', 36, 1);
-    des.monster('giant eel', 37, 9);
-    des.monster('giant eel', 39, 15);
+    await des.monster('giant eel', 36, 1);
+    await des.monster('giant eel', 37, 9);
+    await des.monster('giant eel', 39, 15);
     /* Monsters on siege duty. */
     const ogrelocs = l_selection_and(l_selection_flood(37, 7),
                                      l_selection_fillrect(40, 3, 45, 20));
     for (let i = 0; i <= 11; i++)
-        des.monster({ id: 'ogre', coord: selection_rndcoord(ogrelocs, 1),
+        await des.monster({ id: 'ogre', coord: selection_rndcoord(ogrelocs, 1),
                       peaceful: 0 });
 }
