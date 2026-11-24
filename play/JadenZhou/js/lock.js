@@ -28,6 +28,12 @@ import { is_quest_artifact } from './questpgr.js';
 import { CHEST } from './objects.js';
 import { D_LOCKED, M_AP_OBJECT } from './const.js';
 import { recalc_block_point } from './vision.js';
+import { unblock_point as unblock_point_lk } from './vision.js';
+import { m_at as m_at_lk } from './makemon.js';
+import { canseemon as canseemon_lk } from './display.js';
+import { mb_trapped as mb_trapped_lk } from './monmove.js';
+import { D_NODOOR as D_NODOOR_LK } from "./const.js";
+import { dist2 as dist2_lk } from "./hacklib.js";
 import { ACURR, acurrstr, exercise } from './attrib.js';
 import { m_at, closed_door } from './makemon.js';
 import { stumble_onto_mimic } from './uhitm.js';
@@ -63,7 +69,7 @@ import { COST_BRKLCK, PASSES_WALLS, DBWALL, BLINDED, P_DAGGER, P_FLAIL,
          P_LANCE, P_SABER, P_PICK_AXE, isok } from './const.js';
 import { costly_alteration, obj_extract_self, start_corpse_timeout,
          place_object, is_weptool } from './mkobj.js';
-import { costly_spot, shop_keeper } from './shk.js';
+import { costly_spot, shop_keeper, add_damage } from './shk.js';
 import { the, surface } from './iactions.js';
 import { xname, singular, an } from './objnam.js';
 import { obfree, useup, stackobj, delobj } from './invent.js';
@@ -903,8 +909,33 @@ export async function doorlock(otmp, x, y) {
             /* sawit: closed door location is more visible than open */
             let sawit, seeit;
 
-            if ((door.doormask || 0) & D_TRAPPED)
-                throw new Error('doorlock(): booby-trapped door (mb_trapped()) not ported yet');
+            if ((door.doormask || 0) & D_TRAPPED) {
+                const mtmp = m_at_lk(x, y);
+
+                sawit = mtmp ? canseemon_lk(mtmp) : cansee(x, y);
+                door.doormask = D_NODOOR_LK;
+                unblock_point_lk(x, y);
+                newsym(x, y);
+                seeit = mtmp ? canseemon_lk(mtmp) : cansee(x, y);
+                if (mtmp) {
+                    await mb_trapped_lk(mtmp, sawit || seeit);
+                } else {
+                    /* for mtmp, mb_trapped() does is own wake_nearto() */
+                    loudness = 40;
+                    if (game.flags.verbose) {
+                        /* Soundeffect(se_kaboom_door_explodes, 75); */
+                        if ((sawit || seeit) && !Unaware()) {
+                            await pline("KABOOM!!  You see a door explode.");
+                        } else if (!Deaf()) {
+                            /* Soundeffect(se_explosion, 75); */
+                            await You_hear(`a ${
+                                (dist2_lk(x, y, game.u.ux, game.u.uy) > 7 * 7)
+                                    ? "distant" : "nearby"} explosion.`);
+                        }
+                    }
+                }
+                break;
+            }
             sawit = cansee(x, y);
             door.doormask = D_BROKEN;
             recalc_block_point(x, y);
@@ -935,7 +966,7 @@ export async function doorlock(otmp, x, y) {
         /* door was destroyed */
         await wake_nearto(x, y, loudness);
         if (in_rooms(x, y, SHOPBASE).length)
-            throw new Error('doorlock(): shop door damage (add_damage()) not ported yet');
+            add_damage(x, y, 0);
     }
 
     if (res && picking_at(x, y)) {
@@ -1216,8 +1247,15 @@ export async function doclose() {
 
     const door = game.level.at(x, y);
     const portcullis = (is_drawbridge_wall(x, y) >= 0);
-    if (Blind())
-        throw new Error('doclose(): feel_location() for a blind hero not ported yet');
+    if (Blind()) {
+        const oldglyph = door.remembered_glyph; /* door->glyph */
+        const oldlastseentyp = update_mapseen_for(x, y);
+
+        feel_location(x, y);
+        if (!same_glyph(door.remembered_glyph, oldglyph)
+            || (game.level.lastseentyp?.[x]?.[y] ?? 0) !== oldlastseentyp)
+            res = ECMD_TIME; /* learned something */
+    }
 
     if (portcullis || !IS_DOOR(door.typ)) {
         /* is_db_wall: closed portcullis */

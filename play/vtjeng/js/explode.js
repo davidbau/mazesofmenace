@@ -134,11 +134,11 @@ import { rehumanize, ugolemeffects } from './polyself.js';
 import {
     cmap_to_glyph,
     map_glyphinfo,
-    map_invisible,
+    map_invisible_async,
     newsym,
     show_glyph_cell,
     tmp_at,
-    unmap_invisible,
+    unmap_invisible_async,
 } from './display.js';
 import { m_at } from './monst.js';
 import {
@@ -147,7 +147,7 @@ import {
     maybe_unhide_at,
     monkilled,
     mondead,
-    seemimic,
+    seemimic_async,
     setmangry,
     wake_nearto,
     xkilled,
@@ -190,7 +190,10 @@ import { breaks } from './dothrow.js';
 import { mon_pmname, Monnam, rndmonnam } from './do_name.js';
 import { done } from './end.js';
 import { encumber_msg } from './pickup.js';
-import { ttyPline } from './tty_message.js';
+import {
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import { coreRandom, rn2_on_display_rng } from './rng.js';
 import { unpunish as removePunishment } from './read.js';
 import { S_expl_tl } from './symbols.js';
@@ -504,9 +507,9 @@ export async function explode(
             masks[i][j] = mask;
 
             if (monster && cansee(xx, yy, state) && !canspotmon(monster, state)) {
-                map_invisible(xx, yy, state);
+                await map_invisible_async(xx, yy, state);
             } else if (!monster) {
-                unmap_invisible(xx, yy, state, newsym);
+                await unmap_invisible_async(xx, yy, state, newsym);
             }
             if (cansee(xx, yy, state)) visible = true;
             if (mask & (EXPL_MON | EXPL_HERO)) anyShield = true;
@@ -532,8 +535,8 @@ export async function explode(
                 for (let i = 0; i < 3; i++) {
                     for (let j = 0; j < 3; j++) {
                         if (!(masks[i][j] & (EXPL_MON | EXPL_HERO))) continue;
-                        show_glyph_cell(x + i - 1, y + j - 1,
-                            map_glyphinfo(cmap_to_glyph(shield, state), state));
+                        await printQueued(show_glyph_cell(x + i - 1, y + j - 1,
+                            map_glyphinfo(cmap_to_glyph(shield, state), state)));
                     }
                 }
                 await curs_on_u(state);
@@ -542,8 +545,8 @@ export async function explode(
             for (let i = 0; i < 3; i++) {
                 for (let j = 0; j < 3; j++) {
                     if (!(masks[i][j] & (EXPL_MON | EXPL_HERO))) continue;
-                    show_glyph_cell(x + i - 1, y + j - 1,
-                        explosion_to_glyph(expltype, explosion[i][j], state));
+                    await printQueued(show_glyph_cell(x + i - 1, y + j - 1,
+                        explosion_to_glyph(expltype, explosion[i][j], state)));
                 }
             }
         } else {
@@ -592,7 +595,7 @@ export async function explode(
                 if (engulfing_u(monster, state)) {
                     await engulfer_explosion_msg(adtyp, olet, state, env);
                 } else if (cansee(xx, yy, state)) {
-                    if (monster.m_ap_type) seemimic(monster, state);
+                    if (monster.m_ap_type) await seemimic_async(monster, state);
                     await messageLine(`${Monnam(monster, state, env)} is caught in the ${str}!`,
                         state, env);
                 }
@@ -1040,7 +1043,7 @@ export async function scatter(
             if (typeof unpunish === 'function')
                 await unpunish(state.uchain, state.uball, env);
             else
-                removePunishment(state, env);
+                await printQueued(removePunishment(state, env));
             if (wasChain) continue;
         }
 
@@ -1101,7 +1104,7 @@ export async function scatter(
                 await breakStatue(scattered, env);
                 await placeObject(scattered, sx, sy);
             }
-            await redraw(sx, sy, state);
+            await printQueued(redraw(sx, sy, state));
             usedUp = true;
         } else if ((scflags & SCATTER_MAY_DESTROY)
             && (!random.rn2(10)
@@ -1222,9 +1225,9 @@ export async function scatter(
                 await stackObject(chain.obj);
             }
         }
-        await redraw(x, y, state);
+        await printQueued(redraw(x, y, state));
     }
-    await redraw(sx, sy, state);
+    await printQueued(redraw(sx, sy, state));
 
     const sourceMonster = getMonster(sx, sy);
     if (getHero(sx, sy) && state.u?.uundetected

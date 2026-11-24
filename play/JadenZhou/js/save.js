@@ -33,6 +33,7 @@ import { save_worm } from './worm.js';
 import { vision_recalc } from './vision.js';
 import { change_luck } from './attrib.js';
 import { monsndx } from './mondata.js';
+import { dmonsfree } from './mon.js';
 import { objects, NUM_OBJECTS } from './objects.js';
 import { getlev } from './restore.js';
 import { save_timers as save_timers_to } from './timeout.js';
@@ -490,8 +491,8 @@ function savelev_core(nhfp, lev) {
            a panic save rather than a normal one, or sometimes
            when changing levels without taking time -- e.g.
            create statue trap then immediately level teleport) */
-        if (g.iflags.purge_monsters)
-            throw new Error('savelev_core(): dmonsfree() not ported yet');
+        if (g.purge_monsters) /* iflags.purge_monsters */
+            dmonsfree();
         /* clear objs_deleted list too: dobjsfree() -- no deferred object
            deletion in the JS port */
 

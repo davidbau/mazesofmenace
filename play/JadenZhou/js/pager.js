@@ -32,9 +32,9 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
          ECMD_OK } from './const.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { extcmdlist } from './func_tab.js';
-import { cmd_from_func, key2extcmddesc, key2txt } from './cmd.js';
+import { cmd_from_func, key2extcmddesc, key2txt, dokeylist } from './cmd.js';
 import { visctrl } from './hacklib.js';
-import { canspotmon, vobj_at, pline, Hallucination, Blind } from './display.js';
+import { canspotmon, vobj_at, pline, Hallucination, Blind, back_to_glyph } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, closed_door, is_pool, is_lava } from './makemon.js';
 import { t_at } from './trap.js';
@@ -273,7 +273,9 @@ export function back_to_cmap(x, y) {
     case TDWALL:
     case TLWALL:
     case TRWALL:
-        return ptr.seenv ? 1 /* wall_angle(ptr): some wall */ : S_stone;
+        /* idx = ptr->seenv ? wall_angle(ptr) : S_stone; display.js's
+           back_to_glyph() runs wall_angle() and carries the S_* index */
+        return ptr.seenv ? (back_to_glyph(x, y).cmapidx ?? S_stone) : S_stone;
     case DOOR:
         if (ptr.doormask) {
             if (ptr.doormask & D_BROKEN)
@@ -1504,12 +1506,42 @@ function add_quoted_engraving(x, y, buf, force /* True: '/e' or '/E', False: '//
     return (buf + temp_buf.slice(0, BUFSZ - 1)).slice(0, BUFSZ - 1);
 }
 
+// C ref: pager.c docontact()
+async function docontact() {
+    const cwin = tty_create_nhwindow(NHW_TEXT);
+    const sysopt = game.sysopt || {};
+    let buf;
+
+    if (sysopt.support) {
+        /*XXX overflow possibilities*/
+        buf = `To contact local support, ${sysopt.support}`;
+        await tty_putstr(cwin, 0, buf);
+        await tty_putstr(cwin, 0, "");
+    } else if (sysopt.fmtd_wizard_list) { /* formatted SYSCF WIZARDS */
+        buf = `To contact local support, contact ${sysopt.fmtd_wizard_list}.`;
+        await tty_putstr(cwin, 0, buf);
+        await tty_putstr(cwin, 0, "");
+    }
+    await tty_putstr(cwin, 0, "To contact the NetHack development team directly,");
+    /*XXX overflow possibilities*/
+    buf = `see the 'Contact' form on our website or email <${DEVTEAM_EMAIL}>.`;
+    await tty_putstr(cwin, 0, buf);
+    await tty_putstr(cwin, 0, "");
+    await tty_putstr(cwin, 0, "For more information on NetHack, or to report a bug,");
+    buf = `visit our website "${DEVTEAM_URL}".`;
+    await tty_putstr(cwin, 0, buf);
+    await tty_display_nhwindow(cwin, false);
+    await tty_destroy_nhwindow(cwin);
+}
+const DEVTEAM_EMAIL = "devteam@nethack.org"; /* hack.h */
+const DEVTEAM_URL = "https://www.nethack.org/";
+
 /* help menu choices that aren't ported yet */
 // C ref: pager.c domenucontrols()
 async function domenucontrols() {
     const cwin = tty_create_nhwindow(NHW_TEXT);
 
-    show_menu_controls(cwin, false);
+    await show_menu_controls(cwin, false);
     await tty_display_nhwindow(cwin, false);
     await tty_destroy_nhwindow(cwin);
 }
@@ -1522,8 +1554,26 @@ function get_menu_cmd_key(ch) { return ch.charCodeAt(0); }
 function padl(s, w) { return s.length >= w ? s : ' '.repeat(w - s.length) + s; }
 function padr(s, w) { return s.length >= w ? s : s + ' '.repeat(w - s.length); }
 
-// C ref: options.c show_menu_controls() -- the '?k' (dolist FALSE) form
-function show_menu_controls(win, dolist) {
+// C ref: options.c default_menu_cmd_info[] (the menu_shift_right/_left
+// entries are marked 'shift': tty doesn't offer WC2_MENU_SHIFT)
+const default_menu_cmd_info = [
+    { cmd: MENU_NEXT_PAGE,     desc: "Go to next page" },
+    { cmd: MENU_PREVIOUS_PAGE, desc: "Go to previous page" },
+    { cmd: MENU_FIRST_PAGE,    desc: "Go to first page" },
+    { cmd: MENU_LAST_PAGE,     desc: "Go to last page" },
+    { cmd: MENU_SELECT_ALL,    desc: "Select all items in entire menu" },
+    { cmd: MENU_INVERT_ALL,    desc: "Invert selection for all items" },
+    { cmd: MENU_UNSELECT_ALL,  desc: "Unselect all items in entire menu" },
+    { cmd: MENU_SELECT_PAGE,   desc: "Select all items on current page" },
+    { cmd: MENU_INVERT_PAGE,   desc: "Invert current page's selections" },
+    { cmd: MENU_UNSELECT_PAGE, desc: "Unselect all items on current page" },
+    { cmd: MENU_SEARCH,        desc: "Search and invert matching items" },
+    { cmd: '>', shift: true,   desc: "Pan current page to right (perm_invent only)" },
+    { cmd: '<', shift: true,   desc: "Pan current page to left (perm_invent only)" },
+];
+
+// C ref: options.c show_menu_controls()
+export async function show_menu_controls(win, dolist) {
     const hardcoded = [
         { key: "Return", desc: "Accept current choice(s) and dismiss menu" },
         { key: "Enter",  desc: "Same as Return" },
@@ -1542,49 +1592,59 @@ function show_menu_controls(win, dolist) {
      * Relies on spaces to line things up in columns, so must be rendered
      * with a fixed-width font or will look dreadful.
      */
-    tty_putstr(win, 0, "Menu control keys:");
+    await tty_putstr(win, 0, "Menu control keys:");
     if (dolist) { /* key bindings help: '?i' */
-        throw new Error('show_menu_controls(): the key bindings list not ported yet');
+        /* fmt "%-7s %s" */
+        for (const mci of default_menu_cmd_info) {
+            if (mci.shift && !has_menu_shift)
+                continue;
+            await tty_putstr(win, 0, `${padr(visctrl(get_menu_cmd_key(mci.cmd)), 7)} ${
+                mci.desc}`);
+        }
+        /* no separator before hardcoded */
+        /* fmt "%s%-7s %s": extra specifier to absorb 'arg' */
+        fmt = (a, b, c) => `${a}${padr(b, 7)} ${c}`;
+        arg = ""; /* no extra prefix for 'dolist' */
     } else { /* menu controls help: '?k' */
-        tty_putstr(win, 0, "");
-        tty_putstr(win, 0, mc_altfmt("", "Whole", "Current"));
-        tty_putstr(win, 0, mc_altfmt("", " Menu", " Page"));
-        tty_putstr(win, 0, mc_fmt("Select",
-                                  visctrl(get_menu_cmd_key(MENU_SELECT_ALL)),
-                                  visctrl(get_menu_cmd_key(MENU_SELECT_PAGE))));
-        tty_putstr(win, 0, mc_fmt("Invert",
-                                  visctrl(get_menu_cmd_key(MENU_INVERT_ALL)),
-                                  visctrl(get_menu_cmd_key(MENU_INVERT_PAGE))));
-        tty_putstr(win, 0, mc_fmt("Deselect",
-                                  visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)),
-                                  visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE))));
-        tty_putstr(win, 0, "");
-        tty_putstr(win, 0, mc_fmt("Go to",
-                                  visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)),
-                                  "Next page"));
-        tty_putstr(win, 0, mc_fmt("",
-                                  visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)),
-                                  "Previous page"));
-        tty_putstr(win, 0, mc_fmt("",
-                                  visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)),
-                                  "First page"));
-        tty_putstr(win, 0, mc_fmt("",
-                                  visctrl(get_menu_cmd_key(MENU_LAST_PAGE)),
-                                  "Last page"));
+        await tty_putstr(win, 0, "");
+        await tty_putstr(win, 0, mc_altfmt("", "Whole", "Current"));
+        await tty_putstr(win, 0, mc_altfmt("", " Menu", " Page"));
+        await tty_putstr(win, 0, mc_fmt("Select",
+                                        visctrl(get_menu_cmd_key(MENU_SELECT_ALL)),
+                                        visctrl(get_menu_cmd_key(MENU_SELECT_PAGE))));
+        await tty_putstr(win, 0, mc_fmt("Invert",
+                                        visctrl(get_menu_cmd_key(MENU_INVERT_ALL)),
+                                        visctrl(get_menu_cmd_key(MENU_INVERT_PAGE))));
+        await tty_putstr(win, 0, mc_fmt("Deselect",
+                                        visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)),
+                                        visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE))));
+        await tty_putstr(win, 0, "");
+        await tty_putstr(win, 0, mc_fmt("Go to",
+                                        visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)),
+                                        "Next page"));
+        await tty_putstr(win, 0, mc_fmt("",
+                                        visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)),
+                                        "Previous page"));
+        await tty_putstr(win, 0, mc_fmt("",
+                                        visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)),
+                                        "First page"));
+        await tty_putstr(win, 0, mc_fmt("",
+                                        visctrl(get_menu_cmd_key(MENU_LAST_PAGE)),
+                                        "Last page"));
         if (has_menu_shift)
             throw new Error('show_menu_controls(): menu_shift lines not ported yet');
-        tty_putstr(win, 0, "");
-        tty_putstr(win, 0, mc_fmt("Search",
-                                  visctrl(get_menu_cmd_key(MENU_SEARCH)),
-                                  "Exter a target string and invert all matching entries"));
+        await tty_putstr(win, 0, "");
+        await tty_putstr(win, 0, mc_fmt("Search",
+                                        visctrl(get_menu_cmd_key(MENU_SEARCH)),
+                                        "Exter a target string and invert all matching entries"));
         /* separator before hardcoded */
-        tty_putstr(win, 0, "");
+        await tty_putstr(win, 0, "");
         /* fmt "%9s  %-8s %s" */
         fmt = (a, b, c) => `${padl(a, 9)}  ${padr(b, 8)} ${c}`;
         arg = "Other "; /* prefix for first hardcoded[] entry, then reset */
     }
     for (const xcp of hardcoded) {
-        tty_putstr(win, 0, fmt(arg, xcp.key, xcp.desc));
+        await tty_putstr(win, 0, fmt(arg, xcp.key, xcp.desc));
         arg = "";
     }
 }
@@ -1720,6 +1780,10 @@ export async function dohelp() {
             await dispfile_debughelp();
         else if (f === 'dispfile_usagehelp')
             await dispfile_usagehelp();
+        else if (f === 'docontact')
+            await docontact();
+        else if (f === 'dokeylist')
+            await dokeylist();
         else if (f === 'domenucontrols')
             await domenucontrols();
         else

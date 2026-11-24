@@ -418,10 +418,7 @@ function optfn_msg_window(result, negated, op) {
 
 // C ref: options.c optfn_runmode() (do_set)
 // C ref: options.c optfn_number_pad() -- do_set from the config file
-// (go.opt_initial); only number_pad:0 (off, the default) is ported:
-// num_pad, swap_yz (-1), MSDOS and phone layouts need reset_commands(FALSE)
-// to rebind the movement keys (digits, M-digit run keys, M-0), so parse()
-// stops when they are set
+// (go.opt_initial)
 function optfn_number_pad(result, negated, op) {
     let num_pad, num_pad_mode;
 
@@ -442,16 +439,21 @@ function optfn_number_pad(result, negated, op) {
         } else { /* number_pad on */
             num_pad = true;
             num_pad_mode = 0;
-            if (mode === 3 || mode === 4) /* MSDOS compatible */
+            /* PC Hack / MSDOS compatibility */
+            if (mode === 2 || mode === 4)
                 num_pad_mode |= 1;
-            if (mode === 2 || mode === 4) /* phone keypad layout */
+            /* phone keypad layout */
+            if (mode === 3 || mode === 4)
                 num_pad_mode |= 2;
         }
     }
     result.iflags.num_pad = num_pad;
     result.iflags.num_pad_mode = num_pad_mode;
-    /* reset_commands(FALSE); number_pad(iflags.num_pad ? 1 : 0): the
-       rebinding isn't ported; parse() stops on the first command */
+    /* reset_commands(FALSE); number_pad(iflags.num_pad ? 1 : 0): the game
+       start-up runs reset_commands(FALSE) in config-file order with the
+       BIND= lines (result.bindings); tty_number_pad() only sends the
+       keypad's terminal escape */
+    (result.bindings ||= []).push({ reset_commands: false, num_pad, num_pad_mode });
 }
 
 function optfn_runmode(result, negated, op) {
@@ -1328,9 +1330,23 @@ function opt_get_val(o, req) {
                  : (tmp === 'f') ? "full"
                    : "reversed";
     }
-    case "optfn_number_pad":
-        /* gc.Cmd.num_pad is off (number_pad isn't settable yet) */
-        return (req === get_val) ? "0=off" : "0";
+    case "optfn_number_pad": {
+        const numpadmodes = [
+            "0=off", "1=on", "2=on, MSDOS compatible",
+            "3=on, phone-style layout",
+            "4=on, phone layout, MSDOS compatible",
+            "-1=off, y & z swapped", /*[5]*/
+        ];
+        const Cmd = game.Cmd;
+        const indx = Cmd.num_pad
+                     ? (Cmd.phone_layout ? (Cmd.pcHack_compat ? 4 : 3)
+                                         : (Cmd.pcHack_compat ? 2 : 1))
+                     : Cmd.swap_yz ? 5 : 0;
+
+        if (req === get_val)
+            return numpadmodes[indx];
+        return `${(indx === 5) ? -1 : indx}`;
+    }
     case "optfn_packorder":
         return oc_to_str(def_inv_order.map(c => String.fromCharCode(c)).join(''));
     case "optfn_paranoid_confirmation": {

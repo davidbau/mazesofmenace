@@ -9,12 +9,12 @@
 // filter toggles, and the dungeon-feature symbol search.
 
 import { game } from './gstate.js';
-import { pline, newsym, flush_screen, glyph_at, glyph_kind,
+import { pline, newsym, newsym_force, flush_screen, glyph_at, glyph_kind,
          back_to_glyph } from './display.js';
 import { invocation_pos } from './mklev.js';
 import { t_at } from './trap.js';
 import { VIBRATING_SQUARE } from './const.js';
-import { tty_putstr, tty_clear_nhwindow } from './wintty.js';
+import { tty_putstr, tty_clear_nhwindow, custompline } from './wintty.js';
 import { visctrl } from './hacklib.js';
 import { handle_tip, is_valid_travelpt } from './hack.js';
 import { movecmd_mode, MV_WALK, MV_RUSH, MV_RUN, cmd_from_func,
@@ -435,7 +435,7 @@ export async function getpos_sethilite(gp_hilitef, gp_getvalidf) {
     if (st.getvalid !== old_getvalid || st.map_frame_color !== old_map_frame_color) {
         /* selection_force_newsyms(sel) */
         for (const k of sel)
-            newsym(k % COLNO, Math.trunc(k / COLNO));
+            newsym_force(k % COLNO, Math.trunc(k / COLNO));
     }
     /* selection_free(sel, TRUE) */
 }
@@ -505,9 +505,7 @@ export async function auto_describe(cx, cy) {
                  ? " (invalid target)" : ""}`
             + `${(game.iflags?.getloc_travelmode && !(await is_valid_travelpt(cx, cy)))
                  ? " (no travel path)" : ""}`;
-        /* custompline(SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U) */
-        await flush_screen(0);
-        await tty_putstr(game.WIN_MESSAGE, 0, msg);
+        await custompline(msg, true); /* (SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U) */
         curs_map(cx, cy);
         await flush_screen(0);
     }
@@ -618,13 +616,13 @@ export async function getpos(ccp, force, goal) {
             /* '.' => 0, ',' => 1, ';' => 2, ':' => 3 */
             result = pick_chars_ret[cp];
             break;
-        } else if (!rushrun && movecmd_mode(c, MV_WALK)) {
+        } else if (movecmd_mode(c, MV_WALK) && !rushrun) {
             dx = u.dx;
             dy = u.dy;
             [cx, cy] = truncate_to_map(cx, cy, dx, dy);
-        } else if (rushrun || movecmd_mode(c, MV_RUSH) || movecmd_mode(c, MV_RUN)) {
-            if (rushrun && !movecmd_mode(c, MV_WALK))
-                throw new Error('getpos(): rush/run prefix with a non-move key not ported yet');
+        } else if ((rushrun && movecmd_mode(c, MV_WALK)) /* goto do_rushrun */
+                   || movecmd_mode(c, MV_RUSH) || movecmd_mode(c, MV_RUN)) {
+            /* do_rushrun: */
             if (game.iflags?.getloc_moveskip)
                 throw new Error('getpos(): getloc_moveskip not ported yet');
             dx = 8 * u.dx;

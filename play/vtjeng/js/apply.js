@@ -205,7 +205,7 @@ import { see_monster_closeup } from './dog.js';
 import {
     bot,
     cmap_to_glyph,
-    feel_newsym,
+    feel_newsym_async,
     flush_screen,
     glyph_at,
     glyph_is_cmap,
@@ -214,13 +214,15 @@ import {
     glyph_is_statue,
     glyph_to_cmap,
     glyph_to_obj,
-    map_object,
+    map_object_async,
     map_invisible,
+    map_invisible_async,
     map_glyphinfo,
     newsym,
+    newsym_async,
     obj_to_glyph,
     tmp_at,
-    unmap_invisible,
+    unmap_invisible_async,
 } from './display.js';
 import {
     Amonnam, a_monnam, l_monnam, m_monnam, Monnam, noit_mon_nam, c_obj_colors, hcolor, mon_nam, monverbself, obj_pmname,
@@ -244,9 +246,9 @@ import { schar } from './global.js';
 import { dist2, highc, isqrt, sgn, s_suffix, strstri, truncateByteString, upstart } from './hacklib.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { gulp_blnd_check } from './mhitu.js';
-import { litroom, unpunish } from './read.js';
+import { litroom, unpunish_async } from './read.js';
 import {
-    delobj,
+    delobj_async,
     addinv_runtime,
     freeinv,
     addinv_nomerge,
@@ -272,7 +274,7 @@ import { bagotricks, mkclass_steps } from './makemon.js';
 import { makemon_runtime } from './makemon_create.js';
 import { mkundead } from './mkroom.js';
 import {
-    killed, mnexto, seemimic, set_ustuck, wakeup, wake_nearby, wake_nearto, xkilled,
+    killed, mnexto, seemimic_async, set_ustuck, wakeup, wake_nearby, wake_nearto, xkilled,
 } from './mon.js';
 import {
     can_blow,
@@ -518,13 +520,16 @@ import {
     deltrap,
     fill_pit,
     instapetrify,
-    maketrap,
+    maketrap_async,
     reset_utrap,
     t_at,
     trapname,
 } from './trap.js';
-import { dotrap, feeltrap, mintrap } from './trap_effects.js';
-import { ttyPline } from './tty_message.js';
+import { dotrap, feeltrap_async, mintrap } from './trap_effects.js';
+import {
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import { cansee, couldsee, howmonseen, recalc_block_point, unblock_point, vision_recalc_async } from './vision.js';
 import { bimanual, is_pole, mon_adjust_speed, setnotworn } from './worn.js';
 import { dowrite } from './write.js';
@@ -556,7 +561,7 @@ import { wield_tool } from './wield.js';
 import { acurr } from './attrib.js';
 import { known_spell, spe_Fresh, spelleffects } from './spell.js';
 import { kick_steed, stucksteed, use_saddle } from './steed.js';
-import { enexto, noteleport_level, rloc, rloc_to, tele_restrict, tele_to_rnd_pet, teleds } from './teleport.js';
+import { enexto, noteleport_level, rloc_async, rloc_to_async, tele_restrict, tele_to_rnd_pet, teleds } from './teleport.js';
 import { mpickobj } from './steal.js';
 import {
     _doWearInternals,
@@ -924,8 +929,8 @@ async function whipattack(monster, rx, ry, proficient, state, env) {
                         + `${Blind(state.u) ? "hadn't noticed" : "couldn't see"}.`,
                     state,
                 );
-                if (!spotItNow) map_invisible(rx, ry, state);
-                else newsym(rx, ry, state);
+                if (!spotItNow) await map_invisible_async(rx, ry, state);
+                else await newsym_async(rx, ry);
             }
         } else {
             object = monster.mw ?? null;
@@ -1111,7 +1116,7 @@ export async function use_pole(obj, autohit, state = game) {
             await wake_nearto(target.x, target.y, 25, { state });
         }
     } else {
-        unmap_invisible(target.x, target.y, state);
+        await unmap_invisible_async(target.x, target.y, state);
         if (glyph_to_obj(glyph) === BOULDER
             && sobj_at(BOULDER, target.x, target.y, state)) {
             await ttyPline('Thump!  Your blow bounces harmlessly off the boulder.', state);
@@ -1259,7 +1264,7 @@ async function use_leash(obj, state = game, env = {}) {
     const monster = m_at(cc.x, cc.y, state);
     if (!monster) {
         await ttyPline('There is no creature there.', state);
-        unmap_invisible(cc.x, cc.y, state);
+        await unmap_invisible_async(cc.x, cc.y, state);
         return ECMD_TIME;
     }
 
@@ -1276,7 +1281,7 @@ async function use_leash_core(obj, monster, cc, spotmon, state, env = {}) {
         await ttyPline(
             `You fail to ${obj.leashmon ? 'un' : ''}leash something.`, state,
         );
-        map_invisible(cc.x, cc.y, state);
+        await map_invisible_async(cc.x, cc.y, state);
     } else if (!monster.mtame) {
         await ttyPline(
             `${Monnam(monster, state, env)} ${!obj.leashmon ? 'cannot be' : 'is not'} leashed!`,
@@ -1543,7 +1548,7 @@ export async function use_grapple(obj, state = game, env = {}) {
             await message(`You snag an object from the ${surface(cc.x, cc.y, state)}!`, state);
             // apply.c discards pickup_object()'s result.
             await pickup_object(object, 1, false, { ...env, state, random });
-            newsym(cc.x, cc.y, state);
+            await newsym_async(cc.x, cc.y);
             return ECMD_TIME;
         }
         break;
@@ -1578,7 +1583,7 @@ export async function use_grapple(obj, state = game, env = {}) {
                 monster.mundetected = 0;
                 // apply.c discards rloc_to()'s return; its ordinary monster
                 // relocation path is already available to this caller.
-                await rloc_to(monster, cc.x, cc.y, { ...env, state, random });
+                await rloc_to_async(monster, cc.x, cc.y, { ...env, state, random });
                 return ECMD_TIME;
             }
             if ((!bigmonst(monster.data) && !strongmonst(monster.data))
@@ -1890,7 +1895,7 @@ async function use_cream_pie(obj, state = game, rawEnv = {}) {
     await setnotworn(obj, env);
     await costly_alteration(obj, COST_SPLAT, env);
     await obj_extract_self(obj, env);
-    await delobj(obj, env);
+    await delobj_async(obj, env);
     return ECMD_OK;
 }
 
@@ -2046,10 +2051,10 @@ export async function set_trap(state = game, env = {}) {
     if (--trapinfo.time_needed > 0) return 1;
 
     const ttyp = obj.otyp === LAND_MINE ? LANDMINE : BEAR_TRAP;
-    const trap = maketrap(state.u.ux, state.u.uy, ttyp, { ...env, state });
+    const trap = await maketrap_async(state.u.ux, state.u.uy, ttyp, { ...env, state });
     if (trap) {
         trap.madeby_u = true;
-        feeltrap(trap, {
+        await feeltrap_async(trap, {
             state,
             redraw: newsym,
         });
@@ -2477,7 +2482,7 @@ export async function its_dead(rx, ry, state = game, response = null) {
         const corpseglyph = obj_to_glyph(corpse, state);
         let reviver = false;
         if (Blind(state.u) && visglyph !== corpseglyph.glyph)
-            map_object(corpse, true, state);
+            await map_object_async(corpse, true, state);
         if (state.urole?.mnum === PM_HEALER) {
             // apply.c:265-274. This only detects a pending revival; it neither
             // runs nor changes the timer. Walk the square's nexthere chain,
@@ -2659,7 +2664,7 @@ async function use_stethoscope(obj, state = game) {
             if (!canspotmon(mtmp, state))
                 await ttyPline(`There is ${mnm} hidden there.`, state);
             mtmp.mundetected = 0;
-            newsym(mtmp.mx, mtmp.my);
+            await newsym_async(mtmp.mx, mtmp.my);
         } else if (mtmp.mappearance) {
             let what = 'thing';
             let use_plural = false;
@@ -2692,7 +2697,7 @@ async function use_stethoscope(obj, state = game) {
                 what = CMAP_EXPLANATIONS[mtmp.mappearance];
                 break;
             }
-            seemimic(mtmp, state);
+            await seemimic_async(mtmp, state);
             await ttyPline(
                 `${use_plural ? 'Those' : 'That'} ${what} `
                 + `${use_plural ? 'are' : 'is'} really ${mnm}.`,
@@ -2704,10 +2709,11 @@ async function use_stethoscope(obj, state = game) {
 
         await mstatusline(mtmp, state);
         if (!canspotmon(mtmp, state))
-            map_invisible(rx, ry, state);
+            await map_invisible_async(rx, ry, state);
         return res;
     }
-    if (unmap_invisible(rx, ry, state))
+    const unmapped = await unmap_invisible_async(rx, ry, state);
+    if (unmapped)
         await ttyPline('The invisible monster must have moved.', state);
 
     const lev = state.level.at(rx, ry);
@@ -2720,7 +2726,7 @@ async function use_stethoscope(obj, state = game) {
         if (heard) await ttyPline(heard, state);
         cvt_sdoor_to_door(lev, state); /* ->typ = DOOR */
         recalc_block_point(rx, ry, state);
-        feel_newsym(rx, ry, state);
+        await feel_newsym_async(rx, ry, state);
         return res;
     }
     if (lev.typ === SCORR) {
@@ -2731,7 +2737,7 @@ async function use_stethoscope(obj, state = game) {
         lev.typ = CORR;
         lev.flags = 0;
         unblock_point(rx, ry, state);
-        feel_newsym(rx, ry, state);
+        await feel_newsym_async(rx, ry, state);
         return res;
     }
 
@@ -3751,7 +3757,7 @@ export async function fig_transform(figurine, timeout, rawEnv = {}) {
         await obj_extract_self(figurine, env);
         obfree(figurine, null, env);
     }
-    if (redraw) newsym(location.x, location.y, state);
+    if (redraw) await newsym_async(location.x, location.y);
 }
 
 // C ref: apply.c figurine_location_checks() (2511-2541). Read-only location
@@ -3832,7 +3838,7 @@ export async function use_figurine(objp, state = game, rawEnv = {}) {
     await make_familiar(obj, x, y, false, env);
     stop_timer(FIG_TRANSFORM, obj, state, env);
     await useup(obj, env);
-    if (Blind(state.u)) map_invisible(x, y, state);
+    if (Blind(state.u)) await map_invisible_async(x, y, state);
     objp.obj = null;
     return ECMD_TIME;
 }
@@ -3921,7 +3927,7 @@ export async function use_bell(objp, state = game, rawEnv = {}) {
         } else if (obj.blessed) {
             let result = 0;
             if (state.uchain) {
-                unpunish(state, { ...rawEnv, random });
+                await unpunish_async(state, { ...rawEnv, random });
                 result = 1;
             } else if (state.u.utrap
                 && state.u.utraptype === TT_BURIEDBALL) {
@@ -4227,7 +4233,7 @@ export async function use_mirror(obj, state = game, env = {}) {
         await freeinv(obj, { ...env, state });
         mpickobj(mtmp, obj, { ...env, state });
         if (!await tele_restrict(mtmp, state, env)) {
-            await rloc(mtmp, RLOC_MSG, {
+            await rloc_async(mtmp, RLOC_MSG, {
                 ...env,
                 state,
                 random,
@@ -4434,7 +4440,7 @@ export async function use_whistle(obj, state = game, env = {}) {
     await (env.wakeNearby ?? wake_nearby)(true, {
         ...env, state, random: env.random ?? coreRandom,
     });
-    if (obj.cursed) vault_summon_gd(state);
+    if (obj.cursed) await printQueued(vault_summon_gd(state));
 }
 
 export async function use_magic_whistle(obj, state = game, env = {}) {
@@ -4497,7 +4503,7 @@ export async function magic_whistled(obj, state = game, env = {}) {
 
             const oldSeen = canspotmon(monster, state);
             let monsterName = oldSeen ? y_monnam(monster, state, env) : '';
-            if (M_AP_TYPE(monster)) seemimic(monster, state, env);
+            if (M_AP_TYPE(monster)) await seemimic_async(monster, state, env);
             const oldX = monster.mx;
             const oldY = monster.my;
             await mnexto(monster, alreadyDiscovered ? RLOC_NONE : RLOC_MSG, {
@@ -4507,7 +4513,7 @@ export async function magic_whistled(obj, state = game, env = {}) {
             if (monster.mx !== oldX || monster.my !== oldY) {
                 if (monster.mundetected) {
                     monster.mundetected = false;
-                    newsym(monster.mx, monster.my);
+                    await newsym_async(monster.mx, monster.my);
                 }
                 state.iflags.last_msg = PLNMSG_enum;
                 const result = await mintrap(monster, NO_TRAP_FLAGS, {
@@ -4583,7 +4589,7 @@ export async function magic_whistled(obj, state = game, env = {}) {
 async function discard_broken_wand(state = game, rawEnv = {}) {
     const obj = state.current_wand;
     state.current_wand = null;
-    if (obj) await delobj(obj, { ...rawEnv, state });
+    if (obj) await delobj_async(obj, { ...rawEnv, state });
     nomul(0, state);
 }
 

@@ -107,7 +107,7 @@ import { isok } from './cmd_isok.js';
 import { acurr, adjalign, exercise } from './attrib.js';
 import { arti_cost } from './artifacts.js';
 import { y_n, yn_function } from './cmd.js';
-import { bot, map_invisible, newsym } from './display.js';
+import { bot, map_invisible_async, newsym, newsym_async } from './display.js';
 import { assign_level, depth, ledger_no, mapseen_room, on_level } from './dungeon.js';
 import { migrate_to_level } from './dog.js';
 import { um_dist, unleash_all } from './apply.js';
@@ -144,7 +144,7 @@ import {
 import { record_achievement } from './insight.js';
 import { get_obj_location } from './light.js';
 import {
-    angry_guards, mnearto, mnexto, mongone, pacify_guards, wake_nearto,
+    angry_guards, mnearto, mnexto, mongone_async, pacify_guards, wake_nearto,
 } from './mon.js';
 import { search_special } from './mkroom.js';
 import {
@@ -273,18 +273,24 @@ import { closed_door } from './monmove.js';
 import { picking_at } from './lock.js';
 import { block_point, m_canseeu } from './vision.js';
 import { stop_occupation } from './allmain.js';
-import { placebc, unplacebc } from './ball.js';
+import { placebc, unplacebc_async } from './ball.js';
 import { makemon_runtime } from './makemon_create.js';
 import { enexto } from './teleport.js';
 import { m_next2u } from './mhitu.js';
 import { body_part, mbodypart, poly_gender } from './polyself.js';
-import { impossible, livelog_printf, verbalize, youHear, youFeel } from './pline.js';
+import {
+    impossible, impossible_printer, livelog_printf, verbalize, youHear, youFeel,
+} from './pline.js';
 import { growl, set_voice, yelp } from './sounds.js';
 import { is_izchak, saleable, shkname, Shknam } from './shknam.js';
-import { ttyNorep, ttyPline } from './tty_message.js';
+import {
+    printQueued,
+    ttyNorep,
+    ttyPline,
+} from './tty_message.js';
 import { tty_wait_synch } from './tty_rawprint.js';
 import { note_unported } from './unported.js';
-import { sync_impossible } from './source_steps.js';
+import { finish_steps, sync_impossible } from './source_steps.js';
 import {
     findgold, mdrop_special_objs, mpickobj, remove_worn_item,
 } from './steal.js';
@@ -299,7 +305,7 @@ import { cansee } from './vision.js';
 import { add_menu_heading, select_menu } from './windows.js';
 import { displayTtyMenuTextWindow } from './tty_menu.js';
 import { canseemon, canspotmon, sensemon } from './display.js';
-import { choose_stairs } from './wizard.js';
+import { choose_stairs_steps } from './wizard.js';
 import { setnotworn } from './worn.js';
 import {
     Blind, Conflict, Deaf, Displaced, EDetect_monsters, ETelepat, Fast,
@@ -566,7 +572,8 @@ async function call_kops(
     }
     if (nokops) return;
 
-    const { x: sx, y: sy } = choose_stairs(true, state);
+    const { x: sx, y: sy } = await finish_steps(
+        choose_stairs_steps(true, state), impossible_printer(state));
 
     if (nearshop) {
         if (state.flags?.verbose)
@@ -749,11 +756,11 @@ export async function shkcatch(obj, x, y, state = game, rawEnv = {}) {
         return null;
     }
 
-    if (await mnearto(shkp, x, y, true, RLOC_NOMSG, {
+    const moved = await printQueued(mnearto(shkp, x, y, true, RLOC_NOMSG, {
         ...rawEnv,
         state,
-    }) === 2
-        && !Deaf(state.u) && !muteshk(shkp)) {
+    }));
+    if (moved === 2 && !Deaf(state.u) && !muteshk(shkp)) {
         set_voice(shkp, 0, 80, 0, state);
         await verbalize('Out of my way, scum!', state);
     }
@@ -765,7 +772,7 @@ export async function shkcatch(obj, x, y, state = game, rawEnv = {}) {
             state,
             rawEnv,
         );
-        if (!canspotmon(shkp, state)) map_invisible(x, y, state);
+        if (!canspotmon(shkp, state)) await map_invisible_async(x, y, state);
         await nh_delay_output(state);
         // mark_synch() only flushes the C terminal stream and has no state;
         // the async message/flush above preserves the observable order.
@@ -2860,8 +2867,7 @@ async function kops_gone(silent, state, env) {
         const next = monster.nmon;
         if (monster.mhp > 0 && monster.data?.mlet === S_KOP) {
             if (canspotmon(monster, state)) ++visible;
-            const removal = mongone(monster, { ...env, state });
-            if (removal && typeof removal.then === 'function') await removal;
+            await mongone_async(monster, { ...env, state });
         }
         monster = next;
     }
@@ -3707,7 +3713,7 @@ async function litter_scatter(litter, x, y, shkp, state = game, env = {}) {
             set_voice(shkp, 0, 80, 0, state);
             await verbalize('Get your junk out of my wall!', state, env);
         }
-        unplacebc(state);
+        await unplacebc_async(state);
         await placebc(state, env);
     }
 
@@ -3831,7 +3837,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
 
         deltrap(trap, state);
         del_engr_at(x, y, state);
-        if (seeit) newsym(x, y);
+        if (seeit) await newsym_async(x, y);
         if (!catchup) disposition = 3;
     }
 
@@ -3857,7 +3863,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
         await litter_scatter(litter, x, y, shkp, state, env);
     del_engr_at(x, y, state);
 
-    if (seeit) newsym(x, y);
+    if (seeit) await newsym_async(x, y);
     block_point(x, y, state);
     if (catchup) return 1;
 
@@ -3868,7 +3874,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
         } else if (IS_DOOR(damage.typ)) {
             await message('Suddenly, the shop door reappears!', state, env);
         }
-        newsym(x, y);
+        await newsym_async(x, y);
     } else if (IS_WALL(damage.typ)) {
         if (inside_shop(state.u.ux, state.u.uy, state)
             === shkp.mextra.eshk.shoproom) {
@@ -3886,7 +3892,7 @@ async function repair_damage(shkp, damage, catchup, state = game, env = {}) {
             ...env,
             message: env.message ?? ttyPline,
         });
-    litter_newsyms(litter, x, y);
+    await printQueued(litter_newsyms(litter, x, y));
     if (disposition < 3) disposition = 2;
     return disposition;
 }
@@ -4751,8 +4757,8 @@ async function rouse_shk(shopkeeper, verbosely = false, state = game, env = {}) 
 // shop door; the no-message relocation flag is the only observable work on
 // this death path.
 async function home_shk(shopkeeper, _killkops, state, env = {}) {
-    await mnearto(shopkeeper, shopkeeper.mextra.eshk.shk.x,
-        shopkeeper.mextra.eshk.shk.y, true, RLOC_NOMSG, { ...env, state });
+    await printQueued(mnearto(shopkeeper, shopkeeper.mextra.eshk.shk.x,
+        shopkeeper.mextra.eshk.shk.y, true, RLOC_NOMSG, { ...env, state }));
     state.level.flags ??= {};
     state.level.flags.has_shop = true;
     await after_shk_move(shopkeeper, state);
@@ -4931,7 +4937,7 @@ export async function paybill(croaked, silently, state = game) {
             taken = (await inherits(mtmp, numsk, croaked, silently, state)) || taken;
         }
         /* for bones: we don't want a shopless shk around */
-        if (!local) await mongone(mtmp, { state });
+        if (!local) await mongone_async(mtmp, { state });
     }
     return taken;
 }
@@ -5139,7 +5145,7 @@ export async function pay_for_damage(
             // sleep(1) in shk.c is a platform pacing delay with no game-state
             // effect; the following monster relocation remains awaited.
         }
-        await mnearto(shopkeeper, x, y, true, RLOC_MSG, env);
+        await printQueued(mnearto(shopkeeper, x, y, true, RLOC_MSG, env));
     }
 
     if ((um_dist(x, y, 1, state) && !inShop)

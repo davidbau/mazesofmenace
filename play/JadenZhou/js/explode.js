@@ -5,6 +5,7 @@
 // aren't ported yet), explosionmask(), engulfer_explosion_msg(),
 // adtyp_to_expltype(), mon_explodes().
 
+import { pay_for_damage as pay_for_damage_ex } from './shk.js';
 import { game } from './gstate.js';
 import { pline, You, pline_The, map_invisible, unmap_invisible, canspotmon,
          tmp_at, DISP_BEAM, DISP_CHANGE, DISP_END, explosion_to_glyph,
@@ -679,7 +680,11 @@ export async function explode(
     }
 
     if (shopdamage.v) {
-        throw new Error('explode(): pay_for_damage() not ported yet');
+        await pay_for_damage_ex((adtyp === AD_FIRE) ? "burn away"
+                                : (adtyp === AD_COLD) ? "shatter"
+                                  : (adtyp === AD_DISN) ? "disintegrate"
+                                    : "destroy",
+                                false);
     }
 
     /* explosions are noisy */

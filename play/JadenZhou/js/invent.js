@@ -1713,6 +1713,202 @@ export async function ddoinv() {
     return await dispinv_with_action(null, false, null);
 }
 
+// C ref: invent.c tally_BUCX()
+/* similar to count_buc(), but tallies all states at once
+   rather than looking for a specific type; returns the six counters */
+export function tally_BUCX(list, by_nexthere) {
+    const t = { bcnt: 0, ucnt: 0, ccnt: 0, xcnt: 0, ocnt: 0, jcnt: 0 };
+
+    if (by_nexthere)
+        throw new Error('tally_BUCX(): a floor pile (by_nexthere) not ported yet');
+    for (const o of objchain_items(list)) {
+        /* priests always know bless/curse state */
+        if (game.urole.mnum === M.PM_CLERIC)
+            o.bknown = (o.oclass !== O.COIN_CLASS) ? 1 : 0;
+        if (o.pickup_prev)
+            ++t.jcnt;
+        /* coins are either uncursed or unknown based upon option setting */
+        if (o.oclass === O.COIN_CLASS) {
+            if (game.flags.goldX)
+                ++t.xcnt;
+            else
+                ++t.ucnt;
+            continue;
+        }
+        /* ordinary items */
+        if (!o.bknown)
+            ++t.xcnt;
+        else if (o.blessed)
+            ++t.bcnt;
+        else if (o.cursed)
+            ++t.ccnt;
+        else /* neither blessed nor cursed => uncursed */
+            ++t.ucnt;
+    }
+    return t;
+}
+
+/* C char codes used by dotypeinv()/this_type_only() */
+const chB = 0x42, chU = 0x55, chC = 0x43, chX = 0x58, chP = 0x50,
+      chu = 0x75, chx = 0x78;
+
+// C ref: invent.c this_type_only()
+function this_type_only(obj) {
+    const this_type = game.this_type || 0;
+    let res = (obj.oclass === this_type);
+
+    if (this_type === chP) {
+        res = !!obj.pickup_prev;
+    } else if (obj.oclass === O.COIN_CLASS) {
+        /* if filtering by bless/curse state, gold is classified as
+           either unknown or uncursed based on user option setting */
+        if (this_type && [chB, chU, chC, chX].includes(this_type))
+            res = (this_type === (game.flags.goldX ? chX : chU));
+    } else {
+        switch (this_type) {
+        case chB:
+            res = !!(obj.bknown && obj.blessed);
+            break;
+        case chU:
+            res = !!(obj.bknown && !(obj.blessed || obj.cursed));
+            break;
+        case chC:
+            res = !!(obj.bknown && obj.cursed);
+            break;
+        case chX:
+            res = !obj.bknown;
+            break;
+        default:
+            break; /* use 'res' as-is */
+        }
+    }
+    return res;
+}
+
+// C ref: invent.c dotypeinv() -- the #inventtype command
+export async function dotypeinv() {
+    const prompt = "What type of object do you want an inventory of?";
+    const u = game.u;
+    let c = 0; /* C char: an object class or a letter's char code */
+    let n, i = 0;
+    let title = '';
+    let before = "", after = "";
+    const billx = !!(u.ushops && u.ushops.length) && !!doinvbill_iv(0);
+    const pick_list = [];
+    let traditional = true;
+
+    game.this_type = 0;
+    game.this_title = null;
+    doI: {
+        if (!game.invent && !billx) {
+            await You("aren't carrying anything.");
+            break doI;
+        }
+        const u_carried = count_unpaid(game.invent);
+        const u_floor = count_unpaid(game.level.objects || []);
+        const u_buried = count_unpaid(game.level.buriedobjlist || []);
+        const any_unpaid = u_carried + u_floor + u_buried;
+        const { bcnt, ucnt, ccnt, xcnt, jcnt } = tally_BUCX(game.invent, false);
+
+        const menu_style = game.flags.menu_style ?? MENU_FULL_IV;
+        if (menu_style !== MENU_TRADITIONAL_IV) {
+            if (menu_style === MENU_FULL_IV
+                || menu_style === MENU_PARTIAL_IV) {
+                traditional = false;
+                i = UNPAID_TYPES_IV;
+                if (billx)
+                    i |= BILLED_TYPES_IV;
+                if (bcnt)
+                    i |= BUC_BLESSED;
+                if (ucnt)
+                    i |= BUC_UNCURSED;
+                if (ccnt)
+                    i |= BUC_CURSED;
+                if (xcnt)
+                    i |= BUC_UNKNOWN_IV;
+                if (jcnt)
+                    i |= JUSTPICKED_IV;
+                i |= INCLUDE_VENOM_IV;
+                n = await query_category_iv(prompt, game.invent, i,
+                                            pick_list, PICK_ONE);
+                if (!n)
+                    break doI;
+                game.this_type = c = pick_list[0].item;
+            }
+        }
+        if (traditional)
+            /* collect_obj_classes() and the yn_function() class prompt */
+            throw new Error('dotypeinv(): traditional menustyle prompt not ported yet');
+
+        if (c === chx || (c === chX && billx && !xcnt)) {
+            if (billx)
+                doinvbill_iv(1);
+            else
+                await pline(`No used-up objects${
+                    any_unpaid ? " on your shopping bill" : ""}.`);
+            break doI;
+        }
+        if (c === chu || (c === chU && any_unpaid && !ucnt)) {
+            if (any_unpaid)
+                /* dounpaid(u_carried, u_floor, u_buried) */
+                throw new Error('dotypeinv(): dounpaid() not ported yet');
+            else
+                await You("are not carrying any unpaid objects.");
+            break doI;
+        }
+
+        /* (oclass is only needed by the traditional prompt) */
+        /* these are used for traditional when not applicable and also for
+           constructing a title to be used by query_objlist() */
+        switch (c) {
+        case chB:
+            before = "known to be blessed ";
+            break;
+        case chU:
+            before = "known to be uncursed ";
+            break;
+        case chC:
+            before = "known to be cursed ";
+            break;
+        case chX:
+            after = " whose blessed/uncursed/cursed status is unknown";
+            break; /* better phrasing is desirable */
+        case chP:
+            after = " that were just picked up";
+            break;
+        default:
+            before = "such ";
+            break;
+        }
+
+        if ([chB, chU, chC, chX, chP].includes(c)) {
+            /* the before and after phrases for "you have no..." can both be
+               treated as mutually-exclusive suffices when creating a title */
+            title = `Items ${(before && before.length) ? before : after}`;
+            /* get rid of trailing space from 'before' and double-space from
+               'after's leading space */
+            title = mungspaces_iv(title);
+            title += ":"; /* after removing unwanted trailing space */
+            game.this_title = title;
+        }
+
+        const invlist = objchain_items(game.invent);
+        if (await query_objlist_iv(null, invlist,
+                                   (((game.flags.invlet_constant ?? true)
+                                     ? USE_INVLET : 0)
+                                    | INVORDER_SORT | INCLUDE_VENOM_IV),
+                                   pick_list, PICK_ONE, this_type_only) > 0) {
+            const otmp = pick_list[0].obj;
+
+            await itemactions(otmp); /* always returns ECMD_OK */
+        }
+    }
+    /* doI_done: */
+    game.this_type = 0;
+    game.this_title = null;
+    return ECMD_OK;
+}
+
 // C ref: invent.c doprgold() -- the #showgold command
 export async function doprgold() {
     /* Command takes containers into account. */
@@ -2753,3 +2949,11 @@ async function doorganize_core(obj) {
     /* update_inventory(): no perm_invent */
     return ECMD_OK;
 }
+
+import { query_category as query_category_iv } from './pickup.js';
+import { doinvbill as doinvbill_iv } from './shk.js';
+import { mungspaces as mungspaces_iv } from './hacklib.js';
+import { MENU_PARTIAL as MENU_PARTIAL_IV, UNPAID_TYPES as UNPAID_TYPES_IV,
+         BILLED_TYPES as BILLED_TYPES_IV, BUC_UNKNOWN as BUC_UNKNOWN_IV,
+         JUSTPICKED as JUSTPICKED_IV,
+         INCLUDE_VENOM as INCLUDE_VENOM_IV } from './const.js';

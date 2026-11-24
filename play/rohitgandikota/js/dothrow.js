@@ -132,9 +132,9 @@ import { game } from './gstate.js';
 import { pline } from './display.js';
 import { splitobj, unsplitobj, place_object } from './mkobj.js';
 import { addinv, addinv_before, freeinv, fully_identify_obj, stackobj } from './invent.js';
-import { encumber_msg, near_capacity, ACURR, acurrstr, exercise,
+import { encumber_msg, near_capacity, calc_capacity, ACURR, acurrstr, exercise,
          change_luck, Role_if } from './attrib.js';
-import { A_DEX, A_STR, BOLT_LIM, IS_SOFT, LOST_THROWN, THROWN_WEAPON,
+import { A_CON, A_DEX, A_STR, SLT_ENCUMBER, BOLT_LIM, IS_SOFT, LOST_THROWN, THROWN_WEAPON,
          THROWN_TETHERED_WEAPON, STR19,
          HMON_THROWN, HMON_KICKED, HMON_APPLIED, STRAT_WAITMASK,
          engulfing_u, RLOC_MSG, POTHIT_HERO_THROW, HEAD, EYE, OBJ_FLOOR,
@@ -698,13 +698,23 @@ export async function throwit(obj, wep_mask, twoweap = false,
         }
     }
 
+    if ((u.dx || u.dy || u.dz < 1)
+        && calc_capacity(obj.owt) > SLT_ENCUMBER
+        && (Upolyd(u) ? (u.mh < 5 && u.mh !== u.mhmax)
+                      : (u.uhp < 10 && u.uhp !== u.uhpmax))
+        && obj.owt > (Upolyd(u) ? u.mh : u.uhp) * 2
+        && !Is_airlevel(u.uz)) {
+        await You(`have so little stamina, ${the(xname(obj))} drops from your grasp.`);
+        await exercise(A_CON, false);
+        u.dx = u.dy = 0;
+        u.dz = 1;
+    }
+
     game.thrownobj = obj;
     obj.how_lost = LOST_THROWN;
     (game.iflags ||= {}).returning_missile = AutoReturn(obj, wep_mask)
                                                 ? obj : null;
 
-    /* the low-stamina drop arm reads encumbrance; calc_capacity stays 0
-       for every current session so the gate is the hp test alone */
     let mon = null;
     let endTether = null;
     if (u.uswallow) {

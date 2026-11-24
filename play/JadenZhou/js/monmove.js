@@ -114,7 +114,7 @@ import { STRANGE_OBJECT, WAN_STRIKING } from './objects.js';
 import { ART_EXCALIBUR, ART_SNICKERSNEE } from './artilist.js';
 import { In_hell } from './dungeon.js';
 import { stop_occupation } from './allmain.js';
-import { shk_move, costly_spot, after_shk_move, inhishop } from './shk.js';
+import { shk_move, costly_spot, after_shk_move, inhishop, add_damage } from './shk.js';
 import { in_rooms, in_town } from './hack.js';
 import { pri_move, in_your_sanctuary } from './priest.js';
 import { quest_stat_check, quest_talk } from './quest.js';
@@ -448,7 +448,7 @@ function finish_meating(mtmp) {
 }
 
 // ── C ref: monmove.c disturb() ──
-function disturb(mtmp) {
+async function disturb(mtmp) {
     /*
      * + Ettins are hard to surprise.
      * + Nymphs, jabberwocks, and leprechauns do not easily wake up.
@@ -462,10 +462,7 @@ function disturb(mtmp) {
             || (mtmp.data.mlet === M.S_DOG || mtmp.data.mlet === M.S_HUMAN)
             || (!rn2(7) && mtmp.m_ap_type !== M_AP_FURNITURE
                 && mtmp.m_ap_type !== M_AP_OBJECT))) {
-        /* wake_msg(mtmp, !mtmp->mpeaceful): the message needs the tty
-           message line; not ported yet */
-        if (canseemon(mtmp) || !mtmp.mpeaceful)
-            throw new Error('disturb(): wake_msg() not ported yet');
+        await wake_msg_mm(mtmp, !mtmp.mpeaceful);
         mtmp.msleeping = 0;
         return 1;
     }
@@ -935,7 +932,7 @@ export async function dochug(mtmp) {
     }
 
     /* there is a chance we will wake it */
-    if (mtmp.msleeping && !disturb(mtmp)) {
+    if (mtmp.msleeping && !(await disturb(mtmp))) {
         if (Hallucination())
             newsym(mtmp.mx, mtmp.my);
         return 0;
@@ -1308,6 +1305,186 @@ async function meatmetal(mtmp) {
     return 0;
 }
 
+// ── C ref: mon.c meatobj() ──
+/* monster eats a pile of objects */
+async function meatobj(mtmp) /* for gelatinous cubes */ {
+    let ptr;
+    const original_ptr = mtmp.data;
+    let count = 0, ecount = 0;
+    let buf = '', otmpname;
+
+    /* If a pet, eating is handled separately, in dog.c */
+    if (mtmp.mtame)
+        return 0;
+
+    /* eat organic objects, including cloth and wood, if present;
+       engulf others, except huge rocks and metal attached to player
+       [despite comment at top, doesn't assume that eater is a g-cube];
+       the pile at <mx,my> is read from fobj (newest first), like
+       svl.level.objects[x][y], with otmp2 = otmp->nexthere taken first */
+    const pile = (game.level.objects || []).filter(
+        o => o.where === 'OBJ_FLOOR' && o.ox === mtmp.mx && o.oy === mtmp.my);
+    for (const otmp of pile) {
+        /* avoid special items; once hero picks them up, they'll cease
+           being special, becoming eligible for engulf and devore if
+           dropped again */
+        if (is_mines_prize(otmp) || is_soko_prize(otmp))
+            continue;
+
+        /* touch sensitive items */
+        if (otmp.otyp === CORPSE && is_rider_mm(mons[otmp.corpsenm])) {
+            const ox = otmp.ox, oy = otmp.oy;
+            const revived_it = await revive_corpse_mo(otmp);
+
+            newsym(ox, oy);
+            /* Rider corpse isn't just inedible; can't engulf it either */
+            if (!revived_it)
+                continue;
+            /* [should check whether revival forced 'mtmp' off the level
+               and return 3 in that situation (if possible...)] */
+            break;
+
+        /* untouchable (or inaccessible) items */
+        } else if ((otmp.otyp === CORPSE
+                    && touch_petrifies_mo(mons[otmp.corpsenm])
+                    && !resists_ston_mm(mtmp))
+                   /* don't engulf boulders and statues or ball&chain */
+                   || otmp.oclass === ROCK_CLASS
+                   || otmp === game.uball || otmp === game.uchain
+                   /* normally mtmp won't have stepped onto scare monster
+                      scroll, but if it does, don't eat or engulf that
+                      (note: scrolls inside eaten containers will still
+                      become engulfed) */
+                   || otmp.otyp === SCR_SCARE_MONSTER) {
+            /* do nothing--neither eaten nor engulfed */
+            continue;
+
+        /* inedible items -- engulf these */
+        } else if (!is_organic(otmp) || obj_resists(otmp, 5, 95)
+                   || !(await touch_artifact(otmp, mtmp))
+                   /* redundant due to non-organic composition but
+                      included for emphasis */
+                   || (otmp.otyp === AMULET_OF_STRANGULATION
+                       || otmp.otyp === RIN_SLOW_DIGESTION)
+                   || (otmp.otrapped /* opoisoned */ && !resists_poison(mtmp))
+                   /* cockatrice corpses handled above; this
+                      touch_petrifies() check catches eggs */
+                   || (mstoning_mo(otmp) && !resists_ston_mm(mtmp))
+                   || (otmp.otyp === OBJ.GLOB_OF_GREEN_SLIME
+                       && !slimeproof_mo(mtmp.data))) {
+            /* engulf */
+            ++ecount;
+            /* call distant_name() for its possible side-effects even if
+               the result won't be printed */
+            otmpname = distant_name(otmp, doname);
+            if (ecount === 1)
+                buf = `${Monnam(mtmp)} engulfs ${otmpname}.`;
+            else if (ecount === 2)
+                buf = `${Monnam(mtmp)} engulfs several objects.`;
+            obj_extract_self(otmp);
+            mpickobj(mtmp, otmp); /* slurp */
+
+        /* lastly, edible items; yum! */
+        } else {
+            /* devour */
+            ++count;
+            if (cansee(mtmp.mx, mtmp.my)) {
+                /* (see above; distant_name() sometimes has side-effects */
+                otmpname = distant_name(otmp, doname);
+                if (game.flags.verbose) /* pline_mon() */
+                    await pline(`${Monnam(mtmp)} eats ${otmpname}!`);
+                /* give this one even if !verbose */
+                if (otmp.oclass === SCROLL_CLASS
+                    && objdescr_is(otmp, "YUM YUM"))
+                    await pline(`Yum${otmp.blessed ? '!' : '.'}`);
+            } else {
+                /* Soundeffect(se_slurping_sound, 30) */
+                if (game.flags.verbose)
+                    await You_hear("a slurping sound.");
+            }
+            await m_consume_obj(mtmp, otmp);
+            /* in case it polymorphed or died */
+            ptr = mtmp.data;
+            if (ptr !== original_ptr)
+                return !ptr ? 2 : 1;
+        }
+
+        /* Engulf & devour is instant, so don't set meating */
+        if (mtmp.minvis)
+            newsym(mtmp.mx, mtmp.my);
+    }
+
+    if (ecount > 0) {
+        if (cansee(mtmp.mx, mtmp.my) && game.flags.verbose && buf)
+            await pline(buf); /* pline1() */
+        else if (game.flags.verbose)
+            await You_hear(`${(ecount === 1) ? "a" : "several"} slurping sound${
+                (ecount === 1) ? "" : "s"}.`);
+    }
+    return (count > 0 || ecount > 0) ? 1 : 0;
+}
+
+// ── C ref: mon.c meatcorpse() ──
+/* Monster eats a corpse off the ground.
+   Return value is 0 = nothing eaten, 1 = ate a corpse, 2 = died. */
+async function meatcorpse(mtmp) /* for purple worms and other voracious monsters */ {
+    const original_ptr = mtmp.data;
+    const x = mtmp.mx, y = mtmp.my;
+    let ptr;
+
+    /* if a pet, eating is handled separately, in dog.c */
+    if (mtmp.mtame)
+        return 0;
+
+    /* skips past any globs; the pile at <x,y> is read from fobj (newest
+       first), like sobj_at() and nxtobj(otmp, CORPSE, TRUE) */
+    const corpses = (game.level.objects || []).filter(
+        o => o.where === 'OBJ_FLOOR' && o.ox === x && o.oy === y
+             && o.otyp === OBJ.CORPSE);
+    for (let otmp of corpses) {
+        /* won't get back here if otmp is split or gets used up */
+        const corpsepm = mons[otmp.corpsenm];
+        /* skip some corpses */
+        if (vegan_mm(corpsepm) /* ignore veggy corpse even if omnivorous */
+            /* don't eat harmful corpses */
+            || (flesh_petrifies_mm(corpsepm) && !resists_ston_mm(mtmp)))
+            continue;
+        if (is_rider_mm(corpsepm)) {
+            /* revive_corpse(otmp), newsym(x, y) */
+            throw new Error('meatcorpse(): Rider corpse revival not ported yet');
+        }
+
+        if (otmp.quan > 1)
+            otmp = splitobj(otmp, 1);
+
+        if (cansee(x, y) && canseemon(mtmp)) {
+            /* call distant_name() for its possible side-effects even if
+               the result won't be printed */
+            const otmpname = distant_name(otmp, doname);
+
+            if (game.flags.verbose) /* pline_mon() */
+                await pline(`${Monnam(mtmp)} eats ${otmpname}!`);
+        } else {
+            /* Soundeffect(se_masticating_sound, 50) */
+            if (game.flags.verbose)
+                await You_hear("a masticating sound.");
+        }
+
+        await m_consume_obj(mtmp, otmp);
+        /* in case it polymorphed or died */
+        ptr = mtmp.data;
+        if (ptr !== original_ptr)
+            return !ptr ? 2 : 1;
+
+        /* Engulf & devour is instant, so don't set meating */
+        if (mtmp.minvis)
+            newsym(x, y);
+
+        return 1;
+    }
+    return 0;
+}
+
 // ── C ref: monmove.c m_avoid_soko_push_loc() ──
 /* return TRUE if monster shouldn't move to (nx,ny) to avoid pushing boulder
    in sokoban: if hero is 2 squares away, and there's a boulder between the
@@ -1522,8 +1699,11 @@ export function mon_would_take_item(mtmp, otmp) {
         && pctload() < 50 && !game.level.flags.sokoban_rules)
         return true;
     if (mtmp.data === mons[M.PM_GELATINOUS_CUBE]
-        && otmp.oclass !== ROCK_CLASS && otmp.oclass !== BALL_CLASS)
-        throw new Error('mon_would_take_item(): gelatinous cube not ported yet');
+        && otmp.oclass !== ROCK_CLASS && otmp.oclass !== BALL_CLASS
+        && !(otmp.otyp === OBJ.CORPSE
+             && (otmp.corpsenm === M.PM_COCKATRICE
+                 || otmp.corpsenm === M.PM_CHICKATRICE))) /* touch_petrifies() */
+        return true;
 
     return false;
 }
@@ -1808,8 +1988,8 @@ async function maybe_spin_web(mtmp) {
                 await pline(`${mbuf.charAt(0).toUpperCase()}${mbuf.slice(1)} spins a web.`); /* pline_mon(), upstart() */
                 trap.tseen = 1;
             }
-            if (in_shop(mtmp.mx, mtmp.my))
-                throw new Error('maybe_spin_web(): add_damage() not ported yet');
+            if (in_shop(mtmp.mx, mtmp.my)) /* *in_rooms(mx, my, SHOPBASE) */
+                add_damage(mtmp.mx, mtmp.my, 0);
         }
     }
 }
@@ -2365,8 +2545,8 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                     }
                 }
                 /* if it's a shop door, schedule repair */
-                if (in_shop(mtmp.mx, mtmp.my))
-                    throw new Error('postmov(): add_damage() not ported yet');
+                if (in_shop(mtmp.mx, mtmp.my)) /* *in_rooms(mx, my, SHOPBASE) */
+                    add_damage(mtmp.mx, mtmp.my, 0);
             }
         } else if (lev.at(mtmp.mx, mtmp.my).typ === IRONBARS) {
             /* 3.6.2: was using may_dig() but that doesn't handle bars;
@@ -2407,11 +2587,17 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                     return MMOVE_DIED; /* it died */
             }
             /* Maybe a cube ate just about anything */
-            if (ptr === mons[M.PM_GELATINOUS_CUBE])
-                throw new Error('postmov(): meatobj() not ported yet');
+            if (ptr === mons[M.PM_GELATINOUS_CUBE]) {
+                let etmp;
+                if ((etmp = await meatobj(mtmp)) >= 2)
+                    return etmp; /* it died or got forced off the level */
+            }
             /* Maybe a purple worm ate a corpse */
-            if (corpse_eater(ptr))
-                throw new Error('postmov(): meatcorpse() not ported yet');
+            if (corpse_eater(ptr)) {
+                let etmp;
+                if ((etmp = await meatcorpse(mtmp)) >= 2)
+                    return etmp; /* it died or got forced off the level */
+            }
 
             if (await mpickstuff(mtmp))
                 mmoved = MMOVE_DONE;
@@ -2555,3 +2741,11 @@ import { mon_nam as mon_nam_mb } from './do_name.js';
 import { TELEPAT as TELEPAT_MB, HALF_SPDAM as HALF_SPDAM_MB,
          KILLED_BY_AN as KILLED_BY_AN_MB } from './const.js';
 import { AD_DRIN as AD_DRIN_MB } from './monsters.js';
+import { vegan as vegan_mm, is_rider as is_rider_mm, flesh_petrifies as flesh_petrifies_mm,
+         resists_ston as resists_ston_mm } from './mondata.js';
+import { touch_petrifies as touch_petrifies_mo } from './mondata.js';
+import { mstoning as mstoning_mo } from './mon.js';
+import { slimeproof as slimeproof_mo } from './eat.js';
+import { revive_corpse as revive_corpse_mo } from './zap.js';
+import { objdescr_is } from './o_init.js';
+import { wake_msg as wake_msg_mm } from './mon.js';

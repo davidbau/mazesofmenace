@@ -559,6 +559,6 @@ export function in_your_sanctuary(
 export function restpriest(mtmp, ghostly) {
     if (game.u.uz.dlevel) {
         if (ghostly)
-            assign_level(mtmp.mextra.epri.shrlevel, game.u.uz);
+            assign_level(mtmp.epri.shrlevel, game.u.uz);
     }
 }

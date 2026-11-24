@@ -803,6 +803,19 @@ export function get_artifact(obj) {
     return arts[ART_NONARTIFACT];
 }
 
+// C ref: artifact.c protects()
+/* used to check whether an object grants Protection (in some cases,
+   only when worn or wielded) */
+export function protects(otmp, being_worn) {
+    if (being_worn && O.objects[otmp.otyp].oc_oprop === PROTECTION)
+        return true;
+    const arti = get_artifact(otmp);
+    if (arti === artilist()[ART_NONARTIFACT])
+        return false;
+    return ((arti.cspfx & SPFX_PROTECT) !== 0
+            || (being_worn && (arti.spfx & SPFX_PROTECT) !== 0));
+}
+
 // C ref: artifact.c defends()
 /* used to check whether a monster is getting reflection/magic resistance
    from its wielded weapon or worn dragon scales */

@@ -55,6 +55,8 @@ import { obj_resists } from './dogmove.js';
 import { cansee, does_block, block_point, unblock_point } from './vision.js';
 import { newsym } from './display.js';
 import { costly_spot } from './shk.js';
+import { add_damage as add_damage_zp, pay_for_damage as pay_for_damage_zp } from './shk.js';
+import { SHOP_DOOR_COST as SHOP_DOOR_COST_ZP, SHOP_BARS_COST as SHOP_BARS_COST_ZP } from './const.js';
 import { LARGEST_INT, MAX_SPELL_STUDY, Has_contents } from './const.js';
 import { STRANGE_OBJECT, WAN_POLYMORPH, SPE_POLYMORPH, POT_POLYMORPH,
          AMULET_OF_UNCHANGING, LARGE_BOX, CHEST, WAN_SLOW_MONSTER,
@@ -292,6 +294,32 @@ export async function bhito(obj, otmp) {
             obj = await poly_obj(obj, STRANGE_OBJECT);
             newsym(obj.ox, obj.oy);
             break;
+        case WAN_STRIKING:
+        case SPE_FORCE_BOLT: {
+            /* learn the type if you see or hear something break
+               (the sound could be implicit) */
+            let maybelearnit = cansee(obj.ox, obj.oy) || !Deaf_zp();
+            if (obj.otyp === BOULDER) {
+                throw new Error('bhito(): striking a boulder (fracture_rock()) not ported yet');
+            } else if (obj.otyp === STATUE_ZB) {
+                throw new Error('bhito(): striking a statue (break_statue()) not ported yet');
+            } else {
+                const oox = obj.ox, ooy = obj.oy;
+
+                if (g.context.mon_moving ? !(await breaks_zb(obj, oox, ooy))
+                                         : !(await hero_breaks_zb(obj, oox, ooy, 0)))
+                    maybelearnit = false; /* nothing broke */
+                else
+                    /* obj broke; force redisplay in case it was the only--
+                       or last--item under non-breaking pile-top; top item
+                       here might now be a lone object rather than a pile */
+                    newsym_force_zb(oox, ooy);
+                res = 0;
+            }
+            if (maybelearnit)
+                learn_it = true;
+            break;
+        }
         case WAN_SLOW_MONSTER: /* no effect on objects */
         case SPE_SLOW_MONSTER:
         case WAN_SPEED_MONSTER:
@@ -309,6 +337,10 @@ export async function bhito(obj, otmp) {
         learnwand(otmp);
     return res;
 }
+
+import { breaks as breaks_zb, hero_breaks as hero_breaks_zb } from './dothrow.js';
+import { newsym_force as newsym_force_zb } from './display.js';
+import { STATUE as STATUE_ZB } from './objects.js';
 
 /* C ref: obj.h Is_box() */
 function Is_box(otmp) { return otmp.otyp === LARGE_BOX || otmp.otyp === CHEST; }
@@ -966,9 +998,9 @@ export async function dozap() {
         /* make him pay for knowing !NODIR */
     } else if (need_dir && !u.dx && !u.dy && !u.dz) {
         if ((damage = await zapyourself(obj, true)) !== 0) {
-            /* Sprintf(buf, "zapped %sself with %s", uhim(), killer_xname(obj));
-               losehp(Maybe_Half_Phys(damage), buf, NO_KILLER_PREFIX); */
-            throw new Error('dozap(): self-zap damage (killer_xname()) not ported yet');
+            const buf = `zapped ${uhim_zy()}self with ${killer_xname_zp(obj)}`;
+
+            await losehp(Maybe_Half_Phys(damage), buf, NO_KILLER_PREFIX_ZY);
         }
     } else {
         /*      Are we having fun yet?
@@ -2696,7 +2728,13 @@ export async function dobuzz(
     if (fireball)
         await explode(sx, sy, type, d(12, 6), 0, EXPL_FIERY_ZP);
     if (shopdamage.v)
-        throw new Error('dobuzz(): pay_for_damage() not ported yet');
+        await pay_for_damage_zp(damgtype === ZT_FIRE ? "burn away"
+                                : damgtype === ZT_COLD ? "shatter"
+                                  /* "damage" indicates wall rather than door */
+                                  : damgtype === ZT_ACID ? "damage"
+                                    : damgtype === ZT_DEATH ? "disintegrate"
+                                      : "destroy",
+                                false);
     g.bhitpos = save_bhitpos;
 }
 
@@ -2987,8 +3025,11 @@ export async function zap_over_floor(
                     await Norep_zp(`The iron bars ${
                         (damgtype === ZT_ACID) ? "corrode away" : "melt"}.`);
                 await dissolve_bars(x, y);
-                if (in_rooms_zp(x, y, SHOPBASE_ZP).length)
-                    throw new Error('zap_over_floor(): add_damage() for shop bars not ported yet');
+                if (in_rooms_zp(x, y, SHOPBASE_ZP).length) {
+                    add_damage_zp(x, y, (type >= 0) ? SHOP_BARS_COST_ZP : 0);
+                    if (type >= 0)
+                        shopdamage.v = true;
+                }
             }
         }
         break; /* ZT_ACID */
@@ -3088,8 +3129,13 @@ export async function zap_over_floor(
                 await You_feel("vibrations.");
         }
         if (new_doormask >= 0) { /* door gets broken */
-            if (in_rooms_zp(x, y, SHOPBASE_ZP).length)
-                throw new Error('zap_over_floor(): add_damage() for a shop door not ported yet');
+            if (in_rooms_zp(x, y, SHOPBASE_ZP).length) {
+                if (type >= 0) {
+                    add_damage_zp(x, y, SHOP_DOOR_COST_ZP);
+                    shopdamage.v = true;
+                } else /* caused by monster */
+                    add_damage_zp(x, y, 0);
+            }
             lev.doormask = new_doormask;
             recalc_block_point_zp(x, y); /* vision */
             if (see_it) {
@@ -3905,3 +3951,4 @@ import { RIN_GAIN_STRENGTH as RIN_GAIN_STRENGTH_DI,
          RIN_PROTECTION as RIN_PROTECTION_DI,
          HELM_OF_BRILLIANCE as HELM_OF_BRILLIANCE_DI,
          GAUNTLETS_OF_DEXTERITY as GAUNTLETS_OF_DEXTERITY_DI } from './objects.js';
+import { killer_xname as killer_xname_zp } from './mthrowu.js';

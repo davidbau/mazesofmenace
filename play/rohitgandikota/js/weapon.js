@@ -1123,10 +1123,10 @@ export async function mon_wield_item(mon) {
         await setmnotwielded(mon, mw_tmp);
         mon.weapon_check = NEED_WEAPON;
         if (canseemon(mon)) {
-            await pline(`${Monnam(mon)} wields ${doname(obj)}${
+            await pline_mon(mon, `${Monnam(mon)} wields ${doname(obj)}${
                 exclaim ? '!' : '.'}`);
             if (autoreturn_weapon(obj)?.tethered)
-                await pline(`${Monnam(mon)} secures the tether on ${
+                await pline_mon(mon, `${Monnam(mon)} secures the tether on ${
                     the(xname(obj))}.`);
 
             /* 3.6.3: mwelded() predicate expects the object to have its

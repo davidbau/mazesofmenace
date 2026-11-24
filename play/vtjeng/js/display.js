@@ -68,6 +68,7 @@ import {
     clearTtyMessageWindow,
     dismissPendingTtyMessage,
     messageWindow,
+    printQueued,
 } from './tty_message.js';
 import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS, ECMD_OK,
@@ -2251,22 +2252,22 @@ export function print_glyph_attr(glyphflags, state) {
  * A UTF-8 entry (ch === null) goes through g_pututf8(), which recorder patch
  * 006 does not mirror: the recorder-facing cell keeps what it held.
  */
-function print_glyph_cell(loc, entry, state) {
+function print_glyph_cell(cell, entry, state) {
     const useColor = state.iflags?.wc_color !== false;
     const color = useColor ? entry.color ?? NO_COLOR : NO_COLOR;
     const attr = print_glyph_attr(entry.glyphflags ?? 0, state);
     if (entry.ch !== null) {
-        loc.disp_ch = entry.ch;
-        loc.disp_color = color;
-        loc.disp_decgfx = Boolean(entry.dec);
-        loc.disp_attr = attr;
+        cell.ch = entry.ch;
+        cell.color = color;
+        cell.decgfx = Boolean(entry.dec);
+        cell.attr = attr;
     }
     const displayCh = entry.displayCh ?? null;
-    loc.disp_browser_ch = displayCh;
+    cell.browser_ch = displayCh;
     if (useColor)
-        loc.disp_browser_color = entry.displayColor ?? (displayCh ? color : null);
-    else loc.disp_browser_color = displayCh ? NO_COLOR : null;
-    loc.disp_browser_attr = displayCh ? attr : null;
+        cell.browser_color = entry.displayColor ?? (displayCh ? color : null);
+    else cell.browser_color = displayCh ? NO_COLOR : null;
+    cell.browser_attr = displayCh ? attr : null;
     return { color, attr };
 }
 
@@ -3062,7 +3063,7 @@ function terrain_to_glyph(ptr, x, y, state) {
 
 // display.c nul_gbuf (2088-2100), the entry clear_glyph_buffer() copies into
 // every gbuf cell: GLYPH_UNEXPLORED drawn as a blank with NO_COLOR and no
-// customization. A JS cell whose disp_glyph is null holds it.
+// customization. A gbuf entry whose glyphinfo is null holds it.
 const NUL_GBUF_PRESENTATION = Object.freeze({
     glyph: GLYPH_UNEXPLORED_OFF, ch: ' ', color: NO_COLOR,
 });
@@ -3104,8 +3105,12 @@ export function show_glyph_cell(x, y, glyph) {
     // special level's load stores map memory only, so a message printed
     // after in_mklev clears flushes the previous level's buffered cells.
     if (suppress_map_output()) return;
-    const loc = game.level?.at(x, y);
-    if (!loc) return;
+    // The port's map window exists once a level does; until then, and off
+    // the map, there is no cell to write.
+    if (!game.level?.at(x, y)) return;
+    const entry = glyph_buffer_at(x, y);
+    const cell = tty_map_cell_at(x, y);
+    const shadow = nomux_cell_at(x, y);
     const logicalPresentation = {
         ch,
         color,
@@ -3127,36 +3132,36 @@ export function show_glyph_cell(x, y, glyph) {
         }
     }
     // display.c show_glyph() (2031-2044) leaves an entry alone when the new
-    // glyphinfo equals the buffered one. A cell with no disp_glyph holds
+    // glyphinfo equals the buffered one. An entry with no glyphinfo holds
     // nul_gbuf, so writing GLYPH_UNEXPLORED there is a no-op only while the
     // unexplored glyph still draws as nul_gbuf's blank; S_unexplored or a
     // G_unexplored customization makes it a real write that flush_screen()
     // prints.
-    if (!loc.disp_glyph
+    if (!entry.glyphinfo
         && !glyphPresentationChanged(NUL_GBUF_PRESENTATION, logicalPresentation))
         return;
-    const previousPresentation = loc.disp_glyph ?? null;
-    const previousGnew = glyphGnewSinceNotice(x, y, loc, game);
+    const previousPresentation = entry.glyphinfo ?? null;
+    const previousGnew = glyphGnewSinceNotice(x, y, entry, game);
     // display.c show_glyph() (2031-2047) sets gnew only when the buffered
     // glyph or its presentation changes. cls() leaves nul_gbuf behind.
     const changed = glyphPresentationChanged(
         previousPresentation ?? NUL_GBUF_PRESENTATION, logicalPresentation);
     // C's gbuf retains logical glyph identity even when a UTF-8 customization
     // deliberately leaves the recorder-facing `ch` cell untouched. That cell
-    // keeps the last ASCII glyph flush_screen() printed (tty_*), not one that
-    // show_glyph() buffered and replaced before the flush.
-    loc.disp_glyph = logicalPresentation;
+    // keeps the last ASCII glyph flush_screen() printed (the nomux_buf
+    // cell), not one that show_glyph() buffered and replaced before the flush.
+    entry.glyphinfo = logicalPresentation;
     // An unchanged entry is not printed again, so the screen keeps what it
     // shows; docorner() may have blanked it (display.c row_refresh()).
     if (changed) {
-        if (ch === null && loc.tty_ch !== undefined) {
-            loc.disp_ch = loc.tty_ch;
-            loc.disp_color = loc.tty_color;
-            loc.disp_decgfx = loc.tty_decgfx;
-            loc.disp_attr = loc.tty_attr;
+        if (ch === null && shadow.ch !== undefined) {
+            cell.ch = shadow.ch;
+            cell.color = shadow.color;
+            cell.decgfx = shadow.decgfx;
+            cell.attr = shadow.attr;
         }
-        print_glyph_cell(loc, logicalPresentation, game);
-        loc.gnew = 1;
+        print_glyph_cell(cell, logicalPresentation, game);
+        entry.gnew = 1;
     }
     // This order is the sparse-frame contract: install the buffer write, record
     // its mutation, then test notice eligibility and queue it. The first
@@ -3398,7 +3403,8 @@ export async function swallowed(first, state = game) {
 export function glyph_at(x, y, state = game) {
     if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO)
         return cmap_to_glyph(S_room, state);
-    return state.level?.at(x, y)?.disp_glyph?.glyph ?? GLYPH_UNEXPLORED_OFF;
+    return glyph_buffer_at(x, y, state)?.glyphinfo?.glyph
+        ?? GLYPH_UNEXPLORED_OFF;
 }
 
 /**
@@ -3764,6 +3770,12 @@ export function map_object(obj, show, state = game) {
     if (show) show_glyph_cell(x, y, mapped.shown);
 }
 
+// display.c map_object() for a caller that can wait: the draw, then the lines it
+// queued (js/tty_message.js printQueued()).
+export function map_object_async(...args) {
+    return printQueued(map_object(...args));
+}
+
 // C ref: display.c feel_newsym(). Used where the hero knows what happened to a
 // square whether or not she can see it, such as the door she has just pulled
 // open in lock.c doopen_indir(). The blind arm delegates the complete
@@ -3777,6 +3789,12 @@ export function map_object(obj, show, state = game) {
 export function feel_newsym(x, y, state = game) {
     if (Blind(state.u)) feel_location(x, y, state);
     else newsym(x, y);
+}
+
+// display.c feel_newsym() for a caller that can wait: the draw, then the lines it
+// queued (js/tty_message.js printQueued()).
+export function feel_newsym_async(...args) {
+    return printQueued(feel_newsym(...args));
 }
 
 // C refs: engrave.h engraving_to_defsym()/spot_shows_engravings();
@@ -3851,6 +3869,12 @@ export function map_invisible(x, y, state = game) {
     show_glyph_cell(x, y, map_glyphinfo(GLYPH_INVISIBLE, state));
 }
 
+// display.c map_invisible() for a caller that can wait: the draw, then the lines it
+// queued (js/tty_message.js printQueued()).
+export function map_invisible_async(...args) {
+    return printQueued(map_invisible(...args));
+}
+
 // C ref: display.c map_invisible()'s levl[].glyph write alone, for a state
 // other than the game, such as a unit test's hand-built state. The C call
 // also paints the window, which belongs to the game, so this skips that half.
@@ -3887,6 +3911,12 @@ export function unmap_invisible(x, y, state = game, redraw = newsym) {
     unmap_object(x, y, state);
     redraw(x, y);
     return true;
+}
+
+// display.c unmap_invisible() for a caller that can wait: the draw, then the lines it
+// queued (js/tty_message.js printQueued()).
+export function unmap_invisible_async(...args) {
+    return printQueued(unmap_invisible(...args));
 }
 
 function floorLayersCovered(loc, state) {
@@ -4135,10 +4165,10 @@ export function newsym_async(x, y, env = {}) {
     const drawn = redraw !== newsym ? redraw(x, y, state)
         : finish_steps(newsym_steps(x, y), impossible_printer(state, env));
     if (env.queuedLines === false) return drawn;
-    const printQueued = () => (state._glyphUpdateNotices?.length
+    const printLines = () => (state._glyphUpdateNotices?.length
         ? emitGlyphUpdateNotices(state).then(() => undefined) : undefined);
     return drawn && typeof drawn.then === 'function'
-        ? drawn.then(printQueued) : printQueued();
+        ? drawn.then(printLines) : printLines();
 }
 
 export function* newsym_steps(x, y) {
@@ -4490,7 +4520,7 @@ export function* newsym_steps(x, y) {
     } else {
         // display.c:1094-1097, show_mem with lev->glyph == GLYPH_UNEXPLORED.
         // The cell has no remembered glyph (unexplored). show_glyph_cell()
-        // treats a cell with no disp_glyph as nul_gbuf, as C's show_glyph()
+        // treats an entry with no glyphinfo as nul_gbuf, as C's show_glyph()
         // does, and overwrites a stale transient glyph (e.g. a warning digit
         // for a monster that has since moved away). The presentation keeps
         // the sentinel's glyph number, which display.c show_glyph()'s
@@ -4605,6 +4635,12 @@ export function see_monsters(state = game, env = {}) {
     return scan(state.level?.monlist ?? null);
 }
 
+// display.c see_monsters() for a caller that can wait: the draw, then the lines it
+// queued (js/tty_message.js printQueued()).
+export function see_monsters_async(...args) {
+    return printQueued(see_monsters(...args));
+}
+
 // C ref: display.c newsym() (928-936). A column-0 square is misuse rather
 // than a corrupt coordinate: newsym() reports it through impossible() and
 // draws nothing. Coordinates outside the map array reach panic() instead,
@@ -4667,7 +4703,7 @@ export async function doredraw() {
 // written since cls() holds nul_gbuf, whose ttychar is a space, so it is
 // printed blank even when S_unexplored is not; a cell docorner() blanked
 // gets its buffered glyph back.  Raising gnew makes the flush below print
-// each cell from disp_glyph; flush_screen() clears every gnew bit, which is
+// each cell from its glyphinfo; flush_screen() clears every gnew bit, which is
 // the state C's own flush_screen() call at 1807 leaves.
 export async function redraw_map(cursorOnHero = false) {
     if (!game.u?.ux || suppress_map_output()
@@ -4675,9 +4711,9 @@ export async function redraw_map(cursorOnHero = false) {
     if (game.level?.at) {
         for (let y = 0; y < ROWNO; ++y) {
             for (let x = 1; x < COLNO; ++x) {
-                const loc = game.level.at(x, y);
-                if (!loc.disp_glyph) clearTtyCell(loc, true);
-                loc.gnew = 1;
+                const entry = glyph_buffer_at(x, y);
+                if (!entry.glyphinfo) clearTtyCell(x, y, true);
+                entry.gnew = 1;
             }
         }
     }
@@ -4936,7 +4972,9 @@ export async function tmp_at(x, y, state = game) {
     case DISP_END:
         if (tglyph.style === DISP_BEAM || tglyph.style === DISP_ALL) {
             /* Erase (reset) from source to end */
-            for (const spot of tglyph.saved) newsym(spot.x, spot.y);
+            // Each newsym() can raise a mention_map notice, which C prints
+            // there, before the next square (js/rng.js, "Queued output").
+            for (const spot of tglyph.saved) await newsym_async(spot.x, spot.y);
         } else if (tglyph.style === DISP_TETHER) {
             if (y === BACKTRACK && tglyph.saved.length > 1) {
                 // display.c:1247-1258. Retrace the tether one square at a
@@ -4945,19 +4983,19 @@ export async function tmp_at(x, y, state = game) {
                 for (let i = tglyph.saved.length - 1; i > 0; i--) {
                     const current = tglyph.saved[i];
                     const previous = tglyph.saved[i - 1];
-                    newsym(current.x, current.y);
-                    show_glyph_cell(
+                    await newsym_async(current.x, current.y);
+                    await printQueued(show_glyph_cell(
                         previous.x, previous.y, tglyph.glyph,
-                    );
+                    ));
                     await flush_screen(0);
                     await nh_delay_output(state);
                 }
                 tglyph.saved.length = 1;
             }
-            for (const spot of tglyph.saved) newsym(spot.x, spot.y);
+            for (const spot of tglyph.saved) await newsym_async(spot.x, spot.y);
         } else { /* DISP_FLASH or DISP_ALWAYS */
             if (tglyph.saved.length) /* been called at least once */
-                newsym(tglyph.saved[0].x, tglyph.saved[0].y);
+                await newsym_async(tglyph.saved[0].x, tglyph.saved[0].y);
         }
         stack.shift();
         break;
@@ -4975,21 +5013,23 @@ export async function tmp_at(x, y, state = game) {
                 break; /* too many locations */
             if (tglyph.saved.length) {
                 const prev = tglyph.saved[tglyph.saved.length - 1];
-                show_glyph_cell(prev.x, prev.y, tether_glyph(prev.x, prev.y, state));
+                await printQueued(show_glyph_cell(
+                    prev.x, prev.y, tether_glyph(prev.x, prev.y, state),
+                ));
             }
             /* save pos for later use or erasure */
             tglyph.saved.push({ x, y });
         } else { /* DISP_FLASH/ALWAYS */
             if (tglyph.saved.length) {
                 /* not first call, so reset previous pos */
-                newsym(tglyph.saved[0].x, tglyph.saved[0].y);
+                await newsym_async(tglyph.saved[0].x, tglyph.saved[0].y);
                 tglyph.saved.length = 0; /* display is presently up to date */
             }
             if (!cansee(x, y, state) && tglyph.style !== DISP_ALWAYS) break;
             tglyph.saved.push({ x, y });
         }
 
-        show_glyph_cell(x, y, tglyph.glyph); /* show it */
+        await printQueued(show_glyph_cell(x, y, tglyph.glyph)); /* show it */
         await flush_screen(0);               /* make sure it shows up */
         break;
     }
@@ -7474,19 +7514,21 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
         if (!state.level) continue;
 
         for (let x = Math.max(1, xmin); x < COLNO; ++x) {
-            const loc = state.level?.at(x, mapY);
-            if (!loc) continue;
+            if (!state.level?.at(x, mapY)) continue;
+            const entry = glyph_buffer_at(x, mapY, state);
+            const cell = tty_map_cell_at(x, mapY, state);
+            const shadow = nomux_cell_at(x, mapY, state);
             // C row_refresh reads gg.gbuf's current glyph number, never
             // levl[x][y].glyph. Remembered terrain is a separate C value.
-            const glyph = loc.disp_glyph?.glyph ?? GLYPH_UNEXPLORED_OFF;
+            const glyph = entry.glyphinfo?.glyph ?? GLYPH_UNEXPLORED_OFF;
             const frameColor = map_framecolor(x, mapY, state) !== NO_COLOR;
             // cl_end() above blanked the terminal cell. A cell whose gbuf
             // glyph prints through g_pututf8() keeps that blank.
-            if (loc.disp_glyph?.ch === null) clearTtyCell(loc, true);
+            if (entry.glyphinfo?.ch === null) clearTtyCell(x, mapY, true, state);
             if (glyph === GLYPH_UNEXPLORED_OFF && !frameColor) {
                 // The gbuf entry still holds S_unexplored, which may not be
                 // a blank; the physical cell keeps cl_end()'s blank.
-                clearTtyCell(loc, true);
+                clearTtyCell(x, mapY, true, state);
                 continue;
             }
 
@@ -7504,7 +7546,7 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
             // and under the options in force now. Only a frame colour brings
             // an entry that still holds nul_gbuf here, and nul_gbuf's
             // ttychar is a blank whatever S_unexplored is.
-            const presentation = loc.disp_glyph ?? NUL_GBUF_PRESENTATION;
+            const presentation = entry.glyphinfo ?? NUL_GBUF_PRESENTATION;
             const ch = browserGlyphs && presentation.displayCh
                 ? presentation.displayCh
                 : (presentation.dec
@@ -7513,18 +7555,18 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
             // tty_print_glyph()'s UTF-8 path does not update the recorder
             // shadow cell, which is represented by a null character here.
             if (ch === null || ch === undefined) continue;
-            const printed = print_glyph_cell(loc, presentation, state);
+            const printed = print_glyph_cell(cell, presentation, state);
             const attr = framed_print_attr(printed.attr, x, mapY, state);
             if (presentation.ch !== null && presentation.ch !== undefined) {
-                loc.disp_attr = attr;
-                loc.tty_ch = presentation.ch;
-                loc.tty_color = printed.color;
-                loc.tty_decgfx = Boolean(presentation.dec);
-                loc.tty_attr = attr;
+                cell.attr = attr;
+                shadow.ch = presentation.ch;
+                shadow.color = printed.color;
+                shadow.decgfx = Boolean(presentation.dec);
+                shadow.attr = attr;
             }
-            if (loc.disp_browser_attr !== null) loc.disp_browser_attr = attr;
+            if (cell.browser_attr !== null) cell.browser_attr = attr;
             const color = browserGlyphs
-                ? loc.disp_browser_color ?? printed.color
+                ? cell.browser_color ?? printed.color
                 : printed.color;
             // tty_print_glyph()'s g_putch(), whose capture map_glyphinfo()
             // has already applied (symbols.js symbol_at()).
@@ -7603,81 +7645,91 @@ function _applyScreenOverlay(display) {
         display.restoreCell(cell.column, cell.row, cell);
 }
 
-// tty_ch, tty_color, tty_decgfx and tty_attr hold a map cell of recorder patch
-// 006's shadow terminal (termcap.c nomux_buf): the last ASCII glyph printed
-// there. They stay undefined until the first flush, cls() or docorner() that
-// reaches the cell. cls() and docorner()'s cl_end() blank them; `display`
-// also blanks the disp_* cell drawn from them for a UTF-8 glyph.
+// The three records of a map square's display, each with its own owner in C:
+//
+// - glyph_buffer_at(): display.c's gg.gbuf[y][x], a gbuf_entry. `gnew` is its
+//   dirty bit and `glyphinfo` the glyph_info show_glyph() buffered; an entry
+//   whose glyphinfo is null holds nul_gbuf.
+// - tty_map_cell_at(): the terminal cell wintty.c tty_print_glyph() prints
+//   from that entry. `ch`, `color`, `decgfx` and `attr` are its g_putch()
+//   form, which recorder patch 006 captures; `browser_ch`, `browser_color`
+//   and `browser_attr` its g_pututf8() form for a UTF-8 or IBM symbol, which
+//   the patch does not mirror and only the browser terminal draws.
+//   show_glyph_cell() writes the cell when it buffers a changed entry, so
+//   between that and the next flush_screen() it holds what the flush will
+//   print.
+// - nomux_cell_at(): the map cell of recorder patch 006's shadow terminal
+//   (termcap.c nomux_buf, a nomux_cell; `color` is its `fg`), the last ASCII
+//   glyph printed there. `ch` stays undefined until the first flush, cls()
+//   or docorner() that reaches the cell. cls() and docorner()'s cl_end()
+//   blank it (null); `display` also blanks the terminal cell drawn from it
+//   for a UTF-8 glyph.
+//
 // C keeps one glyph buffer, gg.gbuf, and one physical screen, and neither
 // belongs to a level: when goto_level() or #wizmakemap replaces the level,
 // both still hold the old level's cells until docrt()'s cls(). The port keeps
-// them in each location's disp_* and tty_* fields, so installLevel() carries
-// them from the departing level object to the arriving one. A show_glyph()
-// before that cls() -- an object rotting away in goto_level()'s run_timers()
-// -- then compares the new glyph with the old level's, as C does.
-// scripts/install-level.test.mjs fails when other code assigns the level.
-export const SCREEN_BUFFER_FIELDS = Object.freeze([
-    'disp_ch', 'disp_color', 'disp_decgfx', 'disp_attr', 'disp_browser_ch',
-    'disp_browser_color', 'disp_browser_attr', 'disp_glyph', 'gnew',
-    'tty_ch', 'tty_color', 'tty_decgfx', 'tty_attr',
-]);
+// all three grids on the game state (js/gstate.js), so a level change leaves
+// them as they were. A show_glyph() before that cls() -- an object rotting
+// away in goto_level()'s run_timers() -- then compares the new glyph with the
+// old level's, as C does. scripts/screen-buffer.test.mjs fails when a
+// location record holds anything but struct rm.
 
+// Each returns undefined off the map grid (x outside 0..COLNO-1, y outside
+// 0..ROWNO-1). js/gstate.js creates the grids with the game state.
+export function glyph_buffer_at(x, y, state = game) {
+    return state.gg.gbuf[y]?.[x];
+}
+
+export function tty_map_cell_at(x, y, state = game) {
+    return state.tty_map_cells[y]?.[x];
+}
+
+export function nomux_cell_at(x, y, state = game) {
+    return state.nomux_map[y]?.[x];
+}
+
+// goto_level(), getlev(), mklev() and dorecover() replace the level; the
+// display grids above stay as they are. scripts/install-level.test.mjs fails
+// when other code assigns the level.
 export function installLevel(level, state) {
-    const departing = state.level;
     state.level = level;
-    if (!departing?.at || !level?.at || departing === level) return;
-    for (let x = 1; x < COLNO; ++x) {
-        for (let y = 0; y < ROWNO; ++y) {
-            const from = departing.at(x, y);
-            const to = level.at(x, y);
-            if (!from || !to) continue;
-            for (const field of SCREEN_BUFFER_FIELDS) to[field] = from[field];
-        }
-    }
 }
 
 // C ref: sp_lev.c flip_level() 827-829 and 848-850, `trm = levl[a];
 // levl[a] = levl[b]; levl[b] = trm`. Only struct rm moves: gg.gbuf and the
 // physical screen keep showing each coordinate's old cell until a newsym()
-// or docrt() reaches it, so SCREEN_BUFFER_FIELDS stay where they were.
-// scripts/levl-entry-swap.test.mjs fails when other code assigns a location.
+// or docrt() reaches it.
 export function swap_levl_entries(level, x1, y1, x2, y2) {
     const first = level.locations[x1][y1];
-    const second = level.locations[x2][y2];
-    level.locations[x1][y1] = second;
+    level.locations[x1][y1] = level.locations[x2][y2];
     level.locations[x2][y2] = first;
-    for (const field of SCREEN_BUFFER_FIELDS) {
-        const firstHas = Object.hasOwn(first, field);
-        const secondHas = Object.hasOwn(second, field);
-        const value = first[field];
-        if (secondHas) first[field] = second[field];
-        else delete first[field];
-        if (firstHas) second[field] = value;
-        else delete second[field];
-    }
 }
 
-function clearTtyCell(loc, display = false) {
-    loc.tty_ch = null;
-    loc.tty_color = NO_COLOR;
-    loc.tty_decgfx = false;
-    loc.tty_attr = 0;
+// termcap.c cl_end() or cls() blanks the shadow terminal's cell, and with
+// `display` the terminal cell the next rebuild draws.
+function clearTtyCell(x, y, display = false, state = game) {
+    const shadow = nomux_cell_at(x, y, state);
+    shadow.ch = null;
+    shadow.color = NO_COLOR;
+    shadow.decgfx = false;
+    shadow.attr = 0;
     if (!display) return;
-    loc.disp_ch = null;
-    loc.disp_color = NO_COLOR;
-    loc.disp_decgfx = false;
-    loc.disp_attr = 0;
+    const cell = tty_map_cell_at(x, y, state);
+    cell.ch = null;
+    cell.color = NO_COLOR;
+    cell.decgfx = false;
+    cell.attr = 0;
 }
 
 // C ref: display.c flush_screen() prints each gbuf cell whose gnew bit is set
 // through wintty.c tty_print_glyph(). Only g_putch() reaches the shadow cell;
 // a UTF-8 customization goes through g_pututf8() and leaves it unchanged.
-function commitFlushedGlyph(loc) {
-    if (loc.disp_glyph?.ch === null) return;
-    loc.tty_ch = loc.disp_ch;
-    loc.tty_color = loc.disp_color;
-    loc.tty_decgfx = loc.disp_decgfx;
-    loc.tty_attr = loc.disp_attr;
+function commitFlushedGlyph(entry, cell, shadow) {
+    if (entry.glyphinfo?.ch === null) return;
+    shadow.ch = cell.ch;
+    shadow.color = cell.color;
+    shadow.decgfx = cell.decgfx;
+    shadow.attr = cell.attr;
 }
 
 // ── Build screen output ──
@@ -7758,37 +7810,38 @@ function _buildScreenOutput(cursorOnHero = true) {
             // _screenOverlay().
             const overStatus = offset + 1 >= firstStatusRow;
             for (let x = 1; x < COLNO; x++) {
-                const loc = game.level?.at(x, y);
-                if (!loc || (bufferedOnly && !loc.gnew)) continue;
-                if (overStatus && !loc.gnew) continue;
-                if (loc.gnew) {
+                if (!game.level?.at(x, y)) continue;
+                const entry = glyph_buffer_at(x, y);
+                if (bufferedOnly && !entry.gnew) continue;
+                if (overStatus && !entry.gnew) continue;
+                const cell = tty_map_cell_at(x, y);
+                if (entry.gnew) {
                     // flush_screen() prints the gbuf entry itself, so a cell
                     // marked by newsym_force() without a changed glyph is
-                    // printed from disp_glyph again, not from what the screen
-                    // last showed there.
-                    const entry = loc.disp_glyph;
-                    if (entry) print_glyph_cell(loc, entry, game);
+                    // printed from its glyphinfo again, not from what the
+                    // screen last showed there.
+                    if (entry.glyphinfo)
+                        print_glyph_cell(cell, entry.glyphinfo, game);
                     // tty_print_glyph() decides the colour and the attribute
                     // as it prints; the printed cell keeps them until it is
                     // printed again.
-                    loc.disp_attr = framed_print_attr(loc.disp_attr ?? 0,
-                        x, y);
-                    if (loc.disp_browser_attr !== null
-                        && loc.disp_browser_attr !== undefined)
-                        loc.disp_browser_attr = framed_print_attr(
-                            loc.disp_browser_attr, x, y);
-                    commitFlushedGlyph(loc);
+                    cell.attr = framed_print_attr(cell.attr ?? 0, x, y);
+                    if (cell.browser_attr !== null
+                        && cell.browser_attr !== undefined)
+                        cell.browser_attr = framed_print_attr(
+                            cell.browser_attr, x, y);
+                    commitFlushedGlyph(entry, cell, nomux_cell_at(x, y));
                     // tty_print_glyph()'s g_putch() covers a raw-print cell;
                     // its UTF-8 path leaves the shadow cell as it was.
-                    if (game._screenOverlay && loc.disp_glyph?.ch !== null)
+                    if (game._screenOverlay && entry.glyphinfo?.ch !== null)
                         game._screenOverlay.delete(`${offset + 1}:${x - 1}`);
                     afterLastPrinted = [x, offset + 1];
                 }
-                const ch = browserGlyphs && loc.disp_browser_ch
-                    ? loc.disp_browser_ch
-                    : (loc.disp_decgfx
-                        ? decMap[loc.disp_ch] || loc.disp_ch
-                        : loc.disp_ch);
+                const ch = browserGlyphs && cell.browser_ch
+                    ? cell.browser_ch
+                    : (cell.decgfx
+                        ? decMap[cell.ch] || cell.ch
+                        : cell.ch);
                 // wintty.c tty_print_glyph() prints spaces too: detected
                 // ghosts carry inverse video on their otherwise blank glyph.
                 if (!ch) continue;
@@ -7799,12 +7852,12 @@ function _buildScreenOutput(cursorOnHero = true) {
                         offset + 1,
                         ch,
                         browserGlyphs
-                            ? loc.disp_browser_color ?? loc.disp_color
+                            ? cell.browser_color ?? cell.color
                                 ?? NO_COLOR
-                            : loc.disp_color ?? NO_COLOR,
-                        browserGlyphs && loc.disp_browser_ch
-                            ? loc.disp_browser_attr ?? 0
-                            : loc.disp_attr ?? 0,
+                            : cell.color ?? NO_COLOR,
+                        browserGlyphs && cell.browser_ch
+                            ? cell.browser_attr ?? 0
+                            : cell.attr ?? 0,
                     );
                 }
                 // The cell tty_print_glyph() last printed here.
@@ -7813,11 +7866,11 @@ function _buildScreenOutput(cursorOnHero = true) {
                     offset + 1,
                     ch,
                     browserGlyphs
-                        ? loc.disp_browser_color ?? loc.disp_color ?? NO_COLOR
-                        : loc.disp_color ?? NO_COLOR,
-                    framed_print_attr(browserGlyphs && loc.disp_browser_ch
-                        ? loc.disp_browser_attr ?? 0
-                        : loc.disp_attr ?? 0, x, y),
+                        ? cell.browser_color ?? cell.color ?? NO_COLOR
+                        : cell.color ?? NO_COLOR,
+                    framed_print_attr(browserGlyphs && cell.browser_ch
+                        ? cell.browser_attr ?? 0
+                        : cell.attr ?? 0, x, y),
                 );
             }
         }
@@ -7950,7 +8003,7 @@ export async function flush_screen(mode) {
         if (game.level?.at) {
             for (let x = 1; x < COLNO; ++x)
                 for (let y = 0; y < ROWNO; ++y)
-                    game.level.at(x, y).gnew = 0;
+                    glyph_buffer_at(x, y).gnew = 0;
         }
     } finally {
         game.flushing = false;
@@ -8016,23 +8069,24 @@ export async function cls() {
         // clear_nhwindow(WIN_MAP).
         tty_clear_map_window(game);
         // C's cls() clears both the physical terminal and its pending glyph
-        // buffer.  disp_* is the JS glyph-buffer owner; leaving it populated lets
-        // the next flush reconstruct dungeon cells which were meant to stay
-        // hidden on a temporary find_trap() display.
+        // buffer (display.c clear_glyph_buffer()).  Leaving either populated
+        // lets the next flush reconstruct dungeon cells which were meant to
+        // stay hidden on a temporary find_trap() display.
         if (game.level?.at) {
             for (let x = 1; x < COLNO; ++x) {
                 for (let y = 0; y < ROWNO; ++y) {
-                    const loc = game.level.at(x, y);
-                    loc.disp_ch = null;
-                    loc.disp_color = NO_COLOR;
-                    loc.disp_decgfx = false;
-                    loc.disp_attr = 0;
-                    loc.disp_browser_ch = null;
-                    loc.disp_browser_color = null;
-                    loc.disp_browser_attr = null;
-                    loc.disp_glyph = null;
-                    loc.gnew = 0;
-                    clearTtyCell(loc);
+                    const cell = tty_map_cell_at(x, y);
+                    cell.ch = null;
+                    cell.color = NO_COLOR;
+                    cell.decgfx = false;
+                    cell.attr = 0;
+                    cell.browser_ch = null;
+                    cell.browser_color = null;
+                    cell.browser_attr = null;
+                    const entry = glyph_buffer_at(x, y);
+                    entry.glyphinfo = null;
+                    entry.gnew = 0;
+                    clearTtyCell(x, y);
                 }
             }
         }

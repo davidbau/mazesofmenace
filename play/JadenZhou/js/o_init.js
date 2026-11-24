@@ -348,9 +348,8 @@ export function objdescr_is(obj, descr) {
 }
 
 // C ref: o_init.c oinit() — level dependent initialization
-// (mklev.js still calls its own no-op stub. setgemprobs() needs ledger_no(),
-// whose game.dungeons init_dungeons() now fills in, so the mklev.c port can
-// call this one.)
+// (makelevel() in mklev.js calls this; setgemprobs() needs ledger_no(),
+// whose game.dungeons init_dungeons() fills in.)
 export function oinit() {
     setgemprobs(game.u.uz);
 }

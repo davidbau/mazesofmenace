@@ -132,8 +132,15 @@ export class NethackGame {
         /* C ref: options.c initoptions_init() -- set up the command
            parsing; then the config file's BIND= lines (parsebindings()) */
         reset_commands(true); /* init */
-        for (const b of opts.bindings || [])
-            parsebindings(b);
+        for (const b of opts.bindings || []) {
+            if (typeof b === 'string') {
+                parsebindings(b);
+            } else { /* optfn_number_pad(): reset_commands(FALSE) */
+                g.iflags.num_pad = b.num_pad;
+                g.iflags.num_pad_mode = b.num_pad_mode;
+                reset_commands(false);
+            }
+        }
         /* C ref: files.c configfile -- the unix default ".nethackrc"
            in the home directory */
         g.configfile = '.nethackrc';

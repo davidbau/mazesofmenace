@@ -47,16 +47,17 @@ import { NO_COLOR } from './terminal.js';
 
 const ROWS = 24;
 
-// win/tty/wintty.c:545 tty_init_nhwindows() — the startup banner.
+// win/tty/wintty.c:511 tty_init_nhwindows()
 //
 //   tty_curs(BASE_WINDOW, 1, 4);
 //   for (i = 1; i <= 4; ++i) tty_putstr(BASE_WINDOW, 0, banner_line(i));
 //   tty_putstr(BASE_WINDOW, 0, "");
 //   ... tty_curs(BASE_WINDOW, 1, 11);
 //
-// Skipped when the rc turns splash_screen off, which is why seed8000 has no
-// banner and the chargen sessions do.
+// The base window is cleared even when the startup banner is disabled.
 export function tty_init_nhwindows() {
+    game.nhDisplay.clearScreen();
+    tty_curs_base(1, 0);
     if (game.flags.splash_screen === false) return;
     tty_curs_base(1, 4);
     for (const line of COPYRIGHT_BANNER)

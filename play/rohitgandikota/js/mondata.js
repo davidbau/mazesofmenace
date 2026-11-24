@@ -725,15 +725,8 @@ export function gender(mtmp) {
     return mtmp.female | 0;
 }
 
-// src/mondata.c:1191 pronoun_gender() — like gender(), but unseen humanoids
-// are "it" rather than "he"/"she", lower animals are "it" even when seen, and
-// hallucination can yield "they". This is the one messages use.
-//
-// The rn2(4) is the reason this is not a pure predicate. It fires ONLY under
-// PRONOUN_HALLU and only while hallucinating, so it draws nothing today, but
-// the order matters: the hallucination roll happens BEFORE the canspotmon
-// test, so a hallucinating hero draws even for a monster they cannot see.
-//
+// src/mondata.c:1191 pronoun_gender(): choose a monster's message pronoun.
+// Under hallucination, PRONOUN_HALLU draws before visibility and species checks.
 // Returns 0 male, 1 female, 2 neuter/unseen, 3 "they" (hallucination only).
 export function pronoun_gender(mtmp, pg_flags) {
     const override_vis = (pg_flags & PRONOUN_NO_IT) !== 0;

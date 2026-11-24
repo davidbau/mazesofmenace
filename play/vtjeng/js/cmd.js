@@ -122,7 +122,7 @@ import {
     use_unicorn_horn,
 } from './apply.js';
 import { doinvoke } from './artifacts.js';
-import { ballrelease, placebc, unplacebc } from './ball.js';
+import { ballrelease, placebc, unplacebc_async } from './ball.js';
 import {
     dosearch,
     reveal_terrain,
@@ -2701,7 +2701,7 @@ export async function makemap_prepost(pre, wiztower = false, state = game) {
         }
         if (Punished(state)) {
             await ballrelease(false, state);
-            unplacebc(state);
+            await unplacebc_async(state);
         }
         maybe_reset_pick(null, state);
         if (on_level(state.context.digging?.level, state.u.uz))
@@ -2741,7 +2741,7 @@ export async function makemap_prepost(pre, wiztower = false, state = game) {
     if (arrivalOccupant) await u_collide_m(arrivalOccupant, state);
     initrack(state);
     if (Punished(state)) {
-        unplacebc(state);
+        await unplacebc_async(state);
         await placebc(state);
     }
     await docrt();

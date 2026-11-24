@@ -38,7 +38,7 @@ import { Has_contents, is_mines_prize, is_soko_prize } from './obj.js';
 import { get_obj_location } from './zap.js';
 import { unpunish } from './read.js';
 import { game } from './gstate.js';
-import { OBJ_ONBILL, OBJ_MIGRATING, OBJ_LUAFREE } from './const.js';
+import { OBJ_ONBILL, OBJ_MIGRATING, OBJ_LUAFREE, OBJ_FREE } from './const.js';
 import { suppress_map_output } from './display.js';
 import { tty_update_inventory } from './tty/wintty.js';
 import { wc_supported } from './options.js';
@@ -75,8 +75,8 @@ export { not_fully_identified } from './objnam.js';
 import { MONSYMS, NUMMONS, PMNAMES } from './monst_data.js';
 import { erosion_matters, curse, splitobj, clear_splitobjs, extract_nobj,
          start_glob_timeout, dead_species, unsplitobj, unknwn_contnr_contents,
-         container_weight } from './mkobj.js';
-import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, Is_container, Is_candle, Is_pudding } from './obj.js';
+         container_weight, dealloc_obj } from './mkobj.js';
+import { carried, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, Is_container, Is_candle, Is_pudding } from './obj.js';
 import { setworn, setnotworn, bypass_objlist,
          nxt_unbypassed_loot, clear_bypasses } from './worn.js';
 import { is_rider, hideunder } from './makemon.js';
@@ -1604,7 +1604,7 @@ export const GETOBJ_EXCLUDE = -3, GETOBJ_EXCLUDE_NONINVENT = -2,
 export const GETOBJ_ALLOWCNT = 0x01, GETOBJ_PROMPT = 0x02;
 const HANDS_SYM = '-';
 /* src/invent.c hands_obj — the sentinel getobj yields for the '-' choice. */
-export const hands_obj = { otyp: 0, oclass: 0, hands: true };
+export const hands_obj = { otyp: 0, oclass: 0, where: OBJ_FREE, hands: true };
 
 // src/invent.c:1830 — the letter list C puts in the prompt.
 //
@@ -2828,9 +2828,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 
 // src/shk.c:1187 obfree(). Ordinary disposal remains synchronous; removing
 // a worn artifact waits for its property transition before deletion.
-// Objects on a shop bill are retained there; every other object is
-// marked deleted after its timers, light source, and transient references are
-// cleared.
+// Billed objects stay on the bill; dealloc_obj owns the remaining cleanup.
 export function obfree(obj, merge = null) {
     if (obj.otyp === ONAMES.LEASH && obj.leashmon) {
         const mon = (game.level?.monsters || [])
@@ -2875,30 +2873,7 @@ export function obfree(obj, merge = null) {
     return pending ? pending.then(finish) : finish();
 
     function finish() {
-        if (obj.timed)
-            obj_stop_timers(obj);
-        if (obj.lamplit) {
-            const sources = (game.light_sources ||= []);
-            const index = sources.findIndex(source => source.type === 1
-                                          && source.id === obj.o_id);
-            if (index >= 0)
-                sources.splice(index, 1);
-            obj.lamplit = 0;
-        }
-        if (obj === game.thrownobj)
-            game.thrownobj = null;
-        if (obj === game.kickedobj)
-            game.kickedobj = null;
-        if (obj === game.context?.tin?.tin) {
-            game.context.tin.tin = null;
-            game.context.tin.o_id = 0;
-        }
-        const split = game.context?.objsplit;
-        if (split && (obj.o_id === split.parent_oid
-                      || obj.o_id === split.child_oid)) {
-            split.parent_oid = split.child_oid = 0;
-        }
-        obj.where = OBJ_DELETED;
+        return dealloc_obj(obj);
     }
 }
 

@@ -1,17 +1,13 @@
 // Accessibility notices for startup scans and turn-time glyph updates.
 // C refs: allmain.c:newgame(); cmd.c:dolookaround();
-// hack.c:notice_all_mons(); getpos.c:coord_desc(); display.c:show_glyph();
+// vision.c:vision_recalc()'s notice_all_mons() queue; getpos.c:coord_desc();
+// display.c:show_glyph();
 // pager.c:do_screen_description(), look_at_monster(), object_from_map().
 
 import { game } from './gstate.js';
 import {
     ALTAR,
     AIR,
-    ARTICLE_NONE,
-    ARTICLE_A,
-    ARTICLE_YOUR,
-    SUPPRESS_SADDLE,
-    has_mgivenname,
     AM_CHAOTIC,
     AM_LAWFUL,
     AM_MASK,
@@ -45,7 +41,6 @@ import {
     LADDER,
     LAVAPOOL,
     LAVAWALL,
-    M_AP_FURNITURE,
     M_AP_F_DKNOWN,
     M_AP_OBJECT,
     M_AP_TYPMASK,
@@ -56,7 +51,6 @@ import {
     SINK,
     STAIRS,
     STONE,
-    STRAT_WAITMASK,
     THRONE,
     TREE,
     FIRE_RES,
@@ -69,15 +63,12 @@ import {
     LA_DOWN,
     OBJ_FREE,
     OBJ_FLOOR,
-    MHID_PREFIX,
-    MHID_ARTICLE,
-    MHID_REGION,
     URGENT_MESSAGE,
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import { cansee } from './vision.js';
 import {
-    canseemon, canspotmon, flush_screen, glyph_is_monster, suppress_map_output,
+    canspotmon, flush_screen, glyph_is_monster, suppress_map_output,
 } from './display.js';
 import { GLYPH_NOTHING_OFF, GLYPH_UNEXPLORED_OFF } from './glyph_offsets.js';
 import {
@@ -88,13 +79,9 @@ import {
 import { is_drawbridge_wall } from './dbridge.js';
 import { tty_status_state } from './wintty.js';
 import { gather_locs_interesting } from './getpos.js';
-import { visible_region_at } from './region.js';
 import {
     Monnam,
-    coyotename,
-    distant_monnam,
     hliquid,
-    x_monnam,
 } from './do_name.js';
 import {
     fruit_from_indx,
@@ -102,19 +89,21 @@ import {
     matching_artifact_fruit,
     makesingular,
 } from './fruit.js';
+import { notice_all_mons } from './hack.js';
 import { m_at } from './monst.js';
 import { dealloc_obj, mkobj, mksobj } from './obj.js';
 import { objectGenerationEnv } from './object_generation.js';
-import { an, just_an } from './objnam.js';
-import { t_at } from './trap.js';
+import { just_an } from './objnam.js';
 import { observe_object } from './o_init.js';
 import { obj_stop_timers } from './timeout.js';
-import { locomotion, type_is_pname } from './mondata.js';
+import { locomotion } from './mondata.js';
 import { rn2_on_display_rng } from './rng.js';
 import {
     glyph_at,
+    glyph_buffer_at,
     glyph_is_cmap,
     glyph_to_cmap,
+    tty_map_cell_at,
 } from './display.js';
 import {
     AMULET_CLASS,
@@ -158,7 +147,6 @@ import {
     WEAPON_CLASS,
     WOOD,
 } from './objects.js';
-import { PM_COYOTE } from './monsters.js';
 import {
     S_air,
     S_altar,
@@ -334,19 +322,24 @@ function sameGlyphIdentity(left, right) {
     return left.a11yKind === right.a11yKind && left.ch === right.ch;
 }
 
-// Complete buffered-display subset of a levl location replayed around queued
-// notice frames. Capture, restore, and delta application use every entry;
-// reconciliation compares the display values, including selected nested
-// disp_glyph fields, but deliberately excludes the gnew dirty bit.
+// The buffered display of one map square replayed around queued notice
+// frames: the terminal cell (js/display.js tty_map_cell_at()) and the gbuf
+// entry (glyph_buffer_at()), but not the patch 006 shadow cell. Capture,
+// restore, and delta application use every field; reconciliation compares
+// the display values, including selected nested glyphinfo fields, but
+// deliberately excludes the gnew dirty bit.
+const GLYPH_FRAME_CELL_FIELDS = Object.freeze([
+    'ch',
+    'color',
+    'decgfx',
+    'attr',
+    'browser_ch',
+    'browser_color',
+    'browser_attr',
+]);
 const GLYPH_BUFFER_FIELDS = Object.freeze([
-    'disp_ch',
-    'disp_color',
-    'disp_decgfx',
-    'disp_attr',
-    'disp_browser_ch',
-    'disp_browser_color',
-    'disp_browser_attr',
-    'disp_glyph',
+    ...GLYPH_FRAME_CELL_FIELDS,
+    'glyphinfo',
     'gnew',
 ]);
 
@@ -371,18 +364,28 @@ function glyphBufferIndex(x, y) {
     return y * COLNO + x;
 }
 
-function captureBufferedLocation(location) {
+function captureBufferedLocation(x, y, state) {
+    const cell = tty_map_cell_at(x, y, state);
+    const entry = glyph_buffer_at(x, y, state);
     return {
-        disp_ch: location.disp_ch,
-        disp_color: location.disp_color,
-        disp_decgfx: location.disp_decgfx,
-        disp_attr: location.disp_attr,
-        disp_browser_ch: location.disp_browser_ch,
-        disp_browser_color: location.disp_browser_color,
-        disp_browser_attr: location.disp_browser_attr,
-        disp_glyph: clonePresentation(location.disp_glyph),
-        gnew: location.gnew,
+        ch: cell.ch,
+        color: cell.color,
+        decgfx: cell.decgfx,
+        attr: cell.attr,
+        browser_ch: cell.browser_ch,
+        browser_color: cell.browser_color,
+        browser_attr: cell.browser_attr,
+        glyphinfo: clonePresentation(entry.glyphinfo),
+        gnew: entry.gnew,
     };
+}
+
+function restoreBufferedLocation(x, y, saved, state) {
+    const cell = tty_map_cell_at(x, y, state);
+    for (const field of GLYPH_FRAME_CELL_FIELDS) cell[field] = saved[field];
+    const entry = glyph_buffer_at(x, y, state);
+    entry.glyphinfo = clonePresentation(saved.glyphinfo);
+    entry.gnew = saved.gnew;
 }
 
 function captureGlyphBuffer(state) {
@@ -394,7 +397,7 @@ function captureGlyphBuffer(state) {
             const location = state.level?.at?.(x, y);
             if (!location) continue;
             snapshot[glyphBufferIndex(x, y)]
-                = captureBufferedLocation(location);
+                = captureBufferedLocation(x, y, state);
         }
     }
     return snapshot;
@@ -404,12 +407,12 @@ function sameBufferedPresentation(left, right) {
     if (!left || !right) return left === right;
     for (const field of GLYPH_BUFFER_FIELDS) {
         if (field === 'gnew') continue;
-        if (field !== 'disp_glyph') {
+        if (field !== 'glyphinfo') {
             if (left[field] !== right[field]) return false;
             continue;
         }
-        const leftGlyph = left.disp_glyph;
-        const rightGlyph = right.disp_glyph;
+        const leftGlyph = left.glyphinfo;
+        const rightGlyph = right.glyphinfo;
         if (!leftGlyph || !rightGlyph) {
             if (leftGlyph !== rightGlyph) return false;
             continue;
@@ -449,11 +452,7 @@ function restoreGlyphBuffer(state, snapshot) {
             const location = state.level?.at(x, y);
             const saved = snapshot?.[glyphBufferIndex(x, y)];
             if (!location || !saved) continue;
-            for (const field of GLYPH_BUFFER_FIELDS) {
-                location[field] = field === 'disp_glyph'
-                    ? clonePresentation(saved[field])
-                    : saved[field];
-            }
+            restoreBufferedLocation(x, y, saved, state);
         }
     }
 }
@@ -464,11 +463,7 @@ function applyGlyphFrameChanges(state, changes, dirty) {
         const x = index - y * COLNO;
         const location = state.level?.at(x, y);
         if (!location) continue;
-        for (const field of GLYPH_BUFFER_FIELDS) {
-            location[field] = field === 'disp_glyph'
-                ? clonePresentation(saved[field])
-                : saved[field];
-        }
+        restoreBufferedLocation(x, y, saved, state);
         if (saved.gnew) dirty.add(index);
         else dirty.delete(index);
     }
@@ -487,7 +482,7 @@ function markGlyphFrameFlushed(state, dirty) {
         const y = Math.trunc(index / COLNO);
         const x = index - y * COLNO;
         const location = state.level?.at(x, y);
-        if (location) location.gnew = 0;
+        if (location) glyph_buffer_at(x, y, state).gnew = 0;
     }
     dirty.clear();
 }
@@ -514,7 +509,7 @@ function reconcileFinalGlyphBuffer(state, finalBuffer, flushedBuffer) {
                     finalBuffer[index],
                     flushedBuffer[index],
                 )) {
-                location.gnew = 0;
+                glyph_buffer_at(x, y, state).gnew = 0;
             }
         }
     }
@@ -526,14 +521,14 @@ function reconcileFinalGlyphBuffer(state, finalBuffer, flushedBuffer) {
 // instead, so while one is pending, a cell's gnew bit as the next
 // show_glyph() reads it is set only when show_glyph() has written the cell
 // since that notice. Called by display.js:show_glyph_cell() before it
-// installs the new presentation.
-export function glyphGnewSinceNotice(x, y, location, state) {
+// installs the new presentation; `entry` is the cell's gbuf entry.
+export function glyphGnewSinceNotice(x, y, entry, state) {
     const tracker = state._glyphNoticeFrameTracker;
     if (!tracker || state._emittingGlyphUpdateNotices
         || !state._glyphUpdateNotices?.length) {
-        return location.gnew;
+        return entry.gnew;
     }
-    return tracker.pending.has(glyphBufferIndex(x, y)) ? location.gnew : 0;
+    return tracker.pending.has(glyphBufferIndex(x, y)) ? entry.gnew : 0;
 }
 
 // Called by display.js:show_glyph_cell(), the local display.c:show_glyph()
@@ -547,7 +542,7 @@ export function noteGlyphBufferMutation(x, y, state) {
     if (!location) return;
     tracker.pending.set(
         glyphBufferIndex(x, y),
-        captureBufferedLocation(location),
+        captureBufferedLocation(x, y, state),
     );
 }
 
@@ -705,12 +700,15 @@ function takeNoticeGlyphFrame(state) {
 // C vision.c vision_recalc() ends with hack.c notice_all_mons(TRUE).
 // Capture its messages on the existing source-ordered TTY frame queue; the
 // async emitter drains it before later messages or monster movement.
+// Queueing returns nothing, so js/hack.js notice_all_mons() returns
+// synchronously here.
 export function queueVisionMonsterNotices(state) {
-    if (!state.a11y?.mon_notices || state.a11y.mon_notices_blocked) return;
-    for (const message of collectMonsterNoticeMessages(state)) {
-        queueNoticeLine(
-            { message, youBuf: NOTICE_MON_YOU_BUF }, state, { recalc: false });
-    }
+    notice_all_mons(true, state, {
+        message: (message) => {
+            queueNoticeLine(
+                { message, youBuf: NOTICE_MON_YOU_BUF }, state, { recalc: false });
+        },
+    });
 }
 
 // hack.c notice_mon() prints through You("%s %s.", ...), which leaves this
@@ -877,7 +875,8 @@ export function bufferedGlyphSubjectAt(monster, state) {
         monster.my,
     );
     const glyph = state.level?.flags?.hero_memory === false
-        ? location?.disp_glyph : location?.remembered_glyph;
+        ? glyph_buffer_at(monster.mx, monster.my, state)?.glyphinfo
+        : location?.remembered_glyph;
     return {
         hasGlyph: Boolean(glyph),
         hasSubject: Boolean(glyph)
@@ -940,79 +939,6 @@ export function hiddenObjectPhrase(object, state, { includeArticle = true } = {}
     const name = simpleObjectName(object, state);
     if (!includeArticle || Math.trunc(object.quan ?? 1) !== 1) return name;
     return `${just_an(name)}${name}`;
-}
-
-// C ref: pager.c look_at_monster() and do_name.c distant_monnam(). The
-// optional species is the actual buffered monster glyph (including a
-// monster-shaped mimic appearance). pager.c always delegates the name to
-// distant_monnam(), including while hallucinating; that owner supplies the
-// source invisible, swallower, and gameover naming rules and consumes the
-// display RNG in the source order. env.state is required for full pager
-// semantics: hero status and equipment, visibility, terrain, regions, catalog
-// state, and display RNG all affect the result. Omitting it intentionally
-// exposes only the reduced naming behavior.
-export function describeMonster(monster, env = {}) {
-    const state = env.state;
-    const hallucinating = env.hallucinating
-        ?? (state ? Hallucination(state.u) : false);
-    const namedMonster = env.species
-        ? { ...monster, data: env.species }
-        : monster;
-    let text = !hallucinating
-        && namedMonster.data?.pmidx === PM_COYOTE
-            ? coyotename(namedMonster, [], state, env)
-        : distant_monnam(
-            namedMonster,
-            ARTICLE_NONE,
-            undefined,
-            state,
-            env,
-        );
-    if (!env.pagerBase) {
-        if (!hallucinating && monster.mtame) text = `tame ${text}`;
-        else if (!hallucinating && monster.mpeaceful)
-            text = `peaceful ${text}`;
-        if (monster.mfrozen)
-            text += ", can't move (paralyzed or sleeping or busy)";
-        else if (monster.msleeping) text += ', asleep';
-        else if (monster.mstrategy & STRAT_WAITMASK)
-            text += ', meditating';
-        if (monster.mleashed) text += ', leashed to you';
-        if (monster.mtrapped
-            && state
-            && cansee(monster.mx, monster.my, state)) {
-            const trap = t_at(monster.mx, monster.my, state);
-            const description = TRAP_DESCRIPTIONS[trap?.ttyp];
-            if (description
-                && ['bear trap', 'pit', 'spiked pit', 'web'].includes(
-                    description,
-                )) {
-                text += `, trapped in ${an(description)}`;
-                trap.tseen = true;
-            }
-        }
-        if (state
-            && (monster.mundetected
-                || (monster.m_ap_type & M_AP_TYPMASK)
-                || visible_region_at(monster.mx, monster.my, state))) {
-            text += mhidden_description(
-                monster, MHID_PREFIX | MHID_ARTICLE | MHID_REGION, state,
-            );
-        }
-    }
-    return text;
-}
-
-// C hack.c notice_mon(): canonical x_monnam argument bindings.
-function noticeMonsterName(monster, state) {
-    const given = has_mgivenname(monster);
-    const article = monster.mtame ? ARTICLE_YOUR
-        : !given && !type_is_pname(monster.data) ? ARTICLE_A : ARTICLE_NONE;
-    return x_monnam(monster, article,
-        monster.mpeaceful && !monster.mtame ? 'peaceful' : null,
-        given ? SUPPRESS_SADDLE : 0, false, state, {
-            displayRandom: bound => rn2_on_display_rng(bound, state),
-        });
 }
 
 export function furnitureDescription(symbol) {
@@ -1405,7 +1331,8 @@ function describeGlyphUpdate(glyph, x, y, state) {
 function visibleSubjectAt(x, y, state) {
     const location = state.level?.at(x, y);
     if (!location || !cansee(x, y, state)) return null;
-    if (!Number.isInteger(location.disp_glyph?.glyph)) return null;
+    if (!Number.isInteger(glyph_buffer_at(x, y, state).glyphinfo?.glyph))
+        return null;
     // C cmd.c:dolookaround() filters the displayed glyph through
     // getpos.c:gather_locs_interesting(), regardless of live objects,
     // traps, engravings, or monster furniture at the square.  In particular,
@@ -1518,69 +1445,9 @@ export function collectMonsterMovementMessage(
     );
 }
 
-function canNoticeMonster(monster, state) {
-    if (!canspotmon(monster, state)) return false;
-    const appearance = monster.m_ap_type & M_AP_TYPMASK;
-    const hider = Boolean(monster.data?.mflags1 & 0x00000100); // M1_HIDE
-    if (hider && (monster.mundetected
-        || appearance === M_AP_FURNITURE || appearance === M_AP_OBJECT)) {
-        return false;
-    }
-    return true;
-}
-
-function updateMonsterNotice(monster, state) {
-    const spot = canNoticeMonster(monster, state);
-    if (!spot) {
-        monster.mspotted = false;
-        return null;
-    }
-    if (monster.mspotted || monster.mhp < 1) return null;
-
-    monster.mspotted = true;
-    return messageAt(
-        `You ${canseemon(monster, state) ? 'see' : 'notice'} ${noticeMonsterName(monster, state)}.`,
-        monster.mx,
-        monster.my,
-        state,
-    );
-}
-
-// C ref: hack.c notice_mon(). postmov() calls this for one monster at a time;
-// unlike notice_all_mons(), the option gate belongs to this function.
-export function collectMonsterNoticeMessage(monster, state) {
-    if (!state.a11y?.mon_notices || state.a11y?.mon_notices_blocked)
-        return null;
-    return updateMonsterNotice(monster, state);
-}
-
-export function collectMonsterNoticeMessages(state, compare = null) {
-    const monsters = [];
-    for (let monster = state.level?.monlist; monster; monster = monster.nmon) {
-        if (monster.mhp < 1) continue;
-        if (canspotmon(monster, state)) monsters.push(monster);
-        else monster.mspotted = false;
-    }
-    monsters.sort(compare ?? ((left, right) => {
-        const ldx = left.mx - state.u.ux;
-        const ldy = left.my - state.u.uy;
-        const rdx = right.mx - state.u.ux;
-        const rdy = right.my - state.u.uy;
-        return ldx * ldx + ldy * ldy - (rdx * rdx + rdy * rdy);
-    }));
-
-    const messages = [];
-    for (const monster of monsters) {
-        const message = updateMonsterNotice(monster, state);
-        if (message) messages.push(message);
-    }
-    return messages;
-}
-
 export const _startupA11yInternals = Object.freeze({
     compassDescription,
     coordinateDescription,
-    describeMonster,
     describeObject,
     terrainDescription,
     visibleSubjectAt,

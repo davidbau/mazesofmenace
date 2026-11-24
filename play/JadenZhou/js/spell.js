@@ -995,7 +995,8 @@ export async function spelleffects(spell_otyp, atme, force) {
     case O.SPE_CLAIRVOYANCE:
         throw new Error('spelleffects(): do_vicinity_map() not ported yet');
     case O.SPE_PROTECTION:
-        throw new Error('spelleffects(): cast_protection() not ported yet');
+        await cast_protection();
+        break;
     case O.SPE_JUMPING:
         if (!((await jump(Math.max(role_skill, 1))) & ECMD_TIME))
             await pline(nothing_happens);
@@ -1652,3 +1653,79 @@ export function known_spell(otyp) {
         }
     return spe_Unknown;
 }
+
+/* C ref: mondata.h is_whirly(), is_animal(), enfolds() */
+function is_whirly_sp(ptr) {
+    return ptr.mlet === S_VORTEX_SP || ptr === mons_sp[PM_AIR_ELEMENTAL_SP];
+}
+function is_animal_sp(ptr) { return (ptr.mflags1 & M1_ANIMAL_SP) !== 0; }
+function enfolds_sp(ptr) {
+    return dmgtype_fromattack_sp(ptr, AD_WRAP_SP, AT_ENGL_SP) != null; /* 't' */
+}
+
+// C ref: spell.c cast_protection()
+async function cast_protection() {
+    const u = game.u;
+    let l = u.ulevel, loglev = 0, gain, natac = u.uac + u.uspellprot;
+    /* note: u.uspellprot is subtracted when find_ac() factors it into u.uac,
+       so adding here factors it back out
+       (versions prior to 3.6 had this backwards) */
+
+    /* loglev=log2(u.ulevel)+1 (1..5) */
+    while (l) {
+        loglev++;
+        l = Math.trunc(l / 2);
+    }
+
+    /* The more u.uspellprot you already have, the less you get,
+     * and the better your natural ac, the less you get. */
+    natac = Math.trunc((10 - natac) / 10); /* convert to positive and scale down */
+    gain = loglev - Math.trunc(u.uspellprot / (4 - Math.min(3, natac)));
+
+    if (gain > 0) {
+        if (!Blind_sp()) {
+            let rmtyp;
+            const hgolden = hcolor_sp("golden"); /* NH_GOLDEN */
+            let atmosphere;
+
+            if (u.uspellprot) {
+                await pline_The(`${hgolden} haze around you becomes more dense.`);
+            } else {
+                const pm = u.ustuck ? u.ustuck.data : null;
+
+                rmtyp = game.level.at(u.ux, u.uy).typ;
+                atmosphere = (pm && u.uswallow)
+                                ? ((pm === mons_sp[PM_FOG_CLOUD_SP]) ? "mist"
+                                   : is_whirly_sp(pm) ? "maelstrom"
+                                     : enfolds_sp(pm) ? "folds"
+                                       : is_animal_sp(pm) ? "maw"
+                                         : "ooze")
+                                : (u.uinwater ? hliquid_sp("water")
+                                   : (rmtyp === CLOUD_SP) ? "cloud"
+                                     : IS_TREE_SP(rmtyp) ? "vegetation"
+                                       : IS_STWALL_SP(rmtyp) ? "stone"
+                                         : "air");
+                await pline_The(`${atmosphere} around you begins to shimmer with ${
+                    an_sp(hgolden)} haze.`);
+            }
+        }
+        u.uspellprot += gain;
+        u.uspmtime = (P_SKILL(spell_skilltype(O.SPE_PROTECTION)) === P_EXPERT)
+                        ? 20 : 10;
+        if (!u.usptime)
+            u.usptime = u.uspmtime;
+        find_ac_sp();
+    } else {
+        await Your("skin feels warm for a moment.");
+    }
+}
+import { Blind as Blind_sp } from './display.js';
+import { hcolor as hcolor_sp } from './do_name.js';
+import { hliquid as hliquid_sp } from './potion.js';
+import { an as an_sp } from './objnam.js';
+import { find_ac as find_ac_sp } from './u_init.js';
+import { dmgtype_fromattack as dmgtype_fromattack_sp } from './mondata.js';
+import { CLOUD as CLOUD_SP, IS_TREE as IS_TREE_SP, IS_STWALL as IS_STWALL_SP } from './const.js';
+import { S_VORTEX as S_VORTEX_SP, PM_AIR_ELEMENTAL as PM_AIR_ELEMENTAL_SP,
+         PM_FOG_CLOUD as PM_FOG_CLOUD_SP, M1_ANIMAL as M1_ANIMAL_SP,
+         AD_WRAP as AD_WRAP_SP, AT_ENGL as AT_ENGL_SP } from './monsters.js';

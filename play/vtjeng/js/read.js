@@ -205,7 +205,7 @@ import {
 import { monster_census } from './minion.js';
 import { Monnam, hcolor, hliquid, mon_nam } from './do_name.js';
 import {
-    flash_mon, killed, kill_genocided_monsters, mondied, mongone, setmangry,
+    flash_mon, killed, kill_genocided_monsters, mondied, mongone_async, setmangry,
     wake_nearto, wakeup,
 } from './mon.js';
 import {
@@ -346,13 +346,17 @@ import { lightdamage, resist } from './zap.js';
 import { discover_object } from './o_init.js';
 import { more_experienced } from './exper.js';
 import { coreRandom, d, rn1, rn2, rnd } from './rng.js';
-import { ttyPline, ttyUrgentPline } from './tty_message.js';
 import {
-    cmap_to_glyph, map_glyphinfo, map_invisible, newsym,
+    printQueued,
+    ttyPline,
+    ttyUrgentPline,
+} from './tty_message.js';
+import {
+    cmap_to_glyph, map_glyphinfo, map_invisible_async, newsym, newsym_async,
     shieldeff, tmp_at,
 } from './display.js';
 import { dropCommandEnv, dropy, flooreffects, trycall } from './do.js';
-import { move_bc, placebc, set_bc } from './ball.js';
+import { move_bc_async, placebc, set_bc } from './ball.js';
 import { y_n } from './cmd.js';
 import { sokoban_guilt } from './trap.js';
 import {
@@ -1129,8 +1133,8 @@ export async function punish(sobj, state = game, rawEnv = {}) {
 
     if (!state.u.uswallow) {
         await placebc(state, env);
-        if (Blind(state.u)) set_bc(1, state, env);
-        (rawEnv.redraw ?? newsym)(state.u.ux, state.u.uy, state);
+        if (Blind(state.u)) await printQueued(set_bc(1, state, env));
+        await printQueued((rawEnv.redraw ?? newsym)(state.u.ux, state.u.uy, state));
     }
 }
 
@@ -1791,6 +1795,12 @@ export function unpunish(state = game, rawEnv = {}) {
     setworn(null, W_BALL, env);
 }
 
+// read.c unpunish() for a caller that can wait: the draw, then the lines it
+// queued (js/tty_message.js printQueued()).
+export function unpunish_async(...args) {
+    return printQueued(unpunish(...args));
+}
+
 // C ref: read.c seffect_remove_curse() (1489-1605). Inventory traversal saves
 // each next pointer before changing BUC because curse() can drop the active
 // secondary weapon from that chain. Source uses HConfusion and Hallucination
@@ -1896,7 +1906,7 @@ export async function seffect_remove_curse(scroll, state = game, env = {}) {
     }
 
     if (Boolean(state.uball) && !confused)
-        unpunish(state, { ...env, random });
+        await unpunish_async(state, { ...env, random });
     if (state.u?.utrap && state.u.utraptype === TT_BURIEDBALL) {
         await buried_ball_to_freedom(state, env);
         await ttyPline(
@@ -2080,8 +2090,7 @@ export async function litroom(on, object, state) {
     // Darkening while punished and able to see lifts the ball and chain so
     // that the vision pass below forgets them if they are out of sight.
     if (Punished(state) && !on && !Blind(state.u)) {
-        move_bc(1, 0, state.uball.ox, state.uball.oy,
-            state.uchain.ox, state.uchain.oy, state);
+        await move_bc_async(1, 0, state.uball.ox, state.uball.oy, state.uchain.ox, state.uchain.oy, state);
     }
 
     if (Is_rogue_level(state.u?.uz, state)) {
@@ -2116,8 +2125,7 @@ export async function litroom(on, object, state) {
         });
         // Put the ball and chain back.
         if (Punished(state) && !on) {
-            move_bc(0, 0, state.uball.ox, state.uball.oy,
-                state.uchain.ox, state.uchain.oy, state);
+            await move_bc_async(0, 0, state.uball.ox, state.uball.oy, state.uchain.ox, state.uchain.oy, state);
         }
     }
     state.vision_full_recalc = 1;
@@ -2174,7 +2182,7 @@ export async function seffect_light(scroll, state = game) {
         monster.msleeping = false;
         monster.mcan = true;
         if (canspotmon(monster, state)) sawLights = true;
-        newsym(monster.mx, monster.my);
+        await newsym_async(monster.mx, monster.my);
     }
     if (sawLights) {
         await ttyPline('Lights appear all around you!', state);
@@ -2314,7 +2322,7 @@ export async function drop_boulder_on_player(
     if (!await flooreffects(rock, state.u.ux, state.u.uy, 'fall', env)) {
         await place_object(rock, state.u.ux, state.u.uy, env);
         stackobj(rock, env);
-        redraw(state.u.ux, state.u.uy, state);
+        await printQueued(redraw(state.u.ux, state.u.uy, state));
     }
     if (damage) {
         // read.c:2337 losehp(Maybe_Half_Phys(dmg), ...): half physical
@@ -2354,7 +2362,7 @@ export async function drop_boulder_on_monster(
                 state,
             );
             if (monster.minvis && !canspotmon(monster, state))
-                map_invisible(monster.mx, monster.my, state);
+                await map_invisible_async(monster.mx, monster.my, state);
         } else if (engulfing_u(monster, state)) {
             const line = youHear(
                 `something hit ${s_suffix(mon_nam(monster, state))} `
@@ -2410,7 +2418,7 @@ export async function drop_boulder_on_monster(
     if (!await flooreffects(rock, x, y, 'fall', env)) {
         await place_object(rock, x, y, env);
         stackobj(rock, env);
-        redraw(x, y, state);
+        await printQueued(redraw(x, y, state));
     }
     return true;
 }
@@ -2730,9 +2738,7 @@ export async function do_class_genocide(state = game, env = {}) {
                         // Ordinary removal stays synchronous; releasing a
                         // swallowed hero must finish its redraw/cooldown before
                         // this loop counts the monster or visits the next one.
-                        const removal = mongone(monster, { ...env, state });
-                        if (removal && typeof removal.then === 'function')
-                            await removal;
+                        await mongone_async(monster, { ...env, state });
                         ++count;
                     }
                     monster = next;
@@ -3576,7 +3582,7 @@ async function create_particular_creation(d, state = game) {
             set_malign(mtmp, state);
         }
         if (d.saddled && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE, state))
-            await put_saddle_on_mon(null, mtmp, { state });
+            await printQueued(put_saddle_on_mon(null, mtmp, { state }));
         if (d.hidden
             && ((is_hider(mtmp.data) && mtmp.data.mlet !== S_MIMIC)
                 || (hides_under(mtmp.data) && OBJ_AT(mx, my, state))

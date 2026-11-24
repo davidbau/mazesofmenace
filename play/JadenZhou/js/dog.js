@@ -70,6 +70,8 @@ import { AGGRAVATE_MONSTER, CONFLICT } from './const.js';
 import { Monnam } from './do_name.js';
 
 import { ACURR } from './attrib.js';
+import { deliver_obj_to_mon } from './dokick.js';
+const DF_ALL = 0x04; /* hack.h */
 
 // C ref: role.c Role_if()
 function Role_if(pm) { return game.urole.mnum === pm; }
@@ -745,7 +747,7 @@ export async function mon_arrive(mtmp, when) {
     if (((mtmp.migflags || 0) & MIGR_LEFTOVERS) !== 0) {
         /* Pick up the rest of the MIGR_TO_SPECIES objects */
         if (g.migrating_objs)
-            throw new Error('mon_arrive(): deliver_obj_to_mon() not ported yet');
+            deliver_obj_to_mon(mtmp, 0, DF_ALL);
     }
 
     if (xlocale && wander) {

@@ -68,7 +68,7 @@ import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
    other's bindings by the time anything is called. */
 import { merged, mergable, weight, update_inventory,
          obj_extract_self, confers_luck, set_moreluck, hold_another_object,
-         useupall, obfree } from './invent.js';
+         useupall, obfree, hands_obj } from './invent.js';
 import { remove_worn_item } from './steal.js';
 import { stop_occupation } from './allmain.js';
 import { setmnotwielded } from './weapon.js';
@@ -83,7 +83,7 @@ import { oid_price_adjustment } from './shk.js';
 import { ONAME_NO_FLAGS } from './const.js';
 import { depth } from './dungeon.js';
 import { block_point, recalc_block_point } from './vision.js';
-import { obj_sheds_light, obj_split_light_source } from './light.js';
+import { obj_sheds_light, obj_split_light_source, del_light_source, LS_OBJECT } from './light.js';
 import { splitbill } from './shk.js';
 import { billable, costly_spot, stolen_value, unpaid_cost, subfrombill,
          shop_keeper, addtobill, alter_cost, costly_adjacent, find_objowner } from './shk.js';
@@ -1653,7 +1653,7 @@ export async function obj_absorb(obj1, obj2) {
             }
             /* get rid of second glob, return augmented first one */
             obj_extract_self(otmp2);
-            /* dealloc_obj(otmp2) */
+            dealloc_obj(otmp2);
             obj2.v = null;
             return otmp1;
         }
@@ -2325,10 +2325,70 @@ export function corpse_revive_type(obj) {
     return revivetype;
 }
 
-// src/mkobj.c:2831 dobjsfree() — release the objects queued for
-// deallocation (where == OBJ_DELETED). This port frees an object the
-// moment it is deleted, so the queue is always empty here.
+// src/mkobj.c:2745 dealloc_obj(); detach resources before staging deletion.
+export function dealloc_obj(obj) {
+    if (obj.otyp === ONAMES.BOULDER)
+        obj.next_boulder = 0;
+    if (obj.where === OBJ_DELETED) {
+        return impossible(`dealloc_obj: obj already deleted (type=${obj.otyp})`);
+    } else if (obj.where !== OBJ_FREE && obj.where !== OBJ_LUAFREE) {
+        throw new Error(`dealloc_obj: obj not free (type=${obj.otyp}, where=${obj.where})`);
+    }
+    if (obj.nobj)
+        throw new Error('dealloc_obj with nobj');
+    if (obj.cobj?.length)
+        throw new Error('dealloc_obj with cobj');
+    if (obj === hands_obj)
+        return impossible('dealloc_obj with hands_obj');
+
+    if (obj.timed)
+        obj_stop_timers(obj);
+    if (obj_sheds_light(obj)) {
+        del_light_source(LS_OBJECT, obj.o_id);
+        obj.lamplit = 0;
+    }
+    if (obj === game.thrownobj)
+        game.thrownobj = null;
+    if (obj === game.kickedobj)
+        game.kickedobj = null;
+    if (obj === game.context?.tin?.tin) {
+        game.context.tin.tin = null;
+        game.context.tin.o_id = 0;
+    }
+    const split = game.context?.objsplit;
+    if (split && (obj.o_id === split.parent_oid
+                  || obj.o_id === split.child_oid)) {
+        split.parent_oid = split.child_oid = 0;
+    }
+
+    if (obj.lua_ref_cnt) {
+        obj.where = OBJ_LUAFREE;
+        return;
+    }
+    if (!game.program_state?.freeingdata) {
+        obj.where = OBJ_DELETED;
+        (game.objs_deleted ||= []).unshift(obj);
+    } else {
+        dealloc_obj_real(obj);
+    }
+}
+
+// src/mkobj.c:2815 dealloc_obj_real(); clear the record and its references.
+// JavaScript's collector releases storage after the last reference is gone.
+function dealloc_obj_real(obj) {
+    for (const key of Object.keys(obj))
+        delete obj[key];
+}
+
+// src/mkobj.c:2831 dobjsfree(); drain the deletion chain in its LIFO order.
 export function dobjsfree() {
+    while (game.objs_deleted?.length) {
+        const obj = game.objs_deleted.shift();
+        if (obj.where !== OBJ_DELETED)
+            throw new Error(`dobjsfree: obj where=${obj.where}, not OBJ_DELETED`);
+        obj_extract_self(obj);
+        dealloc_obj_real(obj);
+    }
 }
 
 // src/mkobj.c:2847 hornoplenty(); create one item for application or tipping.

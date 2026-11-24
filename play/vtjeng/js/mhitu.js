@@ -87,7 +87,7 @@ import { acurr, adjalign, adjattrib, exercise, minuhpmax } from './attrib.js';
 import { encumber_msg } from './pickup.js';
 import { number_leashed, unleash_all } from './apply.js';
 import { snuff_lit } from './apply_splash_lit.js';
-import { placebc, unplacebc } from './ball.js';
+import { placebc, unplacebc_async } from './ball.js';
 // js/unported_monster_actions.js already imports allmain.js across the same
 // cycle and records why it is safe: `stop_occupation` is a hoisted function
 // declaration, initialized before either module body runs, and nothing here
@@ -257,6 +257,7 @@ import {
 import { drain_en } from './trap_effects.js';
 import {
     displayPendingTtyMessageWindow,
+    printQueued,
     ttyPline,
     ttyUrgentPline,
 } from './tty_message.js';
@@ -314,7 +315,7 @@ import { stop_donning, Ring_gone, Ring_on } from './do_wear.js';
 import { welded } from './wield.js';
 import { mpickobj, remove_worn_item, unresponsive } from './steal.js';
 import { money2mon } from './shk.js';
-import { tele_restrict, rloc } from './teleport.js';
+import { tele_restrict, rloc_async } from './teleport.js';
 import { worm_move } from './worm.js';
 import {
     Blind, Blinded, Cold_resistance, Conflict, Deaf, Detect_monsters,
@@ -984,7 +985,7 @@ export async function doseduce(mon, state = game, rawEnv = {}) {
         }
 
         if (!await tele_restrict(mon, state, effectEnv)) {
-            await rloc(mon, RLOC_MSG, {
+            await rloc_async(mon, RLOC_MSG, {
                 ...effectEnv,
                 newsym,
                 onscary: (x, y, mtmp, normalized) =>
@@ -1162,7 +1163,7 @@ export async function doseduce(mon, state = game, rawEnv = {}) {
     }
     if (!random.rn2(25)) mon.mcan = 1;
     if (!await tele_restrict(mon, state, effectEnv)) {
-        await rloc(mon, RLOC_MSG, {
+        await rloc_async(mon, RLOC_MSG, {
             ...effectEnv,
             newsym,
             onscary: (x, y, mtmp, normalized) =>
@@ -1296,7 +1297,7 @@ async function missmu(mtmp, nearmiss, mattk, rawEnv = {}) {
     // containing an invisible monster when the hero cannot spot the attacker.
     const spotted = spotMonster(mtmp, state);
     if (!spotted)
-        markInvisible(mtmp.mx, mtmp.my);
+        await printQueued(markInvisible(mtmp.mx, mtmp.my));
     // C calls pline_mon() with Monnam() even when the hero can see an
     // invisible monster. x_monnam() supplies the invisible adjective in that
     // case; the unspotted path instead names the attacker "It".
@@ -1608,7 +1609,7 @@ export async function mattacku(monster, rawEnv = {}) {
     // entering the ordinary attack loop, including a falling piercer miss.
     if (u.uundetected && !range2 && foundyou && !u.uswallow) {
         if (!(env.canSpotMonster ?? canspotmon)(monster, state))
-            markInvisible(monster.mx, monster.my);
+            await printQueued(markInvisible(monster.mx, monster.my));
         u.uundetected = 0;
         if (is_hider(state.youmonst.data) && u.umonnum !== M.PM_TRAPPER) {
             await message(`You fall from the ${ceiling(u.ux, u.uy, state)}!`, state, env);
@@ -1618,17 +1619,17 @@ export async function mattacku(monster, rawEnv = {}) {
                 && is_pool(monster.mx, monster.my, state)
                 && !is_pool(u.ux, u.uy, state))) {
                 place_monster(monster, monster.mx, monster.my, state);
-                redraw(u.ux, u.uy, state);
+                await printQueued(redraw(u.ux, u.uy, state));
                 await message(messageAt(
                     `${Monnam(monster, state, env)} draws back as you drop!`,
                     monster.mx, monster.my, state,
                 ), state, env);
                 return false;
             }
-            redraw(monster.mx, monster.my, state);
+            await printQueued(redraw(monster.mx, monster.my, state));
             place_monster(monster, u.ux, u.uy, state);
             if (monster.wormno) {
-                worm_move(monster, env);
+                await printQueued(worm_move(monster, env));
                 // C's retry tests occupancy after worm_move relocates the tail.
                 if (state.level.monsters[cc.x]?.[cc.y]) {
                     const retry = enexto(u.ux, u.uy, state.youmonst.data, env);
@@ -1638,7 +1639,7 @@ export async function mattacku(monster, rawEnv = {}) {
             }
             await teleds(cc.x, cc.y, TELEDS_ALLOW_DRAG, state, env);
             set_apparxy(monster, env);
-            redraw(u.ux, u.uy, state);
+            await printQueued(redraw(u.ux, u.uy, state));
             if (state.youmonst.data.mlet !== M.S_PIERCER) return false;
             const helmet = which_armor(monster, W_ARMH, state);
             if (hard_helmet(helmet, state)) {
@@ -1673,7 +1674,7 @@ export async function mattacku(monster, rawEnv = {}) {
                     await impossible('hiding under nothing?', state);
                 }
             }
-            redraw(u.ux, u.uy, state);
+            await printQueued(redraw(u.ux, u.uy, state));
         }
         return false;
     }
@@ -1683,19 +1684,19 @@ export async function mattacku(monster, rawEnv = {}) {
             && M_AP_TYPE(state.youmonst) !== M_AP_NOTHING) {
             const sticky = sticks(state.youmonst.data);
             if (!(env.canSpotMonster ?? canspotmon)(monster, state))
-                markInvisible(monster.mx, monster.my);
+                await printQueued(markInvisible(monster.mx, monster.my));
             await message(sticky && !initial.youseeit
                 ? 'It gets stuck on you.'
                 : `Wait, ${m_monnam(monster, state, env)}!  That's a ${pmname(state.youmonst.data, Ugender(state))} named ${state.plname}!`, state, env);
             if (sticky) set_ustuck(monster, state);
             state.youmonst.m_ap_type = M_AP_NOTHING;
             state.youmonst.mappearance = 0;
-            redraw(u.ux, u.uy, state);
+            await printQueued(redraw(u.ux, u.uy, state));
             return false;
         }
         if (M_AP_TYPE(state.youmonst) === M_AP_OBJECT) {
             if (!(env.canSpotMonster ?? canspotmon)(monster, state))
-                markInvisible(monster.mx, monster.my);
+                await printQueued(markInvisible(monster.mx, monster.my));
             await message(!initial.youseeit
                 ? `Something ${likes_gold(mdat) && state.youmonst.mappearance === GOLD_PIECE ? 'tries to pick you up' : 'disturbs you'}!`
                 : `Wait, ${m_monnam(monster, state, env)}!  That ${mimic_obj_name(state.youmonst, state)} is really ${an(pmname(state.mons[u.umonnum], Ugender(state)))} named ${state.plname}!`, state, env);
@@ -1726,7 +1727,7 @@ export async function mattacku(monster, rawEnv = {}) {
     if (mdat.mlet === M.S_EEL && monster.minvis
         && cansee(monster.mx, monster.my, state)) {
         monster.minvis = false;
-        redraw(monster.mx, monster.my);
+        await printQueued(redraw(monster.mx, monster.my));
     }
 
     /* when not cancelled and not in current form due to shapechange, many
@@ -1757,14 +1758,10 @@ export async function mattacku(monster, rawEnv = {}) {
     /* Unlike defensive stuff, don't let them use item _and_ attack. */
     if (await finish_steps(find_offensive_steps(monster, env),
         impossible_printer(state))) {
-        // muse.c use_offensive() names the thrower of a hurled potion with
-        // Monnam() and sends it through m_throw(); js/muse.js takes both as
-        // operations.
+        // muse.c use_offensive() sends a hurled potion through m_throw();
+        // js/muse.js takes it as an operation.
         const offended = await use_offensive(monster, {
             ...env,
-            monsterName: (mtmp) => Monnam(mtmp, state, {
-                displayRandom: env.displayRandom,
-            }),
             throwMissile: m_throw,
         });
         if (offended !== 0) return offended === 1 ? 1 : 0;
@@ -1974,15 +1971,11 @@ export async function mattacku(monster, rawEnv = {}) {
 
         case M.AT_MAGC:
             if (range2) {
-                // mcastu.c buzzmu() names the caster with Monnam().
-                sum[i] = await buzzmu(monster, mattk, {
-                    ...env,
-                    monsterName: (mtmp) => Monnam(mtmp, state),
-                });
+                sum[i] = await buzzmu(monster, mattk, env);
             } else {
-                // js/mcastu.js castmu() takes Monnam(), mon_nam() and the
-                // spell damage's losehp() as operations. A monster's spell
-                // is damage from a monster.
+                // js/mcastu.js castmu() takes the spell damage's losehp()
+                // as an operation. A monster's spell is damage from a
+                // monster.
                 sum[i] = await castmu(monster, mattk, true, foundyou, {
                     ...env,
                     losehp: env.losehp ?? ((n, knam, format) => losehp(
@@ -1990,10 +1983,6 @@ export async function mattacku(monster, rawEnv = {}) {
                         { ...env, fromMonster: true },
                     )),
                     encumberMessage: env.encumberMessage ?? encumber_msg,
-                    monsterName: (mtmp) => Monnam(mtmp, state, {
-                        displayRandom: env.displayRandom,
-                    }),
-                    monnam: (mtmp) => mon_nam(mtmp, state, env),
                 });
             }
             break;
@@ -2090,7 +2079,7 @@ export async function expels(mtmp, rawEnv = {}) {
     // mhitu.c redraws only the hero's former stomach square after mnexto().
     // The relocation core has already painted the monster's old and new
     // squares; repeating the destination paint changes the TTY trace.
-    redraw(state.u.ux, state.u.uy);
+    await printQueued(redraw(state.u.ux, state.u.uy));
     // mhitu.c:302-304. um_dist() is Chebyshev distance, and the message is
     // emitted only when mnexto() had to leave the monster beyond a neighboring
     // square (for example through a controlled relocation seam).
@@ -2202,7 +2191,7 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
             return M_ATTK_MISS;
 
         if (Punished(state)) {
-            unplacebc(state);
+            await unplacebc_async(state);
         }
 
         // C evaluates Monnam() for the urgent engulfing line before it shuts
@@ -2215,7 +2204,7 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
         mtmp.mtrapped = false;
         place_monster(mtmp, u.ux, u.uy, state);
         set_ustuck(mtmp, state);
-        redraw(mtmp.mx, mtmp.my);
+        await printQueued(redraw(mtmp.mx, mtmp.my));
 
         if (u.usteed) {
             const steedName = mon_nam(u.usteed, state, rawEnv);
@@ -2609,7 +2598,7 @@ async function hitmu(mtmp, mattk, env) {
     // containing an invisible monster. The damage computation below is the
     // same regardless.
     if (!spotMonster(mtmp, state))
-        markInvisible(mtmp.mx, mtmp.my);
+        await printQueued(markInvisible(mtmp.mx, mtmp.my));
 
     /*  If the monster is undetected & hits you, you should know where
      *  the attack came from.
@@ -2636,7 +2625,7 @@ async function hitmu(mtmp, mattk, env) {
                 await env.message(`${name} was hidden under ${what}!`, state);
             }
             // C repaints even when there is no object beneath the attacker.
-            env.redraw(mtmp.mx, mtmp.my);
+            await printQueued(env.redraw(mtmp.mx, mtmp.my));
         }
     }
 

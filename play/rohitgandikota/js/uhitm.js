@@ -1,6 +1,6 @@
 import { OBJ_FREE, DISMOUNT_KNOCKED, NON_PM } from './const.js';
 import { NEUTRAL } from './const.js';
-import { A_CON } from './const.js';
+import { A_CON, ERODE_ROT, TIMEOUT } from './const.js';
 import { RLOC_MSG } from './const.js';
 import { OBJ_INVENT } from './const.js';
 import { W_WEP } from './const.js';
@@ -26,12 +26,12 @@ import { mdistu } from './monmove.js';
 import { steal } from './steal.js';
 import { rloc } from './teleport.js';
 import { tele_restrict, tele, u_teleport_mon } from './teleport.js';
-import { could_seduce } from './mhitu.js';
+import { could_seduce, doseduce, SYSOPT_SEDUCE } from './mhitu.js';
 import { u_slip_free } from './mhitu.js';
 import { failed_grab, sleep_monst, slept_monst, engulf_target,
          xdrainenergym } from './mhitm.js';
 import { snuff_lit } from './apply.js';
-import { eating_conducts, newuhs, Finish_digestion } from './eat.js';
+import { eating_conducts, newuhs, Finish_digestion, is_fainted, morehungry } from './eat.js';
 import { m_useup } from './mthrowu.js';
 import { done } from './end.js';
 import { touch_of_death } from './mcastu.js';
@@ -48,7 +48,8 @@ import { mhe } from './mondata.js';
 import { gender } from './mondata.js';
 import { is_animal } from './mondata.js';
 import { can_be_strangled } from './mondata.js';
-import { stagger } from './mondata.js';
+import { stagger, completelyrusts, completelyrots, carnivorous,
+         herbivorous, metallivorous } from './mondata.js';
 import { make_stoned, make_slimed } from './potion.js';
 import { potionhit } from './potion.js';
 import { obfree, hold_another_object } from './invent.js';
@@ -221,7 +222,7 @@ import { Confusion } from './youprop.js';
 import { stealgold } from './steal.js';
 import { diseasemu } from './mhitu.js';
 import { dog_nutrition } from './dog.js';
-import { add_to_minv, set_corpsenm } from './mkobj.js';
+import { add_to_minv, set_corpsenm, dealloc_obj } from './mkobj.js';
 import { merge_choice, addinv } from './invent.js';
 import { inv_cnt } from './hack.js';
 import { dropy } from './do.js';
@@ -1719,6 +1720,56 @@ export async function hmonas(mon) {
 
     game.twohits = 0;
     return !DEADMONSTER(mon);
+}
+
+// src/uhitm.c:4782 mhitm_adtyping()
+export async function mhitm_adtyping(magr, mattk, mdef, mhm) {
+    switch (mattk[1]) {
+    case ATTKS.AD_STUN: await mhitm_ad_stun(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_LEGS: await mhitm_ad_legs(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_WERE: await mhitm_ad_were(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_HEAL: await mhitm_ad_heal(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_PHYS: await mhitm_ad_phys(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_FIRE: await mhitm_ad_fire(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_COLD: await mhitm_ad_cold(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_ELEC: await mhitm_ad_elec(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_ACID: await mhitm_ad_acid(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_STON: await mhitm_ad_ston(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_SSEX: await mhitm_ad_ssex(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_SITM:
+    case ATTKS.AD_SEDU: await mhitm_ad_sedu(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_SGLD: await mhitm_ad_sgld(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_TLPT: await mhitm_ad_tlpt(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_BLND: await mhitm_ad_blnd(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_CURS: await mhitm_ad_curs(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_DRLI: await mhitm_ad_drli(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_RUST: await mhitm_ad_rust(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_CORR: await mhitm_ad_corr(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_DCAY: await mhitm_ad_dcay(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_DREN: await mhitm_ad_dren(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_DRST:
+    case ATTKS.AD_DRDX:
+    case ATTKS.AD_DRCO: await mhitm_ad_drst(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_DRIN: await mhitm_ad_drin(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_STCK: await mhitm_ad_stck(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_WRAP: await mhitm_ad_wrap(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_PLYS: await mhitm_ad_plys(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_SLEE: await mhitm_ad_slee(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_SLIM: await mhitm_ad_slim(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_ENCH: await mhitm_ad_ench(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_SLOW: await mhitm_ad_slow(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_CONF: await mhitm_ad_conf(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_POLY: await mhitm_ad_poly(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_DISE: await mhitm_ad_dise(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_SAMU: await mhitm_ad_samu(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_DETH: await mhitm_ad_deth(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_PEST: await mhitm_ad_pest(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_FAMN: await mhitm_ad_famn(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_DGST: await mhitm_ad_dgst(magr, mattk, mdef, mhm); break;
+    case ATTKS.AD_HALU: await mhitm_ad_halu(magr, mattk, mdef, mhm); break;
+    default:
+        mhm.damage = 0;
+    }
 }
 
 // src/uhitm.c:4819 damageum(), the damage tail for a natural hero attack.
@@ -3670,6 +3721,39 @@ export async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
     }
 }
 
+// src/uhitm.c:3777 mhitm_ad_famn()
+export async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        // C shares the monster-target rule for this unreachable hero form.
+    } else if (mdef === game.youmonst) {
+        await pline_mon(magr, `${Monnam(magr)} reaches out, and your body shrivels.`);
+        await exercise(A_CON, false);
+        if (!is_fainted())
+            await morehungry(rn1(40, 40));
+        return;
+    }
+    if (!(carnivorous(pd) || herbivorous(pd) || metallivorous(pd)))
+        mhm.damage = 0;
+}
+
+// src/uhitm.c:3808 mhitm_ad_pest()
+export async function mhitm_ad_pest(magr, mattk, mdef, mhm) {
+    const pa = magr.data;
+
+    if (magr === game.youmonst) {
+        // C shares the monster-target rule for this unreachable hero form.
+    } else if (mdef === game.youmonst) {
+        await pline_mon(magr, `${Monnam(magr)} reaches out, and you feel fever and chills.`);
+        await diseasemu(pa);
+        return;
+    }
+    const alt_attk = [...mattk];
+    alt_attk[1] = ATTKS.AD_DISE;
+    await mhitm_ad_dise(magr, alt_attk, mdef, mhm);
+}
+
 // src/uhitm.c:3838 mhitm_ad_deth()
 export async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
@@ -3818,7 +3902,7 @@ export async function mhitm_ad_sgld(magr, mattk, mdef, mhm) {
         if (game.vis && canseemon(mdef)) {
             await pline(`${buf} steals some gold from ${mon_nam(mdef)}.`);
         }
-        if (!tele_restrict(magr)) {
+        if (!await tele_restrict(magr)) {
             const couldspot = canspotmon(magr);
 
             mhm.hitflags = M_ATTK_AGR_DONE;
@@ -4037,6 +4121,32 @@ export async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
     mhm.damage = 0;
 }
 
+// src/uhitm.c:4751 mhitm_ad_ssex()
+export async function mhitm_ad_ssex(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
+    } else if (mdef === game.youmonst) {
+        if (SYSOPT_SEDUCE) {
+            if (could_seduce(magr, mdef, mattk) === 1 && !magr.mcan)
+                if (await doseduce(magr)) {
+                    mhm.hitflags = M_ATTK_AGR_DONE;
+                    mhm.done = true;
+                    return;
+                }
+            return;
+        }
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
+    } else {
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
+    }
+}
+
 // src/do_wear.c:2630 some_armor(), restricted to the hero target used by
 // mhitm_ad_ench(). Body armor supplies the initial candidate. Each smaller
 // slot replaces it only on its independent one-in-four roll.
@@ -4149,7 +4259,7 @@ export async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
 
             set_corpsenm(virtualcorpse, num);
             nutrit = dog_nutrition(magr, virtualcorpse);
-            /* dealloc_obj(virtualcorpse) */
+            dealloc_obj(virtualcorpse);
 
             /* only 50% nutrition, 25% of normal eating time */
             if (magr.meating > 1)
@@ -4970,6 +5080,50 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
     }
 }
 
+// src/uhitm.c:2281 mhitm_ad_rust()
+export async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        if (completelyrusts(pd)) {
+            await pline(`${Monnam(mdef)} ${!mlifesaver(mdef) ? 'falls' : 'starts to fall'} to pieces!`);
+            await xkilled(mdef, XKILL_NOMSG);
+            mhm.hitflags |= M_ATTK_DEF_DIED;
+        }
+        await erode_armor(mdef, ERODE_RUST);
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk, mhm.indx);
+        if (magr.mcan)
+            return;
+        if (completelyrusts(pd)) {
+            await You('rust!');
+            await rehumanize();
+            return;
+        }
+        await erode_armor(game.youmonst, ERODE_RUST);
+    } else {
+        if (magr.mcan)
+            return;
+        if (completelyrusts(pd)) {
+            if (game.vis && canseemon(mdef))
+                await pline_mon(mdef, `${Monnam(mdef)} ${!mlifesaver(mdef) ? 'falls' : 'starts to fall'} to pieces!`);
+            await monkilled(mdef, null, ATTKS.AD_RUST);
+            if (!DEADMONSTER(mdef)) {
+                mhm.hitflags = M_ATTK_MISS;
+                mhm.done = true;
+                return;
+            }
+            mhm.hitflags = M_ATTK_DEF_DIED | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
+            mhm.done = true;
+            return;
+        }
+        await erode_armor(mdef, ERODE_RUST);
+        mdef.mstrategy &= ~STRAT_WAITFORU;
+        mhm.damage = 0;
+    }
+}
+
 // src/uhitm.c:2338 mhitm_ad_corr()
 export async function mhitm_ad_corr(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
@@ -4988,6 +5142,49 @@ export async function mhitm_ad_corr(magr, mattk, mdef, mhm) {
             return;
         await erode_armor(mdef, ERODE_CORRODE);
         mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+        mhm.damage = 0;
+    }
+}
+
+// src/uhitm.c:2363 mhitm_ad_dcay()
+export async function mhitm_ad_dcay(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        if (completelyrots(pd)) {
+            await pline(`${Monnam(mdef)} ${!mlifesaver(mdef) ? 'falls' : 'starts to fall'} to pieces!`);
+            await xkilled(mdef, XKILL_NOMSG);
+        }
+        await erode_armor(mdef, ERODE_ROT);
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk, mhm.indx);
+        if (magr.mcan)
+            return;
+        if (completelyrots(pd)) {
+            await You('rot!');
+            await rehumanize();
+            return;
+        }
+        await erode_armor(game.youmonst, ERODE_ROT);
+    } else {
+        if (magr.mcan)
+            return;
+        if (completelyrots(pd)) {
+            if (game.vis && canseemon(mdef))
+                await pline_mon(mdef, `${Monnam(mdef)} ${!mlifesaver(mdef) ? 'falls' : 'starts to fall'} to pieces!`);
+            await monkilled(mdef, null, ATTKS.AD_DCAY);
+            if (!DEADMONSTER(mdef)) {
+                mhm.done = true;
+                mhm.hitflags = M_ATTK_MISS;
+                return;
+            }
+            mhm.done = true;
+            mhm.hitflags = M_ATTK_DEF_DIED | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
+            return;
+        }
+        await erode_armor(mdef, ERODE_ROT);
+        mdef.mstrategy &= ~STRAT_WAITFORU;
         mhm.damage = 0;
     }
 }
@@ -5056,7 +5253,7 @@ export async function mhitm_ad_slow(magr, mattk, mdef, mhm) {
         if (!negated && mdef.mspeed !== MSLOW) {
             const oldspeed = mdef.mspeed;
 
-            mon_adjust_speed(mdef, -1, null);
+            await mon_adjust_speed(mdef, -1, null);
             if (mdef.mspeed !== oldspeed && canseemon(mdef))
                 await pline(`${Monnam(mdef)} slows down.`);
         }
@@ -5070,7 +5267,7 @@ export async function mhitm_ad_slow(magr, mattk, mdef, mhm) {
         if (!negated && mdef.mspeed !== MSLOW) {
             const oldspeed = mdef.mspeed;
 
-            mon_adjust_speed(mdef, -1, null);
+            await mon_adjust_speed(mdef, -1, null);
             mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
             if (mdef.mspeed !== oldspeed && game.vis && canspotmon(mdef))
                 await pline_mon(mdef, `${Monnam(mdef)} slows down.`);
@@ -5334,6 +5531,35 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
             if (mhm.damage >= mdef.mhp && mdef.mhp > 1)
                 mhm.damage = mdef.mhp - 1;
         }
+    }
+}
+
+// src/uhitm.c:4388 mhitm_ad_stun()
+export async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        if (!Blind())
+            await pline(`${Monnam(mdef)} ${makeplural(stagger(pd, 'stagger'))} for a moment.`);
+        mdef.mstun = 1;
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk, mhm.indx);
+        if (!magr.mcan && !rn2(4)) {
+            await make_stunned(((game.u.intrinsic?.HStun || 0) & TIMEOUT) + mhm.damage, true);
+            mhm.damage = Math.trunc(mhm.damage / 2);
+        }
+    } else {
+        if (magr.mcan)
+            return;
+        if (canseemon(mdef))
+            await pline_mon(mdef, `${Monnam(mdef)} ${makeplural(stagger(pd, 'stagger'))} for a moment.`);
+        mdef.mstun = 1;
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     }
 }
 

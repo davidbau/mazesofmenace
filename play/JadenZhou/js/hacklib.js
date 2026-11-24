@@ -29,6 +29,46 @@ export function lowc(c) {
     return ('A' <= c && c <= 'Z') ? String.fromCharCode(c.charCodeAt(0) | 0o40) : c;
 }
 
+// C ref: strutil.c pmatch_internal() -- '*' matches 0 or more characters,
+// '?' matches any single character; strings are indexed, '' standing in
+// for C's terminating NUL
+function pmatch_internal(patrn, strng, ci, sk) {
+    let pi = 0, si = 0;
+    let s, p;
+
+    for (;;) { /* pmatch_top: */
+        if (!sk) {
+            s = strng[si++] || '';
+            p = patrn[pi++] || ''; /* get next chars and pre-advance */
+        } else {
+            /* fuzzy match variant of pmatch; particular characters are ignored */
+            do {
+                s = strng[si++] || '';
+            } while (s && sk.includes(s));
+            do {
+                p = patrn[pi++] || '';
+            } while (p && sk.includes(p));
+        }
+        if (!p) /* end of pattern */
+            return (s === ''); /* matches iff end of string too */
+        else if (p === '*') /* wildcard reached */
+            return ((pi >= patrn.length
+                     || pmatch_internal(patrn.slice(pi), strng.slice(si - 1), ci, sk))
+                    ? true
+                    : s ? pmatch_internal(patrn.slice(pi - 1), strng.slice(si), ci, sk)
+                        : false);
+        else if ((ci ? lowc(p) !== lowc(s) : p !== s) /* check single character */
+                 && (p !== '?' || !s)) /* & single-char wildcard */
+            return false; /* doesn't match */
+        /* else goto pmatch_top: optimize tail recursion */
+    }
+}
+
+// C ref: strutil.c pmatchi() -- case-insensitive wildcard match
+export function pmatchi(patrn, strng) {
+    return pmatch_internal(patrn, strng, true, null);
+}
+
 // C ref: hacklib.c visctrl()
 /* make a displayable string from a character; c is the key code
    (0..255): a meta key (8th bit set) shows as "M-" plus the rest */

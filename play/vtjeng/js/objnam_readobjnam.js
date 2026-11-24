@@ -42,11 +42,12 @@ import {
 import { erosion_matters } from './objnam.js';
 import { is_quest_artifact } from './questpgr.js';
 import { coreRandom } from './rng.js';
-import {
-    maketrap, reset_utrap, trapname } from './trap.js';
+import { maketrap_async, reset_utrap, trapname } from './trap.js';
 import { begin_burn, start_timer } from './timeout.js';
 import { body_part } from './polyself.js';
-import { ttyPline } from './tty_message.js';
+import {
+    ttyPline,
+} from './tty_message.js';
 import {
     ACID_VENOM,
     AMULET_CLASS,
@@ -511,7 +512,7 @@ async function apply_wizterrainwish(d, rawEnv = {}) {
             const { Can_fall_thru } = await import('./dungeon.js');
             if (!Can_fall_thru(state.u.uz, state)) trap = ROCKTRAP;
         }
-        const t = await maketrap(x, y, trap, { ...env, state, random });
+        const t = await maketrap_async(x, y, trap, { ...env, state, random });
         if (t) {
             trap = t.ttyp;
             tname = trapname(trap, true, state, random);

@@ -10,7 +10,7 @@ import {
     NORMAL_SPEED,
 } from './const.js';
 import { friday_13th, phase_of_the_moon } from './calendar.js';
-import { see_monsters } from './display.js';
+import { see_monsters_async } from './display.js';
 import { enter_explore_mode, failClosedCommandRefusals } from './cmd.js';
 import { set_wear } from './do_wear.js';
 import { game } from './gstate.js';
@@ -24,7 +24,9 @@ import {
 import { read_engr_at } from './engrave.js';
 import { rnd } from './rng.js';
 import { initrack } from './track.js';
-import { ttyPline } from './tty_message.js';
+import {
+    ttyPline,
+} from './tty_message.js';
 import { fix_shop_damage } from './shk.js';
 
 // C ref: attrib.c change_luck().
@@ -104,7 +106,7 @@ export async function moveloop_preamble(
     // first turn; the helper must complete any pending glow feedback here.
     if (state.gd?.defer_see_monsters) {
         state.gd.defer_see_monsters = false;
-        await see_monsters(state, env);
+        await see_monsters_async(state, env);
     }
 
     state.u.uz0 ??= { dnum: 0, dlevel: 0 };

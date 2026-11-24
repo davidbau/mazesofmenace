@@ -106,6 +106,7 @@ import {
     glyph_is_statue,
     glyph_to_mon,
     map_invisible,
+    map_invisible_async,
     vobj_at,
 } from './display.js';
 import { cursed } from './do_wear.js';
@@ -211,7 +212,12 @@ import {
     tended_shop,
 } from './shk.js';
 import { SOUND_EFFECT_BASE_FILENAMES } from './sound_effects_data.js';
-import { ttyPline } from './tty_message.js';
+import {
+    emitQueuedNotices,
+    noticesQueued,
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import { cansee, couldsee } from './vision.js';
 import { gd_sound, vault_occupied } from './vault.js';
 import { which_armor } from './worn.js';
@@ -535,6 +541,7 @@ export async function dosounds(
                 );
             }
         }
+        if (noticesQueued()) await emitQueuedNotices();
         // sounds.c returns after every taken vault gate, including when a
         // guard or the hero's room suppresses its selection draw.
         return;
@@ -837,7 +844,7 @@ export async function beg(mtmp, rawEnv = {}) {
         await (rawEnv.domonnoise ?? domonnoise)(mtmp, state, rawEnv);
     } else if (mtmp.data.msound >= MS_HUMANOID) {
         if (!spotMonster(mtmp, state))
-            markInvisible(mtmp.mx, mtmp.my, state);
+            await printQueued(markInvisible(mtmp.mx, mtmp.my, state));
         set_voice(mtmp, 0, 80, 0, state);
         state.gp.pline_flags |= PLINE_VERBALIZE;
         try {
@@ -974,7 +981,7 @@ export async function domonnoise(mtmp, state = game, rawEnv = {}) {
     }
 
     if (!canspotmon(mtmp, state))
-        markInvisible(mtmp.mx, mtmp.my, state);
+        await printQueued(markInvisible(mtmp.mx, mtmp.my, state));
 
     let plineMsg = null;
     let verbalMsg = null;
@@ -1551,7 +1558,7 @@ async function dochat(state) {
     mtmp.mstrategy &= ~STRAT_WAITMASK;
     if (!Deaf(state.u) && mtmp.mtame && mtmp.meating) {
         if (!canspotmon(mtmp, state))
-            map_invisible(mtmp.mx, mtmp.my, state);
+            await map_invisible_async(mtmp.mx, mtmp.my, state);
         await ttyPline(
             `${Monnam(mtmp, state)} is eating noisily.`,
             state,
@@ -1749,7 +1756,7 @@ export async function tiphat(state = game, rawEnv = {}) {
             );
         } else if (next2u(x, y, state) && !Deaf(state.u)
             && await monsterNoise(mtmp, state)) {
-            if (!vismon) map_invisible(x, y, state);
+            if (!vismon) await map_invisible_async(x, y, state);
         } else if (vismon) {
             await message(
                 `${Monnam(mtmp, state)} doesn't respond.`,

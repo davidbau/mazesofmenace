@@ -797,7 +797,7 @@ export async function getbones() {
             }
             resetobjs(g.level.objects, true);
             resetobjs(g.level.buriedobjlist, true);
-            fix_shop_damage();
+            await fix_shop_damage();
         }
     }
     close_nhfile(nhfp);

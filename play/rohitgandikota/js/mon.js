@@ -47,7 +47,8 @@ import { DISMOUNT_GENERIC } from './const.js';
 import { possibly_unwield } from './weapon.js';
 import { Protection_from_shape_changers } from './youprop.js';
 import { remove_worm, wormgone } from './worm.js';
-import { grddead } from './vault.js';
+import { gd_move, grddead } from './vault.js';
+import { MON_MIGRATING } from './const.js';
 import { wizdeadorgone } from './wizard.js';
 import { MON_ENDGAME_FREE } from './const.js';
 import { mon_offmap, is_lightblocker_mappear } from './monst.js';
@@ -89,7 +90,7 @@ import { which_armor } from './worn.js';
 import { obj_resists, destroy_items, resist } from './zap.js';
 import { mksobj_at, splitobj, mkobj, place_object, clear_splitobjs, mkgold,
          undead_to_corpse, zombie_form, discard_minvent,
-         add_to_container } from './mkobj.js';
+         add_to_container, add_to_minv } from './mkobj.js';
 import { weight, update_inventory, nxtobj } from './invent.js';
 import { newsym, canseemon, canspotmon, display_nhwindow_message, pline,
          see_monsters, unmap_invisible, flash_glyph_at, mon_to_glyph } from './display.js';
@@ -126,7 +127,7 @@ import { hastrack } from './track.js';
 // include/trap.h:125 fixed_tele_trap()
 const fixed_tele_trap = (t) => t.ttyp === TELEP_TRAP
                             && isok(t.teledest?.x, t.teledest?.y);
-import { obfree, sobj_at, obj_extract_self, stackobj } from './invent.js';
+import { g_at, obfree, sobj_at, obj_extract_self, stackobj } from './invent.js';
 import { OBJ_FLOOR } from './obj.js';
 import { online2, isok } from './hacklib.js';
 /* onscary() and in_your_sanctuary() are src/monmove.c and src/priest.c
@@ -190,7 +191,7 @@ import { nonliving, is_neuter, is_animal, is_mplayer, has_head, haseyes,
          olfaction, is_orc } from './mondata.js';
 import { mkcorpstat } from './mklev.js';
 import { CORPSTAT_NONE, CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE,
-         CORPSTAT_HISTORIC, ACCESSIBLE, TAINT_AGE,
+         CORPSTAT_HISTORIC, TAINT_AGE,
          CORPSTAT_BURIED } from './const.js';
 import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
 
@@ -378,7 +379,6 @@ export async function movemon() {
        A TRUE return from the per-monster body stops the sweep (C uses it
        for the hero-leaving-level abort), it does not mean "can move". */
     for (const mtmp of [...(game.level?.monsters || [])]) {
-        if (mtmp.mhp <= 0) continue;   /* died earlier in this sweep */
         if (await movemon_singlemon(mtmp)) break;
     }
     if (any_light_source())
@@ -426,6 +426,17 @@ async function movemon_singlemon(mtmp) {
         gs_somebody_can_move = false;
         return true;
     }
+
+    /* src/mon.c:1227, parked guards retain their corridor until it clears. */
+    if (mtmp.isgd && !mtmp.mx && !(mtmp.mstate & MON_MIGRATING)) {
+        if (game.moves > (mtmp.mlstmv || 0)) {
+            await gd_move(mtmp);
+            mtmp.mlstmv = game.moves;
+        }
+        return false;
+    }
+    if (DEADMONSTER(mtmp))
+        return false;
 
     /* src/mon.c:1244 — a monster that is no longer on this map does not act. */
     if (mon_offmap(mtmp))
@@ -476,12 +487,8 @@ async function movemon_singlemon(mtmp) {
         }
     }
 
-    /* src/mon.c:1286 — the hider and eel arms are NOT wired here.
-       js/mon.js has restrap() ported below and it is correct in isolation,
-       but wiring these two arms measured -42 screens and -5217 RNG, so the
-       gap is recorded instead. See docs/plan/STATUS.md for the measurement
-       and the leading hypothesis (our mundetected is set more liberally than
-       C's, so hiders stop moving where C moves them). */
+    /* src/mon.c:1286, hidden monsters may spend their turn staying concealed.
+       Unseen eels can hide here even when they cannot move out of a pool. */
     if (is_hider(mtmp.data)) {
         if (restrap(mtmp))
             return false;
@@ -1185,7 +1192,7 @@ export function mon_give_prop(mtmp, prop, msgbox) {
 
 // src/mon.c:1778 mon_givit(); Maybe give an intrinsic to monster from
 // eating corpse that confers it.
-async function mon_givit(mtmp, ptr) {
+export async function mon_givit(mtmp, ptr) {
     const prop = corpse_intrinsic(ptr);
     const vis = canseemon(mtmp);
 
@@ -2651,19 +2658,9 @@ async function peacefuls_respond(mtmp) {
     }
 }
 
-// src/mon.c setmangry() — turn a peaceful monster hostile.
-//
-// The order of the three early exits is what carries the behaviour:
-//   1. STRAT_WAITMASK is cleared for EVERY monster, hostile ones included,
-//      before any return. A monster waiting to ambush stops waiting even if
-//      it was already angry.
-//   2. an already-hostile monster returns; there is nothing to anger.
-//   3. a TAME monster returns too, still peaceful. Hitting your own pet does
-//      not turn it hostile here, and costs no alignment. C flags this as
-//      probably-wrong in a comment and keeps it; so do we.
-//
-// The Elbereth branch is the only source of a draw, rnd(5), and only when
-// alignment is already at or below 5.
+// src/mon.c:4265 setmangry(), turn a peaceful monster hostile.
+// Elbereth penalties precede the hostile and tame early returns. After an
+// angered monster responds, quest guardians and peaceful bystanders may react.
 export async function setmangry(mtmp, via_attack) {
     if (via_attack && sengr_at('Elbereth', game.u.ux, game.u.uy, true)
         /* only hypocritical if monster is vulnerable to Elbereth (or
@@ -3168,6 +3165,22 @@ export function restartcham() {
     }
 }
 
+// src/mon.c:1827 mpickgold()
+export async function mpickgold(mtmp) {
+    const gold = g_at(mtmp.mx, mtmp.my);
+    if (gold) {
+        const material = game.objects[gold.otyp].oc_material;
+        obj_extract_self(gold);
+        add_to_minv(mtmp, gold);
+        if (cansee(mtmp.mx, mtmp.my)) {
+            if (game.flags.verbose && !mtmp.isgd)
+                await pline_mon(mtmp, `${Monnam(mtmp)} picks up some ${
+                    material === MATERIALS.GOLD ? 'gold' : 'money'}.`);
+            newsym(mtmp.mx, mtmp.my);
+        }
+    }
+}
+
 // src/mon.c:1847 mpickstuff() — a monster picks up ONE object from its square.
 //
 // Three early returns before anything else, and their order matters because
@@ -3233,7 +3246,7 @@ export async function mpickstuff(mtmp) {
                    result is not printed, and does so BEFORE the extract */
                 const otmpname = distant_name(otmp, doname);
                 if (game.flags?.verbose)
-                    await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} picks up ${otmpname}.`);
             }
             obj_extract_self(otmp3);        /* remove from floor */
             /* src/steal.c:618 mpickobj() may merge and free otmp3. */
@@ -3544,13 +3557,7 @@ export async function corpse_chance(mon, magr, /* killer, if swallowed */
     return !rn2(tmp);
 }
 
-// src/mon.c:3253 mondied() — monster killed by another monster: mondead()
-// plus the corpse. mondead's full detach (worm segments, shop bookkeeping,
-// vault guards, life-saving) is a slice: the map removal, so the fight's
-// survivor can occupy the square.
-// src/mon.c:3086 mondead() — the monster dies, WITHOUT a corpse. The slice
-// ported is the map and list removal plus m_detach()'s relobj (mon.c:2779),
-// which drops what the creature carried at the square it died on.
+// src/mon.c:3081 mondead(), remove a dying monster without creating its corpse.
 export async function mondead(mdef) {
     const mx = mdef.mx, my = mdef.my;
     const be_sad = !!game.iflags?.sad_feeling;
@@ -3564,6 +3571,9 @@ export async function mondead(mdef) {
         return;
     if (be_sad)
         await You('have a sad feeling for a moment, then it passes.');
+    /* src/mon.c:3106, a guard can remain parked until his corridor clears. */
+    if (mdef.isgd && !await grddead(mdef))
+        return;
     const mptr = mdef.data; /* saved for m_detach light cleanup */
     /* src/mon.c:3113, the remains and death count use the true species. */
     if (ismnum(mdef.cham)) {
@@ -3615,21 +3625,15 @@ export async function mondead(mdef) {
 
 // src/mon.c:3253 mondied() — mondead() plus, maybe, a corpse.
 export async function mondied(mdef) {
-    const mx = mdef.mx, my = mdef.my;
-
     await mondead(mdef);
+    if (!DEADMONSTER(mdef))
+        return; /* lifesaved */
 
+    /* this assumes that the dead monster's map coordinates remain accurate */
     if (await corpse_chance(mdef, null, false)
-        && (ACCESSIBLE(game.level?.at(mx, my)?.typ) || is_pool(mx, my)))
+        && (accessible(mdef.mx, mdef.my) || is_pool(mdef.mx, mdef.my)))
         await make_corpse(mdef, CORPSTAT_NONE);
-
-    newsym(mx, my);
 }
-
-/* js/makemon.js (grow_up) needs mondied but a static import back into this
-   file closes an eval-time cycle; publish on the shared game object, the same
-   shape hack.js uses for in_rooms. */
-game._mondied_ref = mondied;
 
 // src/mon.c:3377 monkilled() — "<Monster> is killed!" when the hero can see
 // it, then mondied(). The golem "May it rust in peace" arms and the

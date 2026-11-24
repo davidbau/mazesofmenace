@@ -9,7 +9,7 @@ import { LL_CONDUCT, LL_ARTIFACT } from './const.js';
 import { ansimpleoname, bare_artifactname } from './iactions.js';
 import { W_WEP } from './const.js';
 import { game } from './gstate.js';
-import { rn2, ROLL_FROM, rn2_on_display_rng } from './rng.js';
+import { rn2, rn1, ROLL_FROM, rn2_on_display_rng } from './rng.js';
 import { canspotmon } from './display.js';
 import { highc, s_suffix, dist2 } from './hacklib.js';
 import { just_an, vtense, makeplural } from './objnam.js';
@@ -153,7 +153,7 @@ export function christen_monst(mtmp, name) {
 import { exist_artifact, artifact_exists, artifact_name,
          restrict_name } from './artifact.js';
 import { donamelevel } from './dungeon.js';
-import { ONAME_VIA_NAMING, ONAME_SKIP_INVUPD, ONAME_KNOW_ARTI, QBUFSZ,
+import { ONAME_VIA_NAMING, ONAME_SKIP_INVUPD, ONAME_KNOW_ARTI, QBUFSZ, BUFSZ,
          HAND } from './const.js';
 import { safe_qbuf } from './pickup.js';
 import { simpleonames } from './iactions.js';
@@ -318,6 +318,57 @@ const ghostnames = [
 export function rndghostname() {
     return rn2(7) ? ROLL_FROM(ghostnames)
                   : game.plname;
+}
+
+/* C ref: hacklib.c upstart() -- capitalize the first letter of a string */
+function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+// C ref: do_name.c rndorcname()
+export function rndorcname() {
+    const v = ["a", "ai", "og", "u"];
+    const snd = ["gor", "gris", "un", "bane", "ruk",
+                 "oth", "ul", "z", "thos", "akh", "hai"];
+    let i;
+    const iend = rn1(2, 3);
+    let vstart = rn2(2);
+    let s = '';
+
+    for (i = 0; i < iend; ++i) {
+        vstart = 1 - vstart; /* 0 -> 1, 1 -> 0 */
+        /* Sprintf(eos(s), "%s%s", ...): arguments evaluated left to right */
+        const sep = (i > 0 && !rn2(30)) ? "-" : "";
+        s += sep + (vstart ? ROLL_FROM(v) : ROLL_FROM(snd));
+    }
+    return s;
+}
+
+// C ref: do_name.c christen_orc()
+export function christen_orc(mtmp, gang, other) {
+    let sz = 0;
+    let buf;
+    const orcname = rndorcname();
+
+    /* rndorcname() won't return NULL */
+    sz = orcname.length;
+    if (gang)
+        sz += gang.length + " of ".length;
+    else if (other)
+        sz += other.length;
+
+    if (sz < BUFSZ) {
+        let nameit = false;
+
+        if (gang) {
+            buf = `${upstart(orcname)} of ${upstart(gang)}`;
+            nameit = true;
+        } else if (other) {
+            buf = `${upstart(orcname)}${other}`;
+            nameit = true;
+        }
+        if (nameit)
+            mtmp = christen_monst(mtmp, buf);
+    }
+    return mtmp;
 }
 
 // C ref: do_name.c sir_Terry_novels[]

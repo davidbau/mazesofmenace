@@ -29,7 +29,7 @@ import { mons, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH,
 import * as M from './monsters.js';
 import { find_mac, which_armor } from './worn.js';
 import { mon_wield_item, possibly_unwield, hitval, dmgval } from './weapon.js';
-import { mswings_verb, mhis } from './mhitu.js';
+import { mswings_verb, mhis, could_seduce } from './mhitu.js';
 import { objects, CORPSE, GAUNTLETS_OF_POWER, SILVER, IRON, METAL,
          WEAPON_CLASS, TOOL_CLASS } from './objects.js';
 import { permapoisoned } from './mkobj.js';
@@ -95,11 +95,8 @@ function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
 function attacktype(ptr, atyp) {
     return ptr.mattk.some((a) => a.aatyp === atyp);
 }
-// C ref: mondata.c sticks()
-function sticks(ptr) {
-    return attacktype(ptr, AT_ENGL) || attacktype(ptr, AT_HUGS)
-        || ptr.mattk.some((a) => a.adtyp === AD_STCK);
-}
+/* C ref: mondata.c sticks() is engrave.js sticks() */
+import { sticks } from './engrave.js';
 
 
 /* C ref: worn.c find_mac() lives in worn.js */
@@ -226,8 +223,9 @@ async function missmm(magr, mdef, mattk) {
     pre_mm_attack(magr, mdef);
 
     if (game.mhitm_vis) {
-        /* could_seduce() is false: seduction attacks throw in getmattk() */
-        await pline(`${Monnam(magr)} misses ${mon_nam_too(mdef, magr)}.`);
+        await pline(`${Monnam(magr)} ${
+            (magr.mcan || !could_seduce(magr, mdef, mattk)) ? "misses"
+                : "pretends to be friendly to"} ${mon_nam_too(mdef, magr)}.`);
     } else {
         await noises(magr, mattk);
     }
@@ -502,15 +500,20 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
                        || (mattk.aatyp === AT_CLAW && mwep)),
         silverhit = (weaponhit && mwep
                      && objects[mwep.otyp].oc_material === SILVER);
-    /* compat: could_seduce() is 0 (seduction throws in getmattk()) */
     pre_mm_attack(magr, mdef);
 
-    if (mdef.data === mons[M.PM_SHADE])
+    const compat = !magr.mcan ? could_seduce(magr, mdef, mattk) : 0;
+    if (!compat && mdef.data === mons[M.PM_SHADE])
         throw new Error('hitmm(): shade_miss() not ported yet');
 
     if (game.mhitm_vis) {
         const magr_name = Monnam(magr);
         let buf = '';
+        if (compat) {
+            buf = `${magr_name} ${mdef.mcansee ? "smiles at" : "talks to"}`;
+            await pline(`${buf} ${mon_nam(mdef)} ${
+                (compat === 2) ? "engagingly" : "seductively"}.`);
+        } else {
         switch (mattk.aatyp) {
         case AT_BITE:
             buf = `${magr_name} bites`;
@@ -542,6 +545,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
 
         if (mon_hates_silver(mdef) && silverhit)
             throw new Error('hitmm(): silver sears message not ported yet');
+        }
     } else
         await noises(magr, mattk);
 
@@ -699,6 +703,8 @@ async function mhitm_ad_ssex(magr, mattk, mdef, mhm) {
         return;
 }
 
+import { mhitm_ad_stck } from './uhitm.js';
+
 // C ref: uhitm.c mhitm_adtyping()
 async function mhitm_adtyping(magr, mattk, mdef, mhm) {
     switch (mattk.adtyp) {
@@ -706,6 +712,7 @@ async function mhitm_adtyping(magr, mattk, mdef, mhm) {
         mhitm_ad_phys(magr, mattk, mdef, mhm);
         break;
     case AD_SSEX: await mhitm_ad_ssex(magr, mattk, mdef, mhm); break;
+    case AD_STCK: await mhitm_ad_stck(magr, mattk, mdef, mhm); break;
     case M.AD_SITM:
     case M.AD_SEDU: await mhitm_ad_sedu(magr, mattk, mdef, mhm); break;
     default:
@@ -878,6 +885,112 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
     }
     return (mdead | mhit);
 }
+
+// C ref: mhitm.c mon_poly()
+/* monster or hero hit by a polymorph attack (genetic engineer) */
+export async function mon_poly(magr, mdef, dmg) {
+    const freaky = " undergoes a freakish metamorphosis";
+    const oldform = mdef.data;
+    const u = game.u;
+
+    if (mdef === game.youmonst) {
+        const up = (p) => !!(u.uprops[p]?.intrinsic || u.uprops[p]?.extrinsic);
+        if (up(ANTIMAGIC_MP)) { /* Antimagic */
+            /* shieldeff(u.ux, u.uy): transient display only */
+        } else if (up(UNCHANGING_MP)) { /* Unchanging */
+            ; /* just take a little damage */
+        } else {
+            /* system shock might take place in polyself() */
+            if ((u.ulycn ?? NON_PM_MP) === NON_PM_MP) {
+                await You_mp("are subjected to a freakish metamorphosis.");
+                await polyself_mp(POLY_NOFLAGS_MP);
+            } else if (u.umonnum !== u.ulycn) {
+                await You_feel_mp("an unnatural urge coming on.");
+                throw new Error('mon_poly(): you_were() not ported yet');
+            } else {
+                await You_feel_mp("a natural urge coming on.");
+                throw new Error('mon_poly(): you_unwere() not ported yet');
+            }
+            dmg = 0;
+        }
+    } else {
+        const Before = Monnam(mdef);
+
+        if (resists_magm_mp(mdef)) {
+            /* Magic resistance */
+            /* if (gv.vis) shieldeff_mon(mdef): transient display only */
+        } else if (resist_mp(mdef, WAND_CLASS_MP, 0, TELL_MP)) {
+            /* general resistance to magic... */
+            ;
+        } else if (!rn2(25) && mdef.cham === NON_PM_MP
+                   && (mdef.mcan
+                       || pm_to_cham_mp(monsndx_mp(mdef.data)) !== NON_PM_MP)) {
+            /* system shock; this variation takes away half of mon's HP
+               rather than kill outright */
+            if (game.mhitm_vis)
+                await pline(`${Before} shudders!`);
+
+            dmg += Math.trunc((mdef.mhpmax + 1) / 2);
+            mdef.mhp -= dmg;
+            dmg = 0;
+            if (mdef.mhp < 1) { /* DEADMONSTER(mdef) */
+                if (magr === game.youmonst)
+                    await xkilled_mp(mdef, XKILL_GIVEMSG_MP | XKILL_NOCORPSE_MP);
+                else
+                    await monkilled(mdef, "", AD_RBRE_MP);
+            }
+        } else if (await newcham_mp(mdef, null, NO_NC_FLAGS_MP)) {
+            if (game.mhitm_vis) { /* either seen or adjacent */
+                const was_seen = Before.toLowerCase() !== "it", /* strcmpi() */
+                      verbosely = game.flags.verbose || !was_seen;
+
+                if (canspotmon(mdef))
+                    await pline(`${Before}${verbosely ? freaky : ""}${
+                        verbosely ? " and" : ""} turns into ${
+                        x_monnam(mdef, ARTICLE_A_MP, null,
+                                 (SUPPRESS_NAME_MP | SUPPRESS_IT_MP
+                                  | SUPPRESS_INVISIBLE_MP), false)}.`);
+                else if (was_seen || magr === game.youmonst)
+                    await pline(`${Before}${freaky}${
+                        !was_seen ? "" : " and disappears"}.`);
+            }
+            dmg = 0;
+            if (can_teleport_mp(magr.data)) {
+                if (magr === game.youmonst)
+                    await tele_mp();
+                else if (!(await tele_restrict(magr)))
+                    await rloc(magr, RLOC_MSG_MP);
+            }
+        } else {
+            if (game.mhitm_vis && game.flags.verbose)
+                await pline(nothing_happens_mp);
+        }
+    }
+    /* when a transformation has happened, can't attack again for poly
+       effect during next turn or two; not enforced for poly'd hero */
+    if (mdef.data !== oldform && magr !== game.youmonst)
+        magr.mspec_used += rnd(2);
+
+    return dmg;
+}
+import { ANTIMAGIC as ANTIMAGIC_MP, UNCHANGING as UNCHANGING_MP,
+         POLY_NOFLAGS as POLY_NOFLAGS_MP, NO_NC_FLAGS as NO_NC_FLAGS_MP,
+         XKILL_GIVEMSG as XKILL_GIVEMSG_MP, XKILL_NOCORPSE as XKILL_NOCORPSE_MP,
+         RLOC_MSG as RLOC_MSG_MP, nothing_happens as nothing_happens_mp,
+         NON_PM as NON_PM_MP, TELL as TELL_MP } from './const.js';
+import { AD_RBRE as AD_RBRE_MP } from './monsters.js';
+import { You as You_mp, You_feel as You_feel_mp } from './display.js';
+import { polyself as polyself_mp } from './polyself.js';
+import { resists_magm as resists_magm_mp, can_teleport as can_teleport_mp,
+         monsndx as monsndx_mp } from './mondata.js';
+import { resist as resist_mp } from './zap.js';
+import { pm_to_cham as pm_to_cham_mp } from './makemon.js';
+import { xkilled as xkilled_mp, newcham as newcham_mp } from './mon.js';
+import { tele as tele_mp } from './teleport.js';
+import { ARTICLE_A as ARTICLE_A_MP, SUPPRESS_NAME as SUPPRESS_NAME_MP,
+         SUPPRESS_IT as SUPPRESS_IT_MP,
+         SUPPRESS_INVISIBLE as SUPPRESS_INVISIBLE_MP } from './do_name.js';
+import { WAND_CLASS as WAND_CLASS_MP } from './objects.js';
 
 // C ref: mhitm.c paralyze_monst()
 export function paralyze_monst(mon, amt) {

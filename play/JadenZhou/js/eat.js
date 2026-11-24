@@ -666,7 +666,7 @@ function flaming(ptr) {
     return ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
            || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
 }
-function slimeproof(ptr) {
+export function slimeproof(ptr) {
     return ptr === mons[M.PM_GREEN_SLIME] || flaming(ptr) || noncorporeal(ptr);
 }
 function poly_when_stoned(ptr) {

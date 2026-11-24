@@ -68,11 +68,12 @@ import {
     docrt,
     flush_screen,
     glyph_at,
+    glyph_buffer_at,
     glyph_is_cmap,
     glyph_is_monster,
     glyph_is_object,
     glyph_to_cmap,
-    newsym,
+    newsym_async,
     objnum_to_glyph,
 } from './display.js';
 import {
@@ -128,7 +129,9 @@ import {
 } from './symbols.js';
 import { DEFAULT_PRIMARY_SYMBOLS, SYM_OFF_P } from './symbol_data.js';
 import {
-    clearTtyMessageWindow, ttyCustomPline, ttyPline,
+    clearTtyMessageWindow,
+    ttyCustomPline,
+    ttyPline,
 } from './tty_message.js';
 import { displayTtyMenuTextWindow } from './tty_menu.js';
 import { Invocation_lev } from './dungeon.js';
@@ -239,9 +242,9 @@ export async function getpos_sethilite(gp_hilitef, gp_getvalidf, state = game) {
             .sort((a,b)=>a.x-b.x || a.y-b.y);
         let last = null;
         for (const {x,y} of union) {
-            newsym(x,y);
-            const cell = state.level.at(x,y);
-            if (cell) cell.gnew = 1; // display.c:newsym_force's dirty glyph.
+            await newsym_async(x, y);
+            const entry = glyph_buffer_at(x, y, state);
+            if (entry) entry.gnew = 1; // display.c:newsym_force's dirty glyph.
             if (!last || y > last.y || (y === last.y && x > last.x)) last={x,y};
         }
         // Existing HUP cursor adapter: the recorder's map curs() is a no-op;

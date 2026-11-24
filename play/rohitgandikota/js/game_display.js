@@ -92,7 +92,13 @@ export class GameDisplay {
     setCell(col, row, ch, color, attr) { return this.terminal.setCell(col, row, ch, color, attr); }
     putstr(col, row, str, color, attr) { return this.terminal.putstr(col, row, str, color, attr); }
     setCursor(col, row) { return this.terminal.setCursor(col, row); }
-    clearScreen() { return this.terminal.clearScreen(); }
+    // C term_clear_screen() erases with the terminal's default foreground.
+    clearScreen() {
+        for (let row = 0; row < this.rows; row++)
+            for (let col = 0; col < this.cols; col++)
+                this.terminal.setCell(col, row, ' ', NO_COLOR, 0);
+        this.terminal.setCursor(0, 0);
+    }
     clearRow(row) { return this.terminal.clearRow(row); }
     scrollUp() { return this.terminal.scrollUp(); }
     moveCursor(x, y) { return this.terminal.moveCursor(x, y); }

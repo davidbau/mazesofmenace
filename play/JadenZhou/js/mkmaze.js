@@ -42,6 +42,22 @@ import { COLNO, ROWNO, W_NONDIGGABLE, POOL, IRONBARS, TLWALL, TRWALL, TUWALL,
          RLOC_NOMSG } from './const.js';
 import { m_at } from './makemon.js';
 import { rloc_mklev } from './teleport.js';
+import { ROLL_FROM } from './rng.js';
+import { MIGR_LEFTOVERS, MIGR_RANDOM, MM_NONAME, has_mgivenname } from './const.js';
+import { depth, get_level, ledger_no } from './dungeon.js';
+import { migrate_to_level } from './dog.js';
+import { mksobj, mkobj, add_to_minv, dealloc_obj, weight,
+         mksobj_migr_to_species } from './mkobj.js';
+import { set_malign } from './makemon.js';
+import { is_orc } from './mondata.js';
+import { PM_ORC, PM_ORC_SHAMAN, PM_ORC_CAPTAIN, M2_ORC } from './monsters.js';
+import { objects, GOLD_PIECE, ROCK, RING_CLASS, STRANGE_OBJECT, FOOD_CLASS,
+         SLIME_MOLD, TALLOW_CANDLE, WAX_CANDLE, SKELETON_KEY, LEATHER_GLOVES,
+         GAUNTLETS_OF_DEXTERITY, TRIPE_RATION, TIN, LEMBAS_WAFER, C_RATION,
+         K_RATION, CORPSE, EGG, LONG_SWORD, SILVER_SABER } from './objects.js';
+import { shiny_obj } from './objnam.js';
+import { fruitadd } from './options.js';
+import { christen_monst, christen_orc, rndorcname } from './do_name.js';
 
 // C ref: mkmaze.c baalz_fixup()
 /* wallification of the baalz level's "insect" leaves wall stubs which
@@ -289,7 +305,7 @@ export function fixup_special() {
         baalz_fixup();
     } else if (game.u.uz.dnum === game.dungeon_topology.d_mines_dnum
                && game.ransacked) {
-        throw new Error('fixup_special(): stolen_booty() not ported yet');
+        stolen_booty();
     }
 
     const sp = Is_special(game.u.uz);
@@ -305,6 +321,180 @@ function check_ransacked(s) {
     /* this kludge only works as long as orctown is minetn-1 */
     game.ransacked = (game.u.uz.dnum === game.dungeon_topology.d_mines_dnum
                       && s === 'minetn-1');
+}
+
+const ORC_LEADER = 1;
+const orcfruit = ["paddle cactus", "dwarven root"];
+
+// C ref: mkmaze.c migrate_orc()
+function migrate_orc(mtmp, mflags) {
+    const u = game.u;
+    let nlev;
+    const dest = { dnum: 0, dlevel: 0 };
+
+    const cur_depth = depth(u.uz);
+    const max_depth = dunlevs_in_dungeon(u.uz)
+                      + (game.dungeons[u.uz.dnum].depth_start - 1);
+    if (mflags === ORC_LEADER) {
+        /* Note that the orc leader will take possession of any
+         * remaining stuff not already delivered to other
+         * orcs between here and the bottom of the mines.
+         */
+        nlev = max_depth;
+        /* once in a blue moon, he won't be at the very bottom */
+        if (!rn2(40))
+            nlev--;
+        mtmp.migflags = (mtmp.migflags || 0) | MIGR_LEFTOVERS;
+    } else {
+        nlev = rn2((max_depth - cur_depth) + 1) + cur_depth;
+        if (nlev === cur_depth)
+            nlev++;
+        if (nlev > max_depth)
+            nlev = max_depth;
+        mtmp.migflags = ((mtmp.migflags || 0) & ~MIGR_LEFTOVERS);
+    }
+    get_level(dest, nlev);
+    migrate_to_level(mtmp, ledger_no(dest), MIGR_RANDOM, null);
+}
+
+// C ref: mkmaze.c shiny_orc_stuff()
+function shiny_orc_stuff(mtmp) {
+    let otyp;
+    let otmp;
+    const is_captain = (mtmp.data === mons[PM_ORC_CAPTAIN]);
+
+    /* probabilities */
+    const goldprob = is_captain ? 600 : 300;
+    const gemprob = Math.trunc(goldprob / 4);
+    if (rn2(1000) < goldprob) {
+        if ((otmp = mksobj(GOLD_PIECE, true, false)) != null) {
+            otmp.quan = 1 + rnd(goldprob);
+            otmp.owt = weight(otmp);
+            add_to_minv(mtmp, otmp);
+        }
+    }
+    if (rn2(1000) < gemprob) {
+        if ((otmp = mkobj(GEM_CLASS, false)) != null) {
+            if (otmp.otyp === ROCK)
+                dealloc_obj(otmp);
+            else
+                add_to_minv(mtmp, otmp);
+        }
+    }
+    if (is_captain || !rn2(8)) {
+        otyp = shiny_obj(RING_CLASS);
+        if (otyp !== STRANGE_OBJECT && (otmp = mksobj(otyp, true, false)) != null)
+            add_to_minv(mtmp, otmp);
+    }
+}
+
+// C ref: mkmaze.c migr_booty_item()
+function migr_booty_item(otyp, gang) {
+    const otmp = mksobj_migr_to_species(otyp, M2_ORC, true, false);
+    if (otmp && gang) {
+        /* new_oname(otmp, Strlen(gang) + 1): removes old name if present */
+        if (!otmp.oextra)
+            otmp.oextra = {};
+        otmp.oextra.oname = gang; /* Strcpy(ONAME(otmp), gang) */
+        if (objects[otyp].oc_class === FOOD_CLASS) {
+            if (otyp === SLIME_MOLD)
+                otmp.spe = fruitadd(ROLL_FROM(orcfruit), null);
+            otmp.quan += rn2(3);
+            otmp.owt = weight(otmp);
+        }
+    }
+}
+
+/* C ref: hacklib.c upstart() */
+function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+// C ref: mkmaze.c stolen_booty()
+function stolen_booty() {
+    let mtmp;
+    let cnt, i, otyp;
+
+    /*
+     * --------------------------------------------------------
+     * Mythos:
+     *
+     *      A tragic accident has occurred in Frontier Town...
+     *      It has been overrun by orcs.
+     *
+     *      The booty that the orcs took from the town is now
+     *      in the possession of the orcs that did this and
+     *      have long since fled the level.
+     * --------------------------------------------------------
+     */
+
+    const gang = rndorcname();
+    /* create the stuff that the gang took */
+    cnt = rnd(4);
+    for (i = 0; i < cnt; ++i)
+        migr_booty_item(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, gang);
+    cnt = rnd(3);
+    for (i = 0; i < cnt; ++i)
+        migr_booty_item(SKELETON_KEY, gang);
+    otyp = rn1((GAUNTLETS_OF_DEXTERITY - LEATHER_GLOVES) + 1, LEATHER_GLOVES);
+    migr_booty_item(otyp, gang);
+    cnt = rnd(10);
+    for (i = 0; i < cnt; ++i) {
+        /* Food items - but no lembas! (or some other weird things) */
+        otyp = rn1(TIN - TRIPE_RATION + 1, TRIPE_RATION);
+        if (otyp !== LEMBAS_WAFER
+            /* exclude meat <anything>, globs of <anything>, kelp
+               which all have random generation probability of 0
+               (K-/C-rations do too, but we want to include those) */
+            && (objects[otyp].oc_prob !== 0
+                || otyp === C_RATION || otyp === K_RATION)
+            /* exclude food items which utilize obj->corpsenm because
+               that field is going to be overloaded for delivery purposes */
+            && otyp !== CORPSE && otyp !== EGG && otyp !== TIN)
+            migr_booty_item(otyp, gang);
+    }
+    migr_booty_item(rn2(2) ? LONG_SWORD : SILVER_SABER, gang);
+    /* create the leader of the orc gang */
+    mtmp = makemon(mons[PM_ORC_CAPTAIN], 0, 0, MM_NONAME);
+    if (mtmp) {
+        mtmp = christen_monst(mtmp, upstart(gang));
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        shiny_orc_stuff(mtmp);
+        migrate_orc(mtmp, ORC_LEADER);
+    }
+    /* Make most of the orcs on the level be part of the invading gang */
+    for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
+            continue;
+
+        if (is_orc(mtmp.data) && !has_mgivenname(mtmp) && rn2(10)) {
+            /*
+             * We'll consider the orc captain from the level
+             * description to be the captain of a rival orc horde
+             * who is there to see what has transpired, and to
+             * contemplate future action.
+             *
+             * Don't christen the orc captain as a subordinate
+             * member of the main orc horde.
+             */
+            if (mtmp.data !== mons[PM_ORC_CAPTAIN])
+                mtmp = christen_orc(mtmp, upstart(gang), "");
+        }
+    }
+    /* Lastly, ensure there's several more orcs from the gang along the way.
+     * The mechanics are such that they aren't actually identified as
+     * members of the invading gang until they get their spoils assigned
+     * to the inventory; handled during that assignment.
+     */
+    cnt = rn2(10) + 5;
+    for (i = 0; i < cnt; ++i) {
+        const mtyp = rn2((PM_ORC_SHAMAN - PM_ORC) + 1) + PM_ORC;
+        mtmp = makemon(mons[mtyp], 0, 0, MM_NONAME);
+        if (mtmp) {
+            shiny_orc_stuff(mtmp);
+            migrate_orc(mtmp, 0);
+        }
+    }
+    game.ransacked = 0;
 }
 
 // C ref: mkmaze.c maze_inbounds()

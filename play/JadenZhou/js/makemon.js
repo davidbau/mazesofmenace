@@ -61,6 +61,8 @@ import {
 } from './mondata.js';
 import { new_light_source } from './light.js';
 import { LS_MONSTER } from './const.js';
+import { deliver_obj_to_mon } from './dokick.js';
+const DF_NONE = 0x00; /* hack.h */
 import { engr_at } from './engrave.js';
 import { enexto_core, enexto_gpflags } from './teleport.js';
 import { newedog } from './dog.js';
@@ -1880,7 +1882,7 @@ export function makemon(ptr, x, y, mmflags) {
         data: null, mnum: 0, m_id: 0, mx: 0, my: 0, m_lev: 0, mhp: 0,
         mhpmax: 0, female: 0, msleeping: 0, mpeaceful: 0, mtame: 0,
         minvis: 0, perminvis: 0, mcansee: 0, mcanmove: 0, mgenmklev: 0,
-        seen_resistance: 0, cham: NON_PM, iswiz: 0, isminion: 0,
+        seen_resistance: 0, cham: NON_PM, iswiz: 0, isminion: 0, mspec_used: 0,
         ispriest: 0, isshk: 0, isgd: 0, mstrategy: 0, malign: 0,
         wormno: 0, mtrapseen: 0, mwandexp: 0, minvent: null, nmon: null,
         mundetected: 0, mavenge: 0, movement: 0, mspeed: 0,
@@ -2102,7 +2104,7 @@ export function makemon(ptr, x, y, mmflags) {
     }
 
     if (allow_minvent && game.migrating_objs) /* in case of waiting items */
-        throw new Error('makemon(): deliver_obj_to_mon() not ported yet');
+        deliver_obj_to_mon(mtmp, 1, DF_NONE); /* in case of waiting items */
 
     if (!game.in_mklev) {
         newsym(mtmp.mx, mtmp.my); /* make sure the mon shows up */

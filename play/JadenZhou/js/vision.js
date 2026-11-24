@@ -4,7 +4,7 @@
 // Contestants should port the full vision.c for complete parity.
 
 import { game } from './gstate.js';
-import { BLINDED, SEE_INVIS, TEMP_LIT } from './const.js';
+import { BLINDED, SEE_INVIS, TEMP_LIT, TT_PIT } from './const.js';
 import { do_light_sources } from './light.js';
 import {
     COLNO, ROWNO, DOOR, SDOOR,
@@ -786,17 +786,33 @@ export function vision_recalc(control = 0) {
         next_rmax[y] = 0;
     }
 
+    const bp = u.uprops?.[BLINDED];
+    const Blind = !!(bp && (bp.intrinsic || bp.extrinsic) && !bp.blocked);
     if (control !== 2 && !u.uswallow) { /* you see nothing if swallowed */
-        view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        if (!Blind && u.utrap && u.utraptype === TT_PIT) {
+            /* if in a pit, just update for immediate locations */
+            for (let row = u.uy - 1; row <= u.uy + 1; row++) {
+                if (row < 0)
+                    continue;
+                if (row >= ROWNO)
+                    break;
+
+                next_rmin[row] = Math.max(1, u.ux - 1);
+                next_rmax[row] = Math.min(COLNO - 1, u.ux + 1);
+                const next_row = next[row];
+
+                for (let col = next_rmin[row]; col <= next_rmax[row]; col++)
+                    next_row[col] = IN_SIGHT | COULD_SEE;
+            }
+        } else
+            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
     }
 
     /* C ref: vision.c vision_recalc() -- the Blind case: calculate the
        could_see array even when blind so that monsters can see you, even
        if you can't see them; only update positions we used to be able to
        see, then skip the normal update loop */
-    const bp = u.uprops?.[BLINDED];
-    if (control !== 2 && !u.uswallow && bp && (bp.intrinsic || bp.extrinsic)
-        && !bp.blocked) {
+    if (control !== 2 && !u.uswallow && Blind) {
         const temp_array = game.viz_array; /* set viz_array so newsym() will work */
         game.viz_array = next;
         game.active_buf = game.active_buf === 0 ? 1 : 0;

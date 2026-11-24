@@ -61,12 +61,13 @@ import { ROOMOFFSET, VAULT, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          TT_BURIEDBALL, LEVITATION, FLYING, TELEDS_TELEPORT } from './const.js';
 import { ECMD_OK, ECMD_TIME, TELEPORT, A_STR } from './const.js';
 import { You } from './display.js';
+import { docrt as docrt_tp } from './display.js';
 import { getpos } from './getpos.js';
 import { u_locomotion } from './trap.js';
 import { can_teleport } from './mondata.js';
 import { known_spell, spe_Fresh, spe_Unknown } from './spell.js';
 import { objects, SPE_TELEPORT_AWAY } from './objects.js';
-import { PM_WIZARD } from './monsters.js';
+import { PM_WIZARD, PM_GRID_BUG } from './monsters.js';
 import { ACURR } from './attrib.js';
 import { check_capacity } from './hack.js';
 import { morehungry } from './eat.js';
@@ -359,8 +360,13 @@ export async function teleds(nux, nuy, teleds_flags) {
     if (game.youmonst.data.mlet === S_MIMIC)
         throw new Error('teleds(): hideunder() for a mimic hero not ported yet');
 
-    if (was_swallowed)
-        throw new Error('teleds(): leaving an engulfer not ported yet');
+    if (was_swallowed) {
+        if (Punished()) { /* ball&chain are off map while swallowed */
+            ball_active = true; /* to put chain and non-carried ball on map */
+            ball_still_in_range = allow_drag = false; /* (redundant) */
+        }
+        await docrt_tp();
+    }
 
     if (ball_active && (ball_still_in_range || allow_drag)) {
         /* bc_control, ballx, bally, chainx, chainy, cause_delay */
@@ -1216,13 +1222,40 @@ function rloc_pos_ok(x, y, /* coordinates of candidate location */
     const xx = mtmp.mx, yy = mtmp.my;
     if (!xx) {
         /* no current location (migrating monster arrival) */
-        throw new Error('rloc_pos_ok(): migrating monster arrival not ported yet');
+        const dndest = game.dndest || {}, updest = game.updest || {};
+        if (dndest.nlx && On_W_tower_level_tp(game.u.uz))
+            return (((yy & 2) !== 0)
+                    /* inside xor not within */
+                    !== !within_bounded_area(x, y,
+                                             dndest.nlx, dndest.nly,
+                                             dndest.nhx, dndest.nhy));
+        if (updest.lx && (yy & 1) !== 0) /* moving up */
+            return (within_bounded_area(x, y,
+                                        updest.lx, updest.ly,
+                                        updest.hx, updest.hy)
+                    && (!updest.nlx
+                        || !within_bounded_area(x, y,
+                                                updest.nlx, updest.nly,
+                                                updest.nhx, updest.nhy)));
+        if (dndest.lx && (yy & 1) === 0) /* moving down */
+            return (within_bounded_area(x, y,
+                                        dndest.lx, dndest.ly,
+                                        dndest.hx, dndest.hy)
+                    && (!dndest.nlx
+                        || !within_bounded_area(x, y,
+                                                dndest.nlx, dndest.nly,
+                                                dndest.nhx, dndest.nhy)));
     } else {
         /* [try to] prevent a shopkeeper or temple priest from being
            sent out of his room (caller might resort to goodpos() if
            we report failure here, so this isn't full prevention) */
-        if (mtmp.isshk || mtmp.ispriest)
-            throw new Error('rloc_pos_ok(): shopkeeper/priest rooms not ported yet');
+        if (mtmp.isshk && inhishop(mtmp)) {
+            if (game.level.at(x, y).roomno !== mtmp.mextra.eshk.shoproom)
+                return false;
+        } else if (mtmp.ispriest && inhistemple(mtmp)) {
+            if (game.level.at(x, y).roomno !== mtmp.epri.shroom)
+                return false;
+        }
         /* current location is <xx,yy> */
         if (!tele_jump_ok(xx, yy, x, y))
             return false;
@@ -1242,6 +1275,7 @@ function rloc_pos_ok(x, y, /* coordinates of candidate location */
 export async function rloc_to_core(mtmp, x, y, rlocflags) {
     const u = game.u;
     const oldx = mtmp.mx, oldy = mtmp.my;
+    const resident_shk = mtmp.isshk && inhishop(mtmp);
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
     const vanishmsg = (rlocflags & RLOC_MSG) !== 0;
     let appearmsg = (mtmp.mstrategy & STRAT_APPEARMSG) !== 0;
@@ -1250,9 +1284,6 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
 
     if (x === mtmp.mx && y === mtmp.my && m_at(x, y) === mtmp)
         return; /* that was easy */
-
-    if (mtmp.isshk)
-        throw new Error('rloc_to_core(): resident shopkeeper not ported yet');
 
     if (oldx) { /* "pick up" monster */
         if (domsg && canspotmon(mtmp)) {
@@ -1325,12 +1356,32 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
         /* wand discovery (gc.current_wand): zapping isn't ported yet */
     }
 
-    /* shopkeeper anger and shop goods leaving the shop (costly_spot()):
-       shops aren't stocked by this port yet; clear no_charge as C does
-       when the destination isn't a costly spot */
-    for (const otmp of mtmp.minvent || [])
-        if (otmp.no_charge)
-            otmp.no_charge = 0;
+    /* shopkeepers will only teleport if you zap them with a wand of
+       teleportation or if they've been transformed into a jumpy monster;
+       the latter only happens if you've attacked them with polymorph
+       [FIXME? or they've been hit by a genetic engineer, which won't
+       necessarily be due to Conflict by hero] */
+    if (resident_shk && !inhishop(mtmp))
+        await make_angry_shk(mtmp, oldx, oldy);
+
+    /* if a monster carrying shop goods teleports out of the shop, blame
+       it on the hero; chance of an unpaid item is vanishingly small, but
+       no_charge is easily possible and needs to be cleared if not in shop;
+       a for-sale item is ordinary here--shk won't notice it leaving; if
+       mtmp teleports from one shop into another, no_charge status sticks
+       and an item on the first shk's bill stays there */
+    if (mtmp.minvent?.length && !costly_spot(x, y)) {
+        const shkp = find_objowner(mtmp.minvent[0], oldx, oldy);
+        const peaceful = !shkp || shkp.mpeaceful;
+
+        for (const otmp of mtmp.minvent) {
+            if (otmp.no_charge)
+                otmp.no_charge = 0;
+            else if (shkp && onshopbill(otmp, shkp, true))
+                throw new Error('rloc_to_core(): stolen_value() not ported yet');
+        }
+        void peaceful;
+    }
 
     /* if hero is busy, maybe stop occupation */
     if (game.occupation)
@@ -1709,3 +1760,6 @@ import { tty_display_nhwindow as tty_display_nhwindow_lt } from './wintty.js';
 import { You_feel as You_feel_lt } from './display.js';
 import { tty_yn_function as tty_yn_function_tp } from './wintty.js';
 import { On_W_tower_level as On_W_tower_level_tp } from './dungeon.js';
+import { inhishop, make_angry_shk, costly_spot, find_objowner,
+         onshopbill } from './shk.js';
+import { inhistemple } from './priest.js';

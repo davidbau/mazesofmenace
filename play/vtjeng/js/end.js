@@ -197,6 +197,7 @@ import {
     clearTtyMessageWindow,
     displayPendingTtyMessageWindow,
     emitQueuedNotices,
+    printQueued,
     ttyPline,
 } from './tty_message.js';
 import { tty_raw_print, tty_wait_synch } from './tty_rawprint.js';
@@ -1357,7 +1358,7 @@ async function really_done(how, state) {
         : await paybill(how === ESCAPED ? -1 : (how !== QUIT), silently, state);
     if (how !== PANICKED) {
         await paygd(silently, state);
-        await clearpriests(state);
+        await printQueued(clearpriests(state));
     }
 
     // C end.c really_done() calls display_nhwindow(WIN_MESSAGE, FALSE) at

@@ -464,9 +464,9 @@ export function maybe_gasp(mon) {
         || (msound === MM.MS_PRIEST && !p_coaligned(mon)))
         msound = MM.MS_SILENT;
     /* co-aligned angels do gasp */
-    else if (msound === MM.MS_CUSS && mon.mextra?.emin /* has_emin() */
-             && (p_coaligned(mon) ? !mon.mextra.emin.renegade
-                                  : mon.mextra.emin.renegade))
+    else if (msound === MM.MS_CUSS && mon.emin /* has_emin() */
+             && (p_coaligned(mon) ? !mon.emin.renegade
+                                  : mon.emin.renegade))
         msound = MM.MS_HUMANOID;
 
     /*

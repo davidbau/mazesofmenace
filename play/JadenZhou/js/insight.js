@@ -599,13 +599,36 @@ export function hidden_gold(even_if_unknown) {
     return value;
 }
 
+/* C ref: invent.c currencies[] */
+const currencies = [
+    "Altarian Dollar",       /* The Hitchhiker's Guide to the Galaxy */
+    "Ankh-Morpork Dollar",   /* Discworld */
+    "auric",                 /* The Domination of Draka */
+    "buckazoid",             /* Space Quest */
+    "cirbozoid",             /* Starslip */
+    "credit chit",           /* Deus Ex */
+    "cubit",                 /* Battlestar Galactica */
+    "Flanian Pobble Bead",   /* The Hitchhiker's Guide to the Galaxy */
+    "fretzer",               /* Jules Verne */
+    "imperial credit",       /* Star Wars */
+    "Hong Kong Luna Dollar", /* The Moon is a Harsh Mistress */
+    "kongbuck",              /* Snow Crash */
+    "nanite",                /* System Shock 2 */
+    "quatloo",               /* Star Trek, Sim City */
+    "simoleon",              /* Sim City */
+    "solari",                /* Spaceballs */
+    "spacebuck",             /* Spaceballs */
+    "sporebuck",             /* Spore */
+    "Triganic Pu",           /* The Hitchhiker's Guide to the Galaxy */
+    "woolong",               /* Cowboy Bebop */
+    "zorkmid",               /* Zork, NetHack */
+];
+
 // C ref: invent.c currency()
 export function currency(amount) {
     let res;
 
-    if (Hallucination())
-        throw new Error('currency(): hallucinatory currency (ROLL_FROM) not ported yet');
-    res = "zorkmid";
+    res = Hallucination() ? ROLL_FROM_is(currencies) : "zorkmid";
     if (amount !== 1)
         res = makeplural(res);
     return res;
@@ -2846,8 +2869,8 @@ export function size_str(msize) {
 
 /* C ref: priest.c mon_aligntyp() */
 function mon_aligntyp_s(mon) {
-    const algn = mon.ispriest ? mon.mextra?.epri?.shralign
-                 : mon.isminion ? mon.mextra?.emin?.min_align
+    const algn = mon.ispriest ? mon.epri?.shralign
+                 : mon.isminion ? mon.emin?.min_align
                    : mon.data.maligntyp;
 
     if (algn === A_NONE)
@@ -3455,3 +3478,4 @@ import { dmgtype_fromattack as dmgtype_fromattack_in, dmgtype as dmgtype_in } fr
 import { AD_DGST as AD_DGST_IN, AT_ENGL as AT_ENGL_IN } from './monsters.js';
 import { sticks as sticks_in } from './engrave.js';
 import { dxdy_to_dist_descr as dxdy_to_dist_descr_in } from './getpos.js';
+import { ROLL_FROM as ROLL_FROM_is } from './rng.js';

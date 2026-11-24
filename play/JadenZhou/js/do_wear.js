@@ -897,7 +897,7 @@ function gulp_blnd_check() {
 }
 
 // C ref: do_wear.c Blindf_on()
-async function Blindf_on(otmp) {
+export async function Blindf_on(otmp) {
     const already_blind = Blind();
     let changed = false;
 
@@ -2171,7 +2171,7 @@ function ParanoidRemove() {
 
 // C ref: do_wear.c cursed()
 /* Check if something worn is cursed _and_ unremovable. */
-async function cursed(otmp) {
+export async function cursed(otmp) {
     const g = game;
     if (!otmp) {
         impossible("cursed without otmp");

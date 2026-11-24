@@ -2230,6 +2230,12 @@ export function set_seenv(lev, x0, y0, x, y) {
         | seenv_matrix_d[Math.sign(dy) + 1][Math.sign(dx) + 1];
 }
 
+// src/display.c:3384 unset_seenv(); clear an adjacent view from restored stone.
+export function unset_seenv(lev, x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y0 - y1;
+    lev.seenv &= ~seenv_matrix_d[dy + 1][dx + 1];
+}
+
 // src/display.c:746 feel_location() — the hero maps a square by touch:
 // seen vector set as if seen, then the memory written from the level's
 // truth subject to reach, remembered terrain and underwater restrictions.

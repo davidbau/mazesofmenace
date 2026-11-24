@@ -17,7 +17,7 @@ import { You, Your } from './pline.js';
 import { pline, see_monsters } from './display.js';
 import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE,
          FROMEXPER, FROMRACE, FROMOUTSIDE, FROMFORM,
-         Is_airlevel, TIMEOUT } from './const.js';
+         Is_airlevel, TIMEOUT, I_SPECIAL } from './const.js';
 import { strongmonst, throws_rocks } from './mondata.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
@@ -37,10 +37,11 @@ import { LL_ALIGNMENT, A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF, A_CURRENT, Is_
 import { aligns } from './role_data.js';
 import { summon_furies } from './makemon.js';
 import { retouch_equipment, what_gives, is_art } from './artifact.js';
-import { Hallucination, Blindfolded_only, Fumbling } from './youprop.js';
+import { Hallucination, Blindfolded_only, Fumbling, Levitation, Flying } from './youprop.js';
 import { ysimple_name, bare_artifactname } from './objnam.js';
 import { strstri } from './hacklib.js';
-import { body_part } from './polyself.js';
+import { body_part, float_vs_flight } from './polyself.js';
+import { Boots_on } from './do_wear.js';
 import { FACE, something, ismnum, W_ARMC, W_ARMH, W_ARMF } from './const.js';
 import { haseyes } from './mondata.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
@@ -51,21 +52,23 @@ export function Role_if(pm) {
     return m === pm || m === PMNAMES[pm];
 }
 
-// src/hack.c weight_cap() — how much the hero can carry before encumbrance.
-//
-// Draws nothing. This includes polymorph scaling, levitation and steed
-// overrides, and the wounded-leg reductions which flying suppresses.
+// src/hack.c:4295 weight_cap(). Restore temporary levitation overrides.
 export function weight_cap() {
-    /* include/weight.h:12,14 — WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE */
-    let carrcap = (25 * (acurrstr() + acurr(A_CON))) + 50;
     const u = game.u;
-    const levitating = !!(u.intrinsic?.HLevitation || u.uprops?.LEVITATION)
-                       && !u.blocked?.LEVITATION;
-    const flying = !!(u.intrinsic?.HFlying || u.uprops?.FLYING)
-                   || !!(Upolyd(u) && game.youmonst?.data
-                         && (game.youmonst.data.mflags1 & MFLAGS.M1_FLY))
-                   || !!(u.usteed
-                         && (u.usteed.data.mflags1 & MFLAGS.M1_FLY));
+    const props = u.uprops ||= {}, blocked = u.blocked ||= {};
+    const save_ELev = props.LEVITATION || 0,
+          save_BLev = blocked.LEVITATION || 0;
+
+    // Boots confer properties before the dressing action finishes.
+    if (game.afternmv === Boots_on && (save_ELev & W_ARMF) !== 0) {
+        props.LEVITATION &= ~W_ARMF;
+        float_vs_flight();
+    }
+    // Levitation still increases capacity when the floor blocks floating.
+    blocked.LEVITATION = (blocked.LEVITATION | 0) & ~I_SPECIAL;
+
+    /* include/weight.h:12,14: WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE */
+    let carrcap = (25 * (acurrstr() + acurr(A_CON))) + 50;
 
     if (Upolyd(u)) {
         const ptr = game.youmonst.data;
@@ -80,7 +83,7 @@ export function weight_cap() {
 
     /* src/hack.c:4325 — levitating, on the Plane of Air, or riding a
        strong steed lifts the cap to MAX_CARR_CAP outright */
-    if (levitating || Is_airlevel(u.uz)
+    if (Levitation() || Is_airlevel(u.uz)
         || (u.usteed && strongmonst(u.usteed.data))) {
         carrcap = 1000;             /* MAX_CARR_CAP */
     } else {
@@ -88,12 +91,19 @@ export function weight_cap() {
             carrcap = 1000;
         /* include/weight.h WT_WOUNDEDLEG_REDUCT (100) per wounded leg; the
            side bits live in EWounded_legs (worn-ring bits). Flying negates. */
-        if (!flying) {
+        if (!Flying()) {
             if ((u.EWounded_legs || 0) & LEFT_SIDE)
                 carrcap -= 100;
             if ((u.EWounded_legs || 0) & RIGHT_SIDE)
                 carrcap -= 100;
         }
+    }
+
+    if ((props.LEVITATION || 0) !== save_ELev
+        || (blocked.LEVITATION || 0) !== save_BLev) {
+        props.LEVITATION = save_ELev;
+        blocked.LEVITATION = save_BLev;
+        float_vs_flight();
     }
 
     return Math.max(carrcap, 1);    /* never return 0 */
@@ -814,7 +824,7 @@ export function exercise(i, inc_or_dec) {
                                          : -rn2(2)));
     }
     if (game.moves > 0 && (i === A_STR || i === A_CON))
-        encumber_msg();
+        return encumber_msg();
 }
 
 // src/attrib.c exerper() — the periodic accumulations, every 10 moves for

@@ -16,7 +16,7 @@ import { LL_CONDUCT } from './const.js';
 import { remove_worm, wormgone, worm_known, worm_cross, count_wsegs, get_wormno,
          initworm, place_worm_tail_randomly } from './worm.js';
 import { healup_nocure } from './potion.js';
-import { mcureblindness } from './muse.js';
+import { mcureblindness, mon_has_special } from './muse.js';
 import { clear_bypasses, bypass_obj } from './worn.js';
 import { rn2, rn1 } from './rng.js';
 import * as MM from './monsters.js';
@@ -103,7 +103,8 @@ import { kill_egg, peek_timer, stop_timer, start_timer, obj_to_any,
 import { ZOMBIFY_MON, TIMER_OBJECT } from './const.js';
 import { relobj, thiefdead, mdrop_special_objs, discard_minvent } from './steal.js';
 import { dochugw, onscary, mon_regen, m_everyturn_effect,
-         mon_track_clear, monflee } from './monmove.js';
+         mon_track_clear, monflee,
+         set_apparxy as set_apparxy_mn } from './monmove.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { can_teleport, resists_fire } from './mondata.js';
 import { on_fire } from './uhitm.js';
@@ -1609,6 +1610,7 @@ export function dmonsfree() {
             if (prev) prev.nmon = m.nmon; else game.fmon = m.nmon;
         } else prev = m;
     }
+    game.purge_monsters = 0; /* iflags.purge_monsters = 0 */
 }
 
 /* mondata.h */
@@ -1674,8 +1676,10 @@ function pickvampshape(mon) {
     switch (mndx) {
     case MM.PM_VLAD_THE_IMPALER:
         /* ensure Vlad can keep carrying the Candelabrum */
-        /* if (mon_has_special(mon)) break; */
-        throw new Error('pickvampshape(): mon_has_special() not ported yet');
+        if (mon_has_special(mon))
+            break; /* leave mndx as is */
+        wolfchance = 3;
+        /*FALLTHRU*/
     case MM.PM_VAMPIRE_LEADER: /* vampire lord or Vlad can become wolf */
         if (!rn2(wolfchance) && !uppercase_only
             /* don't pick a walking form if that would lead to immediate
@@ -1892,8 +1896,13 @@ export async function decide_to_shapeshift(mon) {
                 }
             }
             if (dochng && (mon.data.mflags1 & MM.M1_AMORPHOUS) /* amorphous */
-                && closed_door(mon.mx, mon.my))
-                throw new Error('decide_to_shapeshift(): enexto()/rloc_to() not ported yet');
+                && closed_door(mon.mx, mon.my)) {
+                const new_xy = { x: 0, y: 0 };
+
+                if (enexto(new_xy, mon.mx, mon.my, ptr)) {
+                    await rloc_to_mn(mon, new_xy.x, new_xy.y);
+                }
+            }
         } else {
             if (mon.mhp >= Math.trunc(9 * mon.mhpmax / 10) && !rn2(6)
                 && (!canseemon(mon)
@@ -1922,10 +1931,29 @@ export async function decide_to_shapeshift(mon) {
 export async function newcham(mtmp, mdat, ncflags) {
     const gen = newcham_g(mtmp, mdat, ncflags);
     let r;
-    while (!(r = gen.next()).done)
+    while (!(r = gen.next()).done) {
+        if (r.value === NEWCHAM_MON_MOVING) {
+            /* the end of newcham() when a monster is moving: */
+            /* old form might not have been affected by Elbereth but
+               perhaps the new form is */
+            /* give 'mtmp' a new chance to pinpoint hero's location */
+            if (!(game.u.ux === mtmp.mux && game.u.uy === mtmp.muy)) /* u_at() */
+                set_apparxy_mn(mtmp);
+            /* if hero is on Elbereth or scare monster, mtmp in new form
+               might become scared */
+            if (!mtmp.mpeaceful
+                && onscary(mtmp.mux, mtmp.muy, mtmp)
+                && monnear(mtmp, mtmp.mux, mtmp.muy))
+                await monflee(mtmp, rn1(9, 2), true, true); /* 2..10 turns */
+            continue;
+        }
         await pline(r.value); /* pline_mon() */
+    }
     return r.value;
 }
+/* newcham_g() yields this (instead of a message) to have newcham() run
+   its final mon_moving step, which may call the async monflee() */
+const NEWCHAM_MON_MOVING = { newcham_mon_moving: true };
 /* newcham() from a synchronous caller (makemon(), level creation), which
    never asks for messages */
 export function newcham_sync(mtmp, mdat, ncflags) {
@@ -2110,7 +2138,7 @@ function* newcham_g(mtmp, mdat, ncflags) {
     /* old form might not have been affected by Elbereth but perhaps the
        new form is */
     if (game.context?.mon_moving)
-        throw new Error('newcham(): set_apparxy()/monflee() for a moving monster not ported yet');
+        yield NEWCHAM_MON_MOVING; /* set_apparxy()/monflee(), in newcham() */
 
     return 1;
 }
@@ -2977,7 +3005,7 @@ function flesh_petrifies(pm) {
     return pm === mons[MM.PM_COCKATRICE] || pm === mons[MM.PM_CHICKATRICE]
            || pm === mons[MM.PM_MEDUSA];
 }
-function mstoning(obj) {
+export function mstoning(obj) {
     return (ofood(obj) && obj.corpsenm >= LOW_PM && obj.corpsenm < NUMMONS
             && flesh_petrifies(mons[obj.corpsenm]));
 }
@@ -3385,3 +3413,4 @@ import { mon_explodes } from './explode.js';
 import { shkgone } from './shk.js';
 
 import { gd_move } from './vault.js';
+import { rloc_to as rloc_to_mn } from './teleport.js';

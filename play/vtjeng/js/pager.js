@@ -7,6 +7,7 @@
 
 import { rm_doormask } from './game.js';
 import {
+    ARTICLE_NONE,
     BEAR_TRAP,
     BOLT_LIM,
     BUFSZ,
@@ -106,6 +107,8 @@ import {
 import { isok } from './cmd_isok.js';
 import {
     Mgender,
+    coyotename,
+    distant_monnam,
     hliquid,
     mon_nam,
     pmname,
@@ -154,6 +157,7 @@ import {
     map_glyphinfo,
     NO_GLYPH,
     trap_to_glyph,
+    tty_map_cell_at,
 } from './display.js';
 import { DATA_BASE_ENTRIES } from './data_base_data.js';
 import { engr_at } from './engrave.js';
@@ -175,7 +179,7 @@ import { currency, display_inventory, sobj_at } from './invent.js';
 import { m_at } from './monst.js';
 import {
     M2_DEMON, M2_ELF, M2_HUMAN, M2_ORC,
-    NUMMONS, PM_ELF, PM_GNOME, PM_HUMAN, PM_SAMURAI, PM_WIZARD,
+    NUMMONS, PM_COYOTE, PM_ELF, PM_GNOME, PM_HUMAN, PM_SAMURAI, PM_WIZARD,
     S_EEL, S_HUMAN, S_MIMIC, S_invisible,
 } from './monsters.js';
 import { ok_to_quest } from './quest.js';
@@ -251,10 +255,7 @@ import {
     VENOM_CLASS,
 } from './objects.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
-import {
-    describeMonster,
-    monsterSurfaceDescription,
-} from './startup_a11y.js';
+import { monsterSurfaceDescription } from './startup_a11y.js';
 import {
     hides_under,
     is_clinger,
@@ -592,13 +593,11 @@ export function self_lookat(state = game) {
 // C ref: pager.c look_at_monster() (422-552). The optional output receives
 // the C monbuf/howmonseen side channel; lookat() returns the permonst pointer
 // separately, as its caller does.
-function look_at_monster(monster, x, y, state, output = null) {
+export function look_at_monster(monster, x, y, state, output = null) {
     const hallucinating = Hallucination(state.u);
-    const name = describeMonster(monster, {
-        state,
-        hallucinating,
-        pagerBase: true,
-    });
+    const name = monster.data?.pmidx === PM_COYOTE && !hallucinating
+        ? coyotename(monster, [], state)
+        : distant_monnam(monster, ARTICLE_NONE, undefined, state);
     const tail = monster.mx !== x || monster.my !== y;
     const prefix = tail
         ? ((monster.isshk && !hallucinating) ? 'tail of ' : 'tail of a ')
@@ -947,7 +946,7 @@ export function add_quoted_engraving(x, y, buffer, force, state = game) {
 
 // The renderGlyph result ttyPutmixed() takes for do_screen_description()'s
 // encglyph() prefix, the glyph at the looked-at `location`.
-function lookedGlyphText(glyph, location, state) {
+function lookedGlyphText(glyph, screenCell, state) {
     const info = map_glyphinfo(glyph, state);
     const cell = visibleGlyphCharacter(info);
     // decode_mixed() writes the glyph's gs.showsyms[] byte into the message,
@@ -957,7 +956,7 @@ function lookedGlyphText(glyph, location, state) {
     // captures with the high bit stripped: the DEC line-drawing character,
     // or symbol_at()'s `ch` for an H_IBM byte. Any later redraw of the line
     // prints the byte as a signed char, which the capture ignores.
-    if (location?.disp_decgfx)
+    if (screenCell?.decgfx)
         return { text: String.fromCharCode(info.ttychar), cell };
     if ((info.ttychar & 0x80) && info.ch != null)
         return { text: String.fromCharCode(info.ttychar), cell: info.ch };
@@ -1343,7 +1342,7 @@ export function do_screen_description(cc, looked, sym, state = game) {
     let symbolByte = sym;
     if (looked) {
         // C pager.c:map_glyphinfo() supplies the raw tty byte used for every
-        // family comparison.  The rendered disp_ch is a DEC/UTF-8 display
+        // family comparison.  The rendered cell is a DEC/UTF-8 display
         // character and can differ from that byte (for example 0xfe renders
         // as '~'); using it here misclassifies walls as monster classes.
         symbolByte = lookupGlyphInfo.ttychar;
@@ -2096,13 +2095,13 @@ export async function do_look(mode, clickCc = null, state = game) {
 
             const description = do_screen_description(cc, true, 0, state);
             if (description.aborted) await NH_abort(state);
-            const location = state.level?.at(cc.x, cc.y);
+            const lookedCell = tty_map_cell_at(cc.x, cc.y, state);
             const lookedGlyph = glyph_at(cc.x, cc.y, state);
             // pager.c do_look() 1920-1923 shows every explanation with
             // putmixed(), never pline(), so MSGTYPE never applies to it.
             await ttyPutmixed(description.out, state, (glyph) => (
                 glyph === lookedGlyph
-                    ? lookedGlyphText(glyph, location, state) : null));
+                    ? lookedGlyphText(glyph, lookedCell, state) : null));
             // pager.c do_look() 1941-1954: a quick or once pick never reads
             // the data file; a verbose pick reads it without asking, and the
             // traditional pick asks only when flags.help is set. checkfile()

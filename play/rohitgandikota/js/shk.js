@@ -63,7 +63,7 @@ import { move_special } from './priest.js';
 import { addinv, carrying, sobj_at, currency, money_cnt, freeinv,
          contained_gold, hidden_gold, weight } from './invent.js';
 import { m_at, t_at, wake_nearto } from './mon.js';
-import { Blind, Deaf, Invis, Detect_monsters, Blind_telepat } from './youprop.js';
+import { Blind, Deaf, Invis, Detect_monsters, Blind_telepat, Passes_walls } from './youprop.js';
 import { ACURR, Fast, adjalign, exercise } from './attrib.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MSOUND, MFLAGS } from './monst_data.js';
@@ -121,7 +121,7 @@ import { picking_at } from './lock.js';
 import { stop_occupation } from './allmain.js';
 import { tty_wait_synch } from './tty/wintty.js';
 import { unplacebc, placebc } from './ball.js';
-import { next_ident, mksobj, place_object } from './mkobj.js';
+import { next_ident, mksobj, place_object, dealloc_obj } from './mkobj.js';
 import { ansimpleoname } from './objnam.js';
 import { check_special_room } from './hack.js';
 
@@ -997,12 +997,19 @@ export function setpaid(shkp) {
     clear_no_charge(shkp, game.level?.objects);
     clear_no_charge(shkp, game.level?.buriedobjs);
 
-    const eshk = shkp.eshk || ESHK(shkp);
-    eshk.bill_p = [];
-    eshk.billct = 0;
-    eshk.credit = 0;
-    eshk.debit = 0;
-    eshk.loan = 0;
+    while (game.billobjs?.length) {
+        const obj = game.billobjs[0];
+        obj_extract_self(obj);
+        dealloc_obj(obj);
+    }
+    if (shkp) {
+        const eshk = shkp.eshk || ESHK(shkp);
+        eshk.bill_p = [];
+        eshk.billct = 0;
+        eshk.credit = 0;
+        eshk.debit = 0;
+        eshk.loan = 0;
+    }
 }
 
 // src/shk.c:1278 check_credit()
@@ -1434,6 +1441,7 @@ export function get_cost(obj, shkp) {
     return tmp;
 }
 
+// src/shk.c:3309 add_one_tobill().
 function add_one_tobill(obj, dummy, shkp) {
     const eshk = shkp.eshk || ESHK(shkp);
     if (!Array.isArray(eshk.bill_p))
@@ -1442,8 +1450,12 @@ function add_one_tobill(obj, dummy, shkp) {
         return false;
 
     let price = get_cost(obj, shkp);
-    if (obj.globby)
+    if (obj.globby) {
         price *= get_pricing_units(obj);
+        // newomid/OMID: retain the weight when this glob entered the bill.
+        obj.oextra ||= {};
+        obj.oextra.omid = obj.owt;
+    }
     eshk.bill_p.push({
         bo_id: obj.o_id,
         useup: !!dummy,
@@ -1784,9 +1796,9 @@ function saleable(shkp, obj) {
     return false;
 }
 
-// src/shk.c set_cost(), the amount a shopkeeper offers for ordinary goods.
+// src/shk.c:3148 set_cost(), the amount a shopkeeper offers for ordinary goods.
 function set_cost(obj, shkp) {
-    let amount = (obj.quan || 1) * getprice(obj, true);
+    let amount = get_pricing_units(obj) * getprice(obj, true);
     let multiplier = 1;
     let divisor = 1;
     const u = game.u;
@@ -3187,7 +3199,7 @@ function update_bill(indx /* index into ibill[]; -1 for unpaid contained item */
         paiditem.unpaid = 0; /* clear before maybe deallocating */
         if (paiditem.where === OBJ_ONBILL) {
             obj_extract_self(paiditem);
-            /* dealloc_obj(paiditem) */
+            dealloc_obj(paiditem);
         }
         newebillct = (eshkp.billct | 0) - 1;
         const bidx = eshkp.bill_p.indexOf(bp);
@@ -3789,7 +3801,7 @@ function repairable_damage(dam, shkp) {
     const { x, y } = dam;
     if (!IS_ROOM(dam.typ)) {
         const mon = m_at(x, y);
-        if ((u_at(x, y) && !game.u.uprops?.PASSES_WALLS)
+        if ((u_at(x, y) && !Passes_walls())
             || (x === shkp.mx && y === shkp.my)
             || (mon && !passes_walls(mon.data)))
             return false;

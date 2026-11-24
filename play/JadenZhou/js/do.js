@@ -8,10 +8,11 @@
 // ported yet.
 
 import { game } from './gstate.js';
+import { fix_shop_damage } from './shk.js';
 import { livelog_printf } from './display.js';
 import { LL_ACHIEVE, LL_DEBUG } from './const.js';
 import { describe_level } from './botl.js';
-import { container_impact_dmg } from './dokick.js';
+import { container_impact_dmg, obj_delivery } from './dokick.js';
 import { pline, pline_The, docrt, flush_screen, Hallucination,
          Blind } from './display.js';
 import { bones_include_name } from './bones.js';
@@ -72,13 +73,13 @@ import { welded, setuwep, setuqwep, setuswapwep, bimanual } from './wield.js';
 import { Norep } from './display.js';
 import { makeplural } from './objnam.js';
 import { HAND } from './const.js';
-import { placebc, unplacebc, drag_down, ballrelease, drop_ball } from './ball.js';
+import { placebc, unplacebc, drag_down, ballrelease, drop_ball, ballfall } from './ball.js';
 import { You, newsym, stairway_at } from './display.js';
 import { can_reach_floor } from './engrave.js';
 import { doname } from './objnam.js';
 import { place_object } from './mkobj.js';
 import { encumber_msg } from './pickup.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { You_cant, Your } from './display.js';
 import { BLINDED, TIMEOUT, FACE } from './const.js';
 import { incr_itimeout, set_itimeout, make_blinded } from './potion.js';
@@ -110,6 +111,11 @@ function HLevitation() { return uprop(LEVITATION).intrinsic; }
 function ELevitation() { return uprop(LEVITATION).extrinsic; }
 function Levitation() {
     return !!((HLevitation() || ELevitation()) && !uprop(LEVITATION).blocked);
+}
+/* C ref: youprop.h Deaf */
+function Deaf_do() {
+    const p = uprop(DEAF_DO);
+    return !!(p.intrinsic || p.extrinsic || game.u.uroleplay?.deaf);
 }
 function Flying() {
     const p = uprop(FLYING);
@@ -518,8 +524,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     let up = (depth(newlevel) < depth(u.uz));
     const newdungeon = (u.uz.dnum !== newlevel.dnum);
     let leaving_tutorial = false;
-    /* dist, do_fall_dmg: falling isn't ported */
     let new_ = false, familiar = false;
+    const dist = depth(newlevel) - depth(u.uz);
+    let do_fall_dmg = false;
     const prev_temperature = g.level.flags?.temperature || 0;
     const was_in_W_tower = In_W_tower(u.ux, u.uy, u.uz);
 
@@ -579,7 +586,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (g.context?.polearm) g.context.polearm.hitmon = null;
 
     if (falling) /* assuming this is only trap door or hole */
-        throw new Error('goto_level(): impact_drop() not ported yet');
+        await impact_drop(null, u.ux, u.uy, newlevel.dlevel);
 
     await check_special_room(true); /* probably was a trap door */
     if (Punished())
@@ -787,15 +794,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     } else { /* trap door or level_tele or In_endgame */
         u_on_rndspot((up ? 1 : 0) | (was_in_W_tower ? 2 : 0));
-        if (falling)
-            throw new Error('goto_level(): falling arrival not ported yet');
+        if (falling) {
+            if (Punished() && !welded(g.uball))
+                await ballfall();
+            await selftouch("Falling, you");
+            do_fall_dmg = true;
+        }
     }
 
     if (Punished())
         await placebc();
     /* obj_delivery(FALSE) */
     if (g.migrating_objs)
-        throw new Error('goto_level(): obj_delivery() not ported yet');
+        obj_delivery(false);
     await losedogs();
     kill_genocided_monsters(); /* for those wiped out while in limbo */
     /*
@@ -947,19 +958,23 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* deliver objects traveling with player */
     /* obj_delivery(TRUE) */
     if (g.migrating_objs)
-        throw new Error('goto_level(): obj_delivery() not ported yet');
+        obj_delivery(true);
 
     /* assume this will always return TRUE when changing level */
     /* (void) */ await in_out_region(u.ux, u.uy);
-    if (!new_) {
-        /* fix_shop_damage(): if this level has no shop damage, there's
-           nothing to do; shop repair isn't ported */
-        if (g.level.damagelist)
-            throw new Error('goto_level(): fix_shop_damage() not ported yet');
-    }
+    /* shop repair is normally done when shopkeepers move, but we may
+       need to catch up for lost time here; do this before maybe dying
+       so bones map will include it */
+    if (!new_)
+        await fix_shop_damage();
 
-    /* fall damage? do_fall_dmg is set only when falling, which
-       throws above */
+    /* fall damage? */
+    if (do_fall_dmg) {
+        let dmg = d(Math.max(dist, 1), 6);
+
+        dmg = Maybe_Half_Phys(dmg);
+        await losehp(dmg, "falling down a mine shaft", KILLED_BY);
+    }
 
     await pickup(1);
 }
@@ -1036,7 +1051,21 @@ export async function flooreffects(obj, /* the object landing on the floor */
     } else if (is_lava(x, y)) {
         res = await lava_damage(obj, x, y);
     } else if (is_pool(x, y)) {
-        throw new Error('flooreffects(): water_damage() not ported yet');
+        /* Reasonably bulky objects (arbitrary) splash when dropped.
+         * If you're floating above the water even small things make
+         * noise.  Stuff dropped near fountains always misses */
+        if ((Blind() || (Levitation() || Flying())) && !Deaf_do() && u_at(x, y)) {
+            if (!game.u.uinwater) { /* !Underwater */
+                if (weight_do(obj) > WT_SPLASH_THRESHOLD_DO) {
+                    await pline("Splash!");
+                } else if (Levitation() || Flying()) {
+                    await pline("Plop!");
+                }
+            }
+            map_background_do(x, y, 0);
+            newsym(x, y);
+        }
+        res = (await water_damage_do(obj, null, false)) === ER_DESTROYED_DO;
     } else if (u_at(x, y) && (t = t_at(x, y))
                && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
         /* uteetering_at_seen_pit(t) || uescaped_shaft(t) */
@@ -1484,3 +1513,9 @@ export async function dowipe() {
 }
 import { done as done_do } from './end.js';
 import { ESCAPED as ESCAPED_DO } from './const.js';
+import { impact_drop } from './dokick.js';
+import { water_damage as water_damage_do } from './trap.js';
+import { weight as weight_do } from './mkobj.js';
+import { map_background as map_background_do } from './display.js';
+import { WT_SPLASH_THRESHOLD as WT_SPLASH_THRESHOLD_DO, ER_DESTROYED as ER_DESTROYED_DO,
+         DEAF as DEAF_DO } from './const.js';

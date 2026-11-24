@@ -83,7 +83,7 @@ import { xytodir, dirtocoord } from './cmd.js';
 import { isok, W_ARMH, M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE,
          M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_ACID, TELEP_TRAP, N_DIRS,
          Is_rogue_level, In_endgame, Is_earthlevel, W_ARM, W_ARMS, W_ARMF,
-         W_AMUL, W_WEP, MSLOW, MFAST, NON_PM, NORMAL_SPEED, FAST,
+         W_AMUL, W_WEP, MFAST, NON_PM, NORMAL_SPEED, FAST,
          P_DAGGER, P_KNIFE, XKILL_NOMSG, XKILL_NOCONDUCT,
          POLY_TRAP, u_at, KILLED_BY_AN, ZAP_POS, IS_DOOR, D_LOCKED,
          D_CLOSED, G_GONE, ARTICLE_A, SUPPRESS_INVISIBLE,
@@ -1429,7 +1429,7 @@ async function precheck(mon, obj) {
 }
 
 async function mquaffmsg(mtmp, obj) {
-    const [{ canseemon, pline }, { Deaf }, { You_hear }, { Monnam },
+    const [{ canseemon }, { Deaf }, { You_hear }, { Monnam },
            { singular, doname }, { observe_object }]
         = await Promise.all([
             import('./display.js'), import('./youprop.js'),
@@ -1438,7 +1438,7 @@ async function mquaffmsg(mtmp, obj) {
         ]);
     if (canseemon(mtmp)) {
         observe_object(obj);
-        await pline(`${Monnam(mtmp)} drinks ${singular(obj, doname)}!`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} drinks ${singular(obj, doname)}!`);
     } else if (!Deaf()) {
         await You_hear('a chugging sound.');
     }
@@ -1654,7 +1654,7 @@ async function mreadmsg(mtmp, obj) {
     observe_object(obj);
     const onambuf = singular(obj, vismon ? doname : ansimpleoname);
     if (vismon) {
-        await pline(`${Monnam(mtmp)} reads ${onambuf}!`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} reads ${onambuf}!`);
     } else {
         const mdat = mtmp.data ?? game.mons[mtmp.mnum];
         const ydat = game.youmonst?.data ?? game.mons[game.u.umonnum];
@@ -1680,7 +1680,7 @@ async function mreadmsg(mtmp, obj) {
             await flash_mon(mtmp);
     }
     if (mtmp.mconf) {
-        const who = vismon ? mon_nam(mtmp) : 'it';
+        const who = vismon ? mon_nam(mtmp) : mhe(mtmp);
         await pline(`Being confused, ${who} mispronounces the magic words...`);
     }
     return true;
@@ -2089,7 +2089,7 @@ export async function use_misc(mtmp) {
         await mquaffmsg(mtmp, obj);
         if (obj.cursed) {
             const [{ Can_rise_up, ceiling, depth, get_level },
-                   { canseemon, pline }, { Monnam, trycall }]
+                   { canseemon }, { Monnam, trycall }]
                 = await Promise.all([
                     import('./dungeon.js'), import('./display.js'),
                     import('./do_name.js'),
@@ -2101,7 +2101,7 @@ export async function use_misc(mtmp) {
                 if (tolevel.dnum !== game.u.uz.dnum
                     || tolevel.dlevel !== game.u.uz.dlevel) {
                     if (vismon) {
-                        await pline(`${Monnam(mtmp)} rises up, through the ${
+                        await pline_mon(mtmp, `${Monnam(mtmp)} rises up, through the ${
                             ceiling(mtmp.mx, mtmp.my)}!`);
                         await trycall(obj);
                     }
@@ -2112,17 +2112,17 @@ export async function use_misc(mtmp) {
                 }
             }
             if (vismon) {
-                await pline(`${Monnam(mtmp)} looks uneasy.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} looks uneasy.`);
                 await trycall(obj);
             }
             await m_useup(mtmp, obj);
             return 2;
         }
-        const { canseemon, pline } = await import('./display.js');
+        const { canseemon } = await import('./display.js');
         const { Monnam } = await import('./do_name.js');
         const vismon = canseemon(mtmp);
         if (vismon)
-            await pline(`${Monnam(mtmp)} seems more experienced.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} seems more experienced.`);
         if (vismon) {
             const { makeknown } = await import('./o_init.js');
             makeknown(ONAMES.POT_GAIN_LEVEL);
@@ -2142,36 +2142,8 @@ export async function use_misc(mtmp) {
     case MUSE_POT_SPEED: {
         if (!obj)
             return 0;
-        const [{ canseemon, pline }, { You_hear }, { Deaf }, { Monnam },
-               { singular, doname }, { observe_object }, { learnwand }]
-            = await Promise.all([
-                import('./display.js'), import('./pline.js'),
-                import('./youprop.js'), import('./do_name.js'),
-                import('./objnam.js'), import('./o_init.js'),
-                import('./zap.js'),
-            ]);
-        const seen = canseemon(mtmp);
-
-        if (seen) {
-            observe_object(obj);
-            await pline(`${Monnam(mtmp)} drinks ${singular(obj, doname)}!`);
-        } else if (!Deaf()) {
-            await You_hear('a chugging sound.');
-        }
-
-        const oldspeed = mtmp.mspeed ?? 0;
-        mtmp.permspeed = (mtmp.permspeed === MSLOW) ? 0 : MFAST;
-        const speedBoots = (mtmp.minvent || []).some((item) =>
-            item.otyp === ONAMES.SPEED_BOOTS && item.owornmask);
-        mtmp.mspeed = speedBoots ? MFAST : mtmp.permspeed;
-        if (seen && mtmp.mspeed !== oldspeed && mtmp.data.mmove
-            && !mtmp.mfrozen && !mtmp.msleeping) {
-            const howmuch = (mtmp.mspeed + oldspeed === MFAST + MSLOW)
-                            ? 'much ' : '';
-            await pline(`${Monnam(mtmp)} is suddenly moving ${howmuch}faster.`);
-            learnwand(obj);
-        }
-
+        await mquaffmsg(mtmp, obj);
+        await mon_adjust_speed(mtmp, 1, obj);
         await m_useup(mtmp, obj);
         return 2;
     }
@@ -2249,7 +2221,7 @@ export async function use_misc(mtmp) {
     case MUSE_POT_POLYMORPH: {
         if (!obj)
             return 0;
-        const [{ canseemon, pline }, { Monnam }, { newcham }, { makeknown }]
+        const [{ canseemon }, { Monnam }, { newcham }, { makeknown }]
             = await Promise.all([
                 import('./display.js'), import('./do_name.js'),
                 import('./mon.js'), import('./o_init.js'),
@@ -2260,7 +2232,7 @@ export async function use_misc(mtmp) {
         await mquaffmsg(mtmp, obj);
         await m_useup(mtmp, obj);
         if (vismon)
-            await pline(`${Monnam(mtmp)} suddenly mutates!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} suddenly mutates!`);
         await newcham(mtmp, await muse_newcham_mon(mtmp), NC_SHOW_MSG);
         if (oseen)
             makeknown(ONAMES.POT_POLYMORPH);

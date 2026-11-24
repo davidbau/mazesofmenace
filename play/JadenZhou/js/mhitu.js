@@ -450,8 +450,25 @@ export function getmattk(magr, mdef, indx, prev_result) {
             || attk.adtyp === AD_FAMN)
         && attk.adtyp === mptr.mattk[indx - 1].adtyp) {
         attk = { ...attk, adtyp: M.AD_STUN };
+    /* make drain-energy damage be somewhat in proportion to energy */
     } else if (attk.adtyp === AD_DREN && udefend) {
-        throw new Error('getmattk(): AD_DREN substitution not ported yet');
+        const u = game.u;
+        const ulev = Math.max(u.ulevel, 6);
+
+        attk = { ...attk }; /* *alt_attk_buf = *attk */
+        /* 3.6.0 used 4d6 but since energy drain came out of max energy
+           once current energy was gone, that tended to have a severe
+           effect on low energy characters; it's now 2d6 with adjustments */
+        if (u.uen <= 5 * ulev && attk.damn > 1) {
+            attk.damn -= 1; /* low energy: 2d6 -> 1d6 */
+            if (u.uenmax <= 2 * ulev && attk.damd > 3)
+                attk.damd -= 3; /* very low energy: 1d6 -> 1d3 */
+        } else if (u.uen > 12 * ulev) {
+            attk.damn += 1; /* high energy: 2d6 -> 3d6 */
+            if (u.uenmax > 20 * ulev)
+                attk.damd += 3; /* very high energy: 3d6 -> 3d9 */
+            /* note: 3d9 is slightly higher than previous 4d6 */
+        }
     } else if (magr.mspec_used && (attk.aatyp === AT_ENGL
                                    || attk.aatyp === AT_HUGS
                                    || attk.adtyp === AD_STCK
@@ -868,6 +885,11 @@ export async function mattacku(mtmp) {
     return 0;
 }
 
+import { W_ACCESSORY as W_ACCESSORY_MU, W_WEP as W_WEP_MU } from './const.js';
+import { WEAPON_CLASS as WEAPON_CLASS_MU } from './objects.js';
+import { is_weptool as is_weptool_mu } from './mkobj.js';
+import { protects as protects_mu } from './artifact.js';
+
 // C ref: mhitu.c magic_negation()
 /* armor that sufficiently covers the body might be able to block magic */
 export function magic_negation(mon) {
@@ -878,9 +900,13 @@ export function magic_negation(mon) {
                          /* high priests have innate protection */
                          : (mon.data === mons[M.PM_HIGH_CLERIC]);
 
-    if (!is_you)
-        throw new Error('magic_negation(): monster defender not ported yet');
-    for (let o = game.invent; o; o = o.nobj) {
+    /* C walks invent/minvent via nobj; JS minvent is an array, oldest first */
+    const chain = [];
+    if (is_you)
+        for (let o = game.invent; o; o = o.nobj) chain.push(o);
+    else
+        chain.push(...(mon.minvent || []).slice().reverse());
+    for (const o of chain) {
         /* a_can field is only applicable for armor (which must be worn) */
         if ((o.owornmask & W_ARMOR) !== 0) {
             const armpro = objects[o.otyp].a_can;
@@ -892,6 +918,13 @@ export function magic_negation(mon) {
         /* if we've already confirmed Protection, skip additional checks */
         if (is_you || gotprot)
             continue;
+
+        /* omit W_SWAPWEP+W_QUIVER; W_ART+W_ARTI handled by protects() */
+        let wearmask = W_ARMOR | W_ACCESSORY_MU;
+        if (o.oclass === WEAPON_CLASS_MU || is_weptool_mu(o))
+            wearmask |= W_WEP_MU;
+        if (protects_mu(o, ((o.owornmask & wearmask) !== 0) ? true : false))
+            gotprot = true;
     }
 
     if (gotprot) {

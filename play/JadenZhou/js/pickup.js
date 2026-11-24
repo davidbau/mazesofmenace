@@ -143,8 +143,10 @@ export async function pickup(what) /* should be a long */ {
     /* we might have arrived here while fainted or sleeping, via
        random teleport or levitation timeout; if so, skip check_here
        and read_engr_at in addition to bypassing autopickup itself */
-    if (autopickup && game.multi < 0 /* && unconscious() */)
-        throw new Error('pickup(): unconscious() not ported yet');
+    if (autopickup && game.multi < 0 && unconscious()) {
+        game.iflags.prev_decor = STONE;
+        return 0;
+    }
 
     /* used by pickup_object() for encumbrance feedback */
     game.pickup_encumbrance = 0;
@@ -1247,7 +1249,9 @@ export async function query_objlist(qstr, /* query string */
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
     if (game.this_title)
-        throw new Error('query_objlist(): this_title (dotypeinv) not ported yet');
+        /* dotypeinv() supplies gt.this_title to display as initial header;
+           intentionally avoid the menu_headings highlight attribute here */
+        add_menu_str(win, game.this_title);
     /*
      * Run through the list and add the objects to the menu.  If
      * INVORDER_SORT is set, we'll run through the list once for
@@ -3128,3 +3132,4 @@ function age_is_relative(otmp) {
             || otmp.otyp === TALLOW_CANDLE || otmp.otyp === WAX_CANDLE
             || otmp.otyp === POT_OIL);
 }
+import { unconscious } from './eat.js';

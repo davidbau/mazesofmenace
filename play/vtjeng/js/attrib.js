@@ -130,7 +130,10 @@ import { body_part, uasmon_maxStr } from './polyself.js';
 import { make_confused } from './potion.js';
 import { coreRandom, rn1, rn2 } from './rng.js';
 import { aligns } from './roles.js';
-import { ttyPline } from './tty_message.js';
+import {
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import { summon_furies } from './makemon.js';
 import { impossible, livelog_printf, youFeel } from './pline.js';
 import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
@@ -576,7 +579,7 @@ export async function adjabil(oldlevel, newlevel, state = game, env = {}) {
             }
         }
         if (prevabil !== property.intrinsic) /* it changed */
-            await postadjabil(entry.ability, state, env);
+            await printQueued(postadjabil(entry.ability, state, env));
         ++index;
     }
 

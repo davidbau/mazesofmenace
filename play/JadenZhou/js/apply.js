@@ -109,6 +109,104 @@ async function its_dead(rx, ry, resp) {
 /* C ref: apply.c hollow_str[] */
 const hollow_str = (what) => `a hollow sound.  This must be a secret ${what}!`;
 
+// C ref: apply.c use_bell()
+async function use_bell(obj) {
+    const u = game.u;
+    let wakem = false, learno = false;
+    const ordinary = (obj.otyp !== O.BELL_OF_OPENING || !obj.spe),
+        invoking = (obj.otyp === O.BELL_OF_OPENING
+                    && invocation_pos_bl(u.ux, u.uy)
+                    && !stairway_at_bl(u.ux, u.uy)); /* !On_stairs() */
+
+    /* Hero_playnotes(obj_to_instr(obj), "C", 100): sound only */
+    await You(`ring ${the_ap(xname_ap(obj))}.`);
+
+    if (u.uinwater /* Underwater */ || (u.uswallow && ordinary)) {
+        await pline("But the sound is muffled.");
+
+    } else if (invoking && ordinary) {
+        /* needs to be recharged... */
+        await pline("But it makes no sound.");
+        learno = true; /* help player figure out why */
+
+    } else if (ordinary) {
+        if (obj.cursed && !rn2(4)
+            /* note: once any of them are gone, we stop all of them */
+            && !(game.mvitals[MM_bl.PM_WOOD_NYMPH].mvflags & G_GONE_bl)
+            && !(game.mvitals[MM_bl.PM_WATER_NYMPH].mvflags & G_GONE_bl)
+            && !(game.mvitals[MM_bl.PM_MOUNTAIN_NYMPH].mvflags & G_GONE_bl))
+            throw new Error('use_bell(): summoning a nymph not ported yet');
+        wakem = true;
+
+    } else {
+        /* charged Bell of Opening */
+        consume_obj_charge(obj, true);
+
+        if (u.uswallow) {
+            if (!obj.cursed)
+                await openit_bl();
+            else
+                await pline(nothing_happens_ap);
+
+        } else if (obj.cursed) {
+            /* mm = u.ux,u.uy; mkundead(&mm, FALSE, NO_MINVENT) */
+            throw new Error('use_bell(): mkundead() not ported yet');
+
+        } else if (invoking) {
+            await pline(`${Tobjnam_lp(obj, "issue")} an unsettling shrill sound...`);
+            obj.age = game.moves;
+            learno = true;
+            wakem = true;
+
+        } else if (obj.blessed) {
+            let res = 0;
+
+            if (game.uchain) {
+                await unpunish_bl();
+                res = 1;
+            } else if (u.utrap && u.utraptype === TT_BURIEDBALL_bl) {
+                throw new Error('use_bell(): buried_ball_to_freedom() not ported yet');
+            }
+            res += await openit_bl();
+            switch (res) {
+            case 0:
+                await pline(nothing_happens_ap);
+                break;
+            case 1:
+                await pline("Something opens..."); /* Something */
+                learno = true;
+                break;
+            default:
+                await pline("Things open around you...");
+                learno = true;
+                break;
+            }
+
+        } else { /* uncursed */
+            if (await findit_bl() !== 0)
+                learno = true;
+            else
+                await pline(nothing_happens_ap);
+        }
+
+    } /* charged BofO */
+
+    if (learno) {
+        discover_object(O.BELL_OF_OPENING, true, true, true); /* makeknown() */
+        obj.known = 1;
+    }
+    if (wakem)
+        await wake_nearby_bl(true);
+}
+import { invocation_pos as invocation_pos_bl } from './mklev.js';
+import { stairway_at as stairway_at_bl } from './display.js';
+import { wake_nearby as wake_nearby_bl } from './mon.js';
+import { G_GONE as G_GONE_bl } from './const.js';
+import * as MM_bl from './monsters.js';
+import { openit as openit_bl, findit as findit_bl } from './detect.js';
+import { unpunish as unpunish_bl } from './read.js';
+import { TT_BURIEDBALL as TT_BURIEDBALL_bl } from './const.js';
+
 // C ref: apply.c use_stethoscope()
 /* Strictly speaking it makes no sense for usage of a stethoscope to
    not take any time; however, unless it did, the stethoscope would be
@@ -453,6 +551,8 @@ import { Your as Your_lp } from './display.js';
 import { begin_burn as begin_burn_lp, end_burn as end_burn_lp } from './timeout.js';
 import { make_glib as make_glib_lp } from './potion.js';
 import { fingers_or_gloves as fingers_or_gloves_lp } from './do_wear.js';
+import { Blindf_on as Blindf_on_dw, Blindf_off as Blindf_off_dw,
+         cursed as cursed_dw } from './do_wear.js';
 import { d as d_lp } from './rng.js';
 import { check_unpaid as check_unpaid_lp } from './zap.js';
 
@@ -547,14 +647,26 @@ export async function doapply() {
     switch (obj.otyp) {
     case O.BLINDFOLD:
     case O.LENSES:
-        throw new Error('doapply(): Blindf_on()/Blindf_off() not ported yet');
+        if (obj === game.ublindf) {
+            if (!(await cursed_dw(obj)))
+                await Blindf_off_dw(obj);
+        } else if (!game.ublindf) {
+            await Blindf_on_dw(obj);
+        } else {
+            await You(`are already ${
+                (game.ublindf.otyp === O.TOWEL) ? "covered by a towel"
+                : (game.ublindf.otyp === O.BLINDFOLD) ? "wearing a blindfold"
+                  : "wearing lenses"}.`);
+        }
+        break;
     case CREAM_PIE:
         res = await use_cream_pie(obj);
         break;
     case LUMP_OF_ROYAL_JELLY:
         throw new Error('doapply(): use_royal_jelly() not ported yet');
     case BULLWHIP:
-        throw new Error('doapply(): use_whip() not ported yet');
+        res = await use_whip(obj);
+        break;
     case O.GRAPPLING_HOOK:
         throw new Error('doapply(): use_grapple() not ported yet');
     case O.LARGE_BOX:
@@ -580,7 +692,8 @@ export async function doapply() {
     case O.TINNING_KIT:
         throw new Error('doapply(): use_tinning_kit() not ported yet');
     case O.LEASH:
-        throw new Error('doapply(): use_leash() not ported yet');
+        res = await use_leash(obj);
+        break;
     case O.SADDLE:
         throw new Error('doapply(): use_saddle() not ported yet');
     case O.MAGIC_WHISTLE:
@@ -596,7 +709,8 @@ export async function doapply() {
         throw new Error('doapply(): use_mirror() not ported yet');
     case O.BELL:
     case O.BELL_OF_OPENING:
-        throw new Error('doapply(): use_bell() not ported yet');
+        await use_bell(obj);
+        break;
     case O.CANDELABRUM_OF_INVOCATION:
         throw new Error('doapply(): use_candelabrum() not ported yet');
     case O.WAX_CANDLE:
@@ -610,7 +724,8 @@ export async function doapply() {
     case POT_OIL:
         throw new Error('doapply(): light_cocktail() not ported yet');
     case O.EXPENSIVE_CAMERA:
-        throw new Error('doapply(): use_camera() not ported yet');
+        res = await use_camera(obj);
+        break;
     case O.TOWEL:
         throw new Error('doapply(): use_towel() not ported yet');
     case O.CRYSTAL_BALL:
@@ -987,3 +1102,303 @@ async function use_lamp(obj) {
 export async function fig_transform(arg, timeout) {
     throw new Error('fig_transform() not ported yet');
 }
+
+// C ref: apply.c use_whip()
+async function use_whip(obj) {
+    const g = game;
+    const u = g.u;
+    let mtmp;
+    let otmp;
+    let rx, ry, proficient, res = ECMD_OK;
+    const msg_slipsfree = "The bullwhip slips free.";
+    const msg_snap = "Snap!";
+    const up = (p) => u.uprops[p] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    const Fumbling = !!(up(FUMBLING_WH).intrinsic || up(FUMBLING_WH).extrinsic);
+    const Glib = !!(up(GLIB_WH).intrinsic || up(GLIB_WH).extrinsic);
+    const Levitation = !!((up(LEVITATION_WH).intrinsic || up(LEVITATION_WH).extrinsic)
+                          && !up(LEVITATION_WH).blocked);
+    const Flying = !!((up(FLYING_WH).intrinsic || up(FLYING_WH).extrinsic)
+                      && !up(FLYING_WH).blocked);
+
+    if (obj !== g.uwep) {
+        if (await wield_tool_ap(obj, "lash")) {
+            /* cmdq_add_ec(CQ_CANNED, doapply);
+               cmdq_add_key(CQ_CANNED, obj->invlet); */
+            if (!g.cmdq) g.cmdq = [];
+            g.cmdq.push({ typ: 'ec', fn: 'doapply' });
+            g.cmdq.push({ typ: 'key', key: obj.invlet });
+            return ECMD_TIME;
+        }
+        return ECMD_OK;
+    }
+    if (!(await getdir(null)))
+        return (res | ECMD_CANCEL);
+
+    if (u.uswallow) {
+        mtmp = u.ustuck;
+        rx = mtmp.mx;
+        ry = mtmp.my;
+    } else {
+        confdir(false);
+        rx = u.ux + u.dx;
+        ry = u.uy + u.dy;
+        if (!isok(rx, ry)) {
+            await You("miss.");
+            return res;
+        }
+        mtmp = m_at(rx, ry);
+    }
+
+    /* fake some proficiency checks */
+    proficient = 0;
+    if (g.urole.mnum === PM_ARCHEOLOGIST_WH) /* Role_if() */
+        ++proficient;
+    if (ACURR(A_DEX_WH) < 6)
+        proficient--;
+    else if (ACURR(A_DEX_WH) >= 14)
+        proficient += (ACURR(A_DEX_WH) - 14);
+    if (Fumbling)
+        --proficient;
+    if (proficient > 3)
+        proficient = 3;
+    if (proficient < 0)
+        proficient = 0;
+
+    const loc = g.level.at(rx, ry);
+    if (u.uswallow) {
+        await There("is not enough room to flick your bullwhip.");
+
+    } else if (u.uinwater) { /* Underwater */
+        await There("is too much resistance to flick your bullwhip.");
+
+    } else if (u.dz < 0) {
+        await You(`flick a bug off of the ${ceiling_wh(u.ux, u.uy)}.`);
+
+    } else if (!u.dz && (IS_WATERWALL(loc.typ) || loc.typ === LAVAWALL)) {
+        await You("cause a small splash.");
+        if (loc.typ === LAVAWALL)
+            throw new Error('use_whip(): fire_damage() of a lava wall not ported yet');
+        return ECMD_TIME;
+    } else if ((!u.dx && !u.dy) || (u.dz > 0)) {
+        let dam;
+
+        /* Sometimes you hit your steed by mistake */
+        if (u.usteed)
+            throw new Error('use_whip(): whipping while riding not ported yet');
+        if (is_pool_or_lava(u.ux, u.uy)
+            || IS_WATERWALL(loc.typ) || loc.typ === LAVAWALL) {
+            await You("cause a small splash.");
+            if (is_lava_wh(u.ux, u.uy))
+                throw new Error('use_whip(): fire_damage() of lava not ported yet');
+            return ECMD_TIME;
+        }
+        if (Levitation || u.usteed || Flying) {
+            /* Have a shot at snaring something on the floor.  A flyer
+               can reach the floor so could just pick an item up, but
+               allow snagging by whip too. */
+            throw new Error('use_whip(): snaring an object from the air not ported yet');
+        }
+        dam = rnd(2) + dbon() + obj.spe;
+        if (dam <= 0)
+            dam = 1;
+        await You(`hit your ${body_part(FOOT_WH)} with your bullwhip.`);
+        const buf = `killed ${g.flags.female ? "her" : "him"}self with ${ /* uhim() */
+            g.flags.female ? "her" : "his"} bullwhip`; /* uhis() */
+        await losehp(Maybe_Half_Phys(dam), buf, NO_KILLER_PREFIX_WH);
+        return ECMD_TIME;
+
+    } else if ((Fumbling || Glib) && !rn2(5)) {
+        await pline_The(`bullwhip slips out of your ${body_part(HAND)}.`);
+        await dropx(obj);
+
+    } else if (u.utrap && u.utraptype === TT_PIT_WH) {
+        throw new Error('use_whip(): whipping out of a pit not ported yet');
+    } else if (mtmp) {
+        /* whipattack: */
+        throw new Error('use_whip(): whipping a monster not ported yet');
+    } else if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) {
+        /* it must be air -- water checked above */
+        await You("snap your whip through thin air.");
+
+    } else {
+        await pline(msg_snap);
+    }
+    void msg_slipsfree;
+    void otmp;
+    return ECMD_TIME;
+}
+import { FUMBLING as FUMBLING_WH, GLIB as GLIB_WH, LEVITATION as LEVITATION_WH,
+         FLYING as FLYING_WH, A_DEX as A_DEX_WH, TT_PIT as TT_PIT_WH,
+         NO_KILLER_PREFIX as NO_KILLER_PREFIX_WH, FOOT as FOOT_WH,
+         IS_WATERWALL, LAVAWALL } from './const.js';
+import { PM_ARCHEOLOGIST as PM_ARCHEOLOGIST_WH } from './monsters.js';
+import { ceiling as ceiling_wh } from './dungeon.js';
+import { is_pool_or_lava } from './hack.js';
+import { is_lava as is_lava_wh } from './makemon.js';
+import { dbon } from './weapon.js';
+import { losehp, Maybe_Half_Phys } from './trap.js';
+import { dropx } from './do.js';
+
+// C ref: invent.c consume_obj_charge()
+function consume_obj_charge(obj,
+                            maybe_unpaid) { /* false if caller handles shop billing */
+    if (maybe_unpaid)
+        check_unpaid_cam(obj);
+    obj.spe -= 1;
+    /* if (obj->known) update_inventory(): no perm_invent */
+}
+
+// C ref: apply.c use_camera()
+async function use_camera(obj) {
+    const u = game.u;
+
+    if (u.uinwater) { /* Underwater */
+        await pline("Using your camera underwater would void the warranty.");
+        return ECMD_OK;
+    }
+    if (!(await getdir(null)))
+        return ECMD_CANCEL;
+
+    if (obj.spe <= 0) {
+        await pline(nothing_happens_ap);
+        return ECMD_TIME;
+    }
+    consume_obj_charge(obj, true);
+
+    if (obj.cursed && !rn2(2)) {
+        await zapyourself_cam(obj, true);
+    } else if (u.uswallow) {
+        await You(`take a picture of ${s_suffix_cam(mon_nam_cam(u.ustuck))} ${
+            mbodypart_cam(u.ustuck, STOMACH_CAM)}.`);
+    } else if (u.dz) {
+        await You(`take a picture of the ${
+            (u.dz > 0) ? surface(u.ux, u.uy) : ceiling_wh(u.ux, u.uy)}.`);
+    } else if (!u.dx && !u.dy) {
+        /* TODO:  we ought to have a "selfie" joke here... */
+        await zapyourself_cam(obj, true);
+    } else {
+        throw new Error('use_camera(): do_blinding_ray() not ported yet');
+    }
+    return ECMD_TIME;
+}
+import { check_unpaid as check_unpaid_cam, zapyourself as zapyourself_cam } from './zap.js';
+import { s_suffix as s_suffix_cam } from './hacklib.js';
+import { mon_nam as mon_nam_cam } from './do_name.js';
+import { mbodypart as mbodypart_cam } from './insight.js';
+import { STOMACH as STOMACH_CAM } from './const.js';
+
+// C ref: apply.c number_leashed()
+function number_leashed() {
+    let i = 0;
+
+    for (let obj = game.invent; obj; obj = obj.nobj)
+        if (obj.otyp === O.LEASH && obj.leashmon)
+            i++;
+    return i;
+}
+
+/* C ref: mondata.h unsolid(), nolimbs(), has_head() */
+function unsolid_ls(ptr) { return (ptr.mflags1 & M1_UNSOLID_LS) !== 0; }
+function nolimbs_ls(ptr) { return (ptr.mflags1 & M1_NOLIMBS_LS) !== 0; }
+function has_head_ls(ptr) { return (ptr.mflags1 & M1_NOHEAD_LS) === 0; }
+
+// C ref: apply.c leashable()
+function leashable(mtmp) {
+    return (mtmp.data !== mons_ls[PM_LONG_WORM_LS] /* mtmp->mnum */
+            && !unsolid_ls(mtmp.data)
+            && (!nolimbs_ls(mtmp.data) || has_head_ls(mtmp.data)));
+}
+
+// C ref: apply.c use_leash()
+async function use_leash(obj) {
+    const u = game.u;
+    const cc = { x: 0, y: 0 };
+    let mtmp;
+
+    if (u.uswallow) {
+        /* if the leash isn't in use, assume we're trying to leash
+           the engulfer; if it is use, distinguish between removing
+           it from the engulfer versus from some other creature
+           (note: the two in-use cases can't actually occur; all
+           leashes are released when the hero gets engulfed) */
+        const what = noit_mon_nam_ls(u.ustuck);
+        await You_cant(!obj.leashmon ? `leash ${what} from inside.`
+                       : (obj.leashmon === u.ustuck.m_id)
+                         ? `unleash ${what} from inside.`
+                         : `unleash anything from inside ${what}.`);
+        return ECMD_OK;
+    }
+    if (!obj.leashmon && number_leashed() >= 2 /* MAXLEASHED */) {
+        await You("cannot leash any more pets.");
+        return ECMD_OK;
+    }
+
+    if (!(await get_adjacent_loc_ls(null, null, u.ux, u.uy, cc)))
+        return ECMD_OK;
+
+    if (cc.x === u.ux && cc.y === u.uy) { /* u_at() */
+        if (u.usteed && u.dz > 0) {
+            mtmp = u.usteed;
+            await use_leash_core(obj, mtmp, cc, 1);
+            return ECMD_TIME;
+        }
+        await pline("Leash yourself?  Very funny...");
+        return ECMD_OK;
+    }
+
+    /*
+     * From here on out, return value is 1 == a move is used.
+     */
+
+    if (!(mtmp = m_at(cc.x, cc.y))) {
+        await There("is no creature there.");
+        unmap_invisible(cc.x, cc.y);
+        return ECMD_TIME;
+    }
+
+    await use_leash_core(obj, mtmp, cc, canspotmon(mtmp));
+    return ECMD_TIME;
+}
+
+// C ref: apply.c use_leash_core()
+async function use_leash_core(obj, mtmp, cc, spotmon) {
+    if (!spotmon
+        && !glyph_is_invisible_ls(game.level.at(cc.x, cc.y).remembered_glyph)) {
+        /* for the unleash case, we don't verify whether this unseen
+           monster is the creature attached to the current leash */
+        await You(`fail to ${obj.leashmon ? "un" : ""}leash something.`);
+        /* trying again will work provided the monster is tame
+           (and also that it doesn't change location by retry time) */
+        map_invisible(cc.x, cc.y);
+    } else if (!mtmp.mtame) {
+        await pline(`${Monnam_ls(mtmp)} ${(!obj.leashmon) ? "cannot be" : "is not"} leashed!`);
+    } else if (!obj.leashmon) {
+        /* applying a leash which isn't currently in use */
+        if (mtmp.mleashed) {
+            await pline(`This ${spotmon ? l_monnam_ls(mtmp) : "creature"} is already leashed.`);
+        } else if (unsolid_ls(mtmp.data)) {
+            await pline("The leash would just fall off.");
+        } else if (nolimbs_ls(mtmp.data) && !has_head_ls(mtmp.data)) {
+            await pline(`${Monnam_ls(mtmp)} has no extremities the leash would fit.`);
+        } else if (!leashable(mtmp)) {
+            let lmonnam = l_monnam_ls(mtmp);
+
+            if (cc.x !== mtmp.mx || cc.y !== mtmp.my)
+                lmonnam = `${s_suffix_cam(lmonnam)} tail`;
+            await pline(`The leash won't fit onto ${spotmon ? "your " : ""}${lmonnam}.`);
+        } else {
+            /* mtmp->mleashed = 1; obj->leashmon = mtmp->m_id: leashed pets
+               (check_leash(), next_to_u(), dog movement) aren't ported */
+            throw new Error('use_leash_core(): leashing a pet not ported yet');
+        }
+    } else {
+        /* applying a leash which is currently in use */
+        throw new Error('use_leash_core(): removing a leash not ported yet');
+    }
+}
+import { noit_mon_nam as noit_mon_nam_ls, Monnam as Monnam_ls,
+         l_monnam as l_monnam_ls } from './do_name.js';
+import { get_adjacent_loc as get_adjacent_loc_ls } from './cmd.js';
+import { glyph_is_invisible as glyph_is_invisible_ls } from './display.js';
+import { mons as mons_ls, PM_LONG_WORM as PM_LONG_WORM_LS, M1_UNSOLID as M1_UNSOLID_LS,
+         M1_NOLIMBS as M1_NOLIMBS_LS, M1_NOHEAD as M1_NOHEAD_LS } from './monsters.js';

@@ -594,7 +594,7 @@ function check_map_spot(x, y, oclass, material) {
         /* there's some object shown here */
         if (oclass === ALL_CLASSES_DT) {
             return !(objects_at_dt(x, y).length /* stale if nothing here */
-                     || ((mtmp = m_at(x, y)) != null && mtmp.minvent));
+                     || ((mtmp = m_at(x, y)) != null && mtmp.minvent?.length));
         } else {
             if (material
                 && objects_dt[glyph.otyp].oc_material === material) {
@@ -604,7 +604,7 @@ function check_map_spot(x, y, oclass, material) {
                         return false;
                 /* didn't find it; perhaps a monster is carrying it */
                 if ((mtmp = m_at(x, y)) != null) {
-                    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
+                    for (const otmp of minvent_dt(mtmp))
                         if (o_material(otmp, GOLD_MAT_DT))
                             return false;
                 }
@@ -618,7 +618,7 @@ function check_map_spot(x, y, oclass, material) {
                         return false;
                 /* didn't find it; perhaps a monster is carrying it */
                 if ((mtmp = m_at(x, y)) != null) {
-                    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
+                    for (const otmp of minvent_dt(mtmp))
                         if (o_in(otmp, oclass))
                             return false;
                 }
@@ -678,7 +678,7 @@ export async function gold_detect(sobj) {
                 outgoldmap = true; /* goto outgoldmap; skip further searching */
             }
         } else {
-            for (obj = mtmp.minvent; obj; obj = obj.nobj)
+            for (obj of minvent_dt(mtmp))
                 if ((sobj.blessed && o_material(obj, GOLD_MAT_DT))
                     || o_in(obj, COIN_CLASS_DT)) {
                     if (mtmp === u.usteed) {
@@ -772,7 +772,7 @@ export async function gold_detect(sobj) {
             map_object(gold, 1);
             temp = gold;
         } else {
-            for (obj = mtmp.minvent; obj; obj = obj.nobj)
+            for (obj of minvent_dt(mtmp))
                 if (sobj.blessed && (temp = o_material(obj, GOLD_MAT_DT)) != null) {
                     temp.ox = mtmp.mx;
                     temp.oy = mtmp.my;
@@ -803,7 +803,7 @@ export async function gold_detect(sobj) {
 
 /* C ref: invent.c findgold() -- for a linked (nobj) object chain */
 function findgold_dt(chain) {
-    for (let o = chain; o; o = o.nobj)
+    for (const o of objchain_dt(chain))
         if (o.otyp === GOLD_PIECE_DT)
             return o;
     return null;
@@ -812,6 +812,12 @@ function findgold_dt(chain) {
 /* C ref: fobj -- the floor objects, newest first */
 function fobj_dt() {
     return (game.level.objects || []).filter(o => o.where === 'OBJ_FLOOR');
+}
+
+/* C ref: mtmp->minvent walked via nobj (newest first); JS minvent is an
+   array, oldest first */
+function minvent_dt(mtmp) {
+    return (mtmp.minvent || []).slice().reverse();
 }
 
 /* C ref: an object chain as C walks it with ->nobj: an array (fobj,
@@ -853,7 +859,7 @@ export async function food_detect(sobj) {
     for (let mtmp = g.fmon; mtmp && (!ct || !ctu); mtmp = mtmp.nmon) {
         if (mtmp.mhp < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
-        for (let obj = mtmp.minvent; obj; obj = obj.nobj)
+        for (const obj of minvent_dt(mtmp))
             if (o_in(obj, oclass)) {
                 if (mtmp.mx === u.ux && mtmp.my === u.uy)
                     ctu++; /* steed or an engulfer with inventory */
@@ -913,7 +919,7 @@ export async function food_detect(sobj) {
         for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
             if (mtmp.mhp < 1 || (mtmp.isgd && !mtmp.mx))
                 continue;
-            for (let obj = mtmp.minvent; obj; obj = obj.nobj)
+            for (const obj of minvent_dt(mtmp))
                 if ((temp = o_in(obj, oclass)) != null) {
                     temp.ox = mtmp.mx;
                     temp.oy = mtmp.my;
@@ -1492,9 +1498,13 @@ async function openone(zx, zy, num_p) {
             newsym(zx, zy);
             num_p.v++;
         }
-        /* openholdingtrap(mon, &dummy) || openfallingtrap(mon, TRUE, &dummy) */
-        throw new Error('openone(): openholdingtrap()/openfallingtrap() not ported yet');
-    } else if (find_drawbridge_dt({ x: zx, y: zy })) {
+        const mon = (zx === game.u.ux && zy === game.u.uy) ? game.youmonst /* u_at() */
+                    : m_at(zx, zy);
+        /* openholdingtrap(mon, &dummy) || openfallingtrap(mon, TRUE, &dummy):
+           both return FALSE at once when there's no monster here */
+        if (mon)
+            throw new Error('openone(): openholdingtrap()/openfallingtrap() not ported yet');
+    } else if (find_drawbridge_dt(zx, zy)) {
         throw new Error('openone(): open_drawbridge() not ported yet');
     }
 }

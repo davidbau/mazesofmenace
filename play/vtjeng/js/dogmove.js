@@ -55,7 +55,9 @@ import {
 } from './dbridge.js';
 import { isok } from './cmd_isok.js';
 import { dirtocoord, xytodir } from './cmd.js';
-import { glyph_is_object, newsym, vobj_at } from './display.js';
+import {
+    glyph_buffer_at, glyph_is_object, newsym, vobj_at,
+} from './display.js';
 import {
     noit_Monnam,
     pmname,
@@ -186,7 +188,10 @@ import { CMAP_EXPLANATIONS } from './symbol_data.js';
 import { S_sink } from './symbols.js';
 import { mpickobj, relobj } from './steal.js';
 import { gettrack } from './track.js';
-import { ttyPline } from './tty_message.js';
+import {
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import { tty_display_nhwindow_map_blocking } from './wintty.js';
 import {
     t_at,
@@ -531,8 +536,8 @@ export async function dog_eat(mtmp, obj, x, y, devour, rawEnv = {}) {
 
     const redraw = rawEnv.redraw ?? newsym;
     if (x !== mtmp.mx || y !== mtmp.my) {
-        redraw(x, y);
-        redraw(mtmp.mx, mtmp.my);
+        await printQueued(redraw(x, y));
+        await printQueued(redraw(mtmp.mx, mtmp.my));
     }
 
     // dogmove.c:252-256. Killer-bee jelly has its own complete owner and
@@ -696,11 +701,11 @@ export async function quickmimic(mtmp, rawEnv = {}) {
     mtmp.mappearance = appearance;
 
     if (spotted || seeloc || canspotmon(mtmp, state)) {
-        const location = state.level.at(mtmp.mx, mtmp.my);
+        const entry = glyph_buffer_at(mtmp.mx, mtmp.my, state);
         // display.h glyph_at() reads the transient glyph buffer, not
         // levl[x][y].glyph.  M_AP_MONSTER deliberately leaves the underlying
         // floor memory unchanged while replacing this presentation.
-        const previousGlyph = location.disp_glyph?.glyph;
+        const previousGlyph = entry.glyphinfo?.glyph;
         let what = 'something';
         if (appearanceType === M_AP_FURNITURE) {
             what = CMAP_EXPLANATIONS[appearance];
@@ -713,7 +718,7 @@ export async function quickmimic(mtmp, rawEnv = {}) {
         }
 
         const redraw = rawEnv.redraw ?? newsym;
-        redraw(mtmp.mx, mtmp.my);
+        await printQueued(redraw(mtmp.mx, mtmp.my));
         const message = rawEnv.message ?? ttyPline;
         if (wasLeashed
             && (appearanceType !== M_AP_MONSTER
@@ -724,7 +729,7 @@ export async function quickmimic(mtmp, rawEnv = {}) {
             await message('Your leash goes slack.', state);
             await m_unleash(mtmp, false, { ...rawEnv, state });
         }
-        const currentGlyph = location.disp_glyph?.glyph;
+        const currentGlyph = entry.glyphinfo?.glyph;
         if (currentGlyph !== previousGlyph) {
             await message(
                 `You ${seeloc ? 'see' : 'sense that'} `
@@ -872,7 +877,7 @@ export async function dog_invent(monster, edog, heroDistance, rawEnv = {}) {
             }
         }
         await obj_extract_self(taken, objectEnv);
-        redraw(monster.mx, monster.my, state);
+        await printQueued(redraw(monster.mx, monster.my, state));
         mpickobj(monster, taken, objectEnv);
         if (attacktype(monster.data, AT_WEAP)
             && monster.weapon_check === NEED_WEAPON) {
@@ -1355,7 +1360,7 @@ export async function dog_move(monster, after, rawEnv = {}) {
         if (!await m_in_out_region(monster, nextX, nextY, env)) return;
         remove_monster(monster.mx, monster.my, state);
         place_monster(monster, cc.x, cc.y, state);
-        (env.redraw ?? newsym)(cc.x, cc.y, state);
+        await printQueued((env.redraw ?? newsym)(cc.x, cc.y, state));
         set_apparxy(monster, env);
     };
 

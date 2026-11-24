@@ -145,8 +145,7 @@ import { o_unleash, tinnable } from './apply.js';
 import { on_level,
     surface } from './dungeon.js';
 import { pluslvl, more_experienced, newexplevel } from './exper.js';
-import { bot, canseemon, canspotmon, newsym,
-    see_monsters, set_mimic_blocking } from './display.js';
+import { bot, canseemon, canspotmon, newsym, newsym_async, see_monsters_async, set_mimic_blocking } from './display.js';
 import { can_reach_floor } from './engrave.js';
 import { game } from './gstate.js';
 import { is_ice,
@@ -154,7 +153,7 @@ import { is_ice,
 } from './dbridge.js';
 import { note_unported } from './unported.js';
 import { vault_gd_watching } from './vault.js';
-import { unpunish } from './read.js';
+import { unpunish_async } from './read.js';
 import { impossible_printer, livelog_printf, verbalize, youHear, youFeel } from './pline.js';
 import {
     check_capacity, endRunning, inv_cnt, losehp, near_capacity, nomul, unmul, rounddiv, still_chewing, curs_on_u, You_can_move_again, } from './hack.js';
@@ -202,7 +201,10 @@ import { fall_asleep } from './timeout.js';
 import {
     b_trapped, deltrap, float_up, reset_utrap, selftouch, t_at,
 } from './trap.js';
-import { ttyPline } from './tty_message.js';
+import {
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import { tty_display_nhwindow_map_blocking } from './wintty.js';
 import { remove_worn_item } from './steal.js';
 import { costly_spot, sellobj_state } from './shk.js';
@@ -2448,7 +2450,7 @@ async function givit(type, ptr, state, env = {}) {
                 state,
             );
             addOutside();
-            if (Blind(state.u)) await see_monsters(state, { ...env });
+            if (Blind(state.u)) await see_monsters_async(state, { ...env });
         }
         break;
     case ACID_RES:
@@ -2567,7 +2569,7 @@ async function cpostfx(pm, state, env = {}) {
     let check_intrinsics = false;
 
     // C discards the result while releasing a stale mimic message.
-    if (state.eatmbuf) eatmdone(state);
+    if (state.eatmbuf) await printQueued(eatmdone(state));
 
     switch (pm) {
     case PM_WRAITH:
@@ -2605,7 +2607,7 @@ async function cpostfx(pm, state, env = {}) {
             state.u.uprops[INVIS].intrinsic |= FROMOUTSIDE;
             state.u.uprops[SEE_INVIS].intrinsic |= FROMOUTSIDE;
         }
-        newsym(state.u.ux, state.u.uy);
+        await newsym_async(state.u.ux, state.u.uy);
         // C falls through to the shared yellow-light/giant-bat stun arm.
         await make_stunned(
             (HStun(state.u) & TIMEOUT) + 30,
@@ -2684,7 +2686,7 @@ async function cpostfx(pm, state, env = {}) {
             // "make gold symbol show up now": display_nhwindow(WIN_MAP,
             // TRUE) waits at --More-- whenever the top line holds text, even
             // text that an earlier key already acknowledged.
-            newsym(state.u.ux, state.u.uy);
+            await newsym_async(state.u.ux, state.u.uy);
             await curs_on_u(state);
             await tty_display_nhwindow_map_blocking(state);
         }
@@ -3846,14 +3848,14 @@ async function eataccessory(otmp, state, env) {
         switch (typ) {
         case RIN_SEE_INVISIBLE: {
             set_mimic_blocking(state);
-            await see_monsters(state, { ...env });
+            await see_monsters_async(state, { ...env });
             const invisible = Boolean(
                 Invis(state.u),
             );
             if (invisible && !oldprop && !ESee_invisible(state.u)
                 && !perceives(state.youmonst.data)
                 && !Blind(state.u)) {
-                newsym(state.u.ux, state.u.uy, state);
+                await newsym_async(state.u.ux, state.u.uy);
                 await message('Suddenly you can see yourself.', state);
                 discover_object(typ, true, true, true, state);
             }
@@ -3867,7 +3869,7 @@ async function eataccessory(otmp, state, env) {
             );
             if (!oldprop && !EInvis(state.u) && !BInvis(state.u)
                 && !seeInvis && !Blind(state.u)) {
-                newsym(state.u.ux, state.u.uy, state);
+                await newsym_async(state.u.ux, state.u.uy);
                 await message(
                     `Your body takes on a ${Hallucination(state.u)
                         ? 'normal' : 'strange'} transparency...`,
@@ -3996,7 +3998,7 @@ async function eatspecial(state, env) {
             await useupall(otmp, env);
         else
             await useupf(otmp, otmp.quan, env);
-        vault_gd_watching(GD_EATGOLD, state);
+        await printQueued(vault_gd_watching(GD_EATGOLD, state));
         return;
     }
 
@@ -4055,9 +4057,9 @@ async function eatspecial(state, env) {
         uswapwepgone({ state });
 
     if (otmp === state.uball)
-        unpunish(state, env);
+        await unpunish_async(state, env);
     if (otmp === state.uchain) {
-        unpunish(state, env);
+        await unpunish_async(state, env);
     } else if (carried(otmp)) {
         await useup(otmp, env);
     } else {

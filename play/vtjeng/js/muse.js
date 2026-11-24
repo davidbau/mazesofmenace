@@ -112,7 +112,7 @@ import { losehp, nomul } from './hack.js';
 import { dirtocoord, xytodir } from './cmd.js';
 import {
     cls, display_self, docrt, map_invisible,
-    map_monster_glyph_info, newsym, show_glyph_cell,
+    map_monster_glyph_info, newsym, newsym_async, show_glyph_cell,
     shieldeff,
 } from './display.js';
 import { canletgo, dropy, trycall } from './do.js';
@@ -144,8 +144,7 @@ import { awaken_soldiers } from './music.js';
 import { m_next2u } from './mhitu.js';
 import { paralyze_monst } from './mhitm.js';
 import {
-    healmon, m_carrying, maybe_unhide_at, mon_offmap, mondead, mongone, monkilled,
-    seemimic, wakeup, xkilled, is_Vlad, flash_mon, newcham,
+    healmon, m_carrying, maybe_unhide_at, mon_offmap, mondead, mongone_async, monkilled, seemimic_async, wakeup, xkilled, is_Vlad, flash_mon, newcham,
 } from './mon.js';
 import {
     acidic, amorphous, attacktype, attacktype_fordmg, can_blow, dmgtype,
@@ -199,7 +198,7 @@ import {
     is_ice,
 } from './dbridge.js';
 import {
-    enexto, noteleport_level, random_teleport_level, rloc, tele,
+    enexto, noteleport_level, random_teleport_level, rloc_async, tele,
     tele_restrict,
 } from './teleport.js';
 import { CLR_GREEN, CLR_BRIGHT_GREEN } from './terminal.js';
@@ -207,18 +206,23 @@ import { begin_burn } from './timeout.js';
 import { make_blinded } from './potion.js';
 import {
     fill_pit,
-    maketrap,
+    maketrap_async,
     t_at,
     trapname,
     unconscious,
 } from './trap.js';
 import { worm_move } from './worm.js';
 
-import { mintrap, seetrap, wearing_iron_shoes } from './trap_effects.js';
+import { mintrap, seetrap, seetrap_async, wearing_iron_shoes } from './trap_effects.js';
 import { makeplural } from './fruit.js';
 import { s_suffix, upstart } from './hacklib.js';
 import { mpickobj, remove_worn_item } from './steal.js';
-import { ttyNorep, ttyPline, ttyUrgentPline } from './tty_message.js';
+import {
+    printQueued,
+    ttyNorep,
+    ttyPline,
+    ttyUrgentPline,
+} from './tty_message.js';
 import { doorlock } from './lock.js';
 import { cansee, couldsee, recalc_block_point, unblock_point } from './vision.js';
 import { body_part } from './polyself.js';
@@ -387,7 +391,7 @@ async function precheck(mon, obj, state, env = {}, selection = null) {
                             `${Monnam(mtmp, state)} vanishes.`,
                             state);
                     }
-                    await mongone(mtmp, { state });
+                    await mongone_async(mtmp, { state });
                 }
             }
             return 2;
@@ -553,7 +557,7 @@ async function mreadmsg(mtmp, otmp, state, rawEnv = {}) {
             && mdistu(mtmp, state) <= 10 * 10) {
             const markInvisible = rawEnv.markInvisible
                 ?? mapInvisibleAt;
-            markInvisible(mtmp.mx, mtmp.my, state);
+            await printQueued(markInvisible(mtmp.mx, mtmp.my, state));
         }
 
         let blindbuf = `reading ${onambuf}`;
@@ -659,7 +663,7 @@ async function m_tele(mtmp, vismon, oseen, how, state, trapCoords) {
             if (oseen) {
                 discover_object(how, true, true, true, state);
             }
-            await rloc(mtmp, RLOC_MSG, { state });
+            await rloc_async(mtmp, RLOC_MSG, { state });
         } else {
             // monster is voluntarily entering a teleportation trap; use the
             // trap instead of rloc() in case it sends 'victim' to a vault
@@ -712,7 +716,7 @@ async function mon_escape(mtmp, vismon, state, env) {
             `${Monnam(mtmp, state)} escapes the dungeon!`,
             state);
     // mongone() answers a promise when the departure must print first.
-    await mongone(mtmp, env);
+    await mongone_async(mtmp, env);
     return 2;
 }
 
@@ -894,8 +898,11 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         }
         if (!Can_dig_down(state.u?.uz, state) && !lev.candig) {
             // Can't dig further; try to make a pit
-            if (t_at(mtmp.mx, mtmp.my, state)
-                || !(env._trap = await maketrap(mtmp.mx, mtmp.my, PIT, { state }))) {
+            const occupied = t_at(mtmp.mx, mtmp.my, state);
+            if (!occupied) {
+                env._trap = await maketrap_async(mtmp.mx, mtmp.my, PIT, { state });
+            }
+            if (occupied || !env._trap) {
                 if (vismon)
                     await ttyPline(
                         `The ${surface(mtmp.mx, mtmp.my, state)} here is too hard to dig in.`,
@@ -904,7 +911,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             }
             const t = env._trap;
             if (vis) {
-                seetrap(t, { redraw: newsym });
+                await seetrap_async(t, { redraw: newsym });
                 await pline_mon(mtmp,
                     `${Monnam(mtmp, state)} has made a pit in the ${surface(mtmp.mx, mtmp.my, state)}.`,
                     state);
@@ -914,10 +921,10 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             return (await mintrap(mtmp, FORCEBUNGLE, { state })) === Trap_Killed_Mon ? 1 : 2;
         }
         // Can dig down: make a hole
-        const t = await maketrap(mtmp.mx, mtmp.my, HOLE, { state });
+        const t = await maketrap_async(mtmp.mx, mtmp.my, HOLE, { state });
         if (!t) return 2;
         recalc_block_point(mtmp.mx, mtmp.my, state);
-        seetrap(t, { redraw: newsym });
+        await seetrap_async(t, { redraw: newsym });
         if (vis) {
             await pline_mon(mtmp,
                 `${Monnam(mtmp, state)} has made a hole in the ${surface(mtmp.mx, mtmp.my, state)}.`,
@@ -1021,14 +1028,14 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
                 `${Monnam(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} into a ${trapname(t.ttyp, false, state)}!`,
                 state);
         }
-        reveal_trap(t, vis, state, { redraw: newsym });
+        await printQueued(reveal_trap(t, vis, state, { redraw: newsym }));
         // Don't use rloc_to() because worm tails must "move"
         remove_monster(mtmp.mx, mtmp.my, state);
-        newsym(mtmp.mx, mtmp.my);
+        await newsym_async(mtmp.mx, mtmp.my);
         place_monster(mtmp, trapx, trapy, state);
         if (mtmp.wormno)
-            worm_move(mtmp, { ...env, state });
-        newsym(trapx, trapy);
+            await printQueued(worm_move(mtmp, { ...env, state }));
+        await newsym_async(trapx, trapy);
         await migrate_to_level(mtmp, ledger_no(state.u?.uz, state) + 1,
             MIGR_RANDOM, null, { state });
         return 2;
@@ -1123,15 +1130,15 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
                 `${Monnam(mtmp, state)} ${vtense('mon', locomotion(mtmp.data, 'jump'))} onto a ${trapname(t.ttyp, false, state)}!`,
                 state);
         }
-        reveal_trap(t, vis, state, { redraw: newsym });
+        await printQueued(reveal_trap(t, vis, state, { redraw: newsym }));
         // Don't use rloc_to() because worm tails must "move"
         remove_monster(mtmp.mx, mtmp.my, state);
-        newsym(mtmp.mx, mtmp.my);
+        await newsym_async(mtmp.mx, mtmp.my);
         place_monster(mtmp, trapx, trapy, state);
         if (mtmp.wormno)
-            worm_move(mtmp, { ...env, state });
+            await printQueued(worm_move(mtmp, { ...env, state }));
         maybe_unhide_at(mtmp.mx, mtmp.my, state);
-        newsym(trapx, trapy);
+        await newsym_async(trapx, trapy);
         await m_tele(mtmp, vismon, false, 0, state,
             { x: trapx, y: trapy });
         return 2;
@@ -1551,7 +1558,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         }
         // format monster's name before altering its visibility
         const nambuf = mon_nam(mtmp, state);
-        mon_set_minvis(mtmp, Boolean(otmp.cursed), state);
+        await printQueued(mon_set_minvis(mtmp, Boolean(otmp.cursed), state));
         if (vismon && mtmp.minvis) { /* was seen, now invisible */
             // C prints both lines with plain pline(), so accessiblemsg
             // adds no location prefix.
@@ -1562,7 +1569,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
             } else {
                 await ttyPline(`Suddenly you cannot see ${nambuf}.`, state);
                 if (vis)
-                    mapInvisibleAt(mtmp.mx, mtmp.my, state);
+                    await printQueued(mapInvisibleAt(mtmp.mx, mtmp.my, state));
             }
             if (oseen)
                 discover_object(otmp.otyp, true, true, true, state);
@@ -1643,7 +1650,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
             // C seetrap() redraws with newsym(); preserve an injected owner
             // for focused callers, and bind the live fallback to this
             // action's state.
-            seetrap(t, {
+            await seetrap_async(t, {
                 ...env,
                 state,
                 redraw: env.redraw ?? newsym,
@@ -1659,12 +1666,12 @@ export async function use_misc(mtmp, selection, state, env = {}) {
 
         /* don't use rloc() due to worms */
         remove_monster(mtmp.mx, mtmp.my, state);
-        newsym(mtmp.mx, mtmp.my, state);
+        await newsym_async(mtmp.mx, mtmp.my);
         place_monster(mtmp, trapX, trapY, state);
         maybe_unhide_at(trapX, trapY, state);
         if (mtmp.wormno)
-            worm_move(mtmp, { ...env, state });
-        newsym(trapX, trapY, state);
+            await printQueued(worm_move(mtmp, { ...env, state }));
+        await newsym_async(trapX, trapY);
 
         await newcham(mtmp, null, {
             ...env,
@@ -1778,8 +1785,8 @@ async function you_aggravate(mtmp, state) {
         state);
     await cls();
     await cliparound(mtmp.mx, mtmp.my, state); // CLIPPING
-    show_glyph_cell(mtmp.mx, mtmp.my, map_monster_glyph_info(mtmp, state));
-    display_self(state);
+    await printQueued(show_glyph_cell(mtmp.mx, mtmp.my, map_monster_glyph_info(mtmp, state)));
+    await printQueued(display_self(state));
     // C's You_feel() records no location.
     await ttyPline(
         youFeel(`aggravated at ${noit_mon_nam(mtmp, state)}.`,
@@ -1791,9 +1798,9 @@ async function you_aggravate(mtmp, state) {
         state.multi = -1;
         state.nomovemsg = 'Aggravated, you are jolted into full consciousness.';
     }
-    newsym(mtmp.mx, mtmp.my, state);
+    await newsym_async(mtmp.mx, mtmp.my);
     if (!canspotmon(mtmp, state))
-        mapInvisibleAt(mtmp.mx, mtmp.my, state);
+        await printQueued(mapInvisibleAt(mtmp.mx, mtmp.my, state));
 }
 
 // C ref: muse.c find_defensive() (440-748). Select a defensive item or
@@ -2237,7 +2244,7 @@ export async function mbhitm(mtmp, otmp, state, rawEnv = {}) {
     if (!hits_you && otmp.otyp !== O.WAN_UNDEAD_TURNING) {
         mtmp.msleeping = 0;
         if (mtmp.m_ap_type)
-            seemimic(mtmp, state);
+            await seemimic_async(mtmp, state);
     }
     switch (otmp.otyp) {
     case O.WAN_STRIKING:
@@ -2319,7 +2326,7 @@ export async function mbhitm(mtmp, otmp, state, rawEnv = {}) {
                         `${Monnam(mtmp, state, rawEnv)} resists the magic!`,
                         state, rawEnv);
             } else if (!(await tele_restrict(mtmp, state, rawEnv)))
-                await rloc(mtmp, RLOC_MSG, { ...rawEnv, state, random });
+                await rloc_async(mtmp, RLOC_MSG, { ...rawEnv, state, random });
         }
         break;
     case O.WAN_CANCELLATION:
@@ -2365,7 +2372,7 @@ export async function mbhitm(mtmp, otmp, state, rawEnv = {}) {
     if (reveal_invis && mtmp.mhp >= 1 /* !DEADMONSTER */
         && cansee(state.gb.bhitpos.x, state.gb.bhitpos.y, state)
         && !canspotmon(mtmp, state))
-        mapInvisibleAt(state.gb.bhitpos.x, state.gb.bhitpos.y, state);
+        await printQueued(mapInvisibleAt(state.gb.bhitpos.x, state.gb.bhitpos.y, state));
 
     return 0;
 }
@@ -2426,8 +2433,8 @@ async function mbhit(mon, range, fhitm, fhito_fn, obj, state, rawEnv = {}) {
             if (mtmp) {
                 if (cansee(state.gb.bhitpos.x, state.gb.bhitpos.y, state)
                     && !canspotmon(mtmp, state))
-                    mapInvisibleAt(
-                        state.gb.bhitpos.x, state.gb.bhitpos.y, state);
+                    await printQueued(mapInvisibleAt(
+                        state.gb.bhitpos.x, state.gb.bhitpos.y, state));
                 await fhitm(mtmp, obj, state, rawEnv);
                 range -= 3;
             }
@@ -2774,18 +2781,17 @@ export async function use_offensive(mtmp, rawEnv = {}) {
          * are not objects.  Also set dknown in mthrowu.c.
          */
         if (cansee(mtmp.mx, mtmp.my, state)) {
-            // C's pline_mon() with Monnam(); a caller may replace either.
+            // C's pline_mon() with Monnam(); a caller may replace the
+            // pline.
             const message = env.message ?? ttyPline;
-            const monsterName = env.monsterName
-                ?? ((monster) => Monnam(monster, state, {
-                    displayRandom: env.displayRandom,
-                }));
             observe_object(otmp, state);
             // pline_mon() sets the message location to the thrower's square,
             // which messageAt() prefixes under the accessiblemsg option.
             await message(
                 messageAt(
-                    `${monsterName(mtmp, state)} hurls `
+                    `${Monnam(mtmp, state, {
+                        displayRandom: env.displayRandom,
+                    })} hurls `
                     + `${singular(otmp, donameFresh, state)}!`,
                     mtmp.mx,
                     mtmp.my,
@@ -2862,7 +2868,7 @@ export async function use_offensive(mtmp, rawEnv = {}) {
                 state,
             );
             if (mtmp.minvis)
-                mapInvisibleAt(mtmp.mx, mtmp.my, state);
+                await printQueued(mapInvisibleAt(mtmp.mx, mtmp.my, state));
             if (oseen)
                 discover_object(
                     otmp.otyp, true, true, true, state, { ...env, random },
@@ -3382,11 +3388,11 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
                 );
         } else {
             remove_monster(mon.mx, mon.my, state);
-            redraw(mon.mx, mon.my, state);
+            await printQueued(redraw(mon.mx, mon.my, state));
             place_monster(mon, trap.tx, trap.ty, state);
             if (mon.wormno) /* won't happen; worms don't MUSE to unslime */
-                worm_move(mon, { ...actionEnv, state });
-            redraw(mon.mx, mon.my, state);
+                await printQueued(worm_move(mon, { ...actionEnv, state }));
+            await printQueued(redraw(mon.mx, mon.my, state));
             if (vis)
                 await (actionEnv.message ?? ttyPline)(
                     `${Mnam} ${vtense('mon', locomotion(mon.data, 'move'))} ${is_floater(mon.data) ? 'over' : 'onto'} ${trap.tseen ? 'the' : 'a'} fire trap!`,

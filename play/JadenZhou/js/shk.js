@@ -13,6 +13,15 @@ import {
     BLINDED, TELEPAT, DETECT_MONSTERS, M_AP_NOTHING, M_AP_MONSTER, u_at,
 } from './const.js';
 import { ANY_SHOP } from './const.js';
+import { IS_DOOR, SVALL, ROWNO, COLNO, RLOC_NOMSG, RLOC_MSG, NECK } from './const.js';
+import { ROLL_FROM } from './rng.js';
+import { mnexto } from './teleport.js';
+import { mnearto } from './mon.js';
+import { yelp, growl, You_hear } from './sounds.js';
+import { tty_yn_function } from './wintty.js';
+import { body_part } from './insight.js';
+import { poly_gender } from './polyself.js';
+import { is_demon } from './mondata.js';
 import { search_special } from './sounds.js';
 import { mons, PM_GRID_BUG, PM_ROGUE, MS_ANIMAL, M1_HUMANOID, S_DOG,
          S_FELINE, S_RODENT, S_YETI } from './monsters.js';
@@ -149,6 +158,10 @@ function IS_SHOP(x) { return game.level.rooms[x].rtype >= SHOPBASE; }
 function distu(x, y) { return dist2(x, y, game.u.ux, game.u.uy); }
 /* C ref: hack.h mdistu() */
 function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
+/* C ref: hack.h um_dist() */
+function um_dist(x, y, n) {
+    return Math.abs(game.u.ux - x) > n || Math.abs(game.u.uy - y) > n;
+}
 /* C ref: hacklib.c online2(); hack.h onlineu() */
 function online2(x0, y0, x1, y1) {
     const dx = x0 - x1, dy = y0 - y1;
@@ -657,6 +670,47 @@ async function rouse_shk(shkp, verbosely) {
     }
 }
 
+// C ref: shk.c add_damage()
+export function add_damage(x, y, cost) {
+    const lev = game.level;
+    let tmp_dam;
+
+    if (IS_DOOR(lev.at(x, y).typ)) {
+        let mtmp;
+        let found = false;
+
+        /* Don't schedule for repair unless it's a real shop entrance */
+        const shops = in_rooms(x, y, SHOPBASE);
+        for (let i = 0; i < shops.length; i++)
+            if ((mtmp = shop_keeper(shops.charCodeAt(i))) != null
+                && x === mtmp.mextra.eshk.shd.x
+                && y === mtmp.mextra.eshk.shd.y) {
+                found = true;
+                break;
+            }
+        if (!found)
+            return;
+    }
+    for (tmp_dam = lev.damagelist; tmp_dam; tmp_dam = tmp_dam.next)
+        if (tmp_dam.place.x === x && tmp_dam.place.y === y) {
+            tmp_dam.cost += cost;
+            tmp_dam.when = game.moves; /* needed by pay_for_damage() */
+            return;
+        }
+    tmp_dam = {
+        when: game.moves,
+        place: { x, y },
+        cost,
+        typ: lev.at(x, y).typ,
+        flags: lev.at(x, y).flags,
+        next: lev.damagelist || null,
+    };
+    lev.damagelist = tmp_dam;
+    /* If player saw damage, display walls post-repair as walls, not stone */
+    if (cansee(x, y))
+        lev.at(x, y).seenv = SVALL;
+}
+
 // C ref: shk.c shk_impaired()
 /* is shk unable to repair damage? */
 function shk_impaired(shkp) {
@@ -722,16 +776,326 @@ function find_damage(shkp) {
     return null;
 }
 
+// C ref: shk.c discard_damage_struct()
+function discard_damage_struct(dam) {
+    if (!dam)
+        return;
+
+    if (dam === game.level.damagelist) {
+        game.level.damagelist = dam.next;
+    } else {
+        let prev = game.level.damagelist;
+
+        while (prev && prev.next !== dam)
+            prev = prev.next;
+        if (prev)
+            prev.next = dam.next;
+    }
+    /* memset(dam, 0, sizeof *dam); free(dam): garbage collected */
+}
+
 // C ref: shk.c shk_fixes_damage()
 /* Shopkeeper tries to repair damage belonging to them */
-function shk_fixes_damage(shkp) {
+async function shk_fixes_damage(shkp) {
     const dam = find_damage(shkp);
+    let shk_closeby;
 
     if (!dam)
         return;
 
-    throw new Error('shk_fixes_damage(): repair_damage() not ported yet');
+    shk_closeby = (mdistu(shkp) <= Math.trunc(BOLT_LIM / 2) * Math.trunc(BOLT_LIM / 2));
+
+    if (canseemon(shkp)) {
+        await pline(`${Shknam(shkp)} whispers ${
+            shk_closeby ? "an incantation" : "something"}.`);
+    } else if (!Deaf() && shk_closeby) {
+        /* Soundeffect(se_mutter_incantation, 100); */
+        await You_hear("someone muttering an incantation.");
+    }
+
+    await repair_damage(shkp, dam, false);
+
+    discard_damage_struct(dam);
 }
+
+const LITTER_UPDATE = 0x01;
+const LITTER_OPEN = 0x02;
+const LITTER_INSHOP = 0x04;
+const horiz = (i) => ((i % 3) - 1);
+const vert = (i) => (Math.trunc(i / 3) - 1);
+/* C ref: svl.level.objects[x][y] -- top object of the floor pile at <x,y>
+   (place_object() puts new objects at the front of level.objects) */
+function level_objects_top(x, y) {
+    for (const o of game.level.objects || [])
+        if (o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR')
+            return o;
+    return null;
+}
+
+// C ref: shk.c litter_getpos()
+/* find eligible spots to move items from a gap in a shop's wall that is
+   being repaired; this guarantees that items will end up inside shkp's
+   shop (possibly in the "free spot" or even in doorway or an adjacent
+   wall gap), but if they are in a gap in a wall shared by two shops
+   they might have started in the other shop */
+function litter_getpos(
+    litter, /* array of 9 uint8's */
+    x, y,
+    shkp) {
+    let i, ix, iy;
+    let k = 0; /* number of adjacent shop spots */
+
+    litter.fill(0);
+
+    if (level_objects_top(x, y) && !IS_ROOM(game.level.at(x, y).typ)) {
+        for (i = 0; i < 9; i++) {
+            ix = x + horiz(i);
+            iy = y + vert(i);
+            if (i === 4 || !isok(ix, iy) || !ZAP_POS(game.level.at(ix, iy).typ))
+                continue;
+            litter[i] = LITTER_OPEN;
+            if (inside_shop(ix, iy) === shkp.mextra.eshk.shoproom) {
+                litter[i] |= LITTER_INSHOP;
+                ++k;
+            }
+        }
+    }
+    return k;
+}
+
+// C ref: shk.c litter_scatter()
+/* move items from a gap in a shop's wall that is being repaired;
+   litter[] guarantees that items will end up inside shkp's shop, but
+   if the wall being repaired is shared by two shops the items might
+   have started in the other shop */
+async function litter_scatter(
+    litter,
+    x, y,
+    shkp) {
+    let otmp;
+    const g = game;
+
+    /* placement below assumes there is always at least one adjacent spot
+       that's inside the shop; caller guarantees that */
+    {
+        /* Scatter objects haphazardly into the shop */
+        if (Punished_sk() && !g.u.uswallow
+            && ((g.uchain.ox === x && g.uchain.oy === y)
+                || (g.uball.where === 'OBJ_FLOOR'
+                    && g.uball.ox === x && g.uball.oy === y))) {
+            /*
+             * Either the ball or chain is in the repair location.
+             * Take the easy way out and put ball&chain under hero.
+             */
+            if (!Deaf() && !muteshk(shkp)) {
+                /* SetVoice(shkp, 0, 80, 0) */
+                await verbalize("Get your junk out of my wall!");
+            }
+            unplacebc(); /* pick 'em up */
+            await placebc();   /* put 'em down */
+        }
+        while ((otmp = level_objects_top(x, y)) != null) {
+            /* Don't mess w/ boulders -- just merge into wall */
+            if (otmp.otyp === BOULDER_SK || otmp.otyp === ROCK_SK) {
+                obj_extract_self(otmp);
+                obfree(otmp, null);
+            } else {
+                let trylimit = 10;
+                let i = rn2(9), ix, iy;
+
+                /* otmp must be moved otherwise level.objects[x][y] will
+                   never become Null and while-loop won't terminate */
+                do {
+                    i = (i + 1) % 9;
+                } while (--trylimit && !(litter[i] & LITTER_INSHOP));
+                if ((litter[i] & (LITTER_OPEN | LITTER_INSHOP)) !== 0) {
+                    ix = x + horiz(i);
+                    iy = y + vert(i);
+                } else {
+                    /* we know shk isn't at <x,y> because repair
+                       is deferred in that situation */
+                    ix = shkp.mx;
+                    iy = shkp.my;
+                }
+                /* if the wall being repaired is shared by two adjacent
+                   shops, <ix,iy> might be in a different shop than the
+                   one that is billing for otmp or decided it was free;
+                   control of the item goes to the shk repairing the wall
+                   but otmp->no_charge isn't recalculated for new shop */
+                if (otmp.unpaid) {
+                    let oshk = shkp;
+
+                    /* !costly_spot() happens if otmp is moved from wall
+                       to shop's "free spot", still costly_adjacent() and
+                       still unpaid/on-bill; otherwise, it is being moved
+                       all the way into the shop so take it off the bill */
+                    if (costly_spot(ix, iy)
+                        && ((onbill(otmp, oshk, true)
+                             || ((oshk = find_objowner(otmp, ix, iy)) != null
+                                 && onbill(otmp, oshk, false)))))
+                        subfrombill(otmp, oshk);
+                }
+                if (otmp.no_charge) {
+                    /* not strictly necessary; destination is inside a
+                       shop so existing no_charge remains relevant */
+                    if (!costly_spot(ix, iy)
+                        && !costly_adjacent(shkp, ix, iy))
+                        otmp.no_charge = 0;
+                }
+
+                obj_extract_self(otmp); /* remove_object(otmp) */
+                place_object(otmp, ix, iy);
+                litter[i] |= LITTER_UPDATE;
+            }
+        } /* while level.objects[x][y] != 0 */
+    }
+}
+
+// C ref: shk.c litter_newsyms()
+function litter_newsyms(litter, x, y) {
+    for (let i = 0; i < 9; i++)
+        if (litter[i] & LITTER_UPDATE)
+            newsym(x + horiz(i), y + vert(i));
+}
+
+// C ref: shk.c repair_damage()
+/*
+ * 0: repair postponed, 1: silent repair (no messages), 2: normal repair
+ * 3: untrap
+ */
+async function repair_damage(
+    shkp,
+    tmp_dam,
+    catchup) {
+    const lev = game.level;
+    const litter = new Array(9).fill(0);
+    let otmp;
+    let ttmp;
+    let disposition = 1;
+    let seeit, stop_picking = false;
+
+    if (!repairable_damage(tmp_dam, shkp))
+        return 0;
+
+    const x = tmp_dam.place.x;
+    const y = tmp_dam.place.y;
+    seeit = cansee(x, y);
+
+    ttmp = t_at(x, y);
+    if (ttmp) {
+        switch (ttmp.ttyp) {
+        case LANDMINE_SK:
+        case BEAR_TRAP_SK:
+            /* convert to an object */
+            otmp = mksobj((ttmp.ttyp === LANDMINE_SK) ? LAND_MINE_SK : BEARTRAP_SK,
+                          true, false);
+            otmp.quan = 1;
+            otmp.owt = weight(otmp);
+            if (!catchup) {
+                if (canseemon(shkp) && dist2(x, y, shkp.mx, shkp.my) <= 2)
+                    await pline(`${Shknam(shkp)} untraps ${ansimpleoname(otmp)}.`);
+                else if (ttmp.tseen && cansee(ttmp.tx, ttmp.ty))
+                    await pline(`The ${trapname(ttmp.ttyp, true)} vanishes.`);
+            }
+            mpickobj(shkp, otmp);
+            break;
+        case HOLE_SK:
+        case PIT_SK:
+        case SPIKED_PIT_SK:
+            if (!catchup && ttmp.tseen && cansee(ttmp.tx, ttmp.ty))
+                await pline(`The ${trapname(ttmp.ttyp, true)} is filled in.`);
+            break;
+        default:
+            if (!catchup && ttmp.tseen && cansee(ttmp.tx, ttmp.ty))
+                await pline(`The ${trapname(ttmp.ttyp, true)} vanishes.`);
+            break;
+        }
+        deltrap(ttmp);
+        del_engr_at(x, y);
+        if (seeit)
+            newsym(x, y);
+        if (!catchup)
+            disposition = 3;
+    }
+    if (IS_ROOM(tmp_dam.typ)
+        || (tmp_dam.typ === lev.at(x, y).typ
+            && (!IS_DOOR(tmp_dam.typ) || lev.at(x, y).doormask > D_BROKEN_SK)))
+        /* no terrain fix necessary (trap removal or manually repaired) */
+        return disposition;
+
+    if (closed_door(x, y))
+        stop_picking = picking_at(x, y);
+
+    /* door or wall repair; trap, if any, is now gone;
+       restore original terrain type and move any items away;
+       rm.doormask and rm.wall_info are both overlaid on rm.flags
+       so the new flags value needs to match the restored typ */
+    lev.at(x, y).typ = tmp_dam.typ;
+    if (IS_DOOR(tmp_dam.typ))
+        lev.at(x, y).doormask = D_CLOSED_SK; /* arbitrary */
+    else /* not a door; set rm.wall_info or whatever old flags are relevant */
+        lev.at(x, y).flags = tmp_dam.flags;
+
+    if (litter_getpos(litter, x, y, shkp))
+        await litter_scatter(litter, x, y, shkp);
+    del_engr_at(x, y);
+
+    /* needed if hero has line-of-sight to the former gap from outside
+       the shop but is farther than one step away; once the light inside
+       the shop is blocked, the other newsym() below won't redraw the
+       spot showing its repaired wall */
+    if (seeit)
+        newsym(x, y);
+    block_point(x, y);
+
+    if (catchup)
+        return 1; /* repair occurred while off level so no messages */
+
+    if (seeit) {
+        if (IS_WALL_SK(tmp_dam.typ)) {
+            /* player sees actual repair process, so KNOWS it's a wall */
+            lev.at(x, y).seenv = SVALL;
+            await pline("Suddenly, a section of the wall closes up!");
+        } else if (IS_DOOR(tmp_dam.typ)) {
+            await pline("Suddenly, the shop door reappears!");
+        }
+        newsym(x, y);
+    } else if (IS_WALL_SK(tmp_dam.typ)) {
+        if (inside_shop(game.u.ux, game.u.uy) === shkp.mextra.eshk.shoproom)
+            await You_feel_sk("more claustrophobic than before.");
+        else if (!Deaf() && !rn2(10))
+            await Norep_sk("The dungeon acoustics noticeably change.");
+    }
+
+    if (stop_picking)
+        await stop_occupation_sk();
+
+    litter_newsyms(litter, x, y);
+
+    if (disposition < 3)
+        disposition = 2;
+    return disposition;
+}
+/* C ref: youprop.h Punished */
+function Punished_sk() { return !!game.uball; }
+import { D_BROKEN as D_BROKEN_SK, D_CLOSED as D_CLOSED_SK,
+         IS_WALL as IS_WALL_SK, ZAP_POS } from './const.js';
+import { BOULDER as BOULDER_SK, ROCK as ROCK_SK, LAND_MINE as LAND_MINE_SK,
+         BEARTRAP as BEARTRAP_SK } from './objects.js';
+import { LANDMINE as LANDMINE_SK, BEAR_TRAP as BEAR_TRAP_SK, HOLE as HOLE_SK,
+         PIT as PIT_SK, SPIKED_PIT as SPIKED_PIT_SK } from './const.js';
+import { unplacebc, placebc } from './ball.js';
+import { obfree } from './invent.js';
+import { place_object, mksobj } from './mkobj.js';
+import { closed_door } from './makemon.js';
+import { picking_at } from './lock.js';
+import { block_point } from './vision.js';
+import { del_engr_at } from './engrave.js';
+import { deltrap, trapname } from './trap.js';
+import { mpickobj } from './steal.js';
+import { ansimpleoname } from './iactions.js';
+import { Norep as Norep_sk, You_feel as You_feel_sk } from './display.js';
+import { stop_occupation as stop_occupation_sk } from './allmain.js';
 
 // C ref: shk.c shk_move()
 /*
@@ -750,7 +1114,7 @@ export async function shk_move(shkp) {
     const omy = shkp.my;
 
     if (inhishop(shkp))
-        shk_fixes_damage(shkp);
+        await shk_fixes_damage(shkp);
 
     if ((udist = distu(omx, omy)) < 3 && (shkp.data !== mons[PM_GRID_BUG]
                                           || (omx === u.ux || omy === u.uy))) {
@@ -865,6 +1229,264 @@ export async function after_shk_move(shkp) {
 /* for use in levl_follower (mondata.c) */
 export function is_fshk(mtmp) {
     return !!(mtmp.isshk && mtmp.mextra.eshk.following);
+}
+
+// C ref: shk.c getcad()
+async function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
+    const dugwall = (dmgstr === "dig into"    /* wand */
+                     || dmgstr === "damage"); /* pick-axe */
+
+    if (muteshk(shkp)) {
+        if (animal && !helpless(shkp))
+            await yelp(shkp);
+    } else if (pursue || uinshp || !um_dist(x, y, 1)) {
+        if (!Deaf()) {
+            /* SetVoice(shkp, 0, 80, 0) */
+            await verbalize(`How dare you ${dmgstr} my ${
+                dugwall ? "shop" : "door"}?`);
+        } else {
+            await pline(`${Shknam(shkp)} is ${ROLL_FROM(angrytexts)} that you decided to ${
+                dmgstr} ${noit_mhis(shkp)} ${dugwall ? "shop" : "door"}!`);
+        }
+    } else {
+        if (!Deaf()) {
+            await pline(`${Shknam(shkp)} shouts:`);
+            /* SetVoice(shkp, 0, 80, 0) */
+            await verbalize(`Who dared ${dmgstr} my ${
+                dugwall ? "shop" : "door"}?`);
+        } else {
+            await pline(`${Shknam(shkp)} is ${ROLL_FROM(angrytexts)} that someone decided to ${
+                dmgstr} ${noit_mhis(shkp)} ${dugwall ? "shop" : "door"}!`);
+        }
+    }
+    hot_pursuit(shkp);
+}
+
+// C ref: shk.c pay_for_damage()
+export async function pay_for_damage(dmgstr, cant_mollify) {
+    const u = game.u;
+    let shkp = null;
+    let shops_affected;
+    const uinshp = !!(u.ushops && u.ushops.length);
+    let x, y;
+    let animal, pursue;
+    let tmp_dam, appear_here = null;
+    let cost_of_damage = 0;
+    let nearest_shk = (ROWNO * ROWNO) + (COLNO * COLNO),
+        nearest_damage = nearest_shk;
+    let picks = 0;
+
+    for (tmp_dam = game.level.damagelist; tmp_dam; tmp_dam = tmp_dam.next) {
+        if (tmp_dam.when !== game.moves || !tmp_dam.cost)
+            continue;
+        cost_of_damage += tmp_dam.cost;
+        shops_affected = in_rooms(tmp_dam.place.x, tmp_dam.place.y, SHOPBASE);
+        for (let si = 0; si < shops_affected.length; si++) {
+            let tmp_shk;
+            let shk_distance;
+
+            if (!(tmp_shk = shop_keeper(shops_affected.charCodeAt(si))))
+                continue;
+            if (tmp_shk === shkp) {
+                const damage_distance =
+                    distu(tmp_dam.place.x, tmp_dam.place.y);
+
+                if (damage_distance < nearest_damage) {
+                    nearest_damage = damage_distance;
+                    appear_here = tmp_dam;
+                }
+                continue;
+            }
+            if (!inhishop(tmp_shk))
+                continue;
+            shk_distance = mdistu(tmp_shk);
+            if (shk_distance > nearest_shk)
+                continue;
+            if ((shk_distance === nearest_shk) && picks) {
+                if (rn2(++picks))
+                    continue;
+            } else
+                picks = 1;
+            shkp = tmp_shk;
+            nearest_shk = shk_distance;
+            appear_here = tmp_dam;
+            nearest_damage = distu(tmp_dam.place.x, tmp_dam.place.y);
+        }
+    }
+
+    if (!cost_of_damage || !shkp)
+        return;
+
+    animal = (shkp.data.msound <= MS_ANIMAL);
+    pursue = false;
+    x = appear_here.place.x;
+    y = appear_here.place.y;
+
+    /* not the best introduction to the shk... */
+    shkp.mextra.eshk.customer = (game.plname || '').slice(0, PL_NSIZ);
+
+    /* if the shk is already on the war path, be sure it's all out */
+    if (ANGRY(shkp) || shkp.mextra.eshk.following) {
+        hot_pursuit(shkp);
+        return;
+    }
+
+    /* if the shk is not in their shop.. */
+    if (!in_rooms(shkp.mx, shkp.my, SHOPBASE).length) {
+        if (!cansee(shkp.mx, shkp.my))
+            return;
+        pursue = true;
+        await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+        return;
+    }
+
+    if (uinshp) {
+        if (um_dist(shkp.mx, shkp.my, 1)
+            && !um_dist(shkp.mx, shkp.my, 3)) {
+            await pline(`${Shknam(shkp)} leaps towards you!`);
+            await mnexto(shkp, RLOC_NOMSG);
+        }
+        pursue = um_dist(shkp.mx, shkp.my, 1);
+        if (pursue) {
+            await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+            return;
+        }
+    } else {
+        /*
+         * Make shkp show up at the door.  Effect:  If there is a monster
+         * in the doorway, have the hero hear the shopkeeper yell a bit,
+         * pause, then have the shopkeeper appear at the door, having
+         * yanked the hapless critter out of the way.
+         */
+        if (m_at(x, y)) {
+            if (!animal) {
+                if (!Deaf() && !muteshk(shkp)) {
+                    /* Soundeffect(se_angry_voice, 75); */
+                    await You_hear("an angry voice:");
+                    /* SetVoice(shkp, 0, 80, 0) */
+                    await verbalize("Out of my way, scum!");
+                }
+                /* wait_synch(); sleep(1) */
+            } else {
+                await growl(shkp);
+            }
+        }
+        await mnearto(shkp, x, y, true, RLOC_MSG);
+    }
+
+    if ((um_dist(x, y, 1) && !uinshp) || cant_mollify
+        || (money_cnt(game.invent) + shkp.mextra.eshk.credit) < cost_of_damage
+        || !rn2(50)) {
+        await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+        return;
+    }
+
+    if (Invis())
+        await Your(`invisibility does not fool ${shkname(shkp)}!`);
+    const qbuf = `${!animal ? cad(true) : ""}You did ${cost_of_damage} ${
+        currency(cost_of_damage)} worth of damage!${!animal ? '"' : ""}  Pay?`;
+    if ((await tty_yn_function(qbuf, "yn", 'n')) !== 'n') { /* y_n() */
+        let is_seen;
+        const was_seen = canseemon(shkp),
+              was_outside = !inhishop(shkp);
+        const sx = shkp.mx, sy = shkp.my;
+
+        cost_of_damage = await check_credit(cost_of_damage, shkp);
+        if (cost_of_damage > 0) {
+            money2mon(shkp, cost_of_damage);
+            game.disp_botl = true;
+        }
+        await pline(`Mollified, ${shkname(shkp)} accepts your restitution.`);
+        /* move shk back to his home loc */
+        await home_shk(shkp, false);
+        pacify_shk(shkp, false);
+        /* home_shk() suppresses rloc()'s vanish/appear messages */
+        if (shkp.mx !== sx || shkp.my !== sy) {
+            if (was_outside && canspotmon(shkp))
+                await pline(`${Shknam(shkp)} returns to ${noit_mhis(shkp)} shop.`);
+            else if ((is_seen = canseemon(shkp)) === true || was_seen)
+                await pline(`${Shknam(shkp)} ${!was_seen ? "appears"
+                                              : is_seen ? "shifts location"
+                                                : "disappears"}.`);
+        }
+    } else {
+        if (!animal) {
+            if (!Deaf() && !muteshk(shkp)) {
+                /* SetVoice(shkp, 0, 80, 0) */
+                await verbalize("Oh, yes!  You'll pay!");
+            } else {
+                await pline(`${Shknam(shkp)} lunges ${noit_mhis(shkp)} ${
+                    mbodypart(shkp, HAND)} toward your ${body_part(NECK)}!`);
+            }
+        } else
+            await growl(shkp);
+        hot_pursuit(shkp);
+        adjalign(-Math.sign(u.ualign.type));
+    }
+}
+
+// C ref: shk.c cad()
+function cad(altusage) /* used as a verbalized exclamation:  \"Cad! ...\" */
+{
+    let res = null;
+
+    switch (is_demon(game.youmonst.data) ? 3 : poly_gender()) {
+    case 0:
+        res = "cad";
+        break;
+    case 1:
+        res = "minx";
+        break;
+    case 2:
+        res = "beast";
+        break;
+    case 3:
+        res = "fiend";
+        break;
+    default:
+        /* impossible("cad: unknown gender") */
+        res = "thing";
+        break;
+    }
+    if (altusage) {
+        /* alternate usage adds a leading double quote and trailing
+           exclamation point plus sentence separating spaces */
+        res = `"${highc(res.charAt(0))}${res.slice(1)}!  `;
+    }
+    return res;
+}
+
+// C ref: shk.c find_objowner()
+/* find the shopkeeper who owns 'obj'; needed to handle shared shop walls */
+export function find_objowner(obj, x, y) /* caller passes obj's location
+                           * since obj->ox,oy might be stale; don't update
+                           * coordinates here because if we're called during
+                           * sanity checking they shouldn't be modified */
+{
+    let shkp, deflt_shkp = null;
+
+    if (obj.where === 'OBJ_ONBILL') {
+        /* used up item; bill obj coordinates are useless and so are x,y */
+        for (shkp = next_shkp(game.fmon, true); shkp;
+             shkp = next_shkp(shkp.nmon, true))
+            if (onshopbill(obj, shkp, true))
+                return shkp;
+    } else {
+        const where = in_rooms(x, y, SHOPBASE);
+
+        /* conceptually object could be inside up to 4 rooms simultaneously;
+           in practice it will usually be one room but can sometimes be two;
+           check shk and bill for each room rather than just the first;
+           fallback to the first shk if obj isn't on the relevant bill(s) */
+        for (let ri = 0; ri < where.length; ++ri)
+            if ((shkp = shop_keeper(where.charCodeAt(ri))) != null) {
+                if (onshopbill(obj, shkp, true))
+                    return shkp;
+                if (!deflt_shkp)
+                    deflt_shkp = shkp;
+            }
+    }
+    return deflt_shkp;
 }
 
 // C ref: shk.c costly_spot()
@@ -1158,8 +1780,15 @@ function setpaid(shkp) {
 
 // C ref: shk.c home_shk()
 async function home_shk(shkp, killkops) {
-    void shkp; void killkops;
-    throw new Error('home_shk(): mnearto() not ported yet');
+    const x = shkp.mextra.eshk.shk.x, y = shkp.mextra.eshk.shk.y;
+
+    await mnearto(shkp, x, y, true, RLOC_NOMSG);
+    game.level.flags.has_shop = 1;
+    if (killkops) {
+        kops_gone(true);
+        pacify_guards();
+    }
+    await after_shk_move(shkp);
 }
 
 // C ref: shk.c paybill()
@@ -1787,6 +2416,35 @@ function o_on(id, objchn) {
             return temp;
     }
     return null;
+}
+
+// C ref: shk.c doinvbill()
+export function doinvbill(mode) /* 0: deliver count 1: paged */ {
+    const u = game.u;
+    const shkp = shop_keeper(u.ushops ? (u.ushops.charCodeAt(0) || 0) : 0);
+    if (!shkp || !inhishop(shkp)) {
+        if (mode !== 0)
+            console.error("impossible: doinvbill: no shopkeeper?");
+        return 0;
+    }
+    const eshkp = shkp.mextra.eshk;
+
+    if (mode === 0) {
+        /* count expended items, so that the `I' command can decide
+           whether to include 'x' in its prompt string */
+        let cnt = !eshkp.debit ? 0 : 1;
+        let obj;
+
+        for (let i = 0; i < eshkp.billct; i++) {
+            const bp = eshkp.bill[i];
+            if (bp.useup
+                || ((obj = bp_to_obj(bp)) != null && obj.quan < bp.bquan))
+                cnt++;
+        }
+        return cnt;
+    }
+    /* the paged "Used up items" list */
+    throw new Error('doinvbill(): itemized used-up bill not ported yet');
 }
 
 // C ref: shk.c bp_to_obj()
@@ -2455,14 +3113,31 @@ export function get_obj_location(obj, locflags) {
 }
 
 // C ref: shk.c fix_shop_damage()
-export function fix_shop_damage() {
+/* normally repair is done when a shopkeeper moves, but we also try to
+   catch up for lost time when reloading a previously visited level */
+export async function fix_shop_damage() {
+    let shkp;
+    let damg, nextdamg;
+
     /* if this level has no shop damage, there's nothing to do */
-    const dl = game.level.damagelist;
-    if (!dl || (Array.isArray(dl) && !dl.length))
+    if (!game.level.damagelist)
         return;
 
-    /* go through all shopkeepers on the level: repair_damage() */
-    throw new Error('fix_shop_damage(): repair_damage() not ported yet');
+    /* go through all shopkeepers on the level */
+    for (shkp = next_shkp(game.fmon, false); shkp;
+         shkp = next_shkp(shkp.nmon, false)) {
+        /* if this shopkeeper isn't in his shop or can't move, skip */
+        if (shk_impaired(shkp))
+            continue;
+        /* go through all damage data trying to have this shopkeeper
+           fix it; repair_damage() will only make repairs for damage
+           matching shop controlled by specified shopkeeper */
+        for (damg = game.level.damagelist; damg; damg = nextdamg) {
+            nextdamg = damg.next;
+            if (await repair_damage(shkp, damg, true))
+                discard_damage_struct(damg);
+        }
+    }
 }
 
 // C ref: shk.c get_cost_of_shop_item()

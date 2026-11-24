@@ -24,7 +24,7 @@ import {
     TELEPORT_BANNER_C, PL_NSIZ, ROWNO, COLNO,
 } from './const.js';
 import { genl_player_setup } from './role.js';
-import { lowc, tabexpand } from './hacklib.js';
+import { lowc, tabexpand, pmatchi } from './hacklib.js';
 import { help_files } from './help_files.js';
 import { row_refresh, bot, flush_screen, pline, docrt, dec_cell_char,
          decode_mixed } from './display.js';
@@ -504,13 +504,24 @@ export function tty_putstr(window, attr, str) {
                 cw.flags &= ~WIN_STOP;
             }
             cw.flags |= WIN_NOSTOP;
-            /* update_topl() may wait at --More--, so callers await this */
-            return update_topl(str).then(() => {
-                cw.flags &= ~WIN_NOSTOP; /* NOSTOP is a one-shot operation */
-            });
         }
-        /* update_topl() may wait at --More--, so callers await this */
-        return update_topl(str);
+        if (attr & 32 /* ATR_NOHISTORY */) {
+            /* put anything already on top line into history */
+            remember_topl();
+            /* write to top line without remembering what we're writing */
+            show_topl(str);
+            /* pline.c vpline(): gp.prevmsg (update_topl() sets it for the
+               other messages) */
+            game.prevmsg = str;
+            cw.flags &= ~WIN_NOSTOP; /* NOSTOP is a one-shot operation */
+            return Promise.resolve();
+        }
+        /* normal output; add to current top line if room, else flush
+           whatever is there to history and then write this;
+           update_topl() may wait at --More--, so callers await this */
+        return update_topl(str).then(() => {
+            cw.flags &= ~WIN_NOSTOP; /* NOSTOP is a one-shot operation */
+        });
     case NHW_BASE:
         tty_curs(window, cw.curx + 1, cw.cury);
         term_start_attr(attr);
@@ -695,6 +706,30 @@ export async function tty_putmixed(window, attr, str) {
         await tty_putstr(window, attr, buf);
     } finally {
         tty().mixed = 0;
+    }
+}
+
+// C ref: topl.c show_topl() -- for use by tty_putstr()
+function show_topl(str) {
+    const cw = wins()[game.WIN_MESSAGE];
+    const t = tty();
+
+    /* show if either STOP isn't set or current message specifies NOSTOP */
+    if ((cw.flags & (WIN_STOP | WIN_NOSTOP)) !== WIN_STOP) {
+        /* NOSTOP cancels persistent STOP and is a one-shot operation;
+           force both to be cleared (no-op for either bit that isn't set) */
+        cw.flags &= ~(WIN_STOP | WIN_NOSTOP);
+
+        if (t.cury && t.toplin === TOPLINE_NON_EMPTY)
+            tty_clear_nhwindow(game.WIN_MESSAGE);
+
+        cw.curx = cw.cury = 0;
+        home();
+        cl_end();
+        addtopl(str);
+
+        if (t.cury && t.toplin !== TOPLINE_SPECIAL_PROMPT)
+            t.toplin = TOPLINE_NON_EMPTY;
     }
 }
 
@@ -1261,15 +1296,20 @@ async function hooked_tty_getlin(query, hook) {
     return obufp;
 }
 
-// C ref: pline.c custompline() -- vpline() of a prompt: bring the map up
-// to date, then put the text in the message window
-async function custompline(line) {
+// C ref: pline.c custompline() -- vpline() of a prompt (SUPPRESS_HISTORY,
+// optionally NO_CURS_ON_U): bring the map up to date, then put the text in
+// the message window; putmesg() passes ATR_NOHISTORY for SUPPRESS_HISTORY
+// (the tty has WC2_SUPPRESS_HIST)
+export async function custompline(line, no_curs_on_u = false) {
     /* vpline(): bring the map and status up to date before putmesg() */
     if (game.vision_full_recalc)
         vision_recalc(0);
     if (game.u?.ux)
-        await flush_screen(1); /* %% */
-    await tty_putstr(game.WIN_MESSAGE, 0, line);
+        await flush_screen(no_curs_on_u ? 0 : 1); /* %% */
+    await tty_putstr(game.WIN_MESSAGE, 32 /* ATR_NOHISTORY */, line);
+    /* this gets cleared after every pline message */
+    if (game.iflags)
+        game.iflags.last_msg = 0; /* PLNMSG_UNKNOWN */
 }
 
 // C ref: getline.c ext_cmd_getlin_hook()
@@ -1507,6 +1547,18 @@ export async function tty_display_nhwindow(window, blocking) {
             game.iflags.window_inited = true;
         cw.active = 1;
         return;
+    case NHW_MAP:
+        /* end_glyphout(); */
+        if (blocking) {
+            if (t.toplin !== TOPLINE_EMPTY)
+                t.toplin = TOPLINE_NEED_MORE;
+            await tty_display_nhwindow(game.WIN_MESSAGE, true);
+            return;
+        }
+        /*FALLTHRU*/
+    case NHW_BASE:
+        /* (void) fflush(stdout); */
+        break;
     case NHW_TEXT:
         cw.maxcol = t.cols; /* force full-screen mode */
         /*FALLTHRU*/
@@ -1548,6 +1600,22 @@ export async function tty_display_nhwindow(window, blocking) {
         throw new Error(`tty_display_nhwindow: window type ${cw.type} not ported yet`);
     }
     cw.active = 1;
+}
+
+// C ref: wintty.c tty_display_nhwindow() case NHW_MAP -- the JS port has
+// no separate WIN_MAP window (the map is drawn straight to the terminal),
+// so display_nhwindow(WIN_MAP, blocking) callers come here
+export async function tty_display_map_nhwindow(blocking) {
+    const t = tty();
+
+    /* end_glyphout(); */
+    if (blocking) {
+        if (t.toplin !== TOPLINE_EMPTY)
+            t.toplin = TOPLINE_NEED_MORE;
+        await tty_display_nhwindow(game.WIN_MESSAGE, true);
+        return;
+    }
+    /* (void) fflush(stdout); */
 }
 
 // C ref: wintty.c set_item_state()
@@ -2074,6 +2142,37 @@ async function process_menu_window(window, cw) {
             }
             if (cw.how === PICK_NONE && morc === MENU_SEARCH)
                 continue; /* tty_nhbell() */
+            if (morc === MENU_SEARCH) {
+                let on_curr_page = false;
+                let lineno = 0;
+
+                const tmpbuf = await tty_getlin("Search for:");
+                if (!tmpbuf || tmpbuf[0] === '\x1b')
+                    continue;
+                const searchbuf = `*${tmpbuf}*`;
+
+                /* page_start/page_end are indices into cw.mlist;
+                   page_end === mlist.length stands for C's NULL */
+                for (let i = 0; i < cw.mlist.length; i++) {
+                    const curr = cw.mlist[i];
+                    if (on_curr_page)
+                        lineno++;
+                    if (i === page_start)
+                        on_curr_page = true;
+                    else if (i === page_end)
+                        on_curr_page = false;
+                    if (curr.identifier
+                        && pmatchi(searchbuf, curr.str)) {
+                        toggle_menu_curr(window, curr, lineno, on_curr_page,
+                                         counting, count);
+                        if (cw.how === PICK_ONE) {
+                            finished = true;
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
             if (default_menu_cmds.includes(morc))
                 throw new Error(`process_menu_window: menu command '${morc}' not ported yet`);
         }

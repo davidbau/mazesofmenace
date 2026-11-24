@@ -43,7 +43,8 @@ import { ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, HATCH_EGG, SHRINK_GLOB, FIG_TRANSF
 import { tt_oname } from './topten.js';
 import { zombie_form } from './mon.js';
 import { forget_temple_entry } from './priest.js';
-import { MON_DETACH } from './const.js';
+import { MON_DETACH, MIGR_TO_SPECIES } from './const.js';
+import { maybe_reset_pick } from './lock.js';
 import { confers_luck } from './timeout.js';
 import { set_moreluck } from './attrib.js';
 import { bimanual } from './wield.js';
@@ -811,6 +812,21 @@ export function obj_extract_self(obj) {
         obj.where = 'OBJ_FREE';
         break;
     }
+    case 'OBJ_MIGRATING': { /* extract_nobj(obj, &gm.migrating_objs) */
+        if (game.migrating_objs === obj) {
+            game.migrating_objs = obj.nobj || null;
+        } else {
+            let p;
+            for (p = game.migrating_objs; p && p.nobj !== obj; p = p.nobj)
+                continue;
+            if (!p)
+                throw new Error('extract_nobj: object lost'); /* panic() */
+            p.nobj = obj.nobj || null;
+        }
+        obj.nobj = null;
+        obj.where = 'OBJ_FREE';
+        break;
+    }
     default:
         throw new Error(`obj_extract_self: where=${obj.where} is not ported yet`);
     }
@@ -896,6 +912,37 @@ export function mksobj_at(otyp, x, y, init, artif) {
     const otmp = mksobj(otyp, init, artif);
     place_object(otmp, x, y);
     return otmp;
+}
+
+// C ref: mkobj.c mksobj_migr_to_species()
+/* used for extra orctown loot */
+export function mksobj_migr_to_species(otyp, mflags2, init, artif) {
+    const otmp = mksobj(otyp, init, artif);
+    add_to_migration(otmp);
+    otmp.owornmask = MIGR_TO_SPECIES;
+    otmp.corpsenm = mflags2; /* otmp->migr_species (obj.h: alias of corpsenm) */
+    return otmp;
+}
+
+// C ref: mkobj.c add_to_migration() -- gm.migrating_objs is a chain linked
+// through ->nobj, newest first
+export function add_to_migration(obj) {
+    if (obj.where !== 'OBJ_FREE')
+        throw new Error(`add_to_migration: obj where=${obj.where}, not free`); /* panic() */
+
+    if (obj.unpaid) /* caller should have changed unpaid item to stolen */
+        impossible('unpaid object migrating to another level?');
+    obj.no_charge = 0; /* was only relevant while inside a shop */
+
+    /* lock picking context becomes stale if it's for this object */
+    if (Is_container(obj))
+        maybe_reset_pick(obj);
+
+    obj.where = 'OBJ_MIGRATING';
+    obj.nobj = game.migrating_objs || null;
+    obj.omigr_from_dnum = game.u.uz.dnum;
+    obj.omigr_from_dlevel = game.u.uz.dlevel;
+    game.migrating_objs = obj;
 }
 
 // C ref: mkobj.c place_object() -- the level's floor object chain (fobj)

@@ -73,6 +73,7 @@ import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, domove, enter_explore_mode, dolookaround, cmdq_clear } from './cmd.js';
 import { clear_bypasses } from './worn.js';
+import { dobjsfree } from './mkobj.js';
 import { lookaround, end_running, unmul, nomul,
          monster_nearby, in_rooms, runmode_delay_output, check_special_room } from './hack.js';
 import { deferred_goto } from './do.js';
@@ -766,6 +767,7 @@ async function moveloop_core_turn() {
 
     // src/allmain.c:189, after object descriptions have been initialized.
     maybe_shuffle_customizations();
+    dobjsfree();
 
     if (g.context?.bypasses)
         clear_bypasses();

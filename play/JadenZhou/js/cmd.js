@@ -12,7 +12,7 @@ import { newsym, flush_screen, pline, You_cant, You } from './display.js';
 import { getpos } from './getpos.js';
 import { vision_recalc } from './vision.js';
 import { tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu,
-         add_menu_str } from './wintty.js';
+         add_menu_str, custompline } from './wintty.js';
 import { reveal_terrain } from './detect.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
@@ -32,7 +32,8 @@ import { level_tele, dotelecmd } from './teleport.js';
 import { wiz_level_change, wiz_wish, wiz_identify, wiz_intrinsic, wiz_map,
          wiz_detect, wiz_polyself, wiz_where } from './wizcmds.js';
 import { ddoinv, dolook, doprgold, doprwep, doprarm, doprring, dopramulet,
-         doprtool, add_menu_heading, doorganize, adjust_split } from './invent.js';
+         doprtool, add_menu_heading, doorganize, adjust_split,
+         dotypeinv } from './invent.js';
 import { cmd_safety_prevention, nomul, domove, DOMOVE_WALK,
          DOMOVE_RUSH, confdir } from './hack.js';
 export { domove };
@@ -142,6 +143,7 @@ const cmd_funcs = {
     dotalk: () => dotalk(),
     donull: () => donull(),
     ddoinv: () => ddoinv(),
+    dotypeinv: () => dotypeinv(),
     wiz_level_change: () => wiz_level_change(),
     wiz_wish: () => wiz_wish(),
     wiz_level_tele: () => wiz_level_tele(),
@@ -1230,30 +1232,38 @@ const move_dirnames = ["west", "northwest", "north", "northeast", "east",
    reset_commands(TRUE) (commands_init(), then the !number_pad movement
    keys), then BIND= options add to it via bind_key() */
 
-function bind_key_txt(map, key, txt) {
-    const ec = extcmdlist.find(e => e.ef_txt === txt);
-    if (ec)
-        map.set(key & 0xff, ec);
-}
+// C ref: cmd.c bind_key_fn()
+function bind_key_fn(key, fn) {
+    for (const extcmd of extcmdlist) {
+        if (extcmd.ef_funct !== fn)
+            continue;
+        if ((extcmd.flags & INTERNALCMD) !== 0)
+            continue;
+        cmdbind_add(key, extcmd, false);
+        return true;
+    }
 
-function bind_key_fn(map, key, fn) {
-    const ec = extcmdlist.find(e => e.ef_funct === fn);
-    if (ec)
-        map.set(key & 0xff, ec);
+    return false;
 }
 
 // C ref: cmd.c cmdbind_add() -- bind->userbind is kept in the
 // game.Cmd.userbinds set of keys
 function cmdbind_add(key, extcmd, user) {
+    const binds = game.Cmd.cmdbinds;
+    const bind = binds.has(key & 0xff); /* cmdbind_get(key) */
+
     key &= 0xff;
     if (!key)
         return;
-    if (!extcmd) {
-        game.Cmd.cmdbinds.delete(key); /* cmdbind_remove(key) */
-        game.Cmd.userbinds.delete(key);
+    if (!extcmd && bind) {
+        cmdbind_remove(key);
         return;
     }
-    game.Cmd.cmdbinds.set(key, extcmd);
+
+    /* binding exists, set it to this command (the list position is kept);
+       otherwise a new binding goes at the head of C's list, which is the
+       end of the Map's insertion order */
+    binds.set(key, extcmd);
     if (user)
         game.Cmd.userbinds.add(key);
     else
@@ -1325,56 +1335,204 @@ export function bind_key(key, command, user) {
     return false;
 }
 
-// C ref: cmd.c reset_commands() -- the initial call (initial == TRUE)
-// from initoptions_init(), with number_pad off
+// C ref: cmd.c reset_commands()
+/* called at startup (initial == TRUE) and whenever the number_pad option
+   is set (initial == FALSE); back_dir_cmd[][], back_dir_key[][] and
+   backed_dir_cmd are C's function statics, kept in game.Cmd */
+const ndir = "47896321><",
+      sdir_swap_yz = "hzkulnjb><",
+      ndir_phone_layout = "41236987><";
+const N_MOVEMODES = 3; /* MV_WALK, MV_RUN, MV_RUSH */
 export function reset_commands(initial) {
-    if (!initial)
-        throw new Error('reset_commands(): changing number_pad not ported yet');
-    game.Cmd = { cmdbinds: commands_init(), userbinds: new Set() };
+    const C = (c) => (0x1f & c);
+    const M = (c) => (0x80 | c);
+    const ylist = [0x79, 0x59, C(0x79), M(0x79), M(0x59), M(C(0x79))];
+    let flagtemp;
+    let c, i, updated = 0;
+    let dir, mode;
+
+    if (initial) {
+        updated = 1;
+        game.Cmd = { cmdbinds: new Map(), userbinds: new Set(),
+                     num_pad: false, pcHack_compat: false,
+                     phone_layout: false, swap_yz: false, serialno: 0,
+                     dirchars: sdir, alphadirchars: sdir,
+                     back_dir_cmd: [], back_dir_key: [],
+                     backed_dir_cmd: false };
+        /* gc.Cmd.spkeys[] = spkeys_binds[]'s keys: the default bindings
+           are used directly */
+        commands_init();
+    } else {
+        const Cmd = game.Cmd;
+
+        if (Cmd.backed_dir_cmd) {
+            for (dir = 0; dir < N_DIRS; dir++) {
+                for (mode = 0; mode < N_MOVEMODES; mode++) {
+                    cmdbind_add(Cmd.back_dir_key[dir][mode],
+                                Cmd.back_dir_cmd[dir][mode], false);
+                }
+            }
+        }
+
+        /* basic num_pad */
+        flagtemp = !!game.iflags.num_pad;
+        if (flagtemp !== Cmd.num_pad) {
+            Cmd.num_pad = flagtemp;
+            ++updated;
+        }
+        /* swap_yz mode (only applicable for !num_pad); intended for
+           QWERTZ keyboard used in Central Europe, particularly Germany */
+        flagtemp = (game.iflags.num_pad_mode & 1) ? !Cmd.num_pad : false;
+        if (flagtemp !== Cmd.swap_yz) {
+            Cmd.swap_yz = flagtemp;
+            ++updated;
+            /* FIXME? should Cmd.spkeys[] be scanned for y and/or z to swap?
+               Cmd.swap_yz has been toggled;
+               perform the swap (or reverse previous one) */
+            for (i = 0; i < ylist.length; i++) {
+                c = ylist[i] & 0xff;
+                cmdbind_swapkeys(c, c + 1);
+            }
+        }
+        /* MSDOS compatibility mode (only applicable for num_pad) */
+        flagtemp = (game.iflags.num_pad_mode & 1) ? Cmd.num_pad : false;
+        if (flagtemp !== Cmd.pcHack_compat) {
+            Cmd.pcHack_compat = flagtemp;
+            ++updated;
+            /* pcHack_compat has been toggled */
+            /* FIXME: NHKF_DOINV2 ought to be implemented instead of this */
+            c = M(0x30) & 0xff;
+            if (Cmd.pcHack_compat)
+                cmdbind_add(c, ext_func_tab_from_func("dotypeinv"), false);
+            else
+                cmdbind_remove(c);
+        }
+        /* phone keypad layout (only applicable for num_pad) */
+        flagtemp = (game.iflags.num_pad_mode & 2) ? Cmd.num_pad : false;
+        if (flagtemp !== Cmd.phone_layout) {
+            Cmd.phone_layout = flagtemp;
+            ++updated;
+            /* phone_layout has been toggled */
+            for (i = 0; i < 3; i++) {
+                c = 0x31 + i;             /* 1,2,3 <-> 7,8,9 */
+                cmdbind_swapkeys(c, c + 6);
+                c = (M(0x31) & 0xff) + i; /* M-1,M-2,M-3 <-> M-7,M-8,M-9 */
+                cmdbind_swapkeys(c, c + 6);
+            }
+        }
+    } /*?initial*/
+
+    const Cmd = game.Cmd;
+    /* choose updated movement keys */
+    if (updated)
+        Cmd.serialno++;
+    Cmd.dirchars = !Cmd.num_pad
+                   ? (!Cmd.swap_yz ? sdir : sdir_swap_yz)
+                   : (!Cmd.phone_layout ? ndir : ndir_phone_layout);
+    Cmd.alphadirchars = !Cmd.num_pad ? Cmd.dirchars : sdir;
+
+    /* back up the commands & keys overwritten by new movement keys */
+    for (dir = 0; dir < N_DIRS; dir++) {
+        Cmd.back_dir_key[dir] = Cmd.back_dir_key[dir] || [];
+        Cmd.back_dir_cmd[dir] = Cmd.back_dir_cmd[dir] || [];
+        for (mode = 0 /* MV_WALK */; mode < N_MOVEMODES; mode++) {
+            let di = Cmd.dirchars.charCodeAt(dir);
+            let bind;
+
+            if (!Cmd.num_pad) {
+                if (mode === 1 /* MV_RUN */) di = highc(Cmd.dirchars[dir]).charCodeAt(0);
+                else if (mode === 2 /* MV_RUSH */) di = C(di);
+            } else {
+                if (mode === 1 /* MV_RUN */) di = M(di);
+                else if (mode === 2 /* MV_RUSH */) di = M(di);
+            }
+            Cmd.back_dir_key[dir][mode] = di;
+            if ((bind = Cmd.cmdbinds.get(di)) !== undefined) /* cmdbind_get() */
+                Cmd.back_dir_cmd[dir][mode] = bind;
+            else
+                Cmd.back_dir_cmd[dir][mode] = null;
+            cmdbind_remove(di);
+        }
+    }
+    Cmd.backed_dir_cmd = true;
+
+    /* bind the new keys to movement commands */
+    for (i = 0; i < N_DIRS; i++) {
+        const di = Cmd.dirchars.charCodeAt(i);
+        bind_key_fn(di, `do_move_${move_dirnames[i]}`);
+        if (!Cmd.num_pad) {
+            bind_key_fn(highc(Cmd.dirchars[i]).charCodeAt(0),
+                        `do_run_${move_dirnames[i]}`);
+            bind_key_fn(C(di), `do_rush_${move_dirnames[i]}`);
+        } else {
+            /* M(number) works when altmeta is on */
+            bind_key_fn(M(di), `do_run_${move_dirnames[i]}`);
+            /* can't bind highc() or C() of digits. just use the 5 prefix. */
+        }
+    }
+    /* update_rest_on_space(): rest_on_space is off;
+       Cmd.extcmd_char = cmd_from_func(doextcmd) is looked up when used */
 }
 
-// C ref: cmd.c commands_init() + the rest of reset_commands(TRUE)
+// C ref: cmd.c ext_func_tab_from_func()
+function ext_func_tab_from_func(fn) {
+    return extcmdlist.find(e => e.ef_funct === fn) || null;
+}
+
+// C ref: cmd.c cmdbind_remove()
+function cmdbind_remove(key) {
+    game.Cmd.cmdbinds.delete(key & 0xff);
+    game.Cmd.userbinds.delete(key & 0xff);
+}
+
+// C ref: cmd.c cmdbind_swapkeys() -- swap key bindings for key1 and key2;
+// both bindings must exist
+function cmdbind_swapkeys(key1, key2) {
+    const binds = game.Cmd.cmdbinds;
+
+    if (binds.has(key1) && binds.has(key2)) {
+        /* bind1->key = key2; bind2->key = key1: the list order is kept */
+        const entries = [...binds].map(([k, v]) =>
+            [k === key1 ? key2 : k === key2 ? key1 : k, v]);
+        const u1 = game.Cmd.userbinds.has(key1),
+              u2 = game.Cmd.userbinds.has(key2);
+        binds.clear();
+        for (const [k, v] of entries)
+            binds.set(k, v);
+        game.Cmd.userbinds.delete(key1);
+        game.Cmd.userbinds.delete(key2);
+        if (u1) game.Cmd.userbinds.add(key2);
+        if (u2) game.Cmd.userbinds.add(key1);
+    }
+}
+
+// C ref: cmd.c commands_init() -- initialize all keyboard commands
 function commands_init() {
-    const map = new Map();
     const C = (c) => (0x1f & c.charCodeAt(0));
     const M = (c) => (0x80 | c.charCodeAt(0));
 
     for (const ec of extcmdlist)
         if (ec.key)
-            map.set(ec.key & 0xff, ec); /* cmdbind_add() */
-    /* number_pad bindings, overridden below for the !number_pad keys */
-    bind_key_txt(map, C('l'), "redraw");
-    bind_key_txt(map, 'h'.charCodeAt(0), "help");
-    bind_key_txt(map, 'j'.charCodeAt(0), "jump");
-    bind_key_txt(map, 'k'.charCodeAt(0), "kick");
-    bind_key_txt(map, 'l'.charCodeAt(0), "loot");
-    bind_key_txt(map, C('n'), "annotate");
-    bind_key_txt(map, 'N'.charCodeAt(0), "name");
-    bind_key_txt(map, 'u'.charCodeAt(0), "untrap");
-    bind_key_txt(map, '5'.charCodeAt(0), "run");
-    bind_key_txt(map, M('5'), "rush");
-    bind_key_txt(map, '-'.charCodeAt(0), "fight");
-    /* alt keys: */
-    bind_key_txt(map, M('O'), "overview");
-    bind_key_txt(map, M('2'), "twoweapon");
-    bind_key_txt(map, M('N'), "name");
+            cmdbind_add(ec.key, ec, false);
+    /* bind_mousebtn(): no mouse */
 
-    /* reset_commands(): back up and remove the keys overwritten by the
-       movement keys, then bind the new keys to movement commands */
-    for (let dir = 0; dir < N_DIRS; dir++) {
-        const di = sdir.charCodeAt(dir);
-        map.delete(di);
-        map.delete(highc(sdir[dir]).charCodeAt(0));
-        map.delete(di & 0x1f);
-    }
-    for (let i = 0; i < N_DIRS; i++) {
-        const di = sdir[i];
-        bind_key_fn(map, di.charCodeAt(0), `do_move_${move_dirnames[i]}`);
-        bind_key_fn(map, highc(di).charCodeAt(0), `do_run_${move_dirnames[i]}`);
-        bind_key_fn(map, di.charCodeAt(0) & 0x1f, `do_rush_${move_dirnames[i]}`);
-    }
-    /* update_rest_on_space(): rest_on_space is off */
-    return map;
+    /* number_pad */
+    bind_key(C('l'), "redraw", false);
+    bind_key('h'.charCodeAt(0), "help", false);
+    bind_key('j'.charCodeAt(0), "jump", false);
+    bind_key('k'.charCodeAt(0), "kick", false);
+    bind_key('l'.charCodeAt(0), "loot", false);
+    bind_key(C('n'), "annotate", false);
+    bind_key('N'.charCodeAt(0), "name", false);
+    bind_key('u'.charCodeAt(0), "untrap", false);
+    bind_key('5'.charCodeAt(0), "run", false);
+    bind_key(M('5'), "rush", false);
+    bind_key('-'.charCodeAt(0), "fight", false);
+
+    /* alt keys: */
+    bind_key(M('O'), "overview", false);
+    bind_key(M('2'), "twoweapon", false);
+    bind_key(M('N'), "name", false);
 }
 
 // C ref: cmd.c cmdbind_get()
@@ -1517,7 +1675,7 @@ export async function rhack(key) {
              */
             if (was_m_prefix) {
                 /* custompline(SUPPRESS_HISTORY, ...) */
-                await pline(`The ${tlist.ef_txt} command does not accept '${which}' prefix.`);
+                await custompline(`The ${tlist.ef_txt} command does not accept '${which}' prefix.`);
             } else {
                 const ch = tlist.key;
                 const up = (ch === 0x3c || tlist.ef_funct === "doup"),
@@ -1598,7 +1756,7 @@ export async function rhack(key) {
     }
 
     /* if we reach here, cmd wasn't found in cmdlist[] */
-    await pline(`Unknown command '${visctrl(key)}'.`); /* custompline(SUPPRESS_HISTORY) */
+    await custompline(`Unknown command '${visctrl(key)}'.`); /* custompline(SUPPRESS_HISTORY) */
     game.cmdq = []; /* cmdq_clear(CQ_CANNED); cmdq_clear(CQ_REPEAT) */
     /* didn't move */
     ctx.move = 0;
@@ -1725,16 +1883,22 @@ export async function readchar_poskey() {
 }
 
 /* C ref: cmd.c misc_keys[] -- special keys that aren't commands; the
-   NHKF_COUNT ('n') entry is for number_pad only */
+   NHKF_COUNT ('n') entry is for number_pad only; key is
+   gc.Cmd.spkeys[nhkf] with the default bindings */
 const misc_keys = [
     { key: 0x1b, desc: "cancel current prompt or pending prefix", numpad: false },
+    { key: 0x6e, /* NHKF_COUNT */
+      desc: "Prefix: for digits when preceding a command with a count",
+      numpad: true },
 ];
 
-// C ref: cmd.c key2extcmddesc() -- the description of what a key does
-// (number_pad is off), or null
+// C ref: cmd.c key2extcmddesc() -- the description of what a key does,
+// or null
 export function key2extcmddesc(key) {
     let key2cmdbuf = '';
     let cmdbind, txt;
+    const M_5 = 0x80 | 0x35, M_0 = 0x80 | 0x30;
+    const digit = (c) => (c >= 0x30 && c <= 0x39);
 
     key &= 0xff;
     /* need to check for movement commands before checking the extended
@@ -1746,13 +1910,21 @@ export function key2extcmddesc(key) {
         key2cmdbuf = "rush";
     else if (movecmd_mode(key, MV_RUN))
         key2cmdbuf = "run";
-    if (key >= 0x30 && key <= 0x39) { /* digit(key); !Cmd.num_pad */
-        key2cmdbuf = "start of, or continuation of, a count";
-        return key2cmdbuf;
+    if (digit(key) || (game.Cmd.num_pad && digit(key & 0x7f /* unmeta() */))) {
+        key2cmdbuf = '';
+        if (!game.Cmd.num_pad)
+            key2cmdbuf = "start of, or continuation of, a count";
+        else if (key === 0x35 || key === M_5)
+            key2cmdbuf = `${(!!game.Cmd.pcHack_compat !== (key === M_5))
+                            ? "run" : "rush"} prefix`;
+        else if (key === 0x30 || (game.Cmd.pcHack_compat && key === M_0))
+            key2cmdbuf = "synonym for 'i'";
+        if (key2cmdbuf)
+            return key2cmdbuf;
     }
     /* check prefixes before regular commands; includes ^A pseudo-command */
     for (const mk of misc_keys) {
-        if (mk.numpad /* && !iflags.num_pad */)
+        if (mk.numpad && !game.iflags.num_pad)
             continue;
         if (key === mk.key)
             return mk.desc;
@@ -1865,7 +2037,7 @@ export async function get_count(allowchars, /* what comes after digits; if Null,
                 qbuf = `Count: ${cnt}`;
                 backspaced = false;
             }
-            await pline(qbuf); /* custompline(SUPPRESS_HISTORY, "%s", qbuf) */
+            await custompline(qbuf); /* custompline(SUPPRESS_HISTORY, "%s", qbuf) */
             /* mark_synch(): output flush only */
         }
     }
@@ -1892,8 +2064,7 @@ async function parse() {
        is always reset to otherInp by readchar() */
     program_state().input_state = commandInp;
 
-    /* gc.Cmd.num_pad: iflags.num_pad (reset_commands(FALSE) isn't ported) */
-    if (!game.iflags.num_pad
+    if (!game.Cmd.num_pad
         || (foo = await readchar()) === 0x6e) { /* Cmd.spkeys[NHKF_COUNT] */
         /* if 'num_pad' is On then readchar() has just reset input_state;
            set it back to commandInp, so that get_count() supports 'altmeta';
@@ -1904,11 +2075,6 @@ async function parse() {
 
         foo = await get_count(null, 0, LARGEST_INT, 'command_count', GC_NOFLAGS);
     }
-    /* the number_pad key bindings (reset_commands(FALSE): digit movement,
-       M-digit run keys, Cmd.swap_yz, Cmd.pcHack_compat M-0,
-       Cmd.phone_layout) aren't ported */
-    if (game.iflags.num_pad || game.iflags.num_pad_mode)
-        throw new Error('parse(): number_pad key bindings (reset_commands(FALSE)) not ported yet');
     game.last_command_count = game.command_count;
 
     if (foo === 0x1b) { /* esc cancels count (TH) */
@@ -1957,35 +2123,6 @@ export function set_move_cmd(dir, run) {
 
 /* C ref: cmd.c quitchars[] */
 const quitchars = " \r\n\x1b";
-/* C ref: cmd.c Cmd.dirchars[] (number_pad off) */
-const dirchars = sdir;
-
-// C ref: cmd.c movecmd() -- mode MV_ANY: a walk, run or rush key
-// (move_funcs[][]) sets u.dx, u.dy, u.dz; returns !u.dz for a move
-function movecmd(sym) {
-    const u = game.u;
-    let d = -1; /* DIR_ERR */
-    const c = String.fromCharCode(sym);
-    const lc = c.toLowerCase();
-
-    if (dirchars.includes(c))
-        d = dirchars.indexOf(c);                 /* MV_WALK, '>' and '<' */
-    else if ('hykulnjb'.includes(lc))
-        d = dirchars.indexOf(lc);                /* MV_RUN: shifted */
-    else if (sym >= 1 && sym <= 26
-             && 'hykulnjb'.includes(String.fromCharCode(sym + 96)))
-        d = dirchars.indexOf(String.fromCharCode(sym + 96)); /* MV_RUSH: ^dir */
-
-    if (d !== -1) {
-        u.dx = xdir[d];
-        u.dy = ydir[d];
-        u.dz = zdir[d];
-        return !u.dz;
-    }
-    u.dz = 0;
-    return 0;
-}
-
 /* C ref: hack.h enum movemodes */
 export const MV_ANY = -1, MV_WALK = 0, MV_RUN = 1, MV_RUSH = 2;
 
@@ -2048,7 +2185,7 @@ export function cmd_from_func(fn) {
         /* skip digits if number_pad is Off; also skip '-' unless it has
            been bound to something other than what number_pad assigns */
         if (((i >= 0x30 && i <= 0x39) || (i === 0x2d && fn === "do_fight"))
-            /* && !gc.Cmd.num_pad */)
+            && !game.Cmd.num_pad)
             continue;
 
         if (cmd && cmd.ef_funct === fn) {
@@ -2087,7 +2224,7 @@ export function cmd_from_ecname(ecname) {
 }
 
 // C ref: cmd.c show_direction_keys()
-function show_direction_keys(win, centerchar, nodiag) {
+async function show_direction_keys(win, centerchar, nodiag) {
     let buf;
     const k = (fn) => visctrl(cmd_from_func(fn));
 
@@ -2096,23 +2233,216 @@ function show_direction_keys(win, centerchar, nodiag) {
 
     if (nodiag) {
         buf = `             ${k("do_move_north")}   `;
-        tty_putstr(win, 0, buf);
-        tty_putstr(win, 0, "             |   ");
+        await tty_putstr(win, 0, buf);
+        await tty_putstr(win, 0, "             |   ");
         buf = `          ${k("do_move_west")}- ${centerchar} -${k("do_move_east")}`;
-        tty_putstr(win, 0, buf);
-        tty_putstr(win, 0, "             |   ");
+        await tty_putstr(win, 0, buf);
+        await tty_putstr(win, 0, "             |   ");
         buf = `             ${k("do_move_south")}   `;
-        tty_putstr(win, 0, buf);
+        await tty_putstr(win, 0, buf);
     } else {
         buf = `          ${k("do_move_northwest")}  ${k("do_move_north")}  ${k("do_move_northeast")}`;
-        tty_putstr(win, 0, buf);
-        tty_putstr(win, 0, "           \\ | / ");
+        await tty_putstr(win, 0, buf);
+        await tty_putstr(win, 0, "           \\ | / ");
         buf = `          ${k("do_move_west")}- ${centerchar} -${k("do_move_east")}`;
-        tty_putstr(win, 0, buf);
-        tty_putstr(win, 0, "           / | \\ ");
+        await tty_putstr(win, 0, buf);
+        await tty_putstr(win, 0, "           / | \\ ");
         buf = `          ${k("do_move_southwest")}  ${k("do_move_south")}  ${k("do_move_southeast")}`;
-        tty_putstr(win, 0, buf);
+        await tty_putstr(win, 0, buf);
     }
+}
+
+// C ref: cmd.c keylist_func_has_key()
+function keylist_func_has_key(extcmd, skip_keys_used) /* boolean keys_used[256] */ {
+    let i;
+    let bind;
+
+    for (i = 0; i < 256; ++i) {
+        if (skip_keys_used[i])
+            continue;
+
+        if (((bind = cmdbind_get(i)) !== null) && (bind === extcmd))
+            return true;
+    }
+    return false;
+}
+
+// C ref: cmd.c keylist_putcmds() -- game.Cmd.cmdbinds maps a key straight
+// to its extcmdlist[] entry (bind->cmd)
+async function keylist_putcmds(datawin, docount, incl_flags, excl_flags,
+                               keys_used) /* boolean keys_used[256] */ {
+    let i;
+    let buf;
+    const keys_already_used = []; /* copy of keys_used[] before updates */
+    let count = 0;
+    let bind;
+
+    for (i = 0; i < 256; i++) {
+        const key = i;
+
+        keys_already_used[i] = keys_used[i];
+        if (keys_used[i])
+            continue;
+        if (key === 0x20 && !game.flags.rest_on_space)
+            continue;
+        bind = cmdbind_get(key);
+        if (bind) {
+            if ((incl_flags && !(bind.flags & incl_flags))
+                || (excl_flags && (bind.flags & excl_flags)))
+                continue;
+            if (docount) {
+                count++;
+                continue;
+            }
+            if ((bind.flags & CMD_PARAM) !== 0)
+                /* "%-7s %-13s %s \"%s\"" with bind->param */
+                throw new Error('keylist_putcmds(): a key bound with a parameter not ported yet');
+            else
+                buf = `${key2txt(key).padEnd(7)} ${bind.ef_txt.padEnd(13)} ${bind.ef_desc}`;
+            await tty_putstr(datawin, 0, buf);
+            keys_used[i] = true;
+        }
+    }
+    /* also list commands that lack key assignments; most are wizard mode */
+    for (const extcmd of extcmdlist) {
+        if ((incl_flags && !(extcmd.flags & incl_flags))
+            || (excl_flags && (extcmd.flags & excl_flags)))
+            continue;
+        /* can't just check for non-Null extcmd->key; it holds the
+           default assignment and a user-specified binding might hijack
+           this command's default key for some other command; or this
+           command might have been assigned a key being used for
+           movement or as a prefix, intercepting that keystroke */
+        if (keylist_func_has_key(extcmd, keys_already_used))
+            continue;
+        /* found a command for current category without any key assignment */
+        if (docount) {
+            count++;
+            continue;
+        }
+        /* '#'+20 for one column here == 7+' '+13 for two columns above */
+        buf = `#${extcmd.ef_txt.padEnd(20)} ${extcmd.ef_desc}`;
+        await tty_putstr(datawin, 0, buf);
+    }
+    return count;
+}
+
+// C ref: cmd.c dokeylist() -- list all keys and their bindings, like
+// dat/hh but dynamic; misc_keys[]' key is gc.Cmd.spkeys[nhkf]
+export async function dokeylist() {
+    let buf;
+    let key;
+    let spkey_gap;
+    const keys_used = new Array(256).fill(false);
+    const pfx_seen = new Array(256).fill(-1); /* -1: no special key seen */
+    const wizard = !!game.flags.debug;
+
+    /* this is actually ambiguous; tty raw mode will override SIGINT;
+       when enabled, treat it like a movement command since assigning
+       other commands to this keystroke would be unwise... */
+    key = 0x03; /* C('c') */
+    keys_used[key] = true;
+
+    /* movement keys have been flagged in keys_used[]; clone them */
+    const mov_seen = keys_used.slice();
+
+    spkey_gap = false;
+    for (let i = 0; i < misc_keys.length; ++i) {
+        if (misc_keys[i].numpad && !game.iflags.num_pad)
+            continue;
+        key = misc_keys[i].key;
+        if (key && !mov_seen[key] && pfx_seen[key] < 0) {
+            keys_used[key] = true;
+            pfx_seen[key] = i;
+        } else
+            spkey_gap = true;
+    }
+
+    const datawin = tty_create_nhwindow(NHW_TEXT);
+    await tty_putstr(datawin, 0, "");
+    buf = `${"".padStart(7)} ${"    Full Current Key Bindings List"}`;
+    await tty_putstr(datawin, 0, buf);
+    for (const extcmd of extcmdlist)
+        if (spkey_gap || !keylist_func_has_key(extcmd, keys_used)) {
+            buf = `${"".padStart(7)} ${"(also commands with no key assignment)"}`;
+            await tty_putstr(datawin, 0, buf);
+            break;
+        }
+
+    /* directional keys */
+    await tty_putstr(datawin, 0, "");
+    await tty_putstr(datawin, 0, "Directional keys:");
+    await show_direction_keys(datawin, '.', false); /* '.'==self in direct'n grid */
+
+    if (!game.iflags.num_pad) {
+        await tty_putstr(datawin, 0, "");
+        await tty_putstr(datawin, 0,
+            "Ctrl+<direction> will run in specified direction until something very");
+        buf = `${"".padStart(7)} ${"interesting is seen."}`;
+        await tty_putstr(datawin, 0, buf);
+        buf = "Shift"; /* append the rest below */
+    } else {
+        /* num_pad */
+        await tty_putstr(datawin, 0, "");
+        buf = "Meta"; /* append the rest next */
+    }
+    buf += "+<direction> will run in specified direction until you encounter";
+    await tty_putstr(datawin, 0, buf);
+    buf = `${"".padStart(7)} ${"an obstacle."}`;
+    await tty_putstr(datawin, 0, buf);
+
+    await tty_putstr(datawin, 0, "");
+    await tty_putstr(datawin, 0, "Miscellaneous keys:");
+    for (let i = 0; i < misc_keys.length; ++i) {
+        if (misc_keys[i].numpad && !game.iflags.num_pad)
+            continue;
+        key = misc_keys[i].key;
+        if (key && !mov_seen[key] && (pfx_seen[key] === i)) {
+            buf = `${key2txt(key).padEnd(7)} ${misc_keys[i].desc}`;
+            await tty_putstr(datawin, 0, buf);
+        }
+    }
+    /* (see above) */
+    key = 0x03; /* C('c') */
+    /* last of the special keys (!NO_SIGNAL) */
+    buf = key2txt(key).padEnd(7);
+    buf += " interrupt: break out of NetHack (SIGINT)";
+    await tty_putstr(datawin, 0, buf);
+    /* keyless special key commands, if any */
+    if (spkey_gap)
+        /* "[%s]" spkey_name() lines */
+        throw new Error('dokeylist(): keyless special keys not ported yet');
+
+    const IGNORECMD = (WIZMODECMD | INTERNALCMD | MOVEMENTCMD);
+
+    await tty_putstr(datawin, 0, "");
+    await show_menu_controls_cm(datawin, true);
+
+    if (await keylist_putcmds(datawin, true, GENERALCMD, IGNORECMD, keys_used)) {
+        await tty_putstr(datawin, 0, "");
+        await tty_putstr(datawin, 0, "General commands:");
+        await keylist_putcmds(datawin, false, GENERALCMD,
+                              IGNORECMD, keys_used);
+    }
+
+    if (await keylist_putcmds(datawin, true, 0, GENERALCMD | IGNORECMD, keys_used)) {
+        await tty_putstr(datawin, 0, "");
+        await tty_putstr(datawin, 0, "Game commands:");
+        await keylist_putcmds(datawin, false, 0,
+                              GENERALCMD | IGNORECMD,
+                              keys_used);
+    }
+
+    if (wizard && await keylist_putcmds(datawin, true,
+                                        WIZMODECMD, INTERNALCMD, keys_used)) {
+        await tty_putstr(datawin, 0, "");
+        await tty_putstr(datawin, 0, "Debug mode commands:");
+        await keylist_putcmds(datawin, false,
+                              WIZMODECMD, INTERNALCMD, keys_used);
+    }
+
+    await tty_display_nhwindow(datawin, false);
+    await tty_destroy_nhwindow(datawin);
 }
 
 // C ref: cmd.c help_dir() -- explain choices if player has asked for
@@ -2156,14 +2486,15 @@ async function help_dir(sym, spkey, msg) {
 
     buf = `Valid direction keys${prefixhandling ? " to " : ""}${prefixhandling ? dothat : ""}${nodiag ? " in your current form" : ""} are:`;
     tty_putstr(win, 0, buf);
-    show_direction_keys(win, !prefixhandling ? '.' : ' ', nodiag);
+    await show_direction_keys(win, !prefixhandling ? '.' : ' ', nodiag);
 
     if (!prefixhandling) {
         tty_putstr(win, 0, "");
         tty_putstr(win, 0, "          <  up");
         tty_putstr(win, 0, "          >  down");
-        /* NHKF_GETDIR_SELF is '.' with number_pad off */
-        buf = `       ${visctrl('.'.charCodeAt(0)).padStart(4)}  direct at yourself`;
+        /* selfi: NHKF_GETDIR_SELF2 's' with number_pad, else
+           NHKF_GETDIR_SELF '.' */
+        buf = `       ${visctrl((game.Cmd.num_pad ? 's' : '.').charCodeAt(0)).padStart(4)}  direct at yourself`;
         tty_putstr(win, 0, buf);
     }
 
@@ -2315,10 +2646,10 @@ export async function getdir(s) {
         const cmdq = game.cmdq.shift(); /* cmdq_pop() */
         if (cmdq.typ === 'dir') {
             if (!cmdq.dirz) {
-                dirsym = sdir.charCodeAt(xytodir(cmdq.dirx, cmdq.diry));
+                dirsym = game.Cmd.dirchars.charCodeAt(xytodir(cmdq.dirx, cmdq.diry));
             } else {
                 /* gc.Cmd.dirchars[DIR_DOWN] '>' or [DIR_UP] '<' */
-                dirsym = sdir.charCodeAt((cmdq.dirz > 0) ? N_DIRS : N_DIRS + 1);
+                dirsym = game.Cmd.dirchars.charCodeAt((cmdq.dirz > 0) ? N_DIRS : N_DIRS + 1);
             }
         } else if (cmdq.typ === 'key') {
             dirsym = cmdq.key.charCodeAt(0);
@@ -2349,7 +2680,7 @@ export async function getdir(s) {
         u.dx = u.dy = u.dz = 0;
     } else if (ch === '_') { /* NHKF_GETDIR_MOUSE */
         throw new Error('getdir(): getpos() not ported yet');
-    } else if (!(is_mov = movecmd(dirsym)) && !u.dz) {
+    } else if (!(is_mov = movecmd_mode(dirsym, MV_ANY)) && !u.dz) {
         let did_help = false, help_requested;
 
         if (!quitchars.includes(ch)) {
@@ -2374,3 +2705,4 @@ export async function getdir(s) {
         confdir(false);
     return 1;
 }
+import { show_menu_controls as show_menu_controls_cm } from './pager.js';

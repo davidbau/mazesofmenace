@@ -49,7 +49,7 @@ import {
 import { hliquid } from './do_name.js';
 import { get_obj_location } from './light.js';
 import { game } from './gstate.js';
-import { delobj, obj_extract_self, useupall } from './invent.js';
+import { delobj_async, obj_extract_self, useupall } from './invent.js';
 import { discover_object } from './o_init.js';
 import { remove_worn_item } from './steal.js';
 import {
@@ -70,7 +70,9 @@ import {
 } from './objects.js';
 import { erode_obj } from './trap_erode_obj.js';
 import { objectGenerationEnv } from './object_generation.js';
-import { ttyPline } from './tty_message.js';
+import {
+    ttyPline,
+} from './tty_message.js';
 import { cansee, couldsee } from './vision.js';
 import { destroy_strings } from './zap_destroy_items.js';
 import { youSee } from './pline.js';
@@ -145,7 +147,7 @@ export async function pot_acid_damage(obj, inInvent, described, rawEnv = {}) {
 
     const { setnotworn } = await import('./worn.js');
     await setnotworn(obj, { ...rawEnv, state });
-    await delobj(obj, { ...rawEnv, state });
+    await delobj_async(obj, { ...rawEnv, state });
     if (inInvent) await lazyUpdateInventory({ ...rawEnv, state });
 }
 
@@ -268,7 +270,7 @@ export async function fire_damage(obj, force, x, y, rawEnv = {}) {
         }
         const { setnotworn } = await import('./worn.js');
         if (obj.owornmask) await setnotworn(obj, { ...rawEnv, state });
-        await delobj(obj, { ...rawEnv, state });
+        await delobj_async(obj, { ...rawEnv, state });
         return true;
     }
 
@@ -293,7 +295,7 @@ export async function fire_damage(obj, force, x, y, rawEnv = {}) {
         }
         const { setnotworn } = await import('./worn.js');
         if (obj.owornmask) await setnotworn(obj, { ...rawEnv, state });
-        await delobj(obj, { ...rawEnv, state });
+        await delobj_async(obj, { ...rawEnv, state });
         return true;
     }
     if (obj.oclass === POTION_CLASS) {
@@ -304,7 +306,7 @@ export async function fire_damage(obj, force, x, y, rawEnv = {}) {
         }
         const { setnotworn } = await import('./worn.js');
         if (obj.owornmask) await setnotworn(obj, { ...rawEnv, state });
-        await delobj(obj, { ...rawEnv, state });
+        await delobj_async(obj, { ...rawEnv, state });
         return true;
     }
 
@@ -367,7 +369,7 @@ export async function lava_damage(obj, x, y, rawEnv = {}) {
             await remove_worn_item(obj, true, state, rawEnv);
             await useupall(obj, { ...rawEnv, state });
         } else {
-            await delobj(obj, { ...rawEnv, state });
+            await delobj_async(obj, { ...rawEnv, state });
         }
         return true;
     }

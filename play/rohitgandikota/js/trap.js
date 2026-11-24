@@ -113,7 +113,7 @@ import { unplacebc, placebc } from './ball.js';
 import { maybe_dunk_boulders } from './apply.js';
 import { next_to_u } from './apply.js';
 import { unleash_all } from './apply.js';
-import { COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK } from './const.js';
+import { COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK, COST_DECHNT } from './const.js';
 import { mcarried } from './obj.js';
 import { costly_alteration } from './shk.js';
 import { s_suffix } from './hacklib.js';
@@ -140,7 +140,7 @@ import { shieldeff } from './display.js';
 import { prinv } from './invent.js';
 import { poly_obj, resist, destroy_strings } from './zap.js';
 import { x_monnam } from './do_name.js';
-import { Antimagic, Unchanging } from './youprop.js';
+import { Antimagic, Unchanging, Half_physical_damage, Half_spell_damage } from './youprop.js';
 import { has_mgivenname, ARTICLE_THE, ARTICLE_NONE, SUPPRESS_SADDLE, NOTELL, NC_SHOW_MSG, DISMOUNT_POLY, POLY_NOFLAGS } from './const.js';
 import { wakeup } from './mon.js';
 import { uwepgone, uswapwepgone } from './wield.js';
@@ -178,7 +178,7 @@ import { MSOUND } from './monst_data.js';
 import { strsubst } from './hacklib.js';
 import { nolimbs } from './mondata.js';
 import { rn2, rnd } from './rng.js';
-import { mksobj, place_object, splitobj, add_to_migration } from './mkobj.js';
+import { mksobj, place_object, splitobj, add_to_migration, dealloc_obj } from './mkobj.js';
 import { weight } from './invent.js';
 import { dmgval } from './weapon.js';
 import { makeknown, observe_object } from './o_init.js';
@@ -1462,11 +1462,7 @@ function t_missile(otyp, trap) {
     return otmp;
 }
 
-// src/trap.c:1250 trapeffect_dart_trap() — the hero's arm.
-//
-// Draw order: the once/tseen rn2(15) disarm check, then t_missile's mksobj,
-// then the rn2(6) poison roll, then dmgval, then thitu's rnd(20).
-// src/trap.c trapeffect_arrow_trap()
+// src/trap.c:1190 trapeffect_arrow_trap(), hero and monster projectile effects.
 async function trapeffect_arrow_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
         if (trap.once && trap.tseen && !rn2(15)) {
@@ -1478,15 +1474,19 @@ async function trapeffect_arrow_trap(mtmp, trap, trflags) {
         trap.once = 1;
         seetrap(trap);
         await pline('An arrow shoots out at you!');
-        const otmp = t_missile(ONAMES.ARROW, trap);
+        let otmp = t_missile(ONAMES.ARROW, trap);
         const dam = dmgval(otmp, game.youmonst);
+        const objp = { obj: otmp };
         if (game.u.usteed && !rn2(2) && await steedintrap(trap, otmp)) {
             ; /* nothing */
-        } else if (await thitu(8, dam, { obj: otmp }, 'arrow')) {
-            /* obfree(otmp) — the arrow is destroyed */
+        } else if (await thitu(8, Maybe_Half_Phys(dam), objp, 'arrow')) {
+            otmp = objp.obj;
+            if (otmp)
+                await obfree(otmp, null);
         } else {
+            otmp = objp.obj;
             place_object(otmp, game.u.ux, game.u.uy);
-            if (!game.u.ublind)
+            if (!Blind())
                 observe_object(otmp);
             const { stackobj } = await import('./invent.js');
             stackobj(otmp);
@@ -1501,7 +1501,7 @@ async function trapeffect_arrow_trap(mtmp, trap, trflags) {
 
     if (trap.once && trap.tseen && !rn2(15)) {
         if (in_sight && see_it)
-            await pline(`${Monnam(mtmp)} triggers a trap but nothing happens.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} triggers a trap but nothing happens.`);
         deltrap(trap);
         newsym(mtmp.mx, mtmp.my);
         return Trap_Is_Gone;
@@ -1517,6 +1517,7 @@ async function trapeffect_arrow_trap(mtmp, trap, trflags) {
         ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
+// src/trap.c:1251 trapeffect_dart_trap(), poison follows a completed hero hit.
 async function trapeffect_dart_trap(mtmp, trap, trflags) {
     if (mtmp !== game.youmonst) {
         /* src/trap.c dart monster arm */
@@ -1526,7 +1527,7 @@ async function trapeffect_dart_trap(mtmp, trap, trflags) {
 
         if (trap.once && trap.tseen && !rn2(15)) {
             if (in_sight && see_it)
-                await pline(`${Monnam(mtmp)} triggers a trap but nothing happens.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} triggers a trap but nothing happens.`);
             deltrap(trap);
             newsym(mtmp.mx, mtmp.my);
             return Trap_Is_Gone;
@@ -1544,13 +1545,13 @@ async function trapeffect_dart_trap(mtmp, trap, trflags) {
             ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
 
+    const oldumort = game.u.umortality | 0;
     if (trap.once && trap.tseen && !rn2(15)) {
         await You_hear('a soft click.');
         deltrap(trap);
         newsym(game.u.ux, game.u.uy);
         return Trap_Is_Gone;
     }
-    const oldumort = game.u.umortality | 0;
     trap.once = 1;
     seetrap(trap);
     await pline('A little dart shoots out at you!');
@@ -1558,18 +1559,23 @@ async function trapeffect_dart_trap(mtmp, trap, trflags) {
     if (!rn2(6))
         otmp.opoisoned = 1;
     const dam = dmgval(otmp, game.youmonst);
+    const objp = { obj: otmp };
     if (game.u.usteed && !rn2(2) && await steedintrap(trap, otmp)) {
         ; /* nothing */
-    } else if (await thitu(7, dam, { obj: otmp }, 'little dart')) {
-        if (otmp.opoisoned)
-            await poisoned('dart', A_CON, 'little dart',
-                           /* if damage triggered life-saving,
-                              poison is limited to attrib loss */
-                           ((game.u.umortality | 0) > oldumort) ? 0 : 10, true);
-        obfree(otmp, null);
+    } else if (await thitu(7, Maybe_Half_Phys(dam), objp, 'little dart')) {
+        otmp = objp.obj;
+        if (otmp) {
+            if (otmp.opoisoned)
+                await poisoned('dart', A_CON, 'little dart',
+                               /* if damage triggered life-saving,
+                                  poison is limited to attrib loss */
+                               ((game.u.umortality | 0) > oldumort) ? 0 : 10, true);
+            await obfree(otmp, null);
+        }
     } else {
+        otmp = objp.obj;
         place_object(otmp, game.u.ux, game.u.uy);
-        if (!game.u.ublind)
+        if (!Blind())
             observe_object(otmp);
         /* js/invent.js is reached through a cycle from here (trap -> invent
            -> pickup -> hack -> trap), so stackobj is bound at call time. */
@@ -1662,7 +1668,7 @@ async function trapeffect_rocktrap(mtmp, trap, trflags) {
     const see_it = cansee(mtmp.mx, mtmp.my);
     if (trap.once && trap.tseen && !rn2(15)) {
         if (in_sight && see_it)
-            await pline(`A trap door above ${mon_nam(mtmp)} opens, but nothing falls out!`);
+            await pline_mon(mtmp, `A trap door above ${mon_nam(mtmp)} opens, but nothing falls out!`);
         deltrap(trap);
         newsym(mtmp.mx, mtmp.my);
         return Trap_Is_Gone;
@@ -2089,21 +2095,33 @@ async function trapeffect_sqky_board(mtmp, trap, trflags) {
     return Trap_Effect_Finished;
 }
 
-// src/trap.c:2323 trapeffect_anti_magic(): the hero's arm. Magic
-// resistance causes an implosion, then the field drains 2d6 Pw with half
-// (rounded down) coming from max when max exceeds the drain. The iron-shoes
-// arm still records.
+// src/trap.c:2323 trapeffect_anti_magic()
 async function trapeffect_anti_magic(mtmp, trap, trflags) {
+    if (wearing_iron_shoes(mtmp)) {
+        const shoes = which_armor(mtmp, W_ARMF);
+        // Positive enchantment absorbs the field before either wearer's effect.
+        if (shoes.spe > 0) {
+            if (mtmp === game.youmonst) {
+                seetrap(trap);
+                await pline(`A lethargic aura surrounds ${yname(shoes)}.`);
+                await costly_alteration(shoes, COST_DECHNT);
+            }
+            shoes.spe -= 1;
+            update_inventory();
+            return Trap_Effect_Finished;
+        }
+    }
+
     if (mtmp === game.youmonst) {
         const u = game.u;
         let exclaim_it = false;
 
         seetrap(trap);
-        if (u.uprops?.ANTIMAGIC || u.uprops?.MAGIC_RES) {
+        if (Antimagic()) {
             let dmgval2 = rnd(4);
             const hp = Upolyd(u) ? u.mh : u.uhp;
 
-            if (u.uprops?.HALF_PHDAM || u.uprops?.HALF_SPDAM)
+            if (Half_physical_damage() || Half_spell_damage())
                 dmgval2 += rnd(4);
             if (u.uwep?.oartifact === ART_MAGICBANE)
                 dmgval2 += rnd(4);
@@ -2112,7 +2130,7 @@ async function trapeffect_anti_magic(mtmp, trap, trflags) {
                     && defends_when_carried(ATTKS.AD_MAGM, obj));
             if (carriedDefense)
                 dmgval2 += rnd(4);
-            if (u.uprops?.PASSES_WALLS)
+            if (Passes_walls())
                 dmgval2 = Math.trunc((dmgval2 + 3) / 4);
 
             await You_feel(dmgval2 >= hp ? 'unbearably torpid!'
@@ -2141,7 +2159,7 @@ async function trapeffect_anti_magic(mtmp, trap, trflags) {
                 mtmp.mspec_used = (mtmp.mspec_used || 0) + d(2, 6);
                 if (in_sight) {
                     seetrap(trap);
-                    await pline(`${Monnam(mtmp)} seems lethargic.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} seems lethargic.`);
                 }
             }
         } else {
@@ -2162,8 +2180,9 @@ async function trapeffect_anti_magic(mtmp, trap, trflags) {
                 await monkilled(mtmp,
                     in_sight ? 'compression from an anti-magic field' : null,
                     -ATTKS.AD_MAGM);
-                trapkilled = true;
             }
+            if (DEADMONSTER(mtmp))
+                trapkilled = true;
             if (see_it)
                 newsym(trap.tx, trap.ty);
         }
@@ -2297,9 +2316,10 @@ async function trapeffect_fire_trap(mtmp, trap, trflags) {
     let trapkilled = false;
 
     if (in_sight) {
-        await pline(`A tower of flame erupts from the ${
+        await pline_mon(mtmp, `A tower of flame erupts from the ${
             surface(mtmp.mx, mtmp.my)} under ${mon_nam(mtmp)}!`);
     } else if (see_it) {
+        set_msg_xy(mtmp.mx, mtmp.my);
         await You_see(`a tower of flame erupt from the ${
             surface(mtmp.mx, mtmp.my)}!`);
     }
@@ -2833,10 +2853,7 @@ export function feeltrap(trap) {
     newsym(trap.tx, trap.ty);
 }
 
-// src/trap.c:3898 thitm() — a trap (or trap missile) hits a monster. Only
-// the d_override arm is live here: pits and bear traps force the hit and
-// pass no missile, so the to-hit rnd(20) and the missile bookkeeping never
-// run for them.
+// src/trap.c:6711 thitm(), a trap or trap missile hits a monster.
 async function thitm(tlev, mon, obj, d_override, nocorpse) {
     let strike;
     let trapkilled = false;
@@ -2850,12 +2867,14 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
 
     if (!strike) {
         if (obj && cansee(mon.mx, mon.my))
-            await pline(`${Monnam(mon)} is almost hit by ${doname(obj)}!`);
+            await pline_mon(mon, `${Monnam(mon)} is almost hit by ${doname(obj)}!`);
     } else {
         let dam = 1;
+        const harmless = (obj && stone_missile(obj) && passes_rocks(mon.data));
 
         if (obj && cansee(mon.mx, mon.my))
-            await pline(`${Monnam(mon)} is hit by ${doname(obj)}!`);
+            await pline_mon(mon, `${Monnam(mon)} is hit by ${doname(obj)}${
+                harmless ? ' but is not harmed.' : '!'}`);
         if (d_override) {
             dam = d_override;
         } else if (obj) {
@@ -2863,24 +2882,28 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
             if (dam < 1)
                 dam = 1;
         }
-        mon.mhp -= dam;
-        if (mon.mhp <= 0) {
-            const xx = mon.mx, yy = mon.my;
-
-            await monkilled(mon, '', 0 /* AD_PHYS; nocorpse callers absent */);
+        if (!harmless) {
+            mon.mhp -= dam;
             if (mon.mhp <= 0) {
-                newsym(xx, yy);
-                trapkilled = true;
+                const xx = mon.mx, yy = mon.my;
+
+                await monkilled(mon, '', nocorpse ? -ATTKS.AD_RBRE : ATTKS.AD_PHYS);
+                if (DEADMONSTER(mon)) {
+                    newsym(xx, yy);
+                    trapkilled = true;
+                }
             }
+        } else {
+            strike = 0; /* harmless; don't use up the missile */
         }
     }
-    /* src/trap.c:3955 — an unfired or force-hit missile lands on the
-       monster's square; a normally-striking one is used up. */
     if (obj && (!strike || d_override)) {
         await place_object(obj, mon.mx, mon.my);
         const { stackobj } = await import('./invent.js');
         stackobj(obj);
-    } /* else dealloc_obj(obj): dropped reference is the JS equivalent */
+    } else if (obj) {
+        dealloc_obj(obj);
+    }
 
     return trapkilled;
 }

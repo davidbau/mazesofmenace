@@ -6,6 +6,7 @@
 // awake monsters spends after the movement allotment.
 
 import { monsndx } from './makemon.js';
+import { db_under_typ } from './dbridge.js';
 import { mon_aligntyp } from './priest.js';
 import { is_obj_mappear } from './monst.js';
 import { Invis, Displaced, Underwater, Stealth, Aggravate_monster } from './youprop.js';
@@ -53,7 +54,7 @@ import { amorphous, passes_walls, is_floater, nonliving,
          attacktype, can_blow, needspick, flaming, noncorporeal,
          tunnels, nohands as nohands_mm,
          verysmall as verysmall_mm, sticks, webmaker } from './mondata.js';
-import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_NODOOR,
+import { ACCESSIBLE, DRAWBRIDGE_UP, DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_NODOOR,
          D_BROKEN, In_endgame, NOTONL } from './const.js';
 import { is_vampshifter } from './monst.js';
 import { newsym, canseemon, canspotmon, sensemon, pline,
@@ -1131,7 +1132,9 @@ export async function dissolve_bars(x, y) {
 // src/monmove.c:2188 accessible() — uses the terrain in front of a closed
 // drawbridge, not the drawbridge itself.
 export function accessible(x, y) {
-    const levtyp = game.level.at(x, y)?.typ;
+    const lev = game.level.at(x, y);
+    const levtyp = lev.typ === DRAWBRIDGE_UP ? db_under_typ(lev.drawbridgemask)
+                                            : lev.typ;
     return ACCESSIBLE(levtyp) && !closed_door_mm(x, y);
 }
 

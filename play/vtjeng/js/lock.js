@@ -64,16 +64,17 @@ import {
 } from './cmd.js';
 import {
     feel_location,
-    feel_newsym,
-    map_invisible,
+    feel_newsym_async,
+    map_invisible_async,
     newsym,
+    newsym_async,
     same_remembered_glyph,
 } from './display.js';
 import { lastseentyp_grid, update_mapseen_for } from './dungeon.js';
 import { can_reach_floor, cant_reach_floor } from './engrave.js';
 import { game } from './gstate.js';
 import {
-    delobj,
+    delobj_async,
     obj_extract_self,
     obfree,
     stackobjRuntime,
@@ -164,7 +165,10 @@ import {
 } from './vision.js';
 import { dist2, s_suffix, upstart } from './hacklib.js';
 import { S_hcdoor, S_vcdoor } from './symbols.js';
-import { ttyPline } from './tty_message.js';
+import {
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import { canseemon, canspotmon } from './display.js';
 import {
     BBlinded, Blind, Confusion, Deaf, HBlinded, Levitation, Passes_walls,
@@ -394,7 +398,7 @@ export async function breakchestlock(box, destroyit, state = game) {
                 `You owe ${loss} ${currency(loss, state)} for objects destroyed.`,
                 state,
             );
-        await delobj(box, { state, random: coreRandom });
+        await delobj_async(box, { state, random: coreRandom });
         return;
     }
     /* bill for the box but not for its contents */
@@ -614,7 +618,7 @@ async function picklock(state = game) {
             unblock_point(u.ux + u.dx, u.uy + u.dy, state);
             if (in_rooms(u.ux + u.dx, u.uy + u.dy, SHOPBASE, state).length)
                 add_damage(u.ux + u.dx, u.uy + u.dy, SHOP_DOOR_COST, state);
-            newsym(u.ux + u.dx, u.uy + u.dy, state);
+            await newsym_async(u.ux + u.dx, u.uy + u.dy);
         } else if (doorMask(xlock.door) & D_LOCKED) {
             xlock.door.flags = D_CLOSED;
         } else {
@@ -856,7 +860,7 @@ export async function pick_lock(pick, rx, ry, container, state = game, env = {})
             let res = PICKLOCK_DID_NOTHING;
             const oldglyph = door.remembered_glyph;
             const oldlastseentyp = update_mapseen_for(cc.x, cc.y, state);
-            feel_location(cc.x, cc.y, state);
+            await printQueued(feel_location(cc.x, cc.y, state));
             if (!same_remembered_glyph(oldglyph, door.remembered_glyph)
                 || lastseentyp_grid(state)[cc.x][cc.y] !== oldlastseentyp)
                 res = PICKLOCK_LEARNED_SOMETHING;
@@ -1131,7 +1135,7 @@ export async function doopen_indir(x, y, state = game, env = {}) {
     {
         const oldglyph = door.remembered_glyph;
         const oldlastseentyp = update_mapseen_for(cc.x, cc.y, state);
-        newsym(cc.x, cc.y, state);
+        await newsym_async(cc.x, cc.y);
         if (!same_remembered_glyph(oldglyph, door.remembered_glyph)
             || lastseentyp_grid(state)[cc.x][cc.y] !== oldlastseentyp)
             res = ECMD_TIME;
@@ -1216,7 +1220,7 @@ export async function doopen_indir(x, y, state = game, env = {}) {
         } else {
             setDoorMask(door, D_ISOPEN);
         }
-        feel_newsym(cc.x, cc.y, state);
+        await feel_newsym_async(cc.x, cc.y, state);
         recalc_block_point(cc.x, cc.y, state);
     } else {
         await exercise(A_STR, true, state, random, {
@@ -1266,7 +1270,7 @@ async function obstructed(x, y, quietly, state = game, rawEnv = {}) {
                 }
                 await message(`${name} blocks the way!`, state, rawEnv);
             }
-            if (!canspotmon(mtmp, state)) map_invisible(x, y, state);
+            if (!canspotmon(mtmp, state)) await map_invisible_async(x, y, state);
             return true;
         }
     } else if (OBJ_AT(x, y, state)) {
@@ -1307,7 +1311,7 @@ export async function doorlock(obj, x, y, state = game, rawEnv = {}) {
         case SPE_FORCE_BOLT:
             door.typ = DOOR;
             setDoorMask(door, D_CLOSED | (doorMask(door) & D_TRAPPED));
-            redraw(x, y, state);
+            await printQueued(redraw(x, y, state));
             if (cansee(x, y, state))
                 await message('A door appears in the wall!', state, rawEnv);
             if (obj.otyp === WAN_OPENING || obj.otyp === SPE_KNOCK)
@@ -1350,7 +1354,7 @@ export async function doorlock(obj, x, y, state = game, rawEnv = {}) {
             setDoorMask(door, D_NODOOR);
             if (visible)
                 await message('The doorway vanishes!', state, rawEnv);
-            redraw(x, y, state);
+            await printQueued(redraw(x, y, state));
             return true;
         }
         if (await obstructed(x, y, mysterywand, state, rawEnv)) return false;
@@ -1384,7 +1388,7 @@ export async function doorlock(obj, x, y, state = game, rawEnv = {}) {
         }
         block_point(x, y, state);
         setDoorMask(door, D_LOCKED | (doorMask(door) & D_TRAPPED));
-        redraw(x, y, state);
+        await printQueued(redraw(x, y, state));
         break;
     }
     case WAN_OPENING:
@@ -1405,7 +1409,7 @@ export async function doorlock(obj, x, y, state = game, rawEnv = {}) {
                     ? canseemon(monster, state) : cansee(x, y, state);
                 setDoorMask(door, D_NODOOR);
                 unblock_point(x, y, state);
-                redraw(x, y, state);
+                await printQueued(redraw(x, y, state));
                 const seeit = monster
                     ? canseemon(monster, state) : cansee(x, y, state);
                 if (monster) {
@@ -1444,7 +1448,7 @@ export async function doorlock(obj, x, y, state = game, rawEnv = {}) {
             setDoorMask(door, D_BROKEN);
             recalc_block_point(x, y, state);
             const seeit = cansee(x, y, state);
-            redraw(x, y, state);
+            await printQueued(redraw(x, y, state));
             if (state.flags?.verbose) {
                 if ((sawit || seeit) && !Unaware(state)) {
                     await message('The door crashes open!', state, rawEnv);
@@ -1549,7 +1553,7 @@ export async function doclose(state = game) {
         const oldglyph = door.remembered_glyph;
         const oldlastseentyp = update_mapseen_for(x, y, state);
 
-        feel_location(x, y, state);
+        await printQueued(feel_location(x, y, state));
         if (!same_remembered_glyph(oldglyph, door.remembered_glyph)
             || lastseentyp_grid(state)[x][y] !== oldlastseentyp)
             res = ECMD_TIME; /* learned something */
@@ -1607,7 +1611,7 @@ export async function doclose(state = game) {
         if (u.usteed || rn2(25) < threshold) {
             await ttyPline('The door closes.', state);
             door.flags = D_CLOSED;
-            feel_newsym(x, y, state);
+            await feel_newsym_async(x, y, state);
             block_point(x, y, state);
         } else {
             await exercise(A_STR, true, state, coreRandom, {

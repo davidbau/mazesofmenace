@@ -17,6 +17,7 @@ import { Is_branchlev, In_hell, level_difficulty, on_level, dungeon_branch,
          induced_align, find_level, init_mapseen } from './dungeon.js';
 import { makemaz, mazexy, mkportal } from './mkmaze.js';
 import { PM_LEPRECHAUN, PM_KILLER_BEE, PM_SOLDIER, PM_COCKATRICE, S_HUMAN,
+         PM_SMALL_MIMIC, PM_LARGE_MIMIC, PM_GIANT_MIMIC, S_MIMIC,
          PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN, PM_ARCHEOLOGIST,
          PM_WIZARD, PM_GIANT_SPIDER, mons } from './monsters.js';
 import { set_levltyp } from './mkmaze.js';
@@ -39,7 +40,7 @@ import {
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
-    SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
+    SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, Align2amask,
     LR_UPTELE, LR_TELE, LR_DOWNTELE, LR_BRANCH, LR_PORTAL, LR_DOWNSTAIR,
@@ -67,7 +68,8 @@ import {
     CORPSTAT_INIT, weight, add_to_container, mk_tt_object,
 } from './mkobj.js';
 import { mkclass, makemon, m_at, sobj_at, set_malign, mongets, ndemon, is_pool,
-         is_lava } from './makemon.js';
+         is_lava, set_mimic_sym } from './makemon.js';
+import { in_rooms } from './hack.js';
 import { priestini } from './priest.js';
 import { dist2, distmin } from './hacklib.js';
 import { del_engr_at } from './engrave.js';
@@ -81,6 +83,7 @@ import {
 } from './monsters.js';
 import {
     IS_THRONE, THRONE, IS_ROOM, OBJ_AT, AM_SHRINE, MM_ASLEEP, A_NONE, NON_PM,
+    Is_earthlevel,
 } from './const.js';
 import { MACE, LUMP_OF_ROYAL_JELLY } from './objects.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
@@ -350,8 +353,8 @@ export function u_on_dnstairs() {
         u_on_sstairs(1); /* destination dnstairs implies moving up */
 }
 
-// oinit stub (level-dependent object probability reset)
-function oinit() { /* no-op for contest */ }
+// C ref: o_init.c oinit() -- level dependent obj probabilities (o_init.js)
+import { oinit } from './o_init.js';
 
 
 // ============================================================
@@ -378,8 +381,7 @@ function dealloc_obj(otmp) { /* garbage collected */ }
 /* mazexy(): mkmaze.js */
 
 
-// in_rooms stub
-function in_rooms(x, y, rtype) { return []; }
+/* in_rooms(): hack.js */
 
 // ============================================================
 // Core mklev functions (ported from main project's mklev.js)
@@ -394,7 +396,9 @@ export async function mklev() {
     if (await getbones()) return;
     g.in_mklev = true;
     await makelevel();
-    count_level_features();
+    /* C's mklev() doesn't recount fountains/sinks here: nfountains and
+       nsinks come from mkfount()/mksink() (and load_special() for special
+       levels), so a themed room's des.feature("fountain") isn't counted */
     level_finalize_topology();
     g.in_mklev = false;
 }
@@ -1948,7 +1952,7 @@ function dosdoor(x, y, aroom, type) {
     const map = game.level;
     const loc = map.at(x, y);
     if (!loc) return;
-    const shdoor = in_rooms(x, y, 0).length > 0;
+    const shdoor = in_rooms(x, y, SHOPBASE).length > 0;
     if (!IS_WALL(loc.typ)) type = DOOR;
     loc.typ = type;
     if (type === DOOR) {
@@ -1969,8 +1973,16 @@ function dosdoor(x, y, aroom, type) {
             loc.flags = D_NODOOR;
 
         if (loc.flags & D_TRAPPED) {
-            if (level_difficulty() >= 9 && !rn2(5)) {
+            const mv = game.mvitals;
+            if (level_difficulty() >= 9 && !rn2(5)
+                && !((mv[PM_SMALL_MIMIC].mvflags & G_GONE)
+                     && (mv[PM_LARGE_MIMIC].mvflags & G_GONE)
+                     && (mv[PM_GIANT_MIMIC].mvflags & G_GONE))) {
+                /* make a mimic instead */
                 loc.flags = D_NODOOR;
+                const mtmp = makemon(mkclass(S_MIMIC, 0), x, y, NO_MM_FLAGS);
+                if (mtmp)
+                    set_mimic_sym(mtmp);
             }
         }
     } else {
@@ -3446,15 +3458,27 @@ export function get_level_extends() {
     return { xmin, xmax, ymin, ymax };
 }
 
+// C ref: mkmaze.c bound_digging()
+/* put a non-diggable/non-phaseable boundary around the initial portion
+ * of a level map. */
 function bound_digging() {
     const map = game.level;
+
+    if (Is_earthlevel_mk(game.u.uz))
+        return; /* everything diggable here */
+
     const { xmin, xmax, ymin, ymax } = get_level_extends();
     for (let x = 0; x < COLNO; x++)
         for (let y = 0; y < ROWNO; y++) {
             const loc = map.at(x, y);
             if (!loc) continue;
-            if (IS_STWALL(loc.typ) && (y <= ymin || y >= ymax || x <= xmin || x >= xmax)) {
-                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+            if (IS_STWALL(loc.typ)) {
+                /* undiggable walls at edges, ... */
+                if (y <= ymin || y >= ymax || x <= xmin || x >= xmax)
+                    loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+                /* one tile past that, everything is also unphaseable */
+                if (y < ymin || y > ymax || x < xmin || x > xmax)
+                    loc.wall_info = (loc.wall_info || 0) | W_NONPASSWALL_MK;
             }
         }
 }
@@ -3477,3 +3501,4 @@ function level_finalize_topology() {
         if (rm && rm.rtype != null) rm.orig_rtype = rm.rtype;
     }
 }
+import { Is_earthlevel as Is_earthlevel_mk, W_NONPASSWALL as W_NONPASSWALL_MK } from './const.js';

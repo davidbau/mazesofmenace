@@ -38,7 +38,7 @@ import { m_at, is_pool, is_lava, closed_door, may_passwall, sobj_at, goodpos,
 import { dig_typ } from './dig.js';
 import { pline, canspotmon, mon_visible, newsym, sensemon, You, Your,
          You_cant, pline_The, There, unmap_invisible, unmap_object, map_invisible,
-         glyph_is_invisible } from './display.js';
+         glyph_is_invisible, map_object } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
 import { glyph_at, Norep, feel_location, glyph_is_warning } from './display.js';
 import { carrying } from './invent.js';
@@ -574,22 +574,24 @@ export function is_pool_or_lava(x, y) {
 }
 
 // C ref: hack.c avoid_moving_on_trap()
-function avoid_moving_on_trap(x, y, msg) {
+async function avoid_moving_on_trap(x, y, msg) {
     const trap = t_at(x, y);
 
     if (trap && trap.tseen
         /* the vibrating square is implemented as a trap but treated as if
            it were a type of terrain */
         && trap.ttyp !== VIBRATING_SQUARE) {
-        /* if (msg && flags.mention_walls) You("stop in front of %s.",
-           an(trapname(trap->ttyp, FALSE))): trapname() isn't ported yet */
+        if (msg && game.flags.mention_walls) {
+            /* set_msg_xy(x, y); */
+            await You(`stop in front of ${an(trapname(trap.ttyp, false))}.`);
+        }
         return true;
     }
     return false;
 }
 
 // C ref: hack.c avoid_moving_on_liquid()
-function avoid_moving_on_liquid(x, y, msg) {
+async function avoid_moving_on_liquid(x, y, msg) {
     const u = game.u;
     const P = u.uprops;
     const has = (p) => !!(P[p]?.intrinsic || P[p]?.extrinsic);
@@ -611,8 +613,11 @@ function avoid_moving_on_liquid(x, y, msg) {
         && !(IS_WATERWALL(loc.typ) || loc.typ === LAVAWALL)) {
         return false; /* liquid is safe to traverse */
     } else if (is_pool_or_lava(x, y) && loc.seenv) {
-        /* if (msg && flags.mention_walls) You("stop at the edge of the
-           %s.", hliquid(...)): hliquid() isn't ported yet */
+        if (msg && game.flags.mention_walls) {
+            /* set_msg_xy(x, y); */
+            await You(`stop at the edge of the ${
+                hliquid(is_pool(x, y) ? "water" : "lava")}.`);
+        }
         return true;
     }
     return false;
@@ -659,9 +664,8 @@ export async function lookaround() {
                 /* OR it blocks our move direction and we're not traveling */
                 if ((g.context.run !== 1 && !is_safemon(mtmp))
                     || (infront && !g.context.travel)) {
-                    /* if (flags.mention_walls) pline_xy(x, y, "%s blocks
-                       your path.", upstart(a_monnam(mtmp))): a_monnam()
-                       isn't ported yet */
+                    if (g.flags.mention_walls) /* pline_xy() */
+                        await pline(`${upstart(a_monnam(mtmp))} blocks your path.`);
                     nomul(0); /* goto stop */
                     return;
                 }
@@ -676,7 +680,7 @@ export async function lookaround() {
                 continue;
 
             /* stop for traps, sometimes */
-            if (avoid_moving_on_trap(x, y, (infront && g.context.run > 1))) {
+            if (await avoid_moving_on_trap(x, y, (infront && g.context.run > 1))) {
                 if (g.context.run === 1)
                     bcorr = true; /* goto bcorr: if you must */
                 else if (infront)
@@ -705,7 +709,7 @@ export async function lookaround() {
                 } else if (loc.typ === CORR) {
                     bcorr = true; /* corridor */
                 } else if (is_pool_or_lava(x, y)) {
-                    if (infront && avoid_moving_on_liquid(x, y, true))
+                    if (infront && await avoid_moving_on_liquid(x, y, true))
                         stop = true; /* goto stop */
                     else
                         continue;
@@ -2002,18 +2006,11 @@ export async function test_move(ux, uy, dx, dy, mode) {
                     /* soko restriction stays even after puzzle is solved */
                     await pline_The("Sokoban walls resist your ability.");
                 } else if (game.flags.mention_walls) {
-                    /* back_to_glyph(x, y) for the obstructed terrain types
-                       that reach here, and defsyms[sym].explanation */
-                    const arboreal = !!game.level.flags?.arboreal;
-                    let expl;
-                    if (tmpr.typ === STONE || tmpr.typ === SCORR)
-                        expl = arboreal ? "tree" : null; /* S_tree : S_stone */
-                    else if (tmpr.typ === TREE
-                             || (tmpr.typ === SDOOR && tmpr.arboreal_sdoor))
-                        expl = "tree"; /* S_tree */
-                    else /* walls and SDOOR: wall_angle() or S_stone */
-                        expl = tmpr.seenv ? "wall" : null;
-                    const buf = (expl === null) ? "solid stone" : an(expl);
+                    /* glyph = back_to_glyph(x, y), sym = glyph_to_cmap(glyph)
+                       (a background glyph is always a cmap one) */
+                    const sym = back_to_cmap(x, y);
+                    const buf = (sym === 0 /* S_stone */) ? "solid stone"
+                                : an(defsyms_explanation[sym]);
                     /* pline_dir(xytodir(dx, dy), ...) */
                     await pline(`It's ${buf}.`);
                 }
@@ -2332,8 +2329,12 @@ async function moverock_core(sx, sy) {
     let costly, firstboulder = true;
 
     while ((otmp = sobj_at(BOULDER, sx, sy)) !== null && otmp) {
-        if (Blind())
-            throw new Error('moverock_core(): feeling a boulder while blind not ported yet');
+        if (Blind() && glyph_to_obj_hk(glyph_at(sx, sy)) !== BOULDER) {
+            await pline("That feels like a boulder.");
+            map_object_hk(otmp, true);
+            nomul(0);
+            return -1;
+        }
 
         /* when otmp->next_boulder is 1, xname() will format it as
            "next boulder" instead of just "boulder" */
@@ -2593,13 +2594,13 @@ async function move_out_of_bounds(x, y) {
 /* C ref: hack.c avoid_running_into_trap_or_liquid() -- when running/
    rushing, avoid stepping on a known trap or pool of liquid.
    returns TRUE if avoided. */
-function avoid_running_into_trap_or_liquid(x, y) {
+async function avoid_running_into_trap_or_liquid(x, y) {
     const would_stop = (game.context.run >= 2);
     if (!game.context.run)
         return false;
 
-    if (avoid_moving_on_trap(x, y, would_stop)
-        || (Blind() && avoid_moving_on_liquid(x, y, would_stop))) {
+    if (await avoid_moving_on_trap(x, y, would_stop)
+        || (Blind() && await avoid_moving_on_liquid(x, y, would_stop))) {
         nomul(0);
         if (would_stop)
             game.context.move = 0;
@@ -2994,7 +2995,7 @@ async function domove_core() {
         if (await move_out_of_bounds(x, y))
             return;
 
-        if (avoid_running_into_trap_or_liquid(x, y))
+        if (await avoid_running_into_trap_or_liquid(x, y))
             return;
 
         if (await escape_from_sticky_mon(x, y))
@@ -3222,4 +3223,11 @@ function maybe_smudge_engr(x1, y1, x2, y2) {
                 && (ep = engr_at(x2, y2)) && ep.engr_type !== HEADSTONE)
             wipe_engr_at(x2, y2, rnd(5), false);
     }
+}
+import { map_object as map_object_hk } from './display.js';
+/* C ref: display.h glyph_to_obj() for the JS glyph form: an object glyph
+   keeps its objects[] index in 'otyp'; anything else is NUM_OBJECTS */
+function glyph_to_obj_hk(glyph) {
+    return (glyph && glyph.kind === 'obj' && glyph.otyp !== undefined
+            && glyph.otyp !== null) ? glyph.otyp : -1;
 }

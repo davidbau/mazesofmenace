@@ -16,7 +16,9 @@ import { pline_The, pline_mon, verbalize } from './pline.js';
 import { update_inventory } from './invent.js';
 import { cloak_simple_name, helm_simple_name, Ring_gone, Ring_on,
          stop_donning } from './do_wear.js';
-import { mhitm_ad_poly, mhitm_ad_deth, mhitm_ad_tlpt, mhitm_ad_curs, mhitm_ad_acid, mhitm_ad_drin, mhitm_ad_dren, mhitm_ad_slow,
+import { mhitm_ad_famn, mhitm_ad_pest, mhitm_ad_poly, mhitm_ad_deth,
+         mhitm_ad_tlpt, mhitm_ad_curs, mhitm_ad_acid, mhitm_ad_drin,
+         mhitm_ad_dren, mhitm_ad_slow,
          mhitm_ad_corr, mhitm_ad_sgld, mhitm_ad_conf, mhitm_ad_halu, mhitm_ad_dgst, mhitm_ad_dise } from './uhitm.js';
 import { monsndx, is_home_elemental } from './makemon.js';
 import { split_mon } from './potion.js';
@@ -138,21 +140,6 @@ export async function diseasemu(mdat) {
     await make_sick(sick ? Math.trunc(sick / 3) + 1 : rn1(ACURR(A_CON), 20), pmname(mdat, 2), true,
                     SICK_NONVOMITABLE);
     return true;
-}
-
-// src/uhitm.c:3781 mhitm_ad_famn(), :3808 mhitm_ad_pest(), and :3841
-// mhitm_ad_deth(), specialized here for the live monster-versus-hero path.
-async function mhitm_ad_famn(magr, mhm) {
-    await pline(`${Monnam(magr)} reaches out, and your body shrivels.`);
-    exercise(A_CON, false);
-    const { is_fainted, morehungry } = await import('./eat.js');
-    if (!is_fainted())
-        await morehungry(rn1(40, 40));
-}
-
-async function mhitm_ad_pest(magr, mhm) {
-    await pline(`${Monnam(magr)} reaches out, and you feel fever and chills.`);
-    await diseasemu(magr.data);
 }
 
 // include/you.h:324 mhis() — possessive pronoun for a monster.
@@ -1484,9 +1471,9 @@ async function hitmu(mtmp, mattk, indx) {
     } else if (mattk[1] === A.AD_SAMU) {
         await mhitm_ad_samu(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_FAMN) {
-        await mhitm_ad_famn(mtmp, mhm);
+        await mhitm_ad_famn(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_PEST) {
-        await mhitm_ad_pest(mtmp, mhm);
+        await mhitm_ad_pest(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_DETH) {
         await mhitm_ad_deth(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_WERE) {
@@ -1669,7 +1656,7 @@ export async function mdamageu(mtmp, n) {
 
 // src/sys.c:100 sysopt.seduce — "if it's compiled in, default to on", and the
 // SEDUCE=0 line in sys/unix/sysconf is commented out, so this is 1.
-const SYSOPT_SEDUCE = 1;
+export const SYSOPT_SEDUCE = 1;
 /* src/monst.c:79 c_sa_no[NATTK] = SEDUCTION_ATTACKS_NO (include/monsters.h:2925) */
 const c_sa_no = [
     [ATTKS.AT_CLAW, ATTKS.AD_PHYS, 1, 3], [ATTKS.AT_CLAW, ATTKS.AD_PHYS, 1, 3],

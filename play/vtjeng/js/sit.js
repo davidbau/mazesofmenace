@@ -115,7 +115,10 @@ import { canspotmon, shieldeff } from './display.js';
 import { ART_MAGICBANE, SPFX_INTEL, is_art, spec_ability } from './artifacts.js';
 import { update_inventory } from './invent.js';
 import { which_armor } from './worn.js';
-import { ttyPline } from './tty_message.js';
+import {
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import { impossible_printer, youFeel } from './pline.js';
 import { finish_steps } from './source_steps.js';
 import {
@@ -1034,7 +1037,7 @@ export async function attrcurse(state = game, rawEnv = {}) {
                 // the caller's redraw seam.
                 set_mimic_blocking(state);
                 await see_monsters(state, { ...rawEnv, message });
-                (rawEnv.redraw ?? newsym)(u.ux, u.uy, state);
+                await printQueued((rawEnv.redraw ?? newsym)(u.ux, u.uy, state));
             }
             await message(`You ${Hallucination(state.u)
                 ? 'tawt you taw a puttie tat' : 'thought you saw something'}!`, state);

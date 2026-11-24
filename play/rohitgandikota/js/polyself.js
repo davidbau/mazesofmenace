@@ -222,7 +222,7 @@ const not_claws = [
     'S_QUANTMECH', 'S_VAMPIRE', 'S_ORC', 'S_GIANT', /* quest nemeses */
 ].map((s) => MONSYMS[s]);
 
-const is_pm = (mptr, name) => mptr === mons[PMNAMES[name]];
+const is_pm = (mptr, name) => mptr === game.mons[PMNAMES[name]];
 
 // src/polyself.c:1972 mbodypart() — the name of `part` on `mon`'s shape.
 export function mbodypart(mon, part) {
@@ -391,6 +391,7 @@ const clone_attr = (attr) => attr ? { ...attr, a: [...attr.a] } : attr;
 
 // src/polyself.c:38 set_uasmon()
 export function set_uasmon() {
+    const mons = game.mons;
     const u = game.u;
     const youmonst = game.youmonst;
     const mdat = mons[u.umonnum];
@@ -752,6 +753,7 @@ async function newman() {
 
 // src/polyself.c:469 polyself()
 export async function polyself(psflags = POLY_NOFLAGS) {
+    const mons = game.mons;
     const u = game.u;
     const youmonst = game.youmonst;
     let buf = '';
@@ -1031,6 +1033,7 @@ export async function polyself(psflags = POLY_NOFLAGS) {
 
 // src/polyself.c:735 polymon(); returns 1 if polymorph successful
 export async function polymon(mntmp) {
+    const mons = game.mons;
     const u = game.u;
     const youmonst = game.youmonst;
     let buf, ustuckNam;
@@ -1888,6 +1891,7 @@ export async function dosummon() {
 
 // src/polyself.c:1642 dogaze()
 export async function dogaze() {
+    const mons = game.mons;
     const u = game.u;
     let looked = 0;
     let qbuf;
@@ -2001,7 +2005,7 @@ export async function dogaze() {
                     await pline(`Gazing at the awake ${l_monnam(mtmp)} is not a very good idea.`);
                     /* as if gazing at a sleeping anything is fruitful... */
                     await urgent_pline('You turn to stone...');
-                    game.killer.format = KILLED_BY;
+                    (game.killer ||= {}).format = KILLED_BY;
                     game.killer.name = "deliberately meeting Medusa's gaze";
                     await done(STONING);
                 }
@@ -2265,7 +2269,7 @@ function polysense() {
     }
     if (ismnum(warnidx)) {
         warntype.speciesidx = warnidx;
-        warntype.species = mons[warnidx];
+        warntype.species = game.mons[warnidx];
         intr.HWarn_of_mon |= FROMRACE;
     }
 }

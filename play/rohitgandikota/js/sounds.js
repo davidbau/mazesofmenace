@@ -47,6 +47,7 @@ import { humanoid } from './mondata.js';
 import { doconsult } from './rumors.js';
 import { Death_quote } from './files.js';
 import { BUFSZ } from './const.js';
+import { gd_sound, vault_occupied } from './vault.js';
 
 
 // src/sounds.c:202 dosounds()
@@ -90,7 +91,7 @@ export async function dosounds() {
             f.has_vault = 0;
             return;
         }
-        if (!vault_occupied(game.u.urooms) && !findgd()) {
+        if (gd_sound()) {
             switch (rn2(2) + hallu) {
             case 1: {
                 let gold_in_vault = false;
@@ -189,21 +190,6 @@ export async function dosounds() {
 function Is_oracle_level() {
     const o = game.special_levels?.oracle_level;
     return !!(o && game.u.uz.dnum === o.dnum && game.u.uz.dlevel === o.dlevel);
-}
-
-// src/vault.c:244 vault_occupied() and :1272 gd_sound().
-function vault_occupied(urooms) {
-    for (const ch of urooms || '') {
-        const roomno = ch.charCodeAt(0);
-        if (game.level?.rooms?.[roomno - ROOMOFFSET]?.rtype === VAULT)
-            return roomno;
-    }
-    return 0;
-}
-
-function findgd() {
-    return (game.level?.monsters || []).find(
-        mon => mon.isgd && !DEADMONSTER(mon)) || null;
 }
 
 // src/sounds.c:1257 dochat() — the 'c' command.

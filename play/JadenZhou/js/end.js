@@ -431,13 +431,18 @@ async function savelife(how) {
     u.ugrave_arise = NON_PM;
     if (u.uprops[UNCHANGING])
         u.uprops[UNCHANGING].intrinsic = 0; /* HUnchanging = 0L */
-    /* curs_on_u() */
+    await flush_screen_end(1); /* curs_on_u() */
     if (!g.context.mon_moving)
         endmultishot(false);
     if (u.uswallow) {
-        throw new Error('savelife(): expels() not ported yet');
+        /* might drop hero onto a trap that kills her all over again */
+        await expels(u.ustuck, u.ustuck.data, true);
     } else if (u.ustuck) {
-        throw new Error('savelife(): unstuck() not ported yet');
+        if (Upolyd(game.u) && sticks_end(game.youmonst.data))
+            await You(`release ${mon_nam_en(u.ustuck)}.`);
+        else
+            await pline(`${Monnam_end(u.ustuck)} releases you.`);
+        await unstuck(u.ustuck);
     }
 }
 
@@ -626,7 +631,7 @@ export async function done2() {
     }
 
     if (g.flags.debug) { /* wizard (UNIX) */
-        const c = await tty_yn_function("Dump core?", "ynq", 'n'); /* ynq() */
+        const c = await tty_yn_function("Dump core?", "ynq", 'q'); /* ynq() */
 
         if (c === 'y') {
             throw new Error('done2(): NH_abort() not ported yet');
@@ -766,7 +771,7 @@ function clearpriests() {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
         if (mtmp.mhp < 1) /* DEADMONSTER */
             continue;
-        if (mtmp.ispriest && !on_level(mtmp.mextra.epri.shrlevel, game.u.uz))
+        if (mtmp.ispriest && !on_level(mtmp.epri.shrlevel, game.u.uz))
             mongone(mtmp);
     }
 }
@@ -1278,3 +1283,7 @@ import { mons as mons_en, PM_HOUSECAT as PM_HOUSECAT_EN } from './monsters.js';
 import { d as d_en } from './rng.js';
 import { mksobj as mksobj_en } from './mkobj.js';
 import { obfree as obfree_en } from './invent.js';
+import { expels, unstuck } from './mhitu.js';
+import { sticks as sticks_end } from './engrave.js';
+import { Monnam as Monnam_end } from './do_name.js';
+import { flush_screen as flush_screen_end } from './display.js';

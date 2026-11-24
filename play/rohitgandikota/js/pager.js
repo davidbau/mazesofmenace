@@ -20,15 +20,15 @@ import { is_orc } from './mondata.js';
 import { is_hider } from './mondata.js';
 import { hides_under } from './mondata.js';
 import { obj_descr } from './objects_data.js';
-import { IS_WATERWALL, Is_waterlevel } from './const.js';
+import { IS_WATERWALL, Is_waterlevel, Is_airlevel } from './const.js';
 import { u_at } from './const.js';
 import { DRAWBRIDGE_UP } from './const.js';
-import { Levitation } from './youprop.js';
+import { Levitation, Underwater } from './youprop.js';
 import { cansee } from './vision.js';
-import { distu } from './hacklib.js';
+import { distu, next2u } from './hacklib.js';
 import { spot_time_left, MELT_ICE_AWAY } from './timeout.js';
 import { obj_stop_timers } from './timeout.js';
-import { db_under_typ } from './dbridge.js';
+import { db_under_typ, is_drawbridge_wall } from './dbridge.js';
 import { doextlist } from './cmd.js';
 import { game } from './gstate.js';
 import { notice_all_mons_flush } from './hack.js';
@@ -545,7 +545,8 @@ function lookat(x, y) {
     } else if (glyph.kind === 'nothing') {
         buf = 'dark part of a room';
     } else if (glyph.kind === 'unexplored') {
-        buf = 'unexplored area';
+        buf = Underwater() && !Is_waterlevel(game.u.uz)
+            ? (next2u(x, y) ? 'land' : 'unknown') : 'unexplored area';
     } else if (glyph.kind === 'cmap') {
         const symidx = glyph.cmap;
         switch (symidx) {
@@ -565,14 +566,15 @@ function lookat(x, y) {
             break;
         }
         case CM.S_ndoor:
-            /* is_drawbridge_wall() needs drawbridges; no level has one */
-            if (loc && (loc.doormask & ~D_TRAPPED) === D_BROKEN)
+            if (is_drawbridge_wall(x, y) >= 0)
+                buf = 'open drawbridge portcullis';
+            else if (loc && (loc.doormask & ~D_TRAPPED) === D_BROKEN)
                 buf = 'broken door';
             else
                 buf = 'doorway';
             break;
         case CM.S_cloud:
-            buf = 'fog/vapor cloud'; /* Is_airlevel arm unreachable */
+            buf = Is_airlevel(game.u.uz) ? 'cloudy area' : 'fog/vapor cloud';
             break;
         case CM.S_pool:
         case CM.S_water:
@@ -588,6 +590,9 @@ function lookat(x, y) {
         case CM.S_stone:
             if (!loc?.seenv) {
                 buf = 'unexplored';
+                break;
+            } else if (Underwater() && !Is_waterlevel(game.u.uz)) {
+                buf = next2u(x, y) ? 'land' : 'unknown';
                 break;
             } else if (loc.typ === STONE || loc.typ === SCORR) {
                 buf = 'stone';
@@ -960,6 +965,7 @@ export function do_screen_description(cc, looked, sym) {
     let glyph = null;
     let sympair; /* {ch, dec} of what the screen shows */
     let prefix;
+    const submerged = Underwater() && !Is_waterlevel(game.u.uz);
 
     if (looked) {
         glyph = glyph_at(cc.x, cc.y);
@@ -979,12 +985,17 @@ export function do_screen_description(cc, looked, sym) {
 
     state.out_str = '';
 
-    /* src/pager.c:1301 — restricted-vision handling first. The
-       u.uswallow/submerged and TER_DETECT arms need states no session
-       reaches, but is_swallow_sym() matches on the SYMBOL alone: under
-       DECgraphics the swallow borders share glyphs with walls ('x') and
-       other terrain, so a looked-at wall lists "the interior of a
-       monster" before its other meanings. */
+    // C pager.c:1301: restricted vision and detection background bypass
+    // symbol lookup, including the later detailed lookat call.
+    if (looked
+        && (((game.u.uswallow || submerged)
+             && !next2u(cc.x, cc.y))
+            || ((game.iflags?.terrainmode & (TER_DETECT | TER_MAP)) === TER_DETECT
+                && glyph?.kind === 'cmap' && glyph.cmap === CM.S_stone))) {
+        return { found: 1, out_str: `${prefix}unreconnoitered`,
+                 firstmatch: 'unreconnoitered', pm: null };
+    }
+
     if (looked && is_swallow_sym(sympair)) {
         const mon_interior = 'the interior of a monster';
         need_to_look = true; /* for specific monster type */
@@ -1091,7 +1102,7 @@ export function do_screen_description(cc, looked, sym) {
     }
     if (glyph?.kind === 'unexplored'
         || (looked && sympair.ch === ' ' && !sympair.dec)) {
-        const x_str = 'unexplored';
+        const x_str = submerged ? 'land' : 'unexplored';
         if (!found) {
             state.out_str = prefix + x_str;
             state.firstmatch = x_str;
@@ -1175,6 +1186,8 @@ export function do_screen_description(cc, looked, sym) {
     if (looked && (found > 1 || need_to_look)) {
         let { buf: look_buf, monbuf, pm: lookpm } = lookat(cc.x, cc.y);
         pm = lookpm;
+        if (look_buf === 'ice')
+            look_buf = ice_descr(cc.x, cc.y);
         /* src/pager.c:1603, the Quest start staircase remains visible while
            the leader's access gate is still closed. */
         if (look_buf === 'staircase down') {

@@ -45,7 +45,7 @@ import {
 } from './const.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { game } from './gstate.js';
-import { delobj, update_inventory } from './invent.js';
+import { delobj_async, update_inventory } from './invent.js';
 import { AD_ACID, AD_FIRE } from './monsters.js';
 import { SCR_BLANK_PAPER, SCR_MAIL, SCROLL_CLASS } from './objects.js';
 import {
@@ -71,7 +71,9 @@ import {
     xnameFresh,
 } from './objnam.js';
 import { coreRandom } from './rng.js';
-import { ttyPline } from './tty_message.js';
+import {
+    ttyPline,
+} from './tty_message.js';
 import { inventory_resistance_check } from './zap.js';
 import { which_armor } from './worn.js';
 import { cansee } from './vision.js';
@@ -344,7 +346,7 @@ export async function erode_obj(obj, description, type, flags, env) {
                                     * deleting a worn item) will ensue */
             }
         }
-        await delobj(obj, { ...env, state });
+        await delobj_async(obj, { ...env, state });
         return ER_DESTROYED;
     }
 

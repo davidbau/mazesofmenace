@@ -27,6 +27,7 @@ import {
     init_mapseen,
     insert_branch,
     level_difficulty,
+    level_difficulty_steps,
     mapseen_room,
     on_level,
     ROOM_INDEX,
@@ -67,7 +68,7 @@ import {
     dmonsfree,
     set_mimic_sym,
 } from './makemon_create.js';
-import { mkclass, rndmonnum } from './makemon.js';
+import { mkclass, mkclass_steps, rndmonnum } from './makemon.js';
 import { mineralize } from './mineralize.js';
 import { make_grave } from './grave.js';
 import {
@@ -191,15 +192,21 @@ import {
     getObjects,
 } from './objects.js';
 import { goodpos } from './teleport.js';
-import { deltrap, maketrap, reset_utrap, t_at } from './trap.js';
+import { deltrap, maketrap, maketrap_async, reset_utrap, t_at } from './trap.js';
 import { does_block, unblock_point } from './vision.js';
 import { buried_ball_to_punishment } from './dig.js';
 import { mintrap } from './trap_effects.js';
-import { minliquid, seemimic } from './mon.js';
+import { minliquid, seemimic_async } from './mon.js';
 import { m_at } from './monst.js';
 import { is_pool } from './dbridge.js';
 import { nh_delay_output } from './hack.js';
-import { displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
+import {
+    displayPendingTtyMessageWindow,
+    emitQueuedNotices,
+    noticesQueued,
+    printQueued,
+    ttyPline,
+} from './tty_message.js';
 import {
     mktrap as make_level_trap,
     occupied,
@@ -756,8 +763,9 @@ async function makelevel(specialLevelLoader = null) {
     // tail. load_special itself stops before filling special rooms.
     const fillSpecialRooms = async () => {
         const env = levelObjectEnv();
-        for (let i = 0; i < g.level.nroom; ++i)
-            await fill_special_room(g.level.rooms[i], env);
+        for (let i = 0; i < g.level.nroom; ++i) {
+            await printQueued(fill_special_room(g.level.rooms[i], env));
+        }
     };
     const finishLevelGeneration = async () => {
         await fillSpecialRooms();
@@ -851,8 +859,8 @@ async function makelevel(specialLevelLoader = null) {
         initialize_themeroom_branch(g, rn2);
 
     if (rogue) {
-        makeroguerooms(g);
-        makerogueghost(g);
+        await printQueued(makeroguerooms(g));
+        await printQueued(makerogueghost(g));
     } else {
         await makerooms();
     }
@@ -868,7 +876,7 @@ async function makelevel(specialLevelLoader = null) {
     let room_threshold = branchp ? 4 : 3;
 
     if (!rogue) {
-        await makecorridors();
+        await finish_steps(makecorridors_steps(), impossible_printer(g));
         await make_niches();
         await mklev_sanity_check(g);
     }
@@ -893,7 +901,7 @@ async function makelevel(specialLevelLoader = null) {
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
             if (vaultRoom) {
                 vaultRoom.needfill = FILL_NORMAL;
-                await fill_special_room(vaultRoom);
+                await printQueued(fill_special_room(vaultRoom));
             }
             await mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
             if (!g.level.flags.noteleport && !rn2(3))
@@ -918,38 +926,38 @@ async function makelevel(specialLevelLoader = null) {
         const hasConfiguredShopType = configuredShopType !== undefined
             && configuredShopType !== null;
         if (g.wizard && hasConfiguredShopType) {
-            await do_mkroom(SHOPBASE, g);
+            await printQueued(do_mkroom(SHOPBASE, g));
         } else if (u_depth > 1 && u_depth < depth(g.medusa_level)
             && g.level.nroom >= room_threshold && rn2(u_depth) < 3) {
-            await do_mkroom(SHOPBASE, g);
+            await printQueued(do_mkroom(SHOPBASE, g));
         } else if (u_depth > 4 && !rn2(6)) {
-            await do_mkroom(COURT, g);
+            await printQueued(do_mkroom(COURT, g));
         } else if (u_depth > 5 && !rn2(8)
                    && !(g.mvitals[PM_LEPRECHAUN].mvflags & G_GONE)) {
-            await do_mkroom(LEPREHALL, g);
+            await printQueued(do_mkroom(LEPREHALL, g));
         } else if (u_depth > 6 && !rn2(7)) {
-            await do_mkroom(ZOO, g);
+            await printQueued(do_mkroom(ZOO, g));
         } else if (u_depth > 8 && !rn2(5)) {
-            await do_mkroom(TEMPLE, g);
+            await printQueued(do_mkroom(TEMPLE, g));
         } else if (u_depth > 9 && !rn2(5)
                    && !(g.mvitals[PM_KILLER_BEE].mvflags & G_GONE)) {
-            await do_mkroom(BEEHIVE, g);
+            await printQueued(do_mkroom(BEEHIVE, g));
         } else if (u_depth > 11 && !rn2(6)) {
-            await do_mkroom(MORGUE, g);
+            await printQueued(do_mkroom(MORGUE, g));
         } else if (u_depth > 12 && !rn2(8)
                    && await finish_steps(antholemon_steps(g),
                        impossible_printer(g))) {
             // C's antholemon() picks the ant species that fills the hole and
             // answers NON_PM when every candidate is gone.
-            await do_mkroom(ANTHOLE, g);
+            await printQueued(do_mkroom(ANTHOLE, g));
         } else if (u_depth > 14 && !rn2(4)
                    && !(g.mvitals[PM_SOLDIER].mvflags & G_GONE)) {
-            await do_mkroom(BARRACKS, g);
+            await printQueued(do_mkroom(BARRACKS, g));
         } else if (u_depth > 15 && !rn2(6)) {
-            await do_mkroom(SWAMP, g);
+            await printQueued(do_mkroom(SWAMP, g));
         } else if (u_depth > 16 && !rn2(8)
                    && !(g.mvitals[PM_COCKATRICE].mvflags & G_GONE)) {
-            await do_mkroom(COCKNEST, g);
+            await printQueued(do_mkroom(COCKNEST, g));
         }
     }
 
@@ -974,10 +982,10 @@ async function makelevel(specialLevelLoader = null) {
     for (let index = 0; index < g.level.nroom; ++index) {
         const room = g.level.rooms[index];
         const fillable = roomIsFillable(room);
-        await fill_ordinary_room(
+        await printQueued(fill_ordinary_room(
             room,
             fillable && bonusItemRoomCountdown === 0,
-        );
+        ));
         if (fillable) --bonusItemRoomCountdown;
     }
 
@@ -1404,7 +1412,7 @@ export async function mkinvokearea(state = game, rawEnv = {}) {
     await message('You are standing at the top of a stairwell leading down!', state, rawEnv);
     await mkstairs(state.u.ux, state.u.uy, 0, null, false,
         impossible_printer(state));
-    redraw(state.u.ux, state.u.uy, state);
+    await printQueued(redraw(state.u.ux, state.u.uy, state));
     state.vision_full_recalc = 1;
 }
 
@@ -1454,7 +1462,7 @@ async function mkinvpos(x, y, dist, state = game, rawEnv = {}) {
     case 1:
         if (is_pool(x, y, state)) break;
         location.typ = ROOM;
-        trap = await maketrap(x, y, FIRE_TRAP, { ...rawEnv, state });
+        trap = await maketrap_async(x, y, FIRE_TRAP, { ...rawEnv, state });
         if (trap) trap.tseen = true;
         break;
     case 0:
@@ -1477,7 +1485,7 @@ async function mkinvpos(x, y, dist, state = game, rawEnv = {}) {
 
     const monster = m_at(x, y, state);
     if (monster) {
-        if (monster.m_ap_type) seemimic(monster, state, rawEnv);
+        if (monster.m_ap_type) await seemimic_async(monster, state, rawEnv);
         if (t_at(x, y, state))
             await mintrap(monster, NO_TRAP_FLAGS, { ...rawEnv, state });
         else
@@ -1485,7 +1493,7 @@ async function mkinvpos(x, y, dist, state = game, rawEnv = {}) {
     }
 
     if (!does_block(x, y, location, state)) unblock_point(x, y, state);
-    (rawEnv.newsym ?? newsym)(x, y, state);
+    await printQueued((rawEnv.newsym ?? newsym)(x, y, state));
 }
 
 // C ref: mklev.c mkinvk_check_wall(). This pure predicate is source-pinned in
@@ -2221,8 +2229,7 @@ async function makemaz(proto, slev, state) {
             impossible_printer(state));
     } else {
         state.inv_pos = pick_vibrasquare_location(frame, state);
-        await maketrap(state.inv_pos.x, state.inv_pos.y, VIBRATING_SQUARE,
-            { state });
+        await maketrap_async(state.inv_pos.x, state.inv_pos.y, VIBRATING_SQUARE, { state });
     }
     await place_branch(is_branchlev(), 0, 0, frame);
     await populate_maze(frame, state);
@@ -4746,7 +4753,7 @@ export async function lspo_finalize_level(args, env) {
 
     /* TODO: ensure_way_out() needs rewrite */
     if (args !== null && coder.check_inaccessibles)
-        ensure_way_out(env);
+        await printQueued(ensure_way_out(env));
 
     map_cleanup(state);
 
@@ -4771,12 +4778,12 @@ export async function lspo_finalize_level(args, env) {
     await finishFixupSpecial(state);
 
     if (args !== null && coder.premapped)
-        premap_detect(state);
+        await printQueued(premap_detect(state));
 
     level_finalize_topology();
 
     for (let i = 0; i < state.level.nroom; ++i) {
-        await fill_special_room(state.level.rooms[i], levelObjectEnv());
+        await printQueued(fill_special_room(state.level.rooms[i], levelObjectEnv()));
     }
 
     const { makemap_prepost } = await import('./cmd.js');
@@ -5120,7 +5127,7 @@ function createSpecialLevelApi(state, lua) {
 
             /* TODO: ensure_way_out() needs rewrite */
             if (coder.check_inaccessibles)
-                ensure_way_out(env);
+                await printQueued(ensure_way_out(env));
 
             // C ref: sp_lev.c load_special() post-processing.
             map_cleanup(state);
@@ -5143,7 +5150,7 @@ function createSpecialLevelApi(state, lua) {
             // C ref: sp_lev.c:6052-6053. Reveal the entire map for
             // premapped levels (Sokoban).
             if (coder.premapped) {
-                premap_detect(state);
+                await printQueued(premap_detect(state));
             }
 
             // sp_lev.c:6454–6503 load_special() ends here, freeing
@@ -5811,18 +5818,18 @@ async function fill_empty_maze(frame, state, env) {
         // Minotaurs
         for (let i = rn2(2); i > 0; i--) {
             const mm = maze1xy(DRY, frame, state);
-            await makemon_by_context(
+            await printQueued(makemon_by_context(
                 state.mons[PM_MINOTAUR],
                 mm.x,
                 mm.y,
                 NO_MM_FLAGS,
                 env,
-            );
+            ));
         }
         // Random monsters
         for (let i = rnd(Math.trunc((12 * mapfact) / 100)); i > 0; i--) {
             const mm = maze1xy(DRY, frame, state);
-            await makemon_by_context(null, mm.x, mm.y, NO_MM_FLAGS, env);
+            await printQueued(makemon_by_context(null, mm.x, mm.y, NO_MM_FLAGS, env));
         }
         // Gold
         for (let i = rn2(Math.trunc((15 * mapfact) / 100)); i > 0; i--) {
@@ -5840,13 +5847,13 @@ async function fill_empty_maze(frame, state, env) {
             // sp_lev.c calls maketrap() directly here. Route through the
             // mklev wrapper to install its statue-trap capability while
             // retaining direct-call semantics for web and victim handling.
-            await make_level_trap(
+            await printQueued(make_level_trap(
                 trytrap,
                 MKTRAP_NOSPIDERONWEB | MKTRAP_NOVICTIM,
                 null,
                 mm,
                 env,
-            );
+            ));
         }
     }
 }
@@ -6637,7 +6644,10 @@ function water_surrounded_vault_contents(
     }
 
     shuffle_core_values(nastyUndead, context.random);
-    lspo_monster(
+    // A vampire lord is a shapechanger, so makemon()'s first newcham() can
+    // prompt under the wizard-mode mon_polycontrol option; C makes the
+    // exclusion after the answer. lspo_monster() answers a Promise then.
+    const creation = lspo_monster(
         [{
             id: nastyUndead[0],
             coord: [2, 2],
@@ -6649,11 +6659,15 @@ function water_surrounded_vault_contents(
         null,
         creationEnvironment,
     );
-    lspo_exclusion(
-        [{ type: 'teleport', region: [2, 2, 3, 3] }],
-        creationEnvironment,
-    );
-    return true;
+    const finish = () => {
+        lspo_exclusion(
+            [{ type: 'teleport', region: [2, 2, 3, 3] }],
+            creationEnvironment,
+        );
+        return true;
+    };
+    return creation && typeof creation.then === 'function'
+        ? creation.then(finish) : finish();
 }
 
 function dispatch_map_action(definition, context) {
@@ -6741,11 +6755,12 @@ export async function themerooms_generate(difficulty, rawEnv = {}) {
     // Local closure diagnostics observe the already-selected definition;
     // absent diagnostics, this optional chain has no runtime effect.
     game._themeroomSelectionCollector?.record('room', pick.id);
-    return dispatch_themeroom(pick, {
+    const made = await printQueued(dispatch_themeroom(pick, {
         difficulty,
         random,
         themeroomFill: rawEnv.themeroomFill ?? themeroom_fill,
-    });
+    }));
+    return made;
 }
 
 // C ref: sp_lev.c check_room()
@@ -7356,6 +7371,10 @@ function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
 // outside level creation through sp_lev.c create_corridor() ->
 // makecorridors() -> join() -> dodoor(), where makemon() takes its runtime
 // form. dosdoor() then returns a Promise.
+// C ref: mklev.c dosdoor(). level_difficulty()'s builds_up() reports a level
+// of dungeon -1 through impossible(); makeniche() waits and drives
+// dosdoor_steps() with impossible_printer(), and this synchronous form, for
+// the other callers, queues the report.
 function dosdoor(x, y, aroom, type) {
     return finish_steps(dosdoor_steps(x, y, aroom, type), sync_impossible, game);
 }
@@ -7373,7 +7392,7 @@ function* dosdoor_steps(x, y, aroom, type) {
             else if (!rn2(6)) loc.flags = D_LOCKED;
             else loc.flags = D_CLOSED;
             if (loc.flags !== D_ISOPEN && !shdoor
-                && level_difficulty() >= 5 && !rn2(25))
+                && (yield* level_difficulty_steps(game)) >= 5 && !rn2(25))
                 loc.flags |= D_TRAPPED;
         } else {
             loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
@@ -7383,12 +7402,13 @@ function* dosdoor_steps(x, y, aroom, type) {
         if (Is_rogue_level(game.u?.uz))
             loc.flags = D_NODOOR;
         if (loc.flags & D_TRAPPED) {
-            if (level_difficulty() >= 9 && !rn2(5)
+            if ((yield* level_difficulty_steps(game)) >= 9 && !rn2(5)
                 && !([PM_SMALL_MIMIC, PM_LARGE_MIMIC, PM_GIANT_MIMIC]
                     .every(pm => game.mvitals[pm].mvflags & G_GONE))) {
                 loc.flags = D_NODOOR;
                 const mimic = yield makemon_by_context(
-                    mkclass(S_MIMIC, 0), x, y, NO_MM_FLAGS, { state: game },
+                    yield* mkclass_steps(S_MIMIC, 0, { state: game }),
+                    x, y, NO_MM_FLAGS, { state: game },
                 );
                 if (mimic) set_mimic_sym(mimic, { state: game });
             }
@@ -7396,15 +7416,21 @@ function* dosdoor_steps(x, y, aroom, type) {
     } else {
         if (shdoor || !rn2(5)) loc.flags = D_LOCKED;
         else loc.flags = D_CLOSED;
-        if (!shdoor && level_difficulty() >= 4 && !rn2(20))
+        if (!shdoor && (yield* level_difficulty_steps(game)) >= 4 && !rn2(20))
             loc.flags |= D_TRAPPED;
     }
     add_door(x, y, aroom);
 }
 
 // C ref: mklev.c dodoor(). Returns dosdoor()'s Promise when it waits.
+// join() reaches it through dodoor_steps(); this synchronous form is
+// extralev.c roguecorr()'s, on the Rogue level.
 function dodoor(x, y, aroom) {
     return dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
+}
+
+function* dodoor_steps(x, y, aroom) {
+    return yield* dosdoor_steps(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
 }
 
 function add_door(x, y, aroom) {
@@ -7700,15 +7726,18 @@ function* join_steps(a, b, nxcor) {
     const ftyp = CORR;
     const dig_result = dig_corridor(org, dest, npoints, nxcor, ftyp, STONE);
     if ((npoints.v > 0) && (okdoor(xx, yy) || !nxcor))
-        yield dodoor(xx, yy, croom);
+        yield* dodoor_steps(xx, yy, croom);
     if (!dig_result) return;
     if (okdoor(tt.x, tt.y) || !nxcor)
-        yield dodoor(tt.x, tt.y, troom);
+        yield* dodoor_steps(tt.x, tt.y, troom);
     if (g.smeq[a] < g.smeq[b]) g.smeq[b] = g.smeq[a];
     else g.smeq[a] = g.smeq[b];
 }
 
-// C ref: mklev.c makecorridors(). Synchronous during level creation; a
+// C ref: mklev.c makecorridors(). makelevel() drives makecorridors_steps()
+// with impossible_printer(), so dosdoor()'s level_difficulty() report for a
+// level of dungeon -1 prints where C prints it. Synchronous during level
+// creation; a
 // Promise when a door's mimic waits for makemon()'s runtime form (dosdoor()).
 function makecorridors() {
     return finish_steps(makecorridors_steps(), sync_impossible, game);
@@ -7937,7 +7966,7 @@ export async function makeniche(trap_type) {
             if (trap_type) {
                 if (is_hole(trap_type) && !Can_fall_thru(g.u.uz, g))
                     trap_type = ROCKTRAP;
-                const trap = await maketrap(xx, yy + dy, trap_type);
+                const trap = await maketrap_async(xx, yy + dy, trap_type);
                 if (trap) {
                     if (trap_type !== ROCKTRAP) trap.once = true;
                     const engraving = TRAP_ENGRAVINGS.get(trap_type);
@@ -7947,17 +7976,24 @@ export async function makeniche(trap_type) {
                     }
                 }
             }
-            await dosdoor(xx, yy, aroom, SDOOR);
+            await finish_steps(dosdoor_steps(xx, yy, aroom, SDOOR),
+                impossible_printer(g));
+            if (noticesQueued()) await emitQueuedNotices();
         } else {
             rm.typ = CORR;
             if (rn2(7)) {
-                await dosdoor(xx, yy, aroom, rn2(5) ? SDOOR : DOOR);
+                await finish_steps(
+                    dosdoor_steps(xx, yy, aroom, rn2(5) ? SDOOR : DOOR),
+                    impossible_printer(g));
+                if (noticesQueued()) await emitQueuedNotices();
             } else {
                 const loc = g.level.at(xx, yy);
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
                     set_levltyp(xx, yy, IRONBARS, { state: g });
                     if (rn2(3)) {
-                        const species = mkclass(S_HUMAN, 0);
+                        const species = await finish_steps(
+                            mkclass_steps(S_HUMAN, 0, { state: g }),
+                            impossible_printer(g));
                         mkcorpstat(
                             CORPSE,
                             null,
@@ -8122,7 +8158,7 @@ async function place_branch(branchp, x = 0, y = 0, frame = undefined) {
     // C ref: mklev.c:1727-1739. The iflags.debug_fuzzer arm needs the
     // fuzzer, which a recorded session cannot enable.
     if (branchp.type === BR_PORTAL) {
-        mkportal(x, y, dest.dnum, dest.dlevel, g);
+        await printQueued(mkportal(x, y, dest.dnum, dest.dlevel, g));
     } else if (make_stairs) {
         const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
         stairway_add(x, y, goes_up, false, dest);
@@ -8378,33 +8414,60 @@ export function fill_ordinary_room_supply_chest(position, env) {
     return chest;
 }
 
-// C ref: mklev.c fill_ordinary_room().
+// C ref: mklev.c fill_ordinary_room(). makelevel() waits for it: the room's
+// monster, or the donor monster of a random statue trap (trap.c
+// mk_trap_statue()), can be a new shapechanger whose first newcham()
+// prompts under the wizard-mode mon_polycontrol option, and C fills the
+// rest of the room after the answer. Its impossible() reports, and
+// dungeon.c builds_up()'s through level_difficulty(), print where C prints
+// them.
 export function fill_ordinary_room(croom, bonusItems) {
+    return finish_steps(fill_ordinary_room_steps(croom, bonusItems),
+        impossible_printer(game), game);
+}
+
+function* fill_ordinary_room_steps(croom, bonusItems) {
     const state = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM))
         return;
 
+    // The subrooms are filled first, so that an outer room left unfilled
+    // does not block a filled inner one.
     const subrooms = croom.sbrooms ?? [];
     const subroomCount = croom.nsubrooms ?? subrooms.length;
-    const fillRoom = () => {
-        if (croom.needfill !== FILL_NORMAL) return;
+    for (let index = 0; index < subroomCount; ++index) {
+        const subroom = subrooms[index];
+        if (!subroom) {
+            yield new ImpossibleCall('fill_ordinary_room: Null subroom');
+            return;
+        }
+        yield* fill_ordinary_room_steps(subroom, false);
+    }
 
-        const env = levelObjectEnv({
-            hooks: { bydoor, somexyspace },
-        });
-        const position = { x: 0, y: 0 };
-        let tryCount = 0;
+    if (croom.needfill !== FILL_NORMAL) return;
 
-        const finishMonster = (monster) => {
-            if (monster?.data === state.mons[PM_GIANT_SPIDER]
-                && !occupied(position.x, position.y, state)) {
-                maketrap(position.x, position.y, WEB, env);
-            }
+    const env = levelObjectEnv({
+        hooks: { bydoor, somexyspace },
+    });
+    const position = { x: 0, y: 0 };
+    let tryCount = 0;
 
-    let chance = 8 - Math.trunc(level_difficulty(state) / 6);
+    // A sleeping monster, and a web under a giant spider.
+    if ((state.u.uhave.amulet || !rn2(3))
+        && somexyspace(croom, position, { state })) {
+        const monster = yield makemon(
+            null, position.x, position.y, MM_NOGRP, env);
+        if (monster?.data === state.mons[PM_GIANT_SPIDER]
+            && !occupied(position.x, position.y, state)) {
+            yield maketrap(position.x, position.y, WEB, env);
+        }
+    }
+
+    // Traps and mimics.
+    let chance = 8 - Math.trunc((yield* level_difficulty_steps(state)) / 6);
     if (chance <= 1) chance = 2;
     while (!rn2(chance) && ++tryCount < 1000) {
-        make_level_trap(0, MKTRAP_NOFLAGS, croom, null, env);
+        yield make_level_trap(0, MKTRAP_NOFLAGS, croom, null, env);
     }
 
     if (!rn2(3) && somexyspace(croom, position, { state }))
@@ -8500,8 +8563,7 @@ export function fill_ordinary_room(croom, bonusItems) {
         tryCount = 0;
         while (!rn2(5)) {
             if (++tryCount > 100) {
-                // C: impossible("trycnt overflow4");
-                sync_impossible('trycnt overflow4', state);
+                yield new ImpossibleCall('trycnt overflow4');
                 break;
             }
             if (somexyspace(croom, position, { state })) {
@@ -8515,33 +8577,6 @@ export function fill_ordinary_room(croom, bonusItems) {
             }
         }
     }
-            return true;
-        };
-
-        const maybeMonster = (state.u.uhave.amulet || !rn2(3))
-            && somexyspace(croom, position, { state })
-            ? makemon(null, position.x, position.y, MM_NOGRP, env)
-            : null;
-        return maybeMonster && typeof maybeMonster.then === 'function'
-            ? maybeMonster.then(finishMonster) : finishMonster(maybeMonster);
-    };
-
-    const finishSubrooms = (index) => {
-        for (let current = index; current < subroomCount; ++current) {
-            const subroom = subrooms[current];
-            if (!subroom) {
-                // C: impossible("fill_ordinary_room: Null subroom");
-                sync_impossible('fill_ordinary_room: Null subroom', state);
-                return;
-            }
-            const maybeChild = fill_ordinary_room(subroom, false);
-            if (maybeChild && typeof maybeChild.then === 'function') {
-                return maybeChild.then(() => finishSubrooms(current + 1));
-            }
-        }
-        return fillRoom();
-    };
-    return finishSubrooms(0);
 }
 
 // ============================================================
