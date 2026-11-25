@@ -10,6 +10,10 @@
 // Not ported yet: newcham (shapechangers),
 // set_mimic_sym, rndghostname, worm tail segments.
 
+import { shkname } from './shknam.js';
+import { sensemon } from './display.js';
+import { mhidden_description } from './pager.js';
+import { MHID_ARTICLE, MHID_ALTMON } from './const.js';
 import { db_under_typ } from './display.js';
 import { impossible } from './hack.js';
 import { rnd_class } from './mkobj.js';
@@ -94,6 +98,11 @@ import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
 import { Is_waterlevel, Is_firelevel, Is_airlevel, G_GENOD,
          G_EXTINCT } from './const.js';
 import { is_flyer } from './mondata.js';
+import { G_EXTINCT as G_EXTINCT_CM, isok as isok_cm, MGIVENNAME as MGIVENNAME_cm,
+         has_mgivenname as has_mgivenname_cm } from './const.js';
+import { enexto as enexto_cm } from './teleport.js';
+import { mon_track_clear as mon_track_clear_cm } from './monmove.js';
+import { tamedog as tamedog_cm } from './dog.js';
 export {
     NO_MM_FLAGS, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_IGNOREWATER,
     MM_ADJACENTOK, MM_NONAME, MM_EDOG, MM_ASLEEP, MM_NOGRP, MM_MALE,
@@ -155,7 +164,7 @@ function is_ndemon(ptr) {
     return is_demon(ptr) && !is_dlord(ptr) && !is_dprince(ptr);
 }
 function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
-function weirdnonliving(ptr) { return is_golem(ptr) || ptr.mlet === M.S_VORTEX; }
+export function weirdnonliving(ptr) { return is_golem(ptr) || ptr.mlet === M.S_VORTEX; }
 export function nonliving(ptr) {
     return is_undead(ptr) || ptr === mons[M.PM_MANES] || weirdnonliving(ptr);
 }
@@ -1152,7 +1161,7 @@ export async function clone_mon(
     if (has_mgivenname_cm(mon)) {
         m2 = christen_monst(m2, MGIVENNAME_cm(mon));
     } else if (mon.isshk) {
-        throw new Error('clone_mon(): cloning a shopkeeper (shkname()) not ported yet');
+        m2 = christen_monst(m2, shkname(mon));
     }
 
     /* not all clones caused by player are tame or peaceful */
@@ -1705,13 +1714,14 @@ export function makemon(ptr, x, y, mmflags) {
 
             if ((canseemon(mtmp) && (ap_type === M_AP_NOTHING
                                      || ap_type === M_AP_MONSTER))
-                || makemon_sensemon(mtmp)) {
+                || sensemon(mtmp)) {
                 what = Amonnam(mtmp);
                 if (ap_type === M_AP_MONSTER)
                     exclaim = true;
             } else if (canseemon(mtmp)) {
                 /* mimic masquerading as furniture or object and not sensed */
-                throw new Error('makemon(): mhidden_description() not ported yet');
+                const mbuf = mhidden_description(mtmp, MHID_ARTICLE | MHID_ALTMON);
+                what = mbuf ? mbuf[0].toUpperCase() + mbuf.slice(1) : mbuf; /* upstart() */
             }
             if (what) {
                 /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
@@ -1764,17 +1774,6 @@ export async function makemon_flush_msg() {
     game.makemon_dochugw = null;
     if (mtmp)
         await dochugw(mtmp, false);
-}
-
-/* C ref: display.h sensemon() -- telepathy, extended detection and
-   warning are not ported yet */
-function makemon_sensemon(mtmp) {
-    void mtmp;
-    const tel = game.u.uprops?.[TELEPAT], det = game.u.uprops?.[DETECT_MONSTERS];
-    if ((tel && (tel.intrinsic || tel.extrinsic))
-        || (det && (det.intrinsic || det.extrinsic)))
-        throw new Error('makemon(): sensemon() not ported yet');
-    return false;
 }
 
 // C ref: monst.h STRAT_* bits
@@ -2066,17 +2065,15 @@ export async function hideunder_async(mtmp) {
 function* hideunder_core(mtmp) {
     let t, otmp;
     let seenmon = null, seenobj = null, locomo = null;
-    const seeit = game.in_mklev ? false : canseemon(mtmp);
-    let oldundetctd, undetected = false;
     const is_u = (mtmp === game.youmonst);
-
-    if (is_u)
-        throw new Error('hideunder(): the hero hiding is not ported yet');
-    const x = mtmp.mx, y = mtmp.my;
+    /* seeit only feeds the monster's "You see" message; the hero has none */
+    const seeit = (game.in_mklev || is_u) ? false : canseemon(mtmp);
+    let oldundetctd, undetected = false;
+    const x = is_u ? game.u.ux : mtmp.mx, y = is_u ? game.u.uy : mtmp.my;
 
     if (mtmp === game.u.ustuck) {
         ; /* undetected==FALSE; can't hide if holding you or held by you */
-    } else if (mtmp.mtrapped
+    } else if ((is_u ? game.u.utrap : mtmp.mtrapped)
                || ((t = t_at(x, y)) !== null && !(t.ttyp === PIT || t.ttyp === SPIKED_PIT))) {
         ; /* undetected==FALSE; can't hide while trapped or on/in/under
              any non-pit trap when not trapped */
@@ -2105,7 +2102,9 @@ function* hideunder_core(mtmp) {
             seenobj = ansimpleoname(otmp);
         /* most monsters won't hide under a cockatrice corpse but they
            can hide under a pile containing more than just such corpses */
-        if (!Resists_Elem(mtmp, STONE_RES)) {
+        if (is_u ? !(game.u.uprops[STONE_RES].intrinsic
+                     || game.u.uprops[STONE_RES].extrinsic) /* Stone_resistance */
+                 : !Resists_Elem(mtmp, STONE_RES)) {
             const pile = floor_pile(x, y);
             let i = 0;
             while (otmp && otmp.otyp === O.CORPSE
@@ -2117,20 +2116,26 @@ function* hideunder_core(mtmp) {
             undetected = true;
     }
 
-    if (seeit)
-        seenmon = y_monnam(mtmp);
-    oldundetctd = mtmp.mundetected !== 0;
-    mtmp.mundetected = undetected ? 1 : 0;
-    /* the "you see" message won't be shown for monster hiding during
-       level creation because 'seeit' will be 0 so 'seenmon' and 'seenobj'
-       will be Null */
-    if (undetected && seenmon && seenobj) {
-        if (!locomo)
-            locomo = locomotion(mtmp.data, "hide");
-        /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
-        yield `${seenmon} ${locomo} under ${seenobj}.`; /* You_see() */
-        game.iflags.last_msg = PLNMSG_HIDE_UNDER;
-        game.last_hider = mtmp.m_id;
+    if (is_u) {
+        oldundetctd = !!game.u.uundetected; /* u.uundetected != 0 */
+        game.u.uundetected = undetected ? 1 : 0;
+        /* #if 0: feedback handled via #monster */
+    } else {
+        if (seeit)
+            seenmon = y_monnam(mtmp);
+        oldundetctd = mtmp.mundetected !== 0;
+        mtmp.mundetected = undetected ? 1 : 0;
+        /* the "you see" message won't be shown for monster hiding during
+           level creation because 'seeit' will be 0 so 'seenmon' and 'seenobj'
+           will be Null */
+        if (undetected && seenmon && seenobj) {
+            if (!locomo)
+                locomo = locomotion(mtmp.data, "hide");
+            /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+            yield `${seenmon} ${locomo} under ${seenobj}.`; /* You_see() */
+            game.iflags.last_msg = PLNMSG_HIDE_UNDER;
+            game.last_hider = mtmp.m_id;
+        }
     }
     if (undetected !== oldundetctd)
         newsym(x, y);
@@ -2555,11 +2560,6 @@ export function rnd_misc_item(mtmp) {
     /*NOTREACHED*/
     return 0;
 }
-import { G_EXTINCT as G_EXTINCT_CM, isok as isok_cm, MGIVENNAME as MGIVENNAME_cm,
-         has_mgivenname as has_mgivenname_cm } from './const.js';
-import { enexto as enexto_cm } from './teleport.js';
-import { mon_track_clear as mon_track_clear_cm } from './monmove.js';
-import { tamedog as tamedog_cm } from './dog.js';
 const DF_NONE = 0x00; /* hack.h */
 
 const NON_PM = -1;

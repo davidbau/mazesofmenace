@@ -22,6 +22,8 @@ import { rnd_nextto_goodpos } from './trap.js';
 import { mon_nam } from './do_name.js';
 import { Sfo, Sfi } from './sfbase.js';
 import { update_file, release_data } from './save.js';
+import { clone_mon } from './makemon.js';
+import { Monnam } from './do_name.js';
 
 /* C ref: global.h MAX_NUM_WORMS */
 export const MAX_NUM_WORMS = 32;
@@ -406,7 +408,7 @@ export async function cutworm(worm, x, y,
         /* clone_mon() will fail if enough long worms have been
            created to have them be marked as extinct or if the hit
            that cut the current one has dropped it down to 1 HP */
-        throw new Error('cutworm(): clone_mon() not ported yet');
+        new_worm = await clone_mon(worm, x, y);
     }
 
     /* Sometimes the tail end dies. */
@@ -422,7 +424,33 @@ export async function cutworm(worm, x, y,
             worm.mhp = Math.trunc(worm.mhp / 2);
         return;
     }
-    /* (a new worm comes only from clone_mon(), which stops above) */
+
+    new_worm.wormno = new_wnum; /* affix new worm number */
+    new_worm.mcloned = 0;       /* treat second worm as a normal monster */
+
+    /* Devalue the monster level of both halves of the worm.
+       Note: m_lev is always at least 3 in order to get this far. */
+    worm.m_lev = Math.max(worm.m_lev - 2, 3);
+    new_worm.m_lev = worm.m_lev;
+
+    /* Calculate the lower-level mhp; use <N>d8 for long worms.
+       Can't use newmonhp() here because it would reset m_lev. */
+    new_worm.mhpmax = new_worm.mhp = d(new_worm.m_lev, 8);
+    worm.mhpmax = d(worm.m_lev, 8); /* new maxHP for old worm */
+    if (worm.mhpmax < worm.mhp)
+        worm.mhp = worm.mhpmax;
+
+    g.wtails[new_wnum] = new_tail; /* We've got all the info right now */
+    g.wheads[new_wnum] = curr;     /* so we can do this faster than    */
+    g.wgrowtime[new_wnum] = 0;     /* trying to call initworm().       */
+
+    /* Place the new monster at all the segment locations. */
+    place_wsegs(new_worm, worm);
+
+    if (g.context.mon_moving)
+        await pline(`${Monnam(worm)} is cut in half.`);
+    else
+        await You(`cut ${mon_nam(worm)} in half.`);
 }
 
 // C ref: worm.c see_wsegs()

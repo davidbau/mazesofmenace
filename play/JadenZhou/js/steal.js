@@ -61,6 +61,17 @@ import { PLNMSG_MON_TAKES_OFF_ITEM, W_ACCESSORY, W_ARMG, TT_BURIEDBALL,
 import { ART_ORB_OF_DETECTION } from './artilist.js';
 import { Punished, Blind, Adornment, Conflict, Levitation, Flying } from './youprop.js';
 import { Ring_gone as Ring_gone_st } from './do_wear.js';
+import { obj_sheds_light, snuff_light_source } from './light.js';
+import { engulfing_u } from './const.js';
+import { AT_ENGL } from './monsters.js';
+import { skinback } from './polyself.js';
+import { openholdingtrap } from './trap.js';
+import { impossible } from './hack.js';
+import { artifact_light } from './worn.js';
+import { end_burn } from './timeout.js';
+import { costly_spot } from './shk.js';
+import { in_rooms } from './hack.js';
+import { SHOPBASE } from './const.js';
 
 /* C ref: global.h LARGEST_INT */
 const LARGEST_INT = 32767;
@@ -313,8 +324,10 @@ export async function remove_worn_item(obj,
     obj.in_use = 1;
 
     if (obj.owornmask & W_ARMOR) {
-        if (obj === g.uskin)
-            throw new Error('remove_worn_item(): skinback() not ported yet');
+        if (obj === g.uskin) {
+            impossible("Removing embedded scales?");
+            await skinback(true); /* uarm = uskin; uskin = 0; */
+        }
         if (obj === g.uarm)
             await Armor_off();
         else if (obj === g.uarmc)
@@ -658,7 +671,8 @@ export async function steal(mtmp, objnambuf) {
             /* buried ball is not tracked via 'uball' and there is no chain
                at all (hence no uchain to take off) */
             await pline(`${Monnambuf} takes off your unseen chain.`);
-            throw new Error('steal(): openholdingtrap() not ported yet');
+            const dummy = { v: false };
+            await openholdingtrap(game.youmonst, dummy);
         } else if (Blind()) {
             await pline("Somebody tries to rob you, but finds nothing to steal.");
         } else if (inv_cnt(true) > inv_cnt(false)) {
@@ -776,10 +790,17 @@ export function mpickobj(mtmp, otmp) {
     /* an unpaid item can be on the floor; if a monster picks it up, take
        it off the shop bill */
     if (otmp.unpaid || (otmp.cobj && otmp.cobj.some(o => o.unpaid)))
-        throw new Error('mpickobj(): subfrombill() not ported yet');
-    /* don't want hidden light source inside the monster */
-    if (otmp.lamplit)
-        throw new Error('mpickobj(): obj_sheds_light() not ported yet');
+        throw new Error('mpickobj(): subfrombill(): find_objowner() not ported yet');
+    /* don't want hidden light source inside the monster; assumes that
+       engulfers won't have external inventories; whirly monsters cause
+       the light to be extinguished rather than letting it shine through */
+    let snuff_otmp = false;
+    if (obj_sheds_light(otmp) && mtmp.data.mattk.some(a => a.aatyp === AT_ENGL)) { /* attacktype() */
+        /* this is probably a burning object that you dropped or threw */
+        if (engulfing_u(mtmp) && !Blind()) /* mpickobj() is synchronous */
+            throw new Error('mpickobj(): "<obj> goes out." message in a synchronous caller not ported yet');
+        snuff_otmp = true;
+    }
     /* for hero owned object on shop floor, mtmp is taking possession
        and if it's eventually dropped in a shop, shk will claim it */
     otmp.no_charge = 0;
@@ -808,6 +829,9 @@ export function mpickobj(mtmp, otmp) {
     /* add_to_minv() might free otmp [if merged with something else],
        so we have to call it after doing the object checks */
     const freed_otmp = add_to_minv(mtmp, otmp);
+    /* and we had to defer this until object is in mtmp's inventory */
+    if (snuff_otmp)
+        snuff_light_source(mtmp.mx, mtmp.my);
     return freed_otmp;
 }
 
@@ -840,10 +864,8 @@ export function* extract_from_minvent_g(mon, obj, do_extrinsics, silently) {
         throw new Error('extract_from_minvent called on object not in minvent');
     /* handle gold dragon scales/scale-mail (lit when worn) before clearing
        obj->owornmask because artifact_light() expects that to be W_ARM */
-    if ((unwornmask & W_ARM) !== 0 && obj.lamplit
-        && (obj.otyp === O.GOLD_DRAGON_SCALE_MAIL
-            || obj.otyp === O.GOLD_DRAGON_SCALES))
-        throw new Error('extract_from_minvent(): end_burn() not ported yet');
+    if ((unwornmask & W_ARM) !== 0 && obj.lamplit && artifact_light(obj))
+        end_burn(obj, false);
 
     obj_extract_self(obj);
     obj.owornmask = 0;
@@ -903,8 +925,12 @@ export async function mdrop_obj(mon, obj, verbosely) {
     /* don't charge for an owned saddle on dead steed (provided
         that the hero is within the same shop at the time) */
     if (unwornmask && mon.mtame && (unwornmask & W_SADDLE) !== 0
-        && !obj.unpaid && game.level.flags?.has_shop)
-        throw new Error('mdrop_obj(): costly_spot() saddle check not ported yet');
+        && !obj.unpaid && costly_spot(omx, omy)
+        /* being at costly_spot guarantees lev->roomno is not 0 */
+        && in_rooms(game.u.ux, game.u.uy, SHOPBASE)
+               .includes(String.fromCharCode(game.level.at(omx, omy).roomno))) {
+        obj.no_charge = 1;
+    }
     /* obj_no_longer_held(obj); -- done by place_object */
     if (verbosely && cansee(omx, omy))
         await pline(`${Monnam(mon)} drops ${obj_name}.`); /* pline_mon() */

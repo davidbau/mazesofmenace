@@ -4902,12 +4902,12 @@ export async function lava_effects() {
 // src/trap.c:6991 sink_into_lava(), called once per time-taking action while
 // the hero remains trapped in molten lava.
 export async function sink_into_lava() {
+    const sink_deeper = 'You sink deeper into the lava.';
     const u = game.u;
     if (!u.utrap || u.utraptype !== TT_LAVA)
         return;
     if (!is_lava(u.ux, u.uy)) {
-        u.utrap = 0;
-        u.utraptype = 0;
+        await reset_utrap(false);
         return;
     }
     if (u.uinvulnerable)
@@ -4918,15 +4918,25 @@ export async function sink_into_lava() {
 
     u.utrap -= 1 << 8;
     if (u.utrap < (1 << 8)) {
-        game.killer = { format: KILLED_BY, name: 'molten lava' };
+        game.killer.format = KILLED_BY;
+        game.killer.name = 'molten lava';
         await urgent_pline('You sink below the surface and die.');
+        await burn_away_slime(); /* add insult to injury? */
         await done(DISSOLVED);
-        u.utrap = 0;
-        u.utraptype = 0;
+        /* can only get here via life-saving; try to get away from lava */
+        await reset_utrap(true);
+        /* levitation or flight have become unblocked, otherwise Tport */
         if (!Levitation() && !Flying())
             await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT);
     } else if (!u.umoved) {
-        await Norep('You sink deeper into the lava.');
+        /* can't fully turn into slime while in lava, but might not
+           have it be burned away until you've come awfully close */
+        if (u.uprops?.SLIMED && rnd(10 - 1) >= (u.uprops.SLIMED & TIMEOUT)) {
+            await pline(sink_deeper);
+            await burn_away_slime();
+        } else {
+            await Norep(sink_deeper);
+        }
         u.utrap += rnd(4);
     }
 }

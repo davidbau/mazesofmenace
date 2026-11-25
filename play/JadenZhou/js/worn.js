@@ -59,16 +59,32 @@ import { surface } from './iactions.js';
 import { See_invisible, Unaware } from './youprop.js';
 import { Role_if } from './const.js';
 import { uprop } from './youprop.js';
+import { dismount_steed } from './steed.js';
+import { DISMOUNT_FELL } from './const.js';
+import { begin_burn, end_burn } from './timeout.js';
+import { vision_recalc } from './vision.js';
+import { arti_light_description } from './light.js';
+import { Yname2, otense } from './objnam.js';
+import { discover_object } from './o_init.js';
 
-/* print each message a worn.c generator yields, in order */
+/* print each message a worn.c generator yields, in order; a yielded
+   { newcham_async: () => promise, what } asks the driver to await an
+   async callee (the same convention as mon.js newcham()) */
 async function run_msgs(gen) {
-    for (const msg of gen)
-        await pline(msg);
+    for (const msg of gen) {
+        if (msg?.newcham_async)
+            await msg.newcham_async();
+        else
+            await pline(msg);
+    }
 }
 /* run a worn.c generator in a synchronous caller (creation/silently) */
 function run_msgs_sync(gen) {
-    for (const msg of gen)
+    for (const msg of gen) {
+        if (msg?.newcham_async)
+            throw new Error(`worn.c: async ${msg.what} in a synchronous caller not ported yet`);
         throw new Error(`worn.c message in a synchronous caller not ported yet: ${msg}`);
+    }
 }
 
 /* C ref: monst.h MON_WEP() */
@@ -619,7 +635,8 @@ export function* update_mon_extrinsics_g(
     }
 
     if (!on && mon === game.u.usteed && obj.otyp === O.SADDLE)
-        throw new Error('update_mon_extrinsics(): dismount_steed() not ported yet');
+        yield { newcham_async: () => dismount_steed(DISMOUNT_FELL),
+                what: 'dismount_steed()' };
 
     /* if couldn't see it but now can, or vice versa, update display */
     if (!silently && (unseen ^ !canseemon(mon)))
@@ -893,26 +910,39 @@ function* m_dowear_type(
         /* owornmask was cleared above but artifact_light() expects it */
         old.owornmask = oldmask;
         if (old.lamplit && artifact_light(old))
-            throw new Error('m_dowear_type(): end_burn() not ported yet');
+            end_burn(old, false);
         old.owornmask = 0;
     }
     mon.misc_worn_check = (mon.misc_worn_check || 0) | flag;
     best.owornmask = (best.owornmask || 0) | flag;
     if (autocurse)
         curse(best);
-    if (artifact_light(best) && !best.lamplit)
-        throw new Error('m_dowear_type(): begin_burn() not ported yet');
+    if (artifact_light(best) && !best.lamplit) {
+        begin_burn(best, false);
+        vision_recalc(1);
+        if (!creation && best.lamplit && cansee(mon.mx, mon.my)) {
+            const adesc = arti_light_description(best);
+
+            if (sawmon) /* could already see monster */
+                yield `${Yname2(best)} ${otense(best, "begin")} to shine ${adesc}.`;
+            else if (canseemon(mon)) /* didn't see it until new light */
+                yield `${Yname2(best)} ${otense(best, "are")} shining ${adesc}.`;
+            else if (sawloc) /* saw location but not invisible monster */
+                yield `Something begins to shine ${adesc}.`;
+            else /* didn't see location until new light */
+                yield `Something is shining ${adesc}.`;
+        }
+    }
     yield* update_mon_extrinsics_g(mon, best, true, creation);
     /* if couldn't see it but now can, or vice versa */
     if (!creation && (sawmon ^ canseemon(mon))) {
         if (mon.minvis && !See_invisible()) {
             yield `Suddenly you cannot see ${nambuf}.`;
-            throw new Error('m_dowear_type(): makeknown() not ported yet');
+            discover_object(best.otyp, true, true, true); /* makeknown() */
         /* } else if (!mon->minvis) {
          *     pline("%s suddenly appears!", Amonnam(mon)); */
         }
     }
-    void sawloc; /* used by the artifact light messages (begin_burn) */
 }
 
 /* C ref: pline.c You_hear() -- worn.c generators yield { you_hear: line }
@@ -934,7 +964,9 @@ async function You_hear_wn(line) {
 
 // print one message yielded by a worn.c generator
 export async function worn_pline(msg) {
-    if (typeof msg === 'object' && msg.you_hear !== undefined)
+    if (msg?.newcham_async) /* an async callee (see run_msgs()) */
+        await msg.newcham_async();
+    else if (typeof msg === 'object' && msg.you_hear !== undefined)
         await You_hear_wn(msg.you_hear);
     else
         await pline(msg);

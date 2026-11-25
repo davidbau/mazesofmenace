@@ -8,6 +8,18 @@
 // common amulets, Blindf_on(), #takeoff with the X_off() routines, and
 // donning()/doffing()/cancel_don()/cancel_doff().
 
+import { x_monnam, hcolor } from './do_name.js';
+import { ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION, NECK,
+         Is_waterlevel, Is_airlevel } from './const.js';
+import { curse } from './mkobj.js';
+import { Hallucination, Underwater, Swimming, Breathless } from './youprop.js';
+import { ACURR, ABASE, ABON, ATEMP } from './attrib.js';
+import { begin_burn, end_burn } from './timeout.js';
+import { hliquid } from './potion.js';
+import { drown } from './trap.js';
+import { is_pool_or_lava } from './hack.js';
+import { set_bc } from './ball.js';
+import { M1_SWIM, M1_AMPHIBIOUS } from './monsters.js';
 import { cantweararm } from './worn.js';
 import { has_horns } from './polyself.js';
 import { impossible } from './hack.js';
@@ -75,6 +87,45 @@ import { Blind, Glib, Invisible, Levitation, Flying } from './youprop.js';
 import { Upolyd, Role_if } from './const.js';
 import { uprop } from './youprop.js';
 import { setnotworn as setnotworn_dw } from './worn.js';
+import { arti_light_description } from './light.js';
+import { Yname2, otense } from './objnam.js';
+import { rn2 as rn2_dw } from './rng.js';
+import { which_armor as which_armor_dw } from './worn.js';
+import { erode_obj } from './trap.js';
+import { stop_occupation as stop_occupation_dw } from './allmain.js';
+import { is_flammable, is_rustprone, is_crackable, is_rottable,
+         is_corrodeable, erosion_matters, is_damageable } from './mkobj.js';
+import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
+         ERODE_NONE, ER_NOTHING, ER_DESTROYED, EF_PAY,
+         EF_DESTROY } from './const.js';
+import { WORN_BLINDF as WORN_BLINDF_DW, W_WEP as W_WEP_DW,
+         WORN_SHIELD as WORN_SHIELD_DW, WORN_GLOVES as WORN_GLOVES_DW,
+         LEFT_RING as LEFT_RING_DW, RIGHT_RING as RIGHT_RING_DW,
+         WORN_CLOAK as WORN_CLOAK_DW, WORN_HELMET as WORN_HELMET_DW,
+         WORN_AMUL as WORN_AMUL_DW, WORN_ARMOR as WORN_ARMOR_DW,
+         WORN_SHIRT as WORN_SHIRT_DW, WORN_BOOTS as WORN_BOOTS_DW,
+         W_SWAPWEP as W_SWAPWEP_DW, W_QUIVER as W_QUIVER_DW,
+         MENU_FULL as MENU_FULL_DW, MENU_TRADITIONAL as MENU_TRADITIONAL_DW,
+         MENU_COMBINATION as MENU_COMBINATION_DW, WORN_TYPES as WORN_TYPES_DW,
+         ALL_TYPES as ALL_TYPES_DW, UNPAID_TYPES as UNPAID_TYPES_DW,
+         BUCX_TYPES as BUCX_TYPES_DW, PICK_ANY as PICK_ANY_DW,
+         ALL_TYPES_SELECTED as ALL_TYPES_SELECTED_DW,
+         SIGNAL_NOMENU as SIGNAL_NOMENU_DW, USE_INVLET as USE_INVLET_DW,
+         INVORDER_SORT as INVORDER_SORT_DW } from './const.js';
+import { empty_handed as empty_handed_dw } from './insight.js';
+import { set_occupation as set_occupation_dw } from './allmain.js';
+import { wearing_armor as wearing_armor_dw, is_worn as is_worn_dw } from './invent.js';
+import { add_valid_menu_class as add_valid_menu_class_dw,
+         menu_class_present as menu_class_present_dw,
+         is_worn_by_type as is_worn_by_type_dw,
+         query_category as query_category_dw,
+         query_objlist as query_objlist_dw } from './pickup.js';
+import { is_pool as is_pool_bo, is_lava as is_lava_bo } from './makemon.js';
+import { M1_CLING as M1_CLING_BO } from './monsters.js';
+import { has_ceiling as has_ceiling_bo } from './insight.js';
+import { spoteffects as spoteffects_bo } from './hack.js';
+import { float_down as float_down_bo } from './trap.js';
+import { FROMOUTSIDE as FROMOUTSIDE_BO } from './const.js';
 
 /* C ref: decl.c c_armor ... c_that_ */
 const c_armor = "armor", c_suit = "suit", c_shirt = "shirt",
@@ -271,6 +322,15 @@ async function on_msg(otmp) {
     }
 }
 
+/* C ref: color.h NH_BLACK */
+const NH_BLACK = "black";
+
+/* C ref: mondata.h cant_drown() */
+function cant_drown(ptr) {
+    return ((ptr.mflags1 & M1_SWIM) !== 0 || (ptr.mflags1 & M1_AMPHIBIOUS) !== 0
+            || breathless(ptr));
+}
+
 // C ref: do_wear.c toggle_stealth() -- putting on or taking off an item
 // which confers stealth; give feedback and discover it iff stealth state
 // is changing
@@ -297,9 +357,13 @@ async function toggle_stealth(obj,
             else
                 await You("walk very quietly.");
         } else {
-            if (g.u.usteed)
-                throw new Error('toggle_stealth(): x_monnam() of the steed not ported yet');
-            await You("sure are noisy.");
+            const riding = (g.u.usteed != null);
+
+            await You(`${riding ? "and " : "sure"}${
+                riding ? x_monnam(g.u.usteed, ARTICLE_YOUR, null,
+                                  (SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION),
+                                  false)
+                       : ""} are noisy.`);
         }
     }
 }
@@ -370,7 +434,7 @@ async function Boots_on() {
         /* spoteffects() doesn't get called here; pooleffects() is called
            during movement and u.uinwater is already False after setworn() */
         if (u.uinwater)
-            throw new Error('Boots_on(): spoteffects() while underwater not ported yet');
+            await spoteffects_bo(true);
         /* init'd in accessory_or_armor_on() and only used here */
         if (g.wasinwater) {
             if (!u.uinwater)
@@ -479,8 +543,37 @@ async function Helmet_on() {
         break;
     case O.HELM_OF_OPPOSITE_ALIGNMENT:
         throw new Error('Helmet_on(): uchangealign() not ported yet');
-    case O.DUNCE_CAP:
-        throw new Error('Helmet_on(): dunce cap (curse(), hcolor()) not ported yet');
+    case O.DUNCE_CAP: {
+        const uarmh = g.uarmh;
+        if (uarmh && !uarmh.cursed) {
+            if (Blind())
+                await pline(`${Tobjnam(uarmh, "vibrate")} for a moment.`);
+            else
+                await pline(`${Tobjnam(uarmh, "glow")} ${hcolor(NH_BLACK)} for a moment.`);
+            curse(uarmh);
+            /* curse() doesn't touch bknown so doesn't update persistent
+               inventory; do so now [set_bknown() calls update_inventory()] */
+            if (Blind())
+                uarmh.bknown = 0; /* set_bknown(uarmh, 0): lose bknown if previously set */
+            else if (Role_if(PM_CLERIC))
+                uarmh.bknown = 1; /* set_bknown(uarmh, 1): (bknown should already be set) */
+            /* else if (uarmh->bknown) update_inventory(): no perm_invent */
+        }
+        g.disp_botl = true; /* reveal new alignment or INT & WIS */
+        if (Hallucination()) {
+            await pline("My brain hurts!"); /* Monty Python's Flying Circus */
+        } else if (g.uarmh && g.uarmh.otyp === O.DUNCE_CAP) {
+            await You_feel(`${ /* track INT change; ignore WIS */
+                ACURR(A_INT)
+                    <= (ABASE(A_INT) + ABON(A_INT) + ATEMP(A_INT))
+                    ? "like sitting in a corner"
+                    : "giddy"}.`);
+        } else {
+            /* [message formerly given here moved to uchangealign()] */
+            makeknown(O.HELM_OF_OPPOSITE_ALIGNMENT);
+        }
+        break;
+    }
     default:
         impossible(`Unknown type of helmet (${g.uarmh.otyp})`);
     }
@@ -580,8 +673,12 @@ async function Armor_on() {
     await dragon_armor_handling(g.uarm, true, true);
     /* gold DSM requires extra handling since it emits light when worn;
        do that after the special armor handling */
-    if (artifact_light(g.uarm) && !g.uarm.lamplit)
-        throw new Error('Armor_on(): begin_burn() for gold dragon armor not ported yet');
+    if (artifact_light(g.uarm) && !g.uarm.lamplit) {
+        begin_burn(g.uarm, false);
+        if (!Blind())
+            await pline(`${Yname2(g.uarm)} ${otense(g.uarm, "begin")} to shine ${
+                arti_light_description(g.uarm)}!`);
+    }
     return 0;
 }
 
@@ -695,18 +792,33 @@ export async function Amulet_off() {
         await off_msg(amul); /* 'uamul' has been set to Null */
         early_off_msg = true;
 
-        if (g.u.uinwater)
-            throw new Error('Amulet_off(): drown() while Underwater not ported yet');
-        if (region_danger())
-            throw new Error('Amulet_off(): breathing poison gas not ported yet');
+        if (Underwater()) {
+            if (!cant_drown(game.youmonst.data) && !Swimming()) {
+                await You(`suddenly inhale an unhealthy amount of ${hliquid("water")}!`);
+                mkn = true; /* in case of life-saving */
+                await drown();
+            }
+        }
+        if (region_danger()) {
+            /* "breathing": wouldn't get here otherwise */
+            await You("are breathing poison gas!");
+            mkn = true;
+        }
         break;
     case O.AMULET_OF_STRANGULATION:
         setworn(null, W_AMUL);
         await off_msg(amul);
         early_off_msg = true;
 
-        if (uprop(STRANGLED).intrinsic)
-            throw new Error('Amulet_off(): ending strangulation not ported yet');
+        if (uprop(STRANGLED).intrinsic) { /* Strangled */
+            uprop(STRANGLED).intrinsic = 0; /* Strangled = 0L */
+            g.disp_botl = true;
+            if (Breathless())
+                await Your(`${body_part(NECK)} is no longer constricted!`);
+            else
+                await You("can breathe more easily!");
+            mkn = true;
+        }
         break;
     case O.AMULET_OF_RESTFUL_SLEEP:
         setworn(null, W_AMUL);
@@ -724,8 +836,16 @@ export async function Amulet_off() {
         early_off_msg = true;
 
         float_vs_flight(); /* probably not needed here */
-        if (was_flying && !Flying())
-            throw new Error('Amulet_off(): landing (spoteffects()) not ported yet');
+        if (was_flying && !Flying()) {
+            const u = g.u;
+            g.disp_botl = true; /* status: 'Fly' Off */
+            await You(`${(is_pool_or_lava(u.ux, u.uy)
+                          || Is_waterlevel(u.uz) || Is_airlevel(u.uz))
+                             ? "stop flying"
+                             : "land"}.`);
+            mkn = true; /* makeknown(AMULET_OF_FLYING) */
+            await spoteffects_bo(true);
+        }
         break;
     }
     case O.AMULET_OF_GUARDING:
@@ -867,8 +987,8 @@ export async function Blindf_on(otmp) {
         if (game.flags?.verbose ?? true)
             await You_cant("see any more.");
         /* set ball&chain variables before the hero goes blind */
-        if (game.uball)
-            throw new Error('Blindf_on(): set_bc() not ported yet');
+        if (game.uball) /* Punished */
+            set_bc(0);
     } else if (already_blind && !Blind()) {
         changed = true;
         /* "You are now wearing the Eyes of the Overworld." */
@@ -915,8 +1035,8 @@ export async function Blindf_off(otmp) {
             /* "You were wearing the Eyes of the Overworld." */
             await You_cant("see anything now!");
             /* set ball&chain variables before the hero goes blind */
-            if (g.uball)
-                throw new Error('Blindf_off(): set_bc() not ported yet');
+            if (g.uball) /* Punished */
+                set_bc(0);
         }
     } else if (was_blind) {
         if (!gulp_blnd_check()) {
@@ -1550,7 +1670,6 @@ export async function Cloak_off() {
     const otmp = g.uarmc;
     const otyp = otmp.otyp;
     const oldprop = uprop(objects[otyp].oc_oprop).extrinsic & ~W_ARMC;
-    void oldprop;
 
     takeoff_ctx().mask &= ~W_ARMC;
     /* For mummy wrapping, taking it off first resets `Invisible'. */
@@ -1565,9 +1684,11 @@ export async function Cloak_off() {
     case O.LEATHER_CLOAK:
         break;
     case O.ELVEN_CLOAK:
-        throw new Error('Cloak_off(): toggle_stealth() not ported yet');
+        await toggle_stealth(otmp, oldprop, false);
+        break;
     case O.CLOAK_OF_DISPLACEMENT:
-        throw new Error('Cloak_off(): toggle_displacement() not ported yet');
+        await toggle_displacement(otmp, oldprop, false);
+        break;
     case O.MUMMY_WRAPPING:
     case O.CLOAK_OF_INVISIBILITY:
         throw new Error('Cloak_off(): invisibility cloaks not ported yet');
@@ -1602,16 +1723,20 @@ export async function Helmet_off() {
         g.disp_botl = true;
         break;
     case O.CORNUTHAUM:
-        if (!tk.cancelled_don)
-            throw new Error('Helmet_off(): cornuthaum ABON(A_CHA) not ported yet');
+        if (!tk.cancelled_don) {
+            g.u.abon.a[A_CHA] += (Role_if(PM_WIZARD) ? -1 : 1);
+            g.disp_botl = true;
+        }
         break;
     case O.HELM_OF_TELEPATHY:
     case O.HELM_OF_CAUTION:
         /* need to update ability before calling see_monsters() */
-        throw new Error('Helmet_off(): helm of telepathy/caution see_monsters() not ported yet');
+        setworn(null, W_ARMH);
+        see_monsters();
+        return 0;
     case O.HELM_OF_BRILLIANCE:
         if (!tk.cancelled_don)
-            throw new Error('Helmet_off(): adj_abon() not ported yet');
+            adj_abon(g.uarmh, -g.uarmh.spe);
         break;
     case O.HELM_OF_OPPOSITE_ALIGNMENT:
         throw new Error('Helmet_off(): uchangealign() not ported yet');
@@ -1721,9 +1846,8 @@ export async function Armor_off() {
     const g = game;
     const otmp = g.uarm;
     const tk = takeoff_ctx();
+    const was_arti_light = otmp && otmp.lamplit && artifact_light(otmp);
 
-    if (otmp && otmp.lamplit)
-        throw new Error('Armor_off(): artifact_light() end_burn() not ported yet');
     tk.mask &= ~W_ARM;
     setworn(null, W_ARM);
     tk.cancelled_don = false;
@@ -1732,6 +1856,11 @@ export async function Armor_off() {
        comes from gold dragon scales/mail so they don't overlap, but
        conceptually the non-fatal change should be done before the
        potentially fatal change in case the latter results in bones */
+    if (was_arti_light && !artifact_light(otmp)) {
+        end_burn(otmp, false);
+        if (!Blind())
+            await pline(`${Tobjnam(otmp, "stop")} shining.`);
+    }
     await dragon_armor_handling(otmp, false, true);
 
     return 0;
@@ -1746,8 +1875,8 @@ export async function Armor_gone() {
     const otmp = g.uarm;
     const tk = takeoff_ctx();
 
-    if (otmp && otmp.lamplit)
-        throw new Error('Armor_gone(): artifact_light() end_burn() not ported yet');
+    const was_arti_light = otmp && otmp.lamplit && artifact_light(otmp);
+
     tk.mask &= ~W_ARM;
     setnotworn_dw(g.uarm);
     tk.cancelled_don = false;
@@ -1756,6 +1885,11 @@ export async function Armor_gone() {
        comes from gold dragon scales/mail so they don't overlap, but
        conceptually the non-fatal change should be done before the
        potentially fatal change in case the latter results in bones */
+    if (was_arti_light && !artifact_light(otmp)) {
+        end_burn(otmp, false);
+        if (!Blind())
+            await pline(`${Tobjnam(otmp, "stop")} shining.`);
+    }
     await dragon_armor_handling(otmp, false, false);
 
     return 0;
@@ -2104,7 +2238,7 @@ async function armor_or_accessory_off(obj) {
     } else {
         impossible(`removing strange accessory: ${obj.otyp}`);
         if (obj.owornmask)
-            throw new Error('armor_or_accessory_off(): remove_worn_item() not ported yet');
+            await remove_worn_item(obj, false);
     }
     return ECMD_TIME;
 }
@@ -2583,15 +2717,6 @@ export function count_worn_armor() {
     return ret;
 }
 
-import { rn2 as rn2_dw } from './rng.js';
-import { which_armor as which_armor_dw } from './worn.js';
-import { erode_obj } from './trap.js';
-import { stop_occupation as stop_occupation_dw } from './allmain.js';
-import { is_flammable, is_rustprone, is_crackable, is_rottable,
-         is_corrodeable, erosion_matters, is_damageable } from './mkobj.js';
-import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
-         ERODE_NONE, ER_NOTHING, ER_DESTROYED, EF_PAY,
-         EF_DESTROY } from './const.js';
 
 /* C ref: do_wear.c takeoff_order[] */
 const takeoff_order = [
@@ -2854,31 +2979,3 @@ async function menu_remarm(retry) {
     }
     return 0;
 }
-import { WORN_BLINDF as WORN_BLINDF_DW, W_WEP as W_WEP_DW,
-         WORN_SHIELD as WORN_SHIELD_DW, WORN_GLOVES as WORN_GLOVES_DW,
-         LEFT_RING as LEFT_RING_DW, RIGHT_RING as RIGHT_RING_DW,
-         WORN_CLOAK as WORN_CLOAK_DW, WORN_HELMET as WORN_HELMET_DW,
-         WORN_AMUL as WORN_AMUL_DW, WORN_ARMOR as WORN_ARMOR_DW,
-         WORN_SHIRT as WORN_SHIRT_DW, WORN_BOOTS as WORN_BOOTS_DW,
-         W_SWAPWEP as W_SWAPWEP_DW, W_QUIVER as W_QUIVER_DW,
-         MENU_FULL as MENU_FULL_DW, MENU_TRADITIONAL as MENU_TRADITIONAL_DW,
-         MENU_COMBINATION as MENU_COMBINATION_DW, WORN_TYPES as WORN_TYPES_DW,
-         ALL_TYPES as ALL_TYPES_DW, UNPAID_TYPES as UNPAID_TYPES_DW,
-         BUCX_TYPES as BUCX_TYPES_DW, PICK_ANY as PICK_ANY_DW,
-         ALL_TYPES_SELECTED as ALL_TYPES_SELECTED_DW,
-         SIGNAL_NOMENU as SIGNAL_NOMENU_DW, USE_INVLET as USE_INVLET_DW,
-         INVORDER_SORT as INVORDER_SORT_DW } from './const.js';
-import { empty_handed as empty_handed_dw } from './insight.js';
-import { set_occupation as set_occupation_dw } from './allmain.js';
-import { wearing_armor as wearing_armor_dw, is_worn as is_worn_dw } from './invent.js';
-import { add_valid_menu_class as add_valid_menu_class_dw,
-         menu_class_present as menu_class_present_dw,
-         is_worn_by_type as is_worn_by_type_dw,
-         query_category as query_category_dw,
-         query_objlist as query_objlist_dw } from './pickup.js';
-import { is_pool as is_pool_bo, is_lava as is_lava_bo } from './makemon.js';
-import { M1_CLING as M1_CLING_BO } from './monsters.js';
-import { has_ceiling as has_ceiling_bo } from './insight.js';
-import { spoteffects as spoteffects_bo } from './hack.js';
-import { float_down as float_down_bo } from './trap.js';
-import { FROMOUTSIDE as FROMOUTSIDE_BO } from './const.js';

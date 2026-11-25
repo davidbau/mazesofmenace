@@ -33,6 +33,7 @@ import { create_gas_cloud } from './region.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { setmangry, monnear } from './mon.js';
 import { Hallucination } from './youprop.js';
+import { angry_guards } from './mon.js';
 
 // C ref: you.h MIN_QUEST_ALIGN, MIN_QUEST_LEVEL
 const MIN_QUEST_ALIGN = 20; /* at least "fervent" */
@@ -477,7 +478,7 @@ async function prisoner_speaks(mtmp) {
         adjalign(3);
 
         /* ...But the guards are not */
-        throw new Error('prisoner_speaks(): angry_guards() not ported yet');
+        await angry_guards(false);
     }
     return;
 }

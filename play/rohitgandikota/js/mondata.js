@@ -663,7 +663,7 @@ export function can_blow(mtmp) {
             || d.mlet === MONSYMS.S_EEL))
         return false;
     if (mtmp === game.youmonst
-        && (game.u.intrinsic?.HStrangled || game.u.uprops?.STRANGLED))
+        && game.u.intrinsic?.HStrangled)
         return false;
     return true;
 }
@@ -671,7 +671,7 @@ export function can_blow(mtmp) {
 // src/mondata.c:580 can_chant()
 export function can_chant(mtmp) {
     if ((mtmp === game.youmonst
-         && (game.u.intrinsic?.HStrangled || game.u.uprops?.STRANGLED))
+         && game.u.intrinsic?.HStrangled)
         || is_silent(mtmp.data) || !has_head(mtmp.data)
         || mtmp.data.msound === MSOUND.MS_BUZZ
         || mtmp.data.msound === MSOUND.MS_BURBLE)

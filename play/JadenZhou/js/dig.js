@@ -532,7 +532,7 @@ const STRIDENT = 4; /* from pray.c */
 // C ref: dig.c draft_message()
 /* draft refers to air currents, but can be a pun on "draft" as conscription
    for military service (probably not a good pun if it has to be explained) */
-async function draft_message(unexpected) {
+export async function draft_message(unexpected) {
     const u = game.u;
     /*
      * [Bug or TODO?  Have caller pass coordinates and use the travel

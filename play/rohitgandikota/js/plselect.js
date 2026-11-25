@@ -494,8 +494,8 @@ async function select_menu_pick_one(win) {
                the first entry whose text matches *pattern* is chosen
                (toggle_menu_curr, and PICK_ONE finishes); an empty or
                escaped line leaves the menu waiting */
-            const { getlin } = await import('./cmd.js');
-            const tmpbuf = await getlin('Search for:', null);
+            const { hooked_tty_getlin } = await import('./cmd.js');
+            const tmpbuf = await hooked_tty_getlin('Search for:', null);
             /* back to the menu: dmore() parks the cursor after the footer */
             {
                 const items = menu_page_items(win, cw.curr_page || 0);

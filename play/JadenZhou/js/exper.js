@@ -5,6 +5,7 @@
 // more_experienced(), newexplevel(), pluslvl() (not for a polymorphed
 // hero) and losexp().
 
+import { monhp_per_lvl } from './makemon.js';
 import { minuhpmax } from './attrib.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
@@ -236,8 +237,11 @@ export async function pluslvl(
 
     /* increase hit points (when polymorphed, do monster form first
        in order to retain normal human/whatever increase for later) */
-    if (u.umonnum !== u.umonster) /* Upolyd */
-        throw new Error('pluslvl(): monhp_per_lvl() for a polymorphed hero not ported yet');
+    if (u.umonnum !== u.umonster) { /* Upolyd */
+        hpinc = monhp_per_lvl(game.youmonst);
+        u.mh += hpinc;
+        setuhpmax(u.mhmax, false); /* acts as setmhmax() when Upolyd */
+    }
     hpinc = newhp();
     u.uhp += hpinc;
     setuhpmax(u.uhpmax + hpinc, true); /* will lower u.uhp if it exceeds

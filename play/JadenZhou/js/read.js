@@ -119,6 +119,17 @@ import { SDOOR as SDOOR_RD, CORR as CORR_RD,
          W_ARMH as W_ARMH_RD, DEAF as DEAF_RD, In_sokoban as In_sokoban_rd } from './const.js';
 import { ceiling as ceiling_rd } from './dungeon.js';
 import { In_quest as In_quest_rd } from './const.js';
+import { Ring_gone, Ring_off, Ring_on } from './do_wear.js';
+import { LEFT_RING, RIGHT_RING } from './const.js';
+import { restrict_name } from './artifact.js';
+import { has_oname, ONAME } from './const.js';
+import { mhim } from './mhitu.js';
+import { move_bc } from './ball.js';
+import { monster_census } from './minion.js';
+import { mkclass, rndmonst, set_malign, put_saddle_on_mon, can_saddle } from './makemon.js';
+import { NO_NC_FLAGS } from './const.js';
+import { newcham } from './mon.js';
+import { light_hits_gremlin } from './uhitm.js';
 
 /* C ref: color.h NH_* color names */
 const NH_BLACK = "black", NH_AMBER = "amber", NH_GOLDEN = "golden",
@@ -639,18 +650,24 @@ export async function recharge(obj, curse_bless) {
             await pline(`${Yobjnam2(obj, "pulsate")} momentarily, then ${
                 otense(obj, "explode")}!`);
             if (is_on)
-                throw new Error('recharge(): Ring_gone() not ported yet');
+                await Ring_gone(obj);
             s = rnd(3 * Math.abs(obj.spe)); /* amount of damage */
             useup(obj), obj = null;
             await losehp(Maybe_Half_Phys(s), "exploding ring", KILLED_BY_AN);
         } else {
+            const mask = is_on ? (obj === game.uleft ? LEFT_RING : RIGHT_RING) : 0;
+
             await pline(`${Yname2(obj)} spins ${s < 0 ? "counter" : ""}clockwise for a moment.`);
             if (s < 0)
                 costly_alteration(obj, COST_DECHNT);
             /* cause attributes and/or properties to be updated */
             if (is_on)
-                throw new Error('recharge(): Ring_off()/Ring_on() not ported yet');
+                await Ring_off(obj);
             obj.spe += s; /* update the ring while it's off */
+            if (is_on)
+                setworn(obj, mask), Ring_on(obj);
+            /* oartifact: if a touch-sensitive artifact ring is
+               ever created the above will need to be revised  */
             /* update shop bill to reflect new higher price */
             if (s > 0 && obj.unpaid)
                 throw new Error('recharge(): alter_cost() not ported yet');
@@ -1230,8 +1247,13 @@ export async function create_critters(cnt,
     let ask = (!!game.flags?.debug && !neverask);
 
     while (cnt--) {
-        if (ask)
-            throw new Error('create_critters(): wizard mode create_particular() prompt not ported yet');
+        if (ask) {
+            if (await create_particular()) {
+                known = true;
+                continue;
+            } else
+                ask = false; /* ESC will shut off prompting */
+        }
         x = u.ux, y = u.uy;
         /* if in water, try to encourage an aquatic monster
            by finding and then specifying another wet location */
@@ -1346,8 +1368,14 @@ export async function chwepon(otmp, amount) {
         || (uwep.otyp === O.CRYSKNIFE && amount < 0))
         throw new Error('chwepon(): worm tooth/crysknife transformation not ported yet');
 
-    if (amount < 0 && uwep.oartifact)
-        throw new Error('chwepon(): restrict_name() for an artifact not ported yet');
+    let wepname = "";
+    if (has_oname(uwep))
+        wepname = ONAME(uwep);
+    if (amount < 0 && uwep.oartifact && restrict_name(uwep, wepname)) {
+        if (!Blind())
+            await pline(`${Yobjnam2(uwep, "faintly glow")} ${color}.`);
+        return 1;
+    }
     /* there is a (soft) upper and lower limit to uwep->spe */
     if (((uwep.spe > 5 && amount >= 0) || (uwep.spe < -5 && amount < 0))
         && rn2(3)) {
@@ -2074,7 +2102,7 @@ export async function drop_boulder_on_monster(x, y, confused, byu) {
                     mdmg = 2;
             } else {
                 if (canspotmon(mtmp))
-                    throw new Error('drop_boulder_on_monster(): "helmet does not protect" (mhim()) not ported yet');
+                    await pline(`${Monnam(mtmp)}'s ${xname(helmet)} does not protect ${mhim(mtmp)}.`);
             }
         }
         mtmp.mhp -= mdmg;
@@ -2189,7 +2217,7 @@ export async function litroom(on, /* True: make nearby area lit; False: cursed s
      *  that we don't remember them if they are out of sight.
      */
     if (Punished() && !on && !Blind())
-        throw new Error('litroom(): move_bc() not ported yet');
+        move_bc(1, 0, g.uball.ox, g.uball.oy, g.uchain.ox, g.uchain.oy);
 
     g.gremlins_rd = [];
     if (Is_rogue_level(u.uz)) {
@@ -2214,7 +2242,7 @@ export async function litroom(on, /* True: make nearby area lit; False: cursed s
 
         /* replace ball&chain */
         if (Punished() && !on)
-            throw new Error('litroom(): move_bc() not ported yet');
+            move_bc(0, 0, g.uball.ox, g.uball.oy, g.uchain.ox, g.uchain.oy);
     }
 
     g.vision_full_recalc = 1; /* delayed vision recalculation */
@@ -2223,7 +2251,10 @@ export async function litroom(on, /* True: make nearby area lit; False: cursed s
         vision_recalc(0);
         /* after vision has been updated, monsters who are affected
            when hit by light can now be hit by it */
-        throw new Error('litroom(): light_hits_gremlin() not ported yet');
+        do { /* C's list is newest first */
+            const gremlin = g.gremlins_rd.pop();
+            await light_hits_gremlin(gremlin, rnd(5));
+        } while (g.gremlins_rd.length);
     }
     return;
 }
@@ -2535,7 +2566,7 @@ function create_particular_parse(str, d) {
     /* maximum possible quantity is one per cell: (0..ROWNO-1) x (1..COLNO-1)
        [21*79==1659 for default map size; could subtract 1 for hero's spot] */
     if (d.quan < 1 || d.quan > QUAN_LIMIT)
-        throw new Error('create_particular_parse(): monster_census() not ported yet');
+        d.quan = QUAN_LIMIT - monster_census(false);
     /* gear -- extremely limited number of possibilities supported;
        memset(tmpp, ' ', ...) blanks out the word */
     const blank = (word) => {
@@ -2621,9 +2652,9 @@ async function create_particular_creation(d) {
         let mmflags = NO_MM_FLAGS;
 
         if (d.monclass !== MAXMCLASSES)
-            throw new Error('create_particular_creation(): mkclass() not ported yet');
+            whichpm = mkclass(d.monclass, 0);
         else if (d.randmonst)
-            throw new Error('create_particular_creation(): rndmonst() not ported yet');
+            whichpm = rndmonst();
         if (d.genderconf === -1) {
             /* no conflict exists between explicit gender term and
                the specified monster name */
@@ -2658,10 +2689,15 @@ async function create_particular_creation(d) {
         if (d.maketame) {
             await tamedog(mtmp, null, false);
         } else if (d.makepeaceful || d.makehostile) {
-            throw new Error('create_particular_creation(): set_malign() for peaceful/hostile not ported yet');
+            mtmp.mtame = 0; /* sanity precaution */
+            mtmp.mpeaceful = d.makepeaceful ? 1 : 0;
+            set_malign(mtmp);
         }
-        if (d.saddled)
-            throw new Error('create_particular_creation(): put_saddle_on_mon() not ported yet');
+        if (d.saddled && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {
+            /* NULL obj arg means put_saddle_on_mon()
+             * will create the saddle itself */
+            put_saddle_on_mon(null, mtmp);
+        }
         if (d.hidden)
             throw new Error('create_particular_creation(): hidden monsters not ported yet');
         if (d.sleeping)
@@ -2677,7 +2713,7 @@ async function create_particular_creation(d) {
            for, make it start out looking like what was asked for */
         if (mtmp.cham !== NON_PM && firstchoice !== NON_PM
             && mtmp.cham !== firstchoice)
-            throw new Error('create_particular_creation(): newcham() not ported yet');
+            await newcham(mtmp, mons[firstchoice], NO_NC_FLAGS);
     }
     return madeany;
 }

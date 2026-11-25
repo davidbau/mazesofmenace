@@ -1,9 +1,10 @@
 // were.js -- lycanthropes changing form.
 // C ref: were.c -- were_change(), counter_were(), were_beastie(), new_were().
-// Not ported yet: were_summon(), you_were(), you_unwere(), set_ulycn().
+// C ref: were.c were_summon().
+// Not ported yet: you_were(), you_unwere(), set_ulycn().
 
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, rnd } from './rng.js';
 import * as MM from './monsters.js';
 import { mons, LOW_PM } from './monsters.js';
 import { NON_PM, FULL_MOON, DEAF, HALLUC, HALLUC_RES, I_SPECIAL,
@@ -18,6 +19,9 @@ import { possibly_unwield } from './weapon.js';
 import { mon_break_armor } from './worn.js';
 import { onscary, monflee } from './monmove.js';
 import { Protection_from_shape_changers, Deaf, Hallucination } from './youprop.js';
+import { makemon, makemon_flush_msg } from './makemon.js';
+import { NO_MM_FLAGS } from './const.js';
+import { tamedog } from './dog.js';
 
 // C ref: were.c were_change()
 export async function were_change(mon) {
@@ -144,4 +148,61 @@ export async function new_were(mon) {
         && onscary(mon.mux, mon.muy, mon)
         && monnear(mon, mon.mux, mon.muy))
         await monflee(mon, rn1(9, 2), true, true); /* 2..10 turns */
+}
+
+// C ref: were.c were_summon()
+/* were-creature (even you) summons a horde; result is
+   {total, visible, genbuf} where C has *visible and genbuf out-params */
+export async function were_summon(
+    ptr,
+    yours,
+    out) /* out.visible: number of visible helpers created; out.genbuf */ {
+    let i, typ;
+    const pm = monsndx(ptr);
+    let mtmp;
+    let total = 0;
+
+    out.visible = 0;
+    if (Protection_from_shape_changers() && !yours)
+        return 0;
+    for (i = rnd(5); i > 0; i--) {
+        switch (pm) {
+        case MM.PM_WERERAT:
+        case MM.PM_HUMAN_WERERAT:
+            typ = rn2(3) ? MM.PM_SEWER_RAT
+                         : rn2(3) ? MM.PM_GIANT_RAT : MM.PM_RABID_RAT;
+            if (out.genbuf !== undefined)
+                out.genbuf = "rat";
+            break;
+        case MM.PM_WEREJACKAL:
+        case MM.PM_HUMAN_WEREJACKAL:
+            typ = rn2(7) ? MM.PM_JACKAL : rn2(3) ? MM.PM_COYOTE : MM.PM_FOX;
+            if (out.genbuf !== undefined)
+                out.genbuf = "jackal";
+            break;
+        case MM.PM_WEREWOLF:
+        case MM.PM_HUMAN_WEREWOLF:
+            typ = rn2(5) ? MM.PM_WOLF : rn2(2) ? MM.PM_WARG : MM.PM_WINTER_WOLF;
+            if (out.genbuf !== undefined)
+                out.genbuf = "wolf";
+            break;
+        default:
+            continue;
+        }
+        game.makemon_want_msg = true; /* see makemon()'s Norep() comment */
+        try {
+            mtmp = makemon(mons[typ], game.u.ux, game.u.uy, NO_MM_FLAGS);
+        } finally {
+            game.makemon_want_msg = false;
+        }
+        await makemon_flush_msg();
+        if (mtmp) {
+            total++;
+            if (canseemon(mtmp))
+                out.visible += 1;
+        }
+        if (yours && mtmp)
+            await tamedog(mtmp, null, false);
+    }
+    return total;
 }

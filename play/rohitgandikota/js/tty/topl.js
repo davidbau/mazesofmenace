@@ -11,7 +11,7 @@
 // more() is too, and both are really topl.c functions that should live here.
 
 import { game } from '../gstate.js';
-import { NHW_MENU } from '../const.js';
+import { NHW_MENU, QBUFSZ } from '../const.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_destroy_nhwindow } from './wintty.js';
 import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT,
          paint_topline, tty_clear_nhwindow_message } from '../display.js';
@@ -367,6 +367,11 @@ const TBUFSZ = 300;
 // The response filter and numeric '#' input are ported. The Ctrl-P history
 // interaction is not yet ported.
 export async function tty_yn_function(query, resp, def, addcmdq = false) {
+    /* src/cmd.c:5489 yn_function(): bound the query before queued answers
+       or the window port append response choices and a default. */
+    if (query.length >= QBUFSZ)
+        query = query.slice(0, QBUFSZ - 4) + '...';
+
     /* src/cmd.c:5487 yn_function(), repeatable questions consume their
        saved answer before invoking the window port. There is deliberately
        no prompt frame during Ctrl-A replay. getdir(), getobj(), and a few

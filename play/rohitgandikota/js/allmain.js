@@ -777,6 +777,12 @@ async function moveloop_core_turn() {
     if (g.context?.bypasses)
         clear_bypasses();
 
+    // src/allmain.c:200: resume an interrupted wish before processing the turn.
+    if (g.context?.resume_wish) {
+        const { makewish } = await import('./zap.js');
+        await makewish();
+    }
+
     if (g.context?.move) {
         /* src/allmain.c:205 — actual time passed */
         g.u.umovement = (g.u.umovement || 0) - NORMAL_SPEED;

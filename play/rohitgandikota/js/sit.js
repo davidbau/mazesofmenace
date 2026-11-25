@@ -73,7 +73,7 @@ const Half_physical_damage = () =>
     !!(game.u.intrinsic?.HHalf_physical_damage || game.u.uprops?.HALF_PHDAM);
 const Half_spell_damage = () =>
     !!(game.u.intrinsic?.HHalf_spell_damage || game.u.uprops?.HALF_SPDAM);
-const Slimed = () => !!(game.u.intrinsic?.HSlimed);
+const Slimed = () => !!(game.u.uprops?.SLIMED);
 const Blind_telepat = () =>
     !!(game.u.intrinsic?.HTelepat || game.u.uprops?.TELEPAT);
 const BlindedTimeout = () => ((game.u.intrinsic?.HBlinded | 0) & TIMEOUT);

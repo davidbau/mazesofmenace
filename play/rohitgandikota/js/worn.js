@@ -405,7 +405,7 @@ function m_dowear_type(mon, flag, creation, racialexception) {
         case W_ARMC:
             if (!is_cloak(obj)) continue;
             /* mummy wrapping is only cloak allowed when bigger than human */
-            if (data.msize > MFLAGS.MZ_HUMAN && obj.otyp !== ONAMES.MUMMY_WRAPPING)
+            if (data.msize > MFLAGS.MZ_MEDIUM && obj.otyp !== ONAMES.MUMMY_WRAPPING)
                 continue;
             if (mon.minvis && w_blocks(obj, W_ARMC) === INVIS
                 && !See_invisible() && !creation)

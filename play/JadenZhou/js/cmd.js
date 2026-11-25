@@ -3,6 +3,10 @@
 // (commands_init()/reset_commands()) and the command functions ported so
 // far; hack.c domove() is in hack.js.
 
+import { split_mon } from './potion.js';
+import { dryup } from './fountain.js';
+import { is_pool } from './makemon.js';
+import { There } from './display.js';
 import { impossible } from './hack.js';
 import { nhcb_counts, nhcb_name } from './nhlua.js';
 import { NHCB_CMD_BEFORE } from './const.js';
@@ -102,6 +106,7 @@ import { PM_GRID_BUG, mons, PM_CAVE_SPIDER, PM_GIANT_SPIDER, PM_MIND_FLAYER,
          PM_MASTER_MIND_FLAYER, PM_GREMLIN, AT_BREA, AT_SPIT, AT_GAZE, S_NYMPH,
          S_UNICORN, M1_HIDE, M1_CONCEAL, M2_JEWELS, MS_SHRIEK } from './monsters.js';
 import { is_were, is_vampire, is_vampshifter } from './mondata.js';
+import { show_menu_controls as show_menu_controls_cm } from './pager.js';
 export { domove };
 
 // C ref: cmd.c extcmds_match() -- the indices of the extcmdlist[]
@@ -301,7 +306,7 @@ export function cmdq_add_key(key) {
     if (!game.cmdq) game.cmdq = [];
     game.cmdq.push({ typ: 'key', key });
 }
-function cmdq_add_dir(dx, dy, dz) {
+export function cmdq_add_dir(dx, dy, dz) {
     if (!game.cmdq) game.cmdq = [];
     game.cmdq.push({ typ: 'dir', dirx: dx, diry: dy, dirz: dz });
 }
@@ -897,7 +902,16 @@ async function domonability() {
     else if (is_mind_flayer(uptr))
         throw new Error('domonability(): domindblast() not ported yet');
     else if (u.umonnum === PM_GREMLIN) {
-        throw new Error('domonability(): gremlin split_mon() not ported yet');
+        if (IS_FOUNTAIN(game.level.at(u.ux, u.uy).typ)) {
+            if (await split_mon(game.youmonst, null))
+                await dryup(u.ux, u.uy, true);
+        } else if (is_pool(u.ux, u.uy)) {
+            /* is_pool: might be wearing water walking boots or amulet of
+               magical breathing */
+            await split_mon(game.youmonst, null);
+        } else {
+            await There("is no fountain here.");
+        }
     } else if (is_unicorn(uptr)) {
         throw new Error('domonability(): use_unicorn_horn() not ported yet');
     } else if (uptr.msound === MS_SHRIEK) {
@@ -1819,7 +1833,7 @@ async function do_fight() {
 }
 
 /* C ref: hack.h GC_* get_count() flags */
-const GC_NOFLAGS = 0, GC_SAVEHIST = 1, GC_CONDHIST = 2, GC_ECHOFIRST = 4;
+export const GC_NOFLAGS = 0, GC_SAVEHIST = 1, GC_CONDHIST = 2, GC_ECHOFIRST = 4;
 /* C ref: global.h LARGEST_INT; integer.h AppendLongDigit() overflow
    limit -- the recorder's 64-bit LONG_MAX is beyond what a JS number
    holds exactly, but counts are capped by maxcount (LARGEST_INT) long
@@ -2518,7 +2532,7 @@ async function help_dir(sym, spkey, msg) {
 }
 
 // C ref: cmd.c getdir() -- the direction prompt; the command queue and
-// the mouse ('_') aren't ported yet
+// the mouse ('_') are ported for the parts reached so far
 // C ref: cmd.c get_adjacent_loc() -- prompts the user for a direction and
 // returns the adjacent location in cc
 export async function get_adjacent_loc(prompt, emsg, x, y, cc) {
@@ -2687,7 +2701,66 @@ export async function getdir(s) {
     if (ch === '.' || ch === 's') { /* NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2 */
         u.dx = u.dy = u.dz = 0;
     } else if (ch === '_') { /* NHKF_GETDIR_MOUSE */
-        throw new Error('getdir(): getpos() not ported yet');
+        const iflags = game.iflags;
+        const cc = { x: 0, y: 0 };
+        let pos, mod;
+
+        /*
+         * For #therecmdmenu:
+         * Player has entered the 'simulated mouse' key ('_' by default)
+         * at the "which direction?" prompt so we use getpos() to get a
+         * simulated click after moving cursor to the desired location.
+         *
+         * getpos() returns 0..3 for period, comma, semi-colon, colon.
+         * We treat "," as left click and "." as right click due to
+         * their positions relative to each other on the keyboard.
+         * Using ";" as synonym for "," and ":" for "." is due to their
+         * shapes rather than to their keyboard location.
+         */
+        const qbuf = `desired location, then type '${
+            visctrl(','.charCodeAt(0)) /* gc.Cmd.spkeys[NHKF_GETPOS_PICK_Q] */}' for left click, '${
+            visctrl('.'.charCodeAt(0)) /* gc.Cmd.spkeys[NHKF_GETPOS_PICK] */}' for right`;
+        cc.x = u.ux, cc.y = u.uy; /* starting cursor location for getpos() */
+        pos = await getpos(cc, true, qbuf);
+
+        if (pos < 0) {
+            /* ESC or other rejection */
+            u.dx = u.dy = u.dz = 0;
+            mod = 0; /* neither CLICK_1 nor CLICK_2 */
+        } else {
+            /* caller expects simulated click to be relative to hero's spot */
+            u.dx = cc.x - u.ux;
+            u.dy = cc.y - u.uy;
+            /* non-zero getdir_click actually means ok to click farther than
+               one spot away from hero; adjacent click is always allowed */
+            if (!iflags.getdir_click) {
+                u.dx = sgn(u.dx);
+                u.dy = sgn(u.dy);
+            }
+            u.dz = 0;
+
+            switch (pos) { /* pos + NHKF_GETPOS_PICK */
+            case 1: /* NHKF_GETPOS_PICK_Q: quick:   ',' */
+            case 2: /* NHKF_GETPOS_PICK_O: once:    ';' */
+                mod = CLICK_1;
+                break;
+            case 0: /* NHKF_GETPOS_PICK: normal:  '.' */
+            case 3: /* NHKF_GETPOS_PICK_V: verbose: ':' */
+                mod = CLICK_2;
+                break;
+            default:
+                /* could plug in bound values for spkeys[NHKF_GETPOS_PICK],&c
+                   but that feels like overkill for something which should
+                   never happen; just show their default values */
+                impossible(`getpos successful but not one of [.,;:] (${pos})`);
+                mod = 0; /* neither CLICK_1 nor CLICK_2 */
+                pos = -1; /* return failure */
+                break;
+            }
+        }
+        if (iflags.getdir_click)
+            iflags.getdir_click = mod;
+        return (pos >= 0) ? 1 : 0;
     } else if (!(is_mov = movecmd_mode(dirsym, MV_ANY)) && !u.dz) {
         let did_help = false, help_requested;
 
@@ -2713,4 +2786,3 @@ export async function getdir(s) {
         confdir(false);
     return 1;
 }
-import { show_menu_controls as show_menu_controls_cm } from './pager.js';

@@ -60,7 +60,7 @@ import { mon_aligntyp } from './priest.js';
 import { A_WIS } from './const.js';
 import { KILLED_BY, A_CON, ECMD_OK, ECMD_TIME, nothing_happens } from './const.js';
 import { getrumor } from './rumors.js';
-import { bcsign } from './mkobj.js';
+import { bcsign, obj_extract_self } from './mkobj.js';
 import { pline } from './display.js';
 import { cansee as cansee_art } from './vision.js';
 import { mon_nam as mon_nam_art } from './do_name.js';
@@ -74,6 +74,13 @@ import { defended, resists_fire, resists_cold, resists_elec, resists_poison,
 import { STONE_RES } from './const.js';
 import { ART_GRIMTOOTH } from './artilist.js';
 import { Tobjnam } from './objnam.js';
+import { remove_worn_item } from './steal.js';
+import { freeinv, obfree } from './invent.js';
+import { hitfloor } from './dothrow.js';
+import { dropx } from './do.js';
+import { surface } from './iactions.js';
+import { Levitation } from './youprop.js';
+import { IS_ALTAR } from './const.js';
 import { Antimagic, Hate_silver, Blind as Blind_art } from './youprop.js';
 import { objects as objects_ac } from './objects.js';
 
@@ -363,8 +370,8 @@ function dispose_of_orig_obj(obj) {
     if (!obj)
         return;
 
-    /* obj_extract_self(obj); obfree(obj, (struct obj *) 0); */
-    throw new Error('dispose_of_orig_obj(): obj_extract_self()/obfree() not ported yet');
+    obj_extract_self(obj);
+    obfree(obj, null);
 }
 
 // C ref: artifact.c mk_artifact()
@@ -1568,12 +1575,31 @@ export async function retouch_object(obj,
     /* removing a worn item might result in loss of levitation,
        dropping the hero onto a polymorph trap or into water or
        lava and potentially dropping or destroying the item */
-    if (obj.owornmask)
-        throw new Error('retouch_object(): remove_worn_item() of an untouchable item not ported yet');
+    if (obj.owornmask) {
+        let otmp;
+
+        await remove_worn_item(obj, false);
+        for (otmp = game.invent; otmp; otmp = otmp.nobj)
+            if (otmp === obj)
+                break;
+        if (!otmp)
+            obj = null; /* *objp = obj = 0 */
+    }
 
     /* if we still have it and caller wants us to drop it, do so now */
-    if (loseit && obj)
-        throw new Error('retouch_object(): dropping an untouchable item not ported yet');
+    if (loseit && obj) {
+        if (Levitation()) {
+            freeinv(obj);
+            await hitfloor(obj, true);
+        } else {
+            /* dropx gives a message if a dropped item lands on an altar;
+               we provide one for other terrain */
+            if (!IS_ALTAR(game.level.at(u.ux, u.uy).typ))
+                await pline(`${Tobjnam(obj, "fall")} to the ${surface(u.ux, u.uy)}.`);
+            await dropx(obj);
+        }
+        obj = null; /* no longer in inventory */
+    }
     return 0;
 }
 

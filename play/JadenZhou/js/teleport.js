@@ -89,6 +89,17 @@ import { On_W_tower_level as On_W_tower_level_tp } from './dungeon.js';
 import { inhishop, make_angry_shk, costly_spot, find_objowner,
          onshopbill } from './shk.js';
 import { inhistemple } from './priest.js';
+import { in_rooms as in_rooms_utm } from './hack.js';
+import { unstuck as unstuck_utm } from './mhitu.js';
+import { TEMPLE as TEMPLE_UTM, engulfing_u as engulfing_u_utm } from './const.js';
+import { hideunder } from './makemon.js';
+import { buried_ball_to_punishment } from './dig.js';
+import { M_AP_NOTHING } from './const.js';
+import { spelleffects } from './spell.js';
+import { A_WIS } from './const.js';
+import { u_left_shop } from './shk.js';
+import { exercise } from './attrib.js';
+import { revive_corpse } from './zap.js';
 
 
 /* C ref: mondata.h is_rider() */
@@ -333,7 +344,7 @@ export async function teleds(nux, nuy, teleds_flags) {
 
     if (u.utraptype === TT_BURIEDBALL) {
         /* unearth it */
-        throw new Error('teleds(): buried_ball_to_punishment() not ported yet');
+        await buried_ball_to_punishment();
     }
     ball_active = (Punished() && game.uball.where !== 'OBJ_FREE');
     if (!ball_active
@@ -369,10 +380,10 @@ export async function teleds(nux, nuy, teleds_flags) {
     u.ux0 = u.ux;
     u.uy0 = u.uy;
 
-    /* !hideunder(&youmonst) && youmonst.data->mlet == S_MIMIC: mimics stop
-       being unnoticed */
-    if (game.youmonst.data.mlet === S_MIMIC)
-        throw new Error('teleds(): hideunder() for a mimic hero not ported yet');
+    if (!hideunder(game.youmonst) && game.youmonst.data.mlet === S_MIMIC) {
+        /* mimics stop being unnoticed */
+        game.youmonst.m_ap_type = M_AP_NOTHING;
+    }
 
     if (was_swallowed) {
         if (Punished()) { /* ball&chain are off map while swallowed */
@@ -746,7 +757,12 @@ async function dotele(break_the_rules) { /* True: wizard mode ^T */
         }
 
         if (castit) {
-            throw new Error('dotele(): casting teleport away (spelleffects()) not ported yet');
+            /* energy cost is deducted in spelleffects() */
+            exercise(A_WIS, true);
+            if ((await spelleffects(SPE_TELEPORT_AWAY, true, false) & ECMD_TIME))
+                return 1;
+            else if (!break_the_rules)
+                return 0;
         } else {
             /* bypassing spelleffects(); apply energy cost directly */
             u.uen -= energy;
@@ -1000,8 +1016,10 @@ export async function level_tele() {
         /* single_level_branch(): Is_knox() */
         if (!random_levtport && g.dungeon_topology.d_knox_level
             && on_level(u.uz, g.dungeon_topology.d_knox_level) && newlev > 0
-            && !force_dest)
-            throw new Error('level_tele(): single_level_branch() not ported yet');
+            && !force_dest) {
+            await pline(`You ${shudder_for_moment}`); /* You1() */
+            return;
+        }
         /* if in Quest, the player sees "Home 1", etc., on the status
          * line, instead of the logical depth of the level.  controlled
          * level teleport request is likely to be relativized to the
@@ -1048,7 +1066,11 @@ export async function level_tele() {
     if (newlev < 0 && !force_dest) {
         if (u.ushops0) {
             /* take unpaid inventory items off of shop bills */
-            throw new Error('level_tele(): u_left_shop() when teleporting out of the dungeon not ported yet');
+            game.in_mklev = true; /* suppress map update */
+            await u_left_shop(u.ushops0, true);
+            /* you're now effectively out of the shop */
+            u.ushops0 = u.ushops = '';
+            game.in_mklev = false;
         }
         if (newlev <= -10) {
             await You("arrive in heaven.");
@@ -1432,8 +1454,10 @@ export async function rloc(mtmp, /* mtmp->mx==0 implies migrating monster arriva
     let cc, x, y, trycount, i, j, candycount;
     const backupcc = { x: 0, y: 0 };
 
-    if (mtmp === u.usteed)
-        throw new Error('rloc(): tele() for the steed not ported yet');
+    if (mtmp === u.usteed) {
+        await tele();
+        return true;
+    }
 
     if (mtmp.iswiz && mtmp.mx)
         throw new Error('rloc(): Wizard of Yendor stairway_find_forwiz() not ported yet');
@@ -1711,8 +1735,10 @@ export async function rloco(obj) {
     let try_limit = 4000;
     const dndest = game.dndest;
 
-    if (obj.otyp === CORPSE && is_rider(mons[obj.corpsenm]))
-        throw new Error('rloco(): revive_corpse() not ported yet');
+    if (obj.otyp === CORPSE && is_rider(mons[obj.corpsenm])) {
+        if (await revive_corpse(obj))
+            return false;
+    }
 
     obj_extract_self(obj);
     const otx = obj.ox;
@@ -1758,5 +1784,37 @@ export async function rloco(obj) {
     place_object(obj, tx, ty);
     /* note: block_point() for boulder handled by place_object() */
     newsym(tx, ty);
+    return true;
+}
+
+// C ref: teleport.c u_teleport_mon()
+/* you teleport a monster (via wand, spell, or poly'd q.mechanic attack);
+   return false iff the attempt fails */
+export async function u_teleport_mon(mtmp, give_feedback) {
+    const u = game.u;
+    const cc = { x: 0, y: 0 };
+
+    if ((game.level.flags.stasis_until || 0) >= game.moves) {
+        if (give_feedback)
+            await pline(`A mysterious force prevents you teleporting ${
+                mon_nam(mtmp)}!`);
+        return false;
+    } else if (mtmp.ispriest && in_rooms_utm(mtmp.mx, mtmp.my, TEMPLE_UTM).length) {
+        if (give_feedback)
+            await pline(`${Monnam(mtmp)} resists your magic!`);
+        return false;
+    } else if (engulfing_u_utm(mtmp) && noteleport_level(mtmp)) {
+        if (give_feedback)
+            await You(`are no longer inside ${mon_nam(mtmp)}!`);
+        await unstuck_utm(mtmp);
+        if (!(await rloc(mtmp, RLOC_MSG)))
+            throw new Error('u_teleport_mon(): m_into_limbo() not ported yet');
+    } else if ((is_rider(mtmp.data) || control_teleport(mtmp.data))
+               && rn2(13) && enexto(cc, u.ux, u.uy, mtmp.data)) {
+        await rloc_to(mtmp, cc.x, cc.y);
+    } else {
+        if (!(await rloc(mtmp, RLOC_MSG)))
+            return false;
+    }
     return true;
 }

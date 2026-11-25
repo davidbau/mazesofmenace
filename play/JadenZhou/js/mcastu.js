@@ -4,6 +4,7 @@
 // would need large unported code (rehumanize(),
 // msummon() for summoners in Gehennom) throw a 'not ported yet' stop.
 
+import { rehumanize } from './polyself.js';
 import { is_obj_mappear } from './pager.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
@@ -461,7 +462,7 @@ export async function touch_of_death(mtmp) {
 
     if (Upolyd()) {
         u.mh = 0;
-        throw new Error('touch_of_death(): rehumanize() not ported yet');
+        await rehumanize(); /* fatal iff Unchanging */
     } else if (drain >= u.uhpmax) {
         killer().format = KILLED_BY;
         killer().name = kbuf;

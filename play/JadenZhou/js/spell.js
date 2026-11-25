@@ -80,6 +80,7 @@ import { CLOUD as CLOUD_SP, IS_TREE as IS_TREE_SP, IS_STWALL as IS_STWALL_SP } f
 import { S_VORTEX as S_VORTEX_SP, PM_AIR_ELEMENTAL as PM_AIR_ELEMENTAL_SP,
          PM_FOG_CLOUD as PM_FOG_CLOUD_SP, M1_ANIMAL as M1_ANIMAL_SP,
          AD_WRAP as AD_WRAP_SP, AT_ENGL as AT_ENGL_SP } from './monsters.js';
+import { rndcurse } from './sit.js';
 
 const KEEN = 20000; /* C ref: spell.c */
 
@@ -328,7 +329,8 @@ async function cursed_book(bp) {
         }
         return true;
     default:
-        throw new Error('cursed_book(): rndcurse() not ported yet');
+        await rndcurse();
+        break;
     }
     return false;
 }

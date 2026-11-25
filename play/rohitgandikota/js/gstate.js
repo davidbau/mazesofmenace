@@ -5,6 +5,10 @@ export let game = {};
 
 export function resetGame() {
     // src/decl.c:458,1096: inventory letter allocation starts fresh per process.
-    game = { lastinvnr: 51 };
+    game = {
+        lastinvnr: 51,
+        // src/decl.c:903,1117: each game starts with a zeroed kinfo owner.
+        killer: { next: null, id: 0, format: 0, name: '' },
+    };
     return game;
 }

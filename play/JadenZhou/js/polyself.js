@@ -5,7 +5,7 @@
 // polymon(), polyman(), rehumanize(), break_armor(), drop_weapon(),
 // uunstick(), skinback().  newman() is not ported yet.
 
-import { is_golem } from './makemon.js';
+import { is_golem, nonliving, weirdnonliving } from './makemon.js';
 import { is_pool_or_lava, rounddiv } from './hack.js';
 import { new_light_source, del_light_source } from './light.js';
 import { monst_to_any } from './timeout.js';
@@ -46,7 +46,9 @@ import {
     thats_enough_tries, ismnum, In_endgame, MV_KNOWS_EGG, A_MAX, A_INT,
     MAXULEV,
 } from './const.js';
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn2, rnd, rn1, d, rnl } from './rng.js';
+import { MZ_HUGE } from './monsters.js';
+import { touch_petrifies } from './mondata.js';
 import { pline, You, Your, You_cant, You_feel, pline_The, newsym,
          see_monsters, canspotmon } from './display.js';
 import { ACURR, exercise, ATTRMAX, ATTRMIN, adjabil, newhp,
@@ -66,7 +68,20 @@ import { an, the_unique_pm, vtense, yname, makeplural } from './objnam.js';
 import { the, simpleonames, surface, cloak_simple_name,
          helm_simple_name } from './iactions.js';
 import { unmul } from './allmain.js';
-import { make_glib, set_mimic_blocking, set_itimeout, make_blinded } from './potion.js';
+import { make_glib, set_mimic_blocking, set_itimeout, make_blinded,
+         make_sick, make_stoned, make_slimed } from './potion.js';
+import { Sick_resistance } from './youprop.js';
+import { SICK_ALL, DISMOUNT_POLY } from './const.js';
+import { hideunder_async } from './makemon.js';
+import { expels } from './mhitu.js';
+import { can_ride, dismount_steed } from './steed.js';
+import { end_burn } from './timeout.js';
+import { getdir } from './cmd.js';
+import { ubuzz } from './zap.js';
+import { ECMD_CANCEL, ECMD_TIME } from './const.js';
+import { AT_BREA, AD_ANY } from './monsters.js';
+import { impossible } from './hack.js';
+import { attacktype_fordmg } from './mondata.js';
 import { golemhp, is_pool, is_lava, is_home_elemental } from './makemon.js';
 import { find_ac } from './u_init.js';
 import { set_ustuck } from './uhitm.js';
@@ -90,6 +105,9 @@ import { Upolyd } from './const.js';
 import { done as done_ps } from './end.js';
 import { killer as killer_ps } from './topten.js';
 import { DIED as DIED_PS } from './const.js';
+import { arti_light_radius } from './light.js';
+import { maybe_adjust_light } from './mkobj.js';
+import { artifact_light } from './worn.js';
 
 // C ref: mon.c valid_vampshiftform()
 function valid_vampshiftform(base, form) {
@@ -401,7 +419,7 @@ function uprop_on(p) {
 }
 function plur(x) { return x === 1 ? "" : "s"; }
 const no_longer_petrify_resistant =
-    "You no longer seem to be petrify-resistant. You";
+    "No longer petrify-resistant, you";
 
 // C ref: polyself.c check_strangling()
 async function check_strangling(on) {
@@ -812,9 +830,9 @@ async function newman() {
 
     u.uhunger = rn1(500, 500);
     if (uprop_on(SICK))
-        throw new Error('newman(): make_sick() not ported yet');
+        await make_sick(0, null, false, SICK_ALL);
     if (Stoned())
-        throw new Error('newman(): make_stoned() not ported yet');
+        await make_stoned(0, null, 0, null);
     if (u.uhp <= 0) {
         if (Polymorph_control()) { /* even when Stunned || Unaware */
             if (u.uhp <= 0)
@@ -837,8 +855,10 @@ async function newman() {
     poly_gender(); /* newgend: only used by livelog_newform() */
     /* livelog_printf()/livelog_newform(): no livelog in this port */
 
-    if (Slimed())
-        throw new Error('newman(): "still slime on you" make_slimed() not ported yet');
+    if (Slimed()) {
+        await Your("body transforms, but there is still slime on you.");
+        await make_slimed(10, null);
+    }
 
     game.disp_botl = true;
     see_monsters();
@@ -860,7 +880,7 @@ export async function polymon(mntmp) {
           was_blind = Blind(),
           was_hiding_under = u.uundetected && hides_under(youmonst.data);
     let dochange = false;
-    const was_expelled = false;
+    let was_expelled = false;
     let mlvl, newMaxStr;
 
     if (game.mvitals && (game.mvitals[mntmp]?.mvflags & G_GENOD)) { /* allow G_EXTINCT */
@@ -926,8 +946,11 @@ export async function polymon(mntmp) {
     buf += pmname(mons[mntmp], game.flags.female ? FEMALE : MALE);
     await You(`${(u.umonnum !== mntmp) ? "turn into" : "feel like"} ${an(buf)}!`);
 
-    if (Stoned() && poly_when_stoned(mons[mntmp]))
-        throw new Error('polymon(): poly_when_stoned make_stoned() not ported yet');
+    if (Stoned() && poly_when_stoned(mons[mntmp])) {
+        /* poly_when_stoned already checked stone golem genocide */
+        mntmp = M.PM_STONE_GOLEM;
+        await make_stoned(0, "You turn to stone!", 0, null);
+    }
 
     u.mtimedone = rn1(500, 500);
     u.umonnum = mntmp;
@@ -950,13 +973,20 @@ export async function polymon(mntmp) {
             u.acurr.a[A_STR] = u.amax.a[A_STR];
     }
 
-    if (uprop_on(STONE_RES) && Stoned()) /* parnes@eniac.seas.upenn.edu */
-        throw new Error('polymon(): make_stoned() not ported yet');
-    if (uprop_on(SICK_RES) && uprop_on(SICK))
-        throw new Error('polymon(): make_sick() not ported yet');
+    if (uprop_on(STONE_RES) && Stoned()) { /* parnes@eniac.seas.upenn.edu */
+        await make_stoned(0, "You no longer seem to be petrifying.", 0, null);
+    }
+    if (Sick_resistance() && uprop_on(SICK)) {
+        await make_sick(0, null, false, SICK_ALL);
+        await You("no longer feel sick.");
+    }
     if (Slimed()) {
-        if (flaming(youmonst.data) || mntmp === M.PM_GREEN_SLIME)
-            throw new Error('polymon(): make_slimed() not ported yet');
+        if (flaming(youmonst.data)) {
+            await make_slimed(0, "The slime burns away!");
+        } else if (mntmp === M.PM_GREEN_SLIME) {
+            /* do it silently */
+            await make_slimed(0, null);
+        }
     }
     await check_strangling(false); /* maybe stop strangling */
     if (nohands(youmonst.data))
@@ -995,13 +1025,15 @@ export async function polymon(mntmp) {
     /* if hiding under something and can't hide anymore, unhide now;
        but don't auto-hide when not already hiding-under */
     if (was_hiding_under)
-        throw new Error('polymon(): hideunder() for the hero not ported yet');
+        await hideunder_async(youmonst);
 
     if (u.utrap && u.utraptype === TT_PIT) {
         set_utrap(rn1(6, 2), TT_PIT); /* time to escape resets */
     }
-    if (was_blind && !Blind()) /* previous form was eyeless */
-        throw new Error('polymon(): set_itimeout(&HBlinded)/make_blinded() not ported yet');
+    if (was_blind && !Blind()) { /* previous form was eyeless */
+        set_itimeout(BLINDED, 1); /* set_itimeout(&HBlinded, 1L) */
+        await make_blinded(0, true); /* remove blindness */
+    }
     newsym(u.ux, u.uy); /* Change symbol */
 
     /* you now know what an egg of your type looks like; [moved from
@@ -1013,7 +1045,30 @@ export async function polymon(mntmp) {
     }
 
     if (u.uswallow) {
-        throw new Error('polymon(): polymorphing while engulfed (expels()) not ported yet');
+        let usiz;
+
+        /* if new form can't be swallowed, make engulfer expel hero */
+        if (unsolid(youmonst.data)
+            /* subset of engulf_target() */
+            || (usiz = youmonst.data.msize) >= MZ_HUGE
+            || (u.ustuck.data.msize < usiz && !is_whirly(u.ustuck.data))) {
+            let expels_mesg = true;
+
+            if (unsolid(youmonst.data)) {
+                if (canspotmon(u.ustuck)) /* [see below for explanation] */
+                    ustuckNam = Monnam(u.ustuck);
+                await pline(`${ustuckNam} can no longer contain you.`);
+                expels_mesg = false;
+            }
+            await expels(u.ustuck, u.ustuck.data, expels_mesg);
+            was_expelled = true;
+            /* FIXME? if expels() triggered rehumanize then we should
+               return early */
+        }
+
+    /* [note:  this 'sticking' handling is only sufficient for changing from
+       grabber to engulfer or vice versa because engulfing by poly'd hero
+       always ends immediately so won't be in effect during a polymorph] */
     } else if (u.ustuck && !sticking /* && !u.uswallow */
                /* being held; if now capable of holding, make holder
                   release so that hero doesn't automagically start holding
@@ -1031,8 +1086,15 @@ export async function polymon(mntmp) {
         await uunstick();
     }
 
-    if (u.usteed)
-        throw new Error('polymon(): polymorphing while riding (can_ride()/dismount_steed()) not ported yet');
+    if (u.usteed) {
+        if (touch_petrifies(u.usteed.data) && !uprop_on(STONE_RES) && rnl(3)) {
+            await pline(`${no_longer_petrify_resistant} touch ${mon_nam(u.usteed)}.`);
+            buf = `riding ${an(pmname(u.usteed.data, Mgender(u.usteed)))}`;
+            throw new Error('polymon(): instapetrify() of a hero riding a petrifier not ported yet');
+        }
+        if (!can_ride(u.usteed))
+            await dismount_steed(DISMOUNT_POLY);
+    }
 
     find_ac();
     if (((!uprop_on(LEVITATION) && !u.ustuck && !Flying()
@@ -1197,7 +1259,7 @@ async function break_armor() {
             /* for gold DSM, we don't want Armor_gone() to report that it
                stops shining _after_ we've been told that it is destroyed */
             if (otmp.lamplit)
-                throw new Error('break_armor(): end_burn() not ported yet');
+                end_burn(otmp, false);
 
             await You("break out of your armor!");
             exercise(A_STR, false);
@@ -1429,14 +1491,17 @@ export async function uunstick() {
 // C ref: polyself.c skinback()
 export async function skinback(silently) {
     if (game.uskin) {
-        if (game.uskin.lamplit) /* arti_light_radius()/artifact_light() */
-            throw new Error('skinback(): maybe_adjust_light() not ported yet');
+        const old_light = arti_light_radius(game.uskin);
+
         if (!silently)
             await Your("skin returns to its original form.");
         game.uarm = game.uskin;
         game.uskin = null;
         /* undo save/restore hack */
         game.uarm.owornmask &= ~I_SPECIAL;
+
+        if (artifact_light(game.uarm))
+            await maybe_adjust_light(game.uarm, old_light);
     }
 }
 
@@ -1480,7 +1545,7 @@ function armor_to_dragon(atyp) {
 
 // C ref: timeout.c learn_egg_type()
 /* give the hero knowledge of an egg type */
-function learn_egg_type(mnum) {
+export function learn_egg_type(mnum) {
     /* baby monsters hatch from grown-up eggs */
     mnum = little_to_big(mnum);
     game.mvitals[mnum].mvflags |= MV_KNOWS_EGG;
@@ -1519,6 +1584,36 @@ export async function dobreathe() {
     u.uen -= 15;
     game.disp_botl = true;
 
-    /* getdir(), then ubreatheu() or ubuzz(BZ_U_BREATH(...)) */
-    throw new Error('dobreathe(): getdir()/ubuzz() of a hero breath weapon not ported yet');
+    if (!await getdir(null))
+        return ECMD_CANCEL;
+
+    const mattk = attacktype_fordmg(game.youmonst.data, AT_BREA, AD_ANY);
+    if (!mattk)
+        impossible("bad breath attack?"); /* mouthwash needed... */
+    else if (!u.dx && !u.dy && !u.dz)
+        throw new Error('dobreathe(): ubreatheu() not ported yet');
+    else /* BZ_U_BREATH(BZ_OFS_AD(mattk->adtyp)) */
+        await ubuzz(20 + Math.abs(mattk.adtyp - AD_MAGM) % 10, mattk.damn);
+    return ECMD_TIME;
+}
+
+// C ref: polyself.c ugenocided()
+/* has hero genocided self (role or race) */
+export function ugenocided() {
+    return !!((game.mvitals[game.urole.mnum].mvflags & G_GENOD)
+              || (game.mvitals[game.urace.mnum].mvflags & G_GENOD));
+}
+
+// C ref: polyself.c udeadinside()
+/* how hero feels "inside" after self-genocide of role or race */
+export function udeadinside() {
+    /* self-genocide used to always say "you feel dead inside" but that
+       seems silly when you're polymorphed into something undead;
+       monkilled() distinguishes between living (killed) and non (destroyed)
+       for monster death message; we refine the nonliving aspect a bit */
+    return !nonliving(game.youmonst.data)
+             ? "dead"          /* living, including demons */
+             : !weirdnonliving(game.youmonst.data)
+                 ? "condemned" /* undead plus manes */
+                 : "empty";    /* golems plus vortices */
 }

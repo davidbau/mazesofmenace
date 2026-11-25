@@ -124,6 +124,12 @@ import { currency } from './insight.js';
 import { container_contents } from './end.js';
 import { discover_object } from './o_init.js';
 import { unconscious } from './eat.js';
+import { hideunder } from './makemon.js';
+import { fix_ghostly_obj } from './bones.js';
+import { revive_corpse } from './zap.js';
+import { exercise } from './attrib.js';
+import { A_WIS } from './const.js';
+import { uteetering_at_seen_pit, uescaped_shaft } from './engrave.js';
 
 /* C ref: invent.c invlet_basic */
 const invlet_basic = 52;
@@ -170,8 +176,14 @@ export async function pickup(what) /* should be a long */ {
         }
         /* no pickup if levitating & not on air or water level */
         const t = t_at(u.ux, u.uy);
-        if (!can_reach_floor(t && is_pit(t.ttyp)))
-            throw new Error('pickup(): describe_decor() when the floor is out of reach not ported yet');
+        if (!can_reach_floor(t && is_pit(t.ttyp))) {
+            await describe_decor(); /* even when !flags.mention_decor */
+            if ((game.multi && !game.context?.run)
+                || (autopickup && !game.flags?.pickup)
+                || (t && (uteetering_at_seen_pit(t) || uescaped_shaft(t))))
+                await read_engr_at(u.ux, u.uy);
+            return 0;
+        }
         /* multi && !context.run means they are in the middle of some
          * other action, or possibly paralyzed, sleeping, etc.... and they
          * just teleported onto the object.  They shouldn't pick it up.
@@ -253,7 +265,7 @@ export async function pickup(what) /* should be a long */ {
 
     if (!u.uswallow) {
         if (hides_under(game.youmonst.data))
-            throw new Error('pickup(): hideunder() not ported yet');
+            hideunder(game.youmonst);
 
         /* position may need updating (invisible hero) */
         if (n_picked)
@@ -1391,8 +1403,10 @@ export async function query_objlist(qstr, /* query string */
         /* fix up counts:  -1 means no count used => pick all */
         for (const mi of res.selected) {
             const curr = mi.item;
-            if (engulfer_minvent && curr.owornmask)
-                throw new Error('query_objlist(): You_cant("pick %s up.", ysimple_name()) not ported yet');
+            if (engulfer_minvent && curr.owornmask) {
+                await You_cant(`pick ${ysimple_name(curr)} up.`);
+                continue;
+            }
             let cnt = mi.count;
             if (cnt === -1 || cnt > curr.quan)
                 cnt = curr.quan;
@@ -1703,12 +1717,13 @@ export async function pickup_object(obj,
         return 0;
     } else if (obj.where === 'OBJ_MINVENT' && obj.owornmask
                && game.u.uswallow && obj.ocarry === game.u.ustuck) {
-        throw new Error('pickup_object(): ysimple_name() for a worn engulfer item not ported yet');
+        await You_cant(`pick ${ysimple_name(obj)} up.`);
+        return 0;
     } else if (obj.oartifact && !(await touch_artifact(obj, game.youmonst))) {
         return 0;
     } else if (obj.otyp === CORPSE) {
         if (fatal_corpse_mistake(obj, telekinesis)
-            || rider_corpse_revival(obj, telekinesis))
+            || await rider_corpse_revival(obj, telekinesis))
             return -1;
     } else if (obj.otyp === SCR_SCARE_MONSTER) {
         throw new Error('pickup_object(): scroll of scare monster not ported yet');
@@ -1734,7 +1749,7 @@ export async function pickup_object(obj,
         game.mrg_to_wielded = true;
     await pickup_prinv(obj, count, "lifting");
     if (obj.ghostly)
-        throw new Error('pickup_object(): fix_ghostly_obj() not ported yet');
+        await fix_ghostly_obj(obj);
     game.mrg_to_wielded = false;
     return 1;
 }
@@ -1844,11 +1859,14 @@ function fatal_corpse_mistake(obj, remotely) {
 
 // C ref: pickup.c rider_corpse_revival()
 /* attempting to manipulate a Rider's corpse triggers its revival */
-function rider_corpse_revival(obj, remotely) {
+async function rider_corpse_revival(obj, remotely) {
     if (!obj || obj.otyp !== CORPSE || !is_rider(mons[obj.corpsenm]))
         return false;
-    void remotely;
-    throw new Error('rider_corpse_revival(): revive_corpse() not ported yet');
+
+    await pline(`At your ${remotely ? "attempted acquisition" : "touch"}, the corpse suddenly moves...`);
+    await revive_corpse(obj);
+    exercise(A_WIS, false);
+    return true;
 }
 
 /* C ref: mondata.h touch_petrifies(), is_rider() */
@@ -2414,7 +2432,7 @@ function Ysimple_name2(obj) {
 }
 
 // C ref: shk.c sellobj_state()
-function sellobj_state(deliberate) {
+export function sellobj_state(deliberate) {
     /* If we're deliberately dropping something, there's no automatic
        response to the shopkeeper's "want to sell" query; however, if we
        accidentally drop anything, the shk will buy it/them without asking.

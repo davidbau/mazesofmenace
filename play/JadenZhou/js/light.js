@@ -23,6 +23,7 @@ import { get_mon_location } from './zap.js';
 import { get_obj_location } from './shk.js';
 import { clear_path, circle_data, circle_start, COULD_SEE } from './vision.js';
 import { artifact_light } from './worn.js';
+import { GOLD_DRAGON_SCALE_MAIL } from './objects.js';
 
 /* flags */
 const LSF_SHOW = 0x1;           /* display the light source */
@@ -452,6 +453,57 @@ export function obj_adjust_light_radius(obj, new_radius) {
             return;
         }
     console.error('impossible: obj_adjust_light_radius: can\'t find object');
+}
+
+// C ref: light.c arti_light_radius()
+export function arti_light_radius(obj) {
+    let res;
+
+    /*
+     * Used by begin_burn() when setting up a new light source
+     * (obj->lamplit will already be set by this point) and
+     * also by bless()/unbless()/uncurse()/curse() to decide
+     * whether to call obj_adjust_light_radius().
+     */
+
+    /* sanity check [simplifies usage by bless()/curse()/&c] */
+    if (!obj.lamplit || !artifact_light(obj))
+        return 0;
+
+    /* cursed radius of 1 is not noticeable for an item that's
+       carried by the hero but is if it's carried by a monster
+       or left lit on the floor (not applicable for Sunsword) */
+    res = (obj.blessed ? 3 : !obj.cursed ? 2 : 1);
+
+    /* if poly'd into gold dragon with embedded scales, make the scales
+       have minimum radiance (hero as light source will use light radius
+       based on monster form); otherwise, worn gold DSM gives off more
+       light than other light sources */
+    if (obj === game.uskin)
+        res = 1;
+    else if (obj.otyp === GOLD_DRAGON_SCALE_MAIL) /* DSM but not scales */
+        ++res;
+
+    return res;
+}
+
+// C ref: light.c arti_light_description()
+/* adverb describing lit artifact's light; radius varies depending upon
+   curse/bless state; also used for gold dragon scales/scale mail */
+export function arti_light_description(obj) {
+    switch (arti_light_radius(obj)) {
+    case 4:
+        return "radiantly"; /* blessed gold dragon scale mail */
+    case 3:
+        return "brilliantly"; /* blessed artifact, uncursed gold DSM */
+    case 2:
+        return "brightly"; /* uncursed artifact, cursed gold DSM */
+    case 1:
+        return "dimly"; /* cursed artifact, embedded scales */
+    default:
+        break;
+    }
+    return "strangely";
 }
 
 // C ref: light.c candle_light_range()

@@ -4,6 +4,14 @@
 // mhitm_ad_phys(), max_passive_dmg()).  Paths that aren't ported yet
 // throw a 'not ported yet' error instead of skipping their rolls.
 
+import { failed_grab } from './mhitu.js';
+import { clone_mon } from './makemon.js';
+import { mintrap, erode_obj } from './trap.js';
+import { NO_TRAP_FLAGS, EF_GREASE, EF_VERBOSE, DISMOUNT_POLY } from './const.js';
+import { shade_miss } from './uhitm.js';
+import { artifact_hit } from './artifact.js';
+import { dismount_steed } from './steed.js';
+import { zombie_form } from './mon.js';
 import { DEADMONSTER } from './mon.js';
 import { helpless } from './monmove.js';
 import { game } from './gstate.js';
@@ -42,7 +50,11 @@ import { mon_visible } from './display.js';
 import { dmgtype, is_were, is_demon, is_vampshifter } from './mondata.js';
 import { completelyburns, completelyrots, completelyrusts } from './mon.js';
 import { resists_acid, resists_cold, resists_fire, resists_elec } from './mondata.js';
-import { x_monnam, ARTICLE_THE } from './do_name.js';
+import { x_monnam, ARTICLE_THE, ARTICLE_NONE, noname_monnam, a_monnam } from './do_name.js';
+import { sensemon } from './display.js';
+import { Unaware } from './youprop.js';
+import { makeplural } from './objnam.js';
+import { PLNMSG_HIDE_UNDER } from './const.js';
 import { extract_from_minvent } from './steal.js';
 import { add_to_minv } from './mkobj.js';
 import { doname } from './objnam.js';
@@ -96,6 +108,15 @@ import { touch_petrifies as touch_petrifies_md, resists_ston as resists_ston_md 
 import { s_suffix as s_suffix_sm } from './hacklib.js';
 import { unstuck as unstuck_sm } from './mhitu.js';
 import { mhitm_adtyping as mhitm_adtyping_uh } from './uhitm.js';
+import { mhitm_knockback, stagger } from './uhitm.js';
+import { mon_reflects } from './muse.js';
+import { golemeffects, healmon } from './mon.js';
+import { split_mon } from './potion.js';
+import { haseyes, perceives } from './mondata.js';
+import { erode_armor } from './uhitm.js';
+import { acid_damage } from './trap.js';
+import { drain_item } from './zap.js';
+import { hliquid } from './potion.js';
 
 /* C ref: obj.h is_pole() */
 function is_pole(otmp) {
@@ -353,8 +374,30 @@ export async function mattackm(magr, mdef) {
     }
 
     /* mundetected monsters become un-hidden if they are attacked */
-    if (mdef.mundetected)
-        throw new Error('mattackm(): unhiding defender not ported yet');
+    if (mdef.mundetected) {
+        mdef.mundetected = 0;
+        newsym(mdef.mx, mdef.my);
+        if (canseemon(mdef) && !sensemon(mdef)) {
+            if (Unaware()) {
+                const justone = (mdef.data.geno & G_UNIQ) !== 0;
+                let montype;
+
+                montype = noname_monnam(mdef, justone ? ARTICLE_THE
+                                                      : ARTICLE_NONE);
+                if (!justone)
+                    montype = makeplural(montype);
+                await You_mp(`dream of ${montype}.`);
+            } else {
+                if (game.iflags.last_msg === PLNMSG_HIDE_UNDER
+                    && mdef.m_id === game.last_hider)
+                    await pline(`${Monnam(mdef)} emerges from hiding.`); /* pline_mon() */
+                else if (mdef.m_id === game.last_hider)
+                    await You_mp(`notice ${mon_nam(mdef)}.`);
+                else
+                    await pline(`Suddenly, you notice ${a_monnam(mdef)}.`);
+            }
+        }
+    }
 
     /* Elves hate orcs. */
     if (is_elf(pa) && is_orc(pd))
@@ -439,15 +482,30 @@ export async function mattackm(magr, mdef) {
             if (mwep)
                 tmp -= hitval(mwep, mdef);
             if (strike) {
-                if (unsolid(mdef.data))
-                    throw new Error('mattackm(): failed_grab() not ported yet');
+                /* for eel AT_TUCH+AD_WRAP attack: can't grab an unsolid
+                   target; the unsolid test is redundant since failed_grab
+                   checks it too, but is cheap and avoids calling failed_grab
+                   for ordinary targets */
+                if (unsolid(mdef.data) && await failed_grab(magr, mdef, mattk)) {
+                    strike = 0;
+                    break;
+                }
                 res[i] = await hitmm(magr, mdef, mattk, mwep, dieroll);
                 if ((mdef.data === mons[M.PM_BLACK_PUDDING]
                      || mdef.data === mons[M.PM_BROWN_PUDDING])
                     && (mwep && (objects[mwep.otyp].oc_material === IRON
                                  || objects[mwep.otyp].oc_material === METAL))
-                    && mdef.mhp > 1 && !mdef.mcan)
-                    throw new Error('mattackm(): clone_mon() not ported yet');
+                    && mdef.mhp > 1 && !mdef.mcan) {
+                    let mclone;
+
+                    if ((mclone = await clone_mon(mdef, 0, 0)) != null) {
+                        if (game.mhitm_vis && canspotmon(mdef))
+                            await pline(`${Monnam(mdef)} divides as ${mon_nam(magr)} hits it!`); /* pline_mon() */
+                        await mintrap(mclone, NO_TRAP_FLAGS);
+                        if (DEADMONSTER(magr))
+                            res[i] |= M_ATTK_AGR_DIED;
+                    }
+                }
             } else
                 await missmm(magr, mdef, mattk);
             break;
@@ -521,8 +579,8 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     pre_mm_attack(magr, mdef);
 
     const compat = !magr.mcan ? could_seduce(magr, mdef, mattk) : 0;
-    if (!compat && mdef.data === mons[M.PM_SHADE])
-        throw new Error('hitmm(): shade_miss() not ported yet');
+    if (!compat && await shade_miss(magr, mdef, mwep, false, game.mhitm_vis))
+        return M_ATTK_MISS; /* bypass mdamagem() */
 
     if (game.mhitm_vis) {
         const magr_name = Monnam(magr);
@@ -572,15 +630,17 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
 }
 
 // C ref: uhitm.c mhitm_ad_phys(), monster-vs-monster part
-function mhitm_ad_phys(magr, mattk, mdef, mhm) {
+async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
     let mwep = magr.mw || null;
 
     if (mattk.aatyp !== AT_WEAP && mattk.aatyp !== AT_CLAW)
         mwep = null;
 
-    if (pd === mons[M.PM_SHADE]) {
-        throw new Error('mhitm_ad_phys(): shade_miss() not ported yet');
+    const vis = canseemon(magr) && canseemon(mdef);
+
+    if (await shade_miss(magr, mdef, mwep, false, vis)) {
+        mhm.damage = 0;
     } else if (mattk.aatyp === AT_KICK && (pd.mflags1 & M.M1_THICK_HIDE)) {
         /* [no 'kicking boots' check needed; monsters with kick attacks
            can't wear boots and monsters that wear boots don't kick] */
@@ -598,10 +658,33 @@ function mhitm_ad_phys(magr, mattk, mdef, mhm) {
             mhm.damage += rn1(4, 3); /* 3..6 */
         if (mhm.damage < 1) /* is this necessary?  mhitu.c has it... */
             mhm.damage = 1;
-        if (mwep.oartifact)
-            throw new Error('mhitm_ad_phys(): artifact_hit() not ported yet');
+        if (mwep.oartifact) {
+            /* when magr's weapon is an artifact, caller suppressed its
+               usual 'hit' message in case artifact_hit() delivers one;
+               now we'll know and might need to deliver skipped message
+               (note: if there's no message there'll be no auxiliary
+               damage so the message here isn't coming too late) */
+            const dmgp = { val: mhm.damage };
+            const arthit = await artifact_hit(magr, mdef, mwep, dmgp, mhm.dieroll);
+            mhm.damage = dmgp.val;
+            if (!arthit) {
+                if (vis)
+                    await pline(`${Monnam(magr)} hits ${mon_nam_too(mdef, magr)}.`); /* pline_mon() */
+                mhm.hitflags |= M_ATTK_HIT;
+            }
+            /* artifact_hit updates 'tmp' but doesn't inflict any
+               damage; however, it might cause carried items to be
+               destroyed and they might do so */
+            if (DEADMONSTER(mdef)) {
+                mhm.hitflags = (M_ATTK_DEF_DIED
+                                | ((await grow_up(magr, mdef)) ? 0
+                                   : M_ATTK_AGR_DIED));
+                mhm.done = true;
+                return;
+            }
+        }
         if (mhm.damage)
-            rustm(mdef, mwep);
+            await rustm(mdef, mwep);
         if ((mwep.otrapped /* opoisoned */ || permapoisoned(mwep)) && !rn2(4))
             throw new Error('mhitm_ad_phys(): mhitm_really_poison() not ported yet');
     } else if (magr.data === mons[M.PM_PURPLE_WORM]
@@ -616,7 +699,7 @@ function mhitm_ad_phys(magr, mattk, mdef, mhm) {
 }
 
 // C ref: mhitm.c rustm()
-export function rustm(mdef, obj) {
+export async function rustm(mdef, obj) {
     let dmgtyp = -1 /* ERODE_NONE */, chance = 1;
 
     if (!mdef || !obj)
@@ -634,7 +717,7 @@ export function rustm(mdef, obj) {
     }
 
     if (dmgtyp !== -1 && !rn2(chance))
-        throw new Error('rustm(): erode_obj() not ported yet');
+        await erode_obj(obj, null, dmgtyp, EF_GREASE | EF_VERBOSE);
 }
 
 // C ref: mhitm.c mswingsm()
@@ -681,7 +764,7 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
 
         if (game.u.usteed === mdef && obj === which_armor(mdef, W_SADDLE))
             /* "You can no longer ride <steed>." */
-            throw new Error('mhitm_ad_sedu(): dismount_steed() not ported yet');
+            await dismount_steed(DISMOUNT_POLY);
         extract_from_minvent(mdef, obj, true, false);
         /* add_to_minv() might free 'obj' [if it merges] */
         if (game.mhitm_vis)
@@ -727,7 +810,7 @@ async function mhitm_ad_ssex(magr, mattk, mdef, mhm) {
 async function mhitm_adtyping(magr, mattk, mdef, mhm) {
     switch (mattk.adtyp) {
     case AD_PHYS:
-        mhitm_ad_phys(magr, mattk, mdef, mhm);
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
         break;
     case AD_SSEX: await mhitm_ad_ssex(magr, mattk, mdef, mhm); break;
     case AD_STCK: await mhitm_ad_stck(magr, mattk, mdef, mhm); break;
@@ -739,54 +822,6 @@ async function mhitm_adtyping(magr, mattk, mdef, mhm) {
         await mhitm_adtyping_uh(magr, mattk, mdef, mhm);
         break;
     }
-}
-
-// C ref: uhitm.c mhitm_knockback(), monster-vs-monster subset
-function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
-    const knockdistance = rn2(3) ? 1 : 2; /* 67%: 1 step, 33%: 2 steps */
-    let chance = 6; /* 1/6 chance of attack knocking back a monster */
-    const wep = weapon_used ? magr.mw : null;
-
-    if (wep && wep.oartifact)
-        throw new Error('mhitm_knockback(): artifact weapons not ported yet');
-
-    if (rn2(chance))
-        return false;
-
-    /* only certain attacks qualify for knockback */
-    if (!((mattk.adtyp === AD_PHYS)
-          && (mattk.aatyp === AT_CLAW
-              || mattk.aatyp === AT_KICK
-              || mattk.aatyp === AT_BUTT
-              || mattk.aatyp === AT_WEAP)))
-        return false;
-
-    /* don't knockback if attacker also wants to grab or engulf */
-    if (attacktype(magr.data, AT_ENGL)
-        || attacktype(magr.data, AT_HUGS)
-        || sticks(magr.data))
-        return false;
-
-    const defx = mdef.mx, defy = mdef.my;
-    const dx = sgn(defx - magr.mx);
-    const dy = sgn(defy - magr.my);
-
-    if (!isok(defx + dx, defy + dy))
-        return false;
-    if (IS_DOOR(game.level.at(defx, defy).typ)
-        && (defx - magr.mx && defy - magr.my))
-        throw new Error('mhitm_knockback(): doorless_door() not ported yet');
-
-    /* monsters must be alive */
-    if (DEADMONSTER(magr) || DEADMONSTER(mdef))
-        return false;
-
-    /* attacker must be much larger than defender */
-    if (!(magr.data.msize > (mdef.data.msize + 1)))
-        return false;
-
-    void knockdistance; void hitflags;
-    throw new Error('mhitm_knockback(): knockback hurtle not ported yet');
 }
 
 // C ref: mhitm.c mdamagem()
@@ -807,7 +842,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 
     await mhitm_adtyping(magr, mattk, mdef, mhm);
 
-    if (mhitm_knockback(magr, mdef, mattk, mhm, !!magr.mw)
+    if (await mhitm_knockback(magr, mdef, mattk, mhm, !!magr.mw)
         && ((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0
             || mon_offmap(mdef)))
         return mhm.hitflags;
@@ -828,12 +863,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
                 throw new Error('mdamagem(): troll_baned() not ported yet');
             game.mkcorpstat_norevive = false;
         }
-        if (!mwep && zombie_maker(magr)
-            && (mattk.aatyp === AT_TUCH
-                || mattk.aatyp === AT_CLAW
-                || mattk.aatyp === AT_BITE))
-            throw new Error('mdamagem(): zombie_form() not ported yet');
-        game.zombify = false;
+        game.zombify = (!mwep && zombie_maker(magr)
+                        && (mattk.aatyp === AT_TUCH
+                            || mattk.aatyp === AT_CLAW
+                            || mattk.aatyp === AT_BITE)
+                        && zombie_form(mdef.data) !== NON_PM_MP);
         await monkilled(mdef, '', mattk.adtyp);
         game.zombify = false; /* reset */
         game.mkcorpstat_norevive = false;
@@ -855,10 +889,10 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 // C ref: mhitm.c passivemm()
 async function passivemm(magr, mdef, mhitb, mdead, mwep) {
     const mddat = mdef.data;
+    const madat = magr.data;
     let i, tmp;
     const mhit = mhitb ? M_ATTK_HIT : M_ATTK_MISS;
 
-    void mwep;
     for (i = 0; ; i++) {
         if (i >= NATTK)
             return (mdead | mhit); /* no passive attacks */
@@ -875,8 +909,29 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
     /* These affect the enemy even if defender killed */
     switch (mddat.mattk[i].adtyp) {
     case M.AD_ACID:
-    case M.AD_ENCH:
-        throw new Error('passivemm(): acid/disenchant passives not ported yet');
+        if (mhitb && !rn2(2)) {
+            const buf = Monnam(magr);
+            if (canseemon(magr))
+                await pline(`${buf} is splashed by ${s_suffix_sm(mon_nam(mdef))} ${
+                    hliquid("acid")}!`);
+            if (resists_acid(magr)) {
+                if (canseemon(magr))
+                    await pline(`${Monnam(magr)} is not affected.`);
+                tmp = 0;
+            }
+        } else
+            tmp = 0;
+        if (!rn2(30))
+            await erode_armor(magr, ERODE_CORRODE);
+        if (!rn2(6))
+            await acid_damage(magr.mw || null); /* MON_WEP(magr) */
+        return assess_dmg();
+    case M.AD_ENCH: /* KMH -- remove enchantment (disenchanter) */
+        if (mhitb && !mdef.mcan && mwep) {
+            drain_item(mwep, false);
+            /* No message */
+        }
+        break;
     default:
         break;
     }
@@ -886,12 +941,81 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
     /* These affect the enemy only if defender is still alive */
     if (rn2(3))
         switch (mddat.mattk[i].adtyp) {
-        case M.AD_PLYS:
+        case M.AD_PLYS: /* Floating eye */
+            if (tmp > 127)
+                tmp = 127;
+            if (mddat === mons[M.PM_FLOATING_EYE]) {
+                if (!rn2(4))
+                    tmp = 127;
+                if (magr.mcansee && haseyes(madat) && mdef.mcansee
+                    && (perceives(madat) || !mdef.minvis)) {
+                    /* construct format string; guard against '%' in Monnam */
+                    let buf = s_suffix_sm(Monnam(mdef));
+                    buf += " gaze is reflected by %s %s.";
+                    if (await mon_reflects(magr,
+                                           canseemon(magr) ? buf : null))
+                        return (mdead | mhit);
+                    buf = Monnam(magr);
+                    if (canseemon(magr))
+                        await pline(`${buf} is frozen by ${s_suffix_sm(mon_nam(mdef))} gaze!`);
+                    paralyze_monst(magr, tmp);
+                    return (mdead | mhit);
+                }
+            } else { /* gelatinous cube */
+                const buf = Monnam(magr);
+                if (canseemon(magr))
+                    await pline(`${buf} is frozen by ${mon_nam(mdef)}.`);
+                paralyze_monst(magr, tmp);
+                return (mdead | mhit);
+            }
+            return 1;
         case M.AD_COLD:
+            if (resists_cold(magr)) {
+                if (canseemon(magr)) {
+                    await pline(`${Monnam(magr)} is mildly chilly.`); /* pline_mon() */
+                    await golemeffects(magr, M.AD_COLD, tmp);
+                }
+                tmp = 0;
+                break;
+            }
+            if (canseemon(magr))
+                await pline(`${Monnam(magr)} is suddenly very cold!`); /* pline_mon() */
+            healmon(mdef, Math.trunc(tmp / 2), Math.trunc(tmp / 2));
+            if (mdef.mhpmax > ((mdef.m_lev + 1) * 8))
+                await split_mon(mdef, magr);
+            break;
         case M.AD_STUN:
+            if (!magr.mstun) {
+                magr.mstun = 1;
+                if (canseemon(magr))
+                    await pline(`${Monnam(magr)} ${makeplural(stagger(magr.data, "stagger"))}...`); /* pline_mon() */
+            }
+            tmp = 0;
+            break;
         case M.AD_FIRE:
+            if (resists_fire(magr)) {
+                if (canseemon(magr)) {
+                    await pline(`${Monnam(magr)} is mildly warmed.`); /* pline_mon() */
+                    await golemeffects(magr, M.AD_FIRE, tmp);
+                }
+                tmp = 0;
+                break;
+            }
+            if (canseemon(magr))
+                await pline(`${Monnam(magr)} is suddenly very hot!`); /* pline_mon() */
+            break;
         case M.AD_ELEC:
-            throw new Error('passivemm(): elemental passives not ported yet');
+            if (resists_elec(magr)) {
+                if (canseemon(magr)) {
+                    await pline(`${Monnam(magr)} is mildly tingled.`); /* pline_mon() */
+                    await golemeffects(magr, M.AD_ELEC, tmp);
+                }
+                tmp = 0;
+                break;
+            }
+            if (canseemon(magr))
+                await pline(`${Monnam(magr)} is jolted with electricity!`); /* pline_mon() */
+            break;
         default:
             tmp = 0;
             break;
@@ -899,12 +1023,16 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
     else
         tmp = 0;
 
-    /* assess_dmg: */
-    if ((magr.mhp -= tmp) <= 0) {
-        await monkilled(magr, '', mddat.mattk[i].adtyp);
-        return (mdead | mhit | M_ATTK_AGR_DIED);
+    return assess_dmg();
+
+    /* assess_dmg: (C's goto label) */
+    async function assess_dmg() {
+        if ((magr.mhp -= tmp) <= 0) {
+            await monkilled(magr, '', mddat.mattk[i].adtyp);
+            return (mdead | mhit | M_ATTK_AGR_DIED);
+        }
+        return (mdead | mhit);
     }
-    return (mdead | mhit);
 }
 
 // C ref: mhitm.c mon_poly()

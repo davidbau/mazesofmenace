@@ -4,6 +4,9 @@
 // C ref: mhitu.c.  Paths that aren't ported yet throw a 'not ported yet'
 // error instead of skipping their rolls.
 
+import { Ring_gone } from './do_wear.js';
+import { split_mon } from './potion.js';
+import { You } from './display.js';
 import { DEADMONSTER } from './mon.js';
 import { is_art } from './artifact.js';
 import { poly_gender, rehumanize } from './polyself.js';
@@ -21,7 +24,9 @@ import { mhitm_adtyping, mhitm_knockback } from './uhitm.js';
 import { is_undead, is_vampshifter, is_demon, is_were, is_swimmer,
          perceives, is_orc, dmgtype, is_neuter } from './mondata.js';
 import { midnight, night } from './calendar.js';
-import { new_were } from './were.js';
+import { new_were, were_summon } from './were.js';
+import { growl_sound } from './sounds.js';
+import { an, makeplural } from './objnam.js';
 import { In_hell } from './dungeon.js';
 import { PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { ART_STORMBRINGER, ART_VORPAL_BLADE } from './artilist.js';
@@ -133,6 +138,9 @@ import { xkilled as xkilled_mu } from './mon.js';
 import { resists_cold as resists_cold_mu } from './mondata.js';
 import { XKILL_NOMSG as XKILL_NOMSG_MU } from './const.js';
 import { mon_explodes } from './explode.js';
+import { unleash_all } from './trap.js';
+import { vtense } from './objnam.js';
+import { pline_The } from './display.js';
 
 /* C ref: global.h LARGEST_INT */
 const LARGEST_INT = 32767;
@@ -569,6 +577,9 @@ export function mtrapped_in_pit(mtmp) {
  * mattacku: monster attacks you
  *      returns 1 if monster dies (e.g. "yellow light"), 0 otherwise
  */
+/* C ref: hacklib.c upstart() */
+function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
 // C ref: mhitu.c summonmu() -- demons summoning demons, were creatures
 // changing form and summoning critters; extracted from mattacku()
 async function summonmu(mtmp, youseeit) {
@@ -606,9 +617,42 @@ async function summonmu(mtmp, youseeit) {
         /* maybe summon compatible critters;
            not blocked by Protection_from_shape_changers */
         if (!rn2(10)) {
-            void youseeit;
-            throw new Error('summonmu(): were_summon() not ported yet');
-        }
+            const out = { visible: 0, genbuf: "creature" };
+
+            if (youseeit)
+                await pline(`${Monnam(mtmp)} summons help!`); /* pline_mon() */
+            const numhelp = await were_summon(mdat, false, out);
+            const numseen = out.visible, genericwere = out.genbuf;
+            if (youseeit) {
+                if (numhelp > 0) {
+                    if (numseen === 0)
+                        await You_feel("hemmed in.");
+                } else {
+                    await pline("But none comes.");
+                }
+            } else {
+                let from_nowhere;
+
+                if (!Deaf()) {
+                    await pline(`Something ${makeplural(growl_sound(mtmp))}!`);
+                    from_nowhere = "";
+                } else {
+                    from_nowhere = " from nowhere";
+                }
+                if (numhelp > 0) {
+                    if (numseen < 1) {
+                        await You_feel("hemmed in.");
+                    } else {
+                        let buf;
+                        if (numseen === 1)
+                            buf = `${an(genericwere)} appears`;
+                        else
+                            buf = `${makeplural(genericwere)} appear`;
+                        await pline(`${upstart(buf)}${from_nowhere}!`);
+                    }
+                } /* else no help came; but you didn't know it tried */
+            }
+        } /* summon critters */
         return;
     } /* were creature */
 }
@@ -1520,12 +1564,16 @@ async function gulpmu(mtmp, mattk) {
         if (u.utrap) {
             await pline(`You are released from the ${
                 (u.utraptype === TT_WEB) ? "web" : "trap"}!`); /* You() */
-            reset_utrap(false);
+            await reset_utrap(false);
         }
 
         i = number_leashed();
-        if (i > 0)
-            throw new Error('gulpmu(): unleash_all() not ported yet');
+        if (i > 0) {
+            const s = (i > 1) ? "leashes" : "leash";
+
+            await pline_The(`${s} ${vtense(s, "snap")} loose.`);
+            unleash_all();
+        }
 
         if (touch_petrifies(game.youmonst.data) && !resists_ston(mtmp))
             throw new Error('gulpmu(): minstapetrify() of the engulfer not ported yet');
@@ -1971,11 +2019,19 @@ export async function doseduce(mon) {
                    but trying to figure that out in advance in order to use
                    alternate wording is not worth the effort */
                 await pline(`${Who} replaces ${yname(game.uright)} with ${yname(ring)}.`);
-                throw new Error('doseduce(): Ring_gone() not ported yet');
+                await Ring_gone(game.uright);
+                /* ring removal might cause loss of levitation which could
+                   drop hero onto trap that transports hero somewhere else */
+                if (u.utotype || !m_next2u(mon))
+                    return 1;
+                setworn(ring, RIGHT_RING);
             } else if (game.uleft && game.uleft.otyp !== RIN_ADORNMENT) {
                 /* see "replaces" note above */
                 await pline(`${Who} replaces ${yname(game.uleft)} with ${yname(ring)}.`);
-                throw new Error('doseduce(): Ring_gone() not ported yet');
+                await Ring_gone(game.uleft);
+                if (u.utotype || !m_next2u(mon))
+                    return 1;
+                setworn(ring, LEFT_RING);
             } else {
                 /* impossible("ring replacement") */
             }
@@ -2163,7 +2219,7 @@ export async function doseduce(mon) {
         } else {
             await pline(`${noit_Monnam(mon)} takes ${cost} ${
                 currency(cost)} for services rendered!`); /* pline_mon() */
-            money2mon(mon, cost);
+            await money2mon(mon, cost);
             game.disp_botl = true;
         }
     }
@@ -2256,8 +2312,12 @@ async function passiveum(olduasmon, mtmp, mattk) {
     if (rn2(3))
         switch (oldu_mattk.adtyp) {
         case AD_PHYS:
-            if (oldu_mattk.aatyp === AT_BOOM)
-                throw new Error('passiveum(): exploding hero (rehumanize()) not ported yet');
+            if (oldu_mattk.aatyp === AT_BOOM) {
+                await You("explode!");
+                /* KMH, balance patch -- this is okay with unchanging */
+                await rehumanize();
+                return await assess_dmg_mu(mtmp, tmp);
+            }
             break;
         case AD_COLD: /* Brown mold or blue jelly */
             if (resists_cold_mu(mtmp)) {
@@ -2272,7 +2332,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
             if (game.u.mhmax < game.u.mh)
                 game.u.mhmax = game.u.mh;
             if (game.u.mhmax > ((game.youmonst.data.mlevel + 1) * 8))
-                throw new Error('passiveum(): split_mon() not ported yet');
+                await split_mon(game.youmonst, mtmp);
             break;
         case M.AD_PLYS: /* Floating eye */
         case M.AD_STUN: /* Yellow mold */

@@ -202,7 +202,12 @@ import { cvt_sdoor_to_door as cvt_sdoor_to_door_zp } from './detect.js';
 import { recalc_block_point as recalc_block_point_zp } from './vision.js';
 import { in_rooms as in_rooms_zp } from './hack.js';
 import { You_hear as You_hear_zp } from './sounds.js';
-import { picking_at as picking_at_zp, reset_pick as reset_pick_zp } from './lock.js';
+import { picking_at as picking_at_zp, reset_pick as reset_pick_zp,
+         boxlock as boxlock_zy } from './lock.js';
+import { unpunish as unpunish_zy } from './read.js';
+import { display_minventory as display_minventory_bm } from './invent.js';
+import { PICK_NONE as PICK_NONE_BM } from './const.js';
+import { Punished as Punished_zy } from './youprop.js';
 import { catch_lit as catch_lit_zp } from './trap.js';
 import { useupf as useupf_zp } from './invent.js';
 import { An as An_zp } from './objnam.js';
@@ -309,6 +314,77 @@ import { obj_to_any as obj_to_any_ci, peek_timer as peek_timer_ci,
 import { find_ac as find_ac_ci } from './u_init.js';
 import { rehumanize as rehumanize_ci } from './polyself.js';
 import { You_feel as You_feel_ci } from './display.js';
+import { check_gear_next_turn as check_gear_next_turn_bm,
+         DEADMONSTER as DEADMONSTER_BM } from './mon.js';
+import { expels as expels_bm, unstuck as unstuck_bm } from './mhitu.js';
+import { monflee as monflee_bm, m_respond as m_respond_bm } from './monmove.js';
+import { bypass_obj as bypass_obj_bm, mon_set_minvis as mon_set_minvis_bm }
+       from './worn.js';
+import { ismnum as ismnum_bm, NC_SHOW_MSG as NC_SHOW_MSG_BM,
+         NC_VIA_WAND_OR_SPELL as NC_VIA_WAND_OR_SPELL_BM,
+         MIM_REVEAL as MIM_REVEAL_BM, MIM_OMIT_WAIT as MIM_OMIT_WAIT_BM,
+         W_SADDLE as W_SADDLE_BM, M_AP_TYPE as M_AP_TYPE_BM,
+         M_AP_NOTHING as M_AP_NOTHING_BM, M_AP_OBJECT as M_AP_OBJECT_BM,
+         M_AP_FURNITURE as M_AP_FURNITURE_BM, TELL as TELL_BM,
+         BOLT_LIM as BOLT_LIM_BM, Role_if as Role_if_bm,
+         MINV_ALL as MINV_ALL_BM, MINV_NOLET as MINV_NOLET_BM } from './const.js';
+import { that_is_a_mimic as that_is_a_mimic_bm, m_is_steadfast as m_is_steadfast_bm,
+         set_ustuck as set_ustuck_bm, flash_hits_mon as flash_hits_mon_bm } from './uhitm.js';
+import { mhurtle as mhurtle_bm } from './dothrow.js';
+import { abuse_dog as abuse_dog_bm } from './dog.js';
+import { surface as surface_bm } from './iactions.js';
+import { mdrop_obj as mdrop_obj_bm } from './steal.js';
+import { mcureblindness as mcureblindness_bm } from './muse.js';
+import { is_obj_mappear as is_obj_mappear_bm } from './pager.js';
+import { set_mimic_sym as set_mimic_sym_bm } from './makemon.js';
+import { newexplevel as newexplevel_bm } from './exper.js';
+import { adjalign as adjalign_bm } from './attrib.js';
+import { resists_drli as resists_drli_bm, monsndx as monsndx_bm } from './mondata.js';
+import { hot_pursuit as hot_pursuit_bm } from './shk.js';
+import { noit_Monnam as noit_Monnam_bm } from './do_name.js';
+import { mstatusline as mstatusline_bm } from './insight.js';
+import { sticks as sticks_bm } from './engrave.js';
+import { obj_typename as obj_typename_bm } from './objnam.js';
+import { Is_container as Is_container_bm } from './mkobj.js';
+import { u_teleport_mon } from './teleport.js';
+import { closeholdingtrap as closeholdingtrap_bm, openholdingtrap as openholdingtrap_bm,
+         openfallingtrap as openfallingtrap_bm } from './trap.js';
+import { See_invisible as See_invisible_bm, Detect_monsters as Detect_monsters_bm,
+         HTelepat as HTelepat_bm } from './youprop.js';
+import { S_MIMIC as S_MIMIC_BM, S_LIGHT as S_LIGHT_BM, MZ_HUMAN as MZ_HUMAN_BM,
+         PM_HEALER as PM_HEALER_BM, PM_STONE_GOLEM as PM_STONE_GOLEM_BM,
+         PM_FLESH_GOLEM as PM_FLESH_GOLEM_BM, PM_AIR_ELEMENTAL as PM_AIR_ELEMENTAL_BM,
+         PM_LONG_WORM as PM_LONG_WORM_BM, M1_MINDLESS as M1_MINDLESS_BM,
+         AD_DGST as AD_DGST_BM, AT_ENGL as AT_ENGL_BM } from './monsters.js';
+import { WAN_UNDEAD_TURNING as WAN_UNDEAD_TURNING_BM,
+         SPE_TURN_UNDEAD as SPE_TURN_UNDEAD_BM,
+         WAN_TELEPORTATION as WAN_TELEPORTATION_BM,
+         SPE_TELEPORT_AWAY as SPE_TELEPORT_AWAY_BM,
+         WAN_MAKE_INVISIBLE as WAN_MAKE_INVISIBLE_BM,
+         SPE_STONE_TO_FLESH as SPE_STONE_TO_FLESH_BM,
+         SPE_DRAIN_LIFE as SPE_DRAIN_LIFE_BM, FIGURINE as FIGURINE_BM,
+         TIN as TIN_BM } from './objects.js';
+import { glyph_at, db_under_typ } from './display.js';
+import { show_map_spot, cvt_sdoor_to_door } from './detect.js';
+import { recalc_block_point } from './vision.js';
+import { Is_rogue_level, IS_FURNITURE, SCORR, CORR, VIBRATING_SQUARE } from './const.js';
+import { draft_message } from './dig.js';
+import { trapname } from './trap.js';
+import { Invocation_lev } from './mklev.js';
+import { the } from './iactions.js';
+import { an } from './objnam.js';
+import { unpunish } from './read.js';
+import { hideunder_async } from './makemon.js';
+import { maybe_unhide_at } from './mon.js';
+import { fill_pit } from './muse.js';
+import { Ring_gone } from './do_wear.js';
+import { dead_species } from './mkobj.js';
+import { attach_egg_hatch_timeout } from './timeout.js';
+import { vision_recalc } from './vision.js';
+import { set_uinwater } from './trap.js';
+import { docrt } from './display.js';
+import { ustatusline } from './insight.js';
+import { unearth_objs as unearth_objs_dg } from './dig.js';
 
 /* C ref: mondata.h nohands() */
 function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
@@ -427,11 +503,613 @@ export async function do_enlightenment_effect() {
     exercise(A_WIS, true);
 }
 
+/* C ref: mextra.h has_mcorpsenm() (newmextra() sets mcorpsenm to NON_PM) */
+function has_mcorpsenm_bm(mon) {
+    return !!mon.mextra && mon.mextra.mcorpsenm !== undefined
+        && mon.mextra.mcorpsenm !== NON_PM_ZP;
+}
+
+/* C ref: mondata.h is_whirly() */
+function is_whirly_bm(ptr) {
+    return ptr.mlet === S_VORTEX_ZY || ptr === mons_zy[PM_AIR_ELEMENTAL_BM];
+}
+
+/* C ref: mondata.h mindless() */
+function mindless_bm(ptr) { return (ptr.mflags1 & M1_MINDLESS_BM) !== 0; }
+
+/* C ref: mondata.h digests() */
+function digests_bm(ptr) {
+    return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL_BM
+                                       && a.adtyp === AD_DGST_BM);
+}
+
+// C ref: display.c knowninvisible() (display.h _knowninvisible())
+function knowninvisible(mon) {
+    return !!(mon.minvis
+              && ((cansee(mon.mx, mon.my)
+                   && (See_invisible_bm() || Detect_monsters_bm()))
+                  || (!Blind() && (HTelepat_bm() & ~INTRINSIC_ZP)
+                      && dist2_rv(mon.mx, mon.my, game.u.ux, game.u.uy) /* mdistu() */
+                         <= (BOLT_LIM_BM * BOLT_LIM_BM))));
+}
+
+// C ref: uhitm.c disguised_as_mon()
+function disguised_as_mon(mtmp) {
+    return (M_AP_TYPE_BM(mtmp) && M_AP_TYPE_BM(mtmp) === M_AP_MONSTER_ZP);
+}
+
+/* C ref: sym.h S_* -- the screen symbols used by is_cmap_door() and
+   stone_furniture_type() */
+const S_vwall_BM = 1, S_trwall_BM = 11, S_vodoor_BM = 13, S_hcdoor_BM = 16,
+    S_upstair_BM = 25, S_dnstair_BM = 26, S_brupstair_BM = 29,
+    S_brdnstair_BM = 30, S_altar_BM = 33, S_throne_BM = 35, S_sink_BM = 36;
+
+/* C ref: sym.h is_cmap_door() */
+function is_cmap_door_bm(i) { return i >= S_vodoor_BM && i <= S_hcdoor_BM; }
+
+// C ref: mkobj.c stone_object_type()
+/* potential mimic shapes that should be undone by stone-to-flesh;
+   not used for objects that will be transformed when hit by stone-to-flesh */
+function stone_object_type(mappearance) {
+    const otyp = mappearance;
+
+    /* we exclude wands, rings, and gems even though some qualify as stone;
+       there aren't any weapons or armor classified as made out of stone */
+    return (otyp === BOULDER || otyp === STATUE_ZB || otyp === FIGURINE_BM);
+}
+
+// C ref: mkobj.c stone_furniture_type()
+/* possible mimic shapes that are affected by stone-to-flesh;
+   mappearance for furniture is a display symbol rather than a terrain type */
+function stone_furniture_type(mappearance) {
+    const sym = mappearance;
+
+    switch (sym) {
+    case S_upstair_BM:
+    case S_dnstair_BM:
+    case S_brupstair_BM:
+    case S_brdnstair_BM:
+    case S_altar_BM:
+    case S_throne_BM:
+    case S_sink_BM: /* stone sink is iffy; metal might be more appropriate */
+        return true;
+    default:
+        if (sym >= S_vwall_BM && sym <= S_trwall_BM)
+            return true;
+        break;
+    }
+    return false;
+}
+
+/* C ref: decl.c c_obj_colors[] */
+const c_obj_colors = [
+    "black", "red", "green", "brown", "blue", "magenta", "cyan", "gray",
+    "transparent", "orange", "bright green", "yellow", "bright blue",
+    "bright magenta", "bright cyan", "white",
+];
+
+/* C ref: objnam.c simple_typename() -- obj_typename() without the
+   user-assigned name or the appended description */
+function simple_typename_bm(otyp) {
+    const save_uname = objects[otyp].oc_uname;
+    objects[otyp].oc_uname = null; /* suppress any name given by user */
+    let bufp = obj_typename_bm(otyp);
+    objects[otyp].oc_uname = save_uname;
+    const pp = bufp.indexOf(" (");
+    if (pp >= 0)
+        bufp = bufp.slice(0, pp); /* strip the appended description */
+    return bufp;
+}
+
+// C ref: mon.c mimic_hit_msg()
+async function mimic_hit_msg(mtmp, otyp) {
+    const ap = mtmp.mappearance;
+
+    switch (M_AP_TYPE_BM(mtmp)) {
+    case M_AP_NOTHING_BM:
+    case M_AP_FURNITURE_BM:
+    case M_AP_MONSTER_ZP:
+        break;
+    case M_AP_OBJECT_BM:
+        if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING) {
+            await pline(`${The(simple_typename_bm(ap))} seems a more vivid ${
+                c_obj_colors[objects[ap].oc_color]} than before.`); /* pline_mon() */
+        }
+        break;
+    }
+}
+
 // C ref: zap.c bhitm() -- monster mtmp was hit by the effect of wand or
 // spell otmp
 export async function bhitm(mtmp, otmp) {
-    void mtmp;
-    throw new Error(`bhitm(): wand/spell ${otmp.otyp} hitting a monster not ported yet`);
+    const g = game;
+    const u = g.u;
+    let ret = 0;
+    let wake = true; /* Most 'zaps' should wake monster */
+    let reveal_invis = false, learn_it = false;
+    const dbldam = Role_if_bm(PM_KNIGHT_ZP) && !!u.uhave?.questart;
+    let skilled_spell, helpful_gesture = false;
+    let dmg;
+    const otyp = otmp.otyp; /* otmp is not NULL */
+    let zap_type_text = "spell";
+    let obj;
+    const disguised_mimic = (mtmp.data.mlet === S_MIMIC_BM
+                             && M_AP_TYPE_BM(mtmp) !== M_AP_NOTHING_BM);
+    /* box_or_door(): mimic appearances that have locks */
+    const box_or_door = (monst) =>
+        ((M_AP_TYPE_BM(monst) === M_AP_OBJECT_BM
+          && (monst.mappearance === CHEST
+              || monst.mappearance === LARGE_BOX))
+         || (M_AP_TYPE_BM(monst) === M_AP_FURNITURE_BM
+             /* is_cmap_door() tests S_symbol values, and            */
+             /* mon->mappearance for furniture contains one of those */
+             && is_cmap_door_bm(monst.mappearance)));
+
+    if (engulfing_u_zp(mtmp))
+        reveal_invis = false;
+
+    if (!g.bhitpos)
+        g.bhitpos = { x: 0, y: 0 }; /* C's gb.bhitpos is a zeroed global */
+    g.notonhead = (mtmp.mx !== g.bhitpos.x || mtmp.my !== g.bhitpos.y);
+    skilled_spell = (otmp.oclass === SPBOOK_CLASS && !!otmp.blessed);
+
+    switch (otyp) {
+    case WAN_STRIKING:
+    case SPE_FORCE_BOLT:
+        if (otyp === WAN_STRIKING)
+            zap_type_text = "wand";
+        /*FALLTHRU*/
+        reveal_invis = true;
+        learn_it = cansee(g.bhitpos.x, g.bhitpos.y);
+        if (resists_magm_zp(mtmp)) { /* match effect on player */
+            if (disguised_mimic && !disguised_as_mon(mtmp))
+                seemimic_rv(mtmp);
+            /* shieldeff(mtmp->mx, mtmp->my): transient display only */
+            await pline("Boing!");
+            /* 5.0: used to 'break' to avoid setting learn_it here */
+        } else if (u.uswallow || rnd(20) < 10 + find_mac(mtmp)) {
+            if (disguised_mimic)
+                seemimic_rv(mtmp);
+            dmg = d(2, 12);
+            if (dbldam)
+                dmg *= 2;
+            if (otyp === SPE_FORCE_BOLT)
+                dmg = spell_damage_bonus(dmg);
+            await hit(zap_type_text, mtmp, exclam(dmg));
+            await resist_async(mtmp, otmp.oclass, dmg, TELL_BM);
+        } else {
+            if (!disguised_mimic)
+                await miss(zap_type_text, mtmp);
+            learn_it = false;
+        }
+        break;
+    case WAN_SLOW_MONSTER:
+    case SPE_SLOW_MONSTER:
+        if (!resist(mtmp, otmp.oclass, 0, NOTELL_ZP)) {
+            if (disguised_mimic)
+                seemimic_rv(mtmp);
+            await mon_adjust_speed_rv(mtmp, -1, otmp);
+            check_gear_next_turn_bm(mtmp); /* might want speed boots */
+
+            if (engulfing_u_zp(mtmp) && is_whirly_bm(mtmp.data)) {
+                await You(`disrupt ${mon_nam(mtmp)}!`);
+                await pline("A huge hole opens up...");
+                await expels_bm(mtmp, mtmp.data, true);
+            }
+        }
+        break;
+    case WAN_SPEED_MONSTER:
+        if (!resist(mtmp, otmp.oclass, 0, NOTELL_ZP)) {
+            if (disguised_mimic)
+                seemimic_rv(mtmp);
+            await mon_adjust_speed_rv(mtmp, 1, otmp);
+            check_gear_next_turn_bm(mtmp); /* might want speed boots */
+        }
+        /* wake but don't anger a peaceful target */
+        helpful_gesture = true;
+        break;
+    case WAN_UNDEAD_TURNING_BM:
+    case SPE_TURN_UNDEAD_BM:
+        wake = false;
+        if (unturn_dead(mtmp))
+            wake = true;
+        if (is_undead_zp(mtmp.data) || is_vampshifter_zp(mtmp)) {
+            reveal_invis = true;
+            wake = true;
+            dmg = rnd(8);
+            if (dbldam)
+                dmg *= 2;
+            if (otyp === SPE_TURN_UNDEAD_BM)
+                dmg = spell_damage_bonus(dmg);
+            g.context.bypasses = true; /* for make_corpse() */
+            if (!(await resist_async(mtmp, otmp.oclass, dmg, NOTELL_ZP))) {
+                if (!DEADMONSTER_BM(mtmp))
+                    await monflee_bm(mtmp, 0, false, true);
+            }
+        }
+        break;
+    case WAN_POLYMORPH:
+    case SPE_POLYMORPH:
+    case POT_POLYMORPH:
+        if (mtmp.data === mons_zy[PM_LONG_WORM_BM] && has_mcorpsenm_bm(mtmp)) {
+            /* if a long worm has mcorpsenm set, it was polymorphed by
+               the current zap and shouldn't be affected if hit again */
+            ;
+        } else if (resists_magm_zp(mtmp)) {
+            /* magic resistance protects from polymorph traps, so make
+               it guard against involuntary polymorph attacks too... */
+            /* shieldeff_mon(mtmp): transient display only */
+        } else if (!resist(mtmp, otmp.oclass, 0, NOTELL_ZP)) {
+            const polyspot = (otyp !== POT_POLYMORPH),
+                give_msg = (!Hallucination()
+                            && (canseemon(mtmp)
+                                || engulfing_u_zp(mtmp)));
+
+            /* dropped inventory (due to death by system shock,
+               or loss of wielded weapon and/or worn armor due to
+               limitations of new shape) won't be hit by this zap */
+            if (polyspot) /* (JS minvent arrays are oldest first) */
+                for (obj of (mtmp.minvent || []).slice().reverse())
+                    bypass_obj_bm(obj);
+
+            /* natural shapechangers aren't affected by system shock
+               (unless protection from shapechangers is interfering
+               with their metabolism...) */
+            if (mtmp.cham === NON_PM_ZP && !rn2(25)) {
+                if (canseemon(mtmp)) {
+                    await pline(`${Monnam(mtmp)} shudders!`);
+                    learn_it = true;
+                }
+                /* svc.context.bypasses = TRUE; ## for make_corpse() */
+                /* no corpse after system shock */
+                await xkilled(mtmp, XKILL_GIVEMSG_ZP | XKILL_NOCORPSE_ZP);
+            } else {
+                let ncflags = NO_NC_FLAGS_RV;
+
+                if (polyspot)
+                    ncflags |= NC_VIA_WAND_OR_SPELL_BM;
+                if (give_msg)
+                    ncflags |= NC_SHOW_MSG_BM;
+                if ((await newcham_rv(mtmp, null, ncflags)) !== 0
+                           /* if shapechange failed because there aren't
+                              enough eligible candidates (most likely for
+                              vampshifter), try reverting to original form */
+                           || (ismnum_bm(mtmp.cham)
+                               && (await newcham_rv(mtmp, mons_zy[mtmp.cham],
+                                                    ncflags)) !== 0)) {
+                    if (give_msg && (canspotmon(mtmp)
+                                     || engulfing_u_zp(mtmp)))
+                        learn_it = true;
+                }
+            }
+
+            /* do this even if polymorphed failed (otherwise using
+               flags.mon_polycontrol prompting to force mtmp to remain
+               'long worm' would prompt again if zap hit another segment) */
+            if (!DEADMONSTER_BM(mtmp) && mtmp.data === mons_zy[PM_LONG_WORM_BM]) {
+                if (!mtmp.mextra) mtmp.mextra = {}; /* newmcorpsenm(mtmp) */
+                /* flag to indicate that mtmp became a long worm
+                   on current zap, so further hits (on mtmp's new
+                   tail) don't do further transforms */
+                mtmp.mextra.mcorpsenm = PM_LONG_WORM_BM; /* MCORPSENM(mtmp) */
+                /* flag to indicate that cleanup is needed; object
+                   bypass cleanup also clears mon->mextra->mcorpsenm
+                   for all long worms on the level */
+                g.context.bypasses = true;
+            }
+        }
+        break;
+    case WAN_CANCELLATION:
+    case SPE_CANCELLATION:
+        if (disguised_mimic)
+            seemimic_rv(mtmp);
+        await cancel_monst(mtmp, otmp, true, true, false);
+        break;
+    case WAN_TELEPORTATION_BM:
+    case SPE_TELEPORT_AWAY_BM:
+        if (disguised_mimic)
+            seemimic_rv(mtmp);
+        reveal_invis = !(await u_teleport_mon(mtmp, true));
+        learn_it = canspotmon(mtmp);
+        break;
+    case WAN_MAKE_INVISIBLE_BM: {
+        const oldinvis = mtmp.minvis;
+        const couldsee_it = canseemon(mtmp);
+
+        if (disguised_mimic)
+            seemimic_rv(mtmp);
+        /* format monster's name before altering its visibility */
+        const nambuf = Monnam(mtmp);
+        mon_set_minvis_bm(mtmp, false);
+        if (!oldinvis && knowninvisible(mtmp)) {
+            await pline(`${nambuf} turns transparent!`);
+            reveal_invis = true;
+            learn_it = true;
+        } else if (couldsee_it && !canseemon(mtmp)) {
+            /* keep the immediate effects of make invisible and teleportation
+               ambiguous by using the same message that's used if we
+               teleported mtmp (and it ended up somewhere you can't see) */
+            await pline(`${nambuf} vanishes!`);
+        }
+        break;
+    }
+    case WAN_LOCKING:
+    case SPE_WIZARD_LOCK: {
+        if (disguised_mimic && box_or_door(mtmp))
+            await that_is_a_mimic_bm(mtmp, MIM_REVEAL_BM); /*seemimic()*/
+        const noticed = { v: learn_it }; /* &learn_it */
+        wake = await closeholdingtrap_bm(mtmp, noticed);
+        learn_it = noticed.v;
+        break;
+    }
+    case WAN_PROBING:
+        wake = false;
+        reveal_invis = true;
+        await probe_monster(mtmp);
+        learn_it = true;
+        break;
+    case WAN_OPENING:
+    case SPE_KNOCK:
+        if (disguised_mimic && box_or_door(mtmp))
+            await that_is_a_mimic_bm(mtmp, MIM_REVEAL_BM); /*seemimic()*/
+        wake = false; /* don't want immediate counterattack */
+        if (mtmp === u.ustuck) {
+            /* zapping either holder/holdee or self [zapyourself()] will
+               release hero from holder's grasp or holdee from hero's grasp */
+            await release_hold();
+            learn_it = true;
+
+        /* zap which hits steed will only release saddle if it
+           doesn't hit a holding or falling trap; playability
+           here overrides the more logical target ordering */
+        } else {
+            const noticed = { v: learn_it }; /* &learn_it */
+            const held = await openholdingtrap_bm(mtmp, noticed);
+            learn_it = noticed.v;
+            if (held)
+                break;
+            const fell = await openfallingtrap_bm(mtmp, true, noticed);
+            learn_it = noticed.v;
+            if (fell) {
+                /* mtmp might now be on the migrating monsters list */
+                break;
+            } else if (otyp === SPE_KNOCK) {
+                wake = true;
+                ret = 1;
+                if (mtmp.data.msize < MZ_HUMAN_BM && !m_is_steadfast_bm(mtmp)) {
+                    if (canseemon(mtmp))
+                        await pline(`${Monnam(mtmp)} is knocked back!`);
+                    await mhurtle_bm(mtmp, mtmp.mx - u.ux, mtmp.my - u.uy, rnd(2));
+                } else {
+                    if (canseemon(mtmp))
+                        await pline(`${Monnam(mtmp)} doesn't budge.`);
+                }
+                if (!DEADMONSTER_BM(mtmp)) {
+                    await wakeup(mtmp, !mindless_bm(mtmp.data));
+                    await abuse_dog_bm(mtmp);
+                }
+            } else if ((obj = which_armor_zp(mtmp, W_SADDLE_BM))) {
+                let buf = `${s_suffix(Monnam(mtmp))} ${distant_name(obj, xname)}`;
+
+                if (cansee(mtmp.mx, mtmp.my)) {
+                    if (!canspotmon(mtmp))
+                        buf = An_zp(distant_name(obj, xname));
+                    await pline(`${buf} falls to the ${surface_bm(mtmp.mx, mtmp.my)}.`);
+                } else if (canspotmon(mtmp)) {
+                    await pline(`${buf} falls off.`);
+                }
+                await mdrop_obj_bm(mtmp, obj, false);
+            }
+        }
+        break;
+    case SPE_HEALING:
+    case SPE_EXTRA_HEALING: {
+        const healamt = d(6, otyp === SPE_EXTRA_HEALING ? 8 : 4);
+
+        reveal_invis = true;
+        if (mtmp.data !== mons_zy[PM_PESTILENCE_ZP]) {
+            const delta = mtmp.mhpmax - mtmp.mhp;
+
+            wake = false; /* wakeup() makes the target angry */
+            healmon_zp(mtmp, healamt, 0);
+            /* plain healing must be blessed to cure blindness; extra
+               healing only needs to not be cursed, so spell always cures
+               [potions quaffed by monsters behave slightly differently;
+               we use the rules for the hero here...] */
+            if (skilled_spell || otyp === SPE_EXTRA_HEALING)
+                await mcureblindness_bm(mtmp, canseemon(mtmp));
+            if (canseemon(mtmp)) {
+                if (disguised_mimic) {
+                    if (is_obj_mappear_bm(mtmp, STRANGE_OBJECT)) {
+                        /* it can do better now */
+                        set_mimic_sym_bm(mtmp);
+                        newsym(mtmp.mx, mtmp.my);
+                    } else
+                        await mimic_hit_msg(mtmp, otyp);
+                } else
+                    await pline(`${Monnam(mtmp)} looks${
+                        otyp === SPE_EXTRA_HEALING ? " much" : ""} better.`);
+            }
+            if (mtmp.mtame && Role_if_bm(PM_HEALER_BM) && (delta > 0)) {
+                more_experienced(Math.min(delta, healamt), 0);
+                await newexplevel_bm();
+            }
+            if (mtmp.mtame || mtmp.mpeaceful) {
+                adjalign_bm(Role_if_bm(PM_HEALER_BM) ? 1
+                                                     : Math.sign(u.ualign.type));
+            }
+        } else { /* Pestilence */
+            /* Pestilence will always resist; damage is half of (healamt/2) */
+            await resist_async(mtmp, otmp.oclass, Math.trunc(healamt / 2), TELL_BM);
+        }
+        break;
+    }
+    case WAN_LIGHT: /* (broken wand) */
+        if (await flash_hits_mon_bm(mtmp, otmp)) {
+            learn_it = true;
+            reveal_invis = true;
+        }
+        break;
+    case WAN_SLEEP: /* (broken wand) */
+        /* [wakeup() doesn't rouse victims of temporary sleep,
+           so it's okay to leave `wake' set to TRUE here;
+           revealing concealed mimic is handled by sleep_monst()] */
+        reveal_invis = true;
+        if (sleep_monst_zp(mtmp, d(1 + otmp.spe, 12), WAND_CLASS))
+            await slept_monst(mtmp);
+        if (!Blind())
+            learn_it = true;
+        break;
+    case SPE_STONE_TO_FLESH_BM:
+        if (mtmp.data.mlet === S_GOLEM_ZY) {
+            let mesg;
+            const name = Monnam(mtmp); /* before possible polymorph */
+
+            /* turn stone golem into flesh golem */
+            if (monsndx_bm(mtmp.data) === PM_STONE_GOLEM_BM
+                && (await newcham_rv(mtmp, mons_zy[PM_FLESH_GOLEM_BM], NO_NC_FLAGS_RV)))
+                mesg = "turns to flesh!";
+            else if (monsndx_bm(mtmp.data) === PM_FLESH_GOLEM_BM)
+                mesg = "seems fleshier...";
+            else
+                mesg = "looks rather fleshy for a moment.";
+
+            if (canseemon(mtmp))
+                await pline(`${name} ${mesg}`);
+        } else if (mtmp.data.mlet === S_MIMIC_BM
+                   && ((M_AP_TYPE_BM(mtmp) === M_AP_FURNITURE_BM
+                        && stone_furniture_type(mtmp.mappearance))
+                       || (M_AP_TYPE_BM(mtmp) === M_AP_OBJECT_BM
+                           && stone_object_type(mtmp.mappearance)))) {
+            /* note: if that_is_a_mimic() doesn't get called to reveal the
+               mimic, wakeup() below will call seemimic() */
+            if (cansee(mtmp.mx, mtmp.my)) {
+                /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+                await that_is_a_mimic_bm(mtmp, MIM_REVEAL_BM | MIM_OMIT_WAIT_BM);
+            }
+        } else {
+            wake = false;
+        }
+        break;
+    case SPE_DRAIN_LIFE_BM:
+        if (disguised_mimic)
+            seemimic_rv(mtmp);
+        dmg = monhp_per_lvl_rv(mtmp);
+        if (dbldam)
+            dmg *= 2;
+        if (otyp === SPE_DRAIN_LIFE_BM)
+            dmg = spell_damage_bonus(dmg);
+        if (resists_drli_bm(mtmp)) {
+            /* shieldeff_mon(mtmp): transient display only */
+        } else if (!(await resist_async(mtmp, otmp.oclass, dmg, NOTELL_ZP))
+                   && !DEADMONSTER_BM(mtmp)) {
+            mtmp.mhp -= dmg;
+            mtmp.mhpmax -= dmg;
+            /* die if already level 0, regardless of hit points */
+            if (DEADMONSTER_BM(mtmp) || mtmp.mhpmax <= 0 || mtmp.m_lev < 1) {
+                await killed(mtmp);
+            } else {
+                mtmp.m_lev--;
+                if (canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} suddenly seems weaker!`);
+            }
+        }
+        break;
+    case WAN_NOTHING:
+        wake = false;
+        break;
+    default:
+        impossible(`What an interesting effect (${otyp})`);
+        break;
+    }
+    if (wake && !DEADMONSTER_BM(mtmp)) {
+        /* seemimic() is done by wakeup() and might unblock vision */
+        await wakeup(mtmp, helpful_gesture ? false : true);
+        m_respond_bm(mtmp);
+        if (mtmp.isshk && !(u.ushops && u.ushops[0]))
+            hot_pursuit_bm(mtmp);
+    }
+    /* note: gb.bhitpos won't be set if swallowed, but that's okay since
+     * reveal_invis will be false.  We can't use mtmp->mx, my since it
+     * might be an invisible worm hit on the tail.
+     */
+    if (reveal_invis && !DEADMONSTER_BM(mtmp)) {
+        if (cansee(g.bhitpos.x, g.bhitpos.y) && !canspotmon(mtmp))
+            map_invisible(g.bhitpos.x, g.bhitpos.y);
+    }
+    /* if effect was observable then discover the wand type provided
+       that the wand itself has been seen */
+    if (learn_it)
+        learnwand(otmp);
+    return ret;
+}
+
+// C ref: zap.c release_hold()
+/* hero is held by a monster or engulfed or holding a monster and has zapped
+   opening/unlocking magic at holder/engulfer/holdee or at self */
+export async function release_hold() {
+    const u = game.u;
+    const mtmp = u.ustuck;
+
+    if (!mtmp) {
+        impossible("release_hold when not held?");
+    } else if (u.uswallow) { /* possible for sticky hero to be swallowed */
+        if (digests_bm(mtmp.data)) {
+            if (!Blind())
+                await pline(`${Monnam(mtmp)} opens its mouth!`);
+            else
+                await You_feel("a sudden rush of air!");
+        }
+        /* gives "you get regurgitated" or "you get expelled from <mon>" */
+        await expels_bm(mtmp, mtmp.data, true);
+    } else if (sticks_bm(game.youmonst.data)) {
+        /* order matters if 'holding' status condition is enabled;
+           set_ustuck() will set flag for botl update, You() pline will
+           trigger a status update with "UHold" removed */
+        set_ustuck_bm(null);
+        await You(`release ${mon_nam(mtmp)}.`);
+    } else { /* held but not swallowed */
+        let relbuf;
+
+        await unstuck_bm(u.ustuck);
+        if (!nohands(mtmp.data))
+            relbuf = `from ${s_suffix(mon_nam(mtmp))} grasp`;
+        else
+            relbuf = `by ${mon_nam(mtmp)}`;
+        await You(`are released ${relbuf}.`);
+    }
+}
+
+/* C ref: obj.h SchroedingersBox() */
+function SchroedingersBox_bm(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
+
+// C ref: zap.c probe_objchain()
+function probe_objchain(chain) {
+    for (const otmp of chain) {
+        observe_object(otmp, Hallucination()); /* treat as "seen" */
+        if (Is_container_bm(otmp) || otmp.otyp === STATUE_ZB) {
+            otmp.lknown = 1;
+            if (!SchroedingersBox_bm(otmp))
+                otmp.cknown = 1;
+        } else if (otmp.otyp === TIN_BM)
+            otmp.known = 1;
+    }
+}
+
+// C ref: zap.c probe_monster()
+export async function probe_monster(mtmp) {
+    await mstatusline_bm(mtmp);
+    if (game.notonhead)
+        return; /* don't show minvent for long worm tail */
+
+    if (mtmp.minvent && mtmp.minvent.length) {
+        probe_objchain(mtmp.minvent.slice().reverse()); /* C chain order */
+        await display_minventory_bm(mtmp, MINV_ALL_BM | MINV_NOLET_BM | PICK_NONE_BM,
+                                    null);
+    } else {
+        await pline(`${noit_Monnam_bm(mtmp)} is not carrying anything${
+            engulfing_u_zp(mtmp) ? " besides you" : ""}.`);
+    }
 }
 
 // C ref: zap.c bhito() -- object obj was hit by the effect of the wand
@@ -469,7 +1147,11 @@ export async function bhito(obj, otmp) {
     if (obj === g.uball) {
         res = 0;
     } else if (obj === g.uchain) {
-        throw new Error('bhito(): zapping the iron chain (unpunish()) not ported yet');
+        if (otmp.otyp === WAN_OPENING || otmp.otyp === SPE_KNOCK) {
+            learn_it = true;
+            await unpunish();
+        } else
+            res = 0;
     } else
         switch (otmp.otyp) {
         case WAN_POLYMORPH:
@@ -484,7 +1166,7 @@ export async function bhito(obj, otmp) {
 
             /* any saved lock context will be dangerously obsolete */
             if (Is_box(obj))
-                throw new Error('bhito(): boxlock() on a polymorphed box not ported yet');
+                await boxlock_zy(obj, otmp);
 
             if (obj_shudders(obj)) {
                 const top = (g.level.objects || []).find(o => o.ox === u.ux
@@ -497,7 +1179,7 @@ export async function bhito(obj, otmp) {
                 do_osshock(obj);
                 /* eek - your cover might have been blown */
                 if (cover)
-                    throw new Error('bhito(): hideunder() after do_osshock() not ported yet');
+                    await hideunder_async(g.youmonst);
                 break;
             }
             obj = await poly_obj(obj, STRANGE_OBJECT);
@@ -998,15 +1680,9 @@ export async function bhitpile(
     }
 
     if (hidingunder) /* pile might have been destroyed or dispersed */
-        throw new Error('bhitpile(): maybe_unhide_at() not ported yet');
+        maybe_unhide_at(tx, ty);
 
-    /* fill_pit(tx, ty) */
-    {
-        const t = t_at(tx, ty);
-        if (t && (t.ttyp === PIT || t.ttyp === SPIKED_PIT)
-            && sobj_at(BOULDER, tx, ty))
-            throw new Error('bhitpile(): fill_pit() not ported yet');
-    }
+    await fill_pit(tx, ty);
 
     return hitanything;
 }
@@ -1065,9 +1741,85 @@ export async function zap_map(x, y, obj) { /* zapped wand, or book for cast spel
         } /* find_drawbridge */
     } /* !u.uz */
 
-    if (obj.otyp === WAN_PROBING)
-        throw new Error('zap_map(): probing (show_map_spot()) not ported yet');
-    /* learn_it is only set by the unported cases above */
+    let learn_it = false;
+    if (obj.otyp === WAN_PROBING) {
+        /*
+         * Probing, either up/down or lateral.
+         */
+        const lv = game.level;
+
+        /* map terrain; might reveal a special room which is already within
+           view that hasn't been entered yet */
+        const oldtyp = lv.lastseentyp?.[x]?.[y] ?? 0;
+        const oldglyph = glyph_at(x, y);
+        show_map_spot(x, y, false);
+        if (oldtyp !== (lv.lastseentyp?.[x]?.[y] ?? 0) || oldglyph !== glyph_at(x, y)) {
+            /* TODO: ought to give some message */
+            learn_it = true;
+        }
+        const lev = lv.at(x, y);
+        const ltyp = (lev.typ === DRAWBRIDGE_UP_ZP) /* SURFACE_AT(x, y) */
+            ? db_under_typ(lev.drawbridgemask || 0) : lev.typ;
+        /* secret door gets revealed, converted into regular door */
+        if (ltyp === SDOOR) {
+            cvt_sdoor_to_door(lev); /* .typ = DOOR */
+            recalc_block_point(x, y);
+            newsym(x, y);
+            if (cansee(x, y)) {
+                await pline("Probing reveals a secret door.");
+                learn_it = true;
+            } else if (Is_rogue_level(u.uz)) { /* from zap_over_floor() */
+                await draft_message(false); /* "You feel a draft." (open doorway) */
+            }
+
+        /* secret corridor likewise, although only ones within view will
+           still be secret; for the !cansee(x,y) case, show_map_spot()
+           above has already converted the spot to regular corridor */
+        } else if (ltyp === SCORR) {
+            lev.typ = CORR;
+            unblock_point(x, y);
+            newsym(x, y);
+            await pline("Probing exposes a secret corridor.");
+            learn_it = true;
+
+        /* if on or over ice, describe it ("solid ice", "thin ice", &c);
+           likewise for furniture in case hero is levitating while blind */
+        } else if (ltyp === ICE || IS_FURNITURE(ltyp)) {
+            if (u.dz > 0) { /* down, which also means x,y == u.ux,u.uy */
+                throw new Error('zap_map(): probing down at ice/furniture (force_decor()) not ported yet');
+            }
+        }
+        /*
+         * Probing reveals undiscovered traps.
+         *
+         * FIXME?  This finds floor traps even when zapping up and
+         * ceiling traps even when zapping down.
+         */
+        if (ttmp) {
+            const t_already_seen = ttmp.tseen;
+            const hallu = Hallucination();
+
+            /* should probably be changed to use sense_trap(detect.c)
+               so that trap can temporarily be forced to be shown and
+               map browsing can take place before it reverts to being
+               covered by monster or object(s) */
+            ttmp.tseen = 1;
+            newsym(x, y);
+
+            if (!t_already_seen || hallu) {
+                const ttmpname = trapname(ttmp.ttyp, false);
+                const use_the = !hallu ? (ttmp.ttyp === VIBRATING_SQUARE
+                                          && Invocation_lev(u.uz))
+                                       : !rn2(4);
+                await You(`find ${use_the ? the(ttmpname) : an(ttmpname)}${
+                    use_the ? '!' : '.'}`);
+                learn_it = !hallu;
+            }
+        } /* t_at() */
+    } /* probing */
+
+    if (learn_it)
+        learnwand(obj);
 }
 
 // C ref: zap.c zappable()
@@ -1233,6 +1985,25 @@ export function check_unpaid(otmp) {
     throw new Error('check_unpaid(): usage fee for unpaid item not ported yet');
 }
 
+// C ref: zap.c boxlock_invent()
+/* Lock or unlock all boxes in inventory */
+async function boxlock_invent(obj) {
+    let otmp, nextobj;
+    let boxing = false;
+
+    /* (un)lock carried boxes */
+    for (otmp = game.invent; otmp; otmp = nextobj) {
+        nextobj = otmp.nobj;
+        if (Is_box(otmp)) {
+            await boxlock_zy(otmp, obj);
+            boxing = true;
+        }
+    }
+    if (boxing) {
+        /* update_inventory(): no perm_invent; in case any box->lknown
+           has changed */
+    }
+}
 
 // C ref: zap.c zapyourself()
 /* you've zapped yourself with a wand or spell (or broken a wand) */
@@ -1466,18 +2237,59 @@ export async function zapyourself(obj, ordinary) {
         damage = 0; /* reset */
         break;
     case WAN_OPENING:
-    case SPE_KNOCK:
-        throw new Error('zapyourself(): release_hold()/boxlock_invent() not ported yet');
+    case SPE_KNOCK: {
+        if (u.ustuck) {
+            /* zapping either self or holder/holdee [bhitm()] will release
+               holder's grasp from the hero or hero's grasp from holdee */
+            await release_hold();
+            learn_it = true;
+        }
+        if (Punished_zy()) {
+            learn_it = true;
+            await unpunish_zy();
+        }
+        /* invent is hit iff hero doesn't escape from a trap */
+        const noticed = { v: learn_it }; /* &learn_it */
+        let hit_invent = !u.utrap;
+        if (!hit_invent) {
+            hit_invent = !(await openholdingtrap_bm(game.youmonst, noticed));
+            learn_it = noticed.v;
+        }
+        if (hit_invent) {
+            await boxlock_invent(obj);
+            /* trigger previously escaped trapdoor */
+            noticed.v = learn_it;
+            await openfallingtrap_bm(game.youmonst, true, noticed);
+            learn_it = noticed.v;
+        }
+        break;
+    }
     case WAN_LOCKING:
-    case SPE_WIZARD_LOCK:
-        throw new Error('zapyourself(): closeholdingtrap()/boxlock_invent() not ported yet');
+    case SPE_WIZARD_LOCK: {
+        /* similar logic to opening; invent is hit iff no trap triggered */
+        const noticed = { v: learn_it }; /* &learn_it */
+        if (u.utrap || !(await closeholdingtrap_bm(game.youmonst, noticed))) {
+            learn_it = noticed.v;
+            await boxlock_invent(obj);
+        } else
+            learn_it = noticed.v;
+        break;
+    }
     case O_zy.WAN_DIGGING:
     case O_zy.SPE_DIG:
     case O_zy.SPE_DETECT_UNSEEN:
     case WAN_NOTHING:
         break;
-    case WAN_PROBING:
-        throw new Error('zapyourself(): probe_objchain() not ported yet');
+    case WAN_PROBING: {
+        const inv = []; /* probe_objchain(invent): invent is a nobj chain */
+        for (let o = game.invent; o; o = o.nobj)
+            inv.push(o);
+        probe_objchain(inv);
+        /* update_inventory(): no perm_invent */
+        learn_it = true;
+        await ustatusline();
+        break;
+    }
     case O_zy.SPE_STONE_TO_FLESH:
         throw new Error('zapyourself(): stone to flesh on yourself not ported yet');
     default:
@@ -1525,7 +2337,8 @@ export async function weffects(obj) {
     } else if (objects[otyp].oc_dir === IMMEDIATE) {
         zapsetup(); /* reset obj_zapped */
         if (u.uswallow) {
-            throw new Error('weffects(): bhitm() on engulfer not ported yet');
+            await bhitm(u.ustuck, obj);
+            /* [how about `bhitpile(u.ustuck->minvent)' effect?] */
         } else if (u.dz) {
             throw new Error('weffects(): zap_updown() not ported yet');
         } else {
@@ -2449,7 +3262,7 @@ async function maybe_destroy_item(
             }
             if (obj.owornmask) { /* m_useup handles these for monster */
                 if (obj.owornmask & W_RING) /* ring being worn */
-                    throw new Error('maybe_destroy_item(): Ring_gone() not ported yet');
+                    await Ring_gone(obj);
                 else
                     setnotworn_zp(obj);
             }
@@ -2601,8 +3414,8 @@ function revive_egg(obj) { /* nonnull */
      */
     if (obj.otyp !== EGG)
         return;
-    if (obj.corpsenm !== NON_PM_ZP)
-        throw new Error('revive_egg(): dead_species()/attach_egg_hatch_timeout() not ported yet');
+    if (obj.corpsenm !== NON_PM_ZP && !dead_species(obj.corpsenm, true))
+        attach_egg_hatch_timeout(obj, 0);
 }
 
 // C ref: zap.c unturn_dead()
@@ -2946,7 +3759,7 @@ export async function melt_ice(x, y, msg) {
     obj_ice_effects_zp(x, y, false);
     unearth_objs_zp(x, y);
     if (g.u.uinwater) /* Underwater */
-        throw new Error('melt_ice(): vision_recalc() while Underwater not ported yet');
+        vision_recalc(1);
     newsym(x, y);
     if (cansee(x, y) || u_at(x, y))
         await Norep_zp(msg);
@@ -3002,7 +3815,6 @@ function bury_objs_zp(x, y) {
 function unearth_objs_zp(x, y) {
     unearth_objs_dg(x, y);
 }
-import { unearth_objs as unearth_objs_dg } from './dig.js';
 
 // C ref: zap.c zap_over_floor()
 export async function zap_over_floor(
@@ -3158,7 +3970,11 @@ export async function zap_over_floor(
                 let mon;
                 if (u_at(x, y)) {
                     if (g.u.uinwater) { /* not just `if (Underwater)' */
-                        throw new Error('zap_over_floor(): freezing the water the hero is in (set_uinwater()) not ported yet');
+                        /* leave the no longer existent water */
+                        await set_uinwater(0); /* u.uinwater = 0 */
+                        g.u.uundetected = 0;
+                        await docrt();
+                        g.vision_full_recalc = 1;
                     } else if (g.u.utrap && g.u.utraptype === TT_LAVA_ZP) {
                         throw new Error('zap_over_floor(): hero stuck in cooling lava not ported yet');
                     }
@@ -3257,7 +4073,7 @@ export async function zap_over_floor(
         if (see_it)
             await pline(`${yourzap ? "Your" : "The"} ${zapverb} reveals a secret door.`);
         else if (Is_rogue_level_zp(g.u.uz))
-            throw new Error('zap_over_floor(): draft_message() not ported yet');
+            await draft_message(false); /* "You feel a draft." (open doorway) */
     }
 
     /* regular door absorbs remaining zap range, possibly gets destroyed */

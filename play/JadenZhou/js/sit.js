@@ -33,6 +33,13 @@ import { set_mimic_blocking } from './potion.js';
 import {
     Cold_resistance, Antimagic, Blind, Hallucination, Levitation, Flying, Half_spell_damage
 } from './youprop.js';
+import { money_cnt } from './u_init.js';
+import { useupf } from './invent.js';
+import { hliquid, split_mon } from './potion.js';
+import { dryup } from './fountain.js';
+import { water_damage } from './trap.js';
+import { WATER_WALKING_BOOTS } from './objects.js';
+import { Deaf } from './youprop.js';
 
 /* C ref: mondata.h macros used here */
 const is_hider = (ptr) => (ptr.mflags1 & M1_HIDE) !== 0;
@@ -93,7 +100,9 @@ export async function dosit() {
         const obj = vobj_at(u.ux, u.uy); /* svl.level.objects[u.ux][u.uy] */
 
         if (youmonst.data.mlet === S_DRAGON && obj.oclass === COIN_CLASS) {
-            throw new Error('dosit(): coiling up around a hoard (money_cnt()) not ported yet');
+            await You(`coil up around your ${
+                (obj.quan + money_cnt(game.invent) < u.ulevel * 1000)
+                ? "meager " : ""}hoard.`);
         } else if (obj.otyp === TOWEL) {
             await pline("It's probably not a good time for a picnic...");
         } else {
@@ -103,9 +112,13 @@ export async function dosit() {
                 await You(`sit on ${the(xname(obj))}.`);
             if (obj.otyp === CORPSE && amorphous(mons[obj.corpsenm]))
                 await pline("It's squishy...");
-            else if (obj.otyp === CREAM_PIE)
-                throw new Error('dosit(): sitting on a cream pie (Soundeffect(), useupf()) not ported yet');
-            else if (!(Is_box(obj)
+            else if (obj.otyp === CREAM_PIE) {
+                if (!Deaf()) {
+                    /* Soundeffect(se_squelch, 30) */
+                    await pline("Squelch!");
+                }
+                await useupf(obj, obj.quan);
+            } else if (!(Is_box(obj)
                        || objects[obj.otyp].oc_material === CLOTH))
                 await pline("It's not very comfortable...");
         }
@@ -163,9 +176,22 @@ export async function dosit() {
 
 // C ref: sit.c dosit() in_water: label
 async function in_water() {
-    /* You("sit in the %s.", hliquid("water")); gremlin split_mon(), the
-       water_damage() rolls */
-    throw new Error('dosit(): sitting in water (hliquid(), water_damage()) not ported yet');
+    const u = game.u;
+
+    await You(`sit in the ${hliquid("water")}.`);
+    if (Upolyd() && u.umonnum === PM_GREMLIN) {
+        if (await split_mon(game.youmonst, null)) {
+            if (game.level.at(u.ux, u.uy).typ === FOUNTAIN)
+                await dryup(u.ux, u.uy, true);
+        }
+        /* splitting--or failing to do so--protects gear from the water */
+    } else {
+        if (!rn2(10) && game.uarm)
+            await water_damage(game.uarm, "armor", true);
+        if (!rn2(10) && game.uarmf && game.uarmf.otyp !== WATER_WALKING_BOOTS)
+            await water_damage(game.uarm, "armor", true);
+    }
+    return ECMD_TIME;
 }
 
 /* C ref: artifact.h u_wield_art() */

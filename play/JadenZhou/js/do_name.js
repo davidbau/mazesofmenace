@@ -3,6 +3,7 @@
 // Ported so far: christen_monst(), rndghostname(), noveltitle(), the x_monnam()
 // family.
 
+import { docall } from './potion.js';
 import { set_artifact_intrinsic_sync } from './artifact.js';
 import { livelog_printf } from './display.js';
 import { LL_CONDUCT, LL_ARTIFACT } from './const.js';
@@ -128,7 +129,7 @@ export async function docallcmd() {
             if (!obj.dknown) {
                 await You("would never recognize another one.");
             } else {
-                throw new Error('docallcmd(): docall() not ported yet');
+                await docall(obj);
             }
         }
         break;

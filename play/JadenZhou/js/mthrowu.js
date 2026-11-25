@@ -87,7 +87,12 @@ import {
     Sleep_resistance, Acid_resistance, Stone_resistance, Stunned, Confusion, BlindedTimeout,
     Blind, Stoned, Hallucination, Deaf, Fumbling, Underwater, Hate_silver
 } from './youprop.js';
-import { Role_if, u_at } from './const.js';
+import { Role_if, u_at, MIGR_NOWHERE } from './const.js';
+import { munstone } from './muse.js';
+import { hero_breaks, breaks } from './dothrow.js';
+import { dissolve_bars } from './monmove.js';
+import { acurrstr } from './attrib.js';
+import { WT_IRON_BALL_INCR } from './const.js';
 
 /* C ref: youprop.h -- (H* || E*) && !B* */
 function verbose() { return game.flags.verbose ?? true; }
@@ -350,7 +355,7 @@ async function drop_throw(obj, ohit, x, y) {
     if (broken) {
         delobj(obj);
     } else {
-        if (down_gate(x, y) !== 'MIGR_NOWHERE')
+        if (down_gate(x, y) !== MIGR_NOWHERE)
             broken = await ship_object(obj, x, y, false);
         if (!broken) {
             let mtmp = m_at(x, y);
@@ -603,8 +608,12 @@ export async function ohitmon(
                     await pline("It is burned!");
             }
         }
-        if (otmp.otyp === O.EGG && touch_petrifies(mons[otmp.corpsenm]))
-            throw new Error('ohitmon(): munstone()/minstapetrify() not ported yet');
+        if (otmp.otyp === O.EGG && touch_petrifies(mons[otmp.corpsenm])) {
+            if (!await munstone(mtmp, false))
+                throw new Error('ohitmon(): minstapetrify() not ported yet');
+            if (resists_ston(mtmp))
+                damage = 0;
+        }
 
         /* might already be dead (if petrified) */
         if (!harmless && !DEADMONSTER(mtmp)) {
@@ -1452,36 +1461,63 @@ export async function hit_bars(
         melee_attk = (breakflags & BRK_MELEE) !== 0;
     let noise = 0;
 
-    void nodissolve; void melee_attk;
-    if (breaktest(otmp))
-        /* your_fault ? hero_breaks(otmp, objx, objy, breakflags)
-                      : breaks(otmp, objx, objy) */
-        throw new Error('hit_bars(): breakmsg()/breakobj() not ported yet');
-    void objx; void objy;
-    if (!Deaf()) {
-        const barsounds = ["", "Whang", "Whap", "Flapp", "Clink", "Clonk"];
-        const bsindx = (obj_type === O.BOULDER || obj_type === O.HEAVY_IRON_BALL)
-                       ? 1
-                       : harmless_missile(otmp) ? 2
-                       : is_flimsy(otmp) ? 3
-                       : (otmp.oclass === COIN_CLASS
-                          || objects[obj_type].oc_material === GOLD
-                          || objects[obj_type].oc_material === SILVER)
-                         ? 4
-                         : barsounds.length - 1;
+    if (your_fault
+        ? await hero_breaks(otmp, objx, objy, breakflags)
+        : await breaks(otmp, objx, objy)) {
+        objp.obj = null; /* object is now gone */
+        /* breakage makes its own noises */
+        if (obj_type === O.POT_ACID) {
+            if (cansee(barsx, barsy) && !nodissolve) {
+                await pline_The("iron bars are dissolved!");
+            } else {
+                /* Soundeffect(se_angry_snakes, 100) */
+                await You_hear(Hallucination() ? "angry snakes!"
+                                               : "a hissing noise.");
+            }
+            if (!nodissolve)
+                await dissolve_bars(barsx, barsy);
+        }
+    } else {
+        if (!Deaf()) {
+            const barsounds = ["", "Whang", "Whap", "Flapp", "Clink", "Clonk"];
+            const bsindx = (obj_type === O.BOULDER || obj_type === O.HEAVY_IRON_BALL)
+                           ? 1
+                           : harmless_missile(otmp) ? 2
+                           : is_flimsy(otmp) ? 3
+                           : (otmp.oclass === COIN_CLASS
+                              || objects[obj_type].oc_material === GOLD
+                              || objects[obj_type].oc_material === SILVER)
+                             ? 4
+                             : barsounds.length - 1;
 
-        /* Soundeffect(se[bsindx], 100) */
-        await pline(`${barsounds[bsindx]}!`);
+            /* Soundeffect(se[bsindx], 100) */
+            await pline(`${barsounds[bsindx]}!`);
+        }
+        if (!(harmless_missile(otmp) || is_flimsy(otmp)))
+            noise = 4 * 4;
+
+        if (your_fault && (otmp.otyp === O.WAR_HAMMER
+                           || otmp.otyp === O.HEAVY_IRON_BALL)) {
+            /* iron ball isn't a weapon or wep-tool so doesn't use obj->spe;
+               weight is normally 480 but can be increased by increments
+               of 160 (scrolls of punishment read while already punished) */
+            const spe = ((otmp.otyp === O.HEAVY_IRON_BALL) /* 3+ for iron ball */
+                         ? Math.trunc(otmp.owt / WT_IRON_BALL_INCR)
+                         : otmp.spe);
+            /* chance: used in saving throw for the bars; more likely to
+               break those when 'chance' is _lower_; acurrstr(): 3..25 */
+            const chance = (melee_attk ? 40 : 60) - acurrstr() - spe;
+
+            if (!rn2(Math.max(2, chance))) {
+                await You("break the bars apart!");
+                await dissolve_bars(barsx, barsy);
+                noise = noise * 2;
+            }
+        }
+
+        if (noise)
+            await wake_nearto(barsx, barsy, noise);
     }
-    if (!(harmless_missile(otmp) || is_flimsy(otmp)))
-        noise = 4 * 4;
-
-    if (your_fault && (otmp.otyp === O.WAR_HAMMER
-                       || otmp.otyp === O.HEAVY_IRON_BALL))
-        throw new Error('hit_bars(): breaking the bars apart not ported yet');
-
-    if (noise)
-        await wake_nearto(barsx, barsy, noise);
 }
 
 // C ref: dothrow.c harmless_missile()

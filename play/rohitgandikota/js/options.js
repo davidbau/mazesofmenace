@@ -265,7 +265,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         && !(opt.name === 'paranoid_confirmation' && negated)
         && !(opt.name === 'number_pad' && (opts.length <= 10 || negated || tinitial))
         && opt.name !== 'hilite_status' && opt.name !== 'menu_headings'
-        && opt.name !== 'petattr') {
+        && opt.name !== 'petattr' && opt.name !== 'msg_window') {
         config_error_add(`Missing value for '${opt.name}'`);
         return false;
     }
@@ -514,6 +514,31 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         }
         result.opts.menu_style = style;
         result.opts.menustyle = menutype[style];
+    } else if (opt.name === 'msg_window') {
+        // src/options.c:2456 optfn_msg_window(), tty do_set arm.
+        const op = sep < 0 ? '' : opts.slice(sep + 1);
+        let tmp;
+        if (op === '') {
+            tmp = negated ? 's' : 'f';
+        } else {
+            if (negated) {
+                config_error_add(`The ${opt.name} option may not both have a value and be negated.`);
+                return false;
+            }
+            tmp = op[0].toLowerCase();
+        }
+        switch (tmp) {
+        case 's':
+        case 'c':
+        case 'f':
+        case 'r':
+            (game.iflags ||= {}).prevmsg_window = tmp;
+            (result.optSetInConfig ||= {}).msg_window = true;
+            break;
+        default:
+            config_error_add(`Unknown ${opt.name} parameter '${op}'`);
+            return false;
+        }
     } else if (opt.name === 'menu_objsyms') {
         // src/options.c:2225 optfn_menu_objsyms(), do_set arm.
         const op = sep < 0 ? '' : opts.slice(sep + 1);
@@ -861,6 +886,8 @@ export function parseNethackrc(rc) {
     };
     // src/options.c:7264 initoptions_init(): the attribute precedes the rc.
     (game.iflags ||= {}).wc2_petattr = ATR_INVERSE;
+    // src/options.c:7181 initoptions_init(): tty message-history default.
+    game.iflags.prevmsg_window = 's';
     if (!rc) return result;
     config_error_data = result; /* src/cfgfiles.c config_error_init() */
 

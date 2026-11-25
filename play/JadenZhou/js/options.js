@@ -48,6 +48,10 @@ import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
     tty_end_menu, tty_select_menu, tty_destroy_nhwindow, tty_getlin,
 } from './wintty.js';
+import { NHW_TEXT as NHW_TEXT_OPT, COLNO as COLNO_OPT,
+         BUFSZ as BUFSZ_OPT } from './const.js';
+import { tty_putstr as tty_putstr_opt,
+         tty_display_nhwindow as tty_display_nhwindow_opt } from './wintty.js';
 
 // C ref: options.c parse_role_opt()
 /* parse 'role' or 'race' or 'gender' or 'alignment';
@@ -2659,8 +2663,3 @@ async function next_opt(datawin, str) {
     }
     return;
 }
-
-import { NHW_TEXT as NHW_TEXT_OPT, COLNO as COLNO_OPT,
-         BUFSZ as BUFSZ_OPT } from './const.js';
-import { tty_putstr as tty_putstr_opt,
-         tty_display_nhwindow as tty_display_nhwindow_opt } from './wintty.js';

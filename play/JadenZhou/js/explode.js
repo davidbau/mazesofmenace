@@ -5,6 +5,8 @@
 // aren't ported yet), explosionmask(), engulfer_explosion_msg(),
 // adtyp_to_expltype(), mon_explodes().
 
+import { rehumanize } from './polyself.js';
+import { hideunder_async } from './makemon.js';
 import { DEADMONSTER } from './mon.js';
 import { pay_for_damage as pay_for_damage_ex } from './shk.js';
 import { game } from './gstate.js';
@@ -644,7 +646,7 @@ export async function explode(
 
         if (u.uhp <= 0 || (Upolyd() && u.mh <= 0)) {
             if (Upolyd()) {
-                throw new Error('explode(): rehumanize() not ported yet');
+                await rehumanize();
             } else {
                 if (olet === MON_EXPLODE) {
                     if (generic) /* explosion was unseen; str=="explosion", */
@@ -719,7 +721,7 @@ export async function scatter(sx, sy, /* location of objects to scatter */
     newsym_ex(sx, sy);
     if (u_at(sx, sy) && u.uundetected
         && (game.youmonst.data.mflags1 & M1_CONCEAL_ex) !== 0) /* hides_under() */
-        throw new Error('scatter(): hideunder() not ported yet');
+        await hideunder_async(game.youmonst);
     if ((mtmp = m_at(sx, sy)) != null && mtmp.mtrapped)
         mtmp.mtrapped = 0;
     maybe_unhide_at_ex(sx, sy);

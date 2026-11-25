@@ -391,10 +391,9 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
         const cancelled = await _tty_pick_any_menu_run(renderLines, items, winColFooter, prior);
         if (_lastPickGeom.col === 1) {
             // C wintty.c:978-979: erase_menu_or_text uses docrt + flush_screen.
-            await docrt();
+            await docrt(false, game._screen_output);
             status_r1_menu_docrt();
             game._statusBlankAfterDocrt = true;
-            game._pending_message = '';
             await flush_screen(1);
         } else if (_lastPickGeom.col > 0) {
             docorner_blank_utf8_captures(_lastPickGeom.col - 1, _lastPickGeom.rows + 1);
@@ -403,8 +402,8 @@ async function _tty_pick_any_menu(renderLines, items, winColFooter, prior = null
              * under select_menu()'s bot_disabled, so botlx stays pending. */
             if (_lastPickGeom.rows + 1 >= (_threeStatusLines() ? 21 : 22) && game.disp)
                 game.disp.botlx = 1;
+            game._pending_message = '';
         }
-        game._pending_message = '';
         /* No flush_screen() after a corner menu: docorner() (wintty.c:982)
          * repaints only rows 0..maxrow, and menu_loot (pickup.c:3286-3340)
          * opens the next menu with the rest of gbuf still unflushed. */

@@ -295,7 +295,167 @@ export const NOT_SAVED = [
     'xlock',
     // C pager.c:2661 dowhatdoes() `static boolean once = FALSE;` is process-local.
     '_whatdoes_once',
+    /* C decl.h:886 gs.simple_options_help lives in struct instance_globals_s
+     * (decl.c:708 initial FALSE), which savegamestate() (save.c:264-333) never
+     * writes; the `O` menu's '?' toggle (options.c:8657) therefore does not
+     * survive a save: the restoring process shows "? - show help" again. */
+    'simple_options_help',
+    // gm.multi / multi_reason / multireasonbuf (decl.h:592-594), ga.afternmv,
+    // gn.nomovemsg (decl.h:658), go.occtime (decl.h:710): a restored process
+    // starts with no pending multi-turn action.
+    'multi', 'multi_reason', 'multireasonbuf', 'afternmv', 'occtime',
+    // gc.command_count (decl.h:244), gl.last_command_count (decl.h:521),
+    // gc.cmd_key (decl.h:242), gc.current_wand (decl.h:246) — command memory.
+    'command_count', 'last_command_count', 'cmd_key', 'gc_current_wand',
+    // gc.clicklook_cc (decl.h), the last farlook/click position.
+    'clicklook_cc',
+    // gu.unweapon (decl.h:978; restore.c:691-699 recomputes it), gv.vision_
+    // full_recalc (decl.h:1019), gn.notonhead (decl.h:681), gt.thrownobj
+    // (decl.h:931), gk.kickedloc (decl.h:507), ga.at_ladder (decl.h:149).
+    'unweapon', 'notonhead', 'thrownobj', 'kickedloc', 'at_ladder',
+    // gp.petname_used (decl.h:770), gp.preferred_pet (decl.h:771, from the rc),
+    // gy.yn_number, gm.mrank_sz (decl.h:589), gv.vault_x/y (decl.h:1003),
+    // ge.en_win / en_via_menu (decl.h:354-355), gi.initial_don (decl.h:474).
+    'petname_used', 'preferred_pet', 'yn_number', 'mrank_sz', 'vault_x', 'vault_y',
+    'en_win', 'en_via_menu', 'initial_don',
+    // Level-creation transients: gm.made_branch (decl.h:616), gi.in_mklev
+    // (decl.h:467), gl.lev_message (decl.h:567), gi.in_mk_themerooms
+    // (decl.h:490), gt.themeroom_failed (decl.h:957), gr.ransacked (decl.h:
+    // 822), sp_lev.c's splev map.
+    'made_branch', 'in_mklev', 'lev_message', 'in_mk_themerooms', 'themeroom_failed',
+    'ransacked', 'splev_map',
+    // gc.current_container (decl.h:284), ga.abort_looting (decl.h:169),
+    // ga.acid_ctx (decl.h:181), gb.bughack (decl.h:208), ball.c's
+    // bcrestriction static, gm.m muse state (has_defense ... misc,
+    // decl.h:633 m_using), gj.jumping_is_magic (decl.h:500),
+    // gi.in_steed_dismounting (decl.h:468), pray.c turn_undead statics,
+    // gv.vamp_rise_msg (decl.h:1007), gw.wasinwater (decl.h:1034),
+    // invent.c's getobj_else static, gd.defer_see_monsters (decl.h:315),
+    // gd.done_seq (decl.h:329), gl.loot_reset_justpicked (decl.h:560),
+    // gp.pickup_encumbrance (decl.h:781), gs.sex_change_ok (decl.h:899).
+    'current_container', 'abort_looting', 'acid_ctx', 'bughack', 'bcrestriction',
+    'has_defense', 'has_offense', 'has_misc', 'defensive', 'offensive', 'misc',
+    'm_using', 'jumping_is_magic', 'in_steed_dismounting', 'turn_undead_range',
+    'turn_undead_msg_cnt', 'vamp_rise_msg', 'wasinwater', 'getobj_else',
+    'defer_see_monsters', 'done_seq', 'loot_reset_justpicked', 'pickup_encumbrance',
+    'sex_change_ok',
+    // gs.spl_sortmode / spl_orderindx (decl.h:909-910): the `+` menu's sort
+    // order is process state; svs.spl_book itself is saved (save.c:316-318).
+    'spl_sortmode', 'spl_orderindx',
+    // gm.mydogs (decl.h:603): only non-empty during a level change.
+    'mydogs',
+    // rumors.c true/false rumor offsets (gt.true_rumor_size decl.h:949 ...),
+    // computed from the rumors file by each process.
+    'true_rumor_size', 'true_rumor_start', 'true_rumor_end',
+    'false_rumor_size', 'false_rumor_start', 'false_rumor_end',
+    // vision.c process state (gv.viz_array family, cs_rows/left/right
+    // clear-path tables, the vision iterator); restore.c:927 recomputes.
+    'cs_rows', 'cs_left', 'cs_right', 'vis_func', 'vis_varg', 'vis_start_row',
+    'vis_start_col', 'vis_step', 'v',
+    // struct display_hints disp (decl.h:123) aliases.
+    'botl', 'botlx',
+    // Option/rc state: `struct a11y_info a11y` (flag.h, options-only, never
+    // saved), ga.apelist autopickup exceptions (decl.h; options.c:5974 adds,
+    // save.c never writes — a restored process has only its rc's), the
+    // SYMBOLS= overrides, role filter, options menu runtime bookkeeping.
+    'a11y', 'apelist', 'symbolOverrides', 'rc_rolefilter', 'options_runtime',
+    // gb.bl_hilite_moves (decl.h:192), gc.corpsenm_digested (decl.h:297),
+    // gd.did_dig_msg (decl.h:318), ge.eatmbuf (decl.h:359), gk.kickedobj
+    // (decl.h:510), gm.mentioned_water (decl.h:645), gm.mswallower
+    // (decl.h:610), gs.stoned (decl.h:850), gz.zap_oseen (decl.h:1098).
+    'bl_hilite_moves', 'corpsenm_digested', 'did_dig_msg', 'eatmbuf', 'kickedobj',
+    'mentioned_water', 'mswallower', 'stoned', 'zap_oseen',
+    // JS-only: map-dump channel counter, the `cg.zeroany` constant, `s`.
+    'mapdump_serial', 'cg', 's',
 ];
+
+/* JS-private `_name` keys.  The port hangs a great deal of window-port and
+ * display bookkeeping (tty topline/botl/--More-- state) off `game` under
+ * leading-underscore names; C keeps the equivalent in wintty.c/botl.c/
+ * display.c statics, which no save function writes.  So a `_name` key is
+ * PROCESS state unless it is listed here as the port's spelling of a field C
+ * does save: */
+export const SAVED_PRIVATE = new Set([
+    '_artiexist',            // artifact.c:124 save_artifacts artiexist[]
+    '_disco',                // o_init.c:384-386 savenames svd.disco[]
+    // o_init.c:387-389 savenames writes objects[] whole (Sfo_objclass):
+    // oc_name_known, oc_encountered, oc_uname (:394-400), the shuffled
+    // descriptions/colors/materials, and the price-seen columns (objects.h:51).
+    '_oc_name_known', '_oc_encountered', '_oc_uname', '_oc_price_seen',
+    '_objDescrIdx', '_objDescriptions', '_objColors', '_objMaterials', '_objTough',
+    // dungeon.c save_dungeon: dungeons[], branches, n_dgns, sp_levchn,
+    // mapseenchn (the #overview database).
+    '_dungeon_branches', '_dungeons_full', '_n_dgns', '_sp_levchn',
+    '_tune',                 // decl.h:1214 svt.tune
+    '_msg_history',          // save.c:326 save_msghistory
+    /* Which _msg_history lines a getlin filed (getline.c:81) — a property of
+     * the saved strings themselves in C (no word-wrap '\n', so ^P hard-wraps
+     * them, topl.c:121-142); it must travel with _msg_history. */
+    '_getlin_hist',
+    '_track',                // save.c:553 save_track (track.c:81-84)
+    '_lastinvnr',            // restgamestate resets it (decl.h:536)
+]);
+/* Prefixes of `_` keys holding saved per-level / overview state:
+ * svl.level.flags (save.c:521 Sfo_levelflags) and mapseenchn. */
+const SAVED_PRIVATE_PREFIXES = ['_level_', '_mapseen_'];
+
+/* struct instance_globals_<x> containers (decl.h:141-1106) are process
+ * state except for the few fields a save function writes. */
+export const SAVED_CONTAINER_FIELDS = {
+    gt: ['timer_base'],      // save.c:297 save_timers
+    gm: ['migrating_objs'],  // save.c:306 saveobjchn(&gm.migrating_objs)
+};
+const PROCESS_CONTAINERS = new Set(['ga', 'gb', 'gc', 'gd', 'ge', 'gf', 'gg', 'gh',
+    'gi', 'gj', 'gk', 'gl', 'gm', 'gn', 'go', 'gp', 'gq', 'gr', 'gs', 'gt', 'gu',
+    'gv', 'gw', 'gx', 'gy', 'gz']);
+
+/* C struct flag (flag.h) — saved whole (save.c:279 Sfo_flag).  Options the
+ * port parks on game.flags that are NOT struct flag fields (the rc parser's
+ * fallthrough arm, cond_* condition options which C keeps in botl.c
+ * condtests[], pet names in gc/gd/gh, `color` = iflags.wc_color, mhitm's
+ * gz.zombify) belong to the process that reads its own rc. */
+export const C_FLAG_FIELDS = new Set(['acoustics', 'armorstatus', 'autodig', 'autoquiver',
+    'autoopen', 'beginner', 'biff', 'bones', 'confirm', 'dark_room', 'debug', 'end_own',
+    'explore', 'female', 'friday13', 'goldX', 'help', 'tips', 'tutorial', 'ignintr',
+    'implicit_uncursed', 'ins_chkpt', 'invlet_constant', 'legacy', 'lit_corridor',
+    'mention_decor', 'mention_walls', 'nap', 'nopick_dropped', 'null', 'pickup',
+    'pickup_stolen', 'pickup_thrown', 'pushweapon', 'quick_farsight', 'rest_on_space',
+    'safe_dog', 'safe_wait', 'showexp', 'showscore', 'showvers', 'silent', 'sortpack',
+    'sparkle', 'standout', 'terrainstatus', 'time', 'tombstone', 'verbose',
+    'weaponstatus', 'end_top', 'end_around', 'autounlock', 'moonphase', 'suppress_alert',
+    'paranoia_bits', 'versinfo', 'pickup_burden', 'pile_limit', 'discosort', 'sortloot',
+    'vanq_sortmode', 'inv_order', 'pickup_types', 'end_disclose', 'menu_style',
+    'made_fruit', 'initrole', 'initrace', 'initgend', 'initalign', 'randomall',
+    'pantheon', 'lootabc', 'showrace', 'travelcmd', 'runmode']);
+/* C struct context_info (context.h) — saved whole (save.c:277). */
+export const C_CONTEXT_FIELDS = new Set(['ident', 'no_of_wizards', 'run', 'startingpet_mid',
+    'current_fruit', 'mysteryforce', 'rndencode', 'startingpet_typ', 'warnlevel',
+    'next_attrib_check', 'seer_turn', 'snickersnee_turn', 'stethoscope_seq', 'travel',
+    'travel1', 'forcefight', 'nopick', 'made_amulet', 'mon_moving', 'move', 'mv',
+    'bypasses', 'door_opened', 'resume_wish', 'tips', 'digging', 'victual', 'engraving',
+    'tin', 'spbook', 'takeoff', 'warntype', 'polearm', 'objsplit', 'tribute', 'novel',
+    'achieveo', 'lifelist', 'jingle']);
+
+/* Is top-level `game[k]` part of the save file?  The single predicate both
+ * savegamestate() and restgamestate() consult. */
+export function isSavedGameKey(k) {
+    if (NOT_SAVED.includes(k)) return false;
+    if (PROCESS_CONTAINERS.has(k)) return false; /* see SAVED_CONTAINER_FIELDS */
+    if (k.startsWith('_'))
+        return SAVED_PRIVATE.has(k) || SAVED_PRIVATE_PREFIXES.some(p => k.startsWith(p));
+    return true;
+}
+
+/* Keep only the keys of `saved` that C's struct carries; every other key keeps
+ * the restoring process's own value from `fresh`. */
+export function merge_c_struct(fresh, saved, cfields) {
+    const out = {};
+    for (const k of Object.keys(fresh || {}))
+        if (!cfields.has(k)) out[k] = fresh[k];
+    for (const k of Object.keys(saved || {}))
+        if (cfields.has(k)) out[k] = saved[k];
+    return out;
+}
 
 /* C ref: save.c:246 savegamestate() — everything between the current level and
  * the other levels.  Returns the graph root; the caller serializes it into a
@@ -321,20 +481,24 @@ async function savegamestate() {
     }
     const state = {};
     for (const k of Object.keys(game))
-        if (!NOT_SAVED.includes(k) && typeof game[k] !== 'function')
+        if (isSavedGameKey(k) && typeof game[k] !== 'function')
             state[k] = game[k];
-    // C save.c:306 saves the migrating object chain, not JS's getter alias.
-    // Copy its value while retaining graph identity with game.migrating_objs.
-    if (game.gm)
-        state.gm = { ...game.gm };
-    // C decl.c: gd.did_nothing_flag is a decl global savegamestate() never
-    // writes, so a restored process starts with it 0 (the first blocked
-    // wait/search gets the "Use 'm' prefix" suffix again, do.c:2330-2333).
-    if (game.gd)
-        state.gd = { ...game.gd, did_nothing_flag: 0 };
-    // C save_luadata serializes the Lua variables, never the interpreter or
-    // its closures. Preserve the other gl fields (including light roots).
-    state.gl = { ...game.gl, luacore: null };
+    /* Only the instance_globals fields a save function writes (decl.h; see
+     * SAVED_CONTAINER_FIELDS).  gm.migrating_objs is copied by value while
+     * keeping graph identity with game.migrating_objs (save.c:306).  The rest
+     * — gd.did_nothing_flag (do.c:2330-2333), gl.luacore, gc's queues, go's
+     * option flags, gv.valid_menu_classes, gb.bucx_filter, gc.class_filter
+     * ... — belongs to the process. */
+    for (const [c, fields] of Object.entries(SAVED_CONTAINER_FIELDS)) {
+        if (!game[c]) continue;
+        const o = {};
+        for (const f of fields) if (Object.hasOwn(game[c], f)) o[f] = game[c][f];
+        state[c] = o;
+    }
+    /* struct flag / struct context_info are written whole (save.c:277,279);
+     * JS-only keys parked on them are process state. */
+    if (game.flags) state.flags = merge_c_struct(null, game.flags, C_FLAG_FIELDS);
+    if (game.context) state.context = merge_c_struct(null, game.context, C_CONTEXT_FIELDS);
     // C save.c:288: ubirthday is a 14-character local date, not a time_t.
     state.__ubirthday = yyyymmddhhmmss(game.u.ubirthday);
     const { get_nh_lua_variables } = await import('./nhlua.js');

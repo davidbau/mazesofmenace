@@ -84,6 +84,12 @@ import { REFLECTING, SHOCK_RES, DISINT_RES, W_ARM, W_ARMC, W_ARMS, M_SEEN_REFL,
          M_SEEN_ELEC, M_SEEN_DISINT, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
          KILLED_BY as KILLED_BY_PR, DIED as DIED_PR, Is_astralevel as Is_astralevel_pr,
          Is_sanctum as Is_sanctum_pr } from './const.js';
+import { rescued_from_terrain } from './trap.js';
+import { DISSOLVED } from './const.js';
+import { AMULET_OF_UNCHANGING } from './objects.js';
+import { gloves_simple_name } from './objnam.js';
+import { rehumanize } from './polyself.js';
+import { make_glib } from './potion.js';
 /* C ref: defsym.h S_altar (cmap index) */
 const S_altar = 33;
 const NH_BLACK = "black"; /* color.h */
@@ -784,8 +790,12 @@ async function fix_curse_trouble(otmp, what) {
         console.error('impossible: fix_curse_trouble: nothing to uncurse.');
         return;
     }
-    if (otmp === g.uarmg && Glib())
-        throw new Error('fix_curse_trouble(): make_glib() not ported yet');
+    if (otmp === g.uarmg && Glib()) {
+        make_glib(0);
+        await Your(`${gloves_simple_name(g.uarmg)} are no longer slippery.`);
+        if (!otmp.cursed)
+            return;
+    }
     if (!Blind() || (otmp === g.ublindf
                      && EProp(BLINDED) && !Blinded())) { /* Blindfolded_only */
         await pline(`${what ? what : Yobjnam2(otmp, "softly glow")} ${hcolor("amber") /* NH_AMBER */}.`);
@@ -826,13 +836,15 @@ async function fix_worst_trouble(trouble) {
         /* teleport should always succeed, but if not, just untrap them */
         if (!(await safe_teleds(TELEDS_NO_FLAGS)))
             await reset_utrap(true);
-        throw new Error('fix_worst_trouble(): rescued_from_terrain() not ported yet');
+        await rescued_from_terrain(DISSOLVED); /* DISSOLVED: pending cause of death
+                                                * if trouble didn't get cured */
+        break;
     case TROUBLE_STARVING:
         /* temporarily lost strength recovery now handled by init_uhunger() */
         /*FALLTHRU*/
     case TROUBLE_HUNGRY:
         await Your(`${body_part(STOMACH)} feels content.`);
-        init_uhunger();
+        await init_uhunger();
         g.disp_botl = true;
         break;
     case TROUBLE_SICK:
@@ -899,8 +911,18 @@ async function fix_worst_trouble(trouble) {
             await fix_curse_trouble(otmp, what);
             break;
         }
-        if (Upolyd() && nohands(g.youmonst.data))
-            throw new Error('fix_worst_trouble(): rehumanize()/unchanger() not ported yet');
+        if (Upolyd() && nohands(g.youmonst.data)) {
+            if (!Unchanging()) {
+                await Your("shape becomes uncertain.");
+                await rehumanize(); /* "You return to {normal} form." */
+            } else if ((otmp = (g.uamul && g.uamul.otyp === AMULET_OF_UNCHANGING)
+                                ? g.uamul : null) /* unchanger() */
+                       && otmp.cursed) {
+                /* otmp is an amulet of unchanging */
+                await fix_curse_trouble(otmp, what);
+                break;
+            }
+        }
         if (nohands(g.youmonst.data) || !freehand())
             console.error('impossible: fix_worst_trouble: couldn\'t cure hands.');
         break;

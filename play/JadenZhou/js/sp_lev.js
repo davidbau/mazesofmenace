@@ -133,6 +133,7 @@ import { newcham_sync, mongone } from './mon.js';
 import { mkmap } from './mkmap.js';
 import { Protection_from_shape_changers } from './youprop.js';
 import { A_NONE as A_NONE_SP, A_LAWFUL as A_LAWFUL_SP } from './const.js';
+import { makeroguerooms } from './extralev.js';
 
 // C ref: dungeon.h In_mines()
 function In_mines(lev) { return lev.dnum === game.dungeon_topology.d_mines_dnum; }
@@ -4155,7 +4156,8 @@ function splev_initlev(linit) {
         create_maze(linit.corrwid, linit.wallthick, linit.rm_deadends);
         break;
     case LVLINIT_ROGUE:
-        throw new Error('splev_initlev(): makeroguerooms() not ported yet');
+        makeroguerooms();
+        break;
     case LVLINIT_MINES:
         if (linit.lit === BOOL_RANDOM)
             linit.lit = rn2(2);

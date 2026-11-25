@@ -87,7 +87,7 @@ function zero_you() {
 }
 
 // C ref: u_init.c u_init_misc()
-export function u_init_misc() {
+export async function u_init_misc() {
     const g = game;
     const flags = g.flags;
     let i;
@@ -125,7 +125,7 @@ export function u_init_misc() {
     adjabil(0, 1);
     u.ulevel = u.ulevelmax = 1;
 
-    init_uhunger();
+    await init_uhunger();
     g.spl_book = [];
     for (i = 0; i <= MAXSPELL; i++)
         g.spl_book[i] = { sp_id: NO_SPELL, sp_lev: 0, sp_know: 0 };

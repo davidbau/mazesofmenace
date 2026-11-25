@@ -705,11 +705,60 @@ export function themerms_lua(L) {
             name: 'Twin businesses',
             mindiff: 4, // arbitrary
             contents: function() {
-                // The shop placement code (themerms.lua lines 821-866) is
-                // not ported yet; des.room raises the not-ported error for
-                // its inner rooms before any of it would roll.
+                // -- Due to the way room connections work in mklev.c, we must guarantee
+                // -- that the "aisle" between the shops touches all four walls of the
+                // -- larger room. Thus it has an extra width and height.
                 des.room({ type: 'themed', w: 9, h: 5, contents: function() {
-                    lua_error('Twin businesses: shop placement is not ported yet');
+                    // -- There are eight possible placements of the two shops, four of
+                    // -- which have the vertical aisle in the center.
+                    G.southeast = function() { return percent(50) ? 'south' : 'east'; };
+                    G.northeast = function() { return percent(50) ? 'north' : 'east'; };
+                    G.northwest = function() { return percent(50) ? 'north' : 'west'; };
+                    G.southwest = function() { return percent(50) ? 'south' : 'west'; };
+                    const southeast = G.southeast, northeast = G.northeast;
+                    const northwest = G.northwest, southwest = G.southwest;
+                    G.placements = [
+                        { lx: 1, ly: 1, rx: 4, ry: 1, lwall: 'south', rwall: southeast() },
+                        { lx: 1, ly: 2, rx: 4, ry: 2, lwall: 'north', rwall: northeast() },
+                        { lx: 1, ly: 1, rx: 5, ry: 1, lwall: southeast(), rwall: southwest() },
+                        { lx: 1, ly: 1, rx: 5, ry: 2, lwall: southeast(), rwall: northwest() },
+                        { lx: 1, ly: 2, rx: 5, ry: 1, lwall: northeast(), rwall: southwest() },
+                        { lx: 1, ly: 2, rx: 5, ry: 2, lwall: northeast(), rwall: northwest() },
+                        { lx: 2, ly: 1, rx: 5, ry: 1, lwall: southwest(), rwall: 'south' },
+                        { lx: 2, ly: 2, rx: 5, ry: 2, lwall: northwest(), rwall: 'north' },
+                    ];
+                    const placements = G.placements;
+                    G.ltype = 'weapon shop'; G.rtype = 'armor shop';
+                    if (percent(50)) {
+                        [G.ltype, G.rtype] = [G.rtype, G.ltype];
+                    }
+                    G.shopdoorstate = function() {
+                        if (percent(1)) {
+                            return 'locked';
+                        } else if (percent(50)) {
+                            return 'closed';
+                        } else {
+                            return 'open';
+                        }
+                    };
+                    const shopdoorstate = G.shopdoorstate;
+                    // d(#placements): d's 1-arg form is a Lua tail call, so
+                    // the recorder names its caller, this contents function
+                    // that C (lspo_room) called
+                    G.p = placements[withRngCaller(
+                        'nh.random src=nhlib.lua:10 parent=lua(themerms.lua:854)',
+                        () => d(placements.length)) - 1];
+                    const p = G.p;
+                    des.room({ type: G.ltype, x: p['lx'], y: p['ly'], w: 3, h: 3, filled: 1, joined: false,
+                               contents: function() {
+                                   des.door({ state: shopdoorstate(), wall: p['lwall'] });
+                               },
+                    });
+                    des.room({ type: G.rtype, x: p['rx'], y: p['ry'], w: 3, h: 3, filled: 1, joined: false,
+                               contents: function() {
+                                   des.door({ state: shopdoorstate(), wall: p['rwall'] });
+                               },
+                    });
                 } });
             },
         },

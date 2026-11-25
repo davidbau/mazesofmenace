@@ -149,13 +149,42 @@ import { del_engr_at } from './engrave.js';
 import { m_canseeu } from './monmove.js';
 import { fightm, resist_conflict } from './mhitm.js';
 import { BOLT_LIM as BOLT_LIM_mn } from './const.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, spoteffects } from './hack.js';
 import { in_your_sanctuary } from './priest.js';
 import { nemdead, leaddead, nemesis_stinks } from './quest.js';
 import { stinky_nemesis } from './questpgr.js';
 import { Hallucination, Conflict } from './youprop.js';
 import { m_next2u } from './const.js';
-import { uhis } from './mhitu.js';
+import { uhis, unstuck } from './mhitu.js';
+import { obj_extract_self } from './mkobj.js';
+import { possibly_unwield } from './weapon.js';
+import { split_mon } from './potion.js';
+import { hot_pursuit } from './shk.js';
+import { safe_oname } from './do_name.js';
+import { artifact_exists } from './artifact.js';
+import { DISMOUNT_GENERIC, EXPL_FIERY } from './const.js';
+import { dismount_steed } from './steed.js';
+import { bury_an_obj } from './dig.js';
+import { dryup } from './fountain.js';
+import { explode } from './explode.js';
+import { p_coaligned } from './priest.js';
+import { A_NONE } from './const.js';
+import { AD_ELEC as AD_ELEC_MN, AD_FIRE as AD_FIRE_MN,
+         AD_COLD as AD_COLD_MN } from './monsters.js';
+import { mon_adjust_speed as mon_adjust_speed_mn } from './worn.js';
+import { d } from './rng.js';
+import { pmname } from './do_name.js';
+import { There as There_mn } from './display.js';
+import { body_part as body_part_mn } from './insight.js';
+import { STOMACH as STOMACH_MN, KILLED_BY_AN as KILLED_BY_AN_MN } from './const.js';
+import { killer as killer_mn } from './topten.js';
+import { losehp as losehp_mn, Maybe_Half_Phys as Maybe_Half_Phys_mn } from './trap.js';
+import { mon_explodes } from './explode.js';
+import { shkgone } from './shk.js';
+import { gd_move } from './vault.js';
+import { rloc_to as rloc_to_mn } from './teleport.js';
+import { place_wsegs as place_wsegs_rm } from './worm.js';
+import { set_ustuck as set_ustuck_rm } from './uhitm.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -267,7 +296,11 @@ export function mongone(mdef) {
     m_detach(mdef, mdef.data, false);
 }
 
-// C ref: mon.c mon_leaving_level() -- the parts reached so far
+// C ref: mon.c mon_leaving_level()
+// unstuck() is async (docrt() after an engulfer lets go), so when 'mon' is
+// holding or engulfing the hero this returns a promise that the async caller
+// (m_detach() for a death) awaits; otherwise it runs synchronously, which
+// keeps the level-creation callers of mongone()/relmon() synchronous.
 function mon_leaving_level(mon) {
     const mx = mon.mx, my = mon.my;
     const lst = game.level.monsters || [];
@@ -276,25 +309,36 @@ function mon_leaving_level(mon) {
 
     /* to prevent an infinite relobj-flooreffects-hmon-killed loop */
     mon.mtrapped = 0;
-    /* unstuck(mon) */
-    if (game.u.ustuck === mon)
-        throw new Error('mon_leaving_level(): unstuck() not ported yet');
 
-    if (onmap) {
-        if (mon.wormno)
-            remove_worm(mon);
-        else
-            lst.splice(i, 1); /* remove_monster(mx, my) */
+    const leave_map = () => {
+        if (onmap) {
+            if (mon.wormno)
+                remove_worm(mon);
+            else
+                lst.splice(lst.indexOf(mon), 1); /* remove_monster(mx, my) */
+        }
+        if (onmap) {
+            mon.mundetected = 0; /* for migration; doesn't matter for death */
+            /* unhide mimic in case its shape has been blocking line of sight
+               or it is accompanying the hero to another level */
+            if (mon.m_ap_type && mon.m_ap_type !== M_AP_MONSTER)
+                seemimic(mon);
+            /* fill_pit(mx, my): boulders dropping into pits not ported */
+            newsym(mx, my);
+        }
+        /* if mon is a remembered target, forget it since it isn't here anymore */
+        if (game.context?.polearm && mon === game.context.polearm.hitmon)
+            game.context.polearm.hitmon = null;
+    };
+
+    if (game.u.ustuck === mon) {
+        return (async () => {
+            await unstuck(mon); /* mon is not swallowing or holding you nor held by you */
+            leave_map();
+        })();
     }
-    if (onmap) {
-        mon.mundetected = 0; /* for migration; doesn't matter for death */
-        /* unhide mimic in case its shape has been blocking line of sight
-           or it is accompanying the hero to another level */
-        if (mon.m_ap_type && mon.m_ap_type !== M_AP_MONSTER)
-            seemimic(mon);
-        /* fill_pit(mx, my): boulders dropping into pits not ported */
-        newsym(mx, my);
-    }
+    leave_map();
+    return undefined;
 }
 
 // C ref: mon.c mnearto()
@@ -391,6 +435,8 @@ export function relmon(mon, list) {
         throw new Error('relmon: no fmon available.'); /* panic() */
 
     /* take 'mon' off the map */
+    if (game.u.ustuck === mon) /* relmon() and its callers are synchronous */
+        throw new Error('relmon(): async unstuck() under synchronous relmon() not ported yet');
     mon_leaving_level(mon);
 
     /* remove 'mon' from the 'fmon' list */
@@ -432,11 +478,16 @@ function m_detach(mtmp, mptr, due_to_death) {
     if (mx > 0 && emits_light(mptr))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));
 
-    mon_leaving_level(mtmp);
+    if (!due_to_death && game.u.ustuck === mtmp) /* mongone() is synchronous */
+        throw new Error('m_detach(): async unstuck() under synchronous mongone() not ported yet');
+    /* a promise only when mtmp holds or engulfs the hero (unstuck()) */
+    const leaving = mon_leaving_level(mtmp);
 
-    mtmp.mhp = 0; /* simplify some tests: force mhp to 0 */
-    if (mtmp.iswiz)
-        throw new Error('m_detach(): wizdeadorgone() not ported yet');
+    const after_leaving = () => {
+        mtmp.mhp = 0; /* simplify some tests: force mhp to 0 */
+        if (mtmp.iswiz)
+            throw new Error('m_detach(): wizdeadorgone() not ported yet');
+    };
 
     const after_relobj = () => {
         if (game.stealmid && mtmp.m_id === game.stealmid)
@@ -449,9 +500,6 @@ function m_detach(mtmp, mptr, due_to_death) {
 
         mtmp.mstate = (mtmp.mstate || 0) | MON_DETACH;
         game.purge_monsters = (game.purge_monsters || 0) + 1;
-
-        if (mtmp === game.u.usteed)
-            throw new Error('m_detach(): dismount_steed() not ported yet');
     };
 
     /* foodead() might give quest feedback for foo having died; skip that
@@ -460,6 +508,9 @@ function m_detach(mtmp, mptr, due_to_death) {
        away without having been killed */
     if (due_to_death) {
         return (async () => {
+            if (leaving)
+                await leaving;
+            after_leaving();
             if (mtmp.data.msound === MS_NEMESIS) {
                 await nemdead();
                 /* The Archeologist, Caveman, and Priest quest texts describe
@@ -473,9 +524,14 @@ function m_detach(mtmp, mptr, due_to_death) {
                that mtmp->mx,my contains the appropriate location */
             await relobj(mtmp, 1, false); /* drop mtmp->minvent, issue newsym(mx,my) */
             after_relobj();
+            if (mtmp === game.u.usteed)
+                await dismount_steed(DISMOUNT_GENERIC);
         })();
     }
+    after_leaving();
     after_relobj();
+    if (mtmp === game.u.usteed) /* mongone() is synchronous */
+        throw new Error('m_detach(): async dismount_steed() under synchronous mongone() not ported yet');
     return undefined;
 }
 
@@ -753,8 +809,13 @@ function make_corpse(mtmp, corpseflags) {
             /* preserve the unique traits of some creatures */
             obj = mkcorpstat(CORPSE, KEEPTRAITS(mtmp) ? mtmp : null,
                              mdat, x, y, corpstatflags);
-            if (burythem)
-                throw new Error('make_corpse(): bury_an_obj() not ported yet');
+            if (burythem) {
+                const dealloc = { v: false };
+
+                bury_an_obj(obj, dealloc);
+                newsym(x, y);
+                return dealloc.v ? null : obj;
+            }
         }
     }
     /* All special cases should precede the G_NOCORPSE check */
@@ -980,7 +1041,8 @@ export async function xkilled(
                     /* oc_big is also oc_bimanual and oc_bulky */
                     && (otmp.owt > 30 || objects[otyp].oc_big)) {
                     if (otmp.oartifact) /* un-create */
-                        throw new Error('xkilled(): artifact_exists() not ported yet');
+                        artifact_exists(otmp, safe_oname(otmp), false,
+                                        ONAME_NO_FLAGS);
                     delobj(otmp);
                 } else if (!await flooreffects(otmp, x, y, nomsg ? '' : 'fall')) {
                     place_object(otmp, x, y);
@@ -1002,8 +1064,16 @@ export async function xkilled(
             }
         }
 
-        if (wasinside)
-            throw new Error('xkilled(): killing an engulfer from inside (spoteffects()) not ported yet');
+        if (wasinside) {
+            /* spoteffects() can end up clearing level of monsters; grab a copy */
+            const museum = Object.assign(Object.create(Object.getPrototypeOf(mtmp)), mtmp);
+            museum.nmon = null;
+            museum.minvent = null;
+            museum.mextra = null;
+            delete museum.mgivenname; /* JS keeps the given name beside mextra */
+            await spoteffects(true); /* poor man's expels() */
+            mtmp = museum; /* use the reference copy now */
+        }
         /* monster is gone, corpse or other object might now be visible */
         newsym(x, y);
     }
@@ -1057,7 +1127,12 @@ export async function xkilled(
         else
             await pline('Whoopsie-daisy!');
     } else if (mtmp.ispriest) {
-        throw new Error('xkilled(): killing a priest (p_coaligned()) not ported yet');
+        adjalign((p_coaligned(mtmp)) ? -2 : 2);
+        /* cancel divine protection for killing your priest */
+        if (p_coaligned(mtmp))
+            game.u.ublessed = 0;
+        if (mdat.maligntyp === A_NONE)
+            adjalign(Math.trunc(ALIGNLIM() / 4)); /* BIG bonus */
     } else if (mtmp.mtame) {
         adjalign(-15); /* bad!! */
         /* your god is mighty displeased... */
@@ -1272,7 +1347,10 @@ export async function setmangry(mtmp, via_attack) {
         return;
     mtmp.mpeaceful = 0;
     if (mtmp.ispriest) {
-        throw new Error('setmangry(): angering a priest (p_coaligned()) not ported yet');
+        if (p_coaligned(mtmp))
+            adjalign(-5); /* very bad */
+        else
+            adjalign(2);
     } else
         adjalign(-1); /* attacking peaceful monsters is bad */
     if ((mtmp.data.mflags1 & M1_HUMANOID) || mtmp.isshk || mtmp.isgd) {
@@ -1319,7 +1397,7 @@ export async function wakeup(mtmp, via_attack) {
             if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE).length)
                 throw new Error('wakeup(): ghod_hitsu() not ported yet');
             if (mtmp.isshk && !(game.u.ushops && game.u.ushops.length))
-                throw new Error('wakeup(): hot_pursuit() not ported yet');
+                hot_pursuit(mtmp);
         }
     }
 }
@@ -1381,7 +1459,14 @@ async function minliquid_core(mtmp) {
      * function will fail.
      */
     if (ptr === mons[MM.PM_GREMLIN] && (inpool || infountain) && rn2(3)) {
-        throw new Error('minliquid(): split_mon() not ported yet');
+        if (await split_mon(mtmp, null))
+            await dryup(mtmp.mx, mtmp.my, false);
+        if (inpool)
+            /* water_damage_chain(mtmp->minvent, FALSE): minvent in C's chain
+               order (newest first) */
+            await water_damage_chain_mn(mtmp.minvent ? mtmp.minvent.slice().reverse()
+                                                     : null, false);
+        return 0;
     } else if (ptr === mons[MM.PM_IRON_GOLEM] && inpool && !rn2(5)) {
         const dam = d(2, 6);
 
@@ -1974,8 +2059,14 @@ export async function decide_to_shapeshift(mon) {
    returns 1 if it actually changes form */
 export async function newcham(mtmp, mdat, ncflags) {
     const gen = newcham_g(mtmp, mdat, ncflags);
-    let r;
-    while (!(r = gen.next()).done) {
+    let r, v;
+    while (!(r = gen.next(v)).done) {
+        v = undefined;
+        if (r.value?.newcham_async) {
+            /* an async callee of newcham(); its result goes back to newcham_g() */
+            v = await r.value.newcham_async();
+            continue;
+        }
         if (r.value === NEWCHAM_MON_MOVING) {
             /* the end of newcham() when a monster is moving: */
             /* old form might not have been affected by Elbereth but
@@ -1998,12 +2089,16 @@ export async function newcham(mtmp, mdat, ncflags) {
 /* newcham_g() yields this (instead of a message) to have newcham() run
    its final mon_moving step, which may call the async monflee() */
 const NEWCHAM_MON_MOVING = { newcham_mon_moving: true };
+/* newcham_g() yields { newcham_async: () => promise, what } to have newcham()
+   await an async callee (possibly_unwield(), flooreffects()) */
 /* newcham() from a synchronous caller (makemon(), level creation), which
    never asks for messages */
 export function newcham_sync(mtmp, mdat, ncflags) {
     const gen = newcham_g(mtmp, mdat, ncflags);
     let r;
     while (!(r = gen.next()).done) {
+        if (r.value?.newcham_async)
+            throw new Error(`newcham(): async ${r.value.what} from a synchronous caller not ported yet`);
         if (r.value === NEWCHAM_MON_MOVING) {
             /* the end of newcham() when a monster is moving (e.g. a level
                made by deferred_goto() from movemon()): */
@@ -2181,9 +2276,10 @@ function* newcham_g(mtmp, mdat, ncflags) {
         /* && !Protection_from_shape_changers */)
         mtmp.cham = pm_to_cham(monsndx(mdat));
 
-    /* possibly_unwield(mtmp, polyspot): might lose use of weapon */
-    if (mtmp.mw)
-        throw new Error('newcham(): possibly_unwield() not ported yet');
+    /* possibly_unwield() returns at once without a wielded weapon */
+    if (mtmp.mw) /* MON_WEP(mtmp) */
+        yield { newcham_async: () => possibly_unwield(mtmp, polyspot), /* might lose use of weapon */
+                what: 'possibly_unwield()' };
     yield* mon_break_armor_g(mtmp, polyspot);
     /* mselftouch(): only matters for a monster wielding a cockatrice
        corpse (no weapon here) */
@@ -2193,13 +2289,21 @@ function* newcham_g(mtmp, mdat, ncflags) {
     if (mtmp.minvent?.length && !throws_rocks(mdat)) {
         /* DEADMONSTER(): it is possible for flooreffects() to kill mtmp;
            the rest of its inventory would be dropped making otmp2 stale */
-        for (const otmp of mtmp.minvent.slice()) {
+        for (const otmp of minv(mtmp)) { /* C's minvent order */
             if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
                 break;
-            if (otmp.otyp === BOULDER)
-                /* bypass_obj() if polyspot, obj_extract_self(), then the
-                   async flooreffects() or place_object() */
-                throw new Error('newcham(): dropping boulders (flooreffects()) not ported yet');
+            if (otmp.otyp === BOULDER) {
+                /* this keeps otmp from being polymorphed in the
+                   same zap that the monster that held it is polymorphed */
+                if (polyspot)
+                    bypass_obj(otmp);
+                obj_extract_self(otmp);
+                /* probably ought to give some "drop" message here */
+                if (yield { newcham_async: () => flooreffects(otmp, mtmp.mx, mtmp.my, ""),
+                            what: 'flooreffects()' })
+                    continue;
+                place_object(otmp, mtmp.mx, mtmp.my);
+            }
         }
     }
     if (mtmp === game.u.usteed)
@@ -3035,9 +3139,6 @@ export async function golemeffects(mon, damtype, dam) {
         }
     }
 }
-import { AD_ELEC as AD_ELEC_MN, AD_FIRE as AD_FIRE_MN,
-         AD_COLD as AD_COLD_MN } from './monsters.js';
-import { mon_adjust_speed as mon_adjust_speed_mn } from './worn.js';
 
 /* C ref: obj.h ofood(), polyfood(), mlevelgain(), mhealup();
    mon.c mstoning(); mondata.h flesh_petrifies() */
@@ -3111,7 +3212,7 @@ export async function m_consume_obj(mtmp, otmp) {
         if (ispet && deadmimic)
             throw new Error('m_consume_obj(): quickmimic() not ported yet');
         if (otyp === EGG && corpsenm === MM.PM_PYROLISK)
-            throw new Error('m_consume_obj(): explode() not ported yet');
+            await explode(mtmp.mx, mtmp.my, -11, d(3, 6), 0, EXPL_FIERY);
         if (corpsenm !== NON_PM)
             await mon_givit(mtmp, mons[corpsenm]);
     }
@@ -3448,17 +3549,3 @@ export async function angry_guards(silent) {
     }
     return false;
 }
-import { d } from './rng.js';
-import { pmname } from './do_name.js';
-import { There as There_mn } from './display.js';
-import { body_part as body_part_mn } from './insight.js';
-import { STOMACH as STOMACH_MN, KILLED_BY_AN as KILLED_BY_AN_MN } from './const.js';
-import { killer as killer_mn } from './topten.js';
-import { losehp as losehp_mn, Maybe_Half_Phys as Maybe_Half_Phys_mn } from './trap.js';
-import { mon_explodes } from './explode.js';
-import { shkgone } from './shk.js';
-
-import { gd_move } from './vault.js';
-import { rloc_to as rloc_to_mn } from './teleport.js';
-import { place_wsegs as place_wsegs_rm } from './worm.js';
-import { set_ustuck as set_ustuck_rm } from './uhitm.js';

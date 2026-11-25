@@ -6,6 +6,19 @@
 // prompt.  Throwing itself (throwit()), autoquiver and doquiver_core()
 // are not ported yet.
 
+import { use_pole, could_pole_mon } from './apply.js';
+import { end_burn } from './timeout.js';
+import { get_obj_location } from './shk.js';
+import { Shk_Your } from './wield.js';
+import { container_impact_dmg } from './dokick.js';
+import { explode } from './explode.js';
+import { d } from './rng.js';
+import { EXPL_FIERY, NO_TRAP_FLAGS } from './const.js';
+import { hits_bars } from './mthrowu.js';
+import { glyph_at, glyph_is_warning } from './display.js';
+import { shade_miss } from './uhitm.js';
+import { switch_terrain } from './hack.js';
+import { dotrap, trapname } from './trap.js';
 import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { is_art } from './artifact.js';
 import { game } from './gstate.js';
@@ -597,7 +610,7 @@ async function throwit_mon_hit(obj, mon) {
     if (mon) {
         if (mon.isshk && obj.where === 'OBJ_MINVENT' && obj.ocarry === mon)
             return true;
-        snuff_candle_dt(obj);
+        await snuff_candle_dt(obj);
         g.notonhead = (g.bhitpos.x !== mon.mx || g.bhitpos.y !== mon.my);
         const obj_gone = await thitmonst(mon, obj);
         /* Monster may have been tamed; this frees old mon [obsolete] */
@@ -616,14 +629,21 @@ async function throwit_mon_hit(obj, mon) {
     return false;
 }
 
-// C ref: apply.c snuff_candle() -- lit candles aren't thrown by the JS
-// port yet
-function snuff_candle_dt(otmp) {
+// C ref: apply.c snuff_candle()
+async function snuff_candle_dt(otmp) {
     const candle = Is_candle_dt(otmp);
 
     if ((candle || otmp.otyp === CANDELABRUM_OF_INVOCATION_DT)
-        && otmp.lamplit)
-        throw new Error('snuff_candle(): end_burn() not ported yet');
+        && otmp.lamplit) {
+        const many = candle ? (otmp.quan > 1) : (otmp.spe > 1);
+        const [x, y] = get_obj_location(otmp, 0) || [0, 0];
+
+        if (otmp.where === 'OBJ_MINVENT' ? cansee(x, y) : !Blind())
+            await pline(`${Shk_Your(otmp)}${candle ? "" : "candelabrum's "}candle${
+                many ? "s'" : "'s"} flame${many ? "s are" : " is"} extinguished.`);
+        end_burn(otmp, true);
+        return true;
+    }
     return false;
 }
 
@@ -1114,8 +1134,7 @@ async function throwit(obj,
            (container_impact_dmg handles item already owned by shop) */
         if (!IS_SOFT(g.level.at(bx, by).typ)) {
             /* <x,y> is spot where you initiated throw, not gb.bhitpos */
-            if (obj.cobj && obj.cobj.length) /* container_impact_dmg() */
-                throw new Error('throwit(): container_impact_dmg() not ported yet');
+            await container_impact_dmg(obj, u.ux, u.uy);
             impact_disturbs_zombies(obj, true);
         }
         /* charge for items thrown out of shop;
@@ -1344,7 +1363,7 @@ export async function breakobj(
     if (!fracture)
         delobj(obj);
     if (explosion)
-        throw new Error('breakobj(): pyrolisk egg explode() not ported yet');
+        await explode(x, y, -11, d(3, 6), 0, EXPL_FIERY);
     return 1;
 }
 
@@ -1506,8 +1525,15 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         if (weapon === THROWN_WEAPON) {
             if (obj.lamplit && !Blind())
                 throw new Error('bhit(): show_transient_light() not ported yet');
-            if (typ === IRONBARS)
-                throw new Error('bhit(): hits_bars() not ported yet');
+            if (typ === IRONBARS
+                && await hits_bars(pobj, x - ddx, y - ddy, x, y,
+                                   point_blank ? 0 : (!rn2(5) ? 1 : 0), 1)) {
+                /* caveat: obj might now be null... */
+                obj = pobj.obj; /* not currently needed due to 'break'; keep */
+                g.bhitpos.x -= ddx;
+                g.bhitpos.y -= ddy;
+                break;
+            }
         }
 
         if (weapon === ZAPPED_WAND) {
@@ -1543,9 +1569,14 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         /* if mtmp is a shade and missile passes harmlessly through it,
            give message and skip it in order to keep going;
            thrown objects don't hit mimics pretending to be objects */
+        const xyglyph = glyph_at(x, y);
         if (mtmp && weapon === THROWN_WEAPON
-            && (mtmp.data === mons[PM_SHADE] || mtmp.m_ap_type === M_AP_OBJECT))
-            throw new Error('bhit(): shade_miss()/hidden mimic not ported yet');
+            && (await shade_miss(game.youmonst, mtmp, obj, true, true)
+                || (mtmp.m_ap_type === M_AP_OBJECT
+                    && xyglyph.kind !== 'mon' /* !glyph_is_monster() */
+                    && !glyph_is_warning(xyglyph)
+                    && !glyph_is_invisible(xyglyph))))
+            mtmp = null;
 
         if (mtmp) {
             g.notonhead = (x !== mtmp.mx || y !== mtmp.my);
@@ -1759,7 +1790,7 @@ export async function dofire() {
         if (!game.flags?.autoquiver) {
             /* if we're wielding a polearm, apply it */
             if (uwep && is_pole(uwep)) {
-                throw new Error('dofire(): use_pole() not ported yet');
+                return await use_pole(uwep, true);
             /* if we're wielding a bullwhip, apply it */
             } else if (uwep && uwep.otyp === BULLWHIP) {
                 throw new Error('dofire(): use_whip() not ported yet');
@@ -1795,8 +1826,8 @@ export async function dofire() {
 
     if (game.uquiver && is_ammo(game.uquiver) && (game.iflags?.fireassist ?? true)
         && !skip_fireassist) {
-        if (uwep && is_pole(uwep))
-            throw new Error('dofire(): could_pole_mon() not ported yet');
+        if (uwep && is_pole(uwep) && could_pole_mon())
+            return await use_pole(uwep, true);
         /* Try to find a launcher */
         if (ammo_and_launcher(game.uquiver, uwep)) {
             obj = game.uquiver;
@@ -2028,10 +2059,8 @@ export async function hurtle_step(arg, x, y) {
     await flush_screen(1);
     /* if terrain type changes, levitation or flying might become blocked
        or unblocked; switch_terrain() might issue a message */
-    if (ltyp !== game.level.at(ox, oy).typ
-        && (u.uprops?.[LEVITATION]?.intrinsic || u.uprops?.[LEVITATION]?.extrinsic
-            || u.uprops?.[FLYING]?.intrinsic || u.uprops?.[FLYING]?.extrinsic))
-        throw new Error('hurtle_step(): switch_terrain() not ported yet');
+    if (ltyp !== game.level.at(ox, oy).typ)
+        await switch_terrain();
 
     /* might be entering a special room (treasure zoo, thrown room, &c) that
        has a first-time entry message, or leaving shop with unpaid goods */
@@ -2062,15 +2091,25 @@ export async function hurtle_step(arg, x, y) {
     if ((ttmp = t_at(x, y)) !== null && ttmp !== undefined) {
         if (stopping_short) {
             ; /* see the comment above hurtle_jump() */
-        } else if (ttmp.ttyp === MAGIC_PORTAL || ttmp.ttyp === VIBRATING_SQUARE
-                   || ttmp.ttyp === FIRE_TRAP) {
-            throw new Error('hurtle_step(): dotrap() not ported yet');
+        } else if (ttmp.ttyp === MAGIC_PORTAL) {
+            await dotrap(ttmp, NO_TRAP_FLAGS);
+            return false;
+        } else if (ttmp.ttyp === VIBRATING_SQUARE) {
+            await pline("The ground vibrates as you pass it.");
+            await dotrap(ttmp, NO_TRAP_FLAGS); /* doesn't print messages */
+        } else if (ttmp.ttyp === FIRE_TRAP) {
+            await dotrap(ttmp, NO_TRAP_FLAGS);
         } else if ((is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp))
                    && game.level.flags.sokoban_rules) { /* Sokoban */
-            throw new Error('hurtle_step(): Sokoban air currents dotrap() not ported yet');
+            /* air currents overcome the recoil in Sokoban;
+               when jumping, caller performs last step and enters trap */
+            if (!via_jumping)
+                await dotrap(ttmp, NO_TRAP_FLAGS);
+            arg.range = 0;
+            return true;
         } else {
             if (ttmp.tseen)
-                throw new Error('hurtle_step(): "You pass right over" trapname() not ported yet');
+                await You(`pass right over ${an(trapname(ttmp.ttyp, false))}.`);
         }
     }
     if (--arg.range < 0) /* make sure our range never goes negative */

@@ -1969,7 +1969,7 @@ const FATAL_DAMAGE_MODIFIER = 200;
 /* include/artifact.h */
 const SPFX_BEHEAD = 0x00000400, SPFX_DRLI = 0x00000100;
 /* include/youprop.h */
-const Slimed = () => !!(game.u.intrinsic?.HSlimed);
+const Slimed = () => !!(game.u.uprops?.SLIMED);
 /* src/decl.c c_common_strings.c_fakename[]; used so vtense() won't be fooled
    by an assigned name ending in 's' */
 const fakename = ["mon", "you"];

@@ -1,7 +1,7 @@
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
-import { PLNMSG_UNKNOWN, NH_BASIC_COLOR, MAXTCHARS,
+import { BUFSZ, PLNMSG_UNKNOWN, NH_BASIC_COLOR, MAXTCHARS,
          In_mines, In_sokoban, Is_knox_level,
          CORPSTAT_GENDER, CORPSTAT_FEMALE } from './const.js';
 import { In_hell, on_level } from './dungeon.js';
@@ -2544,8 +2544,15 @@ export function message_with_location(msg) {
         game.a11y.msg_loc = { x: 0, y: 0 };
     if (msg && loc && isok(loc.x, loc.y) && boolean_option('accessiblemsg')) {
         const mode = game.iflags?.getpos_coords ?? GPCOORDS_NONE;
-        return `${coord_desc(loc.x, loc.y, mode === GPCOORDS_NONE ? GPCOORDS_COMFULL : mode)}: ${msg}`;
+        msg = `${coord_desc(loc.x, loc.y, mode === GPCOORDS_NONE ? GPCOORDS_COMFULL : mode)}: ${msg}`;
     }
+    /* src/pline.c:218 vpline(): truncate after formatting and the location
+       prefix, retaining the final three bytes of a long message. */
+    const ln = msg?.length || 0;
+    if (ln > 5 * BUFSZ - 1)
+        throw new Error(`pline attempting to print ${ln} characters!`);
+    if (ln > BUFSZ - 1)
+        msg = msg.slice(0, BUFSZ - 7) + '...' + msg.slice(-3);
     return msg;
 }
 

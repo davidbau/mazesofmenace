@@ -17,7 +17,7 @@
 // youprop.h property macros).
 
 import { getnow } from './calendar.js';
-import { lays_eggs } from './polyself.js';
+import { lays_eggs, ugenocided, udeadinside } from './polyself.js';
 import { ordin } from './hacklib.js';
 import { spellid } from './spell.js';
 import { wizard } from './dungeon.js';
@@ -70,7 +70,7 @@ import {
 } from './objects.js';
 import * as M from './monsters.js';
 import { rank_of, rank_to_xlev } from './botl.js';
-import { an, makeplural, makesingular } from './objnam.js';
+import { an, just_an, makeplural, makesingular } from './objnam.js';
 import { strstri, highc, lowc, mungspaces } from './hacklib.js';
 import { align_gname, u_gname, can_pray } from './pray.js';
 import { genders } from './role.js';
@@ -96,7 +96,7 @@ import { P_SKILL, P_MAX_SKILL, P_ADVANCE, P_RESTRICTED, weapon_type,
 import { oc_to_str } from './options.js';
 import { is_pool, is_lava } from './makemon.js';
 import { ART_OGRESMASHER } from './artilist.js';
-import { hates_silver, defended } from './mondata.js';
+import { hates_silver, defended, is_male, is_female, is_neuter } from './mondata.js';
 import { pmname } from './do_name.js';
 import { magic_negation } from './mhitu.js';
 import { stone_luck } from './attrib.js';
@@ -107,8 +107,11 @@ import { pline, livelog_printf } from './display.js';
 import { NHW_TEXT, LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
          LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER, LL_MINORAC } from './const.js';
 import { visible_region_at, reg_damg } from './region.js';
+import { mhidden_description } from './pager.js';
+import { MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION } from './const.js';
 import { find_mac } from './worn.js';
-import { x_monnam, ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE } from './do_name.js';
+import { x_monnam, ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
+         SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './do_name.js';
 import { STRAT_WAITMASK, MFAST, MSLOW } from './const.js';
 import {
     Fire_resistance, Cold_resistance, Sleep_resistance, Disint_resistance, Shock_resistance,
@@ -1015,9 +1018,28 @@ function background_enlightenment(unused_mode, final) {
     enlght_out(""); /* separator after title */
     enlght_out("Background:");
 
-    /* if polymorphed, report current shape before underlying role */
-    if (Upolyd())
-        throw new Error('background_enlightenment(): polymorphed hero not ported yet');
+    /* if polymorphed, report current shape before underlying role;
+       will be repeated as first status: "you are transformed" and also
+       among various attributes: "you are in beast form" (after being
+       told about lycanthropy) or "you are polymorphed into <a foo>"
+       (with countdown timer appended for wizard mode); we really want
+       the player to know he's not a samurai at the moment... */
+    if (Upolyd()) {
+        const uasmon = game.youmonst.data;
+        const altphrasing = vampshifted(game.youmonst);
+
+        tmpbuf = "";
+        /* here we always use current gender, not saved role gender */
+        if (!is_male(uasmon) && !is_female(uasmon) && !is_neuter(uasmon))
+            tmpbuf = `${genders[flags.female ? 1 : 0].adj} `;
+        if (altphrasing)
+            tmpbuf += `${pmname(M.mons[game.youmonst.cham],
+                                flags.female ? FEMALE : MALE)} in `;
+        buf = `${!final ? "currently " : ""}${
+                altphrasing ? just_an(tmpbuf) : "in "}${
+                tmpbuf}${pmname(uasmon, flags.female ? FEMALE : MALE)} form`;
+        you_are(buf, "");
+    }
 
     /* report role; omit gender if it's redundant (eg, "female priestess") */
     tmpbuf = "";
@@ -1206,8 +1228,21 @@ function basics_enlightenment(mode, final) {
         buf = `${pw} out of ${pwmax} ${Power}`;
     you_have(buf, "");
 
-    if (Upolyd())
-        throw new Error('basics_enlightenment(): polymorphed hit dice not ported yet');
+    if (Upolyd()) {
+        switch (M.mons[u.umonnum].mlevel) {
+        case 0:
+            /* status line currently being explained shows "HD:0" */
+            buf = "0 hit dice (actually 1/2)";
+            break;
+        case 1:
+            buf = "1 hit die";
+            break;
+        default:
+            buf = `${M.mons[u.umonnum].mlevel} hit dice`;
+            break;
+        }
+        you_have(buf, "");
+    }
 
     find_ac(); /* enforces AC_MAX cap */
     buf = `${u.uac}`;
@@ -1368,8 +1403,12 @@ function status_enlightenment(mode, final) {
                     && !(final === ENL_GAMEOVERDEAD
                          && game.killer?.name === "riding accident"));
 
-    if (Riding)
-        throw new Error('status_enlightenment(): steed name (x_monnam) not ported yet');
+    const steedname = (!Riding ? null
+                      : x_monnam(u.usteed,
+                                 u.usteed.mtame ? ARTICLE_YOUR : ARTICLE_THE,
+                                 null,
+                                 (SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION),
+                                 false));
 
     /*\
      * Status (many are abbreviated on bottom line; others are or
@@ -1381,8 +1420,19 @@ function status_enlightenment(mode, final) {
     youtoo = You_;
     /* not a traditional status but inherently obvious to player; more
        detail given below (attributes section) for magic enlightenment */
-    if (Upolyd())
-        throw new Error('status_enlightenment(): polymorphed hero not ported yet');
+    if (Upolyd()) {
+        buf = "transformed";
+        if (ugenocided())
+            buf += ` and ${final ? "felt" : "feel"} ${udeadinside()} inside`;
+        you_are(buf, "");
+    }
+    /* not a trouble, but we want to display riding status before maybe
+       reporting steed as trapped or hero stuck to cursed saddle */
+    if (Riding) {
+        buf = `riding ${steedname}`;
+        you_are(buf, "");
+        youtoo += `and ${steedname} `;
+    }
     /* other movement situations that hero should always know */
     if (Levitation()) {
         if (Lev_at_will() && magic)
@@ -2763,7 +2813,8 @@ export async function mstatusline(mtmp) {
        won't be relevant for it, but wand of probing doesn't */
     if (mtmp.mundetected || mtmp.m_ap_type
         || visible_region_at(game.bhitpos?.x, game.bhitpos?.y))
-        throw new Error('mstatusline(): mhidden_description() not ported yet');
+        info += mhidden_description(mtmp,
+                       MHID_PREFIX | MHID_ARTICLE | MHID_ALTMON | MHID_REGION);
     if (mtmp.mcan)
         info += ", cancelled";
     if (mtmp.mconf)

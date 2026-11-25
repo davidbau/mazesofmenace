@@ -8,6 +8,11 @@
 // DUMPLOG isn't defined in this build, so the dumplog calls are no-ops;
 // HANGUPHANDLING's done_hup never happens in a recorded session.
 
+import { make_sick } from './potion.js';
+import { SICK_ALL, UTOTYPE_ATSTAIRS } from './const.js';
+import { reset_utrap } from './trap.js';
+import { schedule_goto } from './do.js';
+import { observe_quantum_cat } from './pickup.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_LIFESAVE } from './const.js';
@@ -74,6 +79,19 @@ import {
 } from './wintty.js';
 import { Blind, Hallucination, Lifesaved } from './youprop.js';
 import { Race_if, Role_if } from './const.js';
+import * as O_EN from './objects.js';
+import { arti_cost as arti_cost_en, artiname as artiname_en } from './artifact.js';
+import { the_unique_obj as the_unique_obj_en } from './objnam.js';
+import { mon_nam as mon_nam_en } from './do_name.js';
+import { adj_lev as adj_lev_en } from './makemon.js';
+import { mons as mons_en, PM_HOUSECAT as PM_HOUSECAT_EN } from './monsters.js';
+import { d as d_en } from './rng.js';
+import { mksobj as mksobj_en } from './mkobj.js';
+import { obfree as obfree_en } from './invent.js';
+import { expels, unstuck } from './mhitu.js';
+import { sticks as sticks_end } from './engrave.js';
+import { Monnam as Monnam_end } from './do_name.js';
+import { flush_screen as flush_screen_end } from './display.js';
 
 const EXIT_SUCCESS = 0;
 const BUFSZ = 256;
@@ -436,12 +454,12 @@ async function savelife(how) {
     if (Upolyd()) /* Unchanging, or death which bypasses losing hit points */
         u.mh = Math.min(u.mhmax, givehp);
     if (u.uhunger < 500 || how === CHOKING) {
-        init_uhunger();
+        await init_uhunger();
     }
     /* cure impending doom of sickness hero won't have time to fix
        [shouldn't this also be applied to other fatal timeouts?] */
     if (((u.uprops[SICK]?.intrinsic || 0) & TIMEOUT) === 1)
-        throw new Error('savelife(): make_sick() not ported yet');
+        await make_sick(0, null, false, SICK_ALL);
     g.nomovemsg = "You survived that attempt on your life.";
     g.context.move = 0;
 
@@ -454,7 +472,7 @@ async function savelife(how) {
                                          : "attempting to cheat Death";
 
     if (u.utrap && u.utraptype === TT_LAVA)
-        throw new Error('savelife(): reset_utrap() of lava not ported yet');
+        await reset_utrap(false);
     g.disp_botl = true;
     u.ugrave_arise = NON_PM;
     if (u.uprops[UNCHANGING])
@@ -654,7 +672,8 @@ export async function done2() {
         }
 
         if (abandon_tutorial)
-            throw new Error('done2(): schedule_goto() out of the tutorial not ported yet');
+            schedule_goto(u.ucamefrom, UTOTYPE_ATSTAIRS,
+                          "Resuming regular play.", null);
         return 0; /* ECMD_OK */
     }
 
@@ -944,7 +963,12 @@ async function really_done(how) {
                live cat has to be the same both times */
             if (SchroedingersBox(obj)) {
                 if (!Schroedingers_cat()) {
-                    throw new Error('really_done(): observe_quantum_cat() not ported yet');
+                    /* tell observe_quantum_cat() not to create a cat; if it
+                       chooses live cat in this situation, it will leave the
+                       SchroedingersBox flag set (for container_contents()) */
+                    await observe_quantum_cat(obj, false, false);
+                    if (SchroedingersBox(obj))
+                        g.Schroedingers_cat = true;
                 } else
                     obj.spe = 0; /* ordinary box with cat corpse in it */
             }
@@ -1302,16 +1326,3 @@ export async function container_contents(list, identified, all_containers,
             break;
     }
 }
-import * as O_EN from './objects.js';
-import { arti_cost as arti_cost_en, artiname as artiname_en } from './artifact.js';
-import { the_unique_obj as the_unique_obj_en } from './objnam.js';
-import { mon_nam as mon_nam_en } from './do_name.js';
-import { adj_lev as adj_lev_en } from './makemon.js';
-import { mons as mons_en, PM_HOUSECAT as PM_HOUSECAT_EN } from './monsters.js';
-import { d as d_en } from './rng.js';
-import { mksobj as mksobj_en } from './mkobj.js';
-import { obfree as obfree_en } from './invent.js';
-import { expels, unstuck } from './mhitu.js';
-import { sticks as sticks_end } from './engrave.js';
-import { Monnam as Monnam_end } from './do_name.js';
-import { flush_screen as flush_screen_end } from './display.js';

@@ -2309,6 +2309,14 @@ function _mention_map_r1phys(msg) {
     const q = game._mentionMapPlineCells?.get(String(msg));
     return q?.length ? q[0]._r1physical : undefined;
 }
+function _mention_map_botl(msg) {
+    const q = game._mentionMapPlineCells?.get(String(msg));
+    return q?.length ? q[0]._botl : undefined;
+}
+function _mention_map_botl_seq(msg) {
+    const q = game._mentionMapPlineCells?.get(String(msg));
+    return q?.length ? q[0]._botlSeq : undefined;
+}
 export function mention_map_pline_cells(msg, cells) {
     const m = (game._mentionMapPlineCells ||= new Map());
     const q = m.get(msg) || [];
@@ -2682,6 +2690,8 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
             const cells = _capture_painted_cells();
             // pline.c:273-274 flushes gnew synchronously before the next show_glyph.
             pline_flush_point();
+            cells._botl = game._lastPaintedBotl || _capture_botl();
+            cells._botlSeq = game._botlPaintSeq | 0;
             cells._r1physical = _threeStatusLines() && !_map_row20_clipped()
                 ? String(game._screen_output || '').split('\n')[21] : undefined;
             /* C's description pline completes inside show_glyph (2060-2072),
@@ -10672,7 +10682,10 @@ export function _pline_flush_frame_record(off, msg) {
     /* C pline.c:273-276 / tty/topl.c:274 blocks at each overflowing pline.
      * Our deferred pager needs every flush until this window is acknowledged;
      * a long command (such as emptying a horn) must not evict its first pages. */
-    const _botl = (g.disp && !(g.disp.botl | 0) && !(g.disp.botlx | 0) && !(g.disp.time_botl | 0)
+    const _mmBotl = _mention_map_botl(msg);
+    const _mmBotlSeq = _mention_map_botl_seq(msg);
+    const _botl = _mmBotl !== undefined ? _mmBotl
+        : (g.disp && !(g.disp.botl | 0) && !(g.disp.botlx | 0) && !(g.disp.time_botl | 0)
                && g._lastPaintedBotl && (g._lastPaintedBotl.mh | 0) === 0 && g.u && (g.u.mh | 0) !== 0)
             ? g._lastPaintedBotl : _capture_botl();
     const _r1physical = _mention_map_r1phys(msg) ?? (_threeStatusLines() && !_map_row20_clipped()
@@ -10704,7 +10717,7 @@ export function _pline_flush_frame_record(off, msg) {
          * later end-of-turn bot() BL_RESET (allmain.c:474) is invisible until
          * that page is dismissed. */
         r1whole: !!g._status1Whole,
-        botlSeq: g._botlPaintSeq | 0,   /* bot() paints as of this flush */
+        botlSeq: _mmBotlSeq ?? (g._botlPaintSeq | 0),   /* bot() paints as of this flush */
         /* pline.c:273-276 flushes before more() blocks. With three status
          * rows, map y=20 can erase unchanged fields (display.c:2236-2255,
          * wintty.c:5018,5237-5238). Keep that physical row: rendering its old
@@ -17609,17 +17622,113 @@ export function nomuxSerialize(cells) {
     return p;
 }
 
-export function nomuxOverflowApply(state, screen) {
-    const raw = nomuxSerialize(nomuxCellsFromScreen(screen));
-    if (raw.length < NOMUX_OUT_SIZE)
-        return state; /* the NUL lands inside the buffer */
-    const bytes = state || new Uint8Array(12);
-    for (let k = NOMUX_OUT_SIZE; k <= raw.length && k < NOMUX_OUT_SIZE + 12; k++)
-        bytes[k - NOMUX_OUT_SIZE] = k < raw.length ? raw.charCodeAt(k) & 0xff : 0;
-    return bytes;
+export const NOMUX_LAYOUTS = {
+    x86_64: { active: 0, row: 4, col: 8, obuf: 0x130, bufsiz: 1024 },
+    arm64: { active: 2, row: 6, col: 10, obuf: 0x12a, bufsiz: 1024 },
+};
+export const NOMUX_LAYOUT = NOMUX_LAYOUTS.x86_64;
+
+export function nomuxCanonScreen(s) {
+    const blank = () => ({ ch: ' ', fg: 39, attr: 0, dec: 0 });
+    const grid = Array.from({ length: 24 }, () => Array.from({ length: 80 }, blank));
+    let row = 0, col = 0, fg = 39, attr = 0, dec = 0, i = 0;
+    while (i < s.length) {
+        const c = s[i];
+        if (c === '\n') { row++; col = 0; i++; continue; }
+        if (c === '\x0e') { dec = 1; i++; continue; }
+        if (c === '\x0f') { dec = 0; i++; continue; }
+        if (c === '\x1b' && s[i + 1] === '[') {
+            let j = i + 2;
+            while (j < s.length && /[0-9;?]/.test(s[j])) j++;
+            const params = s.slice(i + 2, j), fin = s[j];
+            i = j + 1;
+            if (fin === 'C') col += parseInt(params, 10) || 1;
+            else if (fin === 'm') {
+                for (const tok of (params === '' ? '0' : params).split(';')) {
+                    const n = parseInt(tok || '0', 10);
+                    if (n === 0) { fg = 39; attr = 0; }
+                    else if (n === 1) attr |= 2; else if (n === 4) attr |= 4; else if (n === 7) attr |= 1;
+                    else if (n === 22) attr &= ~2; else if (n === 24) attr &= ~4; else if (n === 27) attr &= ~1;
+                    else if (n === 39) fg = 39;
+                    else if ((n >= 30 && n <= 37) || (n >= 90 && n <= 97)) fg = n;
+                }
+            }
+            continue;
+        }
+        if (row >= 0 && row < 24 && col >= 0 && col < 80) grid[row][col] = { ch: c, fg, attr, dec };
+        col++; i++;
+    }
+    const sgr = (cf, ca, wf, wa) => {
+        if (cf === wf && ca === wa) return '';
+        const codes = [];
+        if (((ca & 2) && !(wa & 2)) || ((ca & 4) && !(wa & 4)) || ((ca & 1) && !(wa & 1))) {
+            codes.push(0);
+            if (wa & 2) codes.push(1); if (wa & 4) codes.push(4); if (wa & 1) codes.push(7);
+            if (wf !== 39) codes.push(wf);
+        } else {
+            if ((wa & 2) && !(ca & 2)) codes.push(1); if ((wa & 4) && !(ca & 4)) codes.push(4);
+            if ((wa & 1) && !(ca & 1)) codes.push(7);
+            if (wf !== cf) codes.push(wf);
+        }
+        return codes.length ? `\x1b[${codes.join(';')}m` : '';
+    };
+    const empty = (k) => k.ch === ' ' && k.fg === 39 && k.attr === 0 && !k.dec;
+    let lastRow = 0;
+    for (let r = 0; r < 24; r++)
+        for (let c = 0; c < 80; c++) if (!empty(grid[r][c])) { lastRow = r; break; }
+    let out = '', cf = 39, ca = 0, inDec = 0;
+    for (let r = 0; r <= lastRow; r++) {
+        let lastCol = -1;
+        for (let c = 79; c >= 0; c--) if (!empty(grid[r][c])) { lastCol = c; break; }
+        if (lastCol >= 0) {
+            for (let c = 0; c <= lastCol;) {
+                const cell = grid[r][c];
+                let n = 0;
+                if (cell.ch === ' ') {
+                    while (c + n <= lastCol) {
+                        const k = grid[r][c + n];
+                        if (k.ch !== ' ' || k.fg !== cell.fg || k.attr !== cell.attr || k.dec !== cell.dec) break;
+                        n++;
+                    }
+                }
+                out += sgr(cf, ca, cell.fg, cell.attr);
+                cf = cell.fg; ca = cell.attr;
+                if (cell.dec !== inDec) { out += cell.dec ? '\x0e' : '\x0f'; inDec = cell.dec; }
+                if (n >= 5) { out += `\x1b[${n}C`; c += n; continue; }
+                out += cell.ch;
+                c++;
+            }
+            if (inDec) { out += '\x0f'; inDec = 0; }
+            out += sgr(cf, ca, 39, 0);
+            cf = 39; ca = 0;
+        }
+        if (r < lastRow) out += '\n';
+    }
+    return out;
 }
 
-export function nomuxRawEmitApply(state, str) {
+export function nomuxCapture(state, screen, cursor, kind, seq, anim, lay = NOMUX_LAYOUT) {
+    const P = nomuxSerialize(nomuxCellsFromScreen(screen));
+    const L = P.length;
+    const span = lay.col + 4;
+    if (L >= NOMUX_OUT_SIZE) {
+        const bytes = state ? state.slice() : new Uint8Array(span);
+        for (let k = NOMUX_OUT_SIZE; k <= L && k < NOMUX_OUT_SIZE + span; k++)
+            bytes[k - NOMUX_OUT_SIZE] = k < L ? P.charCodeAt(k) & 0xff : 0;
+        state = bytes;
+    }
+    const spill = nomuxOverflowCursor(state, lay);
+    const base = NOMUX_OUT_SIZE + lay.obuf;
+    if (L <= base)
+        return { state, screen, cursor: spill };
+    const cur = spill || cursor || [0, 0, 1];
+    const H = `\x1b]7777;KIND=${kind};SEQ=${seq};ANIM=${anim};CX=${cur[0] | 0};CY=${cur[1] | 0};LEN=${L}\x07`;
+    const S = (H + P).slice(0, lay.bufsiz);
+    const W = P.slice(0, base) + S.slice(0, L - base) + P.slice(base + lay.bufsiz);
+    return { state, screen: nomuxCanonScreen(W), cursor: spill };
+}
+
+export function nomuxRawEmitApply(state, str, lay = NOMUX_LAYOUT) {
     const raw = game?._rawterm;
     if (game?._rawCursorFrozen && raw?.rows && raw._cells && raw._cellsRows === raw.rows) {
         const r = (raw.row | 0) - 1;
@@ -17635,9 +17744,9 @@ export function nomuxRawEmitApply(state, str) {
             raw.rows[i] = lines[i] || '';
     }
     if (!state) return state;
-    const view = new DataView(state.buffer, state.byteOffset, 12);
-    if (!view.getInt32(0, true)) return state;
-    let row = view.getInt32(4, true), col = view.getInt32(8, true);
+    const view = new DataView(state.buffer, state.byteOffset, state.length);
+    if (!view.getInt32(lay.active, true)) return state;
+    let row = view.getInt32(lay.row, true), col = view.getInt32(lay.col, true);
     const s = (str == null ? '' : String(str)) + '\n';
     for (let i = 0; i < s.length; i++) {
         const ch = s.charCodeAt(i) & 0xff;
@@ -17647,16 +17756,16 @@ export function nomuxRawEmitApply(state, str) {
     }
     const bytes = state.slice();
     const out = new DataView(bytes.buffer);
-    out.setInt32(4, row, true);
-    out.setInt32(8, col, true);
+    out.setInt32(lay.row, row | 0, true);
+    out.setInt32(lay.col, col | 0, true);
     return bytes;
 }
 
 /* nomux_get_cursor(): raw counters when nomux_raw_active is non-zero. */
-export function nomuxOverflowCursor(bytes) {
+export function nomuxOverflowCursor(bytes, lay = NOMUX_LAYOUT) {
     if (!bytes) return null;
     const int32 = (o) => (bytes[o] | (bytes[o + 1] << 8) | (bytes[o + 2] << 16) | (bytes[o + 3] << 24));
-    return int32(0) ? [int32(8), int32(4), 1] : null;
+    return int32(lay.active) ? [int32(lay.col), int32(lay.row), 1] : null;
 }
 
 export function magic_map_background(loc, x, y, show = false) {

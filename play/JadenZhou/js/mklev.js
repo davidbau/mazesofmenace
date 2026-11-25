@@ -50,18 +50,6 @@ import {
     MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM, LA_UP, LA_DOWN,
     BR_PORTAL, BR_NO_END1, BR_NO_END2,
 } from './const.js';
-
-// Object classes and object numbers: objects.js
-import {
-    RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, FOOD_CLASS,
-    SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS, BOULDER, GOLD_PIECE,
-    ROCK, KELP_FROND, SCR_TELEPORTATION, BELL, CORPSE, STATUE,
-    POT_HEALING, POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY,
-    SCR_ENCHANT_WEAPON, SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER,
-    SCR_SCARE_MONSTER, WAN_DIGGING, SPE_HEALING, LARGE_BOX, CHEST,
-    FOOD_RATION, CRAM_RATION, LEMBAS_WAFER,
-    ARROW, DART, TALLOW_CANDLE, WAX_CANDLE, objects, WAND_CLASS, SPBOOK_CLASS,
-} from './objects.js';
 import {
     SPBOOK_no_NOVEL, next_ident, blessorcurse, curse, mksobj, mksobj_at,
     mkobj, mkobj_at, mkgold, mkcorpstat, rndmonnum, set_corpsenm,
@@ -100,6 +88,18 @@ import {
 import { Blind, Hallucination } from './youprop.js';
 import { oinit } from './o_init.js';
 import { Is_earthlevel as Is_earthlevel_mk, W_NONPASSWALL as W_NONPASSWALL_MK } from './const.js';
+
+// Object classes and object numbers: objects.js
+import {
+    RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, FOOD_CLASS,
+    SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS, BOULDER, GOLD_PIECE,
+    ROCK, KELP_FROND, SCR_TELEPORTATION, BELL, CORPSE, STATUE,
+    POT_HEALING, POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY,
+    SCR_ENCHANT_WEAPON, SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER,
+    SCR_SCARE_MONSTER, WAN_DIGGING, SPE_HEALING, LARGE_BOX, CHEST,
+    FOOD_RATION, CRAM_RATION, LEMBAS_WAFER,
+    ARROW, DART, TALLOW_CANDLE, WAX_CANDLE, objects, WAND_CLASS, SPBOOK_CLASS,
+} from './objects.js';
 
 const XLIM = 4;
 const YLIM = 3;

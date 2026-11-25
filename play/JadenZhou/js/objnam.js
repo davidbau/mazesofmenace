@@ -65,6 +65,7 @@ import {
 import { delete_contents } from './invent.js';
 import { Luck } from './const.js';
 import { W_TOOL as W_TOOL_XN, W_SADDLE as W_SADDLE_XN } from './const.js';
+import { is_plural } from './wield.js';
 
 // C ref: decl.c vowels[]
 const vowels = "aeiouAEIOU";
@@ -632,10 +633,7 @@ export function otense(otmp, verb) {
      * if the result of xname(otmp) would be plural.  Don't bother
      * recomputing xname(otmp) at this time.
      */
-    /* is_plural(otmp): obj.h; ART_EYES_OF_THE_OVERWORLD is 26 */
-    if (otmp.oartifact === 26)
-        throw new Error('otense(): is_plural() for the Eyes of the Overworld (undiscovered_artifact) not ported yet');
-    if (otmp.quan === 1)
+    if (!is_plural(otmp))
         return vtense(null, verb);
 
     return verb;
@@ -2976,7 +2974,7 @@ export function cxname_singular(obj) {
 export function singular(otmp, func) {
     /* using xname for corpses does not give the monster type */
     if (otmp.otyp === O.CORPSE && func === xname)
-        throw new Error('singular(): cxname() for corpses not ported yet');
+        func = cxname;
     const savequan = otmp.quan;
     otmp.quan = 1;
     const nam = func(otmp);
@@ -2995,15 +2993,16 @@ export function The(str) {
 /* return form of the verb (input plural) for present tense 3rd person
    subj; also uses The() */
 export function Tobjnam(otmp, verb) {
-    return `${The(xname(otmp))} ${otense(otmp, verb)}`;
+    let bp = The(xname(otmp));
+
+    if (verb)
+        bp += ` ${otense(otmp, verb)}`;
+    return bp;
 }
 
 // C ref: objnam.c yname() -- xname, with "your"/"the" (shk_your())
-// prepended; shop and monster ownership, corpses and artifacts aren't
-// ported yet
+// prepended; shop and monster ownership aren't ported yet
 export function yname(obj) {
-    if (obj.otyp === O.CORPSE)
-        throw new Error('yname(): corpse_xname() not ported yet');
     const s = cxname(obj);
 
     /* leave off "your" for most of your artifacts, but prepend

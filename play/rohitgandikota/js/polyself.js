@@ -371,7 +371,7 @@ const no_longer_petrify_resistant = 'No longer petrify-resistant, you';
 const Stunned = () => !!(game.u.intrinsic?.HStun || game.u.uprops?.STUNNED);
 const Confusion = () => !!(game.u.intrinsic?.HConfusion
                            || game.u.uprops?.CONFUSION);
-const Strangled = () => (game.u.uprops?.STRANGLED | 0);
+const Strangled = () => (game.u.intrinsic?.HStrangled | 0);
 /* include/you.h Punished */
 const Punished = () => !!game.u.uball;
 /* include/you.h:555 Ugender */
@@ -498,7 +498,7 @@ export function set_uasmon() {
 // src/polyself.c:168 check_strangling()
 export async function check_strangling(on) {
     const u = game.u;
-    const props = (u.uprops ||= {});
+    const intr = (u.intrinsic ||= {});
     if (on) {
         const was_strangled = (Strangled() !== 0);
 
@@ -506,7 +506,7 @@ export async function check_strangling(on) {
            vulnerable form into another causes the counter to be reset */
         if (u.uamul && u.uamul.otyp === ONAMES.AMULET_OF_STRANGULATION
             && can_be_strangled(game.youmonst)) {
-            props.STRANGLED = 6;
+            intr.HStrangled = 6;
             (game.disp ||= {}).botl = true;
             await Your(`${simpleonames(u.uamul)} ${
                 was_strangled ? 'still constricts' : 'begins constricting'
@@ -515,7 +515,7 @@ export async function check_strangling(on) {
         }
     } else {
         if (Strangled() && !can_be_strangled(game.youmonst)) {
-            props.STRANGLED = 0;
+            intr.HStrangled = 0;
             (game.disp ||= {}).botl = true;
             await You('are no longer being strangled.');
         }

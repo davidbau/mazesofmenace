@@ -5092,7 +5092,7 @@ async function doname_base(obj, doname_flags) {
         }
         bp = bp.slice(0, 255 - offsetbp);
     }
-    if (prefix_overflow) {
+    if (prefix_overflow && prefix.length <= PREFIX) {
         /* C's impossible() blocked in each --More-- it raised before the
          * return; this port pages lazily, so page what is pending now (a
          * recording that ends here ends on that --More--, as RKGX277's

@@ -157,6 +157,8 @@ import { cls as cls_mu, show_glyph as show_glyph_mu, mon_to_glyph as mon_to_glyp
 import { rn2_on_display_rng as rn2_on_display_rng_mu } from './rng.js';
 import { tty_display_map_nhwindow as tty_display_map_nhwindow_mu } from './wintty.js';
 import { unconscious as unconscious_mu } from './eat.js';
+import { removed_from_icebox } from './pickup.js';
+import { cancel_monst } from './zap.js';
 
 const WAND_BACKFIRE_CHANCE = 100; /* hack.h */
 const QBUFSZ = 128; /* global.h */
@@ -1766,7 +1768,7 @@ async function mloot_container(mon, container, vismon) {
                     await pline(`${upstart(mpronounbuf)} removes ${doname(xobj)}.`);
             }
             if (container.otyp === ICE_BOX)
-                throw new Error('mloot_container(): removed_from_icebox() not ported yet');
+                removed_from_icebox(xobj); /* resume rotting for corpse */
             /* obj_extract_self(xobj); -- already done above */
             mpickobj(mon, xobj);
             res = 2;
@@ -2476,7 +2478,8 @@ async function mbhitm(mtmp, otmp) {
         break;
     case WAN_CANCELLATION:
     case SPE_CANCELLATION:
-        throw new Error('mbhitm(): cancel_monst() not ported yet');
+        await cancel_monst(mtmp, otmp, false, true, false);
+        break;
     case WAN_UNDEAD_TURNING:
         if (hits_you)
             throw new Error('mbhitm(): unturn_you() not ported yet');

@@ -45,6 +45,11 @@ import { BATTLE_AXE as BATTLE_AXE_WL } from './objects.js';
 import { P_SHORT_SWORD as P_SHORT_SWORD_WL, P_SABER as P_SABER_WL } from './const.js';
 import { xname as xname_wl, yname as yname_wl, doname as doname_wl,
          The as The_wl, aobjnam as aobjnam_wl } from './objnam.js';
+import { Yname2, Yobjnam2 } from './objnam.js';
+import { arti_light_description } from './light.js';
+import { begin_burn, end_burn } from './timeout.js';
+import { Tobjnam } from './objnam.js';
+import { Blind } from './youprop.js';
 
 // C ref: obj.h is_weptool()
 export function is_weptool(o) {
@@ -155,14 +160,16 @@ export async function can_twoweapon() {
             hand_s} ${vtense(hand_s, "are")} empty.`);
     } else if (!TWOWEAPOK(g.uwep) || !TWOWEAPOK(g.uswapwep)) {
         otmp = !TWOWEAPOK(g.uwep) ? g.uwep : g.uswapwep;
-        throw new Error('can_twoweapon(): unsuitable weapon (Yname2()) message not ported yet');
+        await pline(`${Yname2(otmp)} ${is_plural(otmp) ? "aren't" : "isn't a"} suitable ${
+            (otmp === g.uwep) ? "primary" : "secondary"} weapon${
+            (otmp.quan === 1) ? "" : "s"}.`); /* plur(otmp->quan) */
     } else if (bimanual(g.uwep) || bimanual(g.uswapwep)) {
         otmp = bimanual(g.uwep) ? g.uwep : g.uswapwep;
-        throw new Error('can_twoweapon(): two-handed weapon (Yname2()) message not ported yet');
+        await pline(`${Yname2(otmp)} isn't one-handed.`);
     } else if (g.uarms) {
         await You_cant("use two weapons while wearing a shield.");
     } else if (g.uswapwep.oartifact) {
-        throw new Error('can_twoweapon(): artifact resists (Yobjnam2()) message not ported yet');
+        await pline(`${Yobjnam2(g.uswapwep, "resist")} being held second to another weapon!`);
     } else if (g.uswapwep.otyp === CORPSE /* && cant_wield_corpse(uswapwep) */) {
         throw new Error('can_twoweapon(): cant_wield_corpse() not ported yet');
     } else if (game.u.uprops[GLIB]?.intrinsic || game.u.uprops[GLIB]?.extrinsic
@@ -170,7 +177,6 @@ export async function can_twoweapon() {
         throw new Error('can_twoweapon(): drop_uswapwep() not ported yet');
     } else
         return true;
-    void otmp;
     return false;
 }
 
@@ -209,8 +215,11 @@ export async function dotwoweapon() {
 export function uwepgone() {
     const uwep = game.uwep;
     if (uwep) {
-        if (uwep.lamplit) /* artifact_light(uwep) && uwep->lamplit */
-            throw new Error('uwepgone(): end_burn() of a shining weapon not ported yet');
+        if (artifact_light(uwep) && uwep.lamplit) {
+            end_burn(uwep, false);
+            if (!Blind()) /* uwepgone() is synchronous */
+                throw new Error('uwepgone(): "stops shining" message in a synchronous caller not ported yet');
+        }
         setworn(null, W_WEP);
         game.unweapon = true;
         /* update_inventory(): no perm_invent */
@@ -321,8 +330,11 @@ export async function ready_weapon(wep) {
             res |= await arti_speak(wep); /* sets ECMD_TIME bit if artifact speaks */
         }
 
-        if (artifact_light(wep) && !wep.lamplit)
-            throw new Error('ready_weapon(): begin_burn() of a light-emitting artifact not ported yet');
+        if (artifact_light(wep) && !wep.lamplit) {
+            begin_burn(wep, false);
+            if (!Blind())
+                await pline(`${Tobjnam(wep, "begin")} to shine ${arti_light_description(wep)}!`);
+        }
         if (wep.unpaid)
             throw new Error('ready_weapon(): shopkeeper warning not ported yet');
     }
@@ -364,8 +376,8 @@ export async function doswapweapon() {
             await You("have no secondary weapon readied.");
     }
 
-    if (game.u.twoweap)
-        throw new Error('doswapweapon(): can_twoweapon() not ported yet');
+    if (game.u.twoweap && !await can_twoweapon())
+        await untwoweapon();
 
     return result;
 }
@@ -494,8 +506,11 @@ async function wielding(wep) {
 
 // C ref: wield.c untwoweapon()
 export async function untwoweapon() {
-    if (game.u.twoweap)
-        throw new Error('untwoweapon(): set_twoweap() not ported yet');
+    if (game.u.twoweap) {
+        await You("can no longer wield two weapons at once."); /* can_no_longer_twoweap */
+        set_twoweap(false); /* u.twoweap = FALSE */
+        /* update_inventory(): no perm_invent */
+    }
 }
 
 /* C ref: hack.h ynq() */
@@ -658,8 +673,7 @@ export async function doquiver_core(verb) { /* "ready" or "fire" */
         }
         /* quivering alternate weapon, so no more uswapwep */
         setuswapwep(null);
-        if (game.u.twoweap)
-            throw new Error('doquiver_core(): untwoweapon() not ported yet');
+        await untwoweapon();
     }
 
     return await quivering(verb, newquiver);

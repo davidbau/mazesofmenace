@@ -258,6 +258,14 @@ export async function fastforward_pre_mklev(initrole = -1, initrace = -1) {
 }
 // Post-mklev startup: u_init_role, ini_inv, attributes, moveloop_preamble
 /** @param {number} [initrole] C roles[] index from OPTIONS */
+/* C links mksobj/place_object/make_corpse statically, so trap.c can call
+ * them in every process — including a RESTORED one, which never reaches
+ * fastforward_post_mklev().  js/jsmain.js start() calls this for each
+ * segment; without it a fresh restoring process left trap.js's table null
+ * (a trap-killed monster dropped no corpse). */
+export function register_trap_fns() {
+    registerTrapMksobj(mksobj, place_object, make_corpse);
+}
 export async function fastforward_post_mklev(initrole = -1) {
     // The actual C-shaped inventory phase owns role money, moves and objects.
     registerTrapMksobj(mksobj, place_object, make_corpse);

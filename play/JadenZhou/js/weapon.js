@@ -65,6 +65,11 @@ import { s_suffix as s_suffix_wp } from './hacklib.js';
 import { mon_nam as mon_nam_wp } from './do_name.js';
 import { bimanual as bimanual_wp } from './wield.js';
 import { the as the_wp } from './iactions.js';
+import { begin_burn, end_burn } from './timeout.js';
+import { cansee } from './vision.js';
+import { arti_light_description } from './light.js';
+import { mbodypart } from './insight.js';
+import { HAND } from './const.js';
 
 function weapon_skills() {
     const u = game.u;
@@ -1036,8 +1041,17 @@ export async function mon_wield_item(mon) {
                 obj.bknown = 1;
             }
         }
-        if (artifact_light(obj) && !obj.lamplit)
-            throw new Error('mon_wield_item(): begin_burn() not ported yet');
+        if (artifact_light(obj) && !obj.lamplit) {
+            begin_burn(obj, false);
+            if (canseemon(mon))
+                await pline(`${Tobjnam_wp(obj, "shine")} ${arti_light_description(obj)} in ${
+                    s_suffix_wp(mon_nam_wp(mon))} ${mbodypart(mon, HAND)}!`);
+            /* 3.6.3: artifact might be getting wielded by invisible monst */
+            else if (cansee(mon.mx, mon.my))
+                await pline(`Light begins shining ${
+                    (dist2(mon.mx, mon.my, game.u.ux, game.u.uy) <= 5 * 5) /* mdistu() */
+                    ? "nearby" : "in the distance"}.`);
+        }
         obj.owornmask = W_WEP;
         return 1;
     }
@@ -1635,8 +1649,11 @@ export function weapon_dam_bonus(weapon) {
 export function setmnotwielded(mon, obj) {
     if (!obj)
         return;
-    if (artifact_light(obj) && obj.lamplit)
-        throw new Error('setmnotwielded(): end_burn() not ported yet');
+    if (artifact_light(obj) && obj.lamplit) {
+        end_burn(obj, false);
+        if (canseemon(mon)) /* setmnotwielded() is synchronous */
+            throw new Error('setmnotwielded(): "stops shining" message in a synchronous caller not ported yet');
+    }
     if (MON_WEP(mon) === obj)
         MON_NOWEP(mon);
     obj.owornmask = (obj.owornmask || 0) & ~W_WEP;

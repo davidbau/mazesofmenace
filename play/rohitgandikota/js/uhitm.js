@@ -122,7 +122,7 @@ import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline, shieldeff,
          tmp_at } from './display.js';
 import { wakeup, wake_nearto, killed, xkilled, seemimic, setmangry, mongone,
          shieldeff_mon, is_pool, m_carrying, t_at, minliquid,
-         healmon, monstone, mondied, newcham, mlifesaver, corpse_chance } from './mon.js';
+         healmon, monstone, mon_to_stone, mondied, newcham, mlifesaver, corpse_chance } from './mon.js';
 import { DEADMONSTER, troll_baned } from './monst.js';
 import { is_pole } from './u_init.js';
 import { bimanual, carried, is_plural, is_flimsy, is_shield,
@@ -4603,14 +4603,14 @@ export async function mhitm_ad_drst(magr, mattk, mdef, mhm) {
 // for targets without a usable brain. A tame attacker gains a separate
 // rnd(60) worth of nutrition only after an intelligent ordinary target.
 
-// src/uhitm.c:3174 mhitm_ad_drin(), mind-flayer brain drain.
+// src/uhitm.c:3168 mhitm_ad_drin(), mind-flayer brain drain.
 export async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
-    const pd = game.mons[mdef.mnum];
+    const pd = mdef.data;
 
     if (magr !== game.youmonst && mdef !== game.youmonst) {
         if (game.notonhead || !has_head(pd)) {
             if (game.vis && canspotmon(mdef))
-                await pline(`${Monnam(mdef)} doesn't seem harmed.`);
+                await pline_mon(mdef, `${Monnam(mdef)} doesn't seem harmed.`);
             mhm.damage = 0;
             game.skipdrin = true;
             return;
@@ -4673,7 +4673,7 @@ export async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
                 return;
         }
         /* adjattrib gives dunce cap message when appropriate */
-        await adjattrib(A_INT, -rnd(2), false);
+        await adjattrib(A_INT, -rnd(2), 0);
         if (!rn2(5)) {
             losespells();
             game.skipdrin = true;
@@ -4688,8 +4688,17 @@ export async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
         await pline(`${Monnam(mdef)} doesn't seem harmed.`);
         game.skipdrin = true;
         mhm.damage = 0;
+        if (!Unchanging() && pd === game.mons[PMNAMES.PM_GREEN_SLIME]) {
+            if (!game.u.uprops?.SLIMED) {
+                await You("suck in some slime and don't feel very well.");
+                await make_slimed(10, null);
+            }
+        }
         return;
     }
+
+    if (await m_slips_free(mdef, mattk))
+        return;
 
     const helmet = which_armor(mdef, W_ARMH);
     if (helmet && rn2(8)) {
@@ -4811,6 +4820,7 @@ export async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
 
 // src/uhitm.c:3945 do_stone_mon(), active monster petrification.
 async function do_stone_mon(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
     const { munstone } = await import('./muse.js');
     if (await munstone(mdef, false)) {
         if (!DEADMONSTER(mdef)) {
@@ -4826,14 +4836,14 @@ async function do_stone_mon(magr, mattk, mdef, mhm) {
         return;
     }
 
-    if (poly_when_stoned(game.mons[mdef.mnum])) {
-        await minstapetrify(mdef, false);
+    if (poly_when_stoned(pd)) {
+        await mon_to_stone(mdef);
         mhm.damage = 0;
         return;
     }
     if (!resists_ston(mdef)) {
         if (game.vis && canseemon(mdef))
-            await pline(`${Monnam(mdef)} turns to stone!`);
+            await pline_mon(mdef, `${Monnam(mdef)} turns to stone!`);
         await monstone(mdef);
         if (!DEADMONSTER(mdef)) {
             mhm.hitflags = M_ATTK_MISS;
@@ -4888,8 +4898,7 @@ export async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
     }
 }
 
-// src/uhitm.c:2056 m_slips_free(). Greased or oilskin body armor can
-// protect a monster from the hero's wrap attack.
+// src/uhitm.c:2056 m_slips_free(), slippery armor protects against hero grabs.
 async function m_slips_free(mdef, mattk) {
     let obj;
 
@@ -5376,7 +5385,7 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                     mhm.hitflags |= M_ATTK_MISS;
                 } else {
                     set_ustuck(magr);
-                    await pline(`${Monnam(magr)} grabs you!`);
+                    await pline_mon(magr, `${Monnam(magr)} grabs you!`);
                     mhm.hitflags |= M_ATTK_HIT;
                 }
             } else if (game.u.ustuck === magr) {
@@ -5395,7 +5404,7 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                 if (otmp.otyp === ONAMES.CORPSE
                     && touch_petrifies(game.mons[otmp.corpsenm])) {
                     mhm.damage = 1;
-                    await pline(`${Monnam(magr)} hits you with the ${
+                    await pline_mon(magr, `${Monnam(magr)} hits you with the ${
                               game.mons[otmp.corpsenm].pmnames[NEUTRAL]} corpse.`);
                     if (!Stoned()) {
                         if (await do_stone_u(magr)) {
@@ -5514,7 +5523,7 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                 mhm.damage = dmgbox.v;
                 if (!arti) {
                     if (game.vis)
-                        await pline(`${Monnam(magr)} hits ${mon_nam_too(mdef, magr)}.`);
+                        await pline_mon(magr, `${Monnam(magr)} hits ${mon_nam_too(mdef, magr)}.`);
                     mhm.hitflags |= M_ATTK_HIT;
                 }
                 /* artifact_hit updates 'tmp' but doesn't inflict any

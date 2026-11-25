@@ -1859,103 +1859,96 @@ export async function doeat() {
     }
 
     /* KMH, conduct */
-    game.u.uconduct ||= {};
-    if (!(game.u.uconduct.food | 0))
+    const conduct = (game.u.uconduct ||= {});
+    let ll_conduct = 0;
+    if (!conduct.food++) {
         livelog_printf(LL_CONDUCT,
                        `ate for the first time - ${food_xname(otmp, false)}`);
-    game.u.uconduct.food = (game.u.uconduct.food | 0) + 1;
-
-    let dont_start = false;
-    if (otmp.otyp === ONAMES.CORPSE || otmp.globby) {
-        /* src/eat.c:2966 — touchfood() precedes eatcorpse(), so oeaten has
-           the full corpse nutrition before rottenfood divides it. */
-        const already_partly_eaten = !!otmp.oeaten;
-        otmp = await touchfood(otmp);
-        const v0 = (game.context.victual ||= {});
-        v0.piece = otmp;
-        v0.o_id = otmp.o_id;
-        v0.usedtime = 0;
-
-        /* eatcorpse() sets the unscaled delay and may reduce oeaten. */
-        const tmp = await eatcorpse(otmp);
-
-        if (tmp === 2) {
-            v0.piece = null;
-            v0.o_id = 0;
-            return ECMD_TIME;
-        } else if (tmp) {
-            dont_start = true;
-        }
-
-        const basenutrit = obj_nutrition(otmp);
-        v0.reqtime = basenutrit === 0 ? 0
-                     : rounddiv(v0.reqtime * otmp.oeaten, basenutrit);
-        v0.canchoke = (game.u.uhs === SATIATED);
-        if (v0.reqtime === 0 || !otmp.oeaten)
-            v0.nmod = 0;
-        else if (otmp.oeaten >= v0.reqtime)
-            v0.nmod = -Math.trunc(otmp.oeaten / v0.reqtime);
-        else
-            v0.nmod = v0.reqtime % otmp.oeaten;
-        if (!dont_start)
-            await start_eating(otmp, already_partly_eaten);
-        else
-            otmp.owt = weight(otmp);
-        return ECMD_TIME;
+        ll_conduct++;
     }
 
-    /* src/eat.c:2966 — latched BEFORE touchfood(), which sets oeaten. */
-    const already_partly_eaten = otmp.oeaten ? true : false;
-
-    /* src/eat.c:2968 — touchfood() BEFORE the victual is set up; it may
-       replace otmp with the split-off single. */
+    const already_partly_eaten = !!otmp.oeaten;
     otmp = await touchfood(otmp);
-
+    if (!otmp) {
+        await do_reset_eat();
+        return ECMD_TIME;
+    }
     const v = (game.context.victual ||= {});
     v.piece = otmp;
     v.o_id = otmp.o_id;
     v.usedtime = 0;
-    v.reqtime = game.objects[otmp.otyp].oc_delay;
 
-    /* src/eat.c:3027 — cursed or old food behaves rotten. The age arm's
-       rn2(7) only draws once the food is over 30 (blessed: 50) turns old,
-       which is why fresh starting food never spends it. nonrotting_food()
-       is lembas or cram (eat.c:65). */
-    if (otmp.otyp !== ONAMES.FORTUNE_COOKIE
-        && (otmp.cursed
-            || (!(otmp.otyp === ONAMES.LEMBAS_WAFER
-                  || otmp.otyp === ONAMES.CRAM_RATION)
-                && (game.moves - (otmp.age || 0)) > (otmp.blessed ? 50 : 30)
-                && (otmp.orotten || !rn2(7))))) {
-        /* rottenfood()'s messages and status arms draw in source order. */
-        if (await rottenfood(otmp)) {
-            otmp.orotten = true;
+    /* Corpse effects may consume the food or reduce its remaining nutrition. */
+    let dont_start = false;
+    if (otmp.otyp === ONAMES.CORPSE || otmp.globby) {
+        const tmp = await eatcorpse(otmp);
+        if (tmp === 2) {
+            game.context.victual = {}; /* zero_victual */
+            return ECMD_TIME;
+        } else if (tmp) {
             dont_start = true;
         }
-        consume_oeaten(otmp, 1);        /* oeaten >>= 1 */
-    } else if (!already_partly_eaten) {
-        if (!(await fprefx(otmp))) {
-            await do_reset_eat();
-            return ECMD_TIME;
-        }
     } else {
-        await You(`${v.reqtime === 1 ? "eat" : "begin eating"} ${doname(otmp)}.`);
+        switch (game.objects[otmp.otyp].oc_material) {
+        case MATERIALS.FLESH:
+            if (!conduct.unvegan++ && !ll_conduct) {
+                livelog_printf(LL_CONDUCT,
+                    `consumed animal products for the first time, by eating ${an(food_xname(otmp, false))}`);
+                ll_conduct++;
+            }
+            if (otmp.otyp !== ONAMES.EGG) {
+                if (!conduct.unvegetarian && !ll_conduct)
+                    livelog_printf(LL_CONDUCT,
+                        `tasted meat for the first time, by eating ${an(food_xname(otmp, false))}`);
+                await violated_vegetarian();
+            }
+            break;
+        default:
+            if (otmp.otyp === ONAMES.PANCAKE || otmp.otyp === ONAMES.FORTUNE_COOKIE
+                || otmp.otyp === ONAMES.CREAM_PIE || otmp.otyp === ONAMES.CANDY_BAR
+                || otmp.otyp === ONAMES.LUMP_OF_ROYAL_JELLY)
+                if (!conduct.unvegan++ && !ll_conduct)
+                    livelog_printf(LL_CONDUCT,
+                        `consumed animal products (${food_xname(otmp, false)}) for the first time`);
+            break;
+        }
+
+        v.reqtime = game.objects[otmp.otyp].oc_delay;
+        if (otmp.otyp !== ONAMES.FORTUNE_COOKIE
+            && (otmp.cursed
+                || (!(otmp.otyp === ONAMES.LEMBAS_WAFER
+                      || otmp.otyp === ONAMES.CRAM_RATION)
+                    && (game.moves - (otmp.age || 0)) > (otmp.blessed ? 50 : 30)
+                    && (otmp.orotten || !rn2(7))))) {
+            if (await rottenfood(otmp)) {
+                otmp.orotten = true;
+                dont_start = true;
+            }
+            consume_oeaten(otmp, 1);
+        } else if (!already_partly_eaten) {
+            if (!(await fprefx(otmp))) {
+                await do_reset_eat();
+                return ECMD_TIME;
+            }
+        } else {
+            await You(`${v.reqtime === 1 ? "eat" : "begin eating"} ${doname(otmp)}.`);
+        }
     }
 
-    /* nutrition units per round eating */
+    /* Scale the delay and per-turn nutrition to the food remaining. */
+    const basenutrit = obj_nutrition(otmp);
+    v.reqtime = basenutrit === 0 ? 0
+                : rounddiv(v.reqtime * otmp.oeaten, basenutrit);
     if (v.reqtime === 0 || !otmp.oeaten)
         v.nmod = 0;
     else if (otmp.oeaten >= v.reqtime)
         v.nmod = -Math.trunc(otmp.oeaten / v.reqtime);
     else
         v.nmod = v.reqtime % otmp.oeaten;
-
-    /* THE death condition: latched ONCE here from the hunger state at the
-       moment the meal starts, not re-tested per bite. */
     v.canchoke = (game.u.uhs === SATIATED);
 
     if (!dont_start)
-        await start_eating(otmp, false);
+        await start_eating(otmp, already_partly_eaten);
     else
         otmp.owt = weight(otmp);
     return ECMD_TIME;
@@ -2875,7 +2868,7 @@ export async function newuhs(incr) {
         game.u.uhs = newhs2;
         (game.disp ||= {}).botl = true;
         await bot();
-        if (game.u.uhp < 1) {
+        if ((Upolyd(game.u) ? game.u.mh : game.u.uhp) < 1) {
             await You('die from hunger and exhaustion.');
             game.killer = { format: KILLED_BY, name: 'exhaustion' };
             await done(STARVING);

@@ -7,12 +7,25 @@
 // messages.  Portal/falling arrival and returning to a saved level are not
 // ported yet.
 
+import { sellobj_state } from './pickup.js';
+import { SELL_NORMAL, SELL_DELIBERATE } from './const.js';
 import { game } from './gstate.js';
 import { fix_shop_damage } from './shk.js';
 import { livelog_printf } from './display.js';
 import { LL_ACHIEVE, LL_DEBUG } from './const.js';
 import { describe_level } from './botl.js';
-import { container_impact_dmg, obj_delivery } from './dokick.js';
+import { container_impact_dmg, obj_delivery, drop_to } from './dokick.js';
+import { MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP, MIGR_SSTAIRS,
+         TRAPDOOR, CXN_PFX_THE, OBJ_AT } from './const.js';
+import { Tobjnam, otense, corpse_xname } from './objnam.js';
+import { is_unpaid } from './shk.js';
+import { maybe_unhide_at } from './mon.js';
+import { remove_worn_item } from './steal.js';
+import { breaktest } from './dothrow.js';
+import { change_luck } from './attrib.js';
+import { obj_extract_self, add_to_migration } from './mkobj.js';
+import { obfree } from './invent.js';
+import { LOW_PM as LOW_PM_do, NUMMONS as NUMMONS_do } from './monsters.js';
 import {
     pline, pline_The, docrt, flush_screen
 } from './display.js';
@@ -31,7 +44,7 @@ import {
 import { In_endgame, Is_waterlevel, Is_airlevel, IS_ALTAR, ROOM, CORR, MAGIC_PORTAL, Is_qstart } from './const.js';
 import * as O from './objects.js';
 import { is_pool, is_lava } from './makemon.js';
-import { t_at, is_pit, is_hole, set_utrap, seetrap, lava_damage } from './trap.js';
+import { t_at, is_pit, is_hole, set_utrap, seetrap, lava_damage, climb_pit } from './trap.js';
 import { cansee } from './vision.js';
 import { PM_TOURIST, PM_ROGUE } from './monsters.js';
 import { onquest, ok_to_quest } from './quest.js';
@@ -245,7 +258,8 @@ export async function doup() {
 
     /* "up" to get out of a pit... */
     if (u.utrap && u.utraptype === TT_PIT) {
-        throw new Error('doup(): climb_pit() not ported yet');
+        await climb_pit();
+        return ECMD_TIME;
     }
 
     if (!stway || (stway && !stway.up)) {
@@ -798,7 +812,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await placebc();
     /* obj_delivery(FALSE) */
     if (g.migrating_objs)
-        obj_delivery(false);
+        await obj_delivery(false);
     await losedogs();
     kill_genocided_monsters(); /* for those wiped out while in limbo */
     /*
@@ -950,7 +964,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* deliver objects traveling with player */
     /* obj_delivery(TRUE) */
     if (g.migrating_objs)
-        obj_delivery(true);
+        await obj_delivery(true);
 
     /* assume this will always return TRUE when changing level */
     /* (void) */ await in_out_region(u.ux, u.uy);
@@ -1081,9 +1095,11 @@ export async function dodrop() {
     let result;
 
     if (game.u.ushops)
-        throw new Error('dodrop(): sellobj_state() not ported yet');
+        sellobj_state(SELL_DELIBERATE);
     result = await drop(await getobj("drop", any_obj_ok,
                                      GETOBJ_PROMPT | GETOBJ_ALLOWCNT));
+    if (game.u.ushops)
+        sellobj_state(SELL_NORMAL);
     if (result)
         reset_occupations();
 
@@ -1100,11 +1116,13 @@ export async function doddrop() {
     }
     add_valid_menu_class(0); /* clear any classes already there */
     if (game.u.ushops)
-        throw new Error('doddrop(): sellobj_state() not ported yet');
+        sellobj_state(SELL_DELIBERATE);
     if ((game.flags.menu_style ?? MENU_FULL) !== MENU_TRADITIONAL)
         result = await menu_drop(result);
     else
         throw new Error('doddrop(): ggetobj() (menustyle:traditional) not ported yet');
+    if (game.u.ushops)
+        sellobj_state(SELL_NORMAL);
     if (result)
         reset_occupations();
 
@@ -1379,32 +1397,176 @@ export function down_gate(x, y) {
     const qstart_level = game.dungeon_topology?.d_qstart_level;
     if (qstart_level && qstart_level.dlevel && on_level(game.u.uz, qstart_level)
         && !ok_to_quest())
-        return 'MIGR_NOWHERE';
+        return MIGR_NOWHERE;
     if (stway && !stway.up && !stway.isladder) {
         game.gate_str = "down the stairs";
-        return 'MIGR_STAIRS';
+        return (stway.tolev.dnum === game.u.uz.dnum) ? MIGR_STAIRS_UP
+                                                     : MIGR_SSTAIRS;
     }
     if (stway && !stway.up && stway.isladder) {
         game.gate_str = "down the ladder";
-        return 'MIGR_LADDER_UP';
+        return MIGR_LADDER_UP;
     }
     /* hole will always be flagged as seen; trap drop might or might not */
     if ((ttmp = t_at(x, y)) && ttmp.tseen && is_hole(ttmp.ttyp)) {
-        game.gate_str = "through the trap door";
-        return 'MIGR_RANDOM';
+        game.gate_str = (ttmp.ttyp === TRAPDOOR) ? "through the trap door"
+                                                 : "through the hole";
+        return MIGR_RANDOM;
     }
-    return 'MIGR_NOWHERE';
+    return MIGR_NOWHERE;
 }
 
-// C ref: dokick.c ship_object() -- only the "doesn't fall" case so far
+// C ref: dokick.c otransit_msg()
+async function otransit_msg(otmp, nodrop, chainthere, num) {
+    let optr, xbuf;
+
+    if (otmp.otyp === O.CORPSE) {
+        /* Tobjnam() calls xname() and would yield "The corpse";
+           we want more specific "The newt corpse" or "Medusa's corpse" */
+        optr = upstart_do(corpse_xname(otmp, null, CXN_PFX_THE));
+    } else {
+        optr = Tobjnam(otmp, null);
+    }
+    const obuf = optr;
+
+    if (num || chainthere) {
+        if (num) { /* means: other objects are impacted */
+            xbuf = ` ${otense(otmp, "hit")} ${(num === 1) ? "another" : "other"} object${
+                (num > 1) ? "s" : ""}`;
+        } else { /* chain-only msg */
+            xbuf = ` ${otense(otmp, "rattle")} your chain`;
+        }
+        if (nodrop)
+            xbuf += ".";
+        else
+            xbuf += ` and ${otense(otmp, "fall")} ${game.gate_str}.`;
+        await pline(`${obuf}${xbuf}`);
+    } else if (!nodrop)
+        await pline(`${obuf} ${otense(otmp, "fall")} ${game.gate_str}.`);
+}
+
+/* C ref: hacklib.c upstart() */
+function upstart_do(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+// C ref: dokick.c ship_object()
+/* NOTE: ship_object assumes otmp was FREED from fobj or invent.
+ * <x,y> is the point of drop.  otmp is _not_ an <x,y> resident:
+ * otmp is either a kicked, dropped, or thrown object.
+ */
 export async function ship_object(otmp, x, y, shop_floor_obj) {
-    void shop_floor_obj;
+    let toloc;
+    let t;
+    let impact = false, chainthere = false;
+    let n = 0;
+
     if (!otmp)
         return false;
-    if (down_gate(x, y) === 'MIGR_NOWHERE')
+    if ((toloc = down_gate(x, y)) === MIGR_NOWHERE)
         return false;
-    throw new Error('ship_object(): objects falling down stairs/holes not ported yet');
+    const cc = drop_to(toloc, x, y);
+    if (!cc.y)
+        return false;
+
+    /* objects other than attached iron ball always fall down ladder,
+       but have a chance of staying otherwise */
+    const nodrop = (otmp === game.uball) || (otmp === game.uchain)
+                   || (toloc !== MIGR_LADDER_UP && rn2(3));
+
+    const container = !!(otmp.cobj && otmp.cobj.length); /* Has_contents() */
+    const unpaid = is_unpaid(otmp);
+
+    if (OBJ_AT(x, y)) {
+        /* svl.level.objects[x][y] via ->nexthere */
+        for (const obj of game.level.objects) {
+            if (obj.ox !== x || obj.oy !== y || obj.where !== 'OBJ_FLOOR')
+                continue;
+            if (obj === game.uchain)
+                chainthere = true;
+            else if (obj !== otmp)
+                n += obj.quan;
+        }
+        if (n)
+            impact = true;
+    }
+    /* boulders never fall through trap doors, but they might knock
+       other things down before plugging the hole */
+    if (otmp.otyp === O.BOULDER && ((t = t_at(x, y)) != null)
+        && is_hole(t.ttyp)) {
+        if (impact)
+            await impact_drop(otmp, x, y, 0);
+        return false; /* let caller finish the drop */
+    }
+
+    if (cansee(x, y))
+        await otransit_msg(otmp, nodrop, chainthere, n);
+
+    if (nodrop) {
+        if (impact) {
+            await impact_drop(otmp, x, y, 0);
+            maybe_unhide_at(x, y);
+        }
+        return false;
+    }
+
+    if (unpaid || shop_floor_obj) {
+        /* stolen_value(); then picked_container() for a container and
+           otmp->no_charge = 0 */
+        void container;
+        throw new Error('ship_object(): stolen_value() not ported yet');
+    }
+
+    if (otmp.owornmask)
+        await remove_worn_item(otmp, true);
+
+    /* some things break rather than ship */
+    if (breaktest(otmp)) {
+        let result;
+
+        if (O.objects[otmp.otyp].oc_material === O.GLASS
+            || otmp.otyp === O.EXPENSIVE_CAMERA) {
+            if (otmp.otyp === O.MIRROR)
+                change_luck(-2);
+            result = "crash";
+        } else {
+            /* penalty for breaking eggs laid by you */
+            if (otmp.otyp === O.EGG && otmp.spe && ismnum_do(otmp.corpsenm))
+                change_luck(-Math.min(otmp.quan, 5));
+            result = "splat";
+        }
+        /* Soundeffect(se_egg_splatting / se_glass_crashing, 25) */
+        await You_hear(`a muffled ${result}.`);
+        obj_extract_self(otmp);
+        obfree(otmp, null);
+        return true;
+    }
+
+    add_to_migration(otmp);
+    otmp.ox = cc.x;
+    otmp.oy = cc.y;
+    otmp.owornmask = toloc;
+
+    /* boulder from rolling boulder trap, no longer part of the trap */
+    if (otmp.otyp === O.BOULDER)
+        otmp.otrapped = 0;
+
+    if (impact) {
+        /* the objs impacted may be in a shop other than
+         * the one in which the hero is located.  another
+         * check for a shk is made in impact_drop.  it is, e.g.,
+         * possible to kick/throw an object belonging to one
+         * shop into another shop through a gap in the wall,
+         * and cause objects belonging to the other shop to
+         * fall down a trap door--thereby getting two shopkeepers
+         * angry at the hero in one shot.
+         */
+        await impact_drop(otmp, x, y, 0);
+        newsym(x, y);
+    }
+    return true;
 }
+
+/* C ref: monst.h ismnum() */
+function ismnum_do(fx) { return fx >= LOW_PM_do && fx < NUMMONS_do; }
 
 // C ref: do.c obj_no_longer_held()
 export function obj_no_longer_held(obj) {

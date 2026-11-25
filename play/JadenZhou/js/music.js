@@ -36,7 +36,7 @@ function mindless(ptr) { return (ptr.mflags1 & M1_MINDLESS) !== 0; }
 function mdistu(mtmp) { return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy); }
 
 // C ref: mondata.c can_blow()
-function can_blow(mtmp) {
+export function can_blow(mtmp) {
     const ptr = mtmp.data;
     if ((ptr.msound === MS_SILENT /* is_silent() */ || ptr.msound === MS_BUZZ)
         && ((ptr.mflags1 & M1_BREATHLESS) !== 0 /* breathless() */

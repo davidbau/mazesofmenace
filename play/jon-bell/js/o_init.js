@@ -208,6 +208,9 @@ export function object_runtime_save_snapshot() {
         wandNothingDirection: _wan_nothing_oc_dir,
         probabilities: MKOBJ_OC_PROB,
         classTotals: MKOBJ_OCLASS_PROB_TOTALS,
+        /* o_init.c:141-146 shuffle(..., domaterial) moves oc_material, and
+         * savenames writes objects[] whole (o_init.c:387-389). */
+        materials: MKOBJ_OC_MATERIAL,
     };
 }
 export function object_runtime_rest_snapshot(saved) {
@@ -215,6 +218,7 @@ export function object_runtime_rest_snapshot(saved) {
     _wan_nothing_oc_dir = saved.wandNothingDirection;
     MKOBJ_OC_PROB.set(saved.probabilities);
     MKOBJ_OCLASS_PROB_TOTALS.set(saved.classTotals);
+    if (saved.materials) MKOBJ_OC_MATERIAL.set(saved.materials);
 }
 /**
  * C o_init.c:111-148 — shuffle(o_low, o_high, domaterial).

@@ -79,7 +79,7 @@ import { is_poisonable, pair_of } from './obj.js';
 import { permapoisoned } from './artifact.js';
 import { fixup_oil, is_corrodeable, is_rustprone, is_weptool } from './mkobj.js';
 import { is_ammo } from './wield.js';
-import { fingers_or_gloves } from './do_wear.js';
+import { fingers_or_gloves, inaccessible_equipment } from './do_wear.js';
 import { erode_obj, fire_damage } from './trap.js';
 import { check_unpaid } from './shk.js';
 import { HAND, LL_CONDUCT, NH_ORANGE, NH_RED, ERODE_CORRODE,
@@ -2047,21 +2047,6 @@ export async function strange_feeling(obj, txt) {
     useup(obj);
 }
 
-// src/do_wear.c:3342 inaccessible_equipment(), selection-only arm. Dipping
-// cannot reach a suit under a cloak, a shirt under outer armor, or a ring
-// under gloves.
-function inaccessible_equipment(obj) {
-    if (!obj?.owornmask)
-        return false;
-    if (obj === game.u.uarm && game.u.uarmc)
-        return true;
-    if (obj === game.u.uarmu && (game.u.uarm || game.u.uarmc))
-        return true;
-    if ((obj === game.u.uleft || obj === game.u.uright) && game.u.uarmg)
-        return true;
-    return false;
-}
-
 // src/potion.c:2214 dip_ok(), candidates for dipping: everything except
 // gold, inaccessible worn equipment, and the hands pseudo-object.
 function dip_ok(obj) {
@@ -2073,7 +2058,7 @@ function dip_ok(obj) {
     /* dipping gold isn't currently implemented */
     if (obj.oclass === OCLASSES.COIN_CLASS)
         return GETOBJ_EXCLUDE;
-    if (inaccessible_equipment(obj))
+    if (inaccessible_equipment(obj, null, false))
         return GETOBJ_EXCLUDE_INACCESS;
     return GETOBJ_SUGGEST;
 }
@@ -2455,25 +2440,27 @@ export async function dodip() {
     if (!obj)
         return ECMD_CANCEL;
 
-    /* inaccessible_equipment — cursed worn gear check, records via getobj */
+    if (await inaccessible_equipment(obj, 'dip', false))
+        return ECMD_OK;
 
     const is_hands = obj === hands_obj;
-    drink_ok_extra = 0;
     const shortestname = is_hands || is_plural(obj) || pair_of(obj) ? 'them' : 'it';
+    drink_ok_extra = 0;
     const obuf = is_hands ? `your ${makeplural(body_part(HAND))}`
         : short_oname(obj, doname, thesimpleoname,
             QBUFSZ - ('What do you want to dip'
                 + ' into? [abdeghjkmnpqstvwyzBCEFHIKLNOQRTUWXZ#-# or ?*] ').length - 1);
 
-    if (at_fountain || at_pool || at_sink) {
-        /* can_reach_floor is true for an unimpaired hero */
-        if (at_fountain) {
+    if (!game.iflags.menu_requested) {
+        if (!can_reach_floor(false)) {
+            /* no floor feature to dip into */
+        } else if (at_fountain) {
             /* src/potion.c:2301: reserve room for the longest possible
                second-stage dip prompt, then shorten the object name by the
                same sequence C uses. */
             const q = `Dip ${game.flags?.verbose === false ? shortestname
                              : obuf} into the fountain?`;
-            const ans = await tty_yn_function(q, 'yn', 'n');
+            const ans = await tty_yn_function(q, 'yn', 'n', true);
             if (ans === 'y') {
                 if (!is_hands)
                     obj.pickup_prev = 0;
@@ -2485,7 +2472,7 @@ export async function dodip() {
         } else if (at_sink) {
             const q = `Dip ${game.flags?.verbose === false ? shortestname
                              : obuf} into the sink?`;
-            if ((await tty_yn_function(q, 'yn', 'n')) === 'y') {
+            if ((await tty_yn_function(q, 'yn', 'n', true)) === 'y') {
                 if (!is_hands)
                     obj.pickup_prev = 0;
                 await dipsink(obj);
@@ -2498,7 +2485,7 @@ export async function dodip() {
             const q = `Dip ${game.flags?.verbose === false ? shortestname
                              : obuf} into the ${pooltype}?`;
             /* "Dip <the object> into the {pool, moat, &c}?" */
-            if ((await tty_yn_function(q, 'yn', 'n')) === 'y') {
+            if ((await tty_yn_function(q, 'yn', 'n', true)) === 'y') {
                 if (Levitation()) {
                     await floating_above(pooltype);
                 } else if (game.u.usteed && !is_swimmer(game.u.usteed.data)
@@ -2514,7 +2501,7 @@ export async function dodip() {
                         obj.in_use = 1;
                     if ((await water_damage(obj, null, true)) !== ER_DESTROYED
                         && obj.in_use)
-                        useup(obj);
+                        await useup(obj);
                 }
                 return ECMD_TIME;
             }
@@ -2525,8 +2512,7 @@ export async function dodip() {
     /* "What do you want to dip <obj> into?" — the potion-mixing arm */
     const potion = await getobj(
         `dip ${game.flags?.verbose === false ? shortestname : obuf} into`,
-        candidate => candidate?.oclass === OCLASSES.POTION_CLASS
-            ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE,
+        drink_ok,
         GETOBJ_NOFLAGS);
     if (!potion)
         return ECMD_CANCEL;

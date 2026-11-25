@@ -674,7 +674,7 @@ async function nhl_gamestate(...args) {
             }
         /* some restored state would confuse the level change in progress */
         g.u.uz = cur_uz, g.u.uz0 = cur_uz0;
-        init_uhunger();
+        await init_uhunger();
         free_tutorial(); /* release gg.gmst_XYZ */
         g.gmst_stored = FALSE;
         g.spl_book = struct_copy(g.gmst_spl_book);

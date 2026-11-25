@@ -57,6 +57,14 @@ import { is_ice } from './dig.js';
 import { obj_sheds_light, obj_split_light_source, del_light_source } from './light.js';
 import { nartifact_exist, mk_artifact } from './artifact.js';
 import { A_NONE } from './const.js';
+import { splitbill, get_obj_location } from './shk.js';
+import { CONTAINED_TOO } from './const.js';
+import { arti_light_radius, obj_adjust_light_radius } from './light.js';
+import { Blind } from './youprop.js';
+import { PLNMSG_OBJ_GLOWS } from './const.js';
+import { cansee } from './vision.js';
+import { Yname2, otense } from './objnam.js';
+import { pline } from './display.js';
 
 const NON_PM = -1;
 
@@ -787,7 +795,7 @@ export function splitobj(obj, num) {
     if (otmp.where === 'OBJ_LUAFREE')
         otmp.where = 'OBJ_FREE';
     if (obj.unpaid)
-        throw new Error('splitobj(): splitbill() not ported yet');
+        splitbill(obj, otmp);
     copy_oextra(otmp, obj);
     if (otmp.omid)
         delete otmp.omid; /* free_omid(): only one association with m_id */
@@ -1157,10 +1165,12 @@ export function bless(otmp) {
 export function curse(otmp) {
     let already_cursed;
 
+    let old_light = 0;
+
     if (otmp.oclass === COIN_CLASS)
         return;
     if (otmp.lamplit)
-        throw new Error('curse(): arti_light_radius() of a lit object not ported yet');
+        old_light = arti_light_radius(otmp);
     already_cursed = otmp.cursed;
     otmp.blessed = 0;
     otmp.cursed = 1;
@@ -1185,14 +1195,17 @@ export function curse(otmp) {
         if (!already_cursed)
             book_cursed_sync(otmp);
     }
-    /* if (otmp->lamplit) maybe_adjust_light(): lit objects stop above */
+    if (otmp.lamplit)
+        maybe_adjust_light_sync(otmp, old_light);
     return;
 }
 
 // C ref: mkobj.c uncurse()
 export function uncurse(otmp) {
+    let old_light = 0;
+
     if (otmp.lamplit)
-        throw new Error('uncurse(): arti_light_radius() of a lit object not ported yet');
+        old_light = arti_light_radius(otmp);
     otmp.cursed = 0;
     if (otmp.where === 'OBJ_INVENT' /* carried(otmp) */ && confers_luck(otmp))
         set_moreluck();
@@ -1200,19 +1213,79 @@ export function uncurse(otmp) {
         otmp.owt = weight(otmp);
     else if (otmp.otyp === O.FIGURINE && otmp.timed)
         stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
+    if (otmp.lamplit)
+        maybe_adjust_light_sync(otmp, old_light);
     return;
 }
 
 // C ref: mkobj.c unbless()
 export function unbless(otmp) {
+    let old_light = 0;
+
     if (otmp.lamplit)
-        throw new Error('unbless(): arti_light_radius() of a lit object not ported yet');
+        old_light = arti_light_radius(otmp);
     otmp.blessed = 0;
     if (otmp.where === 'OBJ_INVENT' /* carried(otmp) */ && confers_luck(otmp))
         set_moreluck();
     else if (otmp.otyp === O.BAG_OF_HOLDING)
         otmp.owt = weight(otmp);
-    /* if (otmp->lamplit) maybe_adjust_light(): lit objects stop above */
+    if (otmp.lamplit)
+        maybe_adjust_light_sync(otmp, old_light);
+}
+
+// C ref: mkobj.c maybe_adjust_light()
+export async function maybe_adjust_light(obj, old_range) {
+    const new_range = arti_light_radius(obj), delta = new_range - old_range;
+
+    /* radius of light emitting artifact varies by curse/bless state
+       so will change after blessing or cursing */
+    if (delta) {
+        obj_adjust_light_radius(obj, new_range);
+        /* simplifying assumptions:  hero is wielding or wearing this object;
+           artifacts have to be in use to emit light and monsters' gear won't
+           change bless or curse state */
+        const loc = Blind() ? null : get_obj_location(obj, 0);
+        if (loc) {
+            const [ox, oy] = loc;
+            let buf = '';
+            if (game.iflags.last_msg === PLNMSG_OBJ_GLOWS)
+                /* we just saw "The <obj> glows <color>." from dipping */
+                buf = (obj.quan === 1) ? "It" : "They";
+            else if (obj.where === 'OBJ_INVENT' /* carried() */ || cansee(ox, oy))
+                buf = Yname2(obj);
+            if (buf) {
+                /* initial activation says "dimly" if cursed,
+                   "brightly" if uncursed, and "brilliantly" if blessed;
+                   when changing intensity, using "less brightly" is
+                   straightforward for dimming, but we need "brighter"
+                   rather than "more brightly" for brightening; ugh */
+                await pline(`${buf} ${otense(obj, "shine")} ${
+                    (Math.abs(delta) > 1) ? "much " : ""}${
+                    (delta > 0) ? "brighter" : "less brightly"}.`);
+            }
+        }
+    }
+}
+// maybe_adjust_light() for the synchronous bless()/curse()/&c: its
+// "<obj> shines brighter." message isn't ported there
+function maybe_adjust_light_sync(obj, old_range) {
+    const new_range = arti_light_radius(obj), delta = new_range - old_range;
+
+    /* radius of light emitting artifact varies by curse/bless state
+       so will change after blessing or cursing */
+    if (delta) {
+        obj_adjust_light_radius(obj, new_range);
+        /* simplifying assumptions:  hero is wielding or wearing this object;
+           artifacts have to be in use to emit light and monsters' gear won't
+           change bless or curse state */
+        const loc = Blind() ? null : get_obj_location(obj, 0);
+        if (loc) {
+            const [ox, oy] = loc;
+            if (game.iflags.last_msg === PLNMSG_OBJ_GLOWS
+                || obj.where === 'OBJ_INVENT' || cansee(ox, oy))
+                throw new Error('maybe_adjust_light(): "shines brighter" message in a synchronous caller not ported yet');
+        }
+    }
 }
 
 // C ref: mkobj.c blessorcurse()
@@ -1344,6 +1417,14 @@ export function weight(obj) {
     return (wt ? wt * obj.quan : (obj.quan + 1) >> 1);
 }
 
+// C ref: mkobj.c container_weight()
+/* recompute an object's weight, and that of its enclosing containers */
+export function container_weight(object) {
+    object.owt = weight(object);
+    if (object.where === 'OBJ_CONTAINED')
+        container_weight(object.ocontainer);
+}
+
 // C ref: mkobj.c costly_alteration()
 /* possibly bill for an object which the player has just modified;
    only the "nobody is charging for it" cases are ported */
@@ -1362,10 +1443,11 @@ export function costly_alteration(obj, alter_type) {
     } else {
         /* this get_obj_location shouldn't fail, but if it does,
            use hero's location */
-        if (obj.where === 'OBJ_FLOOR')
-            ox = obj.ox, oy = obj.oy;
+        const loc = get_obj_location(obj, CONTAINED_TOO);
+        if (!loc)
+            ox = game.u.ux, oy = game.u.uy;
         else
-            throw new Error('costly_alteration(): get_obj_location() of a contained/carried object not ported yet');
+            [ox, oy] = loc;
         if (!costly_spot(ox, oy))
             return;
     }

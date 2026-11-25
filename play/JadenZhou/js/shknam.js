@@ -34,6 +34,10 @@ import { rloc_mklev } from './teleport.js';
 import { shop_keeper } from './shk.js';
 import { mongone } from './mon.js';
 import { Hallucination } from './youprop.js';
+import { inside_shop as inside_shop_sr } from './shk.js';
+import { make_engr_at as make_engr_at_sr } from './engrave.js';
+import { in_rooms as in_rooms_sr } from './hack.js';
+import { DUST as DUST_SR, CORR as CORR_SR, ROOM as ROOM_SR } from './const.js';
 
 // C ref: mkroom.h VEGETARIAN_CLASS
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
@@ -720,7 +724,3 @@ export function shkname_is_pname(mtmp) {
 
     return (shknm[0] === '-' || shknm[0] === '+' || shknm[0] === '=');
 }
-import { inside_shop as inside_shop_sr } from './shk.js';
-import { make_engr_at as make_engr_at_sr } from './engrave.js';
-import { in_rooms as in_rooms_sr } from './hack.js';
-import { DUST as DUST_SR, CORR as CORR_SR, ROOM as ROOM_SR } from './const.js';

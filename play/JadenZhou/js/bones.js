@@ -36,7 +36,9 @@ import { can_carry } from './dogmove.js';
 import { m_at, makemon, mongets } from './makemon.js';
 import { is_undead, give_u_to_m_resistances } from './mondata.js';
 import { christen_monst, safe_oname } from './do_name.js';
-import { obj_attach_mid } from './mkobj.js';
+import { obj_attach_mid, mk_named_object } from './mkobj.js';
+import { end_burn } from './timeout.js';
+import { obj_is_burning } from './light.js';
 import { newsym, pline, You } from './display.js';
 import { mongone, dmonsfree } from './mon.js';
 import { enexto, rloc_to } from './teleport.js';
@@ -250,7 +252,7 @@ function resetobjs(ochain, restore) {
                 curse(otmp);
             } else if (otmp.otyp === O.CANDELABRUM_OF_INVOCATION) {
                 if (otmp.lamplit)
-                    throw new Error('resetobjs(): end_burn() not ported yet');
+                    end_burn(otmp, true);
                 otmp.otyp = O.WAX_CANDLE;
                 otmp.age = 50; /* assume used */
                 if (otmp.spe > 0)
@@ -359,8 +361,8 @@ export function drop_upon_death(
             obj_no_longer_held(otmp);
 
         /* lamps don't go out when dropped */
-        if ((cont || artifact_light(otmp)) && otmp.lamplit /* obj_is_burning() */)
-            throw new Error('drop_upon_death(): end_burn() not ported yet'); /* smother in statue */
+        if ((cont || artifact_light(otmp)) && obj_is_burning(otmp))
+            end_burn(otmp, true); /* smother in statue */
         otmp.owornmask = 0;
 
         if (otmp.otyp === O.SLIME_MOLD)
@@ -569,7 +571,14 @@ export async function savebones(how, when, corpse) {
             mongets(mtmp, O.MUMMY_WRAPPING);
         m_dowear(mtmp, true);
     } else if (u.ugrave_arise === LEAVESTATUE) {
-        throw new Error('savebones(): mk_named_object() of a statue not ported yet');
+        /* embed your possessions in your statue */
+        const otmp = mk_named_object(O.STATUE, mons[u.umonnum], u.ux, u.uy,
+                                     g.plname);
+
+        drop_upon_death(null, otmp, u.ux, u.uy);
+        if (!otmp)
+            return; /* couldn't make statue */
+        mtmp = null;
     } else { /* u.ugrave_arise < LEAVESTATUE */
         /* drop everything */
         drop_upon_death(null, null, u.ux, u.uy);

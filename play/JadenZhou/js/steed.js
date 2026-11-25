@@ -48,6 +48,14 @@ import {
     Blind_telepat, Stealth, Levitation, Flying, Half_physical_damage
 } from './youprop.js';
 import { Upolyd, Role_if } from './const.js';
+import { legs_in_no_shape } from './dokick.js';
+import { trapname } from './trap.js';
+import { tty_yn_function } from './wintty.js';
+import { mhe } from './mhitu.js';
+import { hliquid } from './potion.js';
+import { killed, monkilled } from './mon.js';
+import { AD_PHYS } from './monsters.js';
+import { adjalign } from './attrib.js';
 
 /* C ref: mondata.h throws_rocks() */
 function throws_rocks(ptr) { return (ptr.mflags2 & M2_ROCKTHROW) !== 0; }
@@ -125,8 +133,19 @@ async function mount_steed(mtmp, force) {
         await pline("Maybe you should find a designated driver.");
         return false;
     }
-    if (Wounded_legs())
-        throw new Error('mount_steed(): legs_in_no_shape() not ported yet');
+    if (Wounded_legs()) {
+        await legs_in_no_shape("riding", false);
+        const qbuf = `Heal your leg${
+            ((game.u.uprops[WOUNDED_LEGS].intrinsic & BOTH_SIDES) === BOTH_SIDES)
+            ? "s" : ""}?`; /* HWounded_legs */
+        let c;
+        if (force && game.flags.debug /* wizard */
+            && ((c = await tty_yn_function(qbuf, "yn", 'n')) === 'y' /* y_n() */
+                || c === 'y'.charCodeAt(0)))
+            await heal_legs(0);
+        else
+            return false;
+    }
 
     if (Upolyd())
         throw new Error('mount_steed(): polymorphed hero not ported yet');
@@ -171,13 +190,20 @@ async function mount_steed(mtmp, force) {
         await pline(`I think ${mon_nam(mtmp)} would mind.`);
         return false;
     }
-    if (mtmp.mtrapped)
-        throw new Error('mount_steed(): trapname() not ported yet');
+    if (mtmp.mtrapped) {
+        const t = t_at(mtmp.mx, mtmp.my);
+
+        await You_cant(`mount ${mon_nam(mtmp)} while ${mhe(mtmp)}'s trapped in ${
+            an(trapname(t.ttyp, false))}.`);
+        return false;
+    }
 
     if (!force && !Role_if(PM_KNIGHT) && !(--mtmp.mtame))
         throw new Error('mount_steed(): steed resists (no longer tame) not ported yet');
-    if (!force && u.uinwater && !is_swimmer(ptr))
-        throw new Error('mount_steed(): hliquid() not ported yet');
+    if (!force && u.uinwater && !is_swimmer(ptr)) { /* Underwater */
+        await You_cant(`ride that creature while under ${hliquid("water")}.`);
+        return false;
+    }
     if (!can_saddle(mtmp) || !can_ride(mtmp)) {
         await You_cant("ride such a creature.");
         return false;
@@ -578,7 +604,16 @@ export async function dismount_steed(
 
         /* Otherwise, steed goes bye-bye. */
         } else {
-            throw new Error('dismount_steed(): no room for the steed (killed()) not ported yet');
+            /* original there's-no-room handling */
+            if (reason === DISMOUNT_BYCHOICE) {
+                /* [un]#ride: hero gets credit/blame for killing steed */
+                await killed(mtmp);
+                adjalign(-1);
+            } else {
+                /* other dismount: kill former steed with no penalty;
+                   damage type is just "neither AD_DGST nor -AD_RBRE" */
+                await monkilled(mtmp, "", -AD_PHYS);
+            }
         }
     } /* !DEADMONST(mtmp) */
 

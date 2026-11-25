@@ -71,10 +71,106 @@ import { invocation_pos as invocation_pos_bl } from './mklev.js';
 import { stairway_at as stairway_at_bl } from './display.js';
 import { wake_nearby as wake_nearby_bl } from './mon.js';
 import { G_GONE as G_GONE_bl } from './const.js';
+import { couldsee } from './vision.js';
+import { isqrt } from './hacklib.js';
+import { glyph_at, tmp_at, DISP_BEAM, DISP_END, sensemon } from './display.js';
+import { uwep_skill_type, P_SKILL } from './weapon.js';
+import { P_NONE, P_BASIC, P_SKILLED, STATUE_TRAP, IS_FURNITURE, STONE,
+         COLNO, ROWNO } from './const.js';
+import { DEADMONSTER, wake_nearto } from './mon.js';
+import { attack_checks, check_caitiff } from './uhitm.js';
+import { overexertion } from './hack.js';
+import { thitmonst } from './dothrow.js';
+import { u_wipe_engr } from './engrave.js';
+import { accessible } from './makemon.js';
+import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
+import { Confusion, Stunned } from './youprop.js';
+import { ART_SNICKERSNEE } from './artilist.js';
+import { simpleonames as simpleonames_ap } from './iactions.js';
+import { NON_PM as NON_PM_AP } from './const.js';
+import { arti_speak } from './artifact.js';
+import { stucksteed } from './steed.js';
+import { legs_in_no_shape } from './dokick.js';
+import { reset_utrap, fire_damage } from './trap.js';
 import * as MM_bl from './monsters.js';
 import { openit as openit_bl, findit as findit_bl } from './detect.js';
 import { unpunish as unpunish_bl } from './read.js';
 import { TT_BURIEDBALL as TT_BURIEDBALL_bl } from './const.js';
+/* do_break_wand() */
+import { objdescr_is as objdescr_is_bw } from './o_init.js';
+import { safe_qbuf as safe_qbuf_bw } from './pickup.js';
+import { paranoid_query as paranoid_query_bw } from './cmd.js';
+import { PARANOID_BREAKWAND as PARANOID_BREAKWAND_BW, HEAD as HEAD_BW,
+         COST_DSTROY as COST_DSTROY_BW, EXPL_MAGICAL as EXPL_MAGICAL_BW,
+         EXPL_FIERY as EXPL_FIERY_BW, EXPL_FROSTY as EXPL_FROSTY_BW,
+         N_DIRS as N_DIRS_BW, xdir as xdir_bw, ydir as ydir_bw,
+         NO_MM_FLAGS as NO_MM_FLAGS_BW, NO_KILLER_PREFIX as NO_KILLER_PREFIX_BW,
+         OBJ_AT as OBJ_AT_BW } from './const.js';
+import { freeinv as freeinv_bw } from './invent.js';
+import { zappable as zappable_bw, release_hold as release_hold_bw,
+         zapsetup as zapsetup_bw, zapwrapup as zapwrapup_bw, bhitm as bhitm_bw,
+         bhitpile as bhitpile_bw, bhito as bhito_bw } from './zap.js';
+import { explode as explode_bw } from './explode.js';
+import { makemon as makemon_bw } from './makemon.js';
+import { bot as bot_bw } from './display.js';
+import { pay_for_damage as pay_for_damage_bw } from './shk.js';
+import { litroom as litroom_bw } from './read.js';
+import { M_AP_TYPE as M_AP_TYPE_AP, M_AP_OBJECT as M_AP_OBJECT_AP,
+         M_AP_MONSTER as M_AP_MONSTER_AP,
+         M_AP_FURNITURE as M_AP_FURNITURE_AP } from './const.js';
+import { obj_typename as obj_typename_ap } from './objnam.js';
+import { pmname as pmname_ap, Mgender as Mgender_ap } from './do_name.js';
+import { defsyms_explanation as defsyms_explanation_ap } from './pager.js';
+import { seemimic as seemimic_ap } from './mon.js';
+import { splitobj as splitobj_ap, costly_alteration as costly_alteration_ap,
+         obj_extract_self as obj_extract_self_ap } from './mkobj.js';
+import { makeplural as makeplural_ap, xname as xname_ap } from './objnam.js';
+import { the as the_ap } from './iactions.js';
+import { can_blnd as can_blnd_ap } from './mondata.js';
+import { AT_WEAP as AT_WEAP_AP } from './monsters.js';
+import { make_blinded as make_blinded_ap } from './potion.js';
+import { setnotworn as setnotworn_ap } from './worn.js';
+import { delobj as delobj_ap } from './invent.js';
+import { FACE as FACE_AP, BLINDED as BLINDED_AP, TIMEOUT as TIMEOUT_AP,
+         COST_SPLAT as COST_SPLAT_AP } from './const.js';
+import { wield_tool as wield_tool_ap } from './wield.js';
+import { rn1 as rn1_ap } from './rng.js';
+import { djinni_from_bottle as djinni_from_bottle_ap } from './potion.js';
+import { nothing_happens as nothing_happens_ap } from './const.js';
+import { nothing_seems_to_happen as nothing_seems_to_happen_lp, GLIB as GLIB_LP } from './const.js';
+import { Shk_Your as Shk_Your_lp } from './wield.js';
+import { yname as yname_lp, Tobjnam as Tobjnam_lp, otense as otense_lp } from './objnam.js';
+import { Your as Your_lp } from './display.js';
+import { begin_burn as begin_burn_lp, end_burn as end_burn_lp } from './timeout.js';
+import { make_glib as make_glib_lp } from './potion.js';
+import { fingers_or_gloves as fingers_or_gloves_lp } from './do_wear.js';
+import { Blindf_on as Blindf_on_dw, Blindf_off as Blindf_off_dw,
+         cursed as cursed_dw } from './do_wear.js';
+import { d as d_lp } from './rng.js';
+import { check_unpaid as check_unpaid_lp } from './zap.js';
+import { FUMBLING as FUMBLING_WH, GLIB as GLIB_WH, LEVITATION as LEVITATION_WH,
+         FLYING as FLYING_WH, A_DEX as A_DEX_WH, TT_PIT as TT_PIT_WH,
+         NO_KILLER_PREFIX as NO_KILLER_PREFIX_WH, FOOT as FOOT_WH,
+         IS_WATERWALL, LAVAWALL } from './const.js';
+import { PM_ARCHEOLOGIST as PM_ARCHEOLOGIST_WH } from './monsters.js';
+import { ceiling as ceiling_wh } from './dungeon.js';
+import { is_pool_or_lava } from './hack.js';
+import { is_lava as is_lava_wh } from './makemon.js';
+import { dbon } from './weapon.js';
+import { losehp, Maybe_Half_Phys } from './trap.js';
+import { dropx } from './do.js';
+import { check_unpaid as check_unpaid_cam, zapyourself as zapyourself_cam } from './zap.js';
+import { s_suffix as s_suffix_cam } from './hacklib.js';
+import { mon_nam as mon_nam_cam } from './do_name.js';
+import { mbodypart as mbodypart_cam } from './insight.js';
+import { STOMACH as STOMACH_CAM } from './const.js';
+import { noit_mon_nam as noit_mon_nam_ls, Monnam as Monnam_ls,
+         l_monnam as l_monnam_ls } from './do_name.js';
+import { get_adjacent_loc as get_adjacent_loc_ls } from './cmd.js';
+import { use_pick_axe } from './dig.js';
+import { glyph_is_invisible as glyph_is_invisible_ls } from './display.js';
+import { mons as mons_ls, PM_LONG_WORM as PM_LONG_WORM_LS, M1_UNSOLID as M1_UNSOLID_LS,
+         M1_NOLIMBS as M1_NOLIMBS_LS, M1_NOHEAD as M1_NOHEAD_LS } from './monsters.js';
 /* C ref: mondata.h is_whirly() */
 function is_whirly(ptr) {
     return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
@@ -291,7 +387,16 @@ async function use_stethoscope(obj) {
                    we want the same thing '//' or ';' shows: "slime mold"
                    or "grape" or "slice of pizza" */
                 if (otyp === O.SLIME_MOLD && has_mcorpsenm_ap(mtmp)) {
-                    throw new Error('use_stethoscope(): mimic shown as a named fruit (simpleonames()) not ported yet');
+                    /* odummy = init_dummyobj(&dummyobj, mappearance, 1L);
+                       odummy->spe = MCORPSENM(mtmp); */
+                    const odummy = {
+                        otyp, oclass: objects[otyp].oc_class, dknown: 0,
+                        /* default is "on" for types which don't use it */
+                        known: !objects[otyp].oc_uses_known ? 1 : 0,
+                        quan: 1, corpsenm: NON_PM_AP,
+                        spe: mtmp.mextra.mcorpsenm,
+                    };
+                    what = simpleonames_ap(odummy);
                 } else {
                     what = simple_typename_ap(otyp);
                 }
@@ -385,10 +490,6 @@ async function flip_through_book(obj) {
     return ECMD_TIME;
 }
 
-import { M_AP_TYPE as M_AP_TYPE_AP, M_AP_OBJECT as M_AP_OBJECT_AP,
-         M_AP_MONSTER as M_AP_MONSTER_AP,
-         M_AP_FURNITURE as M_AP_FURNITURE_AP } from './const.js';
-import { obj_typename as obj_typename_ap } from './objnam.js';
 /* C ref: mextra.h has_mcorpsenm() */
 function has_mcorpsenm_ap(mtmp) { return mtmp.mextra?.mcorpsenm !== undefined; }
 /* C ref: objnam.c simple_typename() -- obj_typename() without the
@@ -403,9 +504,6 @@ function simple_typename_ap(otyp) {
         bufp = bufp.slice(0, pp); /* strip the appended description */
     return bufp;
 }
-import { pmname as pmname_ap, Mgender as Mgender_ap } from './do_name.js';
-import { defsyms_explanation as defsyms_explanation_ap } from './pager.js';
-import { seemimic as seemimic_ap } from './mon.js';
 
 // C ref: apply.c use_cream_pie()
 async function use_cream_pie(obj) {
@@ -444,17 +542,6 @@ async function use_cream_pie(obj) {
     delobj_ap(obj);
     return ECMD_OK;
 }
-import { splitobj as splitobj_ap, costly_alteration as costly_alteration_ap,
-         obj_extract_self as obj_extract_self_ap } from './mkobj.js';
-import { makeplural as makeplural_ap, xname as xname_ap } from './objnam.js';
-import { the as the_ap } from './iactions.js';
-import { can_blnd as can_blnd_ap } from './mondata.js';
-import { AT_WEAP as AT_WEAP_AP } from './monsters.js';
-import { make_blinded as make_blinded_ap } from './potion.js';
-import { setnotworn as setnotworn_ap } from './worn.js';
-import { delobj as delobj_ap } from './invent.js';
-import { FACE as FACE_AP, BLINDED as BLINDED_AP, TIMEOUT as TIMEOUT_AP,
-         COST_SPLAT as COST_SPLAT_AP } from './const.js';
 
 // C ref: apply.c rub_ok() -- getobj callback for object to rub
 function rub_ok(obj) {
@@ -516,7 +603,7 @@ export async function dorub() {
             uwep.spe = 0; /* for safety */
             uwep.age = rn1_ap(500, 1000);
             if (uwep.lamplit)
-                throw new Error('dorub(): begin_burn() of a lit lamp not ported yet');
+                begin_burn_lp(uwep, true);
             await djinni_from_bottle_ap(uwep);
             discover_object(MAGIC_LAMP, true, true, true); /* makeknown() */
             /* update_inventory(): no perm_invent */
@@ -532,21 +619,6 @@ export async function dorub() {
         await pline(nothing_happens_ap);
     return ECMD_TIME;
 }
-import { wield_tool as wield_tool_ap } from './wield.js';
-import { rn1 as rn1_ap } from './rng.js';
-import { djinni_from_bottle as djinni_from_bottle_ap } from './potion.js';
-import { nothing_happens as nothing_happens_ap } from './const.js';
-import { nothing_seems_to_happen as nothing_seems_to_happen_lp, GLIB as GLIB_LP } from './const.js';
-import { Shk_Your as Shk_Your_lp } from './wield.js';
-import { yname as yname_lp, Tobjnam as Tobjnam_lp, otense as otense_lp } from './objnam.js';
-import { Your as Your_lp } from './display.js';
-import { begin_burn as begin_burn_lp, end_burn as end_burn_lp } from './timeout.js';
-import { make_glib as make_glib_lp } from './potion.js';
-import { fingers_or_gloves as fingers_or_gloves_lp } from './do_wear.js';
-import { Blindf_on as Blindf_on_dw, Blindf_off as Blindf_off_dw,
-         cursed as cursed_dw } from './do_wear.js';
-import { d as d_lp } from './rng.js';
-import { check_unpaid as check_unpaid_lp } from './zap.js';
 
 // C ref: apply.c apply_ok() -- getobj callback for object to apply
 function apply_ok(obj) {
@@ -609,6 +681,231 @@ function apply_ok(obj) {
     return GETOBJ_EXCLUDE_SELECTABLE;
 }
 
+// C ref: apply.c discard_broken_wand()
+function discard_broken_wand() {
+    let obj;
+
+    obj = game.current_wand; /* [see dozap() and destroy_items()] */
+    game.current_wand = null;
+    if (obj)
+        delobj_ap(obj);
+    nomul(0);
+}
+
+// C ref: apply.c broken_wand_explode()
+async function broken_wand_explode(obj, dmg, expltype) {
+    await explode_bw(game.u.ux, game.u.uy, -(obj.otyp), dmg, WAND_CLASS, expltype);
+    discover_object(obj.otyp, true, true, true); /* makeknown(): explode
+                                                    describes the effect */
+    discard_broken_wand();
+}
+
+// C ref: apply.c do_break_wand()
+/* return 1 if the wand is broken, hence some time elapsed */
+async function do_break_wand(obj) {
+    const nothing_else_happens = "But nothing else happens...";
+    const g = game;
+    const u = g.u;
+    let i;
+    let x, y;
+    let mon;
+    let dmg, damage;
+    let affects_objects;
+    let shop_damage = false;
+    let confirm, buf;
+    const is_fragile = (objdescr_is_bw(obj, "balsa")
+                        || objdescr_is_bw(obj, "glass"));
+
+    if (nohands(g.youmonst.data)) {
+        await You_cant(`break ${yname_lp(obj)} without hands!`);
+        return ECMD_OK;
+    } else if (!freehand()) {
+        await Your_lp(`${makeplural_ap(body_part(HAND))} are occupied!`);
+        return ECMD_OK;
+    } else if (ACURR(A_STR) < (is_fragile ? 5 : 10)) {
+        await You(`don't have the strength to break ${yname_lp(obj)}!`);
+        return ECMD_OK;
+    }
+    confirm = safe_qbuf_bw("Are you really sure you want to break ",
+                           "?", obj, yname_lp, "the wand");
+    if (!(await paranoid_query_bw(
+            (g.flags.paranoia_bits & PARANOID_BREAKWAND_BW) !== 0, /* ParanoidBreakwand */
+            confirm)))
+        return ECMD_OK;
+    await pline(`Raising ${yname_lp(obj)} high above your ${body_part(HEAD_BW)
+                }, you ${is_fragile ? "snap" : "break"} it in two!`);
+
+    /* [ALI] Do this first so that wand is removed from bill. Otherwise,
+     * the freeinv() below also hides it from setpaid() which causes problems.
+     */
+    if (obj.unpaid) {
+        check_unpaid_lp(obj); /* Extra charge for use */
+        costly_alteration_ap(obj, COST_DSTROY_BW);
+    }
+
+    g.current_wand = obj; /* destroy_items might reset this */
+    freeinv_bw(obj);      /* hide it from destroy_items instead... */
+    setnotworn_ap(obj);   /* so we need to do this ourselves */
+
+    if (!(await zappable_bw(obj))) {
+        await pline(nothing_else_happens);
+        discard_broken_wand();
+        return ECMD_TIME;
+    }
+    /* successful call to zappable() consumes a charge; put it back */
+    obj.spe++;
+    /* might have "wrested" a final charge, taking it from 0 to -1;
+       if so, we just brought it back up to 0, which wouldn't do much
+       below so give it 1..3 charges now, usually making it stronger
+       than an ordinary last charge (the wand is already gone from
+       inventory, so perm_invent can't accidentally reveal this) */
+    if (!obj.spe)
+        obj.spe = rnd(3);
+
+    obj.ox = u.ux;
+    obj.oy = u.uy;
+    dmg = obj.spe * 4;
+    affects_objects = false;
+
+    switch (obj.otyp) {
+    case O.WAN_OPENING:
+        if (u.ustuck) {
+            await release_hold_bw();
+            if (obj.dknown)
+                discover_object(O.WAN_OPENING, true, true, true); /* makeknown() */
+            discard_broken_wand();
+            return ECMD_TIME;
+        }
+        /*FALLTHRU*/
+    case O.WAN_WISHING: // eslint-disable-line no-fallthrough
+    case O.WAN_NOTHING:
+    case O.WAN_LOCKING:
+    case O.WAN_PROBING:
+    case O.WAN_ENLIGHTENMENT:
+    case O.WAN_SECRET_DOOR_DETECTION:
+    case O.WAN_STASIS:
+        await pline(nothing_else_happens);
+        discard_broken_wand();
+        return ECMD_TIME;
+    case O.WAN_DEATH:
+    case O.WAN_LIGHTNING:
+        await broken_wand_explode(obj, dmg * 4, EXPL_MAGICAL_BW);
+        return ECMD_TIME;
+    case O.WAN_FIRE:
+        await broken_wand_explode(obj, dmg * 2, EXPL_FIERY_BW);
+        return ECMD_TIME;
+    case O.WAN_COLD:
+        await broken_wand_explode(obj, dmg * 2, EXPL_FROSTY_BW);
+        return ECMD_TIME;
+    case O.WAN_MAGIC_MISSILE:
+        await broken_wand_explode(obj, dmg, EXPL_MAGICAL_BW);
+        return ECMD_TIME;
+    case O.WAN_STRIKING:
+        /* we want this before the explosion instead of at the very end */
+        /* Soundeffect(se_wall_of_force, 65): no sound interface */
+        await pline("A wall of force smashes down around you!");
+        dmg = d_lp(1 + obj.spe, 6); /* normally 2d12 */
+        /*FALLTHRU*/
+    case O.WAN_CANCELLATION: // eslint-disable-line no-fallthrough
+    case O.WAN_POLYMORPH:
+    case O.WAN_TELEPORTATION:
+    case O.WAN_UNDEAD_TURNING:
+        affects_objects = true;
+        break;
+    default:
+        break;
+    }
+
+    /* magical explosion and its visual effect occur before specific effects
+     */
+    /* [TODO?  This really ought to prevent the explosion from being
+       fatal so that we never leave a bones file where none of the
+       surrounding targets (or underlying objects) got affected yet.] */
+    await explode_bw(obj.ox, obj.oy, -(obj.otyp), rnd(dmg), WAND_CLASS,
+                     EXPL_MAGICAL_BW);
+
+    /* prepare for potential feedback from polymorph... */
+    zapsetup_bw();
+
+    /* this makes it hit us last, so that we can see the action first */
+    for (i = 0; i <= N_DIRS_BW; i++) {
+        if (!g.bhitpos)
+            g.bhitpos = { x: 0, y: 0 };
+        g.bhitpos.x = x = obj.ox + xdir_bw[i];
+        g.bhitpos.y = y = obj.oy + ydir_bw[i];
+        if (!isok(x, y))
+            continue;
+
+        if (obj.otyp === O.WAN_DIGGING) {
+            /* dig_check(BY_OBJECT, x, y), digactualhole(), fill_pit(),
+               maybe_dunk_boulders() ... */
+            throw new Error('do_break_wand(): breaking a wand of digging (dig_check()/digactualhole()) not ported yet');
+        } else if (obj.otyp === O.WAN_CREATE_MONSTER) {
+            /* u.ux,u.uy creates it near you--x,y might create it in rock */
+            makemon_bw(null, u.ux, u.uy, NO_MM_FLAGS_BW);
+            continue;
+        } else if (x !== u.ux || y !== u.uy) {
+            /*
+             * Wand breakage is targeting a square adjacent to the hero,
+             * which might contain a monster or a pile of objects or both.
+             * Handle objects last; avoids having undead turning raise an
+             * undead's corpse and then attack resulting undead monster.
+             * obj->bypass in bhitm() prevents the polymorphing of items
+             * dropped due to monster's polymorph and prevents undead
+             * turning that kills an undead from raising resulting corpse.
+             */
+            if ((mon = m_at(x, y))) {
+                await bhitm_bw(mon, obj);
+                /* if (disp.botl) bot(); */
+            }
+            if (affects_objects && OBJ_AT_BW(x, y)) {
+                await bhitpile_bw(obj, bhito_bw, x, y, 0);
+                if (g.disp_botl)
+                    bot_bw(); /* potion effects */
+            }
+        } else {
+            /*
+             * Wand breakage is targeting the hero.  Using xdir[]+ydir[]
+             * deltas for location selection causes this case to happen
+             * after all the surrounding squares have been handled.
+             * Process objects first, in case damage is fatal and leaves
+             * bones, or teleportation sends one or more of the objects to
+             * same destination as hero (lookhere/autopickup); also avoids
+             * the polymorphing of gear dropped due to hero's transformation.
+             * (Unlike with monsters being hit by zaps, we can't rely on use
+             * of obj->bypass in the zap code to accomplish that last case
+             * since it's also used by retouch_equipment() for polyself.)
+             */
+            if (affects_objects && OBJ_AT_BW(x, y)) {
+                await bhitpile_bw(obj, bhito_bw, x, y, 0);
+                if (g.disp_botl)
+                    bot_bw(); /* potion effects */
+            }
+            damage = await zapyourself_cam(obj, false);
+            if (damage) {
+                buf = `killed ${uhim()}self by breaking a wand`;
+                await losehp(Maybe_Half_Phys(damage), buf, NO_KILLER_PREFIX_BW);
+            }
+            if (g.disp_botl)
+                bot_bw(); /* blindness */
+        }
+    }
+
+    /* potentially give post zap/break feedback */
+    await zapwrapup_bw();
+
+    /* Note: if player fell thru, this call is a no-op.
+       Damage is handled in digactualhole in that case */
+    if (shop_damage)
+        await pay_for_damage_bw("dig into", false);
+
+    if (obj.otyp === O.WAN_LIGHT)
+        await litroom_bw(true, obj); /* only needs to be done once */
+
+    discard_broken_wand();
+    return ECMD_TIME;
+}
+
 // C ref: apply.c doapply() -- the #apply command
 export async function doapply() {
     if (nohands(game.youmonst.data)) {
@@ -628,7 +925,7 @@ export async function doapply() {
                              grateful that you don't drop it as well */
 
     if (obj.oclass === WAND_CLASS)
-        throw new Error('doapply(): do_break_wand() not ported yet');
+        return await do_break_wand(obj);
 
     if (obj.oclass === SPBOOK_CLASS)
         return await flip_through_book(obj);
@@ -763,7 +1060,8 @@ export async function doapply() {
     default:
         /* Pole-weapons can strike at a distance */
         if (is_pole(obj)) {
-            throw new Error('doapply(): use_pole() not ported yet');
+            res = await use_pole(obj, false);
+            break;
         } else if (is_pick(obj) || is_axe(obj)) {
             res = await use_pick_axe(obj);
             break;
@@ -773,8 +1071,9 @@ export async function doapply() {
     }
     /* This assumes that anything that potentially destroyed obj has kept
      * track of it and set obj to null before this point. */
-    if (obj && obj.oartifact)
-        throw new Error('doapply(): arti_speak() not ported yet');
+    if (obj && obj.oartifact) {
+        res |= await arti_speak(obj); /* sets ECMD_TIME bit if artifact speaks */
+    }
     return res;
 }
 
@@ -892,9 +1191,23 @@ async function get_valid_jump_position(x, y) {
 }
 
 // C ref: apply.c display_jump_positions()
-function display_jump_positions(on_off) {
-    /* tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos)) ... */
-    throw new Error('display_jump_positions(): tmp_at() not ported yet');
+async function display_jump_positions(on_off) {
+    let x, y, dx, dy;
+
+    if (on_off) {
+        /* on */
+        tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_goodpos) */
+        for (dx = -4; dx <= 4; dx++)
+            for (dy = -4; dy <= 4; dy++) {
+                x = dx + game.u.ux;
+                y = dy + game.u.uy;
+                if (await get_valid_jump_position(x, y) && !u_at(x, y))
+                    tmp_at(x, y);
+            }
+    } else {
+        /* off */
+        tmp_at(DISP_END, 0);
+    }
 }
 
 // C ref: apply.c jump()
@@ -918,8 +1231,9 @@ export async function jump(magic) {
         await You_cant("jump very far.");
         return ECMD_OK;
     /* if steed is immobile, can't do physical jump but can do spell one */
-    } else if (!magic && u.usteed) {
-        throw new Error('jump(): stucksteed() not ported yet');
+    } else if (!magic && u.usteed && await stucksteed(false)) {
+        /* stucksteed gave "<steed> won't move" message */
+        return ECMD_OK;
     } else if (u.uswallow) {
         if (magic) {
             await You("bounce around a little.");
@@ -950,7 +1264,8 @@ export async function jump(magic) {
         await You("lack the strength to jump!");
         return ECMD_OK;
     } else if (!magic && Wounded_legs()) {
-        throw new Error('jump(): legs_in_no_shape() not ported yet');
+        await legs_in_no_shape("jumping", !!u.usteed);
+        return ECMD_OK;
     } else if (u.usteed && u.utrap) {
         throw new Error('jump(): steed in a trap not ported yet');
     }
@@ -979,14 +1294,16 @@ export async function jump(magic) {
                 throw new Error(`jump(): jumping out of trap type ${u.utraptype} not ported yet`);
             }
             /* if we reach here, hero is no longer trapped */
-            throw new Error('jump(): reset_utrap() not ported yet');
+            await reset_utrap(true);
         }
         /* jumping on hero's same spot doesn't use walk_path() and isn't
            allowed when riding (handled above) */
         if (u_at(cc.x, cc.y)) {
             /* escaping from a trap takes precedence over jumping in place */
-            if (wastrapped)
-                throw new Error('jump(): morehungry() after escaping a trap not ported yet');
+            if (wastrapped) {
+                await morehungry(rnd(10));
+                return ECMD_TIME;
+            }
             /* jumping in place on a trap will trigger it */
             if (t_at(cc.x, cc.y))
                 throw new Error('jump(): jumping in place on a trap not ported yet');
@@ -1166,7 +1483,7 @@ async function use_whip(obj) {
     } else if (!u.dz && (IS_WATERWALL(loc.typ) || loc.typ === LAVAWALL)) {
         await You("cause a small splash.");
         if (loc.typ === LAVAWALL)
-            throw new Error('use_whip(): fire_damage() of a lava wall not ported yet');
+            await fire_damage(g.uwep, false, rx, ry);
         return ECMD_TIME;
     } else if ((!u.dx && !u.dy) || (u.dz > 0)) {
         let dam;
@@ -1178,7 +1495,7 @@ async function use_whip(obj) {
             || IS_WATERWALL(loc.typ) || loc.typ === LAVAWALL) {
             await You("cause a small splash.");
             if (is_lava_wh(u.ux, u.uy))
-                throw new Error('use_whip(): fire_damage() of lava not ported yet');
+                await fire_damage(g.uwep, false, u.ux, u.uy);
             return ECMD_TIME;
         }
         if (Levitation || u.usteed || Flying) {
@@ -1215,17 +1532,312 @@ async function use_whip(obj) {
     void otmp;
     return ECMD_TIME;
 }
-import { FUMBLING as FUMBLING_WH, GLIB as GLIB_WH, LEVITATION as LEVITATION_WH,
-         FLYING as FLYING_WH, A_DEX as A_DEX_WH, TT_PIT as TT_PIT_WH,
-         NO_KILLER_PREFIX as NO_KILLER_PREFIX_WH, FOOT as FOOT_WH,
-         IS_WATERWALL, LAVAWALL } from './const.js';
-import { PM_ARCHEOLOGIST as PM_ARCHEOLOGIST_WH } from './monsters.js';
-import { ceiling as ceiling_wh } from './dungeon.js';
-import { is_pool_or_lava } from './hack.js';
-import { is_lava as is_lava_wh } from './makemon.js';
-import { dbon } from './weapon.js';
-import { losehp, Maybe_Half_Phys } from './trap.js';
-import { dropx } from './do.js';
+
+/* C ref: apply.c -- use_pole() messages */
+const not_enough_room = "There's not enough room here to use that.",
+    where_to_hit = "Where do you want to hit?",
+    cant_see_spot = "won't hit anything if you can't see that spot.",
+    cant_reach = "can't reach that spot from here.";
+
+/* C ref: display.h glyph_is_*() for a glyph_at() glyph; glyph_to_obj()
+   and glyph_to_cmap() -- an object glyph keeps its objects[] index in
+   'otyp', a cmap glyph its defsyms[] index in 'cmapidx' */
+function glyph_is_monster_pl(glyph) { return glyph.kind === 'mon'; }
+function glyph_is_statue_pl(glyph) {
+    return glyph.kind === 'obj' && glyph.otyp === O.STATUE;
+}
+function glyph_is_cmap_pl(glyph) {
+    return glyph.kind === 'cmap' && glyph.cmapidx !== undefined
+           && glyph.cmapidx !== null;
+}
+function glyph_to_obj_pl(glyph) {
+    return (glyph.kind === 'obj' && glyph.otyp !== undefined
+            && glyph.otyp !== null) ? glyph.otyp : -1; /* NUM_OBJECTS */
+}
+/* C ref: apply.c glyph_is_poleable() */
+function glyph_is_poleable(G) {
+    return glyph_is_monster_pl(G) || glyph_is_invisible_ls(G)
+           || glyph_is_statue_pl(G);
+}
+/* C ref: monst.h mdistu() */
+function mdistu_pl(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
+/* C ref: artifact.h u_wield_art() */
+function u_wield_art_pl(art) { return !!game.uwep && game.uwep.oartifact === art; }
+/* C ref: context.h svc.context.polearm (zeroed with the context) */
+function polearm_ctx() {
+    if (!game.context.polearm)
+        game.context.polearm = { hitmon: null };
+    return game.context.polearm;
+}
+
+// C ref: apply.c find_poleable_mon()
+/* find pos of monster in range, if only one monster */
+function find_poleable_mon(pos) {
+    const u = game.u;
+    let mtmp;
+    const mpos = { x: 0, y: 0 }; /* no candidate location yet */
+    let x, y;
+    let glyph;
+
+    const impaired = (Confusion() || Stunned() || Hallucination());
+    const rt = isqrt(game.polearm_range_max);
+    const lo_x = Math.max(u.ux - rt, 1), hi_x = Math.min(u.ux + rt, COLNO - 1);
+    const lo_y = Math.max(u.uy - rt, 0), hi_y = Math.min(u.uy + rt, ROWNO - 1);
+    for (x = lo_x; x <= hi_x; ++x) {
+        for (y = lo_y; y <= hi_y; ++y) {
+            if (!get_valid_polearm_position(x, y))
+                continue;
+            glyph = glyph_at(x, y);
+            if (!impaired
+                && glyph_is_monster_pl(glyph)
+                && (mtmp = m_at(x, y)) != null
+                && (mtmp.mtame || (mtmp.mpeaceful && game.flags.confirm)))
+                continue;
+            if (glyph_is_poleable(glyph)
+                && (!glyph_is_statue_pl(glyph) || impaired)) {
+                if (mpos.x)
+                    return false; /* more than one candidate location */
+                mpos.x = x, mpos.y = y;
+            }
+        }
+    }
+    if (!mpos.x)
+        return false; /* no candidate location */
+    pos.x = mpos.x;
+    pos.y = mpos.y;
+    return true;
+}
+
+// C ref: apply.c get_valid_polearm_position()
+function get_valid_polearm_position(x, y) {
+    const glyph = glyph_at(x, y);
+
+    return (isok(x, y) && distu(x, y) >= game.polearm_range_min
+            && distu(x, y) <= game.polearm_range_max
+            && (cansee(x, y) || (couldsee(x, y)
+                                 && glyph_is_poleable(glyph))));
+}
+
+// C ref: apply.c display_polearm_positions()
+function display_polearm_positions(on_off) {
+    let x, y, dx, dy;
+
+    if (on_off) {
+        /* on */
+        tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_goodpos) */
+        for (dx = -3; dx <= 3; dx++)
+            for (dy = -3; dy <= 3; dy++) {
+                x = dx + game.u.ux;
+                y = dy + game.u.uy;
+                if (get_valid_polearm_position(x, y)) {
+                    tmp_at(x, y);
+                }
+            }
+    } else {
+        /* off */
+        tmp_at(DISP_END, 0);
+    }
+}
+
+// C ref: apply.c calc_pole_range()
+/*
+ * Calculate allowable range (pole's reach is always 2 steps):
+ *  unskilled and basic: orthogonal direction, 4..4;
+ *  skilled: as basic, plus knight's jump position, 4..5;
+ *  expert: as skilled, plus diagonal, 4..8.
+ *  (Note: no roles in NetHack can become expert or better
+ *  for polearm skill; Yeoman in slash'em can become expert.)
+ */
+function calc_pole_range(range) {
+    const typ = uwep_skill_type();
+
+    range.min = 4;
+    if (typ === P_NONE || P_SKILL(typ) <= P_BASIC)
+        range.max = 4;
+    else if (P_SKILL(typ) === P_SKILLED)
+        range.max = 5;
+    else
+        range.max = 8; /* (P_SKILL(typ) >= P_EXPERT) */
+
+    game.polearm_range_min = range.min;
+    game.polearm_range_max = range.max;
+}
+
+// C ref: apply.c could_pole_mon()
+/* return TRUE if hero is wielding a polearm and there's
+   at least one monster they could hit with it */
+export function could_pole_mon() {
+    const range = { min: 0, max: 0 };
+    const cc = { x: 0, y: 0 };
+    const hitm = polearm_ctx().hitmon;
+
+    if (!game.uwep || !is_pole(game.uwep))
+        return false;
+
+    calc_pole_range(range);
+
+    cc.x = game.u.ux;
+    cc.y = game.u.uy;
+    if (!find_poleable_mon(cc)) {
+        if (hitm && !DEADMONSTER(hitm) && sensemon(hitm)
+            && mdistu_pl(hitm) <= range.max && mdistu_pl(hitm) >= range.min)
+            return true;
+    } else {
+        return true;
+    }
+    return false;
+}
+
+// C ref: apply.c snickersnee_used_dist_attk()
+/* was Snickersnee used to attack at distance this turn already? */
+function snickersnee_used_dist_attk(obj) {
+    if (obj && obj === game.uwep && u_wield_art_pl(ART_SNICKERSNEE)
+        && game.context.snickersnee_turn === game.moves)
+        return true;
+    return false;
+}
+
+// C ref: apply.c use_pole()
+/* Distance attacks by pole-weapons */
+export async function use_pole(obj, autohit) {
+    const g = game;
+    const u = g.u;
+    const thump = (what) => `Thump!  Your blow bounces harmlessly off the ${what}.`;
+    const res = ECMD_OK;
+    const range = { min: 0, max: 0 };
+    let glyph;
+    const cc = { x: 0, y: 0 };
+    let mtmp;
+    const hitm = polearm_ctx().hitmon;
+    let freehit = false;
+
+    /* Are you allowed to use the pole? */
+    if (u.uswallow) {
+        await pline(not_enough_room);
+        return ECMD_OK;
+    }
+    if (obj !== g.uwep) {
+        if (await wield_tool_ap(obj, "swing")) {
+            cmdq_add_ec("doapply"); /* cmdq_add_ec(CQ_CANNED, doapply) */
+            cmdq_add_key(obj.invlet); /* cmdq_add_key(CQ_CANNED, obj->invlet) */
+            return ECMD_TIME;
+        }
+        return ECMD_OK;
+    }
+    /* assert(obj == uwep); */
+
+    calc_pole_range(range);
+    const min_range = range.min, max_range = range.max;
+
+    /* Prompt for a location */
+    if (!autohit)
+        await pline(where_to_hit);
+    cc.x = u.ux;
+    cc.y = u.uy;
+    if (!find_poleable_mon(cc) && hitm
+        && !DEADMONSTER(hitm) && sensemon(hitm)
+        && mdistu_pl(hitm) <= max_range && mdistu_pl(hitm) >= min_range) {
+        cc.x = hitm.mx;
+        cc.y = hitm.my;
+    }
+    if (!autohit) {
+        await getpos_sethilite(display_polearm_positions,
+                               get_valid_polearm_position);
+        if (await getpos(cc, true, "the spot to hit") < 0)
+            /* ESC; uses turn iff polearm became wielded */
+            return (res | ECMD_CANCEL);
+    }
+
+    glyph = glyph_at(cc.x, cc.y);
+    if (distu(cc.x, cc.y) > max_range) {
+        await pline("Too far!");
+        return ECMD_FAIL;
+    } else if (distu(cc.x, cc.y) < min_range) {
+        if (autohit && u_at(cc.x, cc.y))
+            await pline("Don't know what to hit.");
+        else
+            await pline("Too close!");
+        return ECMD_FAIL;
+    } else if (!cansee(cc.x, cc.y) && !glyph_is_poleable(glyph)) {
+        await You(cant_see_spot);
+        return ECMD_FAIL;
+    } else if (!couldsee(cc.x, cc.y)) { /* Eyes of the Overworld */
+        await You(cant_reach);
+        return ECMD_FAIL;
+    }
+
+    polearm_ctx().hitmon = null;
+    /* Attack the monster there */
+    g.bhitpos = { x: cc.x, y: cc.y };
+    if ((mtmp = m_at(g.bhitpos.x, g.bhitpos.y)) != null) {
+        if (await attack_checks(mtmp, g.uwep)) /* can attack proceed? */
+            /* no, abort the attack attempt; result depends on
+               res: 1 => polearm became wielded, 0 => already wielded;
+               svc.context.move: 1 => discovered hidden monster at target spot,
+               0 => answered 'n' to "Really attack?" prompt */
+            return res | (g.context.move ? ECMD_TIME : ECMD_OK);
+        if (await overexertion())
+            return ECMD_TIME; /* burn nutrition; maybe pass out */
+        polearm_ctx().hitmon = mtmp;
+
+        if (snickersnee_used_dist_attk(obj)) {
+            await pline_The("blade doesn't reach there!");
+            return ECMD_FAIL;
+        }
+
+        await check_caitiff(mtmp);
+        g.notonhead = (g.bhitpos.x !== mtmp.mx || g.bhitpos.y !== mtmp.my);
+
+        /* Snickersnee allows one free hit from a distance per turn */
+        if (obj === g.uwep && u_wield_art_pl(ART_SNICKERSNEE)) {
+            freehit = (g.moves !== g.context.snickersnee_turn);
+            g.context.snickersnee_turn = g.moves;
+            if (freehit && !Deaf()) {
+                /* Soundeffect(se_sword_blade_rings, 100): no sound */
+                await pline("Shkinng!"); /* /sha-kin!/ */
+            }
+        }
+
+        await thitmonst(mtmp, g.uwep);
+    } else if (glyph_is_statue_pl(glyph) /* might be hallucinatory */
+               && sobj_at(O.STATUE, g.bhitpos.x, g.bhitpos.y)) {
+        const t = t_at(g.bhitpos.x, g.bhitpos.y);
+
+        if (t && t.ttyp === STATUE_TRAP)
+            throw new Error('use_pole(): activate_statue_trap() not ported yet');
+        /* Since statues look like monsters now, we say something
+           different from "you miss" or "there's nobody there".
+           Note:  we only do this when a statue is displayed here,
+           because the player is probably attempting to attack it;
+           other statues obscured by anything are just ignored. */
+        await pline(thump("statue"));
+        await wake_nearto(g.bhitpos.x, g.bhitpos.y, 25);
+    } else {
+        /* no monster here and no statue seen or remembered here */
+        unmap_invisible(g.bhitpos.x, g.bhitpos.y);
+
+        if (glyph_to_obj_pl(glyph) === BOULDER
+            && sobj_at(BOULDER, g.bhitpos.x, g.bhitpos.y)) {
+            await pline(thump("boulder"));
+            await wake_nearto(g.bhitpos.x, g.bhitpos.y, 25);
+        } else if (!accessible(g.bhitpos.x, g.bhitpos.y)
+                   || IS_FURNITURE(g.level.at(g.bhitpos.x, g.bhitpos.y).typ)) {
+            /* similar to 'F'orcefight with a melee weapon; we know that
+               the spot can be seen or we wouldn't have gotten this far */
+            const ltyp = g.level.at(g.bhitpos.x, g.bhitpos.y).typ;
+            await You(`uselessly attack ${
+                (ltyp === STONE || ltyp === SCORR)
+                ? "stone"
+                : glyph_is_cmap_pl(glyph)
+                  ? the_ap(defsyms_explanation_ap[glyph.cmapidx])
+                  : "an unknown obstacle"}.`);
+        } else {
+            await You("miss; there is no one there to hit.");
+        }
+    }
+    u_wipe_engr(2); /* same as for melee or throwing */
+    return freehit ? ECMD_OK : ECMD_TIME;
+}
 
 // C ref: invent.c consume_obj_charge()
 export function consume_obj_charge(obj,
@@ -1269,11 +1881,6 @@ async function use_camera(obj) {
     }
     return ECMD_TIME;
 }
-import { check_unpaid as check_unpaid_cam, zapyourself as zapyourself_cam } from './zap.js';
-import { s_suffix as s_suffix_cam } from './hacklib.js';
-import { mon_nam as mon_nam_cam } from './do_name.js';
-import { mbodypart as mbodypart_cam } from './insight.js';
-import { STOMACH as STOMACH_CAM } from './const.js';
 
 // C ref: apply.c number_leashed()
 function number_leashed() {
@@ -1384,10 +1991,3 @@ async function use_leash_core(obj, mtmp, cc, spotmon) {
         throw new Error('use_leash_core(): removing a leash not ported yet');
     }
 }
-import { noit_mon_nam as noit_mon_nam_ls, Monnam as Monnam_ls,
-         l_monnam as l_monnam_ls } from './do_name.js';
-import { get_adjacent_loc as get_adjacent_loc_ls } from './cmd.js';
-import { use_pick_axe } from './dig.js';
-import { glyph_is_invisible as glyph_is_invisible_ls } from './display.js';
-import { mons as mons_ls, PM_LONG_WORM as PM_LONG_WORM_LS, M1_UNSOLID as M1_UNSOLID_LS,
-         M1_NOLIMBS as M1_NOLIMBS_LS, M1_NOHEAD as M1_NOHEAD_LS } from './monsters.js';

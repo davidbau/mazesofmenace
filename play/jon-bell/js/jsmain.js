@@ -8,7 +8,7 @@ import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { savefile_name, SAVE_TRUNCATED } from './save.js';
 import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
 import { newgame, report_config_errors, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
-import { FF_FAITHFUL } from './fastforward.js';
+import { FF_FAITHFUL, register_trap_fns } from './fastforward.js';
 import { parseNethackrc, init_fruit_chain } from './options.js';
 import { sf_init } from './sfbase.js';
 import { reset_commands, update_rest_on_space } from './cmd.js';
@@ -19,7 +19,7 @@ import { free_all_glyphmap_u } from './utf8map.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
-import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline, nomuxOverflowApply, nomuxOverflowCursor, nomuxRawEmitApply } from './display.js';
+import { reglyph_darkroom, tty_restore_menu, tty_restore_base_topline, nomuxCapture, nomuxRawEmitApply } from './display.js';
 import { pline } from './pline.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rnd.js';
@@ -125,6 +125,7 @@ export class NethackGame {
         bubbles_reset_process_state();
         hitum_cleave_reset_process_state();
         getpos_reset_process_state();
+        register_trap_fns();
         /* C zap.c:6222-6223 wish_history[] is a static array: a fresh process
          * starts with no wish history even when the previous segment ended
          * without reaching freedynamicdata() (save.c:1136). */
@@ -625,13 +626,27 @@ export class NethackGame {
                 nhGame._cursors.push(game._rawCursorFrozen ? game._rawCursorFrozen.slice()
                     : disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);
             }
-            if (!blankFrame) nhGame._nomuxSpill = nomuxOverflowApply(nhGame._nomuxSpill, nhGame._screens[nhGame._screens.length - 1]);
-            const spillCursor = blankFrame ? null : nomuxOverflowCursor(nhGame._nomuxSpill);
-            if (spillCursor) nhGame._cursors[nhGame._cursors.length - 1] = spillCursor;
-            nhGame._rngSlices.push(slice);
             /* Supplemental animation frames (patch 006 KIND=anim markers)
              * fired while this step's key was processed. */
-            nhGame._animByStep.push(anim_frames_take());
+            const animFrames = anim_frames_take();
+            for (let f = 0; f < animFrames.length; f++) {
+                nhGame._nomuxAnim = (nhGame._nomuxAnim | 0) + 1;
+                const fr = animFrames[f];
+                const cap = nomuxCapture(nhGame._nomuxSpill, fr.screen, fr.cursor, 'anim', keyIdx, nhGame._nomuxAnim);
+                nhGame._nomuxSpill = cap.state;
+                if (cap.screen !== fr.screen || cap.cursor)
+                    animFrames[f] = { ...fr, screen: cap.screen, cursor: cap.cursor || fr.cursor };
+            }
+            if (!blankFrame) {
+                const last = nhGame._screens.length - 1;
+                const cap = nomuxCapture(nhGame._nomuxSpill, nhGame._screens[last], nhGame._cursors[last],
+                    'input', keyIdx + 1, nhGame._nomuxAnim | 0);
+                nhGame._nomuxSpill = cap.state;
+                nhGame._screens[last] = cap.screen;
+                if (cap.cursor) nhGame._cursors[last] = cap.cursor;
+            }
+            nhGame._rngSlices.push(slice);
+            nhGame._animByStep.push(animFrames);
             // Keep the marker through stale brown-mold frames; clear it only
             if (/^(?:[^\n]*?\s)?You return to \w+ form/.test(String(game._screen_output || '').split('\n', 1)[0]))
             if (/You return to \w+ form/.test(String(game._screen_output || ''))) /* polyself.c:1395 "You return to %s form!" with urace.adj */

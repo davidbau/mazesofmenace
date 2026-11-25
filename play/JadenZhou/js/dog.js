@@ -4,6 +4,12 @@
 // Not ported yet: make_familiar, pick_familiar_pm, dog movement/food
 // (dogmove.c), keepdogs/losedogs, tamedog and the rest of dog.c.
 
+import { picked_container } from './shk.js';
+import { expels, unstuck } from './mhitu.js';
+import { sticks } from './engrave.js';
+import { Upolyd, DISMOUNT_THROWN } from './const.js';
+import { restore_cham } from './restore.js';
+import { dismount_steed } from './steed.js';
 import { helpless } from './monmove.js';
 import { set_residency } from './shk.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, CORPSE } from './objects.js';
@@ -301,7 +307,7 @@ function mon_leave(mtmp) {
     /* set minvent's obj->no_charge to 0 */
     for (const obj of mtmp.minvent || []) {
         if (obj.cobj && obj.cobj.length) /* Has_contents(obj) */
-            throw new Error('mon_leave(): picked_container() not ported yet');
+            picked_container(obj); /* does the right thing */
         obj.no_charge = 0;
     }
 
@@ -641,12 +647,7 @@ export async function mon_arrive(mtmp, when) {
     let ylocale = mtmp.mtrack[1].y;
     const fromdlev = { dnum: mtmp.mtrack[2].x, dlevel: mtmp.mtrack[2].y };
     mon_track_clear(mtmp);
-    /* restore_cham(mtmp) */
-    if (u.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.intrinsic
-        || u.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.extrinsic || mtmp.mcan)
-        throw new Error('mon_arrive(): restore_cham() normal_shape() not ported yet');
-    else if (mtmp.cham === NON_PM && pm_to_cham(monsndx(mtmp.data)) !== NON_PM)
-        throw new Error('mon_arrive(): restore_cham() pm_to_cham() not ported yet');
+    restore_cham(mtmp);
 
     if (mtmp === u.usteed)
         return; /* don't place steed on the map */
@@ -949,8 +950,12 @@ export async function tamedog(
     mtmp.mfleetim = 0;
 
     /* make grabber let go now, whether it becomes tame or not */
-    if (mtmp === game.u.ustuck)
-        throw new Error('tamedog(): releasing u.ustuck (expels()/unstuck()) not ported yet');
+    if (mtmp === game.u.ustuck) {
+        if (game.u.uswallow)
+            await expels(mtmp, mtmp.data, true);
+        else if (!(Upolyd() && sticks(game.youmonst.data)))
+            await unstuck(mtmp);
+    }
 
     /* feeding it treats makes it tamer */
     if (mtmp.mtame && obj) {
@@ -1102,7 +1107,7 @@ export async function wary_dog(mtmp, was_dead) {
         if (mtmp.mleashed)
             throw new Error('wary_dog(): m_unleash() not ported yet');
         if (mtmp === u.usteed)
-            throw new Error('wary_dog(): dismount_steed() not ported yet');
+            await dismount_steed(DISMOUNT_THROWN);
     } else if (edog) {
         /* it's still a pet; start a clean pet-slate now */
         edog.revivals++;

@@ -992,7 +992,7 @@ export async function mloot_container(mon, container, vismon) {
                     await Norep(`${Monnam(mon)} rummages through ${
                         containerName}.`);
                 } else if (takeoutIndex === 0) {
-                    await pline(`${Monnam(mon)} removes ${doname(xobj)} from ${
+                    await pline_mon(mon, `${Monnam(mon)} removes ${doname(xobj)} from ${
                         containerName}.`);
                 } else {
                     await pline(`${upstart(pronoun)} removes ${doname(xobj)}.`);
@@ -2074,9 +2074,7 @@ const fakename = ['\\#\\_bogus', "\\#\\_flunk"];
    it as "some message other than PLNMSG_UNKNOWN was issued") */
 const PLNMSG_enum = -2;
 
-// src/muse.c:2383 use_misc(). The invisibility potion is the first common
-// utility action reached by the public trace. It changes visibility without
-// drawing, consumes one potion, and spends the monster's action.
+// src/muse.c:2383 use_misc(), perform the selected miscellaneous action.
 export async function use_misc(mtmp) {
     const obj = game.m?.misc || null;
     const i = await precheck(mtmp, obj);
@@ -2107,8 +2105,7 @@ export async function use_misc(mtmp) {
                         await trycall(obj);
                     }
                     await m_useup(mtmp, obj);
-                    const { migrate_monster } = await import('./trap.js');
-                    migrate_monster(mtmp, tolevel, MIGR_RANDOM);
+                    await migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM, null);
                     return 2;
                 }
             }
@@ -2244,7 +2241,7 @@ export async function use_misc(mtmp) {
         if (!trap)
             return 0;
         const [{ cansee },
-               { canseemon, newsym, pline },
+               { canseemon, newsym },
                { Some_Monnam }, { vtense },
                { seetrap, trapname },
                { remove_monster, place_monster },
@@ -2263,7 +2260,7 @@ export async function use_misc(mtmp) {
             seetrap(trap);
         if (vismon || vistrapspot) {
             const movement = vtense('mon', locomotion(mtmp.data, 'jump'));
-            await pline(`${Some_Monnam(mtmp)} deliberately ${movement} onto a ${
+            await pline_mon(mtmp, `${Some_Monnam(mtmp)} deliberately ${movement} onto a ${
                 trap.tseen ? trapname(trap.ttyp, false) : 'hidden trap'}!`);
         }
 
@@ -2292,11 +2289,11 @@ export async function use_misc(mtmp) {
         if (!target)
             return 0;
 
-        const [{ canseemon, pline, newsym }, { Monnam },
+        const [{ canseemon, pline, urgent_pline }, { Monnam },
                { xname, the, makeplural }, { body_part },
-               { welded, setuwep_with_feedback, setuswapwep, setuqwep },
+               { welded },
                { freeinv }, { place_object }, { dropy },
-               { mpickobj }, { mon_hates_silver }, { surface },
+               { mpickobj, remove_worn_item }, { mon_hates_silver }, { surface },
                { HAND }] = await Promise.all([
             import('./display.js'), import('./do_name.js'),
             import('./objnam.js'), import('./polyself.js'),
@@ -2312,12 +2309,12 @@ export async function use_misc(mtmp) {
             hand = makeplural(hand);
 
         if (vismon)
-            await pline(`${Monnam(mtmp)} flicks a bullwhip towards your ${hand}!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} flicks a bullwhip towards your ${hand}!`);
         if (target.otyp === ONAMES.HEAVY_IRON_BALL) {
             await pline(`${the_whip} fails to wrap around ${the_weapon}.`);
             return 1;
         }
-        await pline(`${the_whip} wraps around ${the_weapon} you're wielding!`);
+        await urgent_pline(`${the_whip} wraps around ${the_weapon} you're wielding!`);
         if (welded(target)) {
             await pline(`${is_plural(target) ? 'They are' : 'It is'} welded to your ${hand}.`);
             where_to = 0;
@@ -2330,27 +2327,21 @@ export async function use_misc(mtmp) {
             && game.objects[target.otyp].oc_material === MATERIALS.SILVER)
             where_to = 2;
 
-        if (target === game.u.uwep)
-            await setuwep_with_feedback(null);
-        if (target === game.u.uswapwep)
-            setuswapwep(null);
-        if (target === game.u.uquiver)
-            setuqwep(null);
+        await remove_worn_item(target, false);
         await freeinv(target);
 
         switch (where_to) {
         case 1:
-            await pline(`${Monnam(mtmp)} yanks ${the_weapon} from your ${hand}!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} yanks ${the_weapon} from your ${hand}!`);
             await place_object(target, mtmp.mx, mtmp.my);
-            newsym(mtmp.mx, mtmp.my);
             break;
         case 2:
-            await pline(`${Monnam(mtmp)} yanks ${the_weapon} to the ${
+            await pline_mon(mtmp, `${Monnam(mtmp)} yanks ${the_weapon} to the ${
                 surface(game.u.ux, game.u.uy)}!`);
             await dropy(target);
             break;
         case 3:
-            await pline(`${Monnam(mtmp)} snatches ${the_weapon}!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} snatches ${the_weapon}!`);
             await mpickobj(mtmp, target);
             break;
         default:

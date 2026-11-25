@@ -182,6 +182,133 @@ import { LEVITATION, FLYING, FUMBLING, ANTIMAGIC, HALF_PHDAM, HALF_SPDAM,
        } from './const.js';
 import { xytodir as xytodir_tr } from './hack.js';
 import { DIR_180 as DIR_180_TR, DIR_ERR as DIR_ERR_TR } from './const.js';
+import { wakeup as wakeup_ht } from './mon.js';
+import { melt_ice } from './zap.js';
+import { split_mon } from './potion.js';
+import { AD_RUST, AD_ELEC } from './monsters.js';
+import { Shock_resistance } from './youprop.js';
+import { M_SEEN_ELEC, M_SEEN_FIRE } from './const.js';
+import { useup as useup_tr } from './invent.js';
+import { begin_burn } from './timeout.js';
+import { dismount_steed } from './steed.js';
+import { DISMOUNT_POLY, DISMOUNT_GENERIC } from './const.js';
+import { setmangry, mlifesaver } from './mon.js';
+import { Boots_off } from './do_wear.js';
+import { discover_object } from './o_init.js';
+import { costly_spot } from './shk.js';
+import { noit_Monnam as noit_Monnam_ht, y_monnam as y_monnam_ht } from './do_name.js';
+import { vision_recalc as vision_recalc_ht } from './vision.js';
+import { adjalign as adjalign_ht } from './attrib.js';
+import { You_feel as You_feel_ht } from './display.js';
+import { set_malign as set_malign_ht } from './makemon.js';
+import { m_next2u as m_next2u_ht, A_LAWFUL as A_LAWFUL_HT,
+         TT_LAVA as TT_LAVA_HT, TT_INFLOOR as TT_INFLOOR_HT,
+         TT_BURIEDBALL as TT_BURIEDBALL_HT, TT_BEARTRAP as TT_BEARTRAP_HT,
+         TT_PIT as TT_PIT_HT, TT_WEB as TT_WEB_HT, FORCETRAP as FORCETRAP_HT,
+         NOWEBMSG as NOWEBMSG_HT } from './const.js';
+import { G_UNIQ as G_UNIQ_HT, S_HUMAN as S_HUMAN_HT,
+         M1_MINDLESS as M1_MINDLESS_HT } from './monsters.js';
+import { BRASS_LANTERN as BRASS_LANTERN_TR, OIL_LAMP as OIL_LAMP_TR,
+         MAGIC_LAMP as MAGIC_LAMP_TR, TALLOW_CANDLE as TALLOW_CANDLE_TR,
+         WAX_CANDLE as WAX_CANDLE_TR, POT_OIL as POT_OIL_TR,
+         CANDELABRUM_OF_INVOCATION as CANDELABRUM_OF_INVOCATION_TR } from './objects.js';
+import { destroy_items as destroy_items_tr,
+         burn_floor_objects as burn_floor_objects_tr,
+         melt_ice as melt_ice_tr } from './zap.js';
+import { minuhpmax as minuhpmax_tr, setuhpmax as setuhpmax_tr } from './attrib.js';
+import { losexp as losexp_tr } from './exper.js';
+import { burn_away_slime as burn_away_slime_tr } from './potion.js';
+import { M_SEEN_FIRE as M_SEEN_FIRE_TR } from './const.js';
+import { Drain_resistance as Drain_resistance_tr } from './youprop.js';
+import { AD_FIRE as AD_FIRE_TR } from './monsters.js';
+import { is_ice as is_ice_tr } from './dig.js';
+import { x_monnam as x_monnam_tr } from './do_name.js';
+import { ARTICLE_THE as ARTICLE_THE_TR, ARTICLE_NONE as ARTICLE_NONE_TR,
+         SUPPRESS_SADDLE as SUPPRESS_SADDLE_TR,
+         NO_KILLER_PREFIX as NO_KILLER_PREFIX_TR,
+         has_mgivenname as has_mgivenname_tr,
+         RECURSIVETRAP } from './const.js';
+import { PM_RANGER as PM_RANGER_TR } from './monsters.js';
+import { on_level as on_level_tr } from './dungeon.js';
+import { unplacebc as unplacebc_tr, ballfall as ballfall_tr,
+         placebc as placebc_tr } from './ball.js';
+import { ECMD_OK as ECMD_OK_TR, ECMD_TIME as ECMD_TIME_TR,
+         HVY_ENCUMBER as HVY_ENCUMBER_TR, HAND as HAND_TR } from './const.js';
+import { near_capacity as near_capacity_tr } from './hack.js';
+import { getdir as getdir_tr } from './cmd.js';
+import { sticks as sticks_tr, can_reach_floor as can_reach_floor_tr } from './engrave.js';
+import { welded as welded_tr, bimanual as bimanual_tr } from './wield.js';
+import { makeplural as makeplural_tr } from './objnam.js';
+import { body_part as body_part_tr } from './insight.js';
+import { mon_nam as mon_nam_tr } from './do_name.js';
+import { surface as surface_tr } from './iactions.js';
+import { I_SPECIAL, WWALKING, SWIMMING, W_SADDLE, NO_TRAP_FLAGS } from './const.js';
+import { pickup as pickup_tr } from './pickup.js';
+import { M1_NOHANDS as M1_NOHANDS_TR, mons as mons_tr, PM_CAVE_SPIDER as PM_CAVE_SPIDER_TR,
+         PM_GIANT_SPIDER as PM_GIANT_SPIDER_TR } from './monsters.js';
+import { is_ice as is_ice_bg } from './dig.js';
+import { strcmpi as strcmpi_bg } from './hacklib.js';
+import { PLNMSG_BACK_ON_GROUND as PLNMSG_BACK_ON_GROUND_BG } from './const.js';
+import { SWIMMING as SWIMMING_DR, MAGICAL_BREATHING as MAGICAL_BREATHING_DR,
+         TELEPORT as TELEPORT_DR, TELEPORT_CONTROL as TELEPORT_CONTROL_DR,
+         FIRE_RES as FIRE_RES_DR, LIFESAVED as LIFESAVED_DR,
+         IS_WATERWALL as IS_WATERWALL_DR, IS_AIR as IS_AIR_DR,
+         Is_waterlevel as Is_waterlevel_dr, UNENCUMBERED as UNENCUMBERED_DR,
+         SLT_ENCUMBER as SLT_ENCUMBER_DR, DROWNING as DROWNING_DR,
+         BURNING as BURNING_DR, DISSOLVED as DISSOLVED_DR, STONE as STONE_DR,
+         TELEDS_ALLOW_DRAG as TELEDS_ALLOW_DRAG_DR,
+         TELEDS_TELEPORT as TELEDS_TELEPORT_DR, TT_LAVA as TT_LAVA_DR } from './const.js';
+import { M1_SWIM as M1_SWIM_DR, M1_AMPHIBIOUS as M1_AMPHIBIOUS_DR,
+         M1_BREATHLESS as M1_BREATHLESS_DR, PM_GREMLIN as PM_GREMLIN_DR,
+         PM_IRON_GOLEM as PM_IRON_GOLEM_DR, PM_WATER_ELEMENTAL as PM_WATER_ELEMENTAL_DR,
+         PM_STEAM_VORTEX as PM_STEAM_VORTEX_DR, PM_FOG_CLOUD as PM_FOG_CLOUD_DR } from './monsters.js';
+import { LEASH as LEASH_DR, LOADSTONE as LOADSTONE_DR, SCR_FIRE as SCR_FIRE_DR,
+         SPE_FIREBALL as SPE_FIREBALL_DR, SPE_BOOK_OF_THE_DEAD as SPE_BOOK_OF_THE_DEAD_DR,
+         objects as objects_dr, POTION_CLASS as POTION_CLASS_DR,
+         is_organic as is_organic_dr } from './objects.js';
+import { switch_terrain as switch_terrain_dr, inv_cnt as inv_cnt_dr,
+         near_capacity as near_capacity_dr, spoteffects as spoteffects_dr } from './hack.js';
+import { welded as welded_dr } from './wield.js';
+import { mons as mons_dr, PM_FIRE_ELEMENTAL as PM_FIRE_ELEMENTAL_DR,
+         PM_SALAMANDER as PM_SALAMANDER_DR } from './monsters.js';
+import { remove_worn_item as remove_worn_item_dr } from './steal.js';
+import { dropx as dropx_dr } from './do.js';
+import { feel_newsym as feel_newsym_dr, update_lastseentyp as update_lastseentyp_dr } from './display.js';
+import { waterbody_name as waterbody_name_dr } from './pager.js';
+import { can_teleport as can_teleport_dr } from './mondata.js';
+import { unmul as unmul_dr } from './allmain.js';
+import { teleds as teleds_dr, safe_teleds as safe_teleds_dr } from './teleport.js';
+import { done as done_dr } from './end.js';
+import { burn_away_slime as burn_away_slime_dr } from './potion.js';
+import { useupall as useupall_dr } from './invent.js';
+import { obj_resists as obj_resists_dr } from './dogmove.js';
+import { setnotworn as setnotworn_fd } from './worn.js';
+import { otense as otense_fd, Yname2 as Yname2_fd } from './objnam.js';
+import { DRAGON_HIDE as DRAGON_HIDE_FD, WAN_FIRE as WAN_FIRE_FD,
+         FIRE_HORN as FIRE_HORN_FD } from './objects.js';
+import { liquid_flow as liquid_flow_l } from './dig.js';
+import { ceiling as ceiling_tr } from './dungeon.js';
+import { hard_helmet as hard_helmet_tr } from './objnam.js';
+import { mbodypart as mbodypart_tr } from './insight.js';
+import { schedule_goto, UTOTYPE_FALLING, UTOTYPE_NONE } from './do.js';
+import { impact_drop } from './dokick.js';
+import { next_to_u } from './teleport.js';
+import { ceiling_hider } from './engrave.js';
+import { find_hell, assign_level, depth } from './dungeon.js';
+import { Is_stronghold } from './const.js';
+import { polyself as polyself_tp } from './polyself.js';
+import { newcham as newcham_tp } from './mon.js';
+import { POLY_NOFLAGS as POLY_NOFLAGS_TP, NC_SHOW_MSG as NC_SHOW_MSG_TP } from './const.js';
+import { WAND_CLASS as WAND_CLASS_TP } from './objects.js';
+import { resists_blnd as resists_blnd_tr } from './mondata.js';
+import { make_blinded as make_blinded_tr, incr_itimeout as incr_itimeout_tr } from './potion.js';
+import { monstseesu as monstseesu_tr, monstunseesu as monstunseesu_tr } from './uhitm.js';
+import { M_SEEN_SLEEP as M_SEEN_SLEEP_TR, NOWEBMSG as NOWEBMSG_TR,
+         FAILEDUNTRAP as FAILEDUNTRAP_TR, VIASITTING as VIASITTING_TR,
+         A_STR as A_STR_TR, TT_WEB as TT_WEB_TR } from './const.js';
+import { fall_asleep as fall_asleep_tr } from './timeout.js';
+import { ACURR as ACURR_tr } from './attrib.js';
+import { SLIMED as SLIMED_SL, TIMEOUT as TIMEOUT_SL } from './const.js';
 export { is_hole, is_pit };
 
 /* C ref: mondata.h resists_ston() */
@@ -1402,14 +1529,17 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
         }
         set_utrap(rn1(4, 4), TT_BEARTRAP);
         if (u.usteed) {
-            throw new Error('trapeffect_bear_trap(): steed caught (mbodypart()) not ported yet');
+            await pline(`${A_Your[madeby_u]} bear trap closes on ${
+                s_suffix(mon_nam(u.usteed))} ${mbodypart_tr(u.usteed, FOOT)}!`);
+            if (await thitm(0, u.usteed, null, dmg, false))
+                await reset_utrap(true); /* steed died, hero not trapped */
         } else {
             await pline(`${A_Your[madeby_u]} bear trap closes on your ${
                 body_part(FOOT)}!`);
             if (u.umonnum === PM_OWLBEAR || u.umonnum === PM_BUGBEAR)
                 await You("howl in anger!");
             if (wearing_iron_shoes(mtmp))
-                throw new Error('trapeffect_bear_trap(): Yname2(uarmf) not ported yet');
+                await pline(`${Yname2_fd(game.uarmf)} protects your leg.`);
             else {
                 await set_wounded_legs(rn2(2) ? RIGHT_SIDE : LEFT_SIDE, rn1(10, 10));
                 await losehp(Maybe_Half_Phys(dmg), "bear trap", KILLED_BY_AN);
@@ -2045,13 +2175,16 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
         /* update_inventory(): no perm_invent window */
 
         if (u.umonnum === PM_IRON_GOLEM) {
-            throw new Error('trapeffect_rust_trap(): hero iron golem rusting away not ported yet');
+            const dam = u.mhmax;
+
+            await You("are covered with rust!");
+            await losehp(Maybe_Half_Phys(dam), "rusting away", KILLED_BY);
         } else if (u.umonnum === PM_GREMLIN && rn2(3)) {
-            throw new Error('trapeffect_rust_trap(): split_mon() for the hero not ported yet');
+            await split_mon(game.youmonst, null);
         }
     } else {
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
-        const trapkilled = false;
+        let trapkilled = false;
         const mptr = mtmp.data;
         let target;
 
@@ -2105,9 +2238,14 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
         }
 
         if (mptr === mons[PM_IRON_GOLEM]) { /* completelyrusts(mptr) */
-            throw new Error('trapeffect_rust_trap(): iron golem rusting away not ported yet');
+            if (in_sight)
+                await pline(`${Monnam(mtmp)} ${!mlifesaver(mtmp) ? "falls"
+                                               : "starts to fall"} to pieces!`); /* pline_mon() */
+            await monkilled(mtmp, null, AD_RUST);
+            if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
+                trapkilled = true;
         } else if (mptr === mons[PM_GREMLIN] && rn2(3)) {
-            throw new Error('trapeffect_rust_trap(): split_mon() not ported yet');
+            await split_mon(mtmp, null);
         }
 
         return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
@@ -2256,8 +2394,7 @@ export async function ignite_items(objchn) {
     }
 }
 
-// C ref: apply.c catch_lit() -- the cases where the object doesn't catch
-// light; lighting it (begin_burn()) isn't ported yet
+// C ref: apply.c catch_lit()
 /* Called when potentially lightable object is affected by fire_damage().
    Return TRUE if object becomes lit and FALSE otherwise --ALI */
 export async function catch_lit(obj) {
@@ -2271,8 +2408,8 @@ export async function catch_lit(obj) {
         || obj.otyp === TALLOW_CANDLE_TR || obj.otyp === WAX_CANDLE_TR
         || obj.otyp === POT_OIL_TR);
 
-    /* get_obj_location() succeeds for invent, minvent and floor objects */
-    if (!obj.lamplit && ignitable) {
+    let loc;
+    if (!obj.lamplit && ignitable && (loc = get_obj_location(obj, 0)) !== null) {
         if (((obj.otyp === MAGIC_LAMP_TR /* spe==0 => no djinni inside */
               /* spe==0 => no candles attached */
               || obj.otyp === CANDELABRUM_OF_INVOCATION_TR) && obj.spe === 0)
@@ -2288,19 +2425,31 @@ export async function catch_lit(obj) {
                to light is a minor inconvenience to make cursed be worse */
             && obj.cursed && !rn2(2))
             return false;
-        throw new Error('catch_lit(): begin_burn() not ported yet');
+
+        const [x, y] = loc;
+        if (obj.where === 'OBJ_INVENT' || cansee(x, y)) {
+            /* OBJ_FLOOR && cansee(x, y): set_msg_xy(x, y), accessibility only */
+            await pline(`${Yname2_fd(obj)} ${
+                /* "catches light!" or "feels warm." */
+                otense_fd(obj, Blind() ? "feel" : "catch")} ${
+                Blind() ? "warm." : "light!"}`);
+        }
+        if (obj.otyp === POT_OIL_TR)
+            discover_object(obj.otyp, true, true, true); /* makeknown() */
+        if (obj.where === 'OBJ_INVENT' /* carried(obj) */ && obj.unpaid
+            && costly_spot(game.u.ux, game.u.uy))
+            throw new Error('catch_lit(): bill_dummy_object() not ported yet');
+        begin_burn(obj, false);
+        return true;
     }
     return false;
 }
-import { BRASS_LANTERN as BRASS_LANTERN_TR, OIL_LAMP as OIL_LAMP_TR,
-         MAGIC_LAMP as MAGIC_LAMP_TR, TALLOW_CANDLE as TALLOW_CANDLE_TR,
-         WAX_CANDLE as WAX_CANDLE_TR, POT_OIL as POT_OIL_TR,
-         CANDELABRUM_OF_INVOCATION as CANDELABRUM_OF_INVOCATION_TR } from './objects.js';
 
 // C ref: trap.c trapeffect_fire_trap()
 async function trapeffect_fire_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_fire_trap(): dofiretrap() not ported yet');
+        seetrap(trap);
+        await dofiretrap(null);
     } else {
         const tx = trap.tx, ty = trap.ty;
         const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
@@ -2309,10 +2458,19 @@ async function trapeffect_fire_trap(mtmp, trap, trflags) {
         const mptr = mtmp.data;
         const orig_dmg = d(2, 4);
 
-        if (in_sight || see_it)
-            throw new Error('trapeffect_fire_trap(): surface() message not ported yet');
+        if (in_sight)
+            await pline(`A ${tower_of_flame} erupts from the ${
+                surface_tr(mtmp.mx, mtmp.my)} under ${mon_nam(mtmp)}!`); /* pline_mon() */
+        else if (see_it) { /* evidently `mtmp' is invisible */
+            /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+            await You_see_l(`a ${tower_of_flame} erupt from the ${
+                surface_tr(mtmp.mx, mtmp.my)}!`);
+        }
         if (resists_fire(mtmp)) {
-            /* in_sight: shieldeff() and "is uninjured" (not in sight here) */
+            if (in_sight) {
+                /* shieldeff(mtmp->mx, mtmp->my): display effect only */
+                await pline(`${Monnam(mtmp)} is uninjured.`);
+            }
         } else {
             let num = orig_dmg, alt;
             let immolate = false;
@@ -2365,7 +2523,7 @@ async function trapeffect_fire_trap(mtmp, trap, trflags) {
             && !see_it && dist2(tx, ty, game.u.ux, game.u.uy) <= 3 * 3)
             await You("smell smoke.");
         if (is_ice_tr(tx, ty))
-            throw new Error('trapeffect_fire_trap(): melt_ice() not ported yet');
+            await melt_ice_tr(tx, ty, null);
         if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
             trapkilled = true;
         if (see_it && t_at(tx, ty))
@@ -2375,10 +2533,92 @@ async function trapeffect_fire_trap(mtmp, trap, trflags) {
             ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
 }
-import { destroy_items as destroy_items_tr,
-         burn_floor_objects as burn_floor_objects_tr } from './zap.js';
-import { AD_FIRE as AD_FIRE_TR } from './monsters.js';
-import { is_ice as is_ice_tr } from './dig.js';
+
+
+// C ref: trap.c dofiretrap()
+async function dofiretrap(
+    box) { /* null for floor trap */
+    const u = game.u;
+    const see_it = !Blind();
+    let orig_dmg, num, alt;
+    orig_dmg = num = d(2, 4);
+
+    /* Bug: for box case, the equivalent of burn_floor_objects() ought
+     * to be done upon its contents.
+     */
+
+    if ((box && box.where !== 'OBJ_INVENT' /* !carried(box) */)
+        ? is_pool(box.ox, box.oy) : Underwater()) {
+        await pline(`A cascade of steamy bubbles erupts from ${
+            the(box ? xname(box) : surface_tr(u.ux, u.uy))}!`);
+        if (Fire_resistance())
+            await You("are uninjured.");
+        else
+            await losehp(rnd(3), "boiling water", KILLED_BY);
+        return;
+    }
+    await pline(`A ${tower_of_flame} ${box ? "bursts" : "erupts"} from ${
+        the(box ? xname(box) : surface_tr(u.ux, u.uy))}!`);
+    if (Fire_resistance()) {
+        /* shieldeff(u.ux, u.uy): display effect only */
+        monstseesu_tr(M_SEEN_FIRE_TR);
+        num = rn2(2);
+    } else if (Upolyd()) {
+        switch (u.umonnum) {
+        case PM_PAPER_GOLEM:
+            alt = u.mhmax;
+            break;
+        case PM_STRAW_GOLEM:
+            alt = Math.trunc(u.mhmax / 2);
+            break;
+        case PM_WOOD_GOLEM:
+            alt = Math.trunc(u.mhmax / 4);
+            break;
+        case PM_LEATHER_GOLEM:
+            alt = Math.trunc(u.mhmax / 8);
+            break;
+        default:
+            alt = 0;
+            break;
+        }
+        if (alt > num)
+            num = alt;
+        if (u.mhmax > mons[u.umonnum].mlevel)
+            u.mhmax -= rn2(Math.min(u.mhmax, num + 1)), game.disp_botl = true;
+        if (u.mh > u.mhmax)
+            u.mh = u.mhmax, game.disp_botl = true;
+        monstunseesu_tr(M_SEEN_FIRE_TR);
+    } else {
+        const uhpmin = minuhpmax_tr(1), olduhpmax = u.uhpmax;
+
+        num = d(2, 4);
+        if (u.uhpmax > uhpmin) {
+            u.uhpmax -= rn2(Math.min(u.uhpmax, num + 1)), game.disp_botl = true;
+        } /* note: no 'else' here */
+        if (u.uhpmax < uhpmin) {
+            setuhpmax_tr(Math.min(olduhpmax, uhpmin), false); /* sets disp.botl */
+            if (!Drain_resistance_tr())
+                await losexp_tr(null); /* never fatal when 'drainer' is Null */
+        }
+        if (u.uhp > u.uhpmax)
+            u.uhp = u.uhpmax, game.disp_botl = true;
+        monstunseesu_tr(M_SEEN_FIRE_TR);
+    }
+    if (!num)
+        await You("are uninjured.");
+    else
+        await losehp(num, tower_of_flame, KILLED_BY_AN); /* fire damage */
+    await burn_away_slime_tr();
+
+    if (await burnarmor(game.youmonst) || rn2(3)) {
+        await destroy_items_tr(game.youmonst, AD_FIRE_TR, orig_dmg);
+        await ignite_items(game.invent);
+    }
+    if (!box && await burn_floor_objects_tr(u.ux, u.uy, see_it, true) && !see_it)
+        await You("smell paper burning.");
+    if (is_ice_tr(u.ux, u.uy))
+        await melt_ice_tr(u.ux, u.uy, null);
+}
 
 // C ref: trap.c selftouch()
 export async function selftouch(arg) {
@@ -2590,16 +2830,6 @@ async function trapeffect_pit(mtmp, trap, trflags) {
     }
 }
 
-import { x_monnam as x_monnam_tr } from './do_name.js';
-import { ARTICLE_THE as ARTICLE_THE_TR, ARTICLE_NONE as ARTICLE_NONE_TR,
-         SUPPRESS_SADDLE as SUPPRESS_SADDLE_TR,
-         NO_KILLER_PREFIX as NO_KILLER_PREFIX_TR,
-         has_mgivenname as has_mgivenname_tr,
-         RECURSIVETRAP } from './const.js';
-import { PM_RANGER as PM_RANGER_TR } from './monsters.js';
-import { on_level as on_level_tr } from './dungeon.js';
-import { unplacebc as unplacebc_tr, ballfall as ballfall_tr,
-         placebc as placebc_tr } from './ball.js';
 function upstart_tr(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 // C ref: trap.c trapeffect_hole()
@@ -2830,7 +3060,9 @@ async function trapeffect_web(mtmp, trap, trflags) {
 
         /* suppress article in various steed messages when using its
            name (which won't occur when hallucinating) */
-        /* steed_article: x_monnam() for the steed isn't ported */
+        let steed_article = ARTICLE_THE_TR;
+        if (u.usteed && has_mgivenname_tr(u.usteed) && !Hallucination())
+            steed_article = ARTICLE_NONE_TR;
 
         feeltrap(trap);
         if (await mu_maybe_destroy_web(game.youmonst, webmsgok, trap))
@@ -2847,7 +3079,8 @@ async function trapeffect_web(mtmp, trap, trflags) {
             if (forcetrap || viasitting) {
                 verbbuf = "are caught by";
             } else if (u.usteed) {
-                throw new Error('trapeffect_web(): steed message (x_monnam()) not ported yet');
+                verbbuf = `lead ${x_monnam_tr(u.usteed, steed_article, "poor",
+                                              SUPPRESS_SADDLE_TR, false)} into`;
             } else {
                 verbbuf = `${u_locomotion("stumble")} into`;
             }
@@ -2987,7 +3220,6 @@ async function steedintrap(trap, otmp) {
     const steed = u.usteed;
     let trapkilled = false, steedhit = false;
 
-    void otmp;
     if (!steed || !trap)
         return Trap_Effect_Finished;
     const tt = trap.ttyp;
@@ -3012,16 +3244,40 @@ async function steedintrap(trap, otmp) {
         steedhit = true;
         break;
     case ARROW_TRAP:
+        if (!otmp) {
+            impossible("steed hit by non-existent arrow?");
+            return Trap_Effect_Finished;
+        }
+        trapkilled = await thitm(8, steed, otmp, 0, false);
+        steedhit = true;
+        break;
     case DART_TRAP:
+        if (!otmp) {
+            impossible("steed hit by non-existent dart?");
+            return Trap_Effect_Finished;
+        }
+        trapkilled = await thitm(7, steed, otmp, 0, false);
+        steedhit = true;
+        break;
     case LANDMINE:
+        trapkilled = await thitm(0, steed, null, rnd(16), false);
+        steedhit = true;
+        break;
     case POLY_TRAP:
-        throw new Error(`steedintrap(): steed hit by trap type ${tt} not ported yet`);
+        if (!resists_magm(steed) && !resist(steed, WAND_CLASS_TP, 0, NOTELL)) {
+            /* newcham() will probably end up calling poly_steed() */
+            await newcham_tp(steed, null, NC_SHOW_MSG_TP);
+        }
+        steedhit = true;
+        break;
     default:
         break;
     }
 
-    if (trapkilled)
-        throw new Error('steedintrap(): dismount_steed() not ported yet');
+    if (trapkilled) {
+        await dismount_steed(DISMOUNT_POLY);
+        return Trap_Killed_Mon;
+    }
     return steedhit ? 1 : 0;
 }
 
@@ -3095,7 +3351,8 @@ async function domagictrap() {
             break;
         }
         case 12: /* a flash of fire */
-            throw new Error('domagictrap(): dofiretrap() not ported yet');
+            await dofiretrap(null);
+            break;
 
         /* odd feelings */
         case 13:
@@ -3993,7 +4250,7 @@ export async function mintrap(mtmp, mintrapflags) {
            Recognizing who made the trap isn't completely
            unreasonable; everybody has their own style. */
         if (trap.madeby_u && rnl(5))
-            throw new Error('mintrap(): setmangry() not ported yet');
+            await setmangry(mtmp, false);
 
         trap_result = await trapeffect_selector(mtmp, trap, mintrapflags);
 
@@ -4465,11 +4722,28 @@ export async function chest_trap(obj, bodypart, disarm) {
         case 11:
         case 10:
         case 9:
-            throw new Error('chest_trap(): dofiretrap() not ported yet');
+            await dofiretrap(obj);
+            break;
         case 8:
         case 7:
-        case 6:
-            throw new Error('chest_trap(): electric shock (destroy_items()) not ported yet');
+        case 6: {
+            let dmg = d(4, 4);
+            const orig_dmg = dmg;
+
+            await You("are jolted by a surge of electricity!");
+            if (Shock_resistance()) {
+                /* shieldeff(u.ux, u.uy): transient display only */
+                await You("don't seem to be affected.");
+                monstseesu_tr(M_SEEN_ELEC);
+                dmg = 0;
+            } else {
+                monstunseesu_tr(M_SEEN_ELEC);
+            }
+            await destroy_items_tr(game.youmonst, AD_ELEC, orig_dmg);
+            if (dmg)
+                await losehp(dmg, "electric shock", KILLED_BY_AN);
+            break;
+        } /* case 6 */
         case 5:
         case 4:
         case 3:
@@ -4545,20 +4819,6 @@ export async function untrap(force, rx, ry, container) {
     }
     throw new Error('untrap(): autounlock untrap not ported yet');
 }
-import { ECMD_OK as ECMD_OK_TR, ECMD_TIME as ECMD_TIME_TR,
-         HVY_ENCUMBER as HVY_ENCUMBER_TR, HAND as HAND_TR } from './const.js';
-import { near_capacity as near_capacity_tr } from './hack.js';
-import { getdir as getdir_tr } from './cmd.js';
-import { sticks as sticks_tr, can_reach_floor as can_reach_floor_tr } from './engrave.js';
-import { welded as welded_tr, bimanual as bimanual_tr } from './wield.js';
-import { makeplural as makeplural_tr } from './objnam.js';
-import { body_part as body_part_tr } from './insight.js';
-import { mon_nam as mon_nam_tr } from './do_name.js';
-import { surface as surface_tr } from './iactions.js';
-import { I_SPECIAL, WWALKING, SWIMMING, W_SADDLE, NO_TRAP_FLAGS } from './const.js';
-import { pickup as pickup_tr } from './pickup.js';
-import { M1_NOHANDS as M1_NOHANDS_TR, mons as mons_tr, PM_CAVE_SPIDER as PM_CAVE_SPIDER_TR,
-         PM_GIANT_SPIDER as PM_GIANT_SPIDER_TR } from './monsters.js';
 /* C ref: mondata.h nohands(), webmaker() */
 function nohands_tr(ptr) { return (ptr.mflags1 & M1_NOHANDS_TR) !== 0; }
 function webmaker_tr(ptr) {
@@ -4600,9 +4860,6 @@ export async function back_on_ground(rescued) {
     await pline(`${you_are_back} ${preposit} ${surf}.`);
     g.iflags.last_msg = PLNMSG_BACK_ON_GROUND_BG;
 }
-import { is_ice as is_ice_bg } from './dig.js';
-import { strcmpi as strcmpi_bg } from './hacklib.js';
-import { PLNMSG_BACK_ON_GROUND as PLNMSG_BACK_ON_GROUND_BG } from './const.js';
 
 /* C ref: mondata.h likes_lava() */
 function likes_lava_dr(ptr) {
@@ -4636,7 +4893,7 @@ function number_leashed() {
 
 // C ref: apply.c unleash_all()
 /* Ensure no leashed monsters */
-function unleash_all() {
+export function unleash_all() {
     for (let otmp = game.invent; otmp; otmp = otmp.nobj)
         if (otmp.otyp === LEASH_DR)
             otmp.leashmon = 0;
@@ -4695,7 +4952,7 @@ async function emergency_disrobe(lostsome) {
 // C ref: trap.c rescued_from_terrain()
 /* life-saving or divine rescue has attempted to get the hero out of hostile
    terrain and put hero in an unexpected spot or failed due to overfull level */
-async function rescued_from_terrain(how) {
+export async function rescued_from_terrain(how) {
     const find_yourself = "find yourself";
     const u = game.u;
     const lev = game.level.at(u.ux, u.uy);
@@ -4770,7 +5027,7 @@ export async function drown() {
     await water_damage_chain(g.invent, false);
 
     if (u.umonnum === PM_GREMLIN_DR && rn2(3)) {
-        throw new Error('drown(): split_mon() of the hero not ported yet');
+        await split_mon(g.youmonst, null);
     } else if (u.umonnum === PM_IRON_GOLEM_DR) {
         await You("rust!");
         i = Maybe_Half_Phys(d(2, 6));
@@ -4797,7 +5054,9 @@ export async function drown() {
         throw new Error('drown(): teleport spell out of the water not ported yet');
     }
     if (u.usteed) {
-        throw new Error('drown(): dismount_steed() in water not ported yet');
+        await dismount_steed(DISMOUNT_GENERIC);
+        if (!is_pool(u.ux, u.uy))
+            return true;
     }
     /* if sleeping, wake up now so that we don't crawl out of water
        while still asleep; we can't do that the same way that waking
@@ -4922,12 +5181,25 @@ export async function lava_effects() {
      */
     if (g.uarmf && (g.uarmf.in_use
                     || (is_organic_dr(g.uarmf) && !g.uarmf.oerodeproof))) {
-        throw new Error('lava_effects(): burning boots (Boots_off()) not ported yet');
+        obj = g.uarmf;
+        await pline(`${Yobjnam2(obj, "burst")} into flame!`);
+        ++burnmesgcount;
+        g.iflags.in_lava_effects = (g.iflags.in_lava_effects || 0) + 1; /* (see above) */
+        await Boots_off();
+        if (obj.o_id !== protect_oid)
+            useup_tr(obj);
+        g.iflags.in_lava_effects--;
+        ++burncount;
     }
 
+    burn_stuff: {
     if (!Fire_resistance()) {
         if (Wwalking()) {
-            throw new Error('lava_effects(): water walking on lava not ported yet');
+            await pline_The(`${hliquid("lava")} here burns you!`);
+            if (usurvive) {
+                await losehp(dmg, lava_killer, KILLED_BY); /* lava damage */
+                break burn_stuff;
+            }
         } else
             await You(`fall into the ${waterbody_name_dr(u.ux, u.uy)}!`);
 
@@ -5002,45 +5274,28 @@ export async function lava_effects() {
 
         return true;
     } else if (!Wwalking() && (!u.utrap || u.utraptype !== TT_LAVA_DR)) {
-        throw new Error('lava_effects(): sinking into lava while fire resistant not ported yet');
+        boil_away = !Fire_resistance();
+        /* if not fire resistant, sink_into_lava() will quickly be fatal;
+           hero needs to escape immediately */
+        set_utrap(rn1(4, 4) + ((boil_away ? 2 : rn1(4, 12)) << 8), TT_LAVA_DR);
+        await You(`sink into the ${waterbody_name_dr(u.ux, u.uy)}${
+            !boil_away ? ", but it only burns slightly"
+                       : " and are about to be immolated"}!`);
+        if (Fire_resistance())
+            monstseesu_tr(M_SEEN_FIRE);
+        else
+            monstunseesu_tr(M_SEEN_FIRE);
+        if (u.uhp > 1)
+            await losehp(!boil_away ? 1 : Math.trunc(u.uhp / 2), lava_killer,
+                         KILLED_BY); /* lava damage */
     }
+    } /* burn_stuff */
 
     /* burn_stuff: */
-    throw new Error('lava_effects(): destroy_items()/ignite_items() not ported yet');
+    await destroy_items_tr(g.youmonst, AD_FIRE_TR, dmg);
+    await ignite_items(g.invent);
+    return false;
 }
-import { SWIMMING as SWIMMING_DR, MAGICAL_BREATHING as MAGICAL_BREATHING_DR,
-         TELEPORT as TELEPORT_DR, TELEPORT_CONTROL as TELEPORT_CONTROL_DR,
-         FIRE_RES as FIRE_RES_DR, LIFESAVED as LIFESAVED_DR,
-         IS_WATERWALL as IS_WATERWALL_DR, IS_AIR as IS_AIR_DR,
-         Is_waterlevel as Is_waterlevel_dr, UNENCUMBERED as UNENCUMBERED_DR,
-         SLT_ENCUMBER as SLT_ENCUMBER_DR, DROWNING as DROWNING_DR,
-         BURNING as BURNING_DR, DISSOLVED as DISSOLVED_DR, STONE as STONE_DR,
-         TELEDS_ALLOW_DRAG as TELEDS_ALLOW_DRAG_DR,
-         TELEDS_TELEPORT as TELEDS_TELEPORT_DR, TT_LAVA as TT_LAVA_DR } from './const.js';
-import { M1_SWIM as M1_SWIM_DR, M1_AMPHIBIOUS as M1_AMPHIBIOUS_DR,
-         M1_BREATHLESS as M1_BREATHLESS_DR, PM_GREMLIN as PM_GREMLIN_DR,
-         PM_IRON_GOLEM as PM_IRON_GOLEM_DR, PM_WATER_ELEMENTAL as PM_WATER_ELEMENTAL_DR,
-         PM_STEAM_VORTEX as PM_STEAM_VORTEX_DR, PM_FOG_CLOUD as PM_FOG_CLOUD_DR } from './monsters.js';
-import { LEASH as LEASH_DR, LOADSTONE as LOADSTONE_DR, SCR_FIRE as SCR_FIRE_DR,
-         SPE_FIREBALL as SPE_FIREBALL_DR, SPE_BOOK_OF_THE_DEAD as SPE_BOOK_OF_THE_DEAD_DR,
-         objects as objects_dr, POTION_CLASS as POTION_CLASS_DR,
-         is_organic as is_organic_dr } from './objects.js';
-import { switch_terrain as switch_terrain_dr, inv_cnt as inv_cnt_dr,
-         near_capacity as near_capacity_dr, spoteffects as spoteffects_dr } from './hack.js';
-import { welded as welded_dr } from './wield.js';
-import { mons as mons_dr, PM_FIRE_ELEMENTAL as PM_FIRE_ELEMENTAL_DR,
-         PM_SALAMANDER as PM_SALAMANDER_DR } from './monsters.js';
-import { remove_worn_item as remove_worn_item_dr } from './steal.js';
-import { dropx as dropx_dr } from './do.js';
-import { feel_newsym as feel_newsym_dr, update_lastseentyp as update_lastseentyp_dr } from './display.js';
-import { waterbody_name as waterbody_name_dr } from './pager.js';
-import { can_teleport as can_teleport_dr } from './mondata.js';
-import { unmul as unmul_dr } from './allmain.js';
-import { teleds as teleds_dr, safe_teleds as safe_teleds_dr } from './teleport.js';
-import { done as done_dr } from './end.js';
-import { burn_away_slime as burn_away_slime_dr } from './potion.js';
-import { useupall as useupall_dr } from './invent.js';
-import { obj_resists as obj_resists_dr } from './dogmove.js';
 
 // C ref: trap.c fire_damage()
 /* Set an item on fire.  Return whether the object was destroyed. */
@@ -5224,32 +5479,6 @@ export async function lava_damage(obj, x, y) {
     }
     return await fire_damage(obj, true, x, y);
 }
-import { setnotworn as setnotworn_fd } from './worn.js';
-import { otense as otense_fd, Yname2 as Yname2_fd } from './objnam.js';
-import { DRAGON_HIDE as DRAGON_HIDE_FD, WAN_FIRE as WAN_FIRE_FD,
-         FIRE_HORN as FIRE_HORN_FD } from './objects.js';
-import { liquid_flow as liquid_flow_l } from './dig.js';
-import { ceiling as ceiling_tr } from './dungeon.js';
-import { hard_helmet as hard_helmet_tr } from './objnam.js';
-import { mbodypart as mbodypart_tr } from './insight.js';
-import { schedule_goto, UTOTYPE_FALLING, UTOTYPE_NONE } from './do.js';
-import { impact_drop } from './dokick.js';
-import { next_to_u } from './teleport.js';
-import { ceiling_hider } from './engrave.js';
-import { find_hell, assign_level, depth } from './dungeon.js';
-import { Is_stronghold } from './const.js';
-import { polyself as polyself_tp } from './polyself.js';
-import { newcham as newcham_tp } from './mon.js';
-import { POLY_NOFLAGS as POLY_NOFLAGS_TP, NC_SHOW_MSG as NC_SHOW_MSG_TP } from './const.js';
-import { WAND_CLASS as WAND_CLASS_TP } from './objects.js';
-import { resists_blnd as resists_blnd_tr } from './mondata.js';
-import { make_blinded as make_blinded_tr, incr_itimeout as incr_itimeout_tr } from './potion.js';
-import { monstseesu as monstseesu_tr, monstunseesu as monstunseesu_tr } from './uhitm.js';
-import { M_SEEN_SLEEP as M_SEEN_SLEEP_TR, NOWEBMSG as NOWEBMSG_TR,
-         FAILEDUNTRAP as FAILEDUNTRAP_TR, VIASITTING as VIASITTING_TR,
-         A_STR as A_STR_TR, TT_WEB as TT_WEB_TR } from './const.js';
-import { fall_asleep as fall_asleep_tr } from './timeout.js';
-import { ACURR as ACURR_tr } from './attrib.js';
 
 // C ref: trap.c sink_into_lava()
 /* called each turn by moveloop() while hero is trapped in lava */
@@ -5298,4 +5527,217 @@ export async function sink_into_lava() {
         }
     }
 }
-import { SLIMED as SLIMED_SL, TIMEOUT as TIMEOUT_SL } from './const.js';
+
+/* C ref: decl.c c_common_strings.c_the_your[] */
+const the_your_ht = ["the", "your"];
+
+// C ref: trap.c reward_untrap()
+async function reward_untrap(ttmp, mtmp) {
+    if (!ttmp.madeby_u) {
+        if (rnl(10) < 8 && !mtmp.mpeaceful && !helpless(mtmp)
+            && !mtmp.mfrozen && !(mtmp.data.mflags1 & M1_MINDLESS_HT) /* mindless() */
+            && !(mtmp.data.geno & G_UNIQ_HT) /* unique_corpstat() */
+            && mtmp.data.mlet !== S_HUMAN_HT) {
+            mtmp.mpeaceful = 1;
+            set_malign_ht(mtmp); /* reset alignment */
+            await pline(`${Monnam(mtmp)} is grateful.`);
+        }
+        /* Helping someone out of a trap is a nice thing to do.
+           A lawful may be rewarded, but not too often.  */
+        if (!rn2(3) && !rnl(8) && game.u.ualign.type === A_LAWFUL_HT) {
+            adjalign_ht(1);
+            await You_feel_ht("that you did the right thing.");
+        }
+    }
+}
+
+// C ref: trap.c openholdingtrap()
+/* for magic unlocking; returns true if targeted monster (which might
+   be hero) gets untrapped; the trap remains intact */
+export async function openholdingtrap(
+    mon,
+    noticed) { /* noticed.v set to true iff hero notices the effect;
+                * otherwise left with its previous value intact */
+    const u = game.u;
+    let t;
+    let buf;
+    let trapdescr = null, which = null;
+    let ishero = (mon === game.youmonst);
+
+    if (!mon)
+        return false;
+    if (mon === u.usteed)
+        ishero = true;
+
+    t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my);
+
+    if (ishero && u.utrap) { /* all u.utraptype values are holding traps */
+        /* there might not be any trap at hero's spot for tt_buriedball;
+           conversely, there might be an unrelated trap at that spot */
+        if (!t) {
+            t = { tseen: 0, madeby_u: 0, tx: 0, ty: 0, ttyp: 0 };
+            /* fallback 't' is now nonNull, t->tseen and t->madeby_u are 0 */
+        }
+        which = the_your_ht[(!t || !t.tseen || !t.madeby_u) ? 0 : 1];
+
+        switch (u.utraptype) {
+        case TT_LAVA_HT:
+            trapdescr = "molten lava";
+            break;
+        case TT_INFLOOR_HT:
+            /* solidified lava, so not "floor" even if within a room */
+            trapdescr = "ground";
+            break;
+        case TT_BURIEDBALL_HT:
+            trapdescr = "your anchor";
+            which = "";
+            break;
+        case TT_BEARTRAP_HT:
+        case TT_PIT_HT:
+        case TT_WEB_HT:
+            /* defsyms[S_web / S_pit / S_bear_trap].explanation */
+            trapdescr = (u.utraptype === TT_WEB_HT) ? "web"
+                        : (u.utraptype === TT_PIT_HT) ? "pit"
+                          : "bear trap";
+            break;
+        default:
+            /* lint suppression in case 't' is unexpectedly Null
+               or u.utraptype has new value we don't know about yet */
+            trapdescr = "trap";
+            break;
+        }
+    } else {
+        /* if no trap here or it's not a holding trap, we're done */
+        if (!t || (t.ttyp !== BEAR_TRAP && t.ttyp !== WEB))
+            return false;
+        trapdescr = trapname(t.ttyp, false);
+    }
+    if (which === null)
+        which = t.tseen ? the_your_ht[t.madeby_u ? 1 : 0]
+                        : "aeiouAEIOU".includes(trapdescr[0]) ? "an" : "a"; /* vowels[] */
+    if (which)
+        which = which + " ";
+
+    if (ishero) {
+        if (!u.utrap)
+            return false;
+        noticed.v = true;
+        if (!u.usteed)
+            buf = "You are";
+        else if (u.utraptype === TT_BURIEDBALL_HT)
+            buf = `You and ${y_monnam_ht(u.usteed)} are`;
+        else
+            buf = `${noit_Monnam_ht(u.usteed)} is`;
+        /* give release message before untrap in case it triggers a message */
+        await pline(`${buf} released from ${which}${trapdescr}.`);
+        /* might float up if Levitation is being unblocked */
+        game.vision_full_recalc = 1; /* vision limits can change (pit escape) */
+        await reset_utrap(true);
+        if (game.vision_full_recalc)
+            vision_recalc_ht(0);
+    } else {
+        if (!mon.mtrapped)
+            return false;
+        mon.mtrapped = 0;
+        if (canspotmon_l(mon)) {
+            noticed.v = true;
+            await pline(`${Monnam(mon)} is released from ${which}${trapdescr}.`);
+        } else if (cansee(t.tx, t.ty) && t.tseen) {
+            noticed.v = true;
+            if (t.ttyp === WEB)
+                await pline(`Something is released from ${which}${trapdescr}.`);
+            else /* BEAR_TRAP */
+                await pline(`${which ? which[0].toUpperCase() + which.slice(1)
+                                     : which}${trapdescr} opens.`); /* upstart() */
+        }
+        /* might pacify monster if adjacent */
+        if (rn2(2) && m_next2u_ht(mon))
+            await reward_untrap(t, mon);
+    }
+    return true;
+}
+
+// C ref: trap.c closeholdingtrap()
+/* for magic locking; returns true if targeted monster (which might
+   be hero) gets hit by a trap (might avoid actually becoming trapped) */
+export async function closeholdingtrap(
+    mon,
+    noticed) { /* noticed.v set to true iff hero notices the effect;
+                * otherwise left with its previous value intact */
+    const u = game.u;
+    let t;
+    let dotrapflags;
+    let ishero = (mon === game.youmonst), result;
+
+    if (!mon)
+        return false;
+    if (mon === u.usteed)
+        ishero = true;
+    t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my);
+    /* if no trap here or it's not a holding trap, we're done */
+    if (!t || (t.ttyp !== BEAR_TRAP && t.ttyp !== WEB))
+        return false;
+
+    if (ishero) {
+        if (u.utrap)
+            return false; /* already trapped */
+        noticed.v = true;
+        dotrapflags = FORCETRAP_HT;
+        /* dotrap calls mintrap when mounted hero encounters a web */
+        if (u.usteed)
+            dotrapflags |= NOWEBMSG_HT;
+        await dotrap(t, dotrapflags | FORCETRAP_HT);
+        result = (u.utrap !== 0);
+    } else {
+        if (mon.mtrapped)
+            return false; /* already trapped */
+        /* you notice it if you see the trap close/tremble/whatever
+           or if you sense the monster who becomes trapped */
+        noticed.v = cansee(t.tx, t.ty) || canspotmon_l(mon);
+        result = ((await mintrap(mon, FORCETRAP_HT)) !== Trap_Effect_Finished);
+    }
+    return result;
+}
+
+// C ref: trap.c openfallingtrap()
+/* for magic unlocking; returns true if targeted monster (which might
+   be hero) gets hit by a trap (target might avoid its effect) */
+export async function openfallingtrap(
+    mon,
+    trapdoor_only,
+    noticed) { /* noticed.v set to true iff hero notices the effect; */
+               /* otherwise left with its previous value intact */
+    const u = game.u;
+    let t;
+    let ishero = (mon === game.youmonst), result;
+
+    if (!mon)
+        return false;
+    if (mon === u.usteed)
+        ishero = true;
+    t = t_at(ishero ? u.ux : mon.mx, ishero ? u.uy : mon.my);
+    /* if no trap here or it's not a falling trap, we're done
+       (note: falling rock traps have a trapdoor in the ceiling) */
+    if (!t || ((t.ttyp !== TRAPDOOR && t.ttyp !== ROCKTRAP)
+               && (trapdoor_only || (t.ttyp !== HOLE && !is_pit(t.ttyp)))))
+        return false;
+
+    if (ishero) {
+        if (u.utrap)
+            return false; /* already trapped */
+        noticed.v = true;
+        await dotrap(t, FORCETRAP_HT);
+        result = (u.utrap !== 0);
+    } else {
+        if (mon.mtrapped)
+            return false; /* already trapped */
+        /* you notice it if you see the trap close/tremble/whatever
+           or if you sense the monster who becomes trapped */
+        noticed.v = cansee(t.tx, t.ty) || canspotmon_l(mon);
+        /* monster will be angered; mintrap doesn't handle that */
+        await wakeup_ht(mon, true);
+        result = ((await mintrap(mon, FORCETRAP_HT)) !== Trap_Effect_Finished);
+        /* mon might now be on the migrating monsters list */
+    }
+    return result;
+}

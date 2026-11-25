@@ -4,6 +4,10 @@
 // Ported so far: dosearch0() (not its feel_location()/unmap_invisible()
 // parts), mfind0(), warnreveal() and lock.c cvt_sdoor_to_door().
 
+import { expels } from './mhitu.js';
+import { dmgtype_fromattack } from './mondata.js';
+import { Monnam } from './do_name.js';
+import { AD_DGST, AT_ENGL } from './monsters.js';
 import { feel_newsym } from './display.js';
 import { game } from './gstate.js';
 import { rnl } from './rng.js';
@@ -89,6 +93,7 @@ import { CONFUSION as CONFUSION_DT,
          NOSE as NOSE_DT, A_WIS as A_WIS_DT, TER_DETECT as TER_DETECT_DT } from './const.js';
 import { body_part as body_part_dt } from './insight.js';
 import { strange_feeling as strange_feeling_dt } from './potion.js';
+import { openholdingtrap, openfallingtrap } from './trap.js';
 
 // C ref: mondata.h is_hider(), hides_under()
 function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
@@ -1531,10 +1536,10 @@ async function openone(zx, zy, num_p) {
         }
         const mon = (zx === game.u.ux && zy === game.u.uy) ? game.youmonst /* u_at() */
                     : m_at(zx, zy);
-        /* openholdingtrap(mon, &dummy) || openfallingtrap(mon, TRUE, &dummy):
-           both return FALSE at once when there's no monster here */
-        if (mon)
-            throw new Error('openone(): openholdingtrap()/openfallingtrap() not ported yet');
+        const dummy = { v: false };
+        if (await openholdingtrap(mon, dummy)
+            || await openfallingtrap(mon, true, dummy))
+            num_p.v++;
     } else if (find_drawbridge_dt(zx, zy)) {
         throw new Error('openone(): open_drawbridge() not ported yet');
     }
@@ -1639,8 +1644,18 @@ export async function openit() {
     const u = game.u;
     const num = { v: 0 };
 
-    if (u.uswallow)
-        throw new Error('openit(): engulfed (expels()) not ported yet');
+    if (u.uswallow) {
+        /* digests(u.ustuck->data) */
+        if (dmgtype_fromattack(u.ustuck.data, AD_DGST, AT_ENGL)) {
+            /* purple worm */
+            if (Blind())
+                await pline("Its mouth opens!");
+            else
+                await pline(`${Monnam(u.ustuck)} opens its mouth!`);
+        }
+        await expels(u.ustuck, u.ustuck.data, true);
+        return -1;
+    }
 
     await do_clear_area_async(u.ux, u.uy, BOLT_LIM_DT, openone, num);
     return num.v;

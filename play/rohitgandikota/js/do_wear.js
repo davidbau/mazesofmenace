@@ -12,12 +12,13 @@ import { set_bc } from './ball.js';
 import { gulp_blnd_check } from './mhitu.js';
 import { shirt_simple_name, shield_simple_name, vtense } from './objnam.js';
 import { urgent_pline } from './display.js';
-import { artifact_light } from './artifact.js';
+import { artifact_light, retouch_object } from './artifact.js';
 import { condtests } from './botl.js';
 import { make_glib, make_hallucinated, toggle_blindness } from './potion.js';
 import { end_burn } from './timeout.js';
 import { setnotworn, which_armor } from './worn.js';
 import { game } from './gstate.js';
+import { shk_your } from './shk.js';
 import { mons } from './monst_data.js';
 import { objects, ONAMES, OCLASSES } from './objects_data.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
@@ -26,8 +27,8 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          WORN_ARMOR, WORN_CLOAK, WORN_SHIRT, WORN_HELMET, WORN_GLOVES,
          WORN_SHIELD, WORN_BOOTS, WORN_AMUL, WORN_BLINDF,
          LEFT_RING, RIGHT_RING, TIMEOUT, A_STR, A_INT, A_WIS, A_DEX, A_CON,
-         A_CHA, A_MAX, A_CURRENT, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, NH_BLACK,
-         INTRINSIC, HEAD, HAND, FINGER, CQ_CANNED, st_corpse,
+         A_CHA, A_MAX, A_CURRENT, A_ORIGINAL, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, NH_BLACK,
+         INTRINSIC, HEAD, HAND, FINGER, FACE, CQ_CANNED, st_corpse,
          st_petrifies, MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
          ALL_TYPES_SELECTED, ALL_FINISHED, SIGNAL_NOMENU, USE_INVLET, INVORDER_SORT, PICK_ANY,
          FROMOUTSIDE, ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './const.js';
@@ -35,7 +36,7 @@ import { setworn } from './worn.js';
 import { welded, is_sword, setuwep, setuswapwep, setuqwep, empty_handed }
     from './wield.js';
 import { bimanual, is_metallic } from './obj.js';
-import { nolimbs, nohands, touch_petrifies, verysmall, humanoid } from './mondata.js';
+import { nolimbs, nohands, touch_petrifies, verysmall, humanoid, has_head, is_clinger } from './mondata.js';
 import { sgn } from './hacklib.js';
 import { erode_obj, float_up, float_down, is_flammable, is_rustprone, is_crackable, is_rottable,
          is_corrodeable, is_damageable } from './trap.js';
@@ -47,7 +48,7 @@ import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
 import { set_occupation, stop_occupation } from './allmain.js';
 import { newsym, pline, see_monsters } from './display.js';
 import { There, You, You_feel, You_cant, Your, impossible } from './pline.js';
-import { an, xname, doname, the, Tobjnam, gloves_simple_name,
+import { an, ansimpleoname, xname, yname, doname, the, safe_typename, Tobjnam, gloves_simple_name,
          boots_simple_name, suit_simple_name, Yname2, makeplural,
          makesingular, otense, corpse_xname, CXN_NOCORPSE,
          CXN_NOARTICLE, CXN_SINGULAR, CXN_ARTICLE, thesimpleoname,
@@ -69,14 +70,14 @@ import { paranoia_bits, PARANOID_REMOVE } from './options.js';
 import { Blind, Flying, Glib, Hallucination, Invis, Levitation, Stone_resistance,
          Protection_from_shape_changers, See_invisible, Detect_monsters, Punished } from './youprop.js';
 import { body_part, change_sex, poly_gender, float_vs_flight } from './polyself.js';
-import { surface } from './dungeon.js';
+import { surface, has_ceiling } from './dungeon.js';
 import { region_danger } from './region.js';
 import { make_slimed } from './potion.js';
 import { can_be_strangled, cant_drown } from './mondata.js';
 import { livelog_newform } from './polyself.js';
 import { trycall, hliquid } from './do_name.js';
 import { set_mimic_blocking } from './display.js';
-import { restartcham, rescham } from './mon.js';
+import { restartcham, rescham, is_pool, is_lava } from './mon.js';
 import { drown } from './trap.js';
 import { Swimming, Breathless, Underwater, Unchanging } from './youprop.js';
 import { NECK, Is_waterlevel, Is_airlevel } from './const.js';
@@ -901,7 +902,7 @@ export function cancel_doff(obj, slotmask) {
 }
 
 // src/do_wear.c:68 off_msg() / :76 on_msg()
-async function off_msg(otmp) {
+export async function off_msg(otmp) {
     if (game.flags?.verbose !== false)
         await You(`were wearing ${doname(otmp)}.`);
 }
@@ -944,6 +945,11 @@ export async function Boots_on() {
     case ONAMES.WATER_WALKING_BOOTS:
         if (game.u.uinwater)
             await spoteffects(true);
+        if (game.wasinwater) {
+            if (!game.u.uinwater)
+                makeknown(ONAMES.WATER_WALKING_BOOTS);
+            game.wasinwater = 0;
+        }
         break;
     case ONAMES.ELVEN_BOOTS:
         await toggle_stealth(uarmf, oldprop, true);
@@ -980,18 +986,28 @@ export async function Boots_on() {
 // src/do_wear.c:262 Boots_off()
 export async function Boots_off() {
     const otmp = game.u.uarmf;
-    const prop = PROP_KEYS[objects[otmp.otyp].oc_oprop];
+    const otyp = otmp.otyp;
+    const prop = PROP_KEYS[objects[otyp].oc_oprop];
     const oldprop = prop
         ? (game.u.uprops?.[prop] || 0) & ~WORN_BOOTS : 0;
+    (game.context_takeoff ||= {}).mask &= ~W_ARMF;
     setworn(null, W_ARMF);
-    switch (otmp.otyp) {
+    switch (otyp) {
     case ONAMES.SPEED_BOOTS:
         if (!Very_fast() && !game.context_takeoff?.cancelled_don) {
-            makeknown(otmp.otyp);
+            makeknown(otyp);
             await You_feel(`yourself slow down${Fast() ? ' a bit' : ''}.`);
         }
         break;
     case ONAMES.WATER_WALKING_BOOTS:
+        if ((is_pool(game.u.ux, game.u.uy) || is_lava(game.u.ux, game.u.uy))
+            && !Levitation() && !Flying()
+            && !(is_clinger(game.youmonst.data) && has_ceiling(game.u.uz))
+            && !game.context_takeoff?.cancelled_don
+            && !game.iflags?.in_lava_effects) {
+            makeknown(otyp);
+            await spoteffects(true);
+        }
         break;
     case ONAMES.ELVEN_BOOTS:
         await toggle_stealth(otmp, oldprop, false);
@@ -1006,11 +1022,13 @@ export async function Boots_off() {
         break;
     case ONAMES.LEVITATION_BOOTS:
         if (!oldprop && !game.u.intrinsic?.HLevitation
-            && !game.u.blocked?.LEVITATION
+            && !((game.u.blocked?.LEVITATION || 0) & FROMOUTSIDE)
             && !game.context_takeoff?.cancelled_don) {
-            await float_down(0, 0);
-            makeknown(otmp.otyp);
-        }
+            if (!game.iflags?.in_lava_effects)
+                await float_down(0, 0);
+            makeknown(otyp);
+        } else
+            float_vs_flight();
         break;
     case ONAMES.LOW_BOOTS:
     case ONAMES.IRON_SHOES:
@@ -1018,8 +1036,11 @@ export async function Boots_off() {
     case ONAMES.JUMPING_BOOTS:
     case ONAMES.KICKING_BOOTS:
         break;
+    default:
+        await impossible(`Unknown type of boots (${otyp})`);
     }
     (game.context_takeoff ||= {}).cancelled_don = false;
+    return 0;
 }
 
 // src/do_wear.c:963 Amulet_on() — setworn and on_msg are its own business.
@@ -1445,11 +1466,11 @@ export async function Ring_on(obj) {
 
     /* make sure ring isn't wielded; can't use remove_worn_item()
        here because it has already been set worn in a ring slot */
-    if (obj === game.uwep)
-        setuwep(null);
-    else if (obj === game.uswapwep)
+    if (obj === game.u.uwep)
+        await setuwep(null);
+    else if (obj === game.u.uswapwep)
         setuswapwep(null);
-    else if (obj === game.uquiver)
+    else if (obj === game.u.uquiver)
         setuqwep(null);
 
     /* only mask out W_RING when we don't have both
@@ -1829,7 +1850,7 @@ export function cloak_simple_name(c) {
     return 'cloak';
 }
 
-// src/do_wear.c:2201 accessory_or_armor_on()
+// src/do_wear.c:2209 accessory_or_armor_on()
 export async function accessory_or_armor_on(obj) {
     let mask = 0;
     const armor = obj.oclass === OCLASSES_ARMOR;
@@ -1847,6 +1868,17 @@ export async function accessory_or_armor_on(obj) {
         mask = await canwearobj(obj, true);
         if (!mask)
             return ECMD_OK;
+        if (obj.otyp === ONAMES.HELM_OF_OPPOSITE_ALIGNMENT
+            && game.qstart_level.dnum === game.u.uz.dnum) {
+            if (game.u.ualignbase[A_CURRENT] === game.u.ualignbase[A_ORIGINAL])
+                await You('narrowly avoid losing all chance at your goal.');
+            else
+                await You('are suddenly overcome with shame and change your mind.');
+            game.u.ublessed = 0;
+            makeknown(obj.otyp);
+            game.disp.botl = true;
+            return ECMD_TIME;
+        }
     } else if (ring) {
         if (nolimbs(game.youmonst.data)) {
             await You('cannot make the ring stick to your body.');
@@ -1908,19 +1940,27 @@ export async function accessory_or_armor_on(obj) {
             return ECMD_OK;
         }
     } else if (eyewear) {
-        /* src/do_wear.c:2324 — has_head() is true for every current hero
-           form; the ublindf conflict messages */
+        if (!has_head(game.youmonst.data)) {
+            await You(`have no head to wear ${ansimpleoname(obj)} on.`);
+            return ECMD_OK;
+        }
         const ub = worn(W_TOOL);
         if (ub) {
-            if (ub.otyp === ONAMES.TOWEL)
-                await Your('face is already covered by a towel.');
-            else if (ub.otyp === ONAMES.BLINDFOLD)
-                await You(`are already wearing ${
-                    obj.otyp === ONAMES.LENSES ? 'lenses' : 'a blindfold'}.`);
-            else if (ub.otyp === ONAMES.LENSES)
-                await You(`are already wearing ${
-                    obj.otyp === ONAMES.BLINDFOLD ? 'a blindfold'
-                                                  : 'some lenses'}.`);
+            if (ub.otyp === ONAMES.TOWEL) {
+                await Your(`${body_part(FACE)} is already covered by a towel.`);
+            } else if (ub.otyp === ONAMES.BLINDFOLD) {
+                if (obj.otyp === ONAMES.LENSES)
+                    await You_cant("wear lenses because you're wearing a blindfold there already.");
+                else
+                    await You('are already wearing a blindfold.');
+            } else if (ub.otyp === ONAMES.LENSES) {
+                if (obj.otyp === ONAMES.BLINDFOLD)
+                    await You_cant("wear a blindfold because you're wearing some lenses there already.");
+                else
+                    await You('are already wearing some lenses.');
+            } else {
+                await You('are already wearing something.');
+            }
             return ECMD_OK;
         }
     } else {
@@ -1928,38 +1968,53 @@ export async function accessory_or_armor_on(obj) {
         return ECMD_OK;
     }
 
-    /* retouch_object(): silver/artifact touch effects; nothing reachable */
+    if (!await retouch_object(obj, false))
+        return ECMD_TIME;
 
     if (armor) {
-        setworn(obj, mask);
-        let afternmv = null;
-        if (mask === W_ARM) afternmv = Armor_on;
-        else if (mask === W_ARMC) afternmv = Cloak_on;
-        else if (mask === W_ARMH) afternmv = Helmet_on;
-        else if (mask === W_ARMG) afternmv = Gloves_on;
-        else if (mask === W_ARMF) afternmv = Boots_on;
-        else if (mask === W_ARMS) afternmv = Shield_on;
-        else if (mask === W_ARMU) afternmv = Shirt_on;
+        if (obj.owornmask & W_WEAPONS)
+            await remove_worn_item(obj, false);
+        game.wasinwater = game.u.uinwater;
+        await setworn(obj, mask);
+        if (obj === game.u.uarm)
+            game.afternmv = Armor_on;
+        else if (obj === game.u.uarmh)
+            game.afternmv = Helmet_on;
+        else if (obj === game.u.uarmg)
+            game.afternmv = Gloves_on;
+        else if (obj === game.u.uarmf)
+            game.afternmv = Boots_on;
+        else if (obj === game.u.uarms)
+            game.afternmv = Shield_on;
+        else if (obj === game.u.uarmc)
+            game.afternmv = Cloak_on;
+        else if (obj === game.u.uarmu)
+            game.afternmv = Shirt_on;
+        else
+            throw new Error(`wearing armor not worn as armor? [${obj.owornmask.toString(16)}]`);
 
-        const delay = -(objects[obj.otyp].oc_delay || 0);
+        const delay = -objects[obj.otyp].oc_delay;
         if (delay) {
-            game.afternmv = afternmv;
             nomul(delay);
             game.multi_reason = 'dressing up';
             game.nomovemsg = 'You finish your dressing maneuver.';
         } else {
-            game.afternmv = afternmv;
             await unmul('');
             await on_msg(obj);
         }
+        const takeoff = (game.context_takeoff ||= {});
+        takeoff.mask = takeoff.what = 0;
     } else if (ring) {
-        setworn(obj, mask);
+        await setworn(obj, mask);
         await Ring_on(obj);
-        await on_msg(obj);
+        if (is_worn(obj))
+            await on_msg(obj);
     } else if (amulet) {
         await Amulet_on(obj);
     } else if (eyewear) {
         await Blindf_on(obj);
+    } else {
+        await impossible(`putting on unexpected type of accessory: ${safe_typename(obj.otyp)}`);
     }
     return ECMD_TIME;
 }
@@ -2733,6 +2788,48 @@ export function adj_abon(otmp, delta) {
         }
         (game.disp ||= {}).botl = true;
     }
+}
+
+// src/do_wear.c:3342 inaccessible_equipment(), covered worn equipment.
+// Silent selection checks return a boolean; feedback completes before true.
+export function inaccessible_equipment(obj, verb, only_if_known_cursed) {
+    const anycovering = !only_if_known_cursed;
+    const { uarm, uarmc, uarmu, uarmg, uleft, uright } = game.u;
+
+    if (!obj || !obj.owornmask)
+        return false;
+
+    if (obj === uarm && uarmc
+        && (anycovering || (uarmc.cursed && uarmc.bknown))) {
+        if (verb)
+            return You(`need to take off ${yname(uarmc)} to ${verb} ${yname(obj)}.`)
+                .then(() => true);
+        return true;
+    }
+    if (obj === uarmu
+        && ((uarm && (anycovering || (uarm.cursed && uarm.bknown)))
+            || (uarmc && (anycovering || (uarmc.cursed && uarmc.bknown))))) {
+        if (verb) {
+            const sameprefix = uarm && uarmc
+                && shk_your(uarmc) === shk_your(uarm);
+            let buf = uarmc ? yname(uarmc) : '';
+            if (uarm && uarmc)
+                buf += ' and ';
+            if (uarm)
+                buf += sameprefix ? xname(uarm) : yname(uarm);
+            return You(`need to take off ${buf} to ${verb} ${yname(obj)}.`)
+                .then(() => true);
+        }
+        return true;
+    }
+    if ((obj === uleft || obj === uright) && uarmg
+        && (anycovering || (uarmg.cursed && uarmg.bknown))) {
+        if (verb)
+            return You(`need to take off ${yname(uarmg)} to ${verb} ${yname(obj)}.`)
+                .then(() => true);
+        return true;
+    }
+    return false;
 }
 
 // src/do_wear.c:3144 wornarm_destroyed(), take a destroyed piece of worn

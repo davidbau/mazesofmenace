@@ -46,7 +46,7 @@ import { mpickobj } from './steal.js';
 import { You_hear } from './sounds.js';
 import { find_defensive, find_offensive, find_misc, use_defensive,
          use_misc, cures_stoning, mcould_eat_tin } from './muse.js';
-import { mattacku } from './mhitu.js';
+import { mattacku, unstuck } from './mhitu.js';
 import { castmu } from './mcastu.js';
 import { M_ATTK_HIT, G_GENOD } from './const.js';
 import { Is_rogue_level, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, NORMAL_SPEED } from './const.js';
@@ -124,7 +124,7 @@ import {
     Hallucination, Deaf, Invis, Displaced, Stealth, Aggravate_monster, Conflict, Underwater,
     Protection_from_shape_changers, Unaware
 } from './youprop.js';
-import { Upolyd, u_at } from './const.js';
+import { Upolyd, u_at, m_next2u } from './const.js';
 import { DOOR as DOOR_MM, ROOM as ROOM_MM, CORR as CORR_MM } from './const.js';
 import { Is_special as Is_special_mm } from './dungeon.js';
 import { switch_terrain as switch_terrain_mm } from './hack.js';
@@ -154,6 +154,10 @@ import { cursed_object_at as cursed_object_at_ud } from './dogmove.js';
 import { mdisplacem as mdisplacem_mm } from './mhitm.js';
 import { M_ATTK_HIT as M_ATTK_HIT_MM, M_ATTK_DEF_DIED as M_ATTK_DEF_DIED_MM,
          M_ATTK_AGR_DIED as M_ATTK_AGR_DIED_MM } from './const.js';
+import { can_blow } from './music.js';
+import { artifact_light } from './worn.js';
+import { bare_artifactname } from './iactions.js';
+import { yname } from './objnam.js';
 
 // ── small helpers (C ref: youprop.h / mondata.h / display.h macros) ──
 
@@ -511,7 +515,25 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
             if (!mtmp.mcanmove || !mtmp.data.mmove) {
                 await pline(`${Adjmonnam(mtmp, "immobile")} seems to flinch.`); /* pline_mon() */
             } else if (flees_light(mtmp)) {
-                throw new Error('monflee(): flees_light() messages not ported yet');
+                if (Unaware()) {
+                    /* tell the player even if the hero is unconscious */
+                    await pline(`${Monnam(mtmp)} is frightened.`); /* pline_mon() */
+                } else if (rn2(10) || Deaf()) {
+                    /* via flees_light(), will always be either via uwep
+                       (Sunsword) or uarm (gold dragon scales/mail) or both;
+                       TODO? check for both and describe the one which is
+                       emitting light with a bigger radius */
+                    const lsrc = (game.uwep && artifact_light(game.uwep))
+                                 ? bare_artifactname(game.uwep)
+                                 : (game.uarm && artifact_light(game.uarm))
+                                   ? yname(game.uarm)
+                                   : "[its imagination?]";
+
+                    await pline(`${Monnam(mtmp)} flees from the painful light of ${lsrc}.`); /* pline_mon() */
+                } else {
+                    /* SetVoice(mtmp, 0, 80, 0); verbalize(): Deaf is false here */
+                    await pline('"Bright light!"');
+                }
             } else {
                 await pline(`${Monnam(mtmp)} turns to flee.`); /* pline_mon() */
             }
@@ -805,7 +827,7 @@ function ranged_attk_available(mtmp) {
 }
 
 // ── C ref: mon.c m_respond() ──
-function m_respond(mtmp) {
+export function m_respond(mtmp) {
     if (mtmp.data.msound === M.MS_SHRIEK
         && !(Math.abs(mtmp.mx - game.u.ux) > 1 || Math.abs(mtmp.my - game.u.uy) > 1))
         throw new Error('m_respond_shrieker() not ported yet');
@@ -1118,8 +1140,8 @@ export async function dochug(mtmp) {
             break;
         case MMOVE_MOVED: /* monster moved */
             /* if confused grabber has wandered off, let go */
-            if (mtmp === u.ustuck)
-                throw new Error('dochug(): unstuck() not ported yet');
+            if (mtmp === u.ustuck && !m_next2u(mtmp))
+                await unstuck(mtmp);
             if (!is_flyer(mdat) && !is_floater(mdat) /* grounded(mdat) */
                 && ((mdat.mflags1 & M.M1_CLING) === 0 || !has_ceiling(game.u.uz)))
                 disturb_buried_zombies(mtmp.mx, mtmp.my);
@@ -1813,7 +1835,7 @@ function searches_for_item(mon, obj) {
             return (!obj.cursed && !is_unicorn(mon.data)
                     && mon.data !== mons[M.PM_KI_RIN]);
         if (typ === O.FROST_HORN || typ === O.FIRE_HORN)
-            throw new Error('searches_for_item(): can_blow() not ported yet');
+            return (obj.spe > 0 && can_blow(mon));
         if (typ >= O.LARGE_BOX && typ <= O.BAG_OF_TRICKS /* Is_container */
             && !((typ === O.BAG_OF_HOLDING || typ === O.BAG_OF_TRICKS) /* Is_mbag */
                  && obj.cursed)

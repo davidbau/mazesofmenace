@@ -41,7 +41,7 @@ import { hides_under, is_clinger } from './mondata.js';
 
 import { waterbody_name, mhidden_description } from './pager.js';
 
-import { is_pool, t_at } from './mon.js';
+import { is_pool, is_lava, t_at } from './mon.js';
 
 import { simple_typename, ansimpleoname, OBJ_NAME, the, just_an } from './objnam.js';
 import { M_AP_TYPE, M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, TT_PIT, SPIKED_PIT, TT_BURIEDBALL, TT_LAVA, TT_INFLOOR } from './const.js';
@@ -56,7 +56,7 @@ import { notice_all_mons_flush } from './hack.js';
 
 import { in_trouble, can_pray, u_gname } from './pray.js';
 
-import { Invulnerable, PermaBlind, Blnd_resist, Undead_warning, Clairvoyant, Adornment, Aggravate_monster, Protection, Polymorph, Lifesaved, Half_spell_damage, Blind_telepat, Warn_of_mon, Detect_monsters, Conflict, Displaced, Jumping, Wwalking, Slow_digestion, Underwater, Free_action, Half_gas_damage, Half_physical_damage, Invisible, Hate_silver, Fixed_abil, Unchanging, Polymorph_control, Protection_from_shape_changers, Wounded_legs, Confusion, Stunned, Glib } from './youprop.js';
+import { Invulnerable, PermaBlind, Blnd_resist, Undead_warning, Clairvoyant, Adornment, Aggravate_monster, Protection, Polymorph, Lifesaved, Half_spell_damage, Blind_telepat, Warn_of_mon, Detect_monsters, Conflict, Displaced, Jumping, Wwalking, Slow_digestion, Underwater, Free_action, Half_gas_damage, Half_physical_damage, Invisible, Hate_silver, Fixed_abil, Unchanging, Polymorph_control, Protection_from_shape_changers, Wounded_legs, Confusion, Stunned, Glib, Fumbling, Lev_at_will } from './youprop.js';
 
 import { temp_resist } from './eat.js';
 
@@ -66,7 +66,7 @@ import { strsubst, ordin } from './hacklib.js';
 
 import { impossible } from './pline.js';
 
-import { INTRINSIC, I_SPECIAL, NON_PM, SICK_VOMITABLE, SICK_NONVOMITABLE, M_AP_TYPMASK, NO_SPELL, ismnum } from './const.js';
+import { INTRINSIC, I_SPECIAL, NON_PM, SICK_VOMITABLE, SICK_NONVOMITABLE, M_AP_TYPMASK, NO_SPELL, ismnum, BUFSZ } from './const.js';
 
 import { has_ceiling } from './dungeon.js';
 
@@ -75,7 +75,10 @@ import { is_pool_or_lava } from './dbridge.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION } from './const.js';
 
-import { fingers_or_gloves } from './do_wear.js';
+import { fingers_or_gloves, find_ac, stuck_ring } from './do_wear.js';
+import { u_wield_art } from './artifact.js';
+import { ART_OGRESMASHER } from './artilist_data.js';
+import { AC_MAX } from './const.js';
 
 import { spellid } from './spell.js';
 
@@ -83,8 +86,8 @@ import { is_vampshifter } from './monst.js';
 
 import { is_vampire, lays_eggs } from './mondata.js';
 
-import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK, P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_INVISIBLE, STRAT_WAITMASK, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION, MSLOW, MFAST, A_CURRENT, A_ORIGINAL, TIMEOUT, W_ARM, W_ARMS, W_ARMG, W_ARMU, W_AMUL, W_RINGL, W_RINGR, W_WEP, W_TOOL, W_ARMOR, W_ACCESSORY, W_ART, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, LEG, HANDED, Upolyd, FROMFORM } from './const.js';
-import { makeplural, simpleonames, suit_simple_name } from './objnam.js';
+import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK, P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_INVISIBLE, STRAT_WAITMASK, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION, MSLOW, MFAST, A_CURRENT, A_ORIGINAL, TIMEOUT, W_ARM, W_ARMS, W_ARMG, W_ARMU, W_AMUL, W_RINGL, W_RINGR, W_WEP, W_TOOL, W_ARMOR, W_ACCESSORY, W_ART, LEFT_SIDE, BOTH_SIDES, LEG, HANDED, Upolyd, FROMFORM } from './const.js';
+import { makeplural, simpleonames, suit_simple_name, shield_simple_name } from './objnam.js';
 import { weapon_descr, weapon_type, skill_name, skill_level_name, P_SKILL, can_advance } from './weapon.js';
 
 import { empty_handed, is_ammo } from './wield.js';
@@ -98,13 +101,13 @@ import { In_endgame, In_quest, Is_knox_level } from './const.js';
 
 import { aligns, genders } from './role_data.js';
 import { Sleepy } from './youprop.js';
-import { SLEEPY } from './const.js';
+import { SLEEPY, FUMBLING, HUNGER } from './const.js';
 
 import { A_MAX, ACURR } from './attrib.js';
 
 import { hu_stat, rank_of, rank_to_xlev } from './botl.js';
 
-import { carrying, money_cnt, stone_luck } from './invent.js';
+import { carrying, money_cnt, hidden_gold, currency, stone_luck } from './invent.js';
 
 import { costly_spot } from './shk.js';
 
@@ -138,7 +141,7 @@ import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Passes_walls, Regeneration, Reflecting, Blindfolded, Blindfolded_only,
          Punished } from './youprop.js';
 
-import { body_part, mbodypart } from './polyself.js';
+import { body_part, mbodypart, ugenocided, udeadinside } from './polyself.js';
 
 import { is_metallic } from './obj.js';
 
@@ -690,7 +693,7 @@ function background_enlightenment() {
     }
 }
 
-// src/insight.c:600 basics_enlightenment()
+// src/insight.c:728 basics_enlightenment()
 function basics_enlightenment() {
     const u = game.u;
     const Power = 'energy points (spell power)';
@@ -719,19 +722,27 @@ function basics_enlightenment() {
                    : `${hitDice} hit dice`);
     }
 
-    enl_msg('Your armor class ', 'is ', 'was ', `${u.uac}`, '');
+    find_ac(); /* enforces AC_MAX cap */
+    let buf = `${u.uac}`;
+    if (Math.abs(u.uac) === AC_MAX)
+        buf += `, the ${u.uac < 0 ? 'best' : 'worst'} possible`;
+    enl_msg('Your armor class ', 'is ', 'was ', buf, '');
 
-    /* src/insight.c:781 — money_cnt(gi.invent), the live count, not the
-       starting umoney0 snapshot; hidden_gold (containers) is recorded. */
-    const money = money_cnt(game.invent);
-    out(money ? ` Your wallet contain${en_final ? 'ed' : 's'} ${money} zorkmid${plur(money)}`
-              : ` Your wallet ${en_final ? 'was' : 'is'} empty`);
-    /* C terminates that line here when nothing follows it */
-    lines[lines.length - 1] += '.';
+    const umoney = money_cnt(game.invent),
+          hmoney = hidden_gold(game.invent, en_final);
+    if (!umoney)
+        buf = ` Your wallet ${en_final ? 'was' : 'is'} empty`;
+    else
+        buf = ` Your wallet contain${en_final ? 'ed' : 's'} ${umoney} ${currency(umoney)}`;
+    buf += !hmoney ? '.' : !umoney ? ', but' : ', and';
+    out(buf);
+    if (hmoney) {
+        buf = `${hmoney} ${umoney ? 'more' : currency(hmoney)} stashed away in your pack`;
+        enl_msg('you ', 'have ', 'had ', buf, '');
+    }
 
     /* src/insight.c:804 — the "on" arm reports scope: shop suspension, the
        pickup_types symbols (or "all types"), pickup_thrown, exceptions. */
-    let buf;
     if (game.flags.autopickup) {
         buf = 'on';
         if (costly_spot(u.ux, u.uy)) {
@@ -751,7 +762,6 @@ function basics_enlightenment() {
     enl_msg('Autopickup ', 'is ', 'was ', buf, '');
 }
 
-// src/insight.c:770 one_characteristic()
 /* src/insight.c:287 attrval() — strength between 18 and 18/100 renders in
    the exceptional "18/xx" notation; 19..25 shed the +100 encoding. */
 function attrval(attrindx, attrvalue) {
@@ -762,15 +772,48 @@ function attrval(attrindx, attrvalue) {
     return `18/${String(attrvalue - 18).padStart(2, '0')}`;
 }
 
-function one_characteristic(attrindx) {
+// src/insight.c:846 one_characteristic()
+function one_characteristic(mode, attrindx) {
+    const u = game.u;
+    let hide_innate_value = false;
+
+    if (Upolyd(u)) {
+        hide_innate_value = true;
+    } else if (Fixed_abil()) {
+        if (stuck_ring(u.uleft, ONAMES.RIN_SUSTAIN_ABILITY)
+            || stuck_ring(u.uright, ONAMES.RIN_SUSTAIN_ABILITY))
+            hide_innate_value = true;
+    }
+    switch (attrindx) {
+    case A_STR:
+        if (u.uarmg && u.uarmg.otyp === ONAMES.GAUNTLETS_OF_POWER && u.uarmg.cursed)
+            hide_innate_value = true;
+        break;
+    case A_DEX:
+        break;
+    case A_CON:
+        if (u_wield_art(ART_OGRESMASHER) && u.uwep.cursed)
+            hide_innate_value = true;
+        break;
+    case A_INT:
+    case A_WIS:
+        if (u.uarmh && u.uarmh.otyp === ONAMES.DUNCE_CAP && u.uarmh.cursed)
+            hide_innate_value = true;
+        break;
+    case A_CHA:
+        break;
+    default:
+        return;
+    }
+    if ((mode & MAGICENLIGHTENMENT) && !Upolyd(u))
+        hide_innate_value = false;
+
     const acurrent = ACURR(attrindx);
     const abase = game.u.acurr.a[attrindx], apeak = game.u.amax.a[attrindx];
     const alimit = game.urace.attrmax[attrindx];
     let valubuf = attrval(attrindx, acurrent);
 
-    /* src/insight.c:858: a polymorphed hero cannot reliably inspect the
-       underlying base, peak, or innate-limit values. */
-    if (Upolyd(game.u)) {
+    if (hide_innate_value) {
         enl_msg(`Your ${attrname[attrindx]} `, 'is ', 'was ', valubuf, '');
         return;
     }
@@ -797,16 +840,14 @@ function one_characteristic(attrindx) {
     enl_msg(`Your ${attrname[attrindx]} `, 'is ', 'was ', valubuf, '');
 }
 
-// src/insight.c:900 characteristics_enlightenment() — bottom-line order.
-function characteristics_enlightenment() {
+// src/insight.c:827 characteristics_enlightenment(), bottom-line order.
+function characteristics_enlightenment(mode) {
     out('');
     out(`${en_final ? 'Final ' : ''}Characteristics:`);
     for (const a of [A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA])
-        one_characteristic(a);
+        one_characteristic(mode, a);
 }
 
-// src/insight.c:1180 status_enlightenment() — only the last-resort entries a
-// fresh hero reaches.
 // src/insight.c:233 trap_predicament() — describe u.utraptype; used by
 // status_enlightenment() and self_lookat()
 export function trap_predicament(final, wizxtra) {
@@ -873,15 +914,84 @@ function status_enlightenment(mode) {
     out('');
     out(`${en_final ? 'Final ' : ''}Status:`);
 
-    if (Upolyd(u))
-        you_are('transformed');
-    if (Levitation())
-        you_are('levitating', from_what('HLevitation'));
-    else if (Flying())
-        you_are('flying', from_what('HFlying'));
+    let youtoo = 'You ';
+    if (Upolyd(u)) {
+        let buf = 'transformed';
+        if (ugenocided())
+            buf += ` and ${en_final ? 'felt' : 'feel'} ${udeadinside()} inside`;
+        you_are(buf);
+    }
+    if (Riding) {
+        you_are(`riding ${steedname}`);
+        youtoo += `and ${steedname} `;
+    }
+    if (Levitation()) {
+        if (Lev_at_will() && magic)
+            you_are('levitating, at will');
+        else
+            enl_msg(youtoo, 'are ', 'were ', 'levitating', from_what('HLevitation'));
+    } else if (Flying()) {
+        enl_msg(youtoo, 'are ', 'were ', 'flying', from_what('HFlying'));
+    }
+    if (Underwater()) {
+        you_are('underwater');
+    } else if (u.uinwater) {
+        you_are(Swimming() ? 'swimming' : 'in water', from_what('HSwimming'));
+    } else if (walking_on_water()) {
+        const where = is_pool(u.ux, u.uy) ? 'water'
+            : is_lava(u.ux, u.uy) ? 'lava' : surface(u.ux, u.uy);
+        you_are(`walking on ${where}`, from_what('HWwalking'));
+    }
+    if (Upolyd(u) && (u.uundetected || M_AP_TYPE(game.youmonst) !== M_AP_NOTHING))
+        youhiding(true, en_final);
 
-    if (u.intrinsic?.HStun || u.uprops?.STUNNED)
+    const Stoned = u.uprops?.STONED || 0;
+    if (Stoned) {
+        if (en_final && (Stoned & I_SPECIAL))
+            out(' You turned into stone.');
+        else
+            you_are('turning to stone');
+    }
+    const Slimed = u.uprops?.SLIMED || 0;
+    if (Slimed) {
+        if (en_final && (Slimed & I_SPECIAL))
+            out(' You turned into slime.');
+        else
+            you_are('turning into slime');
+    }
+    const Strangled = u.intrinsic?.HStrangled || 0;
+    if (Strangled) {
+        if (u.uburied) {
+            you_are('buried');
+        } else if (en_final && (Strangled & I_SPECIAL)) {
+            out(' You died from strangulation.');
+        } else {
+            let buf = 'being strangled';
+            if (game.wizard)
+                buf += ` (${Strangled & TIMEOUT})`;
+            you_are(buf, from_what('HStrangled'));
+        }
+    }
+
+    const Sick = u.uprops?.SICK || 0;
+    if (Sick) {
+        if (en_final && (Sick & I_SPECIAL)) {
+            const cause = (u.usick_type & SICK_NONVOMITABLE)
+                ? 'terminal illness' : 'food poisoning';
+            out(` You died from ${cause}.`);
+        } else {
+            if (u.usick_type & SICK_NONVOMITABLE)
+                you_are('terminally sick from illness');
+            if (u.usick_type & SICK_VOMITABLE)
+                you_are('terminally sick from food poisoning');
+        }
+    }
+    if (u.uprops?.VOMITING)
+        you_are('nauseated');
+    if (Stunned())
         you_are('stunned');
+    if (Confusion())
+        you_are('confused');
 
     if (Hallucination())
         you_are('hallucinating');
@@ -902,13 +1012,17 @@ function status_enlightenment(mode) {
     }
 
     if (Deaf())
-        you_are('deaf');
+        you_are('deaf', from_what('HDeaf'));
 
     if (Punished()) {
-        const punishment = game.u.uball
-            ? `chained to ${an(simpleonames(game.u.uball))}`
-            : 'punished';
-        you_are(punishment);
+        let buf;
+        if (u.uball) {
+            buf = `chained to ${ansimpleoname(u.uball)}`;
+        } else {
+            impossible('Punished without uball?');
+            buf = 'punished';
+        }
+        you_are(buf);
     }
     if (u.utrap) {
         const anchored = (u.utraptype === TT_BURIEDBALL);
@@ -959,20 +1073,34 @@ function status_enlightenment(mode) {
             you_are(`stuck to ${s_suffix(steedname)} ${simpleonames(saddle)}`, '');
     }
 
-    if (((game.u.intrinsic?.HWounded_legs | 0) > 0
-         || (game.u.EWounded_legs | 0)) && !game.u.usteed) {
-        const side = (game.u.EWounded_legs | 0) & BOTH_SIDES;
-        let part = body_part(LEG);
+    if (Wounded_legs()) {
+        const side = (u.EWounded_legs | 0) & BOTH_SIDES;
+        let part = u.usteed ? mbodypart(u.usteed, LEG) : body_part(LEG);
         let article = 'a ';
         let which = '';
         if (side === BOTH_SIDES) {
             part = makeplural(part);
             article = '';
         } else {
-            which = side === LEFT_SIDE ? 'left '
-                  : side === RIGHT_SIDE ? 'right ' : '';
+            which = side === LEFT_SIDE ? 'left ' : 'right ';
         }
-        you_have(`${article}wounded ${which}${part}`);
+        const buf = `${article}wounded ${which}${part}`;
+        if (u.usteed) {
+            if (game.wizard && steedname)
+                enl_msg(highc(steedname), ' has ', ' had ', buf, '');
+        } else {
+            you_have(buf);
+        }
+    }
+    if (Glib()) {
+        let buf = `slippery ${fingers_or_gloves(true)}`;
+        if (game.wizard)
+            buf += ` (${(u.intrinsic?.HGlib || u.uprops?.GLIB || 0) & TIMEOUT})`;
+        you_have(buf);
+    }
+    if (Fumbling()) {
+        if (magic || cause_known(FUMBLING))
+            enl_msg('You ', 'fumble', 'fumbled', '', from_what('HFumbling'));
     }
 
     if (Sleepy()) {
@@ -984,6 +1112,10 @@ function status_enlightenment(mode) {
         }
     }
 
+    if (u.intrinsic?.HHunger || u.uprops?.HUNGER) {
+        if (magic || cause_known(HUNGER))
+            enl_msg('You ', 'hunger', 'hungered', ' rapidly', from_what('HHunger'));
+    }
     /* hunger: hu_stat[] is blank for the normal state. */
     let hunger = (hu_stat[game.u.uhs] || '').trim().toLowerCase();
     if (!hunger)
@@ -1008,18 +1140,36 @@ function status_enlightenment(mode) {
         you_are('unencumbered' + (game.wizard ? ` <${inv_weight()}>` : ''));
     }
 
-    /* src/insight.c:1270 weapon_insight() — the reachable arms: weaponless
-       (empty_handed) or wielding a plain weapon described by its skill
-       class. The twoweap arm and the shield-of-reflection / wet-towel
-       overrides need state no recorded hero reaches yet. */
+    weapon_insight();
+    if (game.iflags.tux_penalty && !Upolyd(u)) {
+        let buf = enlght_combatinc('to hit', -game.urole.spelarmr, en_final);
+        buf += ` due to your ${suit_simple_name(u.uarm)}`;
+        you_have(buf);
+    }
+
+    /* Report 'nudity' when no armor slot is filled. */
+    if (!wearing_any_armor()) {
+        if (game.u.uroleplay?.nudist)
+            enl_msg('You ', 'do', 'did', ' not wear any armor', '');
+        else
+            you_are('not wearing any armor');
+    }
+}
+
+// src/insight.c:1270 weapon_insight()
+function weapon_insight() {
     if (!game.u.uwep) {
         you_are(empty_handed());
     } else if (game.u.twoweap) {
         you_are('wielding two weapons at once');
     } else {
-        const what = weapon_descr(game.u.uwep);
+        let what = weapon_descr(game.u.uwep);
+        if (game.u.uwep.otyp === ONAMES.SHIELD_OF_REFLECTION)
+            what = shield_simple_name(game.u.uwep);
+        else if (game.u.uwep.otyp === ONAMES.TOWEL && game.u.uwep.spe > 0)
+            what = 'wet towel'; /* include/obj.h:256 is_wet_towel */
         let buf;
-        if (what === 'armor' || what === 'food' || what === 'venom')
+        if (['armor', 'food', 'venom'].includes(what.toLowerCase()))
             buf = `wielding some ${what}`;
         else
             buf = `wielding ${(game.u.uwep.quan === 1) ? an(what) : makeplural(what)}`;
@@ -1041,7 +1191,7 @@ function status_enlightenment(mode) {
             let buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skill_name(wtype)}`;
             if (!game.u.twoweap) {
                 if (can_advance(wtype, false))
-                    buf += ' and can enhance that';
+                    buf += ` and ${en_final ? 'could have enhanced' : 'can enhance'} that`;
                 if (hav)
                     you_have(buf);
                 else
@@ -1143,16 +1293,6 @@ function status_enlightenment(mode) {
             }
         }
     }
-
-    /* C reports 'nudity' when no armour slot is filled. A Tourist wears the
-       Hawaiian shirt, so this must NOT fire — emitting it would push every
-       following row down one and lose the frame. */
-    if (!wearing_any_armor()) {
-        if (game.u.uroleplay?.nudist)
-            enl_msg('You ', 'do', 'did', ' not wear any armor', '');
-        else
-            you_are('not wearing any armor');
-    }
 }
 
 function wearing_any_armor() {
@@ -1161,7 +1301,7 @@ function wearing_any_armor() {
               || u.uarmg || u.uarmf || u.uarmh);
 }
 
-// src/insight.c:200 enlightenment() — returns the lines for the caller to put
+// src/insight.c:383 enlightenment() — returns the lines for the caller to put
 // into a window.
 export function enlightenment(mode, final) {
     /* the ^X caller passes nothing: BASIC (+MAGIC for wizard/discover),
@@ -1173,14 +1313,14 @@ export function enlightenment(mode, final) {
     lines.length = 0;
 
     const tmpbuf = highc(game.plname || '');
-    const female = !!game.flags.female;
+    const female = Upolyd(game.u) ? game.u.mfemale : game.flags.female;
     out(`${tmpbuf} the ${(female && game.urole.name.f) ? game.urole.name.f
                                                        : game.urole.name.m}'s attributes:`);
 
     if (mode & BASICENLIGHTENMENT) {
         background_enlightenment();
         basics_enlightenment();
-        characteristics_enlightenment();
+        characteristics_enlightenment(mode);
     }
     status_enlightenment(mode);
 
@@ -1198,15 +1338,15 @@ export function enlightenment(mode, final) {
         if (game.wizard || game.discover)
             you_are(`running in ${game.wizard ? 'debug' : 'explore'} mode`);
         if (game.flags?.bones === false) {
-            you_have(`disabled loading${
+            enl_msg('You ', 'have ', '', `disabled loading${
                 en_final === ENL_GAMEOVERDEAD ? ' and storing' : ''
-                } of bones levels`);
+                } of bones levels`, '');
         } else if (!(game.u.uroleplay?.numbones)) {
             enl_msg('You ', "haven't encountered", "didn't encounter",
                     ' any bones levels', '');
         } else {
-            you_have(`encountered ${game.u.uroleplay.numbones} bones level${
-                plur(game.u.uroleplay.numbones)}`); /* you_have_X(buf) */
+            enl_msg('You ', 'have ', '', `encountered ${game.u.uroleplay.numbones} bones level${
+                plur(game.u.uroleplay.numbones)}`, ''); /* you_have_X(buf) */
         }
     }
     enl_msg('Total elapsed playing time ', 'is', 'was', ' none', '');
@@ -1857,8 +1997,7 @@ export async function ustatusline() {
 
         if (legs === BOTH_SIDES)
             what = makeplural(what);
-        /* mstatusline() uses "injured %s" so we do too even though
-           ustatusline() doesn't, in order to keep the output a bit shorter */
+        /* For one leg, ^X reports which side; ustatusline() keeps it short. */
         info += `, injured ${what}`;
     }
     if (Glib())
@@ -1888,8 +2027,11 @@ export async function ustatusline() {
         info += a_monnam(u.ustuck);
     }
     if (!u.uswallow
-        && (reg = visible_region_at(u.ux, u.uy)) != null)
-        info += `, in a cloud of ${reg_damg(reg) ? 'poison gas' : 'vapor'}`;
+        && (reg = visible_region_at(u.ux, u.uy)) != null
+        && info.length < BUFSZ) {
+        const cloud = `, in a cloud of ${reg_damg(reg) ? 'poison gas' : 'vapor'}`;
+        info += cloud.slice(0, BUFSZ - info.length - 1);
+    }
 
     await pline(`Status of ${game.plname} (${
         piousness(false, align_str(u.ualign?.type ?? 0))}):  Level ${
@@ -2027,7 +2169,7 @@ export async function show_conduct(final) {
     if (roleplay.deaf)
         have_been('deaf from birth');
     if (roleplay.pauper)
-        cmsg(game.invent ? 'started ' : 'are ', 'started out ',
+        cmsg(game.invent?.length ? 'started ' : 'are ', 'started out ',
              'without possessions');
     if (roleplay.nudist)
         have_been('faithfully nudist');

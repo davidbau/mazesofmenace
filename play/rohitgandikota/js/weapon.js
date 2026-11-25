@@ -535,7 +535,8 @@ export function weapon_descr(obj) {
                  || obj.otyp === ONAMES.BOULDER || obj.otyp === ONAMES.TOWEL
                  || obj.otyp === ONAMES.TIN_OPENER)
                 ? OBJ_NAME(game.objects[obj.otyp])
-                : def_oc_syms_name[obj.oclass];
+                : obj.globby ? 'glob'
+                  : def_oc_syms_name[obj.oclass];
         break;
     case P_SLING:
         if (is_ammo(obj))

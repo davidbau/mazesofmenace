@@ -486,6 +486,8 @@ function wiz_intrinsic_timeout(key) {
         return (game.u.intrinsic?.HDeaf | 0) & TIMEOUT;
     if (key === 'WOUNDED_LEGS')
         return (game.u.intrinsic?.HWounded_legs || 0) & TIMEOUT;
+    if (key === 'LEVITATION')
+        return (game.u.intrinsic?.HLevitation || 0) & TIMEOUT;
     if (key === 'GLIB')
         return (game.u.intrinsic?.HGlib | 0) & TIMEOUT;
     if (key === 'SEE_INVIS')
@@ -542,10 +544,11 @@ export async function wiz_intrinsic() {
         if (amount <= 0)
             continue;
 
-        if (key === 'ACID_RES' || key === 'STONE_RES') {
+        if (key === 'ACID_RES' || key === 'STONE_RES' || key === 'LEVITATION') {
             const { incr_itimeout } = await import('./potion.js');
             incr_itimeout(key === 'ACID_RES'
-                ? 'HAcid_resistance' : 'HStone_resistance', amount);
+                ? 'HAcid_resistance' : key === 'STONE_RES'
+                ? 'HStone_resistance' : 'HLevitation', amount);
             (game.disp ||= {}).botl = true;
             await pline(`Timeout for ${name} ${oldtimeout
                 ? 'increased by' : 'set to'} ${amount}.`);

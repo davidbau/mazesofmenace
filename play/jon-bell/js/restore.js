@@ -32,7 +32,7 @@ import { restore_luadata, l_nhcore_call, NHCORE_RESTORE_OLD_GAME } from './nhlua
 import { regions_rest_snapshot } from './region.js';
 import { restore_timer_order, restore_timers_level, run_timers } from './timeout.js';
 import { mon_catchup_elapsed_time } from './dog.js';
-import { stored_level, saved_state_for, savefile_name, NOT_SAVED } from './save.js';
+import { stored_level, saved_state_for, savefile_name, NOT_SAVED, isSavedGameKey, merge_c_struct, SAVED_CONTAINER_FIELDS, C_FLAG_FIELDS, C_CONTEXT_FIELDS } from './save.js';
 import { vfsReadFile, vfsDeleteFile, vfsWriteFile } from './storage.js';
 import { docrt, cls, clear_glyph_buffer, see_monsters, _topline_more_pending, flush_screen, reglyph_darkroom, reset_glyphmap } from './display.js';
 import { max_rank_sz } from './botl.js';
@@ -504,7 +504,10 @@ async function restgamestate(state) {
     const startupExplore = !!game.flags?.explore;
     // C restore.c:596 initializes role-dependent data after restoring flags.
     // Saved quest state replaces the temporary gender selections afterwards.
-    game.flags = { ...state.flags };
+    /* restore.c:567 reads struct flag whole over the new process's; options
+     * the port parks on game.flags that C keeps elsewhere (iflags, botl.c
+     * condtests[], pet names) keep the restoring process's rc values. */
+    game.flags = merge_c_struct(startupFlags, state.flags, C_FLAG_FIELDS);
     // C restore.c:587: a normal-mode save restored with playmode:explore is
     // handled as restore followed by 'X' (allmain.c:53 moveloop_preamble).
     (game.iflags ||= {}).deferred_X = startupExplore && !game.flags.explore;
@@ -532,10 +535,30 @@ async function restgamestate(state) {
         return false;
     }
     for (const k of Object.keys(state)) {
-        if (['flags', '__engravings', '__regions', '__worms', '__lights', '__objectRuntime', '__bubbles', '__luadata', '__ubirthday'].includes(k) || NOT_SAVED.includes(k))
+        if (['flags', 'context', '__engravings', '__regions', '__worms', '__lights', '__objectRuntime', '__bubbles', '__luadata', '__ubirthday'].includes(k)
+            || !isSavedGameKey(k))
             continue;
         game[k] = state[k];
     }
+    /* The few instance_globals fields a save function writes, over the new
+     * process's containers (js/save.js SAVED_CONTAINER_FIELDS). */
+    for (const [c, fields] of Object.entries(SAVED_CONTAINER_FIELDS)) {
+        if (!state[c]) continue;
+        game[c] ||= {};
+        for (const f of fields) if (Object.hasOwn(state[c], f)) game[c][f] = state[c][f];
+    }
+    /* struct context_info is read whole (restore.c:556); JS-only keys keep the
+     * new process's values. */
+    game.context = merge_c_struct(startupContext, state.context, C_CONTEXT_FIELDS);
+    /* pickup.c:1982-2019 go.oldcap (decl.h:741, decl.c:606 initial 0) is not
+     * saved: the restoring process reports the current encumbrance afresh on
+     * the next encumber_msg().  The port keeps it at u._oldcap. */
+    if (game.u) game.u._oldcap = 0;
+    /* flag.h:233-234 a11y.mon_notices_blocked is process state at its BSS 0;
+     * only newgame() brackets it (allmain.c:771 notice_mon_off ... :844
+     * notice_mon_on), so a restoring process notices monsters at once.  The
+     * port spells "blocked == 0" as _notice_mon_ready, which newgame sets. */
+    game._notice_mon_ready = true;
     // C save.c:265-333 omits cmd.c's process-local command queues/binding;
     // decl.c:239,250 initializes them empty in the restoring process.
     game.gc.command_queue = [null, null];

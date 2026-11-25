@@ -1038,8 +1038,8 @@ export async function tty_select_menu(window, how) {
                 invert_all(window, cw.curr_page, 0, -1);
         } else if (morc === MENU_SEARCH) {
             if (cw.how !== 0 /* PICK_NONE */) {
-                const { getlin } = await import('./../cmd.js');
-                const search = await getlin('Search for:');
+                const { hooked_tty_getlin } = await import('./../cmd.js');
+                const search = await hooked_tty_getlin('Search for:');
                 if (search && search !== '\x1b') {
                     const pattern = `*${search}*`.toLowerCase();
                     const items = menu_page_items(window, cw.curr_page);

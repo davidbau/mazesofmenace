@@ -10,7 +10,8 @@ import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { more, pline } from './display.js';
 import { You, You_feel, You_hear, Your, pline_The } from './pline.js';
-import { newsym } from './display.js';
+import { newsym, glyph_at } from './display.js';
+import { cmap_names } from './drawing_data.js';
 import { IS_FOUNTAIN, ROOM, POOL, FOUNTAIN, SINK, A_WIS, A_CON, IS_DOOR,
          SDOOR, isok,
          SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT,
@@ -58,7 +59,7 @@ import { angry_guards, minliquid, get_iter_mons } from './mon.js';
 import { Role_if } from './attrib.js';
 import { PMNAMES } from './monst_data.js';
 import { mbodypart } from './polyself.js';
-import { couldsee } from './vision.js';
+import { couldsee, cansee } from './vision.js';
 import { hands_obj } from './invent.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { dunlevs_in_dungeon, dunlev } from './dungeon.js';
@@ -124,17 +125,23 @@ export async function dryup(x, y, isyou) {
             return;
         }
         if (isyou && game.wizard) {
-            const ans = await tty_yn_function('Dry up fountain?', 'yn', 'n');
+            const ans = await tty_yn_function('Dry up fountain?', 'yn', 'n', true);
             if (ans === 'n')
                 return;
         }
-        await pline_The('fountain dries up!');
+        if (cansee(x, y)) {
+            const glyph = glyph_at(x, y);
+            if (glyph.kind !== 'cmap' || glyph.cmap !== cmap_names.S_cloud)
+                await pline_The('fountain dries up!');
+        }
         /* replace the fountain with ordinary floor */
         set_levltyp(x, y, ROOM); /* updates level.flags.nfountains */
         loc.flags = 0;
         loc.looted = 0;
         loc.blessedftn = 0;
         newsym(x, y);
+        if (isyou && in_town(x, y))
+            await angry_guards(false);
     }
 }
 
@@ -771,7 +778,7 @@ export async function dipfountain(obj) {
 
     switch (rnd(30)) {
     case 16: /* Curse the item */
-        if (obj.oclass !== OCLASSES.COIN_CLASS && !obj.cursed) {
+        if (!is_hands && obj.oclass !== OCLASSES.COIN_CLASS && !obj.cursed) {
             await curse(obj);
         }
         break;
@@ -779,9 +786,9 @@ export async function dipfountain(obj) {
     case 18:
     case 19:
     case 20: /* Uncurse the item */
-        if (obj.cursed) {
-            if (!game.u.ublind)
-                await pline_The('water glows for a moment.');
+        if (!is_hands && obj.cursed) {
+            if (!Blind())
+                await pline_The(`${hliquid('water')} glows for a moment.`);
             await uncurse(obj);
         } else {
             await pline('A feeling of loss comes over you.');
@@ -807,7 +814,7 @@ export async function dipfountain(obj) {
         await dogushforth(false);
         break;
     case 26: /* Strange feeling */
-        await pline('A strange tingling runs up your arm.');
+        await pline(`A strange tingling runs up your ${body_part(ARM)}.`);
         break;
     case 27: /* Strange feeling */
         await You_feel('a sudden chill.');
