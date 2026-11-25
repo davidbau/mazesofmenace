@@ -6,7 +6,7 @@
 
 import { may_dig } from './dig.js';
 import { monhaskey } from './monmove.js';
-import { online2 } from './hacklib.js';
+import { online2, sgn, plur } from './hacklib.js';
 import { game } from './gstate.js';
 import { LL_KILLEDPET, LL_UMONST, LL_ACHIEVE, ACH_MEDU,
          has_mgivenname, MGIVENNAME } from './const.js';
@@ -41,11 +41,15 @@ import {
 import { dist2 } from './hacklib.js';
 import { vision_recalc, cansee } from './vision.js';
 import { newsym, pline, glyph_is_invisible, unmap_object } from './display.js';
-import { m_at, sobj_at, is_pool, is_lava, may_passwall, accessible,
-         nonliving, is_golem, is_mplayer, closed_door, hideunder,
-         In_endgame, is_placeholder, mbirth_limit, newmonhp,
+import { m_at, sobj_at, is_pool, is_lava, may_passwall, accessible, nonliving,
+         is_golem, closed_door, hideunder, In_endgame, mbirth_limit, newmonhp,
          pm_to_cham } from './makemon.js';
-import { is_male, is_female, is_neuter, pm_invisible } from './mondata.js';
+import { is_male, is_female, is_neuter, pm_invisible, humanoid, is_animal,
+         throws_rocks, verysmall, bigmonst, slithy, amorphous, is_whirly,
+         unique_corpstat, always_hostile, is_clinger, polyok, notake, has_head,
+         tunnels, needspick, is_unicorn, is_vampire, is_rider, flesh_petrifies,
+         is_mplayer, is_placeholder, resist_conflict, is_watch,
+         breathless } from './mondata.js';
 import { set_mon_data, emits_light } from './mondata.js';
 import { new_light_source, del_light_source, any_light_source } from './light.js';
 import { LS_MONSTER } from './const.js';
@@ -79,7 +83,7 @@ import {
 import { BOULDER, CLOVE_OF_GARLIC, CREDIT_CARD, SKELETON_KEY,
          LOCK_PICK, EGG, CORPSE, AMULET_OF_LIFE_SAVING, GRAY_DRAGON_SCALES,
          YELLOW_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
-         YELLOW_DRAGON_SCALE_MAIL, TIN, GLOB_OF_GREEN_SLIME, CARROT,
+         YELLOW_DRAGON_SCALE_MAIL, TIN, GLOB_OF_GREEN_SLIME, CARROT, ICE_BOX,
          objects } from './objects.js';
 import { NO_NC_FLAGS, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
          POISON_RES, STONE_RES, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
@@ -143,11 +147,14 @@ import { quest_info } from './questpgr.js';
 import { is_lightblocker_mappear, does_block, unblock_point,
          couldsee } from './vision.js';
 import { M1_HUMANOID } from './monsters.js';
-import { vtense } from './objnam.js';
+import { vtense, The, distant_name, xname } from './objnam.js';
+import { removed_from_icebox } from './pickup.js';
+import { mpickobj } from './steal.js';
+import { surface } from './iactions.js';
 import { sengr_at } from './makemon.js';
 import { del_engr_at } from './engrave.js';
 import { m_canseeu } from './monmove.js';
-import { fightm, resist_conflict } from './mhitm.js';
+import { fightm } from './mhitm.js';
 import { BOLT_LIM as BOLT_LIM_mn } from './const.js';
 import { in_rooms, spoteffects } from './hack.js';
 import { in_your_sanctuary } from './priest.js';
@@ -680,9 +687,8 @@ export async function corpse_chance(mon, magr, was_swallowed) {
     return !rn2(tmp);
 }
 
-/* C ref: mondata.h is_reviver(), unique_corpstat() */
+/* C ref: mondata.h is_reviver() */
 function is_reviver(ptr) { return is_rider(ptr) || ptr.mlet === MM.S_TROLL; }
-function unique_corpstat(ptr) { return (ptr.geno & G_UNIQ) !== 0; }
 
 /* C ref: mon.c KEEPTRAITS() -- for deciding whether corpse will carry
    along full monster data */
@@ -905,12 +911,6 @@ export async function monkilled(mdef, fltxt, how) {
     }
 }
 
-/* C ref: mondata.h always_hostile(), is_unicorn(); hack.h sgn() */
-function always_hostile(ptr) { return (ptr.mflags2 & MM.M2_HOSTILE) !== 0; }
-function is_unicorn(ptr) {
-    return ptr.mlet === S_UNICORN && (ptr.mflags2 & M2_JEWELS) !== 0;
-}
-function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
 /* C ref: align.h ALIGNLIM */
 function ALIGNLIM() { return 10 + Math.trunc(game.moves / 200); }
 
@@ -1203,8 +1203,6 @@ async function peacefuls_respond(mtmp) {
             && mon.mcansee && m_canseeu(mon)) {
             let buf = '';
             let exclaimed = false, needpunct = false, alreadyfleeing;
-            const is_watch = ptr => ptr === MM.mons[MM.PM_WATCHMAN]
-                                    || ptr === MM.mons[MM.PM_WATCH_CAPTAIN];
             const Deaf = () => !!(game.u.uprops[DEAF]?.intrinsic
                                   || game.u.uprops[DEAF]?.extrinsic);
 
@@ -1410,9 +1408,6 @@ export function completelyrusts(ptr) { return ptr === mons[PM_IRON_GOLEM]; }
 export function completelyrots(ptr) {
     return ptr === mons[PM_WOOD_GOLEM] || ptr === mons[PM_LEATHER_GOLEM];
 }
-
-/* C ref: mondata.h is_clinger() */
-function is_clinger(ptr) { return (ptr.mflags1 & MM.M1_CLING) !== 0; }
 
 // C ref: mon.c minliquid()
 /* check mtmp and water/lava for compatibility, 0 (survived), 1 (died) */
@@ -1743,9 +1738,6 @@ export function dmonsfree() {
 }
 
 /* mondata.h */
-function polyok(ptr) { return (ptr.mflags2 & MM.M2_NOPOLY) === 0; }
-function humanoid(ptr) { return (ptr.mflags1 & MM.M1_HUMANOID) !== 0; }
-function is_animal(ptr) { return (ptr.mflags1 & MM.M1_ANIMAL) !== 0; }
 
 // C ref: mon.c mon_animal_list()
 export function mon_animal_list(construct) {
@@ -1785,12 +1777,8 @@ function pick_animal() {
     return res;
 }
 function is_shapeshifter(ptr) { return (ptr.mflags2 & MM.M2_SHAPESHIFTER) !== 0; }
-function notake(ptr) { return (ptr.mflags1 & MM.M1_NOTAKE) !== 0; }
-function has_head(ptr) { return (ptr.mflags1 & MM.M1_NOHEAD) === 0; }
-function is_vampire(ptr) { return ptr.mlet === MM.S_VAMPIRE; }
 /* C ref: mondata.h ismnum() */
 function ismnum(mndx) { return mndx >= LOW_PM && mndx < NUMMONS; }
-function throws_rocks(ptr) { return (ptr.mflags2 & M2_ROCKTHROW) !== 0; }
 /* C ref: ncflags for newcham() (monst.h) */
 const NC_SHOW_MSG = 0x01;
 const NC_VIA_WAND_OR_SPELL = 0x02;
@@ -2117,8 +2105,10 @@ export function newcham_sync(mtmp, mdat, ncflags) {
     }
     return r.value;
 }
-/* the body of newcham(); yields the messages it gives */
-function* newcham_g(mtmp, mdat, ncflags) {
+/* the body of newcham(); yields the messages it gives.  The generator is
+   named newcham (an object-literal method, taken out as newcham_g) so that
+   js/rng.js credits its roll, rn2(5) for initworm(), to newcham as in C */
+const newcham_g = ({ *newcham(mtmp, mdat, ncflags) {
     const polyspot = ((ncflags & NC_VIA_WAND_OR_SPELL) !== 0);
     /* "The oldmon turns into a newmon!" */
     let msg = ((ncflags & NC_SHOW_MSG) !== 0);
@@ -2315,7 +2305,7 @@ function* newcham_g(mtmp, mdat, ncflags) {
         yield NEWCHAM_MON_MOVING; /* set_apparxy()/monflee(), in newcham() */
 
     return 1;
-}
+} }).newcham;
 // C ref: mon.c usmellmon()
 export async function usmellmon(mdat) {
     const gen = usmellmon_g(mdat);
@@ -2513,20 +2503,6 @@ export function monnear(mon, x, y) {
 function NODIAG(monnum) { return monnum === PM_GRID_BUG; }
 
 /* mondata.h */
-function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
-
-function bigmonst(ptr) { return ptr.msize >= MZ_LARGE; }
-function slithy(ptr) { return (ptr.mflags1 & M1_SLITHY) !== 0; }
-function amorphous(ptr) { return (ptr.mflags1 & M1_AMORPHOUS) !== 0; }
-function tunnels(ptr) { return (ptr.mflags1 & M1_TUNNEL) !== 0; }
-function needspick(ptr) { return (ptr.mflags1 & M1_NEEDPICK) !== 0; }
-function is_whirly(ptr) {
-    return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
-}
-function is_rider(ptr) {
-    const n = monsndx(ptr);
-    return n === PM_DEATH || n === PM_FAMINE || n === PM_PESTILENCE;
-}
 
 /* C ref: monmove.c m_can_break_boulder() */
 function m_can_break_boulder(mtmp) {
@@ -3152,13 +3128,38 @@ export function polyfood(obj) {
 }
 function mlevelgain(obj) { return ofood(obj) && obj.corpsenm === MM.PM_WRAITH; }
 function mhealup(obj) { return ofood(obj) && obj.corpsenm === MM.PM_NURSE; }
-function flesh_petrifies(pm) {
-    return pm === mons[MM.PM_COCKATRICE] || pm === mons[MM.PM_CHICKATRICE]
-           || pm === mons[MM.PM_MEDUSA];
-}
 export function mstoning(obj) {
     return (ofood(obj) && obj.corpsenm >= LOW_PM && obj.corpsenm < NUMMONS
             && flesh_petrifies(mons[obj.corpsenm]));
+}
+
+// C ref: mon.c meatbox()
+/* dispose of contents of an eaten container; used for pets and other mons */
+export async function meatbox(mon, otmp) {
+    const engulf_contents = (mon.data === mons[MM.PM_GELATINOUS_CUBE]);
+    const x = mon.mx, y = mon.my;
+    let cobj;
+
+    if (!(otmp.cobj && otmp.cobj.length) || !isok(x, y)) /* !Has_contents() */
+        return;
+
+    /* contents of eaten containers become engulfed or dropped onto
+      the floor; this is arbitrary, but otherwise g-cubes are too
+      powerful */
+    if (!engulf_contents && cansee(x, y)) {
+        await pline(`${s_suffix(The(distant_name(otmp, xname)))} contents spill out onto the ${surface(x, y)}.`);
+    }
+    while ((cobj = (otmp.cobj && otmp.cobj.length) ? otmp.cobj[0] : null) !== null) {
+        obj_extract_self(cobj);
+        if (otmp.otyp === ICE_BOX)
+            removed_from_icebox(cobj);
+        if (engulf_contents) {
+            mpickobj(mon, cobj);
+        } else {
+            if (!await flooreffects(cobj, x, y, ""))
+                place_object(cobj, x, y);
+        }
+    }
 }
 
 // C ref: mon.c m_consume_obj()
@@ -3171,7 +3172,7 @@ export async function m_consume_obj(mtmp, otmp) {
         healmon(mtmp, objects[otmp.otyp].oc_weight, 0);
     }
     if (otmp.cobj && otmp.cobj.length) /* Has_contents(otmp) */
-        throw new Error('m_consume_obj(): meatbox() not ported yet');
+        await meatbox(mtmp, otmp);
     if (otmp === game.uball) {
         await unpunish();
         delobj(otmp);
@@ -3294,7 +3295,6 @@ export function m_poisongas_ok(mtmp) {
     const is_you = (mtmp === game.youmonst);
     const u = game.u;
     const uhas = (p) => !!(u.uprops[p]?.intrinsic || u.uprops[p]?.extrinsic);
-    const breathless = (ptr) => (ptr.mflags1 & MM.M1_BREATHLESS) !== 0;
 
     /* Non living, non breathing, immune monsters are not concerned */
     if (nonliving(mtmp.data) || is_vampshifter(mtmp)
@@ -3498,11 +3498,8 @@ export function maybe_unhide_at(x, y) {
 
 // C ref: mon.c angry_guards() -- the town watch turns hostile
 export async function angry_guards(silent) {
-    const is_watch = ptr => ptr === MM.mons[MM.PM_WATCHMAN]
-                            || ptr === MM.mons[MM.PM_WATCH_CAPTAIN];
     /* C ref: hack.h m_next2u() */
     const m_next2u = m => dist2(m.mx, m.my, game.u.ux, game.u.uy) < 3;
-    const plur = n => (n === 1 ? "" : "s");
     let ct = 0, nct = 0, sct = 0, slct = 0;
 
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {

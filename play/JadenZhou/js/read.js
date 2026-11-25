@@ -15,6 +15,8 @@
 // and wield.c chwepon().  do_class_genocide()/do_genocide() and
 // wand_explode() are not ported yet.
 
+import { sokoban_guilt } from './trap.js';
+import { shk_your } from './shk.js';
 import { DEADMONSTER } from './mon.js';
 import { is_art } from './artifact.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -31,8 +33,9 @@ import { mons, G_UNIQ, PM_GUARD, PM_SHOPKEEPER, PM_HIGH_CLERIC,
          PM_HUMAN_ZOMBIE, PM_DOPPELGANGER } from './monsters.js';
 import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
-import { mungspaces, strstri, strncmpi } from './hacklib.js';
-import { name_to_mon } from './mondata.js';
+import { mungspaces, strstri, strncmpi, sgn, upstart } from './hacklib.js';
+import { name_to_mon, amorphous, noncorporeal, unsolid, unique_corpstat,
+         passes_walls, is_male, is_female, is_whirly } from './mondata.js';
 import { makemon, makemon_flush_msg } from './makemon.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
@@ -63,7 +66,7 @@ import { strange_feeling, trycall, make_confused, make_stunned,
          burn_away_slime, hliquid } from './potion.js';
 import { exercise, ACURR } from './attrib.js';
 import { more_experienced } from './exper.js';
-import { discover_object } from './o_init.js';
+import { discover_object, makeknown } from './o_init.js';
 import { study_book, can_chant, losespells } from './spell.js';
 import { outrumor } from './rumors.js';
 import { bcsign, curse, bless, uncurse, blessorcurse, costly_alteration,
@@ -136,8 +139,6 @@ const NH_BLACK = "black", NH_AMBER = "amber", NH_GOLDEN = "golden",
       NH_SILVER = "silver", NH_PURPLE = "purple", NH_RED = "red",
       NH_BLUE = "blue";
 
-/* C ref: hack.h makeknown() */
-function makeknown(otyp) { discover_object(otyp, true, true, true); }
 /* C ref: obj.h is_art(), is_elven_armor(), Is_dragon_scales(),
    is_shield() */
 function is_elven_armor(o) {
@@ -151,19 +152,12 @@ function Is_dragon_scales(o) {
 function is_shield(o) {
     return o.oclass === ARMOR_CLASS && objects[o.otyp].oc_armcat === O.ARM_SHIELD;
 }
-/* C ref: mondata.h amorphous(), passes_walls(), noncorporeal(),
-   unsolid() */
-function amorphous(ptr) { return (ptr.mflags1 & M1_AMORPHOUS) !== 0; }
-function passes_walls(ptr) { return (ptr.mflags1 & M1_WALLWALK) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === S_GHOST; }
-function unsolid(ptr) { return (ptr.mflags1 & M1_UNSOLID) !== 0; }
 /* C ref: hack.h distu() */
 function distu(x, y) {
     const dx = x - game.u.ux, dy = y - game.u.uy;
     return dx * dx + dy * dy;
 }
 /* C ref: hacklib.c sgn(), upwords() */
-function sgn(n) { return (n < 0) ? -1 : (n !== 0) ? 1 : 0; }
 function upwords(s) {
     let space = true;
     let out = '';
@@ -180,15 +174,6 @@ function upwords(s) {
         out += c;
     }
     return out;
-}
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-/* C ref: objnam.c shk_your() -- shop and monster ownership aren't
-   ported yet */
-function shk_your(obj) {
-    if (obj.unpaid || obj.no_charge || obj.where === 'OBJ_MINVENT')
-        throw new Error('shk_your(): shk_owns()/mon_owns() not ported yet');
-    return (obj.where === 'OBJ_INVENT') ? "your " : "the ";
 }
 /* C ref: mkobj.c greatest_erosion() */
 function greatest_erosion(otmp) {
@@ -1705,9 +1690,7 @@ async function seffect_earth(sobjp) {
             }
         }
         g.known = true;
-        /* sokoban_guilt() */
-        if (In_sokoban_rd(u.uz))
-            throw new Error('seffect_earth(): sokoban_guilt() not ported yet');
+        sokoban_guilt();
 
         /* Loop through the surrounding squares */
         if (!scursed)
@@ -2276,7 +2259,7 @@ export async function punish(sobj) {
         g.uball.owt += WT_IRON_BALL_INCR * (1 + cursed_levy);
         return;
     }
-    if (amorphous(g.youmonst.data) || is_whirly_rd(g.youmonst.data)
+    if (amorphous(g.youmonst.data) || is_whirly(g.youmonst.data)
         || unsolid(g.youmonst.data)) {
         if (!reuse_ball) {
             await pline("A ball and chain appears, then falls away.");
@@ -2343,7 +2326,6 @@ async function do_stinking_cloud(sobj, mention_stinking) {
 }
 
 /* C ref: detect.c -- the detection routines (detect.js) */
-function is_whirly_rd(ptr) { return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL]; }
 
 /* C ref: read.c tshirt_text() shirt_msgs[], hawaiian_motif()
    hawaiian_motifs[], hawaiian_design() hawaiian_bgs[], apron_text()
@@ -2505,11 +2487,6 @@ function new_create_particular_data() {
 
 /* C ref: monsters.h MAXMCLASSES */
 const MAXMCLASSES = 61;
-
-/* C ref: mondata.h is_male(), is_female(), unique_corpstat() */
-function is_male(ptr) { return (ptr.mflags2 & 0x00010000) !== 0; }   /* M2_MALE */
-function is_female(ptr) { return (ptr.mflags2 & 0x00020000) !== 0; } /* M2_FEMALE */
-function unique_corpstat(ptr) { return (ptr.geno & G_UNIQ) !== 0; }
 
 // C ref: read.c cant_revive()
 /* some creatures have special data structures that only make sense in their

@@ -97,8 +97,7 @@ import { COST_SINGLEOBJ, COST_CONTENTS } from './const.js';
 import { has_omid, OMID } from './const.js';
 import { obj_stop_timers } from './timeout.js';
 import { xprname } from './invent.js';
-import { tty_putstr, tty_display_nhwindow, tty_next_page } from './tty/wintty.js';
-import { xwaitforspace } from './tty/getline.js';
+import { tty_putstr, tty_display_nhwindow } from './tty/wintty.js';
 import { is_pick } from './mon.js';
 import { haseyes } from './mondata.js';
 import { dochug } from './monmove.js';
@@ -4107,10 +4106,6 @@ export async function doinvbill(mode) {
     tty_putstr(datawin, 0, '');
     tty_putstr(datawin, 0, buf);
     await tty_display_nhwindow(datawin);
-    // tty's text window blocks in dmore() on each page.
-    do {
-        await xwaitforspace(' \r\n\x1b');
-    } while (game.morc !== '\x1b' && tty_next_page(datawin));
     await tty_destroy_nhwindow(datawin);
     return 0;
 }

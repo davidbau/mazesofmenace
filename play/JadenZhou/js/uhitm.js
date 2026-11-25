@@ -15,8 +15,12 @@
 import { DEADMONSTER } from './mon.js';
 import { helpless } from './monmove.js';
 import { is_art } from './artifact.js';
-import { passes_rocks } from './trap.js';
-import { resists_poison } from './mondata.js';
+import { passes_rocks, unconscious } from './trap.js';
+import { resists_poison, slithy, is_animal, type_is_pname, hides_under,
+         nohands, verysmall, bigmonst, amorphous, unsolid, noncorporeal,
+         is_whirly, has_head, thick_skinned, flaming, touch_petrifies,
+         resists_ston, cantwield, is_watch, attacktype,
+         noattacks } from './mondata.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_CONDUCT, ONAME } from './const.js';
@@ -45,7 +49,7 @@ import { IS_OBSTRUCTED, SHOPBASE, ROOMOFFSET } from './const.js';
 import { PM_LONG_WORM, PM_LONG_WORM_TAIL } from './monsters.js';
 import { passes_walls } from './mondata.js';
 import { ART_STORMBRINGER } from './artilist.js';
-import { highc } from './hacklib.js';
+import { highc, sgn, plur } from './hacklib.js';
 import { monflee } from './monmove.js';
 import { is_safemon, end_running, in_rooms } from './hack.js';
 import { rnl, d } from './rng.js';
@@ -81,8 +85,8 @@ import { abon, dbon, hitval, weapon_hit_bonus, weapon_dam_bonus, use_skill,
          uwep_skill_type, special_dmgval, weapon_type, P_SKILL,
          m_carrying } from './weapon.js';
 import { find_mac } from './worn.js';
-import { noattacks, check_capacity, overexertion, near_capacity,
-         nomul, test_move } from './hack.js';
+import { check_capacity, overexertion, near_capacity, nomul,
+         test_move } from './hack.js';
 import { can_twoweapon, untwoweapon, bimanual, is_launcher, is_missile,
          is_ammo, is_pole, is_wet_towel, ammo_and_launcher } from './wield.js';
 import { yname, makeplural, an, doname, xname, vtense, The } from './objnam.js';
@@ -110,7 +114,7 @@ import { exclam } from './zap.js';
 import { could_seduce } from './mhitu.js';
 import { carrying } from './invent.js';
 import { abuse_dog } from './dog.js';
-import { discover_object } from './o_init.js';
+import { discover_object, makeknown } from './o_init.js';
 import { steal, stealgold, stealamulet } from './steal.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { locomotion } from './trap.js';
@@ -138,7 +142,7 @@ import { completelyrusts, completelyrots, completelyburns, mon_give_prop,
 import { burn_away_slime, hliquid, make_blinded, make_confused, make_stunned,
          make_slimed, make_sick, delayed_killer } from './potion.js';
 import { tele } from './teleport.js';
-import { unconscious, is_fainted, morehungry } from './eat.js';
+import { is_fainted, morehungry } from './eat.js';
 import { can_blnd } from './mondata.js';
 import { night } from './calendar.js';
 import { attrcurse } from './sit.js';
@@ -177,7 +181,7 @@ import { setmangry } from './mon.js';
 import { mlifesaver, golemeffects } from './mon.js';
 import { destroy_items } from './zap.js';
 import { ignite_items } from './trap.js';
-import { resists_fire, resists_cold, resists_elec, defended } from './mondata.js';
+import { resists_fire, resists_cold, resists_elec, defended, resists_drli } from './mondata.js';
 import { XKILL_NOCORPSE } from './const.js';
 import { artifact_hit, defends, shade_glare, retouch_equipment } from './artifact.js';
 import { will_hurtle, hurtle, mhurtle } from './dothrow.js';
@@ -234,26 +238,7 @@ import { angry_guards } from './mon.js';
 import { clone_mon } from './makemon.js';
 import { mintrap } from './trap.js';
 import { NO_TRAP_FLAGS } from './const.js';
-/* C ref: mondata.h slithy(), flaming(), has_head() */
-function slithy(ptr) { return (ptr.mflags1 & M.M1_SLITHY) !== 0; }
-function flaming(ptr) {
-    return ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
-           || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
-}
-function has_head(ptr) { return (ptr.mflags1 & M.M1_NOHEAD) === 0; }
-/* C ref: mondata.h is_animal(), type_is_pname() */
-function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
-function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
-/* C ref: hack.h makeknown() */
-function makeknown(x) { discover_object(x, true, true, true); }
 
-function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
-/* C ref: mondata.h touch_petrifies() */
-function touch_petrifies(ptr) {
-    return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
-}
-/* C ref: mondata.h resists_ston() */
-function resists_ston(mon) { return !!Resists_Elem(mon, STONE_RES); }
 /* C ref: uhitm.c mhitm_ad_phys() -- !artifact_hit(magr, mdef, otmp,
    &mhm->damage, gm.mhitu_dieroll) */
 async function not_artifact_hit(magr, mdef, otmp, mhm) {
@@ -261,10 +246,6 @@ async function not_artifact_hit(magr, mdef, otmp, mhm) {
     const r = await artifact_hit(magr, mdef, otmp, dmgp, game.mhitu_dieroll);
     mhm.damage = dmgp.val;
     return !r;
-}
-/* C ref: mondata.c attacktype() */
-function attacktype(ptr, atyp) {
-    return ptr.mattk.some((a) => a.aatyp === atyp);
 }
 /* C ref: mondata.c sticks() is engrave.js sticks() */
 
@@ -322,8 +303,8 @@ async function mgc_atk_negated(magr, mdef, verbosely) {
     if (r.negated && r.msg) {
         if (mdef === game.youmonst)
             await pline('You avoid harm.');
-        else
-            throw new Error('mhitm_mgc_atk_negated(): monster defender message not ported yet');
+        else if (game.mhitm_vis && canseemon(mdef))
+            await pline(`${Monnam(mdef)} avoids harm.`); /* pline_mon() */
     }
     return r.negated;
 }
@@ -910,9 +891,34 @@ async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
                heal any from the drained life */
         }
     } else {
-        throw new Error('mhitm_ad_drli(): mhitm branch not ported yet');
+        /* mhitm */
+        /* mhitm_ad_deth gets redirected here for Death's touch */
+        const is_death = (mattk.adtyp === M.AD_DETH);
+
+        if (is_death
+            || (!rn2(3) && !(resists_drli(mdef) || defended(mdef, M.AD_DRLI))
+                && !await mgc_atk_negated(magr, mdef, true))) {
+            if (!is_death) /* Stormbringer uses monhp_per_lvl (1d8) */
+                mhm.damage = d(2, 6);
+            if (game.mhitm_vis && canspotmon(mdef))
+                await pline(`${Monnam(mdef)} becomes weaker!`); /* pline_mon() */
+            if (mdef.mhpmax - mhm.damage > mdef.m_lev) {
+                mdef.mhpmax -= mhm.damage;
+            } else {
+                /* limit floor of mhpmax reduction to current m_lev + 1;
+                   avoid increasing it if somehow already less than that */
+                if (mdef.mhpmax > mdef.m_lev)
+                    mdef.mhpmax = mdef.m_lev + 1;
+            }
+            if (mdef.m_lev === 0) /* automatic kill if drained past level 0 */
+                mhm.damage = mdef.mhp;
+            else
+                mdef.m_lev--;
+
+            /* unlike hitting with Stormbringer, wounded attacker doesn't
+               heal any from the drained life */
+        }
     }
-    void mhm;
 }
 
 // C ref: mondata.c on_fire()
@@ -1057,7 +1063,21 @@ async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
         } else
             mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_cold(): mhitm branch not ported yet');
+        /* mhitm */
+        if (await mgc_atk_negated(magr, mdef, true)) {
+            mhm.damage = 0;
+            return;
+        }
+        if (game.mhitm_vis && canseemon(mdef))
+            await pline(`${Monnam(mdef)} is covered in frost!`); /* pline_mon() */
+        if (resists_cold(mdef) || defended(mdef, AD_COLD)) {
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline_The(`frost doesn't seem to chill ${mon_nam(mdef)}!`);
+            /* shieldeff(mdef->mx, mdef->my): transient display only */
+            await golemeffects(mdef, AD_COLD, mhm.damage);
+            mhm.damage = 0;
+        }
+        mhm.damage += await destroy_items(mdef, AD_COLD, orig_dmg);
     }
 }
 
@@ -2152,21 +2172,6 @@ export async function do_attack(mtmp) {
 function M_AP_TYPE(mon) { return (mon.m_ap_type || 0) & M_AP_TYPMASK; }
 function NODIAG(monnum) { return monnum === M.PM_GRID_BUG; }
 function martial_bonus() { return Role_if(M.PM_SAMURAI) || Role_if(M.PM_MONK); }
-function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
-function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
-function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
-function bigmonst(ptr) { return ptr.msize >= M.MZ_LARGE; }
-function cantwield(ptr) { return nohands(ptr) || verysmall(ptr); }
-function thick_skinned(ptr) { return (ptr.mflags1 & M.M1_THICK_HIDE) !== 0; }
-function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
-function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
-function is_whirly(ptr) {
-    return ptr.mlet === M.S_VORTEX || ptr === mons[M.PM_AIR_ELEMENTAL];
-}
-function is_watch(ptr) {
-    return ptr === mons[M.PM_WATCHMAN] || ptr === mons[M.PM_WATCH_CAPTAIN];
-}
 function mon_hates_light(mon) { return mon.data === mons[M.PM_GREMLIN]; }
 function is_blade(otmp) {
     return otmp.oclass === WEAPON_CLASS
@@ -2951,9 +2956,6 @@ async function hmon_hitmon_potion(hmd, mon, obj) /* obj is not NULL */ {
     hmd.mdat = mon.data;
     hmd.dmg = (hmd.mdat === mons[M.PM_SHADE]) ? 0 : 1;
 }
-
-/* C ref: hacklib.c plur() */
-function plur(x) { return (x === 1) ? "" : "s"; }
 
 // C ref: uhitm.c hmon_hitmon_misc_obj()
 async function hmon_hitmon_misc_obj(hmd, mon, obj) /* obj is not NULL */ {

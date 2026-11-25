@@ -27,12 +27,11 @@ import { obj_typename, OBJ_DESCR as objDescrOf, OBJ_NAME,
 import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_start_menu,
          tty_add_menu, tty_add_menu_str, tty_end_menu, tty_select_menu,
          tty_destroy_nhwindow, tty_putstr, tty_display_nhwindow,
-         tty_next_page, NHW_MENU, NHW_TEXT } from './tty/wintty.js';
+         NHW_MENU, NHW_TEXT } from './tty/wintty.js';
 import { NO_COLOR } from './terminal.js';
 import { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
          PICK_ONE, NON_PM, MENU_TRADITIONAL, MENU_COMBINATION, MENU_PARTIAL
        } from './const.js';
-import { xwaitforspace } from './tty/getline.js';
 import { tty_yn_function } from './tty/topl.js';
 import { def_oc_syms } from './drawing_data.js';
 import { def_char_to_objclass } from './sp_lev.js';
@@ -651,9 +650,6 @@ export async function dodiscovered() {
             disco_output_sorted(win, sorted_lines, sorted_lines.length, lootsort);
         }
         await tty_display_nhwindow(win);
-        await xwaitforspace(' \r\n\x1b');
-        while (game.morc !== '\x1b' && tty_next_page(win))
-            await xwaitforspace(' \r\n\x1b');
     }
     await tty_destroy_nhwindow(win);
     return 0;
@@ -804,9 +800,6 @@ export async function doclassdisco() {
     }
     if (ct) {
         await tty_display_nhwindow(tmpwin);
-        await xwaitforspace(' \r\n\x1b');
-        while (game.morc !== '\x1b' && tty_next_page(tmpwin))
-            await xwaitforspace(' \r\n\x1b');
     }
     await tty_destroy_nhwindow(tmpwin);
     return 0;

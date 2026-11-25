@@ -8,6 +8,17 @@
 // yet).  For enlightenment: adtyp_to_prop(), u_adtyp_resistance_obj(),
 // item_what().
 
+import { You_hear } from './sounds.js';
+import { rndmonnam } from './do_name.js';
+import { adjalign } from './attrib.js';
+import { PM_ARCHEOLOGIST } from './monsters.js';
+import { obj_extract_self, place_object } from './mkobj.js';
+import { sokoban_guilt } from './trap.js';
+import { breakobj } from './dothrow.js';
+import { shkname } from './shknam.js';
+import { SHOPBASE, Role_if, CORPSTAT_HISTORIC } from './const.js';
+import { in_rooms } from './hack.js';
+import { billable, get_obj_location } from './shk.js';
 import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import { livelog_printf, urgent_pline } from './display.js';
@@ -23,7 +34,9 @@ import { more_experienced } from './exper.js';
 import { observe_object, discover_object } from './o_init.js';
 import { The, xname, Tobjnam, vtense } from './objnam.js';
 import { mon_nam } from './do_name.js';
-import { resists_blnd, resists_blnd_by_arti } from './mondata.js';
+import { resists_blnd, resists_blnd_by_arti, nohands, is_mplayer, is_whirly,
+         mindless, digests, is_rider, eyecount,
+         breathless } from './mondata.js';
 import { make_blinded } from './potion.js';
 import { body_part } from './insight.js';
 import { ARM, POLY_NOFLAGS } from './const.js';
@@ -46,7 +59,7 @@ import { objects, WAND_CLASS, SPBOOK_CLASS, DWARVISH_CLOAK, NODIR, IMMEDIATE,
 import { PIT, SPIKED_PIT, STATUE_TRAP, HEADSTONE, DOOR, DBWALL,
          DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, IS_DRAWBRIDGE,
          isok } from './const.js';
-import { t_at } from './trap.js';
+import { t_at, activate_statue_trap } from './trap.js';
 import { sobj_at, is_pool, is_lava } from './makemon.js';
 import { delobj } from './invent.js';
 import { mkobj, splitobj, weight, rnd_class, erosion_matters, is_flammable,
@@ -68,7 +81,7 @@ import { STRANGE_OBJECT, WAN_POLYMORPH, SPE_POLYMORPH, POT_POLYMORPH,
          SPE_NOVEL, ROCK, MINERAL } from './objects.js';
 import { PM_CROCODILE } from './monsters.js';
 import { AC_VALUE } from './rng.js';
-import { m_at, closed_door, is_mplayer } from './makemon.js';
+import { m_at, closed_door } from './makemon.js';
 import { RING_CLASS } from './objects.js';
 import { You_feel } from './display.js';
 import { enlightenment } from './insight.js';
@@ -182,7 +195,7 @@ import { hcolor as hcolor_zp, Monnam } from './do_name.js';
 import { recharge as recharge_zp } from './read.js';
 import { Yname2 as Yname2_zp, yname as yname_zp, makeplural,
          distant_name } from './objnam.js';
-import { s_suffix } from './hacklib.js';
+import { s_suffix, upstart } from './hacklib.js';
 import { mon_reflects } from './muse.js';
 import { slept_monst } from './mhitm.js';
 import { canseemon, sensemon as sensemon_zp, zapdir_to_glyph } from './display.js';
@@ -386,9 +399,6 @@ import { docrt } from './display.js';
 import { ustatusline } from './insight.js';
 import { unearth_objs as unearth_objs_dg } from './dig.js';
 
-/* C ref: mondata.h nohands() */
-function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
-
 // C ref: zap.c learnwand()
 export function learnwand(obj) {
     /* For a wand (or wand-like tool) zapped by the player, if the
@@ -509,19 +519,6 @@ function has_mcorpsenm_bm(mon) {
         && mon.mextra.mcorpsenm !== NON_PM_ZP;
 }
 
-/* C ref: mondata.h is_whirly() */
-function is_whirly_bm(ptr) {
-    return ptr.mlet === S_VORTEX_ZY || ptr === mons_zy[PM_AIR_ELEMENTAL_BM];
-}
-
-/* C ref: mondata.h mindless() */
-function mindless_bm(ptr) { return (ptr.mflags1 & M1_MINDLESS_BM) !== 0; }
-
-/* C ref: mondata.h digests() */
-function digests_bm(ptr) {
-    return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL_BM
-                                       && a.adtyp === AD_DGST_BM);
-}
 
 // C ref: display.c knowninvisible() (display.h _knowninvisible())
 function knowninvisible(mon) {
@@ -691,7 +688,7 @@ export async function bhitm(mtmp, otmp) {
             await mon_adjust_speed_rv(mtmp, -1, otmp);
             check_gear_next_turn_bm(mtmp); /* might want speed boots */
 
-            if (engulfing_u_zp(mtmp) && is_whirly_bm(mtmp.data)) {
+            if (engulfing_u_zp(mtmp) && is_whirly(mtmp.data)) {
                 await You(`disrupt ${mon_nam(mtmp)}!`);
                 await pline("A huge hole opens up...");
                 await expels_bm(mtmp, mtmp.data, true);
@@ -885,7 +882,7 @@ export async function bhitm(mtmp, otmp) {
                         await pline(`${Monnam(mtmp)} doesn't budge.`);
                 }
                 if (!DEADMONSTER_BM(mtmp)) {
-                    await wakeup(mtmp, !mindless_bm(mtmp.data));
+                    await wakeup(mtmp, !mindless(mtmp.data));
                     await abuse_dog_bm(mtmp);
                 }
             } else if ((obj = which_armor_zp(mtmp, W_SADDLE_BM))) {
@@ -1054,7 +1051,7 @@ export async function release_hold() {
     if (!mtmp) {
         impossible("release_hold when not held?");
     } else if (u.uswallow) { /* possible for sticky hero to be swallowed */
-        if (digests_bm(mtmp.data)) {
+        if (digests(mtmp.data)) {
             if (!Blind())
                 await pline(`${Monnam(mtmp)} opens its mouth!`);
             else
@@ -1191,9 +1188,22 @@ export async function bhito(obj, otmp) {
                (the sound could be implicit) */
             let maybelearnit = cansee(obj.ox, obj.oy) || !Deaf();
             if (obj.otyp === BOULDER) {
-                throw new Error('bhito(): striking a boulder (fracture_rock()) not ported yet');
+                /* Soundeffect(se_crumbling_sound, 75) */
+                if (cansee(obj.ox, obj.oy))
+                    await pline_The("boulder falls apart.");
+                else
+                    await You_hear("a crumbling sound.");
+                await fracture_rock(obj);
             } else if (obj.otyp === STATUE_ZB) {
-                throw new Error('bhito(): striking a statue (break_statue()) not ported yet');
+                if (await break_statue(obj)) {
+                    if (cansee(obj.ox, obj.oy)) {
+                        if (Hallucination())
+                            await pline_The(`${rndmonnam(null)} shatters.`);
+                        else
+                            await pline_The("statue shatters.");
+                    } else
+                        await You_hear("a crumbling sound.");
+                }
             } else {
                 const oox = obj.ox, ooy = obj.oy;
 
@@ -1407,6 +1417,77 @@ function replace_object(obj, otmp) {
     }
 }
 
+// C ref: zap.c fracture_rock()
+/* used by buzz(); also used by scatter() and by monster-on-boulder code */
+export async function fracture_rock(obj) { /* no texts here! */
+    const by_you = !game.context.mon_moving;
+    const loc = by_you ? get_obj_location(obj, 0) : null;
+
+    if (by_you && loc && costly_spot(loc[0], loc[1])) {
+        const [x, y] = loc;
+        const shkpp = { v: null };
+        const objroom = in_rooms(x, y, SHOPBASE).charCodeAt(0) || 0;
+
+        if (billable(shkpp, obj, objroom, false)) {
+            /* shop message says "you owe <shk> <$> for it!" so we need
+               to precede that with a message explaining what "it" is */
+            await You(`fracture ${s_suffix(shkname(shkpp.v))} ${xname(obj)}.`);
+            /* breakobj won't destroy fracturing statue or boulder but
+               will charge for shop goods */
+            await breakobj(obj, x, y, true, false);
+        }
+    }
+    if (by_you && obj.otyp === BOULDER)
+        sokoban_guilt();
+
+    obj.otyp = ROCK;
+    obj.oclass = GEM_CLASS;
+    obj.quan = rn1(60, 7);
+    obj.owt = weight(obj);
+    obj.dknown = obj.bknown = obj.rknown = 0;
+    obj.known = objects[obj.otyp].oc_uses_known ? 0 : 1;
+    delete obj.oextra; /* dealloc_oextra(obj) */
+
+    if (obj.where === 'OBJ_FLOOR') {
+        obj_extract_self(obj); /* move rocks back on top */
+        place_object(obj, obj.ox, obj.oy);
+        if (!does_block(obj.ox, obj.oy, game.level.at(obj.ox, obj.oy))) {
+            unblock_point(obj.ox, obj.oy);
+            /* need immediate update in case this is a striking/force bolt
+               zap that is about hit more things */
+            vision_recalc(0);
+        }
+        if (cansee(obj.ox, obj.oy))
+            newsym(obj.ox, obj.oy);
+    }
+}
+
+// C ref: zap.c break_statue()
+/* handle statue hit by striking/force bolt/pick-axe */
+export async function break_statue(obj) {
+    /* [obj is assumed to be on floor, so no get_obj_location() needed] */
+    const trap = t_at(obj.ox, obj.oy);
+    let item;
+    const by_you = !game.context.mon_moving;
+
+    if (trap && trap.ttyp === STATUE_TRAP
+        && await activate_statue_trap(trap, obj.ox, obj.oy, true))
+        return false;
+    /* drop any objects contained inside the statue */
+    while ((item = (obj.cobj && obj.cobj.length) ? obj.cobj[0] : null) !== null) {
+        obj_extract_self(item);
+        place_object(item, obj.ox, obj.oy);
+    }
+    if (by_you && Role_if(PM_ARCHEOLOGIST)
+        && (obj.spe & CORPSTAT_HISTORIC)) {
+        await You_feel("guilty about damaging such a historic statue.");
+        adjalign(-1);
+    }
+    obj.spe = 0;
+    await fracture_rock(obj);
+    return true;
+}
+
 // C ref: zap.c poly_obj()
 /*
  * Polymorph the object to the given object ID.  If the ID is STRANGE_OBJECT
@@ -1424,8 +1505,8 @@ export async function poly_obj(obj, id) {
     const can_merge = (id === STRANGE_OBJECT);
     const obj_location = obj.where;
 
-    if (obj.otyp === BOULDER && g.level.flags.sokoban_rules)
-        throw new Error('poly_obj(): sokoban_guilt() not ported yet');
+    if (obj.otyp === BOULDER)
+        sokoban_guilt();
     if (id === STRANGE_OBJECT) { /* preserve symbol */
         let try_limit = 3;
         let magic_obj = !!objects[obj.otyp].oc_magic;
@@ -1584,7 +1665,7 @@ export async function poly_obj(obj, id) {
         } else if (obj.otyp !== BOULDER && otmp.otyp === BOULDER) {
             /* leaving boulder in liquid would trigger sanity_check warning */
             if (is_pool(ox, oy) || is_lava(ox, oy)) /* is_pool_or_lava() */
-                throw new Error('poly_obj(): fracture_rock() not ported yet');
+                await fracture_rock(otmp);
             if (does_block(ox, oy, g.level.at(ox, oy)))
                 block_point(ox, oy);
         }
@@ -1641,8 +1722,21 @@ export async function bhitpile(
 
     if (obj.otyp === SPE_FORCE_BOLT || obj.otyp === WAN_STRIKING) {
         const t = t_at(tx, ty);
-        if (t && t.ttyp === STATUE_TRAP)
-            throw new Error('bhitpile(): activate_statue_trap() not ported yet');
+        const topofpile = pile_at()[0] || null; /* svl.level.objects[tx][ty] */
+
+        /* We can't settle for the default calling sequence of
+           bhito(otmp) -> break_statue(otmp) -> activate_statue_trap(ox,oy)
+           because that last call might end up operating on our `next_obj'
+           (below), rather than on the current object, if it happens to
+           encounter a statue which mustn't become animated. */
+        if (t && t.ttyp === STATUE_TRAP
+            && await activate_statue_trap(t, tx, ty, true))
+            learnwand(obj);
+        /* assume zapping up or down while hiding under the top item can
+           still activate the trap even if it's below (when zapping up)
+           or above (when zapping down) */
+        if ((pile_at()[0] || null) !== topofpile)
+            first = false; /* top item was statue which activated */
     }
 
     g.poly_zapped = -1;
@@ -3256,7 +3350,7 @@ async function maybe_destroy_item(
         }
         if (u_carry) { /* effects that happen only to the player */
             if (osym === POTION_CLASS && dmgtyp !== AD_COLD
-                && (!breathless_zp(game.youmonst.data)
+                && (!breathless(game.youmonst.data)
                     || haseyes_zp(game.youmonst.data))) {
                 await potionbreathe_zp(obj);
             }
@@ -3624,13 +3718,13 @@ export async function dobuzz(
                         const tmp = await zhitm(mon, type, nd, ootmp);
                         otmp = ootmp.v;
 
-                        if (is_rider_zp(mon.data)
+                        if (is_rider(mon.data)
                             && Math.abs(type) === ZT_BREATH(ZT_DEATH)) {
                             if (canseemon(mon)) {
                                 await hit(flash_str(fltyp, false), mon, ".");
                                 await pline(`${Monnam(mon)} disintegrates.`);
                                 await pline(`${s_suffix(Monnam(mon))} body reintegrates before your ${
-                                    (eyecount_zp(g.youmonst.data) === 1)
+                                    (eyecount(g.youmonst.data) === 1)
                                         ? body_part(EYE_ZP)
                                         : makeplural(body_part(EYE_ZP))}!`);
                                 await pline(`${Monnam(mon)} resurrects!`);
@@ -4271,18 +4365,6 @@ function uhave_zp(p) {
     const q = game.u.uprops[p];
     return !!(q && (q.intrinsic || q.extrinsic));
 }
-/* C ref: mondata.h is_rider(), eyecount() */
-function is_rider_zp(ptr) {
-    return ptr === mons_zy[PM_DEATH_ZP] || ptr === mons_zy[PM_FAMINE_ZP]
-           || ptr === mons_zy[PM_PESTILENCE_ZP];
-}
-function eyecount_zp(ptr) {
-    return !haseyes_zp(ptr) ? 0
-           : (ptr === mons_zy[PM_CYCLOPS_ZP] || ptr === mons_zy[PM_FLOATING_EYE_ZP])
-             ? 1 : 2;
-}
-/* C ref: mondata.h breathless() */
-function breathless_zp(ptr) { return (ptr.mflags1 & M1_BREATHLESS_ZP) !== 0; }
 // C ref: uhitm.c disguised_as_non_mon()
 function disguised_as_non_mon(mtmp) {
     return (!sensemon_zp(mtmp)
@@ -4305,13 +4387,8 @@ async function u_slow_down_zp() {
 const ERODE_CORRODE_ZP = 3;
 
 
-/* C ref: mondata.h is_rider(), is_reviver(), is_displacer(),
-   dmgtype() for AD_SEDU */
-function is_rider_rv(ptr) {
-    return ptr === mons_rv[PM_DEATH_RV] || ptr === mons_rv[PM_FAMINE_RV]
-        || ptr === mons_rv[PM_PESTILENCE_RV];
-}
-function is_reviver_rv(ptr) { return is_rider_rv(ptr) || ptr.mlet === S_TROLL_RV; }
+/* C ref: mondata.h is_reviver(), is_displacer() */
+function is_reviver_rv(ptr) { return is_rider(ptr) || ptr.mlet === S_TROLL_RV; }
 function is_displacer_rv(ptr) { return ((ptr.mflags3 || 0) & M3_DISPLACES_RV) !== 0; }
 /* C ref: obj.h has_omonst(), has_omid(), OMID(); mextra.c free_omonst(),
    free_omid() */
@@ -4322,8 +4399,6 @@ function free_omid_rv(obj) {
     if (obj.oextra) delete obj.oextra.omid;
     delete obj.omid;
 }
-/* C ref: hacklib.c upstart() */
-function upstart_rv(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 // C ref: zap.c get_container_location() -- returns the following
 // information about the outermost container: loc.v gets set to
@@ -4374,7 +4449,7 @@ export async function montraits(
         /* save_mtraits() validated mtmp2->mnum */
         mtmp2.data = mons_rv[mtmp2.mnum];
 
-        if (mtmp2.mhpmax > 0 || is_rider_rv(mtmp2.data)) {
+        if (mtmp2.mhpmax > 0 || is_rider(mtmp2.data)) {
             mtmp = await makemon_revive(mtmp2.data, cc.x, cc.y,
                            (NO_MINVENT_RV | MM_NOWAIT_RV | MM_NOCOUNTBIRTH_RV
                             /* in case mtmp2 is a long worm; saved traits for
@@ -4588,7 +4663,7 @@ export async function revive(corpse, by_hero) {
         || (mons_rv[montype.v].mlet === S_EEL_RV
             && !IS_POOL_RV(game.level.at(x, y).typ))) {
         if (cansee(x, y))
-            await pline(`${upstart_rv(corpse_xname_rv(corpse, null,
+            await pline(`${upstart(corpse_xname_rv(corpse, null,
                                                       CXN_PFX_THE_RV))} twitches feebly.`);
         return null;
     }
@@ -4858,12 +4933,12 @@ export async function revive_mon(arg, timeout) {
         let when;
         let action;
 
-        if (is_rider_rv(mptr) && rn2(99)) { /* Rider usually tries again */
+        if (is_rider(mptr) && rn2(99)) { /* Rider usually tries again */
             /* action = REVIVE_MON; when = rider_revival_time(body, TRUE); */
             throw new Error('revive_mon(): rider_revival_time() not ported yet');
         } else { /* rot this corpse away */
             if (!obj_has_timer_rv(body, ROT_CORPSE_RV))
-                await You_feel(`${is_rider_rv(mptr) ? "much " : ""}less hassled.`);
+                await You_feel(`${is_rider(mptr) ? "much " : ""}less hassled.`);
             action = ROT_CORPSE_RV;
             when = d(5, 50) - (game.moves - body.age);
             if (when < 1)
@@ -5011,7 +5086,7 @@ export function cancel_item(obj) {
     /* cancelling a troll's corpse prevents it from reviving (on its own;
        does not affect undead turning induced revival) */
     if (obj.otyp === O_ci.CORPSE && obj.timed
-        && !is_rider_rv(mons_rv[obj.corpsenm])) {
+        && !is_rider(mons_rv[obj.corpsenm])) {
         const a = obj_to_any_ci(obj);
         const timout = peek_timer_ci(REVIVE_MON_RV, a);
 

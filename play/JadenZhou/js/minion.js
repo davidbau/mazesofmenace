@@ -8,8 +8,8 @@
 import { game } from './gstate.js';
 import { canspotmon, pline, You_feel } from './display.js';
 import { ROLL_FROM } from './rng.js';
-import { makemon, mkclass, ndemon, is_lord } from './makemon.js';
-import { monsndx } from './mondata.js';
+import { makemon, mkclass, ndemon } from './makemon.js';
+import { monsndx, is_lord } from './mondata.js';
 import { mons, S_ANGEL, PM_ANGEL, PM_SHOPKEEPER, PM_GUARD,
          PM_ALIGNED_CLERIC, PM_HIGH_CLERIC, PM_AIR_ELEMENTAL,
          PM_FIRE_ELEMENTAL, PM_EARTH_ELEMENTAL,

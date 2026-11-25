@@ -71,7 +71,7 @@ import { COST_BRKLCK, PASSES_WALLS, DBWALL, BLINDED, P_DAGGER, P_FLAIL,
          P_LANCE, P_SABER, P_PICK_AXE, isok } from './const.js';
 import { costly_alteration, obj_extract_self, start_corpse_timeout,
          place_object, is_weptool } from './mkobj.js';
-import { costly_spot, shop_keeper, add_damage } from './shk.js';
+import { costly_spot, shop_keeper, add_damage, stolen_value } from './shk.js';
 import { the, surface } from './iactions.js';
 import { xname, singular, an } from './objnam.js';
 import { obfree, useup, stackobj, delobj } from './invent.js';
@@ -83,7 +83,7 @@ import { safe_qbuf } from './pickup.js';
 import { getdir } from './cmd.js';
 import { is_drawbridge_wall } from './dbridge.js';
 import { bottlename, potionbreathe } from './potion.js';
-import { haseyes } from './mondata.js';
+import { haseyes, nohands, breathless } from './mondata.js';
 import { M1_BREATHLESS } from './monsters.js';
 /* boxlock() */
 import { Role_if as Role_if_lk } from './const.js';
@@ -255,7 +255,6 @@ export function maybe_reset_pick(container) {
 }
 
 function carried(obj) { return obj.where === 'OBJ_INVENT'; }
-function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
 
 /* C ref: lock.c PICKLOCK_* */
 const PICKLOCK_LEARNED_SOMETHING = -1; /* time passes */
@@ -1047,10 +1046,11 @@ export async function breakchestlock(box, destroyit) {
         box.lknown = 1;
     } else { /* #force has destroyed this box (at <u.ux,u.uy>) */
         let otmp;
-        const ushops0 = (u.ushops && u.ushops[0]) || 0;
+        const ushops0 = (u.ushops || '').charCodeAt(0) || 0; /* *u.ushops */
         const shkp = (ushops0 && costly_spot(u.ux, u.uy))
                      ? shop_keeper(ushops0) : null;
-        const costly = !!shkp;
+        const costly = !!shkp,
+            peaceful_shk = costly && !!shkp.mpeaceful;
         let loss = 0;
 
         await pline(`In fact, you've totally destroyed ${the(xname(box))}.`);
@@ -1060,7 +1060,8 @@ export async function breakchestlock(box, destroyit) {
             if (!rn2(3) || otmp.oclass === POTION_CLASS) {
                 await chest_shatter_msg(otmp);
                 if (costly)
-                    throw new Error('breakchestlock(): stolen_value() not ported yet');
+                    loss += await stolen_value(otmp, u.ux, u.uy, peaceful_shk,
+                                               true);
                 if (otmp.quan === 1) {
                     obfree(otmp, null);
                     continue;
@@ -1077,7 +1078,7 @@ export async function breakchestlock(box, destroyit) {
             stackobj(otmp);
         }
         if (costly)
-            throw new Error('breakchestlock(): stolen_value() not ported yet');
+            loss += await stolen_value(box, u.ux, u.uy, peaceful_shk, true);
         if (loss)
             await You(`owe ${loss} ${currency(loss)} for objects destroyed.`);
         delobj(box);
@@ -1397,6 +1398,3 @@ function An(str) {
     const s = an(str);
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
-
-/* C ref: mondata.h breathless() */
-function breathless(ptr) { return (ptr.mflags1 & M1_BREATHLESS) !== 0; }

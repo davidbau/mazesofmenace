@@ -373,6 +373,9 @@ function disco() {
     return game.disco;
 }
 
+// C ref: hack.h makeknown()
+export function makeknown(x) { discover_object(x, true, true, true); }
+
 // C ref: o_init.c discover_object()
 export function discover_object(oindx, mark_as_known, mark_as_encountered,
                                 credit_hero) {

@@ -6,6 +6,8 @@
 // Not ported yet: shop damage,
 // set_levltyp()'s object/timer side effects, Sokoban bookkeeping.
 
+import { fracture_rock } from './zap.js';
+import { change_luck } from './attrib.js';
 import { helpless } from './monmove.js';
 import { impossible } from './hack.js';
 import { is_hole, is_pit } from './const.js';
@@ -41,8 +43,11 @@ import { mons, S_UNICORN, M2_JEWELS, S_VORTEX, M1_AMORPHOUS, M1_UNSOLID,
          M1_MINDLESS, M1_METALLIVORE, MZ_HUGE, PM_PIT_FIEND,
        } from './monsters.js';
 import { is_flyer, is_floater, defended, resists_sleep, resists_fire,
-         resists_magm, mon_knows_traps, mon_learns_traps,
-         mons_see_trap } from './mondata.js';
+         resists_magm, mon_knows_traps, mon_learns_traps, mons_see_trap,
+         likes_gems, mindless, hides_under, amorphous, unsolid, is_whirly,
+         metallivorous, breathless, acidic, extra_nasty, unique_corpstat,
+         is_clinger, resists_ston, is_unicorn, flaming, webmaker, attacktype,
+         throws_rocks, nohands, likes_lava } from './mondata.js';
 import { STATUE, BOULDER, objects, ARROW, DART, ROCK, CORPSE, TOWEL,
          GEMSTONE, MINERAL, RING_CLASS, IRON } from './objects.js';
 import { rnd, d } from './rng.js';
@@ -97,7 +102,7 @@ import { just_an } from './objnam.js';
 import { seemimic } from './mon.js';
 import { resist } from './zap.js';
 import { M_AP_FURNITURE, M_AP_OBJECT, NOTELL } from './const.js';
-import { dist2 } from './hacklib.js';
+import { dist2, sgn, upstart } from './hacklib.js';
 import { rn1 } from './rng.js';
 import { nomul, end_running } from './hack.js';
 import { exercise, ATEMP } from './attrib.js';
@@ -149,7 +154,6 @@ import { del_engr_at as del_engr_at_l } from './engrave.js';
 import { is_drawbridge_wall as is_drawbridge_wall_l } from './dbridge.js';
 import { find_drawbridge as find_drawbridge_l } from './zap.js';
 import { fillholetyp as fillholetyp_l, unearth_objs as unearth_objs_l } from './dig.js';
-import { unconscious as unconscious_l } from './eat.js';
 import { M1_SLITHY, M1_NOLIMBS } from './monsters.js';
 import { CAN_OF_GREASE, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS,
          GRAY_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES,
@@ -309,20 +313,29 @@ import { M_SEEN_SLEEP as M_SEEN_SLEEP_TR, NOWEBMSG as NOWEBMSG_TR,
 import { fall_asleep as fall_asleep_tr } from './timeout.js';
 import { ACURR as ACURR_tr } from './attrib.js';
 import { SLIMED as SLIMED_SL, TIMEOUT as TIMEOUT_SL } from './const.js';
+import { cant_revive } from './read.js';
+import { montraits } from './zap.js';
+import { wary_dog } from './dog.js';
+import { quest_info } from './questpgr.js';
+import { christen_monst, rndmonnam, a_monnam } from './do_name.js';
+import { m_dowear } from './worn.js';
+import { is_golem, nonliving } from './makemon.js';
+import { is_vampshifter } from './mondata.js';
+import { map_invisible } from './display.js';
+import { shop_keeper, stolen_value, shk_your } from './shk.js';
+import { in_rooms } from './hack.js';
+import { has_oname, ONAME, OBJ_AT, M_AP_TYPE, Role_if, u_at, ismnum,
+         AS_OK, AS_NO_MON, AS_MON_IS_UNIQUE, CORPSTAT_GENDER, CORPSTAT_MALE,
+         CORPSTAT_FEMALE, CORPSTAT_HISTORIC, NO_MINVENT, MM_MALE, MM_FEMALE,
+         MM_ADJACENTOK, ANIMATE_NORMAL, ANIMATE_SHATTER, ANIMATE_SPELL,
+         NO_NC_FLAGS, SHOPBASE } from './const.js';
+import { MS_GUARDIAN, PM_DOPPELGANGER, PM_FLESH_GOLEM, PM_ARCHEOLOGIST,
+         M1_CONCEAL } from './monsters.js';
 export { is_hole, is_pit };
-
-/* C ref: mondata.h resists_ston() */
-function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
 
 
 /* C ref: hack.h mdistu() */
 function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
-
-// C ref: mondata.h likes_gems(), is_unicorn()
-function likes_gems(ptr) { return (ptr.mflags2 & M2_JEWELS) !== 0; }
-function is_unicorn(ptr) { return ptr.mlet === S_UNICORN && likes_gems(ptr); }
-// C ref: hacklib.c sgn()
-function sgn(n) { return (n < 0) ? -1 : (n > 0) ? 1 : 0; }
 
 // C ref: trap.c mk_trap_statue()
 /* create a "living" statue at x,y */
@@ -1033,8 +1046,8 @@ export function conjoined_pits(trap2, trap1, u_entering_trap2) {
         || !is_pit(trap1.ttyp)
         || (u_entering_trap2 && !(u.utrap && u.utraptype === TT_PIT)))
         return false;
-    const dx = sgn_tr(trap2.tx - trap1.tx);
-    const dy = sgn_tr(trap2.ty - trap1.ty);
+    const dx = sgn(trap2.tx - trap1.tx);
+    const dy = sgn(trap2.ty - trap1.ty);
     const diridx = xytodir_tr(dx, dy);
     if (diridx !== DIR_ERR_TR) {
         const adjidx = DIR_180_TR(diridx);
@@ -1057,7 +1070,6 @@ function adj_nonconjoined_pit(adjtrap) {
     }
     return false;
 }
-function sgn_tr(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
 
 // C ref: trap.c dotrap()
 export async function dotrap(trap, trflags) {
@@ -1130,8 +1142,6 @@ export const Trap_Killed_Mon = 2;
 export const Trap_Moved_Mon = 3; /* new location, or new level */
 
 /* mondata.h */
-function mindless(ptr) { return (ptr.mflags1 & M1_MINDLESS) !== 0; }
-function metallivorous(ptr) { return (ptr.mflags1 & M1_METALLIVORE) !== 0; }
 
 // C ref: trap.c trapeffect_sqky_board()
 async function trapeffect_sqky_board(mtmp, trap, trflags) {
@@ -1172,31 +1182,42 @@ const a_your = ["a", "your"];
 const tower_of_flame = "tower of flame";
 const A_gush_of_water_hits = "A gush of water hits";
 
-/* C ref: mondata.h passes_rocks(), grounded(), breathless(), flaming(),
-   acidic(), extra_nasty(); obj.h stone_missile(); trap.c completelyrusts */
+/* C ref: mondata.h passes_rocks(), grounded(); obj.h stone_missile();
+   trap.c completelyrusts */
 export function passes_rocks(ptr) { return passes_walls(ptr) && !unsolid(ptr); }
 function grounded(ptr) {
     /* has_ceiling(&u.uz): no air or water levels are generated yet */
     return !is_flyer(ptr) && !is_floater(ptr) && !is_clinger(ptr);
 }
-function breathless(ptr) { return (ptr.mflags1 & M1_BREATHLESS) !== 0; }
-function flaming(ptr) {
-    return ptr === mons[PM_FIRE_VORTEX] || ptr === mons[PM_FLAMING_SPHERE]
-           || ptr === mons[PM_FIRE_ELEMENTAL] || ptr === mons[PM_SALAMANDER];
-}
-function acidic(ptr) { return (ptr.mflags1 & M1_ACID) !== 0; }
-function extra_nasty(ptr) { return (ptr.mflags2 & M2_NASTY) !== 0; }
 function stone_missile(o) {
     return ((objects[o.otyp].oc_material === GEMSTONE
              || objects[o.otyp].oc_material === MINERAL)
             && o.oclass !== RING_CLASS);
 }
-function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
 
 // C ref: trap.c wearing_iron_shoes()
 function wearing_iron_shoes(mtmp) {
     const armf = which_armor(mtmp, W_ARMF);
     return !!armf && objects[armf.otyp].oc_material === IRON;
+}
+
+// C ref: trap.c sokoban_guilt()
+/* used for various things which cause Sokoban rule violations */
+export function sokoban_guilt() {
+    if (game.level.flags.sokoban_rules) { /* Sokoban */
+        game.u.uconduct.sokocheat++;
+        change_luck(-1);
+        /*
+         * TODO:
+         *  Issue some feedback so that player can learn that whatever
+         *  he/she just did is a naughty thing to do in sokoban and
+         *  should probably be avoided in future....
+         *
+         *  Caveat:  doing this might introduce message sequencing
+         *  issues, depending upon feedback during the various actions
+         *  which trigger Sokoban luck penalties.
+         */
+    }
 }
 
 // C ref: trap.c feeltrap()
@@ -2729,7 +2750,7 @@ async function trapeffect_pit(mtmp, trap, trflags) {
             const predicament = "on a set of sharp iron spikes";
 
             if (u.usteed) {
-                await pline(`${upstart_tr(x_monnam_tr(u.usteed, steed_article, "poor",
+                await pline(`${upstart(x_monnam_tr(u.usteed, steed_article, "poor",
                                                       SUPPRESS_SADDLE_TR, false))} ${
                     conj_pit ? "steps" : "lands"} ${predicament}!`);
             } else
@@ -2829,8 +2850,6 @@ async function trapeffect_pit(mtmp, trap, trflags) {
             ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
 }
-
-function upstart_tr(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 // C ref: trap.c trapeffect_hole()
 async function trapeffect_hole(mtmp, trap, trflags) {
@@ -3203,10 +3222,234 @@ async function trapeffect_web(mtmp, trap, trflags) {
     }
 }
 
+/* C ref: obj.h has_omonst(); mondata.h unique_corpstat(), hides_under() */
+function has_omonst(obj) { return !!obj.oextra?.omonst; }
+/* C ref: invent.c nxtobj(obj, type, TRUE) -- the floor's nexthere chain
+   (level.objects, top first, restricted to obj's spot) */
+function nxtobj_here(obj, type) {
+    const objs = game.level.objects || [];
+    for (let i = objs.indexOf(obj) + 1; i > 0 && i < objs.length; i++) {
+        const o = objs[i];
+        if (o.ox === obj.ox && o.oy === obj.oy && o.where === 'OBJ_FLOOR'
+            && o.otyp === type)
+            return o;
+    }
+    return null;
+}
+
+// C ref: trap.c animate_statue()
+/*
+ * Animate the given statue.  May have been via shatter attempt, trap,
+ * or stone to flesh spell.  Return a monster if successfully animated.
+ * If the monster is animated, the object is deleted.  If fail_reason
+ * is non-null, then fill in the reason for failure (or success).
+ * (fail_reason is a { v } holder here.)
+ */
+export async function animate_statue(statue, x, y, cause, fail_reason) {
+    const g = game;
+    const u = g.u;
+    const historic_statue_is_gone = "that the historic statue is now gone";
+    const mnum = { v: statue.corpsenm };
+    let mptr = mons[mnum.v];
+    let mon = null, shkp;
+    let item;
+    const cc = { x: 0, y: 0 };
+    const historic = (Role_if(PM_ARCHEOLOGIST)
+                      && (statue.spe & CORPSTAT_HISTORIC) !== 0);
+    let golem_xform = false, use_saved_traits;
+    let comes_to_life;
+    let statuename;
+
+    if (cant_revive(mnum, true, statue)) {
+        /* mnum has changed; we won't be animating this statue as itself */
+        if (mnum.v !== PM_DOPPELGANGER)
+            mptr = mons[mnum.v];
+        use_saved_traits = false;
+    } else if (is_golem(mptr) && cause === ANIMATE_SPELL) {
+        /* statue of any golem hit by stone-to-flesh becomes flesh golem */
+        golem_xform = (mptr !== mons[PM_FLESH_GOLEM]);
+        mnum.v = PM_FLESH_GOLEM;
+        mptr = mons[PM_FLESH_GOLEM];
+        use_saved_traits = (has_omonst(statue) && !golem_xform);
+    } else {
+        use_saved_traits = has_omonst(statue);
+    }
+
+    if (use_saved_traits) {
+        /* restore a petrified monster */
+        cc.x = x, cc.y = y;
+        mon = await montraits(statue, cc, (cause === ANIMATE_SPELL));
+        if (mon && mon.mtame && !mon.isminion)
+            await wary_dog(mon, true);
+    } else {
+        const sgend = (statue.spe & CORPSTAT_GENDER);
+        let mmflags = (NO_MINVENT | MM_NOMSG
+                       | ((sgend === CORPSTAT_MALE) ? MM_MALE : 0)
+                       | ((sgend === CORPSTAT_FEMALE) ? MM_FEMALE : 0));
+
+        /* statues of unique monsters from bones or wishing end
+           up here (cant_revive() sets mnum to be doppelganger;
+           mptr reflects the original form for use by newcham()) */
+        if ((mnum.v === PM_DOPPELGANGER && mptr !== mons[PM_DOPPELGANGER])
+            /* block quest guards from other roles */
+            || (mptr.msound === MS_GUARDIAN
+                && quest_info(MS_GUARDIAN) !== mnum.v)) {
+            mmflags |= MM_NOCOUNTBIRTH | MM_ADJACENTOK;
+            mon = makemon(mons[PM_DOPPELGANGER], x, y, mmflags);
+            /* if hero has protection from shape changers, cham field will
+               be NON_PM; otherwise, set form to match the statue */
+            if (mon && ismnum(mon.cham))
+                await newcham_tp(mon, mptr, NO_NC_FLAGS);
+        } else {
+            if (cause === ANIMATE_SPELL)
+                mmflags |= MM_ADJACENTOK;
+            mon = makemon(mptr, x, y, mmflags);
+        }
+    }
+
+    if (!mon) {
+        if (fail_reason)
+            fail_reason.v = unique_corpstat(mons[statue.corpsenm])
+                                ? AS_MON_IS_UNIQUE
+                                : AS_NO_MON;
+        return null;
+    }
+
+    /* if statue has been named, give same name to the monster */
+    if (has_oname(statue) && !unique_corpstat(mon.data))
+        mon = christen_monst(mon, ONAME(statue));
+    /* mimic statue becomes seen mimic; other hiders won't be hidden */
+    if (M_AP_TYPE(mon))
+        seemimic(mon);
+    else
+        mon.mundetected = 0;
+    mon.msleeping = 0;
+    if (cause === ANIMATE_NORMAL || cause === ANIMATE_SHATTER) {
+        /* trap always releases hostile monster */
+        mon.mtame = 0; /* (might be petrified pet tossed onto trap) */
+        mon.mpeaceful = 0;
+        set_malign_ht(mon);
+    }
+
+    comes_to_life = !canspotmon_l(mon) ? "disappears"
+                    : golem_xform ? "turns into flesh"
+                      : (nonliving(mon.data) || is_vampshifter(mon))
+                        ? "moves"
+                        : "comes to life";
+    if (u_at(x, y) || cause === ANIMATE_SPELL) {
+        /* "the|your|Manlobbi's statue [of a wombat]" */
+        shkp = shop_keeper(in_rooms(mon.mx, mon.my, SHOPBASE).charCodeAt(0) || 0);
+        statuename = `${shk_your(statue)}${
+            (cause === ANIMATE_SPELL
+             /* avoid "of a shopkeeper" if it's Manlobbi himself
+                (if carried, it can't be unpaid--hence won't be
+                described as "Manlobbi's statue"--because there
+                wasn't any living shk when statue was picked up) */
+             && (mon !== shkp || statue.where === 'OBJ_INVENT' /* carried() */))
+                ? xname(statue)
+                : "statue"}`;
+        await pline(`${upstart(statuename)} ${comes_to_life}!`);
+    } else if (Hallucination()) { /* They don't know it's a statue */
+        await pline_The(`${rndmonnam(null)} suddenly seems more animated.`);
+    } else if (cause === ANIMATE_SHATTER) {
+        if (cansee(x, y))
+            statuename = `${shk_your(statue)}${xname(statue)}`;
+        else
+            statuename = "a statue";
+        await pline(`Instead of shattering, ${statuename} suddenly ${
+            comes_to_life}!`);
+    } else { /* cause == ANIMATE_NORMAL */
+        /* set_msg_xy(x, y): no message-location interface */
+        await You(`find ${canspotmon_l(mon) ? a_monnam(mon) : "something"
+                  } posing as a statue.`);
+        if (!canspotmon_l(mon) && Blind())
+            map_invisible(x, y);
+        await stop_occupation_l();
+    }
+
+    /* if this isn't caused by a monster using a wand of striking,
+       there might be consequences for the hero */
+    if (!g.context.mon_moving) {
+        /* if statue is owned by a shop, hero will have to pay for it;
+           stolen_value gives a message (about debt or use of credit)
+           which refers to "it" so needs to follow a message describing
+           the object ("the statue comes to life" one above) */
+        if (cause !== ANIMATE_NORMAL && costly_spot(x, y)
+            && ((statue.where === 'OBJ_INVENT') /* carried() */
+                ? statue.unpaid : !statue.no_charge)
+            && (shkp = shop_keeper(in_rooms(x, y, SHOPBASE).charCodeAt(0) || 0)) != null
+            /* avoid charging for Manlobbi's statue of Manlobbi
+               if stone-to-flesh is used on petrified shopkeep */
+            && mon !== shkp)
+            await stolen_value(statue, x, y, !!shkp.mpeaceful, false);
+
+        if (historic) {
+            await You_feel_ht(`guilty ${historic_statue_is_gone}.`);
+            adjalign_ht(-1);
+        }
+    } else {
+        if (historic && cansee(x, y))
+            await You_feel_ht(`regret ${historic_statue_is_gone}.`);
+        /* no alignment penalty */
+    }
+
+    /* transfer any statue contents to monster's inventory */
+    while ((item = (statue.cobj && statue.cobj.length) ? statue.cobj[0] : null) != null) {
+        obj_extract_self_l(item);
+        mpickobj_l(mon, item);
+    }
+    m_dowear(mon, true);
+    /* in case statue is wielded and hero zaps stone-to-flesh at self */
+    if (statue.owornmask)
+        await remove_worn_item(statue, true);
+    /* statue no longer exists */
+    delobj(statue);
+
+    /* avoid hiding under nothing */
+    if (u_at(x, y) && Upolyd() && hides_under(g.youmonst.data)
+        && !OBJ_AT(x, y))
+        u.uundetected = 0;
+
+    if (fail_reason)
+        fail_reason.v = AS_OK;
+    return mon;
+}
+
+// C ref: trap.c activate_statue_trap()
+/*
+ * You've either stepped onto a statue trap's location or you've triggered a
+ * statue trap by searching next to it or by trying to break it with a wand
+ * or pick-axe.
+ */
+export async function activate_statue_trap(trap, x, y, shatter) {
+    let mtmp = null;
+    let otmp = sobj_at(STATUE, x, y);
+    const fail_reason = { v: 0 };
+
+    /*
+     * Try to animate the first valid statue.  Stop the loop when we
+     * actually create something or the failure cause is not because
+     * the mon was unique.
+     */
+    deltrap(trap);
+    while (otmp) {
+        mtmp = await animate_statue(otmp, x, y,
+                                    shatter ? ANIMATE_SHATTER : ANIMATE_NORMAL,
+                                    fail_reason);
+        if (mtmp || fail_reason.v !== AS_MON_IS_UNIQUE)
+            break;
+
+        otmp = nxtobj_here(otmp, STATUE);
+    }
+
+    feel_newsym_dr(x, y);
+    return mtmp;
+}
+
 // C ref: trap.c trapeffect_statue_trap()
 async function trapeffect_statue_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        throw new Error('trapeffect_statue_trap(): activate_statue_trap() not ported yet');
+        await activate_statue_trap(trap, game.u.ux, game.u.uy, false);
     } else {
         /* monsters don't trigger statue traps */
     }
@@ -3642,7 +3885,7 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         await fill_pit(tx, ty); /* thitm may have already destroyed the trap */
         if (mtmp.mhp < 1) /* DEADMONSTER(mtmp) */
             trapkilled = true;
-        if (unconscious_l()) {
+        if (unconscious()) {
             game.multi = -1;
             game.nomovemsg = "The explosion awakens you!";
         }
@@ -3770,9 +4013,6 @@ function launch_drop_spot(obj, x, y) {
         game.launchplace.y = y;
     }
 }
-
-/* C ref: mondata.h throws_rocks() */
-function throws_rocks_l(ptr) { return (ptr.mflags2 & M2_ROCKTHROW_L) !== 0; }
 
 // C ref: trap.c launch_obj()
 /*
@@ -3905,7 +4145,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
         y = (g.bhitpos.y += dy);
 
         if ((mtmp = m_at(x, y)) != null) {
-            if (otyp === BOULDER && throws_rocks_l(mtmp.data)) {
+            if (otyp === BOULDER && throws_rocks(mtmp.data)) {
                 if (rn2(3)) {
                     if (cansee(x, y))
                         await pline(`${Monnam(mtmp)} snatches the boulder.`);
@@ -3945,8 +4185,25 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                 && otyp === BOULDER) {
                 switch (t.ttyp) {
                 case LANDMINE:
-                    if (rn2(10) > 2)
-                        throw new Error('launch_obj(): rolling boulder triggering a land mine (fracture_rock()/scatter()) not ported yet');
+                    if (rn2(10) > 2) {
+                        /* if (cansee(x, y)) set_msg_xy(x, y): accessibility only */
+                        await pline(`KAABLAMM!!!${cansee(x, y)
+                            ? "  The rolling boulder triggers a land mine."
+                            : ""}`);
+                        deltrap(t);
+                        del_engr_at_l(x, y);
+                        place_object(singleobj, x, y);
+                        singleobj.otrapped = 0;
+                        await fracture_rock(singleobj);
+                        await scatter_l(x, y, 4,
+                                        MAY_DESTROY_L | MAY_HIT_L | MAY_FRACTURE_L
+                                            | VIS_EFFECTS_L,
+                                        null);
+                        if (cansee(x, y))
+                            newsym(x, y);
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                    }
                     break;
                 case LEVEL_TELEP:
                 case TELEP_TRAP:
@@ -4265,15 +4522,6 @@ export async function mintrap(mtmp, mintrapflags) {
 }
 
 /* mondata.h */
-function amorphous(ptr) { return (ptr.mflags1 & M1_AMORPHOUS) !== 0; }
-function unsolid(ptr) { return (ptr.mflags1 & M1_UNSOLID) !== 0; }
-function is_clinger(ptr) { return (ptr.mflags1 & M1_CLING) !== 0; }
-function is_whirly(ptr) {
-    return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
-}
-function webmaker(ptr) {
-    return ptr === mons[PM_CAVE_SPIDER] || ptr === mons[PM_GIANT_SPIDER];
-}
 
 // C ref: trap.c m_harmless_trap()
 /* is trap ttmp harmless to monster mtmp? */
@@ -4377,9 +4625,11 @@ function dng_bottom(lev) {
     /* when in the upper half of the quest, don't fall past the
        middle "quest locate" level if hero hasn't been there yet */
     if (In_quest(lev)) {
-        const qlocate_depth = game.dungeon_topology.d_qlocate_level?.dlevel;
-        /* dunlev_reached() is not ported; the quest isn't generated yet */
-        if (qlocate_depth != null && dunlev(lev) < qlocate_depth)
+        const qlocate_depth = game.dungeon_topology.d_qlocate_level.dlevel;
+
+        /* deepest reached < qlocate implies current < qlocate */
+        /* dunlev_reached(lev): svd.dungeons[lev->dnum].dunlev_ureached */
+        if (game.dungeons[lev.dnum].dunlev_ureached < qlocate_depth)
             bottom = qlocate_depth; /* early cut-off */
     } else if (In_hell(lev)) {
         if (!game.u.uevent?.invoked)
@@ -4786,7 +5036,7 @@ export async function could_untrap(verbosely, check_floor) {
 
     if (near_capacity_tr() >= HVY_ENCUMBER_TR) {
         buf = "You're too strained to do that.";
-    } else if ((nohands_tr(ptr) && !webmaker_tr(ptr)) || !ptr.mmove) {
+    } else if ((nohands(ptr) && !webmaker(ptr)) || !ptr.mmove) {
         buf = "And just how do you expect to do that?";
     } else if (game.u.ustuck && sticks_tr(ptr)) {
         buf = `You'll have to let go of ${mon_nam_tr(game.u.ustuck)} first.`;
@@ -4818,11 +5068,6 @@ export async function untrap(force, rx, ry, container) {
         throw new Error('untrap(): untrapping in a direction not ported yet');
     }
     throw new Error('untrap(): autounlock untrap not ported yet');
-}
-/* C ref: mondata.h nohands(), webmaker() */
-function nohands_tr(ptr) { return (ptr.mflags1 & M1_NOHANDS_TR) !== 0; }
-function webmaker_tr(ptr) {
-    return ptr === mons_tr[PM_CAVE_SPIDER_TR] || ptr === mons_tr[PM_GIANT_SPIDER_TR];
 }
 
 // C ref: trap.c back_on_ground()
@@ -4859,11 +5104,6 @@ export async function back_on_ground(rescued) {
     }
     await pline(`${you_are_back} ${preposit} ${surf}.`);
     g.iflags.last_msg = PLNMSG_BACK_ON_GROUND_BG;
-}
-
-/* C ref: mondata.h likes_lava() */
-function likes_lava_dr(ptr) {
-    return ptr === mons_dr[PM_FIRE_ELEMENTAL_DR] || ptr === mons_dr[PM_SALAMANDER_DR];
 }
 
 // C ref: hack.c is_waterwall()
@@ -5119,6 +5359,18 @@ export async function drown() {
     return true;
 }
 
+// C ref: trap.c unconscious()
+export function unconscious() {
+    if (game.multi >= 0)
+        return false;
+
+    return !!(game.u.usleep
+              || (game.nomovemsg
+                  && (game.nomovemsg.startsWith("You awake")
+                      || game.nomovemsg.startsWith("You regain con")
+                      || game.nomovemsg.startsWith("You are consci"))));
+}
+
 const lava_killer = "molten lava";
 
 // C ref: trap.c lava_effects()
@@ -5138,7 +5390,7 @@ export async function lava_effects() {
     }
     feel_newsym_dr(u.ux, u.uy); /* in case Blind, map the lava here */
     await burn_away_slime_dr();
-    if (likes_lava_dr(g.youmonst.data))
+    if (likes_lava(g.youmonst.data))
         return false;
 
     usurvive = Fire_resistance() || (Wwalking() && dmg < u.uhp);

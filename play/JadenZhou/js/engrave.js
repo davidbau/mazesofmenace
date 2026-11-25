@@ -28,7 +28,8 @@ import { pline } from './display.js';
 import { nomul } from './hack.js';
 import { AD_STCK, AD_WRAP, AT_ENGL, AT_HUGS, M1_HIDE, M1_CLING, S_MIMIC,
          MZ_HUGE } from './monsters.js';
-import { dmgtype, is_flyer } from './mondata.js';
+import { dmgtype, is_flyer, is_animal, is_whirly, cantwield,
+         attacktype } from './mondata.js';
 import { set_levltyp } from './mkmaze.js';
 import { sanitize_name } from './bones.js';
 import { exercise } from './attrib.js';
@@ -421,13 +422,7 @@ export function make_grave(x, y, str) {
     return;
 }
 
-/* C ref: mondata.c attacktype(); mondata.h sticks(), is_hider(),
-   is_clinger(), ceiling_hider() */
-function attacktype(ptr, atyp) {
-    for (let i = 0; i < ptr.mattk.length; i++)
-        if (ptr.mattk[i].aatyp === atyp) return true;
-    return false;
-}
+/* C ref: mondata.c sticks(); mondata.h ceiling_hider() */
 export function sticks(ptr) {
     return dmgtype(ptr, AD_STCK)
            || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
@@ -494,14 +489,6 @@ export function u_wipe_engr(cnt) {
         wipe_engr_at(game.u.ux, game.u.uy, cnt, false);
 }
 
-/* C ref: mondata.h is_animal(), is_whirly(), cantwield() */
-function is_animal(ptr) { return (ptr.mflags1 & M1_ANIMAL) !== 0; }
-function is_whirly(ptr) {
-    return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
-}
-function cantwield(ptr) {
-    return ((ptr.mflags1 & M1_NOHANDS) !== 0) || ptr.msize < MZ_SMALL;
-}
 /* C ref: obj.h is_blade(); objclass.h is_boots(); artifact.h is_art() */
 function is_blade(otmp) {
     return otmp.oclass === WEAPON_CLASS

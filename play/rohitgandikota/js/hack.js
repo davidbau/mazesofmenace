@@ -9,6 +9,9 @@ import { float_vs_flight } from './polyself.js';
 import { float_up, float_down, blow_up_landmine, fill_pit, deltrap, seetrap, feeltrap, launch_obj, selftouch } from './trap.js';
 import { incr_itimeout } from './potion.js';
 import { You_cant, pline_dir } from './pline.js';
+import { u_wield_art } from './artifact.js';
+import { ART_STING } from './artilist_data.js';
+import { TT_NONE } from './const.js';
 import { FROMOUTSIDE, FROMFORM, I_SPECIAL, W_ARTI, NO_KILLER_PREFIX, TIMEOUT, A_DEX, Is_airlevel, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, MAX_TYPE, IN_SIGHT, MIGR_RANDOM, ROLL, LAUNCH_KNOWN, xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA, xWATERWALL, TREE, DOOR, D_TRAPPED, MOAT, Is_earthlevel, Is_juiblex_level } from './const.js';
 import { obj_extract_self, useupf } from './invent.js';
 import { place_object } from './mkobj.js';
@@ -923,7 +926,8 @@ export async function losehp(n, knam, k_format) {
         game.u.uhpmax = game.u.uhp;     /* perhaps n was negative */
 
     if (game.u.uhp < 1) {
-        game.killer = { format: k_format, name: knam || '' };
+        game.killer.format = k_format;
+        game.killer.name = knam || '';
         await urgent_pline('You die...');
         await done(DIED);
     } else if (n > 0 && game.u.uhp * 10 < game.u.uhpmax) {
@@ -2550,25 +2554,34 @@ export function rounddiv(x, y) {
 }
 
 
-// src/hack.c:1550 trapmove() — the hero is stuck in a trap and tries to
-// move: TRUE means the move may proceed, FALSE means the struggle consumed
-// it. The bear-trap and pit arms are live; web's Sting shortcut, lava,
-// in-floor and buried-ball need subsystems that are recorded at the exact
-// C position.
+// src/hack.c:1550 trapmove()
 export async function trapmove(x, y, desttrap) {
+    let anchored = false;
+    let predicament, culprit;
+    const steedname = !game.u.usteed ? null : y_monnam(game.u.usteed);
+
     if (!game.u.utrap)
         return true; /* sanity check */
 
+    /* Caller should call reset_utrap() when we set u.utrap to 0. */
     switch (game.u.utraptype) {
     case TT_BEARTRAP:
         if (game.flags?.verbose !== false) {
-            await Norep('You are caught in a bear trap.');
+            predicament = 'caught in a bear trap';
+            if (game.u.usteed)
+                await Norep(`${upstart(steedname)} is ${predicament}.`);
+            else
+                await Norep(`You are ${predicament}.`);
         }
         /* [why does diagonal movement give quickest escape?] */
         if ((game.u.dx && game.u.dy) || !rn2(5))
             game.u.utrap--;
         if (!game.u.utrap) {
-            await You('finally wriggle free.');
+            /* wriggle_free, with anchored false in the bear-trap arm */
+            if (game.u.usteed)
+                await pline(`${upstart(steedname)} finally lurches free.`);
+            else
+                await You('finally wriggle free.');
         }
         break;
     case TT_PIT: {
@@ -2580,32 +2593,50 @@ export async function trapmove(x, y, desttrap) {
         break;
     }
     case TT_WEB:
-        /* u_wield_art(ART_STING) cuts free; no artifact exists yet */
+        if (u_wield_art(ART_STING)) {
+            /* escape trap but don't move and don't destroy it */
+            game.u.utrap = 0; /* caller will call reset_utrap() */
+            await pline('Sting cuts through the web!');
+            break;
+        }
         if (--game.u.utrap) {
-            if (game.flags?.verbose !== false)
-                await Norep('You are stuck to the web.');
+            if (game.flags?.verbose !== false) {
+                predicament = 'stuck to the web';
+                if (game.u.usteed)
+                    await Norep(`${upstart(steedname)} is ${predicament}.`);
+                else
+                    await Norep(`You are ${predicament}.`);
+            }
         } else {
-            await You('disentangle yourself.');
+            if (game.u.usteed)
+                await pline(`${upstart(steedname)} breaks out of the web.`);
+            else
+                await You('disentangle yourself.');
         }
         break;
     case TT_LAVA:
-        if (game.flags?.verbose !== false)
-            await Norep('You are stuck in the lava.');
+        if (game.flags?.verbose !== false) {
+            predicament = 'stuck in the lava';
+            if (game.u.usteed)
+                await Norep(`${upstart(steedname)} is ${predicament}.`);
+            else
+                await Norep(`You are ${predicament}.`);
+        }
         if (!is_lava(x, y)) {
             game.u.utrap--;
             if ((game.u.utrap & 0xff) === 0) {
                 game.u.utrap = 0;
-                await You(`pull yourself to the edge of the ${
-                    hliquid('lava')}.`);
+                if (game.u.usteed)
+                    await You(`lead ${steedname} to the edge of the ${hliquid('lava')}.`);
+                else
+                    await You(`pull yourself to the edge of the ${hliquid('lava')}.`);
             }
         }
         game.u.umoved = true;
         break;
     case TT_INFLOOR:
     case TT_BURIEDBALL: {
-        const steedname = !game.u.usteed ? null : y_monnam(game.u.usteed);
-        let predicament, culprit;
-        const anchored = (game.u.utraptype === TT_BURIEDBALL);
+        anchored = (game.u.utraptype === TT_BURIEDBALL);
         if (anchored) {
             const cc = { x: game.u.ux, y: game.u.uy };
             /* can move normally within radius 1 of buried ball */
@@ -2650,7 +2681,11 @@ export async function trapmove(x, y, desttrap) {
         }
         break;
     }
+    case TT_NONE:
+        await impossible('trapmove: trapped in nothing?');
+        break;
     default:
+        await impossible(`trapmove: stuck in unknown trap? (${game.u.utraptype})`);
         break;
     }
     return false;

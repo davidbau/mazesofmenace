@@ -2304,9 +2304,14 @@ export async function mondied_dm(mdef, mondead_only = false) {
     mdef._dyingInGrid = false; /* remove_monster precedes newsym */
     if (mdef.wormno)
         remove_worm(mdef);
-    /* C mon.c:2722 mon_leaving_level(): newsym only `if (onmap)`; a steed is never
-     * placed on the map (mon.c:2534), so the hero's square is not repainted here. */
-    if (mdef !== game.u?.usteed) newsym(deadMx, deadMy);
+    /* C mon.c:2717-2725 mon_leaving_level(): unhide mimic and newsym only `if (onmap)`;
+     * a steed is never placed on the map (mon.c:2534), so the hero's square is not repainted here. */
+    if (mdef !== game.u?.usteed) {
+        mdef.mundetected = 0;
+        if (((mdef.m_ap_type | 0) & 7) !== 0 && ((mdef.m_ap_type | 0) & 7) !== 3)
+            seemimic(mdef);
+        newsym(deadMx, deadMy);
+    }
 
     if (mdef.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mdef);

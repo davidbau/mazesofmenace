@@ -26,7 +26,8 @@ import { dorecover } from './restore.js';
 import { GameDisplay } from './game_display.js';
 import { InMemoryStorage } from './storage.js';
 import { objects, OBJ_NAME, SLIME_MOLD } from './objects.js';
-import { LAST_PROP } from './const.js';
+import { LAST_PROP, PRIMARYSET } from './const.js';
+import { init_ov_primary_symbols, parsesymbols } from './symbols.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -161,6 +162,16 @@ export class NethackGame {
                 g.iflags.num_pad_mode = b.num_pad_mode;
                 reset_commands(false);
             }
+        }
+        /* C ref: options.c initoptions_init() -- init_ov_primary_symbols(),
+           then the config file's SYMBOLS= lines: cfgfiles.c
+           cnf_line_SYMBOLS() -- parsesymbols(bufp, PRIMARYSET), then
+           switch_symbols(TRUE) (display.js reads the overrides when it
+           shows a glyph) */
+        init_ov_primary_symbols();
+        for (const s of opts.symbols || []) {
+            if (!parsesymbols(s, PRIMARYSET))
+                throw new Error("cnf_line_SYMBOLS(): config_error_add(\"Error in SYMBOLS definition '%s'\") not ported yet");
         }
         /* C ref: files.c configfile -- the unix default ".nethackrc"
            in the home directory */

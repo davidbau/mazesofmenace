@@ -29,12 +29,16 @@ import {
     PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VAMPIRE_BAT, PM_FOG_CLOUD, PM_WOLF,
     LOW_PM, NUMMONS,
 } from './monsters.js';
-import {
-    set_mon_data, is_vampire, resists_drli, dmgtype, dmgtype_fromattack,
-    is_bat, perceives, telepathic, infravision, pm_invisible, can_teleport,
-    control_teleport, is_floater, is_flyer, is_swimmer, passes_walls,
-    regenerates, haseyes,
-} from './mondata.js';
+import { set_mon_data, is_vampire, resists_drli, dmgtype, dmgtype_fromattack,
+         is_bat, perceives, telepathic, infravision, pm_invisible,
+         can_teleport, control_teleport, is_floater, is_flyer, is_swimmer,
+         passes_walls, regenerates, haseyes, nohands, verysmall, bigmonst,
+         humanoid, slithy, amorphous, unsolid, noncorporeal, hides_under,
+         type_is_pname, likes_gems, is_whirly, has_head, is_hider, polyok,
+         strongmonst, is_giant, is_male, is_female, is_neuter, cantwield,
+         could_twoweap, flaming, webmaker, likes_lava, is_unicorn,
+         is_mind_flayer, is_placeholder, can_breathe, emits_light, attacktype,
+         sliparm, breakarm, num_horns } from './mondata.js';
 import * as M from './monsters.js';
 import * as O from './objects.js';
 import {
@@ -59,11 +63,11 @@ import { newuhs } from './eat.js';
 import { max_rank_sz } from './botl.js';
 import { losehp, selftouch, set_utrap, reset_utrap } from './trap.js';
 import { tty_getlin } from './wintty.js';
-import { mungspaces } from './hacklib.js';
+import { mungspaces, plur } from './hacklib.js';
 import { name_to_mon, your_race, is_vampshifter, is_were, is_orc, is_elf,
          is_dwarf, is_gnome, is_undead, poly_when_stoned,
          little_to_big } from './mondata.js';
-import { pmname, Some_Monnam, Monnam } from './do_name.js';
+import { pmname, Some_Monnam, Monnam, mon_nam, Mgender } from './do_name.js';
 import { an, the_unique_pm, vtense, yname, makeplural } from './objnam.js';
 import { the, simpleonames, surface, cloak_simple_name,
          helm_simple_name } from './iactions.js';
@@ -290,104 +294,9 @@ function polysense() {
    drop_weapon() and their helpers                                    */
 
 /* C ref: mondata.h predicates used below */
-function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
-function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
-function bigmonst(ptr) { return ptr.msize >= M.MZ_LARGE; }
-function humanoid(ptr) { return (ptr.mflags1 & M.M1_HUMANOID) !== 0; }
-function slithy(ptr) { return (ptr.mflags1 & M.M1_SLITHY) !== 0; }
-function has_head(ptr) { return (ptr.mflags1 & M.M1_NOHEAD) === 0; }
-function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
-function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
-function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
-function is_hider(ptr) { return (ptr.mflags1 & M.M1_HIDE) !== 0; }
 export function lays_eggs(ptr) { return (ptr.mflags1 & M.M1_OVIPAROUS) !== 0; }
-function polyok(ptr) { return (ptr.mflags2 & M.M2_NOPOLY) === 0; }
-function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
-function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
-function is_male(ptr) { return (ptr.mflags2 & M.M2_MALE) !== 0; }
-function is_female(ptr) { return (ptr.mflags2 & M.M2_FEMALE) !== 0; }
-function is_neuter(ptr) { return (ptr.mflags2 & M.M2_NEUTER) !== 0; }
-function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
-function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
-function cantwield(ptr) { return nohands(ptr) || verysmall(ptr); }
-function could_twoweap(ptr) {
-    return ((ptr.mattk[0].aatyp === M.AT_WEAP ? 1 : 0)
-            + (ptr.mattk[1].aatyp === M.AT_WEAP ? 1 : 0)
-            + (ptr.mattk[2].aatyp === M.AT_WEAP ? 1 : 0)) > 1;
-}
-function is_whirly(ptr) {
-    return ptr.mlet === M.S_VORTEX || ptr === mons[M.PM_AIR_ELEMENTAL];
-}
-function flaming(ptr) {
-    return ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
-        || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
-}
-function webmaker(ptr) {
-    return ptr === mons[M.PM_CAVE_SPIDER] || ptr === mons[M.PM_GIANT_SPIDER];
-}
-function likes_lava(ptr) {
-    return ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
-}
-function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
-function is_mind_flayer(ptr) {
-    return ptr === mons[M.PM_MIND_FLAYER]
-        || ptr === mons[M.PM_MASTER_MIND_FLAYER];
-}
-function is_placeholder(ptr) {
-    return ptr === mons[M.PM_ORC] || ptr === mons[M.PM_GIANT]
-        || ptr === mons[M.PM_ELF] || ptr === mons[M.PM_HUMAN];
-}
-function attacktype(ptr, atyp) {
-    return ptr.mattk.some(a => a.aatyp === atyp);
-}
-function can_breathe(ptr) { return attacktype(ptr, M.AT_BREA); }
-// C ref: mondata.h emits_light()
-function emits_light(ptr) {
-    return (ptr.mlet === M.S_LIGHT || ptr === mons[M.PM_FLAMING_SPHERE]
-            || ptr === mons[M.PM_SHOCKING_SPHERE]
-            || ptr === mons[M.PM_BABY_GOLD_DRAGON]
-            || ptr === mons[M.PM_FIRE_VORTEX])
-        ? 1
-        : (ptr === mons[M.PM_FIRE_ELEMENTAL]
-           || ptr === mons[M.PM_GOLD_DRAGON]) ? 1 : 0;
-}
-// C ref: mondata.c sliparm()
 /* creature will slide out of armor */
-function sliparm(ptr) {
-    return (is_whirly(ptr) || ptr.msize <= M.MZ_SMALL
-            || noncorporeal(ptr));
-}
-// C ref: mondata.c breakarm()
 /* creature will break out of armor */
-function breakarm(ptr) {
-    if (sliparm(ptr))
-        return false;
-
-    return (bigmonst(ptr)
-            || (ptr.msize > M.MZ_SMALL && !humanoid(ptr))
-            /* special cases of humanoids that cannot wear suits */
-            || ptr === mons[M.PM_MARILITH]
-            || ptr === mons[M.PM_WINGED_GARGOYLE]);
-}
-// C ref: mondata.c num_horns()
-function num_horns(ptr) {
-    switch (mons.indexOf(ptr)) { /* monsndx(ptr) */
-    case M.PM_HORNED_DEVIL: /* ? "more than one" */
-    case M.PM_MINOTAUR:
-    case M.PM_ASMODEUS:
-    case M.PM_BALROG:
-        return 2;
-    case M.PM_WHITE_UNICORN:
-    case M.PM_GRAY_UNICORN:
-    case M.PM_BLACK_UNICORN:
-    case M.PM_KI_RIN:
-        return 1;
-    default:
-        break;
-    }
-    return 0;
-}
 export function has_horns(ptr) { return num_horns(ptr) > 0; }
 /* C ref: obj.h is_flimsy(), is_sword(), WrappingAllowed(),
    Is_dragon_armor() */
@@ -417,7 +326,6 @@ function uprop_on(p) {
     const pr = game.u.uprops[p];
     return !!(pr.intrinsic || pr.extrinsic);
 }
-function plur(x) { return x === 1 ? "" : "s"; }
 const no_longer_petrify_resistant =
     "No longer petrify-resistant, you";
 

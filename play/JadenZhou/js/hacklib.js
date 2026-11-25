@@ -155,6 +155,21 @@ export function highc(c) {
     return ('a' <= c && c <= 'z') ? String.fromCharCode(c.charCodeAt(0) & ~0o40) : c;
 }
 
+// C ref: hacklib.c upstart()
+/* capitalize first letter of string */
+export function upstart(s) {
+    return s ? highc(s[0]) + s.slice(1) : s;
+}
+
+// C ref: hack.h plur()
+export function plur(x) { return (x === 1) ? "" : "s"; }
+
+// C ref: hacklib.c sgn()
+/* return the sign of a number: -1, 0, or 1 */
+export function sgn(n) {
+    return (n < 0) ? -1 : (n > 0) ? 1 : 0; /* C: (n < 0) ? -1 : (n != 0) */
+}
+
 // C ref: hacklib.c trimspaces()
 /* remove leading and trailing whitespace */
 export function trimspaces(txt) {

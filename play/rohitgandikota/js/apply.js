@@ -91,7 +91,7 @@ import { Amonnam, Monnam, a_monnam, hcolor, l_monnam, mon_nam,
          noit_mon_nam, pmname, upstart, x_monnam, y_monnam, m_monnam }
     from './do_name.js';
 import { defsyms } from './drawing_data.js';
-import { bimanual, carried, Is_candle, is_boots, is_gloves,
+import { bimanual, carried, Is_candle, is_boots, is_gloves, ignitable, age_is_relative,
          is_flimsy } from './obj.js';
 import { clear_splitobjs, mkobj, mksobj, place_object, hornoplenty, set_bknown,
          splitobj, set_tin_variety, unbless } from './mkobj.js';
@@ -1661,6 +1661,41 @@ export async function splash_lit(obj) {
         obj.age -= (obj.age > 200) ? 100 : Math.trunc(obj.age / 2);
     }
     return result;
+}
+
+// src/apply.c:1577 catch_lit()
+export async function catch_lit(obj) {
+    const cc = { x: 0, y: 0 };
+    if (obj.lamplit || !ignitable(obj) || !get_obj_location(obj, cc, 0))
+        return false;
+    if (((obj.otyp === ONAMES.MAGIC_LAMP
+          || obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) && obj.spe === 0)
+        || (age_is_relative(obj) && obj.age === 0)
+        || obj.otyp === ONAMES.BRASS_LANTERN)
+        return false;
+    if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION && obj.cursed)
+        return false;
+    if ((obj.otyp === ONAMES.OIL_LAMP || obj.otyp === ONAMES.MAGIC_LAMP)
+        && obj.cursed && !rn2(2))
+        return false;
+
+    if (obj.where === OBJ_INVENT || cansee(cc.x, cc.y)) {
+        if (obj.where === OBJ_FLOOR && cansee(cc.x, cc.y))
+            set_msg_xy(cc.x, cc.y);
+        await pline(`${Yname2(obj)} ${otense(obj, Blind() ? 'feel' : 'catch')} ${
+            Blind() ? 'warm.' : 'light!'}`);
+    }
+    if (obj.otyp === ONAMES.POT_OIL)
+        makeknown(obj.otyp);
+    if (carried(obj) && obj.unpaid && costly_spot(game.u.ux, game.u.uy)) {
+        await check_unpaid(obj);
+        // SetVoice is compiled out in the reference recorder.
+        await verbalize(`That's in addition to the cost of ${yname(obj)} ${
+            obj.quan === 1 ? 'itself' : 'themselves'}, of course.`);
+        await bill_dummy_object(obj);
+    }
+    await begin_burn(obj, false);
+    return true;
 }
 
 // src/apply.c:4151 apply_ok() — the getobj filter for 'a'.

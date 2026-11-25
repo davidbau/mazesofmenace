@@ -540,8 +540,7 @@ export async function wiz_light_sources() {
     let buf;
     /* late-bound: js/tty/wintty.js evaluates after this module */
     const { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
-            tty_display_nhwindow, tty_next_page } = await import('./tty/wintty.js');
-    const { xwaitforspace } = await import('./tty/getline.js');
+            tty_display_nhwindow } = await import('./tty/wintty.js');
 
     const win = tty_create_nhwindow(NHW_MENU); /* corner text window */
 
@@ -576,9 +575,6 @@ export async function wiz_light_sources() {
 
     /* display_nhwindow(win, FALSE) */
     await tty_display_nhwindow(win);
-    await xwaitforspace(' \r\n\x1b');
-    while (game.morc !== '\x1b' && tty_next_page(win))
-        await xwaitforspace(' \r\n\x1b');
     await tty_destroy_nhwindow(win);
 
     return ECMD_OK;

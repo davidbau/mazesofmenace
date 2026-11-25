@@ -27,15 +27,14 @@ import { artiname } from './artifact.js';
 import { genders } from './role.js';
 import { mons, M2_PNAME, MS_LEADER, MS_NEMESIS, MS_GUARDIAN } from './monsters.js';
 import { highc, lowc, s_suffix, strncmpi, strcmpi, strstri } from './hacklib.js';
+import { type_is_pname } from './mondata.js';
+import { Blind } from './youprop.js';
 
 const QTEXT_FILE = 'quest.lua';
 const BUFSZ = 256;
 
 // C ref: you.h MIN_QUEST_LEVEL
 const MIN_QUEST_LEVEL = 14;
-
-// C ref: mondata.h type_is_pname()
-function type_is_pname(ptr) { return (ptr.mflags2 & M2_PNAME) !== 0; }
 
 // C ref: questpgr.c quest_info()
 export function quest_info(typ) {
@@ -294,7 +293,7 @@ function convert_arg(c) {
         str = "lawful";
         break;
     case 'x':
-        str = g.Blind ? "sense" : "see";
+        str = Blind() ? "sense" : "see";
         break;
     case 'Z':
         str = g.dungeons[0].dname;

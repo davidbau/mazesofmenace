@@ -32,9 +32,7 @@ import { splitobj, unsplitobj } from './mkobj.js';
 import { simpleonames } from './iactions.js';
 import { vtense, otense } from './objnam.js';
 import { inv_cnt } from './hack.js';
-import { highc, s_suffix as s_suffix_wd } from './hacklib.js';
-import { get_obj_location as get_obj_location_wd, costly_spot as costly_spot_wd } from './shk.js';
-import { y_monnam as y_monnam_wd } from './do_name.js';
+import { Shk_Your } from './shk.js';
 import { tty_yn_function } from './wintty.js';
 import { LENSES, ARMOR_CLASS, ARM_GLOVES, ARM_BOOTS } from './objects.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT, GETOBJ_ALLOWCNT,
@@ -50,6 +48,7 @@ import { arti_light_description } from './light.js';
 import { begin_burn, end_burn } from './timeout.js';
 import { Tobjnam } from './objnam.js';
 import { Blind } from './youprop.js';
+import { nohands, verysmall, could_twoweap, cantwield } from './mondata.js';
 
 // C ref: obj.h is_weptool()
 export function is_weptool(o) {
@@ -123,14 +122,6 @@ export function setuswapwep(obj) {
     setworn(obj, W_SWAPWEP);
 }
 
-/* C ref: mondata.h could_twoweap() */
-function could_twoweap(ptr) {
-    let n = 0;
-    for (let i = 0; i < 3; i++)
-        if (ptr.mattk[i] && ptr.mattk[i].aatyp === AT_WEAP)
-            n++;
-    return n > 1;
-}
 /* C ref: wield.c TWOWEAPOK() */
 function TWOWEAPOK(obj) {
     return (obj.oclass === WEAPON_CLASS)
@@ -241,13 +232,6 @@ export function uqwepgone() {
         /* update_inventory(): no perm_invent */
     }
 }
-
-/* C ref: mondata.h cantwield() */
-function cantwield(ptr) {
-    return (nohands(ptr) || verysmall(ptr));
-}
-function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
-function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
 
 // C ref: artifact.c retouch_object() (ported in artifact.js)
 export { retouch_object };
@@ -534,24 +518,6 @@ function pair_of(o) {
                     || objects[o.otyp].oc_armcat === ARM_BOOTS)));
 }
 
-
-// C ref: shk.c Shk_Your()/shk_your() -- the hero's own (unpaid-free,
-// carried) objects
-export function Shk_Your(obj) {
-    let buf;
-    const loc = get_obj_location_wd(obj, 0);
-    if (obj.otyp === CORPSE)
-        throw new Error('shk_your(): corpse ownership not ported yet');
-    else if (loc && (obj.unpaid || (obj.where === 'OBJ_FLOOR' && !obj.no_charge
-                                    && costly_spot_wd(loc[0], loc[1]))))
-        throw new Error('shk_your(): shk_owns() not ported yet');
-    else if (obj.where === 'OBJ_MINVENT') /* mon_owns() */
-        buf = s_suffix_wd(y_monnam_wd(obj.ocarry));
-    else
-        buf = (obj.where === 'OBJ_INVENT') ? "your" : "the"; /* the_your[carried(obj)] */
-    buf += " ";
-    return highc(buf[0]) + buf.slice(1);
-}
 
 // C ref: wield.c finish_splitting()
 async function finish_splitting(obj) {

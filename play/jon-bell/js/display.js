@@ -1647,6 +1647,14 @@ export function pager_glyph_prefix(ch, dec, x, y) {
         }
     }
     let glyph = dec ? `\x0e${ch}\x0f` : ch;
+    /* An IBM-handled symbol byte keeps its high bit in the prefix
+     * (pager.c:1270, display.c:2653); g_putch paints it with that bit stripped
+     * (patch 006 hook), and a later recall does not (topl_recall_paint).  Tag
+     * the lead with a no-op shift-in pair so the recall can tell. */
+    const _tty = !dec && ch && ch.charCodeAt(0) >= 0x20 && isok(x, y)
+        ? game.level?.at(x, y)?.disp_ttychar : null;
+    if (((typeof _tty === 'number' ? _tty : _tty?.charCodeAt?.(0)) ?? 0) >= 0x80)
+        glyph = `\x0f${ch}\x0f`;
     if (ch && ch.charCodeAt(0) < 0x20 && !dec) {
         glyph = ' ';
         let style = '';
@@ -1664,6 +1672,34 @@ export function pager_glyph_prefix(ch, dec, x, y) {
         }
     }
     return /^ +$/.test(glyph) ? `\x1b[${glyph.length + 8}C` : `${glyph}\x1b[8C`;
+}
+/* A remembered topline whose first byte has its high bit set: the pager.c:1271
+ * farlook prefix of a DEC line-drawing glyph (kept as \x0e<ch>\x0f;
+ * DECgraphics symbols are 0x80|ch) or of an IBM-handled symbol byte (kept as
+ * \x0f<ch>\x0f, pager_glyph_prefix). */
+const _RECALL_DEC_LEAD = /^(?:\x0e[\s\S]\x0f|\x0f[\s\S]\x0f)/;
+export function topl_recall_paint(text, rowCleared = false) {
+    const m = _RECALL_DEC_LEAD.exec(String(text ?? ''));
+    if (!m) return text;
+    const rest = text.slice(m[0].length);
+    const cell = rowCleared ? null
+        : _tty_row_cells(String(game._screen_output || '').split('\n')[0])[0];
+    if (cell && cell.paint !== ' ') return cell.paint + rest;
+    const run = /^\x1b\[(\d+)C/.exec(rest);
+    return run ? `\x1b[${+run[1] + 1}C${rest.slice(run[0].length)}` : `\x1b[1C${rest}`;
+}
+/* The same remembered line as tty_putstr() receives it in a message-history
+ * window (topl.c:33-38,66-70,84-92): C's bytes, the pager pad's blank run as
+ * spaces.  A high-bit lead byte comes back as '\u0001' — process_text_window
+ * (wintty.c:1817-1823) g_putch()es it at linestart after pre-incrementing
+ * curx, so patch 006's g_putch hook paints it one column right, where the
+ * next character overwrites it; its own column stays as cl_end left it.
+ * Callers turn '\u0001' into a blank once compress_str()/line breaking ran. */
+export function topl_history_window_text(text) {
+    let s = String(text ?? '');
+    const m = _RECALL_DEC_LEAD.exec(s);
+    if (m) s = '\u0001' + s.slice(m[0].length);
+    return s.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n));
 }
 /* dat/symbols "start: RogueIBM" (Handling: IBM, no Color): same CP437 terrain
  * bytes as RogueEpyx (walls \xba..\xcc, S_room \xfa, S_corr \xb1, doors \xce,
@@ -8687,7 +8723,7 @@ export function tty_menu_overlay(frame, background, offx) {
         // cursor is one-based, so dismissal also erases column offx - 1
         // and one row below the menu (cw->maxrow + 1).
         for (let r = 0; r <= height && r < background.length; r++)
-            background[r] = background[r].slice(0, Math.max(0, offx - 1));
+            background[r] = (background[r] || '').slice(0, Math.max(0, offx - 1));
     } };
 }
 

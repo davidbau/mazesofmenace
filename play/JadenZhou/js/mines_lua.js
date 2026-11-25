@@ -9,15 +9,7 @@
 
 import { withRngCaller } from './rng.js';
 import { lua_band } from './nhlua.js';
-
-// math.random called from a script's main chunk: the recorder tags the
-// roll with nhlib's math.random line (8 for one argument, 10 for two) and
-// the chunk, which Lua cannot name ("lua"), at the calling line.
-function chunk_random(G, file, line, ...args) {
-    return withRngCaller(
-        `random src=nhlib.lua:${args.length === 1 ? 8 : 10} parent=lua(${file}:${line})`,
-        () => G.math.random(...args));
-}
+import { chunk_random } from './nhlib_lua.js';
 
 // C ref: dat/minefill.lua
 //	The "fill" level for the mines.

@@ -63,11 +63,15 @@ import { oname } from './do_name.js';
 import { ONAME_RANDOM } from './const.js';
 import { get_shop_item } from './shknam.js';
 import { mksobj, mkobj_at, curse, bless, next_ident, set_corpsenm } from './mkobj.js';
-import {
-    monsndx, set_mon_data, is_elf, is_dwarf, is_demon, is_male, is_female,
-    is_neuter, is_undead, is_swimmer, is_floater, passes_walls, haseyes,
-    is_bat, little_to_big, pm_invisible, emits_light,
-} from './mondata.js';
+import { monsndx, set_mon_data, is_elf, is_dwarf, is_demon, is_male, is_female,
+         is_neuter, is_undead, is_swimmer, is_floater, passes_walls, haseyes,
+         is_bat, little_to_big, pm_invisible, emits_light, throws_rocks,
+         likes_gems, is_animal, mindless, humanoid, amorphous, unsolid,
+         noncorporeal, is_whirly, is_mercenary, strongmonst, extra_nasty,
+         is_giant, likes_gold, always_hostile, is_minion, unique_corpstat,
+         is_armed, is_lord, is_prince, is_rider, is_dlord, is_dprince,
+         is_unicorn, is_mplayer, is_placeholder, attacktype,
+         is_vampshifter } from './mondata.js';
 import { new_light_source } from './light.js';
 import { LS_MONSTER } from './const.js';
 import { deliver_obj_to_mon } from './dokick.js';
@@ -79,7 +83,7 @@ import { enexto_core, enexto_gpflags } from './teleport.js';
 import { newedog } from './dog.js';
 import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
          DETECT_MONSTERS, PROT_FROM_SHAPE_CHANGERS } from './const.js';
-import { dist2 } from './hacklib.js';
+import { dist2, sgn } from './hacklib.js';
 import { an, vtense } from './objnam.js';
 import { newsym, pline, canseemon, You_see, vobj_at } from './display.js';
 import { does_block, block_point, cansee, couldsee } from './vision.js';
@@ -87,6 +91,8 @@ import { Resists_Elem } from './mondata.js';
 import { PIT, SPIKED_PIT, STONE_RES, PLNMSG_HIDE_UNDER, Is_juiblex_level,
          SEE_INVIS } from './const.js';
 import { set_apparxy, dochugw } from './monmove.js';
+import { is_exclusion_zone } from './mklev.js';
+import { LR_MONGEN } from './const.js';
 import { noteleport_level } from './teleport.js';
 import { newcham_sync } from './mon.js';
 import { mpickobj } from './steal.js';
@@ -122,55 +128,17 @@ const W_ARMH = 0x00000004;
 const W_SADDLE = 0x00100000;
 
 // ---- mondata.h predicates used on this path ----
-// C ref: mondata.c attacktype()
-function attacktype(ptr, atyp) {
-    for (let i = 0; i < ptr.mattk.length; i++)
-        if (ptr.mattk[i].aatyp === atyp) return true;
-    return false;
-}
-export function is_armed(ptr) { return attacktype(ptr, M.AT_WEAP); }
-function is_mercenary(ptr) { return (ptr.mflags2 & M.M2_MERC) !== 0; }
-function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
-export function is_lord(ptr) { return (ptr.mflags2 & M.M2_LORD) !== 0; }
-export function is_prince(ptr) { return (ptr.mflags2 & M.M2_PRINCE) !== 0; }
-function extra_nasty(ptr) { return (ptr.mflags2 & M.M2_NASTY) !== 0; }
-function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
-function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
-function likes_gold(ptr) { return (ptr.mflags2 & M.M2_GREEDY) !== 0; }
-function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
 export function is_domestic(ptr) { return (ptr.mflags2 & M.M2_DOMESTIC) !== 0; }
 function always_peaceful(ptr) { return (ptr.mflags2 & M.M2_PEACEFUL) !== 0; }
-function always_hostile(ptr) { return (ptr.mflags2 & M.M2_HOSTILE) !== 0; }
 function race_peaceful(ptr) { return (ptr.mflags2 & game.urace.lovemask) !== 0; }
 function race_hostile(ptr) { return (ptr.mflags2 & game.urace.hatemask) !== 0; }
-function is_minion(ptr) { return (ptr.mflags2 & M.M2_MINION) !== 0; }
-function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
-function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
-function humanoid(ptr) { return (ptr.mflags1 & M.M1_HUMANOID) !== 0; }
-function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
-function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
-function is_whirly(ptr) {
-    return ptr.mlet === M.S_VORTEX || ptr === mons[M.PM_AIR_ELEMENTAL];
-}
 export function is_golem(ptr) { return ptr.mlet === M.S_GOLEM; }
-function is_rider(ptr) {
-    return ptr === mons[M.PM_DEATH] || ptr === mons[M.PM_FAMINE]
-           || ptr === mons[M.PM_PESTILENCE];
-}
-function is_dlord(ptr) { return is_demon(ptr) && is_lord(ptr); }
-function is_dprince(ptr) { return is_demon(ptr) && is_prince(ptr); }
 function is_ndemon(ptr) {
     return is_demon(ptr) && !is_dlord(ptr) && !is_dprince(ptr);
 }
-function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
 export function weirdnonliving(ptr) { return is_golem(ptr) || ptr.mlet === M.S_VORTEX; }
 export function nonliving(ptr) {
     return is_undead(ptr) || ptr === mons[M.PM_MANES] || weirdnonliving(ptr);
-}
-function unique_corpstat(ptr) { return (ptr.geno & G_UNIQ) !== 0; }
-export function is_mplayer(ptr) {
-    return ptr.pmidx >= M.PM_ARCHEOLOGIST && ptr.pmidx <= M.PM_WIZARD;
 }
 // C ref: makemon.c is_home_elemental()
 export function is_home_elemental(ptr) {
@@ -313,10 +281,6 @@ export function sengr_at(s, x, y, strict) {
     return null;
 }
 const HEADSTONE = 6; /* C ref: engrave.h */
-// C ref: region.c is_exclusion_zone() -- no exclusion zones are set up on
-// the levels generated so far
-function is_exclusion_zone(type, x, y) { return false; }
-const LR_MONGEN = 2;
 
 // C ref: teleport.c goodpos_onscary()
 function goodpos_onscary(x, y, mptr) {
@@ -2520,11 +2484,6 @@ export function rnd_offensive_item(mtmp) {
     return 0;
 }
 
-// C ref: mondata.h is_vampshifter()
-function is_vampshifter_mon(mon) {
-    return mon.cham === M.PM_VAMPIRE || mon.cham === M.PM_VAMPIRE_LEADER
-           || mon.cham === M.PM_VLAD_THE_IMPALER;
-}
 // C ref: youprop.h See_invisible -- intrinsics aren't tracked yet
 
 // C ref: muse.c rnd_misc_item()
@@ -2542,7 +2501,7 @@ export function rnd_misc_item(mtmp) {
     if (difficulty < 6 && !rn2(30))
         return rn2(6) ? O.POT_POLYMORPH : O.WAN_POLYMORPH;
 
-    if (!rn2(40) && !nonliving(pm) && !is_vampshifter_mon(mtmp))
+    if (!rn2(40) && !nonliving(pm) && !is_vampshifter(mtmp))
         return O.AMULET_OF_LIFE_SAVING;
 
     switch (rn2(3)) {
@@ -2571,15 +2530,8 @@ function monmin_difficulty(levdif) { return Math.trunc(levdif / 6); }
 function montoostrong(monindx, lev) { return mons[monindx].difficulty > lev; }
 function montooweak(monindx, lev) { return mons[monindx].difficulty < lev; }
 
-// C ref: hacklib.c sgn()
-function sgn(n) { return (n < 0) ? -1 : (n > 0) ? 1 : 0; }
-
-// C ref: mondata.h pm_resistance(), is_placeholder()
+// C ref: mondata.h pm_resistance()
 export function pm_resistance(ptr, typ) { return (ptr.mresists & typ) !== 0; }
-export function is_placeholder(ptr) {
-    return (ptr === mons[PM_ORC] || ptr === mons[PM_GIANT]
-            || ptr === mons[PM_ELF] || ptr === mons[PM_HUMAN]);
-}
 
 // C ref: dungeon.h Is_rogue_level(); In_endgame()
 function Is_rogue_level(lev) {

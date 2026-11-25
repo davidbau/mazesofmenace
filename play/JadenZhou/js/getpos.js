@@ -16,7 +16,7 @@ import { invocation_pos } from './mklev.js';
 import { t_at } from './trap.js';
 import { VIBRATING_SQUARE } from './const.js';
 import { tty_putstr, tty_clear_nhwindow, custompline } from './wintty.js';
-import { visctrl } from './hacklib.js';
+import { visctrl, sgn } from './hacklib.js';
 import { handle_tip, is_valid_travelpt } from './hack.js';
 import { movecmd_mode, MV_WALK, MV_RUSH, MV_RUN, cmd_from_func,
          readchar_poskey as cmd_readchar_poskey } from './cmd.js';
@@ -36,8 +36,6 @@ const HiliteNormalMap = 0, HiliteGoodposSymbol = 1, HiliteBackground = 2;
 
 /* C ref: lookat.h LOOK_TRADITIONAL &c */
 const LOOK_TRADITIONAL = 0, LOOK_QUICK = 1, LOOK_ONCE = 2, LOOK_VERBOSE = 3;
-
-function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
 
 /* C ref: defsym.h PCHAR()/PCHAR2() -- defsyms[].sym, S_stone .. S_expl_br */
 const DEFSYM_CHARS = [

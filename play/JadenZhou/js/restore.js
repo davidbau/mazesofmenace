@@ -36,7 +36,7 @@ import { stairway_at } from './display.js';
 import { place_monster, pm_to_cham, hideunder } from './makemon.js';
 import { rest_worm, place_wsegs } from './worm.js';
 import { set_ustuck } from './uhitm.js';
-import { monsndx } from './mondata.js';
+import { monsndx, is_unicorn } from './mondata.js';
 import { rnd } from './rng.js';
 import { hide_monst } from './mon.js';
 import { mon_catchup_elapsed_time } from './dog.js';
@@ -74,11 +74,6 @@ import { S_UNICORN, M2_JEWELS } from './monsters.js';
 import { xname as xname_rs } from './objnam.js';
 import { useup as useup_rs } from './invent.js';
 import { restore_waterlevel } from './mkmaze.js';
-
-/* mondata.h is_unicorn() */
-function is_unicorn(ptr) {
-    return ptr.mlet === S_UNICORN && (ptr.mflags2 & M2_JEWELS) !== 0;
-}
 
 // ---------------------------------------------------------------------
 // id links

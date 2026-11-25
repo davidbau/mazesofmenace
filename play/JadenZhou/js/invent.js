@@ -3,7 +3,7 @@
 //        xprname()
 
 import { fingers_or_gloves } from './do_wear.js';
-import { addtobill } from './shk.js';
+import { addtobill, stolen_value, get_obj_location } from './shk.js';
 import { in_rooms } from './hack.js';
 import { hideunder_async } from './makemon.js';
 import { get_count, GC_SAVEHIST } from './cmd.js';
@@ -90,7 +90,7 @@ import { not_fully_identified as not_fully_identified_iv } from './objnam.js';
 import { query_objlist as query_objlist_iv } from './pickup.js';
 import { sortloot as sortloot_pk } from './pickup.js';
 import { SORTLOOT_INUSE } from './const.js';
-import { little_to_big } from './mondata.js';
+import { little_to_big, touch_petrifies } from './mondata.js';
 import { MV_KNOWS_EGG, SIGNAL_NOMENU, SIGNAL_ESCAPE, USE_INVLET,
          INVORDER_SORT, PICK_ANY, thats_enough_tries,
          MENU_TRADITIONAL as MENU_TRADITIONAL_IV, MENU_FULL as MENU_FULL_IV,
@@ -1608,11 +1608,6 @@ export function dfeature_at(x, y) {
     return dfeature;
 }
 
-/* C ref: mondata.h touch_petrifies() */
-function touch_petrifies(ptr) {
-    return ptr === mons[PM_COCKATRICE] || ptr === mons[PM_CHICKATRICE];
-}
-
 // C ref: invent.c will_feel_cockatrice()
 export function will_feel_cockatrice(otmp, force_touch) {
     const bl = game.u.uprops?.[BLINDED];
@@ -2268,7 +2263,7 @@ function inv_Is_pudding(o) {
     return (o.otyp === O.GLOB_OF_GRAY_OOZE || o.otyp === O.GLOB_OF_BROWN_PUDDING
             || o.otyp === O.GLOB_OF_GREEN_SLIME || o.otyp === O.GLOB_OF_BLACK_PUDDING);
 }
-/* C ref: mondata.h is_rider(), is_reviver() */
+/* C ref: mondata.h is_reviver() */
 function inv_is_reviver(ptr) {
     const n = mons.indexOf(ptr);
     return n === M.PM_DEATH || n === M.PM_FAMINE || n === M.PM_PESTILENCE
@@ -2551,7 +2546,7 @@ export async function useupf(obj, numused) {
         if (r0 === '' || (game.u.urooms || '').includes(r0))
             await addtobill(otmp, false, false, false);
         else
-            throw new Error('useupf(): stolen_value() not ported yet');
+            await stolen_value(otmp, otmp.ox, otmp.oy, false, false);
     }
     delobj(otmp);
     if (at_u && game.u.uundetected
@@ -3160,8 +3155,16 @@ export function count_contents(
     let shoppy = false;
     let count = 0;
 
-    if (!everything && !newdrop)
-        throw new Error('count_contents(): costly_spot() of the top container not ported yet');
+    if (!everything && !newdrop) {
+        let topc;
+        let loc;
+
+        for (topc = container; topc.where === 'OBJ_CONTAINED';
+             topc = topc.ocontainer)
+            continue;
+        if (topc.where === 'OBJ_FLOOR' && (loc = get_obj_location(topc, 0)) != null)
+            shoppy = costly_spot(loc[0], loc[1]);
+    }
     for (const otmp of container.cobj || []) {
         if (nested && otmp.cobj && otmp.cobj.length) /* Has_contents() */
             count += count_contents(otmp, nested, quantity, everything,

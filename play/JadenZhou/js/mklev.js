@@ -30,7 +30,7 @@ import { create_des_coder, reset_xystart_size, fill_special_room, inside_room,
          SPLEV_LEFT, SPLEV_CENTER, SPLEV_RIGHT, TOP, BOTTOM } from './sp_lev.js';
 import { getbones } from './bones.js';
 import { u_on_rndspot } from './do.js';
-import { set_wall_state, see_nearby_objects } from './display.js';
+import { set_wall_state, see_nearby_objects, map_location } from './display.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -53,8 +53,9 @@ import {
 import {
     SPBOOK_no_NOVEL, next_ident, blessorcurse, curse, mksobj, mksobj_at,
     mkobj, mkobj_at, mkgold, mkcorpstat, rndmonnum, set_corpsenm,
-    CORPSTAT_INIT, weight, add_to_container, mk_tt_object,
+    CORPSTAT_INIT, weight, add_to_container, mk_tt_object, dealloc_obj,
 } from './mkobj.js';
+import { breaktest } from './dothrow.js';
 import { mkclass, makemon, m_at, sobj_at, set_malign, mongets, ndemon, is_pool,
          is_lava, set_mimic_sym } from './makemon.js';
 import { in_rooms } from './hack.js';
@@ -173,8 +174,9 @@ export function u_on_newpos(x, y) {
        stale values from previous level */
     if (u.uz0 && !on_level(u.uz, u.uz0)) {
         u.ux0 = u.ux, u.uy0 = u.uy;
-        /* map_location(u.ux, u.uy, FALSE): display only, the arrival
-           docrt() redraws the map */
+        /* sets lastseentyp[u.ux][u.uy]; needed for switch_terrain()
+           somewhere back up the call chain */
+        map_location(u.ux, u.uy, false);
         if (game.iflags) game.iflags.terrain_typ = MAX_TYPE; /* "none of the above" value */
     } else {
         /* still on same level; might have come close enough to
@@ -186,7 +188,7 @@ export function u_on_newpos(x, y) {
 }
 
 // C ref: mkmaze.c is_exclusion_zone()
-function is_exclusion_zone(type, x, y) {
+export function is_exclusion_zone(type, x, y) {
     let ez = game.exclusion_zones;
 
     while (ez) {
@@ -378,8 +380,6 @@ function place_object(otmp, x, y) {
     if (!game.level.objects) game.level.objects = [];
     game.level.objects.unshift(otmp);
 }
-// C ref: mkobj.c dealloc_obj() -- nothing to free in JS
-function dealloc_obj(otmp) { /* garbage collected */ }
 /* weight(), add_to_container(): mkobj.js; sobj_at(): makemon.js;
    add_to_buried(): dig.js */
 /* mazexy(): mkmaze.js */
@@ -2731,9 +2731,15 @@ function mktrap_victim(ttmp) {
            (less useful to use, and encourage pets to avoid the trap) */
         otmp = mkobj(poss_class, false);
         curse(otmp);
-        /* for mktrap_victim(), PIT is actually an exploded LANDMINE;
-           breaktest() is not ported, and landmines need difficulty 6 */
-        place_object(otmp, x, y);
+        /* for mktrap_victim(), PIT is actually an exploded LANDMINE */
+        if (ttmp.ttyp === PIT && breaktest(otmp)) {
+            /* landmine: if fragile object has been created, destroy it;
+               don't worry about non-empty containers--they aren't
+               breakable--nor about breakable contents of such */
+            dealloc_obj(otmp);
+        } else {
+            place_object(otmp, x, y);
+        }
 
         /* 20% chance of placing an additional item, recursively */
     } while (!rn2(5));

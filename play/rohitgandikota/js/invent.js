@@ -90,10 +90,9 @@ import { touch_artifact } from './mon.js';
 import { dropy, dropx } from './do.js';
 import { is_ammo, is_missile, ammo_and_launcher, setuqwep } from './wield.js';
 import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr,
-         tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow,
+         tty_display_nhwindow, tty_destroy_nhwindow,
          tty_add_menu, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
-import { xwaitforspace } from './tty/getline.js';
 import { pline, tty_clear_nhwindow_message, display_nhwindow_message, temporary_object_glyph } from './display.js';
 import { makeknown, observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -977,12 +976,6 @@ export async function look_here(obj_cnt, lhflags) {
             tty_putstr(tmpwin, 0, doname_with_price(otmp));
         }
         await tty_display_nhwindow(tmpwin);
-        /* win/tty dmore(): the window waits for quitchars (space, enter,
-           ESC); any other key is ignored, which is why a ':' typed while
-           the pile overlay shows does not dismiss it */
-        await xwaitforspace(' \r\n\x1b');
-        while (tty_next_page(tmpwin))
-            await xwaitforspace(' \r\n\x1b');
         await tty_destroy_nhwindow(tmpwin);
         if (felt_cockatrice)
             await feel_cockatrice(felt_cockatrice, false);
@@ -1246,9 +1239,6 @@ export async function dounpaid(count, floorcount, buriedcount) {
     }
     if (count > 0) {
         await tty_display_nhwindow(win);
-        do {
-            await xwaitforspace(' \r\n\x1b');
-        } while (game.morc !== '\x1b' && tty_next_page(win));
     }
     await tty_destroy_nhwindow(win);
 }
@@ -1386,7 +1376,7 @@ export function this_type_only(obj) {
 export async function display_pickinv(allowed_choices, handsbuf, menuquery,
                                       allownone, want_reply = true) {
     const { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
-            tty_select_menu, tty_destroy_nhwindow, tty_get_nhwindow,
+            tty_select_menu, tty_destroy_nhwindow,
             ATR_NONE: A_NONE, ATR_INVERSE: A_INV, NHW_MENU: W_MENU }
         = await import('./tty/wintty.js');
     const { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, PICK_NONE, PICK_ONE }
@@ -1499,7 +1489,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
 
     const picks = await tty_select_menu(win, wizid ? 2 /* PICK_ANY */
                                              : want_reply ? PICK_ONE : PICK_NONE);
-    const cancelled = !!tty_get_nhwindow(win)?.cancelled;
+    const cancelled = !!picks.cancelled;
     tty_destroy_nhwindow(win);
 
     if (cancelled)
@@ -3657,7 +3647,6 @@ async function noarmor(report_uskin) {
 async function display_used_invlets(avoidlet) {
     if (!game.invent?.length)
         return 0;
-    const { tty_get_nhwindow } = await import('./tty/wintty.js');
     const { PICK_ONE, MENU_ITEMFLAGS_NONE } = await import('./const.js');
     const { NO_COLOR } = await import('./terminal.js');
     const win = tty_create_nhwindow(NHW_MENU);
@@ -3681,7 +3670,7 @@ async function display_used_invlets(avoidlet) {
     }
     tty_end_menu(win, 'Inventory letters used:');
     const selected = await tty_select_menu(win, PICK_ONE);
-    const cancelled = !!tty_get_nhwindow(win)?.cancelled;
+    const cancelled = !!selected.cancelled;
     const ret = selected.length ? String.fromCharCode(selected[0])
               : cancelled ? '\x1b' : 0;
     tty_destroy_nhwindow(win);

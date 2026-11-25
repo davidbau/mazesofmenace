@@ -18,8 +18,8 @@ import { nomul } from './hack.js';
 import { Monnam, mon_nam, pmname, bogusmon, pronoun_gender,
          PRONOUN_HALLU } from './do_name.js';
 import { an, makeplural, makesingular, vtense, the_unique_pm } from './objnam.js';
-import { perceives, is_demon, haseyes,
-         cvt_adtyp_to_mseenres } from './mondata.js';
+import { perceives, is_demon, haseyes, cvt_adtyp_to_mseenres, type_is_pname,
+         eyecount } from './mondata.js';
 import { m_seenres } from './muse.js';
 import { monstseesu, monstunseesu } from './uhitm.js';
 import { mdamageu, mhe } from './mhitu.js';
@@ -53,7 +53,7 @@ import { M_ATTK_MISS, M_ATTK_HIT, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD,
          REFLECTING, W_ARMS, W_WEP, W_AMUL, W_ARM } from './const.js';
 import { STRANGE_OBJECT, SHIELD_OF_REFLECTION,
          AMULET_OF_REFLECTION } from './objects.js';
-import { discover_object } from './o_init.js';
+import { discover_object, makeknown } from './o_init.js';
 import {
     Antimagic, Half_spell_damage, Half_physical_damage, Free_action, Fire_resistance,
     Cold_resistance, Shock_resistance, HStun, Stunned, HConfusion, Confusion, Blinded, Invis,
@@ -63,6 +63,7 @@ import { Upolyd, u_at } from './const.js';
 import { uprop } from './youprop.js';
 import { burnarmor, ignite_items } from './trap.js';
 import { destroy_items } from './zap.js';
+import { sgn, upstart, plur } from './hacklib.js';
 
 /* C ref: mcastu.h MONSPELL() list -- enum mcast_spells */
 export const MCAST_PSI_BOLT = 0;
@@ -123,34 +124,10 @@ const mon_wizard_spells = [
     MCAST_AGGRAVATION, MCAST_SUMMON_MONS, MCAST_CLONE_WIZ, MCAST_DEATH_TOUCH,
 ];
 
-/* C ref: hack.c unconscious() */
-function unconscious() {
-    if (game.multi >= 0)
-        return false;
-    return !!(game.u.usleep
-              || (game.nomovemsg
-                  && (game.nomovemsg.startsWith("You awake")
-                      || game.nomovemsg.startsWith("You regain con")
-                      || game.nomovemsg.startsWith("You are consci"))));
-}
 /* C ref: eat.c is_fainted() */
 function is_fainted() { return game.u.uhs === 5; /* FAINTED */ }
 /* C ref: rm.h IS_WATERWALL(), is_waterwall() */
 function is_waterwall(x, y) { return game.level.at(x, y).typ === WATER; }
-/* C ref: mondata.h eyecount() */
-function eyecount(ptr) {
-    return !haseyes(ptr) ? 0
-           : (ptr === mons[M.PM_CYCLOPS] || ptr === mons[M.PM_FLOATING_EYE]) ? 1
-             : 2;
-}
-/* C ref: mondata.h type_is_pname() */
-function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
-/* C ref: hacklib.c plur() */
-function plur(x) { return (x === 1) ? "" : "s"; }
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-/* C ref: hack.h sgn() */
-function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 /* C ref: pline.c verbalize() -- SetVoice() only matters for speech
    output, which the tty doesn't do */
 async function verbalize(line) {
@@ -158,8 +135,6 @@ async function verbalize(line) {
         return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
     await pline(`"${line}"`);
 }
-/* C ref: hack.h makeknown() */
-function makeknown(otyp) { discover_object(otyp, true, true, true); }
 /* C ref: potion.c vision_clears[] */
 const vision_clears = "vision quickly clears.";
 

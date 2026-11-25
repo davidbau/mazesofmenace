@@ -18,7 +18,7 @@
 
 import { getnow } from './calendar.js';
 import { lays_eggs, ugenocided, udeadinside } from './polyself.js';
-import { ordin } from './hacklib.js';
+import { ordin, plur } from './hacklib.js';
 import { spellid } from './spell.js';
 import { wizard } from './dungeon.js';
 import { game } from './gstate.js';
@@ -96,7 +96,9 @@ import { P_SKILL, P_MAX_SKILL, P_ADVANCE, P_RESTRICTED, weapon_type,
 import { oc_to_str } from './options.js';
 import { is_pool, is_lava } from './makemon.js';
 import { ART_OGRESMASHER } from './artilist.js';
-import { hates_silver, defended, is_male, is_female, is_neuter } from './mondata.js';
+import { hates_silver, defended, is_male, is_female, is_neuter, humanoid,
+         type_is_pname, is_clinger, haseyes, is_rider, attacktype,
+         slithy } from './mondata.js';
 import { pmname } from './do_name.js';
 import { magic_negation } from './mhitu.js';
 import { stone_luck } from './attrib.js';
@@ -171,10 +173,6 @@ function prop(p) { return game.u.uprops[p] || { intrinsic: 0, extrinsic: 0, bloc
 
 function URIGHTY() { return U().uhandedness === RIGHT_HANDED; }
 
-/* C ref: mondata.h humanoid(), haseyes() */
-function humanoid(ptr) { return (ptr.mflags1 & M.M1_HUMANOID) !== 0; }
-function haseyes(ptr) { return (ptr.mflags1 & M.M1_NOEYES) === 0; }
-
 /* C ref: obj.h is_ammo(), is_wet_towel(), is_graystone(); u_wield_art() */
 function is_ammo(otmp) {
     return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === GEM_CLASS)
@@ -191,8 +189,7 @@ function u_wield_art(art) { return !!game.uwep && game.uwep.oartifact === art; }
 /* C ref: youprop.h -- the rest of the property macros that
    attributes_enlightenment() checks */
 
-/* C ref: mondata.h is_clinger(), lays_eggs(); monst.h vampshifted() */
-function is_clinger(ptr) { return (ptr.mflags1 & M.M1_CLING) !== 0; }
+/* C ref: mondata.h lays_eggs(); monst.h vampshifted() */
 function vampshifted(mon) {
     return (mon.cham === M.PM_VAMPIRE || mon.cham === M.PM_VAMPIRE_LEADER
             || mon.cham === M.PM_VLAD_THE_IMPALER) /* is_vampshifter() */
@@ -231,7 +228,6 @@ export function has_ceiling(lev) {
 }
 
 /* C ref: hacklib.c plur(), strsubst() (first occurrence only) */
-function plur(x) { return (x === 1) ? "" : "s"; }
 function strsubst(bp, orig, replacement) {
     const at = bp.indexOf(orig);
     return (at < 0) ? bp : bp.slice(0, at) + replacement + bp.slice(at + orig.length);
@@ -337,9 +333,6 @@ const BP_ARM = 0, BP_EYE = 1, BP_FINGER = 3, BP_FINGERTIP = 4, BP_FOOT = 5,
 // C ref: polyself.c mbodypart()
 export function mbodypart(mon, part) {
     const mptr = mon.data;
-    /* mondata.h attacktype(), slithy() */
-    const attacktype = (ptr, atyp) => ptr.mattk.some(a => a.aatyp === atyp);
-    const slithy = (ptr) => (ptr.mflags1 & M.M1_SLITHY) !== 0;
 
     if (part <= BP_NO_PART) {
         /* impossible("mbodypart: bad part %d", part) */
@@ -3088,13 +3081,6 @@ function vanqsort_cmp(indx1, indx2) {
         res = indx1 - indx2; /* mndx low to high */
     return res;
 }
-
-/* C ref: mondata.h is_rider(), type_is_pname() */
-function is_rider(ptr) {
-    return ptr === M.mons[M.PM_DEATH] || ptr === M.mons[M.PM_FAMINE]
-           || ptr === M.mons[M.PM_PESTILENCE];
-}
-function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
 
 // C ref: insight.c list_vanquished()
 export async function list_vanquished(defquery, ask) {

@@ -15,6 +15,7 @@
 // ported yet (wizard-mode terrain wishes, artifacts by name, fruit names,
 // tins of a monster, lit light sources, novels, ...) raise not_ported().
 
+import { shk_your } from './shk.js';
 import { letter } from './hacklib.js';
 import { wizard } from './dungeon.js';
 import { game } from './gstate.js';
@@ -36,10 +37,9 @@ import { observe_object } from './o_init.js';
 import { oname } from './do_name.js';
 import { mons, LOW_PM, S_PUDDING, PM_GRAY_OOZE, PM_BLACK_PUDDING,
          PM_GRAY_DRAGON, PM_YELLOW_DRAGON } from './monsters.js';
-import {
-    name_to_mon, name_to_monplus, is_male, is_female, is_neuter,
-    is_were, is_human, is_elf, is_dwarf, is_gnome, is_orc,
-} from './mondata.js';
+import { name_to_mon, name_to_monplus, is_male, is_female, is_neuter, is_were,
+         is_human, is_elf, is_dwarf, is_gnome, is_orc,
+         verysmall } from './mondata.js';
 import { ismnum } from './const.js';
 import { dead_species, set_corpsenm, can_be_hatched } from './mkobj.js';
 import { zombie_form } from './mon.js';
@@ -66,6 +66,8 @@ import { delete_contents } from './invent.js';
 import { Luck } from './const.js';
 import { W_TOOL as W_TOOL_XN, W_SADDLE as W_SADDLE_XN } from './const.js';
 import { is_plural } from './wield.js';
+import { peek_timer, obj_to_any } from './timeout.js';
+import { BURN_OBJECT } from './const.js';
 
 // C ref: decl.c vowels[]
 const vowels = "aeiouAEIOU";
@@ -73,9 +75,6 @@ const vowels = "aeiouAEIOU";
 function not_ported(what) {
     throw new Error(`readobjnam: ${what} is not ported yet`);
 }
-
-/* C ref: mondata.h verysmall() */
-function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
 
 // C ref: were.c counter_were()
 function counter_were(pm) {
@@ -344,7 +343,8 @@ function singplur_lookup(r, to_plural, alt_as_is) {
             && badman(basestr, to_plural))
             return true;
     }
-    for (const [sing, plur] of one_off) {
+    for (const sp of one_off) {
+        const [sing, plur] = sp; /* sp->sing, sp->plur */
         /* check whether endstring already matches */
         const same = to_plural ? plur : sing;
         al = same.length;
@@ -3000,20 +3000,16 @@ export function Tobjnam(otmp, verb) {
     return bp;
 }
 
-// C ref: objnam.c yname() -- xname, with "your"/"the" (shk_your())
-// prepended; shop and monster ownership aren't ported yet
+// C ref: objnam.c yname() -- xname, with "your"/"the"/"Foobar's"
+// (shk_your()) prepended
 export function yname(obj) {
     const s = cxname(obj);
 
     /* leave off "your" for most of your artifacts, but prepend
      * "your" for unique objects and "foo of bar" quest artifacts */
     if (obj.where !== 'OBJ_INVENT' || !obj_is_pname(obj)
-        || obj.oartifact >= ART_ORB_OF_DETECTION_ON) {
-        /* shk_your(): !shk_owns() && !mon_owns() */
-        if (obj.unpaid || obj.no_charge || obj.where === 'OBJ_MINVENT')
-            throw new Error('yname(): shk_owns()/mon_owns() not ported yet');
-        return `${(obj.where === 'OBJ_INVENT') ? "your" : "the"} ${s}`;
-    }
+        || obj.oartifact >= ART_ORB_OF_DETECTION_ON)
+        return shk_your(obj) + s;
 
     return s;
 }
@@ -3037,19 +3033,15 @@ export function aobjnam(otmp, verb) {
     return bp;
 }
 
-// C ref: objnam.c yobjnam() -- shk_your() for shop and monster ownership
-// isn't ported yet (see yname())
+// C ref: objnam.c yobjnam()
 export function yobjnam(obj, verb) {
     let s = aobjnam(obj, verb);
 
     /* leave off "your" for most of your artifacts, but prepend
      * "your" for unique objects and "foo of bar" quest artifacts */
     if (obj.where !== 'OBJ_INVENT' || !obj_is_pname(obj)
-        || obj.oartifact >= ART_ORB_OF_DETECTION_ID) {
-        if (obj.unpaid || obj.no_charge || obj.where === 'OBJ_MINVENT')
-            throw new Error('yobjnam(): shk_owns()/mon_owns() not ported yet');
-        s = `${(obj.where === 'OBJ_INVENT') ? "your" : "the"} ${s}`;
-    }
+        || obj.oartifact >= ART_ORB_OF_DETECTION_ON)
+        s = shk_your(obj) + s;
     return s;
 }
 
@@ -3060,8 +3052,6 @@ export function Yobjnam2(obj, verb) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/* C ref: artilist.h ART_ORB_OF_DETECTION (first quest artifact) */
-const ART_ORB_OF_DETECTION_ID = 21;
 
 // C ref: objnam.c xname_flags()
 function xname_flags(obj, cxn_flags) {
@@ -3682,11 +3672,20 @@ function doname_base(obj, doname_flags) {
         } else if (obj.otyp === O.OIL_LAMP || obj.otyp === O.MAGIC_LAMP
                    || obj.otyp === O.BRASS_LANTERN || Is_candle_x(obj)) {
             if (Is_candle_x(obj)) {
+                let timer;
                 const full_burn_time = 20 * objects[obj.otyp].oc_cost;
-                const turns_left = obj.age;
+                let turns_left = obj.age;
 
-                if (obj.lamplit)
-                    xn_not_ported('partly used lit candles (peek_timer(BURN_OBJECT))');
+                if (obj.lamplit) {
+                    timer = obj_to_any(obj);
+                    /* without this, wishing for "lit candle" yields
+                       "partly used candle (lit)" because the time it can
+                       burn gets adjusted when it becomes lit; matters for
+                       the message as it gets added to invent and also if it
+                       gets snuffed out immediately (where it will end up as
+                       not partly used after all) */
+                    turns_left += peek_timer(BURN_OBJECT, timer) - game.moves;
+                }
                 if (turns_left < full_burn_time)
                     prefix += "partly used ";
             }

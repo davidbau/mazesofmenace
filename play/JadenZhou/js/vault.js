@@ -7,6 +7,10 @@
 // Not ported yet: grddead() (mongone()/mondead() of a guard), uleftvault(),
 // paygd() (end.js), vault_summon_gd(), vault_gd_watching().
 
+import { an } from './objnam.js';
+import { You_see } from './display.js';
+import { simpleonames } from './iactions.js';
+import { fracture_rock } from './zap.js';
 import { DEADMONSTER } from './mon.js';
 import { impossible } from './hack.js';
 import { remove_monster } from './muse.js';
@@ -43,7 +47,7 @@ import { hidden_gold } from './insight.js';
 import { adjalign } from './attrib.js';
 import { stop_occupation, unmul } from './allmain.js';
 import { tty_getlin } from './wintty.js';
-import { mungspaces } from './hacklib.js';
+import { mungspaces, upstart } from './hacklib.js';
 import { Monnam, noit_Monnam, Some_Monnam, x_monnam, pmname, Mgender,
          noit_mon_nam, ARTICLE_A } from './do_name.js';
 import { sticks } from './engrave.js';
@@ -74,8 +78,6 @@ async function verbalize(line) {
         return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
     await pline(`"${line}"`);
 }
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 /* C ref: rm.h levl[x][y].flags -- the fields that share C's 'flags' bits */
 function lev_flags(lev) {
     return { doormask: lev.doormask, wall_info: lev.wall_info };
@@ -442,8 +444,19 @@ export async function invault() {
            perhaps the guard knows a touch equivalent of force bolt;
            otherwise the hero wouldn't be able to push one to follow the
            guard out of the vault because that guard would be in its way */
-        if ((otmp = sobj_at(BOULDER, guard.mx, guard.my)) !== null)
-            throw new Error('invault(): fracture_rock() of boulders in the guard\'s way not ported yet');
+        if ((otmp = sobj_at(BOULDER, guard.mx, guard.my)) !== null) {
+            const bname = simpleonames(otmp);
+            let bcnt = 0;
+
+            do {
+                ++bcnt;
+                await fracture_rock(otmp);
+                otmp = sobj_at(BOULDER, guard.mx, guard.my);
+            } while (otmp);
+            /* You_hear() will handle Deaf/!Deaf */
+            const func = !Blind() ? You_see : You_hear;
+            await func(`${(bcnt === 1) ? an(bname) : makeplural(bname)} shatter.`);
+        }
         spotted = canspotmon(guard);
         if (spotted) {
             await pline(`Suddenly one of the Vault's ${

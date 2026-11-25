@@ -612,8 +612,12 @@ export async function monkilled_trap(mtmp, fltxt = '', nocorpse = false) {
      * Hallucination that repaint would re-roll the hero glyph. */
     const onmap = isok(_dx, _dy) && m_at(_dx, _dy) === mtmp;
     mtmp._dyingInGrid = false; /* C mon.c:2711: remove_monster precedes newsym */
-    if (onmap)
+    if (onmap) {
+        mtmp.mundetected = 0;
+        if (M_AP_TYPE(mtmp) !== 0 && M_AP_TYPE(mtmp) !== 3)
+            seemimic(mtmp);
         newsym(_dx, _dy);
+    }
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);
     /* C mon.c:2708 mon_leaving_level(): a killed long worm's body leaves the grid. */

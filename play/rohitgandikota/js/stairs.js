@@ -35,6 +35,15 @@ export function stairway_find_from(fromdlev, isladder) {
     return tmp;
 }
 
+// src/stairs.c:89 stairway_find_type_dir()
+export function stairway_find_type_dir(isladder, up) {
+    let tmp = game.stairs;
+
+    while (tmp && !(!!tmp.isladder === !!isladder && !!tmp.up === !!up))
+        tmp = tmp.next;
+    return tmp;
+}
+
 export function stairway_at(x, y) {
     let tmp = game.stairs;
     while (tmp && !(tmp.sx === x && tmp.sy === y))

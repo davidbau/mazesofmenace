@@ -34,7 +34,7 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { extcmdlist } from './func_tab.js';
 import { cmd_from_func, key2extcmddesc, key2txt, dokeylist } from './cmd.js';
-import { visctrl } from './hacklib.js';
+import { visctrl, upstart } from './hacklib.js';
 import {
     canspotmon, vobj_at, pline, back_to_glyph, known_branch_stairs,
     stairway_at
@@ -86,7 +86,7 @@ import { MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
          GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_COMFULL, GPCOORDS_SCREEN,
          BOLT_LIM, COLNO, ROWNO, IS_GRAVE, WARNCOUNT, def_warnsyms, SYM_NOTHING,
          SYM_UNEXPLORED, SYM_BOULDER, SYM_INVISIBLE, ROGUESET } from './const.js';
-import { perceives, is_orc } from './mondata.js';
+import { perceives, is_orc, digests } from './mondata.js';
 import { sticks } from './engrave.js';
 import { altarmask_at } from './pray.js';
 import { align_str } from './insight.js';
@@ -116,11 +116,6 @@ import { M1_CONCEAL as M1_CONCEAL_PG, M1_HIDE as M1_HIDE_PG,
          S_EEL as S_EEL_PG } from './monsters.js';
 import { S_poisoncloud as S_poisoncloud_pg } from './region.js';
 import { option_help as option_help_pg } from './options.js';
-
-/* C ref: mondata.h digests() */
-function digests(ptr) {
-    return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL && a.adtyp === AD_DGST);
-}
 
 /* C ref: defsym.h PCHAR()/PCHAR2() -- defsyms[] .sym and .explanation as
    drawing.c builds them (PCHAR_DRAWING), S_stone .. S_expl_br */
@@ -2189,8 +2184,6 @@ function coord_prefix(cmode, coordbuf) {
            : `${coordbuf.padStart(12)}  `;
 }
 
-function upstart_pg(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-
 // C ref: pager.c look_region_nearby()
 function look_region_nearby(nearby) {
     const u = game.u;
@@ -2253,7 +2246,7 @@ async function look_all(nearby, /* True => within BOLTLIM, False => entire map *
                 if (count === 1) {
                     const which = do_mons ? "monsters" : "objects";
                     if (nearby)
-                        outbuf = `${upstart_pg(which)} currently shown near ${
+                        outbuf = `${upstart(which)} currently shown near ${
                             (cmode !== GPCOORDS_COMPASS)
                             ? coord_desc(game.u.ux, game.u.uy, cmode)
                             : !canspotself() ? "your position" : "you"}:`;
@@ -2320,7 +2313,7 @@ async function look_traps(nearby) {
                 if (count === 1) {
                     outbuf = `${nearby ? "nearby " : ""}seen or remembered traps${
                         nearby ? "" : " on this level"}:`;
-                    await tty_putstr(win, 0, upstart_pg(outbuf));
+                    await tty_putstr(win, 0, upstart(outbuf));
                     /* hack alert! Qt watches a text window for any line
                        with 4 consecutive spaces */
                     await tty_putstr(win, 0, "    "); /* separator */
@@ -2394,7 +2387,7 @@ async function look_engrs(nearby) {
                 if (count === 1) {
                     outbuf = `${nearby ? "nearby " : ""}seen or remembered engravings${
                         nearby ? "" : " on this level"}:`;
-                    await tty_putstr(win, 0, upstart_pg(outbuf));
+                    await tty_putstr(win, 0, upstart(outbuf));
                     /* hack alert! Qt watches a text window for any line
                        with 4 consecutive spaces */
                     await tty_putstr(win, 0, "    "); /* separator */

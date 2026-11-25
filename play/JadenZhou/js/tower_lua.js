@@ -8,6 +8,7 @@
 // tagged the way the C recorder writes them.
 
 import { withRngCaller } from './rng.js';
+import { chunk_random } from './nhlib_lua.js';
 
 // The des.map() map, verbatim from the .lua file.
 const MAP_tower1 = [
@@ -23,15 +24,6 @@ const MAP_tower1 = [
     '  |.| |.| |.|  ',
     '  --- --- ---  ',
 ].join('\n') + '\n';
-
-// math.random called from the script's chunk (the contents functions are
-// anonymous): the recorder tags the roll with nhlib's math.random line
-// (10 for two arguments) and "lua" at the calling line.
-function chunk_random(G, line, ...args) {
-    return withRngCaller(
-        `random src=nhlib.lua:${args.length === 1 ? 8 : 10} parent=lua(tower1.lua:${line})`,
-        () => G.math.random(...args));
-}
 
 // C ref: dat/tower1.lua
 // Upper stage of Vlad's tower
@@ -86,13 +78,13 @@ function tower1_lua(L) {
     des.object({ id: 'chest', coord: niches[3],
                  contents: function() {
                      des.object({ id: 'wax candle',
-                                  quantity: chunk_random(G, 65, 4, 8) });
+                                  quantity: chunk_random(G, 'tower1.lua', 65, 4, 8) });
                  },
     });
     des.object({ id: 'chest', coord: niches[4],
                  contents: function() {
                      des.object({ id: 'tallow candle',
-                                  quantity: chunk_random(G, 70, 4, 8) });
+                                  quantity: chunk_random(G, 'tower1.lua', 70, 4, 8) });
                  },
     });
     // -- We have to protect the tower against outside attacks

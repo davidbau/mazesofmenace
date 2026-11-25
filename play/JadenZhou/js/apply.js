@@ -91,7 +91,7 @@ import { NON_PM as NON_PM_AP } from './const.js';
 import { arti_speak } from './artifact.js';
 import { stucksteed } from './steed.js';
 import { legs_in_no_shape } from './dokick.js';
-import { reset_utrap, fire_damage } from './trap.js';
+import { reset_utrap, fire_damage, activate_statue_trap } from './trap.js';
 import * as MM_bl from './monsters.js';
 import { openit as openit_bl, findit as findit_bl } from './detect.js';
 import { unpunish as unpunish_bl } from './read.js';
@@ -126,7 +126,8 @@ import { splitobj as splitobj_ap, costly_alteration as costly_alteration_ap,
          obj_extract_self as obj_extract_self_ap } from './mkobj.js';
 import { makeplural as makeplural_ap, xname as xname_ap } from './objnam.js';
 import { the as the_ap } from './iactions.js';
-import { can_blnd as can_blnd_ap } from './mondata.js';
+import { can_blnd as can_blnd_ap, is_whirly, nohands, unsolid, nolimbs,
+         has_head } from './mondata.js';
 import { AT_WEAP as AT_WEAP_AP } from './monsters.js';
 import { make_blinded as make_blinded_ap } from './potion.js';
 import { setnotworn as setnotworn_ap } from './worn.js';
@@ -138,7 +139,7 @@ import { rn1 as rn1_ap } from './rng.js';
 import { djinni_from_bottle as djinni_from_bottle_ap } from './potion.js';
 import { nothing_happens as nothing_happens_ap } from './const.js';
 import { nothing_seems_to_happen as nothing_seems_to_happen_lp, GLIB as GLIB_LP } from './const.js';
-import { Shk_Your as Shk_Your_lp } from './wield.js';
+import { Shk_Your as Shk_Your_lp } from './shk.js';
 import { yname as yname_lp, Tobjnam as Tobjnam_lp, otense as otense_lp } from './objnam.js';
 import { Your as Your_lp } from './display.js';
 import { begin_burn as begin_burn_lp, end_burn as end_burn_lp } from './timeout.js';
@@ -171,13 +172,7 @@ import { use_pick_axe } from './dig.js';
 import { glyph_is_invisible as glyph_is_invisible_ls } from './display.js';
 import { mons as mons_ls, PM_LONG_WORM as PM_LONG_WORM_LS, M1_UNSOLID as M1_UNSOLID_LS,
          M1_NOLIMBS as M1_NOLIMBS_LS, M1_NOHEAD as M1_NOHEAD_LS } from './monsters.js';
-/* C ref: mondata.h is_whirly() */
-function is_whirly(ptr) {
-    return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
-}
 
-/* C ref: mondata.h nohands() */
-function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
 /* C ref: obj.h is_pick(), is_axe() */
 function is_pick(otmp) {
     return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
@@ -1803,15 +1798,18 @@ export async function use_pole(obj, autohit) {
                && sobj_at(O.STATUE, g.bhitpos.x, g.bhitpos.y)) {
         const t = t_at(g.bhitpos.x, g.bhitpos.y);
 
-        if (t && t.ttyp === STATUE_TRAP)
-            throw new Error('use_pole(): activate_statue_trap() not ported yet');
-        /* Since statues look like monsters now, we say something
-           different from "you miss" or "there's nobody there".
-           Note:  we only do this when a statue is displayed here,
-           because the player is probably attempting to attack it;
-           other statues obscured by anything are just ignored. */
-        await pline(thump("statue"));
-        await wake_nearto(g.bhitpos.x, g.bhitpos.y, 25);
+        if (t && t.ttyp === STATUE_TRAP
+            && await activate_statue_trap(t, t.tx, t.ty, false)) {
+            ; /* feedback has been give by animate_statue() */
+        } else {
+            /* Since statues look like monsters now, we say something
+               different from "you miss" or "there's nobody there".
+               Note:  we only do this when a statue is displayed here,
+               because the player is probably attempting to attack it;
+               other statues obscured by anything are just ignored. */
+            await pline(thump("statue"));
+            await wake_nearto(g.bhitpos.x, g.bhitpos.y, 25);
+        }
     } else {
         /* no monster here and no statue seen or remembered here */
         unmap_invisible(g.bhitpos.x, g.bhitpos.y);
@@ -1892,16 +1890,11 @@ function number_leashed() {
     return i;
 }
 
-/* C ref: mondata.h unsolid(), nolimbs(), has_head() */
-function unsolid_ls(ptr) { return (ptr.mflags1 & M1_UNSOLID_LS) !== 0; }
-function nolimbs_ls(ptr) { return (ptr.mflags1 & M1_NOLIMBS_LS) !== 0; }
-function has_head_ls(ptr) { return (ptr.mflags1 & M1_NOHEAD_LS) === 0; }
-
 // C ref: apply.c leashable()
 function leashable(mtmp) {
     return (mtmp.data !== mons_ls[PM_LONG_WORM_LS] /* mtmp->mnum */
-            && !unsolid_ls(mtmp.data)
-            && (!nolimbs_ls(mtmp.data) || has_head_ls(mtmp.data)));
+            && !unsolid(mtmp.data)
+            && (!nolimbs(mtmp.data) || has_head(mtmp.data)));
 }
 
 // C ref: apply.c use_leash()
@@ -1971,9 +1964,9 @@ async function use_leash_core(obj, mtmp, cc, spotmon) {
         /* applying a leash which isn't currently in use */
         if (mtmp.mleashed) {
             await pline(`This ${spotmon ? l_monnam_ls(mtmp) : "creature"} is already leashed.`);
-        } else if (unsolid_ls(mtmp.data)) {
+        } else if (unsolid(mtmp.data)) {
             await pline("The leash would just fall off.");
-        } else if (nolimbs_ls(mtmp.data) && !has_head_ls(mtmp.data)) {
+        } else if (nolimbs(mtmp.data) && !has_head(mtmp.data)) {
             await pline(`${Monnam_ls(mtmp)} has no extremities the leash would fit.`);
         } else if (!leashable(mtmp)) {
             let lmonnam = l_monnam_ls(mtmp);

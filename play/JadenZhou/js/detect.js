@@ -5,7 +5,7 @@
 // parts), mfind0(), warnreveal() and lock.c cvt_sdoor_to_door().
 
 import { expels } from './mhitu.js';
-import { dmgtype_fromattack } from './mondata.js';
+import { dmgtype_fromattack, hides_under, is_hider } from './mondata.js';
 import { Monnam } from './do_name.js';
 import { AD_DGST, AT_ENGL } from './monsters.js';
 import { feel_newsym } from './display.js';
@@ -93,11 +93,7 @@ import { CONFUSION as CONFUSION_DT,
          NOSE as NOSE_DT, A_WIS as A_WIS_DT, TER_DETECT as TER_DETECT_DT } from './const.js';
 import { body_part as body_part_dt } from './insight.js';
 import { strange_feeling as strange_feeling_dt } from './potion.js';
-import { openholdingtrap, openfallingtrap } from './trap.js';
-
-// C ref: mondata.h is_hider(), hides_under()
-function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
-function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
+import { openholdingtrap, openfallingtrap, activate_statue_trap } from './trap.js';
 
 // C ref: lock.c cvt_sdoor_to_door()
 export function cvt_sdoor_to_door(lev) {
@@ -244,9 +240,9 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                     if ((trap = t_at(x, y)) && !trap.tseen && !rnl(8)) {
                         nomul0();
                         if (trap.ttyp === STATUE_TRAP) {
-                            /* activate_statue_trap(): statue traps aren't
-                               created by the JS port yet */
-                            throw new Error('dosearch0(): activate_statue_trap() not ported yet');
+                            if (await activate_statue_trap(trap, x, y, false))
+                                exercise(A_WIS, true);
+                            return 1;
                         } else {
                             await find_trap(trap);
                         }

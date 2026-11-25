@@ -27,9 +27,7 @@ import { docrt } from './display.js';
 
 import { tty_yn_function } from './tty/topl.js';
 
-import { xwaitforspace } from './tty/getline.js';
-
-import { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU, ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
+import { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr, tty_display_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU, ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 
 import { MONSYMS } from './monst_data.js';
 
@@ -49,7 +47,6 @@ import { M_AP_TYPE, M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, TT_
 import { trapname } from './trap.js';
 
 import { game } from './gstate.js';
-const quitchars = ' \r\n\x1b';
 import { NHW_TEXT } from './const.js';
 
 import { notice_all_mons_flush } from './hack.js';
@@ -2104,7 +2101,7 @@ export async function do_gamelog() {
     if ((game.gamelog || []).length) {
         const {
             tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
-            tty_display_nhwindow, tty_next_page, NHW_TEXT,
+            tty_display_nhwindow, NHW_TEXT,
         } = await import('./tty/wintty.js');
         const { docrt } = await import('./display.js');
         const win = tty_create_nhwindow(NHW_TEXT);
@@ -2116,9 +2113,6 @@ export async function do_gamelog() {
             tty_putstr(win, 0, `${String(e.turn).padStart(5)}: ${e.text}`);
         }
         await tty_display_nhwindow(win);
-        await xwaitforspace(' \r\n\x1b');
-        while (game.morc !== '\x1b' && tty_next_page(win))
-            await xwaitforspace(' \r\n\x1b');
         await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     } else {
@@ -2132,11 +2126,10 @@ export async function do_gamelog() {
 export async function show_conduct(final) {
     const {
         tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
-        tty_display_nhwindow, tty_next_page, NHW_MENU,
+        tty_display_nhwindow, NHW_MENU,
     } = await import('./tty/wintty.js');
     const { nhgetch } = await import('./input.js');
     const { docrt } = await import('./display.js');
-    const { xwaitforspace } = await import('./tty/getline.js');
     const c = game.u.uconduct || {};
     const roleplay = game.u.uroleplay || {};
     const fin = final | 0;
@@ -2259,9 +2252,6 @@ export async function show_conduct(final) {
     show_achievements_into(put, cmsg, have_X, fin);
 
     await tty_display_nhwindow(win);
-    await xwaitforspace(' \r\n\x1b');
-    while (tty_next_page(win))
-        await xwaitforspace(' \r\n\x1b');
     await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return 0;
@@ -2466,9 +2456,6 @@ const UniqCritterIndx = (mndx) =>
 // win/tty/wintty.c display_nhwindow(klwin, TRUE) for an NHW_MENU window
 async function display_menu_window_blocking(win) {
     await tty_display_nhwindow(win);
-    await xwaitforspace(' \r\n\x1b');
-    while (tty_next_page(win))
-        await xwaitforspace(' \r\n\x1b');
 }
 
 // src/insight.c:2784 list_vanquished() — the #vanquished window; default
@@ -2819,13 +2806,6 @@ export async function doborn() {
     /* display_nhwindow(win, FALSE): page through the text window, ESC
        cancelling the remaining pages */
     await tty_display_nhwindow(datawin);
-    for (;;) {
-        await xwaitforspace(quitchars);
-        if (game.morc === '\x1b')
-            break; /* cancel remaining pages */
-        if (!tty_next_page(datawin))
-            break;
-    }
     await tty_destroy_nhwindow(datawin);
 
     return ECMD_OK;

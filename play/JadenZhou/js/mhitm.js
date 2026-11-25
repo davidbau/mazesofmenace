@@ -15,6 +15,7 @@ import { zombie_form } from './mon.js';
 import { DEADMONSTER } from './mon.js';
 import { helpless } from './monmove.js';
 import { game } from './gstate.js';
+import { you_were, you_unwere } from './were.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { ACURR as ACURR_mm } from './attrib.js';
 import { A_CHA as A_CHA_mm, NORMAL_SPEED as NORMAL_SPEED_mm } from './const.js';
@@ -25,7 +26,8 @@ import { monkilled, zombie_maker, monnear, seemimic } from './mon.js';
 import { thrwmm, spitmm, breamm } from './mthrowu.js';
 import { canspotmon, newsym, pline, map_invisible } from './display.js';
 import { Monnam, mon_nam, mon_nam_too } from './do_name.js';
-import { is_elf, is_orc } from './mondata.js';
+import { is_elf, is_orc, unsolid, touch_petrifies, mon_hates_silver,
+         resist_conflict, is_rider } from './mondata.js';
 import { M_AP_TYPE, IS_DOOR, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED,
          M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, NATTK, HALLUC, W_SADDLE, W_ARMG,
          NEED_WEAPON, NEED_HTH_WEAPON, P_POLEARMS, P_LANCE, ERODE_BURN,
@@ -125,14 +127,6 @@ function is_pole(otmp) {
                || objects[otmp.otyp].oc_skill === P_LANCE
                || otmp.oartifact === ART_SNICKERSNEE);
 }
-// C ref: mondata.c mon_hates_silver(), hates_silver()
-function mon_hates_silver(mon) {
-    const ptr = mon.data;
-    return is_vampshifter(mon)
-        || (is_were(ptr) || ptr.mlet === M.S_VAMPIRE || is_demon(ptr)
-            || ptr === mons[M.PM_SHADE]
-            || (ptr.mlet === M.S_IMP && ptr !== mons[M.PM_TENGU]));
-}
 // C ref: monst.h mon_offmap()
 function mon_offmap(mon) {
     return ((mon.mstate || 0) & (0x01 | 0x02 | 0x04 | 0x08)) !== 0;
@@ -140,17 +134,6 @@ function mon_offmap(mon) {
 function mdistu(mon) {
     const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
     return dx * dx + dy * dy;
-}
-function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
-// C ref: mondata.h touch_petrifies()
-function touch_petrifies(ptr) {
-    return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
-}
-// C ref: mondata.h unsolid()
-function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
-// C ref: mondata.c attacktype()
-function attacktype(ptr, atyp) {
-    return ptr.mattk.some((a) => a.aatyp === atyp);
 }
 /* C ref: mondata.c sticks() is engrave.js sticks() */
 
@@ -267,15 +250,6 @@ async function missmm(magr, mdef, mattk) {
     } else {
         await noises(magr, mattk);
     }
-}
-
-// C ref: mondata.c resist_conflict()
-export function resist_conflict(mtmp) {
-    /* always a small chance at 19 */
-    const resist_chance = Math.min(19, (ACURR_mm(A_CHA_mm) - mtmp.m_lev
-                                        + game.u.ulevel));
-
-    return (rnd(20) > resist_chance);
 }
 
 // C ref: mhitm.c fightm()
@@ -1055,10 +1029,10 @@ export async function mon_poly(magr, mdef, dmg) {
                 await polyself_mp(POLY_NOFLAGS_MP);
             } else if (u.umonnum !== u.ulycn) {
                 await You_feel_mp("an unnatural urge coming on.");
-                throw new Error('mon_poly(): you_were() not ported yet');
+                await you_were();
             } else {
                 await You_feel_mp("a natural urge coming on.");
-                throw new Error('mon_poly(): you_unwere() not ported yet');
+                await you_unwere(false);
             }
             dmg = 0;
         }
@@ -1250,15 +1224,10 @@ export async function mdisplacem(magr, mdef, quietly) {
 
     if (game.vis && !quietly)
         await pline(`${Monnam(magr)} moves ${mon_nam(mdef)} out of ${
-            is_rider_md(pa) ? "the" : mhis_md(magr)} way!`);
+            is_rider(pa) ? "the" : mhis_md(magr)} way!`);
     newsym_md(fx, fy);  /* see it       */
     newsym_md(tx, ty);  /*   all happen */
     await flush_screen_md(0); /* make sure it shows up */
 
     return M_ATTK_HIT;
-}
-/* C ref: mondata.h is_rider() */
-function is_rider_md(ptr) {
-    return ptr === mons[M.PM_DEATH] || ptr === mons[M.PM_FAMINE]
-        || ptr === mons[M.PM_PESTILENCE];
 }

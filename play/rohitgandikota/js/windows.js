@@ -9,7 +9,7 @@ import { NHW_STATUS, tty_status_enablefield, tty_status_update } from './tty/win
 import {
     NHW_MENU, ATR_NONE,
     tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
-    tty_add_menu_str, tty_end_menu, tty_select_menu, tty_get_nhwindow,
+    tty_add_menu_str, tty_end_menu, tty_select_menu,
 } from './tty/wintty.js';
 import {
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT,
@@ -99,10 +99,8 @@ export async function choose_classes_menu(prompt, category, way,
     tty_end_menu(win, prompt);
     const pick_list = await tty_select_menu(win, way ? PICK_ANY : PICK_ONE);
     let n = pick_list.length;
-    /* tty_select_menu() returns [] both for "nothing picked" and for ESC; C
-       tells them apart through select_menu()'s -1, which comes from the
-       window's WIN_CANCELLED flag, so read it before the window goes away. */
-    const cancelled = !!tty_get_nhwindow(win)?.cancelled;
+    /* C select_menu() preserves cancellation before dismissing the window. */
+    const cancelled = !!pick_list.cancelled;
     tty_destroy_nhwindow(win);
 
     if (n > 0) {

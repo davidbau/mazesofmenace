@@ -21,8 +21,11 @@ import { monnear } from './mon.js';
 import { canseemon, canspotmon, map_invisible } from './display.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { mhitm_adtyping, mhitm_knockback } from './uhitm.js';
-import { is_undead, is_vampshifter, is_demon, is_were, is_swimmer,
-         perceives, is_orc, dmgtype, is_neuter } from './mondata.js';
+import { is_undead, is_vampshifter, is_demon, is_were, is_swimmer, perceives,
+         is_orc, dmgtype, is_neuter, is_animal, unsolid, hides_under,
+         is_whirly, thick_skinned, nolimbs, touch_petrifies, digests, flaming,
+         resists_ston, dmgtype_fromattack, attacktype,
+         passes_walls } from './mondata.js';
 import { midnight, night } from './calendar.js';
 import { new_were, were_summon } from './were.js';
 import { growl_sound } from './sounds.js';
@@ -55,7 +58,7 @@ import { yyyymmdd } from './calendar.js';
 import { PRONOUN_NO_IT, Mgender, mon_nam, noit_mon_nam,
          noit_Monnam } from './do_name.js';
 import { ARMOR_CLASS, ARM_GLOVES, RIN_ADORNMENT } from './objects.js';
-import { discover_object, observe_object } from './o_init.js';
+import { discover_object, observe_object, makeknown } from './o_init.js';
 import { FEMALE, A_CHA, A_INT, A_CON, A_WIS, A_DEX, A_STR, HAND, HAIR,
          RIGHT_RING, LEFT_RING, RLOC_MSG, A_CHAOTIC,
          KILLED_BY } from './const.js';
@@ -89,7 +92,7 @@ import { mondead, wake_nearto } from './mon.js';
 import { WATER, PASSES_WALLS, SLOW_DIGESTION, SHOCK_RES, TT_WEB, RLOC_NOMSG, IS_OBSTRUCTED, TREE, IRONBARS, MAGICAL_BREATHING, ACID_RES, FIRE_RES, M_SEEN_ACID, M_SEEN_ELEC, M_SEEN_COLD, M_SEEN_FIRE } from './const.js';
 import { closed_door, sobj_at, place_monster } from './makemon.js';
 import { BOULDER } from './objects.js';
-import { s_suffix } from './hacklib.js';
+import { s_suffix, upstart } from './hacklib.js';
 import { set_ustuck, monstseesu, monstunseesu } from './uhitm.js';
 import { placebc, unplacebc } from './ball.js';
 import { docrt, newsym, flush_screen, swallowed } from './display.js';
@@ -149,14 +152,6 @@ const LARGEST_INT = 32767;
 let mon_currwep = null;
 
 /* mondata.h */
-function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
-function thick_skinned(ptr) { return (ptr.mflags1 & M.M1_THICK_HIDE) !== 0; }
-function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
-function nolimbs(ptr) { return (ptr.mflags1 & M.M1_NOLIMBS) === M.M1_NOLIMBS; }
-function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
-function touch_petrifies(ptr) {
-    return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
-}
 /* C ref: hack.h mdistu() */
 function mdistu(mon) {
     const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
@@ -577,8 +572,6 @@ export function mtrapped_in_pit(mtmp) {
  * mattacku: monster attacks you
  *      returns 1 if monster dies (e.g. "yellow light"), 0 otherwise
  */
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 // C ref: mhitu.c summonmu() -- demons summoning demons, were creatures
 // changing form and summoning critters; extracted from mattacku()
@@ -1333,30 +1326,10 @@ export function could_seduce(magr, mdef, mattk) {
     return (genagr === 1 - gendef) ? 1 : (pagr.mlet === M.S_NYMPH) ? 2 : 0;
 }
 
-/* C ref: mondata.h digests(), enfolds(), is_whirly(), amorphous(),
-   attacktype() */
-function digests(ptr) {
-    return dmgtype_fromattack(ptr, M.AD_DGST, AT_ENGL);
-}
+/* C ref: mondata.h enfolds() */
 function enfolds(ptr) {
-    return dmgtype_fromattack(ptr, M.AD_WRAP, AT_ENGL);
+    return dmgtype_fromattack(ptr, M.AD_WRAP, AT_ENGL) !== null; /* 't' */
 }
-function dmgtype_fromattack(ptr, dtyp, atyp) {
-    for (const a of ptr.mattk || [])
-        if (a && a.adtyp === dtyp && (atyp === M.AT_ANY || a.aatyp === atyp))
-            return true;
-    return false;
-}
-function is_whirly(ptr) {
-    return ptr.mlet === M.S_VORTEX || ptr === mons[M.PM_AIR_ELEMENTAL];
-}
-function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
-function flaming(ptr) {
-    return ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
-           || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
-}
-/* C ref: mondata.h resists_ston() */
-function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
 // C ref: apply.c number_leashed()
 function number_leashed() {
     let i = 0;
@@ -1366,9 +1339,6 @@ function number_leashed() {
         if (obj.otyp === LEASH && obj.leashmon)
             i++;
     return i;
-}
-function attacktype(ptr, atyp) {
-    return (ptr.mattk || []).some(a => a && a.aatyp === atyp);
 }
 
 // C ref: mhitm.c failed_grab()
@@ -1414,7 +1384,6 @@ export function engulf_target(magr, mdef) {
     let ax, ay, dx, dy;
     const uatk = (magr === game.youmonst),
           udef = (mdef === game.youmonst);
-    const passes_walls = (ptr) => (ptr.mflags1 & M.M1_WALLWALK) !== 0;
 
     /* can't swallow something that's too big */
     if (mdef.data.msize >= M.MZ_HUGE
@@ -1913,8 +1882,6 @@ function u_carried_gloves() {
     }
     return gloves;
 }
-/* C ref: hack.h makeknown() */
-function makeknown(x) { discover_object(x, true, true, true); }
 
 // C ref: mhitu.c doseduce()
 /* Returns 1 if monster teleported (or hero leaves monster's vicinity) */

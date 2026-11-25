@@ -6,7 +6,9 @@
 // Branches that need code no session reaches yet throw a
 // 'not ported yet' error instead of skipping their rolls.
 
-import { is_armed } from './makemon.js';
+import { fracture_rock } from './zap.js';
+import { pline_The } from './display.js';
+import { rn1 } from './rng.js';
 import { minv } from './mon.js';
 import { m_lined_up } from './mthrowu.js';
 import { game } from './gstate.js';
@@ -21,7 +23,14 @@ import { newsym, pline, canseemon, canspotmon, vobj_at } from './display.js';
 import { can_hide_under_obj, nonliving } from './makemon.js';
 import { Monnam, Adjmonnam } from './do_name.js';
 import { W_NONDIGGABLE as W_NONDIGGABLE_MM } from './const.js';
-import { dmgtype as dmgtype_mm } from './mondata.js';
+import { dmgtype as dmgtype_mm, is_animal, mindless, nohands, verysmall,
+         hides_under, amorphous, likes_gems, throws_rocks, tunnels, needspick,
+         is_covetous, is_mercenary, likes_gold, likes_magic, metallivorous,
+         unique_corpstat, is_rider, likes_objs, is_unicorn, likes_lava,
+         is_watch, is_mind_flayer, webmaker,
+         slimeproof as
+         slimeproof_mo, is_armed, attacktype, noattacks,
+         resist_conflict, can_blow } from './mondata.js';
 import { Norep as Norep_mm } from './display.js';
 import { makeplural as makeplural_mm } from './objnam.js';
 import { locomotion as locomotion_mm } from './trap.js';
@@ -40,7 +49,7 @@ import { Is_candle, Is_container } from './mkobj.js';
 import { STAIRS, LADDER, WEB, IS_WATERWALL, LAVAWALL } from './const.js';
 import { IS_TREE, IS_STWALL, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
          P_AXE } from './const.js';
-import { splitobj, obj_extract_self } from './mkobj.js';
+import { splitobj, obj_extract_self, bill_dummy_object } from './mkobj.js';
 import { distant_name, doname } from './objnam.js';
 import { mpickobj } from './steal.js';
 import { You_hear } from './sounds.js';
@@ -71,7 +80,6 @@ import { tty_display_nhwindow } from './wintty.js';
 import { mon_learns_traps } from './mondata.js';
 import { TRAPPED_DOOR } from './const.js';
 import { has_ceiling } from './insight.js';
-import { resist_conflict } from './mhitm.js';
 import { cuss, tactics } from './wizard.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon,
          m_has_launcher_and_ammo } from './weapon.js';
@@ -146,7 +154,6 @@ import { vegan as vegan_mm, is_rider as is_rider_mm, flesh_petrifies as flesh_pe
          resists_ston as resists_ston_mm } from './mondata.js';
 import { touch_petrifies as touch_petrifies_mo } from './mondata.js';
 import { mstoning as mstoning_mo } from './mon.js';
-import { slimeproof as slimeproof_mo } from './eat.js';
 import { revive_corpse as revive_corpse_mo } from './zap.js';
 import { objdescr_is } from './o_init.js';
 import { wake_msg as wake_msg_mm } from './mon.js';
@@ -154,7 +161,6 @@ import { cursed_object_at as cursed_object_at_ud } from './dogmove.js';
 import { mdisplacem as mdisplacem_mm } from './mhitm.js';
 import { M_ATTK_HIT as M_ATTK_HIT_MM, M_ATTK_DEF_DIED as M_ATTK_DEF_DIED_MM,
          M_ATTK_AGR_DIED as M_ATTK_AGR_DIED_MM } from './const.js';
-import { can_blow } from './music.js';
 import { artifact_light } from './worn.js';
 import { bare_artifactname } from './iactions.js';
 import { yname } from './objnam.js';
@@ -173,32 +179,7 @@ async function You_see(msg) {
 }
 
 /* mondata.h */
-function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
-function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
-function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
-function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
-function tunnels(ptr) { return (ptr.mflags1 & M.M1_TUNNEL) !== 0; }
-function needspick(ptr) { return (ptr.mflags1 & M.M1_NEEDPICK) !== 0; }
-function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
-function is_hider(ptr) { return (ptr.mflags1 & M.M1_HIDE) !== 0; }
-function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
-function is_rider(ptr) {
-    const n = monsndx(ptr);
-    return n === M.PM_DEATH || n === M.PM_FAMINE || n === M.PM_PESTILENCE;
-}
-function is_covetous(ptr) { return (ptr.mflags3 & M.M3_COVETOUS) !== 0; }
 function is_wanderer(ptr) { return (ptr.mflags2 & M.M2_WANDER) !== 0; }
-function is_mercenary(ptr) { return (ptr.mflags2 & M.M2_MERC) !== 0; }
-function likes_gold(ptr) { return (ptr.mflags2 & M.M2_GREEDY) !== 0; }
-function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
-function likes_objs(ptr) { return (ptr.mflags2 & M.M2_COLLECT) !== 0 || is_armed(ptr); }
-function likes_magic(ptr) { return (ptr.mflags2 & M.M2_MAGIC) !== 0; }
-function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
-function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
-function likes_lava(ptr) {
-    return ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
-}
-function metallivorous(ptr) { return (ptr.mflags1 & M.M1_METALLIVORE) !== 0; }
 /* C ref: obj.h is_pick(), is_pole() */
 function is_pick(otmp) {
     return (otmp.oclass === OBJ.WEAPON_CLASS || otmp.oclass === OBJ.TOOL_CLASS)
@@ -210,35 +191,10 @@ function is_pole(otmp) {
                || objects[otmp.otyp].oc_skill === P_LANCE
                || otmp.oartifact === ART_SNICKERSNEE);
 }
-function unique_corpstat(ptr) { return (ptr.geno & M.G_UNIQ) !== 0; }
 function corpse_eater(ptr) {
     const n = monsndx(ptr);
     return n === M.PM_PURPLE_WORM || n === M.PM_BABY_PURPLE_WORM
         || n === M.PM_GHOUL || n === M.PM_PIRANHA;
-}
-function is_watch(ptr) {
-    const n = monsndx(ptr);
-    return n === M.PM_WATCHMAN || n === M.PM_WATCH_CAPTAIN;
-}
-function is_mind_flayer(ptr) {
-    const n = monsndx(ptr);
-    return n === M.PM_MIND_FLAYER || n === M.PM_MASTER_MIND_FLAYER;
-}
-/* C ref: mondata.c attacktype() */
-function attacktype(ptr, atyp) {
-    for (const a of ptr.mattk)
-        if (a.aatyp === atyp) return true;
-    return false;
-}
-/* C ref: mondata.h noattacks() -- via mondata.c noattacks() */
-function noattacks(ptr) {
-    for (const a of ptr.mattk) {
-        /* AT_BOOM "passive attack" (gas spore's explosion upon death)
-           isn't an attack as far as our callers are concerned */
-        if (a.aatyp === M.AT_BOOM) continue;
-        if (a.aatyp) return false;
-    }
-    return true;
 }
 /* C ref: mondata.c can_track() */
 function can_track(ptr) {
@@ -2414,7 +2370,7 @@ export async function m_move(mtmp, after) {
             return MMOVE_DONE;
 
         if ((mfp.info[chi] & ALLOW_ROCK) && m_can_break_boulder(mtmp))
-            throw new Error('m_move(): m_break_boulder() not ported yet');
+            await m_break_boulder(mtmp, nix, niy);
 
         await m_postmove_effect(mtmp);
 
@@ -2445,6 +2401,38 @@ export async function m_move(mtmp, after) {
     }
     return await postmov(mtmp, ptr, omx, omy, mmoved,
                    seenflgs, can_tunnel, can_unlock, can_open);
+}
+
+// C ref: monmove.c m_break_boulder()
+/* monster mtmp breaks boulder at x,y */
+async function m_break_boulder(mtmp, x, y) {
+    let otmp;
+
+    if (m_can_break_boulder(mtmp) && ((otmp = sobj_at(BOULDER, x, y)) !== null)) {
+        if (!is_rider(mtmp.data)) {
+            if (!Deaf() && (mdistu(mtmp) < 4 * 4)) {
+                /* if (canspotmon(mtmp)) set_msg_xy(mtmp->mx, mtmp->my):
+                   accessibility only */
+                await pline(`${Monnam(mtmp)} mutters ${
+                    mtmp.ispriest ? "a prayer" : "an incantation"}.`);
+            }
+            mtmp.mspec_used = (mtmp.mspec_used || 0) + rn1(20, 10);
+        }
+        if (cansee(x, y)) {
+            /* set_msg_xy(x, y): accessibility only */
+            await pline_The("boulder falls apart.");
+        }
+
+        /* boulders pushed onto shop's boundary or free spot are cases where
+           an item not in hero's inventory can have its unpaid flag set;
+           if the boulder isn't already on the bill, don't charge for it */
+        if (otmp.unpaid) {
+            /* remove original from bill + add cloned copy to used-up bill */
+            await bill_dummy_object(otmp);
+        }
+        /* fracturing keeps otmp, changing its otyp from BOULDER to ROCK */
+        await fracture_rock(otmp);
+    }
 }
 
 // C ref: monmove.c m_can_break_boulder()
@@ -2764,10 +2752,6 @@ async function mpickstuff(mtmp) {
     return false;
 }
 
-
-function webmaker(ptr) {
-    return ptr === mons[M.PM_CAVE_SPIDER] || ptr === mons[M.PM_GIANT_SPIDER];
-}
 
 // C ref: monmove.c dissolve_bars()
 export async function dissolve_bars(x, y) {

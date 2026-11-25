@@ -1904,11 +1904,12 @@ export const EXPL_MAX = 7;
 export const MON_EXPLODE = -1;
 export const BURNING_OIL = -2;
 export const TRAP_EXPLODE = -3;
-export const MAY_HITMON = 0x1;
-export const MAY_HITYOU = 0x2;
-export const MAY_HIT = (0x1 | 0x2);
-export const MAY_DESTROY = 0x4;
-export const MAY_FRACTURE = 0x8;
+/* C ref: hack.h scatter() flags */
+export const MAY_HITMON = 0x02;   /* objects may hit monsters */
+export const MAY_HITYOU = 0x04;   /* objects may hit you */
+export const MAY_HIT = (MAY_HITMON | MAY_HITYOU);
+export const MAY_DESTROY = 0x08;  /* objects may be destroyed at random */
+export const MAY_FRACTURE = 0x10; /* boulders & statues may fracture */
 
 // Steed dismount reason enum (src/steed.c)
 // Runtime fields: dismount_steed(reason) reason selector.

@@ -36,8 +36,10 @@ import { canseemon } from './display.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { distant_name, doname } from './objnam.js';
 import { curse } from './mkobj.js';
-import { strncmpi, strcmpi } from './hacklib.js';
-import { monsndx } from './mondata.js';
+import { strncmpi, strcmpi, sgn } from './hacklib.js';
+import { monsndx, verysmall, bigmonst, nohands, is_animal, mindless, humanoid,
+         slithy, noncorporeal, is_whirly, sliparm,
+         breakarm } from './mondata.js';
 import { W_RINGL, W_RINGR, W_WEP, W_SWAPWEP, W_QUIVER, W_BALL, W_CHAIN,
          W_ARMOR, I_SPECIAL, W_ART, BOLT_LIM, M_SEEN_NOTHING, M_SEEN_MAGR,
          M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC,
@@ -89,7 +91,6 @@ function run_msgs_sync(gen) {
 
 /* C ref: monst.h MON_WEP() */
 export function MON_WEP(mon) { return mon.mw || null; }
-function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
 
 /* C ref: obj.h greatest_erosion() */
 function greatest_erosion(otmp) {
@@ -128,52 +129,8 @@ function is_elven_armor(otmp) {
 }
 
 /* mondata.h / mondata.c */
-function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
-function bigmonst(ptr) { return ptr.msize >= M.MZ_LARGE; }
-function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
-function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
-function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
-function humanoid(ptr) { return (ptr.mflags1 & M.M1_HUMANOID) !== 0; }
-function slithy(ptr) { return (ptr.mflags1 & M.M1_SLITHY) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
-function is_whirly(ptr) {
-    return ptr.mlet === M.S_VORTEX || ptr === mons[M.PM_AIR_ELEMENTAL];
-}
-// C ref: mondata.c sliparm()
-function sliparm(ptr) {
-    return is_whirly(ptr) || ptr.msize <= M.MZ_SMALL || noncorporeal(ptr);
-}
-// C ref: mondata.c breakarm()
-function breakarm(ptr) {
-    if (sliparm(ptr))
-        return false;
-
-    return (bigmonst(ptr)
-            || (ptr.msize > M.MZ_SMALL && !humanoid(ptr))
-            /* special cases of humanoids that cannot wear suits */
-            || ptr === mons[M.PM_MARILITH]
-            || ptr === mons[M.PM_WINGED_GARGOYLE]);
-}
 /* C ref: mondata.h cantweararm() */
 export function cantweararm(ptr) { return breakarm(ptr) || sliparm(ptr); }
-// C ref: mondata.c num_horns()
-function num_horns(ptr) {
-    switch (monsndx(ptr)) {
-    case M.PM_HORNED_DEVIL: /* ? "more than one" */
-    case M.PM_MINOTAUR:
-    case M.PM_ASMODEUS:
-    case M.PM_BALROG:
-        return 2;
-    case M.PM_WHITE_UNICORN:
-    case M.PM_GRAY_UNICORN:
-    case M.PM_BLACK_UNICORN:
-    case M.PM_KI_RIN:
-        return 1;
-    default:
-        break;
-    }
-    return 0;
-}
 /* C ref: obj.h WrappingAllowed() */
 function WrappingAllowed(mptr) {
     return humanoid(mptr) && mptr.msize >= M.MZ_SMALL && mptr.msize <= M.MZ_HUGE

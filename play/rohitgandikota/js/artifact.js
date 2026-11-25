@@ -32,6 +32,7 @@ import { cancel_monst } from './zap.js';
 import { losexp } from './exper.js';
 import { make_confused, make_hallucinated } from './potion.js';
 import { make_stunned } from './potion.js';
+import { make_sick, make_slimed, make_blinded } from './potion.js';
 import { healup } from './potion.js';
 import { monhp_per_lvl } from './makemon.js';
 import { body_part } from './polyself.js';
@@ -56,7 +57,7 @@ import { hcolor } from './do_name.js';
 import { Monnam } from './do_name.js';
 import { mon_nam } from './do_name.js';
 import { Hallucination } from './youprop.js';
-import { Blind, Levitation } from './youprop.js';
+import { Blind, Blinded, Levitation } from './youprop.js';
 import { cansee } from './vision.js';
 import { ART_STORMBRINGER } from './artilist_data.js';
 import { ART_VORPAL_BLADE } from './artilist_data.js';
@@ -1344,38 +1345,35 @@ async function arti_invoke_cost(obj, prop) {
 // "better" messages when the power has an effect, so retain both calls.
 async function invoke_healing(obj) {
     const u = game.u;
-    const sick = !!u.uprops?.SICK;
-    const slimed = !!u.uprops?.SLIMED;
-    const creamed = Number(u.ucreamed) || 0;
-    const hblinded = u.intrinsic?.HBlinded | 0;
-    const blinded = !!hblinded && !u.blocked?.BLINDED;
-    const blindTimeout = hblinded & TIMEOUT;
-    const healamt = Math.trunc((u.uhpmax + 1 - u.uhp) / 2);
-    const { You_feel } = await import('./pline.js');
+    let healamt = Math.trunc((u.uhpmax + 1 - u.uhp) / 2);
+    const creamed = u.ucreamed || 0;
 
-    if (healamt || sick || slimed || Number(blinded) > creamed)
+    if (Upolyd(u))
+        healamt = Math.trunc((u.mhmax + 1 - u.mh) / 2);
+    if (healamt || u.uprops?.SICK || u.uprops?.SLIMED || Blinded() > creamed)
         await You_feel('better.');
-    if (healamt || sick || slimed || blindTimeout > creamed) {
-        const slightly = !healamt && !sick && !slimed
-                         && (hblinded & ~TIMEOUT) !== 0;
+    if (healamt || u.uprops?.SICK || u.uprops?.SLIMED
+        || (u.intrinsic?.HBlinded & TIMEOUT) > creamed) {
+        const slightly = !healamt && !u.uprops?.SICK && !u.uprops?.SLIMED
+                         && (u.intrinsic?.HBlinded & ~TIMEOUT) !== 0;
         await You_feel(`${slightly ? 'slightly ' : ''}better.`);
     } else {
         await nothing_special(obj);
         return ECMD_TIME;
     }
 
-    if (healamt > 0)
-        u.uhp += healamt;
-    if (sick) {
-        const { make_sick } = await import('./potion.js');
+    if (healamt > 0) {
+        if (Upolyd(u))
+            u.mh += healamt;
+        else
+            u.uhp += healamt;
+    }
+    if (u.uprops?.SICK)
         await make_sick(0, null, false, SICK_ALL);
-    }
-    if (slimed)
-        u.uprops.SLIMED = 0;
-    if (blindTimeout > creamed) {
-        const { make_blinded } = await import('./potion.js');
+    if (u.uprops?.SLIMED)
+        await make_slimed(0, null);
+    if ((u.intrinsic?.HBlinded & TIMEOUT) > creamed)
         await make_blinded(creamed, false);
-    }
     (game.disp ||= {}).botl = true;
     return ECMD_TIME;
 }

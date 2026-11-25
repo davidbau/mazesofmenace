@@ -16,7 +16,9 @@ import { abuse_dog } from './dog.js';
 import { adjalign } from './attrib.js';
 import { livelog_printf, You_feel } from './display.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
-import { monsndx } from './mondata.js';
+import { monsndx, throws_rocks, amorphous, verysmall, bigmonst, hides_under,
+         is_whirly, slithy, noncorporeal, is_clinger, strongmonst, tunnels,
+         needspick, is_hider, noattacks } from './mondata.js';
 import { breaktest } from './dothrow.js';
 import { splitobj } from './mkobj.js';
 import { setuwep } from './wield.js';
@@ -49,7 +51,7 @@ import {
 } from './const.js';
 import { waterbody_name } from './pager.js';
 import { has_ceiling } from './insight.js';
-import { ing_suffix, visctrl } from './hacklib.js';
+import { ing_suffix, visctrl, upstart } from './hacklib.js';
 import { cmd_from_func } from './cmd.js';
 import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
          PM_GRID_BUG, mons, M1_TUNNEL, M1_NEEDPICK, M1_AMORPHOUS, MZ_SMALL,
@@ -67,7 +69,7 @@ import { carrying } from './invent.js';
 import { WAN_DIGGING } from './objects.js';
 import { u_at, Is_rogue_level, Upolyd } from './const.js';
 import { fall_asleep } from './timeout.js';
-import { t_at, VIBRATING_SQUARE, is_pit, WEB, climb_pit, reset_utrap } from './trap.js';
+import { t_at, VIBRATING_SQUARE, is_pit, WEB, climb_pit, reset_utrap, sokoban_guilt } from './trap.js';
 import { TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, TT_NONE } from './const.js';
 import { ART_STING } from './artilist.js';
 import { buried_ball, buried_ball_to_punishment } from './dig.js';
@@ -83,7 +85,7 @@ import { back_to_cmap, defsyms_explanation } from './pager.js';
 import { u_on_newpos } from './mklev.js';
 import { room_discovered } from './dungeon.js';
 import { inside_room } from './sp_lev.js';
-import { record_achievement } from './do.js';
+import { record_achievement, boulder_hits_pool } from './do.js';
 import { ACH_TOWN } from './const.js';
 import { RUN_TPORT, RUN_LEAP } from './const.js';
 import { flush_screen as flush_screen_hk } from './display.js';
@@ -147,8 +149,6 @@ import { objdescr_is as objdescr_is_sf } from './o_init.js';
 import { resists_cold as resists_cold_sf } from './mondata.js';
 import { COLD_RES as COLD_RES_SF } from './const.js';
 import { hideunder } from './makemon.js';
-/* C ref: mondata.h is_clinger() */
-function is_clinger(ptr) { return (ptr.mflags1 & M1_CLING) !== 0; }
 
 // C's impossible() (pline.c) is not ported yet.
 export function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -162,9 +162,6 @@ function is_axe(otmp) {
     return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
             && objects[otmp.otyp].oc_skill === P_AXE);
 }
-
-function strongmonst(ptr) { return (ptr.mflags2 & M2_STRONG) !== 0; }
-function throws_rocks(ptr) { return (ptr.mflags2 & M2_ROCKTHROW) !== 0; }
 
 // C ref: hack.c weight_cap()
 export function weight_cap() {
@@ -534,20 +531,6 @@ export async function overexert_hp() {
         exercise(A_CON, false);
         await fall_asleep(-10, false);
     }
-}
-
-// C ref: mondata.c noattacks()
-export function noattacks(ptr) {
-    for (const mattk of ptr.mattk || []) {
-        /* AT_BOOM "passive attack" (gas spore's explosion upon death)
-           isn't an attack as far as our callers are concerned */
-        if (mattk.aatyp === AT_BOOM)
-            continue;
-
-        if (mattk.aatyp)
-            return false;
-    }
-    return true;
 }
 
 // C ref: hack.c monster_nearby()
@@ -1006,21 +989,7 @@ export function nomul(nval) {
 
 /* C ref: rm.h Sokoban -- svl.level.flags.sokoban_rules */
 function Sokoban() { return !!game.level.flags.sokoban_rules; }
-/* C ref: mondata.h tunnels(), needspick(), amorphous(), verysmall(),
-   bigmonst(), hides_under(), is_hider(), is_whirly(), slithy(),
-   noncorporeal(), NODIAG() */
-function tunnels(ptr) { return (ptr.mflags1 & M1_TUNNEL) !== 0; }
-function needspick(ptr) { return (ptr.mflags1 & M1_NEEDPICK) !== 0; }
-function amorphous(ptr) { return (ptr.mflags1 & M1_AMORPHOUS) !== 0; }
-function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
-function bigmonst(ptr) { return ptr.msize >= MZ_LARGE; }
-function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
-function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
-function is_whirly(ptr) {
-    return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL];
-}
-function slithy(ptr) { return (ptr.mflags1 & M1_SLITHY) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === S_GHOST; }
+/* C ref: hack.h NODIAG() */
 function NODIAG(monnum) { return monnum === PM_GRID_BUG; }
 /* C ref: monst.h helpless(), mundisplaceable() */
 function mundisplaceable(mon) {
@@ -2241,9 +2210,6 @@ async function test_move_rest(ux, uy, dx, dy, mode, x, y) {
     return true;
 }
 
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-
 // C ref: hack.c movobj()
 export function movobj(obj, ox, oy) {
     /* optimize by leaving on the fobj chain? */
@@ -2270,23 +2236,36 @@ async function cannot_push(otmp, sx, sy) {
     void otmp;
     if (throws_rocks(game.youmonst.data))
         throw new Error('cannot_push(): giant stepping over a boulder not ported yet');
-    if (could_move_onto_boulder(sx, sy))
-        throw new Error('cannot_push(): squeezing onto a boulder not ported yet');
-    return -1;
+
+    if (could_move_onto_boulder(sx, sy)) {
+        await pline(
+           "However, you can squeeze yourself into a small opening.");
+        sokoban_guilt();
+        return 0;
+    } else {
+        return -1;
+    }
 }
 
-// C ref: hack.c could_move_onto_boulder() -- the cases a starting hero
-// can reach
+// C ref: hack.c could_move_onto_boulder()
+/* can hero move onto a spot containing one or more boulders?
+   used for m<dir> and travel and during boulder push failure */
 function could_move_onto_boulder(sx, sy) {
-    void sx, sy;
     /* can if able to phaze through rock (must be poly'd, so not riding) */
     if (Passes_walls())
         return true;
     /* can't when riding */
     if (game.u.usteed)
         return false;
-    if (throws_rocks(game.youmonst.data) || verysmall(game.youmonst.data))
-        throw new Error('could_move_onto_boulder(): giant/tiny hero not ported yet');
+    /* can if a giant, unless doing so allows hero to pass into a
+       diagonal squeeze at the same time */
+    if (throws_rocks(game.youmonst.data))
+        return (!game.u.dx || !game.u.dy
+                || !(IS_OBSTRUCTED(game.level.at(game.u.ux, sy).typ)
+                     && IS_OBSTRUCTED(game.level.at(sx, game.u.uy).typ)));
+    /* can if tiny (implies carrying very little else couldn't move at all) */
+    if (verysmall(game.youmonst.data))
+        return true;
     /* can squeeze to spot if carrying extremely little, otherwise can't */
     /* squeezeablylightinvent() */
     return (!game.invent || inv_weight() <= (WT_SQUEEZABLE_INV * -1));
@@ -2455,9 +2434,8 @@ async function moverock_core(sx, sy) {
                 }
             }
 
-            /* boulder_hits_pool(otmp, rx, ry, TRUE) */
-            if (is_pool(rx, ry) || is_lava(rx, ry))
-                throw new Error('moverock_core(): boulder_hits_pool() not ported yet');
+            if (await boulder_hits_pool(otmp, rx, ry, true))
+                continue;
 
             /*
              * Re-link at top of fobj chain so that pile order is preserved
@@ -2476,7 +2454,7 @@ async function moverock_core(sx, sy) {
     return 0;
 }
 
-/* C ref: mondata.c attacktype(), sticks() */
+/* C ref: mondata.c sticks() */
 function hero_sticks(ptr) {
     return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL || a.aatyp === AT_HUGS
                                        || a.adtyp === AD_STCK);
@@ -3292,7 +3270,6 @@ async function domove_core() {
         newsym(u.ux0, u.uy0);
         /* Since the hero has moved, adjust what can be seen/unseen. */
         vision_recalc(1); /* Do the work now in the recover time. */
-        newsym(u.ux, u.uy);
         /* invocation_message(): only on the vibrating square level */
     }
 

@@ -24,11 +24,12 @@ import {
     BLINDED, INFRAVISION, TELEPAT, WARN_OF_MON, DETECT_MONSTERS, WARNING,
     NO_TRAP, BEAR_TRAP, PIT, SPIKED_PIT, WEB,
 } from './const.js';
-import { HALLUC, Is_waterlevel, isok, IS_STWALL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT,
+import { HALLUC, Is_waterlevel, isok, IS_STWALL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT, DB_FLOOR,
          M_AP_FURNITURE, WARNCOUNT, def_warnsyms, In_mines, In_sokoban,
          Is_knox_level, M_AP_NOTHING, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
          PROT_FROM_SHAPE_CHANGERS, MCORPSENM, ACCESSIBLE } from './const.js';
-import { ROGUESET } from './const.js';
+import { ROGUESET, Is_rogue_level, SYM_BOULDER, SYM_UNEXPLORED } from './const.js';
+import { SYM_OFF_P, SYM_OFF_O, SYM_OFF_M, SYM_OFF_X } from './symbols.js';
 import { visible_region_at, show_region } from './region.js';
 import { In_hell } from './dungeon.js';
 import { rn2_on_display_rng } from './rng.js';
@@ -817,7 +818,20 @@ function terrain_glyph_dec(loc, x, y) {
     case WATER:     return { ch: '`', color: CLR_BRIGHT_BLUE, dec: true, asc: '}', cmapidx: 48 };  /* S_water */
     case DBWALL:    return { ch: '#', color: CLR_BROWN, dec: false,
                              cmapidx: loc.horizontal ? 45 : 44 };
-    case DRAWBRIDGE_UP: return S_room;
+    case DRAWBRIDGE_UP:
+        switch (loc.drawbridgemask & DB_UNDER) {
+        case DB_MOAT:
+            return { ch: '`', color: CLR_BLUE, dec: true, asc: '}', cmapidx: 38 };  /* S_pool */
+        case DB_LAVA:
+            return { ch: '`', color: CLR_RED, dec: true, asc: '}', cmapidx: 40 };  /* S_lava */
+        case DB_ICE:
+            return { ch: '~', color: CLR_CYAN, dec: true, asc: '.', cmapidx: 39 };  /* S_ice */
+        case DB_FLOOR:
+            return S_room;
+        default:
+            /* impossible("Strange db-under: %d", ...) */
+            return S_room; /* something is better than nothing */
+        }
     case DRAWBRIDGE_DOWN: return { ch: '~', color: CLR_BROWN, dec: true, asc: '#',
                                    cmapidx: loc.horizontal ? 43 : 42 };
     default:        return S_room;
@@ -852,6 +866,12 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
         ch = rogue_cell_ch(ch, decgfx, kind, gid);
         decgfx = false;
         color = NO_COLOR;
+    } else {
+        const sym = ov_showsym(kind, gid);
+        if (sym) {
+            ch = sym_char(sym);
+            decgfx = sym_decgfx(sym);
+        }
     }
     /* C ref: display.c show_glyph() -- the spot needs flushing (gnew,
        inside the row's changed-glyph bounding box) only if the glyph or
@@ -870,6 +890,54 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_kind = kind;
     loc.disp_objpile = !!objpile;
     loc.disp_gid = gid;
+}
+
+// C ref: display.c reset_glyphmap() -- glyphmap[glyph].sym.symidx, the
+// gs.showsyms[] index a glyph is drawn with, from what show_glyph_cell()
+// gets of the glyph: a cmap glyph's glyph_to_cmap() (cmapidx), an object
+// glyph's objects[] index (the boulder uses SYM_BOULDER, a statue its
+// monster's class), a monster glyph's monster, the unexplored glyph.
+// -1 when the glyph's identity isn't passed along (the hero, warnings,
+// traps, engravings, the invisible-monster marker).
+function glyph_symidx(kind, gid) {
+    if (!gid)
+        return -1;
+    if (gid.unexplored)
+        return SYM_UNEXPLORED + SYM_OFF_X;
+    if (gid.cmapidx !== undefined && gid.cmapidx !== null)
+        return gid.cmapidx + SYM_OFF_P;
+    if (gid.otyp !== undefined && gid.otyp !== null) {
+        if (gid.otyp === STATUE && gid.corpsenm !== undefined)
+            return mons[gid.corpsenm].mlet + SYM_OFF_M;
+        if (gid.otyp === BOULDER)
+            return SYM_BOULDER + SYM_OFF_X;
+        return objects[gid.otyp].oc_class + SYM_OFF_O;
+    }
+    if (gid.mndx !== undefined && gid.mndx !== null)
+        return mons[gid.mndx].mlet + SYM_OFF_M;
+    return -1;
+}
+
+// C ref: symbols.c switch_symbols(TRUE) / assign_graphics(PRIMARYSET) --
+// gs.showsyms[i] = go.ov_primary_syms[i] ? go.ov_primary_syms[i]
+// : gp.primary_syms[i]; this is the SYMBOLS= override of the glyph's
+// symbol (an nhsym), or 0 when it has none
+function ov_showsym(kind, gid) {
+    const ov = game.ov_primary_syms;
+    if (!ov)
+        return 0;
+    const i = glyph_symidx(kind, gid);
+    return (i >= 0) ? ov[i] : 0;
+}
+
+// C ref: wintty.c tty_print_glyph()/g_putch() -- with the DECgraphics
+// symset's H_DEC handling a symbol with the high bit set is drawn from the
+// DEC line-drawing set (as its low 7 bits); any other symbol as itself
+function sym_decgfx(sym) {
+    return !!(sym & 0x80) && dec_symset();
+}
+function sym_char(sym) {
+    return String.fromCharCode(sym_decgfx(sym) ? (sym & 0x7f) : sym);
 }
 
 /* the glyph identity of two shown glyphs (show_glyph_cell() 'gid') */
@@ -913,15 +981,26 @@ function glyph_gid(glyph) {
 // C ref: wintty.c tty_print_glyph() -- the video attribute a map cell is
 // printed with. MG_PET with hilite_pet gives iflags.wc2_petattr (worked
 // out by display_monster() into disp_attr); otherwise MG_OBJPILE with
-// hilite_pile is shown in inverse when use_inverse is on. Like the tty,
-// this is decided when the glyph is printed, from the current options.
+// hilite_pile is shown in inverse when use_inverse is on, and so is
+// MG_BW_ENGR. Like the tty, this is decided when the glyph is printed,
+// from the current options.
 function tty_glyph_attr(loc) {
     if (loc.disp_attr)
         return loc.disp_attr;
-    if (loc.disp_objpile && game.iflags?.hilite_pile
+    if (((loc.disp_objpile && game.iflags?.hilite_pile)
+         || glyph_bw_engr(loc))
         && game.iflags?.wc_inverse !== false)
         return ATR_INVERSE;
     return 0;
+}
+
+// C ref: display.c map_glyphinfo() -- MG_BW_ENGR: "likewise for corridor
+// and engraving-in-corridor": S_engrcorr gets it when its symbol is the
+// one S_corr or S_litcorr uses. Both are '#' in every symset this port
+// draws (default, DECgraphics, and the Rogue level's), while S_engroom
+// is '`'.
+function glyph_bw_engr(loc) {
+    return loc.disp_kind === 'engr' && loc.disp_ch === '#';
 }
 
 /* the glyph range of a remembered glyph (lev->glyph): map_object(),
@@ -2220,9 +2299,15 @@ export function feel_location(x, y) {
                 if (idx !== undefined && idx >= 0 && idx < 20 /* S_darkroom */)
                     do_room_glyph = true;
             }
-            if (do_room_glyph)
-                /* lev->glyph = S_darkroom/S_room/S_stone; show_glyph() */
-                throw new Error('feel_location(): levitation rules room glyph not ported yet');
+            if (do_room_glyph) {
+                lev.remembered_glyph = (game.flags.dark_room !== false
+                                        && game.iflags.wc_color !== false
+                                        && !Is_rogue_level(u.uz))
+                                           ? room_cmap_glyph(20) /* S_darkroom */
+                                           : (lev.waslit ? room_cmap_glyph(19) /* S_room */
+                                                         : room_cmap_glyph(0)); /* S_stone */
+                show_glyph(x, y, lev.remembered_glyph);
+            }
         } else {
             /* We feel it (I think hallways are the only things left). */
             map_background(x, y, 1);
@@ -2295,6 +2380,16 @@ export function feel_location(x, y) {
                         (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon))
                             ? PHYSICALLY_SEEN : DETECTED,
                         is_worm_tail(mon, x, y));
+}
+
+// C ref: display.h cmap_to_glyph(S_stone / S_room / S_darkroom) -- in the
+// remembered-glyph form. S_darkroom is drawn like S_room (see newsym()).
+function room_cmap_glyph(idx) {
+    if (idx === 0) /* S_stone */
+        return { ch: ' ', color: NO_COLOR, decgfx: false, cmap: 'S_stone', cmapidx: 0 };
+    const dec = dec_symset();
+    return { ch: dec ? '~' : '.', color: NO_COLOR, decgfx: dec,
+             cmap: idx === 20 ? 'S_darkroom' : 'S_room', cmapidx: idx };
 }
 
 /* a terrain glyph in the remembered-glyph form (lev->glyph) */
@@ -2471,6 +2566,11 @@ export function dec_cell_char(ch) {
 // (high bit set) form of its alternate-charset letter, as dat/symbols
 // gives it (S_room: \xfe for '~')
 export function glyph_ttychar(glyph) {
+    if (game.currentgraphics !== ROGUESET) {
+        const sym = ov_showsym(glyph.kind ?? glyph_kind(glyph), glyph_gid(glyph));
+        if (sym)
+            return sym;
+    }
     const c = (glyph.ch || ' ').charCodeAt(0);
     return glyph.decgfx ? (0x80 | c) : c;
 }

@@ -80,13 +80,12 @@ import { data as DATAFILE } from './dat_files.js';
 import * as DAT from './dat_files.js';
 import { getpos, coord_desc, LOOK_QUICK, LOOK_ONCE, LOOK_VERBOSE } from './getpos.js';
 import { tty_yn_function } from './tty/topl.js';
-import { xwaitforspace } from './tty/getline.js';
 import { getlin, key2extcmddesc, key2txt } from './cmd.js';
 import { show_menu_controls } from './options.js';
 import { display_inventory } from './invent.js';
 import { nhl_init } from './nhlua.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
-         tty_next_page, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
+         tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
          tty_add_menu_str, tty_end_menu, tty_select_menu, tty_dismiss_nhwindow,
          NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
 import { ok_to_quest } from './quest.js';
@@ -104,8 +103,6 @@ const CM = cmap_names;
 
 /* src/pager.c:63 */
 const invisexplain = 'remembered, unseen, creature';
-/* include/hack.h — quitchars */
-const quitchars = ' \r\n\x1b';
 
 // gs.showsyms[] for the cmap range: the ACTIVE symbol set's symbol (plain
 // '|' without OPTIONS=symset:DECgraphics, the DEC line-drawing set with it,
@@ -892,7 +889,6 @@ export async function checkfile(inp, pm, chkflags, supplemental_box) {
                     tty_putstr(datawin, 0, tp);
                 }
                 await tty_display_nhwindow(datawin);
-                await xwaitforspace(quitchars);
                 await tty_destroy_nhwindow(datawin);
                 await notice_all_mons_flush();
             }
@@ -1547,9 +1543,6 @@ async function look_all(nearby, do_mons) {
     }
     if (count) {
         await tty_display_nhwindow(win);
-        await xwaitforspace(quitchars);
-        while (tty_next_page(win))
-            await xwaitforspace(quitchars);
         await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     } else {
@@ -1611,9 +1604,6 @@ async function look_traps(nearby) {
     }
     if (count) {
         await tty_display_nhwindow(win);
-        await xwaitforspace(quitchars);
-        while (tty_next_page(win))
-            await xwaitforspace(quitchars);
         await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     } else {
@@ -1669,7 +1659,6 @@ async function look_engrs(nearby) {
     }
     if (count) {
         await tty_display_nhwindow(win);
-        await xwaitforspace(quitchars);
         await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();
     } else {
@@ -1748,7 +1737,6 @@ async function do_supplemental_info(name, pm, without_asking) {
                     tty_putstr(datawin, 0, txt);
                 }
                 await tty_display_nhwindow(datawin);
-                await xwaitforspace(quitchars);
                 await tty_destroy_nhwindow(datawin);
                 await notice_all_mons_flush();
             }
@@ -1772,9 +1760,6 @@ export async function doextversion() {
     for (const line of VERSION_OPTIONS_TEXT)
         tty_putstr(win, 0, line);
     await tty_display_nhwindow(win);
-    await xwaitforspace(quitchars);
-    while (game.morc !== '\x1b' && tty_next_page(win))
-        await xwaitforspace(quitchars);
     await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return ECMD_OK;
@@ -1799,13 +1784,6 @@ export async function display_file(text) {
         tty_putstr(win, 0, line);
     }
     await tty_display_nhwindow(win);
-    for (;;) {
-        await xwaitforspace(quitchars);
-        if (game.morc === '\x1b')
-            break;                      /* cancel remaining pages */
-        if (!tty_next_page(win))
-            break;
-    }
     await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return ECMD_OK;
@@ -1863,7 +1841,6 @@ async function domenucontrols() {
     const cwin = tty_create_nhwindow(NHW_TEXT);
     show_menu_controls((s) => tty_putstr(cwin, 0, s), false);
     await tty_display_nhwindow(cwin);
-    await xwaitforspace(quitchars);
     await tty_destroy_nhwindow(cwin);
     await notice_all_mons_flush();
 }
@@ -1880,7 +1857,6 @@ async function docontact() {
     tty_putstr(win, 0, 'For more information on NetHack, or to report a bug,');
     tty_putstr(win, 0, 'visit our website "https://www.nethack.org/".');
     await tty_display_nhwindow(win);
-    await xwaitforspace(quitchars);
     await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
 }

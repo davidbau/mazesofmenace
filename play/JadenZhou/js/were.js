@@ -1,7 +1,6 @@
 // were.js -- lycanthropes changing form.
 // C ref: were.c -- were_change(), counter_were(), were_beastie(), new_were().
-// C ref: were.c were_summon().
-// Not ported yet: you_were(), you_unwere(), set_ulycn().
+// C ref: were.c were_summon(), you_were(), you_unwere(), set_ulycn().
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd } from './rng.js';
@@ -22,6 +21,13 @@ import { Protection_from_shape_changers, Deaf, Hallucination } from './youprop.j
 import { makemon, makemon_flush_msg } from './makemon.js';
 import { NO_MM_FLAGS } from './const.js';
 import { tamedog } from './dog.js';
+import { Polymorph_control, Stunned, Unaware, Unchanging } from './youprop.js';
+import { NEUTRAL, PARANOID_WERECHANGE } from './const.js';
+import { an } from './objnam.js';
+import { paranoid_query } from './cmd.js';
+import { monster_nearby } from './hack.js';
+import { polymon, rehumanize, set_uasmon } from './polyself.js';
+import { You_feel } from './display.js';
 
 // C ref: were.c were_change()
 export async function were_change(mon) {
@@ -205,4 +211,56 @@ export async function were_summon(
             await tamedog(mtmp, null, false);
     }
     return total;
+}
+
+/* C ref: flag.h ParanoidWerechange */
+function ParanoidWerechange() {
+    return ((game.flags.paranoia_bits || 0) & PARANOID_WERECHANGE) !== 0;
+}
+
+// C ref: were.c you_were()
+export async function you_were() {
+    const u = game.u;
+    let qbuf;
+    const controllable_poly = Polymorph_control() && !(Stunned() || Unaware());
+
+    if (Unchanging() || u.umonnum === u.ulycn)
+        return;
+    if (controllable_poly) {
+        /* `+4' => skip "were" prefix to get name of beast */
+        qbuf = `Do you want to change into ${
+            an(mons[u.ulycn].pmnames[NEUTRAL].slice(4))}?`;
+        if (!await paranoid_query(ParanoidWerechange(), qbuf))
+            return;
+    } else if (monster_nearby()) {
+        return;
+    }
+    game.were_changes = (game.were_changes || 0) + 1;
+    await polymon(u.ulycn);
+}
+
+// C ref: were.c you_unwere()
+export async function you_unwere(purify) {
+    const u = game.u;
+    const controllable_poly = Polymorph_control() && !(Stunned() || Unaware());
+
+    if (purify) {
+        await You_feel("purified.");
+        set_ulycn(NON_PM); /* cure lycanthropy */
+    }
+    if (!Unchanging() && is_were(game.youmonst.data)
+        && !monster_nearby()
+        && (!controllable_poly
+            || !await paranoid_query(ParanoidWerechange(), "Remain in beast form?")))
+        await rehumanize();
+    else if (is_were(game.youmonst.data) && !u.mtimedone)
+        u.mtimedone = rn1(200, 200); /* 40% of initial were change */
+}
+
+// C ref: were.c set_ulycn()
+/* lycanthropy is being caught or cured, but no shape change is involved */
+export function set_ulycn(which) {
+    game.u.ulycn = which;
+    /* add or remove lycanthrope's innate intrinsics (Drain_resistance) */
+    set_uasmon();
 }

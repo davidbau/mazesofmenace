@@ -11,7 +11,7 @@
 // the ones that pass, so its count depends on the first six results.
 
 import { game } from './gstate.js';
-import { stagger } from './mondata.js';
+import { stagger, name_to_mon, type_is_pname } from './mondata.js';
 import { shieldeff } from './display.js';
 import { You, Your } from './pline.js';
 import { pline, see_monsters } from './display.js';
@@ -37,8 +37,9 @@ import { LL_ALIGNMENT, A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF, A_CURRENT, Is_
 import { aligns } from './role_data.js';
 import { summon_furies } from './makemon.js';
 import { retouch_equipment, what_gives, is_art } from './artifact.js';
-import { Hallucination, Blindfolded_only, Fumbling, Levitation, Flying, Fixed_abil } from './youprop.js';
-import { ysimple_name, bare_artifactname } from './objnam.js';
+import { Hallucination, Blindfolded_only, Fumbling, Levitation, Flying, Fixed_abil,
+         Poison_resistance, Half_gas_damage } from './youprop.js';
+import { ysimple_name, bare_artifactname, the } from './objnam.js';
 import { strstri } from './hacklib.js';
 import { body_part, float_vs_flight } from './polyself.js';
 import { Boots_on } from './do_wear.js';
@@ -453,7 +454,6 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
         await pline(`${/^[A-Z]/.test(reason) ? '' : 'The '}${reason} ${
             plural ? 'were' : 'was'} poisoned!`);
     }
-    const { Poison_resistance } = await import('./youprop.js');
     if (Poison_resistance()) {
         if (blast)
             await shieldeff(game.u.ux, game.u.uy);
@@ -464,18 +464,16 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
 
     let killer = pkiller;
     let kprefix = KILLED_BY_AN;
-    const lowerKiller = pkiller.toLowerCase();
-    const killerPtr = (game.mons || []).find((ptr) =>
-        ptr?.pmnames?.some((name) => name?.toLowerCase() === lowerKiller));
-    if (killerPtr && (killerPtr.geno & G_UNIQ)) {
+    const mndx = name_to_mon(pkiller, null);
+    if (ismnum(mndx) && (game.mons[mndx].geno & G_UNIQ)) {
         kprefix = KILLED_BY;
-        const { type_is_pname } = await import('./mondata.js');
-        if (!type_is_pname(killerPtr))
-            killer = `the ${killer}`;
+        if (!type_is_pname(game.mons[mndx]))
+            killer = the(killer);
     } else if (/^(?:the |an |a )/i.test(killer)) {
         kprefix = KILLED_BY;
     }
 
+    // C deliberately tests human HP here even while polymorphed.
     const outcome = !fatal ? 1 : rn2(fatal + (thrown_weapon ? 20 : 0));
     if (outcome === 0 && typ !== A_CHA) {
         let loss = 6 + d(4, 6);
@@ -488,10 +486,8 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
             const olduhp = game.u.uhp;
             const newuhpmax = game.u.uhpmax - Math.trunc(loss / 2);
             const { setuhpmax } = await import('./exper.js');
-            setuhpmax(Math.max(newuhpmax, Math.max(game.u.ulevel, 3)), true);
-            if (game.u.uhp < olduhp)
-                loss -= olduhp - game.u.uhp;
-            loss = Math.max(loss, 1);
+            setuhpmax(Math.max(newuhpmax, minuhpmax(3)), true);
+            loss = adjuhploss(loss, olduhp);
 
             const { losehp } = await import('./hack.js');
             await losehp(loss, killer, kprefix);
@@ -502,8 +498,7 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
         }
     } else if (outcome > 5) {
         let loss = thrown_weapon ? rnd(6) : rn1(10, 6);
-        if ((blast || reason === 'gas cloud')
-            && game.u.uprops?.HALF_GAS_DAMAGE)
+        if ((blast || reason === 'gas cloud') && Half_gas_damage())
             loss = Math.trunc((loss + 1) / 2);
         const { losehp } = await import('./hack.js');
         await losehp(loss, killer, kprefix);
@@ -514,7 +509,8 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
     }
 
     if (game.u.uhp < 1) {
-        game.killer = { format: kprefix, name: killer };
+        game.killer.format = kprefix;
+        game.killer.name = killer;
         const { done } = await import('./end.js');
         await done(/poison/i.test(killer) ? DIED : POISONING);
     }

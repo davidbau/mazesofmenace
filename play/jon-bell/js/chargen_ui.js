@@ -1862,6 +1862,18 @@ export async function playChargen(ctx) {
             else if (a === '@' || a === '*') a = 'a';
             if (a === 'y' || a === 'n' || a === 'a') { pick4u = a; break; }
         }
+        /* The answered prompt stays on the message window (topl.c:543
+         * toplin = TOPLINE_NON_EMPTY; a wrapped one was already erased by
+         * :547-548), and whatever is displayed next erases it: a corner menu
+         * via tty_display_nhwindow's tty_clear_nhwindow(WIN_MESSAGE)
+         * (wintty.c:1934-1935 -> :1048-1052 home(); cl_end(); docorner(1,
+         * cury + 1)), a full-screen one by clearing the screen.  On the
+         * restore-menu base window the prompt was painted into that window's
+         * rows, so drop it there (the copyright path builds row 0 blank). */
+        if (ctx.baseWindow) {
+            ctx.baseWindow[0] = '';
+            if (buildPickPrompt(st).length > 79) ctx.baseWindow[1] = '';
+        }
     }
 
     // C tty menus retain the base window until their rectangles erase it.

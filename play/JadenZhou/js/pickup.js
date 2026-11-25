@@ -11,7 +11,7 @@ import { FUMBLING, TIMEOUT, DRAWBRIDGE_UP, ICE, STONE, IS_POOL, IS_LAVA,
 import { db_under_typ } from './display.js';
 import { dfeature_at } from './invent.js';
 import { waterbody_name } from './pager.js';
-import { back_on_ground } from './trap.js';
+import { back_on_ground, unconscious } from './trap.js';
 import { an } from './objnam.js';
 import { game } from './gstate.js';
 import { is_pool, is_lava } from './makemon.js';
@@ -53,7 +53,7 @@ import { the } from './iactions.js';
 import { xname } from './objnam.js';
 import { autokey, AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP,
          AUTOUNLOCK_FORCE } from './lock.js';
-import { costly_spot, addtobill } from './shk.js';
+import { costly_spot, addtobill, stolen_value } from './shk.js';
 import { in_rooms } from './hack.js';
 import { SHOPBASE } from './const.js';
 import { money_cnt } from './u_init.js';
@@ -87,7 +87,7 @@ import { is_worn, count_unpaid, count_buc } from './invent.js';
 import { add_menu_str } from './wintty.js';
 import { tty_putstr, tty_display_nhwindow } from './wintty.js';
 import { PM_CLERIC } from './monsters.js';
-import { observe_object } from './o_init.js';
+import { observe_object, makeknown } from './o_init.js';
 import { touch_artifact } from './artifact.js';
 import { tty_yn_function, tty_clear_nhwindow } from './wintty.js';
 import { COIN_CLASS, BOULDER, LOADSTONE, SCR_SCARE_MONSTER,
@@ -123,13 +123,13 @@ import { more_experienced, newexplevel } from './exper.js';
 import { currency } from './insight.js';
 import { container_contents } from './end.js';
 import { discover_object } from './o_init.js';
-import { unconscious } from './eat.js';
 import { hideunder } from './makemon.js';
 import { fix_ghostly_obj } from './bones.js';
 import { revive_corpse } from './zap.js';
 import { exercise } from './attrib.js';
 import { A_WIS } from './const.js';
 import { uteetering_at_seen_pit, uescaped_shaft } from './engrave.js';
+import { hides_under, notake, touch_petrifies, is_rider } from './mondata.js';
 
 /* C ref: invent.c invlet_basic */
 const invlet_basic = 52;
@@ -280,10 +280,6 @@ export async function pickup(what) /* should be a long */ {
     /* add_valid_menu_class(0): reset */
     return (n_tried > 0) ? 1 : 0;
 }
-
-/* C ref: mondata.h notake(), hides_under() */
-function notake(ptr) { return (ptr.mflags1 & M1_NOTAKE) !== 0; }
-function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
 
 // C ref: pickup.c describe_decor()
 /* handle 'mention_decor' (when walking onto a dungeon feature such as
@@ -1869,15 +1865,6 @@ async function rider_corpse_revival(obj, remotely) {
     return true;
 }
 
-/* C ref: mondata.h touch_petrifies(), is_rider() */
-function touch_petrifies(ptr) {
-    return ptr === mons[PM_COCKATRICE] || ptr === mons[PM_CHICKATRICE];
-}
-function is_rider(ptr) {
-    return ptr === mons[PM_DEATH] || ptr === mons[PM_FAMINE]
-           || ptr === mons[PM_PESTILENCE];
-}
-
 // C ref: pickup.c encumber_msg()
 export async function encumber_msg() {
     const newcap = near_capacity();
@@ -2404,7 +2391,8 @@ async function boh_loss(container, held) {
 // C ref: pickup.c mbag_item_gone()
 /* an object inside a cursed bag of holding is being destroyed */
 async function mbag_item_gone(held, item, silent) {
-    const loss = 0;
+    let shkp;
+    let loss = 0;
 
     if (!silent) {
         if (item.dknown)
@@ -2414,8 +2402,11 @@ async function mbag_item_gone(held, item, silent) {
     }
 
     if (game.u.ushops && game.u.ushops.length
-        && shop_keeper(game.u.ushops.charCodeAt(0)))
-        throw new Error('mbag_item_gone(): stolen_value() not ported yet');
+        && (shkp = shop_keeper(game.u.ushops.charCodeAt(0))) != null) {
+        if (held ? !!item.unpaid : costly_spot(game.u.ux, game.u.uy))
+            loss = await stolen_value(item, game.u.ux, game.u.uy,
+                                      !!shkp.mpeaceful, true);
+    }
     obfree(item, null);
     return loss;
 }
@@ -3223,9 +3214,6 @@ async function in_or_out_menu(prompt, obj,
     }
     return (n === 0 && more_containers) ? 'n' : 'q'; /* next or quit */
 }
-
-/* C ref: hack.h makeknown() */
-function makeknown(otyp) { discover_object(otyp, true, true, true); }
 
 /* C ref: obj.h age_is_relative() */
 export function age_is_relative(otmp) {

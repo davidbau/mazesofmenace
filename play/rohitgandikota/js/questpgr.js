@@ -33,7 +33,6 @@ import {
     tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
     tty_destroy_nhwindow, NHW_MENU, NHW_TEXT,
 } from './tty/wintty.js';
-import { xwaitforspace } from './tty/getline.js';
 import { Has_contents } from './obj.js';
 import { OBJ_INVENT } from './obj.js';
 import { OBJ_FLOOR } from './obj.js';
@@ -330,10 +329,6 @@ async function deliver_by_window(msg, how) {
         tty_putstr(win, 0, convert_line(line));
 
     await tty_display_nhwindow(win);
-    /* display_nhwindow(win, TRUE) blocks in dmore() until a key arrives; the
-       recorder captures the frame at that read. dmore() accepts quitchars,
-       not every key, so control and command keys leave the page open. */
-    await xwaitforspace(' \r\n\x1b');
     await tty_destroy_nhwindow(win);
 }
 

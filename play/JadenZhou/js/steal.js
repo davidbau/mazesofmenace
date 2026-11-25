@@ -34,19 +34,20 @@ import { rn1, rn2, rnd, ROLL_FROM } from './rng.js';
 import { Some_Monnam, Adjmonnam, y_monnam } from './do_name.js';
 import { inv_cnt, nomul } from './hack.js';
 import { maybe_finished_meal } from './eat.js';
-import { unconscious, is_fainted } from './eat.js';
+import { is_fainted } from './eat.js';
 import { doffing, stop_donning } from './do_wear.js';
 import { stop_occupation } from './allmain.js';
-import { freeinv } from './invent.js';
+import { freeinv, count_unpaid } from './invent.js';
 import { armor_simple_name, yname, makeplural } from './objnam.js';
 import { s_suffix } from './hacklib.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { monflee } from './monmove.js';
 import { welded, bimanual } from './wield.js';
 import { can_carry } from './dogmove.js';
-import { subfrombill, shop_keeper, mbodypart } from './shk.js';
+import { subfrombill, shop_keeper, mbodypart, find_objowner } from './shk.js';
 import { encumber_msg } from './pickup.js';
-import { dmgtype, can_teleport } from './mondata.js';
+import { dmgtype, can_teleport, is_animal, slithy, throws_rocks,
+         touch_petrifies } from './mondata.js';
 import { body_part } from './insight.js';
 import { urgent_pline } from './display.js';
 import { add_to_minv as add_to_minv_core } from './mkobj.js';
@@ -65,7 +66,7 @@ import { obj_sheds_light, snuff_light_source } from './light.js';
 import { engulfing_u } from './const.js';
 import { AT_ENGL } from './monsters.js';
 import { skinback } from './polyself.js';
-import { openholdingtrap } from './trap.js';
+import { openholdingtrap, unconscious } from './trap.js';
 import { impossible } from './hack.js';
 import { artifact_light } from './worn.js';
 import { end_burn } from './timeout.js';
@@ -76,13 +77,6 @@ import { SHOPBASE } from './const.js';
 /* C ref: global.h LARGEST_INT */
 const LARGEST_INT = 32767;
 
-/* C ref: mondata.h is_animal(), slithy(), throws_rocks(), touch_petrifies() */
-function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
-function slithy(ptr) { return (ptr.mflags1 & M.M1_SLITHY) !== 0; }
-function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
-function touch_petrifies(ptr) {
-    return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
-}
 /* C ref: hack.h distu() */
 function distu(x, y) {
     const dx = x - game.u.ux, dy = y - game.u.uy;
@@ -789,8 +783,10 @@ export function mpickobj(mtmp, otmp) {
         game.kickedobj = null;
     /* an unpaid item can be on the floor; if a monster picks it up, take
        it off the shop bill */
-    if (otmp.unpaid || (otmp.cobj && otmp.cobj.some(o => o.unpaid)))
-        throw new Error('mpickobj(): subfrombill(): find_objowner() not ported yet');
+    if (otmp.unpaid || (otmp.cobj && otmp.cobj.length /* Has_contents() */
+                        && count_unpaid(otmp.cobj))) {
+        subfrombill(otmp, find_objowner(otmp, otmp.ox, otmp.oy));
+    }
     /* don't want hidden light source inside the monster; assumes that
        engulfers won't have external inventories; whirly monsters cause
        the light to be extinguished rather than letting it shine through */

@@ -13,17 +13,7 @@
 // lua_add() and lua_sub() (nhlua.js).
 
 import { withRngCaller } from './rng.js';
-
-// math.random called from a script's main chunk or from an anonymous
-// function the C side calls (contents, inventory, iterate): the recorder
-// tags the roll with nhlib's math.random line (8 for one argument, 10 for
-// two) and the calling frame, which Lua cannot name ("lua"), at the calling
-// line.
-function chunk_random(G, file, line, ...args) {
-    return withRngCaller(
-        `random src=nhlib.lua:${args.length === 1 ? 8 : 10} parent=lua(${file}:${line})`,
-        () => G.math.random(...args));
-}
+import { chunk_random } from './nhlib_lua.js';
 
 const MAP_Rog_strt = [
     '---------------------------------.------------------------------------------',

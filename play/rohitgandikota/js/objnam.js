@@ -76,6 +76,7 @@ import { Blind, Flying, Glib, Levitation } from './youprop.js';
 import { DEADMONSTER } from './monst.js';
 import { impossible } from './pline.js';
 import { lookup_novel } from './do_name.js';
+import { CapitalMon } from './rumors.js';
 
 const {
     COIN_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, SPBOOK_CLASS,
@@ -3921,15 +3922,13 @@ export function makesingular(oldstr) {
     return bp + excess;
 }
 
-// src/objnam.c the() — prepend "the" unless the name is a proper noun.
-// CapitalMon() and the artifact/fruit refinements need name tables no
-// current caller can reach (farlook passes lowercased or generated names);
-// the capitalized-adjective and "of" branches are the live ones.
+// src/objnam.c:2171 the()
+// Capitalized monster types are also used by poisoned() for unique killers.
 export function the(str) {
     if (!str) return 'the []';
     if (/^the /i.test(str))
         return str[0].toLowerCase() + str.slice(1);
-    if (str[0] < 'A' || str[0] > 'Z')
+    if (str[0] < 'A' || str[0] > 'Z' || CapitalMon(str))
         return 'the ' + str;
     /* probably a proper name; the capitalized-adjective test */
     const sp = Math.max(str.lastIndexOf(' '), str.lastIndexOf('-'));

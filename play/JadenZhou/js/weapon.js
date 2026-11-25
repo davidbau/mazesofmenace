@@ -34,8 +34,11 @@ import { touch_artifact_mon, spec_abon, spec_dbon, shade_glare } from './artifac
 import { is_weptool } from './mkobj.js';
 import { is_pool } from './makemon.js';
 import { is_swimmer, passes_walls, is_undead, is_demon, is_were,
-         is_vampshifter, Resists_Elem } from './mondata.js';
-import { dist2 } from './hacklib.js';
+         is_vampshifter, Resists_Elem, throws_rocks, likes_gems, mindless,
+         is_animal, bigmonst, strongmonst, is_giant, thick_skinned,
+         is_covetous, is_rider, touch_petrifies, resists_ston,
+         attacktype } from './mondata.js';
+import { dist2, plur } from './hacklib.js';
 import { couldsee } from './vision.js';
 import { pline } from './display.js';
 import { canseemon } from './display.js';
@@ -224,30 +227,8 @@ export function propellor() { return game.propellor ?? null; }
 function set_propellor(p) { game.propellor = p; }
 
 /* mondata.h */
-function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
-function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
-function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
-function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
-function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
-function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
-function thick_skinned(ptr) { return (ptr.mflags1 & M.M1_THICK_HIDE) !== 0; }
-function bigmonst(ptr) { return ptr.msize >= M.MZ_LARGE; }
 function is_wooden(ptr) { return ptr === M.mons[M.PM_WOOD_GOLEM]; }
 function hates_light(ptr) { return ptr === M.mons[M.PM_GREMLIN]; }
-function is_covetous(ptr) { return (ptr.mflags3 & M.M3_COVETOUS) !== 0; }
-function is_rider(ptr) {
-    return ptr === M.mons[M.PM_DEATH] || ptr === M.mons[M.PM_FAMINE]
-        || ptr === M.mons[M.PM_PESTILENCE];
-}
-function touch_petrifies(ptr) {
-    return ptr === M.mons[M.PM_COCKATRICE] || ptr === M.mons[M.PM_CHICKATRICE];
-}
-// C ref: mondata.c attacktype()
-function attacktype(ptr, atyp) {
-    return ptr.mattk.some((a) => a.aatyp === atyp);
-}
-/* C ref: monst.h resists_ston() */
-function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
 
 /* obj.h */
 function is_spear(otmp) {
@@ -1362,9 +1343,6 @@ function add_skills_to_menu(win, selectable, speedy) {
                          MENU_ITEMFLAGS_NONE);
         }
 }
-
-/* C ref: hack.h plur() */
-function plur(x) { return (x === 1) ? "" : "s"; }
 
 // C ref: weapon.c enhance_weapon_skill()
 /*

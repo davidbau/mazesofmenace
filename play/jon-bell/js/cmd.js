@@ -16,7 +16,7 @@ import { roguename, a_monnam } from './do_name.js';
 import { defended as _enl_defended } from './mondata.js';
 import { with_distant_name } from './objnam.js';
 import { genus } from './mon.js';
-import { TOPL_LIMIT, objpile_attr } from './display.js';
+import { TOPL_LIMIT, objpile_attr, topl_recall_paint, topl_history_window_text } from './display.js';
 import { retouch_equipment } from './artifact.js';
 import { status_r1_docorner, status_r1_menu_docrt, _threeStatusLines, _strengthStr, pline_flush_point, prepare_deferred_pline, lone_frame_run_flush, retouch_object_hero } from './display.js';
 import { allow_category, menu_class_present, u_safe_from_fatal_corpse } from './pickup.js';
@@ -2618,7 +2618,9 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
         /* The accelerator set is the CURRENT PAGE's entries (wintty.c:1400-1408
          * builds `resp` from page_start..page_end), not the whole inventory. */
         const selectable = pageSelectable || selectables;
-        if (keyCode >= 48 && keyCode <= 57) {
+        if (keyCode >= 48 && keyCode <= 57
+            && !(pickAny && !countText && keyCode === 48
+                 && lineItems.some((it) => it && (it.oclass | 0) === 15))) {
             /* C query_objlist's PICK_ANY count prefix is consumed before the
              * inventory accelerator (do.c:1090, menudrop_split).  Keep it
              * local to this menu; a leading zero is harmless and a later
@@ -4044,7 +4046,7 @@ async function doextlist(restoreExtPrompt = false) {
                 }
             } finally { g._bot_disabled = savedBotDisabled; }
         };
-        let page = 0, redisplay = false, rowErased = -1;
+        let page = 0, redisplay = false, rowErased = -1, counting = false;
         while (!redisplay) {
             const footer = pages.length > 1 ? ` (${page + 1} of ${pages.length})` : ' (end)';
             const rows = pages[page].map(r => r.text).concat(footer);
@@ -4072,10 +4074,21 @@ async function doextlist(restoreExtPrompt = false) {
             }
             const raw = await nhgetch();
             let ch = String.fromCharCode(raw | 0);
+            /* C wintty.c:1564-1615: digits build a count; ESC while counting
+             * only cancels the count rather than dismissing the menu. */
+            if (ch >= '0' && ch <= '9') {
+                if (ch !== '0') counting = true;
+                continue;
+            }
+            if (raw === 27) {
+                g._ttyDismissMore = 1;
+                if (counting) { counting = false; continue; }
+            }
             if (raw === 27 || raw === 10 || raw === 13) {
                 await dismiss();
                 return ECMD_OK;
             }
+            if ('<>^|,\\~.-@: '.includes(ch)) counting = false;
             if (raw === 32 || ch === '>') {
                 if (page < pages.length - 1) page++;
                 else if (raw === 32) {
@@ -4300,6 +4313,7 @@ export async function doprev_message(liveTopline) {
             g._prevmsg_next = history.length - 1;
         }
         let morc, paged = false;
+        let _rowCleared = !!g._topl_recall_row_cleared;
         do {
             if (_pmw === 's' && g._prevmsg_next === -1) {
                 _blankFirst = true;
@@ -4326,8 +4340,12 @@ export async function doprev_message(liveTopline) {
             } else if (_pmw === 's') {
                 _blankFirst = false;
             }
-            g._pending_message = text;
-            g._topl_history_recall = text;
+            /* topl.c:122-136: recall repaints outside tty_putmixed(). */
+            const painted = topl_recall_paint(text, _rowCleared);
+            /* a further pass only follows more() (topl.c:225-238 docorner/cl_end) */
+            _rowCleared = true;
+            g._pending_message = painted;
+            g._topl_history_recall = painted;
             g._topl_unacknowledged = true;
             /* redotoplin pages iff the painted string reached row 1 (cury!=0,
              * topl.c:139-140): a stored pline whose original strlen >= CO
@@ -4336,7 +4354,7 @@ export async function doprev_message(liveTopline) {
              * hard-wraps at CO-1.  Getlin lines are plain text, so for them
              * visual == .length and nothing changes. */
             if (text.includes('\n') || _topl_visualLen(text) > 79) {
-                morc = await force_more(text, 16); // ^P may acknowledge and continue
+                morc = await force_more(painted, 16); // ^P may acknowledge and continue
                 // force_more's optional dismissal argument has message_menu's
                 // reset semantics. redotoplin instead holds ^P until the
                 // entire tty_doprev_message call has finished (topl.c:78/116).
@@ -4368,7 +4386,12 @@ export async function doprev_message(liveTopline) {
         /* C topl.c:42-74: combination's do { ... } while (morc == C('p')) re-runs
          * the whole maxcol chain, so ^P at this --More-- recalls the NEXT older
          * line (or opens the window), not the same line again. */
-        if (_pmw === 'c' && morc === 16) return doprev_message(liveTopline);
+        if (_pmw === 'c' && morc === 16) {
+            const _cleared = g._topl_recall_row_cleared;
+            g._topl_recall_row_cleared = true; /* the --More-- cleared row 0 */
+            try { return await doprev_message(liveTopline); }
+            finally { g._topl_recall_row_cleared = _cleared; }
+        }
         /* C win/tty/topl.c:78,116: recall resets dismiss_more even when
          * redotoplin did not wrap and never called more(). */
         g._ttyDismissMore = 0;
@@ -4421,14 +4444,14 @@ export async function doprev_message(liveTopline) {
     // recalled lines.  WIN_COL=7 matches the recorded reference (col-7 indent).
     /* wintty.c:2196-2222,2253 compress_str() runs before tty_putstr measures
      * maxcol, even when compression makes the line short enough to fit. */
-    const _histLines = ['Message History', '', ...reversed].map(line => {
+    const _histLines = ['Message History', '', ...reversed].map(topl_history_window_text).map(line => {
         if (line.length < 80 && !line.includes('\n')) return line;
         const text = line.replace(/\n/g, ' ').replace(/^ +/, '').replace(/ +/g, ' ');
         return text.length >= 255 ? text.slice(0, 254) : text.replace(/ $/, '');
     });
     /* wintty.c:1922-1932: maxrow >= rows (after tty_putstr's :2409-2418 breaks)
      * goes full-screen; process_text_window pages 23 rows per dmore (:1776-1845). */
-    const _fitLines = tty_fit_text_lines(_histLines);
+    const _fitLines = tty_fit_text_lines(_histLines).map((ln) => ln.replace(/\u0001/g, ' '));
     // C wintty.c:1924-1931 forces offx to zero for tall windows and when
     // menu_overlay is disabled; process_text_window (:1779) pages both cases.
     if (_fitLines.length >= 24) {
@@ -13097,7 +13120,11 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     case "doprev_message": {
         // C ref: cmd.c:2476 — C('p') (charCode 16, Ctrl+P) → doprev_message()
         // (cmd.c:829).  Recalls the message-history ring in a window; no turn, no RNG.
-        outcome.value = _rhack_cmd_move(await doprev_message());
+        /* cmd.c parse() clear_nhwindow(WIN_MESSAGE) blanked row 0 (wintty.c
+         * tty_clear_nhwindow: home(); cl_end()) after reading this key. */
+        g._topl_recall_row_cleared = true;
+        try { outcome.value = _rhack_cmd_move(await doprev_message()); }
+        finally { g._topl_recall_row_cleared = false; }
     }
         return true;
     case "doredraw": {

@@ -15,7 +15,7 @@ import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_NOFLAGS,
 import { M1_NOHANDS, PM_WIZARD } from './monsters.js';
 import { getobj, useup, obfree } from './invent.js';
 import { tty_getlin } from './wintty.js';
-import { mungspaces, strstri } from './hacklib.js';
+import { mungspaces, strstri, upstart } from './hacklib.js';
 import { an, The, Tobjnam, aobjnam } from './objnam.js';
 import { ysimple_name } from './iactions.js';
 import { fingers_or_gloves } from './do_wear.js';
@@ -26,15 +26,10 @@ import { check_unpaid } from './zap.js';
 import { known_spell, spe_Unknown, spe_Fresh, spe_GoingStale } from './spell.js';
 import { wipeout_text } from './engrave.js';
 import { hold_another_object } from './wizcmds.js';
-import { observe_object, discover_object } from './o_init.js';
+import { observe_object, discover_object, makeknown } from './o_init.js';
 import { Glib, Blind, Hallucination } from './youprop.js';
+import { nohands } from './mondata.js';
 
-/* C ref: mondata.h nohands() */
-function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
-/* C ref: hack.h makeknown() */
-function makeknown(otyp) { discover_object(otyp, true, true, true); }
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 /* C ref: hacklib.c strcmpi() == 0 */
 function strcmpi_eq(s1, s2) {
     return s1 != null && s2 != null && s1.toLowerCase() === s2.toLowerCase();

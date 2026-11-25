@@ -28,26 +28,10 @@ import { slept_monst as slept_monst_mu } from './mhitm.js';
 import { tamedog as tamedog_mu } from './dog.js';
 import { d as d_mu } from './rng.js';
 import { NOTELL as NOTELL_MU } from './const.js';
+import { mindless, unique_corpstat, can_blow } from './mondata.js';
 
-/* C ref: mondata.h unique_corpstat(), mindless() */
-function unique_corpstat(ptr) { return (ptr.geno & G_UNIQ) !== 0; }
-function mindless(ptr) { return (ptr.mflags1 & M1_MINDLESS) !== 0; }
 /* C ref: hack.h mdistu() */
 function mdistu(mtmp) { return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy); }
-
-// C ref: mondata.c can_blow()
-export function can_blow(mtmp) {
-    const ptr = mtmp.data;
-    if ((ptr.msound === MS_SILENT /* is_silent() */ || ptr.msound === MS_BUZZ)
-        && ((ptr.mflags1 & M1_BREATHLESS) !== 0 /* breathless() */
-            || ptr.msize < MZ_SMALL /* verysmall() */
-            || (ptr.mflags1 & M1_NOHEAD) !== 0 /* !has_head() */
-            || ptr.mlet === S_EEL))
-        return false;
-    if (mtmp === game.youmonst && Strangled())
-        return false;
-    return true;
-}
 
 // C ref: music.c awaken_scare()
 /* wake up monster, possibly scare it */

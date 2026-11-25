@@ -107,9 +107,8 @@ import { obj_is_burning } from './light.js';
 import { container_contents } from './end.js';
 import { docrt, canspotmon } from './display.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
-         tty_next_page, tty_destroy_nhwindow, NHW_MENU, NHW_TEXT,
+         tty_destroy_nhwindow, NHW_MENU, NHW_TEXT,
          tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, ATR_NONE } from './tty/wintty.js';
-import { xwaitforspace } from './tty/getline.js';
 import { getlin, paranoid_ynq, get_adjacent_loc, cmdq_add_ec } from './cmd.js';
 import { shop_keeper, stolen_value, pick_pick, check_unpaid_usage, subfrombill, Shk_Your } from './shk.js';
 import { is_pick } from './mon.js';
@@ -184,9 +183,6 @@ export async function simple_look(otmp, here) {
         for (const obj of otmp)
             tty_putstr(tmpwin, 0, doname(obj));
         await tty_display_nhwindow(tmpwin);
-        do {
-            await xwaitforspace(' \r\n\x1b');
-        } while (game.morc !== '\x1b' && tty_next_page(tmpwin));
         await tty_destroy_nhwindow(tmpwin);
         await notice_all_mons_flush();
     }
@@ -2238,9 +2234,6 @@ export async function explain_container_prompt(more_containers) {
         tty_putstr(win, 0, text);
     }
     await tty_display_nhwindow(win);
-    do {
-        await xwaitforspace(' \r\n\x1b');
-    } while (game.morc !== '\x1b' && tty_next_page(win));
     await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
 }

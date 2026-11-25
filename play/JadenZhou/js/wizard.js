@@ -22,7 +22,8 @@ import { add_to_minv, mksobj } from './mkobj.js';
 import { FAKE_AMULET_OF_YENDOR } from './objects.js';
 import { newsym } from './display.js';
 import { monster_census } from './minion.js';
-import { big_to_little } from './mondata.js';
+import { big_to_little, is_minion, is_covetous,
+         attacktype } from './mondata.js';
 import { def_monsyms } from './drawing.js';
 import { pline } from './display.js';
 import { Monnam } from './do_name.js';
@@ -47,7 +48,7 @@ import { cansee } from './vision.js';
 import { distant_name, doname } from './objnam.js';
 import { obj_extract_self } from './mkobj.js';
 import { mpickobj } from './steal.js';
-import { dist2, isok } from './hacklib.js';
+import { dist2, isok, sgn } from './hacklib.js';
 import { Deaf } from './youprop.js';
 import { MAGIC_PORTAL as MAGIC_PORTAL_WZ, STRAT_WAITMASK as STRAT_WAITMASK_WZ } from './const.js';
 import { Tobjnam as Tobjnam_wz } from './objnam.js';
@@ -125,9 +126,6 @@ export function pick_nasty(
 }
 
 /* C ref: monst.h DEADMONSTER(), helpless(); mondata.c attacktype() */
-function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
-/* C ref: hack.h sgn() */
-function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 
 // C ref: wizard.c wizapp[]
 const wizapp = [
@@ -318,8 +316,7 @@ const random_malediction = [
     "Verily, thou shalt be one dead"
 ];
 
-/* C ref: mondata.h is_minion(), is_lminion() */
-function is_minion(ptr) { return (ptr.mflags2 & MM.M2_MINION) !== 0; }
+/* C ref: mondata.h is_lminion() */
 function is_lminion(mon) {
     return is_minion(mon.data) && mon_aligntyp(mon) === A_LAWFUL;
 }
@@ -380,8 +377,6 @@ export async function cuss(mtmp) {
 
 /* C ref: obj.h any_quest_artifact() */
 export function any_quest_artifact(o) { return (o.oartifact || 0) >= ART_ORB_OF_DETECTION; }
-/* C ref: mondata.h is_covetous() */
-function is_covetous(ptr) { return (ptr.mflags3 & MM.M3_COVETOUS) !== 0; }
 /* C ref: hack.h distu() */
 function distu(x, y) { return dist2(x, y, game.u.ux, game.u.uy); }
 /* C ref: wizard.c M_Wants() */

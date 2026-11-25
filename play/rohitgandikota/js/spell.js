@@ -77,7 +77,7 @@ import { make_blinded } from './potion.js';
 import { take_gold, rndcurse } from './sit.js';
 import { erode_obj } from './trap.js';
 import { poison_strdmg } from './attrib.js';
-import { Antimagic, Poison_resistance } from './youprop.js';
+import { Antimagic, Poison_resistance, Half_physical_damage } from './youprop.js';
 import { shieldeff } from './display.js';
 import { set_malign, makemon } from './makemon.js';
 import { mkundead } from './mkroom.js';
@@ -1108,7 +1108,7 @@ export async function spelleffects(spell_otyp, atme, force) {
                 if (damage) {
                     const self = game.flags?.female ? 'herself' : 'himself';
                     /* Maybe_Half_Phys(damage) — halved with the intrinsic */
-                    if (physical_damage && game.u.uprops?.HALF_PHDAM)
+                    if (physical_damage && Half_physical_damage())
                         damage = Math.trunc((damage + 1) / 2);
                     const { losehp } = await import('./hack.js');
                     await losehp(damage, `zapped ${self} with a spell`,

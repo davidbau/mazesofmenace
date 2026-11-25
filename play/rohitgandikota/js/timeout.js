@@ -14,7 +14,7 @@ import { little_to_big } from './mkobj.js';
 import { make_slimed, make_stoned, make_vomiting, set_itimeout } from './potion.js';
 import { Popeye, eating_dangerous_corpse } from './eat.js';
 import { wielding_corpse } from './do_wear.js';
-import { nolimbs, emits_light } from './mondata.js';
+import { nolimbs, emits_light, mhe } from './mondata.js';
 import { exercise } from './attrib.js';
 import { Blind, Hallucination, Acid_resistance, Stone_resistance, Unaware } from './youprop.js';
 import { an } from './objnam.js';
@@ -57,7 +57,7 @@ import { TIMEOUT, FROMOUTSIDE, I_SPECIAL, WT_NOISY_INV, FOOT, NECK,
          STONING, TURNED_SLIME, GENOCIDED, POISONING,
          M_AP_MONSTER, NH_GREEN, G_GENOD, Upolyd, PLNMSG_OK_DONT_DIE,
          PLNMSG_ONE_ITEM_HERE, FULL_MOON, FAINTING, MV_KNOWS_EGG,
-         NO_MINVENT, MM_NOMSG, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
+         NO_MINVENT, MM_NOMSG, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, SICK_NONVOMITABLE,
          CONTAINED_TOO, BURIED_TOO, ACID_RES, STONE_RES,
          OBJ_MIGRATING, OBJ_BURIED, OBJ_CONTAINED, RANGE_GLOBAL }
     from './const.js';
@@ -242,6 +242,30 @@ async function sleep_dialogue() {
 
     if (i === 4)
         await You('yawn.');
+}
+
+// src/timeout.c:315 sickness_texts[]
+const sickness_texts = [
+    'Your illness feels worse.',
+    'Your illness is severe.',
+    "You are at Death's door.",
+];
+
+// src/timeout.c:323 sickness_dialogue()
+async function sickness_dialogue() {
+    const j = (game.u.uprops.SICK || 0) & TIMEOUT, i = Math.trunc(j / 2);
+
+    if (i > 0 && i <= sickness_texts.length && j % 2 !== 0) {
+        let buf = sickness_texts[sickness_texts.length - i];
+        if (((game.u.usick_type || 0) & SICK_NONVOMITABLE) === 0)
+            buf = buf.replace('illness', 'sickness');
+        if (Hallucination() && buf.includes("Death's door")) {
+            const pronoun = mhe(game.youmonst);
+            buf += `  ${upstart(pronoun)} ${vtense(pronoun, 'are')} inviting you in.`;
+        }
+        await urgent_pline(buf);
+    }
+    exercise(A_CON, false);
 }
 
 // src/timeout.c:347 levi_texts[]
@@ -644,8 +668,7 @@ export async function wiz_timeout_queue() {
     let intrinsic;
     let i, p, count, longestlen, ln, specindx = 0;
     const { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
-            tty_display_nhwindow, tty_next_page } = await tty();
-    const { xwaitforspace } = await import('./tty/getline.js');
+            tty_display_nhwindow } = await tty();
     const { any_visible_region, visible_region_summary } = await import('./region.js');
 
     const win = tty_create_nhwindow(NHW_MENU); /* corner text window */
@@ -723,9 +746,6 @@ export async function wiz_timeout_queue() {
     }
     /* display_nhwindow(win, FALSE) */
     await tty_display_nhwindow(win);
-    await xwaitforspace(' \r\n\x1b');
-    while (game.morc !== '\x1b' && tty_next_page(win))
-        await xwaitforspace(' \r\n\x1b');
     await tty_destroy_nhwindow(win);
 
     return ECMD_OK;
@@ -1626,18 +1646,8 @@ export async function nh_timeout() {
     /* src/timeout.c:631 sickness_dialogue(), followed later in nh_timeout by
        the property countdown. Fatal illness abuses constitution every turn,
        even when its low-time warning text is not yet due. */
-    const sick = game.u.uprops?.SICK || 0;
-    if (sick) {
-        const half = Math.trunc(sick / 2);
-        if (half > 0 && half <= 3 && (sick % 2) !== 0) {
-            const messages = ["Your illness feels worse.",
-                              "Your illness is severe.",
-                              "You are at Death's door."];
-            await pline(messages[3 - half]);
-        }
-        const { exercise } = await import('./attrib.js');
-        exercise(A_CON, false);
-    }
+    if (game.u.uprops?.SICK)
+        await sickness_dialogue();
 
     if ((intr.HLevitation | 0) & TIMEOUT)
         await levitation_dialogue();
@@ -1786,10 +1796,8 @@ export async function nh_timeout() {
             await make_vomiting(0, true);
             break;
         case 'HStrangled': {
-            game.killer = {
-                format: KILLED_BY,
-                name: u.uburied ? 'suffocation' : 'strangulation',
-            };
+            game.killer.format = KILLED_BY;
+            game.killer.name = u.uburied ? 'suffocation' : 'strangulation';
             await done_timeout(DIED, STRANGLED);
             if (u.uamul?.otyp === ONAMES.AMULET_OF_STRANGULATION) {
                 const amulet = u.uamul;

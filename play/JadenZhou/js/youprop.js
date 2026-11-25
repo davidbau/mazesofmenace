@@ -26,7 +26,8 @@ import {
 import { TOWEL } from './objects.js';
 import { AD_DISE, M1_AMPHIBIOUS, M1_BREATHLESS } from './monsters.js';
 import { defended, hates_silver, is_flyer, is_swimmer } from './mondata.js';
-import { unconscious, is_fainted } from './eat.js';
+import { is_fainted } from './eat.js';
+import { unconscious } from './trap.js';
 
 /* C: u.uprops[p] -- the hero's property entry (HX, EX, BX fields) */
 export function uprop(p) { return game.u.uprops[p]; }

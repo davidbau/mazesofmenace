@@ -58,7 +58,7 @@ import { set_occupation, stop_occupation } from './allmain.js';
 import { nomul, check_capacity } from './hack.js';
 import { objdescr_is } from './o_init.js';
 import { fall_asleep } from './timeout.js';
-import { haseyes } from './mondata.js';
+import { haseyes, eyecount, is_whirly, is_animal } from './mondata.js';
 import { mons as mons_sp, PM_CYCLOPS, PM_FLOATING_EYE } from './monsters.js';
 import { morehungry } from './eat.js';
 import { mksobj } from './mkobj.js';
@@ -1135,12 +1135,6 @@ export function force_learn_spell(otyp) {
 }
 
 function exercise(i, inc) { exercise_sp(i, inc); }
-/* C ref: mondata.h eyecount() */
-function eyecount(ptr) {
-    return !haseyes(ptr) ? 0
-           : (ptr === mons_sp[PM_CYCLOPS] || ptr === mons_sp[PM_FLOATING_EYE]) ? 1
-             : 2;
-}
 
 /* C ref: spell.c enum spl_sort_types */
 const SORTBY_LETTER = 0;
@@ -1654,11 +1648,7 @@ export function known_spell(otyp) {
     return spe_Unknown;
 }
 
-/* C ref: mondata.h is_whirly(), is_animal(), enfolds() */
-function is_whirly_sp(ptr) {
-    return ptr.mlet === S_VORTEX_SP || ptr === mons_sp[PM_AIR_ELEMENTAL_SP];
-}
-function is_animal_sp(ptr) { return (ptr.mflags1 & M1_ANIMAL_SP) !== 0; }
+/* C ref: mondata.h enfolds() */
 function enfolds_sp(ptr) {
     return dmgtype_fromattack_sp(ptr, AD_WRAP_SP, AT_ENGL_SP) != null; /* 't' */
 }
@@ -1696,9 +1686,9 @@ async function cast_protection() {
                 rmtyp = game.level.at(u.ux, u.uy).typ;
                 atmosphere = (pm && u.uswallow)
                                 ? ((pm === mons_sp[PM_FOG_CLOUD_SP]) ? "mist"
-                                   : is_whirly_sp(pm) ? "maelstrom"
+                                   : is_whirly(pm) ? "maelstrom"
                                      : enfolds_sp(pm) ? "folds"
-                                       : is_animal_sp(pm) ? "maw"
+                                       : is_animal(pm) ? "maw"
                                          : "ooze")
                                 : (u.uinwater ? hliquid_sp("water")
                                    : (rmtyp === CLOUD_SP) ? "cloud"

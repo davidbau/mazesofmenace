@@ -510,6 +510,15 @@ export function parseNethackrc(rc) {
             result.bindings.push(stmt[2]);
             continue;
         }
+        /* SYMBOLS= (match_varname() of "SYMBOLS", at least 4 letters)
+           goes to cnf_line_SYMBOLS(), i.e. parsesymbols(bufp, PRIMARYSET),
+           which the game start-up applies after init_ov_primary_symbols() */
+        if (stmt && stmt[1].length >= 4
+            && !strncmpi(stmt[1], "SYMBOLS", stmt[1].length)) {
+            result.symbols = result.symbols || [];
+            result.symbols.push(stmt[2]);
+            continue;
+        }
 
         const optMatch = line.match(/^OPTIONS=(.+)/i);
         if (!optMatch) continue;
@@ -675,6 +684,49 @@ function escapes(cp) {
         tp += String.fromCharCode(cval & 0xff); /* (char) cval */
     }
     return tp;
+}
+
+// C ref: options.c sym_val() -- the symbol a SYMBOLS= value gives, as
+// C's (int) *buf: a char, so one with the high bit set is negative
+export function sym_val(strval) { /* up to 4*BUFSZ-1 long; only first few
+                                     chars matter */
+    const QBUFSZ = 128;
+    const isspace = (c) => " \t\n\v\f\r".includes(c);
+    let buf = '';
+
+    if (strval.length <= 1) { /* empty, or single character */
+        /* if single char is space or tab, leave buf[0]=='\0' */
+        if (strval.length && !isspace(strval[0]))
+            buf = strval[0];
+    } else if (strval[0] === '\'') { /* single quote */
+        /* simple matching single quote; we know strval[1] isn't '\0' */
+        if (strval[2] === '\'' && strval.length === 3) {
+            /* accepts '\' as backslash and ''' as single quote */
+            buf = strval[1];
+
+        /* if backslash, handle single or double quote or second backslash */
+        } else if (strval[1] === '\\' && strval.length > 2 && strval[3] === '\''
+                   && "'\"\\".includes(strval[2]) && strval.length === 4) {
+            buf = strval[2];
+
+        /* not simple quote or basic backslash;
+           strip closing quote and let escapes() deal with it */
+        } else {
+            /* +1: skip opening single quote */
+            const tmp = strval.slice(1, QBUFSZ);
+            const p = tmp.lastIndexOf('\'');
+            if (p >= 0)
+                buf = escapes(tmp.slice(0, p));
+            /* else buf[0] stays '\0' */
+        }
+    } else { /* not lone char nor single quote */
+        buf = escapes(strval.slice(0, QBUFSZ - 1));
+    }
+
+    if (!buf.length)
+        return 0;
+    const c = buf.charCodeAt(0) & 0xff;
+    return (c & 0x80) ? c - 0x100 : c;
 }
 
 // C ref: options.c txt2key()

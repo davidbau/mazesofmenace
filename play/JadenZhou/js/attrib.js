@@ -42,7 +42,7 @@ import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
 import { losehp } from './trap.js';
 import { d } from './rng.js';
 import { strncmpi } from './hacklib.js';
-import { name_to_mon } from './mondata.js';
+import { name_to_mon, strongmonst } from './mondata.js';
 import { KILLED_BY, KILLED_BY_AN, DIED, POISONING } from './const.js';
 import { done } from './end.js';
 import { killer } from './topten.js';
@@ -565,8 +565,6 @@ export function ATTRMAX(x) {
             ? STR18(100) : game.urace.attrmax[x]);
 }
 export function ATTRMIN(x) { return game.urace.attrmin[x]; }
-// C ref: mondata.h strongmonst()
-function strongmonst(ptr) { return (ptr.mflags2 & M2_STRONG) !== 0; }
 
 // C ref: attrib.c losestr()
 /* strength loss, possibly with damage when going below minimum */

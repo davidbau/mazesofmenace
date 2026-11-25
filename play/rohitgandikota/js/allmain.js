@@ -84,7 +84,8 @@ import {
     TOPLINE_EMPTY,
 } from './display.js';
 import { Glib, Hallucination, Teleportation, Underwater, Blind, Unblind_telepat,
-         Warning, Warn_of_mon } from './youprop.js';
+         Warning, Warn_of_mon, Half_physical_damage,
+         Breathless, Regeneration, Sleepy } from './youprop.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
@@ -113,7 +114,6 @@ function init_sound_disp_gamewindows() {
 // include/you.h:441-442
 const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, is_pool, m_at, mnexto } from './mon.js';
-import { breathless } from './mondata.js';
 import { MONSYMS } from './monst_data.js';
 import { m_everyturn_effect } from './monmove.js';
 import { u_wipe_engr } from './engrave.js';
@@ -646,9 +646,7 @@ async function regen_hp(wtcap) {
     let heal = 0;
     let reached_full = false;
     const encumbrance_ok = (wtcap < MOD_ENCUMBER || !game.u.umoved);
-    const U_CAN_REGEN = () => !!(game.u.intrinsic?.HRegeneration
-                                 || game.u.uprops?.REGENERATION
-                                 || (game.u.uprops?.SLEEPY && game.u.usleep));
+    const U_CAN_REGEN = () => Regeneration() || (Sleepy() && game.u.usleep);
 
     if (Upolyd(game.u)) {
         if (game.u.mh < 1) {
@@ -657,11 +655,10 @@ async function regen_hp(wtcap) {
         } else if (game.youmonst.data.mlet === MONSYMS.S_EEL
                    && !is_pool(game.u.ux, game.u.uy)
                    && !Is_waterlevel(game.u.uz)
-                   && !game.u.uprops?.MAGICAL_BREATHING
-                   && !breathless(game.youmonst.data)) {
-            if (game.u.mh > 1 && !U_CAN_REGEN()
+                   && !Breathless()) {
+            if (game.u.mh > 1 && !Regeneration()
                 && rn2(game.u.mh) > rn2(8)
-                && (!game.u.uprops?.HALF_PHDAM || !(game.moves % 2)))
+                && (!Half_physical_damage() || !(game.moves % 2)))
                 heal = -1;
         } else if (game.u.mh < game.u.mhmax
                    && (U_CAN_REGEN()
@@ -679,7 +676,7 @@ async function regen_hp(wtcap) {
 
             if (U_CAN_REGEN())
                 heal += 1;
-            if (game.u.uprops?.SLEEPY && game.u.usleep)
+            if (Sleepy() && game.u.usleep)
                 heal++;
 
             if (heal) {

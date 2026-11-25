@@ -31,10 +31,11 @@ const repad_with_dashes = (b) => botl_fns.repad_with_dashes(b);
 const status_initialize = (r) => botl_fns.status_initialize(r);
 import { critically_low_hp } from './../pray.js';
 import { impossible } from './../pline.js';
-import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './../display.js';
+import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_SPECIAL_PROMPT, more } from './../display.js';
 import { tty_clear_nhwindow_message, row_refresh, bot,
          docrt, flush_screen } from './../display.js';
 import { nhgetch } from './../input.js';
+import { xwaitforspace } from './getline.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
 import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
@@ -451,109 +452,6 @@ function compute_offx(cw) {
     return offx;
 }
 
-// win/tty/wintty.c tty_end_menu:
-//   lmax = min(52, ttyDisplay->rows - 1);   -- # lines per page
-// 52 is the 'a'..'z','A'..'Z' selector budget; on a 24-row terminal the row
-// limit wins.
-function page_capacity(cw) {
-    return Math.min(52, ROWS - 1) - cw.offy;
-}
-
-// win/tty/wintty.c process_menu_window() / process_text_window() — draw one
-// page and place the footer and cursor.
-//
-// `page` is 0-based. Returns the number of content lines drawn.
-function render_page(cw, page, display) {
-    const cap = page_capacity(cw);
-    const start = page * cap;
-    const lines = cw.data.slice(start, start + cap);
-
-    /* win/tty/wintty.c only clears when the window has collapsed to full
-       screen; an inset menu OVERLAYS the map and status lines, which is why
-       seed8000's inventory frame still shows both bottom lines. */
-    if (!cw.offx)
-        display.clearScreen();
-
-    lines.forEach((line, n) => {
-        const row = cw.offy + n;
-        /* win/tty/wintty.c: a MENU always emits the leading space before its
-           text, even when the window has collapsed to column 0 — which is why
-           the inventory menu's text starts at 32 when offx is 31, and why the
-           attributes menu's text starts at column 1 when offx is 0. A TEXT
-           window only indents when it is actually inset. */
-        /* win/tty/wintty.c:1802 process_text_window — which serves EVERY
-           data-backed window, NHW_MENU included (wintty.c:1943 dispatches
-           on cw->data, not type): the leading space is emitted only when
-           the window is inset (offx). The always-indented form belongs to
-           process_menu_window's mlist entries only. */
-        let col = cw.offx + (cw.offx ? 1 : 0);
-        /* win/tty/wintty.c positions with tty_curs(window, 1, n), and window
-           column 1 is ABSOLUTE column offx — so the leading space a menu emits
-           lands ON offx and the text starts at offx + 1. Starting the paint at
-           offx + 1 left column offx untouched, which is why the map bled
-           through beside the legacy window on 32 of the 44 sessions. */
-        for (let c = cw.offx; c < col; c++)
-            display.setCell(c, row, ' ', NO_COLOR, 0);
-        const attr = term_attr((cw.attrs || [])[start + n] | 0);
-        let first = 0;
-        /* wintty.c:1808 pre-increments ttyDisplay->curx, then sends the
-           first byte of each data line through g_putch() under H_UTF8. The
-           recorder's g_putch hook therefore writes it one cell late and the
-           ordinary second byte overwrites it. Preserve that observable
-           one-byte loss for data-backed text windows. */
-        if (line.length
-            && gs_symset[gc_currentgraphics.set]?.handling === H_UTF8) {
-            display.setCell(col, row, ' ', NO_COLOR, 0);
-            col++;
-            first = 1;
-        }
-        for (let i = first; i < line.length && col < COLS; i++, col++)
-            display.setCell(col, row, line[i], NO_COLOR, attr);
-        /* win/tty/wintty.c calls cl_end() on every window row, so a short
-           menu line blanks the rest of the row rather than letting the map
-           show through beside it. */
-        for (let c = col; c < COLS; c++)
-            display.setCell(c, row, ' ', NO_COLOR, 0);
-    });
-
-    /* win/tty/wintty.c dmore(): the prompt is cw->morestr when set, else
-       defmorestr. Only tty_end_menu() ever sets it, so a window filled with
-       putstr() — every NHW_TEXT window, and the legacy NHW_MENU — shows
-       "--More--" no matter what its type is. */
-    const morestr = cw.morestr || defmorestr;
-
-    /* win/tty/wintty.c process_text_window():
-         tty_curs(BASE_WINDOW, cw->offx + 1,
-                  (cw->type == NHW_TEXT) ? ttyDisplay->rows - 1 : n);
-       An NHW_TEXT window puts its prompt on the LAST LINE OF THE SCREEN, not
-       directly under its content — so a six-line discoveries window still has
-       its --More-- on row 23. A menu puts it right after the content. */
-    const footerRow = (cw.type === NHW_TEXT) ? (ROWS - 1)
-                                             : (cw.offy + lines.length);
-
-    /* dmore(): int offset = (cw->type == NHW_TEXT) ? 1 : 2; and tty_curs is
-       1-based, so a text window's prompt starts at column offx and a menu's at
-       offx + 1. */
-    tty_curs_base(cw.offx + ((cw.type === NHW_TEXT) ? 1 : 2), footerRow);
-    let col = cw.offx + ((cw.type === NHW_TEXT) ? 0 : 1);
-    /* Same as the content rows: a menu's prompt starts at offx + 1, so column
-       offx itself must still be cleared or the map bleeds through beside it. */
-    for (let c = cw.offx; c < col; c++)
-        display.setCell(c, footerRow, ' ', NO_COLOR, 0);
-    for (let i = 0; i < morestr.length && col < COLS; i++, col++)
-        display.setCell(col, footerRow, morestr[i], NO_COLOR, 0);
-    for (let c = col; c < COLS; c++)
-        display.setCell(c, footerRow, ' ', NO_COLOR, 0);
-
-    /* dmore(): ttyDisplay->curx += strlen(prompt), so the cursor ends just
-       past the prompt. seed8000 records [8,23] for the discoveries window,
-       which is 0 + strlen("--More--"). */
-    const footerCol = cw.offx + ((cw.type === NHW_TEXT) ? 0 : 1);
-    display.setCursor(footerCol + morestr.length, footerRow);
-
-    return lines.length;
-}
-
 // win/tty/wintty.c:1329 process_menu_window() — draw one page of an mlist
 // menu. Every line is "<space><item text>" starting at offx, and a selected
 // entry has its third character (the '-' of "a - foo") replaced by '*'.
@@ -675,9 +573,6 @@ export function menu_page_items(window, page) {
     return out;
 }
 
-// win/tty/wintty.c tty_display_nhwindow() — menu/text case.
-// Renders the first page. Paging on subsequent keys is driven by the caller
-// consuming keys, matching how C's dmore() blocks inside the window.
 // win/tty/wintty.c tty_wait_synch()
 export async function tty_wait_synch() {
     /* we just need to make sure all windows are synch'd */
@@ -689,17 +584,102 @@ export async function tty_wait_synch() {
         const { addtopl } = await import('./topl.js');
         addtopl('--More--');
     }
-    /* the `inread > program_state.gameover` arm re-shows an interrupted
-       prompt; interrupts do not exist in this port */
+    else if ((game.ttyDisplay?.inread || 0) > (game.program_state?.gameover ? 1 : 0)) {
+        // win/tty/wintty.c:3700: recover the prompt after an interrupted read.
+        const { doprev_message } = await import('./topl.js');
+        game._toplin = TOPLINE_SPECIAL_PROMPT;
+        await doprev_message();
+        await doprev_message();
+        game.ttyDisplay.intr = (game.ttyDisplay.intr || 0) + 1;
+    }
 }
 
+// win/tty/wintty.c:1184 dmore(), draw and wait at the current window cursor.
+async function dmore(cw, s) {
+    const display = game.nhDisplay;
+    const prompt = cw.morestr || defmorestr;
+    const offset = cw.type === NHW_TEXT ? 1 : 2;
+    tty_curs_base(display.cursorCol + offset, display.cursorRow);
+    const attr = game.flags.standout ? TERM_INVERSE : 0;
+    for (let i = 0; i < prompt.length; i++)
+        display.setCell(base.curx + i, base.cury, prompt[i], NO_COLOR, attr);
+    display.setCursor(base.curx + prompt.length, base.cury);
+    await xwaitforspace(s);
+}
+
+// win/tty/wintty.c:1816 process_text_window(), including the final page wait.
+async function process_text_window(cw) {
+    const display = game.nhDisplay;
+    const quitchars = ' \r\n\x1b';
+    let i, n;
+    for (n = 0, i = 0; i < cw.maxrow; i++) {
+        if (!cw.offx && n + cw.offy === ROWS - 1) {
+            display.setCursor(cw.offx, cw.offy + n);
+            for (let col = cw.offx; col < COLS; col++)
+                display.setCell(col, cw.offy + n, ' ', NO_COLOR, 0);
+            await dmore(cw, quitchars);
+            if (game.morc === '\x1b') {
+                cw.cancelled = true;
+                break;
+            }
+            if (cw.offy) {
+                for (let row = cw.offy; row < ROWS; row++)
+                    for (let col = cw.offx; col < COLS; col++)
+                        display.setCell(col, row, ' ', NO_COLOR, 0);
+            } else {
+                display.clearScreen();
+            }
+            n = 0;
+        }
+        const row = cw.offy + n++;
+        let col = cw.offx;
+        display.setCursor(col, row);
+        // H2344_BROKEN is enabled in the pinned tty build.
+        for (let x = col; x < COLS; x++)
+            display.setCell(x, row, ' ', NO_COLOR, 0);
+        const line = cw.data[i];
+        if (line != null) {
+            if (cw.offx)
+                display.setCell(col++, row, ' ', NO_COLOR, 0);
+            const attr = term_attr(cw.attrs?.[i] || 0);
+            for (let j = 0; j < line.length && ++col < COLS; j++) {
+                // The recorder's first UTF-8 g_putch uses the advanced cursor.
+                const x = j === 0 && gs_symset[gc_currentgraphics.set]?.handling === H_UTF8
+                    ? col : col - 1;
+                display.setCell(x, row, line[j], NO_COLOR, attr);
+            }
+            display.setCursor(col, row);
+        }
+    }
+    if (i === cw.maxrow) {
+        if (cw.type === NHW_TEXT) {
+            for (let row = display.cursorRow + 1; row < ROWS; row++)
+                for (let col = 0; col < COLS; col++)
+                    display.setCell(col, row, ' ', NO_COLOR, 0);
+        }
+        tty_curs_base(cw.offx + 1, cw.type === NHW_TEXT ? ROWS - 1 : n);
+        display.setCursor(base.curx, base.cury);
+        for (let col = base.curx; col < COLS; col++)
+            display.setCell(col, base.cury, ' ', NO_COLOR, 0);
+        await dmore(cw, quitchars);
+        if (game.morc === '\x1b')
+            cw.cancelled = true;
+    }
+}
+
+// win/tty/wintty.c:1909 tty_display_nhwindow(), menu/text dispatch.
 export async function tty_display_nhwindow(window) {
     await notice_all_mons_flush(); /* queued by the previous window's erase */
     const cw = windows[window];
     const display = game?.nhDisplay;
-    if (!cw || !display) return;
+    if (!cw || !display || cw.cancelled) return;
 
+    const ttyDisplay = (game.ttyDisplay ||= {});
+    ttyDisplay.lastwin = window;
+    ttyDisplay.rawprint = 0;
     cw.active = 1;
+    if (cw.type === NHW_TEXT)
+        cw.maxcol = COLS;
     cw.offx = compute_offx(cw);
     cw.curr_page = 0;
 
@@ -719,38 +699,31 @@ export async function tty_display_nhwindow(window) {
     if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
         await more();
 
-    /* wintty.c tty_display_nhwindow(), the NHW_MENU/NHW_TEXT arm: a menu
-       drawn as an OVERLAY first erases the message line --
-       `tty_clear_nhwindow(WIN_MESSAGE)` in the else-arm -- while the
-       full-screen path clears the whole region instead. Without this the
-       prompt that launched the command ("# name") stays painted in the
-       columns left of the menu. */
-    if (cw.offx > 0) {
-        /* the per-frame screen rebuild repaints game._pending_message onto
-           row 0, so clearing the grid alone resurrects the old prompt on the
-           next frame; the more() path in js/display.js clears the pair the
-           same way. */
-        game._pending_message = '';
-        tty_clear_nhwindow_message(game._topl_cury || 0);
-    } else {
-        /* wintty.c's full-screen arm (offx collapsed to 0): the whole screen
-           region is cleared and `ttyDisplay->toplin = TOPLINE_EMPTY`, so the
-           prompt that was on the topline does not come back after the window
-           is dismissed. */
-        game._pending_message = '';
+    // win/tty/wintty.c:1971: height and menu_overlay choose the clear extent.
+    game._pending_message = '';
+    if (cw.maxrow >= ROWS || game.iflags?.menu_overlay === false) {
+        cw.offx = 0;
+        if (cw.offy || game.iflags?.menu_overlay !== false) {
+            display.setCursor(0, cw.offy);
+            for (let row = cw.offy; row < ROWS; row++)
+                for (let col = 0; col < COLS; col++)
+                    display.setCell(col, row, ' ', NO_COLOR, 0);
+        } else {
+            display.clearScreen();
+        }
         game._toplin = TOPLINE_EMPTY;
+    } else {
+        tty_clear_nhwindow_message(game._topl_cury || 0);
     }
 
     /* wintty.c:1944 — `if (cw->data || !cw->maxrow)` picks the text renderer;
        a window built with add_menu() has no data[] and lands in the menu one. */
-    if (cw.mlist) {
+    if (cw.mlist && !cw.data.length) {
         process_menu_window(cw, 0, display);
         return;
     }
 
-    const cap = page_capacity(cw);
-    cw.npages = Math.max(1, Math.ceil(cw.data.length / cap));
-    render_page(cw, 0, display);
+    await process_text_window(cw);
 }
 
 // win/tty/wintty.c:2819 tty_message_menu() — a one-line "menu": the message
@@ -908,7 +881,7 @@ export async function tty_select_menu(window, how) {
                 gacc += curr.gselector;
 
     let counting = false, count = 0;
-    let finished = false;
+    let finished = !cw.mlist || cw.data.length > 0;
     while (!finished) {
         const c = await nhgetch();
         const morc = String.fromCharCode(c);
@@ -1099,6 +1072,7 @@ export async function tty_select_menu(window, how) {
        next, e.g. doset_simple_menu()'s handler menus.
 
        erase_menu_or_text() handles the repaint and any sensing feedback. */
+    const cancelled = !!cw.cancelled;
     await tty_dismiss_nhwindow(window);
     /* erase_menu_or_text()'s docrt() ends with vision_recalc(), whose
        notice_all_mons(TRUE) this port queues; run it here, in C's order */
@@ -1106,8 +1080,8 @@ export async function tty_select_menu(window, how) {
     game.bot_disabled = oldBotDisabled;
 
     const picks = [];
-    Object.defineProperty(picks, 'cancelled', { value: !!cw.cancelled });
-    if (cw.cancelled)
+    Object.defineProperty(picks, 'cancelled', { value: cancelled });
+    if (cancelled)
         return picks;
     const counts = new Map();
     for (let curr = cw.mlist; curr; curr = curr.next) {
@@ -1123,22 +1097,20 @@ export async function tty_select_menu(window, how) {
 export function tty_prev_page(window) {
     const cw = windows[window];
     const display = game?.nhDisplay;
-    if (!cw || !display) return false;
+    if (!cw || !display || !cw.mlist) return false;
     if (cw.curr_page <= 0) return false;
     cw.curr_page--;
-    if (cw.mlist) process_menu_window(cw, cw.curr_page, display);
-    else render_page(cw, cw.curr_page, display);
+    process_menu_window(cw, cw.curr_page, display);
     return true;
 }
 
 export function tty_next_page(window) {
     const cw = windows[window];
     const display = game?.nhDisplay;
-    if (!cw || !display) return false;
+    if (!cw || !display || !cw.mlist) return false;
     if (cw.curr_page + 1 >= cw.npages) return false;
     cw.curr_page++;
-    if (cw.mlist) process_menu_window(cw, cw.curr_page, display);
-    else render_page(cw, cw.curr_page, display);
+    process_menu_window(cw, cw.curr_page, display);
     return true;
 }
 
@@ -1202,10 +1174,11 @@ export function tty_dismiss_nhwindow(window) {
         if (game.iflags?.window_inited && !game._erasing_tty_screen) {
             const pending = erase_menu_or_text(cw, display, !!game.in_role_selection);
             if (pending)
-                return pending.then(() => { cw.active = 0; });
+                return pending.then(() => { cw.active = 0; cw.cancelled = false; });
         }
         cw.active = 0;
     }
+    cw.cancelled = false;
 }
 
 export function reset_windows() {

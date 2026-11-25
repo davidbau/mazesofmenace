@@ -140,8 +140,17 @@ export async function nhgetch() {
             const h = game._msg_history;
             // C ref: topl.c:170-191 remember_topl — exact repeats are kept.
             if ((_wasToplEmpty || game._topl_pline_filed_reset === false)
-                && game._prevmsg_next != null && game._prevmsg_history_length === h.length)
+                && game._prevmsg_next != null && game._prevmsg_history_length === h.length) {
                 game._prevmsg_history_length++;
+                /* topl.c:106-107: gt.toplines is no longer EMPTY, so whenever the
+                 * walk reaches maxcol == maxrow it recalls this line, not a blank
+                 * (as tty_getlin_history); a walk poised there shows it next. */
+                if (_wasToplEmpty) {
+                    if (game._prevmsg_next === -1) game._prevmsg_next = h.length;
+                    game._prevmsg_cycleEmpty = false;
+                    game._prevmsg_emptyTopl = false;
+                }
+            }
             h.push(text);
         }
     }

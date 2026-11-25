@@ -9,7 +9,7 @@ import { Confusion, Stunned, Fumbling, Underwater, Swimming,
 import { MOD_ENCUMBER, Is_waterlevel } from './const.js';
 import { tunnels, needspick, amorphous } from './mondata.js';
 import { dobreathe, dospit, doremove, dogaze, dosummon, dohide, dospinweb, domindblast, dopoly } from './polyself.js';
-import { pet_ranged_attk } from './dog.js';
+import { pet_ranged_attk, abuse_dog } from './dog.js';
 import { is_vampshifter } from './monst.js';
 import { aggravate } from './wizard.js';
 import { use_unicorn_horn, check_leash } from './apply.js';
@@ -63,7 +63,7 @@ import { is_pool, is_lava, m_at, t_at, newcham, resists_ston,
 import { do_attack } from './uhitm.js';
 import { back_to_glyph, glyph_is_invisible_at, is_safemon, mon_visible,
          sensemon, unmap_invisible } from './display.js';
-import { goodpos, hideunder, place_monster, remove_monster } from './makemon.js';
+import { goodpos, hideunder, place_monster, remove_monster, monsndx } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
 import { hides_under, is_hider, verysmall, sticks } from './mondata.js';
@@ -75,7 +75,10 @@ import { In_sokoban, surface } from './dungeon.js';
 import { canspotmon, map_invisible, glyph_at } from './display.js';
 import { Something, NO_TRAP_FLAGS } from './const.js';
 import { minliquid } from './mon.js';
-import { mintrap } from './trap.js';
+import { mintrap, Trap_Effect_Finished, Trap_Caught_Mon, Trap_Moved_Mon,
+         Trap_Killed_Mon } from './trap.js';
+import { experience, more_experienced, newexplevel } from './exper.js';
+import { LL_CONDUCT } from './const.js';
 import { Blind, Flying, Hallucination, Levitation, Passes_walls, Stealth }
     from './youprop.js';
 import { u_on_newpos } from './teleport.js';
@@ -86,7 +89,7 @@ import { curr_mon_load } from './mon.js';
 import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
          M_AP_FURNITURE, M_AP_OBJECT, OVERLOADED, Is_airlevel,
          Upolyd } from './const.js';
-import { ACURR, exercise, near_capacity } from './attrib.js';
+import { ACURR, exercise, near_capacity, adjalign } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, PIT, HOLE, WEB } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { an, cxname, simpleonames, the, makeplural, singular, xname,
@@ -123,7 +126,7 @@ import { is_weptool } from './mkobj.js';
 import { HANDS_SYM } from './const.js';
 import { cmap_names, defsyms } from './drawing_data.js';
 import { x_monnam, y_monnam, YMonnam, docallcmd, donamelevel } from './do_name.js';
-import { You, You_cant } from './pline.js';
+import { You, You_cant, You_feel, livelog_printf } from './pline.js';
 
 /* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
    are cycles when imported directly, so cmd.js -- which already pulls in every
@@ -138,10 +141,10 @@ do_wire_dokick(ship_object);
 import { dungeon_wire_stairway_at } from './dungeon.js';
 dungeon_wire_stairway_at(stairway_at);
 import { wiz_level_change, wiz_wish, wiz_identify } from './wizcmds.js';
-import { tty_yn_function, doprev_message } from './tty/topl.js';
+import { tty_yn_function, doprev_message, remember_topl } from './tty/topl.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { enlightenment } from './insight.js';
-import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
+import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_add_menu_str,
          tty_end_menu,
          tty_select_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
@@ -159,7 +162,6 @@ import { dojump } from './apply.js';
 import { dowear, doputon, canwearobj_core } from './do_wear.js';
 import { boolean_option, show_menu_controls, paranoia_bits,
          PARANOID_CONFIRM, PARANOID_QUIT } from './options.js';
-import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, docrt, docrt_flags, map_object, paint_topline, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
@@ -177,7 +179,7 @@ import { dowieldquiver, dowield, doswapweapon, dotwoweapon } from './wield.js';
 import { dozap } from './zap.js';
 import { dist2, distmin } from './hacklib.js';
 import { place_object } from './mkobj.js';
-import { trapname, feeltrap } from './trap.js';
+import { trapname, feeltrap, reset_utrap } from './trap.js';
 import { move_out_of_bounds } from './hack.js';
 
 // C ref: hack.c — check if a cell blocks movement
@@ -418,9 +420,6 @@ async function help_dir(sym, msg) {
                "(Suppress this message with !cmdassist in config file.)");
     }
     await tty_display_nhwindow(win);
-    await xwaitforspace('\x1b ');
-    while (tty_next_page(win))
-        await xwaitforspace('\x1b ');
     await tty_destroy_nhwindow(win);
     return true;
 }
@@ -732,6 +731,8 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
     let buf = '';
     let pos = 0;
     let shown = '';   /* the echoed text, typed characters as typed */
+    let doprev = false;
+    const ttyDisplay = (game.ttyDisplay ||= {});
 
     /* win/tty/getline.c:53 — an unacknowledged message gets its --More--
        BEFORE the prompt appears:
@@ -746,6 +747,8 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
     // Replace any physical no-history description left by getpos().
     game._win_stop = false;
     game._topline_physical_prefix = '';
+    game._toplin = TOPLINE_SPECIAL_PROMPT;
+    ttyDisplay.inread = (ttyDisplay.inread || 0) + 1;
     /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, "%s ", query) goes
        through src/pline.c:282 vpline(), which records the prompt as the
        previous message for Norep() and, first (pline.c:266), settles any
@@ -756,59 +759,53 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
         vision_recalc(0);
     if (game.u?.ux)
         await flush_screen(1);
+    /* tty_putstr(ATR_NOHISTORY) banks the preceding message first. */
+    remember_topl();
     game._prevmsg = query + ' ';
 
     for (;;) {
-        /* win/tty/getline.c hooked_tty_getlin():
-         *
-         *     custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, "%s ", query);
-         *     for (;;) {
-         *         Strcat(strcat(strcpy(gt.toplines, query), " "), obufp);
-         *         term_curs_set(1);
-         *         c = pgetchar();
-         *
-         * The top line is rewritten to "<query> <buf>" before EVERY key and
-         * the cursor parks just past it. Reading the keys without painting
-         * any of that left the prompt invisible: seed0360's '#' never
-         * appeared and the cursor sat out on the map.
-         */
-        /* what the tty has painted: typed characters as typed (the
-           completion hook rewrites the buffer in canonical case, but only
-           the remainder after the cursor is echoed from it) */
-        // topl_putsym counts nonprinting query bytes as columns. Their cells
-        // stay blank; emitting control bytes would collapse the captured row.
-        const visibleQuery = query.replace(/[\x00-\x07\x09\x0b-\x1f]/g, ' ');
-        const promptText = `${visibleQuery} ${shown}`;
-        game._toplin = TOPLINE_SPECIAL_PROMPT;
-        const display = game?.nhDisplay;
-        const CO = display?.cols ?? 80;
-        /* win/tty/topl.c topl_putsym() reserves the final terminal
-           column. When curx reaches CO - 1, it moves to the next row
-           before painting the following character. */
-        const lineWidth = Math.max(CO - 1, 1);
-        const lines = [];
-        for (let start = 0; start < promptText.length; start += lineWidth)
-            lines.push(promptText.slice(start, start + lineWidth));
-        if (!lines.length)
-            lines.push('');
+        /* Ctrl-P keeps the recalled line visible until the next nonhistory
+           key. The logical query is still refreshed before every read. */
+        if (!doprev) {
+            /* what the tty has painted: typed characters as typed (the
+               completion hook rewrites the buffer in canonical case, but only
+               the remainder after the cursor is echoed from it) */
+            // topl_putsym counts nonprinting query bytes as columns. Their cells
+            // stay blank; emitting control bytes would collapse the captured row.
+            const visibleQuery = query.replace(/[\x00-\x07\x09\x0b-\x1f]/g, ' ');
+            const promptText = `${visibleQuery} ${shown}`;
+            game._toplin = TOPLINE_SPECIAL_PROMPT;
+            const display = game?.nhDisplay;
+            const CO = display?.cols ?? 80;
+            /* win/tty/topl.c topl_putsym() reserves the final terminal
+               column. When curx reaches CO - 1, it moves to the next row
+               before painting the following character. */
+            const lineWidth = Math.max(CO - 1, 1);
+            const lines = [];
+            for (let start = 0; start < promptText.length; start += lineWidth)
+                lines.push(promptText.slice(start, start + lineWidth));
+            if (!lines.length)
+                lines.push('');
 
-        const oldCury = game._topl_cury || 0;
-        const newCury = lines.length - 1;
-        if (oldCury > newCury)
-            tty_clear_nhwindow_message(oldCury);
+            const oldCury = game._topl_cury || 0;
+            const newCury = lines.length - 1;
+            if (oldCury > newCury)
+                tty_clear_nhwindow_message(oldCury);
 
-        game._pending_message = lines.join('\n');
-        game._topl_cury = newCury;
-        paint_topline();
+            game._pending_message = lines.join('\n');
+            game._topl_cury = newCury;
+            paint_topline();
 
-        if (display) {
-            const logicalPos = query.length + 1 + pos;
-            let cursorRow = 0, cursorCol = logicalPos;
-            if (logicalPos > lineWidth) {
-                cursorRow = Math.floor((logicalPos - 1) / lineWidth);
-                cursorCol = ((logicalPos - 1) % lineWidth) + 1;
+            if (display) {
+                const logicalPos = query.length + 1 + pos;
+                let cursorRow = 0, cursorCol = logicalPos;
+                if (logicalPos > lineWidth) {
+                    cursorRow = Math.floor((logicalPos - 1) / lineWidth);
+                    cursorCol = ((logicalPos - 1) % lineWidth) + 1;
+                }
+                display.setCursor(cursorCol, cursorRow);
             }
-            display.setCursor(cursorCol, cursorRow);
+
         }
 
         /* Strcat(strcat(strcpy(gt.toplines, query), " "), obufp): the
@@ -828,14 +825,45 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
                 shown = '';
                 pos = 0;
                 game._msg_maxcol = game._msg_maxrow || 0; /* cw->maxcol = cw->maxrow */
+            } else {
+                ttyDisplay.inread--;
+                getlin_cleanup();
+                if (suppress_history)
+                    game._toplines = ''; /* keep this prompt out of history */
+                return '\x1b';
+            }
+        }
+        if (ttyDisplay.intr) {
+            ttyDisplay.intr--;
+            buf = buf.slice(0, pos);
+        }
+        if (c === '\x10') {
+            const saved = ttyDisplay.inread;
+            ttyDisplay.inread = 0;
+            const mode = game.iflags.prevmsg_window ?? 's';
+            if (mode === 's' || (mode === 'c' && !doprev)) {
+                if (!doprev)
+                    await doprev_message();
+                await doprev_message();
+                ttyDisplay.inread = saved;
+                doprev = true;
                 continue;
             }
-            getlin_cleanup();
-            if (suppress_history)
-                game._toplines = ''; /* prevent next message from pushing
-                                        current query+answer into history */
-            return '\x1b';
-        } else if (c === '\n' || c === '\r') {
+            await doprev_message();
+            ttyDisplay.inread = saved;
+            doprev = false;
+            tty_clear_nhwindow_message(game._topl_cury || 0);
+            game._msg_maxcol = game._msg_maxrow || 0;
+            buf = buf.slice(0, pos);
+            shown = buf;
+        } else if (doprev) {
+            tty_clear_nhwindow_message(game._topl_cury || 0);
+            game._msg_maxcol = game._msg_maxrow || 0;
+            doprev = false;
+            buf = buf.slice(0, pos);
+            shown = buf;
+        }
+        if (c === '\n' || c === '\r') {
             /* NEWAUTOCOMP does NOT truncate here, so a completed name is
                returned whole even though the cursor sat mid-string. */
             break;
@@ -862,8 +890,13 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
                     shown += completed.slice(pos); /* putsyms(bufp): the rest */
                 }
             }
+        } else if (c === '\x15') {
+            /* sys/share/unixtty.c:232: selected tty kill_char is Ctrl-U. */
+            buf = shown = '';
+            pos = 0;
         }
     }
+    ttyDisplay.inread--;
     getlin_cleanup();
     if (suppress_history) {
         /* prevent next message from pushing current query+answer into
@@ -2144,7 +2177,7 @@ async function doclicklook() {
 export async function doterrain() {
     const {
         tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu,
-        tty_add_menu, tty_end_menu, tty_select_menu, tty_get_nhwindow,
+        tty_add_menu, tty_end_menu, tty_select_menu,
         NHW_MENU,
     } = await import('./tty/wintty.js');
     const { NO_COLOR } = await import('./terminal.js');
@@ -2183,7 +2216,7 @@ export async function doterrain() {
     tty_end_menu(win, 'View which?');
 
     const picks = await tty_select_menu(win, 1 /* PICK_ONE */);
-    const cancelled = !!tty_get_nhwindow(win)?.cancelled;
+    const cancelled = !!picks.cancelled;
     tty_destroy_nhwindow(win);
     /* n < 0: ESC; n == 0: preselected entry explicitly toggled off;
        n == 1: preselected chosen via <space>|<enter>;
@@ -2850,15 +2883,13 @@ async function domove_core() {
     if (await avoid_trap_andor_region(newx, newy))
         return;
 
-    /* src/hack.c:2831 — when u.utrap is true the struggle may consume the
-       move: trapmove() returns FALSE to stay put (time passes), TRUE when
-       the hero escaped or may proceed. */
+    /* src/hack.c:2831, a walk attempts escape from the current trap.
+       Even successful escape may consume the move without changing position. */
     if (game.u.utrap) {
-        const desttrap = t_at(newx, newy);
-        const moved = await trapmove(newx, newy, desttrap);
+        const moved = await trapmove(newx, newy, null);
         if (!game.u.utrap) {
             (game.disp ||= {}).botl = true;
-            game.u.utraptype = 0;   /* reset_utrap */
+            await reset_utrap(true); /* might resume levitation or flight */
         }
         if (!moved)
             return;
@@ -3091,14 +3122,8 @@ async function domove_core() {
     await runmode_delay_output();
 }
 
-// src/hack.c:2098 domove_swap_with_pet() — returns TRUE if places were
-// swapped. Draws only through goodpos(), whose S_EEL rn2(13) is its one draw,
-// so the arms must be evaluated in C's order.
-//
-// EVERY hero coordinate here goes through game.u, not a local `u`. An earlier
-// attempt used a bare `u`, which is a local inside domove and invisible from
-// module scope, so this function threw on every step onto a pet and cost 247
-// screens. It looked like a logic fault and was not.
+// src/hack.c:2098 domove_swap_with_pet(). Resolve displacement consequences
+// before returning whether the swap succeeded.
 async function domove_swap_with_pet(mtmp, x, y) {
     let didnt_move = false;
     const mdat = game.mons[mtmp.mnum];
@@ -3174,6 +3199,36 @@ async function domove_swap_with_pet(mtmp, x, y) {
                              (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null,
                              0, false)
                   + '.');
+
+        // Resolve liquid first; only a survivor can trigger the trap.
+        switch (await minliquid(mtmp) ? Trap_Killed_Mon
+                : await mintrap(mtmp, NO_TRAP_FLAGS)) {
+        case Trap_Effect_Finished:
+            break;
+        case Trap_Caught_Mon:
+        case Trap_Moved_Mon:
+            await abuse_dog(mtmp);
+            adjalign(-3);
+            break;
+        case Trap_Killed_Mon: {
+            // Credit experience and finish any level gain before guilt.
+            if (!game.u.uconduct.killer++)
+                livelog_printf(LL_CONDUCT, 'killed for the first time');
+            const mndx = monsndx(mtmp.data);
+            const tmp = experience(mtmp, game.mvitals[mndx].died | 0);
+            more_experienced(tmp, 0);
+            await newexplevel();
+            if (rn2(4)) {
+                await You_feel('guilty about losing your pet like this.');
+                game.u.ugangr = (game.u.ugangr | 0) + 1;
+                adjalign(-15);
+            }
+            break;
+        }
+        default:
+            await impossible("that's strange, unknown mintrap result!");
+            break;
+        }
     }
     return !didnt_move;
 }
@@ -4309,13 +4364,6 @@ export async function dokeylist() {
     }
 
     await tty_display_nhwindow(win);
-    for (;;) {
-        await xwaitforspace(' \r\n\x1b');
-        if (game.morc === '\x1b')
-            break;
-        if (!tty_next_page(win))
-            break;
-    }
     await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return 0; /* ECMD_OK */

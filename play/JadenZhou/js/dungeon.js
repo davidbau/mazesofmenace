@@ -48,7 +48,7 @@ import {
     luaL_checkoption, get_table_int, get_table_int_opt, get_table_str,
     get_table_str_opt, get_table_option, LUA_TTABLE, LUA_TSTRING, LUA_TNIL,
 } from './nhlua.js';
-import { strcmpi, strncmpi, mungspaces } from './hacklib.js';
+import { strcmpi, strncmpi, mungspaces, plur } from './hacklib.js';
 import { tty_getlin } from './wintty.js';
 import { within_bounded_area } from './rect.js';
 import { stairway_find_special_dir } from './mklev.js';
@@ -1587,8 +1587,6 @@ function Is_knox(x) { return Lcheck(x, game.dungeon_topology.d_knox_level); }
 function Lcheck(x, z) {
     return !!(z && (z.dlevel || z.dnum) && on_level(x, z));
 }
-/* C ref: hack.h plur() */
-function plur(x) { return (x === 1) ? "" : "s"; }
 /* svl.lastseentyp[x][y]; zero until the level has been seen */
 function lastseentyp_at(x, y) {
     return game.level?.lastseentyp?.[x]?.[y] ?? 0;

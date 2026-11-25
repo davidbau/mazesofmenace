@@ -34,7 +34,8 @@ import { obj_extract_self, add_to_minv, add_to_container, place_object,
 import { obj_no_longer_held } from './do.js';
 import { can_carry } from './dogmove.js';
 import { m_at, makemon, mongets } from './makemon.js';
-import { is_undead, give_u_to_m_resistances } from './mondata.js';
+import { is_undead, give_u_to_m_resistances, likes_gems, likes_gold,
+         likes_magic, unique_corpstat, likes_objs } from './mondata.js';
 import { christen_monst, safe_oname } from './do_name.js';
 import { obj_attach_mid, mk_named_object } from './mkobj.js';
 import { end_burn } from './timeout.js';
@@ -62,13 +63,6 @@ import { m_carrying } from './weapon.js';
 import { tty_yn_function } from './wintty.js';
 
 /* mondata.h */
-function attacktype(ptr, atyp) {
-    return ptr.mattk.some(a => a.aatyp === atyp);
-}
-function likes_gold(ptr) { return (ptr.mflags2 & M2_GREEDY) !== 0; }
-function likes_gems(ptr) { return (ptr.mflags2 & M2_JEWELS) !== 0; }
-function likes_objs(ptr) { return (ptr.mflags2 & M2_COLLECT) !== 0 || attacktype(ptr, AT_WEAP); }
-function likes_magic(ptr) { return (ptr.mflags2 & M2_MAGIC) !== 0; }
 /* mondata.h is_Vlad() */
 function is_Vlad(mtmp) {
     return mtmp.data === mons[PM_VLAD_THE_IMPALER]
@@ -83,8 +77,6 @@ function is_soko_prize(o) {
 }
 /* trap.h unhideable_trap() */
 function unhideable_trap(ttyp) { return ttyp === HOLE; } /* visible traps */
-/* mondata.h unique_corpstat() */
-function unique_corpstat(ptr) { return (ptr.geno & G_UNIQ) !== 0; }
 
 /* the members of an object chain (JS keeps some as arrays, invent as a
    nobj list) */

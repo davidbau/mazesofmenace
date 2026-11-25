@@ -27,7 +27,7 @@ import { xlev_to_rank } from './botl.js';
 import { record_achievement, achieve_rank } from './insight.js';
 import { pline } from './display.js';
 import { Goodbye } from './role.js';
-import { resists_drli } from './mondata.js';
+import { resists_drli, extra_nasty } from './mondata.js';
 import { Amphibious } from './youprop.js';
 
 // C ref: exper.c newuexp()
@@ -98,9 +98,6 @@ export function newpw() {
     }
     return en;
 }
-
-/* C ref: mondata.h extra_nasty(); youprop.h Amphibious */
-function extra_nasty(ptr) { return (ptr.mflags2 & M2_NASTY) !== 0; }
 
 // C ref: exper.c experience()
 export function experience(mtmp, nk) {

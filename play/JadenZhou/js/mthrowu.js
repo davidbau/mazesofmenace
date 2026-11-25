@@ -9,9 +9,12 @@
 // throw a 'not ported yet' error instead of skipping their rolls.
 
 import { DEADMONSTER } from './mon.js';
-import { ordin } from './hacklib.js';
+import { ordin, sgn, upstart, plur } from './hacklib.js';
 import { passes_rocks } from './trap.js';
-import { resists_poison } from './mondata.js';
+import { resists_poison, noncorporeal, amorphous, bigmonst, likes_gems,
+         throws_rocks, nohands, is_unicorn, touch_petrifies, resists_acid,
+         resists_ston, eyecount, is_prince, is_lord, is_mplayer,
+         poly_when_stoned } from './mondata.js';
 import { rounddiv } from './hack.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rnl, rn2_on_display_rng, ROLL_FROM } from './rng.js';
@@ -42,10 +45,7 @@ import { ART_SNICKERSNEE } from './artilist.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon, mwelded, dmgval,
          setmnotwielded, m_carrying } from './weapon.js';
 import { lined_up, linedup } from './monmove.js';
-import {
-    m_at, closed_door, is_pool, is_lava, is_prince, is_lord, is_mplayer,
-    nonliving
-} from './makemon.js';
+import { m_at, closed_door, is_pool, is_lava, nonliving } from './makemon.js';
 import { monsndx, is_elf, is_orc, is_gnome, is_vampshifter, hates_silver,
          mon_hates_silver, Resists_Elem, get_atkdam_type,
          cvt_adtyp_to_mseenres, can_blnd, haseyes } from './mondata.js';
@@ -57,7 +57,7 @@ import { splitobj, obj_extract_self, clear_dknown, place_object,
          weight } from './mkobj.js';
 import { stackobj, delobj, obfree } from './invent.js';
 import { flooreffects, ship_object, down_gate, dropy } from './do.js';
-import { observe_object, discover_object } from './o_init.js';
+import { observe_object, discover_object, makeknown } from './o_init.js';
 import { xname, doname, singular, an, The, Tobjnam, otense, vtense,
          obj_is_pname, distant_name, corpse_xname, the_unique_obj,
          makeplural, CXN_NORMAL } from './objnam.js';
@@ -97,19 +97,11 @@ import { WT_IRON_BALL_INCR } from './const.js';
 /* C ref: youprop.h -- (H* || E*) && !B* */
 function verbose() { return game.flags.verbose ?? true; }
 
-/* C ref: mondata.c poly_when_stoned() -- golems other than stone golem
-   turn into stone golems */
-function poly_when_stoned(ptr) {
-    return ptr.mlet === M.S_GOLEM && ptr !== mons[M.PM_STONE_GOLEM]
-           && !(game.mvitals[M.PM_STONE_GOLEM].mvflags & G_GENOD);
-}
 /* C ref: hack.h mdistu() */
 function mdistu(mon) {
     const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
     return dx * dx + dy * dy;
 }
-/* C ref: hacklib.c sgn() */
-function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
 /* C ref: obj.h is_pole() */
 function is_pole(otmp) {
     return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
@@ -129,24 +121,6 @@ function is_flimsy(otmp) {
            || otmp.otyp === O.RUBBER_HOSE;
 }
 /* C ref: mondata.h */
-function passes_walls(ptr) { return (ptr.mflags1 & M.M1_WALLWALK) !== 0; }
-function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
-function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
-function bigmonst(ptr) { return ptr.msize >= M.MZ_LARGE; }
-function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
-function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
-function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
-function touch_petrifies(ptr) {
-    return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
-}
-function resists_acid(mon) { return Resists_Elem(mon, ACID_RES); }
-function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
-/* C ref: objnam.c makeknown() */
-function makeknown(otyp) { discover_object(otyp, true, true, true); }
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-function plur(x) { return (x === 1) ? "" : "s"; }
 
 /* gm.m_shot (decl.h) -- multishot volley feedback */
 function m_shot() {
@@ -709,7 +683,6 @@ async function u_catch_thrown_obj(otmp) {
     }
     return false;
 }
-function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
 
 /* C ref: mthrowu.c MT_FLIGHTCHECK() -- singleref is the { obj } holder
    for hits_bars() (the missile is set to null if it breaks) */
@@ -988,12 +961,6 @@ export async function m_throw(
     }
     /* note: all early returns follow drop_throw() which clears thrownobj */
     game.thrownobj = null;
-}
-/* C ref: mondata.h eyecount() */
-function eyecount(ptr) {
-    return !haseyes(ptr) ? 0
-           : (ptr === mons[M.PM_CYCLOPS] || ptr === mons[M.PM_FLOATING_EYE])
-             ? 1 : 2;
 }
 
 // C ref: mthrowu.c return_from_mtoss()

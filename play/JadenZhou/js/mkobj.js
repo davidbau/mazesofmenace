@@ -20,7 +20,8 @@ import * as O from './objects.js';
 import { objects } from './objects.js';
 import { P_NONE, P_SHURIKEN, P_BOW, FIRE_RES, G_GONE, G_GENOD } from './const.js';
 import { rndmonst_adj } from './makemon.js';
-import { monsndx, little_to_big, big_to_little, is_human } from './mondata.js';
+import { monsndx, little_to_big, big_to_little, is_human, verysmall, is_male,
+         is_female, is_neuter, is_rider } from './mondata.js';
 import * as M from './monsters.js';
 import { assign_candy_wrapper } from './read.js';
 import { noveltitle, oname } from './do_name.js';
@@ -57,7 +58,9 @@ import { is_ice } from './dig.js';
 import { obj_sheds_light, obj_split_light_source, del_light_source } from './light.js';
 import { nartifact_exist, mk_artifact } from './artifact.js';
 import { A_NONE } from './const.js';
-import { splitbill, get_obj_location } from './shk.js';
+import { splitbill, get_obj_location, unpaid_cost, subfrombill, shop_keeper,
+         addtobill, alter_cost } from './shk.js';
+import { COST_SINGLEOBJ } from './const.js';
 import { CONTAINED_TOO } from './const.js';
 import { arti_light_radius, obj_adjust_light_radius } from './light.js';
 import { Blind } from './youprop.js';
@@ -77,17 +80,6 @@ const CORPSTAT_NEUTER = 3;
 const TAINT_AGE = 50;           /* age when corpses go bad */
 const TROLL_REVIVE_CHANCE = 37; /* 1/37 chance for 50 turns ~ 75% chance */
 const ROT_AGE = 250;            /* age when corpses rot away */
-
-// C ref: mondata.h is_male(), is_female(), is_neuter(), verysmall(),
-// is_rider()
-function is_male(ptr) { return (ptr.mflags2 & M2_MALE) !== 0; }
-function is_female(ptr) { return (ptr.mflags2 & M2_FEMALE) !== 0; }
-function is_neuter(ptr) { return (ptr.mflags2 & M2_NEUTER) !== 0; }
-function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
-function is_rider(ptr) {
-    return (ptr === mons[PM_DEATH] || ptr === mons[PM_FAMINE]
-            || ptr === mons[PM_PESTILENCE]);
-}
 
 // C ref: mkobj.c rndmonnum()
 /* select a random, common monster type */
@@ -632,7 +624,7 @@ function oid_price_adjustment(obj, oid) {
 // C ref: mkobj.c nextoid()
 /* when splitting a stack that has o_id-based shop prices, pick an
    o_id value for the new stack that will maintain the same price */
-function nextoid(oldobj, newobj) {
+export function nextoid(oldobj, newobj) {
     let trylimit = 256; /* limit of 4 suffices at present */
     let oid = (game.context.ident - 1) >>> 0; /* loop increment will reverse -1 */
     let newdif;
@@ -1423,6 +1415,49 @@ export function container_weight(object) {
     object.owt = weight(object);
     if (object.where === 'OBJ_CONTAINED')
         container_weight(object.ocontainer);
+}
+
+// C ref: mkobj.c bill_dummy_object()
+/*
+ * Create a dummy duplicate to put on shop bill.  The duplicate exists
+ * only in the billobjs chain.  This function is used when a shop object
+ * is being altered, and a copy of the original is needed for billing
+ * purposes.  For example, when eating, where an interruption will yield
+ * an object which is different from what it started out as; the "I x"
+ * command needs to display the original object.
+ *
+ * The caller is responsible for checking otmp->unpaid and
+ * costly_spot(u.ux, u.uy).  This function will make otmp no charge.
+ *
+ * Note that check_unpaid_usage() should be used instead for partial
+ * usage of an object.
+ */
+export async function bill_dummy_object(otmp) {
+    let cost = 0;
+
+    if (otmp.unpaid) {
+        cost = unpaid_cost(otmp, COST_SINGLEOBJ);
+        subfrombill(otmp, shop_keeper((game.u.ushops || '').charCodeAt(0) || 0));
+    }
+    const dummy = { ...otmp }; /* dummy = newobj(); *dummy = *otmp; */
+    delete dummy.oextra; /* dummy->oextra = (struct oextra *) 0 */
+    dummy.where = 'OBJ_FREE';
+    dummy.o_id = nextoid(otmp, dummy);
+    dummy.timed = 0;
+    copy_oextra(dummy, otmp);
+    if (dummy.omid)
+        delete dummy.omid; /* free_omid(): only one association with m_id */
+    if (Is_candle(dummy))
+        dummy.lamplit = 0;
+    dummy.owornmask = 0; /* dummy object is not worn */
+    await addtobill(dummy, false, true, true);
+    if (cost && dummy.where !== 'OBJ_DELETED')
+        alter_cost(dummy, -cost);
+    /* no_charge is only valid for some locations */
+    otmp.no_charge = (otmp.where === 'OBJ_FLOOR'
+                      || otmp.where === 'OBJ_CONTAINED') ? 1 : 0;
+    otmp.unpaid = 0;
+    return;
 }
 
 // C ref: mkobj.c costly_alteration()

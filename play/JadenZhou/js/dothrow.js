@@ -9,13 +9,18 @@
 import { use_pole, could_pole_mon } from './apply.js';
 import { end_burn } from './timeout.js';
 import { get_obj_location } from './shk.js';
-import { Shk_Your } from './wield.js';
+import { shop_keeper, costly_spot, stolen_value, subfrombill, is_unpaid,
+         contained_gold, donate_gold } from './shk.js';
+import { in_rooms } from './hack.js';
+import { SHOPBASE, Has_contents } from './const.js';
+import { Shk_Your } from './shk.js';
 import { container_impact_dmg } from './dokick.js';
 import { explode } from './explode.js';
 import { d } from './rng.js';
 import { EXPL_FIERY, NO_TRAP_FLAGS } from './const.js';
 import { hits_bars } from './mthrowu.js';
 import { glyph_at, glyph_is_warning } from './display.js';
+import { noit_mhim } from './mhitu.js';
 import { shade_miss } from './uhitm.js';
 import { switch_terrain } from './hack.js';
 import { dotrap, trapname } from './trap.js';
@@ -145,8 +150,9 @@ import { obfree as obfree_dt } from './invent.js';
 import { hot_pursuit as hot_pursuit_dt, inside_shop as inside_shop_sk } from './shk.js';
 import { in_rooms as in_rooms_dt } from './hack.js';
 import { distmin as distmin_dt } from './hacklib.js';
-import { your_race as your_race_dt, is_orc as is_orc_dt,
-         is_elf as is_elf_dt } from './mondata.js';
+import { your_race as your_race_dt, is_orc as is_orc_dt, is_elf as is_elf_dt,
+         nohands, throws_rocks, notake, touch_petrifies, digests,
+         is_unicorn } from './mondata.js';
 import { is_quest_artifact as is_quest_artifact_dt } from './questpgr.js';
 import { Is_candle as Is_candle_dt } from './mkobj.js';
 import { is_domestic as is_domestic_dt } from './makemon.js';
@@ -203,16 +209,6 @@ import { is_moat as is_moat_ht } from './makemon.js';
    water */
 const WT_SPLASH_THRESHOLD = 9;
 
-/* C ref: mondata.h touch_petrifies() */
-function touch_petrifies(ptr) {
-    const n = mons.indexOf(ptr);
-    return n === PM_COCKATRICE || n === PM_CHICKATRICE;
-}
-
-/* C ref: mondata.h nohands(), notake() */
-function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
-function notake(ptr) { return (ptr.mflags1 & M1_NOTAKE) !== 0; }
-
 /* C ref: dothrow.c AutoReturn() -- uwep might already be removed from
    inventory so test for W_WEP instead */
 function AutoReturn(o, wmsk) {
@@ -244,7 +240,6 @@ async function ok_to_throw() {
 function is_pick(otmp) {
     return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
 }
-function throws_rocks(ptr) { return (ptr.mflags2 & M2_ROCKTHROW) !== 0; }
 
 // C ref: dothrow.c multishot_class_bonus()
 export function multishot_class_bonus(pm, ammo, launcher) /* can be NULL */ {
@@ -510,7 +505,7 @@ async function throw_gold(obj) {
     if (u.uswallow) {
         let swallower = mon_nam(u.ustuck);
 
-        if (digests_tg(u.ustuck.data))
+        if (digests(u.ustuck.data))
             swallower = s_suffix(swallower) + " entrails";
         await pline_The(`gold disappears into ${swallower}.`);
         add_to_minv(u.ustuck, obj);
@@ -559,11 +554,6 @@ async function throw_gold(obj) {
     stackobj(obj);
     newsym(g.bhitpos.x, g.bhitpos.y);
     return ECMD_TIME;
-}
-
-/* C ref: mondata.h digests() */
-function digests_tg(ptr) {
-    return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL && a.adtyp === AD_DGST);
 }
 
 // C ref: dothrow.c throwing_weapon()
@@ -675,10 +665,7 @@ function special_obj_hits_leader(obj, mon) {
             && mon.m_id === game.quest_status.leader_m_id);
 }
 
-/* C ref: mondata.h is_unicorn(), befriend_with_obj() */
-function is_unicorn_dt(ptr) {
-    return ptr.mlet === S_UNICORN_DT && (ptr.mflags2 & M2_JEWELS_DT) !== 0;
-}
+/* C ref: mondata.h befriend_with_obj() */
 function befriend_with_obj_dt(ptr, obj) {
     return (ptr === mons[PM_MONKEY_DT] || ptr === mons[PM_APE_DT])
         ? obj.otyp === BANANA_DT
@@ -770,7 +757,7 @@ export async function thitmonst(mon,
        throwing worthless glass doesn't affect Luck but doesn't anger them;
        5.0: treat rocks and gray stones as attacks rather than like glass
        and also treat gems or glass shot via sling as attacks */
-    if (obj.oclass === GEM_CLASS && is_unicorn_dt(mon.data)
+    if (obj.oclass === GEM_CLASS && is_unicorn(mon.data)
         && objects[obj.otyp].oc_material !== MINERAL_DT && !uslinging()) {
         if (mon.msleeping || !mon.mcanmove) { /* helpless(mon) */
             await tmiss(obj, mon, false);
@@ -861,7 +848,7 @@ export async function thitmonst(mon,
                that hmon() might have destroyed so obj is intact */
             if (should_mulch_missile_dt(obj)) {
                 if ((u.ushops && u.ushops.length) || obj.unpaid)
-                    throw new Error('thitmonst(): check_shop_obj() not ported yet');
+                    await check_shop_obj(obj, g.bhitpos.x, g.bhitpos.y, true);
                 obfree_dt(obj, null);
                 return 1;
             }
@@ -1140,7 +1127,7 @@ async function throwit(obj,
         /* charge for items thrown out of shop;
            shk takes possession for items thrown into one */
         if (((u.ushops && u.ushops.length) || obj.unpaid) && obj !== g.uball)
-            throw new Error('throwit(): check_shop_obj() not ported yet');
+            await check_shop_obj(obj, g.bhitpos.x, g.bhitpos.y, false);
 
         stackobj(obj);
         if (obj === g.uball)
@@ -1152,6 +1139,45 @@ async function throwit(obj,
     }
 
     throwit_return(false);
+}
+
+// C ref: dothrow.c check_shop_obj()
+/* charge for an object thrown out of a shop (or into a different shop), or
+   let the shopkeeper take possession of one thrown into his shop */
+async function check_shop_obj(obj, x, y, broken) {
+    const u = game.u;
+    const ushops = (u.ushops || '').charCodeAt(0) || 0; /* *u.ushops */
+    const shkp = shop_keeper(ushops);
+
+    if (!shkp)
+        return;
+
+    const costly_xy = costly_spot(x, y);
+    if (broken || !costly_xy
+        || ((in_rooms(x, y, SHOPBASE).charCodeAt(0) || 0) !== ushops)) {
+        /* thrown out of a shop or into a different shop */
+        if (is_unpaid(obj))
+            await stolen_value(obj, u.ux, u.uy, !!shkp.mpeaceful, false);
+        if (broken)
+            obj.no_charge = 1;
+    } else if (costly_xy) {
+        const oshops = in_rooms(x, y, SHOPBASE).charCodeAt(0) || 0;
+
+        /* ushops0: in case we threw while levitating and recoiled
+           out of shop (most likely to the shk's spot in front of door) */
+        if (oshops === ushops
+            || oshops === ((u.ushops0 || '').charCodeAt(0) || 0)) {
+            if (is_unpaid(obj)) {
+                const gtg = Has_contents(obj) ? contained_gold(obj, true) : 0;
+
+                subfrombill(obj, shkp);
+                if (gtg > 0)
+                    await donate_gold(gtg, shkp, true);
+            } else if (x !== shkp.mx || y !== shkp.my) {
+                await sellobj(obj, x, y);
+            }
+        }
+    }
 }
 
 // C ref: dothrow.c omon_adj()
@@ -1354,7 +1380,7 @@ export async function breakobj(
     if (hero_caused) {
         if (from_invent || obj.unpaid) {
             if ((u.ushops && u.ushops.length) || obj.unpaid)
-                throw new Error('breakobj(): check_shop_obj() not ported yet');
+                await check_shop_obj(obj, x, y, true);
         } else if (!obj.no_charge && costly_spot_br(x, y)) {
             /* it is assumed that the obj is a floor-object */
             throw new Error('breakobj(): breaking a shop floor object not ported yet');
@@ -2010,18 +2036,22 @@ export async function hurtle_step(arg, x, y) {
     }
 
     if ((mon = m_at(x, y)) !== null && mon !== undefined) {
-        const seen = canspotmon(mon); /* glyph_is_monster(glyph_at(x, y)) */
+        const glyph = glyph_at(x, y);
 
         mon.mundetected = 0; /* wakeup() will handle mimic */
-        if (!seen)
-            throw new Error('hurtle_step(): bumping into an unseen monster not ported yet');
-        /* after unhiding; combination of a_monnam() and some_mon_nam() */
+        /* after unhiding; combination of a_monnam() and some_mon_nam();
+           yields "someone" or "something" instead of "it" for unseen mon */
         const mnam = x_monnam(mon, ARTICLE_A, null,
                               ((mon.mgivenname ? SUPPRESS_SADDLE : 0)
                                | AUGMENT_IT), false);
-        await You(`bump into ${mnam}.`);
+        if (glyph.kind !== 'mon' /* !glyph_is_monster(glyph) */
+            && !glyph_is_invisible(glyph))
+            await You(`find ${mnam} by bumping into ${noit_mhim(mon)}.`);
+        else
+            await You(`bump into ${mnam}.`);
         await wakeup(mon, false);
-        /* if (!canspotmon(mon)) map_invisible(mon->mx, mon->my): seen */
+        if (!canspotmon(mon))
+            map_invisible(mon.mx, mon.my);
         await setmangry(mon, false);
         if (touch_petrifies(mon.data) && !game.uarmu && !game.uarm && !game.uarmc)
             throw new Error('hurtle_step(): instapetrify() not ported yet');
@@ -2173,11 +2203,11 @@ async function mhurtle_step(mon, x, y) {
             await pline(`${Monnam_dt(mon)} bumps into ${a_monnam_hu(mtmp)}.`);
         await wakeup_hu(mtmp, !game.context.mon_moving);
         /* check whether 'mon' is turned to stone by touching 'mtmp' */
-        if (touch_petrifies_hu(mtmp.data)
+        if (touch_petrifies(mtmp.data)
             && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
             throw new Error('mhurtle_step(): minstapetrify() not ported yet');
         /* and whether 'mtmp' is turned to stone by being touched by 'mon' */
-        if (touch_petrifies_hu(mon.data)
+        if (touch_petrifies(mon.data)
             && !which_armor_hu(mtmp, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
             throw new Error('mhurtle_step(): minstapetrify() not ported yet');
     } else if (u.ux === x && u.uy === y) {
@@ -2185,21 +2215,16 @@ async function mhurtle_step(mon, x, y) {
         await pline(`${Some_Monnam_hu(mon)} bumps into you.`);
         await stop_occupation_hu();
         /* check whether 'mon' is turned to stone by touching poly'd hero */
-        if (u.umonnum !== u.umonster && touch_petrifies_hu(game.youmonst.data)
+        if (u.umonnum !== u.umonster && touch_petrifies(game.youmonst.data)
             && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
             throw new Error('mhurtle_step(): minstapetrify() not ported yet');
         /* and whether hero is turned to stone by being touched by 'mon' */
-        if (touch_petrifies_hu(mon.data)
+        if (touch_petrifies(mon.data)
             && !(game.uarmu || game.uarm || game.uarmc))
             throw new Error('mhurtle_step(): instapetrify() not ported yet');
     }
 
     return false;
-}
-
-/* C ref: mondata.h touch_petrifies() */
-function touch_petrifies_hu(ptr) {
-    return ptr === mons_hu[PM_COCKATRICE_HU] || ptr === mons_hu[PM_CHICKATRICE_HU];
 }
 
 // C ref: dothrow.c hurtle()

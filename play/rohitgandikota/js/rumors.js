@@ -23,14 +23,15 @@ import { rnd } from './rng.js';
 import { tty_create_nhwindow } from './tty/wintty.js';
 import { tty_putstr } from './tty/wintty.js';
 import { tty_display_nhwindow } from './tty/wintty.js';
-import { tty_destroy_nhwindow, tty_next_page } from './tty/wintty.js';
-import { xwaitforspace } from './tty/getline.js';
+import { tty_destroy_nhwindow } from './tty/wintty.js';
 import { NHW_TEXT } from './const.js';
 import { money_cnt } from './invent.js';
 import { currency } from './invent.js';
 import { There } from './pline.js';
 import { You } from './pline.js';
-import { Monnam } from './do_name.js';
+import { Monnam, bogon_is_pname } from './do_name.js';
+import { the_unique_pm } from './objnam.js';
+import { G_UNIQ } from './const.js';
 import { tty_yn_function } from './tty/topl.js';
 import { money2mon } from './shk.js';
 import { record_achievement } from './insight.js';
@@ -153,8 +154,6 @@ export function get_rnd_text(fname, rng, padlength) {
     return get_rnd_line(fh, rng, starttxt, 0, padlength);
 }
 
-/* include/hack.h — quitchars */
-const quitchars = ' \r\n\x1b';
 
 const COOKIE_MARKER = '[cookie] ';
 
@@ -301,13 +300,6 @@ export async function rumor_check() {
         /* display_nhwindow(tmpwin, TRUE): page through the text window,
            ESC cancelling the remaining pages */
         await tty_display_nhwindow(tmpwin);
-        for (;;) {
-            await xwaitforspace(quitchars);
-            if (game.morc === '\x1b')
-                break;
-            if (!tty_next_page(tmpwin))
-                break;
-        }
         await tty_destroy_nhwindow(tmpwin);
     }
 }
@@ -603,4 +595,43 @@ export async function couldnt_open_file(filename) {
 
     await impossible(`Can't open '${filename}' file.`);
     state.something_worth_saving = save_something;
+}
+
+let CapMons = null;
+
+// src/rumors.c:791 CapitalMon(); full words and possessives, case sensitive.
+export function CapitalMon(word) {
+    if (!word || word[0] === word[0].toLowerCase())
+        return false;
+    if (!CapMons)
+        init_CapMons();
+    for (const nam of CapMons) {
+        const next = word[nam.length];
+        if (word.startsWith(nam) && (!next || next === ' ' || next === "'"))
+            return true;
+    }
+    return false;
+}
+
+// src/rumors.c:829 init_CapMons(); compiled names and decoded bogusmon types.
+function init_CapMons() {
+    CapMons = [];
+    for (const ptr of game.mons) {
+        if ((ptr.geno & G_UNIQ) && !the_unique_pm(ptr))
+            continue;
+        for (const nam of ptr.pmnames)
+            if (nam && nam[0] !== nam[0].toLowerCase())
+                CapMons.push(nam);
+    }
+    const file = dlb_fopen('bogusmon');
+    dlb_fgets(file); // generated-file header
+    for (let line; (line = dlb_fgets(file)) !== null;) {
+        let nam = unpadline(xcrypt(line.replace(/\n$/, ''))), code = '';
+        if (nam && '-_+|='.includes(nam[0])) {
+            code = nam[0];
+            nam = nam.slice(1);
+        }
+        if (nam && nam[0] !== nam[0].toLowerCase() && !bogon_is_pname(code))
+            CapMons.push(nam);
+    }
 }

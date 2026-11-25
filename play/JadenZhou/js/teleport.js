@@ -5,7 +5,8 @@
 // Not ported yet: teleds, safe_teleds, tele, rloc and the rest of
 // teleport.c.
 
-import { is_demon } from './mondata.js';
+import { is_demon, is_covetous, is_rider, is_dlord,
+         is_dprince } from './mondata.js';
 import { game } from './gstate.js';
 import { make_blinded } from './potion.js';
 import { remove_worm, place_worm_tail_randomly } from './worm.js';
@@ -30,7 +31,7 @@ import { newsym, canseemon, canspotmon, sensemon, see_monsters } from './display
 import { couldsee, vision_recalc } from './vision.js';
 import { u_on_newpos, somexyspace } from './mklev.js';
 import { nomul, spoteffects, switch_terrain } from './hack.js';
-import { VIBRATING_SQUARE, deltrap } from './trap.js';
+import { VIBRATING_SQUARE, deltrap, unconscious } from './trap.js';
 import { PASSES_WALLS, ANTIMAGIC } from './const.js';
 import { M1_FLY } from './monsters.js';
 import { resists_magm } from './mondata.js';
@@ -43,7 +44,7 @@ import { mintrap, seetrap, t_at, is_hole, is_pit, HOLE, TRAPDOOR, TELEP_TRAP,
          LEVEL_TELEP, MAGIC_PORTAL, NO_TRAP, Trap_Effect_Finished,
          Trap_Moved_Mon, clamp_hole_destination } from './trap.js';
 import { migrate_to_level } from './dog.js';
-import { MIGR_RANDOM, MIGR_PORTAL } from './const.js';
+import { MIGR_RANDOM, MIGR_PORTAL, is_xport } from './const.js';
 import { within_bounded_area } from './rect.js';
 import { obj_extract_self, place_object } from './mkobj.js';
 import { mksobj } from './mkobj.js';
@@ -97,16 +98,10 @@ import { buried_ball_to_punishment } from './dig.js';
 import { M_AP_NOTHING } from './const.js';
 import { spelleffects } from './spell.js';
 import { A_WIS } from './const.js';
-import { u_left_shop } from './shk.js';
+import { u_left_shop, stolen_value } from './shk.js';
 import { exercise } from './attrib.js';
 import { revive_corpse } from './zap.js';
 
-
-/* C ref: mondata.h is_rider() */
-function is_rider(ptr) {
-    return ptr === mons[PM_DEATH] || ptr === mons[PM_FAMINE]
-           || ptr === mons[PM_PESTILENCE];
-}
 
 // C ref: teleport.c enexto()
 /*
@@ -646,19 +641,6 @@ export async function scrolltele(scroll) {
     await safe_teleds(TELEDS_TELEPORT);
 }
 
-// C ref: hack.c unconscious()
-function unconscious() {
-    const g = game;
-    if (g.multi >= 0)
-        return false;
-
-    return !!(g.u.usleep
-              || (g.nomovemsg
-                  && (g.nomovemsg.startsWith("You awake")
-                      || g.nomovemsg.startsWith("You regain con")
-                      || g.nomovemsg.startsWith("You are consci"))));
-}
-
 // C ref: teleport.c dotelecmd() -- the #teleport command; 'm ^T' ==
 // choose among several teleport modes
 export async function dotelecmd() {
@@ -1169,13 +1151,6 @@ export async function level_tele() {
                                   : null);
 }
 
-/* C ref: mondata.h is_dlord(), is_dprince(), is_covetous() */
-function is_dlord(ptr) { return is_lord(ptr) && is_demon(ptr); }
-function is_dprince(ptr) { return is_prince(ptr) && is_demon(ptr); }
-function is_lord(ptr) { return (ptr.mflags2 & M2_LORD) !== 0; }
-function is_prince(ptr) { return (ptr.mflags2 & M2_PRINCE) !== 0; }
-function is_covetous(ptr) { return (ptr.mflags3 & M3_COVETOUS) !== 0; }
-
 // C ref: teleport.c m_blocks_teleporting()
 /* does monster block others from teleporting? */
 function m_blocks_teleporting(mtmp) {
@@ -1409,13 +1384,12 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
         const shkp = find_objowner(mtmp.minvent[0], oldx, oldy);
         const peaceful = !shkp || shkp.mpeaceful;
 
-        for (const otmp of mtmp.minvent) {
+        for (const otmp of mtmp.minvent.slice()) {
             if (otmp.no_charge)
                 otmp.no_charge = 0;
             else if (shkp && onshopbill(otmp, shkp, true))
-                throw new Error('rloc_to_core(): stolen_value() not ported yet');
+                await stolen_value(otmp, oldx, oldy, peaceful, false);
         }
-        void peaceful;
     }
 
     /* if hero is busy, maybe stop occupation */
@@ -1600,7 +1574,16 @@ export function random_teleport_level() {
         return cur_depth;
 
     if (In_quest(u.uz)) {
-        throw new Error('random_teleport_level(): quest dungeon not ported yet');
+        let bottom = dunlevs_in_dungeon(u.uz);
+        const qlocate_depth = game.dungeon_topology.d_qlocate_level.dlevel;
+
+        /* if hero hasn't reached the middle locate level yet,
+           no one can randomly teleport past it */
+        /* dunlev_reached(&u.uz): svd.dungeons[u.uz.dnum].dunlev_ureached */
+        if (game.dungeons[u.uz.dnum].dunlev_ureached < qlocate_depth)
+            bottom = qlocate_depth;
+        min_depth = game.dungeons[u.uz.dnum].depth_start;
+        max_depth = bottom + (game.dungeons[u.uz.dnum].depth_start - 1);
     } else {
         min_depth = 1;
         max_depth = dunlevs_in_dungeon(u.uz)
@@ -1718,9 +1701,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
             if (trap)
                 seetrap(trap);
         }
-        /* is_xport(tt) */
-        if ((tt === TELEP_TRAP || tt === LEVEL_TELEP)
-            && !control_teleport(mtmp.data))
+        if (is_xport(tt) && !control_teleport(mtmp.data))
             mtmp.mconf = 1;
         migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
         return Trap_Moved_Mon; /* no longer on this level */

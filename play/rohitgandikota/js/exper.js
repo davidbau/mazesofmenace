@@ -9,7 +9,7 @@ import { rnd, rn1, rn2 } from './rng.js';
 import { ACURR } from './attrib.js';
 import { pline } from './display.js';
 import { A_CON, A_WIS, NORMAL_SPEED, NATTK, LARGEST_INT, Upolyd,
-         LL_MINORAC } from './const.js';
+         LL_MINORAC, KILLED_BY } from './const.js';
 import { find_mac } from './worn.js';
 import { Goodbye } from './role.js';
 import { resists_drli } from './mondata.js';
@@ -213,7 +213,8 @@ export async function losexp(drainer) {
         livelog_printf(LL_MINORAC, `lost experience level ${u.ulevel + 1}`);
     } else { /* u.ulevel==1 */
         if (drainer) {
-            game.killer = { format: 1 /* KILLED_BY */, name: drainer };
+            game.killer.format = KILLED_BY;
+            game.killer.name = drainer;
             const { done } = await import('./end.js');
             const { DIED } = await import('./const.js');
             await done(DIED);

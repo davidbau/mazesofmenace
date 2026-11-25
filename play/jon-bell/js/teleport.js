@@ -3187,17 +3187,7 @@ export async function level_tele() {
                 escape_by_flying = 'find yourself back on the surface';
             }
             if (escape_by_flying) {
-                if (death_survived) {
-                    /* done() stores its wizard-mode acknowledgement as a
-                     * result line; C's single topline joins that line to the
-                     * surface message before the next page. */
-                    g._resultMessage = null;
-                    g._pending_message = `OK, so you don't die.  You ${escape_by_flying}.`;
-                    await force_more(g._pending_message);
-                    g._pending_message = '';
-                } else {
-                    await You(`${escape_by_flying}.`);
-                }
+                await You(`${escape_by_flying}.`);
             }
             newlevel = { dnum: 0, dlevel: 0 };
         }

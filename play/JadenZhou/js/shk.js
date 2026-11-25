@@ -5,7 +5,7 @@
 // Paths no session reaches yet throw a 'not ported yet' error.
 
 import { helpless } from './monmove.js';
-import { online2 } from './hacklib.js';
+import { online2, plur } from './hacklib.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
 import { arti_cost } from './artifact.js';
@@ -24,7 +24,8 @@ import { yelp, growl, You_hear } from './sounds.js';
 import { tty_yn_function } from './wintty.js';
 import { body_part } from './insight.js';
 import { poly_gender } from './polyself.js';
-import { is_demon } from './mondata.js';
+import { is_demon, type_is_pname, resist_conflict,
+         nolimbs } from './mondata.js';
 import { search_special } from './sounds.js';
 import { mons, PM_GRID_BUG, PM_ROGUE, MS_ANIMAL, M1_HUMANOID, S_DOG,
          S_FELINE, S_RODENT, S_YETI } from './monsters.js';
@@ -47,7 +48,7 @@ import { y_monnam, pronoun_gender, PRONOUN_NO_IT,
 import { adjalign, ACURR } from './attrib.js';
 import { record_achievement } from './do.js';
 import { ACH_SHOP } from './const.js';
-import { discover_object } from './o_init.js';
+import { discover_object, makeknown } from './o_init.js';
 import { t_at } from './trap.js';
 import { passes_walls } from './mondata.js';
 import { wake_nearto } from './mon.js';
@@ -61,6 +62,10 @@ import {
 } from './const.js';
 import { M1_NOHEAD } from './monsters.js';
 import { mongone } from './mon.js';
+import { angry_guards } from './mon.js';
+import { ismnum } from './const.js';
+import { M2_PNAME } from './monsters.js';
+import { the_unique_pm } from './objnam.js';
 import { S_KOP, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_TOURIST, PM_ELF,
          G_UNIQ } from './monsters.js';
 import {
@@ -157,8 +162,6 @@ export function um_dist(x, y, n) {
 }
 /* C ref: hacklib.c online2(); hack.h onlineu() */
 function onlineu(xx, yy) { return online2(xx, yy, game.u.ux, game.u.uy); }
-/* C ref: hacklib.c plur() */
-function plur(x) { return (x === 1) ? "" : "s"; }
 /* C ref: hacklib.c strncmpi() -- nonzero when the strings differ */
 function strncmpi(s1, s2, n) {
     return (s1 || '').slice(0, n).toLowerCase()
@@ -173,16 +176,6 @@ async function verbalize(line) {
         return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
     await pline(`"${line}"`);
 }
-/* C ref: mondata.c resist_conflict() */
-function resist_conflict(mtmp) {
-    /* always a small chance at 19 */
-    const resist_chance = Math.min(19, (ACURR(A_CHA) - mtmp.m_lev
-                                        + game.u.ulevel));
-
-    return (rnd(20) > resist_chance);
-}
-/* C ref: hack.h makeknown() */
-function makeknown(x) { discover_object(x, true, true, true); }
 
 const angrytexts = [ "quite upset", "ticked off", "furious" ];
 
@@ -270,6 +263,46 @@ export async function u_left_shop(leavestring, newlev) {
 
     if (await rob_shop(shkp)) {
         throw new Error('u_left_shop(): call_kops() not ported yet');
+    }
+}
+
+// C ref: shk.c credit_report()
+/* C's static credit_snap[2][3] lives in game.credit_snap (per-game state);
+   [BEFORE=0][...] and [NOW=1][...] hold credit, debit and loan */
+export async function credit_report(shkp, idx, silent) {
+    const eshkp = shkp.mextra.eshk;
+    if (!game.credit_snap)
+        game.credit_snap = [[0, 0, 0], [0, 0, 0]];
+    const credit_snap = game.credit_snap;
+    const BEFORE = 0; /* botl.h */
+    const NOW = 1;
+
+    if (!idx) {
+        credit_snap[BEFORE][0] = credit_snap[NOW][0] = 0;
+        credit_snap[BEFORE][1] = credit_snap[NOW][1] = 0;
+        credit_snap[BEFORE][2] = credit_snap[NOW][2] = 0;
+    } else {
+        idx = 1;
+    }
+
+    credit_snap[idx][0] = eshkp.credit;
+    credit_snap[idx][1] = eshkp.debit;
+    credit_snap[idx][2] = eshkp.loan;
+
+    if (idx && !silent) {
+        let amt = 0;
+        let msg = "debt has increased";
+
+        if (credit_snap[NOW][0] < credit_snap[BEFORE][0]) {
+            amt = credit_snap[BEFORE][0] - credit_snap[NOW][0];
+            msg = "credit has been reduced";
+        } else if (credit_snap[NOW][1] > credit_snap[BEFORE][1]) {
+            amt = credit_snap[NOW][1] - credit_snap[BEFORE][1];
+        } else if (credit_snap[NOW][2] > credit_snap[BEFORE][2]) {
+            amt = credit_snap[NOW][2] - credit_snap[BEFORE][2];
+        }
+        if (amt)
+            await Your(`${msg} by ${amt} ${currency(amt)}.`);
     }
 }
 
@@ -1730,7 +1763,7 @@ async function special_stock(obj, shkp, quietly) {
 }
 
 // C ref: shk.c donate_gold()
-async function donate_gold(
+export async function donate_gold(
     gltmp,
     shkp,
     selling) { /* T: dropped in shop; F: kicked and landed in shop */
@@ -3228,15 +3261,10 @@ async function reject_purchase(shkp, obj, billed_quan) {
                          simpleonames(obj)} before buying ${which}.`);
     } else {
         await pline(`${Shknam(shkp)} ${ANGRY(shkp) ? "angrily " : ""}${
-                     nolimbs_shk(shkp.data) ? "motions to" : "points out"
+                     nolimbs(shkp.data) ? "motions to" : "points out"
                      } your bill for the other ${simpleonames(obj)} first.`);
     }
     obj.quan = intact_quan;
-}
-
-/* C ref: mondata.h nolimbs() */
-function nolimbs_shk(ptr) {
-    return (ptr.mflags1 & M1_NOLIMBS) === M1_NOLIMBS;
 }
 
 // C ref: shk.c insufficient_funds()
@@ -3717,6 +3745,30 @@ export function set_cost(obj, shkp) {
     return tmp;
 }
 
+// C ref: shk.c alter_cost()
+/* change the price of an object that's on some shopkeeper's bill */
+export function alter_cost(obj,
+                           amt) { /* if 0, use regular shop pricing, otherwise
+                                     force amount; if negative, use abs(amt)
+                                     even if it's less than old cost */
+    let bp = null;
+    let shkp;
+    let new_price;
+
+    /* (as in C, the loop steps with next_shkp(shkp, TRUE), which returns
+       shkp itself again) */
+    for (shkp = next_shkp(game.fmon, true); shkp; shkp = next_shkp(shkp, true))
+        if ((bp = onbill(obj, shkp, true)) != null) {
+            new_price = !amt ? get_cost(obj, shkp) : (amt < 0) ? -amt : amt;
+            if (new_price > bp.price || amt < 0) {
+                bp.price = new_price;
+                /* update_inventory(): perm_invent isn't ported */
+            }
+            break; /* done */
+        }
+    return;
+}
+
 // C ref: shk.c unpaid_cost()
 /* returns the price of an unpaid item, or of its contents */
 export function unpaid_cost(unp_obj, cost_type) {
@@ -3862,6 +3914,203 @@ export function billable(shkpp, obj, roomno, reset_nocharge) {
         }
     }
     return shkp ? true : false;
+}
+
+/* C ref: shk.c the_your[] */
+const the_your = ["the", "your"];
+
+// C ref: shk.c shk_your()
+/* "your " or "Foobar's " (note the trailing space) */
+export function shk_your(obj) {
+    const chk_pm = obj.otyp === CORPSE && ismnum(obj.corpsenm);
+    let buf = '';
+
+    if (chk_pm && type_is_pname(mons[obj.corpsenm]))
+        return buf; /* skip ownership prefix and space: "Medusa's corpse" */
+    else if (chk_pm && the_unique_pm(mons[obj.corpsenm]))
+        buf = "the"; /* override ownership: "the Oracle's corpse" */
+    else if ((buf = shk_owns(obj)) == null && (buf = mon_owns(obj)) == null)
+        buf = the_your[obj.where === 'OBJ_INVENT' /* carried() */ ? 1 : 0];
+    return buf + " ";
+}
+
+// C ref: shk.c Shk_Your()
+export function Shk_Your(obj) {
+    const buf = shk_your(obj);
+    return highc(buf.charAt(0)) + buf.slice(1);
+}
+
+// C ref: shk.c shk_owns()
+function shk_owns(obj) {
+    let shkp;
+    const loc = get_obj_location(obj, 0);
+
+    if (loc
+        && (obj.unpaid || (obj.where === 'OBJ_FLOOR' && !obj.no_charge
+                           && costly_spot(loc[0], loc[1])))) {
+        shkp = shop_keeper(inside_shop(loc[0], loc[1]));
+        return shkp ? s_suffix(shkname(shkp)) : the_your[0];
+    }
+    return null;
+}
+
+// C ref: shk.c mon_owns()
+function mon_owns(obj) {
+    if (obj.where === 'OBJ_MINVENT')
+        return s_suffix(y_monnam(obj.ocarry));
+    return null;
+}
+
+// C ref: shk.c stolen_container()
+async function stolen_container(obj, shkp, price, ininv) {
+    let bp;
+    let billamt;
+
+    /* the price of contained objects; caller handles top container */
+    for (const otmp of (obj.cobj || []).slice()) {
+        if (otmp.oclass === COIN_CLASS)
+            continue;
+        billamt = 0;
+        const shkpp = { v: shkp };
+        const ok = billable(shkpp, otmp, shkp.mextra.eshk.shoproom, true);
+        shkp = shkpp.v;
+        if (!ok) {
+            /* billable() returns false for objects already on bill */
+            if ((bp = onbill(otmp, shkp, false)) == null)
+                continue;
+            /* this assumes that we're being called by stolen_value()
+               (or by a recursive call to self on behalf of it) where
+               the cost of this object is about to be added to shop
+               debt in place of having it remain on the current bill */
+            billamt = bp.bquan * bp.price;
+            sub_one_frombill(otmp, shkp); /* avoid double billing */
+        }
+
+        if (billamt)
+            price += billamt;
+        else if (ininv ? otmp.unpaid : !otmp.no_charge)
+            price += get_pricing_units(otmp) * get_cost(otmp, shkp);
+
+        if (otmp.cobj && otmp.cobj.length) /* Has_contents(otmp) */
+            price = await stolen_container(otmp, shkp, price, ininv);
+    }
+
+    return price;
+}
+
+// C ref: shk.c stolen_value()
+export async function stolen_value(obj, x, y, peaceful, silent) {
+    let value = 0, gvalue = 0, billamt = 0;
+    let roomno;
+    let bp = null;
+    let shkp;
+    let was_unpaid;
+    let c_count = 0, u_count = 0;
+
+    if ((shkp = find_objowner(obj, x, y)) != null) {
+        roomno = shkp.mextra.eshk.shoproom;
+    } else {
+        roomno = in_rooms(x, y, SHOPBASE).charCodeAt(0) || 0;
+    }
+
+    /* gather information for message(s) prior to manipulating bill */
+    was_unpaid = obj.unpaid ? true : false;
+    if (obj.cobj && obj.cobj.length) { /* Has_contents(obj) */
+        c_count = count_contents(obj, true, false, true, false);
+        u_count = count_contents(obj, true, false, false, false);
+    }
+
+    shkp = null;
+    const shkpp = { v: shkp };
+    const ok = billable(shkpp, obj, roomno, true);
+    shkp = shkpp.v;
+    if (!ok) {
+        /* things already on the bill yield a not-billable result, so
+           we need to check bill before deciding that shk doesn't care */
+        if ((bp = onbill(obj, shkp, false)) != null) {
+            /* shk does care; take obj off bill to avoid double billing */
+            billamt = bp.bquan * bp.price;
+            sub_one_frombill(obj, shkp);
+        }
+        if (!bp && !u_count)
+            return 0;
+    }
+
+    if (obj.oclass === COIN_CLASS) {
+        gvalue += obj.quan;
+    } else {
+        if (billamt)
+            value += billamt;
+        else if (!obj.no_charge)
+            value += get_pricing_units(obj) * get_cost(obj, shkp);
+
+        if (obj.cobj && obj.cobj.length) { /* Has_contents(obj) */
+            const ininv =
+                (obj.where === 'OBJ_INVENT' || obj.where === 'OBJ_FREE');
+
+            value += await stolen_container(obj, shkp, 0, ininv);
+            if (!ininv)
+                gvalue += contained_gold(obj, true);
+        }
+    }
+
+    if (gvalue + value === 0)
+        return 0;
+
+    value += gvalue;
+
+    const eshkp = shkp.mextra.eshk;
+    if (peaceful) {
+        const credit_use = !!eshkp.credit;
+
+        value = await check_credit(value, shkp);
+        /* 'peaceful' affects general treatment, but doesn't affect
+         * the fact that other code expects that all charges after the
+         * shopkeeper is angry are included in robbed, not debit */
+        if (ANGRY(shkp))
+            eshkp.robbed += value;
+        else
+            eshkp.debit += value;
+
+        if (!silent) {
+            let buf;
+            let still = "";
+
+            if (credit_use) {
+                if (eshkp.credit) {
+                    await You(`have ${eshkp.credit} ${
+                        currency(eshkp.credit)} credit remaining.`);
+                    return value;
+                } else if (!value) {
+                    await You("have no credit remaining.");
+                    return 0;
+                }
+                still = "still ";
+            }
+            buf = `${still}owe ${shkname(shkp)} ${value} ${currency(value)}`;
+            if (u_count) /* u_count > 0 implies Has_contents(obj) */
+                buf += ` for ${was_unpaid ? "it and " : ""}${
+                    (c_count > u_count) ? "some of " : ""}its contents`;
+            else if (obj.oclass !== COIN_CLASS)
+                buf += ` for ${(obj.quan > 1) ? "them" : "it"}`;
+
+            await You(`${buf}!`); /* "You owe <shk> N zorkmids for it!" */
+        }
+    } else {
+        eshkp.robbed += value;
+
+        if (!silent) {
+            if (canseemon(shkp)) {
+                await Norep_sk(`${Shknam(shkp)} booms: "${
+                    game.plname}, you are a thief!"`);
+            } else if (!Deaf()) {
+                await Norep_sk('You hear a scream, "Thief!"'); /* Deaf-aware */
+            }
+        }
+        hot_pursuit(shkp);
+        await angry_guards(false);
+    }
+    return value;
 }
 
 const and_its_contents = " and its contents";

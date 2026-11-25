@@ -13,7 +13,7 @@ import { type_is_pname } from './mondata.js';
 import { Role_if, adjalign } from './attrib.js';
 import { quest_info } from './questpgr.js';
 import { urgent_pline } from './display.js';
-import { Unchanging } from './youprop.js';
+import { Unchanging, Half_physical_damage } from './youprop.js';
 import { polyself, rehumanize, udeadinside } from './polyself.js';
 import { uhis } from './mhitu.js';
 import { mongone, kill_genocided_monsters, flash_mon } from './mon.js';
@@ -701,7 +701,7 @@ export async function wand_explode(obj, chg /* recharging */) {
     dmg = d(n, k);
     obj.in_use = true; /* in case losehp() is fatal (or --More--^C) */
     await pline(`${Yname2(obj)} ${expl} explodes!`);
-    if (game.u.uprops?.HALF_PHDAM)
+    if (Half_physical_damage())
         dmg = Math.trunc((dmg + 1) / 2);   /* Maybe_Half_Phys */
     await losehp(dmg, 'exploding wand', KILLED_BY_AN);
     useup(obj);
@@ -790,7 +790,7 @@ export async function recharge(obj, curse_bless) {
                 await Ring_gone(obj);
             s = rnd(3 * Math.abs(obj.spe)); /* amount of damage */
             useup(obj), obj = null;
-            if (u.uprops?.HALF_PHDAM)
+            if (Half_physical_damage())
                 s = Math.trunc((s + 1) / 2);   /* Maybe_Half_Phys */
             await losehp(s, 'exploding ring', KILLED_BY_AN);
         } else {
@@ -1108,7 +1108,7 @@ export async function drop_boulder_on_player(confused, helmet_protects, byu,
         newsym(u.ux, u.uy);
     }
     if (dmg) {
-        if (u.uprops?.HALF_PHDAM)
+        if (Half_physical_damage())
             dmg = Math.trunc((dmg + 1) / 2);   /* Maybe_Half_Phys */
         await losehp(dmg, 'scroll of earth', KILLED_BY_AN);
     }

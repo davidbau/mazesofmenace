@@ -23,7 +23,7 @@ import { the } from './iactions.js';
 import { xname, Tobjnam } from './objnam.js';
 import { place_object } from './mkobj.js';
 import { make_happy_shk } from './shk.js';
-import { is_human, is_demon } from './mondata.js';
+import { is_human, is_demon, emits_light, attacktype } from './mondata.js';
 import { mon_wield_item } from './weapon.js';
 import { wake_nearto } from './mon.js';
 import { rnd } from './rng.js';
@@ -80,9 +80,6 @@ import { deliver_obj_to_mon } from './dokick.js';
 import { haseyes as haseyes_wd } from './mondata.js';
 import { body_part as body_part_wd } from './insight.js';
 import { EYE as EYE_WD } from './const.js';
-
-/* C ref: mondata.h attacktype() */
-function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
 
 const DF_ALL = 0x04; /* hack.h */
 
@@ -424,22 +421,7 @@ export async function keepdogs(pets_only) /* true for ascension or final escape 
                 throw new Error('keepdogs(): leashed pet following not ported yet');
             const num_segs = mon_leave(mtmp);
             /* take off map and move mtmp from fmon list to mydogs */
-            /* relmon(mtmp, &gm.mydogs): remove_monster() + unlink from fmon */
-            const lst = g.level.monsters || [];
-            const i = lst.indexOf(mtmp);
-            if (i >= 0)
-                lst.splice(i, 1);
-            if (g.fmon === mtmp) {
-                g.fmon = mtmp.nmon;
-            } else {
-                let p;
-                for (p = g.fmon; p && p.nmon !== mtmp; p = p.nmon)
-                    ;
-                if (p) p.nmon = mtmp.nmon;
-            }
-            mtmp.nmon = g.mydogs || null;
-            g.mydogs = mtmp;
-            /* mtmp->mx,my retain current value */
+            relmon(mtmp, 'mydogs'); /* mtmp->mx,my retain current value */
             mtmp.mx = mtmp.my = 0; /* mx==0 implies migrating */
             mtmp.wormno = num_segs;
             mtmp.mlstmv = g.moves;
@@ -457,17 +439,6 @@ export async function keepdogs(pets_only) /* true for ascension or final escape 
             throw new Error('keepdogs(): leash goes slack not ported yet');
         }
     }
-}
-
-/* C ref: mondata.h emits_light() */
-function emits_light(ptr) {
-    return (ptr.mlet === S_LIGHT || ptr === mons[PM_FLAMING_SPHERE]
-            || ptr === mons[PM_SHOCKING_SPHERE]
-            || ptr === mons[PM_BABY_GOLD_DRAGON]
-            || ptr === mons[PM_FIRE_VORTEX])
-        ? 1
-        : (ptr === mons[PM_FIRE_ELEMENTAL]
-           || ptr === mons[PM_GOLD_DRAGON]) ? 1 : 0;
 }
 
 // C ref: dog.c migrate_to_level()

@@ -17,7 +17,7 @@ import { bury_an_obj } from './dig.js';
 import { mdrop_obj } from './steal.js';
 import { see_wsegs } from './worm.js';
 import { expels } from './mhitu.js';
-import { Conflict } from './youprop.js';
+import { Conflict, Half_spell_damage, Blind_telepat } from './youprop.js';
 import { CORR } from './const.js';
 import { ROOM } from './const.js';
 import { switch_terrain } from './hack.js';
@@ -1204,8 +1204,7 @@ async function mind_blast(mtmp) {
         await pline('It feels quite soothing.');
     } else if (!game.u.uinvulnerable) {
         const sensed = sensemon(mtmp);
-        const blindTelepat = Blind()
-            && !!(game.u.intrinsic?.HTelepat || game.u.uprops?.TELEPAT);
+        const blindTelepat = Blind_telepat();
         if (sensed || (blindTelepat && rn2(2)) || !rn2(10)) {
             if (game.u.uundetected) {
                 game.u.uundetected = 0;
@@ -1219,7 +1218,7 @@ async function mind_blast(mtmp) {
             await pline(`It locks on to your ${sensed ? 'telepathy'
                 : blindTelepat ? 'latent telepathy' : 'mind'}!`);
             let damage = rnd(15);
-            if (game.u.uprops?.HALF_SPDAM)
+            if (Half_spell_damage())
                 damage = Math.trunc((damage + 1) / 2);
             await losehp(damage, 'psychic blast', KILLED_BY_AN);
         }

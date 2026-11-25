@@ -44,7 +44,7 @@ async function gamestateModules() {
     const [invent, obj, objectGeneration, ttyMessage, uInit, worn]
         = await Promise.all([
             import('./invent.js'),
-            import('./obj.js'),
+            import('./mkobj.js'),
             import('./object_generation.js'),
             import('./tty_message.js'),
             import('./u_init.js'),
@@ -219,7 +219,7 @@ async function tutorial_turn(state) {
         { newsym }, ttyMessage, { cmd_from_ecname }] = await Promise.all([
         import('./objnam_readobjnam.js'),
         import('./object_generation.js'),
-        import('./obj.js'),
+        import('./mkobj.js'),
         import('./display.js'),
         import('./tty_message.js'),
         import('./cmd.js'),
@@ -416,7 +416,7 @@ export function nhl_init(random) {
 // except nhlib.lua's `align` shuffle (lines 24-25), so running one draws no
 // other random number and changes no game state. Every other dat/ file is a
 // level program, which needs the level coder (scripts/special-level-loaders
-// .test.mjs checks that each has a loader in js/mklev.js).
+// .test.mjs checks that each has a loader in js/sp_lev.js).
 export const LUA_LIBRARY_FILES = new Set([
     'dungeon.lua', 'nhcore.lua', 'nhlib.lua', 'quest.lua', 'themerms.lua',
 ]);

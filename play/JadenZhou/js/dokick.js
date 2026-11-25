@@ -47,13 +47,19 @@ import { Has_contents, WEB, STATUE_TRAP, is_pit, STONE_RES, FUMBLING, ZAP_POS, L
 import { BAG_OF_HOLDING, BAG_OF_TRICKS, objects, GLASS, GEM_CLASS, EGG, MIRROR, CORPSE, COIN_CLASS, LARGE_BOX, CHEST } from './objects.js';
 import { shop_keeper, costly_spot, onshopbill, costly_adjacent,
          find_objowner } from './shk.js';
+import { stolen_value, picked_container, hot_pursuit, inside_shop,
+         make_angry_shk } from './shk.js';
+import { currency } from './insight.js';
+import { Shknam, shkname } from './shknam.js';
+import { angry_guards } from './mon.js';
+import { PL_NSIZ } from './const.js';
 import { obj_resists } from './dogmove.js';
 import { change_luck } from './attrib.js';
 import { You_hear } from './sounds.js';
 import { useup, obfree } from './invent.js';
 import { killer_xname } from './mthrowu.js';
 import { breaktest, hero_breaks } from './dothrow.js';
-import { t_at, chest_trap } from './trap.js';
+import { t_at, chest_trap, activate_statue_trap } from './trap.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
 import { is_ice } from './dig.js';
 import { ART_MJOLLNIR } from './artilist.js';
@@ -88,7 +94,9 @@ import { monflee, set_apparxy } from './monmove.js';
 import { goodpos, place_monster } from './makemon.js';
 import { m_in_out_region } from './region.js';
 import { mintrap, Trap_Killed_Mon } from './trap.js';
-import { is_flyer, is_floater, haseyes, can_teleport } from './mondata.js';
+import { is_flyer, is_floater, haseyes, can_teleport, slithy, verysmall,
+         bigmonst, nohands, nolimbs, is_giant, likes_gold, is_mercenary,
+         thick_skinned, attacktype } from './mondata.js';
 import { map_invisible, There, glyph_at, show_glyph,
          glyph_is_invisible } from './display.js';
 import { a_monnam } from './do_name.js';
@@ -118,14 +126,6 @@ import { Is_stronghold, In_endgame, Is_botlevel } from './const.js';
 import { stairway_at } from './display.js';
 import { down_gate } from './do.js';
 
-/* C ref: mondata.h attacktype() */
-function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
-
-/* C ref: mondata.h nolimbs(), slithy(), verysmall(), is_giant() */
-function nolimbs(ptr) { return (ptr.mflags1 & M1_NOLIMBS) === M1_NOLIMBS; }
-function slithy(ptr) { return (ptr.mflags1 & M1_SLITHY) !== 0; }
-function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
-function is_giant(ptr) { return (ptr.mflags2 & M2_GIANT) !== 0; }
 /* C ref: skills.h martial_bonus(); dokick.c is_bigfoot(), martial() */
 function martial_bonus() { return Role_if(PM_SAMURAI) || Role_if(PM_MONK); }
 function is_bigfoot(x) { return x === mons[PM_SASQUATCH]; }
@@ -418,10 +418,6 @@ export async function ghitm(mtmp, gold) {
     return false;
 }
 
-/* C ref: mondata.h likes_gold(), is_mercenary() */
-function likes_gold(ptr) { return (ptr.mflags2 & M2_GREEDY) !== 0; }
-function is_mercenary(ptr) { return (ptr.mflags2 & M2_MERC) !== 0; }
-
 // C ref: dogmove.c finish_meating()
 function finish_meating(mtmp) {
     mtmp.meating = 0;
@@ -435,10 +431,6 @@ function finish_meating(mtmp) {
 
 const kick_passes_thru = "kick passes harmlessly through";
 
-/* C ref: mondata.h thick_skinned(), bigmonst(), nohands(), haseyes() */
-function thick_skinned(ptr) { return (ptr.mflags1 & M1_THICK_HIDE) !== 0; }
-function bigmonst(ptr) { return ptr.msize >= MZ_LARGE; }
-function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
 function M_AP_TYPE(mon) { return (mon.m_ap_type || 0) & M_AP_TYPMASK; }
 
 // C ref: dokick.c kickdmg()
@@ -838,8 +830,8 @@ export async function container_impact_dmg(obj,
                                            y) { /* before the impact, not after */
     const u = game.u;
     let shkp;
-    const loss = 0;
-    let costly, wchange = false;
+    let loss = 0;
+    let costly, insider, frominv, wchange = false;
 
     /* only consider normal containers */
     if (!Is_container(obj) || !Has_contents(obj)
@@ -849,8 +841,10 @@ export async function container_impact_dmg(obj,
     const rooms = in_rooms(x, y, SHOPBASE);
     costly = !!((shkp = shop_keeper(rooms.length ? rooms.charCodeAt(0) : 0))
                 && costly_spot(x, y));
+    insider = !!((u.ushops || '').length && inside_shop(u.ux, u.uy)
+                 && rooms.charAt(0) === (u.ushops || '').charAt(0));
     /* if dropped or thrown, shop ownership flags are set on this obj */
-    void u;
+    frominv = (obj !== game.kickedobj);
 
     for (const otmp of obj.cobj.slice()) {
         let result = null;
@@ -870,8 +864,12 @@ export async function container_impact_dmg(obj,
             if (otmp.otyp === EGG && otmp.spe && otmp.corpsenm >= LOW_PM)
                 change_luck(-1);
             await You_hear(`a muffled ${result}.`);
-            if (costly)
-                throw new Error('container_impact_dmg(): stolen_value() not ported yet');
+            if (costly) {
+                if (frominv && !otmp.unpaid)
+                    otmp.no_charge = 1;
+                loss +=
+                    await stolen_value(otmp, x, y, !!shkp.mpeaceful, true);
+            }
             if (otmp.quan > 1) {
                 useup(otmp);
             } else {
@@ -885,7 +883,15 @@ export async function container_impact_dmg(obj,
     }
     if (wchange)
         obj.owt = weight(obj);
-    void loss;
+    if (costly && loss) {
+        if (!insider) {
+            await You(`caused ${loss} ${currency(loss)} worth of damage!`);
+            await make_angry_shk(shkp, x, y);
+        } else {
+            await You(`owe ${shkname(shkp)} ${loss} ${
+                currency(loss)} for objects destroyed.`);
+        }
+    }
 }
 
 // C ref: dokick.c kick_object() -- jacket around really_kick_object;
@@ -931,8 +937,10 @@ async function really_kick_object(x, y) {
     if ((trap = t_at(x, y)) != null) {
         if ((is_pit(trap.ttyp) && !Passes_walls()) || trap.ttyp === WEB)
             throw new Error('really_kick_object(): object in a pit or web not ported yet');
-        if (trap.ttyp === STATUE_TRAP)
-            throw new Error('really_kick_object(): activate_statue_trap() not ported yet');
+        if (trap.ttyp === STATUE_TRAP) {
+            await activate_statue_trap(trap, x, y, false);
+            return 1;
+        }
     }
 
     if (Fumbling() && !rn2(3)) {
@@ -1208,8 +1216,18 @@ export async function impact_drop(
         obj_extract_self(obj);
 
         if (costly) {
-            /* price += stolen_value(...); picked_container(); no_charge */
-            throw new Error('impact_drop(): stolen_value() not ported yet');
+            const u = game.u;
+            /* strchr(u.urooms, *in_rooms(...)) also matches the terminator */
+            const r0 = in_rooms(x, y, SHOPBASE).charAt(0);
+            price += await stolen_value(obj, x, y,
+                                        (costly_spot(u.ux, u.uy)
+                                         && (r0 === '' || (u.urooms || '').includes(r0))),
+                                        true);
+            /* set obj->no_charge to 0 */
+            if (obj.cobj && obj.cobj.length) /* Has_contents(obj) */
+                picked_container(obj); /* does the right thing */
+            if (obj.oclass !== COIN_CLASS)
+                obj.no_charge = 0;
         }
 
         add_to_migration(obj);
@@ -1236,8 +1254,27 @@ export async function impact_drop(
     }
 
     if (costly && shkp && price) {
-        /* (unreachable until stolen_value() is ported) */
-        void debit; void robbed; void angry;
+        const eshkp = shkp.mextra.eshk;
+        if (eshkp.robbed > robbed) {
+            await You(`removed ${price} ${currency(price)} worth of goods!`);
+            if (cansee(shkp.mx, shkp.my)) {
+                if (!eshkp.customer)
+                    eshkp.customer = (game.plname || '').slice(0, PL_NSIZ);
+                if (angry)
+                    await pline(`${Shknam(shkp)} is infuriated!`);
+                else
+                    await pline(`"${game.plname}, you are a thief!"`);
+            } else
+                await You_hear('a scream, "Thief!"');
+            hot_pursuit(shkp);
+            await angry_guards(false);
+            return;
+        }
+        if (eshkp.debit > debit) {
+            const amt = (eshkp.debit - debit);
+            await You(`owe ${shkname(shkp)} ${amt} ${
+                currency(amt)} for goods lost.`);
+        }
     }
 }
 

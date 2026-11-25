@@ -43,9 +43,8 @@ import { dungeon as DUNGEON_DATA } from './dungeon_data.js';
 import { roles } from './role_data.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow, tty_display_nhwindow,
-         tty_next_page, tty_putstr, NHW_MENU, ATR_NONE,
+         tty_putstr, NHW_MENU, ATR_NONE,
          ATR_INVERSE } from './tty/wintty.js';
-import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { MENU_ITEMFLAGS_NONE } from './const.js';
 import { an, makeplural } from './objnam.js';
@@ -1312,9 +1311,6 @@ export async function print_dungeon(bymenu, out) {
     }
 
     await tty_display_nhwindow(win);
-    await xwaitforspace(' \r\n\x1b');
-    while (game.morc !== '\x1b' && tty_next_page(win))
-        await xwaitforspace(' \r\n\x1b');
     await tty_destroy_nhwindow(win);
     return 0;
 }

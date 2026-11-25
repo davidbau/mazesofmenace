@@ -9,6 +9,7 @@
 
 import { withRngCaller } from './rng.js';
 import { lua_bor } from './nhlua.js';
+import { chunk_random } from './nhlib_lua.js';
 
 // The des.map() maps, verbatim from the .lua files (a Lua long string
 // drops the newline right after its opening [[).
@@ -277,15 +278,6 @@ const MAP_bigrm_13_1 = [
     '---',
 ].join('\n');
 
-
-// math.random called from a script's main chunk: the recorder tags the
-// roll with nhlib's math.random line (8 for one argument, 10 for two) and
-// the chunk, which Lua cannot name ("lua"), at the calling line.
-function chunk_random(G, file, line, ...args) {
-    return withRngCaller(
-        `random src=nhlib.lua:${args.length === 1 ? 8 : 10} parent=lua(${file}:${line})`,
-        () => G.math.random(...args));
-}
 
 // the trailing loops every bigroom variant ends with
 function bigrm_fill(des, trapfn) {

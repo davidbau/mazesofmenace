@@ -96,7 +96,7 @@ import { isok } from './cmd_isok.js';
 // inside function bodies, so the cycle resolves.
 import { get_mtraits } from './corpstat.js';
 import { Mgender, mon_pmname, noveltitle, pmname, x_monnam } from './do_name.js';
-import { depth, level_difficulty, on_level } from './dungeon.js';
+import { depth, level_difficulty } from './dungeon.js';
 // shrink_glob() and shrinking_glob_gone() use stop_occupation(). allmain.js
 // imports from this file; both sides use the other's exports only inside
 // function bodies.
@@ -122,7 +122,7 @@ import {
     makeArtifact as mkArtifactAdapter,
     nartifact_exist,
     permapoisoned,
-} from './artifacts.js';
+} from './artifact.js';
 // mkobj.c:curse() calls spell.c:book_cursed(). spell.js imports object helpers
 // from this module, so use this binding only inside curse(), after init.
 import { book_cursed } from './spell.js';
@@ -140,7 +140,7 @@ import {
 } from './light.js';
 // curse() needs the same hero equipment predicates and takeoff reset used by
 // wielding and armor removal. These modules already form function-body-only
-// cycles with obj.js.
+// cycles with mkobj.js.
 import { reset_remarm } from './do_wear.js';
 import { bimanual } from './worn.js';
 import { rndmonnum } from './makemon.js';
@@ -408,6 +408,7 @@ import {
 import { dungeon_at } from './dungeon_table.js';
 import { sync_impossible } from './source_steps.js';
 import { emitGlyphUpdateNotices } from './startup_a11y.js';
+import { isRogueLevel } from './makemon_create.js';
 
 export const SPBOOK_NO_NOVEL = -SPBOOK_CLASS;
 
@@ -1832,13 +1833,6 @@ function isInitialInventoryPhase(state) {
 function inQuest(state) {
     const dnum = state.u?.uz?.dnum;
     return Number.isInteger(dnum) && dnum === state.quest_dnum;
-}
-
-// Copies: dungeon.h Is_rogue_level() is also ported as const.js
-// Is_rogue_level() and makemon_create.js isRogueLevel(). A change to it must
-// reach every copy.
-function isRogueLevel(state) {
-    return on_level(state.u?.uz, state.rogue_level);
 }
 
 function inHell(state) {

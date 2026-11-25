@@ -31,7 +31,8 @@ import { extcmdlist, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, AUTOCOMPLETE,
          ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD, IFBURIED, PREFIXCMD,
          MOVEMENTCMD, CMD_PARAM, CMD_M_PREFIX, CMD_gGF_PREFIX,
          GENERALCMD } from './func_tab.js';
-import { strcmpi, strncmpi, highc, visctrl, strstri } from './hacklib.js';
+import { strcmpi, strncmpi, highc, visctrl, strstri, sgn,
+         upstart } from './hacklib.js';
 import { dosearch } from './detect.js';
 import { level_tele, dotelecmd } from './teleport.js';
 import { wiz_level_change, wiz_wish, wiz_identify, wiz_intrinsic, wiz_map,
@@ -105,7 +106,9 @@ import { COLNO, ROWNO, xdir, ydir, zdir } from './const.js';
 import { PM_GRID_BUG, mons, PM_CAVE_SPIDER, PM_GIANT_SPIDER, PM_MIND_FLAYER,
          PM_MASTER_MIND_FLAYER, PM_GREMLIN, AT_BREA, AT_SPIT, AT_GAZE, S_NYMPH,
          S_UNICORN, M1_HIDE, M1_CONCEAL, M2_JEWELS, MS_SHRIEK } from './monsters.js';
-import { is_were, is_vampire, is_vampshifter } from './mondata.js';
+import { is_were, is_vampire, is_vampshifter, hides_under, is_hider, webmaker,
+         can_breathe, is_mind_flayer, is_unicorn,
+         attacktype } from './mondata.js';
 import { show_menu_controls as show_menu_controls_cm } from './pager.js';
 export { domove };
 
@@ -315,10 +318,6 @@ export function cmdq_add_dir(dx, dy, dz) {
 const CLICK_1 = 1, CLICK_2 = 2;
 /* C ref: defsym.h S_sink, S_fountain (defsyms[] indices) */
 const S_sink = 36, S_fountain = 37;
-
-function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 // C ref: cmd.c doherecmdmenu() -- #herecmdmenu command
 async function doherecmdmenu() {
@@ -853,22 +852,6 @@ async function there_cmd_menu(x, y, mod) {
 async function here_cmd_menu() {
     await there_cmd_menu(game.u.ux, game.u.uy, CLICK_1);
     return '\0';
-}
-
-/* C ref: mondata.h is_hider(), hides_under(), webmaker(), can_breathe(),
-   attacktype(), is_mind_flayer(), likes_gems(), is_unicorn() */
-function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
-function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
-function webmaker(ptr) {
-    return ptr === mons[PM_CAVE_SPIDER] || ptr === mons[PM_GIANT_SPIDER];
-}
-function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
-function can_breathe(ptr) { return attacktype(ptr, AT_BREA); }
-function is_mind_flayer(ptr) {
-    return ptr === mons[PM_MIND_FLAYER] || ptr === mons[PM_MASTER_MIND_FLAYER];
-}
-function is_unicorn(ptr) {
-    return ptr.mlet === S_UNICORN && (ptr.mflags2 & M2_JEWELS) !== 0;
 }
 
 // C ref: cmd.c domonability() -- #monster command - use special monster

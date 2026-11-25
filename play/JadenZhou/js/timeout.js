@@ -6,17 +6,18 @@
 // generic timer queue (start_timer() ... relink_timers()) and the egg and
 // figurine timer attachment.
 
-import { is_flyer } from './mondata.js';
+import { is_flyer, nolimbs, cantvomit } from './mondata.js';
 import { vobj_at } from './display.js';
 import { inv_weight } from './hack.js';
 import { wake_nearby } from './mon.js';
 import { is_ice } from './dig.js';
 import { sobj_at as sobj_at_to } from './makemon.js';
-import { doname, makeplural } from './objnam.js';
+import { doname, makeplural, vtense } from './objnam.js';
 import { FROMOUTSIDE, WT_NOISY_INV, FOOT } from './const.js';
 import { CORPSE, ROCK } from './objects.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
 import { game } from './gstate.js';
+import { you_unwere } from './were.js';
 import * as P from './const.js';
 import { rnd } from './rng.js';
 import { MAX_EGG_HATCH_TIME } from './const.js';
@@ -31,10 +32,10 @@ import { artifact_light } from './worn.js';
 import { get_obj_location } from './shk.js';
 import { Yname2 as Yname2_to, xname as xname_to, an as an_to } from './objnam.js';
 import { You_see as You_see_to, Your as Your_to } from './display.js';
-import { s_suffix as s_suffix_to } from './hacklib.js';
+import { s_suffix as s_suffix_to, upstart } from './hacklib.js';
 import { Monnam as Monnam_to } from './do_name.js';
 import { cansee as cansee_to } from './vision.js';
-import { Shk_Your as Shk_Your_to } from './wield.js';
+import { Shk_Your as Shk_Your_to } from './shk.js';
 import { weight as weight_to, obj_extract_self as obj_extract_self_to } from './mkobj.js';
 import { m_at as m_at_to } from './makemon.js';
 import { obfree as obfree_to, useupall as useupall_to } from './invent.js';
@@ -70,7 +71,7 @@ import { PM_ARCHEOLOGIST } from './monsters.js';
 import { FEDORA, LUCKSTONE } from './objects.js';
 import { stone_luck } from './attrib.js';
 import { carrying } from './invent.js';
-import { heal_legs } from './trap.js';
+import { heal_legs, unconscious } from './trap.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
 import { Popeye, morehungry, vomit } from './eat.js';
@@ -245,24 +246,6 @@ export function confers_luck(obj) {
 function up(p) { return game.u.uprops[p]; }
 /* C ref: color.h NH_BLUE, NH_GREEN (color names for hcolor()) */
 const NH_BLUE = "blue", NH_GREEN = "green";
-/* C ref: mondata.h nolimbs(), breathless(), cantvomit(); youprop.h
-   Breathless */
-function nolimbs(ptr) { return (ptr.mflags1 & M1_NOLIMBS) === M1_NOLIMBS; }
-function cantvomit(ptr) {
-    return ptr.mlet === S_RODENT && ptr !== mons[PM_ROCK_MOLE]
-           && ptr !== mons[PM_WOODCHUCK];
-}
-/* C ref: trap.c unconscious() */
-function unconscious() {
-    const g = game;
-    if (g.multi >= 0)
-        return false;
-    return !!(g.u.usleep
-              || (g.nomovemsg
-                  && (g.nomovemsg.startsWith("You awake")
-                      || g.nomovemsg.startsWith("You regain con")
-                      || g.nomovemsg.startsWith("You are consci"))));
-}
 /* C ref: pline.c urgent_pline() -- pline() that overrides msgtype
    suppression; no MSGTYPE patterns are set, so it's plain pline() */
 async function urgent_pline(line) { await pline(line); }
@@ -680,8 +663,7 @@ export async function nh_timeout() {
         if (P[UNCHANGING].intrinsic || P[UNCHANGING].extrinsic) /* Unchanging */
             u.mtimedone = rnd(100 * game.youmonst.data.mlevel + 1);
         else if (is_were(game.youmonst.data))
-            /* if polycontrl, asks whether to rehumanize */
-            throw new Error('nh_timeout(): you_unwere() not ported yet');
+            await you_unwere(false); /* if polycontrl, asks whether to rehumanize */
         else
             await rehumanize();
     }

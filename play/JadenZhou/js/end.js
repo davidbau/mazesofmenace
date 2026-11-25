@@ -40,14 +40,14 @@ import { AMULET_OF_LIFE_SAVING, LARGE_BOX, STATUE, TIN, CORPSE,
 import { pmname, Mgender, m_monnam } from './do_name.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import { an, the_unique_pm } from './objnam.js';
-import { is_vampshifter } from './mondata.js';
-import { strstri } from './hacklib.js';
+import { is_vampshifter, type_is_pname } from './mondata.js';
+import { strstri, upstart, plur } from './hacklib.js';
 import { zombie_maker, mongone } from './mon.js';
 import { night, midnight, getnow } from './calendar.js';
 import { record_achievement } from './do.js';
 import { can_make_bones, savebones } from './bones.js';
 import { paybill, finish_paybill } from './shk.js';
-import { discover_object } from './o_init.js';
+import { discover_object, makeknown } from './o_init.js';
 import { sortloot } from './pickup.js';
 import { the, thesimpleoname } from './iactions.js';
 import { xname, doname_with_price } from './objnam.js';
@@ -130,20 +130,12 @@ function inc_done_stopprint() {
     game.program_state.stopprint = (game.program_state.stopprint || 0) + 1;
 }
 
-/* C ref: mondata.h type_is_pname() */
-function type_is_pname(ptr) { return (ptr.mflags2 & M2_PNAME) !== 0; }
 /* C ref: obj.h SchroedingersBox() */
 function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-/* C ref: hack.h makeknown() */
-function makeknown(x) { discover_object(x, true, false, true); }
 /* C ref: integer.h nowrap_add() */
 function nowrap_add(a, b) {
     return (a <= Number.MAX_SAFE_INTEGER - b) ? a + b : Number.MAX_SAFE_INTEGER;
 }
-/* C ref: hacklib.c plur() */
-function plur(x) { return (x === 1) ? "" : "s"; }
 /* C ref: dungeon.c single_level_branch() */
 function single_level_branch(lev) { return Is_knox_level(lev); }
 /* C ref: invent.c set_cknown_lknown() */

@@ -1364,21 +1364,13 @@ export function option_help_lines() {
 
 // src/options.c:9461 option_help() — display the '?g' window.
 export async function option_help() {
-    const { xwaitforspace } = await import('./tty/getline.js');
     const { docrt } = await import('./display.js');
     const win = tty_create_nhwindow(5 /* NHW_TEXT */);
-    const { tty_putstr, tty_next_page, tty_destroy_nhwindow }
+    const { tty_putstr, tty_destroy_nhwindow }
         = await import('./tty/wintty.js');
     for (const line of option_help_lines())
         tty_putstr(win, 0, line);
     await tty_display_nhwindow(win);
-    for (;;) {
-        await xwaitforspace(' \r\n\x1b');
-        if (game.morc === '\x1b')
-            break;
-        if (!tty_next_page(win))
-            break;
-    }
     await tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
 }

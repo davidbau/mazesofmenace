@@ -2108,10 +2108,14 @@ export async function mondead(mtmp) {
      * remove_monster): the pre-detach `_dyingInGrid` window ends here. */
     const onmap = isok(mx, my) && m_at(mx, my) === mtmp;
     mtmp._dyingInGrid = false;
-    /* C mon.c:2723-2725: removing a pinned monster lets the existing
+    /* C mon.c:2718-2725: removing a pinned monster lets the existing
      * boulder settle, before repainting or dropping the monster's pack. */
-    if (onmap)
+    if (onmap) {
+        mtmp.mundetected = 0;
+        if (M_AP_TYPE(mtmp) !== M_AP_NOTHING && M_AP_TYPE(mtmp) !== M_AP_MONSTER)
+            seemimic(mtmp);
         await fill_pit(mx, my);
+    }
     /* C mon.c:2718-2720, mon_leaving_level(), is explicit that mx/my must NOT
      * be zeroed here:
      *     #if 0   / * mustn't do this; too many places assume that the stale

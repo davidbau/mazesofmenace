@@ -211,7 +211,7 @@ import { defends, get_artifact, permapoisoned,
 import { cansee, vision_recalc } from './vision.js';
 import { make_stunned, paralyze_monst } from './potion.js';
 import { stop_occupation } from './allmain.js';
-import { fall_asleep } from './timeout.js';
+import { fall_asleep, burn_away_slime } from './timeout.js';
 import { drain_en } from './trap.js';
 import { Protection_from_shape_changers } from './youprop.js';
 import { set_ulycn, is_were, were_change } from './were.js';
@@ -3525,14 +3525,14 @@ export async function mhitm_mgc_atk_negated(magr, mdef, verbosely) {
     if (magr !== game.youmonst && magr.mcan)
         return true;                    /* no message; attacker cancelled */
 
-    const armpro = magic_negation(mdef === game.youmonst ? null : mdef);
+    const armpro = magic_negation(mdef);
     const negated = !(rn2(10) >= 3 * armpro);
     if (negated) {
         if (verbosely) {
             if (mdef === game.youmonst)
                 await You('avoid harm.');
-            else if (canseemon(mdef))
-                await pline(`${Monnam(mdef)} avoids harm.`);
+            else if (game.vis && canseemon(mdef))
+                await pline_mon(mdef, `${Monnam(mdef)} avoids harm.`);
         }
         return true;
     }
@@ -4303,7 +4303,7 @@ export async function mhitm_ad_samu(magr, mattk, mdef, mhm) {
 
 // src/uhitm.c:2521 mhitm_ad_fire(), fire carried by a natural attack.
 export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
-    const pd = game.mons[mdef.mnum];
+    const pd = mdef.data;
     const orig_dmg = mhm.damage;
 
     if (magr === game.youmonst) {
@@ -4315,7 +4315,8 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
             await pline(`${Monnam(mdef)} is ${on_fire(pd, mattk)}!`);
         if (completelyburns(pd)) {
             if (!Blind()) {
-                await pline(`${Monnam(mdef)} burns completely!`);
+                await pline(`${Monnam(mdef)} ${!mlifesaver(mdef)
+                    ? 'burns completely' : 'is totally engulfed in flames'}!`);
             } else {
                 await You(`smell burning${
                     pd.pmidx === PMNAMES.PM_PAPER_GOLEM ? ' paper'
@@ -4356,8 +4357,7 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
                 await destroy_items(game.youmonst, ATTKS.AD_FIRE, orig_dmg);
                 await ignite_items(game.invent);
             }
-            if (game.u.uprops?.SLIMED)
-                game.u.uprops.SLIMED = 0;
+            await burn_away_slime();
         } else {
             mhm.damage = 0;
         }
@@ -4368,17 +4368,19 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
             return;
         }
         if (game.vis && canseemon(mdef))
-            await pline(`${Monnam(mdef)} is ${on_fire(pd, mattk)}!`);
+            await pline_mon(mdef, `${Monnam(mdef)} is ${on_fire(pd, mattk)}!`);
         if (completelyburns(pd)) {
             if (game.vis && canseemon(mdef))
-                await pline(`${Monnam(mdef)} burns completely!`);
-            await monkilled(mdef, '', ATTKS.AD_FIRE);
+                await pline_mon(mdef, `${Monnam(mdef)} ${!mlifesaver(mdef)
+                    ? 'burns completely' : 'is totally engulfed in flames'}!`);
+            await monkilled(mdef, null, ATTKS.AD_FIRE);
             if (!DEADMONSTER(mdef)) {
                 mhm.hitflags = M_ATTK_MISS;
-            } else {
-                mhm.hitflags = M_ATTK_DEF_DIED
-                    | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
+                mhm.done = true;
+                return;
             }
+            mhm.hitflags = M_ATTK_DEF_DIED
+                | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
             mhm.done = true;
             return;
         }

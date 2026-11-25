@@ -28,7 +28,7 @@ import {
     place_lregion, mkstairs, wallification, mktrap, Invocation_lev, place_branch,
     somex, somey, stairway_find_dir, occupied, count_level_features,
 } from './mklev.js';
-import { distmin } from './hacklib.js';
+import { distmin, upstart } from './hacklib.js';
 import { maketrap } from './trap.js';
 import { mkobj_at, mksobj_at, mkgold, mk_tt_object, mkcorpstat, set_corpsenm,
          rndmonnum } from './mkobj.js';
@@ -418,9 +418,6 @@ function migr_booty_item(otyp, gang) {
         }
     }
 }
-
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 // C ref: mkmaze.c stolen_booty()
 function stolen_booty() {

@@ -5,6 +5,7 @@
 // kick_steed(), poly_steed() and the less common dismount cases stop
 // with "not ported yet".
 
+import { sokoban_guilt } from './trap.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { pline, You, You_cant } from './display.js';
@@ -22,7 +23,7 @@ import { SLT_ENCUMBER, M_AP_FURNITURE, M_AP_OBJECT, TEST_MOVE, W_SADDLE,
          LEVITATION, HALF_PHDAM, MAXULEV, STONE_RES } from './const.js';
 import { mons, PM_LONG_WORM, PM_KNIGHT, M1_HUMANOID, MZ_SMALL, MZ_LARGE,
          PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
-import { is_swimmer, is_flyer, is_floater } from './mondata.js';
+import { is_swimmer, is_flyer, is_floater, throws_rocks } from './mondata.js';
 
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL } from './const.js';
 import { DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED, DISMOUNT_FELL,
@@ -57,8 +58,6 @@ import { killed, monkilled } from './mon.js';
 import { AD_PHYS } from './monsters.js';
 import { adjalign } from './attrib.js';
 
-/* C ref: mondata.h throws_rocks() */
-function throws_rocks(ptr) { return (ptr.mflags2 & M2_ROCKTHROW) !== 0; }
 // C ref: cmd.c dirtocoord()
 function dirtocoord(cc, dd) {
     if (dd > DIR_ERR && dd < N_DIRS_Z) {
@@ -588,7 +587,7 @@ export async function dismount_steed(
                 game.in_steed_dismounting = true;
                 await teleds(cc.x, cc.y, TELEDS_ALLOW_DRAG);
                 if (sobj_at(BOULDER, cc.x, cc.y))
-                    throw new Error('dismount_steed(): sokoban_guilt() not ported yet');
+                    sokoban_guilt();
                 game.in_steed_dismounting = false;
 
                 /* Put your steed in your trap */

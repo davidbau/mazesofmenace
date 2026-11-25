@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { getnow } from './calendar.js';
 import { yyyymmddhhmmss } from './calendar.js';
 import { pline, There } from './pline.js';
-import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH, OBJ_FREE, W_BALL, W_CHAIN } from './const.js';
+import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH, OBJ_FREE, W_BALL, W_CHAIN, MAX_MSG_HISTORY } from './const.js';
 import { setworn } from './worn.js';
 import { save_light_sources, lights_save_snapshot, dangling_light_check, dangling_light_panics } from './light.js';
 import { clear_level_structures } from './mklev.js';
@@ -524,6 +524,16 @@ async function savegamestate() {
             text = text.slice(0, -8);
         if (text.length > 0)
             state._msg_history = [...(game._msg_history || []), text];
+    }
+    /* C topl.c:578-596 msghistory_snapshot() collects only what the tty
+     * message ring still holds: cw->rows slots, iflags.msg_history clamped to
+     * [20, MAX_MSG_HISTORY] when WIN_MESSAGE was created (wintty.c:889-893),
+     * empty slots skipped.  Older lines were overwritten in their slots and
+     * never reach the save file, so a restoring process with a larger
+     * msghistory cannot list them. */
+    if (Array.isArray(state._msg_history)) {
+        const rows = Math.min(Math.max((game.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
+        state._msg_history = state._msg_history.filter((m) => m).slice(-rows);
     }
     return state;
 }

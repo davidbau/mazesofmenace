@@ -9,7 +9,7 @@ import { stairway_at } from './display.js';
 import { game } from './gstate.js';
 import { worm_move } from './worm.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { distmin } from './hacklib.js';
+import { distmin, upstart, sgn } from './hacklib.js';
 import { cansee, couldsee } from './vision.js';
 import {
     pline, urgent_pline, pline_The, canseemon, canspotmon, map_invisible
@@ -18,15 +18,19 @@ import { You_hear } from './sounds.js';
 import { Monnam } from './do_name.js';
 import { an, xname, doname, singular } from './objnam.js';
 import { simpleonames } from './iactions.js';
-import { observe_object, discover_object, objdescr_is } from './o_init.js';
+import { observe_object, discover_object, objdescr_is,
+         makeknown } from './o_init.js';
 import { unknow_object, unbless } from './mkobj.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
 import { seemimic } from './mon.js';
 import { monstseesu, monstunseesu } from './uhitm.js';
-import { losehp } from './trap.js';
+import { losehp, unconscious as unconscious_mu } from './trap.js';
 import { find_mac } from './worn.js';
-import { resists_magm } from './mondata.js';
+import { resists_magm, is_animal, mindless, nohands, verysmall, throws_rocks,
+         likes_gems, noncorporeal, amorphous, unsolid, is_mercenary, acidic,
+         is_unicorn, touch_petrifies, resists_ston, resists_acid, slimeproof,
+         attacktype, can_blow } from './mondata.js';
 import { hit, miss, exclam, buzz, dobuzz, bhito,
          find_drawbridge, resist_async } from './zap.js';
 import { TELL } from './const.js';
@@ -156,7 +160,6 @@ import { cls as cls_mu, show_glyph as show_glyph_mu, mon_to_glyph as mon_to_glyp
          You_feel as You_feel_mu } from './display.js';
 import { rn2_on_display_rng as rn2_on_display_rng_mu } from './rng.js';
 import { tty_display_map_nhwindow as tty_display_map_nhwindow_mu } from './wintty.js';
-import { unconscious as unconscious_mu } from './eat.js';
 import { removed_from_icebox } from './pickup.js';
 import { cancel_monst } from './zap.js';
 
@@ -204,23 +207,8 @@ const MUSE_SCR_EARTH = 36;
 const MUSE_CAMERA = 37;
 
 /* mondata.h */
-function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
-function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
-function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
-function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
-function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
-function is_mercenary(ptr) { return (ptr.mflags2 & M.M2_MERC) !== 0; }
-function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
-function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
-function touch_petrifies(ptr) {
-    return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
-}
 /* C ref: mondata.h NODIAG() */
 function NODIAG(monnum) { return monnum === M.PM_GRID_BUG; }
-/* C ref: mondata.c attacktype() */
-function attacktype(ptr, atyp) {
-    return ptr.mattk.some(a => a.aatyp === atyp);
-}
 /* C ref: monst.h m_seenres() */
 export function m_seenres(mon, mask) { return (mon.seen_resistance || 0) & mask; }
 
@@ -231,22 +219,6 @@ function m_carrying(mtmp, type) {
     return null;
 }
 
-/* C ref: mondata.h resists_ston(), resists_acid(), acidic(), slimeproof(),
-   noncorporeal(), amorphous(), unsolid() */
-function resists_ston(mon) { return !!Resists_Elem(mon, STONE_RES); }
-function resists_acid(mon) { return !!Resists_Elem(mon, ACID_RES); }
-function acidic(ptr) { return (ptr.mflags1 & M.M1_ACID) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
-function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
-function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
-function slimeproof(ptr) {
-    return ptr === mons[M.PM_GREEN_SLIME]
-           || ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
-           || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER]
-           || noncorporeal(ptr);
-}
-/* C ref: hacklib.c upstart() */
-function upstart(s) { return s ? highc(s[0]) + s.slice(1) : s; }
 /* C ref: hacklib.c strsubst() -- replace the first instance of orig */
 function strsubst(bp, orig, replacement) {
     const i = bp.indexOf(orig);
@@ -1344,19 +1316,6 @@ function mon_likes_objpile_at(mtmp, x, y) {
     return false;
 }
 
-/* C ref: mondata.c can_blow() */
-function can_blow(mtmp) {
-    const ptr = mtmp.data;
-    const is_silent = ptr.msound === M.MS_SILENT;
-    const breathless = (ptr.mflags1 & M.M1_BREATHLESS) !== 0;
-    const has_head = (ptr.mflags1 & M.M1_NOHEAD) === 0;
-    if ((is_silent || ptr.msound === M.MS_BUZZ)
-        && (breathless || verysmall(ptr) || !has_head || ptr.mlet === M.S_EEL))
-        return false;
-    /* (mtmp == &youmonst) && Strangled: only monsters get here */
-    return true;
-}
-
 /* C ref: do_wear.c hard_helmet() */
 function hard_helmet(obj) {
     if (!obj || !(obj.oclass === ARMOR_CLASS /* is_helmet() */
@@ -2179,10 +2138,6 @@ function mdistu(mon) {
     const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
     return dx * dx + dy * dy;
 }
-/* C ref: hacklib.c sgn() */
-function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
-/* C ref: obj.h makeknown() */
-function makeknown(otyp) { discover_object(otyp, true, true, true); }
 
 // C ref: muse.c mzapwand()
 /* when a monster zaps a wand give a message, deduct a charge, and if it

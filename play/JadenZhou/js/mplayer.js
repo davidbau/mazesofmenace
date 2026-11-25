@@ -25,17 +25,15 @@ import {
     PM_CLERIC, PM_RANGER, PM_ROGUE, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
 } from './monsters.js';
 import { ART_MAGICBANE } from './artilist.js';
-import {
-    makemon, mongets, set_malign, is_mplayer, mkmonmoney, rnd_offensive_item,
-    rnd_defensive_item, rnd_misc_item, m_at,
-} from './makemon.js';
+import { makemon, mongets, set_malign, mkmonmoney, rnd_offensive_item,
+         rnd_defensive_item, rnd_misc_item, m_at } from './makemon.js';
 import { mksobj, rnd_class, weight, curse, bless, mkobj } from './mkobj.js';
 import { mpickobj } from './steal.js';
 import { christen_monst } from './do_name.js';
 import { mk_artifact } from './artifact.js';
 import { rank_of } from './botl.js';
 import { m_dowear } from './worn.js';
-import { monsndx, is_female } from './mondata.js';
+import { monsndx, is_female, is_mplayer } from './mondata.js';
 import { monmightthrowwep } from './weapon.js';
 import { rloc_mklev } from './teleport.js';
 import { RLOC_ERR, RLOC_NOMSG, P_SPEAR } from "./const.js";

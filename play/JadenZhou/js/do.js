@@ -25,6 +25,11 @@ import { breaktest } from './dothrow.js';
 import { change_luck } from './attrib.js';
 import { obj_extract_self, add_to_migration } from './mkobj.js';
 import { obfree } from './invent.js';
+import { discard_minvent } from './steal.js';
+import { emits_light, digests } from './mondata.js';
+import { del_light_source } from './light.js';
+import { monst_to_any } from './timeout.js';
+import { LS_MONSTER } from './const.js';
 import { LOW_PM as LOW_PM_do, NUMMONS as NUMMONS_do } from './monsters.js';
 import {
     pline, pline_The, docrt, flush_screen
@@ -32,6 +37,9 @@ import {
 import { bones_include_name } from './bones.js';
 import { You_hear } from './sounds.js';
 import { sellobj } from './shk.js';
+import { stolen_value, costly_spot, picked_container } from './shk.js';
+import { in_rooms } from './hack.js';
+import { SHOPBASE } from './const.js';
 import { olfaction } from './mondata.js';
 import { ACH_HELL, ACH_MINE, ACH_SOKO, ACH_BGRM } from './const.js';
 import { Is_rogue_level, ROGUESET, PRIMARYSET } from './const.js';
@@ -131,14 +139,28 @@ import { map_background as map_background_do } from './display.js';
 import { use_pick_axe2 } from './dig.js';
 import { WT_SPLASH_THRESHOLD as WT_SPLASH_THRESHOLD_DO, ER_DESTROYED as ER_DESTROYED_DO,
          DEAF as DEAF_DO } from './const.js';
+import { upstart } from './hacklib.js';
+import { is_pool_or_lava, impossible } from './hack.js';
+import { waterbody_name } from './pager.js';
+import { IS_WATERWALL, DRAWBRIDGE_UP, DB_UNDER, DB_FLOOR, next2u } from './const.js';
+import { recalc_block_point } from './vision.js';
+import { DEADMONSTER, mondied, wake_nearto } from './mon.js';
+import { m_in_air } from './monmove.js';
+import { delfloortrap, set_uinwater } from './trap.js';
+import { bury_objs } from './dig.js';
+import { y_monnam } from './do_name.js';
+import { vtense, xname } from './objnam.js';
+import { the } from './iactions.js';
+import { There } from './display.js';
+import { hliquid, burn_away_slime } from './potion.js';
+import { Fire_resistance } from './youprop.js';
+import { useupf } from './invent.js';
+import { dist2 } from './hacklib.js';
+import { tty_yn_function } from './wintty.js';
 
 /* C ref: obj.h is_pick() */
 function is_pick(otmp) {
     return otmp.otyp === O.PICK_AXE || otmp.otyp === O.DWARVISH_MATTOCK;
-}
-/* C ref: mondata.h digests() */
-function digests(ptr) {
-    return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL && a.adtyp === AD_DGST);
 }
 
 /* C ref: cmd.c DIR_DOWN, DIR_UP (after the 8 compass directions) */
@@ -281,7 +303,9 @@ export async function doup() {
     }
     if (ledger_no(u.uz) === 1) {
         /* iflags.debug_fuzzer isn't ported */
-        throw new Error('doup(): climbing out of the dungeon (y_n prompt) not ported yet');
+        if (await tty_yn_function("Beware, there will be no return!  Still climb?",
+                                  "yn", 'n') !== 'y') /* y_n() */
+            return ECMD_OK;
     }
     if (!await next_to_u()) {
         await You("are held back by your pet!");
@@ -499,28 +523,66 @@ function free_luathemes(theme_group) {
 
 // C ref: dog.c discard_migrations()
 function discard_migrations() {
-    let mtmp;
+    let mtmp, mprev;
+    let otmp, oprev;
     const dest = { dnum: 0, dlevel: 0 };
 
-    for (mtmp = game.migrating_mons; mtmp; mtmp = mtmp.nmon) {
+    /* mprev is null for &gm.migrating_mons, else the monster whose nmon
+       links to the current one */
+    for (mprev = null; (mtmp = (mprev ? mprev.nmon : game.migrating_mons)) != null; ) {
         dest.dnum = mtmp.mux;
         dest.dlevel = mtmp.muy;
         /* the Wizard is kept regardless of location so that he is
            ready to be brought back; nothing should be scheduled to
            migrate to the endgame but if we find such, we'll keep it */
         if (mtmp.iswiz || In_endgame(dest)) {
-            continue; /* keep mtmp on migrating_mons */
+            mprev = mtmp; /* keep mtmp on migrating_mons */
         } else {
-            /* remove mtmp from migrating_mons; discard_minvent(mtmp, FALSE),
-               del_light_source(), dealloc_monst() */
-            throw new Error('discard_migrations(): discarding a migrating monster not ported yet');
+            /* remove mtmp from migrating_mons */
+            if (mprev)
+                mprev.nmon = mtmp.nmon || null;
+            else
+                game.migrating_mons = mtmp.nmon || null;
+            mtmp.nmon = null;
+            discard_minvent(mtmp, false);
+            /* bypass mongone() and its call to m_detach() plus dmonsfree() */
+            if (emits_light(mtmp.data))
+                del_light_source(LS_MONSTER, monst_to_any(mtmp));
+            /* dealloc_monst(mtmp): garbage collected */
         }
     }
 
-    /* objects get similar treatment (JS has no migrating objects yet:
-       obj_delivery() stops explicitly on them) */
-    if (game.migrating_objs)
-        throw new Error('discard_migrations(): migrating objects not ported yet');
+    /* objects get similar treatment */
+    for (oprev = null; (otmp = (oprev ? oprev.nobj : game.migrating_objs)) != null; ) {
+        dest.dnum = otmp.ox;
+        dest.dlevel = otmp.oy;
+        /* there is no special case like the Wizard (certainly not the
+           Amulet; the hero has to be carrying it to enter the endgame
+           which triggers the call to this routine); again we don't
+           expect any objects to be migrating to the endgame but will
+           keep any we find so that they could be delivered */
+        if (In_endgame(dest)) {
+            oprev = otmp; /* keep otmp on migrating_objs */
+        } else {
+            /* bypass obj_extract_self() */
+            /* remove otmp from migrating_objs */
+            if (oprev)
+                oprev.nobj = otmp.nobj || null;
+            else
+                game.migrating_objs = otmp.nobj || null;
+            otmp.nobj = null;
+            otmp.where = 'OBJ_FREE';
+            otmp.owornmask = 0; /* overloaded for destination usage;
+                                 * obfree() will complain if nonzero */
+            /*
+             * obfree(otmp,)
+             *  -> dealloc_obj(otmp)
+             *      -> obj_stop_timers(otmp)
+             *      -> del_light_source(LS_OBJECT, obj_to_any(otmp))
+             */
+            obfree(otmp, null); /* releases any contents too */
+        }
+    }
 }
 
 // C ref: do.c goto_level()
@@ -1024,6 +1086,114 @@ async function temperature_change_msg(prev_temperature) {
 // C ref: insight.c record_achievement() (ported in insight.js)
 export { record_achievement };
 
+// C ref: do.c boulder_hits_pool()
+/* Called when a boulder is dropped, thrown, or pushed.  If it ends up
+ * in a pool, it either fills the pool up or sinks away.  In either case,
+ * it's gone for good...  If the destination is not a pool, returns FALSE.
+ */
+export async function boulder_hits_pool(
+    otmp, /* the object falling into a pool or water or lava */
+    rx, ry, /* coordinates of the pool */
+    pushing) { /* for a boulder, whether or not it is being pushed */
+    const u = game.u;
+
+    if (!otmp || otmp.otyp !== O.BOULDER) {
+        impossible("Not a boulder?");
+    } else if (is_pool_or_lava(rx, ry)) {
+        const lava = is_lava(rx, ry);
+        let fills_up;
+        const what = waterbody_name(rx, ry);
+        const lev = game.level.at(rx, ry);
+        const ltyp = lev.typ;
+        const chance = rn2(10); /* water: 90%; lava: 10% */
+        let mtmp;
+
+        /* chance for boulder to fill pool:  Plane of Water==0%,
+           lava 10%, wall of water==50%, other water==90% */
+        fills_up = Is_waterlevel(u.uz) ? false
+                   : IS_WATERWALL(ltyp) ? (chance < 5)
+                     : lava ? (chance === 0) : (chance !== 0);
+
+        if (fills_up) {
+            const ttmp = t_at(rx, ry);
+
+            if (ltyp === DRAWBRIDGE_UP) {
+                lev.drawbridgemask &= ~DB_UNDER; /* clear lava */
+                lev.drawbridgemask |= DB_FLOOR;
+            } else {
+                lev.typ = ROOM, lev.flags = 0;
+                recalc_block_point(rx, ry);
+            }
+            /* 5.0: normally DEADMONSTER() is used when traversing the fmon
+               list--dead monsters usually aren't still at specific map
+               locations; however, if ice melts causing a giant to drown,
+               that giant would still be on the map when it drops inventory;
+               if it was carrying a boulder which now fills the pool, 'mtmp'
+               will be dead here; killing it again would yield impossible
+               "dmonsfree: N removed doesn't match N+1 pending" when other
+               monsters have finished their current turn */
+            if ((mtmp = m_at(rx, ry)) && !DEADMONSTER(mtmp)
+                && !m_in_air(mtmp))
+                await mondied(mtmp);
+
+            if (ttmp)
+                await delfloortrap(ttmp);
+            await bury_objs(rx, ry);
+
+            newsym(rx, ry);
+            if (pushing) {
+                let whobuf = "you";
+                if (u.usteed)
+                    whobuf = y_monnam(u.usteed);
+                await pline(`${upstart(whobuf)} ${vtense(whobuf, "push")}`
+                            + ` ${the(xname(otmp))} into the ${what}.`);
+                if (game.flags.verbose && !Blind())
+                    await pline("Now you can cross it!");
+                /* no splashing in this case */
+            }
+        }
+        if (!fills_up || !pushing) { /* splashing occurs */
+            if (!u.uinwater) {
+                if (pushing ? !Blind() : cansee(rx, ry)) {
+                    await There(`is a large splash as ${the(xname(otmp))}`
+                                + ` ${fills_up ? "fills" : "falls into"} the ${what}.`);
+                } else if (!Deaf()) {
+                    /* Soundeffect(lava ? se_sizzling : se_splash, 100) */
+                    await You_hear(`a${lava ? " sizzling" : ""} splash.`);
+                }
+                await wake_nearto(rx, ry, 40);
+            }
+
+            if (fills_up && u.uinwater && dist2(rx, ry, u.ux, u.uy) === 0) {
+                /* distu(rx, ry) == 0 */
+                await set_uinwater(0); /* u.uinwater = 0 */
+                await docrt();
+                game.vision_full_recalc = 1;
+                await You("find yourself on dry land again!");
+            } else if (lava && next2u(rx, ry)) {
+                let dmg;
+
+                await You(`are hit by molten ${hliquid("lava")}${Fire_resistance() ? '.' : '!'}`);
+                await burn_away_slime();
+                dmg = d((Fire_resistance() ? 1 : 3), 6);
+                await losehp(Maybe_Half_Phys(dmg), /* lava damage */
+                             "molten lava", KILLED_BY);
+            } else if (!fills_up && game.flags.verbose
+                       && (pushing ? !Blind() : cansee(rx, ry))) {
+                await pline("It sinks without a trace!");
+            }
+        }
+
+        /* boulder is now gone */
+        if (pushing)
+            await useupf(otmp, otmp.quan);
+        else
+            obfree(otmp, null);
+        return true;
+    }
+    return false;
+}
+
 // C ref: do.c flooreffects() -- only the plain case, where nothing
 // happens to the object, is ported; boulders filling pits or pools, lava
 // and water damage, objects tumbling into the hero's pit, globs, altars
@@ -1049,8 +1219,8 @@ export async function flooreffects(obj, /* the object landing on the floor */
     const save_bhitpos = g.bhitpos;
     g.bhitpos = { x, y };
 
-    if (obj.otyp === O.BOULDER && (is_pool(x, y) || is_lava(x, y))) {
-        throw new Error('flooreffects(): boulder_hits_pool() not ported yet');
+    if (obj.otyp === O.BOULDER && await boulder_hits_pool(obj, x, y, false)) {
+        res = true;
     } else if (obj.otyp === O.BOULDER && (t = t_at(x, y)) !== null && t
                && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
         throw new Error('flooreffects(): boulder filling a pit not ported yet');
@@ -1423,7 +1593,7 @@ async function otransit_msg(otmp, nodrop, chainthere, num) {
     if (otmp.otyp === O.CORPSE) {
         /* Tobjnam() calls xname() and would yield "The corpse";
            we want more specific "The newt corpse" or "Medusa's corpse" */
-        optr = upstart_do(corpse_xname(otmp, null, CXN_PFX_THE));
+        optr = upstart(corpse_xname(otmp, null, CXN_PFX_THE));
     } else {
         optr = Tobjnam(otmp, null);
     }
@@ -1444,9 +1614,6 @@ async function otransit_msg(otmp, nodrop, chainthere, num) {
     } else if (!nodrop)
         await pline(`${obuf} ${otense(otmp, "fall")} ${game.gate_str}.`);
 }
-
-/* C ref: hacklib.c upstart() */
-function upstart_do(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 // C ref: dokick.c ship_object()
 /* NOTE: ship_object assumes otmp was FREED from fobj or invent.
@@ -1509,10 +1676,25 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
     }
 
     if (unpaid || shop_floor_obj) {
-        /* stolen_value(); then picked_container() for a container and
-           otmp->no_charge = 0 */
-        void container;
-        throw new Error('ship_object(): stolen_value() not ported yet');
+        const u = game.u;
+        if (unpaid) {
+            await stolen_value(otmp, u.ux, u.uy, true, false);
+        } else {
+            const ox = otmp.ox;
+            const oy = otmp.oy;
+            /* strchr(u.urooms, *in_rooms(...)) also matches the terminator */
+            const r0 = in_rooms(ox, oy, SHOPBASE).charAt(0);
+            await stolen_value(
+                otmp, ox, oy,
+                (costly_spot(u.ux, u.uy)
+                 && (r0 === '' || (u.urooms || '').includes(r0))),
+                false);
+        }
+        /* set otmp->no_charge to 0 */
+        if (container)
+            picked_container(otmp); /* happens to do the right thing */
+        if (otmp.oclass !== O.COIN_CLASS)
+            otmp.no_charge = 0;
     }
 
     if (otmp.owornmask)

@@ -12,7 +12,7 @@
 import { selftouch } from './trap.js';
 import { Levitation, Deaf } from './youprop.js';
 import { melt_ice } from './zap.js';
-import { were_beastie } from './were.js';
+import { were_beastie, you_unwere, set_ulycn } from './were.js';
 import { polyself } from './polyself.js';
 import { POLY_NOFLAGS, EXPL_FIERY } from './const.js';
 import { attrcurse } from './sit.js';
@@ -20,7 +20,10 @@ import { yobjnam } from './objnam.js';
 import { explode } from './explode.js';
 import { You_hear } from './sounds.js';
 import { fall_asleep } from './timeout.js';
-import { olfaction } from './mondata.js';
+import { olfaction, type_is_pname, humanoid, noncorporeal, carnivorous,
+         herbivorous, metallivorous, is_giant, acidic, vegan, flesh_petrifies,
+         slimeproof, poly_when_stoned, attacktype, cantvomit,
+         is_rider } from './mondata.js';
 import { rounddiv } from './hack.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
@@ -103,7 +106,7 @@ import { paranoid_query, donull } from './cmd.js';
 import { tty_yn_function } from './wintty.js';
 import { safe_qbuf, encumber_msg, sellobj_state } from './pickup.js';
 import { SELL_NORMAL, SELL_DONTSELL } from './const.js';
-import { touch_artifact } from './artifact.js';
+import { touch_artifact, retouch_equipment } from './artifact.js';
 import { retouch_object } from './wield.js';
 
 import { COST_OPEN, GLIB, A_DEX } from './const.js';
@@ -142,19 +145,7 @@ const tintxts = [
 ];
 const TTSZ = tintxts.length;
 
-/* C ref: mondata.h is_rider(), vegan(), vegetarian() */
-function is_rider_pm(mnum) {
-    return mnum === M.PM_DEATH || mnum === M.PM_FAMINE || mnum === M.PM_PESTILENCE;
-}
-function vegan(ptr) {
-    return (ptr.mlet === M.S_BLOB || ptr.mlet === M.S_JELLY
-            || ptr.mlet === M.S_FUNGUS || ptr.mlet === M.S_VORTEX
-            || ptr.mlet === M.S_LIGHT
-            || ((ptr.mlet === M.S_ELEMENTAL && ptr !== mons[M.PM_STALKER]))
-            || (ptr.mlet === M.S_GOLEM && ptr !== mons[M.PM_FLESH_GOLEM]
-                && ptr !== mons[M.PM_LEATHER_GOLEM])
-            || ptr.mlet === M.S_GHOST /* noncorporeal() */);
-}
+/* C ref: mondata.h vegetarian() */
 export function vegetarian(ptr) {
     return vegan(ptr)
         || (ptr.mlet === M.S_PUDDING && ptr !== mons[M.PM_BLACK_PUDDING]);
@@ -162,7 +153,7 @@ export function vegetarian(ptr) {
 /* C ref: eat.c nonrotting_corpse() */
 function nonrotting_corpse(mnum) {
     return mnum === M.PM_LIZARD || mnum === M.PM_LICHEN
-        || is_rider_pm(mnum) || mnum === M.PM_ACID_BLOB;
+        || is_rider(mons[mnum]) || mnum === M.PM_ACID_BLOB;
 }
 
 // C ref: eat.c tin_variety()
@@ -220,11 +211,6 @@ export function tin_details(obj, mnum, buf) {
     return buf;
 }
 
-/* C ref: mondata.h carnivorous(), herbivorous(), metallivorous() */
-function carnivorous(ptr) { return (ptr.mflags1 & M1_CARNIVORE) !== 0; }
-function herbivorous(ptr) { return (ptr.mflags1 & M1_HERBIVORE) !== 0; }
-function metallivorous(ptr) { return (ptr.mflags1 & M1_METALLIVORE) !== 0; }
-
 /* C ref: pline.c verbalize() */
 async function verbalize(line) {
     if (Deaf())
@@ -252,18 +238,6 @@ export function is_fainted() {
     return game.u.uhs === FAINTED;
 }
 
-
-// C ref: trap.c unconscious()
-export function unconscious() {
-    const g = game;
-    if (g.multi >= 0)
-        return false;
-    return !!(g.u.usleep
-              || (g.nomovemsg
-                  && (g.nomovemsg.startsWith("You awake")
-                      || g.nomovemsg.startsWith("You regain con")
-                      || g.nomovemsg.startsWith("You are consci"))));
-}
 
 // C ref: eat.c gethungry()
 /* as time goes by - called by moveloop(every move) & domove(melee attack) */
@@ -499,9 +473,6 @@ export async function newuhs(incr) {
     }
 }
 
-/* C ref: mondata.h is_giant() */
-function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
-
 // C ref: eat.c intrinsic_possible()
 /* intrinsic_possible() returns TRUE iff a monster can potentially
  * convey an intrinsic to the hero (or a pet) when its corpse is eaten */
@@ -656,33 +627,7 @@ function obj_here(obj, x, y) {
     return false;
 }
 /* C ref: mondata.h */
-function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
-function touch_petrifies(ptr) {
-    return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
-}
-function flesh_petrifies(pm) { return touch_petrifies(pm) || pm === mons[M.PM_MEDUSA]; }
-function acidic(ptr) { return (ptr.mflags1 & M.M1_ACID) !== 0; }
 export function poisonous(ptr) { return (ptr.mflags1 & M.M1_POIS) !== 0; }
-function humanoid(ptr) { return (ptr.mflags1 & M.M1_HUMANOID) !== 0; }
-function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
-function flaming(ptr) {
-    return ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
-           || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
-}
-export function slimeproof(ptr) {
-    return ptr === mons[M.PM_GREEN_SLIME] || flaming(ptr) || noncorporeal(ptr);
-}
-function poly_when_stoned(ptr) {
-    /* mondata.c: golems other than stone golem turn into stone golems */
-    return ptr.mlet === M.S_GOLEM && ptr !== mons[M.PM_STONE_GOLEM]
-           && !(mvitals_gone(M.PM_STONE_GOLEM));
-}
-function mvitals_gone(pm) {
-    return ((game.mvitals?.[pm]?.mvflags || 0) & G_GENOD) !== 0;
-}
-function attacktype(ptr, atyp) {
-    return ptr.mattk.some(a => a.aatyp === atyp);
-}
 /* C ref: obj.h stale_egg() */
 export function stale_egg(egg) {
     return (game.moves - egg.age) > (2 * MAX_EGG_HATCH_TIME);
@@ -734,19 +679,6 @@ function food_xname(food, the_pfx) {
     if (the_pfx)
         result = the(result);
     return result;
-}
-
-// C ref: mondata.c cantvomit()
-function cantvomit(ptr) {
-    /* rats and mice are incapable of vomiting; likewise with horses;
-       which other creatures have the same limitation? */
-    if (ptr.mlet === M.S_RODENT && ptr !== M.mons[M.PM_ROCK_MOLE]
-        && ptr !== M.mons[M.PM_WOODCHUCK])
-        return true;
-    if (ptr === M.mons[M.PM_WARHORSE] || ptr === M.mons[M.PM_HORSE]
-        || ptr === M.mons[M.PM_PONY])
-        return true;
-    return false;
 }
 
 // C ref: eat.c vomit() -- A good idea from David Neves
@@ -1394,8 +1326,10 @@ async function cpostfx(pm) {
             await givit(tmp, ptr);
     } /* check_intrinsics */
 
-    if (catch_lycanthropy >= M.LOW_PM)
-        throw new Error('cpostfx(): set_ulycn() not ported yet');
+    if (catch_lycanthropy >= M.LOW_PM) { /* ismnum() */
+        set_ulycn(catch_lycanthropy);
+        await retouch_equipment(2);
+    }
 }
 
 // C ref: eat.c violated_vegetarian()
@@ -2135,7 +2069,7 @@ async function fpostfx(otmp) {
     switch (otmp.otyp) {
     case SPRIG_OF_WOLFSBANE:
         if (u.ulycn >= M.LOW_PM || is_were(game.youmonst.data))
-            throw new Error('fpostfx(): you_unwere() not ported yet');
+            await you_unwere(true);
         break;
     case CARROT:
         if (!u.uswallow

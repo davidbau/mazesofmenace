@@ -6,7 +6,7 @@
 
 import * as M from './monsters.js';
 import { game } from './gstate.js';
-import { ROLL_FROM } from './rng.js';
+import { ROLL_FROM, rnd } from './rng.js';
 import { M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD,
          M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON,
          M_SEEN_ACID } from './const.js';
@@ -15,7 +15,7 @@ import { NON_PM, MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
          FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          ACID_RES, STONE_RES, DRAIN_RES, ANTIMAGIC, BLND_RES, ALL_TRAPS,
          NO_TRAP, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP, W_ARMC, W_ARM,
-         W_ARMH, BLINDED, G_GENOD, INTRINSIC,
+         W_ARMH, BLINDED, G_GENOD, INTRINSIC, A_CHA,
        } from './const.js';
 import { objects, ALCHEMY_SMOCK, WEAPON_CLASS, GRAY_DRAGON_SCALES,
          YELLOW_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
@@ -37,7 +37,8 @@ import {
     PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER, PM_GRAY_DRAGON,
     PM_YELLOW_DRAGON, LOW_PM, AD_MAGM, AD_RBRE,
 } from './monsters.js';
-import { Blind, Unaware } from './youprop.js';
+import { Blind, Unaware, Strangled } from './youprop.js';
+import { ACURR } from './attrib.js';
 
 // C ref: mondata.h monsndx(ptr) -- ((ptr)->pmidx)
 export function monsndx(ptr) { return ptr.pmidx; }
@@ -257,6 +258,287 @@ export function pm_invisible(ptr) {
 }
 // C ref: mondata.h is_vampire()
 export function is_vampire(ptr) { return ptr.mlet === S_VAMPIRE; }
+
+/* ---- more mondata.h macros, one copy for the whole port (in mondata.h
+   order); every other module imports them from here ---- */
+// C ref: mondata.h verysmall()
+export function verysmall(ptr) { return ptr.msize < M.MZ_SMALL; }
+// C ref: mondata.h bigmonst()
+export function bigmonst(ptr) { return ptr.msize >= M.MZ_LARGE; }
+// C ref: mondata.h is_clinger()
+/* clinger: piercers, mimics, wumpus -- generally don't fall down holes */
+export function is_clinger(ptr) { return (ptr.mflags1 & M.M1_CLING) !== 0; }
+// C ref: mondata.h breathless()
+export function breathless(ptr) { return (ptr.mflags1 & M.M1_BREATHLESS) !== 0; }
+// C ref: mondata.h amorphous()
+export function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
+// C ref: mondata.h noncorporeal()
+export function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
+// C ref: mondata.h tunnels()
+export function tunnels(ptr) { return (ptr.mflags1 & M.M1_TUNNEL) !== 0; }
+// C ref: mondata.h needspick()
+export function needspick(ptr) { return (ptr.mflags1 & M.M1_NEEDPICK) !== 0; }
+// C ref: mondata.h hides_under()
+/* hides_under() requires an object at the location in order to hide */
+export function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
+// C ref: mondata.h is_hider()
+/* is_hider() is True for mimics but when hiding they appear as something
+   else rather than become mon->mundetected, so use is_hider() with care */
+export function is_hider(ptr) { return (ptr.mflags1 & M.M1_HIDE) !== 0; }
+// C ref: mondata.h eyecount()
+/* used to decide whether plural applies so no need for 'more than 2' */
+export function eyecount(ptr) {
+    return !haseyes(ptr) ? 0
+        : (ptr === mons[M.PM_CYCLOPS] || ptr === mons[PM_FLOATING_EYE]) ? 1
+          : 2;
+}
+// C ref: mondata.h nohands()
+export function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
+// C ref: mondata.h nolimbs()
+export function nolimbs(ptr) {
+    return (ptr.mflags1 & M.M1_NOLIMBS) === M.M1_NOLIMBS;
+}
+// C ref: mondata.h notake()
+export function notake(ptr) { return (ptr.mflags1 & M.M1_NOTAKE) !== 0; }
+// C ref: mondata.h has_head()
+export function has_head(ptr) { return (ptr.mflags1 & M.M1_NOHEAD) === 0; }
+// C ref: mondata.h is_whirly()
+export function is_whirly(ptr) {
+    return ptr.mlet === M.S_VORTEX || ptr === mons[M.PM_AIR_ELEMENTAL];
+}
+// C ref: mondata.h flaming()
+export function flaming(ptr) {
+    return ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
+        || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
+}
+// C ref: mondata.h is_silent()
+export function is_silent(ptr) { return ptr.msound === M.MS_SILENT; }
+// C ref: mondata.h unsolid()
+export function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
+// C ref: mondata.h mindless()
+export function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
+// C ref: mondata.h humanoid()
+export function humanoid(ptr) { return (ptr.mflags1 & M.M1_HUMANOID) !== 0; }
+// C ref: mondata.h is_animal()
+export function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
+// C ref: mondata.h slithy()
+export function slithy(ptr) { return (ptr.mflags1 & M.M1_SLITHY) !== 0; }
+// C ref: mondata.h thick_skinned()
+export function thick_skinned(ptr) { return (ptr.mflags1 & M.M1_THICK_HIDE) !== 0; }
+// C ref: mondata.h digests()
+export function digests(ptr) {
+    return dmgtype_fromattack(ptr, M.AD_DGST, M.AT_ENGL) !== null; /* purple w */
+}
+// C ref: mondata.h slimeproof()
+export function slimeproof(ptr) {
+    return ptr === mons[M.PM_GREEN_SLIME] || flaming(ptr) || noncorporeal(ptr);
+}
+// C ref: mondata.h is_armed()
+export function is_armed(ptr) { return attacktype(ptr, M.AT_WEAP); }
+// C ref: mondata.h acidic()
+export function acidic(ptr) { return (ptr.mflags1 & M.M1_ACID) !== 0; }
+// C ref: mondata.h carnivorous()
+export function carnivorous(ptr) { return (ptr.mflags1 & M.M1_CARNIVORE) !== 0; }
+// C ref: mondata.h herbivorous()
+export function herbivorous(ptr) { return (ptr.mflags1 & M.M1_HERBIVORE) !== 0; }
+// C ref: mondata.h metallivorous()
+export function metallivorous(ptr) {
+    return (ptr.mflags1 & M.M1_METALLIVORE) !== 0;
+}
+// C ref: mondata.h polyok()
+export function polyok(ptr) { return (ptr.mflags2 & M.M2_NOPOLY) === 0; }
+// C ref: mondata.h is_giant()
+export function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
+// C ref: mondata.h is_mercenary()
+export function is_mercenary(ptr) { return (ptr.mflags2 & M.M2_MERC) !== 0; }
+// C ref: mondata.h always_hostile()
+export function always_hostile(ptr) { return (ptr.mflags2 & M.M2_HOSTILE) !== 0; }
+// C ref: mondata.h extra_nasty()
+export function extra_nasty(ptr) { return (ptr.mflags2 & M.M2_NASTY) !== 0; }
+// C ref: mondata.h strongmonst()
+export function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
+// C ref: mondata.h can_breathe()
+export function can_breathe(ptr) { return attacktype(ptr, M.AT_BREA); }
+// C ref: mondata.h cantwield()
+export function cantwield(ptr) { return nohands(ptr) || verysmall(ptr); }
+// C ref: mondata.h could_twoweap()
+/* Does this type of monster have multiple weapon attacks?  If so,
+   hero poly'd into this form can use two-weapon combat. */
+export function could_twoweap(ptr) {
+    return ((ptr.mattk[0].aatyp === M.AT_WEAP ? 1 : 0)
+            + (ptr.mattk[1].aatyp === M.AT_WEAP ? 1 : 0)
+            + (ptr.mattk[2].aatyp === M.AT_WEAP ? 1 : 0)) > 1;
+}
+// C ref: mondata.h throws_rocks()
+export function throws_rocks(ptr) { return (ptr.mflags2 & M.M2_ROCKTHROW) !== 0; }
+// C ref: mondata.h type_is_pname()
+export function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
+// C ref: mondata.h is_lord()
+export function is_lord(ptr) { return (ptr.mflags2 & M.M2_LORD) !== 0; }
+// C ref: mondata.h is_prince()
+export function is_prince(ptr) { return (ptr.mflags2 & M.M2_PRINCE) !== 0; }
+// C ref: mondata.h is_dlord()
+export function is_dlord(ptr) { return is_demon(ptr) && is_lord(ptr); }
+// C ref: mondata.h is_dprince()
+export function is_dprince(ptr) { return is_demon(ptr) && is_prince(ptr); }
+// C ref: mondata.h is_minion()
+export function is_minion(ptr) { return (ptr.mflags2 & M.M2_MINION) !== 0; }
+// C ref: mondata.h likes_gold()
+export function likes_gold(ptr) { return (ptr.mflags2 & M.M2_GREEDY) !== 0; }
+// C ref: mondata.h likes_gems()
+export function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
+// C ref: mondata.h likes_objs()
+export function likes_objs(ptr) {
+    return (ptr.mflags2 & M.M2_COLLECT) !== 0 || is_armed(ptr);
+}
+// C ref: mondata.h likes_magic()
+export function likes_magic(ptr) { return (ptr.mflags2 & M.M2_MAGIC) !== 0; }
+// C ref: mondata.h webmaker()
+export function webmaker(ptr) {
+    return ptr === mons[M.PM_CAVE_SPIDER] || ptr === mons[M.PM_GIANT_SPIDER];
+}
+// C ref: mondata.h is_unicorn()
+export function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
+// C ref: mondata.h is_covetous()
+export function is_covetous(ptr) { return (ptr.mflags3 & M.M3_COVETOUS); }
+// C ref: mondata.h is_mplayer()
+export function is_mplayer(ptr) {
+    /* C compares pointers into mons[]; their order is the PM_ order */
+    return monsndx(ptr) >= M.PM_ARCHEOLOGIST && monsndx(ptr) <= M.PM_WIZARD;
+}
+// C ref: mondata.h is_watch()
+export function is_watch(ptr) {
+    return ptr === mons[M.PM_WATCHMAN] || ptr === mons[M.PM_WATCH_CAPTAIN];
+}
+// C ref: mondata.h is_placeholder()
+/* note: placeholder monsters are used for corpses of zombies and mummies;
+   PM_DWARF and PM_GNOME are normal monsters, not placeholders */
+export function is_placeholder(ptr) {
+    return ptr === mons[M.PM_ORC] || ptr === mons[M.PM_GIANT]
+        || ptr === mons[M.PM_ELF] || ptr === mons[M.PM_HUMAN];
+}
+// C ref: mondata.h unique_corpstat()
+/* monsters whose corpses and statues need special handling;
+   note that high priests and the Wizard of Yendor are flagged
+   as unique even though they really aren't; that's ok here */
+export function unique_corpstat(ptr) { return (ptr.geno & M.G_UNIQ) !== 0; }
+// C ref: mondata.h likes_lava()
+export function likes_lava(ptr) {
+    return ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
+}
+// C ref: mondata.h likes_fire()
+export function likes_fire(ptr) {
+    return ptr === mons[M.PM_FIRE_VORTEX] || ptr === mons[M.PM_FLAMING_SPHERE]
+        || likes_lava(ptr);
+}
+// C ref: mondata.h is_mind_flayer()
+export function is_mind_flayer(ptr) {
+    return ptr === mons[PM_MIND_FLAYER] || ptr === mons[PM_MASTER_MIND_FLAYER];
+}
+
+// C ref: mondata.c attacktype()
+/* does monster-type have a particular type of attack */
+export function attacktype(ptr, atyp) {
+    return attacktype_fordmg(ptr, atyp, AD_ANY) ? true : false;
+}
+
+// C ref: mondata.c noattacks()
+/* returns True if monster doesn't attack, False if it does */
+export function noattacks(ptr) {
+    const mattk = ptr.mattk;
+
+    for (let i = 0; i < NATTK; i++) {
+        /* AT_BOOM "passive attack" (gas spore's explosion upon death)
+           isn't an attack as far as our callers are concerned */
+        if (mattk[i].aatyp === M.AT_BOOM)
+            continue;
+
+        if (mattk[i].aatyp)
+            return false;
+    }
+    return true;
+}
+
+// C ref: mondata.c can_blow()
+/* returns True if monster can blow (whistle, etc) */
+export function can_blow(mtmp) {
+    if ((is_silent(mtmp.data) || mtmp.data.msound === M.MS_BUZZ)
+        && (breathless(mtmp.data) || verysmall(mtmp.data)
+            || !has_head(mtmp.data) || mtmp.data.mlet === M.S_EEL))
+        return false;
+    if (mtmp === game.youmonst && Strangled())
+        return false;
+    return true;
+}
+
+// C ref: mondata.c sliparm()
+/* creature will slide out of armor */
+export function sliparm(ptr) {
+    return (is_whirly(ptr) || ptr.msize <= M.MZ_SMALL
+            || noncorporeal(ptr));
+}
+
+// C ref: mondata.c breakarm()
+/* creature will break out of armor */
+export function breakarm(ptr) {
+    if (sliparm(ptr))
+        return false;
+
+    return (bigmonst(ptr)
+            || (ptr.msize > M.MZ_SMALL && !humanoid(ptr))
+            /* special cases of humanoids that cannot wear suits */
+            || ptr === mons[M.PM_MARILITH]
+            || ptr === mons[M.PM_WINGED_GARGOYLE]);
+}
+
+// C ref: mondata.c cantvomit()
+/* some monster-types can't vomit */
+export function cantvomit(ptr) {
+    /* rats and mice are incapable of vomiting; likewise with horses;
+       which other creatures have the same limitation? */
+    if (ptr.mlet === M.S_RODENT && ptr !== mons[M.PM_ROCK_MOLE]
+        && ptr !== mons[M.PM_WOODCHUCK])
+        return true;
+    if (ptr === mons[M.PM_WARHORSE] || ptr === mons[M.PM_HORSE]
+        || ptr === mons[M.PM_PONY])
+        return true;
+    return false;
+}
+
+// C ref: mondata.c num_horns()
+/* number of horns this type of monster has on its head */
+export function num_horns(ptr) {
+    switch (monsndx(ptr)) {
+    case M.PM_HORNED_DEVIL: /* ? "more than one" */
+    case M.PM_MINOTAUR:
+    case M.PM_ASMODEUS:
+    case M.PM_BALROG:
+        return 2;
+    case M.PM_WHITE_UNICORN:
+    case M.PM_GRAY_UNICORN:
+    case M.PM_BLACK_UNICORN:
+    case M.PM_KI_RIN:
+        return 1;
+    default:
+        break;
+    }
+    return 0;
+}
+
+// C ref: mondata.c resist_conflict()
+/* Can monster resist conflict caused by hero?
+
+   High-CHA heroes will be able to 'convince' monsters
+   (through the magic of the ring, of course) to fight
+   for them much more easily than low-CHA ones.
+*/
+export function resist_conflict(mtmp) {
+    /* always a small chance at 19 */
+    const resist_chance = Math.min(19, (ACURR(A_CHA) - mtmp.m_lev
+                                        + game.u.ulevel));
+
+    return (rnd(20) > resist_chance);
+}
 
 // C ref: monst.h is_vampshifter(mon)
 export function is_vampshifter(mon) {
@@ -915,16 +1197,7 @@ export function olfaction(mdat) {
 /* returns True if monster can be considered the same race as another */
 export function same_race(pm1, pm2) {
     const let1 = pm1.mlet, let2 = pm2.mlet;
-    const is_giant = ptr => (ptr.mflags2 & M.M2_GIANT) !== 0;
     const is_golem = ptr => ptr.mlet === M.S_GOLEM;
-    const is_mind_flayer = ptr => (ptr === M.mons[M.PM_MIND_FLAYER]
-                                   || ptr === M.mons[M.PM_MASTER_MIND_FLAYER]);
-    const is_unicorn = ptr => (ptr.mlet === M.S_UNICORN
-                               && (ptr.mflags2 & M.M2_JEWELS) !== 0);
-    const is_rider = ptr => (ptr === M.mons[M.PM_DEATH]
-                             || ptr === M.mons[M.PM_FAMINE]
-                             || ptr === M.mons[M.PM_PESTILENCE]);
-    const is_minion = ptr => (ptr.mflags2 & M.M2_MINION) !== 0;
     const is_longworm = ptr => (ptr === M.mons[M.PM_BABY_LONG_WORM]
                                 || ptr === M.mons[M.PM_LONG_WORM]
                                 || ptr === M.mons[M.PM_LONG_WORM_TAIL]);

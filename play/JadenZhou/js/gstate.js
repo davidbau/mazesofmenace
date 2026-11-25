@@ -12,6 +12,10 @@ function initial_globals() {
         /* g_init_s: sell_response = 'a', sell_how = SELL_NORMAL (0) */
         sell_response: 'a',
         sell_how: 0,
+        /* allmain.c static int mvl_wtcap = 0, mvl_change = 0 (zero, but
+           they live here so that every game starts with C's values) */
+        mvl_wtcap: 0,
+        mvl_change: 0,
     };
 }
 

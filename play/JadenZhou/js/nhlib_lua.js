@@ -24,6 +24,16 @@
 import { withRngCaller } from './rng.js';
 import { lua_error, lua_bor, lua_band, lua_callmeth } from './nhlua.js';
 
+// math.random called from Lua code the recorder cannot name: a script's main
+// chunk, or a function the C side calls (contents, inventory, iterate). The
+// recorder tags the roll with nhlib's math.random line (8 for one argument,
+// 10 for two) and "lua" at the calling file and line.
+export function chunk_random(G, file, line, ...args) {
+    return withRngCaller(
+        `random src=nhlib.lua:${args.length === 1 ? 8 : 10} parent=lua(${file}:${line})`,
+        () => G.math.random(...args));
+}
+
 // C ref: dat/nhlib.lua (top-level chunk)
 export function nhlib_lua(L) {
     const G = L.globals;

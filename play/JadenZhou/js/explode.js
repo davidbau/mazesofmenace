@@ -1,10 +1,15 @@
 // explode.js -- explosions.
 // C ref: explode.c
 //
-// Ported: explode() (scatter() and splatter_burning_oil()/explode_oil()
-// aren't ported yet), explosionmask(), engulfer_explosion_msg(),
+// Ported: explode(), scatter() (fracturing boulders/statues isn't ported
+// yet; splatter_burning_oil()/explode_oil() aren't ported yet), explosionmask(), engulfer_explosion_msg(),
 // adtyp_to_expltype(), mon_explodes().
 
+import { STATUE_TRAP } from './const.js';
+import { t_at, deltrap } from './trap.js';
+import { sobj_at } from './makemon.js';
+import { Tobjnam } from './objnam.js';
+import { fracture_rock, break_statue } from './zap.js';
 import { rehumanize } from './polyself.js';
 import { hideunder_async } from './makemon.js';
 import { DEADMONSTER } from './mon.js';
@@ -32,8 +37,8 @@ import { AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_DISN, AD_ELEC, AD_DRST,
          AD_PEST, AD_SPC2, AD_RBRE, AD_DGST, AT_ENGL, PM_CLERIC, PM_MONK,
          PM_WIZARD, PM_HEALER, PM_KNIGHT } from './monsters.js';
 import { resists_magm, resists_fire, resists_cold, resists_disint,
-         resists_elec, resists_poison, resists_acid, is_demon,
-         is_vampshifter } from './mondata.js';
+         resists_elec, resists_poison, resists_acid, is_demon, is_vampshifter,
+         hides_under, bigmonst, digests } from './mondata.js';
 import { nonliving } from './makemon.js';
 import { Monnam, rndmonnam, pmname } from './do_name.js';
 import { s_suffix, lowc, strstri } from './hacklib.js';
@@ -57,15 +62,27 @@ import { Upolyd, next2u } from './const.js';
 import { uprop } from './youprop.js';
 import { sticks as sticks_ex } from './engrave.js';
 import { dist2 as dist2_ex } from './hacklib.js';
-import { OBJ_AT as OBJ_AT_ex } from './const.js';
-import { newsym as newsym_ex } from './display.js';
-import { M1_CONCEAL as M1_CONCEAL_ex } from './monsters.js';
-import { maybe_unhide_at as maybe_unhide_at_ex } from './mon.js';
+import { newsym } from './display.js';
+import { M1_CONCEAL, MZ_LARGE } from './monsters.js';
+import { maybe_unhide_at } from './mon.js';
+import { shop_keeper, costly_spot, credit_report, addtobill } from './shk.js';
+import { in_rooms, nomul } from './hack.js';
+import { unpunish } from './read.js';
+import { splitobj, obj_extract_self, place_object } from './mkobj.js';
+import { breaks } from './dothrow.js';
+import { closed_door } from './makemon.js';
+import { ohitmon, thitu } from './mthrowu.js';
+import { dmgval } from './weapon.js';
+import { stop_occupation } from './allmain.js';
+import { flooreffects } from './do.js';
+import { stackobj } from './invent.js';
+import { rn2, rnd } from './rng.js';
+import { SHOPBASE, LARGEST_INT, MAY_FRACTURE, MAY_DESTROY, MAY_HITMON,
+         MAY_HITYOU, VIS_EFFECTS, N_DIRS, xdir, ydir, ZAP_POS, IS_SINK,
+         STONE } from './const.js';
+import { BOULDER, STATUE, GLASS, EGG, GOLD_PIECE } from './objects.js';
 
-/* C ref: mondata.h digests(), sticks() */
-function digests(ptr) {
-    return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL && a.adtyp === AD_DGST);
-}
+/* C ref: mondata.h sticks() */
 /* C ref: monst.h monstseesu_ad(), monstunseesu_ad() */
 function monstseesu_ad(adtyp) { monstseesu(cvt_adtyp_to_mseenres(adtyp)); }
 function monstunseesu_ad(adtyp) { monstunseesu(cvt_adtyp_to_mseenres(adtyp)); }
@@ -697,34 +714,238 @@ export async function explode(
 }
 
 
+/* C ref: display.h level.objects[x][y] -- the top object of the pile */
+function level_objects_top(x, y) {
+    for (const o of game.level?.objects || [])
+        if (o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR')
+            return o;
+    return null;
+}
+
 // C ref: explode.c scatter()
 /*
- * Scatter objects at a location in random directions.  Returns the
- * number of objects that moved.  Only the case where there is nothing
- * at <sx,sy> to scatter is ported; moving objects throws a stop.
- * (shop_origin/credit_report() only matter for objects that get
- * scattered out of a shop.)
+ * scflags:
+ *      VIS_EFFECTS     Add visual effects to display
+ *      MAY_HITMON      Objects may hit monsters
+ *      MAY_HITYOU      Objects may hit hero
+ *      MAY_HIT         Objects may hit you or monsters
+ *      MAY_DESTROY     Objects may be destroyed at random
+ *      MAY_FRACTURE    Stone objects can be fractured (statues, boulders)
  */
+/* returns number of scattered objects */
 export async function scatter(sx, sy, /* location of objects to scatter */
                               blastforce, /* force behind the scattering */
                               scflags,
                               obj) { /* only scatter this obj */
-    const u = game.u;
+    const g = game;
+    const u = g.u;
+    let otmp;
+    let tmp;
+    let farthest = 0;
+    let typ;
+    let qtmp;
+    let used_up;
     const individual_object = obj ? true : false;
-    const total = 0;
-    let mtmp;
-    void blastforce; void scflags;
+    let shop_origin, lostgoods = false;
+    let mtmp, shkp = null;
+    let stmp, stmp2 = null;
+    let schain = null;
+    let total = 0;
 
-    if (individual_object ? obj : OBJ_AT_ex(sx, sy))
-        throw new Error('scatter(): scattering objects not ported yet');
+    /* (impossible() if an individual object isn't at the scatter site) */
 
-    newsym_ex(sx, sy);
-    if (u_at(sx, sy) && u.uundetected
-        && (game.youmonst.data.mflags1 & M1_CONCEAL_ex) !== 0) /* hides_under() */
-        await hideunder_async(game.youmonst);
+    shop_origin = ((shkp = shop_keeper(in_rooms(sx, sy, SHOPBASE).charCodeAt(0) || 0)) != null
+                   && costly_spot(sx, sy));
+    if (shop_origin)
+        await credit_report(shkp, 0, true); /* establish baseline, without msgs */
+
+    while ((otmp = (individual_object ? obj
+                                      : level_objects_top(sx, sy))) != null) {
+        if (otmp === g.uball || otmp === g.uchain) {
+            const waschain = (otmp === g.uchain);
+
+            /* Soundeffect(se_chain_shatters, 25): no sound interface */
+            await pline_The("chain shatters!");
+            await unpunish();
+            if (waschain)
+                continue;
+        }
+        if (otmp.quan > 1) {
+            qtmp = otmp.quan - 1;
+            if (qtmp > LARGEST_INT)
+                qtmp = LARGEST_INT;
+            qtmp = rnd(qtmp);
+            otmp = splitobj(otmp, qtmp);
+        } else {
+            obj = null; /* all used */
+        }
+        obj_extract_self(otmp);
+        used_up = false;
+
+        /* 9 in 10 chance of fracturing boulders or statues */
+        if ((scflags & MAY_FRACTURE) !== 0
+            && (otmp.otyp === BOULDER || otmp.otyp === STATUE)
+            && rn2(10)) {
+            if (otmp.otyp === BOULDER) {
+                if (cansee(sx, sy)) {
+                    await pline(`${Tobjnam(otmp, "break")} apart.`);
+                } else {
+                    /* Soundeffect(se_stone_breaking, 100) */
+                    await You_hear("stone breaking.");
+                }
+                await fracture_rock(otmp);
+                place_object(otmp, sx, sy);
+                if ((otmp = sobj_at(BOULDER, sx, sy)) !== null) {
+                    /* another boulder here, restack it to the top */
+                    obj_extract_self(otmp);
+                    place_object(otmp, sx, sy);
+                }
+            } else {
+                let trap;
+
+                if ((trap = t_at(sx, sy)) && trap.ttyp === STATUE_TRAP)
+                    deltrap(trap);
+                if (cansee(sx, sy)) {
+                    await pline(`${Tobjnam(otmp, "crumble")}.`);
+                } else {
+                    /* Soundeffect(se_stone_crumbling, 100) */
+                    await You_hear("stone crumbling.");
+                }
+                await break_statue(otmp);
+                place_object(otmp, sx, sy); /* put fragments on floor */
+            }
+            newsym(sx, sy); /* in case it's beyond radius of 'farthest' */
+            used_up = true;
+
+            /* 1 in 10 chance of destruction of obj; glass, egg destruction */
+        } else if ((scflags & MAY_DESTROY) !== 0
+                   && (!rn2(10) || (objects[otmp.otyp].oc_material === GLASS
+                                    || otmp.otyp === EGG))) {
+            if (await breaks(otmp, sx, sy))
+                used_up = true;
+        }
+
+        if (!used_up) {
+            stmp = { next: null, obj: otmp, ox: sx, oy: sy,
+                     dx: 0, dy: 0, range: 0, stopped: false };
+            tmp = rn2(N_DIRS); /* get the direction */
+            stmp.dx = xdir[tmp];
+            stmp.dy = ydir[tmp];
+            tmp = blastforce - Math.trunc(otmp.owt / 40);
+            if (tmp < 1)
+                tmp = 1;
+            stmp.range = rnd(tmp); /* anywhere up to that determ. by wt */
+            if (farthest < stmp.range)
+                farthest = stmp.range;
+            stmp.stopped = false;
+            if (!schain)
+                schain = stmp;
+            else
+                stmp2.next = stmp;
+            stmp2 = stmp;
+        }
+    }
+
+    while (farthest-- > 0) {
+        for (stmp = schain; stmp; stmp = stmp.next) {
+            if ((stmp.range-- > 0) && (!stmp.stopped)) {
+                g.thrownobj = stmp.obj; /* mainly in case it kills hero */
+                g.bhitpos = { x: stmp.ox + stmp.dx, y: stmp.oy + stmp.dy };
+                const bhitpos = g.bhitpos;
+                if (isok(bhitpos.x, bhitpos.y))
+                    typ = g.level.at(bhitpos.x, bhitpos.y).typ;
+                else
+                    typ = STONE;
+                if (!isok(bhitpos.x, bhitpos.y)) {
+                    bhitpos.x -= stmp.dx;
+                    bhitpos.y -= stmp.dy;
+                    stmp.stopped = true;
+                } else if (!ZAP_POS(typ)
+                           || closed_door(bhitpos.x, bhitpos.y)) {
+                    bhitpos.x -= stmp.dx;
+                    bhitpos.y -= stmp.dy;
+                    stmp.stopped = true;
+                } else if ((mtmp = m_at(bhitpos.x, bhitpos.y)) != null) {
+                    if (scflags & MAY_HITMON) {
+                        stmp.range--;
+                        if (await ohitmon(mtmp, stmp.obj, 1, false)) {
+                            stmp.obj = null;
+                            stmp.stopped = true;
+                        }
+                    }
+                } else if (u_at(bhitpos.x, bhitpos.y)) {
+                    if (scflags & MAY_HITYOU) {
+                        let dam, hitvalu, hitu;
+
+                        if (g.multi)
+                            nomul(0);
+                        dam = dmgval(stmp.obj, g.youmonst);
+                        hitvalu = 8 + stmp.obj.spe;
+                        if (bigmonst(g.youmonst.data))
+                            hitvalu++;
+                        const objp = { obj: stmp.obj };
+                        hitu = await thitu(hitvalu, Maybe_Half_Phys(dam),
+                                           objp, null);
+                        stmp.obj = objp.obj;
+                        if (!stmp.obj)
+                            stmp.stopped = true;
+                        if (hitu) {
+                            stmp.range -= 3;
+                            await stop_occupation();
+                        }
+                    }
+                } else {
+                    if (scflags & VIS_EFFECTS) {
+                        /* tmp_at(gb.bhitpos.x, gb.bhitpos.y); */
+                        /* nh_delay_output(); */
+                    }
+                }
+                stmp.ox = bhitpos.x;
+                stmp.oy = bhitpos.y;
+                if (IS_SINK(g.level.at(stmp.ox, stmp.oy).typ))
+                    stmp.stopped = true;
+                g.thrownobj = null;
+            }
+        }
+    }
+    for (stmp = schain; stmp; stmp = stmp2) {
+        let obj_left_shop = false;
+
+        stmp2 = stmp.next;
+        const x = stmp.ox;
+        const y = stmp.oy;
+        if (stmp.obj) {
+            if (x !== sx || y !== sy) {
+                total += stmp.obj.quan;
+                obj_left_shop = (shop_origin && !costly_spot(x, y));
+            }
+            if (!await flooreffects(stmp.obj, x, y, "land")) {
+                const r0 = in_rooms(u.ux, u.uy, SHOPBASE).charAt(0);
+                /* strchr(u.urooms, *in_rooms(...)) also matches the terminator */
+                if (obj_left_shop
+                    && (r0 === '' || (u.urooms || '').includes(r0))) {
+                    /* At the moment this only takes on gold. (See C's
+                       comment: billing non-gold items here could leave
+                       the hero in a pickle.) */
+                    if (stmp.obj.otyp === GOLD_PIECE) {
+                        await addtobill(stmp.obj, false, false, true);
+                        lostgoods = true;
+                    }
+                }
+                place_object(stmp.obj, x, y);
+                stackobj(stmp.obj);
+            }
+        }
+        newsym(x, y);
+    }
+    newsym(sx, sy);
+    if (u_at(sx, sy) && u.uundetected && hides_under(g.youmonst.data))
+        await hideunder_async(g.youmonst);
     if ((mtmp = m_at(sx, sy)) != null && mtmp.mtrapped)
         mtmp.mtrapped = 0;
-    maybe_unhide_at_ex(sx, sy);
+    maybe_unhide_at(sx, sy);
+    if (lostgoods) /* implies shop_origin and therefore shkp valid */
+        await credit_report(shkp, 1, false);
     return total;
 }
 

@@ -75,7 +75,7 @@ import { t_at, m_at, is_pool, is_lava, delobj_core, m_in_air, mondied,
          seemimic, wake_nearto } from './mon.js';
 import { is_pick } from './mon.js';
 import { cansee, recalc_block_point } from './vision.js';
-import { Blind, Deaf, Fire_resistance, Hallucination, Levitation }
+import { Blind, Deaf, Fire_resistance, Hallucination, Levitation, Half_physical_damage }
     from './youprop.js';
 import { OCLASSES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
@@ -443,7 +443,7 @@ export async function boulder_hits_pool(obj, x, y, pushing) {
                 + (Fire_resistance() ? '.' : '!'));
             await burn_away_slime();
             let damage = d(Fire_resistance() ? 1 : 3, 6);
-            if (game.u.uprops?.HALF_PHDAM)
+            if (Half_physical_damage())
                 damage = Math.trunc((damage + 1) / 2);
             await losehp(damage, 'molten lava', KILLED_BY);
         } else if (!fillsUp && game.flags?.verbose !== false

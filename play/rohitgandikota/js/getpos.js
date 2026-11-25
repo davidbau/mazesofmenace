@@ -22,7 +22,7 @@ import { do_screen_description, is_cmap_wall, is_cmap_room, is_cmap_corr,
          is_cmap_door, is_cmap_engraving } from './pager.js';
 import { handle_tip, is_valid_travelpt, TIP_GETPOS } from './hack.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
-         tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
+         tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
 
 import { NUM_GLOCS, GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE,
          GLOC_INTERESTING, GLOC_VALID, GFILTER_VIEW, GFILTER_AREA,
@@ -45,7 +45,6 @@ import { an } from './objnam.js';
 import { tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu,
          ATR_NONE } from './tty/wintty.js';
 import { NO_COLOR } from './terminal.js';
-import { xwaitforspace } from './tty/getline.js';
 import { what_is_a_location } from './pager.js';
 
 const CM = cmap_names;
@@ -176,14 +175,9 @@ async function getpos_help(force, goal) {
        pages with dmore(), which only space, return or ESC dismiss; any
        other key rings the bell and keeps waiting */
     await tty_display_nhwindow(win);
-    await xwaitforspace(quitchars);
-    while (game.morc !== '\x1b' && tty_next_page(win))
-        await xwaitforspace(quitchars);
     await tty_destroy_nhwindow(win);
 }
 
-/* include/hack.h — quitchars */
-const quitchars = ' \r\n\x1b';
 
 // C curs(WIN_MAP, cx, cy) — park the terminal cursor on the map square.
 // _buildScreenOutput() honors game._map_cursor over the hero's position.

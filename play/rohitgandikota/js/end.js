@@ -58,8 +58,6 @@ import { discover_object } from './o_init.js';
 import { upstart } from './do_name.js';
 import { SORTLOOT_LOOT, SORTLOOT_PACK } from './const.js';
 import { boolean_option } from './options.js';
-import { tty_next_page } from './tty/wintty.js';
-import { xwaitforspace } from './tty/getline.js';
 import { docrt, display_nhwindow_message } from './display.js';
 import { keepdogs } from './dog.js';
 import { inven_inuse } from './restore.js';
@@ -177,7 +175,8 @@ export async function done_in_by(mtmp, how) {
             buf += ` ${has_ebones(mtmp) ? 'of' : 'called'} ${MGIVENNAME(mtmp)}`;
     }
 
-    game.killer = { format, name: buf };
+    game.killer.format = format;
+    game.killer.name = buf;
 
     /* might be killed by a monster which was the cause of hero's
        helplessness; if so, shorten the reason to just the verb
@@ -296,9 +295,6 @@ export async function container_contents(list, identified, all_containers, repor
                 }
                 if (dumping) tty_putstr(0, 0, '');
                 await tty_display_nhwindow(tmpwin);
-                do {
-                    await xwaitforspace(' \r\n\x1b');
-                } while (game.morc !== '\x1b' && tty_next_page(tmpwin));
                 await tty_destroy_nhwindow(tmpwin);
                 await notice_all_mons_flush();
                 if (all_containers)
@@ -937,16 +933,6 @@ async function really_done(how) {
         tty_putstr(endwin, 0, '');
         await tty_display_nhwindow(endwin, true);
     }
-    if (!game.done_stopprint) {
-        /* the text window's --More-- accepts only space/return/ESC;
-           wintty.c process_text_window(): ESC at a page's --More-- sets
-           WIN_CANCEL and stops paging instead of showing the next page */
-        const { xwaitforspace } = await import('./tty/getline.js');
-        const { tty_next_page } = await import('./tty/wintty.js');
-        await xwaitforspace(' ');
-        while (game.morc !== '\x1b' && tty_next_page(endwin))
-            await xwaitforspace(' ');
-    }
     await tty_destroy_nhwindow(endwin);
 
     /* end.c:1579 — exit_nhwindows() runs before topten(): settty ->
@@ -1071,9 +1057,8 @@ async function disclose(how, taken) {
                     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD } =
                 await import('./insight.js');
             const { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
-                    tty_destroy_nhwindow, tty_next_page } =
+                    tty_destroy_nhwindow } =
                 await import('./tty/wintty.js');
-            const { xwaitforspace } = await import('./tty/getline.js');
             const win = tty_create_nhwindow(NHW_MENU);
             for (const l of enlightenment(
                      BASICENLIGHTENMENT | MAGICENLIGHTENMENT,
@@ -1084,9 +1069,6 @@ async function disclose(how, taken) {
                process_text_window() pages with dmore(quitchars), so only
                space, return and ESC turn a page */
             await tty_display_nhwindow(win);
-            await xwaitforspace(' \r\n\x1b');
-            while (game.morc !== '\x1b' && tty_next_page(win))
-                await xwaitforspace(' \r\n\x1b');
             await tty_destroy_nhwindow(win);
         }
         if (c === 'q')
