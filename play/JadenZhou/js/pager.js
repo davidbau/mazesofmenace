@@ -17,6 +17,7 @@
 // (glyph_at()): hero, seen monster, seen object, seen trap, or the
 // background (back_to_glyph()).
 
+import { db_under_typ } from './display.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
@@ -34,8 +35,10 @@ import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { extcmdlist } from './func_tab.js';
 import { cmd_from_func, key2extcmddesc, key2txt, dokeylist } from './cmd.js';
 import { visctrl } from './hacklib.js';
-import { canspotmon, vobj_at, pline, Hallucination, Blind, back_to_glyph,
-         known_branch_stairs, stairway_at } from './display.js';
+import {
+    canspotmon, vobj_at, pline, back_to_glyph, known_branch_stairs,
+    stairway_at
+} from './display.js';
 import { cansee } from './vision.js';
 import { m_at, closed_door, is_pool, is_lava } from './makemon.js';
 import { t_at } from './trap.js';
@@ -96,6 +99,23 @@ import { display_inventory } from './invent.js';
 import { data_base } from './data_base.js';
 import { tty_putmixed, tty_getlin, tty_display_file } from './wintty.js';
 import { doextversion } from './mdlib.js';
+import {
+    Blind, Hallucination, See_invisible, Infravision, Detect_monsters, Invis, Invisible
+} from './youprop.js';
+import { trap_predicament } from './insight.js';
+import { y_monnam as y_monnam_pg } from './do_name.js';
+import { visible_region_at as visible_region_at_pg } from './region.js';
+import { ansimpleoname as ansimpleoname_pg } from './iactions.js';
+import { MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION, M_AP_FURNITURE,
+         M_AP_MONSTER, BUFSZ as BUFSZ_PG } from './const.js';
+import { glyph_kind as glyph_kind_pg } from './display.js';
+import { simpleonames as simpleonames_pg, surface as surface_pg } from './iactions.js';
+import { Mgender as Mgender_pg } from './do_name.js';
+import { ceiling_hider as ceiling_hider_pg } from './engrave.js';
+import { M1_CONCEAL as M1_CONCEAL_PG, M1_HIDE as M1_HIDE_PG,
+         S_EEL as S_EEL_PG } from './monsters.js';
+import { S_poisoncloud as S_poisoncloud_pg } from './region.js';
+import { option_help as option_help_pg } from './options.js';
 
 /* C ref: mondata.h digests() */
 function digests(ptr) {
@@ -160,7 +180,7 @@ export const defsyms_explanation = defsyms.map(d => d[1]);
 
 /* C ref: rm.h is_cmap_trap(), is_cmap_drawbridge() */
 function is_cmap_trap(i) { return i >= S_arrow_trap && i <= S_trapped_chest; }
-function is_cmap_drawbridge(i) { return i >= S_vodbridge && i <= S_hcdbridge; }
+export function is_cmap_drawbridge(i) { return i >= S_vodbridge && i <= S_hcdbridge; }
 
 /* C ref: dat/symbols "DECgraphics" -- the symbols it sets (meta forms of
    the alternate-charset letters), by defsyms[] index */
@@ -245,10 +265,6 @@ function showsyms_oth(idx) {
     }
 }
 
-function uhave(prop) {
-    const p = game.u?.uprops?.[prop];
-    return !!(p && (p.intrinsic || p.extrinsic));
-}
 
 // C ref: display.c back_to_glyph() -- the cmap index of the background
 // at <x,y> (walls are all "wall", so wall_angle() isn't needed here)
@@ -336,16 +352,6 @@ export function back_to_cmap(x, y) {
     }
 }
 
-// C ref: dbridge.c db_under_typ()
-function db_under_typ(mask) {
-    switch (mask & DB_UNDER) {
-    case DB_ICE: return ICE;
-    case DB_LAVA: return LAVAPOOL;
-    case DB_MOAT: return MOAT;
-    default: return STONE;
-    }
-}
-
 // C ref: pager.c waterbody_name()
 /* describe a pool location's contents; the Snprintf()s are into a
    40-character buffer (pooltype[40]) */
@@ -404,7 +410,7 @@ export function self_lookat() {
     /* include race with role unless polymorphed */
     if (!u.mtimedone) /* !Upolyd */
         race = `${game.urace.adj} `;
-    let outbuf = `${uhave(INVIS) && !uhave(BLINDED) ? "invisible " : ""}${race}`
+    let outbuf = `${Invis() && !Blind() ? "invisible " : ""}${race}`
         + `${pmname(game.youmonst.data, game.flags.female ? FEMALE : MALE)}`
         + ` called ${game.plname}`;
     if (u.usteed)
@@ -571,7 +577,7 @@ function look_at_object(x, y, glyph) {
 }
 
 // C ref: display.h is_obj_mappear()
-function is_obj_mappear(mon, otyp) {
+export function is_obj_mappear(mon, otyp) {
     return mon.m_ap_type === M_AP_OBJECT && mon.mappearance === otyp;
 }
 
@@ -682,7 +688,6 @@ function howmonseen(mon) {
     const u = game.u;
     const useemon = canseemon(mon);
     const xraydist = (u.xray_range < 0) ? -1 : ((u.xray_range || 0) * (u.xray_range || 0));
-    const See_invisible = uhave(SEE_INVIS) || perceives(game.youmonst.data);
     let how_seen = 0; /* result */
 
     /* normal vision;
@@ -696,7 +701,7 @@ function howmonseen(mon) {
     if (useemon && mon.minvis)
         how_seen |= MONSEEN_SEEINVIS;
     /* infravision */
-    if ((!mon.minvis || See_invisible) && see_with_infrared(mon))
+    if ((!mon.minvis || See_invisible()) && see_with_infrared(mon))
         how_seen |= MONSEEN_INFRAVIS;
     /* telepathy */
     if (tp_sensemon(mon))
@@ -706,7 +711,7 @@ function howmonseen(mon) {
         && ((mon.mx - u.ux) ** 2 + (mon.my - u.uy) ** 2) <= xraydist) /* mdistu() */
         how_seen |= MONSEEN_XRAYVIS;
     /* extended detection */
-    if (uhave(DETECT_MONSTERS))
+    if (Detect_monsters())
         how_seen |= MONSEEN_DETECT;
     /* class-/type-specific warning */
     if (MATCH_WARN_OF_MON(mon))
@@ -938,17 +943,15 @@ export function lookat(x, y) {
            (even if you could also see yourself via other means).
            Sensing self while blind or swallowed is treated as if it
            were by normal vision (cf canseeself()). */
-        const See_invisible = uhave(SEE_INVIS) || perceives(game.youmonst.data);
-        const Invisible = uhave(INVIS) && !u.uprops[INVIS]?.blocked && !See_invisible;
-        if ((Invisible || u.uundetected) && !Blind()
+        if ((Invisible() || u.uundetected) && !Blind()
             && !(u.uswallow || game.iflags.save_uswallow)) {
             let how = 0;
 
-            if (uhave(INFRAVISION))
+            if (Infravision())
                 how |= 1;
             if (u.uprops[TELEPAT]?.extrinsic) /* Unblind_telepat */
                 how |= 2;
-            if (uhave(DETECT_MONSTERS))
+            if (Detect_monsters())
                 how |= 4;
 
             if (how)
@@ -1557,7 +1560,7 @@ function get_menu_cmd_key(ch) { return ch.charCodeAt(0); }
 
 /* C sprintf() field helpers for show_menu_controls()'s formats */
 function padl(s, w) { return s.length >= w ? s : ' '.repeat(w - s.length) + s; }
-function padr(s, w) { return s.length >= w ? s : s + ' '.repeat(w - s.length); }
+export function padr(s, w) { return s.length >= w ? s : s + ' '.repeat(w - s.length); }
 
 // C ref: options.c default_menu_cmd_info[] (the menu_shift_right/_left
 // entries are marked 'shift': tty doesn't offer WC2_MENU_SHIFT)
@@ -1806,7 +1809,7 @@ const LOOK_QUICK = 1, LOOK_ONCE = 2, LOOK_VERBOSE = 3;
 const chkfilNone = 0, chkfilUsrTyped = 1, chkfilDontAsk = 2, chkfilIaCheck = 4;
 
 // C ref: strutil.c pmatch() -- case-sensitive wildcard match
-function pmatch(patrn, strng) {
+export function pmatch(patrn, strng) {
     let pi = 0, si = 0;
     for (;;) { /* pmatch_top: */
         const s = strng[si++] || '';
@@ -2161,7 +2164,7 @@ async function putmixed(window, attr, str) {
 }
 
 // C ref: getpos.c coord_desc()
-function coord_desc(x, y, cmode) {
+export function coord_desc(x, y, cmode) {
     switch (cmode) {
     default:
         return "";
@@ -2757,19 +2760,3 @@ async function hmenu_doextversion() {
 async function hmenu_dowhatis() {
     await dowhatis();
 }
-
-import { trap_predicament } from './insight.js';
-import { y_monnam as y_monnam_pg } from './do_name.js';
-import { visible_region_at as visible_region_at_pg } from './region.js';
-import { ansimpleoname as ansimpleoname_pg } from './iactions.js';
-
-import { MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION, M_AP_FURNITURE,
-         M_AP_MONSTER, BUFSZ as BUFSZ_PG } from './const.js';
-import { glyph_kind as glyph_kind_pg } from './display.js';
-import { simpleonames as simpleonames_pg, surface as surface_pg } from './iactions.js';
-import { Mgender as Mgender_pg } from './do_name.js';
-import { ceiling_hider as ceiling_hider_pg } from './engrave.js';
-import { M1_CONCEAL as M1_CONCEAL_PG, M1_HIDE as M1_HIDE_PG,
-         S_EEL as S_EEL_PG } from './monsters.js';
-import { S_poisoncloud as S_poisoncloud_pg } from './region.js';
-import { option_help as option_help_pg } from './options.js';

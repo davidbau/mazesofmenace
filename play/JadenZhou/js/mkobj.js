@@ -12,6 +12,7 @@
 // containers (mkbox_cnts, add_to_container), egg/tin/figurine monster
 // types, mk_artifact, candy wrappers, timers, novels, weight().
 
+import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
 import { depth, level_difficulty, In_hell } from './dungeon.js';
@@ -54,8 +55,8 @@ import { eaten_stat, tin_variety, tintxt_fodder, vegetarian } from './eat.js';
 import { costly_spot } from './insight.js';
 import { is_ice } from './dig.js';
 import { obj_sheds_light, obj_split_light_source, del_light_source } from './light.js';
-
-function impossible(msg) { console.error(`impossible: ${msg}`); }
+import { nartifact_exist, mk_artifact } from './artifact.js';
+import { A_NONE } from './const.js';
 
 const NON_PM = -1;
 
@@ -1234,8 +1235,6 @@ export function bcsign(otmp) {
 }
 
 // nartifact_exist(): C ref artifact.c, ported in artifact.js
-import { nartifact_exist, mk_artifact } from './artifact.js';
-import { A_NONE } from './const.js';
 
 function not_ported(what) {
     throw new Error(`mkobj: ${what} not ported yet`);

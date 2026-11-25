@@ -5,11 +5,13 @@
 // aren't ported yet), explosionmask(), engulfer_explosion_msg(),
 // adtyp_to_expltype(), mon_explodes().
 
+import { DEADMONSTER } from './mon.js';
 import { pay_for_damage as pay_for_damage_ex } from './shk.js';
 import { game } from './gstate.js';
-import { pline, You, pline_The, map_invisible, unmap_invisible, canspotmon,
-         tmp_at, DISP_BEAM, DISP_CHANGE, DISP_END, explosion_to_glyph,
-         Hallucination } from './display.js';
+import {
+    pline, You, pline_The, map_invisible, unmap_invisible, canspotmon,
+    tmp_at, DISP_BEAM, DISP_CHANGE, DISP_END, explosion_to_glyph
+} from './display.js';
 import { You_hear } from './sounds.js';
 import { cansee } from './vision.js';
 import { m_at } from './makemon.js';
@@ -38,34 +40,30 @@ import { seemimic, xkilled, monkilled, setmangry, wake_nearto, mondead,
 import { destroy_items, zap_over_floor, resist_async } from './zap.js';
 import { burnarmor, Maybe_Half_Phys, ignite_items } from './trap.js';
 import { burn_away_slime } from './potion.js';
-import { ugolemeffects } from './mhitu.js';
+import { ugolemeffects, uhim, uhis } from './mhitu.js';
 import { monstseesu, monstunseesu } from './uhitm.js';
 import { cvt_adtyp_to_mseenres } from './mondata.js';
 import { exercise } from './attrib.js';
 import { killer } from './topten.js';
 import { done } from './end.js';
 import { d } from './rng.js';
+import {
+    Fire_resistance, Cold_resistance, Disint_resistance, Shock_resistance, Poison_resistance,
+    Antimagic, Acid_resistance, Invulnerable, Hallucination, Deaf
+} from './youprop.js';
+import { Upolyd, next2u } from './const.js';
+import { uprop } from './youprop.js';
+import { sticks as sticks_ex } from './engrave.js';
+import { dist2 as dist2_ex } from './hacklib.js';
+import { OBJ_AT as OBJ_AT_ex } from './const.js';
+import { newsym as newsym_ex } from './display.js';
+import { M1_CONCEAL as M1_CONCEAL_ex } from './monsters.js';
+import { maybe_unhide_at as maybe_unhide_at_ex } from './mon.js';
 
-/* C ref: youprop.h property tests used here */
-function uprop(p) {
-    return game.u.uprops[p] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
-}
-function uhave(p) { const q = uprop(p); return !!(q.intrinsic || q.extrinsic); }
-function Deaf() { return uhave(DEAF) || !!game.u.uroleplay?.deaf; }
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-function Invulnerable() { return !!uprop(INVULNERABLE).intrinsic; }
 /* C ref: mondata.h digests(), sticks() */
 function digests(ptr) {
     return (ptr.mattk || []).some(a => a.aatyp === AT_ENGL && a.adtyp === AD_DGST);
 }
-/* C ref: you.h uhim(), uhis() */
-function uhim() { return game.flags.female ? "her" : "him"; }
-function uhis() { return game.flags.female ? "her" : "his"; }
-/* C ref: hack.h next2u() */
-function next2u(x, y) {
-    return Math.abs(x - game.u.ux) <= 1 && Math.abs(y - game.u.uy) <= 1;
-}
-function DEADMONSTER(mon) { return mon.mhp < 1; }
 /* C ref: monst.h monstseesu_ad(), monstunseesu_ad() */
 function monstseesu_ad(adtyp) { monstseesu(cvt_adtyp_to_mseenres(adtyp)); }
 function monstunseesu_ad(adtyp) { monstunseesu(cvt_adtyp_to_mseenres(adtyp)); }
@@ -97,33 +95,33 @@ function explosionmask(
             /* leave 'res' with EXPL_NONE */
             break;
         case AD_MAGM:
-            if (uhave(ANTIMAGIC))
+            if (Antimagic())
                 res = EXPL_HERO;
             break;
         case AD_FIRE:
-            if (uhave(FIRE_RES))
+            if (Fire_resistance())
                 res = EXPL_HERO;
             break;
         case AD_COLD:
-            if (uhave(COLD_RES))
+            if (Cold_resistance())
                 res = EXPL_HERO;
             break;
         case AD_DISN:
             if ((olet === WAND_CLASS)
                 ? (nonliving(m.data) || is_demon(m.data))
-                : uhave(DISINT_RES))
+                : Disint_resistance())
                 res = EXPL_HERO;
             break;
         case AD_ELEC:
-            if (uhave(SHOCK_RES))
+            if (Shock_resistance())
                 res = EXPL_HERO;
             break;
         case AD_DRST:
-            if (uhave(POISON_RES))
+            if (Poison_resistance())
                 res = EXPL_HERO;
             break;
         case AD_ACID:
-            if (uhave(ACID_RES))
+            if (Acid_resistance())
                 res = EXPL_HERO;
             break;
         default:
@@ -696,12 +694,6 @@ export async function explode(
     await wake_nearto(x, y, i);
 }
 
-import { sticks as sticks_ex } from './engrave.js';
-import { dist2 as dist2_ex } from './hacklib.js';
-import { OBJ_AT as OBJ_AT_ex } from './const.js';
-import { newsym as newsym_ex } from './display.js';
-import { M1_CONCEAL as M1_CONCEAL_ex } from './monsters.js';
-import { maybe_unhide_at as maybe_unhide_at_ex } from './mon.js';
 
 // C ref: explode.c scatter()
 /*

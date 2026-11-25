@@ -7,11 +7,16 @@
 // Not ported yet: grddead() (mongone()/mondead() of a guard), uleftvault(),
 // paygd() (end.js), vault_summon_gd(), vault_gd_watching().
 
+import { DEADMONSTER } from './mon.js';
+import { impossible } from './hack.js';
+import { remove_monster } from './muse.js';
+import { um_dist } from './shk.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { pline, You, pline_The, newsym, canspotmon,
-         map_invisible, mon_visible, xy_set_wall_state, map_location,
-         Blind } from './display.js';
+import {
+    pline, You, pline_The, newsym, canspotmon, map_invisible, mon_visible,
+    xy_set_wall_state, map_location
+} from './display.js';
 import { You_hear } from './sounds.js';
 import { cansee, couldsee, unblock_point, block_point,
          recalc_block_point } from './vision.js';
@@ -47,37 +52,15 @@ import { m_carrying, mon_wield_item } from './weapon.js';
 import { is_fainted } from './eat.js';
 import { mon_track_clear } from './monmove.js';
 import { on_level } from './dungeon.js';
+import { Deaf, Strangled, Blind } from './youprop.js';
+import { u_at } from './const.js';
+import { noit_mhis } from './mhitu.js';
 
-function impossible(msg) { console.error(`impossible: ${msg}`); }
-
-/* C ref: monst.h DEADMONSTER() */
-function DEADMONSTER(mon) { return mon.mhp < 1; }
-/* C ref: hack.h u_at() */
-function u_at(x, y) { return x === game.u.ux && y === game.u.uy; }
-/* C ref: youprop.h Deaf, Strangled */
-function Deaf() {
-    const p = game.u.uprops?.[DEAF];
-    return !!(p?.intrinsic || p?.extrinsic) || !!game.u.uroleplay?.deaf;
-}
-function Strangled() {
-    const p = game.u.uprops?.[STRANGLED];
-    return !!(p?.intrinsic || p?.extrinsic);
-}
 /* C ref: hack.h distu(), um_dist() */
 function distu(x, y) { return (x - game.u.ux) ** 2 + (y - game.u.uy) ** 2; }
 function dist2(x0, y0, x1, y1) { return (x0 - x1) ** 2 + (y0 - y1) ** 2; }
-function um_dist(x, y, n) {
-    return Math.abs(game.u.ux - x) > n || Math.abs(game.u.uy - y) > n;
-}
-/* C ref: display.h remove_monster() -- the monster list is keyed by mx/my */
-function remove_monster(mtmp) {
-    const lst = game.level.monsters || [];
-    const i = lst.indexOf(mtmp);
-    if (i >= 0)
-        lst.splice(i, 1);
-}
 /* C ref: invent.c g_at() */
-function g_at(x, y) {
+export function g_at(x, y) {
     for (const o of game.level.objects || [])
         if (o.otyp === GOLD_PIECE && o.ox === x && o.oy === y)
             return o;
@@ -85,8 +68,6 @@ function g_at(x, y) {
 }
 /* C ref: you.h mhe(), noit_mhis() for a guard (always male or female,
    never "it") */
-function mhe(mtmp) { return mtmp.female ? "she" : "he"; }
-function noit_mhis(mtmp) { return mtmp.female ? "her" : "his"; }
 /* C ref: pline.c verbalize() -- SetVoice() only matters for speech */
 async function verbalize(line) {
     if (Deaf())

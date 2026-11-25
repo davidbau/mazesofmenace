@@ -939,6 +939,10 @@ export function vision_recalc(control = 0) {
                             loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                             if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                                 newsym(col, row);
+                        } else if ((ov & IN_SIGHT)
+                                   || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
+                            if (col !== 0)
+                                newsym(col, row);
                         }
                     } else {
                         next_row[col] |= IN_SIGHT;

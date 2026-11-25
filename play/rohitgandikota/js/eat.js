@@ -41,11 +41,11 @@ import { will_feel_cockatrice } from './invent.js';
 import { g_at } from './invent.js';
 import { hands_obj } from './invent.js';
 import { obj_extract_self } from './invent.js';
-import { inv_cnt } from './hack.js';
+import { inv_cnt, still_chewing } from './hack.js';
 import { an } from './objnam.js';
 import { ansimpleoname } from './objnam.js';
 import { safe_qbuf } from './objnam.js';
-import { otense } from './objnam.js';
+import { otense, Tobjnam } from './objnam.js';
 import { the_unique_pm } from './objnam.js';
 import { corpse_xname } from './objnam.js';
 import { killer_xname } from './objnam.js';
@@ -198,7 +198,7 @@ import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK, HUN
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_DOWNPLAY, freeinv, update_inventory, reorder_invent, addinv_nomerge, stackobj } from './invent.js';
 import { pline } from './display.js';
-import { observe_object } from './o_init.js';
+import { observe_object, makeknown } from './o_init.js';
 /* include/obj.h:332 carried() is a WHERE test, not list membership. */
 import { carried, polyfood } from './obj.js';
 import { HUNGER, STONED, SLIMED, SICK, VOMITING } from './const.js';
@@ -207,7 +207,30 @@ import { is_rottable, b_trapped } from './trap.js';
 import { body_part } from './polyself.js';
 import { LIGHT_HEADED, Is_airlevel, Is_astralevel, Is_waterlevel } from './const.js';
 import { surface } from './dungeon.js';
-import { FINGER, NH_GREEN, NO_PART, TIMEOUT } from './const.js';
+import { FINGER, NH_GREEN, NO_PART, NOSE, TIMEOUT, BUFSZ } from './const.js';
+import { welded } from './wield.js';
+import { remove_worn_item } from './steal.js';
+import { set_bknown } from './mkobj.js';
+import { trycall } from './do_name.js';
+import { W_RING } from './const.js';
+import { Ring_gone } from './do_wear.js';
+import { propertynames } from './timeout.js';
+import { perceives } from './mondata.js';
+import { See_invisible } from './youprop.js';
+import { rescham } from './mon.js';
+import { set_mimic_blocking } from './display.js';
+import { float_up } from './trap.js';
+import { change_sex } from './polyself.js';
+import { useupall } from './invent.js';
+import { o_unleash } from './apply.js';
+import { uwepgone, uqwepgone, uswapwepgone } from './wield.js';
+import { unpunish } from './read.js';
+import { dopotion } from './potion.js';
+import { objdescr_is } from './o_init.js';
+import { obj_is_pname } from './objnam.js';
+import { ART_ORB_OF_DETECTION } from './artilist_data.js';
+import { vault_gd_watching } from './vault.js';
+import { GD_EATGOLD } from './const.js';
 import { were_beastie } from './were.js';
 
 // src/eat.c:453 temp_resist() — the timeout of a resistance that is only
@@ -649,15 +672,7 @@ function tin_ok(obj) {
     return GETOBJ_SUGGEST;
 }
 
-// src/eat.c floorfood() — offer each edible thing at the hero's feet with a
-// y/n prompt, then fall through to getobj() for something carried.
-//
-// Each floor prompt reads ONE key, so the total depends on what is underfoot:
-// a bear trap, iron bars, gold and a food item each add one. That makes the
-// count data-dependent, and our floor contents are known to differ from C's on
-// some levels, so guessing it would misalign a session rather than fix it.
-// Only the clean case is ported — nothing edible underfoot, straight to
-// getobj — and anything else is recorded.
+// src/eat.c:3579 floorfood(); select floor food or a carried object.
 export async function floorfood(verb,
                                  corpsecheck) /* 0, no check, 1, corpses, 2, tinnable corpses */
 {
@@ -693,7 +708,7 @@ export async function floorfood(verb,
                then the trap would just get eaten on the _next_ turn... */
             qbuf = `There is a bear trap here (${
                 u_in_beartrap ? 'holding you' : 'armed'}); eat it?`;
-            if ((c = await tty_yn_function(qbuf, 'ynq', 'n')) === 'y') {
+            if ((c = await tty_yn_function(qbuf, 'ynq', 'n', true)) === 'y') {
                 let beartrap;
 
                 deltrap(ttmp);
@@ -729,7 +744,7 @@ export async function floorfood(verb,
                          || !on_level(digging.level || {}, game.u.uz))
                         ? '; eat them?'
                         : '; resume eating them?';
-                c = await tty_yn_function(qbuf, 'ynq', 'n');
+                c = await tty_yn_function(qbuf, 'ynq', 'n', true);
             }
             if (c === 'y')
                 return hands_obj;
@@ -743,7 +758,7 @@ export async function floorfood(verb,
                 qbuf = 'There is 1 gold piece here; eat it?';
             else
                 qbuf = `There are ${gold.quan} gold pieces here; eat them?`;
-            if ((c = await tty_yn_function(qbuf, 'ynq', 'n')) === 'y') {
+            if ((c = await tty_yn_function(qbuf, 'ynq', 'n', true)) === 'y') {
                 return gold;
             } else if (c === 'q') {
                 return null;
@@ -781,7 +796,7 @@ export async function floorfood(verb,
             qsfx = ` here; ${verb} ${one ? 'it' : 'one'}?`;
             qbuf = safe_qbuf(qbuf, qsfx, otmp, doname, ansimpleoname,
                              one ? 'something' : 'things');
-            if ((c = await tty_yn_function(qbuf, 'ynq', 'n')) === 'y')
+            if ((c = await tty_yn_function(qbuf, 'ynq', 'n', true)) === 'y')
                 return  otmp;
             else if (c === 'q')
                 return null;
@@ -1054,10 +1069,10 @@ async function touchfood(otmp) {
     return otmp;
 }
 
-// include/eat.c:58 nonrotting_corpse() — the species whose corpses never rot.
+// src/eat.c:58 nonrotting_corpse(); Rider meals must reach their fatal effect.
 const nonrotting_corpse = (mnum) =>
     mnum === PMNAMES.PM_LIZARD || mnum === PMNAMES.PM_LICHEN
-    || mnum === PMNAMES.PM_ACID_BLOB;   /* is_rider() is recorded below */
+    || is_rider(game.mons[mnum]) || mnum === PMNAMES.PM_ACID_BLOB;
 
 // src/eat.c:217 food_xname() — the name a meal is announced under. For a
 // corpse that is corpse_xname()'s singular form; for anything else the
@@ -1127,6 +1142,240 @@ export async function eating_conducts(pd) {
     }
 }
 
+// src/eat.c:2221 bounded_increase()
+function bounded_increase(old, inc, typ) {
+    const u = game.u;
+    if (u.uright && u.uright.otyp === typ && typ !== ONAMES.RIN_PROTECTION)
+        old -= u.uright.spe;
+    if (u.uleft && u.uleft.otyp === typ && typ !== ONAMES.RIN_PROTECTION)
+        old -= u.uleft.spe;
+    const absold = Math.abs(old);
+    let absinc = Math.abs(inc);
+    const sgnold = sgn(old), sgninc = sgn(inc);
+
+    if (absinc === 0 || sgnold !== sgninc || absold + absinc < 10) {
+        /* use inc as-is */
+    } else if (absold + absinc < 20) {
+        absinc = rnd(absinc);
+        if (absold + absinc < 10)
+            absinc = 10 - absold;
+        inc = sgninc * absinc;
+    } else if (absold + absinc < 40) {
+        absinc = rn2(absinc) ? 1 : 0;
+        if (absold + absinc < 20)
+            absinc = rnd(20 - absold);
+        inc = sgninc * absinc;
+    } else {
+        inc = 0;
+    }
+    if (u.uright && u.uright.otyp === typ && typ !== ONAMES.RIN_PROTECTION)
+        old += u.uright.spe;
+    if (u.uleft && u.uleft.otyp === typ && typ !== ONAMES.RIN_PROTECTION)
+        old += u.uleft.spe;
+    return old + inc;
+}
+
+// src/eat.c:2258 accessory_has_effect()
+async function accessory_has_effect(otmp) {
+    await pline(`Magic spreads through your body as you digest the ${
+        otmp.oclass === OCLASSES.RING_CLASS ? 'ring' : 'amulet'}.`);
+}
+
+// src/eat.c:2265 eataccessory()
+async function eataccessory(otmp) {
+    const u = game.u, typ = otmp.otyp;
+    const propnum = game.objects[typ].oc_oprop;
+    const prop = propertynames.find(entry => entry.prop_num === propnum);
+    const intrinsic = (u.intrinsic ||= {});
+    const oldprop = propnum ? (intrinsic[prop.key] || 0) : 0;
+
+    if (otmp === u.uleft || otmp === u.uright) {
+        await Ring_gone(otmp);
+        if (u.uhp <= 0)
+            return;
+    }
+    observe_object(otmp);
+    otmp.known = 1;
+    if (!rn2(otmp.oclass === OCLASSES.RING_CLASS ? 3 : 5)) {
+        switch (typ) {
+        default:
+            if (!propnum)
+                break;
+            if (!((intrinsic[prop.key] || 0) & FROMOUTSIDE))
+                await accessory_has_effect(otmp);
+            intrinsic[prop.key] = (intrinsic[prop.key] || 0) | FROMOUTSIDE;
+
+            switch (typ) {
+            case ONAMES.RIN_SEE_INVISIBLE:
+                set_mimic_blocking();
+                see_monsters();
+                if (Invis() && !oldprop && !u.uprops?.SEE_INVIS
+                    && !perceives(game.youmonst.data) && !Blind()) {
+                    newsym(u.ux, u.uy);
+                    await pline('Suddenly you can see yourself.');
+                    makeknown(typ);
+                }
+                break;
+            case ONAMES.RIN_INVISIBILITY:
+                if (!oldprop && !u.uprops?.INVIS && !u.blocked?.INVIS
+                    && !See_invisible() && !Blind()) {
+                    newsym(u.ux, u.uy);
+                    await Your(`body takes on a ${
+                        Hallucination() ? 'normal' : 'strange'} transparency...`);
+                    makeknown(typ);
+                }
+                break;
+            case ONAMES.RIN_PROTECTION_FROM_SHAPE_CHAN:
+                await rescham();
+                break;
+            case ONAMES.RIN_LEVITATION:
+                intrinsic.HLevitation = oldprop;
+                if (!Levitation()) {
+                    await float_up();
+                    incr_itimeout('HLevitation', d(10, 20));
+                    makeknown(typ);
+                }
+                break;
+            }
+            break;
+        case ONAMES.RIN_ADORNMENT:
+            await accessory_has_effect(otmp);
+            if (await adjattrib(A_CHA, otmp.spe, -1))
+                makeknown(typ);
+            break;
+        case ONAMES.RIN_GAIN_STRENGTH:
+            await accessory_has_effect(otmp);
+            if (await adjattrib(A_STR, otmp.spe, -1))
+                makeknown(typ);
+            break;
+        case ONAMES.RIN_GAIN_CONSTITUTION:
+            await accessory_has_effect(otmp);
+            if (await adjattrib(A_CON, otmp.spe, -1))
+                makeknown(typ);
+            break;
+        case ONAMES.RIN_INCREASE_ACCURACY:
+            await accessory_has_effect(otmp);
+            u.uhitinc = (bounded_increase(u.uhitinc | 0, otmp.spe,
+                                         ONAMES.RIN_INCREASE_ACCURACY) << 24) >> 24;
+            break;
+        case ONAMES.RIN_INCREASE_DAMAGE:
+            await accessory_has_effect(otmp);
+            u.udaminc = (bounded_increase(u.udaminc | 0, otmp.spe,
+                                         ONAMES.RIN_INCREASE_DAMAGE) << 24) >> 24;
+            break;
+        case ONAMES.RIN_PROTECTION:
+        case ONAMES.AMULET_OF_GUARDING:
+            await accessory_has_effect(otmp);
+            intrinsic.HProtection = (intrinsic.HProtection || 0) | FROMOUTSIDE;
+            u.ublessed = bounded_increase(u.ublessed | 0,
+                typ === ONAMES.RIN_PROTECTION ? otmp.spe : 2, typ);
+            (game.disp ||= {}).botl = true;
+            break;
+        case ONAMES.RIN_FREE_ACTION:
+            if (!((intrinsic.HSleep_resistance || 0) & FROMOUTSIDE))
+                await accessory_has_effect(otmp);
+            if (!Sleep_resistance())
+                await You_feel('wide awake.');
+            intrinsic.HSleep_resistance = (intrinsic.HSleep_resistance || 0) | FROMOUTSIDE;
+            break;
+        case ONAMES.AMULET_OF_CHANGE:
+            await accessory_has_effect(otmp);
+            makeknown(typ);
+            change_sex();
+            await You(`are suddenly very ${game.flags.female ? 'feminine' : 'masculine'}!`);
+            (game.disp ||= {}).botl = true;
+            break;
+        case ONAMES.AMULET_OF_UNCHANGING:
+            if (!Unchanging() && Upolyd(u)) {
+                await accessory_has_effect(otmp);
+                makeknown(typ);
+                await rehumanize();
+            }
+            break;
+        case ONAMES.AMULET_OF_STRANGULATION:
+            await choke(otmp);
+            break;
+        case ONAMES.AMULET_OF_RESTFUL_SLEEP: {
+            const newnap = rnd(100), oldnap = (intrinsic.HSleepy || 0) & TIMEOUT;
+            if (!((intrinsic.HSleepy || 0) & FROMOUTSIDE))
+                await accessory_has_effect(otmp);
+            intrinsic.HSleepy = (intrinsic.HSleepy || 0) | FROMOUTSIDE;
+            if (newnap < oldnap || oldnap === 0)
+                intrinsic.HSleepy = (intrinsic.HSleepy & ~TIMEOUT) | newnap;
+            break;
+        }
+        case ONAMES.RIN_SUSTAIN_ABILITY:
+        case ONAMES.AMULET_OF_LIFE_SAVING:
+        case ONAMES.AMULET_OF_FLYING:
+        case ONAMES.AMULET_OF_REFLECTION:
+            break;
+        }
+    }
+}
+
+// src/eat.c:2414 eatspecial()
+async function eatspecial() {
+    const otmp = game.context.victual.piece;
+
+    set_occupation(eatfood, 'eating non-food', 0);
+    await lesshungry(game.context.victual.nmod);
+    game.occupation = null;
+    game.context.victual = {};
+
+    if (otmp.oclass === OCLASSES.COIN_CLASS) {
+        if (carried(otmp))
+            await useupall(otmp);
+        else
+            await useupf(otmp, otmp.quan);
+        vault_gd_watching(GD_EATGOLD);
+        return;
+    }
+    if (game.objects[otmp.otyp].oc_material === MATERIALS.PAPER) {
+        if (otmp.otyp === ONAMES.SCR_MAIL)
+            await pline('This junk mail is less than satisfying.');
+        else if (otmp.otyp === ONAMES.SCR_SCARE_MONSTER)
+            await pline(`Yuck${otmp.blessed ? '!' : '.'}`);
+        else if (otmp.oclass === OCLASSES.SCROLL_CLASS && objdescr_is(otmp, 'YUM YUM'))
+            await pline(`Yum${otmp.blessed ? '!' : '.'}`);
+        else
+            await pline('Needs salt...');
+    }
+    if (otmp.oclass === OCLASSES.POTION_CLASS) {
+        otmp.quan++;
+        await dopotion(otmp);
+    } else if (otmp.oclass === OCLASSES.RING_CLASS || otmp.oclass === OCLASSES.AMULET_CLASS) {
+        await eataccessory(otmp);
+    } else if (otmp.otyp === ONAMES.LEASH && otmp.leashmon) {
+        o_unleash(otmp);
+    }
+
+    if (otmp.otyp === ONAMES.TRIDENT && !otmp.cursed) {
+        await pline(Hallucination() ? 'Four out of five dentists agree.'
+                                    : 'That was pure chewing satisfaction!');
+        await exercise(A_WIS, true);
+    }
+    if (otmp.otyp === ONAMES.FLINT && !otmp.cursed) {
+        await pline('Yabba-dabba delicious!');
+        await exercise(A_CON, true);
+    }
+
+    if (otmp === game.u.uwep && otmp.quan === 1)
+        await uwepgone();
+    if (otmp === game.u.uquiver && otmp.quan === 1)
+        uqwepgone();
+    if (otmp === game.u.uswapwep && otmp.quan === 1)
+        uswapwepgone();
+
+    if (otmp === game.u.uball)
+        unpunish();
+    if (otmp === game.u.uchain)
+        unpunish();
+    else if (carried(otmp))
+        await useup(otmp);
+    else
+        await useupf(otmp, 1);
+}
+
 /* src/eat.c:2491 foodwords[]; indices are enum obj_material_types. */
 const foodwords = [
     'meal', 'liquid', 'wax', 'food', 'meat', 'paper', 'cloth', 'leather',
@@ -1134,10 +1383,15 @@ const foodwords = [
     'platinum', 'mithril', 'plastic', 'glass', 'rich food', 'stone',
 ];
 
+// src/eat.c:2498 foodword()
 function foodword(otmp) {
     if (otmp.oclass === OCLASSES.FOOD_CLASS)
         return 'food';
-    return foodwords[game.objects[otmp.otyp].oc_material] || 'food';
+    if (otmp.oclass === OCLASSES.GEM_CLASS
+        && game.objects[otmp.otyp].oc_material === MATERIALS.GLASS
+        && otmp.dknown)
+        makeknown(otmp.otyp);
+    return foodwords[game.objects[otmp.otyp].oc_material];
 }
 
 // src/eat.c:1799 Hear_again(), called after rotten-food unconsciousness.
@@ -1160,21 +1414,20 @@ async function rottenfood(obj) {
         const { make_confused } = await import('./potion.js');
         await make_confused((game.u.intrinsic?.HConfusion | 0) + d(2, 4),
                             false);
-    } else if (!rn2(4) && !game.u.ublind) {
+    } else if (!rn2(4) && !Blind()) {
         await pline('Everything suddenly goes dark.');
-        const intr = (game.u.intrinsic ||= {});
-        intr.HBlinded = (intr.HBlinded | 0) + d(2, 10);
-        game.u.ublind = 1;
-        game.vision_full_recalc = 1;
-        (game.disp ||= {}).botl = true;
+        await make_blinded(((game.u.intrinsic?.HBlinded || 0) & TIMEOUT)
+                           + d(2, 10), false);
+        if (!Blind())
+            await Your('vision quickly clears.');
     } else if (!rn2(3)) {
         const duration = rnd(10);
         let what, where;
 
-        if (!game.u.ublind) {
+        if (!Blind()) {
             what = 'goes';
             where = 'dark';
-        } else if (game.u.uprops?.LEVITATION || Is_airlevel(game.u.uz)
+        } else if (Levitation() || Is_airlevel(game.u.uz)
                    || Is_waterlevel(game.u.uz)) {
             what = 'you lose control of';
             where = 'yourself';
@@ -1182,7 +1435,7 @@ async function rottenfood(obj) {
             what = 'you slap against the';
             where = game.u.usteed ? 'saddle' : surface(game.u.ux, game.u.uy);
         }
-        await pline(`The world spins and ${what} ${where}.`);
+        await pline_The(`world spins and ${what} ${where}.`);
         incr_itimeout('HDeaf', duration);
         (game.disp ||= {}).botl = true;
         nomul(-duration);
@@ -1357,6 +1610,137 @@ async function eatcorpse(otmp) {
     return retcode;
 }
 
+// src/eat.c:2627 edibility_prompts(); 0 safe, 1 decline, 2 accept warning.
+async function edibility_prompts(otmp) {
+    const cadaver = otmp.otyp === ONAMES.CORPSE;
+    const material = game.objects[otmp.otyp].oc_material;
+    const mnum = otmp.corpsenm;
+    const foodsmell = Tobjnam(otmp, 'smell');
+    const it_or_they = otmp.quan === 1 ? 'it' : 'they';
+    let stoneorslime = false, rotted = 0;
+
+    if (cadaver || otmp.otyp === ONAMES.EGG || otmp.otyp === ONAMES.TIN
+        || otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME) {
+        stoneorslime = ismnum(mnum)
+            && flesh_petrifies(game.mons[mnum])
+            && !Stone_resistance() && !poly_when_stoned(game.youmonst.data);
+        if (mnum === PMNAMES.PM_GREEN_SLIME || otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME)
+            stoneorslime = !Unchanging() && !slimeproof(game.youmonst.data);
+        if (cadaver && !nonrotting_corpse(mnum)) {
+            const age = peek_at_iced_corpse_age(otmp);
+            rotted = Math.trunc((game.moves - age) / 10);
+            if (otmp.cursed)
+                rotted += 2;
+            else if (otmp.blessed)
+                rotted -= 2;
+        }
+    }
+
+    let buf = '';
+    if (cadaver && rotted > 5 && !Sick_resistance()) {
+        buf = `${foodsmell} like ${it_or_they} could be tainted!`;
+    } else if (stoneorslime) {
+        buf = `${foodsmell} like ${it_or_they} could be something very dangerous!`;
+    } else if (cadaver && rotted > 5 && Sick_resistance()) {
+        buf = `${foodsmell} like ${it_or_they} could be tainted.`;
+    } else if (otmp.orotten || (cadaver && rotted > 3)) {
+        buf = `${foodsmell} like ${it_or_they} could be rotten!`;
+    } else if (cadaver && poisonous(game.mons[mnum]) && !Poison_resistance()) {
+        buf = `${foodsmell} like ${it_or_they} might be poisonous!`;
+    } else if (otmp.otyp === ONAMES.APPLE && otmp.cursed && !Sleep_resistance()) {
+        buf = `${foodsmell} like ${it_or_they} might have been poisoned.`;
+    } else if (cadaver && !vegetarian(game.mons[mnum])
+               && !game.u.uconduct.unvegetarian && Role_if(PMNAMES.PM_MONK)) {
+        buf = `${foodsmell} unhealthy.`;
+    } else if (cadaver && acidic(game.mons[mnum]) && !Acid_resistance()) {
+        buf = `${foodsmell} rather acidic.`;
+    } else if (Upolyd(game.u) && game.u.umonnum === PMNAMES.PM_RUST_MONSTER
+               && is_metallic(otmp) && otmp.oerodeproof) {
+        buf = `${foodsmell} disgusting to you right now.`;
+    } else if (!game.u.uconduct.unvegan
+               && ((material === MATERIALS.LEATHER || material === MATERIALS.BONE
+                    || material === MATERIALS.DRAGON_HIDE || material === MATERIALS.WAX)
+                   || (cadaver && !vegan(game.mons[mnum])))) {
+        buf = `${foodsmell} foul and unfamiliar to you.`;
+    } else if (!game.u.uconduct.unvegetarian
+               && ((material === MATERIALS.LEATHER || material === MATERIALS.BONE
+                    || material === MATERIALS.DRAGON_HIDE)
+                   || (cadaver && !vegetarian(game.mons[mnum])))) {
+        buf = `${foodsmell} unfamiliar to you.`;
+    }
+
+    if (buf) {
+        buf = buf.slice(0, BUFSZ - 1);
+        buf = `${buf}  Eat ${otmp.quan === 1 ? 'it' : 'one'} anyway?`.slice(0, BUFSZ - 1);
+        return (await tty_yn_function(buf, 'yn', 'n', true)) === 'n' ? 1 : 2;
+    }
+    return 0;
+}
+
+// src/eat.c:2734 doeat_nonfood()
+async function doeat_nonfood(otmp) {
+    const u = game.u, victual = (game.context.victual ||= {});
+    let basenutrit, ll_conduct = 0, nodelicious = false;
+
+    victual.reqtime = 1;
+    victual.piece = otmp;
+    victual.o_id = otmp.o_id;
+    victual.usedtime = 0;
+    victual.canchoke = u.uhs === SATIATED;
+    if (otmp.oclass === OCLASSES.COIN_CLASS)
+        basenutrit = otmp.quan > 200000 ? 2000 : Math.trunc(otmp.quan / 100);
+    else if (otmp.oclass === OCLASSES.BALL_CLASS || otmp.oclass === OCLASSES.CHAIN_CLASS)
+        basenutrit = weight(otmp);
+    else
+        basenutrit = game.objects[otmp.otyp].oc_nutrition;
+    if (otmp.otyp === ONAMES.SCR_MAIL) {
+        basenutrit = 0;
+        nodelicious = true;
+    }
+    victual.nmod = basenutrit;
+    victual.eating = 1;
+
+    if (!u.uconduct.food++) {
+        ll_conduct++;
+        livelog_printf(LL_CONDUCT, `ate for the first time (${food_xname(otmp, false)})`);
+    }
+    const material = game.objects[otmp.otyp].oc_material;
+    if (material === MATERIALS.LEATHER || material === MATERIALS.BONE
+        || material === MATERIALS.DRAGON_HIDE || material === MATERIALS.WAX) {
+        if (!u.uconduct.unvegan++ && !ll_conduct) {
+            livelog_printf(LL_CONDUCT,
+                `consumed animal products for the first time, by eating ${an(food_xname(otmp, false))}`);
+            ll_conduct++;
+        }
+        if (material !== MATERIALS.WAX) {
+            if (!u.uconduct.unvegetarian && !ll_conduct)
+                livelog_printf(LL_CONDUCT,
+                    `tasted meat by-products for the first time, by eating ${an(food_xname(otmp, false))}`);
+            await violated_vegetarian();
+        }
+    }
+
+    if (otmp.cursed) {
+        await rottenfood(otmp);
+        nodelicious = true;
+    } else if (material === MATERIALS.PAPER) {
+        nodelicious = true;
+    }
+    if (otmp.oclass === OCLASSES.WEAPON_CLASS && otmp.opoisoned) {
+        await pline('Ecch - that must have been poisonous!');
+        if (!Poison_resistance())
+            await poison_strdmg(rnd(4), rnd(15), xname(otmp), KILLED_BY_AN);
+        else
+            await You('seem unaffected by the poison.');
+    } else if (!nodelicious) {
+        await pline(`${obj_is_pname(otmp) && otmp.oartifact < ART_ORB_OF_DETECTION
+            ? '' : 'This '}${otmp.oclass === OCLASSES.COIN_CLASS
+                ? foodword(otmp) : singular(otmp, xname)} is delicious!`);
+    }
+    await eatspecial();
+    return ECMD_TIME;
+}
+
 export async function doeat() {
     if (game.u.intrinsic?.HStrangled) { /* Strangled */
         await pline("If you can't breathe air, how can you consume solids?");
@@ -1369,9 +1753,24 @@ export async function doeat() {
     if (await check_capacity(null))
         return ECMD_OK;
 
-    /* src/eat.c:2864 — "We have to make non-foods take 1 move to eat,
-       unless..." — an explicitly chosen non-food is rejected without
-       spending the turn. */
+    if (game.u.uedibility) {
+        const res = await edibility_prompts(otmp);
+        if (res) {
+            await Your(`${body_part(NOSE)} stops tingling and your sense of smell returns to normal.`);
+            game.u.uedibility = 0;
+            if (res === 1)
+                return ECMD_OK;
+        }
+    }
+
+    if (otmp === hands_obj) {
+        if (await still_chewing(game.u.ux, game.u.uy)
+            && game.level.at(game.u.ux, game.u.uy).typ === IRONBARS)
+            await You('pause to swallow.');
+        return ECMD_TIME;
+    }
+
+    /* src/eat.c:2859: non-food meals take one move after these guards. */
     if (!is_edible(otmp)) {
         await You('cannot eat that!');
         return ECMD_OK;
@@ -1383,6 +1782,45 @@ export async function doeat() {
                                : await touch_artifact(otmp, game.youmonst))) {
         return ECMD_TIME; /* got blasted so use a turn */
     }
+    if (is_metallic(otmp) && game.u.umonnum === PMNAMES.PM_RUST_MONSTER
+        && otmp.oerodeproof) {
+        otmp.rknown = 1;
+        if (otmp.quan > 1) {
+            if (!carried(otmp))
+                splitobj(otmp, otmp.quan - 1);
+            else
+                otmp = splitobj(otmp, 1);
+        }
+        await pline(`Ulch - that ${xname(otmp)} was rustproofed!`);
+        otmp.oerodeproof = 0;
+        await make_stunned(((game.u.intrinsic?.HStun || 0) & TIMEOUT)
+                           + rn2(10), true);
+        if (welded(otmp) || (otmp.cursed && (otmp.owornmask & W_RING))) {
+            set_bknown(otmp, 1);
+            await You(`spit out ${the(xname(otmp))}.`);
+        } else {
+            await You(`spit ${the(xname(otmp))} out onto the ${
+                surface(game.u.ux, game.u.uy)}.`);
+            if (carried(otmp)) {
+                if (otmp.owornmask)
+                    await remove_worn_item(otmp, false);
+                await freeinv(otmp);
+                await dropy(otmp);
+            }
+            stackobj(otmp);
+        }
+        return ECMD_TIME;
+    }
+    if (otmp.otyp === ONAMES.RIN_SLOW_DIGESTION) {
+        await pline('This ring is indigestible!');
+        await rottenfood(otmp);
+        if (otmp.dknown)
+            await trycall(otmp);
+        return ECMD_TIME;
+    }
+
+    if (otmp.oclass !== OCLASSES.FOOD_CLASS)
+        return await doeat_nonfood(otmp);
 
     /* src/eat.c:2922 — picking the interrupted meal again resumes it */
     if (otmp === game.context.victual?.piece) {

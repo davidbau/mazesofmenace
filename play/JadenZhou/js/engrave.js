@@ -10,6 +10,7 @@
 // Not ported yet: the player-side engrave commands, reading and sensing
 // engravings.
 
+import { is_art } from './artifact.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_CONDUCT } from './const.js';
@@ -48,8 +49,9 @@ import { objects, WEAPON_CLASS, ARMOR_CLASS, WAND_CLASS, GEM_CLASS, RING_CLASS,
          WAN_PROBING, WAN_MAGIC_MISSILE, WAN_SLEEP, WAN_DEATH, WAN_COLD,
          WAN_CANCELLATION, WAN_MAKE_INVISIBLE, WAN_TELEPORTATION, WAN_DIGGING,
          WAN_FIRE, WAN_LIGHTNING } from './objects.js';
-import { db_under_typ, You, You_cant, Your, pline_The, There, Blind,
-         Hallucination, newsym } from './display.js';
+import {
+    db_under_typ, You, You_cant, Your, pline_The, There, newsym
+} from './display.js';
 import { ceiling } from './dungeon.js';
 import { surface } from './iactions.js';
 import { is_lava, is_pool, goodpos, makemon } from './makemon.js';
@@ -72,6 +74,7 @@ import { splitobj, obj_extract_self } from './mkobj.js';
 import { hold_another_object } from './wizcmds.js';
 import { rn1 } from './rng.js';
 import { ART_FIRE_BRAND } from './artilist.js';
+import { Stunned, Confusion, Blind, Hallucination, Deaf } from './youprop.js';
 
 /* C ref: potion.c vision_clears[] */
 const vision_clears = "vision quickly clears.";
@@ -508,17 +511,6 @@ function is_blade(otmp) {
 function is_boots(otmp) {
     return otmp.oclass === ARMOR_CLASS
            && objects[otmp.otyp].oc_armcat === ARM_BOOTS;
-}
-function is_art(o, art) { return !!(o && o.oartifact === art); }
-/* C ref: youprop.h Confusion, Stunned, Deaf */
-function uprop(p) {
-    return game.u.uprops[p] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
-}
-function Confusion() { return !!(uprop(CONFUSION).intrinsic || uprop(CONFUSION).extrinsic); }
-function Stunned() { return !!(uprop(STUNNED).intrinsic || uprop(STUNNED).extrinsic); }
-function Deaf() {
-    return !!(uprop(DEAF).intrinsic || uprop(DEAF).extrinsic
-              || game.u.uroleplay?.deaf);
 }
 /* C ref: rm.h SURFACE_AT() */
 function SURFACE_AT(x, y) {

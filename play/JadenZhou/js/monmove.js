@@ -6,6 +6,8 @@
 // Branches that need code no session reaches yet throw a
 // 'not ported yet' error instead of skipping their rolls.
 
+import { is_armed } from './makemon.js';
+import { minv } from './mon.js';
 import { m_lined_up } from './mthrowu.js';
 import { game } from './gstate.js';
 import { worm_move, worm_nomove, wormhitu, see_wsegs } from './worm.js';
@@ -49,7 +51,8 @@ import { castmu } from './mcastu.js';
 import { M_ATTK_HIT, G_GENOD } from './const.js';
 import { Is_rogue_level, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, NORMAL_SPEED } from './const.js';
 import { mattackm } from './mhitm.js';
-import { obj_resists } from './dogmove.js';
+import { obj_resists, dogfood } from './dogmove.js';
+import { MANFOOD, ACCFOOD } from './const.js';
 import { touch_artifact, has_magic_key } from './artifact.js';
 import { is_metallic, is_rustprone, AMULET_OF_STRANGULATION,
          RIN_SLOW_DIGESTION } from './objects.js';
@@ -66,7 +69,6 @@ import { newcham } from './mon.js';
 import { PROT_FROM_SHAPE_CHANGERS, NC_SHOW_MSG, NO_NC_FLAGS } from './const.js';
 import { tty_display_nhwindow } from './wintty.js';
 import { mon_learns_traps } from './mondata.js';
-import { Unaware } from './eat.js';
 import { TRAPPED_DOOR } from './const.js';
 import { has_ceiling } from './insight.js';
 import { resist_conflict } from './mhitm.js';
@@ -79,7 +81,7 @@ import { wipe_engr_at } from './engrave.js';
 import { acurrstr } from './attrib.js';
 import {
     m_at, MON_AT, place_monster, sobj_at, is_pool, is_lava, accessible,
-    closed_door, sengr_at, u_at,
+    closed_door, sengr_at
 } from './makemon.js';
 import { monsndx, is_flyer, is_floater, is_swimmer, passes_walls, haseyes,
          perceives, can_teleport, is_undead, is_human, is_vampshifter,
@@ -116,37 +118,45 @@ import { In_hell } from './dungeon.js';
 import { stop_occupation } from './allmain.js';
 import { shk_move, costly_spot, after_shk_move, inhishop, add_damage } from './shk.js';
 import { in_rooms, in_town } from './hack.js';
-import { pri_move, in_your_sanctuary } from './priest.js';
+import { pri_move, in_your_sanctuary, inhistemple } from './priest.js';
 import { quest_stat_check, quest_talk } from './quest.js';
-
-/* monster inventory: makemon.js keeps mon->minvent as an array in pickup
-   order; C prepends, so walk it newest first */
-function minv(mon) { return (mon.minvent || []).slice().reverse(); }
+import {
+    Hallucination, Deaf, Invis, Displaced, Stealth, Aggravate_monster, Conflict, Underwater,
+    Protection_from_shape_changers, Unaware
+} from './youprop.js';
+import { Upolyd, u_at } from './const.js';
+import { DOOR as DOOR_MM, ROOM as ROOM_MM, CORR as CORR_MM } from './const.js';
+import { Is_special as Is_special_mm } from './dungeon.js';
+import { switch_terrain as switch_terrain_mm } from './hack.js';
+import { mons as mons_mm, PM_LEPRECHAUN as PM_LEPRECHAUN_MM } from './monsters.js';
+import { t_at as t_at_mm } from './trap.js';
+import { findgold as findgold_mm, mdrop_obj as mdrop_obj_mm } from './steal.js';
+import { bury_an_obj as bury_an_obj_mm } from './dig.js';
+import { COIN_CLASS as COIN_CLASS_MM } from './objects.js';
+import { gd_move } from './vault.js';
+import { sensemon as sensemon_mb } from './display.js';
+import { losehp as losehp_mb } from './trap.js';
+import { wakeup as wakeup_mb, monkilled as monkilled_mb } from './mon.js';
+import { telepathic as telepathic_mb } from './mondata.js';
+import { mon_nam as mon_nam_mb } from './do_name.js';
+import { TELEPAT as TELEPAT_MB, HALF_SPDAM as HALF_SPDAM_MB,
+         KILLED_BY_AN as KILLED_BY_AN_MB } from './const.js';
+import { AD_DRIN as AD_DRIN_MB } from './monsters.js';
+import { vegan as vegan_mm, is_rider as is_rider_mm, flesh_petrifies as flesh_petrifies_mm,
+         resists_ston as resists_ston_mm } from './mondata.js';
+import { touch_petrifies as touch_petrifies_mo } from './mondata.js';
+import { mstoning as mstoning_mo } from './mon.js';
+import { slimeproof as slimeproof_mo } from './eat.js';
+import { revive_corpse as revive_corpse_mo } from './zap.js';
+import { objdescr_is } from './o_init.js';
+import { wake_msg as wake_msg_mm } from './mon.js';
+import { cursed_object_at as cursed_object_at_ud } from './dogmove.js';
+import { mdisplacem as mdisplacem_mm } from './mhitm.js';
+import { M_ATTK_HIT as M_ATTK_HIT_MM, M_ATTK_DEF_DIED as M_ATTK_DEF_DIED_MM,
+         M_ATTK_AGR_DIED as M_ATTK_AGR_DIED_MM } from './const.js';
 
 // ── small helpers (C ref: youprop.h / mondata.h / display.h macros) ──
 
-/* C ref: youprop.h -- (H* || E*) && !B* */
-function uhave(prop) {
-    const p = game.u.uprops[prop];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Invis() { return uhave(INVIS); }
-function Stealth() { return uhave(STEALTH); }
-function Aggravate_monster() { return uhave(AGGRAVATE_MONSTER); }
-/* C ref: youprop.h Conflict -- (HConflict || EConflict) */
-function Conflict() {
-    const p = game.u.uprops[CONFLICT];
-    return !!(p.intrinsic || p.extrinsic);
-}
-function Displaced() { return uhave(DISPLACED); }
-function Underwater() { return !!game.u.uinwater; }
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-function Hallucination() { return uhave(HALLUC); }
-/* C ref: youprop.h Deaf */
-function Deaf() {
-    const p = game.u.uprops[DEAF];
-    return !!(p.intrinsic || p.extrinsic || game.u.uroleplay?.deaf);
-}
 /* C ref: monst.h mon_offmap() */
 function mon_offmap(mon) {
     return ((mon.mstate || 0)
@@ -185,7 +195,6 @@ function likes_lava(ptr) {
     return ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
 }
 function metallivorous(ptr) { return (ptr.mflags1 & M.M1_METALLIVORE) !== 0; }
-function is_armed(ptr) { return attacktype(ptr, M.AT_WEAP); }
 /* C ref: obj.h is_pick(), is_pole() */
 function is_pick(otmp) {
     return (otmp.oclass === OBJ.WEAPON_CLASS || otmp.oclass === OBJ.TOOL_CLASS)
@@ -240,7 +249,7 @@ function flees_light(mtmp) {
         && couldsee(mtmp.mx, mtmp.my);
 }
 /* C ref: monst.h helpless() */
-function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+export function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
 /* C ref: mondata.h is_lminion() */
 function is_lminion(mon) {
     return (mon.data.mflags2 & M.M2_MINION) !== 0 && mon.data.maligntyp >= 0
@@ -306,7 +315,7 @@ function m_carrying(mtmp, type) {
     return null;
 }
 /* C ref: monmove.c monhaskey() */
-function monhaskey(mon, for_unlocking) {
+export function monhaskey(mon, for_unlocking) {
     if (for_unlocking && m_carrying(mon, CREDIT_CARD))
         return true;
     return !!(m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK));
@@ -387,8 +396,9 @@ export function onscary(x, y, mtmp) {
     /* creatues who resist scaring under particular circumstances:
      * shopkeepers inside their own shop
      * priests inside their own temple */
-    if (mtmp.isshk || mtmp.ispriest)
-        throw new Error('onscary(): inhishop()/inhistemple() not ported yet');
+    if ((mtmp.isshk && inhishop(mtmp))
+        || (mtmp.ispriest && inhistemple(mtmp)))
+        return false;
 
     if (auditory_scare)
         return true;
@@ -753,7 +763,7 @@ function stuff_prevents_passage(mtmp) {
 // C ref: monmove.c can_fog()
 export function can_fog(mtmp) {
     if (!(game.mvitals[M.PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
-        && !uhave(PROT_FROM_SHAPE_CHANGERS) /* !Protection_from_shape_changers */
+        && !Protection_from_shape_changers() /* !Protection_from_shape_changers */
         && !stuff_prevents_passage(mtmp))
         return true;
     return false;
@@ -1836,11 +1846,16 @@ function searches_for_item(mon, obj) {
 
 // ── C ref: monmove.c mon_would_consume_item() ──
 function mon_would_consume_item(mtmp, otmp) {
-    if (otmp.otyp === CORPSE && corpse_eater(mtmp.data))
-        throw new Error('mon_would_consume_item(): corpse eaters not ported yet');
+    let ftyp;
 
-    if (mtmp.mtame && mtmp.edog)
-        throw new Error('mon_would_consume_item(): dogfood() not ported yet');
+    if (otmp.otyp === CORPSE && !touch_petrifies_mo(mons[otmp.corpsenm])
+        && corpse_eater(mtmp.data))
+        return true;
+
+    if (mtmp.mtame && mtmp.edog /* has_edog(): not guardian angel */
+        && (ftyp = dogfood(mtmp, otmp)) < MANFOOD
+        && (ftyp < ACCFOOD || mtmp.edog.hungrytime <= game.moves))
+        return true;
 
     return false;
 }
@@ -2743,9 +2758,6 @@ export async function dissolve_bars(x, y) {
     if (u_at(x, y))
         await switch_terrain_mm();
 }
-import { DOOR as DOOR_MM, ROOM as ROOM_MM, CORR as CORR_MM } from './const.js';
-import { Is_special as Is_special_mm } from './dungeon.js';
-import { switch_terrain as switch_terrain_mm } from './hack.js';
 
 // C ref: monmove.c leppie_avoidance()
 /* does leprechaun want to avoid the hero? */
@@ -2783,32 +2795,6 @@ async function leppie_stash(mtmp) {
             bury_an_obj_mm(gold, null);
     }
 }
-import { mons as mons_mm, PM_LEPRECHAUN as PM_LEPRECHAUN_MM } from './monsters.js';
-import { t_at as t_at_mm } from './trap.js';
-import { findgold as findgold_mm, mdrop_obj as mdrop_obj_mm } from './steal.js';
-import { bury_an_obj as bury_an_obj_mm } from './dig.js';
-import { COIN_CLASS as COIN_CLASS_MM } from './objects.js';
 
-import { gd_move } from './vault.js';
 /* C ref: monst.h DEADMONSTER() */
 function DEADMONSTER_mm(mon) { return mon.mhp < 1; }
-import { sensemon as sensemon_mb } from './display.js';
-import { losehp as losehp_mb } from './trap.js';
-import { wakeup as wakeup_mb, monkilled as monkilled_mb } from './mon.js';
-import { telepathic as telepathic_mb } from './mondata.js';
-import { mon_nam as mon_nam_mb } from './do_name.js';
-import { TELEPAT as TELEPAT_MB, HALF_SPDAM as HALF_SPDAM_MB,
-         KILLED_BY_AN as KILLED_BY_AN_MB } from './const.js';
-import { AD_DRIN as AD_DRIN_MB } from './monsters.js';
-import { vegan as vegan_mm, is_rider as is_rider_mm, flesh_petrifies as flesh_petrifies_mm,
-         resists_ston as resists_ston_mm } from './mondata.js';
-import { touch_petrifies as touch_petrifies_mo } from './mondata.js';
-import { mstoning as mstoning_mo } from './mon.js';
-import { slimeproof as slimeproof_mo } from './eat.js';
-import { revive_corpse as revive_corpse_mo } from './zap.js';
-import { objdescr_is } from './o_init.js';
-import { wake_msg as wake_msg_mm } from './mon.js';
-import { cursed_object_at as cursed_object_at_ud } from './dogmove.js';
-import { mdisplacem as mdisplacem_mm } from './mhitm.js';
-import { M_ATTK_HIT as M_ATTK_HIT_MM, M_ATTK_DEF_DIED as M_ATTK_DEF_DIED_MM,
-         M_ATTK_AGR_DIED as M_ATTK_AGR_DIED_MM } from './const.js';

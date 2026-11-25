@@ -5,6 +5,7 @@
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
+import { Luck } from './const.js';
 
 let _rngLog = [];
 let _rngLogEnabled = false;
@@ -145,11 +146,6 @@ export function rnd_on_display_rng(x) {
     return rn2_on_display_rng(x) + 1;
 }
 
-// C ref: Luck macro (you.h) — u.uluck + u.moreluck.
-function Luck() {
-    const u = game.u || {};
-    return (u.uluck || 0) + (u.moreluck || 0);
-}
 
 // C ref: rnd.c rnl() — 0 <= rnl(x) < x, adjusted by Luck.
 // The internal rn2 is logged (attributed to the outer caller); RND is not.

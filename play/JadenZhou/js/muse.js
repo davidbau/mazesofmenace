@@ -3,19 +3,23 @@
 // C ref: muse.c.  Paths that aren't ported yet throw a 'not ported yet'
 // error instead of skipping their rolls.
 
+import { DEADMONSTER, minv } from './mon.js';
+import { helpless } from './monmove.js';
+import { stairway_at } from './display.js';
 import { game } from './gstate.js';
 import { worm_move } from './worm.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { distmin } from './hacklib.js';
 import { cansee, couldsee } from './vision.js';
-import { pline, urgent_pline, pline_The, canseemon, canspotmon, map_invisible,
-         Hallucination } from './display.js';
+import {
+    pline, urgent_pline, pline_The, canseemon, canspotmon, map_invisible
+} from './display.js';
 import { You_hear } from './sounds.js';
 import { Monnam } from './do_name.js';
 import { an, xname, doname, singular } from './objnam.js';
 import { simpleonames } from './iactions.js';
 import { observe_object, discover_object, objdescr_is } from './o_init.js';
-import { unknow_object } from './mkobj.js';
+import { unknow_object, unbless } from './mkobj.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
 import { seemimic } from './mon.js';
@@ -33,8 +37,9 @@ import { BOLT_LIM, G_GONE, ANTIMAGIC, HALF_SPDAM, KILLED_BY_AN,
          DRAWBRIDGE_UP, SDOOR, D_LOCKED, D_CLOSED, IS_DOOR,
          ZAP_POS } from './const.js';
 
-import { newsym, sensemon, Norep, cls, show_glyph, docrt, You_feel,
-         Blind } from './display.js';
+import {
+    newsym, sensemon, Norep, cls, show_glyph, docrt, You_feel
+} from './display.js';
 import { mon_nam, x_monnam, Some_Monnam, noit_mon_nam, mon_nam_too,
          pronoun_gender, a_monnam } from './do_name.js';
 import { genders } from './role.js';
@@ -93,7 +98,7 @@ import { ARTICLE_A, SUPPRESS_INVISIBLE, SUPPRESS_SADDLE, SUPPRESS_IT,
          AUGMENT_IT, W_ARMF, TELEPORT_CONTROL, STRAT_WAITFORU, XKILL_NOMSG,
          XKILL_NOCONDUCT, HAND, DOOR, DBWALL } from './const.js';
 import { AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION,
-         SPE_BOOK_OF_THE_DEAD, IRON, POT_WATER } from './objects.js';
+         SPE_BOOK_OF_THE_DEAD, IRON } from './objects.js';
 import { ART_ORB_OF_DETECTION } from './artilist.js';
 import { arti_reflects } from './artifact.js';
 import { Can_rise_up, ceiling } from './dungeon.js';
@@ -112,11 +117,13 @@ import { doorlock } from './lock.js';
 import { in_rooms } from './hack.js';
 import { D_BROKEN, SHOPBASE, TEMPLE } from './const.js';
 import { tele } from './teleport.js';
-
-const WAND_BACKFIRE_CHANCE = 100; /* hack.h */
-const QBUFSZ = 128; /* global.h */
+import {
+    Antimagic, Blind, Hallucination, Deaf, See_invisible, Teleport_control, Half_spell_damage
+} from './youprop.js';
+import { m_next2u, u_at } from './const.js';
+import { mhe, mhim } from './mhitu.js';
 import { dist2, isok } from './hacklib.js';
-import { m_at, sobj_at, u_at } from './makemon.js';
+import { m_at, sobj_at } from './makemon.js';
 import { t_at } from './trap.js';
 import { monsndx, is_floater, passes_walls, dmgtype, haseyes,
          mon_knows_traps } from './mondata.js';
@@ -143,6 +150,16 @@ import { STAIRS, LADDER, TELEP_TRAP, WEB, BEAR_TRAP, is_hole, is_pit,
          M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE, M_SEEN_COLD,
          M_SEEN_ELEC, M_SEEN_ACID, POLY_TRAP, MFAST, NON_PM,
          SEE_INVIS } from './const.js';
+import { cls as cls_mu, show_glyph as show_glyph_mu, mon_to_glyph as mon_to_glyph_mu,
+         display_self as display_self_mu, docrt as docrt_mu, newsym as newsym_mu,
+         canspotmon as canspotmon_mu, map_invisible as map_invisible_mu,
+         You_feel as You_feel_mu } from './display.js';
+import { rn2_on_display_rng as rn2_on_display_rng_mu } from './rng.js';
+import { tty_display_map_nhwindow as tty_display_map_nhwindow_mu } from './wintty.js';
+import { unconscious as unconscious_mu } from './eat.js';
+
+const WAND_BACKFIRE_CHANCE = 100; /* hack.h */
+const QBUFSZ = 128; /* global.h */
 
 /* C ref: muse.c MUSE_* (defensive) */
 const MUSE_SCR_TELEPORTATION = 1;
@@ -184,10 +201,6 @@ const MUSE_POT_SLEEPING = 35;
 const MUSE_SCR_EARTH = 36;
 const MUSE_CAMERA = 37;
 
-/* monster inventory: makemon.js keeps mon->minvent as an array in pickup
-   order; C prepends, so walk it newest first */
-function minv(mon) { return (mon.minvent || []).slice().reverse(); }
-
 /* mondata.h */
 function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
 function mindless(ptr) { return (ptr.mflags1 & M.M1_MINDLESS) !== 0; }
@@ -202,23 +215,12 @@ function touch_petrifies(ptr) {
 }
 /* C ref: mondata.h NODIAG() */
 function NODIAG(monnum) { return monnum === M.PM_GRID_BUG; }
-/* C ref: monst.h helpless() */
-function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
-/* C ref: youprop.h See_invisible -- (HSee_invisible || ESee_invisible) */
-function See_invisible() {
-    const p = game.u.uprops[SEE_INVIS];
-    return !!(p.intrinsic || p.extrinsic);
-}
 /* C ref: mondata.c attacktype() */
 function attacktype(ptr, atyp) {
     return ptr.mattk.some(a => a.aatyp === atyp);
 }
 /* C ref: monst.h m_seenres() */
 export function m_seenres(mon, mask) { return (mon.seen_resistance || 0) & mask; }
-/* C ref: hack.h m_next2u() */
-function m_next2u(mon) {
-    return Math.abs(mon.mx - game.u.ux) <= 1 && Math.abs(mon.my - game.u.uy) <= 1;
-}
 
 // C ref: mthrowu.c m_carrying()
 function m_carrying(mtmp, type) {
@@ -227,20 +229,6 @@ function m_carrying(mtmp, type) {
     return null;
 }
 
-// C ref: stairs.c stairway_at()
-function stairway_at(x, y) {
-    for (let s = game.stairs; s; s = s.next)
-        if (s.sx === x && s.sy === y) return s;
-    return null;
-}
-
-/* C ref: youprop.h Deaf */
-function Deaf() {
-    const p = game.u.uprops[DEAF];
-    return !!(p.intrinsic || p.extrinsic || game.u.uroleplay?.deaf);
-}
-/* C ref: monst.h DEADMONSTER() */
-function DEADMONSTER(mon) { return mon.mhp < 1; }
 /* C ref: mondata.h resists_ston(), resists_acid(), acidic(), slimeproof(),
    noncorporeal(), amorphous(), unsolid() */
 function resists_ston(mon) { return !!Resists_Elem(mon, STONE_RES); }
@@ -255,8 +243,6 @@ function slimeproof(ptr) {
            || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER]
            || noncorporeal(ptr);
 }
-/* C ref: mondata.h mhe() */
-function mhe(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he; }
 /* C ref: hacklib.c upstart() */
 function upstart(s) { return s ? highc(s[0]) + s.slice(1) : s; }
 /* C ref: hacklib.c strsubst() -- replace the first instance of orig */
@@ -297,11 +283,6 @@ export function mon_has_special(mtmp) {
 function wearing_iron_shoes(mon) {
     const boots = which_armor(mon, W_ARMF);
     return !!(boots && objects[boots.otyp].oc_material === IRON);
-}
-/* C ref: you.h Teleport_control */
-function Teleport_control() {
-    const p = game.u.uprops[TELEPORT_CONTROL];
-    return !!(p.intrinsic || p.extrinsic);
 }
 
 // C ref: muse.c m_use_healing()
@@ -1233,23 +1214,12 @@ export async function use_defensive(mtmp) {
    iflags.last_msg to PLNMSG_UNKNOWN */
 const PLNMSG_enum = -1;
 
-/* C ref: mondata.h mhim() */
-function mhim(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].him; }
-
 /* C ref: display.h remove_monster() -- the monster list is keyed by mx/my */
-function remove_monster(mtmp) {
+export function remove_monster(mtmp) {
     const lst = game.level.monsters || [];
     const i = lst.indexOf(mtmp);
     if (i >= 0)
         lst.splice(i, 1);
-}
-
-/* C ref: mkobj.c unbless() -- no inventory update needed for a monster's
-   potion */
-function unbless(otmp) {
-    otmp.blessed = 0;
-    if (otmp.otyp === POT_WATER)
-        throw new Error('unbless(): holy water not ported yet');
 }
 
 // C ref: trap.c fill_pit()
@@ -2211,11 +2181,6 @@ function mdistu(mon) {
 function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
 /* C ref: obj.h makeknown() */
 function makeknown(otyp) { discover_object(otyp, true, true, true); }
-/* C ref: youprop.h */
-function uhave(prop) {
-    const p = game.u.uprops[prop];
-    return !!(p.intrinsic || p.extrinsic);
-}
 
 // C ref: muse.c mzapwand()
 /* when a monster zaps a wand give a message, deduct a charge, and if it
@@ -2456,7 +2421,7 @@ async function mbhitm(mtmp, otmp) {
     case WAN_STRIKING:
         reveal_invis = true;
         if (hits_you) {
-            if (uhave(ANTIMAGIC)) {
+            if (Antimagic()) {
                 monstseesu(M_SEEN_MAGR); /* monsters notice hero resisting */
                 /* shieldeff(u.ux, u.uy): transient display only */
                 /* Soundeffect(se_boing, 40) */
@@ -2467,7 +2432,7 @@ async function mbhitm(mtmp, otmp) {
                 monstunseesu(M_SEEN_MAGR); /* mons see hero not resisting */
                 await pline_The("wand hits you!");
                 tmp = d(2, 12);
-                if (uhave(HALF_SPDAM))
+                if (Half_spell_damage())
                     tmp = Math.trunc((tmp + 1) / 2);
                 await losehp(tmp, "wand", KILLED_BY_AN);
                 learnit = true;
@@ -2751,10 +2716,3 @@ export async function mcureblindness(mon, verbos) {
             await pline(`${Monnam(mon)} can see again.`);
     }
 }
-import { cls as cls_mu, show_glyph as show_glyph_mu, mon_to_glyph as mon_to_glyph_mu,
-         display_self as display_self_mu, docrt as docrt_mu, newsym as newsym_mu,
-         canspotmon as canspotmon_mu, map_invisible as map_invisible_mu,
-         You_feel as You_feel_mu } from './display.js';
-import { rn2_on_display_rng as rn2_on_display_rng_mu } from './rng.js';
-import { tty_display_map_nhwindow as tty_display_map_nhwindow_mu } from './wintty.js';
-import { unconscious as unconscious_mu } from './eat.js';

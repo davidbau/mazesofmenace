@@ -4,6 +4,9 @@
 // Ported so far: mcalcmove(), mcalcdistress(), movemon(), mfndpos(),
 // monnear(), mon_allowflags().
 
+import { may_dig } from './dig.js';
+import { monhaskey } from './monmove.js';
+import { online2 } from './hacklib.js';
 import { game } from './gstate.js';
 import { LL_KILLEDPET, LL_UMONST, LL_ACHIEVE, ACH_MEDU,
          has_mgivenname, MGIVENNAME } from './const.js';
@@ -122,7 +125,7 @@ import { rnd } from './rng.js';
 import { XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
          engulfing_u, is_pit, A_CHAOTIC, TELEPAT, INTRINSIC, M_AP_NOTHING,
          TEMPLE } from './const.js';
-import { Hallucination, canspotmon, see_monsters } from './display.js';
+import { canspotmon, see_monsters } from './display.js';
 import { mon_nam, x_monnam, ARTICLE_NONE, ARTICLE_THE,
          SUPPRESS_SADDLE, ARTICLE_A, ARTICLE_YOUR, noname_monnam } from './do_name.js';
 import { olfaction, is_orc } from './mondata.js';
@@ -150,10 +153,13 @@ import { in_rooms } from './hack.js';
 import { in_your_sanctuary } from './priest.js';
 import { nemdead, leaddead, nemesis_stinks } from './quest.js';
 import { stinky_nemesis } from './questpgr.js';
+import { Hallucination, Conflict } from './youprop.js';
+import { m_next2u } from './const.js';
+import { uhis } from './mhitu.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
-function minv(mon) { return (mon.minvent || []).slice().reverse(); }
+export function minv(mon) { return (mon.minvent || []).slice().reverse(); }
 
 // C ref: mon.c mcalcmove()
 export function mcalcmove(mon,
@@ -240,7 +246,7 @@ async function m_calcdistress(mtmp) {
 }
 
 /* C ref: monst.h DEADMONSTER() */
-function DEADMONSTER(mon) { return mon.mhp < 1; }
+export function DEADMONSTER(mon) { return mon.mhp < 1; }
 
 // C ref: mon.c mongone() -- the vault guard case is not ported; unstuck()
 // is checked in mon_leaving_level().
@@ -1064,8 +1070,7 @@ export async function xkilled(
             const mname = has_mgivenname(mtmp);
 
             livelog_printf(LL_KILLEDPET, `murdered ${mname ? MGIVENNAME(mtmp) : ""}${
-                               mname ? ", " : ""}${game.flags.female ? "her" : "his" /* uhis() */
-                               } faithful ${pmname(mdat, Mgender(mtmp))}`);
+                               mname ? ", " : ""}${uhis()} faithful ${pmname(mdat, Mgender(mtmp))}`);
         }
     } else if (mtmp.mpeaceful)
         adjalign(-5);
@@ -1506,10 +1511,6 @@ async function minliquid_core(mtmp) {
     return 0;
 }
 
-function Conflict() {
-    const p = game.u.uprops[CONFLICT];
-    return !!(p.intrinsic || p.extrinsic);
-}
 
 // ── C ref: mon.c movemon_singlemon() ──
 // perform movement for a single monster
@@ -2436,12 +2437,6 @@ function m_carrying(mtmp, type) {
         if (otmp.otyp === type) return otmp;
     return null;
 }
-/* C ref: monmove.c monhaskey() */
-function monhaskey(mon, for_unlocking) {
-    if (for_unlocking && m_carrying(mon, CREDIT_CARD))
-        return true;
-    return !!(m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK));
-}
 /* C ref: mondata.c passes_bars() */
 export function passes_bars(mptr) {
     return (passes_walls(mptr) || amorphous(mptr)
@@ -2523,14 +2518,6 @@ function OBJ_AT(x, y) {
     return false;
 }
 
-/* C ref: hacklib.c online2() */
-function online2(x0, y0, x1, y1) {
-    const dx = x0 - x1, dy = y0 - y1;
-    /*  If either delta is zero then they're on an orthogonal line,
-     *  else if the deltas are equal (signs ignored) they're on a diagonal.
-     */
-    return (!dy || !dx || dy === dx || dy === -dx);
-}
 /* C ref: mon.c monlineu() */
 function monlineu(mon, nx, ny) {
     return online2(nx, ny, mon.mux, mon.muy);
@@ -2545,12 +2532,6 @@ function is_pick(otmp) {
 function is_axe(otmp) {
     return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
             && objects[otmp.otyp].oc_skill === P_AXE);
-}
-/* C ref: hack.c may_dig() */
-function may_dig(x, y) {
-    const lev = game.level.at(x, y);
-    return !((IS_STWALL(lev.typ) || IS_TREE(lev.typ))
-             && ((lev.wall_info ?? 0) & W_NONDIGGABLE));
 }
 /* C ref: hack.c bad_rock() */
 export function bad_rock(mdat, x, y) {
@@ -3388,10 +3369,6 @@ function ordin_ld(n) { /* note: should be non-negative */
            : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
 }
 
-/* C ref: hack.h m_next2u() */
-function m_next2u(mtmp) {
-    return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) < 3;
-}
 
 // C ref: mon.c maybe_unhide_at()
 /* force a hidden monster or hero out of hiding when its cover goes away */

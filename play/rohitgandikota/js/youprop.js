@@ -16,8 +16,9 @@
 import { game } from './gstate.js';
 import { FROMOUTSIDE, Is_waterlevel } from './const.js';
 import { amphibious, breathless, haseyes, is_flyer, is_swimmer,
-         resists_cold, hates_silver } from './mondata.js';
+         resists_cold, hates_silver, defended } from './mondata.js';
 import { Upolyd } from './const.js';
+import { ATTKS } from './monst_data.js';
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
 import { ONAMES } from './objects_data.js';
@@ -176,8 +177,10 @@ export const Acid_resistance = () =>
     !!(game.u?.intrinsic?.HAcid_resistance || game.u?.uprops?.ACID_RES);
 export const Drain_resistance = () =>
     !!(game.u?.intrinsic?.HDrain_resistance || game.u?.uprops?.DRAIN_RES);
+// include/youprop.h:69 Sick_resistance; defended() uses null for the hero.
 export const Sick_resistance = () =>
-    !!(game.u?.intrinsic?.HSick_resistance || game.u?.uprops?.SICK_RES);
+    !!(game.u?.intrinsic?.HSick_resistance || game.u?.uprops?.SICK_RES
+       || defended(null, ATTKS.AD_DISE));
 // include/youprop.h:291/341
 export const Slow_digestion = () =>
     !!(game.u?.intrinsic?.HSlow_digestion || game.u?.uprops?.SLOW_DIGESTION);

@@ -18,7 +18,7 @@ import { LS_OBJECT, LS_MONSTER, RANGE_LEVEL, COUNTING, WRITING, FREEING,
          TEMP_LIT, COLNO, ROWNO, MAX_RADIUS } from './const.js';
 import { objects, CANDELABRUM_OF_INVOCATION, TALLOW_CANDLE, WAX_CANDLE,
          POT_OIL, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP } from './objects.js';
-import { obj_is_local, mon_is_local } from './timeout.js';
+import { obj_is_local, mon_is_local, end_burn } from './timeout.js';
 import { get_mon_location } from './zap.js';
 import { get_obj_location } from './shk.js';
 import { clear_path, circle_data, circle_start, COULD_SEE } from './vision.js';
@@ -358,7 +358,13 @@ export function snuff_light_source(x, y) {
                  */
                 if (artifact_light(obj))
                     continue;
-                throw new Error('snuff_light_source(): end_burn() of a burning object not ported yet');
+                end_burn(obj, obj.otyp !== MAGIC_LAMP);
+                /*
+                 * The current ls element has just been removed (and
+                 * ls->next is now invalid).  Return assuming that there
+                 * is only one light source attached to each object.
+                 */
+                return;
             }
         }
 }
@@ -423,7 +429,7 @@ export function obj_merge_light_sources(src, dest) {
 
     /* src == dest implies adding to candelabrum */
     if (src !== dest)
-        throw new Error('obj_merge_light_sources(): end_burn() of merged lit candles not ported yet');
+        end_burn(src, true); /* extinguish candles */
 
     for (ls = game.light_base; ls; ls = ls.next)
         if (ls.type === LS_OBJECT && ls.id.a_obj === dest) {

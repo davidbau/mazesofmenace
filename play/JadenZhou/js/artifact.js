@@ -7,6 +7,7 @@
 // mk_artifact(). Artifact powers (spec_abon, spec_dbon, touch_artifact,
 // invoke, ...) and artidisco[] are not ported yet.
 
+import { On_stairs } from './dogmove.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_ARTIFACT, NO_ROOM } from './const.js';
@@ -44,7 +45,6 @@ import { recalc_telepat_range, clear_bypasses, bypass_obj, nxt_unbypassed_obj,
          which_armor } from './worn.js';
 import { make_hallucinated } from './potion.js';
 import { invocation_pos } from './mklev.js';
-import { Hate_silver } from './wield.js';
 import { You_cant } from './display.js';
 import { yname } from './objnam.js';
 import { killer_xname } from './mthrowu.js';
@@ -69,12 +69,13 @@ import { ignite_items as ignite_items_art } from './trap.js';
 import { wake_nearto as wake_nearto_art } from './mon.js';
 import { ART_TSURUGI_OF_MURAMASA, ART_VORPAL_BLADE } from './artilist.js';
 import { SLIMED as SLIMED_ART } from './const.js';
-import { Blind as Blind_art } from './display.js';
 import { defended, resists_fire, resists_cold, resists_elec, resists_poison,
          resists_drli, Resists_Elem } from './mondata.js';
 import { STONE_RES } from './const.js';
 import { ART_GRIMTOOTH } from './artilist.js';
 import { Tobjnam } from './objnam.js';
+import { Antimagic, Hate_silver, Blind as Blind_art } from './youprop.js';
+import { objects as objects_ac } from './objects.js';
 
 // C ref: artifact.h SPFX_*
 export const SPFX_NONE = 0x00000000;
@@ -816,6 +817,23 @@ export function protects(otmp, being_worn) {
             || (being_worn && (arti.spfx & SPFX_PROTECT) !== 0));
 }
 
+// C ref: artifact.c shade_glare()
+/* used for hero's attack against a shade */
+export function shade_glare(obj) {
+    /* any silver object is effective */
+    if (objects_ac[obj.otyp].oc_material === O.SILVER)
+        return true;
+    /* non-silver artifacts with bonus against undead also are effective */
+    const arti = get_artifact(obj);
+    if (arti !== artilist()[ART_NONARTIFACT] && (arti.spfx & SPFX_DFLAG2)
+        && arti.mtype === M.M2_UNDEAD)
+        return true;
+    /* [if there was anything with special bonus against noncorporeals,
+       it would be effective too] */
+    /* otherwise, harmless to shades */
+    return false;
+}
+
 // C ref: artifact.c defends()
 /* used to check whether a monster is getting reflection/magic resistance
    from its wielded weapon or worn dragon scales */
@@ -1491,11 +1509,6 @@ export function touch_artifact_mon(obj, mon) {
     return 1;
 }
 
-/* C ref: youprop.h Antimagic */
-function Antimagic() {
-    const p = game.u.uprops[ANTIMAGIC];
-    return !!(p.intrinsic || p.extrinsic);
-}
 
 // C ref: artifact.c retouch_object()
 /* decide whether a particular item can be used by the hero; returns 1 if
@@ -1689,14 +1702,6 @@ export async function arti_speak(obj) {
     return ECMD_TIME;
 }
 
-/* C ref: stairs.c On_stairs() */
-function On_stairs(x, y) {
-    for (let s = game.stairs; s; s = s.next)
-        if (s.sx === x && s.sy === y)
-            return true;
-    return false;
-}
-
 // C ref: artifact.c abil_to_adtyp() -- 'abil' is the property index
 // standing in for C's &u.uprops[propidx].extrinsic
 function abil_to_adtyp(abil) {
@@ -1881,4 +1886,6 @@ export function arti_cost(otmp) {
     else
         return (100 * objects_ac[otmp.otyp].oc_cost);
 }
-import { objects as objects_ac } from './objects.js';
+
+// C ref: artifact.c is_art()
+export function is_art(o, art) { return !!(o && o.oartifact === art); }

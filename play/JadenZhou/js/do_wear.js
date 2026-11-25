@@ -8,6 +8,11 @@
 // common amulets, Blindf_on(), #takeoff with the X_off() routines, and
 // donning()/doffing()/cancel_don()/cancel_doff().
 
+import { cantweararm } from './worn.js';
+import { has_horns } from './polyself.js';
+import { impossible } from './hack.js';
+import { is_flyer } from './mondata.js';
+import { itimeout } from './potion.js';
 import { game } from './gstate.js';
 import { make_slimed, make_glib, make_hallucinated } from './potion.js';
 import { pline, You, Your, There, pline_The, newsym,
@@ -24,7 +29,7 @@ import { M1_NOHANDS, MZ_SMALL, MZ_LARGE, MZ_HUGE, M1_NOLIMBS, M1_HUMANOID,
          PM_WINGED_GARGOYLE, PM_HORNED_DEVIL, PM_MINOTAUR, PM_ASMODEUS,
          PM_BALROG, PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN,
          PM_KI_RIN, PM_WIZARD } from './monsters.js';
-import { xname, an, makeplural, Tobjnam } from './objnam.js';
+import { xname, an, makeplural, Tobjnam, obj_is_pname } from './objnam.js';
 import { vision_recalc } from './vision.js';
 import { HEAD, BLINDED, TELEPAT, INFRAVISION } from './const.js';
 import * as O from './objects.js';
@@ -56,7 +61,7 @@ import { the, thesimpleoname } from './iactions.js';
 import { change_luck } from './attrib.js';
 import { nomul } from './hack.js';
 import { encumber_msg } from './pickup.js';
-import { racial_exception } from './worn.js';
+import { racial_exception, artifact_light } from './worn.js';
 import { surface } from './iactions.js';
 import { discover_object } from './o_init.js';
 import { find_ac } from './u_init.js';
@@ -66,9 +71,10 @@ import { unmul } from './allmain.js';
 import { monsndx } from './mondata.js';
 import { rnd } from './rng.js';
 import { region_danger } from './region.js';
-
-// C's impossible() (pline.c) is not ported yet.
-function impossible(msg) { console.error(`impossible: ${msg}`); }
+import { Blind, Glib, Invisible, Levitation, Flying } from './youprop.js';
+import { Upolyd, Role_if } from './const.js';
+import { uprop } from './youprop.js';
+import { setnotworn as setnotworn_dw } from './worn.js';
 
 /* C ref: decl.c c_armor ... c_that_ */
 const c_armor = "armor", c_suit = "suit", c_shirt = "shirt",
@@ -90,7 +96,6 @@ function is_whirly(ptr) {
 function has_head(ptr) { return (ptr.mflags1 & M1_NOHEAD) === 0; }
 function mindless(ptr) { return (ptr.mflags1 & M1_MINDLESS) !== 0; }
 function breathless(ptr) { return (ptr.mflags1 & M1_BREATHLESS) !== 0; }
-function is_flyer(ptr) { return (ptr.mflags1 & M1_FLY) !== 0; }
 // C ref: mondata.c sliparm()
 function sliparm(ptr) {
     return is_whirly(ptr) || ptr.msize <= MZ_SMALL || noncorporeal(ptr);
@@ -106,8 +111,6 @@ function breakarm(ptr) {
             || ptr === mons[PM_MARILITH]
             || ptr === mons[PM_WINGED_GARGOYLE]);
 }
-/* C ref: mondata.h cantweararm() */
-function cantweararm(ptr) { return breakarm(ptr) || sliparm(ptr); }
 // C ref: mondata.c num_horns()
 function num_horns(ptr) {
     switch (monsndx(ptr)) {
@@ -126,7 +129,6 @@ function num_horns(ptr) {
     }
     return 0;
 }
-function has_horns(ptr) { return num_horns(ptr) > 0; }
 /* C ref: obj.h WrappingAllowed() */
 function WrappingAllowed(mptr) {
     return humanoid(mptr) && mptr.msize >= MZ_SMALL && mptr.msize <= MZ_HUGE
@@ -151,32 +153,10 @@ function is_flimsy(otmp) {
     return objects[otmp.otyp].oc_material <= O.LEATHER
            || otmp.otyp === O.RUBBER_HOSE;
 }
-/* C ref: you.h Upolyd */
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
 /* C ref: obj.h makeknown() */
 function makeknown(x) { discover_object(x, true, true, true); }
 /* C ref: pline.c You_feel() */
 async function You_feel(line) { await pline(`You feel ${line}`); }
-/* C ref: youprop.h property tests used here */
-function Levitation() {
-    const p = uprop(LEVITATION);
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Flying() {
-    const p = uprop(FLYING);
-    return !!((p.intrinsic || p.extrinsic
-               || (game.u.usteed && is_flyer(game.u.usteed.data)))
-              && !p.blocked);
-}
-function See_invisible() {
-    const p = uprop(SEE_INVIS);
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Invis() {
-    const p = uprop(INVIS);
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Invisible() { return Invis() && !See_invisible(); }
 
 // C ref: do_wear.c fingers_or_gloves() -- plural "fingers" or optionally
 // "gloves"
@@ -286,9 +266,8 @@ async function on_msg(otmp) {
 
         if (otmp.otyp === TOWEL)
             how = ` around your ${body_part(HEAD)}`;
-        if (otmp.oartifact)
-            throw new Error('on_msg(): obj_is_pname() not ported yet');
-        await You(`are now wearing ${an(otmp_name)}${how}.`);
+        await You(`are now wearing ${
+            obj_is_pname(otmp) ? the(otmp_name) : an(otmp_name)}${how}.`);
     }
 }
 
@@ -369,13 +348,6 @@ async function toggle_displacement(obj,
  */
 
 // C ref: timeout.c itimeout(), itimeout_incr(), incr_itimeout()
-function itimeout(val) {
-    if (val >= TIMEOUT)
-        val = TIMEOUT;
-    else if (val < 1)
-        val = 0;
-    return val;
-}
 function incr_itimeout(prop, incr) {
     const p = uprop(prop);
     p.intrinsic = (p.intrinsic & ~TIMEOUT) | itimeout((p.intrinsic & TIMEOUT) + incr);
@@ -613,18 +585,6 @@ async function Armor_on() {
     return 0;
 }
 
-/* C ref: artifact.c artifact_light() -- gold dragon scales/mail are
-   treated as light-emitting artifacts while worn as body armor */
-function artifact_light(obj) {
-    if (obj && (obj.otyp === O.GOLD_DRAGON_SCALE_MAIL
-                || obj.otyp === O.GOLD_DRAGON_SCALES)
-        && ((obj.owornmask || 0) & W_ARM) !== 0)
-        return true;
-    if (obj && obj.oartifact)
-        throw new Error('artifact_light(): artifacts not ported yet');
-    return false;
-}
-
 // C ref: do_wear.c Amulet_on()
 async function Amulet_on(amul) {
     const g = game;
@@ -843,10 +803,6 @@ export function adj_abon(otmp, delta) {
 
 /* C ref: you.h Blind -- Blinded intrinsic or extrinsic (blindfold),
    not blocked */
-function Blind() {
-    const p = game.u.uprops?.[BLINDED];
-    return !!((p?.intrinsic || p?.extrinsic) && !p?.blocked);
-}
 
 // C ref: potion.c toggle_blindness() -- blindness has just been toggled
 export function toggle_blindness() {
@@ -1078,7 +1034,6 @@ export async function Ring_off(obj) {
 export async function Ring_gone(obj) {
     await Ring_off_or_gone(obj, true);
 }
-import { setnotworn as setnotworn_dw } from './worn.js';
 
 // C ref: do_wear.c set_wear() -- called in moveloop()'s prologue to set
 // side-effects of worn start-up items; also used by poly_obj() when a
@@ -1503,15 +1458,6 @@ function takeoff_ctx() {
     return g.context.takeoff;
 }
 
-/* C ref: youprop.h u.uprops[] entry */
-function uprop(p) {
-    const u = game.u;
-    if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    return u.uprops[p];
-}
-function Glib() { return !!(uprop(GLIB).intrinsic || uprop(GLIB).extrinsic); }
-/* C ref: role.h Role_if() */
-function Role_if(pm) { return game.urole.mnum === pm; }
 /* C ref: obj.h is_boots(), is_gloves() */
 function is_boots(otmp) {
     return otmp.oclass === ARMOR_CLASS && objects[otmp.otyp].oc_armcat === ARM_BOOTS;

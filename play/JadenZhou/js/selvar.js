@@ -23,6 +23,7 @@
 // __sub; see nhlua.js lua_bor());
 // each method raises a Lua error until it is ported.
 
+import { rect_bounds } from './rect.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import {
@@ -663,14 +664,6 @@ function l_selection_setpoint(...args) {
     get_location_coord(c, ANY_LOC, game.coder ? game.coder.croom : null, crd);
     selection_setpoint(c.x, c.y, sel, val);
     return sel;
-}
-
-// C ref: rect.c rect_bounds()
-function rect_bounds(r1, r2, r3) {
-    r3.lx = Math.min(r1.lx, r2.lx);
-    r3.ly = Math.min(r1.ly, r2.ly);
-    r3.hx = Math.max(r1.hx, r2.hx);
-    r3.hy = Math.max(r1.hy, r2.hy);
 }
 
 // C ref: nhlsel.c l_selection_and()

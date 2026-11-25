@@ -9,9 +9,11 @@
 // svb.bases[] and go.oclass_prob_totals[] (decl.h) live on the game object
 // as game.bases and game.oclass_prob_totals.
 
+import { impossible } from './hack.js';
+import { panic } from './dungeon.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { SIZE, TRUE, FALSE, A_WIS } from './const.js';
+import { SIZE, TRUE, FALSE, A_WIS, Role_if } from './const.js';
 import { exercise } from './attrib.js';
 import { ledger_no, maxledgerno } from './dungeon.js';
 import {
@@ -41,8 +43,6 @@ const BUFSZ = 256;
 
 // C's panic() (end.c), impossible() and raw_printf() (pline.c) are not
 // ported yet. None of the checks below can fail with the stock objects[].
-function panic(msg) { throw new Error(`panic: ${msg}`); }
-function impossible(msg) { console.error(`impossible: ${msg}`); }
 function raw_printf(msg) { console.error(msg); }
 
 // C ref: o_init.c setgemprobs()
@@ -381,7 +381,7 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered,
 
     if ((!objects[oindx].oc_name_known && mark_as_known)
         || (!objects[oindx].oc_encountered && mark_as_encountered)
-        || (Role_if_samurai()
+        || (Role_if(PM_SAMURAI)
             && Japanese_item_name(oindx, null))) {
         let dindx;
         const acls = objects[oindx].oc_class;
@@ -430,7 +430,7 @@ function interesting_to_discover(i) {
     /* most players who don't speak Japanese manage to figure out what
        gunyoki, osaku, and so forth mean, but treat them as pre-discovered
        to be disclosed by '\' */
-    if (Role_if_samurai() && Japanese_item_name(i, null))
+    if (Role_if(PM_SAMURAI) && Japanese_item_name(i, null))
         return true;
 
     /* Objects that were discovered without encountering them are now printed
@@ -512,7 +512,7 @@ async function choose_disco_sort(
 function disco_typename(otyp) {
     let result = obj_typename(otyp);
 
-    if (Role_if_samurai() && Japanese_item_name(otyp, null)) {
+    if (Role_if(PM_SAMURAI) && Japanese_item_name(otyp, null)) {
         let buf;
         const actualn = (((otyp !== MAGIC_HARP && otyp !== WOODEN_HARP)
                           || objects[otyp].oc_name_known)
@@ -755,5 +755,3 @@ export async function dodiscovered() { /* free after Robert Viduya */
     return ECMD_OK;
 }
 
-/* C ref: you.h Role_if(PM_SAMURAI) */
-function Role_if_samurai() { return game.urole?.mnum === PM_SAMURAI; }

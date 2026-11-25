@@ -6,6 +6,8 @@
 // com_pager, qt_pager, deliver_splev_message.
 // qt_montype() lives in makemon.js (its only caller).
 
+import { impossible } from './hack.js';
+import { objchain } from './shk.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { NHL_SB_SAFE } from './const.js';
@@ -29,24 +31,11 @@ import { highc, lowc, s_suffix, strncmpi, strcmpi, strstri } from './hacklib.js'
 const QTEXT_FILE = 'quest.lua';
 const BUFSZ = 256;
 
-function impossible(msg) { console.error(`impossible: ${msg}`); }
-
 // C ref: you.h MIN_QUEST_LEVEL
 const MIN_QUEST_LEVEL = 14;
 
 // C ref: mondata.h type_is_pname()
 function type_is_pname(ptr) { return (ptr.mflags2 & M2_PNAME) !== 0; }
-
-// object chains are either linked through ->nobj (invent) or kept as
-// arrays (fobj, minvent, cobj, buriedobjlist)
-function* objchain(ochain) {
-    if (Array.isArray(ochain)) {
-        yield* ochain;
-    } else {
-        for (let otmp = ochain; otmp; otmp = otmp.nobj)
-            yield otmp;
-    }
-}
 
 // C ref: questpgr.c quest_info()
 export function quest_info(typ) {

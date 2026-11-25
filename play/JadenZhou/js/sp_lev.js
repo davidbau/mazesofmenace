@@ -13,6 +13,8 @@
 // other des.* functions are registered by name but raise a Lua error until
 // they are ported (their C counterparts are listed in sp_lev_des_names).
 
+import { impossible } from './hack.js';
+import { panic } from './dungeon.js';
 import { game } from './gstate.js';
 import { flip_worm_segs_vertical, flip_worm_segs_horizontal,
          flip_wseg_cells } from './worm.js';
@@ -129,13 +131,13 @@ import { premap_detect } from './detect.js';
 import { christen_monst, oname } from './do_name.js';
 import { newcham_sync, mongone } from './mon.js';
 import { mkmap } from './mkmap.js';
+import { Protection_from_shape_changers } from './youprop.js';
+import { A_NONE as A_NONE_SP, A_LAWFUL as A_LAWFUL_SP } from './const.js';
 
 // C ref: dungeon.h In_mines()
 function In_mines(lev) { return lev.dnum === game.dungeon_topology.d_mines_dnum; }
 
 // C's impossible() and panic() (pline.c) are not ported yet.
-function impossible(msg) { console.error(`impossible: ${msg}`); }
-function panic(msg) { throw new Error(`panic: ${msg}`); }
 
 const MAX_NESTED_ROOMS = 5;
 const MAP_Y_LIM = 21; /* sp_lev.h */
@@ -2060,11 +2062,6 @@ let container_obj = new Array(MAX_CONTAINMENT).fill(null);
 let container_idx = 0;
 let invent_carrying_monster = null;
 
-// C ref: youprop.h Protection_from_shape_changers
-function Protection_from_shape_changers() {
-    const prot = game.u.uprops[PROT_FROM_SHAPE_CHANGERS];
-    return !!(prot.intrinsic || prot.extrinsic);
-}
 
 // C ref: sp_lev.c m_bad_boulder_spot()
 function m_bad_boulder_spot(x, y) {
@@ -4998,4 +4995,3 @@ export function l_register_des(L) {
     des.gold = lspo_gold;
     L.globals.des = des;
 }
-import { A_NONE as A_NONE_SP, A_LAWFUL as A_LAWFUL_SP } from './const.js';

@@ -174,7 +174,8 @@ import { Acid_resistance } from './youprop.js';
 import { pline_dir } from './pline.js';
 import { unmap_object } from './display.js';
 import { glyph_is_invisible_at } from './display.js';
-import { glyph_at } from './display.js';
+import { glyph_at, gbuf_at } from './display.js';
+import { GLYPH_UNEXPLORED_OFF } from './const.js';
 import { P_EXPERT } from './const.js';
 import { P_SKILLED } from './const.js';
 import { P_BASIC } from './const.js';
@@ -3507,8 +3508,6 @@ const SURFACE_AT = (x, y) => {
     const lev = game.level.at(x, y);
     return (lev.typ === DRAWBRIDGE_UP) ? db_under_typ(lev.drawbridgemask) : lev.typ;
 };
-/* the C compares glyph integers; our glyph_at() returns descriptors */
-const same_glyph = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // src/zap.c:3579 skiprange(); where a thrown rock skips over water
 function skiprange(range, skip) /* skip = { start, end } */
@@ -3675,9 +3674,11 @@ export async function zap_map(x, y, obj) /* zapped wand, or book for cast spell 
         /* map terrain; might reveal a special room which is already within
            view that hasn't been entered yet */
         oldtyp = lev.lastseentyp;
-        oldglyph = glyph_at(x, y);
+        // C glyph_at() reads the stored glyph number, not its live descriptor.
+        oldglyph = gbuf_at(x, y)?.disp_glyphnum ?? GLYPH_UNEXPLORED_OFF;
         show_map_spot(x, y, false);
-        if (oldtyp !== lev.lastseentyp || !same_glyph(oldglyph, glyph_at(x, y))) {
+        if (oldtyp !== lev.lastseentyp
+            || oldglyph !== (gbuf_at(x, y)?.disp_glyphnum ?? GLYPH_UNEXPLORED_OFF)) {
             /* TODO: ought to give some message */
             learn_it.v = true;
         }

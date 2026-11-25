@@ -21,7 +21,7 @@ import { urgent_pline } from './display.js';
 import { tty_display_nhwindow } from './wintty.js';
 import { rhack, domove, enter_explore_mode } from './cmd.js';
 import { docrt, cls, bot, timebot, flush_screen, pline, see_monsters } from './display.js';
-import { see_objects, see_traps, Hallucination, Blind, swallowed } from './display.js';
+import { see_objects, see_traps, swallowed } from './display.js';
 import { read_engr_at } from './engrave.js';
 import { encumber_msg, pickup } from './pickup.js';
 import { reset_justpicked } from './invent.js';
@@ -39,7 +39,7 @@ import { init_objects } from './o_init.js';
 import { init_dungeons, depth, find_level, In_hell,
          print_level_annotation } from './dungeon.js';
 import { ask_do_tutorial } from './options.js';
-import { phase_of_the_moon, friday_13th } from './calendar.js';
+import { phase_of_the_moon, friday_13th, night } from './calendar.js';
 import { change_luck } from './attrib.js';
 import { set_wear } from './do_wear.js';
 import { FULL_MOON, NEW_MOON, COLNO } from './const.js';
@@ -77,6 +77,11 @@ import { Norep } from './display.js';
 import { init_artifacts } from './artifact.js';
 import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
+import { Blind, Hallucination } from './youprop.js';
+import { Upolyd } from './const.js';
+import { invault } from './vault.js';
+import { sink_into_lava as sink_into_lava_am } from './trap.js';
+import { pooleffects as pooleffects_am } from './hack.js';
 
 const MON_AT = (x, y) => !!m_at(x, y); /* C ref: display.h MON_AT() */
 
@@ -285,15 +290,6 @@ function u_calc_moveamt(wtcap) {
 let mvl_wtcap = 0;
 let mvl_change = 0;
 
-/* C ref: you.h Upolyd */
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-
-// C ref: calendar.c night()
-function night() {
-    /* getlt() and the hour of the (fixed) game clock: calendar.c isn't
-       ported yet */
-    throw new Error('night(): calendar.c not ported yet');
-}
 
 /* C ref: vault.c vault_occupied(u.urooms) */
 function vault_occupied_urooms() {
@@ -916,7 +912,3 @@ export async function moveloop(resuming) {
         if (game.program_state?.gameover) break;
     }
 }
-
-import { invault } from './vault.js';
-import { sink_into_lava as sink_into_lava_am } from './trap.js';
-import { pooleffects as pooleffects_am } from './hack.js';

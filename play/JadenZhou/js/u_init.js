@@ -7,6 +7,7 @@
 // restricted_spell_discipline(), u_init_carry_attr_boost().
 // u_init_skills_discoveries() and pauper_reinit() are not ported yet.
 
+import { spell_skilltype } from './spell.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, ROLL_FROM } from './rng.js';
 import { getnow } from './calendar.js';
@@ -27,16 +28,17 @@ import { newpw } from './exper.js';
 import { initialspell, num_spells } from './spell.js';
 import { skill_init } from './weapon.js';
 import { discover_object } from './o_init.js';
-
-/* C ref: spell.h SPELL_LEV_PW() */
-function SPELL_LEV_PW(lvl) { return (lvl) * 5; }
+import { Role_if, Race_if } from './const.js';
 import { init_uhunger } from './eat.js';
 import { inv_weight } from './hack.js';
 import { max_rank_sz } from './botl.js';
 import { assigninvlet, reorder_invent, merged, addinv } from './invent.js';
-export { addinv }; // C ref: invent.c addinv() (ported in invent.js)
 import { Japanese_item_name } from './objnam.js';
 import { setworn } from './worn.js';
+
+/* C ref: spell.h SPELL_LEV_PW() */
+function SPELL_LEV_PW(lvl) { return (lvl) * 5; }
+export { addinv }; // C ref: invent.c addinv() (ported in invent.js)
 
 // C ref: you.h struct you -- the JS equivalent of memset(&u, 0, sizeof u).
 // Every numeric field reads as 0, nested structs are zero-filled objects.
@@ -707,8 +709,6 @@ const Skill_W = [
 ];
 
 // C ref: role.c Role_if(), Race_if(); you.h Role_switch, Race_switch
-function Role_if(pm) { return game.urole.mnum === pm; }
-function Race_if(pm) { return game.urace.mnum === pm; }
 
 // C ref: obj.h is_pole(), is_spear(), is_launcher(), is_ammo(),
 // Is_container(), is_graystone()
@@ -1051,9 +1051,6 @@ function skills_for_role() {
 
     return skills;
 }
-
-// C ref: spell.c spell_skilltype()
-function spell_skilltype(booktype) { return objects[booktype].oc_skill; }
 
 // C ref: u_init.c restricted_spell_discipline()
 /* skills aren't initialized, so we use the role-specific skill lists */

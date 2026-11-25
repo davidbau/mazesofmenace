@@ -13,8 +13,9 @@ import { livelog_printf } from './display.js';
 import { LL_ACHIEVE, LL_DEBUG } from './const.js';
 import { describe_level } from './botl.js';
 import { container_impact_dmg, obj_delivery } from './dokick.js';
-import { pline, pline_The, docrt, flush_screen, Hallucination,
-         Blind } from './display.js';
+import {
+    pline, pline_The, docrt, flush_screen
+} from './display.js';
 import { bones_include_name } from './bones.js';
 import { You_hear } from './sounds.js';
 import { sellobj } from './shk.js';
@@ -29,7 +30,7 @@ import {
 } from './dungeon.js';
 import { In_endgame, Is_waterlevel, Is_airlevel, IS_ALTAR, ROOM, CORR, MAGIC_PORTAL, Is_qstart } from './const.js';
 import * as O from './objects.js';
-import { is_pool, is_lava, u_at } from './makemon.js';
+import { is_pool, is_lava } from './makemon.js';
 import { t_at, is_pit, is_hole, set_utrap, seetrap, lava_damage } from './trap.js';
 import { cansee } from './vision.js';
 import { PM_TOURIST, PM_ROGUE } from './monsters.js';
@@ -102,31 +103,22 @@ import { mon_nam } from './do_name.js';
 import { set_ustuck } from './uhitm.js';
 import { AT_ENGL, AD_DGST } from './monsters.js';
 import { STAIRS } from './const.js';
+import {
+    Punished, Blind, Hallucination, Deaf, Fumbling, HLevitation, ELevitation, Levitation,
+    Flying
+} from './youprop.js';
+import { Upolyd, u_at } from './const.js';
+import { uprop } from './youprop.js';
+import { done as done_do } from './end.js';
+import { ESCAPED as ESCAPED_DO } from './const.js';
+import { impact_drop } from './dokick.js';
+import { water_damage as water_damage_do } from './trap.js';
+import { weight as weight_do } from './mkobj.js';
+import { map_background as map_background_do } from './display.js';
+import { use_pick_axe2 } from './dig.js';
+import { WT_SPLASH_THRESHOLD as WT_SPLASH_THRESHOLD_DO, ER_DESTROYED as ER_DESTROYED_DO,
+         DEAF as DEAF_DO } from './const.js';
 
-/* C ref: youprop.h -- the hero's properties used by the level-change code */
-function uprop(p) {
-    return game.u.uprops[p] || { intrinsic: 0, extrinsic: 0, blocked: 0 };
-}
-function HLevitation() { return uprop(LEVITATION).intrinsic; }
-function ELevitation() { return uprop(LEVITATION).extrinsic; }
-function Levitation() {
-    return !!((HLevitation() || ELevitation()) && !uprop(LEVITATION).blocked);
-}
-/* C ref: youprop.h Deaf */
-function Deaf_do() {
-    const p = uprop(DEAF_DO);
-    return !!(p.intrinsic || p.extrinsic || game.u.uroleplay?.deaf);
-}
-function Flying() {
-    const p = uprop(FLYING);
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Fumbling() {
-    const p = uprop(FUMBLING);
-    return !!(p.intrinsic || p.extrinsic);
-}
-function Punished() { return !!game.uball; }
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
 /* C ref: obj.h is_pick() */
 function is_pick(otmp) {
     return otmp.otyp === O.PICK_AXE || otmp.otyp === O.DWARVISH_MATTOCK;
@@ -1054,7 +1046,7 @@ export async function flooreffects(obj, /* the object landing on the floor */
         /* Reasonably bulky objects (arbitrary) splash when dropped.
          * If you're floating above the water even small things make
          * noise.  Stuff dropped near fountains always misses */
-        if ((Blind() || (Levitation() || Flying())) && !Deaf_do() && u_at(x, y)) {
+        if ((Blind() || (Levitation() || Flying())) && !Deaf() && u_at(x, y)) {
             if (!game.u.uinwater) { /* !Underwater */
                 if (weight_do(obj) > WT_SPLASH_THRESHOLD_DO) {
                     await pline("Splash!");
@@ -1511,12 +1503,3 @@ export async function dowipe() {
     await Your(`${body_part(FACE)} is already clean.`);
     return ECMD_TIME;
 }
-import { done as done_do } from './end.js';
-import { ESCAPED as ESCAPED_DO } from './const.js';
-import { impact_drop } from './dokick.js';
-import { water_damage as water_damage_do } from './trap.js';
-import { weight as weight_do } from './mkobj.js';
-import { map_background as map_background_do } from './display.js';
-import { use_pick_axe2 } from './dig.js';
-import { WT_SPLASH_THRESHOLD as WT_SPLASH_THRESHOLD_DO, ER_DESTROYED as ER_DESTROYED_DO,
-         DEAF as DEAF_DO } from './const.js';

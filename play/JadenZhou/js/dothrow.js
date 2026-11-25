@@ -6,6 +6,8 @@
 // prompt.  Throwing itself (throwit()), autoquiver and doquiver_core()
 // are not ported yet.
 
+import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
+import { is_art } from './artifact.js';
 import { game } from './gstate.js';
 import { tamedog } from './dog.js';
 import { drag_ball, move_bc, drop_ball } from './ball.js';
@@ -13,7 +15,7 @@ import { You, You_cant } from './display.js';
 import { check_capacity } from './hack.js';
 import { getdir } from './cmd.js';
 import { is_ammo, is_pole, ammo_and_launcher, doquiver_core } from './wield.js';
-import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, W_WEP } from './const.js';
+import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, W_WEP, Race_if } from './const.js';
 import { BULLWHIP, BOOMERANG, AKLYS, WAN_PROBING, WAN_OPENING, WAN_LOCKING,
          WAN_STRIKING } from './objects.js';
 import { zap_map, bhitpile } from './zap.js';
@@ -84,6 +86,105 @@ import { obj_resists } from './dogmove.js';
 import { map_invisible, unmap_object, glyph_is_invisible, tmp_at, obj_to_glyph,
          DISP_FLASH, DISP_END } from './display.js';
 import { in_out_region } from './region.js';
+import {
+    Stone_resistance, Stunned, Confusion, Blind, Hallucination, Deaf, Fumbling, Levitation,
+    Underwater, Blind as Blind_br
+} from './youprop.js';
+import { Upolyd, Role_if } from './const.js';
+import { uprop } from './youprop.js';
+import { goodpos as goodpos_hu, m_at as m_at_hu,
+         place_monster as place_monster_hu } from './makemon.js';
+import { MM_IGNOREWATER as MM_IGNOREWATER_HU, MM_IGNORELAVA as MM_IGNORELAVA_HU,
+         IS_WATERWALL as IS_WATERWALL_HU, HURTLING as HURTLING_HU,
+         FORCEBUNGLE as FORCEBUNGLE_HU, W_ARMU as W_ARMU_HU, W_ARM as W_ARM_HU,
+         W_ARMC as W_ARMC_HU, TT_WEB as TT_WEB_HU, TT_LAVA as TT_LAVA_HU,
+         TT_INFLOOR as TT_INFLOOR_HU, TT_BURIEDBALL as TT_BURIEDBALL_HU
+       } from './const.js';
+import { mons as mons_hu, MZ_HUGE as MZ_HUGE_HU, PM_GRID_BUG as PM_GRID_BUG_HU,
+         PM_COCKATRICE as PM_COCKATRICE_HU,
+         PM_CHICKATRICE as PM_CHICKATRICE_HU } from './monsters.js';
+import { m_in_out_region as m_in_out_region_hu } from './region.js';
+import { newsym as newsym_hu, canseemon as canseemon_hu } from './display.js';
+import { set_apparxy as set_apparxy_hu } from './monmove.js';
+import { mintrap as mintrap_hu, t_at as t_at_hu,
+         Trap_Killed_Mon as Trap_Killed_Mon_HU,
+         Trap_Caught_Mon as Trap_Caught_Mon_HU,
+         Trap_Moved_Mon as Trap_Moved_Mon_HU } from './trap.js';
+import { a_monnam as a_monnam_hu, Some_Monnam as Some_Monnam_hu } from './do_name.js';
+import { wakeup as wakeup_hu, seemimic as seemimic_hu,
+         minliquid as minliquid_hu } from './mon.js';
+import { which_armor as which_armor_hu } from './worn.js';
+import { stop_occupation as stop_occupation_hu } from './allmain.js';
+import { hliquid as hliquid_hu } from './potion.js';
+import { endmultishot as endmultishot_hu } from './end.js';
+import { nomul as nomul_hu } from './hack.js';
+import { hmon as hmon_dt, passive_obj as passive_obj_dt } from './uhitm.js';
+import { spec_abon as spec_abon_dt } from './artifact.js';
+import { find_mac as find_mac_dt } from './worn.js';
+import { weapon_hit_bonus as weapon_hit_bonus_dt } from './weapon.js';
+import { cutworm as cutworm_dt } from './worm.js';
+import { miss as miss_dt } from './zap.js';
+import { mshot_xname as mshot_xname_dt,
+         should_mulch_missile as should_mulch_missile_dt } from './mthrowu.js';
+import { potionhit as potionhit_dt } from './potion.js';
+import { dogfood as dogfood_dt } from './dogmove.js';
+import { obfree as obfree_dt } from './invent.js';
+import { hot_pursuit as hot_pursuit_dt, inside_shop as inside_shop_sk } from './shk.js';
+import { in_rooms as in_rooms_dt } from './hack.js';
+import { distmin as distmin_dt } from './hacklib.js';
+import { your_race as your_race_dt, is_orc as is_orc_dt,
+         is_elf as is_elf_dt } from './mondata.js';
+import { is_quest_artifact as is_quest_artifact_dt } from './questpgr.js';
+import { Is_candle as Is_candle_dt } from './mkobj.js';
+import { is_domestic as is_domestic_dt } from './makemon.js';
+import { Monnam as Monnam_dt } from './do_name.js';
+import { engulfing_u as engulfing_u_dt, SHOPBASE as SHOPBASE_DT,
+         HMON_THROWN as HMON_THROWN_DT, HMON_KICKED as HMON_KICKED_DT,
+         HMON_APPLIED as HMON_APPLIED_DT, A_DEX as A_DEX_DT, A_STR as A_STR_DT,
+         ACCFOOD as ACCFOOD_DT, POTHIT_HERO_THROW as POTHIT_HERO_THROW_DT,
+         M_AP_TYPMASK as M_AP_TYPMASK_DT, M_AP_MONSTER as M_AP_MONSTER_DT,
+         P_BOW as P_BOW_DT, P_AXE as P_AXE_DT } from './const.js';
+import { CANDELABRUM_OF_INVOCATION as CANDELABRUM_OF_INVOCATION_DT,
+         FAKE_AMULET_OF_YENDOR as FAKE_AMULET_OF_YENDOR_DT,
+         GAUNTLETS_OF_POWER as GAUNTLETS_OF_POWER_DT,
+         GAUNTLETS_OF_FUMBLING as GAUNTLETS_OF_FUMBLING_DT,
+         LEATHER_GLOVES as LEATHER_GLOVES_DT,
+         GAUNTLETS_OF_DEXTERITY as GAUNTLETS_OF_DEXTERITY_DT,
+         MINERAL as MINERAL_DT, ELVEN_BOW as ELVEN_BOW_DT, YUMI as YUMI_DT,
+         HEAVY_IRON_BALL as HEAVY_IRON_BALL_DT, EGG as EGG_DT,
+         CREAM_PIE as CREAM_PIE_DT, ACID_VENOM as ACID_VENOM_DT,
+         POTION_CLASS as POTION_CLASS_DT, FOOD_CLASS as FOOD_CLASS_DT,
+         TOOL_CLASS as TOOL_CLASS_DT,
+         BANANA as BANANA_DT, VEGGY as VEGGY_DT, CORPSE as CORPSE_DT } from './objects.js';
+import { S_UNICORN as S_UNICORN_DT, M2_JEWELS as M2_JEWELS_DT,
+         PM_MONKEY as PM_MONKEY_DT, PM_APE as PM_APE_DT,
+         PM_LICHEN as PM_LICHEN_DT, PM_ELF as PM_ELF_DT } from './monsters.js';
+import { cansee as cansee_br } from './vision.js';
+import { is_crackable } from './objects.js';
+import { erode_obj } from './trap.js';
+import { ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED, EYE } from './const.js';
+import { You_hear as You_hear_br } from './sounds.js';
+import { costly_spot as costly_spot_br } from './shk.js';
+import { add_damage as add_damage_bh, pay_for_damage as pay_for_damage_bh } from './shk.js';
+import { doorlock as doorlock_bh } from './lock.js';
+import { learnwand as learnwand_bh } from './zap.js';
+import { SPE_KNOCK as SPE_KNOCK_BH, SPE_WIZARD_LOCK as SPE_WIZARD_LOCK_BH,
+         SPE_FORCE_BOLT as SPE_FORCE_BOLT_BH } from './objects.js';
+import { D_BROKEN as D_BROKEN_BH, SHOP_DOOR_COST as SHOP_DOOR_COST_BH,
+         DEAF as DEAF_BH } from './const.js';
+import { potionbreathe } from './potion.js';
+import { haseyes } from './mondata.js';
+import { armor_simple_name, makeplural, vtense } from './objnam.js';
+import { change_luck } from './attrib.js';
+import { POT_OIL, MIRROR, TOWEL, STATUE, LENSES, CRYSTAL_BALL } from './objects.js';
+import { M1_BREATHLESS, PM_CYCLOPS, PM_FLOATING_EYE, PM_PYROLISK } from './monsters.js';
+import { LOW_PM } from './const.js';
+import { delobj } from './invent.js';
+import { dist2 } from './hacklib.js';
+import { WWALKING as WWALKING_HT } from './const.js';
+import { drown as drown_ht } from './trap.js';
+import { Norep as Norep_ht } from './display.js';
+import { is_moat as is_moat_ht } from './makemon.js';
 
 /* C ref: weight.h WT_SPLASH_THRESHOLD -- weight needed to make splash in
    water */
@@ -98,17 +199,6 @@ function touch_petrifies(ptr) {
 /* C ref: mondata.h nohands(), notake() */
 function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
 function notake(ptr) { return (ptr.mflags1 & M1_NOTAKE) !== 0; }
-
-/* C ref: cmd.c cmdq_add_ec(CQ_CANNED, fn), cmdq_add_key(CQ_CANNED, key);
-   the extended command is kept by its cmd.c function name */
-function cmdq_add_ec(fn) {
-    if (!game.cmdq) game.cmdq = [];
-    game.cmdq.push({ typ: 'ec', fn });
-}
-function cmdq_add_key(key) {
-    if (!game.cmdq) game.cmdq = [];
-    game.cmdq.push({ typ: 'key', key });
-}
 
 /* C ref: dothrow.c AutoReturn() -- uwep might already be removed from
    inventory so test for W_WEP instead */
@@ -137,31 +227,7 @@ async function ok_to_throw() {
     return { ok: true, shotlimit };
 }
 
-/* C ref: youprop.h -- the hero's properties used by the throwing code */
-function uprop(p) {
-    const u = game.u;
-    if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    return u.uprops[p];
-}
-function uhave(p) { return !!(uprop(p).intrinsic || uprop(p).extrinsic); }
-function Confusion() { return uhave(CONFUSION); }
-function Stunned() { return uhave(STUNNED); }
-function Fumbling() { return uhave(FUMBLING); }
-function Blind() { return uhave(BLINDED) && !uprop(BLINDED).blocked; }
-function Hallucination() {
-    return !!(uprop(HALLUC).intrinsic
-              && !(uprop(HALLUC_RES).intrinsic || uprop(HALLUC_RES).extrinsic));
-}
-function Levitation() {
-    return !!((uprop(LEVITATION).intrinsic || uprop(LEVITATION).extrinsic)
-              && !uprop(LEVITATION).blocked);
-}
-function Stone_resistance() { return uhave(STONE_RES); }
-function Underwater() { return !!game.u.uinwater; }
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-function Role_if(pm) { return game.urole.mnum === pm; }
 /* C ref: obj.h is_art(), is_pick(); mondata.h throws_rocks() */
-function is_art(o, art) { return !!(o && o.oartifact === art); }
 function is_pick(otmp) {
     return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
 }
@@ -673,7 +739,7 @@ export async function thitmonst(mon,
 
     tmp += omon_adj(mon, obj, true);
     if (is_orc_dt(mon.data)
-        && (Upolyd() ? is_elf_dt(g.youmonst.data) : Race_if_elf()))
+        && (Upolyd() ? is_elf_dt(g.youmonst.data) : Race_if(PM_ELF_DT)))
         tmp++;
     if (guaranteed_hit) {
         tmp += 1000; /* Guaranteed hit */
@@ -725,11 +791,11 @@ export async function thitmonst(mon,
                  * especially their own special types of bow.
                  * Polymorphing won't make you a bow expert.
                  */
-                if ((Race_if_elf() || Role_if(PM_SAMURAI))
+                if ((Race_if(PM_ELF_DT) || Role_if(PM_SAMURAI))
                     && (!Upolyd() || your_race_dt(g.youmonst.data))
                     && objects[uwep.otyp].oc_skill === P_BOW_DT) {
                     ++tmp;
-                    if ((Race_if_elf() && uwep.otyp === ELVEN_BOW_DT)
+                    if ((Race_if(PM_ELF_DT) && uwep.otyp === ELVEN_BOW_DT)
                         || (Role_if(PM_SAMURAI) && uwep.otyp === YUMI_DT))
                         ++tmp;
                 }
@@ -1019,7 +1085,7 @@ async function throwit(obj,
                 return;
             }
         }
-        if (!(uhave(DEAF) || u.uroleplay?.deaf) && !Underwater()) {
+        if (!(Deaf() || u.uroleplay?.deaf) && !Underwater()) {
             /* Some sound effects when item lands in water or lava */
             if (is_pool(bx, by) || (is_lava(bx, by) && !is_flammable(obj))) {
                 /* Soundeffect(se_splash, 50) */
@@ -1521,7 +1587,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
             case SPE_WIZARD_LOCK_BH:
             case SPE_FORCE_BOLT_BH:
                 if (await doorlock_bh(obj, x, y)) {
-                    if (cansee_br(x, y) || (obj.otyp === WAN_STRIKING && !Deaf_bh()))
+                    if (cansee_br(x, y) || (obj.otyp === WAN_STRIKING && !Deaf()))
                         learnwand_bh(obj);
                     if (g.level.at(x, y).doormask === D_BROKEN_BH
                         && in_rooms_dt(x, y, SHOPBASE_DT).length) {
@@ -2118,13 +2184,12 @@ export async function hurtle(dx, dy, range, verbose) {
         nomul_hu(0);
         return;
     } else if (u.utrap) {
-        if (u.utraptype === TT_INFLOOR_HU)
-            throw new Error('hurtle(): surface() for an in-floor trap not ported yet');
         await You(`are anchored by the ${
             (u.utraptype === TT_WEB_HU) ? "web"
             : (u.utraptype === TT_LAVA_HU) ? hliquid_hu("lava")
-              : (u.utraptype === TT_BURIEDBALL_HU) ? "buried ball"
-                : "trap"}.`);
+              : (u.utraptype === TT_INFLOOR_HU) ? surface(u.ux, u.uy)
+                : (u.utraptype === TT_BURIEDBALL_HU) ? "buried ball"
+                  : "trap"}.`);
         nomul_hu(0);
         return;
     }
@@ -2203,74 +2268,6 @@ export async function mhurtle(mon, dx, dy, range) {
     return;
 }
 
-import { goodpos as goodpos_hu, m_at as m_at_hu,
-         place_monster as place_monster_hu } from './makemon.js';
-import { MM_IGNOREWATER as MM_IGNOREWATER_HU, MM_IGNORELAVA as MM_IGNORELAVA_HU,
-         IS_WATERWALL as IS_WATERWALL_HU, HURTLING as HURTLING_HU,
-         FORCEBUNGLE as FORCEBUNGLE_HU, W_ARMU as W_ARMU_HU, W_ARM as W_ARM_HU,
-         W_ARMC as W_ARMC_HU, TT_WEB as TT_WEB_HU, TT_LAVA as TT_LAVA_HU,
-         TT_INFLOOR as TT_INFLOOR_HU, TT_BURIEDBALL as TT_BURIEDBALL_HU
-       } from './const.js';
-import { mons as mons_hu, MZ_HUGE as MZ_HUGE_HU, PM_GRID_BUG as PM_GRID_BUG_HU,
-         PM_COCKATRICE as PM_COCKATRICE_HU,
-         PM_CHICKATRICE as PM_CHICKATRICE_HU } from './monsters.js';
-import { m_in_out_region as m_in_out_region_hu } from './region.js';
-import { newsym as newsym_hu, canseemon as canseemon_hu } from './display.js';
-import { set_apparxy as set_apparxy_hu } from './monmove.js';
-import { mintrap as mintrap_hu, t_at as t_at_hu,
-         Trap_Killed_Mon as Trap_Killed_Mon_HU,
-         Trap_Caught_Mon as Trap_Caught_Mon_HU,
-         Trap_Moved_Mon as Trap_Moved_Mon_HU } from './trap.js';
-import { a_monnam as a_monnam_hu, Some_Monnam as Some_Monnam_hu } from './do_name.js';
-import { wakeup as wakeup_hu, seemimic as seemimic_hu,
-         minliquid as minliquid_hu } from './mon.js';
-import { which_armor as which_armor_hu } from './worn.js';
-import { stop_occupation as stop_occupation_hu } from './allmain.js';
-import { hliquid as hliquid_hu } from './potion.js';
-import { endmultishot as endmultishot_hu } from './end.js';
-import { nomul as nomul_hu } from './hack.js';
-
-import { hmon as hmon_dt, passive_obj as passive_obj_dt } from './uhitm.js';
-import { spec_abon as spec_abon_dt } from './artifact.js';
-import { find_mac as find_mac_dt } from './worn.js';
-import { weapon_hit_bonus as weapon_hit_bonus_dt } from './weapon.js';
-import { cutworm as cutworm_dt } from './worm.js';
-import { miss as miss_dt } from './zap.js';
-import { mshot_xname as mshot_xname_dt,
-         should_mulch_missile as should_mulch_missile_dt } from './mthrowu.js';
-import { potionhit as potionhit_dt } from './potion.js';
-import { dogfood as dogfood_dt } from './dogmove.js';
-import { obfree as obfree_dt } from './invent.js';
-import { hot_pursuit as hot_pursuit_dt, inside_shop as inside_shop_sk } from './shk.js';
-import { in_rooms as in_rooms_dt } from './hack.js';
-import { distmin as distmin_dt } from './hacklib.js';
-import { your_race as your_race_dt, is_orc as is_orc_dt,
-         is_elf as is_elf_dt } from './mondata.js';
-import { is_quest_artifact as is_quest_artifact_dt } from './questpgr.js';
-import { Is_candle as Is_candle_dt } from './mkobj.js';
-import { is_domestic as is_domestic_dt } from './makemon.js';
-import { Monnam as Monnam_dt } from './do_name.js';
-import { engulfing_u as engulfing_u_dt, SHOPBASE as SHOPBASE_DT,
-         HMON_THROWN as HMON_THROWN_DT, HMON_KICKED as HMON_KICKED_DT,
-         HMON_APPLIED as HMON_APPLIED_DT, A_DEX as A_DEX_DT, A_STR as A_STR_DT,
-         ACCFOOD as ACCFOOD_DT, POTHIT_HERO_THROW as POTHIT_HERO_THROW_DT,
-         M_AP_TYPMASK as M_AP_TYPMASK_DT, M_AP_MONSTER as M_AP_MONSTER_DT,
-         P_BOW as P_BOW_DT, P_AXE as P_AXE_DT } from './const.js';
-import { CANDELABRUM_OF_INVOCATION as CANDELABRUM_OF_INVOCATION_DT,
-         FAKE_AMULET_OF_YENDOR as FAKE_AMULET_OF_YENDOR_DT,
-         GAUNTLETS_OF_POWER as GAUNTLETS_OF_POWER_DT,
-         GAUNTLETS_OF_FUMBLING as GAUNTLETS_OF_FUMBLING_DT,
-         LEATHER_GLOVES as LEATHER_GLOVES_DT,
-         GAUNTLETS_OF_DEXTERITY as GAUNTLETS_OF_DEXTERITY_DT,
-         MINERAL as MINERAL_DT, ELVEN_BOW as ELVEN_BOW_DT, YUMI as YUMI_DT,
-         HEAVY_IRON_BALL as HEAVY_IRON_BALL_DT, EGG as EGG_DT,
-         CREAM_PIE as CREAM_PIE_DT, ACID_VENOM as ACID_VENOM_DT,
-         POTION_CLASS as POTION_CLASS_DT, FOOD_CLASS as FOOD_CLASS_DT,
-         TOOL_CLASS as TOOL_CLASS_DT,
-         BANANA as BANANA_DT, VEGGY as VEGGY_DT, CORPSE as CORPSE_DT } from './objects.js';
-import { S_UNICORN as S_UNICORN_DT, M2_JEWELS as M2_JEWELS_DT,
-         PM_MONKEY as PM_MONKEY_DT, PM_APE as PM_APE_DT,
-         PM_LICHEN as PM_LICHEN_DT, PM_ELF as PM_ELF_DT } from './monsters.js';
 
 /* C ref: obj.h greatest_erosion() */
 function greatest_erosion_dt(otmp) {
@@ -2282,37 +2279,3 @@ function is_axe_dt(otmp) {
     return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS_DT)
             && objects[otmp.otyp].oc_skill === P_AXE_DT);
 }
-/* C ref: you.h Race_if(PM_ELF) */
-function Race_if_elf() { return game.urace.mnum === PM_ELF_DT; }
-import { cansee as cansee_br } from './vision.js';
-import { Blind as Blind_br } from './display.js';
-import { is_crackable } from './objects.js';
-import { erode_obj } from './trap.js';
-import { ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED, EYE } from './const.js';
-import { You_hear as You_hear_br } from './sounds.js';
-import { costly_spot as costly_spot_br } from './shk.js';
-import { add_damage as add_damage_bh, pay_for_damage as pay_for_damage_bh } from './shk.js';
-import { doorlock as doorlock_bh } from './lock.js';
-import { learnwand as learnwand_bh } from './zap.js';
-import { SPE_KNOCK as SPE_KNOCK_BH, SPE_WIZARD_LOCK as SPE_WIZARD_LOCK_BH,
-         SPE_FORCE_BOLT as SPE_FORCE_BOLT_BH } from './objects.js';
-import { D_BROKEN as D_BROKEN_BH, SHOP_DOOR_COST as SHOP_DOOR_COST_BH,
-         DEAF as DEAF_BH } from './const.js';
-/* C ref: youprop.h Deaf */
-function Deaf_bh() {
-    const q = game.u.uprops[DEAF_BH];
-    return !!(q && (q.intrinsic || q.extrinsic)) || !!game.u.uroleplay?.deaf;
-}
-import { potionbreathe } from './potion.js';
-import { haseyes } from './mondata.js';
-import { armor_simple_name, makeplural, vtense } from './objnam.js';
-import { change_luck } from './attrib.js';
-import { POT_OIL, MIRROR, TOWEL, STATUE, LENSES, CRYSTAL_BALL } from './objects.js';
-import { M1_BREATHLESS, PM_CYCLOPS, PM_FLOATING_EYE, PM_PYROLISK } from './monsters.js';
-import { LOW_PM } from './const.js';
-import { delobj } from './invent.js';
-import { dist2 } from './hacklib.js';
-import { WWALKING as WWALKING_HT } from './const.js';
-import { drown as drown_ht } from './trap.js';
-import { Norep as Norep_ht } from './display.js';
-import { is_moat as is_moat_ht } from './makemon.js';

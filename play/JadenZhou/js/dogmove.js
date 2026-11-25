@@ -5,17 +5,22 @@
 // Branches that need code no session reaches yet throw a
 // 'not ported yet' error instead of skipping their rolls.
 
+import { helpless } from './monmove.js';
+import { may_dig } from './dig.js';
+import { minv } from './mon.js';
+import { poisonous } from './eat.js';
 import { touch_artifact_mon } from './artifact.js';
 import { game } from './gstate.js';
-import { eaten_stat } from './eat.js';
+import { eaten_stat, peek_at_iced_corpse_age } from './eat.js';
 import { mon_wield_item } from './weapon.js';
 import { rn2, rnd } from './rng.js';
 import { resist_conflict } from './mhitm.js';
 import { mattacku } from './mhitu.js';
 import { dist2, distmin } from './hacklib.js';
 import { cansee, couldsee, clear_path, do_clear_area } from './vision.js';
-import { m_at, MON_AT, place_monster, is_pool, is_lava, sobj_at, u_at,
-         may_passwall } from './makemon.js';
+import {
+    m_at, MON_AT, place_monster, is_pool, is_lava, sobj_at, may_passwall
+} from './makemon.js';
 import { t_at } from './trap.js';
 import { mattackm, max_passive_dmg } from './mhitm.js';
 import { mfndpos, monnear, mon_allowflags, check_gear_next_turn,
@@ -33,8 +38,9 @@ import { splitobj, obj_extract_self } from './mkobj.js';
 import { mpickobj, relobj } from './steal.js';
 import { m_in_out_region } from './region.js';
 import { distant_name, doname } from './objnam.js';
-import { newsym, pline, canseemon, mon_visible, canspotmon, Hallucination,
-         glyph_kind, vobj_at } from './display.js';
+import {
+    newsym, pline, canseemon, mon_visible, canspotmon, glyph_kind, vobj_at
+} from './display.js';
 import { vtense } from './objnam.js';
 import { locomotion } from './trap.js';
 import { Monnam, noit_Monnam } from './do_name.js';
@@ -47,10 +53,10 @@ import {
     D_CLOSED, D_LOCKED, CONFLICT, NON_PM, isok, MAGIC_PORTAL, W_ARMG,
     NEED_WEAPON, NEED_HTH_WEAPON, I_SPECIAL, W_ARMS,
 } from './const.js';
-
-/* monster inventory: makemon.js keeps mon->minvent as an array in pickup
-   order; C prepends, so walk it newest first */
-function minv(mon) { return (mon.minvent || []).slice().reverse(); }
+import { Hallucination, Conflict } from './youprop.js';
+import { u_at } from './const.js';
+import { undesirable_disp as undesirable_disp_dm } from './monmove.js';
+import { mdisplacem as mdisplacem_dm } from './mhitm.js';
 
 const DOG_HUNGRY = 300;
 const DOG_WEAK = 500;
@@ -70,7 +76,6 @@ function attacktype(ptr, atyp) {
     return ptr.mattk.some((a) => a.aatyp === atyp);
 }
 function acidic(ptr) { return (ptr.mflags1 & M.M1_ACID) !== 0; }
-function poisonous(ptr) { return (ptr.mflags1 & M.M1_POIS) !== 0; }
 function likes_lava(ptr) {
     return ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
 }
@@ -96,21 +101,9 @@ function vegan(ptr) {
 function mresists(mon, mr) {
     return (((mon.data.mresists | (mon.mextrinsics ?? 0)) & mr) !== 0);
 }
-/* C ref: monst.h helpless() */
-function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
-function Conflict() {
-    const p = game.u.uprops[CONFLICT];
-    return !!(p.intrinsic || p.extrinsic);
-}
 function distu(x, y) { return dist2(x, y, game.u.ux, game.u.uy); }
-/* C ref: hack.c may_dig() */
-function may_dig(x, y) {
-    const lev = game.level.at(x, y);
-    return !((IS_STWALL(lev.typ) || IS_TREE(lev.typ))
-             && ((lev.wall_info ?? 0) & W_NONDIGGABLE));
-}
 /* C ref: stairs.c On_stairs() */
-function On_stairs(x, y) {
+export function On_stairs(x, y) {
     for (let s = game.stairs; s; s = s.next)
         if (s.sx === x && s.sy === y) return true;
     return false;
@@ -141,13 +134,6 @@ export function obj_resists(obj, ochance, achance) {
 /* C ref: artifact.c is_quest_artifact() */
 function is_quest_artifact(otmp) {
     return !!(otmp.oartifact && otmp.oartifact === game.urole.questarti);
-}
-
-/* C ref: mkobj.c peek_at_iced_corpse_age() */
-function peek_at_iced_corpse_age(otmp) {
-    if (otmp.on_ice)
-        throw new Error('peek_at_iced_corpse_age(): iced corpses not ported yet');
-    return otmp.age ?? 0;
 }
 
 // ── C ref: dog.c dogfood() ──
@@ -1545,5 +1531,3 @@ export async function dog_move(mtmp, after) {
     }
     return MMOVE_MOVED;
 }
-import { undesirable_disp as undesirable_disp_dm } from './monmove.js';
-import { mdisplacem as mdisplacem_dm } from './mhitm.js';

@@ -1,6 +1,7 @@
 // shknam.js — shop types, shopkeeper names, shopkeeper creation.
 // C ref: shknam.c
 
+import { letter } from './hacklib.js';
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
@@ -32,6 +33,7 @@ import { cvt_sdoor_to_door } from './detect.js';
 import { rloc_mklev } from './teleport.js';
 import { shop_keeper } from './shk.js';
 import { mongone } from './mon.js';
+import { Hallucination } from './youprop.js';
 
 // C ref: mkroom.h VEGETARIAN_CLASS
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
@@ -657,17 +659,6 @@ export function get_shop_item(type) {
     return shp.iprobs[i].itype;
 }
 
-/* C ref: you.h Hallucination -- HHallucination && !Halluc_resistance */
-function Hallucination() {
-    const P = game.u.uprops;
-    return !!((P[HALLUC]?.intrinsic || P[HALLUC]?.extrinsic)
-              && !(P[HALLUC_RES]?.intrinsic || P[HALLUC_RES]?.extrinsic));
-}
-
-/* C ref: hacklib.c letter() */
-function letter(c) {
-    return ('@' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
-}
 
 // C ref: shknam.c Shknam()
 export function Shknam(mtmp) {

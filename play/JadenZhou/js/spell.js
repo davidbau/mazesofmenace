@@ -7,6 +7,8 @@
 // spelleffects(), dospellmenu(), spellsortmenu(), sortspells(),
 // percent_success() and spellretention().
 
+import { check_unpaid } from './zap.js';
+import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import {
     NO_SPELL, STUNNED, STRANGLED, MENU_TRADITIONAL,
@@ -35,13 +37,54 @@ import { strcmpi, isqrt } from './hacklib.js';
 import { P_SKILL } from './weapon.js';
 import { discover_object } from './o_init.js';
 import { freehand } from './wield.js';
-
-function impossible(msg) { console.error(`impossible: ${msg}`); }
+import { Blind as Blind_sp } from './youprop.js';
+import { Role_if } from './const.js';
+import { uhim } from './mhitu.js';
+import { rn2, rnd, rn1, rnl } from './rng.js';
+import * as O from './objects.js';
+import { SPE_BOOK_OF_THE_DEAD, SPE_BLANK_PAPER, SPE_NOVEL, SPE_DETECT_FOOD,
+         LENSES, NODIR } from './objects.js';
+import { You, Your, You_feel, pline_The } from './display.js';
+import { tele } from './teleport.js';
+import { aggravate, make_blinded, make_confused, make_stunned, trycall,
+         peffects, healup, make_slimed } from './potion.js';
+import { erode_obj, losehp, Maybe_Half_Phys } from './trap.js';
+import { poison_strdmg, exercise as exercise_sp } from './attrib.js';
+import { body_part } from './insight.js';
+import { tty_display_nhwindow, tty_yn_function } from './wintty.js';
+import { useup, obfree } from './invent.js';
+import { Tobjnam, makeplural } from './objnam.js';
+import { set_occupation, stop_occupation } from './allmain.js';
+import { nomul, check_capacity } from './hack.js';
+import { objdescr_is } from './o_init.js';
+import { fall_asleep } from './timeout.js';
+import { haseyes } from './mondata.js';
+import { mons as mons_sp, PM_CYCLOPS, PM_FLOATING_EYE } from './monsters.js';
+import { morehungry } from './eat.js';
+import { mksobj } from './mkobj.js';
+import { use_skill } from './weapon.js';
+import { getdir } from './cmd.js';
+import { zapyourself, weffects } from './zap.js';
+import { seffects } from './read.js';
+import { jump } from './apply.js';
+import { BLINDED, CONFUSION, TIMEOUT, POISON_RES, ANTIMAGIC, SLEEP_RES,
+         SICK, SLIMED, ERODE_CORRODE, EF_GREASE, EF_VERBOSE, KILLED_BY_AN,
+         NO_KILLER_PREFIX, FACE, EYE, A_WIS, A_INT, A_STR, MAX_SPELL_STUDY,
+         UNKNOWN_SPELL, ECMD_TIME } from './const.js';
+import { hcolor as hcolor_sp } from './do_name.js';
+import { hliquid as hliquid_sp } from './potion.js';
+import { an as an_sp } from './objnam.js';
+import { find_ac as find_ac_sp } from './u_init.js';
+import { dmgtype_fromattack as dmgtype_fromattack_sp } from './mondata.js';
+import { CLOUD as CLOUD_SP, IS_TREE as IS_TREE_SP, IS_STWALL as IS_STWALL_SP } from './const.js';
+import { S_VORTEX as S_VORTEX_SP, PM_AIR_ELEMENTAL as PM_AIR_ELEMENTAL_SP,
+         PM_FOG_CLOUD as PM_FOG_CLOUD_SP, M1_ANIMAL as M1_ANIMAL_SP,
+         AD_WRAP as AD_WRAP_SP, AT_ENGL as AT_ENGL_SP } from './monsters.js';
 
 const KEEN = 20000; /* C ref: spell.c */
 
 /* C ref: spell.h spellid(), spellknow(), decrnknow() */
-function spellid(spell) { return game.spl_book[spell].sp_id; }
+export function spellid(spell) { return game.spl_book[spell].sp_id; }
 function spellknow(spell) { return game.spl_book[spell].sp_know; }
 function decrnknow(spell) { game.spl_book[spell].sp_know--; }
 /* C ref: spell.c incrnknow() */
@@ -64,8 +107,6 @@ const uarmhbon = 4; /* Metal helmets interfere with the mind */
 const uarmgbon = 6; /* Casting channels through the hands */
 const uarmfbon = 2; /*  All metal interferes to some degree */
 
-/* C ref: you.h Role_if() */
-function Role_if(pm) { return game.urole?.mnum === pm; }
 /* C ref: youprop.h Stunned, Strangled */
 function u_have_prop(p) {
     const up = game.u.uprops?.[p];
@@ -445,14 +486,6 @@ async function learn() {
     sb.book = null;
     sb.o_id = 0;
     return 0;
-}
-
-/* C ref: shk.c check_unpaid() -> check_unpaid_usage(otmp, FALSE) */
-function check_unpaid(otmp) {
-    if (!otmp.unpaid || !game.u.ushops || !game.u.ushops[0]
-        || (otmp.spe <= 0 && objects[otmp.otyp].oc_charged))
-        return;
-    throw new Error('check_unpaid(): usage fee for unpaid item not ported yet');
 }
 
 // C ref: spell.c study_book()
@@ -1018,11 +1051,6 @@ export async function spelleffects(spell_otyp, atme, force) {
     return ECMD_TIME;
 }
 
-/* C ref: you.h uhim() -- genders[flags.female ? 1 : 0].him */
-function uhim() {
-    return game.flags.female ? "her" : "him";
-}
-
 // C ref: spell.c losespells()
 export function losespells() {
     const sb = spbook();
@@ -1104,37 +1132,6 @@ export function force_learn_spell(otyp) {
     return spellet(i);
 }
 
-import { rn2, rnd, rn1, rnl } from './rng.js';
-import * as O from './objects.js';
-import { SPE_BOOK_OF_THE_DEAD, SPE_BLANK_PAPER, SPE_NOVEL, SPE_DETECT_FOOD,
-         LENSES, NODIR } from './objects.js';
-import { You, Your, You_feel, pline_The } from './display.js';
-import { tele } from './teleport.js';
-import { aggravate, make_blinded, make_confused, make_stunned, trycall,
-         peffects, healup, make_slimed } from './potion.js';
-import { erode_obj, losehp, Maybe_Half_Phys } from './trap.js';
-import { poison_strdmg, exercise as exercise_sp } from './attrib.js';
-import { body_part } from './insight.js';
-import { tty_display_nhwindow, tty_yn_function } from './wintty.js';
-import { useup, obfree } from './invent.js';
-import { Tobjnam, makeplural } from './objnam.js';
-import { set_occupation, stop_occupation } from './allmain.js';
-import { nomul, check_capacity } from './hack.js';
-import { objdescr_is } from './o_init.js';
-import { fall_asleep } from './timeout.js';
-import { haseyes } from './mondata.js';
-import { mons as mons_sp, PM_CYCLOPS, PM_FLOATING_EYE } from './monsters.js';
-import { morehungry } from './eat.js';
-import { mksobj } from './mkobj.js';
-import { use_skill } from './weapon.js';
-import { getdir } from './cmd.js';
-import { zapyourself, weffects } from './zap.js';
-import { seffects } from './read.js';
-import { jump } from './apply.js';
-import { BLINDED, CONFUSION, TIMEOUT, POISON_RES, ANTIMAGIC, SLEEP_RES,
-         SICK, SLIMED, ERODE_CORRODE, EF_GREASE, EF_VERBOSE, KILLED_BY_AN,
-         NO_KILLER_PREFIX, FACE, EYE, A_WIS, A_INT, A_STR, MAX_SPELL_STUDY,
-         UNKNOWN_SPELL, ECMD_TIME } from './const.js';
 function exercise(i, inc) { exercise_sp(i, inc); }
 /* C ref: mondata.h eyecount() */
 function eyecount(ptr) {
@@ -1720,13 +1717,3 @@ async function cast_protection() {
         await Your("skin feels warm for a moment.");
     }
 }
-import { Blind as Blind_sp } from './display.js';
-import { hcolor as hcolor_sp } from './do_name.js';
-import { hliquid as hliquid_sp } from './potion.js';
-import { an as an_sp } from './objnam.js';
-import { find_ac as find_ac_sp } from './u_init.js';
-import { dmgtype_fromattack as dmgtype_fromattack_sp } from './mondata.js';
-import { CLOUD as CLOUD_SP, IS_TREE as IS_TREE_SP, IS_STWALL as IS_STWALL_SP } from './const.js';
-import { S_VORTEX as S_VORTEX_SP, PM_AIR_ELEMENTAL as PM_AIR_ELEMENTAL_SP,
-         PM_FOG_CLOUD as PM_FOG_CLOUD_SP, M1_ANIMAL as M1_ANIMAL_SP,
-         AD_WRAP as AD_WRAP_SP, AT_ENGL as AT_ENGL_SP } from './monsters.js';

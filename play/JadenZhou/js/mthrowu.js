@@ -8,13 +8,19 @@
 // m_has_launcher_and_ammo() in weapon.js.  Paths that aren't ported yet
 // throw a 'not ported yet' error instead of skipping their rolls.
 
+import { DEADMONSTER } from './mon.js';
+import { ordin } from './hacklib.js';
+import { passes_rocks } from './trap.js';
+import { resists_poison } from './mondata.js';
+import { rounddiv } from './hack.js';
 import { game } from './gstate.js';
-import { rn2, rnd, rn2_on_display_rng, ROLL_FROM } from './rng.js';
+import { rn2, rnd, rnl, rn2_on_display_rng, ROLL_FROM } from './rng.js';
 import { distmin, dist2, s_suffix, strncmpi } from './hacklib.js';
 import { cansee, couldsee } from './vision.js';
-import { pline, You, Your, pline_The, newsym, canseemon, canspotmon,
-         Blind, Hallucination, tmp_at, obj_to_glyph, DISP_FLASH,
-         DISP_TETHER, DISP_END } from './display.js';
+import {
+    pline, You, Your, pline_The, newsym, canseemon, canspotmon, tmp_at,
+    obj_to_glyph, DISP_FLASH, DISP_TETHER, DISP_END
+} from './display.js';
 import { BOLT_LIM, MON_POLE_DIST, NEED_WEAPON, NEED_RANGED_WEAPON,
          PET_MISSILE_RANGE2, P_POLEARMS, P_LANCE, P_BOW, P_CROSSBOW, P_DART,
          P_SHURIKEN, P_SPEAR, P_KNIFE, M_ATTK_MISS, M_ATTK_HIT, M_SEEN_ACID,
@@ -36,8 +42,10 @@ import { ART_SNICKERSNEE } from './artilist.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon, mwelded, dmgval,
          setmnotwielded, m_carrying } from './weapon.js';
 import { lined_up, linedup } from './monmove.js';
-import { m_at, u_at, closed_door, is_pool, is_lava, is_prince, is_lord,
-         is_mplayer, nonliving } from './makemon.js';
+import {
+    m_at, closed_door, is_pool, is_lava, is_prince, is_lord, is_mplayer,
+    nonliving
+} from './makemon.js';
 import { monsndx, is_elf, is_orc, is_gnome, is_vampshifter, hates_silver,
          mon_hates_silver, Resists_Elem, get_atkdam_type,
          cvt_adtyp_to_mseenres, can_blnd, haseyes } from './mondata.js';
@@ -64,10 +72,10 @@ import { exercise, ACURR, poisoned } from './attrib.js';
 import { losehp, Maybe_Half_Phys } from './trap.js';
 import { stop_occupation } from './allmain.js';
 import { nomul, calc_capacity } from './hack.js';
-import { make_blinded, potionhit, make_stoned } from './potion.js';
+import { make_blinded, potionhit, make_stoned, hliquid } from './potion.js';
 import { You_hear } from './sounds.js';
 import { monstseesu, monstunseesu, shade_miss, passive_obj } from './uhitm.js';
-import { mswings_verb } from './mhitu.js';
+import { mswings_verb, mhim } from './mhitu.js';
 import { hit, miss, exclam, dobuzz } from './zap.js';
 import { hold_another_object } from './wizcmds.js';
 import { extract_from_minvent, extract_from_minvent_g } from './steal.js';
@@ -75,31 +83,15 @@ import { body_part } from './insight.js';
 import { mbodypart } from './shk.js';
 import { m_seenres } from './muse.js';
 import { spec_abon } from './artifact.js';
+import {
+    Sleep_resistance, Acid_resistance, Stone_resistance, Stunned, Confusion, BlindedTimeout,
+    Blind, Stoned, Hallucination, Deaf, Fumbling, Underwater, Hate_silver
+} from './youprop.js';
+import { Role_if, u_at } from './const.js';
 
 /* C ref: youprop.h -- (H* || E*) && !B* */
-function uhave(prop) {
-    const p = game.u.uprops[prop];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Deaf() { return uhave(DEAF) || !!game.u.uroleplay?.deaf; }
-function Confusion() { return uhave(CONFUSION); }
-function Stunned() { return uhave(STUNNED); }
-function Fumbling() { return uhave(FUMBLING); }
-function Stoned() { return !!game.u.uprops[STONED].intrinsic; }
-function Acid_resistance() { return uhave(ACID_RES); }
-function Sleep_resistance() { return uhave(SLEEP_RES); }
-function Stone_resistance() { return uhave(STONE_RES); }
-function Underwater() { return !!game.u.uinwater; }
-function BlindedTimeout() { return game.u.uprops[BLINDED].intrinsic & 0xFFFFFF; }
-/* C ref: youprop.h Hate_silver */
-function Hate_silver() {
-    return game.u.ulycn >= LOW_PM || hates_silver(game.youmonst.data);
-}
-function Role_if(pm) { return game.urole.mnum === pm; }
 function verbose() { return game.flags.verbose ?? true; }
 
-/* C ref: monst.h DEADMONSTER() */
-function DEADMONSTER(mon) { return mon.mhp < 1; }
 /* C ref: mondata.c poly_when_stoned() -- golems other than stone golem
    turn into stone golems */
 function poly_when_stoned(ptr) {
@@ -134,7 +126,6 @@ function is_flimsy(otmp) {
 /* C ref: mondata.h */
 function passes_walls(ptr) { return (ptr.mflags1 & M.M1_WALLWALK) !== 0; }
 function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
-function passes_rocks(ptr) { return passes_walls(ptr) && !unsolid(ptr); }
 function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
 function amorphous(ptr) { return (ptr.mflags1 & M.M1_AMORPHOUS) !== 0; }
 function bigmonst(ptr) { return ptr.msize >= M.MZ_LARGE; }
@@ -145,20 +136,11 @@ function touch_petrifies(ptr) {
     return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
 }
 function resists_acid(mon) { return Resists_Elem(mon, ACID_RES); }
-function resists_poison(mon) { return Resists_Elem(mon, POISON_RES); }
 function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
-/* C ref: mondata.h mhim() */
-function mhim(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].him; }
 /* C ref: objnam.c makeknown() */
 function makeknown(otyp) { discover_object(otyp, true, true, true); }
 /* C ref: hacklib.c upstart() */
 function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-/* C ref: hacklib.c ordin() */
-function ordin(n) {
-    const dd = n % 10;
-    return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? "th"
-           : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
-}
 function plur(x) { return (x === 1) ? "" : "s"; }
 
 /* gm.m_shot (decl.h) -- multishot volley feedback */
@@ -352,11 +334,6 @@ export function should_mulch_missile(obj) {
 function greatest_erosion(otmp) {
     return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
 }
-/* C ref: rnd.c rnl() -- not reached by monsters (mon_moving is set) */
-function rnl(x) {
-    void x;
-    throw new Error('should_mulch_missile(): rnl() for hero missiles not ported yet');
-}
 
 // C ref: mthrowu.c drop_throw()
 /* Returns FALSE if object still exists (not destroyed). */
@@ -447,27 +424,6 @@ function monmulti(mtmp, otmp, mwep) {
     if (multishot < 1)
         multishot = 1;
     return multishot;
-}
-/* C ref: hacklib.c rounddiv() */
-function rounddiv(x, y) {
-    let r, m;
-    let divsgn = 1;
-
-    if (y === 0)
-        throw new Error('division by zero in rounddiv'); /* panic() */
-    else if (y < 0) {
-        divsgn = -divsgn;
-        y = -y;
-    }
-    if (x < 0) {
-        divsgn = -divsgn;
-        x = -x;
-    }
-    r = Math.trunc(x / y);
-    m = x % y;
-    if (2 * m >= y)
-        r++;
-    return divsgn * r;
 }
 
 // C ref: mthrowu.c monshoot()
@@ -699,12 +655,6 @@ export async function ohitmon(
         return 1;
     }
     return 0;
-}
-/* C ref: objnam.c hliquid() */
-function hliquid(liquidpref) {
-    if (Hallucination())
-        throw new Error('hliquid(): hallucinatory liquids not ported yet');
-    return liquidpref;
 }
 
 // C ref: mthrowu.c ucatchgem()

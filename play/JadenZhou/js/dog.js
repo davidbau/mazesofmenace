@@ -4,11 +4,12 @@
 // Not ported yet: make_familiar, pick_familiar_pm, dog movement/food
 // (dogmove.c), keepdogs/losedogs, tamedog and the rest of dog.c.
 
+import { helpless } from './monmove.js';
 import { set_residency } from './shk.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, CORPSE } from './objects.js';
 import { FULL_MOON, DOGFOOD, ACCFOOD, MANFOOD, NEED_HTH_WEAPON, ismnum } from './const.js';
 import { PM_MEDUSA, M3_WANTSARTI, M3_COVETOUS, S_DOG, AT_WEAP } from './monsters.js';
-import { canspotmon, Hallucination } from './display.js';
+import { canspotmon } from './display.js';
 import { cansee } from './vision.js';
 import { night } from './calendar.js';
 import { dogfood, dog_eat } from './dogmove.js';
@@ -20,9 +21,9 @@ import { is_human, is_demon } from './mondata.js';
 import { mon_wield_item } from './weapon.js';
 import { wake_nearto } from './mon.js';
 import { rnd } from './rng.js';
-
-/* C ref: mondata.h attacktype() */
-function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
+import { Hallucination } from './youprop.js';
+import { Role_if } from './const.js';
+import { uhis } from './mhitu.js';
 import { livelog_printf } from './display.js';
 import { LL_CONDUCT } from './const.js';
 import { an } from './objnam.js';
@@ -68,13 +69,17 @@ import { pline, canseemon, newsym } from './display.js';
 import { yelp, growl } from './sounds.js';
 import { AGGRAVATE_MONSTER, CONFLICT } from './const.js';
 import { Monnam } from './do_name.js';
-
 import { ACURR } from './attrib.js';
 import { deliver_obj_to_mon } from './dokick.js';
+import { haseyes as haseyes_wd } from './mondata.js';
+import { body_part as body_part_wd } from './insight.js';
+import { EYE as EYE_WD } from './const.js';
+
+/* C ref: mondata.h attacktype() */
+function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
+
 const DF_ALL = 0x04; /* hack.h */
 
-// C ref: role.c Role_if()
-function Role_if(pm) { return game.urole.mnum === pm; }
 
 // C ref: dog.c newedog()
 export function newedog(mtmp) {
@@ -129,8 +134,7 @@ export function initedog(mtmp, everything) {
          * from a figurine or some other method in which it was created tame
          * using an() is safe unless it somehow becomes possible to tame a
          * unique monster */
-        livelog_printf(LL_CONDUCT, `obtained ${game.flags.female ? "her" : "his" /* uhis() */
-                                   } first pet (${an(mon_pmname(mtmp))})`);
+        livelog_printf(LL_CONDUCT, `obtained ${uhis()} first pet (${an(mon_pmname(mtmp))})`);
     }
     game.u.uconduct.pets++;
 }
@@ -225,9 +229,6 @@ export function makedog() {
     initedog(mtmp, true);
     return mtmp;
 }
-
-// C ref: monst.h helpless()
-function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
 
 // C ref: dog.c abuse_dog()
 /* hero has abused pet */
@@ -1118,6 +1119,3 @@ export async function wary_dog(mtmp, was_dead) {
         } /* else lifesaved, so retain current values */
     }
 }
-import { haseyes as haseyes_wd } from './mondata.js';
-import { body_part as body_part_wd } from './insight.js';
-import { EYE as EYE_WD } from './const.js';

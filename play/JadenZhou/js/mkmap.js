@@ -5,6 +5,7 @@
 //
 // Not ported: remove_rooms()/remove_room() (no caller in the C source).
 
+import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { depth } from './dungeon.js';
@@ -15,8 +16,6 @@ import {
 } from './const.js';
 import { add_room, somexy, dig_corridor } from './mklev.js';
 import { wallify_map } from './sp_lev.js';
-
-function impossible(msg) { console.error(`impossible: ${msg}`); }
 
 const HEIGHT = ROWNO - 1;
 const WIDTH = COLNO - 2;

@@ -23,7 +23,6 @@ import { objects, ALCHEMY_SMOCK, WEAPON_CLASS, GRAY_DRAGON_SCALES,
          POT_BLINDNESS, ARMOR_CLASS } from "./objects.js";
 import { objdescr_is } from './o_init.js';
 import { defends, defends_when_carried } from './artifact.js';
-import { Unaware } from './eat.js';
 import { is_weptool } from './mkobj.js';
 import { which_armor } from './worn.js';
 import { title_to_mon } from './botl.js';
@@ -38,6 +37,7 @@ import {
     PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER, PM_GRAY_DRAGON,
     PM_YELLOW_DRAGON, LOW_PM, AD_MAGM, AD_RBRE,
 } from './monsters.js';
+import { Blind, Unaware } from './youprop.js';
 
 // C ref: mondata.h monsndx(ptr) -- ((ptr)->pmidx)
 export function monsndx(ptr) { return ptr.pmidx; }
@@ -73,7 +73,7 @@ export function resists_blnd(mon) {
     const ptr = mon.data;
     const is_you = (mon === g.youmonst);
 
-    if (is_you ? (uBlind() || Unaware())
+    if (is_you ? (Blind() || Unaware())
                : (mon.mblinded || !mon.mcansee || !haseyes(ptr)
                   /* BUG: temporary sleep sets mfrozen, but since
                           paralysis does too, we can't check it */
@@ -92,11 +92,6 @@ export function resists_blnd(mon) {
         return true;
     }
     return false;
-}
-/* C ref: youprop.h Blind */
-function uBlind() {
-    const p = game.u.uprops[BLINDED];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
 }
 
 // C ref: mondata.c resists_blnd_by_arti()

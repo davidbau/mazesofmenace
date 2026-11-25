@@ -5,6 +5,7 @@
 // Not ported yet: teleds, safe_teleds, tele, rloc and the rest of
 // teleport.c.
 
+import { is_demon } from './mondata.js';
 import { game } from './gstate.js';
 import { make_blinded } from './potion.js';
 import { remove_worm, place_worm_tail_randomly } from './worm.js';
@@ -73,9 +74,22 @@ import { check_capacity } from './hack.js';
 import { morehungry } from './eat.js';
 import { in_out_region, update_player_regions, update_monster_region } from './region.js';
 import { learnscroll } from './read.js';
+import { Punished, Hallucination as Hallucination_tp } from './youprop.js';
+import { VIASITTING as VIASITTING_TP, FORCETRAP as FORCETRAP_TP,
+         TIMEOUT as TIMEOUT_TP } from './const.js';
+import { make_confused as make_confused_tp } from './potion.js';
+import { lev_by_name as lev_by_name_tp } from './dungeon.js';
+import { killer as killer_lt } from './topten.js';
+import { done as done_lt } from './end.js';
+import { NO_KILLER_PREFIX as NO_KILLER_PREFIX_LT, DIED as DIED_LT } from './const.js';
+import { tty_display_nhwindow as tty_display_nhwindow_lt } from './wintty.js';
+import { You_feel as You_feel_lt } from './display.js';
+import { tty_yn_function as tty_yn_function_tp } from './wintty.js';
+import { On_W_tower_level as On_W_tower_level_tp } from './dungeon.js';
+import { inhishop, make_angry_shk, costly_spot, find_objowner,
+         onshopbill } from './shk.js';
+import { inhistemple } from './priest.js';
 
-/* C ref: youprop.h Punished */
-function Punished() { return !!game.uball; }
 
 /* C ref: mondata.h is_rider() */
 function is_rider(ptr) {
@@ -1138,7 +1152,6 @@ function is_dlord(ptr) { return is_lord(ptr) && is_demon(ptr); }
 function is_dprince(ptr) { return is_prince(ptr) && is_demon(ptr); }
 function is_lord(ptr) { return (ptr.mflags2 & M2_LORD) !== 0; }
 function is_prince(ptr) { return (ptr.mflags2 & M2_PRINCE) !== 0; }
-function is_demon(ptr) { return (ptr.mflags2 & M2_DEMON) !== 0; }
 function is_covetous(ptr) { return (ptr.mflags3 & M3_COVETOUS) !== 0; }
 
 // C ref: teleport.c m_blocks_teleporting()
@@ -1747,19 +1760,3 @@ export async function rloco(obj) {
     newsym(tx, ty);
     return true;
 }
-import { VIASITTING as VIASITTING_TP, FORCETRAP as FORCETRAP_TP,
-         TIMEOUT as TIMEOUT_TP } from './const.js';
-import { Hallucination as Hallucination_tp } from './display.js';
-import { make_confused as make_confused_tp } from './potion.js';
-import { lev_by_name as lev_by_name_tp } from './dungeon.js';
-
-import { killer as killer_lt } from './topten.js';
-import { done as done_lt } from './end.js';
-import { NO_KILLER_PREFIX as NO_KILLER_PREFIX_LT, DIED as DIED_LT } from './const.js';
-import { tty_display_nhwindow as tty_display_nhwindow_lt } from './wintty.js';
-import { You_feel as You_feel_lt } from './display.js';
-import { tty_yn_function as tty_yn_function_tp } from './wintty.js';
-import { On_W_tower_level as On_W_tower_level_tp } from './dungeon.js';
-import { inhishop, make_angry_shk, costly_spot, find_objowner,
-         onshopbill } from './shk.js';
-import { inhistemple } from './priest.js';

@@ -5,6 +5,9 @@
 // Also cuss(). Not ported yet: the rest of wizard.c (the Wizard's AI, amulet(),
 // resurrect(), intervene()).
 
+import { DEADMONSTER } from './mon.js';
+import { helpless } from './monmove.js';
+import { monsym } from './makemon.js';
 import { game } from './gstate.js';
 import { ROLL_FROM, rn2, rnd } from './rng.js';
 import * as MM from './monsters.js';
@@ -45,6 +48,11 @@ import { distant_name, doname } from './objnam.js';
 import { obj_extract_self } from './mkobj.js';
 import { mpickobj } from './steal.js';
 import { dist2, isok } from './hacklib.js';
+import { Deaf } from './youprop.js';
+import { MAGIC_PORTAL as MAGIC_PORTAL_WZ, STRAT_WAITMASK as STRAT_WAITMASK_WZ } from './const.js';
+import { Tobjnam as Tobjnam_wz } from './objnam.js';
+import { You as You_wz } from './display.js';
+import { makemon_flush_msg as makemon_flush_msg_wz } from './makemon.js';
 
 // C ref: wizard.c nasties[]
 const nasties = [
@@ -67,9 +75,6 @@ const nasties = [
     /* (Archons, titans, ki-rin, and golden nagas are suitably nasty, but
        they're summoners so would aggravate excessive summoning) */
 ];
-
-// monsym(ptr): def_monsyms[ptr->mlet].sym
-function monsym(ptr) { return def_monsyms[ptr.mlet]; }
 
 // C ref: wizard.c pick_nasty()
 /* also used by newcham() */
@@ -120,8 +125,6 @@ export function pick_nasty(
 }
 
 /* C ref: monst.h DEADMONSTER(), helpless(); mondata.c attacktype() */
-function DEADMONSTER(mon) { return mon.mhp < 1; }
-function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
 function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
 /* C ref: hack.h sgn() */
 function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
@@ -315,11 +318,6 @@ const random_malediction = [
     "Verily, thou shalt be one dead"
 ];
 
-/* C ref: youprop.h Deaf */
-function Deaf() {
-    const p = game.u.uprops?.[DEAF];
-    return !!(p?.intrinsic || p?.extrinsic) || !!game.u.uroleplay?.deaf;
-}
 /* C ref: mondata.h is_minion(), is_lminion() */
 function is_minion(ptr) { return (ptr.mflags2 & MM.M2_MINION) !== 0; }
 function is_lminion(mon) {
@@ -381,7 +379,7 @@ export async function cuss(mtmp) {
  */
 
 /* C ref: obj.h any_quest_artifact() */
-function any_quest_artifact(o) { return (o.oartifact || 0) >= ART_ORB_OF_DETECTION; }
+export function any_quest_artifact(o) { return (o.oartifact || 0) >= ART_ORB_OF_DETECTION; }
 /* C ref: mondata.h is_covetous() */
 function is_covetous(ptr) { return (ptr.mflags3 & MM.M3_COVETOUS) !== 0; }
 /* C ref: hack.h distu() */
@@ -810,7 +808,3 @@ export async function resurrect() {
         }
     }
 }
-import { MAGIC_PORTAL as MAGIC_PORTAL_WZ, STRAT_WAITMASK as STRAT_WAITMASK_WZ } from './const.js';
-import { Tobjnam as Tobjnam_wz } from './objnam.js';
-import { You as You_wz } from './display.js';
-import { makemon_flush_msg as makemon_flush_msg_wz } from './makemon.js';

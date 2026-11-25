@@ -8,6 +8,7 @@
 // spots with tmp_at()), '#', '@', 'm'/'M' &c gathering, the menu and
 // filter toggles, and the dungeon-feature symbol search.
 
+import { is_cmap_drawbridge } from './pager.js';
 import { game } from './gstate.js';
 import { pline, newsym, newsym_force, flush_screen, glyph_at, glyph_kind,
          back_to_glyph } from './display.js';
@@ -19,7 +20,7 @@ import { visctrl } from './hacklib.js';
 import { handle_tip, is_valid_travelpt } from './hack.js';
 import { movecmd_mode, MV_WALK, MV_RUSH, MV_RUN, cmd_from_func,
          readchar_poskey as cmd_readchar_poskey } from './cmd.js';
-import { do_screen_description } from './pager.js';
+import { do_screen_description, coord_desc } from './pager.js';
 import { COLNO, ROWNO, TIP_GETPOS, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY } from './const.js';
 import { tty_create_nhwindow, tty_display_nhwindow, tty_destroy_nhwindow } from './wintty.js';
 import { NHW_MENU, TER_MON, TER_OBJ, TER_MAP, TER_DETECT, isok, u_at } from './const.js';
@@ -27,6 +28,7 @@ import { docrt_flags, docrtRefresh } from './display.js';
 import { cansee } from './vision.js';
 import { PM_LONG_WORM_TAIL } from './monsters.js';
 import { BOULDER, ROCK } from './objects.js';
+import { xytodir as xytodir_gp, directionname as directionname_gp } from './hack.js';
 
 /* C ref: getpos.c getpos_hilitefunc, getpos_getvalid (static) */
 /* C ref: getpos.c enum getposHiliteState */
@@ -78,7 +80,6 @@ function is_cmap_room(i) { return i >= S_room && i <= S_darkroom; }
 function is_cmap_corr(i) { return i >= S_corr && i <= S_litcorr; }
 function is_cmap_water(i) { return i === S_pool || i === S_water; }
 function is_cmap_lava(i) { return i === S_lava || i === S_lavawall; }
-function is_cmap_drawbridge(i) { return i >= S_vodbridge && i <= S_hcdbridge; }
 
 /* C ref: getpos.c gloc_descr[][], gloc_filtertxt[] */
 const gloc_descr = [
@@ -480,15 +481,6 @@ export function dxdy_to_dist_descr(dx, dy, fulldir) {
         }
     }
     return buf;
-}
-import { xytodir as xytodir_gp, directionname as directionname_gp } from './hack.js';
-
-// C ref: getpos.c coord_desc() -- iflags.getpos_coords defaults to
-// GPCOORDS_NONE, which gives an empty string
-function coord_desc(x, y, cmode) {
-    if (cmode && cmode !== 'none')
-        throw new Error('coord_desc(): getpos_coords not ported yet');
-    return "";
 }
 
 // C ref: getpos.c auto_describe()

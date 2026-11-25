@@ -343,7 +343,8 @@ export async function bot() {
     }
     if ((game._topl_win_stop || game._topl_win_stop_armed
          || !_flush_screen_in_progress()) && game._screen_output
-        && !game._status_blanked && !game._statusBlankAfterDocrt
+        && !game._status_blanked
+        && (!game._statusBlankAfterDocrt || game.disp?.botlx)
         && (game?.u?.uhp | 0) !== -1 && !game._botlHeldEat) {
         const _rows = String(game._screen_output).split('\n');
         if (_rows.length >= 24 && !_threeStatusLines()) {

@@ -17,15 +17,7 @@ import { Monnam, pmname, Mgender } from './do_name.js';
 import { possibly_unwield } from './weapon.js';
 import { mon_break_armor } from './worn.js';
 import { onscary, monflee } from './monmove.js';
-
-/* C ref: youprop.h Protection_from_shape_changers, Deaf, Hallucination */
-function uhas(p) {
-    const P = game.u.uprops[p];
-    return !!(P && (P.intrinsic || P.extrinsic));
-}
-function Protection_from_shape_changers() { return uhas(PROT_FROM_SHAPE_CHANGERS); }
-function Deaf() { return uhas(DEAF) || !!game.u.uroleplay?.deaf; }
-function Hallucination() { return uhas(HALLUC) && !uhas(HALLUC_RES); }
+import { Protection_from_shape_changers, Deaf, Hallucination } from './youprop.js';
 
 // C ref: were.c were_change()
 export async function were_change(mon) {

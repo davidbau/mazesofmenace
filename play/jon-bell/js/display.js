@@ -2,7 +2,7 @@ import { nh_qsort } from './nhsort.js';
 import { hcolor } from './do_name.js';
 import { decode_mixed } from './windows.js';
 import { mixed_to_utf8 } from './utf8map.js';
-import { PLINE_NOREPEAT, OVERRIDE_MSGTYPE, MAX_MSG_HISTORY } from './const.js';
+import { PLINE_NOREPEAT, OVERRIDE_MSGTYPE, MAX_MSG_HISTORY, def_warnsyms } from './const.js';
 // @ts-nocheck
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
@@ -1516,8 +1516,10 @@ export function pager_cmap_description(glyph) {
         classCount: classes.matchCount, needsLook: classes.needsLook,
     };
 }
-/* C pager.c:1325-1528: warning glyphs undergo the same symbol-class scans
- * as objects and terrain, including collisions with a custom boulder symbol. */
+/* C pager.c:1325-1528,1595-1609: warning glyphs undergo the same symbol-class
+ * scans as objects and terrain, including collisions with a custom boulder
+ * symbol; *firstmatch stays the class scan's match unless found > 1 ||
+ * need_to_look triggers lookat() (pager.c:722-725). */
 export function pager_warning_classes(x, y, glyph) {
     const classes = collectScreenDescriptionClasses({
         ch: glyph.ch, symbol: glyph.symbol, dec: !!glyph.dec,
@@ -1528,8 +1530,14 @@ export function pager_warning_classes(x, y, glyph) {
         boulderAt: !!_sobj_at(BOULDER_OTYP, x, y),
         allowVibratingSquare: Inhell(),
     });
+    const wl = Number.isInteger(glyph.warningLevel) ? glyph.warningLevel
+        : DEF_WARNSYMS.findIndex(w => w.ch === glyph.ch);
+    const lookedFirstmatch = def_warnsyms[wl]?.desc ?? classes.firstmatch ?? '';
     return { classText: classes.classes.join(' or '),
-             classCount: classes.matchCount, needsLook: classes.needsLook };
+             classCount: classes.matchCount, needsLook: classes.needsLook,
+             lookedFirstmatch,
+             firstmatch: (classes.matchCount > 1 || classes.needsLook)
+                 ? lookedFirstmatch : (classes.firstmatch ?? lookedFirstmatch) };
 }
 /* C pager.c:1163-1195,1462-1509: each matching water cmap borrows a
  * monster-name buffer, even when lookat() will replace the description.
@@ -9965,7 +9973,7 @@ export function _status_row1_whole_with_tail(status1) {
  * is gone again by then (damage, then regeneration) records the dirt here. */
 export function status_r1_hpbar_bot_note() {
     const st = game._r1wipe;
-    if (!st || !game.iflags?.wc2_hitpointbar || !game.u) return;
+    if (!st || !game.iflags?.wc2_hitpointbar || !game.u || (game.u.uhp | 0) === -1) return;
     const u = game.u, poly = (u.umonnum | 0) !== (u.umonster | 0);
     const hp = Math.max(0, (poly ? u.mh : u.uhp) | 0), hpmax = (poly ? u.mhmax : u.uhpmax) | 0;
     let pc = hpmax > 0 ? Math.trunc((100 * hp) / hpmax) : 0;
@@ -10091,8 +10099,17 @@ export function _status_row1_map_overlay(status1) {
          * and check_fields (wintty.c:4701-4722) compares the bare title in
          * status_vals with the '['-led window data, so the bar is rewritten. */
         if (game.iflags?.wc2_hitpointbar && stAt > 0 && game.u) {
-            const u = game.u, poly = (u.umonnum | 0) !== (u.umonster | 0);
-            const hp = Math.max(0, (poly ? u.mh : u.uhp) | 0), hpmax = (poly ? u.mhmax : u.uhpmax) | 0;
+            const u = game.u;
+            const _hs = (game._inMovemonMore && game._paintedSnapshot
+                         && game._paintedSnapshot.botl
+                         && game._paintedSnapshot.botl.mtimedone != null)
+                ? game._paintedSnapshot.botl
+                : ((((u.uhp | 0) === -1 || game._botlFrozenDeath) && game._lastPaintedBotl
+                    && game._lastPaintedBotl.umonnum != null) ? game._lastPaintedBotl : null);
+            const poly = (((_hs ? _hs.umonnum : u.umonnum) | 0)
+                          !== (((_hs && _hs.umonster != null) ? _hs.umonster : u.umonster) | 0));
+            const hp = Math.max(0, (poly ? (_hs ? _hs.mh : u.mh) : (_hs ? _hs.uhp : u.uhp)) | 0);
+            const hpmax = (poly ? (_hs ? _hs.mhmax : u.mhmax) : (_hs ? _hs.uhpmax : u.uhpmax)) | 0;
             let pc = hpmax > 0 ? Math.trunc((100 * hp) / hpmax) : 0;
             if (pc === 0 && hp !== 0) pc = 1; /* botl.c:2042 percentage() */
             const hpKey = `${hp}/${pc}`;

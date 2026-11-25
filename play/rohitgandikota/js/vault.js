@@ -44,7 +44,8 @@ import {
 import { relobj } from './steal.js';
 import { m_into_limbo } from './mon.js';
 import { on_level } from './dungeon.js';
-import { mon_track_clear } from './monmove.js';
+import { mon_track_clear, m_canseeu } from './monmove.js';
+import { GD_EATGOLD, GD_DESTROYGOLD } from './const.js';
 import { carried } from './obj.js';
 import { deltrap } from './trap.js';
 import { yelp } from './sounds.js';
@@ -559,6 +560,15 @@ export async function gd_move(guard) {
         || Math.abs(egd.ogy - guard.my) > 1)
         return -1;
 
+    if (egd.witness) {
+        if (!Deaf())
+            await verbalize(`How dare you ${
+                (egd.witness & GD_EATGOLD) ? 'consume' : 'destroy'} that gold, scoundrel!`);
+        egd.witness = 0;
+        guard.mpeaceful = 0;
+        return -1;
+    }
+
     const umoney = money_cnt(game.invent);
     const u_carry_gold = umoney > 0 || hidden_gold(game.invent, true) > 0;
     if (egd.fcend === 1) {
@@ -1010,4 +1020,14 @@ export function vault_summon_gd() {
 // src/vault.c:1272 gd_sound(); suppress patrol sounds while a guard owns a vault.
 export function gd_sound() {
     return !(vault_occupied(game.u.urooms) || findgd());
+}
+
+// src/vault.c:1278 vault_gd_watching()
+export function vault_gd_watching(activity) {
+    const guard = findgd();
+
+    if (guard && guard.mx && guard.mcansee && m_canseeu(guard)) {
+        if (activity === GD_EATGOLD || activity === GD_DESTROYGOLD)
+            guard.mextra.egd.witness = activity;
+    }
 }

@@ -5,6 +5,7 @@
 // more_experienced(), newexplevel(), pluslvl() (not for a polymorphed
 // hero) and losexp().
 
+import { minuhpmax } from './attrib.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_MINORAC } from './const.js';
@@ -20,12 +21,13 @@ import { find_mac } from './worn.js';
 import {
     PM_CLERIC, PM_WIZARD, PM_HEALER, PM_KNIGHT, PM_BARBARIAN, PM_VALKYRIE,
 } from './monsters.js';
-import { ACURR, adjabil, newhp } from './attrib.js';
+import { ACURR, adjabil, newhp, setuhpmax } from './attrib.js';
 import { xlev_to_rank } from './botl.js';
 import { record_achievement, achieve_rank } from './insight.js';
 import { pline } from './display.js';
 import { Goodbye } from './role.js';
 import { resists_drli } from './mondata.js';
+import { Amphibious } from './youprop.js';
 
 // C ref: exper.c newuexp()
 export function newuexp(lev) {
@@ -98,11 +100,6 @@ export function newpw() {
 
 /* C ref: mondata.h extra_nasty(); youprop.h Amphibious */
 function extra_nasty(ptr) { return (ptr.mflags2 & M2_NASTY) !== 0; }
-function Amphibious() {
-    const p = game.u.uprops[MAGICAL_BREATHING];
-    return !!(p.intrinsic || p.extrinsic)
-           || (game.youmonst.data.mflags1 & M1_AMPHIBIOUS) !== 0;
-}
 
 // C ref: exper.c experience()
 export function experience(mtmp, nk) {
@@ -288,30 +285,6 @@ export async function pluslvl(
             u.ulevelpeak = u.ulevel;
     }
     game.disp_botl = true;
-}
-
-// C ref: attrib.c minuhpmax()
-function minuhpmax(altmin) {
-    if (altmin < 1)
-        altmin = 1;
-    return Math.max(game.u.ulevel, altmin);
-}
-
-// C ref: attrib.c setuhpmax() -- the !Upolyd case
-function setuhpmax(newmax, even_when_polyd) {
-    const u = game.u;
-    if (u.umonnum !== u.umonster && !even_when_polyd)
-        throw new Error('setuhpmax(): polymorphed hit points not ported yet');
-    if (newmax !== u.uhpmax) {
-        u.uhpmax = newmax;
-        if (u.uhpmax > (u.uhppeak || 0))
-            u.uhppeak = u.uhpmax;
-        game.disp_botl = true;
-    }
-    if (u.uhp > u.uhpmax) {
-        u.uhp = u.uhpmax;
-        game.disp_botl = true;
-    }
 }
 
 // C ref: exper.c losexp()

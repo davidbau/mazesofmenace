@@ -128,6 +128,18 @@ export function SchroedingersBox(obj) {
 const BAG_OF_HOLDING_OTYP = 219;
 import { BAG_OF_TRICKS_OTYP } from './pickup.js';
 import { boh_loss, explain_container_prompt, in_container, in_or_out_menu, observe_quantum_cat, out_container, stash_ok } from './pickup.js'; // relocate-fns
+
+async function traditional_loot_overflow_abort(oclassct) {
+    if (oclassct < 40) return;
+    const g = game;
+    if (g._pending_message)
+        await flush_screen(1);
+    g.program_state.exiting = 1;
+    const err = new Error('nh_terminate: stack protector abort (traditional_loot selection[28] overflow)');
+    err.status = 134;
+    throw err;
+}
+
 export { container_gone, do_boh_explosion, is_boh_item_gone, mbag_explodes, mbag_item_gone, observe_quantum_cat, stash_ok } from './pickup.js'; // relocate-fns
 export { BAG_OF_HOLDING_OTYP, COIN_CLASS, Has_contents, Is_mbag, _carried_box }; // relocate-fns
 
@@ -1206,6 +1218,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                     if (await askchain(() => obj.cobj, q.one_at_a_time ? [] : q.oclasses,
                         q.everything, (o) => out_container(obj, o), null, 0, 'take out'))
                         used |= ECMD_TIME;
+                    await traditional_loot_overflow_abort(q.oclasses.length);
                 } else tradRetry = q.via_menu;
                 tradDone = !tradRetry;
             }
@@ -1283,6 +1296,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                 q.everything, in_container,
                 (o) => g.current_container && o !== g.current_container, 0, 'put in'))
                 used |= ECMD_TIME;
+            await traditional_loot_overflow_abort(q.oclasses.length);
         } else retry = q.via_menu;
         if (!retry) do_in = false;
     }
@@ -1382,6 +1396,7 @@ export async function use_container_impl(cobjRef, held, more_containers) {
                     if (await askchain(() => cc.cobj, q.one_at_a_time ? [] : q.oclasses,
                         q.everything, (o) => out_container(cc, o), null, 0, 'take out'))
                         used |= ECMD_TIME;
+                    await traditional_loot_overflow_abort(q.oclasses.length);
                 } else tradRetry = q.via_menu;
                 tradDone = !tradRetry;
             }

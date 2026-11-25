@@ -3786,7 +3786,7 @@ async function moveloop_core_faithful() {
                 g.vision_full_recalc = 0;
             }
             await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
-            await flush_screen(1);
+            await flush_screen(1, false);
         }
         g.context = g.context || {};
         g.context.move = 0;

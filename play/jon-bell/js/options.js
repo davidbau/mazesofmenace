@@ -893,10 +893,30 @@ export function parseNethackrc(rc) {
     const compoundSeen = new Set();
     let lineIsDup = false;
     let lineDupDone = false; /* parseoptions() calls complain_about_duplicate() once per line */
+    /* C options.c:107,503,610 `using_alias` is a file static that every
+     * parseoptions() call clears on ENTRY, before it recurses on the rest of
+     * the line (options.c:514-520).  The elements of one OPTIONS= line are
+     * therefore matched right to left with no reset in between, and once any
+     * element to the right was matched through an alias, every later
+     * complain_about_duplicate() on that line prints " (via alias: %s)" with
+     * allopt[optidx].alias -- a NULL for an option that has none, which the
+     * Mac's libc prints as "(null)" (Intel Mac, requests2/uname u23:
+     * `name:Aaa,name:Bbb,...,align:lawful` -> "... name (via alias: (null))."). */
+    let lineAliasSticky = false;
+    const viaAlias = (opts) => {
+        const allopt = option_state().allopt;
+        for (const r of allopt) {
+            if (r.pfx && r.name && opts.toLowerCase().startsWith(r.name.toLowerCase())) return false;
+            if (r.name && match_optname(opts, r.name, r.minmatch, true)) return false;
+        }
+        return allopt.some(r => r.alias && match_optname(opts, r.alias, r.alias.length, true));
+    };
     const compoundDuplicate = (name, alias = '') => {
         if (lineDupDone) return;
         lineDupDone = true;
         lineIsDup = compoundSeen.has(name);
+        if (!alias && lineAliasSticky)
+            alias = option_state().allopt.find(r => r.name === name)?.alias ?? '(null)';
         if (compoundSeen.has(name))
             config_error_add('compound option specified multiple times: %s%s', name, alias ? ` (via alias: ${alias})` : '');
         compoundSeen.add(name);
@@ -1031,6 +1051,7 @@ export function parseNethackrc(rc) {
         }
         // parseoptions() handles the suffix recursively before the first
         // entry. Across RC lines, the ordinary file order is retained.
+        lineAliasSticky = false;   /* a new top-level parseoptions() call */
         for (const opt of optMatch[1].split(',').reverse()) {
             // options.c:522-526 rejects the raw entry before stripping space,
             // just as the interactive parseoptions() path below already does.
@@ -1054,6 +1075,7 @@ export function parseNethackrc(rc) {
             const menusep = menuopts.search(/[:=]/);
             const menuname = (menusep < 0 ? menuopts : menuopts.slice(0, menusep)).trim().toLowerCase();
             const menuval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
+            if (viaAlias(menuopts)) lineAliasSticky = true;   /* C options.c:610 */
             /* C options.c:620-628: duplicate_opt_detection() + complain_about_duplicate()
              * for every compound option that lacks dupeok, before its optfn runs. */
             lineDupDone = false;
@@ -1182,7 +1204,7 @@ export function parseNethackrc(rc) {
             }
             if (menuname.length >= 3 && ('female'.startsWith(menuname) || 'male'.startsWith(menuname))) {
                 if (bool_dup_seen.has('female'))
-                    config_error_add(`boolean option specified multiple times: female${'male'.startsWith(menuname) ? ' (via alias: male)' : ''}`);
+                    config_error_add(`boolean option specified multiple times: female${('male'.startsWith(menuname) || lineAliasSticky) ? ' (via alias: male)' : ''}`);
                 bool_dup_seen.add('female');
                 let isFemale = 'female'.startsWith(menuname) ? !menunegated : menunegated;
                 const op = menuval.toLowerCase();

@@ -5,6 +5,9 @@
 // morgue_mon_sound(), zoo_mon_sound(), dosounds().  temple_priest_sound()
 // and oracle_sound() are only partly ported (see their comments).
 
+import { DEADMONSTER } from './mon.js';
+import { g_at, vault_occupied } from './vault.js';
+import { helpless } from './monmove.js';
 import { game } from './gstate.js';
 import { rn2, ROLL_FROM } from './rng.js';
 import { canseemon } from './display.js';
@@ -29,30 +32,26 @@ import { M1_ANIMAL, M2_LORD, M2_PRINCE, M2_MERC, S_ANT, PM_ORACLE,
          MS_GROAN } from './monsters.js';
 import { quest_chat } from './quest.js';
 import { GOLD_PIECE, STATUE } from './objects.js';
-import { canspotmon, vobj_at } from './display.js';
+import { canspotmon, vobj_at, map_invisible } from './display.js';
 import { m_at } from './makemon.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, rndmonnam } from './do_name.js';
 import { night } from './calendar.js';
 import * as MM from './monsters.js';
 import { p_coaligned } from './priest.js';
 import { getdir } from './cmd.js';
-import { Unaware } from './eat.js';
-import { is_flyer, is_undead, is_vampshifter } from './mondata.js';
+import { is_flyer, is_undead, is_vampshifter, same_race } from './mondata.js';
+import { Blind, Strangled, Hallucination, Deaf, Unaware } from './youprop.js';
+import { S_NYMPH as S_NYMPH_SN } from './monsters.js';
+import { could_seduce as could_seduce_sn, doseduce as doseduce_sn } from './mhitu.js';
+import { is_neuter as is_neuter_sn } from './mondata.js';
+import { M1_HUMANOID as M1_HUMANOID_SN } from './monsters.js';
 
 /* C ref: mondata.h predicates */
 function is_lord(ptr) { return (ptr.mflags2 & M2_LORD) !== 0; }
 function is_prince(ptr) { return (ptr.mflags2 & M2_PRINCE) !== 0; }
 function is_animal(ptr) { return (ptr.mflags1 & M1_ANIMAL) !== 0; }
 function is_mercenary(ptr) { return (ptr.mflags2 & M2_MERC) !== 0; }
-/* C ref: monst.h DEADMONSTER() */
-function DEADMONSTER(mon) { return mon.mhp < 1; }
 
-/* C ref: youprop.h Hallucination */
-function Hallucination() {
-    const P = game.u.uprops;
-    return !!(P[HALLUC].intrinsic
-              && !(P[HALLUC_RES].intrinsic || P[HALLUC_RES].extrinsic));
-}
 
 // C ref: pline.c You_hear()
 export async function You_hear(msg) {
@@ -208,16 +207,6 @@ export function search_special(type) {
     return null;
 }
 
-// C ref: vault.c vault_occupied()
-function vault_occupied(array) {
-    for (const ch of array || '') {
-        const r = ch.charCodeAt(0);
-        if (game.level.rooms[r - ROOMOFFSET].rtype === VAULT)
-            return r;
-    }
-    return 0;
-}
-
 // C ref: vault.c findgd()
 function findgd() {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
@@ -236,14 +225,6 @@ function findgd() {
    is around */
 function gd_sound() {
     return !(vault_occupied(game.u.urooms) || findgd());
-}
-
-// C ref: invent.c g_at()
-function g_at(x, y) {
-    for (const o of game.level.objects || [])
-        if (o.otyp === GOLD_PIECE && o.ox === x && o.oy === y)
-            return o;
-    return null;
 }
 
 /* C ref: shk.c tended_shop(), noisy_shop() -- in shk.js */
@@ -387,14 +368,6 @@ export async function dosounds() {
 
 /* C ref: mondata.h is_silent() */
 function is_silent(ptr) { return ptr.msound === MS_SILENT; }
-/* C ref: monst.h helpless() */
-function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
-/* C ref: youprop.h Deaf, Blind, Strangled, Underwater */
-function uprop(prop) {
-    const p = game.u.uprops[prop];
-    return !!(p && (p.intrinsic || p.extrinsic));
-}
-function Deaf() { return uprop(DEAF) || !!game.u.uroleplay?.deaf; }
 
 /* C ref: sounds.c h_sounds[] */
 const h_sounds = [
@@ -615,8 +588,11 @@ async function domonnoise(mtmp) {
     else if (mtmp.isshk)
         msound = MS_SELL;
     /* some normally non-speaking types can/will speak if hero is similar */
-    else if (msound === MS_ORC)
-        throw new Error('domonnoise(): MS_ORC same_race() check not ported yet');
+    else if (msound === MS_ORC
+             && ((same_race(ptr, game.youmonst.data)           /* current form, */
+                  || same_race(ptr, mons[game.urace.mnum])) /* unpoly'd form (Race_switch) */
+                 || Hallucination()))
+        msound = MM.MS_HUMANOID;
     else if (msound === MS_MOO && !mtmp.mtame)
         msound = MS_BELLOW;
     /* silliness: Hallucination && mon_is_gecko() */
@@ -627,7 +603,7 @@ async function domonnoise(mtmp) {
      * which case we want to check its pre-teleport position
      */
     if (!canspotmon(mtmp))
-        throw new Error('domonnoise(): map_invisible() not ported yet');
+        map_invisible(mtmp.mx, mtmp.my);
 
     switch (msound) {
     case MS_LEADER:
@@ -798,7 +774,7 @@ async function dochat() {
 
     if (is_silent(game.youmonst.data))
         throw new Error('dochat(): silent hero form not ported yet');
-    if (uprop(STRANGLED)) {
+    if (Strangled()) {
         await pline("You can't speak.  You're choking!"); /* You_cant() */
         return ECMD_OK;
     }
@@ -811,7 +787,7 @@ async function dochat() {
         return ECMD_OK;
     }
     /* shop_object()/price_quote(): shopkeepers aren't created yet */
-    if (!Deaf() && !uprop(BLINDED) && game.u.ushops && game.u.ushops.length)
+    if (!Deaf() && !Blind() && game.u.ushops && game.u.ushops.length)
         throw new Error('dochat(): shop_object() price quote not ported yet');
 
     if (!(await getdir("Talk to whom? (in what direction)"))) {
@@ -848,10 +824,10 @@ async function dochat() {
     if (!mtmp || mtmp.mundetected) {
         if ((otmp = vobj_at(tx, ty)) != null && otmp.otyp === STATUE) {
             /* Talking to a statue */
-            if (!uprop(BLINDED)) {
-                if (Hallucination())
-                    throw new Error('dochat(): rndmonnam() not ported yet');
-                await pline("The statue seems not to notice you."); /* pline_The() */
+            if (!Blind()) {
+                await pline(`The ${
+                    /* if hallucinating, you can't tell it's a statue */
+                    Hallucination() ? rndmonnam(null) : "statue"} seems not to notice you.`); /* pline_The() */
             }
             return ECMD_OK;
         }
@@ -859,7 +835,7 @@ async function dochat() {
         if (!Deaf() && (IS_WALL(typ) || typ === SDOOR)) {
             /* Talking to a wall; secret door remains hidden by behaving
                like a wall */
-            if (uprop(BLINDED))
+            if (Blind())
                 throw new Error('dochat(): blind wall talk (lastseentyp) not ported yet');
             else if (!Hallucination()) {
                 await pline("It's like talking to a wall.");
@@ -903,7 +879,7 @@ async function dochat() {
 
     if (!Deaf() && mtmp.mtame && mtmp.meating) {
         if (!canspotmon(mtmp))
-            throw new Error('dochat(): map_invisible() not ported yet');
+            map_invisible(mtmp.mx, mtmp.my);
         await pline(`${Monnam(mtmp)} is eating noisily.`);
         return ECMD_OK;
     }
@@ -919,10 +895,6 @@ async function dochat() {
     return await domonnoise(mtmp);
 }
 
-import { S_NYMPH as S_NYMPH_SN } from './monsters.js';
-import { could_seduce as could_seduce_sn, doseduce as doseduce_sn } from './mhitu.js';
-import { is_neuter as is_neuter_sn } from './mondata.js';
-import { M1_HUMANOID as M1_HUMANOID_SN } from './monsters.js';
 /* C ref: mondata.h humanoid() */
 function humanoid_sn(ptr) { return (ptr.mflags1 & M1_HUMANOID_SN) !== 0; }
 /* C ref: polyself.c poly_gender() -- gender of polymorphed player;

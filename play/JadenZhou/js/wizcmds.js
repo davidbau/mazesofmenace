@@ -10,8 +10,6 @@
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_CONDUCT, LL_WISH, LL_ARTIFACT } from './const.js';
-/* C ref: you.h uhis() */
-function uhis() { return game.flags.female ? "her" : "his"; }
 import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
 import { MAXULEV, IRONBARS, ICE, Is_airlevel, Is_waterlevel, ONAME_WISH,
@@ -46,6 +44,11 @@ import { pooleffects } from './hack.js';
 import { docrt } from './display.js';
 import { display_inventory } from './invent.js';
 import { cmd_from_func } from './cmd.js';
+import { uhis } from './mhitu.js';
+import { CONFUSION, POLY_CONTROLLED } from './const.js';
+import { map_trap, map_engraving } from './display.js';
+import { do_mapping, findit } from './detect.js';
+import { print_dungeon } from './dungeon.js';
 
 // C ref: wizcmds.c wiz_level_change() -- #levelchange
 export async function wiz_level_change() {
@@ -496,8 +499,3 @@ export async function wiz_detect() {
         await pline("Unavailable command 'wizdetect'."); /* unavailcmd */
     return 0; /* ECMD_OK */
 }
-
-import { CONFUSION, POLY_CONTROLLED } from './const.js';
-import { map_trap, map_engraving } from './display.js';
-import { do_mapping, findit } from './detect.js';
-import { print_dungeon } from './dungeon.js';

@@ -6,6 +6,7 @@
 // files, so the values of the recorder's installed sysconf
 // (games/lib/nethackdir/sysconf) that the ported code uses are set here.
 
+import { You } from './display.js';
 import { game } from './gstate.js';
 import { pline } from './display.js';
 
@@ -56,11 +57,6 @@ export function authorize_explore_mode() {
     }
     game.iflags.explore_error_flag = true; /* not allowed into explore mode */
     return false;
-}
-
-// C ref: pline.c You() -- pline() with "You " prepended
-async function You(line) {
-    await pline(`You ${line}`);
 }
 
 // C ref: unixmain.c wd_message()

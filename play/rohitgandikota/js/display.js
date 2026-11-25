@@ -1898,10 +1898,11 @@ export function newsym(x, y) {
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
     if (cansee(x, y)) {
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0,
-                        { kind: 'cmap', cmap: tg.cmap });
+                        tg.glyph ?? { kind: 'cmap', cmap: tg.cmap });
         if (game.level?.flags?.hero_memory) {
             loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
-                                     glyph: { kind: 'cmap', cmap: tg.cmap } };
+                                     glyph: tg.glyph
+                                         ?? { kind: 'cmap', cmap: tg.cmap } };
         }
     } else if (loc.remembered_glyph) {
         /* src/display.c:1058 — memory of a dark place that was displayed lit

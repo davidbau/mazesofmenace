@@ -26,6 +26,7 @@ import { dorecover } from './restore.js';
 import { GameDisplay } from './game_display.js';
 import { InMemoryStorage } from './storage.js';
 import { objects, OBJ_NAME, SLIME_MOLD } from './objects.js';
+import { LAST_PROP } from './const.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -165,8 +166,11 @@ export class NethackGame {
            in the home directory */
         g.configfile = '.nethackrc';
 
-        // Initialize hero struct (zeroed again by u_init_misc())
+        // Initialize hero struct (zeroed again by u_init_misc()); C's u is a
+        // zeroed static, so the property table reads as all zero until then
         g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0, uz: { dnum: 0, dlevel: 0 },
+                uprops: Array.from({ length: LAST_PROP + 1 },
+                                   () => ({ extrinsic: 0, intrinsic: 0, blocked: 0 })),
                 uroleplay: { ...dflt.uroleplay, ...opts.uroleplay } };
         g.context = { move: 0 };
         /* C ref: decl.c -- hero_seq starts at 1L << 3 (moves*8 + n, moves 1) */

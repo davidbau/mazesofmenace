@@ -35,7 +35,7 @@ import { setworn } from './worn.js';
 import { welded, is_sword, setuwep, setuswapwep, setuqwep, empty_handed }
     from './wield.js';
 import { bimanual, is_metallic } from './obj.js';
-import { nolimbs, nohands, touch_petrifies, verysmall } from './mondata.js';
+import { nolimbs, nohands, touch_petrifies, verysmall, humanoid } from './mondata.js';
 import { sgn } from './hacklib.js';
 import { erode_obj, float_up, float_down, is_flammable, is_rustprone, is_crackable, is_rottable,
          is_corrodeable, is_damageable } from './trap.js';
@@ -1854,7 +1854,8 @@ export async function accessory_or_armor_on(obj) {
         }
         const uleft = worn(W_RINGL), uright = worn(W_RINGR);
         if (uleft && uright) {
-            await pline('There are no more ring-fingers to fill.');
+            await There(`are no more ${humanoid(game.youmonst.data) ? 'ring-' : ''}${
+                fingers_or_gloves(false)} to fill.`);
             return ECMD_OK;
         }
         if (uleft) {
@@ -1864,7 +1865,8 @@ export async function accessory_or_armor_on(obj) {
         } else {
             for (;;) {
                 const answer = await tty_yn_function(
-                    'Which ring-finger, Right or Left?', 'rl', '\0');
+                    `Which ${humanoid(game.youmonst.data) ? 'ring-' : ''}${
+                        body_part(FINGER)}, Right or Left?`, 'rl', '\0', true);
                 if (answer === '\0' || answer === '\x1b')
                     return ECMD_OK;
                 if (answer === 'l' || answer === 'L') { mask = W_RINGL; break; }

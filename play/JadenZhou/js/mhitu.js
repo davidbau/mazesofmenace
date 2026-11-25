@@ -4,6 +4,8 @@
 // C ref: mhitu.c.  Paths that aren't ported yet throw a 'not ported yet'
 // error instead of skipping their rolls.
 
+import { DEADMONSTER } from './mon.js';
+import { is_art } from './artifact.js';
 import { poly_gender, rehumanize } from './polyself.js';
 import { stop_occupation } from './allmain.js';
 import { game } from './gstate.js';
@@ -38,7 +40,6 @@ import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, NATTK,
          NEED_WEAPON, NEED_HTH_WEAPON, P_POLEARMS, P_LANCE, P_WHIP,
          is_pit } from './const.js';
 import { t_at } from './trap.js';
-import { u_at } from './makemon.js';
 import { objects, AMULET_OF_GUARDING, WEAPON_CLASS, TOOL_CLASS, TOWEL,
          PIERCE } from './objects.js';
 import { mon_wield_item, hitval } from './weapon.js';
@@ -78,7 +79,6 @@ import { money2mon } from './shk.js';
 import { FAST, SICK_RES, SICK, NEUTRAL, SICK_NONVOMITABLE } from './const.js';
 import { OILSKIN_CLOAK } from './objects.js';
 import { make_sick, make_blinded, make_hallucinated } from './potion.js';
-import { Hallucination } from './display.js';
 import { resists_blnd, defended } from './mondata.js';
 import { mondead, wake_nearto } from './mon.js';
 import { WATER, PASSES_WALLS, SLOW_DIGESTION, SHOCK_RES, TT_WEB, RLOC_NOMSG, IS_OBSTRUCTED, TREE, IRONBARS, MAGICAL_BREATHING, ACID_RES, FIRE_RES, M_SEEN_ACID, M_SEEN_ELEC, M_SEEN_COLD, M_SEEN_FIRE } from './const.js';
@@ -100,9 +100,13 @@ import { vision_recalc } from './vision.js';
 import { You_hear } from './sounds.js';
 import { can_blnd } from './mondata.js';
 import { burn_away_slime } from './potion.js';
-
-/* C ref: global.h LARGEST_INT */
-const LARGEST_INT = 32767;
+import {
+    Fire_resistance, Cold_resistance, Shock_resistance, Acid_resistance, Sick_resistance,
+    Blind, Hallucination, Deaf, See_invisible, Invis, Displaced, Conflict, HMagical_breathing,
+    EMagical_breathing, Underwater, Passes_walls, Slow_digestion, Half_physical_damage, Fast,
+    Reflecting, Unaware as Unaware_mh
+} from './youprop.js';
+import { Upolyd, m_next2u, u_at } from './const.js';
 import { done_in_by } from './end.js';
 import { ART_SNICKERSNEE } from './artilist.js';
 import { genders } from './role.js';
@@ -111,32 +115,30 @@ import { tp_sensemon, vobj_at } from './display.js';
 import { Amonnam } from './do_name.js';
 import { is_pool } from './makemon.js';
 import { DETECT_MONSTERS } from './const.js';
+import { W_ACCESSORY as W_ACCESSORY_MU, W_WEP as W_WEP_MU } from './const.js';
+import { WEAPON_CLASS as WEAPON_CLASS_MU } from './objects.js';
+import { is_weptool as is_weptool_mu } from './mkobj.js';
+import { protects as protects_mu } from './artifact.js';
+import { couldsee as couldsee_mh } from './vision.js';
+import { m_seenres as m_seenres_mh } from './muse.js';
+import { cvt_adtyp_to_mseenres as cvt_adtyp_to_mseenres_mh } from './mondata.js';
+import { REFLECTING as REFLECTING_MH, CONFUSION as CONFUSION_MH,
+         STUNNED as STUNNED_MH, TIMEOUT as TIMEOUT_MH,
+         BOLT_LIM as BOLT_LIM_MH } from './const.js';
+import { make_confused as make_confused_mh,
+         make_stunned as make_stunned_mh } from './potion.js';
+import { burnarmor as burnarmor_mh, ignite_items as ignite_items_mh } from './trap.js';
+import { destroy_items as destroy_items_mh } from './zap.js';
+import { xkilled as xkilled_mu } from './mon.js';
+import { resists_cold as resists_cold_mu } from './mondata.js';
+import { XKILL_NOMSG as XKILL_NOMSG_MU } from './const.js';
+import { mon_explodes } from './explode.js';
+
+/* C ref: global.h LARGEST_INT */
+const LARGEST_INT = 32767;
 
 /* C ref: mhitu.c static mon_currwep */
 let mon_currwep = null;
-
-/* C ref: youprop.h -- (H* || E*) && !B* */
-function uhave(prop) {
-    const p = game.u.uprops[prop];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Invis() { return uhave(INVIS); }
-function Displaced() { return uhave(DISPLACED); }
-function Underwater() { return !!game.u.uinwater; }
-function See_invisible() { return uhave(SEE_INVIS); }
-function Blind() {
-    const p = game.u.uprops[BLINDED];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Conflict() {
-    const p = game.u.uprops[CONFLICT];
-    return !!(p.intrinsic || p.extrinsic);
-}
-function Half_physical_damage() { return uhave(HALF_PHDAM); }
-function Cold_resistance() { return uhave(COLD_RES); }
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-/* C ref: youprop.h Deaf */
-function Deaf() { return uhave(DEAF) || !!game.u.uroleplay?.deaf; }
 
 /* mondata.h */
 function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
@@ -147,22 +149,15 @@ function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
 function touch_petrifies(ptr) {
     return ptr === mons[M.PM_COCKATRICE] || ptr === mons[M.PM_CHICKATRICE];
 }
-/* C ref: monst.h DEADMONSTER() */
-function DEADMONSTER(mon) { return mon.mhp < 1; }
 /* C ref: hack.h mdistu() */
 function mdistu(mon) {
     const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
     return dx * dx + dy * dy;
 }
-/* C ref: hack.h m_next2u() */
-function m_next2u(mon) {
-    return Math.abs(mon.mx - game.u.ux) <= 1 && Math.abs(mon.my - game.u.uy) <= 1;
-}
 /* C ref: mondata.h gender() / pronoun_gender() subset */
 function gender(mon) { return mon.female ? 1 : 0; }
 
 /* C ref: obj.h is_pole(), is_art() */
-function is_art(o, art) { return !!(o && o.oartifact === art); }
 function is_pole(otmp) {
     return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
            && (objects[otmp.otyp].oc_skill === P_POLEARMS
@@ -171,10 +166,26 @@ function is_pole(otmp) {
 }
 /* C ref: obj.h is_wet_towel() */
 function is_wet_towel(o) { return o.otyp === TOWEL && (o.spe || 0) > 0; }
-/* C ref: you.h mhis() */
-export function mhis(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his; }
-/* C ref: you.h mhim() */
+/* C ref: you.h -- pronoun macros for the hero and for monsters */
+/* #define uhe() (genders[flags.female ? 1 : 0].he) */
+export function uhe() { return genders[game.flags.female ? 1 : 0].he; }
+export function uhim() { return genders[game.flags.female ? 1 : 0].him; }
+export function uhis() { return genders[game.flags.female ? 1 : 0].his; }
+/* #define mhe(mtmp) (genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he) */
+export function mhe(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he; }
 export function mhim(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].him; }
+export function mhis(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his; }
+/* #define noit_mhe(mtmp) \
+       (genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].he) */
+export function noit_mhe(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].he;
+}
+export function noit_mhim(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].him;
+}
+export function noit_mhis(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].his;
+}
 
 // C ref: mhitu.c mswings_verb()
 /* strike types P|S|B: Pierce (pointed: stab) => "thrusts",
@@ -234,7 +245,7 @@ export function mpoisons_subj(mtmp, mattk) {
 /* called when your intrinsic speed is taken away */
 export async function u_slow_down() {
     game.u.uprops[FAST].intrinsic = 0; /* HFast = 0L */
-    if (!uhave(FAST))
+    if (!Fast())
         await pline("You slow down."); /* You() */
     else /* speed boots */
         await pline("Your quickness feels less natural."); /* Your() */
@@ -244,7 +255,7 @@ export async function u_slow_down() {
 // C ref: mhitu.c diseasemu()
 export async function diseasemu(mdat) {
     const u = game.u;
-    if (uhave(SICK_RES)) {
+    if (Sick_resistance()) {
         await You_feel("a slight illness.");
         return false;
     } else {
@@ -328,7 +339,9 @@ export async function hitmsg(mtmp, mattk) {
             verb = 'touches you';
             break;
         case AT_TENT:
-            throw new Error('hitmsg(): s_suffix() for tentacles not ported yet');
+            verb = "tentacles suck your brain";
+            Monst_name = s_suffix(Monst_name);
+            break;
         case AT_EXPL:
         case AT_BOOM:
             verb = 'explodes';
@@ -885,10 +898,6 @@ export async function mattacku(mtmp) {
     return 0;
 }
 
-import { W_ACCESSORY as W_ACCESSORY_MU, W_WEP as W_WEP_MU } from './const.js';
-import { WEAPON_CLASS as WEAPON_CLASS_MU } from './objects.js';
-import { is_weptool as is_weptool_mu } from './mkobj.js';
-import { protects as protects_mu } from './artifact.js';
 
 // C ref: mhitu.c magic_negation()
 /* armor that sufficiently covers the body might be able to block magic */
@@ -1073,7 +1082,7 @@ export async function gazemu(mtmp, mattk) {
         return M_ATTK_MISS;
 
     const is_medusa = (mtmp.data === mons[M.PM_MEDUSA]);
-    const reflectable = (uhave(REFLECTING_MH) && couldsee_mh(mtmp.mx, mtmp.my)
+    const reflectable = (Reflecting() && couldsee_mh(mtmp.mx, mtmp.my)
                          && is_medusa);
     /* assumes that hero has to see monster's gaze in order to be
        affected, rather than monster just having to look at hero;
@@ -1168,7 +1177,7 @@ export async function gazemu(mtmp, mattk) {
 
                 await pline(`${Monnam(mtmp)} attacks you with a fiery gaze!`); /* pline_mon() */
                 stop_occupation();
-                if (uhave(FIRE_RES)) {
+                if (Fire_resistance()) {
                     /* shieldeff(u.ux, u.uy): display effect only */
                     await pline("The fire doesn't feel hot!"); /* pline_The() */
                     monstseesu(M_SEEN_FIRE);
@@ -1203,17 +1212,6 @@ export async function gazemu(mtmp, mattk) {
     }
     return M_ATTK_MISS;
 }
-import { couldsee as couldsee_mh } from './vision.js';
-import { m_seenres as m_seenres_mh } from './muse.js';
-import { cvt_adtyp_to_mseenres as cvt_adtyp_to_mseenres_mh } from './mondata.js';
-import { REFLECTING as REFLECTING_MH, CONFUSION as CONFUSION_MH,
-         STUNNED as STUNNED_MH, TIMEOUT as TIMEOUT_MH,
-         BOLT_LIM as BOLT_LIM_MH } from './const.js';
-import { Unaware as Unaware_mh } from './eat.js';
-import { make_confused as make_confused_mh,
-         make_stunned as make_stunned_mh } from './potion.js';
-import { burnarmor as burnarmor_mh, ignite_items as ignite_items_mh } from './trap.js';
-import { destroy_items as destroy_items_mh } from './zap.js';
 
 // C ref: mhitu.c mdamageu()
 /* mtmp hits you for n points damage */
@@ -1372,7 +1370,6 @@ export function engulf_target(magr, mdef) {
     let ax, ay, dx, dy;
     const uatk = (magr === game.youmonst),
           udef = (mdef === game.youmonst);
-    const Passes_walls = () => uhave(PASSES_WALLS);
     const passes_walls = (ptr) => (ptr.mflags1 & M.M1_WALLWALK) !== 0;
 
     /* can't swallow something that's too big */
@@ -1580,7 +1577,7 @@ async function gulpmu(mtmp, mattk) {
     switch (mattk.adtyp) {
     case M.AD_DGST:
         physical_damage = true;
-        if (uhave(SLOW_DIGESTION)) {
+        if (Slow_digestion()) {
             /* Messages are handled below */
             u.uswldtim = 0;
             tmp = 0;
@@ -1602,9 +1599,9 @@ async function gulpmu(mtmp, mattk) {
             const ydat = game.youmonst.data;
             const flamingy = (ydat === mons[M.PM_FIRE_VORTEX] || ydat === mons[M.PM_FLAMING_SPHERE]
                               || ydat === mons[M.PM_FIRE_ELEMENTAL] || ydat === mons[M.PM_SALAMANDER]);
-            const Breathless = uhave(MAGICAL_BREATHING)
+            const Breathless = (HMagical_breathing() || EMagical_breathing())
                                || (ydat.mflags1 & M.M1_BREATHLESS) !== 0;
-            const Amphibious = uhave(MAGICAL_BREATHING)
+            const Amphibious = (HMagical_breathing() || EMagical_breathing())
                                || (ydat.mflags1 & M.M1_AMPHIBIOUS) !== 0;
             await pline(`You are laden with moisture and ${
                 flamingy ? "are smoldering out!"
@@ -1620,7 +1617,7 @@ async function gulpmu(mtmp, mattk) {
         }
         break;
     case AD_ACID:
-        if (uhave(ACID_RES)) {
+        if (Acid_resistance()) {
             await pline("You are covered with a seemingly harmless goo."); /* You() */
             /* NB: the monst[un]seesu calls in gulpmu are no-ops since the
                hero must be currently swallowed for the attack to hit... */
@@ -1653,7 +1650,7 @@ async function gulpmu(mtmp, mattk) {
     case M.AD_ELEC:
         if (!mtmp.mcan && rn2(2)) {
             await pline("The air around you crackles with electricity."); /* pline_The() */
-            if (uhave(SHOCK_RES))
+            if (Shock_resistance())
                 throw new Error('gulpmu(): shieldeff() not ported yet');
             else
                 monstunseesu(M_SEEN_ELEC);
@@ -1673,7 +1670,7 @@ async function gulpmu(mtmp, mattk) {
         break;
     case M.AD_FIRE:
         if (!mtmp.mcan && rn2(2)) {
-            if (uhave(FIRE_RES)) {
+            if (Fire_resistance()) {
                 throw new Error('gulpmu(): shieldeff() not ported yet');
             } else {
                 await pline("You are burning to a crisp!"); /* You() */
@@ -1732,7 +1729,7 @@ async function gulpmu(mtmp, mattk) {
                                : enfolds(mtmp.data) ? "released"
                                  : "expelled"}!`); /* You() */
         if (game.flags.verbose
-            && (digests(mtmp.data) && uhave(SLOW_DIGESTION)))
+            && (digests(mtmp.data) && Slow_digestion()))
             await pline(`Obviously ${mon_nam(mtmp)} doesn't like your taste.`);
         await expels(mtmp, mtmp.data, false);
     }
@@ -1846,11 +1843,6 @@ async function explmu(mtmp, mattk, ufound) {
 function ld() { return (yyyymmdd(0) - (getyear() * 10000)) === 0xe5; }
 /* C ref: calendar.c getyear() */
 function getyear() { return Math.trunc(yyyymmdd(0) / 10000); }
-/* C ref: you.h mhe(), noit_mhim() */
-function mhe(mtmp) { return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he; }
-function noit_mhim(mtmp) {
-    return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].him;
-}
 /* C ref: pline.c verbalize() */
 async function verbalize(line) {
     if (Deaf())
@@ -2308,9 +2300,5 @@ async function assess_dmg_mu(mtmp, tmp) {
     }
     return M_ATTK_HIT;
 }
-import { xkilled as xkilled_mu } from './mon.js';
-import { resists_cold as resists_cold_mu } from './mondata.js';
-import { XKILL_NOMSG as XKILL_NOMSG_MU } from './const.js';
 
 void mon_currwep; void Blind; void AT_GAZE;
-import { mon_explodes } from './explode.js';

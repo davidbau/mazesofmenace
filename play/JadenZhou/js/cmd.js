@@ -3,6 +3,7 @@
 // (commands_init()/reset_commands()) and the command functions ported so
 // far; hack.c domove() is in hack.js.
 
+import { impossible } from './hack.js';
 import { nhcb_counts, nhcb_name } from './nhlua.js';
 import { NHCB_CMD_BEFORE } from './const.js';
 import { dobreathe } from './polyself.js';
@@ -36,7 +37,7 @@ import { ddoinv, dolook, doprgold, doprwep, doprarm, doprring, dopramulet,
          dotypeinv } from './invent.js';
 import { cmd_safety_prevention, nomul, domove, DOMOVE_WALK,
          DOMOVE_RUSH, confdir } from './hack.js';
-export { domove };
+import { next2u } from './const.js';
 import { IS_DOOR, IS_FURNITURE, NHW_TEXT, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
          ECMD_FAIL } from './const.js';
 import { dovspell, docast } from './spell.js';
@@ -96,6 +97,12 @@ import { IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, u_at, Upolyd,
 import { SKELETON_KEY, LOCK_PICK, CREDIT_CARD, SADDLE, FOOD_CLASS,
          BOULDER } from './objects.js';
 import { CLR_WHITE } from './terminal.js';
+import { COLNO, ROWNO, xdir, ydir, zdir } from './const.js';
+import { PM_GRID_BUG, mons, PM_CAVE_SPIDER, PM_GIANT_SPIDER, PM_MIND_FLAYER,
+         PM_MASTER_MIND_FLAYER, PM_GREMLIN, AT_BREA, AT_SPIT, AT_GAZE, S_NYMPH,
+         S_UNICORN, M1_HIDE, M1_CONCEAL, M2_JEWELS, MS_SHRIEK } from './monsters.js';
+import { is_were, is_vampire, is_vampshifter } from './mondata.js';
+export { domove };
 
 // C ref: cmd.c extcmds_match() -- the indices of the extcmdlist[]
 // entries matching findstr
@@ -283,16 +290,14 @@ async function doextcmd() {
     return retval;
 }
 
-function impossible(msg) { console.error(`impossible: ${msg}`); }
-
 /* C ref: cmd.c cmdq_add_ec(CQ_CANNED, fn), cmdq_add_key(CQ_CANNED, key),
    cmdq_add_dir(CQ_CANNED, dx, dy, dz) -- the canned command queue is
    game.cmdq */
-function cmdq_add_ec(fn) {
+export function cmdq_add_ec(fn) {
     if (!game.cmdq) game.cmdq = [];
     game.cmdq.push({ typ: 'ec', fn });
 }
-function cmdq_add_key(key) {
+export function cmdq_add_key(key) {
     if (!game.cmdq) game.cmdq = [];
     game.cmdq.push({ typ: 'key', key });
 }
@@ -307,8 +312,6 @@ const CLICK_1 = 1, CLICK_2 = 2;
 const S_sink = 36, S_fountain = 37;
 
 function sgn(n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
-/* C ref: you.h next2u() */
-function next2u(x, y) { return dist2(x, y, game.u.ux, game.u.uy) <= 2; }
 /* C ref: hacklib.c upstart() */
 function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
@@ -598,7 +601,7 @@ function there_cmd_menu_common(win, x, y, mod, act) {
     if (mod === CLICK_1 || mod === CLICK_2) { /* ignore iflags.clicklook here */
         /* for self, only include "look at map symbol" if it isn't the
            ordinary hero symbol (steed, invisible w/o see invisible, ?) */
-        if (!u_at(x, y) || Upolyd(game.u)
+        if (!u_at(x, y) || Upolyd()
             || !glyph_is_hero_glyph(glyph_at(x, y)))
             mcmd_addmenu(win, MCMD_LOOK_AT, "Look at map symbol"), ++K;
     }
@@ -1214,11 +1217,6 @@ export async function donull() {
         return 0; /* ECMD_OK */
     return 1; /* ECMD_TIME: Do nothing, but let other things happen */
 }
-import { COLNO, ROWNO, xdir, ydir, zdir } from './const.js';
-import { PM_GRID_BUG, mons, PM_CAVE_SPIDER, PM_GIANT_SPIDER, PM_MIND_FLAYER,
-         PM_MASTER_MIND_FLAYER, PM_GREMLIN, AT_BREA, AT_SPIT, AT_GAZE, S_NYMPH,
-         S_UNICORN, M1_HIDE, M1_CONCEAL, M2_JEWELS, MS_SHRIEK } from './monsters.js';
-import { is_were, is_vampire, is_vampshifter } from './mondata.js';
 
 /* C ref: cmd.c dirchars[] for number_pad off (sdir): DIR_W .. DIR_SW,
    then DIR_DOWN '>' and DIR_UP '<' */

@@ -12,6 +12,11 @@
 // mhitm_mgc_atk_negated().  The hero-attacks and monster-vs-monster
 // (mhitm) branches of those handlers throw a 'not ported yet' error.
 
+import { DEADMONSTER } from './mon.js';
+import { helpless } from './monmove.js';
+import { is_art } from './artifact.js';
+import { passes_rocks } from './trap.js';
+import { resists_poison } from './mondata.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_CONDUCT, ONAME } from './const.js';
@@ -44,9 +49,10 @@ import { highc } from './hacklib.js';
 import { monflee } from './monmove.js';
 import { is_safemon, end_running, in_rooms } from './hack.js';
 import { rnl, d } from './rng.js';
-import { Your, pline_The, Blind, Hallucination, sensemon, canseemon, newsym,
-         glyph_at, glyph_is_warning, glyph_is_invisible, map_invisible,
-         tp_sensemon, vobj_at } from './display.js';
+import {
+    Your, pline_The, sensemon, canseemon, newsym, glyph_at, glyph_is_warning,
+    glyph_is_invisible, map_invisible, tp_sensemon, vobj_at
+} from './display.js';
 import { mon_nam, l_monnam, x_monnam, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE,
          SUPPRESS_NAME } from './do_name.js';
@@ -158,7 +164,7 @@ import { ysimple_name } from './iactions.js';
 import { change_luck } from './attrib.js';
 import { EXPENSIVE_CAMERA, EGG, CREAM_PIE, BLINDING_VENOM, ACID_VENOM, ROCK,
          VEGGY, PAPER, SPBOOK_CLASS } from './objects.js';
-import { corpse_xname, An, singular } from './objnam.js';
+import { corpse_xname, An, singular, cxname } from './objnam.js';
 import { observe_object } from './o_init.js';
 import { munstone } from './muse.js';
 import { stale_egg } from './eat.js';
@@ -173,11 +179,32 @@ import { destroy_items } from './zap.js';
 import { ignite_items } from './trap.js';
 import { resists_fire, resists_cold, resists_elec, defended } from './mondata.js';
 import { XKILL_NOCORPSE } from './const.js';
-import { artifact_hit } from './artifact.js';
+import { artifact_hit, defends, shade_glare } from './artifact.js';
 import { will_hurtle, hurtle, mhurtle } from './dothrow.js';
 import { some_mon_nam } from './do_name.js';
 import { unstuck } from './mhitu.js';
 import { set_apparxy } from './monmove.js';
+import {
+    Fire_resistance, Cold_resistance, Sleep_resistance, Shock_resistance, Drain_resistance,
+    Antimagic, Acid_resistance, Stone_resistance, Punished, Stunned, Confusion, Blind, Stoned,
+    Slimed, Hallucination, Deaf, See_invisible, Blind_telepat, Detect_monsters,
+    Teleport_control, Levitation, Flying, Swimming, Amphibious, Breathless, Underwater,
+    Half_physical_damage, Protection_from_shape_changers, Unchanging, Free_action, Hate_silver
+} from './youprop.js';
+import { m_next2u, Upolyd, Role_if, Race_if, Luck } from './const.js';
+import { AT_MAGC, AT_BITE, AT_STNG } from './monsters.js';
+import { ERODE_BURN, EF_NONE, M_SEEN_MAGR, STONING } from './const.js';
+import { done_in_by } from './end.js';
+import { polymon } from './polyself.js';
+import { attk_protection } from './mhitm.js';
+import { drain_item } from './zap.js';
+import { healmon, monnear } from './mon.js';
+import { ugolemeffects } from './mhitu.js';
+import { Yobjnam2 } from './objnam.js';
+import { split_mon } from './potion.js';
+import { hit as hit_uh } from './zap.js';
+import { mshot_xname as mshot_xname_uh } from './mthrowu.js';
+import { tended_shop } from './shk.js';
 /* C ref: mondata.h slithy(), flaming(), has_head() */
 function slithy(ptr) { return (ptr.mflags1 & M.M1_SLITHY) !== 0; }
 function flaming(ptr) {
@@ -185,29 +212,9 @@ function flaming(ptr) {
            || ptr === mons[M.PM_FIRE_ELEMENTAL] || ptr === mons[M.PM_SALAMANDER];
 }
 function has_head(ptr) { return (ptr.mflags1 & M.M1_NOHEAD) === 0; }
-/* C ref: youprop.h Amphibious, Breathless */
-function Amphibious() {
-    const p = game.u.uprops[MAGICAL_BREATHING];
-    return !!(p.intrinsic || p.extrinsic)
-           || (game.youmonst.data.mflags1 & M.M1_AMPHIBIOUS) !== 0;
-}
-function Breathless() {
-    const p = game.u.uprops[MAGICAL_BREATHING];
-    return !!(p.intrinsic || p.extrinsic)
-           || (game.youmonst.data.mflags1 & M.M1_BREATHLESS) !== 0;
-}
 /* C ref: mondata.h is_animal(), type_is_pname() */
 function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
 function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
-/* C ref: youprop.h Deaf, Stone_resistance */
-function Deaf() {
-    const p = game.u.uprops[DEAF];
-    return !!(((p.intrinsic || p.extrinsic) && !p.blocked) || game.u.uroleplay?.deaf);
-}
-function Stone_resistance() {
-    const p = game.u.uprops[STONE_RES];
-    return !!(p.intrinsic || p.extrinsic);
-}
 /* C ref: hack.h makeknown() */
 function makeknown(x) { discover_object(x, true, true, true); }
 
@@ -218,18 +225,6 @@ function touch_petrifies(ptr) {
 }
 /* C ref: mondata.h resists_ston() */
 function resists_ston(mon) { return !!Resists_Elem(mon, STONE_RES); }
-/* C ref: youprop.h Half_physical_damage, Hate_silver */
-function Half_physical_damage() {
-    const p = game.u.uprops[HALF_PHDAM];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Hate_silver() {
-    const pd = game.youmonst.data;
-    return (game.u.ulycn ?? NON_PM) >= LOW_PM
-        || is_were(pd) || pd.mlet === M.S_VAMPIRE || is_demon(pd)
-        || pd === mons[M.PM_SHADE]
-        || (pd.mlet === M.S_IMP && pd !== mons[M.PM_TENGU]);
-}
 /* C ref: uhitm.c mhitm_ad_phys() -- !artifact_hit(magr, mdef, otmp,
    &mhm->damage, gm.mhitu_dieroll) */
 async function not_artifact_hit(magr, mdef, otmp, mhm) {
@@ -243,15 +238,6 @@ function attacktype(ptr, atyp) {
     return ptr.mattk.some((a) => a.aatyp === atyp);
 }
 /* C ref: mondata.c sticks() is engrave.js sticks() */
-/* C ref: youprop.h Shock_resistance */
-function Shock_resistance() {
-    const p = game.u.uprops[SHOCK_RES];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-/* C ref: hack.h m_next2u() */
-function m_next2u(mon) {
-    return Math.abs(mon.mx - game.u.ux) <= 1 && Math.abs(mon.my - game.u.uy) <= 1;
-}
 
 // C ref: mon.c set_ustuck()
 export function set_ustuck(mtmp) {
@@ -669,7 +655,7 @@ async function mhitm_ad_ssex(magr, mattk, mdef, mhm) {
 // C ref: uhitm.c do_stone_u()
 async function do_stone_u(mtmp) {
     const u = game.u;
-    if (!uprop(STONED) && !Stone_resistance()
+    if (!Stoned() && !Stone_resistance()
         && !(poly_when_stoned(game.youmonst.data)
              && polymon_nyi(M.PM_STONE_GOLEM))) {
         let kformat = KILLED_BY_AN;
@@ -736,17 +722,6 @@ async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
    polymorphed hero */
 function rehumanize_nyi(who) {
     throw new Error(`${who}: rehumanize() not ported yet`);
-}
-/* C ref: artifact.c defends() -- the non-artifact, non-dragon-armor case */
-function defends(adtyp, otmp) {
-    if (!otmp)
-        return false;
-    if (otmp.oartifact)
-        throw new Error('defends(): artifact defn not ported yet');
-    if (otmp.otyp >= GRAY_DRAGON_SCALE_MAIL && otmp.otyp <= YELLOW_DRAGON_SCALES)
-        throw new Error('defends(): dragon armor not ported yet');
-    void adtyp;
-    return false;
 }
 
 // C ref: uhitm.c erode_armor()
@@ -898,7 +873,7 @@ async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
-        if (!rn2(3) && !uprop(DRAIN_RES)
+        if (!rn2(3) && !Drain_resistance()
             && !await mgc_atk_negated(magr, mdef, true)) {
             await losexp("life drainage");
             /* unlike hitting with Stormbringer, wounded attacker doesn't
@@ -995,7 +970,7 @@ async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
                 /* KMH -- this is okay with unchanging */
                 rehumanize_nyi('mhitm_ad_fire()');
                 return;
-            } else if (uprop(FIRE_RES)) {
+            } else if (Fire_resistance()) {
                 await pline_The("fire doesn't feel hot!");
                 monstseesu(M_SEEN_FIRE);
                 mhm.damage = 0;
@@ -1040,7 +1015,7 @@ async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
         await hitmsg(magr, mattk);
         if (!await mgc_atk_negated(magr, mdef, true)) {
             await pline("You're covered in frost!");
-            if (uprop(COLD_RES)) {
+            if (Cold_resistance()) {
                 await pline_The("frost doesn't seem cold!");
                 monstseesu(M_SEEN_COLD);
                 mhm.damage = 0;
@@ -1064,7 +1039,7 @@ async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
         /* mhitu */
         await hitmsg(magr, mattk);
         if (!magr.mcan && !rn2(3))
-            if (uprop(ACID_RES)) {
+            if (Acid_resistance()) {
                 await pline(`You're covered in ${hliquid("acid")}, but it seems harmless.`);
                 monstseesu(M_SEEN_ACID);
                 mhm.damage = 0;
@@ -1096,7 +1071,7 @@ async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
         } else {
             if (game.flags.verbose)
                 await Your(`position suddenly seems ${
-                    (uprop(TELEPORT_CONTROL) && !Stunned() && !unconscious())
+                    (Teleport_control() && !Stunned() && !unconscious())
                         ? "" : "very "}uncertain!`);
             await tele();
             /* As of 3.6.2:  make sure damage isn't fatal; previously, it
@@ -1245,7 +1220,7 @@ async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
                         coil ? "coils" : "swings"} itself around you!`);
                 }
             } else if (u.ustuck === magr) {
-                if (is_pool(magr.mx, magr.my) && !uprop(SWIMMING)
+                if (is_pool(magr.mx, magr.my) && !Swimming()
                     && !Amphibious() && !Breathless())
                     throw new Error('mhitm_ad_wrap(): drowning the hero not ported yet');
                 else if (mattk.aatyp === AT_HUGS)
@@ -1305,7 +1280,7 @@ async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
         await hitmsg(magr, mattk);
         if (game.multi >= 0 && !rn2(5)
             && !await mgc_atk_negated(magr, mdef, true)) {
-            if (uprop(SLEEP_RES)) {
+            if (Sleep_resistance()) {
                 monstseesu(M_SEEN_SLEEP);
                 return;
             }
@@ -1340,11 +1315,11 @@ async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
         if (flaming(pd)) {
             await pline_The("slime burns away!");
             mhm.damage = 0;
-        } else if (uprop(UNCHANGING) || noncorporeal(pd)
+        } else if (Unchanging() || noncorporeal(pd)
                    || pd === mons[M.PM_GREEN_SLIME]) {
             await You("are unaffected.");
             mhm.damage = 0;
-        } else if (!uprop(SLIMED)) {
+        } else if (!Slimed()) {
             await You("don't feel very well.");
             await make_slimed(10, null);
             delayed_killer(SLIMED, KILLED_BY_AN,
@@ -1542,7 +1517,7 @@ async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
         case 19:
         case 18:
         case 17:
-            if (!uprop(ANTIMAGIC)) {
+            if (!Antimagic()) {
                 await touch_of_death(magr);
                 mhm.damage = 0;
                 return;
@@ -1558,7 +1533,7 @@ async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
         case 2:
         case 1:
         case 0:
-            if (uprop(ANTIMAGIC))
+            if (Antimagic())
                 throw new Error('mhitm_ad_deth(): shieldeff() not ported yet');
             await pline("Lucky for you, it didn't work!");
             mhm.damage = 0;
@@ -1725,7 +1700,7 @@ async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
          * general very good at considering height--most short monsters
          * still _can_ attack you when you're flying or mounted.
          */
-        if ((u.usteed || uprop(LEVITATION) || uprop(FLYING))
+        if ((u.usteed || Levitation() || Flying())
             && !is_flyer(magr.data)) {
             await pline(`${Monst_name} tries to reach your ${sidestr} ${leg}!`);
             mhm.damage = 0;
@@ -1993,16 +1968,12 @@ export async function mhitm_knockback(
     return true;
 }
 
-/* C ref: youprop.h Punished */
-function Punished() { return !!game.uball; }
 /* C ref: obj.h u_wield_art() */
 function u_wield_art(art) { return !!(game.uwep && game.uwep.oartifact === art); }
 /* C ref: mondata.h is_longworm() */
 function is_longworm(ptr) {
     return ptr === mons[PM_LONG_WORM] || ptr === mons[PM_LONG_WORM_TAIL];
 }
-/* C ref: monst.h helpless() */
-function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
 
 
 // C ref: uhitm.c do_attack()
@@ -2145,24 +2116,8 @@ export async function do_attack(mtmp) {
 }
 
 /* C ref: youprop.h and mondata.h/obj.h predicates used below */
-function uprop(p) {
-    const P = game.u.uprops[p];
-    return !!(P && (P.intrinsic || P.extrinsic));
-}
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-function Role_if(pm) { return game.urole.mnum === pm; }
-function Race_if(pm) { return game.urace.mnum === pm; }
-function Confusion() { return uprop(CONFUSION); }
-function Stunned() { return uprop(STUNNED); }
-function Protection_from_shape_changers() { return uprop(PROT_FROM_SHAPE_CHANGERS); }
-function Detect_monsters() { return uprop(DETECT_MONSTERS); }
-function Free_action() { return uprop(FREE_ACTION); }
-function Underwater() { return !!game.u.uinwater; }
-function Luck() { return (game.u.uluck || 0) + (game.u.moreluck || 0); }
 function M_AP_TYPE(mon) { return (mon.m_ap_type || 0) & M_AP_TYPMASK; }
-function DEADMONSTER(mon) { return mon.mhp < 1; }
 function NODIAG(monnum) { return monnum === M.PM_GRID_BUG; }
-function is_art(o, art) { return !!(o && o.oartifact === art); }
 function martial_bonus() { return Role_if(M.PM_SAMURAI) || Role_if(M.PM_MONK); }
 function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
 function nohands(ptr) { return (ptr.mflags1 & M.M1_NOHANDS) !== 0; }
@@ -2176,7 +2131,6 @@ function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
 function is_whirly(ptr) {
     return ptr.mlet === M.S_VORTEX || ptr === mons[M.PM_AIR_ELEMENTAL];
 }
-function passes_rocks(ptr) { return passes_walls(ptr) && !unsolid(ptr); }
 function is_watch(ptr) {
     return ptr === mons[M.PM_WATCHMAN] || ptr === mons[M.PM_WATCH_CAPTAIN];
 }
@@ -2228,12 +2182,6 @@ function artifact_light(obj) {
 /* C ref: monst.h troll_baned() */
 function troll_baned(m, o) {
     return m.data.mlet === M.S_TROLL && !!o && o.oartifact === ART_TROLLSBANE;
-}
-/* C ref: objnam.c cxname() */
-function cxname(obj) {
-    if (obj.otyp === CORPSE)
-        throw new Error('cxname(): corpse_xname() not ported yet');
-    return xname(obj);
 }
 
 // C ref: uhitm.c attack_checks()
@@ -2390,7 +2338,7 @@ export async function that_is_a_mimic(
 
     fmtbuf = "Wait!  That's %s!";
     if (Blind()) {
-        if (!uprop(TELEPAT)) /* !Blind_telepat */
+        if (!Blind_telepat()) /* !Blind_telepat */
             what = generic; /* with default fmt */
         else if (M_AP_TYPE(mtmp) === M_AP_MONSTER)
             what = a_monnam(mtmp); /* differs from what was sensed */
@@ -2430,7 +2378,7 @@ export async function that_is_a_mimic(
 
         /* cloned Wiz starts out mimicking some other monster and
            might make himself invisible before being revealed */
-        if (mtmp.minvis && !uprop(SEE_INVIS)) /* !See_invisible */
+        if (mtmp.minvis && !See_invisible()) /* !See_invisible */
             what = generic;
         else if (M_AP_TYPE(mtmp) === M_AP_MONSTER)
             what = x_monnam(mtmp, ARTICLE_A, null, EXACT_NAME, true);
@@ -2806,17 +2754,6 @@ function hmon_hitmon_weapon_ranged(hmd, mon, obj) /* obj is not NULL */ {
     if (!hmd.thrown && obj === game.uwep && obj.otyp === BOOMERANG
         && rnl(4) === 4 - 1)
         throw new Error('hmon_hitmon_weapon_ranged(): boomerang breaking not ported yet');
-}
-
-/* C ref: artifact.c shade_glare() */
-function shade_glare(obj) {
-    /* silver is hurtful to shades */
-    if (objects[obj.otyp].oc_material === SILVER)
-        return true;
-    /* any lit artifact light source will do */
-    if (artifact_light(obj) && obj.lamplit)
-        return true;
-    return false;
 }
 
 // C ref: uhitm.c backstabbable()
@@ -3856,7 +3793,7 @@ function m_is_steadfast(mtmp) {
     const otmp = is_u ? game.uwep : (mtmp.mw || null);
 
     /* must be on the ground (or in water) */
-    if ((is_u ? (uprop(FLYING) || uprop(LEVITATION))
+    if ((is_u ? (Flying() || Levitation())
               : (is_flyer(mtmp.data) || is_floater(mtmp.data)))
         || Is_airlevel(u.uz) /* air or cloud */
         || (Is_waterlevel(u.uz) && !is_pool(u.ux, u.uy))) /* air bubble */
@@ -3948,7 +3885,7 @@ export async function passive(
                 await You(`are splashed by ${s_suffix(mon_nam(mon))} ${
                     hliquid("acid")}!`);
 
-            if (!uprop(ACID_RES)) { /* !Acid_resistance */
+            if (!Acid_resistance()) { /* !Acid_resistance */
                 await mdamageu(mon, tmp);
                 monstunseesu(M_SEEN_ACID);
             } else {
@@ -4017,7 +3954,7 @@ export async function passive(
         break;
     case AD_MAGM:
         /* wrath of gods for attacking Oracle */
-        if (uprop(ANTIMAGIC)) { /* Antimagic */
+        if (Antimagic()) { /* Antimagic */
             /* shieldeff(u.ux, u.uy): transient display only */
             monstseesu(M_SEEN_MAGR);
             await pline("A hail of magic missiles narrowly misses you!");
@@ -4102,7 +4039,7 @@ export async function passive(
             break;
         case AD_COLD: /* brown mold or blue jelly */
             if (monnear(mon, game.u.ux, game.u.uy)) {
-                if (uprop(COLD_RES)) { /* Cold_resistance */
+                if (Cold_resistance()) { /* Cold_resistance */
                     /* shieldeff(u.ux, u.uy): transient display only */
                     await You_feel("a mild chill.");
                     monstseesu(M_SEEN_COLD);
@@ -4126,7 +4063,7 @@ export async function passive(
             break;
         case AD_FIRE:
             if (monnear(mon, game.u.ux, game.u.uy)) {
-                if (uprop(FIRE_RES)) { /* Fire_resistance */
+                if (Fire_resistance()) { /* Fire_resistance */
                     /* shieldeff(u.ux, u.uy): transient display only */
                     await You_feel("mildly warm.");
                     monstseesu(M_SEEN_FIRE);
@@ -4139,7 +4076,7 @@ export async function passive(
             }
             break;
         case AD_ELEC:
-            if (uprop(SHOCK_RES)) { /* Shock_resistance */
+            if (Shock_resistance()) { /* Shock_resistance */
                 /* shieldeff(u.ux, u.uy): transient display only */
                 await You_feel("a mild tingle.");
                 monstseesu(M_SEEN_ELEC);
@@ -4217,9 +4154,6 @@ export function stagger(ptr, def) {
                         : def);
 }
 
-/* C ref: mondata.h resists_poison() */
-function resists_poison(mon) { return Resists_Elem(mon, POISON_RES); }
-
 // C ref: uhitm.c dynamic_multi_reason()
 /* multi_reason is usually a literal string; here we generate one that
    has the causing monster's type included */
@@ -4240,16 +4174,3 @@ function dynamic_multi_reason(mon, verb, by_gaze) {
     /* C: gm.multi_reason = p, which points past the "m_id:" prefix */
     game.multi_reason = p;
 }
-import { AT_MAGC, AT_BITE, AT_STNG } from './monsters.js';
-import { ERODE_BURN, EF_NONE, M_SEEN_MAGR, STONING } from './const.js';
-import { done_in_by } from './end.js';
-import { polymon } from './polyself.js';
-import { attk_protection } from './mhitm.js';
-import { drain_item } from './zap.js';
-import { healmon, monnear } from './mon.js';
-import { ugolemeffects } from './mhitu.js';
-import { Yobjnam2 } from './objnam.js';
-import { split_mon } from './potion.js';
-import { hit as hit_uh } from './zap.js';
-import { mshot_xname as mshot_xname_uh } from './mthrowu.js';
-import { tended_shop } from './shk.js';

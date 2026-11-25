@@ -25,12 +25,14 @@ import { ART_MAGICBANE } from './artilist.js';
 import { Tobjnam, Yobjnam2 } from './objnam.js';
 import { hcolor } from './do_name.js';
 import { which_armor } from './worn.js';
-import { Blind, Hallucination } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { ANTIMAGIC, HALF_SPDAM, W_SADDLE } from './const.js';
 import * as C from './const.js';
 import { You_feel, see_monsters, newsym } from './display.js';
 import { set_mimic_blocking } from './potion.js';
+import {
+    Cold_resistance, Antimagic, Blind, Hallucination, Levitation, Flying, Half_spell_damage
+} from './youprop.js';
 
 /* C ref: mondata.h macros used here */
 const is_hider = (ptr) => (ptr.mflags1 & M1_HIDE) !== 0;
@@ -43,19 +45,6 @@ const eggs_in_water = (ptr) => (lays_eggs(ptr) && ptr.mlet === S_EEL && is_swimm
 /* C ref: obj.h Is_box() */
 const Is_box = (o) => (o.otyp === LARGE_BOX || o.otyp === CHEST);
 /* C ref: youprop.h Levitation, Flying, Underwater, Cold_resistance */
-function uprop(p) { return game.u.uprops?.[p] || {}; }
-function Levitation() {
-    const p = uprop(LEVITATION);
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Flying() {
-    const p = uprop(FLYING);
-    return !!(p.intrinsic || p.extrinsic); /* BFlying isn't ported */
-}
-function Cold_resistance() {
-    const p = uprop(COLD_RES);
-    return !!(p.intrinsic || p.extrinsic);
-}
 const Underwater = () => !!game.u.uinwater;
 const Upolyd = () => (game.u.mtimedone !== 0);
 
@@ -179,15 +168,6 @@ async function in_water() {
     throw new Error('dosit(): sitting in water (hliquid(), water_damage()) not ported yet');
 }
 
-/* C ref: youprop.h Antimagic, Half_spell_damage */
-function Antimagic() {
-    const p = uprop(ANTIMAGIC);
-    return !!(p.intrinsic || p.extrinsic);
-}
-function Half_spell_damage() {
-    const p = uprop(HALF_SPDAM);
-    return !!(p.intrinsic || p.extrinsic);
-}
 /* C ref: artifact.h u_wield_art() */
 function u_wield_art(art) { return !!game.uwep && game.uwep.oartifact === art; }
 /* C ref: color.h NH_BLACK */

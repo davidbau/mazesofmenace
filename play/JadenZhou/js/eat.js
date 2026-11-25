@@ -9,6 +9,8 @@
 // start_tin(), opentin(), consume_tin().  Non-food and edibility prompts
 // are not ported yet.
 
+import { olfaction } from './mondata.js';
+import { rounddiv } from './hack.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
 import { livelog_printf } from './display.js';
@@ -48,7 +50,7 @@ import { COIN_CLASS, FOOD_CLASS } from './objects.js';
 import { You, You_cant } from './display.js';
 import { W_ARMOR, W_TOOL, W_AMUL, W_SADDLE } from './const.js';
 import { rn1, rnd, d } from './rng.js';
-import { pline_The, Your, Blind, Hallucination, see_monsters } from './display.js';
+import { pline_The, Your, see_monsters } from './display.js';
 import { MAGICAL_BREATHING, UNCHANGING, INVIS, FAST, STUNNED, CONFUSION,
          BLINDED, VOMITING, SICK, STONED, SLIMED, SICK_RES, AGGRAVATE_MONSTER,
          TIMEOUT, FROMOUTSIDE, INTRINSIC, A_INT, A_LAWFUL, COST_BITE,
@@ -99,6 +101,20 @@ import { observe_object } from './o_init.js';
 import { makeplural } from './objnam.js';
 import { acurrstr } from './attrib.js';
 import { costly_spot } from './insight.js';
+import {
+    maybe_polyd, Sleep_resistance, Poison_resistance, Acid_resistance, Stone_resistance,
+    Sick_resistance, Blind, Sick, Stoned, Strangled, Slimed, Hallucination, Hunger, Breathless,
+    Unchanging, Unaware
+} from './youprop.js';
+import { Role_if, Race_if, Upolyd } from './const.js';
+import { uprop } from './youprop.js';
+import { done } from './end.js';
+import { rndmonnam } from './do_name.js';
+import { killer } from './topten.js';
+import { killer_xname } from './mthrowu.js';
+import { revive_corpse } from './zap.js';
+import { DIED, CHOKING, STARVING, STONING, KILLED_BY, A_WIS,
+         NO_KILLER_PREFIX } from './const.js';
 
 const invlet_basic = 52; /* C ref: invent.c */
 const MAX_EGG_HATCH_TIME = 200; /* C ref: obj.h */
@@ -196,9 +212,6 @@ export function tin_details(obj, mnum, buf) {
 function carnivorous(ptr) { return (ptr.mflags1 & M1_CARNIVORE) !== 0; }
 function herbivorous(ptr) { return (ptr.mflags1 & M1_HERBIVORE) !== 0; }
 function metallivorous(ptr) { return (ptr.mflags1 & M1_METALLIVORE) !== 0; }
-/* C ref: role.h Role_if(), Race_if() */
-function Role_if(pm) { return game.urole.mnum === pm; }
-function Race_if(pm) { return game.urace.mnum === pm; }
 
 // C ref: eat.c init_uhunger()
 export function init_uhunger() {
@@ -220,10 +233,6 @@ export function is_fainted() {
     return game.u.uhs === FAINTED;
 }
 
-// C ref: youprop.h Unaware -- (multi < 0 && (unconscious() || is_fainted()))
-export function Unaware() {
-    return game.multi < 0 && (unconscious() || is_fainted());
-}
 
 // C ref: trap.c unconscious()
 export function unconscious() {
@@ -416,7 +425,10 @@ export async function newuhs(incr) {
             u.uhs = STARVED;
             g.disp_botl = true;
             await pline("You die from starvation.");
-            /* done(STARVING): end of game isn't ported yet */
+            killer().format = KILLED_BY;
+            killer().name = "starvation";
+            await done(STARVING);
+            /* if we return, we lifesaved, and that calls newuhs */
             return;
         }
     }
@@ -464,7 +476,9 @@ export async function newuhs(incr) {
         g.disp_botl = true;
         if ((u.umonnum !== u.umonster ? u.mh : u.uhp) < 1) {
             await pline("You die from hunger and exhaustion.");
-            /* done(STARVING): end of game isn't ported yet */
+            killer().format = KILLED_BY;
+            killer().name = "exhaustion";
+            await done(STARVING);
             return;
         }
     }
@@ -626,32 +640,6 @@ function obj_here(obj, x, y) {
             return otmp.where === 'OBJ_FLOOR' && otmp.ox === x && otmp.oy === y;
     return false;
 }
-/* C ref: you.h Upolyd, maybe_polyd() */
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-function maybe_polyd(if_poly, if_not) { return Upolyd() ? if_poly : if_not; }
-/* C ref: youprop.h */
-function uprop(p) { return game.u.uprops[p]; }
-function Stone_resistance() { return uprop(STONE_RES).intrinsic || uprop(STONE_RES).extrinsic; }
-function Acid_resistance() { return uprop(ACID_RES).intrinsic || uprop(ACID_RES).extrinsic; }
-function Poison_resistance() { return uprop(POISON_RES).intrinsic || uprop(POISON_RES).extrinsic; }
-function Sleep_resistance() { return uprop(SLEEP_RES).intrinsic || uprop(SLEEP_RES).extrinsic; }
-function Sick_resistance() {
-    return uprop(SICK_RES).intrinsic || uprop(SICK_RES).extrinsic
-           || defended(game.youmonst, M.AD_DISE);
-}
-function Stoned() { return uprop(STONED).intrinsic; }
-function Slimed() { return uprop(SLIMED).intrinsic; }
-function Sick() { return uprop(SICK).intrinsic; }
-function Strangled() { return uprop(STRANGLED).intrinsic; }
-function Unchanging() { return uprop(UNCHANGING).intrinsic || uprop(UNCHANGING).extrinsic; }
-function Hunger() { return uprop(HUNGER).intrinsic || uprop(HUNGER).extrinsic; }
-function Breathless() {
-    return uprop(MAGICAL_BREATHING).intrinsic || uprop(MAGICAL_BREATHING).extrinsic
-           || (game.youmonst.data.mflags1 & M.M1_BREATHLESS) !== 0;
-}
-function Invis() {
-    return (uprop(INVIS).intrinsic || uprop(INVIS).extrinsic) && !uprop(INVIS).blocked;
-}
 /* C ref: mondata.h */
 function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
 function touch_petrifies(ptr) {
@@ -659,7 +647,7 @@ function touch_petrifies(ptr) {
 }
 function flesh_petrifies(pm) { return touch_petrifies(pm) || pm === mons[M.PM_MEDUSA]; }
 function acidic(ptr) { return (ptr.mflags1 & M.M1_ACID) !== 0; }
-function poisonous(ptr) { return (ptr.mflags1 & M.M1_POIS) !== 0; }
+export function poisonous(ptr) { return (ptr.mflags1 & M.M1_POIS) !== 0; }
 function humanoid(ptr) { return (ptr.mflags1 & M.M1_HUMANOID) !== 0; }
 function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
 function flaming(ptr) {
@@ -679,40 +667,6 @@ function mvitals_gone(pm) {
 }
 function attacktype(ptr, atyp) {
     return ptr.mattk.some(a => a.aatyp === atyp);
-}
-/* C ref: mondata.c olfaction() */
-function olfaction(mdat) {
-    if (mdat.mlet === M.S_GOLEM
-        || mdat.mlet === M.S_EYE /* spheres  */
-        || mdat.mlet === M.S_JELLY || mdat.mlet === M.S_PUDDING
-        || mdat.mlet === M.S_BLOB || mdat.mlet === M.S_VORTEX
-        || mdat.mlet === M.S_ELEMENTAL
-        || mdat.mlet === M.S_FUNGUS /* mushrooms and fungi */
-        || mdat.mlet === M.S_LIGHT)
-        return false;
-    return true;
-}
-/* C ref: hacklib.c rounddiv() */
-function rounddiv(x, y) {
-    let r, m;
-    let divsgn = 1;
-
-    if (y === 0)
-        throw new Error('division by zero in rounddiv');
-    else if (y < 0) {
-        divsgn = -divsgn;
-        y = -y;
-    }
-    if (x < 0) {
-        divsgn = -divsgn;
-        x = -x;
-    }
-    r = Math.trunc(x / y);
-    m = x % y;
-    if (2 * m >= y)
-        r++;
-
-    return divsgn * r;
 }
 /* C ref: obj.h stale_egg() */
 export function stale_egg(egg) {
@@ -736,7 +690,7 @@ function nonrotting_food(otyp) {
 /* C ref: pline.c You_feel() */
 async function You_feel(line) { await pline(`You feel ${line}`); }
 /* C ref: mkobj.c peek_at_iced_corpse_age() */
-function peek_at_iced_corpse_age(otmp) {
+export function peek_at_iced_corpse_age(otmp) {
     let age, retval = otmp.age;
 
     if (otmp.otyp === CORPSE && otmp.on_ice) {
@@ -745,10 +699,6 @@ function peek_at_iced_corpse_age(otmp) {
         retval += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
     }
     return retval;
-}
-/* C ref: end.c done() -- the end of the game isn't ported */
-function done(how) {
-    throw new Error(`done(${how}): end of game not ported yet`);
 }
 
 // C ref: eat.c food_xname() -- ``[the(] singular(food, xname) [)]''
@@ -866,11 +816,18 @@ async function choke(food) {
          */
         if (food) {
             await You(`choke over your ${foodword(food)}.`);
+            if (food.oclass === COIN_CLASS) {
+                killer().name = "very rich meal";
+            } else {
+                killer().format = KILLED_BY;
+                killer().name = killer_xname(food);
+            }
         } else {
             await You("choke over it.");
+            killer().name = "quick snack";
         }
         await You("die...");
-        done('CHOKING');
+        await done(CHOKING);
     }
 }
 
@@ -1099,8 +1056,11 @@ async function cprefx(pm) {
             /* if food was a tin, use it up early to keep it out of bones */
             if (tin_ctx().tin)
                 use_up_tin(tin_ctx().tin);
+
+            killer().name = `tasting ${mons[pm].pmnames[NEUTRAL]} meat`;
+            killer().format = KILLED_BY;
             await You("turn to stone.");
-            done('STONING');
+            await done(STONING);
             if (victual().piece)
                 victual().eating = 0;
             return; /* lifesaved */
@@ -1128,7 +1088,19 @@ async function cprefx(pm) {
     case M.PM_PESTILENCE:
     case M.PM_FAMINE: {
         await pline("Eating that is instantly fatal.");
-        done('DIED');
+        killer().name = `unwisely ate the body of ${mons[pm].pmnames[NEUTRAL]}`;
+        killer().format = NO_KILLER_PREFIX;
+        await done(DIED);
+        /* life-saving needed to reach here */
+        exercise(A_WIS, false);
+        /* revive an actual corpse; can't do that if it was a tin;
+           5.0: this used to assume that such tins were impossible but
+           they can be wished for in wizard mode; they can't make it
+           to normal play though because bones creation empties them */
+        if (victual().piece /* Null for tins */
+            && victual().piece.otyp === CORPSE /* paranoia */
+            && await revive_corpse(victual().piece))
+            clear_victual(); /* victual.piece=0, .o_id=0 */
         return;
     }
     case M.PM_GREEN_SLIME:
@@ -1505,7 +1477,7 @@ async function consume_tin(mesg) {
             what = "chicken";
             which = 1; /* suppress pluralization */
         } else if (Hallucination()) {
-            throw new Error('consume_tin(): rndmonnam() not ported yet');
+            what = rndmonnam(null);
         } else {
             what = mons[mnum].pmnames[NEUTRAL];
             if (the_unique_pm(mons[mnum]))
@@ -2112,7 +2084,7 @@ async function fpostfx(otmp) {
         break;
     case CARROT:
         if (!u.uswallow
-            || !(() => { throw new Error('fpostfx(): attacktype_fordmg() not ported yet'); })())
+            || !attacktype_fordmg(u.ustuck.data, M.AT_ENGL, M.AD_BLND))
             await make_blinded(u.ucreamed || 0, true);
         break;
     case FORTUNE_COOKIE:

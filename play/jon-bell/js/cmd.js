@@ -15051,12 +15051,14 @@ async function _do_look_lookat(x, y) {
      * Resolve the warning before the monster arm: its m_at() record does
      * not reveal the monster's identity (lookat, pager.c:724-727). */
     if (dglyph && glyph_is_warning_at(x, y)) {
-        const wi = def_warnsyms.findIndex((w, i) => i >= 1 && w.ch === dglyph.ch);
+        const wi = Number.isInteger(dglyph.warningLevel) ? dglyph.warningLevel
+            : def_warnsyms.findIndex((w, i) => i >= 1 && w.ch === dglyph.ch);
         if (wi >= 1) {
             return {
                 kind: 'warning', glyphChar: dglyph.ch, glyphDec: false,
+                firstmatch: def_warnsyms[wi]?.desc,
                 ...pager_warning_classes(x, y, dglyph),
-                firstmatch: def_warnsyms[wi].desc, dbaseEntries: [],
+                dbaseEntries: [],
             };
         }
     }

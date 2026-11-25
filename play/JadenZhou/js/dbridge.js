@@ -6,6 +6,7 @@
 // close_drawbridge, destroy_drawbridge). zap.js has find_drawbridge(),
 // dig.js is_ice(), hack.js is_pool_or_lava().
 
+import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import {
     IS_WALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, DOOR, LAVAPOOL,
@@ -13,9 +14,6 @@ import {
     DB_DIR, IS_DRAWBRIDGE,
 } from './const.js';
 import { isok } from './hacklib.js';
-
-// C's impossible() (pline.c) is not ported yet.
-function impossible(msg) { console.error(`impossible: ${msg}`); }
 
 // C ref: dbridge.c create_drawbridge()
 /*

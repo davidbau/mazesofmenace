@@ -1076,6 +1076,8 @@ export async function restore_preamble() {
     /* C restore.c:948-949: room-entry/boundary messages follow welcome(),
      * before unixmain.c's keep-save question.  Publish the welcome first so
      * the room check cannot have its pending message overwritten by it. */
+    let keptPrompt = '';
+    try {
     while (msgs.length)
         await pline(msgs.shift());
     const { check_special_room } = await import('./cmd.js');
@@ -1089,7 +1091,6 @@ export async function restore_preamble() {
     if (g._pending_message && !g._topl_win_stop)
         msgs.push(g._pending_message);
     g._pending_message = '';
-    let keptPrompt = '';
     /* C unixmain.c:264-274 — after a successful dorecover(), wizard and
      * explore-mode restores ask whether to keep the save file; this precedes
      * moveloop_preamble()'s moon/Friday-13th messages. */
@@ -1108,6 +1109,12 @@ export async function restore_preamble() {
          * on the topline (TOPLINE_NON_EMPTY); the first moveloop frame still
          * shows it until rhack's clear_nhwindow(WIN_MESSAGE). */
         keptPrompt = 'Do you want to keep the save file? [yn] (n)';
+    }
+    } catch (e) {
+        if ((g.flags?.debug || g.flags?.explore)
+            && String(e?.message || '').includes('Input queue empty'))
+            vfsDeleteFile(savefile_name(g.plname));
+        throw e;
     }
     /* C allmain.c:57-68.  change_luck() is RNG-free but Luck is RNG-VISIBLE
      * through rnl(); see the same note on the new-game copy. */

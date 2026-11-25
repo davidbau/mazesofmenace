@@ -307,3 +307,26 @@ export function tabexpand(sbuf) {
     }
     return buf;
 }
+
+// C ref: hacklib.c letter()
+export function letter(c) {
+    return ('@' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
+}
+
+/* C ref: hacklib.c online2() */
+export function online2(x0, y0, x1, y1) {
+    const dx = x0 - x1, dy = y0 - y1;
+    /*  If either delta is zero then they're on an orthogonal line,
+     *  else if the deltas are equal (signs ignored) they're on a diagonal.
+     */
+    return (!dy || !dx || dy === dx || dy === -dx);
+}
+
+/* C ref: hacklib.c ordin() */
+/* return the ordinal suffix of a number */
+export function ordin(n) { /* note: should be non-negative */
+    const dd = n % 10;
+
+    return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? "th"
+               : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
+}

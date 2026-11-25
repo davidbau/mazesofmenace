@@ -4,6 +4,7 @@
 // Ported so far: dosearch0() (not its feel_location()/unmap_invisible()
 // parts), mfind0(), warnreveal() and lock.c cvt_sdoor_to_door().
 
+import { feel_newsym } from './display.js';
 import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { pline, newsym, docrt, flush_screen, glyph_at, glyph_kind, show_glyph,
@@ -22,33 +23,76 @@ import { sobj_at } from './makemon.js';
 import { STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
 import { BOULDER } from './objects.js';
 import { m_at } from './makemon.js';
-import { canspotmon, sensemon, warning_of, Blind, map_invisible,
-         glyph_is_invisible, feel_location } from './display.js';
+import {
+    canspotmon, sensemon, warning_of, map_invisible, glyph_is_invisible,
+    feel_location
+} from './display.js';
+import {
+    Stunned, Confusion, Blind, Hallucination, Hallucination as Hallucination_ft,
+    Hallucination as Hallucination_dt
+} from './youprop.js';
 
-// C ref: display.c feel_newsym()
-function feel_newsym(x, y) {
-    if (Blind())
-        feel_location(x, y);
-    else
-        newsym(x, y);
-}
 import { tty_display_nhwindow } from './wintty.js';
 import { seemimic } from './mon.js';
 import { y_monnam, a_monnam } from './do_name.js';
 import { cmd_safety_prevention } from './hack.js';
 import { S_EEL, M1_HIDE, M1_CONCEAL } from './monsters.js';
-
-// C ref: mondata.h is_hider(), hides_under()
-function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
-function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
 import { t_at, STATUE_TRAP, trapname as trapname_ft } from './trap.js';
 import { an as an_ft } from './objnam.js';
-import { Hallucination as Hallucination_ft } from './display.js';
 import {
     A_WIS, SDOOR, SCORR, DOOR, CORR, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED,
     BLINDED, isok, Is_rogue_level,
 } from './const.js';
 import { LENSES } from './objects.js';
+import { ARTICLE_YOUR as ARTICLE_YOUR_DT, ARTICLE_THE as ARTICLE_THE_DT,
+         SUPPRESS_SADDLE as SUPPRESS_SADDLE_DT } from './const.js';
+import { unmap_invisible } from './display.js';
+import {
+    show_glyph_cell as show_glyph_cell_dt
+} from './display.js';
+import { rn2_on_display_rng as rn2_on_display_rng_dt } from './rng.js';
+import { mons as mons_dt, NUMMONS as NUMMONS_DT, PM_LONG_WORM as PM_LONG_WORM_DT,
+         S_WORM_TAIL as S_WORM_TAIL_DT } from './monsters.js';
+import { def_monsyms as def_monsyms_dt } from './drawing.js';
+import { CLR_WHITE as CLR_WHITE_DT } from './terminal.js';
+import { DETECT_MONSTERS as DETECT_MONSTERS_DT,
+         I_SPECIAL as I_SPECIAL_DT } from './const.js';
+import { magic_map_background, flash_glyph_at, mon_to_glyph, GLYPH_INVISIBLE,
+         glyph_at_to_remembered, map_engraving, You_feel as You_feel_dt } from './display.js';
+import { rn2, rnd, rn2_fnptr } from './rng.js';
+import { unblock_point, do_clear_area_async } from './vision.js';
+import { engr_at } from './engrave.js';
+import { room_discovered } from './dungeon.js';
+import { closed_door as closed_door_dt } from './makemon.js';
+import { find_drawbridge as find_drawbridge_dt } from './zap.js';
+import { get_obj_location as get_obj_location_dt } from './shk.js';
+import { observe_object as observe_object_dt } from './o_init.js';
+import { money_cnt as money_cnt_dt } from './u_init.js';
+import { hidden_gold as hidden_gold_dt, currency as currency_dt } from './insight.js';
+import { x_monnam as x_monnam_dt } from './do_name.js';
+import { s_suffix as s_suffix_dt } from './hacklib.js';
+import { makeplural as makeplural_dt } from './objnam.js';
+import { IS_FURNITURE, ROOMOFFSET, D_TRAPPED as D_TRAPPED_DT, D_ISOPEN as D_ISOPEN_DT,
+         BOLT_LIM as BOLT_LIM_DT, BURIED_TOO as BURIED_TOO_DT,
+         CONTAINED_TOO as CONTAINED_TOO_DT, FOOT as FOOT_DT, TOE as TOE_DT,
+         BEAR_TRAP as BEAR_TRAP_DT } from './const.js';
+import { TRAPPED_DOOR, TRAPPED_CHEST } from './trap.js';
+import { GOLD_PIECE as GOLD_PIECE_DT, CHEST as CHEST_DT, COIN_CLASS as COIN_CLASS_DT,
+         GOLD as GOLD_MAT_DT, NUM_OBJECTS as NUM_OBJECTS_DT,
+         FIRST_OBJECT as FIRST_OBJECT_DT } from './objects.js';
+import { PM_GOLD_GOLEM as PM_GOLD_GOLEM_DT } from './monsters.js';
+import { unmap_object, cls as cls_dt } from './display.js';
+import { MAXOCLASSES as MAXOCLASSES_DT } from './objects.js';
+import { objects as objects_dt, POTION_CLASS as POTION_CLASS_DT,
+         FOOD_CLASS as FOOD_CLASS_DT, LARGE_BOX as LARGE_BOX_DT } from './objects.js';
+import { CONFUSION as CONFUSION_DT,
+         NOSE as NOSE_DT, A_WIS as A_WIS_DT, TER_DETECT as TER_DETECT_DT } from './const.js';
+import { body_part as body_part_dt } from './insight.js';
+import { strange_feeling as strange_feeling_dt } from './potion.js';
+
+// C ref: mondata.h is_hider(), hides_under()
+function is_hider(ptr) { return (ptr.mflags1 & M1_HIDE) !== 0; }
+function hides_under(ptr) { return (ptr.mflags1 & M1_CONCEAL) !== 0; }
 
 // C ref: lock.c cvt_sdoor_to_door()
 export function cvt_sdoor_to_door(lev) {
@@ -422,9 +466,8 @@ export async function reveal_terrain(which_subset) {
     const u = game.u;
     /* 'full' overrides impairment and implies no-traps, no-objs, no-mons */
     const full = (which_subset & TER_FULL) !== 0; /* show whole map */
-    const uprop = (p) => !!(u.uprops?.[p]?.intrinsic || u.uprops?.[p]?.extrinsic);
 
-    if ((uprop(HALLUC) || uprop(STUNNED) || uprop(CONFUSION)) && !full) {
+    if ((Hallucination() || Stunned() || Confusion()) && !full) {
         await pline("You are too disoriented for this."); /* You() */
     } else {
         let glyph;
@@ -832,16 +875,13 @@ function* objchain_dt(list) {
     }
 }
 
-import { ARTICLE_YOUR as ARTICLE_YOUR_DT, ARTICLE_THE as ARTICLE_THE_DT,
-         SUPPRESS_SADDLE as SUPPRESS_SADDLE_DT } from './const.js';
-import { unmap_invisible } from './display.js';
 
 // C ref: detect.c food_detect()
 /* returns 1 if nothing was detected, 0 if something was detected */
 export async function food_detect(sobj) {
     const g = game, u = g.u;
     let ct = 0, ctu = 0;
-    const confused = !!(Confusion_dt() || (sobj && sobj.cursed));
+    const confused = !!(Confusion() || (sobj && sobj.cursed));
     const oclass = confused ? POTION_CLASS_DT : FOOD_CLASS_DT;
     const what = confused ? "something" : "food";
 
@@ -1044,15 +1084,6 @@ export async function monster_detect(otmp, /* detecting object (if any) */
     return 0;
 }
 
-import { show_glyph_cell as show_glyph_cell_dt,
-         Hallucination as Hallucination_dt } from './display.js';
-import { rn2_on_display_rng as rn2_on_display_rng_dt } from './rng.js';
-import { mons as mons_dt, NUMMONS as NUMMONS_DT, PM_LONG_WORM as PM_LONG_WORM_DT,
-         S_WORM_TAIL as S_WORM_TAIL_DT } from './monsters.js';
-import { def_monsyms as def_monsyms_dt } from './drawing.js';
-import { CLR_WHITE as CLR_WHITE_DT } from './terminal.js';
-import { DETECT_MONSTERS as DETECT_MONSTERS_DT,
-         I_SPECIAL as I_SPECIAL_DT } from './const.js';
 
 /* C ref: detect.c static struct trap dummytrap */
 const dummytrap = { ttyp: 0, tx: 0, ty: 0, tseen: 0 };
@@ -1330,7 +1361,7 @@ export async function do_mapping() {
     const unconstrained = unconstrain_map();
     for (zx = 1; zx < COLNO; zx++)
         for (zy = 0; zy < ROWNO; zy++)
-            show_map_spot(zx, zy, Confusion_dt());
+            show_map_spot(zx, zy, Confusion());
 
     if (!game.level.flags?.hero_memory || unconstrained) {
         await flush_screen(1);                 /* flush temp screen */
@@ -1621,44 +1652,8 @@ export function detecting(func) {
     return (func === findone || func === openone);
 }
 
-import { magic_map_background, flash_glyph_at, mon_to_glyph, GLYPH_INVISIBLE,
-         glyph_at_to_remembered, map_engraving, You_feel as You_feel_dt } from './display.js';
-import { rn2, rnd, rn2_fnptr } from './rng.js';
-import { unblock_point, do_clear_area_async } from './vision.js';
-import { engr_at } from './engrave.js';
-import { room_discovered } from './dungeon.js';
-import { closed_door as closed_door_dt } from './makemon.js';
-import { find_drawbridge as find_drawbridge_dt } from './zap.js';
-import { get_obj_location as get_obj_location_dt } from './shk.js';
-import { observe_object as observe_object_dt } from './o_init.js';
-import { money_cnt as money_cnt_dt } from './u_init.js';
-import { hidden_gold as hidden_gold_dt, currency as currency_dt } from './insight.js';
-import { x_monnam as x_monnam_dt } from './do_name.js';
-import { s_suffix as s_suffix_dt } from './hacklib.js';
-import { makeplural as makeplural_dt } from './objnam.js';
-import { IS_FURNITURE, ROOMOFFSET, D_TRAPPED as D_TRAPPED_DT, D_ISOPEN as D_ISOPEN_DT,
-         BOLT_LIM as BOLT_LIM_DT, BURIED_TOO as BURIED_TOO_DT,
-         CONTAINED_TOO as CONTAINED_TOO_DT, FOOT as FOOT_DT, TOE as TOE_DT,
-         BEAR_TRAP as BEAR_TRAP_DT } from './const.js';
-import { TRAPPED_DOOR, TRAPPED_CHEST } from './trap.js';
-import { GOLD_PIECE as GOLD_PIECE_DT, CHEST as CHEST_DT, COIN_CLASS as COIN_CLASS_DT,
-         GOLD as GOLD_MAT_DT, NUM_OBJECTS as NUM_OBJECTS_DT,
-         FIRST_OBJECT as FIRST_OBJECT_DT } from './objects.js';
-import { PM_GOLD_GOLEM as PM_GOLD_GOLEM_DT } from './monsters.js';
 /* C ref: vision.h COULD_SEE, IN_SIGHT */
 const COULD_SEE_DT = 0x1, IN_SIGHT_DT = 0x2;
 
-import { unmap_object, cls as cls_dt } from './display.js';
-import { MAXOCLASSES as MAXOCLASSES_DT } from './objects.js';
-import { objects as objects_dt, POTION_CLASS as POTION_CLASS_DT,
-         FOOD_CLASS as FOOD_CLASS_DT, LARGE_BOX as LARGE_BOX_DT } from './objects.js';
 /* C ref: detect.c ALL_CLASSES -- wildcard class for clear_stale_map */
 const ALL_CLASSES_DT = MAXOCLASSES_DT + 1;
-import { CONFUSION as CONFUSION_DT,
-         NOSE as NOSE_DT, A_WIS as A_WIS_DT, TER_DETECT as TER_DETECT_DT } from './const.js';
-import { body_part as body_part_dt } from './insight.js';
-import { strange_feeling as strange_feeling_dt } from './potion.js';
-function Confusion_dt() {
-    const p = game.u.uprops[CONFUSION_DT];
-    return !!(p.intrinsic || p.extrinsic);
-}

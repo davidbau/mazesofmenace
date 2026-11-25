@@ -15,6 +15,8 @@
 // ported yet (wizard-mode terrain wishes, artifacts by name, fruit names,
 // tins of a monster, lit light sources, novels, ...) raise not_ported().
 
+import { letter } from './hacklib.js';
+import { wizard } from './dungeon.js';
 import { game } from './gstate.js';
 import { ART_ORB_OF_DETECTION as ART_ORB_OF_DETECTION_ON } from './artilist.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -25,11 +27,9 @@ import { cansee } from './vision.js';
 import * as O from './objects.js';
 import { objects, OBJ_NAME, OBJ_DESCR } from './objects.js';
 import {
-    NON_PM, MALE, FEMALE, NEUTRAL, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG,
-    BLINDED, HALLUC, Has_contents, has_oname, ONAME,
-    W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, ONAME_WISH, GLIB,
-    W_BALL, W_CHAIN,
-    COST_CONTENTS,
+    NON_PM, MALE, FEMALE, NEUTRAL, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, BLINDED, HALLUC,
+    Has_contents, has_oname, ONAME, W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL,
+    W_RINGR, ONAME_WISH, GLIB, W_BALL, W_CHAIN, COST_CONTENTS, Role_if
 } from './const.js';
 import * as M from './monsters.js';
 import { observe_object } from './o_init.js';
@@ -63,6 +63,8 @@ import {
     Is_container,
 } from './mkobj.js';
 import { delete_contents } from './invent.js';
+import { Luck } from './const.js';
+import { W_TOOL as W_TOOL_XN, W_SADDLE as W_SADDLE_XN } from './const.js';
 
 // C ref: decl.c vowels[]
 const vowels = "aeiouAEIOU";
@@ -510,11 +512,6 @@ export function fruit_from_name(fname, exact, highest_fid) {
     return f || null;
 }
 
-// C ref: hacklib.c letter()
-function letter(c) {
-    return ('@' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
-}
-
 // C ref: objnam.c ch_ksound()
 function ch_ksound(basestr) {
     /* these are some *ch words/suffixes that make a k-sound. They pluralize by
@@ -546,7 +543,7 @@ export function obj_typename(otyp) {
     const un = ocl.oc_uname;
     let nn = ocl.oc_name_known;
 
-    if (Role_if_x(M.PM_SAMURAI)) {
+    if (Role_if(M.PM_SAMURAI)) {
         actualn = Japanese_item_name(otyp, actualn);
         if (otyp === O.WOODEN_HARP || otyp === O.MAGIC_HARP)
             dn = "koto";
@@ -1338,9 +1335,6 @@ const CORPSTAT_MALE = 2;
 const CORPSTAT_NEUTER = 3;
 const CORPSTAT_HISTORIC = 0x04;
 
-function wizard() { return !!game.flags?.debug; }
-// C ref: you.h Luck
-function Luck() { return (game.u.uluck || 0) + (game.u.moreluck || 0); }
 
 // C ref: objnam.c setbp() has no C counterpart: it stands for an in-place
 // edit of the buffer at d->bp, which origbp (the buffer's start) also sees
@@ -3082,7 +3076,7 @@ function xname_flags(obj, cxn_flags) {
     let pluralize = (obj.quan !== 1) && !(cxn_flags & 1 /* CXN_SINGULAR */);
     let buf = '';
 
-    if (Role_if_x(M.PM_SAMURAI)) {
+    if (Role_if(M.PM_SAMURAI)) {
         actualn = Japanese_item_name(typ, actualn);
         if (typ === O.WOODEN_HARP || typ === O.MAGIC_HARP)
             dn = "koto";
@@ -3098,7 +3092,7 @@ function xname_flags(obj, cxn_flags) {
         obj.known = 0;
     if (!xn_Blind() && !distantname)
         observe_object(obj, xn_Hallucination());
-    if (Role_if_x(M.PM_CLERIC))
+    if (Role_if(M.PM_CLERIC))
         obj.bknown = 1;
 
     let known, dknown, bknown;
@@ -3220,7 +3214,7 @@ function xname_flags(obj, cxn_flags) {
         if (typ === O.STATUE && omndx_ok(omndx)) {
             const statue_pmname = obj_pmname(obj);
 
-            buf = `${(Role_if_x(M.PM_ARCHEOLOGIST)
+            buf = `${(Role_if(M.PM_ARCHEOLOGIST)
                       && (obj.spe & CORPSTAT_HISTORIC) !== 0) ? "historic "
                      : ""}${actualn} of ${
                 (mons[omndx].mflags2 & M.M2_PNAME) !== 0 /* type_is_pname() */ ? ""
@@ -3616,7 +3610,7 @@ function doname_base(obj, doname_flags) {
                      && obj.otyp !== O.SCR_MAIL
                      && obj.otyp !== O.FAKE_AMULET_OF_YENDOR
                      && obj.otyp !== O.AMULET_OF_YENDOR
-                     && !Role_if_x(M.PM_CLERIC)))
+                     && !Role_if(M.PM_CLERIC)))
             prefix += "uncursed ";
     }
 
@@ -3857,7 +3851,6 @@ function doname_base(obj, doname_flags) {
 
 function omndx_ok(n) { return n != null && n >= 0; }
 // C ref: role.h Role_if()
-function Role_if_x(pm) { return game.urole?.mnum === pm; }
 // C ref: obj.h Is_candle()
 function Is_candle_x(otmp) {
     return otmp.otyp === O.TALLOW_CANDLE || otmp.otyp === O.WAX_CANDLE;
@@ -3942,4 +3935,3 @@ export function short_oname(obj,
     /* use whatever we've got, whether it's too long or not */
     return outbuf;
 }
-import { W_TOOL as W_TOOL_XN, W_SADDLE as W_SADDLE_XN } from './const.js';

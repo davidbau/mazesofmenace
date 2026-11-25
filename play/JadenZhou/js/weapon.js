@@ -7,6 +7,12 @@
 //
 // u.weapon_skills[] (you.h) lives on game.u.weapon_skills.
 
+import { MON_WEP } from './worn.js';
+import { impossible } from './hack.js';
+import { is_art } from './artifact.js';
+import { minv } from './mon.js';
+import { padr } from './pager.js';
+import { wizard } from './dungeon.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import {
@@ -24,7 +30,7 @@ import * as O from './objects.js';
 import * as M from './monsters.js';
 import { spell_skilltype, skill_based_spellbook_id } from './spell.js';
 import { ART_SUNSWORD, ART_SNICKERSNEE } from './artilist.js';
-import { touch_artifact_mon, spec_abon, spec_dbon } from './artifact.js';
+import { touch_artifact_mon, spec_abon, spec_dbon, shade_glare } from './artifact.js';
 import { is_weptool } from './mkobj.js';
 import { is_pool } from './makemon.js';
 import { is_swimmer, passes_walls, is_undead, is_demon, is_were,
@@ -49,8 +55,16 @@ import { add_menu_heading } from './invent.js';
 import { P_SKILL_LIMIT, P_FIRST_SPELL, P_FIRST_H_TO_H, P_LAST_H_TO_H,
          P_FIRST_WEAPON, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_NONE, PICK_ONE,
          MAXULEV, MENU_ITEMFLAGS_NONE, ECMD_OK } from './const.js';
-
-function impossible(msg) { console.error(`impossible: ${msg}`); }
+import { Upolyd, Role_if } from './const.js';
+import { mbodypart as mbodypart_wp } from './insight.js';
+import { HAND as HAND_WP } from './const.js';
+import { makeplural as makeplural_wp, otense as otense_wp, xname as xname_wp,
+         Yname2 as Yname2_wp, Tobjnam as Tobjnam_wp } from './objnam.js';
+import { mhis as mhis_wp } from './mhitu.js';
+import { s_suffix as s_suffix_wp } from './hacklib.js';
+import { mon_nam as mon_nam_wp } from './do_name.js';
+import { bimanual as bimanual_wp } from './wield.js';
+import { the as the_wp } from './iactions.js';
 
 function weapon_skills() {
     const u = game.u;
@@ -196,10 +210,7 @@ export function skill_init(class_skill) {
 // mthrowu.c m_carrying().
 
 /* monst.h MON_WEP(), MON_NOWEP() */
-function MON_WEP(mon) { return mon.mw || null; }
 function MON_NOWEP(mon) { mon.mw = null; }
-/* monster inventory in C order (add_to_minv() prepends) */
-function minv(mon) { return (mon.minvent || []).slice().reverse(); }
 
 /* C ref: decl.c hands_obj -- "weapon" meaning bare hands (no propellor) */
 export const hands_obj = { otyp: O.STRANGE_OBJECT, oclass: 0, hands_obj: true };
@@ -234,7 +245,6 @@ function attacktype(ptr, atyp) {
 function resists_ston(mon) { return Resists_Elem(mon, STONE_RES); }
 
 /* obj.h */
-function is_art(o, art) { return !!(o && o.oartifact === art); }
 function is_spear(otmp) {
     return otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_skill === P_SPEAR;
 }
@@ -265,17 +275,6 @@ function artifact_light(obj) {
         && ((obj.owornmask || 0) & W_ARM) !== 0)
         return true;
     return !!(obj && obj.oartifact) && is_art(obj, ART_SUNSWORD);
-}
-// C ref: artifact.c shade_glare()
-function shade_glare(obj) {
-    /* any silver object is effective */
-    if (objects[obj.otyp].oc_material === O.SILVER)
-        return true;
-    /* non-silver artifacts with bonus against undead also are effective */
-    if (obj.oartifact)
-        throw new Error('shade_glare(): artifacts not ported yet');
-    /* otherwise, harmless to shades */
-    return false;
 }
 
 /* targets that provide attacker with small to-hit bonus when using a spear */
@@ -1057,9 +1056,6 @@ export function mwepgone(mon) {
     }
 }
 
-/* C ref: youprop.h Upolyd; skills.h martial_bonus() */
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-function Role_if(pm) { return game.urole.mnum === pm; }
 function martial_bonus() { return Role_if(M.PM_SAMURAI) || Role_if(M.PM_MONK); }
 
 // C ref: weapon.c abon()
@@ -1281,10 +1277,6 @@ const skill_ranges = [
     { first: P_FIRST_SPELL, last: P_LAST_SPELL, name: "Spellcasting Skills" },
 ];
 
-/* C ref: wizard (flags.debug) */
-function wizard() { return !!game.flags?.debug; }
-/* C ref: printf "%-*s" and "%5d" field widths */
-function padr(s, w) { return s.length >= w ? s : s + ' '.repeat(w - s.length); }
 function padl(s, w) { s = String(s); return s.length >= w ? s : ' '.repeat(w - s.length) + s; }
 
 // C ref: weapon.c add_skills_to_menu()
@@ -1649,12 +1641,3 @@ export function setmnotwielded(mon, obj) {
         MON_NOWEP(mon);
     obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
 }
-import { mbodypart as mbodypart_wp } from './insight.js';
-import { HAND as HAND_WP } from './const.js';
-import { makeplural as makeplural_wp, otense as otense_wp, xname as xname_wp,
-         Yname2 as Yname2_wp, Tobjnam as Tobjnam_wp } from './objnam.js';
-import { mhis as mhis_wp } from './mhitu.js';
-import { s_suffix as s_suffix_wp } from './hacklib.js';
-import { mon_nam as mon_nam_wp } from './do_name.js';
-import { bimanual as bimanual_wp } from './wield.js';
-import { the as the_wp } from './iactions.js';

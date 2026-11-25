@@ -7,6 +7,7 @@
 // check_special_room() (its shop and special room messages aren't ported
 // yet).
 
+import { helpless } from './monmove.js';
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { ACURR, acurrstr, exercise } from './attrib.js';
@@ -104,16 +105,30 @@ import { DEAF } from './const.js';
 import { wake_msg, seemimic, maybe_unhide_at, disturb_buried_zombies } from './mon.js';
 import { drag_ball, move_bc } from './ball.js';
 import { worm_cross } from './worm.js';
-/* C ref: mondata.h is_clinger() */
-function is_clinger(ptr) { return (ptr.mflags1 & M1_CLING) !== 0; }
+import {
+    Fire_resistance, Cold_resistance, Punished, Stunned, Confusion, Blind, Hallucination,
+    Fumbling, Warning, Stealth, Conflict, Levitation, Flying, HWwalking, EWwalking, Wwalking,
+    Swimming, Amphibious, Breathless, Underwater, Passes_walls, Protection_from_shape_changers
+} from './youprop.js';
 import { l_nhcore_call } from './nhlua.js';
 import { NUM_TIPS, TIP_ENHANCE, TIP_SWIM, TIP_UNTRAP_MON, TIP_GETPOS,
          NHCORE_GETPOS_TIP } from './const.js';
 import { intemple } from './priest.js';
 import { stucksteed, exercise_steed } from './steed.js';
+import { drown, lava_effects, is_waterwall, set_uinwater, back_on_ground } from './trap.js';
+import { docrt as docrt_pe } from './display.js';
+import { PLNMSG_BACK_ON_GROUND, SWIMMING, MAGICAL_BREATHING } from './const.js';
+import { M1_SWIM, M1_AMPHIBIOUS, M1_BREATHLESS } from './monsters.js';
+import { map_object as map_object_hk } from './display.js';
+import { is_ice as is_ice_sf } from './dig.js';
+import { objdescr_is as objdescr_is_sf } from './o_init.js';
+import { resists_cold as resists_cold_sf } from './mondata.js';
+import { COLD_RES as COLD_RES_SF } from './const.js';
+/* C ref: mondata.h is_clinger() */
+function is_clinger(ptr) { return (ptr.mflags1 & M1_CLING) !== 0; }
 
 // C's impossible() (pline.c) is not ported yet.
-function impossible(msg) { console.error(`impossible: ${msg}`); }
+export function impossible(msg) { console.error(`impossible: ${msg}`); }
 
 /* C ref: obj.h is_pick() */
 function is_pick(otmp) {
@@ -402,7 +417,7 @@ async function pickup_checks() {
         else if (IS_GRAVE(lev.typ))
             await You("don't need a gravestone.  Yet.");
         else if (IS_FOUNTAIN(lev.typ))
-            await You(`could drink the ${uhave(HALLUC) ? (() => { throw new Error('pickup_checks(): hliquid() while hallucinating not ported yet'); })() : "water"}...`);
+            await You(`could drink the ${hliquid("water")}...`);
         else if (IS_DOOR(lev.typ) && (lev.doormask & D_ISOPEN))
             await pline("It won't come off the hinges.");
         else if (IS_ALTAR(lev.typ))
@@ -565,7 +580,7 @@ export function is_safemon(mtmp) {
 const S_vcdoor = 15, S_hcdoor = 16;
 
 // C ref: monst.h is_door_mappear()
-function is_door_mappear(mon) {
+export function is_door_mappear(mon) {
     return mon.m_ap_type === M_AP_FURNITURE
            && (mon.mappearance === S_hcdoor || mon.mappearance === S_vcdoor);
 }
@@ -857,7 +872,7 @@ function Known_wwalking() {
               && !game.u.usteed);
 }
 function Known_lwalking() {
-    return Known_wwalking() && uhave(FIRE_RES)
+    return Known_wwalking() && Fire_resistance()
            && !!game.uarmf.oerodeproof && !!game.uarmf.rknown;
 }
 
@@ -949,20 +964,6 @@ export function nomul(nval) {
 
 /* ── C ref: hack.c domove() and the parts of domove_core() reached so far ── */
 
-/* C ref: you.h / youprop.h property tests used below */
-function uhave(prop) {
-    const p = game.u.uprops[prop];
-    return !!(p && (p.intrinsic || p.extrinsic));
-}
-function Blind() { return uhave(BLINDED); }
-function Confusion() { return uhave(CONFUSION); }
-function Stunned() { return uhave(STUNNED); }
-function Fumbling() { return uhave(FUMBLING); }
-function Passes_walls() { return uhave(PASSES_WALLS); }
-function Underwater() { return !!game.u.uinwater; }
-function Levitation() { return uhave(LEVITATION); }
-function Flying() { return uhave(FLYING); }
-function Punished() { return !!game.uball; }
 /* C ref: rm.h Sokoban -- svl.level.flags.sokoban_rules */
 function Sokoban() { return !!game.level.flags.sokoban_rules; }
 /* C ref: mondata.h tunnels(), needspick(), amorphous(), verysmall(),
@@ -982,7 +983,6 @@ function slithy(ptr) { return (ptr.mflags1 & M1_SLITHY) !== 0; }
 function noncorporeal(ptr) { return ptr.mlet === S_GHOST; }
 function NODIAG(monnum) { return monnum === PM_GRID_BUG; }
 /* C ref: monst.h helpless(), mundisplaceable() */
-function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
 function mundisplaceable(mon) {
     return !!(mon.ispriest || mon.isshk || mon.isgd
               || mon.data === mons[PM_ORACLE]
@@ -1295,7 +1295,7 @@ export async function check_special_room(newlev) {
                     if (!isok(mtmp.mx, mtmp.my)
                         || roomno !== game.level.at(mtmp.mx, mtmp.my).roomno)
                         continue;
-                    if (!uhave(STEALTH) && !rn2(3)) { /* Stealth */
+                    if (!Stealth() && !rn2(3)) { /* Stealth */
                         await wake_msg(mtmp, false);
                         mtmp.msleeping = 0;
                     }
@@ -1415,7 +1415,7 @@ export async function pooleffects(newspot) /* true if called by spoteffects */ {
             await You(`pop out of the ${hliquid("water")} like a cork!`);
         } else if (sp_Flying()) {
             await You(`fly out of the ${hliquid("water")}.`);
-        } else if (pe_Wwalking()) {
+        } else if (Wwalking()) {
             await You("slowly rise above the surface.");
         } else {
             still_inwater = true;
@@ -1455,39 +1455,15 @@ export async function pooleffects(newspot) /* true if called by spoteffects */ {
         if (is_lava(u.ux, u.uy)) {
             if (await lava_effects())
                 return true;
-        } else if ((!pe_Wwalking() || is_waterwall(u.ux, u.uy))
+        } else if ((!Wwalking() || is_waterwall(u.ux, u.uy))
                    && (newspot || !u.uinwater
-                       || !(pe_Swimming() || pe_Amphibious() || pe_Breathless()))) {
+                       || !(Swimming() || Amphibious() || Breathless()))) {
             if (await drown())
                 return true;
         }
     }
     return false;
 }
-/* C ref: youprop.h Wwalking, Swimming, Amphibious, Breathless */
-function pe_Wwalking() {
-    const p = sp_prop(WWALKING);
-    return !!((p.intrinsic || p.extrinsic) && !Is_waterlevel(game.u.uz));
-}
-function pe_Swimming() {
-    const p = sp_prop(SWIMMING);
-    return !!(p.intrinsic || p.extrinsic
-              || (game.u.usteed && (game.u.usteed.data.mflags1 & M1_SWIM) !== 0));
-}
-function pe_Amphibious() {
-    const p = sp_prop(MAGICAL_BREATHING);
-    return !!(p.intrinsic || p.extrinsic
-              || (game.youmonst.data.mflags1 & M1_AMPHIBIOUS) !== 0);
-}
-function pe_Breathless() {
-    const p = sp_prop(MAGICAL_BREATHING);
-    return !!(p.intrinsic || p.extrinsic
-              || (game.youmonst.data.mflags1 & M1_BREATHLESS) !== 0);
-}
-import { drown, lava_effects, is_waterwall, set_uinwater, back_on_ground } from './trap.js';
-import { docrt as docrt_pe } from './display.js';
-import { PLNMSG_BACK_ON_GROUND, SWIMMING, MAGICAL_BREATHING } from './const.js';
-import { M1_SWIM, M1_AMPHIBIOUS, M1_BREATHLESS } from './monsters.js';
 
 /* C ref: hack.c spoteffects() static locals */
 let inspoteffects = 0;
@@ -1571,7 +1547,7 @@ export async function spoteffects(pick) {
                 await pickup(1);
         }
         /* Warning alerts you to ice danger */
-        if (uhave(WARNING) && game.level.at(u.ux, u.uy).typ === ICE)
+        if (Warning() && game.level.at(u.ux, u.uy).typ === ICE)
             throw new Error('spoteffects(): ice warnings (spot_time_left()) not ported yet');
 
         if ((mtmp = m_at(u.ux, u.uy)) != null && !u.uswallow)
@@ -2146,7 +2122,7 @@ async function test_move_rest(ux, uy, dx, dy, mode, x, y) {
         /* Known_wwalking/Known_lwalking: whether worn water/lava walking
            boots are identified isn't tracked yet; only intrinsic water
            walking (as in avoid_moving_on_liquid()) */
-        const Known_wwalking = uhave(WWALKING);
+        const Known_wwalking = (HWwalking() || EWwalking());
         const Known_lwalking = false;
         if ((lev.seenv && is_pool_or_lava(x, y)) /* known pool/lava */
             && ((IS_WATERWALL(lev.typ) /* never enter wall of liquid */
@@ -2177,7 +2153,7 @@ async function test_move_rest(ux, uy, dx, dy, mode, x, y) {
 
     if (sobj_at(BOULDER, x, y) && (Sokoban() || !Passes_walls())) {
         if (mode !== TEST_TRAV && game.context.run >= 2
-            && !(Blind() || uhave(HALLUC)) && !could_move_onto_boulder(x, y)) {
+            && !(Blind() || Hallucination()) && !could_move_onto_boulder(x, y)) {
             if (mode === DO_MOVE && game.flags.mention_walls)
                 /* pline_dir(xytodir(dx,dy), ...) */
                 await pline("A boulder blocks your path.");
@@ -2494,7 +2470,7 @@ async function escape_from_sticky_mon(x, y) {
                 }
                 /*FALLTHRU*/
             default:
-                if (uhave(CONFLICT) || u.ustuck.mconf || !u.ustuck.mtame) {
+                if (Conflict() || u.ustuck.mconf || !u.ustuck.mtame) {
                     await You(`cannot escape from ${y_monnam(u.ustuck)}!`);
                     nomul(0);
                     return true;
@@ -2552,7 +2528,7 @@ function slippery_ice_fumbling() {
             || is_floater(isd) || is_clinger(isd)
             || is_whirly(isd)) {
             on_ice = false;
-        } else if (!rn2((uhave(COLD_RES_SF)) ? 3 : 2)) {
+        } else if (!rn2((Cold_resistance()) ? 3 : 2)) {
             HFumbling.intrinsic |= FROMOUTSIDE;
             HFumbling.intrinsic &= ~TIMEOUT;
             HFumbling.intrinsic += 1; /* slip on next move */
@@ -2650,10 +2626,9 @@ async function avoid_trap_andor_region(x, y) {
     const ctx = game.context;
     let trap = null;
     let newreg, oldreg;
-    const Hallucination = uhave(HALLUC);
 
     /* treat entering a visible gas cloud region like entering a trap */
-    if (ParanoidTrap() && !Blind() && !Stunned() && !Confusion() && !Hallucination
+    if (ParanoidTrap() && !Blind() && !Stunned() && !Confusion() && !Hallucination()
         /* skip if player used 'm' prefix or is moving recklessly */
         && (!ctx.nopick || ctx.run)
         /* check for region(s) */
@@ -2689,8 +2664,8 @@ async function avoid_trap_andor_region(x, y) {
         && (immune_to_trap(game.youmonst, trap.ttyp) !== TRAP_CLEARLY_IMMUNE
             /* Hallucination: all traps still show as ^, but the
                hero can't tell what they are, so treat as dangerous */
-            || Hallucination)) {
-        const traptype = (Hallucination ? rnd(TRAPNUM - 1) : trap.ttyp);
+            || Hallucination())) {
+        const traptype = (Hallucination() ? rnd(TRAPNUM - 1) : trap.ttyp);
         const into = into_vs_onto(traptype);
 
         /* defsyms[trap_to_defsym(traptype)].explanation, which is what
@@ -2722,10 +2697,10 @@ async function domove_bump_mon(mtmp, glyph) {
     if (game.context.nopick && !game.context.travel
         && (canspotmon(mtmp) || glyph_is_invisible(glyph)
             || glyph_is_warning(glyph))) {
-        if (mtmp.m_ap_type && !uhave(PROT_FROM_SHAPE_CHANGERS)
+        if (mtmp.m_ap_type && !Protection_from_shape_changers()
             && !sensemon(mtmp))
             await stumble_onto_mimic(mtmp);
-        else if (mtmp.mpeaceful && !uhave(HALLUC))
+        else if (mtmp.mpeaceful && !Hallucination())
             /* m_monnam(): "dog" or "Fido", no "invisible dog" or "it" */
             await pline(`Pardon me, ${m_monnam(mtmp)}.`);
         else
@@ -3027,7 +3002,7 @@ async function domove_core() {
             if (ctx.run && ((!Blind() && mon_visible(mtmp)
                              && ((mtmp.m_ap_type !== M_AP_FURNITURE
                                   && mtmp.m_ap_type !== M_AP_OBJECT)
-                                 || uhave(PROT_FROM_SHAPE_CHANGERS)))
+                                 || Protection_from_shape_changers()))
                             || sensemon(mtmp))) {
                 nomul(0);
                 ctx.move = 0;
@@ -3174,7 +3149,7 @@ async function domove_core() {
     }
 
     /* your tread on the ground may disturb the slumber of nearby zombies */
-    if (!Levitation() && !Flying() && !uhave(STEALTH)
+    if (!Levitation() && !Flying() && !Stealth()
         && game.youmonst.data.cwt >= Math.trunc(WT_ELF / 2))
         disturb_buried_zombies(u.ux, u.uy);
     /* hideunder(&youmonst): only a hider form can hide */
@@ -3260,14 +3235,32 @@ function maybe_smudge_engr(x1, y1, x2, y2) {
             wipe_engr_at(x2, y2, rnd(5), false);
     }
 }
-import { map_object as map_object_hk } from './display.js';
 /* C ref: display.h glyph_to_obj() for the JS glyph form: an object glyph
    keeps its objects[] index in 'otyp'; anything else is NUM_OBJECTS */
 function glyph_to_obj_hk(glyph) {
     return (glyph && glyph.kind === 'obj' && glyph.otyp !== undefined
             && glyph.otyp !== null) ? glyph.otyp : -1;
 }
-import { is_ice as is_ice_sf } from './dig.js';
-import { objdescr_is as objdescr_is_sf } from './o_init.js';
-import { resists_cold as resists_cold_sf } from './mondata.js';
-import { COLD_RES as COLD_RES_SF } from './const.js';
+
+/* C ref: hack.c rounddiv() */
+export function rounddiv(x, y) {
+    let r, m;
+    let divsgn = 1;
+
+    if (y === 0)
+        throw new Error('division by zero in rounddiv');
+    else if (y < 0) {
+        divsgn = -divsgn;
+        y = -y;
+    }
+    if (x < 0) {
+        divsgn = -divsgn;
+        x = -x;
+    }
+    r = Math.trunc(x / y);
+    m = x % y;
+    if (2 * m >= y)
+        r++;
+
+    return divsgn * r;
+}

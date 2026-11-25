@@ -23,6 +23,7 @@
 // init_dungeon_dungeons(L, pd, i) is init_dungeon_dungeons(dgn, pd, i)
 // where dgn is the Lua table dungeon[i + 1].
 
+import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import {
@@ -63,7 +64,7 @@ import { AM_MASK, LEVITATION, MAXNROFROOMS, TREE, FOUNTAIN, THRONE, SINK,
 import { Sfo, Sfi } from './sfbase.js';
 import { savecemetery } from './save.js';
 import { restcemetery } from './restore.js';
-import { You, Blind, update_lastseentyp } from './display.js';
+import { You, update_lastseentyp } from './display.js';
 import { altarmask_at, align_gname } from './pray.js';
 import { is_drawbridge_wall } from './dbridge.js';
 import { Invocation_lev } from './mklev.js';
@@ -76,13 +77,16 @@ import { formatkiller } from './topten.js';
 import { describe_level } from './botl.js';
 import { highc, trimspaces } from './hacklib.js';
 import { add_menu_str } from './wintty.js';
+import { Blind, Levitation } from './youprop.js';
+import { strstri as strstri_dg } from './hacklib.js';
+import { In_V_tower as In_V_tower_dg, VISITED as VISITED_DG } from './const.js';
+import { level_info as level_info_dg } from './files.js';
 
 // C's panic() (end.c) and impossible() (pline.c) are not ported yet.
-function panic(msg) { throw new Error(`panic: ${msg}`); }
-function impossible(msg) { console.error(`impossible: ${msg}`); }
+export function panic(msg) { throw new Error(`panic: ${msg}`); }
 
 // C ref: flag.h wizard macro — flags.debug
-function wizard() { return !!game.flags?.debug; }
+export function wizard() { return !!game.flags?.debug; }
 
 const DUNGEON_FILE = 'dungeon.lua';
 
@@ -1585,11 +1589,6 @@ function Lcheck(x, z) {
 }
 /* C ref: hack.h plur() */
 function plur(x) { return (x === 1) ? "" : "s"; }
-/* C ref: youprop.h Levitation */
-function Levitation() {
-    const p = game.u.uprops[LEVITATION];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
 /* svl.lastseentyp[x][y]; zero until the level has been seen */
 function lastseentyp_at(x, y) {
     return game.level?.lastseentyp?.[x]?.[y] ?? 0;
@@ -1761,9 +1760,6 @@ export function lev_by_name(nam) {
     }
     return lev;
 }
-import { strstri as strstri_dg } from './hacklib.js';
-import { In_V_tower as In_V_tower_dg, VISITED as VISITED_DG } from './const.js';
-import { level_info as level_info_dg } from './files.js';
 
 // C ref: dungeon.c find_mapseen()
 /* find the particular mapseen object in the chain; may return null */

@@ -2880,13 +2880,28 @@ export function OMONST(obj) { return obj?.oextra?.omonst; }
 export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || mtmp?.mgivenname || ''; }
 export function has_mgivenname(mtmp) { return !!(mtmp?.mextra?.mgivenname || mtmp?.mgivenname); }
 
-// C: you.h — #define Upolyd (u.mtimedone != 0)
-export function Upolyd(player) {
-    return !!(player && player.mtimedone && player.mtimedone > 0);
+// C ref: you.h -- hero status macros (the pronoun ones, uhe()/mhe() and
+// friends, are in mhitu.js beside the genders[] users)
+/* #define Role_if(X) (gu.urole.mnum == (X)) */
+export function Role_if(X) { return game.urole.mnum === X; }
+/* #define Race_if(X) (gu.urace.mnum == (X)) */
+export function Race_if(X) { return game.urace.mnum === X; }
+/* #define Luck (u.uluck + u.moreluck) */
+export function Luck() { return game.u.uluck + game.u.moreluck; }
+/* #define Upolyd (u.umonnum != u.umonster) */
+export function Upolyd() { return game.u.umonnum !== game.u.umonster; }
+/* #define next2u(px,py) (distu((px),(py)) <= 2) -- distu() is
+   dist2(px, py, u.ux, u.uy) */
+export function next2u(px, py) {
+    const dx = px - game.u.ux, dy = py - game.u.uy;
+    return dx * dx + dy * dy <= 2;
 }
+/* #define m_next2u(m) (distu((m)->mx,(m)->my) <= 2) */
+export function m_next2u(m) { return next2u(m.mx, m.my); }
+/* #define u_at(x,y) ((x) == u.ux && (y) == u.uy) */
+export function u_at(x, y) { return x === game.u.ux && y === game.u.uy; }
 
 // Canonical macros — previously duplicated as local stubs in 15+ files
-export function u_at(x, y) { return game?.u?.ux === x && game?.u?.uy === y; }
 export function OBJ_AT(x, y) { return game?.level?.objects?.some(o => o.ox === x && o.oy === y) ?? false; }
 export function Has_contents(obj) { return obj?.cobj != null; }
 export function M_AP_TYPE(mon) { return mon?.m_ap_type ?? 0; }

@@ -233,6 +233,24 @@ export function worm_cross(x1, y1, x2, y2) {
     return false;
 }
 
+// src/worm.c:946 wseg_at(); count from the selected segment through the head.
+export function wseg_at(worm, x, y) {
+    let res = 0;
+    if (worm && worm.wormno && m_at(x, y) === worm) {
+        const w = wstate();
+        let curr, i, n;
+        for (i = 0, curr = w.wtails[worm.wormno]; curr; curr = curr.nseg) {
+            if (curr.wx === x && curr.wy === y)
+                break;
+            ++i;
+        }
+        for (n = i; curr; curr = curr.nseg)
+            ++n;
+        res = n - i;
+    }
+    return res;
+}
+
 /* src/worm.c:968 flip_worm_segs_vertical() and :979 horizontal().
    C flips level.monsters[][] after changing the segment coordinates.  Our
    positional grid is a Map, so move each segment's key explicitly too. */

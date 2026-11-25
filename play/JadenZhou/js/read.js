@@ -15,9 +15,11 @@
 // and wield.c chwepon().  do_class_genocide()/do_genocide() and
 // wand_explode() are not ported yet.
 
+import { DEADMONSTER } from './mon.js';
+import { is_art } from './artifact.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { livelog_printf } from './display.js';
-import { LL_CONDUCT } from './const.js';
+import { LL_CONDUCT, Luck } from './const.js';
 import { CANDY_BAR } from './objects.js';
 import { game } from './gstate.js';
 import {
@@ -50,9 +52,10 @@ import { ECMD_TIME, GETOBJ_ALLOWCNT, GETOBJ_EXCLUDE_SELECTABLE, BY_COOKIE,
          M_AP_TYPE, In_endgame, Is_earthlevel, Is_rogue_level, Is_waterlevel,
          thats_enough_tries, Never_mind, nothing_happens, ROOMOFFSET,
          IS_OBSTRUCTED, IS_AIR, ACCESSIBLE, isok } from './const.js';
-import { You, Your, You_feel, You_cant, pline_The, newsym, canspotmon,
-         canseemon, sensemon, Blind, Hallucination, map_invisible, tmp_at,
-         DISP_BEAM, DISP_END, cmap_to_glyph } from './display.js';
+import {
+    You, Your, You_feel, You_cant, pline_The, newsym, canspotmon, canseemon,
+    sensemon, map_invisible, tmp_at, DISP_BEAM, DISP_END, cmap_to_glyph
+} from './display.js';
 import { You_hear } from './sounds.js';
 import { useup, useupall, prinv, identify_pack, stackobj, obfree,
          silly_thing } from './invent.js';
@@ -96,31 +99,36 @@ import { PM_TOURIST, PM_WIZARD, PM_ACID_BLOB, PM_BLACK_LIGHT,
          PM_FLESH_GOLEM, PM_BARBED_DEVIL, PM_MARILITH, PM_PIRANHA,
          S_HUMAN, M1_AMORPHOUS, M1_WALLWALK, M1_UNSOLID, S_GHOST, S_VORTEX, PM_AIR_ELEMENTAL } from './monsters.js';
 import { placebc, set_bc } from './ball.js';
+import {
+    Fire_resistance, Punished, HStun, HConfusion, Confusion, Blind, Hallucination, Deaf,
+    Invisible, Underwater, Passes_walls
+} from './youprop.js';
+import { Role_if, u_at } from './const.js';
+import { snuff_light_source } from './light.js';
+import { drain_weapon_skill } from './weapon.js';
+import { explode as explode_rd } from './explode.js';
+import { EXPL_FIERY as EXPL_FIERY_RD } from './const.js';
+import { gold_detect, food_detect, trap_detect, do_mapping,
+         cvt_sdoor_to_door } from './detect.js';
+import { unblock_point } from './vision.js';
+import { is_pool as is_pool_rd, is_lava as is_lava_rd } from "./makemon.js";
+import { place_object as place_object_rd } from './mkobj.js';
+import { delobj as delobj_rd } from './invent.js';
+import { monstseesu as monstseesu_rd, monstunseesu as monstunseesu_rd } from './uhitm.js';
+import { SDOOR as SDOOR_RD, CORR as CORR_RD,
+         W_ARMH as W_ARMH_RD, DEAF as DEAF_RD, In_sokoban as In_sokoban_rd } from './const.js';
+import { ceiling as ceiling_rd } from './dungeon.js';
+import { In_quest as In_quest_rd } from './const.js';
 
 /* C ref: color.h NH_* color names */
 const NH_BLACK = "black", NH_AMBER = "amber", NH_GOLDEN = "golden",
       NH_SILVER = "silver", NH_PURPLE = "purple", NH_RED = "red",
       NH_BLUE = "blue";
 
-/* C ref: youprop.h -- the property macros used here */
-function uprop(p) { return game.u.uprops[p]; }
-function Confusion() { return !!(uprop(CONFUSION).intrinsic || uprop(CONFUSION).extrinsic); }
-function HConfusion() { return uprop(CONFUSION).intrinsic; }
-function HStun() { return uprop(STUNNED).intrinsic; }
-function Fire_resistance() { return !!(uprop(FIRE_RES).intrinsic || uprop(FIRE_RES).extrinsic); }
-function Passes_walls() { return !!(uprop(PASSES_WALLS).intrinsic || uprop(PASSES_WALLS).extrinsic); }
-function See_invisible() { return !!(uprop(SEE_INVIS).intrinsic || uprop(SEE_INVIS).extrinsic); }
-function Invis() { return !!((uprop(INVIS).intrinsic || uprop(INVIS).extrinsic) && !uprop(INVIS).blocked); }
-function Invisible() { return Invis() && !See_invisible(); }
-function Underwater() { return !!game.u.uinwater; }
-function Punished() { return !!game.uball; }
-/* C ref: you.h Role_if() */
-function Role_if(pm) { return game.urole?.mnum === pm; }
 /* C ref: hack.h makeknown() */
 function makeknown(otyp) { discover_object(otyp, true, true, true); }
 /* C ref: obj.h is_art(), is_elven_armor(), Is_dragon_scales(),
    is_shield() */
-function is_art(o, art) { return !!(o && o.oartifact === art); }
 function is_elven_armor(o) {
     return o.otyp === O.ELVEN_LEATHER_HELM || o.otyp === O.ELVEN_MITHRIL_COAT
            || o.otyp === O.ELVEN_CLOAK || o.otyp === O.ELVEN_SHIELD
@@ -138,14 +146,11 @@ function amorphous(ptr) { return (ptr.mflags1 & M1_AMORPHOUS) !== 0; }
 function passes_walls(ptr) { return (ptr.mflags1 & M1_WALLWALK) !== 0; }
 function noncorporeal(ptr) { return ptr.mlet === S_GHOST; }
 function unsolid(ptr) { return (ptr.mflags1 & M1_UNSOLID) !== 0; }
-/* C ref: monst.h DEADMONSTER() */
-function DEADMONSTER(mon) { return mon.mhp < 1; }
 /* C ref: hack.h distu() */
 function distu(x, y) {
     const dx = x - game.u.ux, dy = y - game.u.uy;
     return dx * dx + dy * dy;
 }
-function u_at(x, y) { return game.u.ux === x && game.u.uy === y; }
 /* C ref: hacklib.c sgn(), upwords() */
 function sgn(n) { return (n < 0) ? -1 : (n !== 0) ? 1 : 0; }
 function upwords(s) {
@@ -691,7 +696,6 @@ async function forget(howmuch) {
     for (let mtmp = g.migrating_mons; mtmp; mtmp = mtmp.nmon)
         mtmp.meverseen = 0;
 }
-import { drain_weapon_skill } from './weapon.js';
 
 // C ref: read.c maybe_tame() -- monster is hit by scroll of taming's effect
 async function maybe_tame(mtmp, sobj) {
@@ -1641,8 +1645,6 @@ async function seffect_fire(sobjp) {
     const ZT_SPELL_O_FIRE = 11; /* explained in splatter_burning_oil(explode.c) */
     await explode_rd(cc.x, cc.y, ZT_SPELL_O_FIRE, dam, O.SCROLL_CLASS, EXPL_FIERY_RD);
 }
-import { explode as explode_rd } from './explode.js';
-import { EXPL_FIERY as EXPL_FIERY_RD } from './const.js';
 const PLNMSG_TOWER_OF_FLAME = 3; /* C ref: hack.h enum plnmsg_types */
 
 // C ref: read.c seffect_earth()
@@ -1810,7 +1812,7 @@ async function seffect_identify(sobjp) {
         if (sblessed || (!scursed && !rn2(5))) {
             cval = rn2(5);
             /* note: if cval==0, identify all items */
-            if (cval === 1 && sblessed && Luck_rd() > 0)
+            if (cval === 1 && sblessed && Luck() > 0)
                 ++cval;
         }
         await identify_pack(cval, !already_known);
@@ -2066,7 +2068,7 @@ export async function drop_boulder_on_monster(x, y, confused, byu) {
             if (hard_helmet(helmet)) {
                 if (canspotmon(mtmp))
                     await pline(`Fortunately, ${mon_nam(mtmp)} is wearing a hard helmet.`);
-                else if (!Deaf_rd())
+                else if (!Deaf())
                     await You_hear("a clanging sound.");
                 if (mdmg > 2)
                     mdmg = 2;
@@ -2115,14 +2117,6 @@ function set_lit(x, y, val) {
         lev.lit = 0;
         snuff_light_source(x, y);
     }
-}
-
-/* C ref: light.c snuff_light_source() -- no light sources at the spot
-   (lit objects on the floor) are modeled yet */
-function snuff_light_source(x, y) {
-    for (const otmp of game.level.objects || [])
-        if (otmp.ox === x && otmp.oy === y && otmp.where === 'OBJ_FLOOR' && otmp.lamplit)
-            throw new Error('snuff_light_source(): snuffing a lit object not ported yet');
 }
 
 // C ref: read.c litroom()
@@ -2318,22 +2312,7 @@ async function do_stinking_cloud(sobj, mention_stinking) {
 }
 
 /* C ref: detect.c -- the detection routines (detect.js) */
-import { gold_detect, food_detect, trap_detect, do_mapping,
-         cvt_sdoor_to_door } from './detect.js';
-import { unblock_point } from './vision.js';
-import { is_pool as is_pool_rd, is_lava as is_lava_rd } from "./makemon.js";
-import { place_object as place_object_rd } from './mkobj.js';
-import { delobj as delobj_rd } from './invent.js';
-import { monstseesu as monstseesu_rd, monstunseesu as monstunseesu_rd } from './uhitm.js';
-import { SDOOR as SDOOR_RD, CORR as CORR_RD,
-         W_ARMH as W_ARMH_RD, DEAF as DEAF_RD, In_sokoban as In_sokoban_rd } from './const.js';
 function is_whirly_rd(ptr) { return ptr.mlet === S_VORTEX || ptr === mons[PM_AIR_ELEMENTAL]; }
-function Deaf_rd() {
-    const p = game.u.uprops[DEAF_RD];
-    return !!(p.intrinsic || p.extrinsic || game.u.uroleplay?.deaf);
-}
-/* C ref: you.h Luck */
-function Luck_rd() { return (game.u.uluck || 0) + (game.u.moreluck || 0); }
 
 /* C ref: read.c tshirt_text() shirt_msgs[], hawaiian_motif()
    hawaiian_motifs[], hawaiian_design() hawaiian_bgs[], apron_text()
@@ -2765,5 +2744,3 @@ function avoid_ceiling_rd(lev) {
         return true;
     return false;
 }
-import { ceiling as ceiling_rd } from './dungeon.js';
-import { In_quest as In_quest_rd } from './const.js';

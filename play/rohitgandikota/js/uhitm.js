@@ -165,7 +165,7 @@ import { greatest_erosion, worn, helm_simple_name,
 import { is_orc, is_elf, is_demon, unsolid, noncorporeal, nonliving, amorphous,
          thick_skinned, attacktype,
          sticks, haseyes, cantwield, is_flyer, is_floater,
-         is_whirly, mon_hates_blessings, resists_blnd, has_head, mindless,
+         is_whirly, mon_hates_blessings, resists_blnd, has_head, mindless, humanoid,
          resists_blnd_by_arti, resists_fire, resists_cold, resists_elec,
          resists_acid, resists_poison, resists_drli, resists_ston,
          defended, completelyburns,
@@ -194,7 +194,7 @@ import { W_ARM, W_ARMS, W_ARMC, W_ARMF, W_ARMU,
          P_NONE, P_KNIFE, P_WHIP, P_SKILLED,
          P_LANCE, P_TWO_WEAPON_COMBAT, P_ISRESTRICTED, P_UNSKILLED,
          NEED_WEAPON, XKILL_NOMSG, XKILL_NOCORPSE, STRAT_WAITMASK,
-         engulfing_u, NEW_MOON, MSLOW, MFAST, ARTICLE_THE,
+         engulfing_u, NEW_MOON, MSLOW, ARTICLE_THE,
          RLOC_NOMSG, DISMOUNT_POLY, SICK_ALL } from './const.js';
 import { is_undead } from './mondata.js';
 import { A_LAWFUL } from './const.js';
@@ -1492,6 +1492,7 @@ export async function hitum(mon, uattk) {
 // hmon_hitmon() deliberately suppresses its ordinary weapon knockback while
 // the hero is polymorphed.
 export async function hmonas(mon) {
+    game.vis = canseemon(mon) || m_next2u(mon);
     const sum = Array(NATTK).fill(M_ATTK_MISS);
     const roll = { attk_count: 0, role_roll_penalty: 0 };
     let multi_claw = 0, multi_weap = 0;
@@ -1621,30 +1622,60 @@ export async function hmonas(mon) {
                 } else {
                     await wakeup(mon, true);
                     let specialdmg = 0;
-                    if (aatyp === ATTKS.AT_CLAW || aatyp === ATTKS.AT_TUCH) {
+                    const silverhit = { value: 0 };
+                    let verb;
+                    switch (aatyp) {
+                    case ATTKS.AT_CLAW:
+                    case ATTKS.AT_TUCH: {
+                        verb = aatyp === ATTKS.AT_TUCH ? 'touch' : 'claws';
                         odd_claw = !odd_claw;
                         const armask = W_ARMG
                             | ((odd_claw || !multi_claw) ? W_RINGL : 0)
                             | ((!odd_claw || !multi_claw) ? W_RINGR : 0);
                         specialdmg = special_dmgval(
-                            game.youmonst, mon, armask);
-                    } else if (aatyp === ATTKS.AT_KICK) {
-                        specialdmg = special_dmgval(
-                            game.youmonst, mon, W_ARMF);
+                            game.youmonst, mon, armask, silverhit);
+                        break;
                     }
-
-                    const verb = aatyp === ATTKS.AT_TUCH ? 'touch'
-                        : aatyp === ATTKS.AT_KICK ? 'kick'
-                        : aatyp === ATTKS.AT_BITE ? 'bite'
-                        : aatyp === ATTKS.AT_STNG ? 'sting'
-                        : aatyp === ATTKS.AT_BUTT ? 'head butt'
-                        : aatyp === ATTKS.AT_TENT ? 'tentacles suck'
-                        : 'hit';
-                    if (aatyp === ATTKS.AT_TENT)
-                        await Your(`${verb} ${mon_nam(mon)}.`);
-                    else
-                        await You(`${verb} ${mon_nam(mon)}.`);
-                    sum[i] = await damageum(mon, mattk, specialdmg);
+                    case ATTKS.AT_TENT:
+                        verb = 'tentacles';
+                        break;
+                    case ATTKS.AT_KICK:
+                        verb = 'kick';
+                        specialdmg = special_dmgval(
+                            game.youmonst, mon, W_ARMF, silverhit);
+                        break;
+                    case ATTKS.AT_BUTT:
+                        verb = 'head butt';
+                        specialdmg = special_dmgval(
+                            game.youmonst, mon, W_ARMH, silverhit);
+                        break;
+                    case ATTKS.AT_BITE:
+                        verb = 'bite';
+                        break;
+                    case ATTKS.AT_STNG:
+                        verb = 'sting';
+                        break;
+                    default:
+                        verb = 'hit';
+                        break;
+                    }
+                    if (mon.data === game.mons[PMNAMES.PM_SHADE] && !specialdmg) {
+                        if (verb === 'hit'
+                            || (aatyp === ATTKS.AT_CLAW && humanoid(mon.data)))
+                            verb = 'attack';
+                        await Your(`${verb} ${vtense(verb, 'pass')} harmlessly through ${mon_nam(mon)}.`);
+                    } else if (!(await failed_grab(game.youmonst, mon, mattk))) {
+                        if (aatyp === ATTKS.AT_TENT) {
+                            await Your(`tentacles suck ${mon_nam(mon)}.`);
+                        } else {
+                            if (aatyp === ATTKS.AT_CLAW)
+                                verb = 'hit';
+                            await You(`${verb} ${mon_nam(mon)}.`);
+                            if (silverhit.value && game.flags?.verbose !== false)
+                                await silver_sears(game.youmonst, mon, silverhit.value);
+                        }
+                        sum[i] = await damageum(mon, mattk, specialdmg);
+                    }
                 }
             } else {
                 await missum(mon, mattk,
@@ -1678,7 +1709,7 @@ export async function hmonas(mon) {
             }
         } else if (aatyp === ATTKS.AT_HUGS) {
             let specialdmg;
-            const silverhit = { v: 0 };
+            const silverhit = { value: 0 };
             const byhand = hug_throttles(game.mons[game.u.umonnum]); /* rope golem */
             let unconcerned = (byhand && !can_be_strangled(mon));
 
@@ -1727,8 +1758,8 @@ export async function hmonas(mon) {
                    choking hug; deals damage but never grabs hold */
                 if (specialdmg) {
                     await You(`${verb} ${mon_nam(mon)}${exclam(specialdmg)}`);
-                    if (silverhit.v && game.flags?.verbose !== false)
-                        await silver_sears(game.youmonst, mon, silverhit.v);
+                    if (silverhit.value && game.flags?.verbose !== false)
+                        await silver_sears(game.youmonst, mon, silverhit.value);
                     sum[i] = await damageum(mon, mattk, specialdmg);
                 } else {
                     await Your(`${verb} passes harmlessly through ${mon_nam(mon)}.`);
@@ -1740,8 +1771,8 @@ export async function hmonas(mon) {
                     await pline(`${Monnam(mon)} is being ${byhand ? 'throttled' : 'crushed'}${
                           /* extra feedback for non-breather being choked */
                           unconcerned ? " but doesn't seem concerned" : ''}.`);
-                    if (silverhit.v && game.flags?.verbose !== false)
-                        await silver_sears(game.youmonst, mon, silverhit.v);
+                    if (silverhit.value && game.flags?.verbose !== false)
+                        await silver_sears(game.youmonst, mon, silverhit.value);
                     sum[i] = await damageum(mon, mattk, specialdmg);
                 } else if (i >= 2 && (sum[i - 1] > M_ATTK_MISS)
                            && (sum[i - 2] > M_ATTK_MISS)) {
@@ -1752,8 +1783,8 @@ export async function hmonas(mon) {
                         await uunstick();
                     await You(`grab ${mon_nam(mon)}!`);
                     set_ustuck(mon);
-                    if (silverhit.v && game.flags?.verbose !== false)
-                        await silver_sears(game.youmonst, mon, silverhit.v);
+                    if (silverhit.value && game.flags?.verbose !== false)
+                        await silver_sears(game.youmonst, mon, silverhit.value);
                     sum[i] = await damageum(mon, mattk, specialdmg);
                 }
             }
@@ -1793,6 +1824,7 @@ export async function hmonas(mon) {
             break;
     }
 
+    game.vis = false;
     game.twohits = 0;
     return !DEADMONSTER(mon);
 }
@@ -3554,21 +3586,10 @@ export async function golemeffects(mon, adtyp, damage) {
         return;
     }
 
-    if (slow && (mon.mspeed | 0) !== MSLOW) {
-        const oldspeed = mon.mspeed | 0;
-        mon.permspeed = (mon.permspeed | 0) === MFAST ? 0 : MSLOW;
-        const boots = which_armor(mon, W_ARMF);
-        mon.mspeed = boots?.otyp === ONAMES.SPEED_BOOTS
-            ? MFAST : mon.permspeed;
-        if (mon.mspeed !== oldspeed && game.mons[mon.mnum].mmove
-            && !mon.mfrozen && !mon.msleeping && canseemon(mon)) {
-            const howmuch = mon.mspeed + oldspeed === MFAST + MSLOW
-                ? 'much ' : '';
-            await pline(`${Monnam(mon)} seems to be moving ${howmuch}slower.`);
-        }
-    }
+    if (slow && mon.mspeed !== MSLOW)
+        await mon_adjust_speed(mon, -1, null);
     if (heal && healmon(mon, heal, 0) && cansee(mon.mx, mon.my))
-        await pline(`${Monnam(mon)} seems healthier.`);
+        await pline_mon(mon, `${Monnam(mon)} seems healthier.`);
 }
 
 /* include/hack.h:1236 Maybe_Half_Phys() */

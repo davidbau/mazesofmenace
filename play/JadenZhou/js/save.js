@@ -42,9 +42,12 @@ import { RANGE_GLOBAL, RANGE_LEVEL } from './const.js';
 import { GameMap } from './game.js';
 import { setworn } from './worn.js';
 import { forget_temple_entry } from './priest.js';
+import { done_object_cleanup } from './end.js';
 import { save_regions_data, clear_regions } from './region.js';
 import { ECMD_OK, WRITING, FREEING, COUNTING, FULL_MOON, VISITED, LFILE_EXISTS,
          REST_GSTATE, W_BALL, W_CHAIN, Has_contents } from './const.js';
+import { save_waterlevel } from './mkmaze.js';
+import { ledger_no as ledger_no_sv } from './dungeon.js';
 
 /* C ref: hack.h update_file(), release_data() */
 export function update_file(nhfp) { return (nhfp.mode & (COUNTING | WRITING)) !== 0; }
@@ -113,7 +116,7 @@ export async function dosave0() {
        a thrown light source might trigger an "obj_is_local" panic;
        if a thrown or kicked object is in transit, put it on the map;
        when punished, make sure ball and chain are placed too */
-    done_object_cleanup(); /* maybe force some items onto map */
+    await done_object_cleanup(); /* maybe force some items onto map */
 
     done: {
         if (!g.program_state.something_worth_saving || !g.SAVEF)
@@ -229,15 +232,6 @@ export async function dosave0() {
    so there is no ball or chain to be loose */
 function BALL_IN_MON() { return !!(game.uball && game.uball.where === 'OBJ_MINVENT'); }
 function CHAIN_IN_MON() { return !!(game.uchain && game.uchain.where === 'OBJ_MINVENT'); }
-
-// C ref: end.c done_object_cleanup()
-function done_object_cleanup() {
-    const g = game;
-    /* if a thrown or kicked object is in transit, put it on the map */
-    if (g.thrownobj || g.kickedobj)
-        throw new Error('done_object_cleanup(): object in transit not ported yet');
-    /* if (Punished) ...: punishment isn't ported */
-}
 
 // C ref: save.c save_gamelog()
 function save_gamelog(nhfp) {
@@ -687,8 +681,6 @@ function save_bubbles(nhfp, lev) {
     if (bbubbly)
         save_waterlevel(nhfp); /* save air bubbles or clouds */
 }
-import { save_waterlevel } from './mkmaze.js';
-import { ledger_no as ledger_no_sv } from './dungeon.js';
 
 // C ref: decl.c/mklev.c save_exclusions()
 function save_exclusions(nhfp) {
@@ -849,7 +841,7 @@ function allunworn() {
 const MON_LINK_FIELDS = new Set(['nmon', 'minvent', 'data']);
 
 /* the pet's struct edog, wherever the JS monster keeps it */
-function edog_of(mtmp) { return mtmp.mextra?.edog || mtmp.edog || null; }
+export function edog_of(mtmp) { return mtmp.mextra?.edog || mtmp.edog || null; }
 
 // C ref: save.c savemon()
 function savemon(nhfp, mtmp) {

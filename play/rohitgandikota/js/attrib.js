@@ -37,7 +37,7 @@ import { LL_ALIGNMENT, A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF, A_CURRENT, Is_
 import { aligns } from './role_data.js';
 import { summon_furies } from './makemon.js';
 import { retouch_equipment, what_gives, is_art } from './artifact.js';
-import { Hallucination, Blindfolded_only, Fumbling, Levitation, Flying } from './youprop.js';
+import { Hallucination, Blindfolded_only, Fumbling, Levitation, Flying, Fixed_abil } from './youprop.js';
 import { ysimple_name, bare_artifactname } from './objnam.js';
 import { strstri } from './hacklib.js';
 import { body_part, float_vs_flight } from './polyself.js';
@@ -308,7 +308,7 @@ export function vary_init_attr() {
         }
 }
 
-// src/attrib.c:31 adjattrib() — the only draw is the rn2() that decides how
+// src/attrib.c:117 adjattrib(); the only draw is the rn2() that decides how
 // much of the excess to take off AMAX when a decrease would go below the
 // racial minimum.
 export async function adjattrib(ndx, incr, msgflg) {
@@ -318,10 +318,15 @@ export async function adjattrib(ndx, incr, msgflg) {
     const minusattr = ['weak', 'stupid', 'foolish',
                        'clumsy', 'fragile', 'repulsive'];
 
-    if (/* Fixed_abil: no source yet || */ !incr)
+    if (Fixed_abil() || !incr)
         return false;
 
-    /* dunce cap constriction needs uarmh; no hero wears one yet */
+    if ((ndx === A_INT || ndx === A_WIS) && game.u.uarmh
+        && game.u.uarmh.otyp === ONAMES.DUNCE_CAP) {
+        if (msgflg === 0)
+            await Your('cap constricts briefly, then relaxes again.');
+        return false;
+    }
 
     const old_acurr = ACURR(ndx);
     const old_abase = ABASE(ndx);

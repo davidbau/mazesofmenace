@@ -30,6 +30,8 @@
 // selection, des and obj (init_nhc_data, init_u_data, l_selection_register,
 // l_register_des, l_obj_register).
 
+import { impossible } from './hack.js';
+import { panic } from './dungeon.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { TRUE, FALSE, NHL_SB_SAFE, NON_PM, G_GENOD } from './const.js';
@@ -75,10 +77,6 @@ import { useupall, freeinv, addinv_nomerge, obfree } from './invent.js';
 import { setworn, setnotworn } from './worn.js';
 import { init_uhunger } from './eat.js';
 import { objects } from './objects.js';
-
-// C's impossible() (pline.c) is not ported yet.
-function impossible(msg) { console.error(`impossible: ${msg}`); }
-function panic(msg) { throw new Error(`panic: ${msg}`); }
 
 // Lua basic types (lua.h), as lua_type() returns them.
 export const LUA_TNIL = 0;

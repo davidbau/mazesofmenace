@@ -10,6 +10,9 @@
 // Not ported yet: newcham (shapechangers),
 // set_mimic_sym, rndghostname, worm tail segments.
 
+import { db_under_typ } from './display.js';
+import { impossible } from './hack.js';
+import { rnd_class } from './mkobj.js';
 import { christen_monst, rndghostname, Amonnam, y_monnam, mon_nam, pmname,
          Mgender, YMonnam, pronoun_gender, PRONOUN_HALLU } from './do_name.js';
 import { genders } from './role.js';
@@ -18,7 +21,7 @@ import { mondied } from './mon.js';
 import { in_town } from './hack.js';
 import { game } from './gstate.js';
 import { stop_timer, obj_to_any, monst_to_any, begin_burn } from './timeout.js';
-import { ROT_CORPSE } from './const.js';
+import { ROT_CORPSE, next2u } from './const.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { level_difficulty, Is_special, In_hell } from './dungeon.js';
 import {
@@ -64,7 +67,9 @@ import {
 import { new_light_source } from './light.js';
 import { LS_MONSTER } from './const.js';
 import { deliver_obj_to_mon } from './dokick.js';
-const DF_NONE = 0x00; /* hack.h */
+import { See_invisible } from './youprop.js';
+import { Role_if, Race_if, u_at } from './const.js';
+import { mhe } from './mhitu.js';
 import { engr_at } from './engrave.js';
 import { enexto_core, enexto_gpflags } from './teleport.js';
 import { newedog } from './dog.js';
@@ -89,411 +94,6 @@ import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
 import { Is_waterlevel, Is_firelevel, Is_airlevel, G_GENOD,
          G_EXTINCT } from './const.js';
 import { is_flyer } from './mondata.js';
-
-function impossible(msg) { console.error(`impossible: ${msg}`); }
-
-const NON_PM = -1;
-
-// C ref: monst.h monmax_difficulty(), monmin_difficulty(),
-// montoostrong(), montooweak()
-function monmax_difficulty(levdif) { return Math.trunc((levdif + game.u.ulevel) / 2); }
-function monmin_difficulty(levdif) { return Math.trunc(levdif / 6); }
-function montoostrong(monindx, lev) { return mons[monindx].difficulty > lev; }
-function montooweak(monindx, lev) { return mons[monindx].difficulty < lev; }
-
-// C ref: hacklib.c sgn()
-function sgn(n) { return (n < 0) ? -1 : (n > 0) ? 1 : 0; }
-
-// C ref: mondata.h pm_resistance(), is_placeholder()
-function pm_resistance(ptr, typ) { return (ptr.mresists & typ) !== 0; }
-export function is_placeholder(ptr) {
-    return (ptr === mons[PM_ORC] || ptr === mons[PM_GIANT]
-            || ptr === mons[PM_ELF] || ptr === mons[PM_HUMAN]);
-}
-
-// C ref: dungeon.h Is_rogue_level(); In_endgame()
-function Is_rogue_level(lev) {
-    const z = game.dungeon_topology.d_rogue_level;
-    return !!((z.dlevel || z.dnum) && lev.dnum === z.dnum && lev.dlevel === z.dlevel);
-}
-export function In_endgame(lev) {
-    return lev.dnum === game.dungeon_topology.d_astral_level.dnum;
-}
-
-// C ref: makemon.c uncommon()
-function uncommon(mndx) {
-    if (mons[mndx].geno & (G_NOGEN | G_UNIQ))
-        return true;
-    if (game.mvitals[mndx].mvflags & G_GONE)
-        return true;
-    if (In_hell(game.u.uz))
-        return (mons[mndx].maligntyp > A_NEUTRAL);
-    else
-        return ((mons[mndx].geno & G_HELL) !== 0);
-}
-
-// C ref: makemon.c align_shift()
-/*
- *      shift the probability of a monster's generation by
- *      comparing the dungeon alignment and monster alignment.
- *      return an integer in the range of 0-5.
- */
-function align_shift(ptr) {
-    let alshift;
-
-    /* C: static oldmoves = 0L (!= 1, the starting value of moves) and
-       static s_level *lev -- Is_special(&u.uz) is looked up again only
-       when moves has changed since the last call, so on a level change
-       within one move 'lev' is still the previous level's */
-    if (game.align_shift_oldmoves === undefined) {
-        game.align_shift_oldmoves = 0;
-        game.align_shift_lev = null;
-    }
-    if (game.align_shift_oldmoves !== game.moves) {
-        game.align_shift_lev = Is_special(game.u.uz);
-        game.align_shift_oldmoves = game.moves;
-    }
-    const lev = game.align_shift_lev;
-    switch ((lev) ? lev.flags.align : game.dungeons[game.u.uz.dnum].flags.align) {
-    default: /* just in case */
-    case AM_NONE:
-        alshift = 0;
-        break;
-    case AM_LAWFUL:
-        alshift = Math.trunc((ptr.maligntyp + 20) / (2 * ALIGNWEIGHT));
-        break;
-    case AM_NEUTRAL:
-        alshift = Math.trunc((20 - Math.abs(ptr.maligntyp)) / ALIGNWEIGHT);
-        break;
-    case AM_CHAOTIC:
-        alshift = Math.trunc((-(ptr.maligntyp - 20)) / (2 * ALIGNWEIGHT));
-        break;
-    }
-    return alshift;
-}
-
-// C ref: makemon.c temperature_shift()
-/* return larger value if monster prefers the level temperature */
-function temperature_shift(ptr) {
-    if (game.level.flags.temperature
-        && pm_resistance(ptr, (game.level.flags.temperature > 0)
-                         ? MR_FIRE : MR_COLD))
-        return 3;
-    return 0;
-}
-
-// C ref: display.h monsym() -- gs.showsyms[mlet + SYM_OFF_M]; no
-// symset in the port changes monster symbols, so they are def_monsyms[]
-function monsym(ptr) {
-    return def_monsyms[ptr.mlet];
-}
-
-// C ref: <ctype.h> isupper()
-function isupper(ch) {
-    return typeof ch === 'string' && ch >= 'A' && ch <= 'Z';
-}
-
-// C ref: makemon.c wrong_elem_type()
-/*
- * Return true if the given monster cannot exist on this elemental level.
- */
-function wrong_elem_type(ptr) {
-    if (ptr.mlet === M.S_ELEMENTAL) {
-        return !is_home_elemental(ptr);
-    } else if (Is_earthlevel(game.u.uz)) {
-        /* no restrictions? */
-    } else if (Is_waterlevel(game.u.uz)) {
-        /* just monsters that can swim */
-        if (!is_swimmer(ptr))
-            return true;
-    } else if (Is_firelevel(game.u.uz)) {
-        if (!pm_resistance(ptr, MR_FIRE))
-            return true;
-    } else if (Is_airlevel(game.u.uz)) {
-        if (!(is_flyer(ptr) && ptr.mlet !== M.S_TRAPPER) && !is_floater(ptr)
-            && !amorphous(ptr) && !noncorporeal(ptr) && !is_whirly(ptr))
-            return true;
-    }
-    return false;
-}
-
-// C ref: questpgr.c qt_montype()
-export function qt_montype() {
-    let qpm;
-
-    if (rn2(5)) {
-        qpm = game.urole.enemy1num;
-        if (qpm !== NON_PM && rn2(5) && !(game.mvitals[qpm].mvflags & G_GENOD))
-            return mons[qpm];
-        return mkclass(game.urole.enemy1sym, 0);
-    }
-    qpm = game.urole.enemy2num;
-    if (qpm !== NON_PM && rn2(5) && !(game.mvitals[qpm].mvflags & G_GENOD))
-        return mons[qpm];
-    return mkclass(game.urole.enemy2sym, 0);
-}
-
-// C ref: minion.c ndemon()
-export function ndemon(atyp) /* A_NONE is used for 'any alignment' */
-{
-    /*
-     * 3.6.2:  [fixed #H2204, 22-Dec-2010, eight years later...]
-     * pick a correctly aligned demon in one try.  This used to
-     * use mkclass() to choose a random demon type and keep trying
-     * (up to 20 times) until it got one with the desired alignment.
-     * mkclass_aligned() skips wrongly aligned potential candidates.
-     * [The only neutral demons are djinni and mail daemon and
-     * mkclass() won't pick them, but call it anyway in case either
-     * aspect of that changes someday.]
-     */
-    const ptr = mkclass_aligned(M.S_DEMON, 0, atyp);
-    return (ptr && is_ndemon(ptr)) ? monsndx(ptr) : NON_PM;
-}
-
-// C ref: makemon.c rndmonst()
-/* select a random monster type */
-export function rndmonst() {
-    return rndmonst_adj(0, 0);
-}
-
-// C ref: makemon.c rndmonst_adj()
-/* select a random monster type, with adjusted difficulty */
-export function rndmonst_adj(minadj, maxadj) {
-    let ptr;
-    let mndx;
-    let weight, totalweight, selected_mndx;
-
-    if (game.u.uz.dnum === game.dungeon_topology.d_quest_dnum && rn2(7)
-        && (ptr = qt_montype()) !== null)
-        return ptr;
-
-    const zlevel = level_difficulty();
-    const minmlev = monmin_difficulty(zlevel) + minadj;
-    const maxmlev = monmax_difficulty(zlevel) + maxadj;
-    const upper = Is_rogue_level(game.u.uz); /* prefer uppercase only on rogue level */
-    const elemlevel = In_endgame(game.u.uz)
-        && !(game.u.uz.dnum === game.dungeon_topology.d_astral_level.dnum
-             && game.u.uz.dlevel === game.dungeon_topology.d_astral_level.dlevel);
-
-    /* amount processed so far */
-    totalweight = 0;
-    selected_mndx = NON_PM;
-
-    for (mndx = LOW_PM; mndx < SPECIAL_PM; ++mndx) {
-        ptr = mons[mndx];
-
-        if (montooweak(mndx, minmlev) || montoostrong(mndx, maxmlev))
-            continue;
-        if (upper && !isupper(monsym(ptr)))
-            continue;
-        if (elemlevel && wrong_elem_type(ptr))
-            continue;
-        if (uncommon(mndx))
-            continue;
-        if (In_hell(game.u.uz) && (ptr.geno & G_NOHELL))
-            continue;
-
-        /*
-         * Weighted reservoir sampling:  select ptr with a
-         * (ptr weight)/(total of all weights so far including ptr's)
-         * probability.
-         */
-        weight = (ptr.geno & G_FREQ) + align_shift(ptr);
-        weight += temperature_shift(ptr);
-        if (weight < 0 || weight > 127) {
-            impossible(`bad weight in rndmonst for mndx ${mndx}`);
-            weight = 0;
-        }
-        /* was unconditional, but if weight==0, rn2() < 0 will always fail;
-           also need to avoid rn2(0) if totalweight is still 0 so far */
-        if (weight > 0) {
-            totalweight += weight; /* totalweight now guaranteed to be > 0 */
-            if (rn2(totalweight) < weight)
-                selected_mndx = mndx;
-        }
-    }
-    /*
-     * Possible modification:  if totalweight is "too low" or nothing
-     * viable was picked, expand minmlev..maxmlev range and try again.
-     */
-    if (selected_mndx === NON_PM || uncommon(selected_mndx)) {
-        /* maybe no common monsters left, or all are too weak or too strong */
-        return null;
-    }
-    return mons[selected_mndx];
-}
-
-// C ref: makemon.c mk_gen_ok()
-/* decide whether it's ok to generate a candidate monster by mkclass() */
-function mk_gen_ok(mndx, mvflagsmask, genomask) {
-    const ptr = mons[mndx];
-
-    if (game.mvitals[mndx].mvflags & mvflagsmask)
-        return false;
-    if (ptr.geno & genomask)
-        return false;
-    if (is_placeholder(ptr))
-        return false;
-    /* PM_MAIL_DAEMON exists only with MAIL_STRUCTURES */
-    return true;
-}
-
-/* monsters in order by mlet & difficulty for mkclass() */
-const mongen_order = new Array(NUMMONS).fill(0);
-const mclass_maxf = new Array(MAXMCLASSES).fill(0);
-let mongen_order_init = false;
-
-// C ref: makemon.c cmp_init_mongen_order()
-function cmp_init_mongen_order(i1, i2) {
-    const offset1 = 0, offset2 = 0;
-
-    /* incorporate the mlet into the sort values for comparison */
-    const difficulty1 = ((mons[i1].difficulty + offset1) | (mons[i1].mlet << 8));
-    const difficulty2 = ((mons[i2].difficulty + offset2) | (mons[i2].mlet << 8));
-    return difficulty1 - difficulty2;
-}
-
-// C ref: makemon.c init_mongen_order()
-/* initialize monster order for mkclass */
-function init_mongen_order() {
-    let i, mlet;
-
-    if (mongen_order_init)
-        return;
-
-    mongen_order_init = true;
-    for (i = LOW_PM; i < NUMMONS; i++) {
-        mongen_order[i] = i;
-        mlet = mons[i].mlet;
-        if ((mons[i].geno & G_FREQ) > mclass_maxf[mlet])
-            mclass_maxf[mlet] = (mons[i].geno & G_FREQ);
-    }
-    /* qsort(mongen_order, SPECIAL_PM, ...): the C library qsort is not
-       stable; ties (same mlet and difficulty) keep mons[] order here,
-       which matches glibc's merge sort for this input */
-    const head = mongen_order.slice(0, SPECIAL_PM).sort(cmp_init_mongen_order);
-    for (i = 0; i < SPECIAL_PM; i++)
-        mongen_order[i] = head[i];
-}
-
-function MONSi(i) { return mongen_order[i]; }
-
-// C ref: makemon.c mkclass()
-/* Make one of the multiple types of a given monster class.
-   Returns Null if no monsters in that class can be made. */
-export function mkclass(class_, spc) {
-    return mkclass_aligned(class_, spc, A_NONE);
-}
-
-// C ref: makemon.c mkclass_aligned()
-/* mkclass() with alignment restrictions; used by ndemon() */
-export function mkclass_aligned(class_, spc, atyp) {
-    let first, last, num = 0;
-    let k;
-    const nums = new Array(SPECIAL_PM + 1).fill(0);
-    const gehennom = In_hell(game.u.uz) ? 1 : 0;
-    let mv_mask, gn_mask;
-
-    const maxmlev = level_difficulty() >> 1;
-    if (class_ < 1 || class_ >= MAXMCLASSES) {
-        impossible('mkclass called with bad class!');
-        return null;
-    }
-
-    init_mongen_order();
-    /* the following must come after init_mongen_order() */
-    const zero_freq_for_entire_class = (mclass_maxf[class_] === 0);
-
-    for (first = LOW_PM; first < SPECIAL_PM; first++)
-        if (mons[MONSi(first)].mlet === class_)
-            break;
-    if (first === SPECIAL_PM) {
-        impossible(`mkclass found no class ${class_} monsters`);
-        return null;
-    }
-
-    mv_mask = G_GONE; /* G_GENOD | G_EXTINCT */
-    if ((spc & G_IGNORE) !== 0) {
-        mv_mask = 0; /* mv_mask &= ~G_GONE; */
-        /* G_IGNORE is not a mons[].geno mask so get rid of it now */
-        spc &= ~G_IGNORE;
-    }
-
-    for (last = first; last < SPECIAL_PM && mons[MONSi(last)].mlet === class_;
-         last++) {
-        if (atyp !== A_NONE && sgn(mons[MONSi(last)].maligntyp) !== sgn(atyp))
-            continue;
-        gn_mask = (G_NOGEN | G_UNIQ);
-        if (rn2(9) || class_ === S_LICH)
-            gn_mask |= (gehennom ? G_NOHELL : G_HELL);
-        gn_mask &= ~spc;
-
-        if (mk_gen_ok(MONSi(last), mv_mask, gn_mask)) {
-            if (num && montoostrong(MONSi(last), maxmlev)
-                && mons[MONSi(last)].difficulty > mons[MONSi(last - 1)].difficulty
-                && rn2(2))
-                break;
-            if ((k = (mons[MONSi(last)].geno & G_FREQ)) > 0
-                || (k = (zero_freq_for_entire_class ? 1 : 0)) > 0) {
-                nums[MONSi(last)] = k + 1
-                    - (adj_lev(mons[MONSi(last)]) > (game.u.ulevel * 2) ? 1 : 0);
-                num += nums[MONSi(last)];
-            }
-        }
-    }
-    if (!num)
-        return null;
-
-    /* the hard work has already been done; 'num' should hit 0 before
-       first reaches last (which is actually one past our last candidate) */
-    for (num = rnd(num); first < last; first++)
-        if ((num -= nums[MONSi(first)]) <= 0)
-            break;
-
-    return nums[MONSi(first)] ? mons[MONSi(first)] : null;
-}
-
-// C ref: makemon.c adj_lev()
-/* adjust strength of monsters based on u.uz and u.ulevel */
-export function adj_lev(ptr) {
-    let tmp, tmp2;
-
-    if (ptr === mons[PM_WIZARD_OF_YENDOR]) {
-        /* does not depend on other strengths, but does get stronger
-         * every time he is killed
-         */
-        tmp = ptr.mlevel + game.mvitals[PM_WIZARD_OF_YENDOR].died;
-        if (tmp > 49)
-            tmp = 49;
-        return tmp;
-    }
-
-    if ((tmp = ptr.mlevel) > 49)
-        return 50; /* "special" demons/devils */
-    tmp2 = (level_difficulty() - tmp);
-    if (tmp2 < 0)
-        tmp--; /* if mlevel > u.uz decrement tmp */
-    else
-        tmp += Math.trunc(tmp2 / 5); /* else increment 1 per five diff */
-
-    tmp2 = (game.u.ulevel - ptr.mlevel); /* adjust vs. the player */
-    if (tmp2 > 0)
-        tmp += Math.trunc(tmp2 / 4); /* level as well */
-
-    tmp2 = Math.trunc((3 * ptr.mlevel) / 2); /* crude upper limit */
-    if (tmp2 > 49)
-        tmp2 = 49;                                      /* hard upper limit */
-    return ((tmp > tmp2) ? tmp2 : (tmp > 0 ? tmp : 0)); /* 0 lower limit */
-}
-
-// ============================================================
-// Monster creation: makemon() and the random-monster path.
-// C ref: makemon.c makemon(), newmonhp(), m_initweap(), m_initinv(),
-// m_initthrow(), mongets(), mkmonmoney(), golemhp(), propagate(),
-// peace_minded(), set_malign(); muse.c rnd_defensive_item(),
-// rnd_offensive_item(), rnd_misc_item(); teleport.c goodpos().
-// ============================================================
-
 export {
     NO_MM_FLAGS, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_IGNOREWATER,
     MM_ADJACENTOK, MM_NONAME, MM_EDOG, MM_ASLEEP, MM_NOGRP, MM_MALE,
@@ -519,7 +119,7 @@ function attacktype(ptr, atyp) {
         if (ptr.mattk[i].aatyp === atyp) return true;
     return false;
 }
-function is_armed(ptr) { return attacktype(ptr, M.AT_WEAP); }
+export function is_armed(ptr) { return attacktype(ptr, M.AT_WEAP); }
 function is_mercenary(ptr) { return (ptr.mflags2 & M.M2_MERC) !== 0; }
 function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
 export function is_lord(ptr) { return (ptr.mflags2 & M.M2_LORD) !== 0; }
@@ -563,8 +163,8 @@ function unique_corpstat(ptr) { return (ptr.geno & G_UNIQ) !== 0; }
 export function is_mplayer(ptr) {
     return ptr.pmidx >= M.PM_ARCHEOLOGIST && ptr.pmidx <= M.PM_WIZARD;
 }
-// C ref: mondata.h is_home_elemental()
-function is_home_elemental(ptr) {
+// C ref: makemon.c is_home_elemental()
+export function is_home_elemental(ptr) {
     if (ptr.mlet !== M.S_ELEMENTAL) return false;
     const t = game.dungeon_topology;
     switch (ptr.pmidx) {
@@ -592,9 +192,6 @@ function is_sword(otmp) {
     return objects[otmp.otyp].oc_skill >= P_SHORT_SWORD
            && objects[otmp.otyp].oc_skill <= P_SABER;
 }
-// C ref: role.h Role_if(), Race_if()
-function Role_if(pm) { return game.urole.mnum === pm; }
-function Race_if(pm) { return game.urace.mnum === pm; }
 // C ref: makemon.c quest_mon_represents_role()
 function quest_mon_represents_role(mptr, role_pm) {
     return (mptr.mlet === M.S_HUMAN && Role_if(role_pm)
@@ -624,8 +221,6 @@ function Is_knox() { return on_lev(game.dungeon_topology.d_knox_level); }
 function Is_earthlevel() { return on_lev(game.dungeon_topology.d_earth_level); }
 
 // ---- map / monster-position helpers ----
-// C ref: hack.h u_at()
-export function u_at(x, y) { return game.u.ux === x && game.u.uy === y; }
 // C ref: display.h m_at(); MON_AT() -- level monsters are kept in
 // game.level.monsters (C keeps a grid; a list with mx/my is equivalent);
 // a long worm's tail segments are its grid cells kept in game.level.wsegs;
@@ -678,19 +273,6 @@ export function is_moat(x, y) {
            && (typ === MOAT
                || (typ === DRAWBRIDGE_UP
                    && ((game.level.at(x, y).drawbridgemask ?? 0) & DB_UNDER) === DB_MOAT));
-}
-// C ref: dbridge.c db_under_typ()
-function db_under_typ(mask) {
-    switch (mask & DB_UNDER) {
-    case DB_ICE:
-        return ICE;
-    case DB_LAVA:
-        return LAVAPOOL;
-    case DB_MOAT:
-        return MOAT;
-    default:
-        return STONE;
-    }
 }
 // C ref: monmove.c accessible()
 export function accessible(x, y) {
@@ -1494,24 +1076,6 @@ function m_initinv(mtmp) {
                            (mtmp.minvent && mtmp.minvent.length) ? 5 : 10));
 }
 
-// C ref: o_init.c rnd_class()
-function rnd_class(first, last) {
-    let i, x, sum = 0;
-
-    if (last > first) {
-        for (i = first; i <= last; i++)
-            sum += objects[i].oc_prob;
-        if (!sum) /* all zero, so equal probability */
-            return rn1(last - first + 1, first);
-
-        x = rnd(sum);
-        for (i = first; i <= last; i++)
-            if ((x -= objects[i].oc_prob) <= 0)
-                return i;
-    }
-    return (first === last) ? first : O.STRANGE_OBJECT;
-}
-
 // C ref: makemon.c clone_mon()
 /* Note: for long worms, always call cutworm (cutworm calls clone_mon) */
 export async function clone_mon(
@@ -2154,7 +1718,7 @@ export function makemon(ptr, x, y, mmflags) {
                 const msg = `${what}${exclaim ? " suddenly" : ""} `
                     /* 'what' might be "gold pieces" so need plural verb */
                     + `${vtense(what, "appear")}`
-                    + `${(dist2(x, y, game.u.ux, game.u.uy) <= 2) /* next2u() */
+                    + `${next2u(x, y)
                          ? " next to you"
                          : (dist2(x, y, game.u.ux, game.u.uy) <= (BOLT_LIM * BOLT_LIM))
                            ? " close by" : ""}`
@@ -2655,7 +2219,7 @@ export async function grow_up(mtmp, victim) {
             if (canspotmon(mtmp))
                 await pline(`As ${mon_nam(mtmp)} grows up into ${
                     an(pmname(ptr, Mgender(mtmp)))}, ${
-                    genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he} ${ /* mhe() */
+                    mhe(mtmp)} ${
                     nonliving(ptr) ? "expires" : "dies"}!`);
             set_mon_data(mtmp, ptr); /* keep svm.mvitals[] accurate */
             await mondied(mtmp);
@@ -2957,11 +2521,6 @@ function is_vampshifter_mon(mon) {
            || mon.cham === M.PM_VLAD_THE_IMPALER;
 }
 // C ref: youprop.h See_invisible -- intrinsics aren't tracked yet
-/* C ref: youprop.h See_invisible */
-function See_invisible() {
-    const p = game.u?.uprops?.[SEE_INVIS];
-    return !!(p && (p.intrinsic || p.extrinsic));
-}
 
 // C ref: muse.c rnd_misc_item()
 export function rnd_misc_item(mtmp) {
@@ -3001,3 +2560,406 @@ import { G_EXTINCT as G_EXTINCT_CM, isok as isok_cm, MGIVENNAME as MGIVENNAME_cm
 import { enexto as enexto_cm } from './teleport.js';
 import { mon_track_clear as mon_track_clear_cm } from './monmove.js';
 import { tamedog as tamedog_cm } from './dog.js';
+const DF_NONE = 0x00; /* hack.h */
+
+const NON_PM = -1;
+
+// C ref: monst.h monmax_difficulty(), monmin_difficulty(),
+// montoostrong(), montooweak()
+function monmax_difficulty(levdif) { return Math.trunc((levdif + game.u.ulevel) / 2); }
+function monmin_difficulty(levdif) { return Math.trunc(levdif / 6); }
+function montoostrong(monindx, lev) { return mons[monindx].difficulty > lev; }
+function montooweak(monindx, lev) { return mons[monindx].difficulty < lev; }
+
+// C ref: hacklib.c sgn()
+function sgn(n) { return (n < 0) ? -1 : (n > 0) ? 1 : 0; }
+
+// C ref: mondata.h pm_resistance(), is_placeholder()
+export function pm_resistance(ptr, typ) { return (ptr.mresists & typ) !== 0; }
+export function is_placeholder(ptr) {
+    return (ptr === mons[PM_ORC] || ptr === mons[PM_GIANT]
+            || ptr === mons[PM_ELF] || ptr === mons[PM_HUMAN]);
+}
+
+// C ref: dungeon.h Is_rogue_level(); In_endgame()
+function Is_rogue_level(lev) {
+    const z = game.dungeon_topology.d_rogue_level;
+    return !!((z.dlevel || z.dnum) && lev.dnum === z.dnum && lev.dlevel === z.dlevel);
+}
+export function In_endgame(lev) {
+    return lev.dnum === game.dungeon_topology.d_astral_level.dnum;
+}
+
+// C ref: makemon.c uncommon()
+function uncommon(mndx) {
+    if (mons[mndx].geno & (G_NOGEN | G_UNIQ))
+        return true;
+    if (game.mvitals[mndx].mvflags & G_GONE)
+        return true;
+    if (In_hell(game.u.uz))
+        return (mons[mndx].maligntyp > A_NEUTRAL);
+    else
+        return ((mons[mndx].geno & G_HELL) !== 0);
+}
+
+// C ref: makemon.c align_shift()
+/*
+ *      shift the probability of a monster's generation by
+ *      comparing the dungeon alignment and monster alignment.
+ *      return an integer in the range of 0-5.
+ */
+function align_shift(ptr) {
+    let alshift;
+
+    /* C: static oldmoves = 0L (!= 1, the starting value of moves) and
+       static s_level *lev -- Is_special(&u.uz) is looked up again only
+       when moves has changed since the last call, so on a level change
+       within one move 'lev' is still the previous level's */
+    if (game.align_shift_oldmoves === undefined) {
+        game.align_shift_oldmoves = 0;
+        game.align_shift_lev = null;
+    }
+    if (game.align_shift_oldmoves !== game.moves) {
+        game.align_shift_lev = Is_special(game.u.uz);
+        game.align_shift_oldmoves = game.moves;
+    }
+    const lev = game.align_shift_lev;
+    switch ((lev) ? lev.flags.align : game.dungeons[game.u.uz.dnum].flags.align) {
+    default: /* just in case */
+    case AM_NONE:
+        alshift = 0;
+        break;
+    case AM_LAWFUL:
+        alshift = Math.trunc((ptr.maligntyp + 20) / (2 * ALIGNWEIGHT));
+        break;
+    case AM_NEUTRAL:
+        alshift = Math.trunc((20 - Math.abs(ptr.maligntyp)) / ALIGNWEIGHT);
+        break;
+    case AM_CHAOTIC:
+        alshift = Math.trunc((-(ptr.maligntyp - 20)) / (2 * ALIGNWEIGHT));
+        break;
+    }
+    return alshift;
+}
+
+// C ref: makemon.c temperature_shift()
+/* return larger value if monster prefers the level temperature */
+function temperature_shift(ptr) {
+    if (game.level.flags.temperature
+        && pm_resistance(ptr, (game.level.flags.temperature > 0)
+                         ? MR_FIRE : MR_COLD))
+        return 3;
+    return 0;
+}
+
+// C ref: display.h monsym() -- gs.showsyms[mlet + SYM_OFF_M]; no
+// symset in the port changes monster symbols, so they are def_monsyms[]
+export function monsym(ptr) {
+    return def_monsyms[ptr.mlet];
+}
+
+// C ref: <ctype.h> isupper()
+function isupper(ch) {
+    return typeof ch === 'string' && ch >= 'A' && ch <= 'Z';
+}
+
+// C ref: makemon.c wrong_elem_type()
+/*
+ * Return true if the given monster cannot exist on this elemental level.
+ */
+function wrong_elem_type(ptr) {
+    if (ptr.mlet === M.S_ELEMENTAL) {
+        return !is_home_elemental(ptr);
+    } else if (Is_earthlevel(game.u.uz)) {
+        /* no restrictions? */
+    } else if (Is_waterlevel(game.u.uz)) {
+        /* just monsters that can swim */
+        if (!is_swimmer(ptr))
+            return true;
+    } else if (Is_firelevel(game.u.uz)) {
+        if (!pm_resistance(ptr, MR_FIRE))
+            return true;
+    } else if (Is_airlevel(game.u.uz)) {
+        if (!(is_flyer(ptr) && ptr.mlet !== M.S_TRAPPER) && !is_floater(ptr)
+            && !amorphous(ptr) && !noncorporeal(ptr) && !is_whirly(ptr))
+            return true;
+    }
+    return false;
+}
+
+// C ref: questpgr.c qt_montype()
+export function qt_montype() {
+    let qpm;
+
+    if (rn2(5)) {
+        qpm = game.urole.enemy1num;
+        if (qpm !== NON_PM && rn2(5) && !(game.mvitals[qpm].mvflags & G_GENOD))
+            return mons[qpm];
+        return mkclass(game.urole.enemy1sym, 0);
+    }
+    qpm = game.urole.enemy2num;
+    if (qpm !== NON_PM && rn2(5) && !(game.mvitals[qpm].mvflags & G_GENOD))
+        return mons[qpm];
+    return mkclass(game.urole.enemy2sym, 0);
+}
+
+// C ref: minion.c ndemon()
+export function ndemon(atyp) /* A_NONE is used for 'any alignment' */
+{
+    /*
+     * 3.6.2:  [fixed #H2204, 22-Dec-2010, eight years later...]
+     * pick a correctly aligned demon in one try.  This used to
+     * use mkclass() to choose a random demon type and keep trying
+     * (up to 20 times) until it got one with the desired alignment.
+     * mkclass_aligned() skips wrongly aligned potential candidates.
+     * [The only neutral demons are djinni and mail daemon and
+     * mkclass() won't pick them, but call it anyway in case either
+     * aspect of that changes someday.]
+     */
+    const ptr = mkclass_aligned(M.S_DEMON, 0, atyp);
+    return (ptr && is_ndemon(ptr)) ? monsndx(ptr) : NON_PM;
+}
+
+// C ref: makemon.c rndmonst()
+/* select a random monster type */
+export function rndmonst() {
+    return rndmonst_adj(0, 0);
+}
+
+// C ref: makemon.c rndmonst_adj()
+/* select a random monster type, with adjusted difficulty */
+export function rndmonst_adj(minadj, maxadj) {
+    let ptr;
+    let mndx;
+    let weight, totalweight, selected_mndx;
+
+    if (game.u.uz.dnum === game.dungeon_topology.d_quest_dnum && rn2(7)
+        && (ptr = qt_montype()) !== null)
+        return ptr;
+
+    const zlevel = level_difficulty();
+    const minmlev = monmin_difficulty(zlevel) + minadj;
+    const maxmlev = monmax_difficulty(zlevel) + maxadj;
+    const upper = Is_rogue_level(game.u.uz); /* prefer uppercase only on rogue level */
+    const elemlevel = In_endgame(game.u.uz)
+        && !(game.u.uz.dnum === game.dungeon_topology.d_astral_level.dnum
+             && game.u.uz.dlevel === game.dungeon_topology.d_astral_level.dlevel);
+
+    /* amount processed so far */
+    totalweight = 0;
+    selected_mndx = NON_PM;
+
+    for (mndx = LOW_PM; mndx < SPECIAL_PM; ++mndx) {
+        ptr = mons[mndx];
+
+        if (montooweak(mndx, minmlev) || montoostrong(mndx, maxmlev))
+            continue;
+        if (upper && !isupper(monsym(ptr)))
+            continue;
+        if (elemlevel && wrong_elem_type(ptr))
+            continue;
+        if (uncommon(mndx))
+            continue;
+        if (In_hell(game.u.uz) && (ptr.geno & G_NOHELL))
+            continue;
+
+        /*
+         * Weighted reservoir sampling:  select ptr with a
+         * (ptr weight)/(total of all weights so far including ptr's)
+         * probability.
+         */
+        weight = (ptr.geno & G_FREQ) + align_shift(ptr);
+        weight += temperature_shift(ptr);
+        if (weight < 0 || weight > 127) {
+            impossible(`bad weight in rndmonst for mndx ${mndx}`);
+            weight = 0;
+        }
+        /* was unconditional, but if weight==0, rn2() < 0 will always fail;
+           also need to avoid rn2(0) if totalweight is still 0 so far */
+        if (weight > 0) {
+            totalweight += weight; /* totalweight now guaranteed to be > 0 */
+            if (rn2(totalweight) < weight)
+                selected_mndx = mndx;
+        }
+    }
+    /*
+     * Possible modification:  if totalweight is "too low" or nothing
+     * viable was picked, expand minmlev..maxmlev range and try again.
+     */
+    if (selected_mndx === NON_PM || uncommon(selected_mndx)) {
+        /* maybe no common monsters left, or all are too weak or too strong */
+        return null;
+    }
+    return mons[selected_mndx];
+}
+
+// C ref: makemon.c mk_gen_ok()
+/* decide whether it's ok to generate a candidate monster by mkclass() */
+function mk_gen_ok(mndx, mvflagsmask, genomask) {
+    const ptr = mons[mndx];
+
+    if (game.mvitals[mndx].mvflags & mvflagsmask)
+        return false;
+    if (ptr.geno & genomask)
+        return false;
+    if (is_placeholder(ptr))
+        return false;
+    /* PM_MAIL_DAEMON exists only with MAIL_STRUCTURES */
+    return true;
+}
+
+/* monsters in order by mlet & difficulty for mkclass() */
+const mongen_order = new Array(NUMMONS).fill(0);
+const mclass_maxf = new Array(MAXMCLASSES).fill(0);
+let mongen_order_init = false;
+
+// C ref: makemon.c cmp_init_mongen_order()
+function cmp_init_mongen_order(i1, i2) {
+    const offset1 = 0, offset2 = 0;
+
+    /* incorporate the mlet into the sort values for comparison */
+    const difficulty1 = ((mons[i1].difficulty + offset1) | (mons[i1].mlet << 8));
+    const difficulty2 = ((mons[i2].difficulty + offset2) | (mons[i2].mlet << 8));
+    return difficulty1 - difficulty2;
+}
+
+// C ref: makemon.c init_mongen_order()
+/* initialize monster order for mkclass */
+function init_mongen_order() {
+    let i, mlet;
+
+    if (mongen_order_init)
+        return;
+
+    mongen_order_init = true;
+    for (i = LOW_PM; i < NUMMONS; i++) {
+        mongen_order[i] = i;
+        mlet = mons[i].mlet;
+        if ((mons[i].geno & G_FREQ) > mclass_maxf[mlet])
+            mclass_maxf[mlet] = (mons[i].geno & G_FREQ);
+    }
+    /* qsort(mongen_order, SPECIAL_PM, ...): the C library qsort is not
+       stable; ties (same mlet and difficulty) keep mons[] order here,
+       which matches glibc's merge sort for this input */
+    const head = mongen_order.slice(0, SPECIAL_PM).sort(cmp_init_mongen_order);
+    for (i = 0; i < SPECIAL_PM; i++)
+        mongen_order[i] = head[i];
+}
+
+function MONSi(i) { return mongen_order[i]; }
+
+// C ref: makemon.c mkclass()
+/* Make one of the multiple types of a given monster class.
+   Returns Null if no monsters in that class can be made. */
+export function mkclass(class_, spc) {
+    return mkclass_aligned(class_, spc, A_NONE);
+}
+
+// C ref: makemon.c mkclass_aligned()
+/* mkclass() with alignment restrictions; used by ndemon() */
+export function mkclass_aligned(class_, spc, atyp) {
+    let first, last, num = 0;
+    let k;
+    const nums = new Array(SPECIAL_PM + 1).fill(0);
+    const gehennom = In_hell(game.u.uz) ? 1 : 0;
+    let mv_mask, gn_mask;
+
+    const maxmlev = level_difficulty() >> 1;
+    if (class_ < 1 || class_ >= MAXMCLASSES) {
+        impossible('mkclass called with bad class!');
+        return null;
+    }
+
+    init_mongen_order();
+    /* the following must come after init_mongen_order() */
+    const zero_freq_for_entire_class = (mclass_maxf[class_] === 0);
+
+    for (first = LOW_PM; first < SPECIAL_PM; first++)
+        if (mons[MONSi(first)].mlet === class_)
+            break;
+    if (first === SPECIAL_PM) {
+        impossible(`mkclass found no class ${class_} monsters`);
+        return null;
+    }
+
+    mv_mask = G_GONE; /* G_GENOD | G_EXTINCT */
+    if ((spc & G_IGNORE) !== 0) {
+        mv_mask = 0; /* mv_mask &= ~G_GONE; */
+        /* G_IGNORE is not a mons[].geno mask so get rid of it now */
+        spc &= ~G_IGNORE;
+    }
+
+    for (last = first; last < SPECIAL_PM && mons[MONSi(last)].mlet === class_;
+         last++) {
+        if (atyp !== A_NONE && sgn(mons[MONSi(last)].maligntyp) !== sgn(atyp))
+            continue;
+        gn_mask = (G_NOGEN | G_UNIQ);
+        if (rn2(9) || class_ === S_LICH)
+            gn_mask |= (gehennom ? G_NOHELL : G_HELL);
+        gn_mask &= ~spc;
+
+        if (mk_gen_ok(MONSi(last), mv_mask, gn_mask)) {
+            if (num && montoostrong(MONSi(last), maxmlev)
+                && mons[MONSi(last)].difficulty > mons[MONSi(last - 1)].difficulty
+                && rn2(2))
+                break;
+            if ((k = (mons[MONSi(last)].geno & G_FREQ)) > 0
+                || (k = (zero_freq_for_entire_class ? 1 : 0)) > 0) {
+                nums[MONSi(last)] = k + 1
+                    - (adj_lev(mons[MONSi(last)]) > (game.u.ulevel * 2) ? 1 : 0);
+                num += nums[MONSi(last)];
+            }
+        }
+    }
+    if (!num)
+        return null;
+
+    /* the hard work has already been done; 'num' should hit 0 before
+       first reaches last (which is actually one past our last candidate) */
+    for (num = rnd(num); first < last; first++)
+        if ((num -= nums[MONSi(first)]) <= 0)
+            break;
+
+    return nums[MONSi(first)] ? mons[MONSi(first)] : null;
+}
+
+// C ref: makemon.c adj_lev()
+/* adjust strength of monsters based on u.uz and u.ulevel */
+export function adj_lev(ptr) {
+    let tmp, tmp2;
+
+    if (ptr === mons[PM_WIZARD_OF_YENDOR]) {
+        /* does not depend on other strengths, but does get stronger
+         * every time he is killed
+         */
+        tmp = ptr.mlevel + game.mvitals[PM_WIZARD_OF_YENDOR].died;
+        if (tmp > 49)
+            tmp = 49;
+        return tmp;
+    }
+
+    if ((tmp = ptr.mlevel) > 49)
+        return 50; /* "special" demons/devils */
+    tmp2 = (level_difficulty() - tmp);
+    if (tmp2 < 0)
+        tmp--; /* if mlevel > u.uz decrement tmp */
+    else
+        tmp += Math.trunc(tmp2 / 5); /* else increment 1 per five diff */
+
+    tmp2 = (game.u.ulevel - ptr.mlevel); /* adjust vs. the player */
+    if (tmp2 > 0)
+        tmp += Math.trunc(tmp2 / 4); /* level as well */
+
+    tmp2 = Math.trunc((3 * ptr.mlevel) / 2); /* crude upper limit */
+    if (tmp2 > 49)
+        tmp2 = 49;                                      /* hard upper limit */
+    return ((tmp > tmp2) ? tmp2 : (tmp > 0 ? tmp : 0)); /* 0 lower limit */
+}
+
+// ============================================================
+// Monster creation: makemon() and the random-monster path.
+// C ref: makemon.c makemon(), newmonhp(), m_initweap(), m_initinv(),
+// m_initthrow(), mongets(), mkmonmoney(), golemhp(), propagate(),
+// peace_minded(), set_malign(); muse.c rnd_defensive_item(),
+// rnd_offensive_item(), rnd_misc_item(); teleport.c goodpos().
+// ============================================================

@@ -94,6 +94,7 @@ import { isok, W_ARMH, M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE,
          MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_RANDOM } from './const.js';
 import { Is_container, Has_contents, bimanual, is_plural } from './obj.js';
 import { DEADMONSTER, helpless, MON_WEP } from './monst.js';
+import { mwelded } from './wield.js';
 import { canletgo } from './do.js';
 import { genders as genders_tbl } from './role_data.js';
 import { impossible } from './pline.js';
@@ -224,14 +225,14 @@ export function cures_stoning(mon, obj, tinok) {
 }
 
 // src/muse.c:3001 mcould_eat_tin(). Unlike the hero, a monster may use an
-// unwielded opener, dagger, or knife. A cursed wielded weapon blocks access to
+// unwielded opener, dagger, or knife. A welded weapon blocks access to
 // every other tool in its inventory.
 export function mcould_eat_tin(mon) {
     if (is_animal(game.mons[mon.mnum]))
         return false;
 
     const mwep = MON_WEP(mon);
-    const welded = !!(mwep && mwep.cursed && (mwep.owornmask & W_WEP));
+    const welded = !!(mwep && mwelded(mwep));
     for (const obj of mon.minvent || []) {
         if (welded && obj !== mwep)
             continue;

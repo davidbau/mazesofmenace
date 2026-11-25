@@ -11,6 +11,7 @@
 // only ever appended to and never read back by the game, so no copy of
 // them is kept.
 
+import { ordin } from './hacklib.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
@@ -431,14 +432,6 @@ function outheader() {
         linebuf += ' ';
     linebuf += "Hp [max]";
     topten_print(linebuf);
-}
-
-// C ref: hacklib.c ordin()
-function ordin(n) {
-    const dd = n % 10;
-
-    return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? "th"
-           : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
 }
 
 // C ref: topten.c outentry()

@@ -11,7 +11,7 @@
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_LIFESAVE } from './const.js';
-import { pline, You, Your, bot, Hallucination, canspotmon, Blind } from './display.js';
+import { pline, You, Your, bot, canspotmon } from './display.js';
 import { accessible } from './makemon.js';
 import {
     DIED, CHOKING, STARVING, BURNING, DISSOLVED, STONING, TURNED_SLIME,
@@ -72,6 +72,8 @@ import {
     tty_putstr, tty_exit_nhwindows, tty_raw_print, tty_yn_function,
     tty_destroy_mapwindow, tty_destroy_statuswindow, tty_clear_nhwindow,
 } from './wintty.js';
+import { Blind, Hallucination, Lifesaved } from './youprop.js';
+import { Race_if, Role_if } from './const.js';
 
 const EXIT_SUCCESS = 0;
 const BUFSZ = 256;
@@ -112,11 +114,6 @@ function inc_done_stopprint() {
 
 /* C ref: mondata.h type_is_pname() */
 function type_is_pname(ptr) { return (ptr.mflags2 & M2_PNAME) !== 0; }
-/* C ref: you.h Race_if(), Role_if() */
-function Race_if(pm) { return game.urace.mnum === pm; }
-function Role_if(pm) { return game.urole.mnum === pm; }
-/* C ref: youprop.h Lifesaved */
-function Lifesaved() { return !!game.u.uprops[LIFESAVED]?.extrinsic; }
 /* C ref: obj.h SchroedingersBox() */
 function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
 /* C ref: hacklib.c upstart() */
@@ -436,7 +433,7 @@ async function savelife(how) {
     if (u.uhpmax < uhpmin)
         setuhpmax(uhpmin, true);
     u.uhp = Math.min(u.uhpmax, givehp);
-    if (Upolyd(game.u)) /* Unchanging, or death which bypasses losing hit points */
+    if (Upolyd()) /* Unchanging, or death which bypasses losing hit points */
         u.mh = Math.min(u.mhmax, givehp);
     if (u.uhunger < 500 || how === CHOKING) {
         init_uhunger();
@@ -469,7 +466,7 @@ async function savelife(how) {
         /* might drop hero onto a trap that kills her all over again */
         await expels(u.ustuck, u.ustuck.data, true);
     } else if (u.ustuck) {
-        if (Upolyd(game.u) && sticks_end(game.youmonst.data))
+        if (Upolyd() && sticks_end(game.youmonst.data))
             await You(`release ${mon_nam_en(u.ustuck)}.`);
         else
             await pline(`${Monnam_end(u.ustuck)} releases you.`);
@@ -725,7 +722,7 @@ export async function done(how) {
     if (how < PANICKED) {
         u.umortality = (u.umortality || 0) + 1;
         /* in case caller hasn't already done this */
-        if (u.uhp !== 0 || (Upolyd(u) && u.mh !== 0)) {
+        if (u.uhp !== 0 || (Upolyd() && u.mh !== 0)) {
             /* force HP to zero in case it is still positive (some
                deaths aren't triggered by loss of hit points), or
                negative (-1 is used as a flag in some circumstances
@@ -977,7 +974,7 @@ async function really_done(how) {
         && !(g.mvitals[u.umonnum].mvflags & G_NOCORPSE)) {
         /* Base corpse on race when not poly'd since original u.umonnum
            is based on role, and all role monsters are human. */
-        const mnum = !Upolyd(u) ? g.urace.mnum : u.umonnum,
+        const mnum = !Upolyd() ? g.urace.mnum : u.umonnum,
               was_already_grave = IS_GRAVE(g.level.at(u.ux, u.uy).typ);
 
         corpse = mk_named_object(CORPSE, mons[mnum], u.ux, u.uy, g.plname);

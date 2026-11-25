@@ -10,6 +10,7 @@
 // forcelock(), breakchestlock(), u_have_forceable_weapon(),
 // chest_shatter_msg()) and #close (doclose()).
 
+import { impossible, is_door_mappear } from './hack.js';
 import { touch_artifact, is_magic_key } from './artifact.js';
 import { game } from './gstate.js';
 import { rn2, rnl } from './rng.js';
@@ -21,7 +22,7 @@ import { container_at, doloot } from './pickup.js';
 import { set_occupation } from './allmain.js';
 import { mon_nam } from './do_name.js';
 import { doname, yname } from './objnam.js';
-import { can_reach_floor } from './engrave.js';
+import { can_reach_floor, cant_reach_floor } from './engrave.js';
 import { mons, PM_ORACLE, PM_ROGUE } from './monsters.js';
 import { ART_ORB_OF_DETECTION, ART_MASTER_KEY_OF_THIEVERY } from './artilist.js';
 import { is_quest_artifact } from './questpgr.js';
@@ -53,7 +54,6 @@ import { s_suffix } from './hacklib.js';
 import { cansee, block_point, vision_recalc } from './vision.js';
 import { t_at, chest_trap } from './trap.js';
 import { FINGER } from './const.js';
-import { Unaware } from './eat.js';
 import { You_hear } from './sounds.js';
 import { wake_nearto } from './mon.js';
 import { in_rooms } from './hack.js';
@@ -83,12 +83,10 @@ import { is_drawbridge_wall } from './dbridge.js';
 import { bottlename, potionbreathe } from './potion.js';
 import { haseyes } from './mondata.js';
 import { M1_BREATHLESS } from './monsters.js';
+import {
+    Stunned, Confusion, Blind, Deaf, Passes_walls, Protection_from_shape_changers, Unaware
+} from './youprop.js';
 
-/* C ref: youprop.h Deaf */
-function Deaf() {
-    const p = game.u.uprops[DEAF];
-    return !!(p.intrinsic || p.extrinsic || game.u.uroleplay?.deaf);
-}
 
 /* C ref: pline.c verbalize() -- SetVoice() only matters for speech
    output, which the tty doesn't do */
@@ -112,16 +110,6 @@ const ECMD_CANCEL = 0x02;
 /* C ref: defsym.h S_vcdoor, S_hcdoor (pchar indices) */
 const S_vcdoor = 15, S_hcdoor = 16;
 
-function uhave(prop) {
-    const p = game.u?.uprops?.[prop];
-    return !!(p && (p.intrinsic || p.extrinsic));
-}
-
-// C ref: monst.h is_door_mappear()
-function is_door_mappear(mon) {
-    return mon.m_ap_type === M_AP_FURNITURE
-           && (mon.mappearance === S_hcdoor || mon.mappearance === S_vcdoor);
-}
 
 /* C ref: decl.h struct xlock_s gx.xlock */
 function xlock() {
@@ -581,9 +569,6 @@ async function ynq(query) {
     return c;
 }
 
-// C's impossible() (pline.c) is not ported yet.
-function impossible(msg) { console.error(`impossible: ${msg}`); }
-
 // C ref: lock.c autokey() -- the unlocking tool autounlock would apply
 /* opening: True: key, pick, or card; False: key or pick */
 export function autokey(opening) {
@@ -647,7 +632,7 @@ export function autokey(opening) {
 async function stumble_on_door_mimic(x, y) {
     const mtmp = m_at(x, y);
 
-    if (mtmp && is_door_mappear(mtmp) && !uhave(PROT_FROM_SHAPE_CHANGERS)) {
+    if (mtmp && is_door_mappear(mtmp) && !Protection_from_shape_changers()) {
         await stumble_onto_mimic(mtmp);
         return true;
     }
@@ -700,7 +685,7 @@ export async function doopen_indir(x, y) {
 
     /* when choosing a direction is impaired, use a turn
        regardless of whether a door is successfully targeted */
-    if (uhave(CONFUSION) || uhave(STUNNED))
+    if (Confusion() || Stunned())
         res = ECMD_TIME;
 
     const door = game.level.at(cc.x, cc.y);
@@ -1106,17 +1091,6 @@ function is_pick(otmp) {
 }
 function Is_box(o) { return o.otyp === LARGE_BOX || o.otyp === CHEST; }
 
-// C ref: engrave.c cant_reach_floor()
-async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {
-    if (up)
-        throw new Error('cant_reach_floor(): ceiling() not ported yet');
-    await pline(`${wand_engraving
-                   ? "The wand does nothing more, and the tip of the wand"
-                   : "You"} can't reach the ${
-                (check_pit && can_reach_floor(false)) ? "bottom of the pit"
-                                                       : surface(x, y)}.`);
-}
-
 // C ref: lock.c doforce() -- the #force command - try to force a chest
 // with your weapon
 export async function doforce() {
@@ -1226,7 +1200,7 @@ export async function doclose() {
 
     x = u.ux + u.dx;
     y = u.uy + u.dy;
-    if (u.ux === x && u.uy === y && !uhave(PASSES_WALLS)) {
+    if (u.ux === x && u.uy === y && !Passes_walls()) {
         await You("are in the way!");
         return ECMD_TIME;
     }
@@ -1242,7 +1216,7 @@ export async function doclose() {
 
     /* when choosing a direction is impaired, use a turn
        regardless of whether a door is successfully targeted */
-    if (uhave(CONFUSION) || uhave(STUNNED))
+    if (Confusion() || Stunned())
         res = ECMD_TIME;
 
     const door = game.level.at(x, y);
@@ -1303,11 +1277,6 @@ export async function doclose() {
     return ECMD_TIME;
 }
 
-/* C ref: youprop.h Blind */
-function Blind() {
-    const p = game.u.uprops[BLINDED];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
 
 // C ref: lock.c chest_shatter_msg()
 async function chest_shatter_msg(otmp) {

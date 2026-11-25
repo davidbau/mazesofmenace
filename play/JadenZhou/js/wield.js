@@ -4,7 +4,8 @@
 // Ported so far: welded() with its will_weld()/erodeable_wep() macros,
 // obj.h is_weptool()/bimanual(), and engrave.c freehand().
 
-import { retouch_object, arti_speak } from './artifact.js';
+import { retouch_object, arti_speak, undiscovered_artifact } from './artifact.js';
+import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
 import { artifact_light } from './worn.js';
 import { game } from './gstate.js';
 import { P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
@@ -39,6 +40,11 @@ import { LENSES, ARMOR_CLASS, ARM_GLOVES, ARM_BOOTS } from './objects.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT, GETOBJ_ALLOWCNT,
          ECMD_CANCEL, GETOBJ_EXCLUDE } from './const.js';
 import { COIN_CLASS } from './objects.js';
+import { setworn } from './worn.js';
+import { BATTLE_AXE as BATTLE_AXE_WL } from './objects.js';
+import { P_SHORT_SWORD as P_SHORT_SWORD_WL, P_SABER as P_SABER_WL } from './const.js';
+import { xname as xname_wl, yname as yname_wl, doname as doname_wl,
+         The as The_wl, aobjnam as aobjnam_wl } from './objnam.js';
 
 // C ref: obj.h is_weptool()
 export function is_weptool(o) {
@@ -82,7 +88,6 @@ export function is_pole(otmp) {
 export function is_wet_towel(o) { return o.otyp === TOWEL && o.spe > 0; }
 
 // C ref: worn.c setworn() -- in worn.js
-import { setworn } from './worn.js';
 export { setworn };
 
 // C ref: wield.c setuwep()
@@ -237,14 +242,6 @@ function verysmall(ptr) { return ptr.msize < MZ_SMALL; }
 
 // C ref: artifact.c retouch_object() (ported in artifact.js)
 export { retouch_object };
-/* C ref: you.h Hate_silver; mondata.h hates_silver() */
-export function Hate_silver() {
-    const ptr = game.youmonst?.data;
-    return ((game.u.ulycn ?? -1) >= 0
-            || !!(ptr && ((ptr.mflags2 & M2_WERE) || ptr.mlet === S_VAMPIRE
-                          || (ptr.mflags2 & M2_DEMON) || ptr === mons[PM_SHADE]
-                          || (ptr.mlet === S_IMP && ptr !== mons[PM_TENGU]))));
-}
 
 /* C ref: obj.h is_sword() */
 function is_sword_wl(otmp) {
@@ -252,8 +249,6 @@ function is_sword_wl(otmp) {
         && objects[otmp.otyp].oc_skill >= P_SHORT_SWORD_WL
         && objects[otmp.otyp].oc_skill <= P_SABER_WL;
 }
-import { BATTLE_AXE as BATTLE_AXE_WL } from './objects.js';
-import { P_SHORT_SWORD as P_SHORT_SWORD_WL, P_SABER as P_SABER_WL } from './const.js';
 
 // C ref: wield.c ready_weapon()
 export async function ready_weapon(wep) {
@@ -509,12 +504,13 @@ async function ynq(query) {
 }
 
 
-/* C ref: obj.h is_plural() (undiscovered_artifact() isn't ported),
-   pair_of() */
-function is_plural(o) {
-    if (o.oartifact)
-        throw new Error('is_plural(): undiscovered_artifact() not ported yet');
-    return o.quan !== 1;
+/* C ref: obj.h is_plural(), pair_of() */
+export function is_plural(o) {
+    return (o.quan !== 1
+            /* "the Eyes of the Overworld" are plural, but
+               "a pair of lenses named the Eyes of the Overworld" is not */
+            || (o.oartifact === ART_EYES_OF_THE_OVERWORLD
+                && !undiscovered_artifact(ART_EYES_OF_THE_OVERWORLD)));
 }
 function pair_of(o) {
     return (o.otyp === LENSES
@@ -789,5 +785,3 @@ export async function wield_tool(obj,
         game.unweapon = true;
     return true;
 }
-import { xname as xname_wl, yname as yname_wl, doname as doname_wl,
-         The as The_wl, aobjnam as aobjnam_wl } from './objnam.js';

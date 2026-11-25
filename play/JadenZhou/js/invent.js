@@ -13,7 +13,7 @@ import { def_oc_syms } from './drawing.js';
 import { body_part, hidden_gold, currency, empty_handed } from './insight.js';
 import { money_cnt } from './u_init.js';
 import { welded } from './wield.js';
-import { stairway_at, obj_to_glyph } from './display.js';
+import { stairway_at, obj_to_glyph, db_under_typ as db_under_typ_iv } from './display.js';
 import { an, vtense } from './objnam.js';
 import { t_at, trapname } from './trap.js';
 import { visible_region_at, reg_damg } from './region.js';
@@ -69,6 +69,7 @@ import {
     tty_select_menu, tty_message_menu, tty_yn_function, tty_display_nhwindow,
     tty_putstr, tty_destroy_nhwindow, add_menu_str,
 } from './wintty.js';
+import { Blind, Hallucination } from './youprop.js';
 
 const invlet_basic = 52;
 const GOLD_SYM = '$';
@@ -668,7 +669,7 @@ export function addinv_core2(obj) {
        what they are (exception: unlabeled scrolls don't have a label to
        decipher) */
     if (inv_Role_if(M.PM_ARCHEOLOGIST) && obj.oclass === O.SCROLL_CLASS
-        && obj.otyp !== O.SCR_BLANK_PAPER && !inv_Blind()
+        && obj.otyp !== O.SCR_BLANK_PAPER && !Blind()
         && !objects[obj.otyp].oc_name_known) {
         throw new Error('addinv_core2(): Archeologist deciphering a scroll label not ported yet');
     }
@@ -2205,15 +2206,6 @@ export async function doprtool() {
     return ECMD_OK;
 }
 
-/* C ref: you.h Blind, Hallucination */
-function inv_Blind() {
-    const p = game.u?.uprops?.[BLINDED];
-    return !!(p?.intrinsic || p?.extrinsic);
-}
-function inv_Hallucination() {
-    const p = game.u?.uprops?.[HALLUC];
-    return !!(p?.intrinsic || p?.extrinsic);
-}
 /* C ref: role.h Role_if() */
 function inv_Role_if(pm) { return game.urole?.mnum === pm; }
 /* C ref: obj.h Is_pudding() */
@@ -2271,7 +2263,7 @@ export function mergable(otmp, /* potential 'into' stack */
 
     if (!!obj.dknown !== !!otmp.dknown
         || (!!obj.bknown !== !!otmp.bknown && !inv_Role_if(M.PM_CLERIC)
-            && (inv_Blind() || inv_Hallucination()))
+            && (Blind() || Hallucination()))
         || (obj.oeroded | 0) !== (otmp.oeroded | 0)
         || (obj.oeroded2 | 0) !== (otmp.oeroded2 | 0)
         || !!obj.greased !== !!otmp.greased)
@@ -2280,7 +2272,7 @@ export function mergable(otmp, /* potential 'into' stack */
     if ((erosion_matters(obj))
         && (!!obj.oerodeproof !== !!otmp.oerodeproof
             || (!!obj.rknown !== !!otmp.rknown
-                && (inv_Blind() || inv_Hallucination()))))
+                && (Blind() || Hallucination()))))
         return false;
 
     if (obj.otyp === O.CORPSE || obj.otyp === O.EGG || obj.otyp === O.TIN) {
@@ -2336,7 +2328,7 @@ export function mergable(otmp, /* potential 'into' stack */
     if ((obj.oartifact | 0) !== (otmp.oartifact | 0))
         return false;
 
-    if (!!obj.known !== !!otmp.known && (inv_Blind() || inv_Hallucination()))
+    if (!!obj.known !== !!otmp.known && (Blind() || Hallucination()))
         return false;
 
     return true;
@@ -2524,7 +2516,7 @@ export function fully_identify_obj(otmp) {
     discover_object_iv(otmp.otyp, true, true, true); /* makeknown() */
     if (otmp.oartifact)
         discover_artifact(otmp.oartifact);
-    observe_object_iv(otmp, Hallucination_iv());
+    observe_object_iv(otmp, Hallucination());
     otmp.known = otmp.bknown = otmp.rknown = 1;
     set_cknown_lknown(otmp); /* set otmp->{cknown,lknown} if applicable */
     if (otmp.otyp === O.EGG && otmp.corpsenm !== NON_PM) {
@@ -2630,12 +2622,6 @@ function wait_synch_iv() {
     if (game.ttyDisplay?.rawprint)
         throw new Error('wait_synch(): getret() not ported yet');
 }
-/* C ref: youprop.h Hallucination */
-function Hallucination_iv() {
-    const p = game.u.uprops;
-    return !!(p[HALLUC_IV].intrinsic
-              && !(p[HALLUC_RES_IV].intrinsic || p[HALLUC_RES_IV].extrinsic));
-}
 /* C ref: obj.h Is_container() */
 function Is_container_iv(otmp) {
     return otmp.otyp >= O.LARGE_BOX && otmp.otyp <= O.BAG_OF_TRICKS;
@@ -2664,9 +2650,8 @@ import { surface as surface_iv } from './iactions.js';
 /* C ref: rm.h SURFACE_AT() */
 function SURFACE_AT_iv(x, y) {
     const lev = game.level.at(x, y);
-    if (lev.typ === DRAWBRIDGE_UP_IV)
-        throw new Error('SURFACE_AT(): drawbridge underside (db_under_typ()) not ported yet');
-    return lev.typ;
+    return (lev.typ === DRAWBRIDGE_UP_IV) ? db_under_typ_iv(lev.drawbridgemask || 0)
+                                          : lev.typ;
 }
 import { DRAWBRIDGE_UP as DRAWBRIDGE_UP_IV } from './const.js';
 

@@ -8,6 +8,7 @@
 // furniture (thrones, altars, fountains, graves, trees, sinks) are not
 // ported yet.
 
+import { DEADMONSTER } from './mon.js';
 import { game } from './gstate.js';
 import { in_town } from './hack.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
@@ -40,13 +41,14 @@ import { cvt_sdoor_to_door } from './detect.js';
 import { Is_container, weight, obj_extract_self } from './mkobj.js';
 import { Has_contents, WEB, STATUE_TRAP, is_pit, STONE_RES, FUMBLING, ZAP_POS, LOW_PM } from './const.js';
 import { BAG_OF_HOLDING, BAG_OF_TRICKS, objects, GLASS, GEM_CLASS, EGG, MIRROR, CORPSE, COIN_CLASS, LARGE_BOX, CHEST } from './objects.js';
-import { shop_keeper, costly_spot, onshopbill, costly_adjacent } from './shk.js';
+import { shop_keeper, costly_spot, onshopbill, costly_adjacent,
+         find_objowner } from './shk.js';
 import { obj_resists } from './dogmove.js';
 import { change_luck } from './attrib.js';
 import { You_hear } from './sounds.js';
 import { useup, obfree } from './invent.js';
 import { killer_xname } from './mthrowu.js';
-import { breaktest } from './dothrow.js';
+import { breaktest, hero_breaks } from './dothrow.js';
 import { t_at, chest_trap } from './trap.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
 import { is_ice } from './dig.js';
@@ -95,24 +97,18 @@ import { MIGR_TO_SPECIES, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_WITH_HERO,
          NON_PM, In_mines, has_mgivenname, has_oname, ONAME } from './const.js';
 import { add_to_minv } from './mkobj.js';
 import { christen_orc } from './do_name.js';
+import {
+    Stone_resistance, Blind, Deaf, Fumbling, Wounded_legs, Levitation, Passes_walls
+} from './youprop.js';
+import { Upolyd, Role_if } from './const.js';
+import { uprop } from './youprop.js';
+import { Is_stronghold, In_endgame, Is_botlevel } from './const.js';
+import { stairway_at } from './display.js';
+import { down_gate } from './do.js';
 
 /* C ref: mondata.h attacktype() */
 function attacktype(ptr, atyp) { return ptr.mattk.some(a => a.aatyp === atyp); }
 
-/* C ref: youprop.h -- the hero's properties used by the kick code */
-function uprop(p) {
-    const u = game.u;
-    if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    return u.uprops[p];
-}
-function uhave(p) { return !!(uprop(p).intrinsic || uprop(p).extrinsic); }
-function Blind() { return uhave(BLINDED) && !uprop(BLINDED).blocked; }
-function Levitation() { return uhave(LEVITATION) && !uprop(LEVITATION).blocked; }
-function Passes_walls() { return uhave(PASSES_WALLS); }
-function Wounded_legs() { return uhave(WOUNDED_LEGS); }
-function Deaf() { return uhave(DEAF) || !!game.u.uroleplay?.deaf; }
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-function Role_if(pm) { return game.urole.mnum === pm; }
 /* C ref: mondata.h nolimbs(), slithy(), verysmall(), is_giant() */
 function nolimbs(ptr) { return (ptr.mflags1 & M1_NOLIMBS) === M1_NOLIMBS; }
 function slithy(ptr) { return (ptr.mflags1 & M1_SLITHY) !== 0; }
@@ -424,8 +420,6 @@ function thick_skinned(ptr) { return (ptr.mflags1 & M1_THICK_HIDE) !== 0; }
 function bigmonst(ptr) { return ptr.msize >= MZ_LARGE; }
 function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
 function M_AP_TYPE(mon) { return (mon.m_ap_type || 0) & M_AP_TYPMASK; }
-function DEADMONSTER(mon) { return mon.mhp < 1; }
-function Fumbling() { return uhave(FUMBLING); }
 
 // C ref: dokick.c kickdmg()
 /* kicking damage when not poly'd into a form with a kick attack */
@@ -900,38 +894,6 @@ function objects_at_top(x, y) {
     return null;
 }
 
-// C ref: shk.c find_objowner()
-function find_objowner(obj, x, y) {
-    let shkp, deflt_shkp = null;
-
-    if (obj.where === 'OBJ_ONBILL')
-        throw new Error('find_objowner(): used-up bill object not ported yet');
-    const where = in_rooms(x, y, SHOPBASE);
-
-    /* conceptually object could be inside up to 4 rooms simultaneously;
-       in practice it will usually be one room but can sometimes be two;
-       check shk and bill for each room rather than just the first;
-       fallback to the first shk if obj isn't on the relevant bill(s) */
-    for (let i = 0; i < where.length; i++)
-        if ((shkp = shop_keeper(where.charCodeAt(i))) != null) {
-            if (onshopbill(obj, shkp, true))
-                return shkp;
-            if (!deflt_shkp)
-                deflt_shkp = shkp;
-        }
-    return deflt_shkp;
-}
-
-// C ref: dothrow.c hero_breaks() -- the "doesn't break" outcome; breaking
-// (breakmsg(), breakobj()) is not ported yet
-async function hero_breaks(obj, x, y, breakflags) {
-    void x; void y; void breakflags;
-    /* only call breaktest if caller hasn't already specified the outcome */
-    if (!breaktest(obj))
-        return false;
-    throw new Error('hero_breaks(): breakmsg()/breakobj() not ported yet');
-}
-
 // C ref: dokick.c really_kick_object() -- guts of kick_object
 async function really_kick_object(x, y) {
     const u = game.u;
@@ -953,14 +915,14 @@ async function really_kick_object(x, y) {
             throw new Error('really_kick_object(): activate_statue_trap() not ported yet');
     }
 
-    if (uhave(FUMBLING) && !rn2(3)) {
+    if (Fumbling() && !rn2(3)) {
         await Your("clumsy kick missed.");
         return 1;
     }
 
     if (!game.uarmf && kobj.otyp === CORPSE
         && (kobj.corpsenm === PM_COCKATRICE || kobj.corpsenm === PM_CHICKATRICE)
-        && !uhave(STONE_RES))
+        && !Stone_resistance())
         throw new Error('really_kick_object(): kicking a cockatrice corpse barefoot not ported yet');
 
     isgold = (kobj.oclass === COIN_CLASS);
@@ -1164,9 +1126,6 @@ export async function impact_drop(
     throw new Error('impact_drop(): objects falling to another level not ported yet');
 }
 
-import { Is_stronghold, In_endgame, Is_botlevel } from './const.js';
-import { stairway_at } from './display.js';
-import { down_gate } from './do.js';
 // C ref: dokick.c obj_delivery()
 /* migrating objects arrive on the level the hero has just reached; objects
    bound for a monster species (MIGR_TO_SPECIES) wait for makemon()/

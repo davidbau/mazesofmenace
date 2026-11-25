@@ -5,6 +5,8 @@
 // polymon(), polyman(), rehumanize(), break_armor(), drop_weapon(),
 // uunstick(), skinback().  newman() is not ported yet.
 
+import { is_golem } from './makemon.js';
+import { is_pool_or_lava, rounddiv } from './hack.js';
 import { new_light_source, del_light_source } from './light.js';
 import { monst_to_any } from './timeout.js';
 import { LS_MONSTER } from './const.js';
@@ -63,10 +65,9 @@ import { pmname, Some_Monnam, Monnam } from './do_name.js';
 import { an, the_unique_pm, vtense, yname, makeplural } from './objnam.js';
 import { the, simpleonames, surface, cloak_simple_name,
          helm_simple_name } from './iactions.js';
-import { Unaware } from './eat.js';
 import { unmul } from './allmain.js';
 import { make_glib, set_mimic_blocking, set_itimeout, make_blinded } from './potion.js';
-import { golemhp, is_pool, is_lava } from './makemon.js';
+import { golemhp, is_pool, is_lava, is_home_elemental } from './makemon.js';
 import { find_ac } from './u_init.js';
 import { set_ustuck } from './uhitm.js';
 import { spoteffects, nomul } from './hack.js';
@@ -81,6 +82,14 @@ import { setworn, racial_exception } from './worn.js';
 import { uwepgone, uswapwepgone, untwoweapon } from './wield.js';
 import { weapon_descr } from './insight.js';
 import { sticks } from './engrave.js';
+import {
+    Punished, Stunned, Blind, Stoned, Strangled, Slimed, Flying, Polymorph_control, Unchanging,
+    Unaware
+} from './youprop.js';
+import { Upolyd } from './const.js';
+import { done as done_ps } from './end.js';
+import { killer as killer_ps } from './topten.js';
+import { DIED as DIED_PS } from './const.js';
 
 // C ref: mon.c valid_vampshiftform()
 function valid_vampshiftform(base, form) {
@@ -274,7 +283,7 @@ function unsolid(ptr) { return (ptr.mflags1 & M.M1_UNSOLID) !== 0; }
 function noncorporeal(ptr) { return ptr.mlet === M.S_GHOST; }
 function hides_under(ptr) { return (ptr.mflags1 & M.M1_CONCEAL) !== 0; }
 function is_hider(ptr) { return (ptr.mflags1 & M.M1_HIDE) !== 0; }
-function lays_eggs(ptr) { return (ptr.mflags1 & M.M1_OVIPAROUS) !== 0; }
+export function lays_eggs(ptr) { return (ptr.mflags1 & M.M1_OVIPAROUS) !== 0; }
 function polyok(ptr) { return (ptr.mflags2 & M.M2_NOPOLY) === 0; }
 function strongmonst(ptr) { return (ptr.mflags2 & M.M2_STRONG) !== 0; }
 function is_giant(ptr) { return (ptr.mflags2 & M.M2_GIANT) !== 0; }
@@ -283,7 +292,6 @@ function is_female(ptr) { return (ptr.mflags2 & M.M2_FEMALE) !== 0; }
 function is_neuter(ptr) { return (ptr.mflags2 & M.M2_NEUTER) !== 0; }
 function type_is_pname(ptr) { return (ptr.mflags2 & M.M2_PNAME) !== 0; }
 function likes_gems(ptr) { return (ptr.mflags2 & M.M2_JEWELS) !== 0; }
-function is_golem(ptr) { return ptr.mlet === M.S_GOLEM; }
 function cantwield(ptr) { return nohands(ptr) || verysmall(ptr); }
 function could_twoweap(ptr) {
     return ((ptr.mattk[0].aatyp === M.AT_WEAP ? 1 : 0)
@@ -307,14 +315,6 @@ function is_unicorn(ptr) { return ptr.mlet === M.S_UNICORN && likes_gems(ptr); }
 function is_mind_flayer(ptr) {
     return ptr === mons[M.PM_MIND_FLAYER]
         || ptr === mons[M.PM_MASTER_MIND_FLAYER];
-}
-// C ref: mondata.h is_home_elemental() -- only true on the elemental planes
-function is_home_elemental(ptr) {
-    if (ptr.mlet !== M.S_ELEMENTAL)
-        return false;
-    if (In_endgame(game.u.uz))
-        throw new Error('is_home_elemental(): elemental planes not ported yet');
-    return false;
 }
 function is_placeholder(ptr) {
     return ptr === mons[M.PM_ORC] || ptr === mons[M.PM_GIANT]
@@ -370,7 +370,7 @@ function num_horns(ptr) {
     }
     return 0;
 }
-function has_horns(ptr) { return num_horns(ptr) > 0; }
+export function has_horns(ptr) { return num_horns(ptr) > 0; }
 /* C ref: obj.h is_flimsy(), is_sword(), WrappingAllowed(),
    Is_dragon_armor() */
 function is_flimsy(otmp) {
@@ -399,30 +399,7 @@ function uprop_on(p) {
     const pr = game.u.uprops[p];
     return !!(pr.intrinsic || pr.extrinsic);
 }
-function Upolyd() { return game.u.umonnum !== game.u.umonster; }
-/* Blind: (HBlinded || EBlinded) && !BBlinded */
-function Blind() {
-    const p = game.u.uprops[BLINDED];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-function Polymorph_control() { return uprop_on(POLYMORPH_CONTROL); }
-function Unchanging() { return uprop_on(UNCHANGING); }
-function Stunned() { return uprop_on(STUNNED); }
-function Stoned() { return uprop_on(STONED); }
-function Slimed() { return uprop_on(SLIMED); }
-function Strangled() { return uprop_on(STRANGLED); }
-function Punished() { return !!game.uball; }
-function Flying() {
-    const fly = game.u.uprops[FLYING];
-    return !!((fly.intrinsic || fly.extrinsic
-               || (game.u.usteed && is_flyer(game.u.usteed.data)))
-              && !fly.blocked);
-}
 function plur(x) { return x === 1 ? "" : "s"; }
-/* C ref: dbridge.c is_pool_or_lava() */
-function is_pool_or_lava(x, y) {
-    return is_pool(x, y) || is_lava(x, y);
-}
 const no_longer_petrify_resistant =
     "You no longer seem to be petrify-resistant. You";
 
@@ -684,30 +661,6 @@ async function polyself_made_change(old_light) {
             new_light_source(game.u.ux, game.u.uy, new_light, LS_MONSTER,
                              monst_to_any(game.youmonst));
     }
-}
-
-// C ref: hacklib.c rounddiv()
-/* round x/y to nearest integer */
-function rounddiv(x, y) {
-    let r, m;
-    let divsgn = 1;
-
-    if (y === 0)
-        throw new Error('division by zero in rounddiv'); /* panic() */
-    else if (y < 0) {
-        divsgn = -divsgn;
-        y = -y;
-    }
-    if (x < 0) {
-        divsgn = -divsgn;
-        x = -x;
-    }
-    r = Math.trunc(x / y);
-    m = x % y;
-    if (2 * m >= y)
-        r++;
-
-    return divsgn * r;
 }
 
 // C ref: polyself.c poly_gender()
@@ -1569,6 +1522,3 @@ export async function dobreathe() {
     /* getdir(), then ubreatheu() or ubuzz(BZ_U_BREATH(...)) */
     throw new Error('dobreathe(): getdir()/ubuzz() of a hero breath weapon not ported yet');
 }
-import { done as done_ps } from './end.js';
-import { killer as killer_ps } from './topten.js';
-import { DIED as DIED_PS } from './const.js';

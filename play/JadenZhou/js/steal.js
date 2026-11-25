@@ -2,6 +2,7 @@
 // C ref: steal.c mpickobj(), mdrop_obj(), relobj();
 // invent.c carry_obj_effects(); worn.c extract_from_minvent()
 
+import { any_quest_artifact } from './wizard.js';
 import { game } from './gstate.js';
 import { unpunish } from './read.js';
 import { add_to_minv, obj_extract_self, place_object, unknow_object } from './mkobj.js';
@@ -58,26 +59,12 @@ import { PLNMSG_MON_TAKES_OFF_ITEM, W_ACCESSORY, W_ARMG, TT_BURIEDBALL,
          ADORNED, LEFT_RING, RIGHT_RING, CONFLICT, BLINDED, LEVITATION,
          FLYING, FOOT } from './const.js';
 import { ART_ORB_OF_DETECTION } from './artilist.js';
+import { Punished, Blind, Adornment, Conflict, Levitation, Flying } from './youprop.js';
+import { Ring_gone as Ring_gone_st } from './do_wear.js';
 
 /* C ref: global.h LARGEST_INT */
 const LARGEST_INT = 32767;
 
-/* C ref: youprop.h -- (H* || E*) && !B* */
-function uhave(prop) {
-    const p = game.u.uprops[prop];
-    return !!((p.intrinsic || p.extrinsic) && !p.blocked);
-}
-/* C ref: youprop.h Blind, Conflict, Levitation, Flying, Adornment */
-function Blind() { return uhave(BLINDED); }
-function Conflict() {
-    const p = game.u.uprops[CONFLICT];
-    return !!(p.intrinsic || p.extrinsic);
-}
-function Levitation() { return uhave(LEVITATION); }
-function Flying() { return uhave(FLYING); }
-function Adornment() { return game.u.uprops[ADORNED].extrinsic || 0; }
-/* C ref: youprop.h Punished */
-function Punished() { return !!game.uball; }
 /* C ref: mondata.h is_animal(), slithy(), throws_rocks(), touch_petrifies() */
 function is_animal(ptr) { return (ptr.mflags1 & M.M1_ANIMAL) !== 0; }
 function slithy(ptr) { return (ptr.mflags1 & M.M1_SLITHY) !== 0; }
@@ -90,8 +77,6 @@ function distu(x, y) {
     const dx = x - game.u.ux, dy = y - game.u.uy;
     return dx * dx + dy * dy;
 }
-/* C ref: obj.h any_quest_artifact() */
-function any_quest_artifact(o) { return (o.oartifact || 0) >= ART_ORB_OF_DETECTION; }
 /* C ref: hacklib.c strsubst() -- replace the first instance */
 function strsubst(bp, orig, replacement) {
     const found = bp.indexOf(orig);
@@ -956,5 +941,3 @@ export async function relobj(mtmp, show,
     if (show && cansee(omx, omy))
         newsym(omx, omy);
 }
-
-import { Ring_gone as Ring_gone_st } from './do_wear.js';

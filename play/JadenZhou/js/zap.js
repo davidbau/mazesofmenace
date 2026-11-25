@@ -8,10 +8,11 @@
 // yet).  For enlightenment: adtyp_to_prop(), u_adtyp_resistance_obj(),
 // item_what().
 
+import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import { livelog_printf, urgent_pline } from './display.js';
 import { LL_CONDUCT } from './const.js';
-import { You, Your, pline, pline_The, Blind, Hallucination } from './display.js';
+import { You, Your, pline, pline_The } from './display.js';
 import { getobj, useupall } from './invent.js';
 import { check_capacity } from './hack.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -99,6 +100,215 @@ import {
     cloak_simple_name, suit_simple_name, shirt_simple_name, helm_simple_name,
     gloves_simple_name, boots_simple_name, shield_simple_name, simpleonames,
 } from './iactions.js';
+import { Sleep_resistance, Antimagic, Blind, Hallucination, Deaf, Reflecting } from './youprop.js';
+import { Luck } from './const.js';
+import { breaks as breaks_zb, hero_breaks as hero_breaks_zb } from './dothrow.js';
+import { newsym_force as newsym_force_zb } from './display.js';
+import { STATUE as STATUE_ZB } from './objects.js';
+import * as O_zy from './objects.js';
+import { ANTIMAGIC as ANTIMAGIC_ZY, M_SEEN_MAGR as M_SEEN_MAGR_ZY,
+         A_STR as A_STR_ZY, NO_KILLER_PREFIX as NO_KILLER_PREFIX_ZY,
+         DIED as DIED_ZY } from './const.js';
+import { M2_DEMON as M2_DEMON_ZY, M2_UNDEAD as M2_UNDEAD_ZY,
+         S_GOLEM as S_GOLEM_ZY,
+         S_VORTEX as S_VORTEX_ZY, mons as mons_zy,
+         PM_MANES as PM_MANES_ZY } from './monsters.js';
+import { killer as killer_zy } from './topten.js';
+import { done as done_zy } from './end.js';
+import { healup as healup_zy } from './potion.js';
+import { delete_contents } from './invent.js';
+import { findit } from './detect.js';
+import { makewish } from './wizcmds.js';
+import { create_critters as create_critters_zp } from './read.js';
+import { SPE_LIGHT as SPE_LIGHT_ZN,
+         SPE_DETECT_UNSEEN as SPE_DETECT_UNSEEN_ZN } from './objects.js';
+import { litroom, lightdamage } from './read.js';
+import { ACURR as ACURR_ZP } from './attrib.js';
+import { A_INT as A_INT_ZP, A_DEX as A_DEX_ZP, A_CON as A_CON_ZP,
+         P_ISRESTRICTED as P_ISRESTRICTED_ZP, P_UNSKILLED as P_UNSKILLED_ZP,
+         P_BASIC as P_BASIC_ZP, P_SKILLED as P_SKILLED_ZP,
+         P_EXPERT as P_EXPERT_ZP, NOTELL as NOTELL_ZP,
+         M_SEEN_FIRE as M_SEEN_FIRE_ZP, M_SEEN_COLD as M_SEEN_COLD_ZP,
+         M_SEEN_DISINT as M_SEEN_DISINT_ZP, M_SEEN_ELEC as M_SEEN_ELEC_ZP,
+         M_SEEN_ACID as M_SEEN_ACID_ZP, M_SEEN_REFL,
+         NON_PM as NON_PM_ZP, KILLED_BY as KILLED_BY_ZP,
+         HALF_SPDAM as HALF_SPDAM_ZP, XKILL_GIVEMSG as XKILL_GIVEMSG_ZP,
+         XKILL_NOMSG as XKILL_NOMSG_ZP, XKILL_NOCORPSE as XKILL_NOCORPSE_ZP,
+         LEVITATION as LEVITATION_ZP, FLYING as FLYING_ZP,
+         STUNNED as STUNNED_ZP, TIMEOUT as TIMEOUT_ZP,
+         INTRINSIC as INTRINSIC_ZP, FAST as FAST_ZP, INVIS as INVIS_ZP,
+         UNCHANGING as UNCHANGING_ZP, DRAIN_RES as DRAIN_RES_ZP,
+         TELEPORT_CONTROL as TELEPORT_CONTROL_ZP, REFLECTING as REFLECTING_ZP,
+         EYE as EYE_ZP, EXPL_FIERY as EXPL_FIERY_ZP,
+         engulfing_u as engulfing_u_zp, u_at, M_AP_MONSTER as M_AP_MONSTER_ZP,
+         } from './const.js';
+import { P_SKILL as P_SKILL_ZP } from './weapon.js';
+import { spell_skilltype as spell_skilltype_zp } from './spell.js';
+import { resists_magm as resists_magm_zp, defended as defended_zp,
+         resists_fire as resists_fire_zp, resists_cold as resists_cold_zp,
+         resists_elec as resists_elec_zp, resists_poison as resists_poison_zp,
+         resists_acid as resists_acid_zp, resists_disint as resists_disint_zp,
+         is_demon as is_demon_zp, is_vampshifter as is_vampshifter_zp,
+         is_undead as is_undead_zp, haseyes as haseyes_zp } from './mondata.js';
+import { burnarmor as burnarmor_zp, ignite_items as ignite_items_zp,
+         acid_damage as acid_damage_zp,
+         sleep_monst as sleep_monst_zp } from './trap.js';
+import { healmon as healmon_zp, mlifesaver as mlifesaver_zp, xkilled,
+         completelyburns } from './mon.js';
+import { PM_DEATH as PM_DEATH_ZP, PM_FAMINE as PM_FAMINE_ZP,
+         PM_PESTILENCE as PM_PESTILENCE_ZP, PM_CYCLOPS as PM_CYCLOPS_ZP,
+         PM_FLOATING_EYE as PM_FLOATING_EYE_ZP, PM_KNIGHT as PM_KNIGHT_ZP,
+         AD_DRST as AD_DRST_ZP, M1_BREATHLESS as M1_BREATHLESS_ZP } from './monsters.js';
+import { which_armor as which_armor_zp, setnotworn as setnotworn_zp,
+         bypass_objlist as bypass_objlist_zp,
+         nxt_unbypassed_obj as nxt_unbypassed_obj_zp } from './worn.js';
+import { m_useup, rnd_hallublast } from './mthrowu.js';
+import { uhim, uhis, ugolemeffects as ugolemeffects_zp } from './mhitu.js';
+import { burn_away_slime as burn_away_slime_zp,
+         hliquid as hliquid_zp, potionbreathe as potionbreathe_zp,
+         make_stunned as make_stunned_zp, incr_itimeout as incr_itimeout_zp,
+         self_invis_message as self_invis_message_zp,
+         speed_up as speed_up_zp } from './potion.js';
+import { poisoned as poisoned_zp } from './attrib.js';
+import { disintegrate_arm as disintegrate_arm_zp } from './do_wear.js';
+import { death_inflicted_by as death_inflicted_by_zp, ureflects } from './mcastu.js';
+import { is_quest_artifact as is_quest_artifact_zp } from './questpgr.js';
+import { extract_from_minvent as extract_from_minvent_zp } from './steal.js';
+import { obfree as obfree_zp, useup as useup_zp } from './invent.js';
+import { SPE_BOOK_OF_THE_DEAD as SPE_BOOK_OF_THE_DEAD_ZP,
+         RIN_SHOCK_RESISTANCE as RIN_SHOCK_RESISTANCE_ZP,
+         is_metallic as is_metallic_zp } from './objects.js';
+import { hcolor as hcolor_zp, Monnam } from './do_name.js';
+import { recharge as recharge_zp } from './read.js';
+import { Yname2 as Yname2_zp, yname as yname_zp, makeplural,
+         distant_name } from './objnam.js';
+import { s_suffix } from './hacklib.js';
+import { mon_reflects } from './muse.js';
+import { slept_monst } from './mhitm.js';
+import { canseemon, sensemon as sensemon_zp, zapdir_to_glyph } from './display.js';
+import { explode } from './explode.js';
+import { losexp as losexp_zp } from './exper.js';
+import { tele as tele_zp } from './teleport.js';
+import { LOW_PM as LOW_PM_ZP } from './monsters.js';
+import { Norep as Norep_zp } from './display.js';
+import { delfloortrap as delfloortrap_zp } from './trap.js';
+import { is_ice as is_ice_zp } from './dig.js';
+import { create_gas_cloud as create_gas_cloud_zp } from './region.js';
+import { dryup as dryup_zp } from './fountain.js';
+import { W_NONDIGGABLE as W_NONDIGGABLE_ZP, D_NODOOR as D_NODOOR_ZP,
+         D_BROKEN as D_BROKEN_ZP, SHOPBASE as SHOPBASE_ZP,
+         Is_rogue_level as Is_rogue_level_zp } from './const.js';
+import { cvt_sdoor_to_door as cvt_sdoor_to_door_zp } from './detect.js';
+import { recalc_block_point as recalc_block_point_zp } from './vision.js';
+import { in_rooms as in_rooms_zp } from './hack.js';
+import { You_hear as You_hear_zp } from './sounds.js';
+import { picking_at as picking_at_zp, reset_pick as reset_pick_zp } from './lock.js';
+import { catch_lit as catch_lit_zp } from './trap.js';
+import { useupf as useupf_zp } from './invent.js';
+import { An as An_zp } from './objnam.js';
+import { erode_armor as erode_armor_zp } from './uhitm.js';
+import { POOL as POOL_ZP, ROOM as ROOM_ZP,
+         NO_TRAP_FLAGS as NO_TRAP_FLAGS_ZP, DEAF as DEAF_ZP,
+         PLNMSG_ENVELOPED_IN_GAS as PLNMSG_ENVELOPED_IN_GAS_ZP,
+         Is_waterlevel as Is_waterlevel_zp } from './const.js';
+import { maketrap as maketrap_zp, dotrap as dotrap_zp,
+         mintrap as mintrap_zp } from './trap.js';
+import { is_swimmer as is_swimmer_zp } from './mondata.js';
+import { dissolve_bars } from './monmove.js';
+import { DRAWBRIDGE_UP as DRAWBRIDGE_UP_ZP, DRAWBRIDGE_DOWN as DRAWBRIDGE_DOWN_ZP,
+         DB_ICE as DB_ICE_ZP, DB_UNDER as DB_UNDER_ZP, DB_FLOOR as DB_FLOOR_ZP,
+         ICED_POOL as ICED_POOL_ZP, ICED_MOAT as ICED_MOAT_ZP, MOAT as MOAT_ZP,
+         VWALL as VWALL_ZP, HWALL as HWALL_ZP, TT_LAVA as TT_LAVA_ZP,
+         MELT_ICE_AWAY as MELT_ICE_AWAY_ZP, COLNO as COLNO_ZP, ROWNO as ROWNO_ZP,
+         isok as isok_zp, IS_WATERWALL as IS_WATERWALL_ZP } from './const.js';
+import { waterbody_name as waterbody_name_zp } from './pager.js';
+import { fix_wall_spines as fix_wall_spines_zp } from './mklev.js';
+import { del_engr_at as del_engr_at_zp } from './engrave.js';
+import { maybe_unhide_at as maybe_unhide_at_zp, minliquid as minliquid_zp } from './mon.js';
+import { spoteffects as spoteffects_zp } from './hack.js';
+import { is_moat as is_moat_zp } from './makemon.js';
+import { start_timer as start_timer_zp, long_to_any as long_to_any_zp,
+         spot_time_left as spot_time_left_zp, spot_stop_timers as spot_stop_timers_zp } from './timeout.js';
+import { TIMER_LEVEL as TIMER_LEVEL_ZP } from './const.js';
+import { obj_ice_effects as obj_ice_effects_zp } from './mkobj.js';
+import { mons as mons_rv, S_ZOMBIE as S_ZOMBIE_RV, S_TROLL as S_TROLL_RV,
+         S_EEL as S_EEL_RV, PM_DEATH as PM_DEATH_RV,
+         PM_PESTILENCE as PM_PESTILENCE_RV, PM_FAMINE as PM_FAMINE_RV,
+         PM_DOPPELGANGER as PM_DOPPELGANGER_RV, M3_DISPLACES as M3_DISPLACES_RV,
+         PM_GHOST as PM_GHOST_RV, G_UNIQ as G_UNIQ_RV } from './monsters.js';
+import { G_GENOD as G_GENOD_RV, NON_PM as NON_PM_RV, ROOM as ROOM_RV,
+         CORR as CORR_RV, GRAVE as GRAVE_RV, IS_POOL as IS_POOL_RV,
+         BURIED_TOO as BURIED_TOO_RV, CONTAINED_TOO as CONTAINED_TOO_RV,
+         NO_MINVENT as NO_MINVENT_RV, MM_NOWAIT as MM_NOWAIT_RV,
+         MM_NOMSG as MM_NOMSG_RV, MM_NOCOUNTBIRTH as MM_NOCOUNTBIRTH_RV,
+         MM_MALE as MM_MALE_RV, MM_FEMALE as MM_FEMALE_RV,
+         CORPSTAT_GENDER as CORPSTAT_GENDER_RV, CORPSTAT_MALE as CORPSTAT_MALE_RV,
+         CORPSTAT_FEMALE as CORPSTAT_FEMALE_RV, CXN_PFX_THE as CXN_PFX_THE_RV,
+         CXN_SINGULAR as CXN_SINGULAR_RV, NO_NC_FLAGS as NO_NC_FLAGS_RV,
+         RLOC_NOMSG as RLOC_NOMSG_RV, REVIVE_MON as REVIVE_MON_RV,
+         ROT_CORPSE as ROT_CORPSE_RV, TIMER_OBJECT as TIMER_OBJECT_RV,
+         PIT as PIT_RV, has_oname as has_oname_rv, ONAME as ONAME_rv,
+         isok as isok_rv } from './const.js';
+import { CORPSE as CORPSE_RV, STATUE as STATUE_RV,
+         BAG_OF_HOLDING as BAG_OF_HOLDING_RV } from './objects.js';
+import { makemon as makemon_rv, makemon_flush_msg as makemon_flush_msg_rv } from './makemon.js';
+import { enexto as enexto_rv, rloc as rloc_rv } from './teleport.js';
+import { corpse_xname as corpse_xname_rv, xname as xname_rv, an as an_rv,
+         yname as yname_rv, The as The_rv } from './objnam.js';
+import { Amonnam as Amonnam_rv, Adjmonnam as Adjmonnam_rv,
+         mon_nam as mon_nam_rv, christen_monst as christen_monst_rv } from './do_name.js';
+import { cant_revive as cant_revive_rv } from './read.js';
+import { cant_finish_meal as cant_finish_meal_rv, eaten_stat as eaten_stat_rv } from './eat.js';
+import { set_corpsenm as set_corpsenm_rv, obj_extract_self as obj_extract_self_rv } from './mkobj.js';
+import { delobj_core as delobj_core_rv } from './invent.js';
+import { newcham as newcham_rv, seemimic as seemimic_rv, zombie_form as zombie_form_rv } from './mon.js';
+import { mon_adjust_speed as mon_adjust_speed_rv } from './worn.js';
+import { rot_corpse as rot_corpse_rv } from './dig.js';
+import { fill_pit as fill_pit_rv } from './muse.js';
+import { locomotion as locomotion_rv } from './trap.js';
+import { get_obj_location as get_obj_location_rv } from './shk.js';
+import { obj_has_timer as obj_has_timer_rv } from './timeout.js';
+import { dist2 as dist2_rv } from './hacklib.js';
+import { get_mtraits as get_mtraits_rv } from './mkobj.js';
+import { monhp_per_lvl as monhp_per_lvl_rv } from './makemon.js';
+import { replmon as replmon_rv } from './mon.js';
+import { restore_cham as restore_cham_rv } from './restore.js';
+import { wary_dog as wary_dog_rv } from './dog.js';
+import { dmgtype as dmgtype_rv } from './mondata.js';
+import { AD_SEDU as AD_SEDU_RV, AD_SSEX as AD_SSEX_RV } from './monsters.js';
+import { MM_NOTAIL as MM_NOTAIL_RV, MM_ADJACENTOK as MM_ADJACENTOK_RV } from './const.js';
+import { defends as defends_di, defends_when_carried as defends_when_carried_di }
+       from './artifact.js';
+import { is_weptool as is_weptool_di, costly_alteration as costly_alteration_di }
+       from './mkobj.js';
+import { bot as bot_di } from './display.js';
+import { COST_DRAIN as COST_DRAIN_DI, A_CON as A_CON_DI, A_CHA as A_CHA_DI,
+         A_INT as A_INT_DI, A_DEX as A_DEX_DI } from './const.js';
+import { AD_DRLI as AD_DRLI_DI } from './monsters.js';
+import { RIN_GAIN_STRENGTH as RIN_GAIN_STRENGTH_DI,
+         RIN_GAIN_CONSTITUTION as RIN_GAIN_CONSTITUTION_DI,
+         RIN_ADORNMENT as RIN_ADORNMENT_DI,
+         RIN_INCREASE_ACCURACY as RIN_INCREASE_ACCURACY_DI,
+         RIN_INCREASE_DAMAGE as RIN_INCREASE_DAMAGE_DI,
+         RIN_PROTECTION as RIN_PROTECTION_DI,
+         HELM_OF_BRILLIANCE as HELM_OF_BRILLIANCE_DI,
+         GAUNTLETS_OF_DEXTERITY as GAUNTLETS_OF_DEXTERITY_DI } from './objects.js';
+import { killer_xname as killer_xname_zp } from './mthrowu.js';
+import * as O_ci from './objects.js';
+import { W_RING as W_RING_CI, W_ARMG as W_ARMG_CI, W_ARMH as W_ARMH_CI,
+         W_ARMOR as W_ARMOR_CI, A_STR as A_STR_CI, A_CON as A_CON_CI,
+         A_CHA as A_CHA_CI, A_DEX as A_DEX_CI, A_INT as A_INT_CI, A_WIS as A_WIS_CI,
+         COST_CANCEL as COST_CANCEL_CI, COST_UNCURS as COST_UNCURS_CI,
+         COST_UNBLSS as COST_UNBLSS_CI, ANTIMAGIC as ANTIMAGIC_CI,
+         NOTELL as NOTELL_CI, BLINDED as BLINDED_CI } from './const.js';
+import { PM_CLAY_GOLEM as PM_CLAY_GOLEM_CI } from './monsters.js';
+import { is_weptool as is_weptool_ci, costly_alteration as costly_alteration_ci,
+         unbless as unbless_ci, uncurse as uncurse_ci } from './mkobj.js';
+import { obj_to_any as obj_to_any_ci, peek_timer as peek_timer_ci,
+         stop_timer as stop_timer_ci } from './timeout.js';
+import { find_ac as find_ac_ci } from './u_init.js';
+import { rehumanize as rehumanize_ci } from './polyself.js';
+import { You_feel as You_feel_ci } from './display.js';
 
 /* C ref: mondata.h nohands() */
 function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
@@ -270,8 +480,7 @@ export async function bhito(obj, otmp) {
             }
             /* KMH, conduct */
             if (!u.uconduct.polypiles++)
-                livelog_printf(LL_CONDUCT, `polymorphed ${
-                               game.flags.female ? "her" : "his" /* uhis() */} first object`);
+                livelog_printf(LL_CONDUCT, `polymorphed ${uhis()} first object`);
 
             /* any saved lock context will be dangerously obsolete */
             if (Is_box(obj))
@@ -298,7 +507,7 @@ export async function bhito(obj, otmp) {
         case SPE_FORCE_BOLT: {
             /* learn the type if you see or hear something break
                (the sound could be implicit) */
-            let maybelearnit = cansee(obj.ox, obj.oy) || !Deaf_zp();
+            let maybelearnit = cansee(obj.ox, obj.oy) || !Deaf();
             if (obj.otyp === BOULDER) {
                 throw new Error('bhito(): striking a boulder (fracture_rock()) not ported yet');
             } else if (obj.otyp === STATUE_ZB) {
@@ -338,9 +547,6 @@ export async function bhito(obj, otmp) {
     return res;
 }
 
-import { breaks as breaks_zb, hero_breaks as hero_breaks_zb } from './dothrow.js';
-import { newsym_force as newsym_force_zb } from './display.js';
-import { STATUE as STATUE_ZB } from './objects.js';
 
 /* C ref: obj.h Is_box() */
 function Is_box(otmp) { return otmp.otyp === LARGE_BOX || otmp.otyp === CHEST; }
@@ -452,8 +658,6 @@ export function obj_shudders(obj) {
     return !rn2(zap_odds);
 }
 
-/* C ref: you.h Luck */
-function Luck() { return (game.u.uluck || 0) + (game.u.moreluck || 0); }
 
 // C ref: zap.c do_osshock() -- assumes obj is on the floor
 export function do_osshock(obj) {
@@ -998,7 +1202,7 @@ export async function dozap() {
         /* make him pay for knowing !NODIR */
     } else if (need_dir && !u.dx && !u.dy && !u.dz) {
         if ((damage = await zapyourself(obj, true)) !== 0) {
-            const buf = `zapped ${uhim_zy()}self with ${killer_xname_zp(obj)}`;
+            const buf = `zapped ${uhim()}self with ${killer_xname_zp(obj)}`;
 
             await losehp(Maybe_Half_Phys(damage), buf, NO_KILLER_PREFIX_ZY);
         }
@@ -1029,11 +1233,6 @@ export function check_unpaid(otmp) {
     throw new Error('check_unpaid(): usage fee for unpaid item not ported yet');
 }
 
-/* C ref: youprop.h Sleep_resistance */
-function Sleep_resistance() {
-    const p = game.u.uprops[SLEEP_RES];
-    return !!(p.intrinsic || p.extrinsic);
-}
 
 // C ref: zap.c zapyourself()
 /* you've zapped yourself with a wand or spell (or broken a wand) */
@@ -1125,7 +1324,7 @@ export async function zapyourself(obj, ordinary) {
     case O_zy.WAN_MAGIC_MISSILE:
     case O_zy.SPE_MAGIC_MISSILE:
         learn_it = true;
-        if (Antimagic_zp()) {
+        if (Antimagic()) {
             /* shieldeff(u.ux, u.uy) */
             await pline_The("missiles bounce!");
             monstseesu(M_SEEN_MAGR_ZY);
@@ -1231,7 +1430,7 @@ export async function zapyourself(obj, ordinary) {
             break;
         }
         learn_it = true;
-        killer_zy().name = `shot ${uhim_zy()}self with a death ray`;
+        killer_zy().name = `shot ${uhim()}self with a death ray`;
         killer_zy().format = NO_KILLER_PREFIX_ZY;
         /* probably don't need these to be urgent; player just gave input
            without subsequent opportunity to dismiss --More-- with ESC */
@@ -1292,26 +1491,10 @@ export async function zapyourself(obj, ordinary) {
     return damage;
 }
 
-import * as O_zy from './objects.js';
-import { ANTIMAGIC as ANTIMAGIC_ZY, M_SEEN_MAGR as M_SEEN_MAGR_ZY,
-         A_STR as A_STR_ZY, NO_KILLER_PREFIX as NO_KILLER_PREFIX_ZY,
-         DIED as DIED_ZY } from './const.js';
-import { M2_DEMON as M2_DEMON_ZY, M2_UNDEAD as M2_UNDEAD_ZY,
-         S_GOLEM as S_GOLEM_ZY,
-         S_VORTEX as S_VORTEX_ZY, mons as mons_zy,
-         PM_MANES as PM_MANES_ZY } from './monsters.js';
-import { killer as killer_zy } from './topten.js';
-import { done as done_zy } from './end.js';
-import { healup as healup_zy } from './potion.js';
-import { delete_contents } from './invent.js';
 /* C ref: mondata.h nonliving() */
 function nonliving_zy(ptr) {
     return (ptr.mflags2 & M2_UNDEAD_ZY) !== 0 || ptr === mons_zy[PM_MANES_ZY]
            || ptr.mlet === S_GOLEM_ZY || ptr.mlet === S_VORTEX_ZY;
-}
-/* C ref: you.h uhim() -- genders[flags.female ? 1 : 0].him */
-function uhim_zy() {
-    return game.flags.female ? "her" : "him";
 }
 
 // C ref: zap.c zapsetup() -- used by do_break_wand() was well as by weffects()
@@ -1878,7 +2061,7 @@ async function zhitu(
 
     switch (abstyp % 10) {
     case ZT_MAGIC_MISSILE:
-        if (Antimagic_zp()) {
+        if (Antimagic()) {
             /* shieldeff(sx, sy): transient display only */
             await pline_The("missiles bounce off!");
             monstseesu(M_SEEN_MAGR_ZY);
@@ -1964,7 +2147,7 @@ async function zhitu(
             /* shieldeff(sx, sy) */
             await You("seem unaffected.");
             break;
-        } else if (Antimagic_zp()) {
+        } else if (Antimagic()) {
             /* shieldeff(sx, sy) */
             monstseesu(M_SEEN_MAGR_ZY);
             await You("aren't affected.");
@@ -2042,7 +2225,7 @@ async function zhitu(
             /* FIXME: "zapped by herself" is suitable for a rebound;
                "zapped at herself" would be better if player explicitly
                targeted hero */
-            kbuf = `${fltxt} ${verb} by ${uhim_zy()}self`;
+            kbuf = `${fltxt} ${verb} by ${uhim()}self`;
         }
         /* Half_spell_damage protection yields half-damage for wands & spells,
            including hero's own ricochets; breath attacks do full damage */
@@ -2858,7 +3041,7 @@ export async function zap_over_floor(
         } else if (is_pool(x, y)) {
             const on_water_level = Is_waterlevel_zp(g.u.uz);
             let msggiven = false;
-            let msgtxt = (!Deaf_zp())
+            let msgtxt = (!Deaf())
                          ? "You hear hissing gas." /* Deaf-aware */
                          : (type >= 0)
                            ? "That seemed remarkably uneventful."
@@ -2875,7 +3058,7 @@ export async function zap_over_floor(
             if (lev.typ !== POOL_ZP) { /* MOAT or DRAWBRIDGE_UP or WATER */
                 t = null;
                 if (on_water_level)
-                    msgtxt = (see_it || !Deaf_zp()) ? "Some water boils." : null;
+                    msgtxt = (see_it || !Deaf()) ? "Some water boils." : null;
                 else if (see_it)
                     msgtxt = "Some water evaporates.";
             } else {
@@ -3264,12 +3447,6 @@ export async function burn_floor_objects(
     return cnt;
 }
 
-import { findit } from './detect.js';
-import { makewish } from './wizcmds.js';
-import { create_critters as create_critters_zp } from './read.js';
-import { SPE_LIGHT as SPE_LIGHT_ZN,
-         SPE_DETECT_UNSEEN as SPE_DETECT_UNSEEN_ZN } from './objects.js';
-import { litroom, lightdamage } from './read.js';
 
 /* C ref: zap.c MAGIC_COOKIE */
 const MAGIC_COOKIE = 1000;
@@ -3278,8 +3455,6 @@ function uhave_zp(p) {
     const q = game.u.uprops[p];
     return !!(q && (q.intrinsic || q.extrinsic));
 }
-function Antimagic_zp() { return uhave_zp(ANTIMAGIC_ZY); }
-function Reflecting() { return uhave_zp(REFLECTING_ZP); }
 /* C ref: mondata.h is_rider(), eyecount() */
 function is_rider_zp(ptr) {
     return ptr === mons_zy[PM_DEATH_ZP] || ptr === mons_zy[PM_FAMINE_ZP]
@@ -3310,168 +3485,9 @@ async function u_slow_down_zp() {
     exercise(A_DEX_ZP, false);
 }
 
-import { ACURR as ACURR_ZP } from './attrib.js';
-import { A_INT as A_INT_ZP, A_DEX as A_DEX_ZP, A_CON as A_CON_ZP,
-         P_ISRESTRICTED as P_ISRESTRICTED_ZP, P_UNSKILLED as P_UNSKILLED_ZP,
-         P_BASIC as P_BASIC_ZP, P_SKILLED as P_SKILLED_ZP,
-         P_EXPERT as P_EXPERT_ZP, NOTELL as NOTELL_ZP,
-         M_SEEN_FIRE as M_SEEN_FIRE_ZP, M_SEEN_COLD as M_SEEN_COLD_ZP,
-         M_SEEN_DISINT as M_SEEN_DISINT_ZP, M_SEEN_ELEC as M_SEEN_ELEC_ZP,
-         M_SEEN_ACID as M_SEEN_ACID_ZP, M_SEEN_REFL,
-         NON_PM as NON_PM_ZP, KILLED_BY as KILLED_BY_ZP,
-         HALF_SPDAM as HALF_SPDAM_ZP, XKILL_GIVEMSG as XKILL_GIVEMSG_ZP,
-         XKILL_NOMSG as XKILL_NOMSG_ZP, XKILL_NOCORPSE as XKILL_NOCORPSE_ZP,
-         LEVITATION as LEVITATION_ZP, FLYING as FLYING_ZP,
-         STUNNED as STUNNED_ZP, TIMEOUT as TIMEOUT_ZP,
-         INTRINSIC as INTRINSIC_ZP, FAST as FAST_ZP, INVIS as INVIS_ZP,
-         UNCHANGING as UNCHANGING_ZP, DRAIN_RES as DRAIN_RES_ZP,
-         TELEPORT_CONTROL as TELEPORT_CONTROL_ZP, REFLECTING as REFLECTING_ZP,
-         EYE as EYE_ZP, EXPL_FIERY as EXPL_FIERY_ZP,
-         engulfing_u as engulfing_u_zp, u_at, M_AP_MONSTER as M_AP_MONSTER_ZP,
-         } from './const.js';
-import { P_SKILL as P_SKILL_ZP } from './weapon.js';
-import { spell_skilltype as spell_skilltype_zp } from './spell.js';
-import { resists_magm as resists_magm_zp, defended as defended_zp,
-         resists_fire as resists_fire_zp, resists_cold as resists_cold_zp,
-         resists_elec as resists_elec_zp, resists_poison as resists_poison_zp,
-         resists_acid as resists_acid_zp, resists_disint as resists_disint_zp,
-         is_demon as is_demon_zp, is_vampshifter as is_vampshifter_zp,
-         is_undead as is_undead_zp, haseyes as haseyes_zp } from './mondata.js';
-import { burnarmor as burnarmor_zp, ignite_items as ignite_items_zp,
-         acid_damage as acid_damage_zp,
-         sleep_monst as sleep_monst_zp } from './trap.js';
-import { healmon as healmon_zp, mlifesaver as mlifesaver_zp, xkilled,
-         completelyburns } from './mon.js';
-import { PM_DEATH as PM_DEATH_ZP, PM_FAMINE as PM_FAMINE_ZP,
-         PM_PESTILENCE as PM_PESTILENCE_ZP, PM_CYCLOPS as PM_CYCLOPS_ZP,
-         PM_FLOATING_EYE as PM_FLOATING_EYE_ZP, PM_KNIGHT as PM_KNIGHT_ZP,
-         AD_DRST as AD_DRST_ZP, M1_BREATHLESS as M1_BREATHLESS_ZP } from './monsters.js';
-import { which_armor as which_armor_zp, setnotworn as setnotworn_zp,
-         bypass_objlist as bypass_objlist_zp,
-         nxt_unbypassed_obj as nxt_unbypassed_obj_zp } from './worn.js';
-import { m_useup, rnd_hallublast } from './mthrowu.js';
-import { ugolemeffects as ugolemeffects_zp } from './mhitu.js';
-import { burn_away_slime as burn_away_slime_zp,
-         hliquid as hliquid_zp, potionbreathe as potionbreathe_zp,
-         make_stunned as make_stunned_zp, incr_itimeout as incr_itimeout_zp,
-         self_invis_message as self_invis_message_zp,
-         speed_up as speed_up_zp } from './potion.js';
-import { poisoned as poisoned_zp } from './attrib.js';
-import { disintegrate_arm as disintegrate_arm_zp } from './do_wear.js';
-import { death_inflicted_by as death_inflicted_by_zp, ureflects } from './mcastu.js';
-import { is_quest_artifact as is_quest_artifact_zp } from './questpgr.js';
-import { extract_from_minvent as extract_from_minvent_zp } from './steal.js';
-import { obfree as obfree_zp, useup as useup_zp } from './invent.js';
-import { SPE_BOOK_OF_THE_DEAD as SPE_BOOK_OF_THE_DEAD_ZP,
-         RIN_SHOCK_RESISTANCE as RIN_SHOCK_RESISTANCE_ZP,
-         is_metallic as is_metallic_zp } from './objects.js';
-import { hcolor as hcolor_zp, Monnam } from './do_name.js';
-import { recharge as recharge_zp } from './read.js';
-import { Yname2 as Yname2_zp, yname as yname_zp, makeplural,
-         distant_name } from './objnam.js';
-import { s_suffix } from './hacklib.js';
-import { mon_reflects } from './muse.js';
-import { slept_monst } from './mhitm.js';
-import { canseemon, sensemon as sensemon_zp, zapdir_to_glyph } from './display.js';
-import { explode } from './explode.js';
-import { losexp as losexp_zp } from './exper.js';
-import { tele as tele_zp } from './teleport.js';
-import { LOW_PM as LOW_PM_ZP } from './monsters.js';
-import { Norep as Norep_zp } from './display.js';
-import { delfloortrap as delfloortrap_zp } from './trap.js';
-import { is_ice as is_ice_zp } from './dig.js';
-import { create_gas_cloud as create_gas_cloud_zp } from './region.js';
-import { dryup as dryup_zp } from './fountain.js';
-import { W_NONDIGGABLE as W_NONDIGGABLE_ZP, D_NODOOR as D_NODOOR_ZP,
-         D_BROKEN as D_BROKEN_ZP, SHOPBASE as SHOPBASE_ZP,
-         Is_rogue_level as Is_rogue_level_zp } from './const.js';
-import { cvt_sdoor_to_door as cvt_sdoor_to_door_zp } from './detect.js';
-import { recalc_block_point as recalc_block_point_zp } from './vision.js';
-import { in_rooms as in_rooms_zp } from './hack.js';
-import { You_hear as You_hear_zp } from './sounds.js';
-import { picking_at as picking_at_zp, reset_pick as reset_pick_zp } from './lock.js';
-import { catch_lit as catch_lit_zp } from './trap.js';
-import { useupf as useupf_zp } from './invent.js';
-import { An as An_zp } from './objnam.js';
-import { erode_armor as erode_armor_zp } from './uhitm.js';
-import { POOL as POOL_ZP, ROOM as ROOM_ZP,
-         NO_TRAP_FLAGS as NO_TRAP_FLAGS_ZP, DEAF as DEAF_ZP,
-         PLNMSG_ENVELOPED_IN_GAS as PLNMSG_ENVELOPED_IN_GAS_ZP,
-         Is_waterlevel as Is_waterlevel_zp } from './const.js';
-import { maketrap as maketrap_zp, dotrap as dotrap_zp,
-         mintrap as mintrap_zp } from './trap.js';
-import { is_swimmer as is_swimmer_zp } from './mondata.js';
-import { dissolve_bars } from './monmove.js';
-/* C ref: youprop.h Deaf */
-function Deaf_zp() {
-    const q = game.u.uprops[DEAF_ZP];
-    return !!(q && (q.intrinsic || q.extrinsic)) || !!game.u.uroleplay?.deaf;
-}
 /* C ref: hack.h ERODE_CORRODE */
 const ERODE_CORRODE_ZP = 3;
-import { DRAWBRIDGE_UP as DRAWBRIDGE_UP_ZP, DRAWBRIDGE_DOWN as DRAWBRIDGE_DOWN_ZP,
-         DB_ICE as DB_ICE_ZP, DB_UNDER as DB_UNDER_ZP, DB_FLOOR as DB_FLOOR_ZP,
-         ICED_POOL as ICED_POOL_ZP, ICED_MOAT as ICED_MOAT_ZP, MOAT as MOAT_ZP,
-         VWALL as VWALL_ZP, HWALL as HWALL_ZP, TT_LAVA as TT_LAVA_ZP,
-         MELT_ICE_AWAY as MELT_ICE_AWAY_ZP, COLNO as COLNO_ZP, ROWNO as ROWNO_ZP,
-         isok as isok_zp, IS_WATERWALL as IS_WATERWALL_ZP } from './const.js';
-import { waterbody_name as waterbody_name_zp } from './pager.js';
-import { fix_wall_spines as fix_wall_spines_zp } from './mklev.js';
-import { del_engr_at as del_engr_at_zp } from './engrave.js';
-import { maybe_unhide_at as maybe_unhide_at_zp, minliquid as minliquid_zp } from './mon.js';
-import { spoteffects as spoteffects_zp } from './hack.js';
-import { is_moat as is_moat_zp } from './makemon.js';
-import { start_timer as start_timer_zp, long_to_any as long_to_any_zp,
-         spot_time_left as spot_time_left_zp, spot_stop_timers as spot_stop_timers_zp } from './timeout.js';
-import { TIMER_LEVEL as TIMER_LEVEL_ZP } from './const.js';
-import { obj_ice_effects as obj_ice_effects_zp } from './mkobj.js';
 
-import { mons as mons_rv, S_ZOMBIE as S_ZOMBIE_RV, S_TROLL as S_TROLL_RV,
-         S_EEL as S_EEL_RV, PM_DEATH as PM_DEATH_RV,
-         PM_PESTILENCE as PM_PESTILENCE_RV, PM_FAMINE as PM_FAMINE_RV,
-         PM_DOPPELGANGER as PM_DOPPELGANGER_RV, M3_DISPLACES as M3_DISPLACES_RV,
-         PM_GHOST as PM_GHOST_RV, G_UNIQ as G_UNIQ_RV } from './monsters.js';
-import { G_GENOD as G_GENOD_RV, NON_PM as NON_PM_RV, ROOM as ROOM_RV,
-         CORR as CORR_RV, GRAVE as GRAVE_RV, IS_POOL as IS_POOL_RV,
-         BURIED_TOO as BURIED_TOO_RV, CONTAINED_TOO as CONTAINED_TOO_RV,
-         NO_MINVENT as NO_MINVENT_RV, MM_NOWAIT as MM_NOWAIT_RV,
-         MM_NOMSG as MM_NOMSG_RV, MM_NOCOUNTBIRTH as MM_NOCOUNTBIRTH_RV,
-         MM_MALE as MM_MALE_RV, MM_FEMALE as MM_FEMALE_RV,
-         CORPSTAT_GENDER as CORPSTAT_GENDER_RV, CORPSTAT_MALE as CORPSTAT_MALE_RV,
-         CORPSTAT_FEMALE as CORPSTAT_FEMALE_RV, CXN_PFX_THE as CXN_PFX_THE_RV,
-         CXN_SINGULAR as CXN_SINGULAR_RV, NO_NC_FLAGS as NO_NC_FLAGS_RV,
-         RLOC_NOMSG as RLOC_NOMSG_RV, REVIVE_MON as REVIVE_MON_RV,
-         ROT_CORPSE as ROT_CORPSE_RV, TIMER_OBJECT as TIMER_OBJECT_RV,
-         PIT as PIT_RV, has_oname as has_oname_rv, ONAME as ONAME_rv,
-         isok as isok_rv } from './const.js';
-import { CORPSE as CORPSE_RV, STATUE as STATUE_RV,
-         BAG_OF_HOLDING as BAG_OF_HOLDING_RV } from './objects.js';
-import { makemon as makemon_rv, makemon_flush_msg as makemon_flush_msg_rv } from './makemon.js';
-import { enexto as enexto_rv, rloc as rloc_rv } from './teleport.js';
-import { corpse_xname as corpse_xname_rv, xname as xname_rv, an as an_rv,
-         yname as yname_rv, The as The_rv } from './objnam.js';
-import { Amonnam as Amonnam_rv, Adjmonnam as Adjmonnam_rv,
-         mon_nam as mon_nam_rv, christen_monst as christen_monst_rv } from './do_name.js';
-import { cant_revive as cant_revive_rv } from './read.js';
-import { cant_finish_meal as cant_finish_meal_rv, eaten_stat as eaten_stat_rv } from './eat.js';
-import { set_corpsenm as set_corpsenm_rv, obj_extract_self as obj_extract_self_rv } from './mkobj.js';
-import { delobj_core as delobj_core_rv } from './invent.js';
-import { newcham as newcham_rv, seemimic as seemimic_rv, zombie_form as zombie_form_rv } from './mon.js';
-import { mon_adjust_speed as mon_adjust_speed_rv } from './worn.js';
-import { rot_corpse as rot_corpse_rv } from './dig.js';
-import { fill_pit as fill_pit_rv } from './muse.js';
-import { locomotion as locomotion_rv } from './trap.js';
-import { get_obj_location as get_obj_location_rv } from './shk.js';
-import { obj_has_timer as obj_has_timer_rv } from './timeout.js';
-import { dist2 as dist2_rv } from './hacklib.js';
-import { get_mtraits as get_mtraits_rv } from './mkobj.js';
-import { monhp_per_lvl as monhp_per_lvl_rv } from './makemon.js';
-import { replmon as replmon_rv } from './mon.js';
-import { restore_cham as restore_cham_rv } from './restore.js';
-import { wary_dog as wary_dog_rv } from './dog.js';
-import { dmgtype as dmgtype_rv } from './mondata.js';
-import { AD_SEDU as AD_SEDU_RV, AD_SSEX as AD_SSEX_RV } from './monsters.js';
-import { MM_NOTAIL as MM_NOTAIL_RV, MM_ADJACENTOK as MM_ADJACENTOK_RV } from './const.js';
 
 /* C ref: mondata.h is_rider(), is_reviver(), is_displacer(),
    dmgtype() for AD_SEDU */
@@ -3492,7 +3508,6 @@ function free_omid_rv(obj) {
 }
 /* C ref: hacklib.c upstart() */
 function upstart_rv(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-function impossible(msg) { console.error(`impossible: ${msg}`); }
 
 // C ref: zap.c get_container_location() -- returns the following
 // information about the outermost container: loc.v gets set to
@@ -4067,23 +4082,6 @@ export async function zombify_mon(arg, timeout) {
 export async function melt_ice_away(arg, timeout) {
     throw new Error('melt_ice_away() not ported yet');
 }
-import { defends as defends_di, defends_when_carried as defends_when_carried_di }
-       from './artifact.js';
-import { is_weptool as is_weptool_di, costly_alteration as costly_alteration_di }
-       from './mkobj.js';
-import { bot as bot_di } from './display.js';
-import { COST_DRAIN as COST_DRAIN_DI, A_CON as A_CON_DI, A_CHA as A_CHA_DI,
-         A_INT as A_INT_DI, A_DEX as A_DEX_DI } from './const.js';
-import { AD_DRLI as AD_DRLI_DI } from './monsters.js';
-import { RIN_GAIN_STRENGTH as RIN_GAIN_STRENGTH_DI,
-         RIN_GAIN_CONSTITUTION as RIN_GAIN_CONSTITUTION_DI,
-         RIN_ADORNMENT as RIN_ADORNMENT_DI,
-         RIN_INCREASE_ACCURACY as RIN_INCREASE_ACCURACY_DI,
-         RIN_INCREASE_DAMAGE as RIN_INCREASE_DAMAGE_DI,
-         RIN_PROTECTION as RIN_PROTECTION_DI,
-         HELM_OF_BRILLIANCE as HELM_OF_BRILLIANCE_DI,
-         GAUNTLETS_OF_DEXTERITY as GAUNTLETS_OF_DEXTERITY_DI } from './objects.js';
-import { killer_xname as killer_xname_zp } from './mthrowu.js';
 
 // C ref: zap.c cancel_item()
 /* cancel obj, possibly carried by you or a monster */
@@ -4272,18 +4270,3 @@ export async function cancel_monst(mdef, obj, youattack, allow_cancel_kill, self
     }
     return true;
 }
-import * as O_ci from './objects.js';
-import { W_RING as W_RING_CI, W_ARMG as W_ARMG_CI, W_ARMH as W_ARMH_CI,
-         W_ARMOR as W_ARMOR_CI, A_STR as A_STR_CI, A_CON as A_CON_CI,
-         A_CHA as A_CHA_CI, A_DEX as A_DEX_CI, A_INT as A_INT_CI, A_WIS as A_WIS_CI,
-         COST_CANCEL as COST_CANCEL_CI, COST_UNCURS as COST_UNCURS_CI,
-         COST_UNBLSS as COST_UNBLSS_CI, ANTIMAGIC as ANTIMAGIC_CI,
-         NOTELL as NOTELL_CI, BLINDED as BLINDED_CI } from './const.js';
-import { PM_CLAY_GOLEM as PM_CLAY_GOLEM_CI } from './monsters.js';
-import { is_weptool as is_weptool_ci, costly_alteration as costly_alteration_ci,
-         unbless as unbless_ci, uncurse as uncurse_ci } from './mkobj.js';
-import { obj_to_any as obj_to_any_ci, peek_timer as peek_timer_ci,
-         stop_timer as stop_timer_ci } from './timeout.js';
-import { find_ac as find_ac_ci } from './u_init.js';
-import { rehumanize as rehumanize_ci } from './polyself.js';
-import { You_feel as You_feel_ci, Hallucination as Hallucination_ci } from './display.js';

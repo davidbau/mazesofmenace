@@ -31,8 +31,9 @@ import { mons, PM_FOG_CLOUD, AD_DRST, MS_SILENT, M1_NOEYES,
 import { rn2, rnd, rn1, d } from './rng.js';
 import { m_at, nonliving, is_pool, is_lava } from './makemon.js';
 import { block_point, unblock_point, cansee, does_block } from './vision.js';
-import { newsym, show_glyph_cell, pline, pline_The, You, Your, You_see,
-         You_feel, Blind } from './display.js';
+import {
+    newsym, show_glyph_cell, pline, pline_The, You, Your, You_see, You_feel
+} from './display.js';
 import { selection_getbounds, selection_getpoint } from './selvar.js';
 import { m_poisongas_ok, wake_nearto, setmangry, killed,
          monkilled } from './mon.js';
@@ -47,6 +48,9 @@ import { resists_poison } from './mondata.js';
 import { dist2 } from './hacklib.js';
 import { CLR_GRAY, CLR_BRIGHT_GREEN } from './terminal.js';
 import { TOWEL } from './objects.js';
+import {
+    Poison_resistance, Blind, HMagical_breathing, EMagical_breathing, Half_gas_damage
+} from './youprop.js';
 
 const NO_CALLBACK = -1;
 // C ref: defsym.h S_cloud, S_poisoncloud (cmap indices)
@@ -658,14 +662,6 @@ function expire_gas_cloud(reg, p2) {
 
 /* C ref: youprop.h Poison_resistance, Half_physical_damage,
    Half_gas_damage */
-function uhas(p) {
-    const P = game.u.uprops[p];
-    return !!(P && (P.intrinsic || P.extrinsic));
-}
-function Half_gas_damage() {
-    const ublindf = game.ublindf;
-    return !!(ublindf && ublindf.otyp === TOWEL && ublindf.spe > 0);
-}
 
 // C ref: region.c inside_gas_cloud()
 /* returns True if p2 is killed by region p1, False otherwise */
@@ -694,7 +690,7 @@ async function inside_gas_cloud(reg, p2) {
             await Your(`${makeplural(body_part(EYE))} sting.`);
             await make_blinded(1, false);
         }
-        if (!uhas(POISON_RES)) {
+        if (!Poison_resistance()) {
             await pline(`Something is burning your ${
                 makeplural(body_part(LUNG))}!`);
             await You("cough and spit blood!");
@@ -937,12 +933,12 @@ export function region_danger() {
             /* completely harmless if you don't need to breathe */
             if (nonliving(game.youmonst.data)
                 /* Breathless */
-                || uhas(MAGICAL_BREATHING)
+                || (HMagical_breathing() || EMagical_breathing())
                 || (game.youmonst.data.mflags1 & M1_BREATHLESS) !== 0)
                 continue;
             /* minor inconvenience if you're poison resistant;
                not harmful enough to be a prayer-level trouble */
-            if (uhas(POISON_RES))
+            if (Poison_resistance())
                 continue;
             ++n;
         }

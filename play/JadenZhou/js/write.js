@@ -1,12 +1,14 @@
 // write.js — writing scrolls and spellbooks with a magic marker.
 // C ref: write.c — cost(), write_ok(), dowrite(), new_book_description().
 
+import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import { rn2, rn1, rnl } from './rng.js';
 import * as O from './objects.js';
 import { objects, OBJ_NAME, OBJ_DESCR } from './objects.js';
-import { pline, You, Your, You_cant, There, pline_The, Blind, Hallucination,
-         livelog_printf } from './display.js';
+import {
+    pline, You, Your, You_cant, There, pline_The, livelog_printf
+} from './display.js';
 import { GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_NOFLAGS,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, GLIB, A_WIS, MAXULEV,
          LL_CONDUCT } from './const.js';
@@ -25,16 +27,10 @@ import { known_spell, spe_Unknown, spe_Fresh, spe_GoingStale } from './spell.js'
 import { wipeout_text } from './engrave.js';
 import { hold_another_object } from './wizcmds.js';
 import { observe_object, discover_object } from './o_init.js';
-
-function impossible(msg) { console.error(`impossible: ${msg}`); }
+import { Glib, Blind, Hallucination } from './youprop.js';
 
 /* C ref: mondata.h nohands() */
 function nohands(ptr) { return (ptr.mflags1 & M1_NOHANDS) !== 0; }
-/* C ref: youprop.h Glib */
-function Glib() {
-    const p = game.u.uprops?.[GLIB];
-    return !!(p?.intrinsic || p?.extrinsic);
-}
 /* C ref: hack.h makeknown() */
 function makeknown(otyp) { discover_object(otyp, true, true, true); }
 /* C ref: hacklib.c upstart() */
