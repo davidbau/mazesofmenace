@@ -43,7 +43,7 @@ import { obj_is_burning } from './light.js';
 import { newsym, pline, You } from './display.js';
 import { mongone, dmonsfree } from './mon.js';
 import { enexto, rloc_to } from './teleport.js';
-import { clear_bypasses, m_dowear, artifact_light } from './worn.js';
+import { clear_bypasses, m_dowear } from './worn.js';
 import { forget_engravings, sanitize_engravings } from './engrave.js';
 import { roles, races, genders, aligns } from './role.js';
 import { formatkiller } from './topten.js';
@@ -51,7 +51,8 @@ import { yyyymmddhhmmss } from './calendar.js';
 import { savefruitchn, savelev } from './save.js';
 import { getlev, trickery } from './restore.js';
 import { update_mlstmv } from './dog.js';
-import { exist_artifact, artifact_exists } from './artifact.js';
+import { exist_artifact, artifact_exists,
+         artifact_light } from './artifact.js';
 import { is_quest_artifact } from './questpgr.js';
 import { cant_revive } from './read.js';
 import { unpunish } from './read.js';
@@ -59,8 +60,8 @@ import { inside_shop, tended_shop, get_obj_location, fix_shop_damage } from './s
 import { in_rooms } from './hack.js';
 import { xname } from './objnam.js';
 import { the } from './iactions.js';
-import { m_carrying } from './weapon.js';
 import { tty_yn_function } from './wintty.js';
+import { m_carrying } from './mthrowu.js';
 
 /* mondata.h */
 /* mondata.h is_Vlad() */

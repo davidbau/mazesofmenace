@@ -2262,7 +2262,7 @@ import { cmd_from_func, reset_commands, update_rest_on_space } from './cmd.js';
 import { visctrl } from './hacklib.js'; // relocate-fns
 import { number_pad_value } from './cmd_config.js'; // relocate-fns
 import { clr2colorname } from './coloratt.js'; // relocate-fns
-import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js'; // relocate-fns
+import { build_window_screen, menu_search_case, menu_search_docorner, menu_search_apply_corners } from './com_pager.js'; // relocate-fns
 import { PL_FSIZ, ECMD_OK, Is_rogue_level, MENU_COMBINATION, MENU_TRADITIONAL } from './const.js'; // relocate-fns
 import { OPTMENUHELP, dlb_file_lines } from './dispfile.js'; // relocate-fns
 import { dec_mode, docrt, flush_screen, force_more, new_status_window, newclipping, status_reassess } from './display.js'; // relocate-fns
@@ -3090,6 +3090,8 @@ function pageAccelMap(pageIdx) {
 function pageFrameRows(pageIdx, row0Erased) {
     const lines = buildPageLines(pageIdx).slice(0, SCREEN_ROWS);
     if (row0Erased && lines.length) lines[0] = '';
+    /* a ^P history window's docorner over this page (menu_search_getlin) */
+    if (row0Erased) menu_search_apply_corners(lines, game._menu_search_corner, 1);
     return lines;
 }
 
@@ -3247,8 +3249,15 @@ async function numberPadSubmenu(preserveStatus = false) {
             || game.iflags?.menu_overlay === 0 ? 7 : 30, 8);
         game._pending_message = '';
         const key = await nhgetch();
-        if (key === 27 || key === 10 || key === 13 || key === 32)
+        if (key === 27 || key === 10 || key === 13 || key === 32) {
+            /* wintty.c:2794 tty_select_menu dismisses the submenu whatever was
+             * picked: at offx 0 (!menu_overlay) erase_menu_or_text docrt()s
+             * (wintty.c:1975-1985), a no-pick included (t18 I-mapunder w142:
+             * number_pad submenu left by space under hallucination). */
+            if (game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0)
+                await erase_fullscreen_submenu();
             return;
+        }
         const ch = String.fromCharCode(key);
         if (ch === ':') {
             /* C wintty.c:1700-1730 MENU_SEARCH on a PICK_ONE menu */
@@ -3274,7 +3283,23 @@ async function numberPadSubmenu(preserveStatus = false) {
     /* wintty.c:978-979 tty_dismiss_nhwindow of a full-screen (!menu_overlay)
      * menu docrt()s the map, whose notice_all_mons re-announces the pet. */
     if (game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0)
+        await erase_fullscreen_submenu();
+}
+
+/* C wintty.c:1975-1985 erase_menu_or_text for a submenu at offx 0: docrt();
+ * flush_screen(1) — the flush prints docrt's glyphs and clears their gnew, so a
+ * later ':' search getlin over the re-offered Options menu prints no map cells
+ * (t17-style osub siblings: number_pad submenu left by ESC, then ':' search).
+ * windows.c:1859-1863 keeps bot() disabled until select_menu returns. */
+async function erase_fullscreen_submenu() {
+    const old = game._bot_disabled;
+    game._bot_disabled = true;
+    try {
         await docrt();
+        await flush_screen(1);
+    } finally {
+        game._bot_disabled = old;
+    }
 }
 
 // Run the pickup_types submenu select loop.  PICK_ANY: class accelerators and
@@ -3408,10 +3433,15 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
         if (key === 27 /* ESC */) {
             if (counting) continue;
             pickupMenuDismissCorner();
+            /* !menu_overlay: offx 0, erase_menu_or_text docrt()s (wintty.c:1975-1985) */
+            if (g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0)
+                await erase_fullscreen_submenu();
             return; // cancel: leave flag unchanged
         }
         if (key === 10 || key === 13 || key === 32 /* Enter / space confirm */) {
             pickupMenuDismissCorner();
+            if (g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0)
+                await erase_fullscreen_submenu();
             break;
         }
         if (key === 0x3a /* ':' MENU_SEARCH — a menu command, never a selector */) {
@@ -3623,7 +3653,15 @@ export async function doset_simple() {
     while (true) {
         if (reset_count) { counting = false; count = 0; }
         else reset_count = true;
+        /* C options.c:8725-8730: `flush = go.opt_need_redraw; reset_needed_visuals();
+         * if (flush) flush_screen(1);` — the flush prints (and clears the gnew of)
+         * every glyph docrt() repainted, so a later getlin over the re-offered
+         * Options menu (':' search, getline.c:63 custompline -> flush_screen)
+         * has no map cells left to print over it (t18 L-Oruntime v15 step 53,
+         * symset changed then ':' searched). */
+        const flushAfter = !!g.go.opt_need_redraw;
         await reset_needed_visuals(); // C options.c:8727,9006: paint status between picks.
+        if (flushAfter) await flush_screen(1);
         await drainTopline();
         // renderPage sets game._screen_output to the menu frame; the nhgetch
         // NOT flush_screen here — flush_screen's _buildScreenOutput would rebuild
@@ -3747,6 +3785,8 @@ export async function doset_simple() {
                     g.go ||= {};
                     g.go.opt_need_redraw = g.go.opt_need_glyph_reset = true;
                     await reset_needed_visuals();
+                    /* options.c:8725-8730: flush latched from opt_need_redraw */
+                    await flush_screen(1);
                 }
                 /* C options.c:5376-5385 optfn_boolean: wizmgender/showrace/use_inverse/
                  * hilite_pile/perm_invent/ascii_map/tiled_map request a glyph reset
@@ -3767,6 +3807,8 @@ export async function doset_simple() {
                     g.go ||= {};
                     g.go.opt_need_redraw = true;
                     await reset_needed_visuals();
+                    /* options.c:8725-8730: flush latched from opt_need_redraw */
+                    await flush_screen(1);
                 }
                 if (['wizmgender', 'showrace', 'use_inverse', 'hilite_pile',
                      'perm_invent', 'ascii_map', 'tiled_map'].includes(entry.name)) {
@@ -5624,7 +5666,10 @@ export async function ask_do_tutorial() {
             // Build the combined map+window overlay screen.
             // uac: pass the real post-find_ac value for _statusLine2().
             g._screen_output = fullScreen
-                ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+                ? (titleErased
+                    ? menu_search_apply_corners(lines.map((ln) => (ln === '' ? '' : ' ' + ln)),
+                                                g._menu_search_corner, 1)
+                    : lines.map((ln) => (ln === '' ? '' : ' ' + ln))).join('\n')
                 : build_window_screen(lines, WIN_COL, uac);
             if (disp) {
                 disp.cursorCol = endCursorCol;

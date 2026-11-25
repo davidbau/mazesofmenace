@@ -51,7 +51,7 @@ import { ENGRAVE, BURN, HEADSTONE } from './const.js';
 import { AM_MASK, AM_SANCTUM, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC } from './const.js';
 import {
     Blind, Hallucination, See_invisible, Unblind_telepat, Warning, Warn_of_mon, Infravision,
-    Detect_monsters, Invisible, Protection_from_shape_changers, Unaware
+    Detect_monsters, Invisible, Protection_from_shape_changers, Unaware, Deaf
 } from './youprop.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_GREEN, CLR_CYAN,
          CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_BLACK, CLR_MAGENTA,
@@ -1718,6 +1718,37 @@ export function mon_to_glyph(mon, rng) {
              decgfx: false, kind: 'mon', mndx };
 }
 
+// C ref: decl.c shield_static[SHIELD_COUNT] -- S_ss1 .. S_ss4 (defsym.h
+// cmap 82 .. 85: '0', '#', '@', '*', all HI_ZAP)
+const SHIELD_SYMS = { 82: '0', 83: '#', 84: '@', 85: '*' };
+const S_ss1 = 82, S_ss2 = 83, S_ss3 = 84, S_ss4 = 85;
+const shield_static = [
+    S_ss1, S_ss2, S_ss3, S_ss2, S_ss1, S_ss2, S_ss4, /* 7 per row */
+    S_ss1, S_ss2, S_ss3, S_ss2, S_ss1, S_ss2, S_ss4,
+    S_ss1, S_ss2, S_ss3, S_ss2, S_ss1, S_ss2, S_ss4,
+];
+
+// C ref: display.c shieldeff()
+/*
+ * Display the shield effect at the given location, then restore the
+ * location with newsym().
+ */
+export async function shieldeff(x, y) {
+    if (!game.flags.sparkle)
+        return;
+    if (cansee(x, y)) { /* Don't see anything if can't see the location */
+        for (let i = 0; i < shield_static.length; i++) { /* SHIELD_COUNT */
+            const cmap = shield_static[i];
+            /* show_glyph(x, y, cmap_to_glyph(shield_static[i])) */
+            show_glyph(x, y, { ch: SHIELD_SYMS[cmap], color: CLR_BRIGHT_BLUE,
+                               decgfx: false, kind: 'cmap', cmapidx: cmap });
+            await flush_screen(1); /* make sure the glyph shows up */
+            /* nh_delay_output(): display timing only */
+        }
+        newsym(x, y); /* restore the old information */
+    }
+}
+
 // C ref: display.c flash_glyph_at()
 /*
  * flash_glyph_at(x, y, glyph, repeatcount)
@@ -1752,6 +1783,9 @@ export function glyph_at_to_remembered(glyph) {
         rg.obj = true;
         rg.piletop = glyph.piletop;
         rg.otyp = glyph.otyp;
+        /* glyph_is_generic_object(): a generic glyph's objects[] index is
+           its class, 1 .. FIRST_OBJECT - 2 (see obj_to_glyph()) */
+        rg.generic = glyph.otyp > 0 && glyph.otyp < FIRST_OBJECT - 1;
         if (glyph.corpsenm !== undefined)
             rg.corpsenm = glyph.corpsenm;
         break;
@@ -2160,7 +2194,14 @@ export function newsym(x, y) {
            remembered as both dark (waslit is false) and lit (glyph is a
            lit corridor) was seen by night vision (or lit_corridor), so
            correct the hero's memory to match waslit */
-        if ((!loc.waslit || (game.flags.dark_room !== false
+        if (Is_rogue_level(game.u.uz)) {
+            if (loc.remembered_glyph.cmap === 'S_litcorr' && loc.typ === CORR)
+                loc.remembered_glyph = rememb_glyph(S_corr_g);
+            else if (loc.remembered_glyph.cmap === 'S_room' && loc.typ === ROOM
+                     && !loc.waslit)
+                loc.remembered_glyph = room_cmap_glyph(0); /* S_stone */
+            /* else goto show_mem */
+        } else if ((!loc.waslit || (game.flags.dark_room !== false
                              && game.iflags.wc_color !== false))
             && loc.typ === CORR && loc.remembered_glyph.cmap === 'S_litcorr')
             loc.remembered_glyph = rememb_glyph(S_corr_g);
@@ -2291,7 +2332,7 @@ export function feel_location(x, y) {
             } else {
                 /* lev->glyph >= cmap_to_glyph(S_stone)
                    && lev->glyph < cmap_to_glyph(S_darkroom) */
-                const idx = !rg ? 0 /* never seen: S_stone */
+                const idx = !rg ? -1 /* never seen: GLYPH_UNEXPLORED, not a cmap glyph */
                     : (rg.cmapidx !== undefined) ? rg.cmapidx
                       : (rg.cmap === 'S_stone') ? 0 : undefined;
                 if (idx === undefined && !rg.obj && !rg.kind)
@@ -2779,8 +2820,6 @@ function _statusLine2() {
        hunger text's trailing blanks suppressed), then BL_CONDITION */
     const hunger = (u.uhs !== undefined && u.uhs !== NOT_HUNGRY)
         ? ` ${STAT_HU[u.uhs].replace(/ +$/, '')}` : '';
-    const cap = near_capacity();
-    const capstr = (cap > UNENCUMBERED) ? ` ${STAT_ENC[cap]}` : '';
     /* BL_LEVELDESC: describe_level(buf, 1), with wintty.c's
        tty_status_update() suppressing its trailing blanks */
     const leveldesc = describe_level(1)[1].replace(/ +$/, '');
@@ -2791,29 +2830,129 @@ function _statusLine2() {
     /* encglyph(objnum_to_glyph(GOLD_PIECE)): the gold symbol of the current
        symset */
     const goldsym = (game.currentgraphics === ROGUESET) ? '*' : '$';
-    const line = `${leveldesc} ${goldsym}:${Math.min(money_cnt(game.invent), 999999)} HP:${hpval}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}${capstr}${status_conditions()}`;
-    /* make_things_fit(): shrinking or truncating an overlong line */
-    if (line.length > 79)
-        throw new Error('_statusLine2(): make_things_fit() shrinking not ported yet');
-    return line;
+    /* BL_GOLD .. BL_HUNGER: the fields between BL_LEVELDESC and BL_CAP */
+    const mid = ` ${goldsym}:${Math.min(money_cnt(game.invent), 999999)} HP:${hpval}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${tmmv}${hunger}`;
+    /* BL_CAP: botl.c sends it to the window port only when its value
+       changed since the previous bot(); tty_status_update() then stores
+       " %s" (a lone blank suppressed), resets enc_shrinklvl and takes
+       enclev = stat_cap_indx() */
+    const cap = near_capacity();
+    if (game.tty_enclev !== cap) {
+        game.tty_enclev = cap;
+        game.tty_capval = (cap > UNENCUMBERED) ? ` ${STAT_ENC[cap]}` : '';
+        game.tty_enc_shrinklvl = 0;
+    }
+    return make_things_fit(leveldesc, mid, status_conditions());
+}
+
+/* C ref: wintty.c encvals[][] -- BL_CAP text for enc_shrinklvl 0..2 */
+const ENCVALS = [
+    ["", "Burdened", "Stressed", "Strained", "Overtaxed", "Overloaded"],
+    ["", "Burden", "Stress", "Strain", "Overtax", "Overload"],
+    ["", "Brd", "Strs", "Strn", "Ovtx", "Ovld"],
+];
+
+// C ref: wintty.c make_things_fit() for the two-line status (the
+// conditions are on the last row, with BL_CAP), with check_fields()'s
+// row width, set_condition_length(), shrink_enc() and shrink_dlvl(); the
+// status window is the 80-column tty, so a row fits in cols - 1 columns.
+// Returns the rendered row (render_status(): tty_putstatusfield() stores
+// nothing at or past column cols - 1, so a truncated row is cut there).
+function make_things_fit(leveldescval, mid, conds) {
+    const cols = 80; /* wins[WIN_STATUS]->cols */
+    let leveldesc = leveldescval; /* status_vals[BL_LEVELDESC] */
+    let cond_shrinklvl = 0;
+    let condlth = 0;
+
+    /* C ref: wintty.c set_condition_length() */
+    const set_condition_length = () => {
+        condlth = 0;
+        for (const ci of conds)
+            condlth += 1 + STAT_CONDITIONS[ci][1][cond_shrinklvl].length;
+    };
+    /* C ref: wintty.c shrink_enc() -- shrink or restore the encumbrance
+       word; for enclev 0 this leaves a lone blank (not suppressed) */
+    const shrink_enc = (lvl) => {
+        if (lvl <= 2) {
+            game.tty_enc_shrinklvl = lvl;
+            game.tty_capval = ` ${ENCVALS[lvl][game.tty_enclev]}`;
+        }
+    };
+    /* C ref: wintty.c shrink_dlvl() -- try changing Dlvl: to Dl: */
+    const shrink_dlvl = (lvl) => {
+        const c = leveldesc.indexOf(':');
+        if (c >= 0)
+            leveldesc = ((lvl === 0) ? "Dlvl" : "Dl") + leveldesc.slice(c);
+    };
+
+    let otheroptions = 0;
+    if (game.tty_enc_shrinklvl > 0) /* && num_rows == 2 */
+        shrink_enc(0);
+    /* dlvl_shrinklvl > 0: shrink_dlvl(0) restores what BL_LEVELDESC
+       holds, the full "Dlvl:" text passed in */
+    set_condition_length();
+    for (let trycnt = 0; trycnt < 6; ++trycnt) {
+        /* check_fields(): sz[condrow] = 1 + the row's field lengths */
+        const requirement = leveldesc.length + mid.length
+                            + game.tty_capval.length + condlth;
+        if (requirement <= cols - 1)
+            break; /* we're good */
+        if (trycnt < 2) {
+            if (cond_shrinklvl < trycnt + 1) {
+                cond_shrinklvl = trycnt + 1;
+                set_condition_length();
+            }
+            continue;
+        }
+        if (cond_shrinklvl >= 2) {
+            /* We've exhausted the condition identifiers shrinkage,
+             * so let's try shrinking other things...
+             */
+            if (otheroptions < 2) {
+                /* try shrinking the encumbrance word, but
+                   only when it's on the same line as conditions */
+                shrink_enc(otheroptions + 1);
+            } else if (otheroptions === 2) {
+                shrink_dlvl(1);
+            } else {
+                /* Last resort - turn on truncation */
+                break;
+            }
+            ++otheroptions;
+        }
+    }
+    /* render_status(): BL_CONDITION draws " " + conditions[ci].text[
+       cond_shrinklvl] for each set condition, in cond_idx order */
+    let condtext = '';
+    for (const ci of conds)
+        condtext += ` ${STAT_CONDITIONS[ci][1][cond_shrinklvl]}`;
+    return `${leveldesc}${mid}${game.tty_capval}${condtext}`.slice(0, cols - 1);
 }
 
 /* C ref: eat.c hu_stat[], botl.c enc_stat[] */
 const STAT_HU = ["Satiated", "        ", "Hungry  ", "Weak    ",
                  "Fainting", "Fainted ", "Starved "];
-const STAT_ENC = ["", "Burdened", "Stressed", "Strained", "Overtaxed",
-                  "Overloaded"];
+const STAT_ENC = ENCVALS[0];
 
-/* C ref: botl.c conditions[] -- ranking and full text (txt1), in bl_*
-   order; condtests[] (botl.js) holds the matching enabled flags */
+/* C ref: botl.c conditions[] -- ranking and txt1, txt2, txt3 (the texts
+   for cond_shrinklvl 0..2), in bl_* order; condtests[] (botl.js) holds
+   the matching enabled flags */
 const STAT_CONDITIONS = [
-    [20, "Bare"], [10, "Blind"], [20, "Busy"], [10, "Conf"], [10, "Deaf"],
-    [15, "Iron"], [10, "Fly"], [6, "FoodPois"], [20, "Glow"], [2, "Grab"],
-    [10, "Hallu"], [20, "Held"], [20, "Icy"], [8, "InLava"], [10, "Lev"],
-    [20, "Parlyz"], [10, "Ride"], [20, "Zzz"], [6, "Slime"], [20, "Slip"],
-    [6, "Stone"], [4, "Strngl"], [10, "Stun"], [15, "Submrg"],
-    [6, "TermIll"], [20, "Teth"], [20, "Trap"], [20, "Out"], [20, "WLegs"],
-    [20, "UHold"],
+    [20, ["Bare", "Bar", "Bh"]], [10, ["Blind", "Blnd", "Bl"]],
+    [20, ["Busy", "Bsy", "By"]], [10, ["Conf", "Cnf", "Cf"]],
+    [10, ["Deaf", "Def", "Df"]], [15, ["Iron", "Irn", "Fe"]],
+    [10, ["Fly", "Fly", "Fl"]], [6, ["FoodPois", "Fpois", "Poi"]],
+    [20, ["Glow", "Glo", "Gl"]], [2, ["Grab", "Grb", "Gr"]],
+    [10, ["Hallu", "Hal", "Hl"]], [20, ["Held", "Hld", "Hd"]],
+    [20, ["Icy", "Icy", "Ic"]], [8, ["InLava", "Lav", "La"]],
+    [10, ["Lev", "Lev", "Lv"]], [20, ["Parlyz", "Para", "Par"]],
+    [10, ["Ride", "Rid", "Rd"]], [20, ["Zzz", "Zzz", "Zz"]],
+    [6, ["Slime", "Slim", "Slm"]], [20, ["Slip", "Slp", "Sl"]],
+    [6, ["Stone", "Ston", "Sto"]], [4, ["Strngl", "Stngl", "Str"]],
+    [10, ["Stun", "Stun", "St"]], [15, ["Submrg", "Subm", "Sm"]],
+    [6, ["TermIll", "Ill", "Ill"]], [20, ["Teth", "Tth", "Te"]],
+    [20, ["Trap", "Trp", "Tr"]], [20, ["Out", "Out", "KO"]],
+    [20, ["WLegs", "Leg", "Lg"]], [20, ["UHold", "UHld", "UHd"]],
 ];
 const bl_bareh = 0, bl_blind = 1, bl_busy = 2, bl_conf = 3, bl_deaf = 4,
     bl_elf_iron = 5, bl_fly = 6, bl_foodpois = 7, bl_glowhands = 8,
@@ -2828,13 +2967,13 @@ const COND_IDX = STAT_CONDITIONS.map((_, i) => i).sort((a, b) => {
     const c1 = STAT_CONDITIONS[a][0], c2 = STAT_CONDITIONS[b][0];
     if (c1 !== c2)
         return c1 - c2;
-    const t1 = STAT_CONDITIONS[a][1].toLowerCase(), t2 = STAT_CONDITIONS[b][1].toLowerCase();
+    const t1 = STAT_CONDITIONS[a][1][0].toLowerCase(), t2 = STAT_CONDITIONS[b][1][0].toLowerCase();
     return t1 < t2 ? -1 : t1 > t2 ? 1 : 0;
 });
 
-// C ref: botl.c bot_via_windowport() condition tests, and wintty.c
-// render_status() BL_CONDITION -- " Cond" for each condition in cond_idx
-// order (cond_shrinklvl 0)
+// C ref: botl.c bot_via_windowport() condition tests -- the set
+// conditions (BL_CONDITION's mask bits) as indices in wintty.c
+// render_status()'s cond_idx order; make_things_fit() renders them
 function status_conditions() {
     const u = game.u;
     const g = game;
@@ -2889,10 +3028,11 @@ function status_conditions() {
                         || enabled(bl_sleeping) || enabled(bl_busy)))
         throw new Error('status_conditions(): unconscious/paralyzed conditions not ported yet');
 
-    let out = '';
+    /* the set conditions (tty_condition_bits), in cond_idx order */
+    const out = [];
     for (const ci of COND_IDX)
         if (enabled(ci) && test[ci])
-            out += ` ${STAT_CONDITIONS[ci][1]}`;
+            out.push(ci);
     return out;
 }
 
@@ -3089,6 +3229,32 @@ function clear_glyph_buffer() {
         g.gbuf_start[y] = 1;
         g.gbuf_stop[y] = COLNO - 1;
     }
+}
+
+/* the fields of a location that are its gg.gbuf[y][x] entry (the glyph
+   shown there and its gnew flag) */
+const GBUF_FIELDS = ['disp_ch', 'disp_color', 'disp_decgfx', 'disp_attr',
+                     'disp_objpile', 'disp_kind', 'disp_gid', 'gnew'];
+
+// C ref: display.c gg.gbuf[ROWNO][COLNO] -- the third screen is a global
+// of its own, not part of svl.level: savelev(), clear_level_structures()
+// and getlev() replace levl[][] but leave gbuf showing the old level until
+// docrt() clears it (a "Get bones?" prompt in mklev() is shown over the
+// level being left).  The port keeps each gbuf entry on its location, so
+// when a new level structure replaces game.level, its locations take over
+// the entries the old ones held.
+export function gbuf_keep(oldlev) {
+    const newlev = game.level;
+    if (!oldlev?.at || !newlev?.at || oldlev === newlev)
+        return;
+    for (let x = 0; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const o = oldlev.at(x, y), n = newlev.at(x, y);
+            if (!o || !n)
+                continue;
+            for (const k of GBUF_FIELDS)
+                n[k] = o[k];
+        }
 }
 
 // C ref: display.h display_self() -- the hero's glyph at <u.ux,u.uy>
@@ -3313,12 +3479,32 @@ export async function You_cant(line) { await pline(`You can't ${line}`); }
 export async function pline_The(line) { await pline(`The ${line}`); }
 export async function There(line) { await pline(`There ${line}`); }
 
+// C ref: pline.c verbalize() -- vpline() of the line in double quotes;
+// PLINE_VERBALIZE only matters to the voice hooks (SetVoice() isn't
+// ported).  There is no Deaf check here: C callers test !Deaf themselves
+// where they need to.  verbalize1(line) is the same call.
+export async function verbalize(line) {
+    await pline(`"${line}"`);
+}
+
 // C ref: pline.c You_feel()
 export async function You_feel(line) {
     if (Unaware())
         await pline(`You dream that you feel ${line}`);
     else
         await pline(`You feel ${line}`);
+}
+
+// C ref: pline.c You_hear()
+export async function You_hear(line) {
+    if ((Deaf() && !Unaware()) || !game.flags.acoustics)
+        return;
+    if (game.u.uinwater) /* Underwater */
+        await pline(`You barely hear ${line}`);
+    else if (Unaware())
+        await pline(`You dream that you hear ${line}`);
+    else
+        await pline(`You hear ${line}`); /* Deaf-aware */
 }
 
 // C ref: pline.c You_see()

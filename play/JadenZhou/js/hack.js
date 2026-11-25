@@ -14,7 +14,7 @@ import { mintrap, Trap_Effect_Finished, Trap_Caught_Mon, Trap_Killed_Mon,
 import { NO_TRAP_FLAGS, LL_CONDUCT } from './const.js';
 import { abuse_dog } from './dog.js';
 import { adjalign } from './attrib.js';
-import { livelog_printf, You_feel } from './display.js';
+import { livelog_printf, You_feel, verbalize, You_hear } from './display.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { monsndx, throws_rocks, amorphous, verysmall, bigmonst, hides_under,
          is_whirly, slithy, noncorporeal, is_clinger, strongmonst, tunnels,
@@ -51,7 +51,7 @@ import {
 } from './const.js';
 import { waterbody_name } from './pager.js';
 import { has_ceiling } from './insight.js';
-import { ing_suffix, visctrl, upstart } from './hacklib.js';
+import { ing_suffix, visctrl, upstart, NODIAG } from './hacklib.js';
 import { cmd_from_func } from './cmd.js';
 import { S_NYMPH, M2_STRONG, M2_ROCKTHROW, MZ_HUMAN, AT_BOOM, M1_HIDE,
          PM_GRID_BUG, mons, M1_TUNNEL, M1_NEEDPICK, M1_AMORPHOUS, MZ_SMALL,
@@ -66,7 +66,7 @@ import { pline, canspotmon, mon_visible, newsym, sensemon, You, Your,
 import { vision_recalc, couldsee } from './vision.js';
 import { glyph_at, Norep, feel_location, glyph_is_warning } from './display.js';
 import { carrying } from './invent.js';
-import { WAN_DIGGING } from './objects.js';
+import { WAN_DIGGING, is_pick } from './objects.js';
 import { u_at, Is_rogue_level, Upolyd } from './const.js';
 import { fall_asleep } from './timeout.js';
 import { t_at, VIBRATING_SQUARE, is_pit, WEB, climb_pit, reset_utrap, sokoban_guilt } from './trap.js';
@@ -124,7 +124,7 @@ import { FROMOUTSIDE, MAX_TYPE, NO_TRAP, FAILEDUNTRAP, TIMEOUT, WARNING,
 import { M1_CLING, PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './monsters.js';
 import { midnight } from './calendar.js';
 import { Hello } from './role.js';
-import { search_special, You_hear } from './sounds.js';
+import { search_special } from './sounds.js';
 import { DEAF } from './const.js';
 import { wake_msg, seemimic, maybe_unhide_at, disturb_buried_zombies } from './mon.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -149,19 +149,10 @@ import { objdescr_is as objdescr_is_sf } from './o_init.js';
 import { resists_cold as resists_cold_sf } from './mondata.js';
 import { COLD_RES as COLD_RES_SF } from './const.js';
 import { hideunder } from './makemon.js';
+import { float_up as float_up_ht } from './trap.js';
 
 // C's impossible() (pline.c) is not ported yet.
 export function impossible(msg) { console.error(`impossible: ${msg}`); }
-
-/* C ref: obj.h is_pick() */
-function is_pick(otmp) {
-    return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
-}
-/* C ref: obj.h is_axe() */
-function is_axe(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill === P_AXE);
-}
 
 // C ref: hack.c weight_cap()
 export function weight_cap() {
@@ -528,7 +519,7 @@ export async function overexert_hp() {
         game.disp_botl = true;
     } else {
         await You("pass out from exertion!");
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
         await fall_asleep(-10, false);
     }
 }
@@ -989,8 +980,6 @@ export function nomul(nval) {
 
 /* C ref: rm.h Sokoban -- svl.level.flags.sokoban_rules */
 function Sokoban() { return !!game.level.flags.sokoban_rules; }
-/* C ref: hack.h NODIAG() */
-function NODIAG(monnum) { return monnum === PM_GRID_BUG; }
 /* C ref: monst.h helpless(), mundisplaceable() */
 function mundisplaceable(mon) {
     return !!(mon.ispriest || mon.isshk || mon.isgd
@@ -1251,9 +1240,9 @@ export async function check_special_room(newlev) {
             if (oracle) {
                 /* SetVoice(oracle, 0, 80, 0): no voices */
                 if (!oracle.mpeaceful)
-                    await pline(`"You're in Delphi, ${game.plname}."`); /* verbalize() */
+                    await verbalize(`You're in Delphi, ${game.plname}.`);
                 else
-                    await pline(`"${Hello(null)}, ${game.plname}, welcome to Delphi!"`); /* verbalize() */
+                    await verbalize(`${Hello(null)}, ${game.plname}, welcome to Delphi!`);
             } else
                 msg_given = false;
             break;
@@ -1378,7 +1367,7 @@ export async function switch_terrain() {
         /* we're probably levitating now; if not, we must be chained
            to a buried iron ball so get float_up() feedback for that */
         if (sp_Levitation() || BLev.blocked)
-            throw new Error('switch_terrain(): float_up() not ported yet');
+            await float_up_ht();
     }
     /* the same terrain that blocks levitation also blocks flight */
     if (blocklev) {
@@ -2054,7 +2043,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
                                 throw new Error('test_move(): steed at a closed door not ported yet');
                             } else {
                                 await pline("Ouch!  You bump into a door.");
-                                exercise(A_DEX, false);
+                                await exercise(A_DEX, false);
                             }
                             /* use current move; needed for the "ouch" case
                                but done for steed case too for consistency;
@@ -2293,7 +2282,7 @@ async function dopush(sx, sy, rx, ry, otmp, costly) {
             if (givemesg)
                 await pline(`With ${easypush ? "little" : "great"} effort you move ${what}.`);
             if (!easypush)
-                exercise(A_STR, true);
+                await exercise(A_STR, true);
         } else {
             throw new Error('dopush(): steed pushing not ported yet');
         }
@@ -2532,7 +2521,7 @@ async function carrying_too_much() {
         && !Is_airlevel(u.uz)) {
         if (wtcap < OVERLOADED) {
             await You("don't have enough stamina to move.");
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
         } else
             await You("collapse under your load.");
         nomul(0);

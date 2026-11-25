@@ -35,7 +35,7 @@ import {
 } from './monsters.js';
 import * as M from './monsters.js';
 import * as O from './objects.js';
-import { objects } from './objects.js';
+import { objects, is_sword, greatest_erosion } from './objects.js';
 import {
     G_GONE, A_NEUTRAL, A_NONE, ALIGNWEIGHT,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC,
@@ -83,7 +83,7 @@ import { enexto_core, enexto_gpflags } from './teleport.js';
 import { newedog } from './dog.js';
 import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
          DETECT_MONSTERS, PROT_FROM_SHAPE_CHANGERS } from './const.js';
-import { dist2, sgn } from './hacklib.js';
+import { dist2, sgn, ARM_BONUS } from './hacklib.js';
 import { an, vtense } from './objnam.js';
 import { newsym, pline, canseemon, You_see, vobj_at } from './display.js';
 import { does_block, block_point, cansee, couldsee } from './vision.js';
@@ -109,6 +109,8 @@ import { G_EXTINCT as G_EXTINCT_CM, isok as isok_cm, MGIVENNAME as MGIVENNAME_cm
 import { enexto as enexto_cm } from './teleport.js';
 import { mon_track_clear as mon_track_clear_cm } from './monmove.js';
 import { tamedog as tamedog_cm } from './dog.js';
+import { hard_helmet } from './do_wear.js';
+import { mon_aligntyp } from './priest.js';
 export {
     NO_MM_FLAGS, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_IGNOREWATER,
     MM_ADJACENTOK, MM_NONAME, MM_EDOG, MM_ASLEEP, MM_NOGRP, MM_MALE,
@@ -152,22 +154,9 @@ export function is_home_elemental(ptr) {
     }
     return false;
 }
-// C ref: mondata.h mon_aligntyp(); is_lminion()
-function mon_aligntyp(mon) {
-    const ptr = mon.data;
-    const algn = (mon.ispriest && mon.epri) ? mon.epri.shralign
-                 : (mon.isminion && mon.emin) ? mon.emin.min_align
-                 : ptr.maligntyp;
-    if (algn === A_NONE) return A_NONE;
-    return (algn > 0) ? A_LAWFUL : (algn < 0) ? -1 : A_NEUTRAL;
-}
+// C ref: monst.h is_lminion()
 function is_lminion(mon) {
     return is_minion(mon.data) && mon_aligntyp(mon) === A_LAWFUL;
-}
-// C ref: objclass.h is_sword()
-function is_sword(otmp) {
-    return objects[otmp.otyp].oc_skill >= P_SHORT_SWORD
-           && objects[otmp.otyp].oc_skill <= P_SABER;
 }
 // C ref: makemon.c quest_mon_represents_role()
 function quest_mon_represents_role(mptr, role_pm) {
@@ -817,17 +806,6 @@ export function mkmonmoney(mtmp, amount) {
     }
 }
 
-// C ref: hack.h ARM_BONUS()
-function ARM_BONUS(obj) {
-    return objects[obj.otyp].a_ac + (obj.spe || 0)
-           - Math.min(greatest_erosion(obj), objects[obj.otyp].a_ac);
-}
-
-// C ref: obj.h greatest_erosion()
-function greatest_erosion(otmp) {
-    return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
-}
-
 // C ref: makemon.c m_initinv()
 function m_initinv(mtmp) {
     let cnt;
@@ -1441,7 +1419,8 @@ export function makemon(ptr, x, y, mmflags) {
     propagate(mndx, countbirth, false);
     /* newmonst(); *mtmp = cg.zeromonst; */
     mtmp = {
-        data: null, mnum: 0, m_id: 0, mx: 0, my: 0, m_lev: 0, mhp: 0,
+        data: null, mnum: 0, m_id: 0, mx: 0, my: 0, mux: 0, muy: 0,
+        m_lev: 0, mhp: 0,
         mhpmax: 0, female: 0, msleeping: 0, mpeaceful: 0, mtame: 0,
         minvis: 0, perminvis: 0, mcansee: 0, mcanmove: 0, mgenmklev: 0,
         seen_resistance: 0, cham: NON_PM, iswiz: 0, isminion: 0, mspec_used: 0,
@@ -2430,13 +2409,6 @@ export function rnd_defensive_item(mtmp) {
     }
 }
 
-// C ref: objclass.h is_metallic(); do_wear.c hard_helmet()
-function hard_helmet(otmp) {
-    if (!otmp) return false;
-    const mat = objects[otmp.otyp].oc_material;
-    return mat >= 11 /* IRON */ && mat <= 17 /* MITHRIL */;
-}
-
 // C ref: muse.c rnd_offensive_item()
 export function rnd_offensive_item(mtmp) {
     const pm = mtmp.data;
@@ -2873,6 +2845,41 @@ export function mkclass_aligned(class_, spc, atyp) {
             break;
 
     return nums[MONSi(first)] ? mons[MONSi(first)] : null;
+}
+
+// C ref: makemon.c mkclass_poly()
+/* like mkclass(), but excludes difficulty considerations; used when
+   player with polycontrol picks a class instead of a specific type;
+   genocided types are avoided but extinct ones are acceptable; we don't
+   check polyok() here--caller accepts some choices !polyok() would reject */
+export function mkclass_poly(class_) {
+    let first, last, num = 0;
+    let gmask;
+
+    for (first = LOW_PM; first < SPECIAL_PM; first++)
+        if (mons[first].mlet === class_)
+            break;
+    if (first === SPECIAL_PM)
+        return NON_PM;
+
+    gmask = (G_NOGEN | G_UNIQ);
+    /* mkclass() does this on a per monster type basis, but doing that here
+       would make the two loops inconsistent with each other for non L */
+    if (rn2(9) || class_ === S_LICH)
+        gmask |= (In_hell(game.u.uz) ? G_NOHELL : G_HELL);
+
+    for (last = first; last < SPECIAL_PM && mons[last].mlet === class_; last++)
+        if (mk_gen_ok(last, G_GENOD, gmask))
+            num += mons[last].geno & G_FREQ;
+    if (!num)
+        return NON_PM;
+
+    for (num = rnd(num); num > 0; first++)
+        if (mk_gen_ok(first, G_GENOD, gmask))
+            num -= mons[first].geno & G_FREQ;
+    first--; /* correct an off-by-one error */
+
+    return first;
 }
 
 // C ref: makemon.c adj_lev()

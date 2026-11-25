@@ -68,9 +68,9 @@ import { name_to_mon, your_race, is_vampshifter, is_were, is_orc, is_elf,
          is_dwarf, is_gnome, is_undead, poly_when_stoned,
          little_to_big } from './mondata.js';
 import { pmname, Some_Monnam, Monnam, mon_nam, Mgender } from './do_name.js';
-import { an, the_unique_pm, vtense, yname, makeplural } from './objnam.js';
-import { the, simpleonames, surface, cloak_simple_name,
-         helm_simple_name } from './iactions.js';
+import { an, the_unique_pm, vtense, yname, makeplural, cloak_simple_name,
+         helm_simple_name } from './objnam.js';
+import { the, simpleonames, surface } from './iactions.js';
 import { unmul } from './allmain.js';
 import { make_glib, set_mimic_blocking, set_itimeout, make_blinded,
          make_sick, make_stoned, make_slimed } from './potion.js';
@@ -91,7 +91,7 @@ import { find_ac } from './u_init.js';
 import { set_ustuck } from './uhitm.js';
 import { spoteffects, nomul } from './hack.js';
 import { encumber_msg } from './pickup.js';
-import { retouch_equipment } from './artifact.js';
+import { retouch_equipment, artifact_light } from './artifact.js';
 import { character_race } from './role.js';
 import { dropx, canletgo } from './do.js';
 import { donning, cancel_don, Armor_gone, Cloak_off, Helmet_off,
@@ -111,7 +111,9 @@ import { killer as killer_ps } from './topten.js';
 import { DIED as DIED_PS } from './const.js';
 import { arti_light_radius } from './light.js';
 import { maybe_adjust_light } from './mkobj.js';
-import { artifact_light } from './worn.js';
+import { is_flimsy, is_sword } from './objects.js';
+import { name_to_monclass as name_to_monclass_ps } from './mondata.js';
+import { mkclass_poly as mkclass_poly_ps } from './makemon.js';
 
 // C ref: mon.c valid_vampshiftform()
 function valid_vampshiftform(base, form) {
@@ -298,17 +300,7 @@ export function lays_eggs(ptr) { return (ptr.mflags1 & M.M1_OVIPAROUS) !== 0; }
 /* creature will slide out of armor */
 /* creature will break out of armor */
 export function has_horns(ptr) { return num_horns(ptr) > 0; }
-/* C ref: obj.h is_flimsy(), is_sword(), WrappingAllowed(),
-   Is_dragon_armor() */
-function is_flimsy(otmp) {
-    return O.objects[otmp.otyp].oc_material <= O.LEATHER
-        || otmp.otyp === O.RUBBER_HOSE;
-}
-function is_sword(otmp) {
-    return otmp.oclass === O.WEAPON_CLASS
-        && O.objects[otmp.otyp].oc_skill >= P_SHORT_SWORD
-        && O.objects[otmp.otyp].oc_skill <= P_SABER;
-}
+/* C ref: obj.h WrappingAllowed(), Is_dragon_armor() */
 function WrappingAllowed(mptr) {
     return humanoid(mptr) && mptr.msize >= M.MZ_SMALL
         && mptr.msize <= M.MZ_HUGE
@@ -430,7 +422,7 @@ export async function polyself(psflags) {
         if (rn2(20) > ACURR(A_CON)) {
             await You("shudder for a moment."); /* You1(shudder_for_moment) */
             await losehp(rnd(30), "system shock", KILLED_BY_AN);
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             return;
         }
     }
@@ -473,9 +465,24 @@ export async function polyself(psflags) {
             }
             klass = 0;
             mntmp = name_to_mon(buf, gvariant);
-            if (mntmp < LOW_PM) {
+            let by_class = (mntmp < LOW_PM);
+            let done = false;
+            /* C's 'goto by_class' retry (from the !polyok() case below)
+               is this loop's 'continue' */
+            for (;;) {
+            if (by_class) {
                 /* by_class: */
-                throw new Error('polyself(): name_to_monclass()/mkclass_poly() not ported yet');
+                const mndx = { v: NON_PM };
+                klass = name_to_monclass_ps(buf, mndx);
+                mntmp = mndx.v;
+                if (klass && mntmp === NON_PM)
+                    mntmp = (draconian && klass === M.S_DRAGON)
+                            ? armor_to_dragon(game.uarm.otyp)
+                            : mkclass_poly_ps(klass);
+
+            /* placeholder monsters are for corpses and all flagged
+               M2_NOPOLY but they are reasonable polymorph targets;
+               pick a suitable substitute (which might be geno'd) */
             } else if (is_placeholder(mons[mntmp])
                        /* when your own race, fall to !polyok() case */
                        && !your_race(mons[mntmp])
@@ -528,6 +535,16 @@ export async function polyself(psflags) {
 
                 /* mkclass_poly() can pick a !polyok()
                    candidate; if so, usually try again */
+                if (klass) {
+                    if (rn2(3) || --tryct > 0) {
+                        by_class = true;
+                        continue; /* goto by_class */
+                    }
+                    /* no retries left; put one back on counter
+                       so that end of loop decrement will yield
+                       0 and trigger thats_enough_tries message */
+                    ++tryct;
+                }
                 pm_name = pmname(mons[mntmp], game.flags.female ? FEMALE : MALE);
                 if (the_unique_pm(mons[mntmp]))
                     pm_name = the(pm_name);
@@ -535,6 +552,10 @@ export async function polyself(psflags) {
                     pm_name = an(pm_name);
                 await You_cant(`polymorph into ${pm_name}.`);
             } else
+                done = true; /* break out of the do-while */
+            break;
+            } /* for (;;) by_class retry */
+            if (done)
                 break;
         } while (--tryct > 0);
 
@@ -793,7 +814,7 @@ export async function polymon(mntmp) {
 
     if (game.mvitals && (game.mvitals[mntmp]?.mvflags & G_GENOD)) { /* allow G_EXTINCT */
         await You_feel(`rather ${pmname(mons[mntmp], game.flags.female ? FEMALE : MALE)}-ish.`);
-        exercise(A_WIS, true);
+        await exercise(A_WIS, true);
         return 0;
     }
 
@@ -805,8 +826,8 @@ export async function polymon(mntmp) {
 
     /* exercise used to be at the very end but only Wis was affected
        there since the polymorph was always in effect by then */
-    exercise(A_CON, false);
-    exercise(A_WIS, true);
+    await exercise(A_CON, false);
+    await exercise(A_WIS, true);
 
     if (!Upolyd()) {
         /* Human to monster; save human stats */
@@ -1170,7 +1191,7 @@ async function break_armor() {
                 end_burn(otmp, false);
 
             await You("break out of your armor!");
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             await Armor_gone();
             useup(otmp);
         }

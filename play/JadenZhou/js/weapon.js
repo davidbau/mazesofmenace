@@ -9,7 +9,7 @@
 
 import { MON_WEP } from './worn.js';
 import { impossible } from './hack.js';
-import { is_art } from './artifact.js';
+import { is_art, artifact_light } from './artifact.js';
 import { minv } from './mon.js';
 import { padr } from './pager.js';
 import { wizard } from './dungeon.js';
@@ -25,13 +25,14 @@ import {
     W_ARMC, W_ARMU, W_RINGL, W_RINGR, P_SKILLED, P_LAST_WEAPON, P_LAST_SPELL,
     P_TWO_WEAPON_COMBAT, A_STR, A_DEX, STR18, TIP_ENHANCE,
 } from './const.js';
-import { objects, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS } from './objects.js';
+import { objects, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, is_ammo, is_spear,
+         is_axe, is_pick, greatest_erosion, is_launcher, ammo_and_launcher,
+         is_weptool, bimanual as bimanual_wp } from './objects.js';
 import * as O from './objects.js';
 import * as M from './monsters.js';
 import { spell_skilltype, skill_based_spellbook_id } from './spell.js';
 import { ART_SUNSWORD, ART_SNICKERSNEE } from './artilist.js';
 import { touch_artifact_mon, spec_abon, spec_dbon, shade_glare } from './artifact.js';
-import { is_weptool } from './mkobj.js';
 import { is_pool } from './makemon.js';
 import { is_swimmer, passes_walls, is_undead, is_demon, is_were,
          is_vampshifter, Resists_Elem, throws_rocks, likes_gems, mindless,
@@ -66,13 +67,16 @@ import { makeplural as makeplural_wp, otense as otense_wp, xname as xname_wp,
 import { mhis as mhis_wp } from './mhitu.js';
 import { s_suffix as s_suffix_wp } from './hacklib.js';
 import { mon_nam as mon_nam_wp } from './do_name.js';
-import { bimanual as bimanual_wp } from './wield.js';
 import { the as the_wp } from './iactions.js';
+import { Your } from './display.js';
+import { vtense } from './objnam.js';
+import { mon_nam } from './do_name.js';
 import { begin_burn, end_burn } from './timeout.js';
 import { cansee } from './vision.js';
 import { arti_light_description } from './light.js';
 import { mbodypart } from './insight.js';
 import { HAND } from './const.js';
+import { m_carrying } from './mthrowu.js';
 
 function weapon_skills() {
     const u = game.u;
@@ -98,13 +102,6 @@ function set_P_ADVANCE(type, v) { weapon_skills()[type].advance = v; }
 
 /* C ref: skills.h practice_needed_to_advance() */
 export function practice_needed_to_advance(level) { return level * level * 20; }
-
-/* C ref: obj.h is_ammo() */
-function is_ammo(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === GEM_CLASS)
-            && objects[otmp.otyp].oc_skill >= -P_CROSSBOW
-            && objects[otmp.otyp].oc_skill <= -P_BOW);
-}
 
 // C ref: weapon.c unrestrict_weapon_skill()
 export function unrestrict_weapon_skill(skill) {
@@ -231,21 +228,6 @@ function is_wooden(ptr) { return ptr === M.mons[M.PM_WOOD_GOLEM]; }
 function hates_light(ptr) { return ptr === M.mons[M.PM_GREMLIN]; }
 
 /* obj.h */
-function is_spear(otmp) {
-    return otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_skill === P_SPEAR;
-}
-function is_axe(otmp) {
-    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-           && objects[otmp.otyp].oc_skill === P_AXE;
-}
-function is_pick(otmp) {
-    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-           && objects[otmp.otyp].oc_skill === P_PICK_AXE;
-}
-function greatest_erosion(otmp) {
-    const e1 = otmp.oeroded || 0, e2 = otmp.oeroded2 || 0;
-    return e1 > e2 ? e1 : e2;
-}
 /* C ref: wield.c erodeable_wep(), will_weld() */
 function erodeable_wep(optr) {
     return optr.oclass === WEAPON_CLASS || is_weptool(optr)
@@ -253,14 +235,6 @@ function erodeable_wep(optr) {
 }
 function will_weld(optr) {
     return !!optr.cursed && (erodeable_wep(optr) || optr.otyp === O.TIN_OPENER);
-}
-// C ref: artifact.c artifact_light()
-function artifact_light(obj) {
-    if (obj && (obj.otyp === O.GOLD_DRAGON_SCALE_MAIL
-                || obj.otyp === O.GOLD_DRAGON_SCALES)
-        && ((obj.owornmask || 0) & W_ARM) !== 0)
-        return true;
-    return !!(obj && obj.oartifact) && is_art(obj, ART_SUNSWORD);
 }
 
 /* targets that provide attacker with small to-hit bonus when using a spear */
@@ -541,6 +515,37 @@ export function special_dmgval(
     return bonus;
 }
 
+// C ref: weapon.c silver_sears()
+/* give a "silver <item> sears <target>" message;
+   not used for weapon hit, so we only handle rings */
+export async function silver_sears(magr, mdef, silverhit) {
+    void magr; /* UNUSED */
+    const uleft = game.uleft, uright = game.uright;
+    const ltyp = ((uleft && (silverhit & W_RINGL) !== 0)
+                  ? uleft.otyp : O.STRANGE_OBJECT),
+        rtyp = ((uright && (silverhit & W_RINGR) !== 0)
+                ? uright.otyp : O.STRANGE_OBJECT);
+    const l_dknown = !!(uleft && uleft.dknown),
+        r_dknown = !!(uright && uright.dknown),
+        l_ag = (objects[ltyp].oc_material === O.SILVER && l_dknown),
+        r_ag = (objects[rtyp].oc_material === O.SILVER && r_dknown);
+
+    if ((silverhit & (W_RINGL | W_RINGR)) !== 0) {
+        /* plural if both the same type (so not multi_claw and both rings
+           are non-Null) and either both known or neither known, or both
+           silver (in case there is ever more than one type of silver ring)
+           and both known; singular if multi_claw (where one of ltyp or
+           rtyp will always be STRANGE_OBJECT) even if both rings are known
+           silver [see hmonas(uhitm.c) for explanation of 'multi_claw'] */
+        const both = ((ltyp === rtyp && l_dknown === r_dknown) || (l_ag && r_ag));
+        const rings = `ring${both ? "s" : ""}`;
+        await Your(`${(l_ag || r_ag) ? "silver "
+            : both ? ""
+              : ((silverhit & W_RINGL) !== 0) ? "left "
+                : "right "}${rings} ${vtense(rings, "sear")} ${mon_nam(mdef)}!`);
+    }
+}
+
 // C ref: mon.c can_touch_safely()
 function can_touch_safely(mtmp, otmp) {
     const otyp = otmp.otyp;
@@ -578,31 +583,6 @@ function oselect(mtmp, type) {
     }
     return null;
 }
-
-// C ref: mthrowu.c m_carrying()
-export function m_carrying(mtmp, type) {
-    if (mtmp === game.youmonst) {
-        for (let otmp = game.invent; otmp; otmp = otmp.nobj)
-            if (otmp.otyp === type)
-                return otmp;
-        return null;
-    }
-    for (const otmp of minv(mtmp))
-        if (otmp.otyp === type)
-            return otmp;
-    return null;
-}
-
-/* C ref: obj.h is_launcher(), is_ammo(), matching_launcher(),
-   ammo_and_launcher() */
-function is_launcher(otmp) {
-    return otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_skill >= P_BOW
-           && objects[otmp.otyp].oc_skill <= P_CROSSBOW;
-}
-function matching_launcher(a, l) {
-    return !!l && objects[a.otyp].oc_skill === -objects[l.otyp].oc_skill;
-}
-function ammo_and_launcher(a, l) { return is_ammo(a) && matching_launcher(a, l); }
 
 // C ref: mthrowu.c m_has_launcher_and_ammo()
 /* TRUE iff mtmp is wielding a launcher and carrying matching ammo */
@@ -1051,7 +1031,8 @@ export function mwepgone(mon) {
     }
 }
 
-function martial_bonus() { return Role_if(M.PM_SAMURAI) || Role_if(M.PM_MONK); }
+// C ref: skills.h martial_bonus()
+export function martial_bonus() { return Role_if(M.PM_SAMURAI) || Role_if(M.PM_MONK); }
 
 // C ref: weapon.c abon()
 /* attack bonus for strength & dexterity */

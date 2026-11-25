@@ -48,7 +48,7 @@ import { vision_recalc } from './vision.js';
 import { reassign, update_inventory, inv_order } from './invent.js';
 import { def_oc_syms } from './drawing_data.js';
 import { choose_disco_sort, get_sortdisco } from './o_init.js';
-import { mungspaces, strNsubst, trimspaces } from './hacklib.js';
+import { mungspaces, strNsubst, trimspaces, strncmpi } from './hacklib.js';
 import {
     regex_init, regex_compile, regex_error_desc, regex_free,
 } from './posixregex.js';
@@ -871,6 +871,17 @@ export function config_error_add(msg) {
     return config_erradd(msg);
 }
 
+// src/cfgfiles.c:1312 config_line_stmt[], directives with handlers in this port.
+const config_line_stmt = [
+    { name: 'OPTIONS', len: 4, origbuf: true },
+    { name: 'AUTOPICKUP_EXCEPTION', len: 5 },
+    { name: 'BINDINGS', len: 4 },
+    { name: 'MSGTYPE', len: 7 },
+    { name: 'MENUCOLOR', len: 9 },
+    { name: 'ROGUESYMBOLS', len: 4 },
+    { name: 'SYMBOLS', len: 4 },
+];
+
 // Entry point used by js/jsmain.js: parse a whole rc blob.
 //
 // C ref: src/cfgfiles.c parse_config_line() dispatches on the leading keyword
@@ -895,15 +906,22 @@ export function parseNethackrc(rc) {
         const line = rawLine.trim();
         if (!line || line[0] === '#') continue;
 
-        const eq = line.indexOf('=');
+        // src/cfgfiles.c:588 find_optparam(), first '=' or ':'.
+        const eq = firstSeparator(line);
         if (eq < 0) {
             result.errors.push(`Bad config line '${line}'`);
             continue;
         }
-        const keyword = line.slice(0, eq).trim().toUpperCase();
-        const rest = line.slice(eq + 1);
+        const keyword = line.slice(0, eq).trim();
+        // src/cfgfiles.c:1427 match_varname(), using each directive's minimum.
+        const directive = config_line_stmt.find(entry => keyword.length >= entry.len
+            && keyword.length <= entry.name.length
+            && !strncmpi(entry.name, keyword, keyword.length));
+        // OPTIONS uses origbuf; the other C handlers receive mungspaces(buf).
+        const rest = directive?.origbuf ? line.slice(eq + 1)
+            : mungspaces(line.slice(eq + 1));
 
-        switch (keyword) {
+        switch (directive?.name) {
         case 'OPTIONS':
             parseoptions(rest, true, true, result);
             break;
@@ -922,18 +940,14 @@ export function parseNethackrc(rc) {
         case 'MENUCOLOR':
             /* src/cfgfiles.c:1164 cnf_line_MENUCOLOR(); parse_config_line()
                has mungspaces()d the line and stepped past '=' */
-            add_menu_coloring(mungspaces(rest));
+            add_menu_coloring(rest);
             break;
         case 'MSGTYPE':
-            msgtype_parse_add(mungspaces(rest));
+            msgtype_parse_add(rest);
             break;
         case 'AUTOPICKUP_EXCEPTION':
-            add_autopickup_exception(mungspaces(rest));
+            add_autopickup_exception(rest);
             break;
-        case 'BIND':
-        case 'BINDI':
-        case 'BINDIN':
-        case 'BINDING':
         case 'BINDINGS':
             result.bindings.push(rest);
             parsebindings(rest);

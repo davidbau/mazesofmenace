@@ -85,7 +85,6 @@ import { stairway_at, glyph_at, glyph_is_invisible, canspotmon, vobj_at,
 import { can_reach_floor } from './engrave.js';
 import { x_monnam, mon_nam } from './do_name.js';
 import { doname } from './objnam.js';
-import { Is_container } from './mkobj.js';
 import { num_spells } from './spell.js';
 import { t_at } from './trap.js';
 import { carrying } from './invent.js';
@@ -99,8 +98,8 @@ import { IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, u_at, Upolyd,
          has_mgivenname, SCORR, D_CLOSED, D_LOCKED, D_ISOPEN, W_SADDLE,
          VIBRATING_SQUARE, TEST_MOVE, ARTICLE_THE,
          SUPPRESS_SADDLE } from './const.js';
-import { SKELETON_KEY, LOCK_PICK, CREDIT_CARD, SADDLE, FOOD_CLASS,
-         BOULDER } from './objects.js';
+import { SKELETON_KEY, LOCK_PICK, CREDIT_CARD, SADDLE, FOOD_CLASS, BOULDER,
+         Is_container } from './objects.js';
 import { CLR_WHITE } from './terminal.js';
 import { COLNO, ROWNO, xdir, ydir, zdir } from './const.js';
 import { PM_GRID_BUG, mons, PM_CAVE_SPIDER, PM_GIANT_SPIDER, PM_MIND_FLAYER,

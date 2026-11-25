@@ -7,20 +7,19 @@
 // check_jump(), is_valid_jump_pos(), get_valid_jump_position().
 
 import { game } from './gstate.js';
-import { You } from './display.js';
+import { You, You_hear } from './display.js';
 import { getobj } from './invent.js';
 import { check_capacity } from './hack.js';
-import { is_pole, retouch_object } from './wield.js';
+import { retouch_object } from './wield.js';
 import { pick_lock } from './lock.js';
 import * as O from './objects.js';
-import { is_graystone, thesimpleoname } from './iactions.js';
+import { thesimpleoname } from './iactions.js';
 import { feel_newsym } from './display.js';
 import { discover_object } from './o_init.js';
 import { MAX_SPELL_STUDY, DEAF, HAND, SDOOR, SCORR, CORR, ARTICLE_A,
          SUPPRESS_IT, SUPPRESS_INVISIBLE, Is_stronghold } from './const.js';
 import { surface } from './iactions.js';
 import { can_reach_floor, cant_reach_floor } from './engrave.js';
-import { You_hear } from './sounds.js';
 import { getdir } from './cmd.js';
 import { confdir } from './hack.js';
 import { freehand } from './wield.js';
@@ -44,7 +43,8 @@ import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
 import { objects, TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, COIN_CLASS,
          WEAPON_CLASS, POTION_CLASS, BULLWHIP, POT_OIL, CREAM_PIE,
          EUCALYPTUS_LEAF, LUMP_OF_ROYAL_JELLY, BANANA, TOUCHSTONE, PICK_AXE,
-         DWARVISH_MATTOCK, OIL_LAMP, MAGIC_LAMP, BRASS_LANTERN } from './objects.js';
+         DWARVISH_MATTOCK, OIL_LAMP, MAGIC_LAMP, BRASS_LANTERN, is_pick,
+         is_axe, is_graystone, is_pole, u_wield_art } from './objects.js';
 import { M1_NOHANDS, M1_NOLIMBS, M1_SLITHY, M2_ROCKTHROW } from './monsters.js';
 import { pline, You_cant, There } from './display.js';
 import { near_capacity, nomul } from './hack.js';
@@ -59,7 +59,7 @@ import { dowrite } from './write.js';
 import { cansee } from './vision.js';
 import { closed_door, sobj_at } from './makemon.js';
 import { t_at } from './trap.js';
-import { dist2 } from './hacklib.js';
+import { dist2, distu, mdistu } from './hacklib.js';
 import { ACURR } from './attrib.js';
 import { SPE_JUMPING, BOULDER } from './objects.js';
 import { ECMD_TIME, ECMD_FAIL, JUMPING, PASSES_WALLS, LEVITATION, WOUNDED_LEGS,
@@ -172,15 +172,6 @@ import { use_pick_axe } from './dig.js';
 import { glyph_is_invisible as glyph_is_invisible_ls } from './display.js';
 import { mons as mons_ls, PM_LONG_WORM as PM_LONG_WORM_LS, M1_UNSOLID as M1_UNSOLID_LS,
          M1_NOLIMBS as M1_NOLIMBS_LS, M1_NOHEAD as M1_NOHEAD_LS } from './monsters.js';
-
-/* C ref: obj.h is_pick(), is_axe() */
-function is_pick(otmp) {
-    return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
-}
-function is_axe(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill === P_AXE);
-}
 
 // C ref: apply.c its_dead() -- the stethoscope applied to a corpse or
 // statue at <rx,ry>; returns TRUE if it gave a message
@@ -1084,8 +1075,6 @@ const jAny = 0, /* any direction => magical jump */
     jVert = 2,
     jDiag = 3; /* jHorz|jVert */
 
-function distu(x, y) { return dist2(x, y, game.u.ux, game.u.uy); }
-
 // C ref: apply.c check_jump() -- callback routine for walk_path()
 function check_jump(arg, x, y) {
     const traj = arg.traj;
@@ -1554,10 +1543,6 @@ function glyph_is_poleable(G) {
     return glyph_is_monster_pl(G) || glyph_is_invisible_ls(G)
            || glyph_is_statue_pl(G);
 }
-/* C ref: monst.h mdistu() */
-function mdistu_pl(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
-/* C ref: artifact.h u_wield_art() */
-function u_wield_art_pl(art) { return !!game.uwep && game.uwep.oartifact === art; }
 /* C ref: context.h svc.context.polearm (zeroed with the context) */
 function polearm_ctx() {
     if (!game.context.polearm)
@@ -1675,7 +1660,7 @@ export function could_pole_mon() {
     cc.y = game.u.uy;
     if (!find_poleable_mon(cc)) {
         if (hitm && !DEADMONSTER(hitm) && sensemon(hitm)
-            && mdistu_pl(hitm) <= range.max && mdistu_pl(hitm) >= range.min)
+            && mdistu(hitm) <= range.max && mdistu(hitm) >= range.min)
             return true;
     } else {
         return true;
@@ -1686,7 +1671,7 @@ export function could_pole_mon() {
 // C ref: apply.c snickersnee_used_dist_attk()
 /* was Snickersnee used to attack at distance this turn already? */
 function snickersnee_used_dist_attk(obj) {
-    if (obj && obj === game.uwep && u_wield_art_pl(ART_SNICKERSNEE)
+    if (obj && obj === game.uwep && u_wield_art(ART_SNICKERSNEE)
         && game.context.snickersnee_turn === game.moves)
         return true;
     return false;
@@ -1731,7 +1716,7 @@ export async function use_pole(obj, autohit) {
     cc.y = u.uy;
     if (!find_poleable_mon(cc) && hitm
         && !DEADMONSTER(hitm) && sensemon(hitm)
-        && mdistu_pl(hitm) <= max_range && mdistu_pl(hitm) >= min_range) {
+        && mdistu(hitm) <= max_range && mdistu(hitm) >= min_range) {
         cc.x = hitm.mx;
         cc.y = hitm.my;
     }
@@ -1784,7 +1769,7 @@ export async function use_pole(obj, autohit) {
         g.notonhead = (g.bhitpos.x !== mtmp.mx || g.bhitpos.y !== mtmp.my);
 
         /* Snickersnee allows one free hit from a distance per turn */
-        if (obj === g.uwep && u_wield_art_pl(ART_SNICKERSNEE)) {
+        if (obj === g.uwep && u_wield_art(ART_SNICKERSNEE)) {
             freehit = (g.moves !== g.context.snickersnee_turn);
             g.context.snickersnee_turn = g.moves;
             if (freehit && !Deaf()) {
@@ -1881,7 +1866,7 @@ async function use_camera(obj) {
 }
 
 // C ref: apply.c number_leashed()
-function number_leashed() {
+export function number_leashed() {
     let i = 0;
 
     for (let obj = game.invent; obj; obj = obj.nobj)

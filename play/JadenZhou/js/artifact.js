@@ -9,7 +9,7 @@
 
 import { On_stairs } from './dogmove.js';
 import { game } from './gstate.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, verbalize } from './display.js';
 import { LL_ARTIFACT, NO_ROOM } from './const.js';
 import { inside_shop } from './shk.js';
 import { bare_artifactname } from './iactions.js';
@@ -35,7 +35,7 @@ import { P_MAX_SKILL } from './weapon.js';
 import { P_SKILLED, P_BASIC, ONAME_NO_FLAGS, GETOBJ_EXCLUDE, GETOBJ_SUGGEST,
          GETOBJ_PROMPT, ECMD_CANCEL } from './const.js';
 import { getobj, nxtobj } from './invent.js';
-import { mksobj, permapoisoned, Is_container } from './mkobj.js';
+import { mksobj, permapoisoned } from './mkobj.js';
 import { oname } from './do_name.js';
 import { obj_shuffle_range } from './o_init.js';
 import { ART_SUNSWORD, ART_MASTER_KEY_OF_THIEVERY } from './artilist.js';
@@ -80,9 +80,10 @@ import { hitfloor } from './dothrow.js';
 import { dropx } from './do.js';
 import { surface } from './iactions.js';
 import { Levitation } from './youprop.js';
+import { I_SPECIAL, TIMEOUT } from './const.js';
 import { IS_ALTAR } from './const.js';
 import { Antimagic, Hate_silver, Blind as Blind_art } from './youprop.js';
-import { objects as objects_ac } from './objects.js';
+import { objects as objects_ac, Is_container } from './objects.js';
 
 // C ref: artifact.h SPFX_*
 export const SPFX_NONE = 0x00000000;
@@ -1473,7 +1474,7 @@ export async function touch_artifact(obj, mon) {
             dmg += Maybe_Half_Phys(tmp);
         }
         await losehp(dmg, `touching ${oart.name}`, KILLED_BY); /* magic damage, not physical */
-        exercise(A_WIS, false);
+        await exercise(A_WIS, false);
     }
 
     /* can pick it up unless you're totally non-synch'd with the artifact */
@@ -1565,7 +1566,7 @@ export async function retouch_object(obj,
             if (bane)
                 dmg += rnd(10);
             await losehp(dmg, `handling ${what}`, KILLED_BY);
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
         }
     }
 
@@ -1721,7 +1722,7 @@ export async function arti_speak(obj) {
         line = "NetHack rumors file closed for renovation.";
     await pline(`${Tobjnam(obj, "whisper")}:`);
     /* SetVoice(): no voice interface */
-    await pline(`"${line}"`); /* verbalize1() */
+    await verbalize(line); /* verbalize1() */
     return ECMD_TIME;
 }
 
@@ -1912,3 +1913,42 @@ export function arti_cost(otmp) {
 
 // C ref: artifact.c is_art()
 export function is_art(o, art) { return !!(o && o.oartifact === art); }
+
+// C ref: artifact.c finesse_ahriman()
+/* will freeing this object from inventory cause levitation to end? */
+export function finesse_ahriman(obj) {
+    const u = game.u;
+    let oart;
+
+    /* if we aren't levitating or this isn't an artifact which confers
+       levitation via #invoke then freeinv() won't toggle levitation */
+    if (!Levitation()
+        || (oart = get_artifact(obj)) === artilist()[ART_NONARTIFACT]
+        || oart.inv_prop !== LEVITATION
+        || !(u.uprops[LEVITATION].extrinsic & W_ARTI))
+        return false;
+
+    /* arti_invoke(off) -> float_down() clears I_SPECIAL|TIMEOUT & W_ARTI;
+       probe ahead to see whether that actually results in floating down;
+       (this assumes that there aren't two simultaneously invoked artifacts
+       both conferring levitation--safe, since if there were two of them,
+       invoking the 2nd would negate the 1st rather than stack with it) */
+    const save_Lev = { ...u.uprops[LEVITATION] };
+    u.uprops[LEVITATION].intrinsic &= ~(I_SPECIAL | TIMEOUT);
+    u.uprops[LEVITATION].extrinsic &= ~W_ARTI;
+    const result = !Levitation();
+    Object.assign(u.uprops[LEVITATION], save_Lev);
+    return result;
+}
+
+// C ref: artifact.c artifact_light()
+export function artifact_light(obj) {
+    /* not artifacts but treat them as if they were because they emit
+       light without burning */
+    if (obj && (obj.otyp === O.GOLD_DRAGON_SCALE_MAIL
+                || obj.otyp === O.GOLD_DRAGON_SCALES)
+        && ((obj.owornmask || 0) & W_ARM) !== 0)
+        return true;
+
+    return !!(obj && obj.oartifact) && is_art(obj, ART_SUNSWORD);
+}

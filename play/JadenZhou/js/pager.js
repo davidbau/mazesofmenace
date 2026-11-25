@@ -34,7 +34,7 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { extcmdlist } from './func_tab.js';
 import { cmd_from_func, key2extcmddesc, key2txt, dokeylist } from './cmd.js';
-import { visctrl, upstart } from './hacklib.js';
+import { visctrl, upstart, tabexpand } from './hacklib.js';
 import {
     canspotmon, vobj_at, pline, back_to_glyph, known_branch_stairs,
     stairway_at
@@ -405,8 +405,11 @@ export function self_lookat() {
     /* include race with role unless polymorphed */
     if (!u.mtimedone) /* !Upolyd */
         race = `${game.urace.adj} `;
+    /* mons[u.umonnum], not gy.youmonst.data (display_minventory() points
+       that at an engulfer's data while listing its stomach); Ugender */
+    const Ugender = (u.umonnum !== u.umonster) ? u.mfemale : game.flags.female;
     let outbuf = `${Invis() && !Blind() ? "invisible " : ""}${race}`
-        + `${pmname(game.youmonst.data, game.flags.female ? FEMALE : MALE)}`
+        + `${pmname(mons[u.umonnum], Ugender ? FEMALE : MALE)}`
         + ` called ${game.plname}`;
     if (u.usteed)
         outbuf += `, mounted on ${y_monnam_pg(u.usteed)}`;
@@ -1819,30 +1822,6 @@ export function pmatch(patrn, strng) {
         else if (p !== s && (p !== '?' || !s))
             return false;
     }
-}
-
-// C ref: hacklib.c tabexpand() -- expand tabs into proper number of spaces
-// (8 column tab stops)
-function tabexpand(sbuf) {
-    let buf = '', idx = 0;
-
-    if (!sbuf)
-        return sbuf;
-    for (const c of sbuf) {
-        if (c === '\t') {
-            do
-                buf += ' ';
-            while (++idx % 8);
-        } else {
-            buf += c;
-            ++idx;
-        }
-        if (idx >= BUFSZ) {
-            buf = buf.slice(0, BUFSZ - 1);
-            break;
-        }
-    }
-    return buf;
 }
 
 // C ref: pager.c checkfile() -- look in the "data" file (data.base, here

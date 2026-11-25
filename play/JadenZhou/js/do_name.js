@@ -55,6 +55,7 @@ import { pline } from './display.js';
 import { body_part } from './insight.js';
 import { SPE_NOVEL } from './objects.js';
 import { HALLUC as HALLUC_DN, HALLUC_RES as HALLUC_RES_DN } from './const.js';
+import { mon_aligntyp } from './priest.js';
 
 const PL_PSIZ = 63; /* global.h */
 
@@ -569,17 +570,6 @@ export function priestname(mon, article, reveal_high_priest) {
         pname += halu_gname(mon_aligntyp(mon));
     }
     return pname;
-}
-
-/* C ref: mondata.c mon_aligntyp() */
-function mon_aligntyp(mon) {
-    const ptr = mon.data;
-    const algn = (mon.ispriest && mon.epri) ? mon.epri.shralign
-                 : (mon.isminion && mon.emin) ? mon.emin.min_align
-                 : ptr.maligntyp;
-    if (algn === -128) /* A_NONE */
-        return -128;
-    return (algn > 0) ? 1 : (algn < 0) ? -1 : 0; /* sgn() */
 }
 
 // C ref: do_name.c x_monnam()

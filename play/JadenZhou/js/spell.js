@@ -413,7 +413,7 @@ async function learn() {
         sb.delay++;
         return 1; /* still busy */
     }
-    exercise(A_WIS, true); /* you're studying. */
+    await exercise(A_WIS, true); /* you're studying. */
     booktype = book.otyp;
     if (booktype === SPE_BOOK_OF_THE_DEAD)
         throw new Error('learn(): deadbook() not ported yet');
@@ -439,7 +439,7 @@ async function learn() {
             await Your(`knowledge of ${splname} is ${spellknow(i) ? "keener" : "restored"}.`);
             incrnknow(i, 1);
             book.spestudied++;
-            exercise(A_WIS, true); /* extra study */
+            await exercise(A_WIS, true); /* extra study */
         }
     } else { /* (spellid(i) == NO_SPELL) */
         /* for a normal book, spestudied will be zero, but for
@@ -892,7 +892,7 @@ export async function spelleffects(spell_otyp, atme, force) {
 
     u.uen -= energy;
     g.disp_botl = true;
-    exercise(A_WIS, true);
+    await exercise(A_WIS, true);
     /* pseudo is a temporary "false" object containing the spell stats */
     const pseudo = mksobj(force ? spell : spellid(spell), false, false);
     pseudo.blessed = pseudo.cursed = 0;
@@ -1054,7 +1054,7 @@ export async function spelleffects(spell_otyp, atme, force) {
 }
 
 // C ref: spell.c losespells()
-export function losespells() {
+export async function losespells() {
     const sb = spbook();
     let n, nzap, i;
 
@@ -1092,7 +1092,7 @@ export function losespells() {
             /* lose access to spell [i] */
             game.spl_book[i].sp_know = 0;
             /* and abuse wisdom */
-            exercise(A_WIS, false);
+            await exercise(A_WIS, false);
             /* there's now one less spell slated to be forgotten */
             --nzap;
         }
@@ -1134,7 +1134,7 @@ export function force_learn_spell(otyp) {
     return spellet(i);
 }
 
-function exercise(i, inc) { exercise_sp(i, inc); }
+async function exercise(i, inc) { await exercise_sp(i, inc); }
 
 /* C ref: spell.c enum spl_sort_types */
 const SORTBY_LETTER = 0;

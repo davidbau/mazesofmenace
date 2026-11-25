@@ -18,7 +18,7 @@ import { PM_MEDUSA, M3_WANTSARTI, M3_COVETOUS, S_DOG, AT_WEAP } from './monsters
 import { canspotmon } from './display.js';
 import { cansee } from './vision.js';
 import { night } from './calendar.js';
-import { dogfood, dog_eat } from './dogmove.js';
+import { dogfood, dog_eat, finish_meating } from './dogmove.js';
 import { the } from './iactions.js';
 import { xname, Tobjnam } from './objnam.js';
 import { place_object } from './mkobj.js';
@@ -860,17 +860,6 @@ export function mon_catchup_elapsed_time(
 
     /* set_mon_lastmove(mtmp) */
     mtmp.mlstmv = game.moves;
-}
-
-// C ref: dogmove.c finish_meating()
-export function finish_meating(mtmp) {
-    mtmp.meating = 0;
-    if ((mtmp.m_ap_type || 0) !== M_AP_NOTHING && mtmp.data.mlet !== S_MIMIC) {
-        /* was eating a mimic and now appearance needs resetting */
-        mtmp.m_ap_type = M_AP_NOTHING;
-        mtmp.mappearance = 0;
-        newsym(mtmp.mx, mtmp.my);
-    }
 }
 
 // C ref: dog.c tamedog()

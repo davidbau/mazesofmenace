@@ -40,6 +40,23 @@ export const def_monsyms = [
     M.DEF_DEMON, M.DEF_EEL, M.DEF_LIZARD, M.DEF_WORM_TAIL, M.DEF_MIMIC_DEF,
 ];
 
+// C ref: drawing.c def_monsyms[MAXMCLASSES].explain (defsym.h MONSYM desc)
+export const def_monsyms_explain = [
+    "", "ant or other insect", "blob", "cockatrice", "dog or other canine",
+    "eye or sphere", "cat or other feline", "gremlin", "humanoid",
+    "imp or minor demon", "jelly", "kobold", "leprechaun", "mimic", "nymph",
+    "orc", "piercer", "quadruped", "rodent", "arachnid or centipede",
+    "trapper or lurker above", "unicorn or horse", "vortex", "worm",
+    "xan or other mythical/fantastic insect", "light", "zruty",
+    "angelic being", "bat or bird", "centaur", "dragon", "elemental",
+    "fungus or mold", "gnome", "giant humanoid", "invisible monster",
+    "jabberwock", "Keystone Kop", "lich", "mummy", "naga", "ogre",
+    "pudding or ooze", "quantum mechanic", "rust monster or disenchanter",
+    "snake", "troll", "umber hulk", "vampire", "wraith", "xorn",
+    "apelike creature", "zombie", "human or elf", "ghost", "golem",
+    "major demon", "sea monster", "lizard", "long worm tail", "mimic",
+];
+
 // C ref: drawing.c def_char_to_objclass()
 /*
  * Convert the given character to an object class.  If the character is not

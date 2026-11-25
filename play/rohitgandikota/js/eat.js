@@ -79,7 +79,7 @@ import { DISMOUNT_FELL } from './const.js';
 import { INTRINSIC } from './const.js';
 import { EXPL_FIERY } from './const.js';
 import { SICK_ALL } from './const.js';
-import { CXN_NORMAL } from './const.js';
+import { CXN_NORMAL, CXN_SINGULAR, CXN_PFX_THE } from './const.js';
 import { LL_CONDUCT } from './const.js';
 import { invlet_basic } from './const.js';
 import { OBJ_FLOOR } from './const.js';
@@ -1074,27 +1074,20 @@ const nonrotting_corpse = (mnum) =>
     mnum === PMNAMES.PM_LIZARD || mnum === PMNAMES.PM_LICHEN
     || is_rider(game.mons[mnum]) || mnum === PMNAMES.PM_ACID_BLOB;
 
-// src/eat.c:217 food_xname() — the name a meal is announced under. For a
-// corpse that is corpse_xname()'s singular form; for anything else the
-// ordinary singular xname.
+// src/eat.c:217 food_xname()
 function food_xname(food, the_pfx) {
     let result;
 
     if (food.otyp === ONAMES.CORPSE) {
-        /* corpse_xname(food, NULL, CXN_SINGULAR); pmname() prefers the
-           NEUTRAL spelling and falls back to MALE — pmnames is
-           [male, female, neutral] and species like the jackal only fill
-           the neutral slot */
-        const pmn = game.mons[food.corpsenm]?.pmnames || [];
-        const mnam = pmn[2] ?? pmn[0] ?? pmn[1] ?? 'monster';
-        result = `${mnam} corpse`;
+        result = corpse_xname(food, null,
+            CXN_SINGULAR | (the_pfx ? CXN_PFX_THE : 0));
         if (type_is_pname(game.mons[food.corpsenm]))
             the_pfx = false;
     } else {
         result = singular(food, xname);
     }
     if (the_pfx)
-        result = `the ${result}`;
+        result = the(result);
     return result;
 }
 

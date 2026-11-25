@@ -16,7 +16,7 @@
 // tins of a monster, lit light sources, novels, ...) raise not_ported().
 
 import { shk_your } from './shk.js';
-import { letter } from './hacklib.js';
+import { letter, strsubst } from './hacklib.js';
 import { wizard } from './dungeon.js';
 import { game } from './gstate.js';
 import { ART_ORB_OF_DETECTION as ART_ORB_OF_DETECTION_ON } from './artilist.js';
@@ -26,7 +26,9 @@ import {
 } from './hacklib.js';
 import { cansee } from './vision.js';
 import * as O from './objects.js';
-import { objects, OBJ_NAME, OBJ_DESCR } from './objects.js';
+import { objects, OBJ_NAME, OBJ_DESCR, Is_box, is_missile, is_ammo, is_weptool,
+         Is_container, is_rustprone, is_crackable,
+         is_corrodeable } from './objects.js';
 import {
     NON_PM, MALE, FEMALE, NEUTRAL, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, BLINDED, HALLUC,
     Has_contents, has_oname, ONAME, W_ARMOR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL,
@@ -50,24 +52,22 @@ import {
     artifact_exists, nartifact_exist,
 } from './artifact.js';
 import { tin_details } from './eat.js';
-import { donning, doffing } from './do_wear.js';
+import { donning, doffing, hard_helmet } from './do_wear.js';
 import { the as the_article } from './iactions.js';
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item,
          record_price_quote, append_price_quote } from './shk.js';
-import { currency } from './insight.js';
+import { currency, body_part } from './insight.js';
 import { candy_wrapper_text } from './read.js';
-import {
-    mksobj, mkobj, curse, weight, erosion_matters, is_flammable,
-    is_rustprone, is_crackable, is_corrodeable, is_rottable, is_damageable,
-    is_poisonable, permapoisoned, Is_candle, is_weptool, rnd_class,
-    Is_container,
-} from './mkobj.js';
+import { mksobj, mkobj, curse, weight, erosion_matters, is_flammable,
+         is_rottable, is_damageable, is_poisonable, permapoisoned, Is_candle,
+         rnd_class } from './mkobj.js';
 import { delete_contents } from './invent.js';
-import { Luck } from './const.js';
+import { Luck, HAND } from './const.js';
 import { W_TOOL as W_TOOL_XN, W_SADDLE as W_SADDLE_XN } from './const.js';
 import { is_plural } from './wield.js';
 import { peek_timer, obj_to_any } from './timeout.js';
 import { BURN_OBJECT } from './const.js';
+import { is_quest_artifact } from './questpgr.js';
 
 // C ref: decl.c vowels[]
 const vowels = "aeiouAEIOU";
@@ -1122,14 +1122,6 @@ function wishymatch(u_str, o_str, retry_inverted) {
     }
 
     return false;
-}
-
-// C ref: hacklib.c strsubst() — replace the first occurrence of 'orig'
-function strsubst(bp, orig, replacement) {
-    const found = bp.indexOf(orig);
-    if (found < 0)
-        return bp;
-    return bp.slice(0, found) + replacement + bp.slice(found + orig.length);
 }
 
 // C ref: objnam.c o_ranges[]
@@ -2579,28 +2571,6 @@ export function readobjnam(bp, no_wish) {
     return d.otmp;
 }
 
-// C ref: obj.h Is_box()
-function Is_box(otmp) {
-    return otmp.otyp === O.LARGE_BOX || otmp.otyp === O.CHEST;
-}
-
-// C ref: obj.h is_missile(), is_ammo()
-function is_missile(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill >= -P_BOOMERANG
-            && objects[otmp.otyp].oc_skill <= -P_DART);
-}
-function is_ammo(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.GEM_CLASS)
-            && objects[otmp.otyp].oc_skill >= -P_CROSSBOW
-            && objects[otmp.otyp].oc_skill <= -P_BOW);
-}
-
-// C ref: artifact.c is_quest_artifact() — otmp->oartifact == urole.questarti
-function is_quest_artifact(otmp) {
-    return !!otmp.oartifact && otmp.oartifact === game.urole?.questarti;
-}
-
 // ---------------------------------------------------------------------
 // xname() / doname()
 // C ref: objnam.c xname_flags(), doname_base()
@@ -2750,17 +2720,6 @@ function xn_Hallucination() {
 // C ref: objnam.c xcalled()
 function xcalled(pfx, sfx) {
     return `${pfx}${pfx[0] ? " " : ""}called ${sfx}`;
-}
-
-/* C ref: do_wear.c hard_helmet(); obj.h is_helmet(); objclass.h
-   is_metallic() */
-export function hard_helmet(obj) {
-    if (!obj || !(obj.oclass === O.ARMOR_CLASS
-                  && objects[obj.otyp].oc_armcat === O.ARM_HELM))
-        return false;
-    return ((objects[obj.otyp].oc_material >= O.IRON
-             && objects[obj.otyp].oc_material <= O.MITHRIL)
-            || is_crackable(obj)) ? true : false;
 }
 
 // C ref: objnam.c armor_simple_name()
@@ -3711,7 +3670,7 @@ function doname_base(obj, doname_flags) {
         if (obj.owornmask & W_RINGL)
             bp += " (on left ";
         if (obj.owornmask & (W_RINGL | W_RINGR)) /* either left or right */
-            bp += "hand)"; /* body_part(HAND) for an unpolymorphed hero */
+            bp += `${body_part(HAND)})`;
         if (known && objects[obj.otyp].oc_charged)
             prefix += `${obj.spe >= 0 ? "+" : ""}${obj.spe} `;
         break;
@@ -3759,9 +3718,7 @@ function doname_base(obj, doname_flags) {
             && !twoweap_primary) {
             bp += " (wielded)";
         } else {
-            /* body_part(HAND) for an unpolymorphed hero; body_part() and
-               polymorph are not ported yet */
-            let hand_s = "hand";
+            let hand_s = body_part(HAND);
             if (objects[obj.otyp].oc_bimanual) /* bimanual(): "hands" */
                 hand_s = makeplural(hand_s);
             else /* "right hand" or "left hand" */
@@ -3773,8 +3730,8 @@ function doname_base(obj, doname_flags) {
         }
     }
     if (obj.owornmask & W_SWAPWEP) {
-        if (game.u?.twoweap) /* URIGHTY; body_part(HAND) for an unpolymorphed hero */
-            bp += ` (wielded in ${(game.u?.uhandedness ?? 0) === 0 ? "left" : "right"} hand)`;
+        if (game.u?.twoweap) /* URIGHTY */
+            bp += ` (wielded in ${(game.u?.uhandedness ?? 0) === 0 ? "left" : "right"} ${body_part(HAND)})`;
         else
             bp += ` (alternate weapon${obj.quan === 1 ? "" : "s"}; not wielded)`;
     }

@@ -2,6 +2,8 @@
 // C ref: hacklib.c, dungeon.c helpers
 
 import { game } from './gstate.js';
+import { objects, greatest_erosion } from './objects.js';
+import { PM_GRID_BUG } from './monsters.js';
 
 export function isok(x, y) {
     const { COLNO, ROWNO } = await_const();
@@ -21,6 +23,20 @@ export function distmin(x1, y1, x2, y2) {
 
 export function dist2(x1, y1, x2, y2) {
     return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
+}
+
+// C ref: hack.h distu() -- squared distance from the hero
+export function distu(x, y) { return dist2(x, y, game.u.ux, game.u.uy); }
+// C ref: hack.h mdistu()
+export function mdistu(mon) { return distu(mon.mx, mon.my); }
+// C ref: hack.h onlineu()
+export function onlineu(xx, yy) { return online2(xx, yy, game.u.ux, game.u.uy); }
+// C ref: hack.h NODIAG()
+export function NODIAG(monnum) { return monnum === PM_GRID_BUG; }
+// C ref: hack.h ARM_BONUS()
+export function ARM_BONUS(obj) {
+    return objects[obj.otyp].a_ac + (obj.spe || 0)
+        - Math.min(greatest_erosion(obj), objects[obj.otyp].a_ac);
 }
 
 // C ref: hacklib.c lowc()
@@ -297,6 +313,16 @@ export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
 
     /* match occurs only when the end of both strings has been reached */
     return (!c1 && !c2);
+}
+
+// C ref: hacklib.c strsubst() -- substitute the first instance of orig in
+// bp with replacement (C edits bp in place and returns it)
+export function strsubst(bp, orig, replacement) {
+    const found = bp.indexOf(orig);
+
+    if (found >= 0)
+        bp = bp.slice(0, found) + replacement + bp.slice(found + orig.length);
+    return bp;
 }
 
 // C ref: hacklib.c tabexpand() -- expand tabs into proper number of spaces

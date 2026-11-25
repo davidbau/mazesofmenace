@@ -7,7 +7,7 @@
 // figurine timer attachment.
 
 import { is_flyer, nolimbs, cantvomit } from './mondata.js';
-import { vobj_at } from './display.js';
+import { vobj_at, verbalize, urgent_pline } from './display.js';
 import { inv_weight } from './hack.js';
 import { wake_nearby } from './mon.js';
 import { is_ice } from './dig.js';
@@ -28,7 +28,6 @@ import { TIMER_NONE, TIMER_LEVEL, TIMER_GLOBAL, TIMER_OBJECT, TIMER_MONSTER,
          NHF_BONESFILE } from './const.js';
 import { Sfo, Sfi } from './sfbase.js';
 import { new_light_source, del_light_source, candle_light_range } from './light.js';
-import { artifact_light } from './worn.js';
 import { get_obj_location } from './shk.js';
 import { Yname2 as Yname2_to, xname as xname_to, an as an_to } from './objnam.js';
 import { You_see as You_see_to, Your as Your_to } from './display.js';
@@ -90,7 +89,7 @@ import { Is_waterlevel } from './const.js';
 import { surface } from './iactions.js';
 import { region_danger } from './region.js';
 import { an } from './objnam.js';
-import { spec_ability, SPFX_LUCK } from './artifact.js';
+import { spec_ability, SPFX_LUCK, artifact_light } from './artifact.js';
 import { done as done_to } from './end.js';
 import { killer as killer_to } from './topten.js';
 import { find_delayed_killer as find_delayed_killer_to, dealloc_killer as dealloc_killer_to,
@@ -246,9 +245,6 @@ export function confers_luck(obj) {
 function up(p) { return game.u.uprops[p]; }
 /* C ref: color.h NH_BLUE, NH_GREEN (color names for hcolor()) */
 const NH_BLUE = "blue", NH_GREEN = "green";
-/* C ref: pline.c urgent_pline() -- pline() that overrides msgtype
-   suppression; no MSGTYPE patterns are set, so it's plain pline() */
-async function urgent_pline(line) { await pline(line); }
 
 // C ref: timeout.c stoned_texts[], stoned_dialogue()
 const stoned_texts = [
@@ -306,7 +302,7 @@ async function stoned_dialogue() {
     default:
         break;
     }
-    exercise(A_DEX, false);
+    await exercise(A_DEX, false);
 }
 
 // C ref: timeout.c vomiting_texts[], vomiting_dialogue()
@@ -381,7 +377,7 @@ async function vomiting_dialogue() {
     }
     if (txt)
         await You(txt); /* You1(txt) */
-    exercise(A_CON, false);
+    await exercise(A_CON, false);
 }
 
 // C ref: timeout.c sleep_dialogue()
@@ -426,7 +422,7 @@ async function choke_dialogue() {
             await stop_occupation();
         }
     }
-    exercise(A_STR, false);
+    await exercise(A_STR, false);
 }
 
 // C ref: timeout.c sickness_texts[], sickness_dialogue()
@@ -451,7 +447,7 @@ async function sickness_dialogue() {
         }
         await urgent_pline(buf);
     }
-    exercise(A_CON, false);
+    await exercise(A_CON, false);
 }
 
 // C ref: timeout.c levi_texts[], levitation_dialogue()
@@ -550,7 +546,7 @@ async function slime_dialogue() {
             await make_stoned(0, null, KILLED_BY_AN, null);
         break;
     }
-    exercise(A_DEX, false);
+    await exercise(A_DEX, false);
 }
 
 // C ref: timeout.c phaze_texts[], phaze_dialogue()
@@ -850,7 +846,7 @@ export async function nh_timeout() {
                     && rn2(100) < ACURR_to(A_CON_TO)) {
                     await pline("You have recovered from your illness.");
                     await make_sick_to(0, null, false, SICK_ALL_TO);
-                    exercise(A_CON_TO, false);
+                    await exercise(A_CON_TO, false);
                     await adjattrib_to(A_CON_TO, -1, 1);
                     break;
                 }
@@ -1669,7 +1665,7 @@ async function hatch_egg(arg, timeout) {
                     flags.female ? "mommy" : "daddy"}${egg.spe ? "." : "?"}"`);
             } else if (mon.data.mlet === S_DRAGON_HE && !Deaf()) {
                 /* SetVoice(mon, 0, 80, 0): no voice interface */
-                await pline(`"Gleep!"`); /* verbalize(): Mything eggs :-) */
+                await verbalize("Gleep!"); /* Mything eggs :-) */
             }
             break;
 

@@ -1257,10 +1257,14 @@ export function seetrap(trap) {
 
 // src/trap.c:6531 deltrap() — take a trap off the level.
 export function deltrap(trap) {
-    const list = game.level?.traps;
-    if (!list) return;
+    clear_conjoined_pits(trap);
+    const list = game.level.traps;
     const i = list.indexOf(trap);
-    if (i >= 0) list.splice(i, 1);
+    if (i < 0)
+        throw new Error('deltrap: no preceding trap!');
+    list.splice(i, 1);
+    if (Sokoban() && (trap.ttyp === PIT || trap.ttyp === HOLE))
+        maybe_finish_sokoban();
 }
 
 // src/trap.c:726 animate_statue(). The common path creates the depicted
@@ -1764,6 +1768,22 @@ export function conjoined_pits(trap2, trap1, u_entering_trap2) {
             return true;
     }
     return false;
+}
+
+// src/trap.c:6580 clear_conjoined_pits()
+function clear_conjoined_pits(trap) {
+    if (trap && is_pit(trap.ttyp)) {
+        for (let diridx = 0; diridx < N_DIRS; ++diridx) {
+            if (trap.conjoined & (1 << diridx)) {
+                const x = trap.tx + xdir[diridx];
+                const y = trap.ty + ydir[diridx];
+                const t = isok(x, y) ? t_at(x, y) : null;
+                if (t && is_pit(t.ttyp))
+                    t.conjoined &= ~(1 << DIR_180(diridx));
+                trap.conjoined &= ~(1 << diridx);
+            }
+        }
+    }
 }
 
 // src/trap.c:6604 adj_nonconjoined_pit()
@@ -5486,7 +5506,7 @@ export async function climb_pit() {
 
 /* ==== the rolling-boulder launch machinery (maketrap's last gap) ==== */
 
-import { xdir, ydir, ZAP_POS, is_xport, N_DIRS, ROLL, LAUNCH_UNSEEN,
+import { xdir, ydir, DIR_180, ZAP_POS, is_xport, N_DIRS, ROLL, LAUNCH_UNSEEN,
          LAUNCH_KNOWN, IS_STWALL, IS_TREE, IRONBARS, D_BROKEN } from './const.js';
 import { closed_door } from './cmd.js';
 import { is_pool_or_lava } from './dbridge.js';
@@ -5918,7 +5938,7 @@ async function trapeffect_rolling_boulder_trap(mtmp, trap, trflags) {
 
 // src/trap.c:7039 sokoban_guilt() — cheating in Sokoban costs Luck.
 export function sokoban_guilt() {
-    if (In_sokoban(game.u.uz)) {
+    if (Sokoban()) {
         (game.u.uconduct ||= {}).sokocheat = (game.u.uconduct.sokocheat || 0) + 1;
         change_luck(-1);
     }

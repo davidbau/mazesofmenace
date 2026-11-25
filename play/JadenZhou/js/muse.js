@@ -5,16 +5,15 @@
 
 import { DEADMONSTER, minv } from './mon.js';
 import { helpless } from './monmove.js';
-import { stairway_at } from './display.js';
+import { stairway_at, verbalize, You_hear } from './display.js';
 import { game } from './gstate.js';
 import { worm_move } from './worm.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { distmin, upstart, sgn } from './hacklib.js';
+import { distmin, upstart, sgn, NODIAG, strsubst, mdistu } from './hacklib.js';
 import { cansee, couldsee } from './vision.js';
 import {
     pline, urgent_pline, pline_The, canseemon, canspotmon, map_invisible
 } from './display.js';
-import { You_hear } from './sounds.js';
 import { Monnam } from './do_name.js';
 import { an, xname, doname, singular } from './objnam.js';
 import { simpleonames } from './iactions.js';
@@ -34,9 +33,10 @@ import { resists_magm, is_animal, mindless, nohands, verysmall, throws_rocks,
 import { hit, miss, exclam, buzz, dobuzz, bhito,
          find_drawbridge, resist_async } from './zap.js';
 import { TELL } from './const.js';
-import { m_throw } from './mthrowu.js';
-import { POTION_CLASS, WAND_CLASS, WAN_OPENING, WAN_LOCKING,
-         WAN_CANCELLATION, SPE_CANCELLATION } from './objects.js';
+import { m_throw, m_carrying } from './mthrowu.js';
+import { POTION_CLASS, WAND_CLASS, WAN_OPENING, WAN_LOCKING, WAN_CANCELLATION,
+         SPE_CANCELLATION, Is_mbag, SchroedingersBox, Is_dragon_scales,
+         Is_container, bimanual } from './objects.js';
 import { BOLT_LIM, G_GONE, ANTIMAGIC, HALF_SPDAM, KILLED_BY_AN,
          DRAWBRIDGE_UP, SDOOR, D_LOCKED, D_CLOSED, IS_DOOR,
          ZAP_POS } from './const.js';
@@ -84,7 +84,7 @@ import { is_ice } from './dig.js';
 import { unblock_point, recalc_block_point } from './vision.js';
 import { dog_nutrition, can_carry } from './dogmove.js';
 import { canletgo, dropy } from './do.js';
-import { welded, bimanual } from './wield.js';
+import { welded } from './wield.js';
 import { body_part } from './insight.js';
 import { learnwand } from './zap.js';
 import { migrate_to_level, mon_has_amulet } from './dog.js';
@@ -149,7 +149,6 @@ import { BOULDER, BUGLE, UNICORN_HORN, CORPSE, TIN, POT_FULL_HEALING,
 import { TIN_OPENER, WEAPON_CLASS, objects } from './objects.js';
 import { P_DAGGER, P_KNIFE } from './const.js';
 import { mwelded } from './weapon.js';
-import { Is_container } from './mkobj.js';
 import { STAIRS, LADDER, TELEP_TRAP, WEB, BEAR_TRAP, is_hole, is_pit,
          M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE, M_SEEN_COLD,
          M_SEEN_ELEC, M_SEEN_ACID, POLY_TRAP, MFAST, NON_PM,
@@ -162,6 +161,7 @@ import { rn2_on_display_rng as rn2_on_display_rng_mu } from './rng.js';
 import { tty_display_map_nhwindow as tty_display_map_nhwindow_mu } from './wintty.js';
 import { removed_from_icebox } from './pickup.js';
 import { cancel_monst } from './zap.js';
+import { hard_helmet } from './do_wear.js';
 
 const WAND_BACKFIRE_CHANCE = 100; /* hack.h */
 const QBUFSZ = 128; /* global.h */
@@ -207,32 +207,12 @@ const MUSE_SCR_EARTH = 36;
 const MUSE_CAMERA = 37;
 
 /* mondata.h */
-/* C ref: mondata.h NODIAG() */
-function NODIAG(monnum) { return monnum === M.PM_GRID_BUG; }
 /* C ref: monst.h m_seenres() */
 export function m_seenres(mon, mask) { return (mon.seen_resistance || 0) & mask; }
 
-// C ref: mthrowu.c m_carrying()
-function m_carrying(mtmp, type) {
-    for (const otmp of minv(mtmp))
-        if (otmp.otyp === type) return otmp;
-    return null;
-}
-
-/* C ref: hacklib.c strsubst() -- replace the first instance of orig */
-function strsubst(bp, orig, replacement) {
-    const i = bp.indexOf(orig);
-    return (i < 0) ? bp : bp.slice(0, i) + replacement + bp.slice(i + orig.length);
-}
-/* C ref: obj.h Has_contents(), Is_mbag(), SchroedingersBox() */
+/* C ref: obj.h Has_contents() */
 function Has_contents(o) { return !!(o.cobj && o.cobj.length); }
-function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING || o.otyp === BAG_OF_TRICKS; }
-function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
-/* C ref: obj.h Is_dragon_scales(), Is_dragon_mail(), Dragon_scales_to_pm(),
-   Dragon_mail_to_pm() */
-function Is_dragon_scales(o) {
-    return o.otyp >= GRAY_DRAGON_SCALES && o.otyp <= YELLOW_DRAGON_SCALES;
-}
+/* C ref: obj.h Is_dragon_mail(), Dragon_scales_to_pm(), Dragon_mail_to_pm() */
 function Is_dragon_mail(o) {
     return o.otyp >= GRAY_DRAGON_SCALE_MAIL && o.otyp <= YELLOW_DRAGON_SCALE_MAIL;
 }
@@ -1316,17 +1296,6 @@ function mon_likes_objpile_at(mtmp, x, y) {
     return false;
 }
 
-/* C ref: do_wear.c hard_helmet() */
-function hard_helmet(obj) {
-    if (!obj || !(obj.oclass === ARMOR_CLASS /* is_helmet() */
-                  && objects[obj.otyp].oc_armcat === ARM_HELM))
-        return false;
-    const mat = objects[obj.otyp].oc_material;
-    return ((mat >= IRON && mat <= MITHRIL) /* is_metallic() */
-            || (mat === GLASS && obj.oclass === ARMOR_CLASS)) /* is_crackable() */
-        ? true : false;
-}
-
 // C ref: muse.c find_offensive()
 /* Select an offensive item/action for a monster.  Returns TRUE iff one is
  * found.
@@ -2125,19 +2094,6 @@ async function precheck(mon, obj) {
     return 0;
 }
 
-/* C ref: pline.c verbalize() -- SetVoice() only matters for speech
-   output, which the tty doesn't do */
-async function verbalize(line) {
-    if (Deaf())
-        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
-    await pline(`"${line}"`);
-}
-
-/* C ref: hack.h mdistu() */
-function mdistu(mon) {
-    const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
-    return dx * dx + dy * dy;
-}
 
 // C ref: muse.c mzapwand()
 /* when a monster zaps a wand give a message, deduct a charge, and if it

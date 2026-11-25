@@ -157,7 +157,7 @@ import { artiname, exist_artifact } from './artifact.js';
 import { ARTI_PROPS, ARTI_GIFT_ROLE, artifact_alignment } from './wizcmds.js';
 import { wiz_smell } from './wizcmds.js';
 import { losexp, pluslvl } from './exper.js';
-import { build_window_screen, prompt_spilled_onto_row1, build_text_window_screen, tty_text_window_utf8_line, tty_window_offx, menu_search_case, menu_search_getlin, menu_search_docorner, pline_with_more, display_text_window, tty_fit_text_lines } from './com_pager.js';
+import { build_window_screen, prompt_spilled_onto_row1, build_text_window_screen, tty_text_window_utf8_line, tty_window_offx, menu_search_case, menu_search_getlin, menu_search_docorner, pline_with_more, display_text_window, tty_fit_text_lines, menu_fullscreen_frame } from './com_pager.js';
 import { money_cnt } from './hack.js';
 import { hidden_gold, vault_occupied, findgd } from './vault.js';
 import { formatkiller } from './topten.js';
@@ -208,7 +208,7 @@ import { resist, dozap, obj_resists, zapyourself, make_blinded, BlindedTimeout, 
 import { findit } from './detect.js';
 import { explode } from './explode.js';
 import { wiz_rumor_check, wiz_mon_diff, wiz_panic, wiz_display_macros } from './wizcmds.js';
-import { capture_flushed_cells, docorner_blank_utf8_captures } from './display.js';
+import { capture_flushed_cells, docorner_blank_utf8_captures, tty_splice_row } from './display.js';
 import { wiz_migrate_mons, wiz_level_change, wiz_wish, touch_artifact_youmonst, bane_applies_hero, wiz_genesis, wiz_kill, wiz_show_stats, wiz_flip_level, wiz_detect, wiz_show_seenv, wiz_show_vision, wiz_show_wmodes, wiz_makemap, wiz_objprobs, wiz_load_splua, wiz_load_lua, wiz_telekinesis } from './wizcmds.js';
 import { wiz_light_sources } from './light.js';
 import { wiz_timeout_queue } from './timeout.js';
@@ -2511,7 +2511,7 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
                     /^(. )(?:\x1b\[[0-9;]*m)*.(?:\x1b\[[0-9;]*m)* /, `$1${mark} `));
             }
         }
-        if (titleErased) { rows[0] = ''; menu_search_docorner(rows); }
+        if (titleErased) { rows[0] = ''; return menu_search_docorner(rows, WIN_COL > 0 ? WIN_COL + 2 : 3); }
         return rows;
     };
     const paint = () => {
@@ -3788,12 +3788,15 @@ async function doterrain() {
      * clear_nhwindow(WIN_MESSAGE), blanking screen row 0 (and with it the
      * window's title text) for the rest of this select_menu() call. */
     let titleErased = false;
-    const frameRows = () =>
-        (noOverlay
+    const frameRows = () => {
+        const rows = (noOverlay
             ? (titleErased ? ['', ...windowLines.slice(1)] : windowLines)
                 .map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
             : build_window_screen(titleErased ? ['', ...windowLines.slice(1)] : windowLines,
                                   WIN_COL, g.u?.uac ?? 0)).split('\n');
+        /* a ^P history window's corner (js/com_pager.js menu_search_docorner) */
+        return noOverlay && titleErased ? menu_search_docorner(rows, 3) : rows;
+    };
     const _show = async () => {
         g._screen_output = frameRows().join('\n');
         set_cursor(WIN_COL + '(end)'.length + 1, endRow);
@@ -3870,9 +3873,19 @@ async function doterrain() {
         /* wintty.c:1925-1932 / 966-983 — with !iflags.menu_overlay the menu was
          * put up at offx 0, offy 0, so erase_menu_or_text() has no corner to
          * clear and repaints the whole screen: docrt(); flush_screen(1).  docrt's
-         * vision_recalc(2)/(0) pair re-notices monsters (notice_all_mons). */
-        await docrt();
-        await flush_screen(1);
+         * vision_recalc(2)/(0) pair re-notices monsters (notice_all_mons).
+         * tty_select_menu dismisses inside select_menu, whose bot_disabled
+         * (windows.c:1859-1863) holds through that flush: cls()'s botlx stays
+         * pending for the next flush (Intel win A-msgline-vs-windows w18-40,
+         * statuslines:3 '#terrain' 'a'). */
+        const oldBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try {
+            await docrt();
+            await flush_screen(1);
+        } finally {
+            g._bot_disabled = oldBotDisabled;
+        }
     }
     if (which === 1)
         await reveal_terrain(TER_MAP);
@@ -4209,6 +4222,17 @@ export async function tty_getlin_combo_wrapped_window(live) {
 //
 //   (WIN_COL=7 → "\x1b[7C"), with no reverse-video on the title (NHW_TEXT-style
 //   putstr lines, unlike the bold accelerator header of a NHW_MENU).
+/* The corner erase_menu_or_text left under a history window shown over a
+ * menu (wintty.c:971-983): the map frame just flushed, except that the status
+ * rows it reached stay blank — docorner's/docrt's bot() (wintty.c:3715-3720)
+ * is a no-op while select_menu holds bot_disabled (windows.c:1859-1863). */
+function prevmsg_overlay_corner(xmin, ymax) {
+    const rows = String(game._screen_output || '').split('\n');
+    /* only menu_search_getlin sets _prevmsg_overlay, i.e. always in select_menu */
+    for (let r = _threeStatusLines() ? 21 : 22; r < 24 && r < ymax; r++)
+        rows[r] = '';
+    return { xmin, ymax, rows };
+}
 export async function doprev_message(liveTopline) {
     const g = game;
     const stored = Array.isArray(g._msg_history) ? g._msg_history : [];
@@ -4483,6 +4507,8 @@ export async function doprev_message(liveTopline) {
         if (g.disp) g.disp.botlx = 1;
         await bot();
         await flush_screen(1);
+        if (g._prevmsg_overlay) /* offx 0: docrt() repainted every row */
+            g._prevmsg_overlay.corner = prevmsg_overlay_corner(0, 24);
         if (_pmw === 'c' && historyDismissal === 16)
             return doprev_message(liveTopline);
         return ECMD_OK;
@@ -4520,8 +4546,28 @@ export async function doprev_message(liveTopline) {
      * LF and ESC dismiss the window's --More--; every other key rings the bell
      * and re-loops with the same window still on screen.  This was a bare
      * nhgetch(), which paged on any key and stole the next command's keystroke. */
+    /* A history window raised from inside a menu's "Search for:" getlin
+     * (getline.c:121-137 -> topl.c:27-41/62-71/80-96) paints over the MENU,
+     * not over the map: process_text_window cl_end()s each of its rows from
+     * offx and writes from there (wintty.c:1794-1805), so columns left of
+     * offx keep the menu, and rows below the window keep it whole.  Row 0 was
+     * cleared by tty_clear_nhwindow(WIN_MESSAGE) first (wintty.c:1938-1940).
+     * js/com_pager.js menu_search_getlin passes the physical frame. */
+    const _ov = g._prevmsg_overlay;
+    let _shown = screenOutput;
+    if (_ov && !_noOverlay) {
+        /* offx 0 (a line too wide for a corner) still only cl_end()s its own
+         * rows: the full-screen clear is for maxrow >= rows or !menu_overlay
+         * (wintty.c:1923-1936). */
+        const win = screenOutput.split('\n');
+        const out = _ov.base.slice();
+        while (out.length < 24) out.push('');
+        for (let r = 0; r <= endRow && r < 24; r++)
+            out[r] = tty_splice_row(r === 0 ? '' : out[r], win[r] || '', Math.max(0, WIN_COL - 1));
+        _shown = out.join('\n');
+    }
     const _show = async () => {
-        g._screen_output = screenOutput;
+        g._screen_output = _shown;
         set_cursor(WIN_COL + _moreLead.length + '--More--'.length, endRow);
     };
     await _show();
@@ -4552,6 +4598,13 @@ export async function doprev_message(liveTopline) {
         await bot();
     }
     await flush_screen(1);
+    /* What erase_menu_or_text left (wintty.c:971-983): docorner(offx, maxrow + 1)
+     * cl_end()s rows 0..maxrow from screen column offx - 1 and row_refresh()es
+     * the map there; offx 0 is docrt().  The menu under the window is never
+     * repainted by it, so the caller keeps this corner over its menu frames. */
+    if (_ov)
+        _ov.corner = prevmsg_overlay_corner(WIN_COL > 0 && !_noOverlay ? Math.max(0, WIN_COL - 2) : 0,
+                                            WIN_COL > 0 && !_noOverlay ? endRow + 1 : 24);
     // topl.c:42-77: a window reached within a combination recall still has
     // dismiss_more == ^P. That key closes the window and resumes the same
     // do/while at maxcol == maxrow, recalling the live topline next.
@@ -11106,7 +11159,7 @@ async function _look_here_skip_objects(ct, head, picked_some = false, skip_dfeat
 
     if (is_lava(x, y) || (is_pool(x, y) && !Underwater())) {
         if (fbuf)
-            _result_append_join(g, fbuf);
+            await _look_here_line(g, fbuf);
         /* C invent.c:4245 read_engr_at(u.ux, u.uy). */
         await read_engr_at(x, y);
         /* skip_objects is true here, so the "You %s no objects here." line
@@ -11116,7 +11169,7 @@ async function _look_here_skip_objects(ct, head, picked_some = false, skip_dfeat
 
     /* C invent.c:4252-4276 — the skip_objects arm. */
     if (fbuf)
-        _result_append_join(g, fbuf);
+        await _look_here_line(g, fbuf);
     /* C invent.c:4255 read_engr_at(u.ux, u.uy): sits between the dfeature
      * line and the object-count summary. */
     await read_engr_at(x, y);
@@ -11323,8 +11376,32 @@ async function _look_here_pile(objCnt = null, pickedSome = false, skipDfeature =
      * erasing this residue (wintty.c:1879-1882). A silent command's parse()
      * cannot erase an EMPTY message window (wintty.c:1048). */
     g._topl_empty_sticky = g._topl_sticky;
+    /* C wintty.c:1975-1985 erase_menu_or_text: a window at offx 0 / offy 0
+     * (!menu_overlay, or one too wide for an offset) is erased by docrt();
+     * flush_screen(1).  docrt re-runs vision_recalc(0) and see_monsters(), so
+     * a blind+hallucinating hero's felt pile and any hallucinated monster
+     * redraw on the DISPLAY rng here, before the look's turn passes (t18
+     * I-mapunder-v52 step 248: four ~drn2(463) C makes and the port did not). */
+    if (_fullScreen || _offx0) {
+        await docrt(false, g._screen_output);
+        game._docrtMapAfterBot = true;
+        try { await flush_screen(1); } finally { game._docrtMapAfterBot = false; }
+    }
     if (feltCockatrice) await feel_cockatrice(feltCockatrice, false);
     await read_engr_at(u.ux | 0, u.uy | 0);
+}
+
+/* C invent.c:4243/4254/4280 pline1(fbuf): look_here's dfeature line is an
+ * ordinary pline, so a MSGTYPE=stop rule on it raises vpline's
+ * display_nhwindow(WIN_MESSAGE, TRUE) --More-- (pline.c:283-284) right after it
+ * (Intel win E-more-chains w18-32, B-prevmsg w18-38: MSGTYPE=stop "There is .*"
+ * then ':' on the up staircase). */
+async function _look_here_line(g, line) {
+    if (msgtype_is_stop(line)) {
+        _topl_stash_result();
+        await pline(line);
+    } else
+        _result_append_join(g, line);
 }
 
 async function _dolook() {
@@ -11450,7 +11527,7 @@ async function _dolook() {
     /* C invent.c:4241-4249 — no objects, or lava / (pool && !Underwater). */
     if (!head || objectsHiddenByLiquid) {
         if (fbuf)
-            _result_append_join(g, fbuf);
+            await _look_here_line(g, fbuf);
         await read_engr_at(x, y);
         if (!skip_objects && (Blind || !dfeature)) {
             if (msgtype_is_stop(`You ${verb} no objects here.`)) {
@@ -11470,7 +11547,7 @@ async function _dolook() {
     if (!head.nexthere) {
         /* C invent.c:4278-4284 — only one object. */
         if (fbuf)
-            _result_append_join(g, fbuf);
+            await _look_here_line(g, fbuf);
         /* C invent.c:4281 read_engr_at(u.ux, u.uy). */
         await read_engr_at(x, y);
         const nm = await _look_here_single_name(head);
@@ -13883,6 +13960,8 @@ async function dispatch_command(command, outcome = {}, queued = false) {
 // C cmd.c:rhack. Prefixes loop inside this invocation; repeat recursively
 // enters the same dispatcher. Keyboard and queued entries share execution.
 export async function rhack(key) {
+    /* a menu search's ^P history-window corner belongs to that menu only */
+    game._menu_search_corner = null;
     const g = game;
     const firsttime = key === 0;
     let cmdq_ec = null, prefix_seen = null, was_m_prefix = false;
@@ -14879,7 +14958,7 @@ async function _getpos_menu(gloc) {
         shownFull = fullScreen;
         lastWinRows = windowLines.length;
         g._screen_output = fullScreen
-            ? windowLines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+            ? menu_fullscreen_frame(windowLines)
             : build_window_screen(windowLines, offx, g.u?.uac ?? 0);
         const disp = g.nhDisplay;
         if (disp) {
@@ -15486,7 +15565,8 @@ async function _do_look_lookat(x, y) {
                 if (firstmatch === 'ice')
                     firstmatch = ice_descr(x, y); /* pager.c:1601 */
                 dbaseEntry = /ice$/.test(firstmatch) ? firstmatch : null;
-            } else if (rg.color === CLR_BLACK) {
+            } else if (rg.color === CLR_BLACK
+                       || (dglyph.cls === GLYPHCLS_CMAP && dglyph.cmap === S_darkroom)) {
                 firstmatch = 'dark part of a room';
             } else if (cell.typ === ROOM
                        || (cell.typ === DRAWBRIDGE_UP && dglyph.cls === GLYPHCLS_CMAP

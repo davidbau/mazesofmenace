@@ -468,8 +468,9 @@ function wiz_intrinsic_timeout(key) {
             ? 'HAcid_resistance' : 'HStone_resistance'] || 0) & TIMEOUT;
     if (key === 'SICK' || key === 'STONED' || key === 'SLIMED' || key === 'VOMITING')
         return (game.u.uprops?.[key] || 0) & TIMEOUT;
-    if (key === 'UNCHANGING')
-        return (game.u.intrinsic?.HUnchanging || 0) & TIMEOUT;
+    if (key === 'UNCHANGING' || key === 'FREE_ACTION')
+        return (game.u.intrinsic?.[key === 'UNCHANGING'
+            ? 'HUnchanging' : 'HFree_action'] || 0) & TIMEOUT;
     if (key === 'HALF_PHDAM' || key === 'HALF_SPDAM')
         return (game.u.intrinsic?.[key === 'HALF_PHDAM'
             ? 'HHalf_physical_damage' : 'HHalf_spell_damage'] || 0) & TIMEOUT;
@@ -618,9 +619,10 @@ export async function wiz_intrinsic() {
             (game.disp ||= {}).botl = true;
             await pline(`Timeout for ${name} ${oldtimeout
                 ? 'increased by' : 'set to'} ${amount}.`);
-        } else if (key === 'UNCHANGING') {
+        } else if (key === 'UNCHANGING' || key === 'FREE_ACTION') {
             const { incr_itimeout } = await import('./potion.js');
-            incr_itimeout('HUnchanging', amount);
+            incr_itimeout(key === 'UNCHANGING'
+                ? 'HUnchanging' : 'HFree_action', amount);
             (game.disp ||= {}).botl = true;
             await pline(`Timeout for ${name} ${oldtimeout
                 ? 'increased by' : 'set to'} ${amount}.`);

@@ -15,11 +15,9 @@ import { hideunder_async } from './makemon.js';
 import { DEADMONSTER } from './mon.js';
 import { pay_for_damage as pay_for_damage_ex } from './shk.js';
 import { game } from './gstate.js';
-import {
-    pline, You, pline_The, map_invisible, unmap_invisible, canspotmon,
-    tmp_at, DISP_BEAM, DISP_CHANGE, DISP_END, explosion_to_glyph
-} from './display.js';
-import { You_hear } from './sounds.js';
+import { pline, You, pline_The, map_invisible, unmap_invisible, canspotmon,
+         tmp_at, DISP_BEAM, DISP_CHANGE, DISP_END, explosion_to_glyph,
+         You_hear } from './display.js';
 import { cansee } from './vision.js';
 import { m_at } from './makemon.js';
 import { isok, u_at, engulfing_u, PHYS_EXPL_TYPE, KILLED_BY_AN,
@@ -693,7 +691,7 @@ export async function explode(
                 await done((adtyp === AD_FIRE) ? BURNING : DIED);
             }
         }
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
     }
 
     if (shopdamage.v) {

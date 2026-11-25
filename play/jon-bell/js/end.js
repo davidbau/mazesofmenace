@@ -2313,10 +2313,9 @@ async function really_done(how) {
             }
             _corpse = null; /* C end.c:1367 — 'corpse may be invalid pointer now' */
         }
-        /* C end.c:1376-1384 — `if (have_windows) { wait_synch(); ...
-         * display_nhwindow(WIN_MESSAGE, TRUE); ...}` pages any topline the
-         * bones processing left displayed and unacknowledged. */
-        if (have_windows && g._resultMessage && !g._pending_message)
+        if (have_windows && g._topl_win_stop)
+            ; /* tty_display_nhwindow(WIN_MESSAGE) is a no-op */
+        else if (have_windows && g._resultMessage && !g._pending_message)
             await force_more_lone_frame(g._resultMessage);
         else if (have_windows && g._pending_message && g._pending_message !== _prePending)
             /* end.c:1380 display_nhwindow(WIN_MESSAGE, TRUE) pages a line savebones

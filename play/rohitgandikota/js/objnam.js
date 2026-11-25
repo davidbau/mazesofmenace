@@ -566,11 +566,15 @@ export function xname_flags(obj, cxn_flags) {
         /* src/objnam.c:844 — a statue names the monster it depicts:
            "statue of a grid bug". The historic prefix needs an
            Archeologist; the unique/pname article refinements need those
-           monsters to be turned to stone. next_boulder needs pushing. */
+           monsters to be turned to stone. */
         if (obj.otyp === ONAMES.STATUE && obj.corpsenm >= 0) {
             const statue_pmname = game.mons?.[obj.corpsenm]?.pmnames?.[2]
                 ?? game.mons?.[obj.corpsenm]?.pmnames?.[0] ?? 'monster';
             buf = `${actualn} of ${just_an(statue_pmname)}${statue_pmname}`;
+        } else if (obj.otyp === ONAMES.BOULDER && obj.next_boulder === 1) {
+            /* src/objnam.c:814: only the first naming uses "next boulder". */
+            buf = `next ${actualn}`;
+            obj.next_boulder = 0;
         } else {
             buf = actualn; /* "boulder" or "statue" */
         }
@@ -1238,6 +1242,7 @@ function add_erosion_words(obj, prefix) {
     return prefix;
 }
 
+// src/objnam.c:1223 doname_base(); doname() and doname_vague_quan().
 export function doname(obj, vague_quan = false) {
     const ocl = game.objects[obj.otyp];
     let bp = xname(obj);
@@ -1249,13 +1254,27 @@ export function doname(obj, vague_quan = false) {
     const lknown = override || obj.lknown;
     let prefix = '';
 
+    /* must check opoisoned--someone can have a weirdly-named fruit */
+    if (bp.startsWith('poisoned ') && obj.opoisoned) {
+        bp = bp.slice(9);
+        ispoisoned = true;
+    }
+
+    /* Named fruit follows the matching artifact's article convention. */
+    const aname = obj.otyp === ONAMES.SLIME_MOLD
+        ? artifact_name(bp, null, false) : null;
+    const fake_arti = aname !== null;
+    const force_the = fake_arti && /^the /i.test(aname);
+
     if (obj.quan !== 1)
         prefix = vague_quan && !dknown ? 'some ' : `${obj.quan} `;
     else if (obj.otyp === ONAMES.CORPSE)
         ;                              /* corpse_xname supplies the article */
-    else if (obj_is_pname(obj) || the_unique_obj(obj))
+    else if (force_the || obj_is_pname(obj) || the_unique_obj(obj)) {
+        if (/^the /i.test(bp))
+            bp = bp.slice(4);
         prefix = 'the ';               /* src/objnam.c:1292 */
-    else
+    } else if (!fake_arti)
         prefix = 'a ';                 /* recomputed at the end */
 
     /* src/objnam.c:1300 — "empty" goes at the beginning: a container known
@@ -1303,12 +1322,6 @@ export function doname(obj, vague_quan = false) {
             prefix += 'locked ';
         else
             prefix += 'unlocked ';
-    }
-
-    /* must check opoisoned--someone can have a weirdly-named fruit */
-    if (bp.startsWith('poisoned ') && obj.opoisoned) {
-        bp = bp.slice(9); /* doesn't affect bp_eos or bpspaceleft */
-        ispoisoned = true;
     }
 
     if (obj.greased)
@@ -3923,26 +3936,44 @@ export function makesingular(oldstr) {
 }
 
 // src/objnam.c:2171 the()
-// Capitalized monster types are also used by poisoned() for unique killers.
 export function the(str) {
-    if (!str) return 'the []';
+    let aname;
+    let insert_the = false;
+
+    if (!str) {
+        void impossible(`Alphabet soup: 'the(${str == null ? '<null>' : '""'})'.`);
+        return 'the []';
+    }
     if (/^the /i.test(str))
         return str[0].toLowerCase() + str.slice(1);
-    if (str[0] < 'A' || str[0] > 'Z' || CapitalMon(str))
-        return 'the ' + str;
-    /* probably a proper name; the capitalized-adjective test */
-    const sp = Math.max(str.lastIndexOf(' '), str.lastIndexOf('-'));
-    if (sp >= 0 && (str[sp + 1] < 'A' || str[sp + 1] > 'Z'))
-        return str.includes("'") ? str : 'the ' + str;
-    if (sp >= 0 && str.indexOf(' ') < sp) {
-        const ofi = str.indexOf(' of ');
-        let named = str.indexOf(' named ');
-        const called = str.indexOf(' called ');
-        if (called >= 0 && (named < 0 || called < named)) named = called;
-        if (ofi >= 0 && (named < 0 || ofi < named))
-            return 'the ' + str;
+    if (str[0] < 'A' || str[0] > 'Z' || CapitalMon(str)
+        || (fruit_from_name(str, true, null)
+            && ((aname = artifact_name(str, null, false)) == null
+                || /^the /i.test(aname)))) {
+        insert_the = true;
+    } else {
+        // Prefer the last space; use a hyphen only when there is no space.
+        let tmp = str.lastIndexOf(' ');
+        if (tmp < 0)
+            tmp = str.lastIndexOf('-');
+        const next = str.charAt(tmp + 1);
+        if (tmp >= 0 && (next < 'A' || next > 'Z')) {
+            insert_the = !str.includes("'");
+        } else if (tmp >= 0 && str.indexOf(' ') < tmp) {
+            const ofi = strstri(str, ' of ');
+            let named = strstri(str, ' named ');
+            const called = strstri(str, ' called ');
+            if (called >= 0 && (named < 0 || called < named))
+                named = called;
+            if (ofi >= 0 && (named < 0 || ofi < named))
+                insert_the = true;
+            else if (named < 0 && str.length >= 31
+                     && str.endsWith('Platinum Yendorian Express Card'))
+                insert_the = true;
+        }
     }
-    return str;
+    const prefix = insert_the ? 'the ' : '';
+    return prefix + str.slice(0, BUFSZ - 1 - prefix.length);
 }
 
 // src/objnam.c The() — the() with the first letter capitalised.

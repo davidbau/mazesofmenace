@@ -25,7 +25,7 @@ import { displayLookWindow } from './look-window.js';
 import { fix_ghostly_obj } from './bones.js';
 import { _topl_stash_result, newsym, newsym_force, flush_screen, obj_to_glyph, mon_to_glyph, map_glyphinfo, menu_item_marker, force_more, topl_park_cursor, topl_force_break_now, capture_flushed_cells, putmsghistory, _topline_more_pending, _more_never_dismissed, flush_pending_messages } from './display.js';
 import { pline, Norep, You_see, You, Your, You_cant } from './pline.js';
-import { pline_with_more, build_window_screen, tty_window_offx, menu_search_case } from './com_pager.js';
+import { pline_with_more, build_window_screen, tty_window_offx, menu_search_case, menu_fullscreen_frame } from './com_pager.js';
 import { money_cnt } from './hack.js';
 import { menu_heading_text } from './tty_menu.js';
 import { menucolor_text } from './coloratt.js';
@@ -2634,7 +2634,7 @@ export async function in_or_out_menu(promptText, box, outokay, inokay, alreadyus
         g._topl_sticky = null;
     if (fullScreen) g._topl_empty_sticky = null;
     const paint = () => (fullScreen
-        ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+        ? menu_fullscreen_frame(lines)
         /* wintty.c:3684-3687: use this getobj window's offx and ymax.
          * The -1 clip sentinel instead reads the unrelated pickinv window.
          * Only rows through maxrow were erased; lower status rows survive. */

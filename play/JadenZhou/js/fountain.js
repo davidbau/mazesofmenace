@@ -13,14 +13,14 @@ import { polyself } from './polyself.js';
 import { POLY_NOFLAGS } from './const.js';
 import { game } from './gstate.js';
 import { monster_detect } from './detect.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, verbalize, You_hear } from './display.js';
 import { LL_ARTIFACT } from './const.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
     pline, You, Your, You_feel, You_see, pline_The, newsym, canspotmon,
     glyph_at
 } from './display.js';
-import { You_hear, get_iter_mons } from './sounds.js';
+import { get_iter_mons } from './sounds.js';
 import { tty_display_nhwindow, tty_yn_function } from './wintty.js';
 import { makemon } from './makemon.js';
 import { sobj_at, m_at } from './makemon.js';
@@ -256,7 +256,7 @@ async function dofindgem() {
               game.u.ux, game.u.uy, false, false);
     SET_FOUNTAIN_LOOTED(game.u.ux, game.u.uy);
     newsym(game.u.ux, game.u.uy);
-    exercise(A_WIS, true); /* a discovery! */
+    await exercise(A_WIS, true); /* a discovery! */
 }
 
 // C ref: fountain.c watchman_warn_fountain()
@@ -275,14 +275,6 @@ async function watchman_warn_fountain(mtmp) {
         return true;
     }
     return false;
-}
-
-/* C ref: pline.c verbalize() -- SetVoice() only matters for speech
-   output, which the tty doesn't do */
-async function verbalize(line) {
-    if (Deaf())
-        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
-    await pline(`"${line}"`);
 }
 
 // C ref: fountain.c dryup()
@@ -358,7 +350,7 @@ export async function drinkfountain() {
         }
         await tty_display_nhwindow(game.WIN_MESSAGE, false);
         await pline("A wisp of vapor escapes the fountain...");
-        exercise(A_WIS, true);
+        await exercise(A_WIS, true);
         lev(u.ux, u.uy).blessedftn = 0;
         return;
     }
@@ -375,7 +367,7 @@ export async function drinkfountain() {
             await You_feel("self-knowledgeable...");
             await tty_display_nhwindow(game.WIN_MESSAGE, false);
             await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
-            exercise(A_WIS, true);
+            await exercise(A_WIS, true);
             await pline_The("feeling subsides.");
             break;
         case 20: /* Foul water */
@@ -396,7 +388,7 @@ export async function drinkfountain() {
                 await poison_strdmg(strloss, dmg, "contaminated water",
                                     KILLED_BY);
             }
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             break;
         case 22: /* Fountain of snakes! */
             await dowatersnakes();
@@ -410,7 +402,7 @@ export async function drinkfountain() {
 
             await pline("This water's no good!");
             await morehungry(rn1(20, 11));
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             /* this is more severe than rndcurse() */
             for (obj = game.invent; obj; obj = nextobj) {
                 nextobj = obj.nobj;
@@ -437,12 +429,12 @@ export async function drinkfountain() {
             }
             uprop(SEE_INVIS).intrinsic |= FROMOUTSIDE; /* HSee_invisible */
             newsym(u.ux, u.uy);
-            exercise(A_WIS, true);
+            await exercise(A_WIS, true);
             break;
         case 26: /* See Monsters */
             if (await monster_detect(null, 0))
                 await pline_The(`${hliquid("water")} tastes like nothing.`);
-            exercise(A_WIS, true);
+            await exercise(A_WIS, true);
             break;
         case 27: /* Find a gem in the sparkling waters. */
             if (!FOUNTAIN_IS_LOOTED(u.ux, u.uy)) {
@@ -502,7 +494,7 @@ export async function dipfountain(obj) {
             if (obj.spe > -6 && !rn2(3))
                 obj.spe--;
             obj.oerodeproof = 0;
-            exercise(A_WIS, false);
+            await exercise(A_WIS, false);
             livelog_printf(LL_ARTIFACT, `was denied ${artiname(ART_EXCALIBUR)}!  The ${
                                lady} has deemed ${uhim()} unworthy`);
         } else {
@@ -517,7 +509,7 @@ export async function dipfountain(obj) {
             bless(obj);
             obj.oeroded = obj.oeroded2 = 0;
             obj.oerodeproof = 1;
-            exercise(A_WIS, true);
+            await exercise(A_WIS, true);
             livelog_printf(LL_ARTIFACT, `was given ${artiname(ART_EXCALIBUR)} by the ${lady}`);
         }
         /* update_inventory(): no perm_invent */
@@ -604,7 +596,7 @@ export async function dipfountain(obj) {
                 }
                 await You("lost some of your gold in the fountain!");
                 CLEAR_FOUNTAIN_LOOTED(u.ux, u.uy);
-                exercise(A_WIS, false);
+                await exercise(A_WIS, false);
             }
         }
         break;
@@ -621,7 +613,7 @@ export async function dipfountain(obj) {
         if (!Blind())
             await pline(`Far below you, you see coins glistening in the ${
                 hliquid("water")}.`);
-        exercise(A_WIS, true);
+        await exercise(A_WIS, true);
         newsym(u.ux, u.uy);
         break;
     default:
@@ -731,7 +723,7 @@ export async function drinksink() {
             await You("find a ring in the sink!");
             mkobj_at(RING_CLASS, u.ux, u.uy, true);
             lev(u.ux, u.uy).flags = (lev(u.ux, u.uy).flags || 0) | S_LRING;
-            exercise(A_WIS, true);
+            await exercise(A_WIS, true);
             newsym(u.ux, u.uy);
         } else
             await pline(`Some dirty ${hliquid("water")} backs up in the drain.`);
@@ -890,8 +882,8 @@ export async function sink_backs_up(x, y) {
             await You_see("a ring shining in its midst.");
         mkobj_at(RING_CLASS, x, y, true);
         newsym(x, y);
-        exercise(A_DEX, true);
-        exercise(A_WIS, true); /* a discovery! */
+        await exercise(A_DEX, true);
+        await exercise(A_WIS, true); /* a discovery! */
         lev(x, y).flags = (lev(x, y).flags || 0) | S_LRING;
     }
 }

@@ -3,9 +3,8 @@
 //
 // Ported so far: #levelchange (wiz_level_change(), with exper.c losexp()
 // and pluslvl()), ^I (wiz_identify()), #wizintrinsic (wiz_intrinsic())
-// and the ^W wish (wiz_wish(), zap.c makewish()); most of
-// hold_another_object() (merging, inventory letters, prinv()) is not
-// ported yet.
+// and the ^W wish (wiz_wish(), zap.c makewish(), with invent.c
+// hold_another_object()).
 
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
@@ -15,7 +14,14 @@ import { tty_getlin } from './wintty.js';
 import { MAXULEV, IRONBARS, ICE, Is_airlevel, Is_waterlevel, ONAME_WISH,
          ONAME_KNOW_ARTI } from './const.js';
 import { rn1 } from './rng.js';
-import { readobjnam, doname } from './objnam.js';
+import { readobjnam, doname, The, aobjnam } from './objnam.js';
+import { splitobj } from './mkobj.js';
+import { freeinv } from './invent.js';
+import { dropx } from './do.js';
+import { hitfloor } from './dothrow.js';
+import { can_reach_floor } from './engrave.js';
+import { observe_object } from './o_init.js';
+import { Blind, Hallucination } from './youprop.js';
 import { artifact_origin, touch_artifact } from './artifact.js';
 import { place_object, obj_extract_self } from './mkobj.js';
 import { addinv } from './u_init.js';
@@ -100,11 +106,10 @@ export async function wiz_level_change() {
 const MAXWISHTRY = 5;
 const thats_enough_tries = "That's enough tries!";
 
-// C ref: invent.c hold_another_object() -- only the plain "add it to
-// inventory" path is ported; addinv() is the simplified u_init.js one
-// (no merging, no inventory letters yet)
+// C ref: invent.c hold_another_object()
 export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
-    /* if (!Blind) observe_object(obj) -- not ported yet */
+    if (!Blind())
+        observe_object(obj, Hallucination()); /* maximize mergeability */
     if (obj.oartifact) {
         /* place_object may change these */
         const crysknife = (obj.otyp === O.CRYSKNIFE);
@@ -142,8 +147,20 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     if (inv_cnt(false) > 52 /* invlet_basic */
         || ((obj.otyp !== O.LOADSTONE || !obj.cursed)
             && near_capacity() > prev_encumbr)) {
-        /* undo any merge which took place; goto drop_it */
-        throw new Error('hold_another_object(): drop_it (too much to hold) not ported yet');
+        /* undo any merge which took place */
+        if (obj.quan > oquan)
+            obj = splitobj(obj, oquan);
+        /* drop_it: */
+        if (drop_fmt)
+            await pline(drop_fmt.replace('%s', drop_arg ?? ''));
+        obj.nomerge = 0;
+        if (can_reach_floor(true) || game.u.uswallow) {
+            await dropx(obj);
+        } else {
+            freeinv(obj);
+            await hitfloor(obj, false);
+        }
+        return null; /* might be gone */
     }
     /* if (flags.autoquiver && !uquiver && !obj->owornmask
            && (is_missile(obj) || ammo_and_launcher(obj, uwep)
@@ -234,11 +251,11 @@ export async function makewish() {
 
     if (otmp.otyp === O.CORPSE)
         throw new Error('makewish(): corpse wishes (u_safe_from_fatal_corpse) are not ported yet');
-    if (u.uswallow || u.uinwater)
-        throw new Error('makewish(): wishing while engulfed/underwater is not ported yet');
-    /* verb: "slip" / "materialize" / "drop" -- only used by
-       The(aobjnam(otmp, verb)), which is not ported yet (it is the
-       drop_arg, shown only on the drop path that throws above) */
+
+    const verb = ((Is_airlevel(u.uz) || u.uinwater)
+                  ? "slip"
+                  : (otmp.otyp === O.CORPSE && otmp.wishedfor)
+                    ? "materialize" : "drop");
     const typ = g.level.at(u.ux, u.uy).typ;
     const oops_msg = (u.uswallow
                       ? "Oops!  %s out of your reach!"
@@ -249,7 +266,8 @@ export async function makewish() {
                           ? "Oops!  %s to the floor!"
                           : "Careful! %s on the floor!");
 
-    await hold_another_object(otmp, oops_msg, null, null);
+    /* The(aobjnam()) is safe since otmp is unidentified -dlc */
+    await hold_another_object(otmp, oops_msg, The(aobjnam(otmp, verb)), null);
     u.ublesscnt += rn1(100, 50); /* the gods take notice */
     void oldwisharti;
 }
@@ -283,7 +301,7 @@ export async function wiz_wish() {
         g.flags.verbose = false;
         await makewish();
         g.flags.verbose = save_verbose;
-        /* encumber_msg() -- not ported yet */
+        await encumber_msg();
     } else
         await pline("Unavailable command 'wizwish'."); /* unavailcmd */
     return 0; /* ECMD_OK */

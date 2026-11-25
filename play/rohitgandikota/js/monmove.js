@@ -24,6 +24,7 @@ import { switch_terrain } from './hack.js';
 import { in_rooms } from './hack.js';
 import { Is_special } from './dungeon.js';
 import { game } from './gstate.js';
+import { Protection_from_shape_changers } from './youprop.js';
 import { unstuck, m_next2u } from './mon.js';
 import { wormhitu } from './worm.js';
 import { select_rwep } from './weapon.js';
@@ -761,7 +762,7 @@ function stuff_prevents_passage(mtmp) {
 export function can_fog(mtmp) {
     return !(game.mvitals?.[PMNAMES.PM_FOG_CLOUD]?.mvflags & G_GENOD)
         && is_vampshifter(mtmp)
-        && !game.u.uprops?.PROT_FROM_SHAPE_CHANGERS
+        && !Protection_from_shape_changers()
         && !stuff_prevents_passage(mtmp);
 }
 

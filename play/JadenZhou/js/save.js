@@ -25,7 +25,7 @@ import { create_savefile, open_savefile, delete_savefile, open_levelfile,
 import { genders, aligns } from './role.js';
 import { close_nhfile } from './sfbase.js';
 import { ledger_no, maxledgerno, save_mapseen } from './dungeon.js';
-import { pline, There, docrt } from './display.js';
+import { pline, There, docrt, gbuf_keep } from './display.js';
 import { tty_clear_nhwindow, tty_yn_function, tty_display_nhwindow,
          tty_exit_nhwindows, tty_getmsghistory } from './wintty.js';
 import { nomul } from './hack.js';
@@ -544,8 +544,10 @@ function savelev_core(nhfp, lev) {
     if (release_data(nhfp)) {
         /* clear_level_structures(); gf.ftrap = 0; gb.billobjs = 0;
            memset(svr.rooms, 0, ...) */
+        const oldlev = g.level;
         g.fmon = null;
         g.level = new GameMap();
+        gbuf_keep(oldlev); /* gg.gbuf isn't part of the level */
         g.stairs = null;
         g.billobjs = null;
     }

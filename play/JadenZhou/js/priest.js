@@ -26,10 +26,10 @@ import { pm_good_location } from './sp_lev.js';
 import { mfndpos } from './mon.js';
 import { mon_allowflags } from './mon.js';
 import { place_monster } from './makemon.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, verbalize } from './display.js';
 import { Your } from './display.js';
 import { mon_nam } from './do_name.js';
-import { dist2 } from './hacklib.js';
+import { dist2, onlineu } from './hacklib.js';
 import { in_rooms, check_special_room, nomul } from './hack.js';
 import { canspotmon } from './display.js';
 import { inhishop } from './shk.js';
@@ -155,12 +155,6 @@ export function forget_temple_entry(priest) {
 // C ref: priest.c p_coaligned()
 export function p_coaligned(priest) {
     return (game.u.ualign.type === mon_aligntyp(priest));
-}
-
-/* C ref: hacklib.c online2(); hack.h onlineu() */
-function onlineu(xx, yy) {
-    const dx = xx - game.u.ux, dy = yy - game.u.uy;
-    return (!dy || !dx || dy === dx || dy === -dx);
 }
 
 // C ref: priest.c move_special()
@@ -406,9 +400,9 @@ export async function intemple(roomno) {
         }
         if (msg1 && can_speak && !Deaf()) {
             /* SetVoice(priest, 0, 80, 0): voice hooks only */
-            await pline(`"${msg1}"`); /* verbalize1() */
+            await verbalize(msg1); /* verbalize1() */
             if (msg2)
-                await pline(`"${msg2}"`); /* verbalize1() */
+                await verbalize(msg2); /* verbalize1() */
             epri_p.enter_time = game.moves + d(10, 100); /* ~505 */
         }
         if (!sanctum) {

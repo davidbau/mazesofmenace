@@ -49,7 +49,8 @@ import { objects, WEAPON_CLASS, ARMOR_CLASS, WAND_CLASS, GEM_CLASS, RING_CLASS,
          WAN_NOTHING, WAN_UNDEAD_TURNING, WAN_OPENING, WAN_LOCKING,
          WAN_PROBING, WAN_MAGIC_MISSILE, WAN_SLEEP, WAN_DEATH, WAN_COLD,
          WAN_CANCELLATION, WAN_MAKE_INVISIBLE, WAN_TELEPORTATION, WAN_DIGGING,
-         WAN_FIRE, WAN_LIGHTNING } from './objects.js';
+         WAN_FIRE, WAN_LIGHTNING, is_blade, is_boots,
+         is_wet_towel } from './objects.js';
 import {
     db_under_typ, You, You_cant, Your, pline_The, There, newsym
 } from './display.js';
@@ -60,7 +61,7 @@ import { check_capacity } from './hack.js';
 import { is_demon, is_vampire, resists_blnd } from './mondata.js';
 import { is_ice } from './dig.js';
 import { zapnodir, zappable, check_unpaid, learnwand } from './zap.js';
-import { welded, is_wet_towel, freehand } from './wield.js';
+import { welded, freehand } from './wield.js';
 import { xname, Yname2, Yobjnam2, yname, doname, The, Tobjnam,
          otense } from './objnam.js';
 import { getobj, hands_obj, useup, prinv } from './invent.js';
@@ -490,15 +491,6 @@ export function u_wipe_engr(cnt) {
 }
 
 /* C ref: obj.h is_blade(); objclass.h is_boots(); artifact.h is_art() */
-function is_blade(otmp) {
-    return otmp.oclass === WEAPON_CLASS
-           && objects[otmp.otyp].oc_skill >= P_DAGGER
-           && objects[otmp.otyp].oc_skill <= P_SABER;
-}
-function is_boots(otmp) {
-    return otmp.oclass === ARMOR_CLASS
-           && objects[otmp.otyp].oc_armcat === ARM_BOOTS;
-}
 /* C ref: rm.h SURFACE_AT() */
 function SURFACE_AT(x, y) {
     const lev = game.level.at(x, y);
@@ -1519,6 +1511,6 @@ export async function disturb_grave(x, y) {
         await You("disturb the undead!");
         lev.disturbed = 1;
         makemon(mons[PM_GHOUL], x, y, NO_MM_FLAGS);
-        exercise(A_WIS, false);
+        await exercise(A_WIS, false);
     }
 }

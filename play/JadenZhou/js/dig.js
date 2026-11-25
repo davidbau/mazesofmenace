@@ -6,8 +6,7 @@ import { game } from './gstate.js';
 import { in_town } from './hack.js';
 import { rnd, rn2 } from './rng.js';
 import { cvt_sdoor_to_door } from './detect.js';
-import { canseemon, newsym, pline } from './display.js';
-import { You_hear } from './sounds.js';
+import { canseemon, newsym, pline, You_hear } from './display.js';
 import { mksobj_at, place_object } from './mkobj.js';
 import { acurr } from './attrib.js';
 import { start_timer, stop_timer, obj_to_any } from './timeout.js';
@@ -24,9 +23,8 @@ import { Hallucination, Levitation, Unaware, Blind as Blind_dg } from './youprop
 import { D_TRAPPED, D_BROKEN, SCORR, A_STR, A_INT, A_WIS, A_DEX, A_CON,
          A_CHA } from './const.js';
 import { ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, isok } from './const.js';
-import {
-    ROCK, BOULDER, CORPSE, LEASH, POT_OIL, POTION_CLASS, is_organic,
-} from './objects.js';
+import { ROCK, BOULDER, CORPSE, LEASH, POT_OIL, POTION_CLASS, is_organic,
+         is_pick, is_axe, bimanual } from './objects.js';
 import { obj_resists } from './dogmove.js';
 import { DIGTYP_UNDIGGABLE, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_BOULDER,
          DIGTYP_DOOR, DIGTYP_TREE, IS_OBSTRUCTED, IS_WALL, TREE, TT_PIT,
@@ -35,7 +33,6 @@ import { objects, STATUE, PICK_AXE, DWARVISH_MATTOCK, WEAPON_CLASS,
          TOOL_CLASS } from './objects.js';
 import { closed_door, sobj_at } from './makemon.js';
 import { t_at } from './trap.js';
-import { bimanual } from './wield.js';
 import { rn1 } from './rng.js';
 import { SDOOR, DOOR, CORR, ROOM, FOUNTAIN, SHOPBASE, W_NONDIGGABLE, D_NODOOR,
          IS_STWALL, IS_TREE, Is_earthlevel } from './const.js';
@@ -55,7 +52,7 @@ import { mon_nam as mon_nam_zd } from './do_name.js';
 import { mbodypart as mbodypart_zd, body_part as body_part_zd } from './insight.js';
 import { uhis, expels as expels_zd } from './mhitu.js';
 import { ceiling as ceiling_zd } from './dungeon.js';
-import { hard_helmet as hard_helmet_zd, xname as xname_zd } from './objnam.js';
+import { xname as xname_zd } from './objnam.js';
 import { losehp as losehp_zd, Maybe_Half_Phys as Maybe_Half_Phys_zd } from './trap.js';
 import { ROCK as ROCK_ZD } from './objects.js';
 import { HEAVY_IRON_BALL } from './objects.js';
@@ -106,18 +103,10 @@ import { You_cant, There } from './display.js';
 import { d } from './rng.js';
 import { OBJ_NAME } from './objects.js';
 import { hides_under, is_whirly, digests } from './mondata.js';
+import { hard_helmet as hard_helmet_zd } from './do_wear.js';
 
 /* C ref: invent.c update_inventory() -- no perm_invent window */
 function update_inventory() { }
-
-/* C ref: obj.h is_pick(), is_axe() */
-function is_pick(otmp) {
-    return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
-}
-function is_axe(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill === P_AXE);
-}
 
 // C ref: dig.c pick_can_reach()
 function pick_can_reach(pick, x, y) {

@@ -23,7 +23,7 @@ import { mkinvokearea, SPBOOK_CLASS } from './mklev.js';
 import { CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING } from './objclass_ranges.js';
 import { ACH_INVK } from './const.js';
 import { record_achievement } from './insight.js';
-import { build_window_screen, tty_window_offx, menu_search_getlin } from './com_pager.js';
+import { build_window_screen, tty_window_offx, menu_search_getlin, menu_search_docorner } from './com_pager.js';
 import { pmatchi } from './strutil.js';
 import { menucolor_text } from './coloratt.js';
 import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT, BLINDED, CLAIRVOYANT, SICK, SLIMED, HEAD,
@@ -1610,6 +1610,9 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
             const answer = await menu_search_getlin(() => frame.split('\n'));
             const rows = frame.split('\n');
             rows[0] = '';
+            /* getline.c:213 clear_nhwindow's docorner for a wrapped answer, and
+             * a ^P history window's docorner (js/com_pager.js) */
+            menu_search_docorner(rows);
             g._screen_output = rows.join('\n');
             if (disp) { disp.cursorCol = endCursorCol; disp.cursorRow = endRow; }
             if (answer && answer !== '\x1b') {

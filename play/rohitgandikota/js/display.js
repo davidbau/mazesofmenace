@@ -7,7 +7,7 @@ import { BUFSZ, PLNMSG_UNKNOWN, NH_BASIC_COLOR, MAXTCHARS,
 import { In_hell, on_level } from './dungeon.js';
 import { TRAPNUM } from './const.js';
 
-import { MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PLINE_NOREPEAT, OVERRIDE_MSGTYPE, URGENT_MESSAGE } from './const.js';
+import { MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PLINE_NOREPEAT, OVERRIDE_MSGTYPE, URGENT_MESSAGE, SUPPRESS_HISTORY, NO_CURS_ON_U } from './const.js';
 
 import { DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
          DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK, HI_ZAP,
@@ -2531,10 +2531,14 @@ async function prepare_pline() {
        flushes the screen FIRST, so the map and status under it are current.
        During goto_level's flush_screen(-1) bracket the flush is a no-op and
        the old level stays painted, exactly as in C. */
-    if (game.vision_full_recalc)
+    if (game.vision_full_recalc) {
         vision_recalc(0);
+        /* C emits these notices inside vision_recalc, with this message's
+           flags, before its screen flush and output. */
+        await notice_all_mons_flush();
+    }
     if (game.u?.ux)
-        await flush_screen(1);
+        await flush_screen((game.pline_flags & NO_CURS_ON_U) ? 0 : 1);
 }
 
 // src/pline.c:162-189 vpline(), consume the location before any message work.
@@ -2557,10 +2561,12 @@ export function message_with_location(msg) {
 }
 
 export async function pline(msg) {
+    /* src/pline.c:162-173: save this message's location before earlier
+       queued notices set and consume their own locations. */
+    msg = message_with_location(msg);
     /* a monster notice queued by a synchronous docrt() (window erase) is
        an earlier pline in C; deliver it before this message */
     await notice_all_mons_flush();
-    msg = message_with_location(msg);
     if (!msg) return;
     let msgtyp = MSGTYP_NORMAL;
 
@@ -2583,7 +2589,20 @@ export async function pline(msg) {
        update_topl(). Assigning the message straight into the top line skipped
        the state machine entirely: a second message overwrote the first instead
        of either joining it or raising --More-- and waiting for a key. */
-    await update_topl(msg);
+    /* src/pline.c:putmesg(), win/tty/wintty.c:tty_putstr(NHW_MESSAGE).
+       Urgency takes effect only after vision and screen flushing. */
+    if (game.pline_flags & URGENT_MESSAGE) {
+        if (game._win_stop) {
+            tty_clear_nhwindow_message(game._topl_cury || 0);
+            game._win_stop = false;
+        }
+        game._win_nostop = true;
+    }
+    if (game.pline_flags & SUPPRESS_HISTORY)
+        show_topl_nohistory(msg);
+    else
+        await update_topl(msg);
+    game._win_nostop = false; /* tty_putstr: one message only */
     /* this gets cleared after every pline message */
     (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
     /* src/pline.c vpline() records the most recent individual message after
@@ -2594,61 +2613,27 @@ export async function pline(msg) {
         await display_nhwindow_message(); /* --more-- */
 }
 
-// custompline(SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U).
-// getpos uses this for automatic descriptions so they do not enter message
-// history and do not move the terminal cursor back onto the hero.
-// custompline(SUPPRESS_HISTORY): the message is shown but not remembered;
-// the cursor returns to the hero as for an ordinary pline.
+// src/pline.c:299 custompline(SUPPRESS_HISTORY).
 export async function pline_nohistory(msg) {
-    msg = message_with_location(msg);
-    if (!msg) return;
-    if (game.vision_full_recalc)
-        vision_recalc(0);
-    if (game.u?.ux)
-        await flush_screen(1);
-    const stopped = game._win_stop;
-    show_topl_nohistory(msg);
-    if (!stopped)
-        game.nhDisplay?.setCursor(game._topl_curx || 0,
-                                  game._topl_cury || 0);
-    (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
-    game._prevmsg = msg;
+    game.pline_flags = SUPPRESS_HISTORY;
+    await pline(msg);
+    game.pline_flags = 0;
 }
 
+// src/getpos.c:652 custompline() for automatic target descriptions.
 export async function pline_nohistory_no_cursor(msg) {
-    msg = message_with_location(msg);
-    if (!msg) return;
-    if (game.vision_full_recalc)
-        vision_recalc(0);
-    if (game.u?.ux)
-        await flush_screen(0);
-    show_topl_nohistory(msg);
-    (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
-    game._prevmsg = msg;
+    game.pline_flags = SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U;
+    await pline(msg);
+    game.pline_flags = 0;
 }
 
 // src/pline.c:315 urgent_pline().  The tty lifts ESC message suppression only
 // after pline's vision and screen flush.  Doing it earlier briefly painted a
 // suppressed spell message before the urgent polymorph-reversion message.
 export async function urgent_pline(msg) {
-    msg = message_with_location(msg);
-    if (!msg) return;
-    /* custompline(URGENT_MESSAGE, ...): the message type still applies,
-       though URGENT_MESSAGE keeps NOSHOW and NOREP from suppressing it */
-    const { msgtype_type } = await import('./options.js');
-    const msgtyp = msgtype_type(msg, false);
-    await prepare_pline();
-    if (game._win_stop) {
-        tty_clear_nhwindow_message(game._topl_cury || 0);
-        game._win_stop = false;
-    }
-    game._win_nostop = true; /* tty_putstr: WIN_NOSTOP */
-    await update_topl(msg);
-    game._win_nostop = false; /* tty_putstr: one message only */
-    (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
-    game._prevmsg = msg;
-    if (msgtyp === MSGTYP_STOP)
-        await display_nhwindow_message(); /* --more-- */
+    game.pline_flags = URGENT_MESSAGE;
+    await pline(msg);
+    game.pline_flags = 0;
 }
 
 // win/tty/topl.c more() — draw the suffix, block for a key, clear the top line.

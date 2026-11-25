@@ -6,11 +6,11 @@
 // and oracle_sound() are only partly ported (see their comments).
 
 import { DEADMONSTER } from './mon.js';
-import { g_at, vault_occupied } from './vault.js';
+import { g_at, vault_occupied, findgd } from './vault.js';
 import { helpless } from './monmove.js';
 import { game } from './gstate.js';
 import { rn2, ROLL_FROM } from './rng.js';
-import { canseemon } from './display.js';
+import { canseemon, verbalize, You_hear } from './display.js';
 import { vtense } from './objnam.js';
 import { wake_nearto } from './mon.js';
 import { tended_shop, noisy_shop } from './shk.js';
@@ -50,18 +50,6 @@ import { M1_HUMANOID as M1_HUMANOID_SN } from './monsters.js';
 
 /* C ref: mondata.h predicates */
 
-
-// C ref: pline.c You_hear()
-export async function You_hear(msg) {
-    if ((Deaf() && !Unaware()) || !game.flags.acoustics)
-        return;
-    if (game.u.uinwater) /* Underwater */
-        await pline(`You barely hear ${msg}`);
-    else if (Unaware())
-        await pline(`You dream that you hear ${msg}`);
-    else
-        await pline(`You hear ${msg}`); /* Deaf-aware */
-}
 
 // C ref: sounds.c mon_in_room()
 function mon_in_room(mon, rmtyp) {
@@ -202,19 +190,6 @@ export function search_special(type) {
     }
     /* gs.subrooms[]: subrooms aren't kept in a global list in the JS
        port yet */
-    return null;
-}
-
-// C ref: vault.c findgd()
-function findgd() {
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (DEADMONSTER(mtmp))
-            continue;
-        if (mtmp.isgd && mtmp.egd && mtmp.egd.gdlevel
-            && mtmp.egd.gdlevel.dnum === game.u.uz.dnum
-            && mtmp.egd.gdlevel.dlevel === game.u.uz.dlevel)
-            return mtmp;
-    }
     return null;
 }
 
@@ -788,11 +763,11 @@ async function domonnoise(mtmp) {
     if (pline_msg) {
         await pline(`${Monnam(mtmp)} ${pline_msg}`);
     } else if (mtmp.mcan && verbl_msg_mcan) {
-        await pline(`"${verbl_msg_mcan}"`); /* verbalize1() */
+        await verbalize(verbl_msg_mcan); /* verbalize1() */
     } else if (verbl_msg) {
         if (ptr === mons[PM_DEATH])
             throw new Error('domonnoise(): Death speech not ported yet');
-        await pline(`"${verbl_msg}"`); /* verbalize1() */
+        await verbalize(verbl_msg); /* verbalize1() */
     }
     return ECMD_TIME;
 }

@@ -25,7 +25,7 @@ import { exercise } from './attrib.js';
 import { map_background, map_object, map_trap } from './display.js';
 import { sobj_at } from './makemon.js';
 import { STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
-import { BOULDER } from './objects.js';
+import { BOULDER, SchroedingersBox, Is_box } from './objects.js';
 import { m_at } from './makemon.js';
 import {
     canspotmon, sensemon, warning_of, map_invisible, glyph_is_invisible,
@@ -36,7 +36,7 @@ import {
     Hallucination as Hallucination_dt
 } from './youprop.js';
 
-import { tty_display_nhwindow } from './wintty.js';
+import { tty_display_nhwindow, tty_display_map_nhwindow as tty_display_map_nhwindow_dt } from './wintty.js';
 import { seemimic } from './mon.js';
 import { y_monnam, a_monnam } from './do_name.js';
 import { cmd_safety_prevention } from './hack.js';
@@ -85,7 +85,7 @@ import { GOLD_PIECE as GOLD_PIECE_DT, CHEST as CHEST_DT, COIN_CLASS as COIN_CLAS
          GOLD as GOLD_MAT_DT, NUM_OBJECTS as NUM_OBJECTS_DT,
          FIRST_OBJECT as FIRST_OBJECT_DT } from './objects.js';
 import { PM_GOLD_GOLEM as PM_GOLD_GOLEM_DT } from './monsters.js';
-import { unmap_object, cls as cls_dt } from './display.js';
+import { unmap_object, cls as cls_dt, display_self as display_self_dt } from './display.js';
 import { MAXOCLASSES as MAXOCLASSES_DT } from './objects.js';
 import { objects as objects_dt, POTION_CLASS as POTION_CLASS_DT,
          FOOD_CLASS as FOOD_CLASS_DT, LARGE_BOX as LARGE_BOX_DT } from './objects.js';
@@ -161,7 +161,7 @@ async function mfind0(mtmp, via_warning) {
                         * 'I' in it.  Logically, this should still take time
                         * and lead to `return 1', but if we did that the hero
                         * would keep finding the same monster every turn. */
-        exercise(A_WIS, true);
+        await exercise(A_WIS, true);
         if (!canspotmon(mtmp)) {
             map_invisible(x, y);
             /* set_msg_xy(x, y) */
@@ -207,7 +207,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                         continue;
                     cvt_sdoor_to_door(lev); /* .typ = DOOR */
                     recalc_block_point(x, y);
-                    exercise(A_WIS, true);
+                    await exercise(A_WIS, true);
                     nomul0();
                     feel_location(x, y); /* make sure it shows up */
                     await pline("You find a hidden door.");
@@ -216,7 +216,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                         continue;
                     lev.typ = CORR;
                     recalc_block_point(x, y); /* unblock_point(): vision */
-                    exercise(A_WIS, true);
+                    await exercise(A_WIS, true);
                     nomul0();
                     feel_newsym(x, y); /* make sure it shows up */
                     await pline("You find a hidden passage.");
@@ -241,7 +241,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                         nomul0();
                         if (trap.ttyp === STATUE_TRAP) {
                             if (await activate_statue_trap(trap, x, y, false))
-                                exercise(A_WIS, true);
+                                await exercise(A_WIS, true);
                             return 1;
                         } else {
                             await find_trap(trap);
@@ -255,8 +255,10 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
 
 // C ref: detect.c find_trap()
 async function find_trap(trap) {
+    let cleared = false;
+
     trap.tseen = 1;
-    exercise(A_WIS, true);
+    await exercise(A_WIS, true);
     feel_newsym(trap.tx, trap.ty);
 
     /* The "Hallucination ||" is to preserve 3.6.1 behavior, but this
@@ -266,15 +268,21 @@ async function find_trap(trap) {
     const tg = trap_to_glyph(trap);
     if (Hallucination_ft()
         || !(rg && rg.trap && rg.ch === tg.ch && rg.color === tg.color)) {
-        /* There's too much clutter to see your find otherwise:
-           cls(); map_trap(trap, 1); display_self(); ...
-           display_nhwindow(WIN_MAP, TRUE); docrt(); */
-        throw new Error('find_trap(): showing a covered trap (display_nhwindow(WIN_MAP)) not ported yet');
+        /* There's too much clutter to see your find otherwise */
+        await cls_dt();
+        map_trap(trap, 1);
+        display_self_dt();
+        cleared = true;
     }
 
     /* set_msg_xy(trap->tx, trap->ty): only positions the message for
        screen readers */
     await pline(`You find ${an_ft(trapname_ft(trap.ttyp, false))}.`);
+
+    if (cleared) {
+        await tty_display_map_nhwindow_dt(true); /* display_nhwindow(WIN_MAP, TRUE): wait */
+        await docrt();
+    }
 }
 
 // C ref: detect.c dosearch() -- the 's' command
@@ -561,7 +569,6 @@ export function premap_detect() {
 
 /* C ref: obj.h Has_contents(), SchroedingersBox() */
 function Has_contents(o) { return !!o.cobj; }
-function SchroedingersBox(o) { return o.otyp === LARGE_BOX_DT && o.spe === 1; }
 
 // C ref: detect.c o_in()
 /* Recursively search obj for an object in class oclass and return 1st found */
@@ -837,7 +844,7 @@ export async function gold_detect(sobj) {
         ter_typ |= TER_MON; /* so autodescribe will recognize hero */
     }
     await You_feel_dt("very greedy, and sense gold!");
-    exercise(A_WIS, true);
+    await exercise(A_WIS, true);
 
     await browse_map(ter_typ, "gold");
 
@@ -981,7 +988,7 @@ export async function food_detect(sobj) {
                 await pline(`Your ${body_part_dt(NOSE_DT)} tingles and you smell ${what}.`);
         } else
             await pline(`You sense ${what}.`);
-        exercise(A_WIS_DT, true);
+        await exercise(A_WIS_DT, true);
 
         await browse_map(ter_typ, "food");
 
@@ -1128,9 +1135,6 @@ const OTRAP_NONE = 0;  /* nothing found */
 const OTRAP_HERE = 1;  /* found at hero's location */
 const OTRAP_THERE = 2; /* found at any other location */
 
-/* C ref: obj.h Is_box() */
-function Is_box_dt(o) { return o.otyp === LARGE_BOX_DT || o.otyp === CHEST_DT; }
-
 // C ref: detect.c detect_obj_traps()
 /* check a list of objects for chest traps; return 1 if found at <ux,uy>,
    2 if found at some other spot, 3 if both, 0 otherwise; optionally
@@ -1149,7 +1153,7 @@ async function detect_obj_traps(objlist, show_them,
     const trapglyph = ft ? trap_to_glyph(dummytrap) : null; /* GLYPH_NOTHING */
     for (const otmp of objchain_dt(objlist)) {
         x = y = 0; /* lint suppression */
-        if ((Is_box_dt(otmp) && otmp.otrapped) || Has_contents(otmp)) {
+        if ((Is_box(otmp) && otmp.otrapped) || Has_contents(otmp)) {
             /* !get_obj_location and !isok should both be impossible here */
             const loc = get_obj_location_dt(otmp, BURIED_TOO_DT | CONTAINED_TOO_DT);
             if (loc)
@@ -1158,7 +1162,7 @@ async function detect_obj_traps(objlist, show_them,
                 || (ft && (x !== ft.ft_cc.x || y !== ft.ft_cc.y)))
                 continue;
         }
-        if (Is_box_dt(otmp) && otmp.otrapped) {
+        if (Is_box(otmp) && otmp.otrapped) {
             otmp.tknown = 1;
             observe_object_dt(otmp, Hallucination_dt());
             result |= (x === game.u.ux && y === game.u.uy) ? OTRAP_HERE : OTRAP_THERE;
@@ -1375,7 +1379,7 @@ export async function do_mapping() {
            will be a no-op; call it anyway */
         reconstrain_map();
     }
-    exercise(A_WIS, true);
+    await exercise(A_WIS, true);
 }
 
 /* C ref: detect.c FOUND_FLASH_COUNT */
@@ -1499,7 +1503,7 @@ async function openone(zx, zy, num_p) {
 
     if (objects_at_dt(zx, zy).length) { /* OBJ_AT(zx, zy) */
         for (const otmp of objects_at_dt(zx, zy)) {
-            if (Is_box_dt(otmp) && otmp.olocked) {
+            if (Is_box(otmp) && otmp.olocked) {
                 otmp.olocked = 0;
                 num_p.v++;
             }

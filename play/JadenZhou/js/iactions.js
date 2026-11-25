@@ -8,10 +8,11 @@ import { shk_your } from './shk.js';
 import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { is_plural } from './wield.js';
 import { pmatch } from './pager.js';
-import { shield_simple_name, shirt_simple_name } from './objnam.js';
 import { game } from './gstate.js';
 import * as O from './objects.js';
-import { objects, OBJ_NAME, OBJ_DESCR, obj_descr } from './objects.js';
+import { objects, OBJ_NAME, OBJ_DESCR, obj_descr, is_ammo, is_missile,
+         is_launcher, ammo_and_launcher, bimanual, is_blade, is_wet_towel,
+         is_graystone, is_weptool, Is_container } from './objects.js';
 import {
     NHW_MENU, PICK_ONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
     W_ARMOR, W_ACCESSORY, W_AMUL, W_RING, W_TOOL, W_ARM, W_ARMC, W_ARMH,
@@ -33,14 +34,13 @@ import {
 import { xname, makeplural, makesingular, fruit_from_name, an,
          armor_simple_name, the_unique_obj, cxname } from './objnam.js';
 import { data_base } from './data_base.js';
-import { is_weptool, Is_container, is_flammable } from './mkobj.js';
+import { is_flammable } from './mkobj.js';
 import * as M from './monsters.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
 import { artiname, artifact_name, undiscovered_artifact } from './artifact.js';
 import { strncmpi, lowc, strstri } from './hacklib.js';
 import { CapitalMon } from './rumors.js';
 import { cantwield, could_twoweap, metallivorous, vegan } from './mondata.js';
-export { shield_simple_name, shirt_simple_name };
 
 const IA_NONE = 0,
     IA_UNWIELD = 1, /* hack for 'w-' */
@@ -75,42 +75,6 @@ function ia_not_ported(what) {
     throw new Error(`itemactions: ${what} is not ported yet`);
 }
 
-/* C ref: obj.h is_ammo(), is_missile(), is_launcher(), matching_launcher(),
-   ammo_and_launcher(), bimanual(), is_blade(), is_wet_towel(),
-   is_graystone() */
-function is_ammo(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.GEM_CLASS)
-            && objects[otmp.otyp].oc_skill >= -P_CROSSBOW
-            && objects[otmp.otyp].oc_skill <= -P_BOW);
-}
-function is_missile(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill >= -24 /* -P_BOOMERANG */
-            && objects[otmp.otyp].oc_skill <= -23 /* -P_DART */);
-}
-function is_launcher(otmp) {
-    return (otmp.oclass === O.WEAPON_CLASS
-            && objects[otmp.otyp].oc_skill >= P_BOW
-            && objects[otmp.otyp].oc_skill <= P_CROSSBOW);
-}
-function matching_launcher(a, l) {
-    return (l && objects[a.otyp].oc_skill === -objects[l.otyp].oc_skill);
-}
-function ammo_and_launcher(a, l) { return is_ammo(a) && !!matching_launcher(a, l); }
-function bimanual(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.TOOL_CLASS)
-            && objects[otmp.otyp].oc_bimanual);
-}
-function is_blade(otmp) {
-    return (otmp.oclass === O.WEAPON_CLASS
-            && objects[otmp.otyp].oc_skill >= P_DAGGER
-            && objects[otmp.otyp].oc_skill <= P_SABER);
-}
-function is_wet_towel(o) { return o.otyp === O.TOWEL && o.spe > 0; }
-export function is_graystone(obj) {
-    return (obj.otyp === O.LUCKSTONE || obj.otyp === O.LOADSTONE
-            || obj.otyp === O.FLINT || obj.otyp === O.TOUCHSTONE);
-}
 /* C ref: you.h Blind etc. are not needed here */
 
 function hero_data() {
@@ -332,101 +296,6 @@ export function ansimpleoname(obj) {
 /* "the scroll" or "the scrolls" */
 export function thesimpleoname(obj) {
     return the(simpleonames(obj));
-}
-
-/* C ref: objnam.c suit_simple_name() */
-export function suit_simple_name(suit) {
-    let suitnm;
-
-    if (suit) {
-        if (suit.otyp >= O.GRAY_DRAGON_SCALE_MAIL
-            && suit.otyp <= O.YELLOW_DRAGON_SCALE_MAIL) /* Is_dragon_mail() */
-            return "dragon mail"; /* <color> dragon scale mail */
-        else if (suit.otyp >= O.GRAY_DRAGON_SCALES
-                 && suit.otyp <= O.YELLOW_DRAGON_SCALES) /* Is_dragon_scales() */
-            return "dragon scales";
-        suitnm = O.OBJ_NAME(objects[suit.otyp]);
-        if (suitnm.length > 5 && suitnm.endsWith(" mail"))
-            return "mail"; /* most suits fall into this category */
-        else if (suitnm.length > 7 && suitnm.endsWith(" jacket"))
-            return "jacket"; /* leather jacket */
-    }
-    /* "suit" is lame but "armor" is ambiguous and "body armor" is absurd */
-    return "suit";
-}
-
-/* C ref: objnam.c cloak_simple_name() */
-export function cloak_simple_name(cloak) {
-    if (cloak) {
-        switch (cloak.otyp) {
-        case O.ROBE:
-            return "robe";
-        case O.MUMMY_WRAPPING:
-            return "wrapping";
-        case O.ALCHEMY_SMOCK:
-            return (objects[cloak.otyp].oc_name_known && cloak.dknown)
-                       ? "smock"
-                       : "apron";
-        default:
-            break;
-        }
-    }
-    return "cloak";
-}
-
-/* C ref: do_wear.c hard_helmet() */
-function hard_helmet(obj) {
-    if (!obj || !(obj.oclass === O.ARMOR_CLASS
-                  && objects[obj.otyp].oc_armcat === O.ARM_HELM)) /* is_helmet() */
-        return false;
-    return (O.is_metallic(obj) || O.is_crackable(obj)) ? true : false;
-}
-
-/* C ref: objnam.c helm_simple_name() */
-/* helm vs hat for messages */
-export function helm_simple_name(helmet) {
-    /*
-     *  There is some wiggle room here; the result has been chosen
-     *  for consistency with the "protected by hard helmet" messages
-     *  given for various bonks on the head:  headgear that provides
-     *  such protection is a "helm", that which doesn't is a "hat".
-     */
-    return !hard_helmet(helmet) ? "hat" : "helm";
-}
-
-/* C ref: objnam.c gloves_simple_name() */
-/* gloves vs gauntlets; depends upon discovery state */
-export function gloves_simple_name(gloves) {
-    const gauntlets = "gauntlets";
-
-    if (gloves && gloves.dknown) {
-        const otyp = gloves.otyp;
-        const ocl = objects[otyp];
-        const actualn = O.OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
-
-        if ((objects[otyp].oc_name_known ? actualn : descrpn)
-                .toLowerCase().includes(gauntlets)) /* strstri() */
-            return gauntlets;
-    }
-    return "gloves";
-}
-
-/* C ref: objnam.c boots_simple_name() */
-/* boots vs shoes; depends upon discovery state */
-export function boots_simple_name(boots) {
-    const shoes = "shoes";
-
-    if (boots && boots.dknown) {
-        const otyp = boots.otyp;
-        const ocl = objects[otyp];
-        const actualn = O.OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
-
-        if ((descrpn && descrpn.toLowerCase().includes(shoes)) /* strstri() */
-            || (objects[otyp].oc_name_known
-                && actualn.toLowerCase().includes(shoes)))
-            return shoes;
-    }
-    return "boots";
 }
 
 /* C ref: objnam.c bare_artifactname() */

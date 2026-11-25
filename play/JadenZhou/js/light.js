@@ -22,8 +22,8 @@ import { obj_is_local, mon_is_local, end_burn } from './timeout.js';
 import { get_mon_location } from './zap.js';
 import { get_obj_location } from './shk.js';
 import { clear_path, circle_data, circle_start, COULD_SEE } from './vision.js';
-import { artifact_light } from './worn.js';
 import { GOLD_DRAGON_SCALE_MAIL } from './objects.js';
+import { artifact_light } from './artifact.js';
 
 /* flags */
 const LSF_SHOW = 0x1;           /* display the light source */

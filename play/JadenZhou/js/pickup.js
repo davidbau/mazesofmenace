@@ -20,11 +20,13 @@ import { near_capacity } from './hack.js';
 import { You, Your, You_cant, pline } from './display.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { check_capacity, nomul } from './hack.js';
-import { flush_screen, obj_to_glyph } from './display.js';
+import { flush_screen, obj_to_glyph, what_mon } from './display.js';
+import { self_lookat } from './pager.js';
+import { digests } from './mondata.js';
+import { CONTAINED_SYM } from './const.js';
 import { look_here } from './invent.js';
 import { M1_NOTAKE, M1_CONCEAL } from './monsters.js';
 import { get_adjacent_loc } from './cmd.js';
-import { Is_container } from './mkobj.js';
 import { isok, IS_GRAVE, CONFUSION, STUNNED, ECMD_OK, ECMD_TIME, ECMD_CANCEL, GETOBJ_DOWNPLAY } from './const.js';
 import { W_QUIVER, W_SWAPWEP, W_WEP,
          WORN_SHIRT, WORN_BOOTS, WORN_GLOVES, WORN_HELMET, WORN_SHIELD,
@@ -38,8 +40,9 @@ import { CORPSE, BAG_OF_TRICKS, HORN_OF_PLENTY, WOODEN_FLUTE, MAGIC_FLUTE,
          TOOLED_HORN, FROST_HORN, FIRE_HORN, WOODEN_HARP, MAGIC_HARP, BUGLE,
          LEATHER_DRUM, DRUM_OF_EARTHQUAKE, SLIME_MOLD, TIN, EGG, ROCK,
          POT_WATER, TOWEL, GEMSTONE, GLASS, OBJ_DESCR, ARM_HELM, ARM_GLOVES,
-         ARM_BOOTS, ARM_SHIELD, ARM_CLOAK, ARM_SHIRT, ARM_SUIT } from './objects.js';
-import { is_pole, is_wet_towel } from './wield.js';
+         ARM_BOOTS, ARM_SHIELD, ARM_CLOAK, ARM_SHIRT, ARM_SUIT,
+         greatest_erosion, Is_mbag, Is_box, SchroedingersBox, carried, is_pick,
+         Is_container, is_pole, is_wet_towel } from './objects.js';
 import { cxname_singular } from './objnam.js';
 import { strcmpi } from './hacklib.js';
 import { P_BOW, P_CROSSBOW, P_SPEAR, P_DAGGER, P_KNIFE } from './const.js';
@@ -774,11 +777,6 @@ function invletter_value(c) {
                                               * (shouldn't happen) */
 }
 
-/* C ref: obj.h greatest_erosion() */
-function greatest_erosion(otmp) {
-    return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
-}
-
 // C ref: invent.c sortloot_cmp()
 /* qsort comparison routine for sortloot() */
 function sortloot_cmp(sli1, sli2) {
@@ -1313,8 +1311,11 @@ export async function query_objlist(qstr, /* query string */
                               && game.u.uswallow && olist[0].ocarry === game.u.ustuck);
     if (engulfer_minvent && n === 1 && olist[0].owornmask)
         qflags &= ~AUTOSELECT_SINGLE;
-    if (engulfer)
-        throw new Error('query_objlist(): the engulfed hero as a menu entry not ported yet');
+    if (engulfer) {
+        ++n;
+        /* don't autoselect swallowed hero if it's the only choice */
+        qflags &= ~AUTOSELECT_SINGLE;
+    }
 
     if (n === 0) /* nothing to pick here */
         return (qflags & SIGNAL_NOMENU) ? -1 : 0;
@@ -1388,6 +1389,21 @@ export async function query_objlist(qstr, /* query string */
         pi++;
     } while (sorted && pi < pack.length);
 
+    let fake_hero_object = null;
+    if (engulfer) {
+        if (sorted && n > 1)
+            add_menu_heading(win, `${digests(game.u.ustuck.data) ? "Swallowed" : "Engulfed"} Creatures`);
+        fake_hero_object = { quan: 1 }; /* cg.zeroobj; quan not strictly necessary... */
+        /* mon_to_glyph(&gy.youmonst, rn2_on_display_rng); map_glyphinfo():
+           tty menus don't show the glyph */
+        const tmpglyph = what_mon(game.youmonst.data.pmidx, rn2_on_display_rng);
+        void tmpglyph;
+        tty_add_menu(win, null, fake_hero_object,
+                     /* fake inventory letter, no group accelerator */
+                     CONTAINED_SYM, 0, ATR_NONE, NO_COLOR, an(self_lookat()),
+                     MENU_ITEMFLAGS_NONE);
+    }
+
     tty_end_menu(win, qstr);
     const res = await tty_select_menu(win, how);
     n = res.n;
@@ -1399,6 +1415,13 @@ export async function query_objlist(qstr, /* query string */
         /* fix up counts:  -1 means no count used => pick all */
         for (const mi of res.selected) {
             const curr = mi.item;
+            if (curr === fake_hero_object) {
+                /* this isn't actually possible; fake item representing
+                   hero is only included for look here (':'), not pickup,
+                   and that's PICK_NONE so we can't get here from there */
+                await You_cant("pick yourself up!");
+                continue;
+            }
             if (engulfer_minvent && curr.owornmask) {
                 await You_cant(`pick ${ysimple_name(curr)} up.`);
                 continue;
@@ -1861,7 +1884,7 @@ async function rider_corpse_revival(obj, remotely) {
 
     await pline(`At your ${remotely ? "attempted acquisition" : "touch"}, the corpse suddenly moves...`);
     await revive_corpse(obj);
-    exercise(A_WIS, false);
+    await exercise(A_WIS, false);
     return true;
 }
 
@@ -2333,11 +2356,6 @@ export async function loot_mon(mtmp, passed_info, prev_loot) {
     return timepassed;
 }
 
-/* C ref: obj.h Is_mbag(), Is_box(), SchroedingersBox(); invent.c carried() */
-function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING || o.otyp === BAG_OF_TRICKS; }
-function Is_box(o) { return o.otyp === LARGE_BOX || o.otyp === CHEST; }
-function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
-function carried(o) { return o.where === 'OBJ_INVENT'; }
 /* C ref: pickup.c Icebox */
 function Icebox() { return game.current_container.otyp === ICE_BOX; }
 /* C ref: decl.c something */
@@ -2621,11 +2639,6 @@ async function out_container(obj) {
         bot(); /* update character's gold piece count immediately */
     }
     return 1;
-}
-
-/* C ref: obj.h is_pick() */
-function is_pick(otmp) {
-    return (otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK);
 }
 
 // C ref: pickup.c removed_from_icebox()

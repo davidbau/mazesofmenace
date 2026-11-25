@@ -1198,6 +1198,10 @@ export async function choke(food) {
     } else if (((g.flags?.initrole | 0) === ROLE_KNIGHT
                 || (g.urole?.mnum | 0) === PM_KNIGHT)
                && (u.ualign?.type | 0) === A_LAWFUL) {
+        if (g._occPreEatLive && !g._pending_message) {
+            g._pending_message = g._occPreEatLive;
+            g._occPreEatUsed = true;
+        }
         adjalign(-1);
         await pline('You feel like a glutton!');
     }

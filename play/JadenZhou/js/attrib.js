@@ -1002,6 +1002,11 @@ export function set_moreluck() {
 }
 
 // C ref: attrib.c exercise()
+/* Where C calls encumber_msg() (A_STR/A_CON once the game is under way)
+   this returns its promise, and every caller awaits exercise().  The
+   synchronous callers (discover_object(), getrumor(), make_engr_at())
+   exercise only A_WIS, which never reaches encumber_msg(), so they get no
+   promise back. */
 export function exercise(i, inc_or_dec) {
     const u = game.u;
 
@@ -1025,15 +1030,14 @@ export function exercise(i, inc_or_dec) {
          */
         u.aexe.a[i] += (inc_or_dec) ? ((rn2(19) > ACURR(i)) ? 1 : 0) : -rn2(2);
     }
-    if (game.moves > 0 && (i === A_STR || i === A_CON)) {
-        /* encumber_msg(): messages about encumbrance changes are not
-           ported yet (no rolls) */
-    }
+    if (game.moves > 0 && (i === A_STR || i === A_CON))
+        return encumber_msg();
+    return undefined;
 }
 
 // C ref: attrib.c exerper()
 /* hunger values - from eat.c */
-function exerper() {
+async function exerper() {
     const g = game;
     const u = g.u;
     const uprops = u.uprops;
@@ -1049,21 +1053,21 @@ function exerper() {
         /* debugpline0("exerper: Hunger checks"); */
         switch (hs) {
         case SATIATED:
-            exercise(A_DEX, false);
+            await exercise(A_DEX, false);
             if (Role_if(PM_MONK))
-                exercise(A_WIS, false);
+                await exercise(A_WIS, false);
             break;
         case NOT_HUNGRY:
-            exercise(A_CON, true);
+            await exercise(A_CON, true);
             break;
         case WEAK:
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             if (Role_if(PM_MONK)) /* fasting */
-                exercise(A_WIS, true);
+                await exercise(A_WIS, true);
             break;
         case FAINTING:
         case FAINTED:
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
             break;
         }
 
@@ -1071,15 +1075,15 @@ function exerper() {
         /* debugpline0("exerper: Encumber checks"); */
         switch (near_capacity()) {
         case MOD_ENCUMBER:
-            exercise(A_STR, true);
+            await exercise(A_STR, true);
             break;
         case HVY_ENCUMBER:
-            exercise(A_STR, true);
-            exercise(A_DEX, false);
+            await exercise(A_STR, true);
+            await exercise(A_DEX, false);
             break;
         case EXT_ENCUMBER:
-            exercise(A_DEX, false);
-            exercise(A_CON, false);
+            await exercise(A_DEX, false);
+            await exercise(A_CON, false);
             break;
         }
     }
@@ -1102,16 +1106,16 @@ function exerper() {
 
         /* debugpline0("exerper: Status checks"); */
         if ((HClairvoyant & (INTRINSIC | TIMEOUT)) && !BClairvoyant)
-            exercise(A_WIS, true);
+            await exercise(A_WIS, true);
         if (HRegeneration)
-            exercise(A_STR, true);
+            await exercise(A_STR, true);
 
         if (Sick || Vomiting)
-            exercise(A_CON, false);
+            await exercise(A_CON, false);
         if (Confusion || Hallucination)
-            exercise(A_WIS, false);
+            await exercise(A_WIS, false);
         if ((Wounded_legs && !u.usteed) || Fumbling || HStun)
-            exercise(A_DEX, false);
+            await exercise(A_DEX, false);
     }
 }
 
@@ -1133,7 +1137,7 @@ export async function exerchk() {
     let i, ax, mod_val, lolim, hilim;
 
     /*  Check out the periodic accumulations */
-    exerper();
+    await exerper();
 
     /*  Are we ready for a test? */
     if (g.moves >= g.context.next_attrib_check && !g.multi) {

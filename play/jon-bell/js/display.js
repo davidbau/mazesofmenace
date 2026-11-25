@@ -9581,6 +9581,53 @@ function _tty_row_cells(row) {
     return cells;
 }
 
+/* Cells [0, x) of physical row `left`, then cells [x, ...) of physical row
+ * `right`: what the terminal holds after a cl_end() at column x on `left` is
+ * followed by output that only paints from column x on (process_text_window
+ * over a menu, wintty.c:1794-1805; docorner's cl_end + row_refresh,
+ * wintty.c:3684-3710). */
+export function _tty_row_cells_of(row) { return _splice_cells(row); }
+/* Cells of a frame row as the terminal decodes them: an SGR run stays live
+ * across a cursor-forward (\x1b[nC) inside it, so those skipped cells carry
+ * its attributes (an inverse menu heading's blanks). */
+function _splice_cells(row) {
+    const cells = [];
+    let style = '', dec = false;
+    for (const token of String(row || '').match(/\x1b\[[0-9;]*[A-Za-z]|[\x0e\x0f]|[^\x1b]/g) || []) {
+        if (token.startsWith('\x1b[')) {
+            if (token.endsWith('C')) {
+                const n = parseInt(token.slice(2), 10) || 1;
+                for (let i = 0; i < n; i++)
+                    cells.push({ ch: ' ', paint: style ? `${style} \x1b[0m` : ' ' });
+            } else if (token.endsWith('m')) {
+                style = /^\x1b\[0?m$/.test(token) ? '' : style + token;
+            }
+        } else if (token === '\x0e' || token === '\x0f') {
+            dec = token === '\x0e';
+        } else {
+            cells.push({ ch: token, paint: style + (dec ? '\x0e' : '') + token
+                + (dec ? '\x0f' : '') + (style ? '\x1b[0m' : '') });
+        }
+    }
+    return cells;
+}
+export function tty_splice_row(left, right, x) {
+    const a = _splice_cells(left).slice(0, Math.max(0, x));
+    while (a.length < x) a.push({ ch: ' ', paint: ' ' });
+    const cells = [...a, ..._splice_cells(right).slice(Math.max(0, x))];
+    while (cells.length && cells.at(-1).paint === ' ') cells.pop();
+    let out = '';
+    for (let i = 0; i < cells.length;) {
+        let j = i;
+        if (cells[i].ch === ' ')
+            while (j < cells.length && cells[j].ch === ' ' && cells[j].paint === cells[i].paint) j++;
+        if (j - i >= 5) { out += `\x1b[${j - i}C`; i = j; continue; }
+        if (j === i) j = i + 1;
+        for (; i < j; i++) out += cells[i].paint;
+    }
+    return out;
+}
+
 /* C pline.c:266-276 vpline(): a pline issued while a window covers the map
  * (tty_getlin's custompline of its query, getline.c:63) still runs
  * vision_recalc(0) when a full recalc is pending and then flush_screen(1),
@@ -14572,7 +14619,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
             && game._prevmsg_next == null)
             game._toplEmptyAfterSuppress = false; /* topl.c:280 strncpy(gt.toplines,bp) */
         _maybe_snapshot_painted_screen();
-        if (msgtyp === 'stop') {
+        if (msgtyp === 'stop' && !game._defer_msgtype_stop) {
             await _pline_stop();
         }
         return;
@@ -14879,7 +14926,9 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         await force_more(game._pending_message, undefined, true);
     // C pline.c:283-284: stop/more blocks immediately after putmesg and
     // prevmsg, before the caller can continue or consume another command.
-    if (msgtyp === 'stop') {
+    /* _defer_msgtype_stop: newgame()'s startup queue replays these plines
+     * itself (js/allmain.js) and raises the stop page in C's order there. */
+    if (msgtyp === 'stop' && !game._defer_msgtype_stop) {
         await _pline_stop();
     }
     _more_park_mark(rngAtEntry);

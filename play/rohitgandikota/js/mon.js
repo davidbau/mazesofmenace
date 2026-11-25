@@ -1251,7 +1251,7 @@ export async function mcureblindness(mon, verbose) {
         mon.mcansee = 1;
         mon.mblinded = 0;
         if (verbose && haseyes(mon.data))
-            await pline(`${Monnam(mon)} can see again.`);
+            await pline_mon(mon, `${Monnam(mon)} can see again.`);
     }
 }
 

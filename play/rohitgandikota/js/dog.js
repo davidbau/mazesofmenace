@@ -634,7 +634,7 @@ export async function tamedog(mtmp, obj, givemsg) {
         return false;
 
     if (givemsg && !mtmp.mpeaceful && canspotmon(mtmp)) {
-        await pline(`${Monnam(mtmp)} seems ${Hallucination()
+        await pline_mon(mtmp, `${Monnam(mtmp)} seems ${Hallucination()
             ? 'really chill' : 'more amiable'}.`);
         givemsg = false;
     }
@@ -670,7 +670,7 @@ export async function tamedog(mtmp, obj, givemsg) {
                 const bigCorpse = obj.otyp === ONAMES.CORPSE
                     && ismnum(obj.corpsenm)
                     && game.mons[obj.corpsenm].msize > mtmp.data.msize;
-                await pline(`${Monnam(mtmp)} catches ${the(xname(obj))}${
+                await pline_mon(mtmp, `${Monnam(mtmp)} catches ${the(xname(obj))}${
                     bigCorpse ? ', or vice versa!' : '.'}`);
             } else if (cansee(mtmp.mx, mtmp.my)) {
                 await pline(`${The(xname(obj))} stops.`);
@@ -715,7 +715,7 @@ export async function tamedog(mtmp, obj, givemsg) {
     }
 
     if (givemsg && canspotmon(mtmp)) {
-        await pline(`${Monnam(mtmp)} seems quite ${Hallucination()
+        await pline_mon(mtmp, `${Monnam(mtmp)} seems quite ${Hallucination()
             ? 'approachable' : 'friendly'}.`);
     }
 
@@ -868,9 +868,9 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
                result won't be printed */
             const obj_name = distant_name(obj, doname);
             if (tunnels(game.mons[mtmp.mnum]))
-                await pline(`${noit_Monnam(mtmp)} digs in.`);
+                await pline_mon(mtmp, `${noit_Monnam(mtmp)} digs in.`);
             else
-                await pline(`${noit_Monnam(mtmp)} ${
+                await pline_mon(mtmp, `${noit_Monnam(mtmp)} ${
                     devour ? 'devours' : 'eats'} ${obj_name}.`);
         } else if (seeobj) {
             const obj_name = distant_name(obj, doname);

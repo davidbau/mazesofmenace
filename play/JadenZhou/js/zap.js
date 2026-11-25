@@ -8,7 +8,6 @@
 // yet).  For enlightenment: adtyp_to_prop(), u_adtyp_resistance_obj(),
 // item_what().
 
-import { You_hear } from './sounds.js';
 import { rndmonnam } from './do_name.js';
 import { adjalign } from './attrib.js';
 import { PM_ARCHEOLOGIST } from './monsters.js';
@@ -21,7 +20,8 @@ import { in_rooms } from './hack.js';
 import { billable, get_obj_location } from './shk.js';
 import { impossible } from './hack.js';
 import { game } from './gstate.js';
-import { livelog_printf, urgent_pline } from './display.js';
+import { livelog_printf, urgent_pline, You_hear as You_hear_zp,
+         You_hear } from './display.js';
 import { LL_CONDUCT } from './const.js';
 import { You, Your, pline, pline_The } from './display.js';
 import { getobj, useupall } from './invent.js';
@@ -32,7 +32,9 @@ import { exercise } from './attrib.js';
 import { losehp, Maybe_Half_Phys } from './trap.js';
 import { more_experienced } from './exper.js';
 import { observe_object, discover_object } from './o_init.js';
-import { The, xname, Tobjnam, vtense } from './objnam.js';
+import { The, xname, Tobjnam, vtense, cloak_simple_name, suit_simple_name,
+         helm_simple_name, gloves_simple_name, boots_simple_name,
+         shirt_simple_name, shield_simple_name } from './objnam.js';
 import { mon_nam } from './do_name.js';
 import { resists_blnd, resists_blnd_by_arti, nohands, is_mplayer, is_whirly,
          mindless, digests, is_rider, eyecount,
@@ -55,7 +57,10 @@ import { objects, WAND_CLASS, SPBOOK_CLASS, DWARVISH_CLOAK, NODIR, IMMEDIATE,
          WAN_MAGIC_MISSILE, WAN_LIGHTNING, SPE_MAGIC_MISSILE,
          SPE_FINGER_OF_DEATH, SPE_FORCE_BOLT, WAN_STRIKING, BOULDER,
          WAN_CANCELLATION, SPE_CANCELLATION, SPE_KNOCK, SPE_WIZARD_LOCK,
-         WAN_PROBING } from './objects.js';
+         WAN_PROBING, SchroedingersBox, Is_box,
+         Is_container as Is_container_bm, is_weptool as is_weptool_ci,
+         is_weptool as is_weptool_di, is_rustprone, is_crackable,
+         is_corrodeable } from './objects.js';
 import { PIT, SPIKED_PIT, STATUE_TRAP, HEADSTONE, DOOR, DBWALL,
          DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, IS_DRAWBRIDGE,
          isok } from './const.js';
@@ -63,11 +68,10 @@ import { t_at, activate_statue_trap } from './trap.js';
 import { sobj_at, is_pool, is_lava } from './makemon.js';
 import { delobj } from './invent.js';
 import { mkobj, splitobj, weight, rnd_class, erosion_matters, is_flammable,
-         is_rustprone, is_crackable, is_corrodeable, is_rottable,
-         is_damageable, is_poisonable } from './mkobj.js';
+         is_rottable, is_damageable, is_poisonable } from './mkobj.js';
 import { obj_resists } from './dogmove.js';
 import { cansee, does_block, block_point, unblock_point } from './vision.js';
-import { newsym } from './display.js';
+import { newsym, shieldeff } from './display.js';
 import { costly_spot } from './shk.js';
 import { add_damage as add_damage_zp, pay_for_damage as pay_for_damage_zp } from './shk.js';
 import { SHOP_DOOR_COST as SHOP_DOOR_COST_ZP, SHOP_BARS_COST as SHOP_BARS_COST_ZP } from './const.js';
@@ -97,7 +101,7 @@ import { SCROLL_CLASS, FOOD_CLASS, GLOB_OF_GREEN_SLIME, SCR_FIRE, SPE_FIREBALL,
          WAX_CANDLE } from './objects.js';
 import { nomul } from './hack.js';
 import { stop_occupation } from './allmain.js';
-import { wakeup, monkilled, killed } from './mon.js';
+import { wakeup, monkilled, killed, shieldeff_mon } from './mon.js';
 import { AD_RBRE } from './monsters.js';
 import { STONE, LAVAWALL, IRONBARS, FOUNTAIN, ICE, STRAT_WAITMASK, WEB,
          IS_ROOM, IS_WALL, In_mines, Is_airlevel, ZAP_POS, SDOOR } from './const.js';
@@ -109,10 +113,7 @@ import {
     W_WEP, W_ART, W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMG, W_ARMF, W_ARMS,
     W_AMUL, W_TOOL, W_RING, W_RINGL,
 } from './const.js';
-import {
-    cloak_simple_name, suit_simple_name, shirt_simple_name, helm_simple_name,
-    gloves_simple_name, boots_simple_name, shield_simple_name, simpleonames,
-} from './iactions.js';
+import { simpleonames } from './iactions.js';
 import { Sleep_resistance, Antimagic, Blind, Hallucination, Deaf, Reflecting } from './youprop.js';
 import { Luck } from './const.js';
 import { breaks as breaks_zb, hero_breaks as hero_breaks_zb } from './dothrow.js';
@@ -214,7 +215,6 @@ import { W_NONDIGGABLE as W_NONDIGGABLE_ZP, D_NODOOR as D_NODOOR_ZP,
 import { cvt_sdoor_to_door as cvt_sdoor_to_door_zp } from './detect.js';
 import { recalc_block_point as recalc_block_point_zp } from './vision.js';
 import { in_rooms as in_rooms_zp } from './hack.js';
-import { You_hear as You_hear_zp } from './sounds.js';
 import { picking_at as picking_at_zp, reset_pick as reset_pick_zp,
          boxlock as boxlock_zy } from './lock.js';
 import { unpunish as unpunish_zy } from './read.js';
@@ -297,8 +297,7 @@ import { AD_SEDU as AD_SEDU_RV, AD_SSEX as AD_SSEX_RV } from './monsters.js';
 import { MM_NOTAIL as MM_NOTAIL_RV, MM_ADJACENTOK as MM_ADJACENTOK_RV } from './const.js';
 import { defends as defends_di, defends_when_carried as defends_when_carried_di }
        from './artifact.js';
-import { is_weptool as is_weptool_di, costly_alteration as costly_alteration_di }
-       from './mkobj.js';
+import { costly_alteration as costly_alteration_di } from './mkobj.js';
 import { bot as bot_di } from './display.js';
 import { COST_DRAIN as COST_DRAIN_DI, A_CON as A_CON_DI, A_CHA as A_CHA_DI,
          A_INT as A_INT_DI, A_DEX as A_DEX_DI } from './const.js';
@@ -320,8 +319,8 @@ import { W_RING as W_RING_CI, W_ARMG as W_ARMG_CI, W_ARMH as W_ARMH_CI,
          COST_UNBLSS as COST_UNBLSS_CI, ANTIMAGIC as ANTIMAGIC_CI,
          NOTELL as NOTELL_CI, BLINDED as BLINDED_CI } from './const.js';
 import { PM_CLAY_GOLEM as PM_CLAY_GOLEM_CI } from './monsters.js';
-import { is_weptool as is_weptool_ci, costly_alteration as costly_alteration_ci,
-         unbless as unbless_ci, uncurse as uncurse_ci } from './mkobj.js';
+import { costly_alteration as costly_alteration_ci, unbless as unbless_ci,
+         uncurse as uncurse_ci } from './mkobj.js';
 import { obj_to_any as obj_to_any_ci, peek_timer as peek_timer_ci,
          stop_timer as stop_timer_ci } from './timeout.js';
 import { find_ac as find_ac_ci } from './u_init.js';
@@ -358,7 +357,6 @@ import { noit_Monnam as noit_Monnam_bm } from './do_name.js';
 import { mstatusline as mstatusline_bm } from './insight.js';
 import { sticks as sticks_bm } from './engrave.js';
 import { obj_typename as obj_typename_bm } from './objnam.js';
-import { Is_container as Is_container_bm } from './mkobj.js';
 import { u_teleport_mon } from './teleport.js';
 import { closeholdingtrap as closeholdingtrap_bm, openholdingtrap as openholdingtrap_bm,
          openfallingtrap as openfallingtrap_bm } from './trap.js';
@@ -475,7 +473,13 @@ export function resist(mtmp, oclass, damage, tell, deadout = null) {
 
     resisted = rn2(100 + alev - dlev) < mtmp.data.mr;
     if (resisted) {
-        /* if (tell) shieldeff_mon(mtmp): transient display only */
+        if (tell) {
+            /* shieldeff_mon(mtmp) prints "<Mon> resists!": the async
+               caller resist_async() awaits it */
+            if (!deadout)
+                throw new Error('resist(): shieldeff_mon() from a synchronous caller not ported yet (use resist_async())');
+            deadout.shield = true;
+        }
         damage = Math.trunc((damage + 1) / 2);
     }
 
@@ -493,8 +497,10 @@ export function resist(mtmp, oclass, damage, tell, deadout = null) {
 // C ref: zap.c resist() -- for async callers: the fatal-damage path awaits
 // monkilled()/killed()
 export async function resist_async(mtmp, oclass, damage, tell) {
-    const out = { dead: false };
+    const out = { dead: false, shield: false };
     const resisted = resist(mtmp, oclass, damage, tell, out);
+    if (out.shield) /* if (tell) shieldeff_mon(mtmp), before the damage */
+        await shieldeff_mon(mtmp);
     if (out.dead) {
         if (game.m_using)
             await monkilled(mtmp, "", AD_RBRE);
@@ -510,7 +516,7 @@ export async function do_enlightenment_effect() {
     await tty_display_nhwindow(game.WIN_MESSAGE, false);
     await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
     await pline_The("feeling subsides.");
-    exercise(A_WIS, true);
+    await exercise(A_WIS, true);
 }
 
 /* C ref: mextra.h has_mcorpsenm() (newmextra() sets mcorpsenm to NON_PM) */
@@ -735,7 +741,7 @@ export async function bhitm(mtmp, otmp) {
         } else if (resists_magm_zp(mtmp)) {
             /* magic resistance protects from polymorph traps, so make
                it guard against involuntary polymorph attacks too... */
-            /* shieldeff_mon(mtmp): transient display only */
+            await shieldeff_mon(mtmp);
         } else if (!resist(mtmp, otmp.oclass, 0, NOTELL_ZP)) {
             const polyspot = (otyp !== POT_POLYMORPH),
                 give_msg = (!Hallucination()
@@ -997,7 +1003,7 @@ export async function bhitm(mtmp, otmp) {
         if (otyp === SPE_DRAIN_LIFE_BM)
             dmg = spell_damage_bonus(dmg);
         if (resists_drli_bm(mtmp)) {
-            /* shieldeff_mon(mtmp): transient display only */
+            await shieldeff_mon(mtmp);
         } else if (!(await resist_async(mtmp, otmp.oclass, dmg, NOTELL_ZP))
                    && !DEADMONSTER_BM(mtmp)) {
             mtmp.mhp -= dmg;
@@ -1077,16 +1083,13 @@ export async function release_hold() {
     }
 }
 
-/* C ref: obj.h SchroedingersBox() */
-function SchroedingersBox_bm(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
-
 // C ref: zap.c probe_objchain()
 function probe_objchain(chain) {
     for (const otmp of chain) {
         observe_object(otmp, Hallucination()); /* treat as "seen" */
         if (Is_container_bm(otmp) || otmp.otyp === STATUE_ZB) {
             otmp.lknown = 1;
-            if (!SchroedingersBox_bm(otmp))
+            if (!SchroedingersBox(otmp))
                 otmp.cknown = 1;
         } else if (otmp.otyp === TIN_BM)
             otmp.known = 1;
@@ -1239,9 +1242,6 @@ export async function bhito(obj, otmp) {
     return res;
 }
 
-
-/* C ref: obj.h Is_box() */
-function Is_box(otmp) { return otmp.otyp === LARGE_BOX || otmp.otyp === CHEST; }
 
 /* C ref: obj.h unpolyable() */
 function unpolyable(o) {
@@ -2038,7 +2038,7 @@ export async function dozap() {
         await pline("Nothing happens."); /* pline1(nothing_happens) */
     } else if (obj.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
         await backfire(obj); /* the wand blows up in your face! */
-        exercise(A_STR, false);
+        await exercise(A_STR, false);
         /* 'obj' is gone; skip update_inventory() because
            backfire() -> useupall() -> freeinv() did it */
         return ECMD_TIME;
@@ -2121,7 +2121,7 @@ export async function zapyourself(obj, ordinary) {
                 damage = d(2, 12);
             } else
                 damage = d(1 + obj.spe, 6);
-            exercise(A_STR_ZY, false);
+            await exercise(A_STR_ZY, false);
             monstunseesu(M_SEEN_MAGR_ZY);
         }
         break;
@@ -2132,7 +2132,7 @@ export async function zapyourself(obj, ordinary) {
         if (!uhave_zp(SHOCK_RES)) { /* !Shock_resistance */
             await You("shock yourself!");
             damage = orig_dmg;
-            exercise(A_CON_ZP, false);
+            await exercise(A_CON_ZP, false);
             monstunseesu(M_SEEN_ELEC_ZP);
         } else {
             /* shieldeff(u.ux, u.uy) */
@@ -2424,7 +2424,7 @@ export async function weffects(obj) {
     let disclose = false;
     const was_unkn = !objects[otyp].oc_name_known;
 
-    exercise(A_WIS, true);
+    await exercise(A_WIS, true);
     if (u.usteed && (objects[otyp].oc_dir !== NODIR) && !u.dx && !u.dy
         && (u.dz > 0)) {
         throw new Error('weffects(): zap_steed() not ported yet');
@@ -2940,8 +2940,8 @@ async function zhitm(
             await erode_armor_zp(mon, ERODE_CORRODE_ZP);
         break;
     }
-    /* if (sho_shieldeff) shieldeff(mon->mx, mon->my): transient display */
-    void sho_shieldeff;
+    if (sho_shieldeff)
+        await shieldeff(mon.mx, mon.my);
     if (is_hero_spell(type)
         && (game.urole.mnum === PM_KNIGHT_ZP && game.u.uhave?.questart))
         tmp *= 2;
@@ -2964,24 +2964,23 @@ async function zhitu(
     let dam = 0;
     const abstyp = zaptype(type);
     let orig_dam = 0;
-    void sx; void sy;
 
     switch (abstyp % 10) {
     case ZT_MAGIC_MISSILE:
         if (Antimagic()) {
-            /* shieldeff(sx, sy): transient display only */
+            await shieldeff(sx, sy);
             await pline_The("missiles bounce off!");
             monstseesu(M_SEEN_MAGR_ZY);
         } else {
             dam = d(nd, 6);
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             monstunseesu(M_SEEN_MAGR_ZY);
         }
         break;
     case ZT_FIRE:
         orig_dam = d(nd, 6);
         if (uhave_zp(FIRE_RES)) { /* Fire_resistance */
-            /* shieldeff(sx, sy) */
+            await shieldeff(sx, sy);
             await You("don't feel hot!");
             monstseesu(M_SEEN_FIRE_ZP);
             await ugolemeffects_zp(AD_FIRE, orig_dam);
@@ -3000,7 +2999,7 @@ async function zhitu(
     case ZT_COLD:
         orig_dam = d(nd, 6);
         if (uhave_zp(COLD_RES)) { /* Cold_resistance */
-            /* shieldeff(sx, sy) */
+            await shieldeff(sx, sy);
             await You("don't feel cold.");
             monstseesu(M_SEEN_COLD_ZP);
             await ugolemeffects_zp(AD_COLD, orig_dam);
@@ -3013,7 +3012,7 @@ async function zhitu(
         break;
     case ZT_SLEEP:
         if (Sleep_resistance()) {
-            /* shieldeff(u.ux, u.uy) */
+            await shieldeff(u.ux, u.uy);
             await You("don't feel sleepy.");
             monstseesu(M_SEEN_SLEEP);
         } else {
@@ -3051,11 +3050,11 @@ async function zhitu(
             if (g.uarmu)
                 await disintegrate_arm_zp(g.uarmu);
         } else if (nonliving_zy(g.youmonst.data) || is_demon_zp(g.youmonst.data)) {
-            /* shieldeff(sx, sy) */
+            await shieldeff(sx, sy);
             await You("seem unaffected.");
             break;
         } else if (Antimagic()) {
-            /* shieldeff(sx, sy) */
+            await shieldeff(sx, sy);
             monstseesu(M_SEEN_MAGR_ZY);
             await You("aren't affected.");
             break;
@@ -3070,13 +3069,13 @@ async function zhitu(
     case ZT_LIGHTNING:
         orig_dam = d(nd, 6);
         if (uhave_zp(SHOCK_RES)) { /* Shock_resistance */
-            /* shieldeff(sx, sy) */
+            await shieldeff(sx, sy);
             await You("aren't affected.");
             monstseesu(M_SEEN_ELEC_ZP);
             await ugolemeffects_zp(AD_ELEC, orig_dam);
         } else {
             dam = orig_dam;
-            exercise(A_CON_ZP, false);
+            await exercise(A_CON_ZP, false);
             monstunseesu(M_SEEN_ELEC_ZP);
         }
         if (!rn2(3))
@@ -3093,7 +3092,7 @@ async function zhitu(
         } else {
             await pline_The(`${hliquid_zp("acid")} burns!`);
             dam = d(nd, 6);
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             monstunseesu(M_SEEN_ACID_ZP);
         }
         /* using two weapons at once makes both of them more vulnerable */
@@ -3384,7 +3383,7 @@ async function maybe_destroy_item(
                     how = "exploding glob of slime";
                 await losehp(dmg, one ? how : makeplural(how),
                              one ? KILLED_BY_AN : KILLED_BY_ZP);
-                exercise(A_STR, false);
+                await exercise(A_STR, false);
             }
         }
     }
@@ -3680,7 +3679,7 @@ export async function dobuzz(
                             monstseesu(M_SEEN_REFL);
                             dx = -dx;
                             dy = -dy;
-                            /* shieldeff(sx, sy): transient display only */
+                            await shieldeff(sx, sy);
                             gas_hit = false;
                         } else {
                             /* flash_str here only used for killer; suppress
@@ -3706,7 +3705,7 @@ export async function dobuzz(
                     if (await mon_reflects(mon, null)) {
                         if (cansee(mon.mx, mon.my)) {
                             await hit(flash_str(fltyp, false), mon, exclam(0));
-                            /* shieldeff(mon->mx, mon->my): transient display */
+                            await shieldeff(mon.mx, mon.my);
                             await mon_reflects(mon, "But it reflects from %s %s!");
                             gas_hit = false;
                         }
@@ -4380,7 +4379,7 @@ async function u_slow_down_zp() {
         await You("slow down.");
     else /* speed boots */
         await Your("quickness feels less natural.");
-    exercise(A_DEX_ZP, false);
+    await exercise(A_DEX_ZP, false);
 }
 
 /* C ref: hack.h ERODE_CORRODE */

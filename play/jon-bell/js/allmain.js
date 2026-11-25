@@ -872,7 +872,13 @@ export async function newgame() {
      * pickup(1)'s plines (mention_decor) are swallowed: the standing moon /
      * welcome line stays alone on the topline. */
     const _stoppedTopl = startupEscStop ? (g._pending_message || '') : null;
-    await pickup(1);
+    /* The welcome / moon / Friday lines are still to be paged below when
+     * deferredLastStartupMsg is set, and pickup(1)'s describe_decor pline
+     * follows them (allmain.c:842 newgame welcome, then moveloop_preamble
+     * :57-75).  A MSGTYPE=stop rule's page (pline.c:283-284) therefore comes
+     * after those pages: defer it to the replay loop below. */
+    if (deferredLastStartupMsg !== null) g._defer_msgtype_stop = true;
+    try { await pickup(1); } finally { g._defer_msgtype_stop = false; }
     if (_stoppedTopl !== null && !tutorialFlushesDecor && deferredLastStartupMsg === null) {
         if (!g.tutorial_set_in_config && !chargenIncomplete && _stoppedTopl
             && g._topl_win_stop_buf === _stoppedTopl && g._msg_history?.at(-1) !== _stoppedTopl)
@@ -909,6 +915,18 @@ export async function newgame() {
                     break;
                 }
                 standing = part;
+            }
+            /* pline.c:283-284 MSGTYP_STOP: display_nhwindow(WIN_MESSAGE, TRUE)
+             * pages the line this message now stands on (Intel win
+             * E-more-chains w18-02/54: MSGTYPE=stop "There is a .*" with
+             * mention_decor on the up staircase at startup). */
+            if (msgtype_type(part) === 'stop') {
+                if (await topl_more_page(standing, g.u?.uac ?? 0) === 27) {
+                    g._topl_win_stop = true;
+                    standing = '';
+                    break;
+                }
+                standing = '';
             }
         }
         if (standing !== '') await topl_more_page(standing, g.u?.uac ?? 0);

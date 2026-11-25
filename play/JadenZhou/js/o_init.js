@@ -31,7 +31,7 @@ import { NHW_MENU, NHW_TEXT, PICK_ONE, MENU_BEHAVE_STANDARD,
          MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, ECMD_OK } from './const.js';
 import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
 import { PM_SAMURAI } from './monsters.js';
-import { strcmpi, strstri } from './hacklib.js';
+import { strcmpi, strstri, strsubst } from './hacklib.js';
 import { pline } from './display.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, add_menu_str,
          tty_end_menu, tty_select_menu, tty_destroy_nhwindow, tty_putstr,
@@ -539,12 +539,6 @@ function disco_typename(otyp) {
         }
     }
     return result;
-}
-
-/* C ref: hacklib.c strsubst() -- replace the first occurrence */
-function strsubst(bp, orig, replacement) {
-    const at = bp.indexOf(orig);
-    return (at < 0) ? bp : bp.slice(0, at) + replacement + bp.slice(at + orig.length);
 }
 
 // C ref: shk.c append_price_quote() -- the price range seen in shops

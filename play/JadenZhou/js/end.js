@@ -16,7 +16,7 @@ import { observe_quantum_cat } from './pickup.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_LIFESAVE } from './const.js';
-import { pline, You, Your, bot, canspotmon } from './display.js';
+import { pline, You, Your, bot, canspotmon, You_feel, pline_The } from './display.js';
 import { accessible } from './makemon.js';
 import {
     DIED, CHOKING, STARVING, BURNING, DISSOLVED, STONING, TURNED_SLIME,
@@ -36,7 +36,8 @@ import { mons, PM_HIGH_CLERIC, PM_GHOST, PM_WRAITH, PM_VAMPIRE, PM_GHOUL,
          PM_HUMAN, PM_GREEN_SLIME, PM_TOURIST, S_WRAITH, S_MUMMY, S_VAMPIRE,
          G_UNIQ, G_NOCORPSE, M2_PNAME } from './monsters.js';
 import { AMULET_OF_LIFE_SAVING, LARGE_BOX, STATUE, TIN, CORPSE,
-         FAKE_AMULET_OF_YENDOR } from './objects.js';
+         FAKE_AMULET_OF_YENDOR, SchroedingersBox,
+         Is_container } from './objects.js';
 import { pmname, Mgender, m_monnam } from './do_name.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import { an, the_unique_pm } from './objnam.js';
@@ -53,7 +54,7 @@ import { the, thesimpleoname } from './iactions.js';
 import { xname, doname_with_price } from './objnam.js';
 import { NHW_MENU, SORTLOOT_LOOT, SORTLOOT_PACK } from './const.js';
 import { BAG_OF_TRICKS } from './objects.js';
-import { Is_container, place_object, mk_named_object } from './mkobj.js';
+import { place_object, mk_named_object } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { deepest_lev_reached, depth, dunlev, on_level } from './dungeon.js';
 import { money_cnt } from './u_init.js';
@@ -92,6 +93,7 @@ import { expels, unstuck } from './mhitu.js';
 import { sticks as sticks_end } from './engrave.js';
 import { Monnam as Monnam_end } from './do_name.js';
 import { flush_screen as flush_screen_end } from './display.js';
+import { findgd } from './vault.js';
 
 const EXIT_SUCCESS = 0;
 const BUFSZ = 256;
@@ -130,8 +132,6 @@ function inc_done_stopprint() {
     game.program_state.stopprint = (game.program_state.stopprint || 0) + 1;
 }
 
-/* C ref: obj.h SchroedingersBox() */
-function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
 /* C ref: integer.h nowrap_add() */
 function nowrap_add(a, b) {
     return (a <= Number.MAX_SAFE_INTEGER - b) ? a + b : Number.MAX_SAFE_INTEGER;
@@ -749,8 +749,8 @@ export async function done(how) {
         await Your(`medallion ${!Blind() ? "begins to glow" : "feels warm"}!`);
         if (how === CHOKING)
             await You("vomit ...");
-        await pline("You feel much better!"); /* You_feel() */
-        await pline("The medallion crumbles to dust!"); /* pline_The() */
+        await You_feel("much better!");
+        await pline_The("medallion crumbles to dust!");
         if (g.uamul)
             await useup(g.uamul);
 
@@ -781,17 +781,6 @@ export async function done(how) {
     }
     await really_done(how);
     /*NOTREACHED*/
-}
-
-// C ref: vault.c findgd()
-function findgd() {
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (mtmp.mhp < 1) /* DEADMONSTER */
-            continue;
-        if (mtmp.isgd && on_level(mtmp.egd.gdlevel, game.u.uz))
-            return mtmp;
-    }
-    return null;
 }
 
 // C ref: vault.c paygd()

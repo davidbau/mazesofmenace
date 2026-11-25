@@ -29,7 +29,7 @@ import { A_STR, A_INT, A_DEX, A_CON, A_CHA,
          HEAD, EYE, SICK, SICK_ALL, TIMEOUT, A_CHAOTIC, A_LAWFUL, NON_PM,
          Upolyd, ismnum, FAST, MFAST, MSLOW, STRAT_WAITFORU } from './const.js';
 import { Your } from './pline.js';
-import { nomul, losehp, in_rooms } from './hack.js';
+import { nomul, losehp, in_rooms, notice_all_mons_flush } from './hack.js';
 import { surface } from './dungeon.js';
 import { A_WIS, ECMD_CANCEL, ECMD_FAIL, CQ_CANNED, IS_FOUNTAIN, IS_SINK } from './const.js';
 import { cmdq_peek } from './cmd.js';
@@ -1066,6 +1066,8 @@ export async function toggle_blindness() {
        and then a secret door; hero was blinded by vapors but then got the
        message "a door appears in the wall" because wall spot was IN_SIGHT) */
     vision_recalc(0);
+    // src/potion.c:348: vision_recalc() finishes its sightings before returning.
+    await notice_all_mons_flush();
     if (Blind_telepat() || Infravision() || Stinging)
         await see_monsters(); /* also counts EWarn_of_mon monsters */
     /*
@@ -1444,8 +1446,7 @@ async function peffect_full_healing(otmp) {
 
 // src/potion.c peffect_sleeping()
 async function peffect_sleeping(otmp) {
-    if (Sleep_resistance()
-        || game.u.uprops?.FREE_ACTION || game.u.intrinsic?.HFree_action) {
+    if (Sleep_resistance() || Free_action()) {
         monstseesu(M_SEEN_SLEEP);
         await You('yawn.');
     } else {

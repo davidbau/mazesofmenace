@@ -50,7 +50,7 @@ import { init_oclass_probs } from './o_init.js';
 import { max_rank_sz } from './botl.js';
 import { adj_erinys } from './attrib.js';
 import { vision_reset } from './vision.js';
-import { docrt, pline } from './display.js';
+import { docrt, pline, gbuf_keep } from './display.js';
 import { tty_clear_nhwindow, tty_display_nhwindow, tty_putmsghistory } from './wintty.js';
 import { welcome } from './allmain.js';
 import { check_special_room } from './hack.js';
@@ -896,10 +896,12 @@ export async function getlev(nhfp, pid, lev, fixups_from) {
         await trickery(trickbuf);
     }
     /* svl.level is overwritten from the file */
+    const oldlev = g.level;
     g.level = new GameMap();
     const L = g.level;
     restcemetery(nhfp, L, 'bonesinfo');
     rest_levl(nhfp);
+    gbuf_keep(oldlev); /* gg.gbuf isn't part of the level */
 
     const lst = Sfi(nhfp, "lastseentyp");
     if (lst !== null && lst !== undefined) L.lastseentyp = lst;

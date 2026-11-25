@@ -9,8 +9,7 @@ import { mons, LOW_PM } from './monsters.js';
 import { NON_PM, FULL_MOON, DEAF, HALLUC, HALLUC_RES, I_SPECIAL,
          PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { night } from './calendar.js';
-import { canseemon, newsym, pline } from './display.js';
-import { You_hear } from './sounds.js';
+import { canseemon, newsym, pline, You_hear } from './display.js';
 import { wake_nearto, healmon, monnear } from './mon.js';
 import { is_were, is_human, monsndx, set_mon_data } from './mondata.js';
 import { Monnam, pmname, Mgender } from './do_name.js';

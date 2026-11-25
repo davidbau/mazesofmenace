@@ -20,7 +20,7 @@ import { setuqwep, setuswapwep, setuwep, welded, weldmsg } from './wield.js';
 import { breakobj, hitfloor } from './dothrow.js';
 import { visctrl as _binds_visctrl } from './cmd_binds.js';
 import { menucolor_row } from './coloratt.js';
-import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js';
+import { build_window_screen, menu_search_case, tty_window_offx, menu_search_apply_corners } from './com_pager.js';
 import { money_cnt } from './hack.js';
 import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, COST_DEGRD, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, LOST_DROPPED, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, OBJ_FREE, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
 import { is_pick, use_pick_axe2 } from './dig.js';
@@ -120,7 +120,7 @@ import { set_levltyp } from './mkmaze.js'; // relocate-fns
 import { next_level, prev_level, print_level_annotation, recbranch_mapseen } from './dungeon.js'; // relocate-fns
 import { G_GENOD, NON_PM, OBJ_FLOOR, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT } from './const.js'; // relocate-fns
 import { rot_corpse } from './dig.js'; // relocate-fns
-import { canseemon } from './display.js'; // relocate-fns
+import { canseemon, tty_splice_row } from './display.js'; // relocate-fns
 import { dist2, upstart } from './hacklib.js'; // relocate-fns
 import { is_rider_pm } from './mklev.js';
 import { rider_revival_time, set_corpsenm } from './mkobj.js'; // relocate-fns
@@ -1311,8 +1311,27 @@ export async function doddrop() {
         if (ddropTitleErased) painted[0] = '';
         return painted;
     };
+    /* A ^P history window inside the search getlin left a docorner()ed
+     * corner over this menu (js/com_pager.js menu_search_apply_corners);
+     * only set_item_state's one-cell repaints (wintty.c:1171-1190) land on
+     * it afterwards, for the rows toggled since. */
+    let ddropCorners = null;
+    const ddropTouched = new Set();
     const showDdropMenu = async () => {
-        g._screen_output = ddBuild(ddropPaintedLines());
+        const fresh = ddBuild(ddropPaintedLines());
+        if (!ddropCorners?.length) {
+            g._screen_output = fresh;
+        } else {
+            const rows = menu_search_apply_corners(fresh.split('\n'), ddropCorners, 1);
+            const frows = fresh.split('\n');
+            for (const row of ddropRows) {
+                if (!ddropTouched.has(row.selector)) continue;
+                const r = row.line, c = WIN_COL + 2;
+                rows[r] = tty_splice_row(tty_splice_row(rows[r] || '', frows[r] || '', c),
+                                         rows[r] || '', c + 1);
+            }
+            g._screen_output = rows.join('\n');
+        }
         set_cursor(endCursorCol, endRow);
     };
     /* wintty.c:1921 process_menu_window entry: `if (ttyDisplay->toplin ==
@@ -1349,12 +1368,14 @@ export async function doddrop() {
                         ddropSelected.delete(r.selector);
                         ddropCounts.delete(r.selector);
                     } else ddropSelected.add(r.selector);
+                    if (ddropCorners?.length) ddropTouched.add(r.selector);
                 }
                 return;
             }
             const row = ddropRows.find((r) => r.selector === ch)
                      ?? ddropRows.find((r) => r.gsym && r.gsym === ch);
             if (!row) return;
+            if (ddropCorners?.length) ddropTouched.add(row.selector);
             if (ddropSelected.has(row.selector)) {
                 /* toggle_menu_curr (wintty.c:1122-1127): a count typed at an
                  * already-selected selector re-counts it rather than
@@ -1372,15 +1393,26 @@ export async function doddrop() {
         async () => menu_search_case(
             'ANY',
             ddropRows.map((r) => ({ str: windowLines[r.line], r })),
-            () => ddBuild(ddropPaintedLines()).split('\n'),
+            () => {
+                const rows = ddBuild(ddropPaintedLines()).split('\n');
+                return ddropCorners?.length ? menu_search_apply_corners(rows, ddropCorners, 1) : rows;
+            },
             (curr) => {
                 const selr = curr.r.selector;
+                ddropCorners = [...(ddropCorners || []), ...(g._menu_search_corner || [])];
+                g._menu_search_corner = null;
+                if (ddropCorners.length) ddropTouched.add(selr);
                 if (ddropSelected.has(selr)) {
                     ddropSelected.delete(selr);
                     ddropCounts.delete(selr);   /* wintty.c:1130 */
                 } else ddropSelected.add(selr);
             })
-            .then((fin) => { ddropTitleErased = true; return fin; }));
+            .then((fin) => {
+                ddropTitleErased = true;
+                ddropCorners = [...(ddropCorners || []), ...(g._menu_search_corner || [])];
+                g._menu_search_corner = null;
+                return fin;
+            }));
     /* windows.c:1859-1863 keeps bot disabled through select_menu's dismissal.
      * wintty.c:978-982 restores a full-screen window with docrt/flush_screen,
      * or a corner with docorner(offx, maxrow + 1, 0), before query_category

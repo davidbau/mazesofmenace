@@ -5,8 +5,8 @@
 // monnear(), mon_allowflags().
 
 import { may_dig } from './dig.js';
-import { monhaskey } from './monmove.js';
-import { online2, sgn, plur } from './hacklib.js';
+import { monhaskey, m_can_break_boulder } from './monmove.js';
+import { online2, sgn, plur, NODIAG } from './hacklib.js';
 import { game } from './gstate.js';
 import { LL_KILLEDPET, LL_UMONST, LL_ACHIEVE, ACH_MEDU,
          has_mgivenname, MGIVENNAME } from './const.js';
@@ -14,7 +14,7 @@ import { EXACT_NAME, Mgender } from './do_name.js';
 import { record_achievement } from './insight.js';
 import { shtypes } from './shknam.js';
 import { PM_MEDUSA, PM_HIGH_CLERIC } from './monsters.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, verbalize, You_hear } from './display.js';
 import { LL_CONDUCT } from './const.js';
 import { remove_worm, wormgone, worm_known, worm_cross, count_wsegs, get_wormno,
          initworm, place_worm_tail_randomly } from './worm.js';
@@ -40,7 +40,7 @@ import {
 } from './const.js';
 import { dist2 } from './hacklib.js';
 import { vision_recalc, cansee } from './vision.js';
-import { newsym, pline, glyph_is_invisible, unmap_object } from './display.js';
+import { newsym, pline, glyph_is_invisible, unmap_object, shieldeff } from './display.js';
 import { m_at, sobj_at, is_pool, is_lava, may_passwall, accessible, nonliving,
          is_golem, closed_door, hideunder, In_endgame, mbirth_limit, newmonhp,
          pm_to_cham } from './makemon.js';
@@ -80,11 +80,11 @@ import {
     PM_AIR_ELEMENTAL, M1_ANIMAL, M1_MINDLESS, S_MUMMY,
     PM_FLESH_GOLEM, G_UNIQ,
 } from './monsters.js';
-import { BOULDER, CLOVE_OF_GARLIC, CREDIT_CARD, SKELETON_KEY,
-         LOCK_PICK, EGG, CORPSE, AMULET_OF_LIFE_SAVING, GRAY_DRAGON_SCALES,
+import { BOULDER, CLOVE_OF_GARLIC, CREDIT_CARD, SKELETON_KEY, LOCK_PICK, EGG,
+         CORPSE, AMULET_OF_LIFE_SAVING, GRAY_DRAGON_SCALES,
          YELLOW_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
          YELLOW_DRAGON_SCALE_MAIL, TIN, GLOB_OF_GREEN_SLIME, CARROT, ICE_BOX,
-         objects } from './objects.js';
+         objects, is_pick, is_axe } from './objects.js';
 import { NO_NC_FLAGS, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
          POISON_RES, STONE_RES, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
          MAGICAL_BREATHING, Is_waterlevel } from './const.js';
@@ -98,7 +98,7 @@ import { enexto, rloc_to_core } from './teleport.js';
 import { PICK_AXE, DWARVISH_MATTOCK, AXE, BATTLE_AXE, WEAPON_CLASS,
          TOOL_CLASS } from './objects.js';
 import { NO_WEAPON_WANTED, W_ARMS, SHOPBASE, P_AXE, P_PICK_AXE, WT_TOOMUCH_DIAGONAL } from './const.js';
-import { curr_mon_load } from './dogmove.js';
+import { curr_mon_load, finish_meating } from './dogmove.js';
 import { can_hide_under_obj, set_mimic_sym, hideunder_async } from './makemon.js';
 import { vobj_at } from './display.js';
 import { ceiling_hider } from './engrave.js';
@@ -140,8 +140,8 @@ import { flooreffects, deferred_goto } from './do.js';
 import { s_suffix } from './hacklib.js';
 import { change_luck, adjalign } from './attrib.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
-import { You_hear, growl, maybe_gasp } from './sounds.js';
-import { PLNMSG_GROWL, DEAF } from './const.js';
+import { growl, maybe_gasp } from './sounds.js';
+import { PLNMSG_GROWL } from './const.js';
 import { little_to_big } from './mondata.js';
 import { quest_info } from './questpgr.js';
 import { is_lightblocker_mappear, does_block, unblock_point,
@@ -160,7 +160,7 @@ import { in_rooms, spoteffects } from './hack.js';
 import { in_your_sanctuary } from './priest.js';
 import { nemdead, leaddead, nemesis_stinks } from './quest.js';
 import { stinky_nemesis } from './questpgr.js';
-import { Hallucination, Conflict } from './youprop.js';
+import { Hallucination, Conflict, Deaf } from './youprop.js';
 import { m_next2u } from './const.js';
 import { uhis, unstuck } from './mhitu.js';
 import { obj_extract_self } from './mkobj.js';
@@ -192,6 +192,21 @@ import { gd_move } from './vault.js';
 import { rloc_to as rloc_to_mn } from './teleport.js';
 import { place_wsegs as place_wsegs_rm } from './worm.js';
 import { set_ustuck as set_ustuck_rm } from './uhitm.js';
+import { m_carrying } from './mthrowu.js';
+import { extract_from_minvent } from './steal.js';
+import { obj_resists } from './dogmove.js';
+import { end_burn } from './timeout.js';
+import { add_to_container, weight } from './mkobj.js';
+import { digests } from './mondata.js';
+import { You } from './display.js';
+import { u_locomotion } from './trap.js';
+import { STATUE, ROCK } from './objects.js';
+import { MZ_TINY, PM_STONE_GOLEM, S_GOLEM, MR_STONE } from './monsters.js';
+import { CORPSTAT_HISTORIC } from './const.js';
+import { a_monnam } from './do_name.js';
+import { an } from './objnam.js';
+import { impossible } from './hack.js';
+import { POTION_CLASS } from './objects.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -622,6 +637,145 @@ export async function mondead(mtmp) {
     await m_detach(mtmp, mptr, true);
 }
 
+// C ref: mon.c monstone()
+/* drop (perhaps) a cadaver and remove monster */
+export async function monstone(mdef) {
+    let otmp, obj;
+    const oldminvent = []; /* C's oldminvent chain; [0] is its head */
+    const x = mdef.mx, y = mdef.my;
+    let wasinside = false;
+
+    /* vampshifter reverts to vampire;
+       3.6.3: also used to unshift shape-changed sandestin */
+    if (!(await vamp_stone(mdef)))
+        return;
+
+    /* we have to make the statue before calling mondead, to be able to
+     * put inventory in it, and we have to check for lifesaving before
+     * making the statue....
+     */
+    mdef.mhp = 0; /* in case caller hasn't done this */
+    lifesaved_monster(mdef);
+    if (!DEADMONSTER(mdef))
+        return;
+
+    mdef.mtrapped = 0; /* (see m_detach) */
+
+    if (mdef.data.msize > MZ_TINY
+        || !rn2(2 + ((mdef.data.geno & G_FREQ) > 2 ? 1 : 0))) {
+        let corpstatflags = CORPSTAT_NONE;
+
+        /* some objects may end up outside the statue; C walks
+           mdef->minvent from its head, the newest object, which is the
+           last element of the JS minvent array */
+        while ((obj = (mdef.minvent && mdef.minvent.length)
+                      ? mdef.minvent[mdef.minvent.length - 1] : null) !== null) {
+            extract_from_minvent(mdef, obj, true, true);
+            if (obj.otyp === BOULDER
+                /* invocation tools resist even with 0% resistance */
+                || obj_resists(obj, 0, 0)) {
+                if (await flooreffects(obj, x, y, "fall"))
+                    continue;
+                place_object(obj, x, y);
+            } else {
+                if (obj.lamplit)
+                    end_burn(obj, true);
+                oldminvent.unshift(obj); /* obj->nobj = oldminvent; oldminvent = obj */
+            }
+        }
+        /* defer statue creation until after inventory removal
+           so that saved monster traits won't retain any stale
+           item-conferred attributes */
+        if (mdef.female)
+            corpstatflags |= CORPSTAT_FEMALE;
+        else if (!is_neuter(mdef.data))
+            corpstatflags |= CORPSTAT_MALE;
+        /* Archeologists should not break unique statues */
+        if (mdef.data.geno & G_UNIQ)
+            corpstatflags |= CORPSTAT_HISTORIC;
+        otmp = mkcorpstat(STATUE, mdef, mdef.data, x, y, corpstatflags);
+        if (has_mgivenname(mdef))
+            otmp = oname(otmp, MGIVENNAME(mdef), ONAME_NO_FLAGS);
+        for (const cobj of oldminvent)
+            add_to_container(otmp, cobj);
+        otmp.owt = weight(otmp);
+    } else
+        otmp = mksobj_at(ROCK, x, y, true, false);
+
+    stackobj(otmp);
+    /* mondead() already does this, but we must do it before the newsym */
+    if (glyph_is_invisible(game.level.at(x, y).remembered_glyph))
+        unmap_object(x, y);
+    if (cansee(x, y))
+        newsym(x, y);
+    /* we don't currently trap the hero in the statue in this case but we
+       could */
+    if (engulfing_u(mdef))
+        wasinside = true;
+    await mondead(mdef);
+    if (wasinside) {
+        if (digests(mdef.data))
+            await You(`${u_locomotion("jump")} through an opening in the new ${
+                xname(otmp)}.`);
+    }
+}
+
+// C ref: mon.c set_mon_min_mhpmax()
+export function set_mon_min_mhpmax(mon, minimum_mhpmax) {
+    /* can't be less than m_lev+1 (if we just used m_lev itself, level 0
+       monsters would end up allowing a minimum of 0); since life draining
+       reduces m_lev, this usually won't give the monster much of a boost */
+    if (mon.mhpmax < mon.m_lev + 1)
+        mon.mhpmax = mon.m_lev + 1;
+    /* caller can specify an alternate minimum; we'll honor it iff it is
+       greater than m_lev+1 */
+    if (mon.mhpmax < minimum_mhpmax)
+        mon.mhpmax = minimum_mhpmax;
+}
+
+// C ref: mon.c mon_to_stone()
+/* changes the monster into a stone monster of the same type
+   this should only be called when poly_when_stoned() is true */
+export async function mon_to_stone(mtmp) {
+    if (mtmp.data.mlet === S_GOLEM) {
+        /* it's a golem, and not a stone golem */
+        if (canseemon(mtmp))
+            await pline(`${Monnam(mtmp)} solidifies...`); /* pline_mon() */
+        if (await newcham(mtmp, mons[PM_STONE_GOLEM], NO_NC_FLAGS)) {
+            if (canseemon(mtmp))
+                await pline(`Now it's ${an(pmname(mtmp.data, Mgender(mtmp)))}.`);
+        } else {
+            if (canseemon(mtmp))
+                await pline("... and returns to normal.");
+        }
+    } else
+        impossible(`Can't polystone ${a_monnam(mtmp)}!`);
+}
+
+// C ref: mon.c vamp_stone()
+export async function vamp_stone(mtmp) {
+    if (is_vampshifter(mtmp)) {
+        const mndx = mtmp.cham;
+
+        /* this only happens if shapeshifted */
+        if (mndx >= LOW_PM && mndx !== monsndx(mtmp.data)
+            && !(game.mvitals[mndx].mvflags & G_GENOD))
+            throw new Error('vamp_stone(): lapidifying vampshifter not ported yet');
+    } else if (ismnum(mtmp.cham)
+               && (mons[mtmp.cham].mresists & MR_STONE)) {
+        /* sandestins are stoning-immune so if hit by stoning damage
+           they revert to innate shape rather than become a statue */
+        mtmp.mcanmove = 1;
+        mtmp.mfrozen = 0;
+        set_mon_min_mhpmax(mtmp, 10); /* mtmp->mhpmax=max(mtmp->m_lev+1,10) */
+        mtmp.mhp = mtmp.mhpmax;
+        await newcham(mtmp, mons[mtmp.cham], NC_SHOW_MSG);
+        newsym(mtmp.mx, mtmp.my);
+        return false; /* didn't petrify */
+    }
+    return true;
+}
+
 // C ref: mon.c corpse_chance()
 /* TRUE if corpse might be dropped, magr may die if mon was swallowed */
 export async function corpse_chance(mon, magr, was_swallowed) {
@@ -969,14 +1123,26 @@ export async function xkilled(
     if (mtmp.mtame && !mtmp.isminion)
         mtmp.edog.killed_by_u = 1;
 
-    if (wasinside && game.thrownobj)
-        throw new Error('xkilled(): thrown object killing engulfer not ported yet');
+    if (wasinside && game.thrownobj && game.thrownobj !== game.uball
+        /* don't give to mon if missile is going to be destroyed */
+        && game.thrownobj.oclass !== POTION_CLASS
+        /* don't give to mon if missile is going to return to hero */
+        && game.thrownobj !== game.iflags.returning_missile) {
+        /* thrown object has killed hero's engulfer; add it to mon's
+           inventory now so that it will be placed with mon's other
+           stuff prior to lookhere/autopickup when hero is expelled
+           below (as a side-effect, this missile has immunity from
+           being consumed [for this shot/throw only]) */
+        mpickobj(mtmp, game.thrownobj);
+        /* let throwing code know that missile has been disposed of */
+        game.thrownobj = null;
+    }
 
     game.vamp_rise_msg = false; /* might get set in mondead(); checked below */
     game.disintegested = nocorpse; /* alternate vamp_rise mesg needed if true */
     /* dispose of monster and make cadaver */
     if (game.stoned)
-        throw new Error('xkilled(): monstone() not ported yet');
+        await monstone(mtmp);
     else
         await mondead(mtmp);
     game.disintegested = false; /* reset */
@@ -1176,17 +1342,6 @@ export function seemimic(mtmp) {
     newsym(mtmp.mx, mtmp.my);
 }
 
-// C ref: dogmove.c finish_meating()
-function finish_meating(mtmp) {
-    mtmp.meating = 0;
-    if ((mtmp.m_ap_type || 0) !== M_AP_NOTHING && mtmp.data.mlet !== MM.S_MIMIC) {
-        /* was eating a mimic and now appearance needs resetting */
-        mtmp.m_ap_type = M_AP_NOTHING;
-        mtmp.mappearance = 0;
-        newsym(mtmp.mx, mtmp.my);
-    }
-}
-
 // C ref: mon.c peacefuls_respond()
 /* make other peaceful monsters react */
 async function peacefuls_respond(mtmp) {
@@ -1203,15 +1358,12 @@ async function peacefuls_respond(mtmp) {
             && mon.mcansee && m_canseeu(mon)) {
             let buf = '';
             let exclaimed = false, needpunct = false, alreadyfleeing;
-            const Deaf = () => !!(game.u.uprops[DEAF]?.intrinsic
-                                  || game.u.uprops[DEAF]?.extrinsic);
 
             if (humanoid(mon.data) || mon.isshk || mon.ispriest) {
                 if (is_watch(mon.data)) {
-                    /* SetVoice(mon, 0, 80, 0); verbalize() */
-                    if (!Deaf())
-                        await pline('"Halt!  You\'re under arrest!"');
-                    await angry_guards(Deaf());
+                    /* SetVoice(mon, 0, 80, 0) */
+                    await verbalize("Halt!  You're under arrest!");
+                    await angry_guards(!!Deaf());
                 } else {
                     if (!Deaf() && !rn2(5)) {
                         const gasp = maybe_gasp(mon);
@@ -2499,24 +2651,9 @@ export function monnear(mon, x, y) {
         return false;
     return (distance < 3);
 }
-/* C ref: mondata.h NODIAG() */
-function NODIAG(monnum) { return monnum === PM_GRID_BUG; }
 
 /* mondata.h */
 
-/* C ref: monmove.c m_can_break_boulder() */
-function m_can_break_boulder(mtmp) {
-    return (is_rider(mtmp.data)
-            || (!mtmp.mspec_used
-                && (mtmp.isshk || mtmp.ispriest
-                    || (mtmp.data.msound === MS_LEADER))));
-}
-/* C ref: mthrowu.c m_carrying() */
-function m_carrying(mtmp, type) {
-    for (const otmp of minv(mtmp))
-        if (otmp.otyp === type) return otmp;
-    return null;
-}
 /* C ref: mondata.c passes_bars() */
 export function passes_bars(mptr) {
     return (passes_walls(mptr) || amorphous(mptr)
@@ -2603,16 +2740,6 @@ function monlineu(mon, nx, ny) {
     return online2(nx, ny, mon.mux, mon.muy);
 }
 
-/* C ref: obj.h is_pick() */
-function is_pick(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill === P_PICK_AXE);
-}
-/* C ref: obj.h is_axe() */
-function is_axe(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill === P_AXE);
-}
 /* C ref: hack.c bad_rock() */
 export function bad_rock(mdat, x, y) {
     return ((game.level.flags.sokoban_rules && sobj_at(BOULDER, x, y))
@@ -3545,4 +3672,12 @@ export async function angry_guards(silent) {
         return true;
     }
     return false;
+}
+
+// C ref: mon.c shieldeff_mon()
+export async function shieldeff_mon(mtmp) {
+    await shieldeff(mtmp.mx, mtmp.my);
+    /* does not depend on seeing the monster; the shield effect is visible */
+    if (cansee(mtmp.mx, mtmp.my))
+        await pline(`${Monnam(mtmp)} resists!`); /* pline_mon() */
 }

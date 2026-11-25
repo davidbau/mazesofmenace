@@ -9,11 +9,8 @@ import { is_obj_mappear } from './pager.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { couldsee, cansee } from './vision.js';
-import {
-    pline, You, Your, pline_The, You_feel, Norep, canseemon, canspotmon,
-    tp_sensemon, map_invisible
-} from './display.js';
-import { You_hear } from './sounds.js';
+import { pline, You, Your, pline_The, You_feel, Norep, canseemon, canspotmon,
+         tp_sensemon, map_invisible, verbalize, You_hear } from './display.js';
 import { nomul } from './hack.js';
 import { Monnam, mon_nam, pmname, bogusmon, pronoun_gender,
          PRONOUN_HALLU } from './do_name.js';
@@ -128,13 +125,6 @@ const mon_wizard_spells = [
 function is_fainted() { return game.u.uhs === 5; /* FAINTED */ }
 /* C ref: rm.h IS_WATERWALL(), is_waterwall() */
 function is_waterwall(x, y) { return game.level.at(x, y).typ === WATER; }
-/* C ref: pline.c verbalize() -- SetVoice() only matters for speech
-   output, which the tty doesn't do */
-async function verbalize(line) {
-    if (Deaf())
-        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
-    await pline(`"${line}"`);
-}
 /* C ref: potion.c vision_clears[] */
 const vision_clears = "vision quickly clears.";
 

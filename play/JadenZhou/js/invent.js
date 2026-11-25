@@ -40,7 +40,7 @@ import {
     GETOBJ_PROMPT, Never_mind, FINGERTIP, HAND, W_ARMOR, W_ACCESSORY,
     W_SADDLE, W_WEAPONS, W_TOOL,
 } from './const.js';
-import { objects } from './objects.js';
+import { objects, Is_container, is_missile, is_ammo } from './objects.js';
 import * as M from './monsters.js';
 import { mons, PM_COCKATRICE, PM_CHICKATRICE } from './monsters.js';
 import { STONE_RES, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
@@ -58,7 +58,7 @@ import { record_achievement } from './insight.js';
 import { ACH_AMUL, ACH_CNDL, ACH_BELL, ACH_BOOK, ACH_MINE_PRIZE, ACH_SOKO_PRIZE,
          W_ART } from './const.js';
 import { ART_MJOLLNIR } from './artilist.js';
-import { is_missile, is_ammo, setuqwep } from './wield.js';
+import { setuqwep } from './wield.js';
 import { confers_luck, stop_timer, obj_stop_timers, obj_to_any, attach_fig_transform_timeout } from './timeout.js';
 import { FIG_TRANSFORM } from './const.js';
 import { obj_merge_light_sources } from './light.js';
@@ -80,7 +80,9 @@ import { Blind, Hallucination } from './youprop.js';
 import { MINV_ALL as MINV_ALL_IV, MINV_PICKMASK as MINV_PICKMASK_IV,
          INCLUDE_HERO as INCLUDE_HERO_IV, engulfing_u as engulfing_u_iv } from './const.js';
 import { s_suffix as s_suffix_iv } from './hacklib.js';
-import { noit_Monnam as noit_Monnam_iv } from './do_name.js';
+import { noit_Monnam as noit_Monnam_iv, mon_nam } from './do_name.js';
+import { mbodypart } from './insight.js';
+import { STOMACH } from './const.js';
 import { allow_all as allow_all_iv } from './pickup.js';
 import { mons as mons_iv } from './monsters.js';
 import { discover_object as discover_object_iv,
@@ -1628,8 +1630,7 @@ function feel_cockatrice(otmp, force_touch) {
         throw new Error('feel_cockatrice(): touching a cockatrice corpse not ported yet');
 }
 
-// C ref: invent.c look_here() -- the hero's own (unswallowed, sighted)
-// look at what is here
+// C ref: invent.c look_here()
 export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup is in progress */
                                 lookhere_flags) {
     const u = game.u;
@@ -1644,8 +1645,38 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
     /* default pile_limit is 5; a value of 0 means "never skip" */
     const pile_limit = game.flags?.pile_limit ?? 5;
     const skip_objects = (pile_limit > 0 && obj_cnt >= pile_limit);
-    if (u.uswallow)
-        throw new Error('look_here(): looking inside an engulfer not ported yet');
+    if (u.uswallow) {
+        const mtmp = u.ustuck;
+
+        /*
+         * FIXME?
+         *  Engulfer's inventory can include worn items (specific case is
+         *  Juiblex being created with an amulet as random defensive item)
+         *  which will be flagged as "(being worn)".  This code includes
+         *  such a worn item under the header "Contents of <mon>'s stomach",
+         *  a nifty trick for how/where to wear stuff.  The situation is
+         *  rare enough to turn a blind eye.
+         */
+        fbuf = `Contents of ${s_suffix_iv(mon_nam(mtmp))} ${mbodypart(mtmp, STOMACH)}`;
+        /* Skip "Contents of " by using fbuf index 12 */
+        await You(`${Blind ? "try" : "look around"} to ${verb} what is lying in ${fbuf.slice(12)}.`);
+        const minv = mtmp.minvent || [];
+        if (minv.length) {
+            for (const otmp of minv) {
+                /* If swallower is an animal, it should have become stone
+                 * but... */
+                if (otmp.otyp === O.CORPSE)
+                    feel_cockatrice(otmp, false);
+            }
+            if (Blind)
+                fbuf = "You feel";
+            fbuf += ":";
+            await display_minventory(mtmp, MINV_ALL_IV | PICK_NONE, fbuf);
+        } else {
+            await You(`${verb} no objects here.`);
+        }
+        return (Blind ? ECMD_TIME_IV : ECMD_OK);
+    }
     if (!skip_objects) {
         let regbuf = '';
         const reg = visible_region_at(u.ux, u.uy);
@@ -2557,7 +2588,7 @@ export async function useupf(obj, numused) {
 // C ref: invent.c set_cknown_lknown()
 /* set obj->{cknown,lknown} if applicable */
 export function set_cknown_lknown(obj) {
-    if (Is_container_iv(obj) || obj.otyp === O.STATUE)
+    if (Is_container(obj) || obj.otyp === O.STATUE)
         obj.cknown = obj.lknown = 1;
     else if (obj.otyp === O.TIN)
         obj.cknown = 1;
@@ -2677,10 +2708,6 @@ export async function identify_pack(id_limit,
 function wait_synch_iv() {
     if (game.ttyDisplay?.rawprint)
         throw new Error('wait_synch(): getret() not ported yet');
-}
-/* C ref: obj.h Is_container() */
-function Is_container_iv(otmp) {
-    return otmp.otyp >= O.LARGE_BOX && otmp.otyp <= O.BAG_OF_TRICKS;
 }
 
 

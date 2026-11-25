@@ -11,7 +11,7 @@
 import { upstart } from './hacklib.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pgetchar } from './cmd.js';
+import { pgetchar, doprev_message } from './cmd.js';
 import { rank_of_roleidx, role_index_by_name } from './rank_data.js';
 import { COLNO, ROWNO, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, gs, PRIMARYSET, H_UTF8 } from './const.js';
 import { acurr } from './attrib.js';
@@ -25,7 +25,7 @@ import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_S
 import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell, levelgen_frozen_cell,
          await_topl_more_dismiss, pline_flush_point, docorner_status_row,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
-         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail, flush_gnew_cells_over_window, overlay_flushed_cells, menu_search_prevmsg_walk } from './display.js';
+         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail, flush_gnew_cells_over_window, overlay_flushed_cells, menu_search_prevmsg_walk, tty_splice_row, _tty_row_cells_of } from './display.js';
 import { money_cnt } from './hack.js'; // relocate-fns
 export { ask_do_tutorial } from './options.js'; // relocate-fns
 export { money_cnt } from './hack.js'; // relocate-fns
@@ -931,6 +931,12 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
             output += mapStr + text + '\n';
         }
     }
+    /* The window's title row is blank only after its MENU_SEARCH getlin
+     * (getline.c:213); a ^P history window raised inside that getlin left
+     * its docorner()ed corner on this menu, which no later repaint of the
+     * same page restores (menu_search_apply_corners). */
+    if (windowLines[0] === '' && game._menu_search_corner?.length)
+        return menu_search_corner_frame(output.split('\n'), Math.max(0, WIN_COL) + 2).join('\n');
     return output;
 }
 // ── Split text into window lines ──
@@ -1433,6 +1439,9 @@ export async function menu_search_getlin(frameRows) {
     g._topl_sticky = null;
     g._topl_empty_sticky = null;
     g._menu_search_row0_erased = true;
+    /* corners a ^P history window left erased over this menu (see below) */
+    const corners = [];
+    g._menu_search_corner = corners;
     /* C getline.c:63 custompline() -> vpline() pline.c:266-276: vision_recalc(0)
      * when pending, then flush_screen(1) prints the gnew map cells over the
      * menu.  They stay on the terminal under the prompt (and, for TtyMenu,
@@ -1481,6 +1490,7 @@ export async function menu_search_getlin(frameRows) {
         const rows = overlay_flushed_cells((await frameRows()).slice(), gnewCells);
         if (tornRows > 1)
             restoreTorn(rows, tornRows);
+        menu_search_apply_corners(rows, corners, 0);
         /* C ref: getline.c:63,174 — paint the prompt once, then echo edits
          * through putsyms().  The painter retains rows erased by wrapping;
          * trailing blanks are trimmed only when encoding the screen. */
@@ -1517,6 +1527,53 @@ export async function menu_search_getlin(frameRows) {
                 doprev = true;
                 continue;
             }
+            /* C ref: getline.c:121-137 msg_window:full or reverse, or
+             * combination past its two single-style recalls: one
+             * tty_doprev_message() (topl.c:27-41 full, :62-71 combination's
+             * window, :80-96 reverse), then clear_nhwindow(WIN_MESSAGE),
+             * cw->maxcol = cw->maxrow, and the query + input redrawn.  The
+             * ^P itself then rings the bell (getline.c:208).  The window
+             * paints over this menu and its dismissal docorner()s the map
+             * into the rows it covered (wintty.c:971-983); nothing repaints
+             * the menu there, here or after the getlin returns. */
+            if (pw === 'c' && prevIdx < 0) {
+                /* topl.c:44-51: with fewer than two remembered lines the
+                 * combination walk has cycled back to maxcol == maxrow, so
+                 * this call is redotoplin(gt.toplines) — the query line the
+                 * prompt already shows — and no window opens. */
+            } else {
+                await render();
+                const sh = g._topl_suppress_history;
+                g._prevmsg_overlay = { base: String(g._screen_output || '').split('\n') };
+                if (pw === 'c') {
+                    /* topl.c:52-62: maxcol is past maxrow - 1, the window arm */
+                    g._prevmsg_history_length = hist().length;
+                    g._prevmsg_next = 0;
+                    g._prevmsg_combo = 99;
+                }
+                g._topl_suppress_history = true;
+                /* select_menu holds bot_disabled (windows.c:1859-1863), so the
+                 * dismissal's "wrecked the bottom line" bot() (wintty.c:3715-3720)
+                 * repaints nothing and the erased status cells stay erased. */
+                const bd = g._bot_disabled;
+                g._bot_disabled = true;
+                try {
+                    await doprev_message(query + ' ' + buf);
+                } finally {
+                    g._bot_disabled = bd;
+                    g._topl_suppress_history = sh;
+                    if (g._prevmsg_overlay?.corner) corners.push(g._prevmsg_overlay.corner);
+                    g._prevmsg_overlay = null;
+                    g._prevmsg_combo = 0; /* getline.c:126 cw->maxcol = cw->maxrow */
+                }
+            }
+            prompt.reset();
+            prompt.append(buf);
+            doprev = false;
+            recall = null;
+            prevIdx = 0;
+            tornRows = 0;
+            continue;
         }
         if (doprev) { prompt.reset(); prompt.append(buf); doprev = false; recall = null; } /* C ref: getline.c:134-141 */
         if (keyCode === 27 /* ESC */) {
@@ -1559,9 +1616,58 @@ export async function menu_search_getlin(frameRows) {
 /* C ref: wintty.c:1047-1056 tty_clear_nhwindow(WIN_MESSAGE) -> docorner(1, cury + 1, 0):
  * rows 1..cury, which the wrapped "Search for:" text overwrote, are cleared from
  * column 1 and repainted from the map (the menu text on them does not return). */
-export function menu_search_docorner(rows) {
+export function menu_search_docorner(rows, stateCol = -1) {
     for (let r = 1; r <= (game._menu_search_wrapped | 0) && r < rows.length; r++)
         rows[r] = render_map_row_clipped(r - 1, COLNO - 1).str;
+    const out = menu_search_corner_frame(rows, stateCol);
+    for (let r = 0; r < out.length; r++) rows[r] = out[r]; /* callers rely on in-place */
+    return rows;
+}
+
+/* A ^P history window opened inside the search getlin (msg_window full /
+ * reverse / combination) was dismissed with docorner(offx, maxrow + 1, 0)
+ * (wintty.c:982,3684-3710): rows 0..maxrow lost the menu from screen column
+ * offx - 1 rightwards and show the map there, until the menu page is redrawn.
+ * `corners` holds {xmin, ymax, rows} with the map frame as it was flushed.
+ * Rows below `from` are left alone (row 0 belongs to the caller's topline). */
+/* A menu frame (its title row already blank) under the ^P history-window
+ * corners: the corners over the freshly built rows, except that
+ * set_item_state (wintty.c:1171-1190) repainted the one state cell of each
+ * entry toggled after the corner was made.  The states first seen under the
+ * corner are the baseline; an entry that has differed from it since is
+ * repainted.  `stateCol` is the screen column of line[2]. */
+export function menu_search_corner_frame(fresh, stateCol) {
+    const corners = game._menu_search_corner;
+    if (!corners?.length) return fresh;
+    const rows = menu_search_apply_corners(fresh.slice(), corners, 1);
+    const snap = corners.stateSnap ??= new Map();
+    const touched = corners.touched ??= new Set();
+    const ymax = Math.max(...corners.map((c) => c.ymax));
+    for (let i = 1; i < fresh.length && i < ymax; i++) {
+        const ch = (_tty_row_cells_of(fresh[i])[stateCol] || {}).ch ?? ' ';
+        if (!snap.has(i)) snap.set(i, ch);
+        else if (snap.get(i) !== ch) touched.add(i);
+    }
+    for (const i of touched)
+        rows[i] = tty_splice_row(tty_splice_row(rows[i] || '', fresh[i] || '', stateCol),
+                                 rows[i] || '', stateCol + 1);
+    return rows;
+}
+/* A !menu_overlay (offx 0, full-screen) menu page as a frame: each line at
+ * column 1 (wintty.c:1923-1936, process_menu_window), with a ^P history
+ * window's corner kept once a search has blanked the title row. */
+export function menu_fullscreen_frame(lines) {
+    const rows = lines.map((ln) => (ln === '' ? '' : ' ' + ln));
+    return (lines[0] === '' && game._menu_search_corner?.length
+        ? menu_search_corner_frame(rows, 3) : rows).join('\n');
+}
+export function menu_search_apply_corners(rows, corners, from = 1) {
+    for (const c of corners || []) {
+        for (let r = from; r < c.ymax && r < 24; r++) {
+            while (rows.length <= r) rows.push('');
+            rows[r] = tty_splice_row(rows[r] || '', c.rows[r] || '', c.xmin);
+        }
+    }
     return rows;
 }
 

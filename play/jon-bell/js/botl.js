@@ -304,6 +304,15 @@ export async function bot() {
             fields.level = game.u.ulevel | 0;
             if (game.flags?.showexp) fields.experience = game.u.uexp || 0;
         }
+        /* botl.c:1037-1044: bot() reads u.uhp/u.uhpmax LIVE.  The healup()
+         * pre-heal latch (js/potion.js) only describes flushes that run no
+         * bot(); left set here, the field evaluation below compared the
+         * pre-heal HP with itself, saw no change, and the up/changed rule was
+         * picked by a later repaint instead, so this paint's snapshot carried
+         * no rule and a later --More-- in the same turn dropped the colour
+         * (sibling t18 G-status-w123: full healing, then 'x' paging). */
+        game._botlStaleHp = undefined;
+        game._botlStaleHpmax = undefined;
         /* botl.c:1514-1614: BL_XP chg/percent evaluation happens per bot(). */
         status_xp_bot_eval();
         /* C botl.c:259-268: a status paint replaces the pre-cast Pw still

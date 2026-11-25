@@ -16,7 +16,7 @@ import { Monnam } from './do_name.js';
 import { stackobj, carry_obj_effects } from './invent.js';
 import { flooreffects, obj_no_longer_held } from './do.js';
 import { droppables, obj_resists } from './dogmove.js';
-import { artifact_exists } from './artifact.js';
+import { artifact_exists, artifact_light } from './artifact.js';
 import { ONAME_NO_FLAGS, RLOC_MSG } from './const.js';
 import { LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN, W_ARM, W_WEP,
          W_SADDLE } from './const.js';
@@ -39,10 +39,10 @@ import { doffing, stop_donning } from './do_wear.js';
 import { stop_occupation } from './allmain.js';
 import { freeinv, count_unpaid } from './invent.js';
 import { armor_simple_name, yname, makeplural } from './objnam.js';
-import { s_suffix } from './hacklib.js';
+import { s_suffix, distu, strsubst } from './hacklib.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { monflee } from './monmove.js';
-import { welded, bimanual } from './wield.js';
+import { welded } from './wield.js';
 import { can_carry } from './dogmove.js';
 import { subfrombill, shop_keeper, mbodypart, find_objowner } from './shk.js';
 import { encumber_msg } from './pickup.js';
@@ -67,28 +67,17 @@ import { engulfing_u } from './const.js';
 import { AT_ENGL } from './monsters.js';
 import { skinback } from './polyself.js';
 import { openholdingtrap, unconscious } from './trap.js';
+import { minstapetrify } from './trap.js';
 import { impossible } from './hack.js';
-import { artifact_light } from './worn.js';
 import { end_burn } from './timeout.js';
 import { costly_spot } from './shk.js';
 import { in_rooms } from './hack.js';
 import { SHOPBASE } from './const.js';
+import { bimanual } from './objects.js';
 
 /* C ref: global.h LARGEST_INT */
 const LARGEST_INT = 32767;
 
-/* C ref: hack.h distu() */
-function distu(x, y) {
-    const dx = x - game.u.ux, dy = y - game.u.uy;
-    return dx * dx + dy * dy;
-}
-/* C ref: hacklib.c strsubst() -- replace the first instance */
-function strsubst(bp, orig, replacement) {
-    const found = bp.indexOf(orig);
-    if (found < 0)
-        return bp;
-    return bp.slice(0, found) + replacement + bp.slice(found + orig.length);
-}
 /* C ref: shk.c shop_keeper(*u.ushops) */
 function ushops_keeper() {
     return shop_keeper(game.u.ushops ? (game.u.ushops.charCodeAt(0) || 0) : 0);
@@ -650,7 +639,8 @@ export async function steal(mtmp, objnambuf) {
             otmp.how_lost = LOST_STOLEN;
             mpickobj(mtmp, otmp); /* may free otmp */
             if (could_petrify && !((mtmp.misc_worn_check || 0) & W_ARMG)) {
-                throw new Error('steal(): minstapetrify() not ported yet');
+                await minstapetrify(mtmp, true);
+                return -1;
             }
             return (game.multi < 0) ? 0 : 1;
         }

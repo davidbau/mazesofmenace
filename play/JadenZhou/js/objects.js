@@ -40,6 +40,8 @@ import {
     CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA,
     CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW,
 } from './terminal.js';
+import { ART_SNICKERSNEE } from './artilist.js';
+import { game } from './gstate.js';
 
 // ---------------------------------------------------------------------------
 // objclass.h: enum obj_material_types
@@ -2459,3 +2461,159 @@ export function is_corrodeable(otmp) {
     return objects[otmp.otyp].oc_material === COPPER
         || objects[otmp.otyp].oc_material === IRON;
 }
+
+// ---------------------------------------------------------------------------
+// obj.h macros (the object predicates; one exported copy each)
+
+// C ref: obj.h greatest_erosion(otmp)
+export function greatest_erosion(otmp) {
+    const e1 = otmp.oeroded || 0, e2 = otmp.oeroded2 || 0;
+    return e1 > e2 ? e1 : e2;
+}
+
+// C ref: obj.h is_blade(otmp)
+export function is_blade(otmp) {
+    return otmp.oclass === WEAPON_CLASS
+        && objects[otmp.otyp].oc_skill >= P_DAGGER
+        && objects[otmp.otyp].oc_skill <= P_SABER;
+}
+// C ref: obj.h is_axe(otmp)
+export function is_axe(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+        && objects[otmp.otyp].oc_skill === P_AXE;
+}
+// C ref: obj.h is_pick(otmp)
+export function is_pick(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+        && objects[otmp.otyp].oc_skill === P_PICK_AXE;
+}
+// C ref: obj.h is_sword(otmp)
+export function is_sword(otmp) {
+    return otmp.oclass === WEAPON_CLASS
+        && objects[otmp.otyp].oc_skill >= P_SHORT_SWORD
+        && objects[otmp.otyp].oc_skill <= P_SABER;
+}
+// C ref: obj.h is_pole(otmp) -- Snickersnee is not a polearm, but can hit
+// from distance
+export function is_pole(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+        && (objects[otmp.otyp].oc_skill === P_POLEARMS
+            || objects[otmp.otyp].oc_skill === P_LANCE
+            || otmp.oartifact === ART_SNICKERSNEE); /* is_art() */
+}
+// C ref: obj.h is_spear(otmp)
+export function is_spear(otmp) {
+    return otmp.oclass === WEAPON_CLASS
+        && objects[otmp.otyp].oc_skill === P_SPEAR;
+}
+// C ref: obj.h is_launcher(otmp)
+export function is_launcher(otmp) {
+    return otmp.oclass === WEAPON_CLASS
+        && objects[otmp.otyp].oc_skill >= P_BOW
+        && objects[otmp.otyp].oc_skill <= P_CROSSBOW;
+}
+// C ref: obj.h is_ammo(otmp)
+export function is_ammo(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === GEM_CLASS)
+        && objects[otmp.otyp].oc_skill >= -P_CROSSBOW
+        && objects[otmp.otyp].oc_skill <= -P_BOW;
+}
+// C ref: obj.h matching_launcher(a, l)
+export function matching_launcher(a, l) {
+    return !!l && objects[a.otyp].oc_skill === -objects[l.otyp].oc_skill;
+}
+// C ref: obj.h ammo_and_launcher(a, l)
+export function ammo_and_launcher(a, l) {
+    return is_ammo(a) && matching_launcher(a, l);
+}
+// C ref: obj.h is_missile(otmp)
+export function is_missile(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+        && objects[otmp.otyp].oc_skill >= -P_BOOMERANG
+        && objects[otmp.otyp].oc_skill <= -P_DART;
+}
+// C ref: obj.h is_weptool(o) -- towel is not a weptool:  spe isn't an
+// enchantment, cursed towel doesn't weld to hand, and twoweapon won't work
+// with one
+export function is_weptool(o) {
+    return o.oclass === TOOL_CLASS && objects[o.otyp].oc_skill !== P_NONE;
+}
+// C ref: obj.h is_wet_towel(o)
+export function is_wet_towel(o) { return o.otyp === TOWEL && (o.spe || 0) > 0; }
+// C ref: obj.h bimanual(otmp)
+export function bimanual(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+        && !!objects[otmp.otyp].oc_bimanual;
+}
+// C ref: obj.h stone_missile(o) -- 'missile' aspect is up to the caller and
+// does not imply is_missile(); rings might be launched as missiles when
+// being scattered by an explosion
+export function stone_missile(o) {
+    return (objects[o.otyp].oc_material === GEMSTONE
+            || objects[o.otyp].oc_material === MINERAL)
+        && o.oclass !== RING_CLASS;
+}
+
+// C ref: obj.h is_shield(otmp)
+export function is_shield(otmp) {
+    return otmp.oclass === ARMOR_CLASS
+        && objects[otmp.otyp].oc_armcat === ARM_SHIELD;
+}
+// C ref: obj.h is_helmet(otmp)
+export function is_helmet(otmp) {
+    return otmp.oclass === ARMOR_CLASS && objects[otmp.otyp].oc_armcat === ARM_HELM;
+}
+// C ref: obj.h is_boots(otmp)
+export function is_boots(otmp) {
+    return otmp.oclass === ARMOR_CLASS
+        && objects[otmp.otyp].oc_armcat === ARM_BOOTS;
+}
+// C ref: obj.h is_gloves(otmp)
+export function is_gloves(otmp) {
+    return otmp.oclass === ARMOR_CLASS
+        && objects[otmp.otyp].oc_armcat === ARM_GLOVES;
+}
+// C ref: obj.h is_cloak(otmp)
+export function is_cloak(otmp) {
+    return otmp.oclass === ARMOR_CLASS
+        && objects[otmp.otyp].oc_armcat === ARM_CLOAK;
+}
+// C ref: obj.h is_shirt(otmp)
+export function is_shirt(otmp) {
+    return otmp.oclass === ARMOR_CLASS
+        && objects[otmp.otyp].oc_armcat === ARM_SHIRT;
+}
+// C ref: obj.h is_suit(otmp)
+export function is_suit(otmp) {
+    return otmp.oclass === ARMOR_CLASS && objects[otmp.otyp].oc_armcat === ARM_SUIT;
+}
+
+// C ref: obj.h carried(o)
+export function carried(o) { return o.where === 'OBJ_INVENT'; }
+// C ref: obj.h Is_container(o)
+export function Is_container(o) { return o.otyp >= LARGE_BOX && o.otyp <= BAG_OF_TRICKS; }
+// C ref: obj.h Is_box(o)
+export function Is_box(o) { return o.otyp === LARGE_BOX || o.otyp === CHEST; }
+// C ref: obj.h Is_mbag(o)
+export function Is_mbag(o) { return o.otyp === BAG_OF_HOLDING || o.otyp === BAG_OF_TRICKS; }
+// C ref: obj.h SchroedingersBox(o)
+export function SchroedingersBox(o) { return o.otyp === LARGE_BOX && o.spe === 1; }
+
+// C ref: obj.h Is_dragon_scales(obj)
+export function Is_dragon_scales(obj) {
+    return obj.otyp >= GRAY_DRAGON_SCALES && obj.otyp <= YELLOW_DRAGON_SCALES;
+}
+
+// C ref: obj.h is_graystone(obj) -- special stones
+export function is_graystone(obj) {
+    return obj.otyp === LUCKSTONE || obj.otyp === LOADSTONE
+        || obj.otyp === FLINT || obj.otyp === TOUCHSTONE;
+}
+// C ref: obj.h is_flimsy(otmp)
+export function is_flimsy(otmp) {
+    return objects[otmp.otyp].oc_material <= LEATHER
+        || otmp.otyp === RUBBER_HOSE;
+}
+
+// C ref: obj.h u_wield_art(art) -- is_art(uwep, art)
+export function u_wield_art(art) { return !!game.uwep && game.uwep.oartifact === art; }

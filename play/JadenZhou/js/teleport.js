@@ -11,7 +11,7 @@ import { game } from './gstate.js';
 import { make_blinded } from './potion.js';
 import { remove_worm, place_worm_tail_randomly } from './worm.js';
 import { rn2, rnl } from './rng.js';
-import { pline } from './display.js';
+import { pline, verbalize } from './display.js';
 import { tty_getlin } from './wintty.js';
 import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION } from './const.js';
 import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level, find_hell,
@@ -740,7 +740,7 @@ async function dotele(break_the_rules) { /* True: wizard mode ^T */
 
         if (castit) {
             /* energy cost is deducted in spelleffects() */
-            exercise(A_WIS, true);
+            await exercise(A_WIS, true);
             if ((await spelleffects(SPE_TELEPORT_AWAY, true, false) & ECMD_TIME))
                 return 1;
             else if (!break_the_rules)
@@ -1057,7 +1057,7 @@ export async function level_tele() {
         if (newlev <= -10) {
             await You("arrive in heaven.");
             /* SetVoice((struct monst *) 0, 0, 80, voice_deity) */
-            await pline('"Thou art early, but we\'ll admit thee."'); /* verbalize() */
+            await verbalize("Thou art early, but we'll admit thee.");
             killer_lt().format = NO_KILLER_PREFIX_LT;
             killer_lt().name = "went to heaven prematurely";
         } else if (newlev === -9) {

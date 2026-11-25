@@ -66,7 +66,7 @@ import { freeinv, getobj, any_obj_ok, obj_extract_self, useup }
 import { place_object, rider_revival_time, set_bknown, set_corpsenm,
          splitobj, zombie_form, obj_nexto_xy } from './mkobj.js';
 import { canseemon, cls, docrt, pline, newsym, reglyph_darkroom } from './display.js';
-import { Norep, pline_The, There, You, You_cant, You_feel, You_hear, You_see, Your }
+import { impossible, Norep, pline_The, There, You, You_cant, You_feel, You_hear, You_see, Your }
     from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp, check_special_room } from './hack.js';
@@ -375,7 +375,11 @@ export async function zombify_mon(body) {
 // in ten and lava one time in ten; otherwise it sinks. Pushed boulders use a
 // direct push message when they fill, while falling boulders always splash.
 export async function boulder_hits_pool(obj, x, y, pushing) {
-    if (!obj || obj.otyp !== ONAMES.BOULDER || !is_pool_or_lava(x, y))
+    if (!obj || obj.otyp !== ONAMES.BOULDER) {
+        await impossible('Not a boulder?');
+        return false;
+    }
+    if (!is_pool_or_lava(x, y))
         return false;
 
     const lava = is_lava(x, y);
@@ -401,10 +405,8 @@ export async function boulder_hits_pool(obj, x, y, pushing) {
         const mon = m_at(x, y);
         if (mon && !DEADMONSTER(mon) && !m_in_air(mon))
             await mondied(mon);
-        if (trap) {
-            const { deltrap } = await import('./trap.js');
-            deltrap(trap);
-        }
+        if (trap)
+            await delfloortrap(trap);
         const { bury_objs } = await import('./mklev.js');
         await bury_objs(x, y);
         newsym(x, y);
@@ -455,7 +457,7 @@ export async function boulder_hits_pool(obj, x, y, pushing) {
     if (pushing)
         await useupf(obj, obj.quan);
     else
-        obfree(obj);
+        await obfree(obj, null);
     return true;
 }
 

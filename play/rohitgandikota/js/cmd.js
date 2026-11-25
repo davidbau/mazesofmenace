@@ -3,11 +3,9 @@ import { NODIAG, handle_tip, TIP_UNTRAP_MON, avoid_running_into_trap_or_liquid,
 import { IFBURIED, NOFUZZERCMD, MV_ANY, MV_RUN, MV_RUSH, MV_WALK, CMDQ_INT, CMDQ_DIR, DIR_DOWN, DIR_UP, IRONBARS, DO_MOVE, docrtRefresh } from './const.js';
 import { impossible } from './pline.js';
 import { nh_callback_run } from './nhlua.js';
-import { can_ooze } from './monmove.js';
-import { Confusion, Stunned, Fumbling, Underwater, Swimming,
+import { Confusion, Stunned, Swimming,
          Protection_from_shape_changers } from './youprop.js';
 import { MOD_ENCUMBER, Is_waterlevel } from './const.js';
-import { tunnels, needspick, amorphous } from './mondata.js';
 import { dobreathe, dospit, doremove, dogaze, dosummon, dohide, dospinweb, domindblast, dopoly } from './polyself.js';
 import { pet_ranged_attk, abuse_dog } from './dog.js';
 import { is_vampshifter } from './monst.js';
@@ -38,7 +36,9 @@ import { doname } from './objnam.js';
 import { num_spells } from './spell.js';
 import { can_reach_floor } from './pickup.js';
 import { which_armor } from './worn.js';
-import { test_move } from './hack.js';
+import { test_move, u_rooted, domove_fight_ironbars, domove_fight_web,
+         domove_fight_empty } from './hack.js';
+import { stucksteed } from './steed.js';
 import { vobj_at } from './display.js';
 import { auto_describe } from './getpos.js';
 import { dountrap } from './trap.js';
@@ -67,11 +67,11 @@ import { goodpos, hideunder, place_monster, remove_monster, monsndx } from './ma
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
 import { hides_under, is_hider, verysmall, sticks } from './mondata.js';
-import { bad_rock, cant_squeeze_thru, nomul, domove_attackmon_at, spoteffects,
+import { bad_rock, nomul, domove_attackmon_at, spoteffects,
          domove_bump_mon, dopickup, trapmove, doorless_door,
          disturb_buried_zombies, may_passwall,
          runmode_delay_output, avoid_trap_andor_region } from './hack.js';
-import { In_sokoban, surface } from './dungeon.js';
+import { surface } from './dungeon.js';
 import { canspotmon, map_invisible, glyph_at } from './display.js';
 import { Something, NO_TRAP_FLAGS } from './const.js';
 import { minliquid } from './mon.js';
@@ -79,17 +79,17 @@ import { mintrap, Trap_Effect_Finished, Trap_Caught_Mon, Trap_Moved_Mon,
          Trap_Killed_Mon } from './trap.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { LL_CONDUCT } from './const.js';
-import { Blind, Flying, Hallucination, Levitation, Passes_walls, Stealth }
+import { Blind, Flying, Hallucination, Levitation, Stealth }
     from './youprop.js';
 import { u_on_newpos } from './teleport.js';
 import { in_out_region } from './region.js';
 import { m_postmove_effect } from './monmove.js';
 import { doloot, dotip } from './pickup.js';
 import { curr_mon_load } from './mon.js';
-import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
+import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_CON, M_AP_TYPE,
          M_AP_FURNITURE, M_AP_OBJECT, OVERLOADED, Is_airlevel,
          Upolyd } from './const.js';
-import { ACURR, exercise, near_capacity, adjalign } from './attrib.js';
+import { exercise, near_capacity, adjalign } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, PIT, HOLE, WEB } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { an, cxname, simpleonames, the, makeplural, singular, xname,
@@ -149,7 +149,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_end_menu,
          tty_select_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
 import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH, BC_BALL, BC_CHAIN, SLT_ENCUMBER, WT_ELF } from './const.js';
-import { doopen, doopen_indir, doclose } from './lock.js';
+import { doopen, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { doeat } from './eat.js';
 import { doread, wiz_genesis } from './read.js';
@@ -166,7 +166,7 @@ import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, docrt, docrt_flags, map_object, paint_topline, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
 import { vision_recalc } from './vision.js';
-import { COLNO, ROWNO, STONE, DOOR, DBWALL, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
+import { COLNO, ROWNO, STONE, DBWALL, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch, findit } from './detect.js';
 import { doengrave, engr_at, wipe_engr_at } from './engrave.js';
 import { rnd, rn2 } from './rng.js';
@@ -187,61 +187,6 @@ import { move_out_of_bounds } from './hack.js';
 export function closed_door(x, y) {
     const loc = game.level?.at(x, y);
     return !!(loc && IS_DOOR(loc.typ) && (loc.doormask & (D_CLOSED | D_LOCKED)));
-}
-
-/* src/allmain.c — autoopen defaults on and none of the recorded rc files turn
-   it off, but read the option rather than assuming so an rc that does is
-   honoured. */
-function flags_autoopen() {
-    return game.flags?.autoopen !== false;
-}
-
-async function blocksMove(x, y, dx, dy) {
-    /* src/hack.c:1001 — test_move clears door_opened on entry; without this
-       a door opened two commands ago lets a later blocked move keep its
-       turn and run a monster round C never ran */
-    game.context.door_opened = false;
-    const loc = game.level?.at(x, y);
-    if (!loc) return true;
-    /* src/hack.c:1010 — every obstruction (walls, bars, boulders in rock)
-       goes through test_move's DO_MOVE arm: it feels the location when
-       blind and prints the drawbridge/Sokoban/mention_walls feedback */
-    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) {
-        const { test_move } = await import('./hack.js');
-        return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
-    }
-    if (closed_door(x, y)) {
-        if (Passes_walls() || can_ooze(game.youmonst)) {
-            const { test_move } = await import('./hack.js');
-            return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
-        }
-        /* src/hack.c:1085 — the DOOR arm feels the square first when blind,
-           so the door the hero bumps into is mapped */
-        if (Blind()) {
-            const { feel_location } = await import('./display.js');
-            feel_location(x, y);
-        }
-        return true;
-    }
-    /* src/hack.c:1140 test_move() — diagonal moves into an intact doorway
-       are not allowed, and src/hack.c:1208 nor diagonal moves OUT of one.
-       Both refusals are test_move's DO_MOVE arms: they feel the location
-       when blind and print "You can't move diagonally into/out of an
-       intact doorway." under Underwater or mention_walls. */
-    const ust = game.level?.at(game.u.ux, game.u.uy);
-    if (dx && dy && !Passes_walls()
-        && (IS_DOOR(loc.typ) || (ust && IS_DOOR(ust.typ)))) {
-        const { test_move } = await import('./hack.js');
-        return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
-    }
-    /* src/hack.c:1216 — a boulder is pushed (moverock) or chewed inside
-       test_move's DO_MOVE arm; a failed push blocks the move like terrain */
-    if (sobj_at(ONAMES.BOULDER, x, y)
-        && (In_sokoban(game.u.uz) || !Passes_walls())) {
-        const { test_move } = await import('./hack.js');
-        return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
-    }
-    return false;
 }
 
 /* doorless_door() moved to js/hack.js, its C home (src/hack.c:4063). */
@@ -2754,7 +2699,6 @@ async function domove_core() {
     if (await water_turbulence(xy))
         return;
 
-    const dx = u.dx, dy = u.dy;
     const newx = xy.x;
     const newy = xy.y;
 
@@ -2794,43 +2738,6 @@ async function domove_core() {
     u.ux0 = u.ux;
     u.uy0 = u.uy;
     game.bhitpos = { x: newx, y: newy };
-
-    /* src/hack.c:2242: force-fighting an empty square, or walking into a stale
-       invisible-monster marker without nopick, attacks the square instead of
-       moving onto it. */
-    const empty_target = !m_at(newx, newy);
-    const stale_invisible = empty_target
-        && glyph_is_invisible_at(newx, newy)
-        && !game.context.nopick;
-    if (empty_target && (game.context.forcefight || stale_invisible)) {
-        /* src/hack.c:2228 domove_fight_empty() handles the no-target case.
-           A real target continues through domove_attackmon_at below while
-           forcefight is still set, bypassing the peaceful-monster prompt. */
-        const { domove_fight_empty } = await import('./hack.js');
-        await domove_fight_empty(newx, newy);
-        game.context.move = 1;
-        return;
-    }
-
-    /* src/hack.c:1097 — walking into a closed door opens it, and doopen_indir()
-       is where the rnl(20) is spent. autoopen is on by default, so a session
-       never needs to press 'o' for this draw to happen; it fires on the first
-       step into a doorway. */
-    if (closed_door(newx, newy)
-        && !Passes_walls() && !can_ooze(game.youmonst) && !Underwater()
-        && !(tunnels(game.youmonst.data) && !needspick(game.youmonst.data))
-        && flags_autoopen() && !game.context.run
-        && !Confusion() && !Stunned() && !Fumbling()) {
-        if (amorphous(game.youmonst.data))
-            await You("try to ooze under the door, but can't squeeze your possessions through.");
-        const result = await doopen_indir(newx, newy);
-        const queued = cmdq_peek(CQ_CANNED);
-        game.context.door_opened = (result === ECMD_OK
-            && queued?.typ === CMDQ_EXTCMD && queued.fn === dokick)
-            || !closed_door(newx, newy);
-        game.context.move = 0; /* (ux != u.ux || uy != u.uy) */
-        return;
-    }
 
     /* src/hack.c:2786 — bumping a monster ends a run.
      *
@@ -2873,101 +2780,53 @@ async function domove_core() {
         }
     }
 
-    /* src/hack.c:2813: reaching an apparently empty destination proves
-       that a remembered invisible-monster marker there is stale. This must
-       run before boulder handling so a boulder pushed onto that square can
-       replace the marker in map memory. */
-    unmap_invisible(newx, newy);
-
-    // src/hack.c:2826, confirm hazards before struggling out of a trap.
-    if (await avoid_trap_andor_region(newx, newy))
-        return;
-
-    /* src/hack.c:2831, a walk attempts escape from the current trap.
-       Even successful escape may consume the move without changing position. */
-    if (game.u.utrap) {
-        const moved = await trapmove(newx, newy, null);
-        if (!game.u.utrap) {
-            (game.disp ||= {}).botl = true;
-            await reset_utrap(true); /* might resume levitation or flight */
-        }
-        if (!moved)
+    if (!displaceu.value) {
+        if (await domove_fight_ironbars(newx, newy))
             return;
-    }
+        if (await domove_fight_web(newx, newy))
+            return;
+        if (await domove_fight_empty(newx, newy))
+            return;
 
-    /* src/hack.c:2852 — is it dangerous to swim in water or lava? The
-       swim guard refuses a bare move into known liquid (paranoid_confirm
-       includes swim by default) and costs no time. */
-    {
+        /* src/hack.c:2813: reaching an apparently empty destination proves
+           that a remembered invisible-monster marker there is stale. This must
+           run before boulder handling so a boulder pushed onto that square can
+           replace the marker in map memory. */
+        unmap_invisible(newx, newy);
+
+        // src/hack.c:2815, inability to move is checked after attacking.
+        if ((u.dx || u.dy) && u.usteed && await stucksteed(false)) {
+            nomul(0);
+            return;
+        }
+        if (await u_rooted())
+            return;
+
+        // src/hack.c:2826, confirm hazards before struggling out of a trap.
+        if (await avoid_trap_andor_region(newx, newy))
+            return;
+
+        /* src/hack.c:2831, a walk attempts escape from the current trap.
+           Even successful escape may consume the move without changing position. */
+        if (game.u.utrap) {
+            const moved = await trapmove(newx, newy, null);
+            if (!game.u.utrap) {
+                (game.disp ||= {}).botl = true;
+                await reset_utrap(true); /* might resume levitation or flight */
+            }
+            if (!moved)
+                return;
+        }
+
+        if (!(await test_move(u.ux, u.uy, newx - u.ux, newy - u.uy, DO_MOVE))) {
+            if (!game.context.door_opened) {
+                game.context.move = 0;
+                nomul(0);
+            }
+            return;
+        }
         const { swim_move_danger } = await import('./hack.js');
         if (await swim_move_danger(newx, newy)) {
-            game.context.move = 0;
-            nomul(0);
-            return;
-        }
-    }
-
-    /* src/hack.c:2846 — the blocked-move exit.
-     *
-     *     if (!test_move(u.ux, u.uy, x - u.ux, y - u.uy, DO_MOVE)) {
-     *         if (!svc.context.door_opened) {
-     *             svc.context.move = 0;
-     *             nomul(0);
-     *         }
-     *         return;
-     *     }
-     *
-     * The nomul(0) is how a RUN ends in the ordinary case: lookaround() does
-     * not stop a rush crossing an open room, so C relies on the hero walking
-     * into something. Without it a wired run loop has no terminator.
-     *
-     * The door_opened guard matters: walking into a closed door with autoopen
-     * opens it and consumes the turn, and that must NOT stop a run. */
-    if (await blocksMove(newx, newy, dx, dy)) {
-        // Can't move there
-        /* src/hack.c:1058 — with mention_walls the blocked move says what
-           stopped it, naming the background glyph. Only the solid-stone and
-           wall cases are reachable here; anything else records. */
-        const bloc = game.level?.at(newx, newy);
-        /* src/hack.c:1113 — an orthogonal walk into a closed door that
-           autoopen did not handle (autoopen is off while running) says so,
-           unless the hero is clumsy enough to walk into it instead. */
-        if (closed_door(newx, newy) && !game.context.door_opened
-            && (newx === u.ux || newy === u.uy)) {
-            if (Blind() || Stunned() || ACURR(A_DEX) < 10
-                || Fumbling()) {
-                if (u.usteed) {
-                    await You_cant(`lead ${y_monnam(u.usteed)} through that closed door.`);
-                } else {
-                    await pline('Ouch!  You bump into a door.');
-                    exercise(A_DEX, false);
-                }
-                game.context.door_opened = true;
-                game.context.move = 1;
-                nomul(0);
-            } else {
-                await pline('That door is closed.');
-            }
-        }
-        if (!game.context.door_opened) {
-            game.context.move = 0;
-            nomul(0);
-        }
-        return;
-    }
-
-    /* src/hack.c:1153, a tight diagonal is rejected after the destination's
-       own terrain check but before its boulder's moverock path. */
-    if (dx && dy && bad_rock(game.youmonst.data, u.ux, newy)
-        && bad_rock(game.youmonst.data, newx, u.uy)) {
-        const why = cant_squeeze_thru(game.youmonst);
-        switch (why) {
-        case 3: await You('cannot pass that way.'); break;
-        case 2: await You('are carrying too much to get through.'); break;
-        case 1: await pline('Your body is too large to fit through.'); break;
-        default: break;
-        }
-        if (why) {
             game.context.move = 0;
             nomul(0);
             return;

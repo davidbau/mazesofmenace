@@ -13,6 +13,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow } from './wintty.js';
 import { NHW_TEXT, ECMD_OK } from './const.js';
 import { nhl_init, nhl_done } from './nhlua.js';
+import { tabexpand } from './hacklib.js';
 
 /* C ref: patchlevel.h */
 const VERSION_MAJOR = 5, VERSION_MINOR = 0, PATCHLEVEL = 0;
@@ -360,22 +361,6 @@ function insert_rtoption(buf) {
            other matches on the same line */
     }
     return buf;
-}
-
-// C ref: hacklib.c tabexpand() -- expand tabs into spaces (8-column stops)
-function tabexpand(sbuf) {
-    let buf = '', idx = 0;
-    for (const c of sbuf) {
-        if (c === '\t') {
-            do
-                buf += ' ';
-            while (++idx % 8);
-        } else {
-            buf += c;
-            ++idx;
-        }
-    }
-    return buf.slice(0, 255);
 }
 
 // C ref: version.c doextversion() -- the #version command

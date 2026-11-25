@@ -30,7 +30,7 @@ import { create_des_coder, reset_xystart_size, fill_special_room, inside_room,
          SPLEV_LEFT, SPLEV_CENTER, SPLEV_RIGHT, TOP, BOTTOM } from './sp_lev.js';
 import { getbones } from './bones.js';
 import { u_on_rndspot } from './do.js';
-import { set_wall_state, see_nearby_objects, map_location } from './display.js';
+import { set_wall_state, see_nearby_objects, map_location, gbuf_keep } from './display.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -425,8 +425,10 @@ export function count_level_features() {
 // C ref: mklev.c clear_level_structures()
 function clear_level_structures() {
     const g = game;
+    const oldlev = g.level;
     g.fmon = null;
     g.level = new GameMap();
+    gbuf_keep(oldlev); /* gg.gbuf isn't part of the level */
     g.level.nroom = 0;
     g.level.rooms = [];
     g.level.nsubroom = 0;

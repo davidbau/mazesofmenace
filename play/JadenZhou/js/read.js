@@ -20,9 +20,10 @@ import { shk_your } from './shk.js';
 import { DEADMONSTER } from './mon.js';
 import { is_art } from './artifact.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, You_hear } from './display.js';
 import { LL_CONDUCT, Luck } from './const.js';
-import { CANDY_BAR } from './objects.js';
+import { CANDY_BAR, Is_dragon_scales, is_shield, greatest_erosion,
+         is_weptool } from './objects.js';
 import { game } from './gstate.js';
 import {
     NEUTRAL, MALE, FEMALE, MM_FEMALE, MM_MALE, MM_MINVIS, MM_NOEXCLAM,
@@ -33,7 +34,8 @@ import { mons, G_UNIQ, PM_GUARD, PM_SHOPKEEPER, PM_HIGH_CLERIC,
          PM_HUMAN_ZOMBIE, PM_DOPPELGANGER } from './monsters.js';
 import { pline } from './display.js';
 import { tty_getlin } from './wintty.js';
-import { mungspaces, strstri, strncmpi, sgn, upstart } from './hacklib.js';
+import { mungspaces, strstri, strncmpi, sgn, upstart,
+         distu } from './hacklib.js';
 import { name_to_mon, amorphous, noncorporeal, unsolid, unique_corpstat,
          passes_walls, is_male, is_female, is_whirly } from './mondata.js';
 import { makemon, makemon_flush_msg } from './makemon.js';
@@ -59,7 +61,6 @@ import {
     You, Your, You_feel, You_cant, pline_The, newsym, canspotmon, canseemon,
     sensemon, map_invisible, tmp_at, DISP_BEAM, DISP_END, cmap_to_glyph
 } from './display.js';
-import { You_hear } from './sounds.js';
 import { useup, useupall, prinv, identify_pack, stackobj, obfree,
          silly_thing } from './invent.js';
 import { strange_feeling, trycall, make_confused, make_stunned,
@@ -70,12 +71,12 @@ import { discover_object, makeknown } from './o_init.js';
 import { study_book, can_chant, losespells } from './spell.js';
 import { outrumor } from './rumors.js';
 import { bcsign, curse, bless, uncurse, blessorcurse, costly_alteration,
-         weight, mksobj, mkobj, erosion_matters, is_weptool } from './mkobj.js';
-import { some_armor, adj_abon, destroy_arm, disintegrate_arm,
-         count_worn_armor, any_worn_armor_ok } from './do_wear.js';
+         weight, mksobj, mkobj, erosion_matters } from './mkobj.js';
+import { some_armor, adj_abon, destroy_arm, disintegrate_arm, count_worn_armor,
+         any_worn_armor_ok, hard_helmet } from './do_wear.js';
 import { remove_worn_item } from './steal.js';
 import { Yobjnam2, Yname2, otense, an, xname, doname, makeplural,
-         suit_simple_name, vtense, singular, hard_helmet } from './objnam.js';
+         suit_simple_name, vtense, singular } from './objnam.js';
 import { hcolor, Monnam, mon_nam, pmname } from './do_name.js';
 import { simpleonames } from './iactions.js';
 import { level_tele, scrolltele, enexto } from './teleport.js';
@@ -133,29 +134,20 @@ import { mkclass, rndmonst, set_malign, put_saddle_on_mon, can_saddle } from './
 import { NO_NC_FLAGS } from './const.js';
 import { newcham } from './mon.js';
 import { light_hits_gremlin } from './uhitm.js';
+import { name_to_monclass as name_to_monclass_rd } from './mondata.js';
+import { S_invisible as S_invisible_rd, S_WORM_TAIL as S_WORM_TAIL_RD,
+         PM_STALKER as PM_STALKER_RD } from './monsters.js';
 
 /* C ref: color.h NH_* color names */
 const NH_BLACK = "black", NH_AMBER = "amber", NH_GOLDEN = "golden",
       NH_SILVER = "silver", NH_PURPLE = "purple", NH_RED = "red",
       NH_BLUE = "blue";
 
-/* C ref: obj.h is_art(), is_elven_armor(), Is_dragon_scales(),
-   is_shield() */
+/* C ref: obj.h is_elven_armor() */
 function is_elven_armor(o) {
     return o.otyp === O.ELVEN_LEATHER_HELM || o.otyp === O.ELVEN_MITHRIL_COAT
            || o.otyp === O.ELVEN_CLOAK || o.otyp === O.ELVEN_SHIELD
            || o.otyp === O.ELVEN_BOOTS;
-}
-function Is_dragon_scales(o) {
-    return o.otyp >= O.GRAY_DRAGON_SCALES && o.otyp <= O.YELLOW_DRAGON_SCALES;
-}
-function is_shield(o) {
-    return o.oclass === ARMOR_CLASS && objects[o.otyp].oc_armcat === O.ARM_SHIELD;
-}
-/* C ref: hack.h distu() */
-function distu(x, y) {
-    const dx = x - game.u.ux, dy = y - game.u.uy;
-    return dx * dx + dy * dy;
 }
 /* C ref: hacklib.c sgn(), upwords() */
 function upwords(s) {
@@ -174,10 +166,6 @@ function upwords(s) {
         out += c;
     }
     return out;
-}
-/* C ref: mkobj.c greatest_erosion() */
-function greatest_erosion(otmp) {
-    return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
 }
 const MAX_ERODE = 3;
 
@@ -685,7 +673,7 @@ async function forget(howmuch) {
         u.bc_felt = 0; /* forget felt ball&chain */
 
     if (howmuch & ALL_SPELLS)
-        losespells();
+        await losespells();
 
     /* Forget some skills. */
     await drain_weapon_skill(rnd(howmuch ? 5 : 3));
@@ -785,8 +773,8 @@ async function seffect_enchant_armor(sobjp) {
                               ? "Your skin glows then fades."
                               : "Your skin feels warm for a moment.");
         sobjp.obj = null; /* useup() in strange_feeling() */
-        exercise(A_CON, !scursed);
-        exercise(A_STR, !scursed);
+        await exercise(A_CON, !scursed);
+        await exercise(A_STR, !scursed);
         return;
     }
     if (confused) {
@@ -955,8 +943,8 @@ async function seffect_destroy_armor(sobjp) {
         if (!otmp) {
             await strange_feeling(sobj, "Your bones itch.");
             sobjp.obj = null; /* useup() in strange_feeling() */
-            exercise(A_STR, false);
-            exercise(A_CON, false);
+            await exercise(A_STR, false);
+            await exercise(A_CON, false);
             return;
         }
         old_erodeproof = !!otmp.oerodeproof;
@@ -1007,8 +995,8 @@ async function seffect_destroy_armor(sobjp) {
         } else if (!(await destroy_arm())) {
             await strange_feeling(sobj, "Your skin itches.");
             sobjp.obj = null; /* useup() in strange_feeling() */
-            exercise(A_STR, false);
-            exercise(A_CON, false);
+            await exercise(A_STR, false);
+            await exercise(A_CON, false);
             return;
         } else
             g.known = true;
@@ -1342,7 +1330,7 @@ export async function chwepon(otmp, amount) {
                 (amount >= 0) ? "twitch" : "itch"}.`;
         }
         await strange_feeling(otmp, buf); /* pline()+docall()+useup() */
-        exercise(A_DEX, amount >= 0);
+        await exercise(A_DEX, amount >= 0);
         return 0;
     }
 
@@ -1593,7 +1581,7 @@ async function seffect_amnesia(sobjp) {
         await pline("Who was that Maud person anyway?");
     else
         await pline("Thinking of Maud you forget everything else.");
-    exercise(A_WIS, false);
+    await exercise(A_WIS, false);
 }
 
 // C ref: read.c seffect_fire()
@@ -1917,7 +1905,7 @@ export async function seffects(sobj) { /* sobj - scroll or fake spellbook for sp
     const sobjp = { obj: sobj }; /* C passes &sobj */
 
     if (objects[otyp].oc_magic)
-        exercise(A_WIS, true); /* just for trying */
+        await exercise(A_WIS, true); /* just for trying */
 
     switch (otyp) {
     case O.SCR_MAIL:
@@ -2604,9 +2592,27 @@ function create_particular_parse(str, d) {
     }
     if (ismnum(d.which))
         return true; /* got one */
-    if (!bufp)
-        return false; /* name_to_monclass() of empty input returns 0 */
-    throw new Error('create_particular_parse(): name_to_monclass() not ported yet');
+    {
+        const which_p = { v: d.which };
+        d.monclass = name_to_monclass_rd(bufp, which_p);
+        d.which = which_p.v;
+    }
+    if (ismnum(d.which)) {
+        d.monclass = MAXMCLASSES; /* matters below */
+        return true;
+    } else if (d.monclass === S_invisible_rd) { /* not an actual monster class */
+        d.which = PM_STALKER_RD;
+        d.monclass = MAXMCLASSES;
+        return true;
+    } else if (d.monclass === S_WORM_TAIL_RD) { /* empty monster class */
+        d.which = PM_LONG_WORM;
+        d.monclass = MAXMCLASSES;
+        return true;
+    } else if (d.monclass > 0) {
+        d.which = game.urole.mnum; /* reset from NON_PM */
+        return true;
+    }
+    return false;
 }
 
 // C ref: read.c create_particular_creation()

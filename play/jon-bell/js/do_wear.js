@@ -1743,7 +1743,7 @@ import { BUCT_BLESSED, BUCT_CURSED, BUCT_UNCURSED, BUCT_UNKNOWN, COIN_CLASS_C, G
 import { count_categories } from './pickup.js';
 import { count_buc, count_unpaid, ggetobj, is_worn, wearing_armor } from './invent.js'; // relocate-fns
 import { menucolor_row } from './coloratt.js'; // relocate-fns
-import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
+import { build_window_screen, menu_search_case, menu_fullscreen_frame } from './com_pager.js'; // relocate-fns
 import { ALL_FINISHED, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GLIB, MENU_COMBINATION, MENU_FULL, MENU_TRADITIONAL, PICK_ANY, W_AMUL as W_AMUL_TO, W_ARMC as W_ARMC_TO, W_ARMF as W_ARMF_TO, W_ARMG as W_ARMG_TO, W_ARMH as W_ARMH_TO, W_ARMS as W_ARMS_TO, W_ARMU as W_ARMU_TO, W_ARM as W_ARM_TO, W_QUIVER as W_QUIVER_TO, W_RINGL as W_RINGL_TO, W_RINGR as W_RINGR_TO, W_SWAPWEP as W_SWAPWEP_TO, W_TOOL as W_TOOL_TO, W_WEP as W_WEP_TO } from './const.js'; // relocate-fns
 import { await_menu_key, docorner_blank_utf8_captures } from './display.js'; // relocate-fns
 import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
@@ -4237,7 +4237,7 @@ async function menu_remarm(retry) {
     };
     const showMenu = async () => {
         g._screen_output = WIN_COL === 1
-            ? paintedLines().map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+            ? menu_fullscreen_frame(paintedLines())
             : build_window_screen(paintedLines(), WIN_COL, uac);
         set_cursor(endCursorCol, endRow);
     };

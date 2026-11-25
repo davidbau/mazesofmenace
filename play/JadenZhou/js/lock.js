@@ -16,7 +16,8 @@ import { impossible, is_door_mappear } from './hack.js';
 import { touch_artifact, is_magic_key } from './artifact.js';
 import { game } from './gstate.js';
 import { rn2, rnl } from './rng.js';
-import { pline, newsym, You, You_cant, pline_The, canseemon } from './display.js';
+import { pline, newsym, You, You_cant, pline_The, canseemon, verbalize,
+         You_hear } from './display.js';
 import { tty_yn_function } from './wintty.js';
 import { get_adjacent_loc } from './cmd.js';
 import { update_mapseen_for } from './dungeon.js';
@@ -28,7 +29,8 @@ import { can_reach_floor, cant_reach_floor } from './engrave.js';
 import { mons, PM_ORACLE, PM_ROGUE } from './monsters.js';
 import { ART_ORB_OF_DETECTION, ART_MASTER_KEY_OF_THIEVERY } from './artilist.js';
 import { is_quest_artifact } from './questpgr.js';
-import { CHEST } from './objects.js';
+import { CHEST, carried, greatest_erosion, is_blade, is_pick, Is_box,
+         is_weptool } from './objects.js';
 import { D_LOCKED, M_AP_OBJECT } from './const.js';
 import { recalc_block_point } from './vision.js';
 import { unblock_point as unblock_point_lk } from './vision.js';
@@ -45,7 +47,7 @@ import { A_STR, A_DEX, A_CON, IS_DOOR, D_CLOSED, D_BROKEN, D_NODOOR,
          TT_PIT, CONFUSION, STUNNED, PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { SKELETON_KEY, LOCK_PICK, CREDIT_CARD } from './objects.js';
 import { M1_NOHANDS, MZ_SMALL } from './monsters.js';
-import { canspotmon, map_invisible, feel_location } from './display.js';
+import { canspotmon, map_invisible, feel_location, feel_newsym } from './display.js';
 import { obj_typename } from './objnam.js';
 import { ansimpleoname } from './iactions.js';
 import { hliquid } from './potion.js';
@@ -56,7 +58,6 @@ import { s_suffix } from './hacklib.js';
 import { cansee, block_point, vision_recalc } from './vision.js';
 import { t_at, chest_trap } from './trap.js';
 import { FINGER } from './const.js';
-import { You_hear } from './sounds.js';
 import { wake_nearto } from './mon.js';
 import { in_rooms } from './hack.js';
 import { stop_occupation } from './allmain.js';
@@ -70,7 +71,7 @@ import { objects, ICE_BOX, CORPSE, LARGE_BOX, POTION_CLASS, WEAPON_CLASS,
 import { COST_BRKLCK, PASSES_WALLS, DBWALL, BLINDED, P_DAGGER, P_FLAIL,
          P_LANCE, P_SABER, P_PICK_AXE, isok } from './const.js';
 import { costly_alteration, obj_extract_self, start_corpse_timeout,
-         place_object, is_weptool } from './mkobj.js';
+         place_object } from './mkobj.js';
 import { costly_spot, shop_keeper, add_damage, stolen_value } from './shk.js';
 import { the, surface } from './iactions.js';
 import { xname, singular, an } from './objnam.js';
@@ -92,15 +93,6 @@ import { WAN_POLYMORPH as WAN_POLYMORPH_LK, SPE_POLYMORPH as SPE_POLYMORPH_LK } 
 import {
     Stunned, Confusion, Blind, Deaf, Passes_walls, Protection_from_shape_changers, Unaware
 } from './youprop.js';
-
-
-/* C ref: pline.c verbalize() -- SetVoice() only matters for speech
-   output, which the tty doesn't do */
-async function verbalize(line) {
-    if (Deaf())
-        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
-    await pline(`"${line}"`);
-}
 
 /* C ref: flag.h AUTOUNLOCK_* */
 export const AUTOUNLOCK_UNTRAP = 1;
@@ -204,7 +196,7 @@ async function picklock() {
 
     if (xl.usedtime++ >= 50 || nohands(game.youmonst.data)) {
         await You(`give up your attempt at ${lock_action()}.`);
-        exercise(A_DEX, true); /* even if you don't succeed */
+        await exercise(A_DEX, true); /* even if you don't succeed */
         return (xl.usedtime = 0);
     }
 
@@ -232,7 +224,7 @@ async function picklock() {
         if (xl.box.otrapped)
             await chest_trap(xl.box, FINGER, false);
     }
-    exercise(A_DEX, true);
+    await exercise(A_DEX, true);
     return (xl.usedtime = 0);
 }
 
@@ -253,8 +245,6 @@ export function maybe_reset_pick(container) {
                   : (!xl.box || !carried(xl.box)))
         reset_pick();
 }
-
-function carried(obj) { return obj.where === 'OBJ_INVENT'; }
 
 /* C ref: lock.c PICKLOCK_* */
 const PICKLOCK_LEARNED_SOMETHING = -1; /* time passes */
@@ -791,10 +781,10 @@ export async function doopen_indir(x, y) {
             throw new Error('doopen_indir(): b_trapped() not ported yet');
         } else
             door.doormask = D_ISOPEN;
-        newsym(cc.x, cc.y); /* feel_newsym(): the hero knows she opened it */
+        feel_newsym(cc.x, cc.y); /* the hero knows she opened it */
         recalc_block_point(cc.x, cc.y); /* vision: new see through there */
     } else {
-        exercise(A_STR, true);
+        await exercise(A_STR, true);
         await pline_The("door resists!"); /* set_msg_xy() */
     }
 
@@ -1085,11 +1075,6 @@ export async function breakchestlock(box, destroyit) {
     }
 }
 
-/* C ref: hack.h greatest_erosion() */
-function greatest_erosion(otmp) {
-    return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
-}
-
 // C ref: lock.c forcelock() -- try to force a locked chest (occupation
 // callback)
 async function forcelock() {
@@ -1103,7 +1088,7 @@ async function forcelock() {
     if (xl.usedtime++ >= 50 || !uwep || nohands(game.youmonst.data)) {
         await You("give up your attempt to force the lock.");
         if (xl.usedtime >= 50) /* you made the effort */
-            exercise((xl.picktyp) ? A_DEX : A_STR, true);
+            await exercise((xl.picktyp) ? A_DEX : A_STR, true);
         return (xl.usedtime = 0);
     }
 
@@ -1117,7 +1102,7 @@ async function forcelock() {
                 xname(uwep)} broke!`);
             useup(uwep);
             await You("give up your attempt to force the lock.");
-            exercise(A_DEX, true);
+            await exercise(A_DEX, true);
             return (xl.usedtime = 0);
         }
     } else             /* blunt */
@@ -1127,7 +1112,7 @@ async function forcelock() {
         return 1; /* still busy */
 
     await You("succeed in forcing the lock.");
-    exercise(xl.picktyp ? A_DEX : A_STR, true);
+    await exercise(xl.picktyp ? A_DEX : A_STR, true);
     /* breakchestlock() might destroy xlock.box; if so, xlock context will
        be cleared (delobj -> obfree -> maybe_reset_pick); but it might not,
        so explicitly clear that manually */
@@ -1150,18 +1135,6 @@ export function u_have_forceable_weapon() {
         return false;
     return true;
 }
-
-/* C ref: obj.h is_blade(), is_pick(), Is_box() */
-function is_blade(otmp) {
-    return otmp.oclass === WEAPON_CLASS
-           && objects[otmp.otyp].oc_skill >= P_DAGGER
-           && objects[otmp.otyp].oc_skill <= P_SABER;
-}
-function is_pick(otmp) {
-    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-           && objects[otmp.otyp].oc_skill === P_PICK_AXE;
-}
-function Is_box(o) { return o.otyp === LARGE_BOX || o.otyp === CHEST; }
 
 // C ref: lock.c doforce() -- the #force command - try to force a chest
 // with your weapon
@@ -1338,10 +1311,10 @@ export async function doclose() {
             || rn2(25) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
             await pline_The("door closes.");
             door.doormask = D_CLOSED;
-            newsym(x, y); /* feel_newsym(): the hero knows she closed it */
+            feel_newsym(x, y); /* the hero knows she closed it */
             block_point(x, y); /* vision:  no longer see there */
         } else {
-            exercise(A_STR, true);
+            await exercise(A_STR, true);
             await pline_The("door resists!");
         }
     }

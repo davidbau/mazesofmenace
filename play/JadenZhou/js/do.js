@@ -11,7 +11,7 @@ import { sellobj_state } from './pickup.js';
 import { SELL_NORMAL, SELL_DELIBERATE } from './const.js';
 import { game } from './gstate.js';
 import { fix_shop_damage } from './shk.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, You_hear } from './display.js';
 import { LL_ACHIEVE, LL_DEBUG } from './const.js';
 import { describe_level } from './botl.js';
 import { container_impact_dmg, obj_delivery, drop_to } from './dokick.js';
@@ -21,7 +21,10 @@ import { Tobjnam, otense, corpse_xname } from './objnam.js';
 import { is_unpaid } from './shk.js';
 import { maybe_unhide_at } from './mon.js';
 import { remove_worn_item } from './steal.js';
-import { breaktest } from './dothrow.js';
+import { breaktest, hitfloor } from './dothrow.js';
+import { finesse_ahriman } from './artifact.js';
+import { float_down } from './trap.js';
+import { W_ART, W_ARTI, I_SPECIAL } from './const.js';
 import { change_luck } from './attrib.js';
 import { obj_extract_self, add_to_migration } from './mkobj.js';
 import { obfree } from './invent.js';
@@ -35,7 +38,6 @@ import {
     pline, pline_The, docrt, flush_screen
 } from './display.js';
 import { bones_include_name } from './bones.js';
-import { You_hear } from './sounds.js';
 import { sellobj } from './shk.js';
 import { stolen_value, costly_spot, picked_container } from './shk.js';
 import { in_rooms } from './hack.js';
@@ -51,8 +53,18 @@ import {
 } from './dungeon.js';
 import { In_endgame, Is_waterlevel, Is_airlevel, IS_ALTAR, ROOM, CORR, MAGIC_PORTAL, Is_qstart } from './const.js';
 import * as O from './objects.js';
+import { mpickobj as mpickobj_do } from './steal.js';
+import { touch_petrifies as touch_petrifies_do } from './mondata.js';
+import { mons as mons_do, PM_WRAITH as PM_WRAITH_do, PM_NURSE as PM_NURSE_do,
+         PM_GREEN_SLIME as PM_GREEN_SLIME_do } from './monsters.js';
+import { polyfood as polyfood_do, newcham as newcham_do, healmon as healmon_do } from './mon.js';
+import { NC_SHOW_MSG as NC_SHOW_MSG_do, NO_NC_FLAGS as NO_NC_FLAGS_do } from './const.js';
+import { grow_up as grow_up_do } from './makemon.js';
+import { mcureblindness as mcureblindness_do } from './muse.js';
+import { delobj as delobj_do } from './invent.js';
 import { is_pool, is_lava } from './makemon.js';
 import { t_at, is_pit, is_hole, set_utrap, seetrap, lava_damage, climb_pit } from './trap.js';
+import { minstapetrify } from './trap.js';
 import { cansee } from './vision.js';
 import { PM_TOURIST, PM_ROGUE } from './monsters.js';
 import { onquest, ok_to_quest } from './quest.js';
@@ -91,7 +103,7 @@ import { MENU_FULL, MENU_TRADITIONAL, MENU_COMBINATION, UNPAID_TYPES,
          USE_INVLET, INVORDER_SORT } from './const.js';
 import { GETOBJ_PROMPT, GETOBJ_ALLOWCNT, ECMD_FAIL, ECMD_TIME, W_ARMOR,
          W_ACCESSORY, W_SADDLE, IS_SINK, LOST_DROPPED } from './const.js';
-import { welded, setuwep, setuqwep, setuswapwep, bimanual } from './wield.js';
+import { welded, setuwep, setuqwep, setuswapwep } from './wield.js';
 import { Norep } from './display.js';
 import { makeplural } from './objnam.js';
 import { HAND } from './const.js';
@@ -157,11 +169,16 @@ import { Fire_resistance } from './youprop.js';
 import { useupf } from './invent.js';
 import { dist2 } from './hacklib.js';
 import { tty_yn_function } from './wintty.js';
-
-/* C ref: obj.h is_pick() */
-function is_pick(otmp) {
-    return otmp.otyp === O.PICK_AXE || otmp.otyp === O.DWARVISH_MATTOCK;
-}
+import { is_pick, bimanual } from './objects.js';
+import { I_SPECIAL as I_SPECIAL_DO, W_ARTI as W_ARTI_DO } from './const.js';
+import { BLevitation as BLevitation_do } from './youprop.js';
+import { float_down as float_down_do } from './trap.js';
+import { surface as surface_do } from './iactions.js';
+import { floating_above as floating_above_do } from './fountain.js';
+import { s_suffix } from './hacklib.js';
+import { mbodypart } from './insight.js';
+import { yobjnam } from './objnam.js';
+import { STOMACH as STOMACH_do } from './const.js';
 
 /* C ref: cmd.c DIR_DOWN, DIR_UP (after the 8 compass directions) */
 const DIR_DOWN = 8, DIR_UP = 9;
@@ -212,9 +229,45 @@ export async function dodown() {
     /* Levitation might be blocked, but player can still use '>' to
        turn off controlled levitation */
     if (HLevitation() || ELevitation()) {
-        /* ending controlled levitation (float_down()) and the
-           floating_above() messages */
-        throw new Error('dodown(): levitation not ported yet');
+        if ((HLevitation() & I_SPECIAL_DO) || (ELevitation() & W_ARTI_DO)) {
+            /* end controlled levitation */
+            if (ELevitation() & W_ARTI_DO)
+                /* the age of each artifact with invoked levitation
+                   (artifact_has_invprop()) gets rnz(100) */
+                throw new Error('dodown(): ending artifact levitation not ported yet');
+            if (await float_down_do(I_SPECIAL_DO | TIMEOUT, W_ARTI_DO)) {
+                return ECMD_TIME; /* came down, so moved */
+            } else if (!HLevitation() && !ELevitation()) {
+                await Your("latent levitation ceases.");
+                return ECMD_TIME; /* did something, effectively moved */
+            }
+        }
+        if (BLevitation_do()) {
+            ; /* weren't actually floating after all */
+        } else if (Blind()) {
+            /* glyph_to_cmap() is a macro which expands its argument many
+               times; use this to do part of its work just once */
+            const glyph_at_uxuy = g.level.at(u.ux, u.uy).remembered_glyph;
+
+            /* Avoid alerting player to an unknown stair or ladder.
+             * Changes the message for a covered, known staircase
+             * too; staircase knowledge is not stored anywhere.
+             */
+            if (stairs_down)
+                stairs_down = (glyph_at_uxuy?.cmapidx === 26 /* S_dnstair */);
+            else if (ladder_down)
+                ladder_down = (glyph_at_uxuy?.cmapidx === 28 /* S_dnladder */);
+        }
+        if (Is_airlevel(u.uz))
+            await You(`are floating in the ${surface_do(u.ux, u.uy)}.`);
+        else if (Is_waterlevel(u.uz))
+            await You(`are floating in ${
+                is_pool(u.ux, u.uy) ? "the water" : "a bubble of air"}.`);
+        else
+            await floating_above_do(stairs_down ? "stairs"
+                                    : ladder_down ? "ladder"
+                                      : surface_do(u.ux, u.uy));
+        return ECMD_OK; /* didn't move */
     }
 
     if (Upolyd() && ceiling_hider(g.youmonst.data) && u.uundetected) {
@@ -1482,13 +1535,39 @@ async function drop(obj) {
     }
 
     if (game.u.uswallow) {
-        throw new Error('drop(): dropping while engulfed not ported yet');
+        /* barrier between you and the floor */
+        if (game.flags?.verbose ?? true) {
+            let onam_p, mnam_p;
+
+            mnam_p = mon_nam(game.u.ustuck);
+            /* doname can call s_suffix, reusing its buffer */
+            if (digests(game.u.ustuck.data)) {
+                mnam_p = `${s_suffix(mnam_p)} ${mbodypart(game.u.ustuck, STOMACH_do)}`;
+            }
+            onam_p = is_unpaid(obj) ? yobjnam(obj, null) : doname(obj);
+
+            await You(`drop ${onam_p} into ${mnam_p}.`);
+        }
     } else {
         if ((obj.oclass === O.RING_CLASS || obj.otyp === O.MEAT_RING)
             && IS_SINK(game.level.at(game.u.ux, game.u.uy).typ))
             throw new Error('drop(): dosinkring() not ported yet');
-        if (!can_reach_floor(true))
-            throw new Error('drop(): dropping while unable to reach the floor not ported yet');
+        if (!can_reach_floor(true)) {
+            /* we might be levitating due to #invoke Heart of Ahriman;
+               if so, levitation would end during call to freeinv()
+               and we want hitfloor() to happen before float_down() */
+            const levhack = finesse_ahriman(obj);
+
+            if (levhack)
+                game.u.uprops[LEVITATION].extrinsic = W_ART; /* other than W_ARTI */
+            if (game.flags?.verbose ?? true)
+                await You(`drop ${doname(obj)}.`);
+            freeinv(obj);
+            await hitfloor(obj, true);
+            if (levhack)
+                await float_down(I_SPECIAL | TIMEOUT, W_ARTI | W_ART);
+            return ECMD_TIME;
+        }
         if (!IS_ALTAR(game.level.at(game.u.ux, game.u.uy).typ)
             && (game.flags?.verbose ?? true))
             await You(`drop ${doname(obj)}.`);
@@ -1527,7 +1606,15 @@ export async function dropz(obj, with_impact) {
         setuswapwep(null);
 
     if (game.u.uswallow) {
-        throw new Error('dropz(): dropping into an engulfer not ported yet');
+        /* hero has dropped an item while inside an engulfer */
+        if (obj !== game.uball) { /* mon doesn't pick up ball */
+            /* moving shop item into engulfer's inventory treated as theft */
+            if (is_unpaid(obj))
+                await stolen_value(obj, game.u.ux, game.u.uy, true, false);
+            /* add to engulfer's inventory if not immediately eaten */
+            if (!(await engulfer_digests_food(obj)))
+                mpickobj_do(game.u.ustuck, obj);
+        }
     } else {
         if (await flooreffects(obj, game.u.ux, game.u.uy, "drop"))
             return;
@@ -1544,6 +1631,51 @@ export async function dropz(obj, with_impact) {
         newsym(game.u.ux, game.u.uy); /* remap location under self */
     }
     await encumber_msg();
+}
+
+// C ref: do.c engulfer_digests_food()
+/* when swallowed, move dropped object from OBJ_FREE to u.ustuck's inventory;
+   for purple worm, immediately eat any corpse, glob, or special meat item
+   from object polymorph; return True if object is used up, False otherwise */
+async function engulfer_digests_food(obj) {
+    const u = game.u;
+    /* animal swallower (purple worn) eats any
+       corpse, glob, or meat <item> but not other types of food */
+    if (digests(u.ustuck.data)
+        && (obj.otyp === O.CORPSE || obj.globby
+            || obj.otyp === O.MEATBALL || obj.otyp === O.ENORMOUS_MEATBALL
+            || obj.otyp === O.MEAT_RING || obj.otyp === O.MEAT_STICK)) {
+        let could_petrify = false,
+            could_poly = false, could_slime = false,
+            could_grow = false, could_heal = false;
+
+        if (obj.otyp === O.CORPSE) {
+            could_petrify = touch_petrifies_do(mons_do[obj.corpsenm]);
+            could_poly = polyfood_do(obj);
+            could_grow = (obj.corpsenm === PM_WRAITH_do);
+            could_heal = (obj.corpsenm === PM_NURSE_do);
+        } else if (obj.otyp === O.GLOB_OF_GREEN_SLIME) {
+            could_slime = true;
+        }
+        /* see or feel the effect */
+        await pline(`${Tobjnam(obj, "are")} instantly digested!`);
+
+        if (could_poly || could_slime) {
+            await newcham_do(u.ustuck, could_slime ? mons_do[PM_GREEN_SLIME_do] : null,
+                             could_slime ? NC_SHOW_MSG_do : NO_NC_FLAGS_do);
+        } else if (could_petrify) {
+            await minstapetrify(u.ustuck, true);
+        } else if (could_grow) {
+            await grow_up_do(u.ustuck, null);
+        } else if (could_heal) {
+            healmon_do(u.ustuck, u.ustuck.mhpmax, 0);
+            /* False: don't realize that sight is cured from inside */
+            await mcureblindness_do(u.ustuck, false);
+        }
+        delobj_do(obj); /* always used up */
+        return true;
+    }
+    return false;
 }
 
 // C ref: hack.c impact_disturbs_zombies()

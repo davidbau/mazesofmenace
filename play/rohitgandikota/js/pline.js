@@ -134,13 +134,13 @@ export async function There(line) {
 }
 
 
-// src/pline.c:270 Norep(): pline with PLINE_NOREPEAT, so vpline()'s
+// src/pline.c:327 Norep(): pline with PLINE_NOREPEAT, so vpline()'s
 // MSGTYPE gate drops the text when it matches the preceding individual
 // message (gp.prevmsg, which is separate from the tty's combined top line).
 export async function Norep(line) {
-    game.pline_flags = (game.pline_flags | 0) | PLINE_NOREPEAT;
+    game.pline_flags = PLINE_NOREPEAT;
     await pline(line);
-    game.pline_flags &= ~PLINE_NOREPEAT;
+    game.pline_flags = 0;
 }
 
 

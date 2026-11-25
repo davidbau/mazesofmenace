@@ -4,14 +4,16 @@
 // Ported so far: welded() with its will_weld()/erodeable_wep() macros,
 // obj.h is_weptool()/bimanual(), and engrave.c freehand().
 
-import { retouch_object, arti_speak, undiscovered_artifact } from './artifact.js';
+import { retouch_object, arti_speak, undiscovered_artifact,
+         artifact_light } from './artifact.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
-import { artifact_light } from './worn.js';
 import { game } from './gstate.js';
 import { P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
          W_WEP, W_SWAPWEP, W_QUIVER } from './const.js';
 import { objects, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, TIN_OPENER,
-         HEAVY_IRON_BALL, IRON_CHAIN, TOWEL, CORPSE, AKLYS, SILVER } from './objects.js';
+         HEAVY_IRON_BALL, IRON_CHAIN, TOWEL, CORPSE, AKLYS, SILVER, is_weptool,
+         bimanual, is_launcher, is_ammo, ammo_and_launcher, is_missile,
+         is_pole, is_wet_towel, is_sword } from './objects.js';
 import { ECMD_OK, ECMD_TIME, ECMD_FAIL, W_ARMOR, W_ACCESSORY,
          W_SADDLE, W_RINGL, W_RINGR, W_TOOL, W_ARM, W_ARMC, W_ARMH, W_ARMS,
          W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_BALL, W_CHAIN, I_SPECIAL } from './const.js';
@@ -47,49 +49,11 @@ import { Yname2, Yobjnam2 } from './objnam.js';
 import { arti_light_description } from './light.js';
 import { begin_burn, end_burn } from './timeout.js';
 import { Tobjnam } from './objnam.js';
+import { yobjnam } from './objnam.js';
+import { Your } from './display.js';
+import { dropx } from './do.js';
 import { Blind } from './youprop.js';
 import { nohands, verysmall, could_twoweap, cantwield } from './mondata.js';
-
-// C ref: obj.h is_weptool()
-export function is_weptool(o) {
-    return o.oclass === TOOL_CLASS && objects[o.otyp].oc_skill !== P_NONE;
-}
-
-// C ref: obj.h bimanual()
-export function bimanual(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-            && !!objects[otmp.otyp].oc_bimanual);
-}
-
-// C ref: obj.h is_launcher(), is_ammo(), matching_launcher(),
-// ammo_and_launcher(), is_missile(), is_pole(), is_wet_towel()
-export function is_launcher(otmp) {
-    return (otmp.oclass === WEAPON_CLASS && objects[otmp.otyp].oc_skill >= P_BOW
-            && objects[otmp.otyp].oc_skill <= P_CROSSBOW);
-}
-export function is_ammo(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === GEM_CLASS)
-            && objects[otmp.otyp].oc_skill >= -P_CROSSBOW
-            && objects[otmp.otyp].oc_skill <= -P_BOW);
-}
-export function matching_launcher(a, l) {
-    return !!(l && objects[a.otyp].oc_skill === -objects[l.otyp].oc_skill);
-}
-export function ammo_and_launcher(a, l) {
-    return is_ammo(a) && matching_launcher(a, l);
-}
-export function is_missile(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill >= -P_BOOMERANG
-            && objects[otmp.otyp].oc_skill <= -P_DART);
-}
-export function is_pole(otmp) {
-    /* is_art(otmp, ART_SNICKERSNEE): artifacts aren't ported here yet */
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-            && (objects[otmp.otyp].oc_skill === P_POLEARMS
-                || objects[otmp.otyp].oc_skill === P_LANCE));
-}
-export function is_wet_towel(o) { return o.otyp === TOWEL && o.spe > 0; }
 
 // C ref: worn.c setworn() -- in worn.js
 export { setworn };
@@ -236,13 +200,6 @@ export function uqwepgone() {
 // C ref: artifact.c retouch_object() (ported in artifact.js)
 export { retouch_object };
 
-/* C ref: obj.h is_sword() */
-function is_sword_wl(otmp) {
-    return otmp.oclass === WEAPON_CLASS
-        && objects[otmp.otyp].oc_skill >= P_SHORT_SWORD_WL
-        && objects[otmp.otyp].oc_skill <= P_SABER_WL;
-}
-
 // C ref: wield.c ready_weapon()
 export async function ready_weapon(wep) {
     /* Separated function so swapping works easily */
@@ -261,7 +218,7 @@ export async function ready_weapon(wep) {
         throw new Error('ready_weapon(): cant_wield_corpse() not ported yet');
     } else if (game.uarms && bimanual(wep)) {
         await You(`cannot wield a two-handed ${
-            is_sword_wl(wep) ? "sword" : wep.otyp === BATTLE_AXE_WL ? "axe"
+            is_sword(wep) ? "sword" : wep.otyp === BATTLE_AXE_WL ? "axe"
                                                                     : "weapon"} while wearing a shield.`);
         res = ECMD_FAIL;
     } else if (!(await retouch_object(wep, false))) {
@@ -486,6 +443,31 @@ async function wielding(wep) {
     await untwoweapon();
 
     return result;
+}
+
+// C ref: wield.c drop_uswapwep()
+/* uswapwep has become cursed while in two-weapon combat mode or hero is
+   attempting to dual-wield when it is already cursed or hands are slippery */
+export async function drop_uswapwep() {
+    const obj = game.uswapwep;
+
+    /* this used to use makeplural(body_part(HAND)) but in order to be
+       dual-wielded, or to get this far attempting to achieve that,
+       uswapwep must be one-handed; since it's secondary, the hand must
+       be the left one */
+    const left_hand = `left ${body_part(HAND)}`;
+    if (!obj.cursed)
+        /* attempting to two-weapon while Glib */
+        await pline(`${Yobjnam2(obj, "slip")} from your ${left_hand}!`);
+    else if (!game.u.twoweap)
+        /* attempting to two-weapon when uswapwep is cursed */
+        await pline(`${Yobjnam2(obj, "evade")} your grasp and ${
+            otense(obj, "drop")} from your ${left_hand}!`);
+    else
+        /* already two-weaponing but can't anymore because uswapwep has
+           become cursed */
+        await Your(`${left_hand} spasms and drops ${yobjnam(obj, null)}!`);
+    await dropx(obj);
 }
 
 // C ref: wield.c untwoweapon()

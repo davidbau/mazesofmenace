@@ -145,7 +145,7 @@ export async function dowrite(pen) {
     observe_object(paper, Hallucination());
     if (paper.otyp !== O.SCR_BLANK_PAPER && paper.otyp !== O.SPE_BLANK_PAPER) {
         await pline(`That ${typeword} is not blank!`);
-        exercise(A_WIS, false);
+        await exercise(A_WIS, false);
         return ECMD_TIME;
     }
     makeknown(O.SCR_BLANK_PAPER);
@@ -291,7 +291,7 @@ export async function dowrite(pen) {
      */
     actualcost = rn1(Math.trunc(basecost / 2), Math.trunc(basecost / 2));
     curseval = bcsign(pen) + bcsign(paper);
-    exercise(A_WIS, true);
+    await exercise(A_WIS, true);
     /* dry out marker */
     if (pen.spe < actualcost) {
         pen.spe = 0;

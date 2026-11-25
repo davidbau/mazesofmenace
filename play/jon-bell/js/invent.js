@@ -27,7 +27,7 @@ import { setuqwep } from './wield.js';
 import { _pickup_burden_level, touch_artifact_youmonst } from './wizcmds.js';
 import { setnotworn, setworn } from './worn.js';
 import { _sortloot_within_class, display_pickinv_sorted, query_objlist_sorted } from './cmd.js'; // relocate-fns
-import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js'; // relocate-fns
+import { build_window_screen, menu_search_case, tty_window_offx, menu_search_corner_frame, menu_fullscreen_frame } from './com_pager.js'; // relocate-fns
 import { _topl_joins_committed, docorner_blank_utf8_captures, docrt, flush_screen, obj_to_glyph, status_r1_menu_docrt, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
 import { doname_with_price, not_fully_identified } from './objnam.js'; // relocate-fns
@@ -878,6 +878,9 @@ async function _identify_objlist_menu_body(promptText) {
             for (let i = 0; i < pageLines.length; i++) rows[i] = ` ${pageLines[i]}`;
             rows[footerRow] = ` ${footer}`;
             if (titleErased) rows[0] = '';
+            if (titleErased)  /* a ^P history window's corner (com_pager.js) */
+                return { rows: menu_search_corner_frame(rows, 3),
+                         footer, footerRow, pageCount };
             return { rows, footer, footerRow, pageCount };
         }
         const winLines = pageLines.slice();
@@ -2422,7 +2425,7 @@ export async function dotypeinv() {
     const tiFullScreen = WIN_COL === 1 || game.iflags?.menu_overlay === false
         || game.iflags?.menu_overlay === 0;
     const tiBuild = (lines) => tiFullScreen
-        ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+        ? menu_fullscreen_frame(lines)
         : build_window_screen(lines, WIN_COL, uac);
     const screenOutput = tiBuild(windowLines);
     /* Cursor after '(end)': WIN_COL + len('(end)') + 1, row = last line. */

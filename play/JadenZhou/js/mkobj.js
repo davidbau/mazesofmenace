@@ -17,7 +17,8 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
 import { depth, level_difficulty, In_hell } from './dungeon.js';
 import * as O from './objects.js';
-import { objects } from './objects.js';
+import { objects, is_weptool, Is_mbag, Is_container, bimanual, is_rustprone,
+         is_crackable, is_corrodeable } from './objects.js';
 import { P_NONE, P_SHURIKEN, P_BOW, FIRE_RES, G_GONE, G_GENOD } from './const.js';
 import { rndmonst_adj } from './makemon.js';
 import { monsndx, little_to_big, big_to_little, is_human, verysmall, is_male,
@@ -49,7 +50,6 @@ import { MON_DETACH, MIGR_TO_SPECIES } from './const.js';
 import { maybe_reset_pick } from './lock.js';
 import { confers_luck } from './timeout.js';
 import { set_moreluck } from './attrib.js';
-import { bimanual } from './wield.js';
 import { reset_remarm } from './do_wear.js';
 import { book_cursed_sync } from './spell.js';
 import { eaten_stat, tin_variety, tintxt_fodder, vegetarian } from './eat.js';
@@ -478,11 +478,6 @@ export function is_poisonable(otmp) {
             || permapoisoned(otmp));
 }
 
-// C ref: obj.h is_weptool()
-export function is_weptool(o) {
-    return (o.oclass === TOOL_CLASS && objects[o.otyp].oc_skill !== P_NONE);
-}
-
 // C ref: obj.h Is_candle()
 export function Is_candle(otmp) {
     return (otmp.otyp === O.TALLOW_CANDLE || otmp.otyp === O.WAX_CANDLE);
@@ -555,17 +550,7 @@ export function is_rottable(otmp) {
             || objects[otyp].oc_material === O.DRAGON_HIDE);
 }
 
-// C ref: objclass.h is_rustprone(), is_crackable(), is_corrodeable(),
-// is_damageable()
-export function is_rustprone(otmp) { return objects[otmp.otyp].oc_material === O.IRON; }
-export function is_crackable(otmp) {
-    return (objects[otmp.otyp].oc_material === O.GLASS
-            && otmp.oclass === ARMOR_CLASS); /* erosion_matters() */
-}
-export function is_corrodeable(otmp) {
-    return (objects[otmp.otyp].oc_material === O.COPPER
-            || objects[otmp.otyp].oc_material === O.IRON);
-}
+// C ref: mkobj.c is_damageable()
 export function is_damageable(otmp) {
     return (is_rustprone(otmp) || is_flammable(otmp)
             || is_rottable(otmp) || is_corrodeable(otmp)
@@ -1316,11 +1301,6 @@ const boxiprobs = [ { iprob: 18, iclass: O.GEM_CLASS },
                     { iprob: 5, iclass: O.RING_CLASS },
                     { iprob: 1, iclass: O.AMULET_CLASS } ];
 
-// C ref: obj.h Is_mbag()
-function Is_mbag(otmp) {
-    return otmp.otyp === O.BAG_OF_HOLDING || otmp.otyp === O.BAG_OF_TRICKS;
-}
-
 // C ref: mkobj.c add_to_container() -- container chains are kept as a
 // plain array on the box, head of C's chain first
 export function add_to_container(container, obj) {
@@ -1341,11 +1321,6 @@ export function add_to_container(container, obj) {
     if (!container.cobj) container.cobj = [];
     container.cobj.unshift(obj);
     return obj;
-}
-
-// C ref: obj.h Is_container()
-export function Is_container(otmp) {
-    return otmp.otyp >= O.LARGE_BOX && otmp.otyp <= O.BAG_OF_TRICKS;
 }
 
 // C ref: mkobj.c weight()

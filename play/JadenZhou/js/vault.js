@@ -8,7 +8,7 @@
 // paygd() (end.js), vault_summon_gd(), vault_gd_watching().
 
 import { an } from './objnam.js';
-import { You_see } from './display.js';
+import { You_see, verbalize, You_hear } from './display.js';
 import { simpleonames } from './iactions.js';
 import { fracture_rock } from './zap.js';
 import { DEADMONSTER } from './mon.js';
@@ -21,7 +21,6 @@ import {
     pline, You, pline_The, newsym, canspotmon, map_invisible, mon_visible,
     xy_set_wall_state, map_location
 } from './display.js';
-import { You_hear } from './sounds.js';
 import { cansee, couldsee, unblock_point, block_point,
          recalc_block_point } from './vision.js';
 import { isok, ROOM, CORR, STONE, SCORR, DOOR, HWALL, VWALL, TLCORNER,
@@ -47,22 +46,20 @@ import { hidden_gold } from './insight.js';
 import { adjalign } from './attrib.js';
 import { stop_occupation, unmul } from './allmain.js';
 import { tty_getlin } from './wintty.js';
-import { mungspaces, upstart } from './hacklib.js';
+import { mungspaces, upstart, distu, dist2 } from './hacklib.js';
 import { Monnam, noit_Monnam, Some_Monnam, x_monnam, pmname, Mgender,
          noit_mon_nam, ARTICLE_A } from './do_name.js';
 import { sticks } from './engrave.js';
 import { makeplural } from './objnam.js';
-import { m_carrying, mon_wield_item } from './weapon.js';
+import { mon_wield_item } from './weapon.js';
 import { is_fainted } from './eat.js';
 import { mon_track_clear } from './monmove.js';
 import { on_level } from './dungeon.js';
 import { Deaf, Strangled, Blind } from './youprop.js';
 import { u_at } from './const.js';
 import { noit_mhis } from './mhitu.js';
+import { m_carrying } from './mthrowu.js';
 
-/* C ref: hack.h distu(), um_dist() */
-function distu(x, y) { return (x - game.u.ux) ** 2 + (y - game.u.uy) ** 2; }
-function dist2(x0, y0, x1, y1) { return (x0 - x1) ** 2 + (y0 - y1) ** 2; }
 /* C ref: invent.c g_at() */
 export function g_at(x, y) {
     for (const o of game.level.objects || [])
@@ -72,12 +69,6 @@ export function g_at(x, y) {
 }
 /* C ref: you.h mhe(), noit_mhis() for a guard (always male or female,
    never "it") */
-/* C ref: pline.c verbalize() -- SetVoice() only matters for speech */
-async function verbalize(line) {
-    if (Deaf())
-        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
-    await pline(`"${line}"`);
-}
 /* C ref: rm.h levl[x][y].flags -- the fields that share C's 'flags' bits */
 function lev_flags(lev) {
     return { doormask: lev.doormask, wall_info: lev.wall_info };

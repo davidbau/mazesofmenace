@@ -4,12 +4,12 @@
 // ohitmon(), ucatchgem(), u_catch_thrown_obj(), m_throw(),
 // return_from_mtoss(), thrwmm(), spitmm(), breamm(), m_useupall(),
 // m_useup(), thrwmu(), spitmu(), breamu(), m_lined_up(), hit_bars() and
-// hits_bars().  linedup()/lined_up() live in monmove.js, m_carrying() and
+// hits_bars().  linedup()/lined_up() live in monmove.js,
 // m_has_launcher_and_ammo() in weapon.js.  Paths that aren't ported yet
 // throw a 'not ported yet' error instead of skipping their rolls.
 
-import { DEADMONSTER } from './mon.js';
-import { ordin, sgn, upstart, plur } from './hacklib.js';
+import { DEADMONSTER, minv } from './mon.js';
+import { ordin, sgn, upstart, plur, mdistu } from './hacklib.js';
 import { passes_rocks } from './trap.js';
 import { resists_poison, noncorporeal, amorphous, bigmonst, likes_gems,
          throws_rocks, nohands, is_unicorn, touch_petrifies, resists_acid,
@@ -20,10 +20,9 @@ import { game } from './gstate.js';
 import { rn2, rnd, rnl, rn2_on_display_rng, ROLL_FROM } from './rng.js';
 import { distmin, dist2, s_suffix, strncmpi } from './hacklib.js';
 import { cansee, couldsee } from './vision.js';
-import {
-    pline, You, Your, pline_The, newsym, canseemon, canspotmon, tmp_at,
-    obj_to_glyph, DISP_FLASH, DISP_TETHER, DISP_END
-} from './display.js';
+import { pline, You, Your, pline_The, newsym, canseemon, canspotmon, tmp_at,
+         obj_to_glyph, DISP_FLASH, DISP_TETHER, DISP_END,
+         You_hear } from './display.js';
 import { BOLT_LIM, MON_POLE_DIST, NEED_WEAPON, NEED_RANGED_WEAPON,
          PET_MISSILE_RANGE2, P_POLEARMS, P_LANCE, P_BOW, P_CROSSBOW, P_DART,
          P_SHURIKEN, P_SPEAR, P_KNIFE, M_ATTK_MISS, M_ATTK_HIT, M_SEEN_ACID,
@@ -37,20 +36,21 @@ import { BOLT_LIM, MON_POLE_DIST, NEED_WEAPON, NEED_RANGED_WEAPON,
 import * as O from './objects.js';
 import { objects, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS,
          VENOM_CLASS, COIN_CLASS, ARMOR_CLASS, ROCK_CLASS, FOOD_CLASS,
-         SPBOOK_CLASS, WAND_CLASS, BALL_CLASS, CHAIN_CLASS, RING_CLASS,
-         SILVER, GOLD, GEMSTONE, MINERAL, STRANGE_OBJECT } from './objects.js';
+         SPBOOK_CLASS, WAND_CLASS, BALL_CLASS, CHAIN_CLASS, RING_CLASS, SILVER,
+         GOLD, GEMSTONE, MINERAL, STRANGE_OBJECT, is_pole, stone_missile,
+         is_flimsy, greatest_erosion, is_ammo, matching_launcher,
+         ammo_and_launcher, is_missile } from './objects.js';
 import * as M from './monsters.js';
 import { mons } from './monsters.js';
 import { ART_SNICKERSNEE } from './artilist.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon, mwelded, dmgval,
-         setmnotwielded, m_carrying } from './weapon.js';
+         setmnotwielded } from './weapon.js';
 import { lined_up, linedup } from './monmove.js';
 import { m_at, closed_door, is_pool, is_lava, nonliving } from './makemon.js';
 import { monsndx, is_elf, is_orc, is_gnome, is_vampshifter, hates_silver,
          mon_hates_silver, Resists_Elem, get_atkdam_type,
          cvt_adtyp_to_mseenres, can_blnd, haseyes } from './mondata.js';
-import { is_ammo, matching_launcher, ammo_and_launcher, is_missile,
-         freehand } from './wield.js';
+import { freehand } from './wield.js';
 import { multishot_class_bonus, omon_adj, breaktest } from './dothrow.js';
 import { splitobj, obj_extract_self, clear_dknown, place_object,
          add_to_minv, mksobj, is_poisonable, is_flammable,
@@ -70,10 +70,10 @@ import { seemimic, xkilled, mondied, setmangry, monkilled,
          wake_nearto } from './mon.js';
 import { exercise, ACURR, poisoned } from './attrib.js';
 import { losehp, Maybe_Half_Phys } from './trap.js';
+import { minstapetrify } from './trap.js';
 import { stop_occupation } from './allmain.js';
 import { nomul, calc_capacity } from './hack.js';
 import { make_blinded, potionhit, make_stoned, hliquid } from './potion.js';
-import { You_hear } from './sounds.js';
 import { monstseesu, monstunseesu, shade_miss, passive_obj } from './uhitm.js';
 import { mswings_verb, mhim } from './mhitu.js';
 import { hit, miss, exclam, dobuzz } from './zap.js';
@@ -97,29 +97,6 @@ import { WT_IRON_BALL_INCR } from './const.js';
 /* C ref: youprop.h -- (H* || E*) && !B* */
 function verbose() { return game.flags.verbose ?? true; }
 
-/* C ref: hack.h mdistu() */
-function mdistu(mon) {
-    const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
-    return dx * dx + dy * dy;
-}
-/* C ref: obj.h is_pole() */
-function is_pole(otmp) {
-    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-           && (objects[otmp.otyp].oc_skill === P_POLEARMS
-               || objects[otmp.otyp].oc_skill === P_LANCE
-               || otmp.oartifact === ART_SNICKERSNEE);
-}
-/* C ref: obj.h stone_missile() */
-function stone_missile(o) {
-    return (objects[o.otyp].oc_material === GEMSTONE
-            || objects[o.otyp].oc_material === MINERAL)
-           && o.oclass !== RING_CLASS;
-}
-/* C ref: obj.h is_flimsy() */
-function is_flimsy(otmp) {
-    return objects[otmp.otyp].oc_material <= O.LEATHER
-           || otmp.otyp === O.RUBBER_HOSE;
-}
 /* C ref: mondata.h */
 
 /* gm.m_shot (decl.h) -- multishot volley feedback */
@@ -268,14 +245,14 @@ export async function thitu(
                 && Hate_silver()) {
                 /* extra damage already applied by dmgval() */
                 await pline_The("silver sears your flesh!");
-                exercise(A_CON, false);
+                await exercise(A_CON, false);
             }
             if (is_acid) {
                 await pline("It burns!");
                 monstunseesu(M_SEEN_ACID);
             }
             await losehp(dam, knm, kprefix); /* acid damage */
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
         }
         return 1;
     }
@@ -308,10 +285,6 @@ export function should_mulch_missile(obj) {
         broken = false;
 
     return !!broken;
-}
-/* C ref: obj.h greatest_erosion() */
-function greatest_erosion(otmp) {
-    return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
 }
 
 // C ref: mthrowu.c drop_throw()
@@ -584,7 +557,7 @@ export async function ohitmon(
         }
         if (otmp.otyp === O.EGG && touch_petrifies(mons[otmp.corpsenm])) {
             if (!await munstone(mtmp, false))
-                throw new Error('ohitmon(): minstapetrify() not ported yet');
+                await minstapetrify(mtmp, false);
             if (resists_ston(mtmp))
                 damage = 0;
         }
@@ -1577,4 +1550,18 @@ export async function hits_bars(
     }
 
     return !!hits;
+}
+
+// C ref: mthrowu.c m_carrying()
+export function m_carrying(mtmp, type) {
+    if (mtmp === game.youmonst) {
+        for (let otmp = game.invent; otmp; otmp = otmp.nobj)
+            if (otmp.otyp === type)
+                return otmp;
+        return null;
+    }
+    for (const otmp of minv(mtmp))
+        if (otmp.otyp === type)
+            return otmp;
+    return null;
 }

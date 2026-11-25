@@ -13,11 +13,13 @@
 
 import { has_horns } from './polyself.js';
 import { impossible } from './hack.js';
-import { is_art } from './artifact.js';
+import { is_art, artifact_light } from './artifact.js';
 import { minv } from './mon.js';
 import { objchain_items } from './invent.js';
 import { game } from './gstate.js';
-import { objects } from './objects.js';
+import { objects, greatest_erosion, is_shield, is_helmet, is_boots, is_gloves,
+         is_cloak, is_shirt, is_suit, bimanual, is_flimsy, Is_dragon_scales,
+         is_weptool } from './objects.js';
 import * as O from './objects.js';
 import * as M from './monsters.js';
 import { mons } from './monsters.js';
@@ -30,13 +32,13 @@ import { FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          W_AMUL, W_TOOL } from './const.js';
 import { ART_SUNSWORD, ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
 import { set_artifact_intrinsic_sync } from './artifact.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, You_hear } from './display.js';
 import { cansee } from './vision.js';
 import { canseemon } from './display.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { distant_name, doname } from './objnam.js';
 import { curse } from './mkobj.js';
-import { strncmpi, strcmpi, sgn } from './hacklib.js';
+import { strncmpi, strcmpi, sgn, ARM_BONUS } from './hacklib.js';
 import { monsndx, verysmall, bigmonst, nohands, is_animal, mindless, humanoid,
          slithy, noncorporeal, is_whirly, sliparm,
          breakarm } from './mondata.js';
@@ -48,7 +50,6 @@ import { monstunseesu } from './uhitm.js';
 import { mhim, mhis } from './mhitu.js';
 import { learnwand } from './zap.js';
 import { cancel_doff } from './do_wear.js';
-import { is_weptool } from './wield.js';
 import { DEAF, W_SADDLE } from './const.js';
 import { extract_from_minvent_g } from './steal.js';
 import { place_object } from './mkobj.js';
@@ -92,35 +93,6 @@ function run_msgs_sync(gen) {
 /* C ref: monst.h MON_WEP() */
 export function MON_WEP(mon) { return mon.mw || null; }
 
-/* C ref: obj.h greatest_erosion() */
-function greatest_erosion(otmp) {
-    const e1 = otmp.oeroded || 0, e2 = otmp.oeroded2 || 0;
-    return e1 > e2 ? e1 : e2;
-}
-/* C ref: hack.h ARM_BONUS() */
-function ARM_BONUS(obj) {
-    return objects[obj.otyp].a_ac + (obj.spe || 0)
-           - Math.min(greatest_erosion(obj), objects[obj.otyp].a_ac);
-}
-/* C ref: obj.h is_shirt() ... is_suit(), bimanual(), is_flimsy() */
-function is_armcat(otmp, cat) {
-    return otmp.oclass === O.ARMOR_CLASS && objects[otmp.otyp].oc_armcat === cat;
-}
-function is_shield(otmp) { return is_armcat(otmp, O.ARM_SHIELD); }
-function is_helmet(otmp) { return is_armcat(otmp, O.ARM_HELM); }
-function is_boots(otmp) { return is_armcat(otmp, O.ARM_BOOTS); }
-function is_gloves(otmp) { return is_armcat(otmp, O.ARM_GLOVES); }
-function is_cloak(otmp) { return is_armcat(otmp, O.ARM_CLOAK); }
-function is_shirt(otmp) { return is_armcat(otmp, O.ARM_SHIRT); }
-function is_suit(otmp) { return is_armcat(otmp, O.ARM_SUIT); }
-function bimanual(otmp) {
-    return (otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.TOOL_CLASS)
-           && !!objects[otmp.otyp].oc_bimanual;
-}
-function is_flimsy(otmp) {
-    return objects[otmp.otyp].oc_material <= O.LEATHER
-           || otmp.otyp === O.RUBBER_HOSE;
-}
 /* C ref: obj.h is_elven_armor() */
 function is_elven_armor(otmp) {
     return otmp.otyp === O.ELVEN_LEATHER_HELM
@@ -328,18 +300,6 @@ export function recalc_telepat_range() {
         g.u.unblind_telepat_range = (BOLT_LIM * BOLT_LIM) * nobjs;
     else
         g.u.unblind_telepat_range = -1;
-}
-
-// C ref: artifact.c artifact_light()
-export function artifact_light(obj) {
-    /* not artifacts but treat them as if they were because they emit
-       light without burning */
-    if (obj && (obj.otyp === O.GOLD_DRAGON_SCALE_MAIL
-                || obj.otyp === O.GOLD_DRAGON_SCALES)
-        && ((obj.owornmask || 0) & W_ARM) !== 0)
-        return true;
-
-    return !!(obj && obj.oartifact) && is_art(obj, ART_SUNSWORD);
 }
 
 // C ref: worn.c mon_set_minvis()
@@ -711,17 +671,15 @@ function* m_dowear_type(
     let m_delay = 0;
     const sawmon = canseemon(mon), sawloc = cansee(mon.mx, mon.my);
     let autocurse;
-    let nambuf = null;
+    let nambuf;
 
     if (mon.mfrozen)
         return; /* probably putting previous item on */
 
-    /* Get a copy of monster's name before altering its visibility;
-       only the "Suddenly you cannot see" message below uses it, which needs
-       !creation and sawmon (mon was seen and now isn't), so it isn't
-       formatted otherwise */
-    if (!creation && sawmon)
-        nambuf = See_invisible() ? Monnam(mon) : mon_nam(mon);
+    /* Get a copy of monster's name before altering its visibility
+       (always formatted, as in C: while hallucinating, x_monnam()'s
+       rndmonnam() draws on the display RNG even when unused) */
+    nambuf = See_invisible() ? Monnam(mon) : mon_nam(mon);
 
     old = which_armor(mon, flag);
     if (old && old.cursed)
@@ -902,29 +860,12 @@ function* m_dowear_type(
     }
 }
 
-/* C ref: pline.c You_hear() -- worn.c generators yield { you_hear: line }
-   where C calls You_hear() */
-async function You_hear_wn(line) {
-    const u = game.u;
-    const P = u.uprops[DEAF];
-    const Deaf = !!(P.intrinsic || P.extrinsic || u.uroleplay?.deaf);
-
-    if ((Deaf && !Unaware()) || !game.flags.acoustics)
-        return;
-    if (u.uinwater) /* Underwater */
-        await pline(`You barely hear ${line}`);
-    else if (Unaware())
-        await pline(`You dream that you hear ${line}`);
-    else
-        await pline(`You hear ${line}`); /* Deaf-aware */
-}
-
 // print one message yielded by a worn.c generator
 export async function worn_pline(msg) {
     if (msg?.newcham_async) /* an async callee (see run_msgs()) */
         await msg.newcham_async();
     else if (typeof msg === 'object' && msg.you_hear !== undefined)
-        await You_hear_wn(msg.you_hear);
+        await You_hear(msg.you_hear);
     else
         await pline(msg);
 }
@@ -940,9 +881,6 @@ function* m_lose_armor_g(mon, obj, polyspot) {
 }
 
 /* C ref: obj.h Is_dragon_scales() ... Dragon_mail_to_pm() */
-function Is_dragon_scales(o) {
-    return o.otyp >= O.GRAY_DRAGON_SCALES && o.otyp <= O.YELLOW_DRAGON_SCALES;
-}
 function Is_dragon_mail(o) {
     return o.otyp >= O.GRAY_DRAGON_SCALE_MAIL
            && o.otyp <= O.YELLOW_DRAGON_SCALE_MAIL;

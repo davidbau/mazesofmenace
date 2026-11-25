@@ -14,10 +14,12 @@ import {
     LUA_TSTRING, LUA_TTABLE, LUA_TNUMBER, LUA_TUSERDATA, luaL_checkinteger,
     lua_error,
 } from './nhlua.js';
-import { objects, OBJ_NAME, OBJ_DESCR, MAXOCLASSES, RANDOM_CLASS } from './objects.js';
+import { objects, OBJ_NAME, OBJ_DESCR, MAXOCLASSES, RANDOM_CLASS,
+         Is_container } from './objects.js';
 import { def_oc_syms, def_char_to_objclass } from './drawing.js';
 import { readobjnam } from './objnam.js';
-import { mksobj, mkobj, add_to_container, weight, Is_container, is_poisonable } from './mkobj.js';
+import { mksobj, mkobj, add_to_container, weight,
+         is_poisonable } from './mkobj.js';
 import { Has_contents, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM, NEUTRAL } from './const.js';
 import { STATUE, CORPSE, TIN, EGG, FIGURINE, POTION_CLASS } from './objects.js';
 import { mons } from './monsters.js';

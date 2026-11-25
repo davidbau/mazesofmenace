@@ -27,7 +27,7 @@ import { find_mac, setnotworn } from './worn.js';
 import { omon_adj, hitfloor } from './dothrow.js';
 import { hmon } from './uhitm.js';
 import { miss } from './zap.js';
-import { xname, yname, Yname2, otense, hard_helmet } from './objnam.js';
+import { xname, yname, Yname2, otense } from './objnam.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { freeinv } from './invent.js';
 import { encumber_msg } from './pickup.js';
@@ -37,6 +37,8 @@ import { fill_pit } from './muse.js';
 import { exercise } from './attrib.js';
 import { Blind, Levitation } from './youprop.js';
 import { Luck } from './const.js';
+import { carried } from './objects.js';
+import { hard_helmet } from './do_wear.js';
 
 /* C ref: you.h bc_order values, bc_felt bits */
 export const BCPOS_DIFFER = 0, BCPOS_CHAIN = 1, BCPOS_BALL = 2;
@@ -45,8 +47,6 @@ export const BC_BALL = 0x01, BC_CHAIN = 0x02;
 /* C ref: ball.c static int bcrestriction */
 function bcrestriction() { return game.bcrestriction || 0; }
 
-/* C ref: obj.h carried() */
-function carried(o) { return o.where === 'OBJ_INVENT'; }
 /* C ref: mkobj.c remove_object() -- a floor object leaves the floor */
 function remove_object(otmp) {
     if (otmp.where !== 'OBJ_FLOOR')
@@ -871,14 +871,14 @@ export async function drag_down() {
             await pline_The("iron ball smacks into you!");
             await losehp(Maybe_Half_Phys(rnd(20)), "iron ball collision",
                          KILLED_BY_AN);
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             dragchance -= 2;
         }
         if (dragchance >= rnd(6)) {
             await pline_The("iron ball drags you downstairs!");
             await losehp(Maybe_Half_Phys(rnd(3)),
                          "dragged downstairs by an iron ball", NO_KILLER_PREFIX);
-            exercise(A_STR, false);
+            await exercise(A_STR, false);
             await litter();
         }
     }

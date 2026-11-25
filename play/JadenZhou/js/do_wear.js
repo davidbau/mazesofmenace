@@ -29,14 +29,16 @@ import { is_flyer, nohands, verysmall, bigmonst, humanoid, slithy,
 import { itimeout } from './potion.js';
 import { game } from './gstate.js';
 import { make_slimed, make_glib, make_hallucinated } from './potion.js';
-import { pline, You, Your, There, pline_The, newsym,
-         see_monsters } from './display.js';
+import { pline, You, Your, There, pline_The, newsym, see_monsters,
+         You_feel } from './display.js';
 import { getobj, silly_thing } from './invent.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
          GETOBJ_EXCLUDE_INACCESS, GETOBJ_NOFLAGS, ECMD_OK, ECMD_CANCEL,
          ECMD_TIME, W_ARMOR, W_ACCESSORY } from './const.js';
 import { ARMOR_CLASS, RING_CLASS, AMULET_CLASS, MEAT_RING, BLINDFOLD, TOWEL,
-         LENSES } from './objects.js';
+         LENSES, is_helmet, is_shield, is_cloak, is_shirt, is_suit, is_sword,
+         is_flimsy, is_boots, is_gloves, bimanual, is_metallic, is_crackable,
+         is_rustprone, is_corrodeable } from './objects.js';
 import { M1_NOHANDS, MZ_SMALL, MZ_LARGE, MZ_HUGE, M1_NOLIMBS, M1_HUMANOID,
          M1_NOHEAD, M1_SLITHY, M1_FLY, M1_MINDLESS, M1_BREATHLESS, S_CENTAUR,
          S_GHOST, S_VORTEX, mons, PM_AIR_ELEMENTAL, PM_MARILITH,
@@ -50,7 +52,7 @@ import * as O from './objects.js';
 import { prinv } from './invent.js';
 import { tty_yn_function } from './wintty.js';
 import { body_part } from './insight.js';
-import { setworn, setuwep, setuswapwep, setuqwep, bimanual, welded,
+import { setworn, setuwep, setuswapwep, setuqwep, welded,
          retouch_object } from './wield.js';
 import { W_RING, W_AMUL, W_TOOL, W_SADDLE, W_WEAPONS, LEFT_RING, RIGHT_RING,
          FINGER, GLIB } from './const.js';
@@ -75,7 +77,7 @@ import { the, thesimpleoname } from './iactions.js';
 import { change_luck } from './attrib.js';
 import { nomul } from './hack.js';
 import { encumber_msg } from './pickup.js';
-import { racial_exception, artifact_light } from './worn.js';
+import { racial_exception } from './worn.js';
 import { surface } from './iactions.js';
 import { discover_object, makeknown } from './o_init.js';
 import { find_ac } from './u_init.js';
@@ -95,8 +97,8 @@ import { rn2 as rn2_dw } from './rng.js';
 import { which_armor as which_armor_dw } from './worn.js';
 import { erode_obj } from './trap.js';
 import { stop_occupation as stop_occupation_dw } from './allmain.js';
-import { is_flammable, is_rustprone, is_crackable, is_rottable,
-         is_corrodeable, erosion_matters, is_damageable } from './mkobj.js';
+import { is_flammable, is_rottable, erosion_matters,
+         is_damageable } from './mkobj.js';
 import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
          ERODE_NONE, ER_NOTHING, ER_DESTROYED, EF_PAY,
          EF_DESTROY } from './const.js';
@@ -128,6 +130,13 @@ import { has_ceiling as has_ceiling_bo } from './insight.js';
 import { spoteffects as spoteffects_bo } from './hack.js';
 import { float_down as float_down_bo } from './trap.js';
 import { FROMOUTSIDE as FROMOUTSIDE_BO } from './const.js';
+import { artifact_light } from './artifact.js';
+import { obj_resists as obj_resists_dw } from './dogmove.js';
+import { urgent_pline as urgent_pline_dw } from './display.js';
+import { vtense as vtense_dw } from './objnam.js';
+import { useup as useup_dw } from './invent.js';
+import { selftouch as selftouch_dw } from './trap.js';
+import { float_up as float_up_dw } from './trap.js';
 
 /* C ref: decl.c c_armor ... c_that_ */
 const c_armor = "armor", c_suit = "suit", c_shirt = "shirt",
@@ -142,26 +151,6 @@ function WrappingAllowed(mptr) {
         && !noncorporeal(mptr) && mptr.mlet !== S_CENTAUR
         && mptr !== mons[PM_WINGED_GARGOYLE] && mptr !== mons[PM_MARILITH];
 }
-/* C ref: obj.h is_helmet() ... is_suit(), is_sword(), is_flimsy() */
-function is_armcat(otmp, cat) {
-    return otmp.oclass === ARMOR_CLASS && objects[otmp.otyp].oc_armcat === cat;
-}
-function is_helmet(otmp) { return is_armcat(otmp, ARM_HELM); }
-function is_shield(otmp) { return is_armcat(otmp, ARM_SHIELD); }
-function is_cloak(otmp) { return is_armcat(otmp, ARM_CLOAK); }
-function is_shirt(otmp) { return is_armcat(otmp, ARM_SHIRT); }
-function is_suit(otmp) { return is_armcat(otmp, ARM_SUIT); }
-function is_sword(otmp) {
-    return otmp.oclass === O.WEAPON_CLASS
-        && objects[otmp.otyp].oc_skill >= P_SHORT_SWORD
-        && objects[otmp.otyp].oc_skill <= P_SABER;
-}
-function is_flimsy(otmp) {
-    return objects[otmp.otyp].oc_material <= O.LEATHER
-           || otmp.otyp === O.RUBBER_HOSE;
-}
-/* C ref: pline.c You_feel() */
-async function You_feel(line) { await pline(`You feel ${line}`); }
 
 // C ref: do_wear.c fingers_or_gloves() -- plural "fingers" or optionally
 // "gloves"
@@ -413,7 +402,21 @@ async function Boots_on() {
             incr_itimeout(FUMBLING, rnd(20));
         break;
     case O.LEVITATION_BOOTS:
-        throw new Error('Boots_on(): levitation boots (float_up()) not ported yet');
+        if (!oldprop && !uprop(LEVITATION).intrinsic
+            && !((uprop(LEVITATION).blocked || 0) & FROMOUTSIDE_BO)) {
+            g.uarmf.known = 1; /* might come off if putting on over a sink,
+                                * so uarmf could be Null below; status line
+                                * gets updated during brief interval they're
+                                * worn so hero and player learn enchantment */
+            g.disp_botl = true; /* status hilites might mark AC changed */
+            makeknown(g.uarmf.otyp);
+            await float_up_dw();
+            if (Levitation())
+                await spoteffects_bo(false); /* for sink effect */
+        } else {
+            float_vs_flight(); /* maybe toggle BFlying's I_SPECIAL */
+        }
+        break;
     default:
         impossible(`Unknown type of boots (${g.uarmf.otyp})`);
     }
@@ -537,6 +540,13 @@ async function Helmet_on() {
         /* update_inventory(): no perm_invent */
     }
     return 0;
+}
+
+// C ref: do_wear.c hard_helmet() -- headgear that protects against bonks
+export function hard_helmet(obj) {
+    if (!obj || !is_helmet(obj))
+        return false;
+    return (is_metallic(obj) || is_crackable(obj)) ? true : false;
 }
 
 // C ref: do_wear.c Gloves_on()
@@ -1530,14 +1540,6 @@ function takeoff_ctx() {
         g.context.takeoff = { mask: 0, what: 0, delay: 0,
                               cancelled_don: false, disrobing: '' };
     return g.context.takeoff;
-}
-
-/* C ref: obj.h is_boots(), is_gloves() */
-function is_boots(otmp) {
-    return otmp.oclass === ARMOR_CLASS && objects[otmp.otyp].oc_armcat === ARM_BOOTS;
-}
-function is_gloves(otmp) {
-    return otmp.oclass === ARMOR_CLASS && objects[otmp.otyp].oc_armcat === ARM_GLOVES;
 }
 
 // C ref: do_wear.c off_msg()
@@ -2573,15 +2575,121 @@ export function some_armor(victim) {
     return otmph || null;
 }
 
-// C ref: do_wear.c disintegrate_arm() -- destroying the armor
-// (maybe_destroy_armor(), wornarm_destroyed()) is not ported yet
+// C ref: do_wear.c wornarm_destroyed()
+/* take off the specific worn object and if it still exists after that,
+   destroy it (taking off the item might already destroy it by dunking
+   hero into lava) */
+async function wornarm_destroyed(wornarm) {
+    const g = game;
+    let invobj, nextobj;
+    const wornoid = wornarm.o_id;
+
+    /* cancel_don() resets 'afternmv' when appropriate but doesn't reset
+       uarmc/uarm/&c so doing this now won't interfere with the tests in
+       'if (wornarm==uarmc) ... else if (wornarm==uarm) ... else ...' */
+    if (donning(wornarm))
+        cancel_don();
+
+    if (wornarm === g.uarmc)
+        await Cloak_off();
+    else if (wornarm === g.uarm)
+        await Armor_off();
+    else if (wornarm === g.uarmu)
+        await Shirt_off();
+    else if (wornarm === g.uarmh)
+        await Helmet_off();
+    else if (wornarm === g.uarmg)
+        await Gloves_off();
+    else if (wornarm === g.uarmf)
+        await Boots_off();
+    else if (wornarm === g.uarms)
+        await Shield_off();
+
+    /* 'wornarm' might be destroyed as a side-effect of xxx_off() so
+       using carried() to check wornarm->where==OBJ_INVENT is not viable;
+       scan invent instead; if already freed it shouldn't be possible to
+       have re-used the stale memory for a new item yet but verify o_id
+       just in case */
+    for (invobj = g.invent; invobj; invobj = nextobj) {
+        nextobj = invobj.nobj;
+        if (invobj === wornarm && invobj.o_id === wornoid) {
+            useup_dw(wornarm);
+            break;
+        }
+    }
+}
+
+// C ref: do_wear.c maybe_destroy_armor()
+/*
+ * returns impacted armor with its in_use bit set,
+ * or Null. resisted.v is updated to reflect whether
+ * it resisted or not */
+function maybe_destroy_armor(armor, atmp, resisted) {
+    if (armor && (!atmp || atmp === armor)
+        && ((resisted.v = obj_resists_dw(armor, 0, 90)) === false)) {
+        armor.in_use = 1;
+        return armor;
+    }
+    return null;
+}
+
+// C ref: do_wear.c disintegrate_arm()
+/* hit by destroy armor scroll/black dragon breath */
 export async function disintegrate_arm(atmp) {
     const g = game;
-    if (g.uarmc || g.uarm || g.uarmu || g.uarmh || g.uarmg || g.uarmf
-        || g.uarms)
-        throw new Error('disintegrate_arm(): maybe_destroy_armor()/wornarm_destroyed() not ported yet');
-    void atmp;
-    return 0; /* could not destroy anything */
+    let otmp = null;
+    let losing_gloves = false;
+    const resisted = { v: false }, resistedc = { v: false },
+        resistedsuit = { v: false };
+    /*
+     * Note: if the cloak resisted, then the suit or shirt underneath
+     * wouldn't be impacted either. Likewise, if the suit resisted, the
+     * shirt underneath wouldn't be impacted. Since there are no artifact
+     * cloaks or suits right now, this is unlikely to come into effect,
+     * but it should behave appropriately if/when the situation changes.
+     */
+
+    if ((otmp = maybe_destroy_armor(g.uarmc, atmp, resistedc)) !== null) {
+        await urgent_pline_dw(`Your ${
+            /* cloak/robe/apron/smock (ID'd apron)/wrapping */
+            cloak_simple_name(otmp)} crumbles and turns to dust!`);
+    } else if (!resistedc.v
+               && (otmp = maybe_destroy_armor(g.uarm, atmp, resistedsuit)) !== null) {
+        const suit = suit_simple_name(otmp);
+
+        /* for gold DSM, we don't want Armor_gone() to report that it
+           stops shining _after_ we've been told that it is destroyed */
+        if (otmp.lamplit)
+            end_burn(otmp, false);
+        /* suit might be "dragon scales" so vtense() is needed */
+        await urgent_pline_dw(`Your ${suit} ${vtense_dw(suit, "turn")} to dust and ${
+            vtense_dw(suit, "fall")} to the ${surface(g.u.ux, g.u.uy)}!`);
+    } else if (!resistedc.v && !resistedsuit.v
+               && (otmp = maybe_destroy_armor(g.uarmu, atmp, resisted)) !== null) {
+        await urgent_pline_dw(`Your ${
+            shirt_simple_name(otmp)} crumbles into tiny threads and falls apart!`); /* always "shirt" */
+    } else if ((otmp = maybe_destroy_armor(g.uarmh, atmp, resisted)) !== null) {
+        await urgent_pline_dw(`Your ${
+            helm_simple_name(otmp)} turns to dust and is blown away!`); /* "helm" or "hat" */
+    } else if ((otmp = maybe_destroy_armor(g.uarmg, atmp, resisted)) !== null) {
+        await urgent_pline_dw(`Your ${gloves_simple_name(otmp)} vanish!`);
+        losing_gloves = true;
+    } else if ((otmp = maybe_destroy_armor(g.uarmf, atmp, resisted)) !== null) {
+        await urgent_pline_dw(`Your ${boots_simple_name(otmp)} disintegrate!`);
+    } else if ((otmp = maybe_destroy_armor(g.uarms, atmp, resisted)) !== null) {
+        await urgent_pline_dw(`Your ${shield_simple_name(otmp)} crumbles away!`);
+    } else {
+        return 0; /* could not destroy anything */
+    }
+
+    /* cancel_don() if applicable, Cloak_off()/Armor_off()/&c, and useup() */
+    await wornarm_destroyed(otmp);
+    /* glove loss means wielded weapon will be touched */
+    if (losing_gloves)
+        await selftouch_dw("You");
+
+    await stop_occupation_dw();
+    return 1;
 }
 
 // C ref: do_wear.c obj_erode_type()

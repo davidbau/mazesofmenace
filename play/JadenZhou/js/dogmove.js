@@ -17,7 +17,7 @@ import { eaten_stat, peek_at_iced_corpse_age } from './eat.js';
 import { mon_wield_item } from './weapon.js';
 import { rn2, rnd } from './rng.js';
 import { mattacku } from './mhitu.js';
-import { dist2, distmin } from './hacklib.js';
+import { dist2, distmin, distu } from './hacklib.js';
 import { cansee, couldsee, clear_path, do_clear_area } from './vision.js';
 import {
     m_at, MON_AT, place_monster, is_pool, is_lava, sobj_at, may_passwall
@@ -49,21 +49,20 @@ import {
 import { vtense } from './objnam.js';
 import { locomotion } from './trap.js';
 import { Monnam, noit_Monnam } from './do_name.js';
-import {
-    MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MTSZ,
-    M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
-    ALLOW_U, ALLOW_M, ALLOW_MDISP, ALLOW_TRAPS, COLNO, ROWNO,
-    DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT, POISON, UNDEF, TABU,
-    IS_ROOM, IS_DOOR, IS_OBSTRUCTED, IS_STWALL, IS_TREE, W_NONDIGGABLE,
-    D_CLOSED, D_LOCKED, CONFLICT, NON_PM, isok, MAGIC_PORTAL, W_ARMG,
-    NEED_WEAPON, NEED_HTH_WEAPON, I_SPECIAL, W_ARMS,
-} from './const.js';
+import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE, MTSZ, M_ATTK_MISS,
+         M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, ALLOW_U, ALLOW_M,
+         ALLOW_MDISP, ALLOW_TRAPS, COLNO, ROWNO, DOGFOOD, CADAVER, ACCFOOD,
+         MANFOOD, APPORT, POISON, UNDEF, TABU, IS_ROOM, IS_DOOR, IS_OBSTRUCTED,
+         IS_STWALL, IS_TREE, W_NONDIGGABLE, D_CLOSED, D_LOCKED, CONFLICT,
+         NON_PM, isok, MAGIC_PORTAL, W_ARMG, NEED_WEAPON, NEED_HTH_WEAPON,
+         I_SPECIAL, W_ARMS, M_AP_NOTHING } from './const.js';
 import { Hallucination, Conflict } from './youprop.js';
 import { u_at } from './const.js';
 import { undesirable_disp as undesirable_disp_dm } from './monmove.js';
 import { mdisplacem as mdisplacem_dm } from './mhitm.js';
 import { mon_reflects } from './muse.js';
 import { resists_ston, touch_petrifies } from './mondata.js';
+import { is_quest_artifact } from './questpgr.js';
 
 const DOG_HUNGRY = 300;
 const DOG_WEAK = 500;
@@ -74,7 +73,6 @@ const DOG_STARVE = 750;
 function mresists(mon, mr) {
     return (((mon.data.mresists | (mon.mextrinsics ?? 0)) & mr) !== 0);
 }
-function distu(x, y) { return dist2(x, y, game.u.ux, game.u.uy); }
 /* C ref: stairs.c On_stairs() */
 export function On_stairs(x, y) {
     for (let s = game.stairs; s; s = s.next)
@@ -102,11 +100,6 @@ export function obj_resists(obj, ochance, achance) {
 
         return (chance < (obj.oartifact ? achance : ochance));
     }
-}
-
-/* C ref: artifact.c is_quest_artifact() */
-function is_quest_artifact(otmp) {
-    return !!(otmp.oartifact && otmp.oartifact === game.urole.questarti);
 }
 
 // ── C ref: dog.c dogfood() ──
@@ -1529,4 +1522,15 @@ export async function dog_move(mtmp, after) {
         throw new Error('dog_move(): leashed pet kludge not ported yet');
     }
     return MMOVE_MOVED;
+}
+
+// C ref: dogmove.c finish_meating()
+export function finish_meating(mtmp) {
+    mtmp.meating = 0;
+    if ((mtmp.m_ap_type || 0) !== M_AP_NOTHING && mtmp.data.mlet !== M.S_MIMIC) {
+        /* was eating a mimic and now appearance needs resetting */
+        mtmp.m_ap_type = M_AP_NOTHING;
+        mtmp.mappearance = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
 }

@@ -19,7 +19,7 @@ import { you_were, you_unwere } from './were.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { ACURR as ACURR_mm } from './attrib.js';
 import { A_CHA as A_CHA_mm, NORMAL_SPEED as NORMAL_SPEED_mm } from './const.js';
-import { distmin, isok } from './hacklib.js';
+import { distmin, isok, mdistu } from './hacklib.js';
 import { cansee } from './vision.js';
 import { m_at, grow_up } from './makemon.js';
 import { monkilled, zombie_maker, monnear, seemimic } from './mon.js';
@@ -43,7 +43,7 @@ import { find_mac, which_armor } from './worn.js';
 import { mon_wield_item, possibly_unwield, hitval, dmgval } from './weapon.js';
 import { mswings_verb, mhis, could_seduce, mtrapped_in_pit } from './mhitu.js';
 import { objects, CORPSE, GAUNTLETS_OF_POWER, SILVER, IRON, METAL,
-         WEAPON_CLASS, TOOL_CLASS } from './objects.js';
+         WEAPON_CLASS, TOOL_CLASS, is_pole } from './objects.js';
 import { permapoisoned } from './mkobj.js';
 import { xname } from './objnam.js';
 import { ART_SNICKERSNEE } from './artilist.js';
@@ -78,7 +78,7 @@ import { You as You_mp, You_feel as You_feel_mp } from './display.js';
 import { polyself as polyself_mp } from './polyself.js';
 import { resists_magm as resists_magm_mp, can_teleport as can_teleport_mp,
          monsndx as monsndx_mp } from './mondata.js';
-import { resist as resist_mp } from './zap.js';
+import { resist as resist_mp, resist_async as resist_async_mp } from './zap.js';
 import { pm_to_cham as pm_to_cham_mp } from './makemon.js';
 import { xkilled as xkilled_mp, newcham as newcham_mp } from './mon.js';
 import { tele as tele_mp } from './teleport.js';
@@ -95,7 +95,6 @@ import { AT_NONE as AT_NONE_AP, AT_SPIT as AT_SPIT_AP, AT_EXPL as AT_EXPL_AP,
 import { W_ARMG as W_ARMG_AP, W_ARMF as W_ARMF_AP, W_ARMH as W_ARMH_AP,
          W_ARMC as W_ARMC_AP } from './const.js';
 import { seemimic as seemimic_md } from './mon.js';
-import { finish_meating as finish_meating_md } from './dog.js';
 import { canspotmon as canspotmon_md, newsym as newsym_md,
          flush_screen as flush_screen_md } from './display.js';
 import { M_AP_MONSTER as M_AP_MONSTER_MD, STRAT_WAITMASK as STRAT_WAITMASK_MD,
@@ -105,6 +104,8 @@ import { remove_worm as remove_worm_md,
 import { place_monster as place_monster_md } from './makemon.js';
 import { update_monster_region as update_monster_region_md } from './region.js';
 import { mhis as mhis_md } from './mhitu.js';
+import { poly_when_stoned } from './mondata.js';
+import { mon_to_stone, monstone } from './mon.js';
 import { which_armor as which_armor_md } from './worn.js';
 import { touch_petrifies as touch_petrifies_md, resists_ston as resists_ston_md } from './mondata.js';
 import { s_suffix as s_suffix_sm } from './hacklib.js';
@@ -112,28 +113,18 @@ import { unstuck as unstuck_sm } from './mhitu.js';
 import { mhitm_adtyping as mhitm_adtyping_uh } from './uhitm.js';
 import { mhitm_knockback, stagger } from './uhitm.js';
 import { mon_reflects } from './muse.js';
-import { golemeffects, healmon } from './mon.js';
+import { golemeffects, healmon, shieldeff_mon as shieldeff_mon_mp } from './mon.js';
 import { split_mon } from './potion.js';
 import { haseyes, perceives } from './mondata.js';
 import { erode_armor } from './uhitm.js';
 import { acid_damage } from './trap.js';
 import { drain_item } from './zap.js';
 import { hliquid } from './potion.js';
+import { finish_meating as finish_meating_md } from './dogmove.js';
 
-/* C ref: obj.h is_pole() */
-function is_pole(otmp) {
-    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-           && (objects[otmp.otyp].oc_skill === P_POLEARMS
-               || objects[otmp.otyp].oc_skill === P_LANCE
-               || otmp.oartifact === ART_SNICKERSNEE);
-}
 // C ref: monst.h mon_offmap()
 function mon_offmap(mon) {
     return ((mon.mstate || 0) & (0x01 | 0x02 | 0x04 | 0x08)) !== 0;
-}
-function mdistu(mon) {
-    const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
-    return dx * dx + dy * dy;
 }
 /* C ref: mondata.c sticks() is engrave.js sticks() */
 
@@ -1041,8 +1032,9 @@ export async function mon_poly(magr, mdef, dmg) {
 
         if (resists_magm_mp(mdef)) {
             /* Magic resistance */
-            /* if (gv.vis) shieldeff_mon(mdef): transient display only */
-        } else if (resist_mp(mdef, WAND_CLASS_MP, 0, TELL_MP)) {
+            if (game.vis)
+                await shieldeff_mon_mp(mdef);
+        } else if (await resist_async_mp(mdef, WAND_CLASS_MP, 0, TELL_MP)) {
             /* general resistance to magic... */
             ;
         } else if (!rn2(25) && mdef.cham === NON_PM_MP
@@ -1203,9 +1195,25 @@ export async function mdisplacem(magr, mdef, quietly) {
     game.vis = (canspotmon_md(magr) && canspotmon_md(mdef));
 
     if (touch_petrifies_md(pd) && !resists_ston_md(magr)) {
-        if (!which_armor_md(magr, W_ARMG_MD))
-            /* poly_when_stoned()/mon_to_stone(), monstone() */
-            throw new Error('mdisplacem(): displacing a petrifier not ported yet');
+        if (!which_armor_md(magr, W_ARMG_MD)) {
+            if (poly_when_stoned(pa)) {
+                await mon_to_stone(magr);
+                return M_ATTK_HIT; /* no damage during the polymorph */
+            }
+            if (!quietly && canspotmon_md(magr)) {
+                if (game.vis) {
+                    await pline(`${Monnam(magr)} tries to move ${mon_nam(mdef)} out of ${
+                        is_rider(pa) ? "the" : mhis(magr)} way.`);
+                }
+                await pline(`${Monnam(magr)} turns to stone!`); /* pline_mon() */
+            }
+            await monstone(magr);
+            if (!(magr.mhp < 1)) /* !DEADMONSTER(magr) */
+                return M_ATTK_HIT; /* lifesaved */
+            else if (magr.mtame && !game.vis)
+                await You_mp(`have a ${"peculiarly sad"} feeling for a moment, then it passes.`); /* brief_feeling */
+            return M_ATTK_AGR_DIED;
+        }
     }
 
     /* remove_monster(fx, fy); pick up from orig position --

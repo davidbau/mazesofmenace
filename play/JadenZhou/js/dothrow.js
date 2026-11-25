@@ -19,7 +19,8 @@ import { explode } from './explode.js';
 import { d } from './rng.js';
 import { EXPL_FIERY, NO_TRAP_FLAGS } from './const.js';
 import { hits_bars } from './mthrowu.js';
-import { glyph_at, glyph_is_warning } from './display.js';
+import { glyph_at, glyph_is_warning, You_hear as
+         You_hear_br } from './display.js';
 import { noit_mhim } from './mhitu.js';
 import { shade_miss } from './uhitm.js';
 import { switch_terrain } from './hack.js';
@@ -32,10 +33,12 @@ import { drag_ball, move_bc, drop_ball } from './ball.js';
 import { You, You_cant } from './display.js';
 import { check_capacity } from './hack.js';
 import { getdir } from './cmd.js';
-import { is_ammo, is_pole, ammo_and_launcher, doquiver_core } from './wield.js';
+import { doquiver_core } from './wield.js';
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, W_WEP, Race_if } from './const.js';
 import { BULLWHIP, BOOMERANG, AKLYS, WAN_PROBING, WAN_OPENING, WAN_LOCKING,
-         WAN_STRIKING } from './objects.js';
+         WAN_STRIKING, is_pick, is_spear, is_blade, is_sword, greatest_erosion,
+         is_axe, is_weptool, matching_launcher, is_missile, is_wet_towel,
+         is_ammo, is_pole, ammo_and_launcher } from './objects.js';
 import { zap_map, bhitpile } from './zap.js';
 import { M1_NOHANDS, M1_NOTAKE, S_COCKATRICE, PM_CHICKATRICE, PM_COCKATRICE,
          PM_MEDUSA, MZ_MEDIUM, mons } from './monsters.js';
@@ -71,7 +74,7 @@ import { PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_NINJA, PM_SAMURAI,
          PM_ORC, PM_GNOME, PM_HUMAN, PM_DWARF, PM_SHADE,
          M2_ROCKTHROW } from './monsters.js';
 import { ART_MJOLLNIR } from './artilist.js';
-import { welded, matching_launcher, is_missile, is_wet_towel } from './wield.js';
+import { welded } from './wield.js';
 import { getobj, freeinv, stackobj } from './invent.js';
 import { ACURR, acurrstr, exercise } from './attrib.js';
 import { calc_capacity } from './hack.js';
@@ -80,9 +83,8 @@ import { canletgo, flooreffects, obj_no_longer_held, ship_object,
 import { u_wipe_engr } from './engrave.js';
 import { splitobj, place_object, is_flammable, weight, unsplitobj } from './mkobj.js';
 import { encumber_msg } from './pickup.js';
-import { remove_worn_item } from './steal.js';
+import { remove_worn_item, mpickobj } from './steal.js';
 import { weapon_type, P_SKILL, hitval } from './weapon.js';
-import { is_weptool } from './mkobj.js';
 import { add_to_minv } from './mkobj.js';
 import { mon_nam } from './do_name.js';
 import { s_suffix } from './hacklib.js';
@@ -140,7 +142,7 @@ import { hmon as hmon_dt, passive_obj as passive_obj_dt } from './uhitm.js';
 import { spec_abon as spec_abon_dt } from './artifact.js';
 import { find_mac as find_mac_dt } from './worn.js';
 import { weapon_hit_bonus as weapon_hit_bonus_dt } from './weapon.js';
-import { cutworm as cutworm_dt } from './worm.js';
+import { cutworm as cutworm_dt, remove_monster_at } from './worm.js';
 import { miss as miss_dt } from './zap.js';
 import { mshot_xname as mshot_xname_dt,
          should_mulch_missile as should_mulch_missile_dt } from './mthrowu.js';
@@ -152,7 +154,7 @@ import { in_rooms as in_rooms_dt } from './hack.js';
 import { distmin as distmin_dt } from './hacklib.js';
 import { your_race as your_race_dt, is_orc as is_orc_dt, is_elf as is_elf_dt,
          nohands, throws_rocks, notake, touch_petrifies, digests,
-         is_unicorn } from './mondata.js';
+         is_unicorn, is_whirly, is_animal } from './mondata.js';
 import { is_quest_artifact as is_quest_artifact_dt } from './questpgr.js';
 import { Is_candle as Is_candle_dt } from './mkobj.js';
 import { is_domestic as is_domestic_dt } from './makemon.js';
@@ -182,7 +184,6 @@ import { cansee as cansee_br } from './vision.js';
 import { is_crackable } from './objects.js';
 import { erode_obj } from './trap.js';
 import { ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED, EYE } from './const.js';
-import { You_hear as You_hear_br } from './sounds.js';
 import { costly_spot as costly_spot_br } from './shk.js';
 import { add_damage as add_damage_bh, pay_for_damage as pay_for_damage_bh } from './shk.js';
 import { doorlock as doorlock_bh } from './lock.js';
@@ -204,6 +205,7 @@ import { WWALKING as WWALKING_HT } from './const.js';
 import { drown as drown_ht } from './trap.js';
 import { Norep as Norep_ht } from './display.js';
 import { is_moat as is_moat_ht } from './makemon.js';
+import { minstapetrify } from './trap.js';
 
 /* C ref: weight.h WT_SPLASH_THRESHOLD -- weight needed to make splash in
    water */
@@ -234,11 +236,6 @@ async function ok_to_throw() {
     if (await check_capacity(null))
         return { ok: false, shotlimit };
     return { ok: true, shotlimit };
-}
-
-/* C ref: obj.h is_art(), is_pick(); mondata.h throws_rocks() */
-function is_pick(otmp) {
-    return otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
 }
 
 // C ref: dothrow.c multishot_class_bonus()
@@ -566,27 +563,22 @@ function throwing_weapon(obj) {
               /* special cases [might want to add AXE] */
               || obj.otyp === WAR_HAMMER || obj.otyp === AKLYS);
 }
-/* C ref: obj.h is_spear(), is_blade(), is_sword() */
-function is_spear(otmp) {
-    return otmp.oclass === WEAPON_CLASS
-        && objects[otmp.otyp].oc_skill === P_SPEAR;
-}
-function is_blade(otmp) {
-    return otmp.oclass === WEAPON_CLASS
-        && objects[otmp.otyp].oc_skill >= P_DAGGER
-        && objects[otmp.otyp].oc_skill <= P_SABER;
-}
-function is_sword(otmp) {
-    return otmp.oclass === WEAPON_CLASS
-        && objects[otmp.otyp].oc_skill >= P_SHORT_SWORD
-        && objects[otmp.otyp].oc_skill <= P_SABER;
-}
 
 // C ref: dothrow.c throwit_return()
 function throwit_return(clear_thrownobj) {
     game.iflags.returning_missile = null;
     if (clear_thrownobj)
         game.thrownobj = null;
+}
+
+// C ref: dothrow.c swallowit()
+/* engulfer gets the thrown object */
+function swallowit(obj) {
+    if (obj !== game.uball) {
+        mpickobj(game.u.ustuck, obj); /* clears 'gt.thrownobj' */
+        throwit_return(false);
+    } else
+        throwit_return(true);
 }
 
 // C ref: dothrow.c throwit_mon_hit()
@@ -789,7 +781,7 @@ export async function thitmonst(mon,
                 tmp -= 4;
             } else {
                 const uwep = g.uwep;
-                tmp += (uwep.spe || 0) - greatest_erosion_dt(uwep);
+                tmp += (uwep.spe || 0) - greatest_erosion(uwep);
                 tmp += weapon_hit_bonus_dt(uwep);
                 if (uwep.oartifact)
                     tmp += spec_abon_dt(uwep, mon);
@@ -822,7 +814,7 @@ export async function thitmonst(mon,
         if (tmp >= dieroll) {
             const wasthrown = !!g.thrownobj,
                 /* remember weapon attribute; hmon() might destroy obj */
-                chopper = is_axe_dt(obj);
+                chopper = is_axe(obj);
 
             /* attack hits mon */
             if (hmode === HMON_APPLIED_DT) { /* ranged hit with wielded polearm */
@@ -835,7 +827,7 @@ export async function thitmonst(mon,
                 if (mon.wormno)
                     await cutworm_dt(mon, g.bhitpos.x, g.bhitpos.y, chopper);
             }
-            exercise(A_DEX_DT, true);
+            await exercise(A_DEX_DT, true);
             /* if hero was swallowed and projectile killed the engulfer,
                'obj' got added to engulfer's inventory and then dropped,
                so we can't safely use that pointer anymore; it escapes
@@ -860,11 +852,11 @@ export async function thitmonst(mon,
         }
 
     } else if (otyp === HEAVY_IRON_BALL_DT) {
-        exercise(A_STR_DT, true);
+        await exercise(A_STR_DT, true);
         if (tmp >= dieroll) {
             const was_swallowed = guaranteed_hit;
 
-            exercise(A_DEX_DT, true);
+            await exercise(A_DEX_DT, true);
             if (!await hmon_dt(mon, obj, hmode, dieroll)) { /* mon killed */
                 if (was_swallowed && !u.uswallow && obj === g.uball)
                     return 1; /* already did placebc() */
@@ -874,9 +866,9 @@ export async function thitmonst(mon,
         }
 
     } else if (otyp === BOULDER) {
-        exercise(A_STR_DT, true);
+        await exercise(A_STR_DT, true);
         if (tmp >= dieroll) {
-            exercise(A_DEX_DT, true);
+            await exercise(A_DEX_DT, true);
             await hmon_dt(mon, obj, hmode, dieroll);
         } else {
             await tmiss(obj, mon, true);
@@ -903,7 +895,26 @@ export async function thitmonst(mon,
             mon.mstrategy &= ~STRAT_WAITMASK;
         }
     } else if (guaranteed_hit) {
-        throw new Error('thitmonst(): object vanishing into an engulfer not ported yet');
+        const md = u.ustuck.data;
+
+        /* this assumes that guaranteed_hit is due to swallowing */
+        await wakeup(mon, true);
+        if (obj.otyp === CORPSE && touch_petrifies(mons[obj.corpsenm])) {
+            if (is_animal(md)) {
+                await minstapetrify(u.ustuck, true);
+                /* Don't leave a cockatrice corpse available in a statue */
+                if (!u.uswallow) {
+                    delobj(obj);
+                    return 1;
+                }
+            }
+        }
+        const trail = digests(md) ? " entrails"
+                      : is_whirly(md) ? " currents" : "";
+        let monname = mon_nam(mon);
+        if (trail)
+            monname = s_suffix(monname);
+        await pline(`${Tobjnam(obj, "vanish")} into ${monname}${trail}.`);
     } else {
         await tmiss(obj, mon, true);
     }
@@ -960,7 +971,7 @@ async function throwit(obj,
         && obj.owt > ((Upolyd() ? u.mh : u.uhp) * 2)
         && !Is_airlevel(u.uz)) {
         await You(`have so little stamina, ${the(xname(obj))} drops from your grasp.`);
-        exercise(A_CON, false);
+        await exercise(A_CON, false);
         u.dx = u.dy = 0;
         u.dz = 1;
     }
@@ -972,7 +983,15 @@ async function throwit(obj,
        will be left with a stale pointer. */
 
     if (u.uswallow) {
-        throw new Error('throwit(): throwing while engulfed not ported yet');
+        if (obj === g.uball) {
+            g.uball.ox = g.uchain.ox = u.ux;
+            g.uball.oy = g.uchain.oy = u.uy;
+        }
+        mon = u.ustuck;
+        g.bhitpos.x = mon.mx;
+        g.bhitpos.y = mon.my;
+        if (tethered_weapon) /* tmp_at(DISP_TETHER, obj_to_glyph(obj, rn2_on_display_rng)) */
+            throw new Error('throwit(): tethered weapon while engulfed not ported yet');
     } else if (u.dz) {
         /* toss_up(), hitfloor(), potionhit() on the steed */
         throw new Error('throwit(): throwing up or down not ported yet');
@@ -1071,7 +1090,8 @@ async function throwit(obj,
         /* missile has already been handled */
         /* if (tethered_weapon) tmp_at(DISP_END, 0): display only */
     } else if (u.uswallow && !g.iflags.returning_missile) {
-        throw new Error('throwit(): swallowit() not ported yet');
+        swallowit(obj);
+        return;
     } else {
         /* Mjollnir must be wielded to be thrown--caller verifies this;
            aklys must be wielded as primary to return when thrown */
@@ -2055,8 +2075,10 @@ export async function hurtle_step(arg, x, y) {
         await setmangry(mon, false);
         if (touch_petrifies(mon.data) && !game.uarmu && !game.uarm && !game.uarmc)
             throw new Error('hurtle_step(): instapetrify() not ported yet');
-        if (touch_petrifies(game.youmonst.data))
-            throw new Error('hurtle_step(): minstapetrify() not ported yet');
+        if (touch_petrifies(game.youmonst.data)
+            && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU)) {
+            await minstapetrify(mon, true);
+        }
         await wake_nearto(x, y, 10);
         return false;
     }
@@ -2180,7 +2202,7 @@ async function mhurtle_step(mon, x, y) {
         let res;
 
         if (mon !== u.usteed) {
-            /* remove_monster(mon->mx, mon->my) */
+            remove_monster_at(mon.mx, mon.my); /* remove_monster() */
             newsym_hu(mon.mx, mon.my);
             place_monster_hu(mon, x, y);
             newsym_hu(mon.mx, mon.my);
@@ -2204,20 +2226,27 @@ async function mhurtle_step(mon, x, y) {
         await wakeup_hu(mtmp, !game.context.mon_moving);
         /* check whether 'mon' is turned to stone by touching 'mtmp' */
         if (touch_petrifies(mtmp.data)
-            && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
-            throw new Error('mhurtle_step(): minstapetrify() not ported yet');
+            && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU)) {
+            await minstapetrify(mon, !game.context.mon_moving);
+            newsym_hu(mon.mx, mon.my);
+        }
         /* and whether 'mtmp' is turned to stone by being touched by 'mon' */
         if (touch_petrifies(mon.data)
-            && !which_armor_hu(mtmp, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
-            throw new Error('mhurtle_step(): minstapetrify() not ported yet');
+            && !which_armor_hu(mtmp, W_ARMU_HU | W_ARM_HU | W_ARMC_HU)) {
+            await minstapetrify(mtmp, !game.context.mon_moving);
+            newsym_hu(mtmp.mx, mtmp.my);
+        }
     } else if (u.ux === x && u.uy === y) {
         /* a monster has caused 'mon' to hurtle against hero */
         await pline(`${Some_Monnam_hu(mon)} bumps into you.`);
         await stop_occupation_hu();
         /* check whether 'mon' is turned to stone by touching poly'd hero */
         if (u.umonnum !== u.umonster && touch_petrifies(game.youmonst.data)
-            && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU))
-            throw new Error('mhurtle_step(): minstapetrify() not ported yet');
+            && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU)) {
+            /* give poly'd hero credit/blame despite a monster causing it */
+            await minstapetrify(mon, true);
+            newsym_hu(mon.mx, mon.my);
+        }
         /* and whether hero is turned to stone by being touched by 'mon' */
         if (touch_petrifies(mon.data)
             && !(game.uarmu || game.uarm || game.uarmc))
@@ -2332,14 +2361,3 @@ export async function mhurtle(mon, dx, dy, range) {
     return;
 }
 
-
-/* C ref: obj.h greatest_erosion() */
-function greatest_erosion_dt(otmp) {
-    const e1 = otmp.oeroded || 0, e2 = otmp.oeroded2 || 0;
-    return e1 > e2 ? e1 : e2;
-}
-/* C ref: objclass.h is_axe() */
-function is_axe_dt(otmp) {
-    return ((otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS_DT)
-            && objects[otmp.otyp].oc_skill === P_AXE_DT);
-}

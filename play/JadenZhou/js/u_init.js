@@ -17,7 +17,10 @@ import {
     A_STR, A_CON,
 } from './const.js';
 import * as K from './const.js';
-import { MAXSPELL, objects, OBJ_DESCR } from './objects.js';
+import { MAXSPELL, objects, OBJ_DESCR, is_pole, is_spear, is_launcher, is_ammo,
+         Is_container, is_graystone, is_missile, is_weptool, bimanual,
+         greatest_erosion, is_shield, is_helmet, is_gloves, is_shirt, is_cloak,
+         is_boots, is_suit } from './objects.js';
 import * as O from './objects.js';
 import * as M from './monsters.js';
 import { mksobj, mkobj, weight } from './mkobj.js';
@@ -35,6 +38,7 @@ import { max_rank_sz } from './botl.js';
 import { assigninvlet, reorder_invent, merged, addinv } from './invent.js';
 import { Japanese_item_name } from './objnam.js';
 import { setworn } from './worn.js';
+import { ARM_BONUS } from './hacklib.js';
 
 /* C ref: spell.h SPELL_LEV_PW() */
 function SPELL_LEV_PW(lvl) { return (lvl) * 5; }
@@ -710,34 +714,6 @@ const Skill_W = [
 
 // C ref: role.c Role_if(), Race_if(); you.h Role_switch, Race_switch
 
-// C ref: obj.h is_pole(), is_spear(), is_launcher(), is_ammo(),
-// Is_container(), is_graystone()
-function is_pole(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.TOOL_CLASS)
-            && (objects[otmp.otyp].oc_skill === K.P_POLEARMS
-                || objects[otmp.otyp].oc_skill === K.P_LANCE
-                /* || is_art(otmp, ART_SNICKERSNEE): never for odummy */));
-}
-function is_spear(otmp) {
-    return (otmp.oclass === O.WEAPON_CLASS
-            && objects[otmp.otyp].oc_skill === K.P_SPEAR);
-}
-function is_launcher(otmp) {
-    return (otmp.oclass === O.WEAPON_CLASS
-            && objects[otmp.otyp].oc_skill >= K.P_BOW
-            && objects[otmp.otyp].oc_skill <= K.P_CROSSBOW);
-}
-function is_ammo(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.GEM_CLASS)
-            && objects[otmp.otyp].oc_skill >= -K.P_CROSSBOW
-            && objects[otmp.otyp].oc_skill <= -K.P_BOW);
-}
-function Is_container(o) { return o.otyp >= O.LARGE_BOX && o.otyp <= O.BAG_OF_TRICKS; }
-function is_graystone(obj) {
-    return (obj.otyp === O.LUCKSTONE || obj.otyp === O.LOADSTONE
-            || obj.otyp === O.FLINT || obj.otyp === O.TOUCHSTONE);
-}
-
 // C ref: invent.c useupall() -- inventory removal only
 function useupall(obj) {
     let prev = null;
@@ -1326,32 +1302,6 @@ export function money_cnt(otmp) {
     return 0;
 }
 
-// C ref: obj.h is_missile(), is_weptool(), bimanual(), is_shield() ..
-// is_suit(); objclass.h OBJ_DESCR(), ARM_BONUS(); obj.h greatest_erosion()
-function is_missile(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.TOOL_CLASS)
-            && objects[otmp.otyp].oc_skill >= -K.P_BOOMERANG
-            && objects[otmp.otyp].oc_skill <= -K.P_DART);
-}
-function is_weptool(o) {
-    return (o.oclass === O.TOOL_CLASS && objects[o.otyp].oc_skill !== K.P_NONE);
-}
-function bimanual(otmp) {
-    return ((otmp.oclass === O.WEAPON_CLASS || otmp.oclass === O.TOOL_CLASS)
-            && objects[otmp.otyp].oc_bimanual);
-}
-function is_armcat(otmp, cat) {
-    return (otmp.oclass === O.ARMOR_CLASS && objects[otmp.otyp].oc_armcat === cat);
-}
-/* objclass.h OBJ_DESCR(): imported from objects.js */
-function greatest_erosion(otmp) {
-    return Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
-}
-function ARM_BONUS(obj) {
-    return (objects[obj.otyp].a_ac + (obj.spe || 0)
-            - Math.min(greatest_erosion(obj), objects[obj.otyp].a_ac));
-}
-
 // C ref: wield.c setuwep(), setuqwep(), setuswapwep() -- slot only
 function setuwep(obj) { game.uwep = obj; obj.owornmask = (obj.owornmask || 0) | K.W_WEP; }
 function setuqwep(obj) { game.uquiver = obj; obj.owornmask = (obj.owornmask || 0) | K.W_QUIVER; }
@@ -1368,21 +1318,21 @@ function ini_inv_use_obj(obj) {
         discover_object(O.POT_OIL, true, true, false);
 
     if (obj.oclass === O.ARMOR_CLASS) {
-        if (is_armcat(obj, O.ARM_SHIELD) && !g.uarms
+        if (is_shield(obj) && !g.uarms
             && !(g.uwep && bimanual(g.uwep))) {
             g.u.twoweap = false; /* set_twoweap(FALSE) */
             setworn(obj, K.W_ARMS);
-        } else if (is_armcat(obj, O.ARM_HELM) && !g.uarmh)
+        } else if (is_helmet(obj) && !g.uarmh)
             setworn(obj, K.W_ARMH);
-        else if (is_armcat(obj, O.ARM_GLOVES) && !g.uarmg)
+        else if (is_gloves(obj) && !g.uarmg)
             setworn(obj, K.W_ARMG);
-        else if (is_armcat(obj, O.ARM_SHIRT) && !g.uarmu)
+        else if (is_shirt(obj) && !g.uarmu)
             setworn(obj, K.W_ARMU);
-        else if (is_armcat(obj, O.ARM_CLOAK) && !g.uarmc)
+        else if (is_cloak(obj) && !g.uarmc)
             setworn(obj, K.W_ARMC);
-        else if (is_armcat(obj, O.ARM_BOOTS) && !g.uarmf)
+        else if (is_boots(obj) && !g.uarmf)
             setworn(obj, K.W_ARMF);
-        else if (is_armcat(obj, O.ARM_SUIT) && !g.uarm)
+        else if (is_suit(obj) && !g.uarm)
             setworn(obj, K.W_ARM);
     }
 

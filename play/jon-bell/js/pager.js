@@ -14,7 +14,7 @@ import { visctrl as _binds_visctrl, ext_cmd_from_key } from './cmd_binds.js';
 import { cmd_from_func as _binding_cmd_from_func, cmdbind_get } from './cmd.js'; // relocate-fns
 import { EXTCMDLIST } from './cmd_extcmd_data.js'; // relocate-fns
 import { menucolor_row, menucolor_text } from './coloratt.js'; // relocate-fns
-import { build_window_screen, display_text_window, menu_search_case } from './com_pager.js'; // relocate-fns
+import { build_window_screen, display_text_window, menu_search_case, menu_fullscreen_frame } from './com_pager.js'; // relocate-fns
 import { BEAR_TRAP, BOLT_LIM, BUFSZ, CMDQ_KEY, COLNO, CORR, CQ_CANNED, DEBUGHELP, DETECT_MONSTERS, ECMD_CANCEL, ECMD_OK, HOLE, ICE, INVIS, IS_GRAVE, IS_TREE, IS_WALL, IS_WATERWALL, Is_airlevel, Is_juiblex_level, Is_waterlevel, LAVAPOOL, LAVAWALL, MCORPSENM, MELT_ICE_AWAY, MOAT, MV_RUN, MV_RUSH, MV_WALK, M_AP_FURNITURE, M_AP_F_DKNOWN, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NHKF_COUNT, NHKF_ESC, NON_PM, NUM_GFILTER, PICK_ONE, PIT, POOL, ROCKTRAP, ROWNO, SCORR, SDOOR, STONE, STRAT_WAITMASK, TELEPAT, TRAPPED_CHEST, TRAPPED_DOOR, Upolyd, WEB, def_warnsyms, is_hole, is_pit, u_at } from './const.js'; // relocate-fns
 import { checkfile_entries, checkfile_lookup, dbase_entry_lines } from './data_base.js'; // relocate-fns
 import { is_lava, is_pool } from './dbridge.js'; // relocate-fns
@@ -365,7 +365,7 @@ export async function dohelp() {
     const WIN_COL = fullScreen ? 1 : 80 - maxLen - 2;
     const uac = g.u?.uac ?? 0;
     const helpBuild = (ls) => fullScreen
-        ? ls.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+        ? menu_fullscreen_frame(ls)
         : build_window_screen(ls, WIN_COL, uac);
     const lastSelector = 0x61 + survivors.length - 1;  /* 'a' .. last added row */
     let selKey;
@@ -1327,7 +1327,7 @@ export async function dowhatis() {
     const endCursorCol = WIN_COL + '(end)'.length + 1;
     /* ── Display the menu and read a selection ── */
     const paintWhatis = (lines) => (noOverlay
-        ? lines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+        ? menu_fullscreen_frame(lines)
         : build_window_screen(lines, WIN_COL, uac));
     const whatisScreen = paintWhatis(menuLines);
     /* C wintty.c:1700-1730 MENU_SEARCH — the whatis menu is a tty PICK_ONE

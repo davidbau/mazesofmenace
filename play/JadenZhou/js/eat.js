@@ -18,7 +18,6 @@ import { POLY_NOFLAGS, EXPL_FIERY } from './const.js';
 import { attrcurse } from './sit.js';
 import { yobjnam } from './objnam.js';
 import { explode } from './explode.js';
-import { You_hear } from './sounds.js';
 import { fall_asleep } from './timeout.js';
 import { olfaction, type_is_pname, humanoid, noncorporeal, carnivorous,
          herbivorous, metallivorous, is_giant, acidic, vegan, flesh_petrifies,
@@ -27,7 +26,7 @@ import { olfaction, type_is_pname, humanoid, noncorporeal, carnivorous,
 import { rounddiv } from './hack.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, verbalize, You_feel, You_hear } from './display.js';
 import { LL_CONDUCT } from './const.js';
 import { rn2 } from './rng.js';
 import { pline } from './display.js';
@@ -40,7 +39,7 @@ import {
 import { M1_CARNIVORE, M1_HERBIVORE, M1_METALLIVORE, PM_WIZARD, PM_VALKYRIE,
          PM_ELF } from './monsters.js';
 import { objects, RIN_SLOW_DIGESTION, MEAT_RING, RIN_PROTECTION,
-         FAKE_AMULET_OF_YENDOR } from './objects.js';
+         FAKE_AMULET_OF_YENDOR, carried } from './objects.js';
 import { near_capacity, end_running } from './hack.js';
 import { ACURR } from './attrib.js';
 import * as M from './monsters.js';
@@ -209,13 +208,6 @@ export function tin_details(obj, mnum, buf) {
             buf += `${mons[mnum].pmnames[NEUTRAL]} meat`;
     }
     return buf;
-}
-
-/* C ref: pline.c verbalize() */
-async function verbalize(line) {
-    if (Deaf())
-        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
-    await pline(`"${line}"`);
 }
 
 // C ref: eat.c init_uhunger()
@@ -619,7 +611,6 @@ function tin_ctx() {
 }
 
 /* C ref: obj.h carried(); invent.c obj_here() */
-function carried(obj) { return obj.where === 'OBJ_INVENT'; }
 function obj_here(obj, x, y) {
     for (const otmp of game.level.objects || [])
         if (otmp === obj)
@@ -647,8 +638,6 @@ function CANNIBAL_ALLOWED() {
 function nonrotting_food(otyp) {
     return otyp === LEMBAS_WAFER || otyp === CRAM_RATION;
 }
-/* C ref: pline.c You_feel() */
-async function You_feel(line) { await pline(`You feel ${line}`); }
 /* C ref: mkobj.c peek_at_iced_corpse_age() */
 export function peek_at_iced_corpse_age(otmp) {
     let age, retval = otmp.age;
@@ -746,7 +735,7 @@ async function choke(food) {
         await You_feel("like a glutton!");
     }
 
-    exercise(A_CON, false);
+    await exercise(A_CON, false);
 
     if (Breathless() || Hunger() || (!Strangled() && !rn2(20))) {
         /* choking by eating AoS doesn't involve stuffing yourself */
@@ -1038,7 +1027,7 @@ async function cprefx(pm) {
         killer().format = NO_KILLER_PREFIX;
         await done(DIED);
         /* life-saving needed to reach here */
-        exercise(A_WIS, false);
+        await exercise(A_WIS, false);
         /* revive an actual corpse; can't do that if it was a tin;
            5.0: this used to assume that such tins were impossible but
            they can be wished for in wizard mode; they can't make it

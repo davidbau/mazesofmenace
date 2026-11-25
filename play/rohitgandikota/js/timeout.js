@@ -1710,7 +1710,7 @@ export async function nh_timeout() {
         'HSlow_digestion', 'HHalf_spell_damage', 'HHalf_physical_damage',
         'HRegeneration', 'HEnergy_regeneration', 'HProtection',
         'HProtection_from_shape_changers', 'HPolymorph', 'HPolymorph_control',
-        'HUnchanging', 'HFast', 'HReflecting',
+        'HUnchanging', 'HFast', 'HReflecting', 'HFree_action',
     ]) {
         const props = key.startsWith('H') ? intr : (u.uprops ||= {});
         const v = props[key];

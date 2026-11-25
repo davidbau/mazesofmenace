@@ -5,7 +5,7 @@
 // Paths no session reaches yet throw a 'not ported yet' error.
 
 import { helpless } from './monmove.js';
-import { online2, plur } from './hacklib.js';
+import { online2, plur, distu, mdistu, onlineu } from './hacklib.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
 import { arti_cost } from './artifact.js';
@@ -20,7 +20,7 @@ import { IS_DOOR, SVALL, ROWNO, COLNO, RLOC_NOMSG, RLOC_MSG, NECK } from './cons
 import { ROLL_FROM } from './rng.js';
 import { mnexto } from './teleport.js';
 import { mnearto } from './mon.js';
-import { yelp, growl, You_hear } from './sounds.js';
+import { yelp, growl } from './sounds.js';
 import { tty_yn_function } from './wintty.js';
 import { body_part } from './insight.js';
 import { poly_gender } from './polyself.js';
@@ -30,8 +30,8 @@ import { search_special } from './sounds.js';
 import { mons, PM_GRID_BUG, PM_ROGUE, MS_ANIMAL, M1_HUMANOID, S_DOG,
          S_FELINE, S_RODENT, S_YETI } from './monsters.js';
 import { PICK_AXE, DWARVISH_MATTOCK } from './objects.js';
-import { pline, You, Your, pline_The, canseemon, canspotmon,
-         sensemon } from './display.js';
+import { pline, You, Your, pline_The, canseemon, canspotmon, sensemon,
+         verbalize, You_hear } from './display.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { in_rooms, check_special_room } from './hack.js';
 import { on_level, assign_level } from './dungeon.js';
@@ -152,16 +152,11 @@ function muteshk(shkp) {
 }
 /* C ref: shk.c IS_SHOP() */
 function IS_SHOP(x) { return game.level.rooms[x].rtype >= SHOPBASE; }
-/* C ref: hack.h distu() */
-function distu(x, y) { return dist2(x, y, game.u.ux, game.u.uy); }
-/* C ref: hack.h mdistu() */
-function mdistu(mon) { return dist2(mon.mx, mon.my, game.u.ux, game.u.uy); }
 /* C ref: hack.h um_dist() */
 export function um_dist(x, y, n) {
     return Math.abs(game.u.ux - x) > n || Math.abs(game.u.uy - y) > n;
 }
 /* C ref: hacklib.c online2(); hack.h onlineu() */
-function onlineu(xx, yy) { return online2(xx, yy, game.u.ux, game.u.uy); }
 /* C ref: hacklib.c strncmpi() -- nonzero when the strings differ */
 function strncmpi(s1, s2, n) {
     return (s1 || '').slice(0, n).toLowerCase()
@@ -169,13 +164,6 @@ function strncmpi(s1, s2, n) {
 }
 /* C ref: polyself.c mbodypart() -- ported in insight.js beside body_part() */
 export { mbodypart };
-/* C ref: pline.c verbalize() -- SetVoice() only matters for speech
-   output, which the tty doesn't do */
-async function verbalize(line) {
-    if (Deaf())
-        return; /* vpline(): PLINE_VERBALIZE is dropped when Deaf */
-    await pline(`"${line}"`);
-}
 
 const angrytexts = [ "quite upset", "ticked off", "furious" ];
 

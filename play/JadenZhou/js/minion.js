@@ -6,7 +6,7 @@
 // dprince(), dlord(), llord(), lose_guardian_angel(), gain_guardian_angel()).
 
 import { game } from './gstate.js';
-import { canspotmon, pline, You_feel } from './display.js';
+import { canspotmon, pline, You_feel, verbalize } from './display.js';
 import { ROLL_FROM } from './rng.js';
 import { makemon, mkclass, ndemon } from './makemon.js';
 import { monsndx, is_lord } from './mondata.js';
@@ -81,7 +81,7 @@ export async function summon_minion(alignment, talk) {
             else
                 await You_feel(`${s_suffix(align_gname(alignment))} booming voice:`);
             /* SetVoice(mon, 0, 80, 0): speech synthesis only */
-            await pline(`"Thou shalt pay for thine indiscretion!"`); /* verbalize() */
+            await verbalize("Thou shalt pay for thine indiscretion!");
             if (canspotmon(mon))
                 await pline(`${Amonnam(mon)} appears before you.`);
             mon.mstrategy &= ~STRAT_APPEARMSG;
