@@ -64,7 +64,7 @@ import { S_EEL, PM_WIZARD } from './monsters.js';
 import { ACURR, exerchk } from './attrib.js';
 import { near_capacity, lookaround, end_running, nomul, monster_nearby,
          runmode_delay_output } from './hack.js';
-import { nh_timeout } from './timeout.js';
+import { nh_timeout, do_storms } from './timeout.js';
 import { dosounds } from './sounds.js';
 import { gethungry, reset_eat, maybe_finished_meal } from './eat.js';
 import { age_spells } from './spell.js';
@@ -648,7 +648,7 @@ async function moveloop_core() {
                 /* mkot_trap_warn(): only acts while wielding the Master
                    Key of Thievery; artifacts aren't ported yet */
                 await dosounds();
-                /* do_storms(): only acts on the Plane of Air (not ported) */
+                await do_storms();
                 await gethungry();
                 age_spells();
                 await exerchk();

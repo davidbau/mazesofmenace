@@ -795,6 +795,21 @@ async function dodrop_body() {
      * repeat's prompt) is paged before the prompt overwrites it.  The shared
      * getobj reader spells the same thing at js/cmd.js:17583. */
     if (g._pending_message && !g._topl_win_stop) {
+        /* C display.c:2060-2072: an announcement pline raised inside
+         * show_glyph() runs to completion — vision_recalc(0), the
+         * pline.c:273-274 flush_screen(1), putmesg, and its own
+         * update_topl more() — before any later reader can page, because
+         * C blocks right there.  under_water()'s end-of-turn repaint
+         * (allmain.c:432) is the raiser here: the second "…: shallow
+         * sea." announcement overflows the standing drop line and C's
+         * --More-- is ITS page, freezing the map as that announcement's
+         * flush painted it.  The descriptions are async in this port, so
+         * drain the chain before this prompt's more() takes its snapshot,
+         * or the page freezes one show_glyph earlier (df-xdf1671305f
+         * step 120: C had both pool cells painted, we had one). */
+        if (g._mentionMapPending) {
+            await g._mentionMapPending;
+        }
         /* A counted `2d` re-enters rhack(gc.cmd_key) (allmain.c:526-529)
          * with no parse()/flush_screen(), so more() pages over the terminal
          * as last flushed; monster moves since then are still in gbuf. */

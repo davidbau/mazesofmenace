@@ -9,15 +9,15 @@
 
 import { game } from './gstate.js';
 import { MFLAGS, MONSYMS, PMNAMES } from './monst_data.js';
-import { canseemon, map_invisible } from './display.js';
+import { canseemon, map_invisible, vobj_at } from './display.js';
 import { helpless, DEADMONSTER } from './monst.js';
 import { rn2 } from './rng.js';
-import { ECMD_OK, ECMD_TIME, IS_WALL, SDOOR, isok, M_AP_TYPE,
+import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, IS_WALL, SDOOR, isok, M_AP_TYPE,
          M_AP_FURNITURE, M_AP_OBJECT, STRAT_WAITMASK,
          ANY_SHOP, ROOMOFFSET, VAULT, COURT, PLNMSG_GROWL,
          BEEHIVE, MORGUE, BARRACKS, ZOO, TEMPLE, W_ARMH, HAIR, NECK, HEAD,
          BLOOD, Upolyd, In_endgame, Is_astralevel, Is_sanctum,
-         A_LAWFUL } from './const.js';
+         A_LAWFUL, MALE, FEMALE } from './const.js';
 import { is_animal, is_undead, is_flyer, is_elf, is_dwarf, is_gnome,
          is_lord, is_prince, is_mplayer, mhis, carnivorous, herbivorous, is_silent } from './mondata.js';
 import { is_vampshifter } from './monst.js';
@@ -32,16 +32,16 @@ import { MSOUND } from './monst_data.js';
 import { canspotmon } from './display.js';
 import { getdir } from './cmd.js';
 import { Deaf, Hallucination, Underwater } from './youprop.js';
-import { pline_The, You, You_hear, verbalize } from './pline.js';
+import { pline_The, You, Your, You_cant, You_hear, verbalize } from './pline.js';
 import { pline } from './display.js';
-import { Monnam, noveltitle, pmname, mon_nam } from './do_name.js';
+import { Monnam, noveltitle, pmname, mon_nam, rndmonnam } from './do_name.js';
 import { an, vtense } from './objnam.js';
 import { nomul } from './hack.js';
 import { poly_gender } from './polyself.js';
 import { midnight, night } from './calendar.js';
 import { cansee } from './vision.js';
 import { Blind } from './youprop.js';
-import { shk_chat } from './shk.js';
+import { shk_chat, shop_object, price_quote } from './shk.js';
 import { demon_talk } from './minion.js';
 import { humanoid } from './mondata.js';
 import { doconsult } from './rumors.js';
@@ -199,13 +199,42 @@ function Is_oracle_level() {
 // the command and the direction. Leaving it unhandled ran the direction key as
 // a movement command, the same failure that made an unhandled 'f' walk the hero
 // a square east.
-//
-// The early exits above getdir — polymorphed mute, strangled, swallowed,
-// underwater, standing on shop merchandise — all return before reading
-// anything, and none is reachable for an ordinary hero on an ordinary level.
 export async function dochat() {
+    if (is_silent(game.youmonst.data)) {
+        await pline(`As ${an(pmname(game.youmonst.data,
+            game.flags.female ? FEMALE : MALE))}, you cannot speak.`);
+        return ECMD_OK;
+    }
+    if (game.u.intrinsic?.HStrangled) {
+        await You_cant("speak.  You're choking!");
+        return ECMD_OK;
+    }
+    if (game.u.uswallow) {
+        await pline("They won't hear you out there.");
+        return ECMD_OK;
+    }
+    if (Underwater()) {
+        await Your('speech is unintelligible underwater.');
+        return ECMD_OK;
+    }
+
+    // src/sounds.c:1280, shop goods are described before choosing a direction.
+    let otmp;
+    if (!Deaf() && !Blind() && (otmp = shop_object(game.u.ux, game.u.uy))) {
+        await price_quote(otmp);
+        return ECMD_TIME;
+    }
+
     if (!await getdir('Talk to whom? (in what direction)'))
-        return ECMD_OK; /* ECMD_CANCEL */
+        return ECMD_CANCEL;
+
+    if (game.u.usteed && game.u.dz > 0) {
+        if (helpless(game.u.usteed)) {
+            await pline(`${Monnam(game.u.usteed)} seems not to notice you.`);
+            return ECMD_TIME;
+        } else
+            return await domonnoise(game.u.usteed);
+    }
 
     /* src/sounds.c:1309/:1321, neither direction consumes a turn. */
     if (game.u.dz) {
@@ -224,8 +253,12 @@ export async function dochat() {
     const mtmp = m_at(tx, ty);
 
     if (!mtmp || mtmp.mundetected) {
-        /* src/sounds.c:1335 — a statue at the target: recorded (vobj_at plus
-           the hallucination monster name). */
+        const otmp = vobj_at(tx, ty);
+        if (otmp && otmp.otyp === ONAMES.STATUE) {
+            if (!Blind())
+                await pline_The(`${Hallucination() ? rndmonnam(null) : 'statue'} seems not to notice you.`);
+            return ECMD_OK;
+        }
         const loc = game.level.at(tx, ty);
         if (!Deaf() && (IS_WALL(loc.typ) || loc.typ === SDOOR)) {
             /* Talking to a wall; a secret door remains hidden by behaving
@@ -273,6 +306,8 @@ export async function dochat() {
     mtmp.mstrategy &= ~STRAT_WAITMASK;
 
     if (!Deaf() && mtmp.mtame && mtmp.meating) {
+        if (!canspotmon(mtmp))
+            map_invisible(mtmp.mx, mtmp.my);
         await pline(`${Monnam(mtmp)} is eating noisily.`);
         return ECMD_OK;
     }

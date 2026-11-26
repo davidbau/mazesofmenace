@@ -2,7 +2,8 @@
 export const REG_NOMATCH = 1, REG_BADPAT = 2, REG_ECOLLATE = 3, REG_ECTYPE = 4,
     REG_EESCAPE = 5, REG_ESUBREG = 6, REG_EBRACK = 7, REG_EPAREN = 8,
     REG_EBRACE = 9, REG_BADBR = 10, REG_ERANGE = 11, REG_ESPACE = 12,
-    REG_BADRPT = 13, REG_EMPTY = 14, REG_ASSERT = 15, REG_INVARG = 16;
+    REG_BADRPT = 13, REG_EMPTY = 14, REG_ASSERT = 15, REG_INVARG = 16,
+    REG_ILLSEQ = 17, REG_BADMAX = 18;
 
 /* BSD regerror.c rerrs[] explanations */
 const RERRS = {
@@ -22,6 +23,7 @@ const RERRS = {
     [REG_EMPTY]: 'empty (sub)expression',
     [REG_ASSERT]: '"can\'t happen" -- you found a bug',
     [REG_INVARG]: 'invalid argument to regex routine',
+    [REG_BADMAX]: 'maximum repetition exceeds 255',
 };
 
 export class RegexError extends Error {
@@ -92,22 +94,42 @@ export function regcomp(s) {
     const GETNEXT = () => s.charCodeAt(next++);
     const REQUIRE = (cond, code) => { if (!cond) throw new RegexError(code); };
 
-    /* regcomp.c p_count */
+    /* a bound's count.  The Mac's regcomp reads every digit and rejects a
+     * count over RE_DUP_MAX with its own code 18, "maximum repetition
+     * exceeds 255" (tables/regex.json: l{256}, o{1,256}, {32768}o -> 18). */
     function p_count() {
-        let count = 0, ndigits = 0;
-        while (MORE() && isdigit(PEEK()) && count <= DUPMAX) {
-            count = count * 10 + (GETNEXT() - 48);
-            ndigits++;
+        let count = 0;
+        while (MORE() && isdigit(PEEK())) {
+            count = Math.min(count * 10 + (GETNEXT() - 48), DUPMAX + 1);
         }
-        REQUIRE(ndigits > 0 && count <= DUPMAX, REG_BADBR);
+        REQUIRE(count <= DUPMAX, REG_BADMAX);
         return count;
+    }
+
+    /* a bound {m}, {m,}, {m,n} after its '{' (the caller saw a digit).  The
+     * Mac reports the bound's own errors before asking whether it may
+     * follow what precedes it: ^{1 -> 9, ^{2,1} -> 10, ^{1} -> 13, and a
+     * leading {1o -> 10 (tables/regex.json).  The bound must close right
+     * after its last count: at the end of the pattern that is "braces not
+     * balanced", otherwise "invalid repetition count(s)" (o{1 } -> 10,
+     * o{1, -> 9, o{1,2,3} -> 10). */
+    function p_bound() {
+        const count = p_count();
+        let count2 = count;
+        if (EAT(',')) count2 = (MORE() && isdigit(PEEK())) ? p_count() : Infinity;
+        REQUIRE(MORE(), REG_EBRACE);
+        REQUIRE(EAT('}'), REG_BADBR);
+        REQUIRE(count <= count2, REG_BADBR);
+        return `{${count},${count2 === Infinity ? '' : count2}}`;
     }
 
     /* regcomp.c p_b_coll_elem */
     function p_b_coll_elem(endc) {
         const sp = next;
         while (MORE() && !SEETWO(endc, ']')) next++;
-        REQUIRE(MORE(), REG_EBRACK);
+        /* no closing "=]" / ".]": the Mac says "invalid collating element"
+         * (MSGTYPE "[[=a" -> 3, Mac recording macx w23a-027) */
+        REQUIRE(MORE(), REG_ECOLLATE);
         const name = s.slice(sp, next);
         if (Object.hasOwn(CNAMES, name)) return CNAMES[name];
         if (name.length === 1) return name.charCodeAt(0);
@@ -128,12 +150,19 @@ export function regcomp(s) {
         let c = 0;
         switch (MORE() ? s[next] : '\0') {
         case '[': c = MORE2() ? s[next + 1] : '\0'; break;
-        case '-': throw new RegexError(REG_ERANGE);
+        case '-':
+            /* a '-' with the pattern ending behind it: the list never
+             * closes ([a- -> 7 on the Mac, tables/regex.json) */
+            REQUIRE(MORE2(), REG_EBRACK);
+            throw new RegexError(REG_ERANGE);
         default: c = '\0';
         }
         switch (c) {
         case ':': { /* character class (p_b_cclass) */
             next += 2;
+            /* the Mac looks for the closing ":]" first: [[:alpha -> 4,
+             * [[:alpha:] -> 7 (tables/regex.json) */
+            REQUIRE(s.indexOf(':]', next) >= 0, REG_ECTYPE);
             REQUIRE(MORE(), REG_EBRACK);
             REQUIRE(!SEE('-') && !SEE(']'), REG_ECTYPE);
             const sp = next;
@@ -147,7 +176,7 @@ export function regcomp(s) {
         }
         case '=': /* equivalence class (p_b_eclass) */
             next += 2;
-            REQUIRE(MORE(), REG_EBRACK);
+            REQUIRE(MORE(), REG_ECOLLATE);
             REQUIRE(!SEE('-') && !SEE(']'), REG_ECOLLATE);
             cs.add(p_b_coll_elem('='));
             REQUIRE(MORE(), REG_EBRACK);
@@ -181,7 +210,14 @@ export function regcomp(s) {
         const cs = new Set();
         const invert = EAT('^');
         if (EAT(']')) cs.add(93);
-        else if (EAT('-')) cs.add(45);
+        else if (SEETWO('-', '-') && next + 2 < end && s[next + 2] !== ']') {
+            /* a leading '-' may start a range on the Mac: [--a] is '-'..'a'
+             * (matches digits, tables/regex.json) */
+            next += 2;
+            const finish = p_b_symbol();
+            REQUIRE(45 <= finish, REG_ERANGE);
+            for (let i = 45; i <= finish; i++) cs.add(i);
+        } else if (EAT('-')) cs.add(45);
         while (MORE() && !SEE(']') && !SEETWO('-', ']')) p_b_term(cs);
         if (EAT('-')) cs.add(45);
         REQUIRE(EAT(']'), REG_EBRACK);
@@ -206,13 +242,19 @@ export function regcomp(s) {
         case '|': throw new RegexError(REG_EMPTY);
         case '*': case '+': case '?': throw new RegexError(REG_BADRPT);
         case '.': atom = '[\\s\\S]'; break;
-        case '[': atom = p_bracket(); break;
+        case '[':
+            atom = p_bracket();
+            /* a word boundary cannot be repeated: [[:<:]]+ -> 13 on the Mac */
+            if (atom.startsWith('(?<')) wascaret = true;
+            break;
         case '\\':
             REQUIRE(MORE(), REG_EESCAPE);
             atom = lit(GETNEXT());
             break;
         case '{': /* okay as ordinary except if digit follows */
-            REQUIRE(!MORE() || !isdigit(PEEK()), REG_BADRPT);
+            /* a leading bound: its own errors first ({1o -> 10, {256}o -> 18,
+             * {1}o -> 13 on the Mac) */
+            if (MORE() && isdigit(PEEK())) { p_bound(); throw new RegexError(REG_BADRPT); }
             /* FALLTHROUGH */
         default: atom = lit(c); break;
         }
@@ -223,19 +265,12 @@ export function regcomp(s) {
         if (!(r === '*' || r === '+' || r === '?' || (r === '{' && MORE2() && isdigit(PEEK2()))))
             return atom;
         next++;
-        REQUIRE(!wascaret, REG_BADRPT);
         if (r === '{') {
-            const count = p_count();
-            let count2 = count;
-            if (EAT(',')) count2 = (MORE() && isdigit(PEEK())) ? p_count() : Infinity;
-            REQUIRE(count <= count2, REG_BADBR);
-            if (!EAT('}')) { /* error heuristics */
-                while (MORE() && !SEE('}')) next++;
-                REQUIRE(MORE(), REG_EBRACE);
-                throw new RegexError(REG_BADBR);
-            }
-            atom = `(?:${atom}){${count},${count2 === Infinity ? '' : count2}}`;
+            const bound = p_bound();
+            REQUIRE(!wascaret, REG_BADRPT);
+            atom = `(?:${atom})${bound}`;
         } else {
+            REQUIRE(!wascaret, REG_BADRPT);
             atom = `(?:${atom})${r}`;
         }
 

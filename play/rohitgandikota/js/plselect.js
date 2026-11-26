@@ -1,5 +1,5 @@
-import { PL_NSIZ, PICK_ONE } from './const.js';
-import { pmatchi, trimspaces } from './hacklib.js';
+import { PL_NSIZ, PICK_ONE, PICK_ANY } from './const.js';
+import { trimspaces } from './hacklib.js';
 // plselect.js — interactive character selection.
 // C ref: src/role.c genl_player_setup() (:2206) and tty_askname().
 //
@@ -18,7 +18,7 @@ import { pmatchi, trimspaces } from './hacklib.js';
 // that fires when the RACE menu opens.
 
 import { game } from './gstate.js';
-import { tty_clear_nhwindow_message, pline } from './display.js';
+import { pline } from './display.js';
 import { nhgetch } from './input.js';
 import {
     ROLE_NONE, ROLE_RANDOM, rigid_role_checks, ok_role, ok_race, ok_gend,
@@ -39,8 +39,8 @@ import {
 import {
     tty_curs_base, tty_putstr_base, tty_putch_base, tty_base_cursor,
     tty_base_pos, tty_create_nhwindow, tty_destroy_nhwindow,
-    tty_get_nhwindow, tty_start_menu, tty_add_menu, tty_add_menu_str,
-    tty_end_menu, tty_display_nhwindow, set_item_state, menu_page_items,
+    tty_start_menu, tty_add_menu, tty_add_menu_str,
+    tty_end_menu,
     NHW_MENU, ATR_NONE, tty_select_menu } from './tty/wintty.js';
 import { tty_cl_end_base } from './tty/wintty.js';
 import { NO_COLOR } from './terminal.js';
@@ -455,108 +455,19 @@ function RS_menu_arg(x) { return ROLE_RANDOM - (x + 1); }
 // RACE, human", and only then the role menu it started on, Monk.
 const RS_NAME = 0, RS_ROLE = 1, RS_RACE = 2, RS_GENDER = 3, RS_ALGNMNT = 4;
 
-// win/tty/wintty.c tty_select_menu(win, PICK_ONE) — draws the menu, blocks in
-// dmore() until a key arrives, and finishes as soon as a selector matches.
-//
-// The recorder captures the frame at that blocking read, so the window must be
-// on screen BEFORE the key is consumed. Returns the chosen entry's identifier,
-// which the caller decodes exactly as role.c does:
-//
-//   n == -1  <escape>            -> ROLE_NONE
-//   n ==  1  <space>/<return>    -> the preselected entry
-//   otherwise                    -> the entry whose selector was typed
+// src/role.c:2324 genl_player_setup(), shared TTY selection result.
 async function select_menu_pick_one(win) {
-    /* win/tty/wintty.c tty_display_nhwindow(), NHW_MENU: a menu that OVERLAYS
-       clears the message window first; only one that takes the whole screen
-       clears the screen instead. Without this the previous prompt stays
-       painted on row 0 under the menu -- seed0004 showed "Shall I pick
-       character's race, role, gen" still there beneath "Is this ok? [ynaq]".
-       Row 0 is scored, so it failed every screen from that step onward. */
-    {
-        const c0 = tty_get_nhwindow(win);
-        if (c0 && !(c0.offx === 10 || c0.maxrow >= 24))
-            await tty_clear_nhwindow_message(0);
-    }
-    await tty_display_nhwindow(win);
-    const cw = tty_get_nhwindow(win);
-    for (;;) {
-        const c = String.fromCharCode(await nhgetch());
-        if (c === '\x1b') return ROLE_NONE;
-        if (c === ' ' || c === '\n' || c === '\r') {
-            for (let it = cw.mlist; it; it = it.next)
-                if (it.identifier && it.selected) return it.identifier;
-            /* src/role.c:2341 — select_menu() returned n == 0 (nothing
-               chosen): "choice = (n == 0) ? ROLE_RANDOM : ROLE_NONE" */
-            return ROLE_RANDOM;
-        }
-        if (c === ':') {
-            /* win/tty/wintty.c MENU_SEARCH: prompt on the top line, then
-               the first entry whose text matches *pattern* is chosen
-               (toggle_menu_curr, and PICK_ONE finishes); an empty or
-               escaped line leaves the menu waiting */
-            const { hooked_tty_getlin } = await import('./cmd.js');
-            const tmpbuf = await hooked_tty_getlin('Search for:', null);
-            /* back to the menu: dmore() parks the cursor after the footer */
-            {
-                const items = menu_page_items(win, cw.curr_page || 0);
-                const morestr = (cw.npages > 1)
-                    ? `(${cw.curr_page + 1} of ${cw.npages})` : cw.morestr;
-                game?.nhDisplay?.setCursor(cw.offx + 1 + morestr.length,
-                                           cw.offy + items.length);
-            }
-            if (!tmpbuf || tmpbuf[0] === '\x1b') continue;
-            const searchbuf = `*${tmpbuf}*`;
-            for (let it = cw.mlist; it; it = it.next)
-                if (it.identifier && pmatchi(searchbuf, it.str))
-                    return it.identifier;
-            continue;
-        }
-        for (let it = cw.mlist; it; it = it.next)
-            if (it.identifier && it.selector === c) return it.identifier;
-        /* win/tty/wintty.c:1348 — group accelerators (the capital letters
-           setup_*menu() pass as gch) are accepted for PICK_ONE only when
-           they match exactly one entry; invert_all() then selects it and
-           the menu finishes */
-        let match = null, nmatch = 0;
-        for (let it = cw.mlist; it; it = it.next)
-            if (it.identifier && it.gselector && it.gselector !== it.selector
-                && it.gselector === c) {
-                match = it;
-                nmatch++;
-            }
-        if (nmatch === 1) return match.identifier;
-        /* anything else is ignored and the menu waits for another key */
-    }
+    const selected = await tty_select_menu(win, PICK_ONE);
+    if (selected.cancelled) return ROLE_NONE;
+    if (!selected.length) return ROLE_RANDOM;
+    return selected.length > 1 && selected[0] === ROLE_RANDOM
+        ? selected[1] : selected[0];
 }
 
-// win/tty/wintty.c tty_select_menu(win, PICK_ANY) — the player toggles entries
-// with their selector letters and commits with <return>/<space>.
-//
-// Toggling repaints only that one line through set_item_state(), which writes
-// '+' where the initial full-page draw writes '*'. Returns the list of selected
-// identifiers, or null for <escape>.
+// src/role.c:2760 reset_role_filtering(), cancellation keeps the old filter.
 async function select_menu_pick_any(win) {
-    await tty_display_nhwindow(win);
-    const cw = tty_get_nhwindow(win);
-    for (;;) {
-        const c = String.fromCharCode(await nhgetch());
-        if (c === '\x1b') return null;
-        if (c === '\n' || c === '\r' || c === ' ') {
-            const out = [];
-            for (let it = cw.mlist; it; it = it.next)
-                if (it.identifier && it.selected) out.push(it.identifier);
-            return out;
-        }
-        const page = menu_page_items(win, cw.curr_page || 0);
-        const idx = page.findIndex(it => it.identifier && it.selector === c);
-        if (idx >= 0) {
-            /* wintty.c toggle_menu_curr(): flip, then repaint that line */
-            const it = page[idx];
-            it.selected = !it.selected;
-            it.count = -1;
-            set_item_state(win, idx, it);
-        }
-    }
+    const selected = await tty_select_menu(win, PICK_ANY);
+    return selected.cancelled ? null : selected;
 }
 
 // src/role.c:2728 reset_role_filtering() — the '~' menu.

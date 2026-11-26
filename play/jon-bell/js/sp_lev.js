@@ -4095,6 +4095,20 @@ function flip_visuals(flp, minx, miny, maxx, maxy) {
     }
 }
 
+function _flip_keep_gbuf_in_place(a, b) {
+    const keys = [];
+    for (const k of Reflect.ownKeys(a))
+        if (typeof k === 'symbol' || k === 'gnew' || k.startsWith('disp_')) keys.push(k);
+    for (const k of Reflect.ownKeys(b))
+        if ((typeof k === 'symbol' || k === 'gnew' || k.startsWith('disp_'))
+            && !keys.includes(k)) keys.push(k);
+    for (const k of keys) {
+        const t = a[k];
+        a[k] = b[k];
+        b[k] = t;
+    }
+}
+
 export async function flip_level(flp, extras) {
     if ((flp & 3) === 0)
         return;
@@ -4444,6 +4458,8 @@ export async function flip_level(flp, extras) {
 
                 [game.level.locations[x][y], game.level.locations[x][ny]] =
                     [game.level.locations[x][ny], game.level.locations[x][y]];
+                _flip_keep_gbuf_in_place(game.level.locations[x][y],
+                                         game.level.locations[x][ny]);
 
                 [game.level.levelObjects[x][y], game.level.levelObjects[x][ny]] =
                     [game.level.levelObjects[x][ny], game.level.levelObjects[x][y]];
@@ -4468,6 +4484,8 @@ export async function flip_level(flp, extras) {
 
                 [game.level.locations[x][y], game.level.locations[nx][y]] =
                     [game.level.locations[nx][y], game.level.locations[x][y]];
+                _flip_keep_gbuf_in_place(game.level.locations[x][y],
+                                         game.level.locations[nx][y]);
 
                 [game.level.levelObjects[x][y], game.level.levelObjects[nx][y]] =
                     [game.level.levelObjects[nx][y], game.level.levelObjects[x][y]];

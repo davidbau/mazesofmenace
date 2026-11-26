@@ -150,6 +150,12 @@ import { resists_cold as resists_cold_sf } from './mondata.js';
 import { COLD_RES as COLD_RES_SF } from './const.js';
 import { hideunder } from './makemon.js';
 import { float_up as float_up_ht } from './trap.js';
+import { DRAWBRIDGE_UP as DRAWBRIDGE_UP_SC, DB_UNDER as DB_UNDER_SC,
+         DB_ICE as DB_ICE_SC, ICE as ICE_SC,
+         MELT_ICE_AWAY as MELT_ICE_AWAY_SC } from './const.js';
+import { spot_time_left as spot_time_left_sc,
+         spot_stop_timers as spot_stop_timers_sc } from './timeout.js';
+import { obj_ice_effects as obj_ice_effects_sc } from './mkobj.js';
 
 // C's impossible() (pline.c) is not ported yet.
 export function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -2348,10 +2354,23 @@ async function moverock_core(sx, sy) {
 
         if (game.context.nopick)
             throw new Error('moverock_core(): m-prefix move onto a boulder not ported yet');
-        if (Levitation() || Is_airlevel(game.u.uz))
-            throw new Error('moverock_core(): no leverage while levitating not ported yet');
-        if (verysmall(game.youmonst.data) && !game.u.usteed)
-            throw new Error('moverock_core(): too small to push not ported yet');
+        if (Levitation() || Is_airlevel(game.u.uz)) {
+            /* FIXME?  behavior in an air bubble on the water level should
+               be similar to being on the air level; both cases probably
+               ought to let push attempt proceed when flying (which implies
+               not levitating) */
+            if (Blind())
+                feel_location(sx, sy);
+            await You(`don't have enough leverage to push ${the(xname(otmp))}.`);
+            /* Give them a chance to climb over it? */
+            return -1;
+        }
+        if (verysmall(game.youmonst.data) && !game.u.usteed) {
+            if (Blind())
+                feel_location(sx, sy);
+            await pline(`You're too small to push that ${xname(otmp)}.`);
+            return await cannot_push(otmp, sx, sy);
+        }
         if (isok(rx, ry) && !IS_OBSTRUCTED(game.level.at(rx, ry).typ)
             && game.level.at(rx, ry).typ !== IRONBARS
             && (!IS_DOOR(game.level.at(rx, ry).typ) || !(game.u.dx && game.u.dy)
@@ -3330,6 +3349,30 @@ function maybe_smudge_engr(x1, y1, x2, y2) {
 function glyph_to_obj_hk(glyph) {
     return (glyph && glyph.kind === 'obj' && glyph.otyp !== undefined
             && glyph.otyp !== null) ? glyph.otyp : -1;
+}
+
+// C ref: hack.c spot_checks()
+export function spot_checks(x, y, old_typ) {
+    const new_typ = game.level.at(x, y).typ;
+    let db_ice_now = false;
+
+    switch (old_typ) {
+    case DRAWBRIDGE_UP_SC:
+        db_ice_now = ((game.level.at(x, y).drawbridgemask & DB_UNDER_SC)
+                      === DB_ICE_SC);
+        /*FALLTHRU*/
+    case ICE_SC:
+        if ((new_typ !== old_typ)
+            || (old_typ === DRAWBRIDGE_UP_SC && !db_ice_now)) {
+            /* make sure there's no MELT_ICE_AWAY timer */
+            if (spot_time_left_sc(x, y, MELT_ICE_AWAY_SC)) {
+                spot_stop_timers_sc(x, y, MELT_ICE_AWAY_SC);
+            }
+            /* adjust things affected by the ice */
+            obj_ice_effects_sc(x, y, false);
+        }
+        break;
+    }
 }
 
 /* C ref: hack.c rounddiv() */

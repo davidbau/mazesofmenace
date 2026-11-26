@@ -184,6 +184,13 @@ function apfs_fold(path) {
     return out.normalize('NFD');
 }
 
+/* APFS refuses (EILSEQ) to create a name whose bytes are not valid UTF-8. */
+function apfs_name_ok(path) {
+    const bytes = Uint8Array.from(String(path), c => c.charCodeAt(0) & 0xff);
+    try { new TextDecoder('utf-8', { fatal: true }).decode(bytes); return true; }
+    catch { return false; }
+}
+
 /* unixunix.c:297-303 regularize(): '.', '/' and ' ' become '_'. */
 function regularize(s) {
     return s.replace(/[./ ]/g, '_');
@@ -594,6 +601,10 @@ export async function dosave0() {
                 return 0;
             /* y_n_default's _answered already recorded the answered prompt. */
             g._pending_message = '';
+        }
+        if (!apfs_name_ok(path)) {
+            await pline('Cannot open save file.');
+            return 0;
         }
         /* C save.c:141-145 — undo the date-dependent luck that moveloop_preamble
          * applied at startup, so the FILE carries Luck without it; the restoring

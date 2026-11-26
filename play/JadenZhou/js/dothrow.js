@@ -6,7 +6,7 @@
 // prompt.  Throwing itself (throwit()), autoquiver and doquiver_core()
 // are not ported yet.
 
-import { use_pole, could_pole_mon, use_whip } from './apply.js';
+import { use_pole, could_pole_mon, use_whip, snuff_candle } from './apply.js';
 import { end_burn } from './timeout.js';
 import { get_obj_location } from './shk.js';
 import { shop_keeper, costly_spot, stolen_value, subfrombill, is_unpaid,
@@ -163,7 +163,6 @@ import { your_race as your_race_dt, is_orc as is_orc_dt, is_elf as is_elf_dt,
          nohands, throws_rocks, notake, touch_petrifies, digests,
          is_unicorn, is_whirly, is_animal } from './mondata.js';
 import { is_quest_artifact as is_quest_artifact_dt } from './questpgr.js';
-import { Is_candle as Is_candle_dt } from './mkobj.js';
 import { is_domestic as is_domestic_dt } from './makemon.js';
 import { Monnam as Monnam_dt } from './do_name.js';
 import { engulfing_u as engulfing_u_dt, SHOPBASE as SHOPBASE_DT,
@@ -172,8 +171,7 @@ import { engulfing_u as engulfing_u_dt, SHOPBASE as SHOPBASE_DT,
          ACCFOOD as ACCFOOD_DT, POTHIT_HERO_THROW as POTHIT_HERO_THROW_DT,
          M_AP_TYPMASK as M_AP_TYPMASK_DT, M_AP_MONSTER as M_AP_MONSTER_DT,
          P_BOW as P_BOW_DT, P_AXE as P_AXE_DT } from './const.js';
-import { CANDELABRUM_OF_INVOCATION as CANDELABRUM_OF_INVOCATION_DT,
-         FAKE_AMULET_OF_YENDOR as FAKE_AMULET_OF_YENDOR_DT,
+import { FAKE_AMULET_OF_YENDOR as FAKE_AMULET_OF_YENDOR_DT,
          GAUNTLETS_OF_POWER as GAUNTLETS_OF_POWER_DT,
          GAUNTLETS_OF_FUMBLING as GAUNTLETS_OF_FUMBLING_DT,
          LEATHER_GLOVES as LEATHER_GLOVES_DT,
@@ -214,7 +212,11 @@ import { WWALKING as WWALKING_HT } from './const.js';
 import { drown as drown_ht } from './trap.js';
 import { Norep as Norep_ht } from './display.js';
 import { is_moat as is_moat_ht } from './makemon.js';
-import { minstapetrify } from './trap.js';
+import { minstapetrify, instapetrify } from './trap.js';
+import { killer } from './topten.js';
+import { corpse_xname } from './objnam.js';
+import { pmname, ARTICLE_YOUR, EXACT_NAME, SUPPRESS_NAME } from './do_name.js';
+import { CXN_PFX_THE, NEUTRAL } from './const.js';
 
 /* C ref: weight.h WT_SPLASH_THRESHOLD -- weight needed to make splash in
    water */
@@ -347,8 +349,14 @@ async function throw_obj(obj, shotlimit) {
         }
         u_wipe_engr(2);
         if (!g.uarmg && obj.otyp === CORPSE
-            && touch_petrifies(mons[obj.corpsenm]) && !Stone_resistance())
-            throw new Error('throw_obj(): instapetrify() from a bare-handed corpse not ported yet');
+            && touch_petrifies(mons[obj.corpsenm]) && !Stone_resistance()) {
+            await You(`throw ${corpse_xname(obj, null, CXN_PFX_THE)} with your bare ${
+                /* throwing with one hand, but pluralize since the
+                   expression "with your bare hands" sounds better */
+                makeplural(body_part(HAND))}.`);
+            killer().name = `throwing ${killer_xname(obj)} bare-handed`;
+            await instapetrify(killer().name);
+        }
         if (welded(obj)) {
             await weldmsg(obj);
             res = ECMD_TIME;
@@ -623,7 +631,7 @@ async function throwit_mon_hit(obj, mon) {
     if (mon) {
         if (mon.isshk && obj.where === 'OBJ_MINVENT' && obj.ocarry === mon)
             return true;
-        await snuff_candle_dt(obj);
+        await snuff_candle(obj);
         g.notonhead = (g.bhitpos.x !== mon.mx || g.bhitpos.y !== mon.my);
         const obj_gone = await thitmonst(mon, obj);
         /* Monster may have been tamed; this frees old mon [obsolete] */
@@ -638,24 +646,6 @@ async function throwit_mon_hit(obj, mon) {
 
         if (obj_gone)
             g.thrownobj = null;
-    }
-    return false;
-}
-
-// C ref: apply.c snuff_candle()
-async function snuff_candle_dt(otmp) {
-    const candle = Is_candle_dt(otmp);
-
-    if ((candle || otmp.otyp === CANDELABRUM_OF_INVOCATION_DT)
-        && otmp.lamplit) {
-        const many = candle ? (otmp.quan > 1) : (otmp.spe > 1);
-        const [x, y] = get_obj_location(otmp, 0) || [0, 0];
-
-        if (otmp.where === 'OBJ_MINVENT' ? cansee(x, y) : !Blind())
-            await pline(`${Shk_Your(otmp)}${candle ? "" : "candelabrum's "}candle${
-                many ? "s'" : "'s"} flame${many ? "s are" : " is"} extinguished.`);
-        end_burn(otmp, true);
-        return true;
     }
     return false;
 }
@@ -1226,7 +1216,7 @@ async function throwit(obj,
         obj_no_longer_held(obj);
         if (mon && mon.isshk && is_pick(obj))
             throw new Error('throwit(): shopkeeper snatching a pick not ported yet');
-        /* (void) */ await snuff_candle_dt(obj);
+        /* (void) */ await snuff_candle(obj);
         if (!mon && await ship_object(obj, bx, by, false)) {
             throwit_return(true);
             return;
@@ -2189,8 +2179,12 @@ export async function hurtle_step(arg, x, y) {
         if (!canspotmon(mon))
             map_invisible(mon.mx, mon.my);
         await setmangry(mon, false);
-        if (touch_petrifies(mon.data) && !game.uarmu && !game.uarm && !game.uarmc)
-            throw new Error('hurtle_step(): instapetrify() not ported yet');
+        if (touch_petrifies(mon.data)
+            /* this is a bodily collision, so check for body armor */
+            && !game.uarmu && !game.uarm && !game.uarmc) {
+            killer().name = `bumping into ${an(pmname(mon.data, NEUTRAL))}`;
+            await instapetrify(killer().name);
+        }
         if (touch_petrifies(game.youmonst.data)
             && !which_armor_hu(mon, W_ARMU_HU | W_ARM_HU | W_ARMC_HU)) {
             await minstapetrify(mon, true);
@@ -2365,8 +2359,15 @@ async function mhurtle_step(mon, x, y) {
         }
         /* and whether hero is turned to stone by being touched by 'mon' */
         if (touch_petrifies(mon.data)
-            && !(game.uarmu || game.uarm || game.uarmc))
-            throw new Error('mhurtle_step(): instapetrify() not ported yet');
+            && !(game.uarmu || game.uarm || game.uarmc)) {
+            killer().name = `being hit by ${
+                /* combine m_monnam() and noname_monnam():
+                   "{your,a} hurtling cockatrice" w/o assigned name */
+                x_monnam(mon, mon.mtame ? ARTICLE_YOUR : ARTICLE_A,
+                         "hurtling", EXACT_NAME | SUPPRESS_NAME, false)}`;
+            await instapetrify(killer().name);
+            newsym_hu(game.u.ux, game.u.uy);
+        }
     }
 
     return false;

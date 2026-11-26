@@ -17,7 +17,7 @@ import { rn1 } from './rng.js';
 import { readobjnam_async, doname, The, aobjnam } from './objnam.js';
 import { splitobj } from './mkobj.js';
 import { freeinv } from './invent.js';
-import { dropx } from './do.js';
+import { dropx, dropy } from './do.js';
 import { hitfloor } from './dothrow.js';
 import { can_reach_floor } from './engrave.js';
 import { observe_object } from './o_init.js';
@@ -31,7 +31,7 @@ import { create_particular } from './read.js';
 import { losexp, pluslvl } from './exper.js';
 import { near_capacity, inv_cnt } from './hack.js';
 import { encumber_msg } from './pickup.js';
-import { MOD_ENCUMBER } from './const.js';
+import { MOD_ENCUMBER, Upolyd } from './const.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY, TIMEOUT,
          HALLUC_RES, FIRE_RES, SICK, SLIMED, STONED, BLINDED, DEAF, HALLUC,
          STUNNED, VOMITING, WARN_OF_MON, GLIB, LEVITATION, FLYING,
@@ -114,15 +114,22 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         /* place_object may change these */
         const crysknife = (obj.otyp === O.CRYSKNIFE);
         const oerode = obj.oerodeproof;
-        const wasUpolyd = !!game.u.mtimedone;
+        const wasUpolyd = Upolyd();
 
         /* in case touching this object turns out to be fatal */
         place_object(obj, game.u.ux, game.u.uy);
 
         if (!(await touch_artifact(obj, game.youmonst))) {
-            throw new Error('hold_another_object(): dropy() of an untouchable artifact is not ported yet');
-        } else if (wasUpolyd && !game.u.mtimedone) {
-            throw new Error('hold_another_object(): losing grip on reverting form is not ported yet');
+            obj_extract_self(obj); /* remove it from the floor */
+            await dropy(obj);      /* now put it back again :-) */
+            return obj;
+        } else if (wasUpolyd && !Upolyd()) {
+            /* lose your grip if you revert your form */
+            if (drop_fmt)
+                await pline(drop_fmt.replace('%s', drop_arg ?? ''));
+            obj_extract_self(obj);
+            await dropy(obj);
+            return obj;
         }
         obj_extract_self(obj);
         if (crysknife) {

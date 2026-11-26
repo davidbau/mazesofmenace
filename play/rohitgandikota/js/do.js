@@ -66,8 +66,9 @@ import { freeinv, getobj, any_obj_ok, obj_extract_self, useup }
 import { place_object, rider_revival_time, set_bknown, set_corpsenm,
          splitobj, zombie_form, obj_nexto_xy } from './mkobj.js';
 import { canseemon, cls, docrt, pline, newsym, reglyph_darkroom } from './display.js';
-import { impossible, Norep, pline_The, There, You, You_cant, You_feel, You_hear, You_see, Your }
+import { impossible, Norep, livelog_printf, pline_The, There, You, You_cant, You_feel, You_hear, You_see, Your }
     from './pline.js';
+import { LL_CONDUCT } from './const.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp, check_special_room } from './hack.js';
 import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_BURIED, VIBRATING_SQUARE, MAGIC_PORTAL, PIT, ROOM, CORR, GRAVE, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE, HAND, BC_BALL, BC_CHAIN, MENU_FULL, ALL_TYPES_SELECTED, Is_rogue_level, Is_waterlevel, IS_WATERWALL, DRAWBRIDGE_UP, DB_UNDER, DB_FLOOR, NH_AMBER, NH_BLACK, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM, RLOC_NOMSG, st_all } from './const.js';
@@ -956,16 +957,32 @@ export async function next_level(at_stairs) {
     await goto_level(newlevel, at_stairs, false, false);
 }
 
-// src/do.c goto_level() — the level change.
-//
-// Only the "entering this level for the first time" arm is ported, which is
-// the one a first descent takes:
-//
-//     if (!(svl.level_info[new_ledger].flags & LFILE_EXISTS)) {
-//         mklev();          <- already ported
-//         new = TRUE;
-//     } else { ...reload the saved level from its file... }
-//
+// src/do.c:1448 familiar_level_msg().
+async function familiar_level_msg() {
+    const fam_msgs = [
+        'You have a sense of deja vu.',
+        "You feel like you've been here before.",
+        'This place %s familiar...', null
+    ];
+    const halu_fam_msgs = [
+        'Whoa!  Everything %s different.',
+        'You are surrounded by twisty little passages, all alike.',
+        "Gee, this %s like uncle Conan's place...", null
+    ];
+    let mesg;
+    const which = rn2(4);
+
+    if (Hallucination())
+        mesg = halu_fam_msgs[which];
+    else
+        mesg = fam_msgs[which];
+    if (mesg && mesg.includes('%'))
+        mesg = mesg.replace('%s', !Blind() ? 'looks' : 'seems');
+    if (mesg)
+        await pline(mesg);
+}
+
+// src/do.c:1479 goto_level().
 // The mysterious force can add three or four draws to an Amulet ascent from
 // Gehennom. A plain staircase descent spends no draw of its own.
 export async function goto_level(newlevel, at_stairs, falling, portal) {
@@ -974,6 +991,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     let do_fall_dmg = false;
     const newdungeon = (game.u.uz.dnum !== newlevel.dnum);
     let leaving_tutorial = false;
+    let familiar = false;
 
     /* src/do.c:1492: the mysterious force must keep a hero who starts
        inside the Wizard's Tower inside it. The tower boundary is the
@@ -1219,6 +1237,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             game.visited_ledgers.delete(ledger);
         }
         await mklev_fn();
+        const { bones_include_name } = await import('./bones.js');
+        familiar = bones_include_name(game.plname);
     }
 
     reglyph_darkroom(); /* src/do.c:1715 */
@@ -1398,24 +1418,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             (game.u.uevent ||= {}).gehennom_entered = 1;
     }
 
-    /* src/do.c:1879: after the new map and deferred arrival message, a
-       same-named bones level gives one randomly chosen deja-vu message. */
-    {
-        const { bones_include_name } = await import('./bones.js');
-        if (game.level?.bonesinfo && bones_include_name(game.plname)) {
-            const fam_msgs = [
-                'You have a sense of deja vu.',
-                "You feel like you've been here before.",
-                'This place %s familiar...', null ];
-            /* halu variants recorded with the rest of Hallucination */
-            let mesg = fam_msgs[rn2(4)];
-            if (mesg && mesg.includes('%s'))
-                mesg = mesg.replace('%s',
-                                    !game.u.ublind ? 'looks' : 'seems');
-            if (mesg)
-                await pline(mesg);
-        }
-    }
+    if (familiar)
+        await familiar_level_msg();
 
     /* src/do.c:1879 — special location arrival messages/events. The
        endgame and quest arms are wired; the Knox, Mines and Sokoban arms
@@ -1498,14 +1502,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const temp = game.level?.flags?.temperature | 0;
         if (prev_temperature !== temp) {
             if (temp) {
-                /* hellish_smoke_mesg() (do.c:2003) */
-                await pline(`It is ${temp > 0 ? 'hot' : 'cold'} here.`);
-                if (game.dungeons?.[game.u.uz.dnum]?.flags?.hellish
-                    && temp > 0) {
-                    const { olfaction } = await import('./mondata.js');
-                    await You(`${olfaction(game.youmonst.data)
-                        ? 'smell' : 'sense'} smoke...`);
-                }
+                await hellish_smoke_mesg();
             } else if (prev_temperature > 0) {
                 await pline(`The heat ${
                     game.dungeons?.[game.u.uz0.dnum]?.flags?.hellish
@@ -1594,6 +1591,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     {
         const { pickup } = await import('./pickup.js');
         await pickup(1);
+    }
+}
+
+// src/do.c:2003 hellish_smoke_mesg()
+export async function hellish_smoke_mesg() {
+    const temp = game.level?.flags?.temperature | 0;
+    if (temp)
+        await pline(`It is ${temp > 0 ? 'hot' : 'cold'} here.`);
+    if (game.dungeons?.[game.u.uz.dnum]?.flags?.hellish && temp > 0) {
+        const { olfaction } = await import('./mondata.js');
+        await You(`${olfaction(game.youmonst.data) ? 'smell' : 'sense'} smoke...`);
     }
 }
 
@@ -1869,13 +1877,18 @@ export async function doaltarobj(obj) {
 
     if (obj.oclass !== OCLASSES.COIN_CLASS) {
         game.u.uconduct ||= {};
-        if (!game.context?.mon_moving)
-            game.u.uconduct.gnostic = (game.u.uconduct.gnostic || 0) + 1;
+        if (!game.context?.mon_moving) {
+            const gnostic = game.u.uconduct.gnostic || 0;
+            game.u.uconduct.gnostic = gnostic + 1;
+            if (!gnostic)
+                livelog_printf(LL_CONDUCT,
+                    `eschewed atheism, by dropping ${doname(obj)} on an altar`);
+        }
     } else {
         obj.blessed = obj.cursed = 0;
     }
 
-    const [{ doname, otense, an }, { upstart, hcolor }]
+    const [{ otense, an }, { upstart, hcolor }]
         = await Promise.all([import('./objnam.js'), import('./do_name.js')]);
     if (obj.blessed || obj.cursed) {
         const color = hcolor(obj.blessed ? NH_AMBER : NH_BLACK);

@@ -170,6 +170,9 @@ export async function nhgetch() {
      * for the line just acknowledged must not force a page on a later identical text. */
     if (game._pending_message && game._topl_force_breaks && !game._inMovemonMore)
         game._topl_force_breaks = null;
+    /* A line written over a non-ESC --More-- row (display.js _topl_more)
+     * is what the next clear_nhwindow wipes; the stale cells end with it. */
+    if (game._pending_message) game._topl_stale_row0 = null;
     game._pending_message = '';
     game._topl_unacknowledged = false;
     if (!game._inMovemonMore)

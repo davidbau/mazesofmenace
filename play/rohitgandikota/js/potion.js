@@ -1842,7 +1842,8 @@ export async function dopotion(otmp) {
 
     if (game.potion_nothing) {
         game.potion_unkn++;
-        await You('have a peculiar feeling for a moment, then it passes.');
+        await You(`have a ${Hallucination() ? 'normal' : 'peculiar'}`
+                  + ' feeling for a moment, then it passes.');
     }
     if (otmp.dknown && !game.objects[otmp.otyp].oc_name_known) {
         if (!game.potion_unkn) {
@@ -1907,7 +1908,10 @@ export function drink_ok(obj) {
 
 // src/potion.c:526 dodrink() — the 'q' command.
 export async function dodrink() {
-    /* Strangled needs the amulet of strangulation */
+    if (game.u.intrinsic?.HStrangled) {
+        await pline("If you can't breathe air, how can you drink liquid?");
+        return ECMD_OK;
+    }
 
     /* src/potion.c:540 — the fountain/sink prompts come before getobj;
        'm'-prefixed quaff skips them. can_reach_floor(FALSE) is true for

@@ -279,8 +279,9 @@ async function wallify_vault(guard) {
                 obj_extract_self(debris);
             while ((debris = sobj_at(ONAMES.BOULDER, x, y)))
                 obj_extract_self(debris);
-            game.level.traps = (game.level.traps || [])
-                .filter(t => t.tx !== x || t.ty !== y);
+            const trap = t_at(x, y);
+            if (trap)
+                deltrap(trap);
 
             const typ = x === lox
                 ? (y === loy ? TLCORNER : y === hiy ? BLCORNER : VWALL)
@@ -291,6 +292,7 @@ async function wallify_vault(guard) {
             loc.flags = 0;
             loc.doormask = 0;
             loc.wall_info = 0;
+            xy_set_wall_state(x, y);
             const engraving = engr_at(x, y);
             if (engraving)
                 del_engr(engraving);

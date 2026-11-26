@@ -2212,7 +2212,10 @@ export async function handler_autopickup_exception(preserveStatus = false) {
                 add_autopickup_exception(`"${pattern.slice(0, 255)}"`);
                 for (const m of game._config_errors.splice(base)) {
                     if (typeof m !== 'string') continue;
-                    await pline('%s%s', m, /[.!?]$/.test(m) ? '' : '.');
+                    const text = m + (/[.!?]$/.test(m) ? '' : '.');
+                    /* a MSGTYPE-suppressed error pline flushes nothing (pline.c:246-262) */
+                    if (msgtype_suppressed(text)) continue;
+                    await pline('%s', text);
                     /* pline.c:273-274: the error's flush_screen(1) ran bot() for the
                        botlx the Options menu's docrt() left pending (bot() was
                        disabled inside select_menu/getlin, windows.c:1859-1900), so
@@ -2271,7 +2274,7 @@ import { clr2colorname } from './coloratt.js'; // relocate-fns
 import { build_window_screen, menu_search_case, menu_search_docorner, menu_search_apply_corners } from './com_pager.js'; // relocate-fns
 import { PL_FSIZ, ECMD_OK, Is_rogue_level, MENU_COMBINATION, MENU_TRADITIONAL } from './const.js'; // relocate-fns
 import { OPTMENUHELP, dlb_file_lines } from './dispfile.js'; // relocate-fns
-import { dec_mode, docrt, flush_screen, force_more, new_status_window, newclipping, status_reassess } from './display.js'; // relocate-fns
+import { dec_mode, docrt, flush_screen, force_more, msgtype_suppressed, new_status_window, newclipping, status_reassess } from './display.js'; // relocate-fns
 import { DOSET_COMPOUNDS, DOSET_OTHERS, LONGEST_OPTION_NAME } from './doset_data.js'; // relocate-fns
 import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
 import { strsubst } from './hacklib.js'; // relocate-fns
@@ -3227,13 +3230,18 @@ function renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased
 }
 
 async function numberPadSubmenu(preserveStatus = false) {
+    /* options.c:5910-5914: each choice goes through add_menu(), which
+     * menucolors its str (windows.c:1803-1806) — Mac macx w23a-037 step 21:
+     * MENUCOLOR "[[:upper:]]\w*"=orange&inverse paints " 2 (on, MSDOS
+     * compatible)". */
     const rows = [
         menu_heading_text('Select number_pad mode:'), '',
-        'a -  0 (off)', 'b -  1 (on)',
-        'c -  2 (on, MSDOS compatible)',
-        'd -  3 (on, phone-style digit layout)',
-        'e -  4 (on, phone-style layout, MSDOS compatible)',
-        "f - -1 (off, 'z' to move upper-left, 'y' to zap wands)",
+        ...['a -  0 (off)', 'b -  1 (on)',
+            'c -  2 (on, MSDOS compatible)',
+            'd -  3 (on, phone-style digit layout)',
+            'e -  4 (on, phone-style layout, MSDOS compatible)',
+            "f - -1 (off, 'z' to move upper-left, 'y' to zap wands)",
+        ].map(menucolor_row),
         '(end)',
     ];
     let idx = -1;
@@ -4142,14 +4150,23 @@ export async function handler_msgtype(preserveStatus = false) {
                     /* C options.c:7871 test_regex_pattern -> config_erradd (cfgfiles.c:1557-1563):
                        interactive 'O' reports the regcomp error via pline + wait_synch. */
                     const desc = regex_error_desc(e);
-                    /* pline.c:273-274: vpline's flush_screen(1) runs bot() for the
-                       botlx the Options menu's docrt() left pending (display.c:1769,
-                       display.c:2236), so the --More-- shows the status rows. */
-                    game._statusBlankAfterDocrt = false;
-                    game.disp.botlx = 1;
-                    await flush_screen(1);
-                    await force_more(`MSGTYPE regex: ${desc}.`);
-                    preserveStatus = true; /* wait_synch -> flush_screen -> bot() repainted the status rows */
+                    const text = `MSGTYPE regex: ${desc}.`;
+                    /* cfgfiles.c:1556-1563 config_erradd plines the error: a MSGTYPE
+                       hide (or norep repeat) rule drops it in vpline (pline.c:246-262)
+                       before any flush, and wait_synch() raises no --More-- for a
+                       topline that is not NEED_MORE (wintty.c:3632-3645).  Mac macx2
+                       arm t24-a-regex-v021: MSGTYPE=hide "x{0,255}" (matches every
+                       message) and "a{256}" typed at "What new message pattern?". */
+                    if (!msgtype_suppressed(text)) {
+                        /* pline.c:273-274: vpline's flush_screen(1) runs bot() for the
+                           botlx the Options menu's docrt() left pending (display.c:1769,
+                           display.c:2236), so the --More-- shows the status rows. */
+                        game._statusBlankAfterDocrt = false;
+                        game.disp.botlx = 1;
+                        await flush_screen(1);
+                        await force_more(text);
+                        preserveStatus = true; /* wait_synch -> flush_screen -> bot() repainted the status rows */
+                    }
                     re = null;
                 }
             }
@@ -4209,11 +4226,15 @@ export async function handler_menu_colors(preserveStatus = false) {
         if (!mcbuf) continue;
         let re;
         try { re = regcomp(mcbuf); } catch (e) {
-            game._statusBlankAfterDocrt = false;
-            game.disp.botlx = 1;
-            await flush_screen(1);
-            await force_more(`MENUCOLORS regex: ${regex_error_desc(e)}.`);
-            preserveStatus = true;
+            const text = `MENUCOLORS regex: ${regex_error_desc(e)}.`;
+            /* a MSGTYPE-suppressed error pline (see handler_msgtype) */
+            if (!msgtype_suppressed(text)) {
+                game._statusBlankAfterDocrt = false;
+                game.disp.botlx = 1;
+                await flush_screen(1);
+                await force_more(text);
+                preserveStatus = true;
+            }
             continue;
         }
         const mcclr = await query_color(null, 8, true);

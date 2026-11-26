@@ -59,7 +59,7 @@ import { makeknown, observe_object } from './o_init.js';
 import { hcolor, x_monnam } from './do_name.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
 import { cmdq_pop } from './cmd.js';
-import { CMDQ_KEY, ECMD_FAIL } from './const.js';
+import { CMDQ_KEY, ECMD_FAIL, ECMD_CANCEL } from './const.js';
 import { prinv, update_inventory, useup, ECMD_OK, ggetobj, is_worn, wearing_armor }
     from './invent.js';
 import { nomul, spoteffects, unmul } from './hack.js';
@@ -2626,18 +2626,32 @@ export async function dowear() {
         await pline("Don't even bother.");
         return ECMD_OK;
     }
+    const u = game.u;
+    if (u.uarm && u.uarmu && u.uarmc && u.uarmh && u.uarms && u.uarmg && u.uarmf
+        && u.uleft && u.uright && u.uamul && u.ublindf) {
+        await You('are already wearing a full complement of armor.');
+        return ECMD_OK;
+    }
     const { getobj } = await import('./invent.js');
     const { wear_ok } = await import('./cmd.js');
     const otmp = await getobj('wear', wear_ok, 0);
-    return otmp ? await accessory_or_armor_on(otmp) : ECMD_OK;
+    return otmp ? await accessory_or_armor_on(otmp) : ECMD_CANCEL;
 }
 
 // src/do_wear.c:2454 doputon() — the 'P' command.
 export async function doputon() {
+    const u = game.u;
+    if (u.uleft && u.uright && u.uamul && u.ublindf
+        && u.uarm && u.uarmu && u.uarmc && u.uarmh && u.uarms && u.uarmg && u.uarmf) {
+        await Your(`${humanoid(game.youmonst.data) ? 'ring-' : ''}${
+            fingers_or_gloves(false)} are full, and you're already wearing an amulet and ${
+            u.ublindf.otyp === ONAMES.LENSES ? 'some lenses' : 'a blindfold'}.`);
+        return ECMD_OK;
+    }
     const { getobj } = await import('./invent.js');
     const { puton_ok } = await import('./cmd.js');
     const otmp = await getobj('put on', puton_ok, 0);
-    return otmp ? await accessory_or_armor_on(otmp) : ECMD_OK;
+    return otmp ? await accessory_or_armor_on(otmp) : ECMD_CANCEL;
 }
 
 // src/do_wear.c:3259 obj_erode_type() — which erosion applies to obj.

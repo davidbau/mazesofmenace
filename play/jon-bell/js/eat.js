@@ -20,7 +20,7 @@ import { monstone } from './mon.js';
 import { game, wizard, discover } from './gstate.js';
 import { registerStaticReset } from './statics.js';
 import { paranoid_query } from './cmd.js';
-import { BUFSZ, PARANOID_EATING, PARANOID_DIE, LL_LIFESAVE } from './const.js';
+import { BUFSZ, PARANOID_EATING, PARANOID_DIE, LL_LIFESAVE, OVERRIDE_MSGTYPE } from './const.js';
 import { formatkiller } from './topten.js';
 import { obj_stop_timers, fall_asleep } from './timeout.js';
 import { OBJ_FREE, OBJ_INVENT, OBJ_DELETED, SELL_NORMAL, SELL_DONTSELL } from './const.js';
@@ -2921,10 +2921,24 @@ async function _cprefx_petrify(pm) {
     game.svk.killer.format = KILLED_BY;
     /* eatcorpse's pending flavor line must reach the real topline before
      * done()'s Die? query, so route through pline rather than the
-     * command-message channel. */
+     * command-message channel.  This flush is the parked line's OWN vpline
+     * (eat.c:1601 You("consume %s %s."), maybe_cannibal's You("cannibal! ..."))
+     * split into two halves by the eat port: _emit_eat_pline already ran
+     * msgtype_type() over it and set gp.prevmsg (pline.c:281-282) when it
+     * parked the text, so the putmesg half must not re-run the rule — a
+     * `MSGTYPE=norep "You .*"` rc suppressed this pline against the very
+     * prevmsg the parked emission installed, and the death page lost its
+     * first message (df-x38f2f1f234 step 178: C "You consume rotten
+     * chickatrice.  You turn to stone.  But wait...", JS "You turn to
+     * stone. ...").  A hidden or stop-rule match never gets parked at all,
+     * so OVERRIDE_MSGTYPE re-decides nothing C decides twice. */
     const pending = game._resultMessage;
     game._resultMessage = null;
-    if (pending) await pline(pending);
+    if (pending) {
+        const _flush = new String(pending);
+        _flush._plineFlags = OVERRIDE_MSGTYPE;
+        await pline(_flush);
+    }
     await pline('You turn to stone.');
     await done_end(STONING);
     const v = _victual();

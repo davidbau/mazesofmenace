@@ -2530,12 +2530,19 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     }
     /* dat/symbols:524-545 RogueEpyx: every S_*_trap through S_polymorph_trap is
      * \x04, a control byte tty strips to nothing, so the cell keeps its
-     * physical content (as for the object classes above). */
+     * physical content (as for the object classes above).  display.c:2915-2917
+     * colors every GLYPH_CMAP_B trap via cmap_to_roguecolor() (display.c:2708:
+     * S_arrow_trap..S_polymorph_trap CLR_MAGENTA, S_vibrating_square..
+     * S_trapped_chest NO_COLOR). */
     if (rogue_ibm_color() && cls === GLYPHCLS_TRAP
-        && Number.isInteger(trapType) && trapType >= 1 && trapType <= 22) {
-        loc.disp_ttychar = 4;
-        ch = ROGUE_HERO_CH;
-        decgfx = false;
+        && Number.isInteger(trapType) && trapType >= 1 && trapType <= TRAP_GLYPHS.length) {
+        if ((game._gm_use_color ?? game.iflags?.use_color) !== false)
+            color = _cmap_to_roguecolor(49 + trapType - 1);
+        if (trapType <= 22) {
+            loc.disp_ttychar = 4;
+            ch = ROGUE_HERO_CH;
+            decgfx = false;
+        }
     }
     /* C symbols.c:238-240 and display.c:2653: decoded cmap overrides
      * apply with every primary symset, including default ASCII and DEC.
@@ -5678,8 +5685,9 @@ export function docorner_status_row(row, line) {
         if (col >= width) break;
         const forward = /^\x1b\[(\d*)C$/.exec(token);
         if (forward) {
-            const n = Math.min(Number(forward[1] || 1), width - col);
-            out += `\x1b[${n}C`;
+            const full = Number(forward[1] || 1);
+            const n = Math.min(full, width - col);
+            out += (inv && n < full && n < 5) ? ' '.repeat(n) : `\x1b[${n}C`;
             col += n;
         } else {
             if (token.startsWith('\x1b[') && token.endsWith('m')) {
@@ -9554,6 +9562,28 @@ export function anim_frame_info() {
     }
     return { screen: withTopl(text), owed, escScreens };
 }
+/* The cells a one-row --More-- page left on row 0 when it was dismissed by
+ * anything but ESC (more(), topl.c:237-246 neither clears nor docorners it;
+ * _topl_more / com_pager's startup pager record it in _topl_stale_row0).  The
+ * next line redotoplin() writes over it (topl.c:121-139) leaves those cells
+ * under bytes >= 0x80, which patch 006's nomux_putch does not paint.  Null
+ * when no such row stands. */
+export function topl_stale_cells() {
+    if (game._topl_stale_row0 == null) return null;
+    const cells = [];
+    let col = 0, style = '';
+    for (const token of String(game._topl_stale_row0).match(/\x1b\[[0-9;]*[A-Za-z]|[\s\S]/g) || []) {
+        if (token.startsWith('\x1b[')) {
+            if (token.endsWith('C')) col += parseInt(token.slice(2), 10) || 1;
+            else if (token.endsWith('m')) style += token;
+        } else if (token === '\x0e' || token === '\x0f') {
+            style += token;
+        } else {
+            cells[col++] = `${style}${token}\x0f\x1b[0m`;
+        }
+    }
+    return cells;
+}
 function _toplStr(msg, row = 0) {
     let s = String(msg || '');
     const CTRL_BYTE = /\x1b(?!\[[0-9;]*[A-Za-z])|[\x01-\x09\x0b-\x0d\x10-\x1a\x1c-\x1f\x80-\xff]/g;
@@ -9574,9 +9604,19 @@ function _toplStr(msg, row = 0) {
                 cells[col++] = `${style}${token}\x0f\x1b[0m`;
             }
         }
+        /* An unpainted high byte keeps the cell a non-ESC --More-- left on
+         * the row (more(), topl.c:237-246); anything else wiped it. */
+        const stale = (row === 0 && game._topl_show_only !== s && topl_stale_cells()) || [];
         const original = s;
-        s = s.replace(CTRL_BYTE, (c, offset) => (game._topl_show_only === original || c.charCodeAt(0) >= 0x80)
-            ? ' ' : cells[_topl_visualLen(original.slice(0, offset))] || ' ');
+        /* Only the first line written over the stale row keeps its cells:
+         * redotoplin's cl_end() (topl.c:136) clears the rest, and a joined
+         * message is addtopl()ed onto that cleared tail (topl.c:262-267).
+         * Mac macx intel w23g-083 step 89. */
+        const staleEnd = game._topl_joins_src === original && game._topl_joins?.length
+            ? game._topl_joins[0] : Infinity;
+        s = s.replace(CTRL_BYTE, (c, offset) => game._topl_show_only === original ? ' '
+            : c.charCodeAt(0) >= 0x80 ? (offset < staleEnd && stale[_topl_visualLen(original.slice(0, offset))]) || ' '
+            : cells[_topl_visualLen(original.slice(0, offset))] || ' ');
     }
     return s.replace(/ +$/, '').replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
 }
@@ -12150,6 +12190,8 @@ async function _topl_more(committed, dismissMore) {
             display.setCursor(_moreCol, _moreRow);
     };
     _renderMore();
+    /* The physical row this page leaves behind (see _topl_stale_row0 below). */
+    let _moreRow0 = String(game._screen_output || '').split('\n')[0] || '';
     /* C ref: win/tty/getline.c:230-257 xwaitforspace("\033 ") — the key that
      * dismissed the page is `morc`, and it is the RESULT of more(): topl.c more()
      * reads it back for `if (morc == '\033') cw->flags |= WIN_STOP`.  '\n'/'\r'
@@ -12181,12 +12223,22 @@ async function _topl_more(committed, dismissMore) {
             break;
         }
         _renderMore();
+        _moreRow0 = String(game._screen_output || '').split('\n')[0] || '';
         /* C topl.c:230 xwaitforspace() retries without remember_topl().
          * nhgetch already filed this page on its first read; restoring it for
          * another key must not insert another copy into message history. */
         game._topl_history_recall = committed;
     }
     anim_more_dismissed(morc); /* frames C drew after this page are now due */
+    /* topl.c:237-246 more(): a one-row page dismissed by anything but ESC is
+     * neither cleared nor docorner()ed — toplin just becomes EMPTY, and the
+     * next update_topl's redotoplin() (topl.c:121-139) writes the new line
+     * OVER it: home(), putsyms(), cl_end().  A byte >= 0x80 is not painted
+     * (patch 006 nomux_putch drops a negative char), so its cell still shows
+     * this page's character.  ESC clears the row (topl.c:241-245).  Mac macx
+     * intel w23g-011 seg1 step 1: "You remember this level as v\xe6\xc7chmp..."
+     * over "Velkommen ... Valkyrie, welcome back" shows "vlkchmp, uevp". */
+    game._topl_stale_row0 = (morc !== 27 && _moreRow === 0) ? _moreRow0 : null;
     if (_dismissMore)
         game._ttyDismissMore = 0;          /* wintty.c:2844 tty_message_menu */
     /* topl.c:237-240: more() restores every covered map row with docorner,
@@ -14717,8 +14769,12 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
      * --More--) still runs it.  Leaving it to the paint path below skipped it
      * for every swallowed message and deferred its newsym() draws (display rng
      * under Hallucination) past the explosion's rndmonnam() draws. */
-    if (game._topl_win_stop && game.vision_full_recalc && !game._pline_no_vision_recalc)
+    if (game._topl_win_stop && game.vision_full_recalc && !game._pline_no_vision_recalc) {
+        const _urgentSaved = !!game._topl_urgent_next;
+        game._topl_urgent_next = false;
         vision_recalc(0);
+        game._topl_urgent_next = _urgentSaved;
+    }
     if (game._topl_win_stop) {
         /* C pline.c:273-274 flushes before putmesg() samples WIN_STOP in
          * topl.c:257.  Suppressing text still paints pending map/status changes;
@@ -14836,11 +14892,18 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
          * inside the update loop BEFORE notice_all_mons() runs at :856.
          * Only wait when the a11y notices can actually print: an extra await would
          * reorder this message against callers that do not await their plines. */
+        /* pline.c:315-322: URGENT_MESSAGE belongs to THIS vpline; any nested
+         * mention_map/spot_monsters plines emitted during vision_recalc(0)
+         * (vision.c:856 notice_all_mons) are ordinary plines and must not
+         * consume the flag. */
+        const _urgentSaved = !!game._topl_urgent_next;
+        game._topl_urgent_next = false;
         const _mmBefore = game._mentionMapPending;
         const _notices = vision_recalc(0);
         if (game._mentionMapPending && game._mentionMapPending !== _mmBefore)
             await game._mentionMapPending;
         if (_notices && game.a11y?.mon_notices) await _notices;
+        game._topl_urgent_next = _urgentSaved;
     }
     /* pline.c:266-275: putmesg(line) reads gy.you_buf AFTER the recalc; a nested
      * You()-family call that reused (did not regrow) the buffer replaced it. */
@@ -14909,9 +14972,17 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
          * remember_topl() files the NON-EMPTY standing line and DOES reset
          * the walk.  (The adopted arm's prev is already the merged line, so
          * its fit test is that line alone.) */
+        /* An adopted result line was itself plined first, by the replace
+         * arm (update_topl, topl.c:274-280) over whatever gt.toplines held,
+         * so its remember_topl reset cw->maxcol unless gt.toplines was EMPTY
+         * then.  Mac macx arm t23-f-dense-v032 step 47 (msg_window single):
+         * ',' prints "e - 2 green gems." over the standing "You see here 2
+         * green gems.", movemon joins "You smell a dragon!", and ^P recalls
+         * that joined line, not a line two back. */
         game._topl_pline_filed_reset = game._topl_pline_filed_reset === true
             || (adoptedResult
-                ? (prev.length >= TOPL_LIMIT || prev.includes('\n')
+                ? (!game._toplEmptyAfterSuppress
+                   || prev.length >= TOPL_LIMIT || prev.includes('\n')
                    || String(msg).startsWith('You die'))
                 : (prev.length + 2 + String(msg).length >= TOPL_LIMIT
                    || String(msg).startsWith('You die') || prev.includes('\n')));

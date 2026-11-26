@@ -74,7 +74,7 @@ import { is_organic } from './objects.js';
 import { eaten_stat } from './eat.js';
 import { extract_from_minvent } from './steal.js';
 import { m_consume_obj, mondied, wake_nearto, disturb_buried_zombies } from './mon.js';
-import { newcham } from './mon.js';
+import { newcham, angry_guards } from './mon.js';
 import { PROT_FROM_SHAPE_CHANGERS, NC_SHOW_MSG, NO_NC_FLAGS } from './const.js';
 import { tty_display_nhwindow } from './wintty.js';
 import { mon_learns_traps } from './mondata.js';
@@ -117,7 +117,7 @@ import {
     STRAT_ARRIVE, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
     INVIS, STEALTH, AGGRAVATE_MONSTER, CONFLICT, W_ARTI, M_AP_FURNITURE,
     M_AP_OBJECT, NON_PM, IS_DOOR, IS_ALTAR, IRONBARS, isok, SHOPBASE,
-    DISPLACED, HALLUC, SEE_INVIS, D_LOCKED, D_CLOSED, D_TRAPPED, M_AP_MONSTER, M_AP_NOTHING,
+    DISPLACED, HALLUC, SEE_INVIS, D_LOCKED, D_CLOSED, D_TRAPPED, D_WARNED, M_AP_MONSTER, M_AP_NOTHING,
     COLNO, ROWNO, IS_OBSTRUCTED, MFAST, I_SPECIAL,
     NO_TRAP_FLAGS, D_ISOPEN, D_NODOOR, D_BROKEN, DEAF, W_ARMG, STONE_RES,
     MON_OFFMAP, MON_DETACH, MON_MIGRATING, MON_LIMBO,
@@ -297,11 +297,20 @@ async function watch_on_duty(mtmp) {
         && mtmp.mcansee && m_canseeu(mtmp) && !rn2(3)) {
         if (picking_lock(cc) && IS_DOOR(game.level.at(cc.x, cc.y).typ)
             && (game.level.at(cc.x, cc.y).doormask & D_LOCKED)) {
-            if (couldsee(mtmp.mx, mtmp.my))
-                throw new Error('watch_on_duty(): mon_yells()/angry_guards() not ported yet');
+            if (couldsee(mtmp.mx, mtmp.my)) {
+                const lev = game.level.at(cc.x, cc.y);
+                if (lev.flags & D_WARNED) { /* levl[x][y].looted */
+                    await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
+                    /* (void) */ await angry_guards(!!Deaf());
+                } else {
+                    await mon_yells(mtmp, "Hey, stop picking that lock!");
+                    lev.flags |= D_WARNED; /* levl[x][y].looted */
+                }
+                await stop_occupation();
+            }
         } else if (is_digging()) {
             /* chewing, wand/spell of digging are checked elsewhere */
-            watch_dig(mtmp, game.context.digging.pos.x,
+            await watch_dig(mtmp, game.context.digging.pos.x,
                       game.context.digging.pos.y, false);
         }
     }

@@ -144,6 +144,15 @@ export class NethackGame {
         // src/options.c initoptions_init(): seed before reading the rc.
         initRng(this._seed);
         enableRngLog();
+        // Early config pline() uses raw output before game windows exist.
+        // Keep the display for a fresh game and an in-segment restart.
+        if (this._pendingDisplay) {
+            this._display = this._pendingDisplay;
+            this._pendingDisplay = null;
+        }
+        if (this._display)
+            g.nhDisplay = this._display;
+
         const rc = parseNethackrc(this._nethackrc);
         g.rc = rc;
         /* src/options.c optfn_boulder() and initoptions_finish(). The active
@@ -254,15 +263,6 @@ export class NethackGame {
            from roles[]/races[] before any draw depends on them. */
         g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
         g.urace = { adj: 'human' };
-
-        // Install display; keep a handle so an in-segment restart can
-        // rewire the same display into the fresh game object.
-        if (this._pendingDisplay) {
-            this._display = this._pendingDisplay;
-            this._pendingDisplay = null;
-        }
-        if (this._display)
-            g.nhDisplay = this._display;
 
         /* cross-segment persistence: bones, save files, the record file.
            Web-Storage-shaped (getItem/setItem/removeItem). */

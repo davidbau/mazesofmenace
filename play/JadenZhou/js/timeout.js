@@ -44,10 +44,10 @@ import { MAGIC_LAMP as O_MAGIC_LAMP, POT_OIL as O_POT_OIL, BRASS_LANTERN as O_BR
          OIL_LAMP as O_OIL_LAMP, CANDELABRUM_OF_INVOCATION as O_CANDELABRUM_OF_INVOCATION,
          TALLOW_CANDLE as O_TALLOW_CANDLE, WAX_CANDLE as O_WAX_CANDLE } from './objects.js';
 import { rot_organic, rot_corpse } from './dig.js';
-import { revive_mon, zombify_mon, melt_ice_away } from './zap.js';
+import { revive_mon, zombify_mon, melt_ice_away, buzz } from './zap.js';
 import { shrink_glob } from './mkobj.js';
 import { fig_transform } from './apply.js';
-import { pline } from './display.js';
+import { pline, You_hear } from './display.js';
 import {
     FULL_MOON, TIMEOUT, LAST_PROP, STONED, SLIMED, VOMITING, STRANGLED, SICK,
     LEVITATION, PASSES_WALLS, MAGICAL_BREATHING, SLEEPY, FAST, FUMBLING,
@@ -66,7 +66,7 @@ import {
 import { Role_if } from './const.js';
 
 /* C ref: youprop.h -- (H* || E*) for the timeout cases; Blind */
-import { PM_ARCHEOLOGIST } from './monsters.js';
+import { PM_ARCHEOLOGIST, AD_ELEC } from './monsters.js';
 import { FEDORA, LUCKSTONE } from './objects.js';
 import { stone_luck } from './attrib.js';
 import { carrying } from './invent.js';
@@ -80,7 +80,7 @@ import { A_DEX, A_CON, A_STR, NECK, FAINTING, SICK_NONVOMITABLE, M_AP_MONSTER,
          KILLED_BY_AN, ACCESSIBLE, SLEEP_RES } from './const.js';
 import { mons, M1_NOLIMBS, M1_BREATHLESS, S_RODENT, PM_ROCK_MOLE, PM_WOODCHUCK,
          PM_GREEN_SLIME } from './monsters.js';
-import { rn2, d } from './rng.js';
+import { rn2, rn1, d } from './rng.js';
 import { body_part } from './insight.js';
 import { hcolor, rndmonnam } from './do_name.js';
 import { You } from './display.js';
@@ -2225,4 +2225,53 @@ function cleanup_burn(arg, expire_time) {
     obj.lamplit = 0;
 
     /* if (obj->where == OBJ_INVENT) update_inventory() */
+}
+
+// C ref: timeout.c do_storms()
+export async function do_storms() {
+    const g = game;
+    const u = g.u;
+    let nstrike;
+    let x, y;
+    let dirx, diry;
+    let count;
+
+    /* no lightning if not stormy level or too often, even then */
+    if (!g.level.flags.stormy || rn2(8))
+        return;
+
+    /* the number of strikes is 8-log2(nstrike) */
+    for (nstrike = rnd(64); nstrike <= 64; nstrike *= 2) {
+        count = 0;
+        do {
+            x = rnd(P.COLNO - 1);
+            y = rn2(P.ROWNO);
+        } while (++count < 100 && g.level.at(x, y).typ !== P.CLOUD);
+
+        if (count < 100) {
+            dirx = rn2(3) - 1;
+            diry = rn2(3) - 1;
+            if (dirx !== 0 || diry !== 0) {
+                /* BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)): monster LIGHTNING spell */
+                g.buzzer = null; /* unspecified attacker */
+                await buzz(-10 - P.BZ_OFS_AD(AD_ELEC), 8, x, y, dirx, diry);
+            }
+        }
+    }
+
+    if (g.level.at(u.ux, u.uy).typ === P.CLOUD) {
+        /* Inside a cloud during a thunderstorm is deafening. */
+        /* Even if already deaf, we sense the thunder's vibrations. */
+        /* Soundeffect(se_kaboom_boom_boom, 80); */
+        await pline("Kaboom!!!  Boom!!  Boom!!");
+        incr_itimeout(DEAF, rn1(20, 30));
+        g.disp_botl = true;
+        if (!u.uinvulnerable) {
+            await stop_occupation();
+            nomul(-3);
+            g.multi_reason = "hiding from thunderstorm";
+            g.nomovemsg = null;
+        }
+    } else
+        await You_hear("a rumbling noise.");
 }

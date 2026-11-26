@@ -144,7 +144,7 @@ import { add_to_minv } from './dokick.js'; // relocate-fns
 import { shieldeff as shieldeff_real } from './display.js'; // relocate-fns
 import { u_locomotion } from './hack.js'; // relocate-fns
 import { AT_ENGL, CORPSTAT_HISTORIC, SUPPRESS_HALLUCINATION, SUPPRESS_INVISIBLE, SUPPRESS_IT, engulfing_u as engulfing_u_const } from './const.js'; // relocate-fns
-import { glyph_is_invisible_at, topl_force_break_after as topl_force_break_after_qm } from './display.js'; // relocate-fns
+import { glyph_is_invisible_at, topl_force_break_now, capture_flushed_cells } from './display.js'; // relocate-fns
 import { flooreffects as flooreffects_dm } from './do.js'; // relocate-fns
 import { Amonnam, Mgender as Mgender_dm, oname as oname_dm } from './do_name.js'; // relocate-fns
 import { BOULDER_OTYP, COIN_CLASS_, CORPSE_OTYP, LARGEST_INT, M1_AMORPHOUS_DM, M1_FLY_DM, M1_NOHANDS, M2_ROCKTHROW, MONS_CWT, MONS_MSIZE, MZ_MEDIUM, MZ_TINY, NC_SHOW_MSG_DG, SILVER_DM, STATUE_OTYP, SUPPRESS_SADDLE_DM, S_GOLEM, S_NYMPH, _MONS, _has_mgivenname_dm, is_rider_dm, ismnum_js, obj_weight, stackobj_dm } from './dogmove.js'; // relocate-fns
@@ -5129,7 +5129,21 @@ export async function vamp_stone(mtmp) {
             const xy = enexto_out(mtmp.mx, mtmp.my, permonstTemplate(mndx));
             if (xy) await rloc_to(mtmp, xy.x, xy.y);
         }
-        if (canspotmon(mtmp)) { pline_mon(mtmp, '%s!', buf); topl_force_break_after_qm(`${buf}!`); }
+        /* C mon.c:3805-3807 — display_nhwindow(WIN_MESSAGE, FALSE) pages the
+         * lapidifying line HERE, before newcham() reverts the shape, so the
+         * --More-- frame freezes the vampshifter's OLD glyph (tty more() does
+         * not flush the gbuf; the last flush is pline.c:273's own).  The break
+         * used to be registered on the bare `buf` text, which misses
+         * pline_mon's accessiblemsg msg_loc prefix ("(south): ", pline.c:138)
+         * and so never matched the committed page; the page fell back to the
+         * width-rule frame taken after newcham had already painted the
+         * reverted shape (df-x424db356c0 step 94: C "B" vs JS "V").
+         * topl_force_break_now registers the segment of the STANDING topline,
+         * prefix and all, frozen from the last flush like C's more(). */
+        if (canspotmon(mtmp)) {
+            pline_mon(mtmp, '%s!', buf);
+            topl_force_break_now(false, capture_flushed_cells());
+        }
         await newcham(mtmp, mndx, NO_NC_FLAGS);
         mtmp.cham = mtmp.data.pmidx === mndx ? NON_PM : mndx;
         if (canspotmon(mtmp)) pline_mon(mtmp, '%s rises from the %s with renewed agility!', Amonnam(mtmp), surface(mtmp.mx, mtmp.my));

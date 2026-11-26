@@ -1505,7 +1505,7 @@ export async function tele_restrict(mon) {
 }
 
 // C ref: teleport.c teleport_pet()
-function teleport_pet(mtmp, force_it) {
+export function teleport_pet(mtmp, force_it) {
     if (mtmp === game.u.usteed)
         return false;
 

@@ -44,6 +44,7 @@ import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
          MENU_ITEMFLAGS_SKIPINVERT, MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE,
          MENU_SEARCH, PICK_ONE, PICK_ANY, GOLD_SYM, ROWNO, COLNO } from './../const.js';
 import { pmatchi } from './../hacklib.js';
+import { map_menu_cmd } from './../options.js';
 import { get_menu_coloring } from './../windows.js';
 import { term_start_color as tty_color } from './termcap.js';
 import { notice_all_mons_flush } from './../hack.js';
@@ -920,7 +921,7 @@ export async function tty_select_menu(window, how) {
     let finished = !cw.mlist || cw.data.length > 0;
     while (!finished) {
         const c = await nhgetch();
-        const morc = String.fromCharCode(c);
+        let morc = String.fromCharCode(c);
         const explicitItems = menu_page_items(window, cw.curr_page);
         const explicitIndex = explicitItems.findIndex(
             item => item.identifier && item.selector === morc);
@@ -937,9 +938,14 @@ export async function tty_select_menu(window, how) {
                   || /^[0-9]$/.test(morc) || morc === '\x1b'
                   || morc === '\n' || morc === '\r' || c === 0
                   || '^|><.-@,\\~:'.includes(morc)
+                  || game.mapped_menu_cmds.includes(morc)
                   || (dm && morc === dm) || (dm === '\n' && morc === '\r')))
                 continue;
         }
+
+        // win/tty/wintty.c:1555, explicit choices precede one alias lookup.
+        if (explicitIndex < 0 && !(how === PICK_ONE && gacc.includes(morc)))
+            morc = map_menu_cmd(morc);
 
         if (/^[0-9]$/.test(morc) && explicitIndex < 0
             && !(!counting && gacc.includes(morc))) {
@@ -1223,10 +1229,11 @@ export function tty_dismiss_nhwindow(window) {
 export function reset_windows() {
     windows = [];
     nextWinId = 1;
+    base.curx = base.cury = 0;
 }
 
 // win/tty/wintty.c tty_raw_print() — text straight to the terminal, used
-// after the game windows are gone (topten's wizard-mode notice).
+// before the windows exist or after they are gone.
 export function tty_raw_print(str) {
     tty_putstr_base(str ?? '');
 }

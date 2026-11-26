@@ -2015,6 +2015,20 @@ export function number_leashed() {
     return i;
 }
 
+// C ref: apply.c o_unleash()
+/* otmp is about to be destroyed or stolen */
+export function o_unleash(otmp) {
+    let mtmp;
+
+    for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon)
+        if (mtmp.m_id === otmp.leashmon) {
+            mtmp.mleashed = 0;
+            break;
+        }
+    otmp.leashmon = 0;
+    /* update_inventory(); -- no perm_invent window */
+}
+
 // C ref: apply.c leashable()
 function leashable(mtmp) {
     return (mtmp.data !== mons_ls[PM_LONG_WORM_LS] /* mtmp->mnum */

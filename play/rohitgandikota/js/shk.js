@@ -4872,6 +4872,105 @@ export function costly_adjacent(shkp, x, y) {
     return (!!game.level.at(x, y).edge || (x === eshkp.shk.x && y === eshkp.shk.y));
 }
 
+// src/shk.c:5386 shop_object(), goods the keeper can describe when chatting.
+export function shop_object(x, y) {
+    const rooms = in_rooms(x, y, SHOPBASE);
+    const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : NO_ROOM);
+    if (!shkp || !inhishop(shkp))
+        return null;
+
+    let otmp;
+    for (otmp = game.level.objectAt(x, y); otmp; otmp = otmp.nexthere)
+        if (otmp.oclass !== OCLASSES.COIN_CLASS)
+            break;
+    /* no_charge goods still qualify for a quote. */
+    return (otmp && costly_spot(x, y) && shkp.mpeaceful && !muteshk(shkp))
+        ? otmp : null;
+}
+
+// src/shk.c:5406 price_quote(), quote every non-coin object in the local pile.
+export async function price_quote(first_obj) {
+    let buf, price, cost = 0, cnt = 0, contentsonly = false;
+    const shkp = shop_keeper(inside_shop(game.u.ux, game.u.uy));
+    if (!shkp || !inhishop(shkp))
+        return;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_putstr(tmpwin, 0, 'Fine goods for sale:');
+    tty_putstr(tmpwin, 0, '');
+    for (let otmp = first_obj; otmp; otmp = otmp.nexthere) {
+        if (otmp.oclass === OCLASSES.COIN_CLASS)
+            continue;
+        cost = (otmp.no_charge || otmp === game.u.uball || otmp === game.u.uchain)
+            ? 0 : get_cost(otmp, shkp);
+        contentsonly = !cost;
+        if (Has_contents(otmp))
+            cost += contained_cost(otmp, shkp, 0, false, false);
+        if (otmp.globby)
+            cost *= get_pricing_units(otmp);
+        if (!cost) {
+            price = 'no charge';
+            contentsonly = false;
+        } else {
+            price = `${cost} ${currency(cost)}${otmp.quan > 1 ? ' each' : ''}`;
+        }
+        buf = `${contentsonly ? 'the contents of ' : ''}${doname(otmp)}, ${price}`;
+        tty_putstr(tmpwin, 0, buf);
+        cnt++;
+    }
+    if (cnt > 1) {
+        await tty_display_nhwindow(tmpwin);
+    } else if (cnt === 1) {
+        if (!cost) {
+            /* SetVoice(shkp, 0, 80, 0); */
+            await verbalize(`${upstart(buf)}!`);
+        } else {
+            buf = `${contentsonly ? 'the contents of ' : ''}${doname(first_obj)}`;
+            /* SetVoice(shkp, 0, 80, 0); */
+            await verbalize(`${upstart(buf)}, price ${cost} ${currency(cost)}${
+                first_obj.quan > 1 ? ' each' : ''}${
+                contentsonly ? '.' : shk_embellish(first_obj, cost)}`);
+        }
+    }
+    await tty_destroy_nhwindow(tmpwin);
+}
+
+// src/shk.c:5468 shk_embellish(), optional shopkeeper sales language.
+function shk_embellish(itm, cost) {
+    if (!rn2(3)) {
+        let o, choice = rn2(5);
+        if (choice === 0)
+            choice = cost < 100 ? 1 : cost < 500 ? 2 : 3;
+        switch (choice) {
+        case 4:
+            if (cost < 10)
+                break;
+            else
+                o = itm.oclass;
+            if (o === OCLASSES.FOOD_CLASS)
+                return ", gourmets' delight!";
+            if (game.objects[itm.otyp].oc_name_known
+                ? game.objects[itm.otyp].oc_magic
+                : (o === OCLASSES.AMULET_CLASS || o === OCLASSES.RING_CLASS
+                   || o === OCLASSES.WAND_CLASS || o === OCLASSES.POTION_CLASS
+                   || o === OCLASSES.SCROLL_CLASS || o === OCLASSES.SPBOOK_CLASS))
+                return ', painstakingly developed!';
+            return ', superb craftsmanship!';
+        case 3:
+            return ', finest quality.';
+        case 2:
+            return ', an excellent choice.';
+        case 1:
+            return ', a real bargain.';
+        default:
+            break;
+        }
+    } else if (itm.oartifact) {
+        return ', one of a kind!';
+    }
+    return '.';
+}
+
 // src/shk.c:6101 use_unpaid_trapobj(); setting an unpaid trap buys it
 export async function use_unpaid_trapobj(otmp, x, y) {
     if (otmp.unpaid) {

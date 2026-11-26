@@ -1137,6 +1137,14 @@ export const TELEDS_NO_FLAGS = 0, TELEDS_ALLOW_DRAG = 1, TELEDS_TELEPORT = 2;
 export async function scrolltele(scroll) {
     const cc = { x: 0, y: 0 };
 
+    /* Disable teleportation in stronghold && Vlad's Tower */
+    if (noteleport_level(game.youmonst) && !game.wizard) {
+        await pline('A mysterious force prevents you from teleporting!');
+        if (scroll)
+            learnscroll(scroll); /* this is obviously a teleport scroll */
+        return;
+    }
+
     if ((game.u.uhave?.amulet || On_W_tower_level(game.u.uz)) && !rn2(3)) {
         await You_feel('disoriented for a moment.');
         if (!game.wizard) return;

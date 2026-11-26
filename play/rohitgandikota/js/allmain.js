@@ -5,7 +5,7 @@
 
 import { VANQ_MLVL_MNDX, FROMOUTSIDE, CQ_CANNED } from './const.js';
 import { POLY_NOFLAGS } from './const.js';
-import { set_uasmon } from './polyself.js';
+import { set_uasmon, ugenocided, udeadinside } from './polyself.js';
 import { do_vicinity_map } from './detect.js';
 import { game } from './gstate.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
@@ -65,7 +65,7 @@ import { init_uhunger } from './eat.js';
 import { settrack, initrack } from './track.js';
 import { phase_of_the_moon, friday_13th, night, getnow_seconds } from './calendar.js';
 import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
-import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
+import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, A_ORIGINAL, LL_ACHIEVE, In_endgame,
          FULL_MOON, NEW_MOON, COLNO, A_CON, A_WIS, A_INT, MOD_ENCUMBER,
          UNENCUMBERED, SLT_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, A_DEX,
          Upolyd, Is_waterlevel, Is_airlevel, FROMFORM, TT_LAVA, NON_PM, RLOC_NOMSG }
@@ -76,8 +76,8 @@ import { clear_bypasses } from './worn.js';
 import { dobjsfree } from './mkobj.js';
 import { lookaround, end_running, unmul, nomul,
          monster_nearby, in_rooms, runmode_delay_output, check_special_room } from './hack.js';
-import { deferred_goto } from './do.js';
-import { You } from './pline.js';
+import { deferred_goto, hellish_smoke_mesg } from './do.js';
+import { You, livelog_printf } from './pline.js';
 import {
     docrt, cls, bot, timebot, flush_screen, pline, see_monsters, see_objects,
     see_traps, swallowed, newsym,
@@ -88,7 +88,7 @@ import { Glib, Hallucination, Teleportation, Underwater, Blind, Unblind_telepat,
          Breathless, Regeneration, Sleepy } from './youprop.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
-import { init_dungeons } from './dungeon.js';
+import { init_dungeons, print_level_annotation } from './dungeon.js';
 import { role_init, str2role, str2align, str2race, str2gend, roles, races,
          Hello, align_str } from './role.js';
 import { aligns, genders } from './role_data.js';
@@ -248,19 +248,7 @@ export async function newgame() {
         const { dorecover } = await import('./save.js');
         if (await dorecover()) {
             await docrt();
-            /* src/allmain.c:914 welcome(FALSE) — align and gender words
-               appear only when changed since chargen; neither can change
-               yet, so the greeting is race + role. */
-            {
-                const currentgend = g.flags.female ? 1 : 0;
-                const role_name = (currentgend && g.urole.name.f)
-                    ? g.urole.name.f : g.urole.name.m;
-                await pline(`${Hello(null)} ${g.plname}, the ${g.urace.adj} `
-                            + `${role_name}, welcome back to NetHack!`);
-            }
-            // src/allmain.c:927 welcome(FALSE), remind after the greeting.
-            const { print_level_annotation } = await import('./dungeon.js');
-            await print_level_annotation();
+            await welcome(false);
             await check_special_room(false);
             return true;
         }
@@ -523,29 +511,7 @@ export async function newgame() {
         save_engravings();
     }
 
-    // src/allmain.c welcome() — the new-game branch. The alignment, the race
-    // adjective and the role name were all hardcoded here ("neutral", "human",
-    // and an unconditional "Aloha", which is the TOURIST greeting), so this
-    // line was wrong in every session that was not a neutral human Tourist.
-    //
-    // The gender word is conditional: C prints it only when the role has no
-    // separate female name AND allows both genders, so a Valkyrie or a
-    // Priestess does not get one.
-    {
-        const currentgend = g.flags.female ? 1 : 0;
-        let buf = ` ${align_str(g.u.ualignbase[A_CURRENT])}`;
-        if (!g.urole.name.f
-            && (g.urole.allow & ROLE_GENDMASK) === (ROLE_MALE | ROLE_FEMALE))
-            buf += ` ${genders[currentgend].adj}`;
-        buf += ` ${g.urace.adj} `
-             + ((currentgend && g.urole.name.f) ? g.urole.name.f
-                                                : g.urole.name.m);
-        await pline(`${Hello(null)} ${g.plname}, welcome to NetHack! `
-                    + ` You are a${buf}.`);
-        /* src/allmain.c:920 — guarantee the 'major' log is never empty */
-        const { livelog_add } = await import('./pline.js');
-        livelog_add(`${g.plname} the${buf} entered the dungeon`);
-    }
+    await welcome(true);
     /* src/allmain.c:840 — useful data now exists; impossible() adds its
        "Saving and reloading may fix this problem" clause from here on */
     (g.program_state ||= {}).something_worth_saving =
@@ -558,6 +524,44 @@ export async function newgame() {
     await notice_all_mons_flush();
 
     return false;
+}
+
+// src/allmain.c:854 welcome()
+export async function welcome(new_game) {
+    const currentgend = (Upolyd(game.u) ? game.u.mfemale : game.flags.female) ? 1 : 0;
+    const adrift = game.u.ualign.type !== game.u.ualignbase[A_CURRENT];
+    // The shipped nhcore start/restore callbacks have no active body.
+
+    if (!new_game && Upolyd(game.u) && ugenocided()) {
+        await pline(`You're back, but you still feel ${udeadinside()} inside.`);
+        return;
+    }
+
+    if (Hallucination())
+        await pline('NetHack is filmed in front of an undead studio audience.');
+
+    let buf = '';
+    if (new_game || game.u.ualignbase[A_ORIGINAL] !== game.u.ualignbase[A_CURRENT] || adrift)
+        buf += ` ${adrift ? 'adrift ' : ''}${align_str(adrift
+            ? game.u.ualign.type : game.u.ualignbase[A_CURRENT])}`;
+    if (!game.urole.name.f
+        && (new_game
+            ? (game.urole.allow & ROLE_GENDMASK) === (ROLE_MALE | ROLE_FEMALE)
+            : currentgend !== game.flags.initgend))
+        buf += ` ${genders[currentgend].adj}`;
+    buf += ` ${game.urace.adj} `
+        + ((currentgend && game.urole.name.f) ? game.urole.name.f : game.urole.name.m);
+
+    await pline(new_game
+        ? `${Hello(null)} ${game.plname}, welcome to NetHack!  You are a${buf}.`
+        : `${Hello(null)} ${game.plname}, the${buf}, welcome back to NetHack!`);
+
+    if (new_game) {
+        livelog_printf(LL_ACHIEVE, `${game.plname} the${buf} entered the dungeon`);
+    } else {
+        await hellish_smoke_mesg();
+        await print_level_annotation();
+    }
 }
 
 // src/allmain.c:118 u_calc_moveamt()

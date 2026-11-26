@@ -89,23 +89,6 @@ export function inv_weight_raw() {
 
 
 
-/* The SYNCHRONOUS entry point onto the same body.
- *
- * C's encumber_msg() is an ordinary void function and half its call sites are
- * in synchronous C code — attrib.c:516 exercise() is one, and exercise() is
- * reached from 325 sites in js/, none of which is async.  Nothing in the body
- * below awaits: pline() (js/display.js:6157) is declared `async` but contains
- * no `await` anywhere between its `{` and its `}`, so it runs to completion
- * synchronously and only its (already-resolved) promise is deferred.  Calling
- * it unawaited therefore leaves the topline, `_prevmsg` and the message ring
- * in exactly the state `await pline(...)` would, and — because the statements
- * after it stay in this same synchronous run — `disp.botl` and `u._oldcap`
- * are still updated before control returns to the caller.
- *
- * This is ONE body with two entry points on purpose: the seven hand-derived
- * copies of this message table that already exist in js/ (cmd.js
- * _encumber_msg_text, wizcmds.js _wish_encumber_text, potion.js:3036 ...) are
- * the failure mode a second copy would join. */
 /* C pickup.c:1982/2003 — You("%s under your ...", stagger(gy.youmonst.data, "stagger")). */
 export function stagger_verb() {
     const yd = game.youmonst && game.youmonst.data;
@@ -114,40 +97,46 @@ export function stagger_verb() {
 
 export function encumber_msg_sync() {
     const u = game.u;
-    if (!u) return;
+    if (!u) return null;
     const oldcap = u._oldcap | 0;
     const newcap = near_capacity();
-    let msg = null;
+    /* C pickup.c:1985-2013: the %-carrying arms (:1991, :1995, :2012) format
+     * through vpline's pbuf (pline.c:196-206) and are IMMUNE to the you_buf
+     * rewrite; only the %-free arms (:1985, :1988, :2003, :2006, :2009)
+     * compose into gy.you_buf (pline.c:192-194), where a nested notice_mon
+     * You("%s %s.") clobbers them — pre-formatting the string and routing it
+     * through you_buf anyway printed the raw "You %s %s." (df-x63b74a9e2e
+     * step 124). */
+    let msg = null, argFmt = false;
     if (oldcap < newcap) {
         switch (newcap) {
         case 1: msg = 'Your movements are slowed slightly because of your load.'; break;
         case 2: msg = 'You rebalance your load.  Movement is difficult.'; break;
-        case 3: msg = `You ${stagger_verb()} under your heavy load.  Movement is very hard.`; break;
-        default: msg = `You ${newcap === 4 ? 'can barely' : "can't even"} move a handspan with this load!`; break;
+        case 3: msg = `You ${stagger_verb()} under your heavy load.  Movement is very hard.`; argFmt = true; break;
+        default: msg = `You ${newcap === 4 ? 'can barely' : "can't even"} move a handspan with this load!`; argFmt = true; break;
         }
     } else if (oldcap > newcap) {
         switch (newcap) {
         case 0: msg = 'Your movements are now unencumbered.'; break;
         case 1: msg = 'Your movements are only slowed slightly by your load.'; break;
         case 2: msg = 'You rebalance your load.  Movement is still difficult.'; break;
-        case 3: msg = `You ${stagger_verb()} under your load.  Movement is still very hard.`; break;
+        case 3: msg = `You ${stagger_verb()} under your load.  Movement is still very hard.`; argFmt = true; break;
         }
     }
+    let pending = null;
     if (msg) {
         game._encumber_pline = true;
-        /* C pickup.c:1971-2016 uses Your()/You() with %-free text for most arms,
-         * which vpline() uses IN PLACE in gy.you_buf (pline.c:192-194); a
-         * nested notice_mon You("%s %s.") from vision_recalc can rewrite it. */
         let out = msg;
-        if (!msg.includes('%')) {
+        if (!argFmt) {
             if (msg.startsWith('Your ')) out = you_buf_message('Your ', msg.slice(5));
             else if (msg.startsWith('You ')) out = you_buf_message('You ', msg.slice(4));
         }
-        try { pline(out); } finally { game._encumber_pline = false; }
+        try { pending = pline(out); } finally { game._encumber_pline = false; }
     }
     // C pickup.c:1999,2016: both changes flag status, even the silent 5 -> 4.
     if (oldcap !== newcap) {
         if (game.disp) game.disp.botl = true;
     }
     u._oldcap = newcap;
+    return pending;
 }

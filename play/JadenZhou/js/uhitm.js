@@ -1900,7 +1900,7 @@ async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
                 return;
         }
         /* adjattrib gives dunce cap message when appropriate */
-        await adjattrib(A_INT, -rnd(2), false);
+        await adjattrib(A_INT, -rnd(2), 0 /* FALSE */);
         if (!rn2(5)) {
             await losespells();
             game.skipdrin = true;

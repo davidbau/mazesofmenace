@@ -4620,6 +4620,14 @@ export async function doprev_message(liveTopline) {
          * custom S_unexplored paint stays erased under the history window. */
         docorner_blank_utf8_captures(WIN_COL - 1, endRow + 1);
         docorner_status_rows(WIN_COL - 1, endRow + 1);
+        /* row_refresh() reprinted map y=20 over status row 1 from offx
+         * (wintty.c:3684-3710); the botlx bot() below rewrites only the
+         * status text and render_status cl_end()s only when finalx shrank
+         * (wintty.c:5251-5256), so the map tail past the text survives — as
+         * for a dismissed corner menu (_display_pickinv_window).  Mac macx2
+         * arm t24-f-dense-v047 step 100: "...Ch:9" + map "qqvqqj". */
+        if (endRow + 1 >= 22 && _threeStatusLines())
+            status_r1_docorner(Math.max(1, WIN_COL - 1), true);
     }
     if (WIN_COL === 0) {
         /* offx == 0, offy == 0: erase_menu_or_text's docrt() arm (wintty.c:978);
@@ -4627,7 +4635,11 @@ export async function doprev_message(liveTopline) {
         await docrt_flags(0);
         if (g.disp) g.disp.botlx = 1;
         await bot();
-    } else if (endRow + 1 >= 22) {
+    } else if (endRow + 1 >= (_threeStatusLines() ? 21 : 22)) {
+        /* `ymax >= wins[WIN_STATUS]->offy`: with statuslines:3 the status
+         * window starts at row 21 (wintty.c:4289-4298), so a window down to
+         * row 20 already wrecks it.  Mac macx arm t23-f-dense-v011 step 101:
+         * a reversed ^P history down to row 20 over Juiblex's swamp. */
         if (g.disp) g.disp.botlx = 1;
         await bot();
     }
@@ -6503,7 +6515,10 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
         if (itemKey >= 48 /* '0' */ && itemKey <= 57 /* '9' */) {
             if (!((ctrlflags | 0) & GETOBJ_ALLOWCNT)) {
                 /* C topl.c:209-210 more() returns under iflags.debug_fuzzer: no page. */
-                if (g.iflags?.debug_fuzzer) await pline('No count allowed with this command.');
+                /* pline.c:246-262: a MSGTYPE hide/norep rule drops it unpaged.
+                 * Mac macx2 arm t24-a-regex-v021 (MSGTYPE=hide "x{0,255}"). */
+                if (g.iflags?.debug_fuzzer || msgtype_suppressed('No count allowed with this command.'))
+                    await pline('No count allowed with this command.');
                 else await force_more('No count allowed with this command.');
                 hadRetry = true;
                 /* C topl.c:394 TOPLINE_SPECIAL_PROMPT: the re-prompt hard-wraps too. */
@@ -13293,7 +13308,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         // C leaves standing on the redrawn topline.
         game._pending_message = '';
         await docrt();
-        game.context.move = 0;
+        outcome.value = _rhack_cmd_move(ECMD_OK);
     }
         return true;
     case "dotelecmd": {
@@ -13420,8 +13435,11 @@ async function dispatch_command(command, outcome = {}, queued = false) {
              * through input.storage (js/storage.js), so a segment that runs
              * with no storage handle takes C's `else docrt()` arm instead. */
             if (!await dosave0()) {
-                /* C save.c:67 — dosave0() failed; repaint and stay in play. */
-                await docrt();
+                /* C save.c:67 — dosave0() failed; repaint and stay in play.
+                 * docrt() -> cls() pages the standing "Cannot open save file."
+                 * first (display.c:2196 display_nhwindow(WIN_MESSAGE) ->
+                 * wintty.c more()). */
+                await docrt(true);
             } else {
                 /* C save.c:57-65 — dosave0() succeeded. */
                 (game.program_state ||= {}).savefile_completed =

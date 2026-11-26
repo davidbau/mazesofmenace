@@ -18,7 +18,7 @@ import { objects, TOOL_CLASS } from './objects.js';
 import { G_UNIQ, M1_MINDLESS, M1_BREATHLESS, M1_NOHEAD, MZ_SMALL, MS_SILENT,
          MS_BUZZ, S_EEL } from './monsters.js';
 import { STUNNED, CONFUSION, DEAF, STRANGLED, UNCHANGING, STRAT_WAITMASK,
-         NOTELL, A_DEX, A_WIS, ECMD_OK, ECMD_TIME } from './const.js';
+         NOTELL, A_DEX, A_WIS, ECMD_OK, ECMD_TIME, Never_mind } from './const.js';
 import {
     Stunned, Confusion, Deaf, Strangled, Unchanging, Underwater, Hallucination
 } from './youprop.js';
@@ -279,8 +279,11 @@ export async function do_play_instrument(instr) {
     if (instr.otyp !== O.LEATHER_DRUM && instr.otyp !== O.DRUM_OF_EARTHQUAKE
         && !(Stunned() || Confusion() || Hallucination())) {
         c = await tty_yn_function("Improvise?", "ynq", 'q'); /* ynq() */
-        if (c === 'q')
-            return ECMD_OK; /* nevermind */
+        if (c === 'q') {
+            /* goto nevermind; */
+            await pline(Never_mind);
+            return ECMD_OK;
+        }
     }
 
     if (c !== 'n')

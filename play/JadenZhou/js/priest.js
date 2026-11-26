@@ -51,6 +51,8 @@ import { body_part } from './insight.js';
 import { record_achievement } from './do.js';
 import { ACH_TMPL } from './const.js';
 import { Invis, Displaced, Conflict, Deaf, Hallucination } from './youprop.js';
+import { AM_MASK } from './const.js';
+import { wakeup, setmangry } from './mon.js';
 
 // C ref: priest.c ALGN_SINNED, ALGN_DEVOUT
 const ALGN_SINNED = (-4); /* worse than strayed (-1..-3) */
@@ -340,6 +342,40 @@ export function findpriest(roomno) {
             return mtmp;
     }
     return null;
+}
+
+// C ref: priest.c angry_priest()
+export async function angry_priest() {
+    let priest;
+    let lev;
+
+    if ((priest = findpriest(temple_occupied(game.u.urooms || ''))) !== null) {
+        const eprip = priest.epri;
+
+        await wakeup(priest, false);
+        await setmangry(priest, false);
+        /*
+         * If the altar has been destroyed or converted, let the
+         * priest run loose.
+         * (When it's just a conversion and there happens to be
+         * a fresh corpse nearby, the priest ought to have an
+         * opportunity to try converting it back; maybe someday...)
+         */
+        lev = game.level.at(eprip.shrpos.x, eprip.shrpos.y);
+        if (!IS_ALTAR(lev.typ)
+            || (Amask2align(lev.altarmask & AM_MASK) !== eprip.shralign)) {
+            if (!priest.emin)
+                priest.emin = {}; /* newemin(priest) */
+            priest.ispriest = 0; /* now a roaming minion */
+            priest.isminion = 1;
+            priest.emin.min_align = eprip.shralign;
+            priest.emin.renegade = false;
+            /* discard priest's memory of his former shrine;
+               if we ever implement the re-conversion mentioned
+               above, this will need to be removed */
+            priest.epri = undefined; /* free_epri(priest) */
+        }
+    }
 }
 
 

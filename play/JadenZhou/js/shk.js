@@ -138,6 +138,14 @@ import { stop_occupation as stop_occupation_sk } from './allmain.js';
 import { SHOPBASE as SHOPBASE_FR } from './const.js';
 import { remove_worn_item } from './steal.js';
 import { unleash_all } from './trap.js';
+import { locomotion as locomotion_sd } from './trap.js';
+import { PM_KNIGHT as PM_KNIGHT_SD, MS_HUMANOID as MS_HUMANOID_SD } from './monsters.js';
+import { is_silent as is_silent_sd } from './mondata.js';
+import { TT_PIT as TT_PIT_SD, W_SWAPWEP as W_SWAPWEP_SD,
+         W_QUIVER as W_QUIVER_SD } from './const.js';
+import { LEASH as LEASH_SD } from './objects.js';
+import { setnotworn as setnotworn_sd } from './worn.js';
+import { makeplural as makeplural_sd } from './objnam.js';
 import { drop_upon_death } from './bones.js';
 import { impossible } from './hack.js';
 import { dealloc_obj } from './mkobj.js';
@@ -1325,6 +1333,92 @@ export async function after_shk_move(shkp) {
 /* for use in levl_follower (mondata.c) */
 export function is_fshk(mtmp) {
     return !!(mtmp.isshk && mtmp.mextra.eshk.following);
+}
+
+// C ref: shk.c shopdig()
+/* You are digging in the shop. */
+export async function shopdig(fall) {
+    const u = game.u;
+    const shkp = shop_keeper((u.ushops || '').charCodeAt(0) || 0);
+    let lang;
+    let grabs = "grabs";
+
+    if (!shkp)
+        return;
+    if (!inhishop(shkp)) {
+        if (Role_if(PM_KNIGHT_SD)) {
+            await You_feel_sk("like a common thief.");
+            adjalign(-Math.sign(u.ualign.type));
+        }
+        return;
+    }
+    /* 0 == can't speak, 1 == makes animal noises, 2 == speaks */
+    lang = 0;
+    if (helpless(shkp) || is_silent_sd(shkp.data))
+        ; /* lang stays 0 */
+    else if (shkp.data.msound <= MS_ANIMAL)
+        lang = 1;
+    else if (shkp.data.msound >= MS_HUMANOID_SD)
+        lang = 2;
+
+    if (!fall) {
+        if (lang === 2) {
+            if (!Deaf() && !muteshk(shkp)) {
+                /* SetVoice(shkp, 0, 80, 0) */
+                if (u.utraptype === TT_PIT_SD) {
+                    await verbalize(`Be careful, ${
+                        game.flags.female ? "madam" : "sir"}, or you might fall through the floor.`);
+                } else {
+                    await verbalize(`${
+                        game.flags.female ? "Madam" : "Sir"}, do not damage the floor here!`);
+                }
+            }
+        }
+        if (Role_if(PM_KNIGHT_SD)) {
+            await You_feel_sk("like a common thief.");
+            adjalign(-Math.sign(u.ualign.type));
+        }
+    } else if (!um_dist(shkp.mx, shkp.my, 5)
+               && !helpless(shkp)
+               && (shkp.mextra.eshk.billct || shkp.mextra.eshk.debit)) {
+        let obj, obj2;
+
+        if (nolimbs(shkp.data)) {
+            grabs = "knocks off";
+            /* #if 0: the shopkeeper cursing his inability to grab your
+               backpack isn't what happens, for balance reasons */
+        }
+        if (!m_next2u(shkp)) {
+            await mnexto(shkp, RLOC_MSG);
+            /* for some reason the shopkeeper can't come next to you */
+            if (!m_next2u(shkp)) {
+                if (lang === 2)
+                    await pline(`${Shknam(shkp)} curses you in anger and frustration!`);
+                else if (lang === 1)
+                    await growl(shkp);
+                rile_shk(shkp);
+                return;
+            } else
+                await pline(`${Shknam(shkp)} ${
+                    makeplural_sd(locomotion_sd(shkp.data, "leap"))}, and ${
+                    grabs} your backpack!`);
+        } else
+            await pline(`${Shknam(shkp)} ${grabs} your backpack!`);
+
+        for (obj = game.invent; obj; obj = obj2) {
+            obj2 = obj.nobj;
+            if ((obj.owornmask & ~(W_SWAPWEP_SD | W_QUIVER_SD)) !== 0
+                || (obj === game.uswapwep && u.twoweap)
+                || (obj.otyp === LEASH_SD && obj.leashmon))
+                continue;
+            if (obj === game.current_wand)
+                continue;
+            setnotworn_sd(obj);
+            freeinv(obj);
+            subfrombill(obj, shkp);
+            add_to_minv(shkp, obj); /* may free obj */
+        }
+    }
 }
 
 // C ref: shk.c getcad()

@@ -18,6 +18,10 @@ import {
     tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
     tty_add_menu_str, tty_end_menu, tty_display_nhwindow, tty_select_menu, tty_wait_synch } from './tty/wintty.js';
 import {
+    MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE, MENU_FIRST_PAGE, MENU_LAST_PAGE,
+    MENU_SELECT_ALL, MENU_UNSELECT_ALL, MENU_INVERT_ALL, MENU_SELECT_PAGE,
+    MENU_UNSELECT_PAGE, MENU_INVERT_PAGE, MENU_SEARCH, MENU_SHIFT_RIGHT,
+    MENU_SHIFT_LEFT, MAX_MENU_MAPPED_CMDS,
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT,
     MENU_ITEMFLAGS_SKIPMENUCOLORS, MENU_BEHAVE_STANDARD, BUFSZ, QBUFSZ,
     PICK_NONE, PICK_ONE, PICK_ANY, ECMD_OK,
@@ -49,7 +53,7 @@ import { vision_recalc } from './vision.js';
 import { reassign, update_inventory, inv_order } from './invent.js';
 import { def_oc_syms } from './drawing_data.js';
 import { choose_disco_sort, get_sortdisco } from './o_init.js';
-import { mungspaces, strNsubst, trimspaces, strncmpi } from './hacklib.js';
+import { mungspaces, strNsubst, trimspaces, strncmpi, letter } from './hacklib.js';
 import {
     regex_init, regex_compile, regex_error_desc, regex_free,
 } from './posixregex.js';
@@ -70,6 +74,23 @@ import { NUM_DISCLOSURE_OPTIONS, DISCLOSE_PROMPT_DEFAULT_YES, DISCLOSE_PROMPT_DE
 import { RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
 import { Is_rogue_level, H_MAC } from './const.js';
 import { There } from './pline.js';
+
+// src/options.c:314 default_menu_cmd_info.
+const default_menu_cmd_info = [
+    { name: 'menu_next_page', cmd: MENU_NEXT_PAGE, desc: 'Go to next page' },
+    { name: 'menu_previous_page', cmd: MENU_PREVIOUS_PAGE, desc: 'Go to previous page' },
+    { name: 'menu_first_page', cmd: MENU_FIRST_PAGE, desc: 'Go to first page' },
+    { name: 'menu_last_page', cmd: MENU_LAST_PAGE, desc: 'Go to last page' },
+    { name: 'menu_select_all', cmd: MENU_SELECT_ALL, desc: 'Select all items in entire menu' },
+    { name: 'menu_invert_all', cmd: MENU_INVERT_ALL, desc: 'Invert selection for all items' },
+    { name: 'menu_deselect_all', cmd: MENU_UNSELECT_ALL, desc: 'Unselect all items in entire menu' },
+    { name: 'menu_select_page', cmd: MENU_SELECT_PAGE, desc: 'Select all items on current page' },
+    { name: 'menu_invert_page', cmd: MENU_INVERT_PAGE, desc: "Invert current page's selections" },
+    { name: 'menu_deselect_page', cmd: MENU_UNSELECT_PAGE, desc: 'Unselect all items on current page' },
+    { name: 'menu_search', cmd: MENU_SEARCH, desc: 'Search and invert matching items' },
+    { name: 'menu_shift_right', cmd: MENU_SHIFT_RIGHT, desc: 'Pan current page to right (perm_invent only)' },
+    { name: 'menu_shift_left', cmd: MENU_SHIFT_LEFT, desc: 'Pan current page to left (perm_invent only)' },
+];
 
 function note_unported_options(what) {
     (game.unported ||= new Set()).add('options:' + what);
@@ -245,6 +266,17 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
            up yet, and we want to see it. */
         config_error_add(`Unknown option '${opts}'`);
         return false;
+    }
+
+    if (default_menu_cmd_info.some(entry => entry.name === opt.name)) {
+        // src/options.c:628,2051: these config-only options share one setter.
+        if (negated) {
+            config_error_add(`The ${opt.name} option may not both have a value and be negated.`);
+            return false;
+        }
+        if (!shared_menu_optfn(opts, fromBytes)) return false;
+        (result.optSetInConfig ||= {})[opt.name] = true;
+        return retval;
     }
 
     if (negated && opt.negateok === 'No') {
@@ -869,6 +901,35 @@ function firstSeparator(s) {
     return Math.min(c, e);
 }
 
+// src/options.c:694 check_misc_menu_command(), complete name, ASCII case.
+function check_misc_menu_command(opts) {
+    const sep = firstSeparator(opts);
+    const name = (sep < 0 ? opts : opts.slice(0, sep)).replace(/[ \t\r\n\f\v]+$/, '');
+    return default_menu_cmd_info.findIndex(entry => name.length === entry.name.length
+        && !strncmpi(entry.name, name, name.length));
+}
+
+// src/options.c:2051 shared_menu_optfn(), do_set for the 13 config options.
+function shared_menu_optfn(opts, fromBytes) {
+    const midx = check_misc_menu_command(opts);
+    if (midx < 0) return false;
+    return spcfn_misc_menu_cmd(midx, opts, fromBytes);
+}
+
+// src/options.c:5452 spcfn_misc_menu_cmd(), string_for_opt() then txt2key().
+function spcfn_misc_menu_cmd(midx, opts, fromBytes) {
+    const sep = firstSeparator(opts);
+    const op = sep < 0 ? '' : opts.slice(sep + 1);
+    if (!op) {
+        config_error_add(`Missing parameter for '${opts}'`);
+        return true;
+    }
+    const key = txt2key(fromBytes ? Uint8Array.from(op, c => c.charCodeAt(0)) : op);
+    if (illegal_menu_cmd_key(key)) return false;
+    add_menu_cmd_alias(String.fromCharCode(key), default_menu_cmd_info[midx].cmd);
+    return true;
+}
+
 // src/cfgfiles.c:1544 config_erradd() — while an rc or an option string is
 // being parsed the messages collect on the parse result (C's
 // config_error_data, set up by config_error_init()); otherwise the player
@@ -1092,7 +1153,7 @@ export function txt2key(txt) {
 }
 
 // src/options.c:7596 parsebindings(), command-key bindings.
-// Special, mouse and menu bindings still need their separate consumers.
+// Special and mouse bindings still need their separate consumers.
 export function parsebindings(bindings) {
     const fromBytes = bindings instanceof Uint8Array;
     if (fromBytes)
@@ -1120,11 +1181,61 @@ export function parsebindings(bindings) {
         config_error_add(`Unknown key binding key '${keytxt}'`);
         return false;
     }
+    for (const entry of default_menu_cmd_info) {
+        if (entry.name !== command) continue;
+        if (illegal_menu_cmd_key(key)) {
+            config_error_add(`Bad menu key ${visctrl(String.fromCharCode(key))}:${command}`);
+            return false;
+        }
+        add_menu_cmd_alias(String.fromCharCode(key), entry.cmd);
+        return ret;
+    }
     if (!bind_key(key, fromBytes ? Uint8Array.from(command, c => c.charCodeAt(0)) : command)) {
         config_error_add(`Unknown key binding command '${command}'`);
         return false;
     }
     return ret;
+}
+
+// src/options.c:8037 illegal_menu_cmd_key().
+function illegal_menu_cmd_key(key) {
+    const c = String.fromCharCode(key);
+    if (!key || c === '\r' || c === '\n' || c === '\x1b' || c === ' '
+        || (c >= '0' && c <= '9') || (letter(c) && c !== '@')) {
+        config_error_add(`Reserved menu command key '${visctrl(c)}'`);
+        return true;
+    }
+    for (let j = 1; j < def_oc_syms.length; j++) {
+        if (c === def_oc_syms[j]) {
+            config_error_add(`Menu command key '${visctrl(c)}' is an object class`);
+            return true;
+        }
+    }
+    return false;
+}
+
+// src/options.c:8080 add_menu_cmd_alias(). Config callers run before windows.
+export function add_menu_cmd_alias(from_ch, to_ch) {
+    if (game.n_menu_mapped >= MAX_MENU_MAPPED_CMDS) {
+        // The pre-window pline branch completes raw output synchronously.
+        pline('out of menu map space.');
+    } else {
+        game.mapped_menu_cmds += from_ch;
+        game.mapped_menu_op += to_ch;
+        game.n_menu_mapped++;
+    }
+}
+
+// src/options.c:8094 get_menu_cmd_key(), the first reverse alias for help.
+export function get_menu_cmd_key(ch) {
+    const idx = game.mapped_menu_op.indexOf(ch);
+    return idx < 0 ? ch : game.mapped_menu_cmds[idx];
+}
+
+// src/options.c:8111 map_menu_cmd(), one lookup, preserving insertion order.
+export function map_menu_cmd(ch) {
+    const idx = game.mapped_menu_cmds.indexOf(ch);
+    return idx < 0 ? ch : game.mapped_menu_op[idx];
 }
 
 // Convenience accessors over the parsed table, so callers do not each
@@ -1348,21 +1459,10 @@ export function show_menu_controls(putline, dolist) {
     if (dolist) {
         /* key bindings help: '?j' — default_menu_cmd_info (options.c:314)
            in table order; the menu_shift pair is skipped for tty */
-        const dmci = [
-            ['>', 'Go to next page'],
-            ['<', 'Go to previous page'],
-            ['^', 'Go to first page'],
-            ['|', 'Go to last page'],
-            ['.', 'Select all items in entire menu'],
-            ['@', 'Invert selection for all items'],
-            ['-', 'Unselect all items in entire menu'],
-            [',', 'Select all items on current page'],
-            ['~', "Invert current page's selections"],
-            ['\\', 'Unselect all items on current page'],
-            [':', 'Search and invert matching items'],
-        ];
-        for (const [ch, desc] of dmci)
-            putline(ch.padEnd(7) + ' ' + desc);
+        for (const {cmd, desc} of default_menu_cmd_info) {
+            if (cmd === MENU_SHIFT_RIGHT || cmd === MENU_SHIFT_LEFT) continue;
+            putline(visctrl(get_menu_cmd_key(cmd)).padEnd(7) + ' ' + desc);
+        }
         fmt = (k, d) => k.padEnd(7) + ' ' + d;
         for (const [k, d] of hardcoded)
             putline(fmt(k, d));
@@ -1371,16 +1471,19 @@ export function show_menu_controls(putline, dolist) {
         putline('');
         putline(mc_altfmt('', 'Whole', 'Current'));
         putline(mc_altfmt('', ' Menu', ' Page'));
-        putline(mc_fmt('Select', '.', ','));
-        putline(mc_fmt('Invert', '@', '~'));
-        putline(mc_fmt('Deselect', '-', '\\'));
+        putline(mc_fmt('Select', visctrl(get_menu_cmd_key(MENU_SELECT_ALL)),
+                       visctrl(get_menu_cmd_key(MENU_SELECT_PAGE))));
+        putline(mc_fmt('Invert', visctrl(get_menu_cmd_key(MENU_INVERT_ALL)),
+                       visctrl(get_menu_cmd_key(MENU_INVERT_PAGE))));
+        putline(mc_fmt('Deselect', visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)),
+                       visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE))));
         putline('');
-        putline(mc_fmt('Go to', '>', 'Next page'));
-        putline(mc_fmt('', '<', 'Previous page'));
-        putline(mc_fmt('', '^', 'First page'));
-        putline(mc_fmt('', '|', 'Last page'));
+        putline(mc_fmt('Go to', visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)), 'Next page'));
+        putline(mc_fmt('', visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)), 'Previous page'));
+        putline(mc_fmt('', visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)), 'First page'));
+        putline(mc_fmt('', visctrl(get_menu_cmd_key(MENU_LAST_PAGE)), 'Last page'));
         putline('');
-        putline(mc_fmt('Search', ':',
+        putline(mc_fmt('Search', visctrl(get_menu_cmd_key(MENU_SEARCH)),
             'Exter a target string and invert all matching entries'));
         putline('');
         arg = 'Other ';

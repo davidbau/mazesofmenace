@@ -70,6 +70,16 @@ export function create_drawbridge(x, y, dir, flag) {
     return true;
 }
 
+// C ref: dbridge.c is_db_wall()
+/*
+ * Use is_db_wall where you want to verify that a
+ * drawbridge "wall" is UP in the location x, y
+ * (instead of UP or DOWN, as with is_drawbridge_wall).
+ */
+export function is_db_wall(x, y) {
+    return game.level.at(x, y).typ === DBWALL;
+}
+
 // C ref: dbridge.c is_drawbridge_wall()
 /*
  * We want to know whether a wall (or a door) is the portcullis (passageway)

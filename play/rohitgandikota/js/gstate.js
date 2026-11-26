@@ -11,6 +11,8 @@ export function resetGame() {
         lastinvnr: 51,
         // src/decl.c:411: each process starts with an empty inventory chain.
         invent: [],
+        // src/decl.c:534-535,560: ordered menu aliases, fresh per process.
+        mapped_menu_cmds: '', mapped_menu_op: '', n_menu_mapped: 0,
         // src/decl.c:903,1117: each game starts with a zeroed kinfo owner.
         killer: { next: null, id: 0, format: 0, name: '' },
         // src/decl.c:820, include/optlist.h:196: tty targeting defaults.

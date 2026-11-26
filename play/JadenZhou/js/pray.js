@@ -639,6 +639,31 @@ async function gods_upset(g_align) {
     await angrygods(g_align);
 }
 
+// C ref: pray.c desecrate_altar()
+export async function desecrate_altar(highaltar, altaralign) {
+    const u = game.u;
+    let gvbuf;
+
+    /*
+     * REAL BAD NEWS!!! High altars cannot be converted.  Even an attempt
+     * gets the god who owns it truly pissed off.  The same effect for
+     * deliberately destroying a normal altar.
+     */
+    /* if you did this to your own altar, your god will hold a grudge... */
+    if (altaralign === u.ualign.type) {
+        adjalign(-20);
+        u.ugangr += 5;
+    }
+    await You_feel("the air around you grow charged...");
+    await pline(`Suddenly, you realize that ${
+        align_gname(altaralign)} has noticed you...`);
+    gvbuf = `So, mortal!  You dare desecrate my ${
+        highaltar ? "High Temple" : "altar"}!`;
+    await godvoice(altaralign, gvbuf);
+    /* Throw everything we have at the player */
+    await god_zaps_you(altaralign);
+}
+
 // C ref: pray.c god_zaps_you()
 async function god_zaps_you(resp_god) {
     const u = game.u, g = game;
@@ -768,7 +793,7 @@ async function angrygods(resp_god) {
             game.youmonst.data.mlet === S_HUMAN ? "mortal" : "creature"}."`);
         /* SetVoice(): speech synthesis only */
         await verbalize("Thou must relearn thy lessons!");
-        await adjattrib(A_WIS, -1, false);
+        await adjattrib(A_WIS, -1, 0 /* FALSE */);
         await losexp(null);
         break;
     case 6:

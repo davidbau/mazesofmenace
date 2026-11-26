@@ -217,8 +217,14 @@ export function search_special(type) {
             || croom.rtype === type)
             return croom;
     }
-    /* gs.subrooms[]: subrooms aren't kept in a global list in the JS
-       port yet */
+    const subrooms = game.level.subrooms || [];
+    for (i = 0; subrooms[i] && subrooms[i].hx >= 0; i++) {
+        const croom = subrooms[i];
+        if ((type === ANY_TYPE && croom.rtype !== OROOM)
+            || (type === ANY_SHOP && croom.rtype >= SHOPBASE)
+            || croom.rtype === type)
+            return croom;
+    }
     return null;
 }
 

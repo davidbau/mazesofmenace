@@ -1074,6 +1074,9 @@ export const MENU_SELECT_PAGE = ',';
 export const MENU_UNSELECT_PAGE = '\\';
 export const MENU_INVERT_PAGE = '~';
 export const MENU_SEARCH = ':';
+// include/wintype.h:155-156, persistent-inventory pan commands.
+export const MENU_SHIFT_RIGHT = '}';
+export const MENU_SHIFT_LEFT = '{';
 export const MENU_ITEMFLAGS_NONE = 0x0000000;
 export const MENU_ITEMFLAGS_SELECTED = 0x0000001;
 export const MENU_ITEMFLAGS_SKIPINVERT = 0x0000002;

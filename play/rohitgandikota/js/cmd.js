@@ -3736,7 +3736,7 @@ function queue_item_action(action, obj) {
     case 'I': push(adjust_split, obj.invlet); break;     /* #altadjust */
     case 'O': push(dosacrifice, obj.invlet); break;
     case 'p': push(dopay, obj.invlet); break;
-    case 'P': push(doputon, obj.invlet); break;
+    case 'P': push(dowear, obj.invlet); break;
     case 'q':
         /* m-prefix to skip fountain or sink if present and drink a potion
            from invent */

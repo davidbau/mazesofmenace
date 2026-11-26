@@ -69,7 +69,20 @@ export function raw_print(str) {
     if (!st.rows)
         end_screen();
     const s = str == null ? '' : String(str);
-    if (st.row >= 0 && st.row < RAWTERM_ROWS)
+    const smashed = game._nomuxRawPos?.();
+    if (smashed) {
+        const [r, c] = smashed;
+        if (r >= 0 && r < RAWTERM_ROWS && c < 80) {
+            let row = st.rows[r] || '';
+            for (let i = 0; i < s.length; i++) {
+                const col = c + i;
+                if (col < 0 || col >= 80 || s.charCodeAt(i) < 32) continue;
+                row = row.padEnd(col, ' ');
+                row = row.slice(0, col) + s[i] + row.slice(col + 1);
+            }
+            st.rows[r] = row;
+        }
+    } else if (st.row >= 0 && st.row < RAWTERM_ROWS)
         st.rows[st.row] = s;
     st.row++;
     if (game._nomuxRawEmitHook) game._nomuxRawEmitHook(s);

@@ -2870,7 +2870,9 @@ export async function explain_container_prompt(more_containers) {
 }
 
 export async function encumber_msg() {
-    return encumber_msg_sync();
+    /* Await the body's pline(): C's caller does not proceed until putmesg has
+     * committed the load line (pline.c:266-274). */
+    return await encumber_msg_sync();
 }
 
 /* C ref: pickup.c:1511 count_categories(olist, qflags) — note it uses its OWN

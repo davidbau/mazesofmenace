@@ -3574,7 +3574,10 @@ async function moveloop_core_faithful() {
             g.vision_full_recalc = 0;
         }
         await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
-        await flush_screen(1);
+        // C allmain.c:473-509: only the guarded curs_on_u() above flushes
+        // the map before rhack. Drain deferred pages without painting later
+        // monster moves over the standing dig message (tty/topl.c:390).
+        await flush_screen(1, false);
         g.context = g.context || {};
         g.context.move = 0;
         } /* end pit-dig (non-horizontal) branch */

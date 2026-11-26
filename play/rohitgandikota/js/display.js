@@ -40,7 +40,7 @@ import { ONAMES, OCLASSES, objects as OBJECTS_DATA } from './objects_data.js';
 import { update_topl, show_topl_nohistory } from './tty/topl.js';
 
 import { xwaitforspace } from './tty/getline.js';
-import { docorner } from './tty/wintty.js';
+import { docorner, tty_raw_print } from './tty/wintty.js';
 
 import { term_start_color } from './tty/termcap.js';
 
@@ -2648,6 +2648,12 @@ export async function pline(msg) {
     /* src/pline.c:162-173: save this message's location before earlier
        queued notices set and consume their own locations. */
     msg = message_with_location(msg);
+    // src/pline.c:237 vpline(), raw output completes before any await.
+    if (msg && !game.iflags?.window_inited) {
+        tty_raw_print(msg);
+        (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
+        return;
+    }
     /* a monster notice queued by a synchronous docrt() (window erase) is
        an earlier pline in C; deliver it before this message */
     await notice_all_mons_flush();

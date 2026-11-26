@@ -405,9 +405,13 @@ export async function getlin(prompt) {
             }
             g._pending_message = '';
             _getlin_clear_message_window(g);
-            /* getline.c:80 rebuilt gt.toplines as "query " before this ESC read and
-             * the cancel break leaves it there, so the ring gets the bare prompt. */
-            const line = prompt + ' ';
+            /* getline.c:80 rebuilt gt.toplines as "query " + obufp before this
+             * read and the cancel break leaves it there: the bare prompt for an
+             * ESC (the buffer is empty here), but the typed text for an EOF —
+             * the byte 0xff, which cancels with text entered (getline.c:84-95).
+             * Mac macx intel w23g-025: "Call a ring of polymorph: q\xfc" then
+             * \xff; ^P recalls "Call a ring of polymorph: q". */
+            const line = prompt + ' ' + buf;
             tty_getlin_history(line);
             /* getline.c:81 gt.toplines ("query ") enters the ring verbatim,
              * never update_topl-wrapped: recall hard-wraps it (topl.c:121-142). */

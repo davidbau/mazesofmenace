@@ -1091,49 +1091,61 @@ async function status_hilite_menu_add(origfld) {
 
                 lt_gt_eq = NO_LTEQGT; /* not set up yet */
                 const { getlin } = await import('./cmd.js');
-                const inbuf = await getlin(`Enter ${percent ? 'percentage ' : ''}value for ${
+                let inbuf = await getlin(`Enter ${percent ? 'percentage ' : ''}value for ${
                     initblstats[fld].fldname} threshold:`);
                 if (inbuf === null || inbuf === '' || inbuf[0] === '\x1b') {
                     state = 'choose_behavior';
                     continue;
                 }
-                let inp = inbuf.trim(); /* trimspaces() */
-                if (!inp) {
+                /* trimspaces() keeps leading space/tab in the shared buffer. */
+                let inp = 0;
+                while (inbuf[inp] === ' ' || inbuf[inp] === '\t')
+                    inp++;
+                let end = inbuf.length;
+                while (end > inp && (inbuf[end - 1] === ' ' || inbuf[end - 1] === '\t'))
+                    end--;
+                inbuf = inbuf.slice(0, end);
+                if (inp === inbuf.length) {
                     state = 'choose_behavior';
                     continue;
                 }
                 /* allow user to enter "<50%" or ">50" or just "50"
                    or <=50% or >=50 or =50 */
-                let pos = 0;
-                if (inp[0] === '>' || inp[0] === '<' || inp[0] === '=') {
-                    lt_gt_eq = (inp[0] === '>') ? ((inp[1] === '=') ? GE_VALUE : GT_VALUE)
-                             : (inp[0] === '<') ? ((inp[1] === '=') ? LE_VALUE : LT_VALUE)
+                let numpos = inp;
+                if (inbuf[inp] === '>' || inbuf[inp] === '<' || inbuf[inp] === '=') {
+                    lt_gt_eq = (inbuf[inp] === '>') ? ((inbuf[inp + 1] === '=') ? GE_VALUE : GT_VALUE)
+                             : (inbuf[inp] === '<') ? ((inbuf[inp + 1] === '=') ? LE_VALUE : LT_VALUE)
                                : EQ_VALUE;
-                    pos++;
-                    if (lt_gt_eq === GE_VALUE || lt_gt_eq === LE_VALUE)
-                        pos++;
+                    inbuf = inbuf.slice(0, inp) + ' ' + inbuf.slice(inp + 1);
+                    inp++;
+                    numpos++;
+                    if (lt_gt_eq === GE_VALUE || lt_gt_eq === LE_VALUE) {
+                        inbuf = inbuf.slice(0, inp) + ' ' + inbuf.slice(inp + 1);
+                        inp++;
+                        numpos++;
+                    }
                 }
-                numstart = inp.slice(pos);
-                let p = 0;
-                if (numstart[p] === '-') {
-                    p++;
-                } else if (numstart[p] === '+') {
-                    numstart = numstart.slice(1);
+                if (inbuf[inp] === '-') {
+                    inp++;
+                } else if (inbuf[inp] === '+') {
+                    inbuf = inbuf.slice(0, inp) + ' ' + inbuf.slice(inp + 1);
+                    inp++;
+                    numpos++;
                 }
-                while (numstart[p] !== undefined && numstart[p] >= '0' && numstart[p] <= '9') {
-                    p++;
+                while (inbuf[inp] !== undefined && inbuf[inp] >= '0' && inbuf[inp] <= '9') {
+                    inp++;
                     gotnum = true;
                 }
-                if (numstart[p] === '%') {
+                if (inbuf[inp] === '%') {
                     if (!percent) {
                         await pline('Not expecting a percentage.');
                         state = 'choose_behavior';
                         continue;
                     }
-                    numstart = numstart.slice(0, p); /* strip '%' [this accepts trailing junk!] */
-                } else if (numstart[p] !== undefined) {
+                    inbuf = inbuf.slice(0, inp); /* strip '%' [this accepts trailing junk!] */
+                } else if (inbuf[inp] !== undefined) {
                     /* some random characters */
-                    await pline(`"${numstart.slice(p)}" is not a recognized number.`);
+                    await pline(`"${inbuf.slice(inp)}" is not a recognized number.`);
                     state = 'choose_value';
                     continue;
                 }
@@ -1149,6 +1161,7 @@ async function status_hilite_menu_add(origfld) {
                                  : (lt_gt_eq === EQ_VALUE) ? '='
                                    : ''; /* didn't specify lt_gt_eq with number */
                 dt = percent ? ANY_INT : initblstats[fld].anytype;
+                numstart = inbuf.slice(numpos);
                 const aval = s_to_anything(numstart, dt);
                 if (percent) {
                     val = aval;
@@ -1173,8 +1186,10 @@ async function status_hilite_menu_add(origfld) {
                         continue;
                     }
                     /* restore suffix for use in color and attribute prompts */
-                    if (!numstart.includes('%'))
-                        numstart += '%';
+                    if (!numstart.includes('%')) {
+                        inbuf += '%';
+                        numstart = inbuf.slice(numpos);
+                    }
                 /* reject negative values except for AC and >-1; reject 0 for < */
                 } else if (dt === ANY_INT
                            && (aval < ((fld === BL_AC) ? -128

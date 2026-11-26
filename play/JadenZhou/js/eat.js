@@ -1446,7 +1446,7 @@ async function cpostfx(pm) {
         if (ABASE(A_INT) < ATTRMAX(A_INT)) {
             if (!rn2(2)) {
                 await pline("Yum!  That was real brain food!");
-                await adjattrib(A_INT, 1, false);
+                await adjattrib(A_INT, 1, 0 /* FALSE */);
                 break; /* don't give them telepathy, too */
             }
         } else {

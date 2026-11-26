@@ -82,7 +82,7 @@ import { killed, see_monster_closeup, set_ustuck, wake_nearto, wakeup } from './
 import { can_blow as can_blow_real, can_blnd, poly_when_stoned } from './mondata.js'; // relocate-fns
 import { accessible, closed_door, monflee } from './monmove.js'; // relocate-fns
 import { observe_object } from './o_init.js'; // relocate-fns
-import { The, Tobjnam, Yname2, Yobjnam2, xname as _fw_xname, cxname as _ia_cxname, simpleonames as _ia_simpleonames, Tobjnam as _objnam_Tobjnam, the as _the_objnam, an, ansimpleoname, aobjnam, cxname, doname, getObjDescr, gloves_simple_name, makeplural, makeplural as makeplural_objnam, otense, simple_typename, singular, the, thesimpleoname, vtense, yname } from './objnam.js'; // relocate-fns
+import { The, Tobjnam, Yname2, Yobjnam2, xname as _fw_xname, cxname as _ia_cxname, simpleonames as _ia_simpleonames, Tobjnam as _objnam_Tobjnam, the as _the_objnam, an, ansimpleoname, aobjnam, cxname, doname, getObjDescr, gloves_simple_name, ysimple_name, makeplural, makeplural as makeplural_objnam, otense, simple_typename, singular, the, thesimpleoname, vtense, yname } from './objnam.js'; // relocate-fns
 import { OC_COST } from './oc_cost_data.js'; // relocate-fns
 import { pickup_object } from './pickup.js'; // relocate-fns
 import { There as There_real, You, You_cant, You_hear, You_see, Your, pline_The, impossible as real_impossible, set_msg_xy, verbalize } from './pline.js'; // relocate-fns
@@ -2752,7 +2752,8 @@ export async function doapply() {
         }
         itemCh = String.fromCharCode(itemKey);
         if (itemKey >= 48 /* '0' */ && itemKey <= 57 /* '9' */) {
-            if (g.iflags?.debug_fuzzer) { /* topl.c:209 more() returns: no page */
+            if (g.iflags?.debug_fuzzer /* topl.c:209 more() returns: no page */
+                || msgtype_suppressed('No count allowed with this command.')) { /* pline.c:246-262 */
                 await pline('No count allowed with this command.');
                 continue;
             }
@@ -3862,9 +3863,12 @@ async function _doapply_break_wand(obj) {
     }
     /* C apply.c:3934-3937 — the option bit chooses whole-word paranoid input;
      * the shared reader otherwise uses the ordinary y/n prompt. */
+    /* safe_qbuf() keeps the query within QBUFSZ - 1 bytes, shortening a
+     * long name (short_oname) or falling back to "the wand".  Mac macx2 arm
+     * t24-g-nonascii-v005: a wand named with a long UTF-8 string. */
     const _confirmed = await paranoid_query(
         !!((g.flags?.paranoia_bits | 0) & PARANOID_BREAKWAND),
-        `Are you really sure you want to break ${yname(obj)}?`);
+        await safe_qbuf('', 'Are you really sure you want to break ', '?', obj, yname, ysimple_name, 'the wand'));
     if (!_confirmed) {
         return ECMD_OK;
     }

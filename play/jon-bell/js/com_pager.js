@@ -23,7 +23,7 @@ import { pmatchi } from './strutil.js';
 import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_SEARCH's matcher */
 // putmsghistory: feed the quest synopsis into the ^P message-history ring.
 import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell, levelgen_frozen_cell,
-         await_topl_more_dismiss, pline_flush_point, docorner_status_row,
+         await_topl_more_dismiss, topl_stale_cells, pline_flush_point, docorner_status_row,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
          gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail, flush_gnew_cells_over_window, overlay_flushed_cells, menu_search_prevmsg_walk, tty_splice_row, _tty_row_cells_of } from './display.js';
 import { money_cnt } from './hack.js'; // relocate-fns
@@ -437,6 +437,12 @@ export function tty_text_window_utf8_line(line) {
             // C wintty.c:1825-1834: only the first byte can use g_putch;
             // later signed bytes pass to putchar and leave their cell blank.
             const painted = rest.replace(/[\x80-\xff]/g, ' ');
+            if (!utf8 && first.charCodeAt(0) >= 0x80) {
+                const x = first.charCodeAt(0) ^ 0x80;
+                const xs = x < 32 || x === 127 ? ' ' : String.fromCharCode(x);
+                const second = rest.length && rest.charCodeAt(0) < 0x80 ? rest[0] : xs;
+                return start + ' ' + second + painted.slice(1) + end;
+            }
             return (utf8 ? ' ' : '') + start + (utf8 ? (painted || first) : first + painted) + end;
         });
 }
@@ -1190,11 +1196,15 @@ export async function topl_more_page(msg, uacAtCapture) {
         ? msg.lastIndexOf(' ', COLNO - 1) : -1;
     // C topl.c:158-161,348-350: signed high bytes advance over a blank
     // message cell; word wrapping still uses the original byte string.
-    const ttyText = text => String(text || '').replace(/[\x80-\xff]/g, '\x1b[1C');
+    /* Row 0 is written over whatever a non-ESC --More-- left there
+     * (display.js topl_stale_cells); a wrapped row was cleared first. */
+    const _stale = topl_stale_cells();
+    const ttyText = (text, row0 = false) => String(text || '').replace(/[\x80-\xff]/g,
+        (c, off) => (row0 && _stale?.[off]) || '\x1b[1C');
     let output = '';
     if (inlineMore) {
         // Row 0: message + '--More--' on the same line
-        output += ttyText(msg) + '--More--\n';
+        output += ttyText(msg, true) + '--More--\n';
         // Row 1: map game y=0 (tty map window offy=1; C paints a y=0 corridor
         // square here, which a restore's docrt() can leave remembered)
         output += render_map_row_clipped(0, COLNO - 1).str + '\n';
@@ -1203,14 +1213,14 @@ export async function topl_more_page(msg, uacAtCapture) {
             output += render_map_row_clipped(y, COLNO - 1).str + '\n';
         }
     } else if (wrapAt > 0) {
-        output += ttyText(msg.slice(0, wrapAt)) + '\n';
+        output += ttyText(msg.slice(0, wrapAt), true) + '\n';
         output += ttyText(msg.slice(wrapAt + 1)) + '--More--\n';
         for (let y = 1; y < ROWNO; y++) {
             output += render_map_row_clipped(y, COLNO - 1).str + '\n';
         }
     } else {
         // Row 0: message only
-        output += ttyText(msg) + '\n';
+        output += ttyText(msg, true) + '\n';
         // Row 1: '--More--'
         output += '--More--\n';
         // Rows 2..21: map game y=1..20
@@ -1312,6 +1322,8 @@ export async function topl_more_page(msg, uacAtCapture) {
     });
     // C topl.c:237-239 restores the rows covered by a multiline message.
     if (!inlineMore) docorner_blank_utf8_captures(1, 2);
+    /* topl.c:237-246: a non-ESC dismissal leaves the one-row page standing. */
+    g._topl_stale_row0 = (morc !== 27 && inlineMore) ? output.split('\n')[0] : null;
     // Clear message after --More-- dismissed
     g._pending_message = '';
     return morc;

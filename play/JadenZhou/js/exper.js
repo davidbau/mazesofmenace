@@ -29,6 +29,7 @@ import { pline } from './display.js';
 import { Goodbye } from './role.js';
 import { resists_drli, extra_nasty } from './mondata.js';
 import { Amphibious } from './youprop.js';
+import { rehumanize } from './polyself.js';
 
 // C ref: exper.c newuexp()
 export function newuexp(lev) {
@@ -358,8 +359,13 @@ export async function losexp(drainer) /* cause of death, if drain should be fata
     if (u.uexp > 0)
         u.uexp = newuexp(u.ulevel) - 1;
 
-    if (u.umonnum !== u.umonster) /* Upolyd */
-        throw new Error('losexp(): polymorphed level loss not ported yet');
+    if (u.umonnum !== u.umonster) { /* Upolyd */
+        num = monhp_per_lvl(game.youmonst);
+        u.mhmax -= num;
+        u.mh -= num;
+        if (u.mh <= 0)
+            await rehumanize();
+    }
 
     game.disp_botl = true;
 }

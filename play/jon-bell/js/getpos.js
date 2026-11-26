@@ -1,5 +1,5 @@
 // Cursor targeting helpers from NetHack 5.0 getpos.c.
-import { tty_cliparound, map_curs_row } from './display.js';
+import { tty_cliparound, map_curs_row, msgtype_suppressed } from './display.js';
 import { docrt_flags, docrtRefresh } from './display.js';
 import { GPCOORDS_COMFULL, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_SCREEN, TIP_GETPOS, _GETPOS_VIEW_FILTERS, _GLOC_DESCR, _GLOC_DOOR, _GLOC_EXPLORE, _GLOC_FILTERTXT, _GLOC_INTERESTING, _GLOC_MONS, _GLOC_OBJS, _NUM_GLOCS, _QUITCHARS, _WHAT_IS_A_LOCATION, _autodescribe_firstmatch, _gather_locs, _getpos_menu, _getpos_symbol_search, _glyph_ident, _levlAt, cmd_from_func, cmdq_add_key, cmdq_clear, cmdq_pop, create_nhwindow, destroy_nhwindow, display_nhwindow, do_run, do_rush, movecmd, putstr, readchar_poskey, redraw_cmd, spkey_of, xytodir } from './cmd.js';
 import { findtravelpath, handle_tip } from './hack.js'; // relocate-fns
@@ -230,6 +230,30 @@ export async function auto_describe(cx, cy) {
      * column x-1, map row y is screen row y+1 (topline is screen row 0). */
     tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
     return true;
+}
+
+/* getpos.c:1113-1130: the symbol-search failure plines ("Can't find dungeon
+ * feature", "Unknown direction") are ordinary plines, so a MSGTYPE=hide rule
+ * (or norep on a repeat) drops them in vpline (pline.c:246-262) before the
+ * message window is touched.  The tty topline then still physically shows the
+ * line getpos last wrote — the autodescribe or an earlier failure — although
+ * nhgetch() has emptied this port's pending message.  Mac macx t23-a-regex-v018
+ * step 74: MSGTYPE=hide "\d" (BSD: a literal 'd') hides "Unknown direction:
+ * '9' ...", and C keeps "unexplored area" on row 0.  A shown failure becomes
+ * the standing line for a later exit/suppression. */
+export async function getpos_failure_pline(failure) {
+    const g = game;
+    /* the line getpos last wrote; failing that, what the last flush left
+     * on row 0 (a goal prompt this loop printed itself) */
+    const standing = g._getpos_last_autodescribe
+        ?? (String(g._screen_output || '').split('\n')[0] || null);
+    const suppressed = msgtype_suppressed(failure);
+    await pline(failure);
+    if (!suppressed) {
+        g._getpos_last_autodescribe = failure;
+    } else if (standing && !g._topl_sticky) {
+        g._topl_sticky = standing;
+    }
 }
 
 /* C ref: getpos.c:136-161 getpos_help_keyxhelp(tmpwin, k1, k2, gloc). */
@@ -658,11 +682,10 @@ export async function getpos(ccp, force, goal) {
                 }
             } else if (found === null) {    /* getpos.c:1113-1115: k, not found */
                 const failure = `Can't find dungeon feature '${String.fromCharCode(c)}'.`;
-                await pline(failure);
                 /* C leaves this newly emitted topline physically visible when
                  * the following pick exits getpos; make the exit fallback
                  * retain the failure rather than the prior auto-description. */
-                g._getpos_last_autodescribe = failure;
+                await getpos_failure_pline(failure);
                 msg_given = true;
             } else {                        /* getpos.c:1116-1129: no k */
                 /* C getpos.c:1116-1141 prints the force-dependent note.  A
@@ -672,7 +695,7 @@ export async function getpos(ccp, force, goal) {
                     + (force
                         ? ` (use '${_binds_visctrl(cmd_from_func('do_move_west'))}', '${_binds_visctrl(cmd_from_func('do_move_south'))}', '${_binds_visctrl(cmd_from_func('do_move_north'))}', '${_binds_visctrl(cmd_from_func('do_move_east'))}' or '${visctrl(key(7))}').`
                         : ' (aborted).');
-                await pline(failure);
+                await getpos_failure_pline(failure);
                 if (!force) {
                     await pline('Done.');
                     g._topl_sticky = g._pending_message;
@@ -682,7 +705,6 @@ export async function getpos(ccp, force, goal) {
                     result = 0;
                     break;
                 }
-                g._getpos_last_autodescribe = failure;
                 msg_given = true;
             }
             /* C ref: getpos.c:1148 `nxtc:` ends with flush_screen(0).  The

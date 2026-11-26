@@ -7,7 +7,7 @@ import { GLYPHCLS_ENGR, GLYPHCLS_INVIS, GLYPHCLS_MON, GLYPHCLS_OBJ, GLYPHCLS_TRA
 import { game } from './gstate.js'; // relocate-fns
 import { BEAR_TRAP_TTYP, DEVTEAM_URL, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_NONE, GPCOORDS_SCREEN, MOVEMENTCMD, OCLASS_COIN, QBUFSZ_CMD, STATUE_OTYP, S_engrcorr, S_engroom, S_grave, TIP_GETPOS, WEB_TTYP, _GETPOS_VIEW_FILTERS, _LD_CHEST, _LD_LARGE_BOX, _Mgender, _NUM_GLOCS, _QUITCHARS, _Role_if_samurai_cmd, _WHAT_IS_A_LOCATION, _cmd_Hallucination, _digests, _gather_locs, _getpos_menu, _getpos_menu_shown, _getpos_symbol_search, _glyph_at, _glyph_ident, _levlAt, _mhidden_region_tail, _st_Punished, _surface_at_typ, _trap_to_defsym, _uprop_active, _waterbody_surface_typ, cmd_from_func, cmdq_clear, cmdq_peek, cmdq_pop, dbase_display_window, do_look_moreinfo, doextlist, getpos_getvalid, getpos_hilitefunc, inventory_menu_legacy, key2extcmddesc, key2txt, keyhelp_compress_str, monster_seen_description, movecmd, pooleffects_Levitation, pooleffects_ceiling_hider, readchar_poskey, redraw_cmd, set_cursor, show_direction_keys, spkey_of, thit_is_orc, yn_function } from './cmd.js';
 import { handle_tip } from './hack.js';
-import { auto_describe, coord_desc, getpos_help, getpos_sethilite, truncate_to_map } from './getpos.js';
+import { auto_describe, coord_desc, getpos_failure_pline, getpos_help, getpos_sethilite, truncate_to_map } from './getpos.js';
 import { display_inventory } from './invent.js';
 import { surface } from './dungeon.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js'; // relocate-fns
@@ -2006,7 +2006,7 @@ async function _do_look_from_screen(quick) {
                     }
                     moved = true;
                 } else if (found === null) {    /* getpos.c:1113-1115 */
-                    await pline(`Can't find dungeon feature '${String.fromCharCode(c)}'.`);
+                    await getpos_failure_pline(`Can't find dungeon feature '${String.fromCharCode(c)}'.`);
                     await flush_screen(1);
                     /* getpos.c:1143-1148 `nxtc:` — curs(WIN_MAP, cx, cy) runs
                      * after EVERY handled key, so the failure message leaves
@@ -2014,7 +2014,7 @@ async function _do_look_from_screen(quick) {
                     tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                     msgGiven = true;
                 } else {                        /* getpos.c:1116-1129 */
-                    await pline(`Unknown direction: '${visctrl(c)}'`
+                    await getpos_failure_pline(`Unknown direction: '${visctrl(c)}'`
                         + (quick ? ` (use '${_binds_visctrl(cmd_from_func('do_move_west'))}', '${_binds_visctrl(cmd_from_func('do_move_south'))}', '${_binds_visctrl(cmd_from_func('do_move_north'))}', '${_binds_visctrl(cmd_from_func('do_move_east'))}' or '${visctrl(spkey_of(7))}').`
                                  : ' (aborted).'));   /* getpos.c:1119-1128 */
                     await flush_screen(1);
