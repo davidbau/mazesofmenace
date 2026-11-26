@@ -1065,8 +1065,9 @@ export async function u_on_rndspot(upflag) {
                             r.nlx | 0, r.nly | 0, r.nhx | 0, r.nhy | 0,
                             LR_DOWNTELE, null);
     }
-    /* switch_terrain() — levitation/flight state versus the new square;
-       nothing a fresh arrival needs yet */
+    /* might have just left solid rock and unblocked levitation */
+    const { switch_terrain } = await import('./hack.js');
+    await switch_terrain();
 }
 
 // src/dungeon.c:2175 unplaced_floater() — Fort Ludios when its branch has

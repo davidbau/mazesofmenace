@@ -88,6 +88,7 @@ import { splitbill } from './shk.js';
 import { billable, costly_spot, stolen_value, unpaid_cost, subfrombill,
          shop_keeper, addtobill, alter_cost, costly_adjacent, find_objowner } from './shk.js';
 import { copy_mextra } from './mon.js';
+import { monsndx } from './makemon.js';
 import { ONAME, has_oname, has_omid, OMID, free_omid, ONAME_SKIP_INVUPD,
          COST_SINGLEOBJ, OBJ_DELETED, OBJ_LUAFREE, OBJ_ONBILL } from './const.js';
 import { in_rooms } from './hack.js';
@@ -1790,18 +1791,23 @@ export function obj_attach_mid(obj, mid) {
 function save_mtraits(obj, mtmp) {
     if (mtmp.ispriest)
         forget_temple_entry(mtmp); /* EPRI() */
-    const saved = structuredClone({
-        ...mtmp,
+    const saved = OMONST(obj) || {};
+    Object.assign(saved, mtmp, {
+        mextra: null,
+        nmon: null,
         data: null,
         minvent: null,
         mw: null,
     });
-    const baselevel = mtmp.data?.mlevel ?? 0;
+    if (mtmp.mtrack)
+        saved.mtrack = structuredClone(mtmp.mtrack);
+    if (mtmp.mgoal)
+        saved.mgoal = {...mtmp.mgoal};
+    const baselevel = mtmp.data.mlevel;
 
-    saved.mnum = mtmp.mnum ?? mtmp.data?.pmidx ?? NON_PM;
-    saved.data = null;
-    saved.minvent = null;
-    saved.mw = null;
+    saved.mnum = monsndx(mtmp.data);
+    if (mtmp.mextra)
+        copy_mextra(saved, mtmp);
     saved.wormno = 0;
     if ((saved.mhpmax | 0) <= baselevel)
         saved.mhpmax = baselevel + 1;
@@ -2302,7 +2308,13 @@ export function get_mtraits(obj, copyof) {
         mtmp = OMONST(obj);
     if (mtmp) {
         if (copyof) {
-            mnew = structuredClone(mtmp);
+            mnew = {...mtmp, mextra: null};
+            if (mtmp.mtrack)
+                mnew.mtrack = structuredClone(mtmp.mtrack);
+            if (mtmp.mgoal)
+                mnew.mgoal = {...mtmp.mgoal};
+            if (mtmp.mextra)
+                copy_mextra(mnew, mtmp);
         } else {
             mnew = mtmp;
         }

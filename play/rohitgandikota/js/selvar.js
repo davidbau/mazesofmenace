@@ -23,6 +23,7 @@ import { COLNO, ROWNO, ROOMOFFSET, MAX_TYPE, MATCH_WALL, IS_STWALL,
 import { rn2 } from './rng.js';
 import { isok } from './hacklib.js';
 import { cvt_to_relcoord, update_croom, random_wdir } from './sp_lev.js';
+import { newsym_force } from './display.js';
 
 // src/selvar.c:15 selection_new()
 export function selection_new() {
@@ -616,4 +617,12 @@ export function selection_size_description(sel) {
     return `${selection_is_irregular(sel) ? 'irregularly shaped'
              : (dx === dy) ? 'square'
                : 'rectangular'} ${dx} by ${dy}`;
+}
+
+// src/selvar.c:802 selection_force_newsyms()
+export function selection_force_newsyms(sel) {
+    for (let x = 1; x < sel.wid; x++)
+        for (let y = 0; y < sel.hei; y++)
+            if (selection_getpoint(x, y, sel))
+                newsym_force(x, y);
 }

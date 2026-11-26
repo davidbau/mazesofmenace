@@ -1770,7 +1770,7 @@ export async function doextversion() {
 // page's --More-- cancels the remaining pages (WIN_CANCELLED).
 export async function display_file(text) {
     /* tty_clear_nhwindow(WIN_MESSAGE) first */
-    tty_clear_nhwindow_message(game._topl_cury || 0);
+    await tty_clear_nhwindow_message(game._topl_cury || 0);
     game._pending_message = '';
 
     const win = tty_create_nhwindow(NHW_TEXT);

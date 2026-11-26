@@ -36,7 +36,7 @@ import { force_more, force_more_lone_frame, flush_screen, _topl_joins_committed,
 import { yn_function_menu, randomkey, readchar, keyhelp_compress_str } from './cmd.js';
 import { bot } from './botl.js';
 import { pline, urgent_pline } from './pline.js';
-import { topl_park_cursor, canspotmon, _threeStatusLines } from './display.js';
+import { topl_park_cursor, canspotmon, _threeStatusLines, remember_stopped_toplines } from './display.js';
 import { rebuild_screen_output, putmsghistory, Unaware, pline_flush_point } from './display.js';
 import { livelog_printf } from './pline.js';
 import { LL_LIFESAVE, LL_DUMP, BUFSZ } from './const.js';
@@ -1286,12 +1286,7 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
      * at a --More-- (WIN_STOP) the incoming owner was drawn and, with later
      * messages, gt.toplines (_topl_win_stop_buf) holds it: the question
      * overwrites it, so file it in the ^P ring now (nothing else will). */
-    if (g._topl_win_stop && !g._topl_suppress_history) {
-        const _gt = String(g._topl_win_stop_buf ?? g._pending_message ?? '').replace(/--More--$/, '');
-        const _h = (g._msg_history ||= []);
-        if (_gt && _h[_h.length - 1] !== _gt && g._topl_history_recall !== _gt)
-            _h.push(_gt);
-    }
+    remember_stopped_toplines();
     g._topl_unacknowledged = false;
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
@@ -1833,8 +1828,15 @@ async function disclose(how, taken) {
              * prompt; nothing stands left of the menu. */
             if (_toplUnderMenu && pendingBefore)
                 g._topl_sticky = null;
-            else if (_toplUnderMenu && !g._pending_message && !g._menu_search_row0_erased)
+            else if (_toplUnderMenu && !g._pending_message && !g._menu_search_row0_erased) {
                 g._topl_sticky = _toplUnderMenu.slice(0, Math.max(0, (_discloseInv?.WIN_COL ?? 2) - 2)).replace(/\s+$/, "") || null;
+                /* The menu opened over that text without erasing it, so the
+                 * message window was already EMPTY (wintty.c:1048-1057); it
+                 * still is, and the next window's tty_clear_nhwindow leaves
+                 * the surviving prefix alone (show_conduct, list_vanquished,
+                 * the dungeon overview at wintty.c:1938-1940). */
+                g._topl_empty_sticky = g._topl_sticky;
+            }
             /* C dismisses the inventory NHW_MENU with docorner() before
              * container_contents() opens its NHW_TEXT window.  The corner
              * erase leaves only the prefix of each status row painted. */

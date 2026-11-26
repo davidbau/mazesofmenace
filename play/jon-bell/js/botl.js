@@ -2,7 +2,7 @@
 import { nh_qsort } from './nhsort.js';
 import { money_cnt } from './hack.js';
 import { CONFUSION, Is_rogue_level, OVERLOADED, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SATIATED, SICK, SLIMED, SLT_ENCUMBER, STARVED, TT_LAVA, gs } from './const.js';
-import { _flush_screen_in_progress, COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, status_r1_hpbar_bot_note, suppress_map_output } from './display.js';
+import { _flush_screen_in_progress, COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, status_row3_laid_out, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, status_r1_hpbar_bot_note, suppress_map_output } from './display.js';
 import { bimanual } from './do_wear.js';
 import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
@@ -313,6 +313,16 @@ export async function bot() {
          * (sibling t18 G-status-w123: full healing, then 'x' paging). */
         game._botlStaleHp = undefined;
         game._botlStaleHpmax = undefined;
+        /* botl.c:1052-1060: bot() reads u.uen/u.uenmax live too.  The
+         * pre-cast latch (js/spell.js) only describes flushes that run no
+         * bot(); left set, the evaluation below compared the old Pw with
+         * itself and a later repaint picked the change up in the wrong
+         * blstats buffer (botl.c:974-975,1534-1541). */
+        game._botlStaleUen = undefined;
+        game._botlStaleUenmax = undefined;
+        /* This IS C's next real paint (see below): the evaluation must read
+         * the live HP, not done()'s frozen pre-death value. */
+        game._botlFrozenDeath = false;
         /* botl.c:1514-1614: BL_XP chg/percent evaluation happens per bot(). */
         status_xp_bot_eval();
         /* C botl.c:259-268: a status paint replaces the pre-cast Pw still
@@ -384,8 +394,10 @@ export async function bot() {
          * not after it.  Retain the new row and its finalx-dependent erasure. */
         if (game._statusBlankAfterDocrt && game._st3) { game._st3.row = ''; game._st3.signature = undefined; }
         /* C tty status updates happen at bot(), before its reset is cleared. */
-        if (_threeStatusLines() && (game.flags?.weaponstatus
-            || game.flags?.armorstatus || game.flags?.terrainstatus)) {
+        /* render_status() writes row 3 at this bot() (wintty.c:4995-5268),
+         * so a page raised by a later pline shows this paint's row; that
+         * holds for the version field (BL_VERS) as for the optional ones. */
+        if (_threeStatusLines() && status_row3_laid_out()) {
             _statusRows3();
             _row3Rendered = true;
             if (game._lastPaintedBotl) game._lastPaintedBotl.row3 = game._st3?.row;

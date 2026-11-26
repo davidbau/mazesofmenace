@@ -1,5 +1,6 @@
 // dungeon.js — port of nethack-c/src/dungeon.c (scaffold: functions are added here
 
+import { tty_cliparound } from './display.js';
 import { game } from './gstate.js';
 import { In_quest, In_endgame, In_V_tower, Is_knox_level, SHOPBASE, VISITED } from './const.js';
 import './hacklib.js';
@@ -369,6 +370,7 @@ export async function u_on_newpos(x, y) {
     }
     game.u.ux = x;
     game.u.uy = y;
+    tty_cliparound(x, y); /* C dungeon.c:1579-1581 */
     game.u.uundetected = 0;
     /* C dungeon.c:1583-1585 — "ridden steed always shares hero's location":
      *     if (u.usteed)

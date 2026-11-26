@@ -62,7 +62,7 @@ import { monflee } from './monmove.js';
 import { TOPLINE_NEED_MORE } from './const.js';
 import { TOPLINE_EMPTY } from './const.js';
 import { flush_screen } from './display.js';
-import { more } from './display.js';
+import { display_nhwindow_message } from './display.js';
 import { see_monsters } from './display.js';
 import { newsym } from './display.js';
 import { is_obj_mappear } from './monst.js';
@@ -3378,7 +3378,7 @@ async function cpostfx(pm) {
             if (game._toplin !== TOPLINE_EMPTY)
                 game._toplin = TOPLINE_NEED_MORE;
             if (game._toplin === TOPLINE_NEED_MORE)
-                await more();
+                await display_nhwindow_message();
         }
         break;
     case PMNAMES.PM_QUANTUM_MECHANIC:

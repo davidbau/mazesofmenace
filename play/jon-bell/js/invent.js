@@ -2776,13 +2776,14 @@ export async function ggetobj(word, fn, mx, combo, resultflags = null) {
                 const letter = String.fromCharCode(o.invlet | 0);
                 if (ofilter(o) && !ailets.includes(letter)) ailets += letter;
             }
-        if (await display_inventory(ailets || null, true) === 27) {
-            /* the menu's docrt() left the status blank only until the next
-             * flush_screen()->bot(); an ESC ends the command, so that flush
-             * follows (dispinv_with_action clears it the same way). */
-            g._status_blanked = false;
-            return 0;
-        }
+        const ch = await display_inventory(ailets || null, true);
+        /* The menu's docrt() left the status rows blank with botlx pending
+         * (display.c:2197) only until the next enabled bot(); the re-asked
+         * getlin keeps bot() disabled (windows.c:1897-1901), so an ESC there
+         * ends the command and moveloop's bot() (allmain.c:473) repaints the
+         * status, the same as an ESC out of the menu itself. */
+        g._status_blanked = false;
+        if (ch === 27) return 0;
     }
     const extra = takeoff ? [u.uwep, u.uswapwep, u.uquiver].filter(Boolean)
         .map(o => o.oclass | 0) : [];

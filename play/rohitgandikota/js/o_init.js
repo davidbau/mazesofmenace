@@ -729,7 +729,7 @@ export async function doclassdisco() {
         }
         c = await tty_yn_function(prompt, discosyms, '\0', true);
         if (!c || c === '\0')
-            tty_clear_nhwindow_message(game._topl_cury || 0);
+            await tty_clear_nhwindow_message(game._topl_cury || 0);
     } else {
         if (discosyms.length === 1 && game.flags.menu_style === MENU_PARTIAL)
             c = discosyms[0];

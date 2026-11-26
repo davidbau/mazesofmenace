@@ -13,6 +13,7 @@ import { is_sword } from './wield.js';
 import { is_mplayer, set_mon_data } from './mondata.js';
 import { game } from './gstate.js';
 import { shkname } from './shknam.js';
+import { BILLSZ } from './const.js';
 import { tamedog } from './dog.js';
 import { def_monsyms } from './drawing_data.js';
 import { new_light_source, LS_OBJECT, LS_MONSTER } from './light.js';
@@ -21,6 +22,7 @@ import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire 
 import { newcham, mon_wire_cham, mondied } from './mon.js';
 import { weight as weight_fn, sobj_at, update_inventory } from './invent.js';
 import { In_mines, Is_rogue_level, MIGR_TO_SPECIES, OBJ_FREE,
+         DF_NONE, DF_RANDOM, DF_ALL,
          W_SADDLE, has_mgivenname, A_LAWFUL, ONAME_RANDOM } from './const.js';
 import { Levitation, Flying, Protection_from_shape_changers, See_invisible,
          Underwater, Stone_resistance, Swimming, Amphibious, Wwalking,
@@ -789,7 +791,7 @@ import { in_town } from './hack.js';
 import { obfree } from './invent.js';
 export { mpickobj };
 
-export const DF_NONE = 0, DF_RANDOM = 1, DF_ALL = 2;
+export { DF_NONE, DF_RANDOM, DF_ALL };
 const DELIVER_PM = MFLAGS.M2_UNDEAD | MFLAGS.M2_WERE | MFLAGS.M2_HUMAN
                  | MFLAGS.M2_ELF | MFLAGS.M2_DWARF | MFLAGS.M2_GNOME
                  | MFLAGS.M2_ORC | MFLAGS.M2_DEMON | MFLAGS.M2_GIANT;
@@ -1500,7 +1502,10 @@ export function set_mimic_sym(mtmp) {
         const connects = w === HWALL || w === TLCORNER || w === TRWALL
                       || w === BLCORNER || w === TDWALL || w === CROSSWALL
                       || w === TUWALL;
-        appear = connects ? MONSYMS.S_hcdoor : MONSYMS.S_vcdoor;
+        if (connects)
+            appear = Is_rogue_level(game.u.uz) ? MONSYMS.S_hwall : MONSYMS.S_hcdoor;
+        else
+            appear = Is_rogue_level(game.u.uz) ? MONSYMS.S_vwall : MONSYMS.S_vcdoor;
     } else if (game.level.flags.is_maze_lev
                && !(game.u?.uz?.dnum === game.mines_dnum
                     && in_town(game.u.ux, game.u.uy))
@@ -2295,7 +2300,11 @@ export function makemon(ptr, x, y, mmflags) {
         mtmp.mextra = { mcorpsenm: NON_PM };
         if (mmflags & MM_EGD)  mtmp.mextra.egd = {};
         if (mmflags & MM_EPRI) mtmp.mextra.epri = {};
-        if (mmflags & MM_ESHK) mtmp.mextra.eshk = {};
+        if (mmflags & MM_ESHK) mtmp.mextra.eshk = {
+            // src/shknam.c:557 neweshk(); bill storage is separate from bill_p.
+            bill: Array.from({length: BILLSZ}, () => ({bo_id: 0, useup: false, price: 0, bquan: 0})),
+            bill_p: null, billct: 0,
+        };
         if (mmflags & MM_EMIN) mtmp.mextra.emin = {};
         if (mmflags & MM_EDOG) mtmp.mextra.edog = {};
     }

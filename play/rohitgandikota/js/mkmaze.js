@@ -228,7 +228,7 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
         }
         {
             const { u_on_newpos } = await import('./teleport.js');
-            u_on_newpos(x, y);
+            await u_on_newpos(x, y);
         }
         break;
     }
@@ -1538,7 +1538,7 @@ async function mv_bubble(b, dx, dy, ini) {
 
                 {
                     const { u_on_newpos } = await import('./teleport.js');
-                    u_on_newpos(cons.x, cons.y);
+                    await u_on_newpos(cons.x, cons.y);
                 }
                 await newsym(ux0, uy0); /* clean up old position */
 

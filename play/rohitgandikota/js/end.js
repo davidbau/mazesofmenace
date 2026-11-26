@@ -1142,7 +1142,7 @@ export async function done2() {
         || (await tty_yn_function('Really quit without saving?', 'yn', 'n'))
            !== 'y') {
         /* clear_nhwindow(WIN_MESSAGE); nomul(0) */
-        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await tty_clear_nhwindow_message(game._topl_cury || 0);
         const { nomul } = await import('./hack.js');
         if ((game.multi ?? 0) > 0)
             nomul(0);

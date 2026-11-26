@@ -46,7 +46,7 @@ import { impossible } from './pline.js';
 import { DISMOUNT_GENERIC } from './const.js';
 import { possibly_unwield } from './weapon.js';
 import { Protection_from_shape_changers } from './youprop.js';
-import { remove_worm, wormgone } from './worm.js';
+import { remove_worm, wormgone, place_wsegs } from './worm.js';
 import { gd_move, grddead } from './vault.js';
 import { MON_MIGRATING } from './const.js';
 import { wizdeadorgone } from './wizard.js';
@@ -82,7 +82,8 @@ import { growl, maybe_gasp } from './sounds.js';
 import { sengr_at } from './engrave.js';
 import { Amonnam, Monnam, mon_nam, noname_monnam, x_monnam, upstart }
     from './do_name.js';
-import { hot_pursuit, shkgone } from './shk.js';
+import { hot_pursuit, shkgone, replshk } from './shk.js';
+import { OBJ_MINVENT } from './const.js';
 import { is_metallic, is_mines_prize, is_soko_prize } from './obj.js';
 import { bad_rock, disturb_buried_zombies, may_dig, may_passwall }
     from './hack.js';
@@ -4870,6 +4871,41 @@ export async function mon_leaving_level(mon) {
     }
     if (mon === game.context?.polearm?.hitmon)
         game.context.polearm.hitmon = null;
+}
+
+// src/mon.c:2515 replmon(), replace a monster record and its references.
+export async function replmon(mtmp, mtmp2) {
+    for (const otmp of mtmp2.minvent || []) {
+        if (otmp.where !== OBJ_MINVENT || otmp.ocarry !== mtmp)
+            await impossible('replmon: minvent inconsistency');
+        otmp.ocarry = mtmp2;
+    }
+    mtmp.minvent = null;
+    if (game.context.polearm?.hitmon === mtmp)
+        game.context.polearm.hitmon = mtmp2;
+
+    await relmon(mtmp, null);
+
+    if (mtmp !== game.u.usteed)
+        place_monster(mtmp2, mtmp2.mx, mtmp2.my);
+    if (mtmp2.wormno)
+        place_wsegs(mtmp2, mtmp);
+    if (emits_light(mtmp2.data)) {
+        /* C prepends the new pointer-owned light then removes the old one.
+           JS stores numeric IDs, which montraits preserves across this swap;
+           remove first so deletion cannot select the new light instead. */
+        del_light_source(LS_MONSTER, mtmp.m_id);
+        new_light_source(mtmp2.mx, mtmp2.my, emits_light(mtmp2.data),
+                         LS_MONSTER, mtmp2.m_id);
+    }
+    game.level.monsters.unshift(mtmp2);
+    if (game.u.ustuck === mtmp)
+        set_ustuck(mtmp2);
+    if (game.u.usteed === mtmp)
+        game.u.usteed = mtmp2;
+    if (mtmp2.isshk)
+        replshk(mtmp, mtmp2);
+    /* dealloc_monst(mtmp): all live references have been detached above. */
 }
 
 // src/mon.c:2561 relmon(), take a monster off the level's monster list,

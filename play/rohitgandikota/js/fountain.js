@@ -8,7 +8,7 @@ import { POLY_NOFLAGS } from './const.js';
 import { Unchanging } from './youprop.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { more, pline } from './display.js';
+import { display_nhwindow_message, pline } from './display.js';
 import { You, You_feel, You_hear, Your, pline_The } from './pline.js';
 import { newsym, glyph_at } from './display.js';
 import { cmap_names } from './drawing_data.js';
@@ -380,7 +380,7 @@ export async function drinkfountain() {
                 i = 0;
         }
 
-        await more();
+        await display_nhwindow_message();
         await pline('A wisp of vapor escapes the fountain...');
         exercise(A_WIS, true);
         loc.blessedftn = 0;
@@ -399,7 +399,7 @@ export async function drinkfountain() {
         case 19: /* Self-knowledge */
             {
                 await You_feel('self-knowledgeable...');
-                await more();
+                await display_nhwindow_message();
 
                 const { enlightenment, MAGICENLIGHTENMENT,
                         ENL_GAMEINPROGRESS } = await import('./insight.js');
@@ -423,7 +423,7 @@ export async function drinkfountain() {
                 tty_end_menu(win, null);
                 await tty_display_nhwindow(win);
                 await xwaitforspace(' \r\n\x1b');
-                while (tty_next_page(win))
+                while (await tty_next_page(win))
                     await xwaitforspace(' \r\n\x1b');
                 await tty_destroy_nhwindow(win);
                 await notice_all_mons_flush();

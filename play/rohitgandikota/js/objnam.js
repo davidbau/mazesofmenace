@@ -1199,7 +1199,7 @@ function billed_cost(obj) {
         const shkp = shoproom?.resident;
         const bill = shkp?.eshk?.bill_p;
         const entry = Array.isArray(bill)
-            ? bill.find(bp => bp.bo_id === obj.o_id) : null;
+            ? bill.slice(0, shkp.eshk.billct).find(bp => bp.bo_id === obj.o_id) : null;
         if (entry) {
             price += entry.price * (obj.quan || 1);
             found = true;

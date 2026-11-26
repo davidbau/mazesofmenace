@@ -1,10 +1,11 @@
 // pager.js — C ref: pager.c.
+import { tty_cliparound, map_curs_row } from './display.js';
 import { checkfile_keys, dbase_scan } from './data_base.js';
 import { singular_xname } from './cmd.js';
 import { isok } from './const.js'; // relocate-fns
 import { GLYPHCLS_ENGR, GLYPHCLS_INVIS, GLYPHCLS_MON, GLYPHCLS_OBJ, GLYPHCLS_TRAP, glyph_at, map_glyphinfo } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
-import { BEAR_TRAP_TTYP, DEVTEAM_URL, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_NONE, GPCOORDS_SCREEN, MOVEMENTCMD, OCLASS_COIN, QBUFSZ_CMD, STATUE_OTYP, S_engrcorr, S_engroom, S_grave, TIP_GETPOS, WEB_TTYP, _GETPOS_VIEW_FILTERS, _LD_CHEST, _LD_LARGE_BOX, _Mgender, _NUM_GLOCS, _QUITCHARS, _Role_if_samurai_cmd, _WHAT_IS_A_LOCATION, _cmd_Hallucination, _digests, _gather_locs, _getpos_menu, _getpos_menu_shown, _getpos_symbol_search, _glyph_at, _glyph_ident, _levlAt, _mhidden_region_tail, _st_Punished, _surface_at_typ, _trap_to_defsym, _uprop_active, _waterbody_surface_typ, cmd_from_func, cmdq_clear, cmdq_peek, cmdq_pop, dbase_display_window, do_look_moreinfo, doextlist, getpos_getvalid, getpos_hilitefunc, inventory_menu_legacy, key2extcmddesc, key2txt, keyhelp_compress_str, monster_seen_description, movecmd, pooleffects_Levitation, pooleffects_ceiling_hider, readchar_poskey, set_cursor, show_direction_keys, spkey_of, thit_is_orc, yn_function } from './cmd.js';
+import { BEAR_TRAP_TTYP, DEVTEAM_URL, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_NONE, GPCOORDS_SCREEN, MOVEMENTCMD, OCLASS_COIN, QBUFSZ_CMD, STATUE_OTYP, S_engrcorr, S_engroom, S_grave, TIP_GETPOS, WEB_TTYP, _GETPOS_VIEW_FILTERS, _LD_CHEST, _LD_LARGE_BOX, _Mgender, _NUM_GLOCS, _QUITCHARS, _Role_if_samurai_cmd, _WHAT_IS_A_LOCATION, _cmd_Hallucination, _digests, _gather_locs, _getpos_menu, _getpos_menu_shown, _getpos_symbol_search, _glyph_at, _glyph_ident, _levlAt, _mhidden_region_tail, _st_Punished, _surface_at_typ, _trap_to_defsym, _uprop_active, _waterbody_surface_typ, cmd_from_func, cmdq_clear, cmdq_peek, cmdq_pop, dbase_display_window, do_look_moreinfo, doextlist, getpos_getvalid, getpos_hilitefunc, inventory_menu_legacy, key2extcmddesc, key2txt, keyhelp_compress_str, monster_seen_description, movecmd, pooleffects_Levitation, pooleffects_ceiling_hider, readchar_poskey, redraw_cmd, set_cursor, show_direction_keys, spkey_of, thit_is_orc, yn_function } from './cmd.js';
 import { handle_tip } from './hack.js';
 import { auto_describe, coord_desc, getpos_help, getpos_sethilite, truncate_to_map } from './getpos.js';
 import { display_inventory } from './invent.js';
@@ -1726,7 +1727,7 @@ async function _do_look_from_screen(quick) {
         const tipShown = await handle_tip(TIP_GETPOS);
 
         /* C ref: getpos.c:843-847 verbose instructions line. */
-        const instrMsg = g.flags.verbose ? "(For instructions type a '?')" : '';
+        const instrMsg = g.flags.verbose ? `(For instructions type a '${visctrl(spkey_of(25))}')` : '';
         /* C ref: getpos.c:838-839,860-864 — show_goal_msg only if the tip
          * was shown just now. */
         const goalMsg = tipShown ? 'Move cursor to a monster, object or location:' : '';
@@ -1785,7 +1786,7 @@ async function _do_look_from_screen(quick) {
          * map here, every round, regardless of which pline(s) fired above
          * (any goalMsg curs() inside the loop below lands on this same
          * cx,cy so this single set covers both cases). */
-        set_cursor(cx - 1, cy + 1);
+        tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
 
         let picked = false, ans = 0;
         /* C ref: getpos.c:1136 — the !force quitchar exit sets cx = -1, which
@@ -1825,7 +1826,7 @@ async function _do_look_from_screen(quick) {
             if (showGoalMsg) {          /* getpos.c:860-865 */
                 await pline('Move cursor to a monster, object or location:');
                 await flush_screen(0);
-                set_cursor(cx - 1, cy + 1);
+                tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                 showGoalMsg = false;
             } else if (_autodescribe() && !msgGiven) {
                 /* C getpos.c:865 calls auto_describe(), including the
@@ -1837,7 +1838,7 @@ async function _do_look_from_screen(quick) {
             let c = await readchar_poskey({ x: cx, y: cy, mod: 0 });
             if (_autodescribe())
                 msgGiven = false;
-            if (c === 27) { esc = true; break; }
+            if (c === spkey_of(0) /* NHKF_ESC */) { esc = true; break; }
             /* C getpos.c:898-920 — the command-bound `g`/`G` keys are
              * prefixes inside getpos.  Read the direction immediately, then
              * route an ordinary walk direction through do_rushrun below. */
@@ -1845,10 +1846,10 @@ async function _do_look_from_screen(quick) {
                 c = await readchar_poskey({ x: cx, y: cy, mod: 0 });
                 rushrun = true;
             }
-            if (c === 46 /* '.' */) { ans = 0; picked = true; break; }
-            if (c === 44 /* ',' */) { ans = 1; picked = true; break; }
-            if (c === 59 /* ';' */) { ans = 2; picked = true; break; }
-            if (c === 58 /* ':' */) { ans = 3; picked = true; break; }
+            if (c === spkey_of(7) /* '.' */) { ans = 0; picked = true; break; }
+            if (c === spkey_of(8) /* ',' */) { ans = 1; picked = true; break; }
+            if (c === spkey_of(9) /* ';' */) { ans = 2; picked = true; break; }
+            if (c === spkey_of(10) /* ':' */) { ans = 3; picked = true; break; }
             let moved = false;
             const isWalk = movecmd(c, MV_WALK);
             if (isWalk && !rushrun) {
@@ -1879,7 +1880,7 @@ async function _do_look_from_screen(quick) {
             }
             let eaten = false;
             const gtmp = moved ? -1
-                : _GETPOS_GLOC_KEYS.indexOf(String.fromCharCode(c));
+                : Array.from({ length: 12 }, (_, i) => spkey_of(13 + i)).indexOf(c);
             if (gtmp >= 0) {
                 eaten = true;
                 const gloc = gtmp >> 1;
@@ -1910,7 +1911,7 @@ async function _do_look_from_screen(quick) {
                 }
                 }
             }
-            if (!moved && !eaten && c === 0x23 /* '#' NHKF_GETPOS_AUTODESC */) {
+            if (!moved && !eaten && c === spkey_of(12) /* '#' NHKF_GETPOS_AUTODESC */) {
                 /* C getpos.c:961-970.  Without this arm '#' fell into the
                  * symbol search, where it MATCHES (S_bars, S_tree, S_cloud and
                  * both closed-drawbridge syms all draw as '#'), so the farlook
@@ -1921,10 +1922,10 @@ async function _do_look_from_screen(quick) {
                     showGoalMsg = true;
                 msgGiven = true;
                 await flush_screen(1);
-                set_cursor(cx - 1, cy + 1);
+                tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                 eaten = true;
             }
-            if (!moved && !eaten && c === 0x22 /* '"' NHKF_GETPOS_LIMITVIEW */) {
+            if (!moved && !eaten && c === spkey_of(27) /* '"' NHKF_GETPOS_LIMITVIEW */) {
                 /* C getpos.c:971-989 — cycle the filter and DISCARD every
                  * cached list, since they were gathered under the old one. */
                 g.iflags.getloc_filter = ((g.iflags.getloc_filter | 0) + 1) % NUM_GFILTER;
@@ -1932,36 +1933,36 @@ async function _do_look_from_screen(quick) {
                 await pline(`${_GETPOS_VIEW_FILTERS[g.iflags.getloc_filter | 0]}.`);
                 msgGiven = true;
                 await flush_screen(1);
-                set_cursor(cx - 1, cy + 1);
+                tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                 eaten = true;
             }
-            if (!moved && !eaten && c === 0x2a /* '*' NHKF_GETPOS_MOVESKIP */) {
+            if (!moved && !eaten && c === spkey_of(28) /* '*' NHKF_GETPOS_MOVESKIP */) {
                 /* C getpos.c:1007-1013. */
                 g.iflags.getloc_moveskip = !(g.iflags.getloc_moveskip);
                 await pline(`${g.iflags.getloc_moveskip ? 'S' : 'Not s'}kipping`
                     + ' over similar terrain when fastmoving the cursor.');
                 msgGiven = true;
                 await flush_screen(1);
-                set_cursor(cx - 1, cy + 1);
+                tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                 eaten = true;
             }
-            if (!moved && !eaten && c === 0x40 /* '@' NHKF_GETPOS_SELF */) {
+            if (!moved && !eaten && c === spkey_of(6) /* '@' NHKF_GETPOS_SELF */) {
                 /* C getpos.c:998-1006 — home the cursor and reset every cycle. */
                 for (let i = 0; i < _NUM_GLOCS; i++) gidx[i] = 0;
                 cx = u.ux | 0; cy = u.uy | 0;
                 moved = true;
             }
-            if (!moved && !eaten && c === 0x21 /* '!' NHKF_GETPOS_MENU */) {
+            if (!moved && !eaten && c === spkey_of(26) /* '!' NHKF_GETPOS_MENU */) {
                 /* C getpos.c:989-996 — toggles iflags.getloc_usemenu. */
                 g.iflags.getloc_usemenu = !g.iflags.getloc_usemenu;
                 await pline(`${g.iflags.getloc_usemenu ? 'Using' : 'Not using'} a menu to show possible targets`
                     + (g.iflags.getloc_usemenu ? " for 'm|M', 'o|O', 'd|D', and 'x|X'" : '') + '.');
                 msgGiven = true;
                 await flush_screen(1);
-                set_cursor(cx - 1, cy + 1);
+                tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                 eaten = true;
             }
-            if (!moved && !eaten && c === 0x3f /* '?' NHKF_GETPOS_HELP */) {
+            if (!moved && !eaten && c === spkey_of(25) /* '?' NHKF_GETPOS_HELP */) {
                 /* C getpos.c:945-953.  This is the farlook-local copy of the
                  * getpos loop, so it needs the same blocking help window as
                  * _getpos() above; otherwise '?' reaches symbol search and
@@ -1970,20 +1971,19 @@ async function _do_look_from_screen(quick) {
                  * the cursor and reprints the goal prompt. */
                 await getpos_help(quick, _WHAT_IS_A_LOCATION);
                 await getpos_refresh(getpos_hilitefunc, getpos_getvalid, getpos_sethilite);
-                set_cursor(cx - 1, cy + 1);
+                tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                 showGoalMsg = true;
                 eaten = true;
             }
             if (!moved && !eaten
-                && (c === 0x12 /* ^R */ || c === 0x0c /* ^L, redraw_cmd */
-                    || c === 0x24 /* '$' NHKF_GETPOS_SHOWVALID */)) {
+                && (redraw_cmd(c) || c === spkey_of(11) /* '$' NHKF_GETPOS_SHOWVALID */)) {
                 /* C getpos.c:944-960 — the redraw and showvalid arms consume
                  * the key and set show_goal_msg; getpos_refresh()/the hilite
                  * toggle are display-only and RNG-free (and getpos_hilitefunc
                  * is NULL for this caller, so SHOWVALID does nothing else). */
-                if (c !== 0x24) {
+                if (redraw_cmd(c)) {
                     await getpos_refresh(getpos_hilitefunc, getpos_getvalid, getpos_sethilite);
-                    set_cursor(cx - 1, cy + 1);
+                    tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                 }
                 showGoalMsg = true;
                 eaten = true;
@@ -2004,14 +2004,14 @@ async function _do_look_from_screen(quick) {
                     /* getpos.c:1143-1148 `nxtc:` — curs(WIN_MAP, cx, cy) runs
                      * after EVERY handled key, so the failure message leaves
                      * the cursor on the map spot, not parked at the topline. */
-                    set_cursor(cx - 1, cy + 1);
+                    tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                     msgGiven = true;
                 } else {                        /* getpos.c:1116-1129 */
                     await pline(`Unknown direction: '${visctrl(c)}'`
-                        + (quick ? ` (use '${_binds_visctrl(cmd_from_func('do_move_west'))}', '${_binds_visctrl(cmd_from_func('do_move_south'))}', '${_binds_visctrl(cmd_from_func('do_move_north'))}', '${_binds_visctrl(cmd_from_func('do_move_east'))}' or '.').`
+                        + (quick ? ` (use '${_binds_visctrl(cmd_from_func('do_move_west'))}', '${_binds_visctrl(cmd_from_func('do_move_south'))}', '${_binds_visctrl(cmd_from_func('do_move_north'))}', '${_binds_visctrl(cmd_from_func('do_move_east'))}' or '${visctrl(spkey_of(7))}').`
                                  : ' (aborted).'));   /* getpos.c:1119-1128 */
                     await flush_screen(1);
-                    set_cursor(cx - 1, cy + 1);
+                    tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                     msgGiven = true;
                     if (!quick) {   /* getpos.c:1134-1137: !force -> Done. */
                         await pline('Done.');
@@ -2041,7 +2041,7 @@ async function _do_look_from_screen(quick) {
                  * do_look_moreinfo() has no description text for it (the
                  * auto_describe() call at the loop top only repositions the
                  * cursor when it prints something). */
-                set_cursor(cx - 1, cy + 1);
+                tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
             }
         }
         /* C ref: getpos.c:1165 (exitgetpos) — restore the hero's direction

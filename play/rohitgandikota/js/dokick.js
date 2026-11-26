@@ -48,7 +48,7 @@ import { is_pool } from './mon.js';
 import { OBJ_AT } from './const.js';
 import { sobj_at, weight } from './invent.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
-import { pline, canseemon, canspotmon, more, map_invisible, unmap_invisible,
+import { pline, canseemon, canspotmon, display_nhwindow_message, map_invisible, unmap_invisible,
          glyph_is_invisible_at } from './display.js';
 import { Your, There } from './pline.js';
 import { m_at } from './mon.js';
@@ -499,12 +499,6 @@ function martial() {
 
 function note_unported_dokick(what) {
     (game.unported ||= new Set()).add(what);
-}
-
-/* display_nhwindow(WIN_MESSAGE, TRUE) — the blocking --More-- C uses to make
-   sure the refusal is read before the direction key arrives. */
-async function display_nhwindow_message() {
-    await more();
 }
 
 // src/dokick.c down_gate() — is there a way DOWN from (x,y) for a dropped

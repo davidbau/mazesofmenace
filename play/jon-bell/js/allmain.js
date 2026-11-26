@@ -1,4 +1,5 @@
 import { reroll_menu } from './invent.js';
+import { tty_cliparound } from './display.js';
 import { u_init_inventory_attrs } from './u_init.js';
 import { nhlib_com_pager_rng } from './nhlib.js';
 // @ts-nocheck
@@ -732,7 +733,10 @@ export async function newgame() {
                      * redotoplin() raises its OWN more() (topl.c:131-137: cury != 0),
                      * so an ESC there sets WIN_STOP before the NEXT message's
                      * update_topl samples it (topl.c:257) and suppresses it. */
-                    if (startupMsgs[mi].length >= 80) {
+                    /* ...and a MSGTYPE=stop rule pages it the same way, from
+                     * vpline's display_nhwindow(WIN_MESSAGE, TRUE) right after
+                     * update_topl (pline.c:283-284). */
+                    if (startupMsgs[mi].length >= 80 || msgtype_type(startupMsgs[mi]) === 'stop') {
                         const dismissed = await topl_more_page(startupMsgs[mi], u?.uac ?? 0);
                         startupWinStop = dismissed === 27;
                         startupPaged = true;
@@ -783,7 +787,7 @@ export async function newgame() {
                  * more() inside this pline, before moveloop_preamble's botlx
                  * (allmain.c:85) can repaint status -- as the paged arm above
                  * does for every wrapping startup message. */
-                if (welcomeMsg.length >= 80) {
+                if (welcomeMsg.length >= 80 || msgtype_type(welcomeMsg) === 'stop') { /* pline.c:283-284 */
                     const dismissed = await topl_more_page(welcomeMsg, u?.uac ?? 0);
                     if (dismissed === 27) {
                         g._topl_win_stop = true; /* topl.c:232-235 */
@@ -899,7 +903,20 @@ export async function newgame() {
          * more() pages the standing line.  pickup(1)'s plines are accumulated
          * "  "-joined in _pending_message, so re-split them at the "You read:"
          * boundary (read_engr_at's second pline, engrave.c:332/396). */
-        const decorParts = [...noticeParts, ...(decorMsg ? decorMsg.split(/  (?=You (?:read|feel the words):)/) : [])];
+        /* Each pline of pickup(1) is its own update_topl (look_here's "There is
+         * a staircase ... here." then "You see here ...", invent.c:4243-4280),
+         * so split at every recorded pline boundary, not only before "You read:". */
+        const decorJoins = decorMsg ? (_topl_joins_snapshot(decorMsg) || []).filter(o => o > 0 && o < decorMsg.length) : [];
+        const decorSplit = [];
+        if (decorJoins.length) {
+            let st = 0;
+            for (const end of [...decorJoins, decorMsg.length]) {
+                if (end > st) decorSplit.push(decorMsg.slice(st, end));
+                st = end + 2;
+            }
+        }
+        const decorParts = [...noticeParts, ...(decorSplit.length ? decorSplit
+            : decorMsg ? decorMsg.split(/  (?=You (?:read|feel the words):)/) : [])];
         let standing = deferredLastStartupMsg;
         for (const part of decorParts) {
             if (standing === '') {
@@ -1920,6 +1937,7 @@ async function eat_occupation_turn() {
             if (!_standingOwner) {
                 const _fitsHidden = hidden.length + 2 + part.length < 71;
                 g._topl_win_stop_buf = _fitsHidden ? `${hidden}  ${part}` : part;
+                g._topl_win_stop_owned = true;
                 /* topl.c:266-281: the join extends gt.toplines (^P's newest
                  * entry); the fall-through arm remember_topl()s the old one. */
                 const _h = (g._msg_history ||= []);
@@ -1931,6 +1949,11 @@ async function eat_occupation_turn() {
                     if (hidden && _h[_h.length - 1] !== hidden) _h.push(hidden);
                     _h.push(part);
                 }
+                /* gt.toplines is now the swallowed buffer, which those entries
+                 * already file; the line still painted is not gt.toplines, so
+                 * the next key must not file it again (topl.c:170-191, the same
+                 * marker vpline's WIN_STOP arm sets). */
+                g._topl_history_recall = String(_committed || g._pending_message || '');
             }
             /* topl.c:257/300: the pline that raised the ESC'd more() was drawn
              * (skip sampled before more()) and is the first pre-eat part here;
@@ -3081,6 +3104,9 @@ async function moveloop_core_faithful() {
     if ((g.multi | 0) < 0)
         await moveloop_status_paint();
     while ((g.multi | 0) < 0) {
+        // C allmain.c:481 — m_everyturn_effect(&gy.youmonst) of the current
+        // moveloop_core call before its end_turn tail.
+        if (g.youmonst && g.youmonst.data) m_everyturn_effect(g.youmonst);
         // Finish the current C moveloop_core before starting the next one.
         // Negative multi skips rhack, not the end_turn tail. The iteration
         // that clears multi instead reaches rhack below and dispatches there.
@@ -3358,6 +3384,9 @@ async function moveloop_core_faithful() {
     // before the next invocation advances monsters or an occupation.
     if (g.vision_full_recalc)
         vision_recalc(0);
+    /* C allmain.c:543-546: after rhack() and vision_recalc(), so the map is
+     * redrawn once with correct vision data. */
+    if (g.u) tty_cliparound(g.u.ux, g.u.uy);
     run_tport_botl(); // C allmain.c:547-555
     // ===================== go.occupation DRIVER — DIG (faithful) =====================
     // C allmain.c:558: end-turn callbacks follow command and vision effects,
@@ -3950,19 +3979,25 @@ async function moveloop_core_faithful() {
         // still 1, so the next moveloop_core runs ONE more world block before
         // rhack reads the next key.  Run it here and suppress the next head
         // (context.move = 0 below) — the dig/learn/engrave driver pattern.
-        if (!pickInterrupted) await faithful_moveloop_turn();
-        /* C allmain.c:453-471: finish this invocation's redraw tail before
-         * vision_recalc(), which can itself draw hallucinated objects.
-         * The next JS invocation resumes at rhack, past this tail. */
-        /* an interrupted pick already ran this moveloop_core's tail in the loop */
-        if (!pickInterrupted) await faithful_input_redraw();
+        if (!pickInterrupted) {
+            await faithful_moveloop_turn();
+            find_ac();
+            /* C allmain.c:453-471: finish this invocation's redraw tail before
+             * vision_recalc(), which can itself draw hallucinated objects.
+             * The next JS invocation resumes at rhack, past this tail. */
+            /* an interrupted pick already ran this moveloop_core's tail in the loop */
+            await faithful_input_redraw();
+        }
         g._ff_input_tail_done = true;
         if (g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;
         }
         await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
-        await flush_screen(1);
+        // C allmain.c:473-509: only the guarded curs_on_u() above flushes
+        // the map before rhack. Drain deferred pages without painting later
+        // monster moves over the standing picklock message (tty/topl.c:390).
+        await flush_screen(1, false);
         g.context = g.context || {};
         g.context.move = 0;
     }
@@ -4764,6 +4799,9 @@ async function moveloop_core_faithful() {
             const _d = g.disp;
             if (_d && ((_d.botl | 0) || (_d.botlx | 0) || (_d.time_botl | 0)))
                 pline_flush_point();
+            /* C allmain.c:481 — m_everyturn_effect(&gy.youmonst) runs on EVERY
+             * moveloop_core pass, including immobile (multi < 0) delayed turns. */
+            if (g.youmonst && g.youmonst.data) m_everyturn_effect(g.youmonst);
         }
         // C ref: allmain.c:513 — `u.umoved = FALSE;`, run in EVERY moveloop_core
         // invocation AFTER the per-turn world block and BEFORE the multi/rhack
@@ -4883,7 +4921,10 @@ async function moveloop_core_faithful() {
      * autodig, whose nomul(0) ends the count) is followed by the NEXT
      * moveloop_core pass, which runs the occupation before rhack() reads a key. */
     let occContinue = false;
-    let _resumeIterTailOwed = _countRepeatInsteadOfRhack;
+    const _resumeAfterOcc = !!g._ff_input_tail_done && !g.occupation && !(g.context && g.context.move);
+    let _resumeIterTailOwed = _countRepeatInsteadOfRhack || _resumeAfterOcc;
+    if (_resumeAfterOcc && (g.multi | 0) > 0)
+        g._ff_input_tail_done = false;
     while ((g.multi | 0) > 0 || occContinue) {
         if (g.occupation === eatfood && !(g.context && g.context.mv)) {
             g._eatCountRepeat = true;

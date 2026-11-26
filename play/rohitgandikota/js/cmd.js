@@ -38,7 +38,7 @@ import { can_reach_floor } from './pickup.js';
 import { which_armor } from './worn.js';
 import { test_move, u_rooted, domove_fight_ironbars, domove_fight_web,
          domove_fight_empty } from './hack.js';
-import { stucksteed } from './steed.js';
+import { stucksteed, exercise_steed } from './steed.js';
 import { vobj_at } from './display.js';
 import { auto_describe } from './getpos.js';
 import { dountrap } from './trap.js';
@@ -67,7 +67,7 @@ import { goodpos, hideunder, place_monster, remove_monster, monsndx } from './ma
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
 import { hides_under, is_hider, verysmall, sticks } from './mondata.js';
-import { bad_rock, nomul, domove_attackmon_at, spoteffects,
+import { bad_rock, nomul, domove_attackmon_at, spoteffects, invocation_message,
          domove_bump_mon, dopickup, trapmove, doorless_door,
          disturb_buried_zombies, may_passwall,
          runmode_delay_output, avoid_trap_andor_region } from './hack.js';
@@ -87,7 +87,7 @@ import { m_postmove_effect } from './monmove.js';
 import { doloot, dotip } from './pickup.js';
 import { curr_mon_load } from './mon.js';
 import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_CON, M_AP_TYPE,
-         M_AP_FURNITURE, M_AP_OBJECT, OVERLOADED, Is_airlevel,
+         M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING, OVERLOADED, Is_airlevel,
          Upolyd } from './const.js';
 import { exercise, near_capacity, adjalign } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, PIT, HOLE, WEB } from './const.js';
@@ -574,7 +574,7 @@ export async function getdir(s) {
         } else {
             dirsym = await tty_yn_function(
                 (s && s[0] !== '^') ? s : 'In what direction?', null, '\0', false);
-            tty_clear_nhwindow_message(game._topl_cury || 0);
+            await tty_clear_nhwindow_message(game._topl_cury || 0);
             game._pending_message = '';
             if (cmdbind_get(dirsym.charCodeAt(0) & 0xff)?.cmd?.ef_funct === 'doredraw') {
                 await docrt_flags(docrtRefresh);
@@ -735,7 +735,7 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
             const oldCury = game._topl_cury || 0;
             const newCury = lines.length - 1;
             if (oldCury > newCury)
-                tty_clear_nhwindow_message(oldCury);
+                await tty_clear_nhwindow_message(oldCury);
 
             game._pending_message = lines.join('\n');
             game._topl_cury = newCury;
@@ -772,7 +772,7 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
                 game._msg_maxcol = game._msg_maxrow || 0; /* cw->maxcol = cw->maxrow */
             } else {
                 ttyDisplay.inread--;
-                getlin_cleanup();
+                await getlin_cleanup();
                 if (suppress_history)
                     game._toplines = ''; /* keep this prompt out of history */
                 return '\x1b';
@@ -797,12 +797,12 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
             await doprev_message();
             ttyDisplay.inread = saved;
             doprev = false;
-            tty_clear_nhwindow_message(game._topl_cury || 0);
+            await tty_clear_nhwindow_message(game._topl_cury || 0);
             game._msg_maxcol = game._msg_maxrow || 0;
             buf = buf.slice(0, pos);
             shown = buf;
         } else if (doprev) {
-            tty_clear_nhwindow_message(game._topl_cury || 0);
+            await tty_clear_nhwindow_message(game._topl_cury || 0);
             game._msg_maxcol = game._msg_maxrow || 0;
             doprev = false;
             buf = buf.slice(0, pos);
@@ -842,7 +842,7 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
         }
     }
     ttyDisplay.inread--;
-    getlin_cleanup();
+    await getlin_cleanup();
     if (suppress_history) {
         /* prevent next message from pushing current query+answer into
            tty message history */
@@ -916,9 +916,9 @@ export async function paranoid_ynq(beParanoid, prompt, acceptQ = false) {
        clear_nhwindow(WIN_MESSAGE);   / * clean up after ourselves * /
    The prompt (and typed answer) are ERASED the moment the read finishes;
    whatever the caller plines next starts from a blank top line. */
-function getlin_cleanup() {
+async function getlin_cleanup() {
     game._toplin = TOPLINE_SPECIAL_PROMPT; /* non-EMPTY so the erase runs */
-    tty_clear_nhwindow_message(game._topl_cury || 0);
+    await tty_clear_nhwindow_message(game._topl_cury || 0);
     game._pending_message = '';
     game._toplin = TOPLINE_EMPTY;
 }
@@ -1169,10 +1169,10 @@ export async function enter_explore_mode() {
     if (answer === 'y') {
         game.discover = true;
         game.wizard = false;
-        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await tty_clear_nhwindow_message(game._topl_cury || 0);
         await You('are now in non-scoring explore mode.');
     } else {
-        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await tty_clear_nhwindow_message(game._topl_cury || 0);
         await pline(`Continuing with ${oldmode}.`);
     }
     return ECMD_OK;
@@ -2378,7 +2378,7 @@ export async function rhack(key) {
                    parks at the end of the text (recorded cursor [9,0] for
                    "Count: 20"), the same shape as the other topline
                    prompts. */
-                tty_clear_nhwindow_message(game._topl_cury || 0);
+                await tty_clear_nhwindow_message(game._topl_cury || 0);
                 const ctext = `Count: ${cnt}`;
                 game._pending_message = ctext;
                 game._toplin = TOPLINE_SPECIAL_PROMPT;
@@ -2392,7 +2392,7 @@ export async function rhack(key) {
             ch0 = String.fromCharCode(key);
         }
         if (ch0 === '\x1b') {          /* esc cancels count (TH) */
-            tty_clear_nhwindow_message(game._topl_cury || 0);
+            await tty_clear_nhwindow_message(game._topl_cury || 0);
             game._pending_message = '';
             game._toplin = TOPLINE_EMPTY;
             game.command_count = 0;
@@ -2409,7 +2409,7 @@ export async function rhack(key) {
        as well as the text; dropping the text alone left toplin at
        TOPLINE_NEED_MORE with nothing behind it. */
     if (clear_before_dispatch) {
-        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await tty_clear_nhwindow_message(game._topl_cury || 0);
         game._pending_message = '';
         game._toplin = TOPLINE_EMPTY;
     }
@@ -2659,7 +2659,7 @@ async function domove_core() {
         const mtmp = u.ustuck;
         if (!mtmp)
             return;
-        u_on_newpos(mtmp.mx, mtmp.my);
+        await u_on_newpos(mtmp.mx, mtmp.my);
         u.ux0 = u.ux;
         u.uy0 = u.uy;
         game.bhitpos = { x: mtmp.mx, y: mtmp.my };
@@ -2719,7 +2719,7 @@ async function domove_core() {
     {
         const mtmp_run = m_at(newx, newy);
         if (mtmp_run && !is_safemon(mtmp_run) && game.context.run
-            && ((!u.ublind && mon_visible(mtmp_run)
+            && ((!Blind() && mon_visible(mtmp_run)
                  && ((M_AP_TYPE(mtmp_run) !== M_AP_FURNITURE
                       && M_AP_TYPE(mtmp_run) !== M_AP_OBJECT)
                      || Protection_from_shape_changers()))
@@ -2845,12 +2845,18 @@ async function domove_core() {
         return;
 
     // Move the hero
-    const oldx = u.ux, oldy = u.uy;
     u.ux = newx;
     u.uy = newy;
 
     // src/hack.c:2877 m_postmove_effect()
     await m_postmove_effect(game.youmonst);
+
+    // src/hack.c:2879, train even if a later pet swap refuses the move.
+    if (u.usteed) {
+        u.usteed.mx = u.ux;
+        u.usteed.my = u.uy;
+        await exercise_steed();
+    }
 
     /* src/hack.c:2919 — with a safe monster at the destination, move it to
        the hero's previous square. This is the ELSE-IF arm of the
@@ -2905,7 +2911,7 @@ async function domove_core() {
 
     /* src/hack.c:2934 — full re-position after the tentative move; this is
        where a ridden steed's mx,my get synced to the hero. */
-    u_on_newpos(u.ux, u.uy);
+    await u_on_newpos(u.ux, u.uy);
 
     /* src/hack.c:2936 — the post-move run check.
      *
@@ -2944,12 +2950,12 @@ async function domove_core() {
         || game.youmonst.data.mlet === MONSYMS.S_EEL || u.dx || u.dy)
         hideunder(game.youmonst);
 
-    await check_leash(game.u.ux0, game.u.uy0);
+    /* src/hack.c:2958. Moving reveals a disguise as an immobile object. */
+    if ((u.dx || u.dy) && (M_AP_TYPE(game.youmonst) === M_AP_OBJECT
+                          || M_AP_TYPE(game.youmonst) === M_AP_FURNITURE))
+        game.youmonst.m_ap_type = M_AP_NOTHING;
 
-    /* Clean old position -- vision_recalc() will print our new one. */
-    newsym(oldx, oldy);
-    /* Since the hero has moved, adjust what can be seen/unseen. */
-    vision_recalc(1); /* Do the work now in the recover time. */
+    await check_leash(game.u.ux0, game.u.uy0);
 
     /* src/hack.c:2964 — position changed: mark success for domove()'s
        smudge/bubble tail and set u.umoved, read by u_calc_moveamt (steed
@@ -2960,6 +2966,11 @@ async function domove_core() {
         game.domove_succeeded |= ((game.domove_attempting | 0)
                                   & (DOMOVE_RUSH | DOMOVE_WALK));
         game.u.umoved = true;
+        /* Clean old position -- vision_recalc() will print our new one. */
+        newsym(u.ux0, u.uy0);
+        /* Since the hero has moved, adjust what can be seen/unseen. */
+        vision_recalc(1); /* Do the work now in the recover time. */
+        await invocation_message();
     }
 
     if (Punished()) /* put back ball and chain */
@@ -3306,7 +3317,7 @@ export async function get_count(allowchars, inkey, maxcount, count, gc_flags) {
         }
 
         if (cnt > 9 || backspaced || echoalways) {
-            tty_clear_nhwindow_message(game._topl_cury || 0);
+            await tty_clear_nhwindow_message(game._topl_cury || 0);
             let qbuf;
             if (backspaced && !cnt && !showzero) {
                 qbuf = 'Count: ';

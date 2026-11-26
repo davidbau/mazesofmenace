@@ -94,7 +94,7 @@ export async function update_topl(bp) {
         } else if (cury) {
             /* docorner(1, cury + 1, 0) restores map rows covered by a
                wrapped prompt before the replacement message is painted. */
-            tty_clear_nhwindow_message(cury);
+            await tty_clear_nhwindow_message(cury);
             game._topl_curx = game._topl_cury = 0;
         }
     }
@@ -337,14 +337,14 @@ export async function doprev_message() {
 // tty_putstr(..., ATR_NOHISTORY) takes the show_topl() path.  The displayed
 // text is deliberately absent from gt.toplines, so a later ordinary message
 // can append logically while the no-history prefix remains painted.
-export function show_topl_nohistory(str) {
+export async function show_topl_nohistory(str) {
     remember_topl();
     if (game._win_stop && !game._win_nostop)
         return;
     game._win_stop = game._win_nostop = false;
 
     if (game._topl_cury && game._toplin === TOPLINE_NON_EMPTY)
-        tty_clear_nhwindow_message(game._topl_cury);
+        await tty_clear_nhwindow_message(game._topl_cury);
     game._pending_message = '';
     game._topline_physical_prefix = '';
     game._topl_curx = game._topl_cury = 0;
@@ -463,7 +463,7 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
     /* win/tty/topl.c:533 clean_up — the answered prompt (plus the visible
        form of the answer key) becomes the topline text, flagged NON_EMPTY so
        the NEXT key read erases it before its boundary frame. */
-    const clean_up = (q) => {
+    const clean_up = async (q) => {
         const vis = game.yn_number ? `#${game.yn_number}`
             : (q >= ' ' && q !== '\x7f') ? q : '';
         game._toplines = promptText + vis;   /* gt.toplines: ^P recall buffer */
@@ -472,7 +472,7 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
         /* win/tty/topl.c clears the message window here when the prompt
            wrapped onto a continuation row. */
         if (promptLines.length > 1) {
-            tty_clear_nhwindow_message(promptLines.length - 1);
+            await tty_clear_nhwindow_message(promptLines.length - 1);
             game._topl_curx = game._topl_cury = 0;
         }
         return q;

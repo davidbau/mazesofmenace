@@ -193,7 +193,7 @@ export function next_shkp(shkp, withbill) {
         if (DEADMONSTER(m))
             continue;
         const eshk = m.isshk ? (m.eshk || ESHK(m)) : null;
-        if (m.isshk && ((eshk?.bill_p?.length || 0) || !withbill)) {
+        if (m.isshk && (eshk.billct || !withbill)) {
             found = m;
             break;
         }
@@ -237,7 +237,8 @@ export function same_price(obj1, obj2) {
 export function onbill(obj, shkp, silent) {
     if (shkp) {
         const eshk = shkp.eshk || ESHK(shkp);
-        for (const bp of eshk.bill_p || []) {
+        for (let i = 0; i < eshk.billct; i++) {
+            const bp = eshk.bill_p[i];
             if (bp.bo_id === obj.o_id) {
                 /* if (!obj->unpaid) impossible("onbill: paid obj on bill?") */
                 return bp;
@@ -739,7 +740,9 @@ export async function u_entered_shop(enterstring) {
         game.u.ushops = '';
         return;
     }
+    const eshk = shkp.eshk || ESHK(shkp);
     if (!inhishop(shkp)) {
+        eshk.bill_p = -1000;
         if (!emptyShops.includes(enterstring[0]))
             await deserted_shop(enterstring);
         game._empty_shops = game.u.ushops || '';
@@ -750,9 +753,7 @@ export async function u_entered_shop(enterstring) {
     const { ACH_SHOP, record_achievement } = await import('./insight.js');
     record_achievement(ACH_SHOP);
 
-    const eshk = shkp.eshk || ESHK(shkp);
-    if (!Array.isArray(eshk.bill_p))
-        eshk.bill_p = [];
+    eshk.bill_p = eshk.bill;
     const customer = eshk.customer || '';
     if ((!(eshk.visitct | 0) || customer)
         && customer.toLowerCase() !== (game.plname || '').toLowerCase()) {
@@ -762,8 +763,10 @@ export async function u_entered_shop(enterstring) {
         shkp.mpeaceful = 1;
         if (eshk.surcharge) {
             eshk.surcharge = false;
-            for (const bp of eshk.bill_p)
+            for (let i = 0; i < eshk.billct; i++) {
+                const bp = eshk.bill_p[i];
                 bp.price -= Math.trunc((bp.price + 3) / 4);
+            }
         }
     }
 
@@ -894,8 +897,10 @@ export function costly_spot(x, y) {
 
 function add_up_bill(shkp) {
     const eshk = shkp.eshk || ESHK(shkp);
-    return (eshk.bill_p || []).reduce(
-        (total, bp) => total + bp.price * bp.bquan, 0);
+    let total = 0;
+    for (let i = 0; i < eshk.billct; i++)
+        total += eshk.bill_p[i].price * eshk.bill_p[i].bquan;
+    return total;
 }
 
 // src/shk.c:319 clear_unpaid()
@@ -1003,7 +1008,6 @@ export function setpaid(shkp) {
     }
     if (shkp) {
         const eshk = shkp.eshk || ESHK(shkp);
-        eshk.bill_p = [];
         eshk.billct = 0;
         eshk.credit = 0;
         eshk.debit = 0;
@@ -1067,6 +1071,7 @@ export function shkgone(shkp) {
     const roomchar = String.fromCharCode(eshk.shoproom);
     if ((game.u.ushops || '').includes(roomchar)) {
         setpaid(shkp);
+        eshk.bill_p = null;
         game.u.ushops = [...game.u.ushops]
             .filter(ch => ch !== roomchar).join('');
     }
@@ -1443,9 +1448,9 @@ export function get_cost(obj, shkp) {
 // src/shk.c:3309 add_one_tobill().
 function add_one_tobill(obj, dummy, shkp) {
     const eshk = shkp.eshk || ESHK(shkp);
-    if (!Array.isArray(eshk.bill_p))
-        eshk.bill_p = [];
-    if (eshk.bill_p.length >= 200)
+    if (!eshk.bill_p)
+        eshk.bill_p = eshk.bill;
+    if (eshk.billct === BILLSZ)
         return false;
 
     let price = get_cost(obj, shkp);
@@ -1455,7 +1460,7 @@ function add_one_tobill(obj, dummy, shkp) {
         obj.oextra ||= {};
         obj.oextra.omid = obj.owt;
     }
-    eshk.bill_p.push({
+    Object.assign(eshk.bill_p[eshk.billct], {
         bo_id: obj.o_id,
         useup: !!dummy,
         price,
@@ -1463,7 +1468,7 @@ function add_one_tobill(obj, dummy, shkp) {
     });
     if (dummy)
         add_to_billobjs(obj);
-    eshk.billct = eshk.bill_p.length;
+    eshk.billct++;
     obj.unpaid = 1;
     return true;
 }
@@ -1904,10 +1909,8 @@ function sub_one_frombill(obj, shkp) {
         const eshk = shkp.eshk || ESHK(shkp);
         const bill = eshk.bill_p;
         /* eshkp->billct--; *bp = eshkp->bill_p[eshkp->billct]; */
-        const idx = bill.indexOf(bp);
-        bill[idx] = bill[bill.length - 1];
-        bill.pop();
-        eshk.billct = bill.length;
+        eshk.billct--;
+        Object.assign(bp, bill[eshk.billct]);
         return;
     } else if (obj.unpaid) {
         void impossible('sub_one_frombill: unpaid object not on bill');
@@ -2091,17 +2094,17 @@ export function splitbill(obj, otmp) {
     bp.bquan -= otmp.quan;
 
     const eshk = shkp.eshk || ESHK(shkp);
-    if ((eshk.bill_p || []).length === BILLSZ) {
+    if (eshk.billct === BILLSZ) {
         otmp.unpaid = 0;
     } else {
         const tmp = bp.price;
-        (eshk.bill_p ||= []).push({
+        Object.assign(eshk.bill_p[eshk.billct], {
             bo_id: otmp.o_id,
             bquan: otmp.quan,
             useup: false,
             price: tmp,
         });
-        eshk.billct = eshk.bill_p.length;
+        eshk.billct++;
     }
 }
 
@@ -2153,9 +2156,8 @@ export function obfree_bill(obj, merge = null) {
     }
     const eshk = shkp.eshk || ESHK(shkp);
     bpm.bquan += bp.bquan;
-    Object.assign(bp, eshk.bill_p[eshk.bill_p.length - 1]);
-    eshk.bill_p.length--;
-    eshk.billct = eshk.bill_p.length;
+    eshk.billct--;
+    Object.assign(bp, eshk.bill_p[eshk.billct]);
     return false;
 }
 
@@ -2421,7 +2423,8 @@ export function pacify_shk(shkp, clear_surcharge) {
     shkp.mpeaceful = 1; /* make peaceful */
     if (clear_surcharge && ESHK(shkp).surcharge) {
         ESHK(shkp).surcharge = false;
-        for (const bp of ESHK(shkp).bill_p || []) {
+        for (let i = 0; i < ESHK(shkp).billct; i++) {
+            const bp = ESHK(shkp).bill_p[i];
             const reduction = Math.trunc((bp.price + 3) / 4);
             bp.price -= reduction; /* undo 33% increase */
         }
@@ -2434,8 +2437,10 @@ function rile_shk(shkp) {
     shkp.mpeaceful = 0;
     if (!eshk.surcharge) {
         eshk.surcharge = true;
-        for (const bp of eshk.bill_p || [])
+        for (let i = 0; i < eshk.billct; i++) {
+            const bp = eshk.bill_p[i];
             bp.price += Math.trunc((bp.price + 2) / 3);
+        }
     }
 }
 
@@ -3202,8 +3207,7 @@ function update_bill(indx /* index into ibill[]; -1 for unpaid contained item */
         }
         newebillct = (eshkp.billct | 0) - 1;
         const bidx = eshkp.bill_p.indexOf(bp);
-        eshkp.bill_p[bidx] = eshkp.bill_p[newebillct]; /* *bp = bill_p[newebillct] */
-        eshkp.bill_p.length = newebillct;
+        Object.assign(bp, eshkp.bill_p[newebillct]); /* *bp = bill_p[newebillct] */
         for (j = 0; j < ibillct; ++j)
             if (ibill[j].bidx === newebillct)
                 ibill[j].bidx = bidx; /* (bp - eshkp->bill_p) */
@@ -3351,12 +3355,9 @@ async function buy_container(shkp, indx, ibillct, ibill) {
        undergoes updates */
     for (j = 0; j < boidsct; ++j) {
         boid = boids[j];
-        /* the C scans its stale 'ebillct' entries of bill_p[]; ours is
-           truncated by update_bill(), so the live entries are searched and
-           a miss lands on the same 'i == ebillct' */
         for (i = 0; i < ebillct; ++i) {
             bp = eshkp.bill_p[i];
-            if (i < (eshkp.billct | 0) && bp && bp.bo_id === boid)
+            if (bp.bo_id === boid)
                 break;
         }
         if (i === ebillct) {
@@ -4067,7 +4068,8 @@ export async function doinvbill(mode) {
     const eshkp = shkp.eshk || ESHK(shkp);
     if (mode === 0) {
         let cnt = eshkp.debit ? 1 : 0;
-        for (const bp of eshkp.bill_p || []) {
+        for (let i = 0; i < eshkp.billct; i++) {
+            const bp = eshkp.bill_p[i];
             const obj = bp.useup ? null : bp_to_obj(bp);
             if (bp.useup || (obj && obj.quan < bp.bquan))
                 cnt++;
@@ -4078,7 +4080,8 @@ export async function doinvbill(mode) {
     tty_putstr(datawin, 0, 'Unpaid articles already used up:');
     tty_putstr(datawin, 0, '');
     let totused = 0;
-    for (const bp of eshkp.bill_p || []) {
+    for (let i = 0; i < eshkp.billct; i++) {
+        const bp = eshkp.bill_p[i];
         const obj = bp_to_obj(bp);
         if (!obj) {
             await impossible('Bad shopkeeper administration.');
@@ -4245,7 +4248,7 @@ export async function after_shk_move(shkp) {
 
     if (eshkp.bill_p === -1000 && inhishop(shkp)) {
         /* reset bill_p, need to re-calc player's occupancy too */
-        eshkp.bill_p = eshkp.bill || [];
+        eshkp.bill_p = eshkp.bill;
         /* only re-check occupancy if game hasn't just ended */
         if (!game.program_state?.gameover)
             await check_special_room(false);
@@ -4284,7 +4287,19 @@ export function set_residency(shkp, zero_out) {
     }
 }
 
-// src/shk.c:290 restshk(). bill_p already owns the serialized bill array in JS.
+// src/shk.c:280 replshk(), transfer residency to a replacement monster.
+export function replshk(mtmp, mtmp2) {
+    const eshk = mtmp2.eshk || ESHK(mtmp2);
+    const roomidx = eshk.shoproom - ROOMOFFSET;
+    const room = game.level.rooms[roomidx]
+        || (game.level.subrooms || []).find(r => r.roomnoidx === roomidx);
+    room.resident = mtmp2;
+    if (inhishop(mtmp)
+        && game.u.ushops?.charCodeAt(0) === (mtmp.eshk || ESHK(mtmp)).shoproom)
+        eshk.bill_p = eshk.bill;
+}
+
+// src/shk.c:290 restshk(). Rebind the active pointer to this keeper's bill.
 export function restshk(shkp, ghostly) {
     const eshk = shkp.eshk || ESHK(shkp);
     // C restores this coord by value; older JSON saves could alias a door.
@@ -4292,7 +4307,7 @@ export function restshk(shkp, ghostly) {
     if (!game.u.uz.dlevel)
         return;
     if (eshk.bill_p !== -1000)
-        eshk.bill_p ||= [];
+        eshk.bill_p = eshk.bill;
     if (ghostly) {
         eshk.shoplevel = {...game.u.uz};
         if (!shkp.mpeaceful
@@ -4461,8 +4476,10 @@ const um_dist = (x, y, n) => (Math.abs(game.u.ux - x) > n || Math.abs(game.u.uy 
 function shop_debt(eshkp) {
     let debt = eshkp.debit | 0;
 
-    for (const bp of (eshkp.bill_p || []))
+    for (let i = 0; i < eshkp.billct; i++) {
+        const bp = eshkp.bill_p[i];
         debt += bp.price * bp.bquan;
+    }
     return debt;
 }
 
@@ -4505,8 +4522,10 @@ export async function shopper_financial_report() {
 function addupbill(shkp) {
     let total = 0;
 
-    for (const bp of (ESHK(shkp).bill_p || []))
+    for (let i = 0; i < ESHK(shkp).billct; i++) {
+        const bp = ESHK(shkp).bill_p[i];
         total += bp.price * bp.bquan;
+    }
     return total;
 }
 
@@ -4726,11 +4745,8 @@ export async function globby_bill_fixup(obj_absorber, obj_absorbed) {
                || billable({ shkp }, obj_absorber, eshkp.shoproom, false))) {
         /* the glob being absorbed has a billing record */
         amount = bp.price;
-        /* eshkp->billct--; *bp = eshkp->bill_p[eshkp->billct]; the last
-           record overwrites the absorbed one and the bill shrinks */
-        Object.assign(bp, eshkp.bill_p[eshkp.bill_p.length - 1]);
-        eshkp.bill_p.length -= 1;
-        eshkp.billct = eshkp.bill_p.length;
+        eshkp.billct--;
+        Object.assign(bp, eshkp.bill_p[eshkp.billct]);
         clear_unpaid_obj(shkp, obj_absorbed);
 
         if (bp_absorber) {

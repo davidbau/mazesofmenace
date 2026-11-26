@@ -46,6 +46,7 @@ import { monsndx } from './makemon.js';
 import { set_mimic_sym } from './makemon.js';
 import { is_golem } from './makemon.js';
 import { m_respond } from './mon.js';
+import { replmon } from './mon.js';
 import { mimic_hit_msg } from './mon.js';
 import { mcureblindness } from './mon.js';
 import { maybe_unhide_at } from './mon.js';
@@ -977,9 +978,7 @@ export function get_obj_location(obj, cc, locflags) {
 }
 
 // src/zap.c:713 montraits(); recreate a monster from the traits saved with
-// a corpse or statue; the C makes a fresh monster then swaps the saved one
-// into its place with replmon(); this port keeps the fresh monster's
-// identity and copies the saved traits onto it, which is the same result
+// a corpse or statue; make a fresh monster then replace it with saved traits.
 export async function montraits(obj, cc, adjacentok) {
     /* adjacentok: False: at obj's spot only, True: nearby is allowed */
     let mtmp = null;
@@ -1075,22 +1074,21 @@ export async function montraits(obj, cc, adjacentok) {
         /* when traits are for a shopkeeper, dummy monster 'mtmp' won't
            have necessary eshk data for replmon() -> replshk() */
         if (mtmp2.isshk) {
+            /* neweshk(mtmp), then *ESHK(mtmp) = *ESHK(mtmp2): the bill
+               array is a value field, while bill_p is a shallow pointer. */
+            mtmp.mextra ||= { mcorpsenm: NON_PM };
+            const eshk = mtmp2.eshk || mtmp2.mextra.eshk;
+            mtmp.eshk = mtmp.mextra.eshk = structuredClone({...eshk, bill_p: null});
+            mtmp.eshk.bill_p = eshk.bill_p != null && eshk.bill_p !== -1000
+                ? mtmp.eshk.bill : eshk.bill_p;
             mtmp.isshk = 1;
         }
-        /* replmon(mtmp, mtmp2): the saved traits take over the new
-           monster's place in the lists; done in place here */
-        for (const key of Object.keys(mtmp))
-            if (!(key in mtmp2))
-                delete mtmp[key];
-        Object.assign(mtmp, mtmp2);
-        for (const otmp of (mtmp.minvent || []))
-            otmp.ocarry = mtmp;
-        newsym(mtmp.mx, mtmp.my); /* Might now be invisible */
+        await replmon(mtmp, mtmp2);
+        newsym(mtmp2.mx, mtmp2.my); /* Might now be invisible */
 
         /* in case Protection_from_shape_changers is different
            now than it was when the traits were stored */
-        await restore_cham(mtmp);
-        return mtmp;
+        await restore_cham(mtmp2);
     }
     return mtmp2;
 }
@@ -1827,7 +1825,7 @@ export async function do_enlightenment_effect() {
         tty_end_menu(win, null);
         await tty_display_nhwindow(win);
         await xwaitforspace(' \r\n\x1b');
-        while (game.morc !== '\x1b' && tty_next_page(win))
+        while (game.morc !== '\x1b' && await tty_next_page(win))
             await xwaitforspace(' \r\n\x1b');
         await tty_destroy_nhwindow(win);
         await notice_all_mons_flush();

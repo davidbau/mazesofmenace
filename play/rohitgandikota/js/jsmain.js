@@ -141,6 +141,9 @@ export class NethackGame {
         savedsym_free();
         // initoptions_init(): defaults precede each OPTIONS/BIND line.
         reset_commands(true);
+        // src/options.c initoptions_init(): seed before reading the rc.
+        initRng(this._seed);
+        enableRngLog();
         const rc = parseNethackrc(this._nethackrc);
         g.rc = rc;
         /* src/options.c optfn_boulder() and initoptions_finish(). The active
@@ -248,10 +251,6 @@ export class NethackGame {
            from roles[]/races[] before any draw depends on them. */
         g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
         g.urace = { adj: 'human' };
-
-        // Initialize PRNG
-        initRng(this._seed);
-        enableRngLog();
 
         // Install display; keep a handle so an in-segment restart can
         // rewire the same display into the fresh game object.

@@ -3850,7 +3850,15 @@ export async function doset_simple() {
                      * before parseoptions returns to preference_update. */
                     if (result) {
                         await pline(result);
-                        await force_more(result);
+                        /* The page is the re-offered menu's
+                         * tty_display_nhwindow(WIN_MESSAGE) for TOPLINE_NEED_MORE
+                         * (wintty.c:1920-1921), which returns at once while
+                         * WIN_STOP == WIN_CANCELLED is set (wintty.c:1865): an
+                         * ESC at an earlier error's --More-- left the line
+                         * unpainted and unfiled in gt.toplines, so a forced page
+                         * here would file it a second time. */
+                        if (!g._topl_win_stop)
+                            await force_more(result);
                     }
                     /* options.c:8956-8958 preference_update -> wintty.c:603 */
                     if (entry.name === 'statuslines') {

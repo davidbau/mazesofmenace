@@ -119,8 +119,19 @@ async function drainTopline() {
      * (windows.c:1856-1864) and tty_display_nhwindow page over the terminal
      * as last flushed, so silent toggles (give_opt_msg FALSE after
      * 'idlecheckpoint', options.c:5313-5319) are not yet painted. */
-    if (game._pending_message)
+    /* That page is tty_display_nhwindow(WIN_MESSAGE), which returns at once
+     * while WIN_STOP (== WIN_CANCELLED) is set (wintty.c:1865): after an ESC at
+     * an earlier --More--, the line in gt.toplines stays unpainted and unfiled
+     * until a later remember_topl(). */
+    if (game._pending_message && !game._topl_win_stop)
         await force_more_lone_frame(game._pending_message);
+    else if (game._pending_message && game._topl_win_stop_buf == null) {
+        /* The swallowed line is gt.toplines all the same (topl.c:257-290):
+         * the ^P ring's live entry, kept as the WIN_STOP buffer. */
+        const h = (game._msg_history ||= []);
+        if (h[h.length - 1] !== game._pending_message) h.push(game._pending_message);
+        game._topl_win_stop_buf = game._pending_message;
+    }
     /* C topl.c:205-248,274-300 — when the page this drain raised was
      * ESC-dismissed, the pline whose overflow raised it had already sampled
      * `skip` FALSE, so update_topl:289-291 remember_topl()s the paged prefix,

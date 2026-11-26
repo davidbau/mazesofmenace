@@ -16,7 +16,7 @@ import { roguename, a_monnam } from './do_name.js';
 import { defended as _enl_defended } from './mondata.js';
 import { with_distant_name } from './objnam.js';
 import { genus } from './mon.js';
-import { TOPL_LIMIT, objpile_attr, topl_recall_paint, topl_history_window_text } from './display.js';
+import { TOPL_LIMIT, objpile_attr, topl_recall_paint, topl_history_window_text, remember_stopped_toplines } from './display.js';
 import { retouch_equipment } from './artifact.js';
 import { status_r1_docorner, status_r1_menu_docrt, _threeStatusLines, _strengthStr, pline_flush_point, prepare_deferred_pline, lone_frame_run_flush, retouch_object_hero } from './display.js';
 import { allow_category, menu_class_present, u_safe_from_fatal_corpse } from './pickup.js';
@@ -234,7 +234,7 @@ import { RLOC_MSG, RLOC_ERR } from './const.js';
 import { ERODE_CRACK, ERODE_BURN, EF_DESTROY, EF_VERBOSE, CONTAINED_TOO } from './const.js';
 import { see_with_infrared, obj_to_glyph, tmp_at, DISP_END, DISP_FLASH, DISP_BEAM, DISP_TETHER, docrt_flags, show_travel_debug } from './display.js';
 import { bot, check_gold_symbol } from './botl.js';
-import { tty_repaint } from './display.js';
+import { tty_repaint, tty_cliparound } from './display.js';
 import { ECMD_TIME, ECMD_OK, ECMD_CANCEL, ECMD_FAIL, WT_TOOMUCH_DIAGONAL, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DIR_UP, DIR_DOWN, SLT_ENCUMBER, MOD_ENCUMBER, OVERLOADED, TT_PIT, SPIKED_PIT, TT_BEARTRAP, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, LADDER, CXN_ARTICLE, CXN_NOCORPSE } from './const.js';
 import { In_endgame, Is_stronghold, Is_knox_level, Is_botlevel, In_sokoban, IS_POOL, DB_MOAT, Is_firelevel as Is_firelevel_cmd } from './const.js';
 import { dunlev, builds_up, endgamelevelname, at_dgn_entrance, describe_level_buf, In_tutorial, on_level } from './dungeon.js';
@@ -1178,10 +1178,12 @@ async function tty_get_ext_cmd_inner() {
     }
     g._extRepeatNoKey = false;
     // getline.c:55 clears WIN_STOP only after the pre-prompt more().
+    const _wasStopped = !!g._topl_win_stop;
+    remember_stopped_toplines();
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
     g._topl_win_stop_buf = null;
-    if (g._pending_message && g._pending_message !== g._topl_history_recall) {
+    if (!_wasStopped && g._pending_message && g._pending_message !== g._topl_history_recall) {
         (g._msg_history ||= []).push(String(g._pending_message));
         g._prevmsg_next = null;
     }
@@ -1236,13 +1238,18 @@ async function tty_get_ext_cmd_inner() {
             const pw = (g.iflags?.prevmsg_window || 's')[0];
             if (pw === 's' || (pw === 'c' && !doprev)) {
                 g._getlin_toplines = '# ' + buf; /* getline.c:82 gt.toplines */
+                g._prevmsg_window_shown = false;
                 try {
                     if (!doprev) await doprev_message();
                     await doprev_message();
                 } finally {
                     g._getlin_toplines = null;
                 }
-                if (g.nhDisplay) topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
+                /* getline.c:108-111, as windows.js getlin: a combination walk
+                 * that reached the history window leaves the cursor where the
+                 * window's dismissal put it (wintty.c:966-983, 1975-1985). */
+                if (g.nhDisplay && !g._prevmsg_window_shown)
+                    topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
                 doprev = true;
                 continue;
             }
@@ -1668,6 +1675,7 @@ async function doquiver() {
     const res = await doquiver_core('ready');
     g.context = g.context || {};
     g.context.move = (res === ECMD_TIME) ? 1 : 0;
+    return res;
 }
 
 
@@ -2397,6 +2405,17 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
         await force_more(held);
     } else if (g._pending_message) {
         await force_more(g._pending_message);
+        /* An ESC at a non-last page leaves the next pline (the owner whose
+         * update_topl raised that more()) drawn and standing in gt.toplines
+         * under WIN_STOP (topl.c:232-235,257,289-300); the menu's own
+         * tty_display_nhwindow(WIN_MESSAGE) is then a no-op (wintty.c:1865,
+         * 1920-1921) and the window clears the screen, but gt.toplines keeps
+         * the owner for the next remember_topl() and ^P.  The ^P ring's last
+         * entry is this port's gt.toplines. */
+        if (g._topl_win_stop && g._topl_win_stop_buf != null
+            && g._pending_message === g._topl_win_stop_buf
+            && g._msg_history?.at(-1) !== g._pending_message)
+            (g._msg_history ||= []).push(g._pending_message);
         g._pending_message = '';
     }
     const u = g.u || {};
@@ -3676,6 +3695,7 @@ export async function y_n_default(query, def) {
     // status changes must not replace the last pline's physical paint.
     if (g._pending_message && !g._topl_win_stop)
         await force_more_lone_frame(g._pending_message);
+    remember_stopped_toplines();
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
     g._topl_win_stop_buf = null;
@@ -3728,6 +3748,10 @@ export async function y_n_default(query, def) {
             g._toplEmptyAfterSuppress = true;
             if ((g.iflags?.prevmsg_window || 's')[0] !== 's') {
                 await doprev_message();
+                /* topl.c:438-441: tty_clear_nhwindow + cw->maxcol = cw->maxrow,
+                 * so the next ^P restarts the combination walk at gt.toplines. */
+                g._prevmsg_combo = 0;
+                g._prevmsg_next = null;
             } else {
                 if (!_ynDoprev) await doprev_message();
                 await doprev_message();
@@ -4464,6 +4488,7 @@ export async function doprev_message(liveTopline) {
         const _liveTopl = g._getlin_toplines ?? '';
         reversed = _pmw === 'r' ? [_liveTopl, ...reversed] : [...reversed, _liveTopl];
     }
+    g._prevmsg_window_shown = true; /* the window's dismissal leaves the cursor (see windows.js getlin) */
     // C ref: tty_doprev_message builds "Message History", blank line, then the
     // recalled lines.  WIN_COL=7 matches the recorded reference (col-7 indent).
     /* wintty.c:2196-2222,2253 compress_str() runs before tty_putstr measures
@@ -4598,6 +4623,42 @@ export async function doprev_message(liveTopline) {
         await bot();
     }
     await flush_screen(1);
+    /* docorner (wintty.c:3684-3720) cl_end()s each covered row from offx - 1
+     * and skips row_refresh past the map (y + clipy > ROWNO), so a window that
+     * reached the status rows leaves the cursor at (offx - 1, maxrow); bot()
+     * is a no-op inside getlin (windows.c:1897-1901) and nothing flushes, so
+     * the getlin's next read sees it there. */
+    if (WIN_COL > 0 && g._bot_disabled && g.program_state?.in_getlin
+        && endRow >= (_threeStatusLines() ? 21 : 22) && endRow < 24)
+        set_cursor(WIN_COL - 2, endRow); /* WIN_COL is offx + 1 here (the text margin) */
+    else if (WIN_COL > 0 && g._getlin_toplines != null
+             && endRow >= (_threeStatusLines() ? 21 : 22) && endRow < 24) {
+        /* tty_get_ext_cmd's hooked_tty_getlin runs with bot() live (cmd.c:500
+         * is not wrapped by windows.c:1897-1901), so docorner's botlx bot()
+         * (wintty.c:3715-3720) rewrites every status field and render_status
+         * leaves the cursor past the last one, on the bottom status row. */
+        const rows = String(g._screen_output || '').split('\n');
+        const last = String(rows[23] || '').replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n))
+            .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trimEnd();
+        if (rows.length === 24 && last.length) set_cursor(last.length, 23);
+    } else if (WIN_COL > 0 && endRow >= 1 && endRow <= 21 && !(g._ttyClipY | 0)
+             && ((g._bot_disabled && g.program_state?.in_getlin)
+                 /* tty_get_ext_cmd's hooked_tty_getlin, which the core does
+                  * not wrap (cmd.c:500), likewise reads on without a flush */
+                 || g._getlin_toplines != null)) {
+        /* ...and a window whose last row is a map row ends with that row's
+         * row_refresh(offx, COLNO - 1, maxrow - 1) (wintty.c:3685-3703): the
+         * cursor is one past the last cell it printed — row_refresh skips
+         * GLYPH_UNEXPLORED (display.c:2175-2190), map x at screen column
+         * x - 1 — or at tty_curs(BASE_WINDOW, offx, y)'s offx - 1 when it
+         * printed nothing. */
+        let cur = WIN_COL - 2;
+        for (let x = Math.max(1, WIN_COL - 1); x < 80; x++) {
+            const loc = g.level?.at?.(x, endRow - 1);
+            if (loc?.disp_cls && loc.disp_cls !== GLYPHCLS_UNEXPLORED) cur = x;
+        }
+        set_cursor(cur, endRow);
+    }
     /* What erase_menu_or_text left (wintty.c:971-983): docorner(offx, maxrow + 1)
      * cl_end()s rows 0..maxrow from screen column offx - 1 and row_refresh()es
      * the map there; offx 0 is docrt().  The menu under the window is never
@@ -10862,19 +10923,22 @@ async function _enlightenment_fullscreen_pager(content) {
 // ever touched, so step 291 rendered an empty topline.  gp.prevmsg is written by
 // pline() (js/display.js) and, when the line is shown, here.
 function _norep(text) {
-    const g = game;
-    if (g._prevmsg === text) {
-        /* Consecutive repeat: C's Norep does not redraw; leave the topline as-is.
-         * C `goto pline_done` skips the strncpy, so prevmsg is NOT refreshed. */
-        return;
-    }
+    /* The repeat test is vpline's (pline.c:246-262): msgtype_type(line, TRUE)
+     * returns MSGTYP_NOREP only when no MSGTYPE rule matches (options.c:
+     * 7797-7810), so a matching stop/show rule prints the repeat.  js/pline.js
+     * Norep carries PLINE_NOREPEAT into that same test; testing gp.prevmsg
+     * here first suppressed a repeat a MSGTYPE=stop rule must page. */
     /* C Norep() is vpline(PLINE_NOREPEAT): a real pline, which APPENDS to a
      * message already on the topline (and raises --More-- when the two do not
      * fit, wintty.c update_topl).  Overwriting _pending_message dropped an
      * earlier same-turn pline ("You are in full health." from regen_hp's
      * interrupt_multi, allmain.c:678) so the frame showed only this one.
-     * display.js Norep's only await is on pline, which commits synchronously. */
-    _Norep(text);
+     * display.js Norep's only await is on pline, which commits synchronously.
+     * Return its promise: a MSGTYPE=stop rule makes that pline's
+     * display_nhwindow(WIN_MESSAGE, TRUE) block on --More-- (pline.c:283-284),
+     * and a caller that does not await it reads the next command key while
+     * the page is still up. */
+    return _Norep(text);
 }
 
 /* C monst.h:249 helpless(mon) — msleeping || !mcanmove. */
@@ -12760,7 +12824,7 @@ async function dispatch_command(command, outcome = {}, queued = false) {
         return true;
     case "dowieldquiver": {
         // C ref: cmd.c — 'Q' dispatches to dowieldquiver() → doquiver_core()
-        await doquiver();
+        outcome.value = await doquiver();
     }
         return true;
     case "dowield": {
@@ -16523,6 +16587,7 @@ function u_on_newpos_cmd(x, y) {
     const u = game.u;
     u.ux = x | 0;
     u.uy = y | 0;
+    tty_cliparound(u.ux, u.uy); /* C dungeon.c:1579-1581 */
     if (u.usteed) {
         u.usteed.mx = x | 0;
         u.usteed.my = y | 0;
@@ -19988,6 +20053,7 @@ async function read_getlin(prompt) {
             if (key === 27) {
                 if (buf) {
                     buf = '';
+                    g._prevmsg_next = null; /* getline.c:92 cw->maxcol = cw->maxrow */
                     await paint(true); /* getline.c:91-95 clear + re-add from home */
                     continue;
                 }
@@ -20131,9 +20197,11 @@ async function read_yn(prompt, acceptQ) {
     // the last pline's physical screen before acknowledging the remainder.
     if (_topline_more_pending())
         await flush_screen(1, false);
-    if (unacknowledged && g._pending_message)
+    /* topl.c:389-391: no more() while WIN_STOP is set (an ESC at an earlier
+     * --More--); the drawn line is filed by the prompt's custompline. */
+    if (unacknowledged && g._pending_message && !g._topl_win_stop)
         await force_more_lone_frame(g._pending_message);
-    else if (unacknowledged && g._resultMessage) {
+    else if (unacknowledged && g._resultMessage && !g._topl_win_stop) {
         /* C has one topline: float_down()'s "You float gently..." and look_here's
          * pile text (stashed in the result channel by do_wear.js) are still
          * TOPLINE_NEED_MORE when really_done raises "Save bones?" (topl.c:397). */
@@ -20141,6 +20209,10 @@ async function read_yn(prompt, acceptQ) {
         g._resultMessage = null;
         await force_more_lone_frame(held);
     }
+    /* tty_yn_function clears WIN_STOP (topl.c:392) and its custompline
+     * files gt.toplines — the line swallowed or drawn after the ESC — first
+     * (wintty.c:2290-2299; topl.c:170-191). */
+    remember_stopped_toplines();
     /* C tty_yn_function's flush after the --More-- paints the status with
      * disp.botl still set by done()'s force-HP-to-zero (end.c:1075), so the
      * zeroed HP shows while "Die?" is up. eat.js _done arms this for that one
@@ -20208,7 +20280,10 @@ async function read_yn(prompt, acceptQ) {
                  * tty_clear_nhwindow(WIN_MESSAGE) + addtopl(prompt); doprev
                  * stays 0, so the next key answers the re-added prompt. */
                 await doprev_message();
-                g._prevmsg_next = null; /* topl.c:441 cw->maxcol = cw->maxrow */
+                /* topl.c:441 cw->maxcol = cw->maxrow: the next ^P restarts the
+                 * combination walk at gt.toplines (as end.js's yn_function). */
+                g._prevmsg_combo = 0;
+                g._prevmsg_next = null;
                 g._pending_message = shown;
                 await flush_screen(1);
                 if (g.nhDisplay) topl_park_cursor(g.nhDisplay, `${shown} `);

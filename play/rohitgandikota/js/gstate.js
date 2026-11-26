@@ -1,6 +1,8 @@
 // gstate.js — Global game state reference.
 // All game modules import `game` from here.
 
+import { NO_COLOR } from './terminal.js';
+
 export let game = {};
 
 export function resetGame() {
@@ -11,6 +13,9 @@ export function resetGame() {
         invent: [],
         // src/decl.c:903,1117: each game starts with a zeroed kinfo owner.
         killer: { next: null, id: 0, format: 0, name: '' },
+        // src/decl.c:820, include/optlist.h:196: tty targeting defaults.
+        wsettings: { wdmode: 0, map_frame_color: NO_COLOR },
+        iflags: { bgcolors: true },
     };
     return game;
 }

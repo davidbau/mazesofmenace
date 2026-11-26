@@ -13,6 +13,10 @@
 // is placed.
 
 import { rn1 } from './rng.js';
+import { Race_if } from './u_init.js';
+import { body_part } from './polyself.js';
+import { makeplural } from './objnam.js';
+import { CORR, ROOM, FOOT, Upolyd } from './const.js';
 import { update_player_regions, update_monster_region, in_out_region } from './region.js';
 import { m_into_limbo } from './mon.js';
 import { unstuck } from './mon.js';
@@ -615,8 +619,25 @@ function Is_botlevel_tele(lev) {
     return lev.dlevel === dunlevs_in_dungeon(lev);
 }
 
+// src/dungeon.c:1548 earth_sense()
+async function earth_sense() {
+    if (!Race_if(PMNAMES.PM_DWARF))
+        return;
+    if (game.u.usteed || Flying() || Levitation() || Upolyd(game.u))
+        return;
+    if (game.level.at(game.u.ux, game.u.uy).typ !== CORR
+        && game.level.at(game.u.ux, game.u.uy).typ !== ROOM)
+        return;
+
+    for (const otmp of game.level.buriedobjs || [])
+        if (u_at(otmp.ox, otmp.oy)) {
+            await You(`sense something below your ${makeplural(body_part(FOOT))}.`);
+            return;
+        }
+}
+
 // src/dungeon.c:1568 u_on_newpos() — move the hero to <x,y>.
-export function u_on_newpos(x, y) {
+export async function u_on_newpos(x, y) {
     game.u.ux = x;
     game.u.uy = y;
     game.u.uundetected = 0;
@@ -639,9 +660,10 @@ export function u_on_newpos(x, y) {
     } else {
         /* still on same level; might have come close enough to
            generic object(s) to redisplay them as specific objects */
-        if (!game.u.ublind && !Hallucination() && !game.u.uswallow)
+        if (!Blind() && !Hallucination() && !game.u.uswallow)
             see_nearby_objects();
     }
+    await earth_sense();
 }
 
 /* include/mondata.h:140 is_dlord/is_dprince, include/dungeon.h In_hell */
@@ -777,7 +799,7 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
 
     if (game.u.ustuck === mtmp) {
         if (game.u.uswallow) {
-            u_on_newpos(mtmp.mx, mtmp.my);
+            await u_on_newpos(mtmp.mx, mtmp.my);
             await check_special_room(false);
             await docrt();
         } else if (!m_next2u(mtmp)) {
@@ -1071,7 +1093,7 @@ export async function teleds(nux, nuy, teleds_flags) {
 
     /* must set u.ux, u.uy after drag_ball(), which may need to know
        the old position if allow_drag is true... */
-    u_on_newpos(nux, nuy); /* set u.<x,y>, usteed-><mx,my>; cliparound() */
+    await u_on_newpos(nux, nuy); /* set u.<x,y>, usteed-><mx,my>; cliparound() */
     await fill_pit(game.u.ux0, game.u.uy0);
     if (ballActive && game.u.uchain && game.u.uchain.where === OBJ_FREE)
         await placebc(); /* put back the ball&chain if they were taken off map */

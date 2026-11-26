@@ -5816,6 +5816,13 @@ function _snapCellAt(x, y) {
 function render_map_row(y, xlo = 1, xhi = COLNO - 1, noGap = false) {
     if (!game.level && !game._levelgenPaintFreeze)
         return '';
+    /* `y` names the screen row y + 1; under CLIPPING that row shows map row
+     * y + clipy, and nothing at or past clipymax (wintty.c:2120-2122,3869-3871). */
+    const screenY = y;
+    if (game._ttyClipYmax !== undefined) {
+        y += game._ttyClipY | 0;
+        if (y >= game._ttyClipYmax || y >= ROWNO) return '';
+    }
     // During a movemon --More-- frame, read the C-flushed physical-paint snapshot
     // instead of the live (post-movemon) disp_* buffer.  _snapCellAt falls back to
     // the live buffer when no snapshot is active, so the non-paging path is
@@ -5828,7 +5835,7 @@ function render_map_row(y, xlo = 1, xhi = COLNO - 1, noGap = false) {
     const rogueMap = rogue_graphics();
     const rogueColor = rogue_ibm_color();
     const decAllowed = !rogueMap && (dec_mode() || generic_symset()
-        || (game._decStaleFrom != null && y + 1 >= game._decStaleFrom));
+        || (game._decStaleFrom != null && screenY + 1 >= game._decStaleFrom));
     const u = game.u;
     const heroColor = rogueMap && !rogueColor && game.iflags?.use_color !== false
         && !!game.flags?.showrace && (u?.umonnum | 0) === (u?.umonster | 0);
@@ -6221,10 +6228,14 @@ export function hitpointbar_status1(title, stats, align, ulevel, Upolyd) {
  * paint on HP:cur(max), read without advancing its history. */
 function _status_hp_temp_rule(cur, max) {
     const h = game._blTemp?.hitpoints;
-    if (!h || _status_hp_crit_rule_active(cur, max)) return null;
+    if (!h || _status_hp_crit_rule_active(cur, max, h.rule ? h.dir : h.expired?.dir)) return null;
     /* botl.c:1578 uses the move count latched by status_eval_next_unhilite,
      * which can still precede svm.moves during unmul()'s message flush. */
-    if (h.rule) return h.time && !game.multi && h.time < (game.bl_hilite_moves | 0) ? null : h.rule;
+    /* a rule chosen at this bot() (h.chg, awaiting its stamp at the next
+     * status_eval_next_unhilite, botl.c:2293-2303) is what was delivered;
+     * the old stamp belongs to the rule it replaced */
+    if (h.rule) return h.time && !h.chg && !game.multi && h.time < (game.bl_hilite_moves | 0)
+        ? null : h.rule;
     return h.expired && (game.moves | 0) <= h.expired.time ? h.expired.rule : null;
 }
 /* C botl.c:2364-2560 get_hilite() + tty_putstatusfield: persistent
@@ -6796,6 +6807,12 @@ function _painted_version_text() {
     if (frozen && frozen.version !== undefined) return frozen.version;
     return game.flags?.showvers ? status_version_text() : '';
 }
+/* The third status row is laid out field by field (_statusRow3, the tty's
+ * render_status model held in game._st3) whenever an optional field or the
+ * version follows the conditions (wintty.c:4296 threelineorder). */
+export function status_row3_laid_out() {
+    return _statusExtras(true).length > 0 || !!_painted_version_text();
+}
 /* C botl.c:1251-1259 optional weapon/armor fields, appended after
  * BL_CONDITION in twolineorder (wintty.c:4284). */
 export function status_row_finish(base) {
@@ -6923,6 +6940,7 @@ const _HL_FIELD_LABEL = {
     wisdom: 'Wi:', charisma: 'Ch:', power: 'Pw:', hitpoints: 'HP:',
     'armor-class': 'AC:', 'experience-level': 'Xp:', 'dungeon-level': 'Dlvl:',
     time: 'T:', /* C botl.c BL_TIME "T:%ld" */
+    hd: 'HD:', /* C botl.c:719 BL_HD " HD:%s" (polymorphed) */
 };
 /* C pray.c:113 critically_low_hp(FALSE) on the painted HP/max. */
 function _status_hp_critically_low(cur, max) {
@@ -6934,17 +6952,26 @@ function _status_hp_critically_low(cur, max) {
 }
 /* C botl.c:2395-2400 get_hilite(): a matching critical-hp rule beats the
  * temporary up/down/changed HP highlights. */
-function _status_hp_crit_rule_active(cur, max) {
+/* botl.c:2400-2405: the chain is walked in order and, once an up/down/
+ * changed rule has matched this delivery's chg (`dir`), every later
+ * non-UPDOWN rule -- a critical-hp one included -- is skipped; only a
+ * critical-hp rule reached first wins over the temporary rules. */
+function _status_hp_crit_rule_active(cur, max, dir = 0) {
     if (!_status_hp_critically_low(cur, max)) return false;
-    return (game.status_field_hilites || []).some((spec) => {
+    let temp = false;
+    for (const spec of game.status_field_hilites || []) {
         const parts = spec.split('/');
-        if (status_fieldname(parts[0].trim()) !== 'hitpoints') return false;
-        for (let i = 1; i + 1 < parts.length; i += 2)
-            if (parts[i].trim().toLowerCase() === 'criticalhp'
-                && _hl_how(parts[i + 1]))
-                return true;
-        return false;
-    });
+        if (status_fieldname(parts[0].trim()) !== 'hitpoints') continue;
+        for (let i = 1; i + 1 < parts.length; i += 2) {
+            if (!_hl_how(parts[i + 1])) continue;
+            const thr = parts[i].trim().toLowerCase();
+            if (thr === 'criticalhp') return !temp;
+            if (dir && ((dir < 0 && thr === 'down') || (dir > 0 && thr === 'up')
+                        || thr === 'changed'))
+                temp = true;
+        }
+    }
+    return false;
 }
 /* Locate BL_WEAPON / BL_ARMOR / BL_TERRAIN / BL_VERS on a rendered status row
  * (row 3 in 3-line layout, row 2 in 2-line layout).  Walks backward from the
@@ -6987,6 +7014,11 @@ function _locate_extra_tfields(row) {
     return { dlm, desc, plain, extras: found };
 }
 function _status_field_hilites(row) {
+    /* C botl.c:1525-1544,1575-1582: a field re-sent only because its
+     * temporary rule expired (reset, chg 0) gets pc 0, so get_hilite()
+     * matches its percentage rules as if the value were 0%; the tty keeps
+     * that delivery until the field is sent again. */
+    const pc0 = game._statusPc0Redeliver || new Set();
     const heldUhs = game._statusHiliteHeld ? game._statusHeldUhs : undefined;
     const cells = _status_hunger_hilites(row, heldUhs);
     /* C botl.c:1051-1065,2499-2531: BL_GOLD uses the same absolute
@@ -7053,7 +7085,9 @@ function _status_field_hilites(row) {
             const pm =/^(<=|>=|<|>|=)?(-?\d+)(%?)$/.exec(thr);
             if (!pm) continue;
             let v = cur;
-            if (pm[3]) {
+            if (pm[3] && pc0.has(fname)) {
+                v = 0; /* botl.c:1542-1544: an expiry re-delivery passes pc 0 */
+            } else if (pm[3]) {
                 if (fname === 'experience' || fname === 'experience-level') {
                     v = /Xp:\d+\/\d+/.test(row) ? _status_exp_percentage(row)
                         : _exp_percentage(cur, game.u.uexp || 0);
@@ -7126,7 +7160,8 @@ function _status_field_hilites(row) {
             text = text.split(/[(/]/)[0];
         }
         let saved = delivered[field];
-        if (!saved || saved.text !== text) {
+        if (!saved || saved.text !== text || pc0.has(field)) {
+            pc0.delete(field);
             const colors = [];
             for (let i = 0; i < text.length; i++)
                 colors.push(game.iflags?.hilite_delta ? cells.get(start + i) : undefined);
@@ -7408,6 +7443,8 @@ const _STATUS_BOT_FIELDS = [
      * value is unchanged (botl.c:1523-1533). */
     ['hitpoints', /HP:(-?\d+)\((\d+)\)/, (m) => [m.index, m[0].length - m[2].length - 2]],
     ['armor-class', /AC:(-?\d+)/, (m) => [m.index, m[0].length]],
+    /* BL_HD " HD:%s" (botl.c:719), ANY_INT, sent only while Upolyd */
+    ['hd', /HD:(\d+)/, (m) => [m.index, m[0].length]],
     /* BL_TIME " T:%s" and BL_SCORE " S:%s" (botl.c:723-724) are ANY_LONG,
      * plain value direction like every other numeric field. */
     ['time', /(?<![A-Za-z])T:(\d+)/, (m) => [m.index, m[0].length]],
@@ -7509,13 +7546,18 @@ function _eval_temp_bot_field(hist, fname, val, pc, encReset) {
      * reset is delivered at bot(), before its physical paint is saved. */
     if (!chg) {
         if (h.rule && h.time && !game.multi && h.time < (game.bl_hilite_moves | 0)) {
-            h.expired = { rule: h.rule, time: h.time };
+            h.expired = { rule: h.rule, time: h.time, dir: h.dir };
             h.rule = null; h.time = 0; h.chg = true;
+            /* botl.c:1542-1544: the reset delivery's pc is 0 (no hitpointbar) */
+            if ((fname === 'power' || (fname === 'hitpoints' && !game.iflags?.wc2_hitpointbar))
+                && _status_has_rules(fname))
+                (game._statusPc0Redeliver ||= new Set()).add(fname);
             if (fname === 'hitpoints') hpChgNow = true; // BL_HP is re-sent on reset too
         }
         return hpChgNow;
     }
     h.rule = _status_updown_rule(fname, chg);
+    h.dir = chg;
     h.expired = null;
     h.chg = true;
     h.val = val;
@@ -7591,6 +7633,10 @@ export function status_hpbar_attr_eval() {
     if (!game.iflags?.wc2_hitpointbar || !game.iflags?.hilite_delta) return;
     const tm = /^\[(.*?) *\] /.exec(String(row0).replace(/\x1b\[[\d;]*[mC]/g, ''));
     if (!tm) return;
+    /* BL_TITLE's value is the title text; the critical-HP dashes are
+     * repad_with_dashes() applied by render_status() to the padded bar
+     * (wintty.c:5136-5137, botl.c:2170-2178), not a change of the field. */
+    tm[1] = tm[1].replace(/(?: -)+$/, '').trimEnd();
     const hp = hist.hitpoints;
     /* a hist.title written by the plain-row title eval (botl.c:1514-1614)
      * holds the title text, not the bar; take the slot over afresh, as C's
@@ -7746,6 +7792,7 @@ function _status_temp_hilites(row, cells) {
         }
         if (chg) {
             h.rule = _status_updown_rule(fname, chg);
+            h.dir = chg;
             h.expired = null;
             if (h.rule && !botField && h.lastPaintMoves != null
                 && h.lastPaintMoves < (game.moves | 0)
@@ -7768,7 +7815,7 @@ function _status_temp_hilites(row, cells) {
         /* botl.c:1577: a changed field selects a fresh rule; its old
          * timeout must not immediately expire that new highlight. */
         if (!botField && !chg && h.rule && h.time && !game.multi && h.time < hiliteMoves) {
-            h.expired = { rule: h.rule, time: h.time };
+            h.expired = { rule: h.rule, time: h.time, dir: h.dir };
             h.rule = null; h.time = 0; h.chg = true;
             if (fname === 'experience-level')
                 h.selectedRule = _status_xp_rule(val, h.xpc)?.key ?? null;
@@ -7776,7 +7823,8 @@ function _status_temp_hilites(row, cells) {
         const shown = h.rule
             || (h.expired && rowMoves <= h.expired.time ? h.expired.rule : null);
         if (!shown) continue;
-        if (fname === 'hitpoints' && _status_hp_crit_rule_active(+m[1], +m[2])) continue;
+        if (fname === 'hitpoints' && _status_hp_crit_rule_active(+m[1], +m[2],
+            h.rule ? h.dir : h.expired?.dir)) continue;
         const [st, len] = span(m);
         for (let c = st; c < st + len; c++) cells.set(c, shown);
     }
@@ -7798,7 +7846,11 @@ function _status_condition_hilites(row) {
      * the title/attribute line (it carries St:) can echo a condition word, e.g.
      * the rank title "Green Slime" after polymorph. */
     const titleRow = / St:\d/.test(row);
-    if (!titleRow) COND_NAMES.forEach((cname, i) => {
+    /* a third status row laid out at bot() carries its condition cells */
+    const st3 = _threeStatusLines() && game._st3?.cattrByRow instanceof Map
+        && game._st3.cattrByRow.get(row) ? game._st3 : null;
+    if (st3) st3.cattrByRow.get(row).forEach((h, c) => { if (h) cells.set(c, h); });
+    if (!titleRow && !st3) COND_NAMES.forEach((cname, i) => {
         const bit = 1 << i;
         let color = NO_COLOR, attr = 0;
         for (let k = 0; k < 16; k++) if (ch[k] & bit) { color = k; break; }
@@ -8192,12 +8244,19 @@ function _statusRow3(p, row1, row2, extras) {
     });
     /* wintty.c:1083-1095 tty_clear_nhwindow(NHW_STATUS) blanks the physical rows (cl_end);
      * a repaint after cls() must not keep the stale tail of the previous row. */
-    if (game._statusBlankAfterDocrt === true) st.row = '';
+    if (game._statusBlankAfterDocrt === true) { st.row = ''; st.cattr = []; }
     let row = st.row, finalx = 0;
-    const put = (x, text) => {
+    /* wintty.c:5080-5097: each condition word is written with its own
+     * condcolor()/condattr(); every other write (padding, later fields)
+     * replaces those cells.  Keep the per-cell condition attributes with
+     * the physical row, as the terminal does. */
+    const cattr = Array.isArray(st.cattr) ? st.cattr.slice() : [];
+    const put = (x, text, hl = null) => {
         row = row.padEnd(x + text.length, ' ');
         row = row.slice(0, x) + text + row.slice(x + text.length);
+        for (let i = 0; i < text.length; i++) cattr[x + i] = hl;
     };
+    const condWords = String(p.conds || '').split(' ').filter(Boolean);
     for (const f of measured) {
         let x = f.x;
         if (f.redraw) {
@@ -8214,7 +8273,19 @@ function _statusRow3(p, row1, row2, extras) {
                 if (start > x) { put(x, ' '.repeat(start - x)); x = start; }
                 f.x = x;
             }
-            put(x, f.text);
+            if (f.id === 'conditions' && game.iflags?.hilite_delta) {
+                /* the shrunk words map one-to-one onto p.conds' full names */
+                const words = String(f.text).split(' ');
+                let cx = x, k = 0;
+                for (const w of words) {
+                    if (w) put(cx, w, _cond_word_hl(condWords[k++]));
+                    else put(cx, '');
+                    cx += w.length + 1;
+                    if (cx - 1 < x + f.text.length) put(cx - 1, ' ');
+                }
+            } else {
+                put(x, f.text);
+            }
         }
         finalx = x + f.text.length;
         st.fields[f.id] = { x: f.x, text: f.text };
@@ -8225,7 +8296,25 @@ function _statusRow3(p, row1, row2, extras) {
     st.seq = seq;
     st.signature = signature;
     st.row = row.slice(0, 79).trimEnd();
+    st.cattr = cattr.slice(0, st.row.length);
+    /* a page pinned to an earlier paint keeps that paint's cells */
+    if (!(st.cattrByRow instanceof Map)) st.cattrByRow = new Map();
+    const byRow = st.cattrByRow;
+    byRow.delete(st.row);
+    byRow.set(st.row, st.cattr);
+    if (byRow.size > 16) byRow.delete(byRow.keys().next().value);
     return st.row;
+}
+/* wintty.c:4908-4950 condcolor()/condattr() for one condition word */
+const _CA_SLOTS = [[18, ATR_BOLD], [19, 8], [20, 16], [21, 4], [22, 32], [23, ATR_INVERSE]];
+function _cond_word_hl(cname) {
+    const i = COND_NAMES.indexOf(cname);
+    if (i < 0) return null;
+    const ch = _cond_hilites_array(), bit = 1 << i;
+    let color = NO_COLOR, attr = 0;
+    for (let k = 0; k < 16; k++) if (ch[k] & bit) { color = k; break; }
+    for (const [slot, a] of _CA_SLOTS) if (ch[slot] & bit) attr |= a;
+    return color === NO_COLOR && !attr ? null : { color, attr };
 }
 export function _threeStatusLines() {
     /* C options.c optfn_statuslines sets iflags.wc2_statuslines; js/options.js
@@ -9905,7 +9994,7 @@ function _buildScreenOutput() {
         }
         for (let r = 24; r < display.rows; r++) display.clearRow(r);
         if (game.u?.ux > 0)
-            display.setCursor(game.u.ux - 1, game.u.uy + 1);
+            display.setCursor(game.u.ux - 1, map_curs_row(game.u.uy));
     }
 }
 // Build the --More-- frame for the WRAPPED case (M >= 2 message rows):
@@ -9967,13 +10056,46 @@ export function new_status_window() {
 export function newclipping() {
     const g = game;
     const sl = g.iflags?.wc2_statuslines ?? 2;
-    if (TERMINAL_COLS < COLNO || TERMINAL_ROWS < 1 + ROWNO + sl)
-        g._ttyClipYmax = TERMINAL_ROWS - 1 - sl; /* setclipped(); clipy stays 0 */
-    else
+    if (TERMINAL_COLS < COLNO || TERMINAL_ROWS < 1 + ROWNO + sl) {
+        g._ttyClipYmax = TERMINAL_ROWS - 1 - sl; /* setclipped() */
+        g._ttyClipY = 0;
+        if (g.u?.ux) tty_cliparound(g.u.ux, g.u.uy);
+    } else {
         g._ttyClipYmax = undefined;
+        g._ttyClipY = 0;
+    }
 }
+/* C wintty.c:3818-3843 tty_cliparound(), reached through cliparound() from
+ * moveloop (allmain.c:546), u_on_newpos (dungeon.c:1580) and getpos
+ * (getpos.c:851,1146).  Only the rows can clip on an 80-column terminal
+ * (CO == COLNO keeps clipx at 0): when the spot comes within two rows of the
+ * clipped bottom the view scrolls by half its height (and back up near the
+ * top), and redraw_map() resends the map, so every map row is printed at
+ * screen row y + 1 - clipy (wintty.c:2120-2122) and rows outside
+ * [clipy, clipymax) are not printed at all (wintty.c:3869-3871). */
+export function tty_cliparound(x, y) {
+    const g = game;
+    if (g._ttyClipYmax === undefined) return;
+    const LIrows = TERMINAL_ROWS - 1 - (g.iflags?.wc2_statuslines ?? 2);
+    let clipy = g._ttyClipY | 0, clipymax = g._ttyClipYmax;
+    if (y < clipy + 2) {
+        clipy = Math.max(0, y - Math.trunc((clipymax - clipy) / 2));
+        clipymax = clipy + LIrows;
+    } else if (y > clipymax - 2) {
+        clipymax = Math.min(ROWNO, clipymax + Math.trunc((clipymax - clipy) / 2));
+        clipy = clipymax - LIrows;
+    }
+    g._ttyClipY = clipy;
+    g._ttyClipYmax = clipymax;
+}
+/* The screen row of map row y (tty_curs(WIN_MAP, x, y), wintty.c:2120-2122). */
+export function map_curs_row(y) {
+    return y + 1 - (game._ttyClipYmax !== undefined ? (game._ttyClipY | 0) : 0);
+}
+/* With CLIPPING on, the map window ends at screen row LI-1-statuslines, so
+ * no map row ever reaches the first of three status rows. */
 function _map_row20_clipped() {
-    return game._ttyClipYmax !== undefined && ROWNO - 1 >= game._ttyClipYmax;
+    return game._ttyClipYmax !== undefined;
 }
 function _status_cell_tokens(status1) {
     /* tty_putstatusfield (wintty.c:5213-5233) paints each field with its
@@ -10956,7 +11078,11 @@ function _capture_botl(paint = false) {
         /* tty keeps the third status row physically on the terminal between
          * bot() paints (wintty.c:4992 render_status); a pinned --More-- page
          * shows the row as of its own flush, not a later paint's. */
-        row3: game._st3?.row,
+        /* Only the row _statusRow3() laid out is held in _st3; once the
+         * optional fields and the version are all off (an O toggle of
+         * showvers), _statusRows3() fits the row live and _st3.row is a
+         * stale (cls-blanked) leftover, not this paint's physical row. */
+        row3: status_row3_laid_out() ? game._st3?.row : undefined,
         statusFit: paint ? new Map() : game._lastPaintedBotl?.statusFit,
         /* wintty.c:5213-5248: a deferred page keeps each field's delivered
          * highlight, including AC before a later gold-encoding update_all
@@ -10964,6 +11090,7 @@ function _capture_botl(paint = false) {
         /* wintty.c:5248: Dlvl/AC temp rules ride the page too (status_reassess / rndencode drop them before dismissal) */
         attrHilites: Object.fromEntries(['strength', 'dexterity', 'constitution', 'dungeon-level', 'armor-class',
             'intelligence', 'wisdom', 'charisma', 'power', 'time', 'title', 'gold',
+            'experience-level', 'hitpoints-max', 'power-max', 'experience', 'hd', 'score',
             'weapon', 'armor', 'terrain', 'version', 'alignment']
             /* string fields: a page painted after set_uasmon's update_all (polyself.c:123)
              * delivered NO rule; the slot is gone from _blTemp then, so record
@@ -12890,6 +13017,7 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
             if (_paintOwner && _pages[i + 1]) {
                 g._pending_message = _pages[i + 1];
                 g._topl_win_stop_buf = _pages[i + 1];
+                g._topl_win_stop_owned = true; /* gt.toplines is this owner's pline */
             } else {
                 g._pending_message = '';
                 /* gt.toplines (topl.c:296) still holds the whole last pline,
@@ -12953,16 +13081,17 @@ function _topl_stop_clear_after_more() {
     if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^stop_clear[fired frame=${g._ff_last_input_frame ?? -1}]`);
     g._pending_message = '';
+    g._resultMessage = null;
+    g._resultMessageJoins = null;
+    g._toplResultSnapshot = null;
     /* wintty.c:1877-1880 clears the acknowledged message window. Its
      * deferred paging frames belong to that completed topline: retaining
      * them lets a later MSGTYP_STOP reuse an earlier turn's map and clock. */
     g._paintedSnapshot = null;
     _movemon_page_frames_reset();
     _pline_flush_frames_reset();
-    const _sticky = g._topl_sticky;
     g._topl_sticky = null;      /* cl_end wiped the physical row */
     _buildScreenOutput();       /* re-parks the display cursor, as bot()+curs_on_u() do */
-    g._topl_sticky = _sticky;
 }
 
 // Keep the complete MSGTYP_STOP operation available to an asynchronous
@@ -13350,6 +13479,11 @@ function flush_screen_point(mode) {
     finally { _flush_screen_flushing--; }
 }
 export async function flush_screen(mode, repaint = true) {
+    // pline.c:283-284 blocks inside MSGTYP_STOP before its caller resumes.
+    // Synchronous callers (e.g. adjattrib) can leave that pline in flight;
+    // finish its more() and clear before flushing or reading the next command.
+    if (game._blockingPline)
+        await game._blockingPline;
     /* display.c:2060-2072: show_glyph's description finishes before the
      * caller can flush or read another command. */
     if (game._mentionMapPending)
@@ -14266,6 +14400,44 @@ export function status_reassess() {
 // Inserting history also acknowledges a standing NEED_MORE topline without
 // erasing its physical text (tty/topl.c:700-705).
 // History insertion also acknowledges a standing message (topl.c:702-709).
+/* The key read that ends WIN_STOP (wintty.c:4065-4066, js/input.js) clears
+ * the flag but not gt.toplines: when the swallowed plines left a hidden
+ * buffer other than the painted line, it stays unfiled until the next
+ * update_topl or prompt remember_topl()s it (topl.c:170-191,289); a save in
+ * between keeps only the tty ring (topl.c:578-596), so it is never filed. */
+export function hold_unfiled_toplines() {
+    const g = game;
+    const buf = g._topl_win_stop_buf;
+    const h = g._msg_history || [];
+    if (g._topl_win_stop && g._topl_win_stop_owned && buf && buf !== g._pending_message
+        && h[h.length - 1] !== buf && g._topl_history_recall !== buf)
+        g._topl_unfiled = String(buf);
+    g._topl_win_stop_owned = false;
+}
+export function file_unfiled_toplines() {
+    const g = game;
+    const t = g._topl_unfiled;
+    if (!t) return;
+    g._topl_unfiled = null;
+    const h = _msg_history_arr();
+    if (h[h.length - 1] !== t) h.push(t);
+}
+/* A prompt's custompline(SUPPRESS_HISTORY) goes through tty_putstr's
+ * remember_topl() (wintty.c:2290-2299; topl.c:170-191), which files
+ * gt.toplines before the prompt replaces it.  After an ESC at a --More--
+ * (WIN_STOP) gt.toplines is the hidden buffer the swallowed plines built
+ * (topl.c:257-290), not the line still painted; tty_yn_function and getlin
+ * clear WIN_STOP first (topl.c:390-393, getline.c:55) and file it then.
+ * Call before clearing the WIN_STOP state. */
+export function remember_stopped_toplines() {
+    const g = game;
+    file_unfiled_toplines();
+    if (!g._topl_win_stop || g._topl_suppress_history) return;
+    const gt = String(g._topl_win_stop_buf ?? g._pending_message ?? '').replace(/--More--$/, '');
+    const h = _msg_history_arr();
+    if (gt && h[h.length - 1] !== gt && g._topl_history_recall !== gt)
+        h.push(gt);
+}
 function _msg_history_arr() {
     if (!game._msg_history)
         game._msg_history = [];
@@ -14475,6 +14647,9 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
     if (!game._topl_urgent_next && (msgtyp === 'hide'
         || (msgtyp === 'norep' && game._prevmsg === String(msg))))
         return;
+    /* update_topl's remember_topl() (topl.c:289) files a gt.toplines the
+     * swallowed plines left behind when WIN_STOP ended at a key read. */
+    file_unfiled_toplines();
     if (putmesg && msgtyp !== 'stop')
         return putmesg(msg);
     /* C has only gt.toplines (topl.c:257-301): an eat occupation's committed
@@ -14570,6 +14745,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         if (_fits && _notdied !== 0) {
             /* JOIN arm with skip set: both Strcat()s, no addtopl(). */
             game._topl_win_stop_buf = _buf ? (_buf + '  ' + _txt) : _txt;
+            game._topl_win_stop_owned = true;
             const h = _msg_history_arr();
             /* nhgetch() files the acknowledged topline early.  C has not
              * remembered it yet: update_topl:266-269 extends gt.toplines,
@@ -14584,6 +14760,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         /* Fall-through arm.  `else if (!skip)` is skipped entirely, so there is
          * no more() and no page-ack; gt.toplines is REPLACED. */
         game._topl_win_stop_buf = _txt;
+        game._topl_win_stop_owned = true;
         /* topl.c:289 remember_topl() files the buffer being replaced.  The
          * ESC'd page's owner was painted but no key read has filed it yet. */
         if (_buf) {
@@ -15242,7 +15419,7 @@ function _last_changed_gnew_cursor() {
             const a = loc.disp_flushed_cell, b = _buffered_capture_cell(loc, x, y);
             if (!a || loc.disp_gnew_epoch === _flush_epoch || a.ch !== b.ch || a.color !== b.color
                 || !!a.dec !== !!b.dec || (a.attr | 0) !== (b.attr | 0))
-                return [x, y + 1];
+                return [x, map_curs_row(y)];
         }
     return null;
 }
@@ -15250,7 +15427,7 @@ function _last_changed_gnew_cursor() {
 export function _take_forced_gnew_cursor() {
     const f = _forced_gnew;
     _forced_gnew = null;
-    return f ? [f.x, f.y + 1] : null;
+    return f ? [f.x, map_curs_row(f.y)] : null;
 }
 
 /* C ref: display.c:721-731 feel_newsym(x, y) — when the hero knows what happened

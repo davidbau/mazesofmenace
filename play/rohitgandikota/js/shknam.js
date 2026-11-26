@@ -262,7 +262,8 @@ async function shkinit(shp, sroom) {
     set_malign(shk);
     shk.msleeping = 0;
     mon_learns_traps(shk, ALL_TRAPS); /* we know all the traps already */
-    shk.eshk = (shk.mextra ||= {}).eshk = {
+    shk.eshk = shk.mextra.eshk;
+    Object.assign(shk.eshk, {
         shoproom: ((sroom.roomnoidx ?? game.level.rooms.indexOf(sroom))
                    + ROOMOFFSET),
         shoptype: sroom.rtype,
@@ -272,7 +273,7 @@ async function shkinit(shp, sroom) {
         robbed: 0, credit: 0, debit: 0, loan: 0,
         following: false, surcharge: false, dismiss_kops: false,
         billct: 0, visitct: 0, customer: '',
-    };
+    });
     sroom.resident = shk;
 
     mkmonmoney(shk, 1000 + 30 * _rnd(100));     /* initial capital */

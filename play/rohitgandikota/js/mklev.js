@@ -368,7 +368,7 @@ function bad_location(x, y, nlx, nly, nhx, nhy) {
 }
 
 // C ref: mkmaze.c place_lregion — place hero (LR_UPTELE/LR_DOWNTELE)
-export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
+export async function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     if (!lx) {
         lx = 1; hx = COLNO - 1; ly = 0; hy = ROWNO - 1;
     }
@@ -382,7 +382,7 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
         if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-            u_on_newpos(x, y);
+            await u_on_newpos(x, y);
             return;
         }
     }
@@ -390,20 +390,20 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     for (let x = lx; x <= hx; x++)
         for (let y = ly; y <= hy; y++)
             if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-                u_on_newpos(x, y);
+                await u_on_newpos(x, y);
                 return;
             }
 }
 
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
-export function u_on_upstairs() {
+export async function u_on_upstairs() {
     const stway = stairway_find_dir(true);
-    if (stway) { u_on_newpos(stway.sx, stway.sy); return; }
+    if (stway) { await u_on_newpos(stway.sx, stway.sy); return; }
     // No upstair — try special stairs, then random
     const special = stairway_find_special_dir(0);
-    if (special) { u_on_newpos(special.sx, special.sy); return; }
+    if (special) { await u_on_newpos(special.sx, special.sy); return; }
     // Random placement via place_lregion
-    place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
+    await place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
 }
 
 /* level_difficulty() now comes from js/makemon.js, which is where src/dungeon.c

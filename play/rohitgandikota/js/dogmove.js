@@ -34,7 +34,7 @@ import { pmname } from './do_name.js';
 import { canspotmon } from './display.js';
 import { glyph_at } from './display.js';
 import { flush_screen } from './display.js';
-import { more } from './display.js';
+import { display_nhwindow_message } from './display.js';
 import { cansee } from './vision.js';
 import { defsyms } from './drawing_data.js';
 import { OBJ_DESCR } from './objnam.js';
@@ -215,6 +215,6 @@ export async function quickmimic(mtmp) {
         /* display_nhwindow(WIN_MAP, TRUE): flush the map, then a --More-- */
         await flush_screen(0);
         game._toplin = TOPLINE_NEED_MORE;
-        await more();
+        await display_nhwindow_message();
     }
 }

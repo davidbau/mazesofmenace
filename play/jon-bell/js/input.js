@@ -6,6 +6,7 @@ import { randomkey } from './cmd.js';
 import { KEY_BINDINGS } from './terminal.js';
 import { pushRngLogEntry } from './rng.js';
 import { ENV } from './hostenv.js';
+import { hold_unfiled_toplines } from './display.js';
 const _inputQueue = [];
 export function pushKey(key) {
     _inputQueue.push(typeof key === 'number' ? key : key.charCodeAt(0));
@@ -182,6 +183,7 @@ export async function nhgetch() {
      * _topl_more) lasts from that more() until the very next key read, and no
      * longer.  Note more()'s own xwaitforspace() read runs BEFORE it sets the
      * bit, so a page dismissed with ESC does not clear its own suppression. */
+    hold_unfiled_toplines();
     game._topl_win_stop = false;
     game._topl_win_stop_armed = false;
     game._topl_win_stop_buf = null;

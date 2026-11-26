@@ -4,6 +4,7 @@
 
 import { check_gold_symbol } from './botl.js';
 import { game } from './gstate.js';
+import { choose_random_part, free_config_sections, handle_config_section } from './cfgfiles.js';
 import { parse_status_hl1, clear_status_hilites, reset_status_hilites, status_initialize } from './botl.js';
 import { new_status_window } from './tty/wintty.js';
 import { notice_all_mons_flush } from './hack.js';
@@ -888,6 +889,8 @@ const config_line_stmt = [
 // (OPTIONS=, SYMBOLS=, BIND=, ...) via the config_line_stmt table at
 // cfgfiles.c:1312. BIND lines update the configured command bindings.
 export function parseNethackrc(rc) {
+    // src/cfgfiles.c:1844 parse_conf_file(), shared state is cleared per read.
+    free_config_sections();
     const result = {
         opts: {},        // option name -> boolean | string | null
         symbols: [],     // pending SYMBOLS= directives
@@ -902,12 +905,49 @@ export function parseNethackrc(rc) {
     if (!rc) return result;
     config_error_data = result; /* src/cfgfiles.c config_error_init() */
 
-    for (const rawLine of rc.split('\n')) {
-        const line = rawLine.trim();
-        if (!line || line[0] === '#') continue;
+    // src/cfgfiles.c:1844 parse_conf_file(): EOF is not an extra empty line.
+    const lines = rc.split('\n');
+    if (lines.at(-1) === '') lines.pop();
+    let buf = null;
+    for (let inbuf of lines) {
+        // src/cfgfiles.c:1697 parse_conf_buf(), C-string visibility.
+        const nul = inbuf.indexOf('\0');
+        if (nul >= 0) inbuf = inbuf.slice(0, nul);
+        // src/cfgfiles.c:1693 parse_conf_buf(), ordinary physical lines.
+        // Test continuation before trimming. C replaces the backslash with
+        // NUL, so spaces before it survive into the merged statement.
+        const morelines = inbuf.endsWith('\\');
+        inbuf = morelines ? inbuf.slice(0, -1) : inbuf.replace(/[ \t\r]+$/, '');
+        inbuf = inbuf.replace(/^[ \t]+/, '');
+        const ignoreline = !inbuf || inbuf[0] === '#';
+        const oldline = buf !== null;
+        if (!ignoreline)
+            buf = oldline ? `${buf} ${inbuf}` : inbuf;
+        if (morelines || (ignoreline && !oldline)) continue;
+
+        // is_config_section() trims space/tab even for a non-section line.
+        const line = trimspaces(buf);
+        buf = null;
+
+        // src/cfgfiles.c:1768 parse_conf_buf(), sections precede CHOOSE.
+        if (handle_config_section(line)) continue;
 
         // src/cfgfiles.c:588 find_optparam(), first '=' or ':'.
         const eq = firstSeparator(line);
+        // src/cfgfiles.c:1775 parse_conf_buf(), the literal choice value.
+        const choiceName = eq < 0 ? line : line.slice(0, eq)
+            .replace(/[ \t\r\n\v\f]+$/, '');
+        if (choiceName.length === 6 && !strncmpi(choiceName, 'CHOOSE', 6)) {
+            if (eq < 0) {
+                config_error_add('Format is CHOOSE=section1,section2,...');
+                continue;
+            }
+            game.config_section_chosen = null;
+            const section = choose_random_part(line.slice(eq + 1), ',');
+            if (section !== null) game.config_section_chosen = section;
+            else config_error_add('No config section to choose');
+            continue;
+        }
         if (eq < 0) {
             result.errors.push(`Bad config line '${line}'`);
             continue;
@@ -957,6 +997,7 @@ export function parseNethackrc(rc) {
             break;
         }
     }
+    free_config_sections();
     config_error_data = null; /* config_error_done() */
     return result;
 }
@@ -1439,7 +1480,7 @@ function longest_option_name(startpass, endpass) {
    menu and the rc must write the same place. */
 export const iflag_boolean_options = new Set([
     'autodescribe', 'cmdassist', 'fireassist', 'menu_overlay', 'menu_tab_sep',
-    'customcolors', 'customsymbols',
+    'customcolors', 'customsymbols', 'bgcolors',
     'debug_hunger', 'debug_mongen', 'debug_overwrite_stairs',
     'menucolors', /* iflags.use_menu_color */
     'whatis_menu', /* iflags.getloc_usemenu */
@@ -3919,7 +3960,7 @@ async function parseoptions_interactive(buf) {
                 new_status_window();
         } else if (name === 'statushilites') {
             /* iflags.hilite_delta was written by parseoptions() */
-        } else if (name === 'safe_pet') {
+        } else if (name === 'safe_pet' || name === 'bgcolors') {
             set_bool_optval(name, value);
         } else {
             game.flags[name] = value;

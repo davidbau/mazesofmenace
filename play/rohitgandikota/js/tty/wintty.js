@@ -31,7 +31,7 @@ const repad_with_dashes = (b) => botl_fns.repad_with_dashes(b);
 const status_initialize = (r) => botl_fns.status_initialize(r);
 import { critically_low_hp } from './../pray.js';
 import { impossible } from './../pline.js';
-import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_SPECIAL_PROMPT, more } from './../display.js';
+import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_SPECIAL_PROMPT, more, display_nhwindow_message } from './../display.js';
 import { tty_clear_nhwindow_message, row_refresh, bot,
          docrt, flush_screen } from './../display.js';
 import { nhgetch } from './../input.js';
@@ -455,7 +455,7 @@ function compute_offx(cw) {
 // win/tty/wintty.c:1329 process_menu_window() — draw one page of an mlist
 // menu. Every line is "<space><item text>" starting at offx, and a selected
 // entry has its third character (the '-' of "a - foo") replaced by '*'.
-function process_menu_window(cw, page, display) {
+async function process_menu_window(cw, page, display) {
     const lmax = Math.min(52, ROWS - 1);
     const items = [];
     let n = 0;
@@ -519,6 +519,20 @@ function process_menu_window(cw, page, display) {
         for (let c = col; c < COLS; c++)
             display.setCell(c, row, ' ', NO_COLOR, 0);
     });
+
+    // win/tty/wintty.c:1493: restore rows exposed by a shorter corner page.
+    if (cw.offx) {
+        for (let n = items.length + 1; n < cw.maxrow; n++) {
+            tty_curs_base(cw.offx + 1, cw.offy + n);
+            for (let col = cw.offx; col < COLS; col++)
+                display.setCell(col, cw.offy + n, ' ', NO_COLOR, 0);
+        }
+        if (cw.previous_page_lines && items.length < cw.previous_page_lines) {
+            const start = Math.min(items.length + 3, cw.maxrow - 1);
+            await docorner(cw.offx, cw.maxrow + 1, display, start);
+        }
+    }
+    cw.page_lines = items.length;
 
     /* win/tty/wintty.c:1536 — the footer sits directly under the last entry. */
     const morestr = (cw.npages > 1) ? `(${page + 1} of ${cw.npages})`
@@ -682,6 +696,7 @@ export async function tty_display_nhwindow(window) {
         cw.maxcol = COLS;
     cw.offx = compute_offx(cw);
     cw.curr_page = 0;
+    cw.previous_page_lines = 0;
 
     /* wintty.c:1966 — an unacknowledged message is flushed with a blocking
        --More-- BEFORE the window draws:
@@ -697,7 +712,7 @@ export async function tty_display_nhwindow(window) {
        previous --More-- the pending message is neither prompted for nor
        acknowledged: the menu's own clearing below simply erases it. */
     if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
-        await more();
+        await display_nhwindow_message();
 
     // win/tty/wintty.c:1971: height and menu_overlay choose the clear extent.
     game._pending_message = '';
@@ -713,13 +728,13 @@ export async function tty_display_nhwindow(window) {
         }
         game._toplin = TOPLINE_EMPTY;
     } else {
-        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await tty_clear_nhwindow_message(game._topl_cury || 0);
     }
 
     /* wintty.c:1944 — `if (cw->data || !cw->maxrow)` picks the text renderer;
        a window built with add_menu() has no data[] and lands in the menu one. */
     if (cw.mlist && !cw.data.length) {
-        process_menu_window(cw, 0, display);
+        await process_menu_window(cw, 0, display);
         return;
     }
 
@@ -746,7 +761,7 @@ export async function tty_message_menu(letter, how, mesg) {
     if (game._toplin === TOPLINE_NEED_MORE) {
         await more();
         game._toplin = TOPLINE_NEED_MORE; /* more resets this */
-        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await tty_clear_nhwindow_message(game._topl_cury || 0);
         game._pending_message = '';
         const { TOPLINE_EMPTY } = await import('./../display.js');
         game._toplin = TOPLINE_EMPTY;
@@ -962,22 +977,22 @@ export async function tty_select_menu(window, how) {
             finished = true;                    /* commit */
         } else if (morc === ' ' || morc === MENU_NEXT_PAGE) {
             if (cw.npages > 0 && cw.curr_page !== cw.npages - 1)
-                tty_next_page(window);
+                await tty_next_page(window);
             else if (morc === ' ')
                 /* ' ' finishes menus here, but stop '>' doing the same. */
                 finished = true;
         } else if (morc === MENU_PREVIOUS_PAGE) {
             if (cw.npages > 0 && cw.curr_page !== 0)
-                tty_prev_page(window);
+                await tty_prev_page(window);
         } else if (morc === '^') {              /* MENU_FIRST_PAGE */
             if (cw.npages > 0 && cw.curr_page !== 0) {
                 cw.curr_page = 0;
-                process_menu_window(cw, 0, game?.nhDisplay);
+                await process_menu_window(cw, 0, game?.nhDisplay);
             }
         } else if (morc === '|') {              /* MENU_LAST_PAGE */
             if (cw.npages > 0 && cw.curr_page !== cw.npages - 1) {
                 cw.curr_page = cw.npages - 1;
-                process_menu_window(cw, cw.curr_page, game?.nhDisplay);
+                await process_menu_window(cw, cw.curr_page, game?.nhDisplay);
             }
         } else if (morc === ',') {              /* MENU_SELECT_PAGE */
             if (cw.how === PICK_ANY)
@@ -1094,31 +1109,32 @@ export async function tty_select_menu(window, how) {
     return picks;
 }
 
-export function tty_prev_page(window) {
+export async function tty_prev_page(window) {
     const cw = windows[window];
     const display = game?.nhDisplay;
     if (!cw || !display || !cw.mlist) return false;
     if (cw.curr_page <= 0) return false;
     cw.curr_page--;
-    process_menu_window(cw, cw.curr_page, display);
+    await process_menu_window(cw, cw.curr_page, display);
     return true;
 }
 
-export function tty_next_page(window) {
+export async function tty_next_page(window) {
     const cw = windows[window];
     const display = game?.nhDisplay;
     if (!cw || !display || !cw.mlist) return false;
     if (cw.curr_page + 1 >= cw.npages) return false;
+    cw.previous_page_lines = cw.page_lines;
     cw.curr_page++;
-    process_menu_window(cw, cw.curr_page, display);
+    await process_menu_window(cw, cw.curr_page, display);
     return true;
 }
 
 // win/tty/wintty.c:4210 docorner() — blank the columns a corner window
 // occupied, refresh the map underneath from the glyph buffer (row_refresh),
 // and redraw the status rows if the window overlapped them.
-function docorner(xmin, ymax, display) {
-    let y = 0;
+export async function docorner(xmin, ymax, display, ystart_between_menu_pages = 0) {
+    let y = ystart_between_menu_pages || 0;
     const screenX = Math.max(0, xmin - 1);
     for (; y < Math.min(ymax, ROWS); y++) {
         /* the C moves the BASE_WINDOW cursor once per row, and the position it
@@ -1126,18 +1142,20 @@ function docorner(xmin, ymax, display) {
            second "Who are you?" after 'a' on the confirmation menu lands on the
            row below the dismissed menu because of exactly this. */
         tty_curs_base(xmin, y);
-        for (let x = screenX; x < COLS; x++)
-            display.setCell(x, y, ' ', NO_COLOR, 0);
+        display.setCursor(screenX, y);
+        if (!ystart_between_menu_pages)
+            for (let x = screenX; x < COLS; x++)
+                display.setCell(x, y, ' ', NO_COLOR, 0);
         /* row_refresh(xmin - offx, COLNO-1, y - offy): terminal row y maps to
            map row y-1. xmin is already the first 1-based map column whose
            screen cell was cleared by tty_curs(BASE_WINDOW, xmin, y). */
         if (y >= 1 && y - 1 < ROWNO)
-            row_refresh(Math.max(1, xmin), COLNO - 1, y - 1);
+            await row_refresh(Math.max(1, xmin), COLNO - 1, y - 1);
     }
     /* "we scribbled over the status line; redraw it" */
-    if (ymax >= 22) {
+    if (ymax >= 22 && !ystart_between_menu_pages) {
         (game.disp ||= {}).botlx = true;
-        bot();
+        await bot();
     }
 }
 
@@ -1155,7 +1173,7 @@ function erase_menu_or_text(cw, display, clear) {
             return docrt().then(() => flush_screen(1));
         }
     } else {
-        docorner(cw.offx, cw.maxrow + 1, display);
+        return docorner(cw.offx, cw.maxrow + 1, display);
     }
 }
 

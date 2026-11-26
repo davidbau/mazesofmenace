@@ -38,7 +38,7 @@ import { wake_nearto } from './mon.js';
 import { Your, You_see, pline_The, There, Norep, set_msg_xy } from './pline.js';
 import { rnd, rn2_on_display_rng } from './rng.js';
 import { I_SPECIAL, A_INT, u_at, OBJ_AT, Has_contents, TRAPPED_CHEST, TRAPPED_DOOR, BEAR_TRAP, D_BROKEN, D_ISOPEN, DRAWBRIDGE_UP, IS_DOOR, M_AP_OBJECT, ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_SADDLE, FOOT, NOSE, TOE, TIMEOUT, KILLED_BY_AN, BURIED_TOO, CONTAINED_TOO, NO_PART, BOLT_LIM, TOPLINE_EMPTY, TOPLINE_NEED_MORE } from './const.js';
-import { mon_to_glyph, display_self, more, unmap_object, glyph_at, see_monsters, covers_objects, flash_glyph_at, map_engraving, glyph_is_trap } from './display.js';
+import { mon_to_glyph, display_self, unmap_object, glyph_at, see_monsters, covers_objects, flash_glyph_at, map_engraving, glyph_is_trap } from './display.js';
 import { engr_at } from './engrave.js';
 import { OCLASSES, MATERIALS } from './objects_data.js';
 import { PMNAMES, NUMMONS } from './monst_data.js';
@@ -944,7 +944,7 @@ async function display_nhwindow_map(blocking) {
         if (game._toplin !== TOPLINE_EMPTY)
             game._toplin = TOPLINE_NEED_MORE;
         if (game._toplin === TOPLINE_NEED_MORE)
-            await more();
+            await display_nhwindow_message();
     }
 }
 

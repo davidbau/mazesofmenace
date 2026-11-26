@@ -1238,7 +1238,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             const { seetrap } = await import('./trap.js');
             const { u_on_newpos } = await import('./teleport.js');
             seetrap(portal_trap);
-            u_on_newpos(portal_trap.tx, portal_trap.ty);
+            await u_on_newpos(portal_trap.tx, portal_trap.ty);
         } else {
             const { u_on_rndspot } = await import('./dungeon.js');
             await u_on_rndspot(0);
@@ -1250,7 +1250,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const arrival_stair = stairway_find_from(game.u.uz0, false);
         if (arrival_stair) {
             const { u_on_newpos } = await import('./teleport.js');
-            u_on_newpos(arrival_stair.sx, arrival_stair.sy);
+            await u_on_newpos(arrival_stair.sx, arrival_stair.sy);
             arrival_stair.u_traversed = true;
         } else if (up) {
             /* src/do.c — arriving from below lands on the DOWN staircase
@@ -1297,7 +1297,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     } else { /* trap door or level_tele or In_endgame */
         const { u_on_rndspot } = await import('./dungeon.js');
-        await u_on_rndspot(up ? 1 : 0);
+        await u_on_rndspot((up ? 1 : 0) | (wasInWTower ? 2 : 0));
         if (falling) {
             if (Punished() && !welded(game.u.uball))
                 await ballfall();
@@ -1623,7 +1623,7 @@ export async function u_collide_m(mtmp, m_at, mnexto) {
             || enexto_core(cc, g.u.ux, g.u.uy, g.youmonst?.data, 0, goodpos))
         && next2u(cc.x, cc.y)) {
         const { u_on_newpos } = await import('./teleport.js');
-        u_on_newpos(cc.x, cc.y);
+        await u_on_newpos(cc.x, cc.y);
     } else {
         await mnexto(mtmp);
     }
@@ -1675,7 +1675,7 @@ async function u_on_sstairs(upflag) {
     for (let stway = game.stairs; stway; stway = stway.next) {
         if (stway.tolev?.dnum !== game.u.uz.dnum
             && !!stway.up !== !!upflag) {
-            u_on_newpos(stway.sx, stway.sy);
+            await u_on_newpos(stway.sx, stway.sy);
             return;
         }
     }
@@ -1687,7 +1687,7 @@ async function u_on_upstairs() {
     const { u_on_newpos } = await import('./teleport.js');
     for (let stway = game.stairs; stway; stway = stway.next) {
         if (stway.up) {
-            u_on_newpos(stway.sx, stway.sy);
+            await u_on_newpos(stway.sx, stway.sy);
             return;
         }
     }
@@ -1698,7 +1698,7 @@ async function u_on_dnstairs() {
     const { u_on_newpos } = await import('./teleport.js');
     for (let stway = game.stairs; stway; stway = stway.next) {
         if (!stway.up) {
-            u_on_newpos(stway.sx, stway.sy);
+            await u_on_newpos(stway.sx, stway.sy);
             return;
         }
     }

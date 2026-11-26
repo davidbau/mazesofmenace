@@ -3751,7 +3751,7 @@ export async function dowipe() {
 // needs the occupation/multi machinery (cmd.c:842 timed_occupation,
 // cmd.c:4398 set_occupation, cmd.c:5817 parse_key), which lives outside this
 // function.  Reproduce with:
-export function cmd_safety_prevention(ucverb, cmddesc, act, flagcounterRef) {
+export async function cmd_safety_prevention(ucverb, cmddesc, act, flagcounterRef) {
     const g = game;
     g.flags = g.flags || {};
     // safe_wait default On per optlist.h:630-631.
@@ -3784,11 +3784,11 @@ export function cmd_safety_prevention(ucverb, cmddesc, act, flagcounterRef) {
             /* C: Norep("%s%s", act, buf) — print act + assist suffix, suppressing
              * an immediate consecutive repeat (Norep == "no repeat"). The message
              * is emitted through _norep(), which wraps C Norep()/vpline(PLINE_NOREPEAT). */
-            _norep(`${act}${buf}`);
+            await _norep(`${act}${buf}`);
             return true;
         } else if (danger_uprops()) {
             /* C: Norep("%s doesn't feel like a good idea right now.", ucverb) */
-            _norep(`${ucverb} doesn't feel like a good idea right now.`);
+            await _norep(`${ucverb} doesn't feel like a good idea right now.`);
             return true;
         }
     }
@@ -3871,7 +3871,7 @@ export async function donull() {
     g.gd = g.gd || {};
     if (g.gd.did_nothing_flag === undefined) g.gd.did_nothing_flag = 0;
     const ref = { value: g.gd.did_nothing_flag };
-    const aborted = cmd_safety_prevention(
+    const aborted = await cmd_safety_prevention(
         "Waiting",
         "a no-op (to rest)",
         "Are you waiting to get hit?",

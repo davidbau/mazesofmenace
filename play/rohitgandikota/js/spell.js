@@ -1403,7 +1403,7 @@ async function throwspell() {
     if (await getpos(cc, true, 'the desired position') < 0)
         return 0; /* user pressed ESC */
     /* clear_nhwindow(WIN_MESSAGE) — discard any autodescribe feedback */
-    tty_clear_nhwindow_message(game._topl_cury || 0);
+    await tty_clear_nhwindow_message(game._topl_cury || 0);
 
     /* The number of moves from hero to where the spell drops.*/
     if (distmin(game.u.ux, game.u.uy, cc.x, cc.y) > 10) {

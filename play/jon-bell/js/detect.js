@@ -1424,7 +1424,7 @@ export async function dosearch() {
     g.ga = g.ga || {};
     if (g.ga.already_found_flag === undefined) g.ga.already_found_flag = 0;
     const ref = { value: g.ga.already_found_flag };
-    const aborted = cmd_safety_prevention(
+    const aborted = await cmd_safety_prevention(
         "Searching",
         "another search",
         "You already found a monster.",

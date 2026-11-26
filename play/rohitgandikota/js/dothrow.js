@@ -1802,7 +1802,7 @@ export async function hurtle_step(arg, x, y) {
 
     ox = game.u.ux;
     oy = game.u.uy;
-    u_on_newpos(x, y); /* set u.<ux,uy>, u.usteed-><mx,my>; cliparound(); */
+    await u_on_newpos(x, y); /* set u.<ux,uy>, u.usteed-><mx,my>; cliparound(); */
     newsym(ox, oy);    /* update old position */
     vision_recalc(1);  /* update for new position */
     await flush_screen(1);
@@ -1899,7 +1899,7 @@ export async function mhurtle_step(arg, x, y) {
         } else {
             /* steed is hurtling, move hero which will also move steed */
             game.u.ux0 = game.u.ux, game.u.uy0 = game.u.uy;
-            u_on_newpos(x, y);
+            await u_on_newpos(x, y);
             newsym(game.u.ux0, game.u.uy0); /* update old position */
             vision_recalc(0); /* new location => different lines of sight */
         }

@@ -650,7 +650,7 @@ export async function move_into_trap(ttmp) {
             || await drag_ball(x, y, bc, true))) {
         u.ux0 = u.ux;
         u.uy0 = u.uy;
-        u_on_newpos(x, y);
+        await u_on_newpos(x, y);
         u.umoved = true;
         newsym(u.ux0, u.uy0);
         vision_recalc(1);
@@ -5474,7 +5474,7 @@ export async function climb_pit() {
     } else if (!rn2(2) && sobj_at(ONAMES.BOULDER, u.ux, u.uy)) {
         await Your(`${body_part(LEG)} gets stuck in a crevice.`);
         await display_nhwindow_message(); /* display_nhwindow(WIN_MESSAGE, FALSE) */
-        tty_clear_nhwindow_message(game._topl_cury || 0); /* clear_nhwindow(WIN_MESSAGE) */
+        await tty_clear_nhwindow_message(game._topl_cury || 0); /* clear_nhwindow(WIN_MESSAGE) */
         await You(`free your ${body_part(LEG)}.`);
     } else if ((Flying() || is_clinger(game.youmonst.data)) && !Sokoban()) {
         /* eg fell in pit, then poly'd to a flying monster;

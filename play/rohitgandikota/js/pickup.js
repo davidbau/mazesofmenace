@@ -954,7 +954,7 @@ export async function lift_object(obj, container, cnt_p, telekinesis) {
                 const answer = await tty_yn_function(qbuf, 'ynq', 'q');
                 if (answer === 'q') result = -1;
                 else if (answer === 'n') result = 0;
-                tty_clear_nhwindow_message(game._topl_cury || 0);
+                await tty_clear_nhwindow_message(game._topl_cury || 0);
                 game._pending_message = '';
             }
         }

@@ -47,7 +47,7 @@ import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED, GETOBJ_NOFLAGS,
          NH_RED, plur, HOMEMADE_TIN, COLNO, FLASHED_LIGHT,
          STOMACH, DIGTYP_UNDIGGABLE, N_DIRS_Z, xdir, ydir,
          TT_WEB, TT_PIT, FOOT, NO_KILLER_PREFIX, XKILL_NOMSG,
-         IS_WATERWALL, LAVAWALL }
+         IS_WATERWALL, LAVAWALL, COST_SPLAT }
     from './const.js';
 import { addinv, addinv_nomerge, carrying, freeinv, getobj, hands_obj,
          hold_another_object, obj_extract_self, update_inventory, useup,
@@ -95,7 +95,7 @@ import { bimanual, carried, Is_candle, is_boots, is_gloves, ignitable, age_is_re
          is_flimsy } from './obj.js';
 import { clear_splitobjs, mkobj, mksobj, place_object, hornoplenty, set_bknown,
          splitobj, set_tin_variety, unbless } from './mkobj.js';
-import { attacktype_fordmg, can_blow, has_head, haseyes, nohands, nolimbs,
+import { attacktype_fordmg, can_blow, can_blnd, has_head, haseyes, nohands, nolimbs,
          breathless, passes_walls, poly_when_stoned, throws_rocks, touch_petrifies,
          unsolid, hides_under, locomotion } from './mondata.js';
 import { check_capacity, invocation_pos, losehp, may_passwall } from './hack.js';
@@ -2483,37 +2483,39 @@ async function flip_through_book(obj) {
 
 // src/apply.c:3568 use_cream_pie(): apply a pie to the hero's face.
 async function use_cream_pie(obj) {
-    const wasblind = !!game.u.ublind;
+    const wasblind = Blind();
     const wascreamed = !!game.u.ucreamed;
     const several = obj.quan > 1;
     if (several)
         obj = splitobj(obj, 1);
-    const pie_name = the(xname(obj));
 
     if (Hallucination()) {
         await You('give yourself a facial.');
     } else {
+        const pie_name = the(xname(obj));
         await You(`immerse your ${body_part(FACE)} in `
                   + `${several ? 'one of ' : ''}`
                   + `${several ? makeplural(pie_name) : pie_name}.`);
     }
 
-    const blindinc = rnd(25);
-    game.u.ucreamed = (game.u.ucreamed || 0) + blindinc;
-    const intr = (game.u.intrinsic ||= {});
-    intr.HBlinded = (intr.HBlinded || 0) + blindinc;
-    game.u.ublind = 1;
-    game.vision_full_recalc = 1;
-    (game.disp ||= {}).botl = true;
-    if (!game.u.ublind || (game.u.ublind && wasblind)) {
-        await pline(`There's ${wascreamed ? 'more ' : ''}sticky goop all over `
-                    + `your ${body_part(FACE)}.`);
-    } else {
-        await You_cant(`see through all the sticky goop on your `
-                       + `${body_part(FACE)}.`);
+    if (can_blnd(null, game.youmonst, ATTKS.AT_WEAP, obj)) {
+        const blindinc = rnd(25);
+
+        game.u.ucreamed = (game.u.ucreamed || 0) + blindinc;
+        await make_blinded(BlindedTimeout() + blindinc, false);
+        if (!Blind() || (Blind() && wasblind)) {
+            await pline(`There's ${wascreamed ? 'more ' : ''}sticky goop all over `
+                        + `your ${body_part(FACE)}.`);
+        } else {
+            await You_cant(`see through all the sticky goop on your `
+                           + `${body_part(FACE)}.`);
+        }
     }
 
-    delobj(obj);
+    await setnotworn(obj);
+    await costly_alteration(obj, COST_SPLAT);
+    await obj_extract_self(obj);
+    await delobj(obj);
     return ECMD_OK;
 }
 

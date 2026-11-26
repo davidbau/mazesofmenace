@@ -8,7 +8,7 @@ import { obj_extract_self } from './mkobj.js';
 import { sobj_at } from './invent.js';
 import { change_luck } from './attrib.js'; // relocate-fns
 import { BUFSZ, ECMD_TIME, HALLUC, HALLUC_RES, M_AP_TYPMASK, NO_TRAP_FLAGS, PLNMSG_MON_TAKES_OFF_ITEM, RLOC_MSG, RLOC_NONE } from './const.js'; // relocate-fns
-import { Deaf, canspotmon, newsym } from './display.js'; // relocate-fns
+import { Deaf, canspotmon, newsym, remember_stopped_toplines } from './display.js'; // relocate-fns
 import { upstart } from './hacklib.js'; // relocate-fns
 import { tele_to_rnd_pet } from './teleport.js'; // relocate-fns
 import { noteleport_level } from './teleport.js'; // relocate-fns
@@ -3288,7 +3288,9 @@ export async function doapply() {
                 /* C topl.c:390-393 tty_yn_function (getdir's prompt): toplin is
                  * NEED_MORE but WIN_STOP is live (ESC on the wield page), so no
                  * more() is raised; the flags are cleared and the prompt replaces
-                 * the topline directly. */
+                 * the topline directly, its custompline remember_topl()ing
+                 * gt.toplines first (wintty.c:2290-2299). */
+                remember_stopped_toplines();
                 g._pending_message = '';
                 g._topl_win_stop = false;
                 g._topl_win_stop_armed = false;
@@ -3363,7 +3365,9 @@ export async function doapply() {
             if (g._pending_message && g._topl_win_stop) {
                 /* C topl.c:150 more() is a no-op while WIN_STOP is live (ESC at
                  * the wield --More--), so the getdir prompt (tty_yn_function
-                 * clears the topline) raises no page for the swallowed text. */
+                 * clears the topline) raises no page for the swallowed text;
+                 * its custompline still remember_topl()s gt.toplines. */
+                remember_stopped_toplines();
                 g._pending_message = '';
                 g._topl_win_stop = false;
                 g._topl_win_stop_buf = null;

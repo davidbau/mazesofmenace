@@ -515,6 +515,16 @@ async function restgamestate(state) {
         game.flags.debug = true;
         game.flags.explore = false;
         (game.iflags ||= {}).deferred_X = false;
+    } else if (game.flags.debug) {
+        /* C restore.c:588,592-594: a save made in debug (or explore) mode is
+         * restoring_special, so set_playmode() (options.c:10134-10152)
+         * re-authorizes it.  Wizard mode is always authorized here (see
+         * jsmain.js), so it stays: plname becomes "wizard", discover =
+         * !wizard and deferred_X is cleared — no explore-mode question,
+         * whatever playmode the restoring rc asks for. */
+        game.plname = 'wizard';
+        game.flags.explore = false;
+        game.iflags.deferred_X = false;
     }
     role_init();
     // C restore.c:631-647: reject a hangup save made with a dead hero.
@@ -1100,6 +1110,7 @@ export async function restore_preamble() {
      * before unixmain.c's keep-save question.  Publish the welcome first so
      * the room check cannot have its pending message overwritten by it. */
     let keptPrompt = '';
+    let _requeued = null;
     try {
     while (msgs.length)
         await pline(msgs.shift());
@@ -1111,9 +1122,20 @@ export async function restore_preamble() {
     /* C topl.c:257,268,300: ESC at a page's more() set WIN_STOP, so the plines
      * after it (hellish_smoke_mesg, allmain.c:925) updated gt.toplines but never
      * reached the screen; nothing stays pending to be re-paged. */
+    /* The standing line re-enters the queue below only to be laid out with
+     * the moon/Friday lines; C plined it once (vpline's MSGTYP_NOREP test,
+     * pline.c:246-262, already ran), so that replay must not see its own text
+     * as gp.prevmsg. */
     if (g._pending_message && !g._topl_win_stop)
-        msgs.push(g._pending_message);
-    g._pending_message = '';
+        msgs.push(_requeued = g._pending_message);
+    /* ...but the pline whose own update_topl raised the ESC'd more() sampled
+     * skip FALSE first, so topl.c:300 redotoplin() DREW it and it stands
+     * (the welcome-back line paged by print_level_annotation's "You remember
+     * this level as ...", dungeon.c:2494).  display.js models that drawn owner
+     * as _pending_message === _topl_win_stop_buf under WIN_STOP. */
+    if (!(g._topl_win_stop && g._topl_win_stop_buf != null
+          && g._pending_message === g._topl_win_stop_buf))
+        g._pending_message = '';
     /* C unixmain.c:264-274 — after a successful dorecover(), wizard and
      * explore-mode restores ask whether to keep the save file; this precedes
      * moveloop_preamble()'s moon/Friday-13th messages. */
@@ -1172,8 +1194,10 @@ export async function restore_preamble() {
     }
     // C allmain.c:57-68 emits ordinary plines. In particular MSGTYPE=stop
     // pages even the last message; update_topl owns joining and ESC suppression.
-    for (const msg of msgs)
+    for (const msg of msgs) {
+        if (msg === _requeued && g._prevmsg === msg) g._prevmsg = null;
         await pline(msg);
+    }
     if (_topline_more_pending())
         await flush_screen(1, false);
     /* C topl.c:544 leaves an answered question TOPLINE_NON_EMPTY, so

@@ -153,6 +153,12 @@ function render_map_row_clipped(y, clipX) {
     if (!game.level || (game._map_blanked
         && !(game._map_corner && y + 1 < game._map_corner.ymax)))
         return { str: '', endCol: 0 };
+    /* Screen row y + 1 shows map row y + clipy under CLIPPING (wintty.c:
+     * 2120-2122, 3869-3871; js/display.js tty_cliparound). */
+    if (game._ttyClipYmax !== undefined) {
+        y += game._ttyClipY | 0;
+        if (y >= game._ttyClipYmax || y >= ROWNO) return { str: '', endCol: 0 };
+    }
     /* RogueEpyx S_human = \x01 (dat/symbols): a control byte puts no glyph on
      * the terminal, so the hero's square keeps what the physical screen held
      * (blank after a cls) -- the same rule as js/display.js _snapCellAt. */
@@ -1580,7 +1586,7 @@ export async function menu_search_getlin(frameRows) {
             /* C ref: getline.c:88-95 — ESC with something typed is a KILL-LINE
              * that re-prompts; ESC on an empty buffer returns the cancel
              * sentinel. */
-            if (buf.length > 0) { prompt.reset(); buf = ''; continue; }
+            if (buf.length > 0) { prompt.reset(); buf = ''; g._prevmsg_next = null; continue; }
             remember(query + ' ');
             return '\x1b';
         }

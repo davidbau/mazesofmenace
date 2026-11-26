@@ -47,7 +47,7 @@ import { gr as roleGlobals } from './roles.js';
 import { PORT_ID } from './platform_identity.js';
 import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
-import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt, putmsghistory, asknameRowText } from './display.js';
+import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt, putmsghistory, tty_getlin_history, asknameRowText } from './display.js';
 import { pmatchi } from './strutil.js';
 import { visctrl } from './hacklib.js';
 import { map_menu_cmd } from './options.js';
@@ -1915,15 +1915,119 @@ export async function playChargen(ctx) {
     async function searchGetlin(frame) {
         const prompt = tty_getlin_prompt('Search for:');
         let buf = '';
-        for (;;) {
+        /* getline.c:106-137 ^P inside the getlin: tty_doprev_message() walks
+         * the message ring (topl.c:20-118) with cw->maxcol, which getlin's
+         * custompline reset to maxrow (topl.c:189).  `walk` is maxcol as an
+         * index into the stored ring (null == maxrow, i.e. gt.toplines);
+         * `recall` is the recalled text over rows 0.. while doprev holds. */
+        let doprev = false, walk = null, recall = null, toplin = 'special';
+        const pw = () => (game.iflags?.prevmsg_window || 's')[0];
+        const blankRows = new Set(); /* docorner(1, cury + 1) after a wrapped more() */
+        const frameRows = () => {
             const rows = frame.screen.split('\n');
-            const fr = prompt.render(rows);
-            const k = await read(fr.screen, fr.cursor);
-            if (k === K_ESC) {
-                if (buf.length > 0) { prompt.reset(); buf = ''; continue; }
-                return '\x1b';
+            for (const r of blankRows) rows[r] = '';
+            return rows;
+        };
+        /* topl.c:121-142 redotoplin: home, putsyms (hard wrap at CO - 1),
+         * cl_end; TOPLINE_NEED_MORE, and a wrapped line more()s unless the
+         * getlin's own TOPLINE_SPECIAL_PROMPT was standing (topl.c:139-140). */
+        const redotoplin = async (text) => {
+            const otoplin = toplin;
+            const parts = [];
+            for (let i = 0; i === 0 || i < text.length; i += 79) parts.push(text.slice(i, i + 79));
+            let cx = parts[parts.length - 1].length, cy = parts.length - 1;
+            if (cx === 79) { parts.push(''); cx = 0; cy++; }
+            recall = { parts, cursor: [cx, cy] };
+            toplin = 'needmore';
+            if (!cy || otoplin === 'special') return 0;
+            /* topl.c:205-248 more(): "--More--" after the text (a fresh row
+             * when curx >= CO - 8); xwaitforspace takes space/ESC/Enter and
+             * the ^P that tty_doprev_message allows (dismiss_more, topl.c:103). */
+            const mp = parts.slice();
+            let mx = cx, my = cy;
+            if (mx >= 72) { mp.push(''); mx = 0; my++; }
+            mp[my] = (mp[my] || '').padEnd(mx) + '--More--';
+            let key;
+            for (;;) {
+                const rows = frameRows();
+                mp.forEach((t, r) => { rows[r] = t; });
+                key = await read(rows.join('\n'), [mx + 8, my]);
+                if (key === 32 || key === K_ESC || key === K_CR || key === K_LF || key === 16) break;
             }
-            if (k === K_CR || k === K_LF) return buf;
+            /* topl.c:239-242: cury != 0, so docorner(1, cury + 1) erases the
+             * rows the line took (no map under character selection). */
+            for (let r = 0; r <= my; r++) blankRows.add(r);
+            recall = { parts: [''], cursor: [0, 0] }; /* home() */
+            toplin = 'empty';
+            return key;
+        };
+        const doprev_call = async () => {
+            let morc;
+            do {
+                const h = game._msg_history || [];
+                const L = h.length;
+                const text = (walk === null || walk === L) ? 'Search for: ' + buf : h[walk];
+                walk = (walk === null ? L : walk) - 1;
+                /* topl.c:113-115: past the oldest live slot maxcol returns to maxrow */
+                if (walk < Math.max(0, L - 19)) walk = L;
+                morc = await redotoplin(text);
+            } while (morc === 16);
+        };
+        for (;;) {
+            let fr;
+            if (recall) {
+                const rows = frameRows();
+                recall.parts.forEach((t, r) => { rows[r] = t; });
+                fr = { screen: rows.join('\n'), cursor: recall.cursor };
+            } else
+                fr = prompt.render(frameRows());
+            const k = await read(fr.screen, fr.cursor);
+            /* getline.c:80 rebuilds gt.toplines as "query answer" before each
+             * read and tty_getlin (wintty.c:1709) is not suppress_history
+             * (getline.c:38), so the line the getlin ends on stays there for
+             * the next remember_topl() — the ^P ring, as windows.js getlin. */
+            const _file = () => {
+                const line = 'Search for: ' + buf;
+                tty_getlin_history(line);
+                (game._getlin_hist ||= new Set()).add(line);
+            };
+            /* getline.c:120-153: the ^P / doprev arms run on the same key
+             * after the ESC arm (which only clears a non-empty buffer). */
+            const _redraw = () => {
+                /* tty_clear_nhwindow + cw->maxcol = cw->maxrow + addtopl(query
+                 * " " buf) */
+                recall = null; walk = null; toplin = 'empty';
+                blankRows.clear();
+                prompt.reset();
+                if (buf) prompt.append(buf);
+            };
+            if (k === K_ESC) {
+                if (!buf.length) { _file(); return '\x1b'; }
+                buf = '';
+                _redraw();
+            }
+            if (k === 16 && (pw() === 's' || (pw() === 'c' && !doprev))) {
+                if (!doprev) await doprev_call(); /* need two initially */
+                await doprev_call();
+                doprev = true;
+                continue;
+            } else if (k === 16 && pw() === 'c') {
+                /* getline.c:119-129: combination behaving like full — one
+                 * tty_doprev_message(), whose first two positions recall
+                 * gt.toplines / data[maxrow - 1] (topl.c:44-61); then the query
+                 * is re-added.  The history-window arm (topl.c:62-71) is not
+                 * modelled here. */
+                const L = (game._msg_history || []).length;
+                if (walk === null || walk === L || walk === L - 1) await doprev_call();
+                doprev = false;
+                _redraw();
+                continue;
+            } else if (doprev && k !== 16) {
+                doprev = false;
+                _redraw();
+            }
+            if (k === K_ESC) continue;
+            if (k === K_CR || k === K_LF) { _file(); return buf; }
             if (k === 127 || k === 8) {
                 if (buf.length > 0) { prompt.erase(1); buf = buf.slice(0, -1); }
                 continue;

@@ -33,8 +33,10 @@ import { is_cmap_drawbridge, is_cmap_water, is_cmap_lava,
          is_cmap_furniture } from './pager.js';
 import { back_to_glyph } from './display.js';
 import { cansee } from './vision.js';
-import { selection_new, selection_getpoint, selection_floodfill,
+import { selection_new, selection_getpoint, selection_setpoint,
+         selection_force_newsyms, selection_floodfill,
          set_selection_floodfillchk } from './selvar.js';
+import { HI_ZAP } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import { ONAMES } from './objects_data.js';
 import { t_at } from './mon.js';
@@ -222,35 +224,23 @@ let getpos_hilite_state = HiliteNormalMap,
 // src/getpos.c:45 getpos_sethilite()
 export async function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
     const old_getvalid = getpos_getvalid;
-    const new_getvalid = gp_getvalidfunc || null;
+    const old_map_frame_color = game.wsettings.map_frame_color;
+    const sel = selection_new();
 
     defaultHiliteState = game.iflags?.bgcolors ? HiliteBackground : HiliteNormalMap;
-    if (new_getvalid !== old_getvalid)
+    if (gp_getvalidfunc !== old_getvalid)
         getpos_hilite_state = defaultHiliteState;
 
-    getpos_hilitefunc = gp_hilitefunc || null;
-    getpos_getvalid = new_getvalid;
+    await getpos_getvalids_selection(sel, getpos_getvalid);
+    getpos_hilitefunc = gp_hilitefunc;
+    getpos_getvalid = gp_getvalidfunc;
+    await getpos_getvalids_selection(sel, getpos_getvalid);
+    game.wsettings.map_frame_color = getpos_hilite_state === HiliteBackground
+        ? HI_ZAP : NO_COLOR;
 
-    /* C redraws the union of locations accepted by the old and new
-       validators. flush_screen() paints those forced glyphs by row, so the
-       tty cursor ends at the last location in row-major order. This is
-       observable if a tip asks for input before getpos parks the cursor on
-       the hero. */
-    if (new_getvalid !== old_getvalid) {
-        let last = null;
-        for (let x = 1; x < COLNO; x++) {
-            for (let y = 0; y < ROWNO; y++) {
-                if ((old_getvalid && await old_getvalid(x, y))
-                    || (new_getvalid && await new_getvalid(x, y))) {
-                    newsym(x, y);
-                    if (!last || y > last.y || (y === last.y && x > last.x))
-                        last = { x, y };
-                }
-            }
-        }
-        if (last && new_getvalid)
-            game._flush_cursor_override = { col: last.x, row: last.y + 1 };
-    }
+    if (getpos_getvalid !== old_getvalid
+        || game.wsettings.map_frame_color !== old_map_frame_color)
+        selection_force_newsyms(sel);
 }
 
 // src/getpos.c:66 getpos_toggle_hilite_state() — cycle the state; without
@@ -274,6 +264,21 @@ async function getpos_toggle_hilite_state() {
         /* now on, begin */
         await getpos_hilitefunc(true);
     }
+}
+
+// src/getpos.c:94 mapxy_valid()
+export async function mapxy_valid(x, y) {
+    return getpos_getvalid ? await getpos_getvalid(x, y) : false;
+}
+
+// src/getpos.c:102 getpos_getvalids_selection()
+async function getpos_getvalids_selection(sel, validf) {
+    if (!sel || !validf)
+        return;
+    for (let x = 1; x < sel.wid; x++)
+        for (let y = 0; y < sel.hei; y++)
+            if (await validf(x, y))
+                selection_setpoint(x, y, sel, 1);
 }
 
 // src/getpos.c:750 getpos_refresh() — called when ^R typed; if '$' is being
@@ -575,7 +580,7 @@ export async function getpos(ccp, force, goal) {
                                     c.x = tx;
                                     c.y = ty;
                                     if (msg_given) {
-                                        tty_clear_nhwindow_message(
+                                        await tty_clear_nhwindow_message(
                                             game._topl_cury || 0);
                                         game._pending_message = '';
                                         game._toplin = TOPLINE_EMPTY;
@@ -629,7 +634,7 @@ export async function getpos(ccp, force, goal) {
     }
 
     if (msg_given) {
-        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await tty_clear_nhwindow_message(game._topl_cury || 0);
         game._pending_message = '';
         game._toplin = TOPLINE_EMPTY;
     }

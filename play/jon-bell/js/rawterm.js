@@ -90,7 +90,10 @@ function _publish() {
     const g = game;
     const st = _state();
     g._screen_output = raw_term_screen();
-    const row = Math.min(st.row, RAWTERM_ROWS - 1);
+    /* termcap.c nomux_get_cursor() (patch 006) reports nomux_raw_row as is:
+       nomux_raw_putch('\n') only increments it and the shadow grid never
+       scrolls, so a raw print that fills row 23 leaves the cursor on row 24. */
+    const row = st.row;
     const d = g.nhDisplay;
     if (d) {
         d.cursorCol = 0;

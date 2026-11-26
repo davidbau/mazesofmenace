@@ -382,6 +382,10 @@ export async function dothrow() {
                     await pline(message);
                     continue;
                 }
+                /* invent.c:2040-2044 You() reaches pline.c:273-274
+                 * flush_screen(1) -> bot() before its more(), as the !otmp
+                 * arm below. */
+                pline_flush_point();
                 await force_more(message);
                 g._pending_message = throwQbuf;
                 await flush_screen(1);

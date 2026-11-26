@@ -1,4 +1,5 @@
 // Cursor targeting helpers from NetHack 5.0 getpos.c.
+import { tty_cliparound, map_curs_row } from './display.js';
 import { docrt_flags, docrtRefresh } from './display.js';
 import { GPCOORDS_COMFULL, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_SCREEN, TIP_GETPOS, _GETPOS_VIEW_FILTERS, _GLOC_DESCR, _GLOC_DOOR, _GLOC_EXPLORE, _GLOC_FILTERTXT, _GLOC_INTERESTING, _GLOC_MONS, _GLOC_OBJS, _NUM_GLOCS, _QUITCHARS, _WHAT_IS_A_LOCATION, _autodescribe_firstmatch, _gather_locs, _getpos_menu, _getpos_symbol_search, _glyph_ident, _levlAt, cmd_from_func, cmdq_add_key, cmdq_clear, cmdq_pop, create_nhwindow, destroy_nhwindow, display_nhwindow, do_run, do_rush, movecmd, putstr, readchar_poskey, redraw_cmd, spkey_of, xytodir } from './cmd.js';
 import { findtravelpath, handle_tip } from './hack.js'; // relocate-fns
@@ -227,7 +228,7 @@ export async function auto_describe(cx, cy) {
     await flush_screen(0);
     /* C ref: getpos.c:658 curs(WIN_MAP, cx, cy) — map column x is screen
      * column x-1, map row y is screen row y+1 (topline is screen row 0). */
-    set_cursor(cx - 1, cy + 1);
+    tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
     return true;
 }
 
@@ -422,7 +423,7 @@ export async function getpos(ccp, force, goal) {
      * on cx,cy (see js/display.js newsym_force).  Nothing was forced when the
      * caller installed no validity callback, and then the flush leaves the
      * cursor alone and this is the old order's result. */
-    set_cursor(cx - 1, cy + 1);
+    tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
     await flush_screen(0);
     /* flush_screen(0) pages an over-long joined topline (topl.c:268-301), so
      * the line now standing is the last page, not the joined text seeded above
@@ -433,7 +434,7 @@ export async function getpos(ccp, force, goal) {
         /* flush_screen(0)'s bot() left the tty cursor at the end of the status */
         const _se = last_flush_status_end();
         if (_se) set_cursor(_se[0], _se[1]);
-        else set_cursor(cx - 1, cy + 1);
+        else tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
     }
 
     for (;;) {
@@ -441,7 +442,7 @@ export async function getpos(ccp, force, goal) {
             const _goalLine = `Move cursor to ${goal}:`;
             await pline(_goalLine);
             await flush_screen(0);
-            set_cursor(cx - 1, cy + 1);
+            tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
             show_goal_msg = false;
             g._getpos_last_autodescribe = _goalLine;
         } else if (_autodescribe() && !msg_given) {
@@ -612,7 +613,7 @@ export async function getpos(ccp, force, goal) {
                  * menu's docrt ran under bot_disabled (windows.c select_menu),
                  * so botlx is still set and bot()'s BL_RESET leaves the tty
                  * cursor past the last status field (display.c:2236-2237). */
-                set_cursor(cx - 1, cy + 1);
+                tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
                 await flush_screen(0);
                 menuStatusEnd = last_flush_forced_cursor() ? null : last_flush_status_end();
                 handled = true;
@@ -708,7 +709,7 @@ export async function getpos(ccp, force, goal) {
             /* C ref: getpos.c:1143-1149 `nxtc:` — gg.getposx/y = cx/cy;
              * curs(WIN_MAP, cx, cy); flush_screen(0). */
             if (menuStatusEnd) set_cursor(menuStatusEnd[0], menuStatusEnd[1]);
-            else set_cursor(cx - 1, cy + 1);
+            else tty_cliparound(cx, cy), set_cursor(cx - 1, map_curs_row(cy));
             menuStatusEnd = null;
         }
     }

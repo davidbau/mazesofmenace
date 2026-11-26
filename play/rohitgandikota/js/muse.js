@@ -1606,7 +1606,7 @@ const Half_spell_damage = () => !!(game.u.intrinsic?.HHalf_spell_damage
 // ordinary view. The forced monster glyph is intentional even while blind.
 async function you_aggravate(mtmp) {
     const [{ cls, docrt, show_glyph_cell, newsym, canspotmon,
-             map_invisible, more, pline, mon_to_glyph },
+             map_invisible, display_nhwindow_message, pline, mon_to_glyph },
            { noit_mon_nam }, { You_feel },
            { unconscious }] = await Promise.all([
         import('./display.js'), import('./do_name.js'),
@@ -1622,7 +1622,7 @@ async function you_aggravate(mtmp) {
                     glyph.decgfx, 0, glyph.glyph);
     newsym(game.u.ux, game.u.uy);
     await You_feel(`aggravated at ${noit_mon_nam(mtmp)}.`);
-    await more();
+    await display_nhwindow_message();
     await docrt();
 
     if (unconscious()) {

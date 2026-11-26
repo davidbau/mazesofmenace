@@ -11,7 +11,7 @@ import { mon_aligntyp } from './priest.js';
 import { is_obj_mappear } from './monst.js';
 import { Invis, Displaced, Underwater, Stealth, Aggravate_monster } from './youprop.js';
 import { artifact_light, has_magic_key } from './artifact.js';
-import { add_damage } from './shk.js';
+import { add_damage, after_shk_move } from './shk.js';
 import { g_at } from './invent.js';
 import { bury_an_obj } from './dig.js';
 import { mdrop_obj } from './steal.js';
@@ -59,7 +59,8 @@ import { ACCESSIBLE, DRAWBRIDGE_UP, DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_NODOOR
          D_BROKEN, In_endgame, NOTONL } from './const.js';
 import { is_vampshifter } from './monst.js';
 import { newsym, canseemon, canspotmon, sensemon, pline,
-         display_nhwindow_message } from './display.js';
+         display_nhwindow_message, swallowed } from './display.js';
+import { u_on_newpos } from './teleport.js';
 import { You, You_see, You_hear } from './pline.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
 import { worm_move, worm_nomove } from './worm.js';
@@ -2362,12 +2363,16 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                 return MMOVE_DIED; /* mon died */
         }
 
-        /* src/monmove.c:1656 — the arrival square is painted LAST in the
-           MMOVE_MOVED block, after mintrap and the door arms. Painting it
-           at the top put the pet on screen before its own "steps
-           reluctantly" --More--, one frame earlier than C (seed0004
-           screen 39). The engulf arm is handled by its own machinery. */
-        await newsym(mtmp.mx, mtmp.my);
+        /* src/monmove.c:1648, set also in domove(), hack.c. */
+        if (engulfing_u(mtmp) && (mtmp.mx !== omx || mtmp.my !== omy)) {
+            /* If the monster moved, then update. */
+            game.u.ux0 = game.u.ux;
+            game.u.uy0 = game.u.uy;
+            await u_on_newpos(mtmp.mx, mtmp.my);
+            await swallowed(0);
+        } else {
+            newsym(mtmp.mx, mtmp.my);
+        }
     }
 
     if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {
@@ -2411,6 +2416,8 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                 await hideunder(mtmp);
             newsym(mtmp.mx, mtmp.my);
         }
+        if (mtmp.isshk)
+            await after_shk_move(mtmp);
     }
     return mmoved;
 }

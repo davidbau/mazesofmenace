@@ -1295,7 +1295,7 @@ export async function dotypeinv() {
             if (class_count > 1) {
                 choice = await tty_yn_function(prompt, types, '\0', true);
                 if (choice === '\0') {
-                    tty_clear_nhwindow_message();
+                    await tty_clear_nhwindow_message();
                     break doI;
                 }
             } else {

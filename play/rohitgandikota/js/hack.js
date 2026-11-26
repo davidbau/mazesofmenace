@@ -104,7 +104,8 @@ import { defsyms } from './drawing_data.js';
 
 import { game } from './gstate.js';
 import { do_attack, explum, stumble_onto_mimic } from './uhitm.js';
-import { rehumanize } from './polyself.js';
+import { rehumanize, body_part } from './polyself.js';
+import { FOOT } from './const.js';
 import { wake_nearto } from './mon.js';
 import { attacktype, attacktype_fordmg } from './mondata.js';
 import { sensemon, is_safemon, mon_visible, pline, urgent_pline, canspotmon } from './display.js';
@@ -200,8 +201,7 @@ export function invocation_pos(x, y) {
 }
 
 // src/hack.c:3064 invocation_message(), the clue emitted after arriving on
-// the ritual square. The mounted and polymorphed wording remains outside the
-// current fixture, but the terrain and prepared-Candelabrum behavior is live.
+// the ritual square.
 export async function invocation_message() {
     const u = game.u;
     const onStairs = (() => {
@@ -213,15 +213,21 @@ export async function invocation_message() {
     if (!invocation_pos(u.ux, u.uy) || onStairs)
         return;
 
+    const candelabrum = carrying(ONAMES.CANDELABRUM_OF_INVOCATION);
     nomul(0);
-    await You_feel(`a strange vibration ${
-        Levitation() || Flying() ? 'beneath you' : 'under your feet'}.`);
+    let where;
+    if (u.usteed)
+        where = `beneath ${y_monnam(u.usteed)}`;
+    else if (Levitation() || Flying())
+        where = 'beneath you';
+    else
+        where = `under your ${makeplural(body_part(FOOT))}`;
+    await You_feel(`a strange vibration ${where}.`);
     (u.uevent ||= {}).uvibrated = 1;
 
-    const candelabrum = carrying(ONAMES.CANDELABRUM_OF_INVOCATION);
     if (candelabrum?.spe === 7 && candelabrum.lamplit) {
         await pline(`${The(xname(candelabrum))} ${
-            u.ublind ? 'throbs palpably' : 'glows with a strange light'}!`);
+            Blind() ? 'throbs palpably' : 'glows with a strange light'}!`);
     }
 }
 
@@ -2083,7 +2089,7 @@ export async function lookaround() {
         return;
     }
 
-    if (u.ublind || (game.context?.run | 0) === 0)
+    if (Blind() || (game.context?.run | 0) === 0)
         return;
 
     for (x = u.ux - 1; x <= u.ux + 1; x++) {

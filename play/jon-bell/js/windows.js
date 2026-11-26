@@ -315,9 +315,15 @@ export async function getlin(prompt) {
                 g._getlin_toplines = live;
                 try {
                     if (!doprev) {
+                        g._prevmsg_window_shown = false;
                         await doprev_message(live);
                         await doprev_message(live);
-                        if (g.nhDisplay)
+                        /* getline.c:108-111 moves no cursor after the calls: a
+                         * recalled line leaves it after the text (redotoplin),
+                         * but when the combination walk reached the history
+                         * window its dismissal's docrt() + flush_screen(1)
+                         * (wintty.c:1975-1985) left it on the hero. */
+                        if (g.nhDisplay && !g._prevmsg_window_shown)
                             topl_park_cursor(g.nhDisplay, g._topl_history_recall || '');
                         doprev = true;
                         continue;
@@ -383,6 +389,7 @@ export async function getlin(prompt) {
             if (keyCode === -1) g.iflags.term_gone = 1;
             if (keyCode === 27 && buf.length > 0) {
                 buf = '';
+                g._prevmsg_next = null; /* getline.c:92 cw->maxcol = cw->maxrow */
                 g._getlin_echo_state = null; /* getline.c:88 clear_nhwindow */
                 renderPrompt();
                 await flush_screen(1);
