@@ -6,7 +6,7 @@
 // prompt.  Throwing itself (throwit()), autoquiver and doquiver_core()
 // are not ported yet.
 
-import { use_pole, could_pole_mon } from './apply.js';
+import { use_pole, could_pole_mon, use_whip } from './apply.js';
 import { end_burn } from './timeout.js';
 import { get_obj_location } from './shk.js';
 import { shop_keeper, costly_spot, stolen_value, subfrombill, is_unpaid,
@@ -74,8 +74,14 @@ import { PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_NINJA, PM_SAMURAI,
          PM_ORC, PM_GNOME, PM_HUMAN, PM_DWARF, PM_SHADE,
          M2_ROCKTHROW } from './monsters.js';
 import { ART_MJOLLNIR } from './artilist.js';
-import { welded } from './wield.js';
+import { welded, weldmsg } from './wield.js';
 import { getobj, freeinv, stackobj } from './invent.js';
+import { addinv_before } from './invent.js';
+import { dry_a_towel } from './weapon.js';
+import { setuwep, setuqwep, set_twoweap } from './wield.js';
+import { artifact_hit } from './artifact.js';
+import { killer_xname } from './mthrowu.js';
+import { BACKTRACK, W_QUIVER, ARM, FOOT } from './const.js';
 import { ACURR, acurrstr, exercise } from './attrib.js';
 import { calc_capacity } from './hack.js';
 import { canletgo, flooreffects, obj_no_longer_held, ship_object,
@@ -104,8 +110,9 @@ import { BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME } 
 import { cansee } from './vision.js';
 import { obj_resists } from './dogmove.js';
 import { map_invisible, unmap_object, glyph_is_invisible, tmp_at, obj_to_glyph,
-         DISP_FLASH, DISP_END } from './display.js';
+         DISP_FLASH, DISP_TETHER, DISP_END } from './display.js';
 import { in_out_region } from './region.js';
+import { show_transient_light, transient_light_cleanup } from './light.js';
 import {
     Stone_resistance, Stunned, Confusion, Blind, Hallucination, Deaf, Fumbling, Levitation,
     Underwater, Blind as Blind_br
@@ -185,6 +192,8 @@ import { is_crackable } from './objects.js';
 import { erode_obj } from './trap.js';
 import { ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED, EYE } from './const.js';
 import { costly_spot as costly_spot_br } from './shk.js';
+import { KICKED_WEAPON, OBJ_AT } from './const.js';
+import { is_pool_or_lava } from './hack.js';
 import { add_damage as add_damage_bh, pay_for_damage as pay_for_damage_bh } from './shk.js';
 import { doorlock as doorlock_bh } from './lock.js';
 import { learnwand as learnwand_bh } from './zap.js';
@@ -340,10 +349,13 @@ async function throw_obj(obj, shotlimit) {
         if (!g.uarmg && obj.otyp === CORPSE
             && touch_petrifies(mons[obj.corpsenm]) && !Stone_resistance())
             throw new Error('throw_obj(): instapetrify() from a bare-handed corpse not ported yet');
-        if (welded(obj))
-            throw new Error('throw_obj(): weldmsg() not ported yet');
+        if (welded(obj)) {
+            await weldmsg(obj);
+            res = ECMD_TIME;
+            break unsplit;
+        }
         if (is_wet_towel(obj))
-            throw new Error('throw_obj(): dry_a_towel() not ported yet');
+            await dry_a_towel(obj, -1, false);
 
         /* Multishot calculations
          * (potential volley of up to N missiles; default for N is 1)
@@ -569,6 +581,25 @@ function throwit_return(clear_thrownobj) {
     game.iflags.returning_missile = null;
     if (clear_thrownobj)
         game.thrownobj = null;
+}
+
+// C ref: dothrow.c sho_obj_return_to_u()
+async function sho_obj_return_to_u(obj) {
+    const u = game.u;
+
+    /* might already be our location (bounced off a wall) */
+    if ((u.dx || u.dy) && (game.bhitpos.x !== u.ux || game.bhitpos.y !== u.uy)) {
+        let x = game.bhitpos.x - u.dx, y = game.bhitpos.y - u.dy;
+
+        await tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
+        while (isok(x, y) && (x !== u.ux || y !== u.uy)) {
+            await tmp_at(x, y);
+            /* nh_delay_output() */
+            x -= u.dx;
+            y -= u.dy;
+        }
+        await tmp_at(DISP_END, 0);
+    }
 }
 
 // C ref: dothrow.c swallowit()
@@ -938,7 +969,6 @@ async function throwit(obj,
                     || Hallucination() || Fumbling());
     /* autoreturn_weapon(obj): only the aklys is a tethered weapon */
     const tethered_weapon = (obj.otyp === AKLYS && (wep_mask & W_WEP) !== 0);
-    void twoweap; void oldslot;
 
     g.notonhead = false; /* reset potentially stale value */
     if ((obj.cursed || obj.greased) && (u.dx || u.dy) && !rn2(7)) {
@@ -990,8 +1020,8 @@ async function throwit(obj,
         mon = u.ustuck;
         g.bhitpos.x = mon.mx;
         g.bhitpos.y = mon.my;
-        if (tethered_weapon) /* tmp_at(DISP_TETHER, obj_to_glyph(obj, rn2_on_display_rng)) */
-            throw new Error('throwit(): tethered weapon while engulfed not ported yet');
+        if (tethered_weapon)
+            await tmp_at(DISP_TETHER, obj_to_glyph(obj, rn2_on_display_rng));
     } else if (u.dz) {
         /* toss_up(), hitfloor(), potionhit() on the steed */
         throw new Error('throwit(): throwing up or down not ported yet');
@@ -1075,7 +1105,8 @@ async function throwit(obj,
             /* bhit display cleanup was left with this caller
                for tethered_weapon, but clean it up now since
                we're about to return */
-            /* if (tethered_weapon) tmp_at(DISP_END, 0): display only */
+            if (tethered_weapon)
+                await tmp_at(DISP_END, 0);
             throwit_return(false);
             return;
         }
@@ -1088,15 +1119,82 @@ async function throwit(obj,
 
     if (!g.thrownobj) {
         /* missile has already been handled */
-        /* if (tethered_weapon) tmp_at(DISP_END, 0): display only */
+        if (tethered_weapon)
+            await tmp_at(DISP_END, 0);
     } else if (u.uswallow && !g.iflags.returning_missile) {
         swallowit(obj);
         return;
     } else {
         /* Mjollnir must be wielded to be thrown--caller verifies this;
            aklys must be wielded as primary to return when thrown */
-        if (g.iflags.returning_missile) /* Mjollnir or aklys */
-            throw new Error('throwit(): returning missile not ported yet');
+        if (g.iflags.returning_missile) { /* Mjollnir or aklys */
+            if (rn2(100)) {
+                if (tethered_weapon)
+                    await tmp_at(DISP_END, BACKTRACK);
+                else
+                    await sho_obj_return_to_u(obj); /* display its flight */
+
+                if (!impaired && rn2(100)) {
+                    await pline(`${Tobjnam(obj, "return")} to your hand!`);
+                    obj = await addinv_before(obj, oldslot);
+                    await encumber_msg();
+                    /* addinv autoquivers an aklys if quiver is empty;
+                       if obj is quivered, remove it before wielding */
+                    if (obj.owornmask & W_QUIVER)
+                        setuqwep(null);
+                    setuwep(obj);
+                    set_twoweap(twoweap); /* u.twoweap = twoweap */
+                    if (cansee(g.bhitpos.x, g.bhitpos.y))
+                        newsym(g.bhitpos.x, g.bhitpos.y);
+                } else {
+                    let dmg = rn2(2);
+
+                    if (!dmg) {
+                        await pline(Blind()
+                            ? `Something lands ${Levitation() ? "beneath" : "at"} your ${makeplural(body_part(FOOT))}.`
+                            : `${Tobjnam(obj, "return")} back to you, landing ${Levitation() ? "beneath" : "at"} your ${makeplural(body_part(FOOT))}.`);
+                    } else {
+                        dmg += rnd(3);
+                        await pline(Blind()
+                            ? `${Tobjnam(obj, "hit")} your ${body_part(ARM)}!`
+                            : `${Tobjnam(obj, "fly")} back toward you, hitting your ${body_part(ARM)}!`);
+                        if (obj.oartifact) {
+                            const pdmg = { val: dmg };
+                            /* (void) */ await artifact_hit(null, g.youmonst, obj, pdmg, 0);
+                            dmg = pdmg.val;
+                        }
+                        await losehp(Maybe_Half_Phys(dmg), killer_xname(obj),
+                                     KILLED_BY);
+                    }
+
+                    if (u.uswallow) {
+                        swallowit(obj);
+                        return;
+                    }
+                    if (!(await ship_object(obj, u.ux, u.uy, false)))
+                        await dropy(obj);
+                }
+                throwit_return(true);
+                return;
+            } else {
+                if (tethered_weapon)
+                    await tmp_at(DISP_END, 0);
+                /* when this location is stepped on, the weapon will be
+                   auto-picked up due to 'obj->how_lost' of LOST_THROWN;
+                   addinv() prevents thrown Mjollnir from being placed
+                   into the quiver slot, but an aklys will end up there if
+                   that slot is empty at the time; since hero will need to
+                   explicitly rewield the weapon to get throw-and-return
+                   capability back anyway, quivered or not shouldn't matter */
+                await pline(`${Tobjnam(obj, "fail")} to return!`);
+
+                if (u.uswallow) {
+                    swallowit(obj);
+                    return;
+                }
+                /* continue below with placing 'obj' at target location */
+            }
+        }
 
         const bx = g.bhitpos.x, by = g.bhitpos.y;
         if ((!IS_SOFT(g.level.at(bx, by).typ) && breaktest(obj))
@@ -1128,9 +1226,7 @@ async function throwit(obj,
         obj_no_longer_held(obj);
         if (mon && mon.isshk && is_pick(obj))
             throw new Error('throwit(): shopkeeper snatching a pick not ported yet');
-        /* (void) snuff_candle(obj) */
-        if (obj.lamplit)
-            throw new Error('throwit(): snuff_candle() not ported yet');
+        /* (void) */ await snuff_candle_dt(obj);
         if (!mon && await ship_object(obj, bx, by, false)) {
             throwit_return(true);
             return;
@@ -1490,9 +1586,9 @@ export function breaktest(obj) {
     }
 }
 
-// C ref: zap.c bhit() -- thrown objects (THROWN_WEAPON) and IMMEDIATE wands
-// (ZAPPED_WAND); kicked objects, flashed light and invisible beams are not
-// ported yet
+// C ref: zap.c bhit() -- thrown (THROWN_WEAPON) and kicked (KICKED_WEAPON)
+// objects and IMMEDIATE wands (ZAPPED_WAND); flashed light and invisible
+// beams are not ported yet
 /*
  *  Called for the following distance effects:
  *      when a weapon is thrown (weapon == THROWN_WEAPON)
@@ -1528,10 +1624,16 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
     void point_blank;
 
     if (weapon !== THROWN_WEAPON && weapon !== THROWN_TETHERED_WEAPON
-        && weapon !== ZAPPED_WAND)
-        throw new Error('bhit(): kicked objects, flashed light and beams not ported yet');
+        && weapon !== KICKED_WEAPON && weapon !== ZAPPED_WAND)
+        throw new Error('bhit(): flashed light and beams not ported yet');
 
-    g.bhitpos = { x: u.ux, y: u.uy };
+    if (weapon === KICKED_WEAPON) {
+        /* object starts one square in front of player */
+        g.bhitpos = { x: u.ux + ddx, y: u.uy + ddy };
+        range--;
+    } else {
+        g.bhitpos = { x: u.ux, y: u.uy };
+    }
 
     if (weapon === THROWN_WEAPON && obj && obj.otyp === ROCK) {
         skiprange(range, skip);
@@ -1541,8 +1643,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
     if (weapon === THROWN_TETHERED_WEAPON && obj) {
         tethered_weapon = true;
         weapon = THROWN_WEAPON; /* simplify 'if's that follow below */
-        /* tmp_at(DISP_TETHER, obj_to_glyph(obj, rn2_on_display_rng)):
-           tmp_at()'s tether style isn't ported yet */
+        await tmp_at(DISP_TETHER, obj_to_glyph(obj, rn2_on_display_rng));
     } else if (weapon !== ZAPPED_WAND) /* && weapon != INVIS_BEAM */
         await tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
 
@@ -1564,14 +1665,14 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
 
         /* WATER aka "wall of water" stops items */
         if (typ === WATER || typ === LAVAWALL) { /* IS_WATERWALL(typ) */
-            if (weapon === THROWN_WEAPON)
+            if (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
                 break;
         }
 
         /* iron bars will block anything big enough and break some things */
-        if (weapon === THROWN_WEAPON) {
+        if (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON) {
             if (obj.lamplit && !Blind())
-                throw new Error('bhit(): show_transient_light() not ported yet');
+                await show_transient_light(obj, x, y);
             if (typ === IRONBARS
                 && await hits_bars(pobj, x - ddx, y - ddy, x, y,
                                    point_blank ? 0 : (!rn2(5) ? 1 : 0), 1)) {
@@ -1593,7 +1694,8 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         mtmp = m_at(x, y);
         ttmp = t_at(x, y);
         if (!mtmp && ttmp && (ttmp.ttyp === WEB)
-            && weapon === THROWN_WEAPON && !rn2(3)) {
+            && (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
+            && !rn2(3)) {
             throw new Error('bhit(): stuck in a web not ported yet');
         }
 
@@ -1617,7 +1719,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
            give message and skip it in order to keep going;
            thrown objects don't hit mimics pretending to be objects */
         const xyglyph = glyph_at(x, y);
-        if (mtmp && weapon === THROWN_WEAPON
+        if (mtmp && (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
             && (await shade_miss(game.youmonst, mtmp, obj, true, true)
                 || (mtmp.m_ap_type === M_AP_OBJECT
                     && xyglyph.kind !== 'mon' /* !glyph_is_monster() */
@@ -1655,6 +1757,14 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         if (fhito) {
             if (await bhitpile(obj, fhito, x, y, 0))
                 range--;
+        } else {
+            if (weapon === KICKED_WEAPON
+                && ((obj.oclass === COIN_CLASS && OBJ_AT(x, y))
+                    || await ship_object(obj, x, y, costly_spot(x, y)))) {
+                await tmp_at(DISP_END, 0);
+                bhit_done = true;
+                break; /* goto bhit_done; result == (struct monst *) 0 */
+            }
         }
         if (weapon === ZAPPED_WAND && (IS_DOOR(typ) || typ === SDOOR)) {
             switch (obj.otyp) {
@@ -1689,9 +1799,11 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
                 unmap_object(x, y);
                 newsym(x, y);
             }
-            if (!tethered_weapon) /* tmp_at()'s tether style isn't ported yet */
-                await tmp_at(x, y);
+            await tmp_at(x, y);
             /* nh_delay_output() */
+            /* kicked objects fall in pools */
+            if ((weapon === KICKED_WEAPON) && is_pool_or_lava(x, y))
+                break;
             if (IS_SINK(typ))
                 break; /* physical objects fall onto sink */
         }
@@ -1704,18 +1816,21 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         point_blank = false; /* affects passing through iron bars */
     }
 
-    /* (was_returning && was_returning != iflags.returning_missile) would
-       end the tether display, whose tmp_at() style isn't ported yet */
-    if (!bhit_done && weapon !== ZAPPED_WAND /* && weapon != INVIS_BEAM */
-        && !tethered_weapon)
+    if (!bhit_done
+        && ((weapon !== ZAPPED_WAND /* && weapon != INVIS_BEAM */
+             && !tethered_weapon)
+            || (was_returning && was_returning !== g.iflags.returning_missile)))
         await tmp_at(DISP_END, 0);
-    void was_returning;
 
     if (!bhit_done && shopdoor)
         await pay_for_damage_bh("destroy", false);
 
     /* bhit_done: */
-    /* transient_light_cleanup(): lit objects are refused above */
+    /* note: for FLASHED_LIGHT, _caller_ must call transient_light_cleanup()
+       after possibly calling flash_hits_mon() */
+    if (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
+        await transient_light_cleanup();
+
     return result;
 }
 
@@ -1840,7 +1955,7 @@ export async function dofire() {
                 return await use_pole(uwep, true);
             /* if we're wielding a bullwhip, apply it */
             } else if (uwep && uwep.otyp === BULLWHIP) {
-                throw new Error('dofire(): use_whip() not ported yet');
+                return await use_whip(uwep);
             } else if ((game.iflags?.fireassist ?? true)
                        && game.uswapwep && is_pole(game.uswapwep)
                        && !(game.uswapwep.cursed && game.uswapwep.bknown)) {

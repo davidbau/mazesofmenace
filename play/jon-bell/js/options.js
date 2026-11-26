@@ -2213,6 +2213,12 @@ export async function handler_autopickup_exception(preserveStatus = false) {
                 for (const m of game._config_errors.splice(base)) {
                     if (typeof m !== 'string') continue;
                     await pline('%s%s', m, /[.!?]$/.test(m) ? '' : '.');
+                    /* pline.c:273-274: the error's flush_screen(1) ran bot() for the
+                       botlx the Options menu's docrt() left pending (bot() was
+                       disabled inside select_menu/getlin, windows.c:1859-1900), so
+                       the status rows are on the terminal from here on; the next
+                       corner "Do what?" menu (wintty.c:1923-1940) leaves them. */
+                    preserveStatus = true;
                 }
                 await drainTopline(); /* the menu reopening forces the pending topline's --More-- */
             }

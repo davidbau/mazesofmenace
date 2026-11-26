@@ -1,8 +1,8 @@
 // steed.js -- riding (C ref: steed.c).
 //
 // Ported so far: doride(), mount_steed(), maybewakesteed(),
-// exercise_steed(), landing_spot(), dismount_steed() and stucksteed();
-// kick_steed(), poly_steed() and the less common dismount cases stop
+// exercise_steed(), kick_steed(), landing_spot(), dismount_steed() and
+// stucksteed(); poly_steed() and the less common dismount cases stop
 // with "not ported yet".
 
 import { sokoban_guilt } from './trap.js';
@@ -39,6 +39,7 @@ import { steed_vs_stealth } from './polyself.js';
 import { use_skill } from './weapon.js';
 import { encumber_msg } from './pickup.js';
 import { an } from './objnam.js';
+import { instapetrify } from './trap.js';
 import { pmname, Mgender } from './do_name.js';
 import { has_ceiling } from './insight.js';
 import { wseg_mon_at } from './worm.js';
@@ -56,6 +57,10 @@ import { killed, monkilled } from './mon.js';
 import { AD_PHYS } from './monsters.js';
 import { adjalign } from './attrib.js';
 import { finish_meating } from './dogmove.js';
+import { helpless } from './monmove.js';
+import { highc } from './hacklib.js';
+import { monverbself } from './do_name.js';
+import { newsym } from './display.js';
 
 // C ref: cmd.c dirtocoord()
 function dirtocoord(cc, dd) {
@@ -182,8 +187,12 @@ async function mount_steed(mtmp, force) {
     const ptr = mtmp.data;
     /* touch_petrifies(ptr) && !Stone_resistance */
     if ((ptr === mons[PM_COCKATRICE] || ptr === mons[PM_CHICKATRICE])
-        && !Stone_resistance())
-        throw new Error('mount_steed(): instapetrify() not ported yet');
+        && !Stone_resistance()) {
+        await You(`touch ${mon_nam(mtmp)}.`);
+        const kbuf = `attempting to ride ${
+            an(pmname(mtmp.data, Mgender(mtmp)))}`;
+        await instapetrify(kbuf);
+    }
     if (!mtmp.mtame || mtmp.isminion) {
         await pline(`I think ${mon_nam(mtmp)} would mind.`);
         return false;
@@ -277,6 +286,57 @@ export async function exercise_steed() {
         u.urideturns = 0;
         await use_skill(P_RIDING, 1);
     }
+    return;
+}
+
+// C ref: steed.c kick_steed()
+export async function kick_steed() {
+    const u = game.u;
+    let He; /* monverbself() appends to the "He"/"She"/"It" value */
+    if (!u.usteed)
+        return;
+
+    /* [ALI] Various effects of kicking sleeping/paralyzed steeds */
+    if (helpless(u.usteed)) {
+        /* We assume a message has just been output of the form
+         * "You kick <steed>."
+         */
+        He = mhe(u.usteed);
+        He = highc(He.charAt(0)) + He.slice(1);
+        if ((u.usteed.mcanmove || u.usteed.mfrozen) && !rn2(2)) {
+            if (u.usteed.mcanmove)
+                u.usteed.msleeping = 0;
+            else if (u.usteed.mfrozen > 2)
+                u.usteed.mfrozen -= 2;
+            else {
+                u.usteed.mfrozen = 0;
+                u.usteed.mcanmove = 1;
+            }
+            if (helpless(u.usteed))
+                await pline(`${He} stirs.`);
+            else
+                /* if hallucinating, might yield "He rouses herself" or
+                   "She rouses himself" */
+                await pline(`${monverbself(u.usteed, He, "rouse", null)}!`);
+        } else
+            await pline(`${He} does not respond.`);
+        return;
+    }
+
+    /* Make the steed less tame and check if it resists */
+    if (u.usteed.mtame)
+        u.usteed.mtame--;
+    if (!u.usteed.mtame && u.usteed.mleashed)
+        throw new Error('kick_steed(): m_unleash() not ported yet');
+    if (!u.usteed.mtame
+        || (u.ulevel + u.usteed.mtame < rnd(Math.trunc(MAXULEV / 2) + 5))) {
+        newsym(u.usteed.mx, u.usteed.my);
+        await dismount_steed(DISMOUNT_THROWN);
+        return;
+    }
+
+    await pline(`${Monnam(u.usteed)} gallops!`);
+    u.ugallop = (u.ugallop || 0) + rn1(20, 30);
     return;
 }
 

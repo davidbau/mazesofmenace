@@ -26,7 +26,7 @@ import { rn2 } from './rnd.js';
 import { nhgetch } from './input.js';
 import { check_gold_symbol } from './botl.js'; /* C botl.c:40 — OPTIONS=S_xxx calls it (options.c:665) */
 import { nh_terminate } from './end.js';
-import { exit_nhwindows, raw_print } from './rawterm.js';
+import { exit_nhwindows, raw_print, raw_term_active, raw_term_screen } from './rawterm.js';
 import { worm_seg_at } from './worm.js';
 import { worms_rest_snapshot } from './worm.js';
 import { bubbles_reset_process_state } from './mkmaze.js';
@@ -622,7 +622,12 @@ export class NethackGame {
             } else if (!/[^\n]/.test(game._screen_output || '')) {
                 blankFrame = true;
             } else {
-                nhGame._screens.push(game._rawCursorFrozen ? (game._screen_output || '') : (game._screen_output || '').replace(/[\x80-\xff]/g, ' ')); /* raw_print frames use the unsigned nomux_raw_putch and DO paint */
+                /* raw_print frames use the unsigned nomux_raw_putch and DO paint: an early raw_print
+                 * (_rawCursorFrozen), or the end-of-game raw grid (exit_nhwindows -> topten's raw_print
+                 * of each entry, where a UTF-8 name's bytes land one per cell). */
+                const rawFrame = game._rawCursorFrozen
+                    || (raw_term_active() && (game._screen_output || '') === raw_term_screen());
+                nhGame._screens.push(rawFrame ? (game._screen_output || '') : (game._screen_output || '').replace(/[\x80-\xff]/g, ' '));
                 nhGame._cursors.push(game._rawCursorFrozen ? game._rawCursorFrozen.slice()
                     : disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);
             }

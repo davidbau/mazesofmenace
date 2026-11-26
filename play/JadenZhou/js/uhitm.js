@@ -5,12 +5,11 @@
 // check_caitiff(), mon_maybe_unparalyze(), find_roll_to_hit(),
 // known_hitum(), double_punch(), hitum(), hmon(), hmon_hitmon() and its
 // sub-steps, missum(), passive() and the hero-attacker case of
-// mhitm_knockback().  Polymorphed attacks (hmonas()), Cleaver's
-// hitum_cleave() and some rarer sub-steps throw 'not ported yet'.
-// For the monster-hits-hero (mhitu) case: mhitm_adtyping(),
-// mhitm_ad_phys(), mhitm_ad_elec(), mhitm_ad_stck() and
-// mhitm_mgc_atk_negated().  The hero-attacks and monster-vs-monster
-// (mhitm) branches of those handlers throw a 'not ported yet' error.
+// mhitm_knockback(), nohandglow(), polymorphed attacks (hmonas()),
+// steal_it(), gulpum() (digesting and petrification are stops) and the
+// uhitm, mhitu and mhitm branches of the mhitm_ad_*() handlers.
+// Cleaver's hitum_cleave() and some rarer sub-steps throw
+// 'not ported yet'.
 
 import { DEADMONSTER } from './mon.js';
 import { helpless } from './monmove.js';
@@ -119,7 +118,12 @@ import { discover_object, makeknown } from './o_init.js';
 import { steal, stealgold, stealamulet } from './steal.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { locomotion } from './trap.js';
-import { minstapetrify } from './trap.js';
+import { minstapetrify, instapetrify } from './trap.js';
+import { eating_conducts, Finish_digestion, newuhs } from './eat.js';
+import { snuff_lit } from './apply.js';
+import { done } from './end.js';
+import { killer } from './topten.js';
+import { NO_KILLER_PREFIX, DIED, STOMACH, XKILL_GIVEMSG } from './const.js';
 import { Adjmonnam } from './do_name.js';
 import { doseduce } from './mhitu.js';
 import { make_stoned } from './potion.js';
@@ -171,7 +175,7 @@ import { EXPENSIVE_CAMERA, EGG, CREAM_PIE, BLINDING_VENOM, ACID_VENOM, ROCK,
          VEGGY, PAPER, SPBOOK_CLASS } from './objects.js';
 import { corpse_xname, An, singular, cxname } from './objnam.js';
 import { observe_object } from './o_init.js';
-import { munstone } from './muse.js';
+import { munstone, munslime } from './muse.js';
 import { stale_egg, eat_brains } from './eat.js';
 import { explode } from './explode.js';
 import { is_vampshifter, haseyes, resists_acid,
@@ -252,6 +256,50 @@ import { adtyp_to_expltype } from './explode.js';
 import { silver_sears } from './weapon.js';
 import { drop_uswapwep } from './wield.js';
 import { wake_nearto } from './mon.js';
+import { monkilled, mondied, newcham, corpse_chance } from './mon.js';
+import { grow_up } from './makemon.js';
+import { acid_damage, sleep_monst } from './trap.js';
+import { findgold } from './steal.js';
+import { obj_extract_self, add_to_minv, mksobj, set_corpsenm,
+         dealloc_obj } from './mkobj.js';
+import { were_change } from './were.js';
+import { paralyze_monst, slept_monst, xdrainenergym,
+         mhitm_ad_phys as mhitm_ad_phys_mm,
+         mhitm_ad_sedu as mhitm_ad_sedu_mm } from './mhitm.js';
+import { RLOC_NOMSG, MSLOW, NO_NC_FLAGS, NC_SHOW_MSG } from './const.js';
+import { G_NOCORPSE } from './monsters.js';
+import { mon_adjust_speed } from './worn.js';
+import { carnivorous, herbivorous, metallivorous, is_rider,
+         slimeproof } from './mondata.js';
+import { m_useup } from './mthrowu.js';
+import { dog_nutrition } from './dogmove.js';
+import { hcolor } from './do_name.js';
+import { Invisible } from './youprop.js';
+import { resist } from './zap.js';
+import { NOTELL } from './const.js';
+import { dmgtype_fromattack, digests } from './mondata.js';
+import { engulf_target } from './mhitu.js';
+import { tmp_at, mon_to_glyph, map_location } from './display.js';
+import { rn2_on_display_rng } from './rng.js';
+import { DISP_ALWAYS, DISP_END } from './const.js';
+import { Slow_digestion } from './youprop.js';
+import { mpickobj, extract_from_minvent_g } from './steal.js';
+import { find_artifact } from './artifact.js';
+import { hold_another_object } from './wizcmds.js';
+import { possibly_unwield } from './weapon.js';
+import { mselftouch } from './trap.js';
+import { mhe } from './mhitu.js';
+import { upstart } from './hacklib.js';
+import { is_neuter } from './mondata.js';
+import { COIN_CLASS } from './objects.js';
+import { is_swimmer, breathless } from './mondata.js';
+import { merge_choice, addinv } from './invent.js';
+import { inv_cnt } from './hack.js';
+import { dropy } from './do.js';
+import { nonliving } from './makemon.js';
+import { u_teleport_mon } from './teleport.js';
+
+const invlet_basic = 52; /* C ref: invent.c */
 
 /* C ref: uhitm.c mhitm_ad_phys() -- !artifact_hit(magr, mdef, otmp,
    &mhm->damage, gm.mhitu_dieroll) */
@@ -454,7 +502,8 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
             }
         }
     } else {
-        throw new Error('mhitm_ad_phys(): mhitm branch is in mhitm.js');
+        /* mhitm: the monster-vs-monster part lives in mhitm.js */
+        await mhitm_ad_phys_mm(magr, mattk, mdef, mhm);
     }
 }
 
@@ -495,7 +544,21 @@ async function mhitm_ad_elec(magr, mattk, mdef, mhm) {
         } else
             mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_elec(): mhitm branch not ported yet');
+        /* mhitm */
+        if (await mgc_atk_negated(magr, mdef, true)) {
+            mhm.damage = 0;
+            return;
+        }
+        if (game.mhitm_vis && canseemon(mdef))
+            await pline(`${Monnam(mdef)} gets zapped!`); /* pline_mon() */
+        if (resists_elec(mdef) || defended(mdef, AD_ELEC)) {
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline_The(`zap doesn't shock ${mon_nam(mdef)}!`);
+            /* shieldeff(mdef->mx, mdef->my): transient display only */
+            await golemeffects(mdef, AD_ELEC, mhm.damage);
+            mhm.damage = 0;
+        }
+        mhm.damage += await destroy_items(mdef, AD_ELEC, orig_dmg);
     }
 }
 
@@ -591,7 +654,22 @@ async function mhitm_ad_sgld(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_sgld(): uhitm branch not ported yet');
+        /* uhitm */
+        const mongold = findgold(mdef.minvent);
+
+        if (mongold) {
+            obj_extract_self(mongold);
+            if (merge_choice(game.invent, mongold)
+                    || inv_cnt(false) < invlet_basic) {
+                await addinv(mongold);
+                await Your("purse feels heavier.");
+            } else {
+                await You(`grab ${mon_nam(mdef)}'s gold, but find no room in your knapsack.`);
+                await dropy(mongold);
+            }
+        }
+        await exercise(A_DEX, true);
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -600,7 +678,35 @@ async function mhitm_ad_sgld(magr, mattk, mdef, mhm) {
         if (!magr.mcan)
             await stealgold(magr);
     } else {
-        throw new Error('mhitm_ad_sgld(): mhitm branch not ported yet');
+        /* mhitm */
+        mhm.damage = 0;
+        if (magr.mcan)
+            return;
+        /* technically incorrect; no check for stealing gold from
+         * between mdef's feet...
+         */
+        {
+            const gold = findgold(mdef.minvent);
+
+            if (!gold)
+                return;
+            obj_extract_self(gold);
+            add_to_minv(magr, gold);
+        }
+        mdef.mstrategy &= ~STRAT_WAITFORU;
+        const buf = Monnam(magr);
+        if (game.mhitm_vis && canseemon(mdef)) {
+            await pline(`${buf} steals some gold from ${mon_nam(mdef)}.`);
+        }
+        if (!await tele_restrict(magr)) {
+            const couldspot = canspotmon(magr);
+
+            mhm.hitflags = M_ATTK_AGR_DONE;
+            await rloc(magr, RLOC_NOMSG);
+            /* TODO: use RLOC_MSG instead? */
+            if (game.mhitm_vis && couldspot && !canspotmon(magr))
+                await pline(`${buf} suddenly disappears!`);
+        }
     }
     void mhm;
 }
@@ -624,11 +730,150 @@ async function mhitm_ad_samu(magr, mattk, mdef, mhm) {
     }
 }
 
+// C ref: uhitm.c theft_petrifies()
+async function theft_petrifies(otmp) {
+    if (game.uarmg || otmp.otyp !== CORPSE
+        || !touch_petrifies(mons[otmp.corpsenm]) || Stone_resistance())
+        return false;
+
+    /* (#if 0: poly_when_stoned() critter with theft capability) */
+
+    /* stealing this corpse is fatal... */
+    await instapetrify(corpse_xname(otmp, "stolen", CXN_ARTICLE));
+    /* apparently wasn't fatal after all... */
+    return true;
+}
+
+/* C ref: uhitm.c steal_it() -- C's mdef->minvent chain starts with the
+   newest object; JS minvent arrays are kept oldest first */
+function minvent_head(mon) {
+    const inv = mon.minvent;
+    return (inv && inv.length) ? inv[inv.length - 1] : null;
+}
+
+// C ref: uhitm.c steal_it()
+/*
+ * Player uses theft attack against monster.
+ *
+ * If the target is wearing body armor, take all of its possessions;
+ * otherwise, take one object.  [Is this really the behavior we want?]
+ */
+async function steal_it(mdef, mattk) {
+    const u = game.u;
+    let otmp, gold = null, ustealo;
+    let unwornmask;
+
+    otmp = minvent_head(mdef);
+    if (!otmp || (otmp.oclass === COIN_CLASS && mdef.minvent.length === 1))
+        return; /* nothing to take */
+
+    /* look for worn body armor */
+    ustealo = null;
+    if (could_seduce(game.youmonst, mdef, mattk) && mdef.mcanmove) {
+        /* find armor, and move it to end of inventory in the process
+           (the end of C's chain is the front of the JS array) */
+        const inv = mdef.minvent;
+        for (let i = inv.length - 1; i >= 0; i--) {
+            otmp = inv[i];
+            if (otmp.owornmask & W_ARM) {
+                if (ustealo)
+                    throw new Error('steal_it: multiple worn suits'); /* panic() */
+                inv.splice(i, 1); /* take armor out of minvent */
+                ustealo = otmp;
+            }
+        }
+        if (ustealo)
+            inv.unshift(ustealo); /* put armor back into minvent */
+    }
+    gold = findgold(mdef.minvent);
+
+    if (ustealo) { /* we will be taking everything */
+        /* 5.0: this uses hero's base gender rather than nymph femininity
+           but was using hardcoded pronouns She/her for target monster;
+           switch to dynamic pronoun */
+        const gender = is_neuter(mdef.data) ? 2 : (mdef.female ? 1 : 0);
+        if (gender === (u.mfemale ? 1 : 0)
+            && game.youmonst.data.mlet === M.S_NYMPH)
+            await You(`charm ${mon_nam(mdef)}.  ${upstart(mhe(mdef))} gladly hands over ${
+                !gold ? "" : "most of "}${mhis(mdef)} possessions.`);
+        else
+            await You(`seduce ${mon_nam(mdef)} and ${mhe(mdef)} starts to take off ${
+                mhis(mdef)} clothes.`);
+    }
+
+    /* prevent gold from being stolen so that steal-item isn't a superset
+       of steal-gold; shuffling it out of minvent before selecting next
+       item, and then back in case hero or monster dies (hero touching
+       stolen c'trice corpse or monster wielding one and having gloves
+       stolen) is less bookkeeping than skipping it within the loop or
+       taking it out once and then trying to figure out how to put it back */
+    if (gold)
+        obj_extract_self(gold);
+
+    while ((otmp = minvent_head(mdef)) !== null) {
+        if (gold) /* put 'mdef's gold back after remembering mdef->minvent */
+            mpickobj(mdef, gold), gold = null;
+        if (!Upolyd())
+            break; /* no longer have ability to steal */
+        unwornmask = otmp.owornmask;
+        /* this would take place when doname() formats the object for
+           the hold_another_object() call, but we want to do it before
+           otmp gets removed from mdef's inventory */
+        if (otmp.oartifact && !Blind())
+            find_artifact(otmp);
+        /* take the object away from the monster */
+        for (const msg of extract_from_minvent_g(mdef, otmp, true, false)) {
+            if (msg?.newcham_async)
+                await msg.newcham_async();
+            else
+                await pline(msg);
+        }
+        /* special message for final item; no need to check owornmask because
+         * ustealo is only set on objects with (owornmask & W_ARM) */
+        if (otmp === ustealo)
+            await pline(`${Monnam(mdef)} finishes taking off ${mhis(mdef)} suit.`);
+        /* give the object to the character */
+        otmp = await hold_another_object(otmp, "You snatched but dropped %s.",
+                                         doname(otmp), "You steal: ");
+        /* might have dropped otmp, and it might have broken or left level */
+        if (!otmp || otmp.where !== 'OBJ_INVENT')
+            continue;
+        if (await theft_petrifies(otmp))
+            break; /* stop thieving even though hero survived */
+        /* more take-away handling, after theft message */
+        if (unwornmask & W_WEP) { /* stole wielded weapon */
+            await possibly_unwield(mdef, false);
+        } else if (unwornmask & W_ARMG) { /* stole worn gloves */
+            await mselftouch(mdef, null, true);
+            if (DEADMONSTER(mdef)) /* it's now a statue */
+                break; /* can't continue stealing */
+        }
+
+        if (!ustealo)
+            break; /* only taking one item */
+
+        /* take gold out of minvent before making next selection; if it
+           is the only thing left, the loop will terminate and it will be
+           put back below */
+        if ((gold = findgold(mdef.minvent)))
+            obj_extract_self(gold);
+    }
+
+    /* put gold back; won't happen if either hero or 'mdef' dies because
+       gold will be back in monster's inventory at either of those times
+       (so will be present in mdef's minvent for bones, or in its statue
+       now if it has just been turned into one) */
+    if (gold)
+        mpickobj(mdef, gold);
+}
+
 // C ref: uhitm.c mhitm_ad_sedu()
 /* seduce and also steal item */
 async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_sedu(): uhitm branch (steal_it()) not ported yet');
+        /* uhitm */
+        await steal_it(mdef, mattk);
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         const buf = { buf: '' };
@@ -688,7 +933,8 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
             return;
         }
     } else {
-        throw new Error('mhitm_ad_sedu(): mhitm branch not ported yet');
+        /* mhitm: the monster-vs-monster part lives in mhitm.js */
+        await mhitm_ad_sedu_mm(magr, mattk, mdef, mhm);
     }
 }
 
@@ -848,7 +1094,17 @@ async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_rust(): uhitm branch not ported yet');
+        /* uhitm */
+        if (completelyrusts(pd)) { /* iron golem */
+            /* note: the life-saved case is hypothetical because
+               life-saving doesn't work for golems */
+            await pline(`${Monnam(mdef)} ${
+                !mlifesaver(mdef) ? "falls" : "starts to fall"} to pieces!`);
+            await xkilled(mdef, XKILL_NOMSG);
+            mhm.hitflags |= M_ATTK_DEF_DIED;
+        }
+        await erode_armor(mdef, ERODE_RUST);
+        mhm.damage = 0; /* damageum(), int tmp */
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -863,7 +1119,27 @@ async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
         }
         await erode_armor(game.youmonst, ERODE_RUST);
     } else {
-        throw new Error('mhitm_ad_rust(): mhitm branch not ported yet');
+        /* mhitm */
+        if (magr.mcan)
+            return;
+        if (completelyrusts(pd)) { /* PM_IRON_GOLEM */
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline(`${Monnam(mdef)} ${
+                    !mlifesaver(mdef) ? "falls" : "starts to fall"} to pieces!`); /* pline_mon() */
+            await monkilled(mdef, null, M.AD_RUST);
+            if (!DEADMONSTER(mdef)) {
+                mhm.hitflags = M_ATTK_MISS;
+                mhm.done = true;
+                return;
+            }
+            mhm.hitflags = (M_ATTK_DEF_DIED
+                            | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED));
+            mhm.done = true;
+            return;
+        }
+        await erode_armor(mdef, ERODE_RUST);
+        mdef.mstrategy &= ~STRAT_WAITFORU;
+        mhm.damage = 0; /* mdamagem(), int tmp */
     }
     void mhm;
 }
@@ -871,7 +1147,9 @@ async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
 // C ref: uhitm.c mhitm_ad_corr()
 async function mhitm_ad_corr(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_corr(): uhitm branch not ported yet');
+        /* uhitm */
+        await erode_armor(mdef, ERODE_CORRODE);
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -879,7 +1157,12 @@ async function mhitm_ad_corr(magr, mattk, mdef, mhm) {
             return;
         await erode_armor(mdef, ERODE_CORRODE);
     } else {
-        throw new Error('mhitm_ad_corr(): mhitm branch not ported yet');
+        /* mhitm */
+        if (magr.mcan)
+            return;
+        await erode_armor(mdef, ERODE_CORRODE);
+        mdef.mstrategy &= ~STRAT_WAITFORU;
+        mhm.damage = 0;
     }
     void mhm;
 }
@@ -889,7 +1172,14 @@ async function mhitm_ad_dcay(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_dcay(): uhitm branch not ported yet');
+        /* uhitm */
+        if (completelyrots(pd)) { /* wood golem or leather golem */
+            await pline(`${Monnam(mdef)} ${
+                !mlifesaver(mdef) ? "falls" : "starts to fall"} to pieces!`);
+            await xkilled(mdef, XKILL_NOMSG);
+        }
+        await erode_armor(mdef, ERODE_ROT);
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -903,7 +1193,29 @@ async function mhitm_ad_dcay(magr, mattk, mdef, mhm) {
         }
         await erode_armor(mdef, ERODE_ROT);
     } else {
-        throw new Error('mhitm_ad_dcay(): mhitm branch not ported yet');
+        /* mhitm */
+        if (magr.mcan)
+            return;
+        if (completelyrots(pd)) { /* PM_WOOD_GOLEM || PM_LEATHER_GOLEM */
+            /* note: the life-saved case is hypothetical because
+               life-saving doesn't work for golems */
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline(`${Monnam(mdef)} ${
+                    !mlifesaver(mdef) ? "falls" : "starts to fall"} to pieces!`); /* pline_mon() */
+            await monkilled(mdef, null, M.AD_DCAY);
+            if (!DEADMONSTER(mdef)) {
+                mhm.done = true;
+                mhm.hitflags = M_ATTK_MISS;
+                return;
+            }
+            mhm.done = true;
+            mhm.hitflags = (M_ATTK_DEF_DIED
+                            | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED));
+            return;
+        }
+        await erode_armor(mdef, ERODE_ROT);
+        mdef.mstrategy &= ~STRAT_WAITFORU;
+        mhm.damage = 0;
     }
     void mhm;
 }
@@ -913,7 +1225,10 @@ async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
     const negated = mhitm_mgc_atk_negated(magr, mdef, false).negated;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_dren(): uhitm branch not ported yet');
+        /* uhitm */
+        if (!negated && !rn2(4))
+            await xdrainenergym(mdef, true);
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -921,14 +1236,46 @@ async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
             await drain_en(mhm.damage, false);
         mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_dren(): mhitm branch not ported yet');
+        /* mhitm */
+        if (!negated && !rn2(4))
+            await xdrainenergym(mdef, !!(game.mhitm_vis && canspotmon(mdef)
+                                          && mattk.aatyp !== AT_ENGL));
+        mhm.damage = 0;
     }
 }
 
 // C ref: uhitm.c mhitm_ad_drli()
 async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_drli(): uhitm branch not ported yet');
+        /* uhitm */
+        if (!rn2(3) && !(resists_drli(mdef) || defended(mdef, M.AD_DRLI))
+            && !await mgc_atk_negated(magr, mdef, true)) {
+            mhm.damage = d(2, 6); /* Stormbringer uses monhp_per_lvl
+                                   * (usually 1d8) */
+            await pline(`${Monnam(mdef)} becomes weaker!`);
+            if (mdef.mhpmax - mhm.damage > mdef.m_lev) {
+                mdef.mhpmax -= mhm.damage;
+            } else {
+                /* limit floor of mhpmax reduction to current m_lev + 1;
+                   avoid increasing it if somehow already less than that */
+                if (mdef.mhpmax > mdef.m_lev)
+                    mdef.mhpmax = mdef.m_lev + 1;
+            }
+            mdef.mhp -= mhm.damage;
+            /* !m_lev: level 0 monster is killed regardless of hit points
+               rather than drop to level -1; note: some non-living creatures
+               (golems, vortices) are subject to life-drain */
+            if (DEADMONSTER(mdef) || !mdef.m_lev) {
+                await pline(`${Monnam(mdef)} ${
+                    nonliving(mdef.data) ? "expires" : "dies"}!`);
+                await xkilled(mdef, XKILL_NOMSG);
+            } else
+                mdef.m_lev--;
+            mhm.damage = 0; /* damage has already been inflicted */
+
+            /* unlike hitting with Stormbringer, wounded hero doesn't
+               heal any from the drained life */
+        }
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -1070,7 +1417,40 @@ async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
             mhm.damage = 0;
         }
     } else {
-        throw new Error('mhitm_ad_fire(): mhitm branch not ported yet');
+        /* mhitm */
+        if (await mgc_atk_negated(magr, mdef, true)) {
+            mhm.damage = 0;
+            return;
+        }
+        if (game.mhitm_vis && canseemon(mdef))
+            await pline(`${Monnam(mdef)} is ${on_fire(pd, mattk)}!`); /* pline_mon() */
+        if (completelyburns(pd)) { /* paper golem or straw golem */
+            /* note: the life-saved case is hypothetical because
+               life-saving doesn't work for golems */
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline(`${Monnam(mdef)} ${
+                    !mlifesaver(mdef) ? "burns completely"
+                                      : "is totally engulfed in flames"}!`); /* pline_mon() */
+            await monkilled(mdef, null, AD_FIRE);
+            if (!DEADMONSTER(mdef)) {
+                mhm.hitflags = M_ATTK_MISS;
+                mhm.done = true;
+                return;
+            }
+            mhm.hitflags = (M_ATTK_DEF_DIED
+                            | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED));
+            mhm.done = true;
+            return;
+        }
+        if (resists_fire(mdef) || defended(mdef, AD_FIRE)) {
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline_The(`fire doesn't seem to burn ${mon_nam(mdef)}!`);
+            /* shieldeff(mdef->mx, mdef->my): transient display only */
+            await golemeffects(mdef, AD_FIRE, mhm.damage);
+            mhm.damage = 0;
+        }
+        mhm.damage += await destroy_items(mdef, AD_FIRE, orig_dmg);
+        await ignite_items(mdef.minvent);
     }
 }
 
@@ -1132,7 +1512,9 @@ async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
 // C ref: uhitm.c mhitm_ad_acid()
 async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_acid(): uhitm branch not ported yet');
+        /* uhitm */
+        if (resists_acid(mdef) || defended(mdef, AD_ACID))
+            mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -1149,7 +1531,24 @@ async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
         else
             mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_acid(): mhitm branch not ported yet');
+        /* mhitm */
+        if (magr.mcan) {
+            mhm.damage = 0;
+            return;
+        }
+        if (resists_acid(mdef) || defended(mdef, AD_ACID)) {
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline(`${Monnam(mdef)} is covered in ${
+                    hliquid("acid")}, but it seems harmless.`);
+            mhm.damage = 0;
+        } else if (game.mhitm_vis && canseemon(mdef)) {
+            await pline(`${Monnam(mdef)} is covered in ${hliquid("acid")}!`); /* pline_mon() */
+            await pline(`It burns ${mon_nam(mdef)}!`);
+        }
+        if (!rn2(30))
+            await erode_armor(mdef, ERODE_CORRODE);
+        if (!rn2(6))
+            await acid_damage(mdef.mw || null); /* MON_WEP(mdef) */
     }
 }
 
@@ -1158,7 +1557,25 @@ async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
     const u = game.u;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_tlpt(): uhitm branch not ported yet');
+        /* uhitm */
+        if (mhm.damage <= 0)
+            mhm.damage = 1;
+        if (await mgc_atk_negated(magr, mdef, true)) {
+            await pline(`${Monnam(mdef)} is not affected.`);
+        } else {
+            const u_saw_mon = (canseemon(mdef) || engulfing_u(mdef));
+
+            /* record the name before losing sight of monster */
+            const nambuf = Monnam(mdef);
+            if (await u_teleport_mon(mdef, false) && u_saw_mon
+                && !(canseemon(mdef) || engulfing_u(mdef)))
+                await pline(`${nambuf} suddenly disappears!`);
+            if (mhm.damage >= mdef.mhp) { /* see hitmu(mhitu.c) */
+                if (mdef.mhp === 1)
+                    ++mdef.mhp;
+                mhm.damage = mdef.mhp - 1;
+            }
+        }
     } else if (mdef === game.youmonst) {
         /* mhitu */
         let tmphp;
@@ -1193,14 +1610,48 @@ async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
             }
         }
     } else {
-        throw new Error('mhitm_ad_tlpt(): mhitm branch not ported yet');
+        /* mhitm */
+        if (magr.mcan || mhm.damage >= mdef.mhp || await tele_restrict(mdef)) {
+            ; /* no negation message */
+        } else if (await mgc_atk_negated(magr, mdef, true)) {
+            if (game.mhitm_vis)
+                await pline(`${Monnam(mdef)} is not affected.`); /* pline_mon() */
+        } else {
+            let mdef_Monnam = '';
+            const wasseen = canspotmon(mdef);
+
+            /* save the name before monster teleports, otherwise
+               we'll get "it" in the suddenly disappears message */
+            if (game.mhitm_vis && wasseen)
+                mdef_Monnam = Monnam(mdef);
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+            await rloc(mdef, RLOC_NOMSG);
+            /* TODO: use RLOC_MSG instead? */
+            if (game.mhitm_vis && wasseen && !canspotmon(mdef) && mdef !== u.usteed)
+                await pline(`${mdef_Monnam} suddenly disappears!`);
+            if (mhm.damage >= mdef.mhp) { /* see hitmu(mhitu.c) */
+                if (mdef.mhp === 1)
+                    ++mdef.mhp;
+                mhm.damage = mdef.mhp - 1;
+            }
+        }
     }
 }
 
 // C ref: uhitm.c mhitm_ad_blnd()
 async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_blnd(): uhitm branch not ported yet');
+        /* uhitm */
+        if (can_blnd(magr, mdef, mattk.aatyp, null)) {
+            if (!Blind() && mdef.mcansee)
+                await pline(`${Monnam(mdef)} is blinded.`);
+            mdef.mcansee = 0;
+            mhm.damage += mdef.mblinded;
+            if (mhm.damage > 127)
+                mhm.damage = 127;
+            mdef.mblinded = mhm.damage;
+        }
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         if (can_blnd(magr, mdef, mattk.aatyp, null)) {
@@ -1213,7 +1664,29 @@ async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
         }
         mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_blnd(): mhitm branch not ported yet');
+        /* mhitm */
+        if (can_blnd(magr, mdef, mattk.aatyp, null)) {
+            let buf;
+            let rnd_tmp;
+
+            if (game.mhitm_vis && mdef.mcansee && canspotmon(mdef)) {
+                /* feedback for becoming blinded is given if observed
+                   telepathically (canspotmon suffices) but additional
+                   info about archon's glow is only given if seen */
+                buf = `${Monnam(mdef)} is blinded`;
+                if (mdef.data === mons[M.PM_ARCHON] && canseemon(mdef))
+                    buf += ` by ${s_suffix(mon_nam(magr))} radiance`;
+                await pline(`${buf}.`);
+            }
+            rnd_tmp = d(mattk.damn, mattk.damd);
+            if ((rnd_tmp += mdef.mblinded) > 127)
+                rnd_tmp = 127;
+            mdef.mblinded = rnd_tmp;
+            mdef.mcansee = 0;
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+        }
+        if (mhm)
+            mhm.damage = 0;
     }
 }
 
@@ -1221,9 +1694,23 @@ async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
 async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
     const u = game.u;
     const pa = magr.data;
+    const pd = mdef.data;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_curs(): uhitm branch not ported yet');
+        /* uhitm */
+        if (night() && !rn2(10) && !mdef.mcan) {
+            if (pd === mons[M.PM_CLAY_GOLEM]) {
+                if (!Blind())
+                    await pline(`Some writing vanishes from ${
+                        s_suffix(mon_nam(mdef))} head!`);
+                await xkilled(mdef, XKILL_NOMSG);
+                /* Don't return yet; keep hp<1 and mhm.damage=0 for pet msg */
+            } else {
+                mdef.mcan = 1;
+                await You("chuckle.");
+            }
+        }
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -1247,9 +1734,50 @@ async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
             await mon_give_prop(magr, await attrcurse());
         }
     } else {
-        throw new Error('mhitm_ad_curs(): mhitm branch not ported yet');
+        /* mhitm */
+        if (!night() && (pa === mons[M.PM_GREMLIN]))
+            return;
+        if (!magr.mcan && !rn2(10)) {
+            mdef.mcan = 1; /* cancelled regardless of lifesave */
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+            if (is_were(pd) && pd.mlet !== M.S_HUMAN)
+                await were_change(mdef);
+            if (pd === mons[M.PM_CLAY_GOLEM]) {
+                if (game.mhitm_vis && canseemon(mdef)) {
+                    await pline(`Some writing vanishes from ${
+                        s_suffix(mon_nam(mdef))} head!`);
+                    await pline(`${Monnam(mdef)} is destroyed!`); /* pline_mon() */
+                }
+                await mondied(mdef);
+                if (!DEADMONSTER(mdef)) {
+                    mhm.hitflags = M_ATTK_MISS;
+                    mhm.done = true;
+                    return;
+                } else if (mdef.mtame && !game.mhitm_vis) {
+                    /* You(brief_feeling, "strangely sad") */
+                    await You("have a strangely sad feeling for a moment, then it passes.");
+                }
+                mhm.hitflags = (M_ATTK_DEF_DIED
+                                | ((await grow_up(magr, mdef)) ? 0
+                                   : M_ATTK_AGR_DIED));
+                mhm.done = true;
+                return;
+            }
+            if (!Deaf()) {
+                if (!game.mhitm_vis)
+                    await You_hear("laughter.");
+                else if (canseemon(magr))
+                    await pline(`${Monnam(magr)} chuckles.`); /* pline_mon() */
+            }
+        }
     }
     void mhm;
+}
+
+/* C ref: mondata.h cant_drown() */
+function cant_drown(ptr) {
+    return (is_swimmer(ptr) || (ptr.mflags1 & M.M1_AMPHIBIOUS) !== 0
+            || breathless(ptr));
 }
 
 // C ref: uhitm.c m_slips_free()
@@ -1419,7 +1947,36 @@ async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
     const coil = slithy(pa) && (pa.mlet === M.S_SNAKE || pa.mlet === M.S_NAGA);
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_wrap(): uhitm branch not ported yet');
+        /* uhitm */
+        if (!sticks(pd)) {
+            const tailmiss = !game.notonhead;
+
+            if (!u.ustuck && !tailmiss && !rn2(10)) {
+                if (await m_slips_free(mdef, mattk)) {
+                    mhm.damage = 0;
+                } else {
+                    await You(`${coil ? "coil" : "swing"} yourself around ${mon_nam(mdef)}!`);
+                    set_ustuck(mdef);
+                }
+            } else if (u.ustuck === mdef && !tailmiss) {
+                /* Monsters don't wear amulets of magical breathing */
+                if (is_pool(u.ux, u.uy) && !cant_drown(pd)) {
+                    await You(`drown ${mon_nam(mdef)}...`);
+                    mhm.damage = mdef.mhp;
+                } else if (mattk.aatyp === AT_HUGS)
+                    await pline(`${Monnam(mdef)} is being crushed.`);
+            } else {
+                mhm.damage = 0;
+                if (game.flags.verbose) {
+                    if (coil && !tailmiss)
+                        await You(`brush against ${mon_nam(mdef)}.`);
+                    else
+                        await You(`brush against ${s_suffix(mon_nam(mdef))} ${
+                            tailmiss ? "tail" : mbodypart(mdef, LEG)}.`);
+                }
+            }
+        } else
+            mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         if ((!magr.mcan || u.ustuck === magr) && !sticks(pd)) {
@@ -1449,14 +2006,26 @@ async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
         } else
             mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_wrap(): mhitm branch not ported yet');
+        /* mhitm */
+        if (magr.mcan)
+            mhm.damage = 0;
+
+        if (!mhm.damage && (canseemon(magr) || canseemon(mdef))) {
+            await pline(`${Some_Monnam(magr)} brushes against ${some_mon_nam(mdef)}.`);
+        }
     }
 }
 
 // C ref: uhitm.c mhitm_ad_plys()
 async function mhitm_ad_plys(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_plys(): uhitm branch not ported yet');
+        /* uhitm */
+        if (!rn2(3) && mhm.damage < mdef.mhp
+            && !await mgc_atk_negated(magr, mdef, true)) {
+            if (!Blind())
+                await pline(`${Monnam(mdef)} is frozen by you!`);
+            paralyze_monst(mdef, rnd(10));
+        }
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -1478,7 +2047,15 @@ async function mhitm_ad_plys(magr, mattk, mdef, mhm) {
             }
         }
     } else {
-        throw new Error('mhitm_ad_plys(): mhitm branch not ported yet');
+        /* mhitm */
+        if (mdef.mcanmove && !rn2(3)
+            && !await mgc_atk_negated(magr, mdef, true)) {
+            if (game.mhitm_vis && canspotmon(mdef)) {
+                const buf = Monnam(mdef);
+                await pline(`${buf} is frozen by ${mon_nam(magr)}.`);
+            }
+            paralyze_monst(mdef, rnd(10));
+        }
     }
     void mhm;
 }
@@ -1486,7 +2063,13 @@ async function mhitm_ad_plys(magr, mattk, mdef, mhm) {
 // C ref: uhitm.c mhitm_ad_slee()
 async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_slee(): uhitm branch not ported yet');
+        /* uhitm */
+        if (!mdef.msleeping && !await mgc_atk_negated(magr, mdef, false)
+            && sleep_monst(mdef, rnd(10), -1)) {
+            if (!Blind())
+                await pline(`${Monnam(mdef)} is put to sleep by you!`);
+            await slept_monst(mdef);
+        }
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -1504,7 +2087,16 @@ async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
                 await You(`are put to sleep by ${mon_nam(magr)}!`);
         }
     } else {
-        throw new Error('mhitm_ad_slee(): mhitm branch not ported yet');
+        /* mhitm */
+        if (!mdef.msleeping && sleep_monst(mdef, rnd(10), -1)
+            && sleep_monst(mdef, rnd(10), -1)) {
+            if (game.mhitm_vis && canspotmon(mdef)) {
+                const buf = Monnam(mdef);
+                await pline(`${buf} is put to sleep by ${mon_nam(magr)}.`);
+            }
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+            await slept_monst(mdef);
+        }
     }
     void mhm;
 }
@@ -1515,7 +2107,25 @@ async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_slim(): uhitm branch not ported yet');
+        /* uhitm */
+        if (negated)
+            return; /* physical damage only */
+        if (!rn2(4) && !slimeproof(pd)) {
+            if (!await munslime(mdef, true) && !DEADMONSTER(mdef)) {
+                /* this assumes newcham() won't fail; since hero has
+                   a slime attack, green slimes haven't been geno'd */
+                await You(`turn ${mon_nam(mdef)} into slime.`);
+                await newcham(mdef, mons[M.PM_GREEN_SLIME], NO_NC_FLAGS);
+                /* if (newcham(...)) pd = mdef->data; pd is unused after */
+            }
+            /* munslime attempt could have been fatal */
+            if (DEADMONSTER(mdef)) {
+                mhm.hitflags = M_ATTK_DEF_DIED; /* skip death message */
+                mhm.done = true;
+                return;
+            }
+            mhm.damage = 0;
+        }
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -1539,7 +2149,28 @@ async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
         } else
             await pline("Yuck!");
     } else {
-        throw new Error('mhitm_ad_slim(): mhitm branch not ported yet');
+        /* mhitm */
+        if (negated)
+            return; /* physical damage only */
+        if (!rn2(4) && !slimeproof(pd)) {
+            if (!await munslime(mdef, false) && !DEADMONSTER(mdef)) {
+                let ncflags = NO_NC_FLAGS;
+
+                if (game.mhitm_vis && canseemon(mdef))
+                    ncflags |= NC_SHOW_MSG;
+                await newcham(mdef, mons[M.PM_GREEN_SLIME], ncflags);
+                /* if (newcham(...)) pd = mdef->data; pd is unused after */
+                mdef.mstrategy &= ~STRAT_WAITFORU;
+                mhm.hitflags = M_ATTK_HIT;
+            }
+            /* munslime attempt could have been fatal,
+               potentially to multiple monsters (SCR_FIRE) */
+            if (DEADMONSTER(magr))
+                mhm.hitflags |= M_ATTK_AGR_DIED;
+            if (DEADMONSTER(mdef))
+                mhm.hitflags |= M_ATTK_DEF_DIED;
+            mhm.damage = 0;
+        }
     }
 }
 
@@ -1597,14 +2228,29 @@ async function mhitm_ad_slow(magr, mattk, mdef, mhm) {
         return;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_slow(): uhitm branch not ported yet');
+        /* uhitm */
+        if (!negated && mdef.mspeed !== MSLOW) {
+            const oldspeed = mdef.mspeed;
+
+            await mon_adjust_speed(mdef, -1, null);
+            if (mdef.mspeed !== oldspeed && canseemon(mdef))
+                await pline(`${Monnam(mdef)} slows down.`);
+        }
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
         if (!negated && game.u.uprops[FAST].intrinsic && !rn2(4))
             await u_slow_down();
     } else {
-        throw new Error('mhitm_ad_slow(): mhitm branch not ported yet');
+        /* mhitm */
+        if (!negated && mdef.mspeed !== MSLOW) {
+            const oldspeed = mdef.mspeed;
+
+            await mon_adjust_speed(mdef, -1, null);
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+            if (mdef.mspeed !== oldspeed && game.mhitm_vis && canspotmon(mdef))
+                await pline(`${Monnam(mdef)} slows down.`); /* pline_mon() */
+        }
     }
     void mhm;
 }
@@ -1612,7 +2258,12 @@ async function mhitm_ad_slow(magr, mattk, mdef, mhm) {
 // C ref: uhitm.c mhitm_ad_conf()
 async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_conf(): uhitm branch not ported yet');
+        /* uhitm */
+        if (!mdef.mconf) {
+            if (canseemon(mdef))
+                await pline(`${Monnam(mdef)} looks confused.`);
+            mdef.mconf = 1;
+        }
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -1626,7 +2277,17 @@ async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
         }
         mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_conf(): mhitm branch not ported yet');
+        /* mhitm */
+        /* Since confusing another monster doesn't have a real time
+         * limit, setting spec_used would not really be right (though
+         * we still should check for it).
+         */
+        if (!magr.mcan && !mdef.mconf && !magr.mspec_used) {
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline(`${Monnam(mdef)} looks confused.`); /* pline_mon() */
+            mdef.mconf = 1;
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+        }
     }
 }
 
@@ -1678,9 +2339,12 @@ async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
 
 // C ref: uhitm.c mhitm_ad_famn()
 async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
-    if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_famn(): uhitm branch not ported yet');
-    } else if (mdef === game.youmonst) {
+    const pd = mdef.data;
+
+    /* uhitm (magr == &youmonst); hero can't polymorph into anything with
+       this attack so this won't happen; if it could, it would be the same
+       as the mhitm case except for messaging: C does 'goto mhitm_famn;' */
+    if (magr !== game.youmonst && mdef === game.youmonst) {
         /* mhitu */
         await pline(`${Monnam(magr)} reaches out, and your body shrivels.`); /* pline_mon() */
         await exercise(A_CON, false);
@@ -1688,7 +2352,12 @@ async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
             await morehungry(rn1(40, 40));
         /* plus the normal damage */
     } else {
-        throw new Error('mhitm_ad_famn(): mhitm branch not ported yet');
+        /* mhitm_famn: */
+        /* mhitm; it's possible for Famine to hit another monster;
+           if target is something that doesn't eat, it won't be harmed;
+           otherwise, just inflict the normal damage */
+        if (!(carnivorous(pd) || herbivorous(pd) || metallivorous(pd)))
+            mhm.damage = 0;
     }
     void mattk; void mhm;
 }
@@ -1697,15 +2366,21 @@ async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
 async function mhitm_ad_pest(magr, mattk, mdef, mhm) {
     const pa = magr.data;
 
-    if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_pest(): uhitm branch not ported yet');
-    } else if (mdef === game.youmonst) {
+    /* uhitm (magr == &youmonst); hero can't polymorph into anything with
+       this attack so this won't happen; if it could, it would be the same
+       as the mhitm case except for messaging: C does 'goto mhitm_pest;' */
+    if (magr !== game.youmonst && mdef === game.youmonst) {
         /* mhitu */
         await pline(`${Monnam(magr)} reaches out, and you feel fever and chills.`); /* pline_mon() */
         await diseasemu(pa);
         /* plus the normal damage */
     } else {
-        throw new Error('mhitm_ad_pest(): mhitm branch not ported yet');
+        /* mhitm_pest: */
+        /* mhitm; it's possible for Pestilence to hit another monster;
+           treat it the same as an attack for AD_DISE damage */
+        const alt_attk = { ...mattk };
+        alt_attk.adtyp = M.AD_DISE;
+        await mhitm_ad_dise(magr, alt_attk, mdef, mhm);
     }
     void mattk; void mhm;
 }
@@ -1714,9 +2389,10 @@ async function mhitm_ad_pest(magr, mattk, mdef, mhm) {
 async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
 
-    if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_deth(): uhitm branch not ported yet');
-    } else if (mdef === game.youmonst) {
+    /* uhitm (magr == &youmonst); hero can't polymorph into anything with
+       this attack so this won't happen; if it could, it would be the same
+       as the mhitm case except for messaging: C does 'goto mhitm_deth;' */
+    if (magr !== game.youmonst && mdef === game.youmonst) {
         /* mhitu */
         await pline(`${Monnam(magr)} reaches out with its deadly touch.`); /* pline_mon() */
         if (is_undead(pd)) {
@@ -1752,20 +2428,38 @@ async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
             return;
         }
     } else {
-        throw new Error('mhitm_ad_deth(): mhitm branch not ported yet');
+        /* mhitm_deth: */
+        /* mhitm; it's possible for Death to hit another monster;
+           if target is undead, it will take some damage but less than an
+           undead hero would; otherwise, just inflict the normal damage */
+        if (is_undead(pd) && mhm.damage > 1)
+            mhm.damage = rnd(Math.trunc(mhm.damage / 2));
+        /* simulate Death's touch with drain life attack */
+        await mhitm_ad_drli(magr, mattk, mdef, mhm);
     }
     void mattk;
 }
 
 // C ref: uhitm.c mhitm_ad_halu()
 async function mhitm_ad_halu(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_halu(): uhitm branch not ported yet');
+        /* uhitm */
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_halu(): mhitm branch not ported yet');
+        /* mhitm */
+        if (!magr.mcan && haseyes(pd) && mdef.mcansee) {
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline(`${Monnam(mdef)} looks ${
+                    mdef.mconf ? "more " : ""}confused.`); /* pline_mon() */
+            mdef.mconf = 1;
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+        }
+        mhm.damage = 0;
     }
     void mattk;
 }
@@ -1807,7 +2501,10 @@ async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_heal(): uhitm branch not ported yet');
+        /* uhitm */
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         /* a cancelled nurse is just an ordinary monster,
@@ -1880,14 +2577,26 @@ async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
                 await hitmsg(magr, mattk);
         }
     } else {
-        throw new Error('mhitm_ad_heal(): mhitm branch not ported yet');
+        /* mhitm */
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     }
 }
 
 // C ref: uhitm.c mhitm_ad_stun()
 async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_stun(): uhitm branch not ported yet');
+        /* uhitm */
+        if (!Blind())
+            await pline(`${Monnam(mdef)} ${
+                makeplural(stagger(pd, "stagger"))} for a moment.`);
+        mdef.mstun = 1;
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
@@ -1897,7 +2606,16 @@ async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
             mhm.damage = Math.trunc(mhm.damage / 2);
         }
     } else {
-        throw new Error('mhitm_ad_stun(): mhitm branch not ported yet');
+        /* mhitm */
+        if (magr.mcan)
+            return;
+        if (canseemon(mdef))
+            await pline(`${Monnam(mdef)} ${
+                makeplural(stagger(pd, "stagger"))} for a moment.`); /* pline_mon() */
+        mdef.mstun = 1;
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     }
 }
 
@@ -1906,7 +2624,11 @@ async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
     const u = game.u;
 
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_legs(): uhitm branch not ported yet');
+        /* uhitm */
+        /* (#if 0: u.ucancelled => mhm->damage = 0) */
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
@@ -1943,20 +2665,90 @@ async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
             await exercise(A_DEX, false);
         }
     } else {
-        throw new Error('mhitm_ad_legs(): mhitm branch not ported yet');
+        /* mhitm */
+        if (magr.mcan) {
+            mhm.damage = 0;
+            return;
+        }
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     }
     void mattk;
 }
 
 // C ref: uhitm.c mhitm_ad_dgst()
 async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
     if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_dgst(): uhitm branch not ported yet');
+        /* uhitm */
+        mhm.damage = 0;
     } else if (mdef === game.youmonst) {
         /* mhitu */
         mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_dgst(): mhitm branch not ported yet');
+        /* mhitm */
+        let num;
+        let obj;
+
+        /* eating a Rider or its corpse is fatal */
+        if (is_rider(pd)) {
+            if (game.mhitm_vis && canseemon(magr))
+                await pline(`${Monnam(magr)} ${
+                    (pd === mons[M.PM_FAMINE])
+                        ? "belches feebly, shrivels up and dies"
+                        : (pd === mons[M.PM_PESTILENCE])
+                              ? "coughs spasmodically and collapses"
+                              : "vomits violently and drops dead"}!`); /* pline_mon() */
+            await mondied(magr);
+            if (!DEADMONSTER(magr)) {
+                mhm.hitflags = M_ATTK_MISS; /* lifesaved */
+                mhm.done = true;
+                return;
+            } else if (magr.mtame && !game.mhitm_vis)
+                /* You(brief_feeling, "queasy") */
+                await You("have a queasy feeling for a moment, then it passes.");
+            mhm.hitflags = M_ATTK_AGR_DIED;
+            mhm.done = true;
+            return;
+        }
+        if (game.flags.verbose && !Deaf()) {
+            /* Soundeffect? */
+            /* SetVoice(magr, 0, 80, 0) */
+            await verbalize("Burrrrp!");
+        }
+        await wake_nearto(magr.mx, magr.my, 2 * 2); /* Burrrrp! */
+        mhm.damage = mdef.mhp;
+        /* Use up amulet of life saving */
+        if ((obj = mlifesaver(mdef)) != null)
+            m_useup(mdef, obj);
+
+        /* Is a corpse for nutrition possible?  It may kill magr */
+        if (!await corpse_chance(mdef, magr, true) || DEADMONSTER(magr))
+            return;
+
+        /* Pets get nutrition from swallowing monster whole.
+         * No nutrition from G_NOCORPSE monster, eg, undead.
+         * DGST monsters don't die from undead corpses
+         */
+        num = monsndx(pd);
+        if (magr.mtame && !magr.isminion
+            && !(game.mvitals[num].mvflags & G_NOCORPSE)) {
+            const virtualcorpse = mksobj(CORPSE, false, false);
+            let nutrit;
+
+            set_corpsenm(virtualcorpse, num);
+            nutrit = dog_nutrition(magr, virtualcorpse);
+            dealloc_obj(virtualcorpse);
+
+            /* only 50% nutrition, 25% of normal eating time */
+            if (magr.meating > 1)
+                magr.meating = Math.trunc((magr.meating + 3) / 4);
+            if (nutrit > 1)
+                nutrit = Math.trunc(nutrit / 2);
+            magr.edog.hungrytime += nutrit;
+        }
     }
     void mattk;
 }
@@ -1964,16 +2756,25 @@ async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
 // C ref: uhitm.c mhitm_ad_dise()
 async function mhitm_ad_dise(magr, mattk, mdef, mhm) {
     const pa = magr.data;
+    const pd = mdef.data;
 
-    if (magr === game.youmonst) {
-        throw new Error('mhitm_ad_dise(): uhitm branch not ported yet');
-    } else if (mdef === game.youmonst) {
+    /* uhitm (magr == &youmonst); hero can't polymorph into anything with
+       this attack so this won't happen; if it could, it would be the same
+       as the mhitm case except for messaging: C does 'goto mhitm_dise;' */
+    if (magr !== game.youmonst && mdef === game.youmonst) {
         /* mhitu */
         await hitmsg(magr, mattk);
         if (!await diseasemu(pa))
             mhm.damage = 0;
     } else {
-        throw new Error('mhitm_ad_dise(): mhitm branch not ported yet');
+        /* mhitm_dise: */
+        /* mhitm; protected monsters use the same criteria as for poly'd
+           hero gaining sick resistance combined with any hero wielding a
+           weapon or wearing dragon scales/mail that guards against disease */
+        if (pd.mlet === M.S_FUNGUS || pd === mons[M.PM_GHOUL]
+            || defended(mdef, M.AD_DISE))
+            mhm.damage = 0;
+        /* else does ordinary damage */
     }
 }
 
@@ -3772,7 +4573,12 @@ async function hmon_hitmon(
             game.mkcorpstat_norevive = false;
         }
     } else if (u.umconf && hmd.hand_to_hand) {
-        throw new Error('hmon_hitmon(): nohandglow()/confusing touch not ported yet');
+        await nohandglow(mon);
+        if (!mon.mconf && !resist(mon, SPBOOK_CLASS, 0, NOTELL)) {
+            mon.mconf = 1;
+            if (!mon.mstun && !helpless(mon) && canseemon(mon))
+                await pline(`${Monnam(mon)} appears confused.`);
+        }
     }
     if (hmd.unpoisonmsg)
         await Your(`${hmd.saved_oname} ${vtense(hmd.saved_oname, "are")} no longer poisoned.`);
@@ -3789,6 +4595,32 @@ async function hmon_hitmon(
         }
     }
     return hmd.destroyed ? false : true;
+}
+
+/* C ref: color.h NH_RED */
+const NH_RED = "red";
+
+// C ref: uhitm.c nohandglow()
+async function nohandglow(mon) {
+    const u = game.u;
+
+    if (!u.umconf || mon.mconf)
+        return;
+
+    const hands = makeplural(body_part(HAND));
+    const altfeedback = (Blind() || Invisible()); /* Invisible == Invis && !See_invis */
+    if (u.umconf === 1) {
+        if (altfeedback)
+            await Your(`${hands} stop tingling.`);
+        else
+            await Your(`${hands} stop glowing ${hcolor(NH_RED)}.`);
+    } else {
+        if (altfeedback)
+            await pline_The(`tingling in your ${hands} lessens.`);
+        else
+            await Your(`${hands} no longer glow so brightly ${hcolor(NH_RED)}.`);
+    }
+    u.umconf--;
 }
 
 // C ref: uhitm.c mhurtle_to_doom()
@@ -3940,7 +4772,7 @@ export async function passive_obj(
 }
 
 // C ref: uhitm.c missum()
-async function missum(mdef, mattk, wouldhavehit) {
+export async function missum(mdef, mattk, wouldhavehit) {
     if (wouldhavehit) /* monk is missing due to penalty for wearing suit */
         await Your("armor is rather cumbersome...");
 
@@ -3997,7 +4829,7 @@ function doorless_door(x, y) {
 }
 
 // C ref: uhitm.c damageum()
-async function damageum(
+export async function damageum(
     mdef,   /* target */
     mattk,  /* hero's attack */
     specialdmg) /* blessed and/or silver bonus against various things */ {
@@ -4092,10 +4924,274 @@ export async function explum(mdef, mattk) {
     return M_ATTK_HIT;
 }
 
+/* C ref: mondata.h enfolds() */
+function enfolds(ptr) {
+    return !!dmgtype_fromattack(ptr, M.AD_WRAP, AT_ENGL);
+}
+
+// C ref: uhitm.c start_engulf()
+async function start_engulf(mdef) {
+    const u = game.u;
+    const u_digest = digests(game.youmonst.data),
+          u_enfold = enfolds(game.youmonst.data);
+
+    if (!Invisible()) {
+        map_location(u.ux, u.uy, true);
+        await tmp_at(DISP_ALWAYS, mon_to_glyph(game.youmonst, rn2_on_display_rng));
+        await tmp_at(mdef.mx, mdef.my);
+    }
+    await You(`${u_digest ? "swallow" : u_enfold ? "enclose" : "engulf"} ${
+        mon_nam(mdef)}${u_digest ? " whole" : ""}!`);
+    /* nh_delay_output(); nh_delay_output(): display timing only */
+}
+
+// C ref: uhitm.c end_engulf()
+async function end_engulf() {
+    const u = game.u;
+
+    if (!Invisible()) {
+        await tmp_at(DISP_END, 0);
+        newsym(u.ux, u.uy);
+    }
+}
+
 // C ref: uhitm.c gulpum()
 async function gulpum(mdef, mattk) {
-    void mdef; void mattk;
-    throw new Error('gulpum(): hero engulfing a monster not ported yet');
+    const u = game.u;
+    let dam = d(mattk.damn, mattk.damd);
+    const u_digest = digests(game.youmonst.data),
+          u_enfold = enfolds(game.youmonst.data);
+    const pd = mdef.data;
+    const expel_verb = u_digest ? "regurgitate"
+                       : u_enfold ? "release"
+                         : "expel";
+
+    /* Not totally the same as for real monsters.  Specifically, these
+     * don't take multiple moves.  (It's just too hard, for too little
+     * result, to program monsters which attack from inside you, which
+     * would be necessary if done accurately.)  Instead, we arbitrarily
+     * kill the monster immediately for AD_DGST and we regurgitate them
+     * after exactly 1 round of attack otherwise.  -KAA
+     */
+
+    if (!engulf_target(game.youmonst, mdef))
+        return M_ATTK_MISS;
+
+    if (!(u_digest && u.uhunger >= 1500) && !u.uswallow) {
+        if (!flaming(game.youmonst.data)) {
+            for (const otmp of (mdef.minvent || []).slice().reverse())
+                /* (void) */ await snuff_lit(otmp);
+        }
+
+        /* force vampire in bat, cloud, or wolf form to revert back to
+           vampire form now instead of dealing with that when it dies */
+        if (is_vampshifter(mdef)
+            && await newcham(mdef, mons[mdef.cham], NO_NC_FLAGS)) {
+            await You(`${u_digest ? "swallow" : u_enfold ? "enclose" : "engulf"
+                } it, then ${expel_verb} it.`);
+            if (canspotmon(mdef)) {
+                /* Avoiding a_monnam here: if the target is named, it gives us
+                   a sequence like "You bite Dracula.  You swallow it, then
+                   regurgitate it.  It turns into Dracula." */
+                await pline(`It turns into ${
+                    x_monnam(mdef, ARTICLE_A, null,
+                             (SUPPRESS_NAME | SUPPRESS_IT
+                              | SUPPRESS_INVISIBLE), false)}.`);
+            } else {
+                map_invisible(mdef.mx, mdef.my);
+            }
+            return M_ATTK_HIT;
+        }
+
+        /* engulfing a cockatrice or digesting a Rider or Medusa */
+        const fatal_gulp = (touch_petrifies(pd) && !Stone_resistance())
+                           || (mattk.adtyp === M.AD_DGST
+                               && (is_rider(pd) || (pd === mons[M.PM_MEDUSA]
+                                                    && !Stone_resistance())));
+
+        if (mattk.adtyp === M.AD_DGST && (!Slow_digestion() || fatal_gulp))
+            await eating_conducts(pd);
+
+        if (fatal_gulp && !is_rider(pd)) { /* petrification */
+            let mnam = pmname(pd, Mgender(mdef));
+
+            if (!type_is_pname(pd))
+                mnam = an(mnam);
+            await You(`${u_digest ? "englut" : "engulf"} ${mon_nam(mdef)}.`);
+            const kbuf = `${u_digest ? "swallowing"
+                            : u_enfold ? "enclosing"
+                              : "engulfing"} ${mnam}${u_digest ? " whole" : ""}`;
+            await instapetrify(kbuf);
+        } else {
+            await start_engulf(mdef);
+            switch (mattk.adtyp) {
+            case M.AD_DGST: {
+                /* eating a Rider or its corpse is fatal */
+                if (is_rider(pd)) {
+                    await pline("Unfortunately, digesting any of it is fatal.");
+                    await end_engulf();
+                    killer().name = `unwisely tried to eat ${
+                        pmname(pd, Mgender(mdef))}`;
+                    killer().format = NO_KILLER_PREFIX;
+                    await done(DIED);
+                    return M_ATTK_MISS; /* lifesaved */
+                }
+
+                if (Slow_digestion()) {
+                    dam = 0;
+                    break;
+                }
+
+                /* Use up amulet of life saving */
+                let otmp;
+                if ((otmp = mlifesaver(mdef)) != null)
+                    m_useup(mdef, otmp);
+
+                await newuhs(false);
+                /* start_engulf() issues "you engulf <mdef>" above; this
+                   used to specify XKILL_NOMSG but we need "you kill <mdef>"
+                   in case we're also going to get "welcome to level N+1";
+                   "you totally digest <mdef>" will be coming soon (after
+                   several turns) but the level-gain message seems out of
+                   order if the kill message is left implicit */
+                game.mswallower = game.youmonst;
+                await xkilled(mdef, XKILL_GIVEMSG | XKILL_NOCORPSE);
+                if (!DEADMONSTER(mdef)) { /* monster lifesaved */
+                    await You(`hurriedly regurgitate the sizzling in your ${
+                        body_part(STOMACH)}.`);
+                } else {
+                    /* C's static char msgbuf[] for gn.nomovemsg */
+                    let msgbuf;
+                    let nomovemsg_is_msgbuf = false;
+                    let tmp = 1 + (pd.cwt >> 8);
+                    if (await corpse_chance(mdef, game.youmonst, true)
+                        && !(game.mvitals[monsndx(pd)].mvflags & G_NOCORPSE)) {
+                        /* nutrition only if there can be a corpse */
+                        u.uhunger += Math.trunc((pd.cnutrit + 1) / 2);
+                    } else {
+                        tmp = 0;
+                    }
+                    msgbuf = `You totally digest ${mon_nam(mdef)}.`;
+                    if (tmp !== 0) {
+                        /* setting afternmv = end_engulf is tempting,
+                         * but will cause problems if the player is
+                         * attacked (which uses his real location) or
+                         * if his See_invisible wears off
+                         */
+                        await You(`digest ${mon_nam(mdef)}.`);
+                        if (Slow_digestion())
+                            tmp *= 2;
+                        nomul(-tmp);
+                        game.multi_reason = "digesting something";
+                        game.nomovemsg = msgbuf;
+                        nomovemsg_is_msgbuf = true;
+                        /* possible intrinsic once totally digested */
+                        game.corpsenm_digested = monsndx(pd);
+                        game.afternmv = Finish_digestion;
+                    } else
+                        await pline(msgbuf); /* pline1() */
+                    if (pd === mons[M.PM_GREEN_SLIME]) {
+                        /* rewrites msgbuf[], which gn.nomovemsg may point at */
+                        msgbuf = `${The(pmname(pd, Mgender(mdef)))} isn't sitting well with you.`;
+                        if (nomovemsg_is_msgbuf)
+                            game.nomovemsg = msgbuf;
+                        if (!Unchanging()) {
+                            await make_slimed(5, null);
+                        }
+                    } else
+                        await exercise(A_CON, true);
+                }
+                game.mswallower = null;
+                await end_engulf();
+                return M_ATTK_DEF_DIED;
+            }
+            case AD_PHYS:
+                if (game.youmonst.data === mons[M.PM_FOG_CLOUD]) {
+                    await pline(`${Monnam(mdef)} is laden with your moisture.`);
+                    if ((breathless(pd) || (pd.mflags1 & M.M1_AMPHIBIOUS) !== 0)
+                        && !flaming(pd)) {
+                        dam = 0;
+                        await pline(`${Monnam(mdef)} seems unharmed.`);
+                    }
+                } else {
+                    await pline(`${Monnam(mdef)} is ${
+                        enfolds(game.youmonst.data) ? "being squashed"
+                            : "pummeled with your debris"}!`);
+                }
+                break;
+            case AD_ACID:
+                await pline(`${Monnam(mdef)} is covered with your goo!`);
+                if (resists_acid(mdef)) {
+                    await pline(`It seems harmless to ${mon_nam(mdef)}.`);
+                    dam = 0;
+                }
+                break;
+            case M.AD_BLND:
+                if (can_blnd(game.youmonst, mdef, mattk.aatyp, null)) {
+                    if (mdef.mcansee)
+                        await pline(`${Monnam(mdef)} can't see in there!`);
+                    mdef.mcansee = 0;
+                    dam += mdef.mblinded;
+                    if (dam > 127)
+                        dam = 127;
+                    mdef.mblinded = dam;
+                }
+                dam = 0;
+                break;
+            case AD_ELEC:
+                if (rn2(2)) {
+                    await pline_The(`air around ${mon_nam(mdef)} crackles with electricity.`);
+                    if (resists_elec(mdef)) {
+                        await pline(`${Monnam(mdef)} seems unhurt.`);
+                        dam = 0;
+                    }
+                    await golemeffects(mdef, mattk.adtyp, dam);
+                } else
+                    dam = 0;
+                break;
+            case AD_COLD:
+                if (rn2(2)) {
+                    if (resists_cold(mdef)) {
+                        await pline(`${Monnam(mdef)} seems mildly chilly.`);
+                        dam = 0;
+                    } else
+                        await pline(`${Monnam(mdef)} is freezing to death!`);
+                    await golemeffects(mdef, mattk.adtyp, dam);
+                } else
+                    dam = 0;
+                break;
+            case AD_FIRE:
+                if (rn2(2)) {
+                    if (resists_fire(mdef)) {
+                        await pline(`${Monnam(mdef)} seems mildly hot.`);
+                        dam = 0;
+                    } else
+                        await pline(`${Monnam(mdef)} is burning to a crisp!`);
+                    await golemeffects(mdef, mattk.adtyp, dam);
+                } else
+                    dam = 0;
+                break;
+            case M.AD_DREN:
+                if (!rn2(4))
+                    await xdrainenergym(mdef, true);
+                dam = 0;
+                break;
+            }
+            await end_engulf();
+            mdef.mhp -= dam;
+            if (DEADMONSTER(mdef)) {
+                await killed(mdef);
+                if (DEADMONSTER(mdef)) /* not lifesaved */
+                    return M_ATTK_DEF_DIED;
+            }
+            await You(`${expel_verb} ${mon_nam(mdef)}!`);
+            if ((Slow_digestion() || is_animal(game.youmonst.data)) && u_digest) {
+                await pline(`Obviously, you didn't like ${
+                    s_suffix(mon_nam(mdef))} taste.`);
+            }
+        }
+    }
+    return M_ATTK_MISS;
 }
 
 // C ref: uhitm.c demonpet()

@@ -65,6 +65,8 @@ import { HAND as HAND_WP } from './const.js';
 import { makeplural as makeplural_wp, otense as otense_wp, xname as xname_wp,
          Yname2 as Yname2_wp, Tobjnam as Tobjnam_wp } from './objnam.js';
 import { mhis as mhis_wp } from './mhitu.js';
+import { Yobjnam2 as Yobjnam2_wp } from './objnam.js';
+import { is_wet_towel as is_wet_towel_wp } from './objects.js';
 import { s_suffix as s_suffix_wp } from './hacklib.js';
 import { mon_nam as mon_nam_wp } from './do_name.js';
 import { the as the_wp } from './iactions.js';
@@ -1616,4 +1618,43 @@ export function setmnotwielded(mon, obj) {
     if (MON_WEP(mon) === obj)
         MON_NOWEP(mon);
     obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
+}
+
+// C ref: weapon.c finish_towel_change()
+/* used for dry_a_towel() and wet_a_towel() */
+function finish_towel_change(obj, newspe) {
+    /* towel wetness is always between 0 (dry) and 7, inclusive */
+    newspe = Math.min(newspe, 7);
+    obj.spe = Math.max(newspe, 0);
+
+    /* if hero is wielding this towel, don't give "you begin bashing with
+       your [wet] towel" message if it's wet, do give one if it's dry */
+    if (obj === game.uwep)
+        game.unweapon = !is_wet_towel_wp(obj);
+
+    /* description might change: "towel" vs "moist towel" vs "wet towel" */
+    /* if (carried(obj)) update_inventory(): no perm_invent */
+}
+
+// C ref: weapon.c dry_a_towel()
+/* decrease a towel's wetness */
+export async function dry_a_towel(obj,
+                                  amt, /* positive or zero: new value; negative: decrement by abs(amt) */
+                                  verbose) {
+    const newspe = (amt < 0) ? obj.spe + amt : amt;
+
+    /* new state is only reported if it's a decrease */
+    if (newspe < obj.spe) {
+        if (verbose) {
+            if (obj.where === 'OBJ_INVENT') /* carried(obj) */
+                await pline(`${Yobjnam2_wp(obj, null)} dries${!newspe ? " out" : ""}.`);
+            else if (obj.where === 'OBJ_MINVENT' /* mcarried(obj) */
+                     && canseemon(obj.ocarry))
+                await pline(`${s_suffix_wp(Monnam(obj.ocarry))} ${xname_wp(obj)} dries${
+                    !newspe ? " out" : ""}.`);
+        }
+    }
+
+    if (newspe !== obj.spe)
+        finish_towel_change(obj, newspe);
 }

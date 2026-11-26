@@ -6,7 +6,7 @@ import { game } from './gstate.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { vision_recalc } from './vision.js'; // relocate-fns
-import { map_glyphinfo } from './display.js';
+import { map_glyphinfo, render_map_row } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPMENUCOLORS } from './const.js';
 import { config_error_add } from './cfgfiles.js';
@@ -148,15 +148,18 @@ function _getlin_clear_message_window(g) {
     // and display exist throughout getlin; there is no uninitialized arm.
     const rows = s.split('\n');
     /* wintty.c:1048-1056 tty_clear_nhwindow(WIN_MESSAGE): a prompt hard-wrapped
-     * onto row 1 (cury > 0) also runs docorner(1, cury + 1, 0), which cl_end()s
-     * rows 0..cury and repaints no map for y < 2. */
+     * onto row 1 (cury > 0) also runs docorner(1, cury + 1, 0).  That docorner
+     * cl_end()s rows 0..cury and then row_refresh(1, COLNO - 1, y - offy)
+     * (display.c:2147) REPAINTS the gbuf map row under each spilled row — WIN_MAP's
+     * offy is 1 (wintty.c:918), so screen row 1 shows map row 0 again.  It does
+     * NOT stay blank: df-x1dfa16e4b9 step 85 shows the '#' of map row 0 back on
+     * screen row 1 under the data.base window's left margin. */
     const wrapped = rows[0].replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').length >= 78
         && String(g._topl_prompt_written ?? '').length >= 80
         && rows.length > 1 && g._topl_prompt_echo === true;
     rows[0] = '';
-    if (wrapped) rows[1] = '';
+    if (wrapped) rows[1] = render_map_row(0);
     g._screen_output = rows.join('\n');
-    g._row1ErasedFrame = wrapped ? g._screen_output : null;
 }
 
 export async function getlin(prompt) {

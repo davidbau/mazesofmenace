@@ -8,7 +8,7 @@
 import { impossible } from './hack.js';
 import { FUMBLING, TIMEOUT, DRAWBRIDGE_UP, ICE, STONE, IS_POOL, IS_LAVA,
          IS_FURNITURE, PLNMSG_BACK_ON_GROUND } from './const.js';
-import { db_under_typ } from './display.js';
+import { db_under_typ, lastseentyp_array } from './display.js';
 import { dfeature_at } from './invent.js';
 import { waterbody_name } from './pager.js';
 import { back_on_ground, unconscious } from './trap.js';
@@ -116,7 +116,7 @@ import { WAN_CANCELLATION, LARGE_BOX, CHEST, ICE_BOX, AMULET_OF_YENDOR, CANDELAB
 import { obfree, freeinv, getobj, objchain_items } from './invent.js';
 import { shop_keeper, sellobj, get_obj_location } from './shk.js';
 import { Norep, pline_The, bot, canspotmon } from './display.js';
-import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
+import { welded, setuwep, setuswapwep, setuqwep, weldmsg } from './wield.js';
 import { MZ_LARGE, PM_ICE_TROLL, PM_HOUSECAT } from './monsters.js';
 import { add_to_container, start_corpse_timeout, set_corpsenm, start_glob_timeout } from './mkobj.js';
 import { stop_timer, obj_to_any } from './timeout.js';
@@ -133,6 +133,14 @@ import { exercise } from './attrib.js';
 import { A_WIS } from './const.js';
 import { uteetering_at_seen_pit, uescaped_shaft } from './engrave.js';
 import { hides_under, notake, touch_petrifies, is_rider } from './mondata.js';
+import { snuff_lit } from './apply.js';
+import { instapetrify } from './trap.js';
+import { poly_when_stoned } from './mondata.js';
+import { polymon } from './polyself.js';
+import { PM_STONE_GOLEM } from './monsters.js';
+import { corpse_xname, CXN_SINGULAR, CXN_ARTICLE } from './objnam.js';
+import { killer_xname } from './mthrowu.js';
+import { obj_is_burning } from './light.js';
 
 /* C ref: invent.c invlet_basic */
 const invlet_basic = 52;
@@ -363,6 +371,29 @@ async function describe_decor() {
        describe_decor() by what has just occurred in this one when it's On */
     g.iflags.prev_decor = g.flags.mention_decor ? ltyp : STONE;
     return res;
+}
+
+// C ref: pickup.c force_decor()
+/* wand of probing zapped down; perhaps hero is levitating while blind */
+export async function force_decor(via_probing) {
+    const g = game;
+    const u = g.u;
+
+    /* we don't want describe_decor() to defer feedback if hero is fumbling
+       with 1 turn left until next slip_or_trip(), or for ice_descr() to
+       omit thawing details if hero is probing when levitating while blind
+       (those will be skipped for look_here() and farlook() or autodescribe);
+       we can't control that by temporarily tweaking properties because that
+       could become noticeable if status gets updated while decor feedback
+       is being delivered */
+    g.decor_fumble_override = true;
+    g.decor_levitate_override = via_probing;
+    /* force current terrain to be different from previous location, or
+       uninteresting if previous location was actually inside solid stone */
+    g.iflags.prev_decor = STONE;
+    /* (void) */ await describe_decor();
+    g.decor_fumble_override = g.decor_levitate_override = false;
+    lastseentyp_array()[u.ux][u.uy] = g.level.at(u.ux, u.uy).typ;
 }
 
 // C ref: pickup.c check_here()
@@ -1741,7 +1772,7 @@ export async function pickup_object(obj,
     } else if (obj.oartifact && !(await touch_artifact(obj, game.youmonst))) {
         return 0;
     } else if (obj.otyp === CORPSE) {
-        if (fatal_corpse_mistake(obj, telekinesis)
+        if (await fatal_corpse_mistake(obj, telekinesis)
             || await rider_corpse_revival(obj, telekinesis))
             return -1;
     } else if (obj.otyp === SCR_SCARE_MONSTER) {
@@ -1870,10 +1901,19 @@ export function u_safe_from_fatal_corpse(obj, tests) {
 
 // C ref: pickup.c fatal_corpse_mistake()
 /* check whether hero is bare-handedly touching a cockatrice corpse */
-function fatal_corpse_mistake(obj, remotely) {
+async function fatal_corpse_mistake(obj, remotely) {
     if (u_safe_from_fatal_corpse(obj, st_all) || remotely)
         return false;
-    throw new Error('fatal_corpse_mistake(): touching a cockatrice corpse (instapetrify) not ported yet');
+
+    if (poly_when_stoned(game.youmonst.data) && await polymon(PM_STONE_GOLEM)) {
+        await tty_display_nhwindow(game.WIN_MESSAGE, false); /* --More-- */
+        return false;
+    }
+
+    await pline(`Touching ${corpse_xname(obj, null, CXN_SINGULAR | CXN_ARTICLE)
+        } is a fatal mistake.`);
+    await instapetrify(killer_xname(obj));
+    return true;
 }
 
 // C ref: pickup.c rider_corpse_revival()
@@ -2492,8 +2532,10 @@ async function in_container(obj) {
         await pline(`${Tobjnam(obj, "are")} attached to your pet.`);
         return 0;
     } else if (obj === game.uwep) {
-        if (welded(obj))
-            throw new Error('in_container(): weldmsg() not ported yet');
+        if (welded(obj)) {
+            await weldmsg(obj);
+            return 0;
+        }
         setuwep(null);
         /* This uwep check is obsolete.  It dates to 3.0 and earlier when
          * unwielding Firebrand would be fatal in hell if hero had no other
@@ -2507,7 +2549,7 @@ async function in_container(obj) {
         setuqwep(null);
     }
 
-    if (fatal_corpse_mistake(obj, false))
+    if (await fatal_corpse_mistake(obj, false))
         return -1;
 
     /* boxes, boulders, and big statues can't fit into any container */
@@ -2521,8 +2563,8 @@ async function in_container(obj) {
 
     freeinv(obj);
 
-    if (obj.lamplit) /* obj_is_burning(obj): this used to be part of freeinv() */
-        throw new Error('in_container(): snuff_lit() not ported yet');
+    if (obj_is_burning(obj)) /* this used to be part of freeinv() */
+        /* (void) */ await snuff_lit(obj);
 
     if (floor_container && costly_spot(u.ux, u.uy)) {
         /* defer gold until after put-in message */
@@ -2604,7 +2646,7 @@ async function out_container(obj) {
     if (obj.oartifact && !(await touch_artifact(obj, game.youmonst)))
         return 0;
 
-    if (fatal_corpse_mistake(obj, false))
+    if (await fatal_corpse_mistake(obj, false))
         return -1;
 
     count = obj.quan;

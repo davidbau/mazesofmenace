@@ -137,6 +137,7 @@ import { vtense as vtense_dw } from './objnam.js';
 import { useup as useup_dw } from './invent.js';
 import { selftouch as selftouch_dw } from './trap.js';
 import { float_up as float_up_dw } from './trap.js';
+import { gulp_blnd_check } from './mhitu.js';
 
 /* C ref: decl.c c_armor ... c_that_ */
 const c_armor = "armor", c_suit = "suit", c_shirt = "shirt",
@@ -889,7 +890,7 @@ export function adj_abon(otmp, delta) {
    not blocked */
 
 // C ref: potion.c toggle_blindness() -- blindness has just been toggled
-export function toggle_blindness() {
+export async function toggle_blindness() {
     const g = game;
     const Stinging = !!(g.uwep && (uprop(WARN_OF_MON).extrinsic & W_WEP) !== 0);
     const Blind_telepat = !!(uprop(TELEPAT).intrinsic || uprop(TELEPAT).extrinsic);
@@ -908,11 +909,11 @@ export function toggle_blindness() {
         throw new Error('toggle_blindness(): Sting_effects() not ported yet');
     /* update dknown flag for inventory picked up while blind */
     if (!Blind())
-        learn_unseen_invent();
+        await learn_unseen_invent();
 }
 
 // C ref: invent.c learn_unseen_invent()
-function learn_unseen_invent() {
+async function learn_unseen_invent() {
     if (Blind())
         return; /* sanity check */
 
@@ -923,17 +924,9 @@ function learn_unseen_invent() {
         /* xname() will set dknown, perhaps bknown (for priest[ess]);
            result from xname() is immediately released for re-use */
         xname(otmp);
-        addinv_core2(otmp); /* you react to seeing the object */
+        await addinv_core2(otmp); /* you react to seeing the object */
     }
     /* update_inventory(): no perm_invent */
-}
-
-// C ref: mhitu.c gulp_blnd_check()
-function gulp_blnd_check() {
-    const u = game.u;
-    if (!uprop(BLINDED).intrinsic && u.uswallow)
-        throw new Error('gulp_blnd_check(): engulfer blinding (gulpmu()) not ported yet');
-    return false;
 }
 
 // C ref: do_wear.c Blindf_on()
@@ -966,7 +959,7 @@ export async function Blindf_on(otmp) {
             await You("can see!");
     }
     if (changed) {
-        toggle_blindness(); /* potion.c */
+        await toggle_blindness(); /* potion.c */
     }
 }
 
@@ -1003,13 +996,13 @@ export async function Blindf_off(otmp) {
                 set_bc(0);
         }
     } else if (was_blind) {
-        if (!gulp_blnd_check()) {
+        if (!(await gulp_blnd_check())) {
             changed = true; /* !Blind */
             await You("can see again.");
         }
     }
     if (changed) {
-        toggle_blindness(); /* potion.c */
+        await toggle_blindness(); /* potion.c */
     }
 }
 
@@ -2786,6 +2779,40 @@ const takeoff_order = [
     RIGHT_RING_DW, WORN_CLOAK_DW, WORN_HELMET_DW, WORN_AMUL_DW, WORN_ARMOR_DW,
     WORN_SHIRT_DW, WORN_BOOTS_DW, W_SWAPWEP_DW, W_QUIVER_DW, 0
 ];
+
+// C ref: do_wear.c stuck_ring()
+/* used for praying to check and fix levitation trouble */
+export function stuck_ring(ring, otyp) {
+    const g = game;
+
+    if (ring !== g.uleft && ring !== g.uright) {
+        impossible("stuck_ring: neither left nor right?");
+        return null;
+    }
+
+    if (ring && ring.otyp === otyp) {
+        /* reasons ring can't be removed match those checked by select_off();
+           limbless case has extra checks because ordinarily it's temporary */
+        if ((g.youmonst.data.mflags1 & M1_NOLIMBS) === M1_NOLIMBS /* nolimbs() */
+            && g.uamul
+            && g.uamul.otyp === O.AMULET_OF_UNCHANGING && g.uamul.cursed)
+            return g.uamul;
+        if (welded(g.uwep)
+            && ((ring === (g.u.uhandedness ? g.uleft : g.uright)) /* RING_ON_PRIMARY */
+                || bimanual(g.uwep)))
+            return g.uwep;
+        if (g.uarmg && g.uarmg.cursed)
+            return g.uarmg;
+        if (ring.cursed)
+            return ring;
+        /* normally outermost layer is processed first, but slippery gloves
+           wears off quickly so uncurse ring itself before handling those */
+        if (g.uarmg && Glib())
+            return g.uarmg;
+    }
+    /* either no ring or not right type or nothing prevents its removal */
+    return null;
+}
 
 // C ref: do_wear.c unchanger()
 /* also for praying; find worn item that confers "Unchanging" attribute */

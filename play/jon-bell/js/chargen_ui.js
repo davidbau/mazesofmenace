@@ -49,6 +49,9 @@ import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
 import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt, putmsghistory, tty_getlin_history, asknameRowText } from './display.js';
 import { pmatchi } from './strutil.js';
+import { tty_fit_text_lines } from './com_pager.js';
+import { topl_history_window_text } from './display.js';
+import { MAX_MSG_HISTORY } from './const.js';
 import { visctrl } from './hacklib.js';
 import { map_menu_cmd } from './options.js';
 import { menucolor_row } from './coloratt.js'; // windows.c:1796-1809 add_menu menucolor
@@ -96,6 +99,25 @@ const MH_ELF    = 0x0010;
 const MH_DWARF  = 0x0020;
 const MH_GNOME  = 0x0040;
 const MH_ORC    = 0x0080;
+/* The first `n` visible columns of a painted row (SGR escapes kept, closed);
+ * `pad` fills a shorter row out to n columns. */
+function visible_prefix(row, n, pad = false) {
+    let out = '', vis = 0, sgr = false;
+    for (let i = 0; i < row.length && vis < n; ) {
+        if (row[i] === '\x1b') {
+            const m = /^\x1b\[[0-9;]*[A-Za-z]/.exec(row.slice(i));
+            if (m) {
+                const cuf = /^\x1b\[(\d*)C$/.exec(m[0]);
+                if (cuf) { const k = Math.min(+(cuf[1] || 1), n - vis); out += k ? `\x1b[${k}C` : ''; vis += k; }
+                else { out += m[0]; sgr = !/^\x1b\[0?m$/.test(m[0]); }
+                i += m[0].length; continue;
+            }
+        }
+        out += row[i++]; vis++;
+    }
+    if (sgr) out += '\x1b[0m';
+    return pad && vis < n ? out + ' '.repeat(n - vis) : out;
+}
 const ROLE_MALE   = 0x1000;
 const ROLE_FEMALE = 0x2000;
 const AM_LAWFUL   = 0x0004;
@@ -1885,6 +1907,18 @@ export async function playChargen(ctx) {
         if (asknameRetried) menuBackground[11] = ASKNAME_RETRY_TEXT;
     }
     const topline = tty_base_window_messages(menuBackground, read);
+    /* Rows a Message History window's dismissal erased while a selection
+     * menu's search getlin was up (row -> first erased column); the page under
+     * it is not repainted (wintty.c:1700-1709), so the frames that follow show
+     * the erasure until the menu goes away.  Set by searchGetlin, read by the
+     * menu loops right after it returns. */
+    let searchWipe = null;
+    const applyWipe = (screen, wipe) => {
+        if (!wipe) return screen;
+        const rows = screen.split('\n');
+        for (const [r, c] of wipe) rows[r] = visible_prefix(rows[r] || '', c);
+        return rows.join('\n');
+    };
     // ── makepicks ────────────────────────────────────────────────────────
     // C ref: role.c:2288 — `nextpick = RS_ROLE; do { ... } while (any < 0);`
     // The blocks are sequential inside one iteration, so advancing nextpick
@@ -1924,7 +1958,7 @@ export async function playChargen(ctx) {
         const pw = () => (game.iflags?.prevmsg_window || 's')[0];
         const blankRows = new Set(); /* docorner(1, cury + 1) after a wrapped more() */
         const frameRows = () => {
-            const rows = frame.screen.split('\n');
+            const rows = applyWipe(frame.screen, searchWipe).split('\n');
             for (const r of blankRows) rows[r] = '';
             return rows;
         };
@@ -1960,6 +1994,52 @@ export async function playChargen(ctx) {
             recall = { parts: [''], cursor: [0, 0] }; /* home() */
             toplin = 'empty';
             return key;
+        };
+        /* topl.c:27-41 (full), :62-71 (combination's window arm), :79-99
+         * (reversed): a "Message History" text window of the ring plus
+         * gt.toplines, which getline.c:82 rebuilt as the live "query buf".
+         * Shown over the selection page (wintty.c:1906-1940, H2344_BROKEN:
+         * width alone can put it at column zero without clearing below);
+         * dismissed by xwaitforspace, then tty_dismiss_nhwindow clears the
+         * screen during role selection (wintty.c:1995-1998 -> 971-976) or
+         * docorner()s the window's rectangle (:982; nothing to refresh and
+         * bot() disabled inside select_menu). */
+        const historyWindow = async (mode) => {
+            const h = game._msg_history || [];
+            const ring = Math.min(Math.max((game.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
+            const live = 'Search for: ' + buf;
+            const stored = h.slice(-ring).filter((t) => t !== '' && t != null);
+            const body = mode === 'r'
+                ? [live, ...h.slice(-(ring - 1)).reverse()]
+                : [...stored, live];
+            const lines = ['Message History', '', ...body].map(topl_history_window_text);
+            const hw = lines.reduce((m, l) => Math.max(m, l.length), 0);
+            const fit = tty_fit_text_lines(lines).map((ln) => ln.replace(/\u0001/g, ' '));
+            const winCol = hw >= 78 ? 0 : Math.max(0, Math.min(41, 79 - hw));
+            const offx = winCol ? winCol - 1 : 0;
+            const rows = frameRows();
+            /* the overlay arm's tty_clear_nhwindow(WIN_MESSAGE) erases the
+             * standing query first (wintty.c:1939-1940, 1048-1057) */
+            if (offx) rows[0] = '';
+            const wrow = (r, t) => { rows[r] = (offx ? visible_prefix(rows[r] || '', offx, true) + ' ' : '') + t; };
+            fit.forEach((t, r) => wrow(r, t));
+            wrow(fit.length, (winCol ? '' : ' ') + '--More--');
+            let key;
+            do key = await read(rows.join('\n'), [winCol ? winCol + 8 : 9, fit.length]);
+            while (![32, 10, 13, 27].includes(key));
+            const wipe = searchWipe || new Map();
+            if (!offx) {
+                for (let r = 0; r < 24; r++) wipe.set(r, 0);
+                menuBackground.fill('');
+            } else {
+                /* docorner's tty_curs(BASE_WINDOW, xmin, y) is 1-based: the
+                 * erase starts one column left of the window (wintty.c:3684) */
+                for (let r = 0; r <= fit.length; r++) {
+                    wipe.set(r, Math.min(wipe.get(r) ?? 80, offx - 1));
+                    if (r < menuBackground.length) menuBackground[r] = visible_prefix(menuBackground[r] || '', offx - 1);
+                }
+            }
+            searchWipe = wipe;
         };
         const doprev_call = async () => {
             let morc;
@@ -2014,11 +2094,19 @@ export async function playChargen(ctx) {
             } else if (k === 16 && pw() === 'c') {
                 /* getline.c:119-129: combination behaving like full — one
                  * tty_doprev_message(), whose first two positions recall
-                 * gt.toplines / data[maxrow - 1] (topl.c:44-61); then the query
-                 * is re-added.  The history-window arm (topl.c:62-71) is not
-                 * modelled here. */
+                 * gt.toplines / data[maxrow - 1] (topl.c:44-61) and whose
+                 * third is the history window (topl.c:62-71); then the query
+                 * is re-added. */
                 const L = (game._msg_history || []).length;
                 if (walk === null || walk === L || walk === L - 1) await doprev_call();
+                else { await historyWindow('f'); walk = null; }
+                doprev = false;
+                _redraw();
+                continue;
+            } else if (k === 16) {
+                /* getline.c:117-129: full / reversed — the window, then the
+                 * query is re-added with the buffer kept (topl.c:27-41,79-99) */
+                await historyWindow(pw());
                 doprev = false;
                 _redraw();
                 continue;
@@ -2046,7 +2134,7 @@ export async function playChargen(ctx) {
         // C role.c:2814 checks once in plsel_startmenu(), before select_menu;
         // reading another key in the same menu must not force more facets.
         rigid_role_checks(st);
-        let row0Blank = false, randomMark = '*', count = 0;
+        let row0Blank = false, randomMark = '*', count = 0, wipe = null;
         // plsel_startmenu runs rigid_role_checks once per menu (role.c:2814),
         // not on each repaint after an ignored key.
         // plsel_startmenu runs rigid_role_checks once per menu; invalid keys
@@ -2055,6 +2143,7 @@ export async function playChargen(ctx) {
             await topline.flush();
             const f = menuFrame(kind, randomMark);
             if (row0Blank) f.screen = '\n' + f.screen.split('\n').slice(1).join('\n');
+            f.screen = applyWipe(f.screen, wipe);
             const key = await read(f.screen, f.cursor);
             // C wintty.c:1564-1614: invalid keys preserve a count; ESC stops it.
             if (key >= 48 && key <= 57) { count = count * 10 + key - 48; continue; }
@@ -2065,7 +2154,9 @@ export async function playChargen(ctx) {
             let parsed = isMenuDefaultKey(key) ? { action: 'random' }
                 : parseMenuKey(kind, String.fromCharCode(key), st);
             if (!parsed && key === 0x3a) {                         // wintty.c:1700 MENU_SEARCH
+                searchWipe = null;
                 const answer = await searchGetlin(f);
+                wipe = searchWipe;
                 row0Blank = true;          // getline.c:213 clear_nhwindow; page not repainted
                 if (!answer || answer === '\x1b') { count = 0; continue; }
                 // wintty.c:1713-1728 — the first matching entry is toggled and
@@ -2460,18 +2551,21 @@ export async function playChargen(ctx) {
         // TRUE;`): only a digit with a non-zero accumulated count disarms the
         // reset (:1595-1600), so `counting` is live for exactly the one key
         // that follows the digits.
-        let counting = false, resetCount = true, count = 0;
+        let counting = false, resetCount = true, count = 0, confirmWipe = null;
         for (;;) {
             if (resetCount) counting = false;
             else resetCount = true;
             await topline.flush();
             const f = confirmFrame();
             if (row0Blank) f.screen = '\n' + f.screen.split('\n').slice(1).join('\n');
+            f.screen = applyWipe(f.screen, confirmWipe);
             const key = await read(f.screen, f.cursor);
             let ch = String.fromCharCode(key);
             // C wintty.c:1700-1728: search toggles the first PICK_ONE match.
             if (ch === ':') {
+                searchWipe = null;
                 const answer = await searchGetlin(f); row0Blank = true;
+                confirmWipe = searchWipe;
                 const match = answer && answer !== '\x1b' && buildConfirmMenu(st, plname, yesMark, renameallowed).lines
                     .map(l => /^(\S) [-*+] (.*)$/.exec(l.content))
                     .find(m => m && pmatchi(`*${answer}*`, `${m[1]} - ${m[2]}`));

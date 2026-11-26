@@ -5105,6 +5105,9 @@ function _movemon_page_frames_current() {
 export function occupation_painted_tick() {
     const g = game;
     if (!g) return;
+    /* C lock.c:247,181,1284: forcelock()'s staged plines each ran pline.c:274
+     * flush_screen(1) on the success turn before the post-occupation movemon. */
+    if (g._forceMsgs?.length) pline_flush_point();
     g._occCurFrame = _capture_painted_cells();
     g._occCurR1Whole = !!g._status1Whole; /* row-1 latch at the frame's own instant */
     /* Pair the map with the status paint from the same per-turn flush. */
@@ -5810,7 +5813,10 @@ function _snapCellAt(x, y) {
     return cell;
 }
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
-function render_map_row(y, xlo = 1, xhi = COLNO - 1, noGap = false) {
+// Exported for js/windows.js _getlin_clear_message_window: the docorner() inside
+// tty_clear_nhwindow(WIN_MESSAGE) repaints spilled topline rows with row_refresh()
+// (display.c:2147), i.e. the same serialized map row tty_getlin_prompt.reset() uses.
+export function render_map_row(y, xlo = 1, xhi = COLNO - 1, noGap = false) {
     if (!game.level && !game._levelgenPaintFreeze)
         return '';
     /* `y` names the screen row y + 1; under CLIPPING that row shows map row
@@ -13600,6 +13606,11 @@ async function _flush_screen_body(mode, repaint = true) {
                 ownFrame = (game._plineFlushFrames || []).find((f) => f.msg === committed) || null;
             if (ownFrame) plineFrame = ownFrame;
         }
+        if (!plineFrame && consumed === 0
+            && _topl_wordwrap(committed, TOPL_CO - 1).length > 1
+            && !(_topl_joins_for(fullTopl) || []).some((j) => j > 0 && j < committed.length))
+            plineFrame = (game._plineFlushFrames || []).findLast(
+                (f) => f.cells && f.msg === committed) || null;
         const _savedSnap = game._paintedSnapshot;
         const _savedInMM = game._inMovemonMore;
         // ── pickup-encumber prinv page: freeze on the pre-movemon frame + cap ────

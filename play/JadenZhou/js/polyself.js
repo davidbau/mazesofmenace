@@ -64,6 +64,7 @@ import { newpw } from './exper.js';
 import { newuhs } from './eat.js';
 import { max_rank_sz } from './botl.js';
 import { losehp, selftouch, set_utrap, reset_utrap } from './trap.js';
+import { instapetrify } from './trap.js';
 import { tty_getlin } from './wintty.js';
 import { mungspaces, plur } from './hacklib.js';
 import { name_to_mon, your_race, is_vampshifter, is_were, is_orc, is_elf,
@@ -111,8 +112,15 @@ import { Upolyd } from './const.js';
 import { done as done_ps } from './end.js';
 import { killer as killer_ps } from './topten.js';
 import { DIED as DIED_PS } from './const.js';
+import { NO_KILLER_PREFIX as NO_KILLER_PREFIX_PS, KILLED_BY as KILLED_BY_PS } from './const.js';
+import { otense as otense_ps } from './objnam.js';
+import { observe_object as observe_object_ps, makeknown as makeknown_ps } from './o_init.js';
+import { Hallucination as Hallucination_ps } from './youprop.js';
 import { arti_light_radius } from './light.js';
 import { maybe_adjust_light } from './mkobj.js';
+import { were_beastie, counter_were } from './were.js';
+import { strsubst as strsubst_ps } from './hacklib.js';
+import { tty_yn_function as tty_yn_function_ps } from './wintty.js';
 import { is_flimsy, is_sword } from './objects.js';
 import { name_to_monclass as name_to_monclass_ps } from './mondata.js';
 import { mkclass_poly as mkclass_poly_ps } from './makemon.js';
@@ -441,8 +449,12 @@ export async function polyself(psflags) {
         && (draconian || monsterpoly || isvamp || iswere))
         forcecontrol = false;
 
-    if (monsterpoly && isvamp)
-        throw new Error('polyself(): vampire shapeshift (do_vampyr) not ported yet');
+    if (monsterpoly && isvamp) {
+        /* goto do_vampyr; */
+        await polyself_special('vampyr', mntmp, controllable_poly, gvariant,
+                               old_light);
+        return;
+    }
 
     if (controllable_poly || forcecontrol) {
         buf = '';
@@ -522,8 +534,13 @@ export async function polyself(psflags) {
                 old_light = 0; /* rehumanize() extinguishes u-as-mon light */
                 await polyself_made_change(old_light); /* goto made_change */
                 return;
-            } else if (iswere) {
-                throw new Error('polyself(): lycanthrope shift (do_shift) not ported yet');
+            } else if (iswere && (were_beastie(mntmp) === u.ulycn
+                                  || mntmp === counter_were(u.ulycn)
+                                  || (Upolyd() && mntmp === M.PM_HUMAN))) {
+                /* goto do_shift; */
+                await polyself_special('shift', mntmp, controllable_poly,
+                                       gvariant, old_light);
+                return;
             } else if (!polyok(mons[mntmp])
                        /* Note:  humans are illegal as monsters, but an
                           illegal monster forces newman(), which is what
@@ -564,13 +581,25 @@ export async function polyself(psflags) {
         if (!tryct)
             await pline(thats_enough_tries);
         /* allow skin merging, even when polymorph is controlled */
-        if (draconian)
-            throw new Error('polyself(): dragon armor merge (do_merge) not ported yet');
-        if (isvamp)
-            throw new Error('polyself(): vampire shapeshift (do_vampyr) not ported yet');
+        if (draconian && (tryct <= 0
+                          || mntmp === armor_to_dragon(game.uarm.otyp))) {
+            /* goto do_merge; */
+            await polyself_special('merge', mntmp, controllable_poly,
+                                   gvariant, old_light);
+            return;
+        }
+        if (isvamp && (tryct <= 0 || mntmp === PM_WOLF
+                       || mntmp === PM_FOG_CLOUD || is_bat(mons[mntmp]))) {
+            /* goto do_vampyr; */
+            await polyself_special('vampyr', mntmp, controllable_poly,
+                                   gvariant, old_light);
+            return;
+        }
     } else if (draconian || iswere || isvamp) {
         /* special changes that don't require polyok() */
-        throw new Error('polyself(): draconian/lycanthrope/vampire polymorph not ported yet');
+        await polyself_special(draconian ? 'merge' : iswere ? 'shift' : 'vampyr',
+                               mntmp, controllable_poly, gvariant, old_light);
+        return;
     }
 
     if (mntmp < LOW_PM) {
@@ -596,6 +625,83 @@ export async function polyself(psflags) {
     game.sex_change_ok--; /* reset */
 
     await polyself_made_change(old_light);
+}
+
+/* C ref: polyself.c polyself() -- the "special changes that don't require
+   polyok()" block, entered at its do_merge:, do_shift: or do_vampyr: label;
+   it ends with 'goto made_change' */
+async function polyself_special(entry, mntmp, controllable_poly, gvariant,
+                                old_light) {
+    const u = game.u;
+    let buf;
+
+    if (entry === 'merge') {
+        /* do_merge: */
+        mntmp = armor_to_dragon(game.uarm.otyp);
+        if (!(game.mvitals[mntmp].mvflags & G_GENOD)) {
+            const uarm = game.uarm;
+            const was_lit = uarm.lamplit;
+            const arm_light = artifact_light(uarm) ? arti_light_radius(uarm) : 0;
+
+            /* allow G_EXTINCT */
+            if (uarm.otyp >= O.GRAY_DRAGON_SCALES
+                && uarm.otyp <= O.YELLOW_DRAGON_SCALES) { /* Is_dragon_scales() */
+                /* dragon scales remain intact as uskin */
+                await You("merge with your scaly armor.");
+            } else { /* dragon scale mail reverts to scales */
+                /* similar to noarmor(invent.c),
+                   shorten to "<color> scale mail" */
+                buf = strsubst_ps(simpleonames(uarm), " dragon ", " ");
+                /* tricky phrasing; dragon scale mail is singular, dragon
+                   scales are plural (note: we don't use "set of scales",
+                   which usually overrides the distinction, here) */
+                await Your(`${buf} reverts to scales as you merge with them.`);
+                /* uarm->spe enchantment remains unchanged;
+                   re-converting scales to mail poses risk
+                   of evaporation due to over enchanting */
+                uarm.otyp += O.GRAY_DRAGON_SCALES - O.GRAY_DRAGON_SCALE_MAIL;
+                observe_object_ps(uarm, Hallucination_ps());
+                game.disp_botl = true; /* AC is changing */
+            }
+            game.uskin = uarm;
+            game.uarm = null;
+            /* save/restore hack */
+            game.uskin.owornmask |= I_SPECIAL;
+            if (was_lit)
+                await maybe_adjust_light(game.uskin, arm_light);
+            /* update_inventory(): no perm_invent */
+        }
+    } else if (entry === 'shift') {
+        /* do_shift: */
+        if (Upolyd() && were_beastie(mntmp) !== u.ulycn)
+            mntmp = M.PM_HUMAN; /* Illegal; force newman() */
+        else
+            mntmp = u.ulycn;
+    } else { /* entry === 'vampyr' */
+        /* do_vampyr: */
+        if (mntmp < LOW_PM || (mons[mntmp].geno & M.G_UNIQ)) {
+            mntmp = (game.youmonst.data === mons[PM_VAMPIRE_LEADER]
+                     && !rn2(10)) ? PM_WOLF
+                                  : !rn2(4) ? PM_FOG_CLOUD
+                                            : PM_VAMPIRE_BAT;
+            if (ismnum(game.youmonst.cham)
+                && !is_vampire(game.youmonst.data) && !rn2(2))
+                mntmp = game.youmonst.cham;
+        }
+        if (controllable_poly) {
+            buf = `Become ${an(pmname(mons[mntmp], gvariant.v))}?`;
+            if ((await tty_yn_function_ps(buf, "yn", 'n')) !== 'y') /* y_n() */
+                return;
+        }
+    }
+    /* if polymon fails, "you feel" message has been given
+       so don't follow up with another polymon or newman;
+       sex_change_ok left disabled here */
+    if (mntmp === M.PM_HUMAN)
+        await newman(); /* werecritter */
+    else
+        /* (void) */ await polymon(mntmp);
+    await polyself_made_change(old_light); /* goto made_change */
 }
 
 /* the 'made_change:' tail of polyself() */
@@ -1021,7 +1127,7 @@ export async function polymon(mntmp) {
         if (touch_petrifies(u.usteed.data) && !uprop_on(STONE_RES) && rnl(3)) {
             await pline(`${no_longer_petrify_resistant} touch ${mon_nam(u.usteed)}.`);
             buf = `riding ${an(pmname(u.usteed.data, Mgender(u.usteed)))}`;
-            throw new Error('polymon(): instapetrify() of a hero riding a petrifier not ported yet');
+            await instapetrify(buf);
         }
         if (!can_ride(u.usteed))
             await dismount_steed(DISMOUNT_POLY);
@@ -1394,8 +1500,21 @@ export async function rehumanize() {
     const was_flying = Flying();
 
     /* You can't revert back while unchanging */
-    if (Unchanging())
-        throw new Error('rehumanize(): Unchanging not ported yet');
+    if (Unchanging()) {
+        if (u.mh < 1) {
+            killer_ps().format = NO_KILLER_PREFIX_PS;
+            killer_ps().name = "killed while stuck in creature form";
+            await done_ps(DIED_PS);
+            /* can get to here if declining to die in explore or wizard
+               mode; since we're wearing an amulet of unchanging we can't
+               be wearing an amulet of life-saving */
+            return; /* don't rehumanize after all */
+        } else if (game.uamul && game.uamul.otyp === O.AMULET_OF_UNCHANGING) {
+            await Your(`${simpleonames(game.uamul)} ${otense_ps(game.uamul, "fail")}!`);
+            observe_object_ps(game.uamul, Hallucination_ps());
+            makeknown_ps(O.AMULET_OF_UNCHANGING);
+        }
+    }
 
     /*
      * Right now, dying while being a shifted vampire (bat, cloud, wolf)
@@ -1406,8 +1525,14 @@ export async function rehumanize() {
         del_light_source(LS_MONSTER, monst_to_any(game.youmonst));
     await polyman("You return to %s form!", game.urace.adj);
 
-    if (u.uhp < 1)
-        throw new Error('rehumanize(): "old form was not healthy enough" not ported yet');
+    if (u.uhp < 1) {
+        /* can only happen if some bit of code reduces u.uhp
+           instead of u.mh while poly'd */
+        await Your("old form was not healthy enough to survive.");
+        killer_ps().name = `reverting to unhealthy ${game.urace.adj} form`;
+        killer_ps().format = KILLED_BY_PS;
+        await done_ps(DIED_PS);
+    }
     nomul(0);
 
     game.disp_botl = true;
@@ -1415,7 +1540,7 @@ export async function rehumanize() {
     await encumber_msg();
     /* update_inventory(): no perm_invent */
     if (was_flying && !Flying() && u.usteed)
-        throw new Error('rehumanize(): steed returns gently not ported yet');
+        await You(`and ${mon_nam(u.usteed)} return gently to the ${surface(u.ux, u.uy)}.`);
     await retouch_equipment(2);
     if (!game.uarmg)
         await selftouch(no_longer_petrify_resistant);

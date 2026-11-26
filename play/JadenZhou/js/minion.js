@@ -2,8 +2,10 @@
 // C ref: minion.c — monster_census(), msummon(), summon_minion(), dprince(),
 // dlord(), llord(), lminion() (ndemon() lives in makemon.js).
 //
-// Not ported yet: the rest of minion.c (demon_talk(), bribe(),
-// lose_guardian_angel(), gain_guardian_angel()).
+// demon_talk(), bribe().
+//
+// Not ported yet: the rest of minion.c (lose_guardian_angel(),
+// gain_guardian_angel()).
 
 import { game } from './gstate.js';
 import { canspotmon, canseemon, pline, You_feel, verbalize } from './display.js';
@@ -29,6 +31,27 @@ import { u_wield_art } from './objects.js';
 import { ART_DEMONBANE } from './artilist.js';
 import { Blind } from './youprop.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
+import { newsym, You } from './display.js';
+import { rnd } from './rng.js';
+import { set_malign } from './makemon.js';
+import { is_fainted, reset_faint } from './eat.js';
+import { stop_occupation, unmul } from './allmain.js';
+import { nomul } from './hack.js';
+import { tele_restrict, rloc } from './teleport.js';
+import { RLOC_MSG, A_CHA, LL_UMONST } from './const.js';
+import { S_DEMON } from './monsters.js';
+import { Deaf } from './youprop.js';
+import { money_cnt } from './u_init.js';
+import { mon_has_amulet } from './dog.js';
+import { currency } from './insight.js';
+import { ACURR } from './attrib.js';
+import { livelog_printf } from './display.js';
+import { x_monnam, mon_nam, ARTICLE_A, EXACT_NAME } from './do_name.js';
+import { mongone } from './mon.js';
+import { money2mon } from './shk.js';
+import { tty_getlin } from './wintty.js';
+import { In_hell } from './dungeon.js';
+import { ART_EXCALIBUR } from './artilist.js';
 
 /* used to pick among the four basic elementals without worrying whether
    they've been reordered (difficulty reassessment?) or any new ones have
@@ -237,6 +260,136 @@ export async function summon_minion(alignment, talk) {
         mon.mpeaceful = 0;
         /* don't call set_malign(); player was naughty */
     }
+}
+
+// C ref: minion.c demon_talk()
+/* returns 1 if it won't attack. */
+export async function demon_talk(mtmp) {
+    const u = game.u;
+    let cash, demand, offer;
+    /* #define Athome (Inhell && (mtmp->cham == NON_PM)) */
+    const Athome = (In_hell(u.uz) && (mtmp.cham === NON_PM)) ? 1 : 0;
+
+    if (u_wield_art(ART_EXCALIBUR) || u_wield_art(ART_DEMONBANE)) {
+        if (canspotmon(mtmp))
+            await pline(`${Amonnam(mtmp)} looks very angry.`);
+        else
+            await You_feel("tension building.");
+        mtmp.mpeaceful = mtmp.mtame = 0;
+        set_malign(mtmp);
+        newsym(mtmp.mx, mtmp.my);
+        return 0;
+    }
+
+    if (is_fainted()) {
+        await reset_faint(); /* if fainted - wake up */
+    } else {
+        await stop_occupation();
+        if (game.multi > 0) {
+            nomul(0);
+            await unmul(null);
+        }
+    }
+
+    /* Slight advantage given. */
+    if (is_dprince(mtmp.data) && mtmp.minvis) {
+        const wasunseen = !canspotmon(mtmp);
+
+        mtmp.minvis = mtmp.perminvis = 0;
+        if (wasunseen && canspotmon(mtmp)) {
+            await pline(`${Amonnam(mtmp)} appears before you.`);
+            mtmp.mstrategy &= ~STRAT_APPEARMSG;
+        }
+        newsym(mtmp.mx, mtmp.my);
+    }
+    if (game.youmonst.data.mlet === S_DEMON) { /* Won't blackmail their own. */
+        if (!Deaf())
+            await pline(`${Amonnam(mtmp)} says, "Good hunting, ${
+                game.flags.female ? "Sister" : "Brother"}."`);
+        else if (canseemon(mtmp))
+            await pline(`${Amonnam(mtmp)} says something.`);
+        if (!(await tele_restrict(mtmp)))
+            /* (void) */ await rloc(mtmp, RLOC_MSG);
+        return 1;
+    }
+    cash = money_cnt(game.invent);
+    demand = Math.trunc((cash * (rnd(80) + 20 * Athome))
+                        / (100 * (1 + ((sgn(u.ualign.type)
+                                        === sgn(mtmp.data.maligntyp)) ? 1 : 0))));
+
+    if (!demand || game.multi < 0) { /* you have no gold or can't move */
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        return 0;
+    } else {
+        /* make sure that the demand is unmeetable if the monster
+           has the Amulet, preventing monster from being satisfied
+           and removed from the game (along with said Amulet...) */
+        /* [actually the Amulet is safe; it would be dropped when
+           mongone() gets rid of the monster; force combat anyway;
+           also make it unmeetable if the player is Deaf, to simplify
+           handling that case as player-won't-pay] */
+        if (mon_has_amulet(mtmp) || Deaf())
+            /* 125: 5*25 in case hero has maximum possible charisma */
+            demand = cash + rn1(1000, 125);
+
+        if (!Deaf())
+            await pline(`${Amonnam(mtmp)} demands ${demand} ${
+                currency(demand)} for safe passage.`);
+        else if (canseemon(mtmp))
+            await pline(`${Amonnam(mtmp)} seems to be demanding something.`);
+        offer = 0;
+        if (!Deaf()
+            && ((offer = await bribe(mtmp, "How much will you offer?"))
+                >= demand)) {
+            await pline(`${Amonnam(mtmp)} vanishes, laughing about cowardly mortals.`);
+        } else if (offer > 0
+                   && rnd(5 * ACURR(A_CHA)) > (demand - offer)) {
+            await pline(`${Amonnam(mtmp)} scowls at you menacingly, then vanishes.`);
+        } else {
+            await pline(`${Amonnam(mtmp)} gets angry...`);
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp);
+            return 0;
+        }
+    }
+    /* if 'mtmp' is unrecognizable due to hero's hallucination,
+       #chronicle will reveal its true identity -- just live with that;
+       also, avoid random hallucinatory currency() units */
+    livelog_printf(LL_UMONST, `bribed ${
+        x_monnam(mtmp, ARTICLE_A, null, EXACT_NAME, false)} with ${offer} ${
+        (offer === 1) ? "zorkmid" : "zorkmids"} for safe passage`);
+    mongone(mtmp);
+    return 1;
+}
+
+// C ref: minion.c bribe()
+export async function bribe(mtmp, prompt) {
+    let offer;
+    const umoney = money_cnt(game.invent);
+
+    const buf = (await tty_getlin(prompt)) || ''; /* getlin(prompt, buf) */
+    /* if (sscanf(buf, "%ld", &offer) != 1) offer = 0L; */
+    const m = /^\s*([+-]?\d+)/.exec(buf);
+    offer = m ? parseInt(m[1], 10) : 0;
+
+    /*Michael Paddon -- fix for negative offer to monster*/
+    /*JAR880815 - */
+    if (offer < 0) {
+        await You(`try to shortchange ${mon_nam(mtmp)}, but fumble.`);
+        return 0;
+    } else if (offer === 0) {
+        await You("refuse.");
+        return 0;
+    } else if (offer >= umoney) {
+        await You(`give ${mon_nam(mtmp)} all your gold.`);
+        offer = umoney;
+    } else {
+        await You(`give ${mon_nam(mtmp)} ${offer} ${currency(offer)}.`);
+    }
+    /* (void) */ await money2mon(mtmp, offer);
+    game.disp_botl = true;
+    return offer;
 }
 
 // C ref: minion.c dprince()

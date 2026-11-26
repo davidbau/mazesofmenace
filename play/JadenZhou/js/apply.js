@@ -143,6 +143,8 @@ import { Shk_Your as Shk_Your_lp } from './shk.js';
 import { yname as yname_lp, Tobjnam as Tobjnam_lp, otense as otense_lp } from './objnam.js';
 import { Your as Your_lp } from './display.js';
 import { begin_burn as begin_burn_lp, end_burn as end_burn_lp } from './timeout.js';
+import { Is_candle } from './mkobj.js';
+import { get_obj_location } from './shk.js';
 import { make_glib as make_glib_lp } from './potion.js';
 import { fingers_or_gloves as fingers_or_gloves_lp } from './do_wear.js';
 import { Blindf_on as Blindf_on_dw, Blindf_off as Blindf_off_dw,
@@ -160,6 +162,11 @@ import { is_lava as is_lava_wh } from './makemon.js';
 import { dbon } from './weapon.js';
 import { losehp, Maybe_Half_Phys } from './trap.js';
 import { dropx } from './do.js';
+import { gloves_simple_name } from './objnam.js';
+import { is_wet_towel } from './objects.js';
+import { incr_itimeout, set_itimeout } from './potion.js';
+import { dry_a_towel } from './weapon.js';
+import { gulp_blnd_check } from './mhitu.js';
 import { check_unpaid as check_unpaid_cam, zapyourself as zapyourself_cam } from './zap.js';
 import { s_suffix as s_suffix_cam } from './hacklib.js';
 import { mon_nam as mon_nam_cam } from './do_name.js';
@@ -177,6 +184,8 @@ import { Glib, Fumbling, Underwater } from './youprop.js';
 import { A_DEX } from './const.js';
 import { splitobj } from './mkobj.js';
 import { fingers_or_gloves } from './do_wear.js';
+import { Yname2, otense } from './objnam.js';
+import { end_burn } from './timeout.js';
 
 // C ref: apply.c its_dead() -- the stethoscope applied to a corpse or
 // statue at <rx,ry>; returns TRUE if it gave a message
@@ -1009,7 +1018,8 @@ export async function doapply() {
         res = await use_camera(obj);
         break;
     case O.TOWEL:
-        throw new Error('doapply(): use_towel() not ported yet');
+        res = await use_towel(obj);
+        break;
     case O.CRYSTAL_BALL:
         throw new Error('doapply(): use_crystal_ball() not ported yet');
     case O.MAGIC_MARKER:
@@ -1332,6 +1342,45 @@ export async function jump(magic) {
     }
 }
 
+// C ref: apply.c snuff_candle()
+/* call in drop, throw, and put in box, etc. */
+export async function snuff_candle(otmp) {
+    const candle = Is_candle(otmp);
+
+    if ((candle || otmp.otyp === O.CANDELABRUM_OF_INVOCATION)
+        && otmp.lamplit) {
+        const many = candle ? (otmp.quan > 1) : (otmp.spe > 1);
+        const [x, y] = get_obj_location(otmp, 0) || [0, 0];
+
+        if (otmp.where === 'OBJ_MINVENT' ? cansee(x, y) : !Blind())
+            await pline(`${Shk_Your_lp(otmp)}${candle ? "" : "candelabrum's "}candle${
+                many ? "s'" : "'s"} flame${many ? "s are" : " is"} extinguished.`);
+        end_burn_lp(otmp, true);
+        return true;
+    }
+    return false;
+}
+
+// C ref: apply.c snuff_lit()
+/* called when lit lamp is hit by water or put into a container or
+   you've been swallowed by a monster; obj might be in transit while
+   being thrown or dropped so don't assume that its location is valid */
+export async function snuff_lit(obj) {
+    if (obj.lamplit) {
+        if (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP
+            || obj.otyp === BRASS_LANTERN || obj.otyp === POT_OIL) {
+            const [x, y] = get_obj_location(obj, 0) || [0, 0];
+            if (obj.where === 'OBJ_MINVENT' ? cansee(x, y) : !Blind())
+                await pline(`${Yname2(obj)} ${otense(obj, "go")} out!`);
+            end_burn(obj, true);
+            return true;
+        }
+        if (await snuff_candle(obj))
+            return true;
+    }
+    return false;
+}
+
 // C ref: apply.c use_lamp()
 async function use_lamp(obj) {
     const u = game.u;
@@ -1399,8 +1448,93 @@ export async function fig_transform(arg, timeout) {
     throw new Error('fig_transform() not ported yet');
 }
 
+// C ref: apply.c use_towel()
+async function use_towel(obj) {
+    const u = game.u;
+    const drying_feedback = (obj === game.uwep);
+    const HBlinded = () => u.uprops[BLINDED_AP].intrinsic;
+    const Glib = () => !!(u.uprops[GLIB_WH].intrinsic || u.uprops[GLIB_WH].extrinsic);
+
+    if (!freehand()) {
+        await You(`have no free ${body_part(HAND)}!`);
+        return ECMD_OK;
+    } else if (obj === game.ublindf) {
+        await You("cannot use it while you're wearing it!");
+        return ECMD_OK;
+    } else if (obj.cursed) {
+        let old;
+
+        switch (rn2(3)) {
+        case 2:
+            old = (u.uprops[GLIB_WH].intrinsic & TIMEOUT_AP); /* (Glib & TIMEOUT) */
+            make_glib_lp(old + rn1_ap(10, 3)); /* + 3..12 */
+            await Your_lp(`${makeplural_ap(body_part(HAND))} ${
+                old ? "are filthier than ever" : "get slimy"}!`);
+            if (is_wet_towel(obj))
+                await dry_a_towel(obj, -1, drying_feedback);
+            return ECMD_TIME;
+        case 1:
+            if (!game.ublindf) {
+                old = u.ucreamed || 0;
+                u.ucreamed = old + rn1_ap(10, 3);
+                await pline(`Yecch!  Your ${body_part(FACE_AP)} ${
+                    old ? "has more" : "now has"} gunk on it!`);
+                await make_blinded_ap((HBlinded() & TIMEOUT_AP) /* BlindedTimeout */
+                                      + u.ucreamed - old, true);
+            } else {
+                const ublindf = game.ublindf;
+                const what = (ublindf.otyp === O.LENSES)
+                             ? "lenses"
+                             : (obj.otyp === ublindf.otyp) ? "other towel"
+                                                           : "blindfold";
+                if (ublindf.cursed) {
+                    await You(`push your ${what} ${rn2(2) ? "cock-eyed" : "crooked"}.`);
+                } else {
+                    const saved_ublindf = ublindf;
+                    await You(`push your ${what} off.`);
+                    await Blindf_off_dw(ublindf);
+                    await dropx(saved_ublindf);
+                }
+            }
+            if (is_wet_towel(obj))
+                await dry_a_towel(obj, -1, drying_feedback);
+            return ECMD_TIME;
+        case 0:
+            break;
+        }
+    }
+
+    if (Glib()) {
+        make_glib_lp(0);
+        await You(`wipe off your ${!game.uarmg ? makeplural_ap(body_part(HAND))
+                                                : gloves_simple_name(game.uarmg)}.`);
+        if (is_wet_towel(obj))
+            await dry_a_towel(obj, -1, drying_feedback);
+        return ECMD_TIME;
+    } else if (u.ucreamed) {
+        incr_itimeout(BLINDED_AP, -1 * u.ucreamed); /* &HBlinded */
+        u.ucreamed = 0;
+        if (!HBlinded()) { /* !Blinded */
+            await pline("You've got the glop off.");
+            if (!(await gulp_blnd_check())) {
+                set_itimeout(BLINDED_AP, 1); /* &HBlinded */
+                await make_blinded_ap(0, true);
+            }
+        } else {
+            await Your_lp(`${body_part(FACE_AP)} feels clean now.`);
+        }
+        if (is_wet_towel(obj))
+            await dry_a_towel(obj, -1, drying_feedback);
+        return ECMD_TIME;
+    }
+
+    await Your_lp(`${body_part(FACE_AP)} and ${makeplural_ap(body_part(HAND))} are already clean.`);
+
+    return ECMD_OK;
+}
+
 // C ref: apply.c use_whip()
-async function use_whip(obj) {
+export async function use_whip(obj) {
     const g = game;
     const u = g.u;
     let mtmp;

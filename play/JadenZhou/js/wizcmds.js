@@ -14,7 +14,7 @@ import { tty_getlin } from './wintty.js';
 import { MAXULEV, IRONBARS, ICE, Is_airlevel, Is_waterlevel, ONAME_WISH,
          ONAME_KNOW_ARTI } from './const.js';
 import { rn1 } from './rng.js';
-import { readobjnam, doname, The, aobjnam } from './objnam.js';
+import { readobjnam_async, doname, The, aobjnam } from './objnam.js';
 import { splitobj } from './mkobj.js';
 import { freeinv } from './invent.js';
 import { dropx } from './do.js';
@@ -207,13 +207,13 @@ export async function makewish() {
             throw new Error('wishcmdassist() is not ported yet');
         }
         bufcpy = buf;
-        otmp = readobjnam(buf, nothing);
+        otmp = await readobjnam_async(buf, nothing);
         if (!otmp) {
             await pline("Nothing fitting that description exists in the game.");
             if (++tries < MAXWISHTRY)
                 continue;
             await pline(thats_enough_tries);
-            otmp = readobjnam(null, null);
+            otmp = await readobjnam_async(null, null);
             if (!otmp)
                 return; /* for safety; should never happen */
         } else if (otmp === nothing) {

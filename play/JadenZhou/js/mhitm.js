@@ -67,6 +67,8 @@ import { RLOC_NOMSG } from './const.js';
 import { Blind, Deaf, Conflict } from './youprop.js';
 import { sticks } from './engrave.js';
 import { getmattk } from './mhitu.js';
+import { attacktype as attacktype_xd } from './mondata.js';
+import { AT_MAGC as AT_MAGC_XD } from './monsters.js';
 import { mhitm_ad_stck } from './uhitm.js';
 import { ANTIMAGIC as ANTIMAGIC_MP, UNCHANGING as UNCHANGING_MP,
          POLY_NOFLAGS as POLY_NOFLAGS_MP, NO_NC_FLAGS as NO_NC_FLAGS_MP,
@@ -595,7 +597,7 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
 }
 
 // C ref: uhitm.c mhitm_ad_phys(), monster-vs-monster part
-async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
+export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
     let mwep = magr.mw || null;
 
@@ -704,7 +706,7 @@ async function mswingsm(
 
 // C ref: uhitm.c mhitm_ad_sedu(), monster-vs-monster part
 /* seduce and also steal item */
-async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
+export async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
     const pa = magr.data;
     let obj = null;
 
@@ -1098,6 +1100,17 @@ export function paralyze_monst(mon, amt) {
     mon.mfrozen = amt;
     mon.meating = 0; /* terminate any meal-in-progress */
     mon.mstrategy &= ~STRAT_WAITFORU;
+}
+
+// C ref: mhitm.c xdrainenergym()
+export async function xdrainenergym(mon, givemsg) {
+    if (mon.mspec_used < 20 /* limit draining */
+        && (attacktype_xd(mon.data, AT_MAGC_XD)
+            || attacktype_xd(mon.data, AT_BREA))) {
+        mon.mspec_used += d(2, 2);
+        if (givemsg)
+            await pline(`${Monnam(mon)} seems lethargic.`); /* pline_mon() */
+    }
 }
 
 // C ref: mhitm.c slept_monst() -- sleeping grabber releases, engulfer

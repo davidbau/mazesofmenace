@@ -102,6 +102,10 @@ import { doextversion } from './mdlib.js';
 import {
     Blind, Hallucination, See_invisible, Infravision, Detect_monsters, Invis, Invisible
 } from './youprop.js';
+import { Levitation as Levitation_pg } from './youprop.js';
+import { distu as distu_pg } from './hacklib.js';
+import { spot_time_left as spot_time_left_pg } from './timeout.js';
+import { MELT_ICE_AWAY as MELT_ICE_AWAY_PG } from './const.js';
 import { trap_predicament } from './insight.js';
 import { y_monnam as y_monnam_pg } from './do_name.js';
 import { visible_region_at as visible_region_at_pg } from './region.js';
@@ -395,6 +399,47 @@ export function waterbody_name(x, y) {
     }
     /* default; should be unreachable */
     return "water"; /* don't hallucinate this as some other liquid */
+}
+// C ref: pager.c ice_descr()
+/* describe a frozen pool or moat (the hero's view of how solid it is);
+   C writes into the caller's outbuf, JS returns the string */
+export function ice_descr(x, y) {
+    const icetyp = [
+        "solid",    /* 0: not melting */
+        "sturdy",   /* 1: more than 1000 turns left */
+        "steady",   /* 2: 101..1000 turns left */
+        "unsteady", /* 3:  51..100 turns left */
+        "thin",     /* 4:  15..50 turns left */
+        "slushy",   /* 5:   1..14 turns left; matches Warning on ice */
+    ];
+    const u = game.u;
+    /* same formula as is used in distant_name() for objects */
+    const r = (u.xray_range > 2) ? u.xray_range : 2,
+          neardist = (r * r) * 2 - r; /* same as r*r + r*(r-1) */
+    const loc = game.level.at(x, y);
+    const surface = (loc.typ === DRAWBRIDGE_UP) /* SURFACE_AT(x, y) */
+                    ? db_under_typ(loc.drawbridgemask) : loc.typ;
+
+    game.iflags.ice_rating = -1; /* secondary output, for 'mention_decor' */
+    if (surface !== ICE) {
+        return `[ice:${loc.typ}?]`;
+    } else if ((distu_pg(x, y) > neardist
+                || (!cansee(x, y) && (!u_at(x, y) || Levitation_pg())))
+               && !game.decor_levitate_override) { /* probe_decor(pickup.c) */
+        return waterbody_name(x, y); /* "ice" or "frozen <liquid>" */
+    } else {
+        const time_left = spot_time_left_pg(x, y, MELT_ICE_AWAY_PG);
+
+        /* other, real ice thickness/strength terminology exists but seems
+           to be too unfamiliar for nethack's use */
+        game.iflags.ice_rating = !time_left ? 0                /* solid */
+                                 : (time_left > 1000) ? 1     /* sturdy */
+                                   : (time_left > 100) ? 2    /* steady */
+                                     : (time_left > 50) ? 3   /* unsteady */
+                                       : (time_left > 14) ? 4 /* thin */
+                                         : 5;                 /* slushy */
+        return `${icetyp[game.iflags.ice_rating]} ${waterbody_name(x, y)}`;
+    }
 }
 
 // C ref: pager.c self_lookat()
@@ -1456,7 +1501,7 @@ export function do_screen_description(cc, looked, sym) {
             if (pm)
                 for_supplement = pm;
             if (look_buf === "ice")
-                throw new Error('do_screen_description(): ice_descr() not ported yet');
+                look_buf = ice_descr(cc.x, cc.y); /* (void) ice_descr(cc.x, cc.y, look_buf) */
             if (look_buf === "staircase down"
                 && Is_qstart(u.uz) /* on_level(&u.uz, &qstart_level) */ && !ok_to_quest())
                 look_buf = "blocked staircase down";

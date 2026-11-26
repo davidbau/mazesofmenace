@@ -64,7 +64,7 @@ import { objects, WAND_CLASS, SPBOOK_CLASS, DWARVISH_CLOAK, NODIR, IMMEDIATE,
 import { PIT, SPIKED_PIT, STATUE_TRAP, HEADSTONE, DOOR, DBWALL,
          DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, IS_DRAWBRIDGE,
          isok } from './const.js';
-import { t_at, activate_statue_trap } from './trap.js';
+import { t_at, activate_statue_trap, trap_ice_effects } from './trap.js';
 import { sobj_at, is_pool, is_lava } from './makemon.js';
 import { delobj } from './invent.js';
 import { mkobj, splitobj, weight, rnd_class, erosion_matters, is_flammable,
@@ -396,6 +396,10 @@ import { set_uinwater } from './trap.js';
 import { docrt } from './display.js';
 import { ustatusline } from './insight.js';
 import { unearth_objs as unearth_objs_dg } from './dig.js';
+import { mksobj, set_corpsenm } from './mkobj.js';
+import { STATUE, FIGURINE } from './objects.js';
+import { W_ARTI, BURIED_TOO, CONTAINED_TOO } from './const.js';
+import { force_decor } from './pickup.js';
 
 // C ref: zap.c learnwand()
 export function learnwand(obj) {
@@ -1412,6 +1416,16 @@ function replace_object(obj, otmp) {
         fobj.splice(fobj.indexOf(obj), 1, otmp);
         break;
     }
+    case 'OBJ_MINVENT': {
+        /* otmp takes obj's place in the carrier's minvent; extract_nobj()
+           leaves obj free */
+        const minvent = obj.ocarry.minvent;
+        otmp.ocarry = obj.ocarry;
+        minvent.splice(minvent.indexOf(obj), 1, otmp);
+        obj.where = 'OBJ_FREE';
+        obj.ocarry = null;
+        break;
+    }
     default:
         throw new Error(`replace_object(): where=${obj.where} not ported yet`);
     }
@@ -1523,7 +1537,14 @@ export async function poly_obj(obj, id) {
         } while (--try_limit > 0
                  && !!objects[otmp.otyp].oc_magic !== magic_obj);
     } else {
-        throw new Error('poly_obj(): polymorph into a specific object not ported yet');
+        /* literally replace obj with this new thing */
+        otmp = mksobj(id, false, false);
+        /* Actually more things use corpsenm but they polymorph differently */
+        const USES_CORPSENM = (typ) =>
+            (typ === CORPSE || typ === STATUE || typ === FIGURINE);
+
+        if (USES_CORPSENM(obj.otyp) && USES_CORPSENM(id))
+            set_corpsenm(otmp, obj.corpsenm);
     }
 
     /* preserve quantity */
@@ -1650,12 +1671,14 @@ export async function poly_obj(obj, id) {
      * ** we are now done adjusting the object (except possibly wearing it) **
      */
 
-    /* get_obj_location(obj, &ox, &oy, BURIED_TOO | CONTAINED_TOO) */
-    if (obj_location === 'OBJ_FLOOR') {
-        ox = obj.ox, oy = obj.oy;
-    } else {
-        throw new Error(`poly_obj(): object at where=${obj_location} not ported yet`);
-    }
+    const oloc = get_obj_location(obj, BURIED_TOO | CONTAINED_TOO);
+    if (oloc)
+        [ox, oy] = oloc;
+    const old_wornmask = (obj.owornmask || 0) & ~(W_ART | W_ARTI);
+    if (obj_location !== 'OBJ_FLOOR' && obj_location !== 'OBJ_MINVENT')
+        /* OBJ_INVENT: freeinv_core(), addinv_core1/2() and the worn-item
+           handling (old_wornmask); OBJ_CONTAINED, OBJ_BURIED */
+        throw new Error(`poly_obj(): object at where=${obj_location} (worn ${old_wornmask}) not ported yet`);
     /* swap otmp for obj */
     replace_object(obj, otmp);
     if (obj_location === 'OBJ_FLOOR') {
@@ -1880,7 +1903,8 @@ export async function zap_map(x, y, obj) { /* zapped wand, or book for cast spel
            likewise for furniture in case hero is levitating while blind */
         } else if (ltyp === ICE || IS_FURNITURE(ltyp)) {
             if (u.dz > 0) { /* down, which also means x,y == u.ux,u.uy */
-                throw new Error('zap_map(): probing down at ice/furniture (force_decor()) not ported yet');
+                await force_decor(true);
+                learn_it = true;
             }
         }
         /*
@@ -3848,7 +3872,7 @@ export async function melt_ice(x, y, msg) {
     }
     spot_stop_timers_zp(x, y, MELT_ICE_AWAY_ZP); /* no more ice to melt away */
     if (t_at(x, y))
-        throw new Error('melt_ice(): trap_ice_effects() not ported yet');
+        trap_ice_effects(x, y, true); /* TRUE because ice_is_melting */
     obj_ice_effects_zp(x, y, false);
     unearth_objs_zp(x, y);
     if (g.u.uinwater) /* Underwater */

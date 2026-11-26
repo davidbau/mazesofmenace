@@ -18,7 +18,7 @@ import { t_at, registerTrapMksobj, activate_statue_trap } from "./trap.js";
 import { clear_bypasses, m_dowear } from './worn.js';
 import { Warning, newsym, feel_location, feel_newsym, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages } from "./display.js";
 import { mkot_trap_warn } from './artifact.js';
-import { pline, urgent_pline, You_hear } from './pline.js';
+import { pline, urgent_pline, You_hear, You } from './pline.js';
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
  * do_death_sequence is only ever REFERENCED at call time. */
@@ -650,9 +650,10 @@ async function autosearch_rng() {
                 nomul(0);
                 feel_location(x, y);
                 set_msg_xy(x, y); /* detect.c:2050 */
-                // C detect.c:2051: finish the message (including MSGTYP_STOP)
-                // before scanning another square or continuing turn upkeep.
-                await pline("You find a hidden door.");
+                // C detect.c:2051 You(), not a bare pline: vpline's own
+                // vision_recalc(0) (pline.c:266-272) can pline a notice whose
+                // You("%s %s.") rewrites gy.you_buf before putmesg() reads it.
+                await You("find a hidden door.");
             } else if (typ === SCORR_T) {
                 /* C: if (rnl(7 - fund)) continue; */
                 if (rnl(7 - fund)) continue;
@@ -664,7 +665,7 @@ async function autosearch_rng() {
                 nomul(0);
                 feel_newsym(x, y);
                 set_msg_xy(x, y); /* detect.c:2060 */
-                await pline("You find a hidden passage.");
+                await You("find a hidden passage."); /* C detect.c:2056 You() */
             } else {
                 /* aflag=1: m_at/mfind0 and unmap_invisible (!aflag) skipped. */
                 /* C: if ((trap = t_at(x,y)) && !trap->tseen && !rnl(8)) {...} */

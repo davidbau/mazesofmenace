@@ -15,6 +15,7 @@
 import { impossible } from './hack.js';
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
+import { ROLL_FROM } from './rng.js';
 import { depth, level_difficulty, In_hell } from './dungeon.js';
 import * as O from './objects.js';
 import { objects, is_weptool, Is_mbag, Is_container, bimanual, is_rustprone,
@@ -1397,6 +1398,17 @@ export function weight(obj) {
         return wt + obj.spe * objects[O.TALLOW_CANDLE].oc_weight;
     }
     return (wt ? wt * obj.quan : (obj.quan + 1) >> 1);
+}
+
+/* C ref: mkobj.c treefruits[] */
+const treefruits = [
+    O.APPLE, O.ORANGE, O.PEAR, O.BANANA, O.EUCALYPTUS_LEAF
+];
+
+// C ref: mkobj.c rnd_treefruit_at()
+/* called when a tree is kicked; never returns Null */
+export function rnd_treefruit_at(x, y) {
+    return mksobj_at(ROLL_FROM(treefruits), x, y, true, false);
 }
 
 // C ref: mkobj.c container_weight()

@@ -18,6 +18,7 @@ import { BOULDER } from './objects.js';
 import { newsym } from './display.js';
 import { m_at } from './makemon.js';
 import { visible_region_at } from './region.js';
+import { Is_rogue_level, ROOMOFFSET } from './const.js';
 
 export const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
@@ -769,6 +770,69 @@ export async function do_clear_area_async(scol, srow, range, func, arg) {
 }
 
 // C ref: vision_recalc(control)
+// C ref: vision.c rogue_vision()
+/*
+ * Set the "could see" and in sight bits so vision acts just like the old
+ * rogue game:
+ *
+ *      + If in a room, the hero can see to the room boundaries.
+ *      + The hero can always see adjacent squares.
+ *
+ * We set the in_sight bit here as well to escape a bug that shows up
+ * due to the one-sided lit wall hack.
+ */
+function rogue_vision(next, rmin, rmax) {
+    const u = game.u;
+    const rnum = game.level.at(u.ux, u.uy).roomno - ROOMOFFSET; /* no SHARED... */
+    let start, stop, zx, zy;
+
+    /* If in a lit room, we are able to see to its boundaries. */
+    /* If dark, set COULD_SEE so various spells work -dlc */
+    if (rnum >= 0) {
+        const room = game.level.rooms[rnum];
+        for (zy = room.ly - 1; zy <= room.hy + 1; zy++) {
+            rmin[zy] = start = room.lx - 1;
+            rmax[zy] = stop = room.hx + 1;
+
+            for (zx = start; zx <= stop; zx++) {
+                if (room.rlit) {
+                    next[zy][zx] = COULD_SEE | IN_SIGHT;
+                    game.level.at(zx, zy).seenv = SVALL; /* see the walls */
+                } else
+                    next[zy][zx] = COULD_SEE;
+            }
+        }
+    }
+
+    const in_door = game.level.at(u.ux, u.uy).typ === DOOR;
+
+    /* Can always see adjacent. */
+    const ylo = Math.max(u.uy - 1, 0);
+    const yhi = Math.min(u.uy + 1, ROWNO - 1);
+    const xlo = Math.max(u.ux - 1, 1);
+    const xhi = Math.min(u.ux + 1, COLNO - 1);
+    for (zy = ylo; zy <= yhi; zy++) {
+        if (xlo < rmin[zy])
+            rmin[zy] = xlo;
+        if (xhi > rmax[zy])
+            rmax[zy] = xhi;
+
+        for (zx = xlo; zx <= xhi; zx++) {
+            next[zy][zx] = COULD_SEE | IN_SIGHT;
+            /*
+             * Yuck, update adjacent non-diagonal positions when in a doorway.
+             * We need to do this to catch the case when we first step into
+             * a room.  The room's walls were not seen from the outside, but
+             * now are seen (the seen bits are set just above).  However, the
+             * positions are not updated because they were already in sight.
+             * So, we have to do it here.
+             */
+            if (in_door && (zx === u.ux || zy === u.uy))
+                newsym(zx, zy);
+        }
+    }
+}
+
 export function vision_recalc(control = 0) {
     const u = game.u;
     if (!u || !game.level) return;
@@ -789,7 +853,9 @@ export function vision_recalc(control = 0) {
     const bp = u.uprops?.[BLINDED];
     const Blind = !!(bp && (bp.intrinsic || bp.extrinsic) && !bp.blocked);
     if (control !== 2 && !u.uswallow) { /* you see nothing if swallowed */
-        if (!Blind && u.utrap && u.utraptype === TT_PIT) {
+        if (!Blind && Is_rogue_level(u.uz)) {
+            rogue_vision(next, next_rmin, next_rmax);
+        } else if (!Blind && u.utrap && u.utraptype === TT_PIT) {
             /* if in a pit, just update for immediate locations */
             for (let row = u.uy - 1; row <= u.uy + 1; row++) {
                 if (row < 0)

@@ -893,13 +893,14 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
         // Within window: always clip map to WIN_COL-1 (C erases window region).
         let { str: mapStr, endCol: mapEnd } = render_map_row_clipped(gameY, CLIP_X);
         /* topl.c topl_putsym wrapped a long getlin prompt onto row 1 over the
-         * map; dismissing it (clear_nhwindow, cl_end per spilled row) leaves the
-         * row blank, and a window opened at offx > 0 does not repaint the map
-         * left of it (wintty.c process_text_window). */
-        if (screenRow === 1 && (prompt_spilled_onto_row1()
-            /* wintty.c:1048-1056 docorner(1, cury + 1, 0) already erased the wrapped
-             * prompt's rows and repaints no map there: a physically blank row 1 stays blank. */
-            || (game._row1ErasedFrame != null && game._row1ErasedFrame === game._screen_output))) {
+         * map; a window opened at offx > 0 does not repaint the map left of it
+         * (wintty.c process_text_window).  Only a prompt still STANDING on the
+         * physical frame blanks the row: the getlin teardown's own
+         * clear_nhwindow(WIN_MESSAGE) ran docorner(1, cury + 1, 0), whose
+         * row_refresh (display.c:2147) already repainted map row 0 there
+         * (wintty.c:1048-1056; df-x1dfa16e4b9 step 85 — the map shows through
+         * the data.base window's left margin). */
+        if (screenRow === 1 && prompt_spilled_onto_row1()) {
             mapStr = '';
             mapEnd = 0;
         }

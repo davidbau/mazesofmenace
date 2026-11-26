@@ -103,7 +103,7 @@ import { MENU_FULL, MENU_TRADITIONAL, MENU_COMBINATION, UNPAID_TYPES,
          USE_INVLET, INVORDER_SORT } from './const.js';
 import { GETOBJ_PROMPT, GETOBJ_ALLOWCNT, ECMD_FAIL, ECMD_TIME, W_ARMOR,
          W_ACCESSORY, W_SADDLE, IS_SINK, LOST_DROPPED } from './const.js';
-import { welded, setuwep, setuqwep, setuswapwep } from './wield.js';
+import { welded, setuwep, setuqwep, setuswapwep, weldmsg } from './wield.js';
 import { Norep } from './display.js';
 import { makeplural } from './objnam.js';
 import { HAND } from './const.js';
@@ -183,6 +183,7 @@ import { Luck } from './const.js';
 import { is_plural } from './wield.js';
 import { obj_resists } from './dogmove.js';
 import { breakobj } from './dothrow.js';
+import { gulp_blnd_check } from './mhitu.js';
 
 /* C ref: cmd.c DIR_DOWN, DIR_UP (after the 8 compass directions) */
 const DIR_DOWN = 8, DIR_UP = 9;
@@ -1556,8 +1557,10 @@ async function drop(obj) {
     if (obj.otyp === O.CORPSE)
         throw new Error('drop(): better_not_try_to_drop_that() not ported yet');
     if (obj === game.uwep) {
-        if (welded(game.uwep))
-            throw new Error('drop(): weldmsg() not ported yet');
+        if (welded(game.uwep)) {
+            await weldmsg(obj);
+            return ECMD_FAIL;
+        }
         setuwep(null);
     }
     if (obj === game.uquiver) {
@@ -2012,7 +2015,7 @@ async function wipeoff() {
     if (!uprop(BLINDED).intrinsic) { /* !HBlinded */
         await pline("You've got the glop off.");
         u.ucreamed = 0;
-        if (!gulp_blnd_check()) {
+        if (!(await gulp_blnd_check())) {
             set_itimeout(BLINDED, 1);
             await make_blinded(0, true);
         }
@@ -2022,15 +2025,6 @@ async function wipeoff() {
         return 0;
     }
     return 1; /* still busy */
-}
-
-// C ref: mhitu.c gulp_blnd_check() -- an engulfer with a blinding
-// engulf attack re-blinds the hero
-function gulp_blnd_check() {
-    /* !Blinded && u.uswallow && attacktype_fordmg(AT_ENGL, AD_BLND) ... */
-    if (!uprop(BLINDED).intrinsic && game.u.uswallow)
-        throw new Error('gulp_blnd_check(): engulfed by a blinder (gulpmu()) not ported yet');
-    return false;
 }
 
 // C ref: do.c dowipe() -- the #wipe command - wipe off your face

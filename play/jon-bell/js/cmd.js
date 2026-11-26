@@ -3736,6 +3736,15 @@ export async function y_n_default(query, def) {
         const _answered = (a) => {
             putmsghistory(`${prompt} ${a}`);
             g._toplEmptyAfterSuppress = false;
+            /* The bare prompt still riding _pending_message (re-published by the
+             * stale-topline handoff) is already filed as prompt + answer; mark it
+             * so the next nhgetch commit (js/input.js:142) skips re-filing it —
+             * same shape as potion.js, spell.js, end.js and the paranoid twin
+             * (js/cmd.js:24669).  Without this, the commit pushed the bare
+             * question ABOVE the answered line and a ^P walk recalled the bare
+             * prompt where C walks "Analyze throne? [yn] (n) n"
+             * (df-x2b97b426a6 step 19). */
+            g._topl_prompt_filed = prompt;
             return a;
         };
         /* C topl.c:432-453 ctrl-P: a window mode shows the history and
@@ -16146,8 +16155,6 @@ export async function dbase_display_window(srcLines, statusClipCol) {
         .concat([offx ? '--More--' : ' --More--']);
     const uac = (g.u && g.u.uac) ?? 0;
     g._pending_message = '';
-    const spilled = prompt_spilled_onto_row1()
-        || (g._row1ErasedFrame != null && g._row1ErasedFrame === g._screen_output);
     /* C ref: process_text_window's final tty_curs(window, 1, n) + dmore() */
     while (true) {
         if (noOverlay) {
@@ -16189,13 +16196,11 @@ export async function dbase_display_window(srcLines, statusClipCol) {
         g.disp.botlx = 1;
         await bot();
     }
-    /* A getlin prompt hard-wrapped onto row 1 was erased by clear_nhwindow;
-     * docorner() repaints only offx.., so map y=0 left of the window stays blank. */
-    if (spilled && g.level)
-        for (let x = 1; x < winCol - 1; x++) {
-            const loc = g.level.at(x, 0);
-            if (loc) loc.disp_capture_cell = { ch: ' ', color: NO_COLOR, dec: false, attr: 0 };
-        }
+    /* A getlin prompt hard-wrapped onto row 1 was erased — and the map under it
+     * repainted — by clear_nhwindow(WIN_MESSAGE)'s docorner(1, cury + 1, 0)
+     * (wintty.c:1048-1056, display.c:2147) BEFORE the window opened; this
+     * dismissal docorner(offx, ...) repaints from offx only, so map y=0 left of
+     * the window keeps that restored map row (df-x1dfa16e4b9 step 85). */
 }
 
 

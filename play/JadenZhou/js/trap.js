@@ -122,6 +122,9 @@ import { AD_ACID } from './monsters.js';
 import { COST_BURN, COST_RUST, COST_ROT, COST_CORRODE,
          COST_CRACK } from './const.js';
 import { float_vs_flight } from './polyself.js';
+import { touch_petrifies } from './mondata.js';
+import { obj_pmname, an } from './objnam.js';
+import { uwepgone, uswapwepgone } from './wield.js';
 import { s_suffix } from './hacklib.js';
 import { m_at } from './makemon.js';
 import { ROLL as ROLL_L, LAUNCH_KNOWN as LAUNCH_KNOWN_L,
@@ -251,6 +254,8 @@ import { M1_NOHANDS as M1_NOHANDS_TR, mons as mons_tr, PM_CAVE_SPIDER as PM_CAVE
          PM_GIANT_SPIDER as PM_GIANT_SPIDER_TR } from './monsters.js';
 import { is_ice as is_ice_bg } from './dig.js';
 import { strcmpi as strcmpi_bg } from './hacklib.js';
+import { copynchars as copynchars_tp } from './hacklib.js';
+import { rank_of as rank_of_tp } from './botl.js';
 import { PLNMSG_BACK_ON_GROUND as PLNMSG_BACK_ON_GROUND_BG } from './const.js';
 import { SWIMMING as SWIMMING_DR, MAGICAL_BREATHING as MAGICAL_BREATHING_DR,
          TELEPORT as TELEPORT_DR, TELEPORT_CONTROL as TELEPORT_CONTROL_DR,
@@ -339,6 +344,19 @@ import { mon_adjust_speed } from './worn.js';
 import { XKILL_NOMSG, CXN_PFX_THE } from './const.js';
 import { corpse_xname } from './objnam.js';
 import { mwepgone } from './weapon.js';
+import { poly_obj } from './zap.js';
+import { update_mon_extrinsics } from './worn.js';
+import { mpickobj } from './steal.js';
+import { IRON_SHOES, KICKING_BOOTS } from './objects.js';
+import { level_difficulty } from './dungeon.js';
+import { The } from './objnam.js';
+import { make_stunned } from './potion.js';
+import { HStun } from './youprop.js';
+import { NO_PART } from './const.js';
+import { STONING } from './const.js';
+import { Stone_resistance } from './youprop.js';
+import { PM_STONE_GOLEM } from './monsters.js';
+import { polymon } from './polyself.js';
 export { is_hole, is_pit };
 
 
@@ -1061,10 +1079,62 @@ export function into_vs_onto(traptype) {
     return false;
 }
 
+/* C ref: trap.c trapname() 'static const char *const halu_trapnames[]' */
+const halu_trapnames = [
+    /* riffs on actual nethack traps */
+    "bottomless pit", "polymorphism trap", "devil teleporter",
+    "falling boulder trap", "anti-anti-magic field", "weeping gas trap",
+    "queasy board", "electrified web", "owlbear trap", "sand mine",
+    "vacillating triangle",
+    /* some traps found in nethack variants */
+    "death trap", "disintegration trap", "ice trap", "monochrome trap",
+    /* plausible real-life traps */
+    "axeblade trap", "pool of boiling oil", "pool of quicksand",
+    "field of caltrops", "buzzsaw trap", "spiked floor", "revolving wall",
+    "uneven floor", "finger trap", "jack-in-a-box", "yellow snow",
+    "booby trap", "rat trap", "poisoned nail", "snare", "whirlpool",
+    "trip wire", "roach motel (tm)",
+    /* sci-fi */
+    "negative space", "tensor field", "singularity", "imperial fleet",
+    "black hole", "thermal detonator", "event horizon",
+    "entoptic phenomenon",
+    /* miscellaneous suggestions */
+    "sweet-smelling gas vent", "phone booth", "exploding runes",
+    "never-ending elevator", "slime pit", "warp zone", "illusory floor",
+    "pile of poo", "honey trap", "tourist trap",
+    "banana peel", "garden rake", "whoopie cushion", "box and stick trap",
+    "fly trap", "legal trap", "pit of snakes", "pollywog trap",
+    "slippery slope", "thirst trap", "suntrap",
+];
+
 // C ref: trap.c trapname()
 export function trapname(ttyp, override) /* if True, ignore Hallucination */ {
-    if (Hallucination() && !override)
-        throw new Error('trapname(): hallucinatory trap names not ported yet');
+    if (Hallucination() && !override) {
+        const total_names = TRAPNUM + halu_trapnames.length;
+        let nameidx = rn2_on_display_rng_l(total_names + 1);
+
+        if (nameidx === total_names) {
+            const u = game.u;
+            const fem = Upolyd() ? u.mfemale : game.flags.female;
+            const urole = game.urole;
+            /* static char roletrap[33]; [17 + 5 + 1] should suffice */
+            let roletrap;
+
+            /* inspired by "tourist trap" */
+            roletrap = copynchars_tp(
+                rn2(3) ? ((fem && urole.name.f) ? urole.name.f
+                                                : urole.name.m)
+                       : rank_of_tp(u.ulevel, urole.mnum /* Role_switch */, fem),
+                33 - 6); /* (sizeof roletrap - sizeof " trap") */
+            roletrap += " trap";
+            return roletrap.toLowerCase(); /* lcase() */
+        } else if (nameidx >= TRAPNUM) {
+            nameidx -= TRAPNUM;
+            return halu_trapnames[nameidx];
+        } /* else use an actual trap type */
+        if (nameidx !== NO_TRAP)
+            ttyp = nameidx;
+    }
     return trap_explanations[ttyp - 1];
 }
 
@@ -1309,6 +1379,27 @@ export function feeltrap(trap) {
     /* map_trap(trap, 1): newsym() below redisplays the remembered trap */
     /* in case it's beneath something, redisplay the something */
     newsym(trap.tx, trap.ty);
+}
+
+// C ref: trap.c trap_ice_effects()
+/* used for ice melting (and freezing) */
+export function trap_ice_effects(x, y, ice_is_melting) {
+    const ttmp = t_at(x, y);
+
+    if (ttmp && ice_is_melting) {
+        let mtmp;
+
+        if (((mtmp = m_at(x, y)) != null) && mtmp.mtrapped)
+            mtmp.mtrapped = 0;
+        if (ttmp.ttyp === LANDMINE || ttmp.ttyp === BEAR_TRAP) {
+            /* landmine or bear trap set on top of the ice falls
+               into the water */
+            throw new Error('trap_ice_effects(): cnv_trap_obj() not ported yet');
+        } else {
+            if (!undestroyable_trap(ttmp.ttyp))
+                deltrap(ttmp);
+        }
+    }
 }
 
 // C ref: trap.c deltrap()
@@ -2660,6 +2751,20 @@ async function dofiretrap(
         await melt_ice_tr(u.ux, u.uy, null);
 }
 
+// C ref: trap.c instapetrify()
+/* Combine cockatrice checks into single functions to avoid repeating code. */
+export async function instapetrify(str) {
+    if (Stone_resistance())
+        return;
+    if (poly_when_stoned(game.youmonst.data) && await polymon(PM_STONE_GOLEM))
+        return;
+    await urgent_pline("You turn to stone...");
+    killer().format = KILLED_BY;
+    if (str !== killer().name)
+        killer().name = str ? str : "";
+    await done(STONING);
+}
+
 // C ref: trap.c minstapetrify()
 export async function minstapetrify(mon, byplayer) {
     if (resists_ston(mon))
@@ -2687,21 +2792,33 @@ export async function minstapetrify(mon, byplayer) {
 // C ref: trap.c selftouch()
 export async function selftouch(arg) {
     const g = game;
-    const Stone_resistance = !!(uprop(STONE_RES).intrinsic
-                                || uprop(STONE_RES).extrinsic);
-    void arg;
+    let kbuf;
+    let corpse_pmname;
+
     if (g.uwep && g.uwep.otyp === CORPSE
-        && (g.uwep.corpsenm === PM_COCKATRICE
-            || g.uwep.corpsenm === PM_CHICKATRICE) /* touch_petrifies() */
-        && !Stone_resistance)
-        throw new Error('selftouch(): instapetrify() not ported yet');
+        && touch_petrifies(mons[g.uwep.corpsenm])
+        && !Stone_resistance()) {
+        corpse_pmname = obj_pmname(g.uwep);
+        await pline(`${arg} touch the ${corpse_pmname} corpse.`);
+        kbuf = `${an(corpse_pmname)} corpse`;
+        await instapetrify(kbuf);
+        /* life-saved; unwield the corpse if we can't handle it */
+        if (!g.uarmg && !Stone_resistance())
+            uwepgone();
+    }
     /* Or your secondary weapon, if wielded [hypothetical; we don't
        allow two-weapon combat when either weapon is a corpse] */
     if (g.u.twoweap && g.uswapwep && g.uswapwep.otyp === CORPSE
-        && (g.uswapwep.corpsenm === PM_COCKATRICE
-            || g.uswapwep.corpsenm === PM_CHICKATRICE)
-        && !Stone_resistance)
-        throw new Error('selftouch(): instapetrify() not ported yet');
+        && touch_petrifies(mons[g.uswapwep.corpsenm])
+        && !Stone_resistance()) {
+        corpse_pmname = obj_pmname(g.uswapwep);
+        await pline(`${arg} touch the ${corpse_pmname} corpse.`);
+        kbuf = `${an(corpse_pmname)} corpse`;
+        await instapetrify(kbuf);
+        /* life-saved; unwield the corpse */
+        if (!g.uarmg && !Stone_resistance())
+            uswapwepgone();
+    }
 }
 
 // C ref: trap.c mselftouch()
@@ -4389,9 +4506,21 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
         const in_sight = canseemon(mtmp) || (mtmp === u.usteed);
 
         if (wearing_iron_shoes(mtmp)) {
-            /* remove and readd the shoes to forcibly unwear them;
-               poly_obj() of worn boots */
-            throw new Error('trapeffect_poly_trap(): monster iron shoes warping not ported yet');
+            /* remove and readd the shoes to forcibly unwear them */
+            let shoes = which_armor(mtmp, W_ARMF);
+            extract_from_minvent(mtmp, shoes, true, true);
+            if (mpickobj(mtmp, shoes)) {
+                impossible("re-equipping iron shoes destroyed them?");
+                return Trap_Effect_Finished;
+            }
+            shoes = await poly_obj(
+                shoes, shoes.otyp === IRON_SHOES ? KICKING_BOOTS : IRON_SHOES);
+            /* now equip them again */
+            if (shoes) {
+                mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_ARMF;
+                shoes.owornmask = W_ARMF;
+                await update_mon_extrinsics(mtmp, shoes, true, true);
+            }
         } else if (resists_magm(mtmp)) {
             await shieldeff_mon_tp(mtmp);
         } else if (!resist(mtmp, WAND_CLASS_TP, 0, NOTELL)) {
@@ -5070,6 +5199,22 @@ export async function chest_trap(obj, bodypart, disarm) {
 
     obj.tknown = 1; /* hero knows chest is no longer trapped */
     return false;
+}
+
+// C ref: trap.c b_trapped()
+/* used for doors (also tins).  can be used for anything else that opens. */
+export async function b_trapped(item, bodypart) {
+    const lvl = level_difficulty(),
+        dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
+
+    /* Soundeffect(se_kaboom, 80) */
+    await pline(`KABOOM!!  ${The(item)} was booby-trapped!`);
+    await wake_nearby(false);
+    await losehp(Maybe_Half_Phys(dmg), "explosion", KILLED_BY_AN);
+    await exercise(A_STR, false);
+    if (bodypart !== NO_PART)
+        await exercise(A_CON, false);
+    await make_stunned((HStun() & TIMEOUT) + dmg, true);
 }
 
 // C ref: trap.c dountrap() -- the #untrap command

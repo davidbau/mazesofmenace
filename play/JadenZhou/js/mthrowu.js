@@ -75,14 +75,14 @@ import { stop_occupation } from './allmain.js';
 import { nomul, calc_capacity } from './hack.js';
 import { make_blinded, potionhit, make_stoned, hliquid } from './potion.js';
 import { monstseesu, monstunseesu, shade_miss, passive_obj } from './uhitm.js';
-import { mswings_verb, mhim } from './mhitu.js';
+import { mswings_verb, mhim, mhis } from './mhitu.js';
 import { hit, miss, exclam, dobuzz } from './zap.js';
 import { hold_another_object } from './wizcmds.js';
 import { extract_from_minvent, extract_from_minvent_g } from './steal.js';
 import { body_part } from './insight.js';
 import { mbodypart } from './shk.js';
 import { m_seenres } from './muse.js';
-import { spec_abon } from './artifact.js';
+import { spec_abon, artifact_hit } from './artifact.js';
 import {
     Sleep_resistance, Acid_resistance, Stone_resistance, Stunned, Confusion, BlindedTimeout,
     Blind, Stoned, Hallucination, Deaf, Fumbling, Underwater, Hate_silver
@@ -93,6 +93,9 @@ import { hero_breaks, breaks } from './dothrow.js';
 import { dissolve_bars } from './monmove.js';
 import { acurrstr } from './attrib.js';
 import { WT_IRON_BALL_INCR } from './const.js';
+import { BACKTRACK } from './const.js';
+import { snuff_candle } from './apply.js';
+import { obj_sheds_light } from './light.js';
 
 /* C ref: youprop.h -- (H* || E*) && !B* */
 function verbose() { return game.flags.verbose ?? true; }
@@ -947,7 +950,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
     if (otmp && made_it_back) {
         /* it made it back to thrower's location */
         if (tethered_weapon) {
-            throw new Error('return_from_mtoss(): tethered weapon backtrack not ported yet');
+            await tmp_at(DISP_END, BACKTRACK);
         } else {
             const dx = sgn(x - magr.mx),
                 dy = sgn(y - magr.my);
@@ -982,8 +985,30 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
             if (cansee(x, y))
                 newsym(x, y);
         } else {
+            const mlevitating = false; /* msg future-proofing only */
+
             dmg = rn2(2);
-            throw new Error('return_from_mtoss(): missile landing at/hitting the thrower not ported yet');
+            if (!dmg) {
+                if (canseemon(magr)) {
+                    await pline(`${Tobjnam(otmp, "return")} back to ${
+                        mon_nam(magr)}, landing ${
+                        mlevitating ? "beneath" : "at"} ${mhis(magr)} ${
+                        makeplural(mbodypart(magr, FOOT))}.`);
+                } else if (!Deaf()) {
+                    await You_hear(`Something land near ${mon_nam(magr)}.`);
+                }
+            } else {
+                dmg += rnd(3);
+                if (canseemon(magr)) {
+                    await pline(`${Tobjnam(otmp, "fly")} back toward ${
+                        mon_nam(magr)}, hitting ${mhis(magr)} ${
+                        body_part(ARM)}!`);
+                } else if (!Deaf()) {
+                    await You_hear(`something hit ${mon_nam(magr)} with a thud!`);
+                }
+                hits_thrower = true;
+            }
+            notcaught = true;
         }
     } else {
         /* it didn't make it back to thrower's location */
@@ -993,11 +1018,18 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
         notcaught = true;
     }
     if (otmp) {
-        if (hits_thrower)
-            throw new Error('return_from_mtoss(): hitting the thrower not ported yet');
+        if (hits_thrower) {
+            if (otmp.oartifact) {
+                const dmgp = { val: dmg };
+                /* (void) */ await artifact_hit(null, magr, otmp, dmgp, 0);
+                dmg = dmgp.val;
+            }
+            magr.mhp -= dmg;
+            if (DEADMONSTER(magr))
+                await monkilled(magr, canspotmon(magr) ? "" : null, M.AD_PHYS);
+        }
         if (notcaught) {
-            if (otmp.lamplit)
-                throw new Error('return_from_mtoss(): snuff_candle() not ported yet');
+            /* (void) */ await snuff_candle(otmp);
             if (!await ship_object(otmp, x, y, false)) {
                 if (await flooreffects(otmp, x, y, "drop")) {
                     if (cansee(x, y))
@@ -1014,10 +1046,10 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                     await pline((weight(otmp) > 9) ? "Splash!" : "Plop!");
                 }
             }
-            /* obj_sheds_light(otmp): vision_full_recalc */
+            if (obj_sheds_light(otmp))
+                game.vision_full_recalc = 1;
         }
     }
-    void dmg;
     if (cansee(x, y))
         newsym(x, y);
 }

@@ -4,7 +4,7 @@
 // move_gold(), wallify_vault(), gd_mv_monaway(), gd_pick_corridor_gold(),
 // gd_move_cleanup(), gd_letknow(), gd_move().
 //
-// Not ported yet: grddead() (mongone()/mondead() of a guard), uleftvault(),
+// Not ported yet: grddead() (mongone()/mondead() of a guard),
 // paygd() (end.js), vault_summon_gd(), vault_gd_watching().
 
 import { an } from './objnam.js';
@@ -278,6 +278,33 @@ export function vault_occupied(array) {
             return r;
     }
     return 0;
+}
+
+// C ref: vault.c uleftvault()
+/* hero has teleported out of vault while a guard is active */
+export async function uleftvault(grd) {
+    const u = game.u;
+
+    /* only called if caller has checked vault_occupied() and findgd() */
+    if (!grd || !grd.isgd || DEADMONSTER(grd)) {
+        impossible("escaping vault without guard?");
+        return;
+    }
+    /* if carrying gold and arriving anywhere other than next to the guard,
+       set the guard loose */
+    if ((money_cnt(game.invent) || hidden_gold(true))
+        && um_dist(grd.mx, grd.my, 1)) {
+        if (grd.mpeaceful) {
+            if (canspotmon(grd)) /* see or sense via telepathy */
+                await pline(`${Monnam(grd)} becomes irate.`);
+            grd.mpeaceful = 0; /* bypass setmangry() */
+        }
+        /* if arriving outside guard's temporary corridor, give the
+           guard an extra move to deliver message(s) and to teleport
+           out of and remove that corridor */
+        if (!in_fcorridor(grd, u.ux, u.uy))
+            /* (void) */ await gd_move(grd);
+    }
 }
 
 // C ref: vault.c find_guard_dest()

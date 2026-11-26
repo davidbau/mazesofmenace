@@ -122,6 +122,7 @@ import { stairway_at as stairway_at_po } from './display.js';
 import { doup as doup_po } from './do.js';
 import { has_ceiling as has_ceiling_po } from './insight.js';
 import { ceiling as ceiling_po } from './dungeon.js';
+import { In_W_tower } from './dungeon.js';
 import { hard_helmet as hard_helmet_po } from './do_wear.js';
 import { spoteffects as spoteffects_po } from './hack.js';
 
@@ -431,7 +432,7 @@ export async function make_blinded(xtime, talk) {
     set_itimeout(BLINDED, xtime);
 
     if (u_could_see !== can_see_now) { /* one or the other but not both */
-        toggle_blindness();
+        await toggle_blindness();
     }
 }
 
@@ -2185,10 +2186,12 @@ export function rndexp(gaining) { /* gaining XP via potion vs setting XP for pol
 
 // C ref: wizard.c aggravate()
 export function aggravate() {
-    /* In_W_tower(): the Wizard's tower isn't reached by the JS port; every
-       monster is on the same side of its walls as the hero */
+    const in_w_tower = In_W_tower(game.u.ux, game.u.uy, game.u.uz);
+
     for (const mtmp of (game.level.monsters || []).slice()) {
         if (DEADMONSTER(mtmp) || mtmp.dead)
+            continue;
+        if (in_w_tower !== In_W_tower(mtmp.mx, mtmp.my, game.u.uz))
             continue;
         mtmp.mstrategy &= ~(STRAT_WAITFORU | STRAT_APPEARMSG);
         mtmp.msleeping = 0;

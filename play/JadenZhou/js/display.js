@@ -33,6 +33,8 @@ import { SYM_OFF_P, SYM_OFF_O, SYM_OFF_M, SYM_OFF_X } from './symbols.js';
 import { visible_region_at, show_region } from './region.js';
 import { In_hell } from './dungeon.js';
 import { rn2_on_display_rng } from './rng.js';
+import { sgn } from './hacklib.js';
+import { BACKTRACK } from './const.js';
 import {
     objects, BOULDER, STATUE, CORPSE, POTION_CLASS, FIRST_REAL_GEM,
     LAST_GLASS_GEM, FIRST_SPELL, LAST_SPELL, FIRST_OBJECT, NUM_OBJECTS,
@@ -1057,7 +1059,7 @@ export function update_lastseentyp(x, y) {
 }
 
 /* svl.lastseentyp[][], made (zeroed) on first use for the level */
-function lastseentyp_array() {
+export function lastseentyp_array() {
     const L = game.level;
     if (!L.lastseentyp) {
         L.lastseentyp = [];
@@ -2008,8 +2010,15 @@ export function explosion_to_glyph(expltype, idx) {
              decgfx: dec, kind: 'explode', cmapidx: 96 /* S_expl_tl */ + idx };
 }
 
-// C ref: display.c tmp_at() -- DISP_BEAM, DISP_ALL, DISP_FLASH and
-// DISP_ALWAYS (DISP_TETHER isn't ported yet).  A beam's glyphs are drawn
+// C ref: display.c tether_glyph()
+function tether_glyph(x, y) {
+    const tdx = game.u.ux - x;
+    const tdy = game.u.uy - y;
+    return zapdir_to_glyph(sgn(tdx), sgn(tdy), 2);
+}
+
+// C ref: display.c tmp_at() -- DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH
+// and DISP_ALWAYS.  A beam's glyphs are drawn
 // (a --More-- during a zap shows them) and the spots the beam covered are
 // remembered and newsym()'d by DISP_END, which also redraws terrain the
 // beam changed (e.g. a wall dug by a zap).  A flashed glyph
@@ -2020,13 +2029,12 @@ export async function tmp_at(x, y) {
     switch (x) {
     case DISP_BEAM:
     case DISP_ALL:
+    case DISP_TETHER:
     case DISP_FLASH:
     case DISP_ALWAYS:
         tmp_at_glyph = { prev: tmp_at_glyph, saved: [], style: x, glyph: y };
         await flush_screen(0); /* flush buffered glyphs */
         return;
-    case DISP_TETHER:
-        throw new Error('tmp_at(): tether style not ported yet');
     case DISP_FREEMEM:
         tmp_at_glyph = null;
         return;
@@ -2044,6 +2052,20 @@ export async function tmp_at(x, y) {
     case DISP_END:
         if (tglyph.style === DISP_BEAM || tglyph.style === DISP_ALL) {
             /* Erase (reset) from source to end */
+            for (const p of tglyph.saved)
+                newsym(p.x, p.y);
+        } else if (tglyph.style === DISP_TETHER) {
+            if (y === BACKTRACK && tglyph.saved.length > 1) {
+                /* backtrack */
+                for (let i = tglyph.saved.length - 1; i > 0; i--) {
+                    newsym(tglyph.saved[i].x, tglyph.saved[i].y);
+                    show_glyph(tglyph.saved[i - 1].x, tglyph.saved[i - 1].y,
+                               tglyph.glyph);
+                    await flush_screen(0); /* make sure it shows up */
+                    /* nh_delay_output(): display timing only */
+                }
+                tglyph.saved.length = 1; /* tglyph->sidx = 1 */
+            }
             for (const p of tglyph.saved)
                 newsym(p.x, p.y);
         } else { /* DISP_FLASH or DISP_ALWAYS */
@@ -2066,6 +2088,19 @@ export async function tmp_at(x, y) {
                isn't ported yet pass 0 and nothing is drawn */
             if (tglyph.glyph)
                 show_glyph(x, y, tglyph.glyph); /* show it */
+            await flush_screen(0); /* make sure it shows up */
+        } else if (tglyph.style === DISP_TETHER) {
+            if (tglyph.saved.length >= TMP_AT_MAX_GLYPHS)
+                break; /* too many locations */
+            if (tglyph.saved.length) {
+                const px = tglyph.saved[tglyph.saved.length - 1].x;
+                const py = tglyph.saved[tglyph.saved.length - 1].y;
+
+                show_glyph(px, py, tether_glyph(px, py));
+            }
+            /* save pos for later use or erasure */
+            tglyph.saved.push({ x, y });
+            show_glyph(x, y, tglyph.glyph); /* show it */
             await flush_screen(0); /* make sure it shows up */
         } else { /* DISP_FLASH/ALWAYS */
             if (tglyph.saved.length) { /* not first call, so reset previous pos */

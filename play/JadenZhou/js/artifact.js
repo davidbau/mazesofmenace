@@ -61,6 +61,18 @@ import { KILLED_BY, A_CON, ECMD_OK, ECMD_TIME, nothing_happens } from './const.j
 import { getrumor } from './rumors.js';
 import { bcsign, obj_extract_self } from './mkobj.js';
 import { pline } from './display.js';
+import { pline_The as pline_The_art, You_feel as You_feel_art } from './display.js';
+import { nonliving as nonliving_art, monhp_per_lvl } from './makemon.js';
+import { distant_name as distant_name_art, The as The_art } from './objnam.js';
+import { hcolor as hcolor_art } from './do_name.js';
+import { healup as healup_art } from './potion.js';
+import { healmon as healmon_art } from './mon.js';
+import { losexp as losexp_art } from './exper.js';
+
+/* C ref: artifact.c FATAL_DAMAGE_MODIFIER */
+const FATAL_DAMAGE_MODIFIER = 200;
+/* C ref: color.h NH_BLACK */
+const NH_BLACK_ART = "black";
 import { cansee as cansee_art } from './vision.js';
 import { mon_nam as mon_nam_art } from './do_name.js';
 import { destroy_items as destroy_items_art } from './zap.js';
@@ -73,6 +85,7 @@ import { defended, resists_fire, resists_cold, resists_elec, resists_poison,
          resists_ston } from './mondata.js';
 import { STONE_RES } from './const.js';
 import { ART_GRIMTOOTH } from './artilist.js';
+import { ART_STORMBRINGER } from './artilist.js';
 import { Tobjnam } from './objnam.js';
 import { remove_worn_item } from './steal.js';
 import { freeinv, obfree } from './invent.js';
@@ -1367,8 +1380,77 @@ export async function artifact_hit(
                 && (dieroll === 1 || mdef.data === M.mons[M.PM_JABBERWOCK])))
             throw new Error('artifact_hit(): beheading/bisecting not ported yet');
     }
-    if (spec_ability(otmp, SPFX_DRLI))
-        throw new Error('artifact_hit(): level-draining artifact hit not ported yet');
+    if (spec_ability(otmp, SPFX_DRLI)) {
+        /* some non-living creatures (golems, vortices) are vulnerable to
+           life drain effects so can get "<Arti> draws the <life>" feedback */
+        const life = nonliving_art(mdef.data) ? "animating force" : "life";
+
+        if (!youdefend) {
+            const m_lev = mdef.m_lev, /* will be 0 for 1d4 mon */
+                mhpmax = mdef.mhpmax;
+            let drain = monhp_per_lvl(mdef); /* usually 1d8 */
+                /* note: DRLI attack uses 2d6, attacker doesn't get healed */
+
+            /* stop draining HP if it drops too low (still drains level;
+               also caller still inflicts regular weapon damage) */
+            if (mhpmax - drain <= m_lev)
+                drain = (mhpmax > m_lev) ? (mhpmax - (m_lev + 1)) : 0;
+
+            if (vis) {
+                /* call distant_name() for possible side-effects even if
+                   the result won't be printed */
+                const otmpname = distant_name_art(otmp, xname);
+
+                if (is_art(otmp, ART_STORMBRINGER))
+                    await pline_The_art(`${hcolor_art(NH_BLACK_ART)} blade draws the ${
+                        life} from ${mon_nam_art(mdef)}!`);
+                else
+                    await pline(`${The_art(otmpname)} draws the ${life} from ${
+                        mon_nam_art(mdef)}!`);
+            }
+            if (mdef.m_lev === 0) {
+                /* losing a level when at 0 is fatal */
+                dmgp.val = 2 * mdef.mhp + FATAL_DAMAGE_MODIFIER;
+            } else {
+                dmgp.val += drain;
+                mdef.mhpmax -= drain;
+                mdef.m_lev--;
+            }
+
+            if (drain > 0) {
+                /* drain: was target's damage, now heal attacker by half */
+                drain = Math.trunc((drain + 1) / 2); /* drain/2 rounded up */
+                if (youattack) {
+                    await healup_art(drain, 0, false, false);
+                } else {
+                    healmon_art(magr, drain, 0);
+                }
+            }
+            return vis;
+        } else { /* youdefend */
+            const oldhpmax = u.uhpmax;
+
+            if (Blind_art()) {
+                await You_feel_art(`an ${is_art(otmp, ART_STORMBRINGER)
+                                            ? "unholy blade"
+                                            : "object"} drain your ${life}!`);
+            } else {
+                /* call distant_name() for possible side-effects even if
+                   the result won't be printed */
+                const otmpname = distant_name_art(otmp, xname);
+
+                if (is_art(otmp, ART_STORMBRINGER))
+                    await pline_The_art(`${hcolor_art(NH_BLACK_ART)} blade drains your ${life}!`);
+                else
+                    await pline(`${The_art(otmpname)} drains your ${life}!`);
+            }
+            await losexp_art("life drainage");
+            if (magr && magr.mhp < magr.mhpmax) {
+                healmon_art(magr, Math.trunc((Math.abs(oldhpmax - u.uhpmax) + 1) / 2), 0);
+            }
+            return true;
+        }
+    }
     return false;
 }
 

@@ -27,6 +27,10 @@ import { artifact_light } from './artifact.js';
 import { vision_recalc } from './vision.js';
 import { flush_screen, canseemon, canspotmon, map_invisible } from './display.js';
 import { dist2 } from './hacklib.js';
+import { place_object, obj_extract_self } from './mkobj.js';
+import { impossible } from './hack.js';
+import { otense } from './objnam.js';
+import { simpleonames } from './iactions.js';
 
 /* flags */
 const LSF_SHOW = 0x1;           /* display the light source */
@@ -136,14 +140,26 @@ export async function show_transient_light(obj, x, y) {
         /* radius 0 will just light <x,y>; cameraflash.a_obj is Null */
         ls = new_light_core(x, y, 0, LS_OBJECT, { a_obj: null });
     } else {
-        /* thrown or kicked object which is emitting light: placing it
-           temporarily on the map (place_object() at gb.bhitpos, then
-           nh_delay_output() and remove_object()) */
-        throw new Error('show_transient_light(): thrown/kicked lit object not ported yet');
+        /* thrown or kicked object which is emitting light; validate its
+           light source to obtain its radius (for monster sightings) */
+        for (ls = game.light_base; ls; ls = ls.next) {
+            if (ls.type !== LS_OBJECT)
+                continue;
+            if (ls.id.a_obj === obj)
+                break;
+        }
+        if (!ls || obj.where !== 'OBJ_FREE') {
+            impossible(`transient light ${obj.lamplit ? "lit" : "unlit"} ${
+                simpleonames(obj)} ${otense(obj, "are")} not ${
+                !ls ? "a light source" : "free"}?`);
+            return;
+        }
     }
 
-    /* camera flash:  no object; directly set light source's location */
-    ls.x = x, ls.y = y;
+    if (obj) /* put lit candle or lamp temporarily on the map */
+        place_object(obj, game.bhitpos.x, game.bhitpos.y);
+    else /* camera flash:  no object; directly set light source's location */
+        ls.x = x, ls.y = y;
 
     /* full recalc; runs do_light_sources() */
     vision_recalc(0);
@@ -163,6 +179,11 @@ export async function show_transient_light(obj, x, y) {
                 mon.mtemplit = 1;
         }
         /* [what about worm tails?] */
+    }
+
+    if (obj) { /* take thrown/kicked candle or lamp off the map */
+        /* nh_delay_output(): display timing only */
+        obj_extract_self(obj); /* remove_object(obj) */
     }
 }
 

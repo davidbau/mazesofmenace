@@ -25,6 +25,10 @@ function initial_globals() {
         /* display.c swallowed() static coordxy lastx, lasty */
         swallow_lastx: 0,
         swallow_lasty: 0,
+        /* teleport.c tele_trap() static boolean in_tele_trap = FALSE */
+        in_tele_trap: false,
+        /* decl.c gc.corpsenm_digested = NON_PM (-1) */
+        corpsenm_digested: -1,
     };
 }
 

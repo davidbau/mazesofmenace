@@ -2084,8 +2084,22 @@ async function _emit_eat_pline(msg) {
         pline_flush_point();
         /* The occupation's committed line lives outside the result channel.
          * Record this flush too: done_eating has repaired Weak strength here
-         * (eat.c:549-559), before cpostfx can change attributes at :563. */
-        _pline_flush_frame_record(game._occ_committed_topl?.text?.length ?? -2, String(msg));
+         * (eat.c:549-559), before cpostfx can change attributes at :563.
+         *
+         * The KEY is the length of the topline this message's update_topl
+         * pages (topl.c:257-301) — C's ONE gt.toplines, which by now also
+         * carries this turn's movemon plines joined in front of the committed
+         * line (the eat driver parked them out of the live channels, so read
+         * them through its non-consuming peek).  Keying the bare committed
+         * line left the record at an offset no page boundary reaches and the
+         * pager fell back to an earlier pline's sentinel frame (see
+         * allmain.js _occStandingPeek). */
+        const _standing = game._occStandingPeek ? game._occStandingPeek() : '';
+        _pline_flush_frame_record(
+            (_standing != null && _standing !== '')
+                ? _standing.length
+                : (game._occ_committed_topl?.text?.length ?? -2),
+            String(msg));
         game._resultMessage = msg;
         return;
     }

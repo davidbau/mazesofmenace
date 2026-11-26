@@ -120,7 +120,7 @@ import { set_levltyp } from './mkmaze.js'; // relocate-fns
 import { next_level, prev_level, print_level_annotation, recbranch_mapseen } from './dungeon.js'; // relocate-fns
 import { G_GENOD, NON_PM, OBJ_FLOOR, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT } from './const.js'; // relocate-fns
 import { rot_corpse } from './dig.js'; // relocate-fns
-import { canseemon, tty_splice_row, msgtype_suppressed } from './display.js'; // relocate-fns
+import { canseemon, tty_splice_row, msgtype_suppressed, flush_pending_messages } from './display.js'; // relocate-fns
 import { dist2, upstart } from './hacklib.js'; // relocate-fns
 import { is_rider_pm } from './mklev.js';
 import { rider_revival_time, set_corpsenm } from './mkobj.js'; // relocate-fns
@@ -3173,6 +3173,11 @@ export async function deferred_goto() {
         if (g._dfr_pre_msg) {
             await pline(g._dfr_pre_msg);
             g._dfr_pre_msg = null;
+            /* pline -> update_topl (topl.c:257-275) pages a standing line the
+             * pre-message does not fit beside right there, before goto_level
+             * builds or loads the destination (do.c:2083-2087); this port's
+             * pline only joins, so page it now. */
+            await flush_pending_messages();
         }
         // C do.c:2085-2087 — goto_level(dest, at_stairs, falling, portal)
         await goto_level(

@@ -90,7 +90,7 @@ import { OILSKIN_CLOAK } from './objects.js';
 import { make_sick, make_blinded, make_hallucinated } from './potion.js';
 import { resists_blnd, defended } from './mondata.js';
 import { mondead, wake_nearto } from './mon.js';
-import { WATER, PASSES_WALLS, SLOW_DIGESTION, SHOCK_RES, TT_WEB, RLOC_NOMSG, IS_OBSTRUCTED, TREE, IRONBARS, MAGICAL_BREATHING, ACID_RES, FIRE_RES, M_SEEN_ACID, M_SEEN_ELEC, M_SEEN_COLD, M_SEEN_FIRE } from './const.js';
+import { WATER, PASSES_WALLS, SLOW_DIGESTION, SHOCK_RES, TT_WEB, RLOC_NOMSG, IS_OBSTRUCTED, IS_TREE, IRONBARS, MAGICAL_BREATHING, ACID_RES, FIRE_RES, M_SEEN_ACID, M_SEEN_ELEC, M_SEEN_COLD, M_SEEN_FIRE } from './const.js';
 import { closed_door, sobj_at, place_monster } from './makemon.js';
 import { BOULDER } from './objects.js';
 import { s_suffix, upstart, mdistu } from './hacklib.js';
@@ -144,7 +144,7 @@ import { mon_explodes } from './explode.js';
 import { unleash_all } from './trap.js';
 import { vtense } from './objnam.js';
 import { pline_The } from './display.js';
-import { number_leashed } from './apply.js';
+import { number_leashed, snuff_lit } from './apply.js';
 import { haseyes as haseyes_mu, resists_fire as resists_fire_mu,
          resists_elec as resists_elec_mu } from './mondata.js';
 import { pmname as pmname_mu } from './do_name.js';
@@ -1378,6 +1378,8 @@ export function engulf_target(magr, mdef) {
         return false;
 
     /* can't (move to) swallow if trapped. TODO: could do some? */
+    /* C reads mtrapped on both sides, gy.youmonst's included (never set,
+       so the hero side is always 0); u.utrap isn't consulted */
     if (mdef.mtrapped || magr.mtrapped)
         return false;
 
@@ -1387,7 +1389,7 @@ export function engulf_target(magr, mdef) {
     dy = udef ? u.uy : mdef.my;
     lev = game.level.at(dx, dy);
     if (!(udef ? Passes_walls() : passes_walls(mdef.data))
-        && (IS_OBSTRUCTED(lev.typ) || closed_door(dx, dy) || lev.typ === TREE
+        && (IS_OBSTRUCTED(lev.typ) || closed_door(dx, dy) || IS_TREE(lev.typ)
             /* not passes_bars(); engulfer isn't squeezing through */
             || (lev.typ === IRONBARS && !is_whirly(magr.data))))
         return false;
@@ -1395,7 +1397,7 @@ export function engulf_target(magr, mdef) {
     ay = uatk ? u.uy : magr.my;
     lev = game.level.at(ax, ay);
     if (!(uatk ? Passes_walls() : passes_walls(magr.data))
-        && (IS_OBSTRUCTED(lev.typ) || closed_door(ax, ay) || lev.typ === TREE
+        && (IS_OBSTRUCTED(lev.typ) || closed_door(ax, ay) || IS_TREE(lev.typ)
             || (lev.typ === IRONBARS && !is_whirly(mdef.data))))
         return false;
 
@@ -1480,6 +1482,25 @@ export async function expels(
 
 // C ref: mhitu.c gulpmu()
 /* monster swallows you, or damage if already swallowed (u.uswallow != 0) */
+// C ref: mhitu.c gulp_blnd_check()
+/* An interface for use when taking a blindfold off, for example,
+ * to see if an engulfing attack should immediately take affect, like
+ * a passive attack. TRUE if engulfing blindness occurred */
+export async function gulp_blnd_check() {
+    const u = game.u;
+    let mattk;
+
+    if (!u.uprops[BLINDED].intrinsic /* !Blinded */ && u.uswallow
+        && (mattk = attacktype_fordmg(u.ustuck.data, AT_ENGL, M.AD_BLND))
+        && can_blnd(u.ustuck, game.youmonst, mattk.aatyp, null)) {
+        ++u.uswldtim; /* compensate for gulpmu change */
+        /* (void) */ await gulpmu(u.ustuck, mattk);
+        return true;
+    }
+    return false;
+}
+
+// C ref: mhitu.c gulpmu()
 async function gulpmu(mtmp, mattk) {
     const u = game.u;
     const t = t_at(u.ux, u.uy);
@@ -1574,8 +1595,7 @@ async function gulpmu(mtmp, mattk) {
             let otmp2, nextobj;
             for (otmp2 = game.invent; otmp2; otmp2 = nextobj) {
                 nextobj = otmp2.nobj;
-                if (otmp2.lamplit) /* snuff_lit(otmp2) */
-                    throw new Error('gulpmu(): snuff_lit() not ported yet');
+                /* (void) */ await snuff_lit(otmp2);
             }
         }
     }

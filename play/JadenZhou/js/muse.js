@@ -33,6 +33,11 @@ import { resists_magm, is_animal, mindless, nohands, verysmall, throws_rocks,
 import { hit, miss, exclam, buzz, dobuzz, bhito,
          find_drawbridge, resist_async } from './zap.js';
 import { TELL } from './const.js';
+import { attacktype_fordmg } from './mondata.js';
+import { AT_BREA as AT_BREA_US, AD_FIRE as AD_FIRE_US } from './monsters.js';
+import { FIRE_TRAP as FIRE_TRAP_US } from './const.js';
+import { SCR_FIRE as SCR_FIRE_US, POT_OIL as POT_OIL_US, WAN_FIRE as WAN_FIRE_US,
+         FIRE_HORN as FIRE_HORN_US } from './objects.js';
 import { m_throw, m_carrying } from './mthrowu.js';
 import { POTION_CLASS, WAND_CLASS, WAN_OPENING, WAN_LOCKING, WAN_CANCELLATION,
          SPE_CANCELLATION, Is_mbag, SchroedingersBox, Is_dragon_scales,
@@ -355,6 +360,99 @@ export async function munstone(mon, by_you) {
         }
     }
     return false;
+}
+
+// C ref: muse.c munslime()
+/* monster is in the process of being turned into green slime; if it has
+   a means to burn the slime off, use it (muse_unslime() is not ported:
+   each place it would be called stops explicitly) */
+export async function munslime(mon, by_you) {
+    const mptr = mon.data;
+
+    void by_you;
+    /*
+     * muse_unslime() gives "mon starts turning green", "mon zaps
+     * itself with a wand of fire", and "mon's slime burns away"
+     * messages.  Monsters who don't get any chance at that just have
+     * (via our caller) newcham()'s "mon turns into slime" feedback.
+     */
+
+    if (slimeproof(mptr))
+        return false;
+    if (mon.meating || helpless(mon))
+        return false;
+    mon.mstrategy &= ~STRAT_WAITFORU;
+
+    /* if monster can breathe fire, do so upon self; a monster who deals
+       fire damage by biting, clawing, gazing, and especially exploding
+       isn't able to cure itself of green slime with its own attack
+       [possible extension: monst capable of casting high level clerical
+       spells could toss pillar of fire at self--probably too suicidal] */
+    if (!mon.mcan && !mon.mspec_used
+        && attacktype_fordmg(mptr, AT_BREA_US, AD_FIRE_US)) {
+        /* odummy = cg.zeroobj; otyp == STRANGE_OBJECT */
+        throw new Error('munslime(): muse_unslime() (fire breath) not ported yet');
+    }
+
+    /* same MUSE criteria as use_defensive() */
+    if (!is_animal(mptr) && !mindless(mptr)) {
+        let t;
+
+        for (const obj of minv(mon)) /* C: mon->minvent, newest first */
+            if (cures_sliming(mon, obj))
+                throw new Error('munslime(): muse_unslime() (item) not ported yet');
+
+        if (((t = t_at(mon.mx, mon.my)) == null || t.ttyp !== FIRE_TRAP_US)
+            && mptr.mmove && !mon.mtrapped) {
+            const xy = [[], []];
+            let x, y, ridx, nxy = 0;
+
+            for (x = mon.mx - 1; x <= mon.mx + 1; ++x)
+                for (y = mon.my - 1; y <= mon.my + 1; ++y)
+                    if (isok(x, y) && accessible(x, y)
+                        && !m_at(x, y) && (x !== game.u.ux || y !== game.u.uy)) {
+                        xy[0][nxy] = x, xy[1][nxy] = y;
+                        ++nxy;
+                    }
+            for (let idx = 0; idx < nxy; ++idx) {
+                ridx = rn1(nxy - idx, idx);
+                if (ridx !== idx) {
+                    x = xy[0][idx];
+                    xy[0][idx] = xy[0][ridx];
+                    xy[0][ridx] = x;
+                    y = xy[1][idx];
+                    xy[1][idx] = xy[1][ridx];
+                    xy[1][ridx] = y;
+                }
+                if ((t = t_at(xy[0][idx], xy[1][idx])) != null
+                    && t.ttyp === FIRE_TRAP_US)
+                    break;
+            }
+        }
+        if (t && t.ttyp === FIRE_TRAP_US)
+            throw new Error('munslime(): muse_unslime() (fire trap) not ported yet');
+
+    } /* MUSE */
+
+    return false;
+}
+
+// C ref: muse.c cures_sliming()
+/* TRUE if the monster can use 'obj' to burn away incipient slime */
+function cures_sliming(mon, obj) {
+    /* scroll of fire */
+    if (obj.otyp === SCR_FIRE_US)
+        return (haseyes(mon.data) && mon.mcansee && !nohands(mon.data));
+
+    /* potion of oil; will be set burning if not already */
+    if (obj.otyp === POT_OIL_US)
+        return !nohands(mon.data);
+
+    /* non-empty wand or horn of fire;
+       hero doesn't need hands or even limbs to zap, so mon doesn't either */
+    return ((obj.otyp === WAN_FIRE_US
+             || (obj.otyp === FIRE_HORN_US && can_blow(mon)))
+            && obj.spe > 0);
 }
 
 // C ref: muse.c mon_consume_unstone()

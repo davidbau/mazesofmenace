@@ -59,7 +59,7 @@ import { SLT_ENCUMBER, TELEDS_ALLOW_DRAG } from './const.js';
 import { CORPSE, AMULET_OF_YENDOR, BOULDER } from './objects.js';
 import { STRAT_APPEARMSG, RLOC_MSG, RLOC_NONE, NO_TRAP_FLAGS, BLINDED,
          BOLT_LIM } from './const.js';
-import { ROOMOFFSET, VAULT, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+import { VAULT, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          TT_BURIEDBALL, LEVITATION, FLYING, TELEDS_TELEPORT } from './const.js';
 import { ECMD_OK, ECMD_TIME, TELEPORT, A_STR } from './const.js';
 import { You } from './display.js';
@@ -85,12 +85,14 @@ import { done as done_lt } from './end.js';
 import { NO_KILLER_PREFIX as NO_KILLER_PREFIX_LT, DIED as DIED_LT } from './const.js';
 import { tty_display_nhwindow as tty_display_nhwindow_lt } from './wintty.js';
 import { You_feel as You_feel_lt } from './display.js';
+import { shieldeff } from './display.js';
 import { tty_yn_function as tty_yn_function_tp } from './wintty.js';
 import { On_W_tower_level as On_W_tower_level_tp } from './dungeon.js';
 import { inhishop, make_angry_shk, costly_spot, find_objowner,
          onshopbill } from './shk.js';
 import { inhistemple } from './priest.js';
 import { in_rooms as in_rooms_utm } from './hack.js';
+import { vault_occupied, findgd, uleftvault } from './vault.js';
 import { unstuck as unstuck_utm } from './mhitu.js';
 import { TEMPLE as TEMPLE_UTM, engulfing_u as engulfing_u_utm } from './const.js';
 import { hideunder } from './makemon.js';
@@ -333,9 +335,7 @@ export async function teleds(nux, nuy, teleds_flags) {
         allow_drag = (teleds_flags & TELEDS_ALLOW_DRAG) !== 0;
     const is_teleport = (teleds_flags & TELEDS_TELEPORT) !== 0;
 
-    /* vault_occupied(u.urooms) ? findgd() : 0 */
-    if (u.urooms && in_rooms_vault(u.urooms))
-        throw new Error('teleds(): vault guard not ported yet');
+    const vault_guard = vault_occupied(u.urooms) ? findgd() : null;
 
     if (u.utraptype === TT_BURIEDBALL) {
         /* unearth it */
@@ -434,7 +434,19 @@ export async function teleds(nux, nuy, teleds_flags) {
        been updated for new location instead of right after u_on_newpos() */
     if (game.level.at(u.ux, u.uy).typ !== game.level.at(u.ux0, u.uy0).typ)
         await switch_terrain();
-    /* (vault guard: stopped above) */
+    /* sequencing issue:  we want guard's alarm, if any, to occur before
+       room entry message, if any, so need to check for vault exit prior
+       to spoteffects; but spoteffects() sets up new value for u.urooms
+       and vault code depends upon that value, so we need to fake it */
+    if (vault_guard) {
+        const save_urooms = u.urooms; /* [sizeof u.urooms] */
+
+        u.urooms = in_rooms_utm(u.ux, u.uy, VAULT);
+        /* if hero has left vault, make guard notice */
+        if (!vault_occupied(u.urooms))
+            await uleftvault(vault_guard);
+        u.urooms = save_urooms; /* reset prior to spoteffects() */
+    }
     /* possible shop entry message comes after guard's shrill whistle */
     await spoteffects(true);
     /* invocation_message(): only on the vibrating square level */
@@ -795,9 +807,6 @@ export async function next_to_u() {
     return true;
 }
 
-/* C ref: teleport.c tele_trap() 'static boolean in_tele_trap' */
-let in_tele_trap = false;
-
 // C ref: teleport.c tele_trap()
 export async function tele_trap(trap) {
     const u = game.u;
@@ -805,17 +814,19 @@ export async function tele_trap(trap) {
     /* a fixed-destination teleport trap could theoretically place hero onto
      * a second teleport trap; prevent the recursive call from spoteffects()
      * from triggering the trap at the destination */
-    if (in_tele_trap)
+    /* C's static boolean in_tele_trap is per-game state, kept in
+       game.in_tele_trap (see gstate.js) */
+    if (game.in_tele_trap)
         return;
 
-    in_tele_trap = true;
+    game.in_tele_trap = true;
     try {
         const Antimagic = !!(tp_prop(ANTIMAGIC).intrinsic || tp_prop(ANTIMAGIC).extrinsic
                              || (game.u.umonnum !== game.u.umonster
                                  && resists_magm(game.youmonst)));
         if (In_endgame(u.uz) || Antimagic || noteleport_level(game.youmonst)) {
             if (Antimagic)
-                throw new Error('tele_trap(): shieldeff() not ported yet');
+                await shieldeff(u.ux, u.uy);
             await You_feel_lt("a wrenching sensation."); /* You_feel() */
         } else if (!await next_to_u()) {
             await pline(`You ${shudder_for_moment}`); /* You1() */
@@ -843,19 +854,8 @@ export async function tele_trap(trap) {
         } else
             await tele();
     } finally {
-        in_tele_trap = false;
+        game.in_tele_trap = false;
     }
-}
-
-function in_rooms_vault(urooms) {
-    /* C ref: vault.c vault_occupied() */
-    for (const r of urooms) {
-        const rno = (typeof r === 'number') ? r : r.charCodeAt(0);
-        const room = game.level.rooms?.[rno - ROOMOFFSET];
-        if (room && room.rtype === VAULT)
-            return true;
-    }
-    return false;
 }
 
 function is_pool_or_lava_at(x, y) {
@@ -881,7 +881,7 @@ export async function level_tele_trap(trap, trflags) {
     await You(`${verbbuf} a level teleport trap!`);
 
     if (Antimagic && !intentional) {
-        /* shieldeff(u.ux, u.uy): transient display only */
+        await shieldeff(u.ux, u.uy);
     }
     if ((Antimagic && !intentional) || In_endgame(u.uz)) {
         await You_feel_lt("a wrenching sensation."); /* You_feel() */

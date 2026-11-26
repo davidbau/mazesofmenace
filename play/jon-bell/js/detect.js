@@ -62,7 +62,7 @@ import { wake_nearto } from './mon.js'; // relocate-fns
 import { resists_blnd } from './mondata.js'; // relocate-fns
 import { Tobjnam as _objnam_Tobjnam, an, the } from './objnam.js';
 import { is_quest_artifact } from './questpgr.js'; // relocate-fns
-import { You, You_feel, You_see, Norep as _Norep } from './pline.js'; // relocate-fns
+import { You, You_feel, You_see, There, Norep as _Norep } from './pline.js'; // relocate-fns
 import { make_confused, make_hallucinated } from './potion.js'; // relocate-fns
 import './read.js'; // relocate-fns
 import { visible_region_at } from './region.js'; // relocate-fns
@@ -196,7 +196,7 @@ export async function do_vicinity_map(sobj) {
         const unconstrained = !!(saved.uinwater || saved.uburied || saved.uswallow);
         if (!g.level?.flags?.hero_memory || unconstrained || mdetected || odetected) {
             await flush_screen(1);
-            await pline('You sense your surroundings.');
+            await You('sense your surroundings.'); /* C detect.c:1555 You() */
             let terrain = TER_DETECT | TER_MAP | TER_TRP | TER_OBJ;
             if (extended || _isMonGlyph(g.level?.at(u.ux, u.uy))) terrain |= TER_MON;
             await browse_map(terrain, 'anything of interest');
@@ -504,7 +504,7 @@ export async function findit() {
     /* C detect.c:1888: if (!num) You("don't find anything."). */
     if (!num) {
         pushRngLogEntry('>findit @ js/detect.js (detect.c:1888)');
-        await pline("You don't find anything.");
+        await You("don't find anything."); /* C detect.c:1888 You() */
     }
     return num;
 }
@@ -980,9 +980,9 @@ async function furniture_detect() {
                 ++revealed;
         }
     if (!found)
-        await pline('There seems to be nothing of interest on this level.');
+        await There('seems to be nothing of interest on this level.'); /* C detect.c:1119 */
     else if (!revealed)
-        await pline('Your map already shows all relevant locations.');
+        await Your('map already shows all relevant locations.'); /* C detect.c:1123 */
     /* C detect.c:1126: if (!revealed) display_nhwindow(WIN_MAP, TRUE)
      * (tty: acknowledges a pending topline with --More--), handled by
      * force_more(g._pending_message); else browse_map; then map_redisplay() == docrt(). */
@@ -1052,7 +1052,7 @@ export async function use_crystal_ball(obj) {
                 await pline(`${await _objnam_Tobjnam(obj, 'damage')} your vision!`);
                 make_blinded(BlindedTimeout() + impair, false);
                 if (!_Blind_cmd())
-                    await pline('Your vision quickly clears.');
+                    await Your('%s', 'vision quickly clears.'); /* C detect.c:1233 Your1(vision_clears) */
             } else {
                 await pline(`${await _objnam_Tobjnam(obj, 'assault')} your vision.`);
                 await You('are unaffected!');
@@ -1343,7 +1343,7 @@ export async function dosearch0(aflag) {
                 nomul(0);
                 feel_location(x, y); /* make sure it shows up */
                 set_msg_xy(x, y);
-                await pline('You find a hidden door.');
+                await You('find a hidden door.');
             } else if (typ === SCORR) {
                 /* C: if (rnl(7 - fund)) continue; */
                 if (rnl_dosearch(7 - fund)) continue;
@@ -1357,7 +1357,8 @@ export async function dosearch0(aflag) {
                 nomul(0);
                 feel_newsym(x, y); /* make sure it shows up */
                 set_msg_xy(x, y);
-                await pline('You find a hidden passage.');
+                /* C detect.c:2056 You(...) — same you_buf composition as SDOOR. */
+                await You('find a hidden passage.');
             } else {
                 /* C: if ((mtmp = m_at(x, y)) != 0 && !aflag) {
                  *        int mfres = mfind0(mtmp, 0);
@@ -1468,8 +1469,8 @@ export async function mfind0(mtmp, via_warning) {
                 || mlet === _S_EEL_SRCH)) {
             if (via_warning && found_something) {
                 set_msg_xy(x, y);
-                await pline('Your danger sense causes you to take a second '
-                    + (_Blind_cmd() ? 'to check nearby' : 'look close by') + '.');
+                await Your('danger sense causes you to take a second %s.',
+                    _Blind_cmd() ? 'to check nearby' : 'look close by'); /* C detect.c:1985 */
                 /* C detect.c:1987 display_nhwindow(WIN_MESSAGE, FALSE) — page-ack
                  * BEFORE the newsym below repaints the revealed hider. */
                 topl_force_break_now();
@@ -1611,7 +1612,7 @@ export async function monster_detect(otmp, mclass) {
     }
     if (!swallowed)
         display_self();
-    await pline('You sense the presence of monsters.');
+    await You('sense the presence of monsters.'); /* C detect.c:844 You() */
     if (woken)
         await pline('Monsters sense the presence of you.');
     if ((otmp && otmp.blessed) && !unconstrained) {

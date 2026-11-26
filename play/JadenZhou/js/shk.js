@@ -1521,6 +1521,48 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
     }
 }
 
+// C ref: shk.c costly_gold()
+/* called in dokick.c when we kick an object that might be in a store */
+export async function costly_gold(
+    x, y,
+    amount,
+    silent) {
+    let delta;
+
+    if (!costly_spot(x, y))
+        return;
+    /* shkp is guaranteed to exist after successful costly_spot(), but
+       the static analyzer isn't smart enough to realize that, so follow
+       the shkp assignment with a redundant test that will always fail */
+    const shkp = shop_keeper(in_rooms(x, y, SHOPBASE).charCodeAt(0) || 0);
+    if (!shkp)
+        return;
+
+    const eshkp = shkp.mextra.eshk; /* ESHK(shkp) */
+    if (eshkp.credit >= amount) {
+        if (!silent) {
+            if (eshkp.credit > amount)
+                await Your(`credit is reduced by ${amount} ${currency(amount)}.`);
+            else
+                await Your("credit is erased.");
+        }
+        eshkp.credit -= amount;
+    } else {
+        delta = amount - eshkp.credit;
+        if (!silent) {
+            if (eshkp.credit)
+                await Your("credit is erased.");
+            if (eshkp.debit)
+                await Your(`debt increases by ${delta} ${currency(delta)}.`);
+            else
+                await You(`owe ${shkname(shkp)} ${delta} ${currency(delta)}.`);
+        }
+        eshkp.debit += delta;
+        eshkp.loan += delta;
+        eshkp.credit = 0;
+    }
+}
+
 // C ref: shk.c cad()
 function cad(altusage) /* used as a verbalized exclamation:  \"Cad! ...\" */
 {

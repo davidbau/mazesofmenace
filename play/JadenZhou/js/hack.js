@@ -973,7 +973,7 @@ export function nomul(nval) {
     if (nval === 0)
         g.multi_reason = null;
     end_running(true);
-    /* cmdq_clear(CQ_CANNED): the command queue isn't ported yet */
+    g.cmdq = []; /* cmdq_clear(CQ_CANNED) */
 }
 
 /* ── C ref: hack.c domove() and the parts of domove_core() reached so far ── */
@@ -2909,7 +2909,8 @@ async function domove_swap_with_pet(mtmp, x, y) {
     const u = game.u;
     /* if it turns out we can't actually move */
     let didnt_move = false;
-    const u_with_boulder = (sobj_at(BOULDER, u.ux0, u.uy0) != null);
+    /* domove_core() has already moved the hero onto the pet's spot */
+    const u_with_boulder = (sobj_at(BOULDER, u.ux, u.uy) != null);
 
     /* seemimic/newsym should be done before moving hero, otherwise
        the display code will draw the hero here before we possibly
@@ -2918,8 +2919,6 @@ async function domove_swap_with_pet(mtmp, x, y) {
     mtmp.mundetected = 0;
     if (mtmp.m_ap_type)
         seemimic(mtmp);
-    else if (!mtmp.mcanmove) /* (wasn't already displayed) */
-        newsym(mtmp.mx, mtmp.my);
     u.ux = mtmp.mx, u.uy = mtmp.my; /* resume swapping positions */
 
     const trap = mtmp.mtrapped ? t_at(mtmp.mx, mtmp.my) : null;

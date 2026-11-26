@@ -95,6 +95,7 @@ import { body_part as body_part_dt } from './insight.js';
 import { strange_feeling as strange_feeling_dt } from './potion.js';
 import { openholdingtrap, openfallingtrap, activate_statue_trap } from './trap.js';
 import { impossible } from './hack.js';
+import { nomul } from './hack.js';
 import { def_oc_syms as def_oc_syms_dt } from './drawing.js';
 import { def_oc_names as def_oc_names_dt } from './insight.js';
 import { ROCK_CLASS as ROCK_CLASS_DT, SCROLL_CLASS as SCROLL_CLASS_DT,
@@ -120,16 +121,6 @@ export function cvt_sdoor_to_door(lev) {
     lev.arboreal_sdoor = 0; /* clears 'candig' */
 }
 
-
-/* C ref: hack.c nomul(0) */
-function nomul0() {
-    const g = game;
-    if (g.multi < 0)
-        return;
-    g.multi = 0;
-    /* u.uinvulnerable, usleep, multi_reason, travel/run flags: not
-       ported yet */
-}
 
 // C ref: detect.c mfind0()
 /* used by dosearch0() and warnreveal() */
@@ -216,7 +207,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                     cvt_sdoor_to_door(lev); /* .typ = DOOR */
                     recalc_block_point(x, y);
                     await exercise(A_WIS, true);
-                    nomul0();
+                    nomul(0);
                     feel_location(x, y); /* make sure it shows up */
                     await pline("You find a hidden door.");
                 } else if (lev.typ === SCORR) {
@@ -225,7 +216,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                     lev.typ = CORR;
                     recalc_block_point(x, y); /* unblock_point(): vision */
                     await exercise(A_WIS, true);
-                    nomul0();
+                    nomul(0);
                     feel_newsym(x, y); /* make sure it shows up */
                     await pline("You find a hidden passage.");
                 } else {
@@ -246,7 +237,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                         unmap_invisible(x, y);
 
                     if ((trap = t_at(x, y)) && !trap.tseen && !rnl(8)) {
-                        nomul0();
+                        nomul(0);
                         if (trap.ttyp === STATUE_TRAP) {
                             if (await activate_statue_trap(trap, x, y, false))
                                 await exercise(A_WIS, true);
@@ -262,7 +253,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
 }
 
 // C ref: detect.c find_trap()
-async function find_trap(trap) {
+export async function find_trap(trap) {
     let cleared = false;
 
     trap.tseen = 1;

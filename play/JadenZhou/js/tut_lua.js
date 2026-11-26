@@ -8,8 +8,7 @@
 // nhlib_lua.js) go through withRngCaller() with the tag the C recorder
 // writes. Lua's 'a .. b' is JS string concatenation.
 //
-// tut-2.lua (reached by the down stairs) is not ported yet: nhl_loadlua()
-// stops explicitly on it.
+// tut2_lua() is the hand port of dat/tut-2.lua (reached by the down stairs).
 
 import { withRngCaller } from './rng.js';
 import { chunk_random } from './nhlib_lua.js';
@@ -378,7 +377,42 @@ function tut1_lua(L) {
     void tut_alt_key; /* set by tut_key(), never read */
 }
 
+const MAP_tut2 = [
+    '--------------',
+    '|............|',
+    '|............|',
+    '|............|',
+    '|............|',
+    '|............|',
+    '|............|',
+    '--------------',
+].join('\n') + '\n';
+
+// C ref: dat/tut-2.lua (top-level chunk)
+function tut2_lua(L) {
+    const G = L.globals, des = G.des, selection = G.selection, nh = G.nh;
+
+    des.level_init({ style: "solidfill", fg: " " });
+    des.level_flags("mazelevel", "noflip",
+                    "nomongen", "nodeathdrops", "noautosearch");
+
+    des.map(MAP_tut2);
+
+
+    des.region(selection.area(1, 1, 73, 16), "lit");
+
+    des.stair({ dir: "up", coord: [2, 2] });
+
+    des.engraving({ coord: [1, 1], type: "burn", text: "Use '" + nh.eckey("up") + "' to go up the stairs", degrade: false });
+
+
+    des.trap({ type: "magic portal", coord: [11, 5], seen: true });
+
+    des.non_diggable();
+}
+
 // The ported level scripts by file name, for nhl_loadlua().
 export const tut_lua_files = {
     'tut-1.lua': tut1_lua,
+    'tut-2.lua': tut2_lua,
 };

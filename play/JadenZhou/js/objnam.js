@@ -68,6 +68,33 @@ import { is_plural } from './wield.js';
 import { peek_timer, obj_to_any } from './timeout.js';
 import { BURN_OBJECT } from './const.js';
 import { is_quest_artifact } from './questpgr.js';
+import {
+    NO_TRAP, TRAPNUM, ROCKTRAP, MAGIC_PORTAL, is_hole, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP,
+    FOUNTAIN, F_LOOTED, THRONE, T_LOOTED, SINK, S_LPUDDING, S_LDWASHER, S_LRING, POOL,
+    MOAT, WATER, DB_UNDER, DB_MOAT, DB_LAVA, DB_FLOOR, HALLUC_RES, LAVAWALL, LAVAPOOL,
+    ALTAR, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_NONE, Align2amask, IS_GRAVE, TREE,
+    TREE_LOOTED, TREE_SWARM, IRONBARS, CLOUD, DOOR, SDOOR, IS_WALL, DBWALL,
+    Is_rogue_level, D_LOCKED, D_NODOOR, D_ISOPEN, D_BROKEN, D_CLOSED, D_TRAPPED, WM_MASK,
+    HWALL, VWALL, isok, COLNO, ROWNO, CORR, SCORR, ROOM, IS_FURNITURE, ICE, TT_LAVA,
+    IS_FOUNTAIN, IS_SINK, MELT_ICE_AWAY, IS_DOOR, W_NONDIGGABLE, W_NONPASSWALL, LADDER,
+    STAIRS,
+} from './const.js';
+import { trapname, maketrap, t_at, deltrap, water_damage_chain, fire_damage_chain,
+         set_uinwater, reset_utrap } from './trap.js';
+import { Can_fall_thru, fix_wall_spines, count_level_features } from './mklev.js';
+import { waterbody_name, ice_descr } from './pager.js';
+import { start_melt_ice_timeout } from './zap.js';
+import { ICED_POOL, ICED_MOAT, DB_ICE } from './const.js';
+import { del_engr_at, make_grave } from './engrave.js';
+import { pooleffects, is_pool_or_lava, switch_terrain } from './hack.js';
+import { align_str } from './insight.js';
+import { feel_newsym, docrt, pline } from './display.js';
+import { is_pool, is_lava } from './makemon.js';
+import { is_ice } from './dig.js';
+import { recalc_block_point } from './vision.js';
+import { spot_stop_timers } from './timeout.js';
+import { Levitation, Flying } from './youprop.js';
+import { str_start_is, upstart } from './hacklib.js';
 
 // C ref: decl.c vowels[]
 const vowels = "aeiouAEIOU";
@@ -1312,6 +1339,407 @@ export function shiny_obj(oclass) {
     return rnd_otyp_by_namedesc("shiny", oclass, 0);
 }
 
+// C ref: rm.h CAN_OVERWRITE_TERRAIN()
+function CAN_OVERWRITE_TERRAIN(ttyp) {
+    return !!game.iflags?.debug_overwrite_stairs
+        || !(ttyp === LADDER || ttyp === STAIRS);
+}
+
+// the floor objects at <x,y> in svl.level.objects[x][y] order (top first)
+function level_objects_at_wt(x, y) {
+    return (game.level.objects || []).filter(o => o.ox === x && o.oy === y
+                                             && o.where === 'OBJ_FLOOR');
+}
+
+// C ref: objnam.c set_wallprop_from_str()
+/* set wall under hero undiggable/unphaseable from string */
+function set_wallprop_from_str(bp) {
+    let wall_prop = 0;
+
+    if (bp.includes("undiggable ") || bp.includes("nondiggable "))
+        wall_prop |= W_NONDIGGABLE;
+    if (bp.includes("unphaseable ") || bp.includes("nonpasswall "))
+        wall_prop |= W_NONPASSWALL;
+    /* |= because wall_info (aka flags) is overloaded with other stuff */
+    if (wall_prop) {
+        const lev = game.level.at(game.u.ux, game.u.uy);
+        lev.wall_info = (lev.wall_info || 0) | wall_prop;
+    }
+}
+
+// C ref: objnam.c wizterrainwish()
+/* in wizard mode, readobjnam() can accept wishes for traps and terrain;
+   a generator: it yields a thunk for each message or other async step,
+   which readobjnam()'s async driver awaits in order */
+function* wizterrainwish(d) {
+    const u = game.u;
+    let lev;
+    let madeterrain = false, badterrain = false;
+    let trap, oldtyp, ltyp;
+    const x = u.ux, y = u.uy;
+    const bp = d.bp, p = bp.length; /* p = eos(bp) */
+
+    for (trap = NO_TRAP + 1; trap < TRAPNUM; trap++) {
+        let t;
+        let tname;
+
+        tname = trapname(trap, true);
+        if (!str_start_is(bp, tname, true))
+            continue;
+        /* found it; avoid stupid mistakes */
+        if (is_hole(trap) && !Can_fall_thru(u.uz))
+            trap = ROCKTRAP;
+        if ((t = maketrap(x, y, trap)) != null) {
+            trap = t.ttyp;
+            tname = trapname(trap, true);
+            const msg = `${An(tname)}${(trap !== MAGIC_PORTAL) ? "" : " to nowhere"}.`;
+            yield () => pline(msg);
+        } else {
+            const msg = `Creation of ${an(tname)} failed.`;
+            yield () => pline(msg);
+        }
+        return 'hands_obj';
+    }
+
+    /* furniture and terrain (use at your own risk; can clobber stairs
+       or place furniture on existing traps which shouldn't be allowed) */
+    lev = game.level.at(x, y);
+    oldtyp = lev.typ;
+    const is_dbridge = (oldtyp === DRAWBRIDGE_DOWN || oldtyp === DRAWBRIDGE_UP);
+    if (!BSTRCMPI(bp, p - 8, "fountain")) {
+        lev.typ = FOUNTAIN;
+        if (oldtyp !== FOUNTAIN)
+            game.level.flags.nfountains++;
+        lev.flags = d.looted ? F_LOOTED : 0; /* looted overlays 'flags' */
+        lev.blessedftn = (d.blessed || !strncmpi(bp, "magic ", 6)) ? 1 : 0;
+        const msg = `A ${lev.blessedftn ? "magic " : ""}fountain.`;
+        yield () => pline(msg);
+        madeterrain = true;
+    } else if (!BSTRCMPI(bp, p - 6, "throne")) {
+        lev.typ = THRONE;
+        lev.flags = d.looted ? T_LOOTED : 0; /* looted overlays 'flags' */
+        yield () => pline("A throne.");
+        madeterrain = true;
+    } else if (!BSTRCMPI(bp, p - 4, "sink")) {
+        lev.typ = SINK;
+        if (oldtyp !== SINK)
+            game.level.flags.nsinks++;
+        lev.flags = d.looted ? (S_LPUDDING | S_LDWASHER | S_LRING) : 0;
+        yield () => pline("A sink.");
+        madeterrain = true;
+
+    /* ("water" matches "potion of water" rather than terrain) */
+    } else if (!BSTRCMPI(bp, p - 4, "pool")
+               || !BSTRCMPI(bp, p - 4, "moat")
+               || !BSTRCMPI(bp, p - 13, "wall of water")) {
+        ltyp = !BSTRCMPI(bp, p - 4, "pool") ? POOL
+               : !BSTRCMPI(bp, p - 4, "moat") ? MOAT
+                 : WATER;
+        if (!is_dbridge) {
+            lev.typ = ltyp;
+            lev.flags = 0;
+        } else {
+            /* drawbridgemask overloads flags */
+            lev.drawbridgemask &= ~DB_UNDER;
+            lev.drawbridgemask |= DB_MOAT;
+        }
+        del_engr_at(x, y);
+        if (!is_dbridge) {
+            const hres = u.uprops[HALLUC_RES];
+            const save_prop = hres.extrinsic; /* EHalluc_resistance */
+            hres.extrinsic = 1;
+            const new_water = waterbody_name(x, y);
+            hres.extrinsic = save_prop;
+            const msg = `${An(new_water)}.`;
+            yield () => pline(msg);
+            /* Must manually make kelp! */
+        } else {
+            yield* dbterrainmesg("Moat", x, y);
+        }
+        const chain = level_objects_at_wt(x, y);
+        yield () => water_damage_chain(chain, true);
+        madeterrain = true;
+
+    /* also matches "molten lava" */
+    } else if (!BSTRCMPI(bp, p - 4, "lava")
+               || !BSTRCMPI(bp, p - 12, "wall of lava")) {
+        ltyp = !BSTRCMPI(bp, p - 12, "wall of lava") ? LAVAWALL : LAVAPOOL;
+        if (!is_dbridge) {
+            lev.typ = ltyp;
+            lev.flags = 0;
+        } else {
+            /* drawbridgemask overloads flags */
+            lev.drawbridgemask &= ~DB_UNDER;
+            lev.drawbridgemask |= DB_LAVA;
+        }
+        del_engr_at(x, y);
+        if (!is_dbridge) {
+            const msg = `A ${(lev.typ === LAVAPOOL) ? "pool" : "wall"} of molten lava.`;
+            yield () => pline(msg);
+            if (!(Levitation() || Flying()) || lev.typ === LAVAWALL)
+                yield () => pooleffects(false);
+        } else {
+            yield* dbterrainmesg("Lava", x, y);
+        }
+        const chain = level_objects_at_wt(x, y);
+        yield () => fire_damage_chain(chain, true, true, x, y);
+        madeterrain = true;
+    } else if (!BSTRCMPI(bp, p - 3, "ice")) {
+        if (!is_dbridge) {
+            lev.typ = ICE;
+            /* icedpool overloads flags; specifies what ice will melt into */
+            lev.icedpool = (oldtyp === ROOM) ? ICED_POOL : ICED_MOAT;
+            lev.flags = lev.icedpool;
+        } else {
+            /* drawbridgemask overloads flags */
+            lev.drawbridgemask &= ~DB_UNDER;
+            lev.drawbridgemask |= DB_ICE;
+        }
+        del_engr_at(x, y);
+
+        if (!strncmpi(bp, "melting ", 8))
+            start_melt_ice_timeout(x, y, 0);
+
+        if (!is_dbridge) {
+            const msg = `${upstart(ice_descr(x, y))}.`;
+            yield () => pline(msg);
+        } else {
+            yield* dbterrainmesg("Ice", x, y);
+        }
+        madeterrain = true;
+    } else if (!BSTRCMPI(bp, p - 5, "altar")) {
+        let al;
+
+        lev.typ = ALTAR;
+        if (!strncmpi(bp, "chaotic ", 8))
+            al = A_CHAOTIC;
+        else if (!strncmpi(bp, "neutral ", 8))
+            al = A_NEUTRAL;
+        else if (!strncmpi(bp, "lawful ", 7))
+            al = A_LAWFUL;
+        else if (!strncmpi(bp, "unaligned ", 10))
+            al = A_NONE;
+        else /* -1 - A_CHAOTIC, 0 - A_NEUTRAL, 1 - A_LAWFUL */
+            al = !rn2(6) ? A_NONE : (rn2(A_LAWFUL + 2) - 1);
+        lev.altarmask = Align2amask(al); /* overlays 'flags' */
+        const msg = `${An(align_str(al))} altar.`;
+        yield () => pline(msg);
+        madeterrain = true;
+    } else if (!BSTRCMPI(bp, p - 5, "grave")
+               || !BSTRCMPI(bp, p - 9, "headstone")) {
+        make_grave(x, y, null);
+        if (IS_GRAVE(lev.typ)) {
+            lev.flags = 0; /* looted overlays 'flags' */
+            lev.disturbed = d.looted ? 1 : 0;
+            const msg = `A ${lev.disturbed ? "disturbed " : ""}grave.`;
+            yield () => pline(msg);
+            madeterrain = true;
+        } else {
+            yield () => pline("Can't place a grave here.");
+            badterrain = true;
+        }
+    } else if (!BSTRCMPI(bp, p - 4, "tree")) {
+        lev.typ = TREE;
+        lev.flags = d.looted ? (TREE_LOOTED | TREE_SWARM) : 0;
+        set_wallprop_from_str(bp);
+        yield () => pline("A tree.");
+        madeterrain = true;
+    } else if (!BSTRCMPI(bp, p - 4, "bars")) {
+        lev.typ = IRONBARS;
+        lev.flags = 0;
+        set_wallprop_from_str(bp);
+        /* [FIXME: if this isn't a wall or door location where 'horizontal'
+            is already set up, that should be calculated for this spot.] */
+        yield () => pline("Iron bars.");
+        madeterrain = true;
+    } else if (!BSTRCMPI(bp, p - 5, "cloud")) {
+        lev.typ = CLOUD;
+        lev.flags = 0;
+        yield () => pline("A cloud.");
+        del_engr_at(x, y);
+        madeterrain = true;
+    } else if (!BSTRCMPI(bp, p - 4, "door")
+               || (d.doorless && !BSTRCMPI(bp, p - 7, "doorway"))) {
+        let dbuf;
+        let old_wall_info;
+        const secret = !BSTRCMPI(bp, p - 11, "secret door");
+
+        /* require door or wall so that the 'horizontal' flag will
+           already have the correct value; iron bars are surrogate walls;
+           a previously dug wall looks like corridor but is actually a
+           doorless doorway so will be acceptable here */
+        if (lev.typ === DOOR || lev.typ === SDOOR
+            || (IS_WALL(lev.typ) && lev.typ !== DBWALL)
+            || lev.typ === IRONBARS) {
+            /* remember previous wall info [is this right for iron bars?] */
+            old_wall_info = (lev.typ !== DOOR) ? (lev.wall_info || 0) : 0;
+            /* set the new terrain type */
+            lev.typ = secret ? SDOOR : DOOR;
+            lev.wall_info = 0; /* overlays 'flags' */
+            lev.flags = 0;
+            /* lev->horizontal stays as-is */
+            if (Is_rogue_level(u.uz)) {
+                /* all doors on the rogue level are doorless; locking magic
+                   there converts them into walls rather than closed doors */
+                d.doorless = 1;
+                d.locked = d.closed = d.open = d.broken = 0;
+            }
+            /* if not locked, secret doors are implicitly closed but
+               mustn't be set that way explicitly; conversion from SDOOR
+               to DOOR changes NODOOR to CLOSED */
+            lev.doormask = d.locked ? D_LOCKED
+                           : (d.doorless || secret) ? D_NODOOR
+                             : d.open ? D_ISOPEN
+                               : d.broken ? D_BROKEN
+                                 : D_CLOSED;
+            /* SDOOR uses wall_info, restore relevant bits. */
+            if (secret)
+                lev.wall_info |= (old_wall_info & WM_MASK);
+            /* set up trapped flag; open door states aren't eligible */
+            if (d.trapped === 2 /* 2: wish includes explicit "untrapped" */
+                || ((lev.doormask & (D_LOCKED | D_CLOSED)) === 0
+                    /* D_CLOSED is implicit for secret doors */
+                    && !secret))
+                d.trapped = 0;
+            if (d.trapped)
+                lev.doormask |= D_TRAPPED;
+            /* feedback */
+            dbuf = '';
+            if (lev.doormask & D_TRAPPED)
+                dbuf += "trapped ";
+            if (lev.doormask & D_LOCKED)
+                dbuf += "locked ";
+            if (lev.typ === SDOOR) {
+                dbuf += "secret door";
+            } else {
+                /* these should be mutually exclusive but we describe them
+                   as if they're independent to maybe catch future bugs... */
+                if (lev.doormask & D_CLOSED)
+                    dbuf += "closed ";
+                if (lev.doormask & D_ISOPEN)
+                    dbuf += "open ";
+                if (lev.doormask & D_BROKEN)
+                    dbuf += "broken ";
+                if ((lev.doormask & ~D_TRAPPED) === D_NODOOR)
+                    dbuf += "doorless doorway";
+                else
+                    dbuf += "door";
+            }
+            const msg = `${upstart(an(dbuf))}.`;
+            yield () => pline(msg);
+            madeterrain = true;
+        } else {
+            dbuf = secret ? "secret door" : "door";
+            const msg = `${upstart(dbuf)} requires door or wall location.`;
+            yield () => pline(msg);
+            badterrain = true;
+        }
+    } else if (!BSTRCMPI(bp, p - 4, "wall")
+               && (p === 4 || bp[p - 5] === ' ')) {
+        let wall = HWALL;
+
+        if ((isok(u.ux, u.uy - 1) && IS_WALL(game.level.at(u.ux, u.uy - 1).typ))
+            || (isok(u.ux, u.uy + 1) && IS_WALL(game.level.at(u.ux, u.uy + 1).typ)))
+            wall = VWALL;
+        madeterrain = true;
+        lev.typ = wall;
+        lev.flags = 0;
+        set_wallprop_from_str(bp);
+        fix_wall_spines(Math.max(0, u.ux - 1), Math.max(0, u.uy - 1),
+                        Math.min(COLNO, u.ux + 1), Math.min(ROWNO, u.uy + 1));
+        yield () => pline("A wall.");
+    } else if (!BSTRCMPI(bp, p - 15, "secret corridor")) {
+        if (lev.typ === CORR) {
+            lev.typ = SCORR;
+            /* neither CORR nor SCORR uses 'flags' or 'horizontal' */
+            yield () => pline("Secret corridor.");
+            madeterrain = true;
+        } else {
+            yield () => pline("Secret corridor requires corridor location.");
+            badterrain = true;
+        }
+    } else if (!BSTRCMPI(bp, p - 4, "room")
+               || !BSTRCMPI(bp, p - 5, "floor")
+               || !BSTRCMPI(bp, p - 6, "ground")) {
+        if (oldtyp === ROOM
+            || (IS_FURNITURE(oldtyp) && CAN_OVERWRITE_TERRAIN(oldtyp))
+            || oldtyp === ICE || is_pool_or_lava(x, y)) {
+            let t;
+
+            lev.typ = ROOM;
+            yield () => pline("Room floor.");
+            if (IS_FURNITURE(oldtyp))
+                count_level_features();
+            if ((t = t_at(x, y)) != null && t.ttyp !== MAGIC_PORTAL)
+                deltrap(t);
+            madeterrain = true;
+        } else if (is_dbridge) {
+            lev.drawbridgemask &= ~DB_UNDER;
+            lev.drawbridgemask |= DB_FLOOR;
+            yield* dbterrainmesg("Floor", x, y);
+            madeterrain = true;
+        } else {
+            yield () => pline("Room|floor|ground not allowed here.");
+            badterrain = true;
+        }
+    }
+
+    if (madeterrain) {
+        feel_newsym(x, y); /* map the spot where the wish occurred */
+
+        /* hero started at <x,y> but might not be there anymore (create
+           lava, decline to die, and get teleported away to safety) */
+        if (u.uinwater && !is_pool(u.ux, u.uy)) {
+            yield () => set_uinwater(0); /* u.uinwater = 0; leave the water */
+            yield () => docrt();
+            /* [block/unblock_point handled by docrt -> vision_recalc] */
+        } else {
+            if (u.utrap && u.utraptype === TT_LAVA && !is_lava(u.ux, u.uy))
+                yield () => reset_utrap(false);
+            recalc_block_point(x, y);
+        }
+
+        /* fixups for replaced terrain that aren't handled above */
+        if (IS_FOUNTAIN(oldtyp) || IS_SINK(oldtyp))
+            count_level_features(); /* update level.flags.nfountains,nsinks */
+        if (!is_ice(x, y))
+            spot_stop_timers(x, y, MELT_ICE_AWAY);
+        /* horizontal is overlaid by fountain->blessedftn, grave->disturbed */
+        if (IS_FOUNTAIN(oldtyp) || IS_GRAVE(oldtyp)
+            || IS_WALL(oldtyp) || oldtyp === IRONBARS
+            || IS_DOOR(oldtyp) || oldtyp === SDOOR) {
+            /* when new terrain is a fountain, 'blessedftn' was explicitly
+               set above; likewise for grave and 'disturbed'; when it's a
+               door, the old type was a wall or a door and we retain the
+               'horizontal' value from those */
+            if (!IS_FOUNTAIN(lev.typ) && !IS_GRAVE(lev.typ)
+                && !IS_DOOR(lev.typ) && lev.typ !== SDOOR) {
+                lev.horizontal = false; /* also clears blessedftn, disturbed */
+                lev.blessedftn = 0;
+                lev.disturbed = 0;
+            }
+        }
+        /* note: lev->lit and lev->nondiggable retain their values even
+           though those might not make sense with the new terrain */
+
+        /* might have changed terrain from something that blocked
+           levitation and flying to something that doesn't */
+        yield () => switch_terrain();
+    }
+    if (madeterrain || badterrain)
+        return 'hands_obj';
+
+    return null;
+}
+
+// C ref: objnam.c dbterrainmesg()
+/* message common to several wizterrainwish() results */
+function* dbterrainmesg(newtype, x, y) {
+    const msg = `${newtype} ${(game.level.at(x, y).typ === DRAWBRIDGE_UP)
+        ? "in front of" : "under"} the drawbridge.`;
+    yield () => pline(msg);
+}
+
 // hack.h tin varieties; objnam.c readobjnam contents codes
 const RANDOM_TIN = -2;
 const TIN_UNDEFINED = 0;
@@ -2133,6 +2561,25 @@ function readobjnam_postparse3(d) {
     return 0;
 }
 
+// readobjnam() for an async caller (makewish()): awaits each async step
+// readobjnam() yields
+export async function readobjnam_async(bp, no_wish) {
+    const it = readobjnam(bp, no_wish);
+    for (let r = it.next(); ; r = it.next()) {
+        if (r.done)
+            return r.value;
+        await r.value();
+    }
+}
+
+// readobjnam() for a synchronous caller (Lua obj.new())
+export function readobjnam_sync(bp, no_wish) {
+    const r = readobjnam(bp, no_wish).next();
+    if (!r.done)
+        throw new Error('readobjnam(): wizterrainwish() message in a synchronous caller not ported yet');
+    return r.value;
+}
+
 // C ref: objnam.c readobjnam()
 /*
  * Return something wished for.  Specifying a null pointer for
@@ -2141,7 +2588,9 @@ function readobjnam_postparse3(d) {
  * if not an object return &hands_obj (here: the string 'hands_obj');
  * if an error (no matching object), return null.
  */
-export function readobjnam(bp, no_wish) {
+/* JS: a generator, so the async steps of wizterrainwish() (its messages)
+   happen in order; callers use readobjnam_async() or readobjnam_sync() */
+function* readobjnam(bp, no_wish) {
     const d = {};
     let label = null;
 
@@ -2198,8 +2647,11 @@ export function readobjnam(bp, no_wish) {
         /*
          * Let wizards wish for traps and furniture.
          */
-        if (wizard() && !game.program_state?.wizkit_wishing && !d.oclass)
-            not_ported('wizterrainwish()');
+        if (wizard() && !game.program_state?.wizkit_wishing && !d.oclass) {
+            /* [inline code moved to separate routine to unclutter readobjnam] */
+            if ((d.otmp = yield* wizterrainwish(d)) != null)
+                return d.otmp;
+        }
 
         label = null;
         if (!d.oclass && !d.typ) {

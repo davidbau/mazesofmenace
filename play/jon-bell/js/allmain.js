@@ -86,7 +86,7 @@ import { engrave, engraving_sanity_check } from './engrave.js';
 import { m_at } from './uhitm.js';
 import { noattacks_mndx, stealarm_mu } from './mhitu.js';
 import { unstolenarm } from './steal.js';
-import { canspotmon, Unaware, _topl_stash_result } from './display.js';
+import { canspotmon, Unaware, _topl_stash_result, flush_pending_messages } from './display.js';
 import { pline_flush_point, under_water, under_ground, recorder_localtime } from './display.js';
 import { spoteffects } from './hack.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
@@ -806,7 +806,10 @@ export async function newgame() {
             if (noticeBeforePreamble) {
                 if (g.flags?.spot_monsters) (g.a11y ||= {}).mon_notices = true;
                 await notice_all_mons(true);
-                for (const m of preambleMsgs) await pline(m);
+                /* allmain.c:57-68: each moon/Friday pline's update_topl pages
+                 * the standing line it does not fit beside right there
+                 * (topl.c:257-275), before rnd(9000)/rnd(30) (allmain.c:72,79). */
+                for (const m of preambleMsgs) { await pline(m); await flush_pending_messages(); }
             } else
                 await notice_all_mons(true);
         }
@@ -1741,9 +1744,13 @@ async function eat_occupation_turn() {
         g._occPreEatLive = null;
         return { text, joins };
     };
+    g._occStandingPeek = () => {
+        const prefix = prior?.text || '';
+        return prefix && preEat ? `${prefix}  ${preEat}` : prefix || preEat;
+    };
     let r;
     try { r = await eatfood(); }
-    finally { g._occBeforeInput = null; }
+    finally { g._occBeforeInput = null; g._occStandingPeek = null; }
     /* eat.c:1224 display_nhwindow(WIN_MAP, TRUE) more()'d the standing topline,
      * so the held committed line is no longer on it. */
     if (g._eatMimicAcked) { g._eatMimicAcked = false; prior = null; }
@@ -1795,12 +1802,14 @@ async function eat_occupation_turn() {
         await stop_occupation();
         reset_eat();
     }
+    const _drawnOwner = (g._topl_win_stop && g._pending_message)
+        ? String(g._pending_message) : '';
     let eatMsg = g._resultMessage || '';
     let eatMsgJoins = (g._resultMessageJoins?.src === eatMsg
         && Array.isArray(g._resultMessageJoins?.joins))
         ? g._resultMessageJoins.joins.slice()
         : (_topl_joins_snapshot(eatMsg) || []);
-    if (g._pending_message) {
+    if (g._pending_message && !_drawnOwner) {
         eatMsg = eatMsg
             ? _topl_merge_result(eatMsg, g._pending_message, eatMsgJoins)
             : g._pending_message;
@@ -1812,7 +1821,8 @@ async function eat_occupation_turn() {
         eatMsgJoins = eatMsgJoins.filter((off) => off > prior.text.length)
             .map((off) => off - cut);
     }
-    g._pending_message = '';
+    if (!_drawnOwner)
+        g._pending_message = '';
     g._resultMessage = null;
     // This turn issues its plines in TWO groups, in C's own order: the world block's
     // movemon plines (allmain.c:202-460, before the occupation) and then the
@@ -2106,10 +2116,12 @@ async function eat_occupation_turn() {
                 if (at > 0 && f.off > at) f.off = at;
             }
         }
-    } else if (prior) {
+    } else if (prior && !_drawnOwner) {
         // Silent eating turn (no fresh message, e.g. a goblin-corpse meal's mid turns):
         // keep the prior committed topline and DO NOT page (C does not more() a silent
         // occupation turn — the physical terminal is just repainted).  Re-show it.
+        // Not over a drawn ESC owner: the physical topline is that owner (topl.c:300
+        // drew it after more() returned), not the pre-ESC committed line.
         g._pending_message = prior.text;
     }
     // When the meal just ended, KEEP the final committed message (done_eating's "You're
@@ -2122,7 +2134,13 @@ async function eat_occupation_turn() {
         g._occ_committed_topl = thisTurnMsg
             ? { text: thisTurnMsg, postMeal: true }
             : (prior ? { text: prior.text, postMeal: true } : null);
-        g._pending_message = '';
+        /* The ESC-drawn owner is the LIVE topline in C (drawn by redotoplin at
+         * topl.c:300, TOPLINE_NEED_MORE): it is read at the next rhack like any
+         * command result, not banked into the post-meal carry.  With it
+         * standing, _occ_committed_topl must not claim a line to re-page
+         * either (prior.text was already filed by the pager's ESC arm). */
+        if (!_drawnOwner)
+            g._pending_message = '';
         if (thisTurnMsg && /(?:^|  )You stop eating\b/.test(thisTurnMsg)) {
             g._occ_committed_topl = null;
             g._pending_message = thisTurnMsg;

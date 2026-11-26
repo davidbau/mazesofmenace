@@ -188,6 +188,23 @@ export async function get_iter_mons(bfunc) {
     return mtmp;
 }
 
+// C ref: mon.c get_iter_mons_xy()
+/* iterate all living monsters on the level until bfunc returns TRUE;
+   bfunc gets the monster and the x, y passed in */
+export async function get_iter_mons_xy(bfunc, x, y) {
+    let mtmp, mtmp2;
+
+    for (mtmp = game.fmon; mtmp; mtmp = mtmp2) {
+        mtmp2 = mtmp.nmon;
+        /* mon_offmap(): migrating monsters aren't on fmon in the JS port */
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (await bfunc(mtmp, x, y))
+            break;
+    }
+    return mtmp;
+}
+
 // C ref: mkroom.c search_special()
 export function search_special(type) {
     const rooms = game.level.rooms;

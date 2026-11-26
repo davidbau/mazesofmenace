@@ -3953,7 +3953,8 @@ async function _domove_execute_pet_swap(mtmp, newx, newy) {
     /* C hack.c:2965-2969 — "Clean old position" before vision_recalc(1). */
     u.umoved = true;
     newsym(oldx, oldy);
-    vision_recalc(1);
+    const _notices = vision_recalc(1);
+    if (_notices && game.a11y?.mon_notices) await _notices;
     await invocation_message(); /* C hack.c:2973 */
     await _domove_spot_tail(newx, newy);
     /* C hack.c:2990 — the swap falls through to domove_core's final
@@ -4209,7 +4210,8 @@ async function domove_core(dx, dy) {
              * block redraws u.ux0,u.uy0 again (a second hallucination draw). */
             u.umoved = true;
             newsym(ox, oy);
-            vision_recalc(1);
+            const _notices = vision_recalc(1);
+            if (_notices && game.a11y?.mon_notices) await _notices;
             await invocation_message();
             await _domove_spot_tail(newx, newy);
             await runmode_delay_output();
@@ -4707,7 +4709,8 @@ async function domove_core(dx, dy) {
     if (oldx !== newx || oldy !== newy) {
         u.umoved = true;
         newsym(oldx, oldy);
-        vision_recalc(1);
+        const _notices = vision_recalc(1);
+        if (_notices && game.a11y?.mon_notices) await _notices;
         await invocation_message(); /* C hack.c:2973 */
     }
     await _domove_spot_tail(newx, newy);

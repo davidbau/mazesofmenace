@@ -111,8 +111,16 @@ import { UNCHANGING, W_SADDLE, DISMOUNT_FELL } from './const.js';
 import { is_were } from './mondata.js';
 import { rehumanize } from './polyself.js';
 import { float_down } from './trap.js';
+import { instapetrify } from './trap.js';
+import { highc } from './hacklib.js';
+import { NEUTRAL } from './const.js';
 import { which_armor } from './worn.js';
 import { dismount_steed } from './steed.js';
+import { x_monnam as x_monnam_to } from './do_name.js';
+import { ARTICLE_THE as ARTICLE_THE_TO, SUPPRESS_SADDLE as SUPPRESS_SADDLE_TO } from './const.js';
+import { NODIAG as NODIAG_to } from './hacklib.js';
+import { confdir as confdir_to } from './hack.js';
+import { hurtle as hurtle_to } from './dothrow.js';
 import { mhe } from './mhitu.js';
 import { Your } from './display.js';
 /* hatch_egg() */
@@ -945,19 +953,60 @@ async function slip_or_trip() {
                              ? "something"
                              : (otmp2.quan === 1 ? "a rock" : "some rocks"));
         if (Hallu) {
-            throw new Error('slip_or_trip(): hallucinatory "Egads!" message not ported yet');
+            what = highc(what[0]) + what.slice(1); /* buf[0] = highc(buf[0]) */
+            await pline(`Egads!  ${what} bite${
+                (!otmp || otmp.quan === 1) ? "s" : ""} your ${body_part(FOOT)}!`);
         } else {
             await You(`trip over ${what}.`);
         }
         if (!game.uarmf && otmp.otyp === CORPSE
             && (otmp.corpsenm === PM_COCKATRICE
                 || otmp.corpsenm === PM_CHICKATRICE) /* touch_petrifies() */
-            && !prop_on(P[STONE_RES]))
-            throw new Error('slip_or_trip(): instapetrify() not ported yet');
+            && !prop_on(P[STONE_RES])) {
+            killer_to().name = `tripping over ${
+                an(mons[otmp.corpsenm].pmnames[NEUTRAL])} corpse`;
+            await instapetrify(killer_to().name);
+        }
     } else if ((P[FUMBLING].intrinsic & FROMOUTSIDE)
                || (is_ice(u.ux, u.uy) && !rn2(3))) {
-        /* slipping on ice: message, dismount_steed() or hurtle() */
-        throw new Error('slip_or_trip(): slipping on ice not ported yet');
+        /* is fumbling from ice alone? */
+        const ice_only = !(P[FUMBLING].extrinsic
+                           || (P[FUMBLING].intrinsic & ~FROMOUTSIDE));
+        let saddle;
+
+        await pline(`${u.usteed ? upstart(x_monnam_to(u.usteed, ARTICLE_THE_TO, null,
+                                                      SUPPRESS_SADDLE_TO, false))
+                                : "You"} ${
+                  /* "steed": arbitrary value that will use third person verb
+                     regardless of what u.usteed might be named, as opposed to
+                     "you" (second person, which won't have final 's' added) */
+                  vtense(u.usteed ? "steed" : "you", rn2(2) ? "slip" : "slide")} ${
+                  /* sometimes slipping due to ice occurs during turn that hero
+                     has just moved off the ice; phrase things differently then */
+                  is_ice(u.ux, u.uy) ? "on" : "off"} the ice.`);
+        /* fumbling outside of ice while mounted always causes the hero to
+           fall from the saddle (unless it is cursed), so to avoid a
+           counterintuitive effect where ice makes riding _less_ hazardous,
+           unconditionally dismount if fumbling is from a non-ice source */
+        if (!on_foot
+            && ((saddle = which_armor(u.usteed, W_SADDLE)) == null
+                || !saddle.cursed)
+            && (!ice_only || !rn2(3))) {
+            await You("lose your balance.");
+            await dismount_steed(DISMOUNT_FELL);
+        } else if (!rn2(10 + ACURR_to(A_DEX))) {
+            /* Maybe slip in a random direction.  This takes place after
+               the hero has already changed location.  If the hero is
+               in grid bug form, only allow forward hurtle, otherwise a
+               90 degree orthogonal one after the step would make the
+               combined move appear to be a single diagonal step. */
+            if (!NODIAG_to(u.umonnum))
+                confdir_to(true); /* sets u.dx and u.dy */
+            /* Only hurtle if the random direction won't move hero back
+               to same spot where this move started. */
+            if (u.ux + u.dx !== u.ux0 || u.uy + u.dy !== u.uy0)
+                await hurtle_to(u.dx, u.dy, 1, false);
+        }
     } else {
         if (on_foot) {
             switch (rn2(4)) {

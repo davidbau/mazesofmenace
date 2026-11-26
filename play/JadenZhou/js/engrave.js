@@ -14,7 +14,7 @@ import { is_art } from './artifact.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
 import { LL_CONDUCT } from './const.js';
-import { P_SKILL } from './weapon.js';
+import { P_SKILL, dry_a_towel } from './weapon.js';
 import { P_RIDING, P_BASIC } from './const.js';
 import { rn2, rnd, rn2_fnptr } from './rng.js';
 import { DUST, BURN, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE, ROOM, GRAVE } from './const.js';
@@ -889,7 +889,7 @@ async function doengrave_sfx_item(de) {
                     || de.oep.engr_type === ENGR_BLOOD
                     || de.oep.engr_type === MARK) {
                     if (is_wet_towel(de.otmp))
-                        throw new Error('doengrave_sfx_item(): dry_a_towel() not ported yet');
+                        await dry_a_towel(de.otmp, -1, true);
                     if (!Blind())
                         await You("wipe out the message here.");
                     else

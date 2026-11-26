@@ -78,6 +78,10 @@ import { newcham } from './mon.js';
 import { PROT_FROM_SHAPE_CHANGERS, NC_SHOW_MSG, NO_NC_FLAGS } from './const.js';
 import { tty_display_nhwindow } from './wintty.js';
 import { mon_learns_traps } from './mondata.js';
+import { is_demon } from './mondata.js';
+import { Amonnam } from './do_name.js';
+import { set_malign } from './makemon.js';
+import { demon_talk } from './minion.js';
 import { TRAPPED_DOOR } from './const.js';
 import { has_ceiling } from './insight.js';
 import { cuss, tactics } from './wizard.js';
@@ -153,6 +157,10 @@ import { AD_DRIN as AD_DRIN_MB } from './monsters.js';
 import { vegan as vegan_mm, is_rider as is_rider_mm, flesh_petrifies as flesh_petrifies_mm,
          resists_ston as resists_ston_mm } from './mondata.js';
 import { touch_petrifies as touch_petrifies_mo } from './mondata.js';
+import { nolimbs } from './mondata.js';
+import { mhis } from './mhitu.js';
+import { mbodypart } from './insight.js';
+import { HEAD, ARM } from './const.js';
 import { mstoning as mstoning_mo } from './mon.js';
 import { revive_corpse as revive_corpse_mo } from './zap.js';
 import { objdescr_is } from './o_init.js';
@@ -255,6 +263,29 @@ export function monhaskey(mon, for_unlocking) {
     if (for_unlocking && m_carrying(mon, CREDIT_CARD))
         return true;
     return !!(m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK));
+}
+
+// C ref: monmove.c mon_yells()
+export async function mon_yells(mon, shout) {
+    if (Deaf()) {
+        if (canspotmon(mon))
+            /* Sidenote on "A watchman angrily waves her arms!"
+             * Female being called watchman is correct (career name).
+             */
+            await pline(`${Amonnam(mon)} angrily ${
+                nolimbs(mon.data) ? "shakes" : "waves"} ${mhis(mon)} ${
+                nolimbs(mon.data) ? mbodypart(mon, HEAD)
+                                  : makeplural_mm(mbodypart(mon, ARM))}!`); /* pline_mon() */
+    } else {
+        if (canspotmon(mon)) {
+            await pline(`${Amonnam(mon)} yells:`); /* pline_mon() */
+        } else {
+            /* Soundeffect(se_someone_yells, 75); */
+            await You_hear("someone yell:");
+        }
+        /* SetVoice(mon, 0, 80, 0) */
+        await verbalize(shout); /* verbalize1() */
+    }
 }
 
 // C ref: monmove.c watch_on_duty()
@@ -971,8 +1002,27 @@ export async function dochug(mtmp) {
 
     /* Demonic Blackmail! */
     if (d.nearby && mdat.msound === M.MS_BRIBE && mtmp.mpeaceful
-        && !mtmp.mtame && !u.uswallow)
-        throw new Error('dochug(): demon_talk() not ported yet');
+        && !mtmp.mtame && !u.uswallow) {
+        if (mtmp.mux !== u.ux || mtmp.muy !== u.uy) {
+            await pline(`${cansee(mtmp.mux, mtmp.muy) ? Monnam(mtmp) : "It"
+                           } whispers at thin air.`);
+
+            if (is_demon(game.youmonst.data)) {
+                /* "Good hunting, brother" */
+                if (!(await tele_restrict(mtmp)))
+                    /* (void) */ await rloc(mtmp, RLOC_MSG);
+            } else {
+                mtmp.minvis = mtmp.perminvis = 0;
+                /* Why?  For the same reason in real demon talk */
+                /* if (canseemon(mtmp)) set_msg_xy(mtmp->mx, mtmp->my); */
+                await pline(`${Amonnam(mtmp)} gets angry!`);
+                mtmp.mpeaceful = 0;
+                set_malign(mtmp);
+                /* since no way is an image going to pay it off */
+            }
+        } else if (await demon_talk(mtmp))
+            return 1; /* you paid it off */
+    }
 
     /* the watch will look around and see if you are up to no good :-) */
     if (is_watch(mdat)) {

@@ -17,7 +17,7 @@ import {
 import { objects, OBJ_NAME, OBJ_DESCR, MAXOCLASSES, RANDOM_CLASS,
          Is_container } from './objects.js';
 import { def_oc_syms, def_char_to_objclass } from './drawing.js';
-import { readobjnam } from './objnam.js';
+import { readobjnam_sync } from './objnam.js';
 import { mksobj, mkobj, add_to_container, weight,
          is_poisonable } from './mkobj.js';
 import { Has_contents, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM, NEUTRAL } from './const.js';
@@ -201,7 +201,7 @@ function l_obj_new_readobjnam(...args) {
         const buf = luaL_checkstring(args[0]);
         let otmp;
 
-        if ((otmp = readobjnam(buf, null)) === 'hands_obj')
+        if ((otmp = readobjnam_sync(buf, null)) === 'hands_obj')
             otmp = null;
         return l_obj_push(otmp);
     } else if (argc === 1 && lua_type(args[0]) === LUA_TTABLE) {
