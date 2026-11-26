@@ -12,6 +12,12 @@
 
 const NEWS_ITEMS = [
     {
+        date: '2026-11-26',
+        dateText: 'November 26, 2026',
+        href: '/thanksgiving-threshold/',
+        html: `<strong>Thanksgiving Threshold</strong> &mdash; Happy Thanksgiving to all our contestants! At least ten entries will qualify for Phase 2. The changeover is Saturday, November 28, at 7:00 p.m. EST.`,
+    },
+    {
         date: '2026-11-14',
         dateText: 'November 14, 2026',
         href: '/rereading-readability/',
