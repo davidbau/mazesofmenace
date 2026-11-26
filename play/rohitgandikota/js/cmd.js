@@ -3456,8 +3456,8 @@ export async function itemactions(obj) {
 
     /* e: eat item */
     if (obj.otyp === ONAMES.TIN) {
-        add_item_action(win, 'e', `Open ${plural ? 'one of these tins' : 'this tin'} and eat the contents${
-            (u.uwep && u.uwep.otyp === ONAMES.TIN_OPENER) ? ' with your tin opener' : ''}`);
+        add_item_action(win, 'e', `Open ${plural ? 'one of these tins' : 'this tin'}${
+            (u.uwep && u.uwep.otyp === ONAMES.TIN_OPENER) ? ' with your tin opener' : ''} and eat the contents`);
     } else if (is_edible(obj)) {
         add_item_action(win, 'e', `Eat ${plural ? 'one of these' : 'this'}`);
     }
@@ -3711,7 +3711,8 @@ function queue_item_action(action, obj) {
              HANDS_SYM);
         break;
     case 'a': /* IA_APPLY_OBJ / IA_DIP_OBJ */
-        if (obj.oclass === OCLASSES.POTION_CLASS)
+        if (obj.oclass === OCLASSES.POTION_CLASS
+            && (obj.otyp !== ONAMES.POT_OIL || !game.objects[obj.otyp].oc_name_known))
             /* #dip: first prompt is for the potion, second for the item
                to dip; using the inventory item first (the instigating
                potion) matches C's dip_into() */
@@ -4040,8 +4041,11 @@ export function count_bind_keys() {
     return count;
 }
 
-// src/cmd.c bind_key(), the command and optional parameter for one key.
+// src/cmd.c:2662 bind_key(), the command and optional parameter for one key.
 export function bind_key(key, command, user = true) {
+    const fromBytes = command instanceof Uint8Array;
+    if (fromBytes)
+        command = String.fromCharCode(...command).split('\0', 1)[0];
     if (!strcmpi(command, 'nothing')) {
         cmdbind_remove(key);
         return true;
@@ -4063,7 +4067,7 @@ export function bind_key(key, command, user = true) {
             else if (!param)
                 config_error_add('Required parameter cannot be empty');
             else
-                cmdbind_get(key).param = String.fromCharCode(
+                cmdbind_get(key).param = fromBytes ? param.slice(0, 30) : String.fromCharCode(
                     ...new TextEncoder().encode(param).slice(0, 30));
         } else if (param)
             config_error_add(`'${buf}' does not take a parameter`);

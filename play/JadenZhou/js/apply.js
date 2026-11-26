@@ -168,10 +168,15 @@ import { STOMACH as STOMACH_CAM } from './const.js';
 import { noit_mon_nam as noit_mon_nam_ls, Monnam as Monnam_ls,
          l_monnam as l_monnam_ls } from './do_name.js';
 import { get_adjacent_loc as get_adjacent_loc_ls } from './cmd.js';
-import { use_pick_axe } from './dig.js';
+import { use_pick_axe, buried_ball_to_freedom } from './dig.js';
 import { glyph_is_invisible as glyph_is_invisible_ls } from './display.js';
 import { mons as mons_ls, PM_LONG_WORM as PM_LONG_WORM_LS, M1_UNSOLID as M1_UNSOLID_LS,
          M1_NOLIMBS as M1_NOLIMBS_LS, M1_NOHEAD as M1_NOHEAD_LS } from './monsters.js';
+import { an, singular, xname } from './objnam.js';
+import { Glib, Fumbling, Underwater } from './youprop.js';
+import { A_DEX } from './const.js';
+import { splitobj } from './mkobj.js';
+import { fingers_or_gloves } from './do_wear.js';
 
 // C ref: apply.c its_dead() -- the stethoscope applied to a corpse or
 // statue at <rx,ry>; returns TRUE if it gave a message
@@ -247,7 +252,8 @@ async function use_bell(obj) {
                 await unpunish_bl();
                 res = 1;
             } else if (u.utrap && u.utraptype === TT_BURIEDBALL_bl) {
-                throw new Error('use_bell(): buried_ball_to_freedom() not ported yet');
+                await buried_ball_to_freedom();
+                res = 1;
             }
             res += await openit_bl();
             switch (res) {
@@ -917,7 +923,7 @@ export async function doapply() {
         return await flip_through_book(obj);
 
     if (obj.oclass === COIN_CLASS)
-        throw new Error('doapply(): flip_coin() not ported yet');
+        return await flip_coin(obj);
 
     switch (obj.otyp) {
     case O.BLINDFOLD:
@@ -1180,17 +1186,17 @@ async function display_jump_positions(on_off) {
 
     if (on_off) {
         /* on */
-        tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_goodpos) */
+        await tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_goodpos) */
         for (dx = -4; dx <= 4; dx++)
             for (dy = -4; dy <= 4; dy++) {
                 x = dx + game.u.ux;
                 y = dy + game.u.uy;
                 if (await get_valid_jump_position(x, y) && !u_at(x, y))
-                    tmp_at(x, y);
+                    await tmp_at(x, y);
             }
     } else {
         /* off */
-        tmp_at(DISP_END, 0);
+        await tmp_at(DISP_END, 0);
     }
 }
 
@@ -1599,23 +1605,23 @@ function get_valid_polearm_position(x, y) {
 }
 
 // C ref: apply.c display_polearm_positions()
-function display_polearm_positions(on_off) {
+async function display_polearm_positions(on_off) {
     let x, y, dx, dy;
 
     if (on_off) {
         /* on */
-        tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_goodpos) */
+        await tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_goodpos) */
         for (dx = -3; dx <= 3; dx++)
             for (dy = -3; dy <= 3; dy++) {
                 x = dx + game.u.ux;
                 y = dy + game.u.uy;
                 if (get_valid_polearm_position(x, y)) {
-                    tmp_at(x, y);
+                    await tmp_at(x, y);
                 }
             }
     } else {
         /* off */
-        tmp_at(DISP_END, 0);
+        await tmp_at(DISP_END, 0);
     }
 }
 
@@ -1968,4 +1974,35 @@ async function use_leash_core(obj, mtmp, cc, spotmon) {
         /* applying a leash which is currently in use */
         throw new Error('use_leash_core(): removing a leash not ported yet');
     }
+}
+
+// C ref: apply.c flip_coin()
+async function flip_coin(obj) {
+    let otmp = obj;
+    let lose_coin = false;
+
+    await You(`flip ${an(singular(obj, xname))}.`);
+    if (Underwater()) {
+        await pline("It tumbles away.");
+        lose_coin = true;
+    } else if (Glib() || Fumbling()
+               || (ACURR(A_DEX) < 10 && !rn2(ACURR(A_DEX)))) {
+        await pline(`It slips between your ${fingers_or_gloves(false)}.`);
+        lose_coin = true;
+    }
+
+    if (lose_coin) {
+        if (otmp.quan > 1)
+            otmp = splitobj(otmp, 1);
+        await dropx(otmp);
+        return ECMD_TIME;
+    }
+    if (Hallucination()) {
+        await pline(rn2(100) ? "Wow, a double header!"
+                        /* edge case */
+                             : "The coin miraculously lands on its edge!");
+    } else {
+        await pline(`It comes up ${rn2(2) ? "heads" : "tails"}.`);
+    }
+    return ECMD_TIME;
 }

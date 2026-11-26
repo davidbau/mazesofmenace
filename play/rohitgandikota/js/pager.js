@@ -87,7 +87,7 @@ import { nhl_init } from './nhlua.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
          tty_add_menu_str, tty_end_menu, tty_select_menu, tty_dismiss_nhwindow,
-         NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
+         tty_putmixed_message, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
 import { ok_to_quest } from './quest.js';
 import { costly_spot, doname_with_price } from './shk.js';
 import { trapname } from './trap.js';
@@ -1437,7 +1437,7 @@ export async function do_look(mode) {
             supplemental_pm = res.pm; /* the &supplemental_pm out-param */
 
         if (res.found) {
-            await pline(out_str); /* putmixed() */
+            await tty_putmixed_message(out_str);
             if (res.found === 1 && ans !== LOOK_QUICK && ans !== LOOK_ONCE
                 && (ans === LOOK_VERBOSE
                     || (game.flags?.help !== false && !quick))) {

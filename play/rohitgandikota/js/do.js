@@ -57,7 +57,7 @@ import { obfree, stackobj, useupf } from './invent.js';
 // the first draw the new level makes; the missing piece is everything above it.
 
 import { game } from './gstate.js';
-import { paranoid_ynq, reset_occupations, set_move_cmd } from './cmd.js';
+import { paranoid_ynq, reset_occupations, reset_trapset, set_move_cmd } from './cmd.js';
 import { welded } from './wield.js';
 import { ONAMES } from './objects_data.js';
 import { encumber_msg, exercise, weight_cap } from './attrib.js';
@@ -1078,6 +1078,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             }
         }
     }
+    /* src/do.c:1583, a rejected same-level change keeps its context. */
+    if (on_level(newlevel, game.u.uz))
+        return;
+
     /* src/do.c:1499 — level temperature before the change, for
        temperature_change_msg() at the tail */
     const prev_temperature = game.level?.flags?.temperature | 0;
@@ -1085,6 +1089,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1585 keepdogs() — adjacent followers leave the map with the
        hero BEFORE the old level is left */
     const { keepdogs, losedogs } = await import('./dog.js');
+    /* src/do.c:1606, even a carried trap cannot resume across levels. */
+    reset_trapset();
     /* src/do.c:1607 - a destination belongs to the level being left. */
     game.iflags = game.iflags || {};
     game.iflags.travelcc = { x: 0, y: 0 };

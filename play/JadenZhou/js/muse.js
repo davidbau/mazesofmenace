@@ -64,7 +64,7 @@ import { enexto, rloc, tele_restrict, noteleport_level,
 import { mintrap, maketrap, seetrap, locomotion, trapname,
          Trap_Killed_Mon } from './trap.js';
 import { makemon, place_monster, rndmonst, is_pool, is_lava,
-         grow_up, nonliving } from './makemon.js';
+         grow_up, nonliving, makemon_flush_msg } from './makemon.js';
 import { mon_set_minvis, mon_adjust_speed, which_armor } from './worn.js';
 import { mon_learns_traps, poly_when_stoned, Resists_Elem, is_bat,
          mon_hates_silver, is_flyer, is_human, is_elf, is_dwarf, is_gnome,
@@ -944,7 +944,14 @@ export async function use_defensive(mtmp) {
         if (!enexto(cc, mtmp.mx, mtmp.my, pm))
             return 0;
         await mzapwand(mtmp, otmp, false);
-        const mon = makemon(null, cc.x, cc.y, NO_MM_FLAGS);
+        let mon;
+        game.makemon_want_msg = true; /* see makemon()'s Norep() comment */
+        try {
+            mon = makemon(null, cc.x, cc.y, NO_MM_FLAGS);
+        } finally {
+            game.makemon_want_msg = false;
+        }
+        await makemon_flush_msg();
         if (mon && canspotmon(mon) && oseen)
             makeknown(WAN_CREATE_MONSTER);
         return 2;
@@ -972,7 +979,13 @@ export async function use_defensive(mtmp) {
                `pm' is what to actually create (0 => random) */
             if (!enexto(cc, mtmp.mx, mtmp.my, fish))
                 break;
-            mon = makemon(pm, cc.x, cc.y, NO_MM_FLAGS);
+            game.makemon_want_msg = true; /* see makemon()'s Norep() comment */
+            try {
+                mon = makemon(pm, cc.x, cc.y, NO_MM_FLAGS);
+            } finally {
+                game.makemon_want_msg = false;
+            }
+            await makemon_flush_msg();
             if (mon && canspotmon(mon))
                 known = true;
         }

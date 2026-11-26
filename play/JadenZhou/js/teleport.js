@@ -816,7 +816,7 @@ export async function tele_trap(trap) {
         if (In_endgame(u.uz) || Antimagic || noteleport_level(game.youmonst)) {
             if (Antimagic)
                 throw new Error('tele_trap(): shieldeff() not ported yet');
-            await pline("You feel a wrenching sensation."); /* You_feel() */
+            await You_feel_lt("a wrenching sensation."); /* You_feel() */
         } else if (!await next_to_u()) {
             await pline(`You ${shudder_for_moment}`); /* You1() */
         } else if (trap.once) {
@@ -884,7 +884,7 @@ export async function level_tele_trap(trap, trflags) {
         /* shieldeff(u.ux, u.uy): transient display only */
     }
     if ((Antimagic && !intentional) || In_endgame(u.uz)) {
-        await pline("You feel a wrenching sensation."); /* You_feel() */
+        await You_feel_lt("a wrenching sensation."); /* You_feel() */
         return;
     }
     deltrap(trap);
@@ -898,7 +898,7 @@ export async function level_tele_trap(trap, trflags) {
     if (Hallucination_tp() || Teleport_control)
         await You(`briefly feel ${Hallucination_tp() ? "oriented" : "centered"}.`);
     else
-        await pline(`You feel ${Confusion ? "even more " : ""}disoriented.`); /* You_feel() */
+        await You_feel_lt(`${Confusion ? "even more " : ""}disoriented.`);
     /* magic portal traversal causes brief Stun; for level teleport, use
        confusion instead, and only when hero lacks control; do this after
        processing the level teleportation attempt because being confused
@@ -922,7 +922,7 @@ export async function level_tele() {
 
     if ((u.uhave?.amulet || In_endgame(u.uz) /* || In_sokoban(&u.uz) */)
         && !wizard) {
-        await pline("You feel very disoriented for a moment."); /* You_feel() */
+        await You_feel_lt("very disoriented for a moment."); /* You_feel() */
         return;
     }
     const Teleport_control = !!(u.uprops[TELEPORT_CONTROL]?.intrinsic

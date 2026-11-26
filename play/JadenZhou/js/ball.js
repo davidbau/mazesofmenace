@@ -47,6 +47,9 @@ export const BC_BALL = 0x01, BC_CHAIN = 0x02;
 /* C ref: ball.c static int bcrestriction */
 function bcrestriction() { return game.bcrestriction || 0; }
 
+/* C ref: hack.h enum bcargs */
+export const override_restriction = -1;
+
 /* C ref: mkobj.c remove_object() -- a floor object leaves the floor */
 function remove_object(otmp) {
     if (otmp.where !== 'OBJ_FLOOR')
@@ -168,7 +171,7 @@ function unplacebc_core() {
 function check_restriction(restriction) {
     let ret = false;
 
-    if (!bcrestriction() || (restriction === game.override_restriction))
+    if (!bcrestriction() || (restriction === override_restriction))
         ret = true;
     else
         ret = (bcrestriction() === restriction);
@@ -179,6 +182,20 @@ function check_restriction(restriction) {
 export async function placebc() {
     if (!check_restriction(0)) {
         /* paniclog("placebc", "placebc denied, restriction in effect") */
+        return;
+    }
+    if (game.uchain && game.uchain.where !== 'OBJ_FREE' && game.uchain.where) {
+        console.error('impossible: bc already placed?');
+        return;
+    }
+    await placebc_core();
+}
+
+// C ref: ball.c lift_covet_and_placebc()
+export async function lift_covet_and_placebc(pin) {
+    if (!check_restriction(pin)) {
+        /* paniclog("placebc", "lift_covet_and_placebc denied, %s",
+           (pin != bcrestriction) ? "pin mismatch" : "restriction in effect") */
         return;
     }
     if (game.uchain && game.uchain.where !== 'OBJ_FREE' && game.uchain.where) {

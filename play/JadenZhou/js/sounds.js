@@ -156,8 +156,20 @@ async function temple_priest_sound(mtmp) {
 async function oracle_sound(mtmp) {
     if (mtmp.data !== mons[PM_ORACLE])
         return false;
-    /* canseemon() isn't ported yet */
-    throw new Error('oracle_sound(): canseemon() not ported yet');
+
+    /* and don't produce silly effects when she's clearly visible */
+    if (Hallucination() || !canseemon(mtmp)) {
+        const hallu = Hallucination() ? 1 : 0;
+        const ora_msg = [
+            "a strange wind.",     /* Jupiter at Dodona */
+            "convulsive ravings.", /* Apollo at Delphi */
+            "snoring snakes.",     /* AEsculapius at Epidaurus */
+            "someone say \"No more woodchucks!\"",
+            "a loud ZOT!" /* both rec.humor.oracle */
+        ];
+        await You_hear(ora_msg[rn2(3) + hallu * 2]); /* You_hear1() */
+    }
+    return true;
 }
 
 // C ref: mon.c get_iter_mons()

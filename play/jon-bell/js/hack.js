@@ -4860,6 +4860,13 @@ export async function notice_all_mons(reset) {
                 return da - db;
             });
 
+            /* C vision.c:708-856: every newsym() -> show_glyph() mention_map
+             * pline (display.c:2060-2072) finishes inside the update loop,
+             * before notice_all_mons() runs at :856.  Drain the async
+             * mention_map descriptions before notice_mon's You() calls. */
+            if (g._mentionMapPending)
+                await g._mentionMapPending;
+
             for (let j = 0; j < i; j++)
                 await notice_mon(arr[j]);
         }

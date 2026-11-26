@@ -3248,7 +3248,10 @@ async function numberPadSubmenu(preserveStatus = false) {
         set_cursor(game.iflags?.menu_overlay === false
             || game.iflags?.menu_overlay === 0 ? 7 : 30, 8);
         game._pending_message = '';
-        const key = await nhgetch();
+        const rawKey = await nhgetch();
+        // wintty.c:1557-1564: explicit selectors take precedence over aliases.
+        const key = 'abcdef'.includes(String.fromCharCode(rawKey))
+            ? rawKey : map_menu_cmd(rawKey);
         if (key === 27 || key === 10 || key === 13 || key === 32) {
             /* wintty.c:2794 tty_select_menu dismisses the submenu whatever was
              * picked: at offx 0 (!menu_overlay) erase_menu_or_text docrt()s
@@ -3423,7 +3426,11 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
         // No flush_screen (it would rebuild _screen_output from the map).
         renderPickupSubmenu(marks, bgRows, classes, preserveStatus, titleErased);
         const frame = game._screen_output;
-        const key = await nhgetch();
+        const rawKey = await nhgetch();
+        const rawCh = String.fromCharCode(rawKey);
+        // wintty.c:1557-1564: PICK_ANY protects item selectors, then maps aliases.
+        const key = symByAcc.has(rawCh) || rawCh === 'A'
+            ? rawKey : map_menu_cmd(rawKey);
         const ch = String.fromCharCode(key);
         if (ch >= '0' && ch <= '9' && (counting || !symSet.has(ch))) {
             count = count * 10 + (key - 48);
@@ -3521,7 +3528,7 @@ async function pickupTypesSubmenu(bgRows, preserveStatus = false, prompted = fal
         if (ch !== ' ' && ch !== 'A' && !(ch >= '0' && ch <= '9')
             && !symByAcc.has(ch) && !symSet.has(ch)
             && '^|><.-@,\\~:'.indexOf(ch) < 0
-            && (g.mapped_menu_cmds || '').indexOf(ch) < 0) {
+            && (g.mapped_menu_cmds || '').indexOf(rawCh) < 0) {
             reset_count = false; /* the loop never turned over: keep the count */
             continue;
         }
@@ -3671,7 +3678,12 @@ export async function doset_simple() {
          * before select_menu displays the Options window again. */
         await drainTopline();
         renderPage(pageIdx, titleErased);
-        const key = await nhgetch();
+        const rawKey = await nhgetch();
+        const accMap = pageAccelMap(pageIdx);
+        const rawCh = String.fromCharCode(rawKey);
+        // wintty.c:1557-1564: map commands only after checking page selectors.
+        const key = accMap.has(rawCh) || (rawCh === '?' && pageIdx === 0)
+            ? rawKey : map_menu_cmd(rawKey);
         const ch = String.fromCharCode(key);
         if (key >= 48 && key <= 57) {
             count = count * 10 + (key - 48);
@@ -3705,7 +3717,6 @@ export async function doset_simple() {
             continue;
         }
         // a letter accelerator on the current page → toggle / submenu.
-        const accMap = pageAccelMap(pageIdx);
         let searchPick = null;
         if (!accMap.has(ch) && key === 0x3a /* ':' MENU_SEARCH */) {
             await menu_search_case('ONE', dosetSimpleSearchList(),
@@ -3945,7 +3956,7 @@ export async function doset_simple() {
          * loop over and drops the count. */
         if (!(ch === '?' && pageIdx === 0)
             && '<>^|,\\~.-@:'.indexOf(ch) < 0
-            && (g.mapped_menu_cmds || '').indexOf(ch) < 0)
+            && (g.mapped_menu_cmds || '').indexOf(rawCh) < 0)
             reset_count = false;
         // any other key: ignore, menu stays displayed.
     }

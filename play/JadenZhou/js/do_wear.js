@@ -2787,6 +2787,14 @@ const takeoff_order = [
     WORN_SHIRT_DW, WORN_BOOTS_DW, W_SWAPWEP_DW, W_QUIVER_DW, 0
 ];
 
+// C ref: do_wear.c unchanger()
+/* also for praying; find worn item that confers "Unchanging" attribute */
+export function unchanger() {
+    if (game.uamul && game.uamul.otyp === O.AMULET_OF_UNCHANGING)
+        return game.uamul;
+    return null;
+}
+
 // C ref: do_wear.c do_takeoff()
 async function do_takeoff() {
     const g = game;

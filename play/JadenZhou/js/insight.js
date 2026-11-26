@@ -519,7 +519,7 @@ export function P_NAME(type) {
 }
 
 /* C ref: drawing.c def_oc_syms[].name */
-const def_oc_names = [
+export const def_oc_names = [
     "", /* placeholder for the "random class" */
     "illegal objects", "weapons", "armor", "rings", "amulets", "tools",
     "food", "potions", "scrolls", "spellbooks", "wands", "coins", "rocks",

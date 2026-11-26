@@ -71,7 +71,7 @@ import {
     SPE_MAGIC_MISSILE, SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_TURN_UNDEAD,
 } from './objects.js';
 import { align_gtitle } from './pray.js';
-import { lowc, highc, trimspaces, s_suffix } from './hacklib.js';
+import { lowc, highc, trimspaces, s_suffix, strsubst } from './hacklib.js';
 import { an } from './objnam.js';
 import { pline } from './display.js';
 import {
@@ -1698,7 +1698,7 @@ export function build_plselection_prompt(buflen, rolenum, racenum, gendnum,
     /* "Shall I pick a character's role, race, gender, and alignment for you?"
        plus " [ynaq] (y)" is a little too long for a conventional 80 columns;
        also, "pick a character's <anything>" sounds a bit stilted */
-    tmpbuf = tmpbuf.split("pick a character").join("pick character"); /* strsubst() */
+    tmpbuf = strsubst(tmpbuf, "pick a character", "pick character");
     buf = s_suffix(tmpbuf);
     /* don't bother splitting caveman/cavewoman or priest/priestess
        in order to apply possessive suffix to both halves, but do

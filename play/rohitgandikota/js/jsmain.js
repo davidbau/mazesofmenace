@@ -17,7 +17,7 @@ import { pushKey, nhgetch } from './input.js';
 import { newgame, newgame_moveloop_preamble, moveloop_core,
          maybe_do_tutorial } from './allmain.js';
 import { wd_message, restore_savefile_prompt } from './unixmain.js';
-import { parseNethackrc, optValue, set_fruit_name, set_menuobjsyms_flags, iflag_boolean_options } from './options.js';
+import { parseNethackrc, optValue, fruitadd, set_menuobjsyms_flags, iflag_boolean_options } from './options.js';
 import { assign_graphics, init_symbols, clear_symsetentry, PRIMARYSET, ROGUESET,
          gp_primary_syms, gr_rogue_syms, gc_currentgraphics,
          savedsym_free, go_ov_primary_syms, go_ov_rogue_syms, SYM_BOULDER,
@@ -191,7 +191,8 @@ export class NethackGame {
            readers and the 'O' menu look (see iflag_boolean_options) */
         for (const name of iflag_boolean_options) {
             if (name in rc.opts) {
-                g.iflags[name] = rc.opts[name];
+                const field = name === 'eight_bit_tty' ? 'wc_eight_bit_input' : name;
+                g.iflags[field] = rc.opts[name];
                 delete g.flags[name];
             }
         }
@@ -235,7 +236,9 @@ export class NethackGame {
             },
         };
         g.context = { move: 0 };
-        set_fruit_name(optValue(rc, 'fruit') || 'slime mold', true);
+        // src/options.c:7324 initoptions_finish(), register the parsed name.
+        g.ffruit = null;
+        fruitadd(g.svp, null);
         g.program_state = {};
         /* src/decl.c — svm.moves starts at 0 and moveloop() advances it. Several
            things in u_init read `moves == 0` to mean "this is character

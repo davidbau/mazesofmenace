@@ -1439,3 +1439,53 @@ export function give_u_to_m_resistances(mtmp) {
         }
     }
 }
+
+// C ref: mondata.c msummon_environ()
+/* similar to on_fire(); creature is summoned in a cloud of <something>;
+   C returns 'what' and sets *cloud; JS returns both */
+export function msummon_environ(mptr) {
+    let what, cloud;
+    const mndx = ((mptr.mlet === M.S_ANGEL) ? M.PM_ANGEL
+                  : (mptr.mlet === M.S_LIGHT) ? M.PM_YELLOW_LIGHT
+                    : monsndx(mptr));
+
+    cloud = "cloud"; /* default is "cloud of <something>" */
+    switch (mndx) {
+    case M.PM_WATER_DEMON:
+    case M.PM_AIR_ELEMENTAL:
+    case M.PM_WATER_ELEMENTAL:
+    case M.PM_FOG_CLOUD:
+    case M.PM_ICE_VORTEX:
+    case M.PM_FREEZING_SPHERE:
+        what = "vapor";
+        break;
+    case M.PM_STEAM_VORTEX:
+        what = "steam";
+        break;
+    case M.PM_ENERGY_VORTEX:
+    case M.PM_SHOCKING_SPHERE:
+        cloud = "shower"; /* "shower of sparks" instead of "cloud of..." */
+        what = "sparks";
+        break;
+    case M.PM_EARTH_ELEMENTAL:
+    case M.PM_DUST_VORTEX:
+        what = "dust";
+        break;
+    case M.PM_FIRE_ELEMENTAL:
+    case M.PM_FIRE_VORTEX:
+    case M.PM_FLAMING_SPHERE:
+    /*case PM_SALAMANDER:*/
+        cloud = "ball"; /* "ball of flame" instead of "cloud of..." */
+        what = "flame";
+        break;
+    case M.PM_ANGEL: /* actually any 'A'-class */
+    case M.PM_YELLOW_LIGHT: /* any 'y'-class */
+        cloud = "flash"; /* "flash of light" instead of "cloud of..." */
+        what = "light";
+        break;
+    default:
+        what = "smoke";
+        break;
+    }
+    return { what, cloud };
+}

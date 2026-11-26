@@ -2200,7 +2200,7 @@ export function serialize_terminal_grid(display) {
    set (S_pool's '`', the ▒/°/± family beyond 'a') is compared by its raw
    byte, so the grid must store the raw byte for it: a literal '◆' can never
    match C's '`'. Do NOT widen this to terminal.js's full DEC_TO_UNICODE. */
-const CMP_DEC_MAP = {
+export const CMP_DEC_MAP = {
     'l': '┌', 'q': '─', 'k': '┐',
     'x': '│', 'm': '└', 'j': '┘',
     't': '├', 'u': '┤', 'w': '┬',
@@ -2233,7 +2233,7 @@ function _paint_map_cell(display, x, y, g = gbuf_at(x, y), background = null) {
     const code = raw.charCodeAt(0);
     if (code >= 0x80 && code <= 0xff) {
         dec = handling !== H_IBM && handling !== H_UTF8
-            && (!game.flags.eight_bit_tty
+            && (!game.iflags?.wc_eight_bit_input
                 || (handling === H_DEC && (code & 0x7f) >= 0x60));
         raw = String.fromCharCode(code & 0x7f);
     }
@@ -2428,9 +2428,13 @@ export function paint_topline() {
     const msgLines = painted.split('\n');
     for (let r = 0; r < msgLines.length && r < 24; r++) {
         const line = msgLines[r];
-        for (let c = 0; c < CO; c++)
-            display.setCell(c, r, c < line.length ? line[c] : ' ',
-                            NO_COLOR, 0);
+        for (let c = 0; c < CO; c++) {
+            // win/tty/topl.c:305 topl_putsym(char), then nomux_putch(int).
+            const ch = c < line.length ? line[c] : ' ';
+            const byte = (ch.charCodeAt(0) << 24) >> 24;
+            if (byte >= 32)
+                display.setCell(c, r, ch, NO_COLOR, 0);
+        }
     }
     // win/tty/topl.c:305 putsyms()/topl_putsym() leave the cursor after the text.
     display.setCursor(msgLines[msgLines.length - 1].length, msgLines.length - 1);

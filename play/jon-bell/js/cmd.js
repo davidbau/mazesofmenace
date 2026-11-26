@@ -6446,7 +6446,7 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
              * the cursor homed (wintty.c tty_clear_nhwindow). */
             g._topl_suppress_history = _sh;
             tty_repaint(1);
-            if (g.nhDisplay) topl_park_cursor(g.nhDisplay, '');
+            if (g.nhDisplay && g._doagain_cursor_home !== false) topl_park_cursor(g.nhDisplay, '');
             itemRaw = await readchar();
         } else if (invmenuFirst && !oneloop) {
             g._topl_suppress_history = _sh;
@@ -6665,13 +6665,19 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
                 if (matched) continue;
             }
         }
-        // C invent.c:2059 You() reaches pline.c:274 before the pager.
-        pline_flush_point();
         if (g.gi?.in_doagain) { /* invent.c:2060-2061 */
+            pline_flush_point();
             await You("don't have that object.");
             return null;
         }
-        await force_more("You don't have that object.");
+        /* C invent.c:2059 You() -> vpline: a MSGTYPE=hide (or norep) rule drops
+         * the line before its flush and its page (pline.c:246-262); the loop then
+         * just re-prompts (invent.c:2062). */
+        if (!msgtype_suppressed("You don't have that object.")) {
+            // C invent.c:2059 You() reaches pline.c:274 before the pager.
+            pline_flush_point();
+            await force_more("You don't have that object.");
+        }
         hadRetry = true;
         /* C topl.c:394 TOPLINE_SPECIAL_PROMPT: the re-prompt hard-wraps too. */
         if (g.vision_full_recalc) vision_recalc(0);
@@ -17325,6 +17331,17 @@ async function do_repeat() {
             return ECMD_FAIL;
         }
         const repeat_copy = cmdq_copy(CQ_REPEAT);
+        /* The outer parse() read this key with the cursor on the hero
+         * (cmd.c:5099 flush_screen(1)) and then ran clear_nhwindow(WIN_MESSAGE)
+         * (cmd.c:5147), which homes the cursor only when the topline was not
+         * TOPLINE_EMPTY (wintty.c:1048-1056).  The repeated command is popped
+         * from CQ_REPEAT without another parse() (cmd.c:3642-3651), so a
+         * prompt-less read inside it (getobj's in_doagain readchar,
+         * invent.c:1920-1921) waits with the cursor wherever that left it. */
+        /* The frame that key was read against is the screen output; its
+         * topline row tells whether that clear had text to erase. */
+        g._doagain_cursor_home = /\S/.test(String(g._screen_output || '').split('\n')[0]
+            .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/[\x0e\x0f]/g, ''));
         g.gi.in_doagain = true;
         await rhack(0);
         g.gi.in_doagain = false;

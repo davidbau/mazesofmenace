@@ -730,13 +730,13 @@ function can_center_cloud(x, y) {
 }
 
 // C ref: read.c display_stinking_cloud_positions()
-function display_stinking_cloud_positions(on_off) {
+async function display_stinking_cloud_positions(on_off) {
     let x, y, dx, dy;
     const dist = 6;
 
     if (on_off) {
         /* on */
-        tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_goodpos) */
+        await tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_goodpos) */
         for (dx = -dist; dx <= dist; dx++)
             for (dy = -dist; dy <= dist; dy++) {
                 x = game.u.ux + dx;
@@ -747,11 +747,11 @@ function display_stinking_cloud_positions(on_off) {
                 if (u_at(x, y))
                     continue;
                 if (can_center_cloud(x, y))
-                    tmp_at(x, y);
+                    await tmp_at(x, y);
             }
     } else {
         /* off */
-        tmp_at(DISP_END, 0);
+        await tmp_at(DISP_END, 0);
     }
 }
 

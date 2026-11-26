@@ -2349,7 +2349,7 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
          * adtyp fell into the default arm, which printed "touches you!" and
          * skipped the make_sick rn1(ACURR(A_CON),20) draw. */
         case AD_PEST_MK:
-            await pline('%s reaches out, and you feel fever and chills.', Monnam(mtmp));
+            await pline_mon(mtmp, '%s reaches out, and you feel fever and chills.', Monnam(mtmp));
             await diseasemu_gu(mtmp.data);
             break;
         /* C uhitm.c:3729-3763 mhitm_ad_poly + mhitm.c:1122 mon_poly, hero arm. */
@@ -2583,7 +2583,9 @@ async function mhitm_ad_deth_u(magr, mattk, mhm) {
     }
 }
 async function mhitm_ad_famn_u(magr, mattk, mhm) {
-    await pline('%s reaches out, and your body shrivels.', Monnam(magr));
+    /* C pline_mon (pline.c:138-154) also records msg_loc; with
+     * accessiblemsg the vpline prefix (pline.c:175-190) becomes "<x,y>: ". */
+    await pline_mon(magr, '%s reaches out, and your body shrivels.', Monnam(magr));
     exercise(A_CON, false);
     if (!is_fainted_mu())
         await morehungry_mu(rn1(40, 40));

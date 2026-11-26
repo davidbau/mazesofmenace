@@ -691,7 +691,7 @@ export async function nh_timeout() {
                 const HFast = P[FAST].intrinsic, EFast = P[FAST].extrinsic;
                 const Very_fast = ((HFast & ~INTRINSIC) || EFast);
                 if (!Very_fast)
-                    await pline(`You feel yourself slow down${
+                    await You_feel_he(`yourself slow down${
                         (HFast || EFast) ? " a bit" : ""}.`);
                 break;
             }

@@ -16,6 +16,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_destroy_nhwi
 import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT,
          paint_topline, tty_clear_nhwindow_message } from '../display.js';
 import { nhgetch } from '../input.js';
+import { NO_COLOR } from '../terminal.js';
 
 function wrap_topline(text, columns) {
     let out = text;
@@ -216,6 +217,11 @@ async function redotoplin(str) {
     game._toplin = str ? TOPLINE_NEED_MORE : TOPLINE_EMPTY;
     game._topl_curx = 0;
     game._topl_cury = (str.match(/\n/g) || []).length;
+    // redotoplin(): the mixed glyph precedes ordinary signed-byte putsyms.
+    // The pager supplies its resolved glyph, which must not be narrowed to char.
+    if (game.ttyDisplay?.mixed && !game.ttyDisplay.topl_utf8
+        && str.charCodeAt(0) >= 0x80)
+        game.nhDisplay?.setCell(0, 0, str[0], NO_COLOR, 0);
     paint_topline();    /* home(); putsyms(str); cl_end(); — the tty paints
                            the message NOW, not at the next screen flush */
     if (game._topl_cury && otoplin !== TOPLINE_SPECIAL_PROMPT)

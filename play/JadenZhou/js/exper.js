@@ -8,7 +8,7 @@
 import { monhp_per_lvl } from './makemon.js';
 import { minuhpmax } from './attrib.js';
 import { game } from './gstate.js';
-import { livelog_printf } from './display.js';
+import { livelog_printf, You_feel } from './display.js';
 import { LL_MINORAC } from './const.js';
 import { count_achievements } from './insight.js';
 import { rnd, rn1 } from './rng.js';
@@ -230,7 +230,7 @@ export async function pluslvl(
     let hpinc, eninc;
 
     if (!incr)
-        await pline("You feel more experienced.");
+        await You_feel("more experienced.");
 
     /* increase hit points (when polymorphed, do monster form first
        in order to retain normal human/whatever increase for later) */

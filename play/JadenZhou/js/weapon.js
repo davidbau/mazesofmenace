@@ -68,7 +68,7 @@ import { mhis as mhis_wp } from './mhitu.js';
 import { s_suffix as s_suffix_wp } from './hacklib.js';
 import { mon_nam as mon_nam_wp } from './do_name.js';
 import { the as the_wp } from './iactions.js';
-import { Your } from './display.js';
+import { Your, You_feel } from './display.js';
 import { vtense } from './objnam.js';
 import { mon_nam } from './do_name.js';
 import { begin_burn, end_burn } from './timeout.js';
@@ -1104,7 +1104,7 @@ export function dbon() {
 
 // C ref: weapon.c give_may_advance_msg()
 async function give_may_advance_msg(skill) {
-    await pline(`You feel more confident in your ${
+    await You_feel(`more confident in your ${
         (skill === P_NONE) ? ''
         : (skill <= P_LAST_WEAPON) ? 'weapon '
           : (skill <= P_LAST_SPELL) ? 'spell casting '
@@ -1399,7 +1399,7 @@ export async function enhance_weapon_skill() {
             for (n = i = 0; i < P_NUM_SKILLS; i++) {
                 if (can_advance(i, speedy)) {
                     if (!speedy)
-                        await pline("You feel you could be more dangerous!");
+                        await You_feel("you could be more dangerous!");
                     n++;
                     break;
                 }

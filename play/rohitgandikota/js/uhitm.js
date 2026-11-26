@@ -1,10 +1,10 @@
-import { OBJ_FREE, DISMOUNT_KNOCKED, NON_PM } from './const.js';
+import { OBJ_FREE, DISMOUNT_KNOCKED, NON_PM, ismnum } from './const.js';
 import { NEUTRAL } from './const.js';
 import { A_CON, ERODE_ROT, TIMEOUT } from './const.js';
 import { RLOC_MSG } from './const.js';
 import { OBJ_INVENT } from './const.js';
 import { W_WEP } from './const.js';
-import { CXN_ARTICLE } from './const.js';
+import { CXN_ARTICLE, CXN_PFX_THE } from './const.js';
 import { Mgender } from './const.js';
 import { G_UNIQ } from './const.js';
 import { KILLED_BY } from './const.js';
@@ -59,6 +59,7 @@ import { find_artifact, retouch_equipment } from './artifact.js';
 import { artifact_hit } from './artifact.js';
 import { artifact_light } from './artifact.js';
 import { corpse_xname } from './objnam.js';
+import { observe_object } from './o_init.js';
 import { bare_artifactname } from './objnam.js';
 import { cutworm } from './worm.js';
 import { mon_nam_too } from './do_name.js';
@@ -98,7 +99,7 @@ import { rn1 } from './rng.js';
 import { dmgtype, monstseesu, monstunseesu } from './mondata.js';
 import { touch_petrifies, abuse_dog, slimeproof, tamedog } from './dog.js';
 import { ndemon } from './minion.js';
-import { munslime } from './muse.js';
+import { munslime, munstone } from './muse.js';
 import { delayed_killer } from './end.js';
 import { SLIMED, NC_SHOW_MSG } from './const.js';
 import { which_armor, extract_from_minvent, mon_adjust_speed } from './worn.js';
@@ -2660,9 +2661,27 @@ async function hmon_hitmon_do_hit(hmd, mon, obj) {
     }
 }
 
-// src/uhitm.c:1280 hmon_hitmon_misc_obj() - non-weapon impact effects.
+// src/uhitm.c:1119 hmon_hitmon_misc_obj() - non-weapon impact effects.
 async function hmon_hitmon_misc_obj(hmd, mon, obj) {
     switch (obj.otyp) {
+    case ONAMES.CORPSE:
+        if (ismnum(obj.corpsenm) && touch_petrifies(game.mons[obj.corpsenm])) {
+            hmd.dmg = 1;
+            hmd.hittxt = true;
+            await You(`hit ${mon_nam(mon)} with ${corpse_xname(
+                obj, null, obj.dknown ? CXN_PFX_THE : CXN_ARTICLE)}.`);
+            observe_object(obj);
+            if (!await munstone(mon, true))
+                await minstapetrify(mon, true);
+            if (resists_ston(mon))
+                break;
+            hmd.doreturn = true;
+            hmd.retval = !DEADMONSTER(mon);
+            return;
+        }
+        hmd.dmg = (ismnum(obj.corpsenm) ? game.mons[obj.corpsenm].msize
+                   : 0) + 1;
+        break;
     case ONAMES.CREAM_PIE:
     case ONAMES.BLINDING_VENOM: {
         mon.msleeping = 0;

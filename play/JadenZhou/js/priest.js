@@ -26,7 +26,7 @@ import { pm_good_location } from './sp_lev.js';
 import { mfndpos } from './mon.js';
 import { mon_allowflags } from './mon.js';
 import { place_monster } from './makemon.js';
-import { newsym, pline, verbalize } from './display.js';
+import { newsym, pline, verbalize, You_feel } from './display.js';
 import { Your } from './display.js';
 import { mon_nam } from './do_name.js';
 import { dist2, onlineu } from './hacklib.js';
@@ -444,7 +444,7 @@ export async function intemple(roomno) {
             await You("have an eerie feeling...");
             break;
         case 1:
-            await pline("You feel like you are being watched."); /* You_feel() */
+            await You_feel("like you are being watched."); /* You_feel() */
             break;
         case 2:
             await pline(`A shiver runs down your ${body_part(SPINE)}.`);

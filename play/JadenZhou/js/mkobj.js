@@ -852,6 +852,21 @@ export function obj_extract_self(obj) {
         obj.where = 'OBJ_FREE';
         break;
     }
+    case 'OBJ_ONBILL': { /* extract_nobj(obj, &gb.billobjs) */
+        if (game.billobjs === obj) {
+            game.billobjs = obj.nobj || null;
+        } else {
+            let p;
+            for (p = game.billobjs; p && p.nobj !== obj; p = p.nobj)
+                continue;
+            if (!p)
+                throw new Error('extract_nobj: object lost'); /* panic() */
+            p.nobj = obj.nobj || null;
+        }
+        obj.nobj = null;
+        obj.where = 'OBJ_FREE';
+        break;
+    }
     default:
         throw new Error(`obj_extract_self: where=${obj.where} is not ported yet`);
     }

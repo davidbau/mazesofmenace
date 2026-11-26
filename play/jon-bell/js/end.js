@@ -775,7 +775,12 @@ export async function do_death_sequence(opts) {
     let _youDieBot = false;
     if (remainder && pd.youDieFlush && !pd.noDeathLine && !pd.prejoinButWait
         && !pd.urgentDeathLine && !pd.alreadySaidYouDie && !_earlyBot) {
-        await bot();
+        /* pline.c:273-274 flush_screen() calls bot() only for a pending
+         * disp.botl/botlx (display.c:2236-2239); a flush already made for the
+         * same death (drain_pending_death_in_place) has cleared them, and a
+         * second bot() would flip the alternating blstats buffer once more
+         * (botl.c:974-975). */
+        if (!g.disp || g.disp.botl || g.disp.botlx) await bot();
         _youDieBot = true;
     }
     if (pd.prejoinButWait) {

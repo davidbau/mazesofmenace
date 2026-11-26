@@ -120,7 +120,7 @@ import { set_levltyp } from './mkmaze.js'; // relocate-fns
 import { next_level, prev_level, print_level_annotation, recbranch_mapseen } from './dungeon.js'; // relocate-fns
 import { G_GENOD, NON_PM, OBJ_FLOOR, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT } from './const.js'; // relocate-fns
 import { rot_corpse } from './dig.js'; // relocate-fns
-import { canseemon, tty_splice_row } from './display.js'; // relocate-fns
+import { canseemon, tty_splice_row, msgtype_suppressed } from './display.js'; // relocate-fns
 import { dist2, upstart } from './hacklib.js'; // relocate-fns
 import { is_rider_pm } from './mklev.js';
 import { rider_revival_time, set_corpsenm } from './mkobj.js'; // relocate-fns
@@ -941,10 +941,14 @@ async function dodrop_body() {
             }
             break;
         }
-        g._prevmsg = "You don't have that object.";
-        // C invent.c:2059 You() reaches pline.c:274 before the pager.
-        pline_flush_point();
-        await force_more("You don't have that object.");
+        /* pline.c:246-262: a MSGTYPE=hide/norep rule drops the line before its
+         * flush and page (and before gp.prevmsg is set at :282). */
+        if (!msgtype_suppressed("You don't have that object.")) {
+            g._prevmsg = "You don't have that object.";
+            // C invent.c:2059 You() reaches pline.c:274 before the pager.
+            pline_flush_point();
+            await force_more("You don't have that object.");
+        }
     }
     return await _dodrop_with(obj);
 }

@@ -366,6 +366,10 @@ export async function getlin(prompt) {
                 g._prevmsg_history_length = hist.length;
                 g._prevmsg_next = _step(prevIdx);
                 g._prevmsg_cycleEmpty = true; /* live query is outside hist */
+                /* topl.c:103,116: each single-mode tty_doprev_message call ends
+                 * with dismiss_more = 0, undoing an earlier ESC's 1
+                 * (getline.c:245-247), so ^A no longer pages a --More--. */
+                g._ttyDismissMore = 0;
                 continue;
             } else {
                 // getline.c:121-137: full/reversed history includes the live

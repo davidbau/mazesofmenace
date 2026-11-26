@@ -644,7 +644,8 @@ function check_autopickup_exceptions(obj) {
     if (apelist.length) {
         const objdesc = makesingular(doname(obj));
 
-        while (i < apelist.length && !regex_match(objdesc, apelist[i].regex))
+        while (i < apelist.length
+               && !regex_match(Uint8Array.from(objdesc, ch => ch.charCodeAt(0)), apelist[i].regex))
             i++;
     }
     return apelist[i] || null;

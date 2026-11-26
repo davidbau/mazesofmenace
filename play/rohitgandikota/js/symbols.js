@@ -349,8 +349,9 @@ export function escapes(cp) {
 // src/options.c:9385 sym_val() — the character code an option value names
 export function sym_val(strval) {
     const QBUFSZ = 128;
-    // C receives UTF-8 file bytes. Keep its char buffer local to this owner.
-    strval = String.fromCharCode(...new TextEncoder().encode(strval))
+    // File parsing can supply raw bytes; the symbol-file caller supplies Unicode.
+    strval = String.fromCharCode(...(strval instanceof Uint8Array
+        ? strval : new TextEncoder().encode(strval)))
         .split('\0', 1)[0];
     let buf = '', tmp; /* to hold truncated copy of 'strval' */
 
@@ -402,7 +403,8 @@ function cstr(buf, i) {
 // splits the option text in place with NUL bytes; the same buffer model is
 // kept so a comma-separated list parses in the same order.
 export function parsesymbols(opts, which_set) {
-    const buf = Array.from(String(opts));
+    const bytes = opts instanceof Uint8Array ? opts : new TextEncoder().encode(String(opts));
+    const buf = Array.from(bytes, c => String.fromCharCode(c));
 
     buf.push('\0');
     return parsesymbols_buf(buf, 0, which_set);
@@ -472,7 +474,7 @@ function parsesymbols_buf(buf, opts, which_set) {
                    customization of every glyph drawn with that symbol */
                 glyphrep_to_custom_map_entries(`${symname_s}:${strval_s}`, null);
             } else {
-                val = sym_val(strval_s);
+                val = sym_val(Uint8Array.from(strval_s, c => c.charCodeAt(0)));
                 if (which_set === ROGUESET)
                     update_ov_rogue_symset(symp, val);
                 else

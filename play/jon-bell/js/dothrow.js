@@ -19,7 +19,7 @@ import { is_art } from './artifact.js';
 import { EXACT_NAME, FIRE_TRAP, FORCEBUNGLE, HURTLING, OBJ_FREE, OBJ_INVENT, P_DAGGER, P_DART, P_SHURIKEN, P_SLING, P_SPEAR, SUPPRESS_NAME } from './const.js';
 import { ARTICLE_A, ARTICLE_YOUR, AUGMENT_IT, A_CON, A_DEX, A_ORIGINAL, A_STR, BACKTRACK, BOLT_LIM, BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME, BURNING_OIL, CONFUSION, CQ_CANNED, CQ_REPEAT, DB_UNDER, DRAWBRIDGE_UP, D_ISOPEN, ECMD_CANCEL, ECMD_OK, ECMD_TIME, EF_DESTROY, EF_VERBOSE, ERODE_CRACK, ER_DESTROYED, ESHK, EXPL_FIERY, GETOBJ_ALLOWCNT, GETOBJ_PROMPT, HMON_APPLIED, HMON_KICKED, HMON_THROWN, HOLE, Has_contents, IRONBARS, IS_ALTAR, IS_DOOR, IS_OBSTRUCTED, IS_SINK, IS_SOFT, IS_TREE, IS_WATERWALL, Is_airlevel, Is_juiblex_level, Is_waterlevel, KILLED_BY, LARGEST_INT, LAVAWALL, LOST_EXPLODING, LOST_THROWN, MM_IGNORELAVA, MM_IGNOREWATER, MM_NOMSG, MOAT, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEUTRAL, PIT, RLOC_MSG, SHOPBASE, SLT_ENCUMBER, SPIKED_PIT, STONE, STUNNED, SUPPRESS_SADDLE, TEST_MOVE, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, WEB, WT_SPLASH_THRESHOLD, WT_TOOMUCH_DIAGONAL, W_QUIVER as W_QUIVER_TO, engulfing_u, has_mgivenname, has_oname, is_hole, is_pit, isok, u_at } from './const.js';
 import { is_pick } from './dig.js';
-import { DISP_END, DISP_FLASH, DISP_TETHER, GLYPHCLS_MON, _topl_joins_snapshot, _topl_more_pages, await_topl_more_dismiss, canseemon, canspotmon, flush_screen, force_more, getobj_never_mind, glyph_is_invisible_at, glyph_is_warning_at, map_invisible, newsym, obj_to_glyph, pline_flush_point, putmsghistory, sensemon, tmp_at, unmap_object, Unaware as wizard_Unaware, use_last_flush_snapshot } from './display.js';
+import { DISP_END, DISP_FLASH, DISP_TETHER, GLYPHCLS_MON, _topl_joins_snapshot, _topl_more_pages, await_topl_more_dismiss, canseemon, canspotmon, flush_screen, force_more, getobj_never_mind, msgtype_suppressed, glyph_is_invisible_at, glyph_is_warning_at, map_invisible, newsym, obj_to_glyph, pline_flush_point, putmsghistory, sensemon, tmp_at, unmap_object, Unaware as wizard_Unaware, use_last_flush_snapshot } from './display.js';
 import { You_feel, You_hear, Norep as _Norep, pline } from './pline.js';
 import { doaltarobj, dropy, dropz, flooreffects, obj_no_longer_held } from './do.js';
 import { rndmonnam as look_rndmonnam } from './do_name.js';
@@ -418,8 +418,12 @@ export async function dothrow() {
          * re-reads.  RNG-free (force_more drives nhgetch only). */
         /* invent.c:2059 You() reaches pline.c:273-274 before more(),
          * painting the status update getobj just requested at :2049. */
-        pline_flush_point();
-        await force_more('You don\'t have that object.');
+        /* pline.c:246-262: a MSGTYPE=hide/norep rule drops the line before its
+         * flush and page; getobj just re-prompts (invent.c:2062). */
+        if (!msgtype_suppressed('You don\'t have that object.')) {
+            pline_flush_point();
+            await force_more('You don\'t have that object.');
+        }
         g._pending_message = throwQbuf;
         await flush_screen(1);
         set_cursor(throwQbuf.length + 1, 0);

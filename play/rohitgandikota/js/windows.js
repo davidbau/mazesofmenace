@@ -131,7 +131,7 @@ export async function choose_classes_menu(prompt, category, way,
 export function get_menu_coloring(str) {
     if (game.iflags?.menucolors)
         for (const tmpmc of game.menu_colorings || [])
-            if (regex_match(str, tmpmc.match))
+            if (regex_match(Uint8Array.from(str, ch => ch.charCodeAt(0)), tmpmc.match))
                 return { color: tmpmc.color, attr: tmpmc.attr };
     return null;
 }

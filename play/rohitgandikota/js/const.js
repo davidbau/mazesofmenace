@@ -20,7 +20,7 @@ const MAXPCHARS = 105; // from symbols.js
 
 import { COMMIT_NUMBER, TELEPORT_BUILD_DATE } from './version.js';
 // No imports from non-constant files — const.js is a leaf in the DAG
-import { MFLAGS } from './monst_data.js';
+import { MFLAGS, NUMMONS } from './monst_data.js';
 import { game } from './gstate.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 
@@ -3099,10 +3099,10 @@ export function M_AP_TYPE(mon) { return (mon?.m_ap_type ?? 0) & M_AP_TYPMASK; }
 // include/monst.h:74 M_AP_FLAG()
 export function M_AP_FLAG(mon) { return (mon?.m_ap_type ?? 0) & ~M_AP_TYPMASK; }
 export function engulfing_u(mon) { const g = (typeof game !== 'undefined' ? game : null); return g?.u?.uswallow && g?.u?.ustuck === mon; }
-// C ref: permonst.h — ismnum(x) means x is a valid monster index.
+// include/monst.h:285 ismnum(), a valid species excludes mons[NUMMONS].
 // JS call sites pass integer indices (for example u.ulycn, corpsenm, cham).
 export function ismnum(pm) {
-    return Number.isInteger(pm) && pm >= LOW_PM;
+    return Number.isInteger(pm) && pm >= LOW_PM && pm < NUMMONS;
 }
 
 // ── Level classification predicates (C: dungeon.h macros) ──

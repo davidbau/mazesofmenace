@@ -33,20 +33,21 @@ import { critically_low_hp } from './../pray.js';
 import { impossible } from './../pline.js';
 import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_SPECIAL_PROMPT, more, display_nhwindow_message } from './../display.js';
 import { tty_clear_nhwindow_message, row_refresh, bot,
-         docrt, flush_screen } from './../display.js';
+         docrt, flush_screen, CMP_DEC_MAP } from './../display.js';
 import { nhgetch } from './../input.js';
 import { xwaitforspace } from './getline.js';
+import { update_topl } from './topl.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
 import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
          MENU_ITEMFLAGS_SKIPMENUCOLORS,
          MENU_ITEMFLAGS_SKIPINVERT, MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE,
          MENU_SEARCH, PICK_ONE, PICK_ANY, GOLD_SYM, ROWNO, COLNO } from './../const.js';
-import { pmatch } from './../hacklib.js';
+import { pmatchi } from './../hacklib.js';
 import { get_menu_coloring } from './../windows.js';
 import { term_start_color as tty_color } from './termcap.js';
 import { notice_all_mons_flush } from './../hack.js';
-import { gc_currentgraphics, gs_symset, H_UTF8 } from './../symbols.js';
+import { gc_currentgraphics, gs_symset, H_UTF8, H_IBM, H_DEC } from './../symbols.js';
 
 // include/wintype.h:128-137 — NetHack's attribute numbers. These are NOT the
 // frozen terminal's bit flags; win/tty/wintty.c term_start_attr() translates
@@ -94,7 +95,10 @@ export function tty_putstr_base(str, attr = 0) {
             col = 0;
             base.cury++;
         }
-        display.setCell(col, base.cury, s[i], NO_COLOR, attr);
+        // win/tty/wintty.c tty_putstr(NHW_BASE), signed char capture.
+        const byte = (s.charCodeAt(i) << 24) >> 24;
+        if (byte >= 32)
+            display.setCell(col, base.cury, s[i], NO_COLOR, attr);
         col++;
     }
     base.curx = 0;
@@ -480,6 +484,10 @@ async function process_menu_window(cw, page, display) {
     items.forEach((item, lineno) => {
         const row = cw.offy + lineno;
         let col = cw.offx;
+        // win/tty/wintty.c:1459, cl_end precedes bytes in a corner menu.
+        if (cw.offx)
+            for (let c = col; c < COLS; c++)
+                display.setCell(c, row, ' ', NO_COLOR, 0);
         /* the leading space, drawn before any attribute is turned on */
         if (col < COLS) display.setCell(col, row, ' ', NO_COLOR, 0);
         col++;
@@ -506,15 +514,20 @@ async function process_menu_window(cw, page, display) {
             const highlighted = i >= attr_n && !plainrun[i];
             const on = highlighted ? attr : 0;
             let ch = s[i], color = highlighted ? tty_color(item.color) : NO_COLOR;
+            let glyph = false;
             if (i === 2 && item.identifier) {
                 if (item.selected)
                     ch = item.count === -1 ? '*' : '#';
                 else if (show_obj_syms && item.glyphinfo?.ch) {
                     ch = item.glyphinfo.ch;
                     color = tty_color(item.glyphinfo.color);
+                    glyph = true;
                 }
             }
-            display.setCell(col, row, ch, color, on);
+            // Text uses *cp (signed char); the glyph has its own ttychar.
+            const byte = (ch.charCodeAt(0) << 24) >> 24;
+            if (glyph || byte >= 32)
+                display.setCell(col, row, ch, color, on);
         }
         for (let c = col; c < COLS; c++)
             display.setCell(c, row, ' ', NO_COLOR, 0);
@@ -571,7 +584,7 @@ export function set_item_state(window, lineno, item) {
     if (!cw || !display) return;
     const ch = item.selected ? (item.count === -1 ? '+' : '#') : '-';
     /* tty_curs(window, 4, lineno) — 1-based, so column offx + 3 */
-    display.setCell(cw.offx + 3, cw.offy + lineno, ch, NO_COLOR,
+    display.setCell(cw.offx + 3, cw.offy + lineno, ch, tty_color(item.color),
                     term_attr(item.attr));
 }
 
@@ -657,10 +670,18 @@ async function process_text_window(cw) {
                 display.setCell(col++, row, ' ', NO_COLOR, 0);
             const attr = term_attr(cw.attrs?.[i] || 0);
             for (let j = 0; j < line.length && ++col < COLS; j++) {
-                // The recorder's first UTF-8 g_putch uses the advanced cursor.
-                const x = j === 0 && gs_symset[gc_currentgraphics.set]?.handling === H_UTF8
-                    ? col : col - 1;
-                display.setCell(x, row, line[j], NO_COLOR, attr);
+                // win/tty/wintty.c:1863, first glyph differs from later text.
+                const handling = gs_symset[gc_currentgraphics.set]?.handling;
+                const code = line.charCodeAt(j);
+                const glyph = j === 0 && (handling === H_UTF8 || (code & 0x80));
+                const byte = glyph ? code & 0x7f : (code << 24) >> 24;
+                const dec = glyph && (code & 0x80) && handling !== H_IBM
+                    && handling !== H_UTF8 && (!game.iflags?.wc_eight_bit_input
+                        || (handling === H_DEC && (code & 0x7f) >= 0x60));
+                const ch = String.fromCharCode(byte);
+                if (byte >= 32)
+                    display.setCell(glyph ? col : col - 1, row,
+                                    dec ? (CMP_DEC_MAP[ch] || ch) : ch, NO_COLOR, attr);
             }
             display.setCursor(col, row);
         }
@@ -1029,12 +1050,12 @@ export async function tty_select_menu(window, how) {
                 const { hooked_tty_getlin } = await import('./../cmd.js');
                 const search = await hooked_tty_getlin('Search for:');
                 if (search && search !== '\x1b') {
-                    const pattern = `*${search}*`.toLowerCase();
+                    const pattern = `*${search}*`;
                     const items = menu_page_items(window, cw.curr_page);
                     const onpage = new Map(items.map((item, n) => [item, n]));
                     for (let curr = cw.mlist; curr; curr = curr.next) {
                         if (!curr.identifier
-                            || !pmatch(pattern, curr.str.toLowerCase()))
+                            || !pmatchi(pattern, curr.str))
                             continue;
                         const lineno = onpage.get(curr);
                         if (curr.selected) {
@@ -1208,6 +1229,20 @@ export function reset_windows() {
 // after the game windows are gone (topten's wizard-mode notice).
 export function tty_raw_print(str) {
     tty_putstr_base(str ?? '');
+}
+
+// win/tty/wintty.c:4170 tty_putmixed(), decoded NHW_MESSAGE, attr 0 path.
+export async function tty_putmixed_message(str) {
+    // pager's description producer already resolves the encoded glyph.
+    const ttyDisplay = (game.ttyDisplay ||= {});
+    ttyDisplay.mixed = 1;
+    try {
+        await update_topl(str);
+        game._win_nostop = false; // tty_putstr(): one message only.
+    } finally {
+        ttyDisplay.topl_utf8 = 0;
+        ttyDisplay.mixed = 0;
+    }
 }
 
 // win/tty/wintty.c:344 bail() — give up before the game starts: close the
@@ -1630,7 +1665,9 @@ function tty_putstatusfield(text, x, y) {
         for (i = 0; i < lth; ++i) {
             n = i + x;
             if (n < ncols) {
-                if (display)
+                // C still advances and updates cw.data when capture skips a byte.
+                const byte = (text.charCodeAt(i) << 24) >> 24;
+                if (display && byte >= 32)
                     display.setCell(n - 1 + cw.offx, y + cw.offy, text[i],
                                     plain[i] ? NO_COLOR : st.cur_color,
                                     plain[i] ? 0 : st.cur_attr);

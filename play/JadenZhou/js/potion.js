@@ -91,7 +91,7 @@ import { tty_display_nhwindow, tty_yn_function } from './wintty.js';
 import { set_bc } from './ball.js';
 import { float_vs_flight, polyself } from './polyself.js';
 import { POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL } from './const.js';
-import { monster_detect } from './detect.js';
+import { monster_detect, object_detect } from './detect.js';
 import { drinkfountain, dipfountain, drinksink, dipsink, floating_above,
          wash_hands } from './fountain.js';
 import { water_damage } from './trap.js';
@@ -1045,8 +1045,10 @@ async function peffect_monster_detection(otmp) {
 
 // C ref: potion.c peffect_object_detection()
 async function peffect_object_detection(otmp) {
-    void otmp;
-    throw new Error('peffect_object_detection(): object_detect() not ported yet');
+    if (await object_detect(otmp, 0))
+        return 1; /* nothing detected */
+    await exercise(A_WIS, true);
+    return 0;
 }
 
 // C ref: potion.c peffect_sickness()
@@ -2050,12 +2052,12 @@ export async function mongrantswish(monp) {
     mongone(mon);
     monp.mon = null; /* inform caller that monster is gone */
     /* hide that removal from player--map is visible during wish prompt */
-    tmp_at(DISP_ALWAYS, glyph);
-    tmp_at(mx, my);
+    await tmp_at(DISP_ALWAYS, glyph);
+    await tmp_at(mx, my);
     /* grant the wish */
     await makewish();
     /* clean up */
-    tmp_at(DISP_END, 0);
+    await tmp_at(DISP_END, 0);
 }
 
 // C ref: potion.c djinni_from_bottle()

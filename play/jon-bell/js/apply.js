@@ -21,7 +21,7 @@ import { pline } from './pline.js'; // relocate-fns
 import { rn2 } from './rnd.js'; // relocate-fns
 import { mnexto } from './mon.js'; // relocate-fns
 import { fill_pit, mintrap } from './trap.js'; // relocate-fns
-import { canseemon } from './display.js'; // relocate-fns
+import { canseemon, msgtype_suppressed } from './display.js'; // relocate-fns
 import { pline_mon } from './pline.js'; // relocate-fns
 import { Monnam, monverbself } from './do_name.js'; // relocate-fns
 import { pronoun_gender } from './mondata.js'; // relocate-fns
@@ -2828,6 +2828,9 @@ export async function doapply() {
                 return ECMD_CANCEL;
             }
             if (!selObj) {
+                /* pline.c:246-262: a MSGTYPE=hide/norep rule drops the line before
+                 * anything is drawn; getobj just re-prompts (invent.c:2062). */
+                if (msgtype_suppressed("You don't have that object.")) continue;
                 if (g.iflags?.debug_fuzzer) { /* topl.c:209 more() returns: no page */
                     await pline("You don't have that object.");
                     continue;

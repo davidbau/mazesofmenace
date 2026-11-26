@@ -18,7 +18,7 @@ import { genus } from './mon.js';
 import { vegetarian, name_to_monplus, type_is_pname, verysmall,
          is_neuter, is_human } from './mondata.js';
 import { MFLAGS, MSOUND, MONSYMS } from './monst_data.js';
-import { pmname, oname, noit_mon_nam } from './do_name.js';
+import { pmname, obj_pmname, oname, noit_mon_nam } from './do_name.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { mksobj, mkobj, rnd_class, curse, set_corpsenm, zombie_form,
          set_tin_variety,
@@ -651,31 +651,30 @@ export function the_unique_pm(ptr) {
 //
 export function corpse_xname(otmp, adjective, cxn_flags) {
     const omndx = otmp.corpsenm;
-    const the_prefix0 = (cxn_flags & CXN_PFX_THE) !== 0;
-    const article = (cxn_flags & CXN_ARTICLE) !== 0;
-    const omit_corpse = (cxn_flags & CXN_NOCORPSE) !== 0;
     const ignore_quan = (cxn_flags & CXN_SINGULAR) !== 0;
     let no_prefix = (cxn_flags & CXN_NO_PFX) !== 0;
-    let any_prefix = !no_prefix && article;
-    let the_prefix = the_prefix0;
-
-    const mdat = game.mons[omndx];
-    /* src/do_name.c:1321 obj_pmname() — the corpse's own recorded gender
-       picks the pmnames[] slot; CORPSTAT_GENDER lives in obj->spe. */
-    const cgend = (otmp.spe | 0) & (CORPSTAT_MALE | CORPSTAT_FEMALE);
-    const mgend = (cgend === CORPSTAT_MALE) ? MALE
-                : (cgend === CORPSTAT_FEMALE) ? FEMALE
-                : NEUTER;
-    let mnam = mdat ? pmname(mdat, mgend) : 'thing';
+    let the_prefix = (cxn_flags & CXN_PFX_THE) !== 0;
+    let any_prefix = (cxn_flags & CXN_ARTICLE) !== 0;
+    const omit_corpse = (cxn_flags & CXN_NOCORPSE) !== 0;
+    const glob = otmp.otyp !== ONAMES.CORPSE && otmp.globby;
     let possessive = false;
+    let mnam;
 
-    if (mdat && (the_unique_pm(mdat) || type_is_pname(mdat))) {
-        mnam = s_suffix(mnam);
-        possessive = true;
-        if (type_is_pname(mdat))
-            no_prefix = true;
-        else if (!no_prefix)
-            the_prefix = true;
+    if (glob) {
+        mnam = OBJ_NAME(game.objects[otmp.otyp]);
+    } else if (omndx === NON_PM) {
+        mnam = 'thing';
+    } else {
+        mnam = obj_pmname(otmp);
+        const mdat = game.mons[omndx];
+        if (the_unique_pm(mdat) || type_is_pname(mdat)) {
+            mnam = s_suffix(mnam);
+            possessive = true;
+            if (type_is_pname(mdat))
+                no_prefix = true;
+            else if (the_unique_pm(mdat) && !no_prefix)
+                the_prefix = true;
+        }
     }
     if (no_prefix)
         the_prefix = any_prefix = false;
@@ -684,20 +683,25 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
 
     let nambuf = the_prefix ? 'the ' : '';
 
-    if (!adjective || !adjective.trim()) {
+    if (!adjective || !adjective.length) {
         nambuf += mnam;                 /* normal case: newt corpse */
     } else {
-        nambuf += possessive ? `${mnam} ${adjective.trim()}`
-                             : `${adjective.trim()} ${mnam}`;
+        nambuf += possessive ? `${mnam} ${adjective}`
+                             : `${adjective} ${mnam}`;
+        nambuf = mungspaces(nambuf);
         /* doname() may pass a count as the adjective; then no article */
-        if (/^\d/.test(adjective.trim()))
+        if (/^[0-9]/.test(adjective))
             any_prefix = false;
     }
 
-    if (!omit_corpse) {
+    if (glob) {
+        ; /* omit_corpse doesn't apply; quantity is always 1 */
+    } else if (!omit_corpse) {
         nambuf += ' corpse';
-        if (otmp.quan > 1 && !ignore_quan)
+        if (otmp.quan > 1 && !ignore_quan) {
             nambuf += 's';
+            any_prefix = false;
+        }
     }
 
     return any_prefix ? an(nambuf) : nambuf;

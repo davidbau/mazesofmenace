@@ -21,7 +21,7 @@ import { enexto } from './teleport.js';
 import { add_to_minv, mksobj } from './mkobj.js';
 import { FAKE_AMULET_OF_YENDOR } from './objects.js';
 import { newsym, verbalize } from './display.js';
-import { monster_census } from './minion.js';
+import { monster_census, msummon } from './minion.js';
 import { big_to_little, is_minion, is_covetous,
          attacktype } from './mondata.js';
 import { def_monsyms } from './drawing.js';
@@ -185,7 +185,7 @@ export function clonewiz() {
    'summoner' as neutral, since that will produce the greatest number of
    creatures on average (in 3.6.0 and earlier, Null was treated as chaotic);
    returns the number of monsters created */
-export function nasty(summoner) {
+export async function nasty(summoner) {
     const u = game.u;
     let mtmp;
     const bypos = { x: 0, y: 0 };
@@ -203,7 +203,7 @@ export function nasty(summoner) {
 
     if (!rn2(10) && In_hell(u.uz)) {
         /* this might summon a demon prince or lord */
-        throw new Error('nasty(): msummon() not ported yet');
+        count = await msummon(null); /* summons like WoY */
     } else {
         count = 0;
         s_cls = summoner ? summoner.data.mlet : 0;

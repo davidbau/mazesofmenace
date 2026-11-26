@@ -14,7 +14,7 @@ import { EXACT_NAME, Mgender } from './do_name.js';
 import { record_achievement } from './insight.js';
 import { shtypes } from './shknam.js';
 import { PM_MEDUSA, PM_HIGH_CLERIC } from './monsters.js';
-import { livelog_printf, verbalize, You_hear } from './display.js';
+import { livelog_printf, verbalize, You_hear, You_feel } from './display.js';
 import { LL_CONDUCT } from './const.js';
 import { remove_worm, wormgone, worm_known, worm_cross, count_wsegs, get_wormno,
          initworm, place_worm_tail_randomly } from './worm.js';
@@ -1269,7 +1269,7 @@ export async function xkilled(
         change_luck(-1);
     if (is_unicorn(mdat) && sgn(u.ualign.type) === sgn(mdat.maligntyp)) {
         change_luck(-5);
-        await pline('You feel guilty...');
+        await You_feel('guilty...');
     }
 
     /* give experience points */
@@ -1470,7 +1470,7 @@ export async function setmangry(mtmp, via_attack) {
         /* only hypocritical if monster is vulnerable to Elbereth (or
            peaceful--not vulnerable but attacking it is hypocritical) */
         && (onscary(u.ux, u.uy, mtmp) || mtmp.mpeaceful)) {
-        await pline('You feel like a hypocrite.');
+        await You_feel('like a hypocrite.');
         /* AIS: Yes, I know alignment penalties and bonuses aren't balanced
            at the moment. This is about correct relative to other "small"
            penalties; it should be fairly large, as attacking while standing

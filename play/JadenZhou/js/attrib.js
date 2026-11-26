@@ -11,7 +11,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { near_capacity } from './hack.js';
 import { strstri } from './hacklib.js';
-import { pline, see_monsters } from './display.js';
+import { pline, see_monsters, You_feel } from './display.js';
 import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, MAXULEV, STR19, FROMEXPER,
     FROMRACE, FROMOUTSIDE, INTRINSIC, SEARCHING, STEALTH, FAST,
@@ -424,15 +424,15 @@ export async function adjabil(oldlevel, newlevel) {
                 prop.intrinsic |= mask;
             if (!(prop.intrinsic & INTRINSIC & ~mask)) {
                 if (a.gainstr)
-                    await pline(`You feel ${a.gainstr}!`);
+                    await You_feel(`${a.gainstr}!`);
             }
         } else if (oldlevel >= a.ulevel && newlevel < a.ulevel) {
             prop.intrinsic &= ~mask;
             if (!(prop.intrinsic & INTRINSIC)) {
                 if (a.losestr)
-                    await pline(`You feel ${a.losestr}!`);
+                    await You_feel(`${a.losestr}!`);
                 else if (a.gainstr)
-                    await pline(`You feel less ${a.gainstr}!`);
+                    await You_feel(`less ${a.gainstr}!`);
             }
         }
         if (prevabil !== prop.intrinsic) /* it changed */
@@ -866,7 +866,7 @@ export async function adjattrib(ndx,    /* which characteristic */
 
     game.disp_botl = true;
     if (msgflg <= 0)
-        await pline(`You feel ${(incr > 1 || incr < -1) ? "very " : ""}${attrstr}!`); /* You_feel() */
+        await You_feel(`${(incr > 1 || incr < -1) ? "very " : ""}${attrstr}!`);
     if (game.program_state?.in_moveloop && (ndx === A_STR || ndx === A_CON))
         await encumber_msg();
     return true;

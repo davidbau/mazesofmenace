@@ -43,7 +43,7 @@ import { closed_door } from './monmove.js'; // relocate-fns
 import { doextversion } from './version.js'; // relocate-fns
 import { observe_object } from './o_init.js'; // relocate-fns
 import { doname_with_price as _doname_with_price, distant_name as _fw_distant_name, doname_vague_quan as _fw_doname_vague_quan, simpleonames as _ia_simpleonames, objName as _objName_full, an, ansimpleoname } from './objnam.js'; // relocate-fns
-import { get_menu_cmd_key, option_help } from './options.js'; // relocate-fns
+import { get_menu_cmd_key, map_menu_cmd, option_help } from './options.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { PM_COYOTE } from './pm.generated.js'; // relocate-fns
 import { visible_region_at } from './region.js'; // relocate-fns
@@ -383,7 +383,11 @@ export async function dohelp() {
         /* Cursor one past the last character of the "(end)" footer (C tty
          * select_menu convention; same as ask_do_tutorial / dowhatis). */
         set_cursor(WIN_COL + '(end)'.length + 1, helpLines.length - 1);
-        selKey = await nhgetch();
+        const rawKey = await nhgetch();
+        selKey = rawKey;
+        // wintty.c:1557-1564: selectors precede mapped menu commands.
+        if (selKey < 0x61 || selKey > lastSelector)
+            selKey = map_menu_cmd(selKey);
         /* C wintty.c:1597-1602 — '0'..'9' append to the pending count and the
          * loop re-waits on the same page; every add_menu here passes gselector
          * 0, so the strchr(gacc, morc) redirect to group_accel cannot fire and
@@ -430,7 +434,10 @@ export async function dohelp() {
          * count is dropped at the next loop top. */
         if ((g._ttyDismissMore | 0) !== 0 && selKey === (g._ttyDismissMore | 0))
             continue;
-        reset_count = false;
+        // wintty.c:1533,1557-1564: xwait accepted the raw alias even when
+        // its mapped target has no menu arm (menu_shift_left/right).
+        if (!(g.mapped_menu_cmds || '').includes(String.fromCharCode(rawKey)))
+            reset_count = false;
     }
     /* C pager.c:2892 destroy_nhwindow(tmpwin) -> tty_dismiss_nhwindow ->
      * erase_menu_or_text -> docorner(offx, maxrow + 1) (wintty.c:982): cl_end

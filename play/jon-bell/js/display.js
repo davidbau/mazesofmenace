@@ -5676,10 +5676,7 @@ export function docorner_status_row(row, line) {
         const forward = /^\x1b\[(\d*)C$/.exec(token);
         if (forward) {
             const n = Math.min(Number(forward[1] || 1), width - col);
-            /* A hitpointbar title's blank tail lies inside the inverse run; the
-             * part kept by a clip is a row of inverse blanks on the terminal. */
-            const clipped = n < Number(forward[1] || 1);
-            out += (inv && clipped) ? ' '.repeat(n) : `\x1b[${n}C`;
+            out += `\x1b[${n}C`;
             col += n;
         } else {
             if (token.startsWith('\x1b[') && token.endsWith('m')) {
@@ -7462,7 +7459,10 @@ const _STATUS_BOT_FIELDS = [
      * the field to that rule's colour for hilite_delta moves.  The leading
      * '[' keeps hitpointbar rows (wintty.c:4533-4543, status_hpbar_attr_eval)
      * out of this path. */
-    ['title', /^(?!\[)([^\x1b]+?)(?=(?:\x1b\[\d+C| )+St:)/, (m) => [0, m[1].length], (m) => m[1]],
+    /* botl.c:1007 formats the value "%-30s" and render_status writes the
+     * whole value inside the field's colour/attributes (wintty.c:5211-5233),
+     * so a short title's padding up to column 30 is highlighted too. */
+    ['title', /^(?!\[)([^\x1b]+?)(?=(?:\x1b\[\d+C| )+St:)/, (m) => [0, Math.max(30, m[1].length)], (m) => m[1]],
     ['alignment', /(?:Ch:\d+ |^)(Lawful|Neutral|Chaotic)(?= |$)/, (m) => [m.index + m[0].length - m[1].length, m[1].length], (m) => m[1]],
     ...['St', 'Dx', 'Co', 'In', 'Wi', 'Ch'].map((a, i) => [
         ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'][i],
@@ -9550,7 +9550,7 @@ export function anim_frame_info() {
 }
 function _toplStr(msg, row = 0) {
     let s = String(msg || '');
-    const CTRL_BYTE = /[\x01-\x09\x0b-\x0d\x10-\x1a\x1c-\x1f\x80-\xff]/g;
+    const CTRL_BYTE = /\x1b(?!\[[0-9;]*[A-Za-z])|[\x01-\x09\x0b-\x0d\x10-\x1a\x1c-\x1f\x80-\xff]/g;
     if (s.search(CTRL_BYTE) >= 0) {
         const background = game._topl_tab_background;
         const previous = String(background?.text === game._pending_message
@@ -14821,15 +14821,15 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
     if (!alreadyFlushed && game.vision_full_recalc) {
         /* vision.c:856 finishes notice_all_mons() (hack.c:1744, mention_map/spot_monsters
          * plines) before vision_recalc returns, so those plines precede this one.
+         * The recalc's show_glyph() plines mention_map announces (display.c:2060-2072)
+         * inside the update loop BEFORE notice_all_mons() runs at :856.
          * Only wait when the a11y notices can actually print: an extra await would
          * reorder this message against callers that do not await their plines. */
         const _mmBefore = game._mentionMapPending;
         const _notices = vision_recalc(0);
-        if (_notices && game.a11y?.mon_notices) await _notices;
-        /* the recalc's show_glyph() plines mention_map announces (display.c:2060-2072)
-         * inside it; they are async here, and C prints them BEFORE this message. */
         if (game._mentionMapPending && game._mentionMapPending !== _mmBefore)
             await game._mentionMapPending;
+        if (_notices && game.a11y?.mon_notices) await _notices;
     }
     /* pline.c:266-275: putmesg(line) reads gy.you_buf AFTER the recalc; a nested
      * You()-family call that reused (did not regrow) the buffer replaced it. */

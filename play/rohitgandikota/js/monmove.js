@@ -2371,7 +2371,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
             await u_on_newpos(mtmp.mx, mtmp.my);
             await swallowed(0);
         } else {
-            newsym(mtmp.mx, mtmp.my);
+            await newsym(mtmp.mx, mtmp.my);
         }
     }
 

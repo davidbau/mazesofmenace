@@ -826,6 +826,18 @@ export async function dorecover(save) {
     /* restore_msghistory -> topl.c:701-702: a standing TOPLINE_NEED_MORE becomes
      * NON_EMPTY, so docrt's cls() does not page it; it is only remembered. */
     baseTopline?.finish();
+    /* C restore.c:828-830 savestateinlock() (INSURANCE): with the checkpoint
+     * option on it writes the game state into the lock file, and
+     * savegamestate's save_msghistory -> tty_getmsghistory(TRUE) ->
+     * msghistory_snapshot -> remember_topl() (save.c:326,1039; topl.c:572)
+     * files the standing "Restoring save file..." and empties gt.toplines
+     * (topl.c:186-190: in_checkpoint is 0 here).  A shown welcome hides this
+     * (it would have filed the line anyway); a MSGTYPE=hide welcome leaves
+     * ^P's first recall blank. */
+    if (g.flags?.ins_chkpt ?? true) {
+        g._toplEmptyAfterSuppress = true;
+        g._prevmsg_next = null; /* topl.c:189 cw->maxcol = cw->maxrow */
+    }
     /* The tty base window (copyright banner) stays up until docrt()'s cls(), so
      * the second getlev()'s impossible() pages over it too. */
     if (baseTopline) g._base_topline = baseTopline;

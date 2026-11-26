@@ -20,7 +20,7 @@ import { d } from './rng.js';
 import { EXPL_FIERY, NO_TRAP_FLAGS } from './const.js';
 import { hits_bars } from './mthrowu.js';
 import { glyph_at, glyph_is_warning, You_hear as
-         You_hear_br } from './display.js';
+         You_hear_br, You_feel } from './display.js';
 import { noit_mhim } from './mhitu.js';
 import { shade_miss } from './uhitm.js';
 import { switch_terrain } from './hack.js';
@@ -97,7 +97,7 @@ import { weapon_descr, skill_name, inside_shop, body_part } from './insight.js';
 import { xname, an, singular, The, Tobjnam } from './objnam.js';
 import { the, surface } from './iactions.js';
 import { doname, otense } from './objnam.js';
-import { dropy, dropz } from './do.js';
+import { dropy, dropz, doaltarobj } from './do.js';
 import { IS_ALTAR, PIT, SPIKED_PIT, HOLE, TRAPDOOR, is_pit, is_hole } from './const.js';
 import { IS_TREE, KILLED_BY } from './const.js';
 import { BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME } from './const.js';
@@ -1103,9 +1103,10 @@ async function throwit(obj,
             /* venom [via #monster to spit while poly'd] fails breaktest()
                but we want to force breakage even when location IS_SOFT() */
             || obj.oclass === VENOM_CLASS) {
-            /* tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
-               tmp_at(bx, by); nh_delay_output(); tmp_at(DISP_END, 0):
-               display only */
+            await tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
+            await tmp_at(bx, by);
+            /* nh_delay_output() */
+            await tmp_at(DISP_END, 0);
             await breakmsg(obj, cansee_br(bx, by));
             if (await breakobj(obj, bx, by, true, true)) {
                 throwit_return(true);
@@ -1249,7 +1250,7 @@ export async function hitfloor(obj,
         return;
     }
     if (IS_ALTAR(game.level.at(u.ux, u.uy).typ)) {
-        throw new Error('hitfloor(): doaltarobj() not ported yet');
+        await doaltarobj(obj);
     } else if (verbosely) {
         const verb = (obj.otyp === WAN_STRIKING) ? "strike" : "hit";
         let surf = surface(u.ux, u.uy);
@@ -1543,7 +1544,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         /* tmp_at(DISP_TETHER, obj_to_glyph(obj, rn2_on_display_rng)):
            tmp_at()'s tether style isn't ported yet */
     } else if (weapon !== ZAPPED_WAND) /* && weapon != INVIS_BEAM */
-        tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
+        await tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
 
     while (range-- > 0) {
         g.bhitpos.x += ddx;
@@ -1629,7 +1630,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
             if (weapon !== ZAPPED_WAND) {
                 /* THROWN_WEAPON, KICKED_WEAPON */
                 if (!tethered_weapon)
-                    tmp_at(DISP_END, 0);
+                    await tmp_at(DISP_END, 0);
                 if (cansee(x, y) && !canspotmon(mtmp))
                     map_invisible(x, y);
                 result = mtmp;
@@ -1689,7 +1690,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
                 newsym(x, y);
             }
             if (!tethered_weapon) /* tmp_at()'s tether style isn't ported yet */
-                tmp_at(x, y);
+                await tmp_at(x, y);
             /* nh_delay_output() */
             if (IS_SINK(typ))
                 break; /* physical objects fall onto sink */
@@ -1707,7 +1708,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
        end the tether display, whose tmp_at() style isn't ported yet */
     if (!bhit_done && weapon !== ZAPPED_WAND /* && weapon != INVIS_BEAM */
         && !tethered_weapon)
-        tmp_at(DISP_END, 0);
+        await tmp_at(DISP_END, 0);
     void was_returning;
 
     if (!bhit_done && shopdoor)
@@ -2003,7 +2004,7 @@ export async function hurtle_step(arg, x, y) {
     let ttmp;
 
     if (!isok(x, y)) {
-        await pline("You feel the spirits holding you back."); /* You_feel() */
+        await You_feel("the spirits holding you back."); /* You_feel() */
         return false;
     } else if (!(await in_out_region(x, y))) {
         return false;
@@ -2273,7 +2274,7 @@ export async function hurtle(dx, dy, range, verbose) {
      * very far diagonally.  [...] give the player a message and return.
      */
     if (g.uball && g.uball.where !== 'OBJ_INVENT') { /* Punished && !carried(uball) */
-        await pline("You feel a tug from the iron ball."); /* You_feel() */
+        await You_feel("a tug from the iron ball."); /* You_feel() */
         nomul_hu(0);
         return;
     } else if (u.utrap) {

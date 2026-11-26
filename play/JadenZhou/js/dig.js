@@ -6,7 +6,7 @@ import { game } from './gstate.js';
 import { in_town } from './hack.js';
 import { rnd, rn2 } from './rng.js';
 import { cvt_sdoor_to_door } from './detect.js';
-import { canseemon, newsym, pline, You_hear } from './display.js';
+import { canseemon, newsym, pline, You_hear, You_feel } from './display.js';
 import { mksobj_at, place_object } from './mkobj.js';
 import { acurr } from './attrib.js';
 import { start_timer, stop_timer, obj_to_any } from './timeout.js';
@@ -560,12 +560,12 @@ export async function draft_message(unexpected) {
 
     if (unexpected) {
         if (!Hallucination())
-            await pline("You feel an unexpected draft.");
+            await You_feel("an unexpected draft.");
         else
             /* U.S. classification system uses 1-A for eligible to serve
                and 4-F for ineligible due to physical or mental defect;
                some intermediate values exist but are rarely seen */
-            await pline("You feel like you are "
+            await You_feel("like you are "
                         + ((acurr(A_STR) < 6 || acurr(A_DEX) < 6
                             || acurr(A_CON) < 6 || acurr(A_CHA) < 6
                             || acurr(A_INT) < 6 || acurr(A_WIS) < 6) ? "4-F"
@@ -573,7 +573,7 @@ export async function draft_message(unexpected) {
                         + ".");
     } else {
         if (!Hallucination()) {
-            await pline("You feel a draft.");
+            await You_feel("a draft.");
         } else {
             /* "marching" is deliberately ambiguous; it might mean drills
                 after entering military service or mean engaging in protests */
@@ -587,7 +587,7 @@ export async function draft_message(unexpected) {
             if (u.ualign.record < STRIDENT)
                 /* L: +(0..2), N: +(-1..1), C: +(-2..0); all: 0..3 */
                 dridx += rn1(3, sgn(u.ualign.type) - 1);
-            await pline("You feel like " + draft_reaction[dridx] + ".");
+            await You_feel("like " + draft_reaction[dridx] + ".");
         }
     }
 }
@@ -663,12 +663,12 @@ export async function zap_dig() {
     if (u.utrap && u.utraptype === TT_PIT && t_at(u.ux, u.uy))
         throw new Error('zap_dig(): digging sideways from a pit not ported yet');
     digdepth = rn1(18, 8);
-    tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_digbeam) */
+    await tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_digbeam) */
     while (--digdepth >= 0) {
         if (!isok(zx, zy))
             break;
         room = g.level.at(zx, zy);
-        tmp_at(zx, zy);
+        await tmp_at(zx, zy);
         /* nh_delay_output(): wait a little bit */
 
         if (closed_door(zx, zy) || room.typ === SDOOR) {
@@ -740,7 +740,7 @@ export async function zap_dig() {
         zx += u.dx;
         zy += u.dy;
     } /* while */
-    tmp_at(DISP_END, 0); /* closing call */
+    await tmp_at(DISP_END, 0); /* closing call */
 
     /* pitflow is only set by the (unported) pit case above */
 
@@ -821,6 +821,23 @@ export async function buried_ball_to_punishment() {
         mkobj_obj_extract_self(ball);
         await punish(ball); /* use ball as flag for unearthed buried ball */
         await reset_utrap(false);
+        del_engr_at(cc.x, cc.y);
+        newsym(cc.x, cc.y);
+    }
+}
+
+// C ref: dig.c buried_ball_to_freedom()
+export async function buried_ball_to_freedom() {
+    const u = game.u;
+    const cc = { x: u.ux, y: u.uy };
+    const ball = buried_ball(cc);
+
+    if (ball) {
+        mkobj_obj_extract_self(ball);
+        /* rusting buried metallic objects is not implemented yet (#if 0) */
+        place_object(ball, cc.x, cc.y);
+        stackobj(ball);
+        await reset_utrap(true);
         del_engr_at(cc.x, cc.y);
         newsym(cc.x, cc.y);
     }

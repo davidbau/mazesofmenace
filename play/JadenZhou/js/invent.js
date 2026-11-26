@@ -4,7 +4,7 @@
 
 import { fingers_or_gloves } from './do_wear.js';
 import { addtobill, stolen_value, get_obj_location } from './shk.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, impossible } from './hack.js';
 import { hideunder_async } from './makemon.js';
 import { get_count, GC_SAVEHIST } from './cmd.js';
 import { LARGEST_INT } from './const.js';
@@ -70,6 +70,7 @@ import { food_disappears } from './eat.js';
 import { maybe_reset_pick } from './lock.js';
 import { costly_spot, shop_keeper, inside_shop, inhishop, next_shkp, onbill,
          same_price } from './shk.js';
+import { add_to_billobjs, oid_price_adjustment } from './shk.js';
 import {
     tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
     tty_select_menu, tty_message_menu, tty_yn_function, tty_display_nhwindow,
@@ -906,16 +907,59 @@ export function obfree(obj, merge) {
     /* sanity check, in case obj is on bill but not marked 'unpaid' */
     if (!shkp)
         shkp = shop_keeper(game.u.ushops ? (game.u.ushops.charCodeAt(0) || 0) : 0);
-    if (onbill(obj, shkp, false)) {
-        throw new Error('obfree(): used-up or merged bill entry not ported yet');
+    /*
+     * Note:  `shkp = shop_keeper(*u.ushops)' used to be
+     *    unconditional.  But obfree() is used all over
+     *    the place, so making its behavior be dependent
+     *    upon player location doesn't make much sense.
+     */
+
+    let bp, bpm;
+    if ((bp = onbill(obj, shkp, false)) !== null) {
+        if (!merge) {
+            bp.useup = true;
+            obj.unpaid = 0; /* only for doinvbill */
+            /* for used up glob, put back original weight in case it gets
+               formatted ('I x' or itemized billing) with 'wizweight' On */
+            if (obj.globby && !obj.owt && obj.oextra?.omid) /* has_omid() */
+                obj.owt = obj.oextra.omid; /* OMID(obj) */
+            add_to_billobjs(obj);
+            return;
+        }
+        bpm = onbill(merge, shkp, false);
+        if (!bpm) {
+            /* this used to be a rename */
+            /* !merge already returned */
+            impossible(`obfree: not on bill, otyp,where,quan,unpaid = (${
+                obj.otyp},${obj.where},${obj.quan},${obj.unpaid ? 1 : 0}) (${
+                merge.otyp},${merge.where},${merge.quan},${merge.unpaid ? 1 : 0})?`);
+            return;
+        } else {
+            const eshkp = shkp.mextra.eshk;
+
+            /* this was a merger */
+            bpm.bquan += bp.bquan;
+            eshkp.billct--;
+            Object.assign(bp, eshkp.bill_p[eshkp.billct]); /* *bp = bill_p[billct] */
+            eshkp.bill_p.length = eshkp.billct;
+        }
     } else {
-        /* not on bill; a merged-away stack with a higher price adjustment
-           passes its o_id on (oid_price_adjustment()) */
-        if (merge)
-            throw new Error('obfree(): merge price adjustment not ported yet');
+        /* not on bill; if the item is being merged away rather than
+           just deleted and has a higher price adjustment than the stack
+           being merged into, give the latter the former's obj->o_id so
+           that the merged stack takes on higher price; matters if hero
+           eventually buys them from a shop, but doesn't matter if hero
+           owns them and intends to sell (unless he subsequently buys
+           them back) or if no shopping activity ever involves them */
+        if (merge && (oid_price_adjustment(obj, obj.o_id)
+                      > oid_price_adjustment(merge, merge.o_id)))
+            merge.o_id = obj.o_id;
     }
     if (obj.owornmask) {
-        /* impossible("obfree: deleting worn obj") */
+        /* impossible("obfree: deleting worn obj (%d: %ld)", ...) */
+        /* unfortunately at this point we don't know whether worn mask
+           applied to hero or a monster or perhaps something bogus, so
+           can't call remove_worn_item() to get <X>_off() side-effects */
         setnotworn(obj);
     }
     dealloc_obj(obj);

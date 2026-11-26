@@ -446,9 +446,9 @@ export async function explode(
                     continue;
                 xx = x + i - 1;
                 yy = y + j - 1;
-                tmp_at(starting ? DISP_BEAM : DISP_CHANGE,
+                await tmp_at(starting ? DISP_BEAM : DISP_CHANGE,
                        explosion_to_glyph(expltype, explosion[i][j]));
-                tmp_at(xx, yy);
+                await tmp_at(xx, yy);
                 starting = false;
             }
         /* curs_on_u(): will flush screen and output */
@@ -459,7 +459,7 @@ export async function explode(
         void any_shield;
         /* else nh_delay_output() twice */
 
-        tmp_at(DISP_END, 0); /* clear the explosion */
+        await tmp_at(DISP_END, 0); /* clear the explosion */
     } else {
         if (olet === MON_EXPLODE || olet === TRAP_EXPLODE) {
             str = "explosion";

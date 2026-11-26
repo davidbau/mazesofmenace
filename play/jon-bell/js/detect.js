@@ -10,7 +10,7 @@ import { Blind } from './vision.js';
 import './read.js';
 import './cmd.js';
 import { observe_object } from './o_init.js';
-import { remembered_glyph_cell } from './display.js';
+import { remembered_glyph_cell, msgtype_suppressed, msgtype_is_stop } from './display.js';
 import { m_at } from './uhitm.js';
 import { PM_LONG_WORM_TAIL } from './pm.generated.js';
 import { POOL, MOAT, WATER, LAVAPOOL, LAVAWALL } from './const.js';
@@ -1249,11 +1249,17 @@ export async function find_trap(trap) {
     set_msg_xy(tx, ty);
     /* C detect.c:1956 trapname(trap->ttyp, FALSE): hallucination draws the display RNG */
     const msg = `You find ${an(makemon_trapname(trap.ttyp | 0, false))}.`;
+    const hidden = msgtype_suppressed(msg), stopped = !hidden && msgtype_is_stop(msg);
     await pline(msg);
 
     /* C detect.c:1958-1961 */
     if (cleared) {
-        await force_more(game._pending_message || msg, undefined, false, false, null, true);
+        /* display_nhwindow(WIN_MAP, TRUE) pages only a topline that is not
+         * TOPLINE_EMPTY (wintty.c:1886-1890, 1873-1879).  A MSGTYPE=stop line
+         * was already paged and cleared by vpline's own display_nhwindow
+         * (pline.c:283-284), and a hidden one never reached the topline. */
+        if (!stopped && !(hidden && !game._pending_message))
+            await force_more(game._pending_message || msg, undefined, false, false, null, true);
         await docrt();
     }
 }

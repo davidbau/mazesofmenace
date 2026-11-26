@@ -91,6 +91,7 @@ import { check_caitiff, passive } from './uhitm.js';
 import { abuse_dog } from './dog.js';
 import { monflee, set_apparxy } from './monmove.js';
 import { goodpos, place_monster } from './makemon.js';
+import { remove_monster_at } from './worm.js';
 import { m_in_out_region } from './region.js';
 import { mintrap, Trap_Killed_Mon } from './trap.js';
 import { is_flyer, is_floater, haseyes, can_teleport, slithy, verysmall,
@@ -493,7 +494,7 @@ async function kickdmg(mon, clumsy) {
         if (goodpos(mdx, mdy, mon, 0)) {
             await pline(`${Monnam(mon)} reels from the blow.`);
             if (await m_in_out_region(mon, mdx, mdy)) {
-                /* remove_monster(mon->mx, mon->my) */
+                remove_monster_at(mon.mx, mon.my); /* remove_monster() */
                 newsym(mon.mx, mon.my);
                 place_monster(mon, mdx, mdy);
                 newsym(mon.mx, mon.my);

@@ -141,6 +141,15 @@ import { unleash_all } from './trap.js';
 import { drop_upon_death } from './bones.js';
 import { impossible } from './hack.js';
 import { dealloc_obj } from './mkobj.js';
+import { G_GONE, LL_ACHIEVE, MM_NOMSG } from './const.js';
+import { PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT,
+         PM_KOP_KAPTAIN } from './monsters.js';
+import { enexto } from './teleport.js';
+import { makemon } from './makemon.js';
+import { depth } from './dungeon.js';
+import { livelog_printf } from './display.js';
+import { sgn } from './hacklib.js';
+import { choose_stairs } from './wizard.js';
 
 // ── small helpers (C ref: youprop.h / monst.h / shk.c macros) ──
 
@@ -250,7 +259,7 @@ export async function u_left_shop(leavestring, newlev) {
     }
 
     if (await rob_shop(shkp)) {
-        throw new Error('u_left_shop(): call_kops() not ported yet');
+        await call_kops(shkp, (!newlev && levl(u.ux0, u.uy0).edge));
     }
 }
 
@@ -303,9 +312,113 @@ async function rob_shop(shkp) {
     await rouse_shk(shkp, true);
     let total = (addupbill(shkp) + eshkp.debit);
     if (eshkp.credit >= total) {
-        throw new Error('rob_shop(): credit covering the bill not ported yet');
+        await Your(`credit of ${eshkp.credit} ${currency(eshkp.credit)
+                   } is used to cover your shopping bill.`);
+        total = 0; /* credit gets cleared by setpaid() */
     } else {
-        throw new Error('rob_shop(): escaping without paying not ported yet');
+        await You("escaped the shop without paying!");
+        total -= eshkp.credit;
+    }
+    setpaid(shkp);
+    if (!total)
+        return false;
+
+    /* by this point, we know an actual robbery has taken place */
+    eshkp.robbed = (eshkp.robbed || 0) + total;
+    await You(`stole ${total} ${currency(total)} worth of merchandise.`);
+    livelog_printf(LL_ACHIEVE, `stole ${total} ${currency(total)
+                   } worth of merchandise from ${s_suffix(shkname(shkp))} ${
+                   shtypes[eshkp.shoptype - SHOPBASE].name}`);
+
+    if (!Role_if(PM_ROGUE)) /* stealing is unlawful */
+        adjalign(-sgn(game.u.ualign.type));
+
+    hot_pursuit(shkp);
+    return true;
+}
+
+// C ref: shk.c call_kops()
+async function call_kops(shkp, nearshop) {
+    /* Keystone Kops srt@ucla */
+    const u = game.u;
+    let nokops;
+
+    if (!shkp)
+        return;
+
+    /* Soundeffect(se_alarm, 80): no sound interface */
+    if (!Deaf())
+        await pline("An alarm sounds!");
+
+    nokops = ((game.mvitals[PM_KEYSTONE_KOP].mvflags & G_GONE)
+              && (game.mvitals[PM_KOP_SERGEANT].mvflags & G_GONE)
+              && (game.mvitals[PM_KOP_LIEUTENANT].mvflags & G_GONE)
+              && (game.mvitals[PM_KOP_KAPTAIN].mvflags & G_GONE));
+
+    if (!(await angry_guards(!!Deaf())) && nokops) {
+        if (game.flags.verbose && !Deaf())
+            await pline("But no one seems to respond to it.");
+        return;
+    }
+
+    if (nokops)
+        return;
+
+    {
+        const mm = { x: 0, y: 0 };
+        let sx = 0, sy = 0;
+
+        /* choose_stairs(&sx, &sy, TRUE): JS returns the spot or null */
+        const stairs = choose_stairs(true);
+        if (stairs)
+            sx = stairs.x, sy = stairs.y;
+
+        if (nearshop) {
+            /* Create swarm around you, if you merely "stepped out" */
+            if (game.flags.verbose)
+                await pline_The("Keystone Kops appear!");
+            mm.x = u.ux;
+            mm.y = u.uy;
+            makekops(mm);
+            return;
+        }
+        if (game.flags.verbose)
+            await pline_The("Keystone Kops are after you!");
+        /* Create swarm near down staircase (hinders return to level) */
+        if (isok(sx, sy)) {
+            mm.x = sx;
+            mm.y = sy;
+            makekops(mm);
+        }
+        /* Create swarm near shopkeeper (hinders return to shop) */
+        mm.x = shkp.mx;
+        mm.y = shkp.my;
+        makekops(mm);
+    }
+}
+
+// C ref: shk.c makekops()
+function makekops(mm) {
+    const k_mndx = [ PM_KEYSTONE_KOP, PM_KOP_SERGEANT,
+                     PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN ];
+    const k_cnt = [0, 0, 0, 0];
+    let cnt, mndx, k;
+
+    k_cnt[0] = cnt = Math.abs(depth(game.u.uz)) + rnd(5);
+    k_cnt[1] = Math.trunc(cnt / 3) + 1; /* at least one sarge */
+    k_cnt[2] = Math.trunc(cnt / 6);     /* maybe a lieutenant */
+    k_cnt[3] = Math.trunc(cnt / 9);     /* and maybe a kaptain */
+
+    for (k = 0; k < 4; k++) {
+        if ((cnt = k_cnt[k]) === 0)
+            break;
+        mndx = k_mndx[k];
+        if (game.mvitals[mndx].mvflags & G_GONE)
+            continue;
+
+        while (cnt--)
+            if (enexto(mm, mm.x, mm.y, mons[mndx]))
+                makemon(mons[mndx], mm.x, mm.y, MM_NOMSG);
     }
 }
 
@@ -1565,7 +1678,7 @@ export async function sellobj(obj, x, y) {
         if (isgold)
             offer = obj.quan;
         else if (cgold)
-            offer += cgold ? 1 : 0;
+            offer += cgold ? 1 : 0; /* C: offer += cgold; (boolean, so +1) */
         /* C: if ((eshkp->robbed -= offer < 0L)) -- '<' binds first */
         if ((eshkp.robbed -= (offer < 0 ? 1 : 0)))
             eshkp.robbed = 0;
@@ -1929,21 +2042,29 @@ export async function make_happy_shk(shkp, silentkops) {
 /* called by make_happy_shk() and also by losedogs() for migrating shk */
 export async function make_happy_shoppers(silentkops) {
     if (!angry_shk_exists()) {
-        kops_gone(silentkops);
+        await kops_gone(silentkops);
         pacify_guards();
     }
 }
 
 // C ref: shk.c kops_gone()
 /* remove all kops from the level */
-function kops_gone(silent) {
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+async function kops_gone(silent) {
+    let cnt = 0;
+    let mtmp2;
+
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp2) {
+        mtmp2 = mtmp.nmon;
         if (mtmp.mhp < 1) /* DEADMONSTER */
             continue;
-        if (mtmp.data.mlet === S_KOP)
-            throw new Error('kops_gone(): removing Keystone Kops not ported yet');
+        if (mtmp.data.mlet === S_KOP) {
+            if (canspotmon(mtmp))
+                cnt++;
+            mongone(mtmp);
+        }
     }
-    void silent;
+    if (cnt && !silent)
+        await pline_The(`Kop${plur(cnt)} (disappointed) vanish${(cnt === 1) ? "es" : ""} into thin air.`);
 }
 
 // C ref: mon.c pacify_guards()
@@ -2030,8 +2151,11 @@ function setpaid(shkp) {
     clear_no_charge(shkp, g.level.objects || []);
     clear_no_charge(shkp, g.level.buriedobjlist || []);
 
-    if (g.billobjs)
-        throw new Error('setpaid(): discarding billobjs not ported yet');
+    let obj;
+    while ((obj = g.billobjs) != null) {
+        obj_extract_self(obj);
+        dealloc_obj(obj);
+    }
     if (shkp) {
         const eshkp = shkp.mextra.eshk;
         eshkp.billct = 0;
@@ -2048,7 +2172,7 @@ async function home_shk(shkp, killkops) {
     await mnearto(shkp, x, y, true, RLOC_NOMSG);
     game.level.flags.has_shop = 1;
     if (killkops) {
-        kops_gone(true);
+        await kops_gone(true);
         pacify_guards();
     }
     await after_shk_move(shkp);
@@ -3833,7 +3957,7 @@ function add_one_tobill(obj, dummy, shkp) {
 }
 
 // C ref: shk.c add_to_billobjs()
-function add_to_billobjs(obj) {
+export function add_to_billobjs(obj) {
     if (obj.where !== 'OBJ_FREE' && obj.where)
         throw new Error('add_to_billobjs: obj not free');
     if (obj.timed)

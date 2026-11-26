@@ -16,6 +16,15 @@ function initial_globals() {
            they live here so that every game starts with C's values) */
         mvl_wtcap: 0,
         mvl_change: 0,
+        /* eat.c maybe_cannibal() static long ate_brains = 0L */
+        ate_brains: 0,
+        /* eat.c newuhs() static unsigned save_hs; static boolean
+           saved_hs = FALSE */
+        save_hs: 0,
+        saved_hs: false,
+        /* display.c swallowed() static coordxy lastx, lasty */
+        swallow_lastx: 0,
+        swallow_lasty: 0,
     };
 }
 

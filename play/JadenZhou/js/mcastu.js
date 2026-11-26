@@ -512,7 +512,7 @@ async function mcast_clone_wiz(mtmp) {
 // C ref: mcastu.c mcast_summon_mons()
 async function mcast_summon_mons(mtmp) {
     const u = game.u;
-    const count = nasty(mtmp);
+    const count = await nasty(mtmp);
 
     if (!count) {
         ; /* nothing was created? */

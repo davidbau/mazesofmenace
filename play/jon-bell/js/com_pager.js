@@ -428,7 +428,9 @@ export function _overlay_status_line(base, col, text) {
     return out;
 }
 export function tty_text_window_utf8_line(line) {
-    const row = String(line);
+    // patch 006 nomux_putch ignores raw Escape, but tty still advances curx.
+    // Keep the SGR wrappers used to represent tty attributes.
+    const row = String(line).replace(/\x1b(?!\[[0-9;]*m)/g, ' ');
     const utf8 = gs.symset?.[rogue_graphics() ? 1 : PRIMARYSET]?.handling === H_UTF8;
     return row.replace(/^((?:\x1b\[[0-9;]*m)*)(.)(.*?)((?:\x1b\[[0-9;]*m)*)$/,
         (_, start, first, rest, end) => {

@@ -757,9 +757,9 @@ export async function m_throw(
      */
     if (sym) {
         if (!tethered_weapon) {
-            tmp_at(DISP_FLASH, obj_to_glyph(singleobj, rn2_on_display_rng));
+            await tmp_at(DISP_FLASH, obj_to_glyph(singleobj, rn2_on_display_rng));
         } else {
-            tmp_at(DISP_TETHER, obj_to_glyph(singleobj, rn2_on_display_rng));
+            await tmp_at(DISP_TETHER, obj_to_glyph(singleobj, rn2_on_display_rng));
         }
     }
     while (range-- > 0) { /* Actually the loop is always exited by break */
@@ -914,16 +914,16 @@ export async function m_throw(
             }
             break;
         }
-        tmp_at(game.bhitpos.x, game.bhitpos.y);
+        await tmp_at(game.bhitpos.x, game.bhitpos.y);
         /* nh_delay_output(): display timing only */
     }
-    tmp_at(game.bhitpos.x, game.bhitpos.y);
+    await tmp_at(game.bhitpos.x, game.bhitpos.y);
     /* nh_delay_output(): display timing only */
     if (arw && return_flightpath)
         await return_from_mtoss(mon, singleobj, tethered_weapon);
         /* mon could be DEADMONSTER now */
     else
-        tmp_at(DISP_END, 0);
+        await tmp_at(DISP_END, 0);
     game.mesg_given = 0; /* reset */
 
     if (blindinc) {
@@ -953,14 +953,14 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
                 dy = sgn(y - magr.my);
 
             if (x !== magr.mx || y !== magr.my) {
-                tmp_at(DISP_FLASH, obj_to_glyph(otmp, rn2_on_display_rng));
+                await tmp_at(DISP_FLASH, obj_to_glyph(otmp, rn2_on_display_rng));
                 while (isok(x, y) && (x !== magr.mx || y !== magr.my)) {
-                    tmp_at(x, y);
+                    await tmp_at(x, y);
                     /* nh_delay_output() */
                     x -= dx;
                     y -= dy;
                 }
-                tmp_at(DISP_END, 0);
+                await tmp_at(DISP_END, 0);
             }
         }
         x = magr.mx;
@@ -988,7 +988,7 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
     } else {
         /* it didn't make it back to thrower's location */
         if (tethered_weapon)
-            tmp_at(DISP_END, 0);
+            await tmp_at(DISP_END, 0);
         await You_hear("a loud snap!");
         notcaught = true;
     }

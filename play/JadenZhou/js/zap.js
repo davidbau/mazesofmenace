@@ -3615,7 +3615,7 @@ export async function dobuzz(
         range = 1;
     const save_bhitpos = g.bhitpos ? { x: g.bhitpos.x, y: g.bhitpos.y } : g.bhitpos;
 
-    tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype));
+    await tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype));
     zaploop:
     while (range-- > 0) {
         lsx = sx;
@@ -3635,7 +3635,7 @@ export async function dobuzz(
                     unmap_invisible(sx, sy);
                 if (ZAP_POS(g.level.at(sx, sy).typ)
                     || (isok(lsx, lsy) && cansee(lsx, lsy)))
-                    tmp_at(sx, sy);
+                    await tmp_at(sx, sy);
                 /* nh_delay_output(): wait a little */
             }
 
@@ -3815,10 +3815,10 @@ export async function dobuzz(
             const dd = { dx, dy };
             bounce_dir(sx, sy, dd, bchance);
             dx = dd.dx, dy = dd.dy;
-            tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype));
+            await tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype));
         }
     }
-    tmp_at(DISP_END, 0);
+    await tmp_at(DISP_END, 0);
     if (fireball)
         await explode(sx, sy, type, d(12, 6), 0, EXPL_FIERY_ZP);
     if (shopdamage.v)

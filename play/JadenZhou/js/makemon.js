@@ -85,7 +85,7 @@ import { M_AP_NOTHING, M_AP_MONSTER, HALLUC, TELEPAT,
          DETECT_MONSTERS, PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { dist2, sgn, ARM_BONUS } from './hacklib.js';
 import { an, vtense } from './objnam.js';
-import { newsym, pline, canseemon, You_see, vobj_at } from './display.js';
+import { newsym, pline, Norep, canseemon, You_see, vobj_at } from './display.js';
 import { does_block, block_point, cansee, couldsee } from './vision.js';
 import { Resists_Elem } from './mondata.js';
 import { PIT, SPIKED_PIT, STONE_RES, PLNMSG_HIDE_UNDER, Is_juiblex_level,
@@ -135,7 +135,7 @@ function always_peaceful(ptr) { return (ptr.mflags2 & M.M2_PEACEFUL) !== 0; }
 function race_peaceful(ptr) { return (ptr.mflags2 & game.urace.lovemask) !== 0; }
 function race_hostile(ptr) { return (ptr.mflags2 & game.urace.hatemask) !== 0; }
 export function is_golem(ptr) { return ptr.mlet === M.S_GOLEM; }
-function is_ndemon(ptr) {
+export function is_ndemon(ptr) {
     return is_demon(ptr) && !is_dlord(ptr) && !is_dprince(ptr);
 }
 export function weirdnonliving(ptr) { return is_golem(ptr) || ptr.mlet === M.S_VORTEX; }
@@ -155,7 +155,7 @@ export function is_home_elemental(ptr) {
     return false;
 }
 // C ref: monst.h is_lminion()
-function is_lminion(mon) {
+export function is_lminion(mon) {
     return is_minion(mon.data) && mon_aligntyp(mon) === A_LAWFUL;
 }
 // C ref: makemon.c quest_mon_represents_role()
@@ -1711,7 +1711,7 @@ export async function makemon_flush_msg() {
     const msg = game.makemon_msg;
     game.makemon_msg = null;
     if (msg)
-        await pline(msg);
+        await Norep(msg); /* C: Norep("%s%s %s%s%c", ...) */
     /* and makemon()'s dochugw(mtmp, FALSE) for an occupied hero */
     const mtmp = game.makemon_dochugw;
     game.makemon_dochugw = null;

@@ -319,7 +319,7 @@ export function add_menu_coloring_parsed(str, c, a) {
     const tmp = { match: regex_init(), origstr: null, color: 0, attr: 0 };
     /* test_regex_pattern() has already validated this regexp but parsing
        it again could conceivably run out of memory */
-    if (!regex_compile(str, tmp.match)) {
+    if (!regex_compile(Uint8Array.from(str, ch => ch.charCodeAt(0)), tmp.match)) {
         const re_error_desc = regex_error_desc(tmp.match);
 
         regex_free(tmp.match);
@@ -338,7 +338,12 @@ export function add_menu_coloring_parsed(str, c, a) {
 // and add it to menucoloring
 export function add_menu_coloring(tmpstr) {
     let c = NO_COLOR, a = ATR_NONE;
-    const str = String(tmpstr ?? '').slice(0, BUFSZ - 1);
+    // File parsing supplies bytes; retain Unicode for direct callers.
+    const bytes = tmpstr instanceof Uint8Array ? tmpstr
+        : new TextEncoder().encode(String(tmpstr ?? ''));
+    const str = Array.from(bytes,
+                           c => String.fromCharCode(c)).join('')
+        .split('\0', 1)[0].slice(0, BUFSZ - 1);
 
     const cs = str.indexOf('=');
     if (cs < 0) {
@@ -363,7 +368,7 @@ export function add_menu_coloring(tmpstr) {
     let pattern = str.slice(0, cs);
     if (pattern[0] === '"' || pattern[0] === "'") {
         let end = pattern.length - 1;
-        while (end > 0 && /\s/.test(pattern[end]))
+        while (end > 0 && /[ \t\r\n\f\v]/.test(pattern[end]))
             end--;
         if (pattern[end] === pattern[0])
             pattern = pattern.slice(1, end);

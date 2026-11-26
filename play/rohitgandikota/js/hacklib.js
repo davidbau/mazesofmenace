@@ -118,7 +118,7 @@ function pmatch_internal(patrn, strng, ci) {
             return s ? pmatch_internal(patrn.slice(pi - 1), strng.slice(si), ci)
                      : false;
         }
-        if ((ci ? p.toLowerCase() !== s.toLowerCase() : p !== s)
+        if ((ci ? lowc(p) !== lowc(s) : p !== s)
             && (p !== '?' || !s))
             return false;
     }

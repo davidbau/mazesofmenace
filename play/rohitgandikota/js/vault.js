@@ -9,8 +9,8 @@ import {
 import { PMNAMES } from './monst_data.js';
 import { g_at, hidden_gold, money_cnt, obj_extract_self, sobj_at,
          stackobj } from './invent.js';
-import { canspotmon, map_background, map_invisible, map_location, mon_visible,
-         more, newsym, pline, unset_seenv } from './display.js';
+import { canspotmon, map_invisible, map_location, mon_visible,
+         newsym, pline, unset_seenv, xy_set_wall_state } from './display.js';
 import { getlin } from './cmd.js';
 import { mungspaces } from './hacklib.js';
 import { Monnam, Some_Monnam, noit_Monnam, noit_mon_nam, pmname,
@@ -39,7 +39,7 @@ import {
     ROOM, STONE, CORR, SCORR, HWALL, VWALL, DOOR, D_NODOOR, IS_WALL,
     IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE, ARTICLE_A, BLCORNER,
     BRCORNER, RLOC_MSG, TLCORNER, TRCORNER, M_AP_TYPE, M_AP_OBJECT,
-    NEED_HTH_WEAPON, IS_OBSTRUCTED, Upolyd,
+    NEED_HTH_WEAPON, IS_OBSTRUCTED, Upolyd, IN_SIGHT, COULD_SEE,
 } from './const.js';
 import { relobj } from './steal.js';
 import { m_into_limbo } from './mon.js';
@@ -162,6 +162,7 @@ async function clear_fcorr(guard, forceshow = false) {
             sawcorridor = true;
         loc.typ = fc.ftyp;
         loc.flags = fc.flags || 0;
+        loc.wall_info = loc.flags; // C rm.flags also stores wall_info.
         if (fc.doormask !== undefined)
             loc.doormask = fc.doormask;
         if (IS_STWALL(loc.typ)) {
@@ -263,6 +264,8 @@ async function wallify_vault(guard) {
 
             const occupant = game.level.monAt?.get(`${x},${y}`);
             if (occupant && occupant !== guard) {
+                if (occupant.mtame)
+                    await yelp(occupant);
                 const { rloc } = await import('./teleport.js');
                 if (!await rloc(occupant, RLOC_MSG))
                     await m_into_limbo(occupant);
@@ -291,7 +294,10 @@ async function wallify_vault(guard) {
             const engraving = engr_at(x, y);
             if (engraving)
                 del_engr(engraving);
-            map_background(x, y, true);
+            const tmp_viz = game.viz_array[y][x];
+            game.viz_array[y][x] = IN_SIGHT | COULD_SEE;
+            newsym(x, y);
+            game.viz_array[y][x] = tmp_viz;
             block_point(x, y);
             fixed = true;
         }
@@ -406,15 +412,13 @@ async function gd_letknow(guard) {
 async function gd_move_cleanup(guard, semi_dead, disappear_msg_seen) {
     const x = guard.mx, y = guard.my;
     const see_guard = canspotmon(guard);
-    const guard_name = noit_mon_nam(guard);
     parkguard(guard);
     await wallify_vault(guard);
     await restfakecorr(guard);
     if (!semi_dead && (in_fcorridor(guard, game.u.ux, game.u.uy)
                        || cansee(x, y))) {
         if (!disappear_msg_seen && see_guard) {
-            await pline(`Suddenly, ${guard_name} disappears.`);
-            await more();
+            await pline(`Suddenly, ${noit_mon_nam(guard)} disappears.`);
         }
         return 1;
     }
@@ -502,21 +506,48 @@ function guard_entry(goal) {
     return { x, y };
 }
 
+// src/vault.c:584 invault(), initialize the guard's entry and saved wall.
 function finish_guard_corridor(guard, roomidx, goal, entry) {
     const egd = guard.mextra.egd;
     const loc = game.level.at(entry.x, entry.y);
     egd.gdx = goal.x;
     egd.gdy = goal.y;
     egd.fcbeg = 0;
+    let typ = loc.typ;
+    if (!IS_WALL(typ)) {
+        const room = game.level.rooms[roomidx];
+        const x = entry.x, y = entry.y;
+        const lowx = room.lx, hix = room.hx;
+        const lowy = room.ly, hiy = room.hy;
+
+        if (x === lowx - 1 && y === lowy - 1)
+            typ = TLCORNER;
+        else if (x === hix + 1 && y === lowy - 1)
+            typ = TRCORNER;
+        else if (x === lowx - 1 && y === hiy + 1)
+            typ = BLCORNER;
+        else if (x === hix + 1 && y === hiy + 1)
+            typ = BRCORNER;
+        else if (y === lowy - 1 || y === hiy + 1)
+            typ = HWALL;
+        else if (x === lowx - 1 || x === hix + 1)
+            typ = VWALL;
+
+        loc.typ = typ;
+        loc.wall_info = 0;
+        xy_set_wall_state(x, y);
+    }
+    // C flags aliases wall_info; the JS map retains a separate wall field.
     egd.fakecorr = [{ fx: entry.x, fy: entry.y,
-                      ftyp: loc.typ, flags: loc.flags || 0,
+                      ftyp: typ, flags: loc.wall_info || 0,
                       doormask: loc.doormask || 0 }];
-    egd.fcend = 1;
-    egd.warncnt = 1;
     egd.vroom = roomidx;
     loc.typ = DOOR;
+    loc.flags = 0;
     loc.doormask = D_NODOOR;
     unblock_point(entry.x, entry.y);
+    egd.fcend = 1;
+    egd.warncnt = 1;
 }
 
 /* src/vault.c:887 gd_move().  A peaceful guard cuts one temporary square at
@@ -617,6 +648,15 @@ export async function gd_move(guard) {
             egd.gddone = 1;
             return gd_move_cleanup(guard, semi_dead, false);
         }
+    }
+
+    // src/vault.c:1009, the entry was restored after the hero left the corridor.
+    if (egd.fcend > 2 && in_fcorridor(guard, guard.mx, guard.my)
+        && !egd.gddone && !in_fcorridor(guard, u.ux, u.uy)
+        && game.level.at(egd.fakecorr[0].fx, egd.fakecorr[0].fy).typ
+            === egd.fakecorr[0].ftyp) {
+        await pline(`${noit_Monnam(guard)}, confused, disappears.`);
+        return gd_move_cleanup(guard, semi_dead, true);
     }
 
     if (egd.fcend > 1 && u_carry_gold
@@ -721,6 +761,7 @@ export async function gd_move(guard) {
                 if (isok(ex, ey) && IS_ROOM(game.level.at(ex, ey).typ)) {
                     loc.typ = DOOR;
                     loc.doormask = D_NODOOR;
+                    del_engr_at(ex, ey);
                     openedDoor = true;
                     break;
                 }
@@ -738,6 +779,7 @@ export async function gd_move(guard) {
                 if (IS_ROOM(typ)) {
                     loc.typ = DOOR;
                     loc.doormask = D_NODOOR;
+                    del_engr_at(ex, ey);
                     openedDoor = true;
                 }
                 break;

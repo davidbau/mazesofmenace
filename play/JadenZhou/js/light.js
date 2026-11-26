@@ -24,6 +24,9 @@ import { get_obj_location } from './shk.js';
 import { clear_path, circle_data, circle_start, COULD_SEE } from './vision.js';
 import { GOLD_DRAGON_SCALE_MAIL } from './objects.js';
 import { artifact_light } from './artifact.js';
+import { vision_recalc } from './vision.js';
+import { flush_screen, canseemon, canspotmon, map_invisible } from './display.js';
+import { dist2 } from './hacklib.js';
 
 /* flags */
 const LSF_SHOW = 0x1;           /* display the light source */
@@ -112,6 +115,97 @@ function delete_ls(ls) {
         game.vision_full_recalc = 1;
     } else {
         console.error('impossible: delete_ls not found');
+    }
+}
+
+// C ref: light.c show_transient_light()
+/* lit 'obj' has been thrown or kicked and is passing through x,y on the
+   way to its destination; show its light so that hero has a chance to
+   remember terrain, objects, and monsters being revealed;
+   if 'obj' is Null, <x,y> is being hit by a camera's light flash */
+export async function show_transient_light(obj, x, y) {
+    let ls = null;
+    let radius_squared;
+
+    /* Null object indicates camera flash */
+    if (!obj) {
+        /* no need to temporarily light an already lit spot */
+        if (game.level.at(x, y).lit)
+            return;
+
+        /* radius 0 will just light <x,y>; cameraflash.a_obj is Null */
+        ls = new_light_core(x, y, 0, LS_OBJECT, { a_obj: null });
+    } else {
+        /* thrown or kicked object which is emitting light: placing it
+           temporarily on the map (place_object() at gb.bhitpos, then
+           nh_delay_output() and remove_object()) */
+        throw new Error('show_transient_light(): thrown/kicked lit object not ported yet');
+    }
+
+    /* camera flash:  no object; directly set light source's location */
+    ls.x = x, ls.y = y;
+
+    /* full recalc; runs do_light_sources() */
+    vision_recalc(0);
+    await flush_screen(0);
+
+    radius_squared = ls.range * ls.range;
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if (mon.mhp < 1 /* DEADMONSTER */ || (mon.isgd && !mon.mx))
+            continue;
+        /* light range is the radius of a circle and we're limiting
+           canseemon() to a square enclosing that circle, but setting
+           mtemplit 'erroneously' for a seen monster is not a problem;
+           it just flags monsters for another canseemon() check when
+           'obj' has reached its destination after missile traversal */
+        if (dist2(mon.mx, mon.my, x, y) <= radius_squared) {
+            if (canseemon(mon))
+                mon.mtemplit = 1;
+        }
+        /* [what about worm tails?] */
+    }
+}
+
+// C ref: light.c transient_light_cleanup()
+/* delete any camera flash light sources and draw "remembered, unseen
+   monster" glyph at locations where a monster was flagged for being
+   visible during transient light movement but can't be seen now */
+export async function transient_light_cleanup() {
+    let mtempcount;
+
+    /* in case we're cleaning up a camera flash, remove all object light
+       sources which aren't associated with a specific object */
+    discard_flashes();
+    if (game.vision_full_recalc) /* set by del_light_source() */
+        vision_recalc(0);
+
+    /* for thrown/kicked candle or lamp or for camera flash, some
+       monsters may have been mapped in light which has now gone away
+       so need to be replaced by "remembered, unseen monster" glyph */
+    mtempcount = 0;
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if (mon.mhp < 1) /* DEADMONSTER */
+            continue;
+        if (mon.mtemplit) {
+            mon.mtemplit = 0;
+            ++mtempcount;
+            if (!canspotmon(mon))
+                map_invisible(mon.mx, mon.my);
+        }
+    }
+    if (mtempcount)
+        await flush_screen(0);
+}
+
+// C ref: light.c discard_flashes()
+/* camera flashes have Null object; caller wants to get rid of them now */
+function discard_flashes() {
+    let ls, nxt_ls;
+
+    for (ls = game.light_base; ls; ls = nxt_ls) {
+        nxt_ls = ls.next;
+        if (ls.type === LS_OBJECT && !ls.id.a_obj)
+            delete_ls(ls);
     }
 }
 

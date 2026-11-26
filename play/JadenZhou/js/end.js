@@ -94,6 +94,7 @@ import { sticks as sticks_end } from './engrave.js';
 import { Monnam as Monnam_end } from './do_name.js';
 import { flush_screen as flush_screen_end } from './display.js';
 import { findgd } from './vault.js';
+import { lift_covet_and_placebc, override_restriction } from './ball.js';
 
 const EXIT_SUCCESS = 0;
 const BUFSZ = 256;
@@ -534,8 +535,10 @@ export async function done_object_cleanup() {
     /* if Punished hero dies during level change or dies or quits while
        swallowed, uball and uchain will be in limbo; put them on floor
        so bones will have them and object list cleanup finds them */
-    if (g.uchain && (!g.uchain.where || g.uchain.where === 'OBJ_FREE'))
-        throw new Error('done_object_cleanup(): lift_covet_and_placebc() not ported yet');
+    if (g.uchain && (!g.uchain.where || g.uchain.where === 'OBJ_FREE')) {
+        /* placebc(); */
+        await lift_covet_and_placebc(override_restriction);
+    }
     /* persistent inventory window now obsolete since disclosure uses
        a normal popup one; avoids "Bad fruit #n" when saving bones */
     if (g.iflags.perm_invent) {

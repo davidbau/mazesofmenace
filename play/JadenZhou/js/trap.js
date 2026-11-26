@@ -762,7 +762,7 @@ export async function float_down(
         if (Is_airlevel_l(u.uz)) {
             await You("begin to tumble in place.");
         } else if (Is_waterlevel_l(u.uz) && !no_msg) {
-            await pline("You feel heavier."); /* You_feel() */
+            await You_feel("heavier."); /* You_feel() */
         /* u.uinwater msgs already in spoteffects()/drown() */
         } else if (!u.uinwater && !no_msg) {
             if (!(emask & W_SADDLE)) {
