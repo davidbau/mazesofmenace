@@ -3829,6 +3829,13 @@ export async function doset_simple() {
                     delete g._blTemp;
                     status_reassess();
                 }
+                if (entry.name === 'hitpointbar') {
+                    /* C options.c:5386-5390 optfn_boolean: VIA_WINDOWPORT() sets
+                     * go.opt_need_redraw = TRUE so doset_simple()'s loop runs
+                     * reset_needed_visuals() -> docrt() + flush_screen(1). */
+                    g.go ||= {};
+                    g.go.opt_need_redraw = true;
+                }
                 if (entry.name === 'color') {
                     g.iflags.use_color = !!obj[fld];
                     /* C options.c:8727: reset_needed_visuals redraws before

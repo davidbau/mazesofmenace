@@ -3183,6 +3183,13 @@ export async function level_tele() {
                 u.uz = { dnum: 0, dlevel: newlev <= -10 ? -10 : 0 };
                 await done(DIED);
                 u.uz = saved_uz;
+                /* C teleport.c:1374: restoring u.uz flags no botl, so the
+                 * physical status keeps the death-location level that
+                 * savelife's curs_on_u() bot() painted (end.c:740-743) until
+                 * the next real bot(). */
+                const _lp = g._lastPaintedBotl;
+                if (!(g.disp?.botl || g.disp?.botlx) && _lp && _lp.dlevel != null)
+                    g._botlUzFrozen = { dnum: _lp.dnum | 0, dlevel: _lp.dlevel | 0 };
                 death_survived = true;
                 escape_by_flying = 'find yourself back on the surface';
             }

@@ -5814,8 +5814,11 @@ export function docorner_blank_utf8_captures(xmin, ymax) {
                 if (loc.disp_glyphmap_color !== undefined)
                     loc.disp_color = game.iflags?.use_color === false
                         ? NO_COLOR : loc.disp_glyphmap_color;
-                loc.disp_flushed_cell = _buffered_capture_cell(loc, x, y);
+                const _fc = _buffered_capture_cell(loc, x, y);
+                loc.disp_flushed_cell = _fc;
                 loc.disp_flush_epoch = _flush_epoch;
+                if (_fc.ch !== ROGUE_HERO_CH)
+                    (game._epyxPhys ??= new Map()).set(key, _fc);
             }
         }
 }
@@ -6241,7 +6244,7 @@ export function hitpointbar_status1(title, stats, align, ulevel, Upolyd) {
             || _status_field_hilites(hpField).get(0);
         if (hh && hh.color !== NO_COLOR) sgr = `\x1b[7;${ANSI_COLOR[hh.color] ?? ANSI_DEFAULT}m`;
     }
-    if (game._hpbarPlain && game.iflags?.hilite_delta) {
+    if (game._hpbarPlain) {
         /* wintty.c:4600: a title-only update left tty_status[BL_TITLE].attr 0 */
         const tt = bar.length - bar.trimEnd().length;
         const pl = tt > 4 ? `${bar.slice(0, bar.length - tt)}\x1b[${tt}C` : bar;
@@ -7673,7 +7676,9 @@ export function status_hpbar_attr_eval() {
     if (!ev || !game._blTemp) return;
     game._hpbarEval = null;
     const hist = game._blTemp, row0 = _statusLine1Raw(), { encReset, hpChgNow } = ev;
-    if (!game.iflags?.wc2_hitpointbar || !game.iflags?.hilite_delta) return;
+    /* botl.c:1514-1614 sends a changed BL_TITLE without BL_HP whether or
+     * not statushilites is on; wintty.c:4513-4517 then stores attr 0 */
+    if (!game.iflags?.wc2_hitpointbar) return;
     const tm = /^\[(.*?) *\] /.exec(String(row0).replace(/\x1b\[[\d;]*[mC]/g, ''));
     if (!tm) return;
     /* BL_TITLE's value is the title text; the critical-HP dashes are
@@ -11181,8 +11186,12 @@ function _capture_botl(paint = false) {
      * _blankStatus test in _buildScreenOutput), so it must not be recorded
      * as the last painted status. */
     const _unpainted = !paint && !game._lastPaintedBotl && !game.u?.ux;
+    /* an unflagged flush paints no Dlvl: a level the physical row is known
+     * to still show (_botlUzFrozen) is the snapshot's level too */
+    const _uzShown = (!paint && game._botlUzFrozen && !((_d?.botl | 0) || (_d?.botlx | 0)))
+        ? game._botlUzFrozen : u.uz;
     const _snap = {
-        dnum: u.uz?.dnum, dlevel: u.uz?.dlevel,
+        dnum: _uzShown?.dnum, dlevel: _uzShown?.dlevel,
         botlSeq: (game._botlPaintSeq | 0) + (paint ? 1 : 0),
         /* C botl.c:1261-1274: BL_TERRAIN is cached at this status paint,
          * just like HP and conditions, rather than read again by more().

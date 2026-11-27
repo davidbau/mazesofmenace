@@ -1984,11 +1984,7 @@ async function eat_occupation_turn() {
             }
             continue;
         }
-        /* A part cut at recorded joins is ONE pline: its internal "  " (a
-         * two-sentence message) is part of the text update_topl measures, so
-         * test the whole part (topl.c:257 uses strlen of the whole bp). */
-        const _partJoined = (_fromPreEat ? preEatJoins : eatMsgJoins)?.length > 0;
-        if (_committed && _topl_joins_committed(_committed, _partJoined ? part : part.split('  ')[0])) {
+        if (_committed && _topl_joins_committed(_committed, part)) {
             // C: Strcat(gt.toplines, "  "); Strcat(gt.toplines, bp) — the committed line
             // stays and this pline is appended to it.  _topl_merge_result keeps the
             // per-pline join offsets so a LATER turn's pline still pages at the right
@@ -2141,14 +2137,9 @@ async function eat_occupation_turn() {
         g._occ_committed_topl = thisTurnMsg
             ? { text: thisTurnMsg, postMeal: true }
             : (prior ? { text: prior.text, postMeal: true } : null);
-        /* The ESC-drawn owner is the LIVE topline in C (drawn by redotoplin at
-         * topl.c:300, TOPLINE_NEED_MORE): it is read at the next rhack like any
-         * command result, not banked into the post-meal carry.  With it
-         * standing, _occ_committed_topl must not claim a line to re-page
-         * either (prior.text was already filed by the pager's ESC arm). */
         if (!_drawnOwner && !g._topl_win_stop)
             g._pending_message = '';
-        else if (g._topl_win_stop && thisTurnMsg)
+        else if (g._topl_win_stop)
             g._occ_committed_topl = null;
         if (thisTurnMsg && /(?:^|  )You stop eating\b/.test(thisTurnMsg)) {
             g._occ_committed_topl = null;

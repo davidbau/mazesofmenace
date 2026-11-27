@@ -23,7 +23,7 @@ import { game } from './gstate.js';
 import { livelog_printf, urgent_pline, You_hear as You_hear_zp,
          You_hear } from './display.js';
 import { LL_CONDUCT } from './const.js';
-import { You, Your, pline, pline_The, pline_dir } from './display.js';
+import { You, Your, pline, pline_The, pline_dir, pline_mon } from './display.js';
 import { getobj, useupall } from './invent.js';
 import { check_capacity } from './hack.js';
 import { xytodir } from './hack.js';
@@ -623,8 +623,8 @@ async function mimic_hit_msg(mtmp, otyp) {
         break;
     case M_AP_OBJECT_BM:
         if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING) {
-            await pline(`${The(simple_typename_bm(ap))} seems a more vivid ${
-                c_obj_colors[objects[ap].oc_color]} than before.`); /* pline_mon() */
+            await pline_mon(mtmp, `${The(simple_typename_bm(ap))} seems a more vivid ${
+                c_obj_colors[objects[ap].oc_color]} than before.`);
         }
         break;
     }

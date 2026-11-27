@@ -99,7 +99,7 @@ import { DIED } from './const.js';
 import { cansee, couldsee } from './vision.js';
 import { m_in_air } from './monmove.js';
 import { canseemon, set_msg_xy } from './display.js';
-import { mon_nam, Monnam } from './do_name.js';
+import { mon_nam, Monnam, Amonnam } from './do_name.js';
 import { self_invis_message } from './potion.js';
 import { perceives, pm_invisible } from './mondata.js';
 import { INVIS, SEE_INVIS } from './const.js';
@@ -131,6 +131,8 @@ import { touch_petrifies } from './mondata.js';
 import { obj_pmname, an } from './objnam.js';
 import { uwepgone, uswapwepgone } from './wield.js';
 import { s_suffix } from './hacklib.js';
+import { strsubst as strsubst_tr } from './hacklib.js';
+import { nolimbs as nolimbs_tr } from './mondata.js';
 import { m_at } from './makemon.js';
 import { ROLL as ROLL_L, LAUNCH_KNOWN as LAUNCH_KNOWN_L,
          LAUNCH_UNSEEN as LAUNCH_UNSEEN_L, DISP_FLASH as DISP_FLASH_L,
@@ -3088,7 +3090,7 @@ async function trapeffect_pit(mtmp, trap, trflags) {
         if (!passes_walls(mptr))
             mtmp.mtrapped = 1;
         if (in_sight) {
-            await pline(`${Monnam(mtmp)} ${fallverb} into ${
+            await pline_mon(mtmp, `${Monnam(mtmp)} ${fallverb} into ${
                 a_your[trap.madeby_u ? 1 : 0]} pit!`);
             if (mptr === mons[PM_PIT_VIPER]
                 || mptr === mons[PM_PIT_FIEND])
@@ -4700,6 +4702,44 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
     return Trap_Effect_Finished;
 }
 
+// C ref: trap.c trapeffect_vibrating_square()
+async function trapeffect_vibrating_square(mtmp, trap, trflags) {
+    const u = game.u;
+
+    if (mtmp === game.youmonst) {
+        feeltrap(trap);
+        /* messages handled elsewhere; the trap symbol is merely to mark the
+           square for future reference */
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === u.usteed);
+        const see_it = cansee(mtmp.mx, mtmp.my);
+
+        if (see_it && !Blind()) {
+            seetrap(trap); /* before messages */
+            if (in_sight) {
+                let buf, monnm = mon_nam(mtmp);
+
+                if (nolimbs_tr(mtmp.data) || m_in_air(mtmp)) {
+                    /* just "beneath <mon>" */
+                    buf = monnm;
+                } else {
+                    buf = s_suffix(monnm) + " ";
+                    /* avoid "beneath 'rear paws'" or 'rear hooves' */
+                    buf += strsubst_tr(makeplural(mbodypart_tr(mtmp, FOOT)),
+                                       "rear ", "");
+                }
+                await You_see_l(`a strange vibration beneath ${buf}.`);
+            } else {
+                /* notice something (hearing uses a larger threshold
+                   for 'nearby') */
+                await You_see_l(`the ground vibrate ${
+                    (mdistu(mtmp) <= 2 * 2) ? "nearby" : "in the distance"}.`);
+            }
+        }
+    }
+    return Trap_Effect_Finished;
+}
+
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case ARROW_TRAP:
@@ -4745,7 +4785,7 @@ async function trapeffect_selector(mtmp, trap, trflags) {
     case POLY_TRAP:
         return trapeffect_poly_trap(mtmp, trap, trflags);
     case VIBRATING_SQUARE:
-        throw new Error(`trapeffect_selector(): trap type ${trap.ttyp} not ported yet`);
+        return trapeffect_vibrating_square(mtmp, trap, trflags);
     default:
         /* impossible("%s encountered a strange trap of type %d.") */
         break;
@@ -4864,8 +4904,13 @@ export async function mintrap(mtmp, mintrapflags) {
            (mtmp hiding under object at armed bear trap location, hero
            zaps wand of locking or spell of wizard lock at spot triggering
            the trap and trapping mtmp there) */
-        if (!(mtmp.mhp < 1) && mtmp.mtrapped)
+        if (!(mtmp.mhp < 1) && mtmp.mtrapped) {
+            const alreadyspotted = canspotmon_l(mtmp);
+
             maybe_unhide_at(mtmp.mx, mtmp.my);
+            if (!alreadyspotted && canseemon(mtmp))
+                await pline_mon(mtmp, `${Amonnam(mtmp)} appears.`);
+        }
     }
     return trap_result;
 }

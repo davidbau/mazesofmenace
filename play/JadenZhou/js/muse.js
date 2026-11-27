@@ -898,7 +898,7 @@ export async function use_defensive(mtmp) {
         if (!otmp)
             throw new Error(MissingDefensiveItem("bugle")); /* panic() */
         if (vismon) {
-            await pline(`${Monnam(mtmp)} plays ${doname(otmp)}!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} plays ${doname(otmp)}!`);
         } else if (!Deaf()) {
             /* Soundeffect(se_bugle_playing_reveille, 100) */
             await You_hear("a bugle playing reveille!");

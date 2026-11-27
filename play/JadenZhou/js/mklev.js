@@ -3526,6 +3526,15 @@ function level_finalize_topology() {
     bound_digging();
     mineralize(-1, -1, -1, -1, false);
     game.in_mklev = false;
+    /* avoid coordinates in future lua-loads for this level being thrown off
+     * because xstart and ystart aren't saved with the level and will be 0
+     * after leaving and returning */
+    game.xstart = game.ystart = 0;
+    /* has_morgue gets cleared once morgue is entered; graveyard stays
+       set (graveyard might already be set even when has_morgue is clear
+       [see fixup_special()], so don't update it unconditionally) */
+    if (game.level?.flags?.has_morgue)
+        game.level.flags.graveyard = 1;
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;
         for (let i = 0; i < nroom; i++)

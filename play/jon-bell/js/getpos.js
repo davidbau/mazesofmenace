@@ -698,7 +698,10 @@ export async function getpos(ccp, force, goal) {
                 await getpos_failure_pline(failure);
                 if (!force) {
                     await pline('Done.');
-                    g._topl_sticky = g._pending_message;
+                    /* a MSGTYPE-hidden "Done." (and failure) never touches
+                     * the topline (pline.c:246-262): what getpos last wrote
+                     * stays physically on row 0 */
+                    g._topl_sticky = g._pending_message || g._topl_sticky;
                     g._getpos_last_autodescribe = null;
                     msg_given = false;
                     cx = -1; cy = 0;

@@ -21,7 +21,7 @@ import { cansee, couldsee, clear_path, vision_recalc,
          recalc_block_point } from './vision.js';
 import { newsym, pline, canseemon, canspotmon, vobj_at } from './display.js';
 import { can_hide_under_obj, nonliving } from './makemon.js';
-import { Monnam, Adjmonnam } from './do_name.js';
+import { Monnam, Adjmonnam, YMonnam } from './do_name.js';
 import { W_NONDIGGABLE as W_NONDIGGABLE_MM } from './const.js';
 import { dmgtype as dmgtype_mm, is_animal, mindless, nohands, verysmall,
          hides_under, amorphous, likes_gems, throws_rocks, tunnels, needspick,
@@ -173,6 +173,7 @@ import { bare_artifactname } from './iactions.js';
 import { yname } from './objnam.js';
 import { aggravate as aggravate_mm } from './potion.js';
 import { pline_mon, set_msg_xy } from './display.js';
+import { impossible_async } from './display.js';
 
 // ── small helpers (C ref: youprop.h / mondata.h / display.h macros) ──
 
@@ -1304,14 +1305,14 @@ async function meatmetal(mtmp) {
                     /* (see above; format even if it won't be printed) */
                     otmpname = distant_name(otmp, doname);
                     if (game.flags.verbose)
-                        await pline(`${Monnam(mtmp)} spits ${otmpname} out in disgust!`);
+                        await pline_mon(mtmp, `${Monnam(mtmp)} spits ${otmpname} out in disgust!`);
                 }
             } else {
                 if (cansee(mtmp.mx, mtmp.my)) {
                     /* (see above; format even if it won't be printed) */
                     otmpname = distant_name(otmp, doname);
                     if (game.flags.verbose)
-                        await pline(`${Monnam(mtmp)} eats ${otmpname}!`);
+                        await pline_mon(mtmp, `${Monnam(mtmp)} eats ${otmpname}!`);
                 } else {
                     if (game.flags.verbose) {
                         /* Soundeffect(se_crunching_sound, 50) */
@@ -2589,7 +2590,9 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
             if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0
                 && amorphous(ptr)) {
                 if (game.flags.verbose && canseemon(mtmp))
-                    throw new Error('postmov(): oozing under a door message not ported yet');
+                    await pline_mon(mtmp, `${YMonnam(mtmp)} ${
+                        (ptr === mons[M.PM_FOG_CLOUD]
+                         || ptr.mlet === M.S_LIGHT) ? "flows" : "oozes"} under the door.`);
             } else if ((here.doormask & D_LOCKED) !== 0 && can_unlock) {
                 /* like the vampshift hack, there are sequencing
                    issues when the monster is moved to the door's spot
@@ -2680,6 +2683,16 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
         /* set also in domove(), hack.c */
         if (game.u.uswallow && mtmp === game.u.ustuck) {
             throw new Error('postmov(): engulfer movement not ported yet');
+        } else if (!isok(mtmp.mx, mtmp.my) && !game.in_mklev) {
+            /* C ref: display.c newsym() -- off-map spot (a vault guard
+               that gd_move() just parked at <0,0>): misuse of column 0
+               is impossible(), anything worse is panic() */
+            if (mtmp.mx < 0 || mtmp.my < 0 || mtmp.mx > COLNO - 1
+                || mtmp.my > ROWNO - 1)
+                throw new Error(`panic: newsym: attempting screen update for <${
+                    mtmp.mx},${mtmp.my}>`);
+            await impossible_async(`newsym: attempting screen update for <${
+                mtmp.mx},${mtmp.my}>`);
         } else {
             newsym(mtmp.mx, mtmp.my);
         }

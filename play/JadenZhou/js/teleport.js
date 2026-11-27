@@ -11,7 +11,7 @@ import { game } from './gstate.js';
 import { make_blinded } from './potion.js';
 import { remove_worm, place_worm_tail_randomly } from './worm.js';
 import { rn2, rnl } from './rng.js';
-import { pline, verbalize } from './display.js';
+import { pline, pline_mon, verbalize } from './display.js';
 import { tty_getlin } from './wintty.js';
 import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION } from './const.js';
 import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level, find_hell,
@@ -1720,7 +1720,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
             } else if (u.uz.dlevel === game.dungeons[u.uz.dnum].num_dunlevs) {
                 /* Is_botlevel() */
                 if (in_sight && trap.tseen)
-                    await pline(`${Monnam(mtmp)} avoids the ${
+                    await pline_mon(mtmp, `${Monnam(mtmp)} avoids the ${
                         (tt === HOLE) ? "hole" : "trap"}.`);
                 return Trap_Effect_Finished;
             } else {
@@ -1747,7 +1747,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
                    currently inside his or her own special room */
                 || (tt === NO_TRAP && onscary(0, 0, mtmp))) {
                 if (in_sight)
-                    await pline(`${Monnam(mtmp)} seems very disoriented for a moment.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} seems very disoriented for a moment.`);
                 return Trap_Effect_Finished;
             }
             if (tt === NO_TRAP) {
@@ -1760,7 +1760,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
                 nlev = random_teleport_level();
                 if (nlev === depth(u.uz)) {
                     if (in_sight)
-                        await pline(`${Monnam(mtmp)} shudders for a moment.`);
+                        await pline_mon(mtmp, `${Monnam(mtmp)} shudders for a moment.`);
                     return Trap_Effect_Finished;
                 }
                 get_level(tolevel, nlev);
@@ -1771,7 +1771,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         }
 
         if (in_sight) {
-            await pline(`Suddenly, ${mon_nam(mtmp)} ${
+            await pline_mon(mtmp, `Suddenly, ${mon_nam(mtmp)} ${
                 (tt === HOLE) ? "falls into a hole"
                 : (tt === TRAPDOOR) ? "falls through a trap door"
                   : "disappears out of sight"}.`);

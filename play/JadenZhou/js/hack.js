@@ -830,8 +830,10 @@ export async function lookaround() {
                     if (x !== u.ux && y !== u.uy)
                         continue;
                     if (g.context.run !== 1 && !g.context.travel) {
-                        if (g.flags.mention_walls)
-                            await pline("You stop in front of the door.");
+                        if (g.flags.mention_walls) {
+                            set_msg_xy(x, y);
+                            await You("stop in front of the door.");
+                        }
                         stop = true; /* goto stop */
                     } else {
                         /* orthogonal to a closed door, consider it a
@@ -3083,6 +3085,28 @@ async function carrying_too_much() {
     return false;
 }
 
+/* does the plane of air disturb movement? */
+// C ref: hack.c air_turbulence()
+async function air_turbulence() {
+    if (Is_airlevel(game.u.uz) && rn2(4) && !Levitation() && !Flying()) {
+        switch (rn2(3)) {
+        case 0:
+            await You("tumble in place.");
+            await exercise(A_DEX, false);
+            break;
+        case 1:
+            await You_cant_fw("control your movements very well.");
+            break;
+        case 2:
+            await pline("It's hard to walk in thin air.");
+            await exercise(A_DEX, true);
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
 /* C ref: hack.c slippery_ice_fumbling() */
 function slippery_ice_fumbling() {
     const u = game.u;
@@ -3663,9 +3687,8 @@ async function domove_core() {
         await u_on_newpos(x, y); /* set u.ux,uy and handle CLIPPING */
         mtmp = u.ustuck;
     } else {
-        /* air_turbulence() */
-        if (Is_airlevel(u.uz))
-            throw new Error('domove_core(): air_turbulence() not ported yet');
+        if (await air_turbulence())
+            return;
 
         /* check slippery ice */
         slippery_ice_fumbling();

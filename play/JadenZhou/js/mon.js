@@ -1804,7 +1804,7 @@ async function minliquid_core(mtmp) {
                         await pline_mon(mtmp, `${Monnam(mtmp)} surrenders to the fire.`);
                     await mondead(mtmp); /* no corpse */
                 } else if (cansee(mtmp.mx, mtmp.my)) {
-                    await pline(`${Monnam(mtmp)} burns slightly.`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} burns slightly.`);
                 }
             }
             if (!DEADMONSTER(mtmp)) {
@@ -2538,17 +2538,17 @@ const newcham_g = ({ *newcham(mtmp, mdat, ncflags) {
         /* oldname is capitalized and might be an assigned name */
         if (!canspotmon(mtmp)) { /* can't see or sense it now */
             if (seenorsensed) /* could see or sense it before */
-                yield `${oldname} disappears!`;
+                yield { pline_mon: mtmp, msg: `${oldname} disappears!` };
             /* (void) */ yield* usmellmon_g(mdat);
         } else if (!seenorsensed) { /* couldn't see/sense before, can now */
             const mnm = x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_A,
                                  null, 0, false);
 
-            yield `${highc(mnm[0]) + mnm.slice(1)} appears!`; /* upstart() */
+            yield { pline_mon: mtmp, msg: `${highc(mnm[0]) + mnm.slice(1)} appears!` }; /* upstart() */
         } else { /* saw/sensed it before, still see/sense it now */
-            yield `${oldname} turns into ${
+            yield { pline_mon: mtmp, msg: `${oldname} turns into ${
                 /* "a <monster type>" even if it has a name assigned */
-                noname_monnam(mtmp, ARTICLE_A)}!`;
+                noname_monnam(mtmp, ARTICLE_A)}!` };
         }
     }
 
@@ -3531,7 +3531,7 @@ export async function mon_give_prop(mtmp, prop) {
         mtmp.mintrinsics = (mtmp.mintrinsics ?? 0) | intrinsic;
 
     if (canseemon(mtmp) && msg) {
-        await pline(msg.replace('%s', Monnam(mtmp)));
+        await pline_mon(mtmp, msg.replace('%s', Monnam(mtmp)));
     }
 }
 

@@ -1404,9 +1404,20 @@ export async function flooreffects(obj, /* the object landing on the floor */
         }
         res = (await water_damage_do(obj, null, false)) === ER_DESTROYED_DO;
     } else if (u_at(x, y) && (t = t_at(x, y))
-               && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
-        /* uteetering_at_seen_pit(t) || uescaped_shaft(t) */
-        throw new Error('flooreffects(): objects tumbling into a pit not ported yet');
+               && (uteetering_at_seen_pit(t) || uescaped_shaft(t))) {
+        if (is_pit(t.ttyp)) {
+            if (Blind() && !Deaf()) {
+                /* Soundeffect(se_item_tumble_downwards, 50); */
+                await You_hear(`${the(xname(obj))} tumble downwards.`);
+            } else {
+                await pline(`${Tobjnam(obj, "tumble")} into ${
+                    t.madeby_u ? "your" : "the"} pit.`); /* the_your[] */
+            }
+        } else if (await ship_object(obj, x, y, false)) {
+            /* ship_object will print an appropriate "the item falls
+             * through the hole" message, so no need to do it here. */
+            res = true;
+        }
     } else if (obj.globby) {
         let globbyobj = obj; /* allow obj to be nonnull arg */
 

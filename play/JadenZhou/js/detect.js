@@ -8,7 +8,7 @@ import { expels } from './mhitu.js';
 import { dmgtype_fromattack, hides_under, is_hider } from './mondata.js';
 import { Monnam } from './do_name.js';
 import { AD_DGST, AT_ENGL } from './monsters.js';
-import { feel_newsym, set_msg_xy } from './display.js';
+import { feel_newsym, set_msg_xy, Norep } from './display.js';
 import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { pline, newsym, docrt, flush_screen, glyph_at, glyph_kind, show_glyph,
@@ -183,7 +183,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
 
     if (u.uswallow) {
         if (!aflag)
-            await pline("What are you looking for?  The exit?");
+            await Norep("What are you looking for?  The exit?");
     } else {
         /* uwep->oartifact && spec_ability(uwep, SPFX_SEARCH): artifacts
            aren't ported yet */
@@ -453,16 +453,23 @@ function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_subset) {
         }
     }
     /* FIXME: dirty hack */
-    if (glyph.cmap === 'S_darkroom')
-        glyph = { ...glyph, cmap: 'S_room' };
-    else if (glyph.cmap === 'S_litcorr')
+    if (glyph.cmap === 'S_darkroom'
+        /* a glyph_at() glyph carries the S_* index, not the name */
+        || (glyph.cmap === undefined && glyph.kind === 'cmap'
+            && glyph.cmapidx === 20 /* S_darkroom */))
+        /* drawn like the S_room spot; cmap_to_glyph(S_room) */
+        glyph = { ...glyph, cmap: 'S_room', cmapidx: 19 /* S_room */ };
+    else if (glyph.cmap === 'S_litcorr'
+             /* a glyph_at() glyph carries the S_* index, not the name */
+             || (glyph.cmap === undefined && glyph.kind === 'cmap'
+                 && glyph.cmapidx === 23 /* S_litcorr */))
         glyph = back_to_glyph_cmap_corr();
     return glyph;
 }
 
 /* cmap_to_glyph(S_corr) in the remembered-glyph form */
 function back_to_glyph_cmap_corr() {
-    return { ch: '#', color: CLR_GRAY, decgfx: false, cmap: 'S_corr' };
+    return { ch: '#', color: CLR_GRAY, decgfx: false, cmap: 'S_corr', cmapidx: 22 };
 }
 
 /* GLYPH_UNEXPLORED, shown as blank */

@@ -9,6 +9,8 @@ export function resetGame() {
     // src/decl.c:458,1096: inventory letter allocation starts fresh per process.
     game = {
         lastinvnr: 51,
+        // src/decl.c:495,1097: this instance counter starts fresh each game.
+        mkot_trap_warn_count: 0,
         // src/decl.c:411: each process starts with an empty inventory chain.
         invent: [],
         // src/decl.c:534-535,560: ordered menu aliases, fresh per process.

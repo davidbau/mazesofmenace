@@ -118,6 +118,7 @@ import { MONSYMS } from './monst_data.js';
 import { m_everyturn_effect } from './monmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { dosounds } from './sounds.js';
+import { mkot_trap_warn } from './artifact.js';
 import { dosearch0, warnreveal } from './detect.js';
 import { run_regions, any_visible_region } from './region.js';
 import { nh_timeout, do_storms } from './timeout.js';
@@ -940,6 +941,8 @@ async function moveloop_core_turn() {
                     set_ulycn(g.u.ulycn);
                 }
 
+                // src/allmain.c:351: artifact feedback precedes ambient sounds.
+                await mkot_trap_warn();
                 await dosounds();
                 /* src/allmain.c:353 do_storms() — draws only on a stormy
                    level (the Plane of Air) */

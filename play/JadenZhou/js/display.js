@@ -3188,6 +3188,13 @@ function _buildScreenOutput(cursor_on_u, printed = null) {
                     continue;
                 }
                 const ch = loc.disp_decgfx ? dec_cell_char(loc.disp_ch) : loc.disp_ch;
+                /* a spot that isn't gnew is not printed again: the terminal
+                   keeps the color and attribute it was printed with (after
+                   the color option is toggled, unchanged spots keep their
+                   colors until the next redraw) */
+                if (printed && !printed.has(y * COLNO + x)
+                    && display.grid[y + 1]?.[x - 1]?.ch === ch)
+                    continue;
                 display.setCell(x - 1, y + 1, ch, tty_color(loc.disp_color), tty_glyph_attr(loc));
             }
         }
@@ -3612,6 +3619,36 @@ export async function pline_mon(mtmp, line) {
     else
         set_msg_xy(mtmp.mx, mtmp.my);
     await pline(line);
+}
+
+// C ref: pline.c impossible() -- report an internal inconsistency: the
+// message is URGENT (shown even after ESC at --More--), then the
+// "Program in disorder!" lines; the recorder's sysconf sets neither SUPPORT
+// nor CRASHREPORTURL, so no further lines or "Report now?" prompt
+export async function impossible_async(msg) {
+    const ps = game.program_state || (game.program_state = {});
+
+    if (ps.in_impossible)
+        throw new Error('panic: impossible called impossible');
+    ps.in_impossible = 1;
+    const pbuf = String(msg).slice(0, 256 - 1); /* pbuf[BUFSZ - 1] = 0: sanity */
+    /* paniclog("impossible", pbuf); */
+    await urgent_pline(pbuf); /* gp.pline_flags = URGENT_MESSAGE */
+
+    if (ps.in_sanity_check) {
+        /* skip rest of multi-line feedback */
+        ps.in_impossible = 0;
+        return;
+    }
+
+    let pbuf2 = "Program in disorder!";
+    if (ps.something_worth_saving)
+        pbuf2 += "  (Saving and reloading may fix this problem.)";
+    await pline(pbuf2);
+    await pline("Please report these messages to devteam@nethack.org.");
+    /* sysopt.support: not set */
+    /* CRASHREPORT: sysopt.crashreporturl not set */
+    ps.in_impossible = 0;
 }
 
 // C ref: pline.c urgent_pline() -- vpline() with URGENT_MESSAGE: the tty

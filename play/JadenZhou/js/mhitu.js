@@ -155,6 +155,15 @@ import { shieldeff as shieldeff_mu } from './display.js';
 import { golemeffects as golemeffects_mu } from './mon.js';
 import { stagger as stagger_mu } from './uhitm.js';
 import { pline_mon, set_msg_xy } from './display.js';
+import { hliquid as hliquid_pu } from './potion.js';
+import { resists_acid as resists_acid_pu, resists_ston as resists_ston_pu,
+         poly_when_stoned as poly_when_stoned_pu } from './mondata.js';
+import { erode_armor as erode_armor_pu } from './uhitm.js';
+import { acid_damage as acid_damage_pu } from './trap.js';
+import { attk_protection as attk_protection_pu } from './mhitm.js';
+import { mon_to_stone as mon_to_stone_pu } from './mon.js';
+import { drain_item as drain_item_pu } from './zap.js';
+import { W_ARMG as W_ARMG_PU, ERODE_CORRODE as ERODE_CORRODE_PU } from './const.js';
 
 /* C ref: global.h LARGEST_INT */
 const LARGEST_INT = 32767;
@@ -2266,7 +2275,6 @@ async function passiveum(olduasmon, mtmp, mattk) {
     let i, tmp;
     let oldu_mattk = null;
 
-    void mattk; void mtmp;
     for (i = 0; !oldu_mattk; i++) {
         if (i >= NATTK)
             return M_ATTK_HIT;
@@ -2281,14 +2289,61 @@ async function passiveum(olduasmon, mtmp, mattk) {
         tmp = d(olduasmon.mlevel + 1, oldu_mattk.damd);
     else
         tmp = 0;
-    void tmp;
 
     /* These affect the enemy even if you were "killed" (rehumanized) */
     switch (oldu_mattk.adtyp) {
     case AD_ACID:
-    case AD_STON:
-    case AD_ENCH:
-        throw new Error('passiveum(): acid/stoning/disenchant passives not ported yet');
+        if (!rn2(2)) {
+            await pline_mon(mtmp, `${Monnam(mtmp)} is splashed by ${
+                  /* temporary? hack for sequencing issue:  "your acid"
+                     looks strange coming immediately after player has
+                     been told that hero has reverted to normal form */
+                  !Upolyd() ? "" : "your "}${hliquid_pu("acid")}!`);
+            if (resists_acid_pu(mtmp)) {
+                await pline_mon(mtmp, `${Monnam(mtmp)} is not affected.`);
+                tmp = 0;
+            }
+        } else
+            tmp = 0;
+        if (!rn2(30))
+            await erode_armor_pu(mtmp, ERODE_CORRODE_PU);
+        if (!rn2(6))
+            await acid_damage_pu(mtmp.mw || null /* MON_WEP(mtmp) */);
+        return await assess_dmg_mu(mtmp, tmp);
+    case AD_STON: /* cockatrice */
+    {
+        let protector = attk_protection_pu(mattk.aatyp),
+             wornitems = mtmp.misc_worn_check;
+
+        /* wielded weapon gives same protection as gloves here */
+        if (mtmp.mw)
+            wornitems |= W_ARMG_PU;
+
+        if (!resists_ston_pu(mtmp)
+            && (protector === 0
+                || (protector !== ~0
+                    && (wornitems & protector) !== protector))) {
+            if (poly_when_stoned_pu(mtmp.data)) {
+                await mon_to_stone_pu(mtmp);
+                return 1;
+            }
+            await pline_mon(mtmp, `${Monnam(mtmp)} turns to stone!`);
+            game.stoned = 1;
+            await xkilled_mu(mtmp, XKILL_NOMSG_MU);
+            if (!(mtmp.mhp < 1)) /* !DEADMONSTER(mtmp) */
+                return M_ATTK_HIT;
+            return M_ATTK_AGR_DIED;
+        }
+        return M_ATTK_HIT;
+    }
+    case AD_ENCH: /* KMH -- remove enchantment (disenchanter) */
+        if (mon_currwep) {
+            /* by_you==True: passive counterattack to hero's action
+               is hero's fault */
+            drain_item_pu(mon_currwep, true);
+            /* No message */
+        }
+        return M_ATTK_HIT;
     default:
         break;
     }

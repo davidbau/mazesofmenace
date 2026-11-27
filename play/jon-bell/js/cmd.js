@@ -2413,9 +2413,11 @@ async function _run_pickinv_menu(windowLines, lineItems, selectables, opts) {
     if (g._topl_unacknowledged && g._resultMessage && !g._pending_message) {
         const held = g._resultMessage;
         g._resultMessage = '';
-        await force_more(held);
+        const releaseFlush = g._paintedSnapshot ? () => {} : use_last_flush_snapshot();
+        try { await force_more(held); } finally { releaseFlush(); }
     } else if (g._pending_message) {
-        await force_more(g._pending_message);
+        const releaseFlush = g._paintedSnapshot ? () => {} : use_last_flush_snapshot();
+        try { await force_more(g._pending_message); } finally { releaseFlush(); }
         /* An ESC at a non-last page leaves the next pline (the owner whose
          * update_topl raised that more()) drawn and standing in gt.toplines
          * under WIN_STOP (topl.c:232-235,257,289-300); the menu's own
@@ -16958,7 +16960,13 @@ export async function _spoteffects_pickup(redrawPending = false) {
                 if (only.otyp === 265 /* CORPSE */ && will_feel_cockatrice(only, false)) {
                     await pline(msg);
                 } else if (game._look_via_pline) await pline(msg);
-                else {
+                else if (msgtype_is_stop(msg)) {
+                    /* C invent.c:4282 You() -> pline.c:283-284: a MSGTYP_STOP
+                     * rule pages right after this message (the same arm
+                     * look_here's single-object case takes). */
+                    _topl_stash_result();
+                    await pline(msg);
+                } else {
                     /* C invent.c:4282 -> pline.c:273-274: You("see here ...")
                      * runs flush_screen(1) before emitting msg. */
                     pline_flush_point();

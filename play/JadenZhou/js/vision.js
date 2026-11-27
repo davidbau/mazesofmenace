@@ -190,6 +190,8 @@ export function vision_reset() {
     }
     game._viz_rmin = null;
     game._viz_rmax = null;
+    if (game.iflags)
+        game.iflags.vision_inited = true; /* vision is ready */
 }
 
 /*
@@ -836,8 +838,11 @@ function rogue_vision(next, rmin, rmax) {
 export function vision_recalc(control = 0) {
     const u = game.u;
     if (!u || !game.level) return;
-    game.vision_full_recalc = 0;
-    if (game.in_mklev) return;
+    game.vision_full_recalc = 0; /* reset flag */
+    /* end.c really_done() renders vision inoperative (!vision_inited) */
+    if (game.in_mklev || game.program_state?.in_getlev
+        || !game.iflags?.vision_inited)
+        return;
 
     // Swap to unused buffer
     const next = game.active_buf === 0 ? cs_buf1 : cs_buf0;

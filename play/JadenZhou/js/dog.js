@@ -907,7 +907,7 @@ export async function tamedog(
 
     /* worst case, at least it'll be peaceful. */
     if (givemsg && !mtmp.mpeaceful && canspotmon(mtmp)) {
-        await pline(`${Monnam(mtmp)} seems ${Hallucination() ? "really chill"
+        await pline_mon(mtmp, `${Monnam(mtmp)} seems ${Hallucination() ? "really chill"
                                                             : "more amiable"}.`);
         givemsg = false; /* don't give another message below */
     }

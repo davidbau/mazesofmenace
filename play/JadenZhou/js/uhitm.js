@@ -268,7 +268,7 @@ import { paralyze_monst, slept_monst, xdrainenergym,
          mhitm_ad_sedu as mhitm_ad_sedu_mm } from './mhitm.js';
 import { RLOC_NOMSG, MSLOW, NO_NC_FLAGS, NC_SHOW_MSG } from './const.js';
 import { G_NOCORPSE } from './monsters.js';
-import { mon_adjust_speed } from './worn.js';
+import { mon_adjust_speed, worn_pline } from './worn.js';
 import { carnivorous, herbivorous, metallivorous, is_rider,
          slimeproof } from './mondata.js';
 import { m_useup } from './mthrowu.js';
@@ -823,12 +823,8 @@ async function steal_it(mdef, mattk) {
         if (otmp.oartifact && !Blind())
             find_artifact(otmp);
         /* take the object away from the monster */
-        for (const msg of extract_from_minvent_g(mdef, otmp, true, false)) {
-            if (msg?.newcham_async)
-                await msg.newcham_async();
-            else
-                await pline(msg);
-        }
+        for (const msg of extract_from_minvent_g(mdef, otmp, true, false))
+            await worn_pline(msg); /* pline(), pline_mon() or an async callee */
         /* special message for final item; no need to check owornmask because
          * ustealo is only set on objects with (owornmask & W_ARM) */
         if (otmp === ustealo)
@@ -1424,7 +1420,7 @@ async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
             return;
         }
         if (game.mhitm_vis && canseemon(mdef))
-            await pline(`${Monnam(mdef)} is ${on_fire(pd, mattk)}!`); /* pline_mon() */
+            await pline_mon(mdef, `${Monnam(mdef)} is ${on_fire(pd, mattk)}!`);
         if (completelyburns(pd)) { /* paper golem or straw golem */
             /* note: the life-saved case is hypothetical because
                life-saving doesn't work for golems */
@@ -2696,12 +2692,12 @@ async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
         /* eating a Rider or its corpse is fatal */
         if (is_rider(pd)) {
             if (game.mhitm_vis && canseemon(magr))
-                await pline(`${Monnam(magr)} ${
+                await pline_mon(magr, `${Monnam(magr)} ${
                     (pd === mons[M.PM_FAMINE])
                         ? "belches feebly, shrivels up and dies"
                         : (pd === mons[M.PM_PESTILENCE])
                               ? "coughs spasmodically and collapses"
-                              : "vomits violently and drops dead"}!`); /* pline_mon() */
+                              : "vomits violently and drops dead"}!`);
             await mondied(magr);
             if (!DEADMONSTER(magr)) {
                 mhm.hitflags = M_ATTK_MISS; /* lifesaved */
@@ -6096,10 +6092,10 @@ export async function light_hits_gremlin(mon, dmg) {
 
     if (!Deaf_fh() && dist2_fh(mon.mx, mon.my, u.ux, u.uy) <= 90) { /* mdistu() */
         /* cry of pain can be heard somewhat farther than the waking radius */
-        await pline_fh(`${Monnam_fh(mon)} ${(dmg > Math.trunc(mon.mhp / 2))
-            ? "wails in agony" : "cries out in pain"}!`); /* pline_mon() */
+        await pline_mon(mon, `${Monnam_fh(mon)} ${(dmg > Math.trunc(mon.mhp / 2))
+            ? "wails in agony" : "cries out in pain"}!`);
     } else if (canseemon_fh(mon)) {
-        await pline_fh(`${Monnam_fh(mon)} recoils from the light!`); /* pline_mon() */
+        await pline_mon(mon, `${Monnam_fh(mon)} recoils from the light!`);
     }
     mon.mhp -= dmg;
     await wake_nearto_fh(mon.mx, mon.my, 30);

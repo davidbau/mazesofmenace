@@ -32,6 +32,48 @@ import { init_ov_primary_symbols, parsesymbols } from './symbols.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
+// The screen a step is scored on, in the reference recordings' encoding.
+// The C recorder (run_session.py compress_ansi_line) writes every run of 5
+// or more spaces in a row's ANSI text as a cursor-forward (ESC[nC), so such a
+// run carries no attribute when decoded, even inside inverse video (e.g. the
+// blanks in a menu heading).  frozen/terminal.js serialize() only does that
+// for leading blanks, so clear the attribute of those runs while
+// serializing; the live grid is restored, so the display is unchanged.
+function captureScreen(term) {
+    if (!term?.serialize) return '';
+    const grid = term.grid;
+    if (!grid) return term.serialize();
+    const saved = [];
+    for (const row of grid) {
+        /* serialize() emits a row from its first non-blank (or inverse/
+           underlined blank) cell through its last non-blank cell */
+        const first = row.findIndex(c => c.ch !== ' ' || (c.attr & 5));
+        if (first < 0) continue;
+        let last = row.length - 1;
+        while (last >= 0 && row[last].ch === ' ') last--;
+        for (let c = first; c <= last; ) {
+            const cell = row[c];
+            if (cell.ch !== ' ') { c++; continue; }
+            /* a run of spaces with no SGR change inside it */
+            let e = c + 1;
+            while (e <= last && row[e].ch === ' ' && row[e].attr === cell.attr
+                   && row[e].color === cell.color)
+                e++;
+            if (e - c >= 5 && cell.attr) {
+                for (let k = c; k < e; k++) {
+                    saved.push([row[k], row[k].attr]);
+                    row[k].attr = 0;
+                }
+            }
+            c = e;
+        }
+    }
+    const out = term.serialize();
+    for (const [cell, attr] of saved)
+        cell.attr = attr;
+    return out;
+}
+
 export class NethackGame {
     constructor(opts = {}) {
         this._seed = opts.seed || 0;
@@ -91,7 +133,7 @@ export class NethackGame {
         const disp = game?.nhDisplay;
         const term = disp?.terminal || disp;
         this._pendingAnimFrames.push({
-            screen: term?.serialize ? term.serialize() : '',
+            screen: captureScreen(term),
             cursor: disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null,
         });
         if (typeof requestAnimationFrame === 'function') {
@@ -301,7 +343,7 @@ export class NethackGame {
             // and compares to the C session's recorded screen.
             const disp = game?.nhDisplay;
             const term = disp?.terminal || disp;
-            nhGame._screens.push(term?.serialize ? term.serialize() : '');
+            nhGame._screens.push(captureScreen(term));
             nhGame._rngSlices.push(slice);
 
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;

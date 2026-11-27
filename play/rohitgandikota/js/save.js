@@ -50,6 +50,8 @@ export const SAVE_SKIP_KEYS = new Set([
     'program_state', 'luacore', 'wportal',
     // include/decl.h:536: lastinvnr is never saved or restored.
     'lastinvnr',
+    // include/decl.h:586: instance counter, not part of savegamestate().
+    'mkot_trap_warn_count',
     // C rebuilds command bindings from this process's configuration. Command
     // queues and the one-time key-help message also start fresh after restore.
     'Cmd', 'cmd_bind', 'command_queue', 'dowhatdoes_once',

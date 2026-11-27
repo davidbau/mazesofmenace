@@ -491,6 +491,39 @@ function optfn_runmode(result, negated, op) {
     return true;
 }
 
+// C ref: options.c optfn_pickup_burden() (req == do_set)
+/* maximum burden picked up before prompt (Warren Cheung) */
+function optfn_pickup_burden(result, op) {
+    if (op) { /* string_for_env_opt() != empty_optstr */
+        switch (op[0].toLowerCase()) {
+        case 'u': /* Unencumbered */
+            result.flags.pickup_burden = 0; /* UNENCUMBERED */
+            break;
+        case 'b': /* Burdened (slight encumbrance) */
+            result.flags.pickup_burden = 1; /* SLT_ENCUMBER */
+            break;
+        case 's': /* streSsed (moderate encumbrance) */
+            result.flags.pickup_burden = 2; /* MOD_ENCUMBER */
+            break;
+        case 'n': /* straiNed (heavy encumbrance) */
+            result.flags.pickup_burden = 3; /* HVY_ENCUMBER */
+            break;
+        case 'o': /* OverTaxed (extreme encumbrance) */
+        case 't':
+            result.flags.pickup_burden = 4; /* EXT_ENCUMBER */
+            break;
+        case 'l': /* overLoaded */
+            result.flags.pickup_burden = 5; /* OVERLOADED */
+            break;
+        default:
+            config_error_add(`Unknown pickup_burden parameter '${op}'`);
+            return false;
+        }
+    } else
+        return false;
+    return true;
+}
+
 // C ref: options.c petname_optfn() (req == do_set) -- catname, dogname,
 // horsename; sets result.catname &c (jsmain.js copies them to game)
 function petname_optfn(result, which, negated, op) {
@@ -766,6 +799,7 @@ export function parseNethackrc(rc) {
                 else if (key === 'disclose') optfn_disclose(result, negated, val);
                 else if (key === 'msg_window') optfn_msg_window(result, negated, val);
                 else if (key === 'runmode') optfn_runmode(result, negated, val);
+                else if (key === 'pickup_burden') optfn_pickup_burden(result, val);
                 else if (key === 'menustyle') optfn_menustyle(result, negated, val);
                 else if (key === 'number_pad') optfn_number_pad(result, negated, val);
                 else if (match_optname(key, "paranoid_confirmation", 3, false)

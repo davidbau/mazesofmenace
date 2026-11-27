@@ -32,7 +32,7 @@ import { FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          W_AMUL, W_TOOL } from './const.js';
 import { ART_SUNSWORD, ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
 import { set_artifact_intrinsic_sync } from './artifact.js';
-import { newsym, pline, You_hear } from './display.js';
+import { newsym, pline, pline_mon, You_hear } from './display.js';
 import { cansee } from './vision.js';
 import { canseemon } from './display.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -74,12 +74,8 @@ import { discover_object } from './o_init.js';
    { newcham_async: () => promise, what } asks the driver to await an
    async callee (the same convention as mon.js newcham()) */
 async function run_msgs(gen) {
-    for (const msg of gen) {
-        if (msg?.newcham_async)
-            await msg.newcham_async();
-        else
-            await pline(msg);
-    }
+    for (const msg of gen)
+        await worn_pline(msg);
 }
 /* run a worn.c generator in a synchronous caller (creation/silently) */
 function run_msgs_sync(gen) {
@@ -387,11 +383,11 @@ function* mon_adjust_speed_g(
             /* mimic the player's petrification countdown; "slowing down"
                even if fast movement rate retained via worn speed boots */
             if (game.flags?.verbose)
-                yield `${Monnam(mon)} is slowing down.`; /* pline_mon() */
+                yield { pline_mon: mon, msg: `${Monnam(mon)} is slowing down.` };
         } else if (adjust > 0 || mon.mspeed === MFAST)
-            yield `${Monnam(mon)} is suddenly moving ${howmuch}faster.`;
+            yield { pline_mon: mon, msg: `${Monnam(mon)} is suddenly moving ${howmuch}faster.` };
         else
-            yield `${Monnam(mon)} seems to be moving ${howmuch}slower.`;
+            yield { pline_mon: mon, msg: `${Monnam(mon)} seems to be moving ${howmuch}slower.` };
 
         /* might discover an object if we see the speed change happen */
         if (obj)
@@ -810,7 +806,7 @@ function* m_dowear_type(
                 else if (!strncmpi(newarm, "an ", 3))
                     newarm = newarm.replace("an ", "another ");
             }
-            yield `${Monnam(mon)}${buf} puts on ${newarm}.`; /* pline_mon() */
+            yield { pline_mon: mon, msg: `${Monnam(mon)}${buf} puts on ${newarm}.` };
             if (autocurse)
                 throw new Error('m_dowear_type(): autocurse glow message not ported yet');
         } /* can see it */
@@ -866,6 +862,8 @@ export async function worn_pline(msg) {
         await msg.newcham_async();
     else if (typeof msg === 'object' && msg.you_hear !== undefined)
         await You_hear(msg.you_hear);
+    else if (typeof msg === 'object' && msg.pline_mon !== undefined)
+        await pline_mon(msg.pline_mon, msg.msg); /* C: pline_mon(mon, ...) */
     else
         await pline(msg);
 }
@@ -917,7 +915,7 @@ export function* mon_break_armor_g(mon, polyspot) {
             } else {
                 /* Soundeffect(se_cracking_sound, 100); */
                 if (vis)
-                    yield `${Monnam(mon)} breaks out of ${ppronoun} armor!`;
+                    yield { pline_mon: mon, msg: `${Monnam(mon)} breaks out of ${ppronoun} armor!` };
                 else
                     yield { you_hear: "a cracking sound." };
             }
@@ -928,12 +926,12 @@ export function* mon_break_armor_g(mon, polyspot) {
             && (otmp.otyp !== O.MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
             if (otmp.oartifact) {
                 if (vis)
-                    yield `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls off!`;
+                    yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls off!` };
                 yield* m_lose_armor_g(mon, otmp, polyspot);
             } else {
                 /* Soundeffect(se_ripping_sound, 100); */
                 if (vis)
-                    yield `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} tears apart!`;
+                    yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} tears apart!` };
                 else
                     yield { you_hear: "a ripping sound." };
                 yield* m_useup_g(mon, otmp);
@@ -941,7 +939,7 @@ export function* mon_break_armor_g(mon, polyspot) {
         }
         if ((otmp = which_armor(mon, W_ARMU)) != null) {
             if (vis)
-                yield `${s_suffix(Monnam(mon))} shirt rips to shreds!`;
+                yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} shirt rips to shreds!` };
             else
                 yield { you_hear: "a ripping sound." };
             yield* m_useup_g(mon, otmp);
@@ -953,7 +951,7 @@ export function* mon_break_armor_g(mon, polyspot) {
         if ((otmp = which_armor(mon, W_ARM)) != null) {
             /* Soundeffect(se_thud, 50); */
             if (vis)
-                yield `${s_suffix(Monnam(mon))} armor falls around ${pronoun}!`;
+                yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} armor falls around ${pronoun}!` };
             else
                 yield { you_hear: "a thud." };
             yield* m_lose_armor_g(mon, otmp, polyspot);
@@ -963,18 +961,18 @@ export function* mon_break_armor_g(mon, polyspot) {
             && (otmp.otyp !== O.MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
             if (vis) {
                 if (is_whirly(mon.data))
-                    yield `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls, unsupported!`;
+                    yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls, unsupported!` };
                 else
-                    yield `${Monnam(mon)} shrinks out of ${ppronoun} ${cloak_simple_name(otmp)}!`;
+                    yield { pline_mon: mon, msg: `${Monnam(mon)} shrinks out of ${ppronoun} ${cloak_simple_name(otmp)}!` };
             }
             yield* m_lose_armor_g(mon, otmp, polyspot);
         }
         if ((otmp = which_armor(mon, W_ARMU)) != null) {
             if (vis) {
                 if (passes_thru_clothes)
-                    yield `${Monnam(mon)} seeps right through ${ppronoun} shirt!`;
+                    yield { pline_mon: mon, msg: `${Monnam(mon)} seeps right through ${ppronoun} shirt!` };
                 else
-                    yield `${Monnam(mon)} becomes much too small for ${ppronoun} shirt!`;
+                    yield { pline_mon: mon, msg: `${Monnam(mon)} becomes much too small for ${ppronoun} shirt!` };
             }
             yield* m_lose_armor_g(mon, otmp, polyspot);
         }
@@ -983,14 +981,14 @@ export function* mon_break_armor_g(mon, polyspot) {
         /* [caller needs to handle weapon checks] */
         if ((otmp = which_armor(mon, W_ARMG)) != null) {
             if (vis)
-                yield `${Monnam(mon)} drops ${ppronoun} gloves${
-                    MON_WEP(mon) ? " and weapon" : ""}!`;
+                yield { pline_mon: mon, msg: `${Monnam(mon)} drops ${ppronoun} gloves${
+                    MON_WEP(mon) ? " and weapon" : ""}!` };
             yield* m_lose_armor_g(mon, otmp, polyspot);
         }
         if ((otmp = which_armor(mon, W_ARMS)) != null) {
             /* Soundeffect(se_clank, 50); */
             if (vis)
-                yield `${Monnam(mon)} can no longer hold ${ppronoun} shield!`;
+                yield { pline_mon: mon, msg: `${Monnam(mon)} can no longer hold ${ppronoun} shield!` };
             else
                 yield { you_hear: "a clank." };
             yield* m_lose_armor_g(mon, otmp, polyspot);
@@ -1001,8 +999,8 @@ export function* mon_break_armor_g(mon, polyspot) {
             /* flimsy test for horns matches polyself handling */
             && (handless_or_tiny || !is_flimsy(otmp))) {
             if (vis)
-                yield `${s_suffix(Monnam(mon))} helmet falls to the ${
-                    surface(mon.mx, mon.my)}!`;
+                yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} helmet falls to the ${
+                    surface(mon.mx, mon.my)}!` };
             else
                 yield { you_hear: "a clank." };
             yield* m_lose_armor_g(mon, otmp, polyspot);
@@ -1012,10 +1010,10 @@ export function* mon_break_armor_g(mon, polyspot) {
         if ((otmp = which_armor(mon, W_ARMF)) != null) {
             if (vis) {
                 if (is_whirly(mon.data))
-                    yield `${s_suffix(Monnam(mon))} boots fall away!`;
+                    yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} boots fall away!` };
                 else
-                    yield `${s_suffix(Monnam(mon))} boots ${
-                        verysmall(mdat) ? "slide" : "are pushed"} off ${ppronoun} feet!`;
+                    yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} boots ${
+                        verysmall(mdat) ? "slide" : "are pushed"} off ${ppronoun} feet!` };
             }
             yield* m_lose_armor_g(mon, otmp, polyspot);
         }
@@ -1024,7 +1022,7 @@ export function* mon_break_armor_g(mon, polyspot) {
         if ((otmp = which_armor(mon, W_SADDLE)) != null) {
             yield* m_lose_armor_g(mon, otmp, polyspot);
             if (vis)
-                yield `${s_suffix(Monnam(mon))} saddle falls off.`;
+                yield { pline_mon: mon, msg: `${s_suffix(Monnam(mon))} saddle falls off.` };
         }
         if (mon === game.u.usteed)
             noride = true;

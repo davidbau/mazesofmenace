@@ -20,7 +20,7 @@ import { losehp, nomul, notice_all_mons_flush } from './hack.js';
 import { nxtobj, obj_extract_self, obfree } from './invent.js';
 import { ART_MASTER_KEY_OF_THIEVERY } from './artilist_data.js';
 import { exercise, Role_if } from './attrib.js';
-import { pline, see_monsters, newsym } from './display.js';
+import { pline, see_monsters, newsym, glyph_at, glyph_is_trap } from './display.js';
 import { recalc_telepat_range } from './worn.js';
 import { map_invisible } from './display.js';
 import { canspotmon } from './display.js';
@@ -46,7 +46,7 @@ import { amorphous } from './mondata.js';
 import { noncorporeal } from './mondata.js';
 import { has_head } from './mondata.js';
 import { bigmonst } from './mondata.js';
-import { healmon } from './mon.js';
+import { healmon, t_at } from './mon.js';
 import { set_ustuck } from './mon.js';
 import { wake_nearto } from './mon.js';
 import { burn_away_slime } from './timeout.js';
@@ -100,12 +100,12 @@ import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          SICK_ALL,
          I_SPECIAL, TIMEOUT, W_SWAPWEP, W_QUIVER, W_BALL, W_SADDLE,
          W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_RINGL, W_RINGR, W_TOOL,
-         DISMOUNT_THROWN, IS_ALTAR } from './const.js';
+         DISMOUNT_THROWN, IS_ALTAR, IS_DOOR, D_TRAPPED } from './const.js';
 import { obj_shuffle_range } from './o_init.js';
 import { OBJ_DESCR } from './objnam.js';
 import { PROTECTION } from './const.js';
 import { use_crystal_ball } from './detect.js';
-import { carried } from './obj.js';
+import { carried, Is_container } from './obj.js';
 import { seffects } from './read.js';
 import { charge_ok } from './read.js';
 import { recharge } from './read.js';
@@ -184,6 +184,52 @@ export function is_art(obj, art) {
     return !!(obj && obj.oartifact === art);
 }
 
+
+// src/artifact.c:2708 count_surround_traps()
+function count_surround_traps(x, y) {
+    let ret = 0;
+    for (let dx = x - 1; dx < x + 2; ++dx)
+        for (let dy = y - 1; dy < y + 2; ++dy) {
+            if (!isok(dx, dy))
+                continue;
+            const glyph = glyph_at(dx, dy);
+            if (glyph_is_trap(glyph))
+                continue;
+            if (t_at(dx, dy)) {
+                ++ret;
+                continue;
+            }
+            const levp = game.level.at(dx, dy);
+            if (IS_DOOR(levp.typ) && (levp.doormask & D_TRAPPED) !== 0) {
+                ++ret;
+                continue;
+            }
+            for (let o = game.level.objectAt(dx, dy); o; o = o.nexthere)
+                if (Is_container(o) && o.otrapped) {
+                    ++ret;
+                    break;
+                }
+        }
+    return ret;
+}
+
+// src/artifact.c:2753 mkot_trap_warn()
+export async function mkot_trap_warn() {
+    const heat = [
+        'cool', 'slightly warm', 'warm', 'very warm',
+        'hot', 'very hot', 'like fire',
+    ];
+    if (!game.u.uarmg && u_wield_art(ART_MASTER_KEY_OF_THIEVERY)) {
+        const ntraps = count_surround_traps(game.u.ux, game.u.uy);
+        if (ntraps !== game.mkot_trap_warn_count) {
+            const idx = Math.min(ntraps, heat.length - 1);
+            await pline_The(`Key feels ${heat[idx]}${ntraps > 3 ? '!' : '.'}`);
+        }
+        game.mkot_trap_warn_count = ntraps;
+    } else {
+        game.mkot_trap_warn_count = 0;
+    }
+}
 
 // src/artifact.c:2775 is_magic_key(), role and beatitude requirements.
 export function is_magic_key(mon, obj) {
