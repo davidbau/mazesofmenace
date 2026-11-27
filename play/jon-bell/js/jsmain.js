@@ -618,6 +618,10 @@ export class NethackGame {
                  * (ttyDisplay alive): the notice lands that many rows lower. */
                 const rawLead = wizardScoreNoticePending && game._rawCursorFrozen
                     ? (nhGame._cursors[nhGame._cursors.length - 1]?.[1] | 0) + 1 : 0;
+                if (1 + rawLead >= 24) {
+                    blankFrame = true;
+                    game._wizardScoreNoticePending = false;
+                } else {
                 nhGame._screens.push('\n'.repeat(1 + rawLead)
                     + 'Since you were in wizard mode, the score list will not be checked.');
                 /* A death teardown leaves C's cursor on row 2; an escaped
@@ -626,6 +630,7 @@ export class NethackGame {
                     ? (game._wizardScoreNoticePending | 0) + rawLead
                     : (game._endHow === 0 ? 2 : 4), 1]);
                 game._wizardScoreNoticePending = false;
+                }
             } else if (!/[^\n]/.test(game._screen_output || '')) {
                 blankFrame = true;
             } else {

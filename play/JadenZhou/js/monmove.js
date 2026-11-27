@@ -172,6 +172,7 @@ import { M_ATTK_HIT as M_ATTK_HIT_MM, M_ATTK_DEF_DIED as M_ATTK_DEF_DIED_MM,
 import { bare_artifactname } from './iactions.js';
 import { yname } from './objnam.js';
 import { aggravate as aggravate_mm } from './potion.js';
+import { pline_mon, set_msg_xy } from './display.js';
 
 // ── small helpers (C ref: youprop.h / mondata.h / display.h macros) ──
 
@@ -222,7 +223,7 @@ export function m_canseeu(m) {
 export async function mb_trapped(mtmp, canseeit) {
     if (game.flags.verbose) {
         if (canseeit && !Unaware())
-            await pline("KABOOM!!  You see a door explode."); /* pline_mon() */
+            await pline_mon(mtmp, "KABOOM!!  You see a door explode.");
         else if (!Deaf())
             await You_hear(`a ${(mdistu(mtmp) > 7 * 7) ? "distant" : "nearby"} explosion.`);
     }
@@ -272,13 +273,13 @@ export async function mon_yells(mon, shout) {
             /* Sidenote on "A watchman angrily waves her arms!"
              * Female being called watchman is correct (career name).
              */
-            await pline(`${Amonnam(mon)} angrily ${
+            await pline_mon(mon, `${Amonnam(mon)} angrily ${
                 nolimbs(mon.data) ? "shakes" : "waves"} ${mhis(mon)} ${
                 nolimbs(mon.data) ? mbodypart(mon, HEAD)
-                                  : makeplural_mm(mbodypart(mon, ARM))}!`); /* pline_mon() */
+                                  : makeplural_mm(mbodypart(mon, ARM))}!`);
     } else {
         if (canspotmon(mon)) {
-            await pline(`${Amonnam(mon)} yells:`); /* pline_mon() */
+            await pline_mon(mon, `${Amonnam(mon)} yells:`);
         } else {
             /* Soundeffect(se_someone_yells, 75); */
             await You_hear("someone yell:");
@@ -488,11 +489,11 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
                sleep and temporary paralysis, so both conditions
                receive the same alternate message */
             if (!mtmp.mcanmove || !mtmp.data.mmove) {
-                await pline(`${Adjmonnam(mtmp, "immobile")} seems to flinch.`); /* pline_mon() */
+                await pline_mon(mtmp, `${Adjmonnam(mtmp, "immobile")} seems to flinch.`);
             } else if (flees_light(mtmp)) {
                 if (Unaware()) {
                     /* tell the player even if the hero is unconscious */
-                    await pline(`${Monnam(mtmp)} is frightened.`); /* pline_mon() */
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is frightened.`);
                 } else if (rn2(10) || Deaf()) {
                     /* via flees_light(), will always be either via uwep
                        (Sunsword) or uarm (gold dragon scales/mail) or both;
@@ -504,13 +505,13 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
                                    ? yname(game.uarm)
                                    : "[its imagination?]";
 
-                    await pline(`${Monnam(mtmp)} flees from the painful light of ${lsrc}.`); /* pline_mon() */
+                    await pline_mon(mtmp, `${Monnam(mtmp)} flees from the painful light of ${lsrc}.`);
                 } else {
                     /* SetVoice(mtmp, 0, 80, 0) */
                     await verbalize("Bright light!");
                 }
             } else {
-                await pline(`${Monnam(mtmp)} turns to flee.`); /* pline_mon() */
+                await pline_mon(mtmp, `${Monnam(mtmp)} turns to flee.`);
             }
         }
 
@@ -531,7 +532,7 @@ async function mind_blast(mtmp) {
     let m2, nmon = null;
 
     if (canseemon(mtmp))
-        await pline(`${Monnam(mtmp)} concentrates.`); /* pline_mon() */
+        await pline_mon(mtmp, `${Monnam(mtmp)} concentrates.`);
     if (mdistu(mtmp) > BOLT_LIM * BOLT_LIM) {
         await pline("You sense a faint wave of psychic energy."); /* You() */
         return;
@@ -576,7 +577,7 @@ async function mind_blast(mtmp) {
         nmon = m2.nmon;
         if (m2.mhp < 1) /* DEADMONSTER(m2) */
             continue;
-        if (m2.mpeaceful === mtmp.mpeaceful)
+        if (!!m2.mpeaceful === !!mtmp.mpeaceful) /* bitfields: 0/1 vs false/true */
             continue;
         if (mindless(m2.data))
             continue;
@@ -853,7 +854,7 @@ async function bee_eat_jelly(mon, obj) {
         if (obj.quan > 1)
             obj = splitobj(obj, 1);
         if (canseemon(mon))
-            await pline(`${Monnam(mon)} eats ${an(xname(obj))}.`); /* pline_mon() */
+            await pline_mon(mon, `${Monnam(mon)} eats ${an(xname(obj))}.`);
         delobj(obj);
 
         if (mon.m_lev < mons[M.PM_QUEEN_BEE].mlevel - 1)
@@ -1023,7 +1024,8 @@ export async function dochug(mtmp) {
             } else {
                 mtmp.minvis = mtmp.perminvis = 0;
                 /* Why?  For the same reason in real demon talk */
-                /* if (canseemon(mtmp)) set_msg_xy(mtmp->mx, mtmp->my); */
+                if (canseemon(mtmp))
+                    set_msg_xy(mtmp.mx, mtmp.my);
                 await pline(`${Amonnam(mtmp)} gets angry!`);
                 mtmp.mpeaceful = 0;
                 set_malign(mtmp);
@@ -1232,7 +1234,7 @@ export function m_avoid_kicked_loc(mtmp, nx, ny) {
    x and y are the coordinates mtmp wants to attack.
    Return values are the same as for m_move, but this function only return
    MMOVE_DIED or MMOVE_DONE. */
-async function m_move_aggress(mtmp, x, y) {
+export async function m_move_aggress(mtmp, x, y) {
     let mtmp2;
     let mstatus = 0; /* M_ATTK_MISS */
 
@@ -1292,8 +1294,8 @@ async function meatmetal(mtmp) {
                     /* call distant_name() for its side-effects even when
                        !verbose so won't be printed */
                     otmpname = distant_name(otmp, doname);
-                    if (game.flags.verbose) /* pline_mon() */
-                        await pline(`${Monnam(mtmp)} eats ${otmpname}!`);
+                    if (game.flags.verbose)
+                        await pline_mon(mtmp, `${Monnam(mtmp)} eats ${otmpname}!`);
                 }
                 /* The object's rustproofing is gone now */
                 otmp.oerodeproof = 0;
@@ -1417,8 +1419,8 @@ async function meatobj(mtmp) /* for gelatinous cubes */ {
             if (cansee(mtmp.mx, mtmp.my)) {
                 /* (see above; distant_name() sometimes has side-effects */
                 otmpname = distant_name(otmp, doname);
-                if (game.flags.verbose) /* pline_mon() */
-                    await pline(`${Monnam(mtmp)} eats ${otmpname}!`);
+                if (game.flags.verbose)
+                    await pline_mon(mtmp, `${Monnam(mtmp)} eats ${otmpname}!`);
                 /* give this one even if !verbose */
                 if (otmp.oclass === SCROLL_CLASS
                     && objdescr_is(otmp, "YUM YUM"))
@@ -1488,8 +1490,8 @@ async function meatcorpse(mtmp) /* for purple worms and other voracious monsters
                the result won't be printed */
             const otmpname = distant_name(otmp, doname);
 
-            if (game.flags.verbose) /* pline_mon() */
-                await pline(`${Monnam(mtmp)} eats ${otmpname}!`);
+            if (game.flags.verbose)
+                await pline_mon(mtmp, `${Monnam(mtmp)} eats ${otmpname}!`);
         } else {
             /* Soundeffect(se_masticating_sound, 50) */
             if (game.flags.verbose)
@@ -2055,7 +2057,7 @@ async function maybe_spin_web(mtmp) {
             mtmp.mspec_used = d(4, 4); /* 4..16 */
             if (cansee(mtmp.mx, mtmp.my)) {
                 const mbuf = canspotmon(mtmp) ? y_monnam(mtmp) : "something";
-                await pline(`${mbuf.charAt(0).toUpperCase()}${mbuf.slice(1)} spins a web.`); /* pline_mon(), upstart() */
+                await pline_mon(mtmp, `${mbuf.charAt(0).toUpperCase()}${mbuf.slice(1)} spins a web.`); /* upstart() */
                 trap.tseen = 1;
             }
             if (in_shop(mtmp.mx, mtmp.my)) /* *in_rooms(mx, my, SHOPBASE) */
@@ -2447,15 +2449,15 @@ async function m_break_boulder(mtmp, x, y) {
     if (m_can_break_boulder(mtmp) && ((otmp = sobj_at(BOULDER, x, y)) !== null)) {
         if (!is_rider(mtmp.data)) {
             if (!Deaf() && (mdistu(mtmp) < 4 * 4)) {
-                /* if (canspotmon(mtmp)) set_msg_xy(mtmp->mx, mtmp->my):
-                   accessibility only */
+                if (canspotmon(mtmp))
+                    set_msg_xy(mtmp.mx, mtmp.my);
                 await pline(`${Monnam(mtmp)} mutters ${
                     mtmp.ispriest ? "a prayer" : "an incantation"}.`);
             }
             mtmp.mspec_used = (mtmp.mspec_used || 0) + rn1(20, 10);
         }
         if (cansee(x, y)) {
-            /* set_msg_xy(x, y): accessibility only */
+            set_msg_xy(x, y);
             await pline_The("boulder falls apart.");
         }
 
@@ -2601,7 +2603,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                     /* Soundeffect(se_door_unlock_and_open, 50) */
                     if (game.flags.verbose) {
                         if (canseeit && canspotmon(mtmp)) {
-                            await pline(`${Monnam(mtmp)} unlocks and opens a door.`);
+                            await pline_mon(mtmp, `${Monnam(mtmp)} unlocks and opens a door.`);
                         } else if (canseeit) {
                             await You_see("a door unlock and open.");
                         } else if (!Deaf()) {
@@ -2618,7 +2620,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                     /* Soundeffect(se_door_open, 100) */
                     if (game.flags.verbose) {
                         if (canseeit && canspotmon(mtmp)) {
-                            await pline(`${Monnam(mtmp)} opens a door.`);
+                            await pline_mon(mtmp, `${Monnam(mtmp)} opens a door.`);
                         } else if (canseeit) {
                             await You_see("a door open.");
                         } else if (!Deaf()) {
@@ -2640,7 +2642,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
                     /* Soundeffect(se_door_crash_open, 50) */
                     if (game.flags.verbose) {
                         if (canseeit && canspotmon(mtmp)) {
-                            await pline(`${Monnam(mtmp)} smashes down a door.`);
+                            await pline_mon(mtmp, `${Monnam(mtmp)} smashes down a door.`);
                         } else if (canseeit) {
                             await You_see("a door crash open.");
                         } else if (!Deaf()) {
@@ -2659,8 +2661,8 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs,
             if (!((lev.at(mtmp.mx, mtmp.my).wall_info || 0) & W_NONDIGGABLE_MM)
                 && (dmgtype_mm(ptr, M.AD_RUST) || dmgtype_mm(ptr, M.AD_CORR)
                     || metallivorous(ptr))) {
-                if (canseemon(mtmp)) /* pline_mon() */
-                    await pline(`${Monnam(mtmp)} eats through the iron bars.`);
+                if (canseemon(mtmp))
+                    await pline_mon(mtmp, `${Monnam(mtmp)} eats through the iron bars.`);
                 await dissolve_bars(mtmp.mx, mtmp.my);
                 return MMOVE_DONE;
             } else if (game.flags.verbose && canseemon(mtmp))
@@ -2775,7 +2777,7 @@ async function mpickstuff(mtmp) {
                 const otmpname = distant_name(otmp, doname);
 
                 if (game.flags?.verbose)
-                    await pline(`${Monnam(mtmp)} picks up ${otmpname}.`); /* pline_mon() */
+                    await pline_mon(mtmp, `${Monnam(mtmp)} picks up ${otmpname}.`);
             }
             obj_extract_self(otmp3); /* remove from floor */
             mpickobj(mtmp, otmp3); /* may merge and free otmp3 */

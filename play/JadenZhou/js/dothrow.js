@@ -64,7 +64,7 @@ import { CONFUSION, STUNNED, FUMBLING, BLINDED, HALLUC, HALLUC_RES, STONE_RES, D
          GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
          GETOBJ_ALLOWCNT } from './const.js';
 import { objects, COIN_CLASS, WEAPON_CLASS, GEM_CLASS, ARMOR_CLASS,
-         POTION_CLASS, VENOM_CLASS, GLASS, PIERCE, CORPSE, ROCK,
+         POTION_CLASS, VENOM_CLASS, GLASS, PIERCE, CORPSE, ROCK, FLINT,
          HEAVY_IRON_BALL, WAR_HAMMER, PICK_AXE, DWARVISH_MATTOCK, YA, YUMI,
          ELVEN_ARROW, ELVEN_BOW, ORCISH_ARROW, ORCISH_BOW, STRANGE_OBJECT,
          EXPENSIVE_CAMERA, POT_WATER, EGG, CREAM_PIE, MELON, ACID_VENOM,
@@ -75,7 +75,7 @@ import { PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_NINJA, PM_SAMURAI,
          M2_ROCKTHROW } from './monsters.js';
 import { ART_MJOLLNIR } from './artilist.js';
 import { welded, weldmsg } from './wield.js';
-import { getobj, freeinv, stackobj } from './invent.js';
+import { getobj, freeinv, stackobj, prinv } from './invent.js';
 import { addinv_before } from './invent.js';
 import { dry_a_towel } from './weapon.js';
 import { setuwep, setuqwep, set_twoweap } from './wield.js';
@@ -946,7 +946,7 @@ export async function thitmonst(mon,
 
 // C ref: dothrow.c throwit()
 /* throw an object, NB: obj may be consumed in the process */
-async function throwit(obj,
+export async function throwit(obj,
                        wep_mask,  /* used to re-equip returning boomerang */
                        twoweap,   /* used to restore twoweapon mode if
                                    * wielded weapon returns */
@@ -1925,6 +1925,70 @@ function find_launcher(ammo) {
     return oX;
 }
 
+// C ref: dothrow.c autoquiver()
+/* Suggested by Jeffrey Bay <jbay@convex.hp.com> */
+function autoquiver() {
+    let otmp, oammo = null, omissile = null, omisc = null, altammo = null;
+
+    if (game.uquiver)
+        return;
+
+    /* Scan through the inventory */
+    for (otmp = game.invent; otmp; otmp = otmp.nobj) {
+        if (otmp.owornmask || otmp.oartifact || !otmp.dknown) {
+            ; /* Skip it */
+        } else if (otmp.otyp === ROCK
+                   /* seen rocks or known flint or known glass */
+                   || (otmp.otyp === FLINT
+                       && objects[otmp.otyp].oc_name_known)
+                   || (otmp.oclass === GEM_CLASS
+                       && objects[otmp.otyp].oc_material === GLASS
+                       && objects[otmp.otyp].oc_name_known)) {
+            if (uslinging())
+                oammo = otmp;
+            else if (ammo_and_launcher(otmp, game.uswapwep))
+                altammo = otmp;
+            else if (!omisc)
+                omisc = otmp;
+        } else if (otmp.oclass === GEM_CLASS) {
+            ; /* skip non-rock gems--they're ammo but
+                 player has to select them explicitly */
+        } else if (is_ammo(otmp)) {
+            if (ammo_and_launcher(otmp, game.uwep))
+                /* Ammo matched with launcher (bow+arrow, crossbow+bolt) */
+                oammo = otmp;
+            else if (ammo_and_launcher(otmp, game.uswapwep))
+                altammo = otmp;
+            else
+                /* Mismatched ammo (no better than an ordinary weapon) */
+                omisc = otmp;
+        } else if (is_missile(otmp)) {
+            /* Missile (dart, shuriken, etc.) */
+            omissile = otmp;
+        } else if (otmp.oclass === WEAPON_CLASS && throwing_weapon(otmp)) {
+            /* Ordinary weapon */
+            if (objects[otmp.otyp].oc_skill === P_DAGGER && !omissile)
+                omissile = otmp;
+            else if (otmp.otyp === AKLYS)
+                continue;
+            else
+                omisc = otmp;
+        }
+    }
+
+    /* Pick the best choice */
+    if (oammo)
+        setuqwep(oammo);
+    else if (omissile)
+        setuqwep(omissile);
+    else if (altammo)
+        setuqwep(altammo);
+    else if (omisc)
+        setuqwep(omisc);
+
+    return;
+}
+
 // C ref: dothrow.c dofire() -- the #fire command
 export async function dofire() {
     let obj;
@@ -1966,7 +2030,16 @@ export async function dofire() {
                 await You("have no ammunition readied.");
             }
         } else {
-            throw new Error('dofire(): autoquiver() not ported yet');
+            autoquiver();
+            obj = game.uquiver;
+            if (obj) {
+                /* give feedback if quiver has now been filled */
+                game.uquiver.owornmask &= ~W_QUIVER; /* less verbose */
+                await prinv("You ready:", obj, 0);
+                game.uquiver.owornmask |= W_QUIVER;
+            } else {
+                await You("have nothing appropriate for your quiver.");
+            }
         }
     }
 

@@ -64,6 +64,15 @@ import { mdisplacem as mdisplacem_dm } from './mhitm.js';
 import { mon_reflects } from './muse.js';
 import { resists_ston, touch_petrifies } from './mondata.js';
 import { is_quest_artifact } from './questpgr.js';
+import { pline_mon, pline_xy } from './display.js';
+import { whimper } from './sounds.js';
+import { Your as Your_dm, You_feel as You_feel_dm } from './display.js';
+import { Deaf as Deaf_dm } from './youprop.js';
+import { goodpos } from './makemon.js';
+import { xytodir } from './hack.js';
+import { dirtocoord } from './steed.js';
+import { set_apparxy } from './monmove.js';
+import { N_DIRS as N_DIRS_DM } from './const.js';
 
 const DOG_HUNGRY = 300;
 const DOG_WEAK = 500;
@@ -581,9 +590,9 @@ export async function dog_eat(mtmp,
                result won't be printed */
             obj_name = distant_name(obj, doname);
             if (tunnels(mtmp.data))
-                await pline(`${noit_Monnam(mtmp)} digs in.`);
+                await pline_mon(mtmp, `${noit_Monnam(mtmp)} digs in.`);
             else
-                await pline(`${noit_Monnam(mtmp)} ${
+                await pline_mon(mtmp, `${noit_Monnam(mtmp)} ${
                     devour ? "devours" : "eats"} ${obj_name}.`);
         } else if (seeobj) {
             obj_name = distant_name(obj, doname);
@@ -612,11 +621,11 @@ export async function dog_eat(mtmp,
 // ── C ref: dogmove.c dog_starve() ──
 async function dog_starve(mtmp) {
     if (mtmp.mleashed && mtmp !== game.u.usteed)
-        throw new Error('dog_starve(): leashes not ported yet');
+        await Your_dm("leash goes slack.");
     else if (cansee(mtmp.mx, mtmp.my))
-        await pline(`${Monnam(mtmp)} starves.`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} starves.`);
     else
-        throw new Error('dog_starve(): You_feel() not ported yet');
+        await You_feel_dm(`${Hallucination() ? "bummed" : "sad"} for a moment.`);
     await mondied(mtmp);
 }
 
@@ -640,7 +649,7 @@ async function dog_hunger(mtmp, edog) {
                 return true;
             }
             if (cansee(mtmp.mx, mtmp.my))
-                await pline(`${Monnam(mtmp)} is confused from hunger.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} is confused from hunger.`);
             else if (couldsee(mtmp.mx, mtmp.my))
                 throw new Error('dog_hunger(): beg() not ported yet');
             else
@@ -710,7 +719,7 @@ async function dog_invent(mtmp, edog, udist) {
                             const otmpname = distant_name(otmp, doname);
 
                             if (game.flags?.verbose)
-                                await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
+                                await pline_xy(omx, omy, `${Monnam(mtmp)} picks up ${otmpname}.`);
                         }
                         obj_extract_self(otmp);
                         newsym(omx, omy);
@@ -1256,7 +1265,7 @@ export async function dog_move(mtmp, after) {
             /* goto newdogpos; eating something: nix,niy == omx,omy, so
                only newdogpos's leashed-pet branch could apply */
             if (mtmp.mleashed && distu(omx, omy) > 4)
-                throw new Error('dog_move(): leashed pet kludge not ported yet');
+                await dog_leash_kludge(mtmp, omx, omy, nix, niy);
             return MMOVE_MOVED;
         }
 
@@ -1391,7 +1400,8 @@ export async function dog_move(mtmp, after) {
 
             if ((mfp.info[i] & ALLOW_TRAPS) && (trap = t_at(nx, ny))) {
                 if (mtmp.mleashed) {
-                    throw new Error('dog_move(): whimper() not ported yet');
+                    if (!Deaf_dm())
+                        await whimper(mtmp);
                 } else {
                     /* 1/40 chance of stepping on it anyway, in case
                      * it has to pass one to follow the player...
@@ -1482,7 +1492,7 @@ export async function dog_move(mtmp, after) {
     if (nix !== omx || niy !== omy) {
         if (mfp.info[chi] & ALLOW_U) {
             if (mtmp.mleashed) { /* play it safe */
-                await pline(`${Monnam(mtmp)} breaks loose of ${mhis(mtmp)} leash!`); /* pline_mon() */
+                await pline_mon(mtmp, `${Monnam(mtmp)} breaks loose of ${mhis(mtmp)} leash!`);
                 m_unleash(mtmp, false);
             }
             await mattacku(mtmp);
@@ -1508,11 +1518,11 @@ export async function dog_move(mtmp, after) {
                           ? vobj_at(nix, niy) : null;
             const what = o ? distant_name(o, doname) : "something";
 
-            await pline(`${noit_Monnam(mtmp)} ${
+            await pline_mon(mtmp, `${noit_Monnam(mtmp)} ${
                 vtense(null, locomotion(mtmp.data, "step"))} reluctantly ${
                 (is_flyer(mtmp.data) || is_floater(mtmp.data)) ? "over"
                                                                : "onto"} ${
-                what}.`); /* pline_mon() */
+                what}.`);
         }
         mon_track_add(mtmp, omx, omy);
         /* We have to know if the pet's going to do a combined eat and
@@ -1524,9 +1534,54 @@ export async function dog_move(mtmp, after) {
                 return MMOVE_DIED;
         }
     } else if (mtmp.mleashed && distu(omx, omy) > 4) {
-        throw new Error('dog_move(): leashed pet kludge not ported yet');
+        await dog_leash_kludge(mtmp, omx, omy, nix, niy);
     }
     return MMOVE_MOVED;
+}
+
+// C ref: dogmove.c dog_move() -- the "else if (mtmp->mleashed &&
+// distu(omx, omy) > 4)" branch after newdogpos:, shared by dog_move()'s
+// two ways into newdogpos (no rolls here)
+async function dog_leash_kludge(mtmp, omx, omy, nix, niy) {
+    const u = game.u;
+    /* an incredible kludge, but the only way to keep pooch near
+     * after it spends time eating or in a trap, etc.
+     */
+    const cc = { x: 0, y: 0 };
+    let nx, ny, i, j;
+
+    dognext: {
+        nx = Math.sign(omx - u.ux); /* sgn() */
+        ny = Math.sign(omy - u.uy);
+        cc.x = u.ux + nx;
+        cc.y = u.uy + ny;
+        if (goodpos(cc.x, cc.y, mtmp, 0))
+            break dognext;
+
+        i = xytodir(nx, ny);
+        for (j = (i + 7) % N_DIRS_DM /* DIR_LEFT(i) */;
+             j < (i + 1) % N_DIRS_DM /* DIR_RIGHT(i) */; j++) {
+            dirtocoord(cc, j);
+            if (goodpos(cc.x, cc.y, mtmp, 0))
+                break dognext;
+        }
+        for (j = (i + 6) % N_DIRS_DM /* DIR_LEFT2(i) */;
+             j < (i + 2) % N_DIRS_DM /* DIR_RIGHT2(i) */; j++) {
+            dirtocoord(cc, j);
+            if (goodpos(cc.x, cc.y, mtmp, 0))
+                break dognext;
+        }
+        cc.x = mtmp.mx;
+        cc.y = mtmp.my;
+    }
+    /* dognext: */
+    if (!(await m_in_out_region(mtmp, nix, niy)))
+        return;
+    /* remove_monster(mtmp->mx, mtmp->my): the monster list is keyed by
+       mx/my, so place_monster() is enough */
+    place_monster(mtmp, cc.x, cc.y);
+    newsym(cc.x, cc.y);
+    set_apparxy(mtmp);
 }
 
 // C ref: dogmove.c finish_meating()

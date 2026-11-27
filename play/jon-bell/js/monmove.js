@@ -3040,7 +3040,7 @@ async function meatmetal_mv(mtmp) {
                 if (vis) {
                     const otmpname = await distant_obj_name(otmp);
                     if (game.flags?.verbose !== false)
-                        void pline(`${Monnam_dm(mtmp)} eats ${otmpname}!`);
+                        await pline_mon(mtmp, `${Monnam_dm(mtmp)} eats ${otmpname}!`);
                 }
                 /* C:1493 the object's rustproofing is gone now */
                 otmp.oerodeproof = 0;
@@ -3048,14 +3048,14 @@ async function meatmetal_mv(mtmp) {
                 if (vis) {
                     const otmpname = await distant_obj_name(otmp);
                     if (game.flags?.verbose !== false)
-                        void pline(`${Monnam_dm(mtmp)} spits ${otmpname} out in disgust!`);
+                        await pline_mon(mtmp, `${Monnam_dm(mtmp)} spits ${otmpname} out in disgust!`);
                 }
                 /* C falls out of the if/else and keeps walking the pile. */
             } else {
                 if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
                     const otmpname = await distant_obj_name(otmp);
                     if (game.flags?.verbose !== false)
-                        void pline(`${Monnam_dm(mtmp)} eats ${otmpname}!`);
+                        await pline_mon(mtmp, `${Monnam_dm(mtmp)} eats ${otmpname}!`);
                 } else {
                     /* C mon.c:1513 uses pline.c:436 You_hear, including its
                      * Deaf/acoustics guard and Underwater/Unaware prefixes. */

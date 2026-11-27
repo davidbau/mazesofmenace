@@ -137,7 +137,7 @@ import { Norep as Norep_sk, You_feel as You_feel_sk } from './display.js';
 import { stop_occupation as stop_occupation_sk } from './allmain.js';
 import { SHOPBASE as SHOPBASE_FR } from './const.js';
 import { remove_worn_item } from './steal.js';
-import { unleash_all } from './trap.js';
+import { unleash_all } from './apply.js';
 import { locomotion as locomotion_sd } from './trap.js';
 import { PM_KNIGHT as PM_KNIGHT_SD, MS_HUMANOID as MS_HUMANOID_SD } from './monsters.js';
 import { is_silent as is_silent_sd } from './mondata.js';

@@ -11,7 +11,7 @@
 // set_mimic_sym, rndghostname, worm tail segments.
 
 import { shkname } from './shknam.js';
-import { sensemon } from './display.js';
+import { sensemon, set_msg_xy, pline_mon } from './display.js';
 import { mhidden_description } from './pager.js';
 import { MHID_ARTICLE, MHID_ALTMON } from './const.js';
 import { db_under_typ } from './display.js';
@@ -90,7 +90,8 @@ import { newsym, pline, Norep, canseemon, You_see, vobj_at } from './display.js'
 import { does_block, block_point, cansee, couldsee } from './vision.js';
 import { Resists_Elem } from './mondata.js';
 import { PIT, SPIKED_PIT, STONE_RES, PLNMSG_HIDE_UNDER, Is_juiblex_level,
-         SEE_INVIS } from './const.js';
+         SEE_INVIS, HOLE, TRAPDOOR, ALL_TRAPS } from './const.js';
+import { mon_learns_traps } from './mondata.js';
 import { set_apparxy, dochugw, m_in_air } from './monmove.js';
 import { is_exclusion_zone } from './mklev.js';
 import { LR_MONGEN } from './const.js';
@@ -1486,8 +1487,15 @@ export function makemon(ptr, x, y, mmflags) {
     else
         mtmp.female = femaleok ? rn2(2) : 0;
 
-    /* mon_learns_traps() for Sokoban/stronghold/quest leaders: trap
-       knowledge bits only, no rolls -- not ported yet */
+    if (In_sokoban(game.u.uz) && !mindless(ptr)) { /* know about traps here */
+        mon_learns_traps(mtmp, PIT);
+        mon_learns_traps(mtmp, HOLE);
+    }
+    if (Is_stronghold() && !mindless(ptr)) /* know about trap doors */
+        mon_learns_traps(mtmp, TRAPDOOR);
+    /* quest leader and nemesis both know about all trap types */
+    if (ptr.msound === M.MS_LEADER || ptr.msound === M.MS_NEMESIS)
+        mon_learns_traps(mtmp, ALL_TRAPS);
     /* locations where monsters are already experienced with wands */
     if (Is_stronghold() || Is_knox() || In_endgame(game.u.uz)
         || In_hell(game.u.uz) || In_V_tower(game.u.uz) || In_quest(game.u.uz))
@@ -1682,7 +1690,7 @@ export function makemon(ptr, x, y, mmflags) {
                 what = mbuf ? mbuf[0].toUpperCase() + mbuf.slice(1) : mbuf; /* upstart() */
             }
             if (what) {
-                /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+                set_msg_xy(mtmp.mx, mtmp.my);
                 const msg = `${what}${exclaim ? " suddenly" : ""} `
                     /* 'what' might be "gold pieces" so need plural verb */
                     + `${vtense(what, "appear")}`
@@ -2089,7 +2097,7 @@ function* hideunder_core(mtmp) {
         if (undetected && seenmon && seenobj) {
             if (!locomo)
                 locomo = locomotion(mtmp.data, "hide");
-            /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+            set_msg_xy(mtmp.mx, mtmp.my);
             yield `${seenmon} ${locomo} under ${seenobj}.`; /* You_see() */
             game.iflags.last_msg = PLNMSG_HIDE_UNDER;
             game.last_hider = mtmp.m_id;
@@ -2198,8 +2206,8 @@ export async function grow_up(mtmp, victim) {
                        (can't happen with 3.6.0 mons[], but perhaps
                        slightly less sexist if prepared for it...) */
                   : (fem && !mtmp.female) ? "female " : ""}${pmname(ptr, fem)}`;
-            /* pline_mon() */
-            await pline(`${YMonnam(mtmp)} ${
+           
+            await pline_mon(mtmp, `${YMonnam(mtmp)} ${
                 (fem !== (mtmp.female ? 1 : 0)) ? "changes into"
                 : (ptr.mflags1 & M.M1_HUMANOID) ? "becomes" /* humanoid() */
                   : "grows up into"} ${an(buf)}.`);

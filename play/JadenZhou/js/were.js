@@ -21,7 +21,7 @@ import { makemon, makemon_flush_msg } from './makemon.js';
 import { NO_MM_FLAGS } from './const.js';
 import { tamedog } from './dog.js';
 import { Polymorph_control, Stunned, Unaware, Unchanging } from './youprop.js';
-import { NEUTRAL, PARANOID_WERECHANGE } from './const.js';
+import { NEUTRAL, ParanoidWerechange } from './const.js';
 import { an } from './objnam.js';
 import { paranoid_query } from './cmd.js';
 import { monster_nearby } from './hack.js';
@@ -210,11 +210,6 @@ export async function were_summon(
             await tamedog(mtmp, null, false);
     }
     return total;
-}
-
-/* C ref: flag.h ParanoidWerechange */
-function ParanoidWerechange() {
-    return ((game.flags.paranoia_bits || 0) & PARANOID_WERECHANGE) !== 0;
 }
 
 // C ref: were.c you_were()

@@ -28,6 +28,23 @@ import { pline, You, Your, You_feel, pline_The, newsym, see_monsters,
          glyph_at, glyph_is_invisible, unmap_object, tmp_at, DISP_ALWAYS,
          DISP_END } from './display.js';
 import { getobj, useup, obfree, hands_obj } from './invent.js';
+/* potion_dip() */
+import { body_part as body_part_pd } from './insight.js';
+import { HAND as HAND_PD } from './const.js';
+import { POT_WATER as POT_WATER_PD, POT_POLYMORPH as POT_POLYMORPH_PD,
+         POT_ACID as POT_ACID_PD, POT_SICKNESS as POT_SICKNESS_PD,
+         POT_HEALING as POT_HEALING_PD, POT_EXTRA_HEALING as POT_EXTRA_HEALING_PD,
+         POT_FULL_HEALING as POT_FULL_HEALING_PD, POT_OIL as POT_OIL_PD,
+         CORPSE as CORPSE_PD, UNICORN_HORN as UNICORN_HORN_PD,
+         AMETHYST as AMETHYST_PD, POTION_CLASS as POTION_CLASS_PD } from './objects.js';
+import { PM_LICHEN as PM_LICHEN_PD } from './monsters.js';
+import { The as The_pd, cxname as cxname_pd, otense as otense_pd } from './objnam.js';
+import { the as the_pd } from './iactions.js';
+import { hcolor as hcolor_pd } from './do_name.js';
+import { is_poisonable as is_poisonable_pd,
+         permapoisoned as permapoisoned_pd } from './mkobj.js';
+/* C ref: color.h NH_RED, NH_ORANGE (hcolor() color names) */
+const NH_RED_PD = "red", NH_ORANGE_PD = "orange";
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist.js';
 import { undiscovered_artifact } from './artifact.js';
 import { can_reach_floor } from './engrave.js';
@@ -2456,9 +2473,84 @@ export async function dodip() {
                                 drink_ok, GETOBJ_NOFLAGS);
     if (!potion)
         return ECMD_CANCEL;
-    void potion;
-    throw new Error('dodip(): potion_dip() not ported yet');
+    return await potion_dip(obj, potion);
 }
+
+// C ref: potion.c poof()
+async function poof(potion) {
+    if (potion.dknown)
+        await trycall(potion);
+    useup(potion);
+}
+
+// C ref: potion.c potion_dip() -- dip obj into potion; the branches that
+// need H2Opotion_dip(), poly_obj(), potion mixing, oil or mixtype() stop
+// explicitly
+async function potion_dip(obj, potion) {
+    if (potion === obj && potion.quan === 1) {
+        await pline("That is a potion bottle, not a Klein bottle!");
+        return ECMD_OK;
+    }
+    if (obj === hands_obj) {
+        await You(`can't fit your ${body_part_pd(HAND_PD)} into the mouth of the bottle!`);
+        return ECMD_OK;
+    }
+
+    obj.pickup_prev = 0; /* no longer 'recently picked up' */
+    potion.in_use = true; /* assume it will be used up */
+    if (potion.otyp === POT_WATER_PD) {
+        throw new Error('potion_dip(): H2Opotion_dip() not ported yet');
+    } else if (obj.otyp === POT_POLYMORPH_PD || potion.otyp === POT_POLYMORPH_PD) {
+        throw new Error('potion_dip(): dipping with polymorph (poly_obj()) not ported yet');
+    } else if (obj.oclass === POTION_CLASS_PD && obj.otyp !== potion.otyp) {
+        throw new Error('potion_dip(): mixing potions (mixtype()) not ported yet');
+    }
+    if (potion.otyp === POT_ACID_PD && obj.otyp === CORPSE_PD
+        && obj.corpsenm === PM_LICHEN_PD) {
+        await pline(`${The_pd(cxname_pd(obj))} ${otense_pd(obj, "turn")} ${
+            Blind() ? "wrinkled"
+                    : potion.odiluted ? hcolor_pd(NH_ORANGE_PD)
+                                      : hcolor_pd(NH_RED_PD)} around the edges.`);
+        potion.in_use = false; /* didn't go poof */
+        if (potion.dknown)
+            await trycall(potion);
+        return ECMD_TIME;
+    }
+    /* (potion->otyp == POT_WATER && obj->otyp == TOWEL) follows a FALSE
+       H2Opotion_dip(), which stops above */
+    if (is_poisonable_pd(obj)) {
+        if (potion.otyp === POT_SICKNESS_PD && !obj.opoisoned) {
+            let buf;
+            if (potion.quan > 1)
+                buf = `One of ${the_pd(xname(potion))}`;
+            else
+                buf = The_pd(xname(potion));
+            await pline(`${buf} forms a coating on ${the_pd(xname(obj))}.`);
+            obj.opoisoned = 1;
+            await poof(potion);
+            return ECMD_TIME;
+        } else if (obj.opoisoned && !permapoisoned_pd(obj)
+                   && (potion.otyp === POT_HEALING_PD
+                       || potion.otyp === POT_EXTRA_HEALING_PD
+                       || potion.otyp === POT_FULL_HEALING_PD)) {
+            await pline(`A coating wears off ${the_pd(xname(obj))}.`);
+            obj.opoisoned = 0;
+            await poof(potion);
+            return ECMD_TIME;
+        }
+    }
+    if (potion.otyp === POT_ACID_PD)
+        throw new Error('potion_dip(): dipping into acid (erode_obj()) not ported yet');
+    if (potion.otyp === POT_OIL_PD)
+        throw new Error('potion_dip(): dipping into oil not ported yet');
+    /* more_dips: lamp filling needs POT_OIL, which stops above */
+    potion.in_use = false; /* didn't go poof */
+    if (obj.otyp === UNICORN_HORN_PD || obj.otyp === AMETHYST_PD)
+        throw new Error('potion_dip(): unicorn horn/amethyst dip (mixtype()) not ported yet');
+    await pline("Interesting...");
+    return ECMD_TIME;
+}
+
 
 /* C ref: obj.h is_plural(), objnam.c pair_of() */
 function dip_is_plural(o) {

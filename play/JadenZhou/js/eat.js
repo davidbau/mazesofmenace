@@ -53,7 +53,8 @@ import { FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
          LAST_PROP } from './const.js';
 import { can_teleport, control_teleport, telepathic, attacktype_fordmg } from './mondata.js';
 import { getobj } from './invent.js';
-import { is_edible } from './iactions.js';
+import { is_edible, surface } from './iactions.js';
+import { Is_airlevel, Is_waterlevel } from './const.js';
 import { can_reach_floor } from './engrave.js';
 import { check_capacity } from './hack.js';
 import { is_pool, is_lava } from './makemon.js';
@@ -1819,6 +1820,12 @@ export async function Hear_again() {
     return 0;
 }
 
+// C ref: eat.c eating_glob()
+/* is the hero eating this glob right now? */
+export function eating_glob(glob) {
+    return (game.occupation === eatfood && glob === game.context.victual?.piece);
+}
+
 // C ref: eat.c rottenfood()
 /* called on the "first bite" of rotten food */
 async function rottenfood(obj) {
@@ -1844,8 +1851,11 @@ async function rottenfood(obj) {
 
         if (!Blind())
             what = "goes", where = "dark";
+        else if (Levitation() || Is_airlevel(u.uz) || Is_waterlevel(u.uz))
+            what = "you lose control of", where = "yourself";
         else
-            throw new Error('rottenfood(): blind "world spins" message not ported yet');
+            what = "you slap against the",
+            where = (u.usteed) ? "saddle" : surface(u.ux, u.uy);
         await pline_The(`world spins and ${what} ${where}.`);
         incr_itimeout(DEAF, duration);
         game.disp_botl = true;
@@ -1853,7 +1863,6 @@ async function rottenfood(obj) {
         game.multi_reason = "unconscious from rotten food";
         game.nomovemsg = "You are conscious again.";
         game.afternmv = Hear_again;
-        void u;
         return 1;
     }
     return 0;

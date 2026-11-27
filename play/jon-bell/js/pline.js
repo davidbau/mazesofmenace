@@ -5,7 +5,7 @@ import { BUFSZ, DEVTEAM_EMAIL, PLINE_NOREPEAT, DUMPLOG_MSG_COUNT } from './const
 import { nh_sprintf } from './display.js';
 import { paniclog } from './files.js';
 import './cmd.js'; // relocate-fns
-import { Unaware, _You, _disp_Blind, _live_deaf, _pline_body, you_buf_message } from './display.js';
+import { Unaware, _You, _disp_Blind, _live_deaf, _pline_body, remember_stopped_toplines, you_buf_message } from './display.js';
 import './options.js'; // retain initialization order through the cmd/options cycle
 import { livelog_add } from './files.js'; // relocate-fns
 import { nh_snprintf, strNsubst } from './hacklib.js'; // relocate-fns
@@ -123,6 +123,7 @@ export async function urgent_pline(msg, ...args) {
         /* tty_clear_nhwindow(WIN_MESSAGE): the topline is cleared and
          * ttyDisplay->toplin goes to TOPLINE_EMPTY, so the message below can
          * neither join nor page it. */
+        remember_stopped_toplines();
         g._pending_message = '';
         g._topl_joins = [];
         g._topl_joins_src = '';

@@ -9,7 +9,7 @@ import { Inhell } from './mklev.js';
 import { game } from './gstate.js';
 import { you_unwere } from './were.js';
 import { livelog_printf, verbalize } from './display.js';
-import { LL_CONDUCT } from './const.js';
+import { LL_CONDUCT, ParanoidPray, ParanoidConfirm } from './const.js';
 import { rn2, rn1, rnl, rnz, ROLL_FROM, rn2_on_display_rng } from './rng.js';
 import { roles, randrole } from './role.js';
 import { HALLUC_RES, LEVITATION, FLYING } from './const.js';
@@ -1757,10 +1757,14 @@ export async function dopray() {
     const u = g.u;
     let ok;
 
-    /* ParanoidPray (paranoid_confirm:pray, on by default) without
-       ParanoidConfirm: a plain y/n query */
-    if (g.flags.paranoia_pray !== false) {
-        ok = (await paranoid_query(false, "Are you sure you want to pray?"));
+    /*
+     * If ParanoidPray is set, confirm prayer to avoid accidental slips
+     * of Alt+p.  If ParanoidConfirm is also set, require "yes" rather
+     * than just "y" (will also require "no" to decline).
+     */
+    if (ParanoidPray()) {
+        ok = (await paranoid_query(ParanoidConfirm(),
+                                   "Are you sure you want to pray?"));
         if (!ok) /* declined the "are you sure?" confirmation */
             return ECMD_OK;
     }
@@ -1779,7 +1783,7 @@ export async function dopray() {
            from the do-again buffer, so need to suppress this response too;
            otherwise subsequent ^A would use this answer for "are you sure?"
            and bypass confirmation (gi.in_doagain: ^A isn't ported) */
-        if (g.flags.paranoia_pray !== false) {
+        if (ParanoidPray()) {
             ok = (await tty_yn_function(forcesuccess, "yn", 'n') === 'y'); /* YN() */
         } else {
             ok = (await tty_yn_function(forcesuccess, "yn", 'n') === 'y'); /* y_n() */

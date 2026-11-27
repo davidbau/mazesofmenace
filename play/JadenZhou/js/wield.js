@@ -25,7 +25,12 @@ import { pline, You, You_cant } from './display.js';
 import { rnd } from './rng.js';
 import { AT_WEAP } from './monsters.js';
 import { HAND, GLIB, A_DEX } from './const.js';
-import { makeplural } from './objnam.js';
+import { makeplural, corpse_xname } from './objnam.js';
+import { touch_petrifies } from './mondata.js';
+import { Stone_resistance } from './youprop.js';
+import { CXN_PFX_THE } from './const.js';
+import { killer_xname } from './mthrowu.js';
+import { instapetrify } from './trap.js';
 import { body_part, empty_handed as empty_handed_wl } from './insight.js';
 import { ACURR } from './attrib.js';
 import { prinv, getobj, hands_obj, splittable, freeinv } from './invent.js';
@@ -126,8 +131,9 @@ export async function can_twoweapon() {
         await You_cant("use two weapons while wearing a shield.");
     } else if (g.uswapwep.oartifact) {
         await pline(`${Yobjnam2(g.uswapwep, "resist")} being held second to another weapon!`);
-    } else if (g.uswapwep.otyp === CORPSE /* && cant_wield_corpse(uswapwep) */) {
-        throw new Error('can_twoweapon(): cant_wield_corpse() not ported yet');
+    } else if (g.uswapwep.otyp === CORPSE && await cant_wield_corpse(g.uswapwep)) {
+        /* [Note: !TWOWEAPOK() check prevents ever getting here...] */
+        ; /* must be life-saved to reach here; return FALSE */
     } else if (game.u.uprops[GLIB]?.intrinsic || game.u.uprops[GLIB]?.extrinsic
                || g.uswapwep.cursed) {
         throw new Error('can_twoweapon(): drop_uswapwep() not ported yet');
@@ -202,6 +208,20 @@ export function uqwepgone() {
 export { retouch_object };
 
 // C ref: wield.c ready_weapon()
+// C ref: wield.c cant_wield_corpse()
+async function cant_wield_corpse(obj) {
+    if (game.uarmg || obj.otyp !== CORPSE || !touch_petrifies(mons[obj.corpsenm])
+        || Stone_resistance())
+        return false;
+
+    /* Prevent wielding cockatrice when not wearing gloves --KAA */
+    await You(`wield ${corpse_xname(obj, null, CXN_PFX_THE)} in your bare ${
+        makeplural(body_part(HAND))}.`);
+    const kbuf = `wielding ${killer_xname(obj)} bare-handed`;
+    await instapetrify(kbuf);
+    return true;
+}
+
 export async function ready_weapon(wep) {
     /* Separated function so swapping works easily */
     let res = ECMD_OK;
@@ -215,8 +235,9 @@ export async function ready_weapon(wep) {
             res = ECMD_TIME;
         } else
             await You(`are already ${empty_handed_wl()}.`);
-    } else if (wep.otyp === CORPSE) {
-        throw new Error('ready_weapon(): cant_wield_corpse() not ported yet');
+    } else if (wep.otyp === CORPSE && await cant_wield_corpse(wep)) {
+        /* hero must have been life-saved to get here; use a turn */
+        res = ECMD_TIME; /* corpse won't be wielded */
     } else if (game.uarms && bimanual(wep)) {
         await You(`cannot wield a two-handed ${
             is_sword(wep) ? "sword" : wep.otyp === BATTLE_AXE_WL ? "axe"

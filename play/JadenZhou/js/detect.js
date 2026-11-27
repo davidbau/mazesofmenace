@@ -8,7 +8,7 @@ import { expels } from './mhitu.js';
 import { dmgtype_fromattack, hides_under, is_hider } from './mondata.js';
 import { Monnam } from './do_name.js';
 import { AD_DGST, AT_ENGL } from './monsters.js';
-import { feel_newsym } from './display.js';
+import { feel_newsym, set_msg_xy } from './display.js';
 import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { pline, newsym, docrt, flush_screen, glyph_at, glyph_kind, show_glyph,
@@ -143,7 +143,7 @@ async function mfind0(mtmp, via_warning) {
                                  || hides_under(mtmp.data)
                                  || mtmp.data.mlet === S_EEL)) {
             if (via_warning && found_something) {
-                /* set_msg_xy(x, y): accessibility only */
+                set_msg_xy(x, y);
                 await pline(`Your danger sense causes you to take a second ${
                     Blind() ? "to check nearby" : "look close by"}.`);
                 await tty_display_nhwindow(game.WIN_MESSAGE, false); /* flush messages */
@@ -164,10 +164,10 @@ async function mfind0(mtmp, via_warning) {
         await exercise(A_WIS, true);
         if (!canspotmon(mtmp)) {
             map_invisible(x, y);
-            /* set_msg_xy(x, y) */
+            set_msg_xy(x, y);
             await You_feel_dt("an unseen monster!");
         } else if (!sensemon(mtmp)) {
-            /* set_msg_xy(x, y) */
+            set_msg_xy(x, y);
             await pline(`You find ${mtmp.mtame ? y_monnam(mtmp) : a_monnam(mtmp)}.`);
         }
         return 1;
@@ -210,6 +210,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                     await exercise(A_WIS, true);
                     nomul(0);
                     feel_location(x, y); /* make sure it shows up */
+                    set_msg_xy(x, y);
                     await pline("You find a hidden door.");
                 } else if (lev.typ === SCORR) {
                     if (rnl(7 - fund))
@@ -219,6 +220,7 @@ export async function dosearch0(aflag) /* intrinsic autosearch vs explicit searc
                     await exercise(A_WIS, true);
                     nomul(0);
                     feel_newsym(x, y); /* make sure it shows up */
+                    set_msg_xy(x, y);
                     await pline("You find a hidden passage.");
                 } else {
                     /* Be careful not to find anything in an SCORR or SDOOR */
@@ -275,8 +277,7 @@ export async function find_trap(trap) {
         cleared = true;
     }
 
-    /* set_msg_xy(trap->tx, trap->ty): only positions the message for
-       screen readers */
+    set_msg_xy(trap.tx, trap.ty);
     await pline(`You find ${an_ft(trapname_ft(trap.ttyp, false))}.`);
 
     if (cleared) {

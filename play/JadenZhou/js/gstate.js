@@ -29,6 +29,9 @@ function initial_globals() {
         in_tele_trap: false,
         /* decl.c gc.corpsenm_digested = NON_PM (-1) */
         corpsenm_digested: -1,
+        /* decl.c gb.bhitpos: a zero-initialized global coord that
+           launch_obj() and others write field by field */
+        bhitpos: { x: 0, y: 0 },
     };
 }
 

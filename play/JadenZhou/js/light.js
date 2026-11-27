@@ -15,7 +15,8 @@
 import { game } from './gstate.js';
 import { Sfo, Sfi } from './sfbase.js';
 import { LS_OBJECT, LS_MONSTER, RANGE_LEVEL, COUNTING, WRITING, FREEING,
-         TEMP_LIT, COLNO, ROWNO, MAX_RADIUS } from './const.js';
+         TEMP_LIT, COLNO, ROWNO, MAX_RADIUS, FM_YOU, FM_FMON, FM_MIGRATE,
+         FM_MYDOGS } from './const.js';
 import { objects, CANDELABRUM_OF_INVOCATION, TALLOW_CANDLE, WAX_CANDLE,
          POT_OIL, BRASS_LANTERN, OIL_LAMP, MAGIC_LAMP } from './objects.js';
 import { obj_is_local, mon_is_local, end_burn } from './timeout.js';
@@ -228,6 +229,27 @@ function discard_flashes() {
         if (ls.type === LS_OBJECT && !ls.id.a_obj)
             delete_ls(ls);
     }
+}
+
+// C ref: light.c find_mid()
+export function find_mid(nid, fmflags) {
+    let mtmp;
+
+    if ((fmflags & FM_YOU) && nid === 1)
+        return game.youmonst;
+    if (fmflags & FM_FMON)
+        for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon)
+            if (!(mtmp.mhp < 1) /* !DEADMONSTER(mtmp) */ && mtmp.m_id === nid)
+                return mtmp;
+    if (fmflags & FM_MIGRATE)
+        for (mtmp = game.migrating_mons; mtmp; mtmp = mtmp.nmon)
+            if (mtmp.m_id === nid)
+                return mtmp;
+    if (fmflags & FM_MYDOGS)
+        for (mtmp = game.mydogs; mtmp; mtmp = mtmp.nmon)
+            if (mtmp.m_id === nid)
+                return mtmp;
+    return null;
 }
 
 // C ref: light.c do_light_sources()

@@ -86,7 +86,9 @@ import { end_burn } from './timeout.js';
 import { getdir } from './cmd.js';
 import { ubuzz } from './zap.js';
 import { ECMD_CANCEL, ECMD_TIME } from './const.js';
-import { AT_BREA, AD_ANY } from './monsters.js';
+import { AT_BREA, AD_ANY, AT_SPIT, AD_DRST, AD_ACID } from './monsters.js';
+import { throwit } from './dothrow.js';
+import { mksobj } from './mkobj.js';
 import { impossible } from './hack.js';
 import { attacktype_fordmg } from './mondata.js';
 import { golemhp, is_pool, is_lava, is_home_elemental } from './makemon.js';
@@ -1662,6 +1664,35 @@ export async function dobreathe() {
         throw new Error('dobreathe(): ubreatheu() not ported yet');
     else /* BZ_U_BREATH(BZ_OFS_AD(mattk->adtyp)) */
         await ubuzz(20 + Math.abs(mattk.adtyp - AD_MAGM) % 10, mattk.damn);
+    return ECMD_TIME;
+}
+
+// C ref: polyself.c dospit()
+export async function dospit() {
+    let otmp;
+    let mattk;
+
+    if (!await getdir(null))
+        return ECMD_CANCEL;
+    mattk = attacktype_fordmg(game.youmonst.data, AT_SPIT, AD_ANY);
+    if (!mattk) {
+        impossible("bad spit attack?");
+    } else {
+        switch (mattk.adtyp) {
+        case AD_BLND:
+        case AD_DRST:
+            otmp = mksobj(O.BLINDING_VENOM, true, false);
+            break;
+        default:
+            impossible("bad attack type in dospit");
+            /*FALLTHRU*/
+        case AD_ACID:
+            otmp = mksobj(O.ACID_VENOM, true, false);
+            break;
+        }
+        otmp.spe = 1; /* to indicate it's yours */
+        await throwit(otmp, 0, false, null);
+    }
     return ECMD_TIME;
 }
 

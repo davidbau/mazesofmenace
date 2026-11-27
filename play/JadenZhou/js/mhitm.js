@@ -123,6 +123,7 @@ import { acid_damage } from './trap.js';
 import { drain_item } from './zap.js';
 import { hliquid } from './potion.js';
 import { finish_meating as finish_meating_md } from './dogmove.js';
+import { pline_mon } from './display.js';
 
 // C ref: monst.h mon_offmap()
 function mon_offmap(mon) {
@@ -357,7 +358,7 @@ export async function mattackm(magr, mdef) {
             } else {
                 if (game.iflags.last_msg === PLNMSG_HIDE_UNDER
                     && mdef.m_id === game.last_hider)
-                    await pline(`${Monnam(mdef)} emerges from hiding.`); /* pline_mon() */
+                    await pline_mon(mdef, `${Monnam(mdef)} emerges from hiding.`);
                 else if (mdef.m_id === game.last_hider)
                     await You_mp(`notice ${mon_nam(mdef)}.`);
                 else
@@ -467,7 +468,7 @@ export async function mattackm(magr, mdef) {
 
                     if ((mclone = await clone_mon(mdef, 0, 0)) != null) {
                         if (game.mhitm_vis && canspotmon(mdef))
-                            await pline(`${Monnam(mdef)} divides as ${mon_nam(magr)} hits it!`); /* pline_mon() */
+                            await pline(`${Monnam(mdef)} divides as ${mon_nam(magr)} hits it!`);
                         await mintrap(mclone, NO_TRAP_FLAGS);
                         if (DEADMONSTER(magr))
                             res[i] |= M_ATTK_AGR_DIED;
@@ -636,7 +637,7 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
             mhm.damage = dmgp.val;
             if (!arthit) {
                 if (vis)
-                    await pline(`${Monnam(magr)} hits ${mon_nam_too(mdef, magr)}.`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} hits ${mon_nam_too(mdef, magr)}.`);
                 mhm.hitflags |= M_ATTK_HIT;
             }
             /* artifact_hit updates 'tmp' but doesn't inflict any
@@ -939,14 +940,14 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
         case M.AD_COLD:
             if (resists_cold(magr)) {
                 if (canseemon(magr)) {
-                    await pline(`${Monnam(magr)} is mildly chilly.`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} is mildly chilly.`);
                     await golemeffects(magr, M.AD_COLD, tmp);
                 }
                 tmp = 0;
                 break;
             }
             if (canseemon(magr))
-                await pline(`${Monnam(magr)} is suddenly very cold!`); /* pline_mon() */
+                await pline_mon(magr, `${Monnam(magr)} is suddenly very cold!`);
             healmon(mdef, Math.trunc(tmp / 2), Math.trunc(tmp / 2));
             if (mdef.mhpmax > ((mdef.m_lev + 1) * 8))
                 await split_mon(mdef, magr);
@@ -955,33 +956,33 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
             if (!magr.mstun) {
                 magr.mstun = 1;
                 if (canseemon(magr))
-                    await pline(`${Monnam(magr)} ${makeplural(stagger(magr.data, "stagger"))}...`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} ${makeplural(stagger(magr.data, "stagger"))}...`);
             }
             tmp = 0;
             break;
         case M.AD_FIRE:
             if (resists_fire(magr)) {
                 if (canseemon(magr)) {
-                    await pline(`${Monnam(magr)} is mildly warmed.`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} is mildly warmed.`);
                     await golemeffects(magr, M.AD_FIRE, tmp);
                 }
                 tmp = 0;
                 break;
             }
             if (canseemon(magr))
-                await pline(`${Monnam(magr)} is suddenly very hot!`); /* pline_mon() */
+                await pline_mon(magr, `${Monnam(magr)} is suddenly very hot!`);
             break;
         case M.AD_ELEC:
             if (resists_elec(magr)) {
                 if (canseemon(magr)) {
-                    await pline(`${Monnam(magr)} is mildly tingled.`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} is mildly tingled.`);
                     await golemeffects(magr, M.AD_ELEC, tmp);
                 }
                 tmp = 0;
                 break;
             }
             if (canseemon(magr))
-                await pline(`${Monnam(magr)} is jolted with electricity!`); /* pline_mon() */
+                await pline_mon(magr, `${Monnam(magr)} is jolted with electricity!`);
             break;
         default:
             tmp = 0;
@@ -1109,7 +1110,7 @@ export async function xdrainenergym(mon, givemsg) {
             || attacktype_xd(mon.data, AT_BREA))) {
         mon.mspec_used += d(2, 2);
         if (givemsg)
-            await pline(`${Monnam(mon)} seems lethargic.`); /* pline_mon() */
+            await pline_mon(mon, `${Monnam(mon)} seems lethargic.`);
     }
 }
 
@@ -1118,7 +1119,7 @@ export async function xdrainenergym(mon, givemsg) {
 export async function slept_monst(mon) {
     if (helpless(mon) && mon === game.u.ustuck
         && !sticks(game.youmonst.data) && !game.u.uswallow) {
-        await pline(`${s_suffix_sm(Monnam(mon))} grip relaxes.`); /* pline_mon() */
+        await pline_mon(mon, `${s_suffix_sm(Monnam(mon))} grip relaxes.`);
         await unstuck_sm(mon);
     }
 }
@@ -1218,7 +1219,7 @@ export async function mdisplacem(magr, mdef, quietly) {
                     await pline(`${Monnam(magr)} tries to move ${mon_nam(mdef)} out of ${
                         is_rider(pa) ? "the" : mhis(magr)} way.`);
                 }
-                await pline(`${Monnam(magr)} turns to stone!`); /* pline_mon() */
+                await pline_mon(magr, `${Monnam(magr)} turns to stone!`);
             }
             await monstone(magr);
             if (!(magr.mhp < 1)) /* !DEADMONSTER(magr) */

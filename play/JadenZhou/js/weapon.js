@@ -79,6 +79,7 @@ import { arti_light_description } from './light.js';
 import { mbodypart } from './insight.js';
 import { HAND } from './const.js';
 import { m_carrying } from './mthrowu.js';
+import { pline_mon } from './display.js';
 
 function weapon_skills() {
     const u = game.u;
@@ -966,7 +967,7 @@ export async function mon_wield_item(mon) {
                         (mw_tmp.quan === 1) ? "" : "s"} ${welded_buf},`);
                     await pline(`${mon_nam_wp(mon)} cannot wield that ${xname_wp(obj)}.`);
                 } else {
-                    await pline(`${Monnam(mon)} tries to wield ${doname(obj)}.`); /* pline_mon() */
+                    await pline_mon(mon, `${Monnam(mon)} tries to wield ${doname(obj)}.`);
                     await pline(`${Yname2_wp(mw_tmp)} ${welded_buf}!`);
                 }
                 mw_tmp.bknown = 1;
@@ -981,9 +982,9 @@ export async function mon_wield_item(mon) {
             let newly_welded;
             let arw;
 
-            await pline(`${Monnam(mon)} wields ${doname(obj)}${exclaim ? '!' : '.'}`); /* pline_mon() */
-            if ((arw = autoreturn_weapon(obj)) != null && arw.tethered !== 0) /* pline_mon() */
-                await pline(`${Monnam(mon)} secures the tether on ${the_wp(xname_wp(obj))}.`);
+            await pline_mon(mon, `${Monnam(mon)} wields ${doname(obj)}${exclaim ? '!' : '.'}`);
+            if ((arw = autoreturn_weapon(obj)) != null && arw.tethered !== 0)
+                await pline_mon(mon, `${Monnam(mon)} secures the tether on ${the_wp(xname_wp(obj))}.`);
 
             /* 3.6.3: mwelded() predicate expects the object to have its
                W_WEP bit set in owormmask, but the pline here and for

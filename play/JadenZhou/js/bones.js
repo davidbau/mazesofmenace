@@ -62,6 +62,7 @@ import { xname } from './objnam.js';
 import { the } from './iactions.js';
 import { tty_yn_function } from './wintty.js';
 import { m_carrying } from './mthrowu.js';
+import { unleash_all } from './apply.js';
 
 /* mondata.h */
 /* mondata.h is_Vlad() */
@@ -511,12 +512,7 @@ export async function savebones(how, when, corpse) {
     }
 
     /* make_bones: */
-    /* unleash_all() */
-    for (let otmp = g.invent; otmp; otmp = otmp.nobj)
-        if (otmp.otyp === O.LEASH)
-            otmp.leashmon = 0;
-    for (let m = g.fmon; m; m = m.nmon)
-        m.mleashed = 0;
+    unleash_all();
     /* new ghost or other undead isn't punished even if hero was;
        end-of-game disclosure has already had a chance to report the
        Punished status so we don't need to preserve it any further */

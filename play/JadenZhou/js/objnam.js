@@ -57,7 +57,7 @@ import { the as the_article } from './iactions.js';
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item,
          record_price_quote, append_price_quote } from './shk.js';
 import { currency, body_part } from './insight.js';
-import { candy_wrapper_text } from './read.js';
+import { candy_wrapper_text, tshirt_text, apron_text, hawaiian_motif } from './read.js';
 import { mksobj, mkobj, curse, weight, erosion_matters, is_flammable,
          is_rottable, is_damageable, is_poisonable, permapoisoned, Is_candle,
          rnd_class } from './mkobj.js';
@@ -95,6 +95,10 @@ import { recalc_block_point } from './vision.js';
 import { spot_stop_timers } from './timeout.js';
 import { Levitation, Flying } from './youprop.js';
 import { str_start_is, upstart } from './hacklib.js';
+import { find_mid as find_mid_xn } from './light.js';
+import { FM_FMON as FM_FMON_XN } from './const.js';
+import { noit_mon_nam as noit_mon_nam_xn, mon_pmname as mon_pmname_xn } from './do_name.js';
+import { impossible as impossible_xn } from './hack.js';
 
 // C ref: decl.c vowels[]
 const vowels = "aeiouAEIOU";
@@ -3600,8 +3604,20 @@ function xname_flags(obj, cxn_flags) {
             }
             break;
         }
-        if (obj.globby)
-            xn_not_ported('globby food names');
+        if (game.iflags?.partly_eaten_hack && obj.oeaten) {
+            /* normally "partly eaten" is supplied by doname() when
+               appropriate and omitted by xname(); shrink_glob() wants
+               it but uses Yname2() -> yname() -> xname() rather than
+               doname() so we've added an external flag to request it */
+            buf += "partly eaten ";
+        }
+        if (obj.globby) { /* 5.0 added "medium" to replace no-prefix */
+            buf += `${(obj.owt <= 100) ? "small"
+                      : (obj.owt <= 300) ? "medium"
+                        : (obj.owt <= 500) ? "large"
+                          : "very large"} ${actualn}`;
+            break;
+        }
         buf += actualn;
         if (typ === O.TIN && known)
             buf = tin_details(obj, omndx, buf);
@@ -3741,8 +3757,11 @@ function xname_flags(obj, cxn_flags) {
             switch (obj.otyp) {
             case O.T_SHIRT:
             case O.ALCHEMY_SMOCK:
+                buf += ` with text "${(obj.otyp === O.T_SHIRT)
+                                      ? tshirt_text(obj) : apron_text(obj)}"`;
+                break;
             case O.HAWAIIAN_SHIRT:
-                xn_not_ported('end-of-game shirt/apron text');
+                buf += ` with ${an(hawaiian_motif(obj))} motif`;
                 break;
             case O.CANDY_BAR: {
                 const lbl = candy_wrapper_text(obj);
@@ -4076,8 +4095,20 @@ function doname_base(obj, doname_flags) {
             bp += " (being worn)";
             break;
         }
-        if (obj.otyp === O.LEASH && obj.leashmon)
-            xn_not_ported('leash suffix');
+        if (obj.otyp === O.LEASH && obj.leashmon) {
+            const mlsh = find_mid_xn(obj.leashmon, FM_FMON_XN);
+
+            if (mlsh && !(mlsh.mhp < 1) /* !DEADMONSTER(mlsh) */) {
+                bp += ` (attached to ${noit_mon_nam_xn(mlsh)})`;
+            } else {
+                if (mlsh) /*&& DEADMONSTER(mlsh)*/
+                    impossible_xn(`leashed ${mon_pmname_xn(mlsh)} #${obj.leashmon} is dead`);
+                else
+                    impossible_xn(`leashed monster #${obj.leashmon} not found`);
+                obj.leashmon = 0;
+            }
+            break;
+        }
         if (obj.otyp === O.CANDELABRUM_OF_INVOCATION) {
             xn_not_ported('candelabrum suffix');
         } else if (obj.otyp === O.OIL_LAMP || obj.otyp === O.MAGIC_LAMP

@@ -502,8 +502,14 @@ function* rc_fgets_lines(rc) {
         const nl = rc.indexOf('\n', pos);
         const end = Math.min(rc.length, pos + CNF_INBUFSZ - 1);
         const chunkEnd = (nl >= 0 && nl < end) ? nl + 1 : end;
-        const chunk = rc.slice(pos, chunkEnd);
+        let chunk = rc.slice(pos, chunkEnd);
         pos = chunkEnd;
+        /* C's inbuf is a C string: strchr(inbuf, '\n') (cfgfiles.c:1697)
+         * and strlen (:1703) both stop at an embedded NUL, so a line that
+         * holds a NUL is that line cut at the NUL, read as if it had no
+         * newline (and still "short", so processed, :1703-1706). */
+        const nul = chunk.indexOf('\0');
+        if (nul >= 0) chunk = chunk.slice(0, nul);
         const hasNl = chunk.endsWith('\n');
         if (skip) {
             if (hasNl) skip = false;
@@ -1960,12 +1966,19 @@ export function parseNethackrc(rc) {
                         config_error_add("Value is mandatory for %s", 'runmode');
                 }
                 else if (key === 'sortloot') {
-                    /* C ref: options.c:3943 sortltype[] = none/loot/full;
-                     * optfn_sortloot stores the matched entry's first letter
-                     * in flags.sortloot (init 'l'). */
-                    const sl = ['none', 'loot', 'full'].find(
-                        (n) => val && n.startsWith(String(val).toLowerCase()));
-                    if (sl) result.flags.sortloot = sl[0];
+                    /* C ref: options.c:3923-3941 optfn_sortloot(do_set): only
+                     * the value's FIRST character counts, lowc(*op) in n/l/f
+                     * (none/loot/full); any other first character is "Unknown
+                     * sortloot parameter '%s'" (whole value) and leaves
+                     * flags.sortloot unchanged; a missing value is
+                     * string_for_opt's "Missing parameter" (val_optional FALSE). */
+                    if (!val)
+                        config_error_add("Missing parameter for '%s'", menuopts);
+                    else {
+                        const c = val.charAt(0).toLowerCase();
+                        if ('nlf'.includes(c)) result.flags.sortloot = c;
+                        else config_error_add("Unknown %s parameter '%s'", 'sortloot', val);
+                    }
                 }
                 else if (key === 'sortvanquished') {
                     if (negated) result.flags.vanq_sortmode = 0;

@@ -56,7 +56,8 @@ import { LEVITATION } from './const.js';
 import { Some_Monnam } from './do_name.js';
 import { s_suffix } from './hacklib.js';
 import { cansee, block_point, vision_recalc } from './vision.js';
-import { t_at, chest_trap } from './trap.js';
+import { t_at, chest_trap, b_trapped } from './trap.js';
+import { SHOP_DOOR_COST as SHOP_DOOR_COST_LK } from './const.js';
 import { FINGER } from './const.js';
 import { wake_nearto } from './mon.js';
 import { in_rooms } from './hack.js';
@@ -79,7 +80,7 @@ import { obfree, useup, stackobj, delobj } from './invent.js';
 import { currency } from './insight.js';
 import { obj_resists } from './dogmove.js';
 import { wake_nearby } from './mon.js';
-import { There } from './display.js';
+import { There, set_msg_xy } from './display.js';
 import { safe_qbuf } from './pickup.js';
 import { getdir } from './cmd.js';
 import { is_drawbridge_wall } from './dbridge.js';
@@ -213,7 +214,13 @@ async function picklock() {
     await You(`succeed in ${lock_action()}.`);
     if (xl.door) {
         if (xl.door.doormask & D_TRAPPED) {
-            throw new Error('picklock(): b_trapped() not ported yet');
+            const u = game.u;
+            await b_trapped("door", FINGER);
+            xl.door.doormask = D_NODOOR;
+            unblock_point_lk(u.ux + u.dx, u.uy + u.dy);
+            if (in_rooms(u.ux + u.dx, u.uy + u.dy, SHOPBASE).length)
+                add_damage(u.ux + u.dx, u.uy + u.dy, SHOP_DOOR_COST_LK);
+            newsym(u.ux + u.dx, u.uy + u.dy);
         } else if (xl.door.doormask & D_LOCKED)
             xl.door.doormask = D_CLOSED;
         else
@@ -746,7 +753,8 @@ export async function doopen_indir(x, y) {
             locked = true;
             break;
         }
-        await pline(`This door${mesg}.`); /* set_msg_xy(cc.x, cc.y) */
+        set_msg_xy(cc.x, cc.y);
+        await pline(`This door${mesg}.`);
         const autounlock = game.flags.autounlock ?? AUTOUNLOCK_APPLY_KEY;
         if (locked && autounlock) {
             let unlocktool;
@@ -776,16 +784,21 @@ export async function doopen_indir(x, y) {
 
     /* door is known to be CLOSED */
     if (rnl(20) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
-        await pline_The("door opens."); /* set_msg_xy() */
+        set_msg_xy(cc.x, cc.y);
+        await pline_The("door opens.");
         if (door.doormask & D_TRAPPED) {
-            throw new Error('doopen_indir(): b_trapped() not ported yet');
+            await b_trapped("door", FINGER);
+            door.doormask = D_NODOOR;
+            if (in_rooms(cc.x, cc.y, SHOPBASE).length)
+                add_damage(cc.x, cc.y, SHOP_DOOR_COST_LK);
         } else
             door.doormask = D_ISOPEN;
         feel_newsym(cc.x, cc.y); /* the hero knows she opened it */
         recalc_block_point(cc.x, cc.y); /* vision: new see through there */
     } else {
         await exercise(A_STR, true);
-        await pline_The("door resists!"); /* set_msg_xy() */
+        set_msg_xy(cc.x, cc.y);
+        await pline_The("door resists!");
     }
 
     return ECMD_TIME;

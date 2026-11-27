@@ -187,8 +187,8 @@ export async function read_engr_at(x, y) {
             const maxelen = BUFSZ - "You feel the words: \"\".".length - 1;
             let et = ep.engr_txt.actual_text;
             let elen = et.length;
-            /* offset of actual_text within the engraving's text space is 0 */
-            const off = 0;
+            /* offset of actual_text within the engraving's text space */
+            const off = ep.actual_off || 0;
 
             if (elen > maxelen) {
                 et = et.slice(0, maxelen);
@@ -302,8 +302,13 @@ export function wipe_engr_at(x, y, cnt, magical) {
                 /* debugpline1("actually eroding %d characters", cnt); */
             }
             ep.engr_txt.actual_text = wipeout_text(ep.engr_txt.actual_text, cnt, 0);
-            while (ep.engr_txt.actual_text[0] === ' ')
+            /* C advances the actual_text pointer past leading spaces within
+               the engraving's text space; actual_off counts how far, and
+               save_engravings() moves it back to the start */
+            while (ep.engr_txt.actual_text[0] === ' ') {
                 ep.engr_txt.actual_text = ep.engr_txt.actual_text.slice(1);
+                ep.actual_off = (ep.actual_off || 0) + 1;
+            }
             if (!ep.engr_txt.actual_text.length)
                 del_engr(ep);
         }

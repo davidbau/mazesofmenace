@@ -34,7 +34,7 @@ import { in_rooms, check_special_room, nomul } from './hack.js';
 import { canspotmon } from './display.js';
 import { inhishop } from './shk.js';
 import { mattacku } from './mhitu.js';
-import { m_canseeu } from './monmove.js';
+import { m_canseeu, m_move_aggress } from './monmove.js';
 import { monnear } from './mon.js';
 import {
     IS_ROOM, IS_ALTAR, AM_SHRINE, TEMPLE, NOTONL, ALLOW_M, ALLOW_ROCK,
@@ -234,7 +234,12 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
             /* mtmp is deciding it would like to attack this turn.
              * Returns from m_move_aggress don't correspond to the same things
              * as this function should return, so we need to translate. */
-            throw new Error('move_special(): m_move_aggress() not ported yet');
+            switch (await m_move_aggress(mtmp, nix, niy)) {
+            case 2:
+                return -2; /* died making the attack */
+            case 3:
+                return 1; /* attacked and spent this move */
+            }
         }
 
         if (m_at(nix, niy) || u_at(nix, niy))

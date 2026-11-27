@@ -1699,7 +1699,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
                 if (mtmp === u.ustuck) /* probably a vortex */
                     return;            /* temporary? kludge */
 
-                if (teleport_pet(mtmp, false)) {
+                if (await teleport_pet(mtmp, false)) {
                     const tolevel = { dnum: 0, dlevel: 0 };
 
                     if (Is_stronghold(u.uz)) {

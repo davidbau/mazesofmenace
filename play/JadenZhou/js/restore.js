@@ -1173,6 +1173,22 @@ export function restore_cham(mon) {
 function rest_engravings(nhfp) {
     const e = Sfi(nhfp, "engravings");
     if (e !== null && e !== undefined) game.level.head_engr = e;
+    for (let ep = game.level.head_engr; ep; ep = ep.nxt_engr) {
+        /* C advances the text pointers past leading spaces (actual_off and
+           remembered_off count how far; save_engravings() resets them) */
+        while (ep.engr_txt.actual_text[0] === ' ') {
+            ep.engr_txt.actual_text = ep.engr_txt.actual_text.slice(1);
+            ep.actual_off = (ep.actual_off || 0) + 1;
+        }
+        while (ep.engr_txt.remembered_text[0] === ' ') {
+            ep.engr_txt.remembered_text = ep.engr_txt.remembered_text.slice(1);
+            ep.remembered_off = (ep.remembered_off || 0) + 1;
+        }
+        /* mark as finished for bones levels -- no problem for
+         * normal levels as the player must have finished engraving
+         * to be able to move again */
+        ep.engr_time = game.moves;
+    }
 }
 
 // C ref: region.c rest_regions()

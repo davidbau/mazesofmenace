@@ -55,6 +55,7 @@ import { CONFUSION, POLY_CONTROLLED } from './const.js';
 import { map_trap, map_engraving } from './display.js';
 import { do_mapping, findit } from './detect.js';
 import { print_dungeon } from './dungeon.js';
+import { setuqwep } from './wield.js';
 
 // C ref: wizcmds.c wiz_level_change() -- #levelchange
 export async function wiz_level_change() {
@@ -169,10 +170,10 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         }
         return null; /* might be gone */
     }
-    /* if (flags.autoquiver && !uquiver && !obj->owornmask
-           && (is_missile(obj) || ammo_and_launcher(obj, uwep)
-               || ammo_and_launcher(obj, uswapwep)))
-           setuqwep(obj); -- not ported yet */
+    if (game.flags.autoquiver && !game.uquiver && !obj.owornmask
+        && (O.is_missile(obj) || O.ammo_and_launcher(obj, game.uwep)
+            || O.ammo_and_launcher(obj, game.uswapwep)))
+        setuqwep(obj);
     if (hold_msg || drop_fmt)
         await prinv(hold_msg, obj, oquan);
     /* obj made it into inventory and is staying there */

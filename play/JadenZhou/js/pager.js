@@ -17,6 +17,7 @@
 // (glyph_at()): hero, seen monster, seen object, seen trap, or the
 // background (back_to_glyph()).
 
+import { SYM_OFF_X } from './symbols.js';
 import { db_under_typ } from './display.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
@@ -28,7 +29,7 @@ import { NHW_TEXT, MENU_SELECT_ALL, MENU_SELECT_PAGE, MENU_INVERT_ALL,
          MENU_INVERT_PAGE, MENU_UNSELECT_ALL, MENU_UNSELECT_PAGE,
          MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE, MENU_FIRST_PAGE, MENU_LAST_PAGE,
          MENU_SEARCH } from './const.js';
-import { getpos } from './getpos.js';
+import { getpos, dxdy_to_dist_descr } from './getpos.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
          ECMD_OK } from './const.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
@@ -907,11 +908,12 @@ function glyph_is_invisible(glyph) { return glyph.kind === 'invisible'; }
 function glyph_is_statue(glyph) {
     return glyph.kind === 'obj' && glyph.otyp === STATUE;
 }
-/* a JS glyph shows no GLYPH_NOTHING apart from the blank background; the
-   callers' symbol tests (SYM_NOTHING, SYM_UNEXPLORED) match it */
-function glyph_is_nothing(/*glyph*/) { return false; }
+/* GLYPH_NOTHING (display.js magic_map_background() of an unlit floor spot
+   with !dark_room) carries the 'nothing' mark into the shown glyph */
+function glyph_is_nothing(glyph) { return !!glyph.nothing; }
 function glyph_is_unexplored(glyph) {
-    return glyph.kind === 'cmap' && glyph.ch === ' ' && glyph.cmapidx === undefined;
+    return glyph.kind === 'cmap' && glyph.ch === ' ' && glyph.cmapidx === undefined
+        && !glyph.nothing;
 }
 /* C ref: display.h glyph_to_trap() -- the trap a trap glyph shows */
 function glyph_to_trap(glyph, x, y) {
@@ -1042,6 +1044,8 @@ export function lookat(x, y) {
         buf = def_warnsyms[warnindx].desc;
     } else if (glyph_is_invisible(glyph)) {
         buf = invisexplain; /* redundant; handled by caller */
+    } else if (glyph_is_nothing(glyph)) {
+        buf = "dark part of a room";
     } else if (glyph.unexplored) {
         /* glyph_is_unexplored(glyph): the glyph buffer was cleared (cls())
            and nothing has been shown here since */
@@ -1318,10 +1322,11 @@ export function do_screen_description(cc, looked, sym) {
         /* Now check for objects */
         if (!game.iflags.terrainmode || (game.iflags.terrainmode & TER_OBJ) !== 0) {
             let oc_ptr;
-            /* go.ov_primary_syms[SYM_BOULDER + SYM_OFF_X] is 0 */
             if (game.currentgraphics === ROGUESET)
                 throw new Error('do_screen_description(): rogue level symbols not ported yet');
-            const bouldersym = chcode(def_oc_syms[ROCK_CLASS]);
+            let bouldersym = game.ov_primary_syms?.[SYM_BOULDER + SYM_OFF_X] || 0;
+            if (!bouldersym)
+                bouldersym = chcode(def_oc_syms[ROCK_CLASS]);
 
             for (i = 1; i < MAXOCLASSES; i++) {
                 if ((i !== ROCK_CLASS)
@@ -2200,8 +2205,12 @@ export function coord_desc(x, y, cmode) {
     default:
         return "";
     case GPCOORDS_COMFULL:
-    case GPCOORDS_COMPASS:
-        throw new Error('coord_desc(): compass coordinates not ported yet');
+    case GPCOORDS_COMPASS: {
+        /* "east", "3s", "2n,4w" */
+        const dx = x - game.u.ux;
+        const dy = y - game.u.uy;
+        return `(${dxdy_to_dist_descr(dx, dy, cmode === GPCOORDS_COMFULL)})`;
+    }
     case GPCOORDS_MAP: /* x,y */
         /* upper left corner of map is <1,0>;
            with default COLNO,ROWNO lower right corner is <79,20> */

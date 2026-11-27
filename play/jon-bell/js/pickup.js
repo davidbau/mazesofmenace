@@ -3019,7 +3019,12 @@ async function _tip_target_destination(box) {
     const title = menu_heading_text(titleText.slice(0, 78)); // C tty_end_menu:2730
     const targets = [];
     const targetRows = [];
-    const lines = [title, '', `- * ${menucolor_text('on the floor')}`, '']; /* pickup.c:3905 add_menu -> windows.c:1803 get_menu_coloring */
+    /* pickup.c:3903-3905 add_menu -> windows.c:1803 get_menu_coloring.  The
+     * state column (wintty.c:1468-1473, count -1 selected = '*') is mutable:
+     * MENU_UNSELECT_PAGE can paint '-' over it while the menu stays up. */
+    let floorSelected = true;
+    const floorRow = () => `- ${floorSelected ? '*' : '-'} ${menucolor_text('on the floor')}`;
+    const lines = [title, '', floorRow(), ''];
     let handsAvailable = null;
     for (let obj = game.invent; obj; obj = obj.nobj) {
         if (obj === box) continue;
@@ -3166,6 +3171,13 @@ async function _tip_target_destination(box) {
         if (key === (game._ttyDismissMore | 0) || '<>^|,\\~.@:'.indexOf(morc) >= 0
             || (game.mapped_menu_cmds || '').indexOf(morc) >= 0) {
             counting = false; count = 0;
+        }
+        if (key === 92) {
+            floorSelected = false;
+            lines[2] = floorRow();
+            game._screen_output = frameRows().join('\n');
+            set_cursor(column + 6, lines.length - 1);
+            continue;
         }
         if (key === 0x3a) {
             /* pmatchi() runs against tty_add_menu's stored "%c - %s" text;

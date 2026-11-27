@@ -3324,8 +3324,82 @@ export async function list_genocided(defquery, ask) {
                       : defquery;
         if (c === 'q')
             game.program_state.stopprint = (game.program_state.stopprint || 0) + 1;
-        if (c === 'y' || c === 'a')
-            throw new Error('list_genocided(): the species list not ported yet');
+        if (c === 'y' || c === 'a') {
+            let save_sortmode;
+            let mlet, prev_mlet = 0;
+            let class_header = false;
+            let buf;
+            const mindx = num_gone(mvflags);
+
+            if (ngone > 1) {
+                if (c === 'a') { /* ask player to choose sort order */
+                    /* #genocided shares #vanquished's sort order */
+                    if (await set_vanq_order(false) < 0)
+                        return;
+                }
+                /* sort orderings count-high-to-low or count-low-to-high
+                   don't make sense for genocides; if the preferred order
+                   to set to either of those, use alphabetical instead;
+                   note: the tie breaker for by-class is level-high-to-low
+                   or level-low-to-high rather than count so is ok as-is */
+                save_sortmode = game.flags.vanq_sortmode;
+                if (game.flags.vanq_sortmode === VANQ_COUNT_H_L
+                    || game.flags.vanq_sortmode === VANQ_COUNT_L_H)
+                    game.flags.vanq_sortmode = VANQ_ALPHA_MIX;
+                mindx.sort(vanqsort_cmp); /* qsort() */
+                class_header = (game.flags.vanq_sortmode === VANQ_MCLS_LTOH
+                                || game.flags.vanq_sortmode === VANQ_MCLS_HTOL);
+                game.flags.vanq_sortmode = save_sortmode;
+            }
+
+            const klwin = tty_create_nhwindow(NHW_MENU);
+            buf = `${ngenocided ? "Genocided" : "Extinct"}${
+                (nextinct && ngenocided) ? " or extinct" : ""} species:`;
+            await tty_putstr(klwin, 0, buf);
+            if (!dumping)
+                await tty_putstr(klwin, 0, "");
+
+            for (let i = 0; i < ngone; ++i) {
+                const mndx = mindx[i];
+                mlet = M.mons[mndx].mlet;
+                if (class_header && mlet !== prev_mlet) {
+                    buf = def_monsyms_explain[mlet];
+                    /* 'ask' implies final disclosure, where highlighting
+                       of various header lines is suppressed */
+                    await tty_putstr(klwin, ask ? ATR_NONE
+                                     : (game.iflags?.menu_headings?.attr ?? ATR_INVERSE),
+                                     upstart(buf));
+                    prev_mlet = mlet;
+                }
+                buf = ` ${makeplural(M.mons[mndx].pmnames[NEUTRAL])}`;
+                /*
+                 * "Extinct" is unfortunate terminology.  A species
+                 * is marked extinct when its birth limit is reached,
+                 * but there might be members of the species still
+                 * alive, contradicting the meaning of the word.
+                 *
+                 * We only append "(extinct)" if the G_GENOD bit is
+                 * clear.  During normal play, 'mndx' won't be in the
+                 * collected list unless that bit is set.
+                 */
+                if ((game.mvitals[mndx].mvflags & (G_GENOD | G_EXTINCT)) === G_EXTINCT)
+                    buf += " (extinct)";
+                await tty_putstr(klwin, 0, buf);
+            }
+            if (!dumping)
+                await tty_putstr(klwin, 0, "");
+            if (ngenocided > 0) {
+                buf = `${ngenocided} species genocided.`;
+                await tty_putstr(klwin, 0, buf);
+            }
+            if (nextinct > 0) {
+                buf = `${nextinct} species extinct.`;
+                await tty_putstr(klwin, 0, buf);
+            }
+
+            await tty_display_nhwindow(klwin, true);
+            await tty_destroy_nhwindow(klwin);
+        }
     /* See the comment for similar code near the end of list_vanquished(). */
     } else if (!game.program_state?.gameover) {
         /* #genocided rather than final disclosure, so pline() is ok and

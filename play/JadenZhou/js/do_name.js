@@ -57,6 +57,19 @@ import { SPE_NOVEL } from './objects.js';
 import { HALLUC as HALLUC_DN, HALLUC_RES as HALLUC_RES_DN } from './const.js';
 import { mon_aligntyp } from './priest.js';
 
+import { getpos } from './getpos.js';
+import { m_at } from './makemon.js';
+import { sensemon, see_with_infrared, verbalize } from './display.js';
+import { cansee } from './vision.js';
+import { fuzzymatch, strstri, strcmpi } from './hacklib.js';
+import { is_rider } from './mondata.js';
+import { mhis, mhe } from './mhitu.js';
+import { helpless } from './monmove.js';
+import { u_at, isok, has_ebones, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
+import { PM_JUIBLEX, MS_ANIMAL } from './monsters.js';
+import { See_invisible, Deaf } from './youprop.js';
+import { beautiful } from './apply.js';
+
 const PL_PSIZ = 63; /* global.h */
 
 // C ref: do_name.c docallcmd() -- #call / #name command to give a name
@@ -114,7 +127,8 @@ export async function docallcmd() {
     case 'q':
         break;
     case 'm': /* name a visible monster */
-        throw new Error('docallcmd(): do_mgivenname() not ported yet');
+        await do_mgivenname();
+        break;
     case 'i': /* name an individual object in inventory */
         obj = await getobj("name", name_ok, GETOBJ_PROMPT);
         if (obj)
@@ -166,7 +180,7 @@ export function christen_monst(mtmp, name) {
     /* new_mgivenname(mtmp, lth): removes old name if one is present */
     mtmp.mgivenname = lth ? name : '';
     /* if 'mtmp' is leashed, persistent inventory window needs updating:
-       update_inventory() -- leashes aren't ported yet */
+       update_inventory() -- no perm_invent window */
     return mtmp;
 }
 
@@ -185,6 +199,136 @@ async function name_from_player(prompt, defres) {
     if (outbuf.length >= PL_PSIZ)
         outbuf = outbuf.slice(0, PL_PSIZ - 1);
     return outbuf;
+}
+
+// C ref: do_name.c alreadynamed() -- check whether user-supplied name
+// matches or nearly matches an unnameable monster's name, or is an attempt
+// to delete the monster's name; if so, give alternate reject message for
+// do_mgivenname()
+async function alreadynamed(mtmp, monnambuf, usrbuf) {
+    let p;
+
+    if (!usrbuf.length) { /* attempt to erase existing name */
+        const name_not_title = (has_mgivenname(mtmp)
+                                || type_is_pname(mtmp.data)
+                                || mtmp.isshk);
+        await pline(`${upstart(monnambuf)} would rather keep ${
+            is_rider(mtmp.data) ? "its" : mhis(mtmp)} existing ${
+            name_not_title ? "name" : "title"}.`);
+        return true;
+    } else if (fuzzymatch(usrbuf, monnambuf, " -_", true)
+               /* catch trying to name "the Oracle" as "Oracle" */
+               || (!strncmpi(monnambuf, "the ", 4)
+                   && fuzzymatch(usrbuf, monnambuf.slice(4), " -_", true))
+               /* catch trying to name "invisible Orcus" as "Orcus" */
+               || ((p = strstri(monnambuf, "invisible ")) >= 0
+                   && fuzzymatch(usrbuf, monnambuf.slice(p + 10), " -_", true))
+               /* catch trying to name "the priest of Crom" as "Crom" */
+               || ((p = strstri(monnambuf, " of ")) >= 0
+                   && fuzzymatch(usrbuf, monnambuf.slice(p + 4), " -_", true))) {
+        if (is_rider(mtmp.data)) {
+            /* avoid gendered pronoun for riders */
+            await pline(`${upstart(monnambuf)} is already called that.`);
+        } else {
+            await pline(`${upstart(mhe(mtmp))} is already called ${monnambuf}.`);
+        }
+        return true;
+    } else if (mtmp.data === mons[PM_JUIBLEX]
+               && strstri(monnambuf, "Juiblex") >= 0
+               && !strcmpi(usrbuf, "Jubilex")) {
+        await pline(`${upstart(monnambuf)} doesn't like being called ${usrbuf}.`);
+        return true;
+    }
+    return false;
+}
+
+// C ref: do_name.c do_mgivenname() -- allow player to assign a name to
+// some chosen monster
+async function do_mgivenname() {
+    const u = game.u;
+    let buf, monnambuf;
+    const cc = { x: 0, y: 0 };
+    let cx, cy;
+    let mtmp = null;
+    let do_swallow = false;
+
+    if (Hallucination()) {
+        await You("would never recognize it anyway.");
+        return;
+    }
+    cc.x = u.ux;
+    cc.y = u.uy;
+    if (await getpos(cc, false, "the monster you want to name") < 0
+        || !isok(cc.x, cc.y))
+        return;
+    cx = cc.x, cy = cc.y;
+
+    if (u_at(cx, cy)) {
+        if (u.usteed && canspotmon(u.usteed)) {
+            mtmp = u.usteed;
+        } else {
+            await pline(`This ${beautiful()} creature is called ${
+                game.plname} and cannot be renamed.`);
+            return;
+        }
+    } else
+        mtmp = m_at(cx, cy);
+
+    /* Allow you to name the monster that has swallowed you */
+    if (!mtmp && u.uswallow) {
+        /* glyph_is_swallow(glyph_at(cx, cy)): swallowed() draws the
+           swallow glyphs on the eight spots around the hero, and the
+           rest of the map is blank while engulfed */
+        if (Math.max(Math.abs(cx - u.ux), Math.abs(cy - u.uy)) === 1) {
+            mtmp = u.ustuck;
+            do_swallow = true;
+        }
+    }
+
+    if (!do_swallow && (!mtmp
+        || (!sensemon(mtmp)
+            && (!(cansee(cx, cy) || see_with_infrared(mtmp))
+                || mtmp.mundetected || mtmp.m_ap_type === M_AP_FURNITURE
+                || mtmp.m_ap_type === M_AP_OBJECT
+                || (mtmp.minvis && !See_invisible()))))) {
+
+        await pline("I see no monster there.");
+        return;
+    }
+    /* special case similar to the one in lookat() */
+    monnambuf = distant_monnam(mtmp, ARTICLE_THE);
+    const qbuf = `What do you want to call ${monnambuf}?`;
+    /* use getlin() to get a name string from the player */
+    if ((buf = await name_from_player(qbuf,
+                                      has_mgivenname(mtmp) ? mtmp.mgivenname
+                                                           : null)) === null)
+        return;
+
+    /* Unique monsters have their own specific names or titles.
+     * Shopkeepers, temple priests and other minions use alternate
+     * name formatting routines which ignore any user-supplied name.
+     *
+     * Don't say a new name is being rejected if it happens to match
+     * the existing name, or if the player is trying to remove the
+     * monster's existing name without assigning a new one.
+     */
+    if ((mtmp.data.geno & G_UNIQ) && !mtmp.ispriest) {
+        if (!await alreadynamed(mtmp, monnambuf, buf))
+            await pline(`${upstart(monnambuf)} doesn't like being called names!`);
+    } else if (mtmp.isshk
+               && !(Deaf() || helpless(mtmp)
+                    || mtmp.data.msound <= MS_ANIMAL)) {
+        if (!await alreadynamed(mtmp, monnambuf, buf)) {
+            /* SetVoice(mtmp, 0, 80, 0): no voice interface */
+            await verbalize(`I'm ${shkname(mtmp)}, not ${buf}.`);
+        }
+    } else if (mtmp.ispriest || mtmp.isminion || mtmp.isshk
+               || mtmp.data === mons[PM_GHOST] || has_ebones(mtmp)) {
+        if (!await alreadynamed(mtmp, monnambuf, buf))
+            await pline(`${upstart(monnambuf)} will not accept the name ${buf}.`);
+    } else {
+        christen_monst(mtmp, buf);
+    }
 }
 
 // C ref: do_name.c do_oname() -- name an individual object

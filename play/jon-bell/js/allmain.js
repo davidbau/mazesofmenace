@@ -927,10 +927,16 @@ export async function newgame() {
             } else if (part.length + standing.length + 3 < 80 - 8 && !part.startsWith('You die')) {
                 standing += '  ' + part;
             } else {
-                /* topl.c:232 more(): ESC sets WIN_STOP, so update_topl's skip
-                 * test (topl.c:257) swallows this pline and any that follow. */
+                /* This part's update_topl raised the page: it sampled `skip`
+                 * FALSE at entry (topl.c:257), so the ESC the page read at
+                 * topl.c:232-235 sets WIN_STOP only for the messages AFTER it. */
                 if (await topl_more_page(standing, g.u?.uac ?? 0) === 27) {
                     g._topl_win_stop = true;
+                    g._topl_win_stop_buf = part;
+                    g._topl_win_stop_owned = true;
+                    const h = (g._msg_history ||= []);
+                    if (h[h.length - 1] !== part)
+                        h.push(part);
                     standing = '';
                     break;
                 }
@@ -2082,6 +2088,7 @@ async function eat_occupation_turn() {
                 g._topl_win_stop_armed = false;
                 g._topl_win_stop = true;
                 g._topl_win_stop_buf = part;
+                g._topl_win_stop_owned = true;
                 _ownerAfterEsc = false;
             }
         }
@@ -2139,8 +2146,10 @@ async function eat_occupation_turn() {
          * command result, not banked into the post-meal carry.  With it
          * standing, _occ_committed_topl must not claim a line to re-page
          * either (prior.text was already filed by the pager's ESC arm). */
-        if (!_drawnOwner)
+        if (!_drawnOwner && !g._topl_win_stop)
             g._pending_message = '';
+        else if (g._topl_win_stop && thisTurnMsg)
+            g._occ_committed_topl = null;
         if (thisTurnMsg && /(?:^|  )You stop eating\b/.test(thisTurnMsg)) {
             g._occ_committed_topl = null;
             g._pending_message = thisTurnMsg;

@@ -378,7 +378,7 @@ import { W_ARM as W_ARM_TO, W_ARMC as W_ARMC_TO, W_ARMH as W_ARMH_TO, W_ARMS as 
 import { do_takeoff, off_msg, cursed_dw } from './do_wear.js';
 import { is_boots, is_gloves, doffing as doffing_cmd, donning as donning_cmd } from './do_wear.js';
 import { Yobjnam2, objName as _objName_full, thesimpleoname } from './objnam.js';
-import { dec_mode, see_monsters, see_objects, see_traps } from './display.js';
+import { dec_mode, generic_symset, see_monsters, see_objects, see_traps } from './display.js';
 import { Norep as _Norep } from './pline.js';
 import { PICK_NONE, PICK_ONE, PICK_ANY } from './const.js';
 import { TtyMenu, menu_heading_text, menu_heading_attr_text } from './tty_menu.js';
@@ -12956,12 +12956,16 @@ async function dispatch_command(command, outcome = {}, queued = false) {
             await pline("Don't even bother.");
             game.context = game.context || {};
             game.context.move = 0;   /* C ECMD_OK */
+            outcome.value = ECMD_OK;
         } else if (game.u && game.u.uarm && game.u.uarmu && game.u.uarmc
                    && game.u.uarmh && game.u.uarms && game.u.uarmg && game.u.uarmf
                    && game.u.uleft && game.u.uright && game.u.uamul && game.u.ublindf) {
             await You('are already wearing a full complement of armor.');
             game.context = game.context || {};
             game.context.move = 0;   /* C ECMD_OK */
+            /* C dowear() returns ECMD_OK here too (do_wear.c:2446); see the
+             * verysmall arm above for why the rhack ECMD_OK cleanup matters. */
+            outcome.value = ECMD_OK;
         } else {
             const otmp = await getWornObjFromGetobj('wear', false);
             outcome.value = _rhack_cmd_move(await dowear(otmp));
@@ -15577,7 +15581,18 @@ async function _do_look_lookat(x, y) {
                 kind: isRoomNothing ? 'nothing' : 'cmap-stone',
                 glyphChar: remap ? stoneCh : ' ',
                 glyphDec: false,
-                classText: remap ? remap.classText : 'can be many things',
+                /* The blank S_stone symbol is scanned like any other
+                 * (pager.c:1325-1509): ghost ' ', SYM_NOTHING and
+                 * SYM_UNEXPLORED (:1419-1442, looked: showsyms), S_stone and
+                 * S_air.  With the default symbols that is five and collapses;
+                 * a SYMBOLS=S_nothing remap leaves four, which C lists. */
+                classText: remap ? remap.classText : isRoomNothing ? 'can be many things'
+                    : collectScreenDescriptionClasses({
+                        ch: ' ', dec: false, showsyms: pager_showsyms(),
+                        terrainmode: game.iflags?.terrainmode, glyphKind: 'cmap',
+                        decMode: dec_mode(), rogueMode: Is_rogue_level(game.u?.uz),
+                        boulderSymbol: pager_boulder_symbol(), blind: _vision_Blind(),
+                    }).classes.join(' or '),
                 /* C ref: pager.c:779-783 lookat() case S_stone: a square whose
                  * seenv is 0 (never seen, e.g. magic-mapped/detected) reads
                  * "unexplored", not "stone". */
@@ -15908,7 +15923,10 @@ async function _do_look_lookat(x, y) {
         if (painted === -1 || _is_cmap_corr(painted)) {
         /* C pager.c:1267-1271,1472: the prefix and class scan use the
          * displayed glyph's active symbol, including loaded symbol sets. */
-        if (dglyph?.symbol != null && dglyph.cls === GLYPHCLS_CMAP) {
+        /* A loaded DEC-handling symset (symset:curses, S_corr \xe1) paints
+         * the corridor with the DEC flag and no remembered ttychar; its
+         * symbol is still showsyms[S_corr], so scan that too. */
+        if ((dglyph?.symbol != null || generic_symset()) && dglyph?.cls === GLYPHCLS_CMAP) {
             const classes = collectScreenDescriptionClasses({
                 ch: dglyph.ch, symbol: dglyph.symbol, dec: !!dglyph.dec, showsyms: pager_showsyms(),
                 terrainmode: g.iflags?.terrainmode, glyphKind: 'cmap',

@@ -19,7 +19,7 @@ import { def_oc_syms } from './drawing.js';
 import { body_part, hidden_gold, currency, empty_handed } from './insight.js';
 import { money_cnt } from './u_init.js';
 import { welded } from './wield.js';
-import { stairway_at, obj_to_glyph, db_under_typ as db_under_typ_iv } from './display.js';
+import { stairway_at, obj_to_glyph, menu_glyphinfo, db_under_typ as db_under_typ_iv } from './display.js';
 import { an, vtense } from './objnam.js';
 import { t_at, trapname } from './trap.js';
 import { visible_region_at, reg_damg } from './region.js';
@@ -100,6 +100,26 @@ import { LL_CONDUCT as LL_CONDUCT_IV } from './const.js';
 import { not_fully_identified as not_fully_identified_iv } from './objnam.js';
 import { query_objlist as query_objlist_iv } from './pickup.js';
 import { sortloot as sortloot_pk } from './pickup.js';
+/* ggetobj(), askchain() */
+import { allow_category as allow_category_gg,
+         add_valid_menu_class as add_valid_menu_class_gg,
+         menu_class_present as menu_class_present_gg,
+         count_justpicked as count_justpicked_gg, safe_qbuf as safe_qbuf_gg,
+         container_gone as container_gone_gg } from './pickup.js';
+import { bypass_obj as bypass_obj_gg, bypass_objlist as bypass_objlist_gg,
+         clear_bypasses as clear_bypasses_gg } from './worn.js';
+import { def_char_to_objclass as def_char_to_objclass_gg } from './drawing.js';
+import { tty_getlin as tty_getlin_gg,
+         tty_yn_function as tty_yn_function_gg } from './wintty.js';
+import { unsplitobj as unsplitobj_gg } from './mkobj.js';
+import { highc as highc_gg } from './hacklib.js';
+import { ARMOR_CLASS as ARMOR_CLASS_GG, WEAPON_CLASS as WEAPON_CLASS_GG,
+         RING_CLASS as RING_CLASS_GG, AMULET_CLASS as AMULET_CLASS_GG,
+         TOOL_CLASS as TOOL_CLASS_GG, COIN_CLASS as COIN_CLASS_GG,
+         MAXOCLASSES as MAXOCLASSES_GG } from './objects.js';
+import { SORTLOOT_INVLET as SORTLOOT_INVLET_GG, ALL_FINISHED as ALL_FINISHED_GG,
+         BUC_BLESSED as BUC_BLESSED_GG, BUC_UNCURSED as BUC_UNCURSED_GG,
+         BUC_CURSED as BUC_CURSED_GG, BUC_UNKNOWN as BUC_UNKNOWN_GG } from './const.js';
 import { SORTLOOT_INUSE } from './const.js';
 import { little_to_big, touch_petrifies } from './mondata.js';
 import { MV_KNOWS_EGG, SIGNAL_NOMENU, SIGNAL_ESCAPE, USE_INVLET,
@@ -211,8 +231,10 @@ export function reorder_invent() {
 
 // C ref: invent.c obj_to_let()
 function obj_to_let(obj) {
-    if (!invlet_constant())
-        throw new Error('obj_to_let(): reassign() for !fixinv is not ported yet');
+    if (!invlet_constant()) {
+        obj.invlet = NOINVSYM;
+        reassign();
+    }
     return obj.invlet;
 }
 
@@ -396,8 +418,9 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
         await pline("Not carrying anything.");
         return '\0';
     }
+    /* oxymoron? temporarily assign permanent inventory letters */
     if (!invlet_constant())
-        throw new Error('display_pickinv(): reassign() is not ported yet');
+        reassign();
 
     if (n === 1 && !game.iflags?.force_invmenu && !game.iflags?.menu_requested) {
         /* when only one item of interest, use pline instead of menus;
@@ -533,9 +556,8 @@ async function display_pickinv(lets, /* non-compacted list of invlet values */
                 } else {
                     /* normal inventory item */
                     const tmpglyph = obj_to_glyph(otmp, rn2_on_display_rng);
-                    /* map_glyphinfo(): tty menus don't show the glyph */
-                    void tmpglyph;
-                    tty_add_menu(win, null, wizid ? otmp : ilet, ilet,
+                    tty_add_menu(win, menu_glyphinfo(tmpglyph),
+                                 wizid ? otmp : ilet, ilet,
                                  wizid ? def_oc_syms[otmp.oclass] : '',
                                  ATR_NONE, clr, doname(otmp), MENU_ITEMFLAGS_NONE);
                 }
@@ -1290,7 +1312,7 @@ export async function getobj(word, /* usually a direct verb such as "drop" */
     const bpstart = buf.length; /* bp = buf + bpstart */
 
     if (!invlet_constant())
-        throw new Error('getobj(): reassign() is not ported yet');
+        reassign();
 
     /* force invent to be in invlet order before collecting candidate
        inventory letters */
@@ -1967,9 +1989,9 @@ export async function ddoinv() {
 export function tally_BUCX(list, by_nexthere) {
     const t = { bcnt: 0, ucnt: 0, ccnt: 0, xcnt: 0, ocnt: 0, jcnt: 0 };
 
-    if (by_nexthere)
+    if (by_nexthere && !Array.isArray(list))
         throw new Error('tally_BUCX(): a floor pile (by_nexthere) not ported yet');
-    for (const o of objchain_items(list)) {
+    for (const o of objchain_items(list)) { /* a JS floor pile is an array */
         /* priests always know bless/curse state */
         if (game.urole.mnum === M.PM_CLERIC)
             o.bknown = (o.oclass !== O.COIN_CLASS) ? 1 : 0;
@@ -2793,11 +2815,383 @@ export async function identify_pack(id_limit,
         /* identify up to `id_limit' items */
         n = 0;
         if ((game.flags.menu_style ?? MENU_FULL_IV) === MENU_TRADITIONAL_IV)
-            throw new Error('identify_pack(): ggetobj() (menustyle:traditional) not ported yet');
+            do {
+                n = await ggetobj("identify", identify, id_limit, false, null);
+                if (n < 0)
+                    break; /* quit or no eligible items */
+            } while ((id_limit -= n) > 0);
         if (n === 0 || n < -1)
             await menu_identify(id_limit);
     }
     /* update_inventory(): no perm_invent */
+}
+
+// C ref: invent.c taking_off()
+function taking_off(action) {
+    return action === "take off" || action === "remove";
+}
+
+// C ref: invent.c ckvalidcat()
+function ckvalidcat(otmp) {
+    /* use allow_category() from pickup.c */
+    return allow_category_gg(otmp) ? 1 : 0;
+}
+
+// C ref: invent.c ckunpaid()
+function ckunpaid(otmp) {
+    return (otmp.unpaid || (otmp.cobj && count_unpaid(otmp.cobj))) ? 1 : 0;
+}
+
+// C ref: pickup.c collect_obj_classes() -- the object class symbols of the
+// chain; returns { ilets, itemcount }.  JS floor piles (here) and
+// container contents are arrays, invent an nobj chain.
+export function collect_obj_classes(otmp, here, filter) {
+    let ilets = '';
+    let itemcount = 0;
+
+    void here; /* objchain_items() walks either form */
+    for (const o of objchain_items(otmp)) {
+        const c = def_oc_syms[o.oclass];
+        if (!ilets.includes(c) && (!filter || filter(o)))
+            ilets += c;
+        itemcount += 1;
+    }
+    return { ilets, itemcount };
+}
+
+// C ref: worn.c nxt_unbypassed_loot() -- like nxt_unbypassed_obj() but
+// walks a sortloot() array, skipping entries no longer on listhead's chain
+function nxt_unbypassed_loot(lootarray, listhead) {
+    const list = objchain_items(listhead);
+    for (const la of lootarray) {
+        const obj = la.obj;
+        const o = list.includes(obj) ? obj : null;
+        if (o && !obj.bypass) {
+            bypass_obj_gg(obj);
+            return obj;
+        }
+    }
+    return null;
+}
+
+/* C ref: invent.c removeables[] */
+const removeables_gg = [ARMOR_CLASS_GG, WEAPON_CLASS_GG, RING_CLASS_GG,
+                        AMULET_CLASS_GG, TOOL_CLASS_GG];
+
+// C ref: invent.c ggetobj() -- Interactive version of getobj - used for
+// Drop, Identify, and Takeoff (A).  Return the number of times fn was
+// called successfully.  If combo is TRUE, we just use this to get a
+// category list.  resultflags, if given, is an object whose 'flags'
+// field receives the result flags.
+export async function ggetobj(word, fn, mx, combo, resultflags) {
+    const g = game;
+    let ckfn = null;
+    let ofilter = null;
+    let takeoff, ident, allflag, m_seen;
+    let oletct, iletct, unpaid, oc_of_sym;
+    let olets, ilets;
+    let extra_removeables;
+    let buf = '';
+
+    if (!g.invent) {
+        await You(`have nothing to ${word}.`);
+        if (resultflags)
+            resultflags.flags = ALL_FINISHED_GG;
+        return 0;
+    }
+    if (resultflags)
+        resultflags.flags = 0;
+    takeoff = ident = allflag = m_seen = false;
+    add_valid_menu_class_gg(0); /* reset */
+    if (taking_off(word)) {
+        takeoff = true;
+        ofilter = is_worn;
+    } else if (word === "identify") {
+        ident = true;
+        ofilter = not_fully_identified_iv;
+    }
+
+    ilets = collect_obj_classes(g.invent, false, ofilter).ilets;
+    iletct = ilets.length;
+    unpaid = count_unpaid(g.invent);
+
+    if (ident && !iletct) {
+        return -1; /* no further identifications */
+    } else if (g.invent) {
+        ilets += ' ';
+        if (unpaid)
+            ilets += 'u';
+        if (count_buc(g.invent, BUC_BLESSED_GG, ofilter))
+            ilets += 'B';
+        if (count_buc(g.invent, BUC_UNCURSED_GG, ofilter))
+            ilets += 'U';
+        if (count_buc(g.invent, BUC_CURSED_GG, ofilter))
+            ilets += 'C';
+        if (count_buc(g.invent, BUC_UNKNOWN_GG, ofilter))
+            ilets += 'X';
+        if (count_justpicked_gg(g.invent))
+            ilets += 'P';
+        ilets += 'a';
+    }
+    ilets += 'i';
+    if (!combo)
+        ilets += 'm'; /* allow menu presentation on request */
+
+    for (;;) {
+        const qbuf = `What kinds of thing do you want to ${word}? [${ilets}]`;
+        buf = await tty_getlin_gg(qbuf);
+        if (buf[0] === '\x1b')
+            return 0;
+        if (buf.includes('i')) {
+            /* applicable inventory letters; if empty, show entire invent */
+            let ailets = '';
+            if (ofilter)
+                for (let otmp = g.invent, nextobj; otmp; otmp = nextobj) {
+                    nextobj = otmp.nobj;
+                    /* strchr() check: limit overflow items to one '#' */
+                    if (ofilter(otmp) && !ailets.includes(otmp.invlet))
+                        ailets += otmp.invlet;
+                }
+            if (await display_inventory(ailets, true) === '\x1b')
+                return 0;
+        } else
+            break;
+    }
+
+    extra_removeables = [];
+    if (takeoff) {
+        /* arbitrary types of items can be placed in the weapon slots
+           [any duplicate entries in extra_removeables[] won't matter] */
+        if (g.uwep)
+            extra_removeables.push(g.uwep.oclass);
+        if (g.uswapwep)
+            extra_removeables.push(g.uswapwep.oclass);
+        if (g.uquiver)
+            extra_removeables.push(g.uquiver.oclass);
+    }
+
+    olets = [];
+    oletct = 0;
+    for (const sym of buf) {
+        if (sym === ' ')
+            continue;
+        oc_of_sym = def_char_to_objclass_gg(sym);
+        if (takeoff && oc_of_sym !== MAXOCLASSES_GG) {
+            if (extra_removeables.includes(oc_of_sym)) {
+                ; /* skip rest of takeoff checks */
+            } else if (!removeables_gg.includes(oc_of_sym)) {
+                await pline("Not applicable.");
+                return 0;
+            } else if (oc_of_sym === ARMOR_CLASS_GG && !wearing_armor()) {
+                await noarmor(false);
+                return 0;
+            } else if (oc_of_sym === WEAPON_CLASS_GG && !g.uwep && !g.uswapwep
+                       && !g.uquiver) {
+                await You("are not wielding anything.");
+                return 0;
+            } else if (oc_of_sym === RING_CLASS_GG && !g.uright && !g.uleft) {
+                await You("are not wearing rings.");
+                return 0;
+            } else if (oc_of_sym === AMULET_CLASS_GG && !g.uamul) {
+                await You("are not wearing an amulet.");
+                return 0;
+            } else if (oc_of_sym === TOOL_CLASS_GG && !g.ublindf) {
+                await You("are not wearing a blindfold.");
+                return 0;
+            }
+        }
+
+        if (sym === 'a') {
+            allflag = true;
+        } else if (sym === 'A') {
+            ; /* same as the default */
+        } else if (sym === 'u') {
+            add_valid_menu_class_gg(sym.charCodeAt(0));
+            ckfn = ckunpaid;
+        } else if ("BUCXP".includes(sym)) {
+            add_valid_menu_class_gg(sym.charCodeAt(0)); /* 'B','U','C','X', or 'P' */
+            ckfn = ckvalidcat;
+        } else if (sym === 'm') {
+            m_seen = true;
+        } else if (oc_of_sym === MAXOCLASSES_GG) {
+            await You(`don't have any ${sym}'s.`);
+        } else {
+            if (!olets.includes(oc_of_sym)) {
+                add_valid_menu_class_gg(oc_of_sym);
+                olets[oletct++] = oc_of_sym;
+            }
+        }
+    }
+
+    if (m_seen) {
+        return (allflag
+                || (!oletct && ckfn !== ckunpaid && ckfn !== ckvalidcat))
+               ? -2 : -3;
+    } else if ((g.flags.menu_style ?? MENU_FULL_IV) !== MENU_TRADITIONAL_IV
+               && combo && !allflag) {
+        return 0;
+    } else {
+        const cnt = await askchain(() => game.invent, olets, allflag, fn, ckfn,
+                                   mx, word);
+        /*
+         * askchain() has already finished the job in this case
+         * so set a special flag to convey that back to the caller
+         * so that it won't continue processing.
+         * Fix for bug C331-1 reported by Irina Rempt-Drijfhout.
+         */
+        if (combo && allflag && resultflags)
+            resultflags.flags |= ALL_FINISHED_GG;
+        return cnt;
+    }
+}
+
+// C ref: invent.c askchain() -- Walk through the chain starting at objchn
+// and ask for all objects with olet in olets (if nonNULL) and satisfying
+// ckfn (if nonnull) whether the action in question (i.e., fn) has to be
+// performed.  objchn is a function returning the chain's current head
+// (C passes struct obj **, since *objchn might change); olets is an array
+// of object classes.
+export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
+    let otmp, otmpo;
+    let sym, ilet;
+    let cnt = 0, dud = 0, tmp;
+    let first;
+    let oi = 0; /* index into olets */
+
+    const takeoff = taking_off(word);
+    const ident = (word === "identify");
+    const take_out = (word === "take out");
+    const put_in = (word === "put in");
+    const nodot = (word === "nodot" || word === "drop" || ident
+                   || takeoff || take_out || put_in);
+    const ininv = (objchn() === game.invent);
+    const bycat = (menu_class_present_gg('u'.charCodeAt(0))
+                   || menu_class_present_gg('B'.charCodeAt(0))
+                   || menu_class_present_gg('U'.charCodeAt(0))
+                   || menu_class_present_gg('C'.charCodeAt(0))
+                   || menu_class_present_gg('X'.charCodeAt(0))
+                   || menu_class_present_gg('P'.charCodeAt(0)));
+
+    /* someday maybe we'll sort by 'olets' too (temporarily replace
+       flags.packorder and pass SORTLOOT_PACK), but not yet... */
+    const sortedchn = sortloot_pk(objchain_items(objchn()).slice(),
+                                  SORTLOOT_INVLET_GG, false, null);
+
+    first = true;
+    ret: {
+        /*
+         * Interrogate in the object class order specified.
+         * For example, if a person specifies =/ then first all rings
+         * will be asked about followed by all wands.  -dgk
+         */
+        for (;;) { /* nextclass: */
+            ilet = 'a'.charCodeAt(0) - 1;
+            if (objchain_items(objchn())[0]?.oclass === COIN_CLASS_GG)
+                ilet--; /* extra iteration */
+            /*
+             * Multiple Drop can change the gi.invent chain while it operates
+             * (dropping a burning potion of oil while levitating creates
+             * an explosion which can destroy inventory items), so simple
+             * list traversal is inadequate here.  Use each object's bypass
+             * bit to keep track of which list elements have already been
+             * processed.
+             */
+            bypass_objlist_gg(objchn(), false); /* clear chain's bypass bits */
+            while ((otmp = nxt_unbypassed_loot(sortedchn, objchn())) !== null) {
+                if (ilet === 'z'.charCodeAt(0))
+                    ilet = 'A'.charCodeAt(0);
+                else if (ilet === 'Z'.charCodeAt(0))
+                    ilet = NOINVSYM.charCodeAt(0); /* '#' */
+                else
+                    ilet++;
+                if (olets && oi < olets.length && otmp.oclass !== olets[oi])
+                    continue;
+                if (takeoff && !is_worn(otmp))
+                    continue;
+                if (ident && !not_fully_identified_iv(otmp))
+                    continue;
+                if (ckfn && !ckfn(otmp))
+                    continue;
+                if (bycat && !ckvalidcat(otmp))
+                    continue;
+                if (!allflag) {
+                    const let_ = String.fromCharCode(ilet);
+                    let qpfx = '';
+                    if (first) {
+                        /* traditional_loot() skips prompting when only one
+                           class of objects is involved, so prefix the first
+                           object being queried here with an explanation why */
+                        if (take_out || put_in)
+                            qpfx = `${highc_gg(word[0])}${word.slice(1)}: `;
+                        first = false;
+                    }
+                    /* safeq_xprname() for inventory, else doname() */
+                    const qbuf = safe_qbuf_gg(qpfx, "?", otmp,
+                                              ininv ? (o) => xprname(o, null, let_, !nodot, 0, 0)
+                                                    : doname,
+                                              "item");
+                    /* nyaq(qbuf) or nyNaq(qbuf), bypassing canned input
+                       for ^A */
+                    sym = await tty_yn_function_gg(qbuf,
+                                                   (takeoff || ident || otmp.quan < 2)
+                                                       ? "ynaq" : "yn#aq",
+                                                   'n');
+                } else
+                    sym = 'y';
+
+                otmpo = otmp;
+                if (sym === '#')
+                    throw new Error('askchain(): a count (yn_number) not ported yet');
+                switch (sym) {
+                case 'a':
+                    allflag = 1;
+                    /*FALLTHRU*/
+                case 'y':
+                    tmp = await fn(otmp);
+                    if (tmp <= 0) {
+                        if (container_gone_gg(fn)) {
+                            /* otmp caused magic bag to explode;
+                               both are now gone */
+                            otmp = null; /* and return */
+                        } else if (otmp && otmp !== otmpo) {
+                            /* split occurred, merge again */
+                            unsplitobj_gg(otmp);
+                        }
+                        if (tmp < 0)
+                            break ret;
+                    }
+                    cnt += tmp;
+                    if (--mx === 0)
+                        break ret;
+                    /*FALLTHRU*/
+                case 'n':
+                    if (nodot)
+                        dud++;
+                    /*FALLTHRU*/
+                default:
+                    break;
+                case 'q':
+                    /* special case for seffects() */
+                    if (ident)
+                        cnt = -1;
+                    break ret;
+                }
+            }
+            if (olets && oi < olets.length && ++oi < olets.length)
+                continue; /* goto nextclass */
+            break;
+        }
+
+        if (!takeoff && (dud || cnt))
+            await pline("That was all.");
+        else if (!dud && !cnt)
+            await pline("No applicable objects.");
+    }
+    /* ret: unsortloot(&sortedchn); */
+    /* can't just clear bypass bit of items in objchn because the action
+       applied to selected ones might move them to a different chain */
+    clear_bypasses_gg();
+    return cnt;
 }
 
 /* C ref: wintty.c tty_wait_synch() -- the map window is up and no raw
@@ -2837,6 +3231,40 @@ function extract_nobj_invent(obj) {
         throw new Error('extract_nobj: object lost'); /* panic() */
     obj.where = 'OBJ_FREE';
     obj.nobj = null;
+}
+
+// C ref: invent.c reassign()
+/* give consecutive letters to every item in inventory (for !fixinv mode);
+   gold is always forced to '$' slot at head of list */
+export function reassign() {
+    let i;
+    let obj, prevobj, goldobj;
+
+    /* first, remove [first instance of] gold from invent, if present */
+    prevobj = goldobj = null;
+    for (obj = game.invent; obj; prevobj = obj, obj = obj.nobj)
+        if (obj.oclass === O.COIN_CLASS) {
+            goldobj = obj;
+            if (prevobj)
+                prevobj.nobj = goldobj.nobj;
+            else
+                game.invent = goldobj.nobj;
+            break;
+        }
+    /* second, re-letter the rest of the list */
+    for (obj = game.invent, i = 0; obj; obj = obj.nobj, i++)
+        obj.invlet = (i < 26) ? String.fromCharCode(0x61 + i) /* 'a' + i */
+                     : (i < 52) ? String.fromCharCode(0x41 + i - 26) /* 'A' + i - 26 */
+                       : NOINVSYM;
+    /* third, assign gold the "letter" '$' and re-insert it at head */
+    if (goldobj) {
+        goldobj.invlet = GOLD_SYM;
+        goldobj.nobj = game.invent;
+        game.invent = goldobj;
+    }
+    if (i >= 52)
+        i = 52 - 1;
+    game.lastinvnr = i;
 }
 
 // C ref: invent.c check_invent_gold()
@@ -2893,7 +3321,7 @@ export async function doorganize() {
     }
 
     if (!invlet_constant())
-        throw new Error('doorganize(): reassign() not ported yet');
+        reassign();
 
     /* filter passed to getobj() depends upon gold sanity */
     const adjust_filter = check_invent_gold("adjust") ? adjust_gold_ok

@@ -13,6 +13,7 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { early_init, newgame, moveloop_preamble, moveloop_core, maybe_do_tutorial } from './allmain.js';
+import { optfn_boulder_set, optfn_fruit_initial } from './options.js';
 import { parseNethackrc, set_playmode, parsebindings,
          initoptions_init_defaults, fruitadd } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd.js';
@@ -139,7 +140,10 @@ export class NethackGame {
                     pickup_thrown: true, ...opts.flags };
         g.iflags = { ...dflt.iflags, ...opts.iflags };
         g.a11y = { ...dflt.a11y, ...opts.a11y };
-        if (opts.horsename) g.horsename = opts.horsename;
+        /* petname_optfn(): gc.catname, gd.dogname, gh.horsename */
+        if (opts.horsename !== undefined) g.horsename = opts.horsename;
+        if (opts.catname !== undefined) g.catname = opts.catname;
+        if (opts.dogname !== undefined) g.dogname = opts.dogname;
         g.pl_character = opts.pl_character || '';
         /* the fixed clock calendar.c getlt() reads */
         g.datetime = this._datetime;
@@ -170,6 +174,10 @@ export class NethackGame {
            shows a glyph) */
         init_ov_primary_symbols();
         for (const s of opts.symbols || []) {
+            if (typeof s === 'object') { /* OPTIONS=boulder:c */
+                optfn_boulder_set(s.boulder);
+                continue;
+            }
             if (!parsesymbols(s, PRIMARYSET))
                 throw new Error("cnf_line_SYMBOLS(): config_error_add(\"Error in SYMBOLS definition '%s'\") not ported yet");
         }
@@ -196,6 +204,9 @@ export class NethackGame {
         objects[SLIME_MOLD].oc_name_idx = SLIME_MOLD;
         g.pl_fruit = OBJ_NAME(objects[SLIME_MOLD]);
         g.ffruit = null;
+        /* the config file's fruit option (optfn_fruit() with opt_initial) */
+        if (opts.fruit)
+            optfn_fruit_initial(opts.fruit.negated, opts.fruit.opts);
         fruitadd(g.pl_fruit, null);
         g.moves = 0; /* C: svm.moves stays 0 until u_init_role() sets it to 1 */
 

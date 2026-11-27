@@ -184,10 +184,59 @@ async function getspell() {
     if (game.cmdq?.length)
         throw new Error('getspell(): a queued command (cmdq_pop()) is not ported yet');
 
-    if (game.flags?.menu_style === MENU_TRADITIONAL)
-        throw new Error('getspell(): menu_style:traditional is not ported yet');
+    if (game.flags?.menu_style === MENU_TRADITIONAL) {
+        let lets;
+        /* if we get here, we know there is at least 1 known spell */
+        if (nspells === 1)
+            lets = "a";
+        else if (nspells < 27)
+            lets = `a-${String.fromCharCode(0x61 + nspells - 1)}`;
+        else if (nspells === 27)
+            lets = "a-zA";
+        /* this assumes that there are at most 52 spells... */
+        else
+            lets = `a-zA-${String.fromCharCode(0x41 + nspells - 27)}`;
+
+        const qbuf = `Cast which spell? [${lets} *?]`;
+        for (let retry_limit = 0; ; ++retry_limit) {
+            if (retry_limit === 10) {
+                /* limit is mainly to prevent the fuzzer from getting stuck
+                   since hangup should hit the 'quitchars' case; fuzzer
+                   would too, but after an arbitrary number of attempts */
+                await pline("That's enough tries.");
+                return -1;
+            }
+            const ilet = await tty_yn_function(qbuf, null, '\0');
+            if (ilet === '*' || ilet === '?')
+                break; /* use menu mode */
+            if (" \r\n\x1b".includes(ilet)) { /* quitchars */
+                await pline("Never mind.");
+                return -1;
+            }
+
+            const idx = spell_let_to_idx(ilet);
+            if (idx < 0 || idx >= nspells) {
+                await You("don't know that spell.");
+                continue; /* ask again */
+            }
+            return idx;
+        }
+    }
     const r = await dospellmenu("Choose which spell to cast", SPELLMENU_CAST);
     return r.ok ? r.spell_no : -1;
+}
+
+// C ref: spell.c spell_let_to_idx()
+function spell_let_to_idx(ilet) {
+    let indx;
+
+    indx = ilet.charCodeAt(0) - 0x61; /* 'a' */
+    if (indx >= 0 && indx < 26)
+        return indx;
+    indx = ilet.charCodeAt(0) - 0x41; /* 'A' */
+    if (indx >= 0 && indx < 26)
+        return indx + 26;
+    return -1;
 }
 
 // C ref: spell.c docast() -- the #cast command -- cast a spell

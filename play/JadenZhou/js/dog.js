@@ -83,6 +83,7 @@ import { deliver_obj_to_mon } from './dokick.js';
 import { haseyes as haseyes_wd } from './mondata.js';
 import { body_part as body_part_wd } from './insight.js';
 import { EYE as EYE_WD } from './const.js';
+import { pline_mon } from './display.js';
 
 const DF_ALL = 0x04; /* hack.h */
 
@@ -359,9 +360,8 @@ function keep_mon_accessible(mon) {
 }
 
 // C ref: dog.c keepdogs()
-// Followers that come along are moved from fmon to game.mydogs.
-// Leashed pets, migrate_to_level() for keep_mon_accessible() monsters and
-// the steed are not ported yet.
+// Followers that come along are moved from fmon to game.mydogs (a leashed
+// pet keeps its leash).  The steed is not ported yet.
 export async function keepdogs(pets_only) /* true for ascension or final escape */ {
     const g = game;
     const u = g.u;
@@ -405,7 +405,7 @@ export async function keepdogs(pets_only) /* true for ascension or final escape 
                 throw new Error('keepdogs(): steed accompanying hero not ported yet');
             } else if (mtmp.meating || mtmp.mtrapped) {
                 if (canseemon(mtmp))
-                    await pline(`${Monnam(mtmp)} is still ${
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is still ${
                         mtmp.meating ? "eating" : "trapped"}.`);
                 stay_behind = true;
             } else if (mon_has_amulet(mtmp)) {
@@ -426,8 +426,6 @@ export async function keepdogs(pets_only) /* true for ascension or final escape 
             }
 
             /* prepare to take mtmp off the map */
-            if (mtmp.mleashed)
-                throw new Error('keepdogs(): leashed pet following not ported yet');
             const num_segs = mon_leave(mtmp);
             /* take off map and move mtmp from fmon list to mydogs */
             relmon(mtmp, 'mydogs'); /* mtmp->mx,my retain current value */
@@ -944,7 +942,7 @@ export async function tamedog(
                 const big_corpse =
                     (obj.otyp === CORPSE && ismnum(obj.corpsenm)
                      && mons[obj.corpsenm].msize > mtmp.data.msize);
-                await pline(`${Monnam(mtmp)} catches ${the(xname(obj))}${
+                await pline_mon(mtmp, `${Monnam(mtmp)} catches ${the(xname(obj))}${
                             !big_corpse ? "." : ", or vice versa!"}`);
             } else if (cansee(mtmp.mx, mtmp.my))
                 await pline(`${Tobjnam(obj, "stop")}.`);
@@ -1010,7 +1008,7 @@ export async function tamedog(
     }
 
     if (givemsg && canspotmon(mtmp))
-        await pline(`${Monnam(mtmp)} seems quite ${Hallucination() ? "approachable"
+        await pline_mon(mtmp, `${Monnam(mtmp)} seems quite ${Hallucination() ? "approachable"
                                                                    : "friendly"}.`);
 
     newsym(mtmp.mx, mtmp.my);
@@ -1057,11 +1055,11 @@ export async function wary_dog(mtmp, was_dead) {
         if (!quietly && cansee(mtmp.mx, mtmp.my)) {
             if (haseyes_wd(game.youmonst.data)) {
                 if (haseyes_wd(mtmp.data))
-                    await pline(`${Monnam(mtmp)} ${mtmp.mpeaceful ? "seems unable"
+                    await pline_mon(mtmp, `${Monnam(mtmp)} ${mtmp.mpeaceful ? "seems unable"
                                                                   : "refuses"} to look you in the ${
-                                    body_part_wd(EYE_WD)}.`); /* pline_mon() */
+                                    body_part_wd(EYE_WD)}.`);
                 else
-                    await pline(`${Monnam(mtmp)} avoids your gaze.`); /* pline_mon() */
+                    await pline_mon(mtmp, `${Monnam(mtmp)} avoids your gaze.`);
             }
         }
     } else {
@@ -1073,8 +1071,8 @@ export async function wary_dog(mtmp, was_dead) {
 
     if (!mtmp.mtame) {
         if (!quietly && canspotmon(mtmp))
-            await pline(`${Monnam(mtmp)} ${mtmp.mpeaceful ? "is no longer tame"
-                                                          : "has become feral"}.`); /* pline_mon() */
+            await pline_mon(mtmp, `${Monnam(mtmp)} ${mtmp.mpeaceful ? "is no longer tame"
+                                                          : "has become feral"}.`);
         newsym(mtmp.mx, mtmp.my);
         /* a life-saved monster might be leashed;
            don't leave it that way if it's no longer tame */

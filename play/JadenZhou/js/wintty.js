@@ -13,7 +13,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { NO_COLOR, ATR_NONE, ATR_INVERSE, ATR_BOLD } from './terminal.js';
+import { NO_COLOR, CLR_GRAY, ATR_NONE, ATR_INVERSE, ATR_BOLD } from './terminal.js';
 import {
     NHW_MESSAGE, NHW_STATUS, NHW_MAP, NHW_MENU, NHW_TEXT, NHW_BASE, WIN_ERR,
     PICK_NONE, PICK_ONE, PICK_ANY, MENU_ITEMFLAGS_SELECTED,
@@ -27,7 +27,7 @@ import { genl_player_setup } from './role.js';
 import { lowc, tabexpand, pmatchi } from './hacklib.js';
 import { help_files } from './help_files.js';
 import { row_refresh, bot, flush_screen, pline, docrt, dec_cell_char,
-         decode_mixed } from './display.js';
+         decode_mixed, a11y_msg_prefix } from './display.js';
 import { vision_recalc } from './vision.js';
 import { extcmds_match, readchar as core_readchar, key2txt } from './cmd.js';
 import { extcmdlist, ECM_NOFLAGS, ECM_IGNOREAC, ECM_EXACTMATCH } from './func_tab.js';
@@ -72,12 +72,18 @@ function cmov(x, y) {
 // shadow (here: the Terminal grid) in step with what putchar() shows
 function xputc(ch) {
     const t = tty();
-    term()?.setCell(t.curx, t.cury, ch, NO_COLOR, t.attrs);
+    term()?.setCell(t.curx, t.cury, ch, t.color ?? NO_COLOR, t.attrs);
 }
 
 // C ref: termcap.c term_start_attr(), term_end_attr()
 function term_start_attr(attr) { tty().attrs = (attr === ATR_INVERSE) ? ATR_INVERSE : ATR_NONE; }
 function term_end_attr(/*attr*/) { tty().attrs = ATR_NONE; }
+// C ref: termcap.c term_start_color(), term_end_color()
+/* hilites[CLR_GRAY] and hilites[NO_COLOR] are the empty string */
+function term_start_color(color) {
+    tty().color = (color === CLR_GRAY) ? NO_COLOR : color;
+}
+function term_end_color() { tty().color = NO_COLOR; }
 
 // C ref: termcap.c cl_end() -- clear to end of line
 function cl_end() {
@@ -579,8 +585,8 @@ export function tty_putstr(window, attr, str) {
 }
 
 // C ref: wintty.c tty_putstr() -- the NHW_MENU and NHW_TEXT case, for a
-// synchronous caller (e.g. insight.c enlght_out()); the paths that would
-// have to await (a full NHW_TEXT page, breaking an over-long line) stop
+// synchronous caller (e.g. insight.c enlght_out()); the path that would
+// have to await (a full NHW_TEXT page) stops
 export function tty_putstr_sync(window, attr, str) {
     const cw = wins()[window];
     const t = tty();
@@ -593,8 +599,6 @@ export function tty_putstr_sync(window, attr, str) {
     str = compress_str(str);
     if (cw.type === NHW_TEXT && (cw.cury + cw.offy) === t.rows - 1)
         throw new Error('tty_putstr(): full text page from a synchronous caller not ported yet');
-    if (str.length + 1 > t.cols)
-        throw new Error('tty_putstr(): line breaking from a synchronous caller not ported yet');
     /* always grows one at a time, but alloc 12 at a time */
     if (!cw.data)
         cw.data = [];
@@ -611,6 +615,18 @@ export function tty_putstr_sync(window, attr, str) {
         cw.maxcol = n0;
     if (++cw.cury > cw.maxrow)
         cw.maxrow = cw.cury;
+    if (n0 > t.cols) { /* CO */
+        /* attempt to break the line */
+        for (i = t.cols - 1; i && str[i] !== ' ' && str[i] !== '\n';)
+            i--;
+        if (i) {
+            /* cw->data[cw->cury - 1][++i] = '\0': the stored copy is
+               offset by the attribute byte, so it ends before str[i-1] */
+            ++i;
+            cw.data[cw.cury - 1].str = str.slice(0, i - 1);
+            tty_putstr_sync(window, attr, str.slice(i));
+        }
+    }
 }
 
 // C ref: wintty.c tty_putstr() -- the NHW_MENU and NHW_TEXT case
@@ -732,8 +748,6 @@ export async function tty_putmixed(window, attr, str) {
         throw new Error('tty_putmixed(): tty_raw_print() of a mixed string not ported yet');
     tty().mixed = 1;
     const buf = decode_mixed(str);
-    if (cw.type !== NHW_MESSAGE && /[\x80-\xff]/.test(buf))
-        throw new Error('tty_putmixed(): graphics symbol in a text window not ported yet');
     try {
         /* now send it to the normal tty_putstr */
         await tty_putstr(window, attr, buf);
@@ -1334,6 +1348,10 @@ async function hooked_tty_getlin(query, hook) {
 // the message window; putmesg() passes ATR_NOHISTORY for SUPPRESS_HISTORY
 // (the tty has WC2_SUPPRESS_HIST)
 export async function custompline(line, no_curs_on_u = false) {
+    /* vpline(): the a11y.msg_loc prefix (and reset) */
+    line = a11y_msg_prefix(line);
+    if (line === null)
+        return;
     /* vpline(): bring the map and status up to date before putmesg() */
     if (game.vision_full_recalc)
         vision_recalc(0);
@@ -1417,6 +1435,8 @@ export function tty_add_menu(window, glyphinfo, identifier, ch, gch, attr, clr,
         identifier, count: -1, selected: preselected, itemflags,
         selector: ch || '', gselector: gch || '', attr, color: clr,
         str: newstr,
+        /* curr->glyphinfo: the glyph's ttychar and color, or NO_GLYPH */
+        glyphinfo: glyphinfo || null,
     });
 }
 
@@ -1871,9 +1891,28 @@ async function process_text_window(window, cw) {
             }
             term_start_attr(attr);
             const str = cw.data[i].str;
+            let linestart = true;
             for (let cp = 0; cp < str.length && ++t.curx < t.cols; cp++) {
+                const code = str.charCodeAt(cp);
                 t.curx--; /* xputc() writes at curx; NOMUX bookkeeping */
-                xputc(str[cp]);
+                /* message recall for msg_window:full/combination/reverse
+                   might have output from '/' in it (see redotoplin()) */
+                if (linestart) {
+                    if (code >= 0x80 && code <= 0xff) {
+                        g_putch(code);
+                        /* end_glyphout() */
+                    } else {
+                        xputc(str[cp]);
+                    }
+                    linestart = false;
+                } else if (code >= 0x80 && code <= 0xff) {
+                    /* (void) putchar(*cp) of a symbol decode_mixed() left
+                       with its high bit set: the tty capture (nomux_putch()
+                       takes it as a negative char) records nothing, so the
+                       cell keeps what cl_end() left there */
+                } else {
+                    xputc(str[cp]);
+                }
                 t.curx++;
             }
             term_end_attr(attr);
@@ -1910,6 +1949,10 @@ async function process_menu_window(window, cw) {
     count = 0;
     reset_count = true;
     finished = false;
+    /* iflags.use_menu_glyphs, iflags.menuobjsyms & 4 ("conditional") */
+    const menuobjsyms = game.iflags?.menuobjsyms ?? 4;
+    const only_if_no_headers = (menuobjsyms & 4) !== 0;
+    let show_obj_syms = (menuobjsyms & (2 | 4)) !== 0;
 
     /* collect group accelerators; for PICK_NONE, they're ignored;
        for PICK_ONE, only those which match exactly one entry will be
@@ -1933,6 +1976,14 @@ async function process_menu_window(window, cw) {
                         || gcnt[curr.gselector] === 1)) {
                     gacc += curr.gselector;
                 }
+    }
+
+    if (only_if_no_headers) {
+        for (const curr of cw.mlist)
+            if (!curr.identifier) {
+                show_obj_syms = false;
+                break;
+            }
     }
 
     /* loop until finished */
@@ -1992,6 +2043,16 @@ async function process_menu_window(window, cw) {
                         if (n === 2 && curr.identifier && curr.selected) {
                             /* all selected: '*' vs count selected: '#' */
                             xputc((curr.count === -1) ? '*' : '#');
+                        } else if (n === 2 && curr.identifier
+                                   && show_obj_syms && curr.glyphinfo) {
+                            const gcolor = curr.glyphinfo.color ?? NO_COLOR;
+
+                            /* toggle_menu_attr(TRUE, gcolor, ATR_NONE) */
+                            if (gcolor !== NO_COLOR)
+                                term_start_color(gcolor);
+                            xputc(curr.glyphinfo.ttychar);
+                            if (gcolor !== NO_COLOR)
+                                term_end_color();
                         } else {
                             xputc(curr.str[n]);
                         }

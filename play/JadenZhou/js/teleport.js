@@ -30,6 +30,7 @@ import { rnd, rn1 } from './rng.js';
 import { newsym, canseemon, canspotmon, sensemon, see_monsters } from './display.js';
 import { couldsee, vision_recalc } from './vision.js';
 import { u_on_newpos, somexyspace } from './mklev.js';
+import { search_special } from './sounds.js';
 import { nomul, spoteffects, switch_terrain } from './hack.js';
 import { VIBRATING_SQUARE, deltrap, unconscious } from './trap.js';
 import { PASSES_WALLS, ANTIMAGIC } from './const.js';
@@ -62,7 +63,7 @@ import { STRAT_APPEARMSG, RLOC_MSG, RLOC_NONE, NO_TRAP_FLAGS, BLINDED,
 import { VAULT, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          TT_BURIEDBALL, LEVITATION, FLYING, TELEDS_TELEPORT } from './const.js';
 import { ECMD_OK, ECMD_TIME, TELEPORT, A_STR } from './const.js';
-import { You } from './display.js';
+import { You, set_msg_xy } from './display.js';
 import { docrt as docrt_tp } from './display.js';
 import { getpos } from './getpos.js';
 import { u_locomotion } from './trap.js';
@@ -103,6 +104,10 @@ import { A_WIS } from './const.js';
 import { u_left_shop, stolen_value } from './shk.js';
 import { exercise } from './attrib.js';
 import { revive_corpse } from './zap.js';
+import { get_iter_mons, yelp } from './sounds.js';
+import { mleashed_next2u, get_mleash, m_unleash } from './apply.js';
+import { impossible } from './hack.js';
+import { Your } from './display.js';
 
 
 // C ref: teleport.c enexto()
@@ -792,13 +797,8 @@ const shudder_for_moment = "shudder for a moment.";
 // C ref: apply.c next_to_u()
 /* is hero able to teleport/level-change with all leashed pets? */
 export async function next_to_u() {
-    /* get_iter_mons(mleashed_next2u) */
-    for (const mtmp of game.level.monsters || []) {
-        if (mtmp.dead || mtmp.mhp <= 0)
-            continue;
-        if (mtmp.mleashed)
-            throw new Error('next_to_u(): mleashed_next2u() for a leashed pet not ported yet');
-    }
+    if (await get_iter_mons(mleashed_next2u))
+        return false;
 
     /* no pack mules for the Amulet */
     if (game.u.usteed && (game.u.usteed.minvent || []).some(
@@ -1076,8 +1076,10 @@ export async function level_tele() {
 
     /* u.utrap && u.utraptype == TT_BURIEDBALL: punishment not ported */
 
-    /* if (!next_to_u() && !force_dest): leashed pets aren't ported yet;
-       next_to_u() is TRUE without them */
+    if (!(await next_to_u()) && !force_dest) {
+        await You(shudder_for_moment); /* You1(shudder_for_moment) */
+        return;
+    }
     if (In_endgame(u.uz)) { /* must already be wizard */
         const llimit = dunlevs_in_dungeon(u.uz);
 
@@ -1396,7 +1398,7 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
         const next = (du <= 2) ? " next to you" : null, /* next2u() */
               nearu = (du <= BOLT_LIM * BOLT_LIM) ? " close by" : null;
 
-        /* set_msg_xy(x, y) */
+        set_msg_xy(x, y);
         mtmp.mstrategy &= ~STRAT_APPEARMSG; /* one chance only */
         if (telemsg && (couldsee(x, y) || sensemon(mtmp))) {
             await pline(`${Monnam(mtmp)} vanishes and reappears${
@@ -1555,18 +1557,43 @@ export async function tele_restrict(mon) {
 }
 
 // C ref: teleport.c teleport_pet()
-export function teleport_pet(mtmp, force_it) {
+export async function teleport_pet(mtmp, force_it) {
+    let otmp;
+
     if (mtmp === game.u.usteed)
         return false;
 
-    if (mtmp.mleashed)
-        throw new Error('teleport_pet(): leashed pets not ported yet');
+    if (mtmp.mleashed) {
+        otmp = get_mleash(mtmp);
+        if (!otmp) {
+            impossible(`${Monnam(mtmp)} is leashed, without a leash.`);
+            /* goto release_it */
+            m_unleash(mtmp, false);
+            return true;
+        }
+        if (otmp.cursed && !force_it) {
+            await yelp(mtmp);
+            return false;
+        } else {
+            await Your("leash goes slack.");
+            /* release_it: */
+            m_unleash(mtmp, false);
+            return true;
+        }
+    }
     return true;
 }
 
 // C ref: teleport.c mvault_tele()
 async function mvault_tele(mtmp) {
-    throw new Error('mvault_tele(): search_special(VAULT) not ported yet');
+    const croom = search_special(VAULT);
+    const c = { x: 0, y: 0 };
+
+    if (croom && somexyspace(croom, c) && goodpos(c.x, c.y, mtmp, 0)) {
+        await rloc_to(mtmp, c.x, c.y);
+        return;
+    }
+    await rloc(mtmp, RLOC_NONE);
 }
 
 // C ref: teleport.c mtele_trap()
@@ -1578,7 +1605,7 @@ export async function mtele_trap(mtmp, trap, in_sight) {
     if (noteleport_level(mtmp))
         return;
 
-    if (teleport_pet(mtmp, false)) {
+    if (await teleport_pet(mtmp, false)) {
         /* save name with pre-movement visibility */
         monname = Monnam(mtmp);
 
@@ -1680,7 +1707,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
 
     if (mtmp === u.ustuck) /* probably a vortex */
         return Trap_Effect_Finished; /* temporary? kludge */
-    if (teleport_pet(mtmp, force_it)) {
+    if (await teleport_pet(mtmp, force_it)) {
         const tolevel = { dnum: 0, dlevel: 0 };
         let migrate_typ = MIGR_RANDOM;
 

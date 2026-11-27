@@ -9036,8 +9036,8 @@ export function tty_getlin_prompt(query) {
         },
         render(background, recall = null) {
             const rows = background.slice();
-            for (const [r, text] of painted) rows[r] = _toplStr(text);
             if (recall !== null) rows[0] = recall;
+            else for (const [r, text] of painted) rows[r] = _toplStr(text);
             return { screen: rows.join('\n'), cursor: recall !== null
                 ? [recall.length, 0] : [x, y] };
         },
@@ -9248,7 +9248,7 @@ export async function menu_search_prevmsg_walk(opts) {
                 await paint('blank', cur[1] + 1);
                 recall = '';
                 if (k === 16)
-                    steps = 1; /* topl.c:115 — ^P continues the walk */
+                    steps++; /* topl.c:115 — ^P continues the walk */
                 /* either way the call sequence continues (or ends) torn down */
             }
             /* a fitting recall leaves this call's do-while (morc = 0) */
@@ -10504,8 +10504,12 @@ export function _status_row1_map_overlay(status1) {
             e++;
         out += isMap ? render_map_row(y, x, e, true)
             : plainT.slice(x - 1, e).join('').replace(/ {5,}/g, (m) => `\x1b[${m.length}C`)
-                .replace(/(?:\x1b\[[0-9;]*m \x1b\[0m){5,}/g,
-                    (m) => `\x1b[${m.split(' ').length - 1}C`);
+                .replace(/(?:\x1b\[[0-9;]*m \x1b\[0m){5,}/g, (m) => {
+                    const sgrs = m.match(/\x1b\[[0-9;]*m(?= )/g);
+                    const n = m.split(' ').length - 1;
+                    return sgrs.every((q) => q === sgrs[0])
+                        ? `${sgrs[0]}\x1b[${n}C\x1b[0m` : `\x1b[${n}C`;
+                });
         x = e + 1;
     }
     return out.replace(/(?: +|\x1b\[\d+C)+$/, '');

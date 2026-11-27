@@ -10,7 +10,7 @@ import { There } from './display.js';
 import { impossible } from './hack.js';
 import { nhcb_counts, nhcb_name } from './nhlua.js';
 import { NHCB_CMD_BEFORE } from './const.js';
-import { dobreathe } from './polyself.js';
+import { dobreathe, dospit } from './polyself.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, You_cant, You } from './display.js';
@@ -23,7 +23,8 @@ import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
          PICK_ONE, TER_MAP, TER_TRP, TER_OBJ, TER_FULL } from './const.js';
 import { tty_clear_nhwindow, tty_get_ext_cmd, tty_yn_function, tty_create_nhwindow,
-         tty_putstr, tty_display_nhwindow, tty_destroy_nhwindow } from './wintty.js';
+         tty_putstr, tty_display_nhwindow, tty_destroy_nhwindow,
+         tty_getlin } from './wintty.js';
 import { doride } from './steed.js';
 import { dopray, doturn, dosacrifice } from './pray.js';
 import { dotalk } from './sounds.js';
@@ -32,7 +33,7 @@ import { extcmdlist, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, AUTOCOMPLETE,
          MOVEMENTCMD, CMD_PARAM, CMD_M_PREFIX, CMD_gGF_PREFIX,
          GENERALCMD } from './func_tab.js';
 import { strcmpi, strncmpi, highc, visctrl, strstri, sgn,
-         upstart } from './hacklib.js';
+         upstart, mungspaces } from './hacklib.js';
 import { dosearch } from './detect.js';
 import { level_tele, dotelecmd } from './teleport.js';
 import { wiz_level_change, wiz_wish, wiz_identify, wiz_intrinsic, wiz_map,
@@ -59,7 +60,8 @@ import { dozap } from './zap.js';
 import { docallcmd } from './do_name.js';
 import { doloot, dotip } from './pickup.js';
 import { dopickup } from './hack.js';
-import { Never_mind, isok, PARANOID_QUIT } from './const.js';
+import { Never_mind, isok, PARANOID_QUIT, ParanoidConfirm, BUFSZ,
+         QBUFSZ } from './const.js';
 import { dofire, dothrow } from './dothrow.js';
 import { dokick } from './dokick.js';
 import { doswapweapon, dowieldquiver, dowield, dotwoweapon } from './wield.js';
@@ -102,6 +104,7 @@ import { SKELETON_KEY, LOCK_PICK, CREDIT_CARD, SADDLE, FOOD_CLASS, BOULDER,
          Is_container } from './objects.js';
 import { CLR_WHITE } from './terminal.js';
 import { COLNO, ROWNO, xdir, ydir, zdir } from './const.js';
+import { def_monsyms } from './drawing.js';
 import { PM_GRID_BUG, mons, PM_CAVE_SPIDER, PM_GIANT_SPIDER, PM_MIND_FLAYER,
          PM_MASTER_MIND_FLAYER, PM_GREMLIN, AT_BREA, AT_SPIT, AT_GAZE, S_NYMPH,
          S_UNICORN, M1_HIDE, M1_CONCEAL, M2_JEWELS, MS_SHRIEK } from './monsters.js';
@@ -592,7 +595,9 @@ function there_cmd_menu_far(win, x, y, mod) {
    ? u.umonnum : urace.mnum, Ugender); for the unpolymorphed hero that is
    the role's '@' as display_self() shows it */
 function glyph_is_hero_glyph(glyph) {
-    return glyph.kind === 'mon' && glyph.ch === '@'
+    const herosym = game.flags.showrace
+        ? (def_monsyms[mons[game.urace.mnum].mlet] ?? '?') : '@';
+    return glyph.kind === 'mon' && glyph.ch === herosym
         && glyph.color === CLR_WHITE && glyph.mndx === undefined;
 }
 
@@ -870,7 +875,7 @@ async function domonability() {
     if (can_breathe(uptr))
         return await dobreathe();
     else if (attacktype(uptr, AT_SPIT))
-        throw new Error('domonability(): dospit() not ported yet');
+        return await dospit();
     else if (uptr.mlet === S_NYMPH)
         throw new Error('domonability(): doremove() not ported yet');
     else if (attacktype(uptr, AT_GAZE))
@@ -2647,14 +2652,53 @@ async function dotravel_target() {
     return ECMD_TIME;
 }
 
-// C ref: cmd.c paranoid_ynq() -- the !be_paranoid cases (plain y/n or
-// y/n/q queries); the "yes"/"no" getlin() query isn't ported
+// C ref: cmd.c paranoid_ynq()
 export async function paranoid_ynq(be_paranoid, prompt, accept_q) {
     let c = 'n'; /* default result */
 
-    if (be_paranoid)
-        throw new Error('paranoid_ynq(): paranoid_confirm "yes" query not ported yet');
-    else if (accept_q)
+    /* when paranoid, player must respond with "yes" rather than just 'y'
+       to give the go-ahead for this query; default is "no" unless the
+       ParanoidConfirm flag is set in which case there's no default */
+    if (be_paranoid) {
+        let pbuf, qbuf, ans;
+        let promptprefix = ""; /* empty for first iteration */
+        const responsetype = ParanoidConfirm() ? (accept_q ? "[yes|no|quit]"
+                                                 : "[yes|no]")
+                                               /* default of 'n' is shown for
+                                                * the !ParanoidConfirm cases */
+                                               : (accept_q ? "[yes|n|q] (n)"
+                                                 : "[yes|n] (n)");
+        let k, trylimit = 6; /* 1 normal, 5 more with "Yes or No:" prefix */
+
+        pbuf = prompt.slice(0, BUFSZ - 1); /* copynchars() */
+        /* in addition to being paranoid about this particular
+           query, we might be even more paranoid about all paranoia
+           responses (ie, ParanoidConfirm is set) in which case we
+           require "no" to reject in addition to "yes" to confirm
+           (except we won't loop if response is ESC; it means no) */
+        do {
+            /* make sure we won't overflow a QBUFSZ sized buffer */
+            k = promptprefix.length + 1 + responsetype.length;
+            if (pbuf.length + k > QBUFSZ - 1) {
+                /* chop off some at the end */
+                pbuf = pbuf.slice(0, (QBUFSZ - 1) - k - 4) + "...?"; /* -4: "...?" */
+            }
+
+            qbuf = `${promptprefix}${pbuf} ${responsetype}`.slice(0, QBUFSZ - 1);
+            ans = mungspaces((await tty_getlin(qbuf)) || '');
+            if (!strcmpi(ans, "yes")) {
+                c = 'y';
+                break;
+            }
+            if (!strcmpi(ans, "quit") || ans[0] === '\x1b') {
+                c = 'q';
+                break;
+            }
+            /* we don't bother adding "or \"Quit\"" for the accept_q case */
+            promptprefix = "\"Yes\" or \"No\": ";
+            /* for empty input, return value c will already be 'n' */
+        } while (ParanoidConfirm() && strcmpi(ans, "no") && --trylimit);
+    } else if (accept_q)
         /* 'y', 'n', or 'q' */
         c = await tty_yn_function(prompt, "ynq", 'n'); /* ynqchars */
     else

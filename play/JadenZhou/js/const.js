@@ -947,6 +947,38 @@ export const PARANOID_EATING = 0x0200;
 export const PARANOID_SWIM = 0x0400;
 export const PARANOID_TRAP = 0x0800;
 export const PARANOID_AUTOALL = 0x1000;
+/* C ref: flag.h ParanoidConfirm .. ParanoidAutoAll -- paranoid
+   confirmation prompting (flags.paranoia_bits) */
+/* any yes confirmations also require explicit no (or ESC) to reject */
+export function ParanoidConfirm() { return (game.flags.paranoia_bits & PARANOID_CONFIRM) !== 0; }
+/* quit: yes vs y for "Really quit?" and "Enter explore mode?" */
+export function ParanoidQuit() { return (game.flags.paranoia_bits & PARANOID_QUIT) !== 0; }
+/* die: yes vs y for "Die?" (dying in explore mode or wizard mode) */
+export function ParanoidDie() { return (game.flags.paranoia_bits & PARANOID_DIE) !== 0; }
+/* hit: yes vs y for "Save bones?" in wizard mode */
+export function ParanoidBones() { return (game.flags.paranoia_bits & PARANOID_BONES) !== 0; }
+/* hit: yes vs y for "Really attack <the peaceful monster>?" */
+export function ParanoidHit() { return (game.flags.paranoia_bits & PARANOID_HIT) !== 0; }
+/* pray: ask "Really pray?" (accepts y answer, doesn't require yes),
+   taking over for the old prayconfirm boolean option */
+export function ParanoidPray() { return (game.flags.paranoia_bits & PARANOID_PRAY) !== 0; }
+/* remove: remove ('R') and takeoff ('T') commands prompt for an inventory
+   item even when only one accessory or piece of armor is currently worn */
+export function ParanoidRemove() { return (game.flags.paranoia_bits & PARANOID_REMOVE) !== 0; }
+/* breakwand: Applying a wand */
+export function ParanoidBreakwand() { return (game.flags.paranoia_bits & PARANOID_BREAKWAND) !== 0; }
+/* werechange: accepting randomly timed werecreature change to transform
+   from human to creature or vice versa while having polymorph control */
+export function ParanoidWerechange() { return (game.flags.paranoia_bits & PARANOID_WERECHANGE) !== 0; }
+/* continue eating: prompt given _after_first_bite_ when eating something
+   while satiated */
+export function ParanoidEating() { return (game.flags.paranoia_bits & PARANOID_EATING) !== 0; }
+/* Prevent going into lava or water without explicitly forcing it */
+export function ParanoidSwim() { return (game.flags.paranoia_bits & PARANOID_SWIM) !== 0; }
+/* Prevent going onto/into known trap unless it is harmless */
+export function ParanoidTrap() { return (game.flags.paranoia_bits & PARANOID_TRAP) !== 0; }
+/* Require confirmation for choosing 'A' in class menu for menustyle:Full */
+export function ParanoidAutoAll() { return (game.flags.paranoia_bits & PARANOID_AUTOALL) !== 0; }
 export const VI_NUMBER = 1;
 export const VI_NAME = 2;
 export const VI_BRANCH = 4;

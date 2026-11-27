@@ -7,7 +7,7 @@
 // check_jump(), is_valid_jump_pos(), get_valid_jump_position().
 
 import { game } from './gstate.js';
-import { You, You_hear } from './display.js';
+import { You, You_hear, pline_mon } from './display.js';
 import { getobj } from './invent.js';
 import { check_capacity } from './hack.js';
 import { retouch_object } from './wield.js';
@@ -61,6 +61,18 @@ import { closed_door, sobj_at } from './makemon.js';
 import { t_at } from './trap.js';
 import { dist2, distu, mdistu } from './hacklib.js';
 import { ACURR } from './attrib.js';
+import { A_CHA } from './const.js';
+import { poly_gender } from './polyself.js';
+import { observe_object as observe_object_st,
+         makeknown as makeknown_st } from './o_init.js';
+import { any_obj_ok as any_obj_ok_st, prinv as prinv_st,
+         useup as useup_st } from './invent.js';
+import { obj_resists as obj_resists_st } from './dogmove.js';
+import { You_feel as You_feel_st, You_see as You_see_st } from './display.js';
+import { plur as plur_st } from './hacklib.js';
+import { Race_if as Race_if_st, Role_if as Role_if_st,
+         GETOBJ_PROMPT as GETOBJ_PROMPT_ST } from './const.js';
+import { PM_GNOME as PM_GNOME_ST } from './monsters.js';
 import { SPE_JUMPING, BOULDER } from './objects.js';
 import { ECMD_TIME, ECMD_FAIL, JUMPING, PASSES_WALLS, LEVITATION, WOUNDED_LEGS,
          INTRINSIC, UNENCUMBERED, A_STR, TT_PIT, IS_STWALL, IS_DOOR, D_ISOPEN,
@@ -180,6 +192,16 @@ import { use_pick_axe, buried_ball_to_freedom } from './dig.js';
 import { glyph_is_invisible as glyph_is_invisible_ls } from './display.js';
 import { mons as mons_ls, PM_LONG_WORM as PM_LONG_WORM_LS, M1_UNSOLID as M1_UNSOLID_LS,
          M1_NOLIMBS as M1_NOLIMBS_LS, M1_NOHEAD as M1_NOHEAD_LS } from './monsters.js';
+import { MS_SILENT as MS_SILENT_LS } from './monsters.js';
+import { find_mid } from './light.js';
+import { FM_FMON, RLOC_NOMSG, XKILL_NOMSG, m_next2u } from './const.js';
+import { mnexto } from './teleport.js';
+import { You_feel } from './display.js';
+import { impossible } from './hack.js';
+import { um_dist } from './shk.js';
+import { breathless } from './mondata.js';
+import { xkilled } from './mon.js';
+import { growl, yelp, whimper } from './sounds.js';
 import { an, singular, xname } from './objnam.js';
 import { Glib, Fumbling, Underwater } from './youprop.js';
 import { A_DEX } from './const.js';
@@ -1111,7 +1133,8 @@ export async function doapply() {
     case O.LUCKSTONE:
     case O.LOADSTONE:
     case TOUCHSTONE:
-        throw new Error('doapply(): use_stone() not ported yet');
+        res = await use_stone(obj);
+        break;
     case BANANA:
         if (Hallucination()) {
             await pline("It rings! ... But no-one answers.");
@@ -1505,6 +1528,180 @@ async function use_lamp(obj) {
 /* figurine timeout callback */
 export async function fig_transform(arg, timeout) {
     throw new Error('fig_transform() not ported yet');
+}
+
+// C ref: apply.c beautiful()
+/* the hero's appearance; this used to be about mirror-related
+   magnetism rather than just appearance, but it has devolved to this... */
+export function beautiful() {
+    const cha = ACURR(A_CHA);
+
+    /* don't bother complaining about the sexism; NetHack is not real life */
+    return ((cha >= 25) ? "sublime" /* 25 is the maximum possible */
+            : (cha >= 19) ? "splendorous" /* note: not "splendiferous" */
+              : (cha >= 16) ? ((poly_gender() === 1) ? "beautiful" : "handsome")
+                : (cha >= 14) ? ((poly_gender() === 1) ? "winsome" : "amiable")
+                  : (cha >= 11) ? "cute"
+                    : (cha >= 9) ? "plain"
+                      : (cha >= 6) ? "homely"
+                        : (cha >= 4) ? "ugly"
+                          : "hideous"); /* 3 is the minimum possible */
+}
+
+// C ref: apply.c touchstone_ok()
+function touchstone_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    /* Gold being suggested as a rub target is questionable - it fits the
+     * real-world historic use of touchstones, but doesn't do anything
+     * significant in the game. */
+    if (obj.oclass === COIN_CLASS)
+        return GETOBJ_SUGGEST;
+
+    /* don't suggest identified gems */
+    if (obj.oclass === O.GEM_CLASS
+        && !(obj.dknown && objects[obj.otyp].oc_name_known))
+        return GETOBJ_SUGGEST;
+
+    return GETOBJ_DOWNPLAY;
+}
+
+/* C ref: decl.c c_obj_colors[] */
+const c_obj_colors_st = [
+    "black", "red", "green", "brown", "blue", "magenta", "cyan", "gray",
+    "transparent", "orange", "bright green", "yellow", "bright blue",
+    "bright magenta", "bright cyan", "white",
+];
+
+// C ref: apply.c use_stone() -- touchstones - by Ken Arnold
+async function use_stone(tstone) {
+    const scritch = "\"scritch, scritch\"";
+    let obj;
+    let do_scratch;
+    let streak_color;
+    let stonebuf;
+    let oclass;
+
+    /* in case it was acquired while blinded */
+    if (!Blind())
+        observe_object_st(tstone, Hallucination());
+    const known = (tstone.otyp === TOUCHSTONE && tstone.dknown
+                   && objects[TOUCHSTONE].oc_name_known);
+    stonebuf = `rub on the stone${plur_st(tstone.quan)}`;
+    /* when the touchstone is fully known, don't bother listing extra
+       junk as likely candidates for rubbing */
+    if ((obj = await getobj(stonebuf, known ? touchstone_ok : any_obj_ok_st,
+                            GETOBJ_PROMPT_ST)) === null || obj === undefined)
+        return ECMD_CANCEL;
+
+    if (obj === tstone && obj.quan === 1) {
+        await You_cant(`rub ${the_ap(xname_ap(obj))} on itself.`);
+        return ECMD_OK;
+    }
+
+    if (tstone.otyp === TOUCHSTONE && tstone.cursed
+        && obj.oclass === O.GEM_CLASS && !is_graystone(obj)
+        && !obj_resists_st(obj, 80, 100)) {
+        if (Blind())
+            await You_feel_st("something shatter.");
+        else if (Hallucination())
+            await pline("Oh, wow, look at the pretty shards.");
+        else
+            await pline(`A sharp crack shatters ${
+                (obj.quan > 1) ? "one of " : ""}${the_ap(xname_ap(obj))}.`);
+        useup_st(obj);
+        return ECMD_TIME;
+    }
+
+    if (Blind()) {
+        await pline(scritch);
+        return ECMD_TIME;
+    } else if (Hallucination()) {
+        await pline("Oh wow, man: Fractals!");
+        return ECMD_TIME;
+    }
+
+    do_scratch = false;
+    streak_color = null;
+
+    oclass = obj.oclass;
+    /* prevent non-gemstone rings from being treated like gems */
+    if (oclass === O.RING_CLASS
+        && objects[obj.otyp].oc_material !== O.GEMSTONE
+        && objects[obj.otyp].oc_material !== O.MINERAL)
+        oclass = O.RANDOM_CLASS; /* something that's neither gem nor ring */
+
+    switch (oclass) {
+    case O.GEM_CLASS: /* these have class-specific handling below */
+    case O.RING_CLASS:
+        if (tstone.otyp !== TOUCHSTONE) {
+            do_scratch = true;
+        } else if (obj.oclass === O.GEM_CLASS
+                   && (tstone.blessed
+                       || (!tstone.cursed && (Role_if_st(PM_ARCHEOLOGIST_WH)
+                                              || Race_if_st(PM_GNOME_ST))))) {
+            makeknown_st(TOUCHSTONE);
+            makeknown_st(obj.otyp);
+            await prinv_st(null, obj, 0);
+            return ECMD_TIME;
+        } else {
+            /* either a ring or the touchstone was not effective */
+            if (objects[obj.otyp].oc_material === O.GLASS) {
+                do_scratch = true;
+                break;
+            }
+        }
+        streak_color = c_obj_colors_st[objects[obj.otyp].oc_color];
+        break; /* gem or ring */
+
+    default:
+        switch (objects[obj.otyp].oc_material) {
+        case O.CLOTH:
+            await pline(`${Tobjnam_lp(tstone, "look")} a little more polished now.`);
+            return ECMD_TIME;
+        case O.LIQUID:
+            if (!obj.known) /* note: not "whetstone" */
+                await You("must think this is a wetstone, do you?");
+            else
+                await pline(`${Tobjnam_lp(tstone, "are")} a little wetter now.`);
+            return ECMD_TIME;
+        case O.WAX:
+            streak_color = "waxy";
+            break; /* okay even if not touchstone */
+        case O.WOOD:
+            streak_color = "wooden";
+            break; /* okay even if not touchstone */
+        case O.GOLD:
+            do_scratch = true; /* scratching and streaks */
+            streak_color = "golden";
+            break;
+        case O.SILVER:
+            do_scratch = true; /* scratching and streaks */
+            streak_color = "silvery";
+            break;
+        default:
+            /* Objects passing the is_flimsy() test will not
+               scratch a stone.  They will leave streaks on
+               non-touchstones and touchstones alike. */
+            if (O.is_flimsy(obj))
+                streak_color = c_obj_colors_st[objects[obj.otyp].oc_color];
+            else
+                do_scratch = (tstone.otyp !== TOUCHSTONE);
+            break;
+        }
+        break; /* default oclass */
+    }
+
+    stonebuf = `stone${plur_st(tstone.quan)}`;
+    if (do_scratch)
+        await You(`make ${streak_color ? streak_color : ""}${
+            streak_color ? " " : ""}scratch marks on the ${stonebuf}.`);
+    else if (streak_color)
+        await You_see_st(`${streak_color} streaks on the ${stonebuf}.`);
+    else
+        await pline(scritch);
+    return ECMD_TIME;
 }
 
 // C ref: apply.c use_towel()
@@ -2094,12 +2291,13 @@ export function o_unleash(otmp) {
    returns its promise, which the caller must await */
 export function m_unleash(mtmp, feedback) {
     let otmp;
-    let msg = null;
+    let msg = null, msgmon = null;
 
     if (feedback) {
-        if (canseemon(mtmp))
+        if (canseemon(mtmp)) {
             msg = `${Monnam(mtmp)} pulls free of ${mhis(mtmp)} leash!`; /* pline_mon() */
-        else
+            msgmon = mtmp;
+        } else
             msg = "Your leash falls slack."; /* Your() */
     }
     if ((otmp = get_mleash(mtmp)) !== null) {
@@ -2107,11 +2305,24 @@ export function m_unleash(mtmp, feedback) {
         /* update_inventory(); -- no perm_invent window */
     }
     mtmp.mleashed = 0;
-    return msg ? pline(msg) : undefined;
+    return msg ? (msgmon ? pline_mon(msgmon, msg) : pline(msg)) : undefined;
+}
+
+// C ref: apply.c unleash_all()
+/* player is about to die (for bones) */
+export function unleash_all() {
+    let otmp;
+    let mtmp;
+
+    for (otmp = game.invent; otmp; otmp = otmp.nobj)
+        if (otmp.otyp === O.LEASH)
+            otmp.leashmon = 0;
+    for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon)
+        mtmp.mleashed = 0;
 }
 
 // C ref: apply.c leashable()
-function leashable(mtmp) {
+export function leashable(mtmp) {
     return (mtmp.data !== mons_ls[PM_LONG_WORM_LS] /* mtmp->mnum */
             && !unsolid(mtmp.data)
             && (!nolimbs(mtmp.data) || has_head(mtmp.data)));
@@ -2195,13 +2406,27 @@ async function use_leash_core(obj, mtmp, cc, spotmon) {
                 lmonnam = `${s_suffix_cam(lmonnam)} tail`;
             await pline(`The leash won't fit onto ${spotmon ? "your " : ""}${lmonnam}.`);
         } else {
-            /* mtmp->mleashed = 1; obj->leashmon = mtmp->m_id: leashed pets
-               (check_leash(), next_to_u(), dog movement) aren't ported */
-            throw new Error('use_leash_core(): leashing a pet not ported yet');
+            await You(`slip the leash around ${spotmon ? "your " : ""}${
+                l_monnam_ls(mtmp)}.`);
+            mtmp.mleashed = 1;
+            obj.leashmon = mtmp.m_id;
+            mtmp.msleeping = 0;
+            /* update_inventory(); -- no perm_invent window */
         }
     } else {
         /* applying a leash which is currently in use */
-        throw new Error('use_leash_core(): removing a leash not ported yet');
+        if (obj.leashmon !== mtmp.m_id) {
+            await pline("This leash is not attached to that creature.");
+        } else if (obj.cursed) {
+            await pline_The("leash would not come off!");
+            obj.bknown = 1; /* set_bknown(obj, 1): update_inventory() is a no-op */
+        } else {
+            mtmp.mleashed = 0;
+            obj.leashmon = 0;
+            /* update_inventory(); -- no perm_invent window */
+            await You(`remove the leash from ${spotmon ? "your " : ""}${
+                l_monnam_ls(mtmp)}.`);
+        }
     }
 }
 
@@ -2214,6 +2439,94 @@ export function get_mleash(mtmp) {
         if (otmp.otyp === O.LEASH && otmp.leashmon === mtmp.m_id)
             break;
     return otmp || null;
+}
+
+// C ref: apply.c mleashed_next2u()
+/* get_iter_mons() callback for next_to_u() */
+export async function mleashed_next2u(mtmp) {
+    if (mtmp.mleashed) {
+        if (!m_next2u(mtmp))
+            await mnexto(mtmp, RLOC_NOMSG);
+        if (!m_next2u(mtmp)) {
+            const otmp = get_mleash(mtmp);
+
+            if (!otmp) {
+                impossible("leashed-unleashed mon?");
+                return true;
+            }
+
+            if (otmp.cursed)
+                return true;
+            mtmp.mleashed = 0;
+            otmp.leashmon = 0;
+            /* update_inventory(); -- no perm_invent window */
+            await You_feel(`${(number_leashed() > 1) ? "a" : "the"} leash go slack.`);
+        }
+    }
+    return false;
+}
+
+// C ref: apply.c check_leash()
+export async function check_leash(x, y) {
+    const u = game.u;
+    let otmp;
+    let mtmp;
+
+    for (otmp = game.invent; otmp; otmp = otmp.nobj) {
+        if (otmp.otyp !== O.LEASH || !otmp.leashmon)
+            continue;
+        mtmp = find_mid(otmp.leashmon, FM_FMON);
+        if (!mtmp) {
+            impossible("leash in use isn't attached to anything?");
+            otmp.leashmon = 0;
+            continue;
+        }
+        if (dist2(u.ux, u.uy, mtmp.mx, mtmp.my)
+            > dist2(x, y, mtmp.mx, mtmp.my)) {
+            if (!um_dist(mtmp.mx, mtmp.my, 3)) {
+                ; /* still close enough */
+            } else if (otmp.cursed && !breathless(mtmp.data)) {
+                if (um_dist(mtmp.mx, mtmp.my, 5)
+                    || (mtmp.mhp -= rnd(2)) <= 0) {
+                    const save_pacifism = u.uconduct.killer;
+
+                    await Your_lp(`leash chokes ${mon_nam_cam(mtmp)} to death!`);
+                    /* hero might not have intended to kill pet, but
+                       that's the result of his actions; gain experience,
+                       lose pacifism, take alignment and luck hit, make
+                       corpse less likely to remain tame after revival */
+                    await xkilled(mtmp, XKILL_NOMSG);
+                    /* life-saving doesn't ordinarily reset this */
+                    if (!(mtmp.mhp < 1)) /* !DEADMONSTER(mtmp) */
+                        u.uconduct.killer = save_pacifism;
+                } else {
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is choked by the leash!`);
+                    /* tameness eventually drops to 1 here (never 0) */
+                    if (mtmp.mtame && rn2(mtmp.mtame))
+                        mtmp.mtame--;
+                }
+            } else {
+                if (um_dist(mtmp.mx, mtmp.my, 5)) {
+                    await pline(`${s_suffix_cam(Monnam(mtmp))} leash snaps loose!`);
+                    m_unleash(mtmp, false);
+                } else {
+                    await You("pull on the leash.");
+                    if (mtmp.data.msound !== MS_SILENT_LS)
+                        switch (rn2(3)) {
+                        case 0:
+                            await growl(mtmp);
+                            break;
+                        case 1:
+                            await yelp(mtmp);
+                            break;
+                        default:
+                            await whimper(mtmp);
+                            break;
+                        }
+                }
+            }
+        }
+    }
 }
 
 // C ref: apply.c flip_coin()

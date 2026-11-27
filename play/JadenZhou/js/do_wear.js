@@ -8,6 +8,7 @@
 // common amulets, Blindf_on(), #takeoff with the X_off() routines, and
 // donning()/doffing()/cancel_don()/cancel_doff().
 
+import { ggetobj as ggetobj_dw } from './invent.js';
 import { x_monnam, hcolor } from './do_name.js';
 import { ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION, NECK,
          Is_waterlevel, Is_airlevel } from './const.js';
@@ -88,7 +89,7 @@ import { monsndx } from './mondata.js';
 import { rnd } from './rng.js';
 import { region_danger } from './region.js';
 import { Blind, Glib, Invisible, Levitation, Flying } from './youprop.js';
-import { Upolyd, Role_if } from './const.js';
+import { Upolyd, Role_if, ParanoidRemove } from './const.js';
 import { uprop } from './youprop.js';
 import { setnotworn as setnotworn_dw } from './worn.js';
 import { arti_light_description } from './light.js';
@@ -2239,17 +2240,6 @@ export async function ia_dotakeoff() {
     return res;
 }
 
-/* C ref: flag.h ParanoidRemove -- flags.paranoia_bits is
-   PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP by default (options.c
-   initoptions_init()); parsing the paranoid_confirmation option isn't
-   ported */
-function ParanoidRemove() {
-    if (game.flags.paranoid_confirmation !== undefined
-        || game.flags.paranoid_confirm !== undefined)
-        throw new Error('paranoia_bits: the paranoid_confirmation option is not ported yet');
-    return false;
-}
-
 // C ref: do_wear.c cursed()
 /* Check if something worn is cursed _and_ unremovable. */
 export async function cursed(otmp) {
@@ -2994,7 +2984,7 @@ async function take_off() {
 export async function doddoremarm() {
     const g = game;
     const tk = takeoff_ctx();
-    const result = 0;
+    let result = 0;
 
     if (tk.what || tk.mask) {
         await You(`continue ${tk.disrobing}.`);
@@ -3007,10 +2997,9 @@ export async function doddoremarm() {
     }
 
     add_valid_menu_class_dw(0); /* reset */
-    if ((g.flags.menu_style ?? MENU_FULL_DW) !== MENU_TRADITIONAL_DW)
+    if ((g.flags.menu_style ?? MENU_FULL_DW) !== MENU_TRADITIONAL_DW
+        || (result = await ggetobj_dw("take off", select_off, 0, false, null)) < -1)
         await menu_remarm(result);
-    else /* (result = ggetobj("take off", select_off, 0, FALSE, NULL)) < -1 */
-        throw new Error('doddoremarm(): ggetobj() (menustyle:traditional) not ported yet');
 
     if (tk.mask) {
         tk.disrobing = ((tk.mask & ~W_WEAPONS) !== 0)

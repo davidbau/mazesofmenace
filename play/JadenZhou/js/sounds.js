@@ -629,6 +629,39 @@ export async function yelp(mtmp) {
     }
 }
 
+// C ref: sounds.c whimper()
+/* the sounds of distressed pets */
+export async function whimper(mtmp) {
+    let whimper_verb = null;
+
+    if (helpless(mtmp) || !mtmp.data.msound)
+        return;
+
+    /* presumably nearness and soundok checks have already been made */
+    if (Hallucination())
+        whimper_verb = ROLL_FROM(h_sounds);
+    else
+        switch (mtmp.data.msound) {
+        case MS_MEW:
+        case MS_GROWL:
+            whimper_verb = "whimper";
+            break;
+        case MS_BARK:
+            whimper_verb = "whine";
+            break;
+        case MS_SQEEK:
+            whimper_verb = "squeal";
+            break;
+        }
+    if (whimper_verb) {
+        /* Soundeffect(se, 50): no sound interface */
+        await pline(`${Monnam(mtmp)} ${vtense(null, whimper_verb)}.`);
+        if (game.context.run)
+            nomul(0);
+        await wake_nearto(mtmp.mx, mtmp.my, mtmp.data.mlevel * 6);
+    }
+}
+
 // C ref: sounds.c cry_sound()
 /* hatchling's cry; used by hatch_egg() */
 export function cry_sound(mtmp) {

@@ -123,6 +123,14 @@ import { confdir as confdir_to } from './hack.js';
 import { hurtle as hurtle_to } from './dothrow.js';
 import { mhe } from './mhitu.js';
 import { Your } from './display.js';
+import { deferred_decor } from './pickup.js';
+/* slimed_to_death() */
+import { polymon as polymon_st } from './polyself.js';
+import { emits_light as emits_light_st } from './mondata.js';
+import { Upolyd as Upolyd_st } from './const.js';
+import { LS_MONSTER as LS_MONSTER_ST, TURNED_SLIME as TURNED_SLIME_ST,
+         GENOCIDED as GENOCIDED_ST,
+         PLNMSG_OK_DONT_DIE as PLNMSG_OK_DONT_DIE_ST } from './const.js';
 /* hatch_egg() */
 import { NON_PM as NON_PM_HE, NO_MINVENT as NO_MINVENT_HE, MM_NOMSG as MM_NOMSG_HE,
          G_GENOD as G_GENOD_HE, G_EXTINCT as G_EXTINCT_HE } from './const.js';
@@ -613,6 +621,69 @@ async function done_timeout(how, which) {
     game.disp_botl = true;
 }
 
+// C ref: timeout.c slimed_to_death()
+async function slimed_to_death(kptr) {
+    const g = game;
+
+    /* redundant: polymon() cures sliming when polying into green slime */
+    if (Upolyd_st() && g.youmonst.data === mons[PM_GREEN_SLIME]) {
+        dealloc_killer_to(kptr);
+        return;
+    }
+    /* more sure killer reason is set up */
+    if (kptr && kptr.name) {
+        killer_to().format = kptr.format;
+        killer_to().name = kptr.name;
+    } else {
+        killer_to().format = NO_KILLER_PREFIX_TO;
+        killer_to().name = "turned into green slime";
+    }
+    dealloc_killer_to(kptr);
+
+    /*
+     * Polymorph into a green slime, which might destroy some worn armor
+     * (potentially affecting bones) and dismount from steed.
+     * Can't be Unchanging; wouldn't have turned into slime if we were.
+     * Despite lack of Unchanging, neither done() nor savelife() calls
+     * rehumanize() if hero dies while polymorphed.
+     * polymon() undoes the slime countdown's mimick-green-slime hack
+     * but does not perform polyself()'s light source bookkeeping.
+     * No longer need to manually increment uconduct.polyselfs to reflect
+     * [formerly implicit] change of form; polymon() takes care of that.
+     * Temporarily ungenocide if necessary.
+     */
+    if (emits_light_st(g.youmonst.data))
+        del_light_source(LS_MONSTER_ST, monst_to_any(g.youmonst));
+    const save_mvflags = g.mvitals[PM_GREEN_SLIME].mvflags;
+    g.mvitals[PM_GREEN_SLIME].mvflags = save_mvflags & ~G_GENOD_HE;
+    /* become a green slime; also resets youmonst.m_ap_type+.mappearance */
+    await polymon_st(PM_GREEN_SLIME);
+    g.mvitals[PM_GREEN_SLIME].mvflags = save_mvflags;
+    await done_timeout(TURNED_SLIME_ST, SLIMED);
+
+    /* life-saved; even so, hero still has turned into green slime;
+       player may have genocided green slimes after being infected */
+    if ((g.mvitals[PM_GREEN_SLIME].mvflags & G_GENOD_HE) !== 0) {
+        killer_to().format = KILLED_BY_TO;
+        killer_to().name = "slimicide";
+        /* vary the message depending upon whether life-save was due to
+           amulet or due to declining to die in explore or wizard mode */
+        const slimebuf = "green slime has been genocided...";
+        /* end.js savelife path records PLNMSG_OK_DONT_DIE by name */
+        if (g.iflags.last_msg === 'PLNMSG_OK_DONT_DIE'
+            || g.iflags.last_msg === PLNMSG_OK_DONT_DIE_ST)
+            /* follows "OK, so you don't die." and arg is second sentence */
+            await urgent_pline(`Yes, you do.  ${upstart(slimebuf)}`);
+        else
+            /* follows "The medallion crumbles to dust." */
+            await urgent_pline(`Unfortunately, ${slimebuf}`);
+        /* die again; no possibility of amulet this time */
+        await done_to(GENOCIDED_ST); /* [should it be done_timeout(GENOCIDED, SLIMED)?] */
+        /* could be life-saved again (only in explore or wizard mode)
+           but green slimes are gone; just stay in current form */
+    }
+}
+
 // C ref: timeout.c nh_timeout()
 export async function nh_timeout() {
     const g = game;
@@ -805,8 +876,8 @@ export async function nh_timeout() {
                 break;
             }
             case SLIMED:
-                /* slimed_to_death() */
-                throw new Error('nh_timeout(): slimed_to_death() not ported yet');
+                await slimed_to_death(find_delayed_killer_to(idx));
+                break;
             case VOMITING:
                 await make_vomiting(0, true);
                 break;
@@ -908,6 +979,12 @@ export async function nh_timeout() {
                 upp.intrinsic &= ~FROMOUTSIDE;
                 if (prop_on(upp)) /* Fumbling */
                     incr_itimeout(FUMBLING, rnd(20));
+
+                if (g.iflags.defer_decor) {
+                    /* 'mention_decor' was deferred for message sequencing
+                       reasons; catch up now */
+                    await deferred_decor(false);
+                }
                 break;
             default:
                 /* the remaining properties have no case in C */

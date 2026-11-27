@@ -37,7 +37,7 @@ import { yn_function_menu, randomkey, readchar, keyhelp_compress_str } from './c
 import { bot } from './botl.js';
 import { pline, urgent_pline } from './pline.js';
 import { topl_park_cursor, canspotmon, _threeStatusLines, remember_stopped_toplines } from './display.js';
-import { rebuild_screen_output, putmsghistory, Unaware, pline_flush_point } from './display.js';
+import { rebuild_screen_output, putmsghistory, Unaware, pline_flush_point, msgtype_suppressed } from './display.js';
 import { livelog_printf } from './pline.js';
 import { LL_LIFESAVE, LL_DUMP, BUFSZ } from './const.js';
 import { cmdq_pop, cmdq_clear, cmdq_add_key, cmdq_add_ec, key2txt, Role_if } from './cmd.js';
@@ -715,6 +715,16 @@ export async function do_death_sequence(opts) {
     if (!pd)
         return false;
     g._pendingDeath = null;
+    /* C end.c:195 done_in_by: You("die...") is an ORDINARY pline (losehp's
+     * is urgent_pline, hack.c:4287, and stays), so a MSGTYPE hide rule -- or
+     * norep on a repeat -- drops it in vpline before any flush or putmesg
+     * (pline.c:246-262): done() then continues exactly as for a caller with
+     * no death line.  Mac arm macx4 t28-a-rcerr-v076 seg1 step 128
+     * (MSGTYPE=hide "()", which Apple regcomp accepts and which matches every
+     * line): C goes straight to "Die? [yn] (n)". */
+    if (!pd.alreadySaidYouDie && !pd.noDeathLine && !pd.urgentDeathLine
+        && !pd.stoningDeathLine && msgtype_suppressed('You die...'))
+        pd.noDeathLine = true;
     g._deathMoves = (pd.moves != null) ? (pd.moves | 0) : null;
     // C end.c:1039-1046,1110-1114: disconnected deaths skip the tty path.
     if (g.program_state.done_hup) {

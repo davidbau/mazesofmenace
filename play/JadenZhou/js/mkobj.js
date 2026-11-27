@@ -38,7 +38,8 @@ import {
     PM_ETTIN_MUMMY, PM_ETTIN, PM_LIZARD, PM_LICHEN, PM_DEATH, PM_FAMINE, PM_GRAY_OOZE,
     PM_PESTILENCE,
 } from './monsters.js';
-import { merged, freeinv } from './invent.js';
+import { merged, freeinv, mergable } from './invent.js';
+import { isok } from './hacklib.js';
 import { obj_no_longer_held } from './do.js';
 import { block_point, recalc_block_point } from './vision.js';
 import { vobj_at } from './display.js';
@@ -69,6 +70,16 @@ import { PLNMSG_OBJ_GLOWS } from './const.js';
 import { cansee } from './vision.js';
 import { Yname2, otense } from './objnam.js';
 import { pline } from './display.js';
+import { newsym } from './display.js';
+import { BURIED_TOO } from './const.js';
+import { eating_glob } from './eat.js';
+import { near_capacity } from './hack.js';
+import { encumber_msg } from './pickup.js';
+import { remove_worn_item } from './steal.js';
+import { stop_occupation } from './allmain.js';
+import { useupall, obfree } from './invent.js';
+import { setmnotwielded } from './weapon.js';
+import { maybe_unhide_at } from './mon.js';
 
 const NON_PM = -1;
 
@@ -2136,8 +2147,267 @@ export function dealloc_obj(obj) {
     obj.where = 'OBJ_DELETED';
 }
 
+// C ref: mkobj.c item_on_ice() -- enum: SET_ON_ICE = 1, BURIED_UNDER_ICE = 2
+const SET_ON_ICE = 1, BURIED_UNDER_ICE = 2;
+/* is item on or under ice? */
+function item_on_ice(item) {
+    let otmp = item;
+    /* if in a container, it might be nested so find outermost one since
+       that's the item whose location needs to be checked */
+    while (otmp.where === 'OBJ_CONTAINED')
+        otmp = otmp.ocontainer;
+
+    const loc = get_obj_location(otmp, BURIED_TOO);
+    if (loc) {
+        const [ox, oy] = loc;
+        switch (otmp.where) {
+        case 'OBJ_FLOOR':
+            if (is_ice(ox, oy))
+                return SET_ON_ICE;
+            break;
+        case 'OBJ_BURIED':
+            if (is_ice(ox, oy))
+                return BURIED_UNDER_ICE;
+            break;
+        default:
+            break;
+        }
+    }
+    return 0; /* NOT_ON_ICE */
+}
+
 // C ref: mkobj.c shrink_glob()
 /* timer callback routine: a glob loses 1 unit of weight */
-export async function shrink_glob(arg, expire_time) {
-    throw new Error('shrink_glob() not ported yet');
+export async function shrink_glob(arg, /* glob (in arg->a_obj) */
+                                  expire_time) { /* turn the timer should have gone off; if less than
+                                                  * current 'moves', we're making up for lost time
+                                                  * after leaving and then returning to this level */
+    let globnambuf;
+    const obj = arg.a_obj;
+    const globloc = item_on_ice(obj);
+    const ininv = (obj.where === 'OBJ_INVENT');
+    let shrink = false, gone = false, updinv = false;
+    const contnr = (obj.where === 'OBJ_CONTAINED') ? obj.ocontainer : null;
+    let topcontnr = null;
+    let old_top_owt = 0;
+
+    if (!obj.globby) {
+        /* impossible("shrink_glob for non-glob [%d: %s]?") */
+        return; /* old timer is gone, don't start a new one */
+    }
+    /* check_glob(obj, "shrink obj "): sanity check only */
+
+    /*
+     * If shrinkage occurred while we were on another level, catch up now.
+     */
+    if (expire_time < game.moves && globloc !== BURIED_UNDER_ICE) {
+        /* number of units of weight to remove */
+        let delta = Math.trunc((game.moves - expire_time + 24) / 25);
+        /* leftover amount to use for new timer */
+        const moddelta = 25 - (delta % 25);
+
+        if (globloc === SET_ON_ICE)
+            delta = Math.trunc((delta + 2) / 3);
+        if (delta >= obj.owt) {
+            /* gone; no newsym() or message here--forthcoming map update for
+               level arrival is all that's needed */
+            obj.owt = 0; /* not required; accurately reflects obj's state */
+            await shrinking_glob_gone(obj);
+        } else {
+            /* shrank but not gone; reduce remaining weight */
+            obj.owt -= delta;
+            /* when contained, update container's weight (recursively if
+               nested) */
+            if (contnr)
+                container_weight(contnr);
+            /* resume regular shrinking */
+            start_glob_timeout(obj, moddelta);
+        }
+        return;
+    }
+
+    /*
+     * When on ice, only shrink every third try.  If buried under ice,
+     * don't shrink at all, similar to being contained in an ice box
+     * except that the timer remains active.
+     *
+     * If the glob is actively being eaten by hero, skip weight reduction
+     * to avoid messing up the context.victual data.
+     */
+    if (eating_glob(obj)
+        || globloc === BURIED_UNDER_ICE
+        || (globloc === SET_ON_ICE && (game.moves % 3) === 1)) {
+        /* schedule next shrink attempt; for the being eaten case, the
+           glob and its timer might be deleted before this kicks in */
+        start_glob_timeout(obj, 0);
+        return;
+    }
+
+    /* format "Your/Shk's/The [partly eaten] glob of <goo>" into
+       globnambuf[] before shrinking the glob */
+    if (!game.iflags) game.iflags = {};
+    game.iflags.partly_eaten_hack = true;
+    globnambuf = Yname2(obj);
+    game.iflags.partly_eaten_hack = false;
+    if (obj.owt > 0) { /* sanity precaution */
+        /* globs start out weighing 20 units; give two messages per glob,
+           when going from 20 to 19 and from 10 to 9; a different message
+           is given for going from 1 to 0 (gone) */
+        const basewt = objects[obj.otyp].oc_weight, /* 20 */
+              msgwt = Math.trunc((Math.max(basewt, 1) + 1) / 2); /* 10 */
+
+        shrink = (obj.owt % msgwt) === 0;
+        obj.owt -= 1;
+        /* if glob is partly eaten, reduce the amount still available (but
+           not all the way to 0 which would change it back to untouched) */
+        if (obj.oeaten > 1)
+            obj.oeaten -= 1;
+    }
+    gone = !obj.owt;
+    /* timer might go off when the glob is migrating to another level and
+       possibly delete it; messages are only given for in-open-inventory,
+       inside-container-in-invent, and going away when can-see-on-floor */
+    if (ininv) {
+        if (shrink || gone)
+            await pline(`${globnambuf} ${gone ? "dissolves completely" : "shrinks"}.`);
+        updinv = true;
+    } else if (contnr) {
+        /* when in a container, it might be nested so find outermost one */
+        topcontnr = contnr;
+        while (topcontnr.where === 'OBJ_CONTAINED')
+            topcontnr = topcontnr.ocontainer;
+        /* obj's weight has been reduced, but weight(s) of enclosing
+           container(s) haven't been adjusted for that yet */
+        old_top_owt = topcontnr.owt;
+        /* update those weights now; recursively updates nested containers */
+        container_weight(contnr);
+        /* if outermost container is in hero's open inventory, give message */
+        if (topcontnr.where === 'OBJ_INVENT') {
+            /* for the 'shrink' case, the container's weight might not
+               change because only a fraction of glob's weight is counted;
+               however, always say the bag is lighter for the 'gone' case */
+            if (gone || (shrink && topcontnr.owt !== old_top_owt)
+                || near_capacity() !== (game.oldcap || 0))
+                await pline(`${Yname2(topcontnr)} `
+                            + `${(topcontnr.owt !== old_top_owt) ? "becomes" : "seems"}`
+                            + `${!gone ? " slightly" : ""} lighter.`);
+            updinv = true;
+        }
+    }
+    if (gone) {
+        let ox = 0, oy = 0;
+        /* check location for visibility before destroying obj */
+        let seeit = false;
+        if (obj.where === 'OBJ_FLOOR') {
+            const loc = get_obj_location(obj, 0);
+            if (loc) {
+                [ox, oy] = loc;
+                seeit = cansee(ox, oy);
+            }
+        }
+
+        /* weight has been reduced to 0 so destroy the glob */
+        await shrinking_glob_gone(obj);
+
+        if (seeit) {
+            newsym(ox, oy);
+            if ((ox !== game.u.ux || oy !== game.u.uy) && globnambuf.startsWith("The "))
+                /* fortunately none of the glob adjectives warrant "An " */
+                globnambuf = globnambuf.replace("The ", "A "); /* strsubst() */
+            /* again, quantity is always 1 so no need for otense()/vtense() */
+            await pline(`${globnambuf} fades away.`);
+        }
+    } else {
+        /* schedule next shrink ~25 turns from now */
+        start_glob_timeout(obj, 0);
+    }
+    if (updinv) {
+        /* update_inventory(): no perm_invent */
+        await encumber_msg();
+    }
+}
+
+// C ref: mkobj.c shrinking_glob_gone()
+/* a glob has shrunk away to nothing; handle owornmask, then delete glob */
+async function shrinking_glob_gone(obj) {
+    const owhere = obj.where;
+
+    if (owhere === 'OBJ_INVENT') {
+        if (obj.owornmask) {
+            await remove_worn_item(obj, false);
+            await stop_occupation();
+        }
+        useupall(obj); /* freeinv()+obfree() */
+    } else {
+        if (owhere === 'OBJ_MIGRATING') {
+            /* destination flag overloads owornmask; clear it so obfree()'s
+               check for freeing a worn object doesn't get a false hit */
+            obj.owornmask = 0;
+        } else if (owhere === 'OBJ_MINVENT') {
+            /* monsters don't wield globs so this isn't strictly needed */
+            if (obj.owornmask && obj === obj.ocarry.mw) /* MON_WEP() */
+                setmnotwielded(obj.ocarry, obj); /* clears owornmask */
+        }
+        /* remove the glob from whatever list it's on and then delete it;
+           if it's contained, obj_extract_self() will update the container's
+           weight and if nested, the enclosing containers' weights too */
+        obj_extract_self(obj);
+        if (owhere === 'OBJ_FLOOR')
+            maybe_unhide_at(obj.ox, obj.oy);
+        obfree(obj, null);
+    }
+}
+
+// C ref: mkobj.c obj_nexto()
+/* look for a mergable object of the same type at or next to otmp's spot */
+export function obj_nexto(otmp) {
+    if (!otmp) {
+        /* impossible("obj_nexto: wasn't given an object to check") */
+        return null;
+    }
+    return obj_nexto_xy(otmp, otmp.ox, otmp.oy, true);
+}
+
+// C ref: mkobj.c obj_nexto_xy()
+/*
+ * looks for objects of a particular type next to x, y
+ * skips over oid if found (lets us avoid ourselves if
+ * we're looking for a second type of an existing object)
+ */
+export function obj_nexto_xy(obj, x, y, recurs) {
+    let otmp;
+    let fx, fy, ex, ey;
+    const otyp = obj.otyp;
+    let dx, dy;
+
+    /* check under our "feet" first: sobj_at() then nxtobj(otmp, otyp, TRUE);
+       JS floor objects aren't chained, so walk the pile at <x,y> in order */
+    for (otmp of game.level.objects || []) {
+        if (otmp.where !== 'OBJ_FLOOR' || otmp.ox !== x || otmp.oy !== y
+            || otmp.otyp !== otyp)
+            continue;
+        /* don't be clever and find ourselves */
+        if (otmp !== obj && mergable(otmp, obj))
+            return otmp;
+    }
+
+    if (!recurs)
+        return null;
+
+    /* search in a random order */
+    dx = (rn2(2) ? -1 : 1);
+    dy = (rn2(2) ? -1 : 1);
+    ex = x - dx;
+    ey = y - dy;
+
+    for (fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
+        for (fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
+            /* 0, 0 was checked above */
+            if (isok(fx, fy) && (fx !== x || fy !== y)) {
+                if ((otmp = obj_nexto_xy(obj, fx, fy, false)) !== null)
+                    return otmp;
+            }
+        }
+    }
+    return null;
 }

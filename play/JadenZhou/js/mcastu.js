@@ -61,6 +61,7 @@ import { uprop } from './youprop.js';
 import { burnarmor, ignite_items } from './trap.js';
 import { destroy_items } from './zap.js';
 import { sgn, upstart, plur } from './hacklib.js';
+import { pline_mon, set_msg_xy } from './display.js';
 
 /* C ref: mcastu.h MONSPELL() list -- enum mcast_spells */
 export const MCAST_PSI_BOLT = 0;
@@ -184,7 +185,7 @@ async function cursetxt(mtmp, undirected) {
         else
             point_msg = "at you, then curses";
 
-        await pline(`${Monnam(mtmp)} points ${point_msg}.`); /* pline_mon() */
+        await pline_mon(mtmp, `${Monnam(mtmp)} points ${point_msg}.`);
     } else if ((!(game.moves % 4) || !rn2(4))) {
         if (!Deaf())
             await Norep("You hear a mumbled curse."); /* Deaf-aware */
@@ -298,9 +299,9 @@ export async function castmu(
      */
     if (!foundyou && thinks_it_foundyou
         && !is_undirected_spell(spellnum)) {
-        await pline(`${canseemon(mtmp) ? Monnam(mtmp) : "Something"} casts a spell at ${
+        await pline_mon(mtmp, `${canseemon(mtmp) ? Monnam(mtmp) : "Something"} casts a spell at ${
             is_waterwall(mtmp.mux, mtmp.muy) ? "empty water"
-                                             : "thin air"}!`); /* pline_mon() */
+                                             : "thin air"}!`);
         return M_ATTK_MISS;
     }
 
@@ -308,20 +309,20 @@ export async function castmu(
     if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) { /* fumbled attack */
         /* Soundeffect(se_air_crackles, 60) */
         if (canseemon(mtmp) && !Deaf()) {
-            /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+            set_msg_xy(mtmp.mx, mtmp.my);
             await pline_The(`air crackles around ${mon_nam(mtmp)}.`);
         }
         return M_ATTK_MISS;
     }
     if (canspotmon(mtmp) || !is_undirected_spell(spellnum)) {
-        await pline(`${canspotmon(mtmp) ? Monnam(mtmp) : "Something"} casts a spell${
+        await pline_mon(mtmp, `${canspotmon(mtmp) ? Monnam(mtmp) : "Something"} casts a spell${
             is_undirected_spell(spellnum) ? ""
             : (Invis() && !perceives(mtmp.data)
                && !u_at(mtmp.mux, mtmp.muy))
               ? " at a spot near you"
               : (Displaced() && !u_at(mtmp.mux, mtmp.muy))
                 ? " at your displaced image"
-                : " at you"}!`); /* pline_mon() */
+                : " at you"}!`);
     }
 
     /*
@@ -404,7 +405,7 @@ export async function castmu(
 async function m_cure_self(mtmp, dmg) {
     if (mtmp.mhp < mtmp.mhpmax) {
         if (canseemon(mtmp))
-            await pline(`${Monnam(mtmp)} looks better.`); /* pline_mon() */
+            await pline_mon(mtmp, `${Monnam(mtmp)} looks better.`);
         /* note: player healing does 6d4; this used to do 1d8 */
         healmon(mtmp, d(3, 6), 0);
         dmg = 0;
@@ -576,8 +577,8 @@ async function mcast_weaken_you(mtmp, dmg) {
 async function mcast_disappear(mtmp) {
     if (!mtmp.minvis && !mtmp.invis_blkd) {
         if (canseemon(mtmp))
-            await pline(`${Monnam(mtmp)} suddenly ${
-                !See_invisible() ? "disappears" : "becomes transparent"}!`); /* pline_mon() */
+            await pline_mon(mtmp, `${Monnam(mtmp)} suddenly ${
+                !See_invisible() ? "disappears" : "becomes transparent"}!`);
         mon_set_minvis(mtmp, false);
         if (cansee(mtmp.mx, mtmp.my) && !canspotmon(mtmp))
             map_invisible(mtmp.mx, mtmp.my);
@@ -797,7 +798,7 @@ async function mcast_insects(mtmp) {
         fmt = (m, w) => `${m} summons ${w}!`;
     }
     if (fmt) {
-        await pline(fmt(Monnam(mtmp), what)); /* pline_mon() */
+        await pline_mon(mtmp, fmt(Monnam(mtmp), what));
     }
 }
 
@@ -1069,8 +1070,8 @@ export async function buzzmu(mtmp, mattk) {
 
         nomul(0);
         if (canseemon(mtmp))
-            await pline(`${Monnam(mtmp)} zaps you with a ${
-                flash_str(ofs, false)}!`); /* pline_mon() */
+            await pline_mon(mtmp, `${Monnam(mtmp)} zaps you with a ${
+                flash_str(ofs, false)}!`);
         game.buzzer = mtmp;
         await buzz(-10 - ofs /* BZ_M_SPELL() */, mattk.damn,
                    mtmp.mx, mtmp.my, sgn(game.tbx), sgn(game.tby));

@@ -5,7 +5,7 @@
 // u_init_role(), u_init_race(), ini_inv() and its helpers, trquan(),
 // knows_object(), knows_class(), skills_for_role(),
 // restricted_spell_discipline(), u_init_carry_attr_boost().
-// u_init_skills_discoveries() and pauper_reinit() are not ported yet.
+// u_init_skills_discoveries() and pauper_reinit().
 
 import { spell_skilltype } from './spell.js';
 import { game } from './gstate.js';
@@ -29,7 +29,7 @@ import { set_uasmon } from './polyself.js';
 import { newhp, adjabil, adjattrib, init_attr, vary_init_attr } from './attrib.js';
 import { newpw } from './exper.js';
 import { initialspell, num_spells } from './spell.js';
-import { skill_init } from './weapon.js';
+import { skill_init, P_SKILL } from './weapon.js';
 import { discover_object } from './o_init.js';
 import { Role_if, Race_if } from './const.js';
 import { init_uhunger } from './eat.js';
@@ -1388,6 +1388,67 @@ export function find_ac() {
     }
 }
 
+// C ref: u_init.c pauper_reinit()
+/* for 'pauper' aka 'unprepared'; take away any skills (bare-handed combat,
+   riding) that are better than unskilled; learn the book (without carrying
+   it or knowing its spell yet) for some key spells */
+function pauper_reinit() {
+    const u = game.u;
+    let skill, preknown = O.STRANGE_OBJECT;
+
+    if (!u.uroleplay.pauper)
+        return;
+
+    for (skill = 0; skill < K.P_NUM_SKILLS; skill++)
+        if (P_SKILL(skill) > K.P_UNSKILLED) {
+            u.weapon_skills[skill].skill = K.P_UNSKILLED; /* P_SKILL(skill) = */
+            u.weapon_skills[skill].advance = 0; /* P_ADVANCE(skill) = */
+        }
+    /* pauper has lost out on initial skills, but provide some unspent skill
+       credits to make up for that */
+    u.weapon_slots = 2;
+
+    /* paupers don't know any spells yet, but several roles will recognize
+       the spellbook for a key spell (not necessarily that role's special
+       spell); "supply chests" on the first few levels provide a fairly
+       high chance to find the book; some other roles know a non-book item */
+    switch (game.urole.mnum) { /* Role_switch */
+    case M.PM_HEALER:
+        preknown = O.SPE_HEALING;
+        break;
+    case M.PM_CLERIC:
+    case M.PM_KNIGHT:
+    case M.PM_MONK:
+        preknown = O.SPE_PROTECTION;
+        break;
+    case M.PM_WIZARD:
+        preknown = O.SPE_FORCE_BOLT;
+        break;
+    case M.PM_ARCHEOLOGIST:
+        preknown = O.TOUCHSTONE;
+        break;
+    case M.PM_CAVE_DWELLER:
+        preknown = O.FLINT;
+        break;
+    case M.PM_ROGUE:
+    case M.PM_TOURIST:
+        preknown = O.SACK;
+        break;
+    case M.PM_SAMURAI:
+        /* food ration isn't interesting to discover, but put "gunyoki" into
+           discoveries list for players who might not recognize what it is */
+        preknown = O.FOOD_RATION;
+        break;
+    default:
+    case M.PM_BARBARIAN:
+    case M.PM_RANGER:
+    case M.PM_VALKYRIE:
+        break;
+    }
+    if (preknown !== O.STRANGE_OBJECT)
+        knows_object(preknown, true);
+}
+
 // C ref: u_init.c u_init_skills_discoveries()
 /* side effects of starting inventory (e.g. discovering it) and skills (both
    those based on role and those based on starting inventory) */
@@ -1399,7 +1460,7 @@ export function u_init_skills_discoveries() {
 
     skill_init(skills_for_role());
     if (u.uroleplay?.pauper)
-        throw new Error('u_init_skills_discoveries(): pauper_reinit() not ported yet');
+        pauper_reinit();
 
     /* If we have at least one spell, force starting Pw to be enough,
        so hero can cast the level 1 spell they should have */

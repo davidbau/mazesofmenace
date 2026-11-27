@@ -30,9 +30,11 @@ import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { mcalcmove, mcalcdistress, movemon } from './mon.js';
 import { initrack, settrack } from './track.js';
 import { m_at, makemon, makemon_flush_msg } from './makemon.js';
-import { mnexto } from './teleport.js';
+import { mnexto, tele, next_to_u } from './teleport.js';
+import { check_leash } from './apply.js';
 import { makedog } from './dog.js';
-import { deferred_goto, hellish_smoke_mesg, schedule_goto, UTOTYPE_NONE } from './do.js';
+import { deferred_goto, hellish_smoke_mesg, schedule_goto, UTOTYPE_NONE,
+         save_currentstate } from './do.js';
 import { assign_level } from './dungeon.js';
 import { com_pager } from './questpgr.js';
 import { objects_globals_init } from './objects.js';
@@ -81,6 +83,10 @@ import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
 import { Blind, Hallucination } from './youprop.js';
 import { Upolyd } from './const.js';
+import { You as You_am } from './display.js';
+import { an as an_am } from './objnam.js';
+import { pmname as pmname_am } from './do_name.js';
+import { strncmpi } from './hacklib.js';
 import { invault } from './vault.js';
 import { sink_into_lava as sink_into_lava_am } from './trap.js';
 import { pooleffects as pooleffects_am, overexert_hp } from './hack.js';
@@ -156,7 +162,7 @@ export async function newgame() {
     /* urealtime.realtime = 0L; urealtime.start_timing = getnow(): the
        fixed game clock */
     g.urealtime = { realtime: 0, start_timing: 0, finish_time: 0 };
-    /* INSURANCE save_currentstate(): the level 0 lock file isn't modelled */
+    await save_currentstate(); /* INSURANCE */
     g.program_state.something_worth_saving =
         (g.program_state.something_worth_saving || 0) + 1; /* useful data now exists */
 
@@ -356,8 +362,16 @@ export async function unmul(msg_override) {
         g.nomovemsg = "You can move again."; /* You_can_move_again */
     if (g.nomovemsg) {
         await pline(g.nomovemsg);
-        /* "You survived that attempt on your life" while Upolyd: not
-           reached */
+        /* follow "you survived that attempt on your life" with a message
+           about current form if it's not the default; primarily for
+           life-saving while turning into green slime but is also a reminder
+           if life-saved while poly'd and Unchanging (explore or wizard mode
+           declining to die since can't be both Unchanging and Lifesaved) */
+        if (Upolyd() && !strncmpi(g.nomovemsg, "You survived that ", 18)) {
+            const Ugender = (g.u.mfemale ? 1 : 0); /* Upolyd */
+            await You_am(`are ${an_am(pmname_am(mons[g.u.umonnum], Ugender))}.`);
+            /* (ignore Hallu) */
+        }
     }
     g.nomovemsg = null;
     g.u.usleep = 0;
@@ -610,8 +624,16 @@ async function moveloop_core() {
                 if (!u.uinvulnerable) {
                     if ((P[TELEPORT].intrinsic || P[TELEPORT].extrinsic) /* Teleportation */
                         && !rn2(85)) {
-                        /* tele(): teleportation isn't ported yet */
-                        throw new Error('moveloop_core(): tele() not ported yet');
+                        const old_ux = u.ux, old_uy = u.uy;
+
+                        await tele();
+                        if (u.ux !== old_ux || u.uy !== old_uy) {
+                            if (!(await next_to_u())) {
+                                await check_leash(old_ux, old_uy);
+                            }
+                            /* clear doagain keystrokes */
+                            g.cmdq = []; /* cmdq_clear(CQ_CANNED); cmdq_clear(CQ_REPEAT) */
+                        }
                     }
                     const Polymorph = P[POLYMORPH].intrinsic || P[POLYMORPH].extrinsic;
                     /* delayed change may not be valid anymore */

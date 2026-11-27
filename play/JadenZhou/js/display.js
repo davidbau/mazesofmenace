@@ -34,7 +34,8 @@ import { visible_region_at, show_region } from './region.js';
 import { In_hell } from './dungeon.js';
 import { rn2_on_display_rng } from './rng.js';
 import { sgn } from './hacklib.js';
-import { BACKTRACK } from './const.js';
+import { BACKTRACK, xdir, ydir, GPCOORDS_NONE, GPCOORDS_COMFULL } from './const.js';
+import { coord_desc } from './pager.js';
 import {
     objects, BOULDER, STATUE, CORPSE, POTION_CLASS, FIRST_REAL_GEM,
     LAST_GLASS_GEM, FIRST_SPELL, LAST_SPELL, FIRST_OBJECT, NUM_OBJECTS,
@@ -847,6 +848,10 @@ function terrain_glyph_dec(loc, x, y) {
 // recorder's nomux_set_fg() makes the same remap); without it, black is
 // shown as blue.
 function tty_color(color) {
+    /* C ref: wintty.c tty_print_glyph(): if (iflags.use_color) -- with
+       the color option off, a map glyph is printed without color */
+    if (game.iflags?.wc_color === false)
+        return NO_COLOR;
     if (color === undefined || color === CLR_GRAY)
         return NO_COLOR;
     if (color === CLR_BLACK)
@@ -861,13 +866,17 @@ function tty_color(color) {
 // for a cmap glyph (glyph_to_cmap()), { mndx } for a monster glyph
 // (glyph_to_mon())
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0,
-                                kind = 'cmap', objpile = false, gid = null) {
+                                kind = 'cmap', objpile = false, gid = null,
+                                hero_color = false) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     if (game.currentgraphics === ROGUESET) {
         ch = rogue_cell_ch(ch, decgfx, kind, gid);
         decgfx = false;
-        color = NO_COLOR;
+        /* the rogue level's glyphmap has no colors; map_glyphinfo() then
+           gives the hero (is_you) HI_DOMESTIC for flags.showrace */
+        if (!hero_color)
+            color = NO_COLOR;
     } else {
         const sym = ov_showsym(kind, gid);
         if (sym) {
@@ -942,13 +951,33 @@ function sym_char(sym) {
     return String.fromCharCode(sym_decgfx(sym) ? (sym & 0x7f) : sym);
 }
 
+// C ref: display.c map_glyphinfo(0, 0, glyph, 0U, &glyphinfo) -- the
+// ttychar and color of an object glyph that a menu entry carries (tty
+// process_menu_window() shows it in place of the '-' for use_menu_glyphs)
+export function menu_glyphinfo(glyph) {
+    let ch = glyph.ch, color = glyph.color ?? NO_COLOR;
+    const kind = glyph.obj ? 'obj' : glyph_kind(glyph), gid = glyph_gid(glyph);
+
+    if (game.currentgraphics === ROGUESET) {
+        ch = rogue_cell_ch(ch, glyph.decgfx, kind, gid);
+        color = NO_COLOR;
+    } else {
+        const sym = ov_showsym(kind, gid);
+        if (sym)
+            ch = sym_char(sym);
+    }
+    /* termcap.c term_start_color(): hilites[] (gray as the default,
+       black as dark gray with use_darkgray; nothing without use_color) */
+    return { ttychar: ch, color: tty_color(color) };
+}
+
 /* the glyph identity of two shown glyphs (show_glyph_cell() 'gid') */
 function same_gid(a, b) {
     if (!a || !b)
         return !a === !b;
     return a.otyp === b.otyp && a.corpsenm === b.corpsenm
         && a.cmapidx === b.cmapidx && a.mndx === b.mndx
-        && !!a.unexplored === !!b.unexplored;
+        && !!a.unexplored === !!b.unexplored && !!a.nothing === !!b.nothing;
 }
 
 // C ref: display.c gbuf_start[]/gbuf_stop[] -- per map row, the bounding
@@ -973,6 +1002,8 @@ function gbuf_mark_new(loc, x, y) {
 
 /* the glyph identity fields of a glyph (see show_glyph_cell()) */
 function glyph_gid(glyph) {
+    if (glyph.nothing) /* GLYPH_NOTHING */
+        return { nothing: true };
     if (glyph.otyp === undefined && glyph.cmapidx === undefined
         && glyph.mndx === undefined)
         return null;
@@ -1704,7 +1735,8 @@ export function magic_map_background(x, y, show) {
 }
 
 /* GLYPH_NOTHING, shown as blank */
-const GLYPH_NOTHING = { ch: ' ', color: NO_COLOR, decgfx: false, cmap: 'nothing' };
+const GLYPH_NOTHING = { ch: ' ', color: NO_COLOR, decgfx: false, cmap: 'nothing',
+                        nothing: true /* glyph_is_nothing() */ };
 /* GLYPH_INVISIBLE in the remembered-glyph form: S_invisible 'I',
    invis_color() NO_COLOR */
 export const GLYPH_INVISIBLE = { ch: 'I', color: NO_COLOR, decgfx: false,
@@ -2238,18 +2270,16 @@ export function newsym(x, y) {
                      && !loc.waslit)
                 loc.remembered_glyph = room_cmap_glyph(0); /* S_stone */
             /* else goto show_mem */
-        } else if ((!loc.waslit || (game.flags.dark_room !== false
-                             && game.iflags.wc_color !== false))
-            && loc.typ === CORR && loc.remembered_glyph.cmap === 'S_litcorr')
-            loc.remembered_glyph = rememb_glyph(S_corr_g);
-        /* lev->glyph = cmap_to_glyph(DARKROOMSYM) for a remembered lit
-           floor spot; with dark_room set the S_darkroom glyph is drawn
-           like the remembered S_room spot (see feel_location()) */
-        else if (game.flags.dark_room !== false && game.iflags.wc_color !== false
-                 && loc.typ === ROOM && loc.remembered_glyph.cmap === 'S_room'
-                 && game.currentgraphics !== ROGUESET)
-            loc.remembered_glyph = { ...loc.remembered_glyph,
-                                     cmap: 'S_darkroom', cmapidx: 20 /* S_darkroom */ };
+        } else if (!loc.waslit || (game.flags.dark_room !== false
+                                   && game.iflags.wc_color !== false)) {
+            if (loc.typ === CORR && loc.remembered_glyph.cmap === 'S_litcorr')
+                loc.remembered_glyph = rememb_glyph(S_corr_g);
+            /* lev->glyph = cmap_to_glyph(DARKROOMSYM) for a remembered
+               floor spot (not the rogue level here, so S_darkroom) */
+            else if (loc.typ === ROOM && loc.remembered_glyph.cmap === 'S_room')
+                loc.remembered_glyph = darkroom_glyph(loc.remembered_glyph);
+            /* else goto show_mem */
+        }
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx, 0,
@@ -2458,6 +2488,17 @@ export function feel_location(x, y) {
                         (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon))
                             ? PHYSICALLY_SEEN : DETECTED,
                         is_worm_tail(mon, x, y));
+}
+
+// C ref: display.h cmap_to_glyph(S_darkroom) -- in the remembered-glyph
+// form, made from the remembered S_room spot.  display.c reglyph_darkroom()
+// sets gs.showsyms[S_darkroom] to showsyms[S_room] when flags.dark_room and
+// color are on (drawn like the S_room spot), else to the SYM_NOTHING blank.
+function darkroom_glyph(roomg) {
+    if (game.flags.dark_room !== false && game.iflags.wc_color !== false)
+        return { ...roomg, cmap: 'S_darkroom', cmapidx: 20 /* S_darkroom */ };
+    return { ch: ' ', color: NO_COLOR, decgfx: false,
+             cmap: 'S_darkroom', cmapidx: 20 /* S_darkroom */ };
 }
 
 // C ref: display.h cmap_to_glyph(S_stone / S_room / S_darkroom) -- in the
@@ -3310,6 +3351,15 @@ export function display_self() {
                         { mndx });
         return;
     }
+    /* U_AP_TYPE == M_AP_MONSTER: monnum_to_glyph(youmonst.mappearance,
+       Ugender), e.g. slime_dialogue()'s final green slime;
+       [M_AP_FURNITURE and M_AP_OBJECT for the hero are not ported yet] */
+    if (game.youmonst?.m_ap_type === 3 /* M_AP_MONSTER */) {
+        const ptr = mons[game.youmonst.mappearance];
+        show_glyph_cell(u.ux, u.uy, def_monsyms[ptr.mlet] ?? '?',
+                        ptr.mcolor ?? NO_COLOR, false, 0, 'mon');
+        return;
+    }
     /* hero_glyph: monnum_to_glyph((Upolyd || !flags.showrace) ? u.umonnum
        : gu.urace.mnum, Ugender); a polymorphed hero shows the monster */
     if (u.umonnum !== u.umonster) { /* Upolyd */
@@ -3318,7 +3368,16 @@ export function display_self() {
                         ptr.mcolor ?? NO_COLOR, false, 0, 'mon');
         return;
     }
-    show_glyph_cell(u.ux, u.uy, '@', CLR_WHITE, false, 0, 'mon');
+    /* showrace: a non-human hero is shown by the symbol of the race's
+       monster, in the human hero's color (display.c map_glyphinfo():
+       HI_DOMESTIC for flags.showrace) */
+    show_glyph_cell(u.ux, u.uy,
+                    game.flags.showrace
+                        ? (def_monsyms[mons[game.urace.mnum].mlet] ?? '?') : '@',
+                    CLR_WHITE, false, 0, 'mon', false, null,
+                    /* map_glyphinfo(): is_you, use_color, !Upolyd and
+                       glyph == hero_glyph: HI_DOMESTIC for showrace */
+                    !!game.flags.showrace && game.iflags.wc_color !== false);
 }
 
 // C ref: display.c swallow_to_glyph()
@@ -3473,11 +3532,57 @@ export function livelog_printf(ll_type, line) {
     /* strNsubst(gamelogbuf, "\t", "_", 0); livelog_add(ll_type, gamelogbuf) */
 }
 
+// C ref: pline.c set_msg_dir()
+/* set the direction where next message happens */
+export function set_msg_dir(dir) {
+    const cc = { ...(game.a11y.msg_loc || { x: 0, y: 0 }) };
+
+    if (dir > -1 /* DIR_ERR */ && dir < 10 /* N_DIRS_Z */) { /* dirtocoord() */
+        cc.x = xdir[dir];
+        cc.y = ydir[dir];
+    }
+    game.a11y.msg_loc = { x: cc.x + game.u.ux, y: cc.y + game.u.uy };
+}
+
+// C ref: pline.c set_msg_xy()
+/* set the coordinate where next message happens */
+export function set_msg_xy(x, y) {
+    game.a11y.msg_loc = { x, y };
+}
+
+// C ref: pline.c vpline() -- the a11y.msg_loc handling at its start:
+// always reset a11y.msg_loc whether we end up using it or not; when
+// accessiblemsg is set and a11y.msg_loc is on the map, insert a location
+// prefix in front of the message; null for an empty message
+export function a11y_msg_prefix(line) {
+    const a11y = game.a11y;
+    let a11y_mesgxy = { x: 0, y: 0 };
+
+    if (a11y) {
+        if (a11y.msg_loc)
+            a11y_mesgxy = a11y.msg_loc; /* save a11y.msg_loc before reseting it */
+        a11y.msg_loc = { x: 0, y: 0 };
+    }
+    if (!line)
+        return null;
+    if (a11y?.accessiblemsg && isok(a11y_mesgxy.x, a11y_mesgxy.y)) {
+        const gc = game.iflags?.getpos_coords;
+        const dirstr = coord_desc(a11y_mesgxy.x, a11y_mesgxy.y,
+                                  (!gc || gc === GPCOORDS_NONE)
+                                      ? GPCOORDS_COMFULL : gc);
+        line = `${dirstr}: ${line}`;
+    }
+    return line;
+}
+
 // ── pline ──
 // C ref: pline.c vpline() -- the plain message path: bring the map up to
 // date (vision, flush_screen(1)) and put the line in the message window
 // (tty update_topl(), which handles concatenation and --More--)
 export async function pline(msg) {
+    msg = a11y_msg_prefix(msg);
+    if (msg === null)
+        return;
     if (game.vision_full_recalc)
         vision_recalc(0);
     if (game.u?.ux)
@@ -3488,10 +3593,34 @@ export async function pline(msg) {
         game.iflags.last_msg = 0; /* PLNMSG_UNKNOWN */
 }
 
+// C ref: pline.c pline_dir()
+export async function pline_dir(dir, line) {
+    set_msg_dir(dir);
+    await pline(line);
+}
+
+// C ref: pline.c pline_xy()
+export async function pline_xy(x, y, line) {
+    set_msg_xy(x, y);
+    await pline(line);
+}
+
+// C ref: pline.c pline_mon()
+export async function pline_mon(mtmp, line) {
+    if (mtmp === game.youmonst)
+        set_msg_xy(0, 0);
+    else
+        set_msg_xy(mtmp.mx, mtmp.my);
+    await pline(line);
+}
+
 // C ref: pline.c urgent_pline() -- vpline() with URGENT_MESSAGE: the tty
 // (WC2_URGENT_MESG) gets the line with ATR_URGENT, which overrides a
 // pending ESC at --More-- (WIN_STOP)
 export async function urgent_pline(msg) {
+    msg = a11y_msg_prefix(msg);
+    if (msg === null)
+        return;
     if (game.vision_full_recalc)
         vision_recalc(0);
     if (game.u?.ux)

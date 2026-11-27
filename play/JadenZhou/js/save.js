@@ -650,6 +650,19 @@ function save_rooms(nhfp) {
 // C ref: engrave.c save_engravings()
 function save_engravings(nhfp) {
     const L = game.level;
+    for (let ep = L.head_engr; ep; ep = ep.nxt_engr) {
+        if (ep.engr_txt.actual_text[0] && update_file(nhfp)) {
+            /* C writes each text from the start of the engraving's text
+               space, resetting the actual_text and remembered_text pointers
+               that wipe_engr_at() and rest_engravings() moved past leading
+               spaces (the spaces are back until the next wipe or restore) */
+            ep.engr_txt.actual_text = ' '.repeat(ep.actual_off || 0)
+                                      + ep.engr_txt.actual_text;
+            ep.engr_txt.remembered_text = ' '.repeat(ep.remembered_off || 0)
+                                          + ep.engr_txt.remembered_text;
+            ep.actual_off = ep.remembered_off = 0;
+        }
+    }
     if (update_file(nhfp))
         Sfo(nhfp, L.head_engr ?? null, "engravings");
     if (release_data(nhfp))

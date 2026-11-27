@@ -468,7 +468,7 @@ const disco_orders_descr = [
 ];
 
 // C ref: o_init.c choose_disco_sort()
-async function choose_disco_sort(
+export async function choose_disco_sort(
     mode) { /* 0 => 'O' cmd, 1 => full discoveries; 2 => class disco */
     let i, n, choice;
     const clr = NO_COLOR;

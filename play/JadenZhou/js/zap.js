@@ -23,9 +23,10 @@ import { game } from './gstate.js';
 import { livelog_printf, urgent_pline, You_hear as You_hear_zp,
          You_hear } from './display.js';
 import { LL_CONDUCT } from './const.js';
-import { You, Your, pline, pline_The } from './display.js';
+import { You, Your, pline, pline_The, pline_dir } from './display.js';
 import { getobj, useupall } from './invent.js';
 import { check_capacity } from './hack.js';
+import { xytodir } from './hack.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { getdir } from './cmd.js';
 import { exercise } from './attrib.js';
@@ -357,7 +358,7 @@ import { noit_Monnam as noit_Monnam_bm } from './do_name.js';
 import { mstatusline as mstatusline_bm } from './insight.js';
 import { sticks as sticks_bm } from './engrave.js';
 import { obj_typename as obj_typename_bm } from './objnam.js';
-import { u_teleport_mon } from './teleport.js';
+import { u_teleport_mon, rloco } from './teleport.js';
 import { closeholdingtrap as closeholdingtrap_bm, openholdingtrap as openholdingtrap_bm,
          openfallingtrap as openfallingtrap_bm } from './trap.js';
 import { See_invisible as See_invisible_bm, Detect_monsters as Detect_monsters_bm,
@@ -401,6 +402,8 @@ import { STATUE, FIGURINE } from './objects.js';
 import { W_ARTI, BURIED_TOO, CONTAINED_TOO } from './const.js';
 import { force_decor } from './pickup.js';
 import { is_db_wall, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
+import { set_msg_xy } from './display.js';
+import { o_unleash } from './apply.js';
 
 // C ref: zap.c learnwand()
 export function learnwand(obj) {
@@ -992,7 +995,7 @@ export async function bhitm(mtmp, otmp) {
             /* note: if that_is_a_mimic() doesn't get called to reveal the
                mimic, wakeup() below will call seemimic() */
             if (cansee(mtmp.mx, mtmp.my)) {
-                /* set_msg_xy(mtmp->mx, mtmp->my): accessibility only */
+                set_msg_xy(mtmp.mx, mtmp.my);
                 await that_is_a_mimic_bm(mtmp, MIM_REVEAL_BM | MIM_OMIT_WAIT_BM);
             }
         } else {
@@ -1237,6 +1240,14 @@ export async function bhito(obj, otmp) {
         case SPE_EXTRA_HEALING:
             res = 0;
             break;
+        case WAN_TELEPORTATION_BM:
+        case SPE_TELEPORT_AWAY_BM: {
+            const ox = obj.ox, oy = obj.oy;
+
+            await rloco(obj);
+            maybe_unhide_at(ox, oy);
+            break;
+        }
         default:
             throw new Error(`bhito(): wand/spell ${otmp.otyp} hitting an object not ported yet`);
         }
@@ -1596,8 +1607,16 @@ export async function poly_obj(obj, id) {
             otmp.cursed = 0;
         }
     }
-    if (obj.otyp === LEASH && obj.leashmon)
-        throw new Error('poly_obj(): polymorphing a leash in use not ported yet');
+    if (obj.otyp === LEASH && obj.leashmon) {
+        if (otmp.otyp === LEASH) {
+            otmp.leashmon = obj.leashmon;
+            /* clear m_id before delobj(), to avoid o_unleash() by obfree() */
+            obj.leashmon = 0;
+        } else {
+            /* obfree() would do this if we didn't do it here */
+            o_unleash(obj);
+        }
+    }
 
     /* no box contents --KAA */
     if (Has_contents(otmp) && otmp.cobj.length)
@@ -3717,8 +3736,8 @@ export async function dobuzz(
                 } else {
                     if (!forcemiss && zap_hit(u.uac, 0)) {
                         range -= 2;
-                        /* pline_dir(xytodir(-dx, -dy), ...) */
-                        await pline(`${The(flash_str(fltyp, false))} hits you!`);
+                        await pline_dir(xytodir(-dx, -dy),
+                                        `${The(flash_str(fltyp, false))} hits you!`);
                         if (Reflecting()) {
                             if (!Blind()) {
                                 await ureflects("But %s reflects from your %s!",

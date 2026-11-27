@@ -177,7 +177,7 @@ import { stinky_nemesis } from './questpgr.js';
 import { Hallucination, Conflict, Deaf } from './youprop.js';
 import { m_next2u } from './const.js';
 import { uhis, unstuck } from './mhitu.js';
-import { m_unleash } from './apply.js';
+import { m_unleash, leashable } from './apply.js';
 import { obj_extract_self } from './mkobj.js';
 import { possibly_unwield } from './weapon.js';
 import { split_mon } from './potion.js';
@@ -215,13 +215,15 @@ import { add_to_container, weight } from './mkobj.js';
 import { digests } from './mondata.js';
 import { You } from './display.js';
 import { u_locomotion } from './trap.js';
-import { STATUE, ROCK } from './objects.js';
+import { STATUE, ROCK, GLOB_OF_BLACK_PUDDING } from './objects.js';
+import { obj_nexto } from './mkobj.js';
 import { MZ_TINY, PM_STONE_GOLEM, S_GOLEM, MR_STONE } from './monsters.js';
 import { CORPSTAT_HISTORIC } from './const.js';
 import { a_monnam } from './do_name.js';
 import { an } from './objnam.js';
 import { impossible } from './hack.js';
 import { POTION_CLASS } from './objects.js';
+import { pline_mon, set_msg_xy } from './display.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -644,10 +646,10 @@ async function vamprises(mtmp) {
             /* 3.6.0 used a_monnam(mtmp); that was weird if mtmp was
                named: "Dracula suddenly transforms and rises as Dracula";
                3.6.1 used mtmp->data->mname; that ignored hallucination */
-            await pline(`${upstart_vr(action)} ${
+            await pline_mon(mtmp, `${upstart_vr(action)} ${
                 x_monnam(mtmp, ARTICLE_A_VR, null,
                          (SUPPRESS_NAME_VR | SUPPRESS_IT_VR | SUPPRESS_INVISIBLE_VR),
-                         false)}!`); /* pline_mon() */
+                         false)}!`);
             game.vamp_rise_msg = true;
         }
         /* revived vampire is in normal shape, so can't be amorphous; if on
@@ -659,7 +661,7 @@ async function vamprises(mtmp) {
             const trapped = (door.doormask & D_TRAPPED_VR) !== 0,
                   seeit = cansee(x, y);
 
-            /* set_msg_xy(x, y): You()/pline() will reset this */
+            set_msg_xy(x, y); /* You()/pline() will reset this */
             if (!seeit)
                 await You_hear(`${trapped ? "an explosion" : door_smashed}.`);
             else if (!canspotmon(mtmp))
@@ -667,7 +669,7 @@ async function vamprises(mtmp) {
             else if (!Unaware_vr())
                 await pline_The_vr(`door is smashed${
                     trapped ? " and it explodes!" : "."}`);
-            /* set_msg_xy(0, 0): in case none of the messages was delivered */
+            set_msg_xy(0, 0); /* in case none of the messages was delivered */
 
             door.doormask = D_NODOOR_VR;
             recalc_block_point_vr(x, y);
@@ -682,7 +684,7 @@ async function vamprises(mtmp) {
                    have been called but no message about its death given yet;
                    mtmp was a vampire so use unconditional "destroyed" */
                 if (trap_killed && canspotmon(mtmp) && !Unaware_vr())
-                    await pline(`${Monnam_vr(mtmp)} is destroyed!`); /* pline_mon() */
+                    await pline_mon(mtmp, `${Monnam_vr(mtmp)} is destroyed!`);
             }
         }
         newsym(x, y);
@@ -854,7 +856,7 @@ export async function mon_to_stone(mtmp) {
     if (mtmp.data.mlet === S_GOLEM) {
         /* it's a golem, and not a stone golem */
         if (canseemon(mtmp))
-            await pline(`${Monnam(mtmp)} solidifies...`); /* pline_mon() */
+            await pline_mon(mtmp, `${Monnam(mtmp)} solidifies...`);
         if (await newcham(mtmp, mons[PM_STONE_GOLEM], NO_NC_FLAGS)) {
             if (canseemon(mtmp))
                 await pline(`Now it's ${an(pmname(mtmp.data, Mgender(mtmp)))}.`);
@@ -927,9 +929,9 @@ export async function corpse_chance(mon, magr, was_swallowed) {
                         await mondied(magr);
                     if (DEADMONSTER(magr)) { /* maybe lifesaved */
                         if (canspotmon(magr))
-                            await pline(`${Monnam(magr)} rips open!`);
+                            await pline_mon(magr, `${Monnam(magr)} rips open!`);
                     } else if (canseemon(magr))
-                        await pline(`${Monnam(magr)} seems to have indigestion.`);
+                        await pline_mon(magr, `${Monnam(magr)} seems to have indigestion.`);
                 }
                 return false;
             }
@@ -1068,7 +1070,23 @@ function make_corpse(mtmp, corpseflags) {
     case MM.PM_BROWN_PUDDING:
     case MM.PM_GREEN_SLIME:
     case MM.PM_BLACK_PUDDING:
-        throw new Error('make_corpse(): pudding globs (obj_nexto()) not ported yet');
+    {
+        /* we have to do this here because most other places
+           expect there to be an object coming back; not this one */
+        obj = mksobj_at(GLOB_OF_BLACK_PUDDING - (MM.PM_BLACK_PUDDING - mndx),
+                        x, y, true, false);
+
+        /* while ((otmp = obj_nexto(obj)) != 0) {
+               pudding_merge_message(obj, otmp); obj = obj_meld(&obj, &otmp); } */
+        if (obj && obj_nexto(obj) !== null)
+            throw new Error('make_corpse(): melding pudding globs (obj_meld()) not ported yet');
+        /* free_mgivenname(mtmp) */
+        mtmp.mgivenname = '';
+        if (mtmp.mextra)
+            mtmp.mextra.mgivenname = null;
+        newsym(x, y);
+        return obj;
+    }
     case NON_PM: case MM.NUMMONS: /* never use as index */
         break;
     default:
@@ -1152,8 +1170,8 @@ export async function monkilled(mdef, fltxt, how) {
     /* C tests the pointer: "" is non-null and still gives the message */
     if (fltxt != null && (mdef.wormno ? worm_known(mdef)
                               : cansee(mdef.mx, mdef.my)))
-        await pline(`${Monnam(mdef)} is ${nonliving(mptr) ? 'destroyed' : 'killed'}`
-                    + `${fltxt ? ' by the ' : ''}${fltxt}!`);
+        await pline_mon(mdef, `${Monnam(mdef)} is ${nonliving(mptr) ? 'destroyed' : 'killed'}`
+                        + `${fltxt ? ' by the ' : ''}${fltxt}!`);
     else
         /* sad feeling is deferred until after potential life-saving */
         game.sad_feeling = mdef.mtame ? true : false;
@@ -1500,7 +1518,7 @@ async function peacefuls_respond(mtmp) {
                         || (mon.data === MM.mons[quest_info(MM.MS_LEADER)]
                             && mtmp.data !== MM.mons[game.urole.guardnum])) {
                         if (exclaimed)
-                            await pline(`${buf} then shrugs.`); /* pline_mon() */
+                            await pline_mon(mon, `${buf} then shrugs.`);
                         continue;
                     }
 
@@ -1518,7 +1536,7 @@ async function peacefuls_respond(mtmp) {
                             exclaimed = true; /* got msg from monflee() */
                     }
                     if (buf)
-                        await pline(`${buf}${needpunct ? "." : ""}`); /* pline_mon() */
+                        await pline_mon(mon, `${buf}${needpunct ? "." : ""}`);
                     if (mon.mtame) {
                         ; /* mustn't set mpeaceful to 0 as below;
                            * perhaps reduce tameness? */
@@ -1527,7 +1545,7 @@ async function peacefuls_respond(mtmp) {
                         mon.mstrategy &= ~STRAT_WAITMASK;
                         adjalign(-1);
                         if (!exclaimed)
-                            await pline(`${Monnam(mon)} gets angry!`); /* pline_mon() */
+                            await pline_mon(mon, `${Monnam(mon)} gets angry!`);
                     }
                 }
             } else if (mon.data.mlet === mtmp.data.mlet
@@ -1619,7 +1637,7 @@ export async function setmangry(mtmp, via_attack) {
         adjalign(-1); /* attacking peaceful monsters is bad */
     if ((mtmp.data.mflags1 & M1_HUMANOID) || mtmp.isshk || mtmp.isgd) {
         if (couldsee(mtmp.mx, mtmp.my))
-            await pline(`${Monnam(mtmp)} gets angry!`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} gets angry!`);
     } else {
         await growl(mtmp);
     }
@@ -1732,7 +1750,7 @@ async function minliquid_core(mtmp) {
         const dam = d(2, 6);
 
         if (cansee(mtmp.mx, mtmp.my))
-            await pline(`${Monnam(mtmp)} rusts.`); /* pline_mon() */
+            await pline_mon(mtmp, `${Monnam(mtmp)} rusts.`);
         mtmp.mhp -= dam;
         if (mtmp.mhpmax > dam)
             mtmp.mhpmax -= dam;
@@ -1768,9 +1786,9 @@ async function minliquid_core(mtmp) {
                     const dummy = ptr.mattk[0];
                     const how = on_fire(ptr, dummy);
 
-                    await pline(`${Monnam(mtmp)} ${how === "boiling" ? "boils away"
+                    await pline_mon(mtmp, `${Monnam(mtmp)} ${how === "boiling" ? "boils away"
                                  : how === "melting" ? "melts away"
-                                   : "burns to a crisp"}.`); /* pline_mon() */
+                                   : "burns to a crisp"}.`);
                 }
                 /* unlike fire -> melt ice -> pool, there's no way for the
                    hero to create lava beneath a monster, so the !mon_moving
@@ -1782,8 +1800,8 @@ async function minliquid_core(mtmp) {
             } else {
                 mtmp.mhp -= 1;
                 if (DEADMONSTER(mtmp)) {
-                    if (cansee(mtmp.mx, mtmp.my)) /* pline_mon() */
-                        await pline(`${Monnam(mtmp)} surrenders to the fire.`);
+                    if (cansee(mtmp.mx, mtmp.my))
+                        await pline_mon(mtmp, `${Monnam(mtmp)} surrenders to the fire.`);
                     await mondead(mtmp); /* no corpse */
                 } else if (cansee(mtmp.mx, mtmp.my)) {
                     await pline(`${Monnam(mtmp)} burns slightly.`);
@@ -1823,7 +1841,7 @@ async function minliquid_core(mtmp) {
             }
             if (cansee(mtmp.mx, mtmp.my)) {
                 if (game.context.mon_moving)
-                    await pline(`${Monnam(mtmp)} drowns.`); /* pline_mon() */
+                    await pline_mon(mtmp, `${Monnam(mtmp)} drowns.`);
                 else
                     /* hero used fire to melt ice that monster was on */
                     await pline(`You drown ${mon_nam(mtmp)}.`);
@@ -2479,8 +2497,16 @@ const newcham_g = ({ *newcham(mtmp, mdat, ncflags) {
     /* take on the new form... */
     set_mon_data(mtmp, mdat);
 
-    if (mtmp.mleashed)
-        throw new Error('newcham(): leashed monsters not ported yet');
+    if (mtmp.mleashed) {
+        if (!leashable(mtmp))
+            yield { newcham_async: () => m_unleash(mtmp, true), /* message */
+                    what: 'm_unleash()' };
+        else
+            /* if leashed, persistent inventory window needs updating
+               (really only when mon_nam() is going to yield "a frog"
+               rather than "Kermit" but no need to micromanage here) */
+            ; /* update_inventory(); -- no perm_invent window */
+    }
 
     if (emits_light(olddata) !== emits_light(mtmp.data)) {
         /* used to give light, now doesn't, or vice versa,
@@ -2697,7 +2723,7 @@ export function check_gear_next_turn(mon) {
 // C ref: mon.c wake_msg()
 export async function wake_msg(mtmp, interesting) {
     if (mtmp.msleeping && canseemon(mtmp)) {
-        await pline(`${Monnam(mtmp)} wakes up${interesting ? "!" : "."}${
+        await pline_mon(mtmp, `${Monnam(mtmp)} wakes up${interesting ? "!" : "."}${
             mtmp.data === mons[PM_FLESH_GOLEM] ? " It's alive!" : ""}`);
     }
 }
@@ -3352,7 +3378,7 @@ export async function golemeffects(mon, damtype, dam) {
     if (heal) {
         if (healmon(mon, heal, 0)) {
             if (cansee(mon.mx, mon.my))
-                await pline(`${Monnam(mon)} seems healthier.`);
+                await pline_mon(mon, `${Monnam(mon)} seems healthier.`);
         }
     }
 }
@@ -3793,5 +3819,5 @@ export async function shieldeff_mon(mtmp) {
     await shieldeff(mtmp.mx, mtmp.my);
     /* does not depend on seeing the monster; the shield effect is visible */
     if (cansee(mtmp.mx, mtmp.my))
-        await pline(`${Monnam(mtmp)} resists!`); /* pline_mon() */
+        await pline_mon(mtmp, `${Monnam(mtmp)} resists!`);
 }

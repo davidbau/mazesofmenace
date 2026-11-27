@@ -298,6 +298,7 @@ import { inv_cnt } from './hack.js';
 import { dropy } from './do.js';
 import { nonliving } from './makemon.js';
 import { u_teleport_mon } from './teleport.js';
+import { pline_mon } from './display.js';
 
 const invlet_basic = 52; /* C ref: invent.c */
 
@@ -366,7 +367,7 @@ async function mgc_atk_negated(magr, mdef, verbosely) {
         if (mdef === game.youmonst)
             await pline('You avoid harm.');
         else if (game.mhitm_vis && canseemon(mdef))
-            await pline(`${Monnam(mdef)} avoids harm.`); /* pline_mon() */
+            await pline_mon(mdef, `${Monnam(mdef)} avoids harm.`);
     }
     return r.negated;
 }
@@ -419,7 +420,7 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                     mhm.hitflags |= M_ATTK_MISS;
                 } else {
                     set_ustuck(magr);
-                    await pline(`${Monnam(magr)} grabs you!`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} grabs you!`);
                     mhm.hitflags |= M_ATTK_HIT;
                 }
             } else if (u.ustuck === magr) {
@@ -438,8 +439,8 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                 if (otmp.otyp === CORPSE
                     && touch_petrifies(mons[otmp.corpsenm])) {
                     mhm.damage = 1;
-                    await pline(`${Monnam(magr)} hits you with the ${
-                        mons[otmp.corpsenm].pmnames[NEUTRAL]} corpse.`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} hits you with the ${
+                        mons[otmp.corpsenm].pmnames[NEUTRAL]} corpse.`);
                     if (!Stoned()) {
                         if (await do_stone_u(magr)) {
                             mhm.hitflags = M_ATTK_HIT;
@@ -550,7 +551,7 @@ async function mhitm_ad_elec(magr, mattk, mdef, mhm) {
             return;
         }
         if (game.mhitm_vis && canseemon(mdef))
-            await pline(`${Monnam(mdef)} gets zapped!`); /* pline_mon() */
+            await pline_mon(mdef, `${Monnam(mdef)} gets zapped!`);
         if (resists_elec(mdef) || defended(mdef, AD_ELEC)) {
             if (game.mhitm_vis && canseemon(mdef))
                 await pline_The(`zap doesn't shock ${mon_nam(mdef)}!`);
@@ -888,11 +889,11 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
                       is disabled, it would be changed to another damage
                       type, but when defending, it remains as-is */
                    || dmgtype(game.youmonst.data, M.AD_SSEX)) {
-            await pline(`${Monnam(magr)} ${
+            await pline_mon(magr, `${Monnam(magr)} ${
                 Deaf() ? "says something but you can't hear it"
                 : (magr.minvent && magr.minvent.length)
                   ? "brags about the goods some dungeon explorer provided"
-                : "makes some remarks about how difficult theft is lately"}.`); /* pline_mon() */
+                : "makes some remarks about how difficult theft is lately"}.`);
             if (!await tele_restrict(magr))
                 await rloc(magr, RLOC_MSG);
             mhm.hitflags = M_ATTK_AGR_DONE; /* return 3??? */
@@ -924,8 +925,8 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
                 await rloc(magr, RLOC_MSG);
             if (is_animal(magr.data) && buf.buf) {
                 if (canseemon(magr))
-                    await pline(`${Monnam(magr)} tries to ${
-                        locomotion(magr.data, "run")} away with ${buf.buf}.`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} tries to ${
+                        locomotion(magr.data, "run")} away with ${buf.buf}.`);
             }
             await monflee(magr, 0, false, false);
             mhm.hitflags = M_ATTK_AGR_DONE; /* return 3??? */
@@ -1124,8 +1125,8 @@ async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
             return;
         if (completelyrusts(pd)) { /* PM_IRON_GOLEM */
             if (game.mhitm_vis && canseemon(mdef))
-                await pline(`${Monnam(mdef)} ${
-                    !mlifesaver(mdef) ? "falls" : "starts to fall"} to pieces!`); /* pline_mon() */
+                await pline_mon(mdef, `${Monnam(mdef)} ${
+                    !mlifesaver(mdef) ? "falls" : "starts to fall"} to pieces!`);
             await monkilled(mdef, null, M.AD_RUST);
             if (!DEADMONSTER(mdef)) {
                 mhm.hitflags = M_ATTK_MISS;
@@ -1200,8 +1201,8 @@ async function mhitm_ad_dcay(magr, mattk, mdef, mhm) {
             /* note: the life-saved case is hypothetical because
                life-saving doesn't work for golems */
             if (game.mhitm_vis && canseemon(mdef))
-                await pline(`${Monnam(mdef)} ${
-                    !mlifesaver(mdef) ? "falls" : "starts to fall"} to pieces!`); /* pline_mon() */
+                await pline_mon(mdef, `${Monnam(mdef)} ${
+                    !mlifesaver(mdef) ? "falls" : "starts to fall"} to pieces!`);
             await monkilled(mdef, null, M.AD_DCAY);
             if (!DEADMONSTER(mdef)) {
                 mhm.done = true;
@@ -1296,7 +1297,7 @@ async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
             if (!is_death) /* Stormbringer uses monhp_per_lvl (1d8) */
                 mhm.damage = d(2, 6);
             if (game.mhitm_vis && canspotmon(mdef))
-                await pline(`${Monnam(mdef)} becomes weaker!`); /* pline_mon() */
+                await pline_mon(mdef, `${Monnam(mdef)} becomes weaker!`);
             if (mdef.mhpmax - mhm.damage > mdef.m_lev) {
                 mdef.mhpmax -= mhm.damage;
             } else {
@@ -1428,9 +1429,9 @@ async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
             /* note: the life-saved case is hypothetical because
                life-saving doesn't work for golems */
             if (game.mhitm_vis && canseemon(mdef))
-                await pline(`${Monnam(mdef)} ${
+                await pline_mon(mdef, `${Monnam(mdef)} ${
                     !mlifesaver(mdef) ? "burns completely"
-                                      : "is totally engulfed in flames"}!`); /* pline_mon() */
+                                      : "is totally engulfed in flames"}!`);
             await monkilled(mdef, null, AD_FIRE);
             if (!DEADMONSTER(mdef)) {
                 mhm.hitflags = M_ATTK_MISS;
@@ -1497,7 +1498,7 @@ async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
             return;
         }
         if (game.mhitm_vis && canseemon(mdef))
-            await pline(`${Monnam(mdef)} is covered in frost!`); /* pline_mon() */
+            await pline_mon(mdef, `${Monnam(mdef)} is covered in frost!`);
         if (resists_cold(mdef) || defended(mdef, AD_COLD)) {
             if (game.mhitm_vis && canseemon(mdef))
                 await pline_The(`frost doesn't seem to chill ${mon_nam(mdef)}!`);
@@ -1542,7 +1543,7 @@ async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
                     hliquid("acid")}, but it seems harmless.`);
             mhm.damage = 0;
         } else if (game.mhitm_vis && canseemon(mdef)) {
-            await pline(`${Monnam(mdef)} is covered in ${hliquid("acid")}!`); /* pline_mon() */
+            await pline_mon(mdef, `${Monnam(mdef)} is covered in ${hliquid("acid")}!`);
             await pline(`It burns ${mon_nam(mdef)}!`);
         }
         if (!rn2(30))
@@ -1615,7 +1616,7 @@ async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
             ; /* no negation message */
         } else if (await mgc_atk_negated(magr, mdef, true)) {
             if (game.mhitm_vis)
-                await pline(`${Monnam(mdef)} is not affected.`); /* pline_mon() */
+                await pline_mon(mdef, `${Monnam(mdef)} is not affected.`);
         } else {
             let mdef_Monnam = '';
             const wasseen = canspotmon(mdef);
@@ -1722,7 +1723,7 @@ async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
                 if (Blind()) {
                     await You_hear("laughter.");
                 } else {
-                    await pline(`${Monnam(magr)} chuckles.`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} chuckles.`);
                 }
             }
             if (u.umonnum === M.PM_CLAY_GOLEM) {
@@ -1746,7 +1747,7 @@ async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
                 if (game.mhitm_vis && canseemon(mdef)) {
                     await pline(`Some writing vanishes from ${
                         s_suffix(mon_nam(mdef))} head!`);
-                    await pline(`${Monnam(mdef)} is destroyed!`); /* pline_mon() */
+                    await pline_mon(mdef, `${Monnam(mdef)} is destroyed!`);
                 }
                 await mondied(mdef);
                 if (!DEADMONSTER(mdef)) {
@@ -1767,7 +1768,7 @@ async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
                 if (!game.mhitm_vis)
                     await You_hear("laughter.");
                 else if (canseemon(magr))
-                    await pline(`${Monnam(magr)} chuckles.`); /* pline_mon() */
+                    await pline_mon(magr, `${Monnam(magr)} chuckles.`);
             }
         }
     }
@@ -1913,7 +1914,7 @@ async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
         /* mhitm */
         if (game.notonhead || !has_head(pd)) {
             if (game.mhitm_vis && canspotmon(mdef))
-                await pline(`${Monnam(mdef)} doesn't seem harmed.`); /* pline_mon() */
+                await pline_mon(mdef, `${Monnam(mdef)} doesn't seem harmed.`);
             /* Not clear what to do for green slimes */
             mhm.damage = 0;
             /* don't bother with additional DRIN attacks since they wouldn't
@@ -1998,9 +1999,9 @@ async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
                 mhm.damage = 0;
                 if (game.flags.verbose) {
                     if (coil)
-                        await pline(`${Monnam(magr)} brushes against you.`);
+                        await pline_mon(magr, `${Monnam(magr)} brushes against you.`);
                     else
-                        await pline(`${Monnam(magr)} brushes against your ${body_part(LEG)}.`);
+                        await pline_mon(magr, `${Monnam(magr)} brushes against your ${body_part(LEG)}.`);
                 }
             }
         } else
@@ -2249,7 +2250,7 @@ async function mhitm_ad_slow(magr, mattk, mdef, mhm) {
             await mon_adjust_speed(mdef, -1, null);
             mdef.mstrategy &= ~STRAT_WAITFORU;
             if (mdef.mspeed !== oldspeed && game.mhitm_vis && canspotmon(mdef))
-                await pline(`${Monnam(mdef)} slows down.`); /* pline_mon() */
+                await pline_mon(mdef, `${Monnam(mdef)} slows down.`);
         }
     }
     void mhm;
@@ -2284,7 +2285,7 @@ async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
          */
         if (!magr.mcan && !mdef.mconf && !magr.mspec_used) {
             if (game.mhitm_vis && canseemon(mdef))
-                await pline(`${Monnam(mdef)} looks confused.`); /* pline_mon() */
+                await pline_mon(mdef, `${Monnam(mdef)} looks confused.`);
             mdef.mconf = 1;
             mdef.mstrategy &= ~STRAT_WAITFORU;
         }
@@ -2346,7 +2347,7 @@ async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
        as the mhitm case except for messaging: C does 'goto mhitm_famn;' */
     if (magr !== game.youmonst && mdef === game.youmonst) {
         /* mhitu */
-        await pline(`${Monnam(magr)} reaches out, and your body shrivels.`); /* pline_mon() */
+        await pline_mon(magr, `${Monnam(magr)} reaches out, and your body shrivels.`);
         await exercise(A_CON, false);
         if (!is_fainted())
             await morehungry(rn1(40, 40));
@@ -2371,7 +2372,7 @@ async function mhitm_ad_pest(magr, mattk, mdef, mhm) {
        as the mhitm case except for messaging: C does 'goto mhitm_pest;' */
     if (magr !== game.youmonst && mdef === game.youmonst) {
         /* mhitu */
-        await pline(`${Monnam(magr)} reaches out, and you feel fever and chills.`); /* pline_mon() */
+        await pline_mon(magr, `${Monnam(magr)} reaches out, and you feel fever and chills.`);
         await diseasemu(pa);
         /* plus the normal damage */
     } else {
@@ -2394,7 +2395,7 @@ async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
        as the mhitm case except for messaging: C does 'goto mhitm_deth;' */
     if (magr !== game.youmonst && mdef === game.youmonst) {
         /* mhitu */
-        await pline(`${Monnam(magr)} reaches out with its deadly touch.`); /* pline_mon() */
+        await pline_mon(magr, `${Monnam(magr)} reaches out with its deadly touch.`);
         if (is_undead(pd)) {
             /* still does some damage */
             mhm.damage = Math.trunc((mhm.damage + 1) / 2);
@@ -2454,8 +2455,8 @@ async function mhitm_ad_halu(magr, mattk, mdef, mhm) {
         /* mhitm */
         if (!magr.mcan && haseyes(pd) && mdef.mcansee) {
             if (game.mhitm_vis && canseemon(mdef))
-                await pline(`${Monnam(mdef)} looks ${
-                    mdef.mconf ? "more " : ""}confused.`); /* pline_mon() */
+                await pline_mon(mdef, `${Monnam(mdef)} looks ${
+                    mdef.mconf ? "more " : ""}confused.`);
             mdef.mconf = 1;
             mdef.mstrategy &= ~STRAT_WAITFORU;
         }
@@ -2519,7 +2520,7 @@ async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
             && !game.uarms && !game.uarmg && !game.uarmf && !game.uarmh) {
             let goaway = false;
 
-            await pline(`${Monnam(magr)} hits!  (I hope you don't mind.)`); /* pline_mon() */
+            await pline_mon(magr, `${Monnam(magr)} hits!  (I hope you don't mind.)`);
             if (Upolyd()) {
                 u.mh += rnd(7);
                 if (!rn2(7)) {
@@ -2610,8 +2611,8 @@ async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
         if (magr.mcan)
             return;
         if (canseemon(mdef))
-            await pline(`${Monnam(mdef)} ${
-                makeplural(stagger(pd, "stagger"))} for a moment.`); /* pline_mon() */
+            await pline_mon(mdef, `${Monnam(mdef)} ${
+                makeplural(stagger(pd, "stagger"))} for a moment.`);
         mdef.mstun = 1;
         await mhitm_ad_phys(magr, mattk, mdef, mhm);
         if (mhm.done)
@@ -2644,7 +2645,7 @@ async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
             await pline(`${Monst_name} tries to reach your ${sidestr} ${leg}!`);
             mhm.damage = 0;
         } else if (magr.mcan) {
-            await pline(`${Monnam(magr)} nuzzles against your ${sidestr} ${leg}!`); /* pline_mon() */
+            await pline_mon(magr, `${Monnam(magr)} nuzzles against your ${sidestr} ${leg}!`);
             mhm.damage = 0;
         } else {
             if (game.uarmf) {

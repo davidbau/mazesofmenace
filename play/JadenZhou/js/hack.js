@@ -11,7 +11,8 @@ import { feeltrap } from './trap.js';
 import { just_an } from './objnam.js';
 import { mintrap, Trap_Effect_Finished, Trap_Caught_Mon, Trap_Killed_Mon,
          Trap_Moved_Mon } from './trap.js';
-import { NO_TRAP_FLAGS, LL_CONDUCT } from './const.js';
+import { NO_TRAP_FLAGS, LL_CONDUCT, ParanoidTrap, ParanoidSwim,
+         ParanoidConfirm } from './const.js';
 import { abuse_dog } from './dog.js';
 import { adjalign } from './attrib.js';
 import { livelog_printf, You_feel, verbalize, You_hear } from './display.js';
@@ -32,7 +33,16 @@ import { hit_bars } from './mthrowu.js';
 import { ansimpleoname } from './iactions.js';
 import { helpless } from './monmove.js';
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
+import { S_PIERCER } from './monsters.js';
+import { Amonnam } from './do_name.js';
+import { ceiling } from './dungeon.js';
+import { hard_helmet } from './do_wear.js';
+import { helm_simple_name } from './objnam.js';
+import { ARTICLE_A, RLOC_NOMSG } from './const.js';
+import { Half_physical_damage } from './youprop.js';
+import { mdamageu } from './mhitu.js';
+import { mnexto } from './teleport.js';
 import { ACURR, acurrstr, exercise } from './attrib.js';
 import {
     A_CON, WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, MAX_CARR_CAP, WT_HUMAN,
@@ -63,8 +73,16 @@ import { dig_typ, use_pick_axe2 } from './dig.js';
 import { pline, canspotmon, mon_visible, newsym, sensemon, You, Your,
          You_cant, pline_The, There, unmap_invisible, unmap_object, map_invisible,
          glyph_is_invisible, map_object } from './display.js';
-import { vision_recalc, couldsee } from './vision.js';
-import { glyph_at, Norep, feel_location, glyph_is_warning } from './display.js';
+import { vision_recalc, couldsee, cansee } from './vision.js';
+import { launch_obj, blow_up_landmine } from './trap.js';
+import { Tobjnam, otense } from './objnam.js';
+import { fill_pit } from './muse.js';
+import { flooreffects } from './do.js';
+import { useupf } from './invent.js';
+import { bury_objs } from './dig.js';
+import { ROLL, LAUNCH_KNOWN, IN_SIGHT, W_NONDIGGABLE } from './const.js';
+import { glyph_at, Norep, feel_location, glyph_is_warning, pline_dir, pline_xy,
+         pline_mon, set_msg_xy } from './display.js';
 import { carrying } from './invent.js';
 import { WAN_DIGGING, is_pick } from './objects.js';
 import { u_at, Is_rogue_level, Upolyd } from './const.js';
@@ -196,6 +214,7 @@ import { weapon_descr as weapon_descr_fw } from './insight.js';
 import { makeplural as makeplural_fw } from './objnam.js';
 import { You_cant as You_cant_fw } from './display.js';
 import { deltrap as deltrap_fw } from './trap.js';
+import { check_leash } from './apply.js';
 
 // C's impossible() (pline.c) is not ported yet.
 export function impossible(msg) { console.error(`impossible: ${msg}`); }
@@ -695,7 +714,7 @@ async function avoid_moving_on_trap(x, y, msg) {
            it were a type of terrain */
         && trap.ttyp !== VIBRATING_SQUARE) {
         if (msg && game.flags.mention_walls) {
-            /* set_msg_xy(x, y); */
+            set_msg_xy(x, y);
             await You(`stop in front of ${an(trapname(trap.ttyp, false))}.`);
         }
         return true;
@@ -727,7 +746,7 @@ async function avoid_moving_on_liquid(x, y, msg) {
         return false; /* liquid is safe to traverse */
     } else if (is_pool_or_lava(x, y) && loc.seenv) {
         if (msg && game.flags.mention_walls) {
-            /* set_msg_xy(x, y); */
+            set_msg_xy(x, y);
             await You(`stop at the edge of the ${
                 hliquid(is_pool(x, y) ? "water" : "lava")}.`);
         }
@@ -777,8 +796,8 @@ export async function lookaround() {
                 /* OR it blocks our move direction and we're not traveling */
                 if ((g.context.run !== 1 && !is_safemon(mtmp))
                     || (infront && !g.context.travel)) {
-                    if (g.flags.mention_walls) /* pline_xy() */
-                        await pline(`${upstart(a_monnam(mtmp))} blocks your path.`);
+                    if (g.flags.mention_walls)
+                        await pline_xy(x, y, `${upstart(a_monnam(mtmp))} blocks your path.`);
                     nomul(0); /* goto stop */
                     return;
                 }
@@ -1727,8 +1746,45 @@ export async function spoteffects(pick) {
         if (Warning() && game.level.at(u.ux, u.uy).typ === ICE)
             throw new Error('spoteffects(): ice warnings (spot_time_left()) not ported yet');
 
-        if ((mtmp = m_at(u.ux, u.uy)) != null && !u.uswallow)
-            throw new Error('spoteffects(): monster at the hero\'s spot (falling piercer/surprise) not ported yet');
+        if ((mtmp = m_at(u.ux, u.uy)) != null && !u.uswallow) {
+            mtmp.mundetected = mtmp.msleeping = 0;
+            switch (mtmp.data.mlet) {
+            case S_PIERCER:
+                await pline(`${Amonnam(mtmp)} suddenly drops from the ${
+                    ceiling(u.ux, u.uy)}!`);
+                if (mtmp.mtame) { /* jumps to greet you, not attack */
+                    ;
+                } else if (hard_helmet(game.uarmh)) {
+                    await pline(`Its blow glances off your ${
+                        helm_simple_name(game.uarmh)}.`);
+                } else if (u.uac + 3 <= rnd(20)) {
+                    await You(`are almost hit by ${
+                        x_monnam(mtmp, ARTICLE_A, "falling", 0, true)}!`);
+                } else {
+                    let dmg;
+
+                    await You(`are hit by ${
+                        x_monnam(mtmp, ARTICLE_A, "falling", 0, true)}!`);
+                    dmg = d(4, 6);
+                    if (Half_physical_damage())
+                        dmg = Math.trunc((dmg + 1) / 2);
+                    await mdamageu(mtmp, dmg);
+                }
+                break;
+            default: /* monster surprises you. */
+                if (mtmp.mtame)
+                    await pline(`${Amonnam(mtmp)} jumps near you from the ${
+                        ceiling(u.ux, u.uy)}.`);
+                else if (mtmp.mpeaceful) {
+                    await You(`surprise ${(Blind() && !sensemon(mtmp))
+                                          ? "something" : a_monnam(mtmp)}!`);
+                    mtmp.mpeaceful = 0;
+                } else
+                    await pline(`${Amonnam(mtmp)} attacks you by surprise!`);
+                break;
+            }
+            await mnexto(mtmp, RLOC_NOMSG); /* have to move the monster */
+        }
     }
     /* spotdone: */
     if (!--inspoteffects) {
@@ -2167,8 +2223,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
                     const sym = back_to_cmap(x, y);
                     const buf = (sym === 0 /* S_stone */) ? "solid stone"
                                 : an(defsyms_explanation[sym]);
-                    /* pline_dir(xytodir(dx, dy), ...) */
-                    await pline(`It's ${buf}.`);
+                    await pline_dir(xytodir(dx, dy), `It's ${buf}.`);
                 }
             }
             return false;
@@ -2333,8 +2388,7 @@ async function test_move_rest(ux, uy, dx, dy, mode, x, y) {
         if (mode !== TEST_TRAV && game.context.run >= 2
             && !(Blind() || Hallucination()) && !could_move_onto_boulder(x, y)) {
             if (mode === DO_MOVE && game.flags.mention_walls)
-                /* pline_dir(xytodir(dx,dy), ...) */
-                await pline("A boulder blocks your path.");
+                await pline_dir(xytodir(dx, dy), "A boulder blocks your path.");
             return false;
         }
         if (mode === DO_MOVE) {
@@ -2564,7 +2618,7 @@ export async function still_chewing(x, y) {
 async function cannot_push_msg(otmp, sx, sy) {
     const what = the(xname(otmp));
     if (game.u.usteed)
-        throw new Error('cannot_push_msg(): steed message not ported yet');
+        await pline(`${YMonnam(game.u.usteed)} tries to move ${what}, but cannot.`);
     else
         await You(`try to move ${what}, but in vain.`);
     if (Blind())
@@ -2703,8 +2757,8 @@ async function moverock() {
     return ret;
 }
 
-// C ref: hack.c moverock_core() -- pushing into traps, pools, Sokoban
-// and the m-prefix cases are not ported yet
+// C ref: hack.c moverock_core() -- pushing into teleport traps is not
+// ported yet
 async function moverock_core(sx, sy) {
     let rx, ry;
     let otmp, ttmp, mtmp;
@@ -2733,8 +2787,35 @@ async function moverock_core(sx, sy) {
         ry = game.u.uy + 2 * game.u.dy;
         nomul(0);
 
-        if (game.context.nopick)
-            throw new Error('moverock_core(): m-prefix move onto a boulder not ported yet');
+        /* using m<dir> towards an adjacent boulder steps over/onto it if
+           poly'd into a giant or squeezes under/beside it if small/light
+           enough but is a no-op in other circumstances unless move attempt
+           reveals an unseen boulder or lack of remembered, unseen monster */
+        if (game.context.nopick) {
+            const oldglyph = glyph_at(sx, sy); /* before feel_location() */
+            let res;
+
+            feel_location(sx, sy); /* same for all 3 if/else-if/else cases */
+            if (throws_rocks(game.youmonst.data)) {
+                /* player has used 'm<dir>' to move, so step to boulder's
+                   spot without pushing it */
+                await You(`${u_locomotion("step")} over a boulder here.`);
+                sokoban_guilt();
+                res = 0; /* move to <sx,sy> */
+            } else if (could_move_onto_boulder(sx, sy)) {
+                await You(`squeeze yourself ${Flying() ? "over" : "against"} the boulder.`);
+                sokoban_guilt();
+                res = 0; /* move to <sx,sy> */
+            } else {
+                await There("is a boulder in your way.");
+                /* use a move if hero learns something; see test_move() for
+                   how/why 'context.door_opened' is being dragged into this */
+                if (glyph_at(sx, sy) !== oldglyph)
+                    game.context.door_opened = game.context.move = 1;
+                res = -1; /* don't move to <sx,sy>, so no soko guilt */
+            }
+            return res;
+        }
         if (Levitation() || Is_airlevel(game.u.uz)) {
             /* FIXME?  behavior in an air bubble on the water level should
                be similar to being on the air level; both cases probably
@@ -2812,11 +2893,84 @@ async function moverock_core(sx, sy) {
             disturb_buried_zombies(sx, sy);
 
             if (ttmp) {
+                /* if a trap operates on the boulder, don't attempt
+                   to move any others at this location; return -1
+                   if another boulder is in hero's way, or 0 if he
+                   should advance to the vacated boulder position */
                 switch (ttmp.ttyp) {
-                case LANDMINE: case SPIKED_PIT: case PIT: case HOLE:
-                case TRAPDOOR: case LEVEL_TELEP: case TELEP_TRAP:
-                case ROLLING_BOULDER_TRAP:
-                    throw new Error('moverock_core(): pushing a boulder into a trap not ported yet');
+                case LANDMINE:
+                    if (rn2(10)) {
+                        const D = game.u.uprops[DEAF];
+                        const deaf = !!(D.intrinsic || D.extrinsic || game.u.uroleplay?.deaf);
+                        obj_extract_self(otmp);
+                        place_object(otmp, rx, ry);
+                        newsym(sx, sy);
+                        await pline(`${(!deaf || !Blind()) ? "KAABLAMM!!" : "Gadzooks"}!  `
+                                    + `${Tobjnam(otmp, "trigger")} ${ttmp.madeby_u ? "your" : "a"} land mine.`);
+                        await blow_up_landmine(ttmp);
+                        /* if the boulder remains, it should fill the pit */
+                        await fill_pit(game.u.ux, game.u.uy);
+                        if (cansee(rx, ry))
+                            newsym(rx, ry);
+                        return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                    }
+                    break;
+                case SPIKED_PIT:
+                case PIT:
+                    obj_extract_self(otmp);
+                    /* vision kludge to get messages right;
+                       the pit will temporarily be seen even
+                       if this is one among multiple boulders */
+                    if (!Blind())
+                        game.viz_array[ry][rx] |= IN_SIGHT;
+                    if (!(await flooreffects(otmp, rx, ry, "fall"))) {
+                        place_object(otmp, rx, ry);
+                    }
+                    if (mtmp && !Blind())
+                        newsym(rx, ry);
+                    return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                case HOLE:
+                case TRAPDOOR: {
+                    /* Soundeffect(se_kerplunk_boulder_gone, 40) */
+                    if (Blind())
+                        await pline(`Kerplunk!  You no longer feel ${the(xname(otmp))}.`);
+                    else
+                        await pline(`${Tobjnam(otmp, (ttmp.ttyp === TRAPDOOR) ? "trigger" : "fall")}`
+                                    + `${(ttmp.ttyp === TRAPDOOR) ? "" : " into"}`
+                                    + ` and ${otense(otmp, "plug")} a`
+                                    + ` ${(ttmp.ttyp === TRAPDOOR) ? "trap door" : "hole"}`
+                                    + ` in the ${surface(rx, ry)}!`);
+                    deltrap_fw(ttmp);
+                    await useupf(otmp, 1);
+                    await bury_objs(rx, ry);
+                    const rlev = game.level.at(rx, ry);
+                    rlev.wall_info = (rlev.wall_info ?? 0) & ~W_NONDIGGABLE;
+                    rlev.candig = 1;
+                    if (cansee(rx, ry))
+                        newsym(rx, ry);
+                    return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                }
+                case LEVEL_TELEP:
+                case TELEP_TRAP:
+                    throw new Error('moverock_core(): pushing a boulder into a teleport trap not ported yet');
+                case ROLLING_BOULDER_TRAP: {
+                    let tox = rx;
+                    let toy = ry;
+                    /* the boulder continues until it reaches one of
+                       the trap's launch spots or hits a wall / out-of-bounds */
+                    while (isok(tox + game.u.dx, toy + game.u.dy)) {
+                        tox += game.u.dx;
+                        toy += game.u.dy;
+                        if (tox === ttmp.launch.x && toy === ttmp.launch.y)
+                            break;
+                        if (tox === ttmp.launch2.x && toy === ttmp.launch2.y)
+                            break;
+                    }
+                    await pline(`${Tobjnam(otmp, "suddenly roll")} away from you!`);
+                    feeltrap(ttmp);
+                    await launch_obj(BOULDER, sx, sy, tox, toy, ROLL | LAUNCH_KNOWN);
+                    return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                }
                 default:
                     break; /* boulder not affected by this trap */
                 }
@@ -3017,20 +3171,6 @@ async function avoid_running_into_trap_or_liquid(x, y) {
     }
     return false;
 }
-
-/* C ref: flag.h ParanoidTrap, ParanoidConfirm -- flags.paranoia_bits is
-   PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP by default (options.c
-   initoptions_init()); parsing the paranoid_confirmation option isn't
-   ported */
-function paranoia_default() {
-    if (game.flags.paranoid_confirmation !== undefined
-        || game.flags.paranoid_confirm !== undefined)
-        throw new Error('paranoia_bits: the paranoid_confirmation option is not ported yet');
-    return true;
-}
-function ParanoidTrap() { return paranoia_default(); }
-function ParanoidSwim() { return paranoia_default(); }
-function ParanoidConfirm() { return !paranoia_default(); }
 
 // C ref: hack.c avoid_trap_andor_region()
 /* if paranoid_confirm:Trap is enabled, check whether the next step forward
@@ -3711,7 +3851,7 @@ async function domove_core() {
         || u.dx || u.dy)
         hideunder(game.youmonst);
 
-    /* check_leash(u.ux0, u.uy0): leashes aren't ported */
+    await check_leash(u.ux0, u.uy0);
 
     if (u.ux0 !== u.ux || u.uy0 !== u.uy) {
         /* let caller know so that an evaluation may take place */

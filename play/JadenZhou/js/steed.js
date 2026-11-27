@@ -61,9 +61,10 @@ import { helpless } from './monmove.js';
 import { highc } from './hacklib.js';
 import { monverbself } from './do_name.js';
 import { newsym } from './display.js';
+import { m_unleash } from './apply.js';
 
 // C ref: cmd.c dirtocoord()
-function dirtocoord(cc, dd) {
+export function dirtocoord(cc, dd) {
     if (dd > DIR_ERR && dd < N_DIRS_Z) {
         cc.x = xdir[dd];
         cc.y = ydir[dd];
@@ -205,8 +206,15 @@ async function mount_steed(mtmp, force) {
         return false;
     }
 
-    if (!force && !Role_if(PM_KNIGHT) && !(--mtmp.mtame))
-        throw new Error('mount_steed(): steed resists (no longer tame) not ported yet');
+    if (!force && !Role_if(PM_KNIGHT) && !(--mtmp.mtame)) {
+        /* no longer tame */
+        newsym(mtmp.mx, mtmp.my);
+        await pline(`${Monnam(mtmp)} resists${
+            mtmp.mleashed ? " and its leash comes off" : ""}!`);
+        if (mtmp.mleashed)
+            m_unleash(mtmp, false);
+        return false;
+    }
     if (!force && u.uinwater && !is_swimmer(ptr)) { /* Underwater */
         await You_cant(`ride that creature while under ${hliquid("water")}.`);
         return false;
@@ -327,7 +335,7 @@ export async function kick_steed() {
     if (u.usteed.mtame)
         u.usteed.mtame--;
     if (!u.usteed.mtame && u.usteed.mleashed)
-        throw new Error('kick_steed(): m_unleash() not ported yet');
+        await m_unleash(u.usteed, true);
     if (!u.usteed.mtame
         || (u.ulevel + u.usteed.mtame < rnd(Math.trunc(MAXULEV / 2) + 5))) {
         newsym(u.usteed.mx, u.usteed.my);

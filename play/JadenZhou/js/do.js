@@ -26,7 +26,7 @@ import { finesse_ahriman } from './artifact.js';
 import { float_down } from './trap.js';
 import { W_ART, W_ARTI, I_SPECIAL } from './const.js';
 import { change_luck } from './attrib.js';
-import { obj_extract_self, add_to_migration } from './mkobj.js';
+import { obj_extract_self, add_to_migration, obj_nexto_xy } from './mkobj.js';
 import { obfree } from './invent.js';
 import { discard_minvent } from './steal.js';
 import { emits_light, digests } from './mondata.js';
@@ -66,6 +66,16 @@ import { is_pool, is_lava } from './makemon.js';
 import { t_at, is_pit, is_hole, set_utrap, seetrap, lava_damage, climb_pit } from './trap.js';
 import { minstapetrify } from './trap.js';
 import { cansee } from './vision.js';
+import { distu } from './hacklib.js';
+import { passes_walls, throws_rocks, is_whirly, is_vampshifter } from './mondata.js';
+import { dmgval } from './weapon.js';
+import { canspotmon } from './display.js';
+import { Monnam } from './do_name.js';
+import { nonliving } from './makemon.js';
+import { hmon } from './uhitm.js';
+import { HMON_THROWN, NO_KILLER_PREFIX } from './const.js';
+import { Passes_walls } from './youprop.js';
+import { reset_utrap } from './trap.js';
 import { PM_TOURIST, PM_ROGUE } from './monsters.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { com_pager, deliver_splev_message } from './questpgr.js';
@@ -97,6 +107,7 @@ import { query_category, query_objlist, add_valid_menu_class, allow_all,
          allow_category, count_justpicked, find_justpicked } from './pickup.js';
 import { bypass_objlist, nxt_unbypassed_obj } from './worn.js';
 import { splitobj } from './mkobj.js';
+import { ggetobj as ggetobj_dd } from './invent.js';
 import { MENU_FULL, MENU_TRADITIONAL, MENU_COMBINATION, UNPAID_TYPES,
          ALL_TYPES, CHOOSE_ALL, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
          BUC_UNKNOWN, JUSTPICKED, INCLUDE_VENOM, PICK_ANY, ALL_TYPES_SELECTED,
@@ -505,6 +516,27 @@ export async function deferred_goto() {
     u.utotype = UTOTYPE_NONE; /* our caller keys off of this */
     game.dfr_pre_msg = null;
     game.dfr_post_msg = null;
+}
+
+// C ref: do.c save_currentstate() -- INSURANCE
+export async function save_currentstate() {
+    let nhfp;
+
+    game.program_state.in_checkpoint = (game.program_state.in_checkpoint || 0) + 1;
+    if (game.flags.ins_chkpt) {
+        /* write out just-attained level, with pets and everything */
+        nhfp = await currentlevel_rewrite();
+        if (!nhfp)
+            return;
+        /* if (nhfp->structlevel) bufon(nhfp->fd): no buffering to do */
+        nhfp.mode = WRITING;
+        savelev(nhfp, ledger_no(game.u.uz));
+        close_nhfile(nhfp);
+    }
+
+    /* write out non-level state */
+    /* savestateinlock(): the level 0 lock file isn't modelled */
+    game.program_state.in_checkpoint--;
 }
 
 // C ref: do.c currentlevel_rewrite()
@@ -1075,7 +1107,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     assign_level(u.uz0, u.uz); /* reset u.uz0 */
-    /* save_currentstate(): INSURANCE, no files */
+    await save_currentstate(); /* INSURANCE */
     /* notice_mon_on(); notice_all_mons(TRUE): a11y mon_notices is off */
 
     await print_level_annotation();
@@ -1252,8 +1284,8 @@ export async function boulder_hits_pool(
     return false;
 }
 
-// C ref: do.c flooreffects() -- boulders filling pits, objects tumbling
-// into the hero's pit, globs and altars stop with a not-ported error
+// C ref: do.c flooreffects() -- objects tumbling into the hero's pit,
+// globs and altars stop with a not-ported error
 /* returns TRUE if obj is gone (or out of play), FALSE if the caller
    should place it on the floor */
 export async function flooreffects(obj, /* the object landing on the floor */
@@ -1279,7 +1311,80 @@ export async function flooreffects(obj, /* the object landing on the floor */
         res = true;
     } else if (obj.otyp === O.BOULDER && (t = t_at(x, y)) !== null && t
                && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
-        throw new Error('flooreffects(): boulder filling a pit not ported yet');
+        const ttyp = t.ttyp;
+        const tseen = t.tseen ? true : false;
+        let mtmp = null;
+        let squished = false;
+        if (((mtmp = m_at(x, y)) && mtmp.mtrapped)
+            || (game.u.utrap && u_at(x, y))) {
+            if (verb && (cansee(x, y) || distu(x, y) === 0))
+                await pline(`${Blind() ? "A" : "The"} boulder ${vtense(null, verb)}`
+                            + ` into the pit${mtmp ? "" : " with you"}.`);
+            if (mtmp) {
+                if (!passes_walls(mtmp.data) && !throws_rocks(mtmp.data)) {
+                    /* dieroll was rnd(20); 1: maximum chance to hit
+                       since trapped target is a sitting duck */
+                    let damage;
+                    const dieroll = 1;
+
+                    if (g.context.mon_moving) {
+                        /* normally we'd use ohitmon() but it can call
+                           drop_throw() which calls flooreffects() */
+                        damage = dmgval(obj, mtmp);
+                        mtmp.mhp -= damage;
+                        if (mtmp.mhp <= 0) { /* DEADMONSTER() */
+                            if (canspotmon(mtmp))
+                                await pline(`${Monnam(mtmp)} is `
+                                            + `${(nonliving(mtmp.data) || is_vampshifter(mtmp))
+                                                 ? "destroyed" : "killed"}!`);
+                            await mondied(mtmp);
+                        }
+                    } else {
+                        await hmon(mtmp, obj, HMON_THROWN, dieroll);
+                    }
+                    if (!(mtmp.mhp <= 0) && !is_whirly(mtmp.data))
+                        res = false; /* still alive, boulder still intact */
+                }
+                mtmp.mtrapped = 0;
+            } else {
+                if (!Passes_walls() && !throws_rocks(game.youmonst.data)) {
+                    await losehp(Maybe_Half_Phys(rnd(15)),
+                                 "squished under a boulder", NO_KILLER_PREFIX);
+                    squished = true; /* goto deletedwithboulder */
+                } else
+                    await reset_utrap(true);
+            }
+        }
+        if (verb && !squished) {
+            if (Blind() && u_at(x, y)) {
+                /* Soundeffect(se_crashing_boulder, 100) */
+                await You_hear("a CRASH! beneath you.");
+            } else if (!Blind() && cansee(x, y)) {
+                await pline_The(`boulder ${(ttyp === TRAPDOOR && !tseen) ? "triggers and " : ""}`
+                                + `${(ttyp === TRAPDOOR) ? "plugs a trap door"
+                                     : (ttyp === HOLE) ? "plugs a hole"
+                                       : "fills a pit"}.`);
+            } else {
+                /* Soundeffect(se_boulder_drop, 100) */
+                await You_hear(`a boulder ${verb}.`);
+            }
+        }
+        /*
+         * Note:  trap might have gone away via ((hmon -> killed -> xkilled)
+         *  || mondied) -> mondead -> m_detach -> fill_pit.
+         */
+        /* deletedwithboulder: */
+        /* creating a pit in ice results in that ice being turned into
+           floor so we shouldn't need any special ice handing here */
+        if ((t = t_at(x, y)) !== null && t) {
+            await delfloortrap(t);
+            if (game.u.utrap && u_at(x, y))
+                await reset_utrap(false);
+        }
+        await useupf(obj, 1);
+        await bury_objs(x, y);
+        newsym(x, y);
+        res = true;
     } else if (is_lava(x, y)) {
         res = await lava_damage(obj, x, y);
     } else if (is_pool(x, y)) {
@@ -1303,7 +1408,14 @@ export async function flooreffects(obj, /* the object landing on the floor */
         /* uteetering_at_seen_pit(t) || uescaped_shaft(t) */
         throw new Error('flooreffects(): objects tumbling into a pit not ported yet');
     } else if (obj.globby) {
-        throw new Error('flooreffects(): obj_meld() not ported yet');
+        let globbyobj = obj; /* allow obj to be nonnull arg */
+
+        /* Globby things like puddings might stick together */
+        if (globbyobj && obj_nexto_xy(globbyobj, x, y, true) !== null)
+            /* pudding_merge_message(globbyobj, otmp);
+               (void) obj_meld(&globbyobj, &otmp); */
+            throw new Error('flooreffects(): melding globs (obj_meld()) not ported yet');
+        res = !globbyobj;
     } else if (g.context?.mon_moving && IS_ALTAR(g.level.at(x, y).typ)
                && cansee(x, y)) {
         await doaltarobj(obj);
@@ -1374,10 +1486,9 @@ export async function doddrop() {
     add_valid_menu_class(0); /* clear any classes already there */
     if (game.u.ushops)
         sellobj_state(SELL_DELIBERATE);
-    if ((game.flags.menu_style ?? MENU_FULL) !== MENU_TRADITIONAL)
+    if ((game.flags.menu_style ?? MENU_FULL) !== MENU_TRADITIONAL
+        || (result = await ggetobj_dd("drop", drop, 0, false, null)) < -1)
         result = await menu_drop(result);
-    else
-        throw new Error('doddrop(): ggetobj() (menustyle:traditional) not ported yet');
     if (game.u.ushops)
         sellobj_state(SELL_NORMAL);
     if (result)
@@ -1537,7 +1648,7 @@ export async function canletgo(obj, word) {
     }
     if (obj.otyp === O.LEASH && obj.leashmon) {
         if (word)
-            throw new Error('canletgo(): leash message not ported yet');
+            await pline_The(`leash is tied around your ${body_part(HAND)}.`);
         return false;
     }
     if (obj.owornmask & W_SADDLE) {

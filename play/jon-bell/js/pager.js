@@ -2061,6 +2061,16 @@ async function _do_look_from_screen(quick) {
          * made every later frame treat the topline as getpos's show_topl text:
          * a run's runmode_delay_output frame (hack.c:3008) dropped the
          * standing "You swap places with ..." pline C still shows. */
+        /* ...but the line it wrote is still physically on row 0 when the exit
+         * does not clear (msg_given FALSE: getpos.c:889-890, 1156), exactly
+         * as _getpos's exit keeps it (js/getpos.js exitgetpos): do_look's
+         * result pline is redotoplin()ed over it (topl.c:121-139), so a byte
+         * >= 0x80 of the result leaves that line's cell (patch 006
+         * nomux_putch).  Mac arm macx4 t28-c-oddprompt-v040 step 234: "...
+         * called Jos" + C3 A9 over "...called Jos  , chained to a heavy iron
+         * ball" shows "Joson". */
+        if (!esc && !doneQuit && !msgGiven && g._getpos_last_autodescribe != null)
+            g._topl_sticky = String(g._getpos_last_autodescribe);
         g._topl_show_only = null;
         g._getpos_last_autodescribe = null;
         if (esc) break;
