@@ -10,6 +10,7 @@
 // Not ported yet: the player-side engrave commands, reading and sensing
 // engravings.
 
+import { altar_wrath as altar_wrath_eg } from './pray.js';
 import { is_art } from './artifact.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './display.js';
@@ -1016,7 +1017,8 @@ export async function doengrave() {
         if (IS_ALTAR(game.level.at(u.ux, u.uy).typ)) {
             if (!initial_msg_given)
                 await You(`make a motion towards the altar with ${de.writer}.`);
-            throw new Error('doengrave(): altar_wrath() not ported yet');
+            await altar_wrath_eg(u.ux, u.uy);
+            break doengr; /* goto doengr_exit */
         }
         if (IS_GRAVE(game.level.at(u.ux, u.uy).typ)) {
             if (de.otmp === hands_obj) { /* using only finger */

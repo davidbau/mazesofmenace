@@ -2397,17 +2397,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         jousting: 0,
         hittxt: false,
         get_dmg_bonus: true,
-        /* src/uhitm.c:1779 — `!uwep && !uarm && !uarms`.
-           KNOWN WRONG, deliberately left as-is for now: game.uwep,
-           game.uarm and game.uarms do NOT exist (the real accessors are
-           game.u.uwep and worn(W_ARM)/worn(W_ARMS)), so this is always
-           true and every armed branch below is dead. Correcting it to
-              !game.u.uwep && !worn(W_ARM) && !worn(W_ARMS)
-           makes hmon_hitmon's knockback arm fire, which matches C's draws
-           at uhitm.c:5258/5269 -- and then diverges one draw later at
-           known_hitum's rn2(25) because our monster dies where C's lives.
-           Net -2 screens (seed0360), so it is reverted until that
-           downstream gap is fixed with it. See docs/plan/STATUS.md. */
+        // src/uhitm.c:1779: armor or a shield also rules out unarmed combat.
         unarmed: !game.u.uwep && !worn(W_ARM) && !worn(W_ARMS),
         hand_to_hand: (thrown === HMON_MELEE
                        /* not grapnels; applied implies uwep */

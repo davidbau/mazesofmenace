@@ -480,6 +480,36 @@ export async function tty_destroy_nhwindow(window) {
     wins()[window] = null;
 }
 
+// C ref: wintty.c compress_str()
+function compress_str(str) {
+    const CO = tty().cols;
+    const cbufsz = 256; /* BUFSZ */
+
+    /* compress out consecutive spaces if line is too long;
+       topline wrapping converts space at wrap point into newline,
+       we reverse that here */
+    if (str.length >= CO || str.includes('\n')) {
+        let out = '';
+        let was_space = true; /* True discards all leading spaces;
+                                 False would retain one if present */
+
+        for (let k = 0; k < str.length && out.length < cbufsz - 1; k++) {
+            let c = str[k];
+            if (c === '\n')
+                c = ' ';
+            if (was_space && c === ' ')
+                continue;
+            out += c;
+            was_space = (c === ' ');
+        }
+        if ((was_space && out.length > 0) || out.length === cbufsz - 1)
+            out = out.slice(0, -1); /* remove trailing space or make room
+                                       for terminator */
+        str = out;
+    }
+    return str;
+}
+
 // C ref: wintty.c tty_putstr() (NHW_BASE, NHW_MESSAGE, NHW_MENU, NHW_TEXT);
 // the message window and a full NHW_TEXT page may wait for a key, so
 // callers await this
@@ -490,6 +520,8 @@ export function tty_putstr(window, attr, str) {
     if (str == null
         || ((cw.flags & WIN_CANCELLED) && (cw.type !== NHW_MESSAGE)))
         return;
+    if (cw.type !== NHW_MESSAGE) /* (no TTY_PERM_INVENT: WIN_INVEN too) */
+        str = compress_str(str);
     switch (cw.type) {
     case NHW_MESSAGE:
         /* if message is designated 'urgent' (ATR_URGENT, 16) don't
@@ -558,6 +590,7 @@ export function tty_putstr_sync(window, attr, str) {
         return;
     if (cw.type !== NHW_MENU && cw.type !== NHW_TEXT)
         throw new Error(`tty_putstr(): synchronous putstr to window type ${cw.type} not ported yet`);
+    str = compress_str(str);
     if (cw.type === NHW_TEXT && (cw.cury + cw.offy) === t.rows - 1)
         throw new Error('tty_putstr(): full text page from a synchronous caller not ported yet');
     if (str.length + 1 > t.cols)

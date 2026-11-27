@@ -110,7 +110,7 @@ import * as _PROPIDS from './const.js'; // relocate-fns
 import { is_ice as _is_ice, is_db_wall, is_pool, is_waterwall } from './dbridge.js'; // relocate-fns
 import { DEFSYM_EXPLANATION } from './defsym_data.js'; // relocate-fns
 import { BOULDER, buried_ball, buried_ball_to_punishment, dig_typ, is_pick, use_pick_axe2 } from './dig.js'; // relocate-fns
-import { GLYPHCLS_INVIS, GLYPHCLS_MON, GLYPHCLS_OBJ, _topl_joins_snapshot, _topl_merge_result, _topl_snapshot_result, _topl_stash_result, _topline_more_pending, canseemon, capture_painted_frame_with_status, docrt, feel_location, flush_screen, force_more, glyph_is_invisible_at, glyph_is_warning_at, lone_frame_run_flush, map_invisible, map_object, nh_sprintf, obj_to_glyph, prepare_deferred_pline, show_travel_debug, status_r1_menu_docrt, unmap_invisible, unmap_object, wall_angle_is_stone } from './display.js'; // relocate-fns
+import { GLYPHCLS_INVIS, GLYPHCLS_MON, GLYPHCLS_OBJ, _topl_joins_snapshot, _topl_merge_result, _topl_more_pages, _topl_snapshot_result, _topl_stash_result, _topline_more_pending, canseemon, capture_painted_frame_with_status, docrt, feel_location, flush_screen, force_more, glyph_is_invisible_at, glyph_is_warning_at, lone_frame_run_flush, map_invisible, map_object, nh_sprintf, obj_to_glyph, prepare_deferred_pline, show_travel_debug, status_r1_menu_docrt, unmap_invisible, unmap_object, wall_angle_is_stone } from './display.js'; // relocate-fns
 import { boulder_hits_pool, flooreffects } from './do.js'; // relocate-fns
 import { YMonnam, m_monnam, y_monnam } from './do_name.js'; // relocate-fns
 import { xname } from './do_wear.js'; // relocate-fns
@@ -5219,6 +5219,13 @@ const PM_CAPTAIN = 281;
 
 const PM_ORACLE = 274;
 
+function csr_standing_plen(g) {
+    const pend = String(g._pending_message || '');
+    if (!pend) return 0;
+    const pages = _topl_more_pages(pend, _topl_joins_snapshot(pend) || undefined);
+    return String(pages[pages.length - 1] || '').length;
+}
+
 export async function check_special_room(newlev) {
     const g = game;
     const u = g.u || (g.u = {});
@@ -5273,9 +5280,11 @@ export async function check_special_room(newlev) {
         case ZOO: {
             /* topl.c update_topl:262-265 — same instant-more() as COURT below:
              * a pending line plus this one that overflows (n0 + len + 3 >=
-             * CO - 8) blocks at the --More-- BEFORE the wake loop's rn2(3). */
+             * CO - 8) blocks at the --More-- BEFORE the wake loop's rn2(3).
+             * n0 is C's standing toplines (csr_standing_plen), not the lazy
+             * buffer: a greeting that fits beside what C holds must JOIN. */
             const _zoo = "Welcome to David's treasure zoo!";
-            const _zn0 = String(g._pending_message || '').length;
+            const _zn0 = csr_standing_plen(g);
             if (_zn0 > 0 && !g._topl_win_stop && _zn0 + _zoo.length + 3 >= 80 - 8) {
                 /* C pline.c:266-276 recalculates vision and flushes BEFORE
                  * update_topl() pages the standing message (topl.c:274). */
@@ -5302,7 +5311,7 @@ export async function check_special_room(newlev) {
              * (post-movemon) map.  Page the pending line over a frozen frame. */
             const _court = nh_sprintf("You enter an opulent%s room!",
                 [!furniture_present(THRONE, roomno) ? "" : " throne"]);
-            const _n0 = String(g._pending_message || '').length;
+            const _n0 = csr_standing_plen(g);
             if (_n0 > 0 && !g._topl_win_stop && _n0 + _court.length + 3 >= 80 - 8) {
                 /* Same vpline flush before update_topl's blocking more(). */
                 prepare_deferred_pline(_court);

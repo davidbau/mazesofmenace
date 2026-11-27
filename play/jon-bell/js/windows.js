@@ -6,7 +6,7 @@ import { game } from './gstate.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { vision_recalc } from './vision.js'; // relocate-fns
-import { map_glyphinfo, render_map_row } from './display.js';
+import { docorner_blank_utf8_captures, map_glyphinfo, render_map_row } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPMENUCOLORS } from './const.js';
 import { config_error_add } from './cfgfiles.js';
@@ -158,7 +158,15 @@ function _getlin_clear_message_window(g) {
         && String(g._topl_prompt_written ?? '').length >= 80
         && rows.length > 1 && g._topl_prompt_echo === true;
     rows[0] = '';
-    if (wrapped) rows[1] = render_map_row(0);
+    /* row_refresh skips GLYPH_UNEXPLORED cells (display.c:2163-2185: `force`
+     * compares gbuf[0][0], never shown and still nul_gbuf, so it is false),
+     * so a custom S_unexplored stays erased on the spilled row. */
+    /* row_refresh skips GLYPH_UNEXPLORED unless S_unexplored differs from
+     * nul_gbuf (display.c:2163-2182): the cl_end()ed cells stay blank. */
+    if (wrapped) {
+        docorner_blank_utf8_captures(1, 2);
+        rows[1] = render_map_row(0);
+    }
     g._screen_output = rows.join('\n');
 }
 

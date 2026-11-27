@@ -24,7 +24,7 @@ import { pline, flush_screen, docrt, bot } from './display.js';
 import { vision_recalc } from './vision.js';
 import { condtests } from './botl.js';
 import { def_inv_order, add_menu_heading } from './invent.js';
-import { count_bind_keys } from './cmd.js';
+import { count_bind_keys, update_rest_on_space } from './cmd.js';
 import { allopt, BoolOpt, CompOpt, OthrOpt, OptS_General, OptS_Advanced,
          Term_False, num_terms, set_in_config, set_gameview, set_in_game,
          set_wizonly, set_wiznofuz } from './optlist.js';
@@ -1151,24 +1151,121 @@ function boolopt_set(o, val) {
     optaddr_struct(o)[o.addr[1]] = val;
 }
 
+// C ref: cfgfiles.c config_error_init() -- push a config error frame
+// (C's static config_error_data list is kept in game.config_error_data)
+function config_error_init(from_file, sourcename, secure) {
+    const tmp = {
+        line_num: 0,
+        num_errors: 0,
+        origline_shown: false,
+        fromfile: from_file,
+        secure,
+        origline: '',
+        source: (sourcename && sourcename[0]) ? sourcename : '',
+        next: game.config_error_data || null,
+    };
+
+    game.config_error_data = tmp;
+    (game.program_state ||= {}).config_error_ready = true;
+}
+
+// C ref: cfgfiles.c config_error_nextline()
+function config_error_nextline(line) {
+    const ced = game.config_error_data;
+
+    if (!ced)
+        return false;
+
+    if (ced.num_errors && ced.secure)
+        return false;
+
+    ced.line_num++;
+    ced.origline_shown = false;
+    ced.origline = (line && line[0]) ? line : '';
+
+    return true;
+}
+
+// C ref: cfgfiles.c config_erradd() (called by pline.c config_error_add())
+function config_erradd(buf) {
+    if (!buf)
+        buf = "Unknown error";
+
+    if (!game.program_state?.config_error_ready)
+        /* either very early, where pline() will use raw_print(), or
+           player gave bad value when prompted by interactive 'O' command:
+           pline("%s%s%s", ...); wait_synch() */
+        throw new Error('config_erradd(): config error without an error frame not ported yet');
+
+    if (game.iflags?.in_lua) {
+        /* C's static config_error_msg list (which the Lua
+           get_config_errors() reads), kept in game.config_error_msg */
+        game.config_error_msg = {
+            next: game.config_error_msg || null,
+            line_num: game.config_error_data.line_num,
+            errormsg: buf,
+        };
+        return;
+    }
+
+    /* config_error_data->num_errors++; pline("\n%s", origline);
+       pline("%s %s%s%s", " *", lineno, buf, punct) */
+    throw new Error('config_erradd(): config error message outside Lua not ported yet');
+}
+
+// C ref: pline.c config_error_add() -- vconfig_error_add() formats the
+// message (the callers here pass it formatted) for config_erradd()
+function config_error_add(buf) {
+    config_erradd(buf);
+}
+
+// C ref: cfgfiles.c config_error_done() -- pop the config error frame
+function config_error_done() {
+    const tmp = game.config_error_data;
+
+    if (!tmp)
+        return 0;
+    const n = tmp.num_errors;
+    /* gn.no_sound_notified: no SOUND line gets here */
+    if (n)
+        /* pline("\n%d error%s %s %s.\n", ...); wait_synch() */
+        throw new Error('config_error_done(): config error count message not ported yet');
+    game.config_error_data = tmp.next;
+    game.program_state.config_error_ready = (game.config_error_data !== null);
+    return n;
+}
+
 // C ref: cfgfiles.c parse_conf_str() -- feed each line of 'str' to
-// 'proc' (as nh.parse_config() does with parse_config_line). The config
-// error reporting (config_error_init/config_error_done) has nothing to
-// report for the lines the ported callers pass.
+// 'proc' (as nh.parse_config() does with parse_config_line), with
+// parse_conf_buf()'s line handling (line continuation isn't ported)
 export function parse_conf_str(str, proc) {
     let rv = true;
 
+    /* cnf_parser_init(&parser); free_config_sections() */
+    config_error_init(false, "parse_conf_str", false);
     while (str) {
         const nl = str.indexOf('\n');
         const line = (nl >= 0) ? str.slice(0, nl + 1) : str;
         str = (nl >= 0) ? str.slice(nl + 1) : '';
-        /* parse_conf_buf(): ignore empty lines and full-line comments */
-        const ep = line.replace(/\n$/, '').trim();
+        /* parse_conf_buf(): */
+        let inbuf = line.replace(/\n$/, '');
+        if (inbuf.endsWith('\\'))
+            throw new Error('parse_conf_buf(): line continuation not ported yet');
+        /* trim off spaces at end of line */
+        inbuf = inbuf.replace(/[ \t\r]+$/, '');
+        if (!config_error_nextline(inbuf)) {
+            rv = false;
+            break; /* p->pbreak */
+        }
+        const ep = inbuf.replace(/^[ \t]+/, '');
+        /* ignore empty lines and full-line comment lines */
         if (!ep || ep[0] === '#')
             continue;
         if (!proc(ep))
             rv = false;
     }
+    /* cnf_parser_done(&parser); free_config_sections() */
+    config_error_done();
     return rv;
 }
 
@@ -1222,7 +1319,7 @@ function parseoptions_initial(opts) {
     /* duplicate = duplicate_opt_detection(matchidx) */
     if ((game.opt_set_in_config_names || []).includes(o.name.toLowerCase()))
         /* boolean options aren't dupeok */
-        throw new Error('parseoptions(): complain_about_duplicate() not ported yet');
+        complain_about_duplicate(o, false);
     /* check for bad negation, so option functions don't have to */
     if (negated && !o.negateok)
         throw new Error('parseoptions(): bad_negation() not ported yet');
@@ -1237,6 +1334,15 @@ function parseoptions_initial(opts) {
     }
     (game.opt_set_in_config_names ||= []).push(o.name.toLowerCase());
     return retval;
+}
+
+// C ref: options.c complain_about_duplicate() -- 'using_alias' is passed
+function complain_about_duplicate(o, using_alias) {
+    let buf = '';
+
+    if (using_alias)
+        buf = ` (via alias: ${o.alias})`;
+    config_error_add(`${(o.opttyp === CompOpt) ? "compound" : "boolean"} option specified multiple times: ${o.name}${buf}`);
 }
 
 // C ref: options.c initoptions_init() -- the defaults set before the
@@ -2436,7 +2542,8 @@ async function optfn_boolean(o, req, negated, opts, op) {
         game.iflags.prev_decor = STONE;
         break;
     case "rest_on_space":
-        throw new Error('optfn_boolean(): update_rest_on_space() not ported yet');
+        update_rest_on_space();
+        break;
     case "accessiblemsg":
         game.a11y.msg_loc = { x: 0, y: 0 };
         break;

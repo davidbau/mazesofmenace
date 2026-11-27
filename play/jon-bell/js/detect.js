@@ -223,7 +223,19 @@ export async function do_vicinity_map(sobj) {
             && (!mon || !canspotmon(mon))) map_invisible(x, y);
     }
     see_monsters();
-    game._seerMapSeq = (game._seerMapSeq | 0) + 1;
+    /* Only the refresh arm moves C's PHYSICAL map: detect.c:1544-1548's
+     * flush_screen(1) (inside `!hero_memory || unconstrained || mdetected ||
+     * odetected`) and the `if (refresh) docrt()` at detect.c:1588-1590.
+     * Everything else here — show_map_spot, map_object, map_monst,
+     * map_invisible, see_monsters — only writes gbuf, which tty paints at the
+     * NEXT flush_screen.  _seerMapSeq feeds apply.js's _seerPaint ("the map
+     * the getdir --More-- must show is newer than the movemon pline's
+     * flush"), so bumping it on a non-refresh seer made that --More-- paint
+     * the live post-turn map where C still shows the pline-time map
+     * (df-x5b415d7c4a step 36: RNG-exact, C's frame keeps the pre-move
+     * kitten/jackal and leaves the just-mapped corridors unpainted). */
+    if (refresh)
+        game._seerMapSeq = (game._seerMapSeq | 0) + 1;
     if (refresh) {
         game._topl_sticky = null;
         await docrt();

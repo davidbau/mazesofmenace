@@ -10,12 +10,12 @@
 import { game } from './gstate.js';
 import { com_pager, is_quest_artifact, qt_pager } from './questpgr.js';
 import { tty_yn_function } from './tty/topl.js';
-import { You } from './pline.js';
+import { You, livelog_printf } from './pline.js';
 import { exercise } from './attrib.js';
 import { align_str } from './role.js';
 import { rn2 } from './rng.js';
 import { A_WIS, A_CURRENT, A_ORIGINAL, MIN_QUEST_ALIGN,
-         MIN_QUEST_LEVEL, STRAT_WAITMASK } from './const.js';
+         MIN_QUEST_LEVEL, STRAT_WAITMASK, LL_ACHIEVE } from './const.js';
 import { MSOUND, PMNAMES } from './monst_data.js';
 import { helpless } from './mondata.js';
 import { monnear } from './monmove.js';
@@ -23,7 +23,7 @@ import { canseemon, pline } from './display.js';
 import { verbalize, impossible } from './pline.js';
 import { adjalign } from './attrib.js';
 import { angry_guards, setmangry } from './mon.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, noit_mon_nam } from './do_name.js';
 import { ONAMES } from './objects_data.js';
 import { find_quest_artifact } from './questpgr.js';
 import { OBJ_FLOOR } from './obj.js';
@@ -244,6 +244,8 @@ async function chat_with_leader(mtmp) {
                 await qt_pager('assignquest');
                 exercise(A_WIS, true);
                 q.got_quest = true;
+                livelog_printf(LL_ACHIEVE,
+                               `${noit_mon_nam(mtmp)} has granted access to proceed deeper into the quest`);
             }
         }
     }

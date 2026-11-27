@@ -1162,7 +1162,9 @@ export async function scrolltele(scroll) {
             await pline('Being unconscious, you cannot control your teleport.');
         } else {
             /* "you and <steed>" when riding */
-            const whobuf = 'you';
+            let whobuf = 'you';
+            if (game.u.usteed)
+                whobuf += ' and ' + mon_nam(game.u.usteed);
             await pline(`Where do ${whobuf} want to be teleported?`);
             if (scroll)
                 learnscroll(scroll);

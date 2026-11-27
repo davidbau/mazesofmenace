@@ -2788,9 +2788,9 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
                 obj = splitobj(obj, oquan);
             drop_it = true;
         } else {
-            if (game.flags?.autoquiver && !game.uquiver && !obj.owornmask
-                && (is_missile(obj) || ammo_and_launcher(obj, game.uwep)
-                    || ammo_and_launcher(obj, game.uswapwep)))
+            if (game.flags?.autoquiver && !game.u.uquiver && !obj.owornmask
+                && (is_missile(obj) || ammo_and_launcher(obj, game.u.uwep)
+                    || ammo_and_launcher(obj, game.u.uswapwep)))
                 setuqwep(obj);
             if (hold_msg || drop_fmt)
                 await prinv(hold_msg, obj, oquan);

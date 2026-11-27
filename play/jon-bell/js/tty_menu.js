@@ -264,8 +264,12 @@ export class TtyMenu {
     }
 
     _screenRows() {
-        if (this.baseWindow) return this._lines.map(line => this.overlay
-            ? ' '.repeat(this.contentCol) + line.slice(1) : line);
+        if (this.baseWindow) return this._lines.map(line => {
+            if (!this.overlay) return line;
+            const body = line.slice(1);
+            if (!/[^ ]/.test(body)) return '';
+            return (this.contentCol > 4 ? `\x1b[${this.contentCol}C` : ' '.repeat(this.contentCol)) + body;
+        });
         if (!this.overlay)
             return overlay_flushed_cells(this._lines.slice(0, LI), this._gnewOverlay);
         return overlay_flushed_cells(build_window_screen(this._lines.map(line => line.slice(1)),

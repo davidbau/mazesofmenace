@@ -136,13 +136,13 @@ import { undestroyable_trap, set_wounded_legs, deltrap, trapname, maketrap,
 import { Can_dig_down } from './mklev.js';
 import { altarmask_at, altar_wrath, desecrate_altar } from './pray.js';
 import { angry_priest } from './priest.js';
-import { is_db_wall, is_drawbridge_wall } from './dbridge.js';
+import { is_db_wall, is_drawbridge_wall, destroy_drawbridge } from './dbridge.js';
 import { welded } from './wield.js';
 import { dropx, goto_level } from './do.js';
 import { the, simpleonames } from './iactions.js';
 import { abon, dmgval } from './weapon.js';
 import { an, An } from './objnam.js';
-import { break_statue, fracture_rock } from './zap.js';
+import { break_statue, fracture_rock, find_drawbridge } from './zap.js';
 import { does_block } from './vision.js';
 import { makemon, mkclass } from './makemon.js';
 import { dogushforth, dryup, breaksink } from './fountain.js';
@@ -165,6 +165,8 @@ import { end_burn } from './timeout.js';
 import { rnd_treefruit_at } from './mkobj.js';
 import { b_trapped } from './trap.js';
 import { NO_PART } from './const.js';
+import { cnv_trap_obj } from './trap.js';
+import { LAND_MINE, BEARTRAP } from './objects.js';
 
 /* C ref: invent.c update_inventory() -- no perm_invent window */
 function update_inventory() { }
@@ -987,7 +989,7 @@ export async function buried_ball_to_freedom() {
 
 /* C ref: context.h struct dig_info (svc.context.digging); C's context
    starts zeroed */
-function digging_ctx() {
+export function digging_ctx() {
     const g = game;
     if (!g.context) g.context = {};
     if (!g.context.digging)
@@ -999,7 +1001,7 @@ function digging_ctx() {
 }
 
 /* C ref: (void) memset(&svc.context.digging, 0, sizeof svc.context.digging) */
-function clear_digging() {
+export function clear_digging() {
     const digging = digging_ctx();
     digging.pos.x = 0, digging.pos.y = 0;
     digging.level.dnum = 0, digging.level.dlevel = 0;
@@ -1506,9 +1508,13 @@ async function furniture_handled(x, y, madeby_u) {
         await breaksink(x, y);
     } else if (lev.typ === DRAWBRIDGE_DOWN
                || (is_drawbridge_wall(x, y) >= 0)) {
+        let bx = x, by = y;
+
         /* if under the portcullis, the bridge is adjacent */
-        /* (void) find_drawbridge(&bx, &by); destroy_drawbridge(bx, by); */
-        throw new Error('furniture_handled(): destroy_drawbridge() not ported yet');
+        const db = find_drawbridge(bx, by);
+        if (db)
+            bx = db.x, by = db.y;
+        await destroy_drawbridge(bx, by);
     } else {
         return false;
     }
@@ -1707,7 +1713,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
                     }
                     if (mtmp.isshk)
                         await make_angry_shk(mtmp, 0, 0);
-                    migrate_to_level(mtmp, ledger_no(tolevel),
+                    await migrate_to_level(mtmp, ledger_no(tolevel),
                                      MIGR_RANDOM, null);
                 }
             }
@@ -1767,9 +1773,13 @@ export async function dighole(pit_only, by_magic, cc) {
         if (pit_only) {
             await pline_The("drawbridge seems too hard to dig through.");
         } else {
+            let x = dig_x, y = dig_y;
             /* if under the portcullis, the bridge is adjacent */
-            /* (void) find_drawbridge(&x, &y); destroy_drawbridge(x, y); */
-            throw new Error('dighole(): destroy_drawbridge() not ported yet');
+            const db = find_drawbridge(x, y);
+            if (db)
+                x = db.x, y = db.y;
+            await destroy_drawbridge(x, y);
+            retval = true;
         }
 
     } else if ((boulder_here = sobj_at(BOULDER, dig_x, dig_y)) != null) {
@@ -1835,10 +1845,10 @@ export async function dighole(pit_only, by_magic, cc) {
             /* magical digging disarms settable traps */
             if (by_magic && ttmp
                 && (ttmp.ttyp === LANDMINE || ttmp.ttyp === BEAR_TRAP)) {
-                /* int otyp = (ttmp->ttyp == LANDMINE) ? LAND_MINE : BEARTRAP;
-                   convert trap into buried object (deletes trap):
-                   cnv_trap_obj(otyp, 1, ttmp, TRUE); */
-                throw new Error('dighole(): cnv_trap_obj() not ported yet');
+                const otyp = (ttmp.ttyp === LANDMINE) ? LAND_MINE : BEARTRAP;
+
+                /* convert trap into buried object (deletes trap) */
+                await cnv_trap_obj(otyp, 1, ttmp, true);
             }
 
             /* finally we get to make a hole */

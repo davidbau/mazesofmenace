@@ -294,7 +294,12 @@ export const DOSET_COMPOUNDS = [
          * ", handler=<H>" when a handler is in effect. */
         const set = (gs.symset || [])[PRIMARYSET] || {};
         let v = set.name ? set.name : 'default';
-        if (set.name) v += ', active';
+        /* C options.c:4209 — ", active" only when the primary set is the
+         * CURRENT one: on a Rogue level assign_graphics(ROGUESET) has set
+         * gc.currentgraphics, and the primary row must not claim active. */
+        if ((game.gc?.currentgraphics ?? (Is_rogue_level(game.u?.uz) ? 1 : 0)) === PRIMARYSET
+            && set.name)
+            v += ', active';
         if (set.handling) v += ', handler=' + KNOWN_HANDLING[set.handling];
         return v;
     } },    /* C: options.c:4517 — flags.versinfo 1 (VI_NUMBER), status_version() "5.0.0" */

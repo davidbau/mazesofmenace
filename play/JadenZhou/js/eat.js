@@ -9,6 +9,7 @@
 // start_tin(), opentin(), consume_tin().  Non-food and edibility prompts
 // are not ported yet.
 
+import { altar_wrath as altar_wrath_et } from './pray.js';
 import { selftouch } from './trap.js';
 import { Levitation, Deaf } from './youprop.js';
 import { melt_ice } from './zap.js';
@@ -84,7 +85,8 @@ import { strncmpi, dist2 } from './hacklib.js';
 import { splitobj, weight, costly_alteration, is_rottable,
          bcsign } from './mkobj.js';
 import { freeinv, addinv_nomerge, useup, useupf, will_feel_cockatrice,
-         hands_obj } from './invent.js';
+         hands_obj, carrying } from './invent.js';
+import { ECMD_CANCEL } from './const.js';
 import { inv_cnt, nomul } from './hack.js';
 import { dropy } from './do.js';
 import { set_occupation, stop_occupation, unmul } from './allmain.js';
@@ -106,7 +108,7 @@ import { tty_yn_function } from './wintty.js';
 import { safe_qbuf, encumber_msg, sellobj_state } from './pickup.js';
 import { SELL_NORMAL, SELL_DONTSELL } from './const.js';
 import { touch_artifact, retouch_equipment } from './artifact.js';
-import { retouch_object } from './wield.js';
+import { retouch_object, wield_tool } from './wield.js';
 
 import { COST_OPEN, GLIB, A_DEX } from './const.js';
 import { TIN_OPENER, DAGGER, SILVER_DAGGER, ELVEN_DAGGER, ORCISH_DAGGER,
@@ -724,7 +726,7 @@ export async function vomit() {
             throw new Error('vomit(): ubreatheu() not ported yet');
         /* vomiting on an altar is, all things considered, rather impolite */
         if (g.level.at(u.ux, u.uy).typ === ALTAR_TYP)
-            throw new Error('vomit(): altar_wrath() not ported yet');
+            await altar_wrath_et(u.ux, u.uy);
         /* if poly'd into acidic form, stomach acid is stronger than normal */
         if ((ptr.mflags1 & M.M1_ACID) !== 0) {
             /* TODO: if there's a web here, destroy that too (before ice) */
@@ -2281,6 +2283,46 @@ async function fpostfx(otmp) {
         break;
     }
     return;
+}
+
+// C ref: eat.c tinopen_ok()
+/* getobj callback for object to be opened with a tin opener */
+function tinopen_ok(obj) {
+    if (obj && obj.otyp === TIN)
+        return GETOBJ_SUGGEST;
+
+    return GETOBJ_EXCLUDE;
+}
+
+// C ref: eat.c use_tin_opener()
+export async function use_tin_opener(obj) {
+    let otmp;
+    let res = ECMD_OK;
+
+    if (!carrying(TIN)) {
+        await You("have no tin to open.");
+        return ECMD_OK;
+    }
+
+    if (obj !== game.uwep) {
+        if (obj.cursed && obj.bknown) {
+            /* ynq() */
+            if (await tty_yn_function(safe_qbuf("Really wield ", "?",
+                                                obj, doname, "that"),
+                                      "ynq", 'q') !== 'y')
+                return ECMD_OK;
+        }
+        if (!await wield_tool(obj, "use"))
+            return ECMD_OK;
+        res = ECMD_TIME;
+    }
+
+    otmp = await getobj("open", tinopen_ok, GETOBJ_NOFLAGS);
+    if (!otmp)
+        return (res | ECMD_CANCEL);
+
+    await start_tin(otmp);
+    return ECMD_TIME;
 }
 
 // C ref: eat.c bite()

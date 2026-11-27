@@ -16,7 +16,7 @@ import { tty_getlin } from './wintty.js';
 import { In_endgame, In_quest, In_mines, TELEPORT_CONTROL, STUNNED, CONFUSION } from './const.js';
 import { dunlevs_in_dungeon, In_hell, depth, get_level, on_level, find_hell,
          print_dungeon, ledger_no } from './dungeon.js';
-import { schedule_goto, UTOTYPE_NONE } from './do.js';
+import { schedule_goto, UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_PORTAL } from './do.js';
 import {
     COLNO, ROWNO, ZAP_POS, isok, GP_ALLOW_XY, GP_CHECKSCARY, NO_MM_FLAGS,
     CC_NO_FLAGS, CC_INCL_CENTER, CC_UNSHUFFLED, CC_RING_PAIRS, CC_SKIP_MONS,
@@ -78,7 +78,7 @@ import { learnscroll } from './read.js';
 import { Punished, Hallucination as Hallucination_tp } from './youprop.js';
 import { VIASITTING as VIASITTING_TP, FORCETRAP as FORCETRAP_TP,
          TIMEOUT as TIMEOUT_TP } from './const.js';
-import { make_confused as make_confused_tp } from './potion.js';
+import { make_confused as make_confused_tp, make_stunned } from './potion.js';
 import { lev_by_name as lev_by_name_tp } from './dungeon.js';
 import { killer as killer_lt } from './topten.js';
 import { done as done_lt } from './end.js';
@@ -406,7 +406,7 @@ export async function teleds(nux, nuy, teleds_flags) {
 
     /* must set u.ux, u.uy after drag_ball(), which may need to know
        the old position if allow_drag is true... */
-    u_on_newpos(nux, nuy); /* set u.<x,y>, usteed-><mx,my>; cliparound() */
+    await u_on_newpos(nux, nuy); /* set u.<x,y>, usteed-><mx,my>; cliparound() */
     await fill_pit(u.ux0, u.uy0);
     if (ball_active && game.uchain && game.uchain.where === 'OBJ_FREE')
         await placebc(); /* put back the ball&chain if they were taken off map */
@@ -805,6 +805,56 @@ export async function next_to_u() {
             o => o.otyp === AMULET_OF_YENDOR)) /* mon_has_amulet() */
         return false;
     return true;
+}
+
+// C ref: teleport.c domagicportal()
+export async function domagicportal(ttmp) {
+    const u = game.u;
+    let totype;
+    let stunmsg = null;
+
+    if (u.utrap && u.utraptype === TT_BURIEDBALL)
+        await buried_ball_to_punishment();
+
+    if (!(await next_to_u())) {
+        await You(shudder_for_moment); /* You1() */
+        return;
+    }
+
+    /* if landed from another portal, do nothing */
+    /* problem: level teleport landing escapes the check */
+    if (!on_level(u.uz, u.uz0))
+        return;
+
+    await You("activated a magic portal!");
+
+    /* prevent the poor shnook, whose amulet was stolen while in
+     * the endgame, from accidently triggering the portal to the
+     * next level, and thus losing the game
+     */
+    if (In_endgame(u.uz) && !u.uhave?.amulet) {
+        await You_feel_lt("dizzy for a moment, but nothing happens...");
+        return;
+    }
+
+    const target_level = { dnum: ttmp.dst.dnum, dlevel: ttmp.dst.dlevel };
+
+    /* coming back from tutorial doesn't trigger stunning */
+    const tutorial_dnum = game.dungeon_topology.d_tutorial_dnum;
+    if (u.uz.dnum === tutorial_dnum && target_level.dnum !== tutorial_dnum) {
+        /* returning to normal play => arrive on level 1 stairs */
+        totype = UTOTYPE_ATSTAIRS;
+        stunmsg = "Resuming regular play.";
+    } else {
+        const HStun = tp_prop(STUNNED);
+
+        totype = UTOTYPE_PORTAL;
+        stunmsg = !(HStun.intrinsic || HStun.extrinsic) ? "You feel slightly dizzy."
+                                                       : "You feel dizzier.";
+        await make_stunned((HStun.intrinsic & TIMEOUT_TP) + 3, false);
+    }
+
+    schedule_goto(target_level, totype, stunmsg, null);
 }
 
 // C ref: teleport.c tele_trap()
@@ -1703,7 +1753,7 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         }
         if (is_xport(tt) && !control_teleport(mtmp.data))
             mtmp.mconf = 1;
-        migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
+        await migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
         return Trap_Moved_Mon; /* no longer on this level */
     }
     return Trap_Effect_Finished;

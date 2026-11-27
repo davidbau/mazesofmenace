@@ -3060,6 +3060,24 @@ function _glyph_attr(rg) {
         return _bw_engr_hilite(true);
     return _wizmgender_attr(rg.female) || (rg.attr | 0);
 }
+/* C wintty.c:3919-3936: the ATR_INVERSE tty_print_glyph paints for an
+ * MG_BW_LAVA/ICE/SINK terrain glyph is re-derived from the LIVE options on
+ * every print — the flag lives on the glyph in gbuf, only the attribute is
+ * resolved at paint time.  This is the row_refresh twin for a cell this port
+ * holds in its disp_* buffer: show_glyph_cell bakes the resolved attr into
+ * disp_attr at show time, so a use_inverse toggle between the show and a
+ * docorner() row_refresh print must be re-applied when the row is actually
+ * reprinted (df-x6724327586 step 61: a sink buffered inverse at the
+ * 'color'-off docrt stayed inverse through the whole doset() pick walk that
+ * toggled use_inverse off, and the disclosure submenu's docorner row_refresh
+ * repainted it reversed where C printed it plain). */
+export function bw_terrain_inverse_at(loc) {
+    if (!loc || loc.disp_cls !== GLYPHCLS_CMAP)
+        return false;
+    return _bw_terrain_hilite(
+        loc.disp_cmap ?? _default_cmap_at(loc, loc.disp_ch,
+                                          loc.disp_glyph_color)) === 1;
+}
 function _obj_to_glyph(obj, raw = false) {
     const otyp = (obj.otyp | 0);
     /* C display.c:2788-2821 — MG_OBJPILE, applied by the tty as ATR_INVERSE. */
@@ -6266,12 +6284,18 @@ function _hl_color(name) {
     const c = match_str2clr(name, true);
     return c >= 0 && c < 16 ? ANSI_COLOR[c] : undefined;
 }
+/* A hilite_status rule added through the 'O' menu's getlin arm (botl.c:4212-
+ * 4218) is stored as {fld, str, spec}: C keeps the typed text verbatim in
+ * hilite.textmatch, which a flat "field/beh/colour" string cannot carry once
+ * the text contains '/'.  The live painters keep parsing the flat form. */
+const _hlSpecText = (spec) => (typeof spec === 'string' ? spec : spec.spec);
 let _hlCacheRc = null, _hlCacheRules = null;
 function _hilite_rules() {
     /* botl.c:2784-2810 status_hilite_add_threshold: the live rule chains, in
      * add order -- config-file rules first, then any added through the
      * hilite_status menu (botl.c status_hilite_menu_add). */
-    const specs = [...(game.status_field_hilites || []), ...(game.status_condition_hilites || [])];
+    const specs = [...(game.status_field_hilites || []), ...(game.status_condition_hilites || [])]
+        .map(_hlSpecText);
     const rc = specs.join('\n');
     if (rc === _hlCacheRc) return _hlCacheRules;
     const rules = [];
@@ -6899,7 +6923,7 @@ function _status_hunger_hilites(row, heldUhs) {
         const value = tf.vals.indexOf(text);
         let rule = null, exact = false, absolute = false, min = Infinity, max = -Infinity;
         for (const spec of game.status_field_hilites || []) {
-            const parts = spec.toLowerCase().split('/');
+            const parts = _hlSpecText(spec).toLowerCase().split('/');
             if (status_fieldname(parts[0].trim()) !== tf.fld) continue;
             if (parts.length === 2) parts.splice(1, 0, 'always');
             for (let i = 1; i + 1 < parts.length; i += 2) {
@@ -6971,7 +6995,7 @@ function _status_hp_crit_rule_active(cur, max, dir = 0) {
     if (!_status_hp_critically_low(cur, max)) return false;
     let temp = false;
     for (const spec of game.status_field_hilites || []) {
-        const parts = spec.split('/');
+        const parts = _hlSpecText(spec).split('/');
         if (status_fieldname(parts[0].trim()) !== 'hitpoints') continue;
         for (let i = 1; i + 1 < parts.length; i += 2) {
             if (!_hl_how(parts[i + 1])) continue;
@@ -7041,7 +7065,7 @@ function _status_field_hilites(row) {
      * across all hilite_status options naming that field, in option order. */
     const chains = new Map();
     for (const spec of game.status_field_hilites || []) {
-        const parts = spec.split('/');
+        const parts = _hlSpecText(spec).split('/');
         const key = status_fieldname(parts[0].trim());
         if (!chains.has(key)) chains.set(key, [parts[0]]);
         const chain = chains.get(key);
@@ -7215,7 +7239,7 @@ function _status_field_hilites(row) {
     for (const tf of tfields) {
         let rule = null, exact = false;
         for (const spec of game.status_field_hilites || []) {
-            const parts = spec.split('/');
+            const parts = _hlSpecText(spec).split('/');
             if (status_fieldname(parts[0].trim()) !== tf.field) continue;
             for (let i = 1; i + 1 < parts.length; i += 2) {
                 const thr = parts[i].trim();
@@ -7271,7 +7295,7 @@ function _status_xp_rule(level, pc, chg = 0) {
     let rule = null, always = null, temporary = null, changed = null, exact = false;
     const min = [32767, 101], max = [-32767, -1];
     for (const [si, spec] of (game.status_field_hilites || []).entries()) {
-        const parts = spec.split('/');
+        const parts = _hlSpecText(spec).split('/');
         if (status_fieldname(parts[0].trim()) !== 'experience-level') continue;
         for (let i = 1; i + 1 < parts.length; i += 2) {
             const thr = parts[i].trim().toLowerCase();
@@ -7316,7 +7340,7 @@ function _status_updown_rule(fname, chg) {
     let rule = null, changed = null;
     if (!chg) return null;
     for (const spec of game.status_field_hilites || []) {
-        const parts = spec.split('/');
+        const parts = _hlSpecText(spec).split('/');
         if (status_fieldname(parts[0].trim()) !== fname) continue;
         for (let i = 1; i + 1 < parts.length; i += 2) {
             const thr = parts[i].trim().toLowerCase();
@@ -7340,7 +7364,7 @@ function _status_updown_rule(fname, chg) {
  * even though the percentage fell relative to the last points change. */
 function _status_exp_bot_eval(u, pcBuf) {
     if (!game.flags?.showexp || !(game.status_field_hilites || []).some(spec =>
-        status_fieldname(spec.split('/')[0].trim()) === 'experience')) return;
+        status_fieldname(_hlSpecText(spec).split('/')[0].trim()) === 'experience')) return;
     const hist = (game._blTemp ||= {});
     const val = Number(u.uexp || 0);
     const h = hist.experience ||= { val, rule: null, time: 0 };
@@ -7395,7 +7419,7 @@ export function status_xp_bot_eval() {
     if ((u.umonnum | 0) !== (u.umonster | 0)) return;
     _status_exp_bot_eval(u, pcBuf);
     if (!(game.status_field_hilites || []).some(spec =>
-        status_fieldname(spec.split('/')[0].trim()) === 'experience-level')) return;
+        status_fieldname(_hlSpecText(spec).split('/')[0].trim()) === 'experience-level')) return;
     const hist = (game._blTemp ||= {});
     const val = u.ulevel | 0, pc = _exp_percentage(val, u.uexp || 0);
     let h = hist['experience-level'];
@@ -7526,7 +7550,7 @@ function _status_pc_slots_chg(fname, pc, chg) {
 }
 function _status_has_rules(fname) {
     return (game.status_field_hilites || []).some((spec) =>
-        status_fieldname(spec.split('/')[0].trim()) === fname);
+        status_fieldname(_hlSpecText(spec).split('/')[0].trim()) === fname);
 }
 function _eval_temp_bot_field(hist, fname, val, pc, encReset) {
     let hpChgNow = false;
@@ -8884,10 +8908,12 @@ export async function tty_restore_menu() {
     for (const line of [COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B,
         `         Version 5.0.0 ${PORT_ID}, built May  2 2026 12:00:00.`,
         COPYRIGHT_BANNER_D, '', 'Select one of your saved games']) menu.add_menu_str(line);
+    // Only the saved descriptions carry MENU_ITEMFLAGS_SKIPMENUCOLORS
+    // (restore.c:1581-1582); the banner lines above and the new/quit entries
+    // are menucoloured (windows.c:1803-1806).  Mac macx3 intel w25i-085 seg1:
+    // MENUCOLOR=".{6}"=cyan&underline paints the copyright lines \e[4;36m.
     saves.forEach((save, i) => menu.add_menu(i + 1, 0, ATR_NONE,
-        allNormal ? save.label : `${save.mode} ${save.label}`));
-    // Saved descriptions have MENU_ITEMFLAGS_SKIPMENUCOLORS (restore.c:1591).
-    menu.mlist.forEach(item => { item.menuColor = null; });
+        allNormal ? save.label : `${save.mode} ${save.label}`, false, false, 0, true));
     const newKey = saves.length <= 13 ? 'n' : saves.length <= 39 ? 'N' : 0;
     const quitKey = saves.length + 1 <= 16 && newKey === 'n' ? 'q'
         : saves.length + 1 <= 42 && newKey === 'N' ? 'Q' : 0;
@@ -9568,18 +9594,33 @@ export function anim_frame_info() {
  * next line redotoplin() writes over it (topl.c:121-139) leaves those cells
  * under bytes >= 0x80, which patch 006's nomux_putch does not paint.  Null
  * when no such row stands. */
-export function topl_stale_cells() {
-    if (game._topl_stale_row0 == null) return null;
+export function topl_stale_cells(writing = null) {
+    /* A line still standing physically on row 0 (_topl_sticky: e.g. getpos's
+     * "Move cursor to <goal>:" prompt or last autodescribe, which exitgetpos
+     * leaves when !msg_given, getpos.c:1151-1156) is written over by the next
+     * redotoplin() the same way (topl.c:121-139).  Mac macx2 intel w24g-009
+     * step 155: "This homely creature is called Bj" + C3 B6 + "rn ..." keeps
+     * "nt" of "...you want to name:" under the dropped bytes. */
+    const sticky = game._topl_sticky != null && String(game._topl_sticky) !== String(writing ?? '')
+        ? _toplStr(game._topl_sticky) : null;
+    const src = game._topl_stale_row0 ?? sticky;
+    if (src == null) return null;
+    return topl_row_cells(src);
+}
+/* The cells of one rendered screen row, each carrying only the SGR run and
+ * shift state in force at it (an \x1b[0m resets the run), so a cell copied
+ * into a later row does not grow with every re-render. */
+function topl_row_cells(rowText) {
     const cells = [];
-    let col = 0, style = '';
-    for (const token of String(game._topl_stale_row0).match(/\x1b\[[0-9;]*[A-Za-z]|[\s\S]/g) || []) {
+    let col = 0, sgr = '', so = false;
+    for (const token of String(rowText).match(/\x1b\[[0-9;]*[A-Za-z]|[\s\S]/g) || []) {
         if (token.startsWith('\x1b[')) {
             if (token.endsWith('C')) col += parseInt(token.slice(2), 10) || 1;
-            else if (token.endsWith('m')) style += token;
+            else if (token.endsWith('m')) sgr = /^\x1b\[0?m$/.test(token) ? '' : sgr + token;
         } else if (token === '\x0e' || token === '\x0f') {
-            style += token;
+            so = token === '\x0e';
         } else {
-            cells[col++] = `${style}${token}\x0f\x1b[0m`;
+            cells[col++] = so || sgr ? `${sgr}${so ? '\x0e' : ''}${token}\x0f\x1b[0m` : token;
         }
     }
     return cells;
@@ -9591,31 +9632,48 @@ function _toplStr(msg, row = 0) {
         const background = game._topl_tab_background;
         const previous = String(background?.text === game._pending_message
             ? background.output : game._screen_output || '').split('\n')[row] || '';
-        const cells = [];
-        let col = 0, style = '';
         /* topl_putsym('\n') + cl_end() blank a wrapped row before it is written. */
-        for (const token of row > 0 ? [] : previous.match(/\x1b\[[0-9;]*[A-Za-z]|[\s\S]/g) || []) {
-            if (token.startsWith('\x1b[')) {
-                if (token.endsWith('C')) col += parseInt(token.slice(2), 10) || 1;
-                else if (token.endsWith('m')) style += token;
-            } else if (token === '\x0e' || token === '\x0f') {
-                style += token;
-            } else {
-                cells[col++] = `${style}${token}\x0f\x1b[0m`;
-            }
-        }
+        const cells = row > 0 ? [] : topl_row_cells(previous);
         /* An unpainted high byte keeps the cell a non-ESC --More-- left on
          * the row (more(), topl.c:237-246); anything else wiped it. */
-        const stale = (row === 0 && game._topl_show_only !== s && topl_stale_cells()) || [];
+        const stale = (row === 0 && game._topl_show_only !== s && topl_stale_cells(s)) || [];
         const original = s;
         /* Only the first line written over the stale row keeps its cells:
          * redotoplin's cl_end() (topl.c:136) clears the rest, and a joined
          * message is addtopl()ed onto that cleared tail (topl.c:262-267).
-         * Mac macx intel w23g-083 step 89. */
-        const staleEnd = game._topl_joins_src === original && game._topl_joins?.length
-            ? game._topl_joins[0] : Infinity;
+         * Mac macx intel w23g-083 step 89.  The joins may be keyed to the
+         * whole pending line while this row is only its first page (the
+         * "--More--" page of a longer join): the first line is the same text,
+         * so its boundary still holds.  Mac macx3 intel w25i-087 step 129:
+         * "Something is written here in the dust." then addtopl's
+         * "You read: \"\xc5\x81ukasz\"." — the Ł cells are blank, not the
+         * dismissed page's "or" of "--More--".  Likewise a later page of
+         * that join (the line after an earlier one was paged off, w25i-073
+         * step 269 "There is a staircase ..." then this pair): the first
+         * line of the page is the segment that starts it. */
+        const _jsrc = typeof game._topl_joins_src === 'string' ? game._topl_joins_src : null;
+        const _js = Array.isArray(game._topl_joins) ? game._topl_joins : [];
+        let staleEnd = Infinity;
+        if (_jsrc === original && _js.length) staleEnd = _js[0];
+        else if (_jsrc != null && _js.length) {
+            const starts = [0, ..._js.map(j => j + 2)];
+            for (let k = 0; k < _js.length; k++) {
+                const a = starts[k], b = _js.slice(k).find(j => j > a);
+                if (b == null || b - a >= original.length) continue;
+                if (_jsrc.slice(a, b) === original.slice(0, b - a)
+                    && original.slice(b - a).startsWith('  ')
+                    && _jsrc.slice(b).startsWith('  ')) { staleEnd = b - a; break; }
+            }
+        }
         s = s.replace(CTRL_BYTE, (c, offset) => game._topl_show_only === original ? ' '
-            : c.charCodeAt(0) >= 0x80 ? (offset < staleEnd && stale[_topl_visualLen(original.slice(0, offset))]) || ' '
+            /* A prompt being echoed (TOPLINE_SPECIAL_PROMPT) is written by
+             * topl_putsym one byte at a time over the row as it stands, so a
+             * dropped byte keeps the cell already there — e.g. a NEWAUTOCOMP
+             * guess the next typed byte cuts (getline.c:170-193).  Mac macx2
+             * intel w24g-153: "#", "f" ("# force"), then C3 BC shows "# fo". */
+            : c.charCodeAt(0) >= 0x80 ? (game._topl_prompt_echo
+                ? cells[_topl_visualLen(original.slice(0, offset))]
+                : offset < staleEnd && stale[_topl_visualLen(original.slice(0, offset))]) || ' '
             : cells[_topl_visualLen(original.slice(0, offset))] || ' ');
     }
     return s.replace(/ +$/, '').replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
@@ -11659,6 +11717,12 @@ export function restore_occupation_topline() {
     const current = head
         ? _topl_merge_result(head, live, joins?.filter(offset => offset < head.length))
         : live;
+    if (current === held.text || current.startsWith(held.text + '  ')) {
+        g._resultMessage = null;
+        g._resultMessageJoins = null;
+        g._toplResultSnapshot = null;
+        return;
+    }
     g._pending_message = _topl_merge_result(held.text, current, held.joins);
     /* _topl_merge_result returns `a` untouched when `current` is empty, leaving
      * the join side-channel keyed to some other string; the restored line's own
@@ -12190,6 +12254,12 @@ async function _topl_more(committed, dismissMore) {
             display.setCursor(_moreCol, _moreRow);
     };
     _renderMore();
+    /* xwaitforspace (getline.c:230-257) only rings the bell on a key it does not
+     * accept; nothing is drawn until more() returns.  The terminal keeps this
+     * page exactly as written -- map glyphs newsym'd after the flush that
+     * preceded it (e.g. a trap a teleported pet revealed, under MSGTYPE=stop)
+     * appear only after the dismissal.  Mac macx2 intel w24a-081 steps 98-104. */
+    const _moreScreen = game._screen_output;
     /* The physical row this page leaves behind (see _topl_stale_row0 below). */
     let _moreRow0 = String(game._screen_output || '').split('\n')[0] || '';
     /* C ref: win/tty/getline.c:230-257 xwaitforspace("\033 ") — the key that
@@ -12202,6 +12272,10 @@ async function _topl_more(committed, dismissMore) {
     game._topl_last_more_committed = String(committed ?? '');
     if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^topl_more_enter[committed=${encodeURIComponent(String(committed).slice(0,80))} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} urgent=${game._topl_urgent_next?1:0} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,80))}]`);
+    /* The row the page was written over stays under its dropped bytes while
+     * xwaitforspace() rings at other keys (topl_stale_cells); nhgetch retires
+     * _topl_sticky, so the re-shown page reads it from here. */
+    const _stickyUnderMore = game._topl_sticky;
     while (true) {
         const key = await nhgetch();
         game._snapMoreKeys = (game._snapMoreKeys | 0) + 1;
@@ -12222,7 +12296,13 @@ async function _topl_more(committed, dismissMore) {
             morc = key;                    /* getline.c:238 — `c == x` */
             break;
         }
-        _renderMore();
+        {
+            const sticky = game._topl_sticky;
+            game._topl_sticky = _stickyUnderMore;
+            _renderMore();
+            game._topl_sticky = sticky;
+        }
+        if (_moreScreen != null) game._screen_output = _moreScreen;
         _moreRow0 = String(game._screen_output || '').split('\n')[0] || '';
         /* C topl.c:230 xwaitforspace() retries without remember_topl().
          * nhgetch already filed this page on its first read; restoring it for
@@ -12679,6 +12759,9 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
     let _morc = 0;
     const _frameLog = _movemon_page_frames_current();
     const _flushFrames = g._plineFlushFrames?.slice() || [];
+    /* topl.c:121-142 redotoplin() runs no flush before its more(); a page
+     * raised by a history recall must not adopt a pline-flush frame. */
+    const _recallPage = !!g._topl_recall_page;
     const _forcedBreaks = g._topl_force_breaks?.slice() || [];
     let _consumed = 0;
     let _prevEnd = -1;
@@ -12777,6 +12860,21 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
         const _clsOwnsFrame = _lastFromCls && !!g._paintedSnapshot;
         if (!_pf && i > 0 && !_clsOwnsFrame) { _pf = _pline_flush_frame_select(_ownOff, _full, _flushFrames); _ownFlushPf = !!_pf; }
         if (!_pf && i > 0 && !_clsOwnsFrame) _pf = _frameLog?.[i];
+        /* C win/tty/topl.c:121-142 redotoplin() — a message-history recall
+         * repaints the TOPLINE only: home(); putsyms(str); cl_end(); and the
+         * more() a wrapped line raises (:139-140). No flush_screen() precedes
+         * it (contrast pline.c:273-274, which every frame selected above
+         * models), so the --More-- page keeps the CURRENT physical map and
+         * status. js/cmd.js's doprev_message marks its paged recall with
+         * _topl_recall_page; honour it by dropping every pline-flush frame,
+         * which for a recalled line is the terminal as it was when the line
+         * was FIRST plined — arbitrarily many flushes stale. df-xcb79ef86fa
+         * step 166: the "^P" recall of the wrapped "You emerge from
+         * ABCDEFGHIJKLMNOPQRSTUVWXY23 which was a shapeshifted the vampire
+         * bat!" reinstalled the frame recorded while the hero was still
+         * swallowed, repainting the stomach cage over a map C had restored
+         * thirteen frames earlier (unstuck()'s docrt, mon.c:3455). */
+        if (_recallPage) _pf = null;
         /* A lone first message whose more() is raised by the NEXT prompt (not by a
          * later pline) froze the map at its own pline's flush; the keyed -2 frame
          * records that (see _pline_flush_frame_record callers). */
@@ -13149,6 +13247,9 @@ function _topl_stop_clear_after_more() {
     _movemon_page_frames_reset();
     _pline_flush_frames_reset();
     g._topl_sticky = null;      /* cl_end wiped the physical row */
+    /* ...so no cell of the dismissed page is left for a later redotoplin's
+     * dropped high bytes to show (patch 006 nomux_putch). */
+    g._topl_stale_row0 = null;
     _buildScreenOutput();       /* re-parks the display cursor, as bot()+curs_on_u() do */
 }
 

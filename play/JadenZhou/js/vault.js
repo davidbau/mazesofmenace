@@ -32,7 +32,7 @@ import { isok, ROOM, CORR, STONE, SCORR, DOOR, HWALL, VWALL, TLCORNER,
          GD_EATGOLD } from './const.js';
 import { mons, PM_GUARD, PM_CROESUS } from './monsters.js';
 import { GOLD_PIECE, ROCK, BOULDER, TIN_WHISTLE, objects } from './objects.js';
-import { makemon, set_malign, place_monster, sobj_at, m_at } from './makemon.js';
+import { makemon, set_malign, place_monster, sobj_at, m_at, makemon_flush_msg } from './makemon.js';
 import { rloc, mnexto, enexto } from './teleport.js';
 import { mongone, setmangry } from './mon.js';
 import { yelp } from './sounds.js';
@@ -432,7 +432,15 @@ export async function invault() {
         }
 
         /* make something interesting happen */
-        if (!(guard = makemon(mons[PM_GUARD], x, y, MM_EGD | MM_NOMSG)))
+        game.makemon_want_msg = true; /* see makemon()'s Norep() comment */
+        try {
+            guard = makemon(mons[PM_GUARD], x, y, MM_EGD | MM_NOMSG);
+        } finally {
+            game.makemon_want_msg = false;
+        }
+        /* makemon()'s dochugw(mtmp, FALSE) for an occupied hero */
+        await makemon_flush_msg();
+        if (!guard)
             return;
         guard.isgd = 1;
         guard.mpeaceful = 1;

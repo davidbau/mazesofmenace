@@ -385,16 +385,56 @@ export async function ignite_items(items) {
 
 // src/trap.c:4233 dofiretrap(), hero and chest form.
 async function dofiretrap(box) {
+    const see_it = !Blind();
     const origDmg = d(2, 4);
     let num = origDmg;
     const source = the(box ? xname(box)
                            : surface(game.u.ux, game.u.uy));
+
+    if ((box && !carried(box)) ? is_pool(box.ox, box.oy) : Underwater()) {
+        await pline(`A cascade of steamy bubbles erupts from ${source}!`);
+        if (Fire_resistance())
+            await You('are uninjured.');
+        else
+            await losehp(rnd(3), 'boiling water', KILLED_BY);
+        return;
+    }
 
     await pline(`A tower of flame ${box ? 'bursts' : 'erupts'} from ${source}!`);
     if (Fire_resistance()) {
         await shieldeff(game.u.ux, game.u.uy);
         monstseesu(M_SEEN_FIRE);
         num = rn2(2);
+    } else if (Upolyd(game.u)) {
+        let alt;
+        switch (game.u.umonnum) {
+        case PMNAMES.PM_PAPER_GOLEM:
+            alt = game.u.mhmax;
+            break;
+        case PMNAMES.PM_STRAW_GOLEM:
+            alt = Math.trunc(game.u.mhmax / 2);
+            break;
+        case PMNAMES.PM_WOOD_GOLEM:
+            alt = Math.trunc(game.u.mhmax / 4);
+            break;
+        case PMNAMES.PM_LEATHER_GOLEM:
+            alt = Math.trunc(game.u.mhmax / 8);
+            break;
+        default:
+            alt = 0;
+            break;
+        }
+        if (alt > num)
+            num = alt;
+        if (game.u.mhmax > game.mons[game.u.umonnum].mlevel) {
+            game.u.mhmax -= rn2(Math.min(game.u.mhmax, num + 1));
+            (game.disp ||= {}).botl = true;
+        }
+        if (game.u.mh > game.u.mhmax) {
+            game.u.mh = game.u.mhmax;
+            (game.disp ||= {}).botl = true;
+        }
+        monstunseesu(M_SEEN_FIRE);
     } else {
         num = d(2, 4);
         const minHp = Math.max(game.u.ulevel | 0, 1);
@@ -413,13 +453,14 @@ async function dofiretrap(box) {
         await You('are uninjured.');
     else
         await losehp(num, 'tower of flame', KILLED_BY_AN);
+    await burn_away_slime();
 
     if (await burnarmor(game.youmonst) || rn2(3)) {
         await destroy_items(game.youmonst, ATTKS.AD_FIRE, origDmg);
         await ignite_items(game.invent);
     }
-    if (await burn_floor_objects(game.u.ux, game.u.uy, !Blind(), true)
-        && Blind())
+    if (!box && await burn_floor_objects(game.u.ux, game.u.uy, see_it, true)
+        && !see_it)
         await You('smell paper burning.');
     const { is_ice } = await import('./dbridge.js');
     if (is_ice(game.u.ux, game.u.uy))

@@ -400,6 +400,7 @@ import { mksobj, set_corpsenm } from './mkobj.js';
 import { STATUE, FIGURINE } from './objects.js';
 import { W_ARTI, BURIED_TOO, CONTAINED_TOO } from './const.js';
 import { force_decor } from './pickup.js';
+import { is_db_wall, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
 
 // C ref: zap.c learnwand()
 export function learnwand(obj) {
@@ -1835,6 +1836,8 @@ export function find_drawbridge(x, y) {
 export async function zap_map(x, y, obj) { /* zapped wand, or book for cast spell */
     const u = game.u;
     const ttmp = t_at(x, y);
+    let dbx = x, dby = y; /* might be changed by drawbridge handling */
+    let learn_it = false;
 
     /* cancellation: maybe_explode_trap(ttmp, obj, &learn_it) */
     if (ttmp && (obj.otyp === WAN_CANCELLATION || obj.otyp === SPE_CANCELLATION))
@@ -1845,20 +1848,42 @@ export async function zap_map(x, y, obj) { /* zapped wand, or book for cast spel
         if (e && e.engr_type !== HEADSTONE)
             throw new Error('zap_map(): zapping down at an engraving not ported yet');
     } else if (!u.dz) {
-        if (find_drawbridge(x, y)) {
+        const ltyp = game.level.at(x, y).typ;
+        const db = find_drawbridge(dbx, dby);
+
+        if (db) {
+            dbx = db.x, dby = db.y;
             switch (obj.otyp) {
             case WAN_OPENING:
             case SPE_KNOCK:
+                /* dbwall: 'closed door' of raised drawbridge */
+                if (is_db_wall(x, y)) {
+                    if (cansee(dbx, dby) || cansee(x, y))
+                        learn_it = true;
+                    await open_drawbridge(dbx, dby);
+                }
+                break;
             case WAN_LOCKING:
             case SPE_WIZARD_LOCK:
+                /* drawbridge_down: span of lowered drawbridge */
+                if ((cansee(dbx, dby) || cansee(x, y))
+                    && game.level.at(dbx, dby).typ === DRAWBRIDGE_DOWN_ZP)
+                    learn_it = true;
+                await close_drawbridge(dbx, dby);
+                break;
             case WAN_STRIKING:
             case SPE_FORCE_BOLT:
-                throw new Error('zap_map(): zapping a drawbridge not ported yet');
+                /* !drawbridge_up: not spot in front of raised bridge,
+                   so either span of lowered bridge or portcullis */
+                if (ltyp !== DRAWBRIDGE_UP_ZP) {
+                    learn_it = true;
+                    await destroy_drawbridge(dbx, dby);
+                }
+                break;
             }
         } /* find_drawbridge */
     } /* !u.uz */
 
-    let learn_it = false;
     if (obj.otyp === WAN_PROBING) {
         /*
          * Probing, either up/down or lateral.
@@ -4994,7 +5019,16 @@ export async function zombify_mon(arg, timeout) {
 // C ref: zap.c melt_ice_away()
 /* timer callback routine: melt ice at a location */
 export async function melt_ice_away(arg, timeout) {
-    throw new Error('melt_ice_away() not ported yet');
+    const where = arg.a_long;
+    const save_mon_moving = game.context.mon_moving; /* will be False */
+
+    /* melt_ice -> minliquid -> mondead|xkilled shouldn't credit/blame hero */
+    game.context.mon_moving = 1; /* hero isn't causing this ice to melt */
+    const y = (where & 0xFFFF);
+    const x = ((where >> 16) & 0xFFFF);
+    /* melt_ice does newsym when appropriate */
+    await melt_ice(x, y, "Some ice melts away.");
+    game.context.mon_moving = save_mon_moving;
 }
 
 // C ref: zap.c cancel_item()

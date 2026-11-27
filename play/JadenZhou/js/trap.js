@@ -299,7 +299,7 @@ import { ceiling as ceiling_tr } from './dungeon.js';
 import { mbodypart as mbodypart_tr } from './insight.js';
 import { schedule_goto, UTOTYPE_FALLING, UTOTYPE_NONE } from './do.js';
 import { impact_drop } from './dokick.js';
-import { next_to_u } from './teleport.js';
+import { next_to_u, domagicportal } from './teleport.js';
 import { ceiling_hider } from './engrave.js';
 import { find_hell, assign_level, depth } from './dungeon.js';
 import { Is_stronghold } from './const.js';
@@ -357,6 +357,11 @@ import { STONING } from './const.js';
 import { Stone_resistance } from './youprop.js';
 import { PM_STONE_GOLEM } from './monsters.js';
 import { polymon } from './polyself.js';
+import { bury_an_obj } from './dig.js';
+import { destroy_drawbridge } from './dbridge.js';
+import { maybe_dunk_boulders } from './apply.js';
+import { spot_checks } from './hack.js';
+import { sellobj } from './shk.js';
 export { is_hole, is_pit };
 
 
@@ -1060,6 +1065,35 @@ export function immune_to_trap(mon, ttype) {
         /* impossible("immune_to_trap: unknown trap type %u", ttype) */
         return TRAP_NOT_IMMUNE;
     }
+}
+
+// C ref: trap.c cnv_trap_obj()
+/* Replace trap with object(s).  Helge Hafting */
+export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
+    const otmp = mksobj(otyp, true, false);
+    let mtmp;
+
+    otmp.quan = cnt;
+    otmp.owt = weight(otmp);
+    /* Only dart traps are capable of being poisonous */
+    if (otyp !== DART)
+        otmp.opoisoned = 0;
+    place_object(otmp, ttmp.tx, ttmp.ty);
+    if (bury_it) {
+        /* magical digging first disarms this trap, then will unearth it */
+        bury_an_obj(otmp, null);
+    } else {
+        /* Sell your own traps only... */
+        if (ttmp.madeby_u)
+            await sellobj(otmp, ttmp.tx, ttmp.ty);
+        stackobj(otmp);
+    }
+    newsym(ttmp.tx, ttmp.ty);
+    if (game.u.utrap && u_at(ttmp.tx, ttmp.ty))
+        await reset_utrap(true);
+    if (((mtmp = m_at(ttmp.tx, ttmp.ty)) != null) && mtmp.mtrapped)
+        mtmp.mtrapped = 0;
+    deltrap(ttmp);
 }
 
 // C ref: trap.c into_vs_onto()
@@ -3193,8 +3227,8 @@ async function trapeffect_level_telep(mtmp, trap, trflags) {
 // C ref: trap.c trapeffect_magic_portal()
 async function trapeffect_magic_portal(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        /* feeltrap(trap); domagicportal(trap); */
-        throw new Error('trapeffect_magic_portal(): domagicportal() not ported yet');
+        feeltrap(trap);
+        await domagicportal(trap);
     } else {
         return trapeffect_level_telep(mtmp, trap, trflags);
     }
@@ -4081,8 +4115,12 @@ export async function blow_up_landmine(trap) {
     /* destroy drawbridge if present */
     if (lev.typ === DRAWBRIDGE_DOWN_L || is_drawbridge_wall_l(x, y) >= 0) {
         /* if under the portcullis, the bridge is adjacent */
-        if (find_drawbridge_l(x, y))
-            throw new Error('blow_up_landmine(): destroy_drawbridge() not ported yet');
+        let dbx = x, dby = y;
+        const db = find_drawbridge_l(dbx, dby);
+        if (db) {
+            dbx = db.x, dby = db.y;
+            await destroy_drawbridge(dbx, dby);
+        }
     }
     trap = t_at(x, y); /* expected to be null after destruction */
     /* or could be null if scatter blew up oil which melted ice */
@@ -4107,13 +4145,9 @@ export async function blow_up_landmine(trap) {
         }
     }
     await fill_pit(x, y);
-    /* maybe_dunk_boulders(x, y) */
-    if ((is_pool(x, y) || is_lava(x, y)) && sobj_at(BOULDER, x, y))
-        throw new Error('blow_up_landmine(): maybe_dunk_boulders() not ported yet');
+    await maybe_dunk_boulders(x, y);
     recalc_block_point_l(x, y);
-    /* spot_checks(x, y, old_typ) */
-    if (old_typ === DRAWBRIDGE_UP_L || old_typ === ICE_L)
-        throw new Error('blow_up_landmine(): spot_checks() for ice not ported yet');
+    spot_checks(x, y, old_typ);
 }
 
 // C ref: trap.c clamp_hole_destination()

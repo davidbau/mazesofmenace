@@ -1371,6 +1371,19 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             if (row) {
                 g._pending_message = '';
                 await flush_screen(1); // clear multi-row prompt on cleanup
+            } else if (!opts.retainFrame) {
+                /* topl.c:533-548 clean_up rewrites only gt.toplines; a
+                 * single-row prompt stays painted (TOPLINE_NON_EMPTY) until
+                 * the next pline overwrites it or parse()'s clear_nhwindow
+                 * erases it after the next key.  When the caller's pline is
+                 * MSGTYPE-hidden (pline.c:246-262), the prompt is what the
+                 * next frame shows.  Mac macx2 intel w24a-123 step 74: '&'
+                 * ESC under MSGTYPE=hide "[\xe0-\xff]|Unknown" (BSD: '0'-'\\'
+                 * covers 'N') hides "No such command '^['..."; C keeps
+                 * "What command?" on row 0.  Like the answered getobj prompt
+                 * (toplin != EMPTY), a later menu/text window erases it
+                 * (wintty.c:1912-1914,1928-1930). */
+                g._topl_sticky = g._topl_sticky_prompt = qbuf;
             }
             return String.fromCharCode(key);
         }

@@ -118,7 +118,7 @@ import { immune_to_trap, into_vs_onto, u_locomotion, trapname,
          TRAPNUM } from './trap.js';
 import { TRAP_CLEARLY_IMMUNE } from './const.js';
 import { visible_region_at, reg_damg, in_out_region } from './region.js';
-import { paranoid_query } from './cmd.js';
+import { paranoid_query, floor_pile_at } from './cmd.js';
 import { FROMOUTSIDE, MAX_TYPE, NO_TRAP, FAILEDUNTRAP, TIMEOUT, WARNING,
          IS_SINK } from './const.js';
 import { M1_CLING, PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './monsters.js';
@@ -156,9 +156,85 @@ import { DRAWBRIDGE_UP as DRAWBRIDGE_UP_SC, DB_UNDER as DB_UNDER_SC,
 import { spot_time_left as spot_time_left_sc,
          spot_stop_timers as spot_stop_timers_sc } from './timeout.js';
 import { obj_ice_effects as obj_ice_effects_sc } from './mkobj.js';
+import { is_rider } from './mondata.js';
+import { PM_WIZARD_OF_YENDOR } from './monsters.js';
+import { enexto, rloc_to } from './teleport.js';
+import { revive_corpse } from './zap.js';
+import { rn1 } from './rng.js';
+import { doname } from './objnam.js';
+import { losehp, selftouch, Maybe_Half_Phys } from './trap.js';
+import { Ring_off, Boots_off, stop_donning, off_msg } from './do_wear.js';
+import { LEVITATION_BOOTS, RIN_LEVITATION, is_weptool } from './objects.js';
+import { NO_KILLER_PREFIX, W_ARTI, FROMFORM } from './const.js';
+import { W_NONDIGGABLE as W_NONDIGGABLE_sc, IS_TREE, IS_WALL, DOOR as DOOR_sc,
+         D_TRAPPED as D_TRAPPED_sc, NO_PART as NO_PART_sc,
+         SHOP_DOOR_COST as SHOP_DOOR_COST_sc, P_RIDING as P_RIDING_hk,
+         P_BASIC as P_BASIC_hk } from './const.js';
+import { on_level as on_level_sc, assign_level as assign_level_sc } from './dungeon.js';
+import { HEAVY_IRON_BALL as HEAVY_IRON_BALL_sc } from './objects.js';
+import { metallivorous as metallivorous_sc } from './mondata.js';
+import { sobj_at as sobj_at_sc, closed_door as closed_door_sc } from './makemon.js';
+import { may_dig as may_dig_sc, watch_dig as watch_dig_sc, digging_ctx as digging_ctx_sc,
+         clear_digging as clear_digging_sc } from './dig.js';
+import { delobj as delobj_sc } from './invent.js';
+import { block_point as block_point_sc, recalc_block_point as recalc_block_point_sc } from './vision.js';
+import { add_damage as add_damage_sc, pay_for_damage as pay_for_damage_sc } from './shk.js';
+import { acurrstr as acurrstr_sc } from './attrib.js';
+import { morehungry as morehungry_sc } from './eat.js';
+import { dissolve_bars as dissolve_bars_sc } from './monmove.js';
+import { b_trapped as b_trapped_sc } from './trap.js';
+import { autopick_testobj as autopick_testobj_hk } from './pickup.js';
+import { P_SKILL as P_SKILL_hk } from './weapon.js';
+import { uwep_skill_type as uwep_skill_type_fw, use_skill as use_skill_fw } from './weapon.js';
+import { P_UNSKILLED as P_UNSKILLED_fw } from './const.js';
+import { u_wield_art as u_wield_art_fw, is_blade as is_blade_fw } from './objects.js';
+import { ART_STING as ART_STING_fw } from './artilist.js';
+import { attacks as attacks_fw } from './artifact.js';
+import { AD_FIRE as AD_FIRE_fw } from './monsters.js';
+import { bare_artifactname as bare_artifactname_fw } from './iactions.js';
+import { weapon_descr as weapon_descr_fw } from './insight.js';
+import { makeplural as makeplural_fw } from './objnam.js';
+import { You_cant as You_cant_fw } from './display.js';
+import { deltrap as deltrap_fw } from './trap.js';
 
 // C's impossible() (pline.c) is not ported yet.
 export function impossible(msg) { console.error(`impossible: ${msg}`); }
+
+// C ref: hack.c revive_nasty()
+export async function revive_nasty(x, y, msg) {
+    let mtmp;
+    const cc = { x: 0, y: 0 };
+    let revived = false;
+
+    /* for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp2):
+       the pile at <x,y> from the floor chain, read before any revival */
+    const pile = (game.level.objects || []).filter(
+        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
+    for (const otmp of pile) {
+        if (otmp.otyp === CORPSE
+            && (is_rider(mons[otmp.corpsenm])
+                || otmp.corpsenm === PM_WIZARD_OF_YENDOR)) {
+            /* move any living monster already at that location */
+            if ((mtmp = m_at(x, y)) && enexto(cc, x, y, mtmp.data))
+                await rloc_to(mtmp, cc.x, cc.y);
+            if (msg)
+                await Norep(msg);
+            revived = !!(await revive_corpse(otmp));
+        }
+    }
+
+    /* this location might not be safe, if not, move revived monster */
+    if (revived) {
+        mtmp = m_at(x, y);
+        if (mtmp && !goodpos(x, y, mtmp, 0)
+            && enexto(cc, x, y, mtmp.data)) {
+            await rloc_to(mtmp, cc.x, cc.y);
+        }
+        /* else impossible? */
+    }
+
+    return revived;
+}
 
 // C ref: hack.c weight_cap()
 export function weight_cap() {
@@ -1485,6 +1561,94 @@ let spotterrain = STONE;
 let spottrap = null;
 let spottraptyp = NO_TRAP;
 
+// C ref: hack.c dosinkfall()
+async function dosinkfall() {
+    const u = game.u;
+    const fell_on_sink = "fell onto a sink";
+    const HLev = sp_prop(LEVITATION), HFly = sp_prop(FLYING);
+    let obj;
+    let dmg;
+    let lev_boots = !!(game.uarmf && game.uarmf.otyp === LEVITATION_BOOTS);
+    const innate_lev = ((HLev.intrinsic & (FROMOUTSIDE | FROMFORM)) !== 0),
+          /* to handle being chained to buried iron ball, trying to
+             levitate but being blocked, then moving onto adjacent sink;
+             no need to worry about being blocked by terrain because we
+             couldn't be over a sink at the same time */
+          blockd_lev = (HLev.blocked === I_SPECIAL),
+          ufall = (!innate_lev && !blockd_lev
+                   && !(HFly.intrinsic || HFly.extrinsic)); /* BFlying */
+
+    if (!ufall) {
+        await You((innate_lev || blockd_lev) ? "wobble unsteadily for a moment."
+                                             : "gain control of your flight.");
+    } else {
+        const save_ELev = HLev.extrinsic, save_HLev = HLev.intrinsic;
+
+        /* fake removal of levitation in advance so that final
+           disclosure will be right in case this turns out to
+           be fatal; fortunately the fact that rings and boots
+           are really still worn has no effect on bones data */
+        HLev.extrinsic = HLev.intrinsic = 0;
+        await You("crash to the floor!");
+        dmg = rn1(8, 25 - ACURR(A_CON));
+        await losehp(Maybe_Half_Phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
+        await exercise(A_DEX, false);
+        await selftouch("Falling, you");
+        /* svl.level.objects[u.ux][u.uy] via ->nexthere */
+        for (obj of floor_pile_at(u.ux, u.uy))
+            if (obj.oclass === WEAPON_CLASS || is_weptool(obj)) {
+                await You(`fell on ${doname(obj)}.`);
+                await losehp(Maybe_Half_Phys(rnd(3)), fell_on_sink,
+                             NO_KILLER_PREFIX);
+                await exercise(A_CON, false);
+            }
+        HLev.extrinsic = save_ELev;
+        HLev.intrinsic = save_HLev;
+    }
+
+    /*
+     * Interrupt multi-turn putting on/taking off of armor (in which
+     * case we reached the sink due to being teleported while busy;
+     * in 3.4.3, Boots_on()/Boots_off() [called via (*afternmv)() when
+     * 'multi' reaches 0] triggered a crash if we were donning/doffing
+     * levitation boots [because the Boots_off() below causes 'uarmf'
+     * to be null by the time 'afternmv' gets called]).
+     *
+     * Interrupt donning/doffing if we fall onto the sink, or if the
+     * code below is going to remove levitation boots even when we
+     * haven't fallen (innate floating or flying becoming unblocked).
+     */
+    if (ufall || lev_boots) {
+        await stop_donning(lev_boots ? game.uarmf : null);
+        /* recalculate in case uarmf just got set to null */
+        lev_boots = !!(game.uarmf && game.uarmf.otyp === LEVITATION_BOOTS);
+    }
+
+    /* remove worn levitation items */
+    HLev.extrinsic &= ~W_ARTI;
+    HLev.intrinsic &= ~(I_SPECIAL | TIMEOUT);
+    HLev.intrinsic++;
+    if (game.uleft && game.uleft.otyp === RIN_LEVITATION) {
+        obj = game.uleft;
+        await Ring_off(obj);
+        await off_msg(obj);
+    }
+    if (game.uright && game.uright.otyp === RIN_LEVITATION) {
+        obj = game.uright;
+        await Ring_off(obj);
+        await off_msg(obj);
+    }
+    if (lev_boots) {
+        obj = game.uarmf;
+        await Boots_off();
+        await off_msg(obj);
+    }
+    HLev.intrinsic--;
+    /* probably moot; we're either still levitating or went
+       through float_down(), but make sure BFlying is up to date */
+    float_vs_flight();
+}
+
 // C ref: hack.c spoteffects()
 export async function spoteffects(pick) {
     const u = game.u;
@@ -1521,7 +1685,7 @@ export async function spoteffects(pick) {
     if (!await pooleffects(true)) {
         await check_special_room(false);
         if (IS_SINK(game.level.at(u.ux, u.uy).typ) && sp_Levitation())
-            throw new Error('spoteffects(): dosinkfall() not ported yet');
+            await dosinkfall();
         if (!game.in_steed_dismounting) { /* if dismounting, check again later */
             const HLev = sp_prop(LEVITATION);
 
@@ -1968,9 +2132,10 @@ export async function test_move(ux, uy, dx, dy, mode) {
             if (mode === DO_MOVE
                 && (dmgtype(ydat, AD_RUST)
                     || dmgtype(ydat, AD_CORR)
-                    || (ydat.mflags1 & M1_METALLIVORE) !== 0)) /* metallivorous() */
-                /* && still_chewing(x, y): return FALSE */
-                throw new Error('test_move(): still_chewing() of iron bars not ported yet');
+                    || (ydat.mflags1 & M1_METALLIVORE) !== 0) /* metallivorous() */
+                && await still_chewing(x, y)) {
+                return false;
+            }
             if (!(Passes_walls() || passes_bars(ydat))) {
                 if (mode === DO_MOVE && game.flags.mention_walls)
                     await You("cannot pass through the bars.");
@@ -1979,8 +2144,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
         } else if (tunnels(game.youmonst.data)
                    && !needspick(game.youmonst.data)) {
             /* Eat the rock. */
-            if (mode === DO_MOVE)
-                throw new Error('test_move(): still_chewing() not ported yet');
+            if (mode === DO_MOVE && await still_chewing(x, y))
+                return false;
         } else if (game.flags.autodig && !game.context.run
                    && !game.context.nopick && game.uwep
                    && is_pick(game.uwep)) {
@@ -2027,8 +2192,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
             } else if (tunnels(game.youmonst.data)
                        && !needspick(game.youmonst.data)) {
                 /* Eat the door. */
-                if (mode === DO_MOVE)
-                    throw new Error('test_move(): still_chewing() not ported yet');
+                if (mode === DO_MOVE && await still_chewing(x, y))
+                    return false;
             } else {
                 if (mode === DO_MOVE) {
                     if (amorphous(game.youmonst.data))
@@ -2176,7 +2341,8 @@ async function test_move_rest(ux, uy, dx, dy, mode, x, y) {
             /* tunneling monsters will chew before pushing */
             if (tunnels(game.youmonst.data) && !needspick(game.youmonst.data)
                 && !Sokoban()) {
-                throw new Error('test_move(): still_chewing() not ported yet');
+                if (await still_chewing(x, y))
+                    return false;
             } else if ((await moverock()) < 0)
                 return false;
         } else if (mode === TEST_TRAV) {
@@ -2215,6 +2381,185 @@ export function movobj(obj, ox, oy) {
     newsym(ox, oy);
 }
 
+// C ref: hack.c still_chewing()
+/*
+ *  Chew on a wall, door, or boulder.  [What about statues?]
+ *  Returns TRUE if still eating, FALSE when done.
+ */
+export async function still_chewing(x, y) {
+    const u = game.u;
+    const lev = game.level.at(x, y);
+    const boulder = sobj_at_sc(BOULDER, x, y);
+    let digtxt = null, dmgtxt = null;
+    const digging = digging_ctx_sc();
+
+    if (digging.down) /* not continuing prev dig (w/ pick-axe) */
+        clear_digging_sc();
+
+    if (!boulder
+        && ((IS_OBSTRUCTED(lev.typ) && !may_dig_sc(x, y))
+            /* may_dig() checks W_NONDIGGABLE but doesn't handle iron bars */
+            || (lev.typ === IRONBARS && ((lev.wall_info ?? 0) & W_NONDIGGABLE_sc)))) {
+        await You(`hurt your teeth on the ${
+            (lev.typ === IRONBARS)
+                ? "bars"
+                : IS_TREE(lev.typ)
+                    ? "tree"
+                    : "hard stone"}.`);
+        nomul(0);
+        return 1;
+    } else if (lev.typ === IRONBARS
+               && metallivorous_sc(game.youmonst.data) && u.uhunger > 1500) {
+        /* finishing eating via 'morehungry()' doesn't handle choking */
+        await You("are too full to eat the bars.");
+        nomul(0);
+        return 1;
+    } else if (!digging.chew
+               || digging.pos.x !== x
+               || digging.pos.y !== y
+               || !on_level_sc(digging.level, u.uz)) {
+        digging.down = false;
+        digging.chew = true;
+        digging.warned = false;
+        digging.pos.x = x;
+        digging.pos.y = y;
+        assign_level_sc(digging.level, u.uz);
+        /* solid rock takes more work & time to dig through */
+        digging.effort =
+            (IS_OBSTRUCTED(lev.typ) && !IS_TREE(lev.typ) ? 30 : 60) + u.udaminc;
+        await You(`start chewing ${
+            (boulder || IS_TREE(lev.typ) || lev.typ === IRONBARS)
+                ? "on a"
+                : "a hole in the"} ${
+            boulder
+                ? "boulder"
+                : IS_TREE(lev.typ)
+                    ? "tree"
+                    : IS_OBSTRUCTED(lev.typ)
+                        ? "rock"
+                        : (lev.typ === IRONBARS)
+                            ? "bar"
+                            : "door"}.`);
+        await watch_dig_sc(null, x, y, false);
+        return 1;
+    } else if ((digging.effort += (30 + u.udaminc)) <= 100) {
+        if (game.flags.verbose)
+            await You(`${digging.chew ? "continue" : "begin"} chewing on the ${
+                boulder
+                    ? "boulder"
+                    : IS_TREE(lev.typ)
+                        ? "tree"
+                        : IS_OBSTRUCTED(lev.typ)
+                            ? "rock"
+                            : (lev.typ === IRONBARS)
+                                ? "bars"
+                                : "door"}.`);
+        digging.chew = true;
+        await watch_dig_sc(null, x, y, false);
+        return 1;
+    }
+
+    /* Okay, you've chewed through something */
+    if (!u.uconduct.food++)
+        livelog_printf(LL_CONDUCT,
+                       `ate for the first time, by chewing through ${
+                       boulder ? "a boulder"
+                       : IS_TREE(lev.typ) ? "a tree"
+                         : IS_OBSTRUCTED(lev.typ) ? "rock"
+                           : (lev.typ === IRONBARS) ? "iron bars"
+                             : "a door"}`);
+    u.uhunger += rnd(20);
+
+    if (boulder) {
+        delobj_sc(boulder);            /* boulder goes bye-bye */
+        await You("eat the boulder."); /* yum */
+
+        /*
+         *  The location could still block because of
+         *      1. More than one boulder
+         *      2. Boulder stuck in a wall/stone/door.
+         *
+         *  [perhaps use does_block() below (from vision.c)]
+         */
+        if (IS_OBSTRUCTED(lev.typ) || closed_door_sc(x, y)
+            || sobj_at_sc(BOULDER, x, y)) {
+            block_point_sc(x, y); /* delobj will unblock the point */
+            /* reset dig state */
+            clear_digging_sc();
+            return 1;
+        }
+
+    } else if (IS_WALL(lev.typ)) {
+        if (in_rooms(x, y, SHOPBASE).length) {
+            add_damage_sc(x, y, 10 * acurrstr_sc()); /* SHOP_WALL_DMG */
+            dmgtxt = "damage";
+        }
+        digtxt = "chew a hole in the wall.";
+        if (game.level.flags.is_maze_lev) {
+            lev.typ = ROOM;
+        } else if (game.level.flags.is_cavernous_lev && !in_town(x, y)) {
+            lev.typ = CORR;
+        } else {
+            lev.typ = DOOR_sc;
+            lev.doormask = D_NODOOR;
+        }
+    } else if (IS_TREE(lev.typ)) {
+        digtxt = "chew through the tree.";
+        lev.typ = ROOM;
+    } else if (lev.typ === IRONBARS) {
+        if (metallivorous_sc(game.youmonst.data)) { /* should always be True here */
+            /* arbitrary amount; unlike proper eating, nutrition is
+               bestowed in a lump sum at the end */
+            const nut = objects[HEAVY_IRON_BALL_sc].oc_weight;
+
+            /* lesshungry() requires that victual be set up, so skip it;
+               morehungry() of a negative amount will increase nutrition
+               without any possibility of choking to death on the meal;
+               updates hunger state and requests status update if changed */
+            await morehungry_sc(-nut);
+        }
+        digtxt = u_at(x, y)
+                 ? "devour the iron bars."
+                 : "eat through the bars.";
+        await dissolve_bars_sc(x, y);
+    } else if (lev.typ === SDOOR) {
+        if (lev.doormask & D_TRAPPED_sc) {
+            lev.doormask = D_NODOOR;
+            await b_trapped_sc("secret door", NO_PART_sc);
+        } else {
+            digtxt = "chew through the secret door.";
+            lev.doormask = D_BROKEN;
+        }
+        lev.typ = DOOR_sc;
+
+    } else if (IS_DOOR(lev.typ)) {
+        if (in_rooms(x, y, SHOPBASE).length) {
+            add_damage_sc(x, y, SHOP_DOOR_COST_sc);
+            dmgtxt = "break";
+        }
+        if (lev.doormask & D_TRAPPED_sc) {
+            lev.doormask = D_NODOOR;
+            await b_trapped_sc("door", NO_PART_sc);
+        } else {
+            digtxt = "chew through the door.";
+            lev.doormask = D_BROKEN;
+        }
+
+    } else { /* STONE or SCORR */
+        digtxt = "chew a passage through the rock.";
+        lev.typ = CORR;
+    }
+
+    recalc_block_point_sc(x, y); /* vision */
+    newsym(x, y);
+    if (digtxt)
+        await You(digtxt); /* You1(): after newsym */
+    if (dmgtxt)
+        await pay_for_damage_sc(dmgtxt, false);
+    clear_digging_sc();
+    return 0;
+}
+
 // C ref: hack.c cannot_push_msg()
 async function cannot_push_msg(otmp, sx, sy) {
     const what = the(xname(otmp));
@@ -2228,9 +2573,45 @@ async function cannot_push_msg(otmp, sx, sy) {
 
 // C ref: hack.c cannot_push()
 async function cannot_push(otmp, sx, sy) {
-    void otmp;
-    if (throws_rocks(game.youmonst.data))
-        throw new Error('cannot_push(): giant stepping over a boulder not ported yet');
+    if (throws_rocks(game.youmonst.data)) {
+        const
+            canpickup = (!Sokoban()
+                         /* similar exception as in can_lift():
+                            when poly'd into a giant, you can
+                            pick up a boulder if you have a free
+                            slot or into the overflow ('#') slot
+                            unless already carrying at least one */
+                         && (inv_cnt(false) < 52 /* invlet_basic */
+                             || !carrying(BOULDER))),
+            willpickup = (canpickup
+                          && (game.flags.pickup && !game.context.nopick)
+                          && autopick_testobj_hk(otmp, true));
+
+        if (game.u.usteed && P_SKILL_hk(P_RIDING_hk) < P_BASIC_hk) {
+            await You(`aren't skilled enough to ${
+                willpickup ? "pick up" : "push aside"} ${
+                the(xname(otmp))} from ${y_monnam(game.u.usteed)}.`);
+        } else {
+            /*
+             * will pick up:  you easily pick it up
+             * can but won't: you maneuver over it and could pick it up
+             * can't pick up: you maneuver over it (possibly followed
+             *     by feedback from failed auto-pickup attempt)
+             */
+            await pline(`However, you ${
+                willpickup ? "easily pick it up"
+                           : "maneuver over it"}${
+                (canpickup && !willpickup)
+                           ? " and could pick it up"
+                           : ""}.`);
+            /* similar to dropping everything and squeezing onto
+               a Sokoban boulder's spot, moving to same breaks the
+               Sokoban rules because on next step you could go
+               past it without pushing it to plug a pit or hole */
+            sokoban_guilt();
+        }
+        return 0;
+    }
 
     if (could_move_onto_boulder(sx, sy)) {
         await pline(
@@ -2388,11 +2769,10 @@ async function moverock_core(sx, sy) {
                 return await cannot_push(otmp, sx, sy);
             }
 
-            /* revive_nasty(rx, ry, "You sense movement on the other side.") */
-            if ((game.level.objects || []).some(
-                o => o.ox === rx && o.oy === ry && o.where === 'OBJ_FLOOR'
-                     && o.otyp === CORPSE))
-                throw new Error('moverock_core(): revive_nasty() not ported yet');
+            if (await revive_nasty(rx, ry,
+                                   "You sense movement on the other side.")) {
+                return -1;
+            }
 
             if (mtmp && !noncorporeal(mtmp.data)
                 && (!mtmp.mtrapped || !(ttmp && is_pit(ttmp.ttyp)))) {
@@ -2809,11 +3189,75 @@ async function domove_fight_ironbars(x, y) {
 }
 
 // C ref: hack.c domove_fight_web()
-function domove_fight_web(x, y) {
+async function domove_fight_web(x, y) {
     const trap = t_at(x, y);
+    const u = game.u, uwep = game.uwep, uswapwep = game.uswapwep;
 
-    if (game.context.forcefight && trap && trap.ttyp === WEB && trap.tseen)
-        throw new Error('domove_fight_web(): cutting a web not ported yet');
+    if (game.context.forcefight && trap && trap.ttyp === WEB && trap.tseen) {
+        const wtype = uwep_skill_type_fw(),
+            /* minus_2: restricted or unskilled: -1, basic: 0, skilled: 1,
+               expert: 2, master: 3, grandmaster: 4 */
+            wskill_minus_2 = Math.max(P_SKILL_hk(wtype), P_UNSKILLED_fw) - 2,
+            /* higher value is worse for player; for weaponless, adjust the
+               chance to succeed rather than maybe make two tries */
+            roll = rn2(uwep ? 20 : (45 - 5 * wskill_minus_2));
+
+        if (uwep && (u_wield_art_fw(ART_STING_fw)
+                     || (uwep.oartifact && attacks_fw(AD_FIRE_fw, uwep)))) {
+            /* guaranteed success */
+            await pline(`${bare_artifactname_fw(uwep)} ${
+                u_wield_art_fw(ART_STING_fw) ? "cuts" : "burns"} through the web!`);
+
+        /* is_blade() includes daggers (which are classified as PIERCE)
+           but doesn't include axes and slashing polearms */
+        } else if (uwep && !is_blade_fw(uwep)
+                   && (!u.twoweap || !is_blade_fw(uswapwep))) {
+            let uwepstr = null, scndstr = null;
+
+            /* when dual wielding, second weapon will only be mentioned
+               if it has a different type description from primary */
+            const uwepbuf = weapon_descr_fw(uwep);
+            const scndbuf = u.twoweap ? weapon_descr_fw(uswapwep) : "";
+            const onewep = !scndbuf || uwepbuf === scndbuf;
+            if (uwepbuf.toLowerCase() === "armor" || uwepbuf.toLowerCase() === "food"
+                || uwepbuf.toLowerCase() === "venom") { /* as-is */
+                /* non-weapon item wielded, of a type where an() would
+                   result in weird phrasing; dual wield not possible */
+                uwepstr = uwepbuf;
+            } else if (uwep.quan === 1 /* singular */
+                       /* unless secondary is suppressed due to same type */
+                       && !(u.twoweap && onewep)) {
+                uwepstr = an(uwepbuf);
+            } else { /* plural */
+                uwepstr = makeplural_fw(uwepbuf);
+            }
+            if (!onewep) {
+                scndstr = (uswapwep.quan === 1) ? an(scndbuf)
+                                                : makeplural_fw(scndbuf);
+            }
+            await You_cant_fw(`cut a web with ${uwepstr}${
+                !onewep ? " or " : ""}${!onewep ? scndstr : ""}!`);
+            return true;
+
+        /* weapon is ok; check whether hit is successful */
+        } else if (roll > (acurrstr_sc() - 2 /* 1..19 */
+                           /* for weaponless, 'roll' was adjusted above */
+                           + (uwep ? uwep.spe + wskill_minus_2 : 0))) {
+            /* TODO: add failures, maybe make an occupation? */
+            await You(`${uwep ? "hack" : "thrash"} ineffectually at some of the strands.`);
+            return true;
+
+        /* hit has succeeded */
+        } else {
+            await You(`${uwep ? "cut" : "punch"} through the web.`);
+            /* doesn't break "never hit with a wielded weapon" conduct */
+            await use_skill_fw(wtype, 1);
+        }
+
+        deltrap_fw(trap);
+        newsym(x, y);
+        return true;
+    }
     return false;
 }
 
@@ -3076,7 +3520,7 @@ async function domove_core() {
     if (u.uswallow) {
         u.dx = u.dy = 0;
         x = u.ustuck.mx, y = u.ustuck.my;
-        u_on_newpos(x, y); /* set u.ux,uy and handle CLIPPING */
+        await u_on_newpos(x, y); /* set u.ux,uy and handle CLIPPING */
         mtmp = u.ustuck;
     } else {
         /* air_turbulence() */
@@ -3148,7 +3592,7 @@ async function domove_core() {
         if (await domove_fight_ironbars(x, y))
             return;
 
-        if (domove_fight_web(x, y))
+        if (await domove_fight_web(x, y))
             return;
 
         if (await domove_fight_empty(x, y))
@@ -3249,7 +3693,7 @@ async function domove_core() {
     /* tentative move above didn't handle CLIPPING, in case there was a
        monster in the way and the move attempt ended up being blocked;
        do a full re-position now, possibly back to where hero started */
-    u_on_newpos(u.ux, u.uy);
+    await u_on_newpos(u.ux, u.uy);
 
     /* reset_occupations(): occupations aren't ported yet */
     if (ctx.run) {

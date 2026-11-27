@@ -132,7 +132,7 @@ import { mhis } from './mondata.js';
 import { mbodypart } from './polyself.js';
 import { HEAD } from './const.js';
 import { ARM } from './const.js';
-import { makeplural } from './objnam.js';
+import { makeplural, bare_artifactname, yname } from './objnam.js';
 import { picking_lock } from './lock.js';
 import { is_digging, watch_dig } from './dig.js';
 import { angry_guards } from './mon.js';
@@ -230,8 +230,8 @@ const is_lminion = (mon) =>
    matter, the light being emitted isn't */
 function flees_light(mon) {
     return mon.mnum === PMNAMES.PM_GREMLIN
-        && ((game.uwep && game.uwep.lamplit && artifact_light(game.uwep))
-            || (game.uarm && game.uarm.lamplit && artifact_light(game.uarm)))
+        && ((game.u.uwep && game.u.uwep.lamplit && artifact_light(game.u.uwep))
+            || (game.u.uarm && game.u.uarm.lamplit && artifact_light(game.u.uarm)))
         && !!mon.mcansee && couldsee(mon.mx, mon.my);
 }
 
@@ -1023,6 +1023,23 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
             && M_AP_TYPE(mtmp) !== M_AP_OBJECT) {
             if (!mtmp.mcanmove || !game.mons[mtmp.mnum].mmove) {
                 await pline(`${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
+            } else if (flees_light(mtmp)) {
+                if (Unaware()) {
+                    /* tell the player even if the hero is unconscious */
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is frightened.`);
+                } else if (rn2(10) || Deaf()) {
+                    const lsrc = (game.u.uwep && artifact_light(game.u.uwep))
+                        ? bare_artifactname(game.u.uwep)
+                        : (game.u.uarm && artifact_light(game.u.uarm))
+                            ? yname(game.u.uarm)
+                            : '[its imagination?]';
+
+                    await pline_mon(mtmp,
+                        `${Monnam(mtmp)} flees from the painful light of ${lsrc}.`);
+                } else {
+                    /* SetVoice(mtmp, 0, 80, 0); */
+                    await verbalize('Bright light!');
+                }
             } else {
                 await pline(`${Monnam(mtmp)} turns to flee.`);
             }

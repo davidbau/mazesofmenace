@@ -19,7 +19,7 @@ import { visible_region_at } from './region.js';
 import { getpos } from './getpos.js';
 import { COLNO, ROWNO, SVALL, TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL,
          HALLUC, STUNNED, CONFUSION, Is_waterlevel, M_AP_FURNITURE, IS_WALL } from './const.js';
-import { NO_COLOR, CLR_GRAY } from './terminal.js';
+import { NO_COLOR, CLR_GRAY, ATR_INVERSE } from './terminal.js';
 import { recalc_block_point } from './vision.js';
 import { exercise } from './attrib.js';
 import { map_background, map_object, map_trap } from './display.js';
@@ -69,6 +69,7 @@ import { engr_at } from './engrave.js';
 import { room_discovered } from './dungeon.js';
 import { closed_door as closed_door_dt } from './makemon.js';
 import { find_drawbridge as find_drawbridge_dt } from './zap.js';
+import { open_drawbridge } from './dbridge.js';
 import { get_obj_location as get_obj_location_dt } from './shk.js';
 import { observe_object as observe_object_dt } from './o_init.js';
 import { money_cnt as money_cnt_dt } from './u_init.js';
@@ -1196,14 +1197,19 @@ export async function object_detect(detector, /* object doing the detecting */
 /* show a monster on the map (for detection) */
 function map_monst(mtmp, showtail) {
     const g = game;
-    if (def_monsyms_dt[mtmp.data.mlet] === ' ')
-        throw new Error('map_monst(): detected_mon_to_glyph() not ported yet');
-    /* mtmp->mtame ? pet_to_glyph(mtmp, newsym_rn2)
-                   : mon_to_glyph(mtmp, newsym_rn2) */
+    /* (monsym(mtmp->data) == ' ') ? detected_mon_to_glyph(mtmp, newsym_rn2)
+       : mtmp->mtame ? pet_to_glyph(mtmp, newsym_rn2)
+       : mon_to_glyph(mtmp, newsym_rn2) */
+    const detected = (def_monsyms_dt[mtmp.data.mlet] === ' ');
     const ptr = Hallucination_dt() ? mons_dt[rn2_on_display_rng_dt(NUMMONS_DT)]
                                    : mtmp.data;
-    const attr = (mtmp.mtame && !Hallucination_dt() && g.iflags?.wc_hilite_pet)
-                 ? g.iflags.wc2_petattr : 0;
+    /* a detected-monster glyph has MG_DETECT, which wintty.c
+       tty_print_glyph() shows in inverse when use_inverse is on; a pet
+       glyph has MG_PET, shown with iflags.wc2_petattr under hilite_pet */
+    const attr = detected
+                 ? ((g.iflags?.wc_inverse !== false) ? ATR_INVERSE : 0)
+                 : (mtmp.mtame && !Hallucination_dt() && g.iflags?.wc_hilite_pet)
+                   ? g.iflags.wc2_petattr : 0;
     show_glyph_cell_dt(mtmp.mx, mtmp.my, def_monsyms_dt[ptr.mlet] ?? '?',
                        ptr.mcolor ?? NO_COLOR, false, attr, 'mon', false,
                        { mndx: ptr.pmidx });
@@ -1695,6 +1701,7 @@ async function findone(zx, zy, found_p) {
 async function openone(zx, zy, num_p) {
     const lev = game.level.at(zx, zy);
     let ttmp;
+    let db; /* find_drawbridge(&zx, &zy) */
 
     if (objects_at_dt(zx, zy).length) { /* OBJ_AT(zx, zy) */
         for (const otmp of objects_at_dt(zx, zy)) {
@@ -1735,8 +1742,11 @@ async function openone(zx, zy, num_p) {
         if (await openholdingtrap(mon, dummy)
             || await openfallingtrap(mon, true, dummy))
             num_p.v++;
-    } else if (find_drawbridge_dt(zx, zy)) {
-        throw new Error('openone(): open_drawbridge() not ported yet');
+    } else if ((db = find_drawbridge_dt(zx, zy)) != null) {
+        zx = db.x, zy = db.y;
+        /* make sure it isn't an open drawbridge */
+        await open_drawbridge(zx, zy);
+        num_p.v++;
     }
 }
 

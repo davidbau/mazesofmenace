@@ -445,7 +445,7 @@ export async function u_collide_m(mtmp) {
        the latter was done unconditionally. */
     if (!rn2(2) && enexto(cc, u.ux, u.uy, g.youmonst.data)
         && Math.abs(cc.x - u.ux) <= 1 && Math.abs(cc.y - u.uy) <= 1) /* next2u() */
-        u_on_newpos(cc.x, cc.y); /*[maybe give message here?]*/
+        await u_on_newpos(cc.x, cc.y); /*[maybe give message here?]*/
     else
         await mnexto(mtmp, RLOC_NOMSG);
 
@@ -860,13 +860,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             }
         } else {
             seetrap(ttrap);
-            u_on_newpos(ttrap.tx, ttrap.ty);
+            await u_on_newpos(ttrap.tx, ttrap.ty);
         }
     } else if (at_stairs && !In_endgame(u.uz)) {
         if (up) {
             const stway = stairway_find_from(u.uz0, g.at_ladder);
             if (stway) {
-                u_on_newpos(stway.sx, stway.sy);
+                await u_on_newpos(stway.sx, stway.sy);
                 stway.u_traversed = true;
             } else if (newdungeon)
                 await u_on_sstairs(1);
@@ -883,7 +883,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         } else { /* down */
             const stway = stairway_find_from(u.uz0, g.at_ladder);
             if (stway) {
-                u_on_newpos(stway.sx, stway.sy);
+                await u_on_newpos(stway.sx, stway.sy);
                 stway.u_traversed = true;
             } else if (newdungeon)
                 await u_on_sstairs(0);
@@ -1976,7 +1976,7 @@ export async function u_on_rndspot(upflag) {
 
     /*
      * Place the hero at a random location within the relevant region.
-     * place_lregion(xTELE) -> put_lregion_here(xTELE) -> u_on_newpos()
+     * place_lregion(xTELE) -> put_lregion_here(xTELE) -> await u_on_newpos()
      * Unspecified region (.lx == 0) defaults to entire level.
      */
     if (was_in_W_tower /* && On_W_tower_level(&u.uz) */)

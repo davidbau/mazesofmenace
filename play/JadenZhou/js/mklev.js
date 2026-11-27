@@ -86,7 +86,11 @@ import {
     MAGIC_TRAP, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST,
     BEAR_TRAP, is_hole, is_pit, maketrap, t_at, deltrap, undestroyable_trap,
 } from './trap.js';
-import { Blind, Hallucination } from './youprop.js';
+import { Blind, Hallucination, Flying, Levitation } from './youprop.js';
+import { Race_if, Upolyd, u_at, FOOT } from './const.js';
+import { You } from './display.js';
+import { makeplural } from './objnam.js';
+import { body_part } from './insight.js';
 import { oinit } from './o_init.js';
 import { Is_earthlevel as Is_earthlevel_mk, W_NONPASSWALL as W_NONPASSWALL_MK } from './const.js';
 
@@ -158,8 +162,29 @@ export function stairway_find_special_dir(up) {
 
 // ── Hero placement (C ref: stairs.c, mkmaze.c) ──
 
-// C ref: dungeon.c u_on_newpos()
-export function u_on_newpos(x, y) {
+// C ref: dungeon.c earth_sense()
+/* Dwarves have "earth sense",
+   able to sense if something is buried under their feet */
+async function earth_sense() {
+    const u = game.u;
+
+    if (!Race_if(PM_DWARF))
+        return;
+    if (u.usteed || Flying() || Levitation() || Upolyd())
+        return;
+    const typ = game.level.at(u.ux, u.uy).typ;
+    if (typ !== CORR && typ !== ROOM)
+        return;
+
+    for (const otmp of game.level.buriedobjlist || [])
+        if (u_at(otmp.ox, otmp.oy)) {
+            await You(`sense something below your ${makeplural(body_part(FOOT))}.`);
+            return;
+        }
+}
+
+// C ref: dungeon.c await u_on_newpos()
+export async function u_on_newpos(x, y) {
     const u = game.u;
     if (!isok(x, y)) /* validate location */
         throw new Error(`u_on_newpos: trying to place hero off map <${x},${y}>`);
@@ -184,7 +209,7 @@ export function u_on_newpos(x, y) {
         if (!Blind() && !Hallucination() && !u.uswallow)
             see_nearby_objects();
     }
-    /* earth_sense(): no rolls; buried-object feedback isn't ported yet */
+    await earth_sense();
 }
 
 // C ref: mkmaze.c is_exclusion_zone()
@@ -311,7 +336,7 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
             } else
                 return false;
         }
-        u_on_newpos(x, y);
+        await u_on_newpos(x, y);
         break;
     case LR_PORTAL:
         mkportal(x, y, lev.dnum, lev.dlevel);
@@ -333,7 +358,7 @@ export async function u_on_sstairs(upflag) {
     const stway = stairway_find_special_dir(upflag);
 
     if (stway)
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy);
     else
         await u_on_rndspot(upflag);
 }
@@ -344,7 +369,7 @@ export async function u_on_upstairs() {
     const stway = stairway_find_dir(true);
 
     if (stway)
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy);
     else
         await u_on_sstairs(0); /* destination upstairs implies moving down */
 }
@@ -355,7 +380,7 @@ export async function u_on_dnstairs() {
     const stway = stairway_find_dir(false);
 
     if (stway)
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy);
     else
         await u_on_sstairs(1); /* destination dnstairs implies moving up */
 }

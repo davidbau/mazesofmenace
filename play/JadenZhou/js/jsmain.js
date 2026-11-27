@@ -15,7 +15,7 @@ import { pushKey, nhgetch } from './input.js';
 import { early_init, newgame, moveloop_preamble, moveloop_core, maybe_do_tutorial } from './allmain.js';
 import { parseNethackrc, set_playmode, parsebindings,
          initoptions_init_defaults, fruitadd } from './options.js';
-import { reset_commands } from './cmd.js';
+import { reset_commands, update_rest_on_space } from './cmd.js';
 import { wd_message } from './sys.js';
 import { plnamesuffix } from './role.js';
 import { tty_init_nhwindows, tty_player_selection, tty_yn_function } from './wintty.js';
@@ -173,6 +173,9 @@ export class NethackGame {
             if (!parsesymbols(s, PRIMARYSET))
                 throw new Error("cnf_line_SYMBOLS(): config_error_add(\"Error in SYMBOLS definition '%s'\") not ported yet");
         }
+        /* C ref: options.c initoptions_finish() -- update_rest_on_space()
+           after the key bindings */
+        update_rest_on_space();
         /* C ref: files.c configfile -- the unix default ".nethackrc"
            in the home directory */
         g.configfile = '.nethackrc';

@@ -57,7 +57,10 @@ import { on_level, ledger_to_dnum, ledger_to_dlev, depth,
          In_W_tower, ledger_no } from './dungeon.js';
 import { relmon, mnearto } from './mon.js';
 import { stairway_find_from, stairway_find, somexy } from './mklev.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, impossible } from './hack.js';
+import { m_unleash } from './apply.js';
+import { humanoid } from './mondata.js';
+import { s_suffix } from './hacklib.js';
 import { rloc } from './teleport.js';
 import { rn1 } from './rng.js';
 import { MIGR_APPROX_XY, MIGR_WITH_HERO, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN,
@@ -250,7 +253,7 @@ export async function abuse_dog(mtmp) {
         mtmp.edog.abuse++;
 
     if (!mtmp.mtame && mtmp.mleashed)
-        throw new Error('abuse_dog(): m_unleash() not ported yet');
+        await m_unleash(mtmp, true);
 
     /* don't make a sound if pet is in the middle of leaving the level */
     /* newsym isn't necessary in this case either */
@@ -411,8 +414,14 @@ export async function keepdogs(pets_only) /* true for ascension or final escape 
                 stay_behind = true;
             }
             if (stay_behind) {
-                if (mtmp.mleashed)
-                    throw new Error('keepdogs(): leash comes loose (m_unleash()) not ported yet');
+                if (mtmp.mleashed) {
+                    await pline(`${humanoid(mtmp.data)
+                                   ? (mtmp.female ? "Her" : "His")
+                                   : "Its"} leash suddenly comes loose.`);
+                    m_unleash(mtmp, false);
+                }
+                /* (mtmp == u.usteed: impossible("steed left behind?");
+                   can't happen, the steed case stops above) */
                 continue;
             }
 
@@ -433,16 +442,19 @@ export async function keepdogs(pets_only) /* true for ascension or final escape 
                priest, vault guard) who have level data in mon->mextra
                in case #wizmakemap is used to replace their home level
                while they're away from it */
-            migrate_to_level(mtmp, ledger_no(g.u.uz), MIGR_EXACT_XY,
+            await migrate_to_level(mtmp, ledger_no(g.u.uz), MIGR_EXACT_XY,
                              null);
         } else if (mtmp.mleashed) {
-            throw new Error('keepdogs(): leash goes slack not ported yet');
+            /* this can happen if your quest leader ejects you from the
+               "home" level while a leashed pet isn't next to you */
+            await pline(`${s_suffix(Monnam(mtmp))} leash goes slack.`);
+            m_unleash(mtmp, false);
         }
     }
 }
 
 // C ref: dog.c migrate_to_level()
-export function migrate_to_level(
+export async function migrate_to_level(
     mtmp,
     tolev, /* destination level */
     xyloc, /* MIGR_xxx destination xy location: */
@@ -453,8 +465,10 @@ export function migrate_to_level(
     let xyflags;
     const mx = mtmp.mx, my = mtmp.my; /* <mx,my> needed below */
 
-    if (mtmp.mleashed)
-        throw new Error('migrate_to_level(): m_unleash() not ported yet');
+    if (mtmp.mleashed) {
+        mtmp.mtame--;
+        await m_unleash(mtmp, true);
+    }
 
     /* prepare to take mtmp off the map */
     const num_segs = mon_leave(mtmp);
@@ -849,8 +863,8 @@ export function mon_catchup_elapsed_time(
     if (!mtmp.mtame && mtmp.mleashed) {
         /* leashed monsters should always be with hero, consequently
            never losing any time to be accounted for later */
-        /* impossible("catching up for leashed monster?") */
-        throw new Error('mon_catchup_elapsed_time(): m_unleash() not ported yet');
+        impossible("catching up for leashed monster?");
+        m_unleash(mtmp, false);
     }
 
     /* recover lost hit points */
@@ -1065,7 +1079,7 @@ export async function wary_dog(mtmp, was_dead) {
         /* a life-saved monster might be leashed;
            don't leave it that way if it's no longer tame */
         if (mtmp.mleashed)
-            throw new Error('wary_dog(): m_unleash() not ported yet');
+            await m_unleash(mtmp, true);
         if (mtmp === u.usteed)
             await dismount_steed(DISMOUNT_THROWN);
     } else if (edog) {

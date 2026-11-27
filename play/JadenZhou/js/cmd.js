@@ -390,7 +390,7 @@ function mcmd_addmenu(win, act, txt) {
 
 /* the floor pile at <x,y> (svl.level.objects[x][y] via ->nexthere), top
    first */
-function floor_pile_at(x, y) {
+export function floor_pile_at(x, y) {
     const top = vobj_at(x, y);
     if (!top)
         return [];
@@ -1465,8 +1465,38 @@ export function reset_commands(initial) {
             /* can't bind highc() or C() of digits. just use the 5 prefix. */
         }
     }
-    /* update_rest_on_space(): rest_on_space is off;
-       Cmd.extcmd_char = cmd_from_func(doextcmd) is looked up when used */
+    update_rest_on_space();
+    /* Cmd.extcmd_char = cmd_from_func(doextcmd) is looked up when used */
+}
+
+// C ref: cmd.c update_rest_on_space()
+/* called when 'rest_on_space' is toggled, also called by reset_commands()
+   from initoptions_init() which takes place before key bindings have been
+   processed, and by initoptions_finish() after key bindings so that we
+   can remember anything bound to <space> in 'unrestonspace' (C's function
+   static, kept in game.Cmd) */
+/* cloned from extcmdlist['.'], then slightly modified to be distinct;
+   donull is all that's needed for it to operate; command name and
+   description get shown by help menu's "Info on what a given key does"
+   (which runs the '&' command) and "Full list of keyboard commands" */
+const restonspace = {
+    key: 0x20, ef_txt: "wait", ef_desc: "rest one move via 'rest_on_space' option",
+    ef_funct: "donull", flags: (IFBURIED | CMD_M_PREFIX), f_text: "waiting"
+};
+export function update_rest_on_space() {
+    const Cmd = game.Cmd;
+    /* cmdbind_get(' '): a binding can exist with a Null command */
+    const bind = Cmd.cmdbinds.has(0x20);
+
+    /* when 'rest_on_space' is On, <space> will run the #wait command;
+       when it is Off, <space> will use 'unrestonspace' which will either
+       be Null and elicit "Unknown command ' '." or have some non-Null
+       command bound in player's RC file */
+    if (bind && Cmd.cmdbinds.get(0x20) !== restonspace)
+        Cmd.unrestonspace = Cmd.cmdbinds.get(0x20);
+    cmdbind_add(0x20, game.flags?.rest_on_space ? restonspace
+                                                : (Cmd.unrestonspace || null),
+                false);
 }
 
 // C ref: cmd.c ext_func_tab_from_func()

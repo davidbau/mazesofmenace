@@ -55,6 +55,9 @@ import { is_quest_artifact } from './questpgr.js';
 import { artitouch } from './quest.js';
 import { set_artifact_intrinsic, set_artifact_intrinsic_sync } from './artifact.js';
 import { record_achievement } from './insight.js';
+import { align_str } from './insight.js';
+import { a_gname } from './pray.js';
+import { AM_SANCTUM, AM_SHRINE, Amask2align } from './const.js';
 import { ACH_AMUL, ACH_CNDL, ACH_BELL, ACH_BOOK, ACH_MINE_PRIZE, ACH_SOKO_PRIZE,
          W_ART } from './const.js';
 import { ART_MJOLLNIR } from './artilist.js';
@@ -65,6 +68,7 @@ import { obj_merge_light_sources } from './light.js';
 import { set_moreluck } from './attrib.js';
 import { setnotworn, setworn } from './worn.js';
 import { oname } from './do_name.js';
+import { o_unleash } from './apply.js';
 import { W_WEP, W_SWAPWEP, W_QUIVER, ONAME_SKIP_INVUPD } from './const.js';
 import { food_disappears } from './eat.js';
 import { maybe_reset_pick } from './lock.js';
@@ -119,6 +123,7 @@ import { MENU_PARTIAL as MENU_PARTIAL_IV, UNPAID_TYPES as UNPAID_TYPES_IV,
          JUSTPICKED as JUSTPICKED_IV,
          INCLUDE_VENOM as INCLUDE_VENOM_IV } from './const.js';
 import { shopper_financial_report as shopper_financial_report_iv } from './shk.js';
+import { unpunish } from './read.js';
 
 const invlet_basic = 52;
 const GOLD_SYM = '$';
@@ -898,7 +903,7 @@ export function delete_contents(obj) {
 /* delete obj from the game; 'merge' is the stack it merged into, if any */
 export function obfree(obj, merge) {
     if (obj.otyp === O.LEASH && obj.leashmon)
-        throw new Error('obfree(): o_unleash() not ported yet');
+        o_unleash(obj);
     if (obj.oclass === O.FOOD_CLASS)
         food_disappears(obj);
     if (obj.oclass === O.SPBOOK_CLASS) {
@@ -1654,8 +1659,10 @@ export function dfeature_at(x, y) {
         dfeature = "pool of water";
     else if (IS_SINK(ltyp))
         cmap = 'S_sink'; /* "sink" */
-    else if (IS_ALTAR(ltyp))
-        throw new Error('dfeature_at(): altar description (a_gname()) not ported yet');
+    else if (IS_ALTAR(ltyp)) {
+        dfeature = `${(lev.altarmask & AM_SANCTUM) ? "high " : ""}altar to ${
+            a_gname()} (${align_str(Amask2align(lev.altarmask & ~AM_SHRINE))})`;
+    }
     else if (stway)
         dfeature = stairs_description(stway, true);
     else if (ltyp === DRAWBRIDGE_DOWN)
@@ -2596,6 +2603,25 @@ export function merged(r) {
         return 1;
     }
     return 0;
+}
+
+// C ref: invent.c delallobj()
+/* destroy all objects at <x,y> */
+export async function delallobj(x, y) {
+    /* for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp2): the pile
+       at <x,y> from the floor chain */
+    const pile = (game.level.objects || []).filter(
+        o => o.ox === x && o.oy === y && o.where === 'OBJ_FLOOR');
+    for (const otmp of pile) {
+        if (otmp === game.uball)
+            await unpunish();
+        /* after unpunish(), or might get deallocated chain */
+        if (otmp === game.uchain)
+            continue;
+        if (otmp.where !== 'OBJ_FLOOR')
+            continue; /* unpunish() took the chain off the floor */
+        delobj(otmp);
+    }
 }
 
 // C ref: invent.c delobj()

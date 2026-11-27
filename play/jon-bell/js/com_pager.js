@@ -13,7 +13,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { pgetchar, doprev_message } from './cmd.js';
 import { rank_of_roleidx, role_index_by_name } from './rank_data.js';
-import { COLNO, ROWNO, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, gs, PRIMARYSET, H_UTF8 } from './const.js';
+import { COLNO, ROWNO, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, gs, PRIMARYSET, H_UTF8, H_IBM } from './const.js';
 import { acurr } from './attrib.js';
 import { describe_level_buf } from './dungeon.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
@@ -25,7 +25,7 @@ import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_S
 import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell, levelgen_frozen_cell,
          await_topl_more_dismiss, topl_stale_cells, pline_flush_point, docorner_status_row,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
-         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail, flush_gnew_cells_over_window, overlay_flushed_cells, menu_search_prevmsg_walk, tty_splice_row, _tty_row_cells_of } from './display.js';
+         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail, flush_gnew_cells_over_window, overlay_flushed_cells, menu_search_prevmsg_walk, tty_splice_row, _tty_row_cells_of, bw_terrain_inverse_at, GLYPHCLS_CMAP } from './display.js';
 import { money_cnt } from './hack.js'; // relocate-fns
 export { ask_do_tutorial } from './options.js'; // relocate-fns
 export { money_cnt } from './hack.js'; // relocate-fns
@@ -221,7 +221,13 @@ function render_map_row_clipped(y, clipX) {
          * a repainted row prints the stored char raw. */
         const dec = !rogueMap && !!loc?.disp_decgfx
             && (dec_mode() || generic_symset() || (game._decStaleFrom != null && y + 1 >= game._decStaleFrom));
-        const inverse = !!((loc?.disp_attr | 0) & 1 /* ATR_INVERSE */);
+        const inGmCorner = !!(game._gm_corner
+            && (game._gm_corner.rects ?? [game._gm_corner])
+                .some(r => x >= r.col - 1 && y + 1 < r.rows));
+        const gmLoc = inGmCorner ? game.level.at(x, y) : null;
+        const inverse = (gmLoc && gmLoc.disp_cls === GLYPHCLS_CMAP)
+            ? bw_terrain_inverse_at(gmLoc)
+            : !!((loc?.disp_attr | 0) & 1 /* ATR_INVERSE */);
         /* A blank glyph carrying ATR_INVERSE (a sensed ghost, S_ghost ' ' with
          * the detected-monster highlight) is a painted glyph in C, not a gap
          * (same rule as js/display.js render_map_row). */
@@ -431,7 +437,11 @@ export function tty_text_window_utf8_line(line) {
     // patch 006 nomux_putch ignores raw Escape, but tty still advances curx.
     // Keep the SGR wrappers used to represent tty attributes.
     const row = String(line).replace(/\x1b(?!\[[0-9;]*m)/g, ' ');
-    const utf8 = gs.symset?.[rogue_graphics() ? 1 : PRIMARYSET]?.handling === H_UTF8;
+    const handling = gs.symset?.[rogue_graphics() ? 1 : PRIMARYSET]?.handling;
+    const utf8 = handling === H_UTF8;
+    /* wintty.c:3750-3757: IBM handling (or an eight_bit_tty) putchar()s the
+     * byte as is; only the else arm switches to the DEC set. */
+    const dec = handling !== H_IBM && !game?.iflags?.eight_bit_tty;
     return row.replace(/^((?:\x1b\[[0-9;]*m)*)(.)(.*?)((?:\x1b\[[0-9;]*m)*)$/,
         (_, start, first, rest, end) => {
             // C wintty.c:1825-1834: only the first byte can use g_putch;
@@ -439,19 +449,27 @@ export function tty_text_window_utf8_line(line) {
             const painted = rest.replace(/[\x80-\xff]/g, ' ');
             if (!utf8 && first.charCodeAt(0) >= 0x80) {
                 const x = first.charCodeAt(0) ^ 0x80;
-                const xs = x < 32 || x === 127 ? ' ' : String.fromCharCode(x);
+                const xs = x < 32 || x === 127 ? ' ' : dec ? `\x0e${String.fromCharCode(x)}\x0f` : String.fromCharCode(x);
                 const second = rest.length && rest.charCodeAt(0) < 0x80 ? rest[0] : xs;
                 return start + ' ' + second + painted.slice(1) + end;
             }
             return (utf8 ? ' ' : '') + start + (utf8 ? (painted || first) : first + painted) + end;
         });
 }
+/* The first n cells of a window line: the DEC shift bytes around a g_putch
+ * first cell (tty_text_window_utf8_line) occupy none. */
+function slice_cells(text, n) {
+    let cut = 0;
+    for (let k = 0; cut < text.length && k < n; cut++)
+        if (text[cut] !== '\x0e' && text[cut] !== '\x0f') k++;
+    return text.slice(0, cut) + (text[cut] === '\x0f' ? '\x0f' : '');
+}
 export function build_text_window_screen(lines) {
     const rows = new Array(24).fill('');
     for (let i = 0; i < lines.length && i < 23; i++) {
         let row = tty_text_window_utf8_line(lines[i]);
-        if (row.length > 79 && !row.includes('\x1b'))
-            row = row.slice(0, 79);
+        if (!row.includes('\x1b'))
+            row = slice_cells(row, 79);
         rows[i] = _encode_blank_runs(row.replace(/\s+$/, '').replace(/\t/g, '\x1b[1C'));
     }
     rows[23] = '--More--';
@@ -696,7 +714,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                 output += ' '.repeat(Math.max(0, col));
             /* wintty.c:1920-1931 + term_clear_screen: a window starting at offx 0
              * owns the whole screen, and a row is cut at the right edge (tty_putstr truncates at cols-1). */
-            output += text.slice(0, Math.max(0, 79 - col));
+            output += slice_cells(text, Math.max(0, 79 - col));
             if (screenRow < 23)
                 output += '\n';
             continue;
@@ -1597,6 +1615,14 @@ export async function menu_search_getlin(frameRows) {
             continue;
         }
         if (doprev) { prompt.reset(); prompt.append(buf); doprev = false; recall = null; } /* C ref: getline.c:134-141 */
+        if (keyCode === -1 /* signed char EOF: the byte 0xff */) {
+            /* C ref: getline.c:84-98 — EOF cancels even with text entered
+             * (term_gone), and gt.toplines (rebuilt at :80 as query + " " +
+             * obufp) keeps the typed text for the history ring. */
+            g.iflags.term_gone = 1;
+            remember(query + ' ' + buf);
+            return '\x1b';
+        }
         if (keyCode === 27 /* ESC */) {
             /* C ref: getline.c:88-95 — ESC with something typed is a KILL-LINE
              * that re-prompts; ESC on an empty buffer returns the cancel
@@ -1619,9 +1645,10 @@ export async function menu_search_getlin(frameRows) {
         }
         /* C ref: getline.c:165-172 — ' ' <= c && c != '\177' && the line still
          * fits (bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO). */
-        if (keyCode >= 32 && keyCode !== 127 && buf.length < COLNO) { /* getline.c:165 */
-            buf += String.fromCharCode(keyCode);
-            prompt.append(String.fromCharCode(keyCode));
+        const uc = keyCode & 0xff;
+        if (uc >= 32 && uc !== 127 && buf.length < COLNO) { /* getline.c:165 */
+            buf += String.fromCharCode(uc);
+            prompt.append(String.fromCharCode(uc));
         }
         /* else: tty_nhbell(), frame unchanged (getline.c:208-209) */
     }

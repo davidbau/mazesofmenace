@@ -177,6 +177,7 @@ import { stinky_nemesis } from './questpgr.js';
 import { Hallucination, Conflict, Deaf } from './youprop.js';
 import { m_next2u } from './const.js';
 import { uhis, unstuck } from './mhitu.js';
+import { m_unleash } from './apply.js';
 import { obj_extract_self } from './mkobj.js';
 import { possibly_unwield } from './weapon.js';
 import { split_mon } from './potion.js';
@@ -509,7 +510,7 @@ function m_detach(mtmp, mptr, due_to_death) {
     const mx = mtmp.mx, my = mtmp.my;
 
     if (mtmp.mleashed)
-        throw new Error('m_detach(): m_unleash() not ported yet');
+        m_unleash(mtmp, false);
 
     if (mx > 0 && emits_light(mptr))
         del_light_source(LS_MONSTER, monst_to_any(mtmp));

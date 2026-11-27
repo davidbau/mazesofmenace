@@ -629,11 +629,14 @@ export class NethackGame {
             } else if (!/[^\n]/.test(game._screen_output || '')) {
                 blankFrame = true;
             } else {
-                /* raw_print frames use the unsigned nomux_raw_putch and DO paint: an early raw_print
-                 * (_rawCursorFrozen), or the end-of-game raw grid (exit_nhwindows -> topten's raw_print
-                 * of each entry, where a UTF-8 name's bytes land one per cell). */
-                const rawFrame = game._rawCursorFrozen
-                    || (raw_term_active() && (game._screen_output || '') === raw_term_screen());
+                /* raw_print frames use the unsigned nomux_raw_putch and DO paint: the rc error page
+                 * of an early raw_print, or the end-of-game raw grid (exit_nhwindows -> topten's
+                 * raw_print of each entry, where a UTF-8 name's bytes land one per cell).  Only those
+                 * frames: once nomux_raw_active is set it stays set (patch 006 nomux_raw_emit), but it
+                 * moves only the reported cursor — the tty windows still paint through nomux_putch,
+                 * which drops the bytes.  Mac macx3 arm t25-b-nameregex-v016 step 49 (rc error page
+                 * first): ^X titles " Fran  ois the Wizard's attributes:". */
+                const rawFrame = raw_term_active() && (game._screen_output || '') === raw_term_screen();
                 nhGame._screens.push(rawFrame ? (game._screen_output || '') : (game._screen_output || '').replace(/[\x80-\xff]/g, '\x1b[1C'));
                 nhGame._cursors.push(game._rawCursorFrozen ? game._rawCursorFrozen.slice()
                     : disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);

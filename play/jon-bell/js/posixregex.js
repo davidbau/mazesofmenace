@@ -94,32 +94,23 @@ export function regcomp(s) {
     const GETNEXT = () => s.charCodeAt(next++);
     const REQUIRE = (cond, code) => { if (!cond) throw new RegexError(code); };
 
-    /* a bound's count.  The Mac's regcomp reads every digit and rejects a
-     * count over RE_DUP_MAX with its own code 18, "maximum repetition
-     * exceeds 255" (tables/regex.json: l{256}, o{1,256}, {32768}o -> 18). */
+    /* a bound's count: every digit is read (saturating past RE_DUP_MAX) */
     function p_count() {
         let count = 0;
         while (MORE() && isdigit(PEEK())) {
             count = Math.min(count * 10 + (GETNEXT() - 48), DUPMAX + 1);
         }
-        REQUIRE(count <= DUPMAX, REG_BADMAX);
         return count;
     }
 
-    /* a bound {m}, {m,}, {m,n} after its '{' (the caller saw a digit).  The
-     * Mac reports the bound's own errors before asking whether it may
-     * follow what precedes it: ^{1 -> 9, ^{2,1} -> 10, ^{1} -> 13, and a
-     * leading {1o -> 10 (tables/regex.json).  The bound must close right
-     * after its last count: at the end of the pattern that is "braces not
-     * balanced", otherwise "invalid repetition count(s)" (o{1 } -> 10,
-     * o{1, -> 9, o{1,2,3} -> 10). */
     function p_bound() {
         const count = p_count();
         let count2 = count;
         if (EAT(',')) count2 = (MORE() && isdigit(PEEK())) ? p_count() : Infinity;
+        REQUIRE(count <= count2, REG_BADBR);
+        REQUIRE(count <= DUPMAX && (count2 === Infinity || count2 <= DUPMAX), REG_BADMAX);
         REQUIRE(MORE(), REG_EBRACE);
         REQUIRE(EAT('}'), REG_BADBR);
-        REQUIRE(count <= count2, REG_BADBR);
         return `{${count},${count2 === Infinity ? '' : count2}}`;
     }
 
@@ -209,7 +200,14 @@ export function regcomp(s) {
         }
         const cs = new Set();
         const invert = EAT('^');
-        if (EAT(']')) cs.add(93);
+        if (SEETWO(']', '-') && next + 2 < end && s[next + 2] !== ']') {
+            /* a leading ']' may start a range too: []-a] is ']'..'a', no
+             * error (Mac recording r9 rxq-range-msgtype, Line 9) */
+            next += 2;
+            const finish = EAT('-') ? 45 : p_b_symbol();
+            REQUIRE(93 <= finish, REG_ERANGE);
+            for (let i = 93; i <= finish; i++) cs.add(i);
+        } else if (EAT(']')) cs.add(93);
         else if (SEETWO('-', '-') && next + 2 < end && s[next + 2] !== ']') {
             /* a leading '-' may start a range on the Mac: [--a] is '-'..'a'
              * (matches digits, tables/regex.json) */
@@ -238,7 +236,9 @@ export function regcomp(s) {
             break;
         }
         case '^': atom = '^'; wascaret = true; break;
-        case '$': atom = '$'; break;
+        /* a '$' cannot be repeated either: $* -> 13 on the Mac (r9
+         * rxq-rep-msgtype/-menucolor Line 6) */
+        case '$': atom = '$'; wascaret = true; break;
         case '|': throw new RegexError(REG_EMPTY);
         case '*': case '+': case '?': throw new RegexError(REG_BADRPT);
         case '.': atom = '[\\s\\S]'; break;

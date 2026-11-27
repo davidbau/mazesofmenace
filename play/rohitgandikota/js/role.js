@@ -393,6 +393,15 @@ export function randrole() {
 //
 // The quest guardian block mutates mons[] but makes no draw.
 export function role_init(initrole, initalign) {
+    /* Check both initial and current gender for a new game.
+       On restore, assume flags.female is correct. */
+    if (game.pantheon === undefined || game.pantheon === -1) {
+        if (!validgend(initrole, game.flags.initrace, game.flags.female ? 1 : 0))
+            game.flags.female = !game.flags.female;
+    }
+    if (!validgend(initrole, game.flags.initrace, game.flags.initgend))
+        game.flags.initgend = game.flags.female ? 1 : 0;
+
     if (!game.mons) reset_mons();
     const mons = game.mons;
     const urole = roles[initrole];

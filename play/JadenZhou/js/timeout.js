@@ -139,6 +139,8 @@ import { canseemon as canseemon_he, You_feel as You_feel_he } from './display.js
 import { learn_egg_type as learn_egg_type_he } from './polyself.js';
 import { container_weight as container_weight_he } from './mkobj.js';
 import { arti_light_radius } from './light.js';
+import { find_ac } from './u_init.js';
+import { Norep } from './display.js';
 
 // C ref: timeout.c propertynames[]
 /* used by wizard mode #timeout and #wizintrinsic; order by 'interest'
@@ -679,9 +681,9 @@ export async function nh_timeout() {
         if (--u.usptime === 0 && u.uspellprot) {
             u.usptime = u.uspmtime;
             u.uspellprot--;
-            /* find_ac() and the "golden haze" message: spell protection
-               isn't ported yet */
-            throw new Error('nh_timeout(): spell protection not ported yet');
+            find_ac();
+            if (!Blind())
+                await Norep(`The ${hcolor("golden")} haze around you ${u.uspellprot ? "becomes less dense" : "disappears"}.`);
         }
     }
 

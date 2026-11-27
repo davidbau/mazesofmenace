@@ -59,7 +59,7 @@ import { STONE, SCORR, ROOM, CORR, SDOOR, HWALL, VWALL, TLCORNER, TRCORNER,
          ALTAR, GRAVE, THRONE, ICE, LAVAPOOL, LAVAWALL, AIR, CLOUD, WATER,
          DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LA_DOWN, D_BROKEN, D_ISOPEN,
          D_TRAPPED, IS_WALL, MALE, FEMALE, HALLUC, INVIS, BLINDED,
-         isok, IS_WATERWALL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT,
+         isok, IS_WATERWALL, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT, DB_FLOOR,
          Is_medusa_level, Is_juiblex_level, Is_qstart, Is_waterlevel } from './const.js';
 import { hliquid } from './potion.js';
 import { PM_SAMURAI } from './monsters.js';
@@ -172,7 +172,7 @@ const S_stone = 0, S_ndoor = 12, S_vodoor = 13, S_hodoor = 14,
     S_brdnstair = 30, S_brupladder = 31, S_brdnladder = 32, S_altar = 33,
     S_grave = 34, S_throne = 35, S_sink = 36, S_fountain = 37, S_pool = 38,
     S_ice = 39, S_lava = 40, S_lavawall = 41, S_vodbridge = 42,
-    S_vcdbridge = 44, S_hcdbridge = 45, S_air = 46, S_cloud = 47,
+    S_hodbridge = 43, S_vcdbridge = 44, S_hcdbridge = 45, S_air = 46, S_cloud = 47,
     S_water = 48, S_arrow_trap = 49, S_vibrating_square = 71,
     S_trapped_chest = 73, S_sw_tl = 88, S_sw_br = 95;
 export const defsyms_explanation = defsyms.map(d => d[1]);
@@ -341,11 +341,23 @@ export function back_to_cmap(x, y) {
     case WATER:
         return S_water;
     case DBWALL:
-        return S_vcdbridge;
+        return (ptr.horizontal) ? S_hcdbridge : S_vcdbridge;
     case DRAWBRIDGE_UP:
-        throw new Error('back_to_glyph(): drawbridges not ported yet');
+        switch ((ptr.drawbridgemask || 0) & DB_UNDER) {
+        case DB_MOAT:
+            return S_pool;
+        case DB_LAVA:
+            return S_lava;
+        case DB_ICE:
+            return S_ice;
+        case DB_FLOOR:
+            return S_room;
+        default:
+            /* impossible("Strange db-under: %d", ...) */
+            return S_room; /* something is better than nothing */
+        }
     case DRAWBRIDGE_DOWN:
-        return S_vodbridge;
+        return (ptr.horizontal) ? S_hodbridge : S_vodbridge;
     default:
         return S_room;
     }

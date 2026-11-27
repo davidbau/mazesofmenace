@@ -165,6 +165,20 @@ export function altarmask_at(x, y) {
     return res;
 }
 
+// C ref: pray.c a_gname() -- the name of the deity of the altar the hero
+// is standing on
+export function a_gname() {
+    return a_gname_at(game.u.ux, game.u.uy);
+}
+
+// C ref: pray.c a_gname_at() -- the name of an altar's deity
+export function a_gname_at(x, y) {
+    if (!IS_ALTAR(game.level.at(x, y).typ))
+        return null;
+
+    return align_gname(a_align(x, y));
+}
+
 // C ref: pray.c align_gname()
 export function align_gname(alignment) {
     let gnam;

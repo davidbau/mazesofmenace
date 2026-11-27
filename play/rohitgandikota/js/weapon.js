@@ -974,7 +974,7 @@ export function select_hwep(mtmp) {
     if (ptr.mlet === MONSYMS.S_GIANT) { /* giants just love to use clubs */
         const otmp = oselect(mtmp, ONAMES.CLUB);
         if (otmp) return otmp;
-    } else if (mtmp.mnum === PMNAMES.PM_BALROG && game.uwep) {
+    } else if (mtmp.mnum === PMNAMES.PM_BALROG && game.u.uwep) {
         const otmp = oselect(mtmp, ONAMES.BULLWHIP);
         if (otmp) return otmp;
     }

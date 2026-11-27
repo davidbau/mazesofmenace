@@ -188,7 +188,10 @@ function equip_ok(obj, removing, accessory) {
     /* armor we can't wear, e.g. from polyform */
     if (obj.oclass === ARMOR_CLASS && !removing
         && !canwearobj_quiet(obj, { mask: 0 }))
-        return GETOBJ_EXCLUDE_INACCESS;
+        return GETOBJ_DOWNPLAY;
+
+    /* Possible extension: downplay items (both accessories and armor) which
+     * can't be worn because the slot is filled with something else. */
 
     /* removing inaccessible equipment */
     if (removing && !game.item_action_in_progress) {
@@ -1536,7 +1539,7 @@ function takeoff_ctx() {
 }
 
 // C ref: do_wear.c off_msg()
-async function off_msg(otmp) {
+export async function off_msg(otmp) {
     if (game.flags.verbose)
         await You(`were wearing ${doname(otmp)}.`);
 }

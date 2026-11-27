@@ -319,7 +319,7 @@ export async function fixup_special() {
         baalz_fixup();
     } else if (game.u.uz.dnum === game.dungeon_topology.d_mines_dnum
                && game.ransacked) {
-        stolen_booty();
+        await stolen_booty();
     }
 
     const sp = Is_special(game.u.uz);
@@ -341,7 +341,7 @@ const ORC_LEADER = 1;
 const orcfruit = ["paddle cactus", "dwarven root"];
 
 // C ref: mkmaze.c migrate_orc()
-function migrate_orc(mtmp, mflags) {
+async function migrate_orc(mtmp, mflags) {
     const u = game.u;
     let nlev;
     const dest = { dnum: 0, dlevel: 0 };
@@ -368,7 +368,7 @@ function migrate_orc(mtmp, mflags) {
         mtmp.migflags = ((mtmp.migflags || 0) & ~MIGR_LEFTOVERS);
     }
     get_level(dest, nlev);
-    migrate_to_level(mtmp, ledger_no(dest), MIGR_RANDOM, null);
+    await migrate_to_level(mtmp, ledger_no(dest), MIGR_RANDOM, null);
 }
 
 // C ref: mkmaze.c shiny_orc_stuff()
@@ -420,7 +420,7 @@ function migr_booty_item(otyp, gang) {
 }
 
 // C ref: mkmaze.c stolen_booty()
-function stolen_booty() {
+async function stolen_booty() {
     let mtmp;
     let cnt, i, otyp;
 
@@ -470,7 +470,7 @@ function stolen_booty() {
         mtmp.mpeaceful = 0;
         set_malign(mtmp);
         shiny_orc_stuff(mtmp);
-        migrate_orc(mtmp, ORC_LEADER);
+        await migrate_orc(mtmp, ORC_LEADER);
     }
     /* Make most of the orcs on the level be part of the invading gang */
     for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
@@ -502,7 +502,7 @@ function stolen_booty() {
         mtmp = makemon(mons[mtyp], 0, 0, MM_NONAME);
         if (mtmp) {
             shiny_orc_stuff(mtmp);
-            migrate_orc(mtmp, 0);
+            await migrate_orc(mtmp, 0);
         }
     }
     game.ransacked = 0;

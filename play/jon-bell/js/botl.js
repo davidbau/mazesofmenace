@@ -24,6 +24,7 @@ import { ATR_NONE, PICK_ANY, PICK_ONE, TtyMenu } from './tty_menu.js'; // reloca
 import { getlin } from './windows.js'; // relocate-fns
 import { CONDTESTS, COND_NAMES, cond_enabled_arr } from './options.js'; // relocate-fns
 import { describe_level_impl } from './dungeon.js'; // relocate-fns
+import { c_atoi, c_atol } from './c_atoi.js';
 import { str_start_is } from './hacklib.js'; // relocate-fns
 import { NON_PM } from './mhitm.js'; // relocate-fns
 import { ROLE_PM_MNUM } from './roles.js'; // relocate-fns
@@ -692,6 +693,18 @@ function status_hilite2str_rules(spec) {
      * (botl.c:2605-2639), preserving spaces in the title's text component.
      * Menu-added rules also arrive as one entry; do not split their titles. */
     for (const one of [spec]) {
+        if (one && typeof one === 'object') {
+            /* Menu-added rule: C's status_hilite_menu_add getlin arm Strcpy's
+             * the typed text verbatim into hilite.textmatch (botl.c:4216-4218,
+             * no lowc(), no trimspaces()) and status_hilite2str (botl.c:3635-
+             * 3637) prints it raw, so a '/' inside the text can never
+             * round-trip through the flat config format (parse_status_hl1
+             * splits on it, botl.c:2627-2629).  Such rules carry the line C's
+             * struct renders, already keyed by the enum fld. */
+            out.push({ fld: one.fld,
+                       str: one.fld === 0 ? one.str : stripchars(null, ' ', one.str) });
+            continue;
+        }
         const s = one.toLowerCase().split('/'), os = one.split('/');
         const fldname = status_fieldname(s[0]);
         // C botl.c:2228 resolves fields case-insensitively; HD retains its display case.
@@ -708,7 +721,10 @@ function status_hilite2str_rules(spec) {
             else if (fldname === 'hitpoints' && t === 'criticalhp') beh = 'criticalhp';
             else if (/^[<>]?=?[-+]?[0-9]+%?$/.test(t) && at !== 'S') {
                 const op = /^(<=|>=|<|>)/.exec(t)?.[1] || '=';
-                beh = `${op}${parseInt(stripchars(null, '%<>=+', t), 10)}${t.includes('%') ? '%' : ''}`;
+                /* status_hilite2str prints hl->value.a_int (%d) for both the
+                 * percentage and the absolute behavior (botl.c:3615,3631) —
+                 * even for ANY_LONG fields — so re-display truncates to int32. */
+                beh = `${op}${c_atoi(stripchars(null, '%<>=+', t))}${t.includes('%') ? '%' : ''}`;
             } else {
                 const arr = fldname === 'carrying-capacity'
                     ? ['Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded']
@@ -1090,7 +1106,15 @@ export async function status_hilite_menu(preserveStatus = false) {
                 if (clr === -1) continue;
                 const attrs = atr === 1 ? 'normal' : HL_ATTRBITS.filter(b => atr & b[1]).map(b => b[2]).join('+');
                 const how = `/${text}/${clr2colorname(clr).replace(/ /g, '-')}&${attrs}`;
-                (game.status_field_hilites ||= []).push(`${INITBLSTATS[bl_index(fld)][0]}${how}`);
+                /* botl.c:4216-4218 Strcpy(hilite.textmatch, inbuf): the rule
+                 * keeps the typed text verbatim, keyed by the enum fld and
+                 * labelled initblstats[fld] exactly like the "Added hilite"
+                 * pline.  A '/' in the text cannot re-parse from a flat spec,
+                 * so store the rendered line; .spec keeps the flat form the
+                 * live painters parse (unchanged behaviour there). */
+                (game.status_field_hilites ||= []).push({
+                    fld, str: `${name}${how}`,
+                    spec: `${INITBLSTATS[bl_index(fld)][0]}${how}` });
                 game._statusRulesPending = true;
                 await pline('Added hilite %s', `${name}${how}`);
                 await drainTopline();
@@ -1144,8 +1168,11 @@ export async function status_hilite_menu(preserveStatus = false) {
                 if (!gotnum) { await pline('Is that an invisible number?'); continue; }
                 const op = ['=', '<', '<=', '>=', '>'][lt] ?? '';
                 let numstart = inbuf.slice(numfrom, k);
-                const val = parseInt(numstart, 10); /* s_to_anything: atoi/atol */
                 const dt = percent ? 'I' : INITBLSTATS[fld][1];
+                /* s_to_anything (botl.c:4009,1936-1940): a_long = atol() for
+                 * ANY_LONG, a_int = atoi() = the int32 truncation of the exact
+                 * long for ANY_INT — parseInt rounds past 2^53 before any wrap. */
+                const val = dt === 'L' ? c_atol(numstart) : c_atoi(numstart);
                 const isAC = name === 'armor-class';
                 if (percent) {
                     if (!INITBLSTATS[fld][2]) {

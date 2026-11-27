@@ -2749,6 +2749,14 @@ export async function doapply() {
             game._toplEmptyAfterSuppress = false; /* topl.c:537-539 */
             /* topl.c:547-549 clears a prompt that wrapped onto another row. */
             answeredApplyPrompt = topl_park_cursor(null, qbuf + ' ')[1] === 0 ? qbuf : null;
+            /* topl.c:533-548: the answered one-row prompt stays painted until a
+             * pline overwrites it or the next parse() clears it -- also when
+             * every pline of the application is MSGTYPE-hidden (pline.c:246-262).
+             * Same fallback as the shared getobj (js/cmd.js getobj).  Mac macx2
+             * intel w24a-123 step 98: applying a spellbook under MSGTYPE=hide
+             * "[\xe0-\xff]|Unknown" hides "You flip through the pages ..."; C
+             * keeps "What do you want to use or apply? [clmn or ?*]". */
+            g._topl_sticky = g._topl_sticky_prompt = answeredApplyPrompt;
         }
         itemCh = String.fromCharCode(itemKey);
         if (itemKey >= 48 /* '0' */ && itemKey <= 57 /* '9' */) {
@@ -2993,6 +3001,12 @@ export async function doapply() {
                     msg1 = `${_base}--More--`;
                 } else msg1 = `${g._pending_message}--More--`;
             }
+            /* the displaced weapon's prinv (wield.c:488-492), for the MSGTYPE test */
+            const _msg2Base = !wasSwap ? null : oldwep
+                ? await _prinv_line(oldwep, `alternate weapon${((oldwep.quan ?? 1) | 0) === 1 ? '' : 's'}; not wielded`)
+                : 'You have no secondary weapon readied.';
+            const _hide1 = wasSwap && msgtype_suppressed(msg1.slice(0, -'--More--'.length));
+            const _hide2 = wasSwap && msgtype_suppressed(_msg2Base);
             const _showMsg1 = async (m = msg1) => {
                 g._pending_message = m;
                 await flush_screen(1);
@@ -3004,7 +3018,8 @@ export async function doapply() {
                     /* A standing topline (e.g. "OK, so you don't die." after a
                      * lifesaved touch_artifact blast, end.c:1117) is paged or
                      * joined by update_topl (topl.c:262-275), never replaced. */
-                    if (g._pending_message) await pline('%s', plainMsg);
+                    /* pline.c:246-262: a MSGTYPE hide/norep rule applies too. */
+                    if (g._pending_message || msgtype_suppressed(plainMsg)) await pline('%s', plainMsg);
                     else g._pending_message = plainMsg;
                     if (plainMsg.length >= 80) await flush_screen(1);
                 }
@@ -3016,6 +3031,22 @@ export async function doapply() {
                 g._topl_win_stop = true;
                 g._topl_win_stop_armed = false;
                 g._topl_win_stop_buf = g._pending_message;
+            } else if (_hide1 || _hide2) {
+                /* pline.c:246-262: a MSGTYPE-hidden prinv never reaches
+                 * update_topl, so nothing pages it and it raises no more() for
+                 * the line before it.  A shown msg1 with a hidden msg2 stays
+                 * standing (paged later by whatever needs the topline); a hidden
+                 * msg1 lets msg2 print on the empty line.  Mac macx2 intel
+                 * w24a-099 seg1 step 50: MSGTYPE=hide "\d|Never mind" (BSD: a
+                 * literal 'd') hides "e - a +0 pick-axe (weapon in right hand)."
+                 * and "(alternate weapon; not wielded)"; C goes straight to the
+                 * wield turn and "In what direction do you want to dig?". */
+                const _m1Base = msg1.slice(0, -'--More--'.length);
+                if (!_hide1) g._pending_message = _m1Base;
+                else if (_swapSetDone && String(g._pending_message).startsWith(_m1Base))
+                    /* the line joined behind it by setuwep (Sting) still shows */
+                    g._pending_message = String(g._pending_message).slice(_m1Base.length).replace(/^ {2}/, '');
+                else if (g._pending_message === _m1Base) g._pending_message = '';
             } else {
                 const _m1Base = msg1.slice(0, -'--More--'.length);
                 if (_m1Base.length >= 80) {
@@ -3056,7 +3087,7 @@ export async function doapply() {
             const msg2 = oldwep
                 ? `${await _prinv_line(oldwep, `alternate weapon${((oldwep.quan ?? 1) | 0) === 1 ? '' : 's'}; not wielded`)}--More--`
                 : 'You have no secondary weapon readied.--More--';
-            if (!_standEsc) {
+            if (!_standEsc && !_hide2) {
                 g._pending_message = msg2.slice(0, -'--More--'.length);
                 /* C topl.c:139-140 redotoplin(): when msg2 itself wraps onto a
                  * second row (n0 >= CO), C pages it immediately inside

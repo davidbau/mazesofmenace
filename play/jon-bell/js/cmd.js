@@ -4268,6 +4268,17 @@ function prevmsg_overlay_corner(xmin, ymax) {
 }
 export async function doprev_message(liveTopline) {
     const g = game;
+    /* C getline.c:110-118 — the "need two initially" ^P arm is TWO SEPARATE
+     * tty_doprev_message() calls, and the window arm resets cw->maxcol =
+     * cw->maxrow BEFORE it lists (topl.c:65), so when the FIRST call opened
+     * the history window the SECOND still runs redotoplin(gt.toplines) — the
+     * live query line — whose home()+putsyms() leaves the tty cursor right
+     * after that text (topl.c:121-130; df-x8a09bc7e2b step 23: cursor
+     * [13,0] after "# herecmdmenu" was repainted over the dismissed window).
+     * The cursor park behind the two calls (js/cmd.js extcmd reader,
+     * js/windows.js getlin) must therefore follow whatever the LAST call
+     * did: per-CALL state, not per-arm. */
+    g._prevmsg_window_shown = false;
     const stored = Array.isArray(g._msg_history) ? g._msg_history : [];
     // getline.c:82 rebuilds gt.toplines with the query before each read.
     const history = liveTopline === undefined ? stored : [...stored, liveTopline];
@@ -4411,7 +4422,20 @@ export async function doprev_message(liveTopline) {
              * hard-wraps at CO-1.  Getlin lines are plain text, so for them
              * visual == .length and nothing changes. */
             if (text.includes('\n') || _topl_visualLen(text) > 79) {
-                morc = await force_more(painted, 16); // ^P may acknowledge and continue
+                /* topl.c:121-142 redotoplin() repaints the topline only —
+                 * home(); putsyms(); cl_end(); more() — with NO preceding
+                 * flush_screen() (contrast pline.c:273-274). Flag the page so
+                 * force_more does not install the pline-flush frame recorded
+                 * when this line was FIRST plined, which can be many flushes
+                 * stale (df-xcb79ef86fa step 166: the recalled "You emerge
+                 * from ... vampire bat!" repainted a stomach cage cleared
+                 * thirteen frames earlier). */
+                g._topl_recall_page = true;
+                try {
+                    morc = await force_more(painted, 16); // ^P may acknowledge and continue
+                } finally {
+                    g._topl_recall_page = false;
+                }
                 // force_more's optional dismissal argument has message_menu's
                 // reset semantics. redotoplin instead holds ^P until the
                 // entire tty_doprev_message call has finished (topl.c:78/116).
@@ -16794,6 +16818,8 @@ export async function _spoteffects_pickup(redrawPending = false) {
                  * header and the skip_objects wording read. */
                 pickedSome = (_nPicked | 0) > 0; /* n_picked > 0 */
             }
+            if (!(u.uswallow | 0) && _hidesUnder_useupf(g.youmonst?.data))
+                hideunder(g.youmonst);
             head = lvlObjs?.[ux2]?.[uy2] ?? null;
             let ct2 = 0, only2 = null;
             for (let o = head; o; o = o.nexthere)
@@ -20900,8 +20926,10 @@ async function _getdir_read(g, u, s, noPrompt, cmdq) {
                 }
             }
         }
-        /* C clear_nhwindow(WIN_MESSAGE), including buffered reads. */
+        /* C clear_nhwindow(WIN_MESSAGE), including buffered reads: tty
+         * erases the standing prompt too (wintty.c tty_clear_nhwindow). */
         g._pending_message = '';
+        g._topl_sticky = null;
         // C retries redraw before recording the reply in CQ_REPEAT.
         if (redraw_cmd(keyCode)) {
             await docrt_flags(0x04); // docrtRefresh

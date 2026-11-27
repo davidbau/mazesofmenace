@@ -16,7 +16,8 @@ import { game } from './gstate.js';
 import { eaten_stat, peek_at_iced_corpse_age } from './eat.js';
 import { mon_wield_item } from './weapon.js';
 import { rn2, rnd } from './rng.js';
-import { mattacku } from './mhitu.js';
+import { mattacku, mhis } from './mhitu.js';
+import { m_unleash } from './apply.js';
 import { dist2, distmin, distu } from './hacklib.js';
 import { cansee, couldsee, clear_path, do_clear_area } from './vision.js';
 import {
@@ -680,6 +681,8 @@ async function dog_invent(mtmp, edog, udist) {
         if (obj
             && !(obj.oclass === O.BALL_CLASS || obj.oclass === O.CHAIN_CLASS
                  || obj.oclass === O.ROCK_CLASS) /* nofetch[] */
+            /* MAIL_STRUCTURES is defined (global.h) */
+            && obj.otyp !== O.SCR_MAIL
             /* avoid special items; once hero picks them up, they'll cease
                being special and become eligible for normal monst activity */
             && !(is_mines_prize(obj) || is_soko_prize(obj))) {
@@ -1478,8 +1481,10 @@ export async function dog_move(mtmp, after) {
     /* newdogpos: */
     if (nix !== omx || niy !== omy) {
         if (mfp.info[chi] & ALLOW_U) {
-            if (mtmp.mleashed) /* play it safe */
-                throw new Error('dog_move(): m_unleash() of a conflicted leashed pet not ported yet');
+            if (mtmp.mleashed) { /* play it safe */
+                await pline(`${Monnam(mtmp)} breaks loose of ${mhis(mtmp)} leash!`); /* pline_mon() */
+                m_unleash(mtmp, false);
+            }
             await mattacku(mtmp);
             return MMOVE_DONE;
         }

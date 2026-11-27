@@ -11,7 +11,7 @@ import { cmap_names } from './drawing_data.js';
 import { M_AP_TYPE, M_AP_FURNITURE, MCORPSENM } from './const.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
-import { uhim } from './mhitu.js';
+import { uhim, uhis } from './mhitu.js';
 import { Disint_resistance, Blindfolded_only, Glib, Fixed_abil, Unchanging, Blinded, Passes_walls, Blindfolded } from './youprop.js';
 import { genders } from './role_data.js';
 import { Monnam } from './do_name.js';
@@ -45,7 +45,7 @@ import { IS_ALTAR, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          NH_GOLDEN, ONAME_GIFT, ONAME_KNOW_ARTI, P_ISRESTRICTED,
          P_LONG_SWORD, P_BROAD_SWORD, FOOT, STOMACH, LARGEST_INT } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { An, an, ansimpleoname, makeplural, OBJ_NAME, otense, vtense,
+import { An, an, ansimpleoname, actualoname, simpleonames, makeplural, OBJ_NAME, otense, vtense,
          xname, yname, Yobjnam2, gloves_simple_name } from './objnam.js';
 import { a_monnam, hcolor, mon_nam, oname, upstart } from './do_name.js';
 import { attrcurse, rndcurse } from './sit.js';
@@ -91,7 +91,7 @@ import { you_unwere } from './were.js';
 import { buried_ball_to_freedom } from './dig.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { ATTKS } from './monst_data.js';
-import { Align2amask, AM_CHAOTIC, A_CG_CONVERT, KILLED_BY_AN, A_CON, LL_DIVINEGIFT, LL_ARTIFACT, LL_CONDUCT, CXN_ARTICLE, NH_WHITE, Something, something, A_ORIGINAL, A_CURRENT } from './const.js';
+import { Align2amask, AM_CHAOTIC, A_CG_CONVERT, KILLED_BY_AN, A_CON, LL_DIVINEGIFT, LL_ARTIFACT, LL_SPOILER, LL_CONDUCT, CXN_ARTICLE, NH_WHITE, Something, something, A_ORIGINAL, A_CURRENT } from './const.js';
 import { findpriest } from './monmove.js';
 import { p_coaligned, temple_occupied } from './priest.js';
 import { mk_artifact, artifact_origin, nartifact_exist, artiname } from './artifact.js';
@@ -104,6 +104,8 @@ import { align_str } from './role.js';
 import { wake_nearby } from './mon.js';
 import { rider_corpse_revival } from './pickup.js';
 import { uchangealign } from './attrib.js';
+import { record_achievement } from './insight.js';
+import { ACH_TUNE } from './const.js';
 
 function note_unported_pray(what) {
     (game.unported ||= new Set()).add('pray:' + what);
@@ -1000,6 +1002,8 @@ async function gcrownu() {
     case A_LAWFUL:
         uevent.uhand_of_elbereth = 1;
         await pline('"I crown thee...  The Hand of Elbereth!"');
+        livelog_printf(LL_DIVINEGIFT,
+                       `was crowned "The Hand of Elbereth" by ${u_gname()}`);
         break;
     case A_NEUTRAL:
         uevent.uhand_of_elbereth = 2;
@@ -1007,6 +1011,8 @@ async function gcrownu() {
         alreadyExists = exist_artifact(ONAMES.LONG_SWORD,
                                        artifact_names[ART_VORPAL_BLADE]);
         await pline('"Thou shalt be my Envoy of Balance!"');
+        livelog_printf(LL_DIVINEGIFT,
+                       `became ${s_suffix(u_gname())} Envoy of Balance`);
         break;
     case A_CHAOTIC: {
         uevent.uhand_of_elbereth = 3;
@@ -1017,6 +1023,8 @@ async function gcrownu() {
                       || classGift !== ONAMES.STRANGE_OBJECT)
                      ? 'take lives' : 'steal souls';
         await pline(`"Thou art chosen to ${what} for My Glory!"`);
+        livelog_printf(LL_DIVINEGIFT,
+                       `was chosen to ${what} for the Glory of ${u_gname()}`);
         break;
     }
     default:
@@ -1025,12 +1033,15 @@ async function gcrownu() {
 
     if (game.objects[classGift].oc_class === OCLASSES.SPBOOK_CLASS) {
         obj = mksobj(classGift, true, false);
+        const bbuf = actualoname(obj); // Capture the type before blessing or dropping.
         await bless(obj);
         obj.bknown = 1;
         observe_object(obj);
         await at_your_feet(upstart(ansimpleoname(obj)));
         await dropy(obj);
         u.ugifts = (u.ugifts | 0) + 1;
+        livelog_printf(LL_DIVINEGIFT | LL_ARTIFACT | LL_SPOILER,
+                       `was bestowed with ${bbuf}`);
 
         if (known_spell(classGift) !== spe_Unknown && ok_wep(u.uwep))
             obj = u.uwep;
@@ -1041,12 +1052,16 @@ async function gcrownu() {
         if (classGift !== ONAMES.STRANGE_OBJECT) {
             // The class spellbook was the crowning gift.
         } else if (obj?.otyp === ONAMES.LONG_SWORD && !obj.oartifact) {
+            const lbuf = simpleonames(obj); // Before transformation.
             if (!Blind())
                 await Your('sword shines brightly for a moment.');
             obj = oname(obj, artifact_names[ART_EXCALIBUR],
                         ONAME_GIFT | ONAME_KNOW_ARTI);
-            if (is_art(obj, ART_EXCALIBUR))
+            if (is_art(obj, ART_EXCALIBUR)) {
                 u.ugifts = (u.ugifts | 0) + 1;
+                livelog_printf(LL_DIVINEGIFT | LL_ARTIFACT,
+                               `had ${uhis()} wielded ${lbuf} transformed into ${artiname(ART_EXCALIBUR)}`);
+            }
         }
         unrestrict_weapon_skill(P_LONG_SWORD);
         if (is_art(obj, ART_EXCALIBUR))
@@ -1066,6 +1081,8 @@ async function gcrownu() {
             await at_your_feet('A sword');
             await dropy(obj);
             u.ugifts = (u.ugifts | 0) + 1;
+            livelog_printf(LL_DIVINEGIFT | LL_ARTIFACT,
+                           `was bestowed with ${artiname(ART_VORPAL_BLADE)}`);
         }
         unrestrict_weapon_skill(P_LONG_SWORD);
         if (is_art(obj, ART_VORPAL_BLADE))
@@ -1086,6 +1103,8 @@ async function gcrownu() {
             await at_your_feet(An(sword));
             await dropy(obj);
             u.ugifts = (u.ugifts | 0) + 1;
+            livelog_printf(LL_DIVINEGIFT | LL_ARTIFACT,
+                           `was bestowed with ${artiname(ART_STORMBRINGER)}`);
         }
         unrestrict_weapon_skill(P_BROAD_SWORD);
         if (is_art(obj, ART_STORMBRINGER))
@@ -1974,6 +1993,7 @@ async function pleased(g_align) {
                     await You_hear('a divine music...');
                     await pline(`It sounds like:  "${game.castle_tune}".`);
                     uevent.uheard_tune++;
+                    record_achievement(ACH_TUNE);
                     break;
                 }
             }

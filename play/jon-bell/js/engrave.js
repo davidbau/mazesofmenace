@@ -78,7 +78,7 @@ import { pushRngLogEntry } from './rng.js'; // relocate-fns
 import { getrumor } from './rumors.js'; // relocate-fns
 import { nomul } from './hack.js'; // relocate-fns
 import { _result_append_join } from './cmd.js'; // relocate-fns
-import { _topl_stash_result, force_more, msgtype_is_stop, Unaware as wizard_Unaware } from './display.js'; // relocate-fns
+import { _topl_stash_result, force_more, msgtype_is_stop, msgtype_suppressed, Unaware as wizard_Unaware } from './display.js'; // relocate-fns
 import { impossible as real_impossible } from './pline.js'; // relocate-fns
 import { routeTag } from './route_telemetry.js'; // relocate-fns
 
@@ -1458,6 +1458,11 @@ export function rest_engravings(saved) {
 const _PLINE_PAGED_WRAP_CAPACITY = 79;
 
 async function _pline_paged(msg, last, redrawPending) {
+    /* pline.c:246-262: a MSGTYPE hide (or a repeated norep) line is dropped
+     * by vpline before anything is drawn or paged.  Mac macx3 intel w25i-027
+     * step 6: MSGTYPE=hide "()" (Apple regcomp accepts the empty group, which
+     * matches every line) — C shows no "Something is engraved here" at all. */
+    if (msgtype_suppressed(msg)) return;
     const wouldWrap = msg.length > _PLINE_PAGED_WRAP_CAPACITY;
     /* engrave.c:363-397: both lines are ordinary plines, so a MSGTYPE=stop
      * rule raises vpline's display_nhwindow(WIN_MESSAGE, TRUE) right after
@@ -1532,7 +1537,10 @@ export async function read_engr_at(x, y, redrawPending = false) {
         default: await real_impossible('Something is written in a very strange way.'); msg = ''; break;
         }
         if (msg !== null) {
-            const _joins = (_reveal_text(ep).length + msg.length + 3) < (80 - 8);
+            /* A line MSGTYPE drops (pline.c:246-262) leaves the other one alone
+             * on the topline: nothing to join, so nothing pages for the pair. */
+            const _joins = !msg || msgtype_suppressed(msg) || msgtype_suppressed(_reveal_text(ep))
+                || (_reveal_text(ep).length + msg.length + 3) < (80 - 8);
             const _arrivalPages = redrawPending && !_joins;
             if (msg) {
                 const _committed = (game && (game._pending_message || game._resultMessage)) || '';

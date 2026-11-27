@@ -350,8 +350,14 @@ export function hilite_status_config_error(op) {
             const percent = t.endsWith('%');
             const grt = t[0] === '>' && t[1] !== '=', gte = t[0] === '>' && t[1] === '=';
             const lt = t[0] === '<' && t[1] !== '=', le = t[0] === '<' && t[1] === '=';
-            const num = parseInt(t.replace(/[%<>=+]/g, ''), 10);
             const isLong = !percent && (f === 'score' || f === 'gold' || f === 'time' || f === 'experience');
+            /* s_to_anything (botl.c:2944,1936-1940): a_long = atol() for
+             * ANY_LONG, a_int = atoi() — the int32 truncation of the exact
+             * long — otherwise; the range checks and both error texts below
+             * print that same a_int (%d) / a_long (%ld).  parseInt rounds
+             * past 2^53 before any int32 wrap. */
+            const num = isLong ? c_atol(t.replace(/[%<>=+]/g, ''))
+                : c_atoi(t.replace(/[%<>=+]/g, ''));
             if (num < (f === 'armor-class' ? -128 : grt ? -1 : lt ? 1 : 0)
                 || (!isLong && num > (percent ? (lt ? 101 : 100) : 32767)))
                 return ["hilite_status threshold '%s' is out of range",

@@ -137,6 +137,8 @@ import { light_hits_gremlin } from './uhitm.js';
 import { name_to_monclass as name_to_monclass_rd } from './mondata.js';
 import { S_invisible as S_invisible_rd, S_WORM_TAIL as S_WORM_TAIL_RD,
          PM_STALKER as PM_STALKER_RD } from './monsters.js';
+import { buried_ball_to_freedom } from './dig.js';
+import { LEG } from './const.js';
 
 /* C ref: color.h NH_* color names */
 const NH_BLACK = "black", NH_AMBER = "amber", NH_GOLDEN = "golden",
@@ -1181,8 +1183,10 @@ async function seffect_remove_curse(sobjp) {
     }
     if (Punished() && !confused)
         await unpunish();
-    if (u.utrap && u.utraptype === TT_BURIEDBALL)
-        throw new Error('seffect_remove_curse(): buried_ball_to_freedom() not ported yet');
+    if (u.utrap && u.utraptype === TT_BURIEDBALL) {
+        await buried_ball_to_freedom();
+        await pline_The(`clasp on your ${body_part(LEG)} vanishes.`);
+    }
     /* update_inventory(): no perm_invent */
 }
 

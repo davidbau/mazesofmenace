@@ -1046,6 +1046,8 @@ export function nhl_done(L) {
         /* lua_close(L) */
         L.globals = null;
     }
+    if (game.iflags)
+        game.iflags.in_lua = FALSE;
 }
 
 // C ref: nhlua.c nhcore_call_names[NUM_NHCORE_CALLS]

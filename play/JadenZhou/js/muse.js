@@ -111,7 +111,7 @@ import { AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION,
 import { ART_ORB_OF_DETECTION } from './artilist.js';
 import { arti_reflects } from './artifact.js';
 import { Can_rise_up, ceiling } from './dungeon.js';
-import { is_drawbridge_wall } from './dbridge.js';
+import { is_drawbridge_wall, destroy_drawbridge } from './dbridge.js';
 import { flooreffects } from './do.js';
 import { set_malign } from './makemon.js';
 import { G_UNIQ } from './monsters.js';
@@ -954,7 +954,7 @@ export async function use_defensive(mtmp) {
                     await pline(`${Monnam(mtmp)} shudders for a moment.`);
             } else {
                 get_level(flev, nlev);
-                migrate_to_level(mtmp, ledger_no(flev), MIGR_RANDOM, null);
+                await migrate_to_level(mtmp, ledger_no(flev), MIGR_RANDOM, null);
             }
         } else {
             await m_tele(mtmp, vismon, oseen, SCR_TELEPORTATION);
@@ -1020,7 +1020,7 @@ export async function use_defensive(mtmp) {
         }
         await fill_pit(mtmp.mx, mtmp.my);
         /* we made sure that there is a level for mtmp to go to */
-        migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
+        await migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
         return 2;
     case MUSE_WAN_UNDEAD_TURNING:
         if (!otmp)
@@ -1125,7 +1125,7 @@ export async function use_defensive(mtmp) {
             worm_move(mtmp);
         newsym(game.trapx, game.trapy);
 
-        migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
+        await migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
         return 2;
     case MUSE_UPSTAIRS:
         await m_flee(mtmp);
@@ -1143,11 +1143,11 @@ export async function use_defensive(mtmp) {
                the Wizard and he'll immediately go right to the
                upstairs, so there's not much point in having any
                chance for a random position on the current level */
-            migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
+            await migrate_to_level(mtmp, ledger_no(u.uz) + 1, MIGR_RANDOM, null);
         } else {
             if (vismon) /* pline_mon() */
                 await pline(`${Monnam(mtmp)} escapes upstairs!`);
-            migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_DOWN,
+            await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_DOWN,
                              null);
         }
         return 2;
@@ -1158,7 +1158,7 @@ export async function use_defensive(mtmp) {
             return 0;
         if (vismon) /* pline_mon() */
             await pline(`${Monnam(mtmp)} escapes downstairs!`);
-        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_UP, null);
+        await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_STAIRS_UP, null);
         return 2;
     case MUSE_UP_LADDER:
         await m_flee(mtmp);
@@ -1167,7 +1167,7 @@ export async function use_defensive(mtmp) {
             return 0;
         if (vismon) /* pline_mon() */
             await pline(`${Monnam(mtmp)} escapes up the ladder!`);
-        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_DOWN,
+        await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_DOWN,
                          null);
         return 2;
     case MUSE_DN_LADDER:
@@ -1177,7 +1177,7 @@ export async function use_defensive(mtmp) {
             return 0;
         if (vismon) /* pline_mon() */
             await pline(`${Monnam(mtmp)} escapes down the ladder!`);
-        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_UP, null);
+        await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_LADDER_UP, null);
         return 2;
     case MUSE_SSTAIRS:
         await m_flee(mtmp);
@@ -1193,7 +1193,7 @@ export async function use_defensive(mtmp) {
            to target, but having gs.sstairs.<sx,sy> == <0,0> will work the
            same as specifying MIGR_RANDOM when mon_arrive() eventually
            places the monster, so we can use MIGR_SSTAIRS unconditionally */
-        migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_SSTAIRS, null);
+        await migrate_to_level(mtmp, ledger_no(stway.tolev), MIGR_SSTAIRS, null);
         return 2;
     case MUSE_TELEPORT_TRAP:
         await m_flee(mtmp);
@@ -1869,7 +1869,7 @@ export async function use_misc(mtmp) {
                         await trycall(otmp);
                     }
                     m_useup(mtmp, otmp);
-                    migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM,
+                    await migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM,
                                      null);
                     return 2;
                 }
@@ -2553,6 +2553,7 @@ async function mbhit(
     obj) {    /* 2nd arg to fhitm/fhito */
     let mtmp;
     let ltyp;
+    let db; /* <dbx,dby>, from find_drawbridge() */
     const otyp = obj.otyp;
 
     game.bhitpos = { x: mon.mx, y: mon.my };
@@ -2587,8 +2588,10 @@ async function mbhit(
                over the moat in front of a closed drawbridge and doesn't
                hit any part of the bridge's mechanism (yet; it might be
                about to hit the closed portcullis on the next iteration) */
-            && ltyp !== DRAWBRIDGE_UP && find_drawbridge(x, y)) {
-            throw new Error('mbhit(): destroy_drawbridge() not ported yet');
+            && ltyp !== DRAWBRIDGE_UP && (db = find_drawbridge(x, y))) {
+            /* this might kill mon and destroy obj but they'll remain
+               accessible; (*fhitm)() and (*fhito)() use obj for zap type */
+            await destroy_drawbridge(db.x, db.y);
         } else if (IS_DOOR(ltyp) || ltyp === SDOOR) {
             switch (otyp) {
             /* note: monsters don't use opening or locking magic

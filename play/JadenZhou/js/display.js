@@ -2622,7 +2622,9 @@ export function row_refresh(start, stop, y) {
     if (!display || !game.level) return;
     for (let x = Math.max(start, 1); x <= stop && x < COLNO; x++) {
         const loc = game.level.at(x, y);
-        if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+        /* a blank shown with a video attribute (a detected or tame ghost,
+           MG_DETECT/MG_PET) is printed by tty_print_glyph() like any glyph */
+        if (!loc?.disp_ch || (loc.disp_ch === ' ' && !tty_glyph_attr(loc))) continue;
         const ch = loc.disp_decgfx ? dec_cell_char(loc.disp_ch) : loc.disp_ch;
         display.setCell(x - 1, y + 1, ch, tty_color(loc.disp_color), tty_glyph_attr(loc));
     }
@@ -3140,7 +3142,7 @@ function _buildScreenOutput(cursor_on_u, printed = null) {
                 if (overlay && !printed.has(y * COLNO + x))
                     continue;
                 const loc = game.level?.at(x, y);
-                if (!loc?.disp_ch || loc.disp_ch === ' ') {
+                if (!loc?.disp_ch || (loc.disp_ch === ' ' && !tty_glyph_attr(loc))) {
                     display.setCell(x - 1, y + 1, ' ', NO_COLOR, 0);
                     continue;
                 }

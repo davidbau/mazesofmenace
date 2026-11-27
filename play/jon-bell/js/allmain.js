@@ -4602,6 +4602,11 @@ async function moveloop_core_faithful() {
                     g.program_state.in_sanity_check--;
                 }
             }
+            /* C allmain.c:200-201 — a resumed wish (zap.c:6339-6343: its
+             * getlin met a gone terminal) runs before this invocation's world
+             * block: after "2s" the wish pages "You may wish for an object."
+             * at the old T: (Mac r9 l1-arm t24-a-regex-v050 step 165). */
+            if (g.context?.resume_wish) await makewish();
             // C allmain.c:202-446 — the head world block of this invocation.
             if (g.context && g.context.move)
                 await faithful_moveloop_turn();
@@ -4973,6 +4978,13 @@ async function moveloop_core_faithful() {
         /* C allmain.c moveloop_core: the world block runs only when
          * svc.context.move is set — a counted move into a door that opens
          * leaves move 0 and multi > 0 (hack.c:1108-1109, 2843-2848). */
+        /* C allmain.c:200-201 — each repeat is a fresh moveloop_core, whose
+         * resume_wish check (a wish whose getlin met a gone terminal,
+         * zap.c:6339-6343) runs BEFORE the world block: "2s" after such a
+         * wish pages "You may wish for an object." at the old T:, and the
+         * search's turn passes after it (Mac r9 l1-arm t24-a-regex-v050
+         * step 165). */
+        if (g.context?.resume_wish) await makewish();
         if (g.context.move) await faithful_moveloop_turn();
         // C allmain.c:453: every run invocation refreshes AC after its world block.
         find_ac();

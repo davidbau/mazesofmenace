@@ -58,6 +58,11 @@ import {
 import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX,
          VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L,
          VANQ_COUNT_L_H } from './const.js';
+import { tty_add_menu } from './wintty.js';
+import { PICK_ONE, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './const.js';
+import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
+import { def_monsyms_explain } from './drawing.js';
+import { upstart } from './hacklib.js';
 import { objects, OBJ_NAME, WEAPON_CLASS, GEM_CLASS, COIN_CLASS,
          GAUNTLETS_OF_POWER, DUNCE_CAP, SHIELD_OF_REFLECTION, TOWEL, CORPSE,
          TIN, EGG, STATUE, BOULDER, TIN_OPENER, ROCK, GRAPPLING_HOOK,
@@ -3037,8 +3042,39 @@ function vanqsort_cmp(indx1, indx2) {
         break;
     }
     case VANQ_MCLS_HTOL:
-    case VANQ_MCLS_LTOH:
-        throw new Error('vanqsort_cmp(): sorting by monster class not ported yet');
+    case VANQ_MCLS_LTOH: {
+        /* mons[].mlet is a small integer, 1..N */
+        let mcls1 = M.mons[indx1].mlet,
+            mcls2 = M.mons[indx2].mlet;
+        /* S_ANT through S_ZRUTY correspond to lowercase monster classes,
+           S_ANGEL through S_ZOMBIE correspond to uppercase, and various
+           punctuation characters are used for classes beyond those */
+        if (mcls1 > M.S_ZOMBIE && mcls2 > M.S_ZOMBIE) {
+            /* force a specific order to the punctuation classes that's
+               different from the internal order */
+            const punctclasses = [
+                M.S_LIZARD, M.S_EEL, M.S_GOLEM, M.S_GHOST, M.S_DEMON, M.S_HUMAN,
+            ];
+            let punct;
+
+            if ((punct = punctclasses.indexOf(mcls1)) >= 0)
+                mcls1 = M.S_ZOMBIE + 1 + punct;
+            if ((punct = punctclasses.indexOf(mcls2)) >= 0)
+                mcls2 = M.S_ZOMBIE + 1 + punct;
+        }
+        res = mcls1 - mcls2; /* class */
+        if (res === 0) {
+            /* force Riders to be sorted before demons */
+            res = (is_rider(M.mons[indx2]) ? 1 : 0)
+                  - (is_rider(M.mons[indx1]) ? 1 : 0);
+            if (res)
+                break;
+            res = M.mons[indx1].mlevel - M.mons[indx2].mlevel; /* mlevel low to high */
+            if (sortmode === VANQ_MCLS_HTOL)
+                res = -res; /* mlevel high to low */
+        }
+        break;
+    }
     case VANQ_COUNT_H_L:
     case VANQ_COUNT_L_H:
         res = game.mvitals[indx2].died - game.mvitals[indx1].died; /* dead count high to low */
@@ -3052,6 +3088,65 @@ function vanqsort_cmp(indx1, indx2) {
     return res;
 }
 
+/* the two uppercase choices are implemented but suppressed from menu.
+   also used in options.c */
+// C ref: insight.c vanqorders[][0] and [][2]
+const vanqorders = [
+    [ "t", "traditional: by monster level, by internal monster index" ],
+    [ "d", "by monster difficulty rating, by internal monster index" ],
+    [ "a", "alphabetically, first unique monsters, then others" ],
+    [ "A", "alphabetically, unique monsters and others intermixed" ],
+    [ "C", "by monster class, high to low level within class" ],
+    [ "c", "by monster class, low to high level within class" ],
+    [ "n", "by count, high to low, by internal index within tied count" ],
+    [ "z", "by count, low to high, by internal index within tied count" ],
+];
+
+// C ref: insight.c set_vanq_order()
+/* returns -1 if cancelled via ESC */
+export async function set_vanq_order(for_vanq) {
+    let desc;
+    let i, n, choice;
+    const clr = NO_COLOR;
+    const sortmode = game.flags.vanq_sortmode || 0;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < vanqorders.length; i++) {
+        if (i === VANQ_ALPHA_MIX || i === VANQ_MCLS_HTOL) /* skip these */
+            continue;
+        /* suppress some orderings if this menu if for 'm #genocided' */
+        if (!for_vanq && (i === VANQ_COUNT_H_L || i === VANQ_COUNT_L_H))
+            continue;
+        desc = vanqorders[i][1];
+        /* unique monsters can't be genocided so "alpha, unique separate"
+           and "alpha, unique intermixed" are confusing descriptions when
+           this menu is for #genocided rather than for #vanquished */
+        if (!for_vanq && i === VANQ_ALPHA_SEP)
+            desc = "alphabetically";
+        tty_add_menu(tmpwin, null, i + 1, vanqorders[i][0], 0,
+                     ATR_NONE, clr, desc,
+                     (i === sortmode) ? MENU_ITEMFLAGS_SELECTED
+                                      : MENU_ITEMFLAGS_NONE);
+    }
+    const buf = `Sort order for ${
+        for_vanq ? "vanquished monster counts (also genocided types)"
+                 : "genocided monster types (also vanquished counts)"}`;
+    tty_end_menu(tmpwin, buf);
+
+    const res = await tty_select_menu(tmpwin, PICK_ONE);
+    n = res.n;
+    await tty_destroy_nhwindow(tmpwin);
+    if (n > 0) {
+        choice = res.selected[0].item - 1;
+        /* skip preselected entry if we have more than one item chosen */
+        if (n > 1 && choice === sortmode)
+            choice = res.selected[1].item - 1;
+        game.flags.vanq_sortmode = choice;
+    }
+    return (n < 0) ? -1 : (game.flags.vanq_sortmode || 0);
+}
+
 // C ref: insight.c list_vanquished()
 export async function list_vanquished(defquery, ask) {
     let c;
@@ -3060,8 +3155,11 @@ export async function list_vanquished(defquery, ask) {
     const force_sort = (defquery === 'A'),
           dumping = (defquery === 'd');
 
-    if (force_sort)
-        throw new Error('list_vanquished(): set_vanq_order() not ported yet');
+    if (force_sort) { /* iflags.menu_requested via dovanquished() */
+        /* choose value for vanq_sortmode via menu; ESC cancels choosing
+           sort order but continues with vanquishd monsters display */
+        await set_vanq_order(true);
+    }
     if (dumping || force_sort) {
         defquery = 'y';
         ask = false; /* redundant */
@@ -3107,8 +3205,12 @@ export async function list_vanquished(defquery, ask) {
             let was_uniq = false, special_hdr = false;
             let buf, buftoo;
 
-            if (c === 'a' && ntypes > 1) /* ask user to choose sort order */
-                throw new Error('list_vanquished(): set_vanq_order() not ported yet');
+            if (c === 'a' && ntypes > 1) { /* ask user to choose sort order */
+                /* choose value for vanq_sortmode via menu; ESC cancels list
+                   of vanquished monsters but does not set 'done_stopprint' */
+                if (await set_vanq_order(true) < 0)
+                    return;
+            }
             const sortmode = game.flags.vanq_sortmode || 0;
             const uniq_header = (sortmode === VANQ_ALPHA_SEP);
             const class_header = ((sortmode === VANQ_MCLS_LTOH
@@ -3128,7 +3230,19 @@ export async function list_vanquished(defquery, ask) {
                 mlet = M.mons[i].mlet;
                 if (class_header
                     && (mlet !== prev_mlet || (special_hdr && !Rider))) {
-                    throw new Error('list_vanquished(): class headers (def_monsyms[].explain) not ported yet');
+                    if (!Rider) {
+                        buf = def_monsyms_explain[mlet];
+                        special_hdr = false;
+                    } else {
+                        buf = "Rider";
+                        special_hdr = true;
+                    }
+                    /* 'ask' implies final disclosure, where highlighting
+                       of various header lines is suppressed */
+                    await tty_putstr(klwin, ask ? ATR_NONE
+                                     : (game.iflags?.menu_headings?.attr ?? ATR_INVERSE),
+                                     upstart(buf));
+                    prev_mlet = mlet;
                 }
                 if (UniqCritterIndx(i)) {
                     buf = `${!type_is_pname(M.mons[i]) ? "the " : ""}${

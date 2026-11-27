@@ -613,10 +613,23 @@ export async function getpos(ccp, force, goal) {
         } else if ((rushrun && movecmd_mode(c, MV_WALK)) /* goto do_rushrun */
                    || movecmd_mode(c, MV_RUSH) || movecmd_mode(c, MV_RUN)) {
             /* do_rushrun: */
-            if (game.iflags?.getloc_moveskip)
-                throw new Error('getpos(): getloc_moveskip not ported yet');
-            dx = 8 * u.dx;
-            dy = 8 * u.dy;
+            if (game.iflags?.getloc_moveskip) {
+                /* skip same glyphs */
+                const glyph = glyph_at(cx, cy);
+
+                dx = u.dx;
+                dy = u.dy;
+                while (isok(cx + dx, cy + dy)
+                       && glyph === glyph_at(cx + dx, cy + dy)
+                       && isok(cx + dx + u.dx, cy + dy + u.dy)
+                       && glyph === glyph_at(cx + dx + u.dx, cy + dy + u.dy)) {
+                    dx += u.dx;
+                    dy += u.dy;
+                }
+            } else {
+                dx = 8 * u.dx;
+                dy = 8 * u.dy;
+            }
             [cx, cy] = truncate_to_map(cx, cy, dx, dy);
         } else if (" \r\n".includes(ch) && c !== 0) { /* quitchars */
             if (!force) {
