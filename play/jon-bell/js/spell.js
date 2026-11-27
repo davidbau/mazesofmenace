@@ -27,7 +27,7 @@ import { build_window_screen, tty_window_offx, menu_search_getlin, menu_search_d
 import { pmatchi } from './strutil.js';
 import { menucolor_text } from './coloratt.js';
 import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT, BLINDED, CLAIRVOYANT, SICK, SLIMED, HEAD,
-    ECMD_OK, ECMD_TIME, ECMD_FAIL, CMDQ_KEY, CQ_REPEAT } from './const.js';
+    ECMD_OK, ECMD_TIME, ECMD_FAIL, CMDQ_KEY, CMDQ_USER_INPUT, CQ_REPEAT, CQ_CANNED } from './const.js';
 import { acurr as acurr_real, poison_strdmg } from './attrib.js';
 import { POISON_RES, KILLED_BY_AN, ANTIMAGIC, FACE } from './const.js';
 import { stop_occupation } from './allmain.js';
@@ -2526,9 +2526,31 @@ async function study_book_already_known(spellName, booktype) {
         await pline(msg);
         return (await yn_function('Refresh your memory anyway?', 'yn', 'n', true)) !== 'n';
     }
+    /* C spell.c:571 y_n() = yn_function(query, "yn", 'n', TRUE) — cmd.c:5471.
+     * The command-queue pop comes first (cmd.c:5507-5513): a queued answer
+     * (CQ_REPEAT under #repeat/^A do_repeat, CQ_CANNED for canned input) is
+     * consumed with NO display — the standing topline is not paged, the
+     * prompt is never drawn — and is revalidated against the response set
+     * afterwards (cmd.c:5560-5576, altres = the default).  A user read
+     * answers through the tty loop below and files the processed answer for
+     * a later repeat (cmd.c:5532). */
+    const queuedYn = cmdq_pop();
+    if (queuedYn && queuedYn.typ !== CMDQ_USER_INPUT) {
+        await pline(msg);
+        if (g.iflags) g.iflags.last_msg = 0; /* C cmd.c:5495 yn_function entry */
+        let res = '\x1b';
+        if (queuedYn.typ === CMDQ_KEY) res = String.fromCharCode(queuedYn.key & 255);
+        else cmdq_clear(CQ_CANNED); /* C cmd.c:5512 — res stays ESC */
+        if (res && !'yn'.includes(res)) res = 'n'; /* C cmd.c:5560: altres = def */
+        return res !== 'n';
+    }
     /* C spell.c:566 You() runs vpline's last_msg/prevmsg writes
      * (pline.c:281-282) before the following query pages this message. */
-    if (!msgtype_suppressed(msg)) {
+    /* C pline.c:246-262: a MSGTYPE hide rule (or a norep repeat) returns from
+     * vpline before the flush and the putmesg, so no --More-- precedes the
+     * y_n (Mac intel fsedge w25l-085 seg3 step 311, MSGTYPE=hide "(()|a)"). */
+    const suppressed = msgtype_suppressed(msg);
+    if (!suppressed) {
         if (g.iflags) g.iflags.last_msg = 0;
         g._prevmsg = msg;
     }
@@ -2537,8 +2559,10 @@ async function study_book_already_known(spellName, booktype) {
     /* C pline.c:266-274 vpline() runs flush_screen() (display.c:2236 bot())
      * before the You() above, so a pending botl (getobj's SET_BOTL, a just-
      * advanced moves) is painted behind the --More--. */
-    await flush_screen(0);
-    await topline_more_loop(msg);
+    if (!suppressed) {
+        await flush_screen(0);
+        await topline_more_loop(msg);
+    }
     const ynPrompt = 'Refresh your memory anyway? [yn] (n)';
     /* C topl.c:420 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY)
      * publishes the prompt with a trailing space, updating prevmsg too.
@@ -2546,6 +2570,7 @@ async function study_book_already_known(spellName, booktype) {
     if (g.iflags) g.iflags.last_msg = 0;
     g._prevmsg = ynPrompt + ' ';
     let refresh = false;
+    let ansChar = 'n';
     while (true) {
         g._pending_message = ynPrompt;
         await flush_screen(1);
@@ -2579,16 +2604,22 @@ async function study_book_already_known(spellName, booktype) {
         };
         if (c === '\x1b' || c === '\r' || c === '\n' || c === ' ') {
             answered('n');                                /* ESC/activator → default 'n' */
+            ansChar = 'n';
             break;
         }
         const lc = c.toLowerCase();
         if (lc === 'y' || lc === 'n') {                   /* valid yn answer */
             answered(lc);
             refresh = (lc === 'y');                       /* spell.c:571 only 'n' returns 0 */
+            ansChar = lc;
             break;
         }
         /* invalid key: tty_yn_function loops and re-reads; prompt persists */
     }
+    /* C cmd.c:5532 — the processed answer is filed on CQ_REPEAT (y_n always
+     * passes addcmdq = TRUE) so a later #repeat/^A replay of this command
+     * consumes it with no prompt. */
+    cmdq_add_key(CQ_REPEAT, ansChar);
     if (refresh) return true;   /* spell.c:571-573: 'y' falls through to the study below */
     g._pending_message = ynPrompt;
     return false;

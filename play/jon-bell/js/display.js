@@ -4773,8 +4773,12 @@ async function _docrt_body(pageTopl, physicalScreen) {
 function _levelgen_paint_frame() {
     if (game?._physBlankToDocrt) return _PHYS_BLANK;
     const frame = game?._levelgenPaintFreeze;
-    return frame && suppress_map_output() && game._lastFlushFrame?.cells
-        ? game._lastFlushFrame : frame;
+    const lf = game?._lastFlushFrame;
+    if (frame && lf?.cells && (suppress_map_output()
+        || (lf.level === frame.level && frame.epoch !== undefined
+            && (lf.epoch | 0) > (frame.epoch | 0))))
+        return lf;
+    return frame;
 }
 // the C tty physical terminal's last flush.  DISPLAY-ONLY: reads disp_* only,
 // consumes no RNG, mutates no game state.  Returns a Map keyed y*COLNO+x.
@@ -5400,7 +5404,8 @@ export async function level_transition_arrival_more(msg, oldPaint) {
      * goto_level's entry (keepdogs/vision_recalc(2)'s mention_map show_glyph
      * announcement, display.c:2060-2072) flushes (pline.c:273-274) the gbuf
      * those calls changed; docrt's cls() pages that newer terminal. */
-    const _lf = g._lastFlushFrame;
+    const _lf = g._lastFlushFrame?.level === oldPaint.level
+        ? g._lastFlushFrame : g._prevLevelFlushFrame;
     if (_lf?.cells && _lf.level === oldPaint.level && oldPaint.epoch !== undefined
         && (_lf.epoch | 0) > (oldPaint.epoch | 0))
         oldPaint = { ...oldPaint, cells: _lf.cells };
@@ -10208,7 +10213,7 @@ function _status_cell_tokens(status1) {
      * the overlay can remove either end of an SGR run. */
     const tok = [];
     let attrs = [], color = ANSI_DEFAULT;
-    for (const m of _status_sgr(status1).replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n))
+    for (const m of _status_sgr_fields(status1).replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n))
              .matchAll(/\x1b\[([0-9;]*)m|([\s\S])/g)) {
         if (m[1] !== undefined) {
             for (const code of m[1].split(';').map(Number)) {
@@ -10222,6 +10227,7 @@ function _status_cell_tokens(status1) {
         /* The status formatter closes attributes with SGR 0 and colour-only
          * runs with SGR 39. Close this cell too, so a following map fragment
          * cannot inherit status highlighting. */
+        if (m[2] >= '\x80' && m[2] <= '\xff') { tok.push('\x1b[1C'); continue; }
         const codes = color === ANSI_DEFAULT ? attrs : [...attrs, color];
         tok.push(codes.length ? `\x1b[${codes.join(';')}m${m[2]}\x1b[0m` : m[2]);
     }
@@ -10365,7 +10371,7 @@ export function _status_row1_map_overlay(status1) {
     for (let x = 1; x < COLNO && !any; x++)
         any = mapAt(x);
     const tok = _status_cell_tokens(status1);
-    const plain0 = tok.map((t) => t.replace(/\x1b\[[0-9;]*m/g, '')).join('');
+    const plain0 = tok.map((t) => (t === '\x1b[1C' ? ' ' : t.replace(/\x1b\[[0-9;]*m/g, ''))).join('');
     let wiped = false;
     if (game.level) {
         const st = game._r1wipe || (game._r1wipe = { phys: tok.slice(), last: tok.slice(), cell: new Map(), lvl: game.level });
@@ -12368,6 +12374,36 @@ async function _topl_more(committed, dismissMore) {
     return morc;
 }
 
+/* C ref: win/tty/topl.c more():218-226 — where the physical cursor sits while a
+ * hand-rendered "<msg>--More--" page waits for its dismiss key.  update_topl's
+ * wrap (topl.c:284-297) has already split the message at its last blank before
+ * CO and redotoplin's putsyms() left ttyDisplay->curx/cury just past the last
+ * glyph of the LAST wrapped row; more() then repositions there (tty_curs,
+ * topl.c:219) and prints the 8-column defmorestr inline — unless that row is
+ * already >= CO-8 columns wide (topl.c:220-221), when the marker gets a row of
+ * its own and the cursor lands at column 8 of the next row.  A page that never
+ * wraps keeps the cursor at msg.length + 8 on row 0.  The hand-rolled more()
+ * clones (read.js topline_more_loop — the identify/spell topline drains) used
+ * to park it at (msg.length + 8, 0) unconditionally, stranding it at column 89
+ * of row 0 while C's marker sat on wrapped row 1: df-x85fe045b2b step 284, the
+ * 81-column identify prinv "g - an empty uncursed bag of holding named
+ * e12901234567890123456789012345678ener." — C cursor [46,1], JS [89,0], cells
+ * identical.  Same formula _topl_more()/await_more_dismiss's syncToplMoreCursor
+ * already apply; factored out so the bespoke clones agree with the painter
+ * (_buildScreenOutput lays this exact row set down for the same string).
+ * DISPLAY-ONLY: reads nothing but its argument. */
+export function topl_more_cursor(page) {
+    const s = String(page ?? '');
+    /* The marker of a prerendered page is not message text (a rumors joke that
+     * literally ends "  --More--" is; _is_prerendered_more's "  " guard). */
+    const committed = _is_prerendered_more(s) ? s.slice(0, -TOPL_MORE.length) : s;
+    const wrapped = _topl_wordwrap(committed, TOPL_CO - 1);
+    const lastLen = _topl_visualLen(wrapped[wrapped.length - 1]);
+    const lastFits = (lastLen + TOPL_MORE.length) <= (TOPL_CO - 1);
+    return [lastFits ? lastLen + TOPL_MORE.length : TOPL_MORE.length,
+            wrapped.length - 1 + (lastFits ? 0 : 1)];
+}
+
 /* C hack.c:2996-3016: a RUN_LEAP step's curs_on_u() -> flush_screen(1) repaints
  * the terminal without a pline, so a --More-- raised later by a yn prompt
  * (tty_yn_function more() runs BEFORE its own flush) shows THAT paint, not the
@@ -14337,7 +14373,9 @@ function _flush_screen_repaint(mode) {
      * where C's flush returned before the print loop (display.c:2225). */
     if (game && !delayHeld) game._docrtGnewPending = false;
     _flush_epoch++;
-    if (game?.level)
+    if (game?.level) {
+        if (game._lastFlushFrame && game._lastFlushFrame.level !== game.level)
+            game._prevLevelFlushFrame = game._lastFlushFrame;
         game._lastFlushFrame = { cells: _capture_painted_cells(), moves: _painted_moves(),
                                  epoch: _flush_epoch,
                                  seq: game._toplShownSeq | 0,
@@ -14348,6 +14386,7 @@ function _flush_screen_repaint(mode) {
                                  r1row: _threeStatusLines() && !_map_row20_clipped()
                                      ? String(game._screen_output || '').split('\n')[21] : undefined,
                                  level: game.level };
+    }
     // Applied after _buildScreenOutput, which is this port's paint step and
     // walks the terminal cursor across every cell it writes; C's repaint loop
     // and the cursor it leaves behind are the same statement.
@@ -14601,6 +14640,24 @@ export function remember_stopped_toplines() {
     const h = _msg_history_arr();
     if (gt && h[h.length - 1] !== gt && g._topl_history_recall !== gt)
         h.push(gt);
+}
+/* A ^P recall of gt.toplines (topl.c:44-47 / :106-107 redotoplin) leaves
+ * toplin NEED_MORE over a line remember_topl() has NOT filed: a pline that
+ * joins it (topl.c:262-271) extends that same gt.toplines, and the next
+ * remember_topl() stores only the joined line.  This port filed the live line
+ * early (nhgetch / tty_getlin_history), so extend that entry instead of adding
+ * the joined line beside it.  Mac macx3 intel sortna-w25j-029 step 481: ^P
+ * after a cancelled wish getlin recalls "For what do you wish? ", the resumed
+ * wish's "You may wish for an object." joins it, and C's history holds only
+ * "For what do you wish?   You may wish for an object.". */
+function _topl_recall_join_history(prev, joined) {
+    if (!prev || prev !== game._topl_history_recall)
+        return;
+    const h = _msg_history_arr();
+    if (h.length && h[h.length - 1] === prev) {
+        h[h.length - 1] = joined;
+        game._topl_history_recall = joined;
+    }
 }
 function _msg_history_arr() {
     if (!game._msg_history)
@@ -15050,6 +15107,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
             ? game._resultMessageJoins.joins : _topl_joins_snapshot(result);
         _pline_flush_frame_record(result.length, String(msg));
         const joined = _topl_merge_result(result, String(msg), joins || undefined);
+        _topl_recall_join_history(result, joined);
         game._resultMessage = null;
         game._resultMessageJoins = null;
         game._pending_message = joined;
@@ -15175,6 +15233,7 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
                                          cells: _capture_painted_cells(),
                                          moves: _painted_moves() };
         }
+        _topl_recall_join_history(prev, joined);
         game._pending_message = joined;
         }
     } else {

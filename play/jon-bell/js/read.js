@@ -803,7 +803,7 @@ import { monstseesu as monstseesu_fr, monstunseesu as monstunseesu_fr } from './
 import { burn_away_slime as burn_away_slime_fr } from './timeout.js';
 import { delobj as delobj_rd } from './invent.js';
 import { losehp as losehp_fr } from './hack.js';
-import { shieldeff as shieldeff_fr } from './display.js';
+import { shieldeff as shieldeff_fr, topl_more_cursor } from './display.js';
 import { hliquid as hliquid_fr } from './do_name.js';
 import { body_part as body_part_fr } from './cmd.js';
 
@@ -840,8 +840,11 @@ async function topline_more_loop(msg) {
     const releaseFlush = use_last_flush_snapshot();
     try {
     await flush_screen(1);
-    /* Cursor just past end of "--More--" (col = msg.length + 8). */
-    set_cursor(full.length, 0);
+    /* Cursor just past end of "--More--" — on the row the marker actually
+     * landed: topl.c more():218-226 (wrapped pages park it on the last wrapped
+     * row, or column 8 of the next row when the last row is >= CO-8 wide).
+     * topl_more_cursor is display.js's port of that positioning. */
+    set_cursor(...topl_more_cursor(full));
     const hist0 = (g._msg_history ||= []).length;
     while (true) {
         const key = await nhgetch();
@@ -854,7 +857,7 @@ async function topline_more_loop(msg) {
         }
         g._pending_message = full;
         await flush_screen(1);
-        set_cursor(full.length, 0);
+        set_cursor(...topl_more_cursor(full));
     }
     } finally { releaseFlush(); }
 }

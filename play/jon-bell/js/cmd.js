@@ -1229,6 +1229,17 @@ async function tty_get_ext_cmd_inner() {
     let lastPark = [0, 0];
     while (true) {
         let keyCode = await pgetchar();
+        /* C win/tty/getline.c:85-91: `c == EOF` breaks out with obufp = "\033"
+         * whatever is already typed (the kill-line arm is ESC-only) and sets
+         * iflags.term_gone; it is tested before the ^P / doprev arms.  pgetchar
+         * returns a signed char, so the byte 0xff is that EOF.  tty_get_ext_cmd
+         * then takes the silent nmatches == -1 arm (getline.c:316-322). */
+        if (keyCode === -1) {
+            g.iflags.term_gone = 1;
+            g._pending_message = '';
+            g._topl_prompt_echo = false;
+            return -1;
+        }
         if (keyCode < 0) keyCode += 256;
         /* C ref: win/tty/getline.c:106-137 — ^P recalls message history onto the
          * topline (twice the first time, "need two initially") and keeps
@@ -4278,6 +4289,17 @@ export async function doprev_message(liveTopline) {
      * The cursor park behind the two calls (js/cmd.js extcmd reader,
      * js/windows.js getlin) must therefore follow whatever the LAST call
      * did: per-CALL state, not per-arm. */
+    /* _prevmsg_window_shown must describe the LAST call: hooked_tty_getlin's
+     * first ^P runs TWO tty_doprev_message() calls (getline.c:114-116 "need
+     * two initially"), and when the FIRST opens the history window (its
+     * display_nhwindow(.., TRUE) consumes the dismissal key) the window arm
+     * has already reset cw->maxcol = cw->maxrow (topl.c:59), so the SECOND
+     * call takes the maxcol == maxrow arm and redotoplin(gt.toplines)
+     * (topl.c:60) re-paints the LIVE "query buffer" line — putsyms walks the
+     * cursor one past its last char, and redotoplin's more() is skipped
+     * inside a getlin (otoplin == TOPLINE_SPECIAL_PROMPT, topl.c:139).
+     * Leaving the flag set from call 1 skipped the caller's park and parked
+     * the cursor on the hero instead (df-xa214c7db92 step 33: C [37,0,1]). */
     g._prevmsg_window_shown = false;
     const stored = Array.isArray(g._msg_history) ? g._msg_history : [];
     // getline.c:82 rebuilds gt.toplines with the query before each read.
@@ -4592,10 +4614,29 @@ export async function doprev_message(liveTopline) {
     const _tabWire = (ln) => String(ln).replace(/\t/g, '\x1b[1C');
     /* process_text_window (:1803-1805) adds a margin only when offx != 0;
      * zero-offset history text also starts at column zero on the status rows. */
+    /* C wintty.c:1809-1810 process_text_window: `*cp && ++curx < cols` stops
+     * before the last column, so a row holds at most cols-1-offx(+margin) cells
+     * — 79 - WIN_COL here; SGR wrappers and DEC shift bytes take none
+     * (authi-x3-wrap-021-engrave-history: an 82-byte "You read:" tail). */
+    const _capCells = (row) => {
+        const lim = 79 - WIN_COL;
+        let k = 0, i = 0;
+        while (i < row.length) {
+            const m = /^\x1b\[[0-9;]*[A-Za-z]/.exec(row.slice(i));
+            if (m) { if (m[0].endsWith('C')) k += +(m[0].slice(2, -1) || 1); i += m[0].length; continue; }
+            if (row[i] === '\x0e' || row[i] === '\x0f') { i++; continue; }
+            if (k >= lim) break;
+            k++; i++;
+        }
+        if (i >= row.length) return row;
+        const tail = row.slice(i).match(/\x1b\[[0-9;]*m|\x0f/g) || [];
+        return row.slice(0, i) + tail.join('');
+    };
+    const _winRow = (ln) => _capCells(_tabWire(tty_text_window_utf8_line(ln)));
     const screenOutput = _noOverlay
-        ? [..._fitLines.map((ln) => _tabWire(tty_text_window_utf8_line(ln))),
+        ? [..._fitLines.map(_winRow),
            ' --More--'].join('\n')
-        : build_window_screen([..._fitLines.map((ln) => _tabWire(tty_text_window_utf8_line(ln))), _moreLead + '--More--'],
+        : build_window_screen([..._fitLines.map(_winRow), _moreLead + '--More--'],
                               WIN_COL, uac, undefined, undefined, WIN_COL === 0);
     // Cursor at end of "--More--": WIN_COL + len("--More--") on the last row.
     const endRow = windowLines.length - 1;

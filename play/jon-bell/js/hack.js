@@ -2091,13 +2091,14 @@ async function _pickup_menu(atTile, count = 0) {
     let titleErased = false;
     const frameRows = async () => {
         const lines = await renderLines();
-        if (titleErased) lines[0] = '';
         if (tall) {
             const body = lines.slice(0, -1);
             const pl = [...body.slice(page * 23, page * 23 + 23), pageFooter()];
+            if (titleErased) pl[0] = '';
             while (pl.length < 24) pl.push('');
             return build_window_screen(pl, WIN_COL, uac, 0, undefined, fullScreen).split('\n');
         }
+        if (titleErased) lines[0] = '';
         return build_window_screen(lines, WIN_COL, uac, undefined, undefined, fullScreen).split('\n');
     };
     while (true) {
@@ -2108,6 +2109,7 @@ async function _pickup_menu(atTile, count = 0) {
                 if (!tall || e.page === page)
                     e.ind = _indFresh(e);
             pageFresh = false;
+            titleErased = false;
         }
         g._screen_output = (await frameRows()).join('\n');
         if (tall)

@@ -2704,6 +2704,15 @@ function _status_paint_flushed() {
  * overwrites it rather than joining it (topl.c:257-266).  The delayed-turn
  * (multi < 0) loops run a world block with no head-block hold, so hold the stale
  * prompt aside across the turn and restore it only if nothing was printed. */
+/* C allmain.c:200-201 — `if (svc.context.resume_wish) makewish();` opens every
+ * moveloop_core invocation, ahead of its world block (zap.c:6339-6343: a wish
+ * whose getlin met a gone terminal resumes; with iflags.term_gone still set
+ * every invocation wishes again).  The re-entry drivers call this where a new
+ * invocation starts; one whose last invocation goes on to read the next
+ * command sets _resumeWishChecked so moveloop_core_impl does not check twice. */
+async function _resume_wish_check() {
+    if (game.context?.resume_wish) await makewish();
+}
 async function _faithful_turn_over_stale_yn() {
     const g = game;
     const stale = (g._resultMessage && g._resultMessage === g._ynStaleTopline)
@@ -3151,6 +3160,8 @@ async function moveloop_core_faithful() {
                 g.program_state.in_sanity_check--;
             }
         }
+        // C allmain.c:200-201 — a resumed wish precedes this delayed world block.
+        if (g.context?.resume_wish) await makewish();
         // C ref: allmain.c:243-446 — one delayed turn: the faithful per-turn
         // do-while, including the ++gm.multi / unmul that terminates this loop.
         await faithful_moveloop_turn();
@@ -3490,6 +3501,8 @@ async function moveloop_core_faithful() {
         } else {
         let digInterrupted = false;
         while (g.occupation === dig && digGuard++ < 4096) {
+            // C allmain.c:200-201 — this invocation's resumed wish first.
+            await _resume_wish_check();
             // C allmain.c:243-446 — a full new per-turn world block for this
             // occupation turn (movemon + HEAD; svm.moves++ inside).
             await faithful_moveloop_turn();
@@ -3556,10 +3569,14 @@ async function moveloop_core_faithful() {
         // JS runs one turn too many and the hero's subsequent moves lag C by one
         // post-occupation turn (its breaking turn ran movemon-then-dig).
         if (!_digHorizontal && !digInterrupted) {
+            await _resume_wish_check(); // C allmain.c:200-201
             await faithful_moveloop_turn();
             find_ac();
             await faithful_input_redraw();
         }
+        /* the last invocation (post-occupation turn, or the interrupted one)
+         * reads the next command itself: its wish check has run */
+        if (digGuard) g._resumeWishChecked = true;
         // This invocation's input tail has already run, including on interrupt.
         g._ff_input_tail_done = true;
         // The post-occupation turn's movemon plines (if any) share the dig topline
@@ -3790,6 +3807,7 @@ async function moveloop_core_faithful() {
             // invocation, run under C's own `if (svc.context.move)` test.  The
             // is `rn2(24) @ start_tin` → `^ctx_move[rhack=1]` → the turn-12
             // world block → `^ctx_move[moveloop_core=1]` → opentin().
+            await _resume_wish_check(); // C allmain.c:200-201, ahead of it
             if (g.context && g.context.move) await faithful_moveloop_turn();
             // C allmain.c:494-496 — `if (go.occupation && ...)` re-tests the
             // occupation AFTER the world block: nh_timeout's stoned_dialogue()
@@ -3848,6 +3866,7 @@ async function moveloop_core_faithful() {
         // only when stop_occupation fired DURING the last turn's world block
         // (C falls through to rhack in that same invocation).
         if (!tinInterrupted) {
+            await _resume_wish_check(); // C allmain.c:200-201
             await faithful_moveloop_turn();
             if (g.vision_full_recalc) {
                 vision_recalc(0);
@@ -3858,6 +3877,8 @@ async function moveloop_core_faithful() {
         }
         g.context = g.context || {};
         g.context.move = 0;
+        /* the last invocation reads the next command itself: its wish check ran */
+        if (tinGuard) g._resumeWishChecked = true;
     }
     // ===================== go.occupation DRIVER — ENGRAVE (faithful) ===============
     // C ref: allmain.c:539-558 — rhack just dispatched 'E' → doengrave, which did the
@@ -3882,6 +3903,11 @@ async function moveloop_core_faithful() {
              * invocation; for a continuing one, the tail after the previous
              * world block.  Hallucinating, each is a run of DISPLAY-stream
              * draws, so omitting it shifts every later hallucinated name. */
+            /* C allmain.c:200-201 — the first callback opens a new
+             * moveloop_core invocation (doengrave's ECMD_OK returned to it),
+             * so a resumed wish runs ahead of it; later callbacks share the
+             * invocation of the world block before them. */
+            if (engrGuard === 1) await _resume_wish_check();
             if (engrGuard === 1) await faithful_input_redraw();
             const r = await engrave();
             if (r === 0) g.occupation = null;
@@ -3891,6 +3917,9 @@ async function moveloop_core_faithful() {
                 await stop_occupation();
                 reset_eat();
             }
+            /* C allmain.c:200-201 — the next invocation's resumed wish
+             * precedes its world block. */
+            await _resume_wish_check();
             await faithful_moveloop_turn();
             /* C allmain.c:453-471 — the moveloop_core that ran this world
              * block redraws (see_monsters/see_objects/see_traps) BEFORE its
@@ -3911,6 +3940,8 @@ async function moveloop_core_faithful() {
         g._ff_input_tail_done = true;
         g.context = g.context || {};
         g.context.move = 0;
+        /* the last world block's invocation reads the next command itself */
+        if (engrGuard) g._resumeWishChecked = true;
     }
     // ===================== go.occupation DRIVER — PICKLOCK (faithful) =============
     // C ref: allmain.c:543-558 — rhack just dispatched '#loot' → doloot →
@@ -3950,6 +3981,7 @@ async function moveloop_core_faithful() {
         // order was wrong, and it put the whole RNG stream two draws out of phase
         // from step 52 on.
         while (g.occupation === picklock && pickGuard++ < 4096) {
+            await _resume_wish_check(); // C allmain.c:200-201
             // C allmain.c:209 — the head world block of THIS moveloop_core.
             if (g.context && g.context.move) await faithful_moveloop_turn();
             /* C allmain.c:447-480 — the once-per-input redraw tail and the
@@ -4001,6 +4033,7 @@ async function moveloop_core_faithful() {
         // rhack reads the next key.  Run it here and suppress the next head
         // (context.move = 0 below) — the dig/learn/engrave driver pattern.
         if (!pickInterrupted) {
+            await _resume_wish_check(); // C allmain.c:200-201
             await faithful_moveloop_turn();
             find_ac();
             /* C allmain.c:453-471: finish this invocation's redraw tail before
@@ -4021,6 +4054,8 @@ async function moveloop_core_faithful() {
         await flush_screen(1, false);
         g.context = g.context || {};
         g.context.move = 0;
+        /* the last invocation reads the next command itself: its wish check ran */
+        if (pickGuard) g._resumeWishChecked = true;
     }
     // ===================== go.occupation DRIVER — SET_TRAP (apply.c:2908) =========
     // C ref: allmain.c:484-507 with apply.c:2908 set_trap().  use_trap armed
@@ -4037,6 +4072,7 @@ async function moveloop_core_faithful() {
         let trapGuard = 0;
         let trapInterrupted = false;
         while (g.occupation === setTrapFn && trapGuard++ < 4096) {
+            await _resume_wish_check(); // C allmain.c:200-201
             // C allmain.c:209 — the head world block of THIS moveloop_core.
             if (g.context && g.context.move) await faithful_moveloop_turn();
             g.context = g.context || {};
@@ -4063,7 +4099,10 @@ async function moveloop_core_faithful() {
         }
         // allmain.c:209 — context.move still 1: ONE more post-occupation world
         // block runs before rhack reads the next key (picklock/dig pattern).
-        if (!trapInterrupted) await faithful_moveloop_turn();
+        if (!trapInterrupted) {
+            await _resume_wish_check(); // C allmain.c:200-201
+            await faithful_moveloop_turn();
+        }
         if (g.vision_full_recalc) {
             vision_recalc(0);
             g.vision_full_recalc = 0;
@@ -4072,6 +4111,8 @@ async function moveloop_core_faithful() {
         await flush_screen(1);
         g.context = g.context || {};
         g.context.move = 0;
+        /* the last invocation reads the next command itself: its wish check ran */
+        if (trapGuard) g._resumeWishChecked = true;
     }
     // ===================== go.occupation DRIVER — FORCELOCK (faithful) ============
     // C ref: allmain.c:543-558 — rhack just dispatched '#force' → doforce, which
@@ -4103,6 +4144,17 @@ async function moveloop_core_faithful() {
         // had no frame of its own and fell back to the coarse end-of-occupation
         const beginMsg = g._resultMessage || '';
         while (g.occupation === forcelock && forceGuard++ < 4096) {
+            /* C allmain.c:200-201 — a resumed wish opens this invocation.  Its
+             * pline meets the standing topline (the begin message this driver
+             * otherwise keeps on the result channel until the force ends). */
+            if (g.context?.resume_wish) {
+                if (g._resultMessage && !g._pending_message) {
+                    g._pending_message = g._resultMessage;
+                    g._resultMessage = null;
+                    g._resultMessageJoins = null;
+                }
+                await makewish();
+            }
             // C allmain.c:243-446 — one full per-turn world block (movemon + HEAD;
             // svm.moves++ inside) BEFORE the occupation callback (the C trace shows
             // head(turn N) → forcelock rn2(100) → movemon within each turn).
@@ -4156,6 +4208,21 @@ async function moveloop_core_faithful() {
          * live (no key has been read since), update_topl swallows them.  Route
          * the staged lines through pline() so they take that bookkeeping
          * instead of being joined onto the standing line. */
+        /* C allmain.c:200-201 — the post-occupation invocation's resumed wish:
+         * forcelock()'s lines were plined inside the callback before it, so
+         * they reach the topline first and the wish's pline meets them. */
+        if (!forceInterrupted && g.context?.resume_wish) {
+            if (g._resultMessage && !g._pending_message) {
+                g._pending_message = g._resultMessage;
+                g._resultMessage = null;
+                g._resultMessageJoins = null;
+            }
+            const _staged = g._forceMsgs || [];
+            g._forceMsgs = null;
+            g._forceMsgBotls = null;
+            for (const m of _staged) await pline(m);
+            await makewish();
+        }
         if (!forceInterrupted && g._forceMsgs?.length && g._topl_win_stop) {
             const _staged = g._forceMsgs;
             g._forceMsgs = null;
@@ -4195,6 +4262,8 @@ async function moveloop_core_faithful() {
         }
         // This invocation resumes at rhack; its redraw tail has already run.
         g._ff_input_tail_done = true;
+        /* ...and so has its resumed-wish check (allmain.c:200-201) */
+        if (forceGuard) g._resumeWishChecked = true;
         let _postTail = '';
         let _postJoins = null;
         {
@@ -4334,6 +4403,7 @@ async function moveloop_core_faithful() {
         let wipeGuard = 0;
         let wipeInterrupted = false;
         while (g.occupation === wipeoff && wipeGuard++ < 4096) {
+            await _resume_wish_check(); // C allmain.c:200-201
             // C allmain.c:243-446 — one full per-turn world block (movemon + HEAD;
             // svm.moves++ inside) BEFORE the occupation callback.
             await faithful_moveloop_turn();
@@ -4364,6 +4434,7 @@ async function moveloop_core_faithful() {
         // re-enters moveloop_core with context.move still 1 and runs ONE post-
         // occupation turn's world block before rhack reads the next key.  That is
         // suppress the next head's block with context.move = 0, the forcelock shape.
+        await _resume_wish_check(); // C allmain.c:200-201
         await faithful_moveloop_turn();
         if (g.vision_full_recalc) {
             vision_recalc(0);
@@ -4374,6 +4445,8 @@ async function moveloop_core_faithful() {
         g.context = g.context || {};
         g.context.move = 0;
         }
+        /* the last invocation reads the next command itself: its wish check ran */
+        if (wipeGuard) g._resumeWishChecked = true;
     }
     // ===================== go.occupation DRIVER — TAKE_OFF ('A') =================
     // C ref: allmain.c:484-507 with do_wear.c:2900 take_off().  doddoremarm ran the
@@ -4385,6 +4458,9 @@ async function moveloop_core_faithful() {
         let toInterrupted = false;
         while (g.occupation === take_off_occ && (g.multi | 0) >= 0
                && takeoffGuard++ < 4096) {
+            // C allmain.c:200-201 — every invocation, the first one included
+            // (it has no world block), opens with the resumed-wish check.
+            await _resume_wish_check();
             // doddoremarm returns ECMD_OK (context.move 0): C's first invocation
             // runs the callback with NO world block (do_wear.c:3053).
             if (takeoffGuard > 1 || (g.context && g.context.move))
@@ -4423,6 +4499,7 @@ async function moveloop_core_faithful() {
         // C re-enters moveloop_core once more with context.move still 1 before
         // rhack reads a key (the wipeoff/learn shape).
         if (!toInterrupted && (g.multi | 0) >= 0) {
+            await _resume_wish_check(); // C allmain.c:200-201
             await faithful_moveloop_turn();
             if (g.vision_full_recalc) {
                 vision_recalc(0);
@@ -4433,6 +4510,8 @@ async function moveloop_core_faithful() {
         }
         g.context = g.context || {};
         g.context.move = 0;
+        /* the last invocation reads the next command itself: its wish check ran */
+        if (takeoffGuard) g._resumeWishChecked = true;
     }
     // ===================== EAT OCCUPATION START (faithful, just after rhack) =====
     // C ref: allmain.c:543-558 — rhack (doeat → start_eating → set_occupation(eatfood))
@@ -4785,6 +4864,10 @@ async function moveloop_core_faithful() {
                 g.program_state.in_sanity_check--;
             }
         }
+        // C allmain.c:200-201 — this delayed invocation runs a resumed wish
+        // (zap.c:6339-6343: a wish getlin met a gone terminal) before its
+        // world block, helpless or not.
+        if (g.context?.resume_wish) await makewish();
         // C ref: allmain.c:243-446 — one more delayed turn: the full faithful
         // per-turn do-while (umv-=NORMAL_SPEED; movemon; HEAD with mcalcmove/makemon/
         // u_calc_moveamt/dosounds/gethungry/exerchk; ++gm.multi+unmul; svm.moves++
@@ -4879,6 +4962,10 @@ async function moveloop_core_faithful() {
         if (countdownGuard) {
             g.context = g.context || {};
             g.context.move = 0;
+            /* That invocation also ran its resumed-wish check (allmain.c:200-201,
+             * above) and reads the next command itself (allmain.c:573): the next
+             * moveloop_core_impl pass must not check again. */
+            g._resumeWishChecked = true;
         }
     }
     if (countdownGuard && (g.multi | 0) >= 0 && g.context)
@@ -5419,7 +5506,29 @@ async function moveloop_core_impl() {
             g.program_state.in_sanity_check--;
         }
     }
-    if (g.context?.resume_wish) await makewish(); // C allmain.c:200-201
+    /* C allmain.c:200-201.  A delayed-turn loop whose last world block ended
+     * the countdown already ran this check for the invocation whose rhack
+     * this pass performs (_resumeWishChecked). */
+    if (g._resumeWishChecked) g._resumeWishChecked = false;
+    else if (g.context?.resume_wish) {
+        /* The meal's last line ("You're finally finished.") is still the
+         * painted, unacknowledged topline (eat_occupation_turn keeps it in
+         * _occ_committed_topl for the next turn's first pline): the wish's
+         * "You may wish for an object." is that first pline and meets it
+         * (topl.c:262-275 update_topl). */
+        const pm = g._occ_committed_topl;
+        if (pm?.postMeal && !g.occupation && !g._pending_message && !g._resultMessage) {
+            g._occ_committed_topl = null;
+            g._pending_message = pm.text;
+        } else if (pm && !pm.postMeal && pm.text === g._pending_message) {
+            /* a mid-meal line ("You're having a hard time getting all of it
+             * down."): the wish's pline pages and files it now, so the meal's
+             * next turn has no committed line left to page (remember_topl
+             * stores it once). */
+            g._occ_committed_topl = null;
+        }
+        await makewish();
+    }
     // NOTE: the painted-screen snapshot is dropped at flush_screen after its
     // --More-- window is paged (see moveloop_core_faithful) — NOT reset here.
     // unless explicitly disabled, so the early return below ALWAYS fires and

@@ -637,12 +637,16 @@ function rc_bytes(s) {
     return /[^\x00-\x7f]/.test(s) ? String.fromCharCode(...new TextEncoder().encode(s)) : s;
 }
 
+/* C isspace() in the C locale: String.prototype.trim also strips U+00A0, which
+ * an rc byte string holds for the byte 0xa0 (the tail of a UTF-8 'à'). */
+const C_SPACE_EDGES = /^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g;
+
 // C options.c:847 petname_optfn(do_set), nmcpy(:6861), bones.c:198.
 function petname_optfn(flags, name, op, negated, eightBitInput) {
     if (!op && !negated) return;
     if (negated || op === 'none' || op === '(none)') op = '';
-    const bytes = new TextEncoder().encode(op.split(/[\0,]/, 1)[0]).slice(0, 62);
-    flags[name] = sanitize_name(String.fromCharCode(...bytes), !eightBitInput);
+    /* op is the rc's bytes (parseNethackrc), one char per byte */
+    flags[name] = sanitize_name(op.split(/[\0,]/, 1)[0].slice(0, 62), !eightBitInput);
 }
 
 // C options.c:1170-1223 (BACKWARD_COMPAT). The startup and in-game setter
@@ -1058,14 +1062,19 @@ export function parseNethackrc(rc) {
         // parseoptions() handles the suffix recursively before the first
         // entry. Across RC lines, the ordinary file order is retained.
         lineAliasSticky = false;   /* a new top-level parseoptions() call */
-        for (const opt of optMatch[1].split(',').reverse()) {
+        for (const optText of optMatch[1].split(',').reverse()) {
+            /* C cfgfiles.c read_config_file -> parseoptions(): the option text is
+             * the FILE's bytes, so every handler below (and every config_error_add
+             * quoting a value: "Unknown role 'caf\xc3\xa9'", a packorder class per
+             * byte) sees one char per UTF-8 byte (authi-f4-005-rc-role). */
+            const opt = rc_bytes(optText);
             // options.c:522-526 rejects the raw entry before stripping space,
             // just as the interactive parseoptions() path below already does.
-            if (new TextEncoder().encode(opt).length > 128) {
+            if (opt.length > 128) {
                 config_error_add('Option too long, max length is 128 characters');
                 continue;
             }
-            const trimmed = opt.trim();
+            const trimmed = opt.replace(C_SPACE_EDGES, '');
             if (!trimmed) {
                 config_error_add('Empty statement');
                 continue;
@@ -1079,7 +1088,7 @@ export function parseNethackrc(rc) {
                 menunegated = !menunegated;
             }
             const menusep = menuopts.search(/[:=]/);
-            const menuname = (menusep < 0 ? menuopts : menuopts.slice(0, menusep)).trim().toLowerCase();
+            const menuname = (menusep < 0 ? menuopts : menuopts.slice(0, menusep)).replace(C_SPACE_EDGES, '').toLowerCase();
             const menuval = menusep < 0 ? '' : menuopts.slice(menusep + 1);
             if (viaAlias(menuopts)) lineAliasSticky = true;   /* C options.c:610 */
             /* C options.c:620-628: duplicate_opt_detection() + complain_about_duplicate()
@@ -1114,7 +1123,7 @@ export function parseNethackrc(rc) {
                     config_error_add('The playmode option may not both have a value and be negated.');
                     continue;
                 }
-                const op = menuval.trim();
+                const op = menuval.replace(C_SPACE_EDGES, '');
                 if (duplicate || !op) continue;
                 if (/^normal/i.test(op) || /^play$/i.test(op)) {
                     result.flags.debug = result.flags.explore = false;
@@ -1308,7 +1317,7 @@ export function parseNethackrc(rc) {
 
             if (menuname.length >= 7 && 'statushilites'.startsWith(menuname)) {
                 optfn_statushilites_set(result.iflags,
-                    menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated);
+                    menusep < 0 ? '' : menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, ''), menunegated);
                 continue;
             }
             /* C options.c:1182-1223 optfn_boulder() (BACKWARD_COMPAT): boulder:sym
@@ -1319,7 +1328,7 @@ export function parseNethackrc(rc) {
                 /* The rc value is the FILE's bytes in C (escapes() at options.c:1193
                  * walks bytes); a 4-byte UTF-8 symbol's low UTF-16 unit is not its
                  * lead byte (mac-b-boulder-emoji4-119 step 0 row 2). */
-                set_boulder_symbol(result, menuopts, rc_bytes(menuval),
+                set_boulder_symbol(result, menuopts, menuval,
                     menunegated, config_error_add);
                 continue;
             }
@@ -1365,7 +1374,7 @@ export function parseNethackrc(rc) {
              * paranoid_confirm:+pray; any value is an error. */
             if (menuname.length >= 4 && 'prayconfirm'.startsWith(menuname)) {
                 const pcsep = menuopts.search(/[:=]/);
-                const pcop = pcsep < 0 ? '' : menuopts.slice(pcsep + 1).trim();
+                const pcop = pcsep < 0 ? '' : menuopts.slice(pcsep + 1).replace(C_SPACE_EDGES, '');
                 if (pcop) {
                     config_error_add("deprecated %sprayconfirm option takes no parameters (found '%s')",
                                      menunegated ? '!' : '', pcop);
@@ -1498,7 +1507,7 @@ export function parseNethackrc(rc) {
                 continue;
             }
             if (menuname.length >= 9 && 'hilite_status'.startsWith(menuname)) {
-                if (menusep < 0 || (!menunegated && !menuopts.slice(menusep + 1).trim())) {
+                if (menusep < 0 || (!menunegated && !menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, ''))) {
                     config_error_add('Value is mandatory for hilite_status');
                     continue;
                 }
@@ -1516,7 +1525,7 @@ export function parseNethackrc(rc) {
                 }
                 /* C botl.c:2637 -> parse_status_hl2(): store each accepted
                  * rule once (field thresholds append at botl.c:3099). */
-                const hlop = menuopts.slice(menusep + 1).trim();
+                const hlop = menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, '');
                 store_status_hilite(hlop);
                 if (!result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
                 continue;
@@ -1599,8 +1608,8 @@ export function parseNethackrc(rc) {
              * FALSE), so the error stands alone.  atoi() semantics: a non-numeric
              * value reads as 0 and is only legal when it starts with '0'. */
             if (menuname.length >= 5 && 'mouse_support'.startsWith(menuname)
-                && !menunegated && menusep >= 0 && menuopts.slice(menusep + 1).trim()) {
-                const msop = menuopts.slice(menusep + 1).trim();
+                && !menunegated && menusep >= 0 && menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, '')) {
+                const msop = menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, '');
                 const msmode = c_atoi(msop) || 0;
                 if (msmode < 0 || msmode > 2 || (msmode === 0 && msop[0] !== '0')) {
                     config_error_add("Illegal %s parameter '%s'", 'mouse_support', msop);
@@ -1669,13 +1678,13 @@ export function parseNethackrc(rc) {
             }
             if (menuname.length >= 5 && 'menustyle'.startsWith(menuname)) {
                 optfn_menustyle_set(result.flags, menuopts,
-                    menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated);
+                    menusep < 0 ? '' : menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, ''), menunegated);
                 continue;
             }
             /* C options.c:2190 optfn_menu_headings(do_set) + coloratt.c:261
              * color_attr_parse_str: "color&attr" (either order) or one of them. */
             if (menuname.length >= 6 && 'menu_headings'.startsWith(menuname)) {
-                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
+                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, '');
                 if (!op) {
                     result.iflags.menu_headings = { color: 8 /* NO_COLOR */, attr: menunegated ? 0 : 7 };
                 } else if (menunegated) {
@@ -1689,7 +1698,7 @@ export function parseNethackrc(rc) {
             }
             // C options.c:2299-2308: atoi, accept only menuinvertmode 0..2.
             if (menuname.length >= 5 && 'menuinvertmode'.startsWith(menuname)) {
-                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
+                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, '');
                 const mode = c_atoi(op) || 0;
                 if (op && (mode < 0 || mode > 2))
                     config_error_add(`Illegal menuinvertmode parameter '${op}'`);
@@ -1701,7 +1710,7 @@ export function parseNethackrc(rc) {
              * use_menu_glyphs = bits 1 or 2 (options.c:7450). */
             if (menuname.length >= 7 && 'menu_objsyms'.startsWith(menuname)) {
                 const OBJSYM_NAMES = ['none', 'headers', 'entries', 'both', 'conditional', 'one-or-other'];
-                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).trim();
+                const op = menusep < 0 ? '' : menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, '');
                 let osyms;
                 if (menunegated) osyms = 0;
                 else if (!op) osyms = 1;
@@ -1731,7 +1740,7 @@ export function parseNethackrc(rc) {
             // determine_ambiguities(): "sup" uniquely identifies suppress_alert.
             if (menuname.length >= 3 && 'suppress_alert'.startsWith(menuname)) {
                 const res = optfn_suppress_alert_set(result.flags,
-                    menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated);
+                    menusep < 0 ? '' : menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, ''), menunegated);
                 if (res.error) config_error_add('%s', res.error);
                 continue;
             }
@@ -1763,7 +1772,7 @@ export function parseNethackrc(rc) {
                 /* C options.c:620-623 duplicate_opt_detection() runs before the
                  * option function (optlist.h sortdiscoveries is not dupeok). */
                 compoundDuplicate('sortdiscoveries');
-                if (optfn_sortdiscoveries_set(menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated, result.flags, menuopts))
+                if (optfn_sortdiscoveries_set(menusep < 0 ? '' : menuopts.slice(menusep + 1).replace(C_SPACE_EDGES, ''), menunegated, result.flags, menuopts))
                     continue;
             }
             let negated = trimmed.startsWith('!');
@@ -1796,13 +1805,12 @@ export function parseNethackrc(rc) {
             }
             const colonIdx = stripped.search(/[:=]/);
             if (colonIdx >= 0) {
-                const key = stripped.slice(0, colonIdx).trim().toLowerCase();
-                const val = stripped.slice(colonIdx + 1).trim();
+                const key = stripped.slice(0, colonIdx).replace(C_SPACE_EDGES, '').toLowerCase();
+                const val = stripped.slice(colonIdx + 1).replace(C_SPACE_EDGES, '');
                 if (key === 'name') {
                     // C options.c:2561,6865-6870: nmcpy copies at most
                     // PL_NSIZ-1 bytes from the UTF-8 rc file, without sanitizing.
-                    const bytes = new TextEncoder().encode(val.split(/[\0,]/, 1)[0]).slice(0, 31);
-                    result.name = String.fromCharCode(...bytes);
+                    result.name = val.split(/[\0,]/, 1)[0].slice(0, 31);
                 }
                 else if (key === 'role' || key === 'race' || key === 'gender' || key === 'align') {
                     /* C options.c optfn_role/race/gender/alignment: a name
@@ -1814,7 +1822,7 @@ export function parseNethackrc(rc) {
                         const rf = roleGlobals.rfilter;
                         if (key === 'role') rf.roles.fill(false);
                         else rf.mask &= ~(key === 'race' ? ROLE_RACEMASK : ROLE_GENDMASK);
-                        for (const tok of val.split(/\s+/)) {
+                        for (const tok of val.split(/[\t\n\v\f\r ]+/)) {
                             const nm = tok.replace(/^!+/, '');
                             if (nm && !setrolefilter(nm))
                                 config_error_add("Invalid %s '%s'", key, nm);
@@ -1892,8 +1900,7 @@ export function parseNethackrc(rc) {
                  * then sanitize_name, including during startup.  The rc file
                  * contains UTF-8 bytes; sanitize_name operates on byte strings. */
                 else if (key === 'fruit') {
-                    const bytes = new TextEncoder().encode(negated ? '' : mungspaces(val).split(/[\0,]/, 1)[0]).slice(0, 31);
-                    const f = sanitize_name(String.fromCharCode(...bytes), !result.iflags.wc_eight_bit_input);
+                    const f = sanitize_name((negated ? '' : mungspaces(val).split(/[\0,]/, 1)[0]).slice(0, 31), !result.iflags.wc_eight_bit_input);
                     if (negated || f) result.fruit = f;
                 }
                 else if (key === 'whatis_coord') {
