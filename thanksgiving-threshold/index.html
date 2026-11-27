@@ -11,6 +11,7 @@ body { max-width: 40em; margin: 0 auto; padding: 1.5em; background: #f9f7f1; col
 a { color: #6b2c2c; }
 nav, footer, .byline { font-size: .9em; color: #555; }
 h1 { line-height: 1.1; margin: 1.5em 0 .25em; }
+h2 { font-size: 1.2em; line-height: 1.2; margin: 1.75em 0 .5em; }
 .byline { margin: 0 0 2em; }
 footer { border-top: 1px solid #d0c8b8; margin-top: 2em; padding-top: 1em; }
 </style>
@@ -23,6 +24,10 @@ footer { border-top: 1px solid #d0c8b8; margin-top: 2em; padding-top: 1em; }
 <p class="byline"><time datetime="2026-11-26">November 26, 2026</time></p>
 <p>Happy Thanksgiving, and congratulations to everyone who’s taken part in the Mazes of Menace challenge! Several entries now match 100% of screens, and more than ten are above 97%. Getting NetHack to agree with you for that many screens is quite a feat.</p>
 <p>At least ten entries will qualify for Phase 2. <strong>Phase 1 ends and Phase 2 begins at <time datetime="2026-11-29T00:00:00Z">00:00 UTC on Sunday, November 29, 2026</time>.</strong> In Eastern time, that’s <strong><time datetime="2026-11-28T19:00:00-05:00">Saturday, November 28, 2026, at 7:00 p.m. EST</time></strong>.</p>
+<h2>Preparing Your Code for Phase 2</h2>
+<p>At the end of Phase 1 on Saturday, we will take a fixed snapshot of your code that will serve as your permanent, immutable baseline for Phase 2. Make sure your Phase 1 code is as well-structured and as maintainable as possible before that checkpoint.</p>
+<p>In Phase 2, we will score maintainability based on changes to your <strong>JavaScript</strong>—specifically, the JavaScript that actually forms the runtime of your engine. It is fine if that JavaScript is the output of a compiler or transpiler, so long as the runtime JavaScript itself is clean and maintainable; we will be examining diffs of your runtime JavaScript, and we won’t be scoring diffs of TypeScript, C, Lua, or other precursor files.</p>
+<p>Phase 2 scoring will be linked to the size of traditional Unix diffs between your new code and your Phase 1 submission. In particular, avoid jamming together very long lines in your JavaScript source; for example, a single 400&nbsp;KB line of code is not very maintainable and will likely damage your Phase 2 score. If you cannot cleanly diff your Phase 2 code against your final Phase 1 checkpoint on Saturday, your Phase 2 submission may receive a low score.</p>
 <p>Enjoy the holiday, and good luck on your final Phase 1 runs!</p>
 </article>
 </main>
