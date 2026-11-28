@@ -34,12 +34,12 @@ import { You, You_cant } from './display.js';
 import { check_capacity } from './hack.js';
 import { getdir } from './cmd.js';
 import { doquiver_core } from './wield.js';
-import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, W_WEP, Race_if } from './const.js';
+import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, W_WEP, W_SWAPWEP, Race_if } from './const.js';
 import { BULLWHIP, BOOMERANG, AKLYS, WAN_PROBING, WAN_OPENING, WAN_LOCKING,
          WAN_STRIKING, is_pick, is_spear, is_blade, is_sword, greatest_erosion,
          is_axe, is_weptool, matching_launcher, is_missile, is_wet_towel,
          is_ammo, is_pole, ammo_and_launcher } from './objects.js';
-import { zap_map, bhitpile } from './zap.js';
+import { zap_map, bhitpile, boomhit } from './zap.js';
 import { M1_NOHANDS, M1_NOTAKE, S_COCKATRICE, PM_CHICKATRICE, PM_COCKATRICE,
          PM_MEDUSA, MZ_MEDIUM, mons } from './monsters.js';
 import { pline, newsym, flush_screen, canspotmon, canseemon } from './display.js';
@@ -78,7 +78,7 @@ import { welded, weldmsg } from './wield.js';
 import { getobj, freeinv, stackobj, prinv } from './invent.js';
 import { addinv_before } from './invent.js';
 import { dry_a_towel } from './weapon.js';
-import { setuwep, setuqwep, set_twoweap } from './wield.js';
+import { setuwep, setuqwep, set_twoweap, setuswapwep } from './wield.js';
 import { artifact_hit } from './artifact.js';
 import { killer_xname } from './mthrowu.js';
 import { BACKTRACK, W_QUIVER, ARM, FOOT } from './const.js';
@@ -218,6 +218,10 @@ import { killer } from './topten.js';
 import { corpse_xname } from './objnam.js';
 import { pmname, ARTICLE_YOUR, EXACT_NAME, SUPPRESS_NAME } from './do_name.js';
 import { CXN_PFX_THE, NEUTRAL } from './const.js';
+import { INVIS_BEAM, FLASHED_LIGHT } from './const.js';
+import { DISP_BEAM } from './display.js';
+import { flash_hits_mon } from './uhitm.js';
+import { perceives } from './mondata.js';
 
 /* C ref: weight.h WT_SPLASH_THRESHOLD -- weight needed to make splash in
    water */
@@ -626,7 +630,7 @@ function swallowit(obj) {
    mon may be NULL.
    returns TRUE if shopkeeper caught the object.
    may delete object, clearing gt.thrownobj */
-async function throwit_mon_hit(obj, mon) {
+export async function throwit_mon_hit(obj, mon) {
     const g = game;
     const u = g.u;
     if (mon) {
@@ -1017,7 +1021,16 @@ export async function throwit(obj,
         /* toss_up(), hitfloor(), potionhit() on the steed */
         throw new Error('throwit(): throwing up or down not ported yet');
     } else if (obj.otyp === BOOMERANG && !Underwater()) {
-        throw new Error('throwit(): boomhit() not ported yet');
+        if (Is_airlevel(u.uz) || Levitation())
+            await hurtle(-u.dx, -u.dy, 1, true);
+        mon = await boomhit(obj, u.dx, u.dy);
+        g.iflags.returning_missile = null; /* has returned or isn't going to */
+        if (mon === g.youmonst) { /* the thing was caught */
+            await exercise(A_DEX_DT, true);
+            obj = await return_throw_to_inv(obj, wep_mask, twoweap, oldslot);
+            throwit_return(true);
+            return;
+        }
     } else {
         /* crossbow range is independent of strength */
         crossbowing = (ammo_and_launcher(obj, g.uwep)
@@ -1247,6 +1260,64 @@ export async function throwit(obj,
     }
 
     throwit_return(false);
+}
+
+// C ref: dothrow.c return_throw_to_inv()
+/* hero catches a thrown object that returned (a boomerang) */
+async function return_throw_to_inv(
+    obj,      /* object to add to invent */
+    wep_mask, /* its owornmask before it was removed from invent */
+    twoweap,  /* True if hero was dual-wielding before removal */
+    oldslot) { /* following item in invent in case of '!fixinv' */
+    const g = game;
+    let otmp = null;
+    const os = g.context.objsplit || { parent_oid: 0, child_oid: 0 };
+
+    /* if 'obj' is from a stack split, we can put it back by undoing split
+       so there's no chance of merging with some other compatible stack */
+    if (obj.o_id === os.parent_oid || obj.o_id === os.child_oid) {
+        obj.nobj = g.invent;
+        g.invent = obj;
+        obj.where = 'OBJ_INVENT';
+        otmp = unsplitobj(obj);
+        if (!otmp) {
+            g.invent = obj.nobj;
+            obj.nobj = null;
+            obj.where = 'OBJ_FREE';
+        } else {
+            obj = otmp;
+        }
+    }
+
+    /* if 'obj' wasn't from a stack split or if it wouldn't merge back
+       (maybe new erosion damage?) then it needs to be added to invent;
+       don't merge with any other stack even if there is a compatible one
+       (others with similar erosion?); can't use addinv_nomerge() here */
+    if (!otmp) {
+        obj.nomerge = 1; /* redundant unless 'oldslot' somehow went away */
+        obj = await addinv_before(obj, oldslot);
+        obj.nomerge = 0;
+
+        /* in case addinv() autoquivered */
+        if ((obj.owornmask & W_QUIVER) !== 0
+            && ((obj.owornmask | wep_mask) & (W_WEP | W_SWAPWEP)) !== 0)
+            setuqwep(null);
+
+        if ((wep_mask & W_WEP) && !g.uwep)
+            setuwep(obj);
+        else if ((wep_mask & W_SWAPWEP) && !g.uswapwep)
+            setuswapwep(obj);
+        else if ((wep_mask & W_QUIVER) && !g.uquiver)
+            setuqwep(obj);
+
+        /* in case the throw ended dual-wielding, reinstate it after
+           successful catch (not needed for boomerang split/unsplit) */
+        if (twoweap && !g.u.twoweap)
+            set_twoweap(true); /* u.twoweap = TRUE */
+    }
+
+    await encumber_msg();
+    return obj;
 }
 
 // C ref: dothrow.c check_shop_obj()
@@ -1614,10 +1685,6 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
     const was_returning = (g.iflags.returning_missile === obj) ? obj : null;
     void point_blank;
 
-    if (weapon !== THROWN_WEAPON && weapon !== THROWN_TETHERED_WEAPON
-        && weapon !== KICKED_WEAPON && weapon !== ZAPPED_WAND)
-        throw new Error('bhit(): flashed light and beams not ported yet');
-
     if (weapon === KICKED_WEAPON) {
         /* object starts one square in front of player */
         g.bhitpos = { x: u.ux + ddx, y: u.uy + ddy };
@@ -1631,11 +1698,13 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
         allow_skip = !rn2(3);
     }
 
-    if (weapon === THROWN_TETHERED_WEAPON && obj) {
+    if (weapon === FLASHED_LIGHT) {
+        await tmp_at(DISP_BEAM, 0); /* cmap_to_glyph(S_flashbeam) */
+    } else if (weapon === THROWN_TETHERED_WEAPON && obj) {
         tethered_weapon = true;
         weapon = THROWN_WEAPON; /* simplify 'if's that follow below */
         await tmp_at(DISP_TETHER, obj_to_glyph(obj, rn2_on_display_rng));
-    } else if (weapon !== ZAPPED_WAND) /* && weapon != INVIS_BEAM */
+    } else if (weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM)
         await tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
 
     while (range-- > 0) {
@@ -1673,6 +1742,9 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
                 g.bhitpos.y -= ddy;
                 break;
             }
+        } else if (weapon === FLASHED_LIGHT) {
+            if (!Blind())
+                await show_transient_light(null, x, y);
         }
 
         if (weapon === ZAPPED_WAND) {
@@ -1717,17 +1789,46 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
            give message and skip it in order to keep going;
            thrown objects don't hit mimics pretending to be objects */
         const xyglyph = glyph_at(x, y);
-        if (mtmp && (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
-            && (await shade_miss(game.youmonst, mtmp, obj, true, true)
-                || (mtmp.m_ap_type === M_AP_OBJECT
-                    && xyglyph.kind !== 'mon' /* !glyph_is_monster() */
-                    && !glyph_is_warning(xyglyph)
-                    && !glyph_is_invisible(xyglyph))))
+        if (mtmp && (((weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
+                      && (await shade_miss(game.youmonst, mtmp, obj, true, true)
+                          || (mtmp.m_ap_type === M_AP_OBJECT
+                              && xyglyph.kind !== 'mon' /* !glyph_is_monster() */
+                              && !glyph_is_warning(xyglyph)
+                              && !glyph_is_invisible(xyglyph))))
+                     || (weapon === FLASHED_LIGHT
+                         && mtmp.m_ap_type === M_AP_OBJECT)))
             mtmp = null;
 
         if (mtmp) {
             g.notonhead = (x !== mtmp.mx || y !== mtmp.my);
-            if (weapon !== ZAPPED_WAND) {
+            if (weapon === FLASHED_LIGHT) {
+                /* FLASHED_LIGHT hitting invisible monster should pass
+                   through instead of stop so we call flash_hits_mon()
+                   directly rather than returning mtmp back to caller.
+                   That allows the flash to keep on going.  Note that we
+                   use mtmp->minvis, not canspotmon(), because it makes no
+                   difference whether hero can see the monster or not. */
+                if (mtmp.minvis) {
+                    obj.ox = u.ux, obj.oy = u.uy;
+                    await flash_hits_mon(mtmp, obj);
+                } else {
+                    await tmp_at(DISP_END, 0);
+                    result = mtmp; /* caller will call flash_hits_mon() */
+                    bhit_done = true;
+                    break; /* goto bhit_done */
+                }
+            } else if (weapon === INVIS_BEAM) {
+                /* Like FLASHED_LIGHT, INVIS_BEAM should continue
+                   through invisible targets; unlike it, we aren't
+                   prepared for multiple hits so just get first one
+                   that's either visible or could see its invisible
+                   self.  [No tmp_at() cleanup is needed here.] */
+                if (!mtmp.minvis || perceives(mtmp.data)) {
+                    result = mtmp;
+                    bhit_done = true;
+                    break; /* goto bhit_done */
+                }
+            } else if (weapon !== ZAPPED_WAND) {
                 /* THROWN_WEAPON, KICKED_WEAPON */
                 if (!tethered_weapon)
                     await tmp_at(DISP_END, 0);
@@ -1789,7 +1890,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
             g.bhitpos.y -= ddy;
             break;
         }
-        if (weapon !== ZAPPED_WAND) {
+        if (weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM) {
             /* 'I' present but no monster: erase; do this before tmp_at() */
             if (g.level.at(x, y).glyph !== undefined
                 && glyph_is_invisible(g.level.at(x, y).glyph)
@@ -1802,7 +1903,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
             /* kicked objects fall in pools */
             if ((weapon === KICKED_WEAPON) && is_pool_or_lava(x, y))
                 break;
-            if (IS_SINK(typ))
+            if (IS_SINK(typ) && weapon !== FLASHED_LIGHT)
                 break; /* physical objects fall onto sink */
         }
         /* limit range of ball so hero won't make an invalid move */
@@ -1815,7 +1916,7 @@ export async function bhit(ddx, ddy, range,   /* direction and range */
     }
 
     if (!bhit_done
-        && ((weapon !== ZAPPED_WAND /* && weapon != INVIS_BEAM */
+        && ((weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM
              && !tethered_weapon)
             || (was_returning && was_returning !== g.iflags.returning_missile)))
         await tmp_at(DISP_END, 0);

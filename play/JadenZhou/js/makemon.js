@@ -100,7 +100,7 @@ import { LR_MONGEN } from './const.js';
 import { noteleport_level } from './teleport.js';
 import { newcham_sync } from './mon.js';
 import { mpickobj, findgold } from './steal.js';
-import { add_to_minv, weight } from './mkobj.js';
+import { add_to_minv, weight, add_to_container } from './mkobj.js';
 import { m_dowear, which_armor, mon_adjust_speed_sync } from './worn.js';
 import { def_monsyms } from './drawing.js';
 import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
@@ -982,8 +982,8 @@ function m_initinv(mtmp) {
                 otmp.spe = 1; /* flag for special SchroedingersBox */
                 set_corpsenm(catcorpse, M.PM_HOUSECAT);
                 stop_timer(ROT_CORPSE, obj_to_any(catcorpse));
-                if (!otmp.cobj) otmp.cobj = [];
-                otmp.cobj.push(catcorpse); /* add_to_container() */
+                add_to_container(otmp, catcorpse);
+                otmp.owt = weight(otmp);
             }
             mpickobj(mtmp, otmp);
         }

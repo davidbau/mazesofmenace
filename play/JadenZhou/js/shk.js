@@ -2578,17 +2578,40 @@ export async function finish_paybill() {
 // C ref: shk.c clear_no_charge_obj()
 /* either clear no_charge for every object on a floor list (shkp==NULL) or
    for those inside shkp's shop */
-function clear_no_charge_obj(shkp, otmp) {
+function clear_no_charge_obj(shkp, /* if null, clear regardless of shop */
+                             otmp) {
+    if (Has_contents(otmp))
+        clear_no_charge(shkp, otmp.cobj);
     if (otmp.no_charge) {
-        if (shkp) {
-            /* object is in the shopkeeper's shop */
-            throw new Error('clear_no_charge_obj(): per-shop clearing not ported yet');
-        }
-        otmp.no_charge = 0;
-    }
-    if (Has_contents(otmp)) {
-        for (const o of otmp.cobj)
-            clear_no_charge_obj(shkp, o);
+        let rm_shkp;
+        let rno;
+        let xy;
+
+        /*
+         * Clear no_charge if
+         *  shkp is Null (clear all items on specified list)
+         *  or not located somewhere that we expect no_charge (which is
+         *    floor [of shop] or inside container [on shop floor])
+         *  or can't find object's map coordinates
+         *  or fails location sanity check
+         *  or not inside any room
+         *  or the room isn't a shop
+         *  or the shop has no shopkeeper (deserted)
+         *  or shopkeeper is the current one (to avoid clearing no_charge
+         *    for items located in some rival's shop).
+         */
+        if (!shkp
+            || (otmp.where !== 'OBJ_FLOOR'
+                && otmp.where !== 'OBJ_CONTAINED'
+                && otmp.where !== 'OBJ_BURIED')
+            /* C passes OBJ_CONTAINED | OBJ_BURIED (2 | 6) as the locflags */
+            || !(xy = get_obj_location(otmp, (2 | 6)))
+            || !isok(xy[0], xy[1])
+            || (rno = game.level.at(xy[0], xy[1]).roomno) < ROOMOFFSET
+            || !IS_SHOP(rno - ROOMOFFSET)
+            || !(rm_shkp = game.level.rooms[rno - ROOMOFFSET].resident)
+            || rm_shkp === shkp)
+            otmp.no_charge = 0;
     }
 }
 

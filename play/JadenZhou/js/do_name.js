@@ -39,7 +39,7 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE,
          GETOBJ_PROMPT, GETOBJ_NOFLAGS, ECMD_OK } from './const.js';
 import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { Blind, Hallucination } from './youprop.js';
-import { m_next2u } from './const.js';
+import { m_next2u, CLR_MAX } from './const.js';
 import { exist_artifact, artifact_exists, artifact_name,
          restrict_name } from './artifact.js';
 import { donamelevel } from './dungeon.js';
@@ -1112,4 +1112,21 @@ export function hcolor(colorpref) {
     return (Hallucination() || !colorpref)
         ? hcolors[rn2_on_display_rng(hcolors.length)]
         : colorpref;
+}
+
+/* C ref: decl.c c_obj_colors[] */
+const c_obj_colors_dn = [
+    "black", "red", "green", "brown", "blue", "magenta", "cyan", "gray",
+    "transparent", "orange", "bright green", "yellow", "bright blue",
+    "bright magenta", "bright cyan", "white",
+];
+
+// C ref: do_name.c rndcolor()
+/* return a random real color unless hallucinating */
+export function rndcolor() {
+    const k = rn2(CLR_MAX);
+
+    return Hallucination() ? hcolor(null)
+                           : (k === NO_COLOR) ? "colorless"
+                                              : c_obj_colors_dn[k];
 }

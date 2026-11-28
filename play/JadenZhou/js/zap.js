@@ -11,7 +11,7 @@
 import { rndmonnam } from './do_name.js';
 import { adjalign } from './attrib.js';
 import { PM_ARCHEOLOGIST } from './monsters.js';
-import { obj_extract_self, place_object, level_objects_at } from './mkobj.js';
+import { obj_extract_self, place_object, level_objects_at, fixup_oil } from './mkobj.js';
 import { sokoban_guilt } from './trap.js';
 import { breakobj } from './dothrow.js';
 import { shkname } from './shknam.js';
@@ -69,12 +69,22 @@ import { PIT, SPIKED_PIT, STATUE_TRAP, HEADSTONE, DOOR, DBWALL,
 import { t_at, activate_statue_trap, trap_ice_effects } from './trap.js';
 import { sobj_at, is_pool, is_lava } from './makemon.js';
 import { delobj } from './invent.js';
+import { addtobill, stolen_value } from './shk.js';
+import { makemon } from './makemon.js';
+import { a_monnam } from './do_name.js';
+import { IRON, METAL, MITHRIL, COPPER, SILVER, PLATINUM, GEMSTONE,
+         FLESH, WOOD, LEATHER, CLOTH, BONE, GOLD, GLASS, PAPER } from './objects.js';
+import { MM_NOMSG, G_GENOD } from './const.js';
+import * as M from './monsters.js';
+import { mons } from './monsters.js';
 import { mkobj, splitobj, weight, rnd_class, erosion_matters, is_flammable,
          is_rottable, is_damageable, is_poisonable } from './mkobj.js';
 import { obj_resists } from './dogmove.js';
 import { cansee, does_block, block_point, unblock_point } from './vision.js';
 import { newsym, shieldeff } from './display.js';
-import { costly_spot } from './shk.js';
+import { costly_spot, shop_keeper, contained_cost, inhishop, make_angry_shk, hot_pursuit } from './shk.js';
+import { Shknam } from './shknam.js';
+import { Norep } from './display.js';
 import { add_damage as add_damage_zp, pay_for_damage as pay_for_damage_zp } from './shk.js';
 import { SHOP_DOOR_COST as SHOP_DOOR_COST_ZP, SHOP_BARS_COST as SHOP_BARS_COST_ZP } from './const.js';
 import { LARGEST_INT, MAX_SPELL_STUDY, Has_contents } from './const.js';
@@ -404,6 +414,17 @@ import { force_decor } from './pickup.js';
 import { is_db_wall, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
 import { set_msg_xy } from './display.js';
 import { o_unleash } from './apply.js';
+import { cmap_to_glyph } from './display.js';
+import { RIGHT_HANDED, DISP_FLASH, N_DIRS, xdir, ydir, IS_SINK } from './const.js';
+import { Fumbling } from './youprop.js';
+import { dmgval } from './weapon.js';
+import { thitu } from './mthrowu.js';
+import { endmultishot } from './end.js';
+import { wake_nearto } from './mon.js';
+import { throwit_mon_hit } from './dothrow.js';
+
+/* C ref: defsym.h S_boomleft, S_boomright (showsym[] indexes) */
+const S_boomleft = 80, S_boomright = 81;
 
 // C ref: zap.c learnwand()
 export function learnwand(obj) {
@@ -1023,7 +1044,7 @@ export async function bhitm(mtmp, otmp) {
     if (wake && !DEADMONSTER_BM(mtmp)) {
         /* seemimic() is done by wakeup() and might unblock vision */
         await wakeup(mtmp, helpful_gesture ? false : true);
-        m_respond_bm(mtmp);
+        await m_respond_bm(mtmp);
         if (mtmp.isshk && !(u.ushops && u.ushops[0]))
             hot_pursuit_bm(mtmp);
     }
@@ -1412,6 +1433,7 @@ function replace_object(obj, otmp) {
         if (i >= 0)
             fobj.splice(i, 1);
         fobj.splice(fobj.indexOf(obj), 1, otmp);
+        obj.where = 'OBJ_FREE'; /* extract_nobj() leaves obj free */
         break;
     }
     case 'OBJ_MINVENT': {
@@ -1638,7 +1660,7 @@ export async function poly_obj(obj, id) {
             otmp.otyp = rnd_class(POT_GAIN_ABILITY, POT_WATER);
         /* potions of oil use obj->age field differently from other potions */
         if (otmp.otyp === POT_OIL || obj.otyp === POT_OIL)
-            throw new Error('poly_obj(): fixup_oil() not ported yet');
+            fixup_oil(otmp, obj);
         break;
 
     case SPBOOK_CLASS:
@@ -1702,10 +1724,170 @@ export async function poly_obj(obj, id) {
 
     /* note: if otmp is gone, billing for it was handled by useup() */
     if (((otmp && otmp.where !== 'OBJ_INVENT') || obj.unpaid)
-        && costly_spot(ox, oy))
-        throw new Error('poly_obj(): shopkeeper reaction not ported yet');
+        && costly_spot(ox, oy)) {
+        const shkp = shop_keeper(in_rooms(ox, oy, SHOPBASE).charCodeAt(0) || 0);
+
+        if ((!obj.no_charge
+             || (Has_contents(obj)
+                 && (contained_cost(obj, shkp, 0, false, false) !== 0)))
+            && inhishop(shkp)) {
+            if (shkp.mpeaceful) {
+                if (g.u.ushops && g.u.ushops.length
+                    && ((in_rooms(g.u.ux, g.u.uy, 0).charCodeAt(0) || 0)
+                        === (in_rooms(shkp.mx, shkp.my, 0).charCodeAt(0) || 0))
+                    && !costly_spot(g.u.ux, g.u.uy)) {
+                    await make_angry_shk(shkp, ox, oy);
+                } else {
+                    await pline(`${Shknam(shkp)} gets angry!`);
+                    hot_pursuit(shkp);
+                }
+            } else
+                await Norep(`${Shknam(shkp)} is furious!`);
+        }
+    }
     delobj(obj);
     return otmp;
+}
+
+// C ref: zap.c polyuse()
+/* Use up at least minwt number of things made of material mat.
+ * There's also a chance that other stuff will be used up.  Finally,
+ * there's a random factor here to keep from always using the stuff
+ * at the top of the pile.
+ */
+async function polyuse(objhdr, mat, minwt) {
+    const g = game;
+    if (!objhdr)
+        return;
+    const pile = level_objects_at(objhdr.ox, objhdr.oy);
+
+    for (let i = pile.indexOf(objhdr); minwt > 0 && i >= 0 && i < pile.length; i++) {
+        const otmp = pile[i]; /* otmp2 = otmp->nexthere */
+        if (g.context.bypasses && otmp.bypass)
+            continue;
+        if (otmp === g.uball || otmp === g.uchain)
+            continue;
+        if (obj_resists(otmp, 0, 0))
+            continue; /* preserve unique objects */
+
+        if ((objects[otmp.otyp].oc_material === mat)
+            === (rn2(minwt + 1) !== 0)) {
+            /* appropriately add damage to bill */
+            if (costly_spot(otmp.ox, otmp.oy)) {
+                if (g.u.ushops && g.u.ushops.length)
+                    await addtobill(otmp, false, false, false);
+                else
+                    await stolen_value(otmp, otmp.ox, otmp.oy, false, false);
+            }
+            if (otmp.quan < LARGEST_INT)
+                minwt -= otmp.quan;
+            else
+                minwt = 0;
+            delobj(otmp);
+        }
+    }
+}
+
+// C ref: zap.c create_polymon()
+/*
+ * Polymorph some of the stuff in this pile into a monster, preferably
+ * a golem of the kind okind.
+ */
+async function create_polymon(obj, okind) {
+    const g = game;
+    let mdat = null;
+    let mtmp;
+    let material;
+    let pm_index;
+
+    if (g.context.bypasses && obj) {
+        /* this is approximate because the "no golems" !obj->nexthere
+           check below doesn't understand bypassed objects; but it
+           should suffice since bypassed objects always end up as a
+           consecutive group at the top of their pile */
+        const pile = level_objects_at(obj.ox, obj.oy);
+        let i = pile.indexOf(obj);
+        while (obj && obj.bypass)
+            obj = pile[++i] || null; /* obj->nexthere */
+    }
+
+    /* no golems if you zap only one object -- not enough stuff */
+    if (!obj)
+        return;
+    {
+        const pile = level_objects_at(obj.ox, obj.oy);
+        const nexthere = pile[pile.indexOf(obj) + 1] || null;
+        if (!nexthere && obj.quan === 1)
+            return;
+    }
+
+    /* some of these choices are arbitrary */
+    switch (okind) {
+    case IRON:
+    case METAL:
+    case MITHRIL:
+        pm_index = M.PM_IRON_GOLEM;
+        material = "metal ";
+        break;
+    case COPPER:
+    case SILVER:
+    case PLATINUM:
+    case GEMSTONE:
+    case MINERAL:
+        pm_index = rn2(2) ? M.PM_STONE_GOLEM : M.PM_CLAY_GOLEM;
+        material = "lithic ";
+        break;
+    case 0:
+    case FLESH:
+        /* there is no flesh type, but all food is type 0, so we use it */
+        pm_index = M.PM_FLESH_GOLEM;
+        material = "organic ";
+        break;
+    case WOOD:
+        pm_index = M.PM_WOOD_GOLEM;
+        material = "wood ";
+        break;
+    case LEATHER:
+        pm_index = M.PM_LEATHER_GOLEM;
+        material = "leather ";
+        break;
+    case CLOTH:
+        pm_index = M.PM_ROPE_GOLEM;
+        material = "cloth ";
+        break;
+    case BONE:
+        pm_index = M.PM_SKELETON; /* nearest thing to "bone golem" */
+        material = "bony ";
+        break;
+    case GOLD:
+        pm_index = M.PM_GOLD_GOLEM;
+        material = "gold ";
+        break;
+    case GLASS:
+        pm_index = M.PM_GLASS_GOLEM;
+        material = "glassy ";
+        break;
+    case PAPER:
+        pm_index = M.PM_PAPER_GOLEM;
+        material = "paper ";
+        break;
+    default:
+        /* if all else fails... */
+        pm_index = M.PM_STRAW_GOLEM;
+        material = "";
+        break;
+    }
+
+    if (!(g.mvitals[pm_index].mvflags & G_GENOD))
+        mdat = mons[pm_index];
+
+    mtmp = makemon(mdat, obj.ox, obj.oy, MM_NOMSG);
+    await polyuse(obj, okind, mons[pm_index].cwt);
+
+    if (mtmp && cansee(mtmp.mx, mtmp.my)) {
+        await pline(`Some ${material}objects meld, and ${
+            a_monnam(mtmp)} arises from the pile!`);
+    }
 }
 
 // C ref: zap.c get_mon_location()
@@ -1788,7 +1970,7 @@ export async function bhitpile(
     }
 
     if (g.poly_zapped >= 0)
-        throw new Error('bhitpile(): create_polymon() not ported yet');
+        await create_polymon(pile_at()[0] || null, g.poly_zapped);
 
     /* when boulders are present they're expected to be on top; with
        multiple boulders it's possible for some to have been changed into
@@ -2842,6 +3024,105 @@ function spell_hit_bonus(skill) {
         hit_bon += dex - 14;
 
     return hit_bon;
+}
+
+// C ref: zap.c boomhit()
+/* process thrown boomerang, which travels a curving path...
+ * A multi-shot volley ought to have all missiles in flight at once,
+ * but we're called separately for each one.  We terminate the volley
+ * early on a failed catch since continuing to throw after being hit
+ * is too obviously silly.
+ */
+export async function boomhit(obj, dx, dy) {
+    const g = game;
+    const u = g.u;
+    let i, ct;
+    let boom; /* showsym[] index  */
+    let mtmp;
+    const counterclockwise = (u.uhandedness === RIGHT_HANDED); /* URIGHTY;
+                                                     ULEFTY => clockwise */
+    let nhits = Math.max(1, obj.spe + 1);
+
+    /* counterclockwise traversal patterns, from @ to 1 then on through to 9
+     *  ..........................54.................................
+     *  ..................43.....6..3....765.........................
+     *  ..........32.....5..2...7...2...8...4....87..................
+     *  .........4..1....6..1...8..1....9...3...9..6.....98..........
+     *  ..21@....5...@...7..@....9@......@12....@...5...@..7.....@9..
+     *  .3...9....6..9....89.....................1..4...1..6....1..8.
+     *  .4...8.....78.............................23....2..5...2...7.
+     *  ..567............................................34....3..6..
+     *  ........................................................45...
+     * (invert rows for corresponding clockwise patterns)
+     */
+
+    g.bhitpos.x = u.ux;
+    g.bhitpos.y = u.uy;
+    boom = counterclockwise ? S_boomleft : S_boomright;
+    i = xytodir(dx, dy);
+    await tmp_at(DISP_FLASH, cmap_to_glyph(boom));
+    for (ct = 0; ct < 10; ct++) {
+        i = (i + N_DIRS) % N_DIRS; /* DIR_CLAMP(i) */
+        boom = (S_boomleft + S_boomright - boom); /* toggle */
+        await tmp_at(DISP_CHANGE, cmap_to_glyph(boom)); /* change glyph */
+        dx = xdir[i];
+        dy = ydir[i];
+        g.bhitpos.x += dx;
+        g.bhitpos.y += dy;
+        if (!isok(g.bhitpos.x, g.bhitpos.y)) {
+            g.bhitpos.x -= dx;
+            g.bhitpos.y -= dy;
+            break;
+        }
+        if ((mtmp = m_at(g.bhitpos.x, g.bhitpos.y))) {
+            await m_respond_bm(mtmp);
+            if (nhits-- < 0) {
+                await tmp_at(DISP_END, 0);
+                return mtmp;
+            } else if (await throwit_mon_hit(obj, mtmp) || !g.thrownobj) {
+                break;
+            }
+        }
+        if (!ZAP_POS(g.level.at(g.bhitpos.x, g.bhitpos.y).typ)
+            || closed_door(g.bhitpos.x, g.bhitpos.y)) {
+            g.bhitpos.x -= dx;
+            g.bhitpos.y -= dy;
+            break;
+        }
+        if (u_at(g.bhitpos.x, g.bhitpos.y)) { /* ct == 9 */
+            if (Fumbling() || rn2(20) >= ACURR_ZP(A_DEX_ZP)) {
+                const dam = dmgval(obj, g.youmonst);
+                const pobj = { obj };
+
+                /* we hit ourselves */
+                await thitu(10 + obj.spe, Maybe_Half_Phys(dam), pobj,
+                            "boomerang");
+                obj = pobj.obj;
+                endmultishot(true);
+                break;
+            } else { /* we catch it */
+                await tmp_at(DISP_END, 0);
+                await You("skillfully catch the boomerang.");
+                return g.youmonst;
+            }
+        }
+        await tmp_at(g.bhitpos.x, g.bhitpos.y);
+        /* nh_delay_output() */
+        if (IS_SINK(g.level.at(g.bhitpos.x, g.bhitpos.y).typ)) {
+            /* Soundeffect(se_boomerang_klonk, 75) */
+            if (!Deaf())
+                await pline("Klonk!");
+            await wake_nearto(g.bhitpos.x, g.bhitpos.y, 20);
+            break; /* boomerang falls on sink */
+        }
+        /* ct==0, initial position, we want next delta to be same;
+           ct==5, opposite position, repeat delta undoes first one */
+        if (ct % 5 !== 0)
+            i = counterclockwise ? (i + 7) % N_DIRS /* DIR_LEFT(i) */
+                                 : (i + 1) % N_DIRS; /* DIR_RIGHT(i) */
+    }
+    await tmp_at(DISP_END, 0); /* do not leave last symbol */
+    return null;
 }
 
 // C ref: zap.c zhitm()

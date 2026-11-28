@@ -2289,7 +2289,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
                         if (Blind() || Stunned() || ACURR(A_DEX) < 10
                             || Fumbling()) {
                             if (u.usteed) {
-                                throw new Error('test_move(): steed at a closed door not ported yet');
+                                await You_cant(`lead ${y_monnam(u.usteed)} through that closed door.`);
                             } else {
                                 await pline("Ouch!  You bump into a door.");
                                 await exercise(A_DEX, false);

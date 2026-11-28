@@ -567,6 +567,23 @@ export function ATTRMAX(x) {
 }
 export function ATTRMIN(x) { return game.urace.attrmin[x]; }
 
+// C ref: attrib.c gainstr()
+/* strength gain */
+export async function gainstr(otmp, incr, givemsg) {
+    let num = incr;
+
+    if (!num) {
+        if (ABASE(A_STR) < 18)
+            num = (rn2(4) ? 1 : rnd(6));
+        else if (ABASE(A_STR) < STR18(85))
+            num = rnd(10);
+        else
+            num = 1;
+    }
+    await adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num,
+                    givemsg ? -1 : 1);
+}
+
 // C ref: attrib.c losestr()
 /* strength loss, possibly with damage when going below minimum */
 export async function losestr(num, knam, k_format) {

@@ -41,6 +41,7 @@ import { objects, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS,
          is_flimsy, greatest_erosion, is_ammo, matching_launcher,
          ammo_and_launcher, is_missile } from './objects.js';
 import * as M from './monsters.js';
+import { polymon } from './polyself.js';
 import { mons } from './monsters.js';
 import { ART_SNICKERSNEE } from './artilist.js';
 import { mon_wield_item, select_rwep, autoreturn_weapon, mwelded, dmgval,
@@ -871,7 +872,7 @@ export async function m_throw(
             if (hitu && singleobj.otyp === O.EGG) {
                 if (!Stoned() && !Stone_resistance()
                     && !(poly_when_stoned(game.youmonst.data)
-                         && (() => { throw new Error('m_throw(): polymon(PM_STONE_GOLEM) not ported yet'); })())) {
+                         && (await polymon(M.PM_STONE_GOLEM)))) {
                     await make_stoned(5, null, KILLED_BY, "");
                 }
             }

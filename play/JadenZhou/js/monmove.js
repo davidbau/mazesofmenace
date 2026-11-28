@@ -54,7 +54,7 @@ import { distant_name, doname } from './objnam.js';
 import { mpickobj } from './steal.js';
 import { find_defensive, find_offensive, find_misc, use_defensive,
          use_misc, cures_stoning, mcould_eat_tin } from './muse.js';
-import { mattacku, unstuck, expels } from './mhitu.js';
+import { mattacku, unstuck, expels, gazemu } from './mhitu.js';
 import { castmu } from './mcastu.js';
 import { M_ATTK_HIT, G_GENOD } from './const.js';
 import { Is_rogue_level, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, NORMAL_SPEED } from './const.js';
@@ -107,6 +107,10 @@ import { dog_move, can_carry, can_touch_safely, curr_mon_load,
 import * as OBJ from './objects.js';
 import * as M from './monsters.js';
 import { mons } from './monsters.js';
+/* m_respond_shrieker() */
+import { makemon, makemon_flush_msg } from './makemon.js';
+import { level_difficulty } from './dungeon.js';
+import { NO_MM_FLAGS } from './const.js';
 import { objects, BOULDER, ROCK, SCR_SCARE_MONSTER, GOLD_PIECE, CORPSE,
          GEM_CLASS, MINERAL, GEMSTONE, WEAPON_CLASS, ARMOR_CLASS,
          FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS,
@@ -795,13 +799,51 @@ function ranged_attk_available(mtmp) {
     return false;
 }
 
+// C ref: mon.c m_respond_shrieker()
+/* shrieker special action: shriek, maybe summon monster, aggravate */
+async function m_respond_shrieker(mtmp) {
+    const g = game;
+
+    if (!Deaf()) {
+        await pline(`${Monnam(mtmp)} shrieks.`);
+        await stop_occupation();
+    }
+    if (!rn2(10)) { /* 1/10 chance per shriek to create a monster */
+        /* new monster has a 1/13 chance to be a purple worm, random
+           otherwise; baby purple worm if adult is too difficult */
+        g.makemon_want_msg = true; /* see makemon()'s Norep() comment */
+        try {
+            makemon(rn2(13) ? null
+                    : mons[(mons[M.PM_PURPLE_WORM].difficulty /* montoostrong() */
+                            > Math.trunc((level_difficulty() + g.u.ulevel) / 2))
+                                         /* monmax_difficulty_lev() */
+                           ? M.PM_BABY_PURPLE_WORM : M.PM_PURPLE_WORM],
+                    0, 0, NO_MM_FLAGS);
+        } finally {
+            g.makemon_want_msg = false;
+        }
+        await makemon_flush_msg();
+    }
+    aggravate_mm();
+}
+
+// C ref: mon.c m_respond_medusa()
+/* medusa special action: gaze at hero */
+async function m_respond_medusa(mtmp) {
+    for (const a of mtmp.data.mattk)
+        if (a.aatyp === M.AT_GAZE) {
+            await gazemu(mtmp, a);
+            break;
+        }
+}
+
 // ── C ref: mon.c m_respond() ──
-export function m_respond(mtmp) {
+export async function m_respond(mtmp) {
     if (mtmp.data.msound === M.MS_SHRIEK
         && !(Math.abs(mtmp.mx - game.u.ux) > 1 || Math.abs(mtmp.my - game.u.uy) > 1))
-        throw new Error('m_respond_shrieker() not ported yet');
+        await m_respond_shrieker(mtmp);
     if (mtmp.data === mons[M.PM_MEDUSA] && couldsee(mtmp.mx, mtmp.my))
-        throw new Error('m_respond_medusa() not ported yet');
+        await m_respond_medusa(mtmp);
     /* Erinyes will inform surrounding monsters of your crimes */
     if (mtmp.data === mons[M.PM_ERINYS] && !mtmp.mpeaceful && m_canseeu(mtmp))
         aggravate_mm();
@@ -960,7 +1002,7 @@ export async function dochug(mtmp) {
     }
 
     /* some monsters have special abilities */
-    m_respond(mtmp);
+    await m_respond(mtmp);
 
     /* fleeing monsters might regain courage */
     if (mtmp.mflee && !mtmp.mfleetim && mtmp.mhp === mtmp.mhpmax

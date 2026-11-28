@@ -13229,6 +13229,36 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
             && _topl_wordwrap(_pages[i], TOPL_CO - 1).length === 1);
         const _joinedOwner = _paintOwner && _messages.length > 1
             && _owner.length < TOPL_CO;
+        if (_morc === 27 && !_dieClears && !_lastUrgent && !_curUrgentWrapped
+            && !_joinedOwner
+            && _topl_wordwrap(String(_pages[i] ?? ''), TOPL_CO - 1).length > 1) {
+            g._topl_win_stop_armed = false;
+            g._topl_win_stop = true;
+            /* more()'s tail docorner()s the covered map rows away; nothing
+             * stands on the topline (topl.c:237-246). */
+            g._pending_message = '';
+            /* gt.toplines still holds the ESC'd, drawn message (topl.c:296);
+             * every suppressed follower joins it while it fits and replaces
+             * it otherwise (topl.c:262-291, Strcat with no addtopl), each
+             * replacement filing its predecessor (topl.c:289).  The final
+             * buffer stays unfiled until the next suppressed update_topl or
+             * key read, exactly like C's gt.toplines. */
+            let _wbuf = String(_pages[i] ?? '');
+            for (const _wm of _messages) {
+                if (!_wm) continue;
+                if (_wbuf.length + 2 + _wm.length < TOPL_LIMIT
+                    && !_wm.startsWith('You die'))
+                    _wbuf = _wbuf + '  ' + _wm;
+                else {
+                    const _wh = _msg_history_arr();
+                    if (_wh.length === 0 || _wh[_wh.length - 1] !== _wbuf)
+                        _wh.push(_wbuf);
+                    _wbuf = _wm;
+                }
+            }
+            g._topl_win_stop_buf = _wbuf;
+            break;
+        }
         if (_morc === 27 && i === _pages.length - 2 && !_dieClears && !_lastUrgent
             && !_curUrgentWrapped
             && !_joinedOwner) {

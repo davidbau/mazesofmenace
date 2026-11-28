@@ -118,7 +118,7 @@ function dec_symset() {
 }
 
 // C ref: drawing.c def_r_oc_syms[] -- object class symbols of the rogue symset
-const def_r_oc_syms = [
+export const def_r_oc_syms = [
     '\0', ']' /* ILLOBJ_SYM */, ')', ']', /* armor */
     '=',
     ',', /* amulet */
@@ -171,7 +171,8 @@ function terrain_glyph(loc, x, y) {
 // altar_to_glyph(AM_NEUTRAL).
 const CMAP_NAMES = { 1: 'S_vwall', 2: 'S_hwall', 15: 'S_vcdoor', 16: 'S_hcdoor',
     22: 'S_corr', 25: 'S_upstair', 26: 'S_dnstair', 33: 'S_altar', 34: 'S_grave',
-    35: 'S_throne', 36: 'S_sink', 37: 'S_fountain' };
+    35: 'S_throne', 36: 'S_sink', 37: 'S_fountain', 80: 'S_boomleft',
+    81: 'S_boomright' };
 export function cmap_to_glyph(sym) {
     let tg;
     switch (sym) {
@@ -208,6 +209,12 @@ export function cmap_to_glyph(sym) {
         break;
     case 22: /* S_corr */
         tg = { ch: '#', color: CLR_GRAY, dec: false };
+        break;
+    case 80: /* S_boomleft (HI_WOOD) */
+        tg = { ch: ')', color: CLR_BROWN, dec: false };
+        break;
+    case 81: /* S_boomright (HI_WOOD) */
+        tg = { ch: '(', color: CLR_BROWN, dec: false };
         break;
     default:
         throw new Error(`cmap_to_glyph(): cmap symbol ${sym} not ported yet`);

@@ -9,7 +9,13 @@ import { split_mon } from './potion.js';
 import { You, verbalize, You_hear } from './display.js';
 import { DEADMONSTER } from './mon.js';
 import { is_art } from './artifact.js';
-import { poly_gender, rehumanize } from './polyself.js';
+import { poly_gender, rehumanize, polymon } from './polyself.js';
+import { done } from './end.js';
+import { STONING } from './const.js';
+import { ureflects } from './mcastu.js';
+import { m_canseeu } from './monmove.js';
+import { killed } from './mon.js';
+import { Stone_resistance } from './youprop.js';
 import { stop_occupation } from './allmain.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d, AC_VALUE } from './rng.js';
@@ -1145,8 +1151,62 @@ export async function gazemu(mtmp, mattk) {
 
     switch (mattk.adtyp) {
     case M.AD_STON:
-        /* note: Medusa is the only monster with stoning gaze */
-        throw new Error('gazemu(): AD_STON (Medusa) gaze not ported yet');
+        /* note: Medusa is the only monster with stoning gaze, so
+           'is_medusa' will always be True here */
+        if (cancelled || !mtmp.mcansee) {
+            if (!canseemon(mtmp))
+                break; /* silently */
+            if (Unaware_mh()) { /* can't see attacker even though not blind */
+                react = is_medusa ? 4 : 2; /* irritated or puzzled */
+                break;
+            }
+            if (is_medusa && Hallucination() && !rn2(3))
+                await pline("Someone seems overdue for a serpent cut.");
+            else
+                await pline_mon(mtmp, `${Monnam(mtmp)} ${
+                    (is_medusa && mtmp.mcan && !react)
+                        ? "doesn't look all that ugly"
+                        : "gazes ineffectually"}.`);
+            break;
+        }
+        if (reflectable) {
+            /* hero has line of sight to Medusa and she's not blind */
+            const useeit = canseemon(mtmp);
+
+            if (useeit)
+                await ureflects("%s gaze is reflected by your %s.",
+                                s_suffix(Monnam(mtmp)));
+            if (await mon_reflects_mu(mtmp, !useeit ? null
+                                  : "The gaze is reflected away by %s %s!"))
+                break;
+            if (!m_canseeu(mtmp)) { /* probably you're invisible */
+                if (useeit)
+                    await pline(`${Monnam(mtmp)} doesn't seem to notice that ${
+                        mhis(mtmp)} gaze was reflected.`);
+                break;
+            }
+            if (useeit)
+                await pline_mon(mtmp, `${Monnam(mtmp)} is turned to stone!`);
+            game.stoned = true;
+            await killed(mtmp);
+
+            if (!DEADMONSTER(mtmp))
+                break;
+            return M_ATTK_AGR_DIED;
+        }
+        if (canseemon(mtmp) && couldsee_mh(mtmp.mx, mtmp.my)
+            && !Stone_resistance() && !Unaware_mh()) {
+            await You(`meet ${s_suffix(mon_nam(mtmp))} gaze.`);
+            await stop_occupation();
+            if (poly_when_stoned_pu(game.youmonst.data)
+                && (await polymon(M.PM_STONE_GOLEM)))
+                break;
+            await urgent_pline("You turn to stone...");
+            game.killer.format = KILLED_BY;
+            game.killer.name = pmname_mu(mtmp.data, Mgender(mtmp));
+            await done(STONING);
+        }
+        break;
     case M.AD_CONF:
         if (mcanseeu && !mtmp.mspec_used && rn2(5)) {
             if (cancelled) {

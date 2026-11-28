@@ -872,7 +872,8 @@ function renderFilterPage(pageItems, morestr) {
 //               does not rewrite that line — it is screen residue — so this
 //               stays the first name typed even after plname changes.
 function buildIsThisOkFrame(name, infoLine, opts = {}) {
-    const { mark = '*', bannerClip = Infinity, row10 = null, renameallowed = true, retried = false } = opts;
+    const { mark = '*', bannerClip = Infinity, row10 = null, renameallowed = true, retried = false,
+            renameRetried = false } = opts;
     const row12Name = ('row12Name' in opts) ? opts.row12Name : name;
     const COLNO = 80, ROWNO = 24;
     const title = `Is this ok? [yn${renameallowed ? 'a' : ''}q]`;
@@ -931,6 +932,8 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
     // The rename re-prompt askname() left at row 10, still visible below the
     // window (the window spans rows 0..winRows-1 only).
     if (row10) paint(10, 0, row10);
+    // the rename re-prompt's own retry line, on the row above it
+    if (renameRetried) paint(9, 0, ASKNAME_RETRY_TEXT);
     // askname's retry line (wintty.c:676) stays on the base window.
     if (retried) paint(11, 0, ASKNAME_RETRY_TEXT);
     // Askname line at row 12 (still visible below the window).
@@ -984,7 +987,8 @@ function buildIsThisOkFrame(name, infoLine, opts = {}) {
 // banner (rows 4..7, now truncated at `bannerClip`) and the original
 // "Who are you? <name>" line at row 12; askname() then re-prompts at row 10,
 // where the BASE_WINDOW cursor sits.
-function buildAsknameOverBanner(typed, row12Name, bannerClip, retried = false) {
+function buildAsknameOverBanner(typed, row12Name, bannerClip, retried = false,
+                                echoHigh = 0, cleared = false, residual = '', renameRetried = false) {
     const COLNO = 80, ROWNO = 24;
     const grid = [];
     for (let r = 0; r < ROWNO; r++) grid.push(new Array(COLNO).fill(' '));
@@ -1001,9 +1005,12 @@ function buildAsknameOverBanner(typed, row12Name, bannerClip, retried = false) {
     if (bannerClip < COLNO)
         for (let r = 0; r < 9; r++)
             for (let c = bannerClip; c < COLNO; c++) grid[r][c] = ' ';
-    // TODO(askname-residue): overlay rule of playChargen's rename arm —
-    // route through display.js asknameRowText (wintty.c:2349).
-    paint(10, 0, ASKNAME_TEXT + (typed ? ' ' + typed : ''));
+    // wintty.c:2349 tty_putstr of the prompt overwrites only its own cells:
+    // an earlier rename's answer on row 10 shows through past the typed text
+    // until a retry's cl_end (wintty.c:678) clears it (asknameRowText).
+    paint(10, 0, asknameRowText(typed, echoHigh, cleared, residual));
+    // an earlier rename's retry line (row 9) is still on the base window
+    if (renameRetried && !cleared) paint(9, 0, ASKNAME_RETRY_TEXT);
     if (retried) paint(11, 0, ASKNAME_RETRY_TEXT);
     paint(12, 0, ASKNAME_TEXT + (row12Name ? ' ' + row12Name : ''));
 
@@ -1806,7 +1813,7 @@ export async function playChargen(ctx) {
     // C wintty.c:672-680: every try after the first paints "Enter a name
     // for your character..." on the row above the prompt (tty_putstr on the
     // base window overwrites, it does not clear) and gives up after 10.
-    async function doAskname(frameFor, background = null) {
+    async function doAskname(frameFor, background = null, onRetried = null) {
         let ct = '';
         let tryct = 1;
         let echoHigh = 0;
@@ -1822,7 +1829,10 @@ export async function playChargen(ctx) {
                     echoHigh = 0;
                     continue;
                 }
-                if (tryct > 1) asknameRetried = true;
+                if (tryct > 1) {
+                    if (onRetried) onRetried();
+                    else asknameRetried = true;
+                }
                 return ct;
             }
             if (key === K_BS || key === K_DEL) {
@@ -2510,13 +2520,17 @@ export async function playChargen(ctx) {
     let lastConfirmIndent = null;
     // The rename re-prompt line left at row 10, once a rename has happened.
     let renameRow10 = null;
+    // ...and its retry line (wintty.c:672-676: tty_curs(BASE_WINDOW, 1,
+    // cury - 1) puts it on the row above THAT prompt, row 9), once a rename
+    // took more than one try.  The first askname's retry line is row 11.
+    let renameRetried = false;
     function confirmFrame() {
         rigid_role_checks(st);   // plsel_startmenu, role.c:2814
         const info = buildConfirmInfoLine(st, plname);
         if (overlayBanner && !menuNoOverlay()) {
             const f = buildIsThisOkFrame(plname, info, {
                 mark: yesMark, bannerClip, row10: renameRow10, renameallowed,
-                row12Name: asknameResidual, retried: asknameRetried,
+                row12Name: asknameResidual, retried: asknameRetried, renameRetried,
                 mark: yesMark, bannerClip, row10: renameRow10,
                 row12Name: asknameResidual, renameallowed,
             });
@@ -2612,6 +2626,7 @@ export async function playChargen(ctx) {
                     for (let r = 0; r < 9; r++)
                         menuBackground[r] = menuBackground[r].slice(0, bannerClip);
                     if (renameRow10 !== null) menuBackground[10] = renameRow10;
+                    if (renameRetried) menuBackground[9] = ASKNAME_RETRY_TEXT;
                     const menu = buildConfirmMenu(st, plname, yesMark, renameallowed);
                     renderMenu(menu.title, menu.lines, true, menuBackground).dismiss();
                 }
@@ -2643,15 +2658,19 @@ export async function playChargen(ctx) {
                     const askResidual = (overlayBanner && !fullScreen)
                         ? (renameRow10 || '')
                         : (menuBackground[askRow] || '');
+                    let lastRow10 = null;
                     renameResidual = await doAskname((typed, echoHigh, cleared) => (overlayBanner && !fullScreen)
-                        ? buildAsknameOverBanner(typed, asknameResidual, bannerClip,
-                                                 asknameRetried, echoHigh, cleared, askResidual)
+                        ? (lastRow10 = asknameRowText(typed, echoHigh, cleared, askResidual),
+                           buildAsknameOverBanner(typed, asknameResidual, bannerClip,
+                                                  asknameRetried, echoHigh, cleared, askResidual, renameRetried))
                         : tty_base_window_prompt(menuBackground, askRow,
                                                  asknameRowText(typed, echoHigh, cleared, askResidual),
                                                  cursorForAsknameAtRow(askRow, typed)),
-                        (overlayBanner && !fullScreen) ? null : menuBackground);
+                        (overlayBanner && !fullScreen) ? null : menuBackground,
+                        (overlayBanner && !fullScreen) ? () => { renameRetried = true; } : null);
                     if (renameResidual === null) return quit(ASKNAME_BAIL);
-                    renameRow10 = ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');
+                    renameRow10 = (overlayBanner && !fullScreen && lastRow10 !== null)
+                        ? lastRow10 : ASKNAME_TEXT + (renameResidual ? ' ' + renameResidual : '');
                     plname = plnamesuffix(renameResidual, { ...st }); // role.c:2695-2699 restores facets
                 } while (!plname);
                 renamed = true;

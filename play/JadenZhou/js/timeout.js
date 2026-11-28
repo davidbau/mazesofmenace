@@ -1954,7 +1954,34 @@ async function burn_object(arg, timeout) {
     /* obj->age is the age remaining at this point.  */
     switch (obj.otyp) {
     case O_POT_OIL:
-        throw new Error('burn_object(): burning potion of oil not ported yet');
+        /* this should only be called when we run out */
+        if (canseeit) {
+            switch (obj.where) {
+            case 'OBJ_INVENT':
+                need_invupdate = true;
+                /*FALLTHRU*/
+            case 'OBJ_MINVENT':
+                await pline(`${whose}potion of oil has burnt away.`);
+                break;
+            case 'OBJ_FLOOR':
+                await You_see_to("a burning potion of oil go out.");
+                need_newsym = true;
+                break;
+            }
+        }
+        end_burn(obj, false); /* turn off light source */
+        if (obj.where === 'OBJ_INVENT') { /* carried(obj) */
+            await useupall_to(obj);
+        } else {
+            /* clear migrating obj's destination code before obfree
+               to avoid false complaint of deleting worn item */
+            if (obj.where === 'OBJ_MIGRATING')
+                obj.owornmask = 0;
+            obj_extract_self_to(obj);
+            obfree_to(obj, null);
+        }
+        obj = null;
+        break;
 
     case O_BRASS_LANTERN:
     case O_OIL_LAMP:

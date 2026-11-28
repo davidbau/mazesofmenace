@@ -85,7 +85,7 @@ import { the } from './iactions.js';
 import { strncmpi, dist2 } from './hacklib.js';
 import { splitobj, weight, costly_alteration, is_rottable,
          bcsign } from './mkobj.js';
-import { freeinv, addinv_nomerge, useup, useupf, will_feel_cockatrice,
+import { freeinv, addinv_nomerge, useup, useupf, will_feel_cockatrice, feel_cockatrice,
          hands_obj, carrying } from './invent.js';
 import { ECMD_CANCEL } from './const.js';
 import { inv_cnt, nomul } from './hack.js';
@@ -138,7 +138,12 @@ import { s_suffix } from './hacklib.js';
 import { Monnam, mon_nam, pmname, Mgender } from './do_name.js';
 import { canspotmon, canseemon } from './display.js';
 import { mindless, monsndx } from './mondata.js';
-import { AMAX, ATTRMIN } from './attrib.js';
+import { AMAX, ATTRMIN, gainstr, setuhpmax } from './attrib.js';
+import { polymon, rehumanize } from './polyself.js';
+import { heal_legs, b_trapped } from './trap.js';
+import { POISONING, COST_DSTROY, NO_PART } from './const.js';
+import { hcolor } from './do_name.js';
+import { Fixed_abil } from './youprop.js';
 import { Lifesaved } from './youprop.js';
 import { costly_spot } from './shk.js';
 
@@ -1158,7 +1163,7 @@ async function cprefx(pm) {
     if (flesh_petrifies(mons[pm])) {
         if (!Stone_resistance()
             && !(poly_when_stoned(game.youmonst.data)
-                 && (() => { throw new Error('cprefx(): polymon(PM_STONE_GOLEM) not ported yet'); })())) {
+                 && (await polymon(M.PM_STONE_GOLEM)))) {
             /* if food was a tin, use it up early to keep it out of bones */
             if (tin_ctx().tin)
                 await use_up_tin(tin_ctx().tin);
@@ -1481,7 +1486,7 @@ async function cpostfx(pm) {
 
         /* if something was chosen, give it now (givit() might fail) */
         if (tmp === -1)
-            throw new Error('cpostfx(): gainstr() not ported yet');
+            await gainstr(null, 0, true);
         else if (tmp > 0)
             await givit(tmp, ptr);
     } /* check_intrinsics */
@@ -1564,6 +1569,8 @@ export async function eating_conducts(pd) {
     }
 }
 
+const NH_GREEN = "green"; /* C ref: color.h */
+
 // C ref: eat.c consume_tin()
 async function consume_tin(mesg) {
     let what, which, mnum, r, nutamt;
@@ -1573,8 +1580,12 @@ async function consume_tin(mesg) {
     let tin = tc.tin;
 
     r = tin_variety(tin, false);
-    if (tin.otrapped || (tin.cursed && r !== HOMEMADE_TIN && !rn2(8)))
-        throw new Error('consume_tin(): b_trapped() not ported yet');
+    if (tin.otrapped || (tin.cursed && r !== HOMEMADE_TIN && !rn2(8))) {
+        await b_trapped("tin", NO_PART);
+        tin = costly_tin(COST_DSTROY);
+        await use_up_tin(tin);
+        return;
+    }
 
     await pline(mesg); /* "You succeed in opening the tin." */
 
@@ -1676,7 +1687,51 @@ async function consume_tin(mesg) {
         }
 
     } else { /* spinach... */
-        throw new Error('consume_tin(): tin of spinach (gainstr()) not ported yet');
+        if (tin.cursed) {
+            await pline(`It contains some decaying${Blind() ? "" : " "}${
+                Blind() ? "" : hcolor(NH_GREEN)} substance.`);
+        } else {
+            await pline("It contains spinach.");
+            observe_object(tin, Hallucination());
+            tin.known = 1;
+        }
+
+        if (!always_eat
+            && (await tty_yn_function("Eat it?", "yn", 'n')) === 'n') { /* y_n() */
+            if (game.flags.verbose)
+                await You("discard the open tin.");
+            tin = costly_tin(COST_OPEN);
+            await use_up_tin(tin);
+            return;
+        }
+
+        /*
+         * Same order as with non-spinach above:
+         * conduct update, side-effects, shop handling, and nutrition.
+         */
+        /* don't need vegetarian checks for spinach */
+        if (!conduct_inc('food'))
+            livelog_printf(LL_CONDUCT, "ate for the first time (spinach)");
+        if (!tin.cursed)
+            await pline(`This makes you feel like ${
+                /* "Swee'pea" is a character from the Popeye cartoons */
+                Hallucination() ? "Swee'pea"
+                /* "feel like Popeye" unless sustain ability suppresses
+                   any attribute change */
+                : !Fixed_abil() ? "Popeye"
+                /* no gain, feel like another character from Popeye */
+                : (game.flags.female ? "Olive Oyl" : "Bluto")}!`);
+        await gainstr(tin, 0, false);
+
+        tin = tc.tin = costly_tin(COST_OPEN);
+        nutamt = (tin.blessed ? 600                   /* blessed */
+                  : !tin.cursed ? (400 + rnd(200))    /* uncursed */
+                    : (200 + rnd(400)));              /* cursed */
+        if (always_eat)
+            nutamt += 5; /* metallivorous hero also eats the tin itself */
+        /* use up tin first; lesshungry() could be fatal and produce bones */
+        await use_up_tin(tin), tin = null;
+        await lesshungry(nutamt);
     }
     if (tin)
         await use_up_tin(tin);
@@ -2252,13 +2307,42 @@ async function fpostfx(otmp) {
                     "became literate by reading the fortune inside a cookie");
         break;
     case LUMP_OF_ROYAL_JELLY:
-        throw new Error('fpostfx(): lump of royal jelly (gainstr()) not ported yet');
+        if (game.youmonst.data === mons[M.PM_KILLER_BEE] && !Unchanging()
+            && (await polymon(M.PM_QUEEN_BEE)))
+            break;
+
+        /* This stuff seems to be VERY healthy! */
+        await gainstr(otmp, 1, true);
+        if (Upolyd()) {
+            u.mh += otmp.cursed ? -rnd(20) : rnd(20), game.disp_botl = true;
+            if (u.mh > u.mhmax) {
+                if (!rn2(17))
+                    setuhpmax(u.mhmax + 1, false);
+                u.mh = u.mhmax;
+            } else if (u.mh <= 0) {
+                await rehumanize();
+            }
+        } else {
+            u.uhp += otmp.cursed ? -rnd(20) : rnd(20), game.disp_botl = true;
+            if (u.uhp > u.uhpmax) {
+                if (!rn2(17))
+                    setuhpmax(u.uhpmax + 1, false);
+                u.uhp = u.uhpmax;
+            } else if (u.uhp <= 0) {
+                game.killer.format = KILLED_BY_AN;
+                game.killer.name = "rotten lump of royal jelly";
+                await done(POISONING);
+            }
+        }
+        if (!otmp.cursed)
+            await heal_legs(0);
+        break;
     case EGG:
         if (otmp.corpsenm >= M.LOW_PM
             && flesh_petrifies(mons[otmp.corpsenm])) {
             if (!Stone_resistance()
                 && !(poly_when_stoned(game.youmonst.data)
-                     && (() => { throw new Error('fpostfx(): polymon(PM_STONE_GOLEM) not ported yet'); })())) {
+                     && (await polymon(M.PM_STONE_GOLEM)))) {
                 if (!Stoned()) {
                     if (!game.killer)
                         game.killer = { format: 0, name: '', next: null };
@@ -2477,8 +2561,12 @@ async function floorfood(verb, corpsecheck) {
                    offer) a cockatrice corpse is fatal before asking whether
                    or not to use it; otherwise, 'm<dir>' followed by 'e' could
                    be used to locate cockatrice corpses without touching them */
-                if (o.otyp === CORPSE && will_feel_cockatrice(o, false))
-                    throw new Error('floorfood(): feel_cockatrice() not ported yet');
+                if (o.otyp === CORPSE && will_feel_cockatrice(o, false)) {
+                    await feel_cockatrice(o, false);
+                    /* if life-saved (or poly'd into stone golem), terminate
+                       attempt to eat off floor */
+                    return null;
+                }
                 /* "There is <an object> here; <verb> it?" or
                    "There are <N objects> here; <verb> one?" */
                 const qbuf = safe_qbuf(`There ${otense(o, "are")} `,

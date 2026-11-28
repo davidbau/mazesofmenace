@@ -36,7 +36,7 @@ import {
     ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL, ALLOW_MDISP, ALLOW_TRAPS,
     ALLOW_SANCT, ALLOW_SSM, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS,
     NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, NOGARLIC,
-    M_AP_MONSTER, MON_DETACH, MON_MIGRATING, W_AMUL, NON_PM, NATTK, Is_rogue_level,
+    M_AP_MONSTER, MON_DETACH, MON_MIGRATING, MON_OFFMAP, W_AMUL, NON_PM, NATTK, Is_rogue_level,
     G_GENOD, STRAT_WAITMASK, STRAT_WAITFORU, BOLT_LIM, W_ARM,
 } from './const.js';
 import { dist2 } from './hacklib.js';
@@ -228,6 +228,10 @@ import { an } from './objnam.js';
 import { impossible } from './hack.js';
 import { POTION_CLASS } from './objects.js';
 import { pline_mon, set_msg_xy } from './display.js';
+/* see_monster_closeup() */
+import { Blind, Blind_telepat } from './youprop.js';
+import { M_AP_TYPE, Role_if } from './const.js';
+import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_TOURIST } from './monsters.js';
 
 /* monster inventory: makemon.js keeps mon->minvent as an array in pickup
    order; C prepends, so walk it newest first */
@@ -404,8 +408,33 @@ export async function mnearto(
     if (mtmp.mx === x && mtmp.my === y && m_at(x, y) === mtmp)
         return res;
 
-    if (move_other && (othermon = m_at(x, y)) !== null)
-        throw new Error('mnearto(): moving another monster out of the way not ported yet');
+    if (move_other && (othermon = m_at(x, y)) !== null) {
+        /* take othermon off the map; it might end up immediately returning
+           but for the moment it is leaving */
+        /* mon_leaving_level(othermon): here game.level.monsters is also the
+           fmon chain, so the monster keeps its place in the list, off the map
+           as remove_monster() leaves it in C */
+        const ox = othermon.mx, oy = othermon.my;
+        othermon.mtrapped = 0;
+        await unstuck(othermon); /* not swallowing or holding you nor held by you */
+        if (othermon.wormno) {
+            const lst = game.level.monsters || [];
+            const idx = lst.indexOf(othermon);
+
+            remove_worm(othermon);
+            if (idx >= 0 && !lst.includes(othermon))
+                lst.splice(idx, 0, othermon);
+        }
+        othermon.mundetected = 0; /* for migration; doesn't matter for death */
+        if (othermon.m_ap_type && othermon.m_ap_type !== M_AP_MONSTER)
+            seemimic(othermon);
+        /* fill_pit(mx, my): boulders dropping into pits not ported */
+        othermon.mx = othermon.my = 0; /* 'othermon' is not on the map */
+        newsym(ox, oy);
+        if (game.context?.polearm && othermon === game.context.polearm.hitmon)
+            game.context.polearm.hitmon = null;
+        othermon.mstate = (othermon.mstate || 0) | MON_OFFMAP;
+    }
 
     newx = x;
     newy = y;
@@ -414,15 +443,40 @@ export async function mnearto(
          * Migrating_mons that need to be placed will cause
          * no end of trouble.
          */
-        if (!enexto(mm, newx, newy, mtmp.data) || !isok(mm.x, mm.y))
+        if (!enexto(mm, newx, newy, mtmp.data) || !isok(mm.x, mm.y)) {
+            if (othermon) {
+                /* othermon already had its mx, my set to 0 above
+                 * and this would shortly cause a sanity check to fail
+                 * if we just return 0 here. The caller only possesses
+                 * awareness of mtmp, not othermon. */
+                deal_with_overcrowding(othermon);
+            }
             return 0;
+        }
         newx = mm.x;
         newy = mm.y;
     }
     /* [this doesn't honor the 'montelecontrol' option] */
     await rloc_to_core(mtmp, newx, newy, rlocflags); /* rloc_to_flag() */
 
+    if (move_other && othermon) {
+        res = 2; /* moving another monster out of the way */
+        /* 'move_other'==FALSE this time; fail rather than recurse */
+        if (!(await mnearto(othermon, x, y, false, rlocflags)))
+            deal_with_overcrowding(othermon);
+        else /* place_monster() sets mstate = MON_FLOOR */
+            othermon.mstate &= ~MON_OFFMAP;
+    }
+
     return res;
+}
+
+// C ref: mon.c deal_with_overcrowding()
+function deal_with_overcrowding(mtmp) {
+    if (In_endgame(game.u.uz))
+        throw new Error('deal_with_overcrowding(): elemental_clog() not ported yet');
+    else
+        throw new Error('deal_with_overcrowding(): m_into_limbo() not ported yet');
 }
 
 // C ref: mon.c replmon()
@@ -3863,4 +3917,61 @@ export async function shieldeff_mon(mtmp) {
     /* does not depend on seeing the monster; the shield effect is visible */
     if (cansee(mtmp.mx, mtmp.my))
         await pline_mon(mtmp, `${Monnam(mtmp)} resists!`);
+}
+
+// C ref: mon.c see_monster_closeup()
+/* mark a monster type as having been seen up close; for photos taken
+   with the expensive camera, also mark it as photographed */
+export async function see_monster_closeup(mtmp, photo) {
+    const g = game;
+    let mndx;
+
+    if (Hallucination() || (Blind() && !Blind_telepat()))
+        return;
+
+    mndx = monsndx(mtmp.data);
+    if (M_AP_TYPE(mtmp) === M_AP_MONSTER && !sensemon(mtmp))
+        mndx = mtmp.mappearance;
+    if (mndx === PM_LONG_WORM && g.notonhead)
+        mndx = PM_LONG_WORM_TAIL;
+
+    if (!g.context.lifelist)
+        g.context.lifelist = { total_seen_upclose: 0, total_photographed: 0 };
+    if (!g.mvitals[mndx].seen_close) {
+        g.mvitals[mndx].seen_close = 1;
+        g.context.lifelist.total_seen_upclose++;
+    }
+
+    /* hallucinatory monsters don't reach here--they're not recorded;
+       being able to see invisible doesn't make invisible monsters show up
+       on photos; likewise, telepathy allows hero to see hidden monsters
+       but doesn't cause them to appear on photos */
+    if (photo && !mtmp.minvis && !mtmp.mundetected
+        && (M_AP_TYPE(mtmp) === M_AP_NOTHING
+            || M_AP_TYPE(mtmp) === M_AP_MONSTER)) {
+        if (M_AP_TYPE(mtmp) === M_AP_MONSTER) /* cloned Wizard of Yendor */
+            mndx = mtmp.mappearance;
+
+        if (!g.mvitals[mndx].photographed) {
+            g.mvitals[mndx].photographed = 1;
+            g.context.lifelist.total_photographed++;
+
+            /* tourist earns points (toward EXP but not final score) for
+               the first instance of each type of monster photographed;
+               worm tail can be photographed but yields no EXP bonus */
+            if (Role_if(PM_TOURIST)
+                /* suppress extra points for photographing the pet that hero
+                   started with (unless it has changed shape due to growing
+                   up or being polymorphed) */
+                && (mtmp.m_id !== g.context.startingpet_mid
+                    || mndx !== g.context.startingpet_typ)
+                /* monsndx() check covers worm tail and also disguised
+                   Wizard of Yendor; experienced() won't yield a reasonable
+                   value for those */
+                && mndx === monsndx(mtmp.data)) {
+                more_experienced(experience(mtmp, 0), 0);
+                await newexplevel();
+            }
+        }
+    }
 }

@@ -871,7 +871,7 @@ export async function forcelock() {
     if (rn2(100) >= (x.chance | 0))
         return 1;
     g._forceMsgs = g._forceMsgs || [];
-    _forceEmit('You succeed in forcing the lock.');
+    await _forceEmitPaged('You succeed in forcing the lock.');
     exercise(x.picktyp ? A_DEX : A_STR, true);
     /* C lock.c:252 — breakchestlock(box, destroyit), destroyit = !picktyp && !rn2(3). */
     const destroyit = !x.picktyp && !rn2(3);
@@ -890,6 +890,16 @@ function _forceEmit(msg, botl = capture_pre_movemon_botl()) {
     } else g._pending_message = msg;
 }
 
+async function _forceEmitPaged(msg) {
+    const botl = capture_pre_movemon_botl();
+    /* C topl.c:262-276 update_topl: after ESC at a --More-- (WIN_STOP) a pline
+     * that fits is appended to toplines but never drawn; the live pline path
+     * models that, the staged queue does not. */
+    if (game._topl_win_stop && !(game._forceMsgs?.length)) { await pline('%s', msg); return; }
+    if (game._forceMsgs && game._forcePageNow && await game._forcePageNow(msg, botl)) return;
+    _forceEmit(msg, botl);
+}
+
 async function _captureForcePline(fn) {
     const g = game;
     const before = g._pending_message || '', result = g._resultMessage;
@@ -899,7 +909,7 @@ async function _captureForcePline(fn) {
     if (g._forceMsgs && (g._pending_message || '').startsWith(prefix) && g._pending_message.length > prefix.length) {
         const after = g._pending_message; g._pending_message = before; g._resultMessage = result;
         if (joins) { g._topl_joins = joins; g._topl_joins_src = before; }
-        _forceEmit(after.slice(prefix.length).trim());
+        await _forceEmitPaged(after.slice(prefix.length).trim());
     }
     return ret;
 }
@@ -922,7 +932,7 @@ export async function breakchestlock(box, destroyit) {
     const shkp = u.ushops?.length && costly_spot(u.ux, u.uy) ? shop_keeper(u.ushops[0]) : null;
     const costly = !!shkp, peaceful_shk = costly && !!shkp.mpeaceful;
     let loss = 0;
-    _forceEmit(`In fact, you've totally destroyed ${the(xname(box))}.`);
+    await _forceEmitPaged(`In fact, you've totally destroyed ${the(xname(box))}.`);
     /* C lock.c:184 — put the contents on the ground at the hero's feet. */
     let otmp;
     while ((otmp = box.cobj) != null) {
@@ -950,7 +960,7 @@ export async function breakchestlock(box, destroyit) {
     if (costly) {
         loss += await _captureForcePline(() => stolen_value(box, u.ux, u.uy, peaceful_shk, true));
     }
-    if (loss) _forceEmit(`You owe ${loss} ${currency(loss)} for objects destroyed.`);
+    if (loss) await _forceEmitPaged(`You owe ${loss} ${currency(loss)} for objects destroyed.`);
     await delobj(box);
 }
 
@@ -958,7 +968,7 @@ export async function breakchestlock(box, destroyit) {
 async function chest_shatter_msg(otmp) {
     if ((otmp.oclass | 0) === POTION_CLASS_OC) {
         /* C lock.c:1284 — see/hear a bottle shatter (bottlename rn2(7)). */
-        _forceEmit(`You ${Blind() ? 'hear' : 'see'} ${_an(bottlename())} shatter!`);
+        await _forceEmitPaged(`You ${Blind() ? 'hear' : 'see'} ${_an(bottlename())} shatter!`);
         // C lock.c:1285: vapors affect heroes who breathe or have eyes.
         const form = _hero_mflags1_lk();
         if ((form & 0x00000400 /* M1_BREATHLESS */) && (form & 0x00001000 /* M1_NOEYES */)) return;
@@ -992,7 +1002,7 @@ async function chest_shatter_msg(otmp) {
         default: disposition = 'is destroyed'; break;
     }
     /* C lock.c:1315 — pline("%s %s!", An(thing), disposition). */
-    _forceEmit(`${An(thing)} ${disposition}!`);
+    await _forceEmitPaged(`${An(thing)} ${disposition}!`);
 }
 
 

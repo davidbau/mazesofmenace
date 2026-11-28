@@ -66,7 +66,7 @@ import { splitbill, get_obj_location, unpaid_cost, subfrombill, shop_keeper,
          addtobill, alter_cost, oid_price_adjustment,
          costly_spot } from './shk.js';
 import { COST_SINGLEOBJ } from './const.js';
-import { CONTAINED_TOO } from './const.js';
+import { CONTAINED_TOO, MAX_OIL_IN_FLASK } from './const.js';
 import { arti_light_radius, obj_adjust_light_radius } from './light.js';
 import { Blind } from './youprop.js';
 import { PLNMSG_OBJ_GLOWS } from './const.js';
@@ -2086,6 +2086,33 @@ export function mkgold(amount, x, y) {
     }
     gold.owt = weight(gold);
     return gold;
+}
+
+// C ref: mkobj.c fixup_oil()
+/* potions of oil use their obj->age field differently from other potions
+   so changing potion type to or from oil needs to have that fixed up */
+export function fixup_oil(
+    potion, /* potion that just had its otyp changed */
+    source) { /* item used to create potion; might be Null */
+    if (potion.otyp === O.POT_OIL) {
+        if (source && source.otyp === O.POT_OIL) {
+            /* potion of oil being used to set potion's otyp to oil;
+               source might be partly used */
+            potion.age = source.age;
+        } else {
+            /* non-oil is being turned into oil; change absolute age
+               (turn created) into relative age (amount remaining /
+               burn time available) */
+            potion.age = MAX_OIL_IN_FLASK;
+        }
+    } else if (source && source.otyp === O.POT_OIL) {
+        /* potion is no longer oil, being turned into non-oil */
+        if (potion.age === source.age)
+            potion.age = game.moves;
+        /* when source is a partly used oil, mark potion as diluted */
+        if (source.age < MAX_OIL_IN_FLASK)
+            potion.odiluted = 1;
+    }
 }
 
 // C ref: mkobj.c dealloc_obj()

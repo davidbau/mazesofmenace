@@ -376,6 +376,11 @@ import { spot_checks } from './hack.js';
 import { sellobj } from './shk.js';
 import { pline_mon } from './display.js';
 import { CAN_OVERWRITE_TERRAIN } from './mkmaze.js';
+import { ROLL_FROM } from './rng.js';
+import { rndcolor } from './do_name.js';
+import { stagger } from './uhitm.js';
+import { Stunned, Halluc_resistance, HHallucination } from './youprop.js';
+import { make_hallucinated } from './potion.js';
 
 
 // C ref: trap.c mk_trap_statue()
@@ -5277,6 +5282,10 @@ export function rnd_nextto_goodpos(xy, mtmp) {
     return false;
 }
 
+/* C ref: trap.c blindgas[] */
+const blindgas = ["humid", "odorless", "pungent", "chilling",
+                  "acrid", "biting"];
+
 // C ref: trap.c chest_trap()
 /* only called when the player is doing something to the chest directly;
    returns True if chest is destroyed, False if it remains in play */
@@ -5395,7 +5404,21 @@ export async function chest_trap(obj, bodypart, disarm) {
         case 2:
         case 1:
         case 0:
-            throw new Error('chest_trap(): stunning gas (rndcolor()) not ported yet');
+            await pline(`A cloud of ${Blind() ? ROLL_FROM(blindgas) : rndcolor()} gas billows from ${
+                the(xname(obj))}.`);
+            if (!Stunned()) {
+                if (Hallucination())
+                    await pline("What a groovy feeling!");
+                else
+                    await You(`${stagger(game.youmonst.data, "stagger")}${
+                        Halluc_resistance() ? ""
+                                            : Blind() ? " and get dizzy"
+                                                      : " and your vision blurs"}...`);
+            }
+            await make_stunned((HStun() & TIMEOUT) + rn1(7, 16), false);
+            await make_hallucinated(
+                (HHallucination() & TIMEOUT) + rn1(5, 16), false, 0);
+            break;
         default:
             break;
         }

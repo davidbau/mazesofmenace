@@ -135,6 +135,12 @@ import { urgent_pline as urgent_pline_dw } from './display.js';
 import { vtense as vtense_dw } from './objnam.js';
 import { useup as useup_dw } from './invent.js';
 import { selftouch as selftouch_dw } from './trap.js';
+import { weapon_descr } from './insight.js';
+import { makesingular } from './objnam.js';
+import { nolimbs } from './mondata.js';
+import { canletgo, dropx } from './do.js';
+import { AKLYS } from './objects.js';
+import { LEFT_HANDED, RIGHT_HANDED } from './const.js';
 import { float_up as float_up_dw } from './trap.js';
 import { gulp_blnd_check } from './mhitu.js';
 
@@ -2517,6 +2523,104 @@ export function inaccessible_equipment(obj,
 /* getobj callback for T command */
 function takeoff_ok(obj) {
     return equip_ok(obj, true, false);
+}
+
+// C ref: do_wear.c glibr() -- slippery fingers drop rings and weapons
+export async function glibr() {
+    const u = game.u;
+    let otmp;
+    let xfl = 0;
+    let wastwoweap = false;
+    let otherwep = null, thiswep, which, hand;
+    const ULEFTY = (u.uhandedness === LEFT_HANDED),
+        URIGHTY = (u.uhandedness === RIGHT_HANDED);
+
+    const leftfall = !!(game.uleft && !game.uleft.cursed
+                        && (!game.uwep || !(welded(game.uwep) && ULEFTY)
+                            || !bimanual(game.uwep)));
+    const rightfall = !!(game.uright && !game.uright.cursed
+                         && (!game.uwep || !(welded(game.uwep) && URIGHTY)
+                             || !bimanual(game.uwep)));
+
+    if (!game.uarmg && (leftfall || rightfall)
+        && !nolimbs(game.youmonst.data)) {
+        /* changed so cursed rings don't fall off, GAN 10/30/86 */
+        await Your(`${(leftfall && rightfall) ? "rings slip" : "ring slips"} off your ${
+            (leftfall && rightfall) ? fingers_or_gloves(false)
+                                    : body_part(FINGER)}.`);
+        xfl++;
+        if (leftfall) {
+            otmp = game.uleft;
+            await Ring_off(game.uleft);
+            await dropx(otmp);
+            game.cmdq = []; /* cmdq_clear(CQ_CANNED) */
+        }
+        if (rightfall) {
+            otmp = game.uright;
+            await Ring_off(game.uright);
+            await dropx(otmp);
+            game.cmdq = []; /* cmdq_clear(CQ_CANNED) */
+        }
+    }
+
+    otmp = game.uswapwep;
+    if (u.twoweap && otmp) {
+        /* secondary weapon doesn't need nearly as much handling as
+           primary; when in two-weapon mode, we know it's one-handed
+           with something else in the other hand and also that it's
+           a weapon or weptool rather than something unusual, plus
+           we don't need to compare its type with the primary */
+        otherwep = is_sword(otmp) ? c_sword : weapon_descr(otmp);
+        if (otmp.quan > 1)
+            otherwep = makeplural(otherwep);
+        hand = body_part(HAND);
+        which = URIGHTY ? "left " : "right "; /* text for the off hand */
+        await Your(`${otherwep} ${xfl ? "also " : ""}${
+            otense(otmp, "slip")} from your ${which}${hand}.`);
+        xfl++;
+        wastwoweap = true;
+        setuswapwep(null); /* clears u.twoweap */
+        game.cmdq = []; /* cmdq_clear(CQ_CANNED) */
+        if (await canletgo(otmp, ""))
+            await dropx(otmp);
+    }
+    otmp = game.uwep;
+    if (otmp && otmp.otyp !== AKLYS && !welded(otmp)) {
+        const savequan = otmp.quan;
+
+        /* nice wording if both weapons are the same type */
+        thiswep = is_sword(otmp) ? c_sword : weapon_descr(otmp);
+        if (otherwep && thiswep !== makesingular(otherwep))
+            otherwep = null;
+        if (otmp.quan > 1) {
+            /* most class names for unconventional wielded items
+               are ok, but if wielding multiple apples or rations
+               we don't want "your foods slip", so force non-corpse
+               food to be singular; skipping makeplural() isn't
+               enough--we need to fool otense() too */
+            if (thiswep === "food")
+                otmp.quan = 1;
+            else
+                thiswep = makeplural(thiswep);
+        }
+        hand = body_part(HAND);
+        which = "";
+        if (bimanual(otmp)) {
+            hand = makeplural(hand);
+        } else if (wastwoweap) {
+            /* preceding msg was about non-dominant hand */
+            which = URIGHTY ? "right " : "left ";
+        }
+        await pline(`${thiswep.startsWith("corpse") ? "The" : "Your"} ${
+            otherwep ? "other " : ""}${thiswep} ${xfl ? "also " : ""}${
+            otense(otmp, "slip")} from your ${which}${hand}.`);
+        /* xfl++; */
+        otmp.quan = savequan;
+        setuwep(null);
+        game.cmdq = []; /* cmdq_clear(CQ_CANNED) */
+        if (await canletgo(otmp, ""))
+            await dropx(otmp);
+    }
 }
 
 // C ref: do_wear.c some_armor()

@@ -24,7 +24,7 @@ import { flush_screen, obj_to_glyph, menu_glyphinfo, what_mon } from './display.
 import { self_lookat } from './pager.js';
 import { digests } from './mondata.js';
 import { CONTAINED_SYM } from './const.js';
-import { look_here } from './invent.js';
+import { look_here, feel_cockatrice } from './invent.js';
 import { M1_NOTAKE, M1_CONCEAL } from './monsters.js';
 import { get_adjacent_loc } from './cmd.js';
 import { isok, IS_GRAVE, CONFUSION, STUNNED, ECMD_OK, ECMD_TIME, ECMD_CANCEL, GETOBJ_DOWNPLAY,
@@ -2018,8 +2018,8 @@ async function pickup_prinv(obj, count, verb) {
 }
 
 /* C ref: pickup.c u_safe_from_fatal_corpse() test bits */
-const st_gloves = 0x1, st_corpse = 0x2, st_petrifies = 0x4, st_resists = 0x8,
-    st_all = (st_gloves | st_corpse | st_petrifies | st_resists);
+const st_gloves = 0x1, st_corpse = 0x2, st_petrifies = 0x4, st_resists = 0x8;
+export const st_all = (st_gloves | st_corpse | st_petrifies | st_resists);
 
 // C ref: pickup.c u_safe_from_fatal_corpse()
 export function u_safe_from_fatal_corpse(obj, tests) {
@@ -2367,8 +2367,12 @@ async function doloot_core() {
                        whether to manipulate any containers */
                     for (const nobj of objects_at(cc.x, cc.y))
                         if (nobj.otyp === CORPSE
-                            && will_feel_cockatrice(nobj, false))
-                            throw new Error('doloot_core(): feel_cockatrice() not ported yet');
+                            && will_feel_cockatrice(nobj, false)) {
+                            await feel_cockatrice(nobj, false);
+                            /* if life-saved (or poly'd into stone golem),
+                               terminate attempt to loot */
+                            return ECMD_TIME;
+                        }
                 }
 
                 if (num_conts > 1) {

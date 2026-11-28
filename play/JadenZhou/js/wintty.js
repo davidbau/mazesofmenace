@@ -354,6 +354,12 @@ export function tty_destroy_mapwindow() {
     tty_curs(game.BASE_WINDOW, 1, tty().rows - 1); /* tty_dismiss_nhwindow() */
     term_clear_screen(); /* cw->type == NHW_MAP */
 }
+// C ref: wintty.c tty_clear_nhwindow() of WIN_MAP -- "cheap -- clear the
+// whole thing and tell nethack to redraw botl"
+export function tty_clear_mapwindow() {
+    game.disp_botlx = true;
+    term_clear_screen(); /* falls through to the NHW_BASE case */
+}
 export function tty_destroy_statuswindow() {
     tty_curs(game.BASE_WINDOW, 1, tty().rows - 1); /* tty_dismiss_nhwindow() */
 }

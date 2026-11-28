@@ -44,7 +44,7 @@ import { init_dungeons, depth, find_level, In_hell,
 import { ask_do_tutorial } from './options.js';
 import { phase_of_the_moon, friday_13th, night } from './calendar.js';
 import { change_luck } from './attrib.js';
-import { set_wear } from './do_wear.js';
+import { set_wear, glibr } from './do_wear.js';
 import { FULL_MOON, NEW_MOON, COLNO } from './const.js';
 import { mons, monst_globals_init, LOW_PM, NUMMONS, G_NOCORPSE } from './monsters.js';
 import { decl_globals_init } from './decl.js';
@@ -586,7 +586,7 @@ async function moveloop_core() {
                    moveloop_turn callback */
 
                 if (P[GLIB].intrinsic) /* Glib */
-                    throw new Error('moveloop_core(): glibr() not ported yet');
+                    await glibr();
                 await nh_timeout();
                 await run_regions();
 

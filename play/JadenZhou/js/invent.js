@@ -148,6 +148,12 @@ import { unpunish } from './read.js';
 import { throwing_weapon } from './dothrow.js';
 import { wait_synch } from './end.js';
 import { learn_egg_type } from './polyself.js';
+/* feel_cockatrice() */
+import { corpse_xname } from './objnam.js';
+import { killer_xname } from './mthrowu.js';
+import { instapetrify } from './trap.js';
+import { poly_when_stoned } from './mondata.js';
+import { CXN_PFX_THE, CXN_ARTICLE as CXN_ARTICLE_IV } from './const.js';
 
 const invlet_basic = 52;
 const GOLD_SYM = '$';
@@ -1693,9 +1699,23 @@ export function will_feel_cockatrice(otmp, force_touch) {
 }
 
 // C ref: invent.c feel_cockatrice()
-function feel_cockatrice(otmp, force_touch) {
-    if (will_feel_cockatrice(otmp, force_touch))
-        throw new Error('feel_cockatrice(): touching a cockatrice corpse not ported yet');
+export async function feel_cockatrice(otmp, force_touch) {
+    let kbuf;
+
+    if (will_feel_cockatrice(otmp, force_touch)) {
+        /* "the <cockatrice> corpse" */
+        kbuf = corpse_xname(otmp, null, CXN_PFX_THE);
+
+        if (poly_when_stoned(game.youmonst.data))
+            await You(`touched ${kbuf} with your bare ${
+                makeplural(body_part(HAND))}.`);
+        else
+            await pline(`Touching ${kbuf} is a fatal mistake...`);
+        /* normalize body shape here; hand, not body_part(HAND) */
+        kbuf = `touching ${killer_xname(otmp)} bare-handed`;
+        /* will call polymon() for the poly_when_stoned() case */
+        await instapetrify(kbuf);
+    }
 }
 
 // C ref: invent.c look_here()
@@ -1734,7 +1754,7 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
                 /* If swallower is an animal, it should have become stone
                  * but... */
                 if (otmp.otyp === O.CORPSE)
-                    feel_cockatrice(otmp, false);
+                    await feel_cockatrice(otmp, false);
             }
             if (Blind)
                 fbuf = "You feel";
@@ -1833,8 +1853,16 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
                                  : (obj_cnt < 10) ? "several"
                                    : "many"}${picked_some ? " more" : ""} objects here.`);
         for (const otmp of here)
-            if (otmp.otyp === O.CORPSE && will_feel_cockatrice(otmp, false))
-                throw new Error('look_here(): "Including <cockatrice corpse>" (corpse_xname, feel_cockatrice) not ported yet');
+            if (otmp.otyp === O.CORPSE && will_feel_cockatrice(otmp, false)) {
+                await pline(`${(obj_cnt > 1) ? "Including"
+                               : (otmp.quan > 1) ? "They're"
+                                 : "It's"} ${
+                    corpse_xname(otmp, null, CXN_ARTICLE_IV)}${
+                    poly_when_stoned(game.youmonst.data) ? ""
+                    : ", unfortunately"}.`);
+                await feel_cockatrice(otmp, false);
+                break;
+            }
     } else if (here.length === 1) {
         /* only one object */
         if (dfeature && !skip_dfeature)
@@ -1844,7 +1872,7 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
         await You(`${verb} here ${doname_with_price(otmp)}.`);
         game.iflags.last_msg = 'PLNMSG_ONE_ITEM_HERE';
         if (otmp.otyp === O.CORPSE)
-            feel_cockatrice(otmp, false);
+            await feel_cockatrice(otmp, false);
     } else {
         await tty_display_nhwindow(game.WIN_MESSAGE, false);
         const tmpwin = tty_create_nhwindow(NHW_MENU);
@@ -1853,13 +1881,19 @@ export async function look_here(obj_cnt, /* obj_cnt > 0 implies that autopickup 
             await tty_putstr(tmpwin, 0, "");
         }
         await tty_putstr(tmpwin, 0, `${picked_some ? "Other things" : "Things"} that ${Blind ? "you feel" : "are"} here:`);
+        let felt_cockatrice = null;
         for (const otmp of here) {
-            if (will_feel_cockatrice(otmp, false))
-                throw new Error('look_here(): felt_cockatrice not ported yet');
+            if (otmp.otyp === O.CORPSE && will_feel_cockatrice(otmp, false)) {
+                felt_cockatrice = otmp;
+                await tty_putstr(tmpwin, 0, `${doname(otmp)}...`);
+                break;
+            }
             await tty_putstr(tmpwin, 0, doname_with_price(otmp));
         }
         await tty_display_nhwindow(tmpwin, true);
         await tty_destroy_nhwindow(tmpwin);
+        if (felt_cockatrice)
+            await feel_cockatrice(felt_cockatrice, false);
         await read_engr_at(u.ux, u.uy); /* Eric Backus */
     }
     return (Blind ? ECMD_TIME_IV : ECMD_OK);

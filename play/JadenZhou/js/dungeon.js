@@ -77,7 +77,7 @@ import { ldrname } from './questpgr.js';
 import { formatkiller } from './topten.js';
 import { describe_level } from './botl.js';
 import { highc, trimspaces } from './hacklib.js';
-import { add_menu_str } from './wintty.js';
+import { add_menu_str, tty_clear_mapwindow } from './wintty.js';
 import { Blind, Levitation } from './youprop.js';
 import { strstri as strstri_dg } from './hacklib.js';
 import { In_V_tower as In_V_tower_dg, VISITED as VISITED_DG } from './const.js';
@@ -978,9 +978,10 @@ export function init_dungeons() {
         panic(`Cannot open dungeon description - "${DUNGEON_FILE}" from "nhdat" file!`);
     }
 
-    /* if (iflags.window_inited) clear_nhwindow(WIN_MAP);
-       -- not ported: the JS windowing has no map window yet; newgame()
-       clears and redraws the screen before the next screen is captured */
+    /* window_inited: JS treats an unset flag as inited, as end.js and
+       save.js do (C's init_sound_disp_gamewindows() has set it by now) */
+    if (game.iflags.window_inited !== false)
+        tty_clear_mapwindow(); /* clear_nhwindow(WIN_MAP) */
 
     game.sp_levchn = null;
 

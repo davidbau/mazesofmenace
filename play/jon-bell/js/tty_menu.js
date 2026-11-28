@@ -28,6 +28,9 @@ import { menu_search_getlin, build_window_screen, tty_window_offx,
 import { pmatchi } from './strutil.js';
 import { NO_COLOR } from './terminal.js';
 import { add_menu_str as core_add_menu_str } from './windows.js';
+import { _tty_row_cells_of } from './display.js';
+
+const visibleCells = (row) => _tty_row_cells_of(row).map(c => c.paint);
 
 /* C ref: include/wintty.h — the tty is 24x80 (LI x CO). */
 const LI = 24;
@@ -264,6 +267,9 @@ export class TtyMenu {
     }
 
     _screenRows() {
+        /* the pre-window search getlin left the raw-mode shadow standing
+         * (see _preWindowSearchGetlin) */
+        if (this._rawShadow) return this._rawShadow.slice();
         if (this.baseWindow) return this._lines.map(line => {
             if (!this.overlay) return line;
             const body = line.slice(1);
@@ -278,6 +284,7 @@ export class TtyMenu {
 
     _renderPage(page) {
         this._gnewOverlay = null; /* a page redraw clears the window first */
+        this._rawShadow = null;
         /* C wintty.c:1406-1410 process_menu_window: a full-screen (offx 0)
          * page opens with term_clear_screen(), which wipes the WHOLE physical
          * terminal -- the frozen pre-arrival frame a goto_level prompt was
@@ -303,6 +310,70 @@ export class TtyMenu {
      * Returns { count, picks } where picks is the list of a_int values in menu
      * order, or { count: -1, picks: [] } when cancelled with ESC.
      */
+    async _preWindowSearchGetlin() {
+        const { raw_print, raw_term_screen } = await import('./rawterm.js');
+        const disp = game.nhDisplay;
+        let cx = disp?.cursorCol ?? 0;
+        const cy = disp?.cursorRow ?? 0;
+        const rawWasActive = !!game._rawCursorFrozen;
+        const before = this._rawShadow ? this._rawShadow.slice() : this._screenRows().slice();
+        raw_print('Search for: ');
+        const rawRow = (game._rawterm?.row ?? 1);
+        game._rawCursorFrozen = [0, rawRow, 1];
+        let rows;
+        if (rawWasActive) {
+            /* nomux_raw_putch writes the characters over the shadow as is. */
+            rows = before;
+            const r = rawRow - 1;
+            while (rows.length <= r) rows.push('');
+            const old = visibleCells(rows[r]);
+            rows[r] = 'Search for: ' + old.slice('Search for: '.length).join('');
+        } else {
+            rows = raw_term_screen().split('\n');
+        }
+        const publish = () => {
+            this._rawShadow = rows;
+            game._screen_output = rows.join('\n');
+            if (disp) { disp.cursorCol = 0; disp.cursorRow = rawRow; }
+        };
+        const paint = (ch) => {
+            while (rows.length <= cy) rows.push('');
+            if (cy < 0 || cy >= LI || cx < 0 || cx >= CO) return;
+            const cells = visibleCells(rows[cy]);
+            while (cells.length < cx) cells.push(' ');
+            cells[cx] = ch;
+            rows[cy] = cells.join('');
+        };
+        publish();
+        let buf = '';
+        for (;;) {
+            const c = await nhgetch();
+            if (c === 27 || c === 10 || c === 13) {
+                const why = 'Bad window Id -1 (tty_clear_nhwindow)';
+                const { paniclog } = await import('./files.js');
+                paniclog('panic', why);
+                game.program_state.exiting = 1;
+                const err = new Error(`nh_terminate: panic: ${why}`);
+                err.status = 134;
+                throw err;
+            }
+            if (c === undefined || c < 0) return '\x1b';
+            if (c === 8 || c === 127 || c === 21) {
+                /* getline.c:142-151 erase_char (the pty's VERASE, DEL) or
+                 * '\b': one "\b \b"; :193-201 kill_char (VKILL, ^U): one
+                 * per typed character. */
+                const n = c === 21 ? buf.length : Math.min(1, buf.length);
+                for (let i = 0; i < n; i++) { cx--; paint(' '); }
+                buf = buf.slice(0, buf.length - n);
+            } else if (c >= 32 && buf.length < CO) {
+                buf += String.fromCharCode(c);
+                paint(String.fromCharCode(c));
+                cx++;
+            }
+            publish();
+        }
+    }
+
     async select_menu(how) {
         /* C wintty.c:1925-1937 tty_display_nhwindow: !menu_overlay forces
          * offx 0 for every menu, clearing the screen and using docrt on
@@ -453,7 +524,19 @@ export class TtyMenu {
                  * incremented BEFORE the page_start test, so the first item of
                  * the current page has lineno 0, and only an in-view toggle
                  * repaints its state column via set_item_state. */
-                if (how !== PICK_NONE) {
+                if (how !== PICK_NONE && this.baseWindow) {
+                    const answer = await this._preWindowSearchGetlin();
+                    if (answer && answer !== '\x1b') {
+                        const searchbuf = `*${answer}*`;
+                        for (let i = 0; i < this.mlist.length; i++) {
+                            const curr = this.mlist[i];
+                            if (!curr.aInt || !pmatchi(searchbuf, curr.str)) continue;
+                            if (curr.selected) { curr.selected = false; curr.count = -1; }
+                            else curr.selected = true;
+                            if (how === PICK_ONE) { finished = true; break; }
+                        }
+                    }
+                } else if (how !== PICK_NONE) {
                     const answer = await menu_search_getlin(
                         () => this._screenRows());
                     /* the getlin prompt's flush printed gnew map cells over

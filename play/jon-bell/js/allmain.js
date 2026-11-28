@@ -532,6 +532,7 @@ export async function newgame() {
      * com_pager only runs after role_init() resolves role; skip when chargen
      * is still pending (initrole < 0 means role_init() has not yet been called). */
     let deferredLastStartupMsg = null;
+    let deferredPreambleParts = [];
     let startupEscStop = false; /* WIN_STOP left live by ESC at a startup --More-- */
     if (!chargenIncomplete && g.flags?.legacy !== false) {
         // C allmain.c:832: the legacy Lua shuffle follows every reroll.
@@ -677,6 +678,9 @@ export async function newgame() {
          * monster the preamble plines follow the "You see ..." line. */
         const noticeBeforePreamble = FF_FAITHFUL && !chargenIncomplete && !tutorialWillRun
             && preambleMsgs.length > 0 && !(g._ff_preamble_rng_deferred && (g.a11y?.glyph_updates || g.flags?.mention_map || g.u?.uroleplay?.reroll));
+        const tutorialNoticeBeforePreamble = FF_FAITHFUL && !chargenIncomplete && tutorialWillRun
+            && preambleMsgs.length > 0 && !!(g.flags?.spot_monsters || g.a11y?.mon_notices)
+            && !(g.a11y?.glyph_updates || g.flags?.mention_map);
         /* mention_map: dolookaround (allmain.c:844-846) runs before moveloop_preamble's
          * moon/Friday plines (allmain.c:57-68), so they follow it (emitted below). */
         const preambleAfterLook = FF_FAITHFUL && !chargenIncomplete
@@ -685,8 +689,10 @@ export async function newgame() {
         g._preambleAfterLook = preambleAfterLook ? preambleMsgs : null;
         /* C pline.c:247-262 vpline: a MSGTYPE=hide message returns before
          * flush_screen and putmesg, so it neither shows nor pages. */
-        const startupMsgs = ((noticeBeforePreamble || preambleAfterLook) ? [welcomeMsg] : [welcomeMsg, ...preambleMsgs])
+        const startupMsgs = ((noticeBeforePreamble || tutorialNoticeBeforePreamble || preambleAfterLook) ? [welcomeMsg] : [welcomeMsg, ...preambleMsgs])
             .filter(m => msgtype_type(m) !== 'hide');
+        if (tutorialNoticeBeforePreamble)
+            deferredPreambleParts = preambleMsgs.filter(m => msgtype_type(m) !== 'hide');
         // allmain.c:831 — flags.legacy guards exactly one thing, the
         // com_pager("legacy") entry story, which runs inside newgame() BEFORE
         // welcome(TRUE) (allmain.c:842).  The welcome pline and the
@@ -801,10 +807,10 @@ export async function newgame() {
          * notice_all_mons(TRUE) (no a11y.glyph_updates): with spot_monsters set,
          * the starting pet is announced ("You see your kitten.") right after
          * the welcome line.  The moveloop_preamble messages follow it in C. */
+        if (g.flags?.spot_monsters) (g.a11y ||= {}).mon_notices = true;
         g._notice_mon_ready = true; /* allmain.c:844 notice_mon_on() */
         if (!chargenIncomplete && !(g.a11y?.glyph_updates || g.flags?.mention_map)) {
             if (noticeBeforePreamble) {
-                if (g.flags?.spot_monsters) (g.a11y ||= {}).mon_notices = true;
                 await notice_all_mons(true);
                 /* allmain.c:57-68: each moon/Friday pline's update_topl pages
                  * the standing line it does not fit beside right there
@@ -822,6 +828,15 @@ export async function newgame() {
         if (g._preambleAfterLook) for (const m of g._preambleAfterLook) {
             await pline(m);
             await flush_screen(1, false); /* topl.c:274, before preamble RNG */
+        }
+        /* C allmain.c:848,57-68: notice_all_mons and the moon/Friday preamble
+         * plines precede rndencode/seer_turn (allmain.c:72,79) and pickup(1)
+         * (:75), so any --More-- they raise blocks ahead of those draws. */
+        if (deferredLastStartupMsg !== null && deferredPreambleParts.length) {
+            for (const m of deferredPreambleParts) await pline(m);
+            await flush_screen(1, false);
+            deferredLastStartupMsg = g._pending_message || '';
+            startupEscStop = !!g._topl_win_stop;
         }
         /* C allmain.c:844-846,57-68: lookaround and the preamble precede
          * the tutorial flush.  Its standing line is now their last message,
@@ -857,7 +872,7 @@ export async function newgame() {
      * text with the welcome; peel them off so they take part in the fit test
      * below instead of being dropped with the pending clear. */
     let noticeParts = [];
-    if (deferredLastStartupMsg !== null && g.a11y?.mon_notices) {
+    if (deferredLastStartupMsg !== null && g.a11y?.mon_notices && !deferredPreambleParts.length) {
         const pending = g._pending_message || '';
         /* allmain.c:843-848: notices follow welcome even when redotoplin()
          * already paged that wrapped welcome (topl.c:139-140).  The tutorial
@@ -4143,6 +4158,71 @@ async function moveloop_core_faithful() {
         // channel empty that arm never fired, so the --More-- that message raises
         // had no frame of its own and fell back to the coarse end-of-occupation
         const beginMsg = g._resultMessage || '';
+        /* C topl.c:262-276: each of forcelock()'s plines meets the standing
+         * topline inside the callback; when it does not fit (n0 +
+         * strlen(toplines) + 3 >= CO - 8) update_topl more()s right there and
+         * C reads the key before running anything after that pline.  Page the
+         * line standing at that instant (js/lock.js _forceEmitPaged); what is
+         * left on it is assembled with the later messages below as before. */
+        g._forcePageNow = async (msg, botl) => {
+            if (g._topl_win_stop || g.context?.resume_wish) return false;
+            const sj = g._topl_joins, ss = g._topl_joins_src;
+            let full = (g._resultMessage && g._pending_message)
+                ? _topl_merge_result(g._resultMessage, g._pending_message,
+                                     _topl_joins_snapshot(g._resultMessage) || undefined)
+                : (g._resultMessage || g._pending_message || '');
+            const staged = [...(g._forceMsgs || [])];
+            const offs = [];
+            for (const m of staged) {
+                offs.push(full.length);
+                full = full ? _topl_merge_result(full, m, _topl_joins_snapshot(full) || undefined) : m;
+            }
+            if (!full) { g._topl_joins = sj; g._topl_joins_src = ss; return false; }
+            /* the page standing now: the messages since the last more() */
+            const cuts = [...new Set([...(_topl_joins_snapshot(full) || []), ...offs.filter(o => o > 0)])]
+                .filter(o => o > 0 && o < full.length).sort((x, y) => x - y);
+            const msgs = [];
+            let at = 0;
+            for (const c of cuts) { msgs.push(full.slice(at, c)); at = c + 2; }
+            msgs.push(full.slice(at));
+            const fits = (m, p) => m.length + p.length + 3 < 80 - 8 && !m.startsWith('You die');
+            let page = msgs[0];
+            for (const m of msgs.slice(1)) page = fits(m, page) ? page + '  ' + m : m;
+            if (fits(msg, page)) {
+                g._topl_joins = sj; g._topl_joins_src = ss;
+                return false;
+            }
+            const botls = [...(g._forceMsgBotls || [])];
+            staged.push(msg); botls[staged.length - 1] = botl;
+            offs.push(full.length);
+            full = _topl_merge_result(full, msg, _topl_joins_snapshot(full) || undefined);
+            occupation_painted_tick();
+            const frame = g._occCurFrame;
+            if (frame) {
+                if (!Array.isArray(g._plineFlushFrames)) g._plineFlushFrames = [];
+                for (const [i, off] of offs.entries())
+                    if (off > 0)
+                        g._plineFlushFrames.push({ off, msg: staged[i], cells: frame,
+                            moves: (g.moves | 0), botl: botls[i] ?? g._forceBotl ?? null });
+            }
+            g._forceMsgs = [];
+            g._forceMsgBotls = [];
+            g._resultMessage = null;
+            g._resultMessageJoins = null;
+            g._pending_message = full;
+            const saved = g._paintedSnapshot;
+            if (frame)
+                g._paintedSnapshot = { cells: frame, moves: (g.moves | 0),
+                    botl: g._forceBotl ?? undefined,
+                    uhs: (g.u && g.u.uhs != null) ? (g.u.uhs | 0) : null };
+            await flush_screen(1);
+            if (frame) g._paintedSnapshot = saved || null;
+            if (g._pending_message) {
+                g._resultMessage = g._pending_message;
+                g._pending_message = '';
+            }
+            return true;
+        };
         while (g.occupation === forcelock && forceGuard++ < 4096) {
             /* C allmain.c:200-201 — a resumed wish opens this invocation.  Its
              * pline meets the standing topline (the begin message this driver
@@ -4182,6 +4262,7 @@ async function moveloop_core_faithful() {
                 reset_eat();
             }
         }
+        g._forcePageNow = null;
         // C ref: src/pline.c:274 — `if (u.ux) flush_screen(...)` runs BEFORE
         // putmesg(), so the physical screen that each of forcelock()'s plines
         // more()s over is the gbuf as of the SUCCESS TURN's movemon — every one

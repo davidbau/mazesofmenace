@@ -118,7 +118,10 @@ import { mon_reflects } from './muse.js';
 import { golemeffects, healmon, shieldeff_mon as shieldeff_mon_mp } from './mon.js';
 import { split_mon } from './potion.js';
 import { haseyes, perceives } from './mondata.js';
-import { erode_armor } from './uhitm.js';
+import { erode_armor, do_stone_mon } from './uhitm.js';
+import { s_suffix, strsubst } from './hacklib.js';
+import { simpleonames } from './iactions.js';
+import { noncorporeal, amorphous } from './mondata.js';
 import { acid_damage } from './trap.js';
 import { drain_item } from './zap.js';
 import { hliquid } from './potion.js';
@@ -582,8 +585,23 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
         if (buf)
             await pline(`${buf} ${mon_nam_too(mdef, magr)}.`);
 
-        if (mon_hates_silver(mdef) && silverhit)
-            throw new Error('hitmm(): silver sears message not ported yet');
+        if (mon_hates_silver(mdef) && silverhit) {
+            let mdef_name = mon_nam_too(mdef, magr);
+            let magr_name2 = s_suffix(magr_name);
+
+            if (!noncorporeal(mdef.data) && !amorphous(mdef.data)) {
+                if (mdef !== magr) {
+                    mdef_name = s_suffix(mdef_name);
+                } else {
+                    mdef_name = strsubst(mdef_name, "himself", "his own");
+                    mdef_name = strsubst(mdef_name, "herself", "her own");
+                    mdef_name = strsubst(mdef_name, "itself", "its own");
+                }
+                mdef_name += " flesh";
+            }
+
+            await pline(`${magr_name2} ${simpleonames(mwep)} sears ${mdef_name}!`);
+        }
         }
     } else
         await noises(magr, mattk);
@@ -611,8 +629,11 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
         let marmg;
 
         if (mwep.otyp === CORPSE
-            && touch_petrifies(mons[mwep.corpsenm]))
-            throw new Error('mhitm_ad_phys(): do_stone_mon() not ported yet');
+            && touch_petrifies(mons[mwep.corpsenm])) {
+            await do_stone_mon(magr, mattk, mdef, mhm);
+            if (mhm.done)
+                return;
+        }
 
         mhm.damage += dmgval(mwep, mdef);
         if ((marmg = which_armor(magr, W_ARMG)) != null

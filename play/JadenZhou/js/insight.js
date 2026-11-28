@@ -153,6 +153,11 @@ import { AD_DGST as AD_DGST_IN, AT_ENGL as AT_ENGL_IN } from './monsters.js';
 import { sticks as sticks_in } from './engrave.js';
 import { dxdy_to_dist_descr as dxdy_to_dist_descr_in } from './getpos.js';
 import { ROLL_FROM as ROLL_FROM_is } from './rng.js';
+/* mstatusline()/ustatusline() u.ustuck and Sick text */
+import { digests, is_animal } from './mondata.js';
+import { enfolds } from './mhitu.js';
+import { sticks } from './engrave.js';
+import { fingers_or_gloves } from './do_wear.js';
 
 // C ref: insight.c align_str()
 export function align_str(alignment) {
@@ -1537,8 +1542,12 @@ function status_enlightenment(mode, final) {
         buf = `${article}wounded ${leftright}${bp}`;
         you_have(buf, "");
     }
-    if (Glib())
-        throw new Error('status_enlightenment(): fingers_or_gloves() not ported yet');
+    if (Glib()) {
+        buf = `slippery ${fingers_or_gloves(true)}`;
+        if (wizard())
+            buf += ` (${(Glib() & TIMEOUT)})`;
+        you_have(buf, "");
+    }
     if (Fumbling()) {
         if (magic || cause_known(FUMBLING))
             enl_msg(You_, "fumble", "fumbled", "", from_what(FUMBLING));
@@ -2724,8 +2733,13 @@ export async function mstatusline(mtmp) {
 
     if (mtmp.mtame) {
         info += ", tame";
-        if (game.flags.debug)
-            throw new Error('mstatusline(): wizard-mode tameness details not ported yet');
+        if (game.flags.debug) { /* wizard */
+            info += ` (${mtmp.mtame}`;
+            if (!mtmp.isminion)
+                info += `; hungry ${mtmp.edog.hungrytime}; apport ${
+                    mtmp.edog.apport}`; /* EDOG(mtmp) */
+            info += ")";
+        }
     } else if (mtmp.mpeaceful)
         info += ", peaceful";
 
@@ -2782,8 +2796,26 @@ export async function mstatusline(mtmp) {
                   : ", [? speed]";
     if (mtmp.minvis)
         info += ", invisible";
-    if (mtmp === u.ustuck)
-        throw new Error('mstatusline(): u.ustuck holding/engulfing text not ported yet');
+    if (mtmp === u.ustuck) {
+        const pm = u.ustuck.data;
+
+        /* being swallowed/engulfed takes priority over sticks(youmonst);
+           this used to have that backwards and checked sticks() first */
+        info += u.uswallow ? (digests(pm)
+                              ? ", digesting you"
+                              /* note: the "swallowing you" case won't
+                                 happen because all animal engulfers
+                                 either digest their victims (purple
+                                 worm) or enfold them (trappers and
+                                 lurkers above) */
+                              : (is_animal(pm) && !enfolds(pm))
+                                ? ", swallowing you"
+                                : ", engulfing you")
+                /* !u.uswallow; if both youmonst and ustuck are holders,
+                   youmonst wins */
+                : (!sticks(game.youmonst.data) ? ", holding you"
+                                               : ", held by you");
+    }
     if (mtmp === u.usteed)
         throw new Error('mstatusline(): steed text not ported yet');
     if (mtmp.mleashed)
@@ -2806,8 +2838,16 @@ export async function ustatusline() {
     const has = (p) => !!(u.uprops[p]?.intrinsic || u.uprops[p]?.extrinsic);
     let info = "";
 
-    if (has(SICK))
-        throw new Error('ustatusline(): Sick not ported yet');
+    if (has(SICK)) {
+        info += ", dying from";
+        if (u.usick_type & SICK_VOMITABLE)
+            info += " food poisoning";
+        if (u.usick_type & SICK_NONVOMITABLE) {
+            if (u.usick_type & SICK_VOMITABLE)
+                info += " and";
+            info += " illness";
+        }
+    }
     if (has(STONED))
         info += ", solidifying";
     if (has(SLIMED))
@@ -2820,15 +2860,30 @@ export async function ustatusline() {
         info += ", confused";
     if (has(BLINDED) && !u.uprops[BLINDED]?.blocked) { /* Blind */
         info += ", blind";
-        if (u.ucreamed)
-            throw new Error('ustatusline(): sticky goop not ported yet');
+        if (u.ucreamed) {
+            if (u.ucreamed < BlindedTimeout() || Blindfolded()
+                || !haseyes(game.youmonst.data))
+                info += ", cover";
+            info += "ed by sticky goop";
+        } /* note: "goop" == "glop"; variation is intentional */
     }
     if (has(STUNNED))
         info += ", stunned";
-    if (has(WOUNDED_LEGS) && !u.usteed)
-        throw new Error('ustatusline(): Wounded_legs not ported yet');
+    if (has(WOUNDED_LEGS) && !u.usteed) {
+        /* EWounded_legs is used to track left/right/both rather than some
+           form of extrinsic impairment; HWounded_legs is used for timeout;
+           both apply to steed instead of hero when mounted */
+        const legs = (EWounded_legs() & BOTH_SIDES);
+        let what = body_part(LEG);
+
+        if (legs === BOTH_SIDES)
+            what = makeplural(what);
+        /* when it's just one leg, ^X reports which, left or right;
+           ustatusline() doesn't, in order to keep the output a bit shorter */
+        info += `, injured ${what}`;
+    }
     if (has(GLIB))
-        throw new Error('ustatusline(): Glib not ported yet');
+        info += `, slippery ${fingers_or_gloves(true)}`;
     if (u.utrap)
         info += ", trapped";
     if (has(FAST)) /* Fast */
@@ -2841,8 +2896,20 @@ export async function ustatusline() {
         info += ", disguised";
     if (has(INVIS))
         info += ", invisible";
-    if (u.ustuck)
-        throw new Error('ustatusline(): u.ustuck text not ported yet');
+    if (u.ustuck) {
+        if (u.uswallow)
+            info += digests(u.ustuck.data) ? ", being digested by "
+                                           : ", engulfed by ";
+        else if (!sticks(game.youmonst.data))
+            info += ", held by ";
+        else
+            info += ", holding ";
+        /* FIXME? a_monnam() uses x_monnam() which has a special case that
+           forces "the" instead of "a" when formatting u.ustuck while hero
+           is swallowed; we don't really want that here but it isn't worth
+           fiddling with just for self-probing while engulfed */
+        info += a_monnam_in(u.ustuck);
+    }
     let reg;
     if (!u.uswallow
         && (reg = visible_region_at(u.ux, u.uy)) != null)

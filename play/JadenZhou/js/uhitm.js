@@ -14,7 +14,7 @@
 import { DEADMONSTER } from './mon.js';
 import { helpless } from './monmove.js';
 import { is_art, artifact_light } from './artifact.js';
-import { passes_rocks, unconscious } from './trap.js';
+import { passes_rocks, unconscious, is_waterwall } from './trap.js';
 import { resists_poison, slithy, is_animal, type_is_pname, hides_under,
          nohands, verysmall, bigmonst, amorphous, unsolid, noncorporeal,
          is_whirly, has_head, thick_skinned, flaming, touch_petrifies,
@@ -129,6 +129,7 @@ import { make_stoned } from './potion.js';
 import { poly_when_stoned } from './mondata.js';
 import { the } from './iactions.js';
 import { RLOC_MSG, M_ATTK_AGR_DONE, M_ATTK_AGR_DIED, KILLED_BY_AN, KILLED_BY,
+         POOL, DROWNING, Is_medusa_level,
          NEW_MOON, STONED, STONE_RES, DEAF } from './const.js';
 import { DRAIN_RES, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ACID, M_SEEN_SLEEP,
          FIRE_RES, COLD_RES, ACID_RES, SLEEP_RES, TELEPORT_CONTROL, BLINDED,
@@ -175,6 +176,7 @@ import { EXPENSIVE_CAMERA, EGG, CREAM_PIE, BLINDING_VENOM, ACID_VENOM, ROCK,
 import { corpse_xname, An, singular, cxname } from './objnam.js';
 import { observe_object } from './o_init.js';
 import { munstone, munslime } from './muse.js';
+import { monstone, mon_to_stone } from './mon.js';
 import { stale_egg, eat_brains } from './eat.js';
 import { explode } from './explode.js';
 import { is_vampshifter, haseyes, resists_acid,
@@ -462,8 +464,10 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                 if (!mhm.damage)
                     return;
                 if (objects[otmp.otyp].oc_material === SILVER
-                    && Hate_silver())
-                    throw new Error('mhitm_ad_phys(): "The silver sears your flesh!" not ported yet');
+                    && Hate_silver()) {
+                    await pline_The("silver sears your flesh!");
+                    await exercise(A_CON, false);
+                }
                 /* this redundancy necessary because you have
                    to take the damage _before_ being cloned;
                    need to have at least 2 hp left to split */
@@ -1020,8 +1024,48 @@ async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
             }
         }
     } else {
-        throw new Error('mhitm_ad_ston(): mhitm branch (do_stone_mon()) not ported yet');
+        /* mhitm */
+        if (magr.mcan)
+            return;
+        await do_stone_mon(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     }
+}
+
+// C ref: uhitm.c do_stone_mon()
+export async function do_stone_mon(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+    let post_stone = false;
+
+    /* may die from the acid if it eats a stone-curing corpse */
+    if (await munstone(mdef, false))
+        post_stone = true; /* goto post_stone */
+    if (!post_stone && poly_when_stoned(pd)) {
+        await mon_to_stone(mdef);
+        mhm.damage = 0;
+        return;
+    }
+    if (post_stone || !resists_ston(mdef)) {
+        if (!post_stone) {
+            if (game.mhitm_vis && canseemon(mdef))
+                await pline_mon(mdef, `${Monnam(mdef)} turns to stone!`);
+            await monstone(mdef);
+        }
+        /* post_stone: */
+        if (!DEADMONSTER(mdef)) {
+            mhm.hitflags = M_ATTK_MISS;
+            mhm.done = true;
+            return;
+        } else if (mdef.mtame && !game.mhitm_vis) {
+            await You(`have a ${"peculiarly sad"} feeling for a moment, then it passes.`); /* brief_feeling */
+        }
+        mhm.hitflags = (M_ATTK_DEF_DIED
+                        | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED));
+        mhm.done = true;
+        return;
+    }
+    mhm.damage = (mattk.adtyp === AD_STON ? 0 : 1);
 }
 
 
@@ -1980,10 +2024,20 @@ async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
                 }
             } else if (u.ustuck === magr) {
                 if (is_pool(magr.mx, magr.my) && !Swimming()
-                    && !Amphibious() && !Breathless())
-                    throw new Error('mhitm_ad_wrap(): drowning the hero not ported yet');
-                else if (mattk.aatyp === AT_HUGS)
+                    && !Amphibious() && !Breathless()) {
+                    const moat = (game.level.at(magr.mx, magr.my).typ !== POOL)
+                                 && !is_waterwall(magr.mx, magr.my)
+                                 && !Is_medusa_level(u.uz)
+                                 && !Is_waterlevel(u.uz);
+
+                    await urgent_pline(`${Monnam(magr)} drowns you...`);
+                    killer().format = KILLED_BY_AN;
+                    killer().name = `${moat ? "moat" : "pool of water"} by ${
+                        an(pmname(magr.data, Mgender(magr)))}`;
+                    await done(DROWNING);
+                } else if (mattk.aatyp === AT_HUGS) {
                     await You("are being crushed.");
+                }
             } else {
                 mhm.damage = 0;
                 if (game.flags.verbose) {

@@ -77,6 +77,11 @@ import { hidden_gold as hidden_gold_dt, currency as currency_dt } from './insigh
 import { x_monnam as x_monnam_dt } from './do_name.js';
 import { s_suffix as s_suffix_dt } from './hacklib.js';
 import { makeplural as makeplural_dt } from './objnam.js';
+import { b_trapped } from './trap.js';
+import { distu } from './hacklib.js';
+import { Deaf } from './youprop.js';
+import { wake_nearto } from './mon.js';
+import { NO_PART } from './const.js';
 import { IS_FURNITURE, ROOMOFFSET, D_TRAPPED as D_TRAPPED_DT, D_ISOPEN as D_ISOPEN_DT,
          BOLT_LIM as BOLT_LIM_DT, BURIED_TOO as BURIED_TOO_DT,
          CONTAINED_TOO as CONTAINED_TOO_DT, FOOT as FOOT_DT, TOE as TOE_DT,
@@ -1720,9 +1725,15 @@ async function openone(zx, zy, num_p) {
         || (lev.typ === DOOR && ((lev.doormask || 0) & (D_CLOSED | D_LOCKED)))) {
         if (lev.typ === SDOOR)
             cvt_sdoor_to_door(lev); /* .typ = DOOR */
-        if (lev.doormask & D_TRAPPED_DT)
-            throw new Error('openone(): trapped door explosion (b_trapped()) not ported yet');
-        else
+        if (lev.doormask & D_TRAPPED_DT) {
+            if (distu(zx, zy) < 3)
+                await b_trapped("door", NO_PART);
+            else
+                await Norep(`You ${cansee(zx, zy) ? "see" : (!Deaf() ? "hear"
+                                                     : "feel the shock of")} an explosion!`);
+            await wake_nearto(zx, zy, 11 * 11);
+            lev.doormask = D_NODOOR;
+        } else
             lev.doormask = D_ISOPEN_DT;
         unblock_point(zx, zy);
         newsym(zx, zy);

@@ -56,6 +56,8 @@ import { map_trap, map_engraving } from './display.js';
 import { do_mapping, findit } from './detect.js';
 import { print_dungeon } from './dungeon.js';
 import { setuqwep } from './wield.js';
+import { Fumbling } from './youprop.js';
+import { u_safe_from_fatal_corpse, st_all } from './pickup.js';
 
 // C ref: wizcmds.c wiz_level_change() -- #levelchange
 export async function wiz_level_change() {
@@ -138,49 +140,63 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
             obj.oerodeproof = oerode;
         }
     }
-    if (game.u.Fumbling)
-        throw new Error('hold_another_object(): Fumbling is not ported yet');
-    if (obj.otyp === O.CORPSE && obj.wishedfor)
-        throw new Error('hold_another_object(): wished-for corpse is not ported yet');
-    const oquan = obj.quan;
-    let prev_encumbr = near_capacity(); /* before addinv() */
+    let drop_it = false;
+    if (Fumbling()) {
+        obj.nomerge = 1;
+        /* dropping expects obj to be in invent; since it's going to be
+           dropped, avoid perminv update when temporarily adding it */
+        obj = await addinv(obj); /* addinv_core0(obj, NULL, FALSE) */
+        drop_it = true; /* goto drop_it */
+    } else if (obj.otyp === O.CORPSE
+               && !u_safe_from_fatal_corpse(obj, st_all)
+               && obj.wishedfor) {
+        obj.wishedfor = 0;
+        obj = await addinv(obj); /* addinv_core0(obj, NULL, FALSE) */
+        drop_it = true; /* goto drop_it */
+    } else {
+        const oquan = obj.quan;
+        let prev_encumbr = near_capacity(); /* before addinv() */
 
-    /* encumbrance limit is max( current_state, pickup_burden );
-       this used to use hardcoded MOD_ENCUMBER (stressed) instead
-       of the 'pickup_burden' option (which defaults to stressed) */
-    const pickup_burden = game.flags.pickup_burden ?? MOD_ENCUMBER;
-    if (prev_encumbr < pickup_burden)
-        prev_encumbr = pickup_burden;
-    obj = await addinv(obj); /* addinv_core0(obj, NULL, FALSE) */
-    if (inv_cnt(false) > 52 /* invlet_basic */
-        || ((obj.otyp !== O.LOADSTONE || !obj.cursed)
-            && near_capacity() > prev_encumbr)) {
-        /* undo any merge which took place */
-        if (obj.quan > oquan)
-            obj = splitobj(obj, oquan);
-        /* drop_it: */
-        if (drop_fmt)
-            await pline(drop_fmt.replace('%s', drop_arg ?? ''));
-        obj.nomerge = 0;
-        if (can_reach_floor(true) || game.u.uswallow) {
-            await dropx(obj);
+        /* encumbrance limit is max( current_state, pickup_burden );
+           this used to use hardcoded MOD_ENCUMBER (stressed) instead
+           of the 'pickup_burden' option (which defaults to stressed) */
+        const pickup_burden = game.flags.pickup_burden ?? MOD_ENCUMBER;
+        if (prev_encumbr < pickup_burden)
+            prev_encumbr = pickup_burden;
+        obj = await addinv(obj); /* addinv_core0(obj, NULL, FALSE) */
+        if (inv_cnt(false) > 52 /* invlet_basic */
+            || ((obj.otyp !== O.LOADSTONE || !obj.cursed)
+                && near_capacity() > prev_encumbr)) {
+            /* undo any merge which took place */
+            if (obj.quan > oquan)
+                obj = splitobj(obj, oquan);
+            drop_it = true; /* goto drop_it */
         } else {
-            freeinv(obj);
-            await hitfloor(obj, false);
+            if (game.flags.autoquiver && !game.uquiver && !obj.owornmask
+                && (O.is_missile(obj) || O.ammo_and_launcher(obj, game.uwep)
+                    || O.ammo_and_launcher(obj, game.uswapwep)))
+                setuqwep(obj);
+            if (hold_msg || drop_fmt)
+                await prinv(hold_msg, obj, oquan);
+            /* obj made it into inventory and is staying there */
+            /* update_inventory(): no perm_invent */
+            await encumber_msg();
         }
-        return null; /* might be gone */
     }
-    if (game.flags.autoquiver && !game.uquiver && !obj.owornmask
-        && (O.is_missile(obj) || O.ammo_and_launcher(obj, game.uwep)
-            || O.ammo_and_launcher(obj, game.uswapwep)))
-        setuqwep(obj);
-    if (hold_msg || drop_fmt)
-        await prinv(hold_msg, obj, oquan);
-    /* obj made it into inventory and is staying there */
-    /* update_inventory(): no perm_invent */
-    await encumber_msg();
-    void drop_arg;
-    return obj;
+    if (!drop_it)
+        return obj;
+
+    /* drop_it: */
+    if (drop_fmt)
+        await pline(drop_fmt.replace('%s', drop_arg ?? ''));
+    obj.nomerge = 0;
+    if (can_reach_floor(true) || game.u.uswallow) {
+        await dropx(obj);
+    } else {
+        freeinv(obj);
+        await hitfloor(obj, false);
+    }
+    return null; /* might be gone */
 }
 
 // C ref: zap.c makewish()
@@ -257,8 +273,8 @@ export async function makewish() {
     /* TODO? maybe generate a second event describing what was received since
        these just echo player's request rather than show actual result */
 
-    if (otmp.otyp === O.CORPSE)
-        throw new Error('makewish(): corpse wishes (u_safe_from_fatal_corpse) are not ported yet');
+    if (otmp.otyp === O.CORPSE && !u_safe_from_fatal_corpse(otmp, st_all))
+        otmp.wishedfor = 1;
 
     const verb = ((Is_airlevel(u.uz) || u.uinwater)
                   ? "slip"

@@ -20,6 +20,7 @@
 import { SYM_OFF_X } from './symbols.js';
 import { db_under_typ, glyph_is_warning,
          glyph_is_invisible } from './display.js';
+import { def_r_oc_syms } from './display.js';
 import { game } from './gstate.js';
 import { obj_stop_timers } from './timeout.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
@@ -87,7 +88,7 @@ import { MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
          Is_airlevel, TER_MON, TER_OBJ, TER_DETECT, TER_MAP, GPCOORDS_NONE,
          GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_COMFULL, GPCOORDS_SCREEN,
          BOLT_LIM, COLNO, ROWNO, IS_GRAVE, WARNCOUNT, def_warnsyms, SYM_NOTHING,
-         SYM_UNEXPLORED, SYM_BOULDER, SYM_INVISIBLE, ROGUESET } from './const.js';
+         SYM_UNEXPLORED, SYM_BOULDER, SYM_INVISIBLE, ROGUESET, Is_rogue_level } from './const.js';
 import { perceives, is_orc, digests } from './mondata.js';
 import { sticks } from './engrave.js';
 import { altarmask_at } from './pray.js';
@@ -230,8 +231,15 @@ function dec_symset_pg() {
 // display.c reglyph_darkroom() -- gs.showsyms[] for the cmap symbols of the
 // primary symset (an nhsym: DECgraphics symbols have the high bit set)
 function showsyms_cmap(i) {
-    if (game.currentgraphics === ROGUESET)
-        throw new Error('showsyms: the rogue level symset not ported yet');
+    if (game.currentgraphics === ROGUESET) {
+        /* symbols.c init_rogue_symbols(): gr.rogue_syms[] (no
+           go.ov_rogue_syms[] overrides are set) */
+        if (i === S_vodoor || i === S_hodoor || i === S_ndoor)
+            return chcode('+');
+        if (i === S_upstair || i === S_dnstair)
+            return chcode('%');
+        return chcode(defsyms[i][0]);
+    }
     if (i === S_darkroom) {
         /* reglyph_darkroom() */
         if (game.flags.dark_room !== false && game.iflags.wc_color !== false)
@@ -246,7 +254,12 @@ function showsyms_cmap(i) {
 // gs.showsyms[i + SYM_OFF_M], gs.showsyms[i + SYM_OFF_O] and
 // gw.warnsyms[i]: no symset in use changes these from their defaults
 function showsyms_mon(i) { return chcode(def_monsyms[i]); }
-function showsyms_obj(i) { return chcode(def_oc_syms[i]); }
+function showsyms_obj(i) {
+    /* symbols.c init_rogue_symbols(): def_r_oc_syms[] on the Rogue level */
+    if (game.currentgraphics === ROGUESET)
+        return chcode(def_r_oc_syms[i]);
+    return chcode(def_oc_syms[i]);
+}
 function warnsyms(i) { return chcode(def_warnsyms[i].ch); }
 
 // C ref: symbols.c get_othersym() -- gs.showsyms[idx + SYM_OFF_X]; no S_
@@ -741,7 +754,7 @@ function is_treefruit(otmp) {
 }
 
 // C ref: vision.c howmonseen() -- how the hero sees a monster (MONSEEN_*)
-function howmonseen(mon) {
+export function howmonseen(mon) {
     const u = game.u;
     const useemon = canseemon(mon);
     const xraydist = (u.xray_range < 0) ? -1 : ((u.xray_range || 0) * (u.xray_range || 0));
@@ -1321,9 +1334,9 @@ export function do_screen_description(cc, looked, sym) {
         /* Now check for objects */
         if (!game.iflags.terrainmode || (game.iflags.terrainmode & TER_OBJ) !== 0) {
             let oc_ptr;
-            if (game.currentgraphics === ROGUESET)
-                throw new Error('do_screen_description(): rogue level symbols not ported yet');
-            let bouldersym = game.ov_primary_syms?.[SYM_BOULDER + SYM_OFF_X] || 0;
+            let bouldersym = (Is_rogue_level(game.u.uz)
+                              ? game.ov_rogue_syms?.[SYM_BOULDER + SYM_OFF_X]
+                              : game.ov_primary_syms?.[SYM_BOULDER + SYM_OFF_X]) || 0;
             if (!bouldersym)
                 bouldersym = chcode(def_oc_syms[ROCK_CLASS]);
 

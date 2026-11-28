@@ -5030,10 +5030,7 @@ export async function doset() {
                         if (lim < 0) lim = 5;
                         g.flags.pile_limit = lim;
                     } else if (abuf !== '\x1b' && ent.row.name === 'packorder') {
-                        /* C options.c:2670-2680 optfn_packorder(do_set) -> 7466
-                         * change_inv_order: COIN first unless named, keep good
-                         * entries, append omissions from the previous order. */
-                        const op = mungspaces(abuf);
+                        const op = abuf.replace(/[ \t\n\v\f\r]+$/, '');
                         if (op) {
                             const previous = g.flags.inv_order || [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16];
                             const order = op.includes('$') ? [] : [12];

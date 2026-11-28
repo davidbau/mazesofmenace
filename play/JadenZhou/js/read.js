@@ -33,7 +33,7 @@ import { mons, G_UNIQ, PM_GUARD, PM_SHOPKEEPER, PM_HIGH_CLERIC,
          PM_ALIGNED_CLERIC, PM_ANGEL, PM_LONG_WORM_TAIL, PM_LONG_WORM,
          PM_HUMAN_ZOMBIE, PM_DOPPELGANGER } from './monsters.js';
 import { pline } from './display.js';
-import { tty_getlin } from './wintty.js';
+import { tty_getlin, tty_yn_function } from './wintty.js';
 import { mungspaces, strstri, strncmpi, sgn, upstart,
          distu } from './hacklib.js';
 import { name_to_mon, amorphous, noncorporeal, unsolid, unique_corpstat,
@@ -2622,8 +2622,13 @@ async function create_particular_creation(d) {
         const mtype = { v: d.which };
         const r = cant_revive(mtype, false, null);
         d.which = mtype.v;
-        if (r && firstchoice !== PM_LONG_WORM_TAIL)
-            throw new Error('create_particular_creation(): "Creating %s instead; force %s?" (y_n) not ported yet');
+        if (r && firstchoice !== PM_LONG_WORM_TAIL) {
+            /* wizard mode can override handling of special monsters */
+            const buf = `Creating ${mons[d.which].pmnames[NEUTRAL]} instead; force ${
+                mons[firstchoice].pmnames[NEUTRAL]}?`;
+            if (await tty_yn_function(buf, "yn", 'n') === 'y') /* y_n() */
+                d.which = firstchoice;
+        }
         whichpm = mons[d.which];
     }
     for (i = 0; i < d.quan; i++) {
